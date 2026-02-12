@@ -10,7 +10,10 @@ export default defineConfig({
           'unified',
           'remark-parse',
           'remark-gfm',
-          'mdast-util-to-hast'
+          'mdast-util-to-hast',
+          'fastify',
+          '@fastify/cors',
+          '@fastify/static'
         ]
       })
     ],

@@ -10,8 +10,8 @@ permissions:
   contents: write
 
 jobs:
-  package-mac:
-    runs-on: macos-latest
+  build:
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
@@ -32,13 +32,41 @@ jobs:
       - name: Build app
         run: pnpm build
 
-      - name: Package macOS
-        uses: nick-fields/retry@v3
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
         with:
-          timeout_minutes: 30
-          max_attempts: 3
-          retry_wait_seconds: 10
-          command: pnpm dist:mac --publish always
+          name: dist
+          path: |
+            out/renderer
+            dist-electron
+          retention-days: 1
+
+  release-mac:
+    needs: build
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Package & Release (macOS)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -46,13 +74,20 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm dist:mac
 
-  package-win:
+  release-win:
+    needs: build
     runs-on: windows-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -66,10 +101,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Build app
-        run: pnpm build
-
-      - name: Package Windows
+      - name: Package & Release (Windows)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm dist:win --publish always
+        run: pnpm dist:win
