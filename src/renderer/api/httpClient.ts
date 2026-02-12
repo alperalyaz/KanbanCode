@@ -91,7 +91,8 @@ export class HttpAPIClient implements ElectronAPI {
    * serialization turns them into strings. This restores them so that
    * `.getTime()` and other Date methods work in the renderer.
    */
-  private static readonly ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?$/;
+  // eslint-disable-next-line security/detect-unsafe-regex -- anchored pattern with bounded quantifier; no backtracking risk
+  private static readonly ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z?$/;
 
   private static reviveDates(_key: string, value: unknown): unknown {
     if (typeof value === 'string' && HttpAPIClient.ISO_DATE_RE.test(value)) {

@@ -77,11 +77,7 @@ const MAX_NOTIFICATIONS = 100;
 const THROTTLE_MS = 5000;
 
 /** Path to notifications storage file */
-const NOTIFICATIONS_PATH = path.join(
-  os.homedir(),
-  '.claude',
-  'claude-devtools-notifications.json'
-);
+const NOTIFICATIONS_PATH = path.join(os.homedir(), '.claude', 'claude-devtools-notifications.json');
 
 // =============================================================================
 // NotificationManager Class

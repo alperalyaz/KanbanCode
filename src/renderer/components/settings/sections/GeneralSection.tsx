@@ -32,7 +32,10 @@ export const GeneralSection = ({
   onGeneralToggle,
   onThemeChange,
 }: GeneralSectionProps): React.JSX.Element => {
-  const [serverStatus, setServerStatus] = useState<HttpServerStatus>({ running: false, port: 3456 });
+  const [serverStatus, setServerStatus] = useState<HttpServerStatus>({
+    running: false,
+    port: 3456,
+  });
   const [serverLoading, setServerLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -44,9 +47,7 @@ export const GeneralSection = ({
   const handleServerToggle = useCallback(async (enabled: boolean) => {
     setServerLoading(true);
     try {
-      const status = enabled
-        ? await api.httpServer.start()
-        : await api.httpServer.stop();
+      const status = enabled ? await api.httpServer.start() : await api.httpServer.stop();
       setServerStatus(status);
     } catch {
       // Status didn't change
@@ -114,10 +115,7 @@ export const GeneralSection = ({
           className="mb-2 flex items-center gap-3 rounded-md px-3 py-2.5"
           style={{ backgroundColor: 'var(--color-surface-raised)' }}
         >
-          <div
-            className="size-2 shrink-0 rounded-full"
-            style={{ backgroundColor: '#22c55e' }}
-          />
+          <div className="size-2 shrink-0 rounded-full" style={{ backgroundColor: '#22c55e' }} />
           <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>
             Running on
           </span>

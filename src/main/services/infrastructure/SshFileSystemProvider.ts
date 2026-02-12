@@ -69,7 +69,10 @@ export class SshFileSystemProvider implements FileSystemProvider {
         });
       } catch (error) {
         lastError = error;
-        if (this.classifySftpError(error) === 'transient' && attempt < SshFileSystemProvider.MAX_RETRIES) {
+        if (
+          this.classifySftpError(error) === 'transient' &&
+          attempt < SshFileSystemProvider.MAX_RETRIES
+        ) {
           await this.sleep(SshFileSystemProvider.RETRY_BASE_DELAY_MS * attempt);
           continue;
         }
@@ -108,7 +111,10 @@ export class SshFileSystemProvider implements FileSystemProvider {
         });
       } catch (error) {
         lastError = error;
-        if (this.classifySftpError(error) === 'transient' && attempt < SshFileSystemProvider.MAX_RETRIES) {
+        if (
+          this.classifySftpError(error) === 'transient' &&
+          attempt < SshFileSystemProvider.MAX_RETRIES
+        ) {
           await this.sleep(SshFileSystemProvider.RETRY_BASE_DELAY_MS * attempt);
           continue;
         }
@@ -137,7 +143,15 @@ export class SshFileSystemProvider implements FileSystemProvider {
             for (const item of list) {
               const mode = item.attrs.mode;
               entries.push(
-                this.buildDirent(item.filename, mode, S_IFMT, S_IFREG, S_IFDIR, item.attrs.size, item.attrs.mtime)
+                this.buildDirent(
+                  item.filename,
+                  mode,
+                  S_IFMT,
+                  S_IFREG,
+                  S_IFDIR,
+                  item.attrs.size,
+                  item.attrs.mtime
+                )
               );
             }
             resolve(entries);
@@ -145,7 +159,10 @@ export class SshFileSystemProvider implements FileSystemProvider {
         });
       } catch (error) {
         lastError = error;
-        if (this.classifySftpError(error) === 'transient' && attempt < SshFileSystemProvider.MAX_RETRIES) {
+        if (
+          this.classifySftpError(error) === 'transient' &&
+          attempt < SshFileSystemProvider.MAX_RETRIES
+        ) {
           await this.sleep(SshFileSystemProvider.RETRY_BASE_DELAY_MS * attempt);
           continue;
         }
@@ -153,7 +170,9 @@ export class SshFileSystemProvider implements FileSystemProvider {
       }
     }
 
-    throw lastError instanceof Error ? lastError : new Error(`Failed to read directory: ${dirPath}`);
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(`Failed to read directory: ${dirPath}`);
   }
 
   createReadStream(filePath: string, opts?: ReadStreamOptions): Readable {

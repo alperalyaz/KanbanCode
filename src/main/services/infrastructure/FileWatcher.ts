@@ -413,7 +413,9 @@ export class FileWatcher extends EventEmitter {
           const fullPath = path.join(projectPath, entry.name);
           try {
             const observedSize =
-              typeof entry.size === 'number' ? entry.size : (await this.fsProvider.stat(fullPath)).size;
+              typeof entry.size === 'number'
+                ? entry.size
+                : (await this.fsProvider.stat(fullPath)).size;
             const lastSize = this.polledFileSizes.get(fullPath);
 
             if (lastSize === undefined) {

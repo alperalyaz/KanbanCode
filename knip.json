@@ -4,14 +4,17 @@
     "src/main/index.ts",
     "src/preload/index.ts",
     "src/renderer/main.tsx",
-    "electron.vite.config.ts"
+    "electron.vite.config.ts",
+    "remotion/index.ts",
+    "remotion/**/*.{ts,tsx}"
   ],
-  "project": ["src/**/*.{ts,tsx}!"],
+  "project": ["src/**/*.{ts,tsx}!", "remotion/**/*.{ts,tsx}!"],
   "ignore": ["tsconfig*.json"],
   "paths": {
     "@main/*": ["./src/main/*"],
     "@renderer/*": ["./src/renderer/*"],
     "@preload/*": ["./src/preload/*"],
     "@shared/*": ["./src/shared/*"]
-  }
+  },
+  "ignoreDependencies": ["remotion"]
 }

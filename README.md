@@ -71,7 +71,12 @@ Define rules for when you want to be notified. Match on regex patterns, assign c
 
 ### :busts_in_silhouette: Team & Subagent Visualization
 
-When Claude uses multi-agent orchestration, see the full picture. Teammate messages render as color-coded cards. Subagent sessions are expandable inline with their own execution traces, metrics, and tool calls.
+Claude Code now spawns subagents via the Task tool and coordinates entire teams via `TeamCreate`, `SendMessage`, and `TaskUpdate`. In the terminal, all of this collapses into an unreadable stream. claude-devtools untangles it.
+
+- **Subagent sessions** are resolved from Task tool calls and rendered as expandable inline cards — each with its own tool trace, token metrics, duration, and cost. Nested subagents (agents spawning agents) render as a recursive tree.
+- **Teammate messages** — sent via `SendMessage` with color and summary metadata — are detected and rendered as distinct color-coded cards, separated from regular user messages. Each teammate is identified by name and assigned color.
+- **Team lifecycle** is fully visible: `TeamCreate` initialization, `TaskCreate`/`TaskUpdate` coordination, `SendMessage` direct messages and broadcasts, shutdown requests and responses, and `TeamDelete` teardown.
+- **Session summary** shows distinct teammate count separately from subagent count, so you can tell at a glance how many agents participated and how work was distributed.
 
 ### :zap: Command Palette & Cross-Session Search
 
@@ -98,6 +103,7 @@ Open multiple sessions side-by-side. Drag-and-drop tabs between panes, split vie
 | `Edited 2 files` | Inline diffs with added/removed highlighting per file |
 | A three-segment context bar | Per-turn token attribution across 6 categories with compaction-phase tracking |
 | Subagent output interleaved with the main thread | Isolated execution trees per agent, expandable inline with their own metrics |
+| Teammate messages buried in session logs | Color-coded teammate cards with name, message, and full team lifecycle visibility |
 | `--verbose` JSON dump | Structured, filterable, navigable interface — no noise |
 
 ---

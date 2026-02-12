@@ -32,7 +32,7 @@ export const ConnectionStatusBadge = ({
   }
 
   // SSH context - determine if this specific SSH context matches connected host
-  const isConnectedToThisHost = contextId === `ssh-${connectedHost}`;
+  const isConnectedToThisHost = connectedHost != null && contextId === `ssh-${connectedHost}`;
 
   // If this SSH context doesn't match the connected host, treat as disconnected
   const effectiveState = isConnectedToThisHost ? connectionState : 'disconnected';

@@ -171,10 +171,15 @@ export const WorkspaceSection = (): React.JSX.Element => {
     >
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <label
+            htmlFor="ws-profile-name"
+            className="mb-1 block text-xs"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
             Name
           </label>
           <input
+            id="ws-profile-name"
             type="text"
             value={formName}
             onChange={(e) => setFormName(e.target.value)}
@@ -184,10 +189,15 @@ export const WorkspaceSection = (): React.JSX.Element => {
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <label
+            htmlFor="ws-profile-host"
+            className="mb-1 block text-xs"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
             Host
           </label>
           <input
+            id="ws-profile-host"
             type="text"
             value={formHost}
             onChange={(e) => setFormHost(e.target.value)}
@@ -200,10 +210,15 @@ export const WorkspaceSection = (): React.JSX.Element => {
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <label
+            htmlFor="ws-profile-port"
+            className="mb-1 block text-xs"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
             Port
           </label>
           <input
+            id="ws-profile-port"
             type="text"
             value={formPort}
             onChange={(e) => setFormPort(e.target.value)}
@@ -213,10 +228,15 @@ export const WorkspaceSection = (): React.JSX.Element => {
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <label
+            htmlFor="ws-profile-username"
+            className="mb-1 block text-xs"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
             Username
           </label>
           <input
+            id="ws-profile-username"
             type="text"
             value={formUsername}
             onChange={(e) => setFormUsername(e.target.value)}
@@ -228,6 +248,7 @@ export const WorkspaceSection = (): React.JSX.Element => {
       </div>
 
       <div>
+        {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- SettingsSelect is a custom dropdown without a native control */}
         <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
           Authentication
         </label>
@@ -241,10 +262,15 @@ export const WorkspaceSection = (): React.JSX.Element => {
 
       {formAuthMethod === 'privateKey' && (
         <div>
-          <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <label
+            htmlFor="ws-profile-private-key-path"
+            className="mb-1 block text-xs"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
             Private Key Path
           </label>
           <input
+            id="ws-profile-private-key-path"
             type="text"
             value={formPrivateKeyPath}
             onChange={(e) => setFormPrivateKeyPath(e.target.value)}

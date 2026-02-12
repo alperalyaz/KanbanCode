@@ -94,7 +94,7 @@ function wireFileWatcherEvents(context: ServiceContext): void {
   context.fileWatcher.on('file-change', fileChangeHandler);
   fileChangeCleanup = () => context.fileWatcher.off('file-change', fileChangeHandler);
 
-  // Wire todo-change events to renderer and HTTP SSE
+  // Forward checklist-change events to renderer and HTTP SSE (mirrors file-change pattern above)
   const todoChangeHandler = (event: unknown) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('todo-change', event);

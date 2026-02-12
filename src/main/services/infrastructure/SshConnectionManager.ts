@@ -15,7 +15,7 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { Client, type ConnectConfig } from 'ssh2';
+import { Client, type ConnectConfig, type SFTPWrapper } from 'ssh2';
 
 import { LocalFileSystemProvider } from './LocalFileSystemProvider';
 import { SshConfigParser } from './SshConfigParser';
@@ -40,16 +40,6 @@ export interface SshConnectionConfig {
   username: string;
   authMethod: SshAuthMethod;
   password?: string;
-  privateKeyPath?: string;
-}
-
-export interface SshConnectionProfile {
-  id: string;
-  name: string;
-  host: string;
-  port: number;
-  username: string;
-  authMethod: SshAuthMethod;
   privateKeyPath?: string;
 }
 
@@ -154,21 +144,18 @@ export class SshConnectionManager extends EventEmitter {
       });
 
       // Open SFTP channel
-      const sftp = await new Promise<ReturnType<Client['sftp']> extends void ? never : never>(
-        (resolve, reject) => {
-          client.sftp((err, sftp) => {
-            if (err) {
-              reject(err);
-              return;
-            }
-            resolve(sftp as never);
-          });
-        }
-      );
+      const sftpChannel = await new Promise<SFTPWrapper>((resolve, reject) => {
+        client.sftp((err, channel) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve(channel);
+        });
+      });
 
       // Create SSH provider
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.provider = new SshFileSystemProvider(sftp as any);
+      this.provider = new SshFileSystemProvider(sftpChannel);
 
       // Resolve remote ~/.claude/projects/ path
       this.remoteProjectsPath = await this.resolveRemoteProjectsPath(config.username);

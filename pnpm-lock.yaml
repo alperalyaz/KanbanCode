@@ -26,6 +26,9 @@ importers:
       '@fastify/static':
         specifier: ^9.0.0
         version: 9.0.0
+      '@remotion/light-leaks':
+        specifier: 4.0.421
+        version: 4.0.421(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@tanstack/react-virtual':
         specifier: ^3.10.8
         version: 3.13.18(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1146,6 +1149,12 @@ packages:
 
   '@remotion/licensing@4.0.421':
     resolution: {integrity: sha512-kSbssnwkTXDxtY/PXzu9Q6mFt9jmgNN6wygZxxH6gy01lzua1ucivSZOSrrdRRbtF0kk3BZ4EqOqW5D5ovyHXA==}
+
+  '@remotion/light-leaks@4.0.421':
+    resolution: {integrity: sha512-+udVz+5zvNBiYago7KJeO7BcQJrHUarFKWpcWtwhNHbwjaBAvtZ/UGzk9ZUG6wrsUdKtkDLKK2l8wH77etJDAw==}
+    peerDependencies:
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
 
   '@remotion/media-parser@4.0.421':
     resolution: {integrity: sha512-Pv/63mN4gnG5hP2+7ldWy67u2FoIOmN3lijEzk3w/e4b5dvJp+kWcXGbUszePbDxFF0NnJrP4clj6iLLB0M9bw==}
@@ -5709,14 +5718,14 @@ snapshots:
       '@remotion/media-parser': 4.0.421
       '@remotion/studio': 4.0.421(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@remotion/studio-shared': 4.0.421(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      css-loader: 5.2.7(webpack@5.105.0)
+      css-loader: 5.2.7(webpack@5.105.0(esbuild@0.25.0))
       esbuild: 0.25.0
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       react-refresh: 0.9.0
       remotion: 4.0.421(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       source-map: 0.7.3
-      style-loader: 4.0.0(webpack@5.105.0)
+      style-loader: 4.0.0(webpack@5.105.0(esbuild@0.25.0))
       webpack: 5.105.0(esbuild@0.25.0)
     transitivePeerDependencies:
       - '@swc/core'
@@ -5778,6 +5787,12 @@ snapshots:
       - react-dom
 
   '@remotion/licensing@4.0.421': {}
+
+  '@remotion/light-leaks@4.0.421(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      remotion: 4.0.421(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
   '@remotion/media-parser@4.0.421': {}
 
@@ -7003,7 +7018,7 @@ snapshots:
       shebang-command: 2.0.0
       which: 2.0.2
 
-  css-loader@5.2.7(webpack@5.105.0):
+  css-loader@5.2.7(webpack@5.105.0(esbuild@0.25.0)):
     dependencies:
       icss-utils: 5.1.0(postcss@8.5.6)
       loader-utils: 2.0.4
@@ -9845,7 +9860,7 @@ snapshots:
     dependencies:
       js-tokens: 9.0.1
 
-  style-loader@4.0.0(webpack@5.105.0):
+  style-loader@4.0.0(webpack@5.105.0(esbuild@0.25.0)):
     dependencies:
       webpack: 5.105.0(esbuild@0.25.0)
 

@@ -8,7 +8,7 @@
 import { createLogger } from '@shared/utils/logger';
 
 import { registerConfigRoutes } from './config';
-import { broadcastEvent, registerEventRoutes } from './events';
+import { registerEventRoutes } from './events';
 import { registerNotificationRoutes } from './notifications';
 import { registerProjectRoutes } from './projects';
 import { registerSearchRoutes } from './search';
@@ -61,5 +61,3 @@ export function registerHttpRoutes(
 
   logger.info('All HTTP routes registered');
 }
-
-export { broadcastEvent };

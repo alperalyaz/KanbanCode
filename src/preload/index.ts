@@ -131,11 +131,8 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke('get-subagent-detail', projectId, sessionId, subagentId),
   getSessionGroups: (projectId: string, sessionId: string) =>
     ipcRenderer.invoke('get-session-groups', projectId, sessionId),
-  getSessionsByIds: (
-    projectId: string,
-    sessionIds: string[],
-    options?: SessionsByIdsOptions
-  ) => ipcRenderer.invoke('get-sessions-by-ids', projectId, sessionIds, options),
+  getSessionsByIds: (projectId: string, sessionIds: string[], options?: SessionsByIdsOptions) =>
+    ipcRenderer.invoke('get-sessions-by-ids', projectId, sessionIds, options),
 
   // Repository grouping (worktree support)
   getRepositoryGroups: () => ipcRenderer.invoke('get-repository-groups'),

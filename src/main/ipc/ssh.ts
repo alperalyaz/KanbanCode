@@ -8,17 +8,17 @@
  * - ssh:test - Test connection without switching
  */
 
-import {
-  SSH_CONNECT,
-  SSH_DISCONNECT,
-  SSH_GET_CONFIG_HOSTS,
-  SSH_GET_LAST_CONNECTION,
-  SSH_GET_STATE,
-  SSH_RESOLVE_HOST,
-  SSH_SAVE_LAST_CONNECTION,
-  SSH_TEST,
-} from '@preload/constants/ipcChannels';
 import { createLogger } from '@shared/utils/logger';
+
+// Channel constants (mirrored from preload/constants/ipcChannels.ts to respect module boundaries)
+const SSH_CONNECT = 'ssh:connect';
+const SSH_DISCONNECT = 'ssh:disconnect';
+const SSH_GET_STATE = 'ssh:getState';
+const SSH_TEST = 'ssh:test';
+const SSH_GET_CONFIG_HOSTS = 'ssh:getConfigHosts';
+const SSH_RESOLVE_HOST = 'ssh:resolveHost';
+const SSH_SAVE_LAST_CONNECTION = 'ssh:saveLastConnection';
+const SSH_GET_LAST_CONNECTION = 'ssh:getLastConnection';
 import * as path from 'path';
 
 import { configManager, ServiceContext } from '../services';

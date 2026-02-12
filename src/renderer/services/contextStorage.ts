@@ -99,7 +99,7 @@ async function saveSnapshot(contextId: string, snapshot: ContextSnapshot): Promi
 async function loadSnapshot(contextId: string): Promise<ContextSnapshot | null> {
   try {
     const key = `${STORAGE_KEY_PREFIX}${contextId}`;
-    const stored = await get(key);
+    const stored = await get<StoredSnapshot>(key);
 
     if (!stored) {
       return null;
@@ -148,15 +148,15 @@ async function deleteSnapshot(contextId: string): Promise<void> {
 async function cleanupExpired(): Promise<void> {
   try {
     const allKeys = await keys();
-    const snapshotKeys = allKeys.filter((k) =>
-      typeof k === 'string' ? k.startsWith(STORAGE_KEY_PREFIX) : false
+    const snapshotKeys = allKeys.filter(
+      (k): k is IDBValidKey & string => typeof k === 'string' && k.startsWith(STORAGE_KEY_PREFIX)
     );
 
     const now = Date.now();
 
     for (const key of snapshotKeys) {
       try {
-        const stored = await get(key);
+        const stored = await get<StoredSnapshot>(key);
         if (stored) {
           const age = now - stored.timestamp;
           if (age > SNAPSHOT_TTL_MS) {

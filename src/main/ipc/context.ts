@@ -7,8 +7,12 @@
  * - context:switch - Switch to a different context
  */
 
-import { CONTEXT_GET_ACTIVE, CONTEXT_LIST, CONTEXT_SWITCH } from '@preload/constants/ipcChannels';
 import { createLogger } from '@shared/utils/logger';
+
+// Channel constants (mirrored from preload/constants/ipcChannels.ts to respect module boundaries)
+const CONTEXT_LIST = 'context:list';
+const CONTEXT_GET_ACTIVE = 'context:getActive';
+const CONTEXT_SWITCH = 'context:switch';
 
 import type { ServiceContext, ServiceContextRegistry } from '../services';
 import type { IpcMain } from 'electron';

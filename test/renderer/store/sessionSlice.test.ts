@@ -41,6 +41,7 @@ describe('sessionSlice', () => {
       expect(mockAPI.getSessionsPaginated).toHaveBeenCalledWith('project-1', null, 20, {
         includeTotalCount: false,
         prefilterAll: false,
+        metadataLevel: 'deep',
       });
       expect(store.getState().sessions).toHaveLength(2);
       expect(store.getState().sessionsCursor).toBe('cursor-1');
@@ -211,6 +212,7 @@ describe('sessionSlice', () => {
       expect(mockAPI.getSessionsPaginated).toHaveBeenCalledWith('project-1', null, 20, {
         includeTotalCount: false,
         prefilterAll: false,
+        metadataLevel: 'deep',
       });
       // Should not have set loading state
       expect(store.getState().sessionsLoading).toBe(false);

@@ -21,6 +21,8 @@ mac:
     - zip
   hardenedRuntime: true
   gatekeeperAssess: false
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.inherit.plist
   notarize:
     teamId: ${env.APPLE_TEAM_ID}
   icon: resources/icons/mac/icon.icns

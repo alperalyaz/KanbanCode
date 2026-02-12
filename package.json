@@ -47,6 +47,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@fastify/cors": "^11.2.0",
     "@fastify/static": "^9.0.0",
+    "@remotion/light-leaks": "4.0.421",
     "@tanstack/react-virtual": "^3.10.8",
     "date-fns": "^3.6.0",
     "electron-updater": "^6.7.3",

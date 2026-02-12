@@ -287,10 +287,15 @@ export const ConnectionSection = (): React.JSX.Element => {
           <div className="grid grid-cols-2 gap-3">
             {/* Host input with combobox */}
             <div className="relative">
-              <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              <label
+                htmlFor="ssh-host"
+                className="mb-1 block text-xs"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
                 Host
               </label>
               <input
+                id="ssh-host"
                 ref={hostInputRef}
                 type="text"
                 value={host}
@@ -342,10 +347,15 @@ export const ConnectionSection = (): React.JSX.Element => {
               )}
             </div>
             <div>
-              <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              <label
+                htmlFor="ssh-port"
+                className="mb-1 block text-xs"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
                 Port
               </label>
               <input
+                id="ssh-port"
                 type="text"
                 value={port}
                 onChange={(e) => setPort(e.target.value)}
@@ -357,10 +367,15 @@ export const ConnectionSection = (): React.JSX.Element => {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            <label
+              htmlFor="ssh-username"
+              className="mb-1 block text-xs"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
               Username
             </label>
             <input
+              id="ssh-username"
               type="text"
               value={username}
               onChange={(e) => {
@@ -374,6 +389,7 @@ export const ConnectionSection = (): React.JSX.Element => {
           </div>
 
           <div>
+            {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- SettingsSelect is a custom dropdown without a native control */}
             <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
               Authentication
             </label>
@@ -387,10 +403,15 @@ export const ConnectionSection = (): React.JSX.Element => {
 
           {authMethod === 'privateKey' && (
             <div>
-              <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              <label
+                htmlFor="ssh-private-key-path"
+                className="mb-1 block text-xs"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
                 Private Key Path
               </label>
               <input
+                id="ssh-private-key-path"
                 type="text"
                 value={privateKeyPath}
                 onChange={(e) => setPrivateKeyPath(e.target.value)}
@@ -403,10 +424,15 @@ export const ConnectionSection = (): React.JSX.Element => {
 
           {authMethod === 'password' && (
             <div>
-              <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              <label
+                htmlFor="ssh-password"
+                className="mb-1 block text-xs"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
                 Password
               </label>
               <input
+                id="ssh-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
