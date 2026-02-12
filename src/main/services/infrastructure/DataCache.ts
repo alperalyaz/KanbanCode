@@ -224,21 +224,42 @@ export class DataCache {
    * Invalidates a cache entry by project and session IDs.
    */
   invalidateSession(projectId: string, sessionId: string): void {
-    this.invalidate(DataCache.buildKey(projectId, sessionId));
-    this.invalidateSubagentSession(projectId, sessionId);
+    const keysToDelete: string[] = [];
+    const sessionToken = `-${sessionId}-`;
+
+    for (const key of this.cache.keys()) {
+      const parsed = DataCache.parseKey(key);
+      if (
+        parsed?.sessionId === sessionId &&
+        this.matchesProjectOrComposite(parsed.projectId, projectId)
+      ) {
+        keysToDelete.push(key);
+        continue;
+      }
+
+      if (this.isSubagentKeyForProject(key, projectId) && key.includes(sessionToken)) {
+        keysToDelete.push(key);
+      }
+    }
+
+    for (const key of keysToDelete) {
+      this.cache.delete(key);
+    }
   }
 
   /**
    * Invalidates all cached subagent details for a session.
    */
   invalidateSubagentSession(projectId: string, sessionId: string): void {
-    const prefix = `subagent-${projectId}-${sessionId}-`;
+    const sessionToken = `-${sessionId}-`;
     const keysToDelete: string[] = [];
+
     for (const key of this.cache.keys()) {
-      if (key.startsWith(prefix)) {
+      if (this.isSubagentKeyForProject(key, projectId) && key.includes(sessionToken)) {
         keysToDelete.push(key);
       }
     }
+
     for (const key of keysToDelete) {
       this.cache.delete(key);
     }
@@ -252,7 +273,13 @@ export class DataCache {
     const keysToDelete: string[] = [];
 
     for (const key of this.cache.keys()) {
-      if (key.startsWith(`${projectId}/`)) {
+      const parsed = DataCache.parseKey(key);
+      if (parsed && this.matchesProjectOrComposite(parsed.projectId, projectId)) {
+        keysToDelete.push(key);
+        continue;
+      }
+
+      if (this.isSubagentKeyForProject(key, projectId)) {
         keysToDelete.push(key);
       }
     }
@@ -344,15 +371,25 @@ export class DataCache {
     const sessionIds: string[] = [];
 
     for (const key of this.cache.keys()) {
-      if (key.startsWith(`${projectId}/`)) {
-        const parsed = DataCache.parseKey(key);
-        if (parsed) {
-          sessionIds.push(parsed.sessionId);
-        }
+      const parsed = DataCache.parseKey(key);
+      if (parsed && this.matchesProjectOrComposite(parsed.projectId, projectId)) {
+        sessionIds.push(parsed.sessionId);
       }
     }
 
     return sessionIds;
+  }
+
+  private matchesProjectOrComposite(projectId: string, baseProjectId: string): boolean {
+    return projectId === baseProjectId || projectId.startsWith(`${baseProjectId}::`);
+  }
+
+  private isSubagentKeyForProject(key: string, baseProjectId: string): boolean {
+    if (!key.startsWith('subagent-')) {
+      return false;
+    }
+    const prefix = `subagent-${baseProjectId}`;
+    return key.startsWith(`${prefix}-`) || key.startsWith(`${prefix}::`);
   }
 
   /**

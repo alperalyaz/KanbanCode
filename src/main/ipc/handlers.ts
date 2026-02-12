@@ -49,6 +49,7 @@ import {
 } from './updater';
 import { registerUtilityHandlers, removeUtilityHandlers } from './utility';
 import { registerValidationHandlers, removeValidationHandlers } from './validation';
+import { registerWindowHandlers, removeWindowHandlers } from './window';
 
 import type {
   ServiceContext,
@@ -90,6 +91,7 @@ export function initializeIpcHandlers(
   registerUpdaterHandlers(ipcMain);
   registerSshHandlers(ipcMain);
   registerContextHandlers(ipcMain);
+  registerWindowHandlers(ipcMain);
 
   logger.info('All handlers registered');
 }
@@ -110,6 +112,7 @@ export function removeIpcHandlers(): void {
   removeUpdaterHandlers(ipcMain);
   removeSshHandlers(ipcMain);
   removeContextHandlers(ipcMain);
+  removeWindowHandlers(ipcMain);
 
   logger.info('All handlers removed');
 }

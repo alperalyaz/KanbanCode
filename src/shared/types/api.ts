@@ -348,6 +348,14 @@ export interface ElectronAPI {
   ) => Promise<{ success: boolean; error?: string }>;
   openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
 
+  // Window controls (when title bar is hidden, e.g. Windows / Linux)
+  windowControls: {
+    minimize: () => Promise<void>;
+    maximize: () => Promise<void>;
+    close: () => Promise<void>;
+    isMaximized: () => Promise<boolean>;
+  };
+
   // Updater API
   updater: UpdaterAPI;
 

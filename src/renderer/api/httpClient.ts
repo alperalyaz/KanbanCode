@@ -465,6 +465,13 @@ export class HttpAPIClient implements ElectronAPI {
     return { success: true };
   };
 
+  windowControls = {
+    minimize: async (): Promise<void> => {},
+    maximize: async (): Promise<void> => {},
+    close: async (): Promise<void> => {},
+    isMaximized: async (): Promise<boolean> => false,
+  };
+
   // ---------------------------------------------------------------------------
   // Updater (browser no-ops)
   // ---------------------------------------------------------------------------

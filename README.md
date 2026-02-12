@@ -12,6 +12,7 @@
 
 
 <p align="center">
+  <a href="https://claude-dev.tools"><img src="https://img.shields.io/badge/Website-claude--dev.tools-blue?style=flat-square" alt="Website" /></a>&nbsp;
   <a href="https://github.com/matt1398/claude-devtools/releases/latest"><img src="https://img.shields.io/github/v/release/matt1398/claude-devtools?style=flat-square&label=version&color=blue" alt="Latest Release" /></a>&nbsp;
   <a href="https://github.com/matt1398/claude-devtools/actions/workflows/ci.yml"><img src="https://github.com/matt1398/claude-devtools/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>&nbsp;
   <a href="https://github.com/matt1398/claude-devtools/releases"><img src="https://img.shields.io/github/downloads/matt1398/claude-devtools/total?style=flat-square&color=green" alt="Downloads" /></a>&nbsp;
@@ -22,6 +23,9 @@
 <br />
 
 <p align="center">
+  <a href="https://claude-dev.tools">
+    <img src="https://img.shields.io/badge/Website-claude--dev.tools-171717?logo=googlechrome&logoColor=white&style=flat" alt="Website" height="30" />
+  </a>&nbsp;&nbsp;
   <a href="https://github.com/matt1398/claude-devtools/releases/latest">
     <img src="https://img.shields.io/badge/macOS-Download-black?logo=apple&logoColor=white&style=flat" alt="Download for macOS" height="30" />
   </a>&nbsp;&nbsp;
@@ -48,8 +52,7 @@
 
 | Platform | Download | Notes |
 |----------|----------|-------|
-| **macOS** (Apple Silicon) | [`.dmg`](https://github.com/matt1398/claude-devtools/releases/latest) | Drag to Applications. On first launch: right-click → Open (unsigned) |
-| **macOS** (Apple Silicon) | [`.zip`](https://github.com/matt1398/claude-devtools/releases/latest) | Extract and run |
+| **macOS** (Apple Silicon) | [`.dmg`](https://github.com/matt1398/claude-devtools/releases/latest) | Drag to Applications. On first launch: right-click → Open |
 | **Windows** | [`.exe`](https://github.com/matt1398/claude-devtools/releases/latest) | Standard installer. May trigger SmartScreen — click "More info" → "Run anyway" |
 
 The app reads session logs from `~/.claude/` — the data is already on your machine. No setup, no API keys, no login.
@@ -90,9 +93,11 @@ There are many GUI wrappers for Claude Code — Conductor, Craft Agents, Vibe Ka
 
 Claude Code doesn't expose what's actually in the context window. claude-devtools reverse-engineers it.
 
-The engine walks each turn of the session and reconstructs the full set of context injections — **CLAUDE.md files** (global, project, and directory-level), **@-mentioned files**, **tool call inputs and outputs**, **extended thinking**, **team coordination overhead**, and **user prompt text** — then accumulates them across turns with compaction-phase awareness. When a context reset occurs mid-session, the tracker detects the boundary, measures the token delta, and starts a new phase.
+The engine walks each turn of the session and reconstructs the full set of context injections — **CLAUDE.md files** (broken down by global, project, and directory-level), **skill activations**, **@-mentioned files**, **tool call inputs and outputs**, **extended thinking**, **team coordination overhead**, and **user prompt text** — then accumulates them across turns with compaction awareness.
 
-The result is a per-turn breakdown of estimated token attribution across 6 categories, surfaced in three places: a **Context Badge** on each assistant response, a **Token Usage popover** with percentage breakdowns, and a dedicated **Session Context Panel** with phase-filtered drill-down into every injection.
+**Compaction visualization.** When Claude Code hits its context limit, it silently compresses your conversation and continues. Most tools don't even notice. claude-devtools detects these compaction boundaries, measures the token delta before and after, and visualizes how your context fills, compresses, and refills over the course of a session. You can see exactly what was in the window at any point, and how the composition shifted after each compaction.
+
+The result is a per-turn breakdown of estimated token attribution across 7 categories, surfaced in three places: a **Context Badge** on each assistant response, a **Token Usage popover** with percentage breakdowns, and a dedicated **Session Context Panel** with drill-down into every injection across compaction boundaries.
 
 ### :hammer_and_wrench: Rich Tool Call Inspector
 
@@ -138,7 +143,7 @@ Open multiple sessions side-by-side. Drag-and-drop tabs between panes, split vie
 | `Read 3 files` | Exact file paths, syntax-highlighted content with line numbers |
 | `Searched for 1 pattern` | The regex pattern, every matching file, and the matched lines |
 | `Edited 2 files` | Inline diffs with added/removed highlighting per file |
-| A three-segment context bar | Per-turn token attribution across 6 categories with compaction-phase tracking |
+| A three-segment context bar | Per-turn token attribution across 7 categories — CLAUDE.md breakdown, skills, @-mentions, tool I/O, thinking, teams, user text — with compaction visualization showing how context fills, compresses, and refills |
 | Subagent output interleaved with the main thread | Isolated execution trees per agent, expandable inline with their own metrics |
 | Teammate messages buried in session logs | Color-coded teammate cards with name, message, and full team lifecycle visibility |
 | `--verbose` JSON dump | Structured, filterable, navigable interface — no noise |

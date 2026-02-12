@@ -65,12 +65,18 @@ export function initializeNotificationListeners(): () => void {
   const pendingProjectRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const SESSION_REFRESH_DEBOUNCE_MS = 150;
   const PROJECT_REFRESH_DEBOUNCE_MS = 300;
+  const getBaseProjectId = (projectId: string | null | undefined): string | null => {
+    if (!projectId) return null;
+    const separatorIndex = projectId.indexOf('::');
+    return separatorIndex >= 0 ? projectId.slice(0, separatorIndex) : projectId;
+  };
 
   const scheduleSessionRefresh = (projectId: string, sessionId: string): void => {
     const key = `${projectId}/${sessionId}`;
-    const existingTimer = pendingSessionRefreshTimers.get(key);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
+    // Throttle (not trailing debounce): keep at most one pending refresh per session.
+    // Debounce can starve under continuous writes and delay UI updates indefinitely.
+    if (pendingSessionRefreshTimers.has(key)) {
+      return;
     }
     const timer = setTimeout(() => {
       pendingSessionRefreshTimers.delete(key);
@@ -81,9 +87,9 @@ export function initializeNotificationListeners(): () => void {
   };
 
   const scheduleProjectRefresh = (projectId: string): void => {
-    const existingTimer = pendingProjectRefreshTimers.get(projectId);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
+    // Throttle (not trailing debounce): keep at most one pending refresh per project.
+    if (pendingProjectRefreshTimers.has(projectId)) {
+      return;
     }
     const timer = setTimeout(() => {
       pendingProjectRefreshTimers.delete(projectId);
@@ -207,25 +213,43 @@ export function initializeNotificationListeners(): () => void {
       }
 
       const state = useStore.getState();
+      const selectedProjectId = state.selectedProjectId;
+      const selectedProjectBaseId = getBaseProjectId(selectedProjectId);
+      const eventProjectBaseId = getBaseProjectId(event.projectId);
+      const matchesSelectedProject =
+        !!selectedProjectId &&
+        (eventProjectBaseId == null || selectedProjectBaseId === eventProjectBaseId);
 
-      // Handle new session added to a project (main session files only)
-      if (event.type === 'add' && !event.isSubagent && event.projectId) {
-        // Refresh sessions list if viewing this project (without loading state)
-        if (state.selectedProjectId === event.projectId) {
-          scheduleProjectRefresh(event.projectId);
+      // Refresh sidebar session list only when a new top-level session file is added.
+      // Refreshing on every "change" causes excessive list churn while Claude is writing.
+      if (event.type === 'add' && !event.isSubagent) {
+        if (matchesSelectedProject && selectedProjectId) {
+          scheduleProjectRefresh(selectedProjectId);
         }
-        return;
       }
 
-      // Handle session or subagent content change
-      if (event.type === 'change' && event.projectId && event.sessionId) {
-        // Check if the changed session is visible in ANY pane (not just focused)
-        const isViewingSession =
-          state.selectedSessionId === event.sessionId || isSessionVisibleInAnyPane(event.sessionId);
+      // Keep opened session view in sync on content changes.
+      if (event.type === 'change' && selectedProjectId) {
+        const activeSessionId = state.selectedSessionId;
+        const eventSessionId = event.sessionId;
+        const isViewingEventSession =
+          !!eventSessionId &&
+          (activeSessionId === eventSessionId || isSessionVisibleInAnyPane(eventSessionId));
+        const shouldFallbackRefreshActiveSession =
+          matchesSelectedProject && !eventSessionId && !!activeSessionId;
+        const sessionIdToRefresh =
+          (isViewingEventSession ? eventSessionId : null) ??
+          (shouldFallbackRefreshActiveSession ? activeSessionId : null);
 
-        if (isViewingSession) {
+        if (sessionIdToRefresh) {
+          const allTabs = state.getAllPaneTabs();
+          const visibleSessionTab = allTabs.find(
+            (tab) => tab.type === 'session' && tab.sessionId === sessionIdToRefresh
+          );
+          const refreshProjectId = visibleSessionTab?.projectId ?? selectedProjectId;
+
           // Use refreshSessionInPlace to avoid flickering and preserve UI state
-          scheduleSessionRefresh(event.projectId, event.sessionId);
+          scheduleSessionRefresh(refreshProjectId, sessionIdToRefresh);
         }
       }
     });

@@ -11,11 +11,8 @@ import type { StateCreator } from 'zustand';
 
 const logger = createLogger('Store:session');
 
-/**
- * Tracks the latest in-place refresh generation per project.
- * Used to guarantee last-write-wins under rapid file change events.
- */
-const projectRefreshGeneration = new Map<string, number>();
+const projectRefreshInFlight = new Set<string>();
+const projectRefreshQueued = new Set<string>();
 
 // =============================================================================
 // Slice Interface
@@ -141,10 +138,18 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
       const newSessions = result.sessions.filter((s) => !existingIds.has(s.id));
       set((prevState) => {
         // Deduplicate: pinned sessions fetched earlier may appear in paginated results.
+        const nextSessions = [...prevState.sessions, ...newSessions];
+        const inferredTotalLowerBound = nextSessions.length + (result.hasMore ? 1 : 0);
+        const stableTotalCount = Math.max(
+          prevState.sessionsTotalCount,
+          result.totalCount,
+          inferredTotalLowerBound
+        );
         return {
-          sessions: [...prevState.sessions, ...newSessions],
+          sessions: nextSessions,
           sessionsCursor: result.nextCursor,
           sessionsHasMore: result.hasMore,
+          sessionsTotalCount: stableTotalCount,
           sessionsLoadingMore: false,
         };
       });
@@ -209,8 +214,14 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
       return;
     }
 
-    const generation = (projectRefreshGeneration.get(projectId) ?? 0) + 1;
-    projectRefreshGeneration.set(projectId, generation);
+    // Coalesce duplicate in-flight refreshes for the same project.
+    // Without this, frequent file-change events can keep invalidating responses
+    // before they commit, making the sidebar look stale until writes stop.
+    if (projectRefreshInFlight.has(projectId)) {
+      projectRefreshQueued.add(projectId);
+      return;
+    }
+    projectRefreshInFlight.add(projectId);
 
     try {
       const { connectionMode } = get();
@@ -220,30 +231,32 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
         metadataLevel: connectionMode === 'ssh' ? 'light' : 'deep',
       });
 
-      // Drop stale responses from older in-flight refreshes
-      if (projectRefreshGeneration.get(projectId) !== generation) {
-        return;
-      }
-
-      // Preserve pinned sessions that are beyond page 1
-      const { pinnedSessionIds, sessions: prevSessions } = get();
-      const newPageIds = new Set(result.sessions.map((s) => s.id));
-      const pinnedSet = new Set(pinnedSessionIds);
-      const pinnedToRetain = prevSessions.filter(
-        (s) => pinnedSet.has(s.id) && !newPageIds.has(s.id)
-      );
+      const { sessions: prevSessions, sessionsTotalCount: prevTotalCount } = get();
+      const refreshedIds = new Set(result.sessions.map((s) => s.id));
+      // Keep previously loaded tail sessions so the sidebar does not collapse
+      // from N loaded rows back to page-1 rows on every in-place refresh.
+      const retainedTail = prevSessions.filter((s) => !refreshedIds.has(s.id));
+      const mergedSessions = [...result.sessions, ...retainedTail];
+      const inferredTotalLowerBound = mergedSessions.length + (result.hasMore ? 1 : 0);
+      const stableTotalCount = Math.max(prevTotalCount, result.totalCount, inferredTotalLowerBound);
 
       // Update sessions without loading state
       set({
-        sessions: [...result.sessions, ...pinnedToRetain],
+        sessions: mergedSessions,
         sessionsCursor: result.nextCursor,
         sessionsHasMore: result.hasMore,
-        sessionsTotalCount: result.totalCount,
+        sessionsTotalCount: stableTotalCount,
         // Don't touch sessionsLoading - keep it as-is
       });
     } catch (error) {
       logger.error('refreshSessionsInPlace error:', error);
       // Don't set error state - this is a background refresh
+    } finally {
+      projectRefreshInFlight.delete(projectId);
+      if (projectRefreshQueued.has(projectId)) {
+        projectRefreshQueued.delete(projectId);
+        void get().refreshSessionsInPlace(projectId);
+      }
     }
   },
 

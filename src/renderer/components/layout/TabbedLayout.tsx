@@ -18,6 +18,7 @@ import { CommandPalette } from '../search/CommandPalette';
 
 import { PaneContainer } from './PaneContainer';
 import { Sidebar } from './Sidebar';
+import { WindowsTitleBar } from './WindowsTitleBar';
 
 export const TabbedLayout = (): React.JSX.Element => {
   // Enable keyboard shortcuts
@@ -32,6 +33,7 @@ export const TabbedLayout = (): React.JSX.Element => {
         { '--macos-traffic-light-padding-left': `${trafficLightPadding}px` } as React.CSSProperties
       }
     >
+      <WindowsTitleBar />
       <UpdateBanner />
       <div className="flex flex-1 overflow-hidden">
         {/* Command Palette (Cmd+K) */}

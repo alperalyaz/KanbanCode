@@ -73,9 +73,11 @@ export class FileWatcher extends EventEmitter {
   /** Timer for SSH polling mode (replaces fs.watch) */
   private pollingTimer: NodeJS.Timeout | null = null;
   /** Polling interval for SSH mode */
-  private static readonly SSH_POLL_INTERVAL_MS = 10000;
+  private static readonly SSH_POLL_INTERVAL_MS = 3000;
   /** Guard to prevent overlapping SSH polling runs */
   private pollingInProgress = false;
+  /** Indicates whether the first polling baseline snapshot has completed */
+  private sshPollPrimed = false;
   /** Track file sizes for SSH polling change detection */
   private polledFileSizes = new Map<string, number>();
   /** Files currently being processed (concurrency guard) */
@@ -179,6 +181,7 @@ export class FileWatcher extends EventEmitter {
       this.pollingTimer = null;
     }
     this.pollingInProgress = false;
+    this.sshPollPrimed = false;
     this.polledFileSizes.clear();
 
     // Clear error detection tracking
@@ -374,7 +377,7 @@ export class FileWatcher extends EventEmitter {
     if (this.pollingTimer) return;
 
     logger.info('FileWatcher: Starting SSH polling mode');
-    this.pollingTimer = setInterval(() => {
+    const runPoll = (): void => {
       if (this.pollingInProgress) {
         return;
       }
@@ -387,7 +390,11 @@ export class FileWatcher extends EventEmitter {
         .finally(() => {
           this.pollingInProgress = false;
         });
-    }, FileWatcher.SSH_POLL_INTERVAL_MS);
+    };
+
+    // Prime immediately so newly created sessions appear without waiting a full interval.
+    runPoll();
+    this.pollingTimer = setInterval(runPoll, FileWatcher.SSH_POLL_INTERVAL_MS);
   }
 
   /**
@@ -395,6 +402,7 @@ export class FileWatcher extends EventEmitter {
    */
   private async pollForChanges(): Promise<void> {
     try {
+      const seenFiles = new Set<string>();
       const projectDirs = await this.fsProvider.readdir(this.projectsPath);
       for (const dir of projectDirs) {
         if (!dir.isDirectory()) continue;
@@ -411,25 +419,49 @@ export class FileWatcher extends EventEmitter {
           if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
 
           const fullPath = path.join(projectPath, entry.name);
+          seenFiles.add(fullPath);
           try {
             const observedSize =
               typeof entry.size === 'number'
                 ? entry.size
                 : (await this.fsProvider.stat(fullPath)).size;
             const lastSize = this.polledFileSizes.get(fullPath);
+            const relativePath = path.join(dir.name, entry.name);
 
             if (lastSize === undefined) {
-              // First time seeing this file
+              // First time seeing this file: after baseline, emit add.
               this.polledFileSizes.set(fullPath, observedSize);
+              if (this.sshPollPrimed) {
+                this.handleProjectsChange('rename', relativePath);
+              }
             } else if (observedSize !== lastSize) {
               // File changed
               this.polledFileSizes.set(fullPath, observedSize);
-              this.handleProjectsChange('change', path.join(dir.name, entry.name));
+              this.handleProjectsChange('change', relativePath);
             }
           } catch {
             continue;
           }
         }
+      }
+
+      // Detect deleted files after baseline is established.
+      if (this.sshPollPrimed) {
+        const removedFiles: string[] = [];
+        for (const trackedPath of this.polledFileSizes.keys()) {
+          if (!seenFiles.has(trackedPath)) {
+            removedFiles.push(trackedPath);
+          }
+        }
+        for (const removedPath of removedFiles) {
+          this.polledFileSizes.delete(removedPath);
+          const relativePath = path.relative(this.projectsPath, removedPath);
+          if (relativePath && !relativePath.startsWith('..')) {
+            this.handleProjectsChange('rename', relativePath);
+          }
+        }
+      } else {
+        this.sshPollPrimed = true;
       }
     } catch (err) {
       logger.error('Error polling for changes:', err);
@@ -461,12 +493,21 @@ export class FileWatcher extends EventEmitter {
    * Process a debounced projects change.
    */
   private async processProjectsChange(eventType: string, filename: string): Promise<void> {
-    const parts = filename.split(path.sep);
+    const fullPath = path.isAbsolute(filename)
+      ? path.normalize(filename)
+      : path.join(this.projectsPath, filename);
+    const relativePath = path.relative(this.projectsPath, fullPath);
+
+    // Ignore events outside of the watched projects root.
+    if (relativePath.startsWith('..')) {
+      return;
+    }
+
+    // Normalize separators to support platform/event source differences.
+    const parts = relativePath.split(/[\\/]/).filter(Boolean);
     const projectId = parts[0];
 
     if (!projectId) return;
-
-    const fullPath = path.join(this.projectsPath, filename);
     const fileExists = await this.fsProvider.exists(fullPath);
 
     // Determine change type
@@ -482,11 +523,11 @@ export class FileWatcher extends EventEmitter {
     let isSubagent = false;
 
     // Session file at project root: projectId/sessionId.jsonl
-    if (parts.length === 2) {
+    if (parts.length === 2 && parts[1].endsWith('.jsonl')) {
       sessionId = path.basename(parts[1], '.jsonl');
     }
     // Subagent file: projectId/sessionId/subagents/agent-hash.jsonl
-    else if (parts.length === 4 && parts[2] === 'subagents') {
+    else if (parts.length === 4 && parts[2] === 'subagents' && parts[3].endsWith('.jsonl')) {
       sessionId = parts[1];
       isSubagent = true;
     }
@@ -510,7 +551,7 @@ export class FileWatcher extends EventEmitter {
 
       this.emit('file-change', event);
       logger.info(
-        `FileWatcher: ${changeType} ${isSubagent ? 'subagent' : 'session'} - ${filename}`
+        `FileWatcher: ${changeType} ${isSubagent ? 'subagent' : 'session'} - ${relativePath}`
       );
 
       // Detect errors in changed session files (not deleted files)

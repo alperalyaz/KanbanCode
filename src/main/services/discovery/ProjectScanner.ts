@@ -63,18 +63,19 @@ export class ProjectScanner {
   private readonly todosDir: string;
   private readonly contentPresenceCache = new Map<
     string,
-    { mtimeMs: number; hasContent: boolean }
+    { mtimeMs: number; size: number; hasContent: boolean }
   >();
   private readonly sessionMetadataCache = new Map<
     string,
     {
       mtimeMs: number;
+      size: number;
       metadata: Awaited<ReturnType<typeof analyzeSessionFileMetadata>>;
     }
   >();
   private readonly sessionPreviewCache = new Map<
     string,
-    { mtimeMs: number; preview: { text: string; timestamp: string } | null }
+    { mtimeMs: number; size: number; preview: { text: string; timestamp: string } | null }
   >();
 
   // Delegated services
@@ -228,7 +229,7 @@ export class ProjectScanner {
         this.fsProvider.type === 'ssh' ? 32 : 128,
         async (file) => {
           const filePath = path.join(projectPath, file.name);
-          const { mtimeMs, birthtimeMs } = await this.resolveFileTimes(file, filePath);
+          const { mtimeMs, birthtimeMs } = await this.resolveFileDetails(file, filePath);
           let cwd: string | null = null;
 
           // Over SSH, avoid reading every file body during project discovery.
@@ -416,10 +417,15 @@ export class ProjectScanner {
           const sessionId = extractSessionId(file.name);
           const filePath = path.join(projectPath, file.name);
           const prefetchedMtimeMs = file.mtimeMs;
+          const prefetchedSize = file.size;
 
           if (shouldFilterNoise) {
             // Check if session has non-noise messages (delegated to SessionContentFilter)
-            const hasContent = await this.hasDisplayableContent(filePath, prefetchedMtimeMs);
+            const hasContent = await this.hasDisplayableContent(
+              filePath,
+              prefetchedMtimeMs,
+              prefetchedSize
+            );
             if (!hasContent) {
               return null; // Filter out noise-only sessions
             }
@@ -431,7 +437,8 @@ export class ProjectScanner {
             sessionId,
             filePath,
             decodedPath,
-            prefetchedMtimeMs
+            prefetchedMtimeMs,
+            prefetchedSize
           );
         })
       );
@@ -495,6 +502,7 @@ export class ProjectScanner {
         timestamp: number;
         filePath: string;
         mtimeMs: number;
+        size: number;
       }
 
       const fileInfos = await this.collectFulfilledInBatches(
@@ -502,13 +510,14 @@ export class ProjectScanner {
         this.fsProvider.type === 'ssh' ? 48 : 200,
         async (file) => {
           const filePath = path.join(projectPath, file.name);
-          const { mtimeMs } = await this.resolveFileTimes(file, filePath);
+          const fileDetails = await this.resolveFileDetails(file, filePath);
           return {
             name: file.name,
             sessionId: extractSessionId(file.name),
-            timestamp: mtimeMs,
+            timestamp: fileDetails.mtimeMs,
             filePath,
-            mtimeMs,
+            mtimeMs: fileDetails.mtimeMs,
+            size: fileDetails.size,
           } satisfies SessionFileInfo;
         }
       );
@@ -530,7 +539,11 @@ export class ProjectScanner {
         const contentResults = await Promise.allSettled(
           fileInfos.map(async (fileInfo) => ({
             sessionId: fileInfo.sessionId,
-            hasContent: await this.hasDisplayableContent(fileInfo.filePath, fileInfo.mtimeMs),
+            hasContent: await this.hasDisplayableContent(
+              fileInfo.filePath,
+              fileInfo.mtimeMs,
+              fileInfo.size
+            ),
           }))
         );
         validSessionIds = new Set<string>();
@@ -596,7 +609,11 @@ export class ProjectScanner {
           const contentResults = await Promise.allSettled(
             batch.map(async (fileInfo) => ({
               fileInfo,
-              hasContent: await this.hasDisplayableContent(fileInfo.filePath, fileInfo.mtimeMs),
+              hasContent: await this.hasDisplayableContent(
+                fileInfo.filePath,
+                fileInfo.mtimeMs,
+                fileInfo.size
+              ),
             }))
           );
           contentBatch = contentResults
@@ -624,7 +641,8 @@ export class ProjectScanner {
               fileInfo.sessionId,
               fileInfo.filePath,
               decodedPath,
-              fileInfo.mtimeMs
+              fileInfo.mtimeMs,
+              fileInfo.size
             )
         );
         sessions.push(...builtSessions);
@@ -684,19 +702,26 @@ export class ProjectScanner {
     sessionId: string,
     filePath: string,
     projectPath: string,
-    prefetchedMtimeMs?: number
+    prefetchedMtimeMs?: number,
+    prefetchedSize?: number
   ): Promise<Session> {
-    const usePrefetchedTimes = typeof prefetchedMtimeMs === 'number';
-    const stats = usePrefetchedTimes ? null : await this.fsProvider.stat(filePath);
+    const usePrefetchedStats =
+      typeof prefetchedMtimeMs === 'number' && typeof prefetchedSize === 'number';
+    const stats = usePrefetchedStats ? null : await this.fsProvider.stat(filePath);
     const effectiveMtime = prefetchedMtimeMs ?? stats?.mtimeMs ?? Date.now();
+    const effectiveSize = prefetchedSize ?? stats?.size ?? -1;
     const birthtimeMs = stats?.birthtimeMs ?? effectiveMtime;
     const cachedMetadata = this.sessionMetadataCache.get(filePath);
     const metadata =
-      cachedMetadata?.mtimeMs === effectiveMtime
+      cachedMetadata?.mtimeMs === effectiveMtime && cachedMetadata.size === effectiveSize
         ? cachedMetadata.metadata
         : await analyzeSessionFileMetadata(filePath, this.fsProvider);
-    if (cachedMetadata?.mtimeMs !== effectiveMtime) {
-      this.sessionMetadataCache.set(filePath, { mtimeMs: effectiveMtime, metadata });
+    if (cachedMetadata?.mtimeMs !== effectiveMtime || cachedMetadata.size !== effectiveSize) {
+      this.sessionMetadataCache.set(filePath, {
+        mtimeMs: effectiveMtime,
+        size: effectiveSize,
+        metadata,
+      });
     }
 
     // Check for subagents and load task list data in parallel
@@ -731,19 +756,26 @@ export class ProjectScanner {
     sessionId: string,
     filePath: string,
     projectPath: string,
-    prefetchedMtimeMs?: number
+    prefetchedMtimeMs?: number,
+    prefetchedSize?: number
   ): Promise<Session> {
-    const times =
-      typeof prefetchedMtimeMs === 'number'
-        ? { mtimeMs: prefetchedMtimeMs, birthtimeMs: prefetchedMtimeMs }
-        : await this.resolveFileTimes(undefined, filePath);
+    const usePrefetchedStats =
+      typeof prefetchedMtimeMs === 'number' && typeof prefetchedSize === 'number';
+    const stats = usePrefetchedStats ? null : await this.fsProvider.stat(filePath);
+    const effectiveMtime = prefetchedMtimeMs ?? stats?.mtimeMs ?? Date.now();
+    const effectiveSize = prefetchedSize ?? stats?.size ?? -1;
+    const birthtimeMs = stats?.birthtimeMs ?? effectiveMtime;
     const cachedPreview = this.sessionPreviewCache.get(filePath);
     const preview =
-      cachedPreview?.mtimeMs === times.mtimeMs
+      cachedPreview?.mtimeMs === effectiveMtime && cachedPreview.size === effectiveSize
         ? cachedPreview.preview
         : await this.extractLightPreviewWithRetry(filePath);
-    if (cachedPreview?.mtimeMs !== times.mtimeMs) {
-      this.sessionPreviewCache.set(filePath, { mtimeMs: times.mtimeMs, preview });
+    if (cachedPreview?.mtimeMs !== effectiveMtime || cachedPreview.size !== effectiveSize) {
+      this.sessionPreviewCache.set(filePath, {
+        mtimeMs: effectiveMtime,
+        size: effectiveSize,
+        preview,
+      });
     }
     const metadataLevel: SessionMetadataLevel = 'light';
 
@@ -751,7 +783,7 @@ export class ProjectScanner {
       id: sessionId,
       projectId,
       projectPath,
-      createdAt: Math.floor(times.birthtimeMs),
+      createdAt: Math.floor(birthtimeMs),
       firstMessage: preview?.text,
       messageTimestamp: preview?.timestamp,
       hasSubagents: false,
@@ -770,7 +802,8 @@ export class ProjectScanner {
     sessionId: string,
     filePath: string,
     projectPath: string,
-    prefetchedMtimeMs?: number
+    prefetchedMtimeMs?: number,
+    prefetchedSize?: number
   ): Promise<Session> {
     if (metadataLevel === 'light') {
       return this.buildLightSessionMetadata(
@@ -778,7 +811,8 @@ export class ProjectScanner {
         sessionId,
         filePath,
         projectPath,
-        prefetchedMtimeMs
+        prefetchedMtimeMs,
+        prefetchedSize
       );
     }
 
@@ -788,7 +822,8 @@ export class ProjectScanner {
         sessionId,
         filePath,
         projectPath,
-        prefetchedMtimeMs
+        prefetchedMtimeMs,
+        prefetchedSize
       );
     } catch (error) {
       // In SSH mode, never drop a visible session row due to transient deep-parse failures.
@@ -802,7 +837,8 @@ export class ProjectScanner {
         sessionId,
         filePath,
         projectPath,
-        prefetchedMtimeMs
+        prefetchedMtimeMs,
+        prefetchedSize
       );
     }
   }
@@ -995,14 +1031,20 @@ export class ProjectScanner {
   /**
    * Resolve best-available file timestamps from directory entry metadata or stat fallback.
    */
-  private async resolveFileTimes(
+  private async resolveFileDetails(
     entry: FsDirent | undefined,
     filePath: string
-  ): Promise<{ mtimeMs: number; birthtimeMs: number }> {
-    if (entry && typeof entry.mtimeMs === 'number') {
+  ): Promise<{ mtimeMs: number; birthtimeMs: number; size: number }> {
+    if (
+      entry &&
+      typeof entry.mtimeMs === 'number' &&
+      typeof entry.birthtimeMs === 'number' &&
+      typeof entry.size === 'number'
+    ) {
       return {
         mtimeMs: entry.mtimeMs,
-        birthtimeMs: entry.birthtimeMs ?? entry.mtimeMs,
+        birthtimeMs: entry.birthtimeMs,
+        size: entry.size,
       };
     }
 
@@ -1010,6 +1052,7 @@ export class ProjectScanner {
     return {
       mtimeMs: stats.mtimeMs,
       birthtimeMs: stats.birthtimeMs,
+      size: stats.size,
     };
   }
 
@@ -1114,13 +1157,20 @@ export class ProjectScanner {
 
   /**
    * Checks whether a session file has non-noise displayable content.
-   * Uses mtime-based memoization to avoid expensive re-parsing on repeated requests.
+   * Uses mtime+size memoization to avoid expensive re-parsing on repeated requests.
    */
-  private async hasDisplayableContent(filePath: string, mtimeMs?: number): Promise<boolean> {
+  private async hasDisplayableContent(
+    filePath: string,
+    mtimeMs?: number,
+    size?: number
+  ): Promise<boolean> {
     try {
-      const effectiveMtime = mtimeMs ?? (await this.fsProvider.stat(filePath)).mtimeMs;
+      const hasPrefetched = typeof mtimeMs === 'number' && typeof size === 'number';
+      const stats = hasPrefetched ? null : await this.fsProvider.stat(filePath);
+      const effectiveMtime = mtimeMs ?? stats?.mtimeMs ?? Date.now();
+      const effectiveSize = size ?? stats?.size ?? -1;
       const cached = this.contentPresenceCache.get(filePath);
-      if (cached?.mtimeMs === effectiveMtime) {
+      if (cached?.mtimeMs === effectiveMtime && cached.size === effectiveSize) {
         return cached.hasContent;
       }
 
@@ -1128,7 +1178,11 @@ export class ProjectScanner {
         filePath,
         this.fsProvider
       );
-      this.contentPresenceCache.set(filePath, { mtimeMs: effectiveMtime, hasContent });
+      this.contentPresenceCache.set(filePath, {
+        mtimeMs: effectiveMtime,
+        size: effectiveSize,
+        hasContent,
+      });
       return hasContent;
     } catch {
       return false;

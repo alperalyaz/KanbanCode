@@ -22,6 +22,10 @@ import {
   UPDATER_DOWNLOAD,
   UPDATER_INSTALL,
   UPDATER_STATUS,
+  WINDOW_CLOSE,
+  WINDOW_IS_MAXIMIZED,
+  WINDOW_MAXIMIZE,
+  WINDOW_MINIMIZE,
 } from './constants/ipcChannels';
 import {
   CONFIG_ADD_IGNORE_REGEX,
@@ -307,6 +311,14 @@ const electronAPI: ElectronAPI = {
   openPath: (targetPath: string, projectRoot?: string) =>
     ipcRenderer.invoke('shell:openPath', targetPath, projectRoot),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+
+  // Window controls (when title bar is hidden, e.g. Windows / Linux)
+  windowControls: {
+    minimize: () => ipcRenderer.invoke(WINDOW_MINIMIZE),
+    maximize: () => ipcRenderer.invoke(WINDOW_MAXIMIZE),
+    close: () => ipcRenderer.invoke(WINDOW_CLOSE),
+    isMaximized: () => ipcRenderer.invoke(WINDOW_IS_MAXIMIZED) as Promise<boolean>,
+  },
 
   onTodoChange: (callback: (event: IpcFileChangePayload) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, data: IpcFileChangePayload): void =>

@@ -134,3 +134,19 @@ export const HTTP_SERVER_STOP = 'httpServer:stop';
 
 /** Get HTTP server status */
 export const HTTP_SERVER_GET_STATUS = 'httpServer:getStatus';
+
+// =============================================================================
+// Window Controls API (Windows / Linux — native title bar is hidden)
+// =============================================================================
+
+/** Minimize window */
+export const WINDOW_MINIMIZE = 'window:minimize';
+
+/** Maximize or restore window */
+export const WINDOW_MAXIMIZE = 'window:maximize';
+
+/** Close window */
+export const WINDOW_CLOSE = 'window:close';
+
+/** Whether the window is currently maximized */
+export const WINDOW_IS_MAXIMIZED = 'window:isMaximized';
