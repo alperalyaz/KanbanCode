@@ -63,6 +63,11 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      - name: Setup Python for node-gyp
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
@@ -97,6 +102,11 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+
+      - name: Setup Python for node-gyp
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile

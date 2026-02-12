@@ -68,7 +68,7 @@ Every tool call is paired with its result in an expandable card. Specialized vie
 
 ### :bell: Custom Notification Triggers
 
-Define rules for when you want to be notified. Match on regex patterns, assign colors, and filter your inbox by trigger. Built-in triggers catch common errors out of the box; add your own for project-specific patterns.
+Define rules for when you want to receive **system notifications**. Match on regex patterns, assign colors, and filter your inbox by trigger. Built-in triggers catch common errors out of the box; add your own for project-specific patterns.
 
 ### :busts_in_silhouette: Team & Subagent Visualization
 

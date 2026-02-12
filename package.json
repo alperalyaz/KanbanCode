@@ -13,7 +13,7 @@
   "bugs": {
     "url": "https://github.com/matt1398/claude-devtools/issues"
   },
-  "main": "dist-electron/main/index.js",
+  "main": "dist-electron/main/index.cjs",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -125,7 +125,7 @@
     ],
     "asar": true,
     "extraMetadata": {
-      "main": "dist-electron/main/index.js"
+      "main": "dist-electron/main/index.cjs"
     },
     "mac": {
       "category": "public.app-category.developer-tools",
