@@ -13,8 +13,9 @@
 <br />
 
 <p align="center">
-  <!-- TODO: Replace with actual demo GIF/video -->
-  <img src="resources/demo.gif" alt="claude-devtools Demo" width="900" />
+  <video src="https://github.com/matt1398/claude-devtools/raw/main/resources/demo.mp4" width="900" autoplay loop muted playsinline>
+    Your browser does not support the video tag.
+  </video>
 </p>
 
 ---
