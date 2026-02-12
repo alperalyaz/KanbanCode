@@ -4,7 +4,16 @@ import { resolve } from 'path'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: [
+          'unified',
+          'remark-parse',
+          'remark-gfm',
+          'mdast-util-to-hast'
+        ]
+      })
+    ],
     resolve: {
       alias: {
         '@main': resolve(__dirname, 'src/main'),

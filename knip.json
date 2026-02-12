@@ -16,5 +16,5 @@
     "@preload/*": ["./src/preload/*"],
     "@shared/*": ["./src/shared/*"]
   },
-  "ignoreDependencies": ["remotion"]
+  "ignoreDependencies": ["@remotion/light-leaks", "remotion"]
 }
