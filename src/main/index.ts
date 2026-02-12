@@ -324,7 +324,10 @@ function shutdownServices(): void {
 function syncTrafficLightPosition(win: BrowserWindow): void {
   const zoomFactor = win.webContents.getZoomFactor();
   const position = getTrafficLightPositionForZoom(zoomFactor);
-  win.setWindowButtonPosition(position);
+  // setWindowButtonPosition is macOS-only (traffic light buttons)
+  if (process.platform === 'darwin') {
+    win.setWindowButtonPosition(position);
+  }
   win.webContents.send(WINDOW_ZOOM_FACTOR_CHANGED_CHANNEL, zoomFactor);
 }
 
@@ -332,6 +335,7 @@ function syncTrafficLightPosition(win: BrowserWindow): void {
  * Creates the main application window.
  */
 function createWindow(): void {
+  const isMac = process.platform === 'darwin';
   mainWindow = new BrowserWindow({
     width: DEFAULT_WINDOW_WIDTH,
     height: DEFAULT_WINDOW_HEIGHT,
@@ -343,7 +347,7 @@ function createWindow(): void {
     },
     backgroundColor: '#1a1a1a',
     titleBarStyle: 'hidden',
-    trafficLightPosition: getTrafficLightPositionForZoom(1),
+    ...(isMac && { trafficLightPosition: getTrafficLightPositionForZoom(1) }),
     title: 'claude-devtools',
   });
 
