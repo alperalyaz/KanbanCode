@@ -11,6 +11,7 @@
 </p>
 
 
+
 <p align="center">
   <a href="https://claude-dev.tools"><img src="https://img.shields.io/badge/Website-claude--dev.tools-blue?style=flat-square" alt="Website" /></a>&nbsp;
   <a href="https://github.com/matt1398/claude-devtools/releases/latest"><img src="https://img.shields.io/github/v/release/matt1398/claude-devtools?style=flat-square&label=version&color=blue" alt="Latest Release" /></a>&nbsp;
@@ -41,7 +42,7 @@
 <br />
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/55e7412e-2737-4729-a863-249f04ebb9ef">
+  <video src="https://github.com/user-attachments/assets/2b420b2c-c4af-4d10-a679-c83269f8ee99">
     Your browser does not support the video tag.
   </video>
 </p>
