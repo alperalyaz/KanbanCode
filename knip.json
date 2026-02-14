@@ -16,5 +16,6 @@
     "@preload/*": ["./src/preload/*"],
     "@shared/*": ["./src/shared/*"]
   },
-  "ignoreDependencies": ["@remotion/light-leaks", "remotion"]
+  "ignoreDependencies": ["@remotion/light-leaks", "remotion"],
+  "ignoreBinaries": ["pkg"]
 }
