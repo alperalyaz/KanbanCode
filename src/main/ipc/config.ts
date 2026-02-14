@@ -744,9 +744,9 @@ function normalizeWslHomePath(home: string): string | null {
   return normalized;
 }
 
-function toWslUncPath(prefix: '\\\\wsl.localhost' | '\\\\wsl$', distro: string, posixPath: string): string {
+function toWslUncPath(distro: string, posixPath: string): string {
   const uncSuffix = posixPath.replace(/\//g, '\\');
-  return `${prefix}\\${distro}${uncSuffix}`;
+  return `\\\\wsl.localhost\\${distro}${uncSuffix}`;
 }
 
 function getWslExecutableCandidates(): string[] {
@@ -762,16 +762,54 @@ function getWslExecutableCandidates(): string[] {
   return Array.from(candidates);
 }
 
+function looksLikeUtf16Le(buffer: Buffer): boolean {
+  const sampleSize = Math.min(buffer.length, 512);
+  if (sampleSize < 2) {
+    return false;
+  }
+
+  let pairs = 0;
+  let nullsAtOddIndex = 0;
+  for (let i = 0; i + 1 < sampleSize; i += 2) {
+    pairs += 1;
+    if (buffer[i + 1] === 0) {
+      nullsAtOddIndex += 1;
+    }
+  }
+
+  return pairs > 0 && nullsAtOddIndex / pairs >= 0.3;
+}
+
+function decodeWslOutput(output: string | Buffer | undefined): string {
+  if (typeof output === 'string') {
+    return output.replace(/\0/g, '');
+  }
+  if (!output || output.length === 0) {
+    return '';
+  }
+
+  const hasUtf16LeBom = output.length >= 2 && output[0] === 0xff && output[1] === 0xfe;
+  const decoded = hasUtf16LeBom || looksLikeUtf16Le(output)
+    ? output.toString('utf16le')
+    : output.toString('utf8');
+  return decoded.replace(/\0/g, '');
+}
+
 async function runWsl(args: string[], timeout = 5000): Promise<{ stdout: string; stderr: string }> {
   const candidates = getWslExecutableCandidates();
   let lastError: unknown = null;
 
   for (const executable of candidates) {
     try {
-      const result = await execFileAsync(executable, args, { timeout });
+      const result = await execFileAsync(executable, args, {
+        timeout,
+        windowsHide: true,
+        maxBuffer: 1024 * 1024,
+        encoding: 'buffer',
+      });
       return {
-        stdout: result.stdout ?? '',
-        stderr: result.stderr ?? '',
+        stdout: decodeWslOutput(result.stdout),
+        stderr: decodeWslOutput(result.stderr),
       };
     } catch (error) {
       lastError = error;
@@ -781,24 +819,59 @@ async function runWsl(args: string[], timeout = 5000): Promise<{ stdout: string;
   throw lastError instanceof Error ? lastError : new Error('Unable to execute wsl.exe');
 }
 
-async function listWslDistros(): Promise<string[]> {
-  try {
-    const { stdout } = await runWsl(['-l', '-q'], 4000);
-    return stdout
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-  } catch {
-    // Fallback for environments where -q behavior is inconsistent.
-    const { stdout } = await runWsl(['-l'], 4000);
-    return stdout
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .filter((line) => !line.toLowerCase().startsWith('windows subsystem for linux'))
-      .filter((line) => !line.toLowerCase().includes('default version'))
-      .map(stripDefaultSuffix);
+function parseWslDistros(stdout: string): string[] {
+  const distros: string[] = [];
+  const seen = new Set<string>();
+  const lines = stdout.split(/\r?\n/);
+
+  for (const rawLine of lines) {
+    let line = rawLine.replace(/\0/g, '').trim();
+    if (!line) {
+      continue;
+    }
+
+    line = line.replace(/^\*\s*/, '').trim();
+    line = stripDefaultSuffix(line);
+
+    const lower = line.toLowerCase();
+    if (
+      lower.startsWith('windows subsystem for linux') ||
+      lower.includes('default version') ||
+      lower.startsWith('the following is a list')
+    ) {
+      continue;
+    }
+
+    const key = line.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      distros.push(line);
+    }
   }
+
+  return distros;
+}
+
+async function listWslDistros(): Promise<string[]> {
+  const commands: string[][] = [
+    ['--list', '--quiet'],
+    ['-l', '-q'],
+    ['-l'],
+  ];
+
+  for (const command of commands) {
+    try {
+      const { stdout } = await runWsl(command, 4000);
+      const parsed = parseWslDistros(stdout);
+      if (parsed.length > 0) {
+        return parsed;
+      }
+    } catch {
+      // Try the next command variant.
+    }
+  }
+
+  return [];
 }
 
 function stripDefaultSuffix(input: string): string {
@@ -841,50 +914,38 @@ async function handleFindWslClaudeRoots(
     const candidates: WslClaudeRootCandidate[] = [];
     const seen = new Set<string>();
     for (const distro of distros) {
-      const homePath = await resolveWslHome(distro);
-      const homeCandidates = new Set<string>();
-      if (homePath) {
-        homeCandidates.add(homePath);
-      }
-      if (process.env.USERNAME) {
-        homeCandidates.add(`/home/${process.env.USERNAME}`);
-      }
-      homeCandidates.add('/root');
+      const resolvedHomePath = await resolveWslHome(distro);
+      const fallbackHomePath = process.env.USERNAME ? `/home/${process.env.USERNAME}` : null;
+      const normalizedHome =
+        normalizeWslHomePath(resolvedHomePath ?? '') ??
+        (fallbackHomePath ? normalizeWslHomePath(fallbackHomePath) : null);
 
-      for (const homeCandidate of homeCandidates) {
-        const normalizedHome = normalizeWslHomePath(homeCandidate);
-        if (!normalizedHome) {
-          continue;
+      if (!normalizedHome) {
+        continue;
+      }
+
+      const claudePosixPath = path.posix.join(normalizedHome, '.claude');
+      const claudeUncPath = toWslUncPath(distro, claudePosixPath);
+      const key = claudeUncPath.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+
+      const projectsPath = path.join(claudeUncPath, 'projects');
+      const hasProjectsDir = (() => {
+        try {
+          return fs.existsSync(projectsPath) && fs.statSync(projectsPath).isDirectory();
+        } catch {
+          return false;
         }
-        const claudePosixPath = path.posix.join(normalizedHome, '.claude');
+      })();
 
-        const uncPaths = [
-          toWslUncPath('\\\\wsl.localhost', distro, claudePosixPath),
-          toWslUncPath('\\\\wsl$', distro, claudePosixPath),
-        ];
-
-        for (const claudeUncPath of uncPaths) {
-          if (seen.has(claudeUncPath.toLowerCase())) {
-            continue;
-          }
-          seen.add(claudeUncPath.toLowerCase());
-
-          const projectsPath = path.join(claudeUncPath, 'projects');
-          const hasProjectsDir = (() => {
-            try {
-              return fs.existsSync(projectsPath) && fs.statSync(projectsPath).isDirectory();
-            } catch {
-              return false;
-            }
-          })();
-
-          candidates.push({
-            distro,
-            path: claudeUncPath,
-            hasProjectsDir,
-          });
-        }
-      }
+      candidates.push({
+        distro,
+        path: claudeUncPath,
+        hasProjectsDir,
+      });
     }
 
     return { success: true, data: candidates };
