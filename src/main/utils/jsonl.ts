@@ -328,6 +328,8 @@ export async function analyzeSessionFileMetadata(
   let firstUserMessage: { text: string; timestamp: string } | null = null;
   let firstCommandMessage: { text: string; timestamp: string } | null = null;
   let messageCount = 0;
+  // After a UserGroup, await the first main-thread assistant message to count the AIGroup
+  let awaitingAIGroup = false;
   let gitBranch: string | null = null;
 
   let activityIndex = 0;
@@ -357,6 +359,15 @@ export async function analyzeSessionFileMetadata(
 
     if (isParsedUserChunkMessage(parsed)) {
       messageCount++;
+      awaitingAIGroup = true;
+    } else if (
+      awaitingAIGroup &&
+      parsed.type === 'assistant' &&
+      parsed.model !== '<synthetic>' &&
+      !parsed.isSidechain
+    ) {
+      messageCount++;
+      awaitingAIGroup = false;
     }
 
     if (!gitBranch && 'gitBranch' in entry && entry.gitBranch) {
