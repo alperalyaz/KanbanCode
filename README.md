@@ -62,6 +62,7 @@
 | **macOS** (Intel) | [`.dmg`](https://github.com/matt1398/claude-devtools/releases/latest) | Download the `x64` asset. Drag to Applications. On first launch: right-click → Open |
 | **Linux** | [`.AppImage` / `.deb` / `.rpm` / `.pacman`](https://github.com/matt1398/claude-devtools/releases/latest) | Choose the package format for your distro (portable AppImage or native package manager format). |
 | **Windows** | [`.exe`](https://github.com/matt1398/claude-devtools/releases/latest) | Standard installer. May trigger SmartScreen — click "More info" → "Run anyway" |
+| **Docker** | `docker compose up` | Open `http://localhost:3456`. See [Docker / Standalone Deployment](#docker--standalone-deployment) for details. |
 
 The app reads session logs from `~/.claude/` — the data is already on your machine. No setup, no API keys, no login.
 
