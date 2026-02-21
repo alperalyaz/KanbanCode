@@ -601,7 +601,10 @@ export function analyzeSession(detail: SessionDetail): SessionReport {
       if (toolName === 'Skill') {
         skillsInvoked.push({
           skill: (inp.skill as string) ?? 'unknown',
-          argsPreview: String(inp.args ?? '').slice(0, 120),
+          argsPreview: (typeof inp.args === 'string'
+            ? inp.args
+            : JSON.stringify(inp.args ?? '')
+          ).slice(0, 120),
         });
       }
 
