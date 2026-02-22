@@ -1,36 +1,28 @@
-import { assessmentColor, assessmentLabel } from '@renderer/utils/reportAssessments';
+import { assessmentColor } from '@renderer/utils/reportAssessments';
 import { Wrench } from 'lucide-react';
 
-import { ReportSection } from '../ReportSection';
+import { AssessmentBadge } from '../AssessmentBadge';
+import { ReportSection, sectionId } from '../ReportSection';
 
 import type { ReportToolUsage } from '@renderer/types/sessionReport';
 
 interface ToolSectionProps {
   data: ReportToolUsage;
+  defaultCollapsed?: boolean;
 }
 
-export const ToolSection = ({ data }: ToolSectionProps) => {
+export const ToolSection = ({ data, defaultCollapsed }: ToolSectionProps) => {
   const toolEntries = Object.entries(data.successRates).sort(
     (a, b) => b[1].totalCalls - a[1].totalCalls
   );
 
-  const healthColor = assessmentColor(data.overallToolHealth);
-
   return (
-    <ReportSection title="Tool Usage" icon={Wrench}>
+    <ReportSection title="Tool Usage" icon={Wrench} defaultCollapsed={defaultCollapsed}>
       <div className="mb-2 flex items-center gap-2">
         <span className="text-xs text-text-muted">
           {data.totalCalls.toLocaleString()} total calls across {toolEntries.length} tools
         </span>
-        <span
-          className="rounded px-2 py-0.5 text-xs font-medium"
-          style={{
-            backgroundColor: `${healthColor}20`,
-            color: healthColor,
-          }}
-        >
-          {assessmentLabel(data.overallToolHealth)}
-        </span>
+        <AssessmentBadge assessment={data.overallToolHealth} metricKey="toolHealth" />
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
@@ -53,18 +45,26 @@ export const ToolSection = ({ data }: ToolSectionProps) => {
                     {stats.totalCalls.toLocaleString()}
                   </td>
                   <td className="py-1.5 pr-4 text-right text-text">
-                    {stats.errors.toLocaleString()}
+                    {stats.errors > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const el = document.getElementById(sectionId('Errors'));
+                          if (el) el.dispatchEvent(new CustomEvent('report-section-expand'));
+                        }}
+                        className="text-red-400 underline decoration-red-400/30 underline-offset-2 hover:decoration-red-400"
+                      >
+                        {stats.errors.toLocaleString()}
+                      </button>
+                    ) : (
+                      stats.errors.toLocaleString()
+                    )}
                   </td>
                   <td className="py-1.5 pr-4 text-right" style={{ color }}>
                     {stats.successRatePct}%
                   </td>
                   <td className="py-1.5 text-right">
-                    <span
-                      className="rounded px-1.5 py-0.5 text-[10px] font-medium"
-                      style={{ backgroundColor: `${color}20`, color }}
-                    >
-                      {assessmentLabel(stats.assessment)}
-                    </span>
+                    <AssessmentBadge assessment={stats.assessment} metricKey="toolHealth" />
                   </td>
                 </tr>
               );

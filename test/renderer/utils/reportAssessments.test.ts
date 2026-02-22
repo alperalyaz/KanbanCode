@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   assessmentColor,
+  assessmentExplanation,
   assessmentLabel,
   assessmentSeverity,
   computeCacheEfficiencyAssessment,
@@ -12,6 +13,7 @@ import {
   computeOverheadAssessment,
   computeRedundancyAssessment,
   computeSubagentCostShareAssessment,
+  computeTakeaways,
   computeThrashingAssessment,
   computeToolHealthAssessment,
   detectModelMismatch,
@@ -19,6 +21,8 @@ import {
   severityColor,
   THRESHOLDS,
 } from '@renderer/utils/reportAssessments';
+
+import type { MetricKey } from '@renderer/utils/reportAssessments';
 
 describe('reportAssessments', () => {
   describe('severityColor', () => {
@@ -254,6 +258,141 @@ describe('reportAssessments', () => {
           { from: 'claude-haiku-4', to: 'claude-sonnet-4' },
         ])
       ).toBe('manual_switch');
+    });
+  });
+
+  describe('assessmentExplanation', () => {
+    const ALL_METRIC_ASSESSMENTS: Record<MetricKey, string[]> = {
+      costPerCommit: ['efficient', 'normal', 'expensive', 'red_flag'],
+      costPerLine: ['efficient', 'normal', 'expensive', 'red_flag'],
+      subagentCostShare: ['normal', 'high', 'very_high', 'red_flag'],
+      cacheEfficiency: ['good', 'concerning'],
+      cacheRatio: ['good', 'concerning'],
+      toolHealth: ['healthy', 'degraded', 'unreliable'],
+      idle: ['efficient', 'moderate', 'high_idle'],
+      fileReads: ['normal', 'wasteful'],
+      startup: ['normal', 'heavy'],
+      thrashing: ['none', 'mild', 'severe'],
+      promptQuality: [
+        'well_specified',
+        'moderate_friction',
+        'underspecified',
+        'verbose_but_unclear',
+      ],
+      testTrajectory: ['improving', 'stable', 'regressing', 'insufficient_data'],
+    };
+
+    it('returns non-empty string for all valid metric/assessment combos', () => {
+      for (const [metricKey, assessments] of Object.entries(ALL_METRIC_ASSESSMENTS)) {
+        for (const assessment of assessments) {
+          const result = assessmentExplanation(metricKey as MetricKey, assessment);
+          expect(result, `${metricKey}/${assessment}`).not.toBe('');
+        }
+      }
+    });
+
+    it('returns empty string for unknown combinations', () => {
+      expect(assessmentExplanation('costPerCommit', 'unknown_value')).toBe('');
+      expect(assessmentExplanation('toolHealth' as MetricKey, 'nonexistent')).toBe('');
+    });
+
+    it('includes threshold values in explanations', () => {
+      expect(assessmentExplanation('costPerCommit', 'efficient')).toContain(
+        String(THRESHOLDS.costPerCommit.efficient)
+      );
+      expect(assessmentExplanation('toolHealth', 'healthy')).toContain(
+        String(THRESHOLDS.toolSuccess.healthy)
+      );
+    });
+  });
+
+  describe('computeTakeaways', () => {
+    const healthyReport = {
+      costAnalysis: {
+        costPerCommitAssessment: 'efficient',
+        costPerLineAssessment: 'efficient',
+        totalSessionCostUsd: 0.5,
+      },
+      cacheEconomics: { cacheEfficiencyAssessment: 'good', cacheEfficiencyPct: 97 },
+      toolUsage: { overallToolHealth: 'healthy' },
+      thrashingSignals: {
+        thrashingAssessment: 'none',
+        bashNearDuplicates: [],
+        editReworkFiles: [],
+      },
+      idleAnalysis: { idleAssessment: 'efficient', idlePct: 10 },
+      promptQuality: { assessment: 'well_specified', frictionRate: 0.05 },
+      overview: { contextAssessment: 'healthy', compactionCount: 0 },
+      fileReadRedundancy: { redundancyAssessment: 'normal', readsPerUniqueFile: 1.5 },
+      testProgression: { trajectory: 'improving' },
+    };
+
+    it('returns healthy message when all metrics are good', () => {
+      const result = computeTakeaways(healthyReport);
+      expect(result).toHaveLength(1);
+      expect(result[0].severity).toBe('good');
+      expect(result[0].title).toContain('healthy');
+    });
+
+    it('detects cost red flags', () => {
+      const report = {
+        ...healthyReport,
+        costAnalysis: {
+          ...healthyReport.costAnalysis,
+          costPerCommitAssessment: 'red_flag',
+          totalSessionCostUsd: 15,
+        },
+      };
+      const result = computeTakeaways(report);
+      expect(result.some((t) => t.severity === 'danger' && t.title.includes('cost'))).toBe(true);
+    });
+
+    it('detects thrashing', () => {
+      const report = {
+        ...healthyReport,
+        thrashingSignals: {
+          thrashingAssessment: 'severe',
+          bashNearDuplicates: [{}],
+          editReworkFiles: [],
+        },
+      };
+      const result = computeTakeaways(report);
+      expect(result.some((t) => t.title.includes('thrashing'))).toBe(true);
+    });
+
+    it('limits to 4 takeaways', () => {
+      const report = {
+        ...healthyReport,
+        costAnalysis: {
+          ...healthyReport.costAnalysis,
+          costPerCommitAssessment: 'red_flag',
+          totalSessionCostUsd: 15,
+        },
+        cacheEconomics: { cacheEfficiencyAssessment: 'concerning', cacheEfficiencyPct: 80 },
+        toolUsage: { overallToolHealth: 'unreliable' },
+        thrashingSignals: {
+          thrashingAssessment: 'severe',
+          bashNearDuplicates: [{}],
+          editReworkFiles: [],
+        },
+        promptQuality: { assessment: 'underspecified', frictionRate: 0.5 },
+        overview: { contextAssessment: 'critical', compactionCount: 3 },
+        fileReadRedundancy: { redundancyAssessment: 'wasteful', readsPerUniqueFile: 4 },
+        testProgression: { trajectory: 'regressing' },
+      };
+      const result = computeTakeaways(report);
+      expect(result.length).toBeLessThanOrEqual(4);
+    });
+
+    it('sorts danger before warning', () => {
+      const report = {
+        ...healthyReport,
+        cacheEconomics: { cacheEfficiencyAssessment: 'concerning', cacheEfficiencyPct: 80 },
+        toolUsage: { overallToolHealth: 'unreliable' },
+      };
+      const result = computeTakeaways(report);
+      expect(result.length).toBeGreaterThanOrEqual(2);
+      expect(result[0].severity).toBe('danger');
     });
   });
 });

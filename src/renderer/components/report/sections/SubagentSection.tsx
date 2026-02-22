@@ -15,11 +15,12 @@ const fmtDuration = (ms: number) => {
 
 interface SubagentSectionProps {
   data: ReportSubagentMetrics;
+  defaultCollapsed?: boolean;
 }
 
-export const SubagentSection = ({ data }: SubagentSectionProps) => {
+export const SubagentSection = ({ data, defaultCollapsed }: SubagentSectionProps) => {
   return (
-    <ReportSection title="Subagents" icon={Users}>
+    <ReportSection title="Subagents" icon={Users} defaultCollapsed={defaultCollapsed}>
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div>
           <div className="text-xs text-text-muted">Count</div>

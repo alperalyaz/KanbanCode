@@ -28,7 +28,10 @@ const ErrorItem = ({ error }: ErrorItemProps) => {
         {error.isPermissionDenial && (
           <span
             className="rounded px-1.5 py-0.5 text-[10px] font-medium"
-            style={{ backgroundColor: 'rgba(248, 113, 113, 0.15)', color: '#f87171' }}
+            style={{
+              backgroundColor: 'color-mix(in srgb, var(--assess-danger) 15%, transparent)',
+              color: 'var(--assess-danger)',
+            }}
           >
             Permission Denied
           </span>
@@ -36,8 +39,28 @@ const ErrorItem = ({ error }: ErrorItemProps) => {
         <span className="ml-auto text-text-muted">msg #{error.messageIndex}</span>
       </button>
       {expanded && (
-        <div className="mt-2 whitespace-pre-wrap break-words rounded bg-surface-raised p-2 text-xs text-text-secondary">
-          {error.error}
+        <div className="mt-2 flex flex-col gap-1.5">
+          {error.inputPreview && (
+            <div className="rounded bg-surface-raised p-2">
+              <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
+                Input
+              </div>
+              <div className="whitespace-pre-wrap break-words font-mono text-xs text-text-secondary">
+                {error.inputPreview}
+              </div>
+            </div>
+          )}
+          <div className="rounded bg-surface-raised p-2">
+            <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
+              Error
+            </div>
+            <div
+              className="whitespace-pre-wrap break-words text-xs"
+              style={{ color: 'var(--assess-danger)' }}
+            >
+              {error.error}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -46,15 +69,19 @@ const ErrorItem = ({ error }: ErrorItemProps) => {
 
 interface ErrorSectionProps {
   data: ReportErrors;
+  defaultCollapsed?: boolean;
 }
 
-export const ErrorSection = ({ data }: ErrorSectionProps) => {
+export const ErrorSection = ({ data, defaultCollapsed }: ErrorSectionProps) => {
   return (
-    <ReportSection title="Errors" icon={AlertTriangle}>
+    <ReportSection title="Errors" icon={AlertTriangle} defaultCollapsed={defaultCollapsed}>
       <div className="mb-3 flex items-center gap-3">
         <span
           className="rounded px-2 py-0.5 text-xs font-medium"
-          style={{ backgroundColor: 'rgba(248, 113, 113, 0.15)', color: '#f87171' }}
+          style={{
+            backgroundColor: 'color-mix(in srgb, var(--assess-danger) 15%, transparent)',
+            color: 'var(--assess-danger)',
+          }}
         >
           {data.errors.length} error{data.errors.length !== 1 ? 's' : ''}
         </span>

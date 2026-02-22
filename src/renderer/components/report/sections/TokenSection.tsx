@@ -1,6 +1,6 @@
-import { assessmentColor, assessmentLabel } from '@renderer/utils/reportAssessments';
 import { Coins } from 'lucide-react';
 
+import { AssessmentBadge } from '../AssessmentBadge';
 import { ReportSection } from '../ReportSection';
 
 import type { ReportCacheEconomics, ReportTokenUsage } from '@renderer/types/sessionReport';
@@ -11,13 +11,14 @@ const fmtCost = (v: number) => `$${v.toFixed(4)}`;
 interface TokenSectionProps {
   data: ReportTokenUsage;
   cacheEconomics: ReportCacheEconomics;
+  defaultCollapsed?: boolean;
 }
 
-export const TokenSection = ({ data, cacheEconomics }: TokenSectionProps) => {
+export const TokenSection = ({ data, cacheEconomics, defaultCollapsed }: TokenSectionProps) => {
   const modelEntries = Object.entries(data.byModel).sort((a, b) => b[1].costUsd - a[1].costUsd);
 
   return (
-    <ReportSection title="Token Usage" icon={Coins}>
+    <ReportSection title="Token Usage" icon={Coins} defaultCollapsed={defaultCollapsed}>
       {/* By-model table */}
       <div className="mb-4 overflow-x-auto">
         <table className="w-full text-xs">
@@ -71,15 +72,10 @@ export const TokenSection = ({ data, cacheEconomics }: TokenSectionProps) => {
               {cacheEconomics.cacheEfficiencyPct}%
             </span>
             {cacheEconomics.cacheEfficiencyAssessment && (
-              <span
-                className="rounded px-2 py-0.5 text-xs font-medium"
-                style={{
-                  backgroundColor: `${assessmentColor(cacheEconomics.cacheEfficiencyAssessment)}20`,
-                  color: assessmentColor(cacheEconomics.cacheEfficiencyAssessment),
-                }}
-              >
-                {assessmentLabel(cacheEconomics.cacheEfficiencyAssessment)}
-              </span>
+              <AssessmentBadge
+                assessment={cacheEconomics.cacheEfficiencyAssessment}
+                metricKey="cacheEfficiency"
+              />
             )}
           </div>
         </div>
@@ -90,15 +86,10 @@ export const TokenSection = ({ data, cacheEconomics }: TokenSectionProps) => {
               {cacheEconomics.cacheReadToWriteRatio}x
             </span>
             {cacheEconomics.cacheRatioAssessment && (
-              <span
-                className="rounded px-2 py-0.5 text-xs font-medium"
-                style={{
-                  backgroundColor: `${assessmentColor(cacheEconomics.cacheRatioAssessment)}20`,
-                  color: assessmentColor(cacheEconomics.cacheRatioAssessment),
-                }}
-              >
-                {assessmentLabel(cacheEconomics.cacheRatioAssessment)}
-              </span>
+              <AssessmentBadge
+                assessment={cacheEconomics.cacheRatioAssessment}
+                metricKey="cacheRatio"
+              />
             )}
           </div>
         </div>
@@ -110,7 +101,11 @@ export const TokenSection = ({ data, cacheEconomics }: TokenSectionProps) => {
           <div className="text-xs text-text-muted">Cold Start</div>
           <div
             className="text-sm font-medium"
-            style={{ color: cacheEconomics.coldStartDetected ? '#fbbf24' : '#4ade80' }}
+            style={{
+              color: cacheEconomics.coldStartDetected
+                ? 'var(--assess-warning)'
+                : 'var(--assess-good)',
+            }}
           >
             {cacheEconomics.coldStartDetected ? 'Yes' : 'No'}
           </div>

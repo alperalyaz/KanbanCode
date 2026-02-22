@@ -1,6 +1,7 @@
-import { assessmentColor, assessmentLabel, severityColor } from '@renderer/utils/reportAssessments';
+import { severityColor } from '@renderer/utils/reportAssessments';
 import { BarChart3 } from 'lucide-react';
 
+import { AssessmentBadge } from '../AssessmentBadge';
 import { ReportSection } from '../ReportSection';
 
 import type {
@@ -15,6 +16,7 @@ interface QualitySectionProps {
   startup: ReportStartupOverhead;
   testProgression: ReportTestProgression;
   fileReadRedundancy: ReportFileReadRedundancy;
+  defaultCollapsed?: boolean;
 }
 
 export const QualitySection = ({
@@ -22,24 +24,15 @@ export const QualitySection = ({
   startup,
   testProgression,
   fileReadRedundancy,
+  defaultCollapsed,
 }: QualitySectionProps) => {
-  const promptColor = assessmentColor(prompt.assessment);
-  const trajectoryColor = assessmentColor(testProgression.trajectory);
-  const overheadColor = assessmentColor(startup.overheadAssessment);
-  const redundancyColor = assessmentColor(fileReadRedundancy.redundancyAssessment);
-
   return (
-    <ReportSection title="Quality Signals" icon={BarChart3}>
+    <ReportSection title="Quality Signals" icon={BarChart3} defaultCollapsed={defaultCollapsed}>
       {/* Prompt quality */}
       <div className="mb-4">
         <div className="mb-2 text-xs font-medium text-text-muted">Prompt Quality</div>
         <div className="mb-2 flex items-center gap-2">
-          <span
-            className="rounded px-2 py-0.5 text-xs font-medium"
-            style={{ backgroundColor: `${promptColor}20`, color: promptColor }}
-          >
-            {assessmentLabel(prompt.assessment)}
-          </span>
+          <AssessmentBadge assessment={prompt.assessment} metricKey="promptQuality" />
         </div>
         <div className="text-xs text-text-secondary">{prompt.note}</div>
         <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -70,12 +63,7 @@ export const QualitySection = ({
       <div className="mb-4">
         <div className="mb-2 flex items-center gap-2">
           <span className="text-xs font-medium text-text-muted">Startup Overhead</span>
-          <span
-            className="rounded px-2 py-0.5 text-xs font-medium"
-            style={{ backgroundColor: `${overheadColor}20`, color: overheadColor }}
-          >
-            {assessmentLabel(startup.overheadAssessment)}
-          </span>
+          <AssessmentBadge assessment={startup.overheadAssessment} metricKey="startup" />
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div>
@@ -99,12 +87,10 @@ export const QualitySection = ({
       <div className="mb-4">
         <div className="mb-2 flex items-center gap-2">
           <span className="text-xs font-medium text-text-muted">File Read Redundancy</span>
-          <span
-            className="rounded px-2 py-0.5 text-xs font-medium"
-            style={{ backgroundColor: `${redundancyColor}20`, color: redundancyColor }}
-          >
-            {assessmentLabel(fileReadRedundancy.redundancyAssessment)}
-          </span>
+          <AssessmentBadge
+            assessment={fileReadRedundancy.redundancyAssessment}
+            metricKey="fileReads"
+          />
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div>
@@ -128,12 +114,7 @@ export const QualitySection = ({
       <div>
         <div className="mb-2 text-xs font-medium text-text-muted">Test Progression</div>
         <div className="mb-2 flex items-center gap-2">
-          <span
-            className="rounded px-2 py-0.5 text-xs font-medium"
-            style={{ backgroundColor: `${trajectoryColor}20`, color: trajectoryColor }}
-          >
-            {assessmentLabel(testProgression.trajectory)}
-          </span>
+          <AssessmentBadge assessment={testProgression.trajectory} metricKey="testTrajectory" />
           <span className="text-xs text-text-muted">
             {testProgression.snapshotCount} snapshot{testProgression.snapshotCount !== 1 ? 's' : ''}
           </span>

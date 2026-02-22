@@ -19,6 +19,7 @@ interface InsightsSectionProps {
   outOfScope: OutOfScopeFindings[];
   agentTree: ReportAgentTree;
   subagentsList: SubagentBasicEntry[];
+  defaultCollapsed?: boolean;
 }
 
 export const InsightsSection = ({
@@ -29,9 +30,10 @@ export const InsightsSection = ({
   outOfScope,
   agentTree,
   subagentsList,
+  defaultCollapsed,
 }: InsightsSectionProps) => {
   return (
-    <ReportSection title="Session Insights" icon={Lightbulb}>
+    <ReportSection title="Session Insights" icon={Lightbulb} defaultCollapsed={defaultCollapsed}>
       {/* Skills invoked */}
       {skills.length > 0 && (
         <div className="mb-4">
@@ -187,7 +189,10 @@ export const InsightsSection = ({
               <div key={idx} className="rounded-md bg-surface-raised px-3 py-2">
                 <span
                   className="mr-2 rounded px-1.5 py-0.5 text-xs"
-                  style={{ backgroundColor: '#fbbf2420', color: '#fbbf24' }}
+                  style={{
+                    backgroundColor: 'color-mix(in srgb, var(--assess-warning) 12%, transparent)',
+                    color: 'var(--assess-warning)',
+                  }}
                 >
                   {f.keyword}
                 </span>

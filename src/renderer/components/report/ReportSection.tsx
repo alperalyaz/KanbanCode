@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { ChevronDown, ChevronRight } from 'lucide-react';
+
+const sectionId = (title: string) =>
+  `report-section-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
 interface ReportSectionProps {
   title: string;
@@ -16,9 +19,25 @@ export const ReportSection = ({
   defaultCollapsed = false,
 }: ReportSectionProps) => {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const handler = () => {
+      setCollapsed(false);
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    el.addEventListener('report-section-expand', handler);
+    return () => el.removeEventListener('report-section-expand', handler);
+  }, []);
 
   return (
-    <div className="rounded-lg border border-border bg-surface-raised">
+    <div
+      ref={ref}
+      id={sectionId(title)}
+      className="rounded-lg border border-border bg-surface-raised"
+    >
       <button
         onClick={() => setCollapsed(!collapsed)}
         className="flex w-full items-center gap-2 p-4 text-left"
@@ -35,3 +54,5 @@ export const ReportSection = ({
     </div>
   );
 };
+
+export { sectionId };

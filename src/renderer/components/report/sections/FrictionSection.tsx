@@ -1,6 +1,7 @@
-import { assessmentColor, assessmentLabel } from '@renderer/utils/reportAssessments';
+import { severityColor } from '@renderer/utils/reportAssessments';
 import { MessageSquareWarning } from 'lucide-react';
 
+import { AssessmentBadge } from '../AssessmentBadge';
 import { ReportSection } from '../ReportSection';
 
 import type { ReportFrictionSignals, ReportThrashingSignals } from '@renderer/types/sessionReport';
@@ -8,20 +9,25 @@ import type { ReportFrictionSignals, ReportThrashingSignals } from '@renderer/ty
 interface FrictionSectionProps {
   data: ReportFrictionSignals;
   thrashing: ReportThrashingSignals;
+  defaultCollapsed?: boolean;
 }
 
-export const FrictionSection = ({ data, thrashing }: FrictionSectionProps) => {
-  const frictionColor =
-    data.frictionRate <= 0.1 ? '#4ade80' : data.frictionRate <= 0.25 ? '#fbbf24' : '#f87171';
-  const thrashColor = assessmentColor(thrashing.thrashingAssessment);
+export const FrictionSection = ({ data, thrashing, defaultCollapsed }: FrictionSectionProps) => {
+  const frictionSeverity =
+    data.frictionRate <= 0.1 ? 'good' : data.frictionRate <= 0.25 ? 'warning' : 'danger';
+  const frictionColor = severityColor(frictionSeverity);
 
   return (
-    <ReportSection title="Friction Signals" icon={MessageSquareWarning}>
+    <ReportSection
+      title="Friction Signals"
+      icon={MessageSquareWarning}
+      defaultCollapsed={defaultCollapsed}
+    >
       <div className="mb-4 flex items-center gap-3">
         <span
           className="rounded px-2 py-0.5 text-xs font-medium"
           style={{
-            backgroundColor: `${frictionColor}20`,
+            backgroundColor: `color-mix(in srgb, ${frictionColor} 12%, transparent)`,
             color: frictionColor,
           }}
         >
@@ -40,7 +46,10 @@ export const FrictionSection = ({ data, thrashing }: FrictionSectionProps) => {
               <div key={idx} className="flex items-start gap-2 rounded px-2 py-1 text-xs">
                 <span
                   className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px]"
-                  style={{ backgroundColor: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24' }}
+                  style={{
+                    backgroundColor: 'color-mix(in srgb, var(--assess-warning) 15%, transparent)',
+                    color: 'var(--assess-warning)',
+                  }}
                 >
                   {corr.keyword}
                 </span>
@@ -55,12 +64,7 @@ export const FrictionSection = ({ data, thrashing }: FrictionSectionProps) => {
         <div>
           <div className="mb-2 flex items-center gap-2">
             <span className="text-xs font-medium text-text-muted">Thrashing Signals</span>
-            <span
-              className="rounded px-2 py-0.5 text-xs font-medium"
-              style={{ backgroundColor: `${thrashColor}20`, color: thrashColor }}
-            >
-              {assessmentLabel(thrashing.thrashingAssessment)}
-            </span>
+            <AssessmentBadge assessment={thrashing.thrashingAssessment} metricKey="thrashing" />
           </div>
 
           {thrashing.bashNearDuplicates.length > 0 && (

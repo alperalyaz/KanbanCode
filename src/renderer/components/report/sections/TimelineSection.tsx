@@ -1,6 +1,7 @@
 import { assessmentColor, assessmentLabel } from '@renderer/utils/reportAssessments';
 import { Clock } from 'lucide-react';
 
+import { AssessmentBadge } from '../AssessmentBadge';
 import { ReportSection } from '../ReportSection';
 
 import type {
@@ -13,23 +14,24 @@ interface TimelineSectionProps {
   idle: ReportIdleAnalysis;
   modelSwitches: ReportModelSwitches;
   keyEvents: KeyEvent[];
+  defaultCollapsed?: boolean;
 }
 
-export const TimelineSection = ({ idle, modelSwitches, keyEvents }: TimelineSectionProps) => {
+export const TimelineSection = ({
+  idle,
+  modelSwitches,
+  keyEvents,
+  defaultCollapsed,
+}: TimelineSectionProps) => {
   const idleColor = assessmentColor(idle.idleAssessment);
 
   return (
-    <ReportSection title="Timeline & Activity" icon={Clock}>
+    <ReportSection title="Timeline & Activity" icon={Clock} defaultCollapsed={defaultCollapsed}>
       {/* Idle stats */}
       <div className="mb-4">
         <div className="mb-2 flex items-center gap-2">
           <span className="text-xs font-medium text-text-muted">Idle Analysis</span>
-          <span
-            className="rounded px-2 py-0.5 text-xs font-medium"
-            style={{ backgroundColor: `${idleColor}20`, color: idleColor }}
-          >
-            {assessmentLabel(idle.idleAssessment)}
-          </span>
+          <AssessmentBadge assessment={idle.idleAssessment} metricKey="idle" />
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div>

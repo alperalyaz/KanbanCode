@@ -6,11 +6,12 @@ import type { ReportGitActivity } from '@renderer/types/sessionReport';
 
 interface GitSectionProps {
   data: ReportGitActivity;
+  defaultCollapsed?: boolean;
 }
 
-export const GitSection = ({ data }: GitSectionProps) => {
+export const GitSection = ({ data, defaultCollapsed }: GitSectionProps) => {
   return (
-    <ReportSection title="Git Activity" icon={GitBranch}>
+    <ReportSection title="Git Activity" icon={GitBranch} defaultCollapsed={defaultCollapsed}>
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div>
           <div className="text-xs text-text-muted">Commits</div>
@@ -22,13 +23,13 @@ export const GitSection = ({ data }: GitSectionProps) => {
         </div>
         <div>
           <div className="text-xs text-text-muted">Lines Added</div>
-          <div className="text-sm font-medium" style={{ color: '#4ade80' }}>
+          <div className="text-sm font-medium" style={{ color: 'var(--assess-good)' }}>
             +{data.linesAdded.toLocaleString()}
           </div>
         </div>
         <div>
           <div className="text-xs text-text-muted">Lines Removed</div>
-          <div className="text-sm font-medium" style={{ color: '#f87171' }}>
+          <div className="text-sm font-medium" style={{ color: 'var(--assess-danger)' }}>
             -{data.linesRemoved.toLocaleString()}
           </div>
         </div>

@@ -103,7 +103,7 @@ const DEFAULT_PRICING: ModelPricing = {
   cache_creation: 3.75,
 };
 
-function getPricing(modelName: string): ModelPricing {
+export function getPricing(modelName: string): ModelPricing {
   const name = modelName.toLowerCase();
   for (const [key, pricing] of Object.entries(MODEL_PRICING)) {
     if (name.includes(key)) return pricing;
