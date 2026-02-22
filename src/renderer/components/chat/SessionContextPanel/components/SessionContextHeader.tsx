@@ -20,8 +20,8 @@ import { formatTokens } from '../utils/formatting';
 import { SessionContextHelpTooltip } from './SessionContextHelpTooltip';
 
 import type { ContextViewMode } from '../types';
-import type { SessionMetrics } from '@main/types';
 import type { ContextPhaseInfo } from '@renderer/types/contextInjection';
+import type { SessionMetrics } from '@shared/types';
 
 interface SessionContextHeaderProps {
   injectionCount: number;

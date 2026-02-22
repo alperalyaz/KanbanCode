@@ -2,12 +2,13 @@
  * Type definitions for SessionContextPanel components.
  */
 
+import type { ClaudeMdSource } from '@renderer/types/claudeMd';
+import type { ContextInjection, ContextPhaseInfo } from '@renderer/types/contextInjection';
+import type { SessionMetrics } from '@shared/types';
+
 // =============================================================================
 // Props Interface
 // =============================================================================
-import type { SessionMetrics } from '@main/types';
-import type { ClaudeMdSource } from '@renderer/types/claudeMd';
-import type { ContextInjection, ContextPhaseInfo } from '@renderer/types/contextInjection';
 
 export interface SessionContextPanelProps {
   /** All accumulated context injections */

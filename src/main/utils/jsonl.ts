@@ -398,9 +398,6 @@ export function calculateMetrics(messages: ParsedMessage[]): SessionMetrics {
         }
       }
     }
-    if (!modelName && msg.model) {
-      modelName = msg.model;
-    }
   }
 
   return {
