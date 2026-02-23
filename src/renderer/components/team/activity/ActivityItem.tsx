@@ -277,15 +277,19 @@ export const ActivityItem = ({
           </span>
         ) : null}
 
-        {/* Recipient — clickable to open member popup */}
-        {message.to && message.to !== message.from ? (
+        {/* Recipient — badge like sender, clickable to open member popup */}
+        {message.to && message.to !== message.from && recipientColors ? (
           <span className="text-[10px]">
             <span style={{ color: CARD_ICON_MUTED }}>&rarr; </span>
             {onMemberNameClick ? (
               <button
                 type="button"
-                className="rounded px-0.5 py-0 font-medium transition-opacity hover:opacity-90 focus:outline-none focus:ring-1 focus:ring-[var(--color-border)]"
-                style={{ color: recipientColors?.text ?? CARD_ICON_MUTED }}
+                className="rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide transition-opacity hover:opacity-90 focus:outline-none focus:ring-1 focus:ring-[var(--color-border)]"
+                style={{
+                  backgroundColor: recipientColors.badge,
+                  color: recipientColors.text,
+                  border: `1px solid ${recipientColors.border}40`,
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   onMemberNameClick(message.to!);
@@ -294,7 +298,35 @@ export const ActivityItem = ({
                 {message.to}
               </button>
             ) : (
-              <span style={{ color: recipientColors?.text ?? CARD_ICON_MUTED }}>{message.to}</span>
+              <span
+                className="rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide"
+                style={{
+                  backgroundColor: recipientColors.badge,
+                  color: recipientColors.text,
+                  border: `1px solid ${recipientColors.border}40`,
+                }}
+              >
+                {message.to}
+              </span>
+            )}
+          </span>
+        ) : message.to && message.to !== message.from ? (
+          <span className="text-[10px]">
+            <span style={{ color: CARD_ICON_MUTED }}>&rarr; </span>
+            {onMemberNameClick ? (
+              <button
+                type="button"
+                className="rounded px-0.5 py-0 font-medium transition-opacity hover:opacity-90 focus:outline-none focus:ring-1 focus:ring-[var(--color-border)]"
+                style={{ color: CARD_ICON_MUTED }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMemberNameClick(message.to!);
+                }}
+              >
+                {message.to}
+              </button>
+            ) : (
+              <span style={{ color: CARD_ICON_MUTED }}>{message.to}</span>
             )}
           </span>
         ) : null}

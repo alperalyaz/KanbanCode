@@ -1,4 +1,4 @@
-import { getMemberColorByName } from '@shared/constants/memberColors';
+import { getMemberColor } from '@shared/constants/memberColors';
 
 import { MemberCard } from './MemberCard';
 
@@ -29,11 +29,11 @@ export const MemberList = ({
 
   return (
     <div className="flex flex-col gap-0.5">
-      {members.map((member) => (
+      {members.map((member, index) => (
         <MemberCard
           key={member.name}
           member={member}
-          memberColor={member.color ?? getMemberColorByName(member.name)}
+          memberColor={member.color ?? getMemberColor(index)}
           isTeamAlive={isTeamAlive}
           onClick={() => onMemberClick?.(member)}
           onSendMessage={() => onSendMessage?.(member)}
