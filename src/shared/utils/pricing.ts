@@ -61,7 +61,7 @@ export function getPricing(modelName: string): LiteLLMPricing | null {
 
 export function calculateTieredCost(tokens: number, baseRate: number, tieredRate?: number): number {
   if (tokens <= 0) return 0;
-  if (!tieredRate || tokens <= TIER_THRESHOLD) {
+  if (tieredRate == null || tokens <= TIER_THRESHOLD) {
     return tokens * baseRate;
   }
   const costBelow = TIER_THRESHOLD * baseRate;
@@ -78,7 +78,7 @@ export function calculateMessageCost(
 ): number {
   const pricing = getPricing(modelName);
   if (!pricing) {
-    if (inputTokens > 0 || outputTokens > 0) {
+    if (inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheCreationTokens > 0) {
       console.warn(`[pricing] No pricing data for model "${modelName}", cost will be $0`);
     }
     return 0;
