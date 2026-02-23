@@ -41,15 +41,20 @@ export const MemberLogsTab = ({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+    let isInitial = true;
+    const shouldAutoRefresh = taskId != null && taskStatus === 'in_progress';
 
-    void (async () => {
+    const load = async (): Promise<void> => {
       try {
         if (taskId == null && !memberName) {
           if (!cancelled) setLogs([]);
           return;
         }
+        if (isInitial) {
+          setLoading(true);
+        }
+        setError(null);
+
         const result =
           taskId != null
             ? await api.teams.getLogsForTask(teamName, taskId, {
@@ -65,14 +70,20 @@ export const MemberLogsTab = ({
           setError(e instanceof Error ? e.message : 'Unknown error');
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && isInitial) {
           setLoading(false);
         }
+        isInitial = false;
       }
-    })();
+    };
+
+    void load();
+
+    const interval = shouldAutoRefresh ? setInterval(() => void load(), 5000) : null;
 
     return () => {
       cancelled = true;
+      if (interval) clearInterval(interval);
     };
   }, [teamName, memberName, taskId, taskOwner, taskStatus]);
 
@@ -133,7 +144,9 @@ export const MemberLogsTab = ({
         No logs found
         <p className="mt-1 text-[10px] opacity-60">
           {taskId != null
-            ? 'No session activity for this task yet'
+            ? taskStatus === 'in_progress'
+              ? 'Task is in progress — waiting for session activity (auto-refreshing)...'
+              : 'No session activity for this task yet'
             : 'This member has no recorded session activity yet'}
         </p>
       </div>

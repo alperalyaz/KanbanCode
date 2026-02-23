@@ -257,9 +257,45 @@ export class TeamMemberLogsFinder {
     }
 
     const normalizedProjectPath = trimTrailingSlashes(config.projectPath);
-    const projectId = encodePath(normalizedProjectPath);
-    const baseDir = extractBaseDir(projectId);
-    const projectDir = path.join(getProjectsBasePath(), baseDir);
+    let projectId = encodePath(normalizedProjectPath);
+    let baseDir = extractBaseDir(projectId);
+    let projectDir = path.join(getProjectsBasePath(), baseDir);
+
+    // If the encoded directory doesn't exist (symlink/cwd mismatch), fall back to locating
+    // the project directory by leadSessionId which is unique and reliable.
+    try {
+      const stat = await fs.stat(projectDir);
+      if (!stat.isDirectory()) {
+        throw new Error('not a directory');
+      }
+    } catch {
+      const leadSessionId =
+        typeof config.leadSessionId === 'string' && config.leadSessionId.trim().length > 0
+          ? config.leadSessionId.trim()
+          : null;
+      if (leadSessionId) {
+        const projectsBase = getProjectsBasePath();
+        try {
+          const entries = await fs.readdir(projectsBase, { withFileTypes: true });
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const candidateDir = path.join(projectsBase, entry.name);
+            const leadPath = path.join(candidateDir, `${leadSessionId}.jsonl`);
+            try {
+              await fs.access(leadPath);
+              projectDir = candidateDir;
+              projectId = entry.name;
+              baseDir = entry.name;
+              break;
+            } catch {
+              // not this project
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
 
     const knownSessionIds = new Set<string>();
     if (config.leadSessionId) {
