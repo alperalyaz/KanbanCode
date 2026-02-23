@@ -251,6 +251,10 @@ function buildTaskStatusProtocol(teamName: string): string {
 5. NEVER skip status updates. A task is NOT done until completed status is written.
 6. To reply to a comment on a task:
    node \\"$HOME/.claude/tools/teamctl.js\\" --team \\"${teamName}\\" task comment <taskId> --text \\"<your reply>\\" --from \\"<your-name>\\"
+7. When discussing a task with a teammate and you have important findings, decisions, blockers, or progress updates — record them as a task comment:
+   node \\"$HOME/.claude/tools/teamctl.js\\" --team \\"${teamName}\\" task comment <taskId> --text \\"<summary of your finding or decision>\\" --from \\"<your-name>\\"
+   Do NOT comment on trivial coordination messages. Only comment when the information is valuable context for the task.
+8. When sending a message about a specific task, include #<taskId> in your SendMessage summary field for traceability.
 Failure to follow this protocol means the task board will show incorrect status.`;
 }
 

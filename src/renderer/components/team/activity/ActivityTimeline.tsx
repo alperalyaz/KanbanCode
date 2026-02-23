@@ -1,3 +1,5 @@
+import { getMemberColorByName } from '@shared/constants/memberColors';
+
 import { ActivityItem } from './ActivityItem';
 
 import type { InboxMessage, ResolvedTeamMember } from '@shared/types';
@@ -50,13 +52,15 @@ export const ActivityTimeline = ({
       {messages.slice(0, 200).map((message, index) => {
         const info = memberInfo.get(message.from);
         const recipientInfo = message.to ? memberInfo.get(message.to) : undefined;
+        const recipientColor =
+          recipientInfo?.color ?? (message.to ? getMemberColorByName(message.to) : undefined);
         return (
           <ActivityItem
             key={`${message.messageId ?? index}-${message.timestamp}-${message.from}`}
             message={message}
             memberRole={info?.role}
             memberColor={info?.color}
-            recipientColor={recipientInfo?.color}
+            recipientColor={recipientColor}
             onMemberNameClick={onMemberClick ? handleMemberNameClick : undefined}
             onCreateTask={onCreateTaskFromMessage}
             onReply={onReplyToMessage}
