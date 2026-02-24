@@ -216,12 +216,14 @@ export class ReviewApplierService {
 
   /**
    * Preview reject без записи на диск.
+   * Принимает snippets для consistency с rejectHunks (иначе preview и actual reject дадут разные результаты).
    */
   async previewReject(
     filePath: string,
     original: string,
     modified: string,
-    hunkIndicesToReject: number[]
+    hunkIndicesToReject: number[],
+    snippets: SnippetDiff[]
   ): Promise<{ preview: string; hasConflicts: boolean }>;
 
   /**
@@ -277,6 +279,19 @@ async rejectHunks(
   const positioned: Array<{ snippet: SnippetDiff; offset: number }> = [];
   for (const snippet of rejectedSnippets) {
     if (snippet.type === 'write-new') continue; // Обрабатывается через rejectFile()
+
+    // Guard: пустой newString (delete operation) — indexOf('') вернёт 0, сломает файл
+    if (!snippet.newString) {
+      // Delete reject = вставить oldString обратно. Требует позиционный контекст.
+      // Fallback на hunk-level для таких случаев.
+      return this.rejectHunksFallback(filePath, original, modified, hunkIndicesToReject);
+    }
+
+    // replaceAll: true — все вхождения были заменены, нужно откатить все
+    if (snippet.replaceAll) {
+      content = content.replaceAll(snippet.newString, snippet.oldString);
+      continue; // Не добавляем в positioned — уже обработано
+    }
 
     const offset = content.indexOf(snippet.newString);
     if (offset === -1) {
@@ -443,6 +458,23 @@ initializeReviewHandlers({
 ```
 `registerReviewHandlers()` и `removeReviewHandlers()` уже зарегистрированы в Phase 1.
 
+**ВАЖНО**: `removeReviewHandlers()` нужно обновить — добавить Phase 2 каналы:
+```typescript
+export function removeReviewHandlers(ipcMain: IpcMain): void {
+  // Phase 1
+  ipcMain.removeHandler(REVIEW_GET_AGENT_CHANGES);
+  ipcMain.removeHandler(REVIEW_GET_TASK_CHANGES);
+  ipcMain.removeHandler(REVIEW_GET_CHANGE_STATS);
+  // Phase 2
+  ipcMain.removeHandler(REVIEW_CHECK_CONFLICT);
+  ipcMain.removeHandler(REVIEW_REJECT_HUNKS);
+  ipcMain.removeHandler(REVIEW_REJECT_FILE);
+  ipcMain.removeHandler(REVIEW_PREVIEW_REJECT);
+  ipcMain.removeHandler(REVIEW_APPLY_DECISIONS);
+  ipcMain.removeHandler(REVIEW_GET_FILE_CONTENT);
+}
+```
+
 **ВАЖНО**: Обновить `ReviewAPI` в `src/shared/types/api.ts` — добавить Phase 2 методы:
 ```typescript
 export interface ReviewAPI {
@@ -452,9 +484,9 @@ export interface ReviewAPI {
   getChangeStats: (...) => Promise<ChangeStats>;
   // Phase 2
   checkConflict: (filePath: string, expectedModified: string) => Promise<ConflictCheckResult>;
-  rejectHunks: (filePath: string, original: string, modified: string, hunkIndices: number[], snippets: SnippetDiff[]) => Promise<RejectResult>;
-  rejectFile: (filePath: string, original: string, modified: string) => Promise<RejectResult>;
-  previewReject: (...) => Promise<{ preview: string; hasConflicts: boolean }>;
+  rejectHunks: (teamName: string, filePath: string, original: string, modified: string, hunkIndices: number[], snippets: SnippetDiff[]) => Promise<RejectResult>;
+  rejectFile: (teamName: string, filePath: string, original: string, modified: string) => Promise<RejectResult>;
+  previewReject: (filePath: string, original: string, modified: string, hunkIndices: number[], snippets: SnippetDiff[]) => Promise<{ preview: string; hasConflicts: boolean }>;
   applyDecisions: (request: ApplyReviewRequest) => Promise<ApplyReviewResult>;
   getFileContent: (teamName: string, memberName: string, filePath: string) => Promise<FileChangeWithContent>;
 }
@@ -518,22 +550,49 @@ async function handleGetFileContent(
 ): Promise<IpcResult<FileChangeWithContent>> {
   return wrapReviewHandler('review:getFileContent', async () => {
     const resolver = getContentResolver();
-    const result = await resolver.resolveFileContent(teamName, memberName, filePath);
-    return result;
+    const resolved = await resolver.resolveFileContent(teamName, memberName, filePath);
+
+    // ВАЖНО: resolver возвращает { original, modified, source },
+    // но ReviewAPI.getFileContent обещает FileChangeWithContent.
+    // Нужно маппить в полный тип:
+    const extractor = getChangeExtractor();
+    const changeSet = await extractor.getAgentChanges(teamName, memberName);
+    const fileSummary = changeSet.files.find(f => f.filePath === filePath);
+
+    return {
+      filePath,
+      relativePath: fileSummary?.relativePath ?? filePath.split('/').pop() ?? filePath,
+      snippets: fileSummary?.snippets ?? [],
+      linesAdded: fileSummary?.linesAdded ?? 0,
+      linesRemoved: fileSummary?.linesRemoved ?? 0,
+      isNewFile: fileSummary?.isNewFile ?? false,
+      originalFullContent: resolved.original,
+      modifiedFullContent: resolved.modified,
+      contentSource: resolved.source,
+    };
   });
 }
 
 async function handleRejectHunks(
   _event: IpcMainInvokeEvent,
+  teamName: string,  // для path traversal validation
   filePath: string,
   original: string,
   modified: string,
   hunkIndices: number[],
   snippets: SnippetDiff[]  // R1 fix: renderer MUST передать snippets
 ): Promise<IpcResult<RejectResult>> {
-  // Security fix: валидация что filePath внутри проекта
-  // TODO: получить projectPath из team config и проверить path.resolve(filePath).startsWith(projectPath)
   return wrapReviewHandler('review:rejectHunks', async () => {
+    // Security: path traversal protection — ОБЯЗАТЕЛЬНО перед writeFile!
+    // Получаем projectPath из team config через TeamDataService
+    const teamData = getTeamDataService(); // добавить в ReviewHandlerDeps
+    const team = await teamData.getTeam(teamName); // teamName из IPC args
+    if (team?.projectPath) {
+      const resolved = require('path').resolve(filePath);
+      if (!resolved.startsWith(team.projectPath)) {
+        throw new Error('File path outside project directory');
+      }
+    }
     const applier = getApplier();
     return await applier.rejectHunks(filePath, original, modified, hunkIndices, snippets);
   });
@@ -544,16 +603,43 @@ async function handleApplyDecisions(
   request: ApplyReviewRequest
 ): Promise<IpcResult<ApplyReviewResult>> {
   return wrapReviewHandler('review:applyDecisions', async () => {
+    // Validation: хотя бы один из taskId/memberName обязателен
+    if (!request.taskId && !request.memberName) {
+      throw new Error('Either taskId or memberName must be provided');
+    }
+
     const applier = getApplier();
     const resolver = getContentResolver();
 
     // Resolve all file contents first
     const filePaths = request.decisions.map(d => d.filePath);
+
+    // В task mode memberName может быть undefined — resolver должен определить
+    // member из task scope. В agent mode memberName обязательно задан.
+    const memberName = request.memberName ?? '';
     const contents = await resolver.resolveAllFileContents(
       request.teamName,
-      request.memberName ?? '',
+      memberName,
       filePaths
     );
+
+    // Dry-run: сначала previewReject для всех файлов, чтобы обнаружить ошибки ДО записи
+    const rejectedDecisions = request.decisions.filter(d =>
+      Object.values(d.hunkDecisions).some(v => v === 'rejected')
+    );
+    for (const decision of rejectedDecisions) {
+      const fc = contents.get(decision.filePath);
+      if (!fc?.originalFullContent || !fc?.modifiedFullContent) continue;
+      const preview = await applier.previewReject(
+        decision.filePath, fc.originalFullContent, fc.modifiedFullContent,
+        Object.entries(decision.hunkDecisions)
+          .filter(([, v]) => v === 'rejected')
+          .map(([k]) => Number(k))
+      );
+      if (preview.hasConflicts) {
+        throw new Error(`Conflict detected in ${decision.filePath}. Resolve before applying.`);
+      }
+    }
 
     return await applier.applyReviewDecisions(request, contents);
   });
@@ -579,9 +665,9 @@ review: {
     invokeIpcWithResult<RejectResult>(REVIEW_REJECT_HUNKS, filePath, original, modified, hunkIndices, snippets),
   rejectFile: (filePath: string, original: string, modified: string) =>
     invokeIpcWithResult<RejectResult>(REVIEW_REJECT_FILE, filePath, original, modified),
-  previewReject: (filePath: string, original: string, modified: string, hunkIndices: number[]) =>
+  previewReject: (filePath: string, original: string, modified: string, hunkIndices: number[], snippets: SnippetDiff[]) =>
     invokeIpcWithResult<{ preview: string; hasConflicts: boolean }>(
-      REVIEW_PREVIEW_REJECT, filePath, original, modified, hunkIndices
+      REVIEW_PREVIEW_REJECT, filePath, original, modified, hunkIndices, snippets
     ),
   applyDecisions: (request: ApplyReviewRequest) =>
     invokeIpcWithResult<ApplyReviewResult>(REVIEW_APPLY_DECISIONS, request),
@@ -622,6 +708,12 @@ export interface ChangeReviewSlice {
   /** В процессе apply */
   applying: boolean;
 
+  // Phase 1 actions (MUST be included — Phase 2 interface is full superset)
+  fetchAgentChanges: (teamName: string, memberName: string) => Promise<void>;
+  fetchTaskChanges: (teamName: string, taskId: string) => Promise<void>;
+  selectReviewFile: (filePath: string | null) => void;
+  fetchChangeStats: (teamName: string, memberName: string) => Promise<void>;
+
   // Phase 2 actions
   setHunkDecision: (filePath: string, hunkIndex: number, decision: HunkDecision) => void;
   setFileDecision: (filePath: string, decision: HunkDecision) => void;
@@ -631,10 +723,13 @@ export interface ChangeReviewSlice {
   rejectAll: () => void;
   setDiffViewMode: (mode: 'unified' | 'split') => void;
   setCollapseUnchanged: (collapse: boolean) => void;
-  fetchFileContent: (teamName: string, memberName: string, filePath: string) => Promise<void>;
+  /** memberName optional — в task mode определяется из changeSet */
+  fetchFileContent: (teamName: string, memberName: string | undefined, filePath: string) => Promise<void>;
   previewReject: (filePath: string) => Promise<{ preview: string; hasConflicts: boolean }>;
   applyReview: (teamName: string, taskId?: string, memberName?: string) => Promise<void>;
   clearChangeReview: () => void;
+  /** Инвалидировать changeStatsCache при team data refresh */
+  invalidateChangeStats: (teamName: string) => void;
 }
 ```
 
@@ -670,6 +765,22 @@ applyReview: async (teamName, taskId, memberName) => {
   try {
     const { hunkDecisions, fileDecisions, activeChangeSet } = get();
     if (!activeChangeSet) throw new Error('No active change set');
+
+    // Stale check: пересчитать computedAt и сравнить с текущим
+    // Если не совпадает — данные устарели (file watcher мог обновить между review и apply)
+    const freshSet = taskId
+      ? await api.review.getTaskChanges(teamName, taskId)
+      : await api.review.getAgentChanges(teamName, memberName!);
+    if (freshSet.computedAt !== activeChangeSet.computedAt) {
+      set({
+        applying: false,
+        applyError: 'Changes have been updated since you started reviewing. Please review again.',
+        activeChangeSet: freshSet, // обновляем данные
+        hunkDecisions: {},         // сбрасываем decisions
+        fileDecisions: {},
+      });
+      return;
+    }
 
     // Собрать decisions
     const decisions: FileReviewDecision[] = activeChangeSet.files.map(file => {
@@ -752,7 +863,7 @@ import { json } from '@codemirror/lang-json';
 import { css } from '@codemirror/lang-css';
 import { html } from '@codemirror/lang-html';
 import { xml } from '@codemirror/lang-xml';
-import { oneDark } from '@codemirror/theme-one-dark';
+// НЕ используем @codemirror/theme-one-dark — вместо этого CSS variables
 
 interface CodeMirrorDiffViewProps {
   /** Полное содержимое файла ДО изменений */
@@ -857,75 +968,108 @@ export function CodeMirrorDiffView({
      : undefined,
    ```
 
-4. **Event tracking для accept/reject — VERIFIED API:**
+4. **Event tracking для accept/reject — через mergeControls callback (НЕ Transaction аннотации!):**
+
+   **ВАЖНО**: `Transaction.userEvent` значения `"accept"`/`"revert"` — это internal implementation detail
+   `@codemirror/merge`, **не документированные публично**. Могут измениться без предупреждения.
+   Вместо перехвата аннотаций — используем `mergeControls` callback:
 
    ```typescript
-   // VERIFIED: CodeMirror merge помечает transactions через annotation:
-   // - Accept: Transaction.userEvent = "accept"
-   // - Reject: Transaction.userEvent = "revert"
-   //
-   // НЕ используем tr.isUserEvent() — используем tr.annotation()!
+   // mergeControls callback уже вызывается при клике accept/reject.
+   // Вычисляем hunk index ВНУТРИ callback через getChunks():
+   import { getChunks } from '@codemirror/merge';
 
-   EditorView.updateListener.of((update) => {
-     for (const tr of update.transactions) {
-       const userEvent = tr.annotation(Transaction.userEvent);
-       if (userEvent === 'accept') {
-         // Определяем hunk index по позиции cursor ПЕРЕД транзакцией
-         const pos = tr.startState.selection.main.head;
-         const hunkIndex = computeHunkIndexAtPos(tr.startState, pos);
-         onHunkAccepted?.(hunkIndex);
+   mergeControls: showMergeControls
+     ? (type: 'reject' | 'accept', action: (e: MouseEvent) => void) => {
+         const btn = document.createElement('button');
+         btn.className = type === 'accept' ? 'cm-merge-accept-btn' : 'cm-merge-reject-btn';
+         btn.textContent = type === 'accept' ? 'Accept' : 'Reject';
+         btn.onmousedown = (e) => {
+           // 1. Вычисляем hunk index ДО action (action изменит state)
+           const view = editorRef.current;
+           if (view) {
+             const pos = view.state.selection.main.head;
+             const hunkIndex = computeHunkIndexAtPos(view.state, pos);
+             // 2. Выполняем оригинальное CM action
+             action(e);
+             // 3. Callback в React
+             if (type === 'accept') onHunkAccepted?.(hunkIndex);
+             else onHunkRejected?.(hunkIndex);
+           } else {
+             action(e);
+           }
+         };
+         return btn;
        }
-       if (userEvent === 'revert') {
-         const pos = tr.startState.selection.main.head;
-         const hunkIndex = computeHunkIndexAtPos(tr.startState, pos);
-         onHunkRejected?.(hunkIndex);
-       }
-     }
-   });
+     : undefined,
    ```
 
-   **ВАЖНО: Chunk positions — NO PUBLIC API!**
+   Для **keyboard shortcuts** (Phase 4) — используем `acceptChunk(view, pos)` / `rejectChunk(view, pos)` программно и вызываем callback напрямую.
 
-   `@codemirror/merge` НЕ экспортирует публичный API для получения позиций chunks.
-   Нужно вычислять hunk index самостоятельно через diff algorithm:
+   **Chunk positions через `getChunks()` — PUBLIC API:**
+
+   `@codemirror/merge` экспортирует `getChunks(state)` для получения позиций chunks.
+   **НЕ используем jsdiff** для вычисления hunk позиций — jsdiff и CM используют РАЗНЫЕ diff алгоритмы, границы hunks могут не совпадать!
 
    ```typescript
-   // Вычисляем позиции hunks через jsdiff (уже установлен)
-   import { structuredPatch } from 'diff';
-
-   function computeHunkRanges(original: string, modified: string) {
-     const patch = structuredPatch('', '', original, modified);
-     // patch.hunks содержит newStart/newLines для каждого hunk
-     return patch.hunks.map((h, idx) => ({
-       index: idx,
-       fromLine: h.newStart,
-       toLine: h.newStart + h.newLines,
-     }));
-   }
+   import { getChunks, acceptChunk, rejectChunk } from '@codemirror/merge';
 
    function computeHunkIndexAtPos(state: EditorState, pos: number): number {
+     const result = getChunks(state);
+     if (!result) return -1;
+     const { chunks } = result;
      const line = state.doc.lineAt(pos).number;
-     const ranges = hunkRangesRef.current; // Кешируем при создании editor
-     for (const r of ranges) {
-       if (line >= r.fromLine && line <= r.toLine) return r.index;
-     }
-     return -1; // Not in a hunk
+     return chunks.findIndex(c => line >= c.fromB && line < c.toB);
+   }
+
+   // Программный accept/reject по позиции (вместо перехвата Transaction аннотаций):
+   function acceptHunkAtPos(view: EditorView, pos: number): boolean {
+     return acceptChunk(view, pos);
+   }
+   function rejectHunkAtPos(view: EditorView, pos: number): boolean {
+     return rejectChunk(view, pos);
    }
    ```
 
-5. **Keyboard navigation через StateCommand — VERIFIED API:**
+   **ВАЖНО**: `acceptChunk`/`rejectChunk` — публичные функции из `@codemirror/merge`.
+   Принимают `(view: EditorView, pos?: number)`, возвращают `boolean`.
+   Если `pos` не указан — работают с chunk под курсором.
+
+5. **Keyboard navigation — прямой вызов (НЕ .run()):**
 
    ```typescript
-   // goToNextChunk и goToPreviousChunk — это StateCommand объекты.
-   // Используются через keymap ИЛИ вызов .run(view):
+   // goToNextChunk и goToPreviousChunk — это функции (Command type).
+   // Используются через keymap ИЛИ прямой вызов:
 
    keymap.of([
      { key: 'Ctrl-Alt-ArrowDown', run: goToNextChunk },
      { key: 'Ctrl-Alt-ArrowUp', run: goToPreviousChunk },
    ]),
 
-   // Программный вызов:
+   // Программный вызов (прямой, НЕ через .run()!):
    // goToNextChunk(editorRef.current!) // returns boolean
+   ```
+
+6. **Unified vs Split — РАЗНЫЕ классы!**
+
+   Toggle unified ↔ split требует **полного пересоздания**:
+   - **Unified**: `new EditorView({ extensions: [unifiedMergeView({...})] })`
+   - **Split**: `new MergeView({ a: {...}, b: {...}, parent, revertControls: 'a-to-b' })`
+
+   Это разные DOM-структуры и разные lifecycle. При переключении — `destroy()` старый + создать новый.
+   В split mode: `MergeView` имеет `.a` и `.b` EditorView, accept/reject через `revertControls` (не `mergeControls`).
+
+   ```typescript
+   // Ref должен быть union:
+   const viewRef = useRef<EditorView | MergeView | null>(null);
+
+   // Helper для получения активного EditorView:
+   function getActiveEditorView(): EditorView | null {
+     const ref = viewRef.current;
+     if (!ref) return null;
+     if ('b' in ref) return ref.b; // MergeView → use "modified" side
+     return ref; // EditorView (unified)
+   }
    ```
 
 5. **Тема (CSS variables integration)**:
@@ -982,7 +1126,7 @@ export function CodeMirrorDiffView({
      '.cm-merge-reject-btn:hover': {
        backgroundColor: 'rgba(239, 68, 68, 0.35)',
      },
-   }, { dark: true });
+   }); // БЕЗ { dark: true } — CSS variables адаптируются к теме автоматически
    ```
 
 6. **Extensions assembly — VERIFIED unifiedMergeView config:**

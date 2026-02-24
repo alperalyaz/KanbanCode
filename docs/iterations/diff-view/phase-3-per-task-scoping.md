@@ -565,8 +565,10 @@ async getTaskChanges(teamName: string, taskId: string): Promise<TaskChangeSetV2>
     const boundaries = await this.boundaryParser.parseBoundaries(ref.filePath);
     const scope = boundaries.scopes.find(s => s.taskId === taskId);
     if (scope) {
-      scope.memberName = ref.memberName;
-      allScopes.push(scope);
+      // CRITICAL: НЕ мутируем scope напрямую — он из кеша TaskBoundaryParser!
+      // Мутация scope.memberName = ... портит кешированный объект при повторных вызовах.
+      const scopeCopy = { ...scope, memberName: ref.memberName };
+      allScopes.push(scopeCopy);
     }
   }
 
@@ -735,13 +737,62 @@ async hasTaskUpdateMarker(filePath: string, taskId: string): Promise<boolean> {
 // Но findLogsForTask() НЕ МЕНЯЕТСЯ.
 ```
 
-### 5. IPC (без изменений)
+### 5. Обновление `src/main/index.ts` (MODIFY)
+
+Phase 3 создаёт `TaskBoundaryParser` и передаёт в `ChangeExtractorService`:
+
+```typescript
+// В initializeIpcHandlers() или рядом с ним:
+import { TaskBoundaryParser } from '@main/services/team/TaskBoundaryParser';
+
+// Phase 1 было:
+// const changeExtractor = new ChangeExtractorService(teamMemberLogsFinder);
+
+// Phase 3 →:
+const taskBoundaryParser = new TaskBoundaryParser();
+const changeExtractor = new ChangeExtractorService(teamMemberLogsFinder, taskBoundaryParser);
+
+// ReviewHandlerDeps не меняется (Phase 3 не добавляет новых deps в review.ts).
+// TaskBoundaryParser используется ВНУТРИ ChangeExtractorService.
+```
+
+### 6. IPC (без изменений)
 
 Phase 1 уже определил `REVIEW_GET_TASK_CHANGES`. Phase 3 не добавляет новых каналов — только улучшает backend точность.
 
-### 6. Preload bridge (без изменений)
+### 6. Preload bridge и Store — обновление типов
 
 Тип `TaskChangeSet` расширяется до `TaskChangeSetV2` (backwards compatible через extends).
+
+**IMPORTANT: Обновить типы в 3 местах:**
+
+1. **Preload bridge** (`src/preload/index.ts`): generic тип IPC-вызова обновить:
+```typescript
+// Phase 1:
+getTaskChanges: (teamName: string, taskId: string) =>
+  invokeIpcWithResult<TaskChangeSet>(REVIEW_GET_TASK_CHANGES, teamName, taskId),
+// Phase 3 → заменить на:
+getTaskChanges: (teamName: string, taskId: string) =>
+  invokeIpcWithResult<TaskChangeSetV2>(REVIEW_GET_TASK_CHANGES, teamName, taskId),
+```
+
+2. **Store type** (`src/renderer/store/slices/changeReviewSlice.ts`):
+```typescript
+// Phase 2 тип:
+activeChangeSet: AgentChangeSet | TaskChangeSet | null;
+// Phase 3 → расширить:
+activeChangeSet: AgentChangeSet | TaskChangeSet | TaskChangeSetV2 | null;
+```
+
+3. **ReviewAPI** (`src/shared/types/api.ts`): return type обновить:
+```typescript
+// Phase 1:
+getTaskChanges: (teamName: string, taskId: string) => Promise<TaskChangeSet>;
+// Phase 3 →:
+getTaskChanges: (teamName: string, taskId: string) => Promise<TaskChangeSetV2>;
+```
+
+Все три изменения backwards compatible: `TaskChangeSetV2 extends TaskChangeSet`, поэтому все Phase 2 компоненты продолжают работать. Phase 3 компоненты используют `isTaskChangeSetV2()` type guard для доступа к `.scope` и `.warnings`.
 
 ---
 
@@ -959,12 +1010,15 @@ JSONL Timeline:
 | `src/main/services/team/ChangeExtractorService.ts` | MODIFY | +150 |
 | `src/main/services/team/TeamMemberLogsFinder.ts` | MODIFY | +40 |
 | `src/main/services/team/index.ts` | MODIFY | +1 |
-| `src/main/index.ts` | MODIFY | +5 (создать TaskBoundaryParser, передать в ChangeExtractorService) |
+| `src/main/index.ts` | MODIFY | +5 (см. ниже) |
+| `src/preload/index.ts` | MODIFY | +1 (generic `<TaskChangeSetV2>`) |
+| `src/shared/types/api.ts` | MODIFY | +1 (return type `TaskChangeSetV2`) |
+| `src/renderer/store/slices/changeReviewSlice.ts` | MODIFY | +1 (union type) |
 | `src/renderer/components/team/review/ConfidenceBadge.tsx` | NEW | 45 |
 | `src/renderer/components/team/review/ScopeWarningBanner.tsx` | NEW | 50 |
 | `src/renderer/components/team/review/ChangeReviewDialog.tsx` | MODIFY | +20 |
 | `src/renderer/components/team/kanban/KanbanTaskCard.tsx` | MODIFY | +15 |
-| **Итого** | 3 NEW + 6 MODIFY | ~750 |
+| **Итого** | 3 NEW + 9 MODIFY | ~760 |
 
 ---
 

@@ -135,17 +135,17 @@ useEffect(() => {
 **Scroll-to-hunk через CodeMirror API — VERIFIED:**
 
 ```typescript
-// VERIFIED: goToNextChunk и goToPreviousChunk — это StateCommand объекты.
-// Вызываются через .run(view) или через keymap:
+// VERIFIED: goToNextChunk и goToPreviousChunk — это (view: EditorView) => boolean функции.
+// Вызываются НАПРЯМУЮ, НЕ через .run():
 import { goToNextChunk, goToPreviousChunk } from '@codemirror/merge';
 
-function scrollToHunk(editorView: EditorView, direction: 'next' | 'prev') {
+function scrollToHunk(editorView: EditorView, direction: 'next' | 'prev'): boolean {
   if (direction === 'next') {
-    goToNextChunk.run(editorView);  // StateCommand.run() — НЕ прямой вызов!
+    return goToNextChunk(editorView);  // Прямой вызов! Возвращает boolean.
   } else {
-    goToPreviousChunk.run(editorView);
+    return goToPreviousChunk(editorView);
   }
-  // Возвращает boolean: true если нашёл chunk, false если конец/начало
+  // true = нашёл chunk и перешёл, false = конец/начало (нет больше chunks)
 }
 ```
 
@@ -189,6 +189,23 @@ const MAX_TOTAL_ENTRIES = 50;       // M2 fix: max number of scope keys in stora
  *
  * M2 fix: scopeKey включает version hash (computedAt) для инвалидации
  * при перевычислении changeSet.
+ *
+ * ФОРМАТ scopeKey:
+ *   - Task mode:   `task:{taskId}` (пример: `task:42`)
+ *   - Agent mode:  `agent:{memberName}` (пример: `agent:researcher`)
+ *   - Full team:   `team` (для полного team review без фильтрации)
+ *
+ * Вызывающий код генерирует scopeKey:
+ * ```typescript
+ * function buildScopeKey(mode: 'task' | 'agent' | 'team', id?: string): string {
+ *   if (mode === 'task') return `task:${id}`;
+ *   if (mode === 'agent') return `agent:${id}`;
+ *   return 'team';
+ * }
+ * ```
+ *
+ * Инвалидация: При изменении computedAt в activeChangeSet, viewed state
+ * сбрасывается через useEffect в useViewedFiles (version bump → re-read).
  */
 
 interface ViewedStorageEntry {
@@ -759,11 +776,38 @@ getGitFileLog: async (projectPath: string, filePath: string) =>
   window.electronAPI.review.getGitFileLog(projectPath, filePath),
 ```
 
-#### IPC: `src/preload/constants/ipcChannels.ts` (MODIFY)
+#### IPC channel: `src/preload/constants/ipcChannels.ts` (MODIFY)
 
 ```typescript
 // Phase 4 additions
 export const REVIEW_GET_GIT_FILE_LOG = 'review:getGitFileLog';
+```
+
+#### IPC handler: `src/main/ipc/review.ts` (MODIFY)
+
+Добавить handler и регистрацию в `registerReviewHandlers()`:
+
+```typescript
+// Handler
+async function handleGetGitFileLog(
+  _event: IpcMainInvokeEvent,
+  projectPath: string,
+  filePath: string
+): Promise<IpcResult<Array<{ hash: string; timestamp: string; message: string }>>> {
+  return wrapReviewHandler(async () => {
+    const deps = getReviewDeps();
+    if (!deps.gitFallback) {
+      return [];
+    }
+    return deps.gitFallback.getFileLog(projectPath, filePath);
+  });
+}
+
+// В registerReviewHandlers():
+ipcMain.handle(REVIEW_GET_GIT_FILE_LOG, handleGetGitFileLog);
+
+// В removeReviewHandlers():
+ipcMain.removeHandler(REVIEW_GET_GIT_FILE_LOG);
 ```
 
 #### Preload: `src/preload/index.ts` (MODIFY)
