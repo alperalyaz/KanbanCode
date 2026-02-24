@@ -18,6 +18,7 @@ import { useStore } from '@renderer/store';
 import { formatProjectPath } from '@renderer/utils/pathDisplay';
 import { buildTaskCountsByOwner } from '@renderer/utils/pathNormalize';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
+import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import {
   Bell,
   CheckCheck,
@@ -1073,7 +1074,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           }}
           onReplyToMessage={(message) => {
             setSendDialogRecipient(message.from);
-            setReplyQuote({ from: message.from, text: message.text });
+            setReplyQuote({ from: message.from, text: stripAgentBlocks(message.text) });
             setSendDialogOpen(true);
           }}
           onMessageVisible={handleMessageVisible}

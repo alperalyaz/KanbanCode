@@ -49,18 +49,28 @@ export function useDiffNavigation(
 
 | Key | Action | Context |
 |-----|--------|---------|
-| `j` или `↓` | Next hunk | Diff view focused |
-| `k` или `↑` | Previous hunk | Diff view focused |
-| `n` | Next file | Any |
-| `p` или `Shift+N` | Previous file | Any |
-| `a` | Accept current hunk | Hunk focused |
-| `x` | Reject current hunk | Hunk focused |
-| `Shift+A` | Accept all hunks in file | File selected |
-| `Shift+X` | Reject all hunks in file | File selected |
-| `Enter` | Toggle hunk collapse | Hunk focused |
-| `Escape` | Close diff dialog | Any |
+| `j` или `↓` | Next hunk | Diff dialog open |
+| `k` или `↑` | Previous hunk | Diff dialog open |
+| `n` | Next file | Diff dialog open |
+| `p` или `Shift+N` | Previous file | Diff dialog open |
+| `a` | Accept current hunk | Diff dialog open |
+| `x` | Reject current hunk | Diff dialog open |
+| `Shift+A` | Accept all hunks in file | Diff dialog open |
+| `Shift+X` | Reject all hunks in file | Diff dialog open |
+| `Enter` | Toggle hunk collapse | Diff dialog open |
+| `?` | Show shortcuts help | Diff dialog open |
+| `Escape` | Close diff dialog | Diff dialog open |
 
-**Реализация через existing pattern (useKeyboardShortcuts.ts):**
+**ВАЖНО (H1 fix): Конфликт с useKeyboardShortcuts!**
+
+Существующий `useKeyboardShortcuts.ts` уже занимает `Cmd+Shift+K` (цикл contexts).
+Все Phase 4 shortcuts работают **ТОЛЬКО внутри открытого ChangeReviewDialog** (модальный контекст).
+Это предотвращает конфликты — глобальные shortcuts не срабатывают когда dialog открыт.
+
+НЕ добавляем shortcuts в `useKeyboardShortcuts.ts` — вместо этого регистрируем
+локальный handler внутри `useDiffNavigation` hook с guard `if (!isDialogOpen) return`.
+
+**Реализация через МОДАЛЬНЫЙ контекст (НЕ useKeyboardShortcuts.ts):**
 
 ```typescript
 useEffect(() => {
@@ -122,18 +132,20 @@ useEffect(() => {
 }, [isDialogOpen, currentHunkIndex, selectedFilePath]);
 ```
 
-**Scroll-to-hunk через CodeMirror API:**
+**Scroll-to-hunk через CodeMirror API — VERIFIED:**
 
 ```typescript
-// @codemirror/merge предоставляет goToNextChunk / goToPreviousChunk
+// VERIFIED: goToNextChunk и goToPreviousChunk — это StateCommand объекты.
+// Вызываются через .run(view) или через keymap:
 import { goToNextChunk, goToPreviousChunk } from '@codemirror/merge';
 
 function scrollToHunk(editorView: EditorView, direction: 'next' | 'prev') {
   if (direction === 'next') {
-    goToNextChunk(editorView);
+    goToNextChunk.run(editorView);  // StateCommand.run() — НЕ прямой вызов!
   } else {
-    goToPreviousChunk(editorView);
+    goToPreviousChunk.run(editorView);
   }
+  // Возвращает boolean: true если нашёл chunk, false если конец/начало
 }
 ```
 
@@ -165,44 +177,104 @@ interface KeyboardShortcutsHelpProps {
 
 ```typescript
 const STORAGE_PREFIX = 'diff-viewed';
+const MAX_ENTRIES_PER_SCOPE = 5000; // M2 fix: cap per-scope entries
+const MAX_TOTAL_ENTRIES = 50;       // M2 fix: max number of scope keys in storage
 
 /**
- * Ключ = `diff-viewed:{teamName}:{taskOrMemberKey}`.
- * Значение = JSON array of viewed file paths.
+ * Ключ = `diff-viewed:{teamName}:{scopeKey}`.
+ * Значение = JSON object `{ files: string[], updatedAt: string }`.
+ *
+ * R3 FIX: Формат хранения — ВСЕГДА объект { files, updatedAt }, НЕ плоский string[].
+ * Это обеспечивает совместимость get/set/cleanup.
+ *
+ * M2 fix: scopeKey включает version hash (computedAt) для инвалидации
+ * при перевычислении changeSet.
  */
+
+interface ViewedStorageEntry {
+  files: string[];
+  updatedAt: string;
+}
+
 function getStorageKey(teamName: string, scopeKey: string): string {
   return `${STORAGE_PREFIX}:${teamName}:${scopeKey}`;
 }
 
+function parseEntry(raw: string | null): ViewedStorageEntry | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    // R3 FIX: Миграция из старого формата (plain string[]) → новый формат
+    if (Array.isArray(parsed)) {
+      return { files: parsed, updatedAt: new Date(0).toISOString() };
+    }
+    if (parsed && Array.isArray(parsed.files)) {
+      return parsed as ViewedStorageEntry;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function saveEntry(teamName: string, scopeKey: string, entry: ViewedStorageEntry): void {
+  localStorage.setItem(getStorageKey(teamName, scopeKey), JSON.stringify(entry));
+}
+
+/** M2 fix: Cleanup старых entries при переполнении */
+export function cleanupOldViewedEntries(): void {
+  const keys: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(STORAGE_PREFIX)) keys.push(key);
+  }
+  // Если слишком много — удаляем самые старые по updatedAt
+  if (keys.length > MAX_TOTAL_ENTRIES) {
+    const sorted = keys
+      .map(k => ({ key: k, entry: parseEntry(localStorage.getItem(k)) }))
+      .sort((a, b) => (a.entry?.updatedAt ?? '').localeCompare(b.entry?.updatedAt ?? ''));
+    for (let i = 0; i < sorted.length - MAX_TOTAL_ENTRIES; i++) {
+      localStorage.removeItem(sorted[i].key);
+    }
+  }
+}
+
 /** Получить Set просмотренных файлов */
 export function getViewedFiles(teamName: string, scopeKey: string): Set<string> {
-  try {
-    const raw = localStorage.getItem(getStorageKey(teamName, scopeKey));
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw) as string[];
-    return new Set(arr);
-  } catch {
-    return new Set();
-  }
+  const entry = parseEntry(localStorage.getItem(getStorageKey(teamName, scopeKey)));
+  return entry ? new Set(entry.files) : new Set();
 }
 
 /** Отметить файл как просмотренный */
 export function markFileViewed(teamName: string, scopeKey: string, filePath: string): void {
   const set = getViewedFiles(teamName, scopeKey);
   set.add(filePath);
-  localStorage.setItem(getStorageKey(teamName, scopeKey), JSON.stringify([...set]));
+  saveEntry(teamName, scopeKey, {
+    files: [...set],
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 /** Отметить файл как НЕ просмотренный */
 export function unmarkFileViewed(teamName: string, scopeKey: string, filePath: string): void {
   const set = getViewedFiles(teamName, scopeKey);
   set.delete(filePath);
-  localStorage.setItem(getStorageKey(teamName, scopeKey), JSON.stringify([...set]));
+  if (set.size === 0) {
+    localStorage.removeItem(getStorageKey(teamName, scopeKey));
+    return;
+  }
+  saveEntry(teamName, scopeKey, {
+    files: [...set],
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 /** Отметить все файлы как просмотренные */
 export function markAllViewed(teamName: string, scopeKey: string, filePaths: string[]): void {
-  localStorage.setItem(getStorageKey(teamName, scopeKey), JSON.stringify(filePaths));
+  saveEntry(teamName, scopeKey, {
+    files: filePaths,
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 /** Сбросить все отметки */
@@ -463,6 +535,9 @@ import { promisify } from 'util';
 const execFileAsync = promisify(execFile);
 
 export class GitDiffFallback {
+  // M3 fix: кеш isGitRepo результатов — один exec per projectPath за сессию
+  private gitRepoCache = new Map<string, boolean>();
+
   /**
    * Получить содержимое файла из конкретного коммита.
    * Используется когда file-history-snapshot недоступен.
@@ -557,14 +632,20 @@ export class GitDiffFallback {
 
   /**
    * Проверить: является ли projectPath git repo.
+   * M3 fix: результат кешируется per projectPath (один exec за сессию).
    */
   async isGitRepo(projectPath: string): Promise<boolean> {
+    if (this.gitRepoCache.has(projectPath)) {
+      return this.gitRepoCache.get(projectPath)!;
+    }
     try {
       await execFileAsync('git', ['rev-parse', '--is-inside-work-tree'], {
         cwd: projectPath,
       });
+      this.gitRepoCache.set(projectPath, true);
       return true;
     } catch {
+      this.gitRepoCache.set(projectPath, false);
       return false;
     }
   }
@@ -629,6 +710,53 @@ private async tryGitFallback(filePath: string): Promise<...> {
 
   return { original, modified };
 }
+```
+
+#### Интеграция в `src/main/index.ts` (MODIFY)
+
+```typescript
+// В initializeIpcHandlers():
+// GitDiffFallback создаётся здесь и передаётся в review handlers
+import { GitDiffFallback } from '@main/services/team/GitDiffFallback';
+
+const gitDiffFallback = new GitDiffFallback();
+
+// Передать gitFallback в ReviewHandlerDeps (через 10-й позиционный параметр):
+// initializeReviewHandlers принимает deps — добавляем gitFallback
+// (ReviewHandlerDeps.gitFallback? добавлен в Phase 4)
+```
+
+**ВАЖНО**: `ReviewHandlerDeps` расширяется в Phase 4:
+```typescript
+// В review.ts
+interface ReviewHandlerDeps {
+  extractor: ChangeExtractorService;
+  applier?: ChangeApplierService;       // Phase 2
+  contentResolver?: FileContentResolver; // Phase 2
+  gitFallback?: GitDiffFallback;         // Phase 4
+}
+```
+
+`FileContentResolver` конструктор также расширяется для принятия optional `GitDiffFallback`:
+```typescript
+// В FileContentResolver.ts
+constructor(
+  private readonly logsFinder: TeamMemberLogsFinder,
+  private readonly gitFallback?: GitDiffFallback,  // Phase 4 optional
+) {}
+```
+
+#### Обновление `src/shared/types/api.ts` и `src/renderer/api/httpClient.ts` (MODIFY)
+
+Добавить Phase 4 метод в `ReviewAPI` interface:
+```typescript
+// В ReviewAPI (api.ts):
+getGitFileLog: (projectPath: string, filePath: string) =>
+  Promise<Array<{ hash: string; timestamp: string; message: string }>>;
+
+// В HttpAPIClient (httpClient.ts):
+getGitFileLog: async (projectPath: string, filePath: string) =>
+  window.electronAPI.review.getGitFileLog(projectPath, filePath),
 ```
 
 #### IPC: `src/preload/constants/ipcChannels.ts` (MODIFY)
@@ -724,10 +852,13 @@ return (
 | `src/preload/constants/ipcChannels.ts` | MODIFY | +1 |
 | `src/preload/index.ts` | MODIFY | +5 |
 | `src/main/services/team/index.ts` | MODIFY | +1 |
+| `src/main/index.ts` | MODIFY | +5 |
+| `src/shared/types/api.ts` | MODIFY | +5 |
+| `src/renderer/api/httpClient.ts` | MODIFY | +5 |
 | **Feature 5: Auto-Viewed** | | |
 | `src/renderer/components/team/review/CodeMirrorDiffView.tsx` | MODIFY | +25 |
 | `src/renderer/components/team/review/ReviewToolbar.tsx` | MODIFY | +15 |
-| **Итого** | 7 NEW + 14 MODIFY | ~960 |
+| **Итого** | 7 NEW + 17 MODIFY | ~975 |
 
 ---
 

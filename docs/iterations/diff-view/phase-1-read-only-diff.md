@@ -58,7 +58,7 @@ export interface TaskChangeSet {
   totalLinesAdded: number;
   totalLinesRemoved: number;
   totalFiles: number;
-  confidence: 'high' | 'medium' | 'low';
+  confidence: 'high' | 'medium' | 'low' | 'fallback';  // 'fallback' добавлен для Phase 3 Tier 4
   computedAt: string;
 }
 
@@ -110,7 +110,14 @@ export class ChangeExtractorService {
    ```
 5. **Пропуск ошибок**: Следующий за tool_use блок `tool_result` с `is_error: true` → пропускаем этот tool_use
 6. **Фильтрация proxy_ префикса**: Имена инструментов приходят как `proxy_Edit` — нужно strip prefix (паттерн из MemberStatsComputer)
-7. **Подсчёт строк**: `linesAdded = newString.split('\n').length - oldString.split('\n').length` (для добавленных), аналогично для removed
+7. **Подсчёт строк** (через `jsdiff.diffLines`):
+   ```typescript
+   import { diffLines } from 'diff';
+   const changes = diffLines(oldString, newString);
+   const linesAdded = changes.filter(c => c.added).reduce((sum, c) => sum + (c.count ?? 0), 0);
+   const linesRemoved = changes.filter(c => c.removed).reduce((sum, c) => sum + (c.count ?? 0), 0);
+   ```
+   **НЕ использовать** `newString.split('\n').length - oldString.split('\n').length` — это даёт "net difference", а не отдельные added/removed. Может давать отрицательные числа.
 
 **Task scoping (для `getTaskChanges`):**
 
@@ -142,14 +149,32 @@ export const REVIEW_GET_CHANGE_STATS = 'review:getChangeStats';
 
 ```typescript
 import { IpcMain, IpcMainInvokeEvent } from 'electron';
-import { IpcResult } from '@shared/types/api';
+import type { IpcResult } from '@shared/types'; // IpcResult живёт в @shared/types/ipc.ts, barrel через @shared/types
 import { ChangeExtractorService } from '@main/services/team/ChangeExtractorService';
 import { REVIEW_GET_AGENT_CHANGES, REVIEW_GET_TASK_CHANGES, REVIEW_GET_CHANGE_STATS } from '@preload/constants/ipcChannels';
+import { createLogger } from '@shared/utils/logger';
+
+const logger = createLogger('IPC:review');
+
+// --- Module-level state (паттерн из teams.ts) ---
 
 let changeExtractor: ChangeExtractorService | null = null;
 
-export function initializeReviewHandlers(service: ChangeExtractorService): void {
-  changeExtractor = service;
+function getChangeExtractor(): ChangeExtractorService {
+  if (!changeExtractor) throw new Error('Review handlers not initialized');
+  return changeExtractor;
+}
+
+// --- Forward-compatible config object (Phase 2/3/4 добавят новые сервисы) ---
+
+interface ReviewHandlerDeps {
+  extractor: ChangeExtractorService;
+  // Phase 2 добавит: applier?: ReviewApplierService; contentResolver?: FileContentResolver;
+  // Phase 4 добавит: gitFallback?: GitDiffFallback;
+}
+
+export function initializeReviewHandlers(deps: ReviewHandlerDeps): void {
+  changeExtractor = deps.extractor;
 }
 
 export function registerReviewHandlers(ipcMain: IpcMain): void {
@@ -164,19 +189,140 @@ export function removeReviewHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(REVIEW_GET_CHANGE_STATS);
 }
 
-// Handlers follow wrapTeamHandler pattern from teams.ts
+// --- Local wrapReviewHandler (копия wrapTeamHandler из teams.ts, НЕ экспортируется) ---
+
+async function wrapReviewHandler<T>(operation: string, handler: () => Promise<T>): Promise<IpcResult<T>> {
+  try {
+    const data = await handler();
+    return { success: true, data };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`Review handler error [${operation}]:`, message);
+    return { success: false, error: message };
+  }
+}
+
+// --- Handlers ---
+
+async function handleGetAgentChanges(
+  _event: IpcMainInvokeEvent,
+  teamName: string,
+  memberName: string
+): Promise<IpcResult<AgentChangeSet>> {
+  return wrapReviewHandler('getAgentChanges', () =>
+    getChangeExtractor().getAgentChanges(teamName, memberName)
+  );
+}
+
+// ... аналогично handleGetTaskChanges, handleGetChangeStats
 ```
 
 ### 5. Регистрация в main process
 
-В `src/main/index.ts` (или где инициализируются IPC):
-- Создать `ChangeExtractorService` с зависимостью `TeamMemberLogsFinder`
-- Вызвать `initializeReviewHandlers(changeExtractor)`
-- Вызвать `registerReviewHandlers(ipcMain)` после team handlers
+**Файл: `src/main/ipc/handlers.ts`** — единственное место регистрации ВСЕХ IPC handlers.
 
-### 6. Preload bridge: `src/preload/index.ts` (MODIFY)
+**Шаг 1: Создание сервиса** — в `src/main/index.ts`, функция `initializeServices()` (после строки ~305 где создаются team services):
+```typescript
+// После создания teamMemberLogsFinder и memberStatsComputer:
+const changeExtractor = new ChangeExtractorService(teamMemberLogsFinder);
+```
 
-Добавить в `electronAPI`:
+**Шаг 2: Инициализация** — в `src/main/ipc/handlers.ts`, функция `initializeIpcHandlers()`.
+
+**ВАЖНО**: `initializeIpcHandlers()` использует ПОЗИЦИОННЫЕ параметры (9 штук, строки 76-92).
+НЕ менять сигнатуру на объект! Вместо этого добавить `changeExtractor` как 10-й позиционный параметр:
+
+```typescript
+// handlers.ts — расширение сигнатуры:
+export function initializeIpcHandlers(
+  registry: ServiceContextRegistry,
+  updater: UpdaterService,
+  sshManager: SshConnectionManager,
+  teamDataService: TeamDataService,
+  teamProvisioningService: TeamProvisioningService,
+  teamMemberLogsFinder: TeamMemberLogsFinder,
+  memberStatsComputer: MemberStatsComputer,
+  contextCallbacks: { ... },
+  httpServerDeps?: { ... },
+  changeExtractor?: ChangeExtractorService  // ← Phase 1 addition (optional для backward compat)
+): void {
+  // ... existing initialization ...
+  if (changeExtractor) {
+    initializeReviewHandlers({ extractor: changeExtractor });
+  }
+```
+
+```typescript
+// index.ts — добавить 10-й аргумент при вызове:
+initializeIpcHandlers(
+  contextRegistry,
+  updaterService,
+  sshConnectionManager,
+  teamDataService,
+  teamProvisioningService,
+  teamMemberLogsFinder,
+  memberStatsComputer,
+  contextCallbacks,
+  httpServerDeps,
+  changeExtractor  // ← Phase 1
+);
+```
+
+**Шаг 3: Регистрация** — в `src/main/ipc/handlers.ts`, после `registerTeamHandlers(ipcMain)` (строка ~130):
+```typescript
+registerReviewHandlers(ipcMain);
+```
+
+**Шаг 4: Cleanup** — в `src/main/ipc/handlers.ts`, функция `removeIpcHandlers()` (после `removeTeamHandlers(ipcMain)`, строка ~155):
+```typescript
+removeReviewHandlers(ipcMain);
+```
+
+**Шаг 5: Import** — в `src/main/ipc/handlers.ts`, добавить import:
+```typescript
+import { initializeReviewHandlers, registerReviewHandlers, removeReviewHandlers } from './review';
+```
+
+### 6. Preload bridge + ElectronAPI типы
+
+#### 6a. Типы: `src/shared/types/api.ts` (MODIFY)
+
+**ВАЖНО**: `ElectronAPI` интерфейс (строки ~406-519) типизирует `window.electronAPI`.
+Без добавления `review` — TypeScript не пропустит `api.review.*` вызовы.
+
+```typescript
+// В src/shared/types/api.ts добавить:
+
+import type { AgentChangeSet, TaskChangeSet, ChangeStats } from './review';
+
+export interface ReviewAPI {
+  getAgentChanges: (teamName: string, memberName: string) => Promise<AgentChangeSet>;
+  getTaskChanges: (teamName: string, taskId: string) => Promise<TaskChangeSet>;
+  getChangeStats: (teamName: string, memberName: string) => Promise<ChangeStats>;
+}
+
+// В ElectronAPI интерфейс добавить поле:
+export interface ElectronAPI {
+  // ... existing fields ...
+  review: ReviewAPI;
+}
+```
+
+#### 6b. HttpAPIClient: `src/renderer/api/httpClient.ts` (MODIFY)
+
+Для browser mode (SSH/remote) нужны заглушки:
+```typescript
+// В HttpAPIClient class добавить:
+review = {
+  getAgentChanges: async () => { throw new Error('Review not available in browser mode'); },
+  getTaskChanges: async () => { throw new Error('Review not available in browser mode'); },
+  getChangeStats: async () => { throw new Error('Review not available in browser mode'); },
+};
+```
+
+#### 6c. Preload: `src/preload/index.ts` (MODIFY)
+
+Добавить в `electronAPI` объект:
 ```typescript
 review: {
   getAgentChanges: (teamName: string, memberName: string) =>
@@ -215,6 +361,17 @@ export interface ChangeReviewSlice {
 **Паттерн**: Копируем из teamSlice — loading/error/data + async actions с try/catch.
 
 Зарегистрировать в `src/renderer/store/index.ts` как новый slice.
+
+**ВАЖНО**: Также обновить `src/renderer/store/types.ts`:
+```typescript
+import type { ChangeReviewSlice } from './slices/changeReviewSlice';
+
+export type AppState = ProjectSlice &
+  // ... existing slices ...
+  UpdateSlice &
+  ChangeReviewSlice;  // ← Phase 1 addition
+```
+Без этого `useStore().fetchAgentChanges` не будет доступен в TypeScript.
 
 ### 8. Компоненты
 
@@ -266,21 +423,25 @@ export interface ChangeReviewSlice {
 | Файл | Тип | ~LOC |
 |------|-----|---:|
 | `src/shared/types/review.ts` | NEW | 80 |
+| `src/shared/types/api.ts` | MODIFY | +15 (ReviewAPI interface + ElectronAPI field) |
 | `src/main/services/team/ChangeExtractorService.ts` | NEW | 350 |
-| `src/main/ipc/review.ts` | NEW | 80 |
+| `src/main/ipc/review.ts` | NEW | 100 (с wrapReviewHandler) |
+| `src/main/ipc/handlers.ts` | MODIFY | +10 (import + init + register + remove) |
 | `src/main/services/team/index.ts` | MODIFY | +1 |
 | `src/main/index.ts` | MODIFY | +10 |
 | `src/preload/constants/ipcChannels.ts` | MODIFY | +3 |
 | `src/preload/index.ts` | MODIFY | +10 |
+| `src/renderer/api/httpClient.ts` | MODIFY | +8 (review stubs) |
 | `src/renderer/store/slices/changeReviewSlice.ts` | NEW | 100 |
 | `src/renderer/store/index.ts` | MODIFY | +5 |
+| `src/renderer/store/types.ts` | MODIFY | +2 (import + AppState intersection) |
 | `src/renderer/components/team/review/ChangeReviewDialog.tsx` | NEW | 150 |
 | `src/renderer/components/team/review/ReviewFileTree.tsx` | NEW | 180 |
-| `src/renderer/components/team/review/ReviewDiffContent.tsx` | NEW | 250 |
+| `src/renderer/components/team/review/ReviewDiffContent.tsx` | NEW | 250 (throwaway — заменяется в Phase 2 на CodeMirror) |
 | `src/renderer/components/team/review/ChangeStatsBadge.tsx` | NEW | 40 |
 | `src/renderer/components/team/kanban/KanbanTaskCard.tsx` | MODIFY | +30 |
 | `src/renderer/components/team/TeamDetailView.tsx` | MODIFY | +40 |
-| **Итого** | 8 NEW + 7 MODIFY | ~1,330 |
+| **Итого** | 8 NEW + 10 MODIFY | ~1,430 |
 
 ---
 

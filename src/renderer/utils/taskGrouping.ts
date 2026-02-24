@@ -19,6 +19,42 @@ function getEffectiveDate(task: GlobalTask): string | undefined {
   return task.updatedAt ?? task.createdAt;
 }
 
+function getEffectiveTs(task: GlobalTask): number {
+  const d = getEffectiveDate(task);
+  return d ? new Date(d).getTime() : 0;
+}
+
+/**
+ * Build a map: teamName → max effective timestamp among its tasks.
+ * Used to sort team sub-groups by most recent activity (not alphabetically).
+ */
+function buildTeamMaxTs(tasks: GlobalTask[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const t of tasks) {
+    const ts = getEffectiveTs(t);
+    const cur = m.get(t.teamName) ?? 0;
+    if (ts > cur) m.set(t.teamName, ts);
+  }
+  return m;
+}
+
+/**
+ * Sort comparator: teams ordered by most recent task (desc),
+ * within the same team — by individual task date (desc).
+ */
+function compareByTeamFreshness(
+  a: GlobalTask,
+  b: GlobalTask,
+  teamMaxTs: Map<string, number>
+): number {
+  if (a.teamName !== b.teamName) {
+    const teamTsA = teamMaxTs.get(a.teamName) ?? 0;
+    const teamTsB = teamMaxTs.get(b.teamName) ?? 0;
+    return teamTsB - teamTsA;
+  }
+  return getEffectiveTs(b) - getEffectiveTs(a);
+}
+
 function getDateCategory(dateStr: string | undefined): DateCategory {
   if (!dateStr) return 'Older';
   const d = new Date(dateStr);
@@ -43,15 +79,8 @@ export function groupTasksByDate(tasks: GlobalTask[]): DateGroupedTasks {
   }
 
   for (const cat of DATE_CATEGORY_ORDER) {
-    groups[cat].sort((a, b) => {
-      const cmp = a.teamName.localeCompare(b.teamName);
-      if (cmp !== 0) return cmp;
-      const dateA = getEffectiveDate(a);
-      const dateB = getEffectiveDate(b);
-      const tsA = dateA ? new Date(dateA).getTime() : 0;
-      const tsB = dateB ? new Date(dateB).getTime() : 0;
-      return tsB - tsA;
-    });
+    const teamTs = buildTeamMaxTs(groups[cat]);
+    groups[cat].sort((a, b) => compareByTeamFreshness(a, b, teamTs));
   }
 
   return groups;
@@ -94,15 +123,8 @@ export function groupTasksByProject(tasks: GlobalTask[]): ProjectTaskGroup[] {
   }
 
   for (const entry of byKey.values()) {
-    entry.tasks.sort((a, b) => {
-      const cmp = a.teamName.localeCompare(b.teamName);
-      if (cmp !== 0) return cmp;
-      const dateA = getEffectiveDate(a);
-      const dateB = getEffectiveDate(b);
-      const tsA = dateA ? new Date(dateA).getTime() : 0;
-      const tsB = dateB ? new Date(dateB).getTime() : 0;
-      return tsB - tsA;
-    });
+    const teamTs = buildTeamMaxTs(entry.tasks);
+    entry.tasks.sort((a, b) => compareByTeamFreshness(a, b, teamTs));
   }
 
   const groups: ProjectTaskGroup[] = [];
@@ -112,18 +134,8 @@ export function groupTasksByProject(tasks: GlobalTask[]): ProjectTaskGroup[] {
   }
 
   groups.sort((a, b) => {
-    const tsA = Math.max(
-      ...a.tasks.map((t) => {
-        const d = getEffectiveDate(t);
-        return d ? new Date(d).getTime() : 0;
-      })
-    );
-    const tsB = Math.max(
-      ...b.tasks.map((t) => {
-        const d = getEffectiveDate(t);
-        return d ? new Date(d).getTime() : 0;
-      })
-    );
+    const tsA = Math.max(...a.tasks.map(getEffectiveTs));
+    const tsB = Math.max(...b.tasks.map(getEffectiveTs));
     return tsB - tsA;
   });
 

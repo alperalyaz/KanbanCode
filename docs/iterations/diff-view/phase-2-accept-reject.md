@@ -9,8 +9,8 @@ pnpm add @codemirror/merge @codemirror/state @codemirror/view
 pnpm add @codemirror/lang-javascript @codemirror/lang-python @codemirror/lang-json
 pnpm add @codemirror/lang-css @codemirror/lang-html @codemirror/lang-xml
 pnpm add @codemirror/theme-one-dark
-pnpm add diff           # jsdiff v8 — applyPatch, reversePatch
-pnpm add node-diff3     # Three-way merge для конфликтов
+pnpm add diff           # jsdiff v8 — structuredPatch, applyPatch (НЕТ reversePatch!)
+pnpm add node-diff3     # Three-way merge для конфликтов (diff3Merge)
 ```
 
 **Примечание**: `react-codemirror-merge` НЕ используем — пишем свой React wrapper для полного контроля над lifecycle и event handling.
@@ -79,7 +79,8 @@ export interface FileChangeWithContent extends FileChangeSummary {
   /** Полное содержимое файла ПОСЛЕ изменений (для CodeMirror modified) */
   modifiedFullContent: string | null;
   /** Источник original content */
-  contentSource: 'file-history' | 'snippet-reconstruction' | 'disk-current' | 'unavailable';
+  contentSource: 'file-history' | 'snippet-reconstruction' | 'disk-current' | 'git-fallback' | 'unavailable';
+  // 'git-fallback' добавлен для Phase 4 Git Fallback feature
 }
 ```
 
@@ -116,7 +117,7 @@ export class FileContentResolver {
   ): Promise<{
     original: string | null;
     modified: string | null;
-    source: 'file-history' | 'snippet-reconstruction' | 'disk-current' | 'unavailable';
+    source: 'file-history' | 'snippet-reconstruction' | 'disk-current' | 'git-fallback' | 'unavailable';
   }>;
 
   /**
@@ -235,36 +236,122 @@ export class ReviewApplierService {
 
 **Reject algorithm детально:**
 
+У нас есть два подхода. **PRIMARY** — snippet-level replace (простой и надёжный). **FALLBACK** — hunk-level inverse patch (для случаев когда snippet-chain неполный).
+
+**PRIMARY: Snippet-level replace (рекомендуемый)**
+
 ```typescript
-// Шаг 1: Вычислить structured patch
-const patch = Diff.structuredPatch('file', 'file', original, modified);
-// patch.hunks = [ { oldStart, oldLines, newStart, newLines, lines: ['+', '-', ' '] } ]
+// Простейший подход: у нас уже есть snippets с (oldString, newString)
+// Reject = заменить newString обратно на oldString
+async rejectHunks(
+  filePath: string,
+  original: string,
+  modified: string,
+  hunkIndicesToReject: number[],
+  snippets: SnippetDiff[]
+): Promise<RejectResult> {
+  // 1. Прочитать текущий файл с диска
+  let content = await readFile(filePath, 'utf8');
 
-// Шаг 2: Отфильтровать только rejected hunks
-const rejectedPatch = {
-  ...patch,
-  hunks: patch.hunks.filter((_, idx) => hunkIndicesToReject.includes(idx))
-};
+  // 2. Проверить: файл не изменён с момента agent changes?
+  if (content !== modified) {
+    // Конфликт — файл был модифицирован
+    return this.resolveWithThreeWayMerge(original, content, modified, hunkIndicesToReject, snippets);
+  }
 
-// Шаг 3: Reverse patch (откат)
-// jsdiff.applyPatch НЕ имеет reversed: true!
-// Нужно вручную инвертировать: '+' → '-', '-' → '+', swap oldStart↔newStart
-const inversePatch = invertPatch(rejectedPatch);
+  // 3. Применить snippet-level replace для rejected hunks
+  //
+  // R2 FIX: Используем ПОЗИЦИОННЫЙ reverse (не хронологический!):
+  // - Сначала находим ВСЕ позиции через indexOf
+  // - Сортируем по позиции УБЫВАНИЯ (от конца файла к началу)
+  // - Применяем замены — каждая не сдвигает позиции предыдущих
+  //
+  // Также: если newString встречается в файле несколько раз,
+  // используем позицию ближайшую к ожидаемой (на основе snippet order).
 
-// Шаг 4: Применить к modified content
-const result = Diff.applyPatch(modified, inversePatch);
-if (result === false) {
-  // Patch не применился — конфликт
-  return threeWayMerge(original, currentDisk, targetContent);
+  const rejectedSnippets = hunkIndicesToReject
+    .map(idx => snippets[idx])
+    .filter(Boolean);
+
+  // Найти позиции ПЕРЕД заменами
+  const positioned: Array<{ snippet: SnippetDiff; offset: number }> = [];
+  for (const snippet of rejectedSnippets) {
+    if (snippet.type === 'write-new') continue; // Обрабатывается через rejectFile()
+
+    const offset = content.indexOf(snippet.newString);
+    if (offset === -1) {
+      // Snippet не найден — fallback на hunk-level
+      return this.rejectHunksFallback(filePath, original, modified, hunkIndicesToReject);
+    }
+
+    // Проверка уникальности: если есть второе вхождение, это опасно
+    const secondOccurrence = content.indexOf(snippet.newString, offset + 1);
+    if (secondOccurrence !== -1 && snippet.newString.length < 20) {
+      // Короткий неуникальный snippet — fallback (безопаснее)
+      return this.rejectHunksFallback(filePath, original, modified, hunkIndicesToReject);
+    }
+
+    positioned.push({ snippet, offset });
+  }
+
+  // Сортировка по позиции УБЫВАНИЯ (от конца к началу)
+  positioned.sort((a, b) => b.offset - a.offset);
+
+  for (const { snippet, offset } of positioned) {
+    content = content.slice(0, offset) + snippet.oldString + content.slice(offset + snippet.newString.length);
+  }
+
+  // 4. Записать результат
+  await writeFile(filePath, content, 'utf8');
+  return { success: true, newContent: content, hadConflicts: false };
 }
 ```
 
-**Инвертирование patch:**
+**FALLBACK: Hunk-level inverse patch (когда snippets неполные)**
+
+```typescript
+// Используется когда snippet.newString не найден в файле (файл изменён после agent)
+private async rejectHunksFallback(
+  filePath: string,
+  original: string,
+  modified: string,
+  hunkIndicesToReject: number[]
+): Promise<RejectResult> {
+  // Шаг 1: Вычислить structured patch
+  const patch = Diff.structuredPatch('file', 'file', original, modified);
+
+  // Шаг 2: Отфильтровать только rejected hunks
+  const rejectedPatch = {
+    ...patch,
+    hunks: patch.hunks.filter((_, idx) => hunkIndicesToReject.includes(idx))
+  };
+
+  // Шаг 3: Инвертировать patch вручную (jsdiff НЕ имеет reversed option!)
+  const inversePatch = invertPatch(rejectedPatch);
+
+  // Шаг 4: Применить к modified content
+  const result = Diff.applyPatch(modified, inversePatch);
+  if (result === false) {
+    // Patch не применился — three-way merge
+    const currentDisk = await readFile(filePath, 'utf8');
+    return this.resolveWithThreeWayMerge(original, currentDisk, modified, hunkIndicesToReject, []);
+  }
+
+  await writeFile(filePath, result, 'utf8');
+  return { success: true, newContent: result, hadConflicts: false };
+}
+```
+
+**Инвертирование patch (verified jsdiff API):**
 
 ```typescript
 function invertPatch(patch: Diff.ParsedDiff): Diff.ParsedDiff {
   return {
     ...patch,
+    oldFileName: patch.newFileName,
+    newFileName: patch.oldFileName,
+    oldHeader: patch.newHeader ?? '',
+    newHeader: patch.oldHeader ?? '',
     hunks: patch.hunks.map(hunk => ({
       oldStart: hunk.newStart,
       oldLines: hunk.newLines,
@@ -273,17 +360,24 @@ function invertPatch(patch: Diff.ParsedDiff): Diff.ParsedDiff {
       lines: hunk.lines.map(line => {
         if (line.startsWith('+')) return '-' + line.slice(1);
         if (line.startsWith('-')) return '+' + line.slice(1);
-        return line; // context lines unchanged
+        return line; // context lines (prefix ' ') — без изменений
       })
     }))
   };
 }
 ```
 
-**Three-way merge (при конфликтах):**
+**Three-way merge (при конфликтах) — verified node-diff3 API:**
 
 ```typescript
 import { diff3Merge } from 'node-diff3';
+
+// VERIFIED API: diff3Merge(a, o, b, options?)
+// a = "ours" (changed version A)
+// o = "original" (base)
+// b = "theirs" (changed version B)
+// Принимает string[] (массив строк) ИЛИ строки
+// Возвращает: Array<{ ok: string[] } | { conflict: { a: string[], o: string[], b: string[] } }>
 
 function threeWayMerge(
   base: string,      // Original content before agent changes
@@ -291,9 +385,9 @@ function threeWayMerge(
   theirs: string     // What we want after reject
 ): { content: string; hasConflicts: boolean } {
   const result = diff3Merge(
-    ours.split('\n'),
-    base.split('\n'),
-    theirs.split('\n')
+    ours.split('\n'),     // a = current disk
+    base.split('\n'),     // o = original (base)
+    theirs.split('\n')    // b = target after reject
   );
 
   let hasConflicts = false;
@@ -302,12 +396,14 @@ function threeWayMerge(
   for (const part of result) {
     if ('ok' in part) {
       lines.push(...part.ok);
-    } else {
+    } else if ('conflict' in part) {
       hasConflicts = true;
       lines.push('<<<<<<< Current (yours)');
-      lines.push(...(part.conflict?.a ?? []));
+      lines.push(...(part.conflict.a ?? []));
+      lines.push('||||||| Original');
+      lines.push(...(part.conflict.o ?? []));   // node-diff3 также возвращает .o (original)
       lines.push('=======');
-      lines.push(...(part.conflict?.b ?? []));
+      lines.push(...(part.conflict.b ?? []));
       lines.push('>>>>>>> Reverted (rejected changes)');
     }
   }
@@ -330,20 +426,72 @@ export const REVIEW_GET_FILE_CONTENT = 'review:getFileContent';
 
 ### 5. IPC хендлеры: `src/main/ipc/review.ts` (MODIFY — расширение Phase 1)
 
+**Регистрация**: В `src/main/index.ts` `initializeServices()` создать новые сервисы:
 ```typescript
-// Добавляем к Phase 1 хендлерам
+const fileContentResolver = new FileContentResolver(teamMemberLogsFinder);
+const reviewApplier = new ReviewApplierService();
+```
+
+Обновить вызов `initializeReviewHandlers()` — Phase 1 использует объект-конфиг `ReviewHandlerDeps`, Phase 2 добавляет optional fields:
+```typescript
+// index.ts — Phase 2 расширение (вместо только { extractor: changeExtractor }):
+initializeReviewHandlers({
+  extractor: changeExtractor,
+  applier: reviewApplier,
+  contentResolver: fileContentResolver,
+});
+```
+`registerReviewHandlers()` и `removeReviewHandlers()` уже зарегистрированы в Phase 1.
+
+**ВАЖНО**: Обновить `ReviewAPI` в `src/shared/types/api.ts` — добавить Phase 2 методы:
+```typescript
+export interface ReviewAPI {
+  // Phase 1
+  getAgentChanges: (...) => Promise<AgentChangeSet>;
+  getTaskChanges: (...) => Promise<TaskChangeSet>;
+  getChangeStats: (...) => Promise<ChangeStats>;
+  // Phase 2
+  checkConflict: (filePath: string, expectedModified: string) => Promise<ConflictCheckResult>;
+  rejectHunks: (filePath: string, original: string, modified: string, hunkIndices: number[], snippets: SnippetDiff[]) => Promise<RejectResult>;
+  rejectFile: (filePath: string, original: string, modified: string) => Promise<RejectResult>;
+  previewReject: (...) => Promise<{ preview: string; hasConflicts: boolean }>;
+  applyDecisions: (request: ApplyReviewRequest) => Promise<ApplyReviewResult>;
+  getFileContent: (teamName: string, memberName: string, filePath: string) => Promise<FileChangeWithContent>;
+}
+```
+
+Также обновить `HttpAPIClient` — добавить стубы для Phase 2 методов.
+
+```typescript
+// Расширяем Phase 1 хендлеры
 
 let reviewApplier: ReviewApplierService | null = null;
 let fileContentResolver: FileContentResolver | null = null;
 
-export function initializeReviewHandlers(
-  extractor: ChangeExtractorService,
-  applier: ReviewApplierService,
-  contentResolver: FileContentResolver
-): void {
-  changeExtractor = extractor;
-  reviewApplier = applier;
-  fileContentResolver = contentResolver;
+// Phase 2: Расширяем ReviewHandlerDeps из Phase 1 (объект-конфиг — forward compatible)
+// Phase 1 определил: interface ReviewHandlerDeps { extractor: ChangeExtractorService; ... }
+// Phase 2 добавляет optional fields (НЕ ломает Phase 1 вызов):
+interface ReviewHandlerDeps {
+  extractor: ChangeExtractorService;
+  applier?: ReviewApplierService;
+  contentResolver?: FileContentResolver;
+  // Phase 4 добавит: gitFallback?: GitDiffFallback;
+}
+
+export function initializeReviewHandlers(deps: ReviewHandlerDeps): void {
+  changeExtractor = deps.extractor;
+  reviewApplier = deps.applier ?? null;
+  fileContentResolver = deps.contentResolver ?? null;
+}
+
+// Guard helpers
+function getApplier(): ReviewApplierService {
+  if (!reviewApplier) throw new Error('ReviewApplierService not initialized (Phase 2 required)');
+  return reviewApplier;
+}
+function getContentResolver(): FileContentResolver {
+  if (!fileContentResolver) throw new Error('FileContentResolver not initialized (Phase 2 required)');
+  return fileContentResolver;
 }
 
 // Регистрация Phase 2 хендлеров
@@ -368,7 +516,7 @@ async function handleGetFileContent(
   memberName: string,
   filePath: string
 ): Promise<IpcResult<FileChangeWithContent>> {
-  return wrapHandler('review:getFileContent', async () => {
+  return wrapReviewHandler('review:getFileContent', async () => {
     const resolver = getContentResolver();
     const result = await resolver.resolveFileContent(teamName, memberName, filePath);
     return result;
@@ -380,11 +528,14 @@ async function handleRejectHunks(
   filePath: string,
   original: string,
   modified: string,
-  hunkIndices: number[]
+  hunkIndices: number[],
+  snippets: SnippetDiff[]  // R1 fix: renderer MUST передать snippets
 ): Promise<IpcResult<RejectResult>> {
-  return wrapHandler('review:rejectHunks', async () => {
+  // Security fix: валидация что filePath внутри проекта
+  // TODO: получить projectPath из team config и проверить path.resolve(filePath).startsWith(projectPath)
+  return wrapReviewHandler('review:rejectHunks', async () => {
     const applier = getApplier();
-    return await applier.rejectHunks(filePath, original, modified, hunkIndices);
+    return await applier.rejectHunks(filePath, original, modified, hunkIndices, snippets);
   });
 }
 
@@ -392,7 +543,7 @@ async function handleApplyDecisions(
   _event: IpcMainInvokeEvent,
   request: ApplyReviewRequest
 ): Promise<IpcResult<ApplyReviewResult>> {
-  return wrapHandler('review:applyDecisions', async () => {
+  return wrapReviewHandler('review:applyDecisions', async () => {
     const applier = getApplier();
     const resolver = getContentResolver();
 
@@ -424,8 +575,8 @@ review: {
   // Phase 2
   checkConflict: (filePath: string, expectedModified: string) =>
     invokeIpcWithResult<ConflictCheckResult>(REVIEW_CHECK_CONFLICT, filePath, expectedModified),
-  rejectHunks: (filePath: string, original: string, modified: string, hunkIndices: number[]) =>
-    invokeIpcWithResult<RejectResult>(REVIEW_REJECT_HUNKS, filePath, original, modified, hunkIndices),
+  rejectHunks: (filePath: string, original: string, modified: string, hunkIndices: number[], snippets: SnippetDiff[]) =>
+    invokeIpcWithResult<RejectResult>(REVIEW_REJECT_HUNKS, filePath, original, modified, hunkIndices, snippets),
   rejectFile: (filePath: string, original: string, modified: string) =>
     invokeIpcWithResult<RejectResult>(REVIEW_REJECT_FILE, filePath, original, modified),
   previewReject: (filePath: string, original: string, modified: string, hunkIndices: number[]) =>
@@ -592,9 +743,9 @@ function mapReviewError(error: unknown): string {
 
 ```typescript
 import { useRef, useEffect, useMemo } from 'react';
-import { EditorView, ViewUpdate } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
-import { unifiedMergeView } from '@codemirror/merge';
+import { EditorView, keymap } from '@codemirror/view';
+import { EditorState, Transaction } from '@codemirror/state';
+import { unifiedMergeView, goToNextChunk, goToPreviousChunk } from '@codemirror/merge';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
 import { json } from '@codemirror/lang-json';
@@ -681,52 +832,101 @@ export function CodeMirrorDiffView({
    }
    ```
 
-3. **Merge controls (accept/reject кнопки)**:
+3. **Merge controls (accept/reject кнопки) — VERIFIED API:**
+
    ```typescript
-   // mergeControls принимает callback factory
-   // type = 'accept' | 'reject', action = closure для применения
+   // VERIFIED: mergeControls сигнатура:
+   // (type: "reject" | "accept", action: (e: MouseEvent) => void) => HTMLElement
+   //
+   // ВАЖНО: action — это callback с MouseEvent параметром!
+   // Кнопки должны использовать onmousedown (не onclick) — это паттерн CM.
+
    mergeControls: showMergeControls
-     ? (type, action) => {
+     ? (type: 'reject' | 'accept', action: (e: MouseEvent) => void) => {
          const btn = document.createElement('button');
          btn.className = type === 'accept'
            ? 'cm-merge-accept-btn'
            : 'cm-merge-reject-btn';
          btn.textContent = type === 'accept' ? 'Accept' : 'Reject';
          btn.title = type === 'accept'
-           ? 'Keep this change (Ctrl+Shift+A)'
-           : 'Revert this change (Ctrl+Shift+R)';
-         btn.onclick = (e) => {
-           e.stopPropagation();
-           action(); // CM applies the change internally
-         };
+           ? 'Keep this change'
+           : 'Revert this change';
+         btn.onmousedown = action; // ВАЖНО: onmousedown, НЕ onclick!
          return btn;
        }
      : undefined,
    ```
 
-4. **Event tracking для hunk index**:
+4. **Event tracking для accept/reject — VERIFIED API:**
+
    ```typescript
-   // CodeMirror merge fires user events 'accept' and 'revert'
-   // НО не сообщает hunk index напрямую!
-   // Решение: Отслеживать через transaction.changes и chunk positions
+   // VERIFIED: CodeMirror merge помечает transactions через annotation:
+   // - Accept: Transaction.userEvent = "accept"
+   // - Reject: Transaction.userEvent = "revert"
+   //
+   // НЕ используем tr.isUserEvent() — используем tr.annotation()!
 
-   let hunkCounter = 0;
-
-   EditorView.updateListener.of((update: ViewUpdate) => {
+   EditorView.updateListener.of((update) => {
      for (const tr of update.transactions) {
-       if (tr.isUserEvent('accept')) {
-         onHunkAccepted?.(hunkCounter);
-         hunkCounter++;
+       const userEvent = tr.annotation(Transaction.userEvent);
+       if (userEvent === 'accept') {
+         // Определяем hunk index по позиции cursor ПЕРЕД транзакцией
+         const pos = tr.startState.selection.main.head;
+         const hunkIndex = computeHunkIndexAtPos(tr.startState, pos);
+         onHunkAccepted?.(hunkIndex);
        }
-       if (tr.isUserEvent('revert')) {
-         onHunkRejected?.(hunkCounter);
-         hunkCounter++;
+       if (userEvent === 'revert') {
+         const pos = tr.startState.selection.main.head;
+         const hunkIndex = computeHunkIndexAtPos(tr.startState, pos);
+         onHunkRejected?.(hunkIndex);
        }
      }
    });
    ```
 
-   **ВАЖНО**: Hunk index tracking через counter НЕ надёжен при non-sequential clicks. Альтернатива — вычислять hunk index по `transaction.changes.newLength` и маппить на chunk ranges. Это Phase 2 implementation detail.
+   **ВАЖНО: Chunk positions — NO PUBLIC API!**
+
+   `@codemirror/merge` НЕ экспортирует публичный API для получения позиций chunks.
+   Нужно вычислять hunk index самостоятельно через diff algorithm:
+
+   ```typescript
+   // Вычисляем позиции hunks через jsdiff (уже установлен)
+   import { structuredPatch } from 'diff';
+
+   function computeHunkRanges(original: string, modified: string) {
+     const patch = structuredPatch('', '', original, modified);
+     // patch.hunks содержит newStart/newLines для каждого hunk
+     return patch.hunks.map((h, idx) => ({
+       index: idx,
+       fromLine: h.newStart,
+       toLine: h.newStart + h.newLines,
+     }));
+   }
+
+   function computeHunkIndexAtPos(state: EditorState, pos: number): number {
+     const line = state.doc.lineAt(pos).number;
+     const ranges = hunkRangesRef.current; // Кешируем при создании editor
+     for (const r of ranges) {
+       if (line >= r.fromLine && line <= r.toLine) return r.index;
+     }
+     return -1; // Not in a hunk
+   }
+   ```
+
+5. **Keyboard navigation через StateCommand — VERIFIED API:**
+
+   ```typescript
+   // goToNextChunk и goToPreviousChunk — это StateCommand объекты.
+   // Используются через keymap ИЛИ вызов .run(view):
+
+   keymap.of([
+     { key: 'Ctrl-Alt-ArrowDown', run: goToNextChunk },
+     { key: 'Ctrl-Alt-ArrowUp', run: goToPreviousChunk },
+   ]),
+
+   // Программный вызов:
+   // goToNextChunk(editorRef.current!) // returns boolean
+   ```
 
 5. **Тема (CSS variables integration)**:
    ```typescript
@@ -785,18 +985,37 @@ export function CodeMirrorDiffView({
    }, { dark: true });
    ```
 
-6. **Extensions assembly**:
+6. **Extensions assembly — VERIFIED unifiedMergeView config:**
    ```typescript
+   // VERIFIED: полная сигнатура unifiedMergeView config:
+   // {
+   //   original: Text | string,                    // Required
+   //   highlightChanges?: boolean,                  // Default: true
+   //   gutter?: boolean,                            // Default: true
+   //   syntaxHighlightDeletions?: boolean,           // Default: true
+   //   mergeControls?: boolean | ((type, action) => HTMLElement),
+   //   diffConfig?: DiffConfig,
+   //   collapseUnchanged?: { margin?: number, minSize?: number },
+   // }
+
    const extensions = useMemo(() => [
      readOnly ? EditorState.readOnly.of(true) : [],
      readOnly ? EditorView.editable.of(false) : [],
      getLanguageExtension(fileName),
      customTheme,
+     keymap.of([
+       { key: 'Ctrl-Alt-ArrowDown', run: goToNextChunk },
+       { key: 'Ctrl-Alt-ArrowUp', run: goToPreviousChunk },
+     ]),
      unifiedMergeView({
        original,
        mergeControls: showMergeControls ? mergeControlsFactory : undefined,
-       collapseUnchanged: collapseUnchanged ? { margin: collapseMargin } : undefined,
+       highlightChanges: true,
+       gutter: true,
        syntaxHighlightDeletions: true,
+       collapseUnchanged: collapseUnchanged
+         ? { margin: collapseMargin, minSize: 4 }
+         : undefined,
      }),
      updateListener,
    ].flat(), [original, modified, fileName, showMergeControls, collapseUnchanged]);
@@ -946,6 +1165,7 @@ function getFileStatusIcon(filePath: string, hunkDecisions: Record<string, HunkD
 8. **Multiple agents edited same file** — каждый agent показывается отдельно, reject применяется к конкретному agent's changes
 9. **Content source = 'unavailable'** — показываем snippet-only view (Phase 1 fallback) с warning: "Full file content unavailable. Showing snippet diffs only."
 10. **Accept без Apply** — decisions хранятся в Zustand (in-memory), пропадают при закрытии dialog. Это by design: accept = "я посмотрел и ОК", reject + Apply = "откатить изменения"
+11. **App restart между view и apply** — `ApplyReviewRequest` не содержит original/modified content. Если app перезагрузить → `FileContentResolver` переобчислит content из JSONL (кешируется на 3 мин). Worst case: file-history backup + snippet chain дадут тот же результат. Если файл на диске изменился → conflict detection сработает корректно
 
 ## Тестирование
 

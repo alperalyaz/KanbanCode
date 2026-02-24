@@ -64,7 +64,10 @@ export interface TaskBoundariesResult {
   detectedMechanism: 'TaskUpdate' | 'teamctl' | 'none';
 }
 
-/** Расширенный TaskChangeSet с confidence деталями */
+/** Расширенный TaskChangeSet с confidence деталями.
+ *  TaskChangeSet определён в Phase 1 (review.ts) — backwards compatible extension.
+ *  Все Phase 1 поля (teamName, taskId, files, confidence, computedAt) сохраняются.
+ */
 export interface TaskChangeSetV2 extends TaskChangeSet {
   scope: TaskChangeScope;
   /** Предупреждения для UI */
@@ -83,8 +86,8 @@ import { createReadStream } from 'fs';
 import * as readline from 'readline';
 
 export class TaskBoundaryParser {
-  private cache = new Map<string, { data: TaskBoundariesResult; expiresAt: number }>();
-  private readonly CACHE_TTL = 3 * 60 * 1000; // 3 мин
+  private cache = new Map<string, { data: TaskBoundariesResult; mtime: number; expiresAt: number }>();
+  private readonly CACHE_TTL = 60 * 1000; // 1 мин (не 3 — JSONL файлы меняются часто при активной работе)
 
   /**
    * Парсит JSONL файл и извлекает все TaskUpdate/teamctl маркеры.
@@ -225,9 +228,12 @@ private extractTeamctlBoundaries(
 
 ```typescript
 async parseBoundaries(filePath: string): Promise<TaskBoundariesResult> {
-  // Check cache
+  // Check cache (S2 fix: проверяем И TTL И mtime файла)
+  const stat = await import('fs/promises').then(f => f.stat(filePath));
   const cached = this.cache.get(filePath);
-  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  if (cached && cached.mtime === stat.mtimeMs && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
 
   const boundaries: TaskBoundary[] = [];
   const allToolUsesByLine = new Map<number, { toolUseId: string; toolName: string; filePath?: string }[]>();
@@ -300,7 +306,7 @@ async parseBoundaries(filePath: string): Promise<TaskBoundariesResult> {
     detectedMechanism,
   };
 
-  this.cache.set(filePath, { data: result, expiresAt: Date.now() + this.CACHE_TTL });
+  this.cache.set(filePath, { data: result, mtime: stat.mtimeMs, expiresAt: Date.now() + this.CACHE_TTL });
   return result;
 }
 ```
@@ -395,18 +401,25 @@ private computeScopes(
 }
 ```
 
-**extractContent helper (паттерн из MemberStatsComputer):**
+**extractContent helper (паттерн из MemberStatsComputer + FIXED для всех JSONL форматов):**
 
 ```typescript
-// Subagent JSONL: entry.message.content (массив блоков)
-// Main JSONL: entry.content (массив блоков)
+// JSONL файлы содержат СМЕШАННЫЕ форматы entries:
+// 1. Subagent assistant: entry.message.content = ContentBlock[]
+// 2. Main assistant: entry.content = ContentBlock[]
+// 3. tool_result entries: entry.content = string | ContentBlock[]
+// 4. Meta entries (file-history-snapshot): нет content с tool_use
+//
+// TaskUpdate блоки находятся ТОЛЬКО в assistant entries (1, 2),
+// поэтому проверяем оба формата.
+
 private extractContent(entry: Record<string, unknown>): unknown[] | null {
-  // Subagent format
+  // Subagent format: entry.message.content
   const message = entry.message as Record<string, unknown> | undefined;
   if (message && Array.isArray(message.content)) {
     return message.content;
   }
-  // Main format fallback
+  // Main format: entry.content (array)
   if (Array.isArray(entry.content)) {
     return entry.content;
   }
@@ -416,38 +429,155 @@ private extractContent(entry: Record<string, unknown>): unknown[] | null {
 
 ### 3. Модификация: `src/main/services/team/ChangeExtractorService.ts` (MODIFY)
 
-Phase 1 создал `getTaskChanges()` с keyword-based scoping. Phase 3 заменяет на structure-based:
+Phase 1 создал `getTaskChanges()` с keyword-based scoping. Phase 3 заменяет на structure-based.
+
+**CRITICAL FIX (C6+C7): `MemberLogSummary` НЕ имеет поля `filePath`!**
+
+Реальный тип `MemberLogSummary` — это union `MemberSubagentLogSummary | MemberLeadSessionLogSummary`.
+Базовые поля: `kind`, `sessionId`, `projectId`, `description`, `memberName` (string | null), `startTime`, `durationMs`, `messageCount`, `isOngoing`.
+**НЕТ поля `filePath`!**
+
+Также метод `getAllSessionLogs()` **НЕ существует** в `TeamMemberLogsFinder`.
+
+**Решение**: Ввести внутренний тип `LogFileRef` и новый метод `resolveLogPaths()`:
 
 ```typescript
-// Phase 1 (заменяем)
-async getTaskChanges(teamName: string, taskId: string): Promise<TaskChangeSet> {
-  // Keyword search через logsFinder.findLogsForTask()
+/** Внутренний тип — НЕ экспортируется из модуля */
+interface LogFileRef {
+  filePath: string;
+  memberName: string;  // always string (fallback: 'unknown')
 }
 
-// Phase 3 (новая реализация)
+/**
+ * Конвертирует MemberLogSummary → LogFileRef.
+ * Используем существующий findMemberLogPaths() для получения файловых путей.
+ */
+private async resolveLogFileRefs(
+  teamName: string,
+  logs: MemberLogSummary[]
+): Promise<LogFileRef[]> {
+  const refs: LogFileRef[] = [];
+  // Группируем по memberName для batch resolve
+  const byMember = new Map<string, MemberLogSummary[]>();
+  for (const log of logs) {
+    const name = log.memberName ?? 'unknown';
+    if (!byMember.has(name)) byMember.set(name, []);
+    byMember.get(name)!.push(log);
+  }
+
+  for (const [memberName, memberLogs] of byMember) {
+    const paths = await this.logsFinder.findMemberLogPaths(teamName, memberName);
+    // Match paths to logs by sessionId
+    for (const log of memberLogs) {
+      const matchedPath = paths.find(p =>
+        log.kind === 'subagent'
+          ? p.includes(log.sessionId) && p.includes(log.subagentId)
+          : p.includes(log.sessionId) && p.endsWith('.jsonl')
+      );
+      if (matchedPath) {
+        refs.push({ filePath: matchedPath, memberName });
+      }
+    }
+  }
+  return refs;
+}
+```
+
+**Constructor (Phase 3 добавляет TaskBoundaryParser зависимость):**
+
+```typescript
+export class ChangeExtractorService {
+  private cache = new Map<string, { data: AgentChangeSet; expiresAt: number }>();
+  private readonly CACHE_TTL = 60 * 1000; // 1 мин (совпадает с TaskBoundaryParser)
+
+  constructor(
+    private readonly logsFinder: TeamMemberLogsFinder,
+    private readonly boundaryParser: TaskBoundaryParser  // Phase 3 addition
+  ) {}
+
+  // ... Phase 1 methods (getAgentChanges, getChangeStats) remain unchanged ...
+}
+```
+
+**Методы extractFilteredChanges и extractAllChanges (используют LogFileRef, НЕ MemberLogSummary):**
+
+```typescript
+/**
+ * Извлечь изменения ТОЛЬКО для указанных tool_use IDs.
+ * Парсит JSONL, находит Edit/Write/MultiEdit блоки, фильтрует по allowedIds.
+ *
+ * IMPORTANT: принимает LogFileRef[] (НЕ MemberLogSummary[]) — у MemberLogSummary нет filePath!
+ */
+private async extractFilteredChanges(
+  logRefs: LogFileRef[],
+  allowedToolUseIds: Set<string>
+): Promise<FileChangeSummary[]> {
+  const fileMap = new Map<string, FileChangeSummary>();
+  const shouldFilter = allowedToolUseIds.size > 0;
+
+  for (const ref of logRefs) {
+    const stream = createReadStream(ref.filePath, { encoding: 'utf8' });
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+    try {
+      for await (const line of rl) {
+        // ... parse entry, extract content, find tool_use blocks ...
+        // if (shouldFilter && !allowedToolUseIds.has(block.id)) continue;
+        // → add to fileMap
+      }
+    } finally {
+      rl.close();
+      stream.destroy();
+    }
+  }
+
+  return [...fileMap.values()];
+}
+
+/**
+ * Извлечь ВСЕ изменения из одного JSONL файла (без фильтрации).
+ * Используется для single-task sessions и Tier 4 fallback.
+ */
+private async extractAllChanges(filePath: string, memberName: string = 'unknown'): Promise<FileChangeSummary[]> {
+  return this.extractFilteredChanges(
+    [{ filePath, memberName }],
+    new Set() // empty set + shouldFilter=false → accept all
+  );
+}
+```
+
+**Phase 3 (новая реализация getTaskChanges):**
+
+```typescript
 async getTaskChanges(teamName: string, taskId: string): Promise<TaskChangeSetV2> {
-  // 1. Найти JSONL файлы через logsFinder
+  // 1. Найти MemberLogSummary через logsFinder (реальный API)
   const logs = await this.logsFinder.findLogsForTask(teamName, taskId);
 
-  // 2. Для каждого JSONL — парсить boundaries через TaskBoundaryParser
+  // 2. Конвертировать в LogFileRef (MemberLogSummary НЕ имеет filePath!)
+  const logRefs = await this.resolveLogFileRefs(teamName, logs);
+  if (logRefs.length === 0) {
+    return this.emptyTaskChangeSet(teamName, taskId);
+  }
+
+  // 3. Для каждого JSONL — парсить boundaries через TaskBoundaryParser
   const allScopes: TaskChangeScope[] = [];
-  for (const log of logs) {
-    const boundaries = await this.boundaryParser.parseBoundaries(log.filePath);
+  for (const ref of logRefs) {
+    const boundaries = await this.boundaryParser.parseBoundaries(ref.filePath);
     const scope = boundaries.scopes.find(s => s.taskId === taskId);
     if (scope) {
-      scope.memberName = log.memberName;
+      scope.memberName = ref.memberName;
       allScopes.push(scope);
     }
   }
 
-  // 3. Если нет structural scopes → fallback на single-task assumption
+  // 4. Если нет structural scopes → fallback на single-task assumption
   if (allScopes.length === 0) {
-    return this.fallbackSingleTaskScope(teamName, taskId, logs);
+    return this.fallbackSingleTaskScope(teamName, taskId, logRefs);
   }
 
-  // 4. Фильтровать snippets по tool_use IDs из scope
+  // 5. Фильтровать snippets по tool_use IDs из scope
   const allowedToolUseIds = new Set(allScopes.flatMap(s => s.toolUseIds));
-  const files = await this.extractFilteredChanges(logs, allowedToolUseIds);
+  const files = await this.extractFilteredChanges(logRefs, allowedToolUseIds);
 
   // 5. Compute confidence (worst case across all scopes)
   const worstTier = Math.max(...allScopes.map(s => s.confidence.tier));
@@ -478,17 +608,17 @@ async getTaskChanges(teamName: string, taskId: string): Promise<TaskChangeSetV2>
 private async fallbackSingleTaskScope(
   teamName: string,
   taskId: string,
-  logs: MemberLogSummary[]
+  logRefs: LogFileRef[]  // C6 fix: LogFileRef вместо MemberLogSummary
 ): Promise<TaskChangeSetV2> {
   // Проверяем: если agent работал только над одной задачей,
   // ВСЕ изменения в сессии = изменения этой задачи
 
-  for (const log of logs) {
-    const boundaries = await this.boundaryParser.parseBoundaries(log.filePath);
+  for (const ref of logRefs) {
+    const boundaries = await this.boundaryParser.parseBoundaries(ref.filePath);
 
     if (boundaries.isSingleTaskSession) {
       // Весь файл = одна задача → extract все changes
-      const files = await this.extractAllChanges(log.filePath);
+      const files = await this.extractAllChanges(ref.filePath, ref.memberName);
       return {
         teamName,
         taskId,
@@ -500,7 +630,7 @@ private async fallbackSingleTaskScope(
         computedAt: new Date().toISOString(),
         scope: {
           taskId,
-          memberName: log.memberName,
+          memberName: ref.memberName,
           startLine: 1,
           endLine: Infinity,
           startTimestamp: '',
@@ -515,7 +645,8 @@ private async fallbackSingleTaskScope(
   }
 
   // No single-task session found → Tier 4 fallback
-  const files = await this.extractAllChanges(logs[0]?.filePath ?? '');
+  const firstRef = logRefs[0];
+  const files = firstRef ? await this.extractAllChanges(firstRef.filePath, firstRef.memberName) : [];
   return {
     teamName,
     taskId,
@@ -527,7 +658,7 @@ private async fallbackSingleTaskScope(
     computedAt: new Date().toISOString(),
     scope: {
       taskId,
-      memberName: logs[0]?.memberName ?? 'unknown',
+      memberName: firstRef?.memberName ?? 'unknown',
       startLine: 1,
       endLine: Infinity,
       startTimestamp: '',
@@ -537,6 +668,21 @@ private async fallbackSingleTaskScope(
       confidence: { tier: 4, label: 'fallback', reason: 'No task markers found. Showing all session changes.' },
     },
     warnings: ['Could not determine task boundaries. Showing all changes from this session.'],
+  };
+}
+
+/** Empty result when no logs found at all */
+private emptyTaskChangeSet(teamName: string, taskId: string): TaskChangeSetV2 {
+  return {
+    teamName, taskId, files: [],
+    totalLinesAdded: 0, totalLinesRemoved: 0, totalFiles: 0,
+    confidence: 'low', computedAt: new Date().toISOString(),
+    scope: {
+      taskId, memberName: 'unknown', startLine: 0, endLine: 0,
+      startTimestamp: '', endTimestamp: '', toolUseIds: [], filePaths: [],
+      confidence: { tier: 4, label: 'fallback', reason: 'No log files found for this task.' },
+    },
+    warnings: ['No log files found for this task.'],
   };
 }
 ```
@@ -554,7 +700,9 @@ async hasTaskUpdateMarker(filePath: string, taskId: string): Promise<boolean> {
   const stream = createReadStream(filePath, { encoding: 'utf8' });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
-  const pattern = new RegExp(`"taskId"\\s*:\\s*"${taskId}"`);
+  // H5 fix: экранируем taskId для безопасного использования в regex
+  const escapedTaskId = taskId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`"taskId"\\s*:\\s*"${escapedTaskId}"`);
 
   for await (const line of rl) {
     if (line.includes('TaskUpdate') && pattern.test(line)) {
@@ -575,38 +723,16 @@ async hasTaskUpdateMarker(filePath: string, taskId: string): Promise<boolean> {
 }
 ```
 
-**Оптимизация `findLogsForTask()`:**
+**НЕ модифицируем `findLogsForTask()`** — он уже работает корректно через `fileMentionsTaskId()` (keyword search по JSONL). `hasTaskUpdateMarker()` может использоваться **параллельно** как fast-path проверка ДО полного парсинга, но НЕ заменяет `findLogsForTask()`.
 
-Текущий метод использует `fileMentionsTaskId()` — keyword search. Phase 3 добавляет приоритетный path:
+**CRITICAL: `getAllSessionLogs()` НЕ существует!** Реальный `findLogsForTask()` (строки 110-197 TeamMemberLogsFinder.ts) уже итерирует по всем сессиям через `discoverProjectSessions()` и `fileMentionsTaskId()`. Метод возвращает `MemberLogSummary[]`.
+
+`hasTaskUpdateMarker()` — это вспомогательный метод для `TaskBoundaryParser`, НЕ для замены findLogsForTask.
 
 ```typescript
-async findLogsForTask(
-  teamName: string,
-  taskId: string,
-  options?: { owner?: string; status?: string }
-): Promise<MemberLogSummary[]> {
-  // Phase 3: Сначала пробуем structural markers (быстрее и точнее)
-  const allLogs = await this.getAllSessionLogs(teamName);
-  const results: MemberLogSummary[] = [];
-
-  for (const log of allLogs) {
-    // Fast path: check for TaskUpdate markers
-    const hasMarker = await this.hasTaskUpdateMarker(log.filePath, taskId);
-    if (hasMarker) {
-      results.push(log);
-      continue;
-    }
-
-    // Fallback: keyword search (Phase 1 behaviour)
-    if (await this.fileMentionsTaskId(log.filePath, taskId)) {
-      results.push(log);
-    }
-  }
-
-  return results.sort((a, b) =>
-    (b.startTime ?? '').localeCompare(a.startTime ?? '')
-  );
-}
+// hasTaskUpdateMarker() может вызываться напрямую из TaskBoundaryParser или из renderer
+// для быстрой проверки "поддерживает ли сессия structural scoping"
+// Но findLogsForTask() НЕ МЕНЯЕТСЯ.
 ```
 
 ### 5. IPC (без изменений)
@@ -704,11 +830,21 @@ export function ScopeWarningBanner({ warnings, confidence, onDismiss }: ScopeWar
 
 #### `ChangeReviewDialog.tsx` (MODIFY)
 
-Добавляем scope information в header:
+Добавляем scope information в header.
+
+**Type guard (H2 fix — cross-phase compatibility):**
+```typescript
+// Phase 2 компоненты используют TaskChangeSet (Phase 1 тип).
+// Phase 3 расширяет до TaskChangeSetV2 с полем .scope.
+// ВСЕГДА проверять наличие .scope через 'in' guard:
+function isTaskChangeSetV2(cs: TaskChangeSet): cs is TaskChangeSetV2 {
+  return 'scope' in cs;
+}
+```
 
 ```typescript
 // В header диалога (рядом с title)
-{mode === 'task' && activeChangeSet && 'scope' in activeChangeSet && (
+{mode === 'task' && activeChangeSet && isTaskChangeSetV2(activeChangeSet) && (
   <div className="flex items-center gap-2">
     <ConfidenceBadge confidence={activeChangeSet.scope.confidence} />
     {activeChangeSet.warnings.length > 0 && (
@@ -823,6 +959,7 @@ JSONL Timeline:
 | `src/main/services/team/ChangeExtractorService.ts` | MODIFY | +150 |
 | `src/main/services/team/TeamMemberLogsFinder.ts` | MODIFY | +40 |
 | `src/main/services/team/index.ts` | MODIFY | +1 |
+| `src/main/index.ts` | MODIFY | +5 (создать TaskBoundaryParser, передать в ChangeExtractorService) |
 | `src/renderer/components/team/review/ConfidenceBadge.tsx` | NEW | 45 |
 | `src/renderer/components/team/review/ScopeWarningBanner.tsx` | NEW | 50 |
 | `src/renderer/components/team/review/ChangeReviewDialog.tsx` | MODIFY | +20 |

@@ -27,6 +27,13 @@ export function createAgentBlockRegex(): RegExp {
 }
 
 /**
+ * Removes ```info_for_agent ... ``` blocks from text for UI display.
+ */
+export function stripAgentBlocks(text: string): string {
+  return text.replace(createAgentBlockRegex(), '').trim();
+}
+
+/**
  * @deprecated Use createAgentBlockRegex() instead to avoid stateful 'g' flag issues.
  * Kept for backward compatibility with .replace() calls.
  */

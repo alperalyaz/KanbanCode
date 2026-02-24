@@ -18,7 +18,7 @@ import {
   parseStructuredAgentMessage,
 } from '@renderer/utils/agentMessageFormatting';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
-import { createAgentBlockRegex } from '@shared/constants/agentBlocks';
+import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { extractMarkdownPlainText } from '@shared/utils/markdownTextSearch';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
 import { AlertTriangle, ChevronRight, ListPlus, Reply } from 'lucide-react';
@@ -119,11 +119,6 @@ function getSystemMessageLabel(text: string): string | null {
     if (pattern.test(text)) return label;
   }
   return null;
-}
-
-/** Strip ```info_for_agent ... ``` blocks from text for UI display. */
-function stripAgentBlocks(text: string): string {
-  return text.replace(createAgentBlockRegex(), '').trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -361,12 +356,7 @@ export const ActivityItem = ({
           ) : parsedReply ? (
             <ReplyQuoteBlock reply={parsedReply} />
           ) : (
-            <MarkdownViewer
-              content={displayText ?? message.text}
-              maxHeight="max-h-56"
-              copyable
-              bare
-            />
+            <MarkdownViewer content={displayText ?? ''} maxHeight="max-h-56" copyable bare />
           )}
           {message.attachments?.length && message.messageId ? (
             <AttachmentDisplay

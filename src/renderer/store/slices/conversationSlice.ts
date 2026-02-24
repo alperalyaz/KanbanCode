@@ -3,6 +3,7 @@
  */
 
 import { findLastOutput } from '@renderer/utils/aiGroupEnhancer';
+import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { findMarkdownSearchMatches } from '@shared/utils/markdownTextSearch';
 
 import type { AppState, SearchMatch } from '../types';
@@ -257,8 +258,8 @@ export const createConversationSlice: StateCreator<AppState, [], [], Conversatio
 
     for (const item of conversation.items) {
       if (item.type === 'user') {
-        // Search user message text
-        const text = item.group.content.rawText ?? item.group.content.text ?? '';
+        const raw = item.group.content.rawText ?? item.group.content.text ?? '';
+        const text = stripAgentBlocks(raw);
         addMarkdownMatches(text, item.group.id, 'user');
       } else if (item.type === 'ai') {
         // For AI items: ONLY search lastOutput text (not tool results, thinking, or subagents)

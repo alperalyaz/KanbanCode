@@ -5,6 +5,7 @@ import { api } from '@renderer/api';
 import { useTabUI } from '@renderer/hooks/useTabUI';
 import { useStore } from '@renderer/store';
 import { REHYPE_PLUGINS } from '@renderer/utils/markdownPlugins';
+import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { createLogger } from '@shared/utils/logger';
 import { format } from 'date-fns';
 import { User } from 'lucide-react';
@@ -343,7 +344,8 @@ const UserChatGroupInner = ({ userGroup }: Readonly<UserChatGroupProps>): React.
   const hasImages = content.images.length > 0;
   // Use rawText to preserve /commands inline
   const textContent = content.rawText ?? content.text ?? '';
-  const isLongContent = textContent.length > 500;
+  const stripped = useMemo(() => stripAgentBlocks(textContent), [textContent]);
+  const isLongContent = stripped.length > 500;
 
   // Extract @path mentions from text
   const pathMentions = useMemo(() => {
@@ -416,8 +418,7 @@ const UserChatGroupInner = ({ userGroup }: Readonly<UserChatGroupProps>): React.
   const isExpanded = isManuallyExpanded || shouldAutoExpand;
 
   // Determine display text
-  const displayText =
-    isLongContent && !isExpanded ? textContent.slice(0, 500) + '...' : textContent;
+  const displayText = isLongContent && !isExpanded ? stripped.slice(0, 500) + '...' : stripped;
 
   return (
     <div className="flex justify-end">
@@ -433,8 +434,8 @@ const UserChatGroupInner = ({ userGroup }: Readonly<UserChatGroupProps>): React.
           <User className="size-3.5" style={{ color: 'var(--color-text-secondary)' }} />
         </div>
 
-        {/* Content - polished bubble with subtle depth */}
-        {textContent && (
+        {/* Content - polished bubble with subtle depth (hide when only agent blocks) */}
+        {stripped && (
           <div
             className="group relative overflow-hidden rounded-2xl rounded-br-sm px-4 py-3"
             style={{
@@ -443,7 +444,7 @@ const UserChatGroupInner = ({ userGroup }: Readonly<UserChatGroupProps>): React.
               boxShadow: 'var(--chat-user-shadow)',
             }}
           >
-            <CopyButton text={textContent} bgColor="var(--chat-user-bg)" />
+            <CopyButton text={stripped} bgColor="var(--chat-user-bg)" />
 
             <div className="text-sm" style={{ color: 'var(--chat-user-text)' }} data-search-content>
               <ReactMarkdown

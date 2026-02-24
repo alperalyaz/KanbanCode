@@ -10,6 +10,7 @@ import { useStore } from '@renderer/store';
 import { buildReplyBlock, parseMessageReply } from '@renderer/utils/agentMessageFormatting';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { getModifierKeyName } from '@renderer/utils/keyboardUtils';
+import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { formatDistanceToNow } from 'date-fns';
 import { ChevronDown, ChevronUp, MessageSquare, Reply, Send, X } from 'lucide-react';
 
@@ -126,7 +127,9 @@ export const TaskCommentsSection = ({
                       onClick={() =>
                         setReplyTo({
                           author: comment.author,
-                          text: parseMessageReply(comment.text)?.replyText ?? comment.text,
+                          text: stripAgentBlocks(
+                            parseMessageReply(comment.text)?.replyText ?? comment.text
+                          ),
                         })
                       }
                     >
@@ -139,7 +142,8 @@ export const TaskCommentsSection = ({
               </div>
               {(() => {
                 const reply = parseMessageReply(comment.text);
-                const displayText = reply ? reply.replyText : comment.text;
+                const rawForDisplay = reply ? reply.replyText : comment.text;
+                const displayText = stripAgentBlocks(rawForDisplay);
                 const needsExpandCollapse = displayText.includes('\n');
                 const expanded = expandedCommentIds.has(comment.id);
                 const collapsedHeight = 'max-h-[120px]';
@@ -154,14 +158,18 @@ export const TaskCommentsSection = ({
                     >
                       {reply ? (
                         <ReplyQuoteBlock
-                          reply={reply}
+                          reply={{
+                            ...reply,
+                            originalText: stripAgentBlocks(reply.originalText),
+                            replyText: stripAgentBlocks(reply.replyText),
+                          }}
                           bodyMaxHeight={
                             needsExpandCollapse && !expanded ? 'max-h-56' : 'max-h-none'
                           }
                         />
                       ) : (
                         <MarkdownViewer
-                          content={comment.text}
+                          content={displayText}
                           maxHeight={
                             needsExpandCollapse && !expanded ? collapsedHeight : 'max-h-none'
                           }

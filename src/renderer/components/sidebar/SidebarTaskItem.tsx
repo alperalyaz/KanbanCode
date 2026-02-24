@@ -23,11 +23,36 @@ function formatTaskDate(dateStr: string | undefined): string | null {
   return format(d, 'MMM d, yyyy');
 }
 
-interface SidebarTaskItemProps {
-  task: GlobalTask;
+function formatUpdatedLabel(task: GlobalTask): string | null {
+  const updatedStr = task.updatedAt;
+  if (!updatedStr) return null;
+  const updated = new Date(updatedStr);
+  if (isNaN(updated.getTime())) return null;
+
+  // Don't show "updated" if there's no createdAt to compare, or times are within 60s
+  const createdStr = task.createdAt;
+  if (createdStr) {
+    const created = new Date(createdStr);
+    if (!isNaN(created.getTime()) && Math.abs(updated.getTime() - created.getTime()) < 60_000) {
+      return null;
+    }
+  }
+
+  if (isToday(updated)) return `upd ${format(updated, 'HH:mm')}`;
+  if (isYesterday(updated)) return 'upd yesterday';
+  if (isThisYear(updated)) return `upd ${format(updated, 'MMM d')}`;
+  return `upd ${format(updated, 'MMM d, yyyy')}`;
 }
 
-export const SidebarTaskItem = ({ task }: SidebarTaskItemProps): React.JSX.Element => {
+interface SidebarTaskItemProps {
+  task: GlobalTask;
+  hideTeamName?: boolean;
+}
+
+export const SidebarTaskItem = ({
+  task,
+  hideTeamName,
+}: SidebarTaskItemProps): React.JSX.Element => {
   const openTeamTab = useStore((s) => s.openTeamTab);
   const unreadCount = useUnreadCommentCount(task.teamName, task.id, task.comments);
   const cfg =
@@ -37,7 +62,8 @@ export const SidebarTaskItem = ({ task }: SidebarTaskItemProps): React.JSX.Eleme
         ? ({ icon: Eye, color: 'text-orange-400', label: 'in review' } as const)
         : (statusConfig[task.status] ?? statusConfig.pending);
   const StatusIcon = cfg.icon;
-  const dateLabel = formatTaskDate(task.updatedAt ?? task.createdAt);
+  const updatedLabel = formatUpdatedLabel(task);
+  const dateLabel = updatedLabel ?? formatTaskDate(task.createdAt);
 
   return (
     <button
@@ -66,12 +92,18 @@ export const SidebarTaskItem = ({ task }: SidebarTaskItemProps): React.JSX.Eleme
         style={{ color: 'var(--color-text-muted)' }}
       >
         <span>{task.owner ?? 'unassigned'}</span>
-        <span className="opacity-40">·</span>
-        <span className="truncate">{task.teamDisplayName}</span>
+        {!hideTeamName && (
+          <>
+            <span className="opacity-40">·</span>
+            <span className="truncate">{task.teamDisplayName}</span>
+          </>
+        )}
         {dateLabel && (
           <>
             <span className="opacity-40">·</span>
-            <span className="shrink-0">{dateLabel}</span>
+            <span className={`shrink-0 ${updatedLabel ? 'italic opacity-70' : ''}`}>
+              {dateLabel}
+            </span>
           </>
         )}
       </div>

@@ -10,6 +10,7 @@ import {
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { detectOperationalNoise } from '@renderer/utils/agentMessageFormatting';
 import { formatTokensCompact } from '@renderer/utils/formatters';
+import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { extractMarkdownPlainText } from '@shared/utils/markdownTextSearch';
 import { ChevronRight, CornerDownLeft, MessageSquare, RefreshCw } from 'lucide-react';
 
@@ -96,6 +97,11 @@ export const TeammateMessageItem: React.FC<TeammateMessageItemProps> = ({
         ? extractMarkdownPlainText(teammateMessage.replyToSummary)
         : undefined,
     [teammateMessage.replyToSummary]
+  );
+
+  const displayContent = useMemo(
+    () => stripAgentBlocks(teammateMessage.content),
+    [teammateMessage.content]
   );
 
   // Noise: minimal inline row (no card, no expand)
@@ -215,7 +221,7 @@ export const TeammateMessageItem: React.FC<TeammateMessageItemProps> = ({
       {/* Expanded content */}
       {isExpanded && (
         <div className="p-3">
-          <MarkdownViewer content={teammateMessage.content} copyable />
+          <MarkdownViewer content={displayContent} copyable />
         </div>
       )}
     </div>

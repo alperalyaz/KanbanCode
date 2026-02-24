@@ -105,6 +105,7 @@ interface RepositoryCardProps {
   onClick: () => void;
   isHighlighted?: boolean;
   taskCounts?: TaskStatusCounts;
+  tasksLoading?: boolean;
 }
 
 const RepositoryCard = ({
@@ -112,6 +113,7 @@ const RepositoryCard = ({
   onClick,
   isHighlighted,
   taskCounts,
+  tasksLoading,
 }: Readonly<RepositoryCardProps>): React.JSX.Element => {
   const lastActivity = repo.mostRecentSession
     ? formatDistanceToNow(new Date(repo.mostRecentSession), { addSuffix: true })
@@ -133,15 +135,15 @@ const RepositoryCard = ({
           : 'bg-surface/50 border-border hover:border-border-emphasis hover:bg-surface-raised'
       } `}
     >
-      {/* Icon with subtle border */}
-      <div className="mb-3 flex size-8 items-center justify-center rounded-md border border-border bg-surface-overlay transition-colors duration-300 group-hover:border-border-emphasis">
-        <FolderGit2 className="size-4 text-text-secondary transition-colors group-hover:text-text" />
+      {/* Icon + Project name */}
+      <div className="mb-1 flex items-center gap-2.5">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-surface-overlay transition-colors duration-300 group-hover:border-border-emphasis">
+          <FolderGit2 className="size-4 text-text-secondary transition-colors group-hover:text-text" />
+        </div>
+        <h3 className="min-w-0 truncate text-sm font-medium text-text transition-colors duration-200 group-hover:text-text">
+          {repo.name}
+        </h3>
       </div>
-
-      {/* Project name */}
-      <h3 className="mb-1 truncate text-sm font-medium text-text transition-colors duration-200 group-hover:text-text">
-        {repo.name}
-      </h3>
 
       {/* Project path - monospace, muted */}
       <p className="mb-auto truncate font-mono text-[10px] text-text-muted">{formattedPath}</p>
@@ -181,7 +183,15 @@ const RepositoryCard = ({
       </div>
 
       {/* Tasks progress bar */}
-      {taskCounts &&
+      {tasksLoading ? (
+        <div className="mt-2 w-full">
+          <div className="flex items-center gap-2">
+            <div className="h-1.5 flex-1 animate-pulse overflow-hidden rounded-full bg-[var(--color-surface-raised)]" />
+            <div className="h-2.5 w-6 animate-pulse rounded bg-[var(--color-surface-raised)]" />
+          </div>
+        </div>
+      ) : (
+        taskCounts &&
         (() => {
           const pending = taskCounts.pending ?? 0;
           const inProgress = taskCounts.inProgress ?? 0;
@@ -212,7 +222,8 @@ const RepositoryCard = ({
               </div>
             </div>
           );
-        })()}
+        })()
+      )}
     </button>
   );
 };
@@ -348,6 +359,7 @@ const ProjectsGrid = ({
     fetchRepositoryGroups,
     selectRepository,
     globalTasks,
+    globalTasksLoading,
     fetchAllTasks,
     openTeamsTab,
   } = useStore(
@@ -357,6 +369,7 @@ const ProjectsGrid = ({
       fetchRepositoryGroups: s.fetchRepositoryGroups,
       selectRepository: s.selectRepository,
       globalTasks: s.globalTasks,
+      globalTasksLoading: s.globalTasksLoading,
       fetchAllTasks: s.fetchAllTasks,
       openTeamsTab: s.openTeamsTab,
     }))
@@ -497,7 +510,8 @@ const ProjectsGrid = ({
               openTeamsTab();
             }}
             isHighlighted={!!searchQuery.trim()}
-            taskCounts={counts}
+            taskCounts={globalTasksLoading ? undefined : counts}
+            tasksLoading={globalTasksLoading}
           />
         );
       })}

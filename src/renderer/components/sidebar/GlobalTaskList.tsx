@@ -296,7 +296,7 @@ export const GlobalTaskList = ({
                           Team: {task.teamDisplayName}
                         </div>
                       )}
-                      <SidebarTaskItem task={task} />
+                      <SidebarTaskItem task={task} hideTeamName />
                     </div>
                   );
                 })}

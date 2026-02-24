@@ -9,6 +9,7 @@ import {
   getTasksBasePath,
   getTeamsBasePath,
 } from '@main/utils/pathDecoder';
+import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
 import { resolveLanguageName } from '@shared/utils/agentLanguage';
 import { createLogger } from '@shared/utils/logger';
 import { execFile, spawn } from 'child_process';
@@ -253,6 +254,12 @@ async function ensureCwdExists(cwd: string): Promise<void> {
   }
 }
 
+function wrapInAgentBlock(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return '';
+  return `${AGENT_BLOCK_OPEN}\n${trimmed}\n${AGENT_BLOCK_CLOSE}`;
+}
+
 function buildMembersPrompt(members: TeamCreateRequest['members']): string {
   return members
     .map((member) => {
@@ -263,7 +270,7 @@ function buildMembersPrompt(members: TeamCreateRequest['members']): string {
 }
 
 function buildTaskStatusProtocol(teamName: string): string {
-  return `MANDATORY TASK STATUS PROTOCOL — you MUST follow this for EVERY task:
+  return wrapInAgentBlock(`MANDATORY TASK STATUS PROTOCOL — you MUST follow this for EVERY task:
 1. Use this command to mark task started:
    node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task start <taskId>
 2. Use this command to mark task completed BEFORE sending your final reply:
@@ -286,7 +293,43 @@ function buildTaskStatusProtocol(teamName: string): string {
    - Typical flow:
      a) Owner finishes work on #X → task complete #X
      b) Reviewer accepts → review approve #X
-Failure to follow this protocol means the task board will show incorrect status.`;
+Failure to follow this protocol means the task board will show incorrect status.`);
+}
+
+function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string {
+  return wrapInAgentBlock(
+    [
+      `Internal task board tooling (teamctl.js):`,
+      `- Use teamctl.js (via Bash) for tasks that must appear on the team board (assigned work, substantial work, or when the user explicitly asks to create a task).`,
+      ``,
+      `Task board operations — use teamctl.js via Bash:`,
+      `- Create task: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task create --subject "..." --description "..." --owner "<actual-member-name>" --notify --from "${leadName}"`,
+      `- Update status: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-status <id> <pending|in_progress|completed|deleted>`,
+      ``,
+      `Notification policy:`,
+      `- The --notify flag sends the assignment to the member automatically, so do NOT send a separate SendMessage for the same task.`,
+    ].join('\n')
+  );
+}
+
+function buildAgentBlockUsagePolicy(): string {
+  return `Agent-only formatting policy (applies to ALL messages you write):
+- Humans can see teammate inbox messages and coordination text in the UI.
+- Keep normal reasoning, decisions, and user-facing communication OUTSIDE agent-only blocks.
+- Any internal operational instructions about tooling/scripts MUST be hidden inside an agent-only block, including:
+  - how to use internal scripts (e.g. teamctl.js), exact CLI commands, flags (e.g. --notify)
+  - review command phrases like "review approve <id>" / "review request-changes <id>"
+  - internal file paths under ~/.claude/ (tools, teams, tasks, kanban state, etc.)
+  - meta coordination lines like "All teammates are online and have received their assignments via --notify."
+- Use an agent-only fenced block (AGENT_BLOCK_OPEN / AGENT_BLOCK_CLOSE):
+  - AGENT_BLOCK_OPEN is exactly: ${AGENT_BLOCK_OPEN}
+  - AGENT_BLOCK_CLOSE is exactly: ${AGENT_BLOCK_CLOSE}
+  - IMPORTANT: the fence lines must start at the beginning of the line (no indentation).
+- Example (copy/paste exactly, no indentation):
+${AGENT_BLOCK_OPEN}
+(internal instructions: commands, script usage, paths, etc.)
+${AGENT_BLOCK_CLOSE}
+- Put ONLY the internal instructions inside the agent-only block.`;
 }
 
 function getSystemLocale(): string {
@@ -311,12 +354,14 @@ function buildProvisioningPrompt(request: TeamCreateRequest): string {
   const members = buildMembersPrompt(request.members);
   const taskProtocol = buildTaskStatusProtocol(request.teamName);
   const languageInstruction = getAgentLanguageInstruction();
+  const agentBlockPolicy = buildAgentBlockUsagePolicy();
   const userPromptBlock = request.prompt?.trim()
     ? `\nAdditional instructions from the user:\n${request.prompt.trim()}\n`
     : '';
 
   const leadName =
     request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name || 'team-lead';
+  const teamCtlOps = buildTeamCtlOpsInstructions(request.teamName, leadName);
 
   return `You are running in a non-interactive CLI session. Do not ask questions. Do everything in a single turn.
 You are "${leadName}", the team lead.
@@ -333,17 +378,18 @@ Constraints:
 - Keep assistant text minimal.
 - NEVER send duplicate messages to the same member. One SendMessage per member per topic is enough.
 - Keep the task board high-signal: avoid creating tasks for trivial micro-items.
-- Use teamctl.js (via Bash) for tasks that must appear on the team board (assigned work, substantial work, or when the user explicitly asks to create a task).
+- Use the team task board for assigned/substantial work.
 - TaskCreate is optional for private planning only; do NOT use it for team-board tasks.
+
+${teamCtlOps}
 
 Communication protocol (CRITICAL — you are running headless, no one sees your text output):
 - When you receive a <teammate-message> from a teammate, ALWAYS reply using the SendMessage tool with the sender's name as recipient.
 - Your plain text output is invisible to teammates — they are separate processes and can only read their inbox.
 - Example: if you receive <teammate-message teammate_id="alice">...</teammate-message>, respond with SendMessage(type: "message", recipient: "alice", content: "your reply").
 
-Task board operations — use teamctl.js via Bash:
-- Create task: node "$HOME/.claude/tools/teamctl.js" --team "${request.teamName}" task create --subject "..." --description "..." --owner "<actual-member-name>" --notify --from "${leadName}"
-- Update status: node "$HOME/.claude/tools/teamctl.js" --team "${request.teamName}" task set-status <id> <pending|in_progress|completed|deleted>
+Message formatting:
+${agentBlockPolicy}
 
 Steps (execute in this exact order):
 
@@ -359,12 +405,13 @@ Steps (execute in this exact order):
      ${languageInstruction}
      Introduce yourself briefly (name and role) and confirm you are ready.
      Then wait for task assignments.
+     Include the following agent-only instructions verbatim in the prompt:
 
-     ${taskProtocol}
+${taskProtocol}
 
-3) If user instructions explicitly ask to create tasks OR describe substantial/assigned work that should be tracked — create tasks via teamctl.js (see "Task board operations").
+3) If user instructions explicitly ask to create tasks OR describe substantial/assigned work that should be tracked — create tasks on the team board.
    - Prefer fewer, broader tasks over many micro-tasks.
-   - The --notify flag sends the assignment to the member automatically, so do NOT send a separate SendMessage for the same task.
+   - Avoid duplicate notifications for the same assignment.
 
 4) After all steps, output a short summary.
 
@@ -383,8 +430,10 @@ function buildLaunchPrompt(
     : '';
   const taskProtocol = buildTaskStatusProtocol(request.teamName);
   const languageInstruction = getAgentLanguageInstruction();
+  const agentBlockPolicy = buildAgentBlockUsagePolicy();
 
   const leadName = members.find((m) => m.role?.toLowerCase().includes('lead'))?.name || 'team-lead';
+  const teamCtlOps = buildTeamCtlOpsInstructions(request.teamName, leadName);
 
   return `You are running in a non-interactive CLI session. Do not ask questions. Do everything in a single turn.
 You are "${leadName}", the team lead.
@@ -401,17 +450,18 @@ Constraints:
 - Keep assistant text minimal.
 - NEVER send duplicate messages to the same member. One SendMessage per member per topic is enough.
 - Keep the task board high-signal: avoid creating tasks for trivial micro-items.
-- Use teamctl.js (via Bash) for tasks that must appear on the team board (assigned work, substantial work, or when the user explicitly asks to create a task).
+- Use the team task board for assigned/substantial work.
 - TaskCreate is optional for private planning only; do NOT use it for team-board tasks.
+
+${teamCtlOps}
 
 Communication protocol (CRITICAL — you are running headless, no one sees your text output):
 - When you receive a <teammate-message> from a teammate, ALWAYS reply using the SendMessage tool with the sender's name as recipient.
 - Your plain text output is invisible to teammates — they are separate processes and can only read their inbox.
 - Example: if you receive <teammate-message teammate_id="alice">...</teammate-message>, respond with SendMessage(type: "message", recipient: "alice", content: "your reply").
 
-Task board operations — use teamctl.js via Bash:
-- Create task: node "$HOME/.claude/tools/teamctl.js" --team "${request.teamName}" task create --subject "..." --description "..." --owner "<actual-member-name>" --notify --from "${leadName}"
-- Update status: node "$HOME/.claude/tools/teamctl.js" --team "${request.teamName}" task set-status <id> <pending|in_progress|completed|deleted>
+Message formatting:
+${agentBlockPolicy}
 
 Steps (execute in this exact order):
 
@@ -428,12 +478,13 @@ Steps (execute in this exact order):
      ${languageInstruction}
      The team has been reconnected. Introduce yourself briefly (name and role) and confirm you are ready.
      Then resume any pending work you own (if any) and wait for new assignments.
+     Include the following agent-only instructions verbatim in the prompt:
 
-     ${taskProtocol}
+${taskProtocol}
 
-4) If user instructions explicitly ask to create tasks OR describe substantial/assigned work that should be tracked — create tasks via teamctl.js (see "Task board operations").
+4) If user instructions explicitly ask to create tasks OR describe substantial/assigned work that should be tracked — create tasks on the team board.
    - Prefer fewer, broader tasks over many micro-tasks.
-   - The --notify flag sends the assignment to the member automatically, so do NOT send a separate SendMessage for the same task.
+   - Avoid duplicate notifications for the same assignment.
 
 5) After all steps, output a short summary.
 
@@ -1292,7 +1343,10 @@ export class TeamProvisioningService {
       const message = [
         `You have new inbox messages addressed to you (team lead "${leadName}").`,
         `Process them in order (oldest first).`,
-        `If action is required, delegate via task creation (teamctl.js --notify) or SendMessage, and keep responses minimal.`,
+        `If action is required, delegate via task creation or SendMessage, and keep responses minimal.`,
+        AGENT_BLOCK_OPEN,
+        `Internal note: for task assignments, prefer teamctl.js task create --notify (avoid sending a separate SendMessage for the same assignment).`,
+        AGENT_BLOCK_CLOSE,
         ``,
         `Messages:`,
         ...batch.flatMap((m, idx) => {
