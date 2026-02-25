@@ -81,6 +81,9 @@ export default defineConfig({
     }
   },
   renderer: {
+    optimizeDeps: {
+      include: ['@codemirror/language-data']
+    },
     resolve: {
       alias: {
         '@renderer': resolve(__dirname, 'src/renderer'),

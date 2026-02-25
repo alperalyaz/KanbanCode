@@ -1,3 +1,5 @@
+import React from 'react';
+
 import { X } from 'lucide-react';
 
 interface KeyboardShortcutsHelpProps {
@@ -10,10 +12,15 @@ const shortcuts = [
   { keys: ['\u2318+Y'], action: 'Accept change' },
   { keys: ['\u2318+N'], action: 'Reject change' },
   { keys: ['\u2318+\u21A9'], action: 'Save file' },
+  { keys: ['\u2318+Z'], action: 'Undo' },
+  { keys: ['\u2318+\u21E7+Z'], action: 'Redo' },
   { keys: ['Esc'], action: 'Close dialog' },
 ];
 
-export const KeyboardShortcutsHelp = ({ open, onOpenChange }: KeyboardShortcutsHelpProps) => {
+export const KeyboardShortcutsHelp = ({
+  open,
+  onOpenChange,
+}: KeyboardShortcutsHelpProps): React.ReactElement | null => {
   if (!open) return null;
 
   return (

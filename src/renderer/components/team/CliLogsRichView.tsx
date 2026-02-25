@@ -22,7 +22,53 @@ interface CliLogsRichViewProps {
 }
 
 /**
- * A single collapsible group of assistant items.
+ * Derives a scoped Set for a single group from the global prefixed Set.
+ * Global keys are stored as `groupId::itemId`; this strips the prefix.
+ */
+function scopedItemIds(globalIds: Set<string>, groupId: string): Set<string> {
+  const prefix = `${groupId}::`;
+  const scoped = new Set<string>();
+  for (const key of globalIds) {
+    if (key.startsWith(prefix)) {
+      scoped.add(key.slice(prefix.length));
+    }
+  }
+  return scoped;
+}
+
+/**
+ * Single-item group rendered flat (no collapsible wrapper).
+ */
+const FlatGroupItem = ({
+  group,
+  expandedItemIds,
+  onItemClick,
+}: {
+  group: StreamJsonGroup;
+  expandedItemIds: Set<string>;
+  onItemClick: (itemId: string) => void;
+}): React.JSX.Element => {
+  const groupItemIds = useMemo(
+    () => scopedItemIds(expandedItemIds, group.id),
+    [expandedItemIds, group.id]
+  );
+  const handleItemClick = useCallback(
+    (itemId: string) => onItemClick(`${group.id}::${itemId}`),
+    [group.id, onItemClick]
+  );
+
+  return (
+    <DisplayItemList
+      items={group.items}
+      onItemClick={handleItemClick}
+      expandedItemIds={groupItemIds}
+      aiGroupId={group.id}
+    />
+  );
+};
+
+/**
+ * A single collapsible group of assistant items (2+ items).
  */
 const StreamGroup = ({
   group,
@@ -36,37 +82,49 @@ const StreamGroup = ({
   onToggle: () => void;
   expandedItemIds: Set<string>;
   onItemClick: (itemId: string) => void;
-}): React.JSX.Element => (
-  <div className="rounded border border-[var(--color-border)] bg-[var(--color-surface)]">
-    <button
-      type="button"
-      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--color-surface-raised)]"
-      onClick={onToggle}
-    >
-      <ChevronRight
-        size={12}
-        className={cn(
-          'shrink-0 text-[var(--color-text-muted)] transition-transform duration-150',
-          isExpanded && 'rotate-90'
-        )}
-      />
-      <Bot size={13} className="shrink-0 text-[var(--color-text-muted)]" />
-      <span className="min-w-0 truncate text-[11px] text-[var(--color-text-secondary)]">
-        {group.summary}
-      </span>
-    </button>
-    {isExpanded && (
-      <div className="border-t border-[var(--color-border)] p-2">
-        <DisplayItemList
-          items={group.items}
-          onItemClick={onItemClick}
-          expandedItemIds={expandedItemIds}
-          aiGroupId={group.id}
+}): React.JSX.Element => {
+  // Scope item IDs to this group to avoid cross-group collisions
+  const groupItemIds = useMemo(
+    () => scopedItemIds(expandedItemIds, group.id),
+    [expandedItemIds, group.id]
+  );
+  const handleItemClick = useCallback(
+    (itemId: string) => onItemClick(`${group.id}::${itemId}`),
+    [group.id, onItemClick]
+  );
+
+  return (
+    <div className="rounded border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--color-surface-raised)]"
+        onClick={onToggle}
+      >
+        <ChevronRight
+          size={12}
+          className={cn(
+            'shrink-0 text-[var(--color-text-muted)] transition-transform duration-150',
+            isExpanded && 'rotate-90'
+          )}
         />
-      </div>
-    )}
-  </div>
-);
+        <Bot size={13} className="shrink-0 text-[var(--color-text-muted)]" />
+        <span className="min-w-0 truncate text-[11px] text-[var(--color-text-secondary)]">
+          {group.summary}
+        </span>
+      </button>
+      {isExpanded && (
+        <div className="border-t border-[var(--color-border)] p-2">
+          <DisplayItemList
+            items={group.items}
+            onItemClick={handleItemClick}
+            expandedItemIds={groupItemIds}
+            aiGroupId={group.id}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const CliLogsRichView = ({
   cliLogsTail,
@@ -126,13 +184,14 @@ export const CliLogsRichView = ({
     const hasContent = cliLogsTail.trim().length > 0;
     return (
       <div
+        ref={scrollRef}
         className={cn(
-          'rounded border border-[var(--color-border)] bg-[var(--color-surface)]',
+          'max-h-[400px] overflow-y-auto rounded border border-[var(--color-border)] bg-[var(--color-surface)]',
           className
         )}
       >
         {hasContent ? (
-          <pre className="max-h-[400px] overflow-y-auto p-2 font-mono text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
+          <pre className="p-2 font-mono text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
             {cliLogsTail}
           </pre>
         ) : (
@@ -146,16 +205,26 @@ export const CliLogsRichView = ({
 
   return (
     <div ref={scrollRef} className={cn('max-h-[400px] space-y-1.5 overflow-y-auto', className)}>
-      {groups.map((group) => (
-        <StreamGroup
-          key={group.id}
-          group={group}
-          isExpanded={expandedGroupIds.has(group.id)}
-          onToggle={() => handleGroupToggle(group.id)}
-          expandedItemIds={expandedItemIds}
-          onItemClick={handleItemClick}
-        />
-      ))}
+      {groups.map((group) =>
+        group.items.length === 1 ? (
+          // Single item — render flat without collapsible group wrapper
+          <FlatGroupItem
+            key={group.id}
+            group={group}
+            expandedItemIds={expandedItemIds}
+            onItemClick={handleItemClick}
+          />
+        ) : (
+          <StreamGroup
+            key={group.id}
+            group={group}
+            isExpanded={expandedGroupIds.has(group.id)}
+            onToggle={() => handleGroupToggle(group.id)}
+            expandedItemIds={expandedItemIds}
+            onItemClick={handleItemClick}
+          />
+        )
+      )}
     </div>
   );
 };

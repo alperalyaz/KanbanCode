@@ -431,8 +431,10 @@ export class TeamDataService {
           AGENT_BLOCK_CLOSE
         );
 
+        const leadName = await this.resolveLeadName(teamName);
         await this.sendMessage(teamName, {
           member: request.owner,
+          from: leadName,
           text: parts.join('\n'),
           summary: `New task #${task.id} assigned`,
         });
@@ -469,8 +471,10 @@ export class TeamDataService {
           `node "${toolPath}" --team ${teamName} task complete ${task.id}`,
           AGENT_BLOCK_CLOSE
         );
+        const leadName = await this.resolveLeadName(teamName);
         await this.sendMessage(teamName, {
           member: task.owner,
+          from: leadName,
           text: parts.join('\n'),
           summary: `Task #${task.id} started`,
         });
@@ -507,8 +511,10 @@ export class TeamDataService {
           `node "${toolPath}" --team ${teamName} task comment ${taskId} --text "<your reply>" --from "<your-name>"`,
           AGENT_BLOCK_CLOSE,
         ];
+        const leadName = await this.resolveLeadName(teamName);
         await this.sendMessage(teamName, {
           member: task.owner,
+          from: leadName,
           text: parts.join('\n'),
           summary: `Comment on #${taskId}`,
         });
@@ -522,6 +528,17 @@ export class TeamDataService {
 
   async sendMessage(teamName: string, request: SendMessageRequest): Promise<SendMessageResult> {
     return this.inboxWriter.sendMessage(teamName, request);
+  }
+
+  private async resolveLeadName(teamName: string): Promise<string> {
+    try {
+      const config = await this.configReader.getConfig(teamName);
+      if (!config) return 'team-lead';
+      const lead = config.members?.find((m) => m.role?.toLowerCase().includes('lead'));
+      return lead?.name ?? config.members?.[0]?.name ?? 'team-lead';
+    } catch {
+      return 'team-lead';
+    }
   }
 
   async sendDirectToLead(
@@ -582,9 +599,13 @@ export class TeamDataService {
     }
 
     try {
-      const toolPath = await this.toolsInstaller.ensureInstalled();
+      const [toolPath, leadName] = await Promise.all([
+        this.toolsInstaller.ensureInstalled(),
+        this.resolveLeadName(teamName),
+      ]);
       await this.sendMessage(teamName, {
         member: reviewer,
+        from: leadName,
         text:
           `Please review task #${taskId}.\n\n` +
           `${AGENT_BLOCK_OPEN}\n` +
@@ -786,8 +807,10 @@ export class TeamDataService {
 
     try {
       await this.taskWriter.updateStatus(teamName, taskId, 'in_progress');
+      const leadName = await this.resolveLeadName(teamName);
       await this.sendMessage(teamName, {
         member: task.owner,
+        from: leadName,
         text:
           `Task #${taskId} needs fixes.\n\n` +
           `${patch.comment?.trim() || 'Reviewer requested changes.'}\n\n` +

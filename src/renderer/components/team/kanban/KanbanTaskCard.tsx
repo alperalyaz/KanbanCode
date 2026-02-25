@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { UnreadCommentsBadge } from '@renderer/components/team/UnreadCommentsBadge';
@@ -6,6 +6,7 @@ import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
 import { useUnreadCommentCount } from '@renderer/hooks/useUnreadCommentCount';
+import { useStore } from '@renderer/store';
 import {
   ArrowLeftFromLine,
   ArrowRightFromLine,
@@ -147,6 +148,19 @@ export const KanbanTaskCard = ({
   const blocksIds = task.blocks?.filter((id) => id.length > 0) ?? [];
   const hasBlockedBy = blockedByIds.length > 0;
   const hasBlocks = blocksIds.length > 0;
+
+  // Lazy-check if task has file changes (only for done/review/approved columns)
+  const showChangesColumn =
+    (columnId === 'done' || columnId === 'review' || columnId === 'approved') && !!onViewChanges;
+  const cacheKey = `${teamName}:${task.id}`;
+  const taskHasChanges = useStore((s) => s.taskHasChanges[cacheKey]);
+  const checkTaskHasChanges = useStore((s) => s.checkTaskHasChanges);
+
+  useEffect(() => {
+    if (showChangesColumn && task.status === 'completed' && taskHasChanges == null) {
+      void checkTaskHasChanges(teamName, task.id);
+    }
+  }, [showChangesColumn, task.status, task.id, teamName, taskHasChanges, checkTaskHasChanges]);
 
   return (
     <div
@@ -341,9 +355,10 @@ export const KanbanTaskCard = ({
               Move back to DONE
             </Button>
           ) : null}
+        </div>
 
-          {(columnId === 'done' || columnId === 'review' || columnId === 'approved') &&
-          onViewChanges ? (
+        <div className="flex items-center gap-1.5">
+          {showChangesColumn && taskHasChanges === true ? (
             <button
               type="button"
               onClick={(e) => {
@@ -356,9 +371,8 @@ export const KanbanTaskCard = ({
               Changes
             </button>
           ) : null}
+          <UnreadCommentsBadge unreadCount={unreadCount} totalCount={task.comments?.length ?? 0} />
         </div>
-
-        <UnreadCommentsBadge unreadCount={unreadCount} totalCount={task.comments?.length ?? 0} />
       </div>
     </div>
   );

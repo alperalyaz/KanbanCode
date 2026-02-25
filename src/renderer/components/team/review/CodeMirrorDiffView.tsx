@@ -1,22 +1,30 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { cpp } from '@codemirror/lang-cpp';
 import { css } from '@codemirror/lang-css';
+import { go } from '@codemirror/lang-go';
 import { html } from '@codemirror/lang-html';
+import { java } from '@codemirror/lang-java';
 import { javascript } from '@codemirror/lang-javascript';
 import { json } from '@codemirror/lang-json';
+import { less } from '@codemirror/lang-less';
+import { markdown } from '@codemirror/lang-markdown';
+import { php } from '@codemirror/lang-php';
 import { python } from '@codemirror/lang-python';
+import { rust } from '@codemirror/lang-rust';
+import { sass } from '@codemirror/lang-sass';
+import { sql } from '@codemirror/lang-sql';
 import { xml } from '@codemirror/lang-xml';
-import {
-  acceptChunk,
-  getChunks,
-  goToNextChunk,
-  goToPreviousChunk,
-  rejectChunk,
-  unifiedMergeView,
-} from '@codemirror/merge';
-import { EditorState, type Extension } from '@codemirror/state';
+import { yaml } from '@codemirror/lang-yaml';
+import { indentUnit, LanguageDescription, syntaxHighlighting } from '@codemirror/language';
+import { languages } from '@codemirror/language-data';
+import { goToNextChunk, goToPreviousChunk, unifiedMergeView } from '@codemirror/merge';
+import { Compartment, EditorState, type Extension } from '@codemirror/state';
+import { oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
 import { EditorView, keymap } from '@codemirror/view';
+
+import { acceptChunk, getChunks, mergeUndoSupport, rejectChunk } from './CodeMirrorDiffUtils';
 
 interface CodeMirrorDiffViewProps {
   original: string;
@@ -35,10 +43,12 @@ interface CodeMirrorDiffViewProps {
   editorViewRef?: React.RefObject<EditorView | null>;
   /** Called when editor content changes (debounced, only when readOnly=false) */
   onContentChanged?: (content: string) => void;
+  /** Cached EditorState to restore (preserves undo history between file switches) */
+  initialState?: EditorState;
 }
 
-/** Detect language extension from file name */
-function getLanguageExtension(fileName: string): Extension | null {
+/** Synchronous language extension for common file types (bundled by Vite) */
+function getSyncLanguageExtension(fileName: string): Extension | null {
   const ext = fileName.split('.').pop()?.toLowerCase();
   switch (ext) {
     case 'ts':
@@ -57,17 +67,51 @@ function getLanguageExtension(fileName: string): Extension | null {
     case 'jsonl':
       return json();
     case 'css':
-    case 'scss':
       return css();
+    case 'scss':
+      return sass({ indented: false });
+    case 'sass':
+      return sass({ indented: true });
+    case 'less':
+      return less();
     case 'html':
     case 'htm':
       return html();
     case 'xml':
     case 'svg':
       return xml();
+    case 'md':
+    case 'mdx':
+    case 'markdown':
+      return markdown();
+    case 'yaml':
+    case 'yml':
+      return yaml();
+    case 'rs':
+      return rust();
+    case 'go':
+      return go();
+    case 'java':
+      return java();
+    case 'c':
+    case 'h':
+    case 'cpp':
+    case 'cxx':
+    case 'cc':
+    case 'hpp':
+      return cpp();
+    case 'php':
+      return php();
+    case 'sql':
+      return sql();
     default:
       return null;
   }
+}
+
+/** Async fallback: match by filename via @codemirror/language-data for rare languages */
+function getAsyncLanguageDesc(fileName: string): LanguageDescription | null {
+  return LanguageDescription.matchFilename(languages, fileName);
 }
 
 /** Compute hunk index for the chunk at a given position */
@@ -123,15 +167,15 @@ const diffTheme = EditorView.theme({
   '.cm-selectionBackground': {
     backgroundColor: 'rgba(59, 130, 246, 0.3) !important',
   },
-  // Diff-specific styles
+  // Diff-specific styles — line-level backgrounds (no per-character underlines)
   '.cm-changedLine': {
-    backgroundColor: 'var(--diff-added-bg, rgba(46, 160, 67, 0.15))',
+    backgroundColor: 'var(--diff-added-bg, rgba(46, 160, 67, 0.22))',
   },
   '.cm-deletedChunk': {
     backgroundColor: 'var(--diff-removed-bg, rgba(248, 81, 73, 0.15))',
   },
   '.cm-insertedLine': {
-    backgroundColor: 'var(--diff-added-bg, rgba(46, 160, 67, 0.15))',
+    backgroundColor: 'var(--diff-added-bg, rgba(46, 160, 67, 0.22))',
   },
   '.cm-deletedLine': {
     backgroundColor: 'var(--diff-removed-bg, rgba(248, 81, 73, 0.15))',
@@ -195,7 +239,8 @@ export const CodeMirrorDiffView = ({
   onFullyViewed,
   editorViewRef: externalViewRef,
   onContentChanged,
-}: CodeMirrorDiffViewProps) => {
+  initialState,
+}: CodeMirrorDiffViewProps): React.ReactElement => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const endSentinelRef = useRef<HTMLDivElement>(null);
@@ -221,11 +266,13 @@ export const CodeMirrorDiffView = ({
     });
   }, []);
 
-  const langExtension = useMemo(() => getLanguageExtension(fileName), [fileName]);
+  // Compartment for lazy-injected language support
+  const langCompartment = useRef(new Compartment());
 
   const buildExtensions = useCallback(() => {
     const extensions: Extension[] = [
       diffTheme,
+      syntaxHighlighting(oneDarkHighlightStyle),
       EditorView.editable.of(!readOnly),
       EditorState.readOnly.of(readOnly),
     ];
@@ -233,12 +280,13 @@ export const CodeMirrorDiffView = ({
     // Undo/redo support and standard editing keybindings
     if (!readOnly) {
       extensions.push(history());
-      extensions.push(keymap.of([...defaultKeymap, ...historyKeymap]));
+      extensions.push(mergeUndoSupport);
+      extensions.push(indentUnit.of('  '));
+      extensions.push(keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]));
     }
 
-    if (langExtension) {
-      extensions.push(langExtension);
-    }
+    // Language placeholder — actual language injected async via compartment reconfigure
+    extensions.push(langCompartment.current.of([]));
 
     // Keyboard shortcuts for chunk navigation and accept/reject
     extensions.push(
@@ -294,7 +342,7 @@ export const CodeMirrorDiffView = ({
     // Unified merge view
     const mergeConfig: Parameters<typeof unifiedMergeView>[0] = {
       original,
-      highlightChanges: true,
+      highlightChanges: false,
       gutter: true,
       syntaxHighlightDeletions: true,
     };
@@ -307,7 +355,12 @@ export const CodeMirrorDiffView = ({
     }
 
     if (showMergeControls) {
-      mergeConfig.mergeControls = (type, action) => {
+      // NOTE: We intentionally do NOT use the `action` callback from @codemirror/merge.
+      // CM's DeletionWidget caches DOM via a global WeakMap keyed by chunk.changes.
+      // When EditorView is recreated (e.g. from cached initialState), toDOM() returns
+      // the OLD cached DOM whose `action` closure references the DESTROYED view.
+      // Instead, we call acceptChunk/rejectChunk directly with viewRef.current.
+      mergeConfig.mergeControls = (type, _action) => {
         const btn = document.createElement('button');
 
         if (type === 'accept') {
@@ -320,7 +373,7 @@ export const CodeMirrorDiffView = ({
             if (view) {
               const pos = view.posAtDOM(btn);
               const hunkIndex = computeHunkIndexAtPos(view.state, pos);
-              action(e);
+              acceptChunk(view, pos);
               onAcceptRef.current?.(hunkIndex);
               scrollToNextChunk();
             }
@@ -335,7 +388,7 @@ export const CodeMirrorDiffView = ({
             if (view) {
               const pos = view.posAtDOM(btn);
               const hunkIndex = computeHunkIndexAtPos(view.state, pos);
-              action(e);
+              rejectChunk(view, pos);
               onRejectRef.current?.(hunkIndex);
               scrollToNextChunk();
             }
@@ -352,7 +405,6 @@ export const CodeMirrorDiffView = ({
   }, [
     original,
     readOnly,
-    langExtension,
     showMergeControls,
     collapseUnchangedProp,
     collapseMargin,
@@ -368,11 +420,13 @@ export const CodeMirrorDiffView = ({
       viewRef.current = null;
     }
 
-    const view = new EditorView({
-      doc: modified,
-      extensions: buildExtensions(),
-      parent: containerRef.current,
-    });
+    const view = initialState
+      ? new EditorView({ state: initialState, parent: containerRef.current })
+      : new EditorView({
+          doc: modified,
+          extensions: buildExtensions(),
+          parent: containerRef.current,
+        });
 
     viewRef.current = view;
     // Sync to external ref via holder
@@ -389,7 +443,39 @@ export const CodeMirrorDiffView = ({
       }
     };
     // We intentionally rebuild the entire editor when key props change
-  }, [original, modified, buildExtensions]);
+  }, [original, modified, buildExtensions, initialState]);
+
+  // Inject language extension via compartment after editor creation
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+
+    // Try synchronous (bundled) language first
+    const syncLang = getSyncLanguageExtension(fileName);
+    if (syncLang) {
+      view.dispatch({ effects: langCompartment.current.reconfigure(syncLang) });
+      return;
+    }
+
+    // Async fallback for rare languages via @codemirror/language-data
+    const desc = getAsyncLanguageDesc(fileName);
+    if (!desc) return;
+
+    if (desc.support) {
+      view.dispatch({ effects: langCompartment.current.reconfigure(desc.support) });
+      return;
+    }
+
+    let cancelled = false;
+    void desc.load().then((support: Extension) => {
+      if (!cancelled && viewRef.current === view) {
+        view.dispatch({ effects: langCompartment.current.reconfigure(support) });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fileName, buildExtensions, initialState]);
 
   // Auto-viewed detection via IntersectionObserver
   useEffect(() => {
@@ -418,6 +504,3 @@ export const CodeMirrorDiffView = ({
     </div>
   );
 };
-
-// Re-export merge utils for external use
-export { acceptChunk, getChunks, rejectChunk };

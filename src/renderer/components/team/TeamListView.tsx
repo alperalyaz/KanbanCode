@@ -200,20 +200,34 @@ export const TeamListView = (): React.JSX.Element => {
       );
     }
 
-    if (currentProjectPath) {
-      const matches = (t: TeamSummary): boolean => {
-        if (t.projectPath && normalizePath(t.projectPath) === currentProjectPath) return true;
-        return t.projectPathHistory?.some((p) => normalizePath(p) === currentProjectPath) ?? false;
-      };
-      result = [...result].sort((a, b) => {
-        const aMatch = matches(a) ? 0 : 1;
-        const bMatch = matches(b) ? 0 : 1;
-        return aMatch - bMatch;
-      });
-    }
+    const aliveSet = new Set(aliveTeams);
+    const matchesProject = currentProjectPath
+      ? (t: TeamSummary): boolean => {
+          if (t.projectPath && normalizePath(t.projectPath) === currentProjectPath) return true;
+          return (
+            t.projectPathHistory?.some((p) => normalizePath(p) === currentProjectPath) ?? false
+          );
+        }
+      : null;
+
+    result = [...result].sort((a, b) => {
+      // 1. Alive (running) teams first
+      const aliveA = aliveSet.has(a.teamName) ? 0 : 1;
+      const aliveB = aliveSet.has(b.teamName) ? 0 : 1;
+      if (aliveA !== aliveB) return aliveA - aliveB;
+
+      // 2. Matching current project second
+      if (matchesProject) {
+        const projA = matchesProject(a) ? 0 : 1;
+        const projB = matchesProject(b) ? 0 : 1;
+        if (projA !== projB) return projA - projB;
+      }
+
+      return 0;
+    });
 
     return result;
-  }, [teams, searchQuery, currentProjectPath]);
+  }, [teams, searchQuery, currentProjectPath, aliveTeams]);
 
   // Live branch/worktree for team project paths (poll so it updates during process)
   const projectPathsToPoll = useMemo(() => {

@@ -34,32 +34,28 @@ interface ContentBlock {
 
 /**
  * Attempts to extract the content array from a parsed stream-json line.
- * Handles both `{ type: "assistant", content: [...] }` and
- * `{ message: { type: "assistant", content: [...] } }` formats.
+ * Handles both `{ type: "assistant", content: [...] }` (direct) and
+ * `{ type: "assistant", message: { type: "message", content: [...] } }` (wrapped) formats.
  */
 function extractContentBlocks(parsed: unknown): ContentBlock[] | null {
   if (!parsed || typeof parsed !== 'object') return null;
 
   const obj = parsed as Record<string, unknown>;
 
+  // Only process assistant messages
+  if (obj.type !== 'assistant') return null;
+
   // Direct format: { type: "assistant", content: [...] }
-  if (obj.type === 'assistant' && Array.isArray(obj.content)) {
+  if (Array.isArray(obj.content)) {
     return obj.content as ContentBlock[];
   }
 
-  // Wrapped format: { message: { type: "assistant", content: [...] } }
+  // Wrapped format: { type: "assistant", message: { type: "message", content: [...] } }
+  // The inner message.type is "message" (not "assistant")
   if (obj.message && typeof obj.message === 'object') {
     const msg = obj.message as Record<string, unknown>;
-    if (msg.type === 'assistant' && Array.isArray(msg.content)) {
+    if (Array.isArray(msg.content)) {
       return msg.content as ContentBlock[];
-    }
-  }
-
-  // Result format: { type: "result", result: { type: "assistant", content: [...] } }
-  if (obj.type === 'result' && obj.result && typeof obj.result === 'object') {
-    const result = obj.result as Record<string, unknown>;
-    if (Array.isArray(result.content)) {
-      return result.content as ContentBlock[];
     }
   }
 

@@ -131,6 +131,8 @@ interface ProvisioningRun {
   directReplyParts: string[];
   /** Accumulates assistant text during provisioning phase for live UI preview. */
   provisioningOutputParts: string[];
+  /** Session ID detected from stream-json output (result.session_id or message.session_id). */
+  detectedSessionId: string | null;
 }
 
 type ProvisioningAuthSource =
@@ -765,6 +767,7 @@ export class TeamProvisioningService {
       leadRelayCapture: null,
       directReplyParts: [],
       provisioningOutputParts: [],
+      detectedSessionId: null,
       progress: {
         runId,
         teamName: request.teamName,
@@ -1036,6 +1039,7 @@ export class TeamProvisioningService {
       leadRelayCapture: null,
       directReplyParts: [],
       provisioningOutputParts: [],
+      detectedSessionId: null,
       progress: {
         runId,
         teamName: request.teamName,
@@ -1522,7 +1526,8 @@ export class TeamProvisioningService {
     const aliveTeams = this.getAliveTeams();
     if (aliveTeams.length === 0) return;
 
-    const newResolved = resolveLanguageName(newLangCode);
+    const systemLocale = getSystemLocale();
+    const newResolved = resolveLanguageName(newLangCode, systemLocale);
 
     for (const teamName of aliveTeams) {
       try {
@@ -1532,7 +1537,15 @@ export class TeamProvisioningService {
         const oldCode = config.language || 'system';
         if (oldCode === newLangCode) continue;
 
-        const oldResolved = resolveLanguageName(oldCode);
+        // Compare resolved names to avoid spurious notifications
+        // e.g. switching from 'ru' to 'system' when system locale is Russian
+        const oldResolved = resolveLanguageName(oldCode, systemLocale);
+        if (oldResolved === newResolved) {
+          // Effective language unchanged — just update stored code silently
+          await this.configReader.updateConfig(teamName, { language: newLangCode });
+          continue;
+        }
+
         const message =
           `The user has changed the preferred communication language from "${oldResolved}" to "${newResolved}". ` +
           `Please switch to ${newResolved} for all future responses and broadcast this change to all teammates ` +
@@ -1704,6 +1717,17 @@ export class TeamProvisioningService {
       }
     }
 
+    // Capture session_id from any message type (first occurrence wins)
+    if (!run.detectedSessionId) {
+      const sid = typeof msg.session_id === 'string' ? msg.session_id : undefined;
+      if (sid && sid.trim().length > 0) {
+        run.detectedSessionId = sid.trim();
+        logger.info(
+          `[${run.teamName}] Detected session ID from stream-json: ${run.detectedSessionId}`
+        );
+      }
+    }
+
     if (msg.type === 'result') {
       const subtype =
         typeof msg.subtype === 'string'
@@ -1750,7 +1774,7 @@ export class TeamProvisioningService {
             });
           }
         }
-        if (!run.provisioningComplete) {
+        if (!run.provisioningComplete && !run.cancelRequested) {
           void this.handleProvisioningTurnComplete(run);
         }
       } else if (subtype === 'error') {
@@ -1760,7 +1784,7 @@ export class TeamProvisioningService {
         if (run.leadRelayCapture) {
           run.leadRelayCapture.rejectOnce(errorMsg);
         }
-        if (!run.provisioningComplete) {
+        if (!run.provisioningComplete && !run.cancelRequested) {
           const progress = updateProgress(
             run,
             'failed',
@@ -1787,6 +1811,7 @@ export class TeamProvisioningService {
    * Process stays alive for subsequent tasks.
    */
   private async handleProvisioningTurnComplete(run: ProvisioningRun): Promise<void> {
+    if (run.cancelRequested) return;
     run.provisioningComplete = true;
 
     // Clear provisioning timeout — no longer needed
@@ -1797,7 +1822,7 @@ export class TeamProvisioningService {
     this.stopFilesystemMonitor(run);
 
     if (run.isLaunch) {
-      await this.updateConfigPostLaunch(run.teamName, run.request.cwd);
+      await this.updateConfigPostLaunch(run.teamName, run.request.cwd, run.detectedSessionId);
       await this.cleanupPrelaunchBackup(run.teamName);
       const readyMessage = 'Team launched — process alive and ready';
       const progress = updateProgress(run, 'ready', readyMessage, {
@@ -1838,7 +1863,7 @@ export class TeamProvisioningService {
 
     // Persist teammates metadata separately from config.json.
     await this.persistMembersMeta(run.teamName, run.request);
-    await this.updateConfigPostLaunch(run.teamName, run.request.cwd);
+    await this.updateConfigPostLaunch(run.teamName, run.request.cwd, run.detectedSessionId);
 
     const progress = updateProgress(run, 'ready', 'Team provisioned — process alive and ready', {
       cliLogsTail: extractLogsTail(run.stdoutBuffer, run.stderrBuffer),
@@ -2388,23 +2413,49 @@ export class TeamProvisioningService {
    * Combines session history append and projectPath update to avoid
    * race conditions with the CLI writing to the same file.
    */
-  private async updateConfigPostLaunch(teamName: string, projectPath: string): Promise<void> {
+  private async updateConfigPostLaunch(
+    teamName: string,
+    projectPath: string,
+    detectedSessionId: string | null
+  ): Promise<void> {
     const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
     try {
       const raw = await fs.promises.readFile(configPath, 'utf8');
       const config = JSON.parse(raw) as Record<string, unknown>;
 
-      // Append session to history
-      const leadSessionId = config.leadSessionId;
-      if (typeof leadSessionId === 'string' && leadSessionId.trim().length > 0) {
-        const sessionHistory = Array.isArray(config.sessionHistory)
-          ? (config.sessionHistory as string[])
-          : [];
-        if (!sessionHistory.includes(leadSessionId)) {
-          sessionHistory.push(leadSessionId);
-          config.sessionHistory = sessionHistory;
+      const sessionHistory = Array.isArray(config.sessionHistory)
+        ? (config.sessionHistory as string[])
+        : [];
+
+      // Preserve old leadSessionId in history before overwriting
+      const oldLeadSessionId = config.leadSessionId;
+      if (typeof oldLeadSessionId === 'string' && oldLeadSessionId.trim().length > 0) {
+        if (!sessionHistory.includes(oldLeadSessionId)) {
+          sessionHistory.push(oldLeadSessionId);
         }
       }
+
+      // Update leadSessionId to the new session detected from stream-json
+      let newSessionId = detectedSessionId;
+
+      // Fallback: if stream-json didn't provide session_id, scan project dir for newest JSONL
+      if (!newSessionId && projectPath.trim()) {
+        const scannedId = await this.scanForNewestSession(projectPath, sessionHistory);
+        if (scannedId) {
+          newSessionId = scannedId;
+          logger.info(`[${teamName}] Detected new session via project dir scan: ${scannedId}`);
+        }
+      }
+
+      if (newSessionId) {
+        config.leadSessionId = newSessionId;
+        if (!sessionHistory.includes(newSessionId)) {
+          sessionHistory.push(newSessionId);
+        }
+        logger.info(`[${teamName}] Updated leadSessionId: ${newSessionId}`);
+      }
+
+      config.sessionHistory = sessionHistory;
 
       // Save current language setting
       const langCode = ConfigManager.getInstance().getConfig().general.agentLanguage || 'system';
@@ -2429,6 +2480,41 @@ export class TeamProvisioningService {
           error instanceof Error ? error.message : String(error)
         }`
       );
+    }
+  }
+
+  /**
+   * Fallback: scan the project directory for the newest JSONL file
+   * that isn't already in sessionHistory. Returns the session ID or null.
+   */
+  private async scanForNewestSession(
+    projectPath: string,
+    knownSessions: string[]
+  ): Promise<string | null> {
+    try {
+      const projectId = encodePath(projectPath);
+      const baseDir = extractBaseDir(projectId);
+      const projectDir = path.join(getProjectsBasePath(), baseDir);
+      const entries = await fs.promises.readdir(projectDir);
+
+      const knownSet = new Set(knownSessions);
+      let newest: { id: string; mtime: number } | null = null;
+
+      for (const entry of entries) {
+        if (!entry.endsWith('.jsonl')) continue;
+        const sessionId = entry.replace('.jsonl', '');
+        if (knownSet.has(sessionId)) continue;
+
+        const filePath = path.join(projectDir, entry);
+        const stat = await fs.promises.stat(filePath);
+        if (!newest || stat.mtimeMs > newest.mtime) {
+          newest = { id: sessionId, mtime: stat.mtimeMs };
+        }
+      }
+
+      return newest?.id ?? null;
+    } catch {
+      return null;
     }
   }
 

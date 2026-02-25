@@ -169,6 +169,15 @@ function getPaths(flags, teamName) {
   return { claudeDir, teamDir, tasksDir, kanbanPath };
 }
 
+function inferLeadName(paths) {
+  const config = readJson(path.join(paths.teamDir, 'config.json'), null);
+  if (!config || !Array.isArray(config.members)) return 'team-lead';
+  const lead = config.members.find(function (m) {
+    return m.role && String(m.role).toLowerCase().includes('lead');
+  });
+  return lead ? String(lead.name) : (config.members[0] ? String(config.members[0].name) : 'team-lead');
+}
+
 function readTask(paths, taskId) {
   const taskPath = path.join(paths.tasksDir, String(taskId) + '.json');
   const task = readJson(taskPath, null);
@@ -340,7 +349,7 @@ function sendInboxMessage(paths, teamName, flags) {
   const text = typeof flags.text === 'string' ? flags.text : '';
   if (!text) die('Missing --text');
   const summary = typeof flags.summary === 'string' ? flags.summary : undefined;
-  const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : 'user';
+  const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : inferLeadName(paths);
 
   const inboxPath = path.join(paths.teamDir, 'inboxes', String(to) + '.json');
   ensureDir(path.dirname(inboxPath));
@@ -374,7 +383,7 @@ function reviewApprove(paths, teamName, taskId, flags) {
   if (!notify) return;
   const { task } = readTask(paths, taskId);
   if (!task.owner) return;
-  const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : 'user';
+  const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : inferLeadName(paths);
   const note = typeof flags.note === 'string' ? flags.note.trim() : '';
   const text = note
     ? 'Task #' + String(taskId) + ' approved.\n\n' + note
@@ -396,7 +405,7 @@ function reviewRequestChanges(paths, teamName, taskId, flags) {
   task.status = 'in_progress';
   writeTask(taskPath, task);
 
-  const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : 'user';
+  const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : inferLeadName(paths);
   const text =
     'Task #' +
     String(taskId) +
@@ -481,7 +490,7 @@ async function main() {
       const notify = args.flags.notify === true || args.flags['notify-owner'] === true;
       if (notify && task.owner) {
         const from =
-          typeof args.flags.from === 'string' && args.flags.from.trim() ? args.flags.from.trim() : 'user';
+          typeof args.flags.from === 'string' && args.flags.from.trim() ? args.flags.from.trim() : inferLeadName(paths);
         const parts = ['New task assigned to you: #' + String(task.id) + ' "' + String(task.subject) + '".'];
         const rawDesc = typeof args.flags.description === 'string' ? args.flags.description.trim()
           : typeof args.flags.desc === 'string' ? args.flags.desc.trim() : '';

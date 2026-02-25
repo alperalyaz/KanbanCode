@@ -1,6 +1,12 @@
 import { api } from '@renderer/api';
 import { createLogger } from '@shared/utils/logger';
 
+/** Tracks in-flight checkTaskHasChanges calls to avoid duplicate requests */
+const taskChangesCheckInFlight = new Set<string>();
+/** Negative results cached with timestamp — recheck after 30s */
+const taskChangesNegativeCache = new Map<string, number>();
+const NEGATIVE_CACHE_TTL = 30_000;
+
 import type { AppState } from '../types';
 import type {
   AgentChangeSet,
@@ -37,13 +43,15 @@ export interface ChangeReviewSlice {
   fileDecisions: Record<string, HunkDecision>;
   fileContents: Record<string, FileChangeWithContent>;
   fileContentsLoading: Record<string, boolean>;
-  diffViewMode: 'unified' | 'split';
   collapseUnchanged: boolean;
   applyError: string | null;
   applying: boolean;
 
   // Editable diff state
   editedContents: Record<string, string>;
+
+  /** Cache: "teamName:taskId" → true/false (has file changes) */
+  taskHasChanges: Record<string, boolean>;
 
   // Phase 1 actions
   fetchAgentChanges: (teamName: string, memberName: string) => Promise<void>;
@@ -59,7 +67,6 @@ export interface ChangeReviewSlice {
   rejectAllFile: (filePath: string) => void;
   acceptAll: () => void;
   rejectAll: () => void;
-  setDiffViewMode: (mode: 'unified' | 'split') => void;
   setCollapseUnchanged: (collapse: boolean) => void;
   fetchFileContent: (
     teamName: string,
@@ -74,6 +81,9 @@ export interface ChangeReviewSlice {
   discardFileEdits: (filePath: string) => void;
   discardAllEdits: () => void;
   saveEditedFile: (filePath: string) => Promise<void>;
+
+  // Task change availability
+  checkTaskHasChanges: (teamName: string, taskId: string) => Promise<void>;
 }
 
 export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeReviewSlice> = (
@@ -92,13 +102,14 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
   fileDecisions: {},
   fileContents: {},
   fileContentsLoading: {},
-  diffViewMode: 'unified',
   collapseUnchanged: true,
   applyError: null,
   applying: false,
 
   // Editable diff initial state
   editedContents: {},
+
+  taskHasChanges: {},
 
   fetchAgentChanges: async (teamName: string, memberName: string) => {
     set({ changeSetLoading: true, changeSetError: null });
@@ -120,11 +131,13 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
     set({ changeSetLoading: true, changeSetError: null });
     try {
       const data = await api.review.getTaskChanges(teamName, taskId);
-      set({
+      const cacheKey = `${teamName}:${taskId}`;
+      set((s) => ({
         activeChangeSet: data,
         changeSetLoading: false,
         selectedReviewFilePath: data.files[0]?.filePath ?? null,
-      });
+        taskHasChanges: { ...s.taskHasChanges, [cacheKey]: data.files.length > 0 },
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to fetch task changes';
       logger.error('fetchTaskChanges error:', message);
@@ -241,10 +254,6 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
     set({ hunkDecisions: newHunkDecisions, fileDecisions: newFileDecisions });
   },
 
-  setDiffViewMode: (mode: 'unified' | 'split') => {
-    set({ diffViewMode: mode });
-  },
-
   setCollapseUnchanged: (collapse: boolean) => {
     set({ collapseUnchanged: collapse });
   },
@@ -284,7 +293,7 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
         totalLinesAdded: number;
         totalLinesRemoved: number;
         files: { filePath: string }[];
-      }) =>
+      }): string =>
         `${cs.totalFiles}:${cs.totalLinesAdded}:${cs.totalLinesRemoved}:${cs.files.map((f) => f.filePath).join(',')}`;
 
       if (memberName && current) {
@@ -394,6 +403,35 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
       });
     } catch (error) {
       set({ applying: false, applyError: mapReviewError(error) });
+    }
+  },
+
+  checkTaskHasChanges: async (teamName: string, taskId: string) => {
+    const cacheKey = `${teamName}:${taskId}`;
+    // Positive results are final — no need to recheck
+    if (get().taskHasChanges[cacheKey] === true) return;
+    // Prevent duplicate in-flight requests
+    if (taskChangesCheckInFlight.has(cacheKey)) return;
+    // Negative results cached with TTL — avoid API spam for tasks that truly have no changes
+    const negativeTs = taskChangesNegativeCache.get(cacheKey);
+    if (negativeTs && Date.now() - negativeTs < NEGATIVE_CACHE_TTL) return;
+
+    taskChangesCheckInFlight.add(cacheKey);
+    try {
+      const data = await api.review.getTaskChanges(teamName, taskId);
+      if (data.files.length > 0) {
+        set((s) => ({
+          taskHasChanges: { ...s.taskHasChanges, [cacheKey]: true },
+        }));
+        taskChangesNegativeCache.delete(cacheKey);
+      } else {
+        taskChangesNegativeCache.set(cacheKey, Date.now());
+      }
+    } catch {
+      // Don't cache errors in store — allow retry when session data appears later
+      taskChangesNegativeCache.set(cacheKey, Date.now());
+    } finally {
+      taskChangesCheckInFlight.delete(cacheKey);
     }
   },
 

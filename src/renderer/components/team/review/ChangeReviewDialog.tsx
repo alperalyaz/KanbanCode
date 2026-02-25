@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { goToNextChunk, rejectChunk } from '@codemirror/merge';
+import { isElectronMode } from '@renderer/api';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useDiffNavigation } from '@renderer/hooks/useDiffNavigation';
 import { useViewedFiles } from '@renderer/hooks/useViewedFiles';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
-import { ChevronDown, Clock, Loader2, X } from 'lucide-react';
+import { ChevronDown, Clock, Loader2, Save, Undo2, X } from 'lucide-react';
 
+import { acceptAllChunks, rejectAllChunks } from './CodeMirrorDiffUtils';
 import { CodeMirrorDiffView } from './CodeMirrorDiffView';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { DiffErrorBoundary } from './DiffErrorBoundary';
@@ -18,6 +21,7 @@ import { ReviewToolbar } from './ReviewToolbar';
 import { ScopeWarningBanner } from './ScopeWarningBanner';
 import { ViewedProgressBar } from './ViewedProgressBar';
 
+import type { EditorState } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { HunkDecision, TaskChangeSetV2 } from '@shared/types';
 
@@ -49,7 +53,7 @@ export const ChangeReviewDialog = ({
   mode,
   memberName,
   taskId,
-}: ChangeReviewDialogProps) => {
+}: ChangeReviewDialogProps): React.ReactElement | null => {
   const {
     activeChangeSet,
     changeSetLoading,
@@ -64,12 +68,10 @@ export const ChangeReviewDialog = ({
     fileDecisions,
     fileContents,
     fileContentsLoading,
-    diffViewMode,
     collapseUnchanged,
     applying,
     applyError,
     setHunkDecision,
-    setDiffViewMode,
     setCollapseUnchanged,
     fetchFileContent,
     acceptAll,
@@ -87,6 +89,10 @@ export const ChangeReviewDialog = ({
   const [timelineOpen, setTimelineOpen] = useState(false);
   // Counter to force editor rebuild on discard
   const [discardCounter, setDiscardCounter] = useState(0);
+  // Cache EditorState per file to preserve undo history between file switches
+  const editorStateCache = useRef(new Map<string, EditorState>());
+  // Current file's cached initial state (derived outside render to avoid ref access during render)
+  const [cachedInitialState, setCachedInitialState] = useState<EditorState | undefined>(undefined);
 
   // Build scope key for viewed storage
   const scopeKey = mode === 'task' ? `task:${taskId ?? ''}` : `agent:${memberName ?? ''}`;
@@ -107,11 +113,45 @@ export const ChangeReviewDialog = ({
     progress: viewedProgress,
   } = useViewedFiles(teamName, scopeKey, allFilePaths);
 
+  // When collapseUnchanged changes, invalidate cached state for current file
+  // so the editor is recreated with the new extension config
+  useEffect(() => {
+    if (selectedReviewFilePath) {
+      editorStateCache.current.delete(selectedReviewFilePath);
+    }
+    queueMicrotask(() => setCachedInitialState(undefined));
+  }, [collapseUnchanged]); // eslint-disable-line react-hooks/exhaustive-deps -- only collapseUnchanged triggers cache invalidation
+
   // Editable diff computed values
   const editedCount = Object.keys(editedContents).length;
   const hasCurrentFileEdits = !!(
     selectedReviewFilePath && selectedReviewFilePath in editedContents
   );
+
+  // Save current editor state to cache before switching files
+  const handleSelectFile = useCallback(
+    (filePath: string | null) => {
+      const view = editorViewRef.current;
+      if (view && selectedReviewFilePath) {
+        editorStateCache.current.set(selectedReviewFilePath, view.state);
+      }
+      setCachedInitialState(filePath ? editorStateCache.current.get(filePath) : undefined);
+      selectReviewFile(filePath);
+    },
+    [selectedReviewFilePath, selectReviewFile]
+  );
+
+  const handleAcceptAll = useCallback(() => {
+    const view = editorViewRef.current;
+    if (view) acceptAllChunks(view);
+    acceptAll();
+  }, [acceptAll]);
+
+  const handleRejectAll = useCallback(() => {
+    const view = editorViewRef.current;
+    if (view) rejectAllChunks(view);
+    rejectAll();
+  }, [rejectAll]);
 
   const handleSaveCurrentFile = useCallback(() => {
     if (selectedReviewFilePath) void saveEditedFile(selectedReviewFilePath);
@@ -119,6 +159,8 @@ export const ChangeReviewDialog = ({
 
   const handleDiscardCurrentFile = useCallback(() => {
     if (selectedReviewFilePath) {
+      editorStateCache.current.delete(selectedReviewFilePath);
+      setCachedInitialState(undefined);
       discardFileEdits(selectedReviewFilePath);
       setDiscardCounter((c) => c + 1);
     }
@@ -127,7 +169,7 @@ export const ChangeReviewDialog = ({
   const diffNav = useDiffNavigation(
     activeChangeSet?.files ?? [],
     selectedReviewFilePath,
-    selectReviewFile,
+    handleSelectFile,
     editorViewRef,
     open,
     (filePath, hunkIndex) => setHunkDecision(filePath, hunkIndex, 'accepted'),
@@ -166,7 +208,7 @@ export const ChangeReviewDialog = ({
   // Escape to close
   useEffect(() => {
     if (!open) return;
-    const handler = (e: KeyboardEvent) => {
+    const handler = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onOpenChange(false);
     };
     document.addEventListener('keydown', handler);
@@ -250,12 +292,25 @@ export const ChangeReviewDialog = ({
       ? `Changes by ${memberName ?? 'unknown'}`
       : `Changes for task #${taskId ?? '?'}`;
 
+  const isMacElectron =
+    isElectronMode() && window.navigator.userAgent.toLowerCase().includes('mac');
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-surface">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border bg-surface-sidebar px-4 py-3">
+      <div
+        className="flex items-center justify-between border-b border-border bg-surface-sidebar px-4 py-3"
+        style={
+          {
+            paddingLeft: isMacElectron
+              ? 'var(--macos-traffic-light-padding-left, 72px)'
+              : undefined,
+            WebkitAppRegion: isMacElectron ? 'drag' : undefined,
+          } as React.CSSProperties
+        }
+      >
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-medium text-text">{title}</h2>
           {activeChangeSet && (
@@ -278,6 +333,7 @@ export const ChangeReviewDialog = ({
         <button
           onClick={() => onOpenChange(false)}
           className="rounded p-1 text-text-muted transition-colors hover:bg-surface-raised hover:text-text"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <X className="size-4" />
         </button>
@@ -297,29 +353,23 @@ export const ChangeReviewDialog = ({
           <ReviewToolbar
             stats={reviewStats}
             changeStats={changeStats}
-            diffViewMode={diffViewMode}
             collapseUnchanged={collapseUnchanged}
             applying={applying}
             autoViewed={autoViewed}
             onAutoViewedChange={setAutoViewed}
-            onAcceptAll={acceptAll}
-            onRejectAll={rejectAll}
+            onAcceptAll={handleAcceptAll}
+            onRejectAll={handleRejectAll}
             onApply={handleApply}
-            onDiffViewModeChange={setDiffViewMode}
             onCollapseUnchangedChange={setCollapseUnchanged}
             editedCount={editedCount}
-            hasCurrentFileEdits={hasCurrentFileEdits}
-            saving={applying}
-            onSaveCurrentFile={handleSaveCurrentFile}
-            onDiscardCurrentFile={handleDiscardCurrentFile}
           />
         )}
 
-      {/* Scope warnings */}
+      {/* Scope info / warnings */}
       {mode === 'task' &&
         activeChangeSet &&
         isTaskChangeSetV2(activeChangeSet) &&
-        activeChangeSet.warnings.length > 0 && (
+        (activeChangeSet.warnings.length > 0 || activeChangeSet.scope.confidence.tier >= 2) && (
           <ScopeWarningBanner
             warnings={activeChangeSet.warnings}
             confidence={activeChangeSet.scope.confidence}
@@ -354,7 +404,7 @@ export const ChangeReviewDialog = ({
               <ReviewFileTree
                 files={activeChangeSet.files}
                 selectedFilePath={selectedReviewFilePath}
-                onSelectFile={selectReviewFile}
+                onSelectFile={handleSelectFile}
                 viewedSet={viewedSet}
                 onMarkViewed={markViewed}
                 onUnmarkViewed={unmarkViewed}
@@ -391,7 +441,7 @@ export const ChangeReviewDialog = ({
             <div className="flex-1 overflow-y-auto">
               {selectedFile ? (
                 <div className="flex h-full flex-col">
-                  {/* File header with content source badge */}
+                  {/* File header with content source badge and save/discard */}
                   <div className="flex items-center gap-2 border-b border-border px-4 py-2">
                     <span className="text-xs font-medium text-text">
                       {selectedFile.relativePath}
@@ -410,7 +460,7 @@ export const ChangeReviewDialog = ({
                     {/* File-level decision indicator */}
                     {fileDecisions[selectedFile.filePath] && (
                       <span
-                        className={`ml-auto rounded px-1.5 py-0.5 text-[10px] ${
+                        className={`rounded px-1.5 py-0.5 text-[10px] ${
                           fileDecisions[selectedFile.filePath] === 'accepted'
                             ? 'bg-green-500/20 text-green-400'
                             : fileDecisions[selectedFile.filePath] === 'rejected'
@@ -421,6 +471,49 @@ export const ChangeReviewDialog = ({
                         {fileDecisions[selectedFile.filePath]}
                       </span>
                     )}
+
+                    <div className="ml-auto flex items-center gap-1.5">
+                      {hasCurrentFileEdits && (
+                        <>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                onClick={handleDiscardCurrentFile}
+                                className="flex items-center gap-1 rounded bg-orange-500/15 px-2 py-1 text-xs text-orange-400 transition-colors hover:bg-orange-500/25"
+                              >
+                                <Undo2 className="size-3" />
+                                Discard
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                              Discard all edits for this file
+                            </TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                onClick={handleSaveCurrentFile}
+                                disabled={applying}
+                                className="flex items-center gap-1 rounded bg-green-500/15 px-2 py-1 text-xs text-green-400 transition-colors hover:bg-green-500/25 disabled:opacity-50"
+                              >
+                                {applying ? (
+                                  <Loader2 className="size-3 animate-spin" />
+                                ) : (
+                                  <Save className="size-3" />
+                                )}
+                                Save File
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                              <span>Save file to disk</span>
+                              <kbd className="ml-2 rounded border border-border bg-surface-raised px-1 py-0.5 font-mono text-[10px] text-text-muted">
+                                ⌘↵
+                              </kbd>
+                            </TooltipContent>
+                          </Tooltip>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   {/* Loading state */}
@@ -450,6 +543,7 @@ export const ChangeReviewDialog = ({
                             readOnly={false}
                             showMergeControls={true}
                             collapseUnchanged={collapseUnchanged}
+                            initialState={cachedInitialState}
                             onHunkAccepted={(idx) =>
                               setHunkDecision(selectedFile.filePath, idx, 'accepted')
                             }
