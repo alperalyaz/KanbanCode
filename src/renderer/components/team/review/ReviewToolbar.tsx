@@ -2,17 +2,7 @@ import React from 'react';
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { cn } from '@renderer/lib/utils';
-import {
-  Check,
-  Eye,
-  EyeOff,
-  FoldVertical,
-  GitMerge,
-  Loader2,
-  Pencil,
-  UnfoldVertical,
-  X,
-} from 'lucide-react';
+import { Check, Eye, EyeOff, GitMerge, Loader2, Pencil, X } from 'lucide-react';
 
 import type { ChangeStats } from '@shared/types';
 
@@ -34,14 +24,14 @@ interface ReviewToolbarProps {
 export const ReviewToolbar = ({
   stats,
   changeStats,
-  collapseUnchanged,
+  collapseUnchanged: _collapseUnchanged,
   applying,
   autoViewed,
   onAutoViewedChange,
   onAcceptAll,
   onRejectAll,
   onApply,
-  onCollapseUnchangedChange,
+  onCollapseUnchangedChange: _onCollapseUnchangedChange,
   instantApply = false,
   editedCount = 0,
 }: ReviewToolbarProps): React.ReactElement => {
@@ -97,7 +87,7 @@ export const ReviewToolbar = ({
 
       <div className="flex-1" />
 
-      <Tooltip>
+      {/* <Tooltip>
         <TooltipTrigger asChild>
           <button
             onClick={() => onCollapseUnchangedChange(!collapseUnchanged)}
@@ -116,7 +106,7 @@ export const ReviewToolbar = ({
         <TooltipContent side="bottom">
           {collapseUnchanged ? 'Show all lines' : 'Collapse unchanged regions'}
         </TooltipContent>
-      </Tooltip>
+      </Tooltip> */}
 
       <Tooltip>
         <TooltipTrigger asChild>

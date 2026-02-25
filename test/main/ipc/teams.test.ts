@@ -40,7 +40,10 @@ vi.mock('@preload/constants/ipcChannels', () => ({
   TEAM_UPDATE_MEMBER_ROLE: 'team:updateMemberRole',
   TEAM_GET_PROJECT_BRANCH: 'team:getProjectBranch',
   TEAM_GET_ATTACHMENTS: 'team:getAttachments',
+  TEAM_KILL_PROCESS: 'team:killProcess',
   TEAM_LEAD_ACTIVITY: 'team:leadActivity',
+  TEAM_SOFT_DELETE_TASK: 'team:softDeleteTask',
+  TEAM_GET_DELETED_TASKS: 'team:getDeletedTasks',
 }));
 
 import {
@@ -72,9 +75,12 @@ import {
   TEAM_ADD_MEMBER,
   TEAM_ADD_TASK_COMMENT,
   TEAM_GET_ATTACHMENTS,
+  TEAM_GET_DELETED_TASKS,
   TEAM_GET_PROJECT_BRANCH,
+  TEAM_KILL_PROCESS,
   TEAM_LEAD_ACTIVITY,
   TEAM_REMOVE_MEMBER,
+  TEAM_SOFT_DELETE_TASK,
   TEAM_UPDATE_MEMBER_ROLE,
 } from '../../../src/preload/constants/ipcChannels';
 import {
@@ -114,6 +120,8 @@ describe('ipc teams handlers', () => {
     addMember: vi.fn(async () => undefined),
     removeMember: vi.fn(async () => undefined),
     updateMemberRole: vi.fn(async () => ({ oldRole: undefined, changed: true })),
+    softDeleteTask: vi.fn(async () => undefined),
+    getDeletedTasks: vi.fn(async () => []),
   };
   const provisioningService = {
     prepareForProvisioning: vi.fn(async () => ({
@@ -177,7 +185,10 @@ describe('ipc teams handlers', () => {
     expect(handlers.has(TEAM_ADD_MEMBER)).toBe(true);
     expect(handlers.has(TEAM_REMOVE_MEMBER)).toBe(true);
     expect(handlers.has(TEAM_UPDATE_MEMBER_ROLE)).toBe(true);
+    expect(handlers.has(TEAM_KILL_PROCESS)).toBe(true);
     expect(handlers.has(TEAM_LEAD_ACTIVITY)).toBe(true);
+    expect(handlers.has(TEAM_SOFT_DELETE_TASK)).toBe(true);
+    expect(handlers.has(TEAM_GET_DELETED_TASKS)).toBe(true);
   });
 
   it('returns success false on invalid sendMessage args', async () => {
@@ -486,6 +497,9 @@ describe('ipc teams handlers', () => {
     expect(handlers.has(TEAM_UPDATE_MEMBER_ROLE)).toBe(false);
     expect(handlers.has(TEAM_GET_PROJECT_BRANCH)).toBe(false);
     expect(handlers.has(TEAM_GET_ATTACHMENTS)).toBe(false);
+    expect(handlers.has(TEAM_KILL_PROCESS)).toBe(false);
     expect(handlers.has(TEAM_LEAD_ACTIVITY)).toBe(false);
+    expect(handlers.has(TEAM_SOFT_DELETE_TASK)).toBe(false);
+    expect(handlers.has(TEAM_GET_DELETED_TASKS)).toBe(false);
   });
 });

@@ -291,6 +291,12 @@ export const TEAM_KILL_PROCESS = 'team:killProcess';
 /** Get lead process activity state (active/idle/offline) */
 export const TEAM_LEAD_ACTIVITY = 'team:leadActivity';
 
+/** Soft-delete a task (set status to 'deleted' with deletedAt timestamp) */
+export const TEAM_SOFT_DELETE_TASK = 'team:softDeleteTask';
+
+/** Get all soft-deleted tasks for a team */
+export const TEAM_GET_DELETED_TASKS = 'team:getDeletedTasks';
+
 // =============================================================================
 // Review API Channels
 // =============================================================================

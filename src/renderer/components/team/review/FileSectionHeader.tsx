@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
-import { Loader2, Save, Undo2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Save, Undo2 } from 'lucide-react';
 
 import type { FileChangeWithContent, HunkDecision } from '@shared/types';
 import type { FileChangeSummary } from '@shared/types/review';
@@ -20,6 +20,8 @@ interface FileSectionHeaderProps {
   fileDecision: HunkDecision | undefined;
   hasEdits: boolean;
   applying: boolean;
+  isCollapsed: boolean;
+  onToggleCollapse: (filePath: string) => void;
   onDiscard: (filePath: string) => void;
   onSave: (filePath: string) => void;
 }
@@ -30,11 +32,35 @@ export const FileSectionHeader = ({
   fileDecision,
   hasEdits,
   applying,
+  isCollapsed,
+  onToggleCollapse,
   onDiscard,
   onSave,
 }: FileSectionHeaderProps): React.ReactElement => {
+  const handleHeaderClick = (e: React.MouseEvent): void => {
+    // Don't collapse when clicking action buttons
+    if ((e.target as HTMLElement).closest('[data-no-collapse]')) return;
+    onToggleCollapse(file.filePath);
+  };
+
+  const handleHeaderKeyDown = (e: React.KeyboardEvent): void => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onToggleCollapse(file.filePath);
+    }
+  };
+
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-surface-sidebar px-4 py-2">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={handleHeaderClick}
+      onKeyDown={handleHeaderKeyDown}
+      className="hover:bg-surface-raised/50 sticky top-0 z-10 flex cursor-pointer select-none items-center gap-2 border-b border-border bg-surface-sidebar px-4 py-2"
+    >
+      <span className="flex shrink-0 items-center text-text-muted">
+        {isCollapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+      </span>
       <span className="text-xs font-medium text-text">{file.relativePath}</span>
 
       {file.isNewFile && (
@@ -63,7 +89,7 @@ export const FileSectionHeader = ({
         </span>
       )}
 
-      <div className="ml-auto flex items-center gap-1.5">
+      <div className="ml-auto flex items-center gap-1.5" data-no-collapse>
         {hasEdits && (
           <>
             <Tooltip>

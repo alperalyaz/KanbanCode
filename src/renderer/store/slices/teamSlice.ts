@@ -104,6 +104,10 @@ export interface TeamSlice {
     memberName: string,
     role: string | undefined
   ) => Promise<void>;
+  deletedTasks: TeamTask[];
+  deletedTasksLoading: boolean;
+  softDeleteTask: (teamName: string, taskId: string) => Promise<void>;
+  fetchDeletedTasks: (teamName: string) => Promise<void>;
   deleteTeam: (teamName: string) => Promise<void>;
   createTeam: (request: TeamCreateRequest) => Promise<string>;
   launchTeam: (request: TeamLaunchRequest) => Promise<string>;
@@ -147,6 +151,8 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   addingComment: false,
   addCommentError: null,
   provisioningProgressUnsubscribe: null,
+  deletedTasks: [],
+  deletedTasksLoading: false,
 
   fetchTeams: async () => {
     set({ teamsLoading: true, teamsError: null });
@@ -502,6 +508,25 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       api.teams.updateMemberRole(teamName, memberName, role)
     );
     await get().refreshTeamData(teamName);
+  },
+
+  softDeleteTask: async (teamName: string, taskId: string) => {
+    await unwrapIpc('team:softDeleteTask', () => api.teams.softDeleteTask(teamName, taskId));
+    await get().refreshTeamData(teamName);
+    await get().fetchDeletedTasks(teamName);
+  },
+
+  fetchDeletedTasks: async (teamName: string) => {
+    set({ deletedTasksLoading: true });
+    try {
+      const tasks = await unwrapIpc('team:getDeletedTasks', () =>
+        api.teams.getDeletedTasks(teamName)
+      );
+      set({ deletedTasks: tasks, deletedTasksLoading: false });
+    } catch (error) {
+      logger.error('Failed to fetch deleted tasks:', error);
+      set({ deletedTasks: [], deletedTasksLoading: false });
+    }
   },
 
   deleteTeam: async (teamName: string) => {

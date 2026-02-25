@@ -6,7 +6,7 @@ import * as path from 'path';
 import { atomicWriteAsync } from './atomicWrite';
 
 const TOOL_FILE_NAME = 'teamctl.js';
-const TOOL_VERSION = 6;
+const TOOL_VERSION = 7;
 
 function buildTeamCtlScript(): string {
   const script = String.raw`#!/usr/bin/env node
@@ -505,6 +505,124 @@ function processList(paths) {
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
 }
 
+function taskBriefing(paths, teamName, flags) {
+  var forMember = typeof flags['for'] === 'string' ? flags['for'].trim() : '';
+  if (!forMember) die('Missing --for <member-name>');
+
+  var kanban = readKanbanState(paths, teamName);
+  var ids = listTaskIds(paths.tasksDir);
+
+  var allTasks = [];
+  for (var i = 0; i < ids.length; i++) {
+    try {
+      var taskPath = path.join(paths.tasksDir, ids[i] + '.json');
+      var t = readJson(taskPath, null);
+      if (t && !String(t.id).startsWith('_internal') && !(t.metadata && t.metadata._internal === true)) {
+        try { t._mtime = fs.statSync(taskPath).mtime.toISOString(); } catch (_e) { t._mtime = ''; }
+        allTasks.push(t);
+      }
+    } catch (e) { /* skip unreadable */ }
+  }
+
+  function getEffectiveColumn(task) {
+    var ks = kanban.tasks[String(task.id)];
+    if (ks) return ks.column;
+    if (task.status === 'pending') return 'todo';
+    if (task.status === 'in_progress') return 'in_progress';
+    if (task.status === 'completed') return 'done';
+    return task.status;
+  }
+
+  var relevant = allTasks.filter(function (t) {
+    var col = getEffectiveColumn(t);
+    return col !== 'approved' && t.status !== 'deleted';
+  });
+
+  var myTasks = { todo: [], in_progress: [], done: [], review: [] };
+  var otherTasks = { todo: [], in_progress: [], done: [], review: [] };
+
+  for (var j = 0; j < relevant.length; j++) {
+    var task = relevant[j];
+    var col = getEffectiveColumn(task);
+    var bucket = (task.owner === forMember) ? myTasks : otherTasks;
+    if (col === 'todo') bucket.todo.push(task);
+    else if (col === 'in_progress') bucket.in_progress.push(task);
+    else if (col === 'done') bucket.done.push(task);
+    else if (col === 'review') bucket.review.push(task);
+  }
+
+  function sortByMtime(arr) {
+    return arr.sort(function (a, b) {
+      var da = a._mtime || '';
+      var db = b._mtime || '';
+      return da < db ? 1 : da > db ? -1 : 0;
+    });
+  }
+  myTasks.done = sortByMtime(myTasks.done).slice(0, 15);
+  otherTasks.done = sortByMtime(otherTasks.done).slice(0, 15);
+
+  var lines = [];
+  lines.push('=== Task Briefing for ' + forMember + ' ===');
+  lines.push('');
+
+  function formatTask(t) {
+    var parts = [];
+    parts.push('#' + t.id + ' [' + getEffectiveColumn(t).toUpperCase() + '] ' + t.subject);
+    if (t.owner) parts.push('  Owner: ' + t.owner);
+    if (t.description && t.description !== t.subject) {
+      parts.push('  Description: ' + t.description.slice(0, 500));
+    }
+    if (t.blockedBy && t.blockedBy.length > 0) {
+      parts.push('  Blocked by: ' + t.blockedBy.map(function(id) { return '#' + id; }).join(', '));
+    }
+    if (t.related && t.related.length > 0) {
+      parts.push('  Related: ' + t.related.map(function(id) { return '#' + id; }).join(', '));
+    }
+    if (Array.isArray(t.comments) && t.comments.length > 0) {
+      parts.push('  Comments (' + t.comments.length + '):');
+      for (var c = 0; c < t.comments.length; c++) {
+        var cm = t.comments[c];
+        var ts = cm.createdAt ? ' (' + cm.createdAt + ')' : '';
+        parts.push('    [' + (cm.author || '?') + ts + '] ' + (cm.text || '').slice(0, 300));
+      }
+    }
+    return parts.join('\n');
+  }
+
+  function renderSection(label, tasks) {
+    if (tasks.length === 0) return;
+    lines.push('--- ' + label + ' (' + tasks.length + ') ---');
+    for (var k = 0; k < tasks.length; k++) {
+      lines.push(formatTask(tasks[k]));
+      lines.push('');
+    }
+  }
+
+  lines.push('== YOUR TASKS ==');
+  renderSection('IN PROGRESS', myTasks.in_progress);
+  renderSection('TODO', myTasks.todo);
+  renderSection('REVIEW', myTasks.review);
+  renderSection('DONE (recent)', myTasks.done);
+
+  if (myTasks.in_progress.length + myTasks.todo.length + myTasks.review.length + myTasks.done.length === 0) {
+    lines.push('(no tasks assigned to you)');
+    lines.push('');
+  }
+
+  lines.push('== TEAM BOARD (others) ==');
+  renderSection('IN PROGRESS', otherTasks.in_progress);
+  renderSection('TODO', otherTasks.todo);
+  renderSection('REVIEW', otherTasks.review);
+  renderSection('DONE (recent)', otherTasks.done);
+
+  if (otherTasks.in_progress.length + otherTasks.todo.length + otherTasks.review.length + otherTasks.done.length === 0) {
+    lines.push('(no other tasks on the board)');
+    lines.push('');
+  }
+
+  process.stdout.write(lines.join('\n') + '\n');
+}
+
 function printHelp() {
   const inferred = inferTeamNameFromScriptPath();
   const teamHint = inferred ? ' (inferred team: ' + String(inferred) + ')' : '';
@@ -518,6 +636,7 @@ function printHelp() {
       '  node teamctl.js task start <id> [--team <team>]',
       '  node teamctl.js task create --subject "..." [--description "..."] [--prompt "..."] [--owner "member"] [--status pending|in_progress|completed|deleted] [--notify --from "member"] [--team <team>]',
       '  node teamctl.js task comment <id> --text "..." [--from "member"] [--team <team>]',
+      '  node teamctl.js task briefing --for <member-name> [--team <team>]',
       '  node teamctl.js kanban set-column <id> <review|approved> [--team <team>]',
       '  node teamctl.js kanban clear <id> [--team <team>]',
       '  node teamctl.js review approve <id> [--notify-owner --from "member" --note "..."] [--team <team>]',
@@ -641,6 +760,10 @@ async function main() {
         } catch (e) { /* best-effort */ }
       }
       process.stdout.write('OK comment added to task #' + String(id) + '\n');
+      return;
+    }
+    if (action === 'briefing') {
+      taskBriefing(paths, teamName, args.flags);
       return;
     }
     die('Unknown task action: ' + String(action));

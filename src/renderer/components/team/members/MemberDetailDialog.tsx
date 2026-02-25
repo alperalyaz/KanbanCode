@@ -35,6 +35,7 @@ interface MemberDetailDialogProps {
   onRemoveMember?: () => void;
   onUpdateRole?: (memberName: string, role: string | undefined) => Promise<void> | void;
   updatingRole?: boolean;
+  onViewMemberChanges?: (memberName: string, filePath?: string) => void;
 }
 
 export const MemberDetailDialog = ({
@@ -53,6 +54,7 @@ export const MemberDetailDialog = ({
   onRemoveMember,
   onUpdateRole,
   updatingRole,
+  onViewMemberChanges,
 }: MemberDetailDialogProps): React.JSX.Element | null => {
   const memberTasks = useMemo(
     () => (member ? tasks.filter((t) => t.owner === member.name) : []),
@@ -143,7 +145,12 @@ export const MemberDetailDialog = ({
             <MemberMessagesTab messages={memberMessages} teamName={teamName} />
           </TabsContent>
           <TabsContent value="stats">
-            <MemberStatsTab teamName={teamName} memberName={member.name} />
+            <MemberStatsTab
+              teamName={teamName}
+              memberName={member.name}
+              onFileClick={(filePath) => onViewMemberChanges?.(member.name, filePath)}
+              onShowAllFiles={() => onViewMemberChanges?.(member.name)}
+            />
           </TabsContent>
           <TabsContent value="logs" className="min-w-0 overflow-hidden">
             <MemberLogsTab teamName={teamName} memberName={member.name} />

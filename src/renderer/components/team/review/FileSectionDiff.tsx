@@ -79,11 +79,21 @@ export const FileSectionDiff = ({
     return <FileSectionPlaceholder fileName={file.relativePath} />;
   }
 
-  // Unavailable / no content fallback
+  // Resolve modified content: prefer full content, fall back to write-type snippet
+  // Only write-new/write-update snippets contain the full file — edit snippets are partial
+  const resolvedModified =
+    fileContent?.modifiedFullContent ??
+    (() => {
+      const writeSnippets = file.snippets.filter(
+        (s) => !s.isError && (s.type === 'write-new' || s.type === 'write-update')
+      );
+      if (writeSnippets.length === 0) return null;
+      // Take the last write (most recent full-file content)
+      return writeSnippets[writeSnippets.length - 1].newString;
+    })();
+
   const hasCodeMirrorContent =
-    fileContent &&
-    fileContent.contentSource !== 'unavailable' &&
-    fileContent.modifiedFullContent !== null;
+    fileContent && fileContent.contentSource !== 'unavailable' && resolvedModified !== null;
 
   if (!hasCodeMirrorContent) {
     return (
@@ -99,12 +109,12 @@ export const FileSectionDiff = ({
       <DiffErrorBoundary
         filePath={file.filePath}
         oldString={fileContent.originalFullContent ?? ''}
-        newString={fileContent.modifiedFullContent!}
+        newString={resolvedModified}
       >
         <CodeMirrorDiffView
           key={`${file.filePath}:${discardCounter}`}
           original={fileContent.originalFullContent ?? ''}
-          modified={fileContent.modifiedFullContent!}
+          modified={resolvedModified}
           fileName={file.relativePath}
           readOnly={false}
           showMergeControls={true}

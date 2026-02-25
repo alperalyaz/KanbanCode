@@ -428,6 +428,8 @@ export interface TeamsAPI {
   getAttachments: (teamName: string, messageId: string) => Promise<AttachmentFileData[]>;
   killProcess: (teamName: string, pid: number) => Promise<void>;
   getLeadActivity: (teamName: string) => Promise<LeadActivityState>;
+  softDeleteTask: (teamName: string, taskId: string) => Promise<void>;
+  getDeletedTasks: (teamName: string) => Promise<TeamTask[]>;
   onTeamChange: (callback: (event: unknown, data: TeamChangeEvent) => void) => () => void;
   onProvisioningProgress: (
     callback: (event: unknown, data: TeamProvisioningProgress) => void

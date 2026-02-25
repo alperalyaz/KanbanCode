@@ -42,6 +42,7 @@ import {
   TEAM_GET_ALL_TASKS,
   TEAM_GET_ATTACHMENTS,
   TEAM_GET_DATA,
+  TEAM_GET_DELETED_TASKS,
   TEAM_GET_LOGS_FOR_TASK,
   TEAM_GET_MEMBER_LOGS,
   TEAM_GET_MEMBER_STATS,
@@ -58,6 +59,7 @@ import {
   TEAM_REMOVE_MEMBER,
   TEAM_REQUEST_REVIEW,
   TEAM_SEND_MESSAGE,
+  TEAM_SOFT_DELETE_TASK,
   TEAM_START_TASK,
   TEAM_STOP,
   TEAM_UPDATE_CONFIG,
@@ -671,6 +673,12 @@ const electronAPI: ElectronAPI = {
     getLeadActivity: async (teamName: string) => {
       const result = await invokeIpcWithResult<string>(TEAM_LEAD_ACTIVITY, teamName);
       return result as 'active' | 'idle' | 'offline';
+    },
+    softDeleteTask: async (teamName: string, taskId: string) => {
+      return invokeIpcWithResult<void>(TEAM_SOFT_DELETE_TASK, teamName, taskId);
+    },
+    getDeletedTasks: async (teamName: string) => {
+      return invokeIpcWithResult<TeamTask[]>(TEAM_GET_DELETED_TASKS, teamName);
     },
     onTeamChange: (callback: (event: unknown, data: TeamChangeEvent) => void): (() => void) => {
       ipcRenderer.on(

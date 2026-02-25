@@ -506,17 +506,19 @@ function buildLaunchPrompt(
   const memberSpawnInstructions = members
     .map((m) => {
       const taskBlock = memberTaskBlocks.get(m.name) || '';
-      const resumeInstruction = taskBlock
-        ? `Include these tasks in the prompt for ${m.name} so they know what to resume:${taskBlock}`
-        : `${m.name} has no pending tasks — tell them to wait for new assignments.`;
+      const hasTasks = Boolean(taskBlock);
 
       return `   For "${m.name}":
    - prompt:
      You are ${m.name}, a ${m.role || 'team member'} on team "${request.teamName}".
      ${languageInstruction}
-     The team has been reconnected after a restart.${taskBlock}
-     ${taskBlock ? 'Resume your pending tasks immediately — start with in_progress tasks first, then pending.' : 'Wait for new task assignments.'}
-     Note: ${resumeInstruction}`;
+     The team has been reconnected after a restart.
+     ${hasTasks ? `You have pending tasks from the previous session.` : 'You have no pending tasks currently.'}
+
+     Your FIRST action: run this command to get your full task briefing with descriptions and comments:
+     node "$HOME/.claude/tools/teamctl.js" --team "${request.teamName}" task briefing --for "${m.name}"
+     Then resume in_progress tasks first, then pending tasks.
+     If you have no tasks, wait for new assignments.`;
     })
     .join('\n\n');
 

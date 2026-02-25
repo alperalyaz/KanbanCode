@@ -40,6 +40,7 @@ import {
   Link2,
   Loader2,
   PenLine,
+  Trash2,
 } from 'lucide-react';
 
 import { TaskCommentsSection } from './TaskCommentsSection';
@@ -57,6 +58,7 @@ interface TaskDetailDialogProps {
   onScrollToTask?: (taskId: string) => void;
   onOwnerChange?: (taskId: string, owner: string | null) => void;
   onViewChanges?: (taskId: string, filePath?: string) => void;
+  onDeleteTask?: (taskId: string) => void;
   /** Extra content rendered in the dialog header (e.g. "Open team" button). */
   headerExtra?: React.ReactNode;
 }
@@ -72,6 +74,7 @@ export const TaskDetailDialog = ({
   onScrollToTask,
   onOwnerChange,
   onViewChanges,
+  onDeleteTask,
   headerExtra,
 }: TaskDetailDialogProps): React.JSX.Element => {
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
@@ -261,6 +264,18 @@ export const TaskDetailDialog = ({
           )}
         </CollapsibleTeamSection>
 
+        {/* Execution Logs — sessions that reference this task */}
+        <CollapsibleTeamSection title="Execution Logs" defaultOpen>
+          <div className="min-w-0 overflow-hidden">
+            <MemberLogsTab
+              teamName={teamName}
+              taskId={currentTask.id}
+              taskOwner={currentTask.owner}
+              taskStatus={currentTask.status}
+            />
+          </div>
+        </CollapsibleTeamSection>
+
         {/* Changes */}
         {isTaskCompleted && onViewChanges ? (
           <CollapsibleTeamSection
@@ -448,19 +463,22 @@ export const TaskDetailDialog = ({
           />
         </CollapsibleTeamSection>
 
-        {/* Execution Logs — sessions that reference this task */}
-        <CollapsibleTeamSection title="Execution Logs" defaultOpen>
-          <div className="min-w-0 overflow-hidden">
-            <MemberLogsTab
-              teamName={teamName}
-              taskId={currentTask.id}
-              taskOwner={currentTask.owner}
-              taskStatus={currentTask.status}
-            />
-          </div>
-        </CollapsibleTeamSection>
-
-        <DialogFooter>
+        <DialogFooter className="flex items-center justify-between sm:justify-between">
+          {onDeleteTask && currentTask ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                onDeleteTask(currentTask.id);
+                onClose();
+              }}
+            >
+              <Trash2 size={14} className="mr-1" />
+              Delete
+            </Button>
+          ) : (
+            <div />
+          )}
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>

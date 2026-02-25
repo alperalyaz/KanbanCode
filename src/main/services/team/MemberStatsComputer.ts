@@ -57,7 +57,9 @@ export class MemberStatsComputer {
     const stats: MemberFullStats = {
       linesAdded,
       linesRemoved,
-      filesTouched: [...filesTouchedSet].sort((a, b) => a.localeCompare(b)),
+      filesTouched: [...filesTouchedSet]
+        .filter((f) => f && f !== 'null' && f !== 'undefined')
+        .sort((a, b) => a.localeCompare(b)),
       toolUsage,
       inputTokens,
       outputTokens,
@@ -308,8 +310,9 @@ export function estimateBashLinesChanged(command: string): BashLinesResult {
   }
 
   // 2. Echo / printf with redirect: echo "..." > /path  OR  printf "..." > /path
+
   const echoPattern =
-    /(?:echo|printf)\s+(?:-[a-zA-Z]+\s+)?(?:"([^"]*)"|'([^']*)')\s*>{1,2}\s*(\S+)/g;
+    /(?:echo|printf)\s+(?:-[a-zA-Z]+\s+)?(?:"([^"]*)"|'([^']*)')\s*>{1,2}\s*(\S+)/g; // eslint-disable-line security/detect-unsafe-regex -- Fixed alternation, short command strings only
   let echoMatch: RegExpExecArray | null;
   while ((echoMatch = echoPattern.exec(command)) !== null) {
     const content = echoMatch[1] ?? echoMatch[2] ?? '';
@@ -349,7 +352,7 @@ export function estimateBashLinesChanged(command: string): BashLinesResult {
   }
 
   // 5. tee: ... | tee /path/to/file
-  const teePattern = /\btee\s+(?:-a\s+)?(\/\S+)/g;
+  const teePattern = /\btee\s+(?:-a\s+)?(\/\S+)/g; // eslint-disable-line security/detect-unsafe-regex -- Simple pattern on short command strings
   let teeMatch: RegExpExecArray | null;
   while ((teeMatch = teePattern.exec(command)) !== null) {
     const filePath = teeMatch[1];

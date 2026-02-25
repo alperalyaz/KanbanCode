@@ -16,6 +16,7 @@ import {
   PlayCircle,
   Plus,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 
 import { KanbanColumn } from './KanbanColumn';
@@ -84,6 +85,12 @@ interface KanbanBoardProps {
   toolbarLeft?: React.ReactNode;
   /** Opens the create-task dialog with pre-set startImmediately value. */
   onAddTask?: (startImmediately: boolean) => void;
+  /** Soft-delete a task. */
+  onDeleteTask?: (taskId: string) => void;
+  /** Number of soft-deleted tasks (for trash button badge). */
+  deletedTaskCount?: number;
+  /** Opens the trash dialog. */
+  onOpenTrash?: () => void;
 }
 
 type KanbanViewMode = 'grid' | 'columns';
@@ -154,6 +161,7 @@ interface SortableKanbanTaskCardProps {
   onScrollToTask?: (taskId: string) => void;
   onTaskClick?: (task: TeamTask) => void;
   onViewChanges?: (taskId: string) => void;
+  onDeleteTask?: (taskId: string) => void;
 }
 
 const SortableKanbanTaskCard = ({
@@ -173,6 +181,7 @@ const SortableKanbanTaskCard = ({
   onScrollToTask,
   onTaskClick,
   onViewChanges,
+  onDeleteTask,
 }: SortableKanbanTaskCardProps): React.JSX.Element => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
@@ -206,6 +215,7 @@ const SortableKanbanTaskCard = ({
         onScrollToTask={onScrollToTask}
         onTaskClick={onTaskClick}
         onViewChanges={onViewChanges}
+        onDeleteTask={onDeleteTask}
       />
     </div>
   );
@@ -233,6 +243,9 @@ export const KanbanBoard = ({
   onColumnOrderChange,
   toolbarLeft,
   onAddTask,
+  onDeleteTask,
+  deletedTaskCount,
+  onOpenTrash,
 }: KanbanBoardProps): React.JSX.Element => {
   const [viewMode, setViewMode] = useState<KanbanViewMode>('grid');
 
@@ -342,6 +355,7 @@ export const KanbanBoard = ({
                 onScrollToTask={onScrollToTask}
                 onTaskClick={onTaskClick}
                 onViewChanges={onViewChanges}
+                onDeleteTask={onDeleteTask}
               />
             ))}
           </SortableContext>
@@ -371,6 +385,7 @@ export const KanbanBoard = ({
             onScrollToTask={onScrollToTask}
             onTaskClick={onTaskClick}
             onViewChanges={onViewChanges}
+            onDeleteTask={onDeleteTask}
           />
         ))}
         {addButton}
@@ -390,6 +405,22 @@ export const KanbanBoard = ({
             members={members}
             onFilterChange={onFilterChange}
           />
+          {deletedTaskCount != null && deletedTaskCount > 0 && onOpenTrash ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-[var(--color-text-muted)]"
+                  onClick={onOpenTrash}
+                >
+                  <Trash2 size={14} />
+                  <span className="ml-1 text-xs">{deletedTaskCount}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Trash</TooltipContent>
+            </Tooltip>
+          ) : null}
           <div className="inline-flex rounded-md border border-[var(--color-border)]">
             <Tooltip>
               <TooltipTrigger asChild>

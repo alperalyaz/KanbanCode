@@ -48,6 +48,7 @@ import { SendMessageDialog } from './dialogs/SendMessageDialog';
 import { TaskDetailDialog } from './dialogs/TaskDetailDialog';
 import { KanbanBoard } from './kanban/KanbanBoard';
 import { UNASSIGNED_OWNER } from './kanban/KanbanFilterPopover';
+import { TrashDialog } from './kanban/TrashDialog';
 import { MemberDetailDialog } from './members/MemberDetailDialog';
 import { MemberList } from './members/MemberList';
 import { MessageComposer } from './messages/MessageComposer';
@@ -117,6 +118,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [stoppingTeam, setStoppingTeam] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
   const [sendDialogRecipient, setSendDialogRecipient] = useState<string | undefined>(undefined);
   const [replyQuote, setReplyQuote] = useState<{ from: string; text: string } | undefined>(
     undefined
@@ -126,6 +128,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     mode: 'agent' | 'task';
     memberName?: string;
     taskId?: string;
+    initialFilePath?: string;
   }>({ open: false, mode: 'task' });
 
   // Active teams for conflict warning in LaunchTeamDialog
@@ -173,6 +176,9 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     refreshTeamData,
     kanbanFilterQuery,
     clearKanbanFilter,
+    softDeleteTask,
+    fetchDeletedTasks,
+    deletedTasks,
   } = useStore(
     useShallow((s) => ({
       data: s.selectedTeamData,
@@ -207,6 +213,9 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
       refreshTeamData: s.refreshTeamData,
       kanbanFilterQuery: s.kanbanFilterQuery,
       clearKanbanFilter: s.clearKanbanFilter,
+      softDeleteTask: s.softDeleteTask,
+      fetchDeletedTasks: s.fetchDeletedTasks,
+      deletedTasks: s.deletedTasks,
     }))
   );
 
@@ -223,7 +232,8 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
       return;
     }
     void selectTeam(teamName);
-  }, [teamName, selectTeam]);
+    void fetchDeletedTasks(teamName);
+  }, [teamName, selectTeam, fetchDeletedTasks]);
 
   // Fetch active teams when launch dialog opens (for conflict warning)
   useEffect(() => {
@@ -497,6 +507,13 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
   }, [teamName, refreshTeamData]);
 
   const selectReviewFile = useStore((s) => s.selectReviewFile);
+
+  const handleDeleteTask = useCallback(
+    (taskId: string) => {
+      void softDeleteTask(teamName, taskId);
+    },
+    [teamName, softDeleteTask]
+  );
 
   const handleViewChanges = useCallback((taskId: string) => {
     setReviewDialogState({ open: true, mode: 'task', taskId });
@@ -991,6 +1008,9 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           onTaskClick={(task) => setSelectedTask(task)}
           onViewChanges={handleViewChanges}
           onAddTask={(startImmediately) => openCreateTaskDialog('', '', '', startImmediately)}
+          onDeleteTask={handleDeleteTask}
+          deletedTaskCount={deletedTasks.length}
+          onOpenTrash={() => setTrashOpen(true)}
         />
       </CollapsibleTeamSection>
 
@@ -1194,6 +1214,15 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           if (!name) return;
           setRemoveMemberConfirm(name);
         }}
+        onViewMemberChanges={(memberName, filePath) => {
+          setSelectedMember(null);
+          setReviewDialogState({
+            open: true,
+            mode: 'agent',
+            memberName,
+            initialFilePath: filePath,
+          });
+        }}
       />
 
       <CreateTaskDialog
@@ -1360,15 +1389,25 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           void updateTaskOwner(teamName, taskId, owner);
         }}
         onViewChanges={handleViewChangesForFile}
+        onDeleteTask={handleDeleteTask}
       />
+
+      <TrashDialog open={trashOpen} tasks={deletedTasks} onClose={() => setTrashOpen(false)} />
 
       <ChangeReviewDialog
         open={reviewDialogState.open}
-        onOpenChange={(open) => setReviewDialogState((prev) => ({ ...prev, open }))}
+        onOpenChange={(open) =>
+          setReviewDialogState((prev) => ({
+            ...prev,
+            open,
+            ...(open ? {} : { initialFilePath: undefined }),
+          }))
+        }
         teamName={teamName}
         mode={reviewDialogState.mode}
         memberName={reviewDialogState.memberName}
         taskId={reviewDialogState.taskId}
+        initialFilePath={reviewDialogState.initialFilePath}
       />
     </div>
   );

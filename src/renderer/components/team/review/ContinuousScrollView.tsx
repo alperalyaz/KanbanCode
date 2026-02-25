@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useLazyFileContent } from '@renderer/hooks/useLazyFileContent';
 import { useVisibleFileSection } from '@renderer/hooks/useVisibleFileSection';
@@ -67,6 +67,20 @@ export const ContinuousScrollView = ({
   memberName,
   fetchFileContent,
 }: ContinuousScrollViewProps): React.ReactElement => {
+  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
+
+  const handleToggleCollapse = useCallback((filePath: string) => {
+    setCollapsedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(filePath)) {
+        next.delete(filePath);
+      } else {
+        next.add(filePath);
+      }
+      return next;
+    });
+  }, []);
+
   const filePaths = useMemo(() => files.map((f) => f.filePath), [files]);
 
   const { registerFileSectionRef } = useVisibleFileSection({
@@ -149,6 +163,8 @@ export const ContinuousScrollView = ({
         const isViewed = viewedSet.has(filePath);
         const decision = fileDecisions[filePath];
 
+        const isCollapsed = collapsedFiles.has(filePath);
+
         return (
           <div key={filePath} ref={combinedRef(filePath)} className="border-b border-border">
             <FileSectionHeader
@@ -157,28 +173,31 @@ export const ContinuousScrollView = ({
               fileDecision={decision}
               hasEdits={hasEdits}
               applying={applying}
+              isCollapsed={isCollapsed}
+              onToggleCollapse={handleToggleCollapse}
               onDiscard={onDiscard}
               onSave={onSave}
             />
 
-            {hasContent ? (
-              <FileSectionDiff
-                file={file}
-                fileContent={content}
-                isLoading={false}
-                collapseUnchanged={collapseUnchanged}
-                onHunkAccepted={onHunkAccepted}
-                onHunkRejected={onHunkRejected}
-                onFullyViewed={onFullyViewed}
-                onContentChanged={onContentChanged}
-                onEditorViewReady={handleEditorViewReady}
-                discardCounter={discardCounter}
-                autoViewed={autoViewed}
-                isViewed={isViewed}
-              />
-            ) : (
-              <FileSectionPlaceholder fileName={file.relativePath} />
-            )}
+            {!isCollapsed &&
+              (hasContent ? (
+                <FileSectionDiff
+                  file={file}
+                  fileContent={content}
+                  isLoading={false}
+                  collapseUnchanged={collapseUnchanged}
+                  onHunkAccepted={onHunkAccepted}
+                  onHunkRejected={onHunkRejected}
+                  onFullyViewed={onFullyViewed}
+                  onContentChanged={onContentChanged}
+                  onEditorViewReady={handleEditorViewReady}
+                  discardCounter={discardCounter}
+                  autoViewed={autoViewed}
+                  isViewed={isViewed}
+                />
+              ) : (
+                <FileSectionPlaceholder fileName={file.relativePath} />
+              ))}
           </div>
         );
       })}

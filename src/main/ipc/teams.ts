@@ -12,6 +12,7 @@ import {
   TEAM_GET_ALL_TASKS,
   TEAM_GET_ATTACHMENTS,
   TEAM_GET_DATA,
+  TEAM_GET_DELETED_TASKS,
   TEAM_GET_LOGS_FOR_TASK,
   TEAM_GET_MEMBER_LOGS,
   TEAM_GET_MEMBER_STATS,
@@ -28,6 +29,7 @@ import {
   TEAM_REMOVE_MEMBER,
   TEAM_REQUEST_REVIEW,
   TEAM_SEND_MESSAGE,
+  TEAM_SOFT_DELETE_TASK,
   TEAM_START_TASK,
   TEAM_STOP,
   TEAM_UPDATE_CONFIG,
@@ -197,6 +199,8 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_GET_ATTACHMENTS, handleGetAttachments);
   ipcMain.handle(TEAM_KILL_PROCESS, handleKillProcess);
   ipcMain.handle(TEAM_LEAD_ACTIVITY, handleLeadActivity);
+  ipcMain.handle(TEAM_SOFT_DELETE_TASK, handleSoftDeleteTask);
+  ipcMain.handle(TEAM_GET_DELETED_TASKS, handleGetDeletedTasks);
   logger.info('Team handlers registered');
 }
 
@@ -235,6 +239,8 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_GET_ATTACHMENTS);
   ipcMain.removeHandler(TEAM_KILL_PROCESS);
   ipcMain.removeHandler(TEAM_LEAD_ACTIVITY);
+  ipcMain.removeHandler(TEAM_SOFT_DELETE_TASK);
+  ipcMain.removeHandler(TEAM_GET_DELETED_TASKS);
 }
 
 function getTeamDataService(): TeamDataService {
@@ -1066,6 +1072,40 @@ async function handleUpdateTaskStatus(
       validatedTaskId.value!,
       status as TeamTaskStatus
     )
+  );
+}
+
+async function handleSoftDeleteTask(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  taskId: unknown
+): Promise<IpcResult<void>> {
+  const validatedTeamName = validateTeamName(teamName);
+  if (!validatedTeamName.valid) {
+    return { success: false, error: validatedTeamName.error ?? 'Invalid teamName' };
+  }
+
+  const validatedTaskId = validateTaskId(taskId);
+  if (!validatedTaskId.valid) {
+    return { success: false, error: validatedTaskId.error ?? 'Invalid taskId' };
+  }
+
+  return wrapTeamHandler('softDeleteTask', () =>
+    getTeamDataService().softDeleteTask(validatedTeamName.value!, validatedTaskId.value!)
+  );
+}
+
+async function handleGetDeletedTasks(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown
+): Promise<IpcResult<TeamTask[]>> {
+  const validatedTeamName = validateTeamName(teamName);
+  if (!validatedTeamName.valid) {
+    return { success: false, error: validatedTeamName.error ?? 'Invalid teamName' };
+  }
+
+  return wrapTeamHandler('getDeletedTasks', () =>
+    getTeamDataService().getDeletedTasks(validatedTeamName.value!)
   );
 }
 

@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   FileCode,
   Play,
+  Trash2,
   XCircle,
 } from 'lucide-react';
 
@@ -37,6 +38,7 @@ interface KanbanTaskCardProps {
   onScrollToTask?: (taskId: string) => void;
   onTaskClick?: (task: TeamTask) => void;
   onViewChanges?: (taskId: string) => void;
+  onDeleteTask?: (taskId: string) => void;
 }
 
 interface DependencyBadgeProps {
@@ -143,6 +145,7 @@ export const KanbanTaskCard = ({
   onScrollToTask,
   onTaskClick,
   onViewChanges,
+  onDeleteTask,
 }: KanbanTaskCardProps): React.JSX.Element => {
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
   const unreadCount = useUnreadCommentCount(teamName, task.id, task.comments);
@@ -369,6 +372,19 @@ export const KanbanTaskCard = ({
             </button>
           ) : null}
           <UnreadCommentsBadge unreadCount={unreadCount} totalCount={task.comments?.length ?? 0} />
+          {onDeleteTask ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteTask(task.id);
+              }}
+              className="text-[var(--color-text-muted)] transition-colors hover:text-red-400"
+              title="Delete task"
+            >
+              <Trash2 size={12} />
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

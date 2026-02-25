@@ -767,6 +767,12 @@ export class HttpAPIClient implements ElectronAPI {
     getLeadActivity: async (_teamName: string): Promise<'active' | 'idle' | 'offline'> => {
       return 'offline';
     },
+    softDeleteTask: async (_teamName: string, _taskId: string): Promise<void> => {
+      // Not available via HTTP client — no-op
+    },
+    getDeletedTasks: async (_teamName: string): Promise<TeamTask[]> => {
+      return [];
+    },
     onTeamChange: (callback: (event: unknown, data: TeamChangeEvent) => void): (() => void) => {
       return this.addEventListener('team-change', (data: unknown) =>
         callback(null, data as TeamChangeEvent)

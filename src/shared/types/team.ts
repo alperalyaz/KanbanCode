@@ -78,6 +78,8 @@ export interface TeamTask {
   updatedAt?: string;
   projectPath?: string;
   comments?: TaskComment[];
+  /** ISO timestamp — when the task was soft-deleted. Only set for status === 'deleted'. */
+  deletedAt?: string;
 }
 
 /** Task enriched for UI/DTO use (overlay from kanban-state.json). */

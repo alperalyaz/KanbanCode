@@ -664,6 +664,14 @@ export class TeamDataService {
     await this.taskWriter.updateStatus(teamName, taskId, status);
   }
 
+  async softDeleteTask(teamName: string, taskId: string): Promise<void> {
+    await this.taskWriter.softDelete(teamName, taskId);
+  }
+
+  async getDeletedTasks(teamName: string): Promise<TeamTask[]> {
+    return this.taskReader.getDeletedTasks(teamName);
+  }
+
   async updateTaskOwner(teamName: string, taskId: string, owner: string | null): Promise<void> {
     await this.taskWriter.updateOwner(teamName, taskId, owner);
   }
