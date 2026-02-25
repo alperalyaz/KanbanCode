@@ -22,6 +22,7 @@ interface ReviewToolbarProps {
   collapseUnchanged: boolean;
   applying: boolean;
   autoViewed: boolean;
+  instantApply?: boolean;
   onAutoViewedChange: (auto: boolean) => void;
   onAcceptAll: () => void;
   onRejectAll: () => void;
@@ -41,6 +42,7 @@ export const ReviewToolbar = ({
   onRejectAll,
   onApply,
   onCollapseUnchangedChange,
+  instantApply = false,
   editedCount = 0,
 }: ReviewToolbarProps): React.ReactElement => {
   const hasRejected = stats.rejected > 0;
@@ -173,28 +175,30 @@ export const ReviewToolbar = ({
         <TooltipContent side="bottom">Reject all changes across all files</TooltipContent>
       </Tooltip>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={onApply}
-            disabled={!canApply}
-            className={cn(
-              'flex items-center gap-1 rounded px-3 py-1 text-xs font-medium transition-colors',
-              canApply
-                ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
-                : 'cursor-not-allowed bg-zinc-500/10 text-zinc-600'
-            )}
-          >
-            {applying ? (
-              <Loader2 className="size-3 animate-spin" />
-            ) : (
-              <GitMerge className="size-3" />
-            )}
-            {applying ? 'Applying...' : 'Apply All Changes'}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Apply review decisions across all files</TooltipContent>
-      </Tooltip>
+      {!instantApply && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onApply}
+              disabled={!canApply}
+              className={cn(
+                'flex items-center gap-1 rounded px-3 py-1 text-xs font-medium transition-colors',
+                canApply
+                  ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
+                  : 'cursor-not-allowed bg-zinc-500/10 text-zinc-600'
+              )}
+            >
+              {applying ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <GitMerge className="size-3" />
+              )}
+              {applying ? 'Applying...' : 'Apply All Changes'}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Apply review decisions across all files</TooltipContent>
+        </Tooltip>
+      )}
     </div>
   );
 };

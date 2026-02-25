@@ -24,7 +24,13 @@ import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
 import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 
-import { acceptChunk, getChunks, mergeUndoSupport, rejectChunk } from './CodeMirrorDiffUtils';
+import {
+  acceptChunk,
+  getChunks,
+  mergeUndoSupport,
+  mirrorEditsAfterResolve,
+  rejectChunk,
+} from './CodeMirrorDiffUtils';
 import { portionCollapseExtension } from './portionCollapse';
 
 interface CodeMirrorDiffViewProps {
@@ -119,16 +125,15 @@ function getAsyncLanguageDesc(fileName: string): LanguageDescription | null {
   return LanguageDescription.matchFilename(languages, fileName);
 }
 
-/** Compute hunk index for the chunk at a given position */
+/** Compute hunk index for the chunk at a given position (B-side / modified doc) */
 function computeHunkIndexAtPos(state: EditorState, pos: number): number {
   const chunks = getChunks(state);
   if (!chunks) return 0;
 
   let index = 0;
   for (const chunk of chunks.chunks) {
-    if (pos >= chunk.fromA && pos <= chunk.toA) {
-      return index;
-    }
+    // Only check B-side (modified doc) — editor positions correspond to B-side in unified view.
+    // A-side (fromA/toA) positions refer to the original document and are not editor positions.
     if (pos >= chunk.fromB && pos <= chunk.toB) {
       return index;
     }
@@ -467,6 +472,7 @@ export const CodeMirrorDiffView = ({
     if (!readOnly) {
       extensions.push(history());
       extensions.push(mergeUndoSupport);
+      extensions.push(mirrorEditsAfterResolve);
       extensions.push(indentUnit.of('  '));
       extensions.push(keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]));
     }
@@ -474,32 +480,13 @@ export const CodeMirrorDiffView = ({
     // Language placeholder — actual language injected async via compartment reconfigure
     extensions.push(langCompartment.current.of([]));
 
-    // Keyboard shortcuts for chunk navigation and accept/reject
+    // Keyboard shortcuts for chunk navigation (within single editor).
+    // NOTE: Mod-y, Mod-n, Alt-j are intentionally NOT here — they are handled by
+    // useDiffNavigation's document handler (cross-file aware) and IPC handler (Cmd+N on macOS).
+    // Registering them in CM keymap would call event.preventDefault(), blocking the
+    // document handler's cross-file logic.
     extensions.push(
       keymap.of([
-        {
-          key: 'Mod-y',
-          run: (view) => {
-            acceptChunk(view);
-            requestAnimationFrame(() => goToNextChunk(view));
-            return true;
-          },
-        },
-        {
-          key: 'Mod-n',
-          run: (view) => {
-            rejectChunk(view);
-            requestAnimationFrame(() => goToNextChunk(view));
-            return true;
-          },
-        },
-        {
-          key: 'Alt-j',
-          run: (view) => {
-            goToNextChunk(view);
-            return true;
-          },
-        },
         {
           key: 'Ctrl-Alt-ArrowDown',
           run: goToNextChunk,
@@ -710,6 +697,7 @@ export const CodeMirrorDiffView = ({
     }
 
     return () => {
+      clearTimeout(debounceTimer.current);
       view.destroy();
       viewRef.current = null;
       if (extRef) {

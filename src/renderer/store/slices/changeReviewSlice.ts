@@ -22,6 +22,12 @@ import type { StateCreator } from 'zustand';
 
 const logger = createLogger('changeReviewSlice');
 
+/**
+ * When true, rejected hunks are immediately applied to disk (no need for "Apply All Changes").
+ * When false, decisions are batched and applied manually via "Apply All Changes" button.
+ */
+export const REVIEW_INSTANT_APPLY = true;
+
 function mapReviewError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes('conflict')) return 'File has been modified since agent changes.';
@@ -74,6 +80,12 @@ export interface ChangeReviewSlice {
     filePath: string
   ) => Promise<void>;
   applyReview: (teamName: string, taskId?: string, memberName?: string) => Promise<void>;
+  applySingleFileDecision: (
+    teamName: string,
+    filePath: string,
+    taskId?: string,
+    memberName?: string
+  ) => Promise<void>;
   invalidateChangeStats: (teamName: string) => void;
 
   // Editable diff actions
@@ -369,6 +381,41 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
         applying: false,
         applyError: mapReviewError(error),
       });
+    }
+  },
+
+  applySingleFileDecision: async (
+    teamName: string,
+    filePath: string,
+    taskId?: string,
+    memberName?: string
+  ) => {
+    const { hunkDecisions, fileDecisions, activeChangeSet } = get();
+    if (!activeChangeSet) return;
+
+    const file = activeChangeSet.files.find((f) => f.filePath === filePath);
+    if (!file) return;
+
+    const fileDecision = fileDecisions[filePath] ?? 'pending';
+    const hunkDecs: Record<number, HunkDecision> = {};
+    for (let i = 0; i < file.snippets.length; i++) {
+      hunkDecs[i] = hunkDecisions[`${filePath}:${i}`] ?? 'pending';
+    }
+
+    const hasRejected =
+      fileDecision === 'rejected' || Object.values(hunkDecs).some((d) => d === 'rejected');
+    if (!hasRejected) return;
+
+    try {
+      await api.review.applyDecisions({
+        teamName,
+        taskId,
+        memberName,
+        decisions: [{ filePath, fileDecision, hunkDecisions: hunkDecs }],
+      });
+    } catch (error) {
+      logger.error('applySingleFileDecision error:', error);
+      set({ applyError: mapReviewError(error) });
     }
   },
 

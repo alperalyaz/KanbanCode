@@ -1,5 +1,5 @@
 import { updateOriginalDoc } from '@codemirror/merge';
-import { type Extension, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
+import { type Extension, Facet, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view';
 
 import { getChunks } from './CodeMirrorDiffUtils';
@@ -13,6 +13,20 @@ interface PortionCollapseConfig {
   minSize?: number;
   portionSize?: number;
 }
+
+interface ResolvedPortionConfig {
+  margin: number;
+  minSize: number;
+  portionSize: number;
+}
+
+// ─── Configuration Facet ───
+// Compartment controls this facet value. The StateField reads config from here,
+// so reconfiguring the compartment does NOT recreate the field (preserving expanded state).
+
+const portionCollapseConfigFacet = Facet.define<ResolvedPortionConfig, ResolvedPortionConfig>({
+  combine: (values) => values[0] ?? { margin: 3, minSize: 4, portionSize: 100 },
+});
 
 // ─── State Effects ───
 
@@ -111,6 +125,11 @@ function buildPortionRanges(
   if (!result) return Decoration.none;
 
   const chunks = result.chunks;
+
+  // After all diff chunks are accepted/resolved, chunks is empty.
+  // Don't collapse the entire file — there's nothing to review.
+  if (chunks.length === 0) return Decoration.none;
+
   const builder = new RangeSetBuilder<Decoration>();
 
   let prevLine = 1;
@@ -257,6 +276,65 @@ const portionCollapseTheme = EditorView.theme({
   },
 });
 
+// ─── Singleton StateField ───
+// Defined at MODULE level so compartment.reconfigure() reuses the same field instance.
+// CM recognizes it's the same field → keeps accumulated state (expanded regions) → no create() call.
+// Config is read from portionCollapseConfigFacet (controlled by compartment).
+
+const portionCollapseField = StateField.define<DecorationSet>({
+  create(state: EditorState): DecorationSet {
+    const cfg = state.facet(portionCollapseConfigFacet);
+    return buildPortionRanges(state, cfg.margin, cfg.minSize, cfg.portionSize);
+  },
+
+  update(deco: DecorationSet, tr: Transaction): DecorationSet {
+    const cfg = tr.state.facet(portionCollapseConfigFacet);
+
+    // 1. Expand effects
+    let result = deco;
+    let hasExpandEffect = false;
+    for (const effect of tr.effects) {
+      if (effect.is(expandPortion)) {
+        hasExpandEffect = true;
+        result = handleExpandPortion(result, effect.value, tr.state, cfg.minSize, cfg.portionSize);
+      }
+      if (effect.is(expandAllAtPos)) {
+        hasExpandEffect = true;
+        result = handleExpandAll(result, effect.value);
+      }
+    }
+    if (hasExpandEffect) return result;
+
+    // 2. Accept chunk (updateOriginalDoc) — editor doc unchanged, keep decorations.
+    // Full rebuild here would destroy user's expanded state (Expand All / Expand N).
+    // The chunk boundaries shift but editor positions stay valid since doc didn't change.
+    // When mirrorEditsAfterResolve adds updateOriginalDoc to a docChanged transaction,
+    // we must NOT short-circuit — fall through to docChanged handler for proper rebuild.
+    if (tr.effects.some((e) => e.is(updateOriginalDoc)) && !tr.docChanged) {
+      return deco;
+    }
+
+    // 3. Document changed (reject, user edit) → full rebuild
+    if (tr.docChanged) {
+      return buildPortionRanges(tr.state, cfg.margin, cfg.minSize, cfg.portionSize);
+    }
+
+    // 4. Lazy init
+    if (deco === Decoration.none) {
+      const chunks = getChunks(tr.state);
+      if (chunks) {
+        return buildPortionRanges(tr.state, cfg.margin, cfg.minSize, cfg.portionSize);
+      }
+    }
+
+    return deco;
+  },
+
+  provide(f) {
+    return EditorView.decorations.from(f);
+  },
+});
+
 // ─── Extension ───
 
 export function portionCollapseExtension(config?: PortionCollapseConfig): Extension {
@@ -264,52 +342,12 @@ export function portionCollapseExtension(config?: PortionCollapseConfig): Extens
   const minSize = config?.minSize ?? 4;
   const portionSize = config?.portionSize ?? 100;
 
-  const field = StateField.define<DecorationSet>({
-    create(state: EditorState): DecorationSet {
-      return buildPortionRanges(state, margin, minSize, portionSize);
-    },
-
-    update(deco: DecorationSet, tr: Transaction): DecorationSet {
-      // 1. Expand effects
-      let result = deco;
-      let hasExpandEffect = false;
-      for (const effect of tr.effects) {
-        if (effect.is(expandPortion)) {
-          hasExpandEffect = true;
-          result = handleExpandPortion(result, effect.value, tr.state, minSize, portionSize);
-        }
-        if (effect.is(expandAllAtPos)) {
-          hasExpandEffect = true;
-          result = handleExpandAll(result, effect.value);
-        }
-      }
-      if (hasExpandEffect) return result;
-
-      // 2. Accept chunk (updateOriginalDoc) → full rebuild
-      if (tr.effects.some((e) => e.is(updateOriginalDoc))) {
-        return buildPortionRanges(tr.state, margin, minSize, portionSize);
-      }
-
-      // 3. Document changed (reject, user edit) → full rebuild
-      if (tr.docChanged) {
-        return buildPortionRanges(tr.state, margin, minSize, portionSize);
-      }
-
-      // 4. Lazy init
-      if (deco === Decoration.none) {
-        const chunks = getChunks(tr.state);
-        if (chunks) {
-          return buildPortionRanges(tr.state, margin, minSize, portionSize);
-        }
-      }
-
-      return deco;
-    },
-
-    provide(f) {
-      return EditorView.decorations.from(f);
-    },
-  });
-
-  return [field, portionCollapseTheme];
+  // Returns the SAME portionCollapseField reference every time.
+  // CM sees it's the same StateField → keeps state across compartment reconfigurations.
+  // Only the facet value (config) is new — the field reads it dynamically.
+  return [
+    portionCollapseConfigFacet.of({ margin, minSize, portionSize }),
+    portionCollapseField,
+    portionCollapseTheme,
+  ];
 }

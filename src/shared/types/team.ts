@@ -172,6 +172,19 @@ export interface ResolvedTeamMember {
   removedAt?: number;
 }
 
+export interface TeamProcess {
+  id: string;
+  port?: number;
+  url?: string;
+  label: string;
+  pid: number;
+  claudeProcessId?: string;
+  registeredBy?: string;
+  command?: string;
+  registeredAt: string;
+  stoppedAt?: string;
+}
+
 export interface TeamData {
   teamName: string;
   config: TeamConfig;
@@ -179,6 +192,7 @@ export interface TeamData {
   members: ResolvedTeamMember[];
   messages: InboxMessage[];
   kanbanState: KanbanState;
+  processes: TeamProcess[];
   warnings?: string[];
   isAlive?: boolean;
 }
@@ -207,7 +221,7 @@ export interface CreateTaskRequest {
 export type LeadActivityState = 'active' | 'idle' | 'offline';
 
 export interface TeamChangeEvent {
-  type: 'config' | 'inbox' | 'task' | 'lead-activity';
+  type: 'config' | 'inbox' | 'task' | 'lead-activity' | 'process';
   teamName: string;
   detail?: string;
 }

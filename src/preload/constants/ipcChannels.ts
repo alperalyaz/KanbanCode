@@ -285,6 +285,9 @@ export const TEAM_UPDATE_MEMBER_ROLE = 'team:updateMemberRole';
 /** Get attachment data for a message */
 export const TEAM_GET_ATTACHMENTS = 'team:getAttachments';
 
+/** Kill a registered CLI process by PID */
+export const TEAM_KILL_PROCESS = 'team:killProcess';
+
 /** Get lead process activity state (active/idle/offline) */
 export const TEAM_LEAD_ACTIVITY = 'team:leadActivity';
 

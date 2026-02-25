@@ -54,6 +54,7 @@ import { MessageComposer } from './messages/MessageComposer';
 import { MessagesFilterPopover } from './messages/MessagesFilterPopover';
 import { ChangeReviewDialog } from './review/ChangeReviewDialog';
 import { CollapsibleTeamSection } from './CollapsibleTeamSection';
+import { ProcessesSection } from './ProcessesSection';
 import { TeamProvisioningBanner } from './TeamProvisioningBanner';
 import { TeamSessionsSection } from './TeamSessionsSection';
 
@@ -992,6 +993,16 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           onAddTask={(startImmediately) => openCreateTaskDialog('', '', '', startImmediately)}
         />
       </CollapsibleTeamSection>
+
+      {(data.processes?.length ?? 0) > 0 && (
+        <CollapsibleTeamSection
+          title="CLI Processes"
+          badge={data.processes.filter((p) => !p.stoppedAt).length}
+          defaultOpen
+        >
+          <ProcessesSection teamName={teamName} processes={data.processes} />
+        </CollapsibleTeamSection>
+      )}
 
       <CollapsibleTeamSection
         title="Messages"

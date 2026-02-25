@@ -7,6 +7,7 @@ import { isLastChunkInFile, useDiffNavigation } from '@renderer/hooks/useDiffNav
 import { useViewedFiles } from '@renderer/hooks/useViewedFiles';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
+import { REVIEW_INSTANT_APPLY } from '@renderer/store/slices/changeReviewSlice';
 import { ChevronDown, Clock, X } from 'lucide-react';
 
 import { acceptAllChunks, rejectAllChunks } from './CodeMirrorDiffUtils';
@@ -62,6 +63,7 @@ export const ChangeReviewDialog = ({
     acceptAllFile,
     rejectAllFile,
     applyReview,
+    applySingleFileDecision,
     editedContents,
     updateEditedContent,
     discardFileEdits,
@@ -166,8 +168,11 @@ export const ChangeReviewDialog = ({
   const handleHunkRejected = useCallback(
     (filePath: string, hunkIndex: number) => {
       setHunkDecision(filePath, hunkIndex, 'rejected');
+      if (REVIEW_INSTANT_APPLY) {
+        void applySingleFileDecision(teamName, filePath, taskId, memberName);
+      }
     },
-    [setHunkDecision]
+    [setHunkDecision, applySingleFileDecision, teamName, taskId, memberName]
   );
 
   const handleContentChanged = useCallback(
@@ -347,17 +352,11 @@ export const ChangeReviewDialog = ({
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-medium text-text">{title}</h2>
           {activeChangeSet && (
-            <>
-              <span className="text-xs text-text-muted">
-                {activeChangeSet.totalFiles} files, +{activeChangeSet.totalLinesAdded} -
-                {activeChangeSet.totalLinesRemoved}
-              </span>
-              <ViewedProgressBar
-                viewed={viewedCount}
-                total={viewedTotalCount}
-                progress={viewedProgress}
-              />
-            </>
+            <ViewedProgressBar
+              viewed={viewedCount}
+              total={viewedTotalCount}
+              progress={viewedProgress}
+            />
           )}
         </div>
         <button
@@ -391,6 +390,7 @@ export const ChangeReviewDialog = ({
             onRejectAll={handleRejectAll}
             onApply={handleApply}
             onCollapseUnchangedChange={setCollapseUnchanged}
+            instantApply={REVIEW_INSTANT_APPLY}
             editedCount={editedCount}
           />
         )}

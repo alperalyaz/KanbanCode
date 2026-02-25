@@ -53,7 +53,7 @@ export const SidebarTaskItem = ({
   task,
   hideTeamName,
 }: SidebarTaskItemProps): React.JSX.Element => {
-  const openTeamTab = useStore((s) => s.openTeamTab);
+  const openGlobalTaskDetail = useStore((s) => s.openGlobalTaskDetail);
   const unreadCount = useUnreadCommentCount(task.teamName, task.id, task.comments);
   const cfg =
     task.kanbanColumn === 'approved'
@@ -70,7 +70,7 @@ export const SidebarTaskItem = ({
       type="button"
       className="flex h-[48px] w-full cursor-pointer flex-col justify-center border-b px-3 py-2 text-left transition-colors hover:bg-surface-raised"
       style={{ borderColor: 'var(--color-border)' }}
-      onClick={() => openTeamTab(task.teamName, undefined, task.id)}
+      onClick={() => openGlobalTaskDetail(task.teamName, task.id)}
     >
       <div className="flex w-full items-center gap-1.5 overflow-hidden">
         <span

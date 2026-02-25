@@ -3,10 +3,11 @@ import {
   acceptChunk,
   getChunks,
   getOriginalDoc,
+  originalDocChangeEffect,
   rejectChunk,
   updateOriginalDoc,
 } from '@codemirror/merge';
-import { ChangeSet, type ChangeSpec, type StateEffect } from '@codemirror/state';
+import { ChangeSet, type ChangeSpec, EditorState, type StateEffect } from '@codemirror/state';
 import { type EditorView } from '@codemirror/view';
 
 /**
@@ -71,5 +72,23 @@ export function rejectAllChunks(view: EditorView): boolean {
   view.dispatch({ changes: specs });
   return true;
 }
+
+/**
+ * After all diff chunks are accepted, mirrors user edits to the original doc
+ * so no new diffs appear. Makes editing feel like a regular editor (Cursor-like).
+ */
+export const mirrorEditsAfterResolve = EditorState.transactionExtender.of((tr) => {
+  if (!tr.docChanged) return null;
+
+  // Skip if transaction already updates original (undo/redo inverse, explicit accept)
+  if (tr.effects.some((e) => e.is(updateOriginalDoc))) return null;
+
+  // Only mirror when ALL chunks are resolved
+  const result = getChunks(tr.startState);
+  if (!result || result.chunks.length > 0) return null;
+
+  // Mirror edit to original doc (same ChangeSet applies because original === modified)
+  return { effects: originalDocChangeEffect(tr.startState, tr.changes) };
+});
 
 export { acceptChunk, getChunks, rejectChunk };

@@ -1,8 +1,9 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { useLazyFileContent } from '@renderer/hooks/useLazyFileContent';
 import { useVisibleFileSection } from '@renderer/hooks/useVisibleFileSection';
 
+import { acceptAllChunks, rejectAllChunks } from './CodeMirrorDiffUtils';
 import { FileSectionDiff } from './FileSectionDiff';
 import { FileSectionHeader } from './FileSectionHeader';
 import { FileSectionPlaceholder } from './FileSectionPlaceholder';
@@ -99,10 +100,30 @@ export const ContinuousScrollView = ({
     [registerFileSectionRef, registerLazyRef]
   );
 
+  // Ref to avoid stale closure — fileDecisions changes frequently
+  const fileDecisionsRef = useRef(fileDecisions);
+  useEffect(() => {
+    fileDecisionsRef.current = fileDecisions;
+  });
+
   const handleEditorViewReady = useCallback(
     (filePath: string, view: EditorView | null) => {
       if (view) {
         editorViewMapRef.current.set(filePath, view);
+
+        // Sync pre-existing "Accept All" / "Reject All" decisions to newly mounted editors.
+        // When Accept All runs, store is updated for ALL files, but CM only updates mounted ones.
+        // Lazily-loaded files mount later and need their CM state synced with the store.
+        const decision = fileDecisionsRef.current[filePath];
+        if (decision === 'accepted' || decision === 'rejected') {
+          requestAnimationFrame(() => {
+            if (decision === 'accepted') {
+              acceptAllChunks(view);
+            } else {
+              rejectAllChunks(view);
+            }
+          });
+        }
       } else {
         editorViewMapRef.current.delete(filePath);
       }

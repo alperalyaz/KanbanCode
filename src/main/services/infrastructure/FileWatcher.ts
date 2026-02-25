@@ -920,6 +920,12 @@ export class FileWatcher extends EventEmitter {
       return;
     }
 
+    if (relative === 'processes.json') {
+      const event: TeamChangeEvent = { type: 'process', teamName, detail: relative };
+      this.emit('team-change', event);
+      return;
+    }
+
     // Classify only the paths we care about in iteration 02.
     if (normalized.includes('inboxes') || relative === 'sentMessages.json') {
       const event: TeamChangeEvent = {

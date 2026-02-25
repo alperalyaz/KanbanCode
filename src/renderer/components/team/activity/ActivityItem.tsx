@@ -132,6 +132,28 @@ function linkifyTaskIdsInMarkdown(text: string): string {
   return text.replace(/#(\d+)/g, '[#$1](task://$1)');
 }
 
+/** Render `#<digits>` in plain text as clickable inline elements. */
+function linkifyTaskIds(text: string, onClick: (taskId: string) => void): React.ReactNode[] {
+  return text.split(/(#\d+)/g).map((part, i) => {
+    const match = /^#(\d+)$/.exec(part);
+    if (!match) return <span key={i}>{part}</span>;
+    const taskId = match[1];
+    return (
+      <button
+        key={i}
+        type="button"
+        className="cursor-pointer font-medium text-blue-400 hover:underline"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick(taskId);
+        }}
+      >
+        {part}
+      </button>
+    );
+  });
+}
+
 export const ActivityItem = ({
   message,
   teamName,
@@ -299,7 +321,7 @@ export const ActivityItem = ({
 
         {/* Summary */}
         <span className="flex-1 truncate text-xs" style={{ color: CARD_TEXT_LIGHT }}>
-          {summaryText}
+          {onTaskIdClick ? linkifyTaskIds(summaryText, onTaskIdClick) : summaryText}
         </span>
 
         {/* Timestamp + reply + create task */}

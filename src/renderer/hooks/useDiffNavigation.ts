@@ -174,14 +174,19 @@ export function useDiffNavigation(
           const nextFilePath = files[currentIdx + 1].filePath;
           continuousOptionsRef.current.scrollToFile(nextFilePath);
 
-          requestAnimationFrame(() => {
+          // Retry until EditorView appears (lazy-loaded files may not have it yet)
+          let attempts = 0;
+          const tryNavigate = (): void => {
             const opts = continuousOptionsRef.current;
             const nextView = opts?.editorViewMapRef.current.get(nextFilePath);
             if (nextView) {
               nextView.dispatch({ selection: { anchor: 0 } });
               goToNextChunk(nextView);
+            } else if (++attempts < 15) {
+              requestAnimationFrame(tryNavigate);
             }
-          });
+          };
+          requestAnimationFrame(tryNavigate);
         }
       } else {
         goToNextChunk(view);
@@ -206,15 +211,19 @@ export function useDiffNavigation(
           const prevFilePath = files[currentIdx - 1].filePath;
           continuousOptionsRef.current.scrollToFile(prevFilePath);
 
-          requestAnimationFrame(() => {
+          let attempts = 0;
+          const tryNavigate = (): void => {
             const opts = continuousOptionsRef.current;
             const prevView = opts?.editorViewMapRef.current.get(prevFilePath);
             if (prevView) {
               const docLength = prevView.state.doc.length;
               prevView.dispatch({ selection: { anchor: docLength } });
               goToPreviousChunk(prevView);
+            } else if (++attempts < 15) {
+              requestAnimationFrame(tryNavigate);
             }
-          });
+          };
+          requestAnimationFrame(tryNavigate);
         }
       } else {
         goToPreviousChunk(view);

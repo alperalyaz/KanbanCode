@@ -302,6 +302,19 @@ function buildTaskStatusProtocol(teamName: string): string {
 Failure to follow this protocol means the task board will show incorrect status.`);
 }
 
+function buildProcessRegistrationProtocol(teamName: string): string {
+  return wrapInAgentBlock(`BACKGROUND PROCESS REGISTRATION — when you start a background process (dev server, watcher, database, etc.):
+1. Launch with & to get PID:
+   pnpm dev &
+2. Register immediately (--port and --url are optional, use when the process listens on a port):
+   node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" process register --pid $! --label "<description>" --from "<your-name>" [--port <PORT> --url "http://localhost:<PORT>"]
+3. VERIFY registration succeeded (MANDATORY — never skip this step):
+   node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" process list
+4. When stopping a process:
+   node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" process unregister --pid <PID>
+If verification in step 3 fails or the process is missing from the list, re-register it.`);
+}
+
 function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string {
   return wrapInAgentBlock(
     [
@@ -360,6 +373,7 @@ function buildProvisioningPrompt(request: TeamCreateRequest): string {
   const description = request.description?.trim() || 'No description';
   const members = buildMembersPrompt(request.members);
   const taskProtocol = buildTaskStatusProtocol(request.teamName);
+  const processRegistration = buildProcessRegistrationProtocol(request.teamName);
   const languageInstruction = getAgentLanguageInstruction();
   const agentBlockPolicy = buildAgentBlockUsagePolicy();
   const userPromptBlock = request.prompt?.trim()
@@ -416,6 +430,8 @@ Steps (execute in this exact order):
 
 ${taskProtocol}
 
+${processRegistration}
+
 3) If user instructions explicitly ask to create tasks OR describe substantial/assigned work that should be tracked — create tasks on the team board.
    - Prefer fewer, broader tasks over many micro-tasks.
    - Avoid duplicate notifications for the same assignment.
@@ -436,6 +452,7 @@ function buildLaunchPrompt(
     ? `\nAdditional instructions from the user:\n${request.prompt.trim()}\n`
     : '';
   const taskProtocol = buildTaskStatusProtocol(request.teamName);
+  const processRegistration = buildProcessRegistrationProtocol(request.teamName);
   const languageInstruction = getAgentLanguageInstruction();
   const agentBlockPolicy = buildAgentBlockUsagePolicy();
 
@@ -488,6 +505,8 @@ Steps (execute in this exact order):
      Include the following agent-only instructions verbatim in the prompt:
 
 ${taskProtocol}
+
+${processRegistration}
 
 4) If user instructions explicitly ask to create tasks OR describe substantial/assigned work that should be tracked — create tasks on the team board.
    - Prefer fewer, broader tasks over many micro-tasks.

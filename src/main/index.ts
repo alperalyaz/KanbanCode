@@ -51,6 +51,8 @@ import {
   UpdaterService,
 } from './services';
 
+import type { TeamChangeEvent } from '@shared/types';
+
 const logger = createLogger('App');
 
 // Window icon path for non-mac platforms.
@@ -320,12 +322,17 @@ function initializeServices(): void {
   httpServer = new HttpServer();
 
   // Allow TeamProvisioningService to trigger team refresh events (e.g. live lead replies).
-  teamProvisioningService.setTeamChangeEmitter((event) => {
+  const teamChangeEmitter = (event: TeamChangeEvent): void => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(TEAM_CHANGE, event);
     }
     httpServer?.broadcast('team-change', event);
-  });
+  };
+  teamProvisioningService.setTeamChangeEmitter(teamChangeEmitter);
+
+  // Start periodic health checks for registered CLI processes (every 2s).
+  // Dead processes get stoppedAt written to processes.json → FileWatcher picks it up.
+  teamDataService.startProcessHealthPolling();
 
   // Initialize IPC handlers with registry
   initializeIpcHandlers(

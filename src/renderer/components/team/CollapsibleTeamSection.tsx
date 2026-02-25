@@ -30,7 +30,7 @@ export const CollapsibleTeamSection = ({
   const isOpen = forceOpen ? true : open;
 
   return (
-    <section className="border-b border-[var(--color-border)] pb-3 last:border-b-0">
+    <section className="min-w-0 overflow-hidden border-b border-[var(--color-border)] pb-3 last:border-b-0">
       <div className="relative -mx-4 flex min-h-10 w-full items-stretch py-3">
         <button
           type="button"
@@ -65,7 +65,7 @@ export const CollapsibleTeamSection = ({
         </div>
         {action && <div className="relative z-10 flex shrink-0 items-center">{action}</div>}
       </div>
-      {isOpen && <div className="mt-2">{children}</div>}
+      {isOpen && <div className="mt-2 min-w-0 overflow-hidden">{children}</div>}
     </section>
   );
 };

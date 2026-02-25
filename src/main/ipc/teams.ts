@@ -16,6 +16,7 @@ import {
   TEAM_GET_MEMBER_LOGS,
   TEAM_GET_MEMBER_STATS,
   TEAM_GET_PROJECT_BRANCH,
+  TEAM_KILL_PROCESS,
   TEAM_LAUNCH,
   TEAM_LEAD_ACTIVITY,
   TEAM_LIST,
@@ -194,6 +195,7 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_UPDATE_MEMBER_ROLE, handleUpdateMemberRole);
   ipcMain.handle(TEAM_GET_PROJECT_BRANCH, handleGetProjectBranch);
   ipcMain.handle(TEAM_GET_ATTACHMENTS, handleGetAttachments);
+  ipcMain.handle(TEAM_KILL_PROCESS, handleKillProcess);
   ipcMain.handle(TEAM_LEAD_ACTIVITY, handleLeadActivity);
   logger.info('Team handlers registered');
 }
@@ -231,6 +233,7 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_UPDATE_MEMBER_ROLE);
   ipcMain.removeHandler(TEAM_GET_PROJECT_BRANCH);
   ipcMain.removeHandler(TEAM_GET_ATTACHMENTS);
+  ipcMain.removeHandler(TEAM_KILL_PROCESS);
   ipcMain.removeHandler(TEAM_LEAD_ACTIVITY);
 }
 
@@ -1413,6 +1416,19 @@ async function handleUpdateMemberRole(
       }
     }
   });
+}
+
+async function handleKillProcess(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  pid: unknown
+): Promise<IpcResult<void>> {
+  const vTeam = validateTeamName(teamName);
+  if (!vTeam.valid) return { success: false, error: vTeam.error ?? 'Invalid teamName' };
+  if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) {
+    return { success: false, error: 'pid must be a positive integer' };
+  }
+  return wrapTeamHandler('killProcess', () => getTeamDataService().killProcess(vTeam.value!, pid));
 }
 
 async function handleAddTaskComment(

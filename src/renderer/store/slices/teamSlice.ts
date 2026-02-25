@@ -46,6 +46,11 @@ function mapReviewError(error: unknown): string {
   return message || 'Failed to perform review action';
 }
 
+export interface GlobalTaskDetailState {
+  teamName: string;
+  taskId: string;
+}
+
 export interface TeamSlice {
   teams: TeamSummary[];
   teamsLoading: boolean;
@@ -53,6 +58,9 @@ export interface TeamSlice {
   globalTasks: GlobalTask[];
   globalTasksLoading: boolean;
   globalTasksError: string | null;
+  globalTaskDetail: GlobalTaskDetailState | null;
+  openGlobalTaskDetail: (teamName: string, taskId: string) => void;
+  closeGlobalTaskDetail: () => void;
   selectedTeamName: string | null;
   selectedTeamData: TeamData | null;
   selectedTeamLoading: boolean;
@@ -126,6 +134,16 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   activeProvisioningRunId: null,
   provisioningError: null,
   kanbanFilterQuery: null,
+  globalTaskDetail: null,
+  openGlobalTaskDetail: (teamName: string, taskId: string) => {
+    set({ globalTaskDetail: { teamName, taskId } });
+    // Ensure team data is loaded for the dialog
+    const state = get();
+    if (state.selectedTeamName !== teamName || !state.selectedTeamData) {
+      void state.selectTeam(teamName);
+    }
+  },
+  closeGlobalTaskDetail: () => set({ globalTaskDetail: null }),
   addingComment: false,
   addCommentError: null,
   provisioningProgressUnsubscribe: null,

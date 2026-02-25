@@ -5,6 +5,7 @@ import {
   getTasksBasePath,
   getTeamsBasePath,
 } from '@main/utils/pathDecoder';
+import { isProcessAlive } from '@main/utils/processHealth';
 import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
 import { getMemberColor } from '@shared/constants/memberColors';
 import { createLogger } from '@shared/utils/logger';
@@ -43,6 +44,7 @@ import type {
   TeamCreateConfigRequest,
   TeamData,
   TeamMember,
+  TeamProcess,
   TeamSummary,
   TeamTask,
   TeamTaskStatus,
@@ -54,8 +56,12 @@ const logger = createLogger('Service:TeamDataService');
 
 const MIN_TEXT_LENGTH = 30;
 const MAX_LEAD_TEXTS = 50;
+const PROCESS_HEALTH_INTERVAL_MS = 2_000;
 
 export class TeamDataService {
+  private processHealthTimer: ReturnType<typeof setInterval> | null = null;
+  private processHealthTeams = new Set<string>();
+
   constructor(
     private readonly configReader: TeamConfigReader = new TeamConfigReader(),
     private readonly taskReader: TeamTaskReader = new TeamTaskReader(),
@@ -252,6 +258,21 @@ export class TeamDataService {
       return { ...task, kanbanColumn };
     });
 
+    let processes: TeamProcess[] = [];
+    try {
+      processes = await this.readProcesses(teamName);
+    } catch {
+      warnings.push('Processes failed to load');
+    }
+
+    // Auto-track teams with alive processes for periodic health checks
+    const hasAlive = processes.some((p) => !p.stoppedAt);
+    if (hasAlive) {
+      this.processHealthTeams.add(teamName);
+    } else {
+      this.processHealthTeams.delete(teamName);
+    }
+
     return {
       teamName,
       config,
@@ -259,8 +280,161 @@ export class TeamDataService {
       members,
       messages,
       kanbanState,
+      processes,
       warnings: warnings.length > 0 ? warnings : undefined,
     };
+  }
+
+  startProcessHealthPolling(): void {
+    if (this.processHealthTimer) return;
+    this.processHealthTimer = setInterval(() => {
+      void this.processHealthTick();
+    }, PROCESS_HEALTH_INTERVAL_MS);
+  }
+
+  stopProcessHealthPolling(): void {
+    if (this.processHealthTimer) {
+      clearInterval(this.processHealthTimer);
+      this.processHealthTimer = null;
+    }
+    this.processHealthTeams.clear();
+  }
+
+  trackProcessHealthForTeam(teamName: string): void {
+    this.processHealthTeams.add(teamName);
+  }
+
+  untrackProcessHealthForTeam(teamName: string): void {
+    this.processHealthTeams.delete(teamName);
+  }
+
+  private async processHealthTick(): Promise<void> {
+    for (const teamName of this.processHealthTeams) {
+      try {
+        const processesPath = path.join(getTeamsBasePath(), teamName, 'processes.json');
+        let raw: unknown[];
+        try {
+          const content = await fs.promises.readFile(processesPath, 'utf8');
+          const parsed: unknown = JSON.parse(content);
+          raw = Array.isArray(parsed) ? (parsed as unknown[]) : [];
+        } catch {
+          continue;
+        }
+
+        const processes = raw.filter(
+          (p): p is TeamProcess =>
+            !!p &&
+            typeof p === 'object' &&
+            'pid' in p &&
+            typeof (p as TeamProcess).pid === 'number' &&
+            (p as TeamProcess).pid > 0
+        );
+
+        let dirty = false;
+        for (const proc of processes) {
+          if (!proc.stoppedAt && !isProcessAlive(proc.pid)) {
+            proc.stoppedAt = new Date().toISOString();
+            dirty = true;
+          }
+        }
+
+        if (dirty) {
+          await atomicWriteAsync(processesPath, JSON.stringify(processes, null, 2));
+          // atomicWrite triggers FileWatcher → team-change 'process' → UI refresh
+          // No need to emit manually — FileWatcher handles it.
+        }
+      } catch {
+        // best-effort per team
+      }
+    }
+  }
+
+  private async readProcesses(teamName: string): Promise<TeamProcess[]> {
+    const processesPath = path.join(getTeamsBasePath(), teamName, 'processes.json');
+    let raw: unknown[];
+    try {
+      const content = await fs.promises.readFile(processesPath, 'utf8');
+      const parsed: unknown = JSON.parse(content);
+      raw = Array.isArray(parsed) ? (parsed as unknown[]) : [];
+    } catch {
+      return [];
+    }
+
+    const processes = raw.filter(
+      (p): p is TeamProcess =>
+        !!p &&
+        typeof p === 'object' &&
+        'pid' in p &&
+        typeof (p as TeamProcess).pid === 'number' &&
+        (p as TeamProcess).pid > 0
+    );
+
+    let dirty = false;
+    for (const proc of processes) {
+      if (!proc.stoppedAt && !isProcessAlive(proc.pid)) {
+        proc.stoppedAt = new Date().toISOString();
+        dirty = true;
+      }
+    }
+
+    if (dirty) {
+      try {
+        await atomicWriteAsync(processesPath, JSON.stringify(processes, null, 2));
+      } catch {
+        // best-effort write-back
+      }
+    }
+
+    return processes;
+  }
+
+  /**
+   * Kill a registered CLI process by PID (SIGTERM) and mark it as stopped in processes.json.
+   */
+  async killProcess(teamName: string, pid: number): Promise<void> {
+    const processesPath = path.join(getTeamsBasePath(), teamName, 'processes.json');
+
+    // Try to kill the process
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch (err: unknown) {
+      // ESRCH = process not found — still mark as stopped below
+      if (
+        err instanceof Error &&
+        'code' in err &&
+        (err as NodeJS.ErrnoException).code !== 'ESRCH'
+      ) {
+        throw new Error(`Failed to kill process ${pid}: ${(err as Error).message}`);
+      }
+    }
+
+    // Update processes.json to set stoppedAt
+    let raw: unknown[];
+    try {
+      const content = await fs.promises.readFile(processesPath, 'utf8');
+      const parsed: unknown = JSON.parse(content);
+      raw = Array.isArray(parsed) ? (parsed as unknown[]) : [];
+    } catch {
+      return; // No processes file — nothing to update
+    }
+
+    let dirty = false;
+    for (const entry of raw) {
+      if (
+        entry &&
+        typeof entry === 'object' &&
+        'pid' in entry &&
+        (entry as TeamProcess).pid === pid &&
+        !(entry as TeamProcess).stoppedAt
+      ) {
+        (entry as TeamProcess).stoppedAt = new Date().toISOString();
+        dirty = true;
+      }
+    }
+
+    if (dirty) {
+      await atomicWriteAsync(processesPath, JSON.stringify(raw, null, 2));
+    }
   }
 
   /**

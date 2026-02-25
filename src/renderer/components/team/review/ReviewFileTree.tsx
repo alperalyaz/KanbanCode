@@ -167,7 +167,7 @@ const TreeItem = ({
         <span
           className={cn(
             'min-w-0 flex-1 truncate',
-            viewedSet?.has(node.file.filePath) && 'text-text-muted line-through'
+            status === 'rejected' && 'text-text-muted line-through'
           )}
         >
           {node.name}

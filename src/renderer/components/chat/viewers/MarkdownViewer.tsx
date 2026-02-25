@@ -346,6 +346,7 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={REHYPE_PLUGINS}
+            urlTransform={(url) => url}
             components={components}
           >
             {content}

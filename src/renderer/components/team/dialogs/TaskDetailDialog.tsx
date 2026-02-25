@@ -57,6 +57,8 @@ interface TaskDetailDialogProps {
   onScrollToTask?: (taskId: string) => void;
   onOwnerChange?: (taskId: string, owner: string | null) => void;
   onViewChanges?: (taskId: string, filePath?: string) => void;
+  /** Extra content rendered in the dialog footer (e.g. "Open team" button). */
+  footerExtra?: React.ReactNode;
 }
 
 export const TaskDetailDialog = ({
@@ -70,6 +72,7 @@ export const TaskDetailDialog = ({
   onScrollToTask,
   onOwnerChange,
   onViewChanges,
+  footerExtra,
 }: TaskDetailDialogProps): React.JSX.Element => {
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
   const currentTask = task ? (taskMap.get(task.id) ?? task) : null;
@@ -262,7 +265,7 @@ export const TaskDetailDialog = ({
           <CollapsibleTeamSection
             title="Changes"
             badge={taskChangesFiles ? taskChangesFiles.length : undefined}
-            defaultOpen
+            defaultOpen={!!taskChangesFiles && taskChangesFiles.length > 0}
           >
             {changeSetLoading && !taskChangesFiles ? (
               <div className="flex items-center gap-2 py-2 text-xs text-[var(--color-text-muted)]">
@@ -457,9 +460,18 @@ export const TaskDetailDialog = ({
         </CollapsibleTeamSection>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Close
-          </Button>
+          {footerExtra ? (
+            <div className="flex w-full items-center justify-between">
+              {footerExtra}
+              <Button variant="outline" onClick={onClose}>
+                Close
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" onClick={onClose}>
+              Close
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

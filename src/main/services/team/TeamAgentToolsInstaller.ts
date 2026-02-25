@@ -6,7 +6,7 @@ import * as path from 'path';
 import { atomicWriteAsync } from './atomicWrite';
 
 const TOOL_FILE_NAME = 'teamctl.js';
-const TOOL_VERSION = 5;
+const TOOL_VERSION = 6;
 
 function buildTeamCtlScript(): string {
   const script = String.raw`#!/usr/bin/env node
@@ -166,7 +166,8 @@ function getPaths(flags, teamName) {
   const teamDir = path.join(claudeDir, 'teams', teamName);
   const tasksDir = path.join(claudeDir, 'tasks', teamName);
   const kanbanPath = path.join(teamDir, 'kanban-state.json');
-  return { claudeDir, teamDir, tasksDir, kanbanPath };
+  const processesPath = path.join(teamDir, 'processes.json');
+  return { claudeDir, teamDir, tasksDir, kanbanPath, processesPath };
 }
 
 function inferLeadName(paths) {
@@ -421,6 +422,89 @@ function reviewRequestChanges(paths, teamName, taskId, flags) {
   });
 }
 
+function readProcessesSafe(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    if (err && err.code === 'EPERM') return true;
+    return false;
+  }
+}
+
+function processRegister(paths, flags) {
+  const pid = Number(flags.pid);
+  if (!Number.isInteger(pid) || pid <= 0) die('Invalid --pid (must be > 0)');
+  const label = typeof flags.label === 'string' ? flags.label.trim() : '';
+  if (!label) die('Missing --label');
+
+  const rawPort = flags.port != null ? Number(flags.port) : undefined;
+  const port = rawPort != null && Number.isInteger(rawPort) && rawPort >= 1 && rawPort <= 65535 ? rawPort : undefined;
+  const url = typeof flags.url === 'string' && flags.url.trim() ? flags.url.trim() : undefined;
+
+  const claudeProcessId = typeof flags['claude-process-id'] === 'string' ? flags['claude-process-id'].trim() : undefined;
+  const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : undefined;
+  const command = typeof flags.command === 'string' ? flags.command.trim() : undefined;
+
+  const list = readProcessesSafe(paths.processesPath);
+  const existingIdx = list.findIndex(function (p) { return p.pid === pid; });
+
+  const entry = {
+    id: existingIdx >= 0 ? list[existingIdx].id : (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + String(Math.random())),
+    port: port,
+    url: url,
+    label: label,
+    pid: pid,
+    claudeProcessId: claudeProcessId,
+    registeredBy: from,
+    command: command,
+    registeredAt: existingIdx >= 0 ? list[existingIdx].registeredAt : nowIso(),
+  };
+
+  if (existingIdx >= 0) {
+    list[existingIdx] = entry;
+  } else {
+    list.push(entry);
+  }
+  atomicWrite(paths.processesPath, JSON.stringify(list, null, 2));
+  var portStr = port ? ' port=' + String(port) : '';
+  process.stdout.write('OK process registered pid=' + String(pid) + portStr + '\n');
+}
+
+function processUnregister(paths, flags) {
+  const list = readProcessesSafe(paths.processesPath);
+  const pid = flags.pid ? Number(flags.pid) : undefined;
+  const id = typeof flags.id === 'string' ? flags.id.trim() : undefined;
+  if (!pid && !id) die('Missing --pid or --id');
+
+  const idx = list.findIndex(function (p) {
+    if (pid) return p.pid === pid;
+    return p.id === id;
+  });
+  if (idx < 0) die('Process not found');
+  const removed = list.splice(idx, 1)[0];
+  atomicWrite(paths.processesPath, JSON.stringify(list, null, 2));
+  process.stdout.write('OK process unregistered pid=' + String(removed.pid) + '\n');
+}
+
+function processList(paths) {
+  const list = readProcessesSafe(paths.processesPath);
+  const result = list.map(function (p) {
+    return Object.assign({}, p, { alive: isProcessAlive(p.pid) });
+  });
+  process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+}
+
 function printHelp() {
   const inferred = inferTeamNameFromScriptPath();
   const teamHint = inferred ? ' (inferred team: ' + String(inferred) + ')' : '';
@@ -439,6 +523,10 @@ function printHelp() {
       '  node teamctl.js review approve <id> [--notify-owner --from "member" --note "..."] [--team <team>]',
       '  node teamctl.js review request-changes <id> --comment "..." [--from "member"] [--team <team>]',
       '  node teamctl.js message send --to "member" --text "..." [--summary "..."] [--from "member"] [--team <team>]',
+      '  node teamctl.js process register --pid <pid> --label <label> [--port <port>] [--url <url>] [--claude-process-id <id>] [--from <member>] [--command <cmd>] [--team <team>]',
+      '  node teamctl.js process unregister --pid <pid> [--team <team>]',
+      '  node teamctl.js process unregister --id <uuid> [--team <team>]',
+      '  node teamctl.js process list [--team <team>]',
       '',
       'Options:',
       '  --team <name>           Team name (if not under ~/.claude/teams/<team>/tools)',
@@ -625,6 +713,22 @@ async function main() {
       return;
     }
     die('Unknown message action: ' + String(action));
+  }
+
+  if (domain === 'process') {
+    if (action === 'register') {
+      processRegister(paths, args.flags);
+      return;
+    }
+    if (action === 'unregister' || action === 'remove') {
+      processUnregister(paths, args.flags);
+      return;
+    }
+    if (action === 'list') {
+      processList(paths);
+      return;
+    }
+    die('Unknown process action: ' + String(action));
   }
 
   die('Unknown domain: ' + String(domain));

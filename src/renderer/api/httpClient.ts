@@ -761,6 +761,9 @@ export class HttpAPIClient implements ElectronAPI {
     ): Promise<AttachmentFileData[]> => {
       return [];
     },
+    killProcess: async (_teamName: string, _pid: number): Promise<void> => {
+      // Not available via HTTP client — no-op
+    },
     getLeadActivity: async (_teamName: string): Promise<'active' | 'idle' | 'offline'> => {
       return 'offline';
     },

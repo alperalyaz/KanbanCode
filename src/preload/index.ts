@@ -46,6 +46,7 @@ import {
   TEAM_GET_MEMBER_LOGS,
   TEAM_GET_MEMBER_STATS,
   TEAM_GET_PROJECT_BRANCH,
+  TEAM_KILL_PROCESS,
   TEAM_LAUNCH,
   TEAM_LEAD_ACTIVITY,
   TEAM_LIST,
@@ -663,6 +664,9 @@ const electronAPI: ElectronAPI = {
     },
     getAttachments: async (teamName: string, messageId: string) => {
       return invokeIpcWithResult<AttachmentFileData[]>(TEAM_GET_ATTACHMENTS, teamName, messageId);
+    },
+    killProcess: async (teamName: string, pid: number) => {
+      return invokeIpcWithResult<void>(TEAM_KILL_PROCESS, teamName, pid);
     },
     getLeadActivity: async (teamName: string) => {
       const result = await invokeIpcWithResult<string>(TEAM_LEAD_ACTIVITY, teamName);
