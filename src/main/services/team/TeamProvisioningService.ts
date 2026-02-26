@@ -417,8 +417,11 @@ function buildProvisioningPrompt(request: TeamCreateRequest): string {
   const leadName =
     request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name || 'team-lead';
   const teamCtlOps = buildTeamCtlOpsInstructions(request.teamName, leadName);
+  const projectName = path.basename(request.cwd);
 
-  return `You are running in a non-interactive CLI session. Do not ask questions. Do everything in a single turn.
+  return `Team Start [Agent Team: "${request.teamName}" | Project: "${projectName}" | Lead: "${leadName}"]
+
+You are running in a non-interactive CLI session. Do not ask questions. Do everything in a single turn.
 You are "${leadName}", the team lead.
 
 Goal: Provision a Claude Code agent team with live teammates.
@@ -494,6 +497,7 @@ function buildLaunchPrompt(
 
   const leadName = members.find((m) => m.role?.toLowerCase().includes('lead'))?.name || 'team-lead';
   const teamCtlOps = buildTeamCtlOpsInstructions(request.teamName, leadName);
+  const projectName = path.basename(request.cwd);
 
   // Build per-member task snapshots to include in each teammate's spawn prompt
   const memberTaskBlocks = new Map<string, string>();
@@ -522,7 +526,9 @@ function buildLaunchPrompt(
     })
     .join('\n\n');
 
-  return `You are running in a non-interactive CLI session. Do not ask questions. Do everything in a single turn.
+  return `Team Start [Agent Team: "${request.teamName}" | Project: "${projectName}" | Lead: "${leadName}"]
+
+You are running in a non-interactive CLI session. Do not ask questions. Do everything in a single turn.
 You are "${leadName}", the team lead.
 
 Goal: Reconnect with existing team "${request.teamName}" and resume pending work.

@@ -23,7 +23,7 @@ interface ContinuousScrollViewProps {
   collapseUnchanged: boolean;
   applying: boolean;
   autoViewed: boolean;
-  discardCounter: number;
+  discardCounters: Record<string, number>;
   onHunkAccepted: (filePath: string, hunkIndex: number) => void;
   onHunkRejected: (filePath: string, hunkIndex: number) => void;
   onFullyViewed: (filePath: string) => void;
@@ -54,7 +54,7 @@ export const ContinuousScrollView = ({
   collapseUnchanged,
   applying,
   autoViewed,
-  discardCounter,
+  discardCounters,
   onHunkAccepted,
   onHunkRejected,
   onFullyViewed,
@@ -198,7 +198,7 @@ export const ContinuousScrollView = ({
                   onFullyViewed={onFullyViewed}
                   onContentChanged={onContentChanged}
                   onEditorViewReady={handleEditorViewReady}
-                  discardCounter={discardCounter}
+                  discardCounter={discardCounters[filePath] ?? 0}
                   autoViewed={autoViewed}
                   isViewed={isViewed}
                 />

@@ -180,15 +180,19 @@ const RepositoryCard = ({
       </div>
 
       {/* Project path - monospace, muted, clickable to open in file manager */}
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={handleOpenPath}
-        className="flex w-full min-w-0 items-center gap-1 truncate text-left font-mono text-[10px] text-text-muted transition-colors hover:text-text-secondary"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') handleOpenPath(e as unknown as React.MouseEvent);
+        }}
+        className="flex w-full min-w-0 cursor-pointer items-center gap-1 truncate text-left font-mono text-[10px] text-text-muted transition-colors hover:text-text-secondary"
         title={`Open in file manager: ${projectPath}`}
       >
         <FolderOpen className="size-3 shrink-0" />
         <span className="truncate">{formattedPath}</span>
-      </button>
+      </div>
 
       {/* Git branch / worktree info */}
       {mainBranch ? (

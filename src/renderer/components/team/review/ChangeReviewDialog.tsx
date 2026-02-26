@@ -80,7 +80,7 @@ export const ChangeReviewDialog = ({
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [autoViewed, setAutoViewed] = useState(true);
   const [timelineOpen, setTimelineOpen] = useState(false);
-  const [discardCounter, setDiscardCounter] = useState(0);
+  const [discardCounters, setDiscardCounters] = useState<Record<string, number>>({});
 
   // EditorView map for all visible file editors
   const editorViewMapRef = useRef(new Map<string, EditorView>());
@@ -213,7 +213,7 @@ export const ChangeReviewDialog = ({
   const handleDiscardFile = useCallback(
     (filePath: string) => {
       discardFileEdits(filePath);
-      setDiscardCounter((c) => c + 1);
+      setDiscardCounters((prev) => ({ ...prev, [filePath]: (prev[filePath] ?? 0) + 1 }));
     },
     [discardFileEdits]
   );
@@ -544,7 +544,7 @@ export const ChangeReviewDialog = ({
               collapseUnchanged={collapseUnchanged}
               applying={applying}
               autoViewed={autoViewed}
-              discardCounter={discardCounter}
+              discardCounters={discardCounters}
               onHunkAccepted={handleHunkAccepted}
               onHunkRejected={handleHunkRejected}
               onFullyViewed={handleFullyViewed}
