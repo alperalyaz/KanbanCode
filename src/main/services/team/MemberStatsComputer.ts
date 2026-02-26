@@ -271,9 +271,14 @@ export class MemberStatsComputer {
                       const bashLines = estimateBashLinesChanged(cmd);
                       linesAdded += bashLines.added;
                       linesRemoved += bashLines.removed;
-                      for (const f of bashLines.files) {
+                      const touchedFiles = [...new Set(bashLines.files)];
+                      for (const f of touchedFiles) {
                         trackFile(f);
-                        addFileLines(f, bashLines.added, bashLines.removed);
+                      }
+                      // Only attribute per-file lines when a single file is touched;
+                      // with multiple files we can't determine per-file distribution
+                      if (touchedFiles.length === 1) {
+                        addFileLines(touchedFiles[0], bashLines.added, bashLines.removed);
                       }
                     }
                   }
