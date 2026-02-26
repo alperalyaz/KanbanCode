@@ -6,7 +6,7 @@ import * as path from 'path';
 import { atomicWriteAsync } from './atomicWrite';
 
 const TOOL_FILE_NAME = 'teamctl.js';
-const TOOL_VERSION = 8;
+const TOOL_VERSION = 9;
 
 function buildTeamCtlScript(): string {
   const script = String.raw`#!/usr/bin/env node
@@ -199,6 +199,17 @@ function setTaskStatus(paths, taskId, status) {
   const { taskPath, task } = readTask(paths, taskId);
   task.status = normalized;
   writeTask(taskPath, task);
+}
+
+function setTaskOwner(paths, taskId, owner) {
+  const { taskPath, task } = readTask(paths, taskId);
+  if (owner) {
+    task.owner = owner;
+  } else {
+    delete task.owner;
+  }
+  writeTask(taskPath, task);
+  return task;
 }
 
 function addTaskComment(paths, taskId, flags) {
@@ -655,6 +666,7 @@ function printHelp() {
       '  node teamctl.js task complete <id> [--team <team>]',
       '  node teamctl.js task start <id> [--team <team>]',
       '  node teamctl.js task create --subject "..." [--description "..."] [--prompt "..."] [--owner "member"] [--status pending|in_progress|completed|deleted] [--notify --from "member"] [--team <team>]',
+      '  node teamctl.js task set-owner <id> <member|clear> [--notify --from "member"] [--team <team>]',
       '  node teamctl.js task comment <id> --text "..." [--from "member"] [--team <team>]',
       '  node teamctl.js task set-clarification <id> <lead|user|clear> [--from "member"] [--team <team>]',
       '  node teamctl.js task briefing --for <member-name> [--team <team>]',
@@ -789,6 +801,37 @@ async function main() {
       if (!id || !val) die('Usage: task set-clarification <id> <lead|user|clear>');
       setNeedsClarification(paths, String(id), String(val));
       process.stdout.write('OK task #' + String(id) + ' needsClarification=' + (val === 'clear' ? 'cleared' : String(val)) + '\n');
+      return;
+    }
+    if (action === 'set-owner' || action === 'assign') {
+      const id = rest[0] || args.flags.id;
+      const owner = rest[1] || args.flags.owner;
+      if (!id) die('Usage: task set-owner <id> <member|clear>');
+      if (!owner) die('Usage: task set-owner <id> <member|clear>');
+      const effectiveOwner = owner === 'clear' || owner === 'none' ? null : String(owner);
+      const task = setTaskOwner(paths, String(id), effectiveOwner);
+      process.stdout.write('OK task #' + String(id) + ' owner=' + (effectiveOwner || 'cleared') + '\n');
+      const notify = args.flags.notify === true;
+      if (notify && effectiveOwner) {
+        const from = typeof args.flags.from === 'string' && args.flags.from.trim() ? args.flags.from.trim() : inferLeadName(paths);
+        const parts = ['Task assigned to you: #' + String(task.id) + ' "' + String(task.subject) + '".'];
+        if (task.description && task.description !== task.subject) {
+          parts.push('\nDescription:\n' + String(task.description).slice(0, 500));
+        }
+        parts.push(
+          '\n' + ${JSON.stringify(AGENT_BLOCK_OPEN)},
+          'Update task status using:',
+          'node "$HOME/.claude/tools/${TOOL_FILE_NAME}" --team ' + String(teamName) + ' task start ' + String(task.id),
+          'node "$HOME/.claude/tools/${TOOL_FILE_NAME}" --team ' + String(teamName) + ' task complete ' + String(task.id),
+          ${JSON.stringify(AGENT_BLOCK_CLOSE)}
+        );
+        sendInboxMessage(paths, teamName, {
+          to: effectiveOwner,
+          text: parts.join('\n'),
+          summary: 'Task #' + String(task.id) + ' assigned',
+          from,
+        });
+      }
       return;
     }
     if (action === 'briefing') {

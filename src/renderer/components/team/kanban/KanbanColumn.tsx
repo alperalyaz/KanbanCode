@@ -38,7 +38,7 @@ export const KanbanColumn = ({
           {count}
         </Badge>
       </header>
-      <div className="flex max-h-[480px] flex-col gap-2 overflow-auto p-2">{children}</div>
+      <div className="flex max-h-[480px] flex-col overflow-auto p-2">{children}</div>
     </section>
   );
 };

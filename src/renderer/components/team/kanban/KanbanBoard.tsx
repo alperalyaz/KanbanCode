@@ -149,6 +149,7 @@ interface SortableKanbanTaskCardProps {
   columnId: KanbanColumnId;
   teamName: string;
   kanbanState: KanbanState;
+  compact?: boolean;
   taskMap: Map<string, TeamTask>;
   members: ResolvedTeamMember[];
   onRequestReview: (taskId: string) => void;
@@ -169,6 +170,7 @@ const SortableKanbanTaskCard = ({
   columnId,
   teamName,
   kanbanState,
+  compact,
   taskMap,
   members,
   onRequestReview,
@@ -203,6 +205,7 @@ const SortableKanbanTaskCard = ({
         columnId={columnId}
         kanbanTaskState={kanbanState.tasks[task.id]}
         hasReviewers={kanbanState.reviewers.length > 0}
+        compact={compact}
         taskMap={taskMap}
         members={members}
         onRequestReview={onRequestReview}
@@ -303,7 +306,11 @@ export const KanbanBoard = ({
     [onColumnOrderChange, groupedOrdered]
   );
 
-  const renderCards = (columnId: KanbanColumnId, columnTasks: TeamTask[]): React.JSX.Element => {
+  const renderCards = (
+    columnId: KanbanColumnId,
+    columnTasks: TeamTask[],
+    compact?: boolean
+  ): React.JSX.Element => {
     const addHandler =
       onAddTask && columnId === 'todo'
         ? () => onAddTask(false)
@@ -343,6 +350,7 @@ export const KanbanBoard = ({
                 columnId={columnId}
                 teamName={teamName}
                 kanbanState={kanbanState}
+                compact={compact}
                 taskMap={taskMap}
                 members={members}
                 onRequestReview={onRequestReview}
@@ -373,6 +381,7 @@ export const KanbanBoard = ({
             columnId={columnId}
             kanbanTaskState={kanbanState.tasks[task.id]}
             hasReviewers={kanbanState.reviewers.length > 0}
+            compact={compact}
             taskMap={taskMap}
             members={members}
             onRequestReview={onRequestReview}
@@ -497,7 +506,7 @@ export const KanbanBoard = ({
                   headerBg={accent.headerBg}
                   bodyBg={accent.bodyBg}
                 >
-                  {renderCards(column.id, columnTasks)}
+                  {renderCards(column.id, columnTasks, true)}
                 </KanbanColumn>
               </div>
             );

@@ -27,6 +27,7 @@ interface KanbanTaskCardProps {
   columnId: KanbanColumnId;
   kanbanTaskState?: KanbanTaskState;
   hasReviewers: boolean;
+  compact?: boolean;
   taskMap: Map<string, TeamTask>;
   members: ResolvedTeamMember[];
   onRequestReview: (taskId: string) => void;
@@ -134,6 +135,7 @@ export const KanbanTaskCard = ({
   columnId,
   kanbanTaskState: _kanbanTaskState,
   hasReviewers,
+  compact,
   taskMap,
   members,
   onRequestReview,
@@ -186,26 +188,35 @@ export const KanbanTaskCard = ({
         }
       }}
     >
-      <div className="mb-2 flex items-center gap-1">
-        <Badge variant="secondary" className="shrink-0 px-1 py-0 text-[10px] font-normal">
-          #{task.id}
-        </Badge>
-        {task.owner ? <MemberBadge name={task.owner} color={colorMap.get(task.owner)} /> : null}
-        {task.needsClarification ? (
-          <span
-            className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-              task.needsClarification === 'user'
-                ? 'bg-red-500/15 text-red-400'
-                : 'bg-blue-500/15 text-blue-400'
-            }`}
-          >
-            <HelpCircle size={10} />
-            {task.needsClarification === 'user' ? 'Awaiting user' : 'Awaiting lead'}
-          </span>
-        ) : null}
-        <h5 className="min-w-0 truncate text-sm font-medium text-[var(--color-text)]">
-          {task.subject}
-        </h5>
+      <div className="mb-2">
+        <div className="flex items-center gap-1">
+          <Badge variant="secondary" className="shrink-0 px-1 py-0 text-[10px] font-normal">
+            #{task.id}
+          </Badge>
+          {task.owner ? <MemberBadge name={task.owner} color={colorMap.get(task.owner)} /> : null}
+          {task.needsClarification ? (
+            <span
+              className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                task.needsClarification === 'user'
+                  ? 'bg-red-500/15 text-red-400'
+                  : 'bg-blue-500/15 text-blue-400'
+              }`}
+            >
+              <HelpCircle size={10} />
+              {task.needsClarification === 'user' ? 'Awaiting user' : 'Awaiting lead'}
+            </span>
+          ) : null}
+          {!compact && (
+            <h5 className="min-w-0 truncate text-sm font-medium text-[var(--color-text)]">
+              {task.subject}
+            </h5>
+          )}
+        </div>
+        {compact && (
+          <h5 className="mt-1 truncate text-sm font-medium text-[var(--color-text)]">
+            {task.subject}
+          </h5>
+        )}
       </div>
 
       {hasBlockedBy ? (
@@ -332,12 +343,14 @@ export const KanbanTaskCard = ({
                 <Button
                   variant="outline"
                   size="sm"
+                  className="gap-1 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
                   aria-label={`Approve task ${task.id}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onApprove(task.id);
                   }}
                 >
+                  <CheckCircle2 size={12} />
                   Approve
                 </Button>
                 <Button

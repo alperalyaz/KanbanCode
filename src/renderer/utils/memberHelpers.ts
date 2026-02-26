@@ -77,24 +77,34 @@ interface MemberColorInput {
 
 /**
  * Build a consistent name→colorName map for all members.
- * Replicates the same index-based assignment as MemberList so that
- * every component resolves the same color for a given member.
- * Also maps "user" to the team-lead's color.
+ * Deduplicates colors: first member (alphabetically) keeps its stored color,
+ * subsequent collisions get the next unused palette color.
+ * Also maps "user" to a reserved color.
  */
 export function buildMemberColorMap(members: MemberColorInput[]): Map<string, string> {
   const map = new Map<string, string>();
   const active = members.filter((m) => !m.removedAt);
   const removed = members.filter((m) => m.removedAt);
+  const usedColors = new Set<string>();
 
-  for (let i = 0; i < active.length; i++) {
-    map.set(active[i].name, active[i].color ?? getMemberColor(i));
+  let nextFallback = 0;
+  for (const member of active) {
+    let color = member.color;
+    if (!color || usedColors.has(color)) {
+      while (usedColors.has(getMemberColor(nextFallback))) {
+        nextFallback++;
+      }
+      color = getMemberColor(nextFallback);
+      nextFallback++;
+    }
+    map.set(member.name, color);
+    usedColors.add(color);
   }
+
   for (let i = 0; i < removed.length; i++) {
     map.set(removed[i].name, removed[i].color ?? getMemberColor(active.length + i));
   }
 
-  // "user" = the human operator; gets a unique reserved color
-  // that is never assigned to any team member.
   map.set('user', 'user');
 
   return map;

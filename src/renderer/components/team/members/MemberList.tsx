@@ -69,7 +69,7 @@ export const MemberList = ({
   };
 
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col">
       {activeMembers.map((member) => renderCard(member, false))}
       {removedMembers.length > 0 && (
         <>

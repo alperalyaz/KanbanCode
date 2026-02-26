@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { undo } from '@codemirror/commands';
 import { goToNextChunk, rejectChunk } from '@codemirror/merge';
 import { isElectronMode } from '@renderer/api';
 import { useContinuousScrollNav } from '@renderer/hooks/useContinuousScrollNav';
@@ -89,6 +90,8 @@ export const ChangeReviewDialog = ({
   // EditorView map for all visible file editors
   const editorViewMapRef = useRef(new Map<string, EditorView>());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Last focused CM editor — for Cmd+Z outside editor
+  const lastFocusedEditorRef = useRef<EditorView | null>(null);
 
   // Proxy ref for useDiffNavigation (points to active file's editor)
   const activeEditorViewRef = useRef<EditorView | null>(null);
@@ -349,14 +352,50 @@ export const ChangeReviewDialog = ({
     return () => document.removeEventListener('keydown', handler);
   }, [open, onOpenChange]);
 
-  // Cmd+Z for undo bulk review (when not inside a CM editor)
+  // Track last focused CM editor for Cmd+Z outside editor
+  useEffect(() => {
+    if (!open) return;
+
+    const handleFocusIn = (e: FocusEvent): void => {
+      const target = e.target as Element | null;
+      if (!target?.closest?.('.cm-editor')) return;
+
+      for (const view of editorViewMapRef.current.values()) {
+        if (view.dom.contains(target)) {
+          lastFocusedEditorRef.current = view;
+          return;
+        }
+      }
+    };
+
+    document.addEventListener('focusin', handleFocusIn);
+    return () => {
+      document.removeEventListener('focusin', handleFocusIn);
+      lastFocusedEditorRef.current = null;
+    };
+  }, [open]);
+
+  // Cmd+Z: undo in last focused editor, or fall back to bulk review undo
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent): void => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
         // Don't intercept if focus is inside a CM editor — let CM handle its own undo
         if (document.activeElement?.closest('.cm-editor')) return;
+        // Don't intercept native undo in input/textarea
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
+        // Try to undo in the last focused CM editor
+        const lastView = lastFocusedEditorRef.current;
+        if (lastView?.dom.isConnected) {
+          e.preventDefault();
+          e.stopPropagation();
+          undo(lastView);
+          return;
+        }
+
+        // Fall back to bulk undo (Accept All / Reject All)
         if (useStore.getState().reviewUndoStack.length > 0) {
           e.preventDefault();
           e.stopPropagation();
