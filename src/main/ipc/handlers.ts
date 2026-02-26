@@ -17,6 +17,11 @@
 import { createLogger } from '@shared/utils/logger';
 import { ipcMain } from 'electron';
 
+import {
+  initializeCliInstallerHandlers,
+  registerCliInstallerHandlers,
+  removeCliInstallerHandlers,
+} from './cliInstaller';
 import { initializeConfigHandlers, registerConfigHandlers, removeConfigHandlers } from './config';
 import {
   initializeContextHandlers,
@@ -36,6 +41,7 @@ import {
   registerProjectHandlers,
   removeProjectHandlers,
 } from './projects';
+import { initializeReviewHandlers, registerReviewHandlers, removeReviewHandlers } from './review';
 import { initializeSearchHandlers, registerSearchHandlers, removeSearchHandlers } from './search';
 import {
   initializeSessionHandlers,
@@ -50,6 +56,11 @@ import {
 } from './subagents';
 import { initializeTeamHandlers, registerTeamHandlers, removeTeamHandlers } from './teams';
 import {
+  initializeTerminalHandlers,
+  registerTerminalHandlers,
+  removeTerminalHandlers,
+} from './terminal';
+import {
   initializeUpdaterHandlers,
   registerUpdaterHandlers,
   removeUpdaterHandlers,
@@ -59,7 +70,13 @@ import { registerValidationHandlers, removeValidationHandlers } from './validati
 import { registerWindowHandlers, removeWindowHandlers } from './window';
 
 import type {
+  ChangeExtractorService,
+  CliInstallerService,
+  FileContentResolver,
+  GitDiffFallback,
   MemberStatsComputer,
+  PtyTerminalService,
+  ReviewApplierService,
   ServiceContext,
   ServiceContextRegistry,
   SshConnectionManager,
@@ -89,7 +106,13 @@ export function initializeIpcHandlers(
   httpServerDeps?: {
     httpServer: HttpServer;
     startHttpServer: () => Promise<void>;
-  }
+  },
+  changeExtractor?: ChangeExtractorService,
+  fileContentResolver?: FileContentResolver,
+  reviewApplier?: ReviewApplierService,
+  gitDiffFallback?: GitDiffFallback,
+  cliInstaller?: CliInstallerService,
+  ptyTerminal?: PtyTerminalService
 ): void {
   // Initialize domain handlers with registry
   initializeProjectHandlers(registry);
@@ -114,6 +137,20 @@ export function initializeIpcHandlers(
   if (httpServerDeps) {
     initializeHttpServerHandlers(httpServerDeps.httpServer, httpServerDeps.startHttpServer);
   }
+  if (cliInstaller) {
+    initializeCliInstallerHandlers(cliInstaller);
+  }
+  if (ptyTerminal) {
+    initializeTerminalHandlers(ptyTerminal);
+  }
+  if (changeExtractor) {
+    initializeReviewHandlers({
+      extractor: changeExtractor,
+      applier: reviewApplier ?? undefined,
+      contentResolver: fileContentResolver ?? undefined,
+      gitFallback: gitDiffFallback ?? undefined,
+    });
+  }
 
   // Register all handlers
   registerProjectHandlers(ipcMain);
@@ -128,7 +165,14 @@ export function initializeIpcHandlers(
   registerSshHandlers(ipcMain);
   registerContextHandlers(ipcMain);
   registerTeamHandlers(ipcMain);
+  registerReviewHandlers(ipcMain);
   registerWindowHandlers(ipcMain);
+  if (cliInstaller) {
+    registerCliInstallerHandlers(ipcMain);
+  }
+  if (ptyTerminal) {
+    registerTerminalHandlers(ipcMain);
+  }
   if (httpServerDeps) {
     registerHttpServerHandlers(ipcMain);
   }
@@ -153,7 +197,10 @@ export function removeIpcHandlers(): void {
   removeSshHandlers(ipcMain);
   removeContextHandlers(ipcMain);
   removeTeamHandlers(ipcMain);
+  removeReviewHandlers(ipcMain);
   removeWindowHandlers(ipcMain);
+  removeCliInstallerHandlers(ipcMain);
+  removeTerminalHandlers(ipcMain);
   removeHttpServerHandlers(ipcMain);
 
   logger.info('All handlers removed');

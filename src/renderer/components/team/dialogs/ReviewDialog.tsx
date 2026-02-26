@@ -13,6 +13,7 @@ import { Label } from '@renderer/components/ui/label';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
 import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
+import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 
 import type { MentionSuggestion } from '@renderer/types/mention';
 import type { ResolvedTeamMember } from '@shared/types';
@@ -38,6 +39,7 @@ export const ReviewDialog = ({
     key: `requestChanges:${teamName}:${taskId ?? ''}`,
     enabled: Boolean(teamName && taskId),
   });
+  const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
 
   const mentionSuggestions = useMemo<MentionSuggestion[]>(
     () =>
@@ -45,9 +47,9 @@ export const ReviewDialog = ({
         id: m.name,
         name: m.name,
         subtitle: formatAgentRole(m.role) ?? formatAgentRole(m.agentType) ?? undefined,
-        color: m.color,
+        color: colorMap.get(m.name),
       })),
-    [members]
+    [members, colorMap]
   );
 
   const handleCancel = (): void => {
@@ -76,7 +78,9 @@ export const ReviewDialog = ({
         </DialogHeader>
 
         <div className="grid gap-2 py-2">
-          <Label htmlFor="review-comment">Comment (optional)</Label>
+          <Label htmlFor="review-comment" className="label-optional">
+            Comment (optional)
+          </Label>
           <MentionableTextarea
             id="review-comment"
             className="min-h-[110px] text-xs"

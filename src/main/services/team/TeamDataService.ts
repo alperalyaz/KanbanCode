@@ -5,6 +5,7 @@ import {
   getTasksBasePath,
   getTeamsBasePath,
 } from '@main/utils/pathDecoder';
+import { isProcessAlive } from '@main/utils/processHealth';
 import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
 import { getMemberColor } from '@shared/constants/memberColors';
 import { createLogger } from '@shared/utils/logger';
@@ -43,6 +44,7 @@ import type {
   TeamCreateConfigRequest,
   TeamData,
   TeamMember,
+  TeamProcess,
   TeamSummary,
   TeamTask,
   TeamTaskStatus,
@@ -54,8 +56,12 @@ const logger = createLogger('Service:TeamDataService');
 
 const MIN_TEXT_LENGTH = 30;
 const MAX_LEAD_TEXTS = 50;
+const PROCESS_HEALTH_INTERVAL_MS = 2_000;
 
 export class TeamDataService {
+  private processHealthTimer: ReturnType<typeof setInterval> | null = null;
+  private processHealthTeams = new Set<string>();
+
   constructor(
     private readonly configReader: TeamConfigReader = new TeamConfigReader(),
     private readonly taskReader: TeamTaskReader = new TeamTaskReader(),
@@ -79,13 +85,19 @@ export class TeamDataService {
       this.configReader.listTeams(),
     ]);
 
-    const teamInfoMap = new Map<string, { displayName: string; projectPath?: string }>();
+    const teamInfoMap = new Map<
+      string,
+      { displayName: string; projectPath?: string; deletedAt?: string }
+    >();
     for (const team of teams) {
       teamInfoMap.set(team.teamName, {
         displayName: team.displayName,
         projectPath: team.projectPath,
+        deletedAt: team.deletedAt,
       });
     }
+
+    const deletedTeams = new Set(teams.filter((t) => t.deletedAt).map((t) => t.teamName));
 
     const teamNames = [
       ...new Set(rawTasks.map((t) => t.teamName).filter((n) => teamInfoMap.has(n))),
@@ -117,6 +129,7 @@ export class TeamDataService {
           teamDisplayName: info.displayName,
           projectPath: task.projectPath ?? info.projectPath,
           kanbanColumn,
+          teamDeleted: deletedTeams.has(task.teamName) || undefined,
         };
       });
   }
@@ -129,6 +142,26 @@ export class TeamDataService {
   }
 
   async deleteTeam(teamName: string): Promise<void> {
+    const config = await this.configReader.getConfig(teamName);
+    if (!config) {
+      throw new Error(`Team not found: ${teamName}`);
+    }
+    config.deletedAt = new Date().toISOString();
+    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    await atomicWriteAsync(configPath, JSON.stringify(config, null, 2));
+  }
+
+  async restoreTeam(teamName: string): Promise<void> {
+    const config = await this.configReader.getConfig(teamName);
+    if (!config) {
+      throw new Error(`Team not found: ${teamName}`);
+    }
+    delete config.deletedAt;
+    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    await atomicWriteAsync(configPath, JSON.stringify(config, null, 2));
+  }
+
+  async permanentlyDeleteTeam(teamName: string): Promise<void> {
     const teamsDir = path.join(getTeamsBasePath(), teamName);
     await fs.promises.rm(teamsDir, { recursive: true, force: true });
 
@@ -252,6 +285,21 @@ export class TeamDataService {
       return { ...task, kanbanColumn };
     });
 
+    let processes: TeamProcess[] = [];
+    try {
+      processes = await this.readProcesses(teamName);
+    } catch {
+      warnings.push('Processes failed to load');
+    }
+
+    // Auto-track teams with alive processes for periodic health checks
+    const hasAlive = processes.some((p) => !p.stoppedAt);
+    if (hasAlive) {
+      this.processHealthTeams.add(teamName);
+    } else {
+      this.processHealthTeams.delete(teamName);
+    }
+
     return {
       teamName,
       config,
@@ -259,8 +307,161 @@ export class TeamDataService {
       members,
       messages,
       kanbanState,
+      processes,
       warnings: warnings.length > 0 ? warnings : undefined,
     };
+  }
+
+  startProcessHealthPolling(): void {
+    if (this.processHealthTimer) return;
+    this.processHealthTimer = setInterval(() => {
+      void this.processHealthTick();
+    }, PROCESS_HEALTH_INTERVAL_MS);
+  }
+
+  stopProcessHealthPolling(): void {
+    if (this.processHealthTimer) {
+      clearInterval(this.processHealthTimer);
+      this.processHealthTimer = null;
+    }
+    this.processHealthTeams.clear();
+  }
+
+  trackProcessHealthForTeam(teamName: string): void {
+    this.processHealthTeams.add(teamName);
+  }
+
+  untrackProcessHealthForTeam(teamName: string): void {
+    this.processHealthTeams.delete(teamName);
+  }
+
+  private async processHealthTick(): Promise<void> {
+    for (const teamName of this.processHealthTeams) {
+      try {
+        const processesPath = path.join(getTeamsBasePath(), teamName, 'processes.json');
+        let raw: unknown[];
+        try {
+          const content = await fs.promises.readFile(processesPath, 'utf8');
+          const parsed: unknown = JSON.parse(content);
+          raw = Array.isArray(parsed) ? (parsed as unknown[]) : [];
+        } catch {
+          continue;
+        }
+
+        const processes = raw.filter(
+          (p): p is TeamProcess =>
+            !!p &&
+            typeof p === 'object' &&
+            'pid' in p &&
+            typeof (p as TeamProcess).pid === 'number' &&
+            (p as TeamProcess).pid > 0
+        );
+
+        let dirty = false;
+        for (const proc of processes) {
+          if (!proc.stoppedAt && !isProcessAlive(proc.pid)) {
+            proc.stoppedAt = new Date().toISOString();
+            dirty = true;
+          }
+        }
+
+        if (dirty) {
+          await atomicWriteAsync(processesPath, JSON.stringify(processes, null, 2));
+          // atomicWrite triggers FileWatcher → team-change 'process' → UI refresh
+          // No need to emit manually — FileWatcher handles it.
+        }
+      } catch {
+        // best-effort per team
+      }
+    }
+  }
+
+  private async readProcesses(teamName: string): Promise<TeamProcess[]> {
+    const processesPath = path.join(getTeamsBasePath(), teamName, 'processes.json');
+    let raw: unknown[];
+    try {
+      const content = await fs.promises.readFile(processesPath, 'utf8');
+      const parsed: unknown = JSON.parse(content);
+      raw = Array.isArray(parsed) ? (parsed as unknown[]) : [];
+    } catch {
+      return [];
+    }
+
+    const processes = raw.filter(
+      (p): p is TeamProcess =>
+        !!p &&
+        typeof p === 'object' &&
+        'pid' in p &&
+        typeof (p as TeamProcess).pid === 'number' &&
+        (p as TeamProcess).pid > 0
+    );
+
+    let dirty = false;
+    for (const proc of processes) {
+      if (!proc.stoppedAt && !isProcessAlive(proc.pid)) {
+        proc.stoppedAt = new Date().toISOString();
+        dirty = true;
+      }
+    }
+
+    if (dirty) {
+      try {
+        await atomicWriteAsync(processesPath, JSON.stringify(processes, null, 2));
+      } catch {
+        // best-effort write-back
+      }
+    }
+
+    return processes;
+  }
+
+  /**
+   * Kill a registered CLI process by PID (SIGTERM) and mark it as stopped in processes.json.
+   */
+  async killProcess(teamName: string, pid: number): Promise<void> {
+    const processesPath = path.join(getTeamsBasePath(), teamName, 'processes.json');
+
+    // Try to kill the process
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch (err: unknown) {
+      // ESRCH = process not found — still mark as stopped below
+      if (
+        err instanceof Error &&
+        'code' in err &&
+        (err as NodeJS.ErrnoException).code !== 'ESRCH'
+      ) {
+        throw new Error(`Failed to kill process ${pid}: ${(err as Error).message}`);
+      }
+    }
+
+    // Update processes.json to set stoppedAt
+    let raw: unknown[];
+    try {
+      const content = await fs.promises.readFile(processesPath, 'utf8');
+      const parsed: unknown = JSON.parse(content);
+      raw = Array.isArray(parsed) ? (parsed as unknown[]) : [];
+    } catch {
+      return; // No processes file — nothing to update
+    }
+
+    let dirty = false;
+    for (const entry of raw) {
+      if (
+        entry &&
+        typeof entry === 'object' &&
+        'pid' in entry &&
+        (entry as TeamProcess).pid === pid &&
+        !(entry as TeamProcess).stoppedAt
+      ) {
+        (entry as TeamProcess).stoppedAt = new Date().toISOString();
+        dirty = true;
+      }
+    }
+
+    if (dirty) {
+      await atomicWriteAsync(processesPath, JSON.stringify(raw, null, 2));
+    }
   }
 
   /**
@@ -431,8 +632,10 @@ export class TeamDataService {
           AGENT_BLOCK_CLOSE
         );
 
+        const leadName = await this.resolveLeadName(teamName);
         await this.sendMessage(teamName, {
           member: request.owner,
+          from: leadName,
           text: parts.join('\n'),
           summary: `New task #${task.id} assigned`,
         });
@@ -469,8 +672,10 @@ export class TeamDataService {
           `node "${toolPath}" --team ${teamName} task complete ${task.id}`,
           AGENT_BLOCK_CLOSE
         );
+        const leadName = await this.resolveLeadName(teamName);
         await this.sendMessage(teamName, {
           member: task.owner,
+          from: leadName,
           text: parts.join('\n'),
           summary: `Task #${task.id} started`,
         });
@@ -486,8 +691,28 @@ export class TeamDataService {
     await this.taskWriter.updateStatus(teamName, taskId, status);
   }
 
+  async softDeleteTask(teamName: string, taskId: string): Promise<void> {
+    await this.taskWriter.softDelete(teamName, taskId);
+  }
+
+  async restoreTask(teamName: string, taskId: string): Promise<void> {
+    await this.taskWriter.restoreTask(teamName, taskId);
+  }
+
+  async getDeletedTasks(teamName: string): Promise<TeamTask[]> {
+    return this.taskReader.getDeletedTasks(teamName);
+  }
+
   async updateTaskOwner(teamName: string, taskId: string, owner: string | null): Promise<void> {
     await this.taskWriter.updateOwner(teamName, taskId, owner);
+  }
+
+  async setTaskNeedsClarification(
+    teamName: string,
+    taskId: string,
+    value: 'lead' | 'user' | null
+  ): Promise<void> {
+    await this.taskWriter.setNeedsClarification(teamName, taskId, value);
   }
 
   async addTaskComment(teamName: string, taskId: string, text: string): Promise<TaskComment> {
@@ -499,6 +724,13 @@ export class TeamDataService {
         this.toolsInstaller.ensureInstalled(),
       ]);
       const task = tasks.find((t) => t.id === taskId);
+
+      // Auto-clear needsClarification: "user" on UI comment
+      // UI comments always have author "user" (TeamTaskWriter default)
+      if (task?.needsClarification === 'user') {
+        await this.taskWriter.setNeedsClarification(teamName, taskId, null);
+      }
+
       if (task?.owner) {
         const parts = [
           `Comment on task #${taskId} "${task.subject}":\n\n${text}`,
@@ -507,8 +739,10 @@ export class TeamDataService {
           `node "${toolPath}" --team ${teamName} task comment ${taskId} --text "<your reply>" --from "<your-name>"`,
           AGENT_BLOCK_CLOSE,
         ];
+        const leadName = await this.resolveLeadName(teamName);
         await this.sendMessage(teamName, {
           member: task.owner,
+          from: leadName,
           text: parts.join('\n'),
           summary: `Comment on #${taskId}`,
         });
@@ -522,6 +756,17 @@ export class TeamDataService {
 
   async sendMessage(teamName: string, request: SendMessageRequest): Promise<SendMessageResult> {
     return this.inboxWriter.sendMessage(teamName, request);
+  }
+
+  private async resolveLeadName(teamName: string): Promise<string> {
+    try {
+      const config = await this.configReader.getConfig(teamName);
+      if (!config) return 'team-lead';
+      const lead = config.members?.find((m) => m.role?.toLowerCase().includes('lead'));
+      return lead?.name ?? config.members?.[0]?.name ?? 'team-lead';
+    } catch {
+      return 'team-lead';
+    }
   }
 
   async sendDirectToLead(
@@ -582,9 +827,13 @@ export class TeamDataService {
     }
 
     try {
-      const toolPath = await this.toolsInstaller.ensureInstalled();
+      const [toolPath, leadName] = await Promise.all([
+        this.toolsInstaller.ensureInstalled(),
+        this.resolveLeadName(teamName),
+      ]);
       await this.sendMessage(teamName, {
         member: reviewer,
+        from: leadName,
         text:
           `Please review task #${taskId}.\n\n` +
           `${AGENT_BLOCK_OPEN}\n` +
@@ -786,8 +1035,10 @@ export class TeamDataService {
 
     try {
       await this.taskWriter.updateStatus(teamName, taskId, 'in_progress');
+      const leadName = await this.resolveLeadName(teamName);
       await this.sendMessage(teamName, {
         member: task.owner,
+        from: leadName,
         text:
           `Task #${taskId} needs fixes.\n\n` +
           `${patch.comment?.trim() || 'Reviewer requested changes.'}\n\n` +

@@ -12,12 +12,16 @@ import {
   TEAM_GET_ALL_TASKS,
   TEAM_GET_ATTACHMENTS,
   TEAM_GET_DATA,
+  TEAM_GET_DELETED_TASKS,
   TEAM_GET_LOGS_FOR_TASK,
   TEAM_GET_MEMBER_LOGS,
   TEAM_GET_MEMBER_STATS,
   TEAM_GET_PROJECT_BRANCH,
+  TEAM_KILL_PROCESS,
   TEAM_LAUNCH,
+  TEAM_LEAD_ACTIVITY,
   TEAM_LIST,
+  TEAM_PERMANENTLY_DELETE,
   TEAM_PREPARE_PROVISIONING,
   TEAM_PROCESS_ALIVE,
   TEAM_PROCESS_SEND,
@@ -25,7 +29,12 @@ import {
   TEAM_PROVISIONING_STATUS,
   TEAM_REMOVE_MEMBER,
   TEAM_REQUEST_REVIEW,
+  TEAM_RESTORE,
+  TEAM_RESTORE_TASK,
   TEAM_SEND_MESSAGE,
+  TEAM_SET_TASK_CLARIFICATION,
+  TEAM_SHOW_MESSAGE_NOTIFICATION,
+  TEAM_SOFT_DELETE_TASK,
   TEAM_START_TASK,
   TEAM_STOP,
   TEAM_UPDATE_CONFIG,
@@ -39,10 +48,11 @@ import {
 import { KANBAN_COLUMN_IDS } from '@shared/constants/kanban';
 import { createLogger } from '@shared/utils/logger';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
-import { type IpcMain, type IpcMainInvokeEvent } from 'electron';
+import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent, Notification } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { ConfigManager } from '../services/infrastructure/ConfigManager';
 import { NotificationManager } from '../services/infrastructure/NotificationManager';
 import { gitIdentityResolver } from '../services/parsing/GitIdentityResolver';
 
@@ -80,6 +90,7 @@ import type {
   TeamData,
   TeamLaunchRequest,
   TeamLaunchResponse,
+  TeamMessageNotificationData,
   TeamProvisioningPrepareResult,
   TeamProvisioningProgress,
   TeamSummary,
@@ -176,6 +187,8 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_UPDATE_TASK_STATUS, handleUpdateTaskStatus);
   ipcMain.handle(TEAM_UPDATE_TASK_OWNER, handleUpdateTaskOwner);
   ipcMain.handle(TEAM_DELETE_TEAM, handleDeleteTeam);
+  ipcMain.handle(TEAM_RESTORE, handleRestoreTeam);
+  ipcMain.handle(TEAM_PERMANENTLY_DELETE, handlePermanentlyDeleteTeam);
   ipcMain.handle(TEAM_PROCESS_SEND, handleProcessSend);
   ipcMain.handle(TEAM_PROCESS_ALIVE, handleProcessAlive);
   ipcMain.handle(TEAM_ALIVE_LIST, handleAliveList);
@@ -193,6 +206,13 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_UPDATE_MEMBER_ROLE, handleUpdateMemberRole);
   ipcMain.handle(TEAM_GET_PROJECT_BRANCH, handleGetProjectBranch);
   ipcMain.handle(TEAM_GET_ATTACHMENTS, handleGetAttachments);
+  ipcMain.handle(TEAM_KILL_PROCESS, handleKillProcess);
+  ipcMain.handle(TEAM_LEAD_ACTIVITY, handleLeadActivity);
+  ipcMain.handle(TEAM_SOFT_DELETE_TASK, handleSoftDeleteTask);
+  ipcMain.handle(TEAM_RESTORE_TASK, handleRestoreTask);
+  ipcMain.handle(TEAM_GET_DELETED_TASKS, handleGetDeletedTasks);
+  ipcMain.handle(TEAM_SET_TASK_CLARIFICATION, handleSetTaskClarification);
+  ipcMain.handle(TEAM_SHOW_MESSAGE_NOTIFICATION, handleShowMessageNotification);
   logger.info('Team handlers registered');
 }
 
@@ -212,6 +232,8 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_UPDATE_TASK_STATUS);
   ipcMain.removeHandler(TEAM_UPDATE_TASK_OWNER);
   ipcMain.removeHandler(TEAM_DELETE_TEAM);
+  ipcMain.removeHandler(TEAM_RESTORE);
+  ipcMain.removeHandler(TEAM_PERMANENTLY_DELETE);
   ipcMain.removeHandler(TEAM_PROCESS_SEND);
   ipcMain.removeHandler(TEAM_PROCESS_ALIVE);
   ipcMain.removeHandler(TEAM_ALIVE_LIST);
@@ -229,6 +251,13 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_UPDATE_MEMBER_ROLE);
   ipcMain.removeHandler(TEAM_GET_PROJECT_BRANCH);
   ipcMain.removeHandler(TEAM_GET_ATTACHMENTS);
+  ipcMain.removeHandler(TEAM_KILL_PROCESS);
+  ipcMain.removeHandler(TEAM_LEAD_ACTIVITY);
+  ipcMain.removeHandler(TEAM_SOFT_DELETE_TASK);
+  ipcMain.removeHandler(TEAM_RESTORE_TASK);
+  ipcMain.removeHandler(TEAM_GET_DELETED_TASKS);
+  ipcMain.removeHandler(TEAM_SET_TASK_CLARIFICATION);
+  ipcMain.removeHandler(TEAM_SHOW_MESSAGE_NOTIFICATION);
 }
 
 function getTeamDataService(): TeamDataService {
@@ -368,6 +397,30 @@ async function handleDeleteTeam(
     return { success: false, error: validated.error ?? 'Invalid teamName' };
   }
   return wrapTeamHandler('deleteTeam', () => getTeamDataService().deleteTeam(validated.value!));
+}
+
+async function handleRestoreTeam(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown
+): Promise<IpcResult<void>> {
+  const validated = validateTeamName(teamName);
+  if (!validated.valid) {
+    return { success: false, error: validated.error ?? 'Invalid teamName' };
+  }
+  return wrapTeamHandler('restoreTeam', () => getTeamDataService().restoreTeam(validated.value!));
+}
+
+async function handlePermanentlyDeleteTeam(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown
+): Promise<IpcResult<void>> {
+  const validated = validateTeamName(teamName);
+  if (!validated.valid) {
+    return { success: false, error: validated.error ?? 'Invalid teamName' };
+  }
+  return wrapTeamHandler('permanentlyDeleteTeam', () =>
+    getTeamDataService().permanentlyDeleteTeam(validated.value!)
+  );
 }
 
 async function handleUpdateConfig(
@@ -1063,6 +1116,97 @@ async function handleUpdateTaskStatus(
   );
 }
 
+async function handleSoftDeleteTask(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  taskId: unknown
+): Promise<IpcResult<void>> {
+  const validatedTeamName = validateTeamName(teamName);
+  if (!validatedTeamName.valid) {
+    return { success: false, error: validatedTeamName.error ?? 'Invalid teamName' };
+  }
+
+  const validatedTaskId = validateTaskId(taskId);
+  if (!validatedTaskId.valid) {
+    return { success: false, error: validatedTaskId.error ?? 'Invalid taskId' };
+  }
+
+  return wrapTeamHandler('softDeleteTask', () =>
+    getTeamDataService().softDeleteTask(validatedTeamName.value!, validatedTaskId.value!)
+  );
+}
+
+async function handleRestoreTask(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  taskId: unknown
+): Promise<IpcResult<void>> {
+  const validatedTeamName = validateTeamName(teamName);
+  if (!validatedTeamName.valid) {
+    return { success: false, error: validatedTeamName.error ?? 'Invalid teamName' };
+  }
+
+  const validatedTaskId = validateTaskId(taskId);
+  if (!validatedTaskId.valid) {
+    return { success: false, error: validatedTaskId.error ?? 'Invalid taskId' };
+  }
+
+  return wrapTeamHandler('restoreTask', () =>
+    getTeamDataService().restoreTask(validatedTeamName.value!, validatedTaskId.value!)
+  );
+}
+
+async function handleGetDeletedTasks(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown
+): Promise<IpcResult<TeamTask[]>> {
+  const validatedTeamName = validateTeamName(teamName);
+  if (!validatedTeamName.valid) {
+    return { success: false, error: validatedTeamName.error ?? 'Invalid teamName' };
+  }
+
+  return wrapTeamHandler('getDeletedTasks', () =>
+    getTeamDataService().getDeletedTasks(validatedTeamName.value!)
+  );
+}
+
+const VALID_CLARIFICATION_VALUES = ['lead', 'user'] as const;
+
+async function handleSetTaskClarification(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  taskId: unknown,
+  value: unknown
+): Promise<IpcResult<void>> {
+  const validatedTeamName = validateTeamName(teamName);
+  if (!validatedTeamName.valid) {
+    return { success: false, error: validatedTeamName.error ?? 'Invalid teamName' };
+  }
+
+  const validatedTaskId = validateTaskId(taskId);
+  if (!validatedTaskId.valid) {
+    return { success: false, error: validatedTaskId.error ?? 'Invalid taskId' };
+  }
+
+  if (
+    value !== null &&
+    (typeof value !== 'string' || !VALID_CLARIFICATION_VALUES.includes(value as 'lead' | 'user'))
+  ) {
+    return {
+      success: false,
+      error: `value must be "lead", "user", or null`,
+    };
+  }
+
+  return wrapTeamHandler('setTaskClarification', () =>
+    getTeamDataService().setTaskNeedsClarification(
+      validatedTeamName.value!,
+      validatedTaskId.value!,
+      value as 'lead' | 'user' | null
+    )
+  );
+}
+
 async function handleUpdateTaskOwner(
   _event: IpcMainInvokeEvent,
   teamName: unknown,
@@ -1263,6 +1407,19 @@ async function handleAliveList(_event: IpcMainInvokeEvent): Promise<IpcResult<st
   return wrapTeamHandler('aliveList', async () => getTeamProvisioningService().getAliveTeams());
 }
 
+async function handleLeadActivity(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown
+): Promise<IpcResult<string>> {
+  const validated = validateTeamName(teamName);
+  if (!validated.valid) {
+    return { success: false, error: validated.error ?? 'Invalid teamName' };
+  }
+  return wrapTeamHandler('leadActivity', async () =>
+    getTeamProvisioningService().getLeadActivityState(validated.value!)
+  );
+}
+
 async function handleStopTeam(
   _event: IpcMainInvokeEvent,
   teamName: unknown
@@ -1397,6 +1554,110 @@ async function handleUpdateMemberRole(
       }
     }
   });
+}
+
+async function handleKillProcess(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  pid: unknown
+): Promise<IpcResult<void>> {
+  const vTeam = validateTeamName(teamName);
+  if (!vTeam.valid) return { success: false, error: vTeam.error ?? 'Invalid teamName' };
+  if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) {
+    return { success: false, error: 'pid must be a positive integer' };
+  }
+  return wrapTeamHandler('killProcess', async () => {
+    const tn = vTeam.value!;
+    const pidNum = pid;
+
+    // Read process label before killing (for notification message)
+    let processLabel = `PID ${pidNum}`;
+    try {
+      const data = await getTeamDataService().getTeamData(tn);
+      const proc = data.processes?.find((p) => p.pid === pidNum);
+      if (proc) {
+        processLabel = proc.label + (proc.port != null ? ` (:${proc.port})` : '');
+      }
+    } catch {
+      // best-effort label lookup
+    }
+
+    await getTeamDataService().killProcess(tn, pidNum);
+
+    // Notify the team lead about the killed process
+    const provisioning = getTeamProvisioningService();
+    if (provisioning.isTeamAlive(tn)) {
+      const message =
+        `Process "${processLabel}" (PID ${pidNum}) has been stopped by the user from the UI. ` +
+        `You may need to restart it if it was still needed.`;
+      try {
+        await provisioning.sendMessageToTeam(tn, message);
+      } catch {
+        logger.warn(`Failed to notify lead about killed process ${pidNum} in ${tn}`);
+      }
+    }
+  });
+}
+
+async function handleShowMessageNotification(
+  _event: IpcMainInvokeEvent,
+  data: unknown
+): Promise<IpcResult<void>> {
+  if (!data || typeof data !== 'object') {
+    return { success: false, error: 'Invalid notification data' };
+  }
+  const d = data as TeamMessageNotificationData;
+  if (!d.teamDisplayName || !d.from || !d.body) {
+    return { success: false, error: 'Missing required fields (teamDisplayName, from, body)' };
+  }
+
+  showTeamNativeNotification({
+    title: d.teamDisplayName,
+    subtitle: d.summary ?? `${d.from} → ${d.to ?? 'team'}`,
+    body: d.body,
+  });
+  return { success: true, data: undefined };
+}
+
+/**
+ * Show a native OS notification for a team event.
+ * Respects user's notification settings (enabled, snoozed).
+ * Cross-platform: macOS, Linux, Windows via Electron Notification API.
+ */
+export function showTeamNativeNotification(opts: {
+  title: string;
+  subtitle?: string;
+  body: string;
+}): void {
+  const config = ConfigManager.getInstance().getConfig();
+  if (!config.notifications.enabled) return;
+  if (config.notifications.snoozedUntil && Date.now() < config.notifications.snoozedUntil) return;
+
+  if (
+    typeof Notification === 'undefined' ||
+    typeof Notification.isSupported !== 'function' ||
+    !Notification.isSupported()
+  ) {
+    return;
+  }
+
+  const notification = new Notification({
+    title: opts.title,
+    subtitle: opts.subtitle,
+    body: opts.body.slice(0, 300),
+    sound: config.notifications.soundEnabled ? 'default' : undefined,
+  });
+
+  notification.on('click', () => {
+    const windows = BrowserWindow.getAllWindows();
+    const mainWin = windows[0];
+    if (mainWin && !mainWin.isDestroyed()) {
+      mainWin.show();
+      mainWin.focus();
+    }
+  });
+
+  notification.show();
 }
 
 async function handleAddTaskComment(

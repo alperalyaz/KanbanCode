@@ -492,6 +492,11 @@ body {
   -webkit-app-region: no-drag;
 }
 
+/* Prevent drag region bleed-through on Windows: all fixed overlays must be no-drag */
+.fixed {
+  -webkit-app-region: no-drag;
+}
+
 /* Hide horizontal scrollbar in tab bar */
 .scrollbar-none {
   scrollbar-width: none;
@@ -618,4 +623,9 @@ body {
     rgba(0, 0, 0, 0.04) 60%,
     transparent 100%
   );
+}
+
+/* Optional field label — muted text for non-required form fields */
+.label-optional {
+  color: var(--color-text-muted);
 }

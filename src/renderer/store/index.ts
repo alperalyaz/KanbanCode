@@ -6,6 +6,8 @@ import { api } from '@renderer/api';
 import { cleanupStale as cleanupCommentReadState } from '@renderer/services/commentReadStorage';
 import { create } from 'zustand';
 
+import { createChangeReviewSlice } from './slices/changeReviewSlice';
+import { createCliInstallerSlice } from './slices/cliInstallerSlice';
 import { createConfigSlice } from './slices/configSlice';
 import { createConnectionSlice } from './slices/connectionSlice';
 import { createContextSlice } from './slices/contextSlice';
@@ -25,7 +27,7 @@ import { createUpdateSlice } from './slices/updateSlice';
 
 import type { DetectedError } from '../types/data';
 import type { AppState } from './types';
-import type { TeamChangeEvent, UpdaterStatus } from '@shared/types';
+import type { CliInstallerProgress, TeamChangeEvent, UpdaterStatus } from '@shared/types';
 
 // =============================================================================
 // Store Creation
@@ -48,6 +50,8 @@ export const useStore = create<AppState>()((...args) => ({
   ...createConnectionSlice(...args),
   ...createContextSlice(...args),
   ...createUpdateSlice(...args),
+  ...createChangeReviewSlice(...args),
+  ...createCliInstallerSlice(...args),
 }));
 
 // =============================================================================
@@ -296,6 +300,17 @@ export function initializeNotificationListeners(): () => void {
 
   if (api.teams?.onTeamChange) {
     const cleanup = api.teams.onTeamChange((_event: unknown, event: TeamChangeEvent) => {
+      // Immediate in-memory update for lead activity — no filesystem refresh needed
+      if (event.type === 'lead-activity' && event.detail) {
+        useStore.setState((prev) => ({
+          leadActivityByTeam: {
+            ...prev.leadActivityByTeam,
+            [event.teamName]: event.detail as 'active' | 'idle' | 'offline',
+          },
+        }));
+        return;
+      }
+
       // Throttled refresh of summary list (keeps TeamListView current without flooding).
       if (!teamListRefreshTimer) {
         teamListRefreshTimer = setTimeout(() => {
@@ -343,6 +358,87 @@ export function initializeNotificationListeners(): () => void {
         if (globalTasksRefreshTimer) {
           clearTimeout(globalTasksRefreshTimer);
           globalTasksRefreshTimer = null;
+        }
+      });
+    }
+  }
+
+  // Auto-check CLI status on startup
+  if (api.cliInstaller) {
+    void useStore.getState().fetchCliStatus();
+  }
+
+  // Listen for CLI installer progress events from main process
+  let cliCompletedRevertTimer: ReturnType<typeof setTimeout> | null = null;
+  if (api.cliInstaller?.onProgress) {
+    const cleanup = api.cliInstaller.onProgress((_event: unknown, data: unknown) => {
+      const progress = data as CliInstallerProgress;
+
+      // Clear any pending auto-revert timer on new events
+      if (progress.type !== 'completed' && cliCompletedRevertTimer) {
+        clearTimeout(cliCompletedRevertTimer);
+        cliCompletedRevertTimer = null;
+      }
+
+      const detail = progress.detail ?? null;
+
+      switch (progress.type) {
+        case 'checking':
+          useStore.setState({ cliInstallerState: 'checking', cliInstallerDetail: detail });
+          break;
+        case 'downloading':
+          useStore.setState({
+            cliInstallerState: 'downloading',
+            cliDownloadProgress: progress.percent ?? 0,
+            cliDownloadTransferred: progress.transferred ?? 0,
+            cliDownloadTotal: progress.total ?? 0,
+            cliInstallerDetail: detail,
+          });
+          break;
+        case 'verifying':
+          useStore.setState({ cliInstallerState: 'verifying', cliInstallerDetail: detail });
+          break;
+        case 'installing': {
+          // Accumulate log lines for the mini-terminal
+          const prevLogs = useStore.getState().cliInstallerLogs;
+          const newLogs = detail ? [...prevLogs, detail].slice(-50) : prevLogs;
+          useStore.setState({
+            cliInstallerState: 'installing',
+            cliInstallerDetail: detail,
+            cliInstallerLogs: newLogs,
+          });
+          break;
+        }
+        case 'completed':
+          useStore.setState({
+            cliInstallerState: 'completed',
+            cliCompletedVersion: progress.version ?? null,
+            cliInstallerDetail: null,
+          });
+          // Re-fetch status after install and auto-revert to idle after 3s
+          void useStore.getState().fetchCliStatus();
+          cliCompletedRevertTimer = setTimeout(() => {
+            cliCompletedRevertTimer = null;
+            // Only revert if still in 'completed' state (not overwritten by a new install)
+            if (useStore.getState().cliInstallerState === 'completed') {
+              useStore.setState({ cliInstallerState: 'idle' });
+            }
+          }, 3000);
+          break;
+        case 'error':
+          useStore.setState({
+            cliInstallerState: 'error',
+            cliInstallerError: progress.error ?? 'Unknown error',
+          });
+          break;
+      }
+    });
+    if (typeof cleanup === 'function') {
+      cleanupFns.push(() => {
+        cleanup();
+        if (cliCompletedRevertTimer) {
+          clearTimeout(cliCompletedRevertTimer);
+          cliCompletedRevertTimer = null;
         }
       });
     }

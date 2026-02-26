@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { api } from '@renderer/api';
+import { confirm } from '@renderer/components/common/ConfirmDialog';
 import { Button } from '@renderer/components/ui/button';
 import {
   Dialog,
@@ -17,21 +18,28 @@ import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { formatProjectPath } from '@renderer/utils/pathDisplay';
 import { buildTaskCountsByOwner } from '@renderer/utils/pathNormalize';
+import { nameColorSet } from '@renderer/utils/projectColor';
+import { resolveProjectIdByPath } from '@renderer/utils/projectLookup';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import {
+  AlertTriangle,
   Bell,
   CheckCheck,
+  Columns3,
   FolderOpen,
   GitBranch,
   History,
+  MessageSquare,
   Pencil,
   Play,
   Plus,
   Search,
   Square,
+  Terminal,
   Trash2,
   UserPlus,
+  Users,
   X,
 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
@@ -48,11 +56,14 @@ import { SendMessageDialog } from './dialogs/SendMessageDialog';
 import { TaskDetailDialog } from './dialogs/TaskDetailDialog';
 import { KanbanBoard } from './kanban/KanbanBoard';
 import { UNASSIGNED_OWNER } from './kanban/KanbanFilterPopover';
+import { TrashDialog } from './kanban/TrashDialog';
 import { MemberDetailDialog } from './members/MemberDetailDialog';
 import { MemberList } from './members/MemberList';
 import { MessageComposer } from './messages/MessageComposer';
 import { MessagesFilterPopover } from './messages/MessagesFilterPopover';
+import { ChangeReviewDialog } from './review/ChangeReviewDialog';
 import { CollapsibleTeamSection } from './CollapsibleTeamSection';
+import { ProcessesSection } from './ProcessesSection';
 import { TeamProvisioningBanner } from './TeamProvisioningBanner';
 import { TeamSessionsSection } from './TeamSessionsSection';
 
@@ -115,10 +126,18 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [stoppingTeam, setStoppingTeam] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
   const [sendDialogRecipient, setSendDialogRecipient] = useState<string | undefined>(undefined);
   const [replyQuote, setReplyQuote] = useState<{ from: string; text: string } | undefined>(
     undefined
   );
+  const [reviewDialogState, setReviewDialogState] = useState<{
+    open: boolean;
+    mode: 'agent' | 'task';
+    memberName?: string;
+    taskId?: string;
+    initialFilePath?: string;
+  }>({ open: false, mode: 'task' });
 
   // Active teams for conflict warning in LaunchTeamDialog
   const [activeTeamsForLaunch, setActiveTeamsForLaunch] = useState<
@@ -139,6 +158,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     loading,
     error,
     projects,
+    repositoryGroups,
     teams,
     selectTeam,
     updateKanban,
@@ -161,15 +181,21 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     launchTeam,
     provisioningError,
     isTeamProvisioning,
+    leadActivityByTeam,
     refreshTeamData,
     kanbanFilterQuery,
     clearKanbanFilter,
+    softDeleteTask,
+    restoreTask,
+    fetchDeletedTasks,
+    deletedTasks,
   } = useStore(
     useShallow((s) => ({
       data: s.selectedTeamData,
       loading: s.selectedTeamLoading,
       error: s.selectedTeamError,
       projects: s.projects,
+      repositoryGroups: s.repositoryGroups,
       teams: s.teams,
       selectTeam: s.selectTeam,
       updateKanban: s.updateKanban,
@@ -194,9 +220,14 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
       isTeamProvisioning: Object.values(s.provisioningRuns).some(
         (run) => run.teamName === teamName && ACTIVE_PROVISIONING_STATES.has(run.state)
       ),
+      leadActivityByTeam: s.leadActivityByTeam,
       refreshTeamData: s.refreshTeamData,
       kanbanFilterQuery: s.kanbanFilterQuery,
       clearKanbanFilter: s.clearKanbanFilter,
+      softDeleteTask: s.softDeleteTask,
+      restoreTask: s.restoreTask,
+      fetchDeletedTasks: s.fetchDeletedTasks,
+      deletedTasks: s.deletedTasks,
     }))
   );
 
@@ -213,7 +244,8 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
       return;
     }
     void selectTeam(teamName);
-  }, [teamName, selectTeam]);
+    void fetchDeletedTasks(teamName);
+  }, [teamName, selectTeam, fetchDeletedTasks]);
 
   // Fetch active teams when launch dialog opens (for conflict warning)
   useEffect(() => {
@@ -249,10 +281,10 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
   }, [kanbanFilterQuery, clearKanbanFilter]);
 
   // Load sessions for the team's project
-  const projectId = useMemo(() => {
-    if (!data?.config.projectPath) return null;
-    return projects.find((p) => p.path === data.config.projectPath)?.id ?? null;
-  }, [projects, data?.config.projectPath]);
+  const projectId = useMemo(
+    () => resolveProjectIdByPath(data?.config.projectPath, projects, repositoryGroups),
+    [projects, repositoryGroups, data?.config.projectPath]
+  );
 
   useEffect(() => {
     if (!projectId) return;
@@ -486,6 +518,57 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     }
   }, [teamName, refreshTeamData]);
 
+  const selectReviewFile = useStore((s) => s.selectReviewFile);
+  const pendingReviewRequest = useStore((s) => s.pendingReviewRequest);
+  const setPendingReviewRequest = useStore((s) => s.setPendingReviewRequest);
+
+  // Pick up pending review request from GlobalTaskDetailDialog
+  useEffect(() => {
+    if (!pendingReviewRequest) return;
+    setReviewDialogState({
+      open: true,
+      mode: 'task',
+      taskId: pendingReviewRequest.taskId,
+      initialFilePath: pendingReviewRequest.filePath,
+    });
+    if (pendingReviewRequest.filePath) {
+      selectReviewFile(pendingReviewRequest.filePath);
+    }
+    setPendingReviewRequest(null);
+  }, [pendingReviewRequest, selectReviewFile, setPendingReviewRequest]);
+
+  const handleDeleteTask = useCallback(
+    (taskId: string) => {
+      void (async () => {
+        const confirmed = await confirm({
+          title: 'Delete task',
+          message: `Move task #${taskId} to trash?`,
+          confirmLabel: 'Delete',
+          cancelLabel: 'Cancel',
+          variant: 'danger',
+        });
+        if (confirmed) {
+          void softDeleteTask(teamName, taskId);
+        }
+      })();
+    },
+    [teamName, softDeleteTask]
+  );
+
+  const handleViewChanges = useCallback((taskId: string) => {
+    setReviewDialogState({ open: true, mode: 'task', taskId });
+  }, []);
+
+  const handleViewChangesForFile = useCallback(
+    (taskId: string, filePath?: string) => {
+      setReviewDialogState({ open: true, mode: 'task', taskId });
+      if (filePath) {
+        selectReviewFile(filePath);
+      }
+    },
+    [selectReviewFile]
+  );
+
   const handleDeleteTeam = useCallback((): void => {
     setDeleteConfirmOpen(true);
   }, []);
@@ -583,10 +666,12 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     );
   }
 
-  const headerColorSet = data.config.color ? getTeamColorSet(data.config.color) : null;
+  const headerColorSet = data.config.color
+    ? getTeamColorSet(data.config.color)
+    : nameColorSet(data.config.name);
 
   return (
-    <div className="size-full overflow-auto p-4">
+    <div className="size-full overflow-auto p-4" data-team-name={teamName}>
       <div
         className="relative mb-3 overflow-hidden rounded-lg border border-[var(--color-border)] px-4 py-3"
         style={
@@ -729,7 +814,10 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
 
       {!data.isAlive && !isTeamProvisioning ? (
         <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
-          <span className="text-xs text-amber-200">Team is offline</span>
+          <span className="flex items-center gap-1.5 text-xs text-amber-200">
+            <AlertTriangle size={14} className="shrink-0 text-amber-400" />
+            Team is offline
+          </span>
           <Button
             variant="ghost"
             size="sm"
@@ -756,7 +844,9 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
       ) : null}
 
       <CollapsibleTeamSection
+        sectionId="team"
         title="Team"
+        icon={<Users size={14} />}
         badge={activeMembers.length}
         defaultOpen
         action={
@@ -781,6 +871,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           pendingRepliesByMember={pendingRepliesByMember}
           isTeamAlive={data.isAlive}
           isTeamProvisioning={isTeamProvisioning}
+          leadActivity={leadActivityByTeam[teamName]}
           onMemberClick={setSelectedMember}
           onSendMessage={(member) => {
             setSendDialogRecipient(member.name);
@@ -794,7 +885,12 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
         />
       </CollapsibleTeamSection>
 
-      <CollapsibleTeamSection title="Sessions" defaultOpen={false}>
+      <CollapsibleTeamSection
+        sectionId="sessions"
+        title="Sessions"
+        icon={<History size={14} />}
+        defaultOpen={false}
+      >
         <TeamSessionsSection
           sessions={teamSessions}
           sessionsLoading={sessionsLoading}
@@ -807,7 +903,9 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
       </CollapsibleTeamSection>
 
       <CollapsibleTeamSection
+        sectionId="kanban"
         title="Kanban"
+        icon={<Columns3 size={14} />}
         badge={filteredTasks.length}
         defaultOpen
         forceOpen={kanbanSearch.trim().length > 0}
@@ -836,7 +934,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           members={activeMembers}
           onFilterChange={setKanbanFilter}
           toolbarLeft={
-            <div className="relative">
+            <div className="relative max-w-[240px]">
               <Search
                 size={14}
                 className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]"
@@ -962,12 +1060,30 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
             }
           }}
           onTaskClick={(task) => setSelectedTask(task)}
+          onViewChanges={handleViewChanges}
           onAddTask={(startImmediately) => openCreateTaskDialog('', '', '', startImmediately)}
+          onDeleteTask={handleDeleteTask}
+          deletedTaskCount={deletedTasks.length}
+          onOpenTrash={() => setTrashOpen(true)}
         />
       </CollapsibleTeamSection>
 
+      {(data.processes?.length ?? 0) > 0 && (
+        <CollapsibleTeamSection
+          sectionId="processes"
+          title="CLI Processes"
+          icon={<Terminal size={14} />}
+          badge={data.processes.filter((p) => !p.stoppedAt).length}
+          defaultOpen
+        >
+          <ProcessesSection />
+        </CollapsibleTeamSection>
+      )}
+
       <CollapsibleTeamSection
+        sectionId="messages"
         title="Messages"
+        icon={<MessageSquare size={14} />}
         badge={filteredMessages.length}
         secondaryBadge={
           filteredMessages.length > 0 && messagesUnreadCount > 0 ? messagesUnreadCount : undefined
@@ -975,9 +1091,10 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
         headerExtra={
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="pointer-events-auto rounded p-0.5 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="pointer-events-auto size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
                 onClick={(e) => {
                   e.stopPropagation();
                   void window.electronAPI.openExternal(
@@ -986,7 +1103,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                 }}
               >
                 <Bell size={12} />
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="top">Desktop notifications plugin</TooltipContent>
           </Tooltip>
@@ -1078,6 +1195,10 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
             setSendDialogOpen(true);
           }}
           onMessageVisible={handleMessageVisible}
+          onTaskIdClick={(taskId) => {
+            const task = taskMap.get(taskId);
+            if (task) setSelectedTask(task);
+          }}
         />
       </CollapsibleTeamSection>
 
@@ -1113,6 +1234,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
         messages={data.messages}
         isTeamAlive={data.isAlive}
         isTeamProvisioning={isTeamProvisioning}
+        leadActivity={leadActivityByTeam[teamName]}
         onClose={() => setSelectedMember(null)}
         onSendMessage={() => {
           const name = selectedMember?.name ?? '';
@@ -1149,6 +1271,15 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           const name = selectedMember?.name;
           if (!name) return;
           setRemoveMemberConfirm(name);
+        }}
+        onViewMemberChanges={(memberName, filePath) => {
+          setSelectedMember(null);
+          setReviewDialogState({
+            open: true,
+            mode: 'agent',
+            memberName,
+            initialFilePath: filePath,
+          });
         }}
       />
 
@@ -1315,6 +1446,33 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
         onOwnerChange={(taskId, owner) => {
           void updateTaskOwner(teamName, taskId, owner);
         }}
+        onViewChanges={handleViewChangesForFile}
+        onDeleteTask={handleDeleteTask}
+      />
+
+      <TrashDialog
+        open={trashOpen}
+        tasks={deletedTasks}
+        onClose={() => setTrashOpen(false)}
+        onRestore={(taskId) => {
+          void restoreTask(teamName, taskId);
+        }}
+      />
+
+      <ChangeReviewDialog
+        open={reviewDialogState.open}
+        onOpenChange={(open) =>
+          setReviewDialogState((prev) => ({
+            ...prev,
+            open,
+            ...(open ? {} : { initialFilePath: undefined }),
+          }))
+        }
+        teamName={teamName}
+        mode={reviewDialogState.mode}
+        memberName={reviewDialogState.memberName}
+        taskId={reviewDialogState.taskId}
+        initialFilePath={reviewDialogState.initialFilePath}
       />
     </div>
   );

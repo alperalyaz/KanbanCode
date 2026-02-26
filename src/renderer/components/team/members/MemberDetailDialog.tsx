@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { Button } from '@renderer/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader } from '@renderer/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs';
+import { useMemberStats } from '@renderer/hooks/useMemberStats';
 import { BarChart3, FileText, ListPlus, MessageSquare, UserMinus } from 'lucide-react';
 
 import { MemberDetailHeader } from './MemberDetailHeader';
@@ -12,7 +13,12 @@ import { MemberMessagesTab } from './MemberMessagesTab';
 import { MemberStatsTab } from './MemberStatsTab';
 import { MemberTasksTab } from './MemberTasksTab';
 
-import type { InboxMessage, ResolvedTeamMember, TeamTaskWithKanban } from '@shared/types';
+import type {
+  InboxMessage,
+  LeadActivityState,
+  ResolvedTeamMember,
+  TeamTaskWithKanban,
+} from '@shared/types';
 
 interface MemberDetailDialogProps {
   open: boolean;
@@ -22,6 +28,7 @@ interface MemberDetailDialogProps {
   messages: InboxMessage[];
   isTeamAlive?: boolean;
   isTeamProvisioning?: boolean;
+  leadActivity?: LeadActivityState;
   onClose: () => void;
   onSendMessage: () => void;
   onAssignTask: () => void;
@@ -29,6 +36,7 @@ interface MemberDetailDialogProps {
   onRemoveMember?: () => void;
   onUpdateRole?: (memberName: string, role: string | undefined) => Promise<void> | void;
   updatingRole?: boolean;
+  onViewMemberChanges?: (memberName: string, filePath?: string) => void;
 }
 
 export const MemberDetailDialog = ({
@@ -39,6 +47,7 @@ export const MemberDetailDialog = ({
   messages,
   isTeamAlive,
   isTeamProvisioning,
+  leadActivity,
   onClose,
   onSendMessage,
   onAssignTask,
@@ -46,6 +55,7 @@ export const MemberDetailDialog = ({
   onRemoveMember,
   onUpdateRole,
   updatingRole,
+  onViewMemberChanges,
 }: MemberDetailDialogProps): React.JSX.Element | null => {
   const memberTasks = useMemo(
     () => (member ? tasks.filter((t) => t.owner === member.name) : []),
@@ -69,6 +79,14 @@ export const MemberDetailDialog = ({
 
   const [activeTab, setActiveTab] = useState<MemberDetailTab>('tasks');
 
+  const {
+    stats: memberStats,
+    loading: statsLoading,
+    error: statsError,
+  } = useMemberStats(teamName, member?.name ?? null);
+
+  const totalTokens = memberStats ? memberStats.inputTokens + memberStats.outputTokens : null;
+
   if (!member) return null;
 
   return (
@@ -80,6 +98,7 @@ export const MemberDetailDialog = ({
               member={member}
               isTeamAlive={isTeamAlive}
               isTeamProvisioning={isTeamProvisioning}
+              leadActivity={member.agentType === 'team-lead' ? leadActivity : undefined}
               onUpdateRole={
                 onUpdateRole ? (newRole) => onUpdateRole(member.name, newRole) : undefined
               }
@@ -92,7 +111,9 @@ export const MemberDetailDialog = ({
             inProgressTasks={inProgressTasks}
             completedTasks={completedTasks}
             messageCount={memberMessages.length}
-            lastActiveAt={member.lastActiveAt}
+            totalTokens={totalTokens}
+            statsLoading={statsLoading}
+            statsComputedAt={memberStats?.computedAt}
             onTabChange={setActiveTab}
           />
         </div>
@@ -135,7 +156,15 @@ export const MemberDetailDialog = ({
             <MemberMessagesTab messages={memberMessages} teamName={teamName} />
           </TabsContent>
           <TabsContent value="stats">
-            <MemberStatsTab teamName={teamName} memberName={member.name} />
+            <MemberStatsTab
+              teamName={teamName}
+              memberName={member.name}
+              prefetchedStats={memberStats}
+              prefetchedLoading={statsLoading}
+              prefetchedError={statsError}
+              onFileClick={(filePath) => onViewMemberChanges?.(member.name, filePath)}
+              onShowAllFiles={() => onViewMemberChanges?.(member.name)}
+            />
           </TabsContent>
           <TabsContent value="logs" className="min-w-0 overflow-hidden">
             <MemberLogsTab teamName={teamName} memberName={member.name} />

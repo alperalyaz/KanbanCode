@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { UnreadCommentsBadge } from '@renderer/components/team/UnreadCommentsBadge';
@@ -6,7 +6,18 @@ import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
 import { useUnreadCommentCount } from '@renderer/hooks/useUnreadCommentCount';
-import { ArrowLeftFromLine, ArrowRightFromLine, CheckCircle2, Play, XCircle } from 'lucide-react';
+import { useStore } from '@renderer/store';
+import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import {
+  ArrowLeftFromLine,
+  ArrowRightFromLine,
+  CheckCircle2,
+  FileCode,
+  HelpCircle,
+  Play,
+  Trash2,
+  XCircle,
+} from 'lucide-react';
 
 import type { KanbanColumnId, KanbanTaskState, ResolvedTeamMember, TeamTask } from '@shared/types';
 
@@ -16,6 +27,7 @@ interface KanbanTaskCardProps {
   columnId: KanbanColumnId;
   kanbanTaskState?: KanbanTaskState;
   hasReviewers: boolean;
+  compact?: boolean;
   taskMap: Map<string, TeamTask>;
   members: ResolvedTeamMember[];
   onRequestReview: (taskId: string) => void;
@@ -27,6 +39,8 @@ interface KanbanTaskCardProps {
   onCancelTask: (taskId: string) => void;
   onScrollToTask?: (taskId: string) => void;
   onTaskClick?: (task: TeamTask) => void;
+  onViewChanges?: (taskId: string) => void;
+  onDeleteTask?: (taskId: string) => void;
 }
 
 interface DependencyBadgeProps {
@@ -121,6 +135,7 @@ export const KanbanTaskCard = ({
   columnId,
   kanbanTaskState: _kanbanTaskState,
   hasReviewers,
+  compact,
   taskMap,
   members,
   onRequestReview,
@@ -132,12 +147,28 @@ export const KanbanTaskCard = ({
   onCancelTask,
   onScrollToTask,
   onTaskClick,
+  onViewChanges,
+  onDeleteTask,
 }: KanbanTaskCardProps): React.JSX.Element => {
+  const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
   const unreadCount = useUnreadCommentCount(teamName, task.id, task.comments);
   const blockedByIds = task.blockedBy?.filter((id) => id.length > 0) ?? [];
   const blocksIds = task.blocks?.filter((id) => id.length > 0) ?? [];
   const hasBlockedBy = blockedByIds.length > 0;
   const hasBlocks = blocksIds.length > 0;
+
+  // Lazy-check if task has file changes (only for done/review/approved columns)
+  const showChangesColumn =
+    (columnId === 'done' || columnId === 'review' || columnId === 'approved') && !!onViewChanges;
+  const cacheKey = `${teamName}:${task.id}`;
+  const taskHasChanges = useStore((s) => s.taskHasChanges[cacheKey]);
+  const checkTaskHasChanges = useStore((s) => s.checkTaskHasChanges);
+
+  useEffect(() => {
+    if (showChangesColumn && task.status === 'completed' && taskHasChanges == null) {
+      void checkTaskHasChanges(teamName, task.id);
+    }
+  }, [showChangesColumn, task.status, task.id, teamName, taskHasChanges, checkTaskHasChanges]);
 
   return (
     <div
@@ -157,19 +188,35 @@ export const KanbanTaskCard = ({
         }
       }}
     >
-      <div className="mb-2 flex items-center gap-1">
-        <Badge variant="secondary" className="shrink-0 px-1 py-0 text-[10px] font-normal">
-          #{task.id}
-        </Badge>
-        {task.owner ? (
-          <MemberBadge
-            name={task.owner}
-            color={members.find((m) => m.name === task.owner)?.color}
-          />
-        ) : null}
-        <h5 className="min-w-0 truncate text-sm font-medium text-[var(--color-text)]">
-          {task.subject}
-        </h5>
+      <div className="mb-2">
+        <div className="flex items-center gap-1">
+          <Badge variant="secondary" className="shrink-0 px-1 py-0 text-[10px] font-normal">
+            #{task.id}
+          </Badge>
+          {task.owner ? <MemberBadge name={task.owner} color={colorMap.get(task.owner)} /> : null}
+          {task.needsClarification ? (
+            <span
+              className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                task.needsClarification === 'user'
+                  ? 'bg-red-500/15 text-red-400'
+                  : 'bg-blue-500/15 text-blue-400'
+              }`}
+            >
+              <HelpCircle size={10} />
+              {task.needsClarification === 'user' ? 'Awaiting user' : 'Awaiting lead'}
+            </span>
+          ) : null}
+          {!compact && (
+            <h5 className="min-w-0 truncate text-sm font-medium text-[var(--color-text)]">
+              {task.subject}
+            </h5>
+          )}
+        </div>
+        {compact && (
+          <h5 className="mt-1 truncate text-sm font-medium text-[var(--color-text)]">
+            {task.subject}
+          </h5>
+        )}
       </div>
 
       {hasBlockedBy ? (
@@ -296,12 +343,14 @@ export const KanbanTaskCard = ({
                 <Button
                   variant="outline"
                   size="sm"
+                  className="gap-1 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
                   aria-label={`Approve task ${task.id}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onApprove(task.id);
                   }}
                 >
+                  <CheckCircle2 size={12} />
                   Approve
                 </Button>
                 <Button
@@ -334,7 +383,35 @@ export const KanbanTaskCard = ({
           ) : null}
         </div>
 
-        <UnreadCommentsBadge unreadCount={unreadCount} totalCount={task.comments?.length ?? 0} />
+        <div className="flex items-center gap-1.5">
+          {showChangesColumn && taskHasChanges === true ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewChanges(task.id);
+              }}
+              className="flex items-center gap-1 text-[10px] text-[var(--color-text-muted)] transition-colors hover:text-blue-400"
+            >
+              <FileCode className="size-3" />
+              Changes
+            </button>
+          ) : null}
+          <UnreadCommentsBadge unreadCount={unreadCount} totalCount={task.comments?.length ?? 0} />
+          {onDeleteTask ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteTask(task.id);
+              }}
+              className="text-[var(--color-text-muted)] transition-colors hover:text-red-400"
+              title="Delete task"
+            >
+              <Trash2 size={12} />
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );

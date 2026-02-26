@@ -12,6 +12,7 @@ import type {
   ClaudeMdFileInfo,
   ClaudeRootFolderSelection,
   ClaudeRootInfo,
+  CliInstallerAPI,
   ConfigAPI,
   ContextInfo,
   ConversationGroup,
@@ -36,6 +37,7 @@ import type {
   SessionMetrics,
   SessionsByIdsOptions,
   SessionsPaginationOptions,
+  SnippetDiff,
   SshAPI,
   SshConfigHostEntry,
   SshConnectionConfig,
@@ -61,6 +63,7 @@ import type {
   WslClaudeRootCandidate,
 } from '@shared/types';
 import type { AgentConfig } from '@shared/types/api';
+import type { TerminalAPI } from '@shared/types/terminal';
 
 export class HttpAPIClient implements ElectronAPI {
   private baseUrl: string;
@@ -521,6 +524,10 @@ export class HttpAPIClient implements ElectronAPI {
     return { success: false, error: 'Not available in browser mode' };
   };
 
+  showInFolder = async (_filePath: string): Promise<void> => {
+    console.warn('[HttpAPIClient] showInFolder is not available in browser mode');
+  };
+
   openExternal = async (url: string): Promise<{ success: boolean; error?: string }> => {
     window.open(url, '_blank');
     return { success: true };
@@ -635,6 +642,12 @@ export class HttpAPIClient implements ElectronAPI {
     deleteTeam: async (_teamName: string): Promise<void> => {
       throw new Error('Team deletion is not available in browser mode');
     },
+    restoreTeam: async (_teamName: string): Promise<void> => {
+      throw new Error('Team restore is not available in browser mode');
+    },
+    permanentlyDeleteTeam: async (_teamName: string): Promise<void> => {
+      throw new Error('Permanent team deletion is not available in browser mode');
+    },
     prepareProvisioning: async (_cwd?: string): Promise<TeamProvisioningPrepareResult> => {
       throw new Error('Team provisioning is not available in browser mode');
     },
@@ -721,6 +734,7 @@ export class HttpAPIClient implements ElectronAPI {
         linesAdded: 0,
         linesRemoved: 0,
         filesTouched: [],
+        fileStats: {},
         toolUsage: {},
         inputTokens: 0,
         outputTokens: 0,
@@ -761,6 +775,31 @@ export class HttpAPIClient implements ElectronAPI {
     ): Promise<AttachmentFileData[]> => {
       return [];
     },
+    killProcess: async (_teamName: string, _pid: number): Promise<void> => {
+      // Not available via HTTP client — no-op
+    },
+    getLeadActivity: async (_teamName: string): Promise<'active' | 'idle' | 'offline'> => {
+      return 'offline';
+    },
+    softDeleteTask: async (_teamName: string, _taskId: string): Promise<void> => {
+      // Not available via HTTP client — no-op
+    },
+    restoreTask: async (_teamName: string, _taskId: string): Promise<void> => {
+      // Not available via HTTP client — no-op
+    },
+    getDeletedTasks: async (_teamName: string): Promise<TeamTask[]> => {
+      return [];
+    },
+    setTaskClarification: async (
+      _teamName: string,
+      _taskId: string,
+      _value: 'lead' | 'user' | null
+    ): Promise<void> => {
+      // Not available via HTTP client — no-op
+    },
+    showMessageNotification: async (): Promise<void> => {
+      // Not available via HTTP client — native notifications require Electron
+    },
     onTeamChange: (callback: (event: unknown, data: TeamChangeEvent) => void): (() => void) => {
       return this.addEventListener('team-change', (data: unknown) =>
         callback(null, data as TeamChangeEvent)
@@ -771,5 +810,97 @@ export class HttpAPIClient implements ElectronAPI {
     ): (() => void) => {
       return () => {};
     },
+  };
+
+  // Review API stubs
+  review = {
+    getAgentChanges: async (_teamName: string, _memberName: string): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    getTaskChanges: async (_teamName: string, _taskId: string): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    getChangeStats: async (_teamName: string, _memberName: string): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    getFileContent: async (
+      _teamName: string,
+      _memberName: string | undefined,
+      _filePath: string,
+      _snippets: SnippetDiff[] = []
+    ): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    applyDecisions: async (): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    // Phase 2 stubs
+    checkConflict: async (): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    rejectHunks: async (): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    rejectFile: async (): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    previewReject: async (): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    // Editable diff stubs
+    saveEditedFile: async (): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    // Decision persistence stubs
+    loadDecisions: async (): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    saveDecisions: async (): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    clearDecisions: async (): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    // Phase 4 stubs
+    getGitFileLog: async (): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+  };
+
+  // ---------------------------------------------------------------------------
+  // CLI Installer (not available in browser mode)
+  // ---------------------------------------------------------------------------
+
+  cliInstaller: CliInstallerAPI = {
+    getStatus: async () => ({
+      installed: false,
+      installedVersion: null,
+      binaryPath: null,
+      latestVersion: null,
+      updateAvailable: false,
+      authLoggedIn: false,
+      authMethod: null,
+    }),
+    install: async (): Promise<void> => {
+      console.warn('[HttpAPIClient] CLI installer not available in browser mode');
+    },
+    onProgress: (): (() => void) => {
+      return () => {};
+    },
+  };
+
+  // ---------------------------------------------------------------------------
+  // Terminal (not available in browser mode)
+  // ---------------------------------------------------------------------------
+
+  terminal: TerminalAPI = {
+    spawn: async (): Promise<string> => {
+      throw new Error('Terminal not available in browser mode');
+    },
+    write: () => {},
+    resize: () => {},
+    kill: () => {},
+    onData: (): (() => void) => () => {},
+    onExit: (): (() => void) => () => {},
   };
 }

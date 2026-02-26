@@ -41,6 +41,8 @@ interface ActivityItemProps {
   onMemberNameClick?: (memberName: string) => void;
   onCreateTask?: (subject: string, description: string) => void;
   onReply?: (message: InboxMessage) => void;
+  /** Called when a task ID link (e.g. #10) is clicked in message text. */
+  onTaskIdClick?: (taskId: string) => void;
 }
 
 function getStringField(obj: StructuredMessage, key: string): string | null {
@@ -125,6 +127,33 @@ function getSystemMessageLabel(text: string): string | null {
 // Full message card — left colored border, name badge, collapsible content
 // ---------------------------------------------------------------------------
 
+/** Convert `#<digits>` in plain text to markdown links with task:// protocol. */
+function linkifyTaskIdsInMarkdown(text: string): string {
+  return text.replace(/#(\d+)/g, '[#$1](task://$1)');
+}
+
+/** Render `#<digits>` in plain text as clickable inline elements. */
+function linkifyTaskIds(text: string, onClick: (taskId: string) => void): React.ReactNode[] {
+  return text.split(/(#\d+)/g).map((part, i) => {
+    const match = /^#(\d+)$/.exec(part);
+    if (!match) return <span key={i}>{part}</span>;
+    const taskId = match[1];
+    return (
+      <button
+        key={i}
+        type="button"
+        className="cursor-pointer font-medium text-blue-400 hover:underline"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick(taskId);
+        }}
+      >
+        {part}
+      </button>
+    );
+  });
+}
+
 export const ActivityItem = ({
   message,
   teamName,
@@ -135,6 +164,7 @@ export const ActivityItem = ({
   onMemberNameClick,
   onCreateTask,
   onReply,
+  onTaskIdClick,
 }: ActivityItemProps): React.JSX.Element => {
   const colors = getTeamColorSet(memberColor ?? message.color ?? '');
   const formattedRole = formatAgentRole(memberRole);
@@ -153,11 +183,13 @@ export const ActivityItem = ({
   const systemLabel = !structured && !rateLimited ? getSystemMessageLabel(message.text) : null;
   const [isExpanded, setIsExpanded] = useState(!systemLabel);
 
-  // Strip agent-only blocks from displayed text
-  const displayText = useMemo(
-    () => (structured ? null : stripAgentBlocks(message.text)),
-    [structured, message.text]
-  );
+  // Strip agent-only blocks from displayed text + linkify task IDs
+  const displayText = useMemo(() => {
+    if (structured) return null;
+    const stripped = stripAgentBlocks(message.text).trim();
+    if (!stripped) return null; // All content was agent-only blocks → show summary instead
+    return onTaskIdClick ? linkifyTaskIdsInMarkdown(stripped) : stripped;
+  }, [structured, message.text, onTaskIdClick]);
 
   // Check if this is a reply message
   const parsedReply = useMemo(
@@ -180,7 +212,9 @@ export const ActivityItem = ({
 
   const handleCreateTask = (): void => {
     const subject = message.summary || autoSummary || `Task from ${message.from}`;
-    const plainText = structured ? JSON.stringify(structured, null, 2) : message.text;
+    const plainText = structured
+      ? JSON.stringify(structured, null, 2)
+      : stripAgentBlocks(message.text);
     const description = `From: ${message.from}\nAt: ${timestamp}\n\n${plainText}`.slice(0, 2000);
     onCreateTask?.(subject, description);
   };
@@ -289,7 +323,7 @@ export const ActivityItem = ({
 
         {/* Summary */}
         <span className="flex-1 truncate text-xs" style={{ color: CARD_TEXT_LIGHT }}>
-          {summaryText}
+          {onTaskIdClick ? linkifyTaskIds(summaryText, onTaskIdClick) : summaryText}
         </span>
 
         {/* Timestamp + reply + create task */}
@@ -355,9 +389,31 @@ export const ActivityItem = ({
             </div>
           ) : parsedReply ? (
             <ReplyQuoteBlock reply={parsedReply} />
-          ) : (
-            <MarkdownViewer content={displayText ?? ''} maxHeight="max-h-56" copyable bare />
-          )}
+          ) : displayText ? (
+            <span
+              onClickCapture={
+                onTaskIdClick
+                  ? (e) => {
+                      const link = (e.target as HTMLElement).closest<HTMLAnchorElement>(
+                        'a[href^="task://"]'
+                      );
+                      if (link) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const taskId = link.getAttribute('href')?.replace('task://', '');
+                        if (taskId) onTaskIdClick(taskId);
+                      }
+                    }
+                  : undefined
+              }
+            >
+              <MarkdownViewer content={displayText} maxHeight="max-h-56" copyable bare />
+            </span>
+          ) : summaryText ? (
+            <p className="text-xs italic" style={{ color: CARD_TEXT_LIGHT }}>
+              {summaryText}
+            </p>
+          ) : null}
           {message.attachments?.length && message.messageId ? (
             <AttachmentDisplay
               teamName={teamName}

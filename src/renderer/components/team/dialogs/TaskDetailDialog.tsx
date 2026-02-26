@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { CollapsibleTeamSection } from '@renderer/components/team/CollapsibleTeamSection';
@@ -23,15 +23,32 @@ import {
 } from '@renderer/components/ui/select';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { markAsRead } from '@renderer/services/commentReadStorage';
+import { useStore } from '@renderer/store';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import {
+  buildMemberColorMap,
   KANBAN_COLUMN_DISPLAY,
   TASK_STATUS_LABELS,
   TASK_STATUS_STYLES,
 } from '@renderer/utils/memberHelpers';
 import { formatDistanceToNow } from 'date-fns';
-import { ArrowLeftFromLine, ArrowRightFromLine, Clock, Link2, PenLine } from 'lucide-react';
+import {
+  AlignLeft,
+  ArrowLeftFromLine,
+  ArrowRightFromLine,
+  Clock,
+  FileCode,
+  FileDiff,
+  HelpCircle,
+  Link2,
+  Loader2,
+  MessageSquare,
+  PenLine,
+  ScrollText,
+  Trash2,
+} from 'lucide-react';
 
+import { TaskCommentInput } from './TaskCommentInput';
 import { TaskCommentsSection } from './TaskCommentsSection';
 
 import type { KanbanTaskState, ResolvedTeamMember, TeamTaskWithKanban } from '@shared/types';
@@ -46,6 +63,10 @@ interface TaskDetailDialogProps {
   onClose: () => void;
   onScrollToTask?: (taskId: string) => void;
   onOwnerChange?: (taskId: string, owner: string | null) => void;
+  onViewChanges?: (taskId: string, filePath?: string) => void;
+  onDeleteTask?: (taskId: string) => void;
+  /** Extra content rendered in the dialog header (e.g. "Open team" button). */
+  headerExtra?: React.ReactNode;
 }
 
 export const TaskDetailDialog = ({
@@ -58,8 +79,34 @@ export const TaskDetailDialog = ({
   onClose,
   onScrollToTask,
   onOwnerChange,
+  onViewChanges,
+  onDeleteTask,
+  headerExtra,
 }: TaskDetailDialogProps): React.JSX.Element => {
+  const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
   const currentTask = task ? (taskMap.get(task.id) ?? task) : null;
+  const [replyTo, setReplyTo] = useState<{
+    taskId: string;
+    author: string;
+    text: string;
+  } | null>(null);
+  const handleReply = useCallback(
+    (author: string, text: string) => {
+      if (currentTask) setReplyTo({ taskId: currentTask.id, author, text });
+    },
+    [currentTask]
+  );
+  const clearReply = useCallback(() => setReplyTo(null), []);
+
+  const handleClose = useCallback(() => {
+    setReplyTo(null);
+    onClose();
+  }, [onClose]);
+
+  const effectiveReplyTo =
+    replyTo && replyTo.taskId === currentTask?.id
+      ? { author: replyTo.author, text: replyTo.text }
+      : null;
 
   useEffect(() => {
     if (!open || !currentTask) return;
@@ -69,14 +116,48 @@ export const TaskDetailDialog = ({
     if (latest > 0) markAsRead(teamName, currentTask.id, latest);
   }, [open, teamName, currentTask]);
 
+  // Lazy-load task changes when dialog is open and task is completed
+  const isTaskCompleted = currentTask?.status === 'completed';
+  const setTaskNeedsClarification = useStore((s) => s.setTaskNeedsClarification);
+  const activeChangeSet = useStore((s) => s.activeChangeSet);
+  const changeSetLoading = useStore((s) => s.changeSetLoading);
+  const fetchTaskChanges = useStore((s) => s.fetchTaskChanges);
+
+  // Use the lightweight cache to know if changes exist before full data loads
+  const changesCacheKey = currentTask ? `${teamName}:${currentTask.id}` : '';
+  const taskKnownHasChanges = useStore((s) => s.taskHasChanges[changesCacheKey]) === true;
+
+  const taskChangesFiles = useMemo(() => {
+    if (!activeChangeSet || !currentTask) return null;
+    if ('taskId' in activeChangeSet && activeChangeSet.taskId === currentTask.id) {
+      return activeChangeSet.files;
+    }
+    return null;
+  }, [activeChangeSet, currentTask]);
+
+  useEffect(() => {
+    if (!open || !currentTask || !isTaskCompleted || !onViewChanges) return;
+    // Only fetch if we don't already have data for this task
+    if (taskChangesFiles !== null) return;
+    void fetchTaskChanges(teamName, currentTask.id);
+  }, [
+    open,
+    currentTask,
+    isTaskCompleted,
+    teamName,
+    fetchTaskChanges,
+    taskChangesFiles,
+    onViewChanges,
+  ]);
+
   const handleDependencyClick = (taskId: string): void => {
-    onClose();
+    handleClose();
     onScrollToTask?.(taskId);
   };
 
   if (!currentTask) {
     return (
-      <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Task not found</DialogTitle>
@@ -110,7 +191,6 @@ export const TaskDetailDialog = ({
         t.id !== currentTask.id && Array.isArray(t.related) && t.related.includes(currentTask.id)
     )
     .map((t) => t.id);
-  const ownerMember = currentTask.owner ? members.find((m) => m.name === currentTask.owner) : null;
   const isTodo = status === 'pending' && !kanbanColumn;
   const canReassign = isTodo && onOwnerChange;
 
@@ -127,6 +207,7 @@ export const TaskDetailDialog = ({
             >
               {statusLabel}
             </span>
+            {headerExtra ? <div className="ml-auto mr-4">{headerExtra}</div> : null}
           </div>
           <DialogTitle className="text-base">{currentTask.subject}</DialogTitle>
           {currentTask.activeForm ? (
@@ -151,7 +232,8 @@ export const TaskDetailDialog = ({
                   <SelectItem value="__unassigned__">Unassigned</SelectItem>
                   {members.map((m) => {
                     const role = formatAgentRole(m.role) ?? formatAgentRole(m.agentType);
-                    const memberColor = m.color ? getTeamColorSet(m.color) : null;
+                    const resolvedColor = colorMap.get(m.name);
+                    const memberColor = resolvedColor ? getTeamColorSet(resolvedColor) : null;
                     return (
                       <SelectItem key={m.name} value={m.name}>
                         <span className="inline-flex items-center gap-1.5">
@@ -174,7 +256,11 @@ export const TaskDetailDialog = ({
                 </SelectContent>
               </Select>
             ) : currentTask.owner ? (
-              <MemberBadge name={currentTask.owner} color={ownerMember?.color} size="md" />
+              <MemberBadge
+                name={currentTask.owner}
+                color={colorMap.get(currentTask.owner)}
+                size="md"
+              />
             ) : (
               <span className="text-xs text-[var(--color-text-muted)]">&mdash;</span>
             )}
@@ -200,8 +286,37 @@ export const TaskDetailDialog = ({
             : null}
         </div>
 
+        {/* Clarification banner */}
+        {currentTask.needsClarification ? (
+          <div
+            className={`flex items-center justify-between rounded-md px-3 py-2 text-xs ${
+              currentTask.needsClarification === 'user'
+                ? 'border border-red-500/20 bg-red-500/10 text-red-400'
+                : 'border border-blue-500/20 bg-blue-500/10 text-blue-400'
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <HelpCircle size={14} />
+              {currentTask.needsClarification === 'user'
+                ? 'Awaiting clarification from you'
+                : 'Awaiting clarification from team lead'}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                void setTaskNeedsClarification(teamName, currentTask.id, null);
+              }}
+            >
+              Mark resolved
+            </Button>
+          </div>
+        ) : null}
+
         {/* Description */}
-        <CollapsibleTeamSection title="Description" defaultOpen>
+        <CollapsibleTeamSection title="Description" icon={<AlignLeft size={14} />} defaultOpen>
           {currentTask.description ? (
             <div className="max-h-[200px] overflow-y-auto">
               <MarkdownViewer content={currentTask.description} maxHeight="max-h-[180px]" />
@@ -209,6 +324,64 @@ export const TaskDetailDialog = ({
           ) : (
             <p className="text-xs text-[var(--color-text-muted)]">No description</p>
           )}
+        </CollapsibleTeamSection>
+
+        {/* Changes */}
+        {isTaskCompleted && onViewChanges ? (
+          <CollapsibleTeamSection
+            title="Changes"
+            icon={<FileDiff size={14} />}
+            badge={taskChangesFiles ? taskChangesFiles.length : undefined}
+            defaultOpen={taskKnownHasChanges}
+          >
+            {changeSetLoading || (!taskChangesFiles && taskKnownHasChanges) ? (
+              <div className="flex items-center gap-2 py-2 text-xs text-[var(--color-text-muted)]">
+                <Loader2 size={14} className="animate-spin" />
+                Loading changes...
+              </div>
+            ) : taskChangesFiles && taskChangesFiles.length > 0 ? (
+              <div className="max-h-[200px] space-y-0.5 overflow-y-auto">
+                {taskChangesFiles.map((file) => (
+                  <button
+                    key={file.filePath}
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--color-surface-raised)]"
+                    onClick={() => {
+                      handleClose();
+                      onViewChanges(currentTask.id, file.filePath);
+                    }}
+                  >
+                    <FileCode size={14} className="shrink-0 text-[var(--color-text-muted)]" />
+                    <span className="truncate font-mono text-[var(--color-text-secondary)]">
+                      {file.relativePath}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      {file.linesAdded > 0 ? (
+                        <span className="text-emerald-400">+{file.linesAdded}</span>
+                      ) : null}
+                      {file.linesRemoved > 0 ? (
+                        <span className="text-red-400">-{file.linesRemoved}</span>
+                      ) : null}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-[var(--color-text-muted)]">No file changes detected</p>
+            )}
+          </CollapsibleTeamSection>
+        ) : null}
+
+        {/* Execution Logs — sessions that reference this task */}
+        <CollapsibleTeamSection title="Execution Logs" icon={<ScrollText size={14} />} defaultOpen>
+          <div className="min-w-0 overflow-hidden">
+            <MemberLogsTab
+              teamName={teamName}
+              taskId={currentTask.id}
+              taskOwner={currentTask.owner}
+              taskStatus={currentTask.status}
+            />
+          </div>
         </CollapsibleTeamSection>
 
         <div className="mb-3 space-y-2">
@@ -337,6 +510,7 @@ export const TaskDetailDialog = ({
         {/* Comments */}
         <CollapsibleTeamSection
           title="Comments"
+          icon={<MessageSquare size={14} />}
           badge={
             (currentTask.comments?.length ?? 0) > 0
               ? (currentTask.comments?.length ?? 0)
@@ -344,29 +518,41 @@ export const TaskDetailDialog = ({
           }
           defaultOpen
         >
+          <TaskCommentInput
+            teamName={teamName}
+            taskId={currentTask.id}
+            members={members}
+            replyTo={effectiveReplyTo}
+            onClearReply={clearReply}
+          />
           <TaskCommentsSection
             teamName={teamName}
             taskId={currentTask.id}
             comments={currentTask.comments ?? []}
             members={members}
             hideHeader
+            hideInput
+            onReply={handleReply}
           />
         </CollapsibleTeamSection>
 
-        {/* Execution Logs — sessions that reference this task */}
-        <CollapsibleTeamSection title="Execution Logs" defaultOpen>
-          <div className="min-w-0 overflow-hidden">
-            <MemberLogsTab
-              teamName={teamName}
-              taskId={currentTask.id}
-              taskOwner={currentTask.owner}
-              taskStatus={currentTask.status}
-            />
-          </div>
-        </CollapsibleTeamSection>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+        <DialogFooter className="flex items-center justify-between sm:justify-between">
+          {onDeleteTask && currentTask ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                onDeleteTask(currentTask.id);
+                handleClose();
+              }}
+            >
+              <Trash2 size={14} className="mr-1" />
+              Delete
+            </Button>
+          ) : (
+            <div />
+          )}
+          <Button variant="outline" onClick={handleClose}>
             Close
           </Button>
         </DialogFooter>

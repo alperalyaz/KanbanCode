@@ -3,10 +3,15 @@ import { createReadStream } from 'fs';
 import * as readline from 'readline';
 
 import { type TeamMemberLogsFinder } from './TeamMemberLogsFinder';
+import { countLineChanges } from './UnifiedLineCounter';
 
-import type { MemberFullStats } from '@shared/types';
+import type { FileLineStats, MemberFullStats } from '@shared/types';
 
 const logger = createLogger('Service:MemberStatsComputer');
+
+function isValidFilePath(value: string): boolean {
+  return value.length > 0 && value !== 'null' && value !== 'undefined' && value !== 'None';
+}
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -32,6 +37,7 @@ export class MemberStatsComputer {
     let linesAdded = 0;
     let linesRemoved = 0;
     const filesTouchedSet = new Set<string>();
+    const perFileStats: Record<string, FileLineStats> = {};
     const toolUsage: Record<string, number> = {};
     let inputTokens = 0;
     let outputTokens = 0;
@@ -40,24 +46,38 @@ export class MemberStatsComputer {
     let totalDurationMs = 0;
 
     for (const filePath of paths) {
-      const fileStats = await this.parseFile(filePath);
-      linesAdded += fileStats.linesAdded;
-      linesRemoved += fileStats.linesRemoved;
-      for (const f of fileStats.filesTouched) filesTouchedSet.add(f);
-      for (const [tool, count] of Object.entries(fileStats.toolUsage)) {
+      const parsed = await this.parseFile(filePath);
+      linesAdded += parsed.linesAdded;
+      linesRemoved += parsed.linesRemoved;
+      for (const f of parsed.filesTouched) filesTouchedSet.add(f);
+      for (const [fp, fls] of Object.entries(parsed.perFileStats)) {
+        const existing = perFileStats[fp];
+        if (existing) {
+          existing.added += fls.added;
+          existing.removed += fls.removed;
+        } else {
+          perFileStats[fp] = { added: fls.added, removed: fls.removed };
+        }
+      }
+      for (const [tool, count] of Object.entries(parsed.toolUsage)) {
         toolUsage[tool] = (toolUsage[tool] ?? 0) + count;
       }
-      inputTokens += fileStats.inputTokens;
-      outputTokens += fileStats.outputTokens;
-      cacheReadTokens += fileStats.cacheReadTokens;
-      messageCount += fileStats.messageCount;
-      totalDurationMs += fileStats.durationMs;
+      inputTokens += parsed.inputTokens;
+      outputTokens += parsed.outputTokens;
+      cacheReadTokens += parsed.cacheReadTokens;
+      messageCount += parsed.messageCount;
+      totalDurationMs += parsed.durationMs;
     }
+
+    const validFiles = [...filesTouchedSet]
+      .filter(isValidFilePath)
+      .sort((a, b) => a.localeCompare(b));
 
     const stats: MemberFullStats = {
       linesAdded,
       linesRemoved,
-      filesTouched: [...filesTouchedSet].sort((a, b) => a.localeCompare(b)),
+      filesTouched: validFiles,
+      fileStats: perFileStats,
       toolUsage,
       inputTokens,
       outputTokens,
@@ -78,6 +98,7 @@ export class MemberStatsComputer {
     linesAdded: number;
     linesRemoved: number;
     filesTouched: string[];
+    perFileStats: Record<string, FileLineStats>;
     toolUsage: Record<string, number>;
     inputTokens: number;
     outputTokens: number;
@@ -88,6 +109,7 @@ export class MemberStatsComputer {
     let linesAdded = 0;
     let linesRemoved = 0;
     const filesTouchedSet = new Set<string>();
+    const perFileStats: Record<string, FileLineStats> = {};
     const toolUsage: Record<string, number> = {};
     let inputTokens = 0;
     let outputTokens = 0;
@@ -95,6 +117,24 @@ export class MemberStatsComputer {
     let messageCount = 0;
     let firstTimestamp: string | null = null;
     let lastTimestamp: string | null = null;
+
+    // Track last known content per file for accurate Write/NotebookEdit diffs
+    const fileLastContent = new Map<string, string>();
+
+    const trackFile = (fp: string): void => {
+      if (typeof fp === 'string' && isValidFilePath(fp)) filesTouchedSet.add(fp);
+    };
+
+    const addFileLines = (fp: string, added: number, removed: number): void => {
+      if (!isValidFilePath(fp)) return;
+      const existing = perFileStats[fp];
+      if (existing) {
+        existing.added += added;
+        existing.removed += removed;
+      } else {
+        perFileStats[fp] = { added, removed };
+      }
+    };
 
     try {
       const stream = createReadStream(filePath, { encoding: 'utf8' });
@@ -144,38 +184,83 @@ export class MemberStatsComputer {
 
                   // Track files
                   if (typeof input.file_path === 'string') {
-                    filesTouchedSet.add(input.file_path);
+                    trackFile(input.file_path);
                   }
                   if (typeof input.path === 'string' && toolName === 'Read') {
-                    filesTouchedSet.add(input.path);
+                    trackFile(input.path);
                   }
 
-                  // Count lines for Edit
+                  // Count lines for Edit (using semantic diff for accuracy)
                   if (toolName === 'Edit') {
+                    const editPath = typeof input.file_path === 'string' ? input.file_path : '';
                     const oldStr = typeof input.old_string === 'string' ? input.old_string : '';
                     const newStr = typeof input.new_string === 'string' ? input.new_string : '';
-                    const oldLines = oldStr ? oldStr.split('\n').length : 0;
-                    const newLines = newStr ? newStr.split('\n').length : 0;
-                    if (newLines > oldLines) linesAdded += newLines - oldLines;
-                    if (oldLines > newLines) linesRemoved += oldLines - newLines;
-                  }
-
-                  // Count lines for Write
-                  if (toolName === 'Write') {
-                    const writeContent = typeof input.content === 'string' ? input.content : '';
-                    if (writeContent) {
-                      linesAdded += writeContent.split('\n').length;
+                    const replaceAll = input.replace_all === true;
+                    const { added: fileAdded, removed: fileRemoved } = countLineChanges(
+                      oldStr,
+                      newStr
+                    );
+                    linesAdded += fileAdded;
+                    linesRemoved += fileRemoved;
+                    if (editPath) {
+                      addFileLines(editPath, fileAdded, fileRemoved);
+                      // Update fileLastContent so subsequent Writes diff against correct state
+                      const prev = fileLastContent.get(editPath);
+                      if (prev !== undefined && oldStr) {
+                        if (replaceAll) {
+                          fileLastContent.set(editPath, prev.split(oldStr).join(newStr));
+                        } else {
+                          const idx = prev.indexOf(oldStr);
+                          if (idx !== -1) {
+                            fileLastContent.set(
+                              editPath,
+                              prev.substring(0, idx) + newStr + prev.substring(idx + oldStr.length)
+                            );
+                          }
+                        }
+                      }
                     }
                   }
 
-                  // Count lines for NotebookEdit
+                  // Count lines for Write (track previous content for accurate diff)
+                  if (toolName === 'Write') {
+                    const writeContent = typeof input.content === 'string' ? input.content : '';
+                    const writePath = typeof input.file_path === 'string' ? input.file_path : '';
+                    if (writeContent) {
+                      const prevContent = fileLastContent.get(writePath) ?? '';
+                      const { added: fileAdded, removed: fileRemoved } = countLineChanges(
+                        prevContent,
+                        writeContent
+                      );
+                      if (writePath) fileLastContent.set(writePath, writeContent);
+                      linesAdded += fileAdded;
+                      linesRemoved += fileRemoved;
+                      if (writePath) {
+                        addFileLines(writePath, fileAdded, fileRemoved);
+                      }
+                    }
+                  }
+
+                  // Count lines for NotebookEdit (semantic diff)
                   if (toolName === 'NotebookEdit') {
                     const src = typeof input.new_source === 'string' ? input.new_source : '';
                     if (src) {
-                      linesAdded += src.split('\n').length;
+                      const nbPath =
+                        typeof input.notebook_path === 'string' ? input.notebook_path : '';
+                      const prevContent = fileLastContent.get(nbPath) ?? '';
+                      const { added: fileAdded, removed: fileRemoved } = countLineChanges(
+                        prevContent,
+                        src
+                      );
+                      if (nbPath) fileLastContent.set(nbPath, src);
+                      linesAdded += fileAdded;
+                      linesRemoved += fileRemoved;
+                      if (nbPath) {
+                        addFileLines(nbPath, fileAdded, fileRemoved);
+                      }
                     }
                     if (typeof input.notebook_path === 'string') {
-                      filesTouchedSet.add(input.notebook_path);
+                      trackFile(input.notebook_path);
                     }
                   }
 
@@ -186,7 +271,15 @@ export class MemberStatsComputer {
                       const bashLines = estimateBashLinesChanged(cmd);
                       linesAdded += bashLines.added;
                       linesRemoved += bashLines.removed;
-                      for (const f of bashLines.files) filesTouchedSet.add(f);
+                      const touchedFiles = [...new Set(bashLines.files)];
+                      for (const f of touchedFiles) {
+                        trackFile(f);
+                      }
+                      // Only attribute per-file lines when a single file is touched;
+                      // with multiple files we can't determine per-file distribution
+                      if (touchedFiles.length === 1) {
+                        addFileLines(touchedFiles[0], bashLines.added, bashLines.removed);
+                      }
                     }
                   }
                 }
@@ -216,6 +309,7 @@ export class MemberStatsComputer {
       linesAdded,
       linesRemoved,
       filesTouched: [...filesTouchedSet],
+      perFileStats,
       toolUsage,
       inputTokens,
       outputTokens,
@@ -308,8 +402,9 @@ export function estimateBashLinesChanged(command: string): BashLinesResult {
   }
 
   // 2. Echo / printf with redirect: echo "..." > /path  OR  printf "..." > /path
+
   const echoPattern =
-    /(?:echo|printf)\s+(?:-[a-zA-Z]+\s+)?(?:"([^"]*)"|'([^']*)')\s*>{1,2}\s*(\S+)/g;
+    /(?:echo|printf)\s+(?:-[a-zA-Z]+\s+)?(?:"([^"]*)"|'([^']*)')\s*>{1,2}\s*(\S+)/g; // eslint-disable-line security/detect-unsafe-regex -- Fixed alternation, short command strings only
   let echoMatch: RegExpExecArray | null;
   while ((echoMatch = echoPattern.exec(command)) !== null) {
     const content = echoMatch[1] ?? echoMatch[2] ?? '';
@@ -317,7 +412,7 @@ export function estimateBashLinesChanged(command: string): BashLinesResult {
       added += content.split('\\n').length;
     }
     const filePath = echoMatch[3];
-    if (filePath?.startsWith('/')) {
+    if (filePath?.trim()) {
       files.push(filePath);
     }
   }
@@ -349,7 +444,7 @@ export function estimateBashLinesChanged(command: string): BashLinesResult {
   }
 
   // 5. tee: ... | tee /path/to/file
-  const teePattern = /\btee\s+(?:-a\s+)?(\/\S+)/g;
+  const teePattern = /\btee\s+(?:-a\s+)?(\/\S+)/g; // eslint-disable-line security/detect-unsafe-regex -- Simple pattern on short command strings
   let teeMatch: RegExpExecArray | null;
   while ((teeMatch = teePattern.exec(command)) !== null) {
     const filePath = teeMatch[1];

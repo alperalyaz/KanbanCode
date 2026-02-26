@@ -18,11 +18,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@renderer/components/ui/select';
+import { CUSTOM_ROLE, NO_ROLE, PRESET_ROLES } from '@renderer/constants/teamRoles';
 import { Loader2 } from 'lucide-react';
-
-const PRESET_ROLES = ['lead', 'reviewer', 'developer', 'qa', 'researcher'] as const;
-const CUSTOM_ROLE = '__custom__';
-const NO_ROLE = '__none__';
 
 const NAME_REGEX = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -113,7 +110,7 @@ export const AddMemberDialog = ({
           </div>
 
           <div className="space-y-2">
-            <Label>Role (optional)</Label>
+            <Label className="label-optional">Role (optional)</Label>
             <Select value={roleSelect} onValueChange={setRoleSelect}>
               <SelectTrigger>
                 <SelectValue placeholder="No role" />

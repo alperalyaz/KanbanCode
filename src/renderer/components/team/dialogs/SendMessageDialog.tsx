@@ -24,6 +24,7 @@ import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
 import { buildReplyBlock } from '@renderer/utils/agentMessageFormatting';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
+import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { X } from 'lucide-react';
 
 import type { MentionSuggestion } from '@renderer/types/mention';
@@ -59,6 +60,7 @@ export const SendMessageDialog = ({
   onSend,
   onClose,
 }: SendMessageDialogProps): React.JSX.Element => {
+  const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
   const [quote, setQuote] = useState<QuotedMessage | undefined>(undefined);
   const [member, setMember] = useState('');
   const textDraft = useDraftPersistence({ key: 'sendMessage:text' });
@@ -102,18 +104,22 @@ export const SendMessageDialog = ({
         id: m.name,
         name: m.name,
         subtitle: formatAgentRole(m.role) ?? formatAgentRole(m.agentType) ?? undefined,
-        color: m.color,
+        color: colorMap.get(m.name),
       })),
-    [members]
+    [members, colorMap]
   );
 
-  const canSend = member.trim().length > 0 && textDraft.value.trim().length > 0 && !sending;
+  const canSend =
+    member.trim().length > 0 &&
+    textDraft.value.trim().length > 0 &&
+    summary.trim().length > 0 &&
+    !sending;
 
   const handleSubmit = (): void => {
     if (!canSend) return;
     const rawText = textDraft.value.trim();
     const finalText = quote ? buildReplyBlock(quote.from, quote.text, rawText) : rawText;
-    onSend(member.trim(), finalText, summary.trim() || undefined);
+    onSend(member.trim(), finalText, summary.trim());
     textDraft.clearDraft();
   };
 
@@ -145,7 +151,8 @@ export const SendMessageDialog = ({
                 <SelectItem value={NO_MEMBER}>Select member...</SelectItem>
                 {members.map((m) => {
                   const role = formatAgentRole(m.role) ?? formatAgentRole(m.agentType);
-                  const memberColor = m.color ? getTeamColorSet(m.color) : null;
+                  const resolvedColor = colorMap.get(m.name);
+                  const memberColor = resolvedColor ? getTeamColorSet(resolvedColor) : null;
                   return (
                     <SelectItem key={m.name} value={m.name}>
                       <span className="inline-flex items-center gap-1.5">
@@ -167,16 +174,6 @@ export const SendMessageDialog = ({
                 })}
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="smd-summary">Summary (optional)</Label>
-            <Input
-              id="smd-summary"
-              placeholder="Brief description shown as preview..."
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-            />
           </div>
 
           {quote ? (
@@ -218,6 +215,20 @@ export const SendMessageDialog = ({
                 ) : null
               }
             />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="smd-summary">Summary</Label>
+            <Input
+              id="smd-summary"
+              className="h-8 text-xs"
+              placeholder="Brief summary reflecting the message intent"
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+            />
+            <p className="text-[11px] text-[var(--color-text-muted)]">
+              Shown as notification preview. Team lead also sees this for peer messages.
+            </p>
           </div>
 
           {sendError ? <p className="text-xs text-red-400">{sendError}</p> : null}

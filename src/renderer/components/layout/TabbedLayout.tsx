@@ -16,6 +16,7 @@ import { UpdateBanner } from '../common/UpdateBanner';
 import { UpdateDialog } from '../common/UpdateDialog';
 import { WorkspaceIndicator } from '../common/WorkspaceIndicator';
 import { CommandPalette } from '../search/CommandPalette';
+import { GlobalTaskDetailDialog } from '../team/dialogs/GlobalTaskDetailDialog';
 
 import { CustomTitleBar } from './CustomTitleBar';
 import { PaneContainer } from './PaneContainer';
@@ -50,6 +51,7 @@ export const TabbedLayout = (): React.JSX.Element => {
         {/* Multi-pane content area */}
         <PaneContainer />
       </div>
+      <GlobalTaskDetailDialog />
       <UpdateDialog />
       <WorkspaceIndicator />
     </div>

@@ -9,7 +9,12 @@ import {
   getTasksBasePath,
   getTeamsBasePath,
 } from '@main/utils/pathDecoder';
-import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
+import {
+  AGENT_BLOCK_CLOSE,
+  AGENT_BLOCK_OPEN,
+  stripAgentBlocks,
+} from '@shared/constants/agentBlocks';
+import { getMemberColor } from '@shared/constants/memberColors';
 import { resolveLanguageName } from '@shared/utils/agentLanguage';
 import { createLogger } from '@shared/utils/logger';
 import { execFile, spawn } from 'child_process';
@@ -26,6 +31,7 @@ import { TeamConfigReader } from './TeamConfigReader';
 import { TeamInboxReader } from './TeamInboxReader';
 import { TeamMembersMetaStore } from './TeamMembersMetaStore';
 import { TeamSentMessagesStore } from './TeamSentMessagesStore';
+import { TeamTaskReader } from './TeamTaskReader';
 
 import type {
   InboxMessage,
@@ -37,6 +43,7 @@ import type {
   TeamProvisioningPrepareResult,
   TeamProvisioningProgress,
   TeamProvisioningState,
+  TeamTask,
 } from '@shared/types';
 
 const logger = createLogger('Service:TeamProvisioning');
@@ -131,7 +138,13 @@ interface ProvisioningRun {
   directReplyParts: string[];
   /** Accumulates assistant text during provisioning phase for live UI preview. */
   provisioningOutputParts: string[];
+  /** Session ID detected from stream-json output (result.session_id or message.session_id). */
+  detectedSessionId: string | null;
+  /** Lead process activity: 'active' during turn processing, 'idle' waiting for input, 'offline' after exit. */
+  leadActivityState: LeadActivityState;
 }
+
+type LeadActivityState = 'active' | 'idle' | 'offline';
 
 type ProvisioningAuthSource =
   | 'anthropic_api_key'
@@ -293,7 +306,30 @@ function buildTaskStatusProtocol(teamName: string): string {
    - Typical flow:
      a) Owner finishes work on #X → task complete #X
      b) Reviewer accepts → review approve #X
+10. CLARIFICATION PROTOCOL (CRITICAL — MANDATORY):
+    When you are blocked and need information to continue a task, you MUST do BOTH steps below — skipping the Bash command breaks the task board:
+    a) STEP 1 — FIRST, set the clarification flag via Bash (this updates the task board):
+       node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-clarification <taskId> lead --from "<your-name>"
+    b) STEP 2 — THEN, send a message to your team lead via SendMessage explaining what you need.
+    IMPORTANT: Always run the Bash command BEFORE sending the message. The flag is what makes the task board show "needs clarification" — without it, your request is invisible on the board.
+    c) The flag is auto-cleared when the lead adds a task comment on your task.
+       If the lead replies via SendMessage instead, clear the flag yourself once you have the answer:
+       node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-clarification <taskId> clear --from "<your-name>"
+    d) Do NOT set clarification to "user" yourself — only the team lead escalates to the user.
 Failure to follow this protocol means the task board will show incorrect status.`);
+}
+
+function buildProcessRegistrationProtocol(teamName: string): string {
+  return wrapInAgentBlock(`BACKGROUND PROCESS REGISTRATION — when you start a background process (dev server, watcher, database, etc.):
+1. Launch with & to get PID:
+   pnpm dev &
+2. Register immediately (--port and --url are optional, use when the process listens on a port):
+   node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" process register --pid $! --label "<description>" --from "<your-name>" [--port <PORT> --url "http://localhost:<PORT>"]
+3. VERIFY registration succeeded (MANDATORY — never skip this step):
+   node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" process list
+4. When stopping a process:
+   node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" process unregister --pid <PID>
+If verification in step 3 fails or the process is missing from the list, re-register it.`);
 }
 
 function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string {
@@ -304,10 +340,23 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       ``,
       `Task board operations — use teamctl.js via Bash:`,
       `- Create task: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task create --subject "..." --description "..." --owner "<actual-member-name>" --notify --from "${leadName}"`,
+      `- Assign/reassign owner: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-owner <id> <member-name> --notify --from "${leadName}"`,
+      `- Clear owner: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-owner <id> clear`,
       `- Update status: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-status <id> <pending|in_progress|completed|deleted>`,
       ``,
       `Notification policy:`,
       `- The --notify flag sends the assignment to the member automatically, so do NOT send a separate SendMessage for the same task.`,
+      ``,
+      `Clarification handling (CRITICAL — MANDATORY for correct task board state):`,
+      `- When a teammate needs clarification (needsClarification: "lead"), reply via task comment (preferred — auto-clears the flag) or SendMessage.`,
+      `- If you reply via SendMessage instead of task comment, also clear the flag manually:`,
+      `  node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-clarification <taskId> clear --from "${leadName}"`,
+      `- If you cannot answer and the user needs to decide — ESCALATION PROTOCOL:`,
+      `  1) FIRST, set the flag to "user" via Bash (this updates the task board):`,
+      `     node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-clarification <taskId> user --from "${leadName}"`,
+      `  2) THEN, send a message to "user" explaining the question.`,
+      `  3) THEN, reply to the teammate telling them to wait.`,
+      `  IMPORTANT: Always run the Bash command BEFORE sending messages. Without the flag, the task board won't show that the task is blocked waiting for user input.`,
     ].join('\n')
   );
 }
@@ -329,7 +378,9 @@ function buildAgentBlockUsagePolicy(): string {
 ${AGENT_BLOCK_OPEN}
 (internal instructions: commands, script usage, paths, etc.)
 ${AGENT_BLOCK_CLOSE}
-- Put ONLY the internal instructions inside the agent-only block.`;
+- Put ONLY the internal instructions inside the agent-only block.
+- CRITICAL: Messages to "user" (the human) must NEVER contain agent-only blocks. Write them as plain readable text — the human sees these messages directly in the UI. Agent-only blocks are stripped before display, so a message containing ONLY an agent-only block will appear completely empty.
+- CRITICAL: When processing relayed inbox messages, your text output is shown to the user. Do NOT wrap your entire response in an agent-only block. If you need agent-only instructions, put them in a separate block and include a brief human-readable summary outside of it (e.g. "Delegated task to carol." or "Acknowledged, no action needed.").`;
 }
 
 function getSystemLocale(): string {
@@ -348,11 +399,44 @@ function getAgentLanguageInstruction(): string {
   return `IMPORTANT: Communicate in ${languageName}. All messages, summaries, and task descriptions MUST be in ${languageName}.`;
 }
 
+/** Build a concise task snapshot for a specific member (pending/in_progress tasks only). */
+function buildMemberTaskSnapshot(memberName: string, tasks: TeamTask[]): string {
+  const activeTasks = tasks.filter(
+    (t) =>
+      t.owner === memberName &&
+      (t.status === 'pending' || t.status === 'in_progress') &&
+      !t.id.startsWith('_internal')
+  );
+  if (activeTasks.length === 0) return '';
+
+  const lines = activeTasks.map((t) => {
+    const desc = t.description ? ` — ${t.description.slice(0, 120)}` : '';
+    return `  - #${t.id} [${t.status}] ${t.subject}${desc}`;
+  });
+  return `\nYour pending tasks from last session (RESUME these immediately):\n${lines.join('\n')}\n`;
+}
+
+/** Build a full task board snapshot for the lead. */
+function buildTaskBoardSnapshot(tasks: TeamTask[]): string {
+  const active = tasks.filter(
+    (t) => (t.status === 'pending' || t.status === 'in_progress') && !t.id.startsWith('_internal')
+  );
+  if (active.length === 0) return '\nNo pending tasks on the board.\n';
+
+  const lines = active.map((t) => {
+    const owner = t.owner ? ` (owner: ${t.owner})` : ' (unassigned)';
+    const desc = t.description ? ` — ${t.description.slice(0, 120)}` : '';
+    return `  - #${t.id} [${t.status}]${owner} ${t.subject}${desc}`;
+  });
+  return `\nCurrent task board (pending/in_progress):\n${lines.join('\n')}\n`;
+}
+
 function buildProvisioningPrompt(request: TeamCreateRequest): string {
   const displayName = request.displayName?.trim() || request.teamName;
   const description = request.description?.trim() || 'No description';
   const members = buildMembersPrompt(request.members);
   const taskProtocol = buildTaskStatusProtocol(request.teamName);
+  const processRegistration = buildProcessRegistrationProtocol(request.teamName);
   const languageInstruction = getAgentLanguageInstruction();
   const agentBlockPolicy = buildAgentBlockUsagePolicy();
   const userPromptBlock = request.prompt?.trim()
@@ -362,8 +446,11 @@ function buildProvisioningPrompt(request: TeamCreateRequest): string {
   const leadName =
     request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name || 'team-lead';
   const teamCtlOps = buildTeamCtlOpsInstructions(request.teamName, leadName);
+  const projectName = path.basename(request.cwd);
 
-  return `You are running in a non-interactive CLI session. Do not ask questions. Do everything in a single turn.
+  return `Team Start [Agent Team: "${request.teamName}" | Project: "${projectName}" | Lead: "${leadName}"]
+
+You are running in a non-interactive CLI session. Do not ask questions. Do everything in a single turn.
 You are "${leadName}", the team lead.
 
 Goal: Provision a Claude Code agent team with live teammates.
@@ -409,6 +496,8 @@ Steps (execute in this exact order):
 
 ${taskProtocol}
 
+${processRegistration}
+
 3) If user instructions explicitly ask to create tasks OR describe substantial/assigned work that should be tracked — create tasks on the team board.
    - Prefer fewer, broader tasks over many micro-tasks.
    - Avoid duplicate notifications for the same assignment.
@@ -422,26 +511,59 @@ ${members}
 
 function buildLaunchPrompt(
   request: TeamLaunchRequest,
-  members: TeamCreateRequest['members']
+  members: TeamCreateRequest['members'],
+  tasks: TeamTask[]
 ): string {
   const membersBlock = buildMembersPrompt(members);
   const userPromptBlock = request.prompt?.trim()
     ? `\nAdditional instructions from the user:\n${request.prompt.trim()}\n`
     : '';
   const taskProtocol = buildTaskStatusProtocol(request.teamName);
+  const processRegistration = buildProcessRegistrationProtocol(request.teamName);
   const languageInstruction = getAgentLanguageInstruction();
   const agentBlockPolicy = buildAgentBlockUsagePolicy();
+  const taskBoardSnapshot = buildTaskBoardSnapshot(tasks);
 
   const leadName = members.find((m) => m.role?.toLowerCase().includes('lead'))?.name || 'team-lead';
   const teamCtlOps = buildTeamCtlOpsInstructions(request.teamName, leadName);
+  const projectName = path.basename(request.cwd);
 
-  return `You are running in a non-interactive CLI session. Do not ask questions. Do everything in a single turn.
+  // Build per-member task snapshots to include in each teammate's spawn prompt
+  const memberTaskBlocks = new Map<string, string>();
+  for (const m of members) {
+    const snapshot = buildMemberTaskSnapshot(m.name, tasks);
+    if (snapshot) memberTaskBlocks.set(m.name, snapshot);
+  }
+
+  // Build the teammate spawn prompt template with member-specific task injection
+  const memberSpawnInstructions = members
+    .map((m) => {
+      const taskBlock = memberTaskBlocks.get(m.name) || '';
+      const hasTasks = Boolean(taskBlock);
+
+      return `   For "${m.name}":
+   - prompt:
+     You are ${m.name}, a ${m.role || 'team member'} on team "${request.teamName}".
+     ${languageInstruction}
+     The team has been reconnected after a restart.
+     ${hasTasks ? `You have pending tasks from the previous session.` : 'You have no pending tasks currently.'}
+
+     Your FIRST action: run this command to get your full task briefing with descriptions and comments:
+     node "$HOME/.claude/tools/teamctl.js" --team "${request.teamName}" task briefing --for "${m.name}"
+     Then resume in_progress tasks first, then pending tasks.
+     If you have no tasks, wait for new assignments.`;
+    })
+    .join('\n\n');
+
+  return `Team Start [Agent Team: "${request.teamName}" | Project: "${projectName}" | Lead: "${leadName}"]
+
+You are running in a non-interactive CLI session. Do not ask questions. Do everything in a single turn.
 You are "${leadName}", the team lead.
 
-Goal: Reconnect with existing team "${request.teamName}".
+Goal: Reconnect with existing team "${request.teamName}" and resume pending work.
 ${userPromptBlock}
 ${languageInstruction}
-
+${taskBoardSnapshot}
 Constraints:
 - Do NOT call TeamDelete under any circumstances.
 - Do NOT use TodoWrite.
@@ -467,26 +589,23 @@ Steps (execute in this exact order):
 
 1) Read team config at ~/.claude/teams/${request.teamName}/config.json — understand current team state.
 
-2) Read tasks from ~/.claude/tasks/${request.teamName}/ (JSON files) and kanban state from ~/.claude/teams/${request.teamName}/kanban-state.json — understand pending work.
-
-3) Spawn each existing member as a live teammate using the Task tool:
+2) Spawn each existing member as a live teammate using the Task tool:
    - team_name: "${request.teamName}"
    - name: the member's name
    - subagent_type: "general-purpose"
-   - prompt:
-     You are {name}, a {role} on team "${request.teamName}".
-     ${languageInstruction}
-     The team has been reconnected. Introduce yourself briefly (name and role) and confirm you are ready.
-     Then resume any pending work you own (if any) and wait for new assignments.
-     Include the following agent-only instructions verbatim in the prompt:
+   - IMPORTANT: Include each member's pending tasks in their spawn prompt so they resume work immediately.
+     Include the following agent-only instructions verbatim in each teammate's prompt:
 
 ${taskProtocol}
 
-4) If user instructions explicitly ask to create tasks OR describe substantial/assigned work that should be tracked — create tasks on the team board.
-   - Prefer fewer, broader tasks over many micro-tasks.
-   - Avoid duplicate notifications for the same assignment.
+${processRegistration}
 
-5) After all steps, output a short summary.
+   Per-member spawn instructions:
+${memberSpawnInstructions}
+
+3) After spawning all members, check the task board. If any pending tasks are unassigned, assign them to appropriate members using teamctl.
+
+4) After all steps, output a short summary of reconnected members and resumed tasks.
 
 Members:
 ${membersBlock}
@@ -605,6 +724,24 @@ export class TeamProvisioningService {
 
   getLiveLeadProcessMessages(teamName: string): InboxMessage[] {
     return [...(this.liveLeadProcessMessages.get(teamName) ?? [])];
+  }
+
+  getLeadActivityState(teamName: string): 'active' | 'idle' | 'offline' {
+    const runId = this.activeByTeam.get(teamName);
+    if (!runId) return 'offline';
+    const run = this.runs.get(runId);
+    if (!run || run.processKilled || run.cancelRequested) return 'offline';
+    return run.leadActivityState;
+  }
+
+  private setLeadActivity(run: ProvisioningRun, state: 'active' | 'idle' | 'offline'): void {
+    if (run.leadActivityState === state) return;
+    run.leadActivityState = state;
+    this.teamChangeEmitter?.({
+      type: 'lead-activity',
+      teamName: run.teamName,
+      detail: state,
+    });
   }
 
   async warmup(): Promise<void> {
@@ -765,6 +902,8 @@ export class TeamProvisioningService {
       leadRelayCapture: null,
       directReplyParts: [],
       provisioningOutputParts: [],
+      detectedSessionId: null,
+      leadActivityState: 'active',
       progress: {
         runId,
         teamName: request.teamName,
@@ -1036,6 +1175,8 @@ export class TeamProvisioningService {
       leadRelayCapture: null,
       directReplyParts: [],
       provisioningOutputParts: [],
+      detectedSessionId: null,
+      leadActivityState: 'active',
       progress: {
         runId,
         teamName: request.teamName,
@@ -1057,7 +1198,16 @@ export class TeamProvisioningService {
     this.activeByTeam.set(request.teamName, runId);
     run.onProgress(run.progress);
 
-    const prompt = buildLaunchPrompt(request, expectedMemberSpecs);
+    // Read existing tasks to include in teammate prompts for work resumption
+    const taskReader = new TeamTaskReader();
+    let existingTasks: TeamTask[] = [];
+    try {
+      existingTasks = await taskReader.getTasks(request.teamName);
+    } catch (error) {
+      logger.warn(`[${request.teamName}] Failed to read tasks for launch prompt: ${String(error)}`);
+    }
+
+    const prompt = buildLaunchPrompt(request, expectedMemberSpecs, existingTasks);
     let child: ReturnType<typeof spawn>;
     const { env: shellEnv, authSource } = await this.buildProvisioningEnv();
     if (authSource === 'none') {
@@ -1279,6 +1429,7 @@ export class TeamProvisioningService {
       },
     });
     run.child.stdin.write(payload + '\n');
+    this.setLeadActivity(run, 'active');
   }
 
   /**
@@ -1344,6 +1495,7 @@ export class TeamProvisioningService {
         `You have new inbox messages addressed to you (team lead "${leadName}").`,
         `Process them in order (oldest first).`,
         `If action is required, delegate via task creation or SendMessage, and keep responses minimal.`,
+        `IMPORTANT: Your text response here is shown to the user. Always include a brief human-readable summary (e.g. "Delegated to carol." or "No action needed."). Do NOT respond with only an agent-only block.`,
         AGENT_BLOCK_OPEN,
         `Internal note: for task assignments, prefer teamctl.js task create --notify (avoid sending a separate SendMessage for the same assignment).`,
         AGENT_BLOCK_CLOSE,
@@ -1446,14 +1598,17 @@ export class TeamProvisioningService {
         }
       }
 
-      if (replyText) {
+      // Strip agent-only blocks — lead may respond with pure coordination content
+      // that is not meant for the human user.
+      const cleanReply = replyText ? stripAgentBlocks(replyText) : null;
+      if (cleanReply) {
         this.pushLiveLeadProcessMessage(teamName, {
           from: leadName,
           to: 'user',
-          text: replyText,
+          text: cleanReply,
           timestamp: nowIso(),
           read: true,
-          summary: 'Lead reply',
+          summary: cleanReply.length > 60 ? cleanReply.slice(0, 57) + '...' : cleanReply,
           messageId: `lead-process-${runId}-${Date.now()}`,
           source: 'lead_process',
         });
@@ -1522,7 +1677,8 @@ export class TeamProvisioningService {
     const aliveTeams = this.getAliveTeams();
     if (aliveTeams.length === 0) return;
 
-    const newResolved = resolveLanguageName(newLangCode);
+    const systemLocale = getSystemLocale();
+    const newResolved = resolveLanguageName(newLangCode, systemLocale);
 
     for (const teamName of aliveTeams) {
       try {
@@ -1532,7 +1688,15 @@ export class TeamProvisioningService {
         const oldCode = config.language || 'system';
         if (oldCode === newLangCode) continue;
 
-        const oldResolved = resolveLanguageName(oldCode);
+        // Compare resolved names to avoid spurious notifications
+        // e.g. switching from 'ru' to 'system' when system locale is Russian
+        const oldResolved = resolveLanguageName(oldCode, systemLocale);
+        if (oldResolved === newResolved) {
+          // Effective language unchanged — just update stored code silently
+          await this.configReader.updateConfig(teamName, { language: newLangCode });
+          continue;
+        }
+
         const message =
           `The user has changed the preferred communication language from "${oldResolved}" to "${newResolved}". ` +
           `Please switch to ${newResolved} for all future responses and broadcast this change to all teammates ` +
@@ -1704,6 +1868,17 @@ export class TeamProvisioningService {
       }
     }
 
+    // Capture session_id from any message type (first occurrence wins)
+    if (!run.detectedSessionId) {
+      const sid = typeof msg.session_id === 'string' ? msg.session_id : undefined;
+      if (sid && sid.trim().length > 0) {
+        run.detectedSessionId = sid.trim();
+        logger.info(
+          `[${run.teamName}] Detected session ID from stream-json: ${run.detectedSessionId}`
+        );
+      }
+    }
+
     if (msg.type === 'result') {
       const subtype =
         typeof msg.subtype === 'string'
@@ -1716,17 +1891,22 @@ export class TeamProvisioningService {
             })();
       if (subtype === 'success') {
         logger.info(`[${run.teamName}] stream-json result: success — turn complete, process alive`);
+        if (run.provisioningComplete) {
+          this.setLeadActivity(run, 'idle');
+        }
         if (run.leadRelayCapture) {
           const capture = run.leadRelayCapture;
           const combined = capture.textParts.join('').trim();
           capture.resolveOnce(combined);
         } else if (run.provisioningComplete && run.directReplyParts.length > 0) {
           // Flush accumulated assistant reply from direct user→lead message
-          const replyText = run.directReplyParts.join('').trim();
+          const rawReply = run.directReplyParts.join('').trim();
           run.directReplyParts = [];
           const leadName =
             run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name ||
             'team-lead';
+          // Strip agent-only blocks — lead may include coordination content not meant for the user
+          const replyText = stripAgentBlocks(rawReply);
           if (replyText.length > 0) {
             const replyMsg: InboxMessage = {
               from: leadName,
@@ -1750,7 +1930,7 @@ export class TeamProvisioningService {
             });
           }
         }
-        if (!run.provisioningComplete) {
+        if (!run.provisioningComplete && !run.cancelRequested) {
           void this.handleProvisioningTurnComplete(run);
         }
       } else if (subtype === 'error') {
@@ -1760,7 +1940,7 @@ export class TeamProvisioningService {
         if (run.leadRelayCapture) {
           run.leadRelayCapture.rejectOnce(errorMsg);
         }
-        if (!run.provisioningComplete) {
+        if (!run.provisioningComplete && !run.cancelRequested) {
           const progress = updateProgress(
             run,
             'failed',
@@ -1776,6 +1956,9 @@ export class TeamProvisioningService {
           run.child?.stdin?.end();
           run.child?.kill();
           this.cleanupRun(run);
+        } else if (run.provisioningComplete) {
+          // Post-provisioning error: process alive, waiting for input
+          this.setLeadActivity(run, 'idle');
         }
       }
     }
@@ -1787,7 +1970,9 @@ export class TeamProvisioningService {
    * Process stays alive for subsequent tasks.
    */
   private async handleProvisioningTurnComplete(run: ProvisioningRun): Promise<void> {
+    if (run.cancelRequested) return;
     run.provisioningComplete = true;
+    this.setLeadActivity(run, 'idle');
 
     // Clear provisioning timeout — no longer needed
     if (run.timeoutHandle) {
@@ -1797,7 +1982,7 @@ export class TeamProvisioningService {
     this.stopFilesystemMonitor(run);
 
     if (run.isLaunch) {
-      await this.updateConfigPostLaunch(run.teamName, run.request.cwd);
+      await this.updateConfigPostLaunch(run.teamName, run.request.cwd, run.detectedSessionId);
       await this.cleanupPrelaunchBackup(run.teamName);
       const readyMessage = 'Team launched — process alive and ready';
       const progress = updateProgress(run, 'ready', readyMessage, {
@@ -1838,7 +2023,7 @@ export class TeamProvisioningService {
 
     // Persist teammates metadata separately from config.json.
     await this.persistMembersMeta(run.teamName, run.request);
-    await this.updateConfigPostLaunch(run.teamName, run.request.cwd);
+    await this.updateConfigPostLaunch(run.teamName, run.request.cwd, run.detectedSessionId);
 
     const progress = updateProgress(run, 'ready', 'Team provisioned — process alive and ready', {
       cliLogsTail: extractLogsTail(run.stdoutBuffer, run.stderrBuffer),
@@ -1855,6 +2040,7 @@ export class TeamProvisioningService {
    * Remove a run from tracking maps.
    */
   private cleanupRun(run: ProvisioningRun): void {
+    this.setLeadActivity(run, 'offline');
     if (run.timeoutHandle) {
       clearTimeout(run.timeoutHandle);
       run.timeoutHandle = null;
@@ -2388,23 +2574,49 @@ export class TeamProvisioningService {
    * Combines session history append and projectPath update to avoid
    * race conditions with the CLI writing to the same file.
    */
-  private async updateConfigPostLaunch(teamName: string, projectPath: string): Promise<void> {
+  private async updateConfigPostLaunch(
+    teamName: string,
+    projectPath: string,
+    detectedSessionId: string | null
+  ): Promise<void> {
     const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
     try {
       const raw = await fs.promises.readFile(configPath, 'utf8');
       const config = JSON.parse(raw) as Record<string, unknown>;
 
-      // Append session to history
-      const leadSessionId = config.leadSessionId;
-      if (typeof leadSessionId === 'string' && leadSessionId.trim().length > 0) {
-        const sessionHistory = Array.isArray(config.sessionHistory)
-          ? (config.sessionHistory as string[])
-          : [];
-        if (!sessionHistory.includes(leadSessionId)) {
-          sessionHistory.push(leadSessionId);
-          config.sessionHistory = sessionHistory;
+      const sessionHistory = Array.isArray(config.sessionHistory)
+        ? (config.sessionHistory as string[])
+        : [];
+
+      // Preserve old leadSessionId in history before overwriting
+      const oldLeadSessionId = config.leadSessionId;
+      if (typeof oldLeadSessionId === 'string' && oldLeadSessionId.trim().length > 0) {
+        if (!sessionHistory.includes(oldLeadSessionId)) {
+          sessionHistory.push(oldLeadSessionId);
         }
       }
+
+      // Update leadSessionId to the new session detected from stream-json
+      let newSessionId = detectedSessionId;
+
+      // Fallback: if stream-json didn't provide session_id, scan project dir for newest JSONL
+      if (!newSessionId && projectPath.trim()) {
+        const scannedId = await this.scanForNewestSession(projectPath, sessionHistory);
+        if (scannedId) {
+          newSessionId = scannedId;
+          logger.info(`[${teamName}] Detected new session via project dir scan: ${scannedId}`);
+        }
+      }
+
+      if (newSessionId) {
+        config.leadSessionId = newSessionId;
+        if (!sessionHistory.includes(newSessionId)) {
+          sessionHistory.push(newSessionId);
+        }
+        logger.info(`[${teamName}] Updated leadSessionId: ${newSessionId}`);
+      }
+
+      config.sessionHistory = sessionHistory;
 
       // Save current language setting
       const langCode = ConfigManager.getInstance().getConfig().general.agentLanguage || 'system';
@@ -2429,6 +2641,41 @@ export class TeamProvisioningService {
           error instanceof Error ? error.message : String(error)
         }`
       );
+    }
+  }
+
+  /**
+   * Fallback: scan the project directory for the newest JSONL file
+   * that isn't already in sessionHistory. Returns the session ID or null.
+   */
+  private async scanForNewestSession(
+    projectPath: string,
+    knownSessions: string[]
+  ): Promise<string | null> {
+    try {
+      const projectId = encodePath(projectPath);
+      const baseDir = extractBaseDir(projectId);
+      const projectDir = path.join(getProjectsBasePath(), baseDir);
+      const entries = await fs.promises.readdir(projectDir);
+
+      const knownSet = new Set(knownSessions);
+      let newest: { id: string; mtime: number } | null = null;
+
+      for (const entry of entries) {
+        if (!entry.endsWith('.jsonl')) continue;
+        const sessionId = entry.replace('.jsonl', '');
+        if (knownSet.has(sessionId)) continue;
+
+        const filePath = path.join(projectDir, entry);
+        const stat = await fs.promises.stat(filePath);
+        if (!newest || stat.mtimeMs > newest.mtime) {
+          newest = { id: sessionId, mtime: stat.mtimeMs };
+        }
+      }
+
+      return newest?.id ?? null;
+    } catch {
+      return null;
     }
   }
 
@@ -2677,7 +2924,6 @@ export class TeamProvisioningService {
       return;
     }
 
-    const memberColors = ['blue', 'green', 'yellow', 'cyan', 'magenta', 'red'] as const;
     const joinedAt = Date.now();
 
     try {
@@ -2687,7 +2933,7 @@ export class TeamProvisioningService {
           name: member.name,
           role: member.role?.trim() || undefined,
           agentType: 'general-purpose',
-          color: memberColors[index % memberColors.length],
+          color: getMemberColor(index),
           joinedAt,
         }))
       );

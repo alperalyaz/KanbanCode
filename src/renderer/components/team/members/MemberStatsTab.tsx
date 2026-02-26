@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 
 import { api } from '@renderer/api';
+import { cn } from '@renderer/lib/utils';
+import { formatRelativeTime } from '@renderer/utils/formatters';
 import { formatTokensCompact } from '@shared/utils/tokenFormatting';
 import {
   AlertCircle,
@@ -12,47 +14,59 @@ import {
   Loader2,
 } from 'lucide-react';
 
-import type { MemberFullStats } from '@shared/types';
+import type { FileLineStats, MemberFullStats } from '@shared/types';
 
 interface MemberStatsTabProps {
   teamName: string;
   memberName: string;
+  prefetchedStats?: MemberFullStats | null;
+  prefetchedLoading?: boolean;
+  prefetchedError?: string | null;
+  onFileClick?: (filePath: string) => void;
+  onShowAllFiles?: () => void;
 }
 
 export const MemberStatsTab = ({
   teamName,
   memberName,
+  prefetchedStats,
+  prefetchedLoading,
+  prefetchedError,
+  onFileClick,
+  onShowAllFiles,
 }: MemberStatsTabProps): React.JSX.Element => {
-  const [stats, setStats] = useState<MemberFullStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const usePrefetched = prefetchedStats !== undefined;
+
+  const [localStats, setLocalStats] = useState<MemberFullStats | null>(null);
+  const [localLoading, setLocalLoading] = useState(!usePrefetched);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (usePrefetched) return;
+
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+    setLocalLoading(true);
+    setLocalError(null);
 
     void (async () => {
       try {
         const result = await api.teams.getMemberStats(teamName, memberName);
-        if (!cancelled) {
-          setStats(result);
-        }
+        if (!cancelled) setLocalStats(result);
       } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'Unknown error');
-        }
+        if (!cancelled) setLocalError(e instanceof Error ? e.message : 'Unknown error');
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLocalLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [teamName, memberName]);
+  }, [teamName, memberName, usePrefetched]);
+
+  const stats = usePrefetched ? (prefetchedStats ?? null) : localStats;
+  const loading = usePrefetched ? (prefetchedLoading ?? false) : localLoading;
+  const error = usePrefetched ? (prefetchedError ?? null) : localError;
 
   if (loading) {
     return (
@@ -88,7 +102,12 @@ export const MemberStatsTab = ({
     <div className="max-h-[400px] space-y-3 overflow-y-auto pr-1">
       <SummaryCards stats={stats} totalTokens={totalTokens} totalToolCalls={totalToolCalls} />
       <ToolUsageBars toolUsage={stats.toolUsage} />
-      <FilesTouchedSection files={stats.filesTouched} />
+      <FilesTouchedSection
+        files={stats.filesTouched}
+        fileStats={stats.fileStats}
+        onFileClick={onFileClick}
+        onShowAll={onShowAllFiles}
+      />
       <StatsFooter stats={stats} />
     </div>
   );
@@ -182,30 +201,76 @@ const ToolUsageBars = ({
   );
 };
 
-const FilesTouchedSection = ({ files }: { files: string[] }): React.JSX.Element | null => {
-  const [expanded, setExpanded] = useState(false);
-  if (files.length === 0) return null;
+const TRAILING_PUNCT = ';.,';
 
-  const visibleFiles = expanded ? files : files.slice(0, 5);
-  const hiddenCount = files.length - 5;
+function isInvalidPath(path: string): boolean {
+  let trimmed = path.trim();
+  let end = trimmed.length;
+  while (end > 0 && TRAILING_PUNCT.includes(trimmed[end - 1])) {
+    end--;
+  }
+  trimmed = trimmed.slice(0, end);
+  return !trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === 'None';
+}
+
+const FilesTouchedSection = ({
+  files,
+  fileStats,
+  onFileClick,
+  onShowAll,
+}: {
+  files: string[];
+  fileStats?: Record<string, FileLineStats>;
+  onFileClick?: (filePath: string) => void;
+  onShowAll?: () => void;
+}): React.JSX.Element | null => {
+  const [expanded, setExpanded] = useState(false);
+
+  const validFiles = files.filter((f) => !isInvalidPath(f));
+  if (validFiles.length === 0) return null;
+
+  const visibleFiles = expanded ? validFiles : validFiles.slice(0, 5);
+  const hiddenCount = validFiles.length - 5;
+  const isClickable = !!onFileClick;
 
   return (
     <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-      <p className="mb-2 text-[11px] font-medium text-[var(--color-text-secondary)]">
-        Files Touched ({files.length})
-      </p>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[11px] font-medium text-[var(--color-text-secondary)]">
+          Files Touched ({validFiles.length})
+        </p>
+        {onShowAll && (
+          <button className="text-[10px] text-blue-400 hover:text-blue-300" onClick={onShowAll}>
+            View All Changes
+          </button>
+        )}
+      </div>
       <div className="space-y-0.5">
         {visibleFiles.map((filePath) => {
           const basename = filePath.split('/').pop() ?? filePath;
+          const fStats = fileStats?.[filePath];
           return (
-            <div
+            <button
               key={filePath}
-              className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-muted)]"
+              type="button"
+              className={cn(
+                'flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-[11px] text-[var(--color-text-muted)]',
+                isClickable &&
+                  'cursor-pointer hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text-secondary)]'
+              )}
               title={filePath}
+              onClick={() => onFileClick?.(filePath)}
+              disabled={!isClickable}
             >
               <FileCode size={10} className="shrink-0 opacity-50" />
-              <span className="truncate">{basename}</span>
-            </div>
+              <span className="min-w-0 truncate">{basename}</span>
+              {fStats && (fStats.added > 0 || fStats.removed > 0) && (
+                <span className="flex shrink-0 items-center gap-1 font-mono text-[10px]">
+                  {fStats.added > 0 && <span className="text-emerald-400">+{fStats.added}</span>}
+                  {fStats.removed > 0 && <span className="text-red-400">-{fStats.removed}</span>}
+                </span>
+              )}
+            </button>
           );
         })}
       </div>
@@ -231,16 +296,3 @@ const StatsFooter = ({ stats }: { stats: MemberFullStats }): React.JSX.Element =
     </div>
   );
 };
-
-function formatRelativeTime(isoString: string): string {
-  const date = new Date(isoString);
-  const now = Date.now();
-  const diffMs = now - date.getTime();
-  const diffMin = Math.floor(diffMs / 60_000);
-  const diffHours = Math.floor(diffMin / 60);
-
-  if (diffMin < 1) return 'just now';
-  if (diffMin < 60) return `${diffMin}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  return date.toLocaleDateString();
-}

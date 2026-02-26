@@ -3,6 +3,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 import {
   APP_RELAUNCH,
+  CLI_INSTALLER_GET_STATUS,
+  CLI_INSTALLER_INSTALL,
+  CLI_INSTALLER_PROGRESS,
   CONTEXT_CHANGED,
   CONTEXT_GET_ACTIVE,
   CONTEXT_LIST,
@@ -10,6 +13,20 @@ import {
   HTTP_SERVER_GET_STATUS,
   HTTP_SERVER_START,
   HTTP_SERVER_STOP,
+  REVIEW_APPLY_DECISIONS,
+  REVIEW_CHECK_CONFLICT,
+  REVIEW_CLEAR_DECISIONS,
+  REVIEW_GET_AGENT_CHANGES,
+  REVIEW_GET_CHANGE_STATS,
+  REVIEW_GET_FILE_CONTENT,
+  REVIEW_GET_GIT_FILE_LOG,
+  REVIEW_GET_TASK_CHANGES,
+  REVIEW_LOAD_DECISIONS,
+  REVIEW_PREVIEW_REJECT,
+  REVIEW_REJECT_FILE,
+  REVIEW_REJECT_HUNKS,
+  REVIEW_SAVE_DECISIONS,
+  REVIEW_SAVE_EDITED_FILE,
   SSH_CONNECT,
   SSH_DISCONNECT,
   SSH_GET_CONFIG_HOSTS,
@@ -31,12 +48,16 @@ import {
   TEAM_GET_ALL_TASKS,
   TEAM_GET_ATTACHMENTS,
   TEAM_GET_DATA,
+  TEAM_GET_DELETED_TASKS,
   TEAM_GET_LOGS_FOR_TASK,
   TEAM_GET_MEMBER_LOGS,
   TEAM_GET_MEMBER_STATS,
   TEAM_GET_PROJECT_BRANCH,
+  TEAM_KILL_PROCESS,
   TEAM_LAUNCH,
+  TEAM_LEAD_ACTIVITY,
   TEAM_LIST,
+  TEAM_PERMANENTLY_DELETE,
   TEAM_PREPARE_PROVISIONING,
   TEAM_PROCESS_ALIVE,
   TEAM_PROCESS_SEND,
@@ -44,7 +65,12 @@ import {
   TEAM_PROVISIONING_STATUS,
   TEAM_REMOVE_MEMBER,
   TEAM_REQUEST_REVIEW,
+  TEAM_RESTORE,
+  TEAM_RESTORE_TASK,
   TEAM_SEND_MESSAGE,
+  TEAM_SET_TASK_CLARIFICATION,
+  TEAM_SHOW_MESSAGE_NOTIFICATION,
+  TEAM_SOFT_DELETE_TASK,
   TEAM_START_TASK,
   TEAM_STOP,
   TEAM_UPDATE_CONFIG,
@@ -53,6 +79,12 @@ import {
   TEAM_UPDATE_MEMBER_ROLE,
   TEAM_UPDATE_TASK_OWNER,
   TEAM_UPDATE_TASK_STATUS,
+  TERMINAL_DATA,
+  TERMINAL_EXIT,
+  TERMINAL_KILL,
+  TERMINAL_RESIZE,
+  TERMINAL_SPAWN,
+  TERMINAL_WRITE,
   UPDATER_CHECK,
   UPDATER_DOWNLOAD,
   UPDATER_INSTALL,
@@ -93,28 +125,40 @@ import {
 
 import type {
   AddMemberRequest,
+  AgentChangeSet,
   AppConfig,
+  ApplyReviewRequest,
+  ApplyReviewResult,
   AttachmentFileData,
+  ChangeStats,
   ClaudeRootFolderSelection,
   ClaudeRootInfo,
+  CliInstallationStatus,
+  CliInstallerProgress,
+  ConflictCheckResult,
   ContextInfo,
   CreateTaskRequest,
   ElectronAPI,
+  FileChangeWithContent,
   GlobalTask,
   HttpServerStatus,
+  HunkDecision,
   IpcResult,
   KanbanColumnId,
   MemberFullStats,
   MemberLogSummary,
   NotificationTrigger,
+  RejectResult,
   SendMessageRequest,
   SendMessageResult,
   SessionsByIdsOptions,
   SessionsPaginationOptions,
+  SnippetDiff,
   SshConfigHostEntry,
   SshConnectionConfig,
   SshConnectionStatus,
   SshLastConnection,
+  TaskChangeSetV2,
   TaskComment,
   TeamChangeEvent,
   TeamConfig,
@@ -124,6 +168,7 @@ import type {
   TeamData,
   TeamLaunchRequest,
   TeamLaunchResponse,
+  TeamMessageNotificationData,
   TeamProvisioningPrepareResult,
   TeamProvisioningProgress,
   TeamSummary,
@@ -134,6 +179,7 @@ import type {
   UpdateKanbanPatch,
   WslClaudeRootCandidate,
 } from '@shared/types';
+import type { PtySpawnOptions } from '@shared/types/terminal';
 
 // =============================================================================
 // IPC Result Types and Helpers
@@ -401,6 +447,7 @@ const electronAPI: ElectronAPI = {
   // Shell operations
   openPath: (targetPath: string, projectRoot?: string, userSelectedFromDialog?: boolean) =>
     ipcRenderer.invoke('shell:openPath', targetPath, projectRoot, userSelectedFromDialog),
+  showInFolder: (filePath: string) => ipcRenderer.invoke('shell:showInFolder', filePath),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
 
   // Window controls (when title bar is hidden, e.g. Windows / Linux)
@@ -538,6 +585,12 @@ const electronAPI: ElectronAPI = {
     deleteTeam: async (teamName: string) => {
       return invokeIpcWithResult<void>(TEAM_DELETE_TEAM, teamName);
     },
+    restoreTeam: async (teamName: string) => {
+      return invokeIpcWithResult<void>(TEAM_RESTORE, teamName);
+    },
+    permanentlyDeleteTeam: async (teamName: string) => {
+      return invokeIpcWithResult<void>(TEAM_PERMANENTLY_DELETE, teamName);
+    },
     prepareProvisioning: async (cwd?: string) => {
       return invokeIpcWithResult<TeamProvisioningPrepareResult>(TEAM_PREPARE_PROVISIONING, cwd);
     },
@@ -643,6 +696,32 @@ const electronAPI: ElectronAPI = {
     getAttachments: async (teamName: string, messageId: string) => {
       return invokeIpcWithResult<AttachmentFileData[]>(TEAM_GET_ATTACHMENTS, teamName, messageId);
     },
+    killProcess: async (teamName: string, pid: number) => {
+      return invokeIpcWithResult<void>(TEAM_KILL_PROCESS, teamName, pid);
+    },
+    getLeadActivity: async (teamName: string) => {
+      const result = await invokeIpcWithResult<string>(TEAM_LEAD_ACTIVITY, teamName);
+      return result as 'active' | 'idle' | 'offline';
+    },
+    softDeleteTask: async (teamName: string, taskId: string) => {
+      return invokeIpcWithResult<void>(TEAM_SOFT_DELETE_TASK, teamName, taskId);
+    },
+    restoreTask: async (teamName: string, taskId: string) => {
+      return invokeIpcWithResult<void>(TEAM_RESTORE_TASK, teamName, taskId);
+    },
+    getDeletedTasks: async (teamName: string) => {
+      return invokeIpcWithResult<TeamTask[]>(TEAM_GET_DELETED_TASKS, teamName);
+    },
+    setTaskClarification: async (
+      teamName: string,
+      taskId: string,
+      value: 'lead' | 'user' | null
+    ) => {
+      return invokeIpcWithResult<void>(TEAM_SET_TASK_CLARIFICATION, teamName, taskId, value);
+    },
+    showMessageNotification: async (data: TeamMessageNotificationData) => {
+      return invokeIpcWithResult<void>(TEAM_SHOW_MESSAGE_NOTIFICATION, data);
+    },
     onTeamChange: (callback: (event: unknown, data: TeamChangeEvent) => void): (() => void) => {
       ipcRenderer.on(
         TEAM_CHANGE,
@@ -666,6 +745,177 @@ const electronAPI: ElectronAPI = {
         ipcRenderer.removeListener(
           TEAM_PROVISIONING_PROGRESS,
           callback as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
+        );
+      };
+    },
+  },
+
+  // ===== Review API =====
+  review: {
+    getAgentChanges: async (teamName: string, memberName: string) => {
+      return invokeIpcWithResult<AgentChangeSet>(REVIEW_GET_AGENT_CHANGES, teamName, memberName);
+    },
+    getTaskChanges: async (teamName: string, taskId: string) => {
+      return invokeIpcWithResult<TaskChangeSetV2>(REVIEW_GET_TASK_CHANGES, teamName, taskId);
+    },
+    getChangeStats: async (teamName: string, memberName: string) => {
+      return invokeIpcWithResult<ChangeStats>(REVIEW_GET_CHANGE_STATS, teamName, memberName);
+    },
+    getFileContent: async (
+      teamName: string,
+      memberName: string | undefined,
+      filePath: string,
+      snippets: SnippetDiff[] = []
+    ) => {
+      return invokeIpcWithResult<FileChangeWithContent>(
+        REVIEW_GET_FILE_CONTENT,
+        teamName,
+        memberName ?? '',
+        filePath,
+        snippets
+      );
+    },
+    applyDecisions: async (request: ApplyReviewRequest) => {
+      return invokeIpcWithResult<ApplyReviewResult>(REVIEW_APPLY_DECISIONS, request);
+    },
+    // Phase 2
+    checkConflict: async (filePath: string, expectedModified: string) => {
+      return invokeIpcWithResult<ConflictCheckResult>(
+        REVIEW_CHECK_CONFLICT,
+        filePath,
+        expectedModified
+      );
+    },
+    rejectHunks: async (
+      filePath: string,
+      original: string,
+      modified: string,
+      hunkIndices: number[],
+      snippets: SnippetDiff[]
+    ) => {
+      return invokeIpcWithResult<RejectResult>(
+        REVIEW_REJECT_HUNKS,
+        filePath,
+        original,
+        modified,
+        hunkIndices,
+        snippets
+      );
+    },
+    rejectFile: async (filePath: string, original: string, modified: string) => {
+      return invokeIpcWithResult<RejectResult>(REVIEW_REJECT_FILE, filePath, original, modified);
+    },
+    previewReject: async (
+      filePath: string,
+      original: string,
+      modified: string,
+      hunkIndices: number[],
+      snippets: SnippetDiff[]
+    ) => {
+      return invokeIpcWithResult<{ preview: string; hasConflicts: boolean }>(
+        REVIEW_PREVIEW_REJECT,
+        filePath,
+        original,
+        modified,
+        hunkIndices,
+        snippets
+      );
+    },
+    // Editable diff
+    saveEditedFile: async (filePath: string, content: string) => {
+      return invokeIpcWithResult<{ success: boolean }>(REVIEW_SAVE_EDITED_FILE, filePath, content);
+    },
+    // Decision persistence
+    loadDecisions: async (teamName: string, scopeKey: string) => {
+      return invokeIpcWithResult<{
+        hunkDecisions: Record<string, HunkDecision>;
+        fileDecisions: Record<string, HunkDecision>;
+      } | null>(REVIEW_LOAD_DECISIONS, teamName, scopeKey);
+    },
+    saveDecisions: async (
+      teamName: string,
+      scopeKey: string,
+      hunkDecisions: Record<string, HunkDecision>,
+      fileDecisions: Record<string, HunkDecision>
+    ) => {
+      return invokeIpcWithResult<void>(
+        REVIEW_SAVE_DECISIONS,
+        teamName,
+        scopeKey,
+        hunkDecisions,
+        fileDecisions
+      );
+    },
+    clearDecisions: async (teamName: string, scopeKey: string) => {
+      return invokeIpcWithResult<void>(REVIEW_CLEAR_DECISIONS, teamName, scopeKey);
+    },
+    onCmdN: (callback: () => void): (() => void) => {
+      const handler = (): void => callback();
+      ipcRenderer.on('review:cmdN', handler);
+      return (): void => {
+        ipcRenderer.removeListener('review:cmdN', handler);
+      };
+    },
+    // Phase 4
+    getGitFileLog: async (projectPath: string, filePath: string) => {
+      return invokeIpcWithResult<{ hash: string; timestamp: string; message: string }[]>(
+        REVIEW_GET_GIT_FILE_LOG,
+        projectPath,
+        filePath
+      );
+    },
+  },
+
+  // ===== CLI Installer API =====
+  cliInstaller: {
+    getStatus: async (): Promise<CliInstallationStatus> => {
+      return invokeIpcWithResult<CliInstallationStatus>(CLI_INSTALLER_GET_STATUS);
+    },
+    install: async (): Promise<void> => {
+      return invokeIpcWithResult<void>(CLI_INSTALLER_INSTALL);
+    },
+    onProgress: (callback: (event: unknown, data: CliInstallerProgress) => void): (() => void) => {
+      ipcRenderer.on(
+        CLI_INSTALLER_PROGRESS,
+        callback as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
+      );
+      return (): void => {
+        ipcRenderer.removeListener(
+          CLI_INSTALLER_PROGRESS,
+          callback as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
+        );
+      };
+    },
+  },
+
+  // ===== Terminal API =====
+  terminal: {
+    spawn: (options?: PtySpawnOptions) => invokeIpcWithResult<string>(TERMINAL_SPAWN, options),
+    write: (ptyId: string, data: string) => ipcRenderer.send(TERMINAL_WRITE, ptyId, data),
+    resize: (ptyId: string, cols: number, rows: number) =>
+      ipcRenderer.send(TERMINAL_RESIZE, ptyId, cols, rows),
+    kill: (ptyId: string) => ipcRenderer.send(TERMINAL_KILL, ptyId),
+    onData: (cb: (event: unknown, ptyId: string, data: string) => void): (() => void) => {
+      ipcRenderer.on(
+        TERMINAL_DATA,
+        cb as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
+      );
+      return (): void => {
+        ipcRenderer.removeListener(
+          TERMINAL_DATA,
+          cb as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
+        );
+      };
+    },
+    onExit: (cb: (event: unknown, ptyId: string, exitCode: number) => void): (() => void) => {
+      ipcRenderer.on(
+        TERMINAL_EXIT,
+        cb as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
+      );
+      return (): void => {
+        ipcRenderer.removeListener(
+          TERMINAL_EXIT,
+          cb as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
         );
       };
     },

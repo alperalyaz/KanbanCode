@@ -26,3 +26,12 @@ export type * from './ipc';
 
 // Re-export Team Management types
 export type * from './team';
+
+// Re-export Review types (Phase 1)
+export type * from './review';
+
+// Re-export CLI Installer types
+export type * from './cliInstaller';
+
+// Re-export Terminal types
+export type * from './terminal';

@@ -6,7 +6,7 @@ import * as path from 'path';
 import { atomicWriteAsync } from './atomicWrite';
 
 const TOOL_FILE_NAME = 'teamctl.js';
-const TOOL_VERSION = 5;
+const TOOL_VERSION = 10;
 
 function buildTeamCtlScript(): string {
   const script = String.raw`#!/usr/bin/env node
@@ -166,7 +166,17 @@ function getPaths(flags, teamName) {
   const teamDir = path.join(claudeDir, 'teams', teamName);
   const tasksDir = path.join(claudeDir, 'tasks', teamName);
   const kanbanPath = path.join(teamDir, 'kanban-state.json');
-  return { claudeDir, teamDir, tasksDir, kanbanPath };
+  const processesPath = path.join(teamDir, 'processes.json');
+  return { claudeDir, teamDir, tasksDir, kanbanPath, processesPath };
+}
+
+function inferLeadName(paths) {
+  const config = readJson(path.join(paths.teamDir, 'config.json'), null);
+  if (!config || !Array.isArray(config.members)) return 'team-lead';
+  const lead = config.members.find(function (m) {
+    return m.role && String(m.role).toLowerCase().includes('lead');
+  });
+  return lead ? String(lead.name) : (config.members[0] ? String(config.members[0].name) : 'team-lead');
 }
 
 function readTask(paths, taskId) {
@@ -191,29 +201,71 @@ function setTaskStatus(paths, taskId, status) {
   writeTask(taskPath, task);
 }
 
+function setTaskOwner(paths, taskId, owner) {
+  const { taskPath, task } = readTask(paths, taskId);
+  if (owner) {
+    task.owner = owner;
+  } else {
+    delete task.owner;
+  }
+  writeTask(taskPath, task);
+  return task;
+}
+
 function addTaskComment(paths, taskId, flags) {
   var text = typeof flags.text === 'string' ? flags.text.trim() : '';
   if (!text) die('Missing --text');
   var from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : 'agent';
 
+  var ref;
+  var task;
+  var taskPath;
+  var commentId;
+  var comment;
+  var existing;
+  var lastErr;
+  for (var attempt = 0; attempt < 8; attempt++) {
+    try {
+      ref = readTask(paths, taskId);
+      task = ref.task;
+      taskPath = ref.taskPath;
+
+      if (task.needsClarification === 'lead' && from !== task.owner) {
+        delete task.needsClarification;
+      }
+
+      existing = Array.isArray(task.comments) ? task.comments : [];
+      commentId = crypto.randomUUID
+        ? crypto.randomUUID()
+        : String(Date.now()) + '-' + String(Math.random());
+      comment = {
+        id: commentId,
+        author: from,
+        text: text,
+        createdAt: nowIso(),
+      };
+      task.comments = existing.concat([comment]);
+      writeTask(taskPath, task);
+
+      return { commentId: commentId, taskId: String(taskId), subject: task.subject, owner: task.owner };
+    } catch (e) {
+      lastErr = e;
+      if (attempt === 7) throw e;
+    }
+  }
+  throw lastErr;
+}
+
+function setNeedsClarification(paths, taskId, value) {
+  var allowed = { lead: true, user: true, clear: true };
+  if (!allowed[value]) die('Invalid value: ' + value + '. Use: lead, user, clear');
   var ref = readTask(paths, taskId);
-  var task = ref.task;
-  var taskPath = ref.taskPath;
-
-  var existing = Array.isArray(task.comments) ? task.comments : [];
-  var commentId = crypto.randomUUID
-    ? crypto.randomUUID()
-    : String(Date.now()) + '-' + String(Math.random());
-  var comment = {
-    id: commentId,
-    author: from,
-    text: text,
-    createdAt: nowIso(),
-  };
-  task.comments = existing.concat([comment]);
-  writeTask(taskPath, task);
-
-  return { commentId: commentId, taskId: String(taskId), subject: task.subject, owner: task.owner };
+  if (value === 'clear') {
+    delete ref.task.needsClarification;
+  } else {
+    ref.task.needsClarification = value;
+  }
+  writeTask(ref.taskPath, ref.task);
 }
 
 function listTaskIds(tasksDir) {
@@ -271,25 +323,36 @@ function createTask(paths, flags) {
         : undefined;
 
   ensureDir(paths.tasksDir);
-  const nextId = getNextTaskId(paths);
-  const taskPath = path.join(paths.tasksDir, String(nextId) + '.json');
-  if (fs.existsSync(taskPath)) die('Task already exists: ' + String(nextId));
-
   const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : undefined;
-
-  const task = {
-    id: nextId,
-    subject,
-    description: String(description || subject),
-    activeForm: activeForm ? String(activeForm) : undefined,
-    owner,
-    createdBy: from,
-    status,
-    blocks: [],
-    blockedBy: [],
-  };
-
-  writeTask(taskPath, task);
+  let nextId;
+  let task;
+  let taskPath;
+  while (true) {
+    nextId = getNextTaskId(paths);
+    taskPath = path.join(paths.tasksDir, String(nextId) + '.json');
+    task = {
+      id: nextId,
+      subject,
+      description: String(description || subject),
+      activeForm: activeForm ? String(activeForm) : undefined,
+      owner,
+      createdBy: from,
+      status,
+      blocks: [],
+      blockedBy: [],
+    };
+    try {
+      const fd = fs.openSync(taskPath, 'wx');
+      fs.closeSync(fd);
+      atomicWrite(taskPath, JSON.stringify(task, null, 2));
+      const verify = readJson(taskPath, null);
+      if (!verify) die('Task write verification failed');
+      break;
+    } catch (e) {
+      if (e && e.code === 'EEXIST') continue;
+      throw e;
+    }
+  }
   updateHighwatermark(paths, nextId);
   return task;
 }
@@ -340,7 +403,7 @@ function sendInboxMessage(paths, teamName, flags) {
   const text = typeof flags.text === 'string' ? flags.text : '';
   if (!text) die('Missing --text');
   const summary = typeof flags.summary === 'string' ? flags.summary : undefined;
-  const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : 'user';
+  const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : inferLeadName(paths);
 
   const inboxPath = path.join(paths.teamDir, 'inboxes', String(to) + '.json');
   ensureDir(path.dirname(inboxPath));
@@ -374,7 +437,7 @@ function reviewApprove(paths, teamName, taskId, flags) {
   if (!notify) return;
   const { task } = readTask(paths, taskId);
   if (!task.owner) return;
-  const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : 'user';
+  const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : inferLeadName(paths);
   const note = typeof flags.note === 'string' ? flags.note.trim() : '';
   const text = note
     ? 'Task #' + String(taskId) + ' approved.\n\n' + note
@@ -396,7 +459,7 @@ function reviewRequestChanges(paths, teamName, taskId, flags) {
   task.status = 'in_progress';
   writeTask(taskPath, task);
 
-  const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : 'user';
+  const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : inferLeadName(paths);
   const text =
     'Task #' +
     String(taskId) +
@@ -412,6 +475,210 @@ function reviewRequestChanges(paths, teamName, taskId, flags) {
   });
 }
 
+function readProcessesSafe(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    if (err && err.code === 'EPERM') return true;
+    return false;
+  }
+}
+
+function processRegister(paths, flags) {
+  const pid = Number(flags.pid);
+  if (!Number.isInteger(pid) || pid <= 0) die('Invalid --pid (must be > 0)');
+  const label = typeof flags.label === 'string' ? flags.label.trim() : '';
+  if (!label) die('Missing --label');
+
+  const rawPort = flags.port != null ? Number(flags.port) : undefined;
+  const port = rawPort != null && Number.isInteger(rawPort) && rawPort >= 1 && rawPort <= 65535 ? rawPort : undefined;
+  const url = typeof flags.url === 'string' && flags.url.trim() ? flags.url.trim() : undefined;
+
+  const claudeProcessId = typeof flags['claude-process-id'] === 'string' ? flags['claude-process-id'].trim() : undefined;
+  const from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : undefined;
+  const command = typeof flags.command === 'string' ? flags.command.trim() : undefined;
+
+  const list = readProcessesSafe(paths.processesPath);
+  const existingIdx = list.findIndex(function (p) { return p.pid === pid; });
+
+  const entry = {
+    id: existingIdx >= 0 ? list[existingIdx].id : (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + String(Math.random())),
+    port: port,
+    url: url,
+    label: label,
+    pid: pid,
+    claudeProcessId: claudeProcessId,
+    registeredBy: from,
+    command: command,
+    registeredAt: existingIdx >= 0 ? list[existingIdx].registeredAt : nowIso(),
+  };
+
+  if (existingIdx >= 0) {
+    list[existingIdx] = entry;
+  } else {
+    list.push(entry);
+  }
+  atomicWrite(paths.processesPath, JSON.stringify(list, null, 2));
+  var portStr = port ? ' port=' + String(port) : '';
+  process.stdout.write('OK process registered pid=' + String(pid) + portStr + '\n');
+}
+
+function processUnregister(paths, flags) {
+  const list = readProcessesSafe(paths.processesPath);
+  const pid = flags.pid ? Number(flags.pid) : undefined;
+  const id = typeof flags.id === 'string' ? flags.id.trim() : undefined;
+  if (!pid && !id) die('Missing --pid or --id');
+
+  const idx = list.findIndex(function (p) {
+    if (pid) return p.pid === pid;
+    return p.id === id;
+  });
+  if (idx < 0) die('Process not found');
+  const removed = list.splice(idx, 1)[0];
+  atomicWrite(paths.processesPath, JSON.stringify(list, null, 2));
+  process.stdout.write('OK process unregistered pid=' + String(removed.pid) + '\n');
+}
+
+function processList(paths) {
+  const list = readProcessesSafe(paths.processesPath);
+  const result = list.map(function (p) {
+    return Object.assign({}, p, { alive: isProcessAlive(p.pid) });
+  });
+  process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+}
+
+function taskBriefing(paths, teamName, flags) {
+  var forMember = typeof flags['for'] === 'string' ? flags['for'].trim() : '';
+  if (!forMember) die('Missing --for <member-name>');
+
+  var kanban = readKanbanState(paths, teamName);
+  var ids = listTaskIds(paths.tasksDir);
+
+  var allTasks = [];
+  for (var i = 0; i < ids.length; i++) {
+    try {
+      var taskPath = path.join(paths.tasksDir, ids[i] + '.json');
+      var t = readJson(taskPath, null);
+      if (t && !String(t.id).startsWith('_internal') && !(t.metadata && t.metadata._internal === true)) {
+        try { t._mtime = fs.statSync(taskPath).mtime.toISOString(); } catch (_e) { t._mtime = ''; }
+        allTasks.push(t);
+      }
+    } catch (e) { /* skip unreadable */ }
+  }
+
+  function getEffectiveColumn(task) {
+    var ks = kanban.tasks[String(task.id)];
+    if (ks) return ks.column;
+    if (task.status === 'pending') return 'todo';
+    if (task.status === 'in_progress') return 'in_progress';
+    if (task.status === 'completed') return 'done';
+    return task.status;
+  }
+
+  var relevant = allTasks.filter(function (t) {
+    var col = getEffectiveColumn(t);
+    return col !== 'approved' && t.status !== 'deleted';
+  });
+
+  var myTasks = { todo: [], in_progress: [], done: [], review: [] };
+  var otherTasks = { todo: [], in_progress: [], done: [], review: [] };
+
+  for (var j = 0; j < relevant.length; j++) {
+    var task = relevant[j];
+    var col = getEffectiveColumn(task);
+    var bucket = (task.owner === forMember) ? myTasks : otherTasks;
+    if (col === 'todo') bucket.todo.push(task);
+    else if (col === 'in_progress') bucket.in_progress.push(task);
+    else if (col === 'done') bucket.done.push(task);
+    else if (col === 'review') bucket.review.push(task);
+  }
+
+  function sortByMtime(arr) {
+    return arr.sort(function (a, b) {
+      var da = a._mtime || '';
+      var db = b._mtime || '';
+      return da < db ? 1 : da > db ? -1 : 0;
+    });
+  }
+  myTasks.done = sortByMtime(myTasks.done).slice(0, 15);
+  otherTasks.done = sortByMtime(otherTasks.done).slice(0, 15);
+
+  var lines = [];
+  lines.push('=== Task Briefing for ' + forMember + ' ===');
+  lines.push('');
+
+  function formatTask(t) {
+    var parts = [];
+    parts.push('#' + t.id + ' [' + getEffectiveColumn(t).toUpperCase() + '] ' + t.subject);
+    if (t.owner) parts.push('  Owner: ' + t.owner);
+    if (t.description && t.description !== t.subject) {
+      parts.push('  Description: ' + t.description.slice(0, 500));
+    }
+    if (t.blockedBy && t.blockedBy.length > 0) {
+      parts.push('  Blocked by: ' + t.blockedBy.map(function(id) { return '#' + id; }).join(', '));
+    }
+    if (t.related && t.related.length > 0) {
+      parts.push('  Related: ' + t.related.map(function(id) { return '#' + id; }).join(', '));
+    }
+    if (t.needsClarification) {
+      parts.push('  *** NEEDS CLARIFICATION: from ' + t.needsClarification.toUpperCase() + ' ***');
+    }
+    if (Array.isArray(t.comments) && t.comments.length > 0) {
+      parts.push('  Comments (' + t.comments.length + '):');
+      for (var c = 0; c < t.comments.length; c++) {
+        var cm = t.comments[c];
+        var ts = cm.createdAt ? ' (' + cm.createdAt + ')' : '';
+        parts.push('    [' + (cm.author || '?') + ts + '] ' + (cm.text || '').slice(0, 300));
+      }
+    }
+    return parts.join('\n');
+  }
+
+  function renderSection(label, tasks) {
+    if (tasks.length === 0) return;
+    lines.push('--- ' + label + ' (' + tasks.length + ') ---');
+    for (var k = 0; k < tasks.length; k++) {
+      lines.push(formatTask(tasks[k]));
+      lines.push('');
+    }
+  }
+
+  lines.push('== YOUR TASKS ==');
+  renderSection('IN PROGRESS', myTasks.in_progress);
+  renderSection('TODO', myTasks.todo);
+  renderSection('REVIEW', myTasks.review);
+  renderSection('DONE (recent)', myTasks.done);
+
+  if (myTasks.in_progress.length + myTasks.todo.length + myTasks.review.length + myTasks.done.length === 0) {
+    lines.push('(no tasks assigned to you)');
+    lines.push('');
+  }
+
+  lines.push('== TEAM BOARD (others) ==');
+  renderSection('IN PROGRESS', otherTasks.in_progress);
+  renderSection('TODO', otherTasks.todo);
+  renderSection('REVIEW', otherTasks.review);
+  renderSection('DONE (recent)', otherTasks.done);
+
+  if (otherTasks.in_progress.length + otherTasks.todo.length + otherTasks.review.length + otherTasks.done.length === 0) {
+    lines.push('(no other tasks on the board)');
+    lines.push('');
+  }
+
+  process.stdout.write(lines.join('\n') + '\n');
+}
+
 function printHelp() {
   const inferred = inferTeamNameFromScriptPath();
   const teamHint = inferred ? ' (inferred team: ' + String(inferred) + ')' : '';
@@ -424,12 +691,19 @@ function printHelp() {
       '  node teamctl.js task complete <id> [--team <team>]',
       '  node teamctl.js task start <id> [--team <team>]',
       '  node teamctl.js task create --subject "..." [--description "..."] [--prompt "..."] [--owner "member"] [--status pending|in_progress|completed|deleted] [--notify --from "member"] [--team <team>]',
+      '  node teamctl.js task set-owner <id> <member|clear> [--notify --from "member"] [--team <team>]',
       '  node teamctl.js task comment <id> --text "..." [--from "member"] [--team <team>]',
+      '  node teamctl.js task set-clarification <id> <lead|user|clear> [--from "member"] [--team <team>]',
+      '  node teamctl.js task briefing --for <member-name> [--team <team>]',
       '  node teamctl.js kanban set-column <id> <review|approved> [--team <team>]',
       '  node teamctl.js kanban clear <id> [--team <team>]',
       '  node teamctl.js review approve <id> [--notify-owner --from "member" --note "..."] [--team <team>]',
       '  node teamctl.js review request-changes <id> --comment "..." [--from "member"] [--team <team>]',
       '  node teamctl.js message send --to "member" --text "..." [--summary "..."] [--from "member"] [--team <team>]',
+      '  node teamctl.js process register --pid <pid> --label <label> [--port <port>] [--url <url>] [--claude-process-id <id>] [--from <member>] [--command <cmd>] [--team <team>]',
+      '  node teamctl.js process unregister --pid <pid> [--team <team>]',
+      '  node teamctl.js process unregister --id <uuid> [--team <team>]',
+      '  node teamctl.js process list [--team <team>]',
       '',
       'Options:',
       '  --team <name>           Team name (if not under ~/.claude/teams/<team>/tools)',
@@ -481,7 +755,7 @@ async function main() {
       const notify = args.flags.notify === true || args.flags['notify-owner'] === true;
       if (notify && task.owner) {
         const from =
-          typeof args.flags.from === 'string' && args.flags.from.trim() ? args.flags.from.trim() : 'user';
+          typeof args.flags.from === 'string' && args.flags.from.trim() ? args.flags.from.trim() : inferLeadName(paths);
         const parts = ['New task assigned to you: #' + String(task.id) + ' "' + String(task.subject) + '".'];
         const rawDesc = typeof args.flags.description === 'string' ? args.flags.description.trim()
           : typeof args.flags.desc === 'string' ? args.flags.desc.trim() : '';
@@ -544,6 +818,49 @@ async function main() {
         } catch (e) { /* best-effort */ }
       }
       process.stdout.write('OK comment added to task #' + String(id) + '\n');
+      return;
+    }
+    if (action === 'set-clarification') {
+      const id = rest[0] || args.flags.id;
+      const val = rest[1] || args.flags.value;
+      if (!id || !val) die('Usage: task set-clarification <id> <lead|user|clear>');
+      setNeedsClarification(paths, String(id), String(val));
+      process.stdout.write('OK task #' + String(id) + ' needsClarification=' + (val === 'clear' ? 'cleared' : String(val)) + '\n');
+      return;
+    }
+    if (action === 'set-owner' || action === 'assign') {
+      const id = rest[0] || args.flags.id;
+      const owner = rest[1] || args.flags.owner;
+      if (!id) die('Usage: task set-owner <id> <member|clear>');
+      if (!owner) die('Usage: task set-owner <id> <member|clear>');
+      const effectiveOwner = owner === 'clear' || owner === 'none' ? null : String(owner);
+      const task = setTaskOwner(paths, String(id), effectiveOwner);
+      process.stdout.write('OK task #' + String(id) + ' owner=' + (effectiveOwner || 'cleared') + '\n');
+      const notify = args.flags.notify === true;
+      if (notify && effectiveOwner) {
+        const from = typeof args.flags.from === 'string' && args.flags.from.trim() ? args.flags.from.trim() : inferLeadName(paths);
+        const parts = ['Task assigned to you: #' + String(task.id) + ' "' + String(task.subject) + '".'];
+        if (task.description && task.description !== task.subject) {
+          parts.push('\nDescription:\n' + String(task.description).slice(0, 500));
+        }
+        parts.push(
+          '\n' + ${JSON.stringify(AGENT_BLOCK_OPEN)},
+          'Update task status using:',
+          'node "$HOME/.claude/tools/${TOOL_FILE_NAME}" --team ' + String(teamName) + ' task start ' + String(task.id),
+          'node "$HOME/.claude/tools/${TOOL_FILE_NAME}" --team ' + String(teamName) + ' task complete ' + String(task.id),
+          ${JSON.stringify(AGENT_BLOCK_CLOSE)}
+        );
+        sendInboxMessage(paths, teamName, {
+          to: effectiveOwner,
+          text: parts.join('\n'),
+          summary: 'Task #' + String(task.id) + ' assigned',
+          from,
+        });
+      }
+      return;
+    }
+    if (action === 'briefing') {
+      taskBriefing(paths, teamName, args.flags);
       return;
     }
     die('Unknown task action: ' + String(action));
@@ -616,6 +933,22 @@ async function main() {
       return;
     }
     die('Unknown message action: ' + String(action));
+  }
+
+  if (domain === 'process') {
+    if (action === 'register') {
+      processRegister(paths, args.flags);
+      return;
+    }
+    if (action === 'unregister' || action === 'remove') {
+      processUnregister(paths, args.flags);
+      return;
+    }
+    if (action === 'list') {
+      processList(paths);
+      return;
+    }
+    die('Unknown process action: ' + String(action));
   }
 
   die('Unknown domain: ' + String(domain));

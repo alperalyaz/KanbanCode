@@ -9,6 +9,10 @@
  * - Manage application lifecycle
  */
 
+import { ChangeExtractorService } from '@main/services/team/ChangeExtractorService';
+import { FileContentResolver } from '@main/services/team/FileContentResolver';
+import { GitDiffFallback } from '@main/services/team/GitDiffFallback';
+import { ReviewApplierService } from '@main/services/team/ReviewApplierService';
 import {
   CONTEXT_CHANGED,
   SSH_STATUS,
@@ -29,16 +33,21 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 
 import { initializeIpcHandlers, removeIpcHandlers } from './ipc/handlers';
+import { showTeamNativeNotification } from './ipc/teams';
 import { HttpServer } from './services/infrastructure/HttpServer';
+import { TeamInboxReader } from './services/team/TeamInboxReader';
 import { getProjectsBasePath, getTodosBasePath } from './utils/pathDecoder';
 import {
+  CliInstallerService,
   configManager,
   LocalFileSystemProvider,
   MemberStatsComputer,
   NotificationManager,
+  PtyTerminalService,
   ServiceContext,
   ServiceContextRegistry,
   SshConnectionManager,
+  TaskBoundaryParser,
   TeamAgentToolsInstaller,
   TeamDataService,
   TeamMemberLogsFinder,
@@ -46,7 +55,81 @@ import {
   UpdaterService,
 } from './services';
 
+import type { TeamChangeEvent } from '@shared/types';
+
 const logger = createLogger('App');
+
+// --- Team message notification tracking ---
+const teamInboxReader = new TeamInboxReader();
+/** Track last-seen message count per inbox file to detect new messages. */
+const inboxMessageCounts = new Map<string, number>();
+/** Debounce per-inbox to avoid flooding during batch writes. */
+const inboxNotifyTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const INBOX_NOTIFY_DEBOUNCE_MS = 500;
+/** Messages sent from our UI (user_sent) — suppress notifications for these. */
+const suppressedSources = new Set(['user_sent']);
+
+/** Resolve human-friendly team display name, falling back to raw teamName. */
+async function resolveTeamDisplayName(teamName: string): Promise<string> {
+  try {
+    if (teamDataService) {
+      const summary = await teamDataService.listTeams();
+      const team = summary.find((t) => t.teamName === teamName);
+      if (team?.displayName) return team.displayName;
+    }
+  } catch {
+    // fallback
+  }
+  return teamName;
+}
+
+async function notifyNewInboxMessages(teamName: string, detail: string): Promise<void> {
+  // detail is like "inboxes/carol.json" — extract member name
+  const match = /^inboxes\/(.+)\.json$/.exec(detail);
+  if (!match) return;
+  const memberName = match[1];
+  const key = `${teamName}:${memberName}`;
+
+  try {
+    const messages = await teamInboxReader.getMessagesFor(teamName, memberName);
+    const prevCount = inboxMessageCounts.get(key) ?? 0;
+
+    if (prevCount === 0) {
+      // First load — seed count, don't notify
+      inboxMessageCounts.set(key, messages.length);
+      return;
+    }
+
+    if (messages.length <= prevCount) {
+      inboxMessageCounts.set(key, messages.length);
+      return;
+    }
+
+    // Messages are sorted newest-first, so new ones are at the beginning
+    const newMessages = messages.slice(0, messages.length - prevCount);
+    inboxMessageCounts.set(key, messages.length);
+
+    const teamDisplayName = await resolveTeamDisplayName(teamName);
+
+    for (const msg of newMessages) {
+      // Only notify for messages addressed to the human user
+      if (msg.to !== 'user') continue;
+      // Skip messages sent from our own UI
+      if (msg.source && suppressedSources.has(msg.source)) continue;
+
+      const fromLabel = msg.from || 'Unknown';
+      const summary = msg.summary || msg.text.slice(0, 60);
+
+      showTeamNativeNotification({
+        title: teamDisplayName,
+        subtitle: `${fromLabel}: ${summary}`,
+        body: msg.text,
+      });
+    }
+  } catch (error) {
+    logger.warn(`Failed to check inbox messages for ${key}:`, error);
+  }
+}
 
 // Window icon path for non-mac platforms.
 const getWindowIconPath = (): string | undefined => {
@@ -87,6 +170,8 @@ let updaterService: UpdaterService;
 let sshConnectionManager: SshConnectionManager;
 let teamDataService: TeamDataService;
 let teamProvisioningService: TeamProvisioningService;
+let cliInstallerService: CliInstallerService;
+let ptyTerminalService: PtyTerminalService;
 let httpServer: HttpServer;
 
 // File watcher event cleanup functions
@@ -154,15 +239,54 @@ function wireFileWatcherEvents(context: ServiceContext): void {
     }
     httpServer?.broadcast('team-change', event);
 
-    // Auto-relay direct messages to live team lead process (no UI dependency).
+    // Process inbox change events — relay to lead + native OS notifications.
     try {
       if (!event || typeof event !== 'object') return;
-      const row = event as { type?: unknown; teamName?: unknown };
+      const row = event as { type?: unknown; teamName?: unknown; detail?: unknown };
       if (row.type !== 'inbox') return;
       if (typeof row.teamName !== 'string' || row.teamName.trim().length === 0) return;
       const teamName = row.teamName.trim();
-      if (!teamProvisioningService.isTeamAlive(teamName)) return;
-      void teamProvisioningService.relayLeadInboxMessages(teamName).catch(() => undefined);
+      const detail = typeof row.detail === 'string' ? row.detail : '';
+
+      // Auto-relay direct messages to live team lead process (no UI dependency).
+      if (teamProvisioningService.isTeamAlive(teamName)) {
+        void teamProvisioningService.relayLeadInboxMessages(teamName).catch(() => undefined);
+      }
+
+      // Show native OS notification for new inbox messages (debounced per inbox).
+      if (detail.startsWith('inboxes/')) {
+        const timerKey = `${teamName}:${detail}`;
+        const existing = inboxNotifyTimers.get(timerKey);
+        if (existing) clearTimeout(existing);
+        inboxNotifyTimers.set(
+          timerKey,
+          setTimeout(() => {
+            inboxNotifyTimers.delete(timerKey);
+            void notifyNewInboxMessages(teamName, detail).catch(() => undefined);
+          }, INBOX_NOTIFY_DEBOUNCE_MS)
+        );
+      }
+
+      // Show native OS notification for live lead process replies.
+      // These don't go through inbox files — they're held in-memory by TeamProvisioningService.
+      if (detail === 'lead-process-reply' || detail === 'lead-direct-reply') {
+        const messages = teamProvisioningService.getLiveLeadProcessMessages(teamName);
+        const latest = messages.length > 0 ? messages[messages.length - 1] : undefined;
+        // Only notify for messages addressed to the human user
+        if (latest?.to === 'user') {
+          const fromLabel = latest.from || 'team-lead';
+          const summary = latest.summary || latest.text.slice(0, 60);
+          void resolveTeamDisplayName(teamName)
+            .then((displayName) => {
+              showTeamNativeNotification({
+                title: displayName,
+                subtitle: `${fromLabel}: ${summary}`,
+                body: latest.text,
+              });
+            })
+            .catch(() => undefined);
+        }
+      }
     } catch {
       // ignore
     }
@@ -297,12 +421,19 @@ function initializeServices(): void {
   // Wire file watcher events for local context
   wireFileWatcherEvents(localContext);
 
-  // Initialize updater service
+  // Initialize updater and CLI installer services
   updaterService = new UpdaterService();
+  cliInstallerService = new CliInstallerService();
+  ptyTerminalService = new PtyTerminalService();
   teamDataService = new TeamDataService();
   teamProvisioningService = new TeamProvisioningService();
   const teamMemberLogsFinder = new TeamMemberLogsFinder();
   const memberStatsComputer = new MemberStatsComputer(teamMemberLogsFinder);
+  const taskBoundaryParser = new TaskBoundaryParser();
+  const changeExtractor = new ChangeExtractorService(teamMemberLogsFinder, taskBoundaryParser);
+  const gitDiffFallback = new GitDiffFallback();
+  const fileContentResolver = new FileContentResolver(teamMemberLogsFinder, gitDiffFallback);
+  const reviewApplier = new ReviewApplierService();
 
   // Fire-and-forget: warm up CLI and install teamctl.js at startup
   void teamProvisioningService.warmup();
@@ -310,12 +441,17 @@ function initializeServices(): void {
   httpServer = new HttpServer();
 
   // Allow TeamProvisioningService to trigger team refresh events (e.g. live lead replies).
-  teamProvisioningService.setTeamChangeEmitter((event) => {
+  const teamChangeEmitter = (event: TeamChangeEvent): void => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(TEAM_CHANGE, event);
     }
     httpServer?.broadcast('team-change', event);
-  });
+  };
+  teamProvisioningService.setTeamChangeEmitter(teamChangeEmitter);
+
+  // Start periodic health checks for registered CLI processes (every 2s).
+  // Dead processes get stoppedAt written to processes.json → FileWatcher picks it up.
+  teamDataService.startProcessHealthPolling();
 
   // Initialize IPC handlers with registry
   initializeIpcHandlers(
@@ -336,7 +472,13 @@ function initializeServices(): void {
     {
       httpServer,
       startHttpServer: () => startHttpServer(handleModeSwitch),
-    }
+    },
+    changeExtractor,
+    fileContentResolver,
+    reviewApplier,
+    gitDiffFallback,
+    cliInstallerService,
+    ptyTerminalService
   );
 
   // Forward SSH state changes to renderer and HTTP SSE clients
@@ -428,6 +570,11 @@ function shutdownServices(): void {
   // Dispose SSH connection manager
   if (sshConnectionManager) {
     sshConnectionManager.dispose();
+  }
+
+  // Kill all PTY processes
+  if (ptyTerminalService) {
+    ptyTerminalService.killAll();
   }
 
   // Remove IPC handlers
@@ -537,6 +684,13 @@ function createWindow(): void {
       return;
     }
 
+    // Prevent Cmd+N from opening new window; forward to renderer for review shortcuts
+    if (input.meta && input.key.toLowerCase() === 'n') {
+      event.preventDefault();
+      mainWindow.webContents.send('review:cmdN');
+      return;
+    }
+
     if (!input.meta) return;
 
     const currentLevel = mainWindow.webContents.getZoomLevel();
@@ -571,6 +725,12 @@ function createWindow(): void {
     if (updaterService) {
       updaterService.setMainWindow(null);
     }
+    if (cliInstallerService) {
+      cliInstallerService.setMainWindow(null);
+    }
+    if (ptyTerminalService) {
+      ptyTerminalService.setMainWindow(null);
+    }
   });
 
   // Handle renderer process crashes (render-process-gone replaces deprecated 'crashed' event)
@@ -585,6 +745,12 @@ function createWindow(): void {
   }
   if (updaterService) {
     updaterService.setMainWindow(mainWindow);
+  }
+  if (cliInstallerService) {
+    cliInstallerService.setMainWindow(mainWindow);
+  }
+  if (ptyTerminalService) {
+    ptyTerminalService.setMainWindow(mainWindow);
   }
 
   logger.info('Main window created');

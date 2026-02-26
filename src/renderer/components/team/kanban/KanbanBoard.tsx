@@ -16,6 +16,7 @@ import {
   PlayCircle,
   Plus,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 
 import { KanbanColumn } from './KanbanColumn';
@@ -76,12 +77,20 @@ interface KanbanBoardProps {
   onCancelTask: (taskId: string) => void;
   onScrollToTask?: (taskId: string) => void;
   onTaskClick?: (task: TeamTask) => void;
+  /** Открывает diff-просмотр изменений задачи. */
+  onViewChanges?: (taskId: string) => void;
   /** Вызывается после изменения порядка задач в колонке (drag-and-drop). */
   onColumnOrderChange?: (columnId: KanbanColumnId, orderedTaskIds: string[]) => void;
   /** Слот слева в одной строке с фильтром и переключателем вида (например, поле поиска). */
   toolbarLeft?: React.ReactNode;
   /** Opens the create-task dialog with pre-set startImmediately value. */
   onAddTask?: (startImmediately: boolean) => void;
+  /** Soft-delete a task. */
+  onDeleteTask?: (taskId: string) => void;
+  /** Number of soft-deleted tasks (for trash button badge). */
+  deletedTaskCount?: number;
+  /** Opens the trash dialog. */
+  onOpenTrash?: () => void;
 }
 
 type KanbanViewMode = 'grid' | 'columns';
@@ -140,6 +149,7 @@ interface SortableKanbanTaskCardProps {
   columnId: KanbanColumnId;
   teamName: string;
   kanbanState: KanbanState;
+  compact?: boolean;
   taskMap: Map<string, TeamTask>;
   members: ResolvedTeamMember[];
   onRequestReview: (taskId: string) => void;
@@ -151,6 +161,8 @@ interface SortableKanbanTaskCardProps {
   onCancelTask: (taskId: string) => void;
   onScrollToTask?: (taskId: string) => void;
   onTaskClick?: (task: TeamTask) => void;
+  onViewChanges?: (taskId: string) => void;
+  onDeleteTask?: (taskId: string) => void;
 }
 
 const SortableKanbanTaskCard = ({
@@ -158,6 +170,7 @@ const SortableKanbanTaskCard = ({
   columnId,
   teamName,
   kanbanState,
+  compact,
   taskMap,
   members,
   onRequestReview,
@@ -169,6 +182,8 @@ const SortableKanbanTaskCard = ({
   onCancelTask,
   onScrollToTask,
   onTaskClick,
+  onViewChanges,
+  onDeleteTask,
 }: SortableKanbanTaskCardProps): React.JSX.Element => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
@@ -190,6 +205,7 @@ const SortableKanbanTaskCard = ({
         columnId={columnId}
         kanbanTaskState={kanbanState.tasks[task.id]}
         hasReviewers={kanbanState.reviewers.length > 0}
+        compact={compact}
         taskMap={taskMap}
         members={members}
         onRequestReview={onRequestReview}
@@ -201,6 +217,8 @@ const SortableKanbanTaskCard = ({
         onCancelTask={onCancelTask}
         onScrollToTask={onScrollToTask}
         onTaskClick={onTaskClick}
+        onViewChanges={onViewChanges}
+        onDeleteTask={onDeleteTask}
       />
     </div>
   );
@@ -224,9 +242,13 @@ export const KanbanBoard = ({
   onCancelTask,
   onScrollToTask,
   onTaskClick,
+  onViewChanges,
   onColumnOrderChange,
   toolbarLeft,
   onAddTask,
+  onDeleteTask,
+  deletedTaskCount,
+  onOpenTrash,
 }: KanbanBoardProps): React.JSX.Element => {
   const [viewMode, setViewMode] = useState<KanbanViewMode>('grid');
 
@@ -284,7 +306,11 @@ export const KanbanBoard = ({
     [onColumnOrderChange, groupedOrdered]
   );
 
-  const renderCards = (columnId: KanbanColumnId, columnTasks: TeamTask[]): React.JSX.Element => {
+  const renderCards = (
+    columnId: KanbanColumnId,
+    columnTasks: TeamTask[],
+    compact?: boolean
+  ): React.JSX.Element => {
     const addHandler =
       onAddTask && columnId === 'todo'
         ? () => onAddTask(false)
@@ -324,6 +350,7 @@ export const KanbanBoard = ({
                 columnId={columnId}
                 teamName={teamName}
                 kanbanState={kanbanState}
+                compact={compact}
                 taskMap={taskMap}
                 members={members}
                 onRequestReview={onRequestReview}
@@ -335,6 +362,8 @@ export const KanbanBoard = ({
                 onCancelTask={onCancelTask}
                 onScrollToTask={onScrollToTask}
                 onTaskClick={onTaskClick}
+                onViewChanges={onViewChanges}
+                onDeleteTask={onDeleteTask}
               />
             ))}
           </SortableContext>
@@ -352,6 +381,7 @@ export const KanbanBoard = ({
             columnId={columnId}
             kanbanTaskState={kanbanState.tasks[task.id]}
             hasReviewers={kanbanState.reviewers.length > 0}
+            compact={compact}
             taskMap={taskMap}
             members={members}
             onRequestReview={onRequestReview}
@@ -363,6 +393,8 @@ export const KanbanBoard = ({
             onCancelTask={onCancelTask}
             onScrollToTask={onScrollToTask}
             onTaskClick={onTaskClick}
+            onViewChanges={onViewChanges}
+            onDeleteTask={onDeleteTask}
           />
         ))}
         {addButton}
@@ -382,6 +414,22 @@ export const KanbanBoard = ({
             members={members}
             onFilterChange={onFilterChange}
           />
+          {deletedTaskCount != null && deletedTaskCount > 0 && onOpenTrash ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-[var(--color-text-muted)]"
+                  onClick={onOpenTrash}
+                >
+                  <Trash2 size={14} />
+                  <span className="ml-1 text-xs">{deletedTaskCount}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Trash</TooltipContent>
+            </Tooltip>
+          ) : null}
           <div className="inline-flex rounded-md border border-[var(--color-border)]">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -458,7 +506,7 @@ export const KanbanBoard = ({
                   headerBg={accent.headerBg}
                   bodyBg={accent.bodyBg}
                 >
-                  {renderCards(column.id, columnTasks)}
+                  {renderCards(column.id, columnTasks, true)}
                 </KanbanColumn>
               </div>
             );

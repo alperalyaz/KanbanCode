@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { api, isElectronMode } from '@renderer/api';
+import { confirm } from '@renderer/components/common/ConfirmDialog';
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
 import { Input } from '@renderer/components/ui/input';
@@ -12,8 +13,10 @@ import {
 } from '@renderer/components/ui/tooltip';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useStore } from '@renderer/store';
+import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { buildTaskCountsByTeam, normalizePath } from '@renderer/utils/pathNormalize';
 import { getBaseName } from '@renderer/utils/pathUtils';
+import { nameColorSet } from '@renderer/utils/projectColor';
 import {
   CheckCircle,
   Clock,
@@ -21,6 +24,7 @@ import {
   FolderOpen,
   GitBranch,
   Play,
+  RotateCcw,
   Search,
   Square,
   Trash2,
@@ -29,9 +33,16 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { CreateTeamDialog } from './dialogs/CreateTeamDialog';
 import { TeamEmptyState } from './TeamEmptyState';
+import { EMPTY_TEAM_FILTER, TeamListFilterPopover } from './TeamListFilterPopover';
 
 import type { ActiveTeamRef, TeamCopyData } from './dialogs/CreateTeamDialog';
-import type { TeamCreateRequest, TeamProvisioningProgress, TeamSummary } from '@shared/types';
+import type { TeamListFilterState } from './TeamListFilterPopover';
+import type {
+  TeamCreateRequest,
+  TeamProvisioningProgress,
+  TeamSummary,
+  TeamSummaryMember,
+} from '@shared/types';
 
 function generateUniqueName(sourceName: string, existingNames: string[]): string {
   const base = sourceName.replace(/-\d+$/, '');
@@ -44,7 +55,7 @@ function generateUniqueName(sourceName: string, existingNames: string[]): string
   }
 }
 
-type TeamStatus = 'running' | 'provisioning' | 'offline';
+type TeamStatus = 'active' | 'idle' | 'provisioning' | 'offline';
 
 function getRecentProjects(team: TeamSummary): string[] {
   const history = team.projectPathHistory;
@@ -58,13 +69,69 @@ function folderName(fullPath: string): string {
   return getBaseName(fullPath) || fullPath;
 }
 
+function renderMemberChips(members: TeamSummaryMember[]): React.JSX.Element {
+  const teamColorMap = buildMemberColorMap(members);
+  return (
+    <>
+      {members.map((m) => {
+        const resolvedColor = teamColorMap.get(m.name);
+        const memberColor = resolvedColor ? getTeamColorSet(resolvedColor) : null;
+        return (
+          <span key={m.name} className="inline-flex items-center gap-1">
+            <span
+              className="rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide"
+              style={
+                memberColor
+                  ? {
+                      backgroundColor: memberColor.badge,
+                      color: memberColor.text,
+                      border: `1px solid ${memberColor.border}40`,
+                    }
+                  : undefined
+              }
+            >
+              {m.name}
+            </span>
+            {m.role ? (
+              <span className="text-[9px] text-[var(--color-text-muted)]">{m.role}</span>
+            ) : null}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+function renderTeamRecentPaths(team: TeamSummary, status: TeamStatus): React.JSX.Element | null {
+  const recentPaths = getRecentProjects(team);
+  if (recentPaths.length === 0) return null;
+  return (
+    <div className="mt-2 flex items-center gap-1 text-[10px] text-[var(--color-text-muted)]">
+      <FolderOpen size={10} className="shrink-0" />
+      <span className="truncate">
+        {recentPaths.map((p, i) => (
+          <span key={p} title={p}>
+            {i === 0 && (status === 'active' || status === 'idle') ? (
+              <span className="text-emerald-400">{folderName(p)}</span>
+            ) : (
+              folderName(p)
+            )}
+            {i < recentPaths.length - 1 ? ', ' : ''}
+          </span>
+        ))}
+      </span>
+    </div>
+  );
+}
+
 function resolveTeamStatus(
   teamName: string,
   aliveTeams: string[],
-  provisioningRuns: Record<string, TeamProvisioningProgress>
+  provisioningRuns: Record<string, TeamProvisioningProgress>,
+  leadActivityByTeam: Record<string, string>
 ): TeamStatus {
   if (aliveTeams.includes(teamName)) {
-    return 'running';
+    return leadActivityByTeam[teamName] === 'active' ? 'active' : 'idle';
   }
   const activeStates = new Set(['validating', 'spawning', 'monitoring', 'verifying']);
   for (const run of Object.values(provisioningRuns)) {
@@ -77,10 +144,17 @@ function resolveTeamStatus(
 
 const StatusBadge = ({ status }: { status: TeamStatus }): React.JSX.Element => {
   switch (status) {
-    case 'running':
+    case 'active':
       return (
         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
           <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
+          Active
+        </span>
+      );
+    case 'idle':
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+          <span className="size-1.5 rounded-full bg-emerald-400" />
           Running
         </span>
       );
@@ -106,6 +180,7 @@ export const TeamListView = (): React.JSX.Element => {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [copyData, setCopyData] = useState<TeamCopyData | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filter, setFilter] = useState<TeamListFilterState>(EMPTY_TEAM_FILTER);
   const [aliveTeams, setAliveTeams] = useState<string[]>([]);
   const [branchByPath, setBranchByPath] = useState<Map<string, string | null>>(new Map());
   const {
@@ -131,6 +206,8 @@ export const TeamListView = (): React.JSX.Element => {
       fetchTeams: s.fetchTeams,
       openTeamTab: s.openTeamTab,
       deleteTeam: s.deleteTeam,
+      restoreTeam: s.restoreTeam,
+      permanentlyDeleteTeam: s.permanentlyDeleteTeam,
       projects: s.projects,
       globalTasks: s.globalTasks,
       fetchAllTasks: s.fetchAllTasks,
@@ -141,14 +218,16 @@ export const TeamListView = (): React.JSX.Element => {
       activeProjectId: s.activeProjectId,
     }))
   );
-  const { connectionMode, createTeam, provisioningError, provisioningRuns } = useStore(
-    useShallow((s) => ({
-      connectionMode: s.connectionMode,
-      createTeam: s.createTeam,
-      provisioningError: s.provisioningError,
-      provisioningRuns: s.provisioningRuns,
-    }))
-  );
+  const { connectionMode, createTeam, provisioningError, provisioningRuns, leadActivityByTeam } =
+    useStore(
+      useShallow((s) => ({
+        connectionMode: s.connectionMode,
+        createTeam: s.createTeam,
+        provisioningError: s.provisioningError,
+        provisioningRuns: s.provisioningRuns,
+        leadActivityByTeam: s.leadActivityByTeam,
+      }))
+    );
   const canCreate = electronMode && connectionMode === 'local';
 
   // Fetch alive teams on mount and when teams list changes
@@ -200,20 +279,63 @@ export const TeamListView = (): React.JSX.Element => {
       );
     }
 
-    if (currentProjectPath) {
-      const matches = (t: TeamSummary): boolean => {
-        if (t.projectPath && normalizePath(t.projectPath) === currentProjectPath) return true;
-        return t.projectPathHistory?.some((p) => normalizePath(p) === currentProjectPath) ?? false;
-      };
-      result = [...result].sort((a, b) => {
-        const aMatch = matches(a) ? 0 : 1;
-        const bMatch = matches(b) ? 0 : 1;
-        return aMatch - bMatch;
+    if (filter.selectedStatuses.size > 0) {
+      result = result.filter((t) => {
+        const status = resolveTeamStatus(
+          t.teamName,
+          aliveTeams,
+          provisioningRuns,
+          leadActivityByTeam
+        );
+        const isRunning = status !== 'offline';
+        if (filter.selectedStatuses.has('running') && isRunning) return true;
+        if (filter.selectedStatuses.has('offline') && !isRunning) return true;
+        return false;
       });
     }
 
+    if (filter.selectedProjects.size > 0) {
+      result = result.filter(
+        (t) => t.projectPath != null && filter.selectedProjects.has(t.projectPath.trim())
+      );
+    }
+
+    const aliveSet = new Set(aliveTeams);
+    const matchesProject = currentProjectPath
+      ? (t: TeamSummary): boolean => {
+          if (t.projectPath && normalizePath(t.projectPath) === currentProjectPath) return true;
+          return (
+            t.projectPathHistory?.some((p) => normalizePath(p) === currentProjectPath) ?? false
+          );
+        }
+      : null;
+
+    result = [...result].sort((a, b) => {
+      // 1. Alive (running) teams first
+      const aliveA = aliveSet.has(a.teamName) ? 0 : 1;
+      const aliveB = aliveSet.has(b.teamName) ? 0 : 1;
+      if (aliveA !== aliveB) return aliveA - aliveB;
+
+      // 2. Matching current project second
+      if (matchesProject) {
+        const projA = matchesProject(a) ? 0 : 1;
+        const projB = matchesProject(b) ? 0 : 1;
+        if (projA !== projB) return projA - projB;
+      }
+
+      return 0;
+    });
+
     return result;
-  }, [teams, searchQuery, currentProjectPath]);
+  }, [
+    teams,
+    searchQuery,
+    currentProjectPath,
+    aliveTeams,
+    filter,
+    provisioningRuns,
+    leadActivityByTeam,
+  ]);
 
   // Live branch/worktree for team project paths (poll so it updates during process)
   const projectPathsToPoll = useMemo(() => {
@@ -258,16 +380,53 @@ export const TeamListView = (): React.JSX.Element => {
     };
   }, [electronMode, projectPathsToPoll]);
 
+  const restoreTeam = useStore((s) => s.restoreTeam);
+  const permanentlyDeleteTeam = useStore((s) => s.permanentlyDeleteTeam);
+
   const handleDeleteTeam = useCallback(
     (teamName: string, e: React.MouseEvent) => {
       e.stopPropagation();
-      const confirmed = window.confirm(`Delete team "${teamName}"? This action is irreversible.`);
-      if (!confirmed) {
-        return;
-      }
-      void deleteTeam(teamName);
+      void (async () => {
+        const confirmed = await confirm({
+          title: 'Move to trash',
+          message: `Move team "${teamName}" to trash? You can restore it later.`,
+          confirmLabel: 'Move to trash',
+          cancelLabel: 'Cancel',
+          variant: 'danger',
+        });
+        if (confirmed) {
+          void deleteTeam(teamName);
+        }
+      })();
     },
     [deleteTeam]
+  );
+
+  const handleRestoreTeam = useCallback(
+    (teamName: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      void restoreTeam(teamName);
+    },
+    [restoreTeam]
+  );
+
+  const handlePermanentlyDeleteTeam = useCallback(
+    (teamName: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      void (async () => {
+        const confirmed = await confirm({
+          title: 'Delete permanently',
+          message: `Delete team "${teamName}" permanently? All data will be lost.`,
+          confirmLabel: 'Delete forever',
+          cancelLabel: 'Cancel',
+          variant: 'danger',
+        });
+        if (confirmed) {
+          void permanentlyDeleteTeam(teamName);
+        }
+      })();
+    },
+    [permanentlyDeleteTeam]
   );
 
   const handleCopyTeam = useCallback(
@@ -410,39 +569,42 @@ export const TeamListView = (): React.JSX.Element => {
       ) : null}
 
       {teams.length > 0 ? (
-        <div className="relative mt-3">
-          <Search
-            size={14}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]"
-          />
-          <Input
-            type="text"
-            placeholder="Search teams..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-8 pl-8 text-xs"
+        <div className="mt-3 flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search
+              size={14}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]"
+            />
+            <Input
+              type="text"
+              placeholder="Search teams..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
+          <TeamListFilterPopover
+            filter={filter}
+            teams={teams}
+            aliveTeams={aliveTeams}
+            onFilterChange={setFilter}
           />
         </div>
       ) : null}
     </div>
   );
 
-  if (teamsLoading) {
-    return (
-      <div className="size-full overflow-auto p-4">
-        {renderHeader()}
+  const renderContent = (): React.JSX.Element => {
+    if (teamsLoading) {
+      return (
         <div className="flex size-full items-center justify-center text-sm text-[var(--color-text-muted)]">
           Loading teams...
         </div>
-        {createDialogElement}
-      </div>
-    );
-  }
+      );
+    }
 
-  if (teamsError) {
-    return (
-      <div className="size-full overflow-auto p-4">
-        {renderHeader()}
+    if (teamsError) {
+      return (
         <div className="flex size-full items-center justify-center p-6">
           <div className="text-center">
             <p className="text-sm font-medium text-red-400">Failed to load teams</p>
@@ -459,259 +621,295 @@ export const TeamListView = (): React.JSX.Element => {
             </Button>
           </div>
         </div>
-        {createDialogElement}
-      </div>
-    );
-  }
+      );
+    }
 
-  if (teams.length === 0) {
+    if (teams.length === 0) {
+      return <TeamEmptyState />;
+    }
+
+    const hasActiveFilters = filter.selectedStatuses.size > 0 || filter.selectedProjects.size > 0;
+    if (filteredTeams.length === 0 && (searchQuery.trim() || hasActiveFilters)) {
+      return (
+        <div className="flex items-center justify-center py-12 text-sm text-[var(--color-text-muted)]">
+          No teams matching current filters
+        </div>
+      );
+    }
+
+    const activeFiltered = filteredTeams.filter((t) => !t.deletedAt);
+    const deletedFiltered = filteredTeams.filter((t) => t.deletedAt);
+
     return (
-      <div className="size-full overflow-auto p-4">
-        {renderHeader()}
-        <TeamEmptyState />
-        {createDialogElement}
-      </div>
-    );
-  }
+      <>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {activeFiltered.map((team) => {
+            const status = resolveTeamStatus(
+              team.teamName,
+              aliveTeams,
+              provisioningRuns,
+              leadActivityByTeam
+            );
+            const teamColorSet = team.color
+              ? getTeamColorSet(team.color)
+              : nameColorSet(team.displayName);
+            const matchesCurrentProject =
+              !!currentProjectPath &&
+              ((team.projectPath
+                ? normalizePath(team.projectPath) === currentProjectPath
+                : false) ||
+                (team.projectPathHistory?.some((p) => normalizePath(p) === currentProjectPath) ??
+                  false));
+            return (
+              <div
+                key={team.teamName}
+                role="button"
+                tabIndex={0}
+                className={`group relative cursor-pointer overflow-hidden rounded-lg border bg-[var(--color-surface)] p-4 hover:bg-[var(--color-surface-raised)] ${
+                  matchesCurrentProject
+                    ? 'border-emerald-500/70 ring-1 ring-emerald-500/30'
+                    : 'border-[var(--color-border)]'
+                }`}
+                style={
+                  teamColorSet
+                    ? { borderLeftWidth: '3px', borderLeftColor: teamColorSet.border }
+                    : undefined
+                }
+                onClick={() => openTeamTab(team.teamName, team.projectPath)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openTeamTab(team.teamName, team.projectPath);
+                  }
+                }}
+              >
+                {teamColorSet ? (
+                  <div
+                    className="pointer-events-none absolute inset-0 z-0 rounded-lg"
+                    style={{ backgroundColor: teamColorSet.badge }}
+                  />
+                ) : null}
+                <div className={teamColorSet ? 'relative z-10' : undefined}>
+                  <div className="flex items-start justify-between">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <h3 className="truncate text-sm font-semibold text-[var(--color-text)]">
+                        {team.displayName}
+                      </h3>
+                      <StatusBadge status={status} />
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      {(status === 'active' || status === 'idle') && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-amber-500/10 hover:text-amber-300 disabled:opacity-50 group-hover:opacity-100"
+                              onClick={(e) => handleStopTeam(team.teamName, e)}
+                              disabled={stoppingTeamName === team.teamName}
+                              aria-label="Stop team"
+                            >
+                              <Square size={14} fill="currentColor" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {stoppingTeamName === team.teamName ? 'Stopping…' : 'Stop team'}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-blue-500/10 hover:text-blue-300 group-hover:opacity-100"
+                            onClick={(e) => handleCopyTeam(team.teamName, e)}
+                          >
+                            <Copy size={14} />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Copy team</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-300 group-hover:opacity-100"
+                            onClick={(e) => handleDeleteTeam(team.teamName, e)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Delete team</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex min-h-10 items-start gap-2">
+                    <p className="line-clamp-2 min-w-0 flex-1 text-xs text-[var(--color-text-muted)]">
+                      {team.description || 'No description'}
+                    </p>
+                    {team.projectPath &&
+                      (() => {
+                        const branch = branchByPath.get(normalizePath(team.projectPath));
+                        if (!branch) return null;
+                        return (
+                          <span
+                            className="flex shrink-0 items-center gap-1 rounded bg-[var(--color-surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)]"
+                            title={branch}
+                          >
+                            <GitBranch size={10} />
+                            <span className="max-w-24 truncate">{branch}</span>
+                          </span>
+                        );
+                      })()}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                    {team.members && team.members.length > 0 ? (
+                      renderMemberChips(team.members)
+                    ) : (
+                      <Badge variant="secondary" className="text-[10px] font-normal">
+                        Members: {team.memberCount}
+                      </Badge>
+                    )}
+                    {(() => {
+                      const tc = taskCountsByTeam.get(team.teamName);
+                      const pending = tc?.pending ?? 0;
+                      const inProgress = tc?.inProgress ?? 0;
+                      const completed = tc?.completed ?? 0;
+                      const totalTasks = pending + inProgress + completed;
+                      const completedRatio = totalTasks > 0 ? completed / totalTasks : 0;
+                      return (
+                        <div className="mt-2 w-full space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-raised)]"
+                              role="progressbar"
+                              aria-valuenow={completed}
+                              aria-valuemin={0}
+                              aria-valuemax={totalTasks}
+                              aria-label={`Tasks ${completed}/${totalTasks} completed`}
+                            >
+                              <div
+                                className="h-full rounded-full bg-emerald-500 transition-all duration-200"
+                                style={{ width: `${Math.round(completedRatio * 100)}%` }}
+                              />
+                            </div>
+                            <span className="shrink-0 text-[10px] font-medium tracking-tight text-[var(--color-text-muted)]">
+                              {completed}/{totalTasks}
+                            </span>
+                          </div>
+                          {totalTasks > 0 && (
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-[var(--color-text-muted)]">
+                              {inProgress > 0 && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Play size={10} className="shrink-0 text-blue-400" />
+                                  {inProgress} in_progress
+                                </span>
+                              )}
+                              {pending > 0 && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Clock size={10} className="shrink-0 text-amber-400" />
+                                  {pending} pending
+                                </span>
+                              )}
+                              {completed > 0 && (
+                                <span className="inline-flex items-center gap-1">
+                                  <CheckCircle size={10} className="shrink-0 text-emerald-400" />
+                                  {completed} completed
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  {renderTeamRecentPaths(team, status)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
-  return (
-    <TooltipProvider delayDuration={300}>
-      <div className="size-full overflow-auto p-4">
-        {renderHeader()}
-
-        {filteredTeams.length === 0 && searchQuery.trim() ? (
-          <div className="flex items-center justify-center py-12 text-sm text-[var(--color-text-muted)]">
-            No teams matching &quot;{searchQuery.trim()}&quot;
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {filteredTeams.map((team) => {
-              const status = resolveTeamStatus(team.teamName, aliveTeams, provisioningRuns);
-              const teamColorSet = team.color ? getTeamColorSet(team.color) : null;
-              const matchesCurrentProject =
-                !!currentProjectPath &&
-                (() => {
-                  if (team.projectPath && normalizePath(team.projectPath) === currentProjectPath)
-                    return true;
-                  return (
-                    team.projectPathHistory?.some((p) => normalizePath(p) === currentProjectPath) ??
-                    false
-                  );
-                })();
-              return (
+        {deletedFiltered.length > 0 && (
+          <>
+            <div className="my-6 flex items-center gap-3">
+              <div className="h-px flex-1 bg-[var(--color-border)]" />
+              <span className="text-[10px] font-medium uppercase tracking-wider text-[var(--color-text-muted)]">
+                Trash ({deletedFiltered.length})
+              </span>
+              <div className="h-px flex-1 bg-[var(--color-border)]" />
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {deletedFiltered.map((team) => (
                 <div
                   key={team.teamName}
-                  role="button"
-                  tabIndex={0}
-                  className={`group relative cursor-pointer overflow-hidden rounded-lg border bg-[var(--color-surface)] p-4 hover:bg-[var(--color-surface-raised)] ${
-                    matchesCurrentProject
-                      ? 'border-emerald-500/70 ring-1 ring-emerald-500/30'
-                      : 'border-[var(--color-border)]'
-                  }`}
-                  style={
-                    teamColorSet
-                      ? { borderLeftWidth: '3px', borderLeftColor: teamColorSet.border }
-                      : undefined
-                  }
-                  onClick={() => openTeamTab(team.teamName, team.projectPath)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      openTeamTab(team.teamName, team.projectPath);
-                    }
-                  }}
+                  className="group relative cursor-default overflow-hidden rounded-lg border border-[var(--color-border)] bg-zinc-800/40 p-4 opacity-60"
                 >
-                  {teamColorSet ? (
-                    <div
-                      className="pointer-events-none absolute inset-0 z-0 rounded-lg"
-                      style={{ backgroundColor: teamColorSet.badge }}
-                    />
-                  ) : null}
-                  <div className={teamColorSet ? 'relative z-10' : undefined}>
+                  <Trash2
+                    size={64}
+                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-zinc-400 opacity-[0.06]"
+                  />
+                  <div className="relative z-10">
                     <div className="flex items-start justify-between">
                       <div className="flex min-w-0 flex-1 items-center gap-2">
                         <h3 className="truncate text-sm font-semibold text-[var(--color-text)]">
                           {team.displayName}
                         </h3>
-                        <StatusBadge status={status} />
+                        <span className="inline-flex items-center gap-1 rounded-full bg-zinc-500/15 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
+                          Deleted
+                        </span>
                       </div>
                       <div className="flex shrink-0 gap-1">
-                        {status === 'running' && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-amber-500/10 hover:text-amber-300 disabled:opacity-50 group-hover:opacity-100"
-                                onClick={(e) => handleStopTeam(team.teamName, e)}
-                                disabled={stoppingTeamName === team.teamName}
-                                aria-label="Stop team"
-                              >
-                                <Square size={14} fill="currentColor" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom">
-                              {stoppingTeamName === team.teamName ? 'Stopping…' : 'Stop team'}
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
                               type="button"
-                              className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-blue-500/10 hover:text-blue-300 group-hover:opacity-100"
-                              onClick={(e) => handleCopyTeam(team.teamName, e)}
+                              className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-emerald-500/10 hover:text-emerald-300 group-hover:opacity-100"
+                              onClick={(e) => handleRestoreTeam(team.teamName, e)}
+                              aria-label="Restore team"
                             >
-                              <Copy size={14} />
+                              <RotateCcw size={14} />
                             </button>
                           </TooltipTrigger>
-                          <TooltipContent side="bottom">Copy team</TooltipContent>
+                          <TooltipContent side="bottom">Restore</TooltipContent>
                         </Tooltip>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
                               type="button"
                               className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-300 group-hover:opacity-100"
-                              onClick={(e) => handleDeleteTeam(team.teamName, e)}
+                              onClick={(e) => handlePermanentlyDeleteTeam(team.teamName, e)}
+                              aria-label="Delete permanently"
                             >
                               <Trash2 size={14} />
                             </button>
                           </TooltipTrigger>
-                          <TooltipContent side="bottom">Delete team</TooltipContent>
+                          <TooltipContent side="bottom">Delete forever</TooltipContent>
                         </Tooltip>
                       </div>
                     </div>
-                    <div className="mt-2 flex min-h-10 items-start gap-2">
-                      <p className="line-clamp-2 min-w-0 flex-1 text-xs text-[var(--color-text-muted)]">
-                        {team.description || 'No description'}
-                      </p>
-                      {team.projectPath &&
-                        (() => {
-                          const branch = branchByPath.get(normalizePath(team.projectPath));
-                          if (!branch) return null;
-                          return (
-                            <span
-                              className="flex shrink-0 items-center gap-1 rounded bg-[var(--color-surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)]"
-                              title={branch}
-                            >
-                              <GitBranch size={10} />
-                              <span className="max-w-24 truncate">{branch}</span>
-                            </span>
-                          );
-                        })()}
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                      {team.members && team.members.length > 0 ? (
-                        team.members.map((m) => {
-                          const memberColor = m.color ? getTeamColorSet(m.color) : null;
-                          return (
-                            <span key={m.name} className="inline-flex items-center gap-1">
-                              <span
-                                className="rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide"
-                                style={
-                                  memberColor
-                                    ? {
-                                        backgroundColor: memberColor.badge,
-                                        color: memberColor.text,
-                                        border: `1px solid ${memberColor.border}40`,
-                                      }
-                                    : undefined
-                                }
-                              >
-                                {m.name}
-                              </span>
-                              {m.role ? (
-                                <span className="text-[9px] text-[var(--color-text-muted)]">
-                                  {m.role}
-                                </span>
-                              ) : null}
-                            </span>
-                          );
-                        })
-                      ) : (
-                        <Badge variant="secondary" className="text-[10px] font-normal">
-                          Members: {team.memberCount}
-                        </Badge>
-                      )}
-                      {(() => {
-                        const tc = taskCountsByTeam.get(team.teamName);
-                        const pending = tc?.pending ?? 0;
-                        const inProgress = tc?.inProgress ?? 0;
-                        const completed = tc?.completed ?? 0;
-                        const totalTasks = pending + inProgress + completed;
-                        const completedRatio = totalTasks > 0 ? completed / totalTasks : 0;
-                        return (
-                          <div className="mt-2 w-full space-y-1.5">
-                            <div className="flex items-center gap-2">
-                              <div
-                                className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-raised)]"
-                                role="progressbar"
-                                aria-valuenow={completed}
-                                aria-valuemin={0}
-                                aria-valuemax={totalTasks}
-                                aria-label={`Tasks ${completed}/${totalTasks} completed`}
-                              >
-                                <div
-                                  className="h-full rounded-full bg-emerald-500 transition-all duration-200"
-                                  style={{ width: `${Math.round(completedRatio * 100)}%` }}
-                                />
-                              </div>
-                              <span className="shrink-0 text-[10px] font-medium tracking-tight text-[var(--color-text-muted)]">
-                                {completed}/{totalTasks}
-                              </span>
-                            </div>
-                            {totalTasks > 0 && (
-                              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-[var(--color-text-muted)]">
-                                {inProgress > 0 && (
-                                  <span className="inline-flex items-center gap-1">
-                                    <Play size={10} className="shrink-0 text-blue-400" />
-                                    {inProgress} in_progress
-                                  </span>
-                                )}
-                                {pending > 0 && (
-                                  <span className="inline-flex items-center gap-1">
-                                    <Clock size={10} className="shrink-0 text-amber-400" />
-                                    {pending} pending
-                                  </span>
-                                )}
-                                {completed > 0 && (
-                                  <span className="inline-flex items-center gap-1">
-                                    <CheckCircle size={10} className="shrink-0 text-emerald-400" />
-                                    {completed} completed
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                    {(() => {
-                      const recentPaths = getRecentProjects(team);
-                      if (recentPaths.length === 0) return null;
-                      return (
-                        <div className="mt-2 flex items-center gap-1 text-[10px] text-[var(--color-text-muted)]">
-                          <FolderOpen size={10} className="shrink-0" />
-                          <span className="truncate">
-                            {recentPaths.map((p, i) => (
-                              <span key={p} title={p}>
-                                {i === 0 && status === 'running' ? (
-                                  <span className="text-emerald-400">{folderName(p)}</span>
-                                ) : (
-                                  folderName(p)
-                                )}
-                                {i < recentPaths.length - 1 ? ', ' : ''}
-                              </span>
-                            ))}
-                          </span>
-                        </div>
-                      );
-                    })()}
+                    <p className="mt-2 line-clamp-2 text-xs text-[var(--color-text-muted)]">
+                      {team.description || 'No description'}
+                    </p>
+                    {team.members && team.members.length > 0 && (
+                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                        {renderMemberChips(team.members)}
+                      </div>
+                    )}
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          </>
         )}
+      </>
+    );
+  };
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <div className="size-full overflow-auto p-4">
+        {renderHeader()}
+        {renderContent()}
         {createDialogElement}
       </div>
     </TooltipProvider>

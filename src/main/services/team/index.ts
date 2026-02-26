@@ -1,5 +1,11 @@
+export { ChangeExtractorService } from './ChangeExtractorService';
 export { ClaudeBinaryResolver } from './ClaudeBinaryResolver';
+export { FileContentResolver } from './FileContentResolver';
+export { GitDiffFallback } from './GitDiffFallback';
+export { HunkSnippetMatcher } from './HunkSnippetMatcher';
 export { MemberStatsComputer } from './MemberStatsComputer';
+export { ReviewApplierService } from './ReviewApplierService';
+export { TaskBoundaryParser } from './TaskBoundaryParser';
 export { TeamAgentToolsInstaller } from './TeamAgentToolsInstaller';
 export { TeamAttachmentStore } from './TeamAttachmentStore';
 export { TeamConfigReader } from './TeamConfigReader';
@@ -14,3 +20,4 @@ export { TeamProvisioningService } from './TeamProvisioningService';
 export { TeamSentMessagesStore } from './TeamSentMessagesStore';
 export { TeamTaskReader } from './TeamTaskReader';
 export { TeamTaskWriter } from './TeamTaskWriter';
+export { countLineChanges } from './UnifiedLineCounter';

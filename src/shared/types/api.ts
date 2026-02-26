@@ -7,6 +7,7 @@
  * Shared between preload and renderer processes.
  */
 
+import type { CliInstallerAPI } from './cliInstaller';
 import type {
   AppConfig,
   DetectedError,
@@ -14,11 +15,24 @@ import type {
   TriggerTestResult,
 } from './notifications';
 import type {
+  AgentChangeSet,
+  ApplyReviewRequest,
+  ApplyReviewResult,
+  ChangeStats,
+  ConflictCheckResult,
+  FileChangeWithContent,
+  HunkDecision,
+  RejectResult,
+  SnippetDiff,
+  TaskChangeSetV2,
+} from './review';
+import type {
   AddMemberRequest,
   AttachmentFileData,
   CreateTaskRequest,
   GlobalTask,
   KanbanColumnId,
+  LeadActivityState,
   MemberFullStats,
   MemberLogSummary,
   SendMessageRequest,
@@ -32,6 +46,7 @@ import type {
   TeamData,
   TeamLaunchRequest,
   TeamLaunchResponse,
+  TeamMessageNotificationData,
   TeamProvisioningPrepareResult,
   TeamProvisioningProgress,
   TeamSummary,
@@ -40,6 +55,7 @@ import type {
   TeamUpdateConfigRequest,
   UpdateKanbanPatch,
 } from './team';
+import type { TerminalAPI } from './terminal';
 import type { WaterfallData } from './visualization';
 import type {
   ConversationGroup,
@@ -373,6 +389,8 @@ export interface TeamsAPI {
   list: () => Promise<TeamSummary[]>;
   getData: (teamName: string) => Promise<TeamData>;
   deleteTeam: (teamName: string) => Promise<void>;
+  restoreTeam: (teamName: string) => Promise<void>;
+  permanentlyDeleteTeam: (teamName: string) => Promise<void>;
   prepareProvisioning: (cwd?: string) => Promise<TeamProvisioningPrepareResult>;
   createTeam: (request: TeamCreateRequest) => Promise<TeamCreateResponse>;
   getProvisioningStatus: (runId: string) => Promise<TeamProvisioningProgress>;
@@ -412,12 +430,81 @@ export interface TeamsAPI {
     role: string | undefined
   ) => Promise<void>;
   addTaskComment: (teamName: string, taskId: string, text: string) => Promise<TaskComment>;
+  setTaskClarification: (
+    teamName: string,
+    taskId: string,
+    value: 'lead' | 'user' | null
+  ) => Promise<void>;
   getProjectBranch: (projectPath: string) => Promise<string | null>;
   getAttachments: (teamName: string, messageId: string) => Promise<AttachmentFileData[]>;
+  killProcess: (teamName: string, pid: number) => Promise<void>;
+  getLeadActivity: (teamName: string) => Promise<LeadActivityState>;
+  softDeleteTask: (teamName: string, taskId: string) => Promise<void>;
+  restoreTask: (teamName: string, taskId: string) => Promise<void>;
+  getDeletedTasks: (teamName: string) => Promise<TeamTask[]>;
+  showMessageNotification: (data: TeamMessageNotificationData) => Promise<void>;
   onTeamChange: (callback: (event: unknown, data: TeamChangeEvent) => void) => () => void;
   onProvisioningProgress: (
     callback: (event: unknown, data: TeamProvisioningProgress) => void
   ) => () => void;
+}
+
+// =============================================================================
+// Review API
+// =============================================================================
+
+export interface ReviewAPI {
+  // Phase 1
+  getAgentChanges: (teamName: string, memberName: string) => Promise<AgentChangeSet>;
+  getTaskChanges: (teamName: string, taskId: string) => Promise<TaskChangeSetV2>;
+  getChangeStats: (teamName: string, memberName: string) => Promise<ChangeStats>;
+  getFileContent: (
+    teamName: string,
+    memberName: string | undefined,
+    filePath: string,
+    snippets?: SnippetDiff[]
+  ) => Promise<FileChangeWithContent>;
+  applyDecisions: (request: ApplyReviewRequest) => Promise<ApplyReviewResult>;
+  // Phase 2
+  checkConflict: (filePath: string, expectedModified: string) => Promise<ConflictCheckResult>;
+  rejectHunks: (
+    filePath: string,
+    original: string,
+    modified: string,
+    hunkIndices: number[],
+    snippets: SnippetDiff[]
+  ) => Promise<RejectResult>;
+  rejectFile: (filePath: string, original: string, modified: string) => Promise<RejectResult>;
+  previewReject: (
+    filePath: string,
+    original: string,
+    modified: string,
+    hunkIndices: number[],
+    snippets: SnippetDiff[]
+  ) => Promise<{ preview: string; hasConflicts: boolean }>;
+  // Editable diff
+  saveEditedFile: (filePath: string, content: string) => Promise<{ success: boolean }>;
+  // Decision persistence
+  loadDecisions: (
+    teamName: string,
+    scopeKey: string
+  ) => Promise<{
+    hunkDecisions: Record<string, HunkDecision>;
+    fileDecisions: Record<string, HunkDecision>;
+  } | null>;
+  saveDecisions: (
+    teamName: string,
+    scopeKey: string,
+    hunkDecisions: Record<string, HunkDecision>,
+    fileDecisions: Record<string, HunkDecision>
+  ) => Promise<void>;
+  clearDecisions: (teamName: string, scopeKey: string) => Promise<void>;
+  onCmdN?: (callback: () => void) => (() => void) | undefined;
+  // Phase 4
+  getGitFileLog: (
+    projectPath: string,
+    filePath: string
+  ) => Promise<{ hash: string; timestamp: string; message: string }[]>;
 }
 
 // =============================================================================
@@ -507,6 +594,7 @@ export interface ElectronAPI {
     projectRoot?: string,
     userSelectedFromDialog?: boolean
   ) => Promise<{ success: boolean; error?: string }>;
+  showInFolder: (filePath: string) => Promise<void>;
   openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
 
   // Window controls (when title bar is hidden, e.g. Windows / Linux)
@@ -541,6 +629,15 @@ export interface ElectronAPI {
 
   // Team management API
   teams: TeamsAPI;
+
+  // Review API
+  review: ReviewAPI;
+
+  // CLI Installer API
+  cliInstaller: CliInstallerAPI;
+
+  // Embedded Terminal API (xterm.js + node-pty)
+  terminal: TerminalAPI;
 }
 
 // =============================================================================
