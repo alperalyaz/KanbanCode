@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 
 // Mock the entire child_process module so that we can inspect how our helpers
 // invoke spawn/exec without hitting the real filesystem or spawning anything.
@@ -41,7 +41,7 @@ describe('cli child process helpers', () => {
   describe('spawnCli', () => {
     it('calls spawn directly when path is ascii on windows', () => {
       setPlatform('win32');
-      (child.spawn as unknown as vi.Mock).mockReturnValue({} as any);
+      (child.spawn as unknown as Mock).mockReturnValue({} as any);
 
       const result = spawnCli('C:\\bin\\claude.exe', ['--version'], { cwd: 'x' });
       expect(child.spawn).toHaveBeenCalledWith('C:\\bin\\claude.exe', ['--version'], { cwd: 'x' });
@@ -53,7 +53,7 @@ describe('cli child process helpers', () => {
       const error: any = new Error('spawn EINVAL');
       error.code = 'EINVAL';
       const fake = {} as any;
-      const spawnMock = child.spawn as unknown as vi.Mock;
+      const spawnMock = child.spawn as unknown as Mock;
       spawnMock.mockImplementationOnce(() => {
         throw error;
       });
@@ -73,7 +73,7 @@ describe('cli child process helpers', () => {
     it('uses shell directly when path contains non-ASCII on windows', () => {
       setPlatform('win32');
       const fake = {} as any;
-      const spawnMock = child.spawn as unknown as vi.Mock;
+      const spawnMock = child.spawn as unknown as Mock;
       spawnMock.mockReturnValue(fake);
 
       const result = spawnCli('C:\\Users\\Алексей\\AppData\\Roaming\\npm\\claude.cmd', ['a', 'b'], {
@@ -89,7 +89,7 @@ describe('cli child process helpers', () => {
 
     it('does not use shell when not on windows', () => {
       setPlatform('linux');
-      (child.spawn as unknown as vi.Mock).mockReturnValue({} as any);
+      (child.spawn as unknown as Mock).mockReturnValue({} as any);
       const result = spawnCli('/usr/bin/claude', ['--help']);
       expect(child.spawn).toHaveBeenCalledWith('/usr/bin/claude', ['--help'], {});
       expect(result).toEqual({} as any);
@@ -99,7 +99,7 @@ describe('cli child process helpers', () => {
   describe('execCli', () => {
     it('invokes execFile when path is ASCII on windows', async () => {
       setPlatform('win32');
-      const execFileMock = child.execFile as unknown as vi.Mock;
+      const execFileMock = child.execFile as unknown as Mock;
       execFileMock.mockImplementation(
         (_cmd: string, _args: string[], _opts: unknown, cb: Function) => {
           cb(null, 'ok', '');
@@ -118,8 +118,8 @@ describe('cli child process helpers', () => {
 
     it('skips straight to shell when path contains non-ASCII on windows', async () => {
       setPlatform('win32');
-      const execFileMock = child.execFile as unknown as vi.Mock;
-      const execMock = child.exec as unknown as vi.Mock;
+      const execFileMock = child.execFile as unknown as Mock;
+      const execMock = child.exec as unknown as Mock;
       execMock.mockImplementation((_cmd: string, _opts: unknown, cb: Function) => {
         cb(null, '1.2.3', '');
         return {} as any;
@@ -136,7 +136,7 @@ describe('cli child process helpers', () => {
 
     it('escapes percent signs and quotes for cmd.exe in shell fallback', async () => {
       setPlatform('win32');
-      const execMock = child.exec as unknown as vi.Mock;
+      const execMock = child.exec as unknown as Mock;
       execMock.mockImplementation((_cmd: string, _opts: unknown, cb: Function) => {
         cb(null, 'ok', '');
         return {} as any;
@@ -154,7 +154,7 @@ describe('cli child process helpers', () => {
 
     it('shell: true cannot be overridden by caller options', () => {
       setPlatform('win32');
-      const spawnMock = child.spawn as unknown as vi.Mock;
+      const spawnMock = child.spawn as unknown as Mock;
       spawnMock.mockReturnValue({} as any);
 
       spawnCli('C:\\Users\\Алексей\\bin\\claude.cmd', ['--version'], { shell: false } as any);
@@ -164,7 +164,7 @@ describe('cli child process helpers', () => {
 
     it('falls back to shell when execFile throws EINVAL on windows', async () => {
       setPlatform('win32');
-      const execFileMock = child.execFile as unknown as vi.Mock;
+      const execFileMock = child.execFile as unknown as Mock;
       execFileMock.mockImplementation(
         (_cmd: string, _args: string[], _opts: unknown, cb: Function) => {
           const err: any = new Error('spawn EINVAL');
@@ -173,7 +173,7 @@ describe('cli child process helpers', () => {
           return {} as any;
         }
       );
-      const execMock = child.exec as unknown as vi.Mock;
+      const execMock = child.exec as unknown as Mock;
       execMock.mockImplementation((_cmd: string, _opts: unknown, cb: Function) => {
         cb(null, '2.3.4', '');
         return {} as any;

@@ -169,8 +169,7 @@ function validateRequest(
   options?: { requireCwd?: boolean }
 ): ValidationResult {
   const requireCwd = options?.requireCwd ?? true;
-  // eslint-disable-next-line security/detect-unsafe-regex -- kebab-case pattern is linear, no ReDoS
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(request.teamName) || request.teamName.length > 64) {
+  if (!TEAM_NAME_RE.test(request.teamName) || request.teamName.length > 64) {
     return {
       valid: false,
       errors: {
@@ -202,8 +201,7 @@ function validateRequest(
       },
     };
   }
-  const memberNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
-  if (request.members.some((member) => !memberNamePattern.test(member.name.trim()))) {
+  if (request.members.some((member) => !MEMBER_NAME_RE.test(member.name.trim()))) {
     return {
       valid: false,
       errors: {

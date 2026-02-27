@@ -136,6 +136,11 @@ export interface TeamSlice {
   startTask: (teamName: string, taskId: string) => Promise<{ notifiedOwner: boolean }>;
   updateTaskStatus: (teamName: string, taskId: string, status: TeamTaskStatus) => Promise<void>;
   updateTaskOwner: (teamName: string, taskId: string, owner: string | null) => Promise<void>;
+  updateTaskFields: (
+    teamName: string,
+    taskId: string,
+    fields: { subject?: string; description?: string }
+  ) => Promise<void>;
   addingComment: boolean;
   addCommentError: string | null;
   addTaskComment: (teamName: string, taskId: string, text: string) => Promise<TaskComment>;
@@ -550,6 +555,17 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   updateTaskOwner: async (teamName: string, taskId: string, owner: string | null) => {
     await unwrapIpc('team:updateTaskOwner', () =>
       api.teams.updateTaskOwner(teamName, taskId, owner)
+    );
+    await get().refreshTeamData(teamName);
+  },
+
+  updateTaskFields: async (
+    teamName: string,
+    taskId: string,
+    fields: { subject?: string; description?: string }
+  ) => {
+    await unwrapIpc('team:updateTaskFields', () =>
+      api.teams.updateTaskFields(teamName, taskId, fields)
     );
     await get().refreshTeamData(teamName);
   },

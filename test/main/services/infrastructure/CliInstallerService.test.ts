@@ -149,10 +149,10 @@ describe('CliInstallerService', () => {
       // Second call should send "already in progress" error
       const progressCalls = mockWindow.webContents.send.mock.calls;
       const errorCalls = progressCalls.filter(
-        ([channel, data]: [string, { type: string; error?: string }]) =>
-          channel === 'cliInstaller:progress' &&
-          data.type === 'error' &&
-          data.error?.includes('already in progress')
+        (call: unknown[]) =>
+          (call[0] as string) === 'cliInstaller:progress' &&
+          (call[1] as { type: string; error?: string }).type === 'error' &&
+          (call[1] as { type: string; error?: string }).error?.includes('already in progress')
       );
       expect(errorCalls.length).toBeGreaterThanOrEqual(1);
     });
@@ -174,8 +174,9 @@ describe('CliInstallerService', () => {
       await service.install();
 
       const checkingCalls = mockWindow.webContents.send.mock.calls.filter(
-        ([channel, data]: [string, { type: string }]) =>
-          channel === 'cliInstaller:progress' && data.type === 'checking'
+        (call: unknown[]) =>
+          (call[0] as string) === 'cliInstaller:progress' &&
+          (call[1] as { type: string }).type === 'checking'
       );
       expect(checkingCalls.length).toBeGreaterThanOrEqual(1);
     });

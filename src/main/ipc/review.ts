@@ -5,6 +5,7 @@
  */
 
 import { ReviewDecisionStore } from '@main/services/team/ReviewDecisionStore';
+import { validateFilePath } from '@main/utils/pathValidation';
 import {
   REVIEW_APPLY_DECISIONS,
   REVIEW_CHECK_CONFLICT,
@@ -259,10 +260,15 @@ async function handleSaveEditedFile(
   if (!filePath || typeof content !== 'string') {
     return { success: false, error: 'Invalid parameters' };
   }
+  const pathCheck = validateFilePath(filePath, null);
+  if (!pathCheck.valid) {
+    logger.error(`saveEditedFile blocked: ${String(pathCheck.error)} (path: ${String(filePath)})`);
+    return { success: false, error: `Path validation failed: ${String(pathCheck.error)}` };
+  }
   return wrapReviewHandler('saveEditedFile', async () => {
-    const result = await getApplier().saveEditedFile(filePath, content);
+    const result = await getApplier().saveEditedFile(pathCheck.normalizedPath!, content);
     // Invalidate cached content so next fetch reads the saved version from disk
-    getContentResolver().invalidateFile(filePath);
+    getContentResolver().invalidateFile(pathCheck.normalizedPath!);
     return result;
   });
 }

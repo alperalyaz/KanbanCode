@@ -707,6 +707,14 @@ export class TeamDataService {
     await this.taskWriter.updateOwner(teamName, taskId, owner);
   }
 
+  async updateTaskFields(
+    teamName: string,
+    taskId: string,
+    fields: { subject?: string; description?: string }
+  ): Promise<void> {
+    await this.taskWriter.updateFields(teamName, taskId, fields);
+  }
+
   async setTaskNeedsClarification(
     teamName: string,
     taskId: string,
