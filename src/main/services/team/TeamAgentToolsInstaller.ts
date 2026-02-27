@@ -6,7 +6,7 @@ import * as path from 'path';
 import { atomicWriteAsync } from './atomicWrite';
 
 const TOOL_FILE_NAME = 'teamctl.js';
-const TOOL_VERSION = 10;
+const TOOL_VERSION = 11;
 
 function buildTeamCtlScript(): string {
   const script = String.raw`#!/usr/bin/env node
@@ -420,15 +420,25 @@ function sendInboxMessage(paths, teamName, flags) {
     messageId,
   };
 
-  const existing = readJson(inboxPath, []);
-  const list = Array.isArray(existing) ? existing : [];
-  list.push(payload);
-  atomicWrite(inboxPath, JSON.stringify(list, null, 2));
-  const verify = readJson(inboxPath, []);
-  if (!Array.isArray(verify) || !verify.some((m) => m && m.messageId === messageId)) {
-    die('Inbox write verification failed');
+  var lastErr;
+  for (var attempt = 0; attempt < 8; attempt++) {
+    try {
+      var existing = readJson(inboxPath, []);
+      var list = Array.isArray(existing) ? existing : [];
+      list.push(payload);
+      atomicWrite(inboxPath, JSON.stringify(list, null, 2));
+      var verify = readJson(inboxPath, []);
+      if (Array.isArray(verify) && verify.some(function (m) { return m && m.messageId === messageId; })) {
+        return { deliveredToInbox: true, messageId: messageId };
+      }
+      // Verification failed (concurrent write overwrote us) — retry
+    } catch (e) {
+      lastErr = e;
+      if (attempt === 7) throw e;
+    }
   }
-  return { deliveredToInbox: true, messageId };
+  // If all retries exhausted without verification success, die
+  die('Inbox write verification failed after retries' + (lastErr ? ': ' + formatError(lastErr) : ''));
 }
 
 function reviewApprove(paths, teamName, taskId, flags) {
