@@ -9,6 +9,7 @@
  * - Handle reconnection on errors
  */
 
+import { getHomeDir } from '@main/utils/pathDecoder';
 import { createLogger } from '@shared/utils/logger';
 import { execFile } from 'child_process';
 import { EventEmitter } from 'events';
@@ -267,7 +268,7 @@ export class SshConnectionManager extends EventEmitter {
         break;
 
       case 'privateKey': {
-        const keyPath = config.privateKeyPath ?? path.join(os.homedir(), '.ssh', 'id_rsa');
+        const keyPath = config.privateKeyPath ?? path.join(getHomeDir(), '.ssh', 'id_rsa');
         try {
           const keyData = await fs.promises.readFile(keyPath, 'utf8');
           connectConfig.privateKey = keyData;
@@ -347,15 +348,15 @@ export class SshConnectionManager extends EventEmitter {
     const knownPaths = [
       // 1Password SSH agent
       path.join(
-        os.homedir(),
+        getHomeDir(),
         'Library',
         'Group Containers',
         '2BUA8C4S2C.com.1password',
         'agent.sock'
       ),
-      path.join(os.homedir(), '.1password', 'agent.sock'),
+      path.join(getHomeDir(), '.1password', 'agent.sock'),
       // Common user agent socket
-      path.join(os.homedir(), '.ssh', 'agent.sock'),
+      path.join(getHomeDir(), '.ssh', 'agent.sock'),
     ];
 
     // Linux: add system paths
@@ -395,8 +396,8 @@ export class SshConnectionManager extends EventEmitter {
         // The config parser already told us there's an identity file.
         // Try common identity file locations from config
         const configKeyPaths = [
-          path.join(os.homedir(), '.ssh', 'id_ed25519'),
-          path.join(os.homedir(), '.ssh', 'id_rsa'),
+          path.join(getHomeDir(), '.ssh', 'id_ed25519'),
+          path.join(getHomeDir(), '.ssh', 'id_rsa'),
         ];
         for (const keyPath of configKeyPaths) {
           try {
@@ -417,9 +418,9 @@ export class SshConnectionManager extends EventEmitter {
 
     // Try default key files
     const defaultKeys = [
-      path.join(os.homedir(), '.ssh', 'id_ed25519'),
-      path.join(os.homedir(), '.ssh', 'id_rsa'),
-      path.join(os.homedir(), '.ssh', 'id_ecdsa'),
+      path.join(getHomeDir(), '.ssh', 'id_ed25519'),
+      path.join(getHomeDir(), '.ssh', 'id_rsa'),
+      path.join(getHomeDir(), '.ssh', 'id_ecdsa'),
     ];
 
     for (const keyPath of defaultKeys) {

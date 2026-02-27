@@ -5,6 +5,7 @@ import {
   extractBaseDir,
   getAutoDetectedClaudeBasePath,
   getClaudeBasePath,
+  getHomeDir,
   getProjectsBasePath,
   getTasksBasePath,
   getTeamsBasePath,
@@ -2439,7 +2440,7 @@ export class TeamProvisioningService {
 
   private async buildProvisioningEnv(): Promise<ProvisioningEnvResolution> {
     const shellEnv = await resolveInteractiveShellEnv();
-    const home = shellEnv.HOME?.trim() || process.env.HOME?.trim() || os.homedir();
+    const home = shellEnv.HOME?.trim() || process.env.HOME?.trim() || getHomeDir();
     const user = shellEnv.USER?.trim() || process.env.USER?.trim() || os.userInfo().username;
     const shell = shellEnv.SHELL?.trim() || process.env.SHELL?.trim() || '/bin/zsh';
     const xdgConfigHome =

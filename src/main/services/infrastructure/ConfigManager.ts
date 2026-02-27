@@ -9,11 +9,10 @@
  * - Handle JSON parse errors gracefully
  */
 
-import { setClaudeBasePathOverride } from '@main/utils/pathDecoder';
+import { getHomeDir, setClaudeBasePathOverride } from '@main/utils/pathDecoder';
 import { validateRegexPattern } from '@main/utils/regexValidation';
 import { createLogger } from '@shared/utils/logger';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 
 import { DEFAULT_TRIGGERS, TriggerManager } from './TriggerManager';
@@ -23,7 +22,7 @@ import type { SshConnectionProfile } from '@shared/types/api';
 
 const logger = createLogger('Service:ConfigManager');
 
-const CONFIG_DIR = path.join(os.homedir(), '.claude');
+const CONFIG_DIR = path.join(getHomeDir(), '.claude');
 const CONFIG_FILENAME = 'claude-devtools-config.json';
 const DEFAULT_CONFIG_PATH = path.join(CONFIG_DIR, CONFIG_FILENAME);
 

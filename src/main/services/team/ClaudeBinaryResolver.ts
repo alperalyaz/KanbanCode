@@ -1,5 +1,5 @@
+import { getHomeDir } from '@main/utils/pathDecoder';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 
 async function isExecutable(filePath: string): Promise<boolean> {
@@ -61,7 +61,7 @@ function expandWindowsBinaryNames(binaryName: string): string[] {
 }
 
 async function collectNvmCandidates(): Promise<string[]> {
-  const nvmNodeRoot = path.join(os.homedir(), '.nvm', 'versions', 'node');
+  const nvmNodeRoot = path.join(getHomeDir(), '.nvm', 'versions', 'node');
   let versions: string[];
   try {
     versions = await fs.promises.readdir(nvmNodeRoot);
@@ -172,9 +172,9 @@ export class ClaudeBinaryResolver {
 
     const candidateDirs: string[] = [
       // Native binary installation path (claude install)
-      path.join(os.homedir(), '.local', 'bin'),
-      path.join(os.homedir(), '.npm-global', 'bin'),
-      path.join(os.homedir(), '.npm', 'bin'),
+      path.join(getHomeDir(), '.local', 'bin'),
+      path.join(getHomeDir(), '.npm-global', 'bin'),
+      path.join(getHomeDir(), '.npm', 'bin'),
       process.platform === 'win32'
         ? process.env.APPDATA
           ? path.join(process.env.APPDATA, 'npm')

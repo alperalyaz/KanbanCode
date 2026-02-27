@@ -12,11 +12,11 @@
  * - Emit IPC events to renderer: notification:new, notification:updated
  */
 
+import { getHomeDir } from '@main/utils/pathDecoder';
 import { createLogger } from '@shared/utils/logger';
 import { type BrowserWindow, Notification } from 'electron';
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 
 import { type DetectedError } from '../error/ErrorMessageBuilder';
@@ -77,7 +77,7 @@ const MAX_NOTIFICATIONS = 100;
 const THROTTLE_MS = 5000;
 
 /** Path to notifications storage file */
-const NOTIFICATIONS_PATH = path.join(os.homedir(), '.claude', 'claude-devtools-notifications.json');
+const NOTIFICATIONS_PATH = path.join(getHomeDir(), '.claude', 'claude-devtools-notifications.json');
 
 // =============================================================================
 // NotificationManager Class
