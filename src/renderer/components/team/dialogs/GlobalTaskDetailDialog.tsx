@@ -69,7 +69,8 @@ export const GlobalTaskDetailDialog = (): React.JSX.Element | null => {
   return (
     <TaskDetailDialog
       open
-      task={selectedTeamLoading ? null : task}
+      loading={selectedTeamLoading}
+      task={task}
       teamName={teamName}
       kanbanTaskState={kanbanTaskState}
       taskMap={taskMap}

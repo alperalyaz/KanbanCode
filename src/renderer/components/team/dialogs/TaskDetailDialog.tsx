@@ -61,6 +61,7 @@ import type { KanbanTaskState, ResolvedTeamMember, TeamTaskWithKanban } from '@s
 
 interface TaskDetailDialogProps {
   open: boolean;
+  loading?: boolean;
   task: TeamTaskWithKanban | null;
   teamName: string;
   kanbanTaskState?: KanbanTaskState;
@@ -77,6 +78,7 @@ interface TaskDetailDialogProps {
 
 export const TaskDetailDialog = ({
   open,
+  loading = false,
   task,
   teamName,
   kanbanTaskState,
@@ -224,6 +226,22 @@ export const TaskDetailDialog = ({
     handleClose();
     onScrollToTask?.(taskId);
   };
+
+  if (loading) {
+    return (
+      <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+        <DialogContent className="sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Loading task…</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+            <Loader2 className="size-4 animate-spin" />
+            <span>Fetching team data</span>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   if (!currentTask) {
     return (

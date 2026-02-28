@@ -126,7 +126,7 @@ export interface TeamSlice {
   openTeamsTab: () => void;
   openTeamTab: (teamName: string, projectPath?: string, taskId?: string) => void;
   clearKanbanFilter: () => void;
-  selectTeam: (teamName: string) => Promise<void>;
+  selectTeam: (teamName: string, opts?: { skipProjectAutoSelect?: boolean }) => Promise<void>;
   refreshTeamData: (teamName: string) => Promise<void>;
   sendTeamMessage: (teamName: string, request: SendMessageRequest) => Promise<void>;
   requestReview: (teamName: string, taskId: string) => Promise<void>;
@@ -207,7 +207,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     // Ensure team data is loaded for the dialog
     const state = get();
     if (state.selectedTeamName !== teamName || !state.selectedTeamData) {
-      void state.selectTeam(teamName);
+      void state.selectTeam(teamName, { skipProjectAutoSelect: true });
     }
   },
   closeGlobalTaskDetail: () => set({ globalTaskDetail: null }),
@@ -358,7 +358,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     set({ kanbanFilterQuery: null });
   },
 
-  selectTeam: async (teamName: string) => {
+  selectTeam: async (teamName: string, opts) => {
     // Clear stale data immediately to prevent flash of previous team's content
     const prev = get().selectedTeamName;
     set({
@@ -405,6 +405,10 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       const teamTab = allTabs.find((tab) => tab.type === 'team' && tab.teamName === teamName);
       if (teamTab && teamTab.label !== displayName) {
         get().updateTabLabel(teamTab.id, displayName);
+      }
+
+      if (opts?.skipProjectAutoSelect) {
+        return;
       }
 
       // Auto-select the project associated with this team's cwd/projectPath.
