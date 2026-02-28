@@ -65,6 +65,24 @@ export const GlobalTaskDetailDialog = (): React.JSX.Element | null => {
   ]);
 
   const isFullTeamLoaded = selectedTeamName === teamName && !!selectedTeamData;
+  const isThisTeamLoading =
+    selectedTeamName === teamName && selectedTeamLoading && !selectedTeamData;
+
+  useEffect(() => {
+    if (!globalTaskDetail) return;
+    console.warn(
+      `[GlobalTaskDetailDialog] team=${teamName} taskId=${taskId} selectedTeamName=${selectedTeamName ?? ''} loading=${selectedTeamLoading} hasData=${!!selectedTeamData} isFull=${isFullTeamLoaded} isThisTeamLoading=${isThisTeamLoading}`
+    );
+  }, [
+    globalTaskDetail,
+    isFullTeamLoaded,
+    isThisTeamLoading,
+    selectedTeamData,
+    selectedTeamLoading,
+    selectedTeamName,
+    taskId,
+    teamName,
+  ]);
 
   const taskMap = useMemo(() => {
     const map = new Map<string, TeamTaskWithKanban>();
@@ -111,7 +129,7 @@ export const GlobalTaskDetailDialog = (): React.JSX.Element | null => {
     <TaskDetailDialog
       open
       variant={isFullTeamLoaded ? 'team' : 'global'}
-      loading={!isFullTeamLoaded && selectedTeamLoading}
+      loading={!isFullTeamLoaded && isThisTeamLoading}
       task={task}
       teamName={teamName}
       kanbanTaskState={kanbanTaskState}
