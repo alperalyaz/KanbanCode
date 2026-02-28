@@ -268,8 +268,13 @@ function createViewerMarkdownComponents(searchCtx: SearchContext | null): Compon
 /** Default components without search highlighting */
 const defaultComponents = createViewerMarkdownComponents(null);
 
-const MAX_MARKDOWN_CHARS = 200_000;
-const LARGE_PREVIEW_CHARS = 50_000;
+// Markdown + syntax highlighting can freeze the renderer on some inputs
+// (very large text, huge code blocks, pathological markdown). Keep the UI responsive:
+// - for medium/large content: disable syntax highlighting
+// - for very large content: show a raw preview instead of parsing markdown
+const DISABLE_HIGHLIGHT_CHARS = 12_000;
+const MAX_MARKDOWN_CHARS = 60_000;
+const LARGE_PREVIEW_CHARS = 30_000;
 
 // =============================================================================
 // Component
@@ -288,6 +293,7 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
   const [rawLimit, setRawLimit] = React.useState(LARGE_PREVIEW_CHARS);
 
   const isTooLarge = content.length > MAX_MARKDOWN_CHARS;
+  const disableHighlight = content.length > DISABLE_HIGHLIGHT_CHARS;
 
   // Only subscribe to search store when itemId is provided
   const { searchQuery, searchMatches, currentSearchIndex } = useStore(
@@ -475,7 +481,7 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
         <div className="min-w-0 break-words p-4">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
-            rehypePlugins={REHYPE_PLUGINS}
+            rehypePlugins={disableHighlight ? [] : REHYPE_PLUGINS}
             urlTransform={(url) => url}
             components={components}
           >
