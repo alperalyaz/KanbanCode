@@ -3,6 +3,9 @@
  *
  * Provides security sandboxing for file path access to prevent
  * unauthorized access to sensitive system files.
+ *
+ * Cross-platform: uses path.resolve() for consistent drive-letter
+ * handling on Windows (normalizeForCompare, isPathWithinRoot).
  */
 
 import * as fs from 'fs';
