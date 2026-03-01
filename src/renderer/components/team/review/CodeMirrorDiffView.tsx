@@ -257,6 +257,13 @@ export const CodeMirrorDiffView = ({
         syntaxHighlightDeletions: true,
       };
 
+      // IMPORTANT: @codemirror/merge shows accept/reject buttons by default.
+      // When our UI chooses to hide merge controls (e.g. "Missing on disk" preview),
+      // explicitly disable them rather than relying on default behavior.
+      if (!showMergeControls) {
+        mergeConfig.mergeControls = false;
+      }
+
       if (collapse && !usePortionCollapse) {
         mergeConfig.collapseUnchanged = {
           margin,

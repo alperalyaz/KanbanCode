@@ -481,6 +481,10 @@ export class HttpAPIClient implements ElectronAPI {
       this.post('/api/config/hide-sessions', { projectId, sessionIds }),
     unhideSessions: (projectId: string, sessionIds: string[]): Promise<void> =>
       this.post('/api/config/unhide-sessions', { projectId, sessionIds }),
+    addCustomProjectPath: (projectPath: string): Promise<void> =>
+      this.post('/api/config/add-custom-project-path', { projectPath }),
+    removeCustomProjectPath: (projectPath: string): Promise<void> =>
+      this.post('/api/config/remove-custom-project-path', { projectPath }),
   };
 
   // ---------------------------------------------------------------------------
@@ -807,6 +811,22 @@ export class HttpAPIClient implements ElectronAPI {
     },
     showMessageNotification: async (): Promise<void> => {
       // Not available via HTTP client — native notifications require Electron
+    },
+    addTaskRelationship: async (
+      _teamName: string,
+      _taskId: string,
+      _targetId: string,
+      _type: 'blockedBy' | 'blocks' | 'related'
+    ): Promise<void> => {
+      throw new Error('Task relationships are not available in browser mode');
+    },
+    removeTaskRelationship: async (
+      _teamName: string,
+      _taskId: string,
+      _targetId: string,
+      _type: 'blockedBy' | 'blocks' | 'related'
+    ): Promise<void> => {
+      throw new Error('Task relationships are not available in browser mode');
     },
     onTeamChange: (callback: (event: unknown, data: TeamChangeEvent) => void): (() => void) => {
       return this.addEventListener('team-change', (data: unknown) =>

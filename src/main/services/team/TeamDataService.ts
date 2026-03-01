@@ -783,6 +783,24 @@ export class TeamDataService {
     await this.taskWriter.setNeedsClarification(teamName, taskId, value);
   }
 
+  async addTaskRelationship(
+    teamName: string,
+    taskId: string,
+    targetId: string,
+    type: 'blockedBy' | 'blocks' | 'related'
+  ): Promise<void> {
+    await this.taskWriter.addRelationship(teamName, taskId, targetId, type);
+  }
+
+  async removeTaskRelationship(
+    teamName: string,
+    taskId: string,
+    targetId: string,
+    type: 'blockedBy' | 'blocks' | 'related'
+  ): Promise<void> {
+    await this.taskWriter.removeRelationship(teamName, taskId, targetId, type);
+  }
+
   async addTaskComment(teamName: string, taskId: string, text: string): Promise<TaskComment> {
     const comment = await this.taskWriter.addComment(teamName, taskId, text);
 

@@ -38,6 +38,7 @@ interface ContinuousScrollViewProps {
   onContentChanged: (filePath: string, content: string) => void;
   onDiscard: (filePath: string) => void;
   onSave: (filePath: string) => void;
+  onRestoreMissingFile?: (filePath: string, content: string) => void;
   onVisibleFileChange: (filePath: string) => void;
   scrollContainerRef: React.RefObject<HTMLDivElement>;
   editorViewMapRef: React.MutableRefObject<Map<string, EditorView>>;
@@ -71,6 +72,7 @@ export const ContinuousScrollView = ({
   onContentChanged,
   onDiscard,
   onSave,
+  onRestoreMissingFile,
   onVisibleFileChange,
   scrollContainerRef,
   editorViewMapRef,
@@ -222,6 +224,7 @@ export const ContinuousScrollView = ({
               onToggleCollapse={handleToggleCollapse}
               onDiscard={onDiscard}
               onSave={onSave}
+              onRestoreMissingFile={onRestoreMissingFile}
             />
 
             {!isCollapsed &&

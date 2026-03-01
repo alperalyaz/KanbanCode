@@ -62,6 +62,12 @@ export const CONFIG_FIND_WSL_CLAUDE_ROOTS = 'config:findWslClaudeRoots';
 /** Open config file in external editor */
 export const CONFIG_OPEN_IN_EDITOR = 'config:openInEditor';
 
+/** Add a custom project path (Select Folder persistence) */
+export const CONFIG_ADD_CUSTOM_PROJECT_PATH = 'config:addCustomProjectPath';
+
+/** Remove a custom project path */
+export const CONFIG_REMOVE_CUSTOM_PROJECT_PATH = 'config:removeCustomProjectPath';
+
 /** Pin a session */
 export const CONFIG_PIN_SESSION = 'config:pinSession';
 
@@ -314,6 +320,12 @@ export const TEAM_SET_TASK_CLARIFICATION = 'team:setTaskClarification';
 
 /** Show native OS notification for a team message */
 export const TEAM_SHOW_MESSAGE_NOTIFICATION = 'team:showMessageNotification';
+
+/** Add a relationship (blockedBy/blocks/related) between two tasks */
+export const TEAM_ADD_TASK_RELATIONSHIP = 'team:addTaskRelationship';
+
+/** Remove a relationship (blockedBy/blocks/related) between two tasks */
+export const TEAM_REMOVE_TASK_RELATIONSHIP = 'team:removeTaskRelationship';
 
 // =============================================================================
 // CLI Installer API Channels

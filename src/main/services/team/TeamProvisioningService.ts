@@ -350,6 +350,9 @@ function buildTaskStatusProtocol(teamName: string): string {
        If the lead replies via SendMessage instead, clear the flag yourself once you have the answer:
        node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-clarification <taskId> clear --from "<your-name>"
     d) Do NOT set clarification to "user" yourself — only the team lead escalates to the user.
+11. DEPENDENCY AWARENESS:
+    When your task has blockedBy dependencies, check if they are completed before starting.
+    When you complete a task that blocks others, mention this in your completion message so blocked teammates can proceed.
 Failure to follow this protocol means the task board will show incorrect status.`);
 }
 
@@ -377,6 +380,15 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       `- Assign/reassign owner: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-owner <id> <member-name> --notify --from "${leadName}"`,
       `- Clear owner: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-owner <id> clear`,
       `- Update status: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-status <id> <pending|in_progress|completed|deleted>`,
+      `- Create with deps: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task create --subject "..." --blocked-by 1,2 --related 3 --owner "<member>" --notify --from "${leadName}"`,
+      `- Link dependency: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task link <id> --blocked-by <targetId>`,
+      `- Link related: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task link <id> --related <targetId>`,
+      `- Unlink: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task unlink <id> --blocked-by <targetId>`,
+      ``,
+      `Dependency guidelines:`,
+      `- Use --blocked-by when a task cannot start until another is done.`,
+      `- Use --related to link related work (e.g. frontend + backend) without blocking.`,
+      `- Avoid over-specifying. Only add dependencies when execution order matters.`,
       ``,
       `Notification policy:`,
       `- The --notify flag sends the assignment to the member automatically, so do NOT send a separate SendMessage for the same task.`,
@@ -445,7 +457,10 @@ function buildMemberTaskSnapshot(memberName: string, tasks: TeamTask[]): string 
 
   const lines = activeTasks.map((t) => {
     const desc = t.description ? ` — ${t.description.slice(0, 120)}` : '';
-    return `  - #${t.id} [${t.status}] ${t.subject}${desc}`;
+    const deps = t.blockedBy?.length
+      ? ` [blocked by: ${t.blockedBy.map((id) => `#${id}`).join(', ')}]`
+      : '';
+    return `  - #${t.id} [${t.status}] ${t.subject}${deps}${desc}`;
   });
   return `\nYour pending tasks from last session (RESUME these immediately):\n${lines.join('\n')}\n`;
 }
@@ -460,7 +475,10 @@ function buildTaskBoardSnapshot(tasks: TeamTask[]): string {
   const lines = active.map((t) => {
     const owner = t.owner ? ` (owner: ${t.owner})` : ' (unassigned)';
     const desc = t.description ? ` — ${t.description.slice(0, 120)}` : '';
-    return `  - #${t.id} [${t.status}]${owner} ${t.subject}${desc}`;
+    const deps = t.blockedBy?.length
+      ? ` [blocked by: ${t.blockedBy.map((id) => `#${id}`).join(', ')}]`
+      : '';
+    return `  - #${t.id} [${t.status}]${owner} ${t.subject}${deps}${desc}`;
   });
   return `\nCurrent task board (pending/in_progress):\n${lines.join('\n')}\n`;
 }
@@ -535,6 +553,8 @@ ${processRegistration}
 3) If user instructions explicitly ask to create tasks OR describe substantial/assigned work that should be tracked — create tasks on the team board.
    - Prefer fewer, broader tasks over many micro-tasks.
    - Avoid duplicate notifications for the same assignment.
+   - When tasks have natural ordering (e.g. setup → implementation → testing), use --blocked-by.
+   - Use --related to connect tasks working on the same feature without blocking.
 
 4) After all steps, output a short summary.
 

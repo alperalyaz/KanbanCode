@@ -126,6 +126,61 @@ async function resolveTeamDisplayName(teamName: string): Promise<string> {
   return resolved;
 }
 
+/**
+ * Inbox message types that are internal coordination noise — not useful as OS notifications.
+ * Matches renderer-side NOISE_TYPES in agentMessageFormatting.ts.
+ */
+const INBOX_NOISE_TYPES = new Set([
+  'idle_notification',
+  'shutdown_approved',
+  'teammate_terminated',
+  'shutdown_request',
+]);
+
+/**
+ * Parses an inbox message text that may be serialized JSON.
+ * Returns null if not valid JSON or not an object.
+ */
+function parseInboxJson(text: string): Record<string, unknown> | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // not JSON — plain text message
+  }
+  return null;
+}
+
+/** Returns true if the inbox message text is a noise type that should not trigger an OS notification. */
+function isInboxNoiseMessage(text: string): boolean {
+  const parsed = parseInboxJson(text);
+  if (!parsed) return false;
+  return typeof parsed.type === 'string' && INBOX_NOISE_TYPES.has(parsed.type);
+}
+
+/**
+ * Extracts human-readable summary and body from an inbox message.
+ * Handles both plain text and serialized JSON ({"type":"message","content":"...","summary":"..."}).
+ */
+function extractNotificationContent(text: string): { summary: string; body: string } {
+  const parsed = parseInboxJson(text);
+  if (!parsed) return { summary: text.slice(0, 80), body: text };
+
+  const content = typeof parsed.content === 'string' ? parsed.content : null;
+  const summary = typeof parsed.summary === 'string' ? parsed.summary : null;
+  const message = typeof parsed.message === 'string' ? parsed.message : null;
+
+  const bestBody = content || message || summary || text;
+  const bestSummary =
+    summary || (content ? content.slice(0, 80) : null) || message || text.slice(0, 80);
+
+  return { summary: bestSummary, body: bestBody };
+}
+
 async function notifyNewInboxMessages(teamName: string, detail: string): Promise<void> {
   // Check config toggle
   const config = configManager.getConfig();
@@ -145,10 +200,11 @@ async function notifyNewInboxMessages(teamName: string, detail: string): Promise
 
   try {
     const messages = await teamInboxReader.getMessagesFor(teamName, memberName);
+    const isFirstLoad = !inboxMessageCounts.has(key);
     const prevCount = inboxMessageCounts.get(key) ?? 0;
 
-    if (prevCount === 0) {
-      // First load — seed count, don't notify
+    if (isFirstLoad) {
+      // First load — seed count, don't notify for pre-existing messages
       inboxMessageCounts.set(key, messages.length);
       return;
     }
@@ -167,14 +223,17 @@ async function notifyNewInboxMessages(teamName: string, detail: string): Promise
     for (const msg of newMessages) {
       // Skip messages sent from our own UI
       if (msg.source && suppressedSources.has(msg.source)) continue;
+      // Skip internal coordination noise (idle_notification, shutdown_*, etc.)
+      if (isInboxNoiseMessage(msg.text)) continue;
 
       const fromLabel = msg.from || 'Unknown';
-      const summary = msg.summary || msg.text.slice(0, 60);
+      const extracted = extractNotificationContent(msg.text);
+      const summary = msg.summary || extracted.summary;
 
       showTeamNativeNotification({
         title: teamDisplayName,
         subtitle: `${fromLabel}: ${summary}`,
-        body: msg.text,
+        body: extracted.body,
       });
     }
   } catch (error) {
@@ -344,16 +403,17 @@ function wireFileWatcherEvents(context: ServiceContext): void {
         if (cfg.notifications.enabled && cfg.notifications.notifyOnInboxMessages) {
           const messages = teamProvisioningService.getLiveLeadProcessMessages(teamName);
           const latest = messages.length > 0 ? messages[messages.length - 1] : undefined;
-          // Only notify for messages addressed to the human user
-          if (latest?.to === 'user') {
+          // Only notify for messages addressed to the human user, skip noise
+          if (latest?.to === 'user' && !isInboxNoiseMessage(latest.text)) {
             const fromLabel = latest.from || 'team-lead';
-            const summary = latest.summary || latest.text.slice(0, 60);
+            const extracted = extractNotificationContent(latest.text);
+            const summary = latest.summary || extracted.summary;
             void resolveTeamDisplayName(teamName)
               .then((displayName) => {
                 showTeamNativeNotification({
                   title: displayName,
                   subtitle: `${fromLabel}: ${summary}`,
-                  body: latest.text,
+                  body: extracted.body,
                 });
               })
               .catch(() => undefined);

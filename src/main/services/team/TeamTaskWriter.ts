@@ -92,6 +92,172 @@ export class TeamTaskWriter {
     });
   }
 
+  async addRelationship(
+    teamName: string,
+    taskId: string,
+    targetId: string,
+    type: 'blockedBy' | 'blocks' | 'related'
+  ): Promise<void> {
+    if (taskId === targetId) {
+      throw new Error('Cannot link a task to itself');
+    }
+
+    // For 'blocks', delegate as reverse blockedBy
+    if (type === 'blocks') {
+      return this.addRelationship(teamName, targetId, taskId, 'blockedBy');
+    }
+
+    const tasksDir = path.join(getTasksBasePath(), teamName);
+    const taskPath = path.join(tasksDir, `${taskId}.json`);
+    const targetPath = path.join(tasksDir, `${targetId}.json`);
+
+    // Lock both paths in sorted order to avoid deadlocks
+    const [firstPath, secondPath] =
+      taskPath < targetPath ? [taskPath, targetPath] : [targetPath, taskPath];
+
+    await withTaskLock(firstPath, () =>
+      withTaskLock(secondPath, async () => {
+        // Read both tasks
+        const taskRaw = await this.readTaskFile(taskPath, taskId);
+        const targetRaw = await this.readTaskFile(targetPath, targetId);
+        const task = JSON.parse(taskRaw) as TeamTask;
+        const target = JSON.parse(targetRaw) as TeamTask;
+
+        if (type === 'blockedBy') {
+          // Cycle detection: walk target's blockedBy chain to check if taskId is reachable
+          await this.checkBlockCycle(tasksDir, taskId, targetId);
+
+          // task.blockedBy += targetId
+          const blockedBy = task.blockedBy ?? [];
+          if (!blockedBy.includes(targetId)) {
+            task.blockedBy = [...blockedBy, targetId];
+            await atomicWriteAsync(taskPath, JSON.stringify(task, null, 2));
+          }
+          // target.blocks += taskId (reverse)
+          const blocks = target.blocks ?? [];
+          if (!blocks.includes(taskId)) {
+            target.blocks = [...blocks, taskId];
+            await atomicWriteAsync(targetPath, JSON.stringify(target, null, 2));
+          }
+        } else {
+          // related — bidirectional
+          const relA = task.related ?? [];
+          if (!relA.includes(targetId)) {
+            task.related = [...relA, targetId];
+            await atomicWriteAsync(taskPath, JSON.stringify(task, null, 2));
+          }
+          const relB = target.related ?? [];
+          if (!relB.includes(taskId)) {
+            target.related = [...relB, taskId];
+            await atomicWriteAsync(targetPath, JSON.stringify(target, null, 2));
+          }
+        }
+      })
+    );
+  }
+
+  async removeRelationship(
+    teamName: string,
+    taskId: string,
+    targetId: string,
+    type: 'blockedBy' | 'blocks' | 'related'
+  ): Promise<void> {
+    // For 'blocks', delegate as reverse blockedBy
+    if (type === 'blocks') {
+      return this.removeRelationship(teamName, targetId, taskId, 'blockedBy');
+    }
+
+    const tasksDir = path.join(getTasksBasePath(), teamName);
+    const taskPath = path.join(tasksDir, `${taskId}.json`);
+    const targetPath = path.join(tasksDir, `${targetId}.json`);
+
+    const [firstPath, secondPath] =
+      taskPath < targetPath ? [taskPath, targetPath] : [targetPath, taskPath];
+
+    await withTaskLock(firstPath, () =>
+      withTaskLock(secondPath, async () => {
+        // Read task (must exist)
+        const taskRaw = await this.readTaskFile(taskPath, taskId);
+        const task = JSON.parse(taskRaw) as TeamTask;
+
+        if (type === 'blockedBy') {
+          task.blockedBy = (task.blockedBy ?? []).filter((id) => id !== targetId);
+          await atomicWriteAsync(taskPath, JSON.stringify(task, null, 2));
+
+          // Remove reverse from target if it exists
+          try {
+            const targetRaw = await fs.promises.readFile(targetPath, 'utf8');
+            const target = JSON.parse(targetRaw) as TeamTask;
+            target.blocks = (target.blocks ?? []).filter((id) => id !== taskId);
+            await atomicWriteAsync(targetPath, JSON.stringify(target, null, 2));
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+            // Target doesn't exist — skip silently
+          }
+        } else {
+          // related — remove bidirectional
+          task.related = (task.related ?? []).filter((id) => id !== targetId);
+          await atomicWriteAsync(taskPath, JSON.stringify(task, null, 2));
+
+          try {
+            const targetRaw = await fs.promises.readFile(targetPath, 'utf8');
+            const target = JSON.parse(targetRaw) as TeamTask;
+            target.related = (target.related ?? []).filter((id) => id !== taskId);
+            await atomicWriteAsync(targetPath, JSON.stringify(target, null, 2));
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          }
+        }
+      })
+    );
+  }
+
+  private async readTaskFile(taskPath: string, taskId: string): Promise<string> {
+    try {
+      return await fs.promises.readFile(taskPath, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new Error(`Task not found: ${taskId}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Walks targetId's blockedBy chain to detect if sourceId is reachable.
+   * Reads are outside locks (deliberate TOCTOU trade-off — the calling method
+   * holds locks on both source and target, and only other tasks are read here).
+   */
+  private async checkBlockCycle(
+    tasksDir: string,
+    sourceId: string,
+    targetId: string
+  ): Promise<void> {
+    const visited = new Set<string>();
+    const stack = [targetId];
+
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      if (current === sourceId) {
+        throw new Error(`Circular dependency: #${targetId} already depends on #${sourceId}`);
+      }
+      if (visited.has(current)) continue;
+      visited.add(current);
+
+      try {
+        const raw = await fs.promises.readFile(path.join(tasksDir, `${current}.json`), 'utf8');
+        const task = JSON.parse(raw) as TeamTask;
+        if (Array.isArray(task.blockedBy)) {
+          for (const dep of task.blockedBy) {
+            stack.push(dep);
+          }
+        }
+      } catch {
+        // Skip unreadable tasks
+      }
+    }
+  }
+
   async updateStatus(teamName: string, taskId: string, status: TeamTaskStatus): Promise<void> {
     const taskPath = path.join(getTasksBasePath(), teamName, `${taskId}.json`);
 

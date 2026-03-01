@@ -247,6 +247,15 @@ export const ChangeReviewDialog = ({
     [saveEditedFile, projectPath]
   );
 
+  const handleRestoreMissingFile = useCallback(
+    (filePath: string, content: string) => {
+      updateEditedContent(filePath, content);
+      // Ensure editedContents is set before saveEditedFile reads it.
+      void Promise.resolve().then(() => saveEditedFile(filePath, projectPath));
+    },
+    [updateEditedContent, saveEditedFile, projectPath]
+  );
+
   const handleDiscardFile = useCallback(
     (filePath: string) => {
       discardFileEdits(filePath);
@@ -783,6 +792,7 @@ export const ChangeReviewDialog = ({
                 onContentChanged={handleContentChanged}
                 onDiscard={handleDiscardFile}
                 onSave={handleSaveFile}
+                onRestoreMissingFile={handleRestoreMissingFile}
                 onVisibleFileChange={handleVisibleFileChange}
                 scrollContainerRef={scrollContainerRef}
                 editorViewMapRef={editorViewMapRef}

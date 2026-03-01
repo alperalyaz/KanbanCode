@@ -413,6 +413,9 @@ const NewProjectCard = (): React.JSX.Element => {
 
       // Still no match — create a synthetic group for this new folder and navigate to it.
       // This allows launching teams in projects that don't have Claude sessions yet.
+      // Persist the path so it survives app restarts.
+      await api.config.addCustomProjectPath(selectedPath);
+
       const encodedId = selectedPath.replace(/[/\\]/g, '-');
       const folderName = selectedPath.split(/[/\\]/).filter(Boolean).pop() ?? selectedPath;
       const now = Date.now();

@@ -53,6 +53,7 @@ import {
   SSH_TEST,
   TEAM_ADD_MEMBER,
   TEAM_ADD_TASK_COMMENT,
+  TEAM_ADD_TASK_RELATIONSHIP,
   TEAM_ALIVE_LIST,
   TEAM_CANCEL_PROVISIONING,
   TEAM_CHANGE,
@@ -79,6 +80,7 @@ import {
   TEAM_PROVISIONING_PROGRESS,
   TEAM_PROVISIONING_STATUS,
   TEAM_REMOVE_MEMBER,
+  TEAM_REMOVE_TASK_RELATIONSHIP,
   TEAM_REQUEST_REVIEW,
   TEAM_RESTORE,
   TEAM_RESTORE_TASK,
@@ -113,6 +115,7 @@ import {
   WINDOW_MINIMIZE,
 } from './constants/ipcChannels';
 import {
+  CONFIG_ADD_CUSTOM_PROJECT_PATH,
   CONFIG_ADD_IGNORE_REGEX,
   CONFIG_ADD_IGNORE_REPOSITORY,
   CONFIG_ADD_TRIGGER,
@@ -125,6 +128,7 @@ import {
   CONFIG_HIDE_SESSIONS,
   CONFIG_OPEN_IN_EDITOR,
   CONFIG_PIN_SESSION,
+  CONFIG_REMOVE_CUSTOM_PROJECT_PATH,
   CONFIG_REMOVE_IGNORE_REGEX,
   CONFIG_REMOVE_IGNORE_REPOSITORY,
   CONFIG_REMOVE_TRIGGER,
@@ -442,6 +446,12 @@ const electronAPI: ElectronAPI = {
     unhideSessions: async (projectId: string, sessionIds: string[]): Promise<void> => {
       return invokeIpcWithResult<void>(CONFIG_UNHIDE_SESSIONS, projectId, sessionIds);
     },
+    addCustomProjectPath: async (projectPath: string): Promise<void> => {
+      return invokeIpcWithResult<void>(CONFIG_ADD_CUSTOM_PROJECT_PATH, projectPath);
+    },
+    removeCustomProjectPath: async (projectPath: string): Promise<void> => {
+      return invokeIpcWithResult<void>(CONFIG_REMOVE_CUSTOM_PROJECT_PATH, projectPath);
+    },
   },
 
   // Deep link navigation
@@ -758,6 +768,34 @@ const electronAPI: ElectronAPI = {
     },
     showMessageNotification: async (data: TeamMessageNotificationData) => {
       return invokeIpcWithResult<void>(TEAM_SHOW_MESSAGE_NOTIFICATION, data);
+    },
+    addTaskRelationship: async (
+      teamName: string,
+      taskId: string,
+      targetId: string,
+      type: 'blockedBy' | 'blocks' | 'related'
+    ) => {
+      return invokeIpcWithResult<void>(
+        TEAM_ADD_TASK_RELATIONSHIP,
+        teamName,
+        taskId,
+        targetId,
+        type
+      );
+    },
+    removeTaskRelationship: async (
+      teamName: string,
+      taskId: string,
+      targetId: string,
+      type: 'blockedBy' | 'blocks' | 'related'
+    ) => {
+      return invokeIpcWithResult<void>(
+        TEAM_REMOVE_TASK_RELATIONSHIP,
+        teamName,
+        taskId,
+        targetId,
+        type
+      );
     },
     onTeamChange: (callback: (event: unknown, data: TeamChangeEvent) => void): (() => void) => {
       ipcRenderer.on(

@@ -196,10 +196,6 @@ export class ProjectScanner {
       // 1. Scan all projects using existing logic
       const projects = await this.scan();
 
-      if (projects.length === 0) {
-        return [];
-      }
-
       // 2. Convert each project to a simple RepositoryGroup (git resolution disabled)
       // Git identity resolution is bypassed to avoid blocking I/O on startup.
       // Each project becomes a single-worktree group.
@@ -222,6 +218,40 @@ export class ProjectScanner {
         mostRecentSession: project.mostRecentSession,
         totalSessions: project.sessions.length,
       }));
+
+      // 3. Merge custom project paths from config (persisted "Select Folder" picks)
+      const { configManager } = await import('../infrastructure/ConfigManager');
+      const customPaths = configManager.getCustomProjectPaths();
+      const existingPaths = new Set(groups.flatMap((g) => g.worktrees.map((w) => w.path)));
+
+      for (const customPath of customPaths) {
+        if (existingPaths.has(customPath)) {
+          continue; // Already discovered by scanner — skip
+        }
+
+        const encodedId = customPath.replace(/[/\\]/g, '-');
+        const folderName = customPath.split(/[/\\]/).filter(Boolean).pop() ?? customPath;
+        const now = Date.now();
+
+        groups.push({
+          id: encodedId,
+          identity: null,
+          worktrees: [
+            {
+              id: encodedId,
+              path: customPath,
+              name: folderName,
+              isMainWorktree: true,
+              source: 'unknown' as const,
+              sessions: [],
+              createdAt: now,
+            },
+          ],
+          name: folderName,
+          mostRecentSession: undefined,
+          totalSessions: 0,
+        });
+      }
 
       // Sort by most recent activity (same order as the full git-aware version)
       groups.sort((a, b) => (b.mostRecentSession ?? 0) - (a.mostRecentSession ?? 0));

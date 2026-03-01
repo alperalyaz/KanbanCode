@@ -93,6 +93,7 @@ export const FileSectionDiff = ({
     })();
 
   const resolvedOriginal = fileContent?.originalFullContent ?? null;
+  const isMissingOnDisk = fileContent?.contentSource === 'unavailable';
 
   // Show CodeMirror only when we have a trustworthy original baseline:
   // - new files: original is legitimately empty
@@ -114,6 +115,12 @@ export const FileSectionDiff = ({
 
   return (
     <div className="overflow-auto">
+      {isMissingOnDisk && (
+        <div className="border-b border-border bg-red-500/10 px-4 py-2 text-xs text-red-200">
+          File is missing on disk. This diff may be only a preview from agent logs. Use{' '}
+          <span className="font-medium text-red-100">Restore</span> to create the file on disk.
+        </div>
+      )}
       <DiffErrorBoundary
         filePath={file.filePath}
         oldString={originalForDiff}
@@ -125,7 +132,7 @@ export const FileSectionDiff = ({
           modified={resolvedModified}
           fileName={file.relativePath}
           readOnly={false}
-          showMergeControls={true}
+          showMergeControls={!isMissingOnDisk}
           collapseUnchanged={collapseUnchanged}
           usePortionCollapse={true}
           onHunkAccepted={(idx) => onHunkAccepted(file.filePath, idx)}

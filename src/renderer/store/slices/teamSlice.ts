@@ -175,6 +175,18 @@ export interface TeamSlice {
     memberName: string,
     role: string | undefined
   ) => Promise<void>;
+  addTaskRelationship: (
+    teamName: string,
+    taskId: string,
+    targetId: string,
+    type: 'blockedBy' | 'blocks' | 'related'
+  ) => Promise<void>;
+  removeTaskRelationship: (
+    teamName: string,
+    taskId: string,
+    targetId: string,
+    type: 'blockedBy' | 'blocks' | 'related'
+  ) => Promise<void>;
   setTaskNeedsClarification: (
     teamName: string,
     taskId: string,
@@ -608,6 +620,20 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   ) => {
     await unwrapIpc('team:updateTaskFields', () =>
       api.teams.updateTaskFields(teamName, taskId, fields)
+    );
+    await get().refreshTeamData(teamName);
+  },
+
+  addTaskRelationship: async (teamName, taskId, targetId, type) => {
+    await unwrapIpc('team:addTaskRelationship', () =>
+      api.teams.addTaskRelationship(teamName, taskId, targetId, type)
+    );
+    await get().refreshTeamData(teamName);
+  },
+
+  removeTaskRelationship: async (teamName, taskId, targetId, type) => {
+    await unwrapIpc('team:removeTaskRelationship', () =>
+      api.teams.removeTaskRelationship(teamName, taskId, targetId, type)
     );
     await get().refreshTeamData(teamName);
   },

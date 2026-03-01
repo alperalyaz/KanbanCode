@@ -184,6 +184,10 @@ export interface ConfigAPI {
   hideSessions: (projectId: string, sessionIds: string[]) => Promise<void>;
   /** Bulk unhide sessions for a project */
   unhideSessions: (projectId: string, sessionIds: string[]) => Promise<void>;
+  /** Add a custom project path (persisted across restarts) */
+  addCustomProjectPath: (projectPath: string) => Promise<void>;
+  /** Remove a custom project path */
+  removeCustomProjectPath: (projectPath: string) => Promise<void>;
 }
 
 export interface ClaudeRootInfo {
@@ -449,6 +453,18 @@ export interface TeamsAPI {
   restoreTask: (teamName: string, taskId: string) => Promise<void>;
   getDeletedTasks: (teamName: string) => Promise<TeamTask[]>;
   showMessageNotification: (data: TeamMessageNotificationData) => Promise<void>;
+  addTaskRelationship: (
+    teamName: string,
+    taskId: string,
+    targetId: string,
+    type: 'blockedBy' | 'blocks' | 'related'
+  ) => Promise<void>;
+  removeTaskRelationship: (
+    teamName: string,
+    taskId: string,
+    targetId: string,
+    type: 'blockedBy' | 'blocks' | 'related'
+  ) => Promise<void>;
   onTeamChange: (callback: (event: unknown, data: TeamChangeEvent) => void) => () => void;
   onProvisioningProgress: (
     callback: (event: unknown, data: TeamProvisioningProgress) => void
