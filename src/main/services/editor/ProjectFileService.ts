@@ -505,7 +505,7 @@ export class ProjectFileService {
     const newPath = path.join(normalizedDest, path.basename(normalizedSrc));
 
     // 8. Prevent parent → child move (moving dir into itself)
-    if (normalizedDest.startsWith(normalizedSrc + '/') || normalizedDest === normalizedSrc) {
+    if (normalizedDest.startsWith(normalizedSrc + path.sep) || normalizedDest === normalizedSrc) {
       throw new Error('Cannot move a directory into itself');
     }
 
