@@ -66,6 +66,12 @@ const EBUSY_MAX_RETRIES = 3;
 /** Delay between EBUSY retries (multiplied by attempt number) */
 const EBUSY_RETRY_DELAY_MS = 2000;
 
+/** Max retries for auth status check (covers stale locks after Ctrl+C) */
+const AUTH_STATUS_MAX_RETRIES = 2;
+
+/** Delay before retrying auth status check (ms) — gives previous process time to clean up */
+const AUTH_STATUS_RETRY_DELAY_MS = 1500;
+
 /**
  * Build env for child processes with correct HOME.
  * On Windows with non-ASCII usernames, process.env may have a broken HOME/USERPROFILE.
@@ -284,19 +290,38 @@ export class CliInstallerService {
         logger.warn('Failed to get CLI version:', getErrorMessage(err));
       }
 
-      // Check auth status
-      try {
-        const { stdout: authStdout } = await execCli(binaryPath, ['auth', 'status'], {
-          timeout: VERSION_TIMEOUT_MS,
-          env: buildChildEnv(),
-        });
-        const auth = JSON.parse(authStdout.trim()) as { loggedIn?: boolean; authMethod?: string };
-        r.authLoggedIn = auth.loggedIn === true;
-        r.authMethod = auth.authMethod ?? null;
-        logger.info(`Auth status: loggedIn=${r.authLoggedIn}, method=${r.authMethod ?? 'null'}`);
-      } catch (err) {
-        logger.warn('Failed to check auth status:', getErrorMessage(err));
-        r.authLoggedIn = false;
+      // Check auth status with retry — covers stale lock files after Ctrl+C interruption
+      for (let authAttempt = 1; authAttempt <= AUTH_STATUS_MAX_RETRIES; authAttempt++) {
+        try {
+          const { stdout: authStdout } = await execCli(binaryPath, ['auth', 'status'], {
+            timeout: VERSION_TIMEOUT_MS,
+            env: buildChildEnv(),
+          });
+          const auth = JSON.parse(authStdout.trim()) as {
+            loggedIn?: boolean;
+            authMethod?: string;
+          };
+          r.authLoggedIn = auth.loggedIn === true;
+          r.authMethod = auth.authMethod ?? null;
+          logger.info(
+            `Auth status: loggedIn=${r.authLoggedIn}, method=${r.authMethod ?? 'null'}` +
+              (authAttempt > 1 ? ` (attempt ${authAttempt})` : '')
+          );
+          break;
+        } catch (err) {
+          if (authAttempt < AUTH_STATUS_MAX_RETRIES) {
+            logger.warn(
+              `Auth status check failed (attempt ${authAttempt}/${AUTH_STATUS_MAX_RETRIES}), ` +
+                `retrying in ${AUTH_STATUS_RETRY_DELAY_MS}ms: ${getErrorMessage(err)}`
+            );
+            await new Promise((resolve) => setTimeout(resolve, AUTH_STATUS_RETRY_DELAY_MS));
+          } else {
+            logger.warn(
+              `Auth status check failed after ${AUTH_STATUS_MAX_RETRIES} attempts: ${getErrorMessage(err)}`
+            );
+            r.authLoggedIn = false;
+          }
+        }
       }
     }
 
