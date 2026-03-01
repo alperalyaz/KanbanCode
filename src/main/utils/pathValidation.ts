@@ -62,12 +62,14 @@ export interface PathValidationResult {
 }
 
 function normalizeForCompare(input: string, isWindows: boolean): string {
-  const normalized = path.normalize(input);
+  const normalized = path.resolve(path.normalize(input));
   return isWindows ? normalized.toLowerCase() : normalized;
 }
 
 export function isPathWithinRoot(targetPath: string, rootPath: string): boolean {
-  return targetPath === rootPath || targetPath.startsWith(rootPath + path.sep);
+  const target = path.resolve(targetPath);
+  const root = path.resolve(rootPath);
+  return target === root || target.startsWith(root + path.sep);
 }
 
 function resolveRealPathIfExists(inputPath: string): string | null {
