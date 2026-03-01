@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { acceptChunk, goToNextChunk, goToPreviousChunk } from '@codemirror/merge';
 import { getChunks } from '@renderer/components/team/review/CodeMirrorDiffUtils';
+import { physicalKey } from '@renderer/utils/keyboardUtils';
 
 import type { EditorView } from '@codemirror/view';
 import type { FileChangeSummary } from '@shared/types/review';
@@ -276,44 +277,46 @@ export function useDiffNavigation(
       }
 
       const isMeta = event.metaKey || event.ctrlKey;
+      // Layout-independent key (uses event.code for letters/symbols)
+      const key = physicalKey(event);
 
       // Alt+J -> next hunk (cross-file in continuous mode)
-      if (event.altKey && event.key.toLowerCase() === 'j') {
+      if (event.altKey && key === 'j') {
         event.preventDefault();
         goToNextHunk();
         return;
       }
 
       // Alt+K -> prev hunk (cross-file in continuous mode)
-      if (event.altKey && event.key.toLowerCase() === 'k') {
+      if (event.altKey && key === 'k') {
         event.preventDefault();
         goToPrevHunk();
         return;
       }
 
       // Alt+ArrowDown -> next file
-      if (event.altKey && event.key === 'ArrowDown') {
+      if (event.altKey && key === 'ArrowDown') {
         event.preventDefault();
         goToNextFile();
         return;
       }
 
       // Alt+ArrowUp -> prev file
-      if (event.altKey && event.key === 'ArrowUp') {
+      if (event.altKey && key === 'ArrowUp') {
         event.preventDefault();
         goToPrevFile();
         return;
       }
 
       // Cmd+Enter -> save file
-      if (isMeta && event.key === 'Enter') {
+      if (isMeta && key === 'Enter') {
         event.preventDefault();
         onSaveFileRef.current?.();
         return;
       }
 
       // Cmd+Y -> accept chunk + next (cross-file aware)
-      if (isMeta && event.key.toLowerCase() === 'y') {
+      if (isMeta && key === 'y') {
         event.preventDefault();
         const view = getActiveEditorView(editorViewRef, continuousOptionsRef.current);
         if (view) {

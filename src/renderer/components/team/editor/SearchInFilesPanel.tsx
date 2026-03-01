@@ -11,7 +11,7 @@ import { api } from '@renderer/api';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { Loader2, Search, X } from 'lucide-react';
 
-import { getFileIcon } from './fileIcons';
+import { FileIcon } from './FileIcon';
 
 import type { SearchFileResult, SearchInFilesResult } from '@shared/types/editor';
 
@@ -259,9 +259,6 @@ const SearchFileGroup = ({
   const dirPath = relativePath.includes('/')
     ? relativePath.slice(0, relativePath.lastIndexOf('/'))
     : '';
-  const iconInfo = getFileIcon(fileName);
-  const Icon = iconInfo.icon;
-
   return (
     <div className="border-border/50 border-b">
       <button
@@ -269,7 +266,7 @@ const SearchFileGroup = ({
         className="flex w-full items-center gap-1.5 px-3 py-1 text-left transition-colors hover:bg-surface-raised"
       >
         <span className="text-[10px] text-text-muted">{expanded ? '▼' : '▶'}</span>
-        <Icon className="size-3.5 shrink-0" style={{ color: iconInfo.color }} />
+        <FileIcon fileName={fileName} className="size-3.5" />
         <span className="truncate text-xs font-medium text-text">{fileName}</span>
         {dirPath && <span className="ml-1 truncate text-[10px] text-text-muted">{dirPath}</span>}
         <span className="ml-auto shrink-0 text-[10px] text-text-muted">

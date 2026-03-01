@@ -199,6 +199,11 @@
   --skeleton-base-dim: rgba(26, 28, 40, 0.6);
 }
 
+/* File icon glow — halo so dark icons stay visible on dark backgrounds */
+.file-icon-glow {
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.45));
+}
+
 /* Light theme overrides - Warm neutral palette for eye comfort */
 :root.light {
   --color-surface: #f9f9f7; /* Warm off-white (not pure white) */
@@ -578,6 +583,10 @@ body {
     transparent 100%
   );
   animation: shimmer 1.2s ease-in-out infinite;
+}
+
+:root.light .file-icon-glow {
+  filter: none;
 }
 
 :root.light .skeleton-card::after {

@@ -10,6 +10,7 @@ import { useCallback, useEffect } from 'react';
 import { gotoLine, openSearchPanel } from '@codemirror/search';
 import { useStore } from '@renderer/store';
 import { editorBridge } from '@renderer/utils/editorBridge';
+import { physicalKey } from '@renderer/utils/keyboardUtils';
 
 import type { EditorFileTab } from '@shared/types/editor';
 
@@ -52,8 +53,11 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
     const isMod = e.metaKey || e.ctrlKey;
     if (!isMod) return;
 
+    // Layout-independent key (uses event.code for letters/symbols)
+    const key = physicalKey(e);
+
     // Cmd+P: Quick Open
-    if (e.key === 'p' && !e.shiftKey) {
+    if (key === 'p' && !e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
       deps.onToggleQuickOpen();
@@ -61,7 +65,7 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
     }
 
     // Cmd+Shift+F: Search in files
-    if (e.key === 'f' && e.shiftKey) {
+    if (key === 'f' && e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
       deps.onToggleSearchPanel();
@@ -69,7 +73,7 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
     }
 
     // Cmd+F: Find in current file (CM6)
-    if (e.key === 'f' && !e.shiftKey) {
+    if (key === 'f' && !e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
       const view = deps.getEditorView();
@@ -78,7 +82,7 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
     }
 
     // Cmd+G: Go to line
-    if (e.key === 'g' && !e.shiftKey) {
+    if (key === 'g' && !e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
       const view = deps.getEditorView();
@@ -87,7 +91,7 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
     }
 
     // Cmd+S: Save current file
-    if (e.key === 's' && !e.shiftKey) {
+    if (key === 's' && !e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
       if (deps.activeTabId) void deps.saveFile(deps.activeTabId);
@@ -95,7 +99,7 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
     }
 
     // Cmd+Shift+S: Save all files
-    if (e.key === 's' && e.shiftKey) {
+    if (key === 's' && e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
       if (deps.hasUnsavedChanges()) void deps.saveAllFiles();
@@ -103,7 +107,7 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
     }
 
     // Cmd+Shift+W: Toggle line wrap
-    if (e.key === 'w' && e.shiftKey && !e.altKey) {
+    if (key === 'w' && e.shiftKey && !e.altKey) {
       e.preventDefault();
       e.stopPropagation();
       deps.onToggleLineWrap();
@@ -111,7 +115,7 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
     }
 
     // Cmd+W: Close current editor tab
-    if (e.key === 'w' && !e.shiftKey && !e.altKey) {
+    if (key === 'w' && !e.shiftKey && !e.altKey) {
       e.preventDefault();
       e.stopPropagation();
       if (deps.activeTabId) {
@@ -123,7 +127,7 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
     }
 
     // Cmd+B: Toggle sidebar
-    if (e.key === 'b') {
+    if (key === 'b') {
       e.preventDefault();
       e.stopPropagation();
       deps.onToggleSidebar();
@@ -131,7 +135,7 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
     }
 
     // Cmd+Shift+]: Next tab
-    if (e.key === ']' && e.shiftKey) {
+    if (key === ']' && e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
       const idx = deps.openTabs.findIndex((t) => t.id === deps.activeTabId);
@@ -144,7 +148,7 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
     }
 
     // Cmd+Shift+[: Previous tab
-    if (e.key === '[' && e.shiftKey) {
+    if (key === '[' && e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
       const idx = deps.openTabs.findIndex((t) => t.id === deps.activeTabId);
@@ -157,7 +161,7 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
     }
 
     // Ctrl+Tab / Ctrl+Shift+Tab: Tab cycling
-    if (e.ctrlKey && e.key === 'Tab') {
+    if (e.ctrlKey && key === 'Tab') {
       e.preventDefault();
       e.stopPropagation();
       const idx = deps.openTabs.findIndex((t) => t.id === deps.activeTabId);

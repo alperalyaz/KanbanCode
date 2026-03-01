@@ -53,7 +53,7 @@ const CommandSearch = ({ value, onChange }: Readonly<CommandSearchProps>): React
   // Handle Cmd+K to open full command palette
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.code === 'KeyK') {
         e.preventDefault();
         openCommandPalette();
       }

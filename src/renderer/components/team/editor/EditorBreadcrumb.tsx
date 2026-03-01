@@ -9,7 +9,7 @@ import { useMemo } from 'react';
 import { useStore } from '@renderer/store';
 import { ChevronRight } from 'lucide-react';
 
-import { getFileIcon } from './fileIcons';
+import { FileIcon } from './FileIcon';
 
 // =============================================================================
 // Component
@@ -33,8 +33,6 @@ export const EditorBreadcrumb = (): React.ReactElement | null => {
   if (segments.length === 0) return null;
 
   const fileName = segments[segments.length - 1];
-  const iconInfo = getFileIcon(fileName);
-  const Icon = iconInfo.icon;
 
   const handleSegmentClick = (segmentIndex: number): void => {
     if (!projectPath) return;
@@ -53,7 +51,7 @@ export const EditorBreadcrumb = (): React.ReactElement | null => {
             {idx > 0 && <ChevronRight className="text-text-muted/50 size-3" />}
             {isLast ? (
               <span className="flex items-center gap-1 text-text-secondary">
-                <Icon className="size-3" style={{ color: iconInfo.color }} />
+                <FileIcon fileName={fileName} className="size-3" />
                 {segment}
               </span>
             ) : (

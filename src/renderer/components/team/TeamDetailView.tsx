@@ -26,6 +26,7 @@ import {
   AlertTriangle,
   Bell,
   CheckCheck,
+  Code,
   Columns3,
   FolderOpen,
   GitBranch,
@@ -805,13 +806,17 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                   <span className="max-w-60 truncate font-mono">
                     {formatProjectPath(data.config.projectPath)}
                   </span>
-                  <button
-                    onClick={() => setEditorOpen(true)}
-                    className="ml-1 rounded px-1 py-0.5 text-[10px] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text-secondary)]"
-                    title="Open in Editor"
-                  >
-                    <Pencil size={10} />
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => setEditorOpen(true)}
+                        className="ml-1 flex items-center gap-0.5 rounded border border-[var(--color-border-emphasis)] bg-[var(--color-surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
+                      >
+                        <Code size={10} className="shrink-0" /> Edit code
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Open project in built-in editor</TooltipContent>
+                  </Tooltip>
                 </span>
               )}
               {leadBranch && (

@@ -22,7 +22,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronDown, ChevronRight, Folder, FolderOpen, Lock } from 'lucide-react';
 
 import { EditorContextMenu } from './EditorContextMenu';
-import { getFileIcon } from './fileIcons';
+import { FileIcon } from './FileIcon';
 import { GitStatusBadge } from './GitStatusBadge';
 import { NewFileDialog } from './NewFileDialog';
 
@@ -121,9 +121,25 @@ export const EditorFileTree = ({
     return map;
   }, [flatItems]);
 
+  // Compute insertion index for inline new-item input
+  const newItemInsert = useMemo(() => {
+    if (!newItemState) return null;
+    const { parentDir } = newItemState;
+
+    const parentIdx = flatItems.findIndex((fi) => fi.node.fullPath === parentDir);
+
+    if (parentIdx === -1) {
+      // parentDir is the project root (not a node in flatItems) — insert at top
+      return { index: 0, depth: 0 };
+    }
+
+    // Insert right after the parent directory node (top of its children)
+    return { index: parentIdx + 1, depth: flatItems[parentIdx].depth + 1 };
+  }, [newItemState, flatItems]);
+
   // Virtual scrolling — increase overscan during drag for more drop targets
   const virtualizer = useVirtualizer({
-    count: flatItems.length,
+    count: flatItems.length + (newItemInsert ? 1 : 0),
     getScrollElement: () => scrollRef.current,
     estimateSize: () => ITEM_HEIGHT,
     overscan: draggedItem ? 20 : 10,
@@ -163,14 +179,26 @@ export const EditorFileTree = ({
     [onFileSelect, expandedDirs, expandDirectory, collapseDirectory]
   );
 
-  // Context menu handlers
-  const handleNewFile = useCallback((parentDir: string) => {
-    setNewItemState({ parentDir, type: 'file' });
-  }, []);
+  // Context menu handlers — expand parent directory so the input appears inline
+  const handleNewFile = useCallback(
+    (parentDir: string) => {
+      if (parentDir !== projectPath && !expandedDirs[parentDir]) {
+        void expandDirectory(parentDir);
+      }
+      setNewItemState({ parentDir, type: 'file' });
+    },
+    [projectPath, expandedDirs, expandDirectory]
+  );
 
-  const handleNewFolder = useCallback((parentDir: string) => {
-    setNewItemState({ parentDir, type: 'directory' });
-  }, []);
+  const handleNewFolder = useCallback(
+    (parentDir: string) => {
+      if (parentDir !== projectPath && !expandedDirs[parentDir]) {
+        void expandDirectory(parentDir);
+      }
+      setNewItemState({ parentDir, type: 'directory' });
+    },
+    [projectPath, expandedDirs, expandDirectory]
+  );
 
   const handleDelete = useCallback(
     async (path: string) => {
@@ -357,7 +385,36 @@ export const EditorFileTree = ({
             }}
           >
             {virtualizer.getVirtualItems().map((virtualItem) => {
-              const item = flatItems[virtualItem.index];
+              const { index } = virtualItem;
+
+              // Render inline new-item input at the correct tree position
+              if (index === newItemInsert?.index) {
+                return (
+                  <div
+                    key="__new-item-input__"
+                    style={{
+                      position: 'absolute',
+                      top: `${virtualItem.start}px`,
+                      left: 0,
+                      width: '100%',
+                      height: `${virtualItem.size}px`,
+                      paddingLeft: `${Math.min(newItemInsert.depth, MAX_DEPTH) * INDENT_PX}px`,
+                    }}
+                  >
+                    <NewFileDialog
+                      type={newItemState!.type}
+                      parentDir={newItemState!.parentDir}
+                      onSubmit={handleNewItemSubmit}
+                      onCancel={handleNewItemCancel}
+                    />
+                  </div>
+                );
+              }
+
+              // Adjust index for items after the insertion point
+              const flatIdx = newItemInsert && index > newItemInsert.index ? index - 1 : index;
+              const item = flatItems[flatIdx];
+
               return (
                 <DraggableTreeItem
                   key={item.node.fullPath}
@@ -387,14 +444,6 @@ export const EditorFileTree = ({
           {draggedItem && <DragOverlayFileItem item={draggedItem} />}
         </DragOverlay>
       </DndContext>
-      {newItemState && (
-        <NewFileDialog
-          type={newItemState.type}
-          parentDir={newItemState.parentDir}
-          onSubmit={handleNewItemSubmit}
-          onCancel={handleNewItemCancel}
-        />
-      )}
     </EditorContextMenu>
   );
 };
@@ -521,9 +570,7 @@ const DraggableTreeItem = React.memo(
     if (node.data?.isSensitive) {
       icon = <Lock className="size-3.5 shrink-0 text-yellow-500" />;
     } else if (node.isFile) {
-      const fileIcon = getFileIcon(node.name);
-      const FileIcon = fileIcon.icon;
-      icon = <FileIcon className="size-3.5 shrink-0" style={{ color: fileIcon.color }} />;
+      icon = <FileIcon fileName={node.name} className="size-3.5" />;
     } else if (isExpanded) {
       icon = <FolderOpen className="size-3.5 shrink-0 text-text-muted" />;
     } else {
@@ -583,9 +630,7 @@ const DragOverlayFileItem = ({ item }: { item: FlatTreeItem }): React.ReactEleme
 
   let icon: React.ReactNode;
   if (node.isFile) {
-    const fileIcon = getFileIcon(node.name);
-    const FileIcon = fileIcon.icon;
-    icon = <FileIcon className="size-3.5" style={{ color: fileIcon.color }} />;
+    icon = <FileIcon fileName={node.name} className="size-3.5" />;
   } else {
     icon = <FolderOpen className="size-3.5 text-text-muted" />;
   }

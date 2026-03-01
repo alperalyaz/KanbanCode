@@ -11,7 +11,7 @@ import { useStore } from '@renderer/store';
 import { Command } from 'cmdk';
 import { Loader2 } from 'lucide-react';
 
-import { getFileIcon } from './fileIcons';
+import { FileIcon } from './FileIcon';
 
 import type { QuickOpenFile } from '@shared/types/editor';
 
@@ -97,15 +97,7 @@ export const QuickOpenDialog = ({
     [allFiles, onSelectFile, onClose]
   );
 
-  // Memoize file icon lookups
-  const fileItems = useMemo(
-    () =>
-      allFiles.map((file) => ({
-        ...file,
-        iconInfo: getFileIcon(file.name),
-      })),
-    [allFiles]
-  );
+  const fileItems = allFiles;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center pt-[15vh]">
@@ -146,7 +138,6 @@ export const QuickOpenDialog = ({
               </Command.Empty>
             )}
             {fileItems.map((file) => {
-              const Icon = file.iconInfo.icon;
               return (
                 <Command.Item
                   key={file.path}
@@ -154,7 +145,7 @@ export const QuickOpenDialog = ({
                   onSelect={() => handleSelect(file.relativePath)}
                   className="flex cursor-pointer items-center gap-2 rounded px-3 py-1.5 text-sm text-text-secondary aria-selected:bg-surface-raised aria-selected:text-text"
                 >
-                  <Icon className="size-4 shrink-0" style={{ color: file.iconInfo.color }} />
+                  <FileIcon fileName={file.name} className="size-4" />
                   <span className="truncate font-medium">{file.name}</span>
                   <span className="ml-auto truncate text-xs text-text-muted">
                     {file.relativePath}

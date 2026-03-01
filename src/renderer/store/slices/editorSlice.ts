@@ -78,6 +78,10 @@ export interface EditorSlice {
 
   openFile: (filePath: string) => void;
   closeEditorTab: (tabId: string) => void;
+  closeOtherEditorTabs: (keepTabId: string) => void;
+  closeEditorTabsToLeft: (tabId: string) => void;
+  closeEditorTabsToRight: (tabId: string) => void;
+  closeAllEditorTabs: () => void;
   setActiveEditorTab: (tabId: string) => void;
 
   // ═══════════════════════════════════════════════════════
@@ -390,6 +394,33 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
       editorModifiedFiles: restModified,
       editorSaveError: restErrors,
     });
+  },
+
+  closeOtherEditorTabs: (keepTabId: string) => {
+    const { editorOpenTabs } = get();
+    const toClose = editorOpenTabs.filter((t) => t.id !== keepTabId);
+    for (const tab of toClose) get().closeEditorTab(tab.id);
+  },
+
+  closeEditorTabsToLeft: (tabId: string) => {
+    const { editorOpenTabs } = get();
+    const idx = editorOpenTabs.findIndex((t) => t.id === tabId);
+    if (idx <= 0) return;
+    const toClose = editorOpenTabs.slice(0, idx);
+    for (const tab of toClose) get().closeEditorTab(tab.id);
+  },
+
+  closeEditorTabsToRight: (tabId: string) => {
+    const { editorOpenTabs } = get();
+    const idx = editorOpenTabs.findIndex((t) => t.id === tabId);
+    if (idx < 0 || idx >= editorOpenTabs.length - 1) return;
+    const toClose = editorOpenTabs.slice(idx + 1);
+    for (const tab of toClose) get().closeEditorTab(tab.id);
+  },
+
+  closeAllEditorTabs: () => {
+    const { editorOpenTabs } = get();
+    for (const tab of [...editorOpenTabs]) get().closeEditorTab(tab.id);
   },
 
   setActiveEditorTab: (tabId: string) => {

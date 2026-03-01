@@ -49,9 +49,16 @@ export const NewFileDialog = ({
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Track whether focus has been established (prevents premature blur cancel)
+  const focusedRef = useRef(false);
+
   useEffect(() => {
-    // Auto-focus on mount
-    inputRef.current?.focus();
+    // Defer focus to next frame — ensures Radix context menu has fully closed
+    const raf = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      focusedRef.current = true;
+    });
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   const handleSubmit = useCallback(() => {
@@ -82,6 +89,13 @@ export const NewFileDialog = ({
     setError(null);
   }, []);
 
+  const handleBlur = useCallback(() => {
+    // Only cancel if focus was already established (prevents race with RAF focus)
+    if (focusedRef.current) {
+      onCancel();
+    }
+  }, [onCancel]);
+
   const Icon = type === 'file' ? FilePlus : FolderPlus;
 
   return (
@@ -94,7 +108,7 @@ export const NewFileDialog = ({
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          onBlur={onCancel}
+          onBlur={handleBlur}
           placeholder={type === 'file' ? 'File name...' : 'Folder name...'}
           className="min-w-0 flex-1 rounded border border-border-emphasis bg-surface px-1.5 py-0.5 text-xs text-text outline-none focus:border-blue-500"
           aria-label={type === 'file' ? 'New file name' : 'New folder name'}

@@ -57,9 +57,23 @@ function createMockDeps(overrides: Partial<EditorKeyHandlerDeps> = {}): EditorKe
   };
 }
 
+/** Map a shortcut key to its physical KeyboardEvent.code value. */
+function keyToCode(key: string): string {
+  if (key.length === 1 && /[a-z]/i.test(key)) return `Key${key.toUpperCase()}`;
+  if (key.length === 1 && /[0-9]/.test(key)) return `Digit${key}`;
+  if (key === '[') return 'BracketLeft';
+  if (key === ']') return 'BracketRight';
+  if (key === '\\') return 'Backslash';
+  if (key === ',') return 'Comma';
+  if (key === '.') return 'Period';
+  if (key === '/') return 'Slash';
+  return key; // Tab, Enter, Escape, Arrow*, etc.
+}
+
 function createKeyEvent(key: string, opts: Partial<KeyboardEvent> = {}): KeyboardEvent {
   return new KeyboardEvent('keydown', {
     key,
+    code: keyToCode(key),
     metaKey: opts.metaKey ?? true,
     ctrlKey: opts.ctrlKey ?? false,
     shiftKey: opts.shiftKey ?? false,

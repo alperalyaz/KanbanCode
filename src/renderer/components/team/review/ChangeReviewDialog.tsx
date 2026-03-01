@@ -379,7 +379,7 @@ export const ChangeReviewDialog = ({
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent): void => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+      if ((e.metaKey || e.ctrlKey) && e.code === 'KeyZ' && !e.shiftKey) {
         // Don't intercept if focus is inside a CM editor — let CM handle its own undo
         if (document.activeElement?.closest('.cm-editor')) return;
         // Don't intercept native undo in input/textarea
