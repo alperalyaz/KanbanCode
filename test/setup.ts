@@ -5,14 +5,18 @@
 
 import { afterEach, beforeEach, expect, vi } from 'vitest';
 
-// Mock process.env for tests that need home directory
-vi.stubGlobal('process', {
-  ...process,
-  env: {
-    ...process.env,
-    HOME: '/home/testuser',
-  },
-});
+// Mock process.env for tests that need home directory.
+// Use Proxy so process keeps all methods (listeners, on, etc.) — spreading loses them.
+const testEnv = { ...process.env, HOME: '/home/testuser' };
+vi.stubGlobal(
+  'process',
+  new Proxy(process, {
+    get(target, prop) {
+      if (prop === 'env') return testEnv;
+      return (target as Record<string | symbol, unknown>)[prop];
+    },
+  })
+);
 
 let errorSpy: ReturnType<typeof vi.spyOn>;
 let warnSpy: ReturnType<typeof vi.spyOn>;
