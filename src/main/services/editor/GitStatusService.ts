@@ -20,6 +20,7 @@ const log = createLogger('GitStatusService');
 
 const GIT_TIMEOUT_MS = 10_000;
 const CACHE_TTL_MS = 5_000;
+const CHANGE_INVALIDATION_DEBOUNCE_MS = 500;
 const GIT_STATUS_ARGS: string[] = ['--untracked-files=no'];
 
 // =============================================================================
@@ -33,6 +34,7 @@ export class GitStatusService {
   // Cache
   private cachedResult: GitStatusResult | null = null;
   private cacheTimestamp = 0;
+  private changeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Initialize service for a project root.
@@ -51,6 +53,7 @@ export class GitStatusService {
    * Reset service state.
    */
   destroy(): void {
+    this.clearDebounceTimer();
     this.git = null;
     this.projectRoot = null;
     this.cachedResult = null;
@@ -58,11 +61,27 @@ export class GitStatusService {
   }
 
   /**
-   * Invalidate cached status (e.g. on file watcher event).
+   * Immediate cache invalidation for structural changes (create/delete).
+   * Also cancels any pending debounced invalidation.
    */
   invalidateCache(): void {
+    this.clearDebounceTimer();
     this.cachedResult = null;
     this.cacheTimestamp = 0;
+  }
+
+  /**
+   * Debounced cache invalidation for content changes.
+   * Coalesces rapid file saves (typing, format-on-save, build output)
+   * into a single invalidation after the burst settles.
+   */
+  invalidateCacheDebounced(): void {
+    this.clearDebounceTimer();
+    this.changeDebounceTimer = setTimeout(() => {
+      this.changeDebounceTimer = null;
+      this.cachedResult = null;
+      this.cacheTimestamp = 0;
+    }, CHANGE_INVALIDATION_DEBOUNCE_MS);
   }
 
   /**
@@ -72,6 +91,12 @@ export class GitStatusService {
   async getStatus(): Promise<GitStatusResult> {
     if (!this.git || !this.projectRoot) {
       return { files: [], isGitRepo: false, branch: null };
+    }
+
+    // Flush pending debounced invalidation — when data is actually requested,
+    // stale cache must not be served even if the debounce hasn't settled yet.
+    if (this.changeDebounceTimer) {
+      this.invalidateCache();
     }
 
     // Return cached if fresh
@@ -89,7 +114,7 @@ export class GitStatusService {
       const files = mapStatusResult(statusResult);
       const branch = statusResult.current ?? null;
       log.info(
-        `[perf] gitStatus: git=${gitMs.toFixed(1)}ms, files=${files.length}, branch=${branch}, untracked=off`
+        `[perf] gitStatus: git=${gitMs.toFixed(1)}ms, files=${files.length}, branch=${branch ?? 'detached'}, untracked=off`
       );
 
       const result: GitStatusResult = { files, isGitRepo: true, branch };
@@ -107,6 +132,13 @@ export class GitStatusService {
   private setCacheResult(result: GitStatusResult): void {
     this.cachedResult = result;
     this.cacheTimestamp = Date.now();
+  }
+
+  private clearDebounceTimer(): void {
+    if (this.changeDebounceTimer) {
+      clearTimeout(this.changeDebounceTimer);
+      this.changeDebounceTimer = null;
+    }
   }
 }
 

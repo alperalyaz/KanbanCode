@@ -207,7 +207,10 @@ export const ChangeReviewDialog = ({
     (filePath: string, hunkIndex: number) => {
       const originalIndex = setHunkDecision(filePath, hunkIndex, 'accepted');
       lastHunkActionAtRef.current[filePath] = Date.now();
-      (hunkDecisionUndoStackRef.current[filePath] ??= []).push(originalIndex);
+      if (!hunkDecisionUndoStackRef.current[filePath]) {
+        hunkDecisionUndoStackRef.current[filePath] = [];
+      }
+      hunkDecisionUndoStackRef.current[filePath].push(originalIndex);
     },
     [setHunkDecision]
   );
@@ -216,7 +219,10 @@ export const ChangeReviewDialog = ({
     (filePath: string, hunkIndex: number) => {
       const originalIndex = setHunkDecision(filePath, hunkIndex, 'rejected');
       lastHunkActionAtRef.current[filePath] = Date.now();
-      (hunkDecisionUndoStackRef.current[filePath] ??= []).push(originalIndex);
+      if (!hunkDecisionUndoStackRef.current[filePath]) {
+        hunkDecisionUndoStackRef.current[filePath] = [];
+      }
+      hunkDecisionUndoStackRef.current[filePath].push(originalIndex);
       if (REVIEW_INSTANT_APPLY) {
         void applySingleFileDecision(teamName, filePath, taskId, memberName);
       }
@@ -341,7 +347,7 @@ export const ChangeReviewDialog = ({
     return () => observer.disconnect();
   }, [hasData]);
 
-  // Save active file (for Cmd+Enter keyboard shortcut)
+  // Save active file (for Cmd+S keyboard shortcut)
   const handleSaveActiveFile = useCallback(() => {
     if (activeFilePath) void saveEditedFile(activeFilePath, projectPath);
   }, [activeFilePath, saveEditedFile, projectPath]);

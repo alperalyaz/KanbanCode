@@ -51,8 +51,6 @@ const SAVE_COOLDOWN_MS = 2000;
  */
 let gitStatusThrottleTimer: ReturnType<typeof setTimeout> | null = null;
 const GIT_STATUS_THROTTLE_MS = 1500;
-const gitStatusChangeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-const GIT_STATUS_CHANGE_DEBOUNCE_MS = 6000;
 const dirRefreshDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const DIR_REFRESH_DEBOUNCE_MS = 350;
 
@@ -81,7 +79,7 @@ function scheduleSyncWatchedFiles(get: () => AppState): void {
   if (!projectPath) return;
 
   const filePaths = state.editorOpenTabs.map((t) => t.filePath).filter(Boolean);
-  filePaths.sort();
+  filePaths.sort((a, b) => a.localeCompare(b));
   const key = `${projectPath}\n${filePaths.join('\n')}`;
   if (key === lastWatchedFilesKey) return;
   lastWatchedFilesKey = key;
@@ -107,7 +105,7 @@ function scheduleSyncWatchedDirs(get: () => AppState): void {
   // Always include root (depth=0), plus expanded folders (depth=0).
   // Cap to protect chokidar from too many watched paths if user expands a lot.
   const dirs = [projectPath, ...expanded].slice(0, MAX_WATCHED_DIRS);
-  dirs.sort();
+  dirs.sort((a, b) => a.localeCompare(b));
   const key = `${projectPath}\n${dirs.join('\n')}`;
   if (key === lastWatchedDirsKey) return;
   lastWatchedDirsKey = key;
@@ -468,7 +466,7 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
   },
 
   expandDirectory: async (dirPath: string) => {
-    const { editorExpandedDirs, editorFileTree } = get();
+    const { editorExpandedDirs } = get();
 
     // Skip set() if already expanded — prevents unnecessary re-render
     const wasExpanded = !!editorExpandedDirs[dirPath];
@@ -1240,7 +1238,7 @@ async function refreshDirectory(
     const t0 = performance.now();
     const result = await api.editor.readDir(dirPath);
     log.info(
-      `[perf] refreshDirectory: IPC=${(performance.now() - t0).toFixed(1)}ms, entries=${result.entries.length}, dir=${dirPath.split('/').pop()}`
+      `[perf] refreshDirectory: IPC=${(performance.now() - t0).toFixed(1)}ms, entries=${result.entries.length}, dir=${dirPath.split('/').pop() ?? ''}`
     );
     const currentTree = get().editorFileTree;
     if (!currentTree) return;

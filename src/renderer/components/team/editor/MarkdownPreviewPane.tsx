@@ -34,10 +34,14 @@ export const MarkdownPreviewPane = React.memo(function MarkdownPreviewPane({
   baseDir,
 }: MarkdownPreviewPaneProps): React.ReactElement {
   // Callback ref to wire scrollRef (RefObject<T | null>) to the div
+  const internalRef = React.useRef<HTMLDivElement | null>(null);
   const setRef = React.useCallback(
     (el: HTMLDivElement | null) => {
+      internalRef.current = el;
       if (scrollRef && 'current' in scrollRef) {
-        (scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+        // Forward ref — the mutable cast is the standard pattern for forwarding refs
+        const mutableRef = scrollRef as React.MutableRefObject<HTMLDivElement | null>;
+        mutableRef.current = el;
       }
     },
     [scrollRef]

@@ -35,10 +35,6 @@ export const EditorBreadcrumb = (): React.ReactElement | null => {
     return relativePath.split('/');
   }, [activeTabId, projectPath]);
 
-  if (segments.length === 0) return null;
-
-  const fileName = segments[segments.length - 1];
-
   const handleSegmentClick = useCallback(
     (segmentIndex: number): void => {
       if (!projectPath) return;
@@ -48,6 +44,10 @@ export const EditorBreadcrumb = (): React.ReactElement | null => {
     },
     [segments, projectPath, expandDirectory]
   );
+
+  if (segments.length === 0) return null;
+
+  const fileName = segments[segments.length - 1];
 
   return (
     <div className="flex items-center gap-0.5 overflow-x-auto px-3 py-1 text-xs text-text-muted">

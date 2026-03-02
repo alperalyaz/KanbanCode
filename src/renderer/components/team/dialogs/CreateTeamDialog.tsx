@@ -145,15 +145,21 @@ function buildMembers(members: MemberDraft[]): TeamCreateRequest['members'] {
 
 /** Mirrors Claude CLI's `zuA()` sanitization: non-alphanumeric → `-`, then lowercase. */
 function sanitizeTeamName(name: string): string {
-  return name
+  let result = name
     .replace(/[^a-zA-Z0-9]/g, '-')
     .replace(/-{2,}/g, '-')
-    .replace(/^-+/g, '')
-    .replace(/-+$/g, '')
     .toLowerCase();
+  // Trim leading/trailing dashes without backtracking-vulnerable regex
+  while (result.startsWith('-')) result = result.slice(1);
+  while (result.endsWith('-')) result = result.slice(0, -1);
+  return result;
 }
 
-const MEMBER_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
+function isValidMemberName(name: string): boolean {
+  if (name.length < 1 || name.length > 128) return false;
+  if (!/^[a-zA-Z0-9]/.test(name)) return false;
+  return /^[a-zA-Z0-9._-]+$/.test(name);
+}
 
 function validateTeamNameInline(name: string): string | null {
   const trimmed = name.trim();
@@ -171,7 +177,7 @@ function validateTeamNameInline(name: string): string | null {
 function validateMemberNameInline(name: string): string | null {
   const trimmed = name.trim();
   if (!trimmed) return null;
-  if (!MEMBER_NAME_RE.test(trimmed)) {
+  if (!isValidMemberName(trimmed)) {
     return 'Start with alphanumeric, use only [a-zA-Z0-9._-], max 128 chars';
   }
   return null;
@@ -223,7 +229,7 @@ function validateRequest(
       },
     };
   }
-  if (request.members.some((member) => !MEMBER_NAME_RE.test(member.name.trim()))) {
+  if (request.members.some((member) => !isValidMemberName(member.name.trim()))) {
     return {
       valid: false,
       errors: {
@@ -279,11 +285,25 @@ export const CreateTeamDialog = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [launchTeam, setLaunchTeam] = useState(true);
   const [teamColor, setTeamColor] = useState('');
-  const [selectedModel, setSelectedModel] = useState('');
-  const [extendedContext, setExtendedContext] = useState(false);
+  const [selectedModel, setSelectedModelRaw] = useState(
+    () => localStorage.getItem('team:lastSelectedModel') ?? ''
+  );
+  const [extendedContext, setExtendedContextRaw] = useState(
+    () => localStorage.getItem('team:lastExtendedContext') === 'true'
+  );
   const [jsonEditorOpen, setJsonEditorOpen] = useState(false);
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
+
+  const setSelectedModel = (value: string): void => {
+    setSelectedModelRaw(value);
+    localStorage.setItem('team:lastSelectedModel', value);
+  };
+
+  const setExtendedContext = (value: boolean): void => {
+    setExtendedContextRaw(value);
+    localStorage.setItem('team:lastExtendedContext', String(value));
+  };
 
   const resetUIState = (): void => {
     setLocalError(null);
@@ -304,8 +324,6 @@ export const CreateTeamDialog = ({
     setSelectedProjectPath('');
     setCustomCwd('');
     setLaunchTeam(true);
-    setSelectedModel('');
-    setExtendedContext(false);
     setJsonEditorOpen(false);
     setJsonText('');
     setJsonError(null);

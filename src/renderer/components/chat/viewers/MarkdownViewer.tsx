@@ -135,8 +135,13 @@ const LocalImage = React.memo(function LocalImage({
 });
 
 /** Extract plain text from a hast (HTML AST) node tree */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- hast node shape varies
-function hastToText(node: any): string {
+interface HastNode {
+  type: string;
+  value?: string;
+  children?: HastNode[];
+}
+
+function hastToText(node: HastNode): string {
   if (node.type === 'text') return node.value ?? '';
   if (node.children) return node.children.map(hastToText).join('');
   return '';
@@ -278,7 +283,7 @@ function createViewerMarkdownComponents(searchCtx: SearchContext | null): Compon
       if (codeEl && 'tagName' in codeEl && codeEl.tagName === 'code' && 'properties' in codeEl) {
         const cls = (codeEl.properties as Record<string, unknown>)?.className;
         if (Array.isArray(cls) && cls.some((c) => String(c) === 'language-mermaid')) {
-          return <MermaidDiagram code={hastToText(codeEl)} />;
+          return <MermaidDiagram code={hastToText(codeEl as unknown as HastNode)} />;
         }
       }
 

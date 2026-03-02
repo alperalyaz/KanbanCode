@@ -227,6 +227,7 @@ export function useEditorKeyboardShortcuts({
 
   // Store all deps in a ref so the keydown handler has a stable identity
   const depsRef = useRef<EditorKeyHandlerDeps>(null!);
+  // eslint-disable-next-line react-hooks/refs -- sync ref with deps for stable keydown handler
   depsRef.current = {
     activeTabId,
     openTabs,

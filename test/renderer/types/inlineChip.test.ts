@@ -38,6 +38,11 @@ describe('chipDisplayLabel', () => {
     const chip = makeChip({ fileName: 'index.tsx', fromLine: 1, toLine: 3 });
     expect(chipDisplayLabel(chip)).toBe('index.tsx:1-3');
   });
+
+  it('returns just fileName for file-level mention (null lines)', () => {
+    const chip = makeChip({ fromLine: null, toLine: null, codeText: '' });
+    expect(chipDisplayLabel(chip)).toBe('auth.ts');
+  });
 });
 
 describe('chipToken', () => {
@@ -49,6 +54,11 @@ describe('chipToken', () => {
   it('uses single-line format when fromLine === toLine', () => {
     const chip = makeChip({ fromLine: 42, toLine: 42 });
     expect(chipToken(chip)).toBe(`${CHIP_MARKER}auth.ts:42`);
+  });
+
+  it('omits line range for file-level mention', () => {
+    const chip = makeChip({ fromLine: null, toLine: null, codeText: '' });
+    expect(chipToken(chip)).toBe(`${CHIP_MARKER}auth.ts`);
   });
 });
 
@@ -82,6 +92,24 @@ describe('chipToMarkdown', () => {
   it('uses language from chip', () => {
     const chip = makeChip({ language: 'python', fileName: 'script.py' });
     expect(chipToMarkdown(chip)).toContain('```python');
+  });
+
+  it('produces file reference for file-level mention', () => {
+    const chip = makeChip({
+      fromLine: null,
+      toLine: null,
+      codeText: '',
+      displayPath: 'src/auth.ts',
+    });
+    const md = chipToMarkdown(chip);
+    expect(md).toBe('**auth.ts** (`src/auth.ts`)');
+    expect(md).not.toContain('```');
+  });
+
+  it('falls back to filePath when displayPath is missing', () => {
+    const chip = makeChip({ fromLine: null, toLine: null, codeText: '' });
+    const md = chipToMarkdown(chip);
+    expect(md).toBe('**auth.ts** (`/src/auth.ts`)');
   });
 });
 
@@ -118,5 +146,18 @@ describe('serializeChipsWithText', () => {
     const result = serializeChipsWithText(text, [chip]);
     expect(result).toContain('Before ');
     expect(result).toContain(' after');
+  });
+
+  it('serializes file-mention chip as file reference', () => {
+    const chip = makeChip({
+      fromLine: null,
+      toLine: null,
+      codeText: '',
+      displayPath: 'src/auth.ts',
+    });
+    const text = `Check ${chipToken(chip)} please`;
+    const result = serializeChipsWithText(text, [chip]);
+    expect(result).toBe('Check **auth.ts** (`src/auth.ts`) please');
+    expect(result).not.toContain(CHIP_MARKER);
   });
 });

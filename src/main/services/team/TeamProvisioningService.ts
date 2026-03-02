@@ -375,6 +375,13 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       `Internal task board tooling (teamctl.js):`,
       `- Use teamctl.js (via Bash) for tasks that must appear on the team board (assigned work, substantial work, or when the user explicitly asks to create a task).`,
       ``,
+      `Parallelization guideline (IMPORTANT):`,
+      `- If a task is genuinely parallelizable, split it into multiple smaller tasks owned by different members.`,
+      `  - Prefer splitting by independent deliverables (e.g. frontend/backend, API/UI, parsing/rendering, tests/docs) rather than arbitrary slices.`,
+      `  - Use --blocked-by only when one piece truly cannot start without another; otherwise link with --related.`,
+      `  - Do NOT split when work is inherently sequential, requires one person to keep consistent context, or the overhead would exceed the benefit.`,
+      `  - When splitting, make each task have a clear completion criterion and a single accountable owner.`,
+      ``,
       `Task board operations — use teamctl.js via Bash:`,
       `- Create task: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task create --subject "..." --description "..." --owner "<actual-member-name>" --notify --from "${leadName}"`,
       `- Assign/reassign owner: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-owner <id> <member-name> --notify --from "${leadName}"`,
@@ -462,7 +469,7 @@ function buildMemberTaskSnapshot(memberName: string, tasks: TeamTask[]): string 
   const lines = activeTasks.map((t) => {
     const desc = t.description ? ` — ${t.description.slice(0, 120)}` : '';
     const deps = t.blockedBy?.length
-      ? ` [blocked by: ${t.blockedBy.map((id) => `#${id}`).join(', ')}]`
+      ? ` [blocked by: ${t.blockedBy.map((id) => '#' + id).join(', ')}]`
       : '';
     return `  - #${t.id} [${t.status}] ${t.subject}${deps}${desc}`;
   });
@@ -480,7 +487,7 @@ function buildTaskBoardSnapshot(tasks: TeamTask[]): string {
     const owner = t.owner ? ` (owner: ${t.owner})` : ' (unassigned)';
     const desc = t.description ? ` — ${t.description.slice(0, 120)}` : '';
     const deps = t.blockedBy?.length
-      ? ` [blocked by: ${t.blockedBy.map((id) => `#${id}`).join(', ')}]`
+      ? ` [blocked by: ${t.blockedBy.map((id) => '#' + id).join(', ')}]`
       : '';
     return `  - #${t.id} [${t.status}]${owner} ${t.subject}${deps}${desc}`;
   });

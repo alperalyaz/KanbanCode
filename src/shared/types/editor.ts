@@ -240,9 +240,13 @@ export interface EditorSelectionInfo {
 export interface EditorSelectionAction {
   type: 'sendMessage' | 'createTask';
   filePath: string;
-  fromLine: number;
-  toLine: number;
+  /** 1-based start line, or null for file-level mentions (no code selection) */
+  fromLine: number | null;
+  /** 1-based end line, or null for file-level mentions (no code selection) */
+  toLine: number | null;
   selectedText: string;
-  /** Pre-formatted context block (markdown code fence) */
+  /** Pre-formatted context block (markdown code fence or file reference) */
   formattedContext: string;
+  /** Relative display path for file-level mentions */
+  displayPath?: string;
 }

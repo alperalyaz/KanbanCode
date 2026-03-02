@@ -159,6 +159,7 @@ export const ActivityTimeline = ({
 
   // Auto-expand when user was seeing all and new messages arrive — derived state sync.
   // Reading/updating ref during render is intentional (React docs: derived state sync).
+  /* eslint-disable react-hooks/refs -- intentional ref access during render for animation tracking */
 
   const wasShowingAll = wasShowingAllRef.current;
   if (wasShowingAll && hiddenCount > 0) {
@@ -209,6 +210,7 @@ export const ActivityTimeline = ({
     }
     return newKeys;
   }, [visibleMessages, visibleCount]);
+  /* eslint-enable react-hooks/refs */
 
   const handleShowMore = (): void => {
     setVisibleCount((prev) => prev + MESSAGES_PAGE_SIZE);

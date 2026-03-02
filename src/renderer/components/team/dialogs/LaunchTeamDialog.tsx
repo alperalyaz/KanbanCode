@@ -66,9 +66,23 @@ export const LaunchTeamDialog = ({
   const [prepareMessage, setPrepareMessage] = useState<string | null>(null);
   const [prepareWarnings, setPrepareWarnings] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('');
-  const [extendedContext, setExtendedContext] = useState(false);
+  const [selectedModel, setSelectedModelRaw] = useState(
+    () => localStorage.getItem('team:lastSelectedModel') ?? ''
+  );
+  const [extendedContext, setExtendedContextRaw] = useState(
+    () => localStorage.getItem('team:lastExtendedContext') === 'true'
+  );
   const [clearContext, setClearContext] = useState(false);
+
+  const setSelectedModel = (value: string): void => {
+    setSelectedModelRaw(value);
+    localStorage.setItem('team:lastSelectedModel', value);
+  };
+
+  const setExtendedContext = (value: boolean): void => {
+    setExtendedContextRaw(value);
+    localStorage.setItem('team:lastExtendedContext', String(value));
+  };
 
   const resetFormState = (): void => {
     setLocalError(null);
@@ -79,8 +93,6 @@ export const LaunchTeamDialog = ({
     setCwdMode('project');
     setSelectedProjectPath('');
     setCustomCwd('');
-    setSelectedModel('');
-    setExtendedContext(false);
     setClearContext(false);
   };
 

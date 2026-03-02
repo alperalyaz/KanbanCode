@@ -33,12 +33,18 @@ export const EditorImagePreview = ({
   const [dimensions, setDimensions] = useState<{ w: number; h: number } | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  // Reset state when filePath changes (setState-during-render, React-approved pattern)
+  const [prevFilePath, setPrevFilePath] = useState(filePath);
+  if (prevFilePath !== filePath) {
+    setPrevFilePath(filePath);
     setLoading(true);
     setError(null);
     setDataUrl(null);
     setDimensions(null);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
 
     window.electronAPI.editor
       .readBinaryPreview(filePath)

@@ -336,11 +336,12 @@ async function handleEditorWatchDir(
 
     if (enable) {
       editorFileWatcher.start(activeProjectRoot, (event) => {
-        // Git invalidation can be expensive: invalidating on every "change" causes us to
-        // re-run git status repeatedly during editor activity or build bursts.
-        // Instead, invalidate only on structural changes (create/delete).
+        // Structural changes (create/delete): immediate invalidation.
+        // Content changes: debounced (500ms) to coalesce rapid saves/builds.
         if (event.type === 'create' || event.type === 'delete') {
           gitStatusService.invalidateCache();
+        } else {
+          gitStatusService.invalidateCacheDebounced();
         }
 
         // Forward event to renderer

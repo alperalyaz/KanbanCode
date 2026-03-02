@@ -53,6 +53,19 @@ const chipPreviewTheme = EditorView.theme({
 
 const MAX_PREVIEW_LINES = 12;
 
+/** Simple tooltip for file-level mention chips (no code preview). */
+const ChipFilePreview = ({ chip }: { chip: InlineChip }): React.JSX.Element => {
+  const displayPath = chip.displayPath ?? chip.filePath;
+  return (
+    <div className="max-w-md overflow-hidden rounded-md">
+      <div className="flex items-center gap-2 bg-[var(--code-bg,#1e1e2e)] px-2.5 py-2">
+        <span className="text-[11px] font-medium text-[var(--color-text)]">{chip.fileName}</span>
+        <span className="text-[10px] text-[var(--color-text-muted)]">{displayPath}</span>
+      </div>
+    </div>
+  );
+};
+
 const ChipCodePreview = ({ chip }: { chip: InlineChip }): React.JSX.Element => {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const allLines = chip.codeText.split('\n');
@@ -61,8 +74,8 @@ const ChipCodePreview = ({ chip }: { chip: InlineChip }): React.JSX.Element => {
   const label = chipDisplayLabel(chip);
   const lineRef =
     chip.fromLine === chip.toLine
-      ? `line ${chip.fromLine}`
-      : `lines ${chip.fromLine}-${chip.toLine}`;
+      ? `line ${String(chip.fromLine)}`
+      : `lines ${String(chip.fromLine)}-${String(chip.toLine)}`;
 
   React.useEffect(() => {
     const container = containerRef.current;
@@ -168,7 +181,11 @@ export const ChipInteractionLayer = ({
               </div>
             </TooltipTrigger>
             <TooltipContent side="top" className="max-w-md p-0">
-              <ChipCodePreview chip={pos.chip} />
+              {pos.chip.fromLine == null ? (
+                <ChipFilePreview chip={pos.chip} />
+              ) : (
+                <ChipCodePreview chip={pos.chip} />
+              )}
             </TooltipContent>
           </Tooltip>
         ))}

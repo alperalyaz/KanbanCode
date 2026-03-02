@@ -22,6 +22,29 @@ export function createChipFromSelection(
   action: EditorSelectionAction,
   existingChips: InlineChip[]
 ): InlineChip | null {
+  const isFileMention = !action.selectedText || action.fromLine == null || action.toLine == null;
+
+  if (isFileMention) {
+    // File-level mention: deduplicate by filePath + null lines
+    const isDuplicate = existingChips.some(
+      (c) => c.filePath === action.filePath && c.fromLine == null
+    );
+    if (isDuplicate) return null;
+
+    const fileName = action.filePath.split('/').pop() ?? 'file';
+    return {
+      id: `chip-${++chipCounter}-${Date.now()}`,
+      filePath: action.filePath,
+      fileName,
+      fromLine: null,
+      toLine: null,
+      codeText: '',
+      language: getCodeFenceLanguage(fileName),
+      displayPath: action.displayPath,
+    };
+  }
+
+  // Code selection chip
   const isDuplicate = existingChips.some(
     (c) =>
       c.filePath === action.filePath && c.fromLine === action.fromLine && c.toLine === action.toLine
@@ -165,7 +188,6 @@ export function calculateChipPositions(
   mirror.style.textTransform = cs.textTransform;
   mirror.style.tabSize = cs.tabSize;
   mirror.style.whiteSpace = cs.whiteSpace;
-  mirror.style.wordWrap = cs.wordWrap;
   mirror.style.overflowWrap = cs.overflowWrap;
   mirror.style.paddingTop = cs.paddingTop;
   mirror.style.paddingRight = cs.paddingRight;

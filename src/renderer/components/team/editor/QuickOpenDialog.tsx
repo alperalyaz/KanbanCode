@@ -50,15 +50,21 @@ export const QuickOpenDialog = ({
 
   // Load all project files via backend API (with module-level cache)
   useEffect(() => {
+    let cancelled = false;
+
     // Use cache if fresh and for the same project
     const cached = projectPath ? getQuickOpenCache(projectPath) : null;
     if (cached) {
-      setAllFiles(cached.files);
-      setLoading(false);
-      return;
+      // Defer setState to avoid cascading render within the same effect cycle
+      queueMicrotask(() => {
+        if (cancelled) return;
+        setAllFiles(cached.files);
+        setLoading(false);
+      });
+      return () => {
+        cancelled = true;
+      };
     }
-
-    let cancelled = false;
 
     const fetchFiles = async (): Promise<void> => {
       try {

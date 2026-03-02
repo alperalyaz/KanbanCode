@@ -23,18 +23,19 @@ const DEBOUNCE_MS = 500;
 
 function isValidChipArray(data: unknown): data is InlineChip[] {
   if (!Array.isArray(data)) return false;
-  return data.every(
-    (item) =>
-      typeof item === 'object' &&
-      item !== null &&
+  return data.every((raw) => {
+    if (typeof raw !== 'object' || raw === null) return false;
+    const item = raw as Record<string, unknown>;
+    return (
       typeof item.id === 'string' &&
       typeof item.filePath === 'string' &&
       typeof item.fileName === 'string' &&
-      typeof item.fromLine === 'number' &&
-      typeof item.toLine === 'number' &&
+      (typeof item.fromLine === 'number' || item.fromLine === null) &&
+      (typeof item.toLine === 'number' || item.toLine === null) &&
       typeof item.codeText === 'string' &&
       typeof item.language === 'string'
-  );
+    );
+  });
 }
 
 export function useChipDraftPersistence(key: string): UseChipDraftResult {
@@ -43,6 +44,7 @@ export function useChipDraftPersistence(key: string): UseChipDraftResult {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<InlineChip[] | null>(null);
   const keyRef = useRef(key);
+  // eslint-disable-next-line react-hooks/refs -- sync ref with prop for stable callbacks
   keyRef.current = key;
 
   // Load on mount

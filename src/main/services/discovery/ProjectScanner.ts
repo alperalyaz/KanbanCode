@@ -339,7 +339,8 @@ export class ProjectScanner {
 
       // Group sessions by cwd
       const cwdGroups = new Map<string, SessionInfo[]>();
-      const baseName = extractProjectName(encodedName);
+      const firstCwd = sessionInfos.find((s) => s.cwd)?.cwd ?? undefined;
+      const baseName = extractProjectName(encodedName, firstCwd);
       const decodedFallback = baseName; // Used when cwd is null
 
       for (const info of sessionInfos) {
@@ -371,11 +372,15 @@ export class ProjectScanner {
           sessionPaths,
         });
 
+        // Derive name from resolved path — more reliable than decodePath for
+        // paths containing dashes (e.g. "test-project" encodes lossily).
+        const resolvedName = path.basename(actualPath) || baseName;
+
         return [
           {
             id: encodedName,
             path: actualPath,
-            name: baseName,
+            name: resolvedName,
             sessions: allSessionIds,
             createdAt: Math.floor(createdAt),
             mostRecentSession: mostRecentSession ? Math.floor(mostRecentSession) : undefined,
@@ -392,6 +397,8 @@ export class ProjectScanner {
         (shortest, cwd) => (cwd.length <= shortest.length ? cwd : shortest),
         cwdKeys[0] ?? ''
       );
+      // Derive root name from actual cwd path (more reliable than decodePath)
+      const rootName = path.basename(rootCwd) || baseName;
 
       for (const [cwdKey, sessions] of cwdGroups) {
         const isDecodedFallback = cwdKey.startsWith('__decoded__');
@@ -417,14 +424,14 @@ export class ProjectScanner {
           }
         }
 
-        // Build display name
+        // Build display name from actual cwd paths
         let displayName: string;
         if (!actualCwd || actualCwd === rootCwd) {
-          displayName = baseName;
+          displayName = rootName;
         } else {
           // Use last segment of cwd for disambiguation
           const lastSegment = path.basename(actualCwd);
-          displayName = `${baseName} (${lastSegment})`;
+          displayName = `${rootName} (${lastSegment})`;
         }
 
         projects.push({

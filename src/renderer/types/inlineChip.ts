@@ -17,14 +17,16 @@ export interface InlineChip {
   filePath: string;
   /** Basename (e.g. "auth.ts") */
   fileName: string;
-  /** 1-based start line */
-  fromLine: number;
-  /** 1-based end line */
-  toLine: number;
-  /** Selected source code text */
+  /** 1-based start line, or null for file-level mentions */
+  fromLine: number | null;
+  /** 1-based end line, or null for file-level mentions */
+  toLine: number | null;
+  /** Selected source code text (empty for file mentions) */
   codeText: string;
   /** Language identifier (e.g. "typescript", "python") */
   language: string;
+  /** Relative display path for file-level mentions */
+  displayPath?: string;
 }
 
 // =============================================================================
@@ -39,9 +41,13 @@ export const CHIP_MARKER = '\u{1F4C4}'; // 📄
 // =============================================================================
 
 /**
- * Display label for a chip: "auth.ts:10-15" or "auth.ts:42" for single-line.
+ * Display label for a chip: "auth.ts:10-15", "auth.ts:42" for single-line,
+ * or just "auth.ts" for file-level mentions.
  */
 export function chipDisplayLabel(chip: InlineChip): string {
+  if (chip.fromLine == null || chip.toLine == null) {
+    return chip.fileName;
+  }
   if (chip.fromLine === chip.toLine) {
     return `${chip.fileName}:${chip.fromLine}`;
   }
@@ -57,12 +63,20 @@ export function chipToken(chip: InlineChip): string {
 }
 
 /**
- * Converts a chip to a markdown code fence block.
+ * Converts a chip to markdown: code fence for code chips, file reference for file mentions.
  */
 export function chipToMarkdown(chip: InlineChip): string {
-  const label = chipDisplayLabel(chip);
+  // File-level mention — no code fence
+  if (chip.fromLine == null || chip.toLine == null) {
+    const path = chip.displayPath ?? chip.filePath;
+    return `**${chip.fileName}** (\`${path}\`)`;
+  }
   const lang = chip.language || getCodeFenceLanguage(chip.fileName);
-  return `**${chip.fileName}** (${chip.fromLine === chip.toLine ? `line ${chip.fromLine}` : `lines ${chip.fromLine}-${chip.toLine}`}):\n\`\`\`${lang}\n${chip.codeText}\n\`\`\``;
+  const lineRef =
+    chip.fromLine === chip.toLine
+      ? `line ${chip.fromLine}`
+      : `lines ${chip.fromLine}-${chip.toLine}`;
+  return `**${chip.fileName}** (${lineRef}):\n\`\`\`${lang}\n${chip.codeText}\n\`\`\``;
 }
 
 /**

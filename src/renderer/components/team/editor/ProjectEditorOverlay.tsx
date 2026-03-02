@@ -19,7 +19,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useEditorKeyboardShortcuts } from '@renderer/hooks/useEditorKeyboardShortcuts';
 import { useStore } from '@renderer/store';
-import { buildSelectionAction } from '@renderer/utils/buildSelectionAction';
+import { buildFileAction, buildSelectionAction } from '@renderer/utils/buildSelectionAction';
 import { shortcutLabel } from '@renderer/utils/platformKeys';
 import {
   AlertTriangle,
@@ -216,7 +216,7 @@ export const ProjectEditorOverlay = ({
         const result = await promise;
         const ipcMs = performance.now() - t0;
         console.debug(
-          `[perf] loadFileContent: IPC=${ipcMs.toFixed(1)}ms, size=${result.size}, truncated=${result.truncated}, cached=${wasCached}, file=${filePath.split('/').pop()}`
+          `[perf] loadFileContent: IPC=${ipcMs.toFixed(1)}ms, size=${result.size}, truncated=${result.truncated}, cached=${wasCached}, file=${filePath.split('/').pop() ?? ''}`
         );
         setFileContent(result);
 
@@ -608,7 +608,22 @@ export const ProjectEditorOverlay = ({
               </Tooltip>
             </div>
             <div className="flex-1 overflow-hidden">
-              <EditorFileTree selectedFilePath={activeTabId} onFileSelect={handleFileSelect} />
+              <EditorFileTree
+                selectedFilePath={activeTabId}
+                onFileSelect={handleFileSelect}
+                onCreateTask={
+                  onEditorAction
+                    ? (filePath: string) =>
+                        onEditorAction(buildFileAction('createTask', filePath, projectPath))
+                    : undefined
+                }
+                onSendMessage={
+                  onEditorAction
+                    ? (filePath: string) =>
+                        onEditorAction(buildFileAction('sendMessage', filePath, projectPath))
+                    : undefined
+                }
+              />
             </div>
           </div>
         )}

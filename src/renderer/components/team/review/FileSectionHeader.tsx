@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { shortcutLabel } from '@renderer/utils/platformKeys';
 import { ChevronDown, ChevronRight, FilePlus, Loader2, Save, Undo2 } from 'lucide-react';
 
 import type { FileChangeWithContent, HunkDecision } from '@shared/types';
@@ -50,7 +51,7 @@ export const FileSectionHeader = ({
       return writeSnippets[writeSnippets.length - 1].newString;
     })();
   const canRestore =
-    !!onRestoreMissingFile && isMissingOnDisk && !hasEdits && restoreContent !== null;
+    !!onRestoreMissingFile && isMissingOnDisk && !hasEdits && restoreContent != null;
 
   const handleHeaderClick = (e: React.MouseEvent): void => {
     // Don't collapse when clicking action buttons
@@ -105,7 +106,7 @@ export const FileSectionHeader = ({
                 <div className="text-text-muted">
                   We can still show a preview from agent logs, but your filesystem is out of sync.
                 </div>
-                {restoreContent !== null ? (
+                {restoreContent != null ? (
                   <div className="text-text-muted">
                     Use <span className="font-medium text-text">Restore</span> to write the preview
                     content back to disk.
@@ -140,7 +141,7 @@ export const FileSectionHeader = ({
       )}
 
       <div className="ml-auto flex items-center gap-1.5" data-no-collapse>
-        {canRestore && restoreContent !== null && (
+        {canRestore && restoreContent != null && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -189,7 +190,7 @@ export const FileSectionHeader = ({
               <TooltipContent side="bottom">
                 <span>Save file to disk</span>
                 <kbd className="ml-2 rounded border border-border bg-surface-raised px-1 py-0.5 font-mono text-[10px] text-text-muted">
-                  ⌘↵
+                  {shortcutLabel('⌘ S', 'Ctrl+S')}
                 </kbd>
               </TooltipContent>
             </Tooltip>

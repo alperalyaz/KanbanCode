@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
+import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { Button } from '@renderer/components/ui/button';
 import {
   Dialog,
@@ -30,7 +31,6 @@ import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { X } from 'lucide-react';
 
-import { MarkdownViewer } from '../../chat/viewers/MarkdownViewer';
 import { MemberBadge } from '../MemberBadge';
 
 import type { InlineChip } from '@renderer/types/inlineChip';

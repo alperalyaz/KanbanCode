@@ -63,6 +63,35 @@ describe('createChipFromSelection', () => {
     const action = makeAction({ fromLine: 10, toLine: 15 });
     expect(createChipFromSelection(action, [existing])).not.toBeNull();
   });
+
+  it('creates a file-mention chip when selectedText is empty and lines are null', () => {
+    const action = makeAction({
+      selectedText: '',
+      fromLine: null,
+      toLine: null,
+      displayPath: 'src/auth.ts',
+    });
+    const chip = createChipFromSelection(action, []);
+    expect(chip).not.toBeNull();
+    expect(chip!.fromLine).toBeNull();
+    expect(chip!.toLine).toBeNull();
+    expect(chip!.codeText).toBe('');
+    expect(chip!.displayPath).toBe('src/auth.ts');
+    expect(chip!.fileName).toBe('auth.ts');
+  });
+
+  it('deduplicates file-mention chips by filePath', () => {
+    const existing = makeChip({ fromLine: null, toLine: null, codeText: '' });
+    const action = makeAction({ selectedText: '', fromLine: null, toLine: null });
+    expect(createChipFromSelection(action, [existing])).toBeNull();
+  });
+
+  it('creates file-mention chip when fromLine is null', () => {
+    const action = makeAction({ fromLine: null, selectedText: 'code' });
+    const chip = createChipFromSelection(action, []);
+    expect(chip).not.toBeNull();
+    expect(chip!.fromLine).toBeNull();
+  });
 });
 
 describe('findChipBoundary', () => {

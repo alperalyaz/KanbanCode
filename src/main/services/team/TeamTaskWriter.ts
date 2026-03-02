@@ -112,9 +112,11 @@ export class TeamTaskWriter {
       throw new Error('Cannot link a task to itself');
     }
 
-    // For 'blocks', delegate as reverse blockedBy
+    // For 'blocks', delegate as reverse blockedBy (swap task/target intentionally)
     if (type === 'blocks') {
-      return this.addRelationship(teamName, targetId, taskId, 'blockedBy');
+      const swappedTask = targetId;
+      const swappedTarget = taskId;
+      return this.addRelationship(teamName, swappedTask, swappedTarget, 'blockedBy');
     }
 
     const tasksDir = path.join(getTasksBasePath(), teamName);
@@ -172,9 +174,11 @@ export class TeamTaskWriter {
     targetId: string,
     type: 'blockedBy' | 'blocks' | 'related'
   ): Promise<void> {
-    // For 'blocks', delegate as reverse blockedBy
+    // For 'blocks', delegate as reverse blockedBy (swap task/target intentionally)
     if (type === 'blocks') {
-      return this.removeRelationship(teamName, targetId, taskId, 'blockedBy');
+      const swappedTask = targetId;
+      const swappedTarget = taskId;
+      return this.removeRelationship(teamName, swappedTask, swappedTarget, 'blockedBy');
     }
 
     const tasksDir = path.join(getTasksBasePath(), teamName);

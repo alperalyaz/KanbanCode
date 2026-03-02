@@ -309,7 +309,8 @@ export class CliInstallerService {
    * Wrapped in its own timeout to prevent slow auth from blocking the overall status.
    * Mutates `r` directly so results survive even if the outer Promise.all hasn't resolved.
    */
-  private async checkAuthStatus(binaryPath: string, r: CliInstallationStatus): Promise<void> {
+
+  private async checkAuthStatus(binaryPath: string, result: CliInstallationStatus): Promise<void> {
     const doCheck = async (): Promise<void> => {
       for (let authAttempt = 1; authAttempt <= AUTH_STATUS_MAX_RETRIES; authAttempt++) {
         try {
@@ -321,10 +322,10 @@ export class CliInstallerService {
             loggedIn?: boolean;
             authMethod?: string;
           };
-          r.authLoggedIn = auth.loggedIn === true;
-          r.authMethod = auth.authMethod ?? null;
+          result.authLoggedIn = auth.loggedIn === true; // eslint-disable-line no-param-reassign -- intentional mutation of shared result object
+          result.authMethod = auth.authMethod ?? null; // eslint-disable-line no-param-reassign -- intentional mutation of shared result object
           logger.info(
-            `Auth status: loggedIn=${r.authLoggedIn}, method=${r.authMethod ?? 'null'}` +
+            `Auth status: loggedIn=${result.authLoggedIn}, method=${result.authMethod ?? 'null'}` +
               (authAttempt > 1 ? ` (attempt ${authAttempt})` : '')
           );
           return;
@@ -339,7 +340,7 @@ export class CliInstallerService {
             logger.warn(
               `Auth status check failed after ${AUTH_STATUS_MAX_RETRIES} attempts: ${getErrorMessage(err)}`
             );
-            r.authLoggedIn = false;
+            result.authLoggedIn = false; // eslint-disable-line no-param-reassign -- intentional mutation of shared result object
           }
         }
       }
@@ -360,16 +361,18 @@ export class CliInstallerService {
   /**
    * Fetch latest CLI version from GCS and update the result object.
    */
-  private async fetchLatestVersion(r: CliInstallationStatus): Promise<void> {
+  private async fetchLatestVersion(result: CliInstallationStatus): Promise<void> {
     try {
       const latestRaw = await fetchText(`${GCS_BASE}/latest`);
-      r.latestVersion = normalizeVersion(latestRaw);
-      logger.info(`Latest CLI version: "${latestRaw.trim()}" → normalized: "${r.latestVersion}"`);
+      result.latestVersion = normalizeVersion(latestRaw); // eslint-disable-line no-param-reassign -- intentional mutation of shared result object
+      logger.info(
+        `Latest CLI version: "${latestRaw.trim()}" → normalized: "${result.latestVersion}"`
+      );
 
-      if (r.installedVersion && r.latestVersion) {
-        r.updateAvailable = isVersionOlder(r.installedVersion, r.latestVersion);
+      if (result.installedVersion && result.latestVersion) {
+        result.updateAvailable = isVersionOlder(result.installedVersion, result.latestVersion); // eslint-disable-line no-param-reassign -- intentional mutation of shared result object
         logger.info(
-          `Update available: ${r.updateAvailable} (${r.installedVersion} → ${r.latestVersion})`
+          `Update available: ${result.updateAvailable} (${result.installedVersion} → ${result.latestVersion})`
         );
       }
     } catch (err) {

@@ -72,7 +72,7 @@ export class EditorFileWatcher {
       .filter((p): p is string => typeof p === 'string' && p.length > 0)
       .filter((p) => isPathWithinRoot(p, this.projectRoot!));
 
-    normalized.sort();
+    normalized.sort((a, b) => a.localeCompare(b));
     const key = normalized.join('\n');
     if (key === this.watchedFilesKey) return;
     this.watchedFilesKey = key;
@@ -129,7 +129,7 @@ export class EditorFileWatcher {
       .filter((p): p is string => typeof p === 'string' && p.length > 0)
       .filter((p) => isPathWithinRoot(p, this.projectRoot!));
 
-    normalized.sort();
+    normalized.sort((a, b) => a.localeCompare(b));
     const key = normalized.join('\n');
     if (key === this.watchedDirsKey) return;
     this.watchedDirsKey = key;

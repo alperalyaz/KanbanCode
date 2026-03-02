@@ -319,8 +319,8 @@ export function useDiffNavigation(
         return;
       }
 
-      // Cmd+Enter -> save file
-      if (isMeta && key === 'Enter') {
+      // Cmd+S -> save file
+      if (isMeta && key === 's' && !event.shiftKey) {
         event.preventDefault();
         onSaveFileRef.current?.();
         return;
