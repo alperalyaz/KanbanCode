@@ -1,5 +1,14 @@
 /** Preset role options shown in role selectors (Add Member, Create Team, Role Editor). */
-export const PRESET_ROLES = ['reviewer', 'developer', 'qa', 'researcher'] as const;
+export const PRESET_ROLES = [
+  'architect',
+  'reviewer',
+  'developer',
+  'qa',
+  'researcher',
+  'docs',
+  'auditor',
+  'optimizer',
+] as const;
 
 /** Sentinel value for "custom role" in select dropdowns. */
 export const CUSTOM_ROLE = '__custom__';

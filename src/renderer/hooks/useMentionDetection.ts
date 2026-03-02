@@ -29,6 +29,8 @@ interface UseMentionDetectionResult {
   handleSelect: (e: React.SyntheticEvent<HTMLTextAreaElement>) => void;
   /** Current @-trigger character position in text (-1 if no active trigger) */
   triggerIndex: number;
+  /** Getter for trigger index — use at call time to avoid stale closure */
+  getTriggerIndex: () => number;
 }
 
 interface MentionTrigger {
@@ -310,6 +312,8 @@ export function useMentionDetection({
     [isOpen, filteredSuggestions, selectedIndex, selectSuggestion, dismiss]
   );
 
+  const getTriggerIndex = useCallback(() => triggerIndexRef.current, []);
+
   return {
     isOpen,
     query,
@@ -323,5 +327,6 @@ export function useMentionDetection({
     handleSelect,
     // eslint-disable-next-line react-hooks/refs -- expose current trigger position to caller
     triggerIndex: triggerIndexRef.current,
+    getTriggerIndex,
   };
 }

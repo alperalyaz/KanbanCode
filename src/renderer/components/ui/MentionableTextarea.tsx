@@ -254,7 +254,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       dropdownPosition,
       selectSuggestion,
       dismiss,
-      triggerIndex,
+      getTriggerIndex,
       handleKeyDown: mentionHandleKeyDown,
       handleChange: mentionHandleChange,
       handleSelect: mentionHandleSelect,
@@ -296,10 +296,11 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     const handleFileSelect = React.useCallback(
       (s: MentionSuggestion) => {
         const textarea = internalRef.current;
-        if (!textarea || triggerIndex < 0 || !s.filePath) return;
+        const triggerIdx = getTriggerIndex();
+        if (!textarea || triggerIdx < 0 || !s.filePath) return;
 
-        const replaceStart = triggerIndex;
-        const replaceEnd = triggerIndex + 1 + query.length;
+        const replaceStart = triggerIdx;
+        const replaceEnd = triggerIdx + 1 + query.length;
         const before = value.slice(0, replaceStart);
         const after = value.slice(replaceEnd);
 
@@ -347,7 +348,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
           });
         }
       },
-      [triggerIndex, query, value, chips, onValueChange, onFileChipInsert, onChipRemove, dismiss]
+      [getTriggerIndex, query, value, chips, onValueChange, onFileChipInsert, onChipRemove, dismiss]
     );
 
     // --- Merged selection handler ---
