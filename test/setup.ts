@@ -44,9 +44,10 @@ afterEach(() => {
   errorSpy.mockRestore();
   warnSpy.mockRestore();
 
-  expect(unexpectedErrors, `Unexpected console.error calls:\n${unexpectedErrors.join('\n')}`).toEqual(
-    []
-  );
+  expect(
+    unexpectedErrors,
+    `Unexpected console.error calls:\n${unexpectedErrors.join('\n')}`
+  ).toEqual([]);
   expect(
     unexpectedWarnings,
     `Unexpected console.warn calls:\n${unexpectedWarnings.join('\n')}`
