@@ -5,7 +5,7 @@
  * without pulling in CodeMirror dependencies.
  */
 
-import { getBasename } from '@shared/utils/platformPath';
+import { getBasename, isWindowsishPath, splitPath } from '@shared/utils/platformPath';
 
 import type { EditorSelectionAction, EditorSelectionInfo } from '@shared/types/editor';
 
@@ -69,10 +69,18 @@ export function buildFileAction(
   projectPath?: string | null
 ): EditorSelectionAction {
   const fileName = getBasename(filePath) || 'file';
-  const displayPath =
-    projectPath && filePath.startsWith(projectPath + '/')
-      ? filePath.slice(projectPath.length + 1)
-      : filePath;
+  let displayPath = filePath;
+  if (projectPath) {
+    const fullParts = splitPath(filePath);
+    const rootParts = splitPath(projectPath);
+    const win = isWindowsishPath(projectPath);
+    const eq = (a: string, b: string) => (win ? a.toLowerCase() === b.toLowerCase() : a === b);
+    const hasPrefix =
+      fullParts.length >= rootParts.length && rootParts.every((seg, i) => eq(seg, fullParts[i]));
+    if (hasPrefix) {
+      displayPath = fullParts.slice(rootParts.length).join('/');
+    }
+  }
   return {
     type,
     filePath,

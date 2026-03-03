@@ -62,7 +62,13 @@ import { ConfigManager } from '../services/infrastructure/ConfigManager';
 import { NotificationManager } from '../services/infrastructure/NotificationManager';
 import { gitIdentityResolver } from '../services/parsing/GitIdentityResolver';
 
-import { validateFromField, validateMemberName, validateTaskId, validateTeamName } from './guards';
+import {
+  validateFromField,
+  validateMemberName,
+  validateTaskId,
+  validateTeammateName,
+  validateTeamName,
+} from './guards';
 
 /** Track rate limit message keys already notified to avoid duplicate OS notifications across refreshes. */
 const notifiedRateLimitKeys = new Set<string>();
@@ -310,7 +316,7 @@ async function handleGetProjectBranch(
     return { success: false, error: 'projectPath must be a non-empty string' };
   }
   try {
-    const branch = await gitIdentityResolver.getBranch(projectPath.trim());
+    const branch = await gitIdentityResolver.getBranch(path.normalize(projectPath.trim()));
     return { success: true, data: branch };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -541,7 +547,7 @@ async function validateProvisioningRequest(
     if (!member || typeof member !== 'object') {
       return { valid: false, error: 'member must be object' };
     }
-    const nameValidation = validateMemberName((member as { name?: unknown }).name);
+    const nameValidation = validateTeammateName((member as { name?: unknown }).name);
     if (!nameValidation.valid) {
       return { valid: false, error: nameValidation.error ?? 'Invalid member name' };
     }
@@ -1345,7 +1351,7 @@ async function handleCreateConfig(
     if (!member || typeof member !== 'object') {
       return { success: false, error: 'member must be object' };
     }
-    const nameValidation = validateMemberName((member as { name?: unknown }).name);
+    const nameValidation = validateTeammateName((member as { name?: unknown }).name);
     if (!nameValidation.valid) {
       return { success: false, error: nameValidation.error ?? 'Invalid member name' };
     }
@@ -1548,7 +1554,7 @@ async function handleAddMember(
     return { success: false, error: 'Invalid payload' };
   }
   const { name, role } = payload as { name?: unknown; role?: unknown };
-  const vName = validateMemberName(name);
+  const vName = validateTeammateName(name);
   if (!vName.valid) return { success: false, error: vName.error ?? 'Invalid member name' };
   if (role !== undefined && typeof role !== 'string') {
     return { success: false, error: 'role must be a string' };
@@ -1600,7 +1606,7 @@ async function handleReplaceMembers(
       return { success: false, error: 'member must be object' };
     }
     const m = item as { name?: unknown; role?: unknown; workflow?: unknown };
-    const vName = validateMemberName(m.name);
+    const vName = validateTeammateName(m.name);
     if (!vName.valid) return { success: false, error: vName.error ?? 'Invalid member name' };
     const name = vName.value!;
     if (seenNames.has(name)) return { success: false, error: 'member names must be unique' };

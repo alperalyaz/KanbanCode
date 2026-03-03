@@ -142,7 +142,11 @@ export class WorktreeGrouper {
           // Use filtered sessions instead of raw sessions
           const filteredSessions = projectFilteredSessions.get(project.id) ?? [];
           // Detect worktree source for badge display
-          const source = await gitIdentityResolver.detectWorktreeSource(project.path);
+          // project.path may use forward slashes (e.g. decodePath() returns "C:/...").
+          // detectWorktreeSource splits on path.sep, so normalize to the current platform first.
+          const source = await gitIdentityResolver.detectWorktreeSource(
+            path.normalize(project.path)
+          );
           // Use source-aware display name generation
           const displayName = await gitIdentityResolver.getWorktreeDisplayName(
             project.path,

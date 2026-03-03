@@ -267,7 +267,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     });
 
     // --- File suggestions ---
-    const fileSuggestions = useFileSuggestions(
+    const { suggestions: fileSuggestions, loading: filesLoading } = useFileSuggestions(
       enableFiles ? projectPath : null,
       query,
       isOpen && enableFiles
@@ -689,6 +689,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
               onSelect={enableFiles ? handleMergedSelect : selectSuggestion}
               query={query}
               hasFileSearch={enableFiles}
+              filesLoading={enableFiles && filesLoading}
             />
           </div>
         ) : null}

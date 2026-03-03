@@ -18,6 +18,11 @@ import type { QuickOpenFile } from '@shared/types/editor';
 
 const MAX_FILE_SUGGESTIONS = 8;
 
+export interface UseFileSuggestionsResult {
+  suggestions: MentionSuggestion[];
+  loading: boolean;
+}
+
 /**
  * Filters files by query (name or relative path) and converts to MentionSuggestion[].
  * Exported for testing.
@@ -57,12 +62,17 @@ export function useFileSuggestions(
   projectPath: string | null,
   query: string,
   enabled: boolean
-): MentionSuggestion[] {
-  const [allFiles, setAllFiles] = useState<QuickOpenFile[]>([]);
+): UseFileSuggestionsResult {
+  // Seed from cache on initial mount (lazy initializer) AND on projectPath change
+  const [allFiles, setAllFiles] = useState<QuickOpenFile[]>(() => {
+    if (!projectPath) return [];
+    return getQuickOpenCache(projectPath)?.files ?? [];
+  });
+  const [loading, setLoading] = useState(false);
   // Bumped on cache invalidation (file create/delete) to trigger refetch
   const [fetchTrigger, setFetchTrigger] = useState(0);
 
-  // Seed from cache immediately when projectPath changes (setState-during-render pattern)
+  // Re-seed from cache when projectPath changes (setState-during-render pattern)
   const [prevPath, setPrevPath] = useState(projectPath);
   if (prevPath !== projectPath) {
     setPrevPath(projectPath);
@@ -93,6 +103,7 @@ export function useFileSuggestions(
   const fetchFiles = useCallback(
     (projectRoot: string) => {
       let cancelled = false;
+      setLoading(true);
       window.electronAPI.project
         .listFiles(projectRoot)
         .then((files) => {
@@ -102,6 +113,9 @@ export function useFileSuggestions(
         })
         .catch(() => {
           // Project path may be invalid — will retry on next trigger
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
         });
       return () => {
         cancelled = true;
@@ -110,10 +124,12 @@ export function useFileSuggestions(
     [] // listFiles API is stable
   );
 
+  // Fetch only when cache is empty. Cache seeding is handled by:
+  // - lazy initializer (first mount)
+  // - setState-during-render (projectPath change)
   useEffect(() => {
     if (!projectPath) return;
 
-    // Cache already seeded during render — only fetch if missing
     const cached = getQuickOpenCache(projectPath);
     if (cached) return;
 
@@ -121,8 +137,10 @@ export function useFileSuggestions(
   }, [projectPath, fetchTrigger, fetchFiles]);
 
   // Filter by query and convert to MentionSuggestion[]
-  return useMemo(
+  const suggestions = useMemo(
     () => (enabled ? filterFileSuggestions(allFiles, query) : []),
     [enabled, query, allFiles]
   );
+
+  return { suggestions, loading };
 }

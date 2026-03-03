@@ -27,6 +27,9 @@ interface ValidationResult<T> {
   error?: string;
 }
 
+const RESERVED_MEMBER_NAMES = new Set<string>(['user']);
+const RESERVED_TEAMMATE_NAMES = new Set<string>(['team-lead']);
+
 function validateString(
   value: unknown,
   fieldName: string,
@@ -149,7 +152,29 @@ export function validateMemberName(memberName: unknown): ValidationResult<string
     return { valid: false, error: 'member contains invalid characters' };
   }
 
+  const lower = basic.value!.toLowerCase();
+  if (RESERVED_MEMBER_NAMES.has(lower)) {
+    return { valid: false, error: `member name "${basic.value!}" is reserved` };
+  }
+
   return { valid: true, value: basic.value };
+}
+
+/**
+ * Teammate names are user-created members (not the lead process).
+ * This validation forbids reserved system names (lead + human).
+ */
+export function validateTeammateName(memberName: unknown): ValidationResult<string> {
+  const basic = validateMemberName(memberName);
+  if (!basic.valid) {
+    return basic;
+  }
+
+  const lower = basic.value!.toLowerCase();
+  if (RESERVED_TEAMMATE_NAMES.has(lower)) {
+    return { valid: false, error: `member name "${basic.value!}" is reserved` };
+  }
+  return basic;
 }
 
 export function validateFromField(from: unknown): ValidationResult<string> {

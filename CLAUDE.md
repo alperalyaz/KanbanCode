@@ -7,6 +7,7 @@ Electron 28.x, React 18.x, TypeScript 5.x, Tailwind CSS 3.x, Zustand 4.x
 
 ## Commands
 Always use pnpm (not npm/yarn) for this project.
+Do NOT run `pnpm lint:fix` unless the user explicitly asks for it — it interferes with agents running in parallel.
 
 - `pnpm install` - Install dependencies
 - `pnpm dev` - Dev server with hot reload

@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { Badge } from '@renderer/components/ui/badge';
 import { DialogDescription, DialogTitle } from '@renderer/components/ui/dialog';
+import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { agentAvatarUrl, getMemberDotClass, getPresenceLabel } from '@renderer/utils/memberHelpers';
 import { Pencil } from 'lucide-react';
@@ -29,6 +30,7 @@ export const MemberDetailHeader = ({
 }: MemberDetailHeaderProps): React.JSX.Element => {
   const [editing, setEditing] = useState(false);
 
+  const colors = getTeamColorSet(member.color ?? '');
   const role = member.role || formatAgentRole(member.agentType);
   const presenceLabel = getPresenceLabel(member, isTeamAlive, isTeamProvisioning, leadActivity);
   const dotClass = getMemberDotClass(member, isTeamAlive, isTeamProvisioning, leadActivity);
@@ -51,7 +53,9 @@ export const MemberDetailHeader = ({
         />
       </div>
       <div className="min-w-0 flex-1">
-        <DialogTitle className="truncate">{member.name}</DialogTitle>
+        <DialogTitle className="truncate" style={{ color: colors.text }}>
+          {member.name}
+        </DialogTitle>
         <DialogDescription asChild className="mt-1 flex items-center gap-2">
           <div>
             {editing ? (

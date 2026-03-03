@@ -1,3 +1,5 @@
+import * as path from 'node:path';
+
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 
@@ -5,6 +7,33 @@ const execFileAsync = promisify(execFile);
 
 const GIT_TIMEOUT = 10_000; // 10s timeout for all git operations
 const GIT_MAX_BUFFER = 10 * 1024 * 1024; // 10MB
+
+function toRepoRelativePath(projectPath: string, filePath: string): string | null {
+  const normalizedProject = path.resolve(projectPath);
+  const normalizedFile = path.isAbsolute(filePath) ? path.resolve(filePath) : filePath;
+
+  // If we have an absolute file path, require it to be under projectPath.
+  if (path.isAbsolute(normalizedFile)) {
+    const rel = path.relative(normalizedProject, normalizedFile);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+    // Git pathspecs use forward slashes even on Windows.
+    const gitPath = rel.replace(/\\/g, '/');
+    if (gitPath.includes(':')) return null;
+    return gitPath;
+  }
+
+  // Relative path: normalize separators for git.
+  const gitPath = normalizedFile.replace(/\\/g, '/').replace(/^\.\/+/, '');
+  if (
+    !gitPath ||
+    gitPath.startsWith('/') ||
+    /^[a-zA-Z]:\//.test(gitPath) ||
+    gitPath.includes(':')
+  ) {
+    return null;
+  }
+  return gitPath;
+}
 
 export class GitDiffFallback {
   private gitRepoCache = new Map<string, boolean>();
@@ -19,9 +48,8 @@ export class GitDiffFallback {
     commitHash: string
   ): Promise<string | null> {
     try {
-      const relativePath = filePath.startsWith(projectPath + '/')
-        ? filePath.slice(projectPath.length + 1)
-        : filePath;
+      const relativePath = toRepoRelativePath(projectPath, filePath);
+      if (!relativePath) return null;
       const { stdout } = await execFileAsync('git', ['show', `${commitHash}:${relativePath}`], {
         cwd: projectPath,
         maxBuffer: GIT_MAX_BUFFER,
@@ -42,9 +70,8 @@ export class GitDiffFallback {
     timestamp: string
   ): Promise<string | null> {
     try {
-      const relativePath = filePath.startsWith(projectPath + '/')
-        ? filePath.slice(projectPath.length + 1)
-        : filePath;
+      const relativePath = toRepoRelativePath(projectPath, filePath);
+      if (!relativePath) return null;
       const { stdout } = await execFileAsync(
         'git',
         ['log', '--format=%H', '--before', timestamp, '-1', '--', relativePath],
@@ -66,9 +93,8 @@ export class GitDiffFallback {
     toCommit: string = 'HEAD'
   ): Promise<string | null> {
     try {
-      const relativePath = filePath.startsWith(projectPath + '/')
-        ? filePath.slice(projectPath.length + 1)
-        : filePath;
+      const relativePath = toRepoRelativePath(projectPath, filePath);
+      if (!relativePath) return null;
       const { stdout } = await execFileAsync(
         'git',
         ['diff', fromCommit, toCommit, '--', relativePath],
@@ -89,9 +115,8 @@ export class GitDiffFallback {
     maxCount: number = 20
   ): Promise<{ hash: string; timestamp: string; message: string }[]> {
     try {
-      const relativePath = filePath.startsWith(projectPath + '/')
-        ? filePath.slice(projectPath.length + 1)
-        : filePath;
+      const relativePath = toRepoRelativePath(projectPath, filePath);
+      if (!relativePath) return [];
       const { stdout } = await execFileAsync(
         'git',
         ['log', `--max-count=${maxCount}`, '--format=%H|%aI|%s', '--', relativePath],

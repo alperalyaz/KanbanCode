@@ -27,7 +27,13 @@ import {
 } from '@renderer/components/ui/dialog';
 import { useStore } from '@renderer/store';
 import { sortTreeNodes } from '@renderer/utils/fileTreeBuilder';
-import { getBasename, lastSeparatorIndex } from '@shared/utils/platformPath';
+import {
+  getBasename,
+  isPathPrefix,
+  joinPath,
+  lastSeparatorIndex,
+  splitPath,
+} from '@shared/utils/platformPath';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronDown, ChevronRight, Folder, FolderOpen, Lock } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
@@ -210,9 +216,7 @@ export const EditorFileTree = ({
     const map = new Map<string, GitFileStatusType>();
     if (!gitFiles.length || !projectPath) return map;
     for (const file of gitFiles) {
-      const absPath = projectPath.endsWith('/')
-        ? `${projectPath}${file.path}`
-        : `${projectPath}/${file.path}`;
+      const absPath = joinPath(projectPath, ...splitPath(file.path));
       map.set(absPath, file.status);
     }
     const ms = performance.now() - t0;
@@ -400,7 +404,7 @@ export const EditorFileTree = ({
       }
 
       // Validation: parent → child prevention
-      if (destDir.startsWith(sourcePath + '/') || destDir === sourcePath) {
+      if (isPathPrefix(sourcePath, destDir)) {
         setDraggedItem(null);
         setDropTargetPath(null);
         return;
@@ -665,7 +669,9 @@ const DraggableTreeItem = React.memo(
     // Visual: highlight drop target directory and its visible children
     const isDropTarget = !node.isFile && dropTargetPath === node.fullPath;
     const isInsideDropTarget =
-      dropTargetPath != null && node.fullPath.startsWith(dropTargetPath + '/');
+      dropTargetPath != null &&
+      dropTargetPath !== node.fullPath &&
+      isPathPrefix(dropTargetPath, node.fullPath);
 
     const dataAttrs: Record<string, string> = {};
     if (node.data) {

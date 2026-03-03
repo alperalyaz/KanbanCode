@@ -7,7 +7,7 @@
 import { useCallback, useMemo } from 'react';
 
 import { useStore } from '@renderer/store';
-import { splitPath } from '@shared/utils/platformPath';
+import { isWindowsishPath, joinPath, splitPath } from '@shared/utils/platformPath';
 import { ChevronRight } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -27,20 +27,26 @@ export const EditorBreadcrumb = (): React.ReactElement | null => {
   const expandDirectory = useStore((s) => s.expandDirectory);
 
   const segments = useMemo(() => {
-    if (!activeTabId || !projectPath) return [];
+    if (!activeTabId) return [];
+    if (!projectPath) return splitPath(activeTabId);
 
-    const relativePath = activeTabId.startsWith(projectPath)
-      ? activeTabId.slice(projectPath.length + 1)
-      : activeTabId;
+    const fullParts = splitPath(activeTabId);
+    const rootParts = splitPath(projectPath);
+    if (rootParts.length === 0) return fullParts;
 
-    return splitPath(relativePath);
+    const win = isWindowsishPath(projectPath);
+    const eq = (a: string, b: string) => (win ? a.toLowerCase() === b.toLowerCase() : a === b);
+    const hasPrefix =
+      fullParts.length >= rootParts.length && rootParts.every((seg, i) => eq(seg, fullParts[i]));
+
+    return hasPrefix ? fullParts.slice(rootParts.length) : fullParts;
   }, [activeTabId, projectPath]);
 
   const handleSegmentClick = useCallback(
     (segmentIndex: number): void => {
       if (!projectPath) return;
       const dirSegments = segments.slice(0, segmentIndex + 1);
-      const dirPath = `${projectPath}/${dirSegments.join('/')}`;
+      const dirPath = joinPath(projectPath, ...dirSegments);
       void expandDirectory(dirPath);
     },
     [segments, projectPath, expandDirectory]

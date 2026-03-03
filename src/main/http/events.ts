@@ -34,6 +34,8 @@ export function registerEventRoutes(app: FastifyInstance): void {
     const timer = setInterval(() => {
       reply.raw.write(':ping\n\n');
     }, KEEPALIVE_INTERVAL_MS);
+    // Keepalive should not prevent shutdown (socket already keeps connection alive).
+    timer.unref();
 
     // Cleanup on disconnect
     request.raw.on('close', () => {

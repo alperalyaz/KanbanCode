@@ -12,7 +12,6 @@ import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { serializeChipsWithText } from '@renderer/types/inlineChip';
-import { removeChipTokenFromText } from '@renderer/utils/chipUtils';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { getModifierKeyName } from '@renderer/utils/keyboardUtils';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
@@ -54,6 +53,18 @@ export const MessageComposer = ({
   const dragCounterRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Members load async with team data; keep recipient stable if valid, otherwise default to lead/first.
+  useEffect(() => {
+    if (recipient && members.some((m) => m.name === recipient)) {
+      return;
+    }
+    const lead = members.find((m) => m.role === 'lead' || m.name === 'team-lead');
+    const next = lead?.name ?? members[0]?.name ?? '';
+    if (next && next !== recipient) {
+      setRecipient(next);
+    }
+  }, [members, recipient]);
+
   const projectPath = useStore((s) => s.selectedTeamData?.config.projectPath ?? null);
   const draft = useDraftPersistence({ key: `compose:${teamName}` });
   const chipDraft = useChipDraftPersistence(`compose:${teamName}:chips`);
@@ -93,17 +104,6 @@ export const MessageComposer = ({
 
   // Track whether we initiated a send — clear draft only on confirmed success
   const pendingSendRef = useRef(false);
-
-  const handleChipRemove = useCallback(
-    (chipId: string) => {
-      const chip = chipDraft.chips.find((c) => c.id === chipId);
-      if (chip) {
-        draft.setValue(removeChipTokenFromText(draft.value, chip));
-      }
-      chipDraft.setChips(chipDraft.chips.filter((c) => c.id !== chipId));
-    },
-    [chipDraft, draft]
-  );
 
   const handleSend = useCallback(() => {
     if (!canSend) return;
@@ -325,9 +325,9 @@ export const MessageComposer = ({
         onValueChange={draft.setValue}
         suggestions={mentionSuggestions}
         chips={chipDraft.chips}
-        onChipRemove={handleChipRemove}
+        onChipRemove={chipDraft.removeChip}
         projectPath={projectPath}
-        onFileChipInsert={(chip) => chipDraft.setChips([...chipDraft.chips, chip])}
+        onFileChipInsert={chipDraft.addChip}
         minRows={2}
         maxRows={6}
         maxLength={MAX_MESSAGE_LENGTH}

@@ -160,7 +160,7 @@ export class FileContentResolver {
 
     return {
       filePath,
-      relativePath: filePath.split('/').slice(-3).join('/'),
+      relativePath: this.getDisplayRelativePath(filePath, 3),
       snippets,
       linesAdded,
       linesRemoved,
@@ -291,7 +291,7 @@ export class FileContentResolver {
    * For subagents, sessionId = the parent directory's parent name.
    */
   private extractSessionId(logPath: string): string | null {
-    const parts = logPath.split(path.sep);
+    const parts = path.normalize(logPath).split(path.sep).filter(Boolean);
 
     // Check if it's a subagent path: .../{sessionId}/subagents/agent-xxx.jsonl
     const subagentsIdx = parts.indexOf('subagents');
@@ -448,7 +448,7 @@ export class FileContentResolver {
     if (!this.gitFallback) return null;
 
     // Determine project path from file path (heuristic: find .git parent)
-    const projectPath = this.guessProjectPath(filePath);
+    const projectPath = await this.guessProjectPath(filePath);
     if (!projectPath) return null;
 
     const isGit = await this.gitFallback.isGitRepo(projectPath);
@@ -477,21 +477,50 @@ export class FileContentResolver {
    * Guess the project root path from a file path.
    * Simple heuristic: look for common markers (package.json, .git directory).
    */
-  private guessProjectPath(filePath: string): string | null {
-    const parts = filePath.split('/');
-    // Walk up from file, looking for typical project root indicators
-    for (let i = parts.length - 1; i >= 1; i--) {
-      const candidate = parts.slice(0, i).join('/');
-      // Simple heuristic: paths with these patterns are likely project roots
-      if (candidate.endsWith('/src') || candidate.endsWith('/lib')) {
-        return parts.slice(0, i - 1).join('/') || null;
+  private async guessProjectPath(filePath: string): Promise<string | null> {
+    const normalized = path.normalize(filePath);
+    let dir = path.dirname(normalized);
+    const parsed = path.parse(dir);
+    const root = parsed.root;
+
+    const markers = ['.git', 'package.json', 'pyproject.toml', 'go.mod', 'Cargo.toml'] as const;
+
+    const hasMarker = async (candidateDir: string): Promise<boolean> => {
+      for (const marker of markers) {
+        try {
+          await access(path.join(candidateDir, marker));
+          return true;
+        } catch {
+          // ignore
+        }
       }
+      return false;
+    };
+
+    // Walk up from file directory; prefer stable "real" roots over string heuristics.
+    // This keeps git fallback working on Windows (\\ separators) and with mixed separators.
+    const MAX_UP = 30;
+    for (let i = 0; i < MAX_UP; i++) {
+      const base = path.basename(dir);
+      const candidate = base === 'src' || base === 'lib' ? path.dirname(dir) : dir;
+      if (await hasMarker(candidate)) return candidate;
+
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
     }
-    // Fallback: take the first 4-5 components as project path
-    if (parts.length > 4) {
-      return parts.slice(0, Math.min(parts.length - 2, 5)).join('/');
-    }
+
+    // Safety: if we can't confidently find a project root, don't guess.
+    // Returning null avoids running git in the wrong directory.
+    // (The resolver will still fall back to other content strategies.)
+    if (!root) return null;
     return null;
+  }
+
+  private getDisplayRelativePath(filePath: string, segmentCount: number): string {
+    const normalized = path.normalize(filePath);
+    const parts = normalized.split(path.sep).filter(Boolean);
+    return parts.slice(-segmentCount).join('/');
   }
 
   // ── Private: Cache helpers ──

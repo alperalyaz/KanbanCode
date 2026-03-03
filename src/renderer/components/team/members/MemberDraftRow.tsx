@@ -13,6 +13,7 @@ import {
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { CUSTOM_ROLE, NO_ROLE, PRESET_ROLES } from '@renderer/constants/teamRoles';
 import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
+import { useFileListCacheWarmer } from '@renderer/hooks/useFileListCacheWarmer';
 import { reconcileChips, removeChipTokenFromText } from '@renderer/utils/chipUtils';
 import { getMemberColor } from '@shared/constants/memberColors';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -54,6 +55,9 @@ export const MemberDraftRow = ({
 }: MemberDraftRowProps): React.JSX.Element => {
   const memberColorSet = getTeamColorSet(getMemberColor(index));
   const [workflowExpanded, setWorkflowExpanded] = useState(false);
+
+  // Pre-warm file list cache when workflow section is expanded
+  useFileListCacheWarmer(workflowExpanded && projectPath ? projectPath : null);
 
   const draftKey =
     draftKeyPrefix && (member.name.trim() || member.id)

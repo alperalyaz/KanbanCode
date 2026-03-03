@@ -1,23 +1,5 @@
 import { RENDERER_BOOT, RENDERER_HEARTBEAT, RENDERER_LOG } from '@preload/constants/ipcChannels';
-import { createLogger } from '@shared/utils/logger';
 import { type IpcMain } from 'electron';
-
-const logger = createLogger('IPC:rendererLogs');
-
-type RendererLogLevel = 'warn' | 'error';
-
-function truncate(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars)}…(truncated)`;
-}
-
-function isRendererLogPayload(
-  payload: unknown
-): payload is { level: RendererLogLevel; message: string } {
-  if (!payload || typeof payload !== 'object') return false;
-  const p = payload as { level?: unknown; message?: unknown };
-  return (p.level === 'warn' || p.level === 'error') && typeof p.message === 'string';
-}
 
 const lastHeartbeatByWebContentsId = new Map<number, number>();
 const lastHeartbeatWarnedAtByWebContentsId = new Map<number, number>();
@@ -46,7 +28,6 @@ function startHeartbeatMonitor(): void {
       const lastWarnedAt = lastHeartbeatWarnedAtByWebContentsId.get(id) ?? 0;
       if (now - lastWarnedAt < WARN_THROTTLE_MS) continue;
       lastHeartbeatWarnedAtByWebContentsId.set(id, now);
-      logger.warn(`Renderer heartbeat stale webContentsId=${id} ageMs=${age}`);
     }
   }, CHECK_EVERY_MS);
 
@@ -57,14 +38,8 @@ function startHeartbeatMonitor(): void {
 export function registerRendererLogHandlers(ipcMain: IpcMain): void {
   startHeartbeatMonitor();
 
-  ipcMain.on(RENDERER_LOG, (_event, payload: unknown) => {
-    if (!isRendererLogPayload(payload)) return;
-    const msg = truncate(payload.message, 4000);
-    if (payload.level === 'error') {
-      logger.error(`Renderer: ${msg}`);
-    } else {
-      logger.warn(`Renderer: ${msg}`);
-    }
+  ipcMain.on(RENDERER_LOG, () => {
+    // Forwarded renderer logs are intentionally silenced.
   });
 
   ipcMain.on(RENDERER_BOOT, (event) => {
@@ -72,7 +47,6 @@ export function registerRendererLogHandlers(ipcMain: IpcMain): void {
     lastHeartbeatByWebContentsId.set(id, Date.now());
     lastHeartbeatWarnedAtByWebContentsId.delete(id);
     hasReceivedHeartbeatByWebContentsId.delete(id);
-    logger.warn(`Renderer boot webContentsId=${id}`);
     event.sender.once('destroyed', () => {
       lastHeartbeatByWebContentsId.delete(id);
       lastHeartbeatWarnedAtByWebContentsId.delete(id);
@@ -82,12 +56,8 @@ export function registerRendererLogHandlers(ipcMain: IpcMain): void {
 
   ipcMain.on(RENDERER_HEARTBEAT, (event) => {
     const id = event.sender.id;
-    const isFirst = !hasReceivedHeartbeatByWebContentsId.has(id);
     hasReceivedHeartbeatByWebContentsId.add(id);
     lastHeartbeatByWebContentsId.set(id, Date.now());
-    if (isFirst) {
-      logger.warn(`Renderer heartbeat started webContentsId=${id}`);
-    }
   });
 }
 

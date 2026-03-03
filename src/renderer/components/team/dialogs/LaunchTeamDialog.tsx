@@ -14,7 +14,9 @@ import {
 } from '@renderer/components/ui/dialog';
 import { Label } from '@renderer/components/ui/label';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
+import { useChipDraftPersistence } from '@renderer/hooks/useChipDraftPersistence';
 import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
+import { useFileListCacheWarmer } from '@renderer/hooks/useFileListCacheWarmer';
 import { useStore } from '@renderer/store';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
@@ -58,6 +60,7 @@ export const LaunchTeamDialog = ({
   const [selectedProjectPath, setSelectedProjectPath] = useState('');
   const [customCwd, setCustomCwd] = useState('');
   const promptDraft = useDraftPersistence({ key: `launchTeam:${teamName}:prompt` });
+  const chipDraft = useChipDraftPersistence(`launchTeam:${teamName}:chips`);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState<string | null>(null);
@@ -95,6 +98,7 @@ export const LaunchTeamDialog = ({
     setSelectedProjectPath('');
     setCustomCwd('');
     setClearContext(false);
+    chipDraft.clearChipDraft();
   };
 
   // Warm up CLI on open
@@ -219,6 +223,9 @@ export const LaunchTeamDialog = ({
   }, [cwdMode, projects, selectedProjectPath, defaultProjectPath]);
 
   const effectiveCwd = cwdMode === 'project' ? selectedProjectPath.trim() : customCwd.trim();
+
+  // Pre-warm file list cache so @-mention file search is instant
+  useFileListCacheWarmer(effectiveCwd || null);
 
   const conflictingTeam = useMemo(() => {
     if (!activeTeams?.length || !effectiveCwd) return null;
@@ -362,6 +369,9 @@ export const LaunchTeamDialog = ({
               onValueChange={promptDraft.setValue}
               suggestions={mentionSuggestions}
               projectPath={effectiveCwd || null}
+              chips={chipDraft.chips}
+              onChipRemove={chipDraft.removeChip}
+              onFileChipInsert={chipDraft.addChip}
               placeholder="Instructions for team lead... Use @ to mention team members."
               footerRight={
                 promptDraft.isSaved ? (
@@ -438,7 +448,7 @@ export const LaunchTeamDialog = ({
               <CheckCircle2 className="size-3.5 shrink-0" />
               <span>
                 {prepareWarnings.length > 0
-                  ? 'CLI environment ready (with warnings)'
+                  ? 'CLI environment ready (with notes)'
                   : 'CLI environment ready'}
               </span>
             </div>
@@ -448,7 +458,7 @@ export const LaunchTeamDialog = ({
             {prepareWarnings.length > 0 ? (
               <div className="space-y-0.5">
                 {prepareWarnings.map((warning) => (
-                  <p key={warning} className="text-[11px] text-amber-300">
+                  <p key={warning} className="text-[11px] text-sky-300">
                     {warning}
                   </p>
                 ))}

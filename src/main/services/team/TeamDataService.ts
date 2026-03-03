@@ -395,6 +395,8 @@ export class TeamDataService {
     this.processHealthTimer = setInterval(() => {
       void this.processHealthTick();
     }, PROCESS_HEALTH_INTERVAL_MS);
+    // Background maintenance should not keep the process alive.
+    this.processHealthTimer.unref();
   }
 
   stopProcessHealthPolling(): void {
@@ -581,7 +583,7 @@ export class TeamDataService {
     try {
       // Git can hang on some Windows setups (network drives, locked repos, credential prompts).
       // Branch is best-effort; never block team:getData on it.
-      leadBranch = await withTimeout(gitIdentityResolver.getBranch(leadCwd), 2000);
+      leadBranch = await withTimeout(gitIdentityResolver.getBranch(path.normalize(leadCwd)), 2000);
     } catch {
       // Lead cwd may not be a git repo — skip enrichment entirely
       return;
@@ -597,7 +599,10 @@ export class TeamDataService {
         batch.map(async (member) => {
           if (!member.cwd) return;
           try {
-            const branch = await withTimeout(gitIdentityResolver.getBranch(member.cwd), 2000);
+            const branch = await withTimeout(
+              gitIdentityResolver.getBranch(path.normalize(member.cwd)),
+              2000
+            );
             if (branch && branch !== leadBranch) {
               // eslint-disable-next-line no-param-reassign -- intentional in-place enrichment
               member.gitBranch = branch;
@@ -658,6 +663,9 @@ export class TeamDataService {
     request: { members: { name: string; role?: string; workflow?: string }[] }
   ): Promise<void> {
     const existing = await this.membersMetaStore.getMembers(teamName);
+    const isTeamLead = (m: TeamMember): boolean =>
+      m.agentType === 'team-lead' || m.name.trim().toLowerCase() === 'team-lead';
+    const existingLead = existing.find(isTeamLead) ?? null;
     const existingByName = new Map(existing.map((m) => [m.name.toLowerCase(), m]));
     const joinedAt = Date.now();
     const nextByName = new Set<string>();
@@ -665,6 +673,9 @@ export class TeamDataService {
     const nextActive: TeamMember[] = request.members.map((member, index) => {
       const name = member.name.trim();
       if (!name) throw new Error('Member name cannot be empty');
+      if (name.toLowerCase() === 'team-lead') {
+        throw new Error('Member name "team-lead" is reserved');
+      }
       nextByName.add(name.toLowerCase());
       const prev = existingByName.get(name.toLowerCase());
       return {
@@ -681,6 +692,7 @@ export class TeamDataService {
     // Preserve/mark removed members so stale inbox files don't resurrect them in the UI.
     const nextRemoved: TeamMember[] = [];
     for (const prev of existing) {
+      if (isTeamLead(prev)) continue;
       const prevName = prev.name.trim();
       if (!prevName) continue;
       const key = prevName.toLowerCase();
@@ -691,7 +703,14 @@ export class TeamDataService {
       });
     }
 
-    await this.membersMetaStore.writeMembers(teamName, [...nextActive, ...nextRemoved]);
+    const out: TeamMember[] = [...nextActive, ...nextRemoved];
+    if (existingLead) {
+      const leadKey = existingLead.name.trim().toLowerCase();
+      if (!out.some((m) => m.name.trim().toLowerCase() === leadKey)) {
+        out.unshift({ ...existingLead, removedAt: undefined });
+      }
+    }
+    await this.membersMetaStore.writeMembers(teamName, out);
   }
 
   async removeMember(teamName: string, memberName: string): Promise<void> {

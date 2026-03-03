@@ -277,6 +277,7 @@ export const ActivityItem = ({
         <MemberBadge
           name={message.from}
           color={memberColor ?? message.color}
+          hideAvatar={message.from === 'user'}
           onClick={onMemberNameClick}
         />
 

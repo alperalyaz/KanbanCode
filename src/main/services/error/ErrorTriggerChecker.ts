@@ -10,6 +10,7 @@
 
 import { type ParsedMessage } from '@main/types';
 import { extractProjectName } from '@main/utils/pathDecoder';
+import * as path from 'path';
 
 import {
   estimateTokens,
@@ -65,7 +66,9 @@ async function resolveRepositoryId(target: string | RepositoryScopeTarget): Prom
   const projectPath = await projectPathResolver.resolveProjectPath(projectId, { cwdHint });
 
   // Resolve repository identity
-  const identity = await gitIdentityResolver.resolveIdentity(projectPath);
+  // projectPath can be "C:/..." on Windows (decodePath), but GitIdentityResolver
+  // relies on path.sep splitting in a few code paths. Normalize to platform style.
+  const identity = await gitIdentityResolver.resolveIdentity(path.normalize(projectPath));
   const repositoryId = identity?.id ?? null;
 
   // Cache the result

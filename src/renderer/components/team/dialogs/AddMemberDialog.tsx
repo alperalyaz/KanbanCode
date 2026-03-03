@@ -59,6 +59,8 @@ export const AddMemberDialog = ({
     if (trimmed.length > 30) return 'Name must be at most 30 characters';
     if (!NAME_REGEX.test(trimmed))
       return 'Name must be lowercase alphanumeric with hyphens (e.g. alice, dev-1)';
+    if (trimmed === 'user') return 'Name "user" is reserved';
+    if (trimmed === 'team-lead') return 'Name "team-lead" is reserved';
     if (existingNames.some((n) => n.toLowerCase() === trimmed)) return 'Name is already taken';
     return null;
   };

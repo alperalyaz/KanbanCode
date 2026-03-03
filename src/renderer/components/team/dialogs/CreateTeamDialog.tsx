@@ -22,12 +22,13 @@ import { Input } from '@renderer/components/ui/input';
 import { Label } from '@renderer/components/ui/label';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
+import { useChipDraftPersistence } from '@renderer/hooks/useChipDraftPersistence';
 import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
 import { useFileListCacheWarmer } from '@renderer/hooks/useFileListCacheWarmer';
 import { cn } from '@renderer/lib/utils';
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import { getMemberColor } from '@shared/constants/memberColors';
-import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, Loader2 } from 'lucide-react';
 
 import { ExtendedContextCheckbox } from './ExtendedContextCheckbox';
 import { ProjectPathSelector } from './ProjectPathSelector';
@@ -201,6 +202,7 @@ export const CreateTeamDialog = ({
   const [teamName, setTeamName] = useState('');
   const descriptionDraft = useDraftPersistence({ key: 'createTeam:description' });
   const promptDraft = useDraftPersistence({ key: 'createTeam:prompt' });
+  const promptChipDraft = useChipDraftPersistence('createTeam:prompt:chips');
   const [members, setMembers] = useState<MemberDraft[]>([]);
   const [cwdMode, setCwdMode] = useState<'project' | 'custom'>('project');
   const [selectedProjectPath, setSelectedProjectPath] = useState('');
@@ -219,6 +221,7 @@ export const CreateTeamDialog = ({
   }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [launchTeam, setLaunchTeam] = useState(true);
+  const [soloTeam, setSoloTeam] = useState(false);
   const [teamColor, setTeamColor] = useState('');
   const [selectedModel, setSelectedModelRaw] = useState(() => {
     const stored = localStorage.getItem('team:lastSelectedModel') ?? '';
@@ -251,12 +254,14 @@ export const CreateTeamDialog = ({
     setTeamName('');
     descriptionDraft.clearDraft();
     promptDraft.clearDraft();
+    promptChipDraft.clearChipDraft();
     setMembers([]);
     setTeamColor('');
     setCwdMode('project');
     setSelectedProjectPath('');
     setCustomCwd('');
     setLaunchTeam(true);
+    setSoloTeam(false);
     resetUIState();
   };
 
@@ -449,12 +454,21 @@ export const CreateTeamDialog = ({
       teamName: sanitizedTeamName,
       description: description.trim() || undefined,
       color: teamColor || undefined,
-      members: buildMembersFromDrafts(members),
+      members: soloTeam ? [] : buildMembersFromDrafts(members),
       cwd: effectiveCwd,
       prompt: prompt.trim() || undefined,
       model: effectiveModel,
     }),
-    [sanitizedTeamName, description, teamColor, members, effectiveCwd, prompt, effectiveModel]
+    [
+      sanitizedTeamName,
+      description,
+      teamColor,
+      soloTeam,
+      members,
+      effectiveCwd,
+      prompt,
+      effectiveModel,
+    ]
   );
 
   const activeError = localError ?? provisioningError;
@@ -627,6 +641,35 @@ export const CreateTeamDialog = ({
               showJsonEditor
               draftKeyPrefix="createTeam"
               projectPath={effectiveCwd || null}
+              hideContent={soloTeam}
+              headerExtra={
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="solo-team"
+                      checked={soloTeam}
+                      onCheckedChange={(checked) => setSoloTeam(checked === true)}
+                    />
+                    <Label
+                      htmlFor="solo-team"
+                      className="cursor-pointer text-xs font-normal text-text-secondary"
+                    >
+                      Solo team
+                    </Label>
+                  </div>
+                  {soloTeam && (
+                    <div className="flex items-start gap-2 rounded-md border border-sky-500/20 bg-sky-500/5 px-3 py-2">
+                      <Info className="mt-0.5 size-3.5 shrink-0 text-sky-400" />
+                      <p className="text-[11px] leading-relaxed text-sky-300">
+                        Only the team lead (main process) will be started &mdash; no teammates will
+                        be spawned. Works like a regular Claude session but with access to the task
+                        board for planning. Saves tokens by avoiding teammate coordination overhead.
+                        You can add members later from the team settings.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              }
             />
           </div>
 
@@ -670,6 +713,9 @@ export const CreateTeamDialog = ({
                     onValueChange={promptDraft.setValue}
                     suggestions={mentionSuggestions}
                     projectPath={effectiveCwd || null}
+                    chips={promptChipDraft.chips}
+                    onChipRemove={promptChipDraft.removeChip}
+                    onFileChipInsert={promptChipDraft.addChip}
                     placeholder="Instructions for the team lead during provisioning..."
                     footerRight={
                       promptDraft.isSaved ? (
@@ -713,7 +759,7 @@ export const CreateTeamDialog = ({
                       <CheckCircle2 className="size-3.5 shrink-0" />
                       <span>
                         {prepareWarnings.length > 0
-                          ? 'CLI environment ready (with warnings)'
+                          ? 'CLI environment ready (with notes)'
                           : 'CLI environment ready'}
                       </span>
                     </div>
@@ -723,7 +769,7 @@ export const CreateTeamDialog = ({
                     {prepareWarnings.length > 0 ? (
                       <div className="space-y-0.5">
                         {prepareWarnings.map((warning) => (
-                          <p key={warning} className="text-[11px] text-amber-300">
+                          <p key={warning} className="text-[11px] text-sky-300">
                             {warning}
                           </p>
                         ))}

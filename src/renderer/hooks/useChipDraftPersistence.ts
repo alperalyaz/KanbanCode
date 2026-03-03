@@ -15,6 +15,10 @@ interface UseChipDraftResult {
   chips: InlineChip[];
   /** Accepts a direct value (not a callback). Saves to draftStorage with debounce. */
   setChips: (chips: InlineChip[]) => void;
+  /** Append a single chip. Safe for passing directly as onFileChipInsert. */
+  addChip: (chip: InlineChip) => void;
+  /** Remove a chip by id. Safe for passing directly as onChipRemove. */
+  removeChip: (chipId: string) => void;
   clearChipDraft: () => void;
   isSaved: boolean;
 }
@@ -44,7 +48,10 @@ export function useChipDraftPersistence(key: string): UseChipDraftResult {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<InlineChip[] | null>(null);
   const keyRef = useRef(key);
-  // eslint-disable-next-line react-hooks/refs -- sync ref with prop for stable callbacks
+  // Ref for current chips — allows addChip/removeChip to read latest value
+  // without stale closures, using the same sync-ref pattern as keyRef.
+  const chipsRef = useRef<InlineChip[]>([]);
+
   keyRef.current = key;
 
   // Load on mount
@@ -56,6 +63,7 @@ export function useChipDraftPersistence(key: string): UseChipDraftResult {
       try {
         const parsed: unknown = JSON.parse(raw);
         if (isValidChipArray(parsed)) {
+          chipsRef.current = parsed;
           setChipsState(parsed);
           setIsSaved(true);
         }
@@ -92,6 +100,7 @@ export function useChipDraftPersistence(key: string): UseChipDraftResult {
   }, [flushPending]);
 
   const setChips = useCallback((nextChips: InlineChip[]) => {
+    chipsRef.current = nextChips;
     setChipsState(nextChips);
     setIsSaved(false);
     pendingRef.current = nextChips;
@@ -116,16 +125,31 @@ export function useChipDraftPersistence(key: string): UseChipDraftResult {
     }, DEBOUNCE_MS);
   }, []);
 
+  const addChip = useCallback(
+    (chip: InlineChip) => {
+      setChips([...chipsRef.current, chip]);
+    },
+    [setChips]
+  );
+
+  const removeChip = useCallback(
+    (chipId: string) => {
+      setChips(chipsRef.current.filter((c) => c.id !== chipId));
+    },
+    [setChips]
+  );
+
   const clearChipDraft = useCallback(() => {
     if (timerRef.current != null) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
     pendingRef.current = null;
+    chipsRef.current = [];
     setChipsState([]);
     setIsSaved(false);
     void draftStorage.deleteDraft(keyRef.current);
   }, []);
 
-  return { chips, setChips, clearChipDraft, isSaved };
+  return { chips, setChips, addChip, removeChip, clearChipDraft, isSaved };
 }

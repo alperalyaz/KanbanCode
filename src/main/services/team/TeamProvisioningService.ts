@@ -597,8 +597,33 @@ function buildProvisioningPrompt(request: TeamCreateRequest): string {
 
   const isSolo = request.members.length === 0;
   const soloConstraint = isSolo
-    ? '\n- You are starting as a SOLO team lead with no teammates. Do NOT use the Task tool to spawn teammates unless/until the team has members added later. Do NOT call SendMessage to any teammate unless/until such teammates exist (you may still message "user").'
+    ? `\n- SOLO MODE: This team CURRENTLY has ZERO teammates.` +
+      `\n  - FORBIDDEN (until teammates exist): Do NOT spawn teammates via the Task tool with a team_name parameter — there are no teammates to spawn yet.` +
+      `\n  - FORBIDDEN (until teammates exist): Do NOT call SendMessage to any teammate name — no teammates exist yet.` +
+      `\n  - ALLOWED: You may message "user" (the human operator) via SendMessage.` +
+      `\n  - ALLOWED: You may use the Task tool for regular subagents WITHOUT team_name — these are normal Claude Code helpers, not teammates.` +
+      `\n  - If teammates are added later (e.g. via UI), you may then spawn them using the Task tool with team_name + name.` +
+      `\n  - Work on tasks directly yourself. Use subagents for research and parallel work as needed.` +
+      `\n  - IMPORTANT: Since you have no teammates, "user" is your only communication channel. Send progress updates to "user" frequently — after completing each task or significant milestone, and when starting a new task. The human cannot see your internal output, only SendMessage reaches them.`
     : '';
+
+  const step3Block = isSolo
+    ? `3) If user instructions describe work to be done — create tasks on the team board and assign each task to yourself ("${leadName}") as owner.\n` +
+      `   - Prefer fewer, broader tasks over many micro-tasks.\n` +
+      `   - CRITICAL: Do NOT start working on the tasks now. Provisioning is ONLY for setting up the team structure.\n` +
+      `   - The tasks will be executed after the team is launched separately.`
+    : `3) If user instructions explicitly ask to create tasks OR describe substantial/assigned work that should be tracked — create tasks on the team board.
+   - Prefer fewer, broader tasks over many micro-tasks.
+   - Avoid duplicate notifications for the same assignment.
+   - When tasks have natural ordering (e.g. setup → implementation → testing), use --blocked-by.
+   - If a task is blocked (uses --blocked-by), it MUST be created as pending (use --status pending). Do NOT mark blocked tasks in_progress.
+     - Review guidance:
+       - Prefer NOT creating a separate "review task". Our workflow reviews the work task itself: run review approve/request-changes on the implementation task #X.
+       - If you MUST create a separate review reminder/assignment task, create it as pending and link it to the work task:
+         - Use --related to connect it to #X (non-blocking link).
+         - If the review truly cannot start until #X is done, ALSO add --blocked-by #X.
+       - There is no automatic status transition when dependencies resolve — the owner must explicitly start it (task start / set-status in_progress) when ready.
+   - Use --related to connect tasks working on the same feature without blocking.`;
 
   const step2Block = isSolo
     ? '2) Skip — this is a solo team with no teammates to spawn.'
@@ -662,18 +687,7 @@ Steps (execute in this exact order):
 
 ${step2Block}
 
-3) If user instructions explicitly ask to create tasks OR describe substantial/assigned work that should be tracked — create tasks on the team board.
-   - Prefer fewer, broader tasks over many micro-tasks.
-   - Avoid duplicate notifications for the same assignment.
-   - When tasks have natural ordering (e.g. setup → implementation → testing), use --blocked-by.
-   - If a task is blocked (uses --blocked-by), it MUST be created as pending (use --status pending). Do NOT mark blocked tasks in_progress.
-     - Review guidance:
-       - Prefer NOT creating a separate "review task". Our workflow reviews the work task itself: run review approve/request-changes on the implementation task #X.
-       - If you MUST create a separate review reminder/assignment task, create it as pending and link it to the work task:
-         - Use --related to connect it to #X (non-blocking link).
-         - If the review truly cannot start until #X is done, ALSO add --blocked-by #X.
-       - There is no automatic status transition when dependencies resolve — the owner must explicitly start it (task start / set-status in_progress) when ready.
-   - Use --related to connect tasks working on the same feature without blocking.
+${step3Block}
 
 4) After all steps, output a short summary.
 
@@ -702,14 +716,21 @@ function buildLaunchPrompt(
 
   const isSolo = members.length === 0;
   const soloConstraint = isSolo
-    ? '\n- You are starting as a SOLO team lead with no teammates. Do NOT use the Task tool to spawn teammates unless/until the team has members added later. Do NOT call SendMessage to any teammate unless/until such teammates exist (you may still message "user").'
+    ? `\n- SOLO MODE: This team CURRENTLY has ZERO teammates.` +
+      `\n  - FORBIDDEN (until teammates exist): Do NOT spawn teammates via the Task tool with a team_name parameter — there are no teammates to spawn yet.` +
+      `\n  - FORBIDDEN (until teammates exist): Do NOT call SendMessage to any teammate name — no teammates exist yet.` +
+      `\n  - ALLOWED: You may message "user" (the human operator) via SendMessage.` +
+      `\n  - ALLOWED: You may use the Task tool for regular subagents WITHOUT team_name — these are normal Claude Code helpers, not teammates.` +
+      `\n  - If teammates are added later (e.g. via UI), you may then spawn them using the Task tool with team_name + name.` +
+      `\n  - Work on tasks directly yourself. Use subagents for research and parallel work as needed.` +
+      `\n  - IMPORTANT: Since you have no teammates, "user" is your only communication channel. Send progress updates to "user" frequently — after completing each task or significant milestone, and when starting a new task. The human cannot see your internal output, only SendMessage reaches them.`
     : '';
 
   let step2And3Block: string;
   if (isSolo) {
     step2And3Block = `2) Skip — solo team, no teammates to spawn.
 
-3) Check the task board. Work on pending tasks directly.`;
+3) Check the task board. Claim any unassigned pending tasks by assigning yourself ("${leadName}") as owner, then work on them directly. Mark tasks in_progress when you start and completed when done.`;
   } else {
     // Build per-member task snapshots to include in each teammate's spawn prompt
     const memberTaskBlocks = new Map<string, string>();
@@ -1423,7 +1444,7 @@ export class TeamProvisioningService {
         '--setting-sources',
         'user,project,local',
         '--disallowedTools',
-        request.members.length === 0 ? 'TeamDelete,TodoWrite,Task' : 'TeamDelete,TodoWrite',
+        'TeamDelete,TodoWrite',
         '--dangerously-skip-permissions',
         ...(request.model ? ['--model', request.model] : []),
       ];
@@ -1729,7 +1750,7 @@ export class TeamProvisioningService {
         '--setting-sources',
         'user,project,local',
         '--disallowedTools',
-        expectedMemberSpecs.length === 0 ? 'TeamDelete,TodoWrite,Task' : 'TeamDelete,TodoWrite',
+        'TeamDelete,TodoWrite',
         '--dangerously-skip-permissions',
       ];
       if (previousSessionId) {
@@ -2701,6 +2722,8 @@ export class TeamProvisioningService {
     run.fsMonitorHandle = setInterval(() => {
       void poll();
     }, FS_MONITOR_POLL_MS);
+    // Best-effort monitor; should not keep the process alive.
+    run.fsMonitorHandle.unref();
 
     // Run first poll immediately
     void poll();
@@ -3361,7 +3384,10 @@ export class TeamProvisioningService {
       const metaMembers = await this.membersMetaStore.getMembers(teamName);
       for (const member of metaMembers) {
         const name = member.name.trim();
-        if (name.length > 0) baseNames.add(name);
+        const lower = name.toLowerCase();
+        if (name.length > 0 && !member.removedAt && lower !== 'team-lead' && lower !== 'user') {
+          baseNames.add(name);
+        }
       }
     } catch {
       // ignore
@@ -3371,14 +3397,31 @@ export class TeamProvisioningService {
       for (const member of members) {
         const name = typeof member.name === 'string' ? member.name.trim() : '';
         const agentType = typeof member.agentType === 'string' ? member.agentType : '';
-        if (name && agentType && agentType !== 'team-lead') {
+        if (
+          name &&
+          agentType &&
+          agentType !== 'team-lead' &&
+          name !== 'team-lead' &&
+          name !== 'user'
+        ) {
           allConfigNames.add(name);
         }
       }
+      const allConfigNamesLower = new Set(Array.from(allConfigNames).map((n) => n.toLowerCase()));
       for (const name of allConfigNames) {
-        const match = /^(.+)-\d+$/.exec(name);
+        const match = /^(.+)-(\d+)$/.exec(name);
+        if (!match?.[1] || !match[2]) {
+          baseNames.add(name);
+          continue;
+        }
+        const suffix = Number(match[2]);
         // Only exclude CLI-suffixed names (alice-2) when the base name (alice) also exists
-        if (!match || !allConfigNames.has(match[1])) {
+        // (and only for -2+ to avoid excluding legitimate "dev-1"-style names).
+        if (!Number.isFinite(suffix) || suffix < 2) {
+          baseNames.add(name);
+          continue;
+        }
+        if (!allConfigNamesLower.has(match[1].toLowerCase())) {
           baseNames.add(name);
         }
       }
@@ -3582,7 +3625,11 @@ export class TeamProvisioningService {
   }
 
   private async persistMembersMeta(teamName: string, request: TeamCreateRequest): Promise<void> {
-    const teammateMembers = request.members.filter((member) => member.name.trim().length > 0);
+    const teammateMembers = request.members.filter((member) => {
+      const trimmed = member.name.trim();
+      const lower = trimmed.toLowerCase();
+      return trimmed.length > 0 && lower !== 'team-lead' && lower !== 'user';
+    });
     if (teammateMembers.length === 0) {
       return;
     }
@@ -3593,7 +3640,7 @@ export class TeamProvisioningService {
       await this.membersMetaStore.writeMembers(
         teamName,
         teammateMembers.map((member, index) => ({
-          name: member.name,
+          name: member.name.trim(),
           role: member.role?.trim() || undefined,
           workflow: member.workflow?.trim() || undefined,
           agentType: 'general-purpose',
@@ -3622,10 +3669,12 @@ export class TeamProvisioningService {
       const metaMembers = await this.membersMetaStore.getMembers(teamName);
       const byName = new Map<string, TeamCreateRequest['members'][number]>();
       for (const member of metaMembers) {
-        if (member.agentType === 'team-lead' || member.name === 'team-lead') {
+        const rawName = member.name?.trim() ?? '';
+        const lower = rawName.toLowerCase();
+        if (member.agentType === 'team-lead' || lower === 'team-lead' || lower === 'user') {
           continue;
         }
-        const name = member.name?.trim();
+        const name = rawName;
         if (!name) continue;
         if (member.removedAt) continue;
         const role = typeof member.role === 'string' ? member.role.trim() || undefined : undefined;
@@ -3662,13 +3711,17 @@ export class TeamProvisioningService {
             .filter((name) => name.length > 0)
         )
       );
-      const inboxNameSet = new Set(allInboxNames);
+      const inboxNameSetLower = new Set(allInboxNames.map((n) => n.toLowerCase()));
       const inboxNames = allInboxNames
-        .filter((name) => name !== 'team-lead')
+        .filter((name) => name !== 'team-lead' && name !== 'user')
         .filter((name) => {
-          const match = /^(.+)-\d+$/.exec(name);
-          // Only filter CLI-suffixed names (alice-2) when the base name (alice) also exists
-          return !match || !inboxNameSet.has(match[1]);
+          const match = /^(.+)-(\d+)$/.exec(name);
+          if (!match?.[1] || !match[2]) return true;
+          const suffix = Number(match[2]);
+          // Only filter CLI-suffixed names (alice-2) when the base name (alice) also exists.
+          // Important: do NOT filter names like dev-1 (common intentional naming). Only consider -2+ as auto-suffix.
+          if (!Number.isFinite(suffix) || suffix < 2) return true;
+          return !inboxNameSetLower.has(match[1].toLowerCase());
         });
       if (inboxNames.length > 0) {
         const members = inboxNames.map((name) => ({ name }));
@@ -3724,8 +3777,16 @@ export class TeamProvisioningService {
       }
       const byName = new Map<string, TeamCreateRequest['members'][number]>();
       for (const member of parsed.members) {
-        if (!member || member.agentType === 'team-lead' || member.name === 'team-lead') continue;
-        const name = typeof member.name === 'string' ? member.name.trim() : '';
+        const rawName = typeof member?.name === 'string' ? member.name.trim() : '';
+        const lower = rawName.toLowerCase();
+        if (
+          !member ||
+          member.agentType === 'team-lead' ||
+          lower === 'team-lead' ||
+          lower === 'user'
+        )
+          continue;
+        const name = rawName;
         if (!name) continue;
         byName.set(name, { name });
       }

@@ -229,27 +229,34 @@ const RepositoryCard = ({
         )}
       </div>
 
-      {/* Project path - monospace, muted, clickable to open in file manager */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={handleOpenPath}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ')
-                handleOpenPath(e as unknown as React.MouseEvent);
-            }}
-            className="flex w-full min-w-0 cursor-pointer items-center gap-1 truncate text-left font-mono text-[10px] text-text-muted transition-colors hover:text-text-secondary"
-          >
-            <FolderOpen className="size-3 shrink-0" />
+      {/* Project path - monospace, muted; folder icon opens in file manager */}
+      <div className="flex w-full min-w-0 items-center gap-1 font-mono text-[10px] text-text-muted">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={handleOpenPath}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ')
+                  handleOpenPath(e as unknown as React.MouseEvent);
+              }}
+              className="shrink-0 cursor-pointer rounded p-0.5 transition-colors hover:bg-white/5 hover:text-text-secondary"
+            >
+              <FolderOpen className="size-3" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Open</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
             <span className="truncate">{formattedPath}</span>
-          </div>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" align="start">
-          <p className="font-mono text-[11px]">{projectPath}</p>
-        </TooltipContent>
-      </Tooltip>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="start">
+            <p className="font-mono text-[11px]">{projectPath}</p>
+          </TooltipContent>
+        </Tooltip>
+      </div>
 
       {/* Git branch / worktree info */}
       {mainBranch ? (

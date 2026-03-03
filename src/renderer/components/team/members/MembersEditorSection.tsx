@@ -62,6 +62,10 @@ export interface MembersEditorSectionProps {
   draftKeyPrefix?: string;
   /** Project path for @file mentions in workflow */
   projectPath?: string | null;
+  /** Extra content rendered right below the "Members" label row */
+  headerExtra?: React.ReactNode;
+  /** When true, hides member rows and action buttons (label + headerExtra still visible) */
+  hideContent?: boolean;
 }
 
 export const MembersEditorSection = ({
@@ -73,6 +77,8 @@ export const MembersEditorSection = ({
   showJsonEditor = true,
   draftKeyPrefix,
   projectPath,
+  headerExtra,
+  hideContent = false,
 }: MembersEditorSectionProps): React.JSX.Element => {
   const [jsonEditorOpen, setJsonEditorOpen] = useState(false);
   const [jsonText, setJsonText] = useState('');
@@ -166,45 +172,52 @@ export const MembersEditorSection = ({
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
         <Label>Members</Label>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={addMember}>
-            Add member
-          </Button>
-          {showJsonEditor ? (
-            <Button variant="ghost" size="sm" onClick={toggleJsonEditor}>
-              {jsonEditorOpen ? 'Hide JSON' : 'Edit as JSON'}
+        {!hideContent && (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={addMember}>
+              Add member
             </Button>
+            {showJsonEditor ? (
+              <Button variant="ghost" size="sm" onClick={toggleJsonEditor}>
+                {jsonEditorOpen ? 'Hide JSON' : 'Edit as JSON'}
+              </Button>
+            ) : null}
+          </div>
+        )}
+      </div>
+      {headerExtra}
+      {!hideContent && (
+        <>
+          <div className="space-y-2">
+            {members.map((member, index) => (
+              <MemberDraftRow
+                key={member.id}
+                member={member}
+                index={index}
+                nameError={validateMemberName?.(member.name) ?? null}
+                onNameChange={updateMemberName}
+                onRoleChange={updateMemberRole}
+                onCustomRoleChange={updateMemberCustomRole}
+                onRemove={removeMember}
+                showWorkflow={showWorkflow}
+                onWorkflowChange={showWorkflow ? updateMemberWorkflow : undefined}
+                onWorkflowChipsChange={showWorkflow ? updateMemberWorkflowChips : undefined}
+                draftKeyPrefix={draftKeyPrefix}
+                projectPath={projectPath}
+                mentionSuggestions={mentionSuggestions}
+              />
+            ))}
+            {jsonEditorOpen && showJsonEditor ? (
+              <MembersJsonEditor value={jsonText} onChange={handleJsonChange} error={jsonError} />
+            ) : null}
+          </div>
+          {hasDuplicates ? (
+            <p className="text-[11px] text-red-300">Member names must be unique</p>
+          ) : fieldError ? (
+            <p className="text-[11px] text-red-300">{fieldError}</p>
           ) : null}
-        </div>
-      </div>
-      <div className="space-y-2">
-        {members.map((member, index) => (
-          <MemberDraftRow
-            key={member.id}
-            member={member}
-            index={index}
-            nameError={validateMemberName?.(member.name) ?? null}
-            onNameChange={updateMemberName}
-            onRoleChange={updateMemberRole}
-            onCustomRoleChange={updateMemberCustomRole}
-            onRemove={removeMember}
-            showWorkflow={showWorkflow}
-            onWorkflowChange={showWorkflow ? updateMemberWorkflow : undefined}
-            onWorkflowChipsChange={showWorkflow ? updateMemberWorkflowChips : undefined}
-            draftKeyPrefix={draftKeyPrefix}
-            projectPath={projectPath}
-            mentionSuggestions={mentionSuggestions}
-          />
-        ))}
-        {jsonEditorOpen && showJsonEditor ? (
-          <MembersJsonEditor value={jsonText} onChange={handleJsonChange} error={jsonError} />
-        ) : null}
-      </div>
-      {hasDuplicates ? (
-        <p className="text-[11px] text-red-300">Member names must be unique</p>
-      ) : fieldError ? (
-        <p className="text-[11px] text-red-300">{fieldError}</p>
-      ) : null}
+        </>
+      )}
     </div>
   );
 };

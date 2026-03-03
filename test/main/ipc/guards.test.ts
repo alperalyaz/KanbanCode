@@ -5,6 +5,7 @@ import {
   coerceSearchMaxResults,
   validateFromField,
   validateMemberName,
+  validateTeammateName,
   validateProjectId,
   validateSearchQuery,
   validateSessionId,
@@ -61,6 +62,11 @@ describe('ipc guards', () => {
     expect(validateTaskId('123').valid).toBe(true);
     expect(validateMemberName('alice_1').valid).toBe(true);
     expect(validateFromField('team-lead').valid).toBe(true);
+    expect(validateMemberName('team-lead').valid).toBe(true);
+    expect(validateMemberName('user').valid).toBe(false);
+    expect(validateTeammateName('alice_1').valid).toBe(true);
+    expect(validateTeammateName('team-lead').valid).toBe(false);
+    expect(validateTeammateName('user').valid).toBe(false);
   });
 
   it('rejects traversal and invalid chars for team-related fields', () => {

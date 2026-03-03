@@ -268,7 +268,7 @@ function setTaskOwner(paths, taskId, owner) {
 function addTaskComment(paths, taskId, flags) {
   var text = typeof flags.text === 'string' ? flags.text.trim() : '';
   if (!text) die('Missing --text');
-  var from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : 'agent';
+  var from = typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : inferLeadName(paths);
 
   var ref;
   var task;
@@ -1036,7 +1036,7 @@ async function main() {
       const id = rest[0] || args.flags.id;
       if (!id) die('Usage: task comment <id> --text "..."');
       const result = addTaskComment(paths, String(id), args.flags);
-      const from = typeof args.flags.from === 'string' && args.flags.from.trim() ? args.flags.from.trim() : 'agent';
+      const from = typeof args.flags.from === 'string' && args.flags.from.trim() ? args.flags.from.trim() : inferLeadName(paths);
       // Notify task owner via inbox — but SKIP self-notification to prevent loop
       if (result.owner && result.owner !== from) {
         try {

@@ -1049,7 +1049,8 @@ void app.whenReady().then(() => {
 
     // Apply launch-at-login setting only in packaged builds.
     // In dev, macOS may deny this (and Electron logs a noisy error to stderr).
-    if (app.isPackaged) {
+    // Also guard by platform: Electron only supports this on macOS/Windows.
+    if (app.isPackaged && (process.platform === 'darwin' || process.platform === 'win32')) {
       app.setLoginItemSettings({
         openAtLogin: config.general.launchAtLogin,
       });

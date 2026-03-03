@@ -223,13 +223,16 @@ export class TeamConfigReader {
 
       // Case-insensitive dedup: key is lowercase name, value keeps the original casing
       const memberMap = new Map<string, TeamSummaryMember>();
+      const removedKeys = new Set<string>();
 
       const mergeMember = (m: TeamMember): void => {
         const name = m.name?.trim();
         if (!name) return;
         // Summary/memberCount should represent teammates (exclude the lead process).
-        if (name === 'team-lead' || m.agentType === 'team-lead') return;
+        if (name === 'team-lead' || name === 'user' || m.agentType === 'team-lead') return;
         const key = name.toLowerCase();
+        // If meta marks this name removed, do not surface it in summaries
+        if (removedKeys.has(key)) return;
         const existing = memberMap.get(key);
         memberMap.set(key, {
           name: existing?.name ?? name,
@@ -238,25 +241,33 @@ export class TeamConfigReader {
         });
       };
 
+      // Also read members.meta.json — UI-created teams store members there,
+      // and CLI-created teams may have additional members added via the UI.
+      try {
+        const metaMembers = await this.membersMetaStore.getMembers(teamName);
+        for (const member of metaMembers) {
+          const name = member.name?.trim();
+          if (!name) continue;
+          // Summary/memberCount should represent teammates (exclude the lead process).
+          if (name === 'team-lead' || name === 'user' || member.agentType === 'team-lead') continue;
+          const key = name.toLowerCase();
+          if (member.removedAt) {
+            removedKeys.add(key);
+            continue;
+          }
+          mergeMember(member);
+        }
+      } catch {
+        // best-effort — don't fail listing if meta file is broken
+      }
+
+      // Merge config members AFTER meta so removedAt can suppress stale config entries.
       if (config && Array.isArray(config.members)) {
         for (const member of config.members) {
           if (member && typeof member.name === 'string') {
             mergeMember(member);
           }
         }
-      }
-
-      // Also read members.meta.json — UI-created teams store members there,
-      // and CLI-created teams may have additional members added via the UI.
-      try {
-        const metaMembers = await this.membersMetaStore.getMembers(teamName);
-        for (const member of metaMembers) {
-          if (!member.removedAt) {
-            mergeMember(member);
-          }
-        }
-      } catch {
-        // best-effort — don't fail listing if meta file is broken
       }
 
       const members = Array.from(memberMap.values());

@@ -339,7 +339,7 @@ export class NotificationManager extends EventEmitter {
     const projectPath = await projectPathResolver.resolveProjectPath(error.projectId, {
       cwdHint: error.context.cwd,
     });
-    const identity = await gitIdentityResolver.resolveIdentity(projectPath);
+    const identity = await gitIdentityResolver.resolveIdentity(path.normalize(projectPath));
 
     if (!identity) {
       return false;

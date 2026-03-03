@@ -13,7 +13,15 @@ import { editorBridge } from '@renderer/utils/editorBridge';
 import { invalidateQuickOpenCache } from '@renderer/utils/quickOpenCache';
 import { computeDisambiguatedTabs } from '@renderer/utils/tabLabelDisambiguation';
 import { createLogger } from '@shared/utils/logger';
-import { getBasename, lastSeparatorIndex, splitPath } from '@shared/utils/platformPath';
+import {
+  getBasename,
+  isPathPrefix,
+  isWindowsishPath,
+  joinPath,
+  lastSeparatorIndex,
+  splitPath,
+  stripTrailingSeparators,
+} from '@shared/utils/platformPath';
 
 import type { AppState } from '../types';
 import type {
@@ -322,23 +330,24 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
     }
 
     // Compute parent directories from projectRoot to the file.
-    // Normalize: strip trailing slash from project path to avoid double-slash.
-    const normalizedRoot = editorProjectPath.endsWith('/')
-      ? editorProjectPath.slice(0, -1)
-      : editorProjectPath;
-    const relative = filePath.startsWith(normalizedRoot + '/')
-      ? filePath.slice(normalizedRoot.length + 1)
-      : null;
+    // Must handle both `/` and `\` because paths may arrive from any OS.
+    const root = stripTrailingSeparators(editorProjectPath);
+    const rootParts = splitPath(root);
+    const fileParts = splitPath(filePath);
+    const win = isWindowsishPath(root);
+    const eq = (a: string, b: string) => (win ? a.toLowerCase() === b.toLowerCase() : a === b);
+    const hasPrefix =
+      fileParts.length >= rootParts.length && rootParts.every((seg, i) => eq(seg, fileParts[i]));
 
-    if (relative) {
-      const segments = splitPath(relative);
+    if (hasPrefix) {
+      const segments = fileParts.slice(rootParts.length);
       // Expand each parent directory sequentially (root → child → grandchild).
       // Skip the last segment (the file name itself).
       // Each expandDirectory call is awaited so that its children are merged
       // into the tree before the next level is expanded.
-      let currentDir = normalizedRoot;
+      let currentDir = root;
       for (let i = 0; i < segments.length - 1; i++) {
-        currentDir = `${currentDir}/${segments[i]}`;
+        currentDir = joinPath(currentDir, segments[i] ?? '');
         await expandDirectory(currentDir);
       }
     }
@@ -874,9 +883,7 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
 
       // Close tab if the deleted file is open
       const { editorOpenTabs } = get();
-      const tabsToClose = editorOpenTabs.filter(
-        (t) => t.filePath === filePath || t.filePath.startsWith(filePath + '/')
-      );
+      const tabsToClose = editorOpenTabs.filter((t) => isPathPrefix(filePath, t.filePath));
       for (const tab of tabsToClose) {
         get().closeEditorTab(tab.id);
       }
@@ -1332,11 +1339,19 @@ async function refreshDirectory(
  * replace the prefix with newPath.
  */
 function remapPath(p: string, oldPath: string, newPath: string): string {
-  if (p === oldPath) return newPath;
-  if (p.startsWith(oldPath + '/')) {
-    return newPath + p.slice(oldPath.length);
-  }
-  return p;
+  const oldParts = splitPath(oldPath);
+  const pParts = splitPath(p);
+  if (oldParts.length === 0) return p;
+
+  const win = isWindowsishPath(oldPath) || isWindowsishPath(p) || isWindowsishPath(newPath);
+  const eq = (a: string, b: string) => (win ? a.toLowerCase() === b.toLowerCase() : a === b);
+
+  const matchesPrefix =
+    pParts.length >= oldParts.length && oldParts.every((seg, i) => eq(seg, pParts[i]));
+  if (!matchesPrefix) return p;
+
+  const suffix = pParts.slice(oldParts.length);
+  return suffix.length > 0 ? joinPath(newPath, ...suffix) : newPath;
 }
 
 /**
@@ -1344,11 +1359,19 @@ function remapPath(p: string, oldPath: string, newPath: string): string {
  * Used to identify which bridge caches to remap.
  */
 function reverseRemapPath(p: string, oldPath: string, newPath: string): string {
-  if (p === newPath) return oldPath;
-  if (p.startsWith(newPath + '/')) {
-    return oldPath + p.slice(newPath.length);
-  }
-  return p;
+  const newParts = splitPath(newPath);
+  const pParts = splitPath(p);
+  if (newParts.length === 0) return p;
+
+  const win = isWindowsishPath(oldPath) || isWindowsishPath(p) || isWindowsishPath(newPath);
+  const eq = (a: string, b: string) => (win ? a.toLowerCase() === b.toLowerCase() : a === b);
+
+  const matchesPrefix =
+    pParts.length >= newParts.length && newParts.every((seg, i) => eq(seg, pParts[i]));
+  if (!matchesPrefix) return p;
+
+  const suffix = pParts.slice(newParts.length);
+  return suffix.length > 0 ? joinPath(oldPath, ...suffix) : oldPath;
 }
 
 /**

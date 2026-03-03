@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 
+import { FileIcon } from '@renderer/components/team/editor/FileIcon';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
-import { FileText } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 import type { MentionSuggestion } from '@renderer/types/mention';
 
@@ -12,6 +13,8 @@ interface MentionSuggestionListProps {
   query: string;
   /** When true, adjusts empty state text to mention files */
   hasFileSearch?: boolean;
+  /** When true, shows a loading spinner for file search */
+  filesLoading?: boolean;
 }
 
 const HighlightedName = ({ name, query }: { name: string; query: string }): React.JSX.Element => {
@@ -49,6 +52,7 @@ export const MentionSuggestionList = ({
   onSelect,
   query,
   hasFileSearch,
+  filesLoading,
 }: MentionSuggestionListProps): React.JSX.Element => {
   const listRef = useRef<HTMLUListElement>(null);
 
@@ -111,7 +115,7 @@ export const MentionSuggestionList = ({
         }}
       >
         {isFile ? (
-          <FileText size={10} className="shrink-0 text-[var(--color-text-muted)]" />
+          <FileIcon fileName={s.name} className="size-3.5" />
         ) : (
           <span
             className="inline-block size-2.5 shrink-0 rounded-full"
@@ -138,6 +142,12 @@ export const MentionSuggestionList = ({
       className="max-h-48 overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface-overlay)] py-1"
     >
       {items}
+      {filesLoading ? (
+        <li className="flex items-center gap-2 px-3 py-1.5 text-[10px] text-[var(--color-text-muted)]">
+          <Loader2 size={10} className="shrink-0 animate-spin" />
+          <span>Searching files...</span>
+        </li>
+      ) : null}
     </ul>
   );
 };

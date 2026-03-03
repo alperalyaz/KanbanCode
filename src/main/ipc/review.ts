@@ -234,7 +234,7 @@ async function handleApplyDecisions(
       if (d.originalFullContent !== undefined || d.modifiedFullContent !== undefined) {
         fileContents.set(d.filePath, {
           filePath: d.filePath,
-          relativePath: d.filePath.split('/').slice(-3).join('/'),
+          relativePath: d.filePath.split(/[\\/]/).filter(Boolean).slice(-3).join('/'),
           snippets,
           linesAdded: 0,
           linesRemoved: 0,

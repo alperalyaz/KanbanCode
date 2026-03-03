@@ -528,6 +528,8 @@ export class FileWatcher extends EventEmitter {
     // Prime immediately so newly created sessions appear without waiting a full interval.
     runPoll();
     this.pollingTimer = setInterval(runPoll, FileWatcher.SSH_POLL_INTERVAL_MS);
+    // Polling is a background task and should not keep the process alive.
+    this.pollingTimer.unref();
   }
 
   /**
@@ -1047,6 +1049,8 @@ export class FileWatcher extends EventEmitter {
         logger.error('Error during catch-up scan:', err);
       });
     }, CATCH_UP_INTERVAL_MS);
+    // Catch-up scan is best-effort; don't keep process alive.
+    this.catchUpTimer.unref();
   }
 
   /**

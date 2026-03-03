@@ -96,13 +96,22 @@ export function initializeNotificationListeners(): () => void {
 
   // CLI status check is non-critical for initial render (spawns child processes
   // + iterates PATH directories with stat() calls — heavy on Windows).
-  // Defer until the app is fully interactive.
+  // Defer on Windows; run immediately elsewhere so status is available quickly.
   let cliStatusTimer: ReturnType<typeof setTimeout> | null = null;
   if (api.cliInstaller) {
+    // On macOS/Linux, run immediately so the Dashboard can render status fast.
+    // On Windows, keep the existing defer to avoid competing with initial scans.
+    type NavigatorWithUserAgentData = Navigator & { userAgentData?: { platform?: string } };
+    const nav: NavigatorWithUserAgentData | null =
+      typeof navigator !== 'undefined' ? (navigator as NavigatorWithUserAgentData) : null;
+    // Prefer UA-CH when available; fall back to deprecated-but-still-supported navigator.platform.
+    const platform = nav?.userAgentData?.platform ?? nav?.platform ?? nav?.userAgent ?? '';
+    const isWindows = platform.toLowerCase().includes('win');
+    const delayMs = isWindows ? 3000 : 0;
     cliStatusTimer = setTimeout(() => {
       void useStore.getState().fetchCliStatus();
       cliStatusTimer = null;
-    }, 5000);
+    }, delayMs);
   }
   cleanupFns.push(() => {
     if (cliStatusTimer) clearTimeout(cliStatusTimer);

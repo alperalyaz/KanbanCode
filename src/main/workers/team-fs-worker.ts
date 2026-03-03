@@ -209,10 +209,15 @@ async function listTeams(payload: ListTeamsPayload): Promise<{ teams: unknown[];
     }
 
     const memberMap = new Map<string, { name: string; role?: string; color?: string }>();
+    const removedKeys = new Set<string>();
     const mergeMember = (m: any): void => {
       const name = typeof m?.name === 'string' ? m.name.trim() : '';
       if (!name) return;
+      // Summary/memberCount should represent teammates (exclude the lead process).
+      if (name === 'team-lead' || name === 'user' || m?.agentType === 'team-lead') return;
       const key = name.toLowerCase();
+      // If meta marks this name removed, do not surface it in summaries
+      if (removedKeys.has(key)) return;
       const existing = memberMap.get(key);
       memberMap.set(key, {
         name: existing?.name ?? name,
@@ -220,12 +225,6 @@ async function listTeams(payload: ListTeamsPayload): Promise<{ teams: unknown[];
         color: (typeof m.color === 'string' && m.color.trim()) || existing?.color,
       });
     };
-
-    if (config && Array.isArray(config.members)) {
-      for (const member of config.members) {
-        mergeMember(member);
-      }
-    }
 
     try {
       const metaPath = path.join(payload.teamsDir, teamName, 'members.meta.json');
@@ -235,13 +234,28 @@ async function listTeams(payload: ListTeamsPayload): Promise<{ teams: unknown[];
         const parsed = JSON.parse(raw);
         const members: any[] = Array.isArray(parsed?.members) ? parsed.members : [];
         for (const member of members) {
-          if (member && typeof member === 'object' && !member.removedAt) {
-            mergeMember(member);
+          if (!member || typeof member !== 'object') continue;
+          const name = typeof member.name === 'string' ? member.name.trim() : '';
+          if (!name) continue;
+          // Summary/memberCount should represent teammates (exclude the lead process).
+          if (name === 'team-lead' || member.agentType === 'team-lead') continue;
+          const key = name.toLowerCase();
+          if (member.removedAt) {
+            removedKeys.add(key);
+            continue;
           }
+          mergeMember(member);
         }
       }
     } catch {
       // ignore
+    }
+
+    // Merge config members AFTER meta so removedAt can suppress stale config entries.
+    if (config && Array.isArray(config.members)) {
+      for (const member of config.members) {
+        mergeMember(member);
+      }
     }
 
     const members = Array.from(memberMap.values());

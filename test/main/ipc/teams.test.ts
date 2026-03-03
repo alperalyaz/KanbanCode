@@ -684,4 +684,46 @@ describe('ipc teams handlers', () => {
       expect(result.error).toContain('members must be an array');
     });
   });
+
+  describe('reserved teammate names', () => {
+    it('rejects teammate name "user" in createTeam', async () => {
+      const handler = handlers.get(TEAM_CREATE)!;
+      const result = (await handler({ sender: { send: vi.fn() } } as never, {
+        teamName: 'solo-team',
+        members: [{ name: 'user' }],
+        cwd: os.tmpdir(),
+      })) as { success: boolean; error: string };
+      expect(result.success).toBe(false);
+      expect(result.error.toLowerCase()).toContain('reserved');
+    });
+
+    it('rejects teammate name "team-lead" in createTeam', async () => {
+      const handler = handlers.get(TEAM_CREATE)!;
+      const result = (await handler({ sender: { send: vi.fn() } } as never, {
+        teamName: 'solo-team',
+        members: [{ name: 'team-lead' }],
+        cwd: os.tmpdir(),
+      })) as { success: boolean; error: string };
+      expect(result.success).toBe(false);
+      expect(result.error.toLowerCase()).toContain('reserved');
+    });
+
+    it('rejects addMember name "user"', async () => {
+      const handler = handlers.get(TEAM_ADD_MEMBER)!;
+      const result = (await handler({} as never, 'my-team', {
+        name: 'user',
+      })) as { success: boolean; error: string };
+      expect(result.success).toBe(false);
+      expect(result.error.toLowerCase()).toContain('reserved');
+    });
+
+    it('rejects addMember name "team-lead"', async () => {
+      const handler = handlers.get(TEAM_ADD_MEMBER)!;
+      const result = (await handler({} as never, 'my-team', {
+        name: 'team-lead',
+      })) as { success: boolean; error: string };
+      expect(result.success).toBe(false);
+      expect(result.error.toLowerCase()).toContain('reserved');
+    });
+  });
 });
