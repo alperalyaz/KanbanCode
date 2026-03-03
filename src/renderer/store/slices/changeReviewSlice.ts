@@ -19,6 +19,7 @@ import type {
   ApplyReviewRequest,
   ApplyReviewResult,
   ChangeStats,
+  FileChangeSummary,
   FileChangeWithContent,
   FileReviewDecision,
   HunkDecision,
@@ -125,6 +126,11 @@ export interface ChangeReviewSlice {
   ) => Promise<ApplyReviewResult | null>;
   /** Remove a file from the current review set (used for rejecting new files) */
   removeReviewFile: (filePath: string) => void;
+  /** Re-add a file to the current review set (used for undoing new-file reject) */
+  addReviewFile: (
+    file: FileChangeSummary,
+    options?: { index?: number; content?: FileChangeWithContent }
+  ) => void;
   invalidateChangeStats: (teamName: string) => void;
 
   // Editable diff actions
@@ -837,6 +843,48 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
         fileContentsLoading: nextFileContentsLoading,
         editedContents: nextEditedContents,
         hunkContextHashesByFile: nextHashes,
+      };
+    });
+  },
+
+  addReviewFile: (
+    file: FileChangeSummary,
+    options?: { index?: number; content?: FileChangeWithContent }
+  ) => {
+    set((s) => {
+      if (!s.activeChangeSet) return s;
+      if (s.activeChangeSet.files.some((f) => f.filePath === file.filePath)) return s;
+
+      const idxRaw = options?.index;
+      const idx =
+        typeof idxRaw === 'number' && Number.isFinite(idxRaw)
+          ? Math.max(0, Math.min(idxRaw, s.activeChangeSet.files.length))
+          : s.activeChangeSet.files.length;
+
+      const nextFiles = [...s.activeChangeSet.files];
+      nextFiles.splice(idx, 0, file);
+      const totalLinesAdded = nextFiles.reduce((sum, f) => sum + f.linesAdded, 0);
+      const totalLinesRemoved = nextFiles.reduce((sum, f) => sum + f.linesRemoved, 0);
+
+      const nextFileContents = options?.content
+        ? { ...s.fileContents, [file.filePath]: options.content }
+        : s.fileContents;
+
+      const nextFileContentsLoading = options?.content
+        ? { ...s.fileContentsLoading, [file.filePath]: false }
+        : s.fileContentsLoading;
+
+      return {
+        activeChangeSet: {
+          ...s.activeChangeSet,
+          files: nextFiles,
+          totalFiles: nextFiles.length,
+          totalLinesAdded,
+          totalLinesRemoved,
+        },
+        selectedReviewFilePath: s.selectedReviewFilePath ?? file.filePath,
+        fileContents: nextFileContents,
+        fileContentsLoading: nextFileContentsLoading,
       };
     });
   },

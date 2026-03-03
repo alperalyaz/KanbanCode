@@ -24,7 +24,12 @@ import { ScopeWarningBanner } from './ScopeWarningBanner';
 import { ViewedProgressBar } from './ViewedProgressBar';
 
 import type { EditorView } from '@codemirror/view';
-import type { HunkDecision, TaskChangeSetV2 } from '@shared/types';
+import type {
+  FileChangeSummary,
+  FileChangeWithContent,
+  HunkDecision,
+  TaskChangeSetV2,
+} from '@shared/types';
 import type { EditorSelectionAction, EditorSelectionInfo } from '@shared/types/editor';
 
 interface ChangeReviewDialogProps {
@@ -77,6 +82,7 @@ export const ChangeReviewDialog = ({
     applyReview,
     applySingleFileDecision,
     removeReviewFile,
+    addReviewFile,
     editedContents,
     updateEditedContent,
     discardFileEdits,
@@ -116,6 +122,10 @@ export const ChangeReviewDialog = ({
   const lastHunkActionAtRef = useRef<Record<string, number>>({});
   const hunkDecisionUndoStackRef = useRef<Record<string, number[]>>({});
   const newFileApplyInFlightRef = useRef(new Set<string>());
+  const removedNewFileUndoStackRef = useRef<
+    { file: FileChangeSummary; index: number; restoreContent: string; removedAt: number }[]
+  >([]);
+  const lastNewFileRemoveAtRef = useRef<number>(0);
 
   // Proxy ref for useDiffNavigation (points to active file's editor)
   const activeEditorViewRef = useRef<EditorView | null>(null);
@@ -242,13 +252,32 @@ export const ChangeReviewDialog = ({
         }
 
         // Always apply immediately: rejecting a NEW file means deleting it from disk.
-        const isNew =
-          activeChangeSet?.files.find((f) => f.filePath === filePath)?.isNewFile ?? false;
+        const file = activeChangeSet?.files.find((f) => f.filePath === filePath);
+        const isNew = file?.isNewFile ?? false;
         if (!isNew) return;
 
         const result = await applySingleFileDecision(teamName, filePath, taskId, memberName);
         const hasErrorForFile = !!result?.errors.some((e) => e.filePath === filePath);
-        if (result && !hasErrorForFile) {
+        if (result && !hasErrorForFile && file) {
+          // Keep undo payload so Ctrl/Cmd+Z can restore the file (and re-add it to the review list).
+          const cachedModified = fileContents[filePath]?.modifiedFullContent;
+          const restoreContent =
+            cachedModified ??
+            (() => {
+              const writeSnippets = file.snippets.filter(
+                (s) => !s.isError && (s.type === 'write-new' || s.type === 'write-update')
+              );
+              if (writeSnippets.length === 0) return '';
+              return writeSnippets[writeSnippets.length - 1].newString;
+            })();
+          const index = activeChangeSet?.files.findIndex((f) => f.filePath === filePath) ?? 0;
+          removedNewFileUndoStackRef.current.push({
+            file,
+            index: Math.max(0, index),
+            restoreContent,
+            removedAt: Date.now(),
+          });
+          lastNewFileRemoveAtRef.current = Date.now();
           removeReviewFile(filePath);
         }
       } finally {
@@ -263,6 +292,7 @@ export const ChangeReviewDialog = ({
       taskId,
       memberName,
       removeReviewFile,
+      fileContents,
     ]
   );
 
@@ -575,6 +605,35 @@ export const ChangeReviewDialog = ({
         // Prefer bulk undo (Accept All / Reject All) shortly after bulk action,
         // even if focus is inside a CM editor (focus often remains there after clicking buttons).
         const now = Date.now();
+
+        // Undo: recently rejected NEW file (deleted from disk + removed from review list)
+        const removedRecently = now - lastNewFileRemoveAtRef.current < 30_000;
+        const removedStack = removedNewFileUndoStackRef.current;
+        if (
+          removedRecently &&
+          removedStack.length > 0 &&
+          !document.activeElement?.closest('.cm-editor')
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          const snap = removedStack.pop()!;
+          const restoredContent: FileChangeWithContent = {
+            ...snap.file,
+            originalFullContent: '',
+            modifiedFullContent: snap.restoreContent,
+            contentSource: 'disk-current',
+          };
+          addReviewFile(snap.file, { index: snap.index, content: restoredContent });
+          setActiveFilePath(snap.file.filePath);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => scrollToFile(snap.file.filePath));
+          });
+          updateEditedContent(snap.file.filePath, snap.restoreContent);
+          // Ensure editedContents is set before saveEditedFile reads it.
+          void Promise.resolve().then(() => saveEditedFile(snap.file.filePath, projectPath));
+          return;
+        }
+
         const bulkRecently = now - lastBulkActionAtRef.current < 10_000;
         if (bulkRecently && useStore.getState().reviewUndoStack.length > 0) {
           e.preventDefault();
@@ -616,7 +675,16 @@ export const ChangeReviewDialog = ({
     };
     document.addEventListener('keydown', handler, true);
     return () => document.removeEventListener('keydown', handler, true);
-  }, [open, handleUndoBulk, clearHunkDecisionByOriginalIndex]);
+  }, [
+    open,
+    handleUndoBulk,
+    clearHunkDecisionByOriginalIndex,
+    addReviewFile,
+    updateEditedContent,
+    saveEditedFile,
+    projectPath,
+    scrollToFile,
+  ]);
 
   // Cmd+N IPC listener (forwarded from main process)
   useEffect(() => {

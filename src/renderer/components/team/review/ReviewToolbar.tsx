@@ -153,10 +153,7 @@ export const ReviewToolbar = ({
               Undo
             </button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
-            Undo last bulk operation (
-            {/Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘Z' : 'Ctrl+Z'})
-          </TooltipContent>
+          <TooltipContent side="bottom">Undo last bulk operation (Ctrl+Z)</TooltipContent>
         </Tooltip>
       )}
 
