@@ -8,6 +8,9 @@ import { getWorktreeNavigationState } from '../utils/stateResetHelpers';
 const logger = createLogger('teamSlice');
 
 const TEAM_GET_DATA_TIMEOUT_MS = 30_000;
+function nowIso(): string {
+  return new Date().toISOString();
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -138,6 +141,11 @@ export interface TeamSlice {
   lastSendMessageResult: SendMessageResult | null;
   reviewActionError: string | null;
   provisioningRuns: Record<string, TeamProvisioningProgress>;
+  /**
+   * Per-team lower bound for provisioning progress timestamps.
+   * Used to ignore late progress events from a previous run after stop→launch.
+   */
+  provisioningStartedAtFloorByTeam: Record<string, string>;
   leadActivityByTeam: Record<string, LeadActivityState>;
   activeProvisioningRunId: string | null;
   provisioningError: string | null;
@@ -231,6 +239,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   lastSendMessageResult: null,
   reviewActionError: null,
   provisioningRuns: {},
+  provisioningStartedAtFloorByTeam: {},
   leadActivityByTeam: {},
   activeProvisioningRunId: null,
   provisioningError: null,
@@ -746,6 +755,18 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
 
   createTeam: async (request: TeamCreateRequest) => {
+    // Ensure provisioning progress subscription is active (defensive).
+    get().subscribeProvisioningProgress();
+
+    // Establish a per-team floor so late events from a previous run can't override UI.
+    const floor = nowIso();
+    set((state) => ({
+      provisioningStartedAtFloorByTeam: {
+        ...state.provisioningStartedAtFloorByTeam,
+        [request.teamName]: floor,
+      },
+    }));
+
     // Clear stale provisioning runs for this team so the banner starts fresh
     set((state) => {
       const cleaned = { ...state.provisioningRuns };
@@ -783,6 +804,18 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
 
   launchTeam: async (request: TeamLaunchRequest) => {
+    // Ensure provisioning progress subscription is active (defensive).
+    get().subscribeProvisioningProgress();
+
+    // Establish a per-team floor so late events from a previous run can't override UI.
+    const floor = nowIso();
+    set((state) => ({
+      provisioningStartedAtFloorByTeam: {
+        ...state.provisioningStartedAtFloorByTeam,
+        [request.teamName]: floor,
+      },
+    }));
+
     // Clear stale provisioning runs for this team so the banner starts fresh
     set((state) => {
       const cleaned = { ...state.provisioningRuns };
@@ -826,6 +859,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
 
   onProvisioningProgress: (progress: TeamProvisioningProgress) => {
+    const floor = get().provisioningStartedAtFloorByTeam[progress.teamName];
+    if (floor && progress.startedAt < floor) {
+      // Ignore late progress from a previous run (common after stop→launch).
+      return;
+    }
     set((state) => ({
       provisioningRuns: {
         ...state.provisioningRuns,

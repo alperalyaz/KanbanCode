@@ -124,7 +124,7 @@ export const EditTeamDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent className="max-w-2xl sm:max-w-md">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Edit Team</DialogTitle>
           <DialogDescription>Change team name, description and color</DialogDescription>

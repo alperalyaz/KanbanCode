@@ -423,6 +423,8 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       `  - Do NOT split when work is inherently sequential, requires one person to keep consistent context, or the overhead would exceed the benefit.`,
       `  - When splitting, make each task have a clear completion criterion and a single accountable owner.`,
       ``,
+      `IMPORTANT: teamctl.js only supports these domains: task, kanban, review, message, process. There is NO "member" domain — team members are managed by spawning teammates via the Task tool, not via teamctl.`,
+      ``,
       `Task board operations — use teamctl.js via Bash:`,
       `- Create task: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task create --subject "..." --description "..." --owner "<actual-member-name>" --notify --from "${leadName}"`,
       `- Assign/reassign owner: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-owner <id> <member-name> --notify --from "${leadName}"`,

@@ -1206,7 +1206,7 @@ async function main() {
     die('Unknown process action: ' + String(action));
   }
 
-  die('Unknown domain: ' + String(domain));
+  die('Unknown domain: ' + String(domain) + '. Available domains: task, kanban, review, message, process. Run with --help for usage.');
 }
 
 main().catch((err) => {
