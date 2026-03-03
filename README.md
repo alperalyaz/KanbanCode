@@ -39,6 +39,7 @@ A new approach to task management with AI agents.
 - **Recent tasks across projects** — browse the latest completed tasks from all your projects in one place
 - **Deep session analysis** — detailed breakdown of what happened in each Claude session: bash commands, reasoning, subprocesses
 - **Smart task-to-log matching** — automatically links Claude session logs to specific tasks based on status change timestamps, even when a task moves back and forth between states
+- **Solo mode** — a one-member team: a single agent that creates its own tasks, leaves comments, and shows live progress on the kanban board — saves tokens compared to a full team and can be expanded to a full team at any time
 - **Zero-setup onboarding** — built-in Claude Code installation and authentication, ready to go out of the box
 - **Built-in code editor** — edit project files with Git support and other essential features without leaving the app
 - **Branch strategy control** — choose via prompt whether all agents work on a single branch or each gets its own git worktree

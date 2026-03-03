@@ -129,7 +129,7 @@ export class TeamMemberLogsFinder {
       const leadJsonl = path.join(projectDir, `${config.leadSessionId}.jsonl`);
       try {
         await fs.access(leadJsonl);
-        if (await this.fileMentionsTaskId(leadJsonl, taskId)) {
+        if (await this.fileMentionsTaskId(leadJsonl, teamName, taskId)) {
           const leadSummary = await this.parseLeadSessionSummary(
             leadJsonl,
             projectId,
@@ -155,7 +155,7 @@ export class TeamMemberLogsFinder {
         if (!file.startsWith('agent-') || !file.endsWith('.jsonl')) continue;
         if (file.startsWith('agent-acompact')) continue;
         const filePath = path.join(subagentsDir, file);
-        if (!(await this.fileMentionsTaskId(filePath, taskId))) continue;
+        if (!(await this.fileMentionsTaskId(filePath, teamName, taskId))) continue;
         const attribution = await this.attributeSubagent(filePath, knownMembers);
         if (!attribution) continue;
         const summary = await this.parseSubagentSummary(
@@ -465,9 +465,23 @@ export class TeamMemberLogsFinder {
     return { ...discovery, isLeadMember };
   }
 
-  private async fileMentionsTaskId(filePath: string, taskId: string): Promise<boolean> {
+  private async fileMentionsTaskId(
+    filePath: string,
+    teamName: string,
+    taskId: string
+  ): Promise<boolean> {
     const escaped = taskId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const numericTaskId = /^\d+$/.test(taskId) ? taskId : null;
+    const teamEscaped = escapeRegex(teamName);
+    const teamPatterns: RegExp[] = [
+      // Team tool inputs often include team_name
+      new RegExp(`"team_name"\\s*:\\s*"${teamEscaped}"`, 'i'),
+      // Some variants may use teamName or team
+      new RegExp(`"teamName"\\s*:\\s*"${teamEscaped}"`, 'i'),
+      new RegExp(`"team"\\s*:\\s*"${teamEscaped}"`, 'i'),
+      // CLI usage: node ".../teamctl.js" --team team-alpha task start 9
+      new RegExp(`\\b--team\\b\\s*(?:=\\s*)?(?:"${teamEscaped}"|${teamEscaped})\\b`, 'i'),
+    ];
     const patterns: RegExp[] = [
       new RegExp(`"task_id"\\s*:\\s*"${escaped}"`, 'i'),
       new RegExp(`"taskId"\\s*:\\s*"${escaped}"`, 'i'),
@@ -478,22 +492,22 @@ export class TeamMemberLogsFinder {
         new RegExp(`"taskId"\\s*:\\s*${numericTaskId}\\b`),
         // Support teamctl command lines (may appear in tool output).
         // Example: node ".../teamctl.js" --team "t" task start 10
-        new RegExp(
-          `\\bteamctl(?:\\.js)?\\b.{0,250}\\b(?:task|review)\\b.{0,250}\\b${numericTaskId}\\b`,
-          'i'
-        )
+        new RegExp(`\\bteamctl(?:\\.js)?\\b.{0,350}\\b${numericTaskId}\\b`, 'i')
       );
     }
     try {
       const stream = createReadStream(filePath, { encoding: 'utf8' });
       const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
       for await (const line of rl) {
-        for (const re of patterns) {
-          if (re.test(line)) {
-            rl.close();
-            stream.destroy();
-            return true;
-          }
+        // Require both taskId and teamName to avoid cross-team collisions when multiple
+        // teams share the same projectPath (task IDs are only unique per team).
+        const hasTaskId = patterns.some((re) => re.test(line));
+        if (!hasTaskId) continue;
+        const hasTeam = teamPatterns.some((re) => re.test(line));
+        if (hasTeam) {
+          rl.close();
+          stream.destroy();
+          return true;
         }
       }
       rl.close();

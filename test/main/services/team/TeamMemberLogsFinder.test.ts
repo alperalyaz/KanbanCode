@@ -304,7 +304,7 @@ describe('TeamMemberLogsFinder', () => {
               {
                 type: 'tool_use',
                 name: 'TaskUpdate',
-                input: { taskId: '1', status: 'in_progress' },
+                input: { team_name: teamName, taskId: '1', status: 'in_progress' },
               },
             ],
           },
@@ -364,7 +364,11 @@ describe('TeamMemberLogsFinder', () => {
           message: {
             role: 'assistant',
             content: [
-              { type: 'tool_use', name: 'TaskUpdate', input: { taskId: '10', status: 'pending' } },
+              {
+                type: 'tool_use',
+                name: 'TaskUpdate',
+                input: { team_name: teamName, taskId: '10', status: 'pending' },
+              },
             ],
           },
         }),
@@ -472,5 +476,116 @@ describe('TeamMemberLogsFinder', () => {
 
     // We only want sessions that explicitly reference the task id.
     expect(logs).toHaveLength(0);
+  });
+
+  it('findLogsForTask does not mix tasks across teams sharing a projectPath', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-task-cross-team-'));
+    setClaudeBasePathOverride(tmpDir);
+
+    const projectPath = '/Users/test/shared-proj';
+    const projectId = '-Users-test-shared-proj';
+    const sessionId = 's-shared';
+
+    // Two teams pointing at the same project path (realistic when multiple teams work in one repo)
+    const teamA = 'team-a';
+    const teamB = 'team-b';
+
+    await fs.mkdir(path.join(tmpDir, 'teams', teamA), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'teams', teamB), { recursive: true });
+
+    await fs.writeFile(
+      path.join(tmpDir, 'teams', teamA, 'config.json'),
+      JSON.stringify({
+        name: teamA,
+        projectPath,
+        members: [
+          { name: 'team-lead', agentType: 'team-lead' },
+          { name: 'alice', agentType: 'general-purpose' },
+        ],
+      }),
+      'utf8'
+    );
+    await fs.writeFile(
+      path.join(tmpDir, 'teams', teamB, 'config.json'),
+      JSON.stringify({
+        name: teamB,
+        projectPath,
+        members: [
+          { name: 'team-lead', agentType: 'team-lead' },
+          { name: 'bob', agentType: 'general-purpose' },
+        ],
+      }),
+      'utf8'
+    );
+
+    const projectRoot = path.join(tmpDir, 'projects', projectId);
+    await fs.mkdir(path.join(projectRoot, sessionId, 'subagents'), { recursive: true });
+
+    // Team A subagent referencing taskId 9 for team-a
+    await fs.writeFile(
+      path.join(projectRoot, sessionId, 'subagents', 'agent-a1.jsonl'),
+      [
+        JSON.stringify({
+          timestamp: '2026-01-01T00:00:01.000Z',
+          type: 'user',
+          message: {
+            role: 'user',
+            content: 'You are alice, a developer on team "team-a" (team-a).',
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-01-01T00:00:02.000Z',
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                name: 'TaskUpdate',
+                input: { team_name: teamA, taskId: '9', status: 'in_progress' },
+              },
+            ],
+          },
+        }),
+      ].join('\n') + '\n',
+      'utf8'
+    );
+
+    // Team B subagent referencing taskId 9 for team-b (must NOT be included when querying team-a)
+    await fs.writeFile(
+      path.join(projectRoot, sessionId, 'subagents', 'agent-b1.jsonl'),
+      [
+        JSON.stringify({
+          timestamp: '2026-01-01T00:00:03.000Z',
+          type: 'user',
+          message: { role: 'user', content: 'You are bob, a developer on team "team-b" (team-b).' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-01-01T00:00:04.000Z',
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                name: 'TaskUpdate',
+                input: { team_name: teamB, taskId: '9', status: 'in_progress' },
+              },
+            ],
+          },
+        }),
+      ].join('\n') + '\n',
+      'utf8'
+    );
+
+    const finder = new TeamMemberLogsFinder();
+    const logsForA = await finder.findLogsForTask(teamA, '9');
+
+    expect(
+      logsForA.some((l) => l.kind === 'subagent' && l.memberName?.toLowerCase() === 'alice')
+    ).toBe(true);
+    expect(
+      logsForA.some((l) => l.kind === 'subagent' && l.memberName?.toLowerCase() === 'bob')
+    ).toBe(false);
   });
 });

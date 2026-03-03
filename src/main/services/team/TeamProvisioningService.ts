@@ -396,6 +396,8 @@ function buildTaskStatusProtocol(teamName: string): string {
   return wrapInAgentBlock(`MANDATORY TASK STATUS PROTOCOL — you MUST follow this for EVERY task:
 1. Use this command to mark task started:
    node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task start <taskId>
+   - Start the task ONLY when you are actually beginning work on it.
+   - Do NOT start multiple tasks at once unless the team lead explicitly directs parallel work.
 2. Use this command to mark task completed BEFORE sending your final reply:
    node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task complete <taskId>
 3. If you are asked to review and task is accepted, move it to APPROVED (not DONE):
@@ -403,6 +405,7 @@ function buildTaskStatusProtocol(teamName: string): string {
 4. If review fails and changes are needed:
    node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" review request-changes <taskId> --comment "<what to fix>"
 5. NEVER skip status updates. A task is NOT done until completed status is written.
+   - Never "bulk-complete" a batch of tasks at the end. Update status incrementally as you work.
 6. To reply to a comment on a task:
    node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task comment <taskId> --text "<your reply>" --from "<your-name>"
 7. When discussing a task with a teammate and you have important findings, decisions, blockers, or progress updates — record them as a task comment:
@@ -451,6 +454,12 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       `Internal task board tooling (teamctl.js):`,
       `- Use teamctl.js (via Bash) for tasks that must appear on the team board (assigned work, substantial work, or when the user explicitly asks to create a task).`,
       ``,
+      `Execution discipline (CRITICAL — prevents misleading task boards):`,
+      `- Start a task (move to in_progress) ONLY when you are actually beginning work on it.`,
+      `- Complete a task ONLY when it is truly finished (and any required verification is done).`,
+      `- Never bulk-move many tasks at the end of a session — update status incrementally as you work.`,
+      `- Record meaningful progress, decisions, and blockers as task comments so context is preserved on the board.`,
+      ``,
       `Parallelization guideline (IMPORTANT):`,
       `- If a task is genuinely parallelizable, split it into multiple smaller tasks owned by different members.`,
       `  - Prefer splitting by independent deliverables (e.g. frontend/backend, API/UI, parsing/rendering, tests/docs) rather than arbitrary slices.`,
@@ -464,6 +473,8 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       `- Create task: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task create --subject "..." --description "..." --owner "<actual-member-name>" --notify --from "${leadName}"`,
       `- Assign/reassign owner: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-owner <id> <member-name> --notify --from "${leadName}"`,
       `- Clear owner: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-owner <id> clear`,
+      `- Start task (preferred over set-status): node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task start <id>`,
+      `- Complete task (preferred over set-status): node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task complete <id>`,
       `- Update status: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task set-status <id> <pending|in_progress|completed|deleted>`,
       `- Create with deps (blocked work MUST be pending): node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task create --subject "..." --blocked-by 1,2 --related 3 --status pending --owner "<member>" --notify --from "${leadName}"`,
       `- Link dependency: node "$HOME/.claude/tools/teamctl.js" --team "${teamName}" task link <id> --blocked-by <targetId>`,
@@ -604,7 +615,15 @@ function buildProvisioningPrompt(request: TeamCreateRequest): string {
       `\n  - ALLOWED: You may use the Task tool for regular subagents WITHOUT team_name — these are normal Claude Code helpers, not teammates.` +
       `\n  - If teammates are added later (e.g. via UI), you may then spawn them using the Task tool with team_name + name.` +
       `\n  - Work on tasks directly yourself. Use subagents for research and parallel work as needed.` +
-      `\n  - IMPORTANT: Since you have no teammates, "user" is your only communication channel. Send progress updates to "user" frequently — after completing each task or significant milestone, and when starting a new task. The human cannot see your internal output, only SendMessage reaches them.`
+      `\n  - PROGRESS REPORTING (MANDATORY): Since you have no teammates, "user" is your only communication channel.` +
+      `\n    - SendMessage "user" at minimum: when you start a task (after marking it in_progress), when you complete a task, and when you hit a meaningful milestone/blocker/decision.` +
+      `\n    - Avoid long silent stretches. If something is taking longer than expected, send a brief update and the next step.` +
+      `\n  - TASK STATUS DISCIPLINE (MANDATORY):` +
+      `\n    - Only move a task to in_progress when you are actively starting work on it.` +
+      `\n    - Only move a task to completed when it is truly finished.` +
+      `\n    - Never bulk-move many tasks at the end — update status incrementally as you work.` +
+      `\n    - Default to working ONE task at a time (keep at most one task in_progress in solo mode), unless you explicitly need parallel background work (in that case explain why to "user").` +
+      `\n    - Record meaningful progress/decisions as task comments so the task board stays accurate and high-signal.`
     : '';
 
   const step3Block = isSolo
@@ -723,14 +742,29 @@ function buildLaunchPrompt(
       `\n  - ALLOWED: You may use the Task tool for regular subagents WITHOUT team_name — these are normal Claude Code helpers, not teammates.` +
       `\n  - If teammates are added later (e.g. via UI), you may then spawn them using the Task tool with team_name + name.` +
       `\n  - Work on tasks directly yourself. Use subagents for research and parallel work as needed.` +
-      `\n  - IMPORTANT: Since you have no teammates, "user" is your only communication channel. Send progress updates to "user" frequently — after completing each task or significant milestone, and when starting a new task. The human cannot see your internal output, only SendMessage reaches them.`
+      `\n  - PROGRESS REPORTING (MANDATORY): Since you have no teammates, "user" is your only communication channel.` +
+      `\n    - SendMessage "user" at minimum: when you start a task (after marking it in_progress), when you complete a task, and when you hit a meaningful milestone/blocker/decision.` +
+      `\n    - Avoid long silent stretches. If something is taking longer than expected, send a brief update and the next step.` +
+      `\n  - TASK STATUS DISCIPLINE (MANDATORY):` +
+      `\n    - Only move a task to in_progress when you are actively starting work on it.` +
+      `\n    - Only move a task to completed when it is truly finished.` +
+      `\n    - Never bulk-move many tasks at the end — update status incrementally as you work.` +
+      `\n    - Default to working ONE task at a time (keep at most one task in_progress in solo mode), unless you explicitly need parallel background work (in that case explain why to "user").` +
+      `\n    - Record meaningful progress/decisions as task comments so the task board stays accurate and high-signal.`
     : '';
 
   let step2And3Block: string;
   if (isSolo) {
     step2And3Block = `2) Skip — solo team, no teammates to spawn.
 
-3) Check the task board. Claim any unassigned pending tasks by assigning yourself ("${leadName}") as owner, then work on them directly. Mark tasks in_progress when you start and completed when done.`;
+3) Execute tasks sequentially and keep the board + user updated:
+   - Identify the next READY task (pending, not blocked by incomplete dependencies).
+   - If the task is unassigned, set yourself ("${leadName}") as owner.
+   - BEFORE doing any work on a task: mark it started (in_progress).
+   - Immediately SendMessage "user" that you started task #<id> (what you're doing + next step).
+   - While working: after each meaningful milestone/decision/blocker, add a task comment on #<id>. If the milestone is user-relevant, also SendMessage "user".
+   - On completion: add a final task comment (what changed + how to verify), mark the task completed, then SendMessage "user" that task #<id> is complete and what you will do next.
+   - Do NOT start the next task until the current task is completed (default: one task in_progress at a time).`;
   } else {
     // Build per-member task snapshots to include in each teammate's spawn prompt
     const memberTaskBlocks = new Map<string, string>();

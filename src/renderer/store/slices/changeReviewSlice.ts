@@ -17,6 +17,7 @@ import type { AppState } from '../types';
 import type {
   AgentChangeSet,
   ApplyReviewRequest,
+  ApplyReviewResult,
   ChangeStats,
   FileChangeWithContent,
   FileReviewDecision,
@@ -121,7 +122,9 @@ export interface ChangeReviewSlice {
     filePath: string,
     taskId?: string,
     memberName?: string
-  ) => Promise<void>;
+  ) => Promise<ApplyReviewResult | null>;
+  /** Remove a file from the current review set (used for rejecting new files) */
+  removeReviewFile: (filePath: string) => void;
   invalidateChangeStats: (teamName: string) => void;
 
   // Editable diff actions
@@ -754,7 +757,7 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
               innerBaseCount
             )
           : undefined;
-      await api.review.applyDecisions({
+      const result = await api.review.applyDecisions({
         teamName,
         taskId,
         memberName,
@@ -771,10 +774,71 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
           },
         ],
       });
+      return result;
     } catch (error) {
       logger.error('applySingleFileDecision error:', error);
       set({ applyError: mapReviewError(error) });
+      return null;
     }
+  },
+
+  removeReviewFile: (filePath: string) => {
+    set((s) => {
+      if (!s.activeChangeSet) return s;
+      const existing = s.activeChangeSet.files.find((f) => f.filePath === filePath);
+      if (!existing) return s;
+
+      const nextFiles = s.activeChangeSet.files.filter((f) => f.filePath !== filePath);
+      const totalLinesAdded = nextFiles.reduce((sum, f) => sum + f.linesAdded, 0);
+      const totalLinesRemoved = nextFiles.reduce((sum, f) => sum + f.linesRemoved, 0);
+
+      const nextHunkDecisions = { ...s.hunkDecisions };
+      const prefix = `${filePath}:`;
+      for (const key of Object.keys(nextHunkDecisions)) {
+        if (key.startsWith(prefix)) delete nextHunkDecisions[key];
+      }
+
+      const nextFileDecisions = { ...s.fileDecisions };
+      delete nextFileDecisions[filePath];
+
+      const nextFileChunkCounts = { ...s.fileChunkCounts };
+      delete nextFileChunkCounts[filePath];
+
+      const nextFileContents = { ...s.fileContents };
+      delete nextFileContents[filePath];
+
+      const nextFileContentsLoading = { ...s.fileContentsLoading };
+      delete nextFileContentsLoading[filePath];
+
+      const nextEditedContents = { ...s.editedContents };
+      delete nextEditedContents[filePath];
+
+      const nextHashes = { ...s.hunkContextHashesByFile };
+      delete nextHashes[filePath];
+
+      const nextSelected =
+        s.selectedReviewFilePath === filePath
+          ? (nextFiles[0]?.filePath ?? null)
+          : s.selectedReviewFilePath;
+
+      return {
+        activeChangeSet: {
+          ...s.activeChangeSet,
+          files: nextFiles,
+          totalFiles: nextFiles.length,
+          totalLinesAdded,
+          totalLinesRemoved,
+        },
+        selectedReviewFilePath: nextSelected,
+        hunkDecisions: nextHunkDecisions,
+        fileDecisions: nextFileDecisions,
+        fileChunkCounts: nextFileChunkCounts,
+        fileContents: nextFileContents,
+        fileContentsLoading: nextFileContentsLoading,
+        editedContents: nextEditedContents,
+        hunkContextHashesByFile: nextHashes,
+      };
+    });
   },
 
   // ── Editable diff actions ──

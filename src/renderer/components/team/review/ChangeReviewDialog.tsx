@@ -76,6 +76,7 @@ export const ChangeReviewDialog = ({
     rejectAllFile,
     applyReview,
     applySingleFileDecision,
+    removeReviewFile,
     editedContents,
     updateEditedContent,
     discardFileEdits,
@@ -214,6 +215,48 @@ export const ChangeReviewDialog = ({
     taskId,
     memberName,
   ]);
+
+  // Per-new-file accept/reject (Cursor-style)
+  const handleAcceptNewFile = useCallback(
+    (filePath: string) => {
+      acceptAllFile(filePath);
+      const view = editorViewMapRef.current.get(filePath);
+      if (view) {
+        requestAnimationFrame(() => acceptAllChunks(view));
+      }
+    },
+    [acceptAllFile]
+  );
+
+  const handleRejectNewFile = useCallback(
+    async (filePath: string) => {
+      // Mark rejected in store + update CM view immediately for feedback
+      rejectAllFile(filePath);
+      const view = editorViewMapRef.current.get(filePath);
+      if (view) {
+        requestAnimationFrame(() => rejectAllChunks(view));
+      }
+
+      // Always apply immediately: rejecting a NEW file means deleting it from disk.
+      const isNew = activeChangeSet?.files.find((f) => f.filePath === filePath)?.isNewFile ?? false;
+      if (!isNew) return;
+
+      const result = await applySingleFileDecision(teamName, filePath, taskId, memberName);
+      const hasErrorForFile = !!result?.errors.some((e) => e.filePath === filePath);
+      if (result && !hasErrorForFile) {
+        removeReviewFile(filePath);
+      }
+    },
+    [
+      rejectAllFile,
+      activeChangeSet,
+      applySingleFileDecision,
+      teamName,
+      taskId,
+      memberName,
+      removeReviewFile,
+    ]
+  );
 
   // Per-file callbacks for ContinuousScrollView
   const handleHunkAccepted = useCallback(
@@ -818,6 +861,8 @@ export const ChangeReviewDialog = ({
                 onContentChanged={handleContentChanged}
                 onDiscard={handleDiscardFile}
                 onSave={handleSaveFile}
+                onAcceptNewFile={handleAcceptNewFile}
+                onRejectNewFile={handleRejectNewFile}
                 onRestoreMissingFile={handleRestoreMissingFile}
                 onVisibleFileChange={handleVisibleFileChange}
                 scrollContainerRef={scrollContainerRef}
