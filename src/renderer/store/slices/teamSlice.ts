@@ -313,6 +313,23 @@ export interface TeamSlice {
     taskId: string,
     value: 'lead' | 'user' | null
   ) => Promise<void>;
+  saveTaskAttachment: (
+    teamName: string,
+    taskId: string,
+    file: { name: string; type: string; base64: string }
+  ) => Promise<void>;
+  deleteTaskAttachment: (
+    teamName: string,
+    taskId: string,
+    attachmentId: string,
+    mimeType: string
+  ) => Promise<void>;
+  getTaskAttachmentData: (
+    teamName: string,
+    taskId: string,
+    attachmentId: string,
+    mimeType: string
+  ) => Promise<string | null>;
   deletedTasks: TeamTask[];
   deletedTasksLoading: boolean;
   softDeleteTask: (teamName: string, taskId: string) => Promise<void>;
@@ -808,6 +825,27 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     );
     await get().refreshTeamData(teamName);
     await get().fetchAllTasks();
+  },
+
+  saveTaskAttachment: async (teamName, taskId, file) => {
+    const id = crypto.randomUUID();
+    await unwrapIpc('team:saveTaskAttachment', () =>
+      api.teams.saveTaskAttachment(teamName, taskId, id, file.name, file.type, file.base64)
+    );
+    await get().refreshTeamData(teamName);
+  },
+
+  deleteTaskAttachment: async (teamName, taskId, attachmentId, mimeType) => {
+    await unwrapIpc('team:deleteTaskAttachment', () =>
+      api.teams.deleteTaskAttachment(teamName, taskId, attachmentId, mimeType)
+    );
+    await get().refreshTeamData(teamName);
+  },
+
+  getTaskAttachmentData: async (teamName, taskId, attachmentId, mimeType) => {
+    return unwrapIpc('team:getTaskAttachment', () =>
+      api.teams.getTaskAttachment(teamName, taskId, attachmentId, mimeType)
+    );
   },
 
   addTaskComment: async (teamName, taskId, text) => {

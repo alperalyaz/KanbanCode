@@ -49,6 +49,9 @@ import {
   TEAM_UPDATE_TASK_FIELDS,
   TEAM_UPDATE_TASK_OWNER,
   TEAM_UPDATE_TASK_STATUS,
+  TEAM_SAVE_TASK_ATTACHMENT,
+  TEAM_GET_TASK_ATTACHMENT,
+  TEAM_DELETE_TASK_ATTACHMENT,
   // eslint-disable-next-line boundaries/element-types -- IPC channel constants are shared between main and preload by design
 } from '@preload/constants/ipcChannels';
 import { KANBAN_COLUMN_IDS } from '@shared/constants/kanban';
@@ -75,6 +78,7 @@ const notifiedRateLimitKeys = new Set<string>();
 const RATE_LIMIT_KEYS_MAX = 500;
 
 import { TeamAttachmentStore } from '../services/team/TeamAttachmentStore';
+import { TeamTaskAttachmentStore } from '../services/team/TeamTaskAttachmentStore';
 
 import type {
   MemberStatsComputer,
@@ -84,6 +88,7 @@ import type {
 } from '../services';
 import type {
   AttachmentFileData,
+  AttachmentMediaType,
   AttachmentMeta,
   AttachmentPayload,
   CreateTaskRequest,
@@ -94,6 +99,7 @@ import type {
   MemberLogSummary,
   SendMessageRequest,
   SendMessageResult,
+  TaskAttachmentMeta,
   TaskComment,
   TeamConfig,
   TeamCreateConfigRequest,
@@ -165,6 +171,7 @@ let teamMemberLogsFinder: TeamMemberLogsFinder | null = null;
 let memberStatsComputer: MemberStatsComputer | null = null;
 
 const attachmentStore = new TeamAttachmentStore();
+const taskAttachmentStore = new TeamTaskAttachmentStore();
 
 const ALLOWED_ATTACHMENT_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB per file
@@ -229,6 +236,9 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_SHOW_MESSAGE_NOTIFICATION, handleShowMessageNotification);
   ipcMain.handle(TEAM_ADD_TASK_RELATIONSHIP, handleAddTaskRelationship);
   ipcMain.handle(TEAM_REMOVE_TASK_RELATIONSHIP, handleRemoveTaskRelationship);
+  ipcMain.handle(TEAM_SAVE_TASK_ATTACHMENT, handleSaveTaskAttachment);
+  ipcMain.handle(TEAM_GET_TASK_ATTACHMENT, handleGetTaskAttachment);
+  ipcMain.handle(TEAM_DELETE_TASK_ATTACHMENT, handleDeleteTaskAttachment);
   logger.info('Team handlers registered');
 }
 
@@ -278,6 +288,9 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_SHOW_MESSAGE_NOTIFICATION);
   ipcMain.removeHandler(TEAM_ADD_TASK_RELATIONSHIP);
   ipcMain.removeHandler(TEAM_REMOVE_TASK_RELATIONSHIP);
+  ipcMain.removeHandler(TEAM_SAVE_TASK_ATTACHMENT);
+  ipcMain.removeHandler(TEAM_GET_TASK_ATTACHMENT);
+  ipcMain.removeHandler(TEAM_DELETE_TASK_ATTACHMENT);
 }
 
 function getTeamDataService(): TeamDataService {
@@ -1974,4 +1987,123 @@ async function handleRemoveTaskRelationship(
       type as RelationshipType
     )
   );
+}
+
+// ---------------------------------------------------------------------------
+// Task Attachment Handlers
+// ---------------------------------------------------------------------------
+
+async function handleSaveTaskAttachment(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  taskId: unknown,
+  attachmentId: unknown,
+  filename: unknown,
+  mimeType: unknown,
+  base64Data: unknown
+): Promise<IpcResult<TaskAttachmentMeta>> {
+  const vTeam = validateTeamName(teamName);
+  if (!vTeam.valid) return { success: false, error: vTeam.error ?? 'Invalid teamName' };
+  const vTask = validateTaskId(taskId);
+  if (!vTask.valid) return { success: false, error: vTask.error ?? 'Invalid taskId' };
+  if (typeof attachmentId !== 'string' || attachmentId.trim().length === 0) {
+    return { success: false, error: 'attachmentId must be a non-empty string' };
+  }
+  if (typeof filename !== 'string' || filename.trim().length === 0) {
+    return { success: false, error: 'filename must be a non-empty string' };
+  }
+  if (typeof mimeType !== 'string' || !ALLOWED_ATTACHMENT_TYPES.has(mimeType)) {
+    return {
+      success: false,
+      error: `mimeType must be one of: ${[...ALLOWED_ATTACHMENT_TYPES].join(', ')}`,
+    };
+  }
+  if (typeof base64Data !== 'string' || base64Data.length === 0) {
+    return { success: false, error: 'base64Data must be a non-empty string' };
+  }
+  // Sanitize IDs against path traversal
+  const safeAttId = attachmentId.trim();
+  if (safeAttId.includes('/') || safeAttId.includes('\\') || safeAttId.includes('..')) {
+    return { success: false, error: 'Invalid attachmentId' };
+  }
+
+  return wrapTeamHandler('saveTaskAttachment', async () => {
+    const meta = await taskAttachmentStore.saveAttachment(
+      vTeam.value!,
+      vTask.value!,
+      safeAttId,
+      filename as string,
+      mimeType as AttachmentMediaType,
+      base64Data as string
+    );
+    // Write metadata into the task JSON
+    await getTeamDataService().addTaskAttachment(vTeam.value!, vTask.value!, meta);
+    return meta;
+  });
+}
+
+async function handleGetTaskAttachment(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  taskId: unknown,
+  attachmentId: unknown,
+  mimeType: unknown
+): Promise<IpcResult<string | null>> {
+  const vTeam = validateTeamName(teamName);
+  if (!vTeam.valid) return { success: false, error: vTeam.error ?? 'Invalid teamName' };
+  const vTask = validateTaskId(taskId);
+  if (!vTask.valid) return { success: false, error: vTask.error ?? 'Invalid taskId' };
+  if (typeof attachmentId !== 'string' || attachmentId.trim().length === 0) {
+    return { success: false, error: 'attachmentId must be a non-empty string' };
+  }
+  if (typeof mimeType !== 'string' || !ALLOWED_ATTACHMENT_TYPES.has(mimeType)) {
+    return { success: false, error: 'Invalid mimeType' };
+  }
+  const safeAttId = attachmentId.trim();
+  if (safeAttId.includes('/') || safeAttId.includes('\\') || safeAttId.includes('..')) {
+    return { success: false, error: 'Invalid attachmentId' };
+  }
+
+  return wrapTeamHandler('getTaskAttachment', () =>
+    taskAttachmentStore.getAttachment(
+      vTeam.value!,
+      vTask.value!,
+      safeAttId,
+      mimeType as AttachmentMediaType
+    )
+  );
+}
+
+async function handleDeleteTaskAttachment(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  taskId: unknown,
+  attachmentId: unknown,
+  mimeType: unknown
+): Promise<IpcResult<void>> {
+  const vTeam = validateTeamName(teamName);
+  if (!vTeam.valid) return { success: false, error: vTeam.error ?? 'Invalid teamName' };
+  const vTask = validateTaskId(taskId);
+  if (!vTask.valid) return { success: false, error: vTask.error ?? 'Invalid taskId' };
+  if (typeof attachmentId !== 'string' || attachmentId.trim().length === 0) {
+    return { success: false, error: 'attachmentId must be a non-empty string' };
+  }
+  if (typeof mimeType !== 'string' || !ALLOWED_ATTACHMENT_TYPES.has(mimeType)) {
+    return { success: false, error: 'Invalid mimeType' };
+  }
+  const safeAttId = attachmentId.trim();
+  if (safeAttId.includes('/') || safeAttId.includes('\\') || safeAttId.includes('..')) {
+    return { success: false, error: 'Invalid attachmentId' };
+  }
+
+  return wrapTeamHandler('deleteTaskAttachment', async () => {
+    await taskAttachmentStore.deleteAttachment(
+      vTeam.value!,
+      vTask.value!,
+      safeAttId,
+      mimeType as AttachmentMediaType
+    );
+    // Remove metadata from task JSON
+    await getTeamDataService().removeTaskAttachment(vTeam.value!, vTask.value!, safeAttId);
+  });
 }

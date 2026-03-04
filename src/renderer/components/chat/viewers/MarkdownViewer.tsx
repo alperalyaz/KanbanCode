@@ -199,6 +199,7 @@ function createViewerMarkdownComponents(searchCtx: SearchContext | null): Compon
     ),
 
     // Links — inline element, no hl(); parent block element's hl() descends here
+    // task:// links are handled by ancestor onClickCapture handlers (e.g. ActivityItem)
     a: ({ href, children }) => (
       <a
         href={href}
@@ -206,7 +207,7 @@ function createViewerMarkdownComponents(searchCtx: SearchContext | null): Compon
         style={{ color: PROSE_LINK }}
         onClick={(e) => {
           e.preventDefault();
-          if (href) {
+          if (href && !href.startsWith('task://')) {
             void api.openExternal(href);
           }
         }}

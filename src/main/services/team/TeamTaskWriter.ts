@@ -7,6 +7,7 @@ import { atomicWriteAsync } from './atomicWrite';
 
 import type {
   StatusTransition,
+  TaskAttachmentMeta,
   TaskComment,
   TaskCommentType,
   TeamTask,
@@ -553,5 +554,42 @@ export class TeamTaskWriter {
     });
 
     return comment;
+  }
+
+  async addAttachment(teamName: string, taskId: string, meta: TaskAttachmentMeta): Promise<void> {
+    const taskPath = path.join(getTasksBasePath(), teamName, `${taskId}.json`);
+
+    await withTaskLock(taskPath, async () => {
+      const raw = await fs.promises.readFile(taskPath, 'utf8');
+      const task = JSON.parse(raw) as Record<string, unknown>;
+      const existing = Array.isArray(task.attachments)
+        ? (task.attachments as TaskAttachmentMeta[])
+        : [];
+      // Dedup by ID
+      if (existing.some((a) => a.id === meta.id)) {
+        return;
+      }
+      task.attachments = [...existing, meta];
+      await atomicWriteAsync(taskPath, JSON.stringify(task, null, 2));
+    });
+  }
+
+  async removeAttachment(teamName: string, taskId: string, attachmentId: string): Promise<void> {
+    const taskPath = path.join(getTasksBasePath(), teamName, `${taskId}.json`);
+
+    await withTaskLock(taskPath, async () => {
+      const raw = await fs.promises.readFile(taskPath, 'utf8');
+      const task = JSON.parse(raw) as Record<string, unknown>;
+      const existing = Array.isArray(task.attachments)
+        ? (task.attachments as TaskAttachmentMeta[])
+        : [];
+      const filtered = existing.filter((a) => a.id !== attachmentId);
+      if (filtered.length > 0) {
+        task.attachments = filtered;
+      } else {
+        delete task.attachments;
+      }
+      await atomicWriteAsync(taskPath, JSON.stringify(task, null, 2));
+    });
   }
 }

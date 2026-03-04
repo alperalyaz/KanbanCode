@@ -215,7 +215,9 @@ export const ActivityItem = ({
     if (structured) return null;
     const stripped = stripAgentBlocks(message.text).trim();
     if (!stripped) return null; // All content was agent-only blocks → show summary instead
-    return onTaskIdClick ? linkifyTaskIdsInMarkdown(stripped) : stripped;
+    // Normalize literal \n from CLI tools (teamctl.js) to real newlines
+    const normalized = stripped.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+    return onTaskIdClick ? linkifyTaskIdsInMarkdown(normalized) : normalized;
   }, [structured, message.text, onTaskIdClick]);
 
   // Check if this is a reply message

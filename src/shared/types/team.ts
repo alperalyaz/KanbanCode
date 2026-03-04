@@ -123,12 +123,28 @@ export interface TeamTask {
   needsClarification?: 'lead' | 'user';
   /** ISO timestamp — when the task was soft-deleted. Only set for status === 'deleted'. */
   deletedAt?: string;
+  /** Image attachments associated with this task. Metadata only — actual files stored on disk. */
+  attachments?: TaskAttachmentMeta[];
 }
 
 /** Task enriched for UI/DTO use (overlay from kanban-state.json). */
 export interface TeamTaskWithKanban extends TeamTask {
   /** Set when task is in team kanban (review or approved column). */
   kanbanColumn?: 'review' | 'approved';
+}
+
+/** Metadata for an image attached to a task description. */
+export interface TaskAttachmentMeta {
+  /** Unique attachment ID (uuid). */
+  id: string;
+  /** Original filename (e.g. "screenshot.png"). */
+  filename: string;
+  /** MIME type. */
+  mimeType: AttachmentMediaType;
+  /** File size in bytes. */
+  size: number;
+  /** ISO timestamp when the attachment was added. */
+  addedAt: string;
 }
 
 export type AttachmentMediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';

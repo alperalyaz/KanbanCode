@@ -202,8 +202,7 @@ pnpm dist            # macOS + Windows + Linux
 
 ## TODO
 
-- [ ] Run not only on a local PC but in any headless/console environment (web UI), e.g. VPS, remote server, etc.
-- [ ] 2 modes: current (agent teams), and a new mode: regular subagents (no communication between them)
+- [ ] CLI runtime: Run not only on a local PC but in any headless/console environment (web UI), e.g. VPS, remote server, etc.
 
 ---
 

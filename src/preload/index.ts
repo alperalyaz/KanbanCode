@@ -89,6 +89,9 @@ import {
   TEAM_REMOVE_MEMBER,
   TEAM_REMOVE_TASK_RELATIONSHIP,
   TEAM_REPLACE_MEMBERS,
+  TEAM_SAVE_TASK_ATTACHMENT,
+  TEAM_GET_TASK_ATTACHMENT,
+  TEAM_DELETE_TASK_ATTACHMENT,
   TEAM_REQUEST_REVIEW,
   TEAM_RESTORE,
   TEAM_RESTORE_TASK,
@@ -187,6 +190,7 @@ import type {
   SshConnectionConfig,
   SshConnectionStatus,
   SshLastConnection,
+  TaskAttachmentMeta,
   TaskChangeSetV2,
   TaskComment,
   TeamChangeEvent,
@@ -870,6 +874,52 @@ const electronAPI: ElectronAPI = {
         taskId,
         targetId,
         type
+      );
+    },
+    saveTaskAttachment: async (
+      teamName: string,
+      taskId: string,
+      attachmentId: string,
+      filename: string,
+      mimeType: string,
+      base64Data: string
+    ) => {
+      return invokeIpcWithResult<TaskAttachmentMeta>(
+        TEAM_SAVE_TASK_ATTACHMENT,
+        teamName,
+        taskId,
+        attachmentId,
+        filename,
+        mimeType,
+        base64Data
+      );
+    },
+    getTaskAttachment: async (
+      teamName: string,
+      taskId: string,
+      attachmentId: string,
+      mimeType: string
+    ) => {
+      return invokeIpcWithResult<string | null>(
+        TEAM_GET_TASK_ATTACHMENT,
+        teamName,
+        taskId,
+        attachmentId,
+        mimeType
+      );
+    },
+    deleteTaskAttachment: async (
+      teamName: string,
+      taskId: string,
+      attachmentId: string,
+      mimeType: string
+    ) => {
+      return invokeIpcWithResult<void>(
+        TEAM_DELETE_TASK_ATTACHMENT,
+        teamName,
+        taskId,
+        attachmentId,
+        mimeType
       );
     },
     onTeamChange: (callback: (event: unknown, data: TeamChangeEvent) => void): (() => void) => {

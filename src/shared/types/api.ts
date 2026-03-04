@@ -30,6 +30,7 @@ import type {
 import type {
   AddMemberRequest,
   AttachmentFileData,
+  AttachmentMediaType,
   CreateTaskRequest,
   GlobalTask,
   KanbanColumnId,
@@ -39,6 +40,7 @@ import type {
   ReplaceMembersRequest,
   SendMessageRequest,
   SendMessageResult,
+  TaskAttachmentMeta,
   TaskComment,
   TeamChangeEvent,
   TeamConfig,
@@ -473,6 +475,26 @@ export interface TeamsAPI {
     taskId: string,
     targetId: string,
     type: 'blockedBy' | 'blocks' | 'related'
+  ) => Promise<void>;
+  saveTaskAttachment: (
+    teamName: string,
+    taskId: string,
+    attachmentId: string,
+    filename: string,
+    mimeType: string,
+    base64Data: string
+  ) => Promise<TaskAttachmentMeta>;
+  getTaskAttachment: (
+    teamName: string,
+    taskId: string,
+    attachmentId: string,
+    mimeType: string
+  ) => Promise<string | null>;
+  deleteTaskAttachment: (
+    teamName: string,
+    taskId: string,
+    attachmentId: string,
+    mimeType: string
   ) => Promise<void>;
   onTeamChange: (callback: (event: unknown, data: TeamChangeEvent) => void) => () => void;
   onProvisioningProgress: (

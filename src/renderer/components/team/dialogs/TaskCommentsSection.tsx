@@ -28,6 +28,15 @@ import {
 import type { MentionSuggestion } from '@renderer/types/mention';
 import type { ResolvedTeamMember, TaskComment } from '@shared/types';
 
+/**
+ * Convert literal backslash-n sequences to real newlines.
+ * CLI tools (teamctl.js) may store `\n` as literal text when
+ * shell double-quotes don't interpret escape sequences.
+ */
+function normalizeLiteralNewlines(text: string): string {
+  return text.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+}
+
 const MAX_COMMENT_LENGTH = 2000;
 const INITIAL_VISIBLE_COMMENTS = 30;
 const VISIBLE_COMMENTS_STEP = 50;
@@ -44,6 +53,13 @@ interface TaskCommentsSectionProps {
   hideInput?: boolean;
   /** Called when the user clicks Reply on a comment (used when input is rendered externally). */
   onReply?: (author: string, text: string) => void;
+  /** Called when a task ID link (e.g. #10) is clicked in comment text. */
+  onTaskIdClick?: (taskId: string) => void;
+}
+
+/** Convert `#<digits>` in plain text to markdown links with task:// protocol. */
+function linkifyTaskIdsInMarkdown(text: string): string {
+  return text.replace(/#(\d+)/g, '[#$1](task://$1)');
 }
 
 export const TaskCommentsSection = ({
@@ -54,6 +70,7 @@ export const TaskCommentsSection = ({
   hideHeader = false,
   hideInput = false,
   onReply,
+  onTaskIdClick,
 }: TaskCommentsSectionProps): React.JSX.Element => {
   const addTaskComment = useStore((s) => s.addTaskComment);
   const addingComment = useStore((s) => s.addingComment);
@@ -218,7 +235,7 @@ export const TaskCommentsSection = ({
               {(() => {
                 const reply = parseMessageReply(comment.text);
                 const rawForDisplay = reply ? reply.replyText : comment.text;
-                const displayText = stripAgentBlocks(rawForDisplay);
+                const displayText = normalizeLiteralNewlines(stripAgentBlocks(rawForDisplay));
                 const needsExpandCollapse = displayText.includes('\n');
                 const expanded = expandedCommentIds.has(comment.id);
                 const collapsedHeight = 'max-h-[120px]';
@@ -243,13 +260,33 @@ export const TaskCommentsSection = ({
                           }
                         />
                       ) : (
-                        <MarkdownViewer
-                          content={displayText}
-                          maxHeight={
-                            needsExpandCollapse && !expanded ? collapsedHeight : 'max-h-none'
+                        <span
+                          onClickCapture={
+                            onTaskIdClick
+                              ? (e) => {
+                                  const link = (e.target as HTMLElement).closest<HTMLAnchorElement>(
+                                    'a[href^="task://"]'
+                                  );
+                                  if (link) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const id = link.getAttribute('href')?.replace('task://', '');
+                                    if (id) onTaskIdClick(id);
+                                  }
+                                }
+                              : undefined
                           }
-                          bare
-                        />
+                        >
+                          <MarkdownViewer
+                            content={
+                              onTaskIdClick ? linkifyTaskIdsInMarkdown(displayText) : displayText
+                            }
+                            maxHeight={
+                              needsExpandCollapse && !expanded ? collapsedHeight : 'max-h-none'
+                            }
+                            bare
+                          />
+                        </span>
                       )}
                       {showCollapsed && (
                         <>
