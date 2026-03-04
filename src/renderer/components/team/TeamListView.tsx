@@ -218,16 +218,23 @@ export const TeamListView = (): React.JSX.Element => {
       activeProjectId: s.activeProjectId,
     }))
   );
-  const { connectionMode, createTeam, provisioningError, provisioningRuns, leadActivityByTeam } =
-    useStore(
-      useShallow((s) => ({
-        connectionMode: s.connectionMode,
-        createTeam: s.createTeam,
-        provisioningError: s.provisioningError,
-        provisioningRuns: s.provisioningRuns,
-        leadActivityByTeam: s.leadActivityByTeam,
-      }))
-    );
+  const {
+    connectionMode,
+    createTeam,
+    provisioningError,
+    clearProvisioningError,
+    provisioningRuns,
+    leadActivityByTeam,
+  } = useStore(
+    useShallow((s) => ({
+      connectionMode: s.connectionMode,
+      createTeam: s.createTeam,
+      provisioningError: s.provisioningError,
+      clearProvisioningError: s.clearProvisioningError,
+      provisioningRuns: s.provisioningRuns,
+      leadActivityByTeam: s.leadActivityByTeam,
+    }))
+  );
   const canCreate = electronMode && connectionMode === 'local';
 
   // Fetch alive teams on mount and when teams list changes
@@ -493,6 +500,7 @@ export const TeamListView = (): React.JSX.Element => {
       open={showCreateDialog}
       canCreate={canCreate}
       provisioningError={provisioningError}
+      clearProvisioningError={clearProvisioningError}
       existingTeamNames={teams.map((t) => t.teamName)}
       activeTeams={activeTeams}
       initialData={copyData ?? undefined}

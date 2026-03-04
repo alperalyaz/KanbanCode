@@ -24,7 +24,22 @@ const logger = createLogger('Store:sessionDetail');
 const sessionRefreshGeneration = new Map<string, number>();
 const sessionRefreshInFlight = new Set<string>();
 const sessionRefreshQueued = new Set<string>();
-let sessionDetailFetchGeneration = 0;
+/**
+ * Per-tab fetch generation counters. Prevents concurrent fetches from different
+ * tabs from cancelling each other (only same-tab re-fetches are cancelled).
+ */
+const tabFetchGeneration = new Map<string, number>();
+
+function incrementTabGeneration(tabId?: string): number {
+  const key = tabId ?? '__global__';
+  const gen = (tabFetchGeneration.get(key) ?? 0) + 1;
+  tabFetchGeneration.set(key, gen);
+  return gen;
+}
+
+function isCurrentTabGeneration(gen: number, tabId?: string): boolean {
+  return tabFetchGeneration.get(tabId ?? '__global__') === gen;
+}
 let agentConfigsCachedForProject = '';
 
 import { getAllTabs } from '../utils/paneHelpers';
@@ -148,7 +163,7 @@ export const createSessionDetailSlice: StateCreator<AppState, [], [], SessionDet
 
   // Fetch full session detail with chunks and subagents
   fetchSessionDetail: async (projectId: string, sessionId: string, tabId?: string) => {
-    const requestGeneration = ++sessionDetailFetchGeneration;
+    const requestGeneration = incrementTabGeneration(tabId);
     set({
       sessionDetailLoading: true,
       sessionDetailError: null,
@@ -172,7 +187,7 @@ export const createSessionDetailSlice: StateCreator<AppState, [], [], SessionDet
     }
     try {
       const detail = await api.getSessionDetail(projectId, sessionId);
-      if (requestGeneration !== sessionDetailFetchGeneration) {
+      if (!isCurrentTabGeneration(requestGeneration, tabId)) {
         return;
       }
 
@@ -217,7 +232,7 @@ export const createSessionDetailSlice: StateCreator<AppState, [], [], SessionDet
         let claudeMdTokenData: Record<string, ClaudeMdFileInfo> = {};
         try {
           claudeMdTokenData = await api.readClaudeMdFiles(projectRoot);
-          if (requestGeneration !== sessionDetailFetchGeneration) {
+          if (!isCurrentTabGeneration(requestGeneration, tabId)) {
             return;
           }
         } catch (err) {
@@ -259,7 +274,7 @@ export const createSessionDetailSlice: StateCreator<AppState, [], [], SessionDet
                 }
               })
             );
-            if (requestGeneration !== sessionDetailFetchGeneration) {
+            if (!isCurrentTabGeneration(requestGeneration, tabId)) {
               return;
             }
 
@@ -356,7 +371,7 @@ export const createSessionDetailSlice: StateCreator<AppState, [], [], SessionDet
             }
           })
         );
-        if (requestGeneration !== sessionDetailFetchGeneration) {
+        if (!isCurrentTabGeneration(requestGeneration, tabId)) {
           return;
         }
         for (const { filePath, fileInfo } of mentionedFileResults) {
@@ -378,43 +393,22 @@ export const createSessionDetailSlice: StateCreator<AppState, [], [], SessionDet
         phaseInfo = phaseResult.phaseInfo;
       }
 
-      // Update tab label if this session is open in a tab
+      // Update tab label and per-tab data regardless of which tab is active.
+      // This ensures labels are correct and cached data is ready on tab switch.
       const currentState = get();
-      if (requestGeneration !== sessionDetailFetchGeneration) {
+      if (!isCurrentTabGeneration(requestGeneration, tabId)) {
         return;
       }
-      const activeTab = currentState.getActiveTab();
-      const stillViewingSession =
-        currentState.selectedSessionId === sessionId ||
-        (activeTab?.type === 'session' &&
-          activeTab.sessionId === sessionId &&
-          activeTab.projectId === projectId);
-      if (!stillViewingSession) {
-        set({
-          sessionDetailLoading: false,
-          conversationLoading: false,
-        });
-        return;
-      }
-      const existingTab = findTabBySession(currentState.openTabs, sessionId);
+
+      // Update tab label across ALL panes (not just focused pane's openTabs)
+      const allTabsForLabel = getAllTabs(currentState.paneLayout);
+      const existingTab = findTabBySession(allTabsForLabel, sessionId);
       if (existingTab && detail) {
         const newLabel = detail.session.firstMessage
           ? truncateLabel(detail.session.firstMessage)
           : `Session ${sessionId.slice(0, 8)}`;
         currentState.updateTabLabel(existingTab.id, newLabel);
       }
-
-      set({
-        sessionDetail: detail,
-        sessionDetailLoading: false,
-        conversation,
-        conversationLoading: false,
-        visibleAIGroupId: firstAIGroupId,
-        selectedAIGroup: firstAIGroup,
-        sessionClaudeMdStats: claudeMdStats,
-        sessionContextStats: contextStats,
-        sessionPhaseInfo: phaseInfo,
-      });
 
       // Auto-expand all AI groups if the setting is enabled
       if (tabId && conversation?.items && get().appConfig?.general?.autoExpandAIGroups) {
@@ -425,7 +419,7 @@ export const createSessionDetailSlice: StateCreator<AppState, [], [], SessionDet
         }
       }
 
-      // Store per-tab session data
+      // Store per-tab session data (always, so tab switch can restore from cache)
       if (tabId) {
         const prev = get().tabSessionData;
         set({
@@ -446,9 +440,35 @@ export const createSessionDetailSlice: StateCreator<AppState, [], [], SessionDet
           },
         });
       }
+
+      // Only update global state if still viewing this session
+      const activeTab = currentState.getActiveTab();
+      const stillViewingSession =
+        currentState.selectedSessionId === sessionId ||
+        (activeTab?.type === 'session' &&
+          activeTab.sessionId === sessionId &&
+          activeTab.projectId === projectId);
+      if (stillViewingSession) {
+        set({
+          sessionDetail: detail,
+          sessionDetailLoading: false,
+          conversation,
+          conversationLoading: false,
+          visibleAIGroupId: firstAIGroupId,
+          selectedAIGroup: firstAIGroup,
+          sessionClaudeMdStats: claudeMdStats,
+          sessionContextStats: contextStats,
+          sessionPhaseInfo: phaseInfo,
+        });
+      } else {
+        set({
+          sessionDetailLoading: false,
+          conversationLoading: false,
+        });
+      }
     } catch (error) {
       logger.error('fetchSessionDetail error:', error);
-      if (requestGeneration !== sessionDetailFetchGeneration) {
+      if (!isCurrentTabGeneration(requestGeneration, tabId)) {
         return;
       }
       const errorMsg = error instanceof Error ? error.message : 'Failed to fetch session detail';
@@ -709,6 +729,7 @@ export const createSessionDetailSlice: StateCreator<AppState, [], [], SessionDet
 
   // Clean up per-tab session data when tab is closed
   cleanupTabSessionData: (tabId: string) => {
+    tabFetchGeneration.delete(tabId);
     const prev = get().tabSessionData;
     if (!(tabId in prev)) return;
     const next = { ...prev };
