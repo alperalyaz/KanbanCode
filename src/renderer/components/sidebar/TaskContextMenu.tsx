@@ -33,7 +33,7 @@ export const TaskContextMenu = ({
       <ContextMenuTrigger asChild>
         <div className="w-full">{children}</div>
       </ContextMenuTrigger>
-      <ContextMenuContent>
+      <ContextMenuContent onCloseAutoFocus={(e) => e.preventDefault()}>
         <ContextMenuItem onSelect={onTogglePin}>
           {isPinned ? (
             <>

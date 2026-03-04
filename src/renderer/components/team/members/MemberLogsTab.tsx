@@ -177,7 +177,7 @@ export const MemberLogsTab = ({
   }
 
   return (
-    <div className="max-h-[400px] w-full min-w-0 space-y-1.5 overflow-y-auto overflow-x-hidden pr-1">
+    <div className="w-full min-w-0 space-y-1.5">
       {logs.map((log) => (
         <LogCard
           key={
@@ -229,11 +229,11 @@ const LogCard = ({
   const timeAgo = formatRelativeTime(log.startTime);
 
   return (
-    <div className="min-w-0 overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
+    <div className="min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] [overflow:clip]">
       <Tooltip>
         <TooltipTrigger asChild>
           <button
-            className="flex w-full min-w-0 items-center gap-2 overflow-hidden px-3 py-2 text-left text-xs hover:bg-[var(--color-surface-raised)]"
+            className="sticky -top-6 z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-t-md border-b border-transparent bg-[var(--color-surface)] px-3 py-2 text-left text-xs hover:bg-[var(--color-surface-raised)]"
             onClick={onToggle}
           >
             {expanded ? (
@@ -279,7 +279,7 @@ const LogCard = ({
             </div>
           )}
           {!detailLoading && detailChunks && (
-            <div className="max-h-[360px] w-full min-w-0 overflow-y-auto overflow-x-hidden pr-1">
+            <div className="w-full min-w-0">
               <MemberExecutionLog
                 chunks={detailChunks}
                 memberName={log.kind === 'lead_session' ? (log.memberName ?? undefined) : undefined}

@@ -12,6 +12,7 @@ import { useStore } from '@renderer/store';
 import { getFileHunkCount, REVIEW_INSTANT_APPLY } from '@renderer/store/slices/changeReviewSlice';
 import { buildSelectionAction } from '@renderer/utils/buildSelectionAction';
 import { buildSelectionInfo, SELECTION_DEBOUNCE_MS } from '@renderer/utils/codemirrorSelectionInfo';
+import { sortItemsAsTree } from '@renderer/utils/fileTreeBuilder';
 import { ChevronDown, Clock, X } from 'lucide-react';
 
 import { acceptAllChunks, computeChunkIndexAtPos, rejectAllChunks } from './CodeMirrorDiffUtils';
@@ -171,11 +172,14 @@ export const ChangeReviewDialog = ({
     scrollContainerRef,
   });
 
-  // File paths for viewed tracking
-  const allFilePaths = useMemo(
-    () => (activeChangeSet?.files ?? []).map((f) => f.filePath),
+  // Sort files to match the visual order of the file tree (directories first, then alphabetical)
+  const sortedFiles = useMemo(
+    () => sortItemsAsTree(activeChangeSet?.files ?? [], (f) => f.relativePath),
     [activeChangeSet]
   );
+
+  // File paths for viewed tracking
+  const allFilePaths = useMemo(() => sortedFiles.map((f) => f.filePath), [sortedFiles]);
 
   const pathChangeLabels = useMemo(() => {
     if (!activeChangeSet)
@@ -599,7 +603,7 @@ export const ChangeReviewDialog = ({
   );
 
   const diffNav = useDiffNavigation(
-    activeChangeSet?.files ?? [],
+    sortedFiles,
     activeFilePath,
     scrollToFile,
     activeEditorViewRef,
@@ -1104,7 +1108,7 @@ export const ChangeReviewDialog = ({
               className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
             >
               <ContinuousScrollView
-                files={activeChangeSet.files}
+                files={sortedFiles}
                 fileContents={fileContents}
                 fileContentsLoading={fileContentsLoading}
                 viewedSet={viewedSet}

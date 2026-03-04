@@ -521,7 +521,7 @@ describe('TeamMemberLogsFinder', () => {
     const projectRoot = path.join(tmpDir, 'projects', projectId);
     await fs.mkdir(path.join(projectRoot, sessionId, 'subagents'), { recursive: true });
 
-    // Team A subagent referencing taskId 9 for team-a
+    // Team A subagent referencing taskId 9 (no team_name in tool input, as in Solo/older runs)
     await fs.writeFile(
       path.join(projectRoot, sessionId, 'subagents', 'agent-a1.jsonl'),
       [
@@ -542,7 +542,7 @@ describe('TeamMemberLogsFinder', () => {
               {
                 type: 'tool_use',
                 name: 'TaskUpdate',
-                input: { team_name: teamA, taskId: '9', status: 'in_progress' },
+                input: { taskId: '9', status: 'in_progress' },
               },
             ],
           },
@@ -551,7 +551,7 @@ describe('TeamMemberLogsFinder', () => {
       'utf8'
     );
 
-    // Team B subagent referencing taskId 9 for team-b (must NOT be included when querying team-a)
+    // Team B subagent referencing taskId 9 (must NOT be included when querying team-a)
     await fs.writeFile(
       path.join(projectRoot, sessionId, 'subagents', 'agent-b1.jsonl'),
       [
@@ -569,7 +569,7 @@ describe('TeamMemberLogsFinder', () => {
               {
                 type: 'tool_use',
                 name: 'TaskUpdate',
-                input: { team_name: teamB, taskId: '9', status: 'in_progress' },
+                input: { taskId: '9', status: 'in_progress' },
               },
             ],
           },

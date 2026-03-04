@@ -83,13 +83,14 @@ export const SidebarTaskItem = ({
   const displaySubject = getDisplaySubject?.(task) ?? task.subject;
   const [editValue, setEditValue] = useState(displaySubject);
   const inputRef = useRef<HTMLInputElement>(null);
-
   // Focus input when rename starts
   useEffect(() => {
-    if (isRenaming && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
+    if (!isRenaming) return;
+    const raf = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(raf);
   }, [isRenaming]);
 
   // Reset edit value when renaming starts
@@ -175,11 +176,8 @@ export const SidebarTaskItem = ({
                 onRenameCancel?.();
               }
             }}
-            className="min-w-0 flex-1 rounded border bg-transparent px-1 py-0 text-[13px] font-medium leading-tight text-text focus:outline-none"
-            style={{
-              borderColor: 'var(--color-border-emphasis)',
-              backgroundColor: 'var(--color-surface-raised)',
-            }}
+            className="min-w-0 flex-1 border-none bg-transparent p-0 text-[13px] font-medium leading-tight focus:outline-none"
+            style={{ color: 'var(--color-text-muted)' }}
             onClick={(e) => e.stopPropagation()}
           />
         ) : (

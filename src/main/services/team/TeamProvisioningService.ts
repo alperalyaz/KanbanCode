@@ -760,14 +760,22 @@ function buildLaunchPrompt(
   if (isSolo) {
     step2And3Block = `2) Skip — solo team, no teammates to spawn.
 
-3) Execute tasks sequentially and keep the board + user updated:
+3) SOLO TASK EXECUTION (IMPORTANT — timing matters):
+   - Do NOT start executing tasks in THIS reconnect turn.
+   - This turn is ONLY to reconnect and confirm you are ready.
+   - After the reconnect is marked ready, you will receive a follow-up message telling you to begin work.
+
+   When you receive that follow-up message:
+   - Execute tasks sequentially and keep the board + user updated:
    - Identify the next READY task (pending, not blocked by incomplete dependencies).
    - If the task is unassigned, set yourself ("${leadName}") as owner.
    - BEFORE doing any work on a task: mark it started (in_progress).
    - Immediately SendMessage "user" that you started task #<id> (what you're doing + next step).
    - While working: after each meaningful milestone/decision/blocker, add a task comment on #<id>. If the milestone is user-relevant, also SendMessage "user".
    - On completion: add a final task comment (what changed + how to verify), mark the task completed, then SendMessage "user" that task #<id> is complete and what you will do next.
-   - Do NOT start the next task until the current task is completed (default: one task in_progress at a time).`;
+   - Do NOT start the next task until the current task is completed (default: one task in_progress at a time).
+
+   For this reconnect turn: review the task board snapshot above and output a short summary (1–2 sentences) confirming reconnect is complete and you are ready.`;
   } else {
     // Build per-member task snapshots to include in each teammate's spawn prompt
     const memberTaskBlocks = new Map<string, string>();
@@ -859,7 +867,7 @@ Steps (execute in this exact order):
 
 ${step2And3Block}
 
-4) After all steps, output a short summary of reconnected members and resumed tasks.
+4) After all steps, output a short summary of reconnected members and what happens next.
 
 ${membersFooter}
 `;
@@ -2613,6 +2621,48 @@ export class TeamProvisioningService {
       void this.relayLeadInboxMessages(run.teamName).catch((e: unknown) =>
         logger.warn(`[${run.teamName}] post-reconnect relay failed: ${e}`)
       );
+
+      // Solo teams have no teammate processes to resume work; kick off task execution
+      // as a separate turn AFTER the launch is marked ready so the UI doesn't mix
+      // long-running task output into the "Launching team" live output stream.
+      if (run.request.members.length === 0) {
+        void (async () => {
+          try {
+            const taskReader = new TeamTaskReader();
+            const tasks = await taskReader.getTasks(run.teamName);
+            const active = tasks.filter(
+              (t) =>
+                (t.status === 'pending' || t.status === 'in_progress') &&
+                !t.id.startsWith('_internal')
+            );
+            if (active.length === 0) return;
+
+            const board = buildTaskBoardSnapshot(tasks);
+            const message = [
+              `Reconnected and ready. Begin executing tasks now.`,
+              `Execute tasks sequentially and keep the board + user updated:`,
+              `- Identify the next READY task (pending, not blocked by incomplete dependencies).`,
+              `- If the task is unassigned, set yourself as owner.`,
+              `- BEFORE doing any work on a task: mark it started (in_progress).`,
+              `- Immediately SendMessage "user" that you started task #<id> (what you're doing + next step).`,
+              `- While working: after each meaningful milestone/decision/blocker, add a task comment on #<id>. If user-relevant, also SendMessage "user".`,
+              `- On completion: add a final task comment (what changed + how to verify), mark the task completed, then SendMessage "user" that task #<id> is complete and what you will do next.`,
+              `- Do NOT start the next task until the current task is completed (default: one task in_progress at a time).`,
+              board.trim(),
+            ]
+              .filter(Boolean)
+              .join('\n\n');
+
+            await this.sendMessageToTeam(run.teamName, message);
+          } catch (error) {
+            logger.warn(
+              `[${run.teamName}] Failed to kick off solo task resumption: ${
+                error instanceof Error ? error.message : String(error)
+              }`
+            );
+          }
+        })();
+      }
       return;
     }
 

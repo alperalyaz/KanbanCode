@@ -129,7 +129,7 @@ export class TeamMemberLogsFinder {
       const leadJsonl = path.join(projectDir, `${config.leadSessionId}.jsonl`);
       try {
         await fs.access(leadJsonl);
-        if (await this.fileMentionsTaskId(leadJsonl, teamName, taskId)) {
+        if (await this.fileMentionsTaskId(leadJsonl, teamName, taskId, true)) {
           const leadSummary = await this.parseLeadSessionSummary(
             leadJsonl,
             projectId,
@@ -470,7 +470,8 @@ export class TeamMemberLogsFinder {
   private async fileMentionsTaskId(
     filePath: string,
     teamName: string,
-    taskId: string
+    taskId: string,
+    assumeTeam: boolean = false
   ): Promise<boolean> {
     const teamLower = teamName.trim().toLowerCase();
     const taskIdStr = taskId.trim();
@@ -505,16 +506,83 @@ export class TeamMemberLogsFinder {
       return Boolean(cmdTaskId && cmdTaskId === taskIdStr);
     };
 
+    const matchesTeamMentionText = (text: string): boolean => {
+      const t = text.toLowerCase();
+      if (!t.includes(teamLower)) return false;
+      // Strongest signal: spawn/system prompt format includes: on team "X" (X)
+      // Use substring checks to avoid regex word-boundary issues with kebab-case names.
+      if (t.includes(`on team "${teamLower}"`)) return true;
+      if (t.includes(`on team '${teamLower}'`)) return true;
+      if (t.includes(`on team ${teamLower}`)) return true;
+      if (t.includes(`(${teamLower})`)) return true;
+      return false;
+    };
+
+    const extractTeamFromProcess = (entry: Record<string, unknown>): string | null => {
+      const init = entry.init as Record<string, unknown> | undefined;
+      const process = (entry.process ?? init?.process) as Record<string, unknown> | undefined;
+      const team = process?.team as Record<string, unknown> | undefined;
+      const raw =
+        typeof team?.teamName === 'string'
+          ? team.teamName
+          : typeof team?.team_name === 'string'
+            ? team.team_name
+            : typeof team?.name === 'string'
+              ? team.name
+              : null;
+      return typeof raw === 'string' ? raw.trim() : null;
+    };
+
     try {
       const stream = createReadStream(filePath, { encoding: 'utf8' });
       const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+      let teamSeen = assumeTeam;
+      let taskSeenWithoutTeam = false;
       for await (const line of rl) {
         const trimmed = line.trim();
         if (!trimmed) continue;
         try {
           const entry = JSON.parse(trimmed) as Record<string, unknown>;
+          // Team detection (for TaskUpdate without team_name): accept only if we can
+          // confidently attribute the file to this team.
+          if (!teamSeen) {
+            const procTeam = extractTeamFromProcess(entry);
+            if (procTeam?.toLowerCase() === teamLower) {
+              teamSeen = true;
+            }
+          }
+          if (!teamSeen) {
+            const msg = entry.message as Record<string, unknown> | undefined;
+            const rawContent = msg?.content ?? entry.content;
+            if (typeof rawContent === 'string' && matchesTeamMentionText(rawContent)) {
+              teamSeen = true;
+            }
+          }
+
           const content = this.extractEntryContent(entry);
           if (!Array.isArray(content)) continue;
+
+          if (!teamSeen) {
+            // Check message text blocks for team mention (common in Solo spawn prompts)
+            for (const block of content) {
+              if (!block || typeof block !== 'object') continue;
+              const b = block as Record<string, unknown>;
+              if (
+                b.type === 'text' &&
+                typeof b.text === 'string' &&
+                matchesTeamMentionText(b.text)
+              ) {
+                teamSeen = true;
+                break;
+              }
+            }
+          }
+
+          if (teamSeen && taskSeenWithoutTeam) {
+            rl.close();
+            stream.destroy();
+            return true;
+          }
 
           for (const block of content) {
             if (!block || typeof block !== 'object') continue;
@@ -530,14 +598,24 @@ export class TeamMemberLogsFinder {
             const inputTeam = extractTeamFromInput(input);
             const rawTaskId = input.taskId ?? input.task_id;
             const inputTaskId = extractTaskIdFromUnknown(rawTaskId);
-            if (
-              inputTeam?.toLowerCase() === teamLower &&
-              inputTaskId &&
-              inputTaskId === taskIdStr
-            ) {
-              rl.close();
-              stream.destroy();
-              return true;
+            if (inputTaskId && inputTaskId === taskIdStr) {
+              // If team is present in the input, require exact match.
+              if (inputTeam) {
+                if (inputTeam.toLowerCase() === teamLower) {
+                  rl.close();
+                  stream.destroy();
+                  return true;
+                }
+              } else {
+                // Some agents use TaskUpdate without team_name (common in Solo).
+                // Only accept when we have a separate team marker for this file.
+                if (teamSeen) {
+                  rl.close();
+                  stream.destroy();
+                  return true;
+                }
+                taskSeenWithoutTeam = true;
+              }
             }
 
             // Deterministic CLI match: teamctl command line (Bash tool).
@@ -549,6 +627,12 @@ export class TeamMemberLogsFinder {
                 return true;
               }
             }
+          }
+
+          if (teamSeen && taskSeenWithoutTeam) {
+            rl.close();
+            stream.destroy();
+            return true;
           }
         } catch {
           // ignore parse errors

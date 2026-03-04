@@ -82,3 +82,29 @@ export function sortTreeNodes<T>(nodes: TreeNode<T>[]): TreeNode<T>[] {
     return a.name.localeCompare(b.name);
   });
 }
+
+/**
+ * Flatten a sorted tree into a list of leaf items in display order.
+ * Mirrors the visual order of ReviewFileTree (directories first, then alphabetical at each level).
+ */
+function collectLeaves<T>(nodes: TreeNode<T>[], out: T[]): void {
+  for (const node of sortTreeNodes(nodes)) {
+    if (node.isFile && node.data != null) {
+      out.push(node.data);
+    } else {
+      collectLeaves(node.children, out);
+    }
+  }
+}
+
+/**
+ * Sort a flat list of items to match the visual order of the file tree
+ * (directories first, then alphabetical at each level).
+ */
+export function sortItemsAsTree<T>(items: T[], getPath: (item: T) => string): T[] {
+  if (items.length <= 1) return items;
+  const tree = buildTree(items, getPath);
+  const result: T[] = [];
+  collectLeaves(tree, result);
+  return result;
+}

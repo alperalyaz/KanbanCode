@@ -545,7 +545,7 @@ export const TaskDetailDialog = ({
                 }
               }}
             >
-              <MarkdownViewer content={currentTask.description} maxHeight="max-h-[180px]" />
+              <MarkdownViewer content={currentTask.description} maxHeight="max-h-[180px]" bare />
               <Pencil
                 size={12}
                 className="mt-1 text-[var(--color-text-muted)] opacity-0 transition-opacity group-hover:opacity-100"
@@ -625,7 +625,7 @@ export const TaskDetailDialog = ({
             contentClassName="pl-2.5"
             defaultOpen
           >
-            <div className="min-w-0 overflow-hidden">
+            <div className="min-w-0">
               <MemberLogsTab
                 teamName={teamName}
                 taskId={currentTask.id}
