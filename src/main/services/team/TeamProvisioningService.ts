@@ -1086,20 +1086,10 @@ export class TeamProvisioningService {
 
     const warnings: string[] = [];
 
-    if (authSource === 'none') {
-      // No explicit auth found. Still attempt preflight — the CLI may
-      // authenticate through a mechanism we don't know about (e.g. a
-      // managed apiKeyHelper, SSO, or a future auth flow).
-      warnings.push(
-        'No explicit auth env var found (ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN). ' +
-          'Attempting preflight check to verify if CLI can authenticate on its own.'
-      );
-    }
-
-    if (authSource === 'anthropic_auth_token') {
-      warnings.push(
-        'Using ANTHROPIC_AUTH_TOKEN (proxy) mapped to ANTHROPIC_API_KEY for `-p` mode.'
-      );
+    if (authSource === 'anthropic_api_key') {
+      logger.info('Auth: using explicit ANTHROPIC_API_KEY');
+    } else if (authSource === 'anthropic_auth_token') {
+      logger.info('Auth: using ANTHROPIC_AUTH_TOKEN mapped to ANTHROPIC_API_KEY');
     }
 
     const probe = await this.probeClaudeRuntime(claudePath, targetCwd, executionEnv);
@@ -1463,13 +1453,7 @@ export class TeamProvisioningService {
 
       const prompt = buildProvisioningPrompt(request);
       let child: ReturnType<typeof spawn>;
-      const { env: shellEnv, authSource } = await this.buildProvisioningEnv();
-      if (authSource === 'none') {
-        logger.warn(
-          'No explicit auth env var found for `-p` mode. ' +
-            'Attempting spawn anyway — CLI may authenticate via apiKeyHelper, SSO, or other mechanism.'
-        );
-      }
+      const { env: shellEnv } = await this.buildProvisioningEnv();
       const spawnArgs = [
         '--input-format',
         'stream-json',
@@ -1769,13 +1753,7 @@ export class TeamProvisioningService {
 
       const prompt = buildLaunchPrompt(request, expectedMemberSpecs, existingTasks);
       let child: ReturnType<typeof spawn>;
-      const { env: shellEnv, authSource } = await this.buildProvisioningEnv();
-      if (authSource === 'none') {
-        logger.warn(
-          'No explicit auth env var found for `-p` mode (launch). ' +
-            'Attempting spawn anyway — CLI may authenticate via apiKeyHelper, SSO, or other mechanism.'
-        );
-      }
+      const { env: shellEnv } = await this.buildProvisioningEnv();
       const launchArgs = [
         '--input-format',
         'stream-json',
