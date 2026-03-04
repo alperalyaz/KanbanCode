@@ -41,6 +41,7 @@ interface LaunchTeamDialogProps {
   members: ResolvedTeamMember[];
   defaultProjectPath?: string;
   provisioningError: string | null;
+  clearProvisioningError?: () => void;
   activeTeams?: ActiveTeamRef[];
   onClose: () => void;
   onLaunch: (request: TeamLaunchRequest) => Promise<void>;
@@ -52,6 +53,7 @@ export const LaunchTeamDialog = ({
   members,
   defaultProjectPath,
   provisioningError,
+  clearProvisioningError,
   activeTeams,
   onClose,
   onLaunch,
@@ -100,6 +102,13 @@ export const LaunchTeamDialog = ({
     setClearContext(false);
     chipDraft.clearChipDraft();
   };
+
+  // Clear stale provisioning error when dialog opens
+  useEffect(() => {
+    if (open) {
+      clearProvisioningError?.();
+    }
+  }, [open, clearProvisioningError]);
 
   // Warm up CLI on open
   useEffect(() => {

@@ -22,7 +22,7 @@ import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { extractMarkdownPlainText } from '@shared/utils/markdownTextSearch';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
-import { AlertTriangle, ChevronRight, ListPlus, Reply } from 'lucide-react';
+import { AlertTriangle, ChevronRight, ListPlus, RefreshCw, Reply } from 'lucide-react';
 
 import { ReplyQuoteBlock } from './ReplyQuoteBlock';
 
@@ -44,6 +44,8 @@ interface ActivityItemProps {
   onReply?: (message: InboxMessage) => void;
   /** Called when a task ID link (e.g. #10) is clicked in message text. */
   onTaskIdClick?: (taskId: string) => void;
+  /** Called when the user clicks "Restart team" on an auth error message. */
+  onRestartTeam?: () => void;
   /** When true, apply a subtle lighter background for zebra-striped lists. */
   zebraShade?: boolean;
 }
@@ -132,6 +134,16 @@ function getSystemMessageLabel(text: string): string | null {
   return null;
 }
 
+/** Detect authentication/authorization errors that may be resolved by restarting. */
+const AUTH_ERROR_PATTERNS = [
+  /OAuth token has expired/i,
+  /API Error:\s*401/i,
+  /authentication_error/i,
+  /Failed to authenticate/i,
+  /invalid.*api.key/i,
+  /unauthorized/i,
+];
+
 // ---------------------------------------------------------------------------
 // Full message card — left colored border, name badge, collapsible content
 // ---------------------------------------------------------------------------
@@ -174,6 +186,7 @@ export const ActivityItem = ({
   onCreateTask,
   onReply,
   onTaskIdClick,
+  onRestartTeam,
   zebraShade,
 }: ActivityItemProps): React.JSX.Element => {
   const colors = getTeamColorSet(memberColor ?? message.color ?? '');
@@ -188,6 +201,8 @@ export const ActivityItem = ({
   const rateLimited = message.from !== 'user' && isRateLimitMessage(message.text);
   // Highlight messages containing API errors
   const isApiError = message.text.includes('API Error');
+  // Detect auth errors that may be resolved by restarting the team
+  const isAuthError = isApiError && AUTH_ERROR_PATTERNS.some((p) => p.test(message.text));
   // Never collapse rate limit messages as noise — they must be visible
   const noiseLabel = structured && !rateLimited ? getNoiseLabel(structured) : null;
 
@@ -448,6 +463,30 @@ export const ActivityItem = ({
             <p className="text-xs italic" style={{ color: CARD_TEXT_LIGHT }}>
               {summaryText}
             </p>
+          ) : null}
+          {/* Auth error recovery action */}
+          {isAuthError && onRestartTeam ? (
+            <div className="mt-2 flex items-start gap-2 rounded border border-red-500/30 bg-red-500/5 px-3 py-2">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0 text-red-400" />
+              <div className="flex-1 space-y-1.5">
+                <p className="text-[11px] leading-relaxed text-red-300/90">
+                  Authentication failed. Restarting the team will refresh the session and may
+                  resolve this issue. If the problem persists, check your API credentials or try
+                  again later.
+                </p>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-red-500/20 px-2.5 py-1 text-[11px] font-medium text-red-300 transition-colors hover:bg-red-500/30 hover:text-red-200"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRestartTeam();
+                  }}
+                >
+                  <RefreshCw size={11} />
+                  Restart team
+                </button>
+              </div>
+            </div>
           ) : null}
           {message.attachments?.length && message.messageId ? (
             <AttachmentDisplay

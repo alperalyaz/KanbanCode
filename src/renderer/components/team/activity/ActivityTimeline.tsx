@@ -23,6 +23,8 @@ interface ActivityTimelineProps {
   onMessageVisible?: (message: InboxMessage) => void;
   /** Called when a task ID link (e.g. #10) is clicked in message text. */
   onTaskIdClick?: (taskId: string) => void;
+  /** Called when the user clicks "Restart team" on an auth error message. */
+  onRestartTeam?: () => void;
 }
 
 const VIEWPORT_THRESHOLD = 0.15;
@@ -42,6 +44,7 @@ const MessageRowWithObserver = ({
   onReply,
   onVisible,
   onTaskIdClick,
+  onRestartTeam,
 }: {
   message: InboxMessage;
   teamName: string;
@@ -56,6 +59,7 @@ const MessageRowWithObserver = ({
   onReply?: (message: InboxMessage) => void;
   onVisible?: (message: InboxMessage) => void;
   onTaskIdClick?: (taskId: string) => void;
+  onRestartTeam?: () => void;
 }): React.JSX.Element => {
   const ref = useRef<HTMLDivElement>(null);
   const reportedRef = useRef(false);
@@ -101,6 +105,7 @@ const MessageRowWithObserver = ({
         onCreateTask={onCreateTask}
         onReply={onReply}
         onTaskIdClick={onTaskIdClick}
+        onRestartTeam={onRestartTeam}
       />
     </div>
   );
@@ -116,6 +121,7 @@ export const ActivityTimeline = ({
   onMemberClick,
   onMessageVisible,
   onTaskIdClick,
+  onRestartTeam,
 }: ActivityTimelineProps): React.JSX.Element => {
   const [visibleCount, setVisibleCount] = useState(MESSAGES_PAGE_SIZE);
 
@@ -273,6 +279,7 @@ export const ActivityTimeline = ({
             onReply={onReplyToMessage}
             onVisible={onMessageVisible}
             onTaskIdClick={onTaskIdClick}
+            onRestartTeam={onRestartTeam}
           />
         );
       })}

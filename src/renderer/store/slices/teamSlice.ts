@@ -258,6 +258,7 @@ export interface TeamSlice {
   leadActivityByTeam: Record<string, LeadActivityState>;
   activeProvisioningRunId: string | null;
   provisioningError: string | null;
+  clearProvisioningError: () => void;
   kanbanFilterQuery: string | null;
   provisioningProgressUnsubscribe: (() => void) | null;
   fetchBranches: (paths: string[]) => Promise<void>;
@@ -353,6 +354,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   leadActivityByTeam: {},
   activeProvisioningRunId: null,
   provisioningError: null,
+  clearProvisioningError: () => set({ provisioningError: null }),
   kanbanFilterQuery: null,
   globalTaskDetail: null,
   pendingReviewRequest: null,

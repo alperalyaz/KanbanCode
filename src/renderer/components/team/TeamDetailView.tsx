@@ -210,6 +210,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     updateMemberRole,
     launchTeam,
     provisioningError,
+    clearProvisioningError,
     isTeamProvisioning,
     leadActivityByTeam,
     refreshTeamData,
@@ -247,6 +248,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
       updateMemberRole: s.updateMemberRole,
       launchTeam: s.launchTeam,
       provisioningError: s.provisioningError,
+      clearProvisioningError: s.clearProvisioningError,
       isTeamProvisioning: Object.values(s.provisioningRuns).some(
         (run) => run.teamName === teamName && ACTIVE_PROVISIONING_STATES.has(run.state)
       ),
@@ -1285,6 +1287,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
               setSendDialogOpen(true);
             }}
             onMessageVisible={handleMessageVisible}
+            onRestartTeam={() => setLaunchDialogOpen(true)}
             onTaskIdClick={(taskId) => {
               const task = taskMap.get(taskId);
               if (task) setSelectedTask(task);
@@ -1485,6 +1488,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           members={data?.members ?? []}
           defaultProjectPath={data.config.projectPath}
           provisioningError={provisioningError}
+          clearProvisioningError={clearProvisioningError}
           activeTeams={activeTeamsForLaunch}
           onClose={() => setLaunchDialogOpen(false)}
           onLaunch={async (request) => {

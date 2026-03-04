@@ -72,6 +72,7 @@ interface CreateTeamDialogProps {
   open: boolean;
   canCreate: boolean;
   provisioningError: string | null;
+  clearProvisioningError?: () => void;
   existingTeamNames: string[];
   activeTeams?: ActiveTeamRef[];
   initialData?: TeamCopyData;
@@ -189,6 +190,7 @@ export const CreateTeamDialog = ({
   open,
   canCreate,
   provisioningError,
+  clearProvisioningError,
   existingTeamNames,
   activeTeams,
   initialData,
@@ -264,6 +266,13 @@ export const CreateTeamDialog = ({
     setSoloTeam(false);
     resetUIState();
   };
+
+  // Clear stale provisioning error when dialog opens
+  useEffect(() => {
+    if (open) {
+      clearProvisioningError?.();
+    }
+  }, [open, clearProvisioningError]);
 
   useEffect(() => {
     if (!open || !canCreate || !launchTeam) {
