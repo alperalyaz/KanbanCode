@@ -21,7 +21,7 @@ import { useStore } from '@renderer/store';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { normalizePath } from '@renderer/utils/pathNormalize';
-import { AlertTriangle, CheckCircle2, Loader2, RotateCcw } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2, RotateCcw, X } from 'lucide-react';
 
 import { ProjectPathSelector } from './ProjectPathSelector';
 import { computeEffectiveTeamModel, TeamModelSelector } from './TeamModelSelector';
@@ -79,6 +79,7 @@ export const LaunchTeamDialog = ({
     () => localStorage.getItem('team:lastExtendedContext') === 'true'
   );
   const [clearContext, setClearContext] = useState(false);
+  const [conflictDismissed, setConflictDismissed] = useState(false);
 
   const setSelectedModel = (value: string): void => {
     setSelectedModelRaw(value);
@@ -100,6 +101,7 @@ export const LaunchTeamDialog = ({
     setSelectedProjectPath('');
     setCustomCwd('');
     setClearContext(false);
+    setConflictDismissed(false);
     chipDraft.clearChipDraft();
   };
 
@@ -245,6 +247,11 @@ export const LaunchTeamDialog = ({
     );
   }, [activeTeams, effectiveCwd, teamName]);
 
+  // Reset dismiss when conflict target changes (different path or different conflicting team)
+  useEffect(() => {
+    setConflictDismissed(false);
+  }, [conflictingTeam?.teamName, effectiveCwd]);
+
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
   const mentionSuggestions = useMemo<MentionSuggestion[]>(
     () =>
@@ -305,11 +312,11 @@ export const LaunchTeamDialog = ({
           </DialogDescription>
         </DialogHeader>
 
-        {conflictingTeam ? (
+        {conflictingTeam && !conflictDismissed ? (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
-              <div className="min-w-0 space-y-1">
+              <div className="min-w-0 flex-1 space-y-1">
                 <p className="font-medium text-amber-300">
                   Team &ldquo;{conflictingTeam.displayName}&rdquo; is already running in this
                   project
@@ -319,6 +326,13 @@ export const LaunchTeamDialog = ({
                   same files. Consider using a different directory or a git worktree for isolation.
                 </p>
               </div>
+              <button
+                type="button"
+                className="shrink-0 rounded p-0.5 text-amber-400/60 transition-colors hover:text-amber-300"
+                onClick={() => setConflictDismissed(true)}
+              >
+                <X className="size-3.5" />
+              </button>
             </div>
           </div>
         ) : null}

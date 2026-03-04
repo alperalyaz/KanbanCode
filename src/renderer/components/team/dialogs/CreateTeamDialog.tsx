@@ -28,7 +28,7 @@ import { useFileListCacheWarmer } from '@renderer/hooks/useFileListCacheWarmer';
 import { cn } from '@renderer/lib/utils';
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import { getMemberColor } from '@shared/constants/memberColors';
-import { AlertTriangle, CheckCircle2, Info, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, Loader2, X } from 'lucide-react';
 
 import { ExtendedContextCheckbox } from './ExtendedContextCheckbox';
 import { ProjectPathSelector } from './ProjectPathSelector';
@@ -225,6 +225,7 @@ export const CreateTeamDialog = ({
   const [launchTeam, setLaunchTeam] = useState(true);
   const [soloTeam, setSoloTeam] = useState(false);
   const [teamColor, setTeamColor] = useState('');
+  const [conflictDismissed, setConflictDismissed] = useState(false);
   const [selectedModel, setSelectedModelRaw] = useState(() => {
     const stored = localStorage.getItem('team:lastSelectedModel') ?? '';
     return stored === '__default__' ? '' : stored;
@@ -250,6 +251,7 @@ export const CreateTeamDialog = ({
     setPrepareState('idle');
     setPrepareMessage(null);
     setPrepareWarnings([]);
+    setConflictDismissed(false);
   };
 
   const resetFormState = (): void => {
@@ -492,6 +494,11 @@ export const CreateTeamDialog = ({
     return activeTeams.find((t) => normalizePath(t.projectPath) === norm) ?? null;
   }, [activeTeams, effectiveCwd]);
 
+  // Reset dismiss when conflict target changes
+  useEffect(() => {
+    setConflictDismissed(false);
+  }, [conflictingTeam?.teamName, effectiveCwd]);
+
   const handleSubmit = (): void => {
     if (existingTeamNames.includes(sanitizedTeamName)) {
       setFieldErrors({ teamName: 'Team name already exists' });
@@ -565,11 +572,11 @@ export const CreateTeamDialog = ({
           </DialogDescription>
         </DialogHeader>
 
-        {conflictingTeam ? (
+        {conflictingTeam && !conflictDismissed ? (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
-              <div className="min-w-0 space-y-1">
+              <div className="min-w-0 flex-1 space-y-1">
                 <p className="font-medium text-amber-300">
                   Team &ldquo;{conflictingTeam.displayName}&rdquo; is already running in this
                   project
@@ -579,6 +586,13 @@ export const CreateTeamDialog = ({
                   same files. Consider using a different directory or a git worktree for isolation.
                 </p>
               </div>
+              <button
+                type="button"
+                className="shrink-0 rounded p-0.5 text-amber-400/60 transition-colors hover:text-amber-300"
+                onClick={() => setConflictDismissed(true)}
+              >
+                <X className="size-3.5" />
+              </button>
             </div>
           </div>
         ) : null}
