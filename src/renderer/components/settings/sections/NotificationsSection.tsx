@@ -16,6 +16,9 @@ import type { RepositoryDropdownItem, SafeConfig } from '../hooks/useSettingsCon
 import type { NotificationTrigger } from '@renderer/types/data';
 import type { TeamTaskStatus } from '@shared/types';
 
+/** Statuses available for notification filtering — real status values + kanban-only 'approved'. */
+type NotifiableStatus = TeamTaskStatus | 'approved';
+
 // Snooze duration options
 const SNOOZE_OPTIONS = [
   { value: 15, label: '15 minutes' },
@@ -44,7 +47,7 @@ interface NotificationsSectionProps {
       | 'statusChangeOnlySolo',
     value: boolean
   ) => void;
-  readonly onStatusChangeStatusesUpdate: (statuses: TeamTaskStatus[]) => void;
+  readonly onStatusChangeStatusesUpdate: (statuses: string[]) => void;
   readonly onSnooze: (minutes: number) => Promise<void>;
   readonly onClearSnooze: () => Promise<void>;
   readonly onAddIgnoredRepository: (item: RepositoryDropdownItem) => Promise<void>;
@@ -304,9 +307,10 @@ export const NotificationsSection = ({
   );
 };
 
-const STATUS_OPTIONS: { value: TeamTaskStatus; label: string }[] = [
+const STATUS_OPTIONS: { value: NotifiableStatus; label: string }[] = [
   { value: 'in_progress', label: 'Started' },
   { value: 'completed', label: 'Completed' },
+  { value: 'approved', label: 'Approved' },
   { value: 'pending', label: 'Pending' },
   { value: 'deleted', label: 'Deleted' },
 ];
@@ -316,8 +320,8 @@ const StatusCheckboxGroup = ({
   onChange,
   disabled,
 }: {
-  selected: TeamTaskStatus[];
-  onChange: (statuses: TeamTaskStatus[]) => void;
+  selected: string[];
+  onChange: (statuses: string[]) => void;
   disabled: boolean;
 }) => (
   <div className="flex flex-wrap gap-2">

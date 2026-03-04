@@ -256,7 +256,7 @@ const DEFAULT_CONFIG: AppConfig = {
     ignoredRepositories: [],
     snoozedUntil: null,
     snoozeMinutes: 30,
-    includeSubagentErrors: true,
+    includeSubagentErrors: false,
     notifyOnLeadInbox: false,
     notifyOnUserInbox: true,
     notifyOnClarifications: true,

@@ -294,7 +294,7 @@ export function useSettingsHandlers({
           ignoredRepositories: [],
           snoozedUntil: null,
           snoozeMinutes: 30,
-          includeSubagentErrors: true,
+          includeSubagentErrors: false,
           notifyOnLeadInbox: false,
           notifyOnUserInbox: true,
           notifyOnClarifications: true,

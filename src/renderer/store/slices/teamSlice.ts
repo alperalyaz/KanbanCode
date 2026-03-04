@@ -146,32 +146,46 @@ function detectStatusChangeNotifications(
   for (const task of newTasks) {
     const oldTask = oldTasks.find((t) => t.teamName === task.teamName && t.id === task.id);
     if (!oldTask) continue;
-    if (oldTask.status === task.status) continue;
+
+    // Detect kanbanColumn change to 'approved' (status stays 'completed', column changes)
+    const becameApproved = task.kanbanColumn === 'approved' && oldTask.kanbanColumn !== 'approved';
+
+    const statusChanged = oldTask.status !== task.status;
+    if (!statusChanged && !becameApproved) continue;
 
     if (onlySolo) {
       const team = teamByName[task.teamName];
       if (team && team.memberCount > 0) continue;
     }
 
-    if (!statuses.includes(task.status)) continue;
+    // Resolve the effective status for notification matching
+    const effectiveStatus = becameApproved ? 'approved' : task.status;
+    if (!statuses.includes(effectiveStatus)) continue;
 
-    const key = `${task.teamName}:${task.id}:${task.status}`;
+    const key = `${task.teamName}:${task.id}:${effectiveStatus}`;
     if (notifiedStatusChangeKeys.has(key)) continue;
     notifiedStatusChangeKeys.add(key);
 
-    fireStatusChangeNotification(task, oldTask.status);
+    const fromLabel = becameApproved ? 'Completed' : oldTask.status;
+    fireStatusChangeNotification(task, fromLabel, becameApproved ? 'approved' : undefined);
   }
 }
 
-function fireStatusChangeNotification(task: GlobalTask, fromStatus: string): void {
+function fireStatusChangeNotification(
+  task: GlobalTask,
+  fromStatus: string,
+  overrideToStatus?: string
+): void {
   const statusLabels: Record<string, string> = {
     pending: 'Pending',
     in_progress: 'In Progress',
     completed: 'Completed',
     deleted: 'Deleted',
+    approved: 'Approved',
   };
   const from = statusLabels[fromStatus] ?? fromStatus;
-  const to = statusLabels[task.status] ?? task.status;
+  const toStatus = overrideToStatus ?? task.status;
+  const to = statusLabels[toStatus] ?? toStatus;
 
   void api.teams
     ?.showMessageNotification({
@@ -445,6 +459,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
             notifiedClarificationTaskKeys.add(`${task.teamName}:${task.id}`);
           }
           notifiedStatusChangeKeys.add(`${task.teamName}:${task.id}:${task.status}`);
+          if (task.kanbanColumn === 'approved') {
+            notifiedStatusChangeKeys.add(`${task.teamName}:${task.id}:approved`);
+          }
         }
       }
 
