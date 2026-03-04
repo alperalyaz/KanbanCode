@@ -141,6 +141,10 @@ export const GlobalTaskList = ({
     setRenamingTaskKey(null);
   };
 
+  const handleRenameCancel = (): void => {
+    setRenamingTaskKey(null);
+  };
+
   // Fetch tasks on mount — loading guard in the store action prevents
   // duplicate IPC calls when the centralized init chain is already fetching.
   useEffect(() => {
@@ -210,6 +214,19 @@ export const GlobalTaskList = ({
     showArchived,
     taskLocalState,
   ]);
+
+  // Check if any archived tasks exist (before archive filtering) to conditionally show the toggle
+  const hasArchivedTasks = useMemo(
+    () => globalTasks.some((t) => taskLocalState.isArchived(t.teamName, t.id)),
+    [globalTasks, taskLocalState]
+  );
+
+  // Reset showArchived when archive becomes empty
+  useEffect(() => {
+    if (showArchived && !hasArchivedTasks) {
+      setShowArchived(false);
+    }
+  }, [showArchived, hasArchivedTasks]);
 
   // Split into pinned and normal (non-pinned) tasks
   const pinnedTasks = useMemo(
@@ -318,6 +335,7 @@ export const GlobalTaskList = ({
                 showTeamName
                 renamingKey={renamingTaskKey}
                 onRenameComplete={handleRenameComplete}
+                onRenameCancel={handleRenameCancel}
                 getDisplaySubject={(t) => taskLocalState.getRenamedSubject(t.teamName, t.id)}
               />
             </TaskContextMenu>
@@ -352,28 +370,30 @@ export const GlobalTaskList = ({
             );
           })}
         </div>
-        {/* Archive toggle */}
-        <div className="ml-auto">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => setShowArchived(!showArchived)}
-                className={cn(
-                  'rounded p-0.5 transition-colors',
-                  showArchived
-                    ? 'bg-surface-raised text-text-secondary'
-                    : 'text-text-muted hover:text-text-secondary'
-                )}
-              >
-                <Archive className="size-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              {showArchived ? 'Hide archived' : 'Show archived'}
-            </TooltipContent>
-          </Tooltip>
-        </div>
+        {/* Archive toggle — only visible when archived tasks exist */}
+        {hasArchivedTasks && (
+          <div className="ml-auto">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setShowArchived(!showArchived)}
+                  className={cn(
+                    'rounded p-0.5 transition-colors',
+                    showArchived
+                      ? 'bg-surface-raised text-text-secondary'
+                      : 'text-text-muted hover:text-text-secondary'
+                  )}
+                >
+                  <Archive className="size-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {showArchived ? 'Hide archived' : 'Show archived'}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -411,6 +431,7 @@ export const GlobalTaskList = ({
                 showTeamName
                 renamingKey={renamingTaskKey}
                 onRenameComplete={handleRenameComplete}
+                onRenameCancel={handleRenameCancel}
                 getDisplaySubject={(t) => taskLocalState.getRenamedSubject(t.teamName, t.id)}
               />
             </TaskContextMenu>
@@ -457,6 +478,7 @@ export const GlobalTaskList = ({
                           hideTeamName
                           renamingKey={renamingTaskKey}
                           onRenameComplete={handleRenameComplete}
+                          onRenameCancel={handleRenameCancel}
                           getDisplaySubject={(t) =>
                             taskLocalState.getRenamedSubject(t.teamName, t.id)
                           }
@@ -506,6 +528,7 @@ export const GlobalTaskList = ({
                           task={task}
                           renamingKey={renamingTaskKey}
                           onRenameComplete={handleRenameComplete}
+                          onRenameCancel={handleRenameCancel}
                           getDisplaySubject={(t) =>
                             taskLocalState.getRenamedSubject(t.teamName, t.id)
                           }

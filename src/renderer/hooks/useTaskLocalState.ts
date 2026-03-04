@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 const PINNED_KEY = 'taskPinnedIds';
 const ARCHIVED_KEY = 'taskArchivedIds';
@@ -136,15 +136,28 @@ export function useTaskLocalState(): TaskLocalState {
     });
   }, []);
 
-  return {
-    pinnedIds,
-    archivedIds,
-    renamedSubjects,
-    isPinned,
-    isArchived,
-    getRenamedSubject,
-    togglePin,
-    toggleArchive,
-    renameTask,
-  };
+  return useMemo(
+    () => ({
+      pinnedIds,
+      archivedIds,
+      renamedSubjects,
+      isPinned,
+      isArchived,
+      getRenamedSubject,
+      togglePin,
+      toggleArchive,
+      renameTask,
+    }),
+    [
+      pinnedIds,
+      archivedIds,
+      renamedSubjects,
+      isPinned,
+      isArchived,
+      getRenamedSubject,
+      togglePin,
+      toggleArchive,
+      renameTask,
+    ]
+  );
 }
