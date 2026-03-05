@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 
 import { ActivityItem, isNoiseMessage } from './ActivityItem';
-import { groupTimelineItems, LeadThoughtsGroupRow } from './LeadThoughtsGroup';
+import { groupTimelineItems, isLeadThought, LeadThoughtsGroupRow } from './LeadThoughtsGroup';
 
 import type { InboxMessage, ResolvedTeamMember } from '@shared/types';
 import type { TimelineItem } from './LeadThoughtsGroup';
@@ -134,11 +134,6 @@ export const ActivityTimeline = ({
   const isInitializedRef = useRef(false);
   const prevVisibleCountRef = useRef(visibleCount);
 
-  // Track whether the user was seeing ALL messages (no hidden ones).
-  // If so, auto-expand when new messages push count past the limit,
-  // so previously visible messages don't silently disappear.
-  const wasShowingAllRef = useRef(messages.length <= MESSAGES_PAGE_SIZE);
-
   const colorMap = members ? buildMemberColorMap(members) : new Map<string, string>();
   const memberInfo = new Map<string, { role?: string; color?: string }>();
   if (members) {
@@ -169,22 +164,33 @@ export const ActivityTimeline = ({
     if (member) onMemberClick?.(member);
   };
 
-  const hiddenCount = Math.max(0, messages.length - visibleCount);
+  // Pagination counts only significant (non-thought) messages so that lead thoughts
+  // don't consume the page limit — they collapse into a single visual group anyway.
+  const { visibleMessages, hiddenCount } = useMemo(() => {
+    const total = messages.length;
+    if (total === 0) return { visibleMessages: messages, hiddenCount: 0 };
 
-  // Auto-expand when user was seeing all and new messages arrive — derived state sync.
-  // Reading/updating ref during render is intentional (React docs: derived state sync).
-  /* eslint-disable react-hooks/refs -- intentional ref access during render for animation tracking */
+    let significantSeen = 0;
+    let cutoff = total;
+    for (let i = 0; i < total; i++) {
+      if (!isLeadThought(messages[i])) {
+        significantSeen++;
+        if (significantSeen > visibleCount) {
+          cutoff = i;
+          break;
+        }
+      }
+    }
 
-  const wasShowingAll = wasShowingAllRef.current;
-  if (wasShowingAll && hiddenCount > 0) {
-    setVisibleCount(messages.length);
-  }
-  wasShowingAllRef.current = hiddenCount === 0;
-
-  const visibleMessages = useMemo(
-    () => (hiddenCount > 0 ? messages.slice(0, visibleCount) : messages),
-    [messages, visibleCount, hiddenCount]
-  );
+    const significantTotal =
+      significantSeen +
+      (cutoff < total ? messages.slice(cutoff).filter((m) => !isLeadThought(m)).length : 0);
+    const hidden = Math.max(0, significantTotal - visibleCount);
+    return {
+      visibleMessages: cutoff < total ? messages.slice(0, cutoff) : messages,
+      hiddenCount: hidden,
+    };
+  }, [messages, visibleCount]);
 
   // Group consecutive lead thoughts into collapsible blocks.
   const timelineItems = useMemo(() => groupTimelineItems(visibleMessages), [visibleMessages]);
@@ -209,6 +215,7 @@ export const ActivityTimeline = ({
   }, [timelineItems]);
 
   // Determine which items are "new" (should animate).
+  /* eslint-disable react-hooks/refs -- intentional ref access during render for animation tracking */
 
   const newItemKeys = useMemo(() => {
     const getItemKey = (item: TimelineItem): string => {

@@ -297,17 +297,6 @@ export class TeamDataService {
       });
     }
 
-    // Enrich messages without leadSessionId: assign current session for lead_process/user_sent.
-    // lead_process messages surviving dedup are from the current session;
-    // user_sent messages written before this feature lack the field.
-    if (config.leadSessionId) {
-      for (const msg of messages) {
-        if (!msg.leadSessionId && (msg.source === 'lead_process' || msg.source === 'user_sent')) {
-          msg.leadSessionId = config.leadSessionId;
-        }
-      }
-    }
-
     messages.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
 
     let metaMembers: TeamConfig['members'] = [];

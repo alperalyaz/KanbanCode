@@ -22,7 +22,7 @@ export interface LeadThoughtGroup {
  */
 export function isLeadThought(msg: InboxMessage): boolean {
   if (msg.source === 'lead_session') return true;
-  if (msg.source === 'lead_process' && msg.messageId?.startsWith('lead-text-')) return true;
+  if (msg.source === 'lead_process') return true;
   return false;
 }
 
@@ -31,8 +31,8 @@ export type TimelineItem =
   | { type: 'lead-thoughts'; group: LeadThoughtGroup; originalIndices: number[] };
 
 /**
- * Group consecutive lead thoughts into collapsible blocks.
- * Single thoughts remain as regular messages.
+ * Group consecutive lead thoughts into compact blocks.
+ * Even a single thought gets its own group (rendered as LeadThoughtsGroupRow).
  */
 export function groupTimelineItems(messages: InboxMessage[]): TimelineItem[] {
   const result: TimelineItem[] = [];
@@ -41,19 +41,11 @@ export function groupTimelineItems(messages: InboxMessage[]): TimelineItem[] {
 
   const flushThoughts = (): void => {
     if (pendingThoughts.length === 0) return;
-    if (pendingThoughts.length === 1) {
-      result.push({
-        type: 'message',
-        message: pendingThoughts[0],
-        originalIndex: pendingIndices[0],
-      });
-    } else {
-      result.push({
-        type: 'lead-thoughts',
-        group: { type: 'lead-thoughts', thoughts: pendingThoughts },
-        originalIndices: pendingIndices,
-      });
-    }
+    result.push({
+      type: 'lead-thoughts',
+      group: { type: 'lead-thoughts', thoughts: pendingThoughts },
+      originalIndices: pendingIndices,
+    });
     pendingThoughts = [];
     pendingIndices = [];
   };
@@ -121,11 +113,8 @@ export const LeadThoughtsGroupRow = ({
   // Chronological order for rendering (oldest at top, newest at bottom)
   const chronologicalThoughts = useMemo(() => [...thoughts].reverse(), [thoughts]);
 
-  // Live indicator: newest thought is from lead_process and recent
-  const computeIsLive = useCallback(
-    () => newest.source === 'lead_process' && isRecentTimestamp(newest.timestamp),
-    [newest.source, newest.timestamp]
-  );
+  // Live indicator: newest thought is recent (actively streaming)
+  const computeIsLive = useCallback(() => isRecentTimestamp(newest.timestamp), [newest.timestamp]);
   const [isLive, setIsLive] = useState(computeIsLive);
 
   useEffect(() => {
@@ -173,7 +162,11 @@ export const LeadThoughtsGroupRow = ({
   }, []);
 
   return (
-    <div ref={ref} className={isNew ? 'message-enter-animate min-h-px' : 'min-h-px'}>
+    <div
+      ref={ref}
+      className={isNew ? 'message-enter-animate min-h-px' : 'min-h-px'}
+      style={{ overflowAnchor: 'none' }}
+    >
       <article
         className="group rounded-md [overflow:clip]"
         style={{

@@ -110,7 +110,6 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
       // Transitioning to non-persistent context: flush pending save and clear stale state
       flushPending();
       attachmentsRef.current = [];
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync reset on key transition
       setAttachments([]);
       return;
     }
@@ -120,7 +119,6 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
     flushPending();
     // Clear stale attachments from previous persistenceKey before loading
     attachmentsRef.current = [];
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync reset before async load
     setAttachments([]);
     void (async () => {
       const raw = await draftStorage.loadDraft(persistenceKey);

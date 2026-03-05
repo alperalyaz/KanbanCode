@@ -1415,44 +1415,44 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                 ? messagesUnreadCount
                 : undefined
             }
-            headerExtra={
-              <>
+            afterBadge={
+              messagesUnreadCount > 0 ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="pointer-events-auto size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                    <button
+                      type="button"
+                      className="pointer-events-auto flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-blue-400 transition-colors hover:bg-blue-500/10"
                       onClick={(e) => {
                         e.stopPropagation();
-                        void window.electronAPI.openExternal(
-                          'https://github.com/777genius/claude-notifications-go'
-                        );
+                        handleMarkAllRead();
                       }}
                     >
-                      <Bell size={12} />
-                    </Button>
+                      <CheckCheck size={12} />
+                    </button>
                   </TooltipTrigger>
-                  <TooltipContent side="top">Desktop notifications plugin</TooltipContent>
+                  <TooltipContent side="bottom">Mark all as read</TooltipContent>
                 </Tooltip>
-                {messagesUnreadCount > 0 && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="pointer-events-auto flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-blue-400 transition-colors hover:bg-blue-500/10"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMarkAllRead();
-                        }}
-                      >
-                        <CheckCheck size={12} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">Mark all as read</TooltipContent>
-                  </Tooltip>
-                )}
-              </>
+              ) : undefined
+            }
+            headerExtra={
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="pointer-events-auto size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void window.electronAPI.openExternal(
+                        'https://github.com/777genius/claude-notifications-go'
+                      );
+                    }}
+                  >
+                    <Bell size={12} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Desktop notifications plugin</TooltipContent>
+              </Tooltip>
             }
             defaultOpen
             action={
