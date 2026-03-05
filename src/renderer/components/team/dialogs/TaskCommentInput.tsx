@@ -9,7 +9,7 @@ import { buildReplyBlock } from '@renderer/utils/agentMessageFormatting';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { getModifierKeyName } from '@renderer/utils/keyboardUtils';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
-import { ImagePlus, Send, Trash2, X } from 'lucide-react';
+import { ImagePlus, Mic, Send, Trash2, X } from 'lucide-react';
 
 import type { MentionSuggestion } from '@renderer/types/mention';
 import type { CommentAttachmentPayload, ResolvedTeamMember } from '@shared/types';
@@ -86,10 +86,6 @@ export const TaskCommentInput = ({
           );
           continue;
         }
-        if (pendingAttachments.length >= MAX_ATTACHMENTS) {
-          setAttachError(`Maximum ${MAX_ATTACHMENTS} attachments per comment`);
-          break;
-        }
         const reader = new FileReader();
         reader.onload = () => {
           const result = reader.result as string;
@@ -97,7 +93,10 @@ export const TaskCommentInput = ({
           if (!base64) return;
           const id = crypto.randomUUID();
           setPendingAttachments((prev) => {
-            if (prev.length >= MAX_ATTACHMENTS) return prev;
+            if (prev.length >= MAX_ATTACHMENTS) {
+              setAttachError(`Maximum ${MAX_ATTACHMENTS} attachments per comment`);
+              return prev;
+            }
             return [
               ...prev,
               {
@@ -114,7 +113,7 @@ export const TaskCommentInput = ({
         reader.readAsDataURL(file);
       }
     },
-    [pendingAttachments.length]
+    []
   );
 
   const removeAttachment = useCallback((id: string) => {
@@ -256,6 +255,7 @@ export const TaskCommentInput = ({
           onValueChange={draft.setValue}
           suggestions={mentionSuggestions}
           projectPath={projectPath}
+          onModEnter={() => void handleSubmit()}
           minRows={2}
           maxRows={8}
           maxLength={MAX_COMMENT_LENGTH}
@@ -274,6 +274,18 @@ export const TaskCommentInput = ({
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="top">Attach image (or paste)</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex shrink-0 items-center rounded-full p-1.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text-secondary)]"
+                    onClick={() => void window.electronAPI.openExternal('https://voicetext.site')}
+                  >
+                    <Mic size={14} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Voice to text</TooltipContent>
               </Tooltip>
               <button
                 type="button"

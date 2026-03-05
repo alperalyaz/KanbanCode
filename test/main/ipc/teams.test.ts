@@ -46,6 +46,7 @@ vi.mock('@preload/constants/ipcChannels', () => ({
   TEAM_GET_ATTACHMENTS: 'team:getAttachments',
   TEAM_KILL_PROCESS: 'team:killProcess',
   TEAM_LEAD_ACTIVITY: 'team:leadActivity',
+  TEAM_LEAD_CONTEXT: 'team:leadContext',
   TEAM_SOFT_DELETE_TASK: 'team:softDeleteTask',
   TEAM_GET_DELETED_TASKS: 'team:getDeletedTasks',
   TEAM_SET_TASK_CLARIFICATION: 'team:setTaskClarification',
@@ -102,6 +103,14 @@ import {
   TEAM_ADD_TASK_RELATIONSHIP,
   TEAM_REMOVE_TASK_RELATIONSHIP,
   TEAM_REPLACE_MEMBERS,
+  TEAM_UPDATE_TASK_OWNER,
+  TEAM_UPDATE_TASK_FIELDS,
+  TEAM_LEAD_CONTEXT,
+  TEAM_RESTORE_TASK,
+  TEAM_SHOW_MESSAGE_NOTIFICATION,
+  TEAM_SAVE_TASK_ATTACHMENT,
+  TEAM_GET_TASK_ATTACHMENT,
+  TEAM_DELETE_TASK_ATTACHMENT,
 } from '../../../src/preload/constants/ipcChannels';
 import {
   initializeTeamHandlers,
@@ -231,6 +240,17 @@ describe('ipc teams handlers', () => {
     expect(handlers.has(TEAM_PERMANENTLY_DELETE)).toBe(true);
     expect(handlers.has(TEAM_ADD_TASK_RELATIONSHIP)).toBe(true);
     expect(handlers.has(TEAM_REMOVE_TASK_RELATIONSHIP)).toBe(true);
+    expect(handlers.has(TEAM_UPDATE_TASK_OWNER)).toBe(true);
+    expect(handlers.has(TEAM_UPDATE_TASK_FIELDS)).toBe(true);
+    expect(handlers.has(TEAM_REPLACE_MEMBERS)).toBe(true);
+    expect(handlers.has(TEAM_GET_PROJECT_BRANCH)).toBe(true);
+    expect(handlers.has(TEAM_GET_ATTACHMENTS)).toBe(true);
+    expect(handlers.has(TEAM_LEAD_CONTEXT)).toBe(true);
+    expect(handlers.has(TEAM_RESTORE_TASK)).toBe(true);
+    expect(handlers.has(TEAM_SHOW_MESSAGE_NOTIFICATION)).toBe(true);
+    expect(handlers.has(TEAM_SAVE_TASK_ATTACHMENT)).toBe(true);
+    expect(handlers.has(TEAM_GET_TASK_ATTACHMENT)).toBe(true);
+    expect(handlers.has(TEAM_DELETE_TASK_ATTACHMENT)).toBe(true);
   });
 
   it('returns success false on invalid sendMessage args', async () => {
@@ -552,6 +572,15 @@ describe('ipc teams handlers', () => {
     expect(handlers.has(TEAM_PERMANENTLY_DELETE)).toBe(false);
     expect(handlers.has(TEAM_ADD_TASK_RELATIONSHIP)).toBe(false);
     expect(handlers.has(TEAM_REMOVE_TASK_RELATIONSHIP)).toBe(false);
+    expect(handlers.has(TEAM_UPDATE_TASK_OWNER)).toBe(false);
+    expect(handlers.has(TEAM_UPDATE_TASK_FIELDS)).toBe(false);
+    expect(handlers.has(TEAM_REPLACE_MEMBERS)).toBe(false);
+    expect(handlers.has(TEAM_LEAD_CONTEXT)).toBe(false);
+    expect(handlers.has(TEAM_RESTORE_TASK)).toBe(false);
+    expect(handlers.has(TEAM_SHOW_MESSAGE_NOTIFICATION)).toBe(false);
+    expect(handlers.has(TEAM_SAVE_TASK_ATTACHMENT)).toBe(false);
+    expect(handlers.has(TEAM_GET_TASK_ATTACHMENT)).toBe(false);
+    expect(handlers.has(TEAM_DELETE_TASK_ATTACHMENT)).toBe(false);
   });
 
   describe('addTaskRelationship', () => {

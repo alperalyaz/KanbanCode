@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
@@ -89,28 +89,40 @@ export const CreateTaskDialog = ({
   const promptDraft = useDraftPersistence({ key: `createTask:${teamName}:prompt` });
   const [blockedBySearch, setBlockedBySearch] = useState('');
   const [relatedSearch, setRelatedSearch] = useState('');
-  const [prevOpen, setPrevOpen] = useState(false);
+  const prevOpenRef = useRef(false);
 
-  if (open && !prevOpen) {
-    setSubject(defaultSubject);
-    if (defaultChip) {
-      const token = chipToken(defaultChip);
-      descriptionDraft.setValue(token + '\n');
-      descChipDraft.setChips([defaultChip]);
-    } else if (defaultDescription) {
-      descriptionDraft.setValue(defaultDescription);
+  // Reset form when dialog opens (avoid setState during render)
+  useEffect(() => {
+    if (open && !prevOpenRef.current) {
+      setSubject(defaultSubject);
+      if (defaultChip) {
+        const token = chipToken(defaultChip);
+        descriptionDraft.setValue(token + '\n');
+        descChipDraft.setChips([defaultChip]);
+      } else if (defaultDescription) {
+        descriptionDraft.setValue(defaultDescription);
+      }
+      setOwner(defaultOwner);
+      setBlockedBy([]);
+      setRelated([]);
+      setStartImmediately(defaultStartImmediately ?? isTeamAlive);
+      promptDraft.clearDraft();
+      setBlockedBySearch('');
+      setRelatedSearch('');
     }
-    setOwner(defaultOwner);
-    setBlockedBy([]);
-    setRelated([]);
-    setStartImmediately(defaultStartImmediately ?? isTeamAlive);
-    promptDraft.clearDraft();
-    setBlockedBySearch('');
-    setRelatedSearch('');
-  }
-  if (open !== prevOpen) {
-    setPrevOpen(open);
-  }
+    prevOpenRef.current = open;
+  }, [
+    open,
+    defaultSubject,
+    defaultDescription,
+    defaultOwner,
+    defaultStartImmediately,
+    defaultChip,
+    isTeamAlive,
+    descriptionDraft,
+    descChipDraft,
+    promptDraft,
+  ]);
 
   const mentionSuggestions = useMemo<MentionSuggestion[]>(
     () =>

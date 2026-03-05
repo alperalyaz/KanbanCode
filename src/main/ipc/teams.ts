@@ -937,6 +937,13 @@ async function handleSendMessage(
       }
 
       if (stdinSent) {
+        const attachmentMeta: AttachmentMeta[] | undefined = validatedAttachments?.map((a) => ({
+          id: a.id,
+          filename: a.filename,
+          mimeType: a.mimeType,
+          size: a.size,
+        }));
+
         // Persistence is best-effort — stdin already delivered the message
         let result: SendMessageResult;
         try {
@@ -944,19 +951,13 @@ async function handleSendMessage(
             tn,
             leadName,
             payload.text!,
-            payload.summary
+            payload.summary,
+            attachmentMeta
           );
         } catch (persistError) {
           logger.warn(`Persistence failed after stdin delivery for ${tn}: ${String(persistError)}`);
           result = { deliveredToInbox: false, messageId: `stdin-${Date.now()}` };
         }
-
-        const attachmentMeta: AttachmentMeta[] | undefined = validatedAttachments?.map((a) => ({
-          id: a.id,
-          filename: a.filename,
-          mimeType: a.mimeType,
-          size: a.size,
-        }));
 
         // Save attachment binary data to disk (best-effort)
         if (validatedAttachments?.length && result.messageId) {

@@ -181,6 +181,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
   const [kanbanFilter, setKanbanFilter] = useState<KanbanFilterState>({
     sessionId: null,
     selectedOwners: new Set(),
+    columns: new Set(),
   });
 
   const {
@@ -1221,7 +1222,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
               <div className="flex w-36 items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-transparent px-2 py-1">
                 <Search size={12} className="shrink-0 text-[var(--color-text-muted)]" />
                 <input
-                  type="search"
+                  type="text"
                   placeholder="Search..."
                   value={messagesSearchQuery}
                   onChange={(e) => setMessagesSearchQuery(e.target.value)}
@@ -1229,6 +1230,15 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                   onClick={(e) => e.stopPropagation()}
                   className="min-w-0 flex-1 bg-transparent text-xs text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none"
                 />
+                {messagesSearchQuery && (
+                  <button
+                    type="button"
+                    className="shrink-0 rounded p-0.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
+                    onClick={() => setMessagesSearchQuery('')}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
               <MessagesFilterPopover
                 filter={messagesFilter}
@@ -1411,13 +1421,15 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           open={addMemberDialogOpen}
           teamName={teamName}
           existingNames={data.members.map((m) => m.name)}
+          existingMembers={data.members}
+          projectPath={data.config.projectPath}
           adding={addingMemberLoading}
           onClose={() => setAddMemberDialogOpen(false)}
-          onAdd={(name, role) => {
+          onAdd={(name, role, workflow) => {
             setAddingMemberLoading(true);
             void (async () => {
               try {
-                await addMember(teamName, { name, role });
+                await addMember(teamName, { name, role, workflow });
                 setAddMemberDialogOpen(false);
               } catch {
                 // error shown via store

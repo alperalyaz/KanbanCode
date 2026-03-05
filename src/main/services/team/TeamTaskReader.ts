@@ -172,8 +172,12 @@ export class TeamTaskReader {
             : 'pending',
           workIntervals,
           statusHistory,
-          blocks: Array.isArray(parsed.blocks) ? (parsed.blocks as string[]) : undefined,
-          blockedBy: Array.isArray(parsed.blockedBy) ? (parsed.blockedBy as string[]) : undefined,
+          blocks: Array.isArray(parsed.blocks)
+            ? (parsed.blocks as unknown[]).filter((id): id is string => typeof id === 'string')
+            : undefined,
+          blockedBy: Array.isArray(parsed.blockedBy)
+            ? (parsed.blockedBy as unknown[]).filter((id): id is string => typeof id === 'string')
+            : undefined,
           related: Array.isArray(parsed.related)
             ? (parsed.related as unknown[]).filter((id): id is string => typeof id === 'string')
             : undefined,
@@ -197,19 +201,30 @@ export class TeamTaskReader {
                     ? c.type
                     : ('regular' as const),
                   attachments: Array.isArray(c.attachments)
-                    ? (c.attachments as unknown[]).filter(
-                        (a): a is TaskAttachmentMeta =>
-                          Boolean(a) &&
-                          typeof a === 'object' &&
-                          typeof (a as Record<string, unknown>).id === 'string' &&
-                          typeof (a as Record<string, unknown>).filename === 'string' &&
-                          typeof (a as Record<string, unknown>).mimeType === 'string' &&
-                          VALID_ATTACHMENT_MIME_TYPES.has(
-                            (a as Record<string, unknown>).mimeType as string
-                          ) &&
-                          typeof (a as Record<string, unknown>).size === 'number' &&
-                          typeof (a as Record<string, unknown>).addedAt === 'string'
-                      )
+                    ? (() => {
+                        const filtered = (c.attachments as unknown[])
+                          .filter(
+                            (a): a is TaskAttachmentMeta =>
+                              Boolean(a) &&
+                              typeof a === 'object' &&
+                              typeof (a as Record<string, unknown>).id === 'string' &&
+                              typeof (a as Record<string, unknown>).filename === 'string' &&
+                              typeof (a as Record<string, unknown>).mimeType === 'string' &&
+                              VALID_ATTACHMENT_MIME_TYPES.has(
+                                (a as Record<string, unknown>).mimeType as string
+                              ) &&
+                              typeof (a as Record<string, unknown>).size === 'number' &&
+                              typeof (a as Record<string, unknown>).addedAt === 'string'
+                          )
+                          .map((a) => ({
+                            id: a.id,
+                            filename: a.filename,
+                            mimeType: a.mimeType,
+                            size: a.size,
+                            addedAt: a.addedAt,
+                          }));
+                        return filtered.length > 0 ? filtered : undefined;
+                      })()
                     : undefined,
                 }))
             : undefined,
@@ -255,6 +270,9 @@ export class TeamTaskReader {
         await yieldToEventLoop();
       }
     }
+
+    // Sort by numeric ID so kanban default order is deterministic (#1, #2, ..., #10, #11)
+    tasks.sort((a, b) => Number(a.id) - Number(b.id));
 
     return tasks;
   }

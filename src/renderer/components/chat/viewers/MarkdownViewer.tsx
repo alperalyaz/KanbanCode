@@ -1,8 +1,9 @@
 import React from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
+import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markdown';
 
 import { api } from '@renderer/api';
 import { CopyButton } from '@renderer/components/common/CopyButton';
+import { TaskTooltip } from '@renderer/components/team/TaskTooltip';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import {
   CODE_BG,
@@ -59,6 +60,15 @@ interface MarkdownViewerProps {
 // =============================================================================
 // Helpers
 // =============================================================================
+
+/**
+ * Custom URL transform that preserves task:// and mention:// protocols.
+ * react-markdown v10 strips non-standard protocols by default.
+ */
+function allowCustomProtocols(url: string): string {
+  if (url.startsWith('task://') || url.startsWith('mention://')) return url;
+  return defaultUrlTransform(url);
+}
 
 /** Check if a URL is relative (not absolute, not data, not mailto, not hash) */
 function isRelativeUrl(url: string): boolean {
@@ -200,13 +210,18 @@ function createViewerMarkdownComponents(searchCtx: SearchContext | null): Compon
     ),
 
     // Links — inline element, no hl(); parent block element's hl() descends here
-    // task:// links are handled by ancestor onClickCapture handlers (e.g. ActivityItem)
+    // task:// links render with TaskTooltip + are clickable via ancestor onClickCapture
     // mention:// links render as colored inline badges
     a: ({ href, children }) => {
       if (href?.startsWith('mention://')) {
         const path = href.slice('mention://'.length);
         const slashIdx = path.indexOf('/');
-        const color = slashIdx >= 0 ? decodeURIComponent(path.slice(0, slashIdx)) : '';
+        let color = '';
+        try {
+          color = slashIdx >= 0 ? decodeURIComponent(path.slice(0, slashIdx)) : '';
+        } catch {
+          // malformed percent-encoding — use empty color
+        }
         const colorSet = getTeamColorSet(color);
         const bg = colorSet.badge;
         return (
@@ -223,6 +238,21 @@ function createViewerMarkdownComponents(searchCtx: SearchContext | null): Compon
           </span>
         );
       }
+      if (href?.startsWith('task://')) {
+        const taskId = href.slice('task://'.length);
+        return (
+          <TaskTooltip taskId={taskId}>
+            <a
+              href={href}
+              className="cursor-pointer font-medium no-underline hover:underline"
+              style={{ color: PROSE_LINK }}
+              onClick={(e) => e.preventDefault()}
+            >
+              {children}
+            </a>
+          </TaskTooltip>
+        );
+      }
       return (
         <a
           href={href}
@@ -230,7 +260,7 @@ function createViewerMarkdownComponents(searchCtx: SearchContext | null): Compon
           style={{ color: PROSE_LINK }}
           onClick={(e) => {
             e.preventDefault();
-            if (href && !href.startsWith('task://')) {
+            if (href) {
               void api.openExternal(href);
             }
           }}
@@ -629,6 +659,7 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
             remarkPlugins={[remarkGfm]}
             rehypePlugins={disableHighlight ? REHYPE_PLUGINS_NO_HIGHLIGHT : REHYPE_PLUGINS}
             components={components}
+            urlTransform={allowCustomProtocols}
           >
             {content}
           </ReactMarkdown>

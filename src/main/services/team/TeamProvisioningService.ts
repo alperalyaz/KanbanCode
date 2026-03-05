@@ -1028,7 +1028,8 @@ export class TeamProvisioningService {
     const run = this.runs.get(runId);
     if (!run?.leadContextUsage || run.processKilled || run.cancelRequested) return null;
     const { currentTokens, contextWindow } = run.leadContextUsage;
-    const percent = contextWindow > 0 ? Math.round((currentTokens / contextWindow) * 100) : 0;
+    const percentRaw = contextWindow > 0 ? Math.round((currentTokens / contextWindow) * 100) : 0;
+    const percent = Math.max(0, Math.min(100, percentRaw));
     return { currentTokens, contextWindow, percent, updatedAt: new Date().toISOString() };
   }
 
@@ -1055,7 +1056,8 @@ export class TeamProvisioningService {
     }
     run.leadContextUsage.lastEmittedAt = now;
     const { currentTokens, contextWindow } = run.leadContextUsage;
-    const percent = contextWindow > 0 ? Math.round((currentTokens / contextWindow) * 100) : 0;
+    const percentRaw = contextWindow > 0 ? Math.round((currentTokens / contextWindow) * 100) : 0;
+    const percent = Math.max(0, Math.min(100, percentRaw));
     const payload: LeadContextUsage = {
       currentTokens,
       contextWindow,
@@ -2584,11 +2586,18 @@ export class TeamProvisioningService {
               typeof modelData.contextWindow === 'number' &&
               modelData.contextWindow > 0
             ) {
-              if (run.leadContextUsage) {
+              if (!run.leadContextUsage) {
+                run.leadContextUsage = {
+                  currentTokens: 0,
+                  contextWindow: modelData.contextWindow,
+                  lastUsageMessageId: null,
+                  lastEmittedAt: 0,
+                };
+              } else {
                 run.leadContextUsage.contextWindow = modelData.contextWindow;
                 run.leadContextUsage.lastEmittedAt = 0; // force re-emit
-                this.emitLeadContextUsage(run);
               }
+              this.emitLeadContextUsage(run);
               break;
             }
           }
@@ -2610,9 +2619,18 @@ export class TeamProvisioningService {
               ? resultUsage.cache_read_input_tokens
               : 0;
           const total = inp + cc + cr;
-          if (total > 0 && run.leadContextUsage) {
-            run.leadContextUsage.currentTokens = total;
-            run.leadContextUsage.lastEmittedAt = 0;
+          if (total > 0) {
+            if (!run.leadContextUsage) {
+              run.leadContextUsage = {
+                currentTokens: total,
+                contextWindow: 0,
+                lastUsageMessageId: null,
+                lastEmittedAt: 0,
+              };
+            } else {
+              run.leadContextUsage.currentTokens = total;
+              run.leadContextUsage.lastEmittedAt = 0;
+            }
             this.emitLeadContextUsage(run);
           }
         }

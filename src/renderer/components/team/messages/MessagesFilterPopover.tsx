@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { Button } from '@renderer/components/ui/button';
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { useStore } from '@renderer/store';
+import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { Filter } from 'lucide-react';
 
 import type { InboxMessage } from '@shared/types';
@@ -56,6 +59,9 @@ export const MessagesFilterPopover = ({
       queueMicrotask(schedule);
     }
   }, [open, filter.from, filter.to]);
+
+  const members = useStore((s) => s.selectedTeamData?.members ?? []);
+  const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
 
   const fromOptions = useMemo(() => collectFromOptions(messages), [messages]);
   const toOptions = useMemo(() => collectToOptions(messages), [messages]);
@@ -132,7 +138,7 @@ export const MessagesFilterPopover = ({
                     checked={draft.from.has(name)}
                     onCheckedChange={() => toggleFrom(name)}
                   />
-                  {name}
+                  <MemberBadge name={name} color={colorMap.get(name)} size="sm" hideAvatar={name === 'user'} />
                 </label>
               ))
             )}
@@ -152,7 +158,7 @@ export const MessagesFilterPopover = ({
                   className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-0.5 text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)]"
                 >
                   <Checkbox checked={draft.to.has(name)} onCheckedChange={() => toggleTo(name)} />
-                  {name}
+                  <MemberBadge name={name} color={colorMap.get(name)} size="sm" hideAvatar={name === 'user'} />
                 </label>
               ))
             )}

@@ -6,6 +6,7 @@ import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { MemberLogsTab } from '@renderer/components/team/members/MemberLogsTab';
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
+import { ExpandableContent } from '@renderer/components/ui/ExpandableContent';
 import {
   Dialog,
   DialogContent,
@@ -545,7 +546,7 @@ export const TaskDetailDialog = ({
             <div
               role="button"
               tabIndex={0}
-              className="group max-h-[200px] cursor-pointer overflow-y-auto"
+              className="group cursor-pointer"
               onClick={startEditDescription}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -554,7 +555,9 @@ export const TaskDetailDialog = ({
                 }
               }}
             >
-              <MarkdownViewer content={currentTask.description} maxHeight="max-h-[180px]" bare />
+              <ExpandableContent collapsedHeight={200}>
+                <MarkdownViewer content={currentTask.description} maxHeight="max-h-none" bare />
+              </ExpandableContent>
               <Pencil
                 size={12}
                 className="mt-1 text-[var(--color-text-muted)] opacity-0 transition-opacity group-hover:opacity-100"
@@ -858,18 +861,20 @@ export const TaskDetailDialog = ({
               ? (currentTask.comments?.length ?? 0)
               : undefined
           }
-          contentClassName="pl-2.5"
+          contentClassName="overflow-x-visible pl-0"
           headerClassName="-mx-6 w-[calc(100%+3rem)]"
           headerContentClassName="pl-6"
           defaultOpen
         >
-          <TaskCommentInput
-            teamName={teamName}
-            taskId={currentTask.id}
-            members={members}
-            replyTo={effectiveReplyTo}
-            onClearReply={clearReply}
-          />
+          <div className="pl-2.5">
+            <TaskCommentInput
+              teamName={teamName}
+              taskId={currentTask.id}
+              members={members}
+              replyTo={effectiveReplyTo}
+              onClearReply={clearReply}
+            />
+          </div>
           <TaskCommentsSection
             teamName={teamName}
             taskId={currentTask.id}
@@ -879,6 +884,7 @@ export const TaskDetailDialog = ({
             hideInput
             onReply={handleReply}
             onTaskIdClick={onScrollToTask ? (taskId) => handleDependencyClick(taskId) : undefined}
+            containerClassName="-mx-6"
           />
         </CollapsibleTeamSection>
 

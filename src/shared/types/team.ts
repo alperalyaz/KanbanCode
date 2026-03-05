@@ -444,6 +444,7 @@ export interface MemberFullStats {
 export interface AddMemberRequest {
   name: string;
   role?: string;
+  workflow?: string;
 }
 
 export interface RemoveMemberRequest {

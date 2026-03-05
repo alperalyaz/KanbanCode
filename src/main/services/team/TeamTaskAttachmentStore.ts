@@ -21,6 +21,9 @@ export class TeamTaskAttachmentStore {
   private assertSafePathSegment(label: string, value: string): void {
     if (
       value.length === 0 ||
+      value.trim().length === 0 ||
+      value === '.' ||
+      value === '..' ||
       value.includes('/') ||
       value.includes('\\') ||
       value.includes('..') ||

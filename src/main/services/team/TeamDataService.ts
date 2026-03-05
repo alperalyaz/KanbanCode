@@ -32,6 +32,7 @@ import { TeamTaskWriter } from './TeamTaskWriter';
 
 import type {
   AddMemberRequest,
+  AttachmentMeta,
   CreateTaskRequest,
   GlobalTask,
   InboxMessage,
@@ -631,6 +632,7 @@ export class TeamDataService {
     const newMember: TeamMember = {
       name: request.name,
       role: request.role?.trim() || undefined,
+      workflow: request.workflow?.trim() || undefined,
       agentType: 'general-purpose',
       color: getMemberColor(members.filter((m) => !m.removedAt).length),
       joinedAt: Date.now(),
@@ -1001,6 +1003,8 @@ export class TeamDataService {
       ]);
       const task = tasks.find((t) => t.id === taskId);
       const leadName = this.resolveLeadNameFromConfig(config);
+      const owner = task?.owner?.trim() || null;
+      const normalizedOwner = owner?.toLowerCase() ?? null;
 
       // Auto-clear needsClarification: "user" on UI comment
       // UI comments always have author "user" (TeamTaskWriter default)
@@ -1008,7 +1012,7 @@ export class TeamDataService {
         await this.taskWriter.setNeedsClarification(teamName, taskId, null);
       }
 
-      if (task?.owner && !this.isLeadOwner(task.owner, leadName)) {
+      if (task && owner && !this.isLeadOwner(owner, leadName)) {
         // Notify non-lead task owner via inbox (lead → member message)
         const parts = [
           `Comment on task #${taskId} "${task.subject}":\n\n${text}`,
@@ -1018,12 +1022,12 @@ export class TeamDataService {
           AGENT_BLOCK_CLOSE,
         ];
         await this.sendMessage(teamName, {
-          member: task.owner,
+          member: owner,
           from: leadName,
           text: parts.join('\n'),
           summary: `Comment on #${taskId}`,
         });
-      } else if (task?.owner && this.isLeadOwner(task.owner, leadName)) {
+      } else if (task && owner && this.isLeadOwner(owner, leadName)) {
         // Notify lead about user's comment on their own task.
         // Write to lead's inbox — relay delivers to stdin when process is alive.
         const parts = [
@@ -1076,7 +1080,8 @@ export class TeamDataService {
     teamName: string,
     leadName: string,
     text: string,
-    summary?: string
+    summary?: string,
+    attachments?: AttachmentMeta[]
   ): Promise<SendMessageResult> {
     const messageId = randomUUID();
     const msg: InboxMessage = {
@@ -1088,6 +1093,7 @@ export class TeamDataService {
       summary,
       messageId,
       source: 'user_sent',
+      attachments: attachments?.length ? attachments : undefined,
     };
     await this.sentMessagesStore.appendMessage(teamName, msg);
     return { deliveredToInbox: false, deliveredViaStdin: true, messageId };
@@ -1217,9 +1223,23 @@ export class TeamDataService {
     // Dedup broadcasts: same sender + same text → process only once
     const processedTexts = new Set<string>();
 
+    function isAutomatedCommentNotification(msg: InboxMessage): boolean {
+      const summary = typeof msg.summary === 'string' ? msg.summary : '';
+      if (!/^Comment on #\d+/.test(summary)) return false;
+      const text = typeof msg.text === 'string' ? msg.text : '';
+      if (!text) return false;
+      // These are system-generated inbox messages that already correspond to a real task comment.
+      // Syncing them into task.comments causes an immediate "duplicate" (lead echo) in the UI.
+      if (text.includes('Reply to this comment using:')) return true;
+      if (text.startsWith('Comment on task #')) return true;
+      if (text.startsWith('New comment from user on your task #')) return true;
+      return false;
+    }
+
     for (const msg of messages) {
       if (!msg.messageId || !msg.summary || msg.from === 'user') continue;
       if (msg.source === 'lead_session' || msg.source === 'lead_process') continue;
+      if (isAutomatedCommentNotification(msg)) continue;
 
       const textKey = `${msg.from}\0${msg.text}`;
       if (processedTexts.has(textKey)) continue;

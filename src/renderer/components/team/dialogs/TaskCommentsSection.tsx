@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { ReplyQuoteBlock } from '@renderer/components/team/activity/ReplyQuoteBlock';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
+import { ExpandableContent } from '@renderer/components/ui/ExpandableContent';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
@@ -14,25 +15,10 @@ import { getModifierKeyName } from '@renderer/utils/keyboardUtils';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { formatDistanceToNow } from 'date-fns';
-import {
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Eye,
-  Loader2,
-  MessageSquare,
-  Reply,
-  Send,
-  X,
-} from 'lucide-react';
+import { CheckCircle2, Eye, Loader2, MessageSquare, Reply, Send, X } from 'lucide-react';
 
 import type { MentionSuggestion } from '@renderer/types/mention';
-import type {
-  AttachmentMediaType,
-  ResolvedTeamMember,
-  TaskAttachmentMeta,
-  TaskComment,
-} from '@shared/types';
+import type { ResolvedTeamMember, TaskAttachmentMeta, TaskComment } from '@shared/types';
 
 /**
  * Convert literal backslash-n sequences to real newlines.
@@ -61,6 +47,8 @@ interface TaskCommentsSectionProps {
   onReply?: (author: string, text: string) => void;
   /** Called when a task ID link (e.g. #10) is clicked in comment text. */
   onTaskIdClick?: (taskId: string) => void;
+  /** Extra className on the outer comments container (e.g. negative margins for edge-to-edge). */
+  containerClassName?: string;
 }
 
 /** Convert `#<digits>` in plain text to markdown links with task:// protocol. */
@@ -74,7 +62,7 @@ function linkifyMentionsInMarkdown(text: string, memberColorMap: Map<string, str
   const names = [...memberColorMap.keys()].sort((a, b) => b.length - a.length);
   const escaped = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   const pattern = new RegExp(`(^|\\s)@(${escaped.join('|')})(?=[\\s,.:;!?)\\]}-]|$)`, 'gi');
-  return text.replace(pattern, (match, prefix: string, name: string) => {
+  return text.replace(pattern, (_match, prefix: string, name: string) => {
     const canonical = names.find((n) => n.toLowerCase() === name.toLowerCase()) ?? name;
     const color = memberColorMap.get(canonical) ?? '';
     return `${prefix}[@${canonical}](mention://${encodeURIComponent(color)}/${encodeURIComponent(canonical)})`;
@@ -90,35 +78,22 @@ export const TaskCommentsSection = ({
   hideInput = false,
   onReply,
   onTaskIdClick,
+  containerClassName,
 }: TaskCommentsSectionProps): React.JSX.Element => {
   const addTaskComment = useStore((s) => s.addTaskComment);
   const addingComment = useStore((s) => s.addingComment);
   const commentsRef = useMarkCommentsRead(teamName, taskId, comments);
 
   const [replyTo, setReplyTo] = useState<{ author: string; text: string } | null>(null);
-  const [expandedCommentIds, setExpandedCommentIds] = useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COMMENTS);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
-  // Reset local state when team/task changes (React-recommended pattern for
-  // adjusting state based on props without using effects or refs during render)
-  const currentKey = teamIdKey(teamName, taskId);
-  const [prevKey, setPrevKey] = useState(currentKey);
-  if (prevKey !== currentKey) {
-    setPrevKey(currentKey);
+  // Reset local UI state when team/task changes.
+  useEffect(() => {
     setVisibleCount(INITIAL_VISIBLE_COMMENTS);
-    setExpandedCommentIds(new Set());
     setReplyTo(null);
-  }
-
-  const toggleCommentExpanded = useCallback((commentId: string) => {
-    setExpandedCommentIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(commentId)) next.delete(commentId);
-      else next.add(commentId);
-      return next;
-    });
-  }, []);
+    setPreviewImageUrl(null);
+  }, [teamName, taskId]);
 
   const draft = useDraftPersistence({ key: `taskComment:${teamName}:${taskId}` });
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
@@ -183,28 +158,29 @@ export const TaskCommentsSection = ({
       ) : null}
 
       {comments.length > 0 ? (
-        <div className="mb-3 space-y-2">
+        <div className="mb-3">
           {comments.length > MAX_COMMENTS_TO_RENDER ? (
-            <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-3 py-2 text-[11px] text-[var(--color-text-muted)]">
+            <div className="mb-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-3 py-2 text-[11px] text-[var(--color-text-muted)]">
               Showing the most recent {MAX_COMMENTS_TO_RENDER.toLocaleString()} comments to keep the
               UI responsive.
             </div>
           ) : null}
 
+          <div className={containerClassName ?? ''}>
           {visibleComments.map((comment, index) => (
             <div
               key={comment.id}
               className={[
-                'group rounded-md p-2.5',
+                'group px-4 py-2.5',
                 comment.type === 'review_approved'
-                  ? 'border border-emerald-500/20 bg-emerald-500/5'
+                  ? 'border-y border-emerald-500/20 bg-emerald-500/5'
                   : comment.type === 'review_request'
-                    ? 'border border-blue-500/20 bg-blue-500/5'
+                    ? 'border-y border-blue-500/20 bg-blue-500/5'
                     : '',
               ].join(' ')}
               style={
-                !comment.type && index % 2 === 1
-                  ? { backgroundColor: 'var(--card-bg-zebra)' }
+                !comment.type || comment.type === 'regular'
+                  ? { backgroundColor: index % 2 === 1 ? 'var(--card-bg-zebra)' : 'var(--card-bg)' }
                   : undefined
               }
             >
@@ -256,99 +232,48 @@ export const TaskCommentsSection = ({
                 const reply = parseMessageReply(comment.text);
                 const rawForDisplay = reply ? reply.replyText : comment.text;
                 const displayText = normalizeLiteralNewlines(stripAgentBlocks(rawForDisplay));
-                const needsExpandCollapse = displayText.includes('\n');
-                const expanded = expandedCommentIds.has(comment.id);
-                const collapsedHeight = 'max-h-[120px]';
-                const showCollapsed = needsExpandCollapse && !expanded;
-                const showExpandedButton = needsExpandCollapse && expanded;
                 return (
-                  <div className="relative text-xs">
-                    <div
-                      className={
-                        showCollapsed ? `relative ${collapsedHeight} overflow-hidden` : undefined
-                      }
-                    >
-                      {reply ? (
-                        <ReplyQuoteBlock
-                          reply={{
-                            ...reply,
-                            originalText: stripAgentBlocks(reply.originalText),
-                            replyText: stripAgentBlocks(reply.replyText),
-                          }}
-                          bodyMaxHeight={
-                            needsExpandCollapse && !expanded ? 'max-h-56' : 'max-h-none'
-                          }
-                        />
-                      ) : (
-                        <span
-                          onClickCapture={
-                            onTaskIdClick
-                              ? (e) => {
-                                  const link = (e.target as HTMLElement).closest<HTMLAnchorElement>(
-                                    'a[href^="task://"]'
-                                  );
-                                  if (link) {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    const id = link.getAttribute('href')?.replace('task://', '');
-                                    if (id) onTaskIdClick(id);
-                                  }
+                  <ExpandableContent collapsedHeight={120} className="text-xs">
+                    {reply ? (
+                      <ReplyQuoteBlock
+                        reply={{
+                          ...reply,
+                          originalText: stripAgentBlocks(reply.originalText),
+                          replyText: stripAgentBlocks(reply.replyText),
+                        }}
+                        memberColor={colorMap.get(reply.agentName)}
+                        bodyMaxHeight="max-h-none"
+                      />
+                    ) : (
+                      <span
+                        onClickCapture={
+                          onTaskIdClick
+                            ? (e) => {
+                                const link = (e.target as HTMLElement).closest<HTMLAnchorElement>(
+                                  'a[href^="task://"]'
+                                );
+                                if (link) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  const id = link.getAttribute('href')?.replace('task://', '');
+                                  if (id) onTaskIdClick(id);
                                 }
-                              : undefined
-                          }
-                        >
-                          <MarkdownViewer
-                            content={(() => {
-                              let t = displayText;
-                              if (onTaskIdClick) t = linkifyTaskIdsInMarkdown(t);
-                              if (colorMap.size > 0) t = linkifyMentionsInMarkdown(t, colorMap);
-                              return t;
-                            })()}
-                            maxHeight={
-                              needsExpandCollapse && !expanded ? collapsedHeight : 'max-h-none'
-                            }
-                            bare
-                          />
-                        </span>
-                      )}
-                      {showCollapsed && (
-                        <>
-                          <div
-                            className="pointer-events-none absolute inset-x-0 bottom-0 h-14"
-                            style={{
-                              background:
-                                'linear-gradient(to top, var(--color-surface) 0%, transparent 100%)',
-                            }}
-                            aria-hidden
-                          />
-                          <div className="absolute inset-x-0 bottom-0 flex justify-center pt-1">
-                            <button
-                              type="button"
-                              className="flex items-center gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-[11px] text-[var(--color-text-secondary)] shadow-sm transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
-                              onClick={() => toggleCommentExpanded(comment.id)}
-                              title="Expand"
-                            >
-                              <ChevronDown size={12} />
-                              Expand
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                    {showExpandedButton && (
-                      <div className="flex justify-center pt-2">
-                        <button
-                          type="button"
-                          className="flex items-center gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-2.5 py-1 text-[11px] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text-secondary)]"
-                          onClick={() => toggleCommentExpanded(comment.id)}
-                          title="Collapse"
-                        >
-                          <ChevronUp size={12} />
-                          Collapse
-                        </button>
-                      </div>
+                              }
+                            : undefined
+                        }
+                      >
+                        <MarkdownViewer
+                          content={(() => {
+                            let t = linkifyTaskIdsInMarkdown(displayText);
+                            if (colorMap.size > 0) t = linkifyMentionsInMarkdown(t, colorMap);
+                            return t;
+                          })()}
+                          maxHeight="max-h-none"
+                          bare
+                        />
+                      </span>
                     )}
-                  </div>
+                  </ExpandableContent>
                 );
               })()}
               {comment.attachments && comment.attachments.length > 0 ? (
@@ -361,6 +286,7 @@ export const TaskCommentsSection = ({
               ) : null}
             </div>
           ))}
+          </div>
 
           {sortedComments.length > visibleComments.length ? (
             <div className="flex items-center justify-center pt-2">
@@ -431,6 +357,7 @@ export const TaskCommentsSection = ({
               value={draft.value}
               onValueChange={draft.setValue}
               suggestions={mentionSuggestions}
+              onModEnter={() => void handleSubmit()}
               minRows={2}
               maxRows={8}
               maxLength={MAX_COMMENT_LENGTH}
@@ -556,7 +483,3 @@ const CommentAttachments = ({
     ))}
   </div>
 );
-
-function teamIdKey(teamName: string, taskId: string): string {
-  return `${teamName}::${taskId}`;
-}

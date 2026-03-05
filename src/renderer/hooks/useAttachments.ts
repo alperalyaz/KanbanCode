@@ -110,6 +110,9 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
     if (!persistenceKey) return;
 
     let cancelled = false;
+    // Clear stale attachments from previous persistenceKey before loading
+    attachmentsRef.current = [];
+    setAttachments([]);
     void (async () => {
       const raw = await draftStorage.loadDraft(persistenceKey);
       if (cancelled || raw == null) return;
