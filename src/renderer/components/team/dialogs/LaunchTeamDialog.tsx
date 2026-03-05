@@ -362,7 +362,11 @@ export const LaunchTeamDialog = ({
                 {prepareWarnings.length > 0 ? (
                   <div className="space-y-0.5">
                     {prepareWarnings.map((warning) => (
-                      <p key={warning} className="text-[11px]" style={{ color: 'var(--warning-text)' }}>
+                      <p
+                        key={warning}
+                        className="text-[11px]"
+                        style={{ color: 'var(--warning-text)' }}
+                      >
                         {warning}
                       </p>
                     ))}
@@ -406,7 +410,7 @@ export const LaunchTeamDialog = ({
               chips={chipDraft.chips}
               onChipRemove={chipDraft.removeChip}
               onFileChipInsert={chipDraft.addChip}
-              placeholder="Instructions for team lead... Use @ to mention team members."
+              placeholder="Instructions for team lead..."
               footerRight={
                 promptDraft.isSaved ? (
                   <span className="text-[10px] text-[var(--color-text-muted)]">Draft saved</span>

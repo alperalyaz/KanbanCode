@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import {
@@ -8,7 +8,6 @@ import {
   CARD_TEXT_LIGHT,
 } from '@renderer/constants/cssVariables';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
-import { ChevronRight } from 'lucide-react';
 
 import type { InboxMessage } from '@shared/types';
 
@@ -74,6 +73,8 @@ export function groupTimelineItems(messages: InboxMessage[]): TimelineItem[] {
 }
 
 const VIEWPORT_THRESHOLD = 0.15;
+const LIVE_WINDOW_MS = 10_000;
+const AUTO_SCROLL_THRESHOLD = 30;
 
 interface LeadThoughtsGroupRowProps {
   group: LeadThoughtGroup;
@@ -94,34 +95,61 @@ function formatTimeWithSec(timestamp: string): string {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+function isRecentTimestamp(timestamp: string): boolean {
+  const t = Date.parse(timestamp);
+  if (Number.isNaN(t)) return false;
+  return Date.now() - t <= LIVE_WINDOW_MS;
+}
+
 export const LeadThoughtsGroupRow = ({
   group,
   memberColor,
   isNew,
   onVisible,
 }: LeadThoughtsGroupRowProps): React.JSX.Element => {
-  const [expanded, setExpanded] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const reportedRef = useRef(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isUserScrolledUpRef = useRef(false);
 
   const colors = getTeamColorSet(memberColor ?? '');
   const { thoughts } = group;
-  const first = thoughts[0];
-  const last = thoughts[thoughts.length - 1];
-  const leadName = first.from;
+  // thoughts is newest-first; first=newest, last=oldest
+  const newest = thoughts[0];
+  const oldest = thoughts[thoughts.length - 1];
+  const leadName = newest.from;
 
-  // Mark all thoughts as visible when the group enters the viewport
+  // Chronological order for rendering (oldest at top, newest at bottom)
+  const chronologicalThoughts = useMemo(() => [...thoughts].reverse(), [thoughts]);
+
+  // Live indicator: newest thought is from lead_process and recent
+  const computeIsLive = useCallback(
+    () => newest.source === 'lead_process' && isRecentTimestamp(newest.timestamp),
+    [newest.source, newest.timestamp]
+  );
+  const [isLive, setIsLive] = useState(computeIsLive);
+
+  useEffect(() => {
+    setIsLive(computeIsLive());
+    const id = window.setInterval(() => setIsLive(computeIsLive()), 1000);
+    return () => window.clearInterval(id);
+  }, [computeIsLive]);
+
+  // Track how many thoughts have been reported as visible so far.
+  const reportedCountRef = useRef(0);
+
   useEffect(() => {
     if (!onVisible) return;
     const el = ref.current;
     if (!el) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (!entry?.isIntersecting || reportedRef.current) return;
-        reportedRef.current = true;
-        for (const thought of thoughts) {
-          onVisible(thought);
+        if (!entry?.isIntersecting) return;
+        const alreadyReported = reportedCountRef.current;
+        if (alreadyReported >= thoughts.length) return;
+        for (let i = alreadyReported; i < thoughts.length; i++) {
+          onVisible(thoughts[i]);
         }
+        reportedCountRef.current = thoughts.length;
       },
       { threshold: VIEWPORT_THRESHOLD, rootMargin: '0px' }
     );
@@ -129,10 +157,20 @@ export const LeadThoughtsGroupRow = ({
     return () => observer.disconnect();
   }, [onVisible, thoughts]);
 
-  // Preview: summary of newest thought (first in array since newest-first)
-  const previewText = first.summary || first.text.split('\n')[0];
-  const previewTruncated =
-    previewText.length > 120 ? previewText.slice(0, 117) + '...' : previewText;
+  // Auto-scroll to bottom when new thoughts arrive
+  useEffect(() => {
+    if (isUserScrolledUpRef.current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [thoughts.length]);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isUserScrolledUpRef.current = distanceFromBottom > AUTO_SCROLL_THRESHOLD;
+  }, []);
 
   return (
     <div ref={ref} className={isNew ? 'message-enter-animate min-h-px' : 'min-h-px'}>
@@ -142,62 +180,53 @@ export const LeadThoughtsGroupRow = ({
           backgroundColor: CARD_BG,
           border: CARD_BORDER_STYLE,
           borderLeft: `3px solid ${colors.border}`,
-          opacity: 0.75,
+          opacity: isLive ? undefined : 0.75,
         }}
       >
-        {/* Header — click to expand/collapse */}
-        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- role=button + tabIndex + onKeyDown below */}
-        <div
-          role="button"
-          tabIndex={0}
-          className="flex cursor-pointer select-none items-center gap-2 px-3 py-1.5 hover:bg-[rgba(255,255,255,0.02)]"
-          onClick={() => setExpanded((v) => !v)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              setExpanded((v) => !v);
-            }
-          }}
-        >
-          <ChevronRight
-            className="size-3 shrink-0 transition-transform duration-150"
-            style={{
-              color: CARD_ICON_MUTED,
-              transform: expanded ? 'rotate(90deg)' : undefined,
-            }}
-          />
+        {/* Header */}
+        <div className="flex select-none items-center gap-2 px-3 py-1.5">
+          {/* Live / offline indicator */}
+          {isLive ? (
+            <span className="pointer-events-none relative inline-flex size-2 shrink-0">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-50" />
+              <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
+            </span>
+          ) : (
+            <span className="inline-flex size-2 shrink-0 rounded-full bg-zinc-500" />
+          )}
           <MemberBadge name={leadName} color={memberColor} hideAvatar />
           <span className="text-[10px]" style={{ color: CARD_ICON_MUTED }}>
             {thoughts.length} thoughts
           </span>
           <span className="text-[10px]" style={{ color: CARD_ICON_MUTED }}>
-            {formatTime(last.timestamp)}–{formatTime(first.timestamp)}
+            {formatTime(oldest.timestamp)}–{formatTime(newest.timestamp)}
           </span>
-          {!expanded && (
-            <span className="flex-1 truncate text-[11px]" style={{ color: CARD_TEXT_LIGHT }}>
-              {previewTruncated}
-            </span>
-          )}
         </div>
 
-        {/* Expanded: all thoughts as compact timestamped lines */}
-        {expanded && (
-          <div
-            className="space-y-px border-t px-3 py-1.5"
-            style={{ borderColor: 'var(--color-border-subtle)' }}
-          >
-            {thoughts.map((thought, idx) => (
-              <div key={thought.messageId ?? idx} className="flex gap-2 py-0.5 text-[11px]">
-                <span className="shrink-0 font-mono" style={{ color: CARD_ICON_MUTED }}>
-                  {formatTimeWithSec(thought.timestamp)}
-                </span>
-                <span className="flex-1 leading-relaxed" style={{ color: CARD_TEXT_LIGHT }}>
-                  {thought.text.length > 300 ? thought.text.slice(0, 297) + '...' : thought.text}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Scrollable body — fixed height, always visible */}
+        <div
+          ref={scrollRef}
+          className="space-y-px border-t px-3 py-1.5"
+          style={{
+            borderColor: 'var(--color-border-subtle)',
+            maxHeight: '200px',
+            overflowY: 'auto',
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'var(--scrollbar-thumb) transparent',
+          }}
+          onScroll={handleScroll}
+        >
+          {chronologicalThoughts.map((thought, idx) => (
+            <div key={thought.messageId ?? idx} className="flex gap-2 py-0.5 text-[11px]">
+              <span className="shrink-0 font-mono" style={{ color: CARD_ICON_MUTED }}>
+                {formatTimeWithSec(thought.timestamp)}
+              </span>
+              <span className="flex-1 leading-relaxed" style={{ color: CARD_TEXT_LIGHT }}>
+                {thought.text.length > 300 ? thought.text.slice(0, 297) + '...' : thought.text}
+              </span>
+            </div>
+          ))}
+        </div>
       </article>
     </div>
   );

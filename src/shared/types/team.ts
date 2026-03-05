@@ -196,6 +196,8 @@ export interface InboxMessage {
   messageId?: string;
   source?: 'inbox' | 'lead_session' | 'lead_process' | 'user_sent';
   attachments?: AttachmentMeta[];
+  /** Lead session ID that produced this message (for session boundary detection). */
+  leadSessionId?: string;
 }
 
 export interface SendMessageRequest {

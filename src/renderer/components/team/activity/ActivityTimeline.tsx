@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 
@@ -213,7 +213,8 @@ export const ActivityTimeline = ({
   const newItemKeys = useMemo(() => {
     const getItemKey = (item: TimelineItem): string => {
       if (item.type === 'lead-thoughts') {
-        return `thoughts-${item.group.thoughts[0].messageId ?? item.originalIndices[0]}-${item.group.thoughts.length}`;
+        // Stable key: identify group by its first thought, not by count (which changes)
+        return `thoughts-${item.group.thoughts[0].messageId ?? item.originalIndices[0]}`;
       }
       const msg = item.message;
       return `${msg.messageId ?? item.originalIndex}-${msg.timestamp}-${msg.from}`;
@@ -274,22 +275,47 @@ export const ActivityTimeline = ({
     );
   }
 
+  const getItemSessionId = (item: TimelineItem): string | undefined =>
+    item.type === 'lead-thoughts'
+      ? item.group.thoughts[0].leadSessionId
+      : item.message.leadSessionId;
+
   return (
     <div className="space-y-1">
       {timelineItems.map((item, index) => {
+        // Session boundary separator (messages sorted desc — new on top)
+        let sessionSeparator: React.JSX.Element | null = null;
+        if (index > 0) {
+          const prevSessionId = getItemSessionId(timelineItems[index - 1]);
+          const currSessionId = getItemSessionId(item);
+          if (prevSessionId && currSessionId && prevSessionId !== currSessionId) {
+            sessionSeparator = (
+              <div className="flex items-center gap-3 py-4">
+                <div className="h-px flex-1 bg-[var(--color-border-emphasis)]" />
+                <span className="whitespace-nowrap text-[11px] text-[var(--color-text-muted)]">
+                  Новая сессия
+                </span>
+                <div className="h-px flex-1 bg-[var(--color-border-emphasis)]" />
+              </div>
+            );
+          }
+        }
+
         if (item.type === 'lead-thoughts') {
           const { group } = item;
           const firstThought = group.thoughts[0];
           const info = memberInfo.get(firstThought.from);
-          const itemKey = `thoughts-${firstThought.messageId ?? item.originalIndices[0]}-${group.thoughts.length}`;
+          const itemKey = `thoughts-${firstThought.messageId ?? item.originalIndices[0]}`;
           return (
-            <LeadThoughtsGroupRow
-              key={itemKey}
-              group={group}
-              memberColor={info?.color}
-              isNew={newItemKeys.has(itemKey)}
-              onVisible={onMessageVisible}
-            />
+            <React.Fragment key={itemKey}>
+              {sessionSeparator}
+              <LeadThoughtsGroupRow
+                group={group}
+                memberColor={info?.color}
+                isNew={newItemKeys.has(itemKey)}
+                onVisible={onMessageVisible}
+              />
+            </React.Fragment>
           );
         }
 
@@ -303,24 +329,26 @@ export const ActivityTimeline = ({
           ? !message.read && !readState.readSet.has(readState.getMessageKey(message))
           : !message.read;
         return (
-          <MessageRowWithObserver
-            key={messageKey}
-            message={message}
-            teamName={teamName}
-            memberRole={info?.role}
-            memberColor={info?.color}
-            recipientColor={recipientColor}
-            isUnread={isUnread}
-            isNew={newItemKeys.has(messageKey)}
-            zebraShade={zebraShadeSet.has(index)}
-            memberColorMap={colorMap}
-            onMemberNameClick={onMemberClick ? handleMemberNameClick : undefined}
-            onCreateTask={onCreateTaskFromMessage}
-            onReply={onReplyToMessage}
-            onVisible={onMessageVisible}
-            onTaskIdClick={onTaskIdClick}
-            onRestartTeam={onRestartTeam}
-          />
+          <React.Fragment key={messageKey}>
+            {sessionSeparator}
+            <MessageRowWithObserver
+              message={message}
+              teamName={teamName}
+              memberRole={info?.role}
+              memberColor={info?.color}
+              recipientColor={recipientColor}
+              isUnread={isUnread}
+              isNew={newItemKeys.has(messageKey)}
+              zebraShade={zebraShadeSet.has(index)}
+              memberColorMap={colorMap}
+              onMemberNameClick={onMemberClick ? handleMemberNameClick : undefined}
+              onCreateTask={onCreateTaskFromMessage}
+              onReply={onReplyToMessage}
+              onVisible={onMessageVisible}
+              onTaskIdClick={onTaskIdClick}
+              onRestartTeam={onRestartTeam}
+            />
+          </React.Fragment>
         );
       })}
       {hiddenCount > 0 && (

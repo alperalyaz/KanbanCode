@@ -144,7 +144,7 @@ export const MemberDraftRow = ({
           onCustomRoleChange={(customRole) => onCustomRoleChange(member.id, customRole)}
           triggerClassName="h-8 text-xs"
           inputClassName="h-8 text-xs"
-/>
+        />
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
         {showWorkflow && onWorkflowChange ? (
@@ -191,7 +191,7 @@ export const MemberDraftRow = ({
             onChipRemove={handleChipRemove}
             projectPath={projectPath ?? undefined}
             onFileChipInsert={handleFileChipInsert}
-            placeholder="How this agent should behave, interact with others. Use @ to mention teammates or add files."
+            placeholder="How this agent should behave, interact with others..."
             footerRight={
               workflowDraft.isSaved ? (
                 <span className="text-[10px] text-[var(--color-text-muted)]">Draft saved</span>

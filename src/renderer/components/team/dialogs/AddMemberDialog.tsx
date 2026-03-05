@@ -170,7 +170,7 @@ export const AddMemberDialog = ({
               onValueChange={handleWorkflowChange}
               suggestions={mentionSuggestions}
               projectPath={projectPath ?? undefined}
-              placeholder="How this agent should behave, what tasks it handles. Use @ to mention teammates or add files."
+              placeholder="How this agent should behave, what tasks it handles..."
               footerRight={
                 workflowDraft.isSaved ? (
                   <span className="text-[10px] text-[var(--color-text-muted)]">Draft saved</span>

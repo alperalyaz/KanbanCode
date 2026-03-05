@@ -258,8 +258,9 @@ export class TeamDataService {
     }
     mark('messages');
 
+    let leadTexts: InboxMessage[] = [];
     try {
-      const leadTexts = await this.extractLeadSessionTexts(config);
+      leadTexts = await this.extractLeadSessionTexts(config);
       if (leadTexts.length > 0) {
         messages = [...messages, ...leadTexts];
       }
@@ -268,8 +269,9 @@ export class TeamDataService {
     }
     mark('leadTexts');
 
+    let sentMessages: InboxMessage[] = [];
     try {
-      const sentMessages = await this.sentMessagesStore.readMessages(teamName);
+      sentMessages = await this.sentMessagesStore.readMessages(teamName);
       if (sentMessages.length > 0) {
         messages = [...messages, ...sentMessages];
       }
@@ -277,6 +279,33 @@ export class TeamDataService {
       warnings.push('Sent messages failed to load');
     }
     mark('sentMessages');
+
+    // Dedup: if a lead_process message text is also present in lead_session, prefer lead_session.
+    // This avoids double-rendering when we persist lead process messages and later load the lead JSONL.
+    if (leadTexts.length > 0 && sentMessages.length > 0) {
+      const normalizeText = (text: string): string => text.trim().replace(/\r\n/g, '\n');
+      const leadSessionFingerprints = new Set<string>();
+      for (const msg of leadTexts) {
+        if (msg.source !== 'lead_session') continue;
+        leadSessionFingerprints.add(`${msg.from}\0${normalizeText(msg.text)}`);
+      }
+      messages = messages.filter((m) => {
+        if (m.source !== 'lead_process') return true;
+        const fp = `${m.from}\0${normalizeText(m.text ?? '')}`;
+        return !leadSessionFingerprints.has(fp);
+      });
+    }
+
+    // Enrich messages without leadSessionId: assign current session for lead_process/user_sent.
+    // lead_process messages surviving dedup are from the current session;
+    // user_sent messages written before this feature lack the field.
+    if (config.leadSessionId) {
+      for (const msg of messages) {
+        if (!msg.leadSessionId && (msg.source === 'lead_process' || msg.source === 'user_sent')) {
+          msg.leadSessionId = config.leadSessionId;
+        }
+      }
+    }
 
     messages.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
 
@@ -1102,6 +1131,15 @@ export class TeamDataService {
     attachments?: AttachmentMeta[]
   ): Promise<SendMessageResult> {
     const messageId = randomUUID();
+
+    let leadSessionId: string | undefined;
+    try {
+      const config = await this.configReader.getConfig(teamName);
+      leadSessionId = config?.leadSessionId;
+    } catch {
+      // non-critical — proceed without sessionId
+    }
+
     const msg: InboxMessage = {
       from: 'user',
       to: leadName,
@@ -1112,6 +1150,7 @@ export class TeamDataService {
       messageId,
       source: 'user_sent',
       attachments: attachments?.length ? attachments : undefined,
+      leadSessionId,
     };
     await this.sentMessagesStore.appendMessage(teamName, msg);
     return { deliveredToInbox: false, deliveredViaStdin: true, messageId };
@@ -1214,7 +1253,8 @@ export class TeamDataService {
         name: (() => {
           const name = member.name.trim();
           if (!name) throw new Error('Member name cannot be empty');
-          if (name.toLowerCase() === 'team-lead') throw new Error('Member name "team-lead" is reserved');
+          if (name.toLowerCase() === 'team-lead')
+            throw new Error('Member name "team-lead" is reserved');
           const suffixInfo = parseNumericSuffixName(name);
           if (suffixInfo && suffixInfo.suffix >= 2) {
             throw new Error(
@@ -1374,6 +1414,7 @@ export class TeamDataService {
               timestamp,
               read: true,
               source: 'lead_session',
+              leadSessionId: config.leadSessionId,
             });
             if (textsReversed.length >= MAX_LEAD_TEXTS) break;
           }
