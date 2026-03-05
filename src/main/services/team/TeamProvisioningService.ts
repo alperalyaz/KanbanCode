@@ -169,8 +169,10 @@ interface ProvisioningRun {
    * Flushed to liveLeadProcessMessages on result.success.
    */
   directReplyParts: string[];
-  /** Whether we already emitted live lead text during the current turn (before result). */
-  leadTextPushedInCurrentTurn: boolean;
+  /** Monotonic counter for stream-json turns (incremented on result). */
+  leadTurnSeq: number;
+  /** Stable timestamp used for the current aggregated lead turn message. */
+  leadTurnMessageTimestamp: string | null;
   /** Throttle timestamp for emitting inbox refresh events for lead text. */
   lastLeadTextEmitMs: number;
   /**
@@ -1751,7 +1753,8 @@ export class TeamProvisioningService {
         fsPhase: 'waiting_config',
         leadRelayCapture: null,
         directReplyParts: [],
-        leadTextPushedInCurrentTurn: false,
+        leadTurnSeq: 0,
+        leadTurnMessageTimestamp: null,
         lastLeadTextEmitMs: 0,
         silentUserDmForward: null,
         silentUserDmForwardClearHandle: null,
@@ -2051,7 +2054,8 @@ export class TeamProvisioningService {
         fsPhase: 'waiting_members',
         leadRelayCapture: null,
         directReplyParts: [],
-        leadTextPushedInCurrentTurn: false,
+        leadTurnSeq: 0,
+        leadTurnMessageTimestamp: null,
         lastLeadTextEmitMs: 0,
         silentUserDmForward: null,
         silentUserDmForwardClearHandle: null,
@@ -2795,11 +2799,34 @@ export class TeamProvisioningService {
   pushLiveLeadProcessMessage(teamName: string, message: InboxMessage): void {
     const MAX = 100;
     const list = this.liveLeadProcessMessages.get(teamName) ?? [];
-    list.push(message);
+    const id = typeof message.messageId === 'string' ? message.messageId.trim() : '';
+    if (id) {
+      const existingIdx = list.findIndex((m) => (m.messageId ?? '').trim() === id);
+      if (existingIdx >= 0) {
+        list[existingIdx] = message;
+      } else {
+        list.push(message);
+      }
+    } else {
+      list.push(message);
+    }
     if (list.length > MAX) {
       list.splice(0, list.length - MAX);
     }
     this.liveLeadProcessMessages.set(teamName, list);
+  }
+
+  private removeLiveLeadProcessMessage(teamName: string, messageId: string): void {
+    const id = messageId.trim();
+    if (!id) return;
+    const list = this.liveLeadProcessMessages.get(teamName);
+    if (!list || list.length === 0) return;
+    const next = list.filter((m) => (m.messageId ?? '').trim() !== id);
+    if (next.length === 0) {
+      this.liveLeadProcessMessages.delete(teamName);
+    } else {
+      this.liveLeadProcessMessages.set(teamName, next);
+    }
   }
 
   /**
@@ -2846,6 +2873,14 @@ export class TeamProvisioningService {
             return Array.isArray(inner) ? (inner as Record<string, unknown>[]) : null;
           })();
 
+      const hasSendMessageToUser = (content ?? []).some((part) => {
+        if (!part || typeof part !== 'object') return false;
+        if (part.type !== 'tool_use' || part.name !== 'SendMessage') return false;
+        const input = (part as Record<string, unknown>).input;
+        if (!input || typeof input !== 'object') return false;
+        return (input as Record<string, unknown>).recipient === 'user';
+      });
+
       const textParts = (content ?? [])
         .filter((part) => part.type === 'text' && typeof part.text === 'string')
         .map((part) => part.text as string);
@@ -2859,41 +2894,6 @@ export class TeamProvisioningService {
           return;
         }
         logger.debug(`[${run.teamName}] assistant: ${text.slice(0, 200)}`);
-        // After provisioning, surface lead assistant output in Messages immediately.
-        // Lead session JSONL changes are not watched, so without an explicit trigger
-        // the Messages tab may lag behind Claude Logs until another team-change event.
-        if (run.provisioningComplete && !run.leadRelayCapture && !run.silentUserDmForward) {
-          const cleanText = stripAgentBlocks(text).trim();
-          if (cleanText.length >= TeamProvisioningService.LEAD_TEXT_MIN_LENGTH) {
-            const leadName =
-              run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name ||
-              'team-lead';
-            const leadMsg: InboxMessage = {
-              from: leadName,
-              text: cleanText,
-              timestamp: nowIso(),
-              read: true,
-              summary: cleanText.length > 60 ? cleanText.slice(0, 57) + '...' : cleanText,
-              messageId: `lead-text-${run.runId}-${Date.now()}`,
-              source: 'lead_process',
-            };
-            this.pushLiveLeadProcessMessage(run.teamName, leadMsg);
-            run.leadTextPushedInCurrentTurn = true;
-
-            const now = Date.now();
-            if (
-              now - run.lastLeadTextEmitMs >=
-              TeamProvisioningService.LEAD_TEXT_EMIT_THROTTLE_MS
-            ) {
-              run.lastLeadTextEmitMs = now;
-              this.teamChangeEmitter?.({
-                type: 'inbox',
-                teamName: run.teamName,
-                detail: 'lead-text',
-              });
-            }
-          }
-        }
         // During provisioning (before provisioningComplete), accumulate for live UI preview.
         // Emission is handled by the throttled emitLogsProgress() in the stdout data handler.
         if (!run.provisioningComplete) {
@@ -2913,9 +2913,52 @@ export class TeamProvisioningService {
             }, capture.idleMs);
           }
         } else if (run.provisioningComplete) {
-          // Accumulate assistant text for direct user→lead messages (no relay capture).
-          if (!run.silentUserDmForward) {
+          // Accumulate assistant text for a single "live lead turn" message in Messages.
+          // If the same assistant message includes SendMessage(to:"user"), prefer the captured
+          // SendMessage and avoid duplicating it as a separate lead text entry.
+          if (!run.silentUserDmForward && !hasSendMessageToUser) {
             run.directReplyParts.push(text);
+            const raw = run.directReplyParts.join('');
+            const cleanText = stripAgentBlocks(raw).trim();
+            if (cleanText.length >= TeamProvisioningService.LEAD_TEXT_MIN_LENGTH) {
+              const leadName =
+                run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name ||
+                'team-lead';
+              if (!run.leadTurnMessageTimestamp) {
+                run.leadTurnMessageTimestamp = nowIso();
+              }
+              const messageId = `lead-turn-${run.runId}-${run.leadTurnSeq}`;
+              const leadMsg: InboxMessage = {
+                from: leadName,
+                text: cleanText,
+                timestamp: run.leadTurnMessageTimestamp,
+                read: true,
+                summary: cleanText.length > 60 ? cleanText.slice(0, 57) + '...' : cleanText,
+                messageId,
+                source: 'lead_process',
+              };
+              this.pushLiveLeadProcessMessage(run.teamName, leadMsg);
+
+              const now = Date.now();
+              if (
+                now - run.lastLeadTextEmitMs >=
+                TeamProvisioningService.LEAD_TEXT_EMIT_THROTTLE_MS
+              ) {
+                run.lastLeadTextEmitMs = now;
+                this.teamChangeEmitter?.({
+                  type: 'inbox',
+                  teamName: run.teamName,
+                  detail: 'lead-text',
+                });
+              }
+            }
+          } else if (hasSendMessageToUser) {
+            run.directReplyParts = [];
+            run.leadTurnMessageTimestamp = null;
+            this.removeLiveLeadProcessMessage(
+              run.teamName,
+              `lead-turn-${run.runId}-${run.leadTurnSeq}`
+            );
           }
         }
       }
@@ -3058,66 +3101,47 @@ export class TeamProvisioningService {
           const combined = capture.textParts.join('').trim();
           capture.resolveOnce(combined);
         } else if (run.provisioningComplete && run.directReplyParts.length > 0) {
-          // Flush accumulated assistant reply from direct user→lead message
+          // Finalize the current live lead turn message (single messageId per turn).
           const rawReply = run.directReplyParts.join('').trim();
           run.directReplyParts = [];
-          if (!run.leadTextPushedInCurrentTurn) {
-            const leadName =
-              run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name ||
-              'team-lead';
-            // Strip agent-only blocks — lead may include coordination content not meant for the user
-            const replyText = stripAgentBlocks(rawReply);
-            if (replyText.length > 0) {
-              const replyMsg: InboxMessage = {
-                from: leadName,
-                to: 'user',
-                text: replyText,
-                timestamp: nowIso(),
-                read: true,
-                summary: replyText.length > 60 ? replyText.slice(0, 57) + '...' : replyText,
-                messageId: `lead-direct-${run.runId}-${Date.now()}`,
-                source: 'lead_process',
-              };
-              this.pushLiveLeadProcessMessage(run.teamName, replyMsg);
-              // Persist to disk so replies survive app restart
-              void this.sentMessagesStore
-                .appendMessage(run.teamName, replyMsg)
-                .catch((e: unknown) =>
-                  logger.warn(`[${run.teamName}] sentMessagesStore persist failed: ${e}`)
-                );
-              this.teamChangeEmitter?.({
-                type: 'inbox',
-                teamName: run.teamName,
-                detail: 'lead-direct-reply',
-              });
-            } else if (rawReply.length > 0) {
-              // Lead responded but only with agent-only content — send generic acknowledgment
-              const fallbackMsg: InboxMessage = {
-                from: leadName,
-                to: 'user',
-                text: '(Message received and processed)',
-                timestamp: nowIso(),
-                read: true,
-                summary: 'Message processed',
-                messageId: `lead-direct-${run.runId}-${Date.now()}`,
-                source: 'lead_process',
-              };
-              this.pushLiveLeadProcessMessage(run.teamName, fallbackMsg);
-              void this.sentMessagesStore
-                .appendMessage(run.teamName, fallbackMsg)
-                .catch((e: unknown) =>
-                  logger.warn(`[${run.teamName}] sentMessagesStore persist failed: ${e}`)
-                );
-              this.teamChangeEmitter?.({
-                type: 'inbox',
-                teamName: run.teamName,
-                detail: 'lead-direct-reply',
-              });
+          const leadName =
+            run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name ||
+            'team-lead';
+          const replyText = stripAgentBlocks(rawReply).trim();
+          const finalText =
+            replyText.length > 0
+              ? replyText
+              : rawReply.length > 0
+                ? '(Message received and processed)'
+                : '';
+          if (finalText.length > 0) {
+            if (!run.leadTurnMessageTimestamp) {
+              run.leadTurnMessageTimestamp = nowIso();
             }
+            const messageId = `lead-turn-${run.runId}-${run.leadTurnSeq}`;
+            const replyMsg: InboxMessage = {
+              from: leadName,
+              text: finalText,
+              timestamp: run.leadTurnMessageTimestamp,
+              read: true,
+              summary: finalText.length > 60 ? finalText.slice(0, 57) + '...' : finalText,
+              messageId,
+              source: 'lead_process',
+            };
+            this.pushLiveLeadProcessMessage(run.teamName, replyMsg);
+            this.teamChangeEmitter?.({
+              type: 'inbox',
+              teamName: run.teamName,
+              detail: 'lead-turn-final',
+            });
           }
         }
-        // Turn boundary: reset per-turn lead text tracking.
-        run.leadTextPushedInCurrentTurn = false;
+        // Turn boundary: advance lead turn sequence.
+        if (run.provisioningComplete) {
+          run.leadTurnSeq += 1;
+          run.leadTurnMessageTimestamp = null;
+          run.directReplyParts = [];
+        }
         // Clear silent relay flag after any successful turn.
         run.silentUserDmForward = null;
         if (run.silentUserDmForwardClearHandle) {
@@ -3134,8 +3158,12 @@ export class TeamProvisioningService {
         if (run.leadRelayCapture) {
           run.leadRelayCapture.rejectOnce(errorMsg);
         }
-        // Turn boundary: reset per-turn lead text tracking.
-        run.leadTextPushedInCurrentTurn = false;
+        // Turn boundary: advance lead turn sequence.
+        if (run.provisioningComplete) {
+          run.leadTurnSeq += 1;
+          run.leadTurnMessageTimestamp = null;
+          run.directReplyParts = [];
+        }
         // Clear silent relay flag after any errored turn.
         run.silentUserDmForward = null;
         if (run.silentUserDmForwardClearHandle) {

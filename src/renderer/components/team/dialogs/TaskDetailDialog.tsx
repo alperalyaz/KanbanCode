@@ -295,6 +295,7 @@ export const TaskDetailDialog = ({
   const isLeadOwnedTask =
     (currentTask.owner ?? '').trim().toLowerCase() === leadName.trim().toLowerCase() ||
     (currentTask.owner ?? '').trim().toLowerCase() === 'team-lead';
+  const allowLeadExecutionPreview = true;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -690,6 +691,8 @@ export const TaskDetailDialog = ({
                 // For lead-owned tasks, the lead session is a mixed stream (lead + multiple agents),
                 // so filtering to "just the member messages" is unreliable and easy to mislead.
                 showSubagentPreview={Boolean(currentTask.owner) && !isLeadOwnedTask}
+                // Temporary debug option: for lead-owned tasks, show quick preview from lead session.
+                showLeadPreview={allowLeadExecutionPreview && isLeadOwnedTask}
                 onPreviewOnlineChange={setExecutionPreviewOnline}
               />
             </div>

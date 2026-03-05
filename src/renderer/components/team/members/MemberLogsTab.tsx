@@ -37,6 +37,11 @@ interface MemberLogsTabProps {
   onRefreshingChange?: (isRefreshing: boolean) => void;
   /** Show last few subagent messages as a quick "where are we?" preview (task view only). */
   showSubagentPreview?: boolean;
+  /**
+   * Optional: for lead-owned tasks, show a quick preview from the lead session.
+   * (This is lead activity, not "member-only" activity.)
+   */
+  showLeadPreview?: boolean;
   /** Notifies parent when preview looks "online" (recent output). */
   onPreviewOnlineChange?: (isOnline: boolean) => void;
 }
@@ -50,6 +55,7 @@ export const MemberLogsTab = ({
   taskWorkIntervals,
   onRefreshingChange,
   showSubagentPreview = false,
+  showLeadPreview = false,
   onPreviewOnlineChange,
 }: MemberLogsTabProps): React.JSX.Element => {
   const intervalsKey = useMemo(
@@ -96,23 +102,35 @@ export const MemberLogsTab = ({
     return withIndex.map((x) => x.log);
   }, [logs]);
 
+  const shouldShowPreview = useMemo(() => {
+    return taskId != null && (showSubagentPreview || showLeadPreview);
+  }, [showLeadPreview, showSubagentPreview, taskId]);
+
   const previewLog = useMemo((): MemberLogSummary | null => {
-    if (!showSubagentPreview || taskId == null) return null;
+    if (!shouldShowPreview) return null;
 
-    const candidates = sortedLogs.filter((l) => l.kind === 'subagent');
-    if (candidates.length === 0) return null;
+    if (showSubagentPreview) {
+      const candidates = sortedLogs.filter((l) => l.kind === 'subagent');
+      if (candidates.length === 0) return null;
 
-    if (taskOwner) {
-      const target = taskOwner.trim().toLowerCase();
-      const match = candidates.find((l) => (l.memberName ?? '').trim().toLowerCase() === target);
-      // When viewing task logs, this preview is intended to show the assigned owner's progress.
-      // If we can't confidently match a subagent log to the owner, don't show anything
-      // rather than risk showing a different member's activity (or a lead-attributed log).
-      return match ?? null;
+      if (taskOwner) {
+        const target = taskOwner.trim().toLowerCase();
+        const match = candidates.find((l) => (l.memberName ?? '').trim().toLowerCase() === target);
+        // When viewing task logs, this preview is intended to show the assigned owner's progress.
+        // If we can't confidently match a subagent log to the owner, don't show anything
+        // rather than risk showing a different member's activity.
+        return match ?? null;
+      }
+
+      return candidates[0] ?? null;
     }
 
-    return candidates[0] ?? null;
-  }, [showSubagentPreview, sortedLogs, taskId, taskOwner]);
+    if (showLeadPreview) {
+      return sortedLogs.find((l) => l.kind === 'lead_session') ?? null;
+    }
+
+    return null;
+  }, [shouldShowPreview, showLeadPreview, showSubagentPreview, sortedLogs, taskOwner]);
 
   const previewMessages = useMemo((): SubagentPreviewMessage[] => {
     if (!previewChunks || previewChunks.length === 0) return [];
@@ -216,7 +234,7 @@ export const MemberLogsTab = ({
   );
 
   useEffect(() => {
-    if (!showSubagentPreview || taskId == null) {
+    if (!shouldShowPreview) {
       setPreviewChunks(null);
       return;
     }
@@ -240,10 +258,10 @@ export const MemberLogsTab = ({
     return () => {
       cancelled = true;
     };
-  }, [fetchDetailForLog, previewLog, showSubagentPreview, taskId]);
+  }, [fetchDetailForLog, previewLog, shouldShowPreview]);
 
   useEffect(() => {
-    if (!showSubagentPreview || taskId == null) return;
+    if (!shouldShowPreview) return;
     if (!previewLog) return;
 
     const shouldAutoRefreshPreview = taskStatus === 'in_progress' || previewLog.isOngoing;
@@ -264,7 +282,7 @@ export const MemberLogsTab = ({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [fetchDetailForLog, previewLog, showSubagentPreview, taskId, taskStatus]);
+  }, [fetchDetailForLog, previewLog, shouldShowPreview, taskStatus]);
 
   useEffect(() => {
     const shouldAutoRefreshSummary = taskId != null && taskStatus === 'in_progress';
@@ -350,7 +368,7 @@ export const MemberLogsTab = ({
 
   return (
     <div className="w-full min-w-0 space-y-1.5">
-      {showSubagentPreview && previewLog && previewMessages.length > 0 ? (
+      {shouldShowPreview && previewLog && previewMessages.length > 0 ? (
         <SubagentRecentMessagesPreview
           messages={previewMessages}
           memberName={previewLog.memberName ?? undefined}
