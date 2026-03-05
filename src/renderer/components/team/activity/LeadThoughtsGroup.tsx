@@ -3,11 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import {
   CARD_BG,
+  CARD_BG_ZEBRA,
   CARD_BORDER_STYLE,
   CARD_ICON_MUTED,
   CARD_TEXT_LIGHT,
 } from '@renderer/constants/cssVariables';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
+import { useStore } from '@renderer/store';
 
 import type { InboxMessage } from '@shared/types';
 
@@ -65,7 +67,7 @@ export function groupTimelineItems(messages: InboxMessage[]): TimelineItem[] {
 }
 
 const VIEWPORT_THRESHOLD = 0.15;
-const LIVE_WINDOW_MS = 10_000;
+const LIVE_WINDOW_MS = 5_000;
 const AUTO_SCROLL_THRESHOLD = 30;
 
 interface LeadThoughtsGroupRowProps {
@@ -73,6 +75,8 @@ interface LeadThoughtsGroupRowProps {
   memberColor?: string;
   isNew?: boolean;
   onVisible?: (message: InboxMessage) => void;
+  /** When true, apply a subtle lighter background for zebra-striped lists. */
+  zebraShade?: boolean;
 }
 
 function formatTime(timestamp: string): string {
@@ -98,10 +102,20 @@ export const LeadThoughtsGroupRow = ({
   memberColor,
   isNew,
   onVisible,
+  zebraShade,
 }: LeadThoughtsGroupRowProps): React.JSX.Element => {
   const ref = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isUserScrolledUpRef = useRef(false);
+  const isTeamAlive = useStore((s) => s.selectedTeamData?.isAlive ?? false);
+  const leadActivity = useStore((s) => {
+    const teamName = s.selectedTeamName;
+    return teamName ? s.leadActivityByTeam[teamName] : undefined;
+  });
+  const leadContextUpdatedAt = useStore((s) => {
+    const teamName = s.selectedTeamName;
+    return teamName ? s.leadContextByTeam[teamName]?.updatedAt : undefined;
+  });
 
   const colors = getTeamColorSet(memberColor ?? '');
   const { thoughts } = group;
@@ -113,8 +127,15 @@ export const LeadThoughtsGroupRow = ({
   // Chronological order for rendering (oldest at top, newest at bottom)
   const chronologicalThoughts = useMemo(() => [...thoughts].reverse(), [thoughts]);
 
-  // Live indicator: newest thought is recent (actively streaming)
-  const computeIsLive = useCallback(() => isRecentTimestamp(newest.timestamp), [newest.timestamp]);
+  // Live = process alive AND (lead is in active turn OR context recently updated OR fresh thought)
+  const computeIsLive = useCallback(
+    () =>
+      isTeamAlive &&
+      (leadActivity === 'active' ||
+        (leadContextUpdatedAt ? isRecentTimestamp(leadContextUpdatedAt) : false) ||
+        isRecentTimestamp(newest.timestamp)),
+    [isTeamAlive, leadActivity, leadContextUpdatedAt, newest.timestamp]
+  );
   const [isLive, setIsLive] = useState(computeIsLive);
 
   useEffect(() => {
@@ -170,7 +191,7 @@ export const LeadThoughtsGroupRow = ({
       <article
         className="group rounded-md [overflow:clip]"
         style={{
-          backgroundColor: CARD_BG,
+          backgroundColor: zebraShade ? CARD_BG_ZEBRA : CARD_BG,
           border: CARD_BORDER_STYLE,
           borderLeft: `3px solid ${colors.border}`,
           opacity: isLive ? undefined : 0.75,

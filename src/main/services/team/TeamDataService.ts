@@ -297,6 +297,31 @@ export class TeamDataService {
       });
     }
 
+    // Enrich inbox messages without leadSessionId by propagating from neighboring
+    // messages that have it (lead_session, user_sent).  Sort chronologically (asc),
+    // sweep forward, then sweep backward so orphans at the start also get a session.
+    if (config.leadSessionId || messages.some((m) => m.leadSessionId)) {
+      messages.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+      // Forward pass: propagate leadSessionId from earlier messages to later ones
+      let currentSessionId: string | undefined;
+      for (const msg of messages) {
+        if (msg.leadSessionId) {
+          currentSessionId = msg.leadSessionId;
+        } else if (currentSessionId) {
+          msg.leadSessionId = currentSessionId;
+        }
+      }
+      // Backward pass: fill messages before the first known session
+      currentSessionId = undefined;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].leadSessionId) {
+          currentSessionId = messages[i].leadSessionId;
+        } else if (currentSessionId) {
+          messages[i].leadSessionId = currentSessionId;
+        }
+      }
+    }
+
     messages.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
 
     let metaMembers: TeamConfig['members'] = [];

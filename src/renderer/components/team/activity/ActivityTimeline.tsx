@@ -5,8 +5,8 @@ import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { ActivityItem, isNoiseMessage } from './ActivityItem';
 import { groupTimelineItems, isLeadThought, LeadThoughtsGroupRow } from './LeadThoughtsGroup';
 
-import type { InboxMessage, ResolvedTeamMember } from '@shared/types';
 import type { TimelineItem } from './LeadThoughtsGroup';
+import type { InboxMessage, ResolvedTeamMember } from '@shared/types';
 
 interface ActivityTimelineProps {
   messages: InboxMessage[];
@@ -324,6 +324,7 @@ export const ActivityTimeline = ({
                 memberColor={info?.color}
                 isNew={newItemKeys.has(itemKey)}
                 onVisible={onMessageVisible}
+                zebraShade={zebraShadeSet.has(index)}
               />
             </React.Fragment>
           );

@@ -108,7 +108,7 @@ const StreamGroup = ({
     <div className="rounded border border-[var(--color-border)] bg-[var(--color-surface)]">
       <button
         type="button"
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--color-surface-raised)]"
+        className="flex w-full items-center gap-1.5 px-2 py-1 text-left transition-colors hover:bg-[var(--color-surface-raised)]"
         onClick={onToggle}
       >
         <ChevronRight
@@ -121,14 +121,19 @@ const StreamGroup = ({
         <Bot size={13} className="shrink-0 text-[var(--color-text-muted)]" />
         <span className="min-w-0 truncate text-[11px] text-[var(--color-text-secondary)]">
           {searchQueryOverride && searchQueryOverride.trim().length > 0
-            ? highlightQueryInText(group.summary, searchQueryOverride, `${group.id}:group-summary`, {
-                forceAllActive: true,
-              })
+            ? highlightQueryInText(
+                group.summary,
+                searchQueryOverride,
+                `${group.id}:group-summary`,
+                {
+                  forceAllActive: true,
+                }
+              )
             : group.summary}
         </span>
       </button>
       {isExpanded && (
-        <div className="border-t border-[var(--color-border)] p-2">
+        <div className="border-t border-[var(--color-border)] p-1.5">
           <DisplayItemList
             items={group.items}
             onItemClick={handleItemClick}
@@ -218,7 +223,11 @@ export const CliLogsRichView = ({
         )}
         onScroll={(e) => {
           const el = e.currentTarget;
-          onScroll?.({ scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight });
+          onScroll?.({
+            scrollTop: el.scrollTop,
+            scrollHeight: el.scrollHeight,
+            clientHeight: el.clientHeight,
+          });
         }}
       >
         {hasContent ? (
@@ -242,10 +251,14 @@ export const CliLogsRichView = ({
         scrollRef.current = el;
         containerRefCallback?.(el);
       }}
-      className={cn('max-h-[400px] space-y-1.5 overflow-y-auto', className)}
+      className={cn('cli-logs-compact max-h-[400px] space-y-1 overflow-y-auto', className)}
       onScroll={(e) => {
         const el = e.currentTarget;
-        onScroll?.({ scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight });
+        onScroll?.({
+          scrollTop: el.scrollTop,
+          scrollHeight: el.scrollHeight,
+          clientHeight: el.clientHeight,
+        });
       }}
     >
       {visibleGroups.map((group) =>

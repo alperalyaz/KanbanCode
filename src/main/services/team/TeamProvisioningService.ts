@@ -2876,7 +2876,7 @@ export class TeamProvisioningService {
       const hasSendMessageToUser = (content ?? []).some((part) => {
         if (!part || typeof part !== 'object') return false;
         if (part.type !== 'tool_use' || part.name !== 'SendMessage') return false;
-        const input = (part as Record<string, unknown>).input;
+        const input = part.input;
         if (!input || typeof input !== 'object') return false;
         return (input as Record<string, unknown>).recipient === 'user';
       });
@@ -2885,7 +2885,7 @@ export class TeamProvisioningService {
         .filter((part) => part.type === 'text' && typeof part.text === 'string')
         .map((part) => part.text as string);
       if (textParts.length > 0) {
-        const text = textParts.join('');
+        const text = textParts.join('\n');
         // Auth failures sometimes show up as assistant text (e.g. "401", "Please run /login")
         // rather than stderr or a result.subtype=error. Detect early to avoid false "ready".
         this.handleAuthFailureInOutput(run, text, 'assistant');
@@ -2908,7 +2908,7 @@ export class TeamProvisioningService {
               clearTimeout(capture.idleHandle);
             }
             capture.idleHandle = setTimeout(() => {
-              const combined = capture.textParts.join('').trim();
+              const combined = capture.textParts.join('\n').trim();
               capture.resolveOnce(combined);
             }, capture.idleMs);
           }
@@ -2918,7 +2918,7 @@ export class TeamProvisioningService {
           // SendMessage and avoid duplicating it as a separate lead text entry.
           if (!run.silentUserDmForward && !hasSendMessageToUser) {
             run.directReplyParts.push(text);
-            const raw = run.directReplyParts.join('');
+            const raw = run.directReplyParts.join('\n');
             const cleanText = stripAgentBlocks(raw).trim();
             if (cleanText.length >= TeamProvisioningService.LEAD_TEXT_MIN_LENGTH) {
               const leadName =
@@ -2927,11 +2927,13 @@ export class TeamProvisioningService {
               if (!run.leadTurnMessageTimestamp) {
                 run.leadTurnMessageTimestamp = nowIso();
               }
+              // Update timestamp on each text block so the live indicator stays fresh
+              const currentTimestamp = nowIso();
               const messageId = `lead-turn-${run.runId}-${run.leadTurnSeq}`;
               const leadMsg: InboxMessage = {
                 from: leadName,
                 text: cleanText,
-                timestamp: run.leadTurnMessageTimestamp,
+                timestamp: currentTimestamp,
                 read: true,
                 summary: cleanText.length > 60 ? cleanText.slice(0, 57) + '...' : cleanText,
                 messageId,
@@ -3098,11 +3100,11 @@ export class TeamProvisioningService {
         }
         if (run.leadRelayCapture) {
           const capture = run.leadRelayCapture;
-          const combined = capture.textParts.join('').trim();
+          const combined = capture.textParts.join('\n').trim();
           capture.resolveOnce(combined);
         } else if (run.provisioningComplete && run.directReplyParts.length > 0) {
           // Finalize the current live lead turn message (single messageId per turn).
-          const rawReply = run.directReplyParts.join('').trim();
+          const rawReply = run.directReplyParts.join('\n').trim();
           run.directReplyParts = [];
           const leadName =
             run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name ||

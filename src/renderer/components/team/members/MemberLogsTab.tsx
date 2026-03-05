@@ -3,11 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@renderer/api';
 import { MemberExecutionLog } from '@renderer/components/team/members/MemberExecutionLog';
 import {
-  SubagentRecentMessagesPreview,
   type SubagentPreviewMessage,
+  SubagentRecentMessagesPreview,
 } from '@renderer/components/team/members/SubagentRecentMessagesPreview';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { enhanceAIGroup } from '@renderer/utils/aiGroupEnhancer';
 import { formatDuration } from '@renderer/utils/formatters';
+import { transformChunksToConversation } from '@renderer/utils/groupTransformer';
 import {
   AlertCircle,
   ChevronDown,
@@ -17,9 +19,6 @@ import {
   Loader2,
   MessageSquare,
 } from 'lucide-react';
-
-import { enhanceAIGroup } from '@renderer/utils/aiGroupEnhancer';
-import { transformChunksToConversation } from '@renderer/utils/groupTransformer';
 
 import type { EnhancedChunk } from '@renderer/types/data';
 import type { MemberLogSummary } from '@shared/types';
@@ -225,7 +224,7 @@ export const MemberLogsTab = ({
     async (log: MemberLogSummary): Promise<EnhancedChunk[] | null> => {
       if (log.kind === 'subagent') {
         const d = await api.getSubagentDetail(log.projectId, log.sessionId, log.subagentId);
-        return (d?.chunks ?? null) as EnhancedChunk[] | null;
+        return d?.chunks ?? null;
       }
       const d = await api.getSessionDetail(log.projectId, log.sessionId);
       return (d?.chunks ?? null) as unknown as EnhancedChunk[] | null;
