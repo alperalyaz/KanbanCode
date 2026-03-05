@@ -182,6 +182,11 @@
   --card-text-lighter: #e2e8f0;
   --card-separator: #2a2c38;
 
+  /* System activity messages */
+  --system-activity-bg: rgba(59, 130, 246, 0.06);
+  --system-activity-border: rgba(59, 130, 246, 0.12);
+  --system-activity-accent: rgba(96, 165, 250, 0.5);
+
   /* Assessment severity colors (badges, health indicators) */
   --assess-good: #4ade80;
   --assess-warning: #fbbf24;
@@ -403,6 +408,11 @@
   --card-text-light: #3a3935;
   --card-text-lighter: #2a2925;
   --card-separator: #d5d3cf;
+
+  /* System activity messages */
+  --system-activity-bg: rgba(59, 130, 246, 0.06);
+  --system-activity-border: rgba(59, 130, 246, 0.15);
+  --system-activity-accent: rgba(37, 99, 235, 0.5);
 
   /* Sticky Context button - transparent glass */
   --context-btn-bg: rgba(0, 0, 0, 0.06);

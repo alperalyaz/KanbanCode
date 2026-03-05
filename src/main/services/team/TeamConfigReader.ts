@@ -8,6 +8,7 @@ import { getTeamFsWorkerClient } from './TeamFsWorkerClient';
 import { TeamMembersMetaStore } from './TeamMembersMetaStore';
 
 import type { TeamConfig, TeamMember, TeamSummary, TeamSummaryMember } from '@shared/types';
+import { createCliAutoSuffixNameGuard } from '@shared/utils/teamMemberName';
 
 const logger = createLogger('Service:TeamConfigReader');
 
@@ -241,6 +242,15 @@ export class TeamConfigReader {
           if (member && typeof member.name === 'string') {
             mergeMember(member);
           }
+        }
+      }
+
+      // Defense: drop CLI auto-suffixed duplicates (alice-2) when base name exists.
+      const allNames = Array.from(memberMap.values()).map((m) => m.name);
+      const keepName = createCliAutoSuffixNameGuard(allNames);
+      for (const [key, member] of Array.from(memberMap.entries())) {
+        if (!keepName(member.name)) {
+          memberMap.delete(key);
         }
       }
 

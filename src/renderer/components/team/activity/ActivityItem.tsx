@@ -284,6 +284,7 @@ export const ActivityItem = ({
 
   const isHeaderClickable = Boolean(systemLabel);
   const isUserSent = message.source === 'user_sent';
+  const isSystemMessage = message.from === 'system';
 
   return (
     <article
@@ -293,17 +294,23 @@ export const ActivityItem = ({
         backgroundColor:
           rateLimited || isApiError
             ? 'var(--tool-result-error-bg)'
-            : zebraShade
-              ? CARD_BG_ZEBRA
-              : CARD_BG,
+            : isSystemMessage
+              ? 'var(--system-activity-bg)'
+              : zebraShade
+                ? CARD_BG_ZEBRA
+                : CARD_BG,
         border:
           rateLimited || isApiError
             ? '1px solid var(--tool-result-error-border)'
-            : CARD_BORDER_STYLE,
+            : isSystemMessage
+              ? '1px solid var(--system-activity-border)'
+              : CARD_BORDER_STYLE,
         borderLeft:
           rateLimited || isApiError
             ? '3px solid var(--tool-result-error-text)'
-            : `3px solid ${colors.border}`,
+            : isSystemMessage
+              ? '3px solid var(--system-activity-accent)'
+              : `3px solid ${colors.border}`,
       }}
     >
       {/* Header — div with role=button (cannot use <button> due to nested buttons inside) */}
@@ -345,7 +352,7 @@ export const ActivityItem = ({
         <MemberBadge
           name={message.from}
           color={memberColor ?? message.color}
-          hideAvatar={message.from === 'user'}
+          hideAvatar={message.from === 'user' || message.from === 'system'}
           onClick={onMemberNameClick}
         />
 

@@ -71,11 +71,11 @@ export const TeamTabSectionNav = ({
   }, [open]);
 
   return (
-    <div className="w-full" onPointerDown={(e) => e.stopPropagation()}>
+    <div className="shrink-0" onPointerDown={(e) => e.stopPropagation()}>
       <button
         ref={buttonRef}
         type="button"
-        className="flex h-3.5 w-full items-center justify-center text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
+        className="flex size-4 items-center justify-center rounded-sm text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
         onClick={(e) => {
           e.stopPropagation();
           setOpen((prev) => !prev);

@@ -7,6 +7,8 @@ import { atomicWriteAsync } from './atomicWrite';
 
 import type { TeamMember } from '@shared/types';
 
+import { createCliAutoSuffixNameGuard } from '@shared/utils/teamMemberName';
+
 interface TeamMembersMetaFile {
   version: 1;
   members: TeamMember[];
@@ -90,6 +92,15 @@ export class TeamMembersMetaStore {
       deduped.set(normalized.name, normalized);
     }
 
+    // Defense: drop CLI auto-suffixed duplicates (alice-2) when base name exists.
+    const allNames = Array.from(deduped.keys());
+    const keepName = createCliAutoSuffixNameGuard(allNames);
+    for (const name of allNames) {
+      if (!keepName(name)) {
+        deduped.delete(name);
+      }
+    }
+
     return Array.from(deduped.values()).sort((a, b) => a.name.localeCompare(b.name));
   }
 
@@ -101,6 +112,15 @@ export class TeamMembersMetaStore {
         continue;
       }
       deduped.set(normalized.name, normalized);
+    }
+
+    // Defense: drop CLI auto-suffixed duplicates (alice-2) when base name exists.
+    const allNames = Array.from(deduped.keys());
+    const keepName = createCliAutoSuffixNameGuard(allNames);
+    for (const name of allNames) {
+      if (!keepName(name)) {
+        deduped.delete(name);
+      }
     }
 
     const payload: TeamMembersMetaFile = {

@@ -309,7 +309,7 @@ export const TabBar = ({ paneId }: TabBarProps): React.JSX.Element => {
             outline: isDroppableOver ? '1px dashed var(--color-accent, #6366f1)' : 'none',
             outlineOffset: '-1px',
             overflowX: 'auto',
-            overflowY: 'clip',
+            overflowY: 'hidden',
           } as React.CSSProperties
         }
       >
