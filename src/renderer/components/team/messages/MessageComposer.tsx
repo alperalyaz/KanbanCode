@@ -414,7 +414,7 @@ export const MessageComposer = ({
 
       <MentionableTextarea
         id={`compose-${teamName}`}
-        placeholder="Write a message... (Enter to send)"
+        placeholder="Write a message... (Enter to send, Shift+Enter for new line)"
         value={draft.value}
         onValueChange={draft.setValue}
         suggestions={mentionSuggestions}

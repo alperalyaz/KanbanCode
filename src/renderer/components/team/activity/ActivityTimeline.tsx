@@ -287,13 +287,40 @@ export const ActivityTimeline = ({
       ? item.group.thoughts[0].leadSessionId
       : item.message.leadSessionId;
 
+  // Pin the newest thought group (if first) so it stays at the top and doesn't jump.
+  const pinnedThoughtGroup = timelineItems[0]?.type === 'lead-thoughts' ? timelineItems[0] : null;
+  const startIndex = pinnedThoughtGroup ? 1 : 0;
+
   return (
     <div className="space-y-1">
-      {timelineItems.map((item, index) => {
+      {/* Pinned (newest) thought group — always at top */}
+      {pinnedThoughtGroup &&
+        (() => {
+          const { group } = pinnedThoughtGroup;
+          const firstThought = group.thoughts[0];
+          const info = memberInfo.get(firstThought.from);
+          const itemKey = `thoughts-${firstThought.messageId ?? pinnedThoughtGroup.originalIndices[0]}`;
+          return (
+            <LeadThoughtsGroupRow
+              key={itemKey}
+              group={group}
+              memberColor={info?.color}
+              canBeLive={true}
+              isNew={newItemKeys.has(itemKey)}
+              onVisible={onMessageVisible}
+              zebraShade={zebraShadeSet.has(0)}
+            />
+          );
+        })()}
+
+      {/* Remaining items */}
+      {timelineItems.slice(startIndex).map((item, index) => {
+        const realIndex = index + startIndex;
+
         // Session boundary separator (messages sorted desc — new on top)
         let sessionSeparator: React.JSX.Element | null = null;
-        if (index > 0) {
-          const prevSessionId = getItemSessionId(timelineItems[index - 1]);
+        if (realIndex > 0) {
+          const prevSessionId = getItemSessionId(timelineItems[realIndex - 1]);
           const currSessionId = getItemSessionId(item);
           if (prevSessionId && currSessionId && prevSessionId !== currSessionId) {
             sessionSeparator = (
@@ -322,9 +349,10 @@ export const ActivityTimeline = ({
               <LeadThoughtsGroupRow
                 group={group}
                 memberColor={info?.color}
+                canBeLive={false}
                 isNew={newItemKeys.has(itemKey)}
                 onVisible={onMessageVisible}
-                zebraShade={zebraShadeSet.has(index)}
+                zebraShade={zebraShadeSet.has(realIndex)}
               />
             </React.Fragment>
           );
@@ -350,7 +378,7 @@ export const ActivityTimeline = ({
               recipientColor={recipientColor}
               isUnread={isUnread}
               isNew={newItemKeys.has(messageKey)}
-              zebraShade={zebraShadeSet.has(index)}
+              zebraShade={zebraShadeSet.has(realIndex)}
               memberColorMap={colorMap}
               onMemberNameClick={onMemberClick ? handleMemberNameClick : undefined}
               onCreateTask={onCreateTaskFromMessage}

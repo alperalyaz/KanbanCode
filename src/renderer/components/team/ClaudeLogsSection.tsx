@@ -330,7 +330,8 @@ export const ClaudeLogsSection = ({ teamName }: ClaudeLogsSectionProps): React.J
       badge={badge}
       headerExtra={headerExtra}
       defaultOpen
-      contentClassName="pt-0"
+      // Prevent scroll anchoring from "pulling" the parent container when logs update.
+      contentClassName="pt-0 [overflow-anchor:none]"
     >
       <div className="flex items-center justify-between gap-2 pb-2">
         <span className="text-[11px] text-[var(--color-text-muted)]">

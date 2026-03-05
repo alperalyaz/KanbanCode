@@ -208,6 +208,8 @@ export interface SendMessageRequest {
   from?: string;
   attachments?: AttachmentPayload[];
   source?: InboxMessage['source'];
+  /** Lead session ID for session boundary detection. */
+  leadSessionId?: string;
 }
 
 export interface SendMessageResult {

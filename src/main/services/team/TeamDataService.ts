@@ -283,6 +283,7 @@ export class TeamDataService {
 
     // Dedup: if a lead_process message text is also present in lead_session, prefer lead_session.
     // This avoids double-rendering when we persist lead process messages and later load the lead JSONL.
+    // Exception: lead_process messages with `to` field are captured SendMessage — never dedup those.
     if (leadTexts.length > 0 && sentMessages.length > 0) {
       const normalizeText = (text: string): string => text.trim().replace(/\r\n/g, '\n');
       const leadSessionFingerprints = new Set<string>();
@@ -292,6 +293,8 @@ export class TeamDataService {
       }
       messages = messages.filter((m) => {
         if (m.source !== 'lead_process') return true;
+        // Captured SendMessage messages (with recipient) are real messages — never dedup
+        if (m.to) return true;
         const fp = `${m.from}\0${normalizeText(m.text ?? '')}`;
         return !leadSessionFingerprints.has(fp);
       });
@@ -311,8 +314,11 @@ export class TeamDataService {
           msg.leadSessionId = currentSessionId;
         }
       }
-      // Backward pass: fill messages before the first known session
-      currentSessionId = undefined;
+      // Backward pass: fill messages before the first known session.
+      // Seed with config.leadSessionId so that recent messages without an explicit
+      // session ID inherit the current (most recent) session — this ensures that
+      // session boundary separators work even when inbox entries lack the field.
+      currentSessionId = config.leadSessionId;
       for (let i = messages.length - 1; i >= 0; i--) {
         if (messages[i].leadSessionId) {
           currentSessionId = messages[i].leadSessionId;
@@ -1117,6 +1123,17 @@ export class TeamDataService {
   }
 
   async sendMessage(teamName: string, request: SendMessageRequest): Promise<SendMessageResult> {
+    // Enrich with leadSessionId so session boundary separators work
+    if (!request.leadSessionId) {
+      try {
+        const config = await this.configReader.getConfig(teamName);
+        if (config?.leadSessionId) {
+          request = { ...request, leadSessionId: config.leadSessionId };
+        }
+      } catch {
+        // non-critical
+      }
+    }
     return this.inboxWriter.sendMessage(teamName, request);
   }
 

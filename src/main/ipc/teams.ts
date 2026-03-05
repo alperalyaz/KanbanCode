@@ -430,7 +430,7 @@ async function handleGetData(
   const merged: typeof data.messages = [];
   const seen = new Set<string>();
   for (const msg of [...data.messages, ...live]) {
-    if ((msg as { source?: unknown }).source === 'lead_process') {
+    if ((msg as { source?: unknown }).source === 'lead_process' && !msg.to) {
       const fp = `${msg.from}\0${normalizeText(msg.text ?? '')}`;
       // Skip if same text already exists from any source (inbox, lead_session, etc.)
       if (existingTextFingerprints.has(fp)) {

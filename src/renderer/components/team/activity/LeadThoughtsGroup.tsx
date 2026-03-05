@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import {
   CARD_BG,
@@ -75,6 +76,8 @@ interface LeadThoughtsGroupRowProps {
   memberColor?: string;
   isNew?: boolean;
   onVisible?: (message: InboxMessage) => void;
+  /** When false, the live indicator is always off (for historical thought groups). */
+  canBeLive?: boolean;
   /** When true, apply a subtle lighter background for zebra-striped lists. */
   zebraShade?: boolean;
 }
@@ -102,6 +105,7 @@ export const LeadThoughtsGroupRow = ({
   memberColor,
   isNew,
   onVisible,
+  canBeLive,
   zebraShade,
 }: LeadThoughtsGroupRowProps): React.JSX.Element => {
   const ref = useRef<HTMLDivElement>(null);
@@ -130,11 +134,12 @@ export const LeadThoughtsGroupRow = ({
   // Live = process alive AND (lead is in active turn OR context recently updated OR fresh thought)
   const computeIsLive = useCallback(
     () =>
+      canBeLive !== false &&
       isTeamAlive &&
       (leadActivity === 'active' ||
         (leadContextUpdatedAt ? isRecentTimestamp(leadContextUpdatedAt) : false) ||
         isRecentTimestamp(newest.timestamp)),
-    [isTeamAlive, leadActivity, leadContextUpdatedAt, newest.timestamp]
+    [canBeLive, isTeamAlive, leadActivity, leadContextUpdatedAt, newest.timestamp]
   );
   const [isLive, setIsLive] = useState(computeIsLive);
 
@@ -168,13 +173,16 @@ export const LeadThoughtsGroupRow = ({
     return () => observer.disconnect();
   }, [onVisible, thoughts]);
 
-  // Auto-scroll to bottom when new thoughts arrive
+  // Stable ref for auto-scroll trigger: track content changes (new thoughts + text growth)
+  const newestTextLength = newest.text.length;
+
+  // Auto-scroll to bottom when new thoughts arrive or text grows
   useEffect(() => {
     if (isUserScrolledUpRef.current) return;
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [thoughts.length]);
+  }, [thoughts.length, newestTextLength]);
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -195,7 +203,6 @@ export const LeadThoughtsGroupRow = ({
           backgroundColor: zebraShade ? CARD_BG_ZEBRA : CARD_BG,
           border: CARD_BORDER_STYLE,
           borderLeft: `3px solid ${colors.border}`,
-          opacity: isLive ? undefined : 0.75,
         }}
       >
         {/* Header */}
@@ -236,9 +243,13 @@ export const LeadThoughtsGroupRow = ({
               <span className="shrink-0 font-mono" style={{ color: CARD_ICON_MUTED }}>
                 {formatTimeWithSec(thought.timestamp)}
               </span>
-              <span className="flex-1 leading-relaxed" style={{ color: CARD_TEXT_LIGHT }}>
-                {thought.text.length > 300 ? thought.text.slice(0, 297) + '...' : thought.text}
-              </span>
+              <div className="min-w-0 flex-1 [&_>div>div]:p-0" style={{ color: CARD_TEXT_LIGHT }}>
+                <MarkdownViewer
+                  content={thought.text.replace(/\n/g, '  \n')}
+                  maxHeight="max-h-none"
+                  bare
+                />
+              </div>
             </div>
           ))}
         </div>

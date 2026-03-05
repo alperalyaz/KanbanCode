@@ -79,8 +79,6 @@ const PREFLIGHT_PING_ARGS = [
   'haiku',
   '--max-turns',
   '1',
-  '--max-budget-usd',
-  '0.05',
   '--no-session-persistence',
 ] as const;
 const PREFLIGHT_EXPECTED = 'PONG';
@@ -2797,6 +2795,16 @@ export class TeamProvisioningService {
   }
 
   pushLiveLeadProcessMessage(teamName: string, message: InboxMessage): void {
+    // Enrich with leadSessionId if missing — needed for session boundary separators
+    if (!message.leadSessionId) {
+      const runId = this.activeByTeam.get(teamName);
+      if (runId) {
+        const run = this.runs.get(runId);
+        if (run?.detectedSessionId) {
+          message.leadSessionId = run.detectedSessionId;
+        }
+      }
+    }
     const MAX = 100;
     const list = this.liveLeadProcessMessages.get(teamName) ?? [];
     const id = typeof message.messageId === 'string' ? message.messageId.trim() : '';

@@ -61,16 +61,39 @@ export const MemberLogsTab = ({
     () => (taskWorkIntervals ? JSON.stringify(taskWorkIntervals) : ''),
     [taskWorkIntervals]
   );
+  const isMountedRef = useRef(true);
   const hasLoadedRef = useRef(false);
 
   const [logs, setLogs] = useState<MemberLogSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const refreshCountRef = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const expandedIdRef = useRef<string | null>(null);
   const [detailChunks, setDetailChunks] = useState<EnhancedChunk[] | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [previewChunks, setPreviewChunks] = useState<EnhancedChunk[] | null>(null);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    expandedIdRef.current = expandedId;
+  }, [expandedId]);
+
+  const beginRefreshing = useCallback((): void => {
+    refreshCountRef.current += 1;
+    if (isMountedRef.current) setRefreshing(true);
+  }, []);
+
+  const endRefreshing = useCallback((): void => {
+    refreshCountRef.current = Math.max(0, refreshCountRef.current - 1);
+    if (isMountedRef.current) setRefreshing(refreshCountRef.current > 0);
+  }, []);
 
   const getRowId = useCallback((log: MemberLogSummary): string => {
     return log.kind === 'subagent'
@@ -173,6 +196,7 @@ export const MemberLogsTab = ({
     const shouldAutoRefresh = taskId != null && taskStatus === 'in_progress';
 
     const load = async (): Promise<void> => {
+      let didBeginRefreshing = false;
       try {
         if (taskId == null && !memberName) {
           if (!cancelled) setLogs([]);
@@ -181,7 +205,8 @@ export const MemberLogsTab = ({
         if (!hasLoadedRef.current) {
           setLoading(true);
         } else {
-          setRefreshing(true);
+          beginRefreshing();
+          didBeginRefreshing = true;
         }
         setError(null);
 
@@ -193,9 +218,21 @@ export const MemberLogsTab = ({
                 intervals: taskWorkIntervals,
               })
             : await api.teams.getMemberLogs(teamName, memberName!);
+        const nextLogs = Array.isArray(result) ? [...result] : [];
+
         if (!cancelled) {
-          setLogs(Array.isArray(result) ? [...result] : []);
+          setLogs(nextLogs);
           hasLoadedRef.current = true;
+        }
+
+        // Keep expanded session details in sync with the same refresh
+        // cadence as the summary (counts/titles) while "Updating..." is shown.
+        if (!cancelled && didBeginRefreshing) {
+          try {
+            await refreshExpandedDetailFromLogs(nextLogs);
+          } catch {
+            // Keep last successful detail view; avoid flicker on transient failures.
+          }
         }
       } catch (e) {
         if (!cancelled) {
@@ -204,7 +241,7 @@ export const MemberLogsTab = ({
       } finally {
         if (!cancelled) {
           setLoading(false);
-          setRefreshing(false);
+          if (didBeginRefreshing) endRefreshing();
         }
       }
     };
@@ -230,6 +267,26 @@ export const MemberLogsTab = ({
       return (d?.chunks ?? null) as unknown as EnhancedChunk[] | null;
     },
     []
+  );
+
+  const refreshExpandedDetailFromLogs = useCallback(
+    async (nextLogs: MemberLogSummary[]): Promise<void> => {
+      const rowId = expandedIdRef.current;
+      if (!rowId) return;
+      if (!isMountedRef.current) return;
+
+      const nextExpanded = nextLogs.find((log) => getRowId(log) === rowId);
+      if (!nextExpanded) return;
+
+      const shouldAutoRefreshSummary = taskId != null && taskStatus === 'in_progress';
+      if (!shouldAutoRefreshSummary && !nextExpanded.isOngoing) return;
+
+      const next = await fetchDetailForLog(nextExpanded);
+      if (!isMountedRef.current) return;
+      // Ensure new reference so memoized transforms update.
+      setDetailChunks(next ? [...next] : null);
+    },
+    [fetchDetailForLog, getRowId, taskId, taskStatus]
   );
 
   useEffect(() => {
@@ -268,12 +325,15 @@ export const MemberLogsTab = ({
 
     let cancelled = false;
     const interval = setInterval(async () => {
+      beginRefreshing();
       try {
         const next = await fetchDetailForLog(previewLog);
         if (cancelled) return;
         setPreviewChunks(next ? [...next] : null);
       } catch {
         // keep last successful preview
+      } finally {
+        endRefreshing();
       }
     }, 5000);
 
@@ -281,16 +341,27 @@ export const MemberLogsTab = ({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [fetchDetailForLog, previewLog, shouldShowPreview, taskStatus]);
+  }, [
+    beginRefreshing,
+    endRefreshing,
+    fetchDetailForLog,
+    previewLog,
+    shouldShowPreview,
+    taskStatus,
+  ]);
 
   useEffect(() => {
     const shouldAutoRefreshSummary = taskId != null && taskStatus === 'in_progress';
     if (!expandedLogSummary) return;
-    if (!shouldAutoRefreshSummary && !expandedLogSummary.isOngoing) return;
+    // When task logs are auto-refreshing, the summary refresh loop also refreshes
+    // expanded details to keep everything in sync (and avoid duplicate requests).
+    if (shouldAutoRefreshSummary) return;
+    if (!expandedLogSummary.isOngoing) return;
 
     let cancelled = false;
 
-    const interval = setInterval(async () => {
+    const refreshDetail = async (): Promise<void> => {
+      beginRefreshing();
       try {
         const next = await fetchDetailForLog(expandedLogSummary);
         if (cancelled) return;
@@ -298,14 +369,18 @@ export const MemberLogsTab = ({
         setDetailChunks(next ? [...next] : null);
       } catch {
         // Keep last successful data; avoid flicker during transient errors.
+      } finally {
+        endRefreshing();
       }
-    }, 5000);
+    };
+
+    const interval = setInterval(() => void refreshDetail(), 5000);
 
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [expandedLogSummary, fetchDetailForLog, taskId, taskStatus]);
+  }, [beginRefreshing, endRefreshing, expandedLogSummary, fetchDetailForLog, taskId, taskStatus]);
 
   const handleExpand = useCallback(
     async (log: MemberLogSummary) => {

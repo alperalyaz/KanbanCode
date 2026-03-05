@@ -17,9 +17,11 @@ import { Bot, ChevronRight } from 'lucide-react';
 
 import type { StreamJsonGroup } from '@renderer/utils/streamJsonParser';
 
+type CliLogsOrder = 'oldest-first' | 'newest-first';
+
 interface CliLogsRichViewProps {
   cliLogsTail: string;
-  order?: 'oldest-first' | 'newest-first';
+  order?: CliLogsOrder;
   onScroll?: (params: { scrollTop: number; scrollHeight: number; clientHeight: number }) => void;
   containerRefCallback?: (el: HTMLDivElement | null) => void;
   /** Optional local search query override for inline highlighting */
@@ -156,6 +158,8 @@ export const CliLogsRichView = ({
   className,
 }: CliLogsRichViewProps): React.JSX.Element => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const stickToEdgeRef = useRef(true);
+  const lastOrderRef = useRef<CliLogsOrder>(order);
   // Tracks groups manually collapsed by user (default: all auto-expanded)
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(new Set());
   const [expandedItemIds, setExpandedItemIds] = useState<Set<string>>(new Set());
@@ -173,15 +177,38 @@ export const CliLogsRichView = ({
     return expanded;
   }, [groups, collapsedGroupIds]);
 
-  // Auto-scroll to bottom on new content
-  useEffect(() => {
-    if (scrollRef.current) {
+  const computeShouldStickToEdge = useCallback(
+    (el: HTMLDivElement): boolean => {
+      // Small threshold makes it feel "sticky" but still allows reading slightly away from the edge
+      const thresholdPx = 16;
       if (order === 'newest-first') {
-        scrollRef.current.scrollTop = 0;
-      } else {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        return el.scrollTop <= thresholdPx;
       }
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      return distanceFromBottom <= thresholdPx;
+    },
+    [order]
+  );
+
+  // Auto-scroll only when user is pinned to the edge.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    // If the sort order changes, always snap once (expectation: show the "newest edge").
+    if (lastOrderRef.current !== order) {
+      lastOrderRef.current = order;
+      stickToEdgeRef.current = true;
     }
+
+    if (!stickToEdgeRef.current) return;
+
+    if (order === 'newest-first') {
+      el.scrollTop = 0;
+      return;
+    }
+
+    el.scrollTop = el.scrollHeight;
   }, [cliLogsTail, order]);
 
   const handleGroupToggle = useCallback((groupId: string) => {
@@ -223,6 +250,7 @@ export const CliLogsRichView = ({
         )}
         onScroll={(e) => {
           const el = e.currentTarget;
+          stickToEdgeRef.current = computeShouldStickToEdge(el);
           onScroll?.({
             scrollTop: el.scrollTop,
             scrollHeight: el.scrollHeight,
@@ -254,6 +282,7 @@ export const CliLogsRichView = ({
       className={cn('cli-logs-compact max-h-[400px] space-y-1 overflow-y-auto', className)}
       onScroll={(e) => {
         const el = e.currentTarget;
+        stickToEdgeRef.current = computeShouldStickToEdge(el);
         onScroll?.({
           scrollTop: el.scrollTop,
           scrollHeight: el.scrollHeight,
