@@ -56,6 +56,7 @@ import {
   TEAM_DELETE_TASK_ATTACHMENT,
   // eslint-disable-next-line boundaries/element-types -- IPC channel constants are shared between main and preload by design
 } from '@preload/constants/ipcChannels';
+import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
 import { KANBAN_COLUMN_IDS } from '@shared/constants/kanban';
 import { createLogger } from '@shared/utils/logger';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
@@ -74,7 +75,6 @@ import {
   validateTeammateName,
   validateTeamName,
 } from './guards';
-import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
 
 /** Track rate limit message keys already notified to avoid duplicate OS notifications across refreshes. */
 const notifiedRateLimitKeys = new Set<string>();
@@ -1016,12 +1016,34 @@ async function handleSendMessage(
     }
 
     // Inbox path: offline lead or regular members (no attachment support)
+    const baseText = payload.text!.trim();
+    const memberDeliveryText = isLeadRecipient
+      ? baseText
+      : [
+          baseText,
+          '',
+          AGENT_BLOCK_OPEN,
+          'You received a direct message from the human user via the UI.',
+          'Please reply back to recipient "user" with a short, human-readable answer.',
+          'If you cannot respond now, reply with a brief status (e.g. "Busy, will reply later").',
+          AGENT_BLOCK_CLOSE,
+        ].join('\n');
     const result = await getTeamDataService().sendMessage(tn, {
       member: memberName,
-      text: payload.text!,
+      text: memberDeliveryText,
       summary: payload.summary,
       from: payload.from,
     });
+
+    // Best-effort: if team is alive and recipient is a teammate (not lead),
+    // also forward via the live lead process so in-process teammates receive it.
+    if (!isLeadRecipient && isAlive) {
+      try {
+        await provisioning.forwardUserDmToTeammate(tn, memberName, baseText, payload.summary);
+      } catch (e: unknown) {
+        logger.warn(`Failed to forward user DM to teammate "${memberName}" via lead: ${String(e)}`);
+      }
+    }
 
     // Best-effort relay for lead via inbox
     if (isLeadRecipient && isAlive) {
