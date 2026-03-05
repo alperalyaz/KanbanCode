@@ -862,6 +862,7 @@ export class TeamDataService {
             from: leadName,
             text: parts.join('\n'),
             summary: `New task #${task.id} assigned`,
+            source: 'system_notification',
           });
         }
       } catch {
@@ -906,6 +907,7 @@ export class TeamDataService {
             from: leadName,
             text: parts.join('\n'),
             summary: `Task #${task.id} started`,
+            source: 'system_notification',
           });
         }
       } catch {
@@ -961,6 +963,7 @@ export class TeamDataService {
         from: last.actor,
         text: `Task #${task.id} "${task.subject}" has been started by ${last.actor}.`,
         summary: `Task #${task.id} started`,
+        source: 'system_notification',
       });
     } catch (error) {
       logger.warn(`[TeamDataService] notifyLeadOnTeammateTaskStart failed: ${String(error)}`);
@@ -1072,6 +1075,7 @@ export class TeamDataService {
           from: leadName,
           text: parts.join('\n'),
           summary: `Comment on #${taskId}`,
+          source: 'system_notification',
         });
       } else if (task && owner && this.isLeadOwner(owner, leadName)) {
         // Notify lead about user's comment on their own task.
@@ -1088,6 +1092,7 @@ export class TeamDataService {
           from: 'user',
           text: parts.join('\n'),
           summary: `Comment on #${taskId}`,
+          source: 'system_notification',
         });
       }
     } catch {
@@ -1208,6 +1213,7 @@ export class TeamDataService {
           `node "${toolPath}" --team ${teamName} review request-changes ${taskId} --comment "..."\n` +
           AGENT_BLOCK_CLOSE,
         summary: `Review request for #${taskId}`,
+        source: 'system_notification',
       });
     } catch (error) {
       await this.kanbanManager
@@ -1307,6 +1313,7 @@ export class TeamDataService {
     for (const msg of messages) {
       if (!msg.messageId || !msg.summary || msg.from === 'user') continue;
       if (msg.source === 'lead_session' || msg.source === 'lead_process') continue;
+      if (msg.source === 'system_notification') continue;
       if (isAutomatedCommentNotification(msg)) continue;
 
       const textKey = `${msg.from}\0${msg.text}`;
@@ -1490,6 +1497,7 @@ export class TeamDataService {
           `${patch.comment?.trim() || 'Reviewer requested changes.'}\n\n` +
           `Please fix and mark it as completed when ready.`,
         summary: `Fix request for #${taskId}`,
+        source: 'system_notification',
       });
     } catch (error) {
       await this.taskWriter

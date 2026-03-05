@@ -29,6 +29,7 @@ export class TeamInboxWriter {
       summary: request.summary,
       messageId,
       attachments: attachmentMeta?.length ? attachmentMeta : undefined,
+      ...(request.source && { source: request.source }),
     };
 
     await withInboxLock(inboxPath, async () => {

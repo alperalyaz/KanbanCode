@@ -290,10 +290,13 @@ export const ActivityTimeline = ({
           const currSessionId = getItemSessionId(item);
           if (prevSessionId && currSessionId && prevSessionId !== currSessionId) {
             sessionSeparator = (
-              <div className="flex items-center gap-3 py-4">
+              <div
+                className="flex items-center gap-3"
+                style={{ paddingTop: 30, paddingBottom: 30 }}
+              >
                 <div className="h-px flex-1 bg-[var(--color-border-emphasis)]" />
                 <span className="whitespace-nowrap text-[11px] text-[var(--color-text-muted)]">
-                  Новая сессия
+                  New session
                 </span>
                 <div className="h-px flex-1 bg-[var(--color-border-emphasis)]" />
               </div>

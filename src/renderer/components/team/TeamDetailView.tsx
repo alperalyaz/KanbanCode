@@ -1416,28 +1416,25 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                 : undefined
             }
             headerExtra={
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="pointer-events-auto size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void window.electronAPI.openExternal(
-                        'https://github.com/777genius/claude-notifications-go'
-                      );
-                    }}
-                  >
-                    <Bell size={12} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Desktop notifications plugin</TooltipContent>
-              </Tooltip>
-            }
-            defaultOpen
-            action={
-              <div className="flex items-center gap-2 pl-2">
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="pointer-events-auto size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void window.electronAPI.openExternal(
+                          'https://github.com/777genius/claude-notifications-go'
+                        );
+                      }}
+                    >
+                      <Bell size={12} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Desktop notifications plugin</TooltipContent>
+                </Tooltip>
                 {messagesUnreadCount > 0 && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1455,6 +1452,11 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                     <TooltipContent side="bottom">Mark all as read</TooltipContent>
                   </Tooltip>
                 )}
+              </>
+            }
+            defaultOpen
+            action={
+              <div className="flex items-center gap-2 pl-2">
                 <div className="flex w-36 items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-transparent px-2 py-1">
                   <Search size={12} className="shrink-0 text-[var(--color-text-muted)]" />
                   <input
