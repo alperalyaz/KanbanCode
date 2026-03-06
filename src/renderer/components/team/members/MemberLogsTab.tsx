@@ -7,6 +7,7 @@ import {
   SubagentRecentMessagesPreview,
 } from '@renderer/components/team/members/SubagentRecentMessagesPreview';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { asEnhancedChunkArray } from '@renderer/types/data';
 import { enhanceAIGroup } from '@renderer/utils/aiGroupEnhancer';
 import { formatDuration } from '@renderer/utils/formatters';
 import { transformChunksToConversation } from '@renderer/utils/groupTransformer';
@@ -306,7 +307,7 @@ export const MemberLogsTab = ({
         return d?.chunks ?? null;
       }
       const d = await api.getSessionDetail(log.projectId, log.sessionId, options);
-      return (d?.chunks ?? null) as unknown as EnhancedChunk[] | null;
+      return d ? asEnhancedChunkArray(d.chunks) : null;
     },
     []
   );
