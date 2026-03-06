@@ -7,6 +7,7 @@ import {
   SubagentRecentMessagesPreview,
 } from '@renderer/components/team/members/SubagentRecentMessagesPreview';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { asEnhancedChunkArray } from '@renderer/types/data';
 import { enhanceAIGroup } from '@renderer/utils/aiGroupEnhancer';
 import { formatDuration } from '@renderer/utils/formatters';
 import { transformChunksToConversation } from '@renderer/utils/groupTransformer';
@@ -19,8 +20,6 @@ import {
   Loader2,
   MessageSquare,
 } from 'lucide-react';
-
-import { asEnhancedChunkArray } from '@renderer/types/data';
 
 import type { EnhancedChunk } from '@renderer/types/data';
 import type { MemberLogSummary } from '@shared/types';
