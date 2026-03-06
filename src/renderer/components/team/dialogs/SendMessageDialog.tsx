@@ -28,6 +28,8 @@ import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { AlertCircle, ImagePlus, Send, X } from 'lucide-react';
 
+import { MAX_TEXT_LENGTH } from '@shared/constants';
+
 import { MemberBadge } from '../MemberBadge';
 
 import type { InlineChip } from '@renderer/types/inlineChip';
@@ -38,8 +40,6 @@ interface QuotedMessage {
   from: string;
   text: string;
 }
-
-const MAX_MESSAGE_LENGTH = 50_000;
 
 interface SendMessageDialogProps {
   open: boolean;
@@ -181,13 +181,12 @@ export const SendMessageDialog = ({
   const trimmedText = textDraft.value.trim();
   const serialized = serializeChipsWithText(trimmedText, chipDraft.chips);
   const finalText = quote ? buildReplyBlock(quote.from, quote.text, serialized) : serialized;
-  const remaining = MAX_MESSAGE_LENGTH - finalText.length;
+  const remaining = MAX_TEXT_LENGTH - finalText.length;
 
   const canSend =
     member.trim().length > 0 &&
     finalText.length > 0 &&
-    finalText.length <= MAX_MESSAGE_LENGTH &&
-    summary.trim().length > 0 &&
+    finalText.length <= MAX_TEXT_LENGTH &&
     !sending &&
     !attachmentsBlocked;
 
@@ -201,10 +200,13 @@ export const SendMessageDialog = ({
 
   const handleSubmit = (): void => {
     if (!canSend) return;
+    // TODO: Research whether duplicating message as summary is correct — the team lead
+    // may only see the Summary field and not the full Message body. Need to verify.
+    const effectiveSummary = summary.trim() || trimmedText;
     onSend(
       member.trim(),
       finalText,
-      summary.trim(),
+      effectiveSummary,
       attachments.length > 0 ? attachments : undefined
     );
     textDraft.clearDraft();
@@ -400,7 +402,7 @@ export const SendMessageDialog = ({
                 onModEnter={handleSubmit}
                 minRows={4}
                 maxRows={12}
-                maxLength={MAX_MESSAGE_LENGTH}
+                maxLength={MAX_TEXT_LENGTH}
                 disabled={sending}
                 cornerAction={
                   <button

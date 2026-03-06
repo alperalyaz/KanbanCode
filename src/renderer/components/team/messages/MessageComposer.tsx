@@ -14,6 +14,8 @@ import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { AlertCircle, Check, ChevronDown, ImagePlus, Mic, Search, Send } from 'lucide-react';
 
+import { MAX_TEXT_LENGTH } from '@shared/constants';
+
 import type { MentionSuggestion } from '@renderer/types/mention';
 import type { AttachmentPayload, LeadContextUsage, ResolvedTeamMember } from '@shared/types';
 
@@ -30,8 +32,6 @@ interface MessageComposerProps {
     attachments?: AttachmentPayload[]
   ) => void;
 }
-
-const MAX_MESSAGE_LENGTH = 50_000;
 
 /** Circular progress indicator for lead context usage. */
 const _ContextRing = ({ ctx }: { ctx: LeadContextUsage }): React.JSX.Element => {
@@ -148,7 +148,7 @@ export const MessageComposer = ({
   const canSend =
     recipient.length > 0 &&
     trimmed.length > 0 &&
-    trimmed.length <= MAX_MESSAGE_LENGTH &&
+    trimmed.length <= MAX_TEXT_LENGTH &&
     !sending &&
     !attachmentsBlocked;
 
@@ -235,7 +235,7 @@ export const MessageComposer = ({
     [canAttach, draft.handlePaste]
   );
 
-  const remaining = MAX_MESSAGE_LENGTH - trimmed.length;
+  const remaining = MAX_TEXT_LENGTH - trimmed.length;
 
   return (
     <div
@@ -427,7 +427,7 @@ export const MessageComposer = ({
         onModEnter={handleSend}
         minRows={2}
         maxRows={6}
-        maxLength={MAX_MESSAGE_LENGTH}
+        maxLength={MAX_TEXT_LENGTH}
         disabled={sending}
         cornerAction={
           <div className="flex items-center gap-2">

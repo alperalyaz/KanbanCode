@@ -416,6 +416,16 @@ function buildMembersPrompt(members: TeamCreateRequest['members']): string {
     .join('\n');
 }
 
+/** Compact roster: name + role only, no workflow details. Used for post-compact reminders. */
+function buildCompactMembersRoster(members: TeamCreateRequest['members']): string {
+  return members
+    .map((member) => {
+      const rolePart = member.role?.trim() ? ` (${member.role.trim()})` : '';
+      return `- ${member.name}${rolePart}`;
+    })
+    .join('\n');
+}
+
 function buildMemberSpawnPrompt(
   member: TeamCreateRequest['members'][number],
   displayName: string,
@@ -574,8 +584,10 @@ function buildPersistentLeadContext(opts: {
   leadName: string;
   isSolo: boolean;
   members: TeamCreateRequest['members'];
+  /** When true, emit a compact roster (name + role only, no workflows). Used for post-compact reminders. */
+  compact?: boolean;
 }): string {
-  const { teamName, leadName, isSolo, members } = opts;
+  const { teamName, leadName, isSolo, members, compact } = opts;
   const languageInstruction = getAgentLanguageInstruction();
   const agentBlockPolicy = buildAgentBlockUsagePolicy();
   const teamCtlOps = buildTeamCtlOpsInstructions(teamName, leadName);
@@ -599,7 +611,7 @@ function buildPersistentLeadContext(opts: {
       `\n    - Record meaningful progress/decisions as task comments so the task board stays accurate and high-signal.`
     : '';
 
-  const membersBlock = buildMembersPrompt(members);
+  const membersBlock = compact ? buildCompactMembersRoster(members) : buildMembersPrompt(members);
   const membersFooter = membersBlock
     ? `Members:\n${membersBlock}`
     : 'Members: (none — solo team lead)';
@@ -3018,11 +3030,7 @@ export class TeamProvisioningService {
       // (e.g., after session resume when teamContext is lost). We intercept the tool calls
       // from stdout and persist them to sentMessages.json under the correct team name,
       // ensuring the UI and notifications show the right team.
-      if (
-        run.provisioningComplete &&
-        !run.silentUserDmForward &&
-        !run.suppressPostCompactReminderOutput
-      ) {
+      if (run.provisioningComplete && !run.silentUserDmForward) {
         this.captureSendMessageToUser(run, content ?? []);
       }
 
@@ -3161,11 +3169,6 @@ export class TeamProvisioningService {
           }
 
           this.setLeadActivity(run, 'idle');
-
-          // Deferred post-compact context reinjection: inject durable rules on first idle after compact.
-          if (run.pendingPostCompactReminder && !run.postCompactReminderInFlight) {
-            void this.injectPostCompactReminder(run);
-          }
         }
         if (run.leadRelayCapture) {
           const capture = run.leadRelayCapture;
@@ -3178,6 +3181,18 @@ export class TeamProvisioningService {
           clearTimeout(run.silentUserDmForwardClearHandle);
           run.silentUserDmForwardClearHandle = null;
         }
+
+        // Deferred post-compact context reinjection: inject durable rules on first idle after compact.
+        // Placed AFTER leadRelayCapture/silentUserDmForward cleanup so a previously-deferred
+        // reminder can proceed now that the blocking conditions are cleared.
+        if (
+          run.provisioningComplete &&
+          run.pendingPostCompactReminder &&
+          !run.postCompactReminderInFlight
+        ) {
+          void this.injectPostCompactReminder(run);
+        }
+
         if (!run.provisioningComplete && !run.cancelRequested) {
           void this.handleProvisioningTurnComplete(run);
         }
@@ -3328,6 +3343,7 @@ export class TeamProvisioningService {
       leadName,
       isSolo,
       members: run.request.members,
+      compact: true,
     });
 
     // Best-effort: fetch fresh task board snapshot.
@@ -3364,7 +3380,7 @@ export class TeamProvisioningService {
       persistentContext,
       taskBoardBlock.trim() ? `\n${taskBoardBlock}` : '',
       ``,
-      `Acknowledge briefly (1 sentence max) and continue with any pending work.`,
+      `This is a context-only reminder. Do NOT start new work or execute tasks in this turn. Reply with a single word: "OK".`,
     ]
       .filter(Boolean)
       .join('\n');

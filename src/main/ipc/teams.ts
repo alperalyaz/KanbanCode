@@ -60,6 +60,7 @@ import {
 } from '@preload/constants/ipcChannels';
 import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
 import { KANBAN_COLUMN_IDS } from '@shared/constants/kanban';
+import { MAX_TEXT_LENGTH } from '@shared/constants/teamLimits';
 import { createLogger } from '@shared/utils/logger';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
 import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent, Notification } from 'electron';
@@ -2031,8 +2032,8 @@ async function handleAddTaskComment(
   if (!vTask.valid) return { success: false, error: vTask.error ?? 'Invalid taskId' };
   if (typeof text !== 'string' || text.trim().length === 0)
     return { success: false, error: 'Comment text must be non-empty' };
-  if (text.trim().length > 2000)
-    return { success: false, error: 'Comment exceeds 2000 characters' };
+  if (text.trim().length > MAX_TEXT_LENGTH)
+    return { success: false, error: `Comment exceeds ${MAX_TEXT_LENGTH} characters` };
 
   const rawAttachments = Array.isArray(attachments) ? attachments : [];
   if (rawAttachments.length > MAX_ATTACHMENTS) {

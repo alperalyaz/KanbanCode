@@ -36,6 +36,7 @@ import {
   type SearchContext,
 } from '../searchHighlightUtils';
 
+import { FileLink, isRelativeUrl } from './FileLink';
 import { MermaidDiagram } from './MermaidDiagram';
 
 // =============================================================================
@@ -70,18 +71,6 @@ interface MarkdownViewerProps {
 function allowCustomProtocols(url: string): string {
   if (url.startsWith('task://') || url.startsWith('mention://')) return url;
   return defaultUrlTransform(url);
-}
-
-/** Check if a URL is relative (not absolute, not data, not mailto, not hash) */
-function isRelativeUrl(url: string): boolean {
-  return (
-    !!url &&
-    !url.startsWith('http://') &&
-    !url.startsWith('https://') &&
-    !url.startsWith('data:') &&
-    !url.startsWith('#') &&
-    !url.startsWith('mailto:')
-  );
 }
 
 /** Resolve a relative path to an absolute path given a base directory */
@@ -254,6 +243,10 @@ function createViewerMarkdownComponents(searchCtx: SearchContext | null): Compon
             </a>
           </TaskTooltip>
         );
+      }
+      // Relative file paths — open in built-in editor or copy path
+      if (href && isRelativeUrl(href)) {
+        return <FileLink href={href}>{children}</FileLink>;
       }
       return (
         <a

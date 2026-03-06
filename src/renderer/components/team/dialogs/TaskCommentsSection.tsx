@@ -16,6 +16,7 @@ import { isImageMimeType } from '@renderer/utils/attachmentUtils';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
+import { MAX_TEXT_LENGTH } from '@shared/constants';
 import { formatDistanceToNow } from 'date-fns';
 import { CheckCircle2, Eye, File, Loader2, MessageSquare, Reply, Send, X } from 'lucide-react';
 
@@ -31,7 +32,6 @@ function normalizeLiteralNewlines(text: string): string {
   return text.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
 }
 
-const MAX_COMMENT_LENGTH = 2000;
 const INITIAL_VISIBLE_COMMENTS = 30;
 const VISIBLE_COMMENTS_STEP = 50;
 const MAX_COMMENTS_TO_RENDER = 2000;
@@ -131,8 +131,8 @@ export const TaskCommentsSection = ({
   );
 
   const trimmed = draft.value.trim();
-  const remaining = MAX_COMMENT_LENGTH - trimmed.length;
-  const canSubmit = trimmed.length > 0 && trimmed.length <= MAX_COMMENT_LENGTH && !addingComment;
+  const remaining = MAX_TEXT_LENGTH - trimmed.length;
+  const canSubmit = trimmed.length > 0 && trimmed.length <= MAX_TEXT_LENGTH && !addingComment;
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
@@ -365,7 +365,7 @@ export const TaskCommentsSection = ({
               onModEnter={() => void handleSubmit()}
               minRows={2}
               maxRows={8}
-              maxLength={MAX_COMMENT_LENGTH}
+              maxLength={MAX_TEXT_LENGTH}
               disabled={addingComment}
               cornerAction={
                 <button
