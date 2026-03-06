@@ -32,6 +32,8 @@ import {
   AlertTriangle,
   Bell,
   CheckCheck,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Code,
   Columns3,
   FolderOpen,
@@ -306,6 +308,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     showNoise: false,
   });
   const [messagesFilterOpen, setMessagesFilterOpen] = useState(false);
+  const [messagesCollapsed, setMessagesCollapsed] = useState(false);
 
   // Open editor overlay when a file reveal is requested (e.g. from chip click)
   const pendingRevealFile = useStore((s) => s.editorPendingRevealFile);
@@ -1498,6 +1501,28 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                   onOpenChange={setMessagesFilterOpen}
                   onApply={setMessagesFilter}
                 />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="pointer-events-auto size-7 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMessagesCollapsed((v) => !v);
+                      }}
+                    >
+                      {messagesCollapsed ? (
+                        <ChevronsUpDown size={14} />
+                      ) : (
+                        <ChevronsDownUp size={14} />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {messagesCollapsed ? 'Expand all messages' : 'Collapse all messages'}
+                  </TooltipContent>
+                </Tooltip>
               </div>
             }
           >
@@ -1536,6 +1561,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
               teamName={teamName}
               members={data.members}
               readState={{ readSet, getMessageKey: toMessageKey }}
+              allCollapsed={messagesCollapsed}
               onMemberClick={setSelectedMember}
               onCreateTaskFromMessage={(subject, description) => {
                 openCreateTaskDialog(subject, description);

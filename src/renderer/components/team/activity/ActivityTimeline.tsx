@@ -26,6 +26,8 @@ interface ActivityTimelineProps {
   onTaskIdClick?: (taskId: string) => void;
   /** Called when the user clicks "Restart team" on an auth error message. */
   onRestartTeam?: () => void;
+  /** When true, collapse all message bodies — show only headers with expand chevrons. */
+  allCollapsed?: boolean;
 }
 
 const VIEWPORT_THRESHOLD = 0.15;
@@ -47,6 +49,7 @@ const MessageRowWithObserver = ({
   onVisible,
   onTaskIdClick,
   onRestartTeam,
+  forceCollapsed,
 }: {
   message: InboxMessage;
   teamName: string;
@@ -63,6 +66,7 @@ const MessageRowWithObserver = ({
   onVisible?: (message: InboxMessage) => void;
   onTaskIdClick?: (taskId: string) => void;
   onRestartTeam?: () => void;
+  forceCollapsed?: boolean;
 }): React.JSX.Element => {
   const ref = useRef<HTMLDivElement>(null);
   const reportedRef = useRef(false);
@@ -110,6 +114,7 @@ const MessageRowWithObserver = ({
         onReply={onReply}
         onTaskIdClick={onTaskIdClick}
         onRestartTeam={onRestartTeam}
+        forceCollapsed={forceCollapsed}
       />
     </div>
   );
@@ -126,6 +131,7 @@ export const ActivityTimeline = ({
   onMessageVisible,
   onTaskIdClick,
   onRestartTeam,
+  allCollapsed,
 }: ActivityTimelineProps): React.JSX.Element => {
   const [visibleCount, setVisibleCount] = useState(MESSAGES_PAGE_SIZE);
 
@@ -384,6 +390,7 @@ export const ActivityTimeline = ({
               onVisible={onMessageVisible}
               onTaskIdClick={onTaskIdClick}
               onRestartTeam={onRestartTeam}
+              forceCollapsed={allCollapsed}
             />
           </React.Fragment>
         );

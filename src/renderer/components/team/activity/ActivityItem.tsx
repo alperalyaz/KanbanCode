@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { AttachmentDisplay } from '@renderer/components/team/attachments/AttachmentDisplay';
@@ -52,6 +52,8 @@ interface ActivityItemProps {
   onRestartTeam?: () => void;
   /** When true, apply a subtle lighter background for zebra-striped lists. */
   zebraShade?: boolean;
+  /** When true, collapse message body — show only header with expand chevron. */
+  forceCollapsed?: boolean;
 }
 
 function getStringField(obj: StructuredMessage, key: string): string | null {
@@ -213,6 +215,7 @@ export const ActivityItem = ({
   onTaskIdClick,
   onRestartTeam,
   zebraShade,
+  forceCollapsed,
 }: ActivityItemProps): React.JSX.Element => {
   const colors = getTeamColorSet(memberColor ?? message.color ?? '');
   const formattedRole = formatAgentRole(memberRole);
@@ -233,7 +236,17 @@ export const ActivityItem = ({
 
   // System/automated messages start collapsed (but not rate limits)
   const systemLabel = !structured && !rateLimited ? getSystemMessageLabel(message.text) : null;
-  const [isExpanded, setIsExpanded] = useState(!systemLabel);
+  const [isExpanded, setIsExpanded] = useState(!systemLabel && !forceCollapsed);
+
+  // Sync expand/collapse when the global collapse mode toggles (skip initial mount)
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    setIsExpanded(forceCollapsed ? false : !systemLabel);
+  }, [forceCollapsed]); // eslint-disable-line react-hooks/exhaustive-deps -- systemLabel is stable (derived from message.text)
 
   // Strip agent-only blocks + normalize escape sequences (before linkification)
   const strippedText = useMemo(() => {
@@ -282,7 +295,8 @@ export const ActivityItem = ({
     onCreateTask?.(subject, description);
   };
 
-  const isHeaderClickable = Boolean(systemLabel);
+  const isHeaderClickable = Boolean(systemLabel) || forceCollapsed === true;
+  const showChevron = Boolean(systemLabel) || forceCollapsed === true;
   const isUserSent = message.source === 'user_sent';
   const isSystemMessage = message.from === 'system';
 
@@ -337,8 +351,8 @@ export const ActivityItem = ({
         {isUnread ? (
           <span className="size-2 shrink-0 rounded-full bg-blue-500" title="Unread" aria-hidden />
         ) : null}
-        {/* Chevron for collapsible system messages */}
-        {systemLabel ? (
+        {/* Chevron for collapsible messages */}
+        {showChevron ? (
           <ChevronRight
             className="size-3 shrink-0 transition-transform duration-150"
             style={{
@@ -483,7 +497,10 @@ export const ActivityItem = ({
               </details>
             </div>
           ) : parsedReply ? (
-            <ReplyQuoteBlock reply={parsedReply} memberColor={memberColorMap?.get(parsedReply.agentName)} />
+            <ReplyQuoteBlock
+              reply={parsedReply}
+              memberColor={memberColorMap?.get(parsedReply.agentName)}
+            />
           ) : displayText ? (
             <ExpandableContent>
               <span

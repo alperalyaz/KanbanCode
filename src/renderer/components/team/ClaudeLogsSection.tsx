@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { api } from '@renderer/api';
 import { Button } from '@renderer/components/ui/button';
@@ -16,6 +16,7 @@ import type { TeamClaudeLogsResponse } from '@shared/types';
 const PAGE_SIZE = 100;
 const POLL_MS = 2000;
 const ONLINE_WINDOW_MS = 10_000;
+const LOAD_MORE_THRESHOLD_PX = 48;
 
 type StreamType = 'stdout' | 'stderr';
 
@@ -68,6 +69,40 @@ function normalizeToStreamJsonText(linesNewestFirst: string[]): string {
   }
 
   return out.join('\n');
+}
+
+function getOverlapSize(
+  existingLinesNewestFirst: string[],
+  olderLinesNewestFirst: string[]
+): number {
+  const maxOverlap = Math.min(existingLinesNewestFirst.length, olderLinesNewestFirst.length);
+
+  for (let size = maxOverlap; size > 0; size -= 1) {
+    let matches = true;
+    for (let i = 0; i < size; i += 1) {
+      if (
+        existingLinesNewestFirst[existingLinesNewestFirst.length - size + i] !==
+        olderLinesNewestFirst[i]
+      ) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return size;
+  }
+
+  return 0;
+}
+
+function appendOlderLines(
+  existingLinesNewestFirst: string[],
+  olderLinesNewestFirst: string[]
+): string[] {
+  if (existingLinesNewestFirst.length === 0) return olderLinesNewestFirst;
+  if (olderLinesNewestFirst.length === 0) return existingLinesNewestFirst;
+
+  const overlapSize = getOverlapSize(existingLinesNewestFirst, olderLinesNewestFirst);
+  return existingLinesNewestFirst.concat(olderLinesNewestFirst.slice(overlapSize));
 }
 
 type AssistantContentBlock =
@@ -192,13 +227,16 @@ function filterStreamJsonText(
 
 export const ClaudeLogsSection = ({ teamName }: ClaudeLogsSectionProps): React.JSX.Element => {
   const isAlive = useStore((s) => s.selectedTeamData?.isAlive ?? false);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [loadedCount, setLoadedCount] = useState(PAGE_SIZE);
   const [data, setData] = useState<TeamClaudeLogsResponse>({ lines: [], total: 0, hasMore: false });
   const [pending, setPending] = useState<TeamClaudeLogsResponse | null>(null);
   const [pendingNewCount, setPendingNewCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlightRef = useRef(false);
+  const loadingMoreRef = useRef(false);
+  const applyingPendingRef = useRef(false);
   const atTopRef = useRef(true);
   const latestRef = useRef<TeamClaudeLogsResponse | null>(null);
   const logContainerRef = useRef<HTMLDivElement | null>(null);
@@ -210,9 +248,15 @@ export const ClaudeLogsSection = ({ teamName }: ClaudeLogsSectionProps): React.J
     kinds: new Set(DEFAULT_CLAUDE_LOGS_FILTER.kinds),
   }));
   const [filterOpen, setFilterOpen] = useState(false);
+  const isNearBottom = useCallback(
+    (scrollTop: number, scrollHeight: number, clientHeight: number) => {
+      return scrollHeight - scrollTop - clientHeight <= LOAD_MORE_THRESHOLD_PX;
+    },
+    []
+  );
 
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
+    setLoadedCount(PAGE_SIZE);
     setData({ lines: [], total: 0, hasMore: false });
     setPending(null);
     setPendingNewCount(0);
@@ -255,7 +299,7 @@ export const ClaudeLogsSection = ({ teamName }: ClaudeLogsSectionProps): React.J
       inFlightRef.current = true;
       try {
         setLoading(true);
-        const next = await api.teams.getClaudeLogs(teamName, { offset: 0, limit: visibleCount });
+        const next = await api.teams.getClaudeLogs(teamName, { offset: 0, limit: loadedCount });
         if (cancelled) return;
         latestRef.current = next;
         if (atTopRef.current) {
@@ -283,11 +327,55 @@ export const ClaudeLogsSection = ({ teamName }: ClaudeLogsSectionProps): React.J
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [teamName, visibleCount]);
+  }, [teamName, loadedCount]);
+
+  const loadOlderLogs = useCallback(async (): Promise<void> => {
+    if (loadingMoreRef.current || inFlightRef.current) return;
+
+    const current = committedRef.current;
+    if (!current.hasMore) return;
+
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+
+    try {
+      const older = await api.teams.getClaudeLogs(teamName, {
+        offset: current.lines.length + pendingCountRef.current,
+        limit: PAGE_SIZE,
+      });
+
+      setData((prev) => ({
+        ...prev,
+        lines: appendOlderLines(prev.lines, older.lines),
+        total: older.total,
+        hasMore: older.hasMore,
+        updatedAt: older.updatedAt ?? prev.updatedAt,
+      }));
+      setLoadedCount((count) => count + PAGE_SIZE);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [teamName]);
+
+  useEffect(() => {
+    const el = logContainerRef.current;
+    if (!el || loading || loadingMore || !data.hasMore || data.lines.length === 0) return;
+
+    if (
+      el.scrollHeight <= el.clientHeight ||
+      isNearBottom(el.scrollTop, el.scrollHeight, el.clientHeight)
+    ) {
+      void loadOlderLogs();
+    }
+  }, [data.hasMore, data.lines.length, isNearBottom, loadOlderLogs, loading, loadingMore]);
 
   const online = useMemo(() => isRecent(data.updatedAt), [data.updatedAt]);
   const badge = data.total > 0 ? data.total : undefined;
-  const showMoreVisible = data.hasMore;
+  const showMoreVisible = data.hasMore || loadingMore;
 
   const headerExtra = online ? (
     <span className="pointer-events-none relative inline-flex size-2 shrink-0" title="Updating">
@@ -310,17 +398,34 @@ export const ClaudeLogsSection = ({ teamName }: ClaudeLogsSectionProps): React.J
     return filterStreamJsonText(data.lines, searchQuery, filter);
   }, [data.lines, searchQuery, filter]);
 
-  const applyPending = (): void => {
-    const latest = latestRef.current ?? pending;
-    if (!latest) return;
-    setData(latest);
-    setPending(null);
-    setPendingNewCount(0);
-    // Jump to newest
-    if (logContainerRef.current) {
-      logContainerRef.current.scrollTop = 0;
+  const applyPending = useCallback(async (): Promise<void> => {
+    if (applyingPendingRef.current) return;
+
+    applyingPendingRef.current = true;
+    try {
+      let latest = latestRef.current ?? pending;
+      const expectedVisibleCount = latest ? Math.min(loadedCount, latest.total) : loadedCount;
+
+      if (!latest || latest.lines.length < expectedVisibleCount) {
+        latest = await api.teams.getClaudeLogs(teamName, { offset: 0, limit: loadedCount });
+        latestRef.current = latest;
+      }
+
+      setData(latest);
+      setPending(null);
+      setPendingNewCount(0);
+      setError(null);
+
+      // Jump to newest
+      if (logContainerRef.current) {
+        logContainerRef.current.scrollTop = 0;
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      applyingPendingRef.current = false;
     }
-  };
+  }, [loadedCount, pending, teamName]);
 
   return (
     <CollapsibleTeamSection
@@ -337,8 +442,8 @@ export const ClaudeLogsSection = ({ teamName }: ClaudeLogsSectionProps): React.J
         <span className="text-[11px] text-[var(--color-text-muted)]">
           {data.total > 0 ? (
             <>
-              Showing <span className="font-mono">{Math.min(data.total, visibleCount)}</span> of{' '}
-              <span className="font-mono">{data.total}</span>
+              Showing <span className="font-mono">{Math.min(data.total, data.lines.length)}</span>{' '}
+              of <span className="font-mono">{data.total}</span>
             </>
           ) : isAlive ? (
             'No logs yet.'
@@ -389,9 +494,10 @@ export const ClaudeLogsSection = ({ teamName }: ClaudeLogsSectionProps): React.J
               variant="ghost"
               size="sm"
               className="h-7 px-2 text-xs"
-              onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+              onClick={() => void loadOlderLogs()}
+              disabled={loadingMore}
             >
-              Show more
+              {loadingMore ? 'Loading…' : 'Show more'}
             </Button>
           )}
         </div>
@@ -409,11 +515,16 @@ export const ClaudeLogsSection = ({ teamName }: ClaudeLogsSectionProps): React.J
             containerRefCallback={(el) => {
               logContainerRef.current = el;
             }}
-            onScroll={({ scrollTop }) => {
+            onScroll={({ scrollTop, scrollHeight, clientHeight }) => {
               const atTop = scrollTop <= 8;
               atTopRef.current = atTop;
               if (atTop && pendingCountRef.current > 0) {
-                applyPending();
+                void applyPending();
+                return;
+              }
+
+              if (isNearBottom(scrollTop, scrollHeight, clientHeight)) {
+                void loadOlderLogs();
               }
             }}
           />
