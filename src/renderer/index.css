@@ -642,6 +642,22 @@ body {
   animation: chat-message-enter 350ms ease-out both;
 }
 
+@keyframes thought-expand {
+  from {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+  }
+  to {
+    max-height: 500px;
+    opacity: 1;
+  }
+}
+
+.thought-expand-in {
+  animation: thought-expand 350ms ease-out both;
+}
+
 .skeleton-card {
   animation: skeleton-fade-in 0.4s ease-out both;
   position: relative;

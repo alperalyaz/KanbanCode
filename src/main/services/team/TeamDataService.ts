@@ -9,7 +9,11 @@ import {
 } from '@main/utils/pathDecoder';
 import { isProcessAlive } from '@main/utils/processHealth';
 import { killProcessByPid } from '@main/utils/processKill';
-import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
+import {
+  AGENT_BLOCK_CLOSE,
+  AGENT_BLOCK_OPEN,
+  stripAgentBlocks,
+} from '@shared/constants/agentBlocks';
 import { getMemberColor } from '@shared/constants/memberColors';
 import { createLogger } from '@shared/utils/logger';
 import { parseNumericSuffixName } from '@shared/utils/teamMemberName';
@@ -60,7 +64,7 @@ import type {
 const logger = createLogger('Service:TeamDataService');
 
 const MIN_TEXT_LENGTH = 30;
-const MAX_LEAD_TEXTS = 50;
+const MAX_LEAD_TEXTS = 150;
 const PROCESS_HEALTH_INTERVAL_MS = 2_000;
 const MAX_PROCESSES_FILE_BYTES = 2 * 1024 * 1024;
 const TASK_MAP_YIELD_EVERY = 250;
@@ -1472,20 +1476,31 @@ export class TeamDataService {
           const timestamp =
             typeof msg.timestamp === 'string' ? msg.timestamp : new Date().toISOString();
 
+          const textParts: string[] = [];
           for (const block of content as Record<string, unknown>[]) {
             if (block.type !== 'text' || typeof block.text !== 'string') continue;
-            const text = block.text.trim();
-            if (text.length < MIN_TEXT_LENGTH) continue;
-            textsReversed.push({
-              from: leadName,
-              text,
-              timestamp,
-              read: true,
-              source: 'lead_session',
-              leadSessionId: config.leadSessionId,
-            });
-            if (textsReversed.length >= MAX_LEAD_TEXTS) break;
+            textParts.push(block.text);
           }
+          if (textParts.length === 0) continue;
+
+          const combined = stripAgentBlocks(textParts.join('\n')).trim();
+          if (combined.length < MIN_TEXT_LENGTH) continue;
+
+          // Stable messageId: timestamp + text prefix (survives tail-scan range changes)
+          const textPrefix = combined
+            .slice(0, 50)
+            .replace(/[^\p{L}\p{N}]/gu, '')
+            .slice(0, 20);
+
+          textsReversed.push({
+            from: leadName,
+            text: combined,
+            timestamp,
+            read: true,
+            source: 'lead_session',
+            leadSessionId: config.leadSessionId,
+            messageId: `lead-session-${timestamp}-${textPrefix}`,
+          });
           if (textsReversed.length >= MAX_LEAD_TEXTS) break;
         }
 

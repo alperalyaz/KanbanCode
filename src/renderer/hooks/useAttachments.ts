@@ -23,6 +23,7 @@ interface UseAttachmentsReturn {
   addFiles: (files: FileList | File[]) => Promise<void>;
   removeAttachment: (id: string) => void;
   clearAttachments: () => void;
+  clearError: () => void;
   handlePaste: (event: React.ClipboardEvent) => void;
   handleDrop: (event: React.DragEvent) => void;
 }
@@ -219,6 +220,10 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
     [schedulePersist]
   );
 
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
   const clearAttachments = useCallback(() => {
     if (timerRef.current != null) {
       clearTimeout(timerRef.current);
@@ -280,6 +285,7 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
     addFiles,
     removeAttachment,
     clearAttachments,
+    clearError,
     handlePaste,
     handleDrop,
   };

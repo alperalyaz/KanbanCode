@@ -221,34 +221,59 @@ export const LeadThoughtsGroupRow = ({
             {thoughts.length} thoughts
           </span>
           <span className="text-[10px]" style={{ color: CARD_ICON_MUTED }}>
-            {formatTime(oldest.timestamp)}–{formatTime(newest.timestamp)}
+            {formatTime(oldest.timestamp) === formatTime(newest.timestamp)
+              ? formatTime(oldest.timestamp)
+              : `${formatTime(oldest.timestamp)}–${formatTime(newest.timestamp)}`}
           </span>
         </div>
 
         {/* Scrollable body — fixed height, always visible */}
         <div
           ref={scrollRef}
-          className="space-y-px border-t px-3 py-1.5"
+          className="border-t"
           style={{
             borderColor: 'var(--color-border-subtle)',
             maxHeight: '200px',
-            overflowY: 'auto',
+            overflowY: 'scroll',
             scrollbarWidth: 'thin',
             scrollbarColor: 'var(--scrollbar-thumb) transparent',
           }}
           onScroll={handleScroll}
         >
           {chronologicalThoughts.map((thought, idx) => (
-            <div key={thought.messageId ?? idx} className="flex gap-2 py-0.5 text-[11px]">
-              <span className="shrink-0 font-mono" style={{ color: CARD_ICON_MUTED }}>
-                {formatTimeWithSec(thought.timestamp)}
-              </span>
-              <div className="min-w-0 flex-1 [&_>div>div]:p-0" style={{ color: CARD_TEXT_LIGHT }}>
-                <MarkdownViewer
-                  content={thought.text.replace(/\n/g, '  \n')}
-                  maxHeight="max-h-none"
-                  bare
-                />
+            <div key={thought.messageId ?? idx} className="thought-expand-in">
+              {idx > 0 && (
+                <div className="mx-auto flex w-[40%] items-center justify-center gap-[5px] py-px">
+                  <hr
+                    className="flex-1 border-0"
+                    style={{
+                      height: '1px',
+                      backgroundColor: 'var(--color-border-emphasis)',
+                    }}
+                  />
+                  <span
+                    className="shrink-0 font-mono text-[9px]"
+                    style={{ color: CARD_ICON_MUTED }}
+                  >
+                    {formatTimeWithSec(thought.timestamp)}
+                  </span>
+                  <hr
+                    className="flex-1 border-0"
+                    style={{
+                      height: '1px',
+                      backgroundColor: 'var(--color-border-emphasis)',
+                    }}
+                  />
+                </div>
+              )}
+              <div className="flex text-[11px]">
+                <div className="min-w-0 flex-1 [&_>div>div]:p-0" style={{ color: CARD_TEXT_LIGHT }}>
+                  <MarkdownViewer
+                    content={thought.text.replace(/\n/g, '  \n')}
+                    maxHeight="max-h-none"
+                    bare
+                  />
+                </div>
               </div>
             </div>
           ))}

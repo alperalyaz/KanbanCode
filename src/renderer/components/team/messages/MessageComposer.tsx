@@ -128,6 +128,7 @@ export const MessageComposer = ({
     addFiles,
     removeAttachment,
     clearAttachments,
+    clearError: clearAttachmentError,
     handlePaste,
     handleDrop,
   } = useAttachments({ persistenceKey: `compose:${teamName}:attachments` });
@@ -408,6 +409,7 @@ export const MessageComposer = ({
         attachments={attachments}
         onRemove={removeAttachment}
         error={attachmentError}
+        onDismissError={clearAttachmentError}
         disabled={attachmentsBlocked}
         disabledHint="Image attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
       />
