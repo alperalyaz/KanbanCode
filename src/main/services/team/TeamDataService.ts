@@ -17,7 +17,7 @@ import {
 import { getMemberColor } from '@shared/constants/memberColors';
 import { createLogger } from '@shared/utils/logger';
 import { parseNumericSuffixName } from '@shared/utils/teamMemberName';
-import { buildToolSummary } from '@shared/utils/toolSummary';
+import { formatToolSummaryFromMap } from '@shared/utils/toolSummary';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -1424,13 +1424,29 @@ export class TeamDataService {
 
     const projectId = encodePath(config.projectPath);
     const baseDir = extractBaseDir(projectId);
-    const jsonlPath = path.join(getProjectsBasePath(), baseDir, `${config.leadSessionId}.jsonl`);
+    let jsonlPath = path.join(getProjectsBasePath(), baseDir, `${config.leadSessionId}.jsonl`);
 
     try {
       await fs.promises.access(jsonlPath, fs.constants.F_OK);
     } catch {
-      logger.debug(`Lead session JSONL not found: ${jsonlPath}`);
-      return [];
+      // Claude Code encodes underscores as hyphens in project directory names;
+      // our encodePath only handles slashes. Try the underscore-to-hyphen variant.
+      const altBaseDir = baseDir.replace(/_/g, '-');
+      if (altBaseDir !== baseDir) {
+        const altPath = path.join(
+          getProjectsBasePath(),
+          altBaseDir,
+          `${config.leadSessionId}.jsonl`
+        );
+        try {
+          await fs.promises.access(altPath, fs.constants.F_OK);
+          jsonlPath = altPath;
+        } catch {
+          return [];
+        }
+      } else {
+        return [];
+      }
     }
 
     const leadName = config.members?.find((m) => m.agentType === 'team-lead')?.name ?? 'team-lead';
@@ -1441,6 +1457,7 @@ export class TeamDataService {
     const INITIAL_SCAN_BYTES = 256 * 1024; // 256KB
 
     const textsReversed: InboxMessage[] = [];
+    const seenMessageIds = new Set<string>();
     const handle = await fs.promises.open(jsonlPath, 'r');
     try {
       const stat = await handle.stat();
@@ -1487,13 +1504,42 @@ export class TeamDataService {
           const combined = stripAgentBlocks(textParts.join('\n')).trim();
           if (combined.length < MIN_TEXT_LENGTH) continue;
 
-          const toolSummary = buildToolSummary(content as Record<string, unknown>[]);
+          // Count tool_use blocks from following lines (text and tool_use are separate in JSONL).
+          // tool_result (type=user) lines are interleaved between tool_use lines — skip them.
+          const toolCounts = new Map<string, number>();
+          const lookaheadLimit = Math.min(i + 200, lines.length);
+          for (let j = i + 1; j < lookaheadLimit; j++) {
+            const tLine = lines[j]?.trim();
+            if (!tLine) continue;
+            let tMsg: Record<string, unknown>;
+            try {
+              tMsg = JSON.parse(tLine) as Record<string, unknown>;
+            } catch {
+              continue;
+            }
+            if (tMsg.type !== 'assistant') continue; // skip tool_result (type=user) lines
+            const tMessage = (tMsg.message ?? tMsg) as Record<string, unknown>;
+            const tContent = tMessage.content;
+            if (!Array.isArray(tContent)) continue;
+            const tBlocks = tContent as Record<string, unknown>[];
+            if (tBlocks.some((b) => b.type === 'text')) break; // next text = stop
+            for (const b of tBlocks) {
+              if (b.type === 'tool_use' && typeof b.name === 'string') {
+                toolCounts.set(b.name, (toolCounts.get(b.name) ?? 0) + 1);
+              }
+            }
+          }
+          const toolSummary = formatToolSummaryFromMap(toolCounts);
 
           // Stable messageId: timestamp + text prefix (survives tail-scan range changes)
           const textPrefix = combined
             .slice(0, 50)
             .replace(/[^\p{L}\p{N}]/gu, '')
             .slice(0, 20);
+
+          const messageId = `lead-session-${timestamp}-${textPrefix}`;
+          if (seenMessageIds.has(messageId)) continue;
+          seenMessageIds.add(messageId);
 
           textsReversed.push({
             from: leadName,
@@ -1502,7 +1548,7 @@ export class TeamDataService {
             read: true,
             source: 'lead_session',
             leadSessionId: config.leadSessionId,
-            messageId: `lead-session-${timestamp}-${textPrefix}`,
+            messageId,
             toolSummary,
           });
           if (textsReversed.length >= MAX_LEAD_TEXTS) break;

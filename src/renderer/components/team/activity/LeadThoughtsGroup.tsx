@@ -190,16 +190,17 @@ export const LeadThoughtsGroupRow = ({
     return () => observer.disconnect();
   }, [onVisible, thoughts]);
 
-  // Stable ref for auto-scroll trigger: track content changes (new thoughts + text growth)
-  const newestTextLength = newest.text.length;
-
-  // Auto-scroll to bottom when new thoughts arrive or text grows
+  // Auto-scroll via ResizeObserver — fires after CSS animations expand content
   useEffect(() => {
-    if (isUserScrolledUpRef.current) return;
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [thoughts.length, newestTextLength]);
+    const observer = new ResizeObserver(() => {
+      if (isUserScrolledUpRef.current) return;
+      el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- scrollRef is stable
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -297,6 +298,14 @@ export const LeadThoughtsGroupRow = ({
                   />
                 </div>
               </div>
+              {thought.toolSummary && (
+                <div
+                  className="px-1 pb-0.5 font-mono text-[9px]"
+                  style={{ color: CARD_ICON_MUTED }}
+                >
+                  🔧 {thought.toolSummary}
+                </div>
+              )}
             </div>
           ))}
         </div>

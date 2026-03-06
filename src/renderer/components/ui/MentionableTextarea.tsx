@@ -595,11 +595,30 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
         }
       : style;
 
-    // --- Hint text ---
-    const defaultHintText = enableFiles
-      ? 'Use @ to mention team members or search files'
-      : 'Use @ to mention team members';
-    const resolvedHintText = hintText ?? defaultHintText;
+    // --- Rotating tips ---
+    const rotatingTips = React.useMemo(
+      () => [
+        'Tip: Use @ to mention team members or search files',
+        'Tip: Mention "create a task" to add it to the board',
+        "Tip: Don't overload the team lead with tasks — ask them to delegate to teammates",
+      ],
+      []
+    );
+    const [tipIndex, setTipIndex] = React.useState(0);
+    const [tipVisible, setTipVisible] = React.useState(true);
+
+    React.useEffect(() => {
+      const interval = setInterval(() => {
+        setTipVisible(false);
+        setTimeout(() => {
+          setTipIndex((prev) => (prev + 1) % rotatingTips.length);
+          setTipVisible(true);
+        }, 300);
+      }, 10000);
+      return () => clearInterval(interval);
+    }, [rotatingTips.length]);
+
+    const resolvedHintText = hintText ?? rotatingTips[tipIndex];
     const showHintRow = showHint && (suggestions.length > 0 || enableFiles);
     const showFooter = showHintRow || footerRight;
 
@@ -683,7 +702,12 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
         {showFooter ? (
           <div className="mt-1 flex items-center justify-between">
             {showHintRow ? (
-              <span className="text-[10px] text-[var(--color-text-muted)]">{resolvedHintText}</span>
+              <span
+                className="text-[10px] text-[var(--color-text-muted)] transition-opacity duration-300"
+                style={{ opacity: tipVisible ? 1 : 0 }}
+              >
+                {resolvedHintText}
+              </span>
             ) : (
               <span />
             )}

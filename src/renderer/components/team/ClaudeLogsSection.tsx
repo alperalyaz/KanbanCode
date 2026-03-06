@@ -405,7 +405,7 @@ export const ClaudeLogsSection = ({ teamName }: ClaudeLogsSectionProps): React.J
             cliLogsTail={filteredText}
             order="newest-first"
             searchQueryOverride={searchQuery.trim() ? searchQuery : undefined}
-            className="max-h-[320px] p-2"
+            className="max-h-[213px] p-2"
             containerRefCallback={(el) => {
               logContainerRef.current = el;
             }}

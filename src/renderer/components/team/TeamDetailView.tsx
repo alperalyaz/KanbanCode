@@ -574,9 +574,24 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     return result;
   }, [data, timeWindow, kanbanFilter.selectedOwners]);
 
+  const activeMembers = useMemo(
+    () => (data?.members ?? []).filter((m) => !m.removedAt),
+    [data?.members]
+  );
+
+  const leadMemberName = useMemo(
+    () => activeMembers.find((m) => m.agentType === 'team-lead')?.name,
+    [activeMembers]
+  );
+
   const filteredMessages = useMemo(() => {
     if (!data) return [];
     let list = data.messages;
+    // Temporarily hide lead→user messages from the UI
+    // (notifications and other processing still receive them via data.messages)
+    if (leadMemberName) {
+      list = list.filter((m) => !(m.to?.trim() === 'user' && m.from?.trim() === leadMemberName));
+    }
     if (timeWindow) {
       list = list.filter((m) => {
         const ts = new Date(m.timestamp).getTime();
@@ -603,7 +618,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
       });
     }
     return list;
-  }, [data, timeWindow, messagesFilter, messagesSearchQuery]);
+  }, [data, timeWindow, messagesFilter, messagesSearchQuery, leadMemberName]);
 
   const { readSet, markRead, markAllRead } = useTeamMessagesRead(teamName ?? '');
   const messagesUnreadCount = useMemo(
@@ -626,11 +641,6 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     if (!query) return filteredTasks;
     return filterKanbanTasks(filteredTasks, query);
   }, [filteredTasks, kanbanSearch]);
-
-  const activeMembers = useMemo(
-    () => (data?.members ?? []).filter((m) => !m.removedAt),
-    [data?.members]
-  );
 
   const activeTeammateCount = useMemo(
     () => activeMembers.filter((m) => m.agentType !== 'team-lead' && m.name !== 'team-lead').length,

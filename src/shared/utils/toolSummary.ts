@@ -45,3 +45,13 @@ export function formatToolSummary(data: ToolSummaryData): string {
     .join(', ');
   return `${data.total} ${data.total === 1 ? 'tool' : 'tools'} (${parts})`;
 }
+
+/** Format tool summary directly from a Map<toolName, count>. */
+export function formatToolSummaryFromMap(counts: Map<string, number>): string | undefined {
+  const total = Array.from(counts.values()).reduce((a, b) => a + b, 0);
+  if (total === 0) return undefined;
+  const parts = Array.from(counts.entries())
+    .map(([name, count]) => (count === 1 ? name : `${count} ${name}`))
+    .join(', ');
+  return `${total} ${total === 1 ? 'tool' : 'tools'} (${parts})`;
+}

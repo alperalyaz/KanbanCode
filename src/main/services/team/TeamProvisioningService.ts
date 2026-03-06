@@ -21,7 +21,7 @@ import { getMemberColor } from '@shared/constants/memberColors';
 import { resolveLanguageName } from '@shared/utils/agentLanguage';
 import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 import { createLogger } from '@shared/utils/logger';
-import { buildToolSummary } from '@shared/utils/toolSummary';
+import { formatToolSummaryFromMap } from '@shared/utils/toolSummary';
 import { createCliAutoSuffixNameGuard } from '@shared/utils/teamMemberName';
 import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
@@ -61,7 +61,7 @@ const STDOUT_RING_LIMIT = 64 * 1024;
 const LOG_PROGRESS_THROTTLE_MS = 300;
 const UI_LOGS_TAIL_LIMIT = 128 * 1024;
 const SHELL_ENV_TIMEOUT_MS = 12000;
-const PROBE_CACHE_TTL_MS = 10 * 60_000;
+const PROBE_CACHE_TTL_MS = 36 * 60 * 60 * 1000;
 const PREFLIGHT_TIMEOUT_MS = 60000;
 const PREFLIGHT_AUTH_RETRY_DELAY_MS = 2000;
 const PREFLIGHT_AUTH_MAX_RETRIES = 2;
@@ -164,6 +164,8 @@ interface ProvisioningRun {
   } | null;
   /** Monotonic counter for individual lead assistant messages. */
   leadMsgSeq: number;
+  /** Accumulated tool_use counts between text messages (tool name → count). */
+  pendingToolCounts: Map<string, number>;
   /** Throttle timestamp for emitting inbox refresh events for lead text. */
   lastLeadTextEmitMs: number;
   /**
@@ -1745,6 +1747,7 @@ export class TeamProvisioningService {
         fsPhase: 'waiting_config',
         leadRelayCapture: null,
         leadMsgSeq: 0,
+        pendingToolCounts: new Map(),
         lastLeadTextEmitMs: 0,
         silentUserDmForward: null,
         silentUserDmForwardClearHandle: null,
@@ -2044,6 +2047,7 @@ export class TeamProvisioningService {
         fsPhase: 'waiting_members',
         leadRelayCapture: null,
         leadMsgSeq: 0,
+        pendingToolCounts: new Map(),
         lastLeadTextEmitMs: 0,
         silentUserDmForward: null,
         silentUserDmForwardClearHandle: null,
@@ -2920,7 +2924,12 @@ export class TeamProvisioningService {
                 run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name ||
                 'team-lead';
               const messageId = `lead-turn-${run.runId}-${run.leadMsgSeq}`;
-              const toolSummary = buildToolSummary(content ?? []);
+              // Attach accumulated tool counts from preceding tool_use messages, then reset.
+              const toolSummary =
+                run.pendingToolCounts.size > 0
+                  ? formatToolSummaryFromMap(run.pendingToolCounts)
+                  : undefined;
+              run.pendingToolCounts.clear();
               const leadMsg: InboxMessage = {
                 from: leadName,
                 text: cleanText,
@@ -2946,6 +2955,19 @@ export class TeamProvisioningService {
                 });
               }
             }
+          }
+        }
+      }
+
+      // Accumulate tool_use counts from tool-only messages (text + tool_use are separate in stream-json).
+      // These counts will be attached to the next text message as toolSummary.
+      if (run.provisioningComplete) {
+        for (const block of content ?? []) {
+          if (block?.type === 'tool_use' && typeof block.name === 'string') {
+            run.pendingToolCounts.set(
+              block.name as string,
+              (run.pendingToolCounts.get(block.name as string) ?? 0) + 1
+            );
           }
         }
       }
