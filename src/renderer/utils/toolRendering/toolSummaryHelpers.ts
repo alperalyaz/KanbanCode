@@ -248,6 +248,11 @@ export function getToolSummary(toolName: string, input: Record<string, unknown>)
     case 'TeamDelete':
       return 'Delete team';
 
+    case 'Agent': {
+      const desc = input.description ?? input.prompt;
+      return typeof desc === 'string' ? truncate(desc, 60) : 'Subagent';
+    }
+
     default: {
       // For unknown tools, try to extract a meaningful summary
       const keys = Object.keys(input);

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { setCurrentMainOp } from '@main/services/infrastructure/EventLoopLagMonitor';
 import { getAppIconPath } from '@main/utils/appIcon';
+import { stripMarkdown } from '@main/utils/textFormatting';
 import {
   TEAM_ADD_MEMBER,
   TEAM_ADD_TASK_COMMENT,
@@ -1971,8 +1972,8 @@ export function showTeamNativeNotification(opts: {
   }
 
   const isMac = process.platform === 'darwin';
-  const truncatedBody = opts.body.slice(0, 300);
-  const iconPath = getAppIconPath();
+  const truncatedBody = stripMarkdown(opts.body).slice(0, 300);
+  const iconPath = isMac ? undefined : getAppIconPath();
   const notification = new Notification({
     title: opts.title,
     ...(isMac && opts.subtitle ? { subtitle: opts.subtitle } : {}),

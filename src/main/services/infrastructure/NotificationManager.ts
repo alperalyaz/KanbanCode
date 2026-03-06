@@ -14,6 +14,7 @@
 
 import { getAppIconPath } from '@main/utils/appIcon';
 import { getHomeDir } from '@main/utils/pathDecoder';
+import { stripMarkdown } from '@main/utils/textFormatting';
 import { createLogger } from '@shared/utils/logger';
 import { type BrowserWindow, Notification } from 'electron';
 import { EventEmitter } from 'events';
@@ -398,8 +399,8 @@ export class NotificationManager extends EventEmitter {
     const config = this.configManager.getConfig();
 
     const isMac = process.platform === 'darwin';
-    const truncatedMessage = error.message.slice(0, 200);
-    const iconPath = getAppIconPath();
+    const truncatedMessage = stripMarkdown(error.message).slice(0, 200);
+    const iconPath = isMac ? undefined : getAppIconPath();
     const notification = new Notification({
       title: 'Claude Code Error',
       ...(isMac ? { subtitle: error.context.projectName } : {}),
