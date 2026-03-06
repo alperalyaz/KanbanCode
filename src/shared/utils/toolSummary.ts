@@ -96,9 +96,9 @@ export function extractToolPreview(
     case 'Agent':
     case 'TaskCreate':
       return typeof input.prompt === 'string'
-        ? truncateStr(input.prompt, 60)
+        ? truncateStr(input.prompt, 200)
         : typeof input.description === 'string'
-          ? truncateStr(input.description, 60)
+          ? truncateStr(input.description, 200)
           : undefined;
     case 'WebFetch':
       if (typeof input.url === 'string') {

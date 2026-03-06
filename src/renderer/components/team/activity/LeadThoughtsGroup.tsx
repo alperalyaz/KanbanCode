@@ -115,12 +115,24 @@ function ToolSummaryTooltipContent({
         <div className="mb-0.5 text-[10px] text-text-secondary">
           {toolCalls.length} {toolCalls.length === 1 ? 'tool call' : 'tool calls'}
         </div>
-        {toolCalls.map((tc, i) => (
-          <div key={i} className="flex items-baseline gap-2">
-            <span className="shrink-0 font-semibold">{tc.name}</span>
-            {tc.preview && <span className="truncate text-text-secondary">{tc.preview}</span>}
-          </div>
-        ))}
+        {toolCalls.map((tc, i) => {
+          const isAgent = tc.name === 'Agent' || tc.name === 'TaskCreate';
+          return (
+            <div key={i} className={`flex items-baseline gap-2 ${isAgent ? 'mt-0.5' : ''}`}>
+              <span className={`shrink-0 font-semibold ${isAgent ? 'text-violet-400' : ''}`}>
+                {isAgent ? '🤖 ' : ''}
+                {tc.name}
+              </span>
+              {tc.preview && (
+                <span
+                  className={`text-text-secondary ${isAgent ? 'whitespace-pre-wrap' : 'truncate'}`}
+                >
+                  {tc.preview}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   }
