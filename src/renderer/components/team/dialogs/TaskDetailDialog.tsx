@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { CollapsibleTeamSection } from '@renderer/components/team/CollapsibleTeamSection';
+import { FileIcon } from '@renderer/components/team/editor/FileIcon';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { MemberLogsTab } from '@renderer/components/team/members/MemberLogsTab';
 import { Badge } from '@renderer/components/ui/badge';
@@ -10,7 +11,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@renderer/components/ui/dialog';
@@ -35,7 +35,6 @@ import {
   Check,
   Clock,
   Eye,
-  FileCode,
   FileDiff,
   GitCompareArrows,
   HelpCircle,
@@ -589,7 +588,10 @@ export const TaskDetailDialog = ({
                     key={file.filePath}
                     className="group flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--color-surface-raised)]"
                   >
-                    <FileCode size={14} className="shrink-0 text-[var(--color-text-muted)]" />
+                    <FileIcon
+                      fileName={file.relativePath.split('/').pop() ?? file.relativePath}
+                      className="size-3.5"
+                    />
                     <button
                       type="button"
                       className="min-w-0 flex-1 truncate text-left font-mono text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text)]"
@@ -878,12 +880,6 @@ export const TaskDetailDialog = ({
             containerClassName="-mx-6"
           />
         </CollapsibleTeamSection>
-
-        <DialogFooter className="flex items-center justify-end sm:justify-end">
-          <Button variant="outline" onClick={handleClose}>
-            Close
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

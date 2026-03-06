@@ -41,8 +41,8 @@ export const SkipPermissionsCheckbox: React.FC<SkipPermissionsCheckboxProps> = (
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
           <p>
-            Autonomous mode — all tools execute without confirmation. Be cautious with untrusted
-            code.
+            Unleash Claude&apos;s full power — no interruptions asking for permission. Autonomous
+            mode — all tools execute without confirmation. Be cautious with untrusted code.
           </p>
         </div>
       </div>

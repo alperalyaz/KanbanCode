@@ -309,7 +309,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     showNoise: false,
   });
   const [messagesFilterOpen, setMessagesFilterOpen] = useState(false);
-  const [messagesCollapsed, setMessagesCollapsed] = useState(false);
+  const [messagesCollapsed, setMessagesCollapsed] = useState(true);
 
   // Open editor overlay when a file reveal is requested (e.g. from chip click)
   const pendingRevealFile = useStore((s) => s.editorPendingRevealFile);

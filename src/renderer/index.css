@@ -773,3 +773,14 @@ body {
     linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
   background-color: #ffffff;
 }
+
+/* Lightbox toolbar buttons — enlarge hit targets and fix SVG dead zones */
+.yarl__toolbar .yarl__button {
+  min-width: 44px;
+  min-height: 44px;
+  position: relative;
+}
+
+.yarl__toolbar .yarl__button > svg {
+  pointer-events: none;
+}

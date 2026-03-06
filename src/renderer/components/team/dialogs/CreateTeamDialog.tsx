@@ -837,43 +837,6 @@ export const CreateTeamDialog = ({
                     />
                   )}
                 </div>
-
-                {canCreate && (prepareState === 'idle' || prepareState === 'loading') ? (
-                  <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                    <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    <span>
-                      {prepareMessage ??
-                        (prepareState === 'idle'
-                          ? 'Warming up CLI environment...'
-                          : 'Preparing environment...')}
-                    </span>
-                  </div>
-                ) : null}
-
-                {canCreate && prepareState === 'ready' ? (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-xs text-emerald-400">
-                      <CheckCircle2 className="size-3.5 shrink-0" />
-                      <span>
-                        {prepareWarnings.length > 0
-                          ? 'CLI environment ready (with notes)'
-                          : 'CLI environment ready'}
-                      </span>
-                    </div>
-                    {prepareMessage ? (
-                      <p className="text-[11px] text-[var(--color-text-muted)]">{prepareMessage}</p>
-                    ) : null}
-                    {prepareWarnings.length > 0 ? (
-                      <div className="space-y-0.5">
-                        {prepareWarnings.map((warning) => (
-                          <p key={warning} className="text-[11px] text-sky-300">
-                            {warning}
-                          </p>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
               </div>
             ) : null}
           </div>
@@ -934,36 +897,79 @@ export const CreateTeamDialog = ({
           </p>
         ) : null}
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          {canOpenExistingTeam ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                onOpenTeam(request.teamName);
-                onClose();
-              }}
-            >
-              Open Existing Team
+        <DialogFooter className="pt-4 sm:justify-between">
+          <div className="min-w-0">
+            {canCreate && launchTeam && (prepareState === 'idle' || prepareState === 'loading') ? (
+              <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                <span>
+                  {prepareMessage ??
+                    (prepareState === 'idle'
+                      ? 'Warming up CLI environment...'
+                      : 'Preparing environment...')}
+                </span>
+              </div>
+            ) : null}
+
+            {canCreate && launchTeam && prepareState === 'ready' ? (
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+                  <CheckCircle2 className="size-3.5 shrink-0" />
+                  <span>
+                    {prepareWarnings.length > 0
+                      ? 'CLI environment ready (with notes)'
+                      : 'CLI environment ready'}
+                  </span>
+                </div>
+                {prepareMessage ? (
+                  <p className="mt-0.5 pl-5 text-[11px] text-[var(--color-text-muted)]">
+                    {prepareMessage}
+                  </p>
+                ) : null}
+                {prepareWarnings.length > 0 ? (
+                  <div className="mt-0.5 space-y-0.5 pl-5">
+                    {prepareWarnings.map((warning) => (
+                      <p key={warning} className="text-[11px] text-sky-300">
+                        {warning}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            {canOpenExistingTeam ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onOpenTeam(request.teamName);
+                  onClose();
+                }}
+              >
+                Open Existing Team
+              </Button>
+            ) : null}
+            <Button variant="outline" size="sm" onClick={onClose}>
+              Close
             </Button>
-          ) : null}
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Close
-          </Button>
-          <Button
-            size="sm"
-            disabled={!canCreate || isSubmitting || (launchTeam && prepareState !== 'ready')}
-            onClick={handleSubmit}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              'Create'
-            )}
-          </Button>
+            <Button
+              size="sm"
+              disabled={!canCreate || isSubmitting || (launchTeam && prepareState !== 'ready')}
+              onClick={handleSubmit}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                'Create'
+              )}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

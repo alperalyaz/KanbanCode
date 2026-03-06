@@ -16,6 +16,9 @@ import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useStore } from '@renderer/store';
 import { formatToolSummary, parseToolSummary } from '@shared/utils/toolSummary';
 
+import { isManagedCollapseState } from './collapseState';
+
+import type { ActivityCollapseState } from './collapseState';
 import type { InboxMessage, ToolCallMeta } from '@shared/types';
 
 export interface LeadThoughtGroup {
@@ -45,6 +48,8 @@ export function groupTimelineItems(messages: InboxMessage[]): TimelineItem[] {
   const result: TimelineItem[] = [];
   let pendingThoughts: InboxMessage[] = [];
   let pendingIndices: number[] = [];
+  const hasSameLeadSession = (a: InboxMessage, b: InboxMessage): boolean =>
+    (a.leadSessionId ?? null) === (b.leadSessionId ?? null);
 
   const flushThoughts = (): void => {
     if (pendingThoughts.length === 0) return;
@@ -60,6 +65,10 @@ export function groupTimelineItems(messages: InboxMessage[]): TimelineItem[] {
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     if (isLeadThought(msg)) {
+      const previousThought = pendingThoughts[pendingThoughts.length - 1];
+      if (previousThought && !hasSameLeadSession(previousThought, msg)) {
+        flushThoughts();
+      }
       pendingThoughts.push(msg);
       pendingIndices.push(i);
     } else {
@@ -86,10 +95,8 @@ interface LeadThoughtsGroupRowProps {
   canBeLive?: boolean;
   /** When true, apply a subtle lighter background for zebra-striped lists. */
   zebraShade?: boolean;
-  /** When true, collapse the thought body — show only the header with expand chevron. */
-  forceCollapsed?: boolean;
-  /** Called when user toggles expand/collapse in collapsed mode. Presence enables chevron. */
-  onCollapseToggle?: () => void;
+  /** Explicit collapse state for timeline-controlled collapsed mode. */
+  collapseState?: ActivityCollapseState;
 }
 
 function formatTime(timestamp: string): string {
@@ -347,13 +354,14 @@ export const LeadThoughtsGroupRow = ({
   onVisible,
   canBeLive,
   zebraShade,
-  forceCollapsed,
-  onCollapseToggle,
+  collapseState,
 }: LeadThoughtsGroupRowProps): React.JSX.Element => {
   const ref = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const isUserScrolledUpRef = useRef(false);
+  const distanceFromBottomRef = useRef(0);
+  const scrollSyncFrameRef = useRef<number | null>(null);
   const isTeamAlive = useStore((s) => s.selectedTeamData?.isAlive ?? false);
   const leadActivity = useStore((s) => {
     const teamName = s.selectedTeamName;
@@ -412,17 +420,14 @@ export const LeadThoughtsGroupRow = ({
   const [isLive, setIsLive] = useState(computeIsLive);
   const [expanded, setExpanded] = useState(false);
   const [needsTruncation, setNeedsTruncation] = useState(false);
-  const [isBodyVisible, setIsBodyVisible] = useState(!forceCollapsed);
-
-  // Sync body visibility when the global collapse mode toggles (skip initial mount)
-  const isFirstRenderRef = useRef(false);
-  useEffect(() => {
-    if (!isFirstRenderRef.current) {
-      isFirstRenderRef.current = true;
-      return;
-    }
-    setIsBodyVisible(!forceCollapsed);
-  }, [forceCollapsed]);
+  const isManaged = isManagedCollapseState(collapseState);
+  const isBodyVisible = isManaged ? !collapseState.isCollapsed : true;
+  const canToggleBodyVisibility = isManaged && collapseState.canToggle;
+  const handleBodyToggle = canToggleBodyVisibility
+    ? (): void => {
+        collapseState.onToggle?.();
+      }
+    : undefined;
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional immediate sync to avoid 1s stale gap
@@ -454,6 +459,41 @@ export const LeadThoughtsGroupRow = ({
     return () => observer.disconnect();
   }, [onVisible, thoughts]);
 
+  const clearPendingScrollSync = useCallback(() => {
+    if (scrollSyncFrameRef.current !== null) {
+      cancelAnimationFrame(scrollSyncFrameRef.current);
+      scrollSyncFrameRef.current = null;
+    }
+  }, []);
+
+  const queueScrollSync = useCallback(
+    (mode: 'bottom' | 'preserve') => {
+      clearPendingScrollSync();
+      scrollSyncFrameRef.current = requestAnimationFrame(() => {
+        scrollSyncFrameRef.current = requestAnimationFrame(() => {
+          const scrollEl = scrollRef.current;
+          if (!scrollEl || expanded || !isBodyVisible) {
+            scrollSyncFrameRef.current = null;
+            return;
+          }
+
+          const nextScrollTop =
+            mode === 'bottom'
+              ? scrollEl.scrollHeight - scrollEl.clientHeight
+              : scrollEl.scrollHeight - scrollEl.clientHeight - distanceFromBottomRef.current;
+
+          scrollEl.scrollTop = Math.max(0, nextScrollTop);
+          if (mode === 'bottom') {
+            distanceFromBottomRef.current = 0;
+            isUserScrolledUpRef.current = false;
+          }
+          scrollSyncFrameRef.current = null;
+        });
+      });
+    },
+    [clearPendingScrollSync, expanded, isBodyVisible]
+  );
+
   const syncScrollableBody = useCallback(
     (forceScrollToBottom = false) => {
       const scrollEl = scrollRef.current;
@@ -463,14 +503,26 @@ export const LeadThoughtsGroupRow = ({
       const nextNeedsTruncation = contentEl.scrollHeight > COLLAPSED_THOUGHTS_HEIGHT + 1;
       setNeedsTruncation((prev) => (prev === nextNeedsTruncation ? prev : nextNeedsTruncation));
 
-      if (expanded) return;
-      if (!forceScrollToBottom && isUserScrolledUpRef.current) return;
-      scrollEl.scrollTop = scrollEl.scrollHeight;
+      if (expanded || !isBodyVisible) return;
+      if (!nextNeedsTruncation) {
+        clearPendingScrollSync();
+        distanceFromBottomRef.current = 0;
+        isUserScrolledUpRef.current = false;
+        return;
+      }
+
+      if (forceScrollToBottom || !isUserScrolledUpRef.current) {
+        queueScrollSync('bottom');
+        return;
+      }
+
+      queueScrollSync('preserve');
     },
-    [expanded]
+    [clearPendingScrollSync, expanded, isBodyVisible, queueScrollSync]
   );
 
   useEffect(() => {
+    if (!isBodyVisible) return;
     const contentEl = contentRef.current;
     if (!contentEl) return;
 
@@ -482,18 +534,32 @@ export const LeadThoughtsGroupRow = ({
     observer.observe(contentEl);
 
     return () => observer.disconnect();
-  }, [syncScrollableBody]);
+  }, [isBodyVisible, syncScrollableBody]);
+
+  useEffect(
+    () => () => {
+      clearPendingScrollSync();
+    },
+    [clearPendingScrollSync]
+  );
+
+  useEffect(() => {
+    if (isBodyVisible) return;
+    clearPendingScrollSync();
+  }, [clearPendingScrollSync, isBodyVisible]);
 
   const handleScroll = useCallback(() => {
     if (expanded) return;
     const el = scrollRef.current;
     if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const distanceFromBottom = Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight);
+    distanceFromBottomRef.current = distanceFromBottom;
     isUserScrolledUpRef.current = distanceFromBottom > AUTO_SCROLL_THRESHOLD;
   }, [expanded]);
 
   const handleCollapse = useCallback(() => {
     isUserScrolledUpRef.current = false;
+    distanceFromBottomRef.current = 0;
     setExpanded(false);
 
     requestAnimationFrame(() => {
@@ -524,34 +590,26 @@ export const LeadThoughtsGroupRow = ({
         {/* Header */}
         {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- role=button + tabIndex + onKeyDown below; nested tooltips prevent native button */}
         <div
-          role={forceCollapsed === true || onCollapseToggle != null ? 'button' : undefined}
-          tabIndex={forceCollapsed === true || onCollapseToggle != null ? 0 : undefined}
+          role={canToggleBodyVisibility ? 'button' : undefined}
+          tabIndex={canToggleBodyVisibility ? 0 : undefined}
           className={[
             'flex select-none items-center gap-2 px-3 py-1.5',
-            forceCollapsed === true || onCollapseToggle != null ? 'cursor-pointer' : '',
+            canToggleBodyVisibility ? 'cursor-pointer' : '',
           ].join(' ')}
-          onClick={
-            forceCollapsed === true || onCollapseToggle != null
-              ? () => {
-                  setIsBodyVisible((v) => !v);
-                  onCollapseToggle?.();
-                }
-              : undefined
-          }
+          onClick={handleBodyToggle}
           onKeyDown={
-            forceCollapsed === true || onCollapseToggle != null
+            canToggleBodyVisibility
               ? (e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    setIsBodyVisible((v) => !v);
-                    onCollapseToggle?.();
+                    handleBodyToggle?.();
                   }
                 }
               : undefined
           }
         >
           {/* Chevron for collapse mode */}
-          {forceCollapsed === true || onCollapseToggle != null ? (
+          {canToggleBodyVisibility ? (
             <ChevronRight
               className="size-3 shrink-0 transition-transform duration-150"
               style={{
@@ -608,7 +666,6 @@ export const LeadThoughtsGroupRow = ({
               scrollbarColor:
                 expanded || !needsTruncation ? undefined : 'var(--scrollbar-thumb) transparent',
               overflowAnchor: 'none',
-              overscrollBehavior: 'contain',
             }}
             onScroll={handleScroll}
           >
@@ -626,10 +683,13 @@ export const LeadThoughtsGroupRow = ({
         ) : null}
       </article>
       {isBodyVisible && !expanded && needsTruncation ? (
-        <div className="flex justify-center pt-1" style={{ transform: 'translateY(-20px)' }}>
+        <div
+          className="pointer-events-none flex justify-center pt-1"
+          style={{ transform: 'translateY(-20px)' }}
+        >
           <button
             type="button"
-            className="flex items-center gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-[11px] text-[var(--color-text-secondary)] shadow-sm transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
+            className="pointer-events-auto flex items-center gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-[11px] text-[var(--color-text-secondary)] shadow-sm transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
             onClick={(e) => {
               e.stopPropagation();
               setExpanded(true);
@@ -642,12 +702,12 @@ export const LeadThoughtsGroupRow = ({
       ) : null}
       {isBodyVisible && expanded && needsTruncation ? (
         <div
-          className="sticky bottom-0 z-10 flex justify-center pb-1 pt-2"
+          className="pointer-events-none sticky bottom-0 z-10 flex justify-center pb-1 pt-2"
           style={{ transform: 'translateY(-20px)' }}
         >
           <button
             type="button"
-            className="flex items-center gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-2.5 py-1 text-[11px] text-[var(--color-text-muted)] shadow-sm transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text-secondary)]"
+            className="pointer-events-auto flex items-center gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-2.5 py-1 text-[11px] text-[var(--color-text-muted)] shadow-sm transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text-secondary)]"
             onClick={(e) => {
               e.stopPropagation();
               handleCollapse();

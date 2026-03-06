@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { AttachmentDisplay } from '@renderer/components/team/attachments/AttachmentDisplay';
@@ -26,8 +26,10 @@ import { extractMarkdownPlainText } from '@shared/utils/markdownTextSearch';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
 import { AlertTriangle, ChevronRight, ListPlus, RefreshCw, Reply } from 'lucide-react';
 
+import { isManagedCollapseState } from './collapseState';
 import { ReplyQuoteBlock } from './ReplyQuoteBlock';
 
+import type { ActivityCollapseState } from './collapseState';
 import type { TeamColorSet } from '@renderer/constants/teamColors';
 import type { InboxMessage } from '@shared/types';
 
@@ -52,10 +54,8 @@ interface ActivityItemProps {
   onRestartTeam?: () => void;
   /** When true, apply a subtle lighter background for zebra-striped lists. */
   zebraShade?: boolean;
-  /** When true, collapse message body — show only header with expand chevron. */
-  forceCollapsed?: boolean;
-  /** Called when user toggles expand/collapse in collapsed mode. Presence enables chevron. */
-  onCollapseToggle?: () => void;
+  /** Explicit collapse state for timeline-controlled collapsed mode. */
+  collapseState?: ActivityCollapseState;
 }
 
 function getStringField(obj: StructuredMessage, key: string): string | null {
@@ -217,8 +217,7 @@ export const ActivityItem = ({
   onTaskIdClick,
   onRestartTeam,
   zebraShade,
-  forceCollapsed,
-  onCollapseToggle,
+  collapseState,
 }: ActivityItemProps): React.JSX.Element => {
   const colors = getTeamColorSet(memberColor ?? message.color ?? '');
   const formattedRole = formatAgentRole(memberRole);
@@ -237,19 +236,9 @@ export const ActivityItem = ({
   // Never collapse rate limit messages as noise — they must be visible
   const noiseLabel = structured && !rateLimited ? getNoiseLabel(structured) : null;
 
-  // System/automated messages start collapsed (but not rate limits)
   const systemLabel = !structured && !rateLimited ? getSystemMessageLabel(message.text) : null;
-  const [isExpanded, setIsExpanded] = useState(!systemLabel && !forceCollapsed);
-
-  // Sync expand/collapse when the global collapse mode toggles (skip initial mount)
-  const isFirstRender = useRef(true);
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    setIsExpanded(forceCollapsed ? false : !systemLabel);
-  }, [forceCollapsed]); // eslint-disable-line react-hooks/exhaustive-deps -- systemLabel is stable (derived from message.text)
+  const isManaged = isManagedCollapseState(collapseState);
+  const isExpanded = isManaged ? !collapseState.isCollapsed : true;
 
   // Strip agent-only blocks + normalize escape sequences (before linkification)
   const strippedText = useMemo(() => {
@@ -298,11 +287,16 @@ export const ActivityItem = ({
     onCreateTask?.(subject, description);
   };
 
-  const isHeaderClickable =
-    Boolean(systemLabel) || forceCollapsed === true || onCollapseToggle != null;
+  const isHeaderClickable = isManaged ? collapseState.canToggle : false;
   const showChevron = isHeaderClickable;
   const isUserSent = message.source === 'user_sent';
   const isSystemMessage = message.from === 'system';
+  const onManagedToggle = isManaged ? collapseState.onToggle : undefined;
+  const handleHeaderToggle = isHeaderClickable
+    ? (): void => {
+        onManagedToggle?.();
+      }
+    : undefined;
 
   return (
     <article
@@ -340,21 +334,13 @@ export const ActivityItem = ({
           'flex items-center gap-2 px-3 py-2',
           isHeaderClickable ? 'cursor-pointer select-none' : '',
         ].join(' ')}
-        onClick={
-          isHeaderClickable
-            ? () => {
-                setIsExpanded((v) => !v);
-                onCollapseToggle?.();
-              }
-            : undefined
-        }
+        onClick={handleHeaderToggle}
         onKeyDown={
           isHeaderClickable
             ? (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  setIsExpanded((v) => !v);
-                  onCollapseToggle?.();
+                  handleHeaderToggle?.();
                 }
               }
             : undefined

@@ -39,7 +39,7 @@ interface QuotedMessage {
   text: string;
 }
 
-const MAX_MESSAGE_LENGTH = 4000;
+const MAX_MESSAGE_LENGTH = 50_000;
 
 interface SendMessageDialogProps {
   open: boolean;

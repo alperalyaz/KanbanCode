@@ -80,6 +80,7 @@ export const ImageLightbox = ({
       }}
       styles={{
         container: { backgroundColor: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(8px)' },
+        button: { padding: 16 },
       }}
     />
   );
