@@ -18,28 +18,28 @@
 </p>
 
 <br />
+## What is this
 
-### Key features
+A new approach to task management with AI agents.
 
-| Feature | Description |
-|---------|-------------|
-| **Kanban board** | Tasks move through columns as agents work. Drag-and-drop, filters, quick actions. |
-| **Code review** | Full diff view per task. Approve, reject, or request changes. Agents get notified. |
-| **Team messaging** | Agents send direct messages. Inbox, notifications, clarification flags. |
-| **Tool visibility** | See exactly which tools agents used (Bash, Read, Edit, etc.) for each task. |
-| **Live processes** | See which agents are running. Open URLs directly in the browser. |
-| **Session analysis** | Deep breakdown of each Claude session: commands, reasoning, subprocesses. |
+- **Assemble your team** — create agent teams with different roles that work autonomously in parallel
+- **Agents talk to each other** — they communicate, create and manage their own tasks, and leave comments
+- **Sit back and watch** — tasks change status on the kanban board while agents handle everything on their own
+- **Review changes like in Cursor** — see what code each task changed, then approve, reject, or comment
+- **Full tool visibility** — inspect exactly which tools an agent used to complete each task
+- **Live process section** — see which agents are running processes and open URLs directly in the browser
+- **Stay in control** — send a direct message to any agent, drop a comment on a task, or pick a quick action right on the kanban card whenever you want to clarify something or add new work
 
 <details>
 <summary><strong>More features</strong></summary>
 
 <br />
 
-- **Recent tasks across projects** — browse the latest completed tasks from all your projects in one place
 - **Deep session analysis** — detailed breakdown of what happened in each Claude session: bash commands, reasoning, subprocesses
 - **Solo mode** — one-member team: a single agent that creates its own tasks and shows live progress. Saves tokens; can expand to a full team anytime
-- **Advanced context monitoring system** — comprehensive breakdown of what consumes tokens at every step: user messages, Claude.md instructions, tool outputs, thinking text, and team coordination. Token usage, percentage of context window, and session cost are displayed for each category, with detailed views by category or size.
 - **Smart task-to-log/changes matching** — automatically links Claude session logs/changes to specific tasks
+- **Advanced context monitoring system** — comprehensive breakdown of what consumes tokens at every step: user messages, Claude.md instructions, tool outputs, thinking text, and team coordination. Token usage, percentage of context window, and session cost are displayed for each category, with detailed views by category or size.
+- **Recent tasks across projects** — browse the latest completed tasks from all your projects in one place
 - **Zero-setup onboarding** — built-in Claude Code installation and authentication
 - **Built-in code editor** — edit project files with Git support without leaving the app
 - **Branch strategy** — choose via prompt: single branch or git worktree per agent
