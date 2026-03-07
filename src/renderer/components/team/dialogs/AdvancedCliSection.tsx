@@ -53,7 +53,13 @@ const TOKEN_COLOR_CLASS: Record<TokenType, string> = {
 function readWorktreeHistory(teamName: string): string[] {
   try {
     const raw = localStorage.getItem(`team:worktreeHistory:${teamName}`);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) {
+      return [];
+    }
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : [];
   } catch {
     return [];
   }
@@ -184,7 +190,7 @@ export const AdvancedCliSection: React.FC<AdvancedCliSectionProps> = ({
       {/* Collapsible header */}
       <button
         type="button"
-        className="flex items-center gap-1 text-xs text-text-secondary hover:text-text transition-colors"
+        className="flex items-center gap-1 text-xs text-text-secondary transition-colors hover:text-text"
         onClick={() => setIsOpen(!isOpen)}
       >
         <ChevronRight
@@ -217,7 +223,7 @@ export const AdvancedCliSection: React.FC<AdvancedCliSectionProps> = ({
                 <PopoverAnchor asChild>
                   <Input
                     placeholder="worktree-name"
-                    className="h-7 text-xs font-mono"
+                    className="h-7 font-mono text-xs"
                     value={worktreeName}
                     onChange={(e) => onWorktreeNameChange(e.target.value)}
                     onFocus={() => setShowHistory(true)}
@@ -244,7 +250,7 @@ export const AdvancedCliSection: React.FC<AdvancedCliSectionProps> = ({
                     <button
                       key={name}
                       type="button"
-                      className="w-full rounded px-2 py-1 text-left text-xs font-mono text-text-secondary hover:bg-surface-raised hover:text-text"
+                      className="w-full rounded px-2 py-1 text-left font-mono text-xs text-text-secondary hover:bg-surface-raised hover:text-text"
                       onMouseDown={(e) => {
                         e.preventDefault(); // Prevent input blur
                         onWorktreeNameChange(name);
@@ -265,7 +271,7 @@ export const AdvancedCliSection: React.FC<AdvancedCliSectionProps> = ({
               Command preview
             </span>
             <div className="overflow-x-auto rounded border border-border bg-surface-sidebar px-2.5 py-1.5">
-              <code className="flex flex-wrap gap-x-1 gap-y-0.5 text-[11px] font-mono leading-relaxed">
+              <code className="flex flex-wrap gap-x-1 gap-y-0.5 font-mono text-[11px] leading-relaxed">
                 {previewTokens.map((token, i) => (
                   <span key={i} className={TOKEN_COLOR_CLASS[token.type]}>
                     {token.text}
@@ -283,7 +289,7 @@ export const AdvancedCliSection: React.FC<AdvancedCliSectionProps> = ({
             <div className="flex items-center gap-2">
               <Input
                 placeholder="--max-turns 5"
-                className="h-7 flex-1 text-xs font-mono"
+                className="h-7 flex-1 font-mono text-xs"
                 value={customArgs}
                 onChange={(e) => handleCustomArgsChange(e.target.value)}
               />

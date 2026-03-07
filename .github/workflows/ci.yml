@@ -62,14 +62,8 @@ jobs:
           restore-keys: |
             eslint-${{ runner.os }}-
 
-      - name: Typecheck
-        run: pnpm typecheck:workspace
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Build
-        run: pnpm build:workspace
+      - name: Validate workspace truth gate
+        run: pnpm check
 
   test:
     strategy:

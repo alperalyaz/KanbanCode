@@ -23,9 +23,9 @@ import {
 } from '@renderer/utils/agentMessageFormatting';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
-import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { extractMarkdownPlainText } from '@shared/utils/markdownTextSearch';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
+import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { AlertTriangle, ChevronRight, ListPlus, RefreshCw, Reply } from 'lucide-react';
 
 import { isManagedCollapseState } from './collapseState';

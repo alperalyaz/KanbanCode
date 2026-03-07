@@ -8,13 +8,13 @@ import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import { projectColor } from '@renderer/utils/projectColor';
-import { deriveTaskDisplayId } from '@shared/utils/taskIdentity';
 import {
   getNonEmptyTaskCategories,
   groupTasksByDate,
   groupTasksByProject,
   sortTasksByFreshness,
 } from '@renderer/utils/taskGrouping';
+import { deriveTaskDisplayId } from '@shared/utils/taskIdentity';
 import {
   Archive,
   ArrowUpDown,
