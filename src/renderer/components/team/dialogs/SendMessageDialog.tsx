@@ -88,6 +88,8 @@ export const SendMessageDialog = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounterRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [imageRestrictionError, setImageRestrictionError] = useState<string | null>(null);
+  const imageRestrictionTimerRef = useRef(0);
 
   const {
     attachments,
@@ -216,6 +218,20 @@ export const SendMessageDialog = ({
     [addFiles]
   );
 
+  const showImageRestrictionError = useCallback(() => {
+    setImageRestrictionError('Images can only be sent to the team lead');
+    window.clearTimeout(imageRestrictionTimerRef.current);
+    imageRestrictionTimerRef.current = window.setTimeout(() => {
+      setImageRestrictionError(null);
+    }, 4000);
+  }, []);
+
+  // Cleanup restriction error timer on unmount
+  useEffect(() => {
+    const ref = imageRestrictionTimerRef;
+    return () => window.clearTimeout(ref.current);
+  }, []);
+
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     dragCounterRef.current += 1;
@@ -237,31 +253,52 @@ export const SendMessageDialog = ({
 
   const handleDropWrapper = useCallback(
     (e: React.DragEvent) => {
+      e.preventDefault();
       dragCounterRef.current = 0;
       setIsDragOver(false);
+      if (!isLeadRecipient) {
+        const files = e.dataTransfer?.files;
+        if (files?.length) {
+          const hasImages = Array.from(files).some((f) => f.type.startsWith('image/'));
+          if (hasImages) {
+            showImageRestrictionError();
+          }
+        }
+        return;
+      }
       if (canAttach) handleDrop(e);
     },
-    [canAttach, handleDrop]
+    [isLeadRecipient, canAttach, handleDrop, showImageRestrictionError]
   );
 
   const handlePasteWrapper = useCallback(
     (e: React.ClipboardEvent) => {
+      if (!isLeadRecipient) {
+        const hasImages = Array.from(e.clipboardData.items).some((item) =>
+          item.type.startsWith('image/')
+        );
+        if (hasImages) {
+          e.preventDefault();
+          showImageRestrictionError();
+        }
+        return;
+      }
       if (canAttach) handlePaste(e);
     },
-    [canAttach, handlePaste]
+    [isLeadRecipient, canAttach, handlePaste, showImageRestrictionError]
   );
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         className="min-w-0 max-w-3xl"
-        onDragEnter={canAttach ? handleDragEnter : undefined}
-        onDragLeave={canAttach ? handleDragLeave : undefined}
-        onDragOver={canAttach ? handleDragOver : undefined}
-        onDrop={canAttach ? handleDropWrapper : undefined}
-        onPaste={canAttach ? handlePasteWrapper : undefined}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDropWrapper}
+        onPaste={handlePasteWrapper}
       >
-        <DropZoneOverlay active={isDragOver && !!canAttach} />
+        <DropZoneOverlay active={isDragOver} rejected={!isLeadRecipient} />
 
         <DialogHeader>
           <DialogTitle>Send Message</DialogTitle>
@@ -323,7 +360,7 @@ export const SendMessageDialog = ({
             <AttachmentPreviewList
               attachments={attachments}
               onRemove={removeAttachment}
-              error={attachmentError}
+              error={attachmentError ?? imageRestrictionError}
               disabled={attachmentsBlocked}
               disabledHint="Image attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
             />

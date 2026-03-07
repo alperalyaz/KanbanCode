@@ -102,6 +102,8 @@ export const MessageComposer = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounterRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [imageRestrictionError, setImageRestrictionError] = useState<string | null>(null);
+  const imageRestrictionTimerRef = useRef(0);
 
   // Members load async with team data; keep recipient stable if valid, otherwise default to lead/first.
   useEffect(() => {
@@ -200,6 +202,20 @@ export const MessageComposer = ({
     [draftAddFiles]
   );
 
+  const showImageRestrictionError = useCallback(() => {
+    setImageRestrictionError('Images can only be sent to the team lead');
+    window.clearTimeout(imageRestrictionTimerRef.current);
+    imageRestrictionTimerRef.current = window.setTimeout(() => {
+      setImageRestrictionError(null);
+    }, 4000);
+  }, []);
+
+  // Cleanup restriction error timer on unmount
+  useEffect(() => {
+    const ref = imageRestrictionTimerRef;
+    return () => window.clearTimeout(ref.current);
+  }, []);
+
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     dragCounterRef.current += 1;
@@ -222,19 +238,40 @@ export const MessageComposer = ({
   const { handleDrop: draftHandleDrop } = draft;
   const handleDropWrapper = useCallback(
     (e: React.DragEvent) => {
+      e.preventDefault();
       dragCounterRef.current = 0;
       setIsDragOver(false);
+      if (!isLeadRecipient) {
+        const files = e.dataTransfer?.files;
+        if (files?.length) {
+          const hasImages = Array.from(files).some((f) => f.type.startsWith('image/'));
+          if (hasImages) {
+            showImageRestrictionError();
+          }
+        }
+        return;
+      }
       if (canAttach) draftHandleDrop(e);
     },
-    [canAttach, draftHandleDrop]
+    [isLeadRecipient, canAttach, draftHandleDrop, showImageRestrictionError]
   );
 
   const { handlePaste: draftHandlePaste } = draft;
   const handlePasteWrapper = useCallback(
     (e: React.ClipboardEvent) => {
+      if (!isLeadRecipient) {
+        const hasImages = Array.from(e.clipboardData.items).some((item) =>
+          item.type.startsWith('image/')
+        );
+        if (hasImages) {
+          e.preventDefault();
+          showImageRestrictionError();
+        }
+        return;
+      }
       if (canAttach) draftHandlePaste(e);
     },
-    [canAttach, draftHandlePaste]
+    [isLeadRecipient, canAttach, draftHandlePaste, showImageRestrictionError]
   );
 
   const remaining = MAX_TEXT_LENGTH - trimmed.length;
@@ -244,13 +281,13 @@ export const MessageComposer = ({
       className="relative mb-3 p-3"
       role="group"
       onKeyDownCapture={handleKeyDownCapture}
-      onDragEnter={canAttach ? handleDragEnter : undefined}
-      onDragLeave={canAttach ? handleDragLeave : undefined}
-      onDragOver={canAttach ? handleDragOver : undefined}
-      onDrop={canAttach ? handleDropWrapper : undefined}
-      onPaste={canAttach ? handlePasteWrapper : undefined}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDropWrapper}
+      onPaste={handlePasteWrapper}
     >
-      <DropZoneOverlay active={isDragOver && !!canAttach} />
+      <DropZoneOverlay active={isDragOver} rejected={!isLeadRecipient} />
 
       <div className="mb-1 flex items-center gap-2">
         {isLeadRecipient ? (
@@ -291,7 +328,7 @@ export const MessageComposer = ({
               <AttachmentPreviewList
                 attachments={draft.attachments}
                 onRemove={draft.removeAttachment}
-                error={draft.attachmentError}
+                error={draft.attachmentError ?? imageRestrictionError}
                 onDismissError={draft.clearAttachmentError}
                 disabled={attachmentsBlocked}
                 disabledHint="Image attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
@@ -302,7 +339,7 @@ export const MessageComposer = ({
           <AttachmentPreviewList
             attachments={draft.attachments}
             onRemove={draft.removeAttachment}
-            error={draft.attachmentError}
+            error={draft.attachmentError ?? imageRestrictionError}
             onDismissError={draft.clearAttachmentError}
             disabled={attachmentsBlocked}
             disabledHint="Image attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."

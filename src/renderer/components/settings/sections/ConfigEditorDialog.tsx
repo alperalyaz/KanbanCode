@@ -177,56 +177,53 @@ export const ConfigEditorDialog = ({
     const init = async (): Promise<void> => {
       try {
         const config = await api.config.get();
-        if (destroyed) return;
+        if (destroyed || !editorRef.current) return;
 
         const jsonText = JSON.stringify(config, null, 2);
         initialConfigRef.current = jsonText;
-        setLoading(false);
 
-        // Wait for DOM render
-        requestAnimationFrame(() => {
-          if (destroyed || !editorRef.current) return;
+        // Clean up existing view
+        if (viewRef.current) {
+          viewRef.current.destroy();
+          viewRef.current = null;
+        }
 
-          // Clean up existing view
-          if (viewRef.current) {
-            viewRef.current.destroy();
-            viewRef.current = null;
-          }
-
-          const state = EditorState.create({
-            doc: jsonText,
-            extensions: [
-              lineNumbers(),
-              highlightActiveLineGutter(),
-              highlightActiveLine(),
-              history(),
-              foldGutter(),
-              indentOnInput(),
-              bracketMatching(),
-              json(),
-              syntaxHighlighting(oneDarkHighlightStyle),
-              jsonLinter,
-              lintGutter(),
-              search(),
-              keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap]),
-              baseEditorTheme,
-              configEditorTheme,
-              // eslint-disable-next-line sonarjs/no-nested-functions -- CodeMirror listener callback within useEffect setup
-              EditorView.updateListener.of((update) => {
-                if (update.docChanged) {
-                  const text = update.state.doc.toString();
-                  scheduleSave(text);
-                }
-              }),
-            ],
-          });
-
-          const view = new EditorView({
-            state,
-            parent: editorRef.current,
-          });
-          viewRef.current = view;
+        const state = EditorState.create({
+          doc: jsonText,
+          extensions: [
+            lineNumbers(),
+            highlightActiveLineGutter(),
+            highlightActiveLine(),
+            history(),
+            foldGutter(),
+            indentOnInput(),
+            bracketMatching(),
+            json(),
+            syntaxHighlighting(oneDarkHighlightStyle),
+            jsonLinter,
+            lintGutter(),
+            search(),
+            keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap]),
+            baseEditorTheme,
+            configEditorTheme,
+            // eslint-disable-next-line sonarjs/no-nested-functions -- CodeMirror listener callback within useEffect setup
+            EditorView.updateListener.of((update) => {
+              if (update.docChanged) {
+                const text = update.state.doc.toString();
+                scheduleSave(text);
+              }
+            }),
+          ],
         });
+
+        const view = new EditorView({
+          state,
+          parent: editorRef.current,
+        });
+        viewRef.current = view;
+
+        // Reveal editor only after CodeMirror is fully mounted
+        setLoading(false);
       } catch (e) {
         if (destroyed) return;
         setLoading(false);
@@ -301,15 +298,18 @@ export const ConfigEditorDialog = ({
         <div className="relative min-h-0 flex-1">
           {loading ? (
             <div
-              className="flex h-96 items-center justify-center gap-2 text-sm"
-              style={{ color: 'var(--color-text-muted)' }}
+              className="absolute inset-0 z-10 flex items-center justify-center gap-2 text-sm"
+              style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface)' }}
             >
               <Loader2 className="size-4 animate-spin" />
               Loading config...
             </div>
-          ) : (
-            <div ref={editorRef} className="config-editor-container h-full min-h-[400px]" />
-          )}
+          ) : null}
+          <div
+            ref={editorRef}
+            className="config-editor-container h-full min-h-[400px]"
+            style={loading ? { visibility: 'hidden' } : undefined}
+          />
         </div>
 
         {/* Footer */}
