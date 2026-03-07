@@ -26,11 +26,7 @@ export const defaultTaskFiltersState = (): TaskFiltersState => ({
 });
 
 export function taskMatchesStatus(
-  task: {
-    status: string;
-    reviewState?: 'none' | 'review' | 'approved';
-    kanbanColumn?: 'review' | 'approved';
-  },
+  task: { status: string; reviewState?: 'none' | 'review' | 'approved'; kanbanColumn?: 'review' | 'approved' },
   statusIds: Set<TaskStatusFilterId>
 ): boolean {
   if (statusIds.size === 0) return false;

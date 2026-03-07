@@ -4,6 +4,7 @@ const kanban = require('./internal/kanban.js');
 const review = require('./internal/review.js');
 const messages = require('./internal/messages.js');
 const processes = require('./internal/processes.js');
+const maintenance = require('./internal/maintenance.js');
 
 function bindModule(context, moduleApi) {
   return Object.fromEntries(
@@ -24,6 +25,7 @@ function createController(options) {
     review: bindModule(context, review),
     messages: bindModule(context, messages),
     processes: bindModule(context, processes),
+    maintenance: bindModule(context, maintenance),
   };
 }
 
@@ -35,4 +37,5 @@ module.exports = {
   review,
   messages,
   processes,
+  maintenance,
 };

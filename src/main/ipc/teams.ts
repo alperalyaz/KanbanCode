@@ -48,6 +48,7 @@ import {
   TEAM_STOP,
   TEAM_TOOL_APPROVAL_RESPOND,
   TEAM_UPDATE_CONFIG,
+  TEAM_VALIDATE_CLI_ARGS,
   TEAM_UPDATE_KANBAN,
   TEAM_UPDATE_KANBAN_COLUMN_ORDER,
   TEAM_UPDATE_MEMBER_ROLE,
@@ -59,6 +60,8 @@ import {
 import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
 import { KANBAN_COLUMN_IDS } from '@shared/constants/kanban';
 import { MAX_TEXT_LENGTH } from '@shared/constants/teamLimits';
+import type { CliArgsValidationResult } from '@shared/utils/cliArgsParser';
+import { extractFlagsFromHelp, extractUserFlags, PROTECTED_CLI_FLAGS } from '@shared/utils/cliArgsParser';
 import { createLogger } from '@shared/utils/logger';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
 import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent, Notification } from 'electron';
@@ -250,6 +253,7 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_GET_TASK_ATTACHMENT, handleGetTaskAttachment);
   ipcMain.handle(TEAM_DELETE_TASK_ATTACHMENT, handleDeleteTaskAttachment);
   ipcMain.handle(TEAM_TOOL_APPROVAL_RESPOND, handleToolApprovalRespond);
+  ipcMain.handle(TEAM_VALIDATE_CLI_ARGS, handleValidateCliArgs);
   logger.info('Team handlers registered');
 }
 
@@ -305,6 +309,7 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_GET_TASK_ATTACHMENT);
   ipcMain.removeHandler(TEAM_DELETE_TASK_ATTACHMENT);
   ipcMain.removeHandler(TEAM_TOOL_APPROVAL_RESPOND);
+  ipcMain.removeHandler(TEAM_VALIDATE_CLI_ARGS);
 }
 
 function getTeamDataService(): TeamDataService {
@@ -641,6 +646,30 @@ async function validateProvisioningRequest(
     return { valid: false, error: 'cwd must be a directory' };
   }
 
+  if (payload.worktree !== undefined) {
+    if (typeof payload.worktree !== 'string') {
+      return { valid: false, error: 'worktree must be a string' };
+    }
+    const wt = payload.worktree.trim();
+    if (wt.length > 128) {
+      return { valid: false, error: 'worktree name too long (max 128)' };
+    }
+    if (wt && !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(wt)) {
+      return {
+        valid: false,
+        error: 'worktree name: start with alphanumeric, use [a-zA-Z0-9._-]',
+      };
+    }
+  }
+  if (payload.extraCliArgs !== undefined) {
+    if (typeof payload.extraCliArgs !== 'string') {
+      return { valid: false, error: 'extraCliArgs must be a string' };
+    }
+    if (payload.extraCliArgs.length > 1024) {
+      return { valid: false, error: 'extraCliArgs too long (max 1024)' };
+    }
+  }
+
   return {
     valid: true,
     value: {
@@ -655,6 +684,14 @@ async function validateProvisioningRequest(
       effort: isValidEffort(payload.effort) ? payload.effort : undefined,
       skipPermissions:
         typeof payload.skipPermissions === 'boolean' ? payload.skipPermissions : undefined,
+      worktree:
+        typeof payload.worktree === 'string' && payload.worktree.trim()
+          ? payload.worktree.trim()
+          : undefined,
+      extraCliArgs:
+        typeof payload.extraCliArgs === 'string' && payload.extraCliArgs.trim()
+          ? payload.extraCliArgs.trim()
+          : undefined,
     },
   };
 }
@@ -763,6 +800,12 @@ async function handleLaunchTeam(
         clearContext: payload.clearContext === true ? true : undefined,
         skipPermissions:
           typeof payload.skipPermissions === 'boolean' ? payload.skipPermissions : undefined,
+        worktree:
+          typeof payload.worktree === 'string' ? payload.worktree.trim() || undefined : undefined,
+        extraCliArgs:
+          typeof payload.extraCliArgs === 'string'
+            ? payload.extraCliArgs.trim() || undefined
+            : undefined,
       },
       (progress) => {
         try {
@@ -774,6 +817,32 @@ async function handleLaunchTeam(
       }
     )
   );
+}
+
+async function handleValidateCliArgs(
+  _event: IpcMainInvokeEvent,
+  rawArgs: unknown
+): Promise<IpcResult<CliArgsValidationResult>> {
+  if (typeof rawArgs !== 'string') {
+    return { success: false, error: 'rawArgs must be a string' };
+  }
+  if (rawArgs.length > 2048) {
+    return { success: false, error: 'rawArgs too long (max 2048)' };
+  }
+  return wrapTeamHandler('validateCliArgs', async () => {
+    const helpOutput = await getTeamProvisioningService().getCliHelpOutput();
+    const knownFlags = extractFlagsFromHelp(helpOutput);
+    const userFlags = extractUserFlags(rawArgs);
+
+    const invalidFlags = userFlags.filter((f) => !knownFlags.has(f));
+    const protectedFlags = userFlags.filter((f) => PROTECTED_CLI_FLAGS.has(f));
+    const allBad = [...new Set([...invalidFlags, ...protectedFlags])];
+
+    return {
+      valid: allBad.length === 0,
+      invalidFlags: allBad.length > 0 ? allBad : undefined,
+    };
+  });
 }
 
 async function handlePrepareProvisioning(

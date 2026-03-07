@@ -897,6 +897,9 @@ export class HttpAPIClient implements ElectronAPI {
     respondToToolApproval: async (): Promise<void> => {
       throw new Error('Tool approval not available in browser mode');
     },
+    validateCliArgs: async (): Promise<never> => {
+      throw new Error('CLI args validation not available in browser mode');
+    },
     onToolApprovalEvent: (): (() => void) => {
       return () => {};
     },

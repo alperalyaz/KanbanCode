@@ -307,7 +307,11 @@ export class TeamMemberLogsFinder {
     return paths;
   }
 
-  /** Быстрая проверка: содержит ли файл TaskUpdate/teamctl маркер для данного taskId */
+  /**
+   * Fast marker probe for task-related logs.
+   * Prefer structured MCP/TaskUpdate markers for modern sessions; keep teamctl text matching
+   * only as historical fallback for old JSONL data.
+   */
   async hasTaskUpdateMarker(filePath: string, taskId: string): Promise<boolean> {
     const stream = createReadStream(filePath, { encoding: 'utf8' });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });

@@ -112,8 +112,49 @@ function updateColumnOrder(paths, teamName, columnId, orderedTaskIds) {
   return state;
 }
 
+function garbageCollect(paths, teamName, validTaskIds) {
+  const state = readKanbanState(paths, teamName);
+  let staleKanbanEntriesRemoved = 0;
+  let staleColumnOrderRefsRemoved = 0;
+
+  for (const taskId of Object.keys(state.tasks)) {
+    if (!validTaskIds.has(taskId)) {
+      delete state.tasks[taskId];
+      staleKanbanEntriesRemoved += 1;
+    }
+  }
+
+  if (state.columnOrder && typeof state.columnOrder === 'object') {
+    const cleaned = {};
+    for (const [columnId, orderedTaskIds] of Object.entries(state.columnOrder)) {
+      if (!Array.isArray(orderedTaskIds)) {
+        continue;
+      }
+
+      const validIds = orderedTaskIds.filter((taskId) => validTaskIds.has(String(taskId)));
+      staleColumnOrderRefsRemoved += orderedTaskIds.length - validIds.length;
+      if (validIds.length > 0) {
+        cleaned[columnId] = validIds;
+      }
+    }
+
+    state.columnOrder = Object.keys(cleaned).length > 0 ? cleaned : undefined;
+  }
+
+  if (staleKanbanEntriesRemoved > 0 || staleColumnOrderRefsRemoved > 0) {
+    writeKanbanState(paths, teamName, state);
+  }
+
+  return {
+    state,
+    staleKanbanEntriesRemoved,
+    staleColumnOrderRefsRemoved,
+  };
+}
+
 module.exports = {
   clearKanban,
+  garbageCollect,
   readKanbanState,
   setKanbanColumn,
   updateColumnOrder,

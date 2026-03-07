@@ -111,4 +111,86 @@ describe('agent-teams-controller API', () => {
     expect(rows[0].stoppedAt).toBeTruthy();
     expect(rows[1].id).toBe(registered.id);
   });
+
+  it('reconciles stale kanban rows and linked inbox comments idempotently', () => {
+    const claudeDir = makeClaudeDir();
+    const controller = createController({ teamName: 'my-team', claudeDir });
+    const task = controller.tasks.createTask({
+      subject: 'Ship migration',
+      owner: 'bob',
+    });
+
+    const kanbanPath = path.join(claudeDir, 'teams', 'my-team', 'kanban-state.json');
+    fs.writeFileSync(
+      kanbanPath,
+      JSON.stringify(
+        {
+          teamName: 'my-team',
+          reviewers: [],
+          tasks: {
+            [task.id]: { column: 'review', movedAt: '2026-01-01T00:00:00.000Z', reviewer: null },
+            staleTask: { column: 'approved', movedAt: '2026-01-01T00:00:00.000Z' },
+          },
+          columnOrder: {
+            review: [task.id, 'staleTask'],
+            approved: ['staleTask'],
+          },
+        },
+        null,
+        2
+      )
+    );
+
+    const inboxDir = path.join(claudeDir, 'teams', 'my-team', 'inboxes');
+    fs.mkdirSync(inboxDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(inboxDir, 'bob.json'),
+      JSON.stringify(
+        [
+          {
+            from: 'alice',
+            to: 'bob',
+            summary: `Please revisit #${task.displayId}`,
+            messageId: 'm-1',
+            timestamp: '2026-02-23T10:00:00.000Z',
+            read: false,
+            text: 'Need one more verification pass.',
+          },
+          {
+            from: 'team-lead',
+            to: 'bob',
+            summary: `Comment on #${task.displayId}`,
+            messageId: 'm-2',
+            timestamp: '2026-02-23T11:00:00.000Z',
+            read: false,
+            text:
+              `Comment on task #${task.displayId} "Ship migration":\n\nHeads up\n\n` +
+              '<agent-block>\nReply to this comment using:\nnode "tool.js" --team my-team task comment 1 --text "..." --from "bob"\n</agent-block>',
+          },
+        ],
+        null,
+        2
+      )
+    );
+
+    const first = controller.maintenance.reconcileArtifacts({ reason: 'manual' });
+    expect(first.staleKanbanEntriesRemoved).toBe(1);
+    expect(first.staleColumnOrderRefsRemoved).toBe(2);
+    expect(first.linkedCommentsCreated).toBe(1);
+
+    const reloaded = controller.tasks.getTask(task.id);
+    expect(reloaded.comments).toHaveLength(1);
+    expect(reloaded.comments[0].id).toBe('msg-m-1');
+    expect(reloaded.comments[0].text).toBe('Need one more verification pass.');
+
+    const cleanedKanban = JSON.parse(fs.readFileSync(kanbanPath, 'utf8'));
+    expect(cleanedKanban.tasks.staleTask).toBeUndefined();
+    expect(cleanedKanban.columnOrder.review).toEqual([task.id]);
+    expect(cleanedKanban.columnOrder.approved).toBeUndefined();
+
+    const second = controller.maintenance.reconcileArtifacts({ reason: 'manual' });
+    expect(second.staleKanbanEntriesRemoved).toBe(0);
+    expect(second.staleColumnOrderRefsRemoved).toBe(0);
+    expect(second.linkedCommentsCreated).toBe(0);
+  });
 });

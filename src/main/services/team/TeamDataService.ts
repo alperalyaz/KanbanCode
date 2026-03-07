@@ -1230,93 +1230,9 @@ export class TeamDataService {
   }
 
   async reconcileTeamArtifacts(teamName: string): Promise<void> {
-    const tasks = await this.taskReader.getTasks(teamName);
-    await this.kanbanManager.garbageCollect(teamName, new Set(tasks.map((task) => task.id)));
-
-    const messages = await this.inboxReader.getMessages(teamName);
-    if (messages.length === 0) {
-      return;
-    }
-
-    await this.syncLinkedComments(teamName, tasks, messages);
-  }
-
-  /**
-   * Scans inbox messages for task-related discussions and auto-creates
-   * linked comments on disk. Uses deterministic comment ID for dedup.
-   * Returns true if any new comments were synced (caller should re-read tasks).
-   */
-  private async syncLinkedComments(
-    teamName: string,
-    tasks: TeamTask[],
-    messages: InboxMessage[]
-  ): Promise<boolean> {
-    const TASK_ID_PATTERN = /#([A-Za-z0-9-]+)/g;
-    let synced = false;
-
-    const tasksById = new Map<string, TeamTask>();
-    for (const t of tasks) {
-      tasksById.set(t.id, t);
-      if (t.displayId) {
-        tasksById.set(t.displayId, t);
-      }
-    }
-
-    // Dedup broadcasts: same sender + same text → process only once
-    const processedTexts = new Set<string>();
-
-    function isAutomatedCommentNotification(msg: InboxMessage): boolean {
-      const summary = typeof msg.summary === 'string' ? msg.summary : '';
-      if (!/^Comment on #[A-Za-z0-9-]+/.test(summary)) return false;
-      const text = typeof msg.text === 'string' ? msg.text : '';
-      if (!text) return false;
-      // These are system-generated inbox messages that already correspond to a real task comment.
-      // Syncing them into task.comments causes an immediate "duplicate" (lead echo) in the UI.
-      if (text.includes('Reply to this comment using:')) return true;
-      if (text.startsWith('Comment on task #')) return true;
-      if (text.startsWith('New comment from user on your task #')) return true;
-      return false;
-    }
-
-    for (const msg of messages) {
-      if (!msg.messageId || !msg.summary || msg.from === 'user') continue;
-      if (msg.source === 'lead_session' || msg.source === 'lead_process') continue;
-      if (msg.source === 'system_notification') continue;
-      if (isAutomatedCommentNotification(msg)) continue;
-
-      const textKey = `${msg.from}\0${msg.text}`;
-      if (processedTexts.has(textKey)) continue;
-      processedTexts.add(textKey);
-
-      const matches = msg.summary.matchAll(TASK_ID_PATTERN);
-      const taskIds = new Set<string>();
-      for (const match of matches) {
-        taskIds.add(match[1]);
-      }
-
-      for (const taskId of taskIds) {
-        const task = tasksById.get(taskId);
-        if (!task) continue;
-
-        const commentId = `msg-${msg.messageId}`;
-        const existing = task.comments ?? [];
-        if (existing.some((c) => c.id === commentId)) continue;
-
-        try {
-          this.getController(teamName).tasks.addTaskComment(task.id, {
-            text: msg.text,
-            id: commentId,
-            from: msg.from,
-            createdAt: msg.timestamp,
-          });
-          synced = true;
-        } catch {
-          // Best-effort — don't fail reconciliation on sync errors
-        }
-      }
-    }
-
-    return synced;
+    this.getController(teamName).maintenance.reconcileArtifacts({
+      reason: 'file-watch',
+    });
   }
 
   private async extractLeadSessionTexts(config: TeamConfig): Promise<InboxMessage[]> {

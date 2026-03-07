@@ -31,6 +31,7 @@ import { normalizePath } from '@renderer/utils/pathNormalize';
 import { getMemberColor } from '@shared/constants/memberColors';
 import { AlertTriangle, CheckCircle2, Info, Loader2, X } from 'lucide-react';
 
+import { AdvancedCliSection } from './AdvancedCliSection';
 import { EffortLevelSelector } from './EffortLevelSelector';
 import { ExtendedContextCheckbox } from './ExtendedContextCheckbox';
 import { ProjectPathSelector } from './ProjectPathSelector';
@@ -245,6 +246,21 @@ export const CreateTeamDialog = ({
     () => localStorage.getItem('team:lastSelectedEffort') ?? ''
   );
 
+  // Advanced CLI section state (use teamName-derived key for localStorage)
+  const advancedKey = sanitizeTeamName(teamName.trim()) || '_new_';
+  const [worktreeEnabled, setWorktreeEnabledRaw] = useState(false);
+  const [worktreeName, setWorktreeNameRaw] = useState('');
+  const [customArgs, setCustomArgsRaw] = useState('');
+
+  // Re-read localStorage when advancedKey changes
+  useEffect(() => {
+    const storedEnabled = localStorage.getItem(`team:lastWorktreeEnabled:${advancedKey}`) === 'true';
+    const storedName = localStorage.getItem(`team:lastWorktreeName:${advancedKey}`) ?? '';
+    setWorktreeEnabledRaw(storedEnabled && Boolean(storedName));
+    setWorktreeNameRaw(storedName);
+    setCustomArgsRaw(localStorage.getItem(`team:lastCustomArgs:${advancedKey}`) ?? '');
+  }, [advancedKey]);
+
   const setSelectedModel = (value: string): void => {
     setSelectedModelRaw(value);
     localStorage.setItem('team:lastSelectedModel', value);
@@ -263,6 +279,23 @@ export const CreateTeamDialog = ({
   const setSelectedEffort = (value: string): void => {
     setSelectedEffortRaw(value);
     localStorage.setItem('team:lastSelectedEffort', value);
+  };
+
+  const setWorktreeEnabled = (value: boolean): void => {
+    setWorktreeEnabledRaw(value);
+    localStorage.setItem(`team:lastWorktreeEnabled:${advancedKey}`, String(value));
+    if (!value) {
+      setWorktreeNameRaw('');
+      localStorage.setItem(`team:lastWorktreeName:${advancedKey}`, '');
+    }
+  };
+  const setWorktreeName = (value: string): void => {
+    setWorktreeNameRaw(value);
+    localStorage.setItem(`team:lastWorktreeName:${advancedKey}`, value);
+  };
+  const setCustomArgs = (value: string): void => {
+    setCustomArgsRaw(value);
+    localStorage.setItem(`team:lastCustomArgs:${advancedKey}`, value);
   };
 
   const resetUIState = (): void => {
@@ -496,6 +529,8 @@ export const CreateTeamDialog = ({
       model: effectiveModel,
       effort: (selectedEffort as EffortLevel) || undefined,
       skipPermissions,
+      worktree: worktreeEnabled && worktreeName.trim() ? worktreeName.trim() : undefined,
+      extraCliArgs: customArgs.trim() || undefined,
     }),
     [
       sanitizedTeamName,
@@ -508,8 +543,22 @@ export const CreateTeamDialog = ({
       effectiveModel,
       selectedEffort,
       skipPermissions,
+      worktreeEnabled,
+      worktreeName,
+      customArgs,
     ]
   );
+
+  const internalArgs = useMemo(() => {
+    const args: string[] = [];
+    args.push('--input-format', 'stream-json', '--output-format', 'stream-json');
+    args.push('--verbose', '--setting-sources', 'user,project,local');
+    args.push('--mcp-config', '<auto>', '--disallowedTools', 'TeamDelete,TodoWrite');
+    if (skipPermissions) args.push('--dangerously-skip-permissions');
+    if (effectiveModel) args.push('--model', effectiveModel);
+    if (selectedEffort) args.push('--effort', selectedEffort);
+    return args;
+  }, [skipPermissions, effectiveModel, selectedEffort]);
 
   const activeError = localError ?? provisioningError;
   const canOpenExistingTeam =
@@ -839,6 +888,16 @@ export const CreateTeamDialog = ({
                     />
                   )}
                 </div>
+                <AdvancedCliSection
+                  teamName={advancedKey}
+                  internalArgs={internalArgs}
+                  worktreeEnabled={worktreeEnabled}
+                  onWorktreeEnabledChange={setWorktreeEnabled}
+                  worktreeName={worktreeName}
+                  onWorktreeNameChange={setWorktreeName}
+                  customArgs={customArgs}
+                  onCustomArgsChange={setCustomArgs}
+                />
               </div>
             ) : null}
           </div>

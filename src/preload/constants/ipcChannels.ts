@@ -364,6 +364,9 @@ export const TEAM_TOOL_APPROVAL_EVENT = 'team:toolApprovalEvent';
 /** Invoke: respond to a tool approval request (renderer → main) */
 export const TEAM_TOOL_APPROVAL_RESPOND = 'team:toolApprovalRespond';
 
+/** Validate custom CLI args against `claude --help` output */
+export const TEAM_VALIDATE_CLI_ARGS = 'team:validateCliArgs';
+
 // =============================================================================
 // CLI Installer API Channels
 // =============================================================================

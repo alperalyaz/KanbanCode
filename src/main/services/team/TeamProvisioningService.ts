@@ -19,6 +19,7 @@ import {
 } from '@shared/constants/agentBlocks';
 import { getMemberColor } from '@shared/constants/memberColors';
 import { resolveLanguageName } from '@shared/utils/agentLanguage';
+import { parseCliArgs } from '@shared/utils/cliArgsParser';
 import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 import { createLogger } from '@shared/utils/logger';
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
@@ -1080,6 +1081,9 @@ export class TeamProvisioningService {
   private readonly relayedLeadInboxFallbackKeys = new Map<string, Set<string>>();
   private readonly liveLeadProcessMessages = new Map<string, InboxMessage[]>();
   private teamChangeEmitter: ((event: TeamChangeEvent) => void) | null = null;
+  private helpOutputCache: string | null = null;
+  private helpOutputCacheTime = 0;
+  private static readonly HELP_CACHE_TTL_MS = 5 * 60 * 1000;
 
   constructor(
     private readonly configReader: TeamConfigReader = new TeamConfigReader(),
@@ -1867,6 +1871,8 @@ export class TeamProvisioningService {
         ...(request.skipPermissions !== false ? ['--dangerously-skip-permissions'] : []),
         ...(request.model ? ['--model', request.model] : []),
         ...(request.effort ? ['--effort', request.effort] : []),
+        ...(request.worktree ? ['--worktree', request.worktree] : []),
+        ...parseCliArgs(request.extraCliArgs),
       ];
       try {
         child = spawnCli(claudePath, spawnArgs, {
@@ -2209,6 +2215,10 @@ export class TeamProvisioningService {
       if (request.effort) {
         launchArgs.push('--effort', request.effort);
       }
+      if (request.worktree) {
+        launchArgs.push('--worktree', request.worktree);
+      }
+      launchArgs.push(...parseCliArgs(request.extraCliArgs));
       // New sessions: CLI creates its own ID. No --resume with synthetic name — docs say
       // --resume is for existing sessions and may show an interactive picker if not found.
 
@@ -5225,6 +5235,33 @@ export class TeamProvisioningService {
     }
 
     return {};
+  }
+
+  /**
+   * Run `claude --help` and return the output. Cached for 5 minutes.
+   * Used by the validateCliArgs IPC handler to check user-entered flags.
+   */
+  async getCliHelpOutput(cwd?: string): Promise<string> {
+    if (
+      this.helpOutputCache &&
+      Date.now() - this.helpOutputCacheTime < TeamProvisioningService.HELP_CACHE_TTL_MS
+    ) {
+      return this.helpOutputCache;
+    }
+    const targetCwd = cwd ?? process.cwd();
+    const probeResult = await this.getCachedOrProbeResult(targetCwd);
+    if (!probeResult?.claudePath) {
+      throw new Error('Claude CLI not found');
+    }
+    const { env } = await this.buildProvisioningEnv();
+    const result = await this.spawnProbe(probeResult.claudePath, ['--help'], targetCwd, env, 10_000);
+    const output = (result.stdout + '\n' + result.stderr).trim();
+    if (!output) {
+      throw new Error(`claude --help returned empty output (exit code: ${result.exitCode})`);
+    }
+    this.helpOutputCache = output;
+    this.helpOutputCacheTime = Date.now();
+    return output;
   }
 
   private async spawnProbe(

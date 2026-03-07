@@ -40,3 +40,4 @@ export function isApprovedTask(task: ReviewStateLike): boolean {
 export function isReviewTask(task: ReviewStateLike): boolean {
   return getReviewStateFromTask(task) === 'review';
 }
+

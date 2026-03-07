@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { TeamDataService } from '../../../../src/main/services/team/TeamDataService';
 
-import type { InboxMessage, TeamTask } from '../../../../src/shared/types/team';
+import type { TeamTask } from '../../../../src/shared/types/team';
 
 describe('TeamDataService', () => {
   it('keeps getTeamData read-only and skips kanban garbage-collect', async () => {
@@ -47,52 +47,17 @@ describe('TeamDataService', () => {
     expect(order).toEqual(['tasks']);
   });
 
-  it('reconciles linked comments outside getTeamData and skips automated notifications', async () => {
-    const tasks: TeamTask[] = [
-      {
-        id: '12',
-        subject: 'Task',
-        status: 'pending',
-      },
-    ];
-
-    const addComment = vi.fn(async () => {
-      throw new Error('Should not be called');
-    });
-
-    const messages: InboxMessage[] = [
-      {
-        from: 'team-lead',
-        to: 'alice',
-        summary: 'Comment on #12',
-        messageId: 'm1',
-        timestamp: new Date().toISOString(),
-        read: false,
-        text:
-          'Comment on task #12 "Task":\n\nHello\n\n' +
-          '<agent-block>\n' +
-          'Reply to this comment using:\n' +
-          'node "tool.js" --team my-team task comment 12 --text "..." --from "alice"\n' +
-          '</agent-block>',
-      },
-    ];
-
+  it('delegates explicit reconcile to controller maintenance API', async () => {
+    const reconcileArtifacts = vi.fn();
     const service = new TeamDataService(
       {
         listTeams: vi.fn(),
         getConfig: vi.fn(async () => ({ name: 'My team', members: [{ name: 'team-lead', role: 'Lead' }] })),
       } as never,
-      {
-        getTasks: vi.fn(async () => tasks),
-      } as never,
-      {
-        listInboxNames: vi.fn(async () => []),
-        getMessages: vi.fn(async () => messages),
-      } as never,
       {} as never,
-      {
-        addComment,
-      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
       {
         resolveMembers: vi.fn(() => []),
       } as never,
@@ -109,32 +74,27 @@ describe('TeamDataService', () => {
       } as never,
       () =>
         ({
-          tasks: {
-            addTaskComment: addComment,
+          maintenance: {
+            reconcileArtifacts,
           },
         }) as never
     );
 
     await service.reconcileTeamArtifacts('my-team');
-    expect(addComment).not.toHaveBeenCalled();
+    expect(reconcileArtifacts).toHaveBeenCalledWith({ reason: 'file-watch' });
   });
 
-  it('skips reconcile writes when tasks fail to load', async () => {
-    const garbageCollect = vi.fn(async () => undefined);
+  it('surfaces controller reconcile failures', async () => {
+    const reconcileArtifacts = vi.fn(() => {
+      throw new Error('reconcile failed');
+    });
     const service = new TeamDataService(
       {
         listTeams: vi.fn(),
         getConfig: vi.fn(async () => ({ name: 'My team', members: [] })),
       } as never,
-      {
-        getTasks: vi.fn(async () => {
-          throw new Error('tasks failed');
-        }),
-      } as never,
-      {
-        listInboxNames: vi.fn(async () => []),
-        getMessages: vi.fn(async () => []),
-      } as never,
+      {} as never,
+      {} as never,
       {} as never,
       {} as never,
       {
@@ -142,12 +102,20 @@ describe('TeamDataService', () => {
       } as never,
       {
         getState: vi.fn(async () => ({ teamName: 'my-team', reviewers: [], tasks: {} })),
-        garbageCollect,
-      } as never
+        garbageCollect: vi.fn(async () => undefined),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      () =>
+        ({
+          maintenance: {
+            reconcileArtifacts,
+          },
+        }) as never
     );
 
-    await expect(service.reconcileTeamArtifacts('my-team')).rejects.toThrow('tasks failed');
-    expect(garbageCollect).not.toHaveBeenCalled();
+    await expect(service.reconcileTeamArtifacts('my-team')).rejects.toThrow('reconcile failed');
   });
 
   it('includes projectPath from config when creating a task', async () => {

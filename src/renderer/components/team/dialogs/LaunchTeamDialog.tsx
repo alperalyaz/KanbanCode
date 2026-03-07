@@ -24,6 +24,7 @@ import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import { AlertTriangle, CheckCircle2, Loader2, RotateCcw, X } from 'lucide-react';
 
+import { AdvancedCliSection } from './AdvancedCliSection';
 import { EffortLevelSelector } from './EffortLevelSelector';
 import { ProjectPathSelector } from './ProjectPathSelector';
 import { computeEffectiveTeamModel, TeamModelSelector } from './TeamModelSelector';
@@ -89,6 +90,36 @@ export const LaunchTeamDialog = ({
   );
   const [clearContext, setClearContext] = useState(false);
   const [conflictDismissed, setConflictDismissed] = useState(false);
+
+  // Advanced CLI section state (with localStorage persistence)
+  const [worktreeEnabled, setWorktreeEnabledRaw] = useState(
+    () =>
+      localStorage.getItem(`team:lastWorktreeEnabled:${teamName}`) === 'true' &&
+      Boolean(localStorage.getItem(`team:lastWorktreeName:${teamName}`))
+  );
+  const [worktreeName, setWorktreeNameRaw] = useState(
+    () => localStorage.getItem(`team:lastWorktreeName:${teamName}`) ?? ''
+  );
+  const [customArgs, setCustomArgsRaw] = useState(
+    () => localStorage.getItem(`team:lastCustomArgs:${teamName}`) ?? ''
+  );
+
+  const setWorktreeEnabled = (value: boolean): void => {
+    setWorktreeEnabledRaw(value);
+    localStorage.setItem(`team:lastWorktreeEnabled:${teamName}`, String(value));
+    if (!value) {
+      setWorktreeNameRaw('');
+      localStorage.setItem(`team:lastWorktreeName:${teamName}`, '');
+    }
+  };
+  const setWorktreeName = (value: string): void => {
+    setWorktreeNameRaw(value);
+    localStorage.setItem(`team:lastWorktreeName:${teamName}`, value);
+  };
+  const setCustomArgs = (value: string): void => {
+    setCustomArgsRaw(value);
+    localStorage.setItem(`team:lastCustomArgs:${teamName}`, value);
+  };
 
   const setSelectedModel = (value: string): void => {
     setSelectedModelRaw(value);
@@ -284,6 +315,21 @@ export const LaunchTeamDialog = ({
     [members, colorMap]
   );
 
+  const internalArgs = useMemo(() => {
+    const args: string[] = [];
+    // Infrastructure (always present, dimmed in preview)
+    args.push('--input-format', 'stream-json', '--output-format', 'stream-json');
+    args.push('--verbose', '--setting-sources', 'user,project,local');
+    args.push('--mcp-config', '<auto>', '--disallowedTools', 'TeamDelete,TodoWrite');
+    // User-visible
+    if (skipPermissions) args.push('--dangerously-skip-permissions');
+    const model = computeEffectiveTeamModel(selectedModel, extendedContext);
+    if (model) args.push('--model', model);
+    if (selectedEffort) args.push('--effort', selectedEffort);
+    if (!clearContext) args.push('--resume', '<previous>');
+    return args;
+  }, [skipPermissions, selectedModel, extendedContext, selectedEffort, clearContext]);
+
   const activeError = localError ?? provisioningError;
 
   const handleSubmit = (): void => {
@@ -304,6 +350,8 @@ export const LaunchTeamDialog = ({
           effort: (selectedEffort as EffortLevel) || undefined,
           clearContext: clearContext || undefined,
           skipPermissions,
+          worktree: worktreeEnabled && worktreeName.trim() ? worktreeName.trim() : undefined,
+          extraCliArgs: customArgs.trim() || undefined,
         });
         resetFormState();
         onClose();
@@ -498,6 +546,17 @@ export const LaunchTeamDialog = ({
               </div>
             )}
           </div>
+
+          <AdvancedCliSection
+            teamName={teamName}
+            internalArgs={internalArgs}
+            worktreeEnabled={worktreeEnabled}
+            onWorktreeEnabledChange={setWorktreeEnabled}
+            worktreeName={worktreeName}
+            onWorktreeNameChange={setWorktreeName}
+            customArgs={customArgs}
+            onCustomArgsChange={setCustomArgs}
+          />
         </div>
 
         {activeError ? (

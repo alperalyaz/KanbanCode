@@ -64,6 +64,7 @@ import type {
   UpdateKanbanPatch,
 } from './team';
 import type { TerminalAPI } from './terminal';
+import type { CliArgsValidationResult } from '../utils/cliArgsParser';
 import type { WaterfallData } from './visualization';
 import type {
   ConversationGroup,
@@ -518,6 +519,7 @@ export interface TeamsAPI {
     allow: boolean,
     message?: string
   ) => Promise<void>;
+  validateCliArgs: (rawArgs: string) => Promise<CliArgsValidationResult>;
   onToolApprovalEvent: (callback: (event: unknown, data: ToolApprovalEvent) => void) => () => void;
 }
 

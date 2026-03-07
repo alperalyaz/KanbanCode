@@ -106,6 +106,7 @@ import {
   TEAM_TOOL_APPROVAL_EVENT,
   TEAM_TOOL_APPROVAL_RESPOND,
   TEAM_UPDATE_CONFIG,
+  TEAM_VALIDATE_CLI_ARGS,
   TEAM_UPDATE_KANBAN,
   TEAM_UPDATE_KANBAN_COLUMN_ORDER,
   TEAM_UPDATE_MEMBER_ROLE,
@@ -221,6 +222,7 @@ import type {
   UpdateKanbanPatch,
   WslClaudeRootCandidate,
 } from '@shared/types';
+import type { CliArgsValidationResult } from '@shared/utils/cliArgsParser';
 import type {
   BinaryPreviewResult,
   CreateDirResponse,
@@ -993,6 +995,9 @@ const electronAPI: ElectronAPI = {
         allow,
         message
       );
+    },
+    validateCliArgs: async (rawArgs: string) => {
+      return invokeIpcWithResult<CliArgsValidationResult>(TEAM_VALIDATE_CLI_ARGS, rawArgs);
     },
     onToolApprovalEvent: (
       callback: (event: unknown, data: ToolApprovalEvent) => void

@@ -313,6 +313,10 @@ export interface TeamLaunchRequest {
   clearContext?: boolean;
   /** When false, run WITHOUT --dangerously-skip-permissions (manual tool approval). Default: true. */
   skipPermissions?: boolean;
+  /** Worktree name — CLI: --worktree <name>. */
+  worktree?: string;
+  /** Raw custom CLI args string, shell-split and appended to CLI command. */
+  extraCliArgs?: string;
 }
 
 export interface TeamLaunchResponse {
@@ -396,6 +400,10 @@ export interface TeamCreateRequest {
   effort?: EffortLevel;
   /** When false, run WITHOUT --dangerously-skip-permissions (manual tool approval). Default: true. */
   skipPermissions?: boolean;
+  /** Worktree name — CLI: --worktree <name>. */
+  worktree?: string;
+  /** Raw custom CLI args string, shell-split and appended to CLI command. */
+  extraCliArgs?: string;
 }
 
 export interface TeamCreateConfigRequest {

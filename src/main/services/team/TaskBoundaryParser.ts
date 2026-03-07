@@ -31,9 +31,25 @@ interface ToolUseInfo {
   filePath?: string;
 }
 
-/** Regex для teamctl task команд */
+/**
+ * Historical fallback for legacy CLI sessions only.
+ * New runtime sessions are expected to emit structured task updates via MCP/TaskUpdate.
+ */
 const TEAMCTL_TASK_REGEX = /task\s+(start|complete|set-status)\s+(\d+)/;
 const MCP_TASK_BOUNDARY_TOOLS = new Set(['task_start', 'task_complete', 'task_set_status']);
+
+function pickDetectedMechanism(
+  current: 'TaskUpdate' | 'teamctl' | 'mcp' | 'none',
+  next: 'TaskUpdate' | 'teamctl' | 'mcp'
+): 'TaskUpdate' | 'teamctl' | 'mcp' | 'none' {
+  const priority = {
+    none: 0,
+    teamctl: 1,
+    TaskUpdate: 2,
+    mcp: 3,
+  } as const;
+  return priority[next] > priority[current] ? next : current;
+}
 
 export class TaskBoundaryParser {
   private cache = new Map<string, BoundaryCacheEntry>();
@@ -91,25 +107,25 @@ export class TaskBoundaryParser {
             allToolUsesByLine.get(lineNumber)!.push({ toolUseId, toolName, filePath: fp });
           }
 
-          // Пробуем TaskUpdate
+          // Prefer structured task markers for modern runtime sessions.
           const taskUpdateBounds = this.extractTaskUpdateBoundaries(content, lineNumber, timestamp);
           if (taskUpdateBounds.length > 0) {
-            detectedMechanism = 'TaskUpdate';
+            detectedMechanism = pickDetectedMechanism(detectedMechanism, 'TaskUpdate');
             boundaries.push(...taskUpdateBounds);
             continue;
           }
 
           const mcpBounds = this.extractMcpTaskBoundaries(content, lineNumber, timestamp);
           if (mcpBounds.length > 0) {
-            detectedMechanism = 'mcp';
+            detectedMechanism = pickDetectedMechanism(detectedMechanism, 'mcp');
             boundaries.push(...mcpBounds);
             continue;
           }
 
-          // Пробуем teamctl
+          // Legacy CLI fallback for historical JSONL rows.
           const teamctlBounds = this.extractTeamctlBoundaries(content, lineNumber, timestamp);
           if (teamctlBounds.length > 0) {
-            detectedMechanism = 'teamctl';
+            detectedMechanism = pickDetectedMechanism(detectedMechanism, 'teamctl');
             boundaries.push(...teamctlBounds);
           }
         } catch {
@@ -273,7 +289,7 @@ export class TaskBoundaryParser {
   }
 
   /**
-   * Найти teamctl task start/complete/set-status команды в Bash tool_use блоках.
+   * Historical fallback: detect legacy teamctl task commands in Bash tool_use blocks.
    * Regex: /task\s+(start|complete|set-status)\s+(\d+)/
    */
   private extractTeamctlBoundaries(

@@ -56,12 +56,17 @@ declare module 'agent-teams-controller' {
     listProcesses(): unknown[];
   }
 
+  export interface ControllerMaintenanceApi {
+    reconcileArtifacts(flags?: Record<string, unknown>): unknown;
+  }
+
   export interface AgentTeamsController {
     tasks: ControllerTaskApi;
     kanban: ControllerKanbanApi;
     review: ControllerReviewApi;
     messages: ControllerMessageApi;
     processes: ControllerProcessApi;
+    maintenance: ControllerMaintenanceApi;
   }
 
   export function createController(options: ControllerContextOptions): AgentTeamsController;
