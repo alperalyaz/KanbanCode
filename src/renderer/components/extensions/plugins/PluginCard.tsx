@@ -26,6 +26,7 @@ export const PluginCard = ({ plugin, onClick }: PluginCardProps): React.JSX.Elem
   const installProgress = useStore((s) => s.pluginInstallProgress[plugin.pluginId] ?? 'idle');
   const installPlugin = useStore((s) => s.installPlugin);
   const uninstallPlugin = useStore((s) => s.uninstallPlugin);
+  const installError = useStore((s) => s.installErrors[plugin.pluginId]);
 
   return (
     <button
@@ -81,6 +82,7 @@ export const PluginCard = ({ plugin, onClick }: PluginCardProps): React.JSX.Elem
             onInstall={() => installPlugin({ pluginId: plugin.pluginId, scope: 'user' })}
             onUninstall={() => uninstallPlugin(plugin.pluginId)}
             size="sm"
+            errorMessage={installError}
           />
         </div>
       </div>

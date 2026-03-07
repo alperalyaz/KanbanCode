@@ -208,14 +208,18 @@ async function handlePluginInstall(
   _event: IpcMainInvokeEvent,
   request?: PluginInstallRequest
 ): Promise<IpcResult<OperationResult>> {
-  return wrapHandler('pluginInstall', () => {
+  return wrapHandler('pluginInstall', async () => {
     if (!request || typeof request.pluginId !== 'string' || !request.pluginId) {
       throw new Error('Invalid install request: pluginId is required');
     }
     if (request.scope && !VALID_SCOPES.has(request.scope)) {
       throw new Error(`Invalid scope: "${request.scope}"`);
     }
-    return getPluginInstaller().install(request);
+    const result = await getPluginInstaller().install(request);
+    if (result.state === 'success') {
+      getFacade().invalidateInstalledCache();
+    }
+    return result;
   });
 }
 
@@ -225,18 +229,22 @@ async function handlePluginUninstall(
   scope?: string,
   projectPath?: string
 ): Promise<IpcResult<OperationResult>> {
-  return wrapHandler('pluginUninstall', () => {
+  return wrapHandler('pluginUninstall', async () => {
     if (typeof pluginId !== 'string' || !pluginId) {
       throw new Error('pluginId is required');
     }
     if (scope && !VALID_SCOPES.has(scope)) {
       throw new Error(`Invalid scope: "${scope}"`);
     }
-    return getPluginInstaller().uninstall(
+    const result = await getPluginInstaller().uninstall(
       pluginId,
       typeof scope === 'string' ? scope : undefined,
       typeof projectPath === 'string' ? projectPath : undefined
     );
+    if (result.state === 'success') {
+      getFacade().invalidateInstalledCache();
+    }
+    return result;
   });
 }
 
@@ -244,7 +252,7 @@ async function handleMcpInstall(
   _event: IpcMainInvokeEvent,
   request?: McpInstallRequest
 ): Promise<IpcResult<OperationResult>> {
-  return wrapHandler('mcpInstall', () => {
+  return wrapHandler('mcpInstall', async () => {
     if (!request || typeof request.registryId !== 'string' || !request.registryId) {
       throw new Error('Invalid install request: registryId is required');
     }
@@ -254,7 +262,11 @@ async function handleMcpInstall(
     if (request.scope && !VALID_SCOPES.has(request.scope)) {
       throw new Error(`Invalid scope: "${request.scope}"`);
     }
-    return getMcpInstaller().install(request);
+    const result = await getMcpInstaller().install(request);
+    if (result.state === 'success') {
+      getFacade().invalidateInstalledCache();
+    }
+    return result;
   });
 }
 
@@ -264,17 +276,21 @@ async function handleMcpUninstall(
   scope?: string,
   projectPath?: string
 ): Promise<IpcResult<OperationResult>> {
-  return wrapHandler('mcpUninstall', () => {
+  return wrapHandler('mcpUninstall', async () => {
     if (typeof name !== 'string' || !name) {
       throw new Error('Server name is required');
     }
     if (scope && !VALID_SCOPES.has(scope)) {
       throw new Error(`Invalid scope: "${scope}"`);
     }
-    return getMcpInstaller().uninstall(
+    const result = await getMcpInstaller().uninstall(
       name,
       typeof scope === 'string' ? scope : undefined,
       typeof projectPath === 'string' ? projectPath : undefined
     );
+    if (result.state === 'success') {
+      getFacade().invalidateInstalledCache();
+    }
+    return result;
   });
 }

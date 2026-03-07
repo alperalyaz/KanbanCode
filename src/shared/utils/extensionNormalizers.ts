@@ -89,3 +89,14 @@ export function normalizeCategory(raw: string | undefined): string {
 export function buildPluginId(pluginName: string, marketplaceName: string): string {
   return `${pluginName}@${marketplaceName}`;
 }
+
+/**
+ * Sanitize an MCP server display name into a CLI-safe server name.
+ * Must match the regex /^[\w.-]{1,100}$/ required by McpInstallService.
+ */
+export function sanitizeMcpServerName(displayName: string): string {
+  return displayName
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^\w.-]/g, '');
+}

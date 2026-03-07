@@ -23,6 +23,7 @@ import { McpServerCard } from './McpServerCard';
 import { McpServerDetailDialog } from './McpServerDetailDialog';
 
 import type { McpCatalogItem } from '@shared/types/extensions';
+import { sanitizeMcpServerName } from '@shared/utils/extensionNormalizers';
 
 type McpSortValue = 'name-asc' | 'name-desc' | 'tools-desc';
 
@@ -89,17 +90,21 @@ export const McpServersPanel = ({
   const isLoading = isSearching ? mcpSearchLoading : browseLoading;
   const warnings = isSearching ? mcpSearchWarnings : [];
 
-  // Installed lookup set
+  // Installed lookup set (lowercase CLI names)
   const installedNames = useMemo(
-    () => new Set(installedServers.map((s) => s.name)),
+    () => new Set(installedServers.map((s) => s.name.toLowerCase())),
     [installedServers]
   );
+
+  /** Check if a catalog server is installed by comparing sanitized names */
+  const isServerInstalled = (server: McpCatalogItem): boolean =>
+    installedNames.has(sanitizeMcpServerName(server.name));
 
   // Sort + filter
   const displayServers = useMemo(() => {
     let result = rawServers;
     if (mcpInstalledOnly) {
-      result = result.filter((s) => installedNames.has(s.name));
+      result = result.filter(isServerInstalled);
     }
     return sortMcpServers(result, mcpSort);
   }, [rawServers, mcpSort, mcpInstalledOnly, installedNames]);
@@ -236,7 +241,7 @@ export const McpServersPanel = ({
             <McpServerCard
               key={server.id}
               server={server}
-              isInstalled={installedNames.has(server.name)}
+              isInstalled={isServerInstalled(server)}
               onClick={setSelectedMcpServerId}
             />
           ))}
@@ -260,7 +265,7 @@ export const McpServersPanel = ({
       {/* Detail dialog */}
       <McpServerDetailDialog
         server={selectedServer}
-        isInstalled={selectedServer ? installedNames.has(selectedServer.name) : false}
+        isInstalled={selectedServer ? isServerInstalled(selectedServer) : false}
         open={selectedMcpServerId !== null}
         onClose={() => setSelectedMcpServerId(null)}
       />

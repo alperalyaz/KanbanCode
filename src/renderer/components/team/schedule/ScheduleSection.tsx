@@ -4,6 +4,7 @@ import { Button } from '@renderer/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
+import { formatNextRun, getCronDescription } from '@renderer/utils/scheduleFormatters';
 import {
   ChevronDown,
   ChevronRight,
@@ -15,9 +16,8 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react';
-import cronstrue from 'cronstrue/i18n';
 
-import { ScheduleDialog } from './ScheduleDialog';
+import { LaunchTeamDialog } from '../dialogs/LaunchTeamDialog';
 import { ScheduleEmptyState } from './ScheduleEmptyState';
 import { ScheduleRunLogDialog } from './ScheduleRunLogDialog';
 import { ScheduleRunRow } from './ScheduleRunRow';
@@ -31,47 +31,6 @@ import type { Schedule, ScheduleRun } from '@shared/types';
 
 interface ScheduleSectionProps {
   teamName: string;
-}
-
-// =============================================================================
-// Helpers
-// =============================================================================
-
-function formatNextRun(isoString?: string): string {
-  if (!isoString) return 'N/A';
-  try {
-    const date = new Date(isoString);
-    const now = Date.now();
-    const diffMs = date.getTime() - now;
-
-    if (diffMs < 0) return 'overdue';
-
-    const hours = Math.floor(diffMs / 3600_000);
-    const minutes = Math.floor((diffMs % 3600_000) / 60_000);
-
-    if (hours > 24) {
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      });
-    }
-    if (hours > 0) return `in ${hours}h ${minutes}m`;
-    if (minutes > 0) return `in ${minutes}m`;
-    return 'soon';
-  } catch {
-    return isoString;
-  }
-}
-
-function getCronDescription(expression: string): string {
-  try {
-    return cronstrue.toString(expression, { locale: 'en', use24HourTimeFormat: true });
-  } catch {
-    return expression;
-  }
 }
 
 // =============================================================================
@@ -341,7 +300,8 @@ export const ScheduleSection = ({ teamName }: ScheduleSectionProps): React.JSX.E
       )}
 
       {/* Create/Edit Dialog */}
-      <ScheduleDialog
+      <LaunchTeamDialog
+        mode="schedule"
         open={dialogOpen}
         teamName={teamName}
         schedule={editingSchedule}

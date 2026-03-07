@@ -36,6 +36,9 @@ export interface ScheduleSlice {
 
   /** Optimistic in-memory update from SCHEDULE_CHANGE events */
   applyScheduleChange(scheduleId: string): Promise<void>;
+
+  /** Open a standalone Schedules tab (or focus existing) */
+  openSchedulesTab(): void;
 }
 
 // =============================================================================
@@ -173,5 +176,23 @@ export const createScheduleSlice: StateCreator<AppState, [], [], ScheduleSlice> 
     } catch (err) {
       logger.error('applyScheduleChange failed:', err);
     }
+  },
+
+  openSchedulesTab: () => {
+    const state = get();
+    const focusedPane = state.paneLayout.panes.find((p) => p.id === state.paneLayout.focusedPaneId);
+    const existingTab = focusedPane?.tabs.find((tab) => tab.type === 'schedules');
+    if (existingTab) {
+      state.setActiveTab(existingTab.id);
+      return;
+    }
+
+    state.openTab({
+      type: 'schedules',
+      label: 'Schedules',
+    });
+
+    // Ensure schedules are fresh when opening
+    void get().fetchSchedules();
   },
 });

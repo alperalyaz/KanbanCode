@@ -6,6 +6,13 @@
 import { Check, Loader2, Trash2 } from 'lucide-react';
 
 import { Button } from '@renderer/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@renderer/components/ui/tooltip';
+import { useStore } from '@renderer/store';
 
 import type { ExtensionOperationState } from '@shared/types/extensions';
 
@@ -16,6 +23,7 @@ interface InstallButtonProps {
   onUninstall: () => void;
   disabled?: boolean;
   size?: 'sm' | 'default';
+  errorMessage?: string;
 }
 
 export function InstallButton({
@@ -25,7 +33,11 @@ export function InstallButton({
   onUninstall,
   disabled,
   size = 'sm',
+  errorMessage,
 }: InstallButtonProps) {
+  const cliStatus = useStore((s) => s.cliStatus);
+  const cliMissing = cliStatus !== null && !cliStatus.installed;
+  const isDisabled = disabled || cliMissing;
   if (state === 'pending') {
     return (
       <Button size={size} variant="outline" disabled>
@@ -45,7 +57,7 @@ export function InstallButton({
   }
 
   if (state === 'error') {
-    return (
+    const retryButton = (
       <Button
         size={size}
         variant="outline"
@@ -54,33 +66,44 @@ export function InstallButton({
           e.stopPropagation();
           (isInstalled ? onUninstall : onInstall)();
         }}
-        disabled={disabled}
+        disabled={isDisabled}
       >
         <span>Retry</span>
       </Button>
     );
+
+    if (errorMessage) {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0}>{retryButton}</span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-64 text-red-300">{errorMessage}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    return retryButton;
   }
 
-  // idle
-  if (isInstalled) {
-    return (
-      <Button
-        size={size}
-        variant="outline"
-        className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-        onClick={(e) => {
-          e.stopPropagation();
-          onUninstall();
-        }}
-        disabled={disabled}
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-        <span className="ml-1.5">Uninstall</span>
-      </Button>
-    );
-  }
-
-  return (
+  // idle — wrap in tooltip when CLI missing
+  const button = isInstalled ? (
+    <Button
+      size={size}
+      variant="outline"
+      className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+      onClick={(e) => {
+        e.stopPropagation();
+        onUninstall();
+      }}
+      disabled={isDisabled}
+    >
+      <Trash2 className="h-3.5 w-3.5" />
+      <span className="ml-1.5">Uninstall</span>
+    </Button>
+  ) : (
     <Button
       size={size}
       variant="default"
@@ -88,9 +111,24 @@ export function InstallButton({
         e.stopPropagation();
         onInstall();
       }}
-      disabled={disabled}
+      disabled={isDisabled}
     >
       Install
     </Button>
   );
+
+  if (cliMissing) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span tabIndex={0}>{button}</span>
+          </TooltipTrigger>
+          <TooltipContent>Claude CLI required</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return button;
 }

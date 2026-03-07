@@ -29,6 +29,7 @@ import { ExternalLink, Lock, Plus, Server, Trash2, Wrench } from 'lucide-react';
 
 import { InstallButton } from '../common/InstallButton';
 import { SourceBadge } from '../common/SourceBadge';
+import { sanitizeMcpServerName } from '@shared/utils/extensionNormalizers';
 
 import type { McpCatalogItem, McpHeaderDef } from '@shared/types/extensions';
 
@@ -58,6 +59,7 @@ export const McpServerDetailDialog = ({
   );
   const installMcpServer = useStore((s) => s.installMcpServer);
   const uninstallMcpServer = useStore((s) => s.uninstallMcpServer);
+  const installError = useStore((s) => (server ? s.installErrors[server.id] : undefined));
 
   const [scope, setScope] = useState<Scope>('user');
   const [serverName, setServerName] = useState('');
@@ -69,7 +71,7 @@ export const McpServerDetailDialog = ({
   const [lastServerId, setLastServerId] = useState<string | null>(null);
   if (server && server.id !== lastServerId) {
     setLastServerId(server.id);
-    setServerName(server.name.toLowerCase().replaceAll(/\s+/g, '-'));
+    setServerName(sanitizeMcpServerName(server.name));
     setEnvValues(Object.fromEntries(server.envVars.map((env) => [env.name, ''])));
     setHeaders([]);
     setImgError(false);
@@ -303,6 +305,7 @@ export const McpServerDetailDialog = ({
                 onUninstall={handleUninstall}
                 disabled={!serverName.trim()}
                 size="default"
+                errorMessage={installError}
               />
             </div>
           </div>

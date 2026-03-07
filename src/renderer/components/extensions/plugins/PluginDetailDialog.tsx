@@ -61,6 +61,7 @@ export const PluginDetailDialog = ({
   );
   const installPlugin = useStore((s) => s.installPlugin);
   const uninstallPlugin = useStore((s) => s.uninstallPlugin);
+  const installError = useStore((s) => (plugin ? s.installErrors[plugin.pluginId] : undefined));
 
   const [scope, setScope] = useState<InstallScope>('user');
 
@@ -152,6 +153,7 @@ export const PluginDetailDialog = ({
             onInstall={() => installPlugin({ pluginId: plugin.pluginId, scope })}
             onUninstall={() => uninstallPlugin(plugin.pluginId, scope)}
             size="default"
+            errorMessage={installError}
           />
         </div>
 

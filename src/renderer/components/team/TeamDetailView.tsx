@@ -1818,6 +1818,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           </Dialog>
 
           <LaunchTeamDialog
+            mode="launch"
             open={launchDialogOpen}
             teamName={teamName}
             members={data?.members ?? []}

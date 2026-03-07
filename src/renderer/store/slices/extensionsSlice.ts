@@ -41,6 +41,7 @@ export interface ExtensionsSlice {
   // ── Install progress ──
   pluginInstallProgress: Record<string, ExtensionOperationState>;
   mcpInstallProgress: Record<string, ExtensionOperationState>;
+  installErrors: Record<string, string>; // keyed by pluginId or registryId
 
   // ── Read actions ──
   fetchPluginCatalog: (projectPath?: string, forceRefresh?: boolean) => Promise<void>;
@@ -93,6 +94,7 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
 
   pluginInstallProgress: {},
   mcpInstallProgress: {},
+  installErrors: {},
 
   // ── Plugin catalog fetch ──
   fetchPluginCatalog: async (projectPath?: string, forceRefresh?: boolean) => {
@@ -202,6 +204,10 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
       if (result.state === 'error') {
         set((prev) => ({
           pluginInstallProgress: { ...prev.pluginInstallProgress, [request.pluginId]: 'error' },
+          installErrors: {
+            ...prev.installErrors,
+            [request.pluginId]: result.error ?? 'Install failed',
+          },
         }));
         return;
       }
@@ -219,9 +225,11 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
           pluginInstallProgress: { ...prev.pluginInstallProgress, [request.pluginId]: 'idle' },
         }));
       }, SUCCESS_DISPLAY_MS);
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Install failed';
       set((prev) => ({
         pluginInstallProgress: { ...prev.pluginInstallProgress, [request.pluginId]: 'error' },
+        installErrors: { ...prev.installErrors, [request.pluginId]: message },
       }));
     }
   },
@@ -239,6 +247,7 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
       if (result.state === 'error') {
         set((prev) => ({
           pluginInstallProgress: { ...prev.pluginInstallProgress, [pluginId]: 'error' },
+          installErrors: { ...prev.installErrors, [pluginId]: result.error ?? 'Uninstall failed' },
         }));
         return;
       }
@@ -255,16 +264,27 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
           pluginInstallProgress: { ...prev.pluginInstallProgress, [pluginId]: 'idle' },
         }));
       }, SUCCESS_DISPLAY_MS);
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Uninstall failed';
       set((prev) => ({
         pluginInstallProgress: { ...prev.pluginInstallProgress, [pluginId]: 'error' },
+        installErrors: { ...prev.installErrors, [pluginId]: message },
       }));
     }
   },
 
   // ── MCP install ──
   installMcpServer: async (request: McpInstallRequest) => {
-    if (!api.mcpRegistry) return;
+    if (!api.mcpRegistry) {
+      set((prev) => ({
+        mcpInstallProgress: { ...prev.mcpInstallProgress, [request.registryId]: 'error' },
+        installErrors: {
+          ...prev.installErrors,
+          [request.registryId]: 'MCP Registry not available',
+        },
+      }));
+      return;
+    }
 
     set((prev) => ({
       mcpInstallProgress: { ...prev.mcpInstallProgress, [request.registryId]: 'pending' },
@@ -275,6 +295,10 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
       if (result.state === 'error') {
         set((prev) => ({
           mcpInstallProgress: { ...prev.mcpInstallProgress, [request.registryId]: 'error' },
+          installErrors: {
+            ...prev.installErrors,
+            [request.registryId]: result.error ?? 'Install failed',
+          },
         }));
         return;
       }
@@ -291,9 +315,11 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
           mcpInstallProgress: { ...prev.mcpInstallProgress, [request.registryId]: 'idle' },
         }));
       }, SUCCESS_DISPLAY_MS);
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Install failed';
       set((prev) => ({
         mcpInstallProgress: { ...prev.mcpInstallProgress, [request.registryId]: 'error' },
+        installErrors: { ...prev.installErrors, [request.registryId]: message },
       }));
     }
   },
@@ -305,7 +331,13 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
     scope?: string,
     projectPath?: string
   ) => {
-    if (!api.mcpRegistry) return;
+    if (!api.mcpRegistry) {
+      set((prev) => ({
+        mcpInstallProgress: { ...prev.mcpInstallProgress, [registryId]: 'error' },
+        installErrors: { ...prev.installErrors, [registryId]: 'MCP Registry not available' },
+      }));
+      return;
+    }
 
     set((prev) => ({
       mcpInstallProgress: { ...prev.mcpInstallProgress, [registryId]: 'pending' },
@@ -316,6 +348,10 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
       if (result.state === 'error') {
         set((prev) => ({
           mcpInstallProgress: { ...prev.mcpInstallProgress, [registryId]: 'error' },
+          installErrors: {
+            ...prev.installErrors,
+            [registryId]: result.error ?? 'Uninstall failed',
+          },
         }));
         return;
       }
@@ -331,9 +367,11 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
           mcpInstallProgress: { ...prev.mcpInstallProgress, [registryId]: 'idle' },
         }));
       }, SUCCESS_DISPLAY_MS);
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Uninstall failed';
       set((prev) => ({
         mcpInstallProgress: { ...prev.mcpInstallProgress, [registryId]: 'error' },
+        installErrors: { ...prev.installErrors, [registryId]: message },
       }));
     }
   },

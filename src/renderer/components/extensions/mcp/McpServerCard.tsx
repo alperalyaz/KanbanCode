@@ -11,6 +11,7 @@ import { Lock, Server, Wrench } from 'lucide-react';
 
 import { InstallButton } from '../common/InstallButton';
 import { SourceBadge } from '../common/SourceBadge';
+import { sanitizeMcpServerName } from '@shared/utils/extensionNormalizers';
 
 import type { McpCatalogItem } from '@shared/types/extensions';
 
@@ -28,6 +29,7 @@ export const McpServerCard = ({
   const installProgress = useStore((s) => s.mcpInstallProgress[server.id] ?? 'idle');
   const installMcpServer = useStore((s) => s.installMcpServer);
   const uninstallMcpServer = useStore((s) => s.uninstallMcpServer);
+  const installError = useStore((s) => s.installErrors[server.id]);
   const canAutoInstall = !!server.installSpec;
   const [imgError, setImgError] = useState(false);
 
@@ -99,16 +101,15 @@ export const McpServerCard = ({
               onInstall={() =>
                 installMcpServer({
                   registryId: server.id,
-                  serverName: server.name.toLowerCase().replaceAll(/\s+/g, '-'),
+                  serverName: sanitizeMcpServerName(server.name),
                   scope: 'user',
                   envValues: {},
                   headers: [],
                 })
               }
-              onUninstall={() =>
-                uninstallMcpServer(server.id, server.name.toLowerCase().replaceAll(/\s+/g, '-'))
-              }
+              onUninstall={() => uninstallMcpServer(server.id, sanitizeMcpServerName(server.name))}
               size="sm"
+              errorMessage={installError}
             />
           </div>
         )}

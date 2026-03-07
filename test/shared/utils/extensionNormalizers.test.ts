@@ -10,6 +10,7 @@ import {
   inferCapabilities,
   normalizeCategory,
   normalizeRepoUrl,
+  sanitizeMcpServerName,
 } from '@shared/utils/extensionNormalizers';
 
 describe('normalizeRepoUrl', () => {
@@ -143,5 +144,26 @@ describe('buildPluginId', () => {
     expect(buildPluginId('context7', 'claude-plugins-official')).toBe(
       'context7@claude-plugins-official',
     );
+  });
+});
+
+describe('sanitizeMcpServerName', () => {
+  it('lowercases and replaces spaces with dashes', () => {
+    expect(sanitizeMcpServerName('My Server')).toBe('my-server');
+  });
+
+  it('strips special characters', () => {
+    expect(sanitizeMcpServerName('Stripe (Beta)')).toBe('stripe-beta');
+    expect(sanitizeMcpServerName('MCP/Server')).toBe('mcpserver');
+    expect(sanitizeMcpServerName("O'Reilly")).toBe('oreilly');
+  });
+
+  it('keeps dots, underscores, and dashes', () => {
+    expect(sanitizeMcpServerName('v2.0-server_name')).toBe('v2.0-server_name');
+  });
+
+  it('handles simple names', () => {
+    expect(sanitizeMcpServerName('Alpic')).toBe('alpic');
+    expect(sanitizeMcpServerName('Context7')).toBe('context7');
   });
 });

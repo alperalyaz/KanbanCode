@@ -14,6 +14,7 @@ import { nameColorSet } from '@renderer/utils/projectColor';
 import {
   Activity,
   Bell,
+  Calendar,
   FileText,
   LayoutDashboard,
   Pin,
@@ -50,6 +51,7 @@ const TAB_ICONS = {
   team: Users,
   report: Activity,
   extensions: Puzzle,
+  schedules: Calendar,
 } as const;
 
 export const SortableTab = ({
