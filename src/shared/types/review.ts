@@ -129,7 +129,7 @@ export interface TaskBoundary {
   event: 'start' | 'complete';
   lineNumber: number;
   timestamp: string;
-  mechanism: 'TaskUpdate' | 'teamctl' | 'mcp';
+  mechanism: 'TaskUpdate' | 'mcp';
   toolUseId?: string;
 }
 
@@ -158,7 +158,7 @@ export interface TaskBoundariesResult {
   boundaries: TaskBoundary[];
   scopes: TaskChangeScope[];
   isSingleTaskSession: boolean;
-  detectedMechanism: 'TaskUpdate' | 'teamctl' | 'mcp' | 'none';
+  detectedMechanism: 'TaskUpdate' | 'mcp' | 'none';
 }
 
 /** Расширенный TaskChangeSet с confidence деталями (backwards compatible) */

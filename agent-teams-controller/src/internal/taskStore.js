@@ -72,33 +72,10 @@ function normalizeTaskReviewState(value) {
   return REVIEW_STATES.has(String(value || '').trim()) ? String(value).trim() : 'none';
 }
 
-function getOverlayReviewState(overlayTasks, taskId) {
-  if (!overlayTasks || typeof overlayTasks !== 'object') {
-    return 'none';
-  }
-
-  const entry = overlayTasks[String(taskId)];
-  if (!entry || typeof entry !== 'object') {
-    return 'none';
-  }
-
-  return entry.column === 'review' || entry.column === 'approved' ? entry.column : 'none';
-}
-
-function withCompatibleReviewState(task, overlayTasks) {
-  const explicit = normalizeTaskReviewState(task.reviewState);
-  return explicit === 'none' ? { ...task, reviewState: getOverlayReviewState(overlayTasks, task.id) } : task;
-}
-
 function listRawTasks(paths) {
   ensureDir(paths.tasksDir);
   const entries = fs.readdirSync(paths.tasksDir);
   const out = [];
-  const overlayState = readJson(paths.kanbanPath, null);
-  const overlayTasks =
-    overlayState && typeof overlayState === 'object' && overlayState.tasks && typeof overlayState.tasks === 'object'
-      ? overlayState.tasks
-      : null;
 
   for (const fileName of entries) {
     if (!fileName.endsWith('.json') || fileName.startsWith('.')) continue;
@@ -107,7 +84,7 @@ function listRawTasks(paths) {
     if (!rawTask) continue;
     if (rawTask.metadata && rawTask.metadata._internal === true) continue;
     try {
-      out.push(withCompatibleReviewState(normalizeTask(rawTask, filePath), overlayTasks));
+      out.push(normalizeTask(rawTask, filePath));
     } catch {
       // Skip unreadable task rows.
     }
@@ -165,12 +142,7 @@ function readTask(paths, taskRef, options = {}) {
   if (!rawTask) {
     throw new Error(`Task not found: ${String(taskRef)}`);
   }
-  const overlayState = readJson(paths.kanbanPath, null);
-  const overlayTasks =
-    overlayState && typeof overlayState === 'object' && overlayState.tasks && typeof overlayState.tasks === 'object'
-      ? overlayState.tasks
-      : null;
-  return withCompatibleReviewState(normalizeTask(rawTask, taskPath), overlayTasks);
+  return normalizeTask(rawTask, taskPath);
 }
 
 function createStatusTransition(history, from, to, actor, timestamp) {

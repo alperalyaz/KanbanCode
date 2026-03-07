@@ -103,24 +103,10 @@ export class TeamTaskReader {
         if (metadata?._internal === true) {
           continue;
         }
-        // CLI sometimes writes "title" instead of "subject" — normalize
-        const subject =
-          typeof parsed.subject === 'string'
-            ? parsed.subject
-            : typeof parsed.title === 'string'
-              ? parsed.title
-              : '';
-        // Resolve createdAt: prefer JSON field, fallback to fs.stat (reuse fileStat from above)
-        let createdAt: string | undefined;
+        const subject = typeof parsed.subject === 'string' ? parsed.subject : '';
+        const createdAt = typeof parsed.createdAt === 'string' ? parsed.createdAt : undefined;
         let updatedAt: string | undefined;
-        if (typeof parsed.createdAt === 'string') {
-          createdAt = parsed.createdAt;
-        }
         try {
-          if (!createdAt) {
-            const bt = fileStat.birthtime.getTime();
-            createdAt = (bt > 0 ? fileStat.birthtime : fileStat.mtime).toISOString();
-          }
           updatedAt = fileStat.mtime.toISOString();
         } catch {
           /* leave undefined */
@@ -354,12 +340,7 @@ export class TeamTaskReader {
           continue;
         }
 
-        const subject =
-          typeof parsed.subject === 'string'
-            ? parsed.subject
-            : typeof parsed.title === 'string'
-              ? parsed.title
-              : '';
+        const subject = typeof parsed.subject === 'string' ? parsed.subject : '';
 
         const task: TeamTask = {
           id:

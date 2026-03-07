@@ -16,7 +16,7 @@ import {
   indentOnInput,
   syntaxHighlighting,
 } from '@codemirror/language';
-import { type Diagnostic, linter, lintGutter } from '@codemirror/lint';
+import { lintGutter } from '@codemirror/lint';
 import { search, searchKeymap } from '@codemirror/search';
 import { EditorState } from '@codemirror/state';
 import { oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
@@ -29,7 +29,7 @@ import {
 } from '@codemirror/view';
 import { api } from '@renderer/api';
 import { useStore } from '@renderer/store';
-import { baseEditorTheme } from '@renderer/utils/codemirrorTheme';
+import { baseEditorTheme, jsonLinter } from '@renderer/utils/codemirrorTheme';
 import { AlertTriangle, Check, Loader2, X } from 'lucide-react';
 
 import type { AppConfig } from '@renderer/types/data';
@@ -39,31 +39,6 @@ import type { AppConfig } from '@renderer/types/data';
 // =============================================================================
 
 const SAVE_DEBOUNCE_MS = 800;
-
-// =============================================================================
-// JSON Linter
-// =============================================================================
-
-const jsonLinter = linter((view: EditorView) => {
-  const diagnostics: Diagnostic[] = [];
-  const text = view.state.doc.toString();
-  try {
-    JSON.parse(text);
-  } catch (e) {
-    if (e instanceof SyntaxError) {
-      const match = /position (\d+)/.exec(e.message);
-      const pos = match ? parseInt(match[1], 10) : 0;
-      const safePos = Math.min(pos, text.length);
-      diagnostics.push({
-        from: safePos,
-        to: Math.min(safePos + 1, text.length),
-        severity: 'error',
-        message: e.message,
-      });
-    }
-  }
-  return diagnostics;
-});
 
 // =============================================================================
 // Types

@@ -309,8 +309,7 @@ export class TeamMemberLogsFinder {
 
   /**
    * Fast marker probe for task-related logs.
-   * Prefer structured MCP/TaskUpdate markers for modern sessions; keep teamctl text matching
-   * only as historical fallback for old JSONL data.
+   * Prefer structured MCP/TaskUpdate markers for modern sessions.
    */
   async hasTaskUpdateMarker(filePath: string, taskId: string): Promise<boolean> {
     const stream = createReadStream(filePath, { encoding: 'utf8' });
@@ -332,11 +331,6 @@ export class TeamMemberLogsFinder {
             line.includes('"task_set_status"')) &&
           pattern.test(line)
         ) {
-          rl.close();
-          stream.destroy();
-          return true;
-        }
-        if (line.includes('teamctl') && line.includes('task') && line.includes(taskId)) {
           rl.close();
           stream.destroy();
           return true;
@@ -508,18 +502,6 @@ export class TeamMemberLogsFinder {
       return typeof raw === 'string' ? raw.trim() : null;
     };
 
-    const matchesTeamctlCommand = (command: string): boolean => {
-      if (!/\bteamctl(?:\.js)?\b/i.test(command)) return false;
-
-      const teamMatch = /\s--team(?:\s+|=)(?:"([^"]+)"|'([^']+)'|([^\s]+))/i.exec(command);
-      const cmdTeam = (teamMatch?.[1] ?? teamMatch?.[2] ?? teamMatch?.[3])?.trim();
-      if (cmdTeam?.toLowerCase() !== teamLower) return false;
-
-      const taskMatch = /\btask\s+(?:start|complete|set-status)\s+(\d+)\b/i.exec(command);
-      const cmdTaskId = taskMatch?.[1];
-      return Boolean(cmdTaskId && cmdTaskId === taskIdStr);
-    };
-
     const matchesTeamMentionText = (text: string): boolean => {
       const t = text.toLowerCase();
       if (!t.includes(teamLower)) return false;
@@ -629,16 +611,6 @@ export class TeamMemberLogsFinder {
                   return true;
                 }
                 taskSeenWithoutTeam = true;
-              }
-            }
-
-            // Deterministic CLI match: teamctl command line (Bash tool).
-            if (toolName === 'Bash') {
-              const command = typeof input.command === 'string' ? input.command : '';
-              if (command && matchesTeamctlCommand(command)) {
-                rl.close();
-                stream.destroy();
-                return true;
               }
             }
           }

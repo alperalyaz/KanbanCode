@@ -589,7 +589,7 @@ describe('TeamMemberLogsFinder', () => {
     ).toBe(false);
   });
 
-  it('detects structured task markers while keeping legacy teamctl matching as fallback', async () => {
+  it('detects structured task markers and ignores legacy teamctl command lines', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-marker-logs-'));
 
     const structuredPath = path.join(tmpDir, 'structured.jsonl');
@@ -646,7 +646,7 @@ describe('TeamMemberLogsFinder', () => {
     const finder = new TeamMemberLogsFinder();
 
     await expect(finder.hasTaskUpdateMarker(structuredPath, 'task-42')).resolves.toBe(true);
-    await expect(finder.hasTaskUpdateMarker(legacyPath, 'task-42')).resolves.toBe(true);
+    await expect(finder.hasTaskUpdateMarker(legacyPath, 'task-42')).resolves.toBe(false);
     await expect(finder.hasTaskUpdateMarker(noisePath, 'task-42')).resolves.toBe(false);
   });
 });

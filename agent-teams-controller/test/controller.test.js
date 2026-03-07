@@ -194,39 +194,6 @@ describe('agent-teams-controller API', () => {
     expect(second.linkedCommentsCreated).toBe(0);
   });
 
-  it('derives reviewState from legacy kanban overlay and tolerates corrupt kanban state', () => {
-    const claudeDir = makeClaudeDir();
-    const controller = createController({ teamName: 'my-team', claudeDir });
-    const task = controller.tasks.createTask({ subject: 'Legacy review task' });
-    const taskPath = path.join(claudeDir, 'tasks', 'my-team', `${task.id}.json`);
-    const rawTask = JSON.parse(fs.readFileSync(taskPath, 'utf8'));
-    delete rawTask.reviewState;
-    fs.writeFileSync(taskPath, JSON.stringify(rawTask, null, 2));
-
-    const kanbanPath = path.join(claudeDir, 'teams', 'my-team', 'kanban-state.json');
-    fs.writeFileSync(
-      kanbanPath,
-      JSON.stringify(
-        {
-          teamName: 'my-team',
-          reviewers: [],
-          tasks: {
-            [task.id]: { column: 'review', movedAt: '2026-01-01T00:00:00.000Z', reviewer: null },
-          },
-        },
-        null,
-        2
-      )
-    );
-
-    expect(controller.tasks.getTask(task.id).reviewState).toBe('review');
-    expect(controller.tasks.listTasks()[0].reviewState).toBe('review');
-
-    fs.writeFileSync(kanbanPath, '{broken-json');
-    expect(controller.tasks.getTask(task.id).reviewState).toBe('none');
-    expect(controller.tasks.listTasks()[0].reviewState).toBe('none');
-  });
-
   it('tracks lifecycle history and intervals without duplicate same-status transitions', () => {
     const claudeDir = makeClaudeDir();
     const controller = createController({ teamName: 'my-team', claudeDir });

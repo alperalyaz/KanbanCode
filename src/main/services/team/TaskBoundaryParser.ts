@@ -31,14 +31,9 @@ interface ToolUseInfo {
   filePath?: string;
 }
 
-/**
- * Historical fallback for legacy CLI sessions only.
- * New runtime sessions are expected to emit structured task updates via MCP/TaskUpdate.
- */
-const TEAMCTL_TASK_REGEX = /task\s+(start|complete|set-status)\s+(\d+)/;
 const MCP_TASK_BOUNDARY_TOOLS = new Set(['task_start', 'task_complete', 'task_set_status']);
 
-type DetectedMechanism = 'TaskUpdate' | 'teamctl' | 'mcp' | 'none';
+type DetectedMechanism = 'TaskUpdate' | 'mcp' | 'none';
 
 function pickDetectedMechanism(
   current: DetectedMechanism,
@@ -46,9 +41,8 @@ function pickDetectedMechanism(
 ): DetectedMechanism {
   const priority = {
     none: 0,
-    teamctl: 1,
-    TaskUpdate: 2,
-    mcp: 3,
+    TaskUpdate: 1,
+    mcp: 2,
   } as const;
   return priority[next] > priority[current] ? next : current;
 }
@@ -122,13 +116,6 @@ export class TaskBoundaryParser {
             detectedMechanism = pickDetectedMechanism(detectedMechanism, 'mcp');
             boundaries.push(...mcpBounds);
             continue;
-          }
-
-          // Legacy CLI fallback for historical JSONL rows.
-          const teamctlBounds = this.extractTeamctlBoundaries(content, lineNumber, timestamp);
-          if (teamctlBounds.length > 0) {
-            detectedMechanism = pickDetectedMechanism(detectedMechanism, 'teamctl');
-            boundaries.push(...teamctlBounds);
           }
         } catch {
           // Пропускаем невалидные строки
@@ -282,63 +269,6 @@ export class TaskBoundaryParser {
           lineNumber,
           timestamp,
           mechanism: 'mcp',
-          toolUseId,
-        });
-      }
-    }
-
-    return results;
-  }
-
-  /**
-   * Historical fallback: detect legacy teamctl task commands in Bash tool_use blocks.
-   * Regex: /task\s+(start|complete|set-status)\s+(\d+)/
-   */
-  private extractTeamctlBoundaries(
-    content: unknown[],
-    lineNumber: number,
-    timestamp: string
-  ): TaskBoundary[] {
-    const results: TaskBoundary[] = [];
-
-    for (const block of content) {
-      if (!block || typeof block !== 'object') continue;
-      const b = block as Record<string, unknown>;
-      if (b.type !== 'tool_use') continue;
-
-      const rawName = typeof b.name === 'string' ? b.name : '';
-      const toolName = rawName.replace(/^proxy_/, '');
-      if (toolName !== 'Bash') continue;
-
-      const input = b.input as Record<string, unknown> | undefined;
-      if (!input) continue;
-
-      const command = typeof input.command === 'string' ? input.command : '';
-      if (!command.includes('teamctl')) continue;
-
-      const match = TEAMCTL_TASK_REGEX.exec(command);
-      if (!match) continue;
-
-      const action = match[1]; // start | complete | set-status
-      const taskId = match[2];
-
-      let event: TaskBoundaryEvent = null;
-      if (action === 'start') event = 'start';
-      else if (action === 'complete') event = 'complete';
-      else if (action === 'set-status') {
-        // set-status может быть start или complete — определяем по аргументам
-        if (command.includes('in_progress') || command.includes('in-progress')) event = 'start';
-        else if (command.includes('completed') || command.includes('done')) event = 'complete';
-      }
-
-      if (event) {
-        const toolUseId = typeof b.id === 'string' ? b.id : undefined;
-        results.push({
-          taskId,
-          event,
-          lineNumber,
-          timestamp,
-          mechanism: 'teamctl',
           toolUseId,
         });
       }
