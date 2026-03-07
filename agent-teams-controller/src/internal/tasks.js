@@ -1,5 +1,5 @@
-const legacy = require('../legacy/teamctl.cli.js');
 const taskStore = require('./taskStore.js');
+const runtimeHelpers = require('./runtimeHelpers.js');
 
 function createTask(context, input) {
   return taskStore.createTask(context.paths, input);
@@ -56,7 +56,7 @@ function addTaskComment(context, taskId, flags) {
     author:
       typeof flags.from === 'string' && flags.from.trim()
         ? flags.from.trim()
-        : legacy.inferLeadName(context.paths),
+        : runtimeHelpers.inferLeadName(context.paths),
     ...(flags.id ? { id: flags.id } : {}),
     ...(flags.createdAt ? { createdAt: flags.createdAt } : {}),
     ...(flags.type ? { type: flags.type } : {}),
@@ -75,7 +75,7 @@ function addTaskComment(context, taskId, flags) {
 
 function attachTaskFile(context, taskId, flags) {
   const canonicalTaskId = resolveTaskId(context, taskId);
-  const saved = legacy.saveTaskAttachmentFile(context.paths, canonicalTaskId, flags);
+  const saved = runtimeHelpers.saveTaskAttachmentFile(context.paths, canonicalTaskId, flags);
   const task = taskStore.addTaskAttachmentMeta(context.paths, canonicalTaskId, saved.meta);
   return {
     ...saved.meta,
@@ -85,7 +85,7 @@ function attachTaskFile(context, taskId, flags) {
 
 function attachCommentFile(context, taskId, commentId, flags) {
   const canonicalTaskId = resolveTaskId(context, taskId);
-  const saved = legacy.saveTaskAttachmentFile(context.paths, canonicalTaskId, flags);
+  const saved = runtimeHelpers.saveTaskAttachmentFile(context.paths, canonicalTaskId, flags);
   const task = taskStore.addCommentAttachmentMeta(context.paths, canonicalTaskId, commentId, saved.meta);
   return {
     ...saved.meta,

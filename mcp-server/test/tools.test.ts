@@ -233,10 +233,14 @@ describe('agent-teams-mcp tools', () => {
         taskId: createdTask.id,
         from: 'lead',
         reviewer: 'alice',
+        leadSessionId: 'session-review-1',
       })
     );
 
     expect(reviewRequested.reviewState).toBe('review');
+    const reviewerInboxPath = path.join(claudeDir, 'teams', teamName, 'inboxes', 'alice.json');
+    const reviewerInbox = JSON.parse(fs.readFileSync(reviewerInboxPath, 'utf8'));
+    expect(reviewerInbox.at(-1).leadSessionId).toBe('session-review-1');
 
     const approved = parseJsonToolResult(
       await getTool('review_approve').execute({
@@ -246,9 +250,13 @@ describe('agent-teams-mcp tools', () => {
         from: 'lead',
         note: 'Looks good',
         notifyOwner: true,
+        leadSessionId: 'session-review-1',
       })
     );
     expect(approved.reviewState).toBe('approved');
+    const ownerInboxPath = path.join(claudeDir, 'teams', teamName, 'inboxes', 'alice.json');
+    const ownerInbox = JSON.parse(fs.readFileSync(ownerInboxPath, 'utf8'));
+    expect(ownerInbox.at(-1).leadSessionId).toBe('session-review-1');
 
     const kanbanState = parseJsonToolResult(
       await getTool('kanban_get').execute({
@@ -294,6 +302,7 @@ describe('agent-teams-mcp tools', () => {
       taskId: createdTask.id,
       from: 'lead',
       reviewer: 'alice',
+      leadSessionId: 'session-review-2',
     });
 
     const changesRequested = parseJsonToolResult(
@@ -303,11 +312,15 @@ describe('agent-teams-mcp tools', () => {
         taskId: createdTask.id,
         from: 'alice',
         comment: 'Please revise this section.',
+        leadSessionId: 'session-review-2',
       })
     );
 
     expect(changesRequested.status).toBe('in_progress');
     expect(changesRequested.reviewState).toBe('none');
+    const ownerInboxPath = path.join(claudeDir, 'teams', teamName, 'inboxes', 'bob.json');
+    const ownerInbox = JSON.parse(fs.readFileSync(ownerInboxPath, 'utf8'));
+    expect(ownerInbox.at(-1).leadSessionId).toBe('session-review-2');
 
     const kanbanCleared = parseJsonToolResult(
       await getTool('kanban_clear').execute({

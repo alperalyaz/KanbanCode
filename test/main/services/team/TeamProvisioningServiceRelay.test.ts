@@ -272,4 +272,25 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     expect(second).toBe(1);
     expect(writeSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('ignores unread lead inbox rows without messageId', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    seedConfig(teamName);
+    seedLeadInbox(teamName, [
+      {
+        from: 'bob',
+        text: 'Legacy row without id',
+        timestamp: '2026-02-23T10:00:00.000Z',
+        read: false,
+      },
+    ]);
+
+    const { writeSpy } = attachAliveRun(service, teamName);
+    const relayed = await service.relayLeadInboxMessages(teamName);
+
+    expect(relayed).toBe(0);
+    expect(writeSpy).toHaveBeenCalledTimes(0);
+    expect(hoisted.appendSentMessage).not.toHaveBeenCalled();
+  });
 });

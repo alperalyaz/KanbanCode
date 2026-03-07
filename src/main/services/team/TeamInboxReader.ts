@@ -86,7 +86,9 @@ export class TeamInboxReader {
       if (
         typeof row.from !== 'string' ||
         typeof row.text !== 'string' ||
-        typeof row.timestamp !== 'string'
+        typeof row.timestamp !== 'string' ||
+        typeof row.messageId !== 'string' ||
+        row.messageId.trim().length === 0
       ) {
         continue;
       }
@@ -98,7 +100,7 @@ export class TeamInboxReader {
         read: typeof row.read === 'boolean' ? row.read : false,
         summary: typeof row.summary === 'string' ? row.summary : undefined,
         color: typeof row.color === 'string' ? row.color : undefined,
-        messageId: typeof row.messageId === 'string' ? row.messageId : undefined,
+        messageId: row.messageId,
         source: typeof row.source === 'string' ? (row.source as InboxMessage['source']) : undefined,
         leadSessionId: typeof row.leadSessionId === 'string' ? row.leadSessionId : undefined,
         attachments: Array.isArray(row.attachments) ? row.attachments : undefined,

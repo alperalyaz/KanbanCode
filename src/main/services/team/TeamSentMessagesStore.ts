@@ -59,7 +59,9 @@ export class TeamSentMessagesStore {
       if (
         typeof row.from !== 'string' ||
         typeof row.text !== 'string' ||
-        typeof row.timestamp !== 'string'
+        typeof row.timestamp !== 'string' ||
+        typeof row.messageId !== 'string' ||
+        row.messageId.trim().length === 0
       ) {
         continue;
       }
@@ -71,7 +73,7 @@ export class TeamSentMessagesStore {
         timestamp: row.timestamp,
         read: typeof row.read === 'boolean' ? row.read : true,
         summary: typeof row.summary === 'string' ? row.summary : undefined,
-        messageId: typeof row.messageId === 'string' ? row.messageId : undefined,
+        messageId: row.messageId,
         color: typeof row.color === 'string' ? row.color : undefined,
         attachments: Array.isArray(row.attachments) ? row.attachments : undefined,
         source: typeof row.source === 'string' ? (row.source as InboxMessage['source']) : undefined,

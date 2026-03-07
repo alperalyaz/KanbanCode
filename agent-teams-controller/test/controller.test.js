@@ -14,6 +14,7 @@ describe('agent-teams-controller API', () => {
       JSON.stringify(
         {
           name: 'my-team',
+          leadSessionId: 'lead-session-1',
           members: [
             { name: 'alice', role: 'team-lead' },
             { name: 'bob', role: 'developer' },
@@ -67,6 +68,11 @@ describe('agent-teams-controller API', () => {
       attachments: [{ id: 'a1', filename: 'diff.txt', mimeType: 'text/plain', size: 12 }],
     });
     expect(sent.leadSessionId).toBe('session-1');
+
+    const ownerInboxPath = path.join(claudeDir, 'teams', 'my-team', 'inboxes', 'bob.json');
+    const ownerInbox = JSON.parse(fs.readFileSync(ownerInboxPath, 'utf8'));
+    expect(ownerInbox.at(-1).summary).toContain('Approved');
+    expect(ownerInbox.at(-1).leadSessionId).toBe('lead-session-1');
 
     const proc = controller.processes.registerProcess({
       pid: process.pid,
@@ -250,6 +256,7 @@ describe('agent-teams-controller API', () => {
     expect(inbox[0].text).toContain('<info_for_agent>');
     expect(inbox[0].text).toContain('review_approve');
     expect(inbox[0].text).not.toContain('<agent-block>');
+    expect(inbox[0].leadSessionId).toBe('lead-session-1');
   });
 
   it('persists full inbox metadata through controller messages.sendMessage', () => {
@@ -297,6 +304,7 @@ describe('agent-teams-controller API', () => {
     const rows = JSON.parse(fs.readFileSync(inboxPath, 'utf8'));
     expect(rows.at(-1).source).toBe('system_notification');
     expect(rows.at(-1).summary).toContain('Fix request');
+    expect(rows.at(-1).leadSessionId).toBe('lead-session-1');
   });
 
   it('marks stale processes stopped during listing and supports unregister', () => {

@@ -1095,7 +1095,6 @@ export class TeamProvisioningService {
   private readonly teamOpLocks = new Map<string, Promise<void>>();
   private readonly leadInboxRelayInFlight = new Map<string, Promise<number>>();
   private readonly relayedLeadInboxMessageIds = new Map<string, Set<string>>();
-  private readonly relayedLeadInboxFallbackKeys = new Map<string, Set<string>>();
   private readonly liveLeadProcessMessages = new Map<string, InboxMessage[]>();
   private teamChangeEmitter: ((event: TeamChangeEvent) => void) | null = null;
   private helpOutputCache: string | null = null;
@@ -2493,6 +2492,12 @@ export class TeamProvisioningService {
    *
    * Returns the number of messages relayed.
    */
+  private hasStableMessageId(
+    message: InboxMessage
+  ): message is InboxMessage & { messageId: string } {
+    return typeof message.messageId === 'string' && message.messageId.trim().length > 0;
+  }
+
   async relayLeadInboxMessages(teamName: string): Promise<number> {
     const existing = this.leadInboxRelayInFlight.get(teamName);
     if (existing) {
@@ -2507,7 +2512,6 @@ export class TeamProvisioningService {
       if (!run.provisioningComplete) return 0;
 
       const relayedIds = this.relayedLeadInboxMessageIds.get(teamName) ?? new Set<string>();
-      const relayedFallback = this.relayedLeadInboxFallbackKeys.get(teamName) ?? new Set<string>();
 
       let config: Awaited<ReturnType<TeamConfigReader['getConfig']>> | null = null;
       try {
@@ -2528,13 +2532,11 @@ export class TeamProvisioningService {
       }
 
       const unread = leadInboxMessages
-        .filter((m) => {
+        .filter((m): m is InboxMessage & { messageId: string } => {
           if (m.read) return false;
           if (typeof m.text !== 'string' || m.text.trim().length === 0) return false;
-          if (typeof m.messageId === 'string' && m.messageId.trim().length > 0) {
-            return !relayedIds.has(m.messageId);
-          }
-          return !relayedFallback.has(`${m.timestamp}\0${m.from}\0${m.text}`);
+          if (!this.hasStableMessageId(m)) return false;
+          return !relayedIds.has(m.messageId);
         })
         .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
 
@@ -2630,14 +2632,9 @@ export class TeamProvisioningService {
       }
 
       for (const m of batch) {
-        if (typeof m.messageId === 'string' && m.messageId.trim().length > 0) {
-          relayedIds.add(m.messageId);
-        } else {
-          relayedFallback.add(`${m.timestamp}\0${m.from}\0${m.text}`);
-        }
+        relayedIds.add(m.messageId);
       }
       this.relayedLeadInboxMessageIds.set(teamName, this.trimRelayedSet(relayedIds));
-      this.relayedLeadInboxFallbackKeys.set(teamName, this.trimRelayedSet(relayedFallback));
 
       try {
         await this.markInboxMessagesRead(teamName, leadName, batch);
@@ -2786,7 +2783,7 @@ export class TeamProvisioningService {
   private async markInboxMessagesRead(
     teamName: string,
     member: string,
-    messages: { messageId?: string; timestamp: string; from: string; text: string }[]
+    messages: { messageId: string }[]
   ): Promise<void> {
     const inboxPath = path.join(getTeamsBasePath(), teamName, 'inboxes', `${member}.json`);
 
@@ -2807,27 +2804,14 @@ export class TeamProvisioningService {
       }
       if (!Array.isArray(parsed)) return;
 
-      const ids = new Set(messages.map((m) => m.messageId).filter((id): id is string => !!id));
-      const fallbackKeys = new Set(
-        messages.filter((m) => !m.messageId).map((m) => `${m.timestamp}\0${m.from}\0${m.text}`)
-      );
+      const ids = new Set(messages.map((m) => m.messageId).filter((id) => id.trim().length > 0));
 
       let changed = false;
       for (const item of parsed) {
         if (!item || typeof item !== 'object') continue;
         const row = item as Record<string, unknown>;
         const msgId = typeof row.messageId === 'string' ? row.messageId : null;
-        const timestamp = typeof row.timestamp === 'string' ? row.timestamp : null;
-        const from = typeof row.from === 'string' ? row.from : null;
-        const text = typeof row.text === 'string' ? row.text : null;
-
-        const matchesId = msgId ? ids.has(msgId) : false;
-        const matchesFallback =
-          !msgId && timestamp && from && text
-            ? fallbackKeys.has(`${timestamp}\0${from}\0${text}`)
-            : false;
-
-        if (!matchesId && !matchesFallback) continue;
+        if (!msgId || !ids.has(msgId)) continue;
 
         if (row.read !== true) {
           row.read = true;
@@ -3873,7 +3857,6 @@ export class TeamProvisioningService {
     this.activeByTeam.delete(run.teamName);
     this.leadInboxRelayInFlight.delete(run.teamName);
     this.relayedLeadInboxMessageIds.delete(run.teamName);
-    this.relayedLeadInboxFallbackKeys.delete(run.teamName);
     this.liveLeadProcessMessages.delete(run.teamName);
     // Dismiss any pending tool approvals for this run
     if (run.pendingApprovals.size > 0) {

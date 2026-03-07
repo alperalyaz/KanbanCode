@@ -376,6 +376,7 @@ describe('TeamDataService', () => {
         getConfig: vi.fn(async () => ({
           name: 'My team',
           members: [{ name: 'lead', role: 'team lead' }],
+          leadSessionId: 'lead-1',
         })),
       } as never,
       {} as never,
@@ -397,6 +398,63 @@ describe('TeamDataService', () => {
 
     await service.requestReview('my-team', 'task-1');
 
-    expect(requestReviewMock).toHaveBeenCalledWith('task-1', { from: 'lead' });
+    expect(requestReviewMock).toHaveBeenCalledWith('task-1', {
+      from: 'lead',
+      leadSessionId: 'lead-1',
+    });
+  });
+
+  it('propagates leadSessionId for kanban-driven review transitions', async () => {
+    const requestReviewMock = vi.fn();
+    const approveReviewMock = vi.fn();
+    const requestChangesMock = vi.fn();
+
+    const service = new TeamDataService(
+      {
+        listTeams: vi.fn(),
+        getConfig: vi.fn(async () => ({
+          name: 'My team',
+          members: [{ name: 'lead', role: 'team lead' }],
+          leadSessionId: 'lead-2',
+        })),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      () =>
+        ({
+          review: {
+            requestReview: requestReviewMock,
+            approveReview: approveReviewMock,
+            requestChanges: requestChangesMock,
+          },
+        }) as never
+    );
+
+    await service.updateKanban('my-team', 'task-1', { op: 'set_column', column: 'review' });
+    await service.updateKanban('my-team', 'task-1', { op: 'set_column', column: 'approved' });
+    await service.updateKanban('my-team', 'task-1', { op: 'request_changes', comment: 'Needs fixes' });
+
+    expect(requestReviewMock).toHaveBeenCalledWith('task-1', {
+      from: 'lead',
+      leadSessionId: 'lead-2',
+    });
+    expect(approveReviewMock).toHaveBeenCalledWith('task-1', {
+      from: 'lead',
+      note: 'Approved from kanban',
+      'notify-owner': true,
+      leadSessionId: 'lead-2',
+    });
+    expect(requestChangesMock).toHaveBeenCalledWith('task-1', {
+      from: 'lead',
+      comment: 'Needs fixes',
+      leadSessionId: 'lead-2',
+    });
   });
 });

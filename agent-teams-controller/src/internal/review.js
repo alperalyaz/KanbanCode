@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+
 const kanban = require('./kanban.js');
 const messages = require('./messages.js');
 const tasks = require('./tasks.js');
@@ -13,6 +16,22 @@ function getReviewer(context, flags) {
     : null;
 }
 
+function resolveLeadSessionId(context, flags) {
+  if (typeof flags.leadSessionId === 'string' && flags.leadSessionId.trim()) {
+    return flags.leadSessionId.trim();
+  }
+
+  try {
+    const configPath = path.join(context.paths.teamDir, 'config.json');
+    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    return typeof parsed.leadSessionId === 'string' && parsed.leadSessionId.trim()
+      ? parsed.leadSessionId.trim()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function requestReview(context, taskId, flags = {}) {
   const task = tasks.getTask(context, taskId);
   if (task.status !== 'completed') {
@@ -22,6 +41,7 @@ function requestReview(context, taskId, flags = {}) {
   const from =
     typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : 'team-lead';
   const reviewer = getReviewer(context, flags);
+  const leadSessionId = resolveLeadSessionId(context, flags);
 
   try {
     kanban.setKanbanColumn(context, task.id, 'review');
@@ -42,6 +62,7 @@ function requestReview(context, taskId, flags = {}) {
         ),
       summary: `Review request for #${task.displayId || task.id}`,
       source: 'system_notification',
+      ...(leadSessionId ? { leadSessionId } : {}),
     });
     return tasks.getTask(context, task.id);
   } catch (error) {
@@ -59,6 +80,7 @@ function approveReview(context, taskId, flags = {}) {
   const from =
     typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : 'team-lead';
   const note = typeof flags.note === 'string' && flags.note.trim() ? flags.note.trim() : 'Approved';
+  const leadSessionId = resolveLeadSessionId(context, flags);
 
   kanban.setKanbanColumn(context, task.id, 'approved');
   tasks.addTaskComment(context, task.id, {
@@ -77,6 +99,7 @@ function approveReview(context, taskId, flags = {}) {
           : `Task ${task.displayId || task.id} approved.`,
       summary: `Approved ${task.displayId || task.id}`,
       source: 'system_notification',
+      ...(leadSessionId ? { leadSessionId } : {}),
     });
   }
 
@@ -95,6 +118,7 @@ function requestChanges(context, taskId, flags = {}) {
     typeof flags.comment === 'string' && flags.comment.trim()
       ? flags.comment.trim()
       : 'Reviewer requested changes.';
+  const leadSessionId = resolveLeadSessionId(context, flags);
 
   kanban.clearKanban(context, task.id);
   tasks.setTaskStatus(context, task.id, 'in_progress', from);
@@ -111,6 +135,7 @@ function requestChanges(context, taskId, flags = {}) {
       'Please fix and mark it as completed when ready.',
     summary: `Fix request for ${task.displayId || task.id}`,
     source: 'system_notification',
+    ...(leadSessionId ? { leadSessionId } : {}),
   });
 
   return tasks.getTask(context, task.id);

@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const legacy = require('../legacy/teamctl.cli.js');
+const runtimeHelpers = require('./runtimeHelpers.js');
 
 function nowIso() {
   return new Date().toISOString();
@@ -39,7 +39,7 @@ function listProcesses(paths) {
     const alive =
       !entry.stoppedAt &&
       Number.isFinite(Number(entry.pid)) &&
-      legacy.isProcessAlive(Number(entry.pid));
+      runtimeHelpers.isProcessAlive(Number(entry.pid));
 
     if (!alive && !entry.stoppedAt) {
       return {
@@ -83,7 +83,7 @@ function registerProcess(paths, flags) {
     existingActiveIndex >= 0
       ? {
           ...list[existingActiveIndex],
-          ...(legacy.isProcessAlive(pid) ? {} : { stoppedAt: nowIso() }),
+          ...(runtimeHelpers.isProcessAlive(pid) ? {} : { stoppedAt: nowIso() }),
         }
       : null;
   if (existingActiveIndex >= 0 && existingActive && existingActive.stoppedAt) {

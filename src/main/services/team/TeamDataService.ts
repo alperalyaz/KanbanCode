@@ -1096,6 +1096,20 @@ export class TeamDataService {
     }
   }
 
+  private async resolveLeadRuntimeContext(
+    teamName: string
+  ): Promise<{ leadName: string; leadSessionId?: string }> {
+    try {
+      const config = await this.configReader.getConfig(teamName);
+      return {
+        leadName: this.resolveLeadNameFromConfig(config),
+        leadSessionId: config?.leadSessionId,
+      };
+    } catch {
+      return { leadName: 'team-lead' };
+    }
+  }
+
   private isLeadOwner(owner: string, leadName: string): boolean {
     const normalized = owner.trim().toLowerCase();
     if (!normalized) return false;
@@ -1161,8 +1175,11 @@ export class TeamDataService {
   }
 
   async requestReview(teamName: string, taskId: string): Promise<void> {
-    const leadName = await this.resolveLeadName(teamName);
-    this.getController(teamName).review.requestReview(taskId, { from: leadName });
+    const { leadName, leadSessionId } = await this.resolveLeadRuntimeContext(teamName);
+    this.getController(teamName).review.requestReview(taskId, {
+      from: leadName,
+      ...(leadSessionId ? { leadSessionId } : {}),
+    });
   }
 
   async createTeamConfig(request: TeamCreateConfigRequest): Promise<void> {
@@ -1391,23 +1408,28 @@ export class TeamDataService {
 
     if (patch.op === 'set_column') {
       if (patch.column === 'review') {
-        const leadName = await this.resolveLeadName(teamName);
-        controller.review.requestReview(taskId, { from: leadName });
+        const { leadName, leadSessionId } = await this.resolveLeadRuntimeContext(teamName);
+        controller.review.requestReview(taskId, {
+          from: leadName,
+          ...(leadSessionId ? { leadSessionId } : {}),
+        });
       } else {
-        const leadName = await this.resolveLeadName(teamName);
+        const { leadName, leadSessionId } = await this.resolveLeadRuntimeContext(teamName);
         controller.review.approveReview(taskId, {
           from: leadName,
           note: 'Approved from kanban',
           'notify-owner': true,
+          ...(leadSessionId ? { leadSessionId } : {}),
         });
       }
       return;
     }
 
-    const leadName = await this.resolveLeadName(teamName);
+    const { leadName, leadSessionId } = await this.resolveLeadRuntimeContext(teamName);
     controller.review.requestChanges(taskId, {
       from: leadName,
       comment: patch.comment?.trim() || 'Reviewer requested changes.',
+      ...(leadSessionId ? { leadSessionId } : {}),
     });
   }
 

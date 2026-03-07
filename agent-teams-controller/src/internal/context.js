@@ -1,4 +1,4 @@
-const legacy = require('../legacy/teamctl.cli.js');
+const runtimeHelpers = require('./runtimeHelpers.js');
 
 function createControllerContext(options = {}) {
   const teamName = String(options.teamName || '').trim();
@@ -11,7 +11,7 @@ function createControllerContext(options = {}) {
     flags['claude-dir'] = options.claudeDir.trim();
   }
 
-  const paths = legacy.getPaths(flags, teamName);
+  const paths = runtimeHelpers.getPaths(flags, teamName);
   return {
     teamName,
     claudeDir: paths.claudeDir,

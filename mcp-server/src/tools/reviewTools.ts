@@ -18,13 +18,15 @@ export function registerReviewTools(server: Pick<FastMCP, 'addTool'>) {
       taskId: z.string().min(1),
       from: z.string().optional(),
       reviewer: z.string().optional(),
+      leadSessionId: z.string().optional(),
     }),
-    execute: async ({ teamName, claudeDir, taskId, from, reviewer }) =>
+    execute: async ({ teamName, claudeDir, taskId, from, reviewer, leadSessionId }) =>
       await Promise.resolve(
         jsonTextContent(
           getController(teamName, claudeDir).review.requestReview(taskId, {
-          ...(from ? { from } : {}),
-          ...(reviewer ? { reviewer } : {}),
+            ...(from ? { from } : {}),
+            ...(reviewer ? { reviewer } : {}),
+            ...(leadSessionId ? { leadSessionId } : {}),
           })
         )
       ),
@@ -39,14 +41,16 @@ export function registerReviewTools(server: Pick<FastMCP, 'addTool'>) {
       from: z.string().optional(),
       note: z.string().optional(),
       notifyOwner: z.boolean().optional(),
+      leadSessionId: z.string().optional(),
     }),
-    execute: async ({ teamName, claudeDir, taskId, from, note, notifyOwner }) =>
+    execute: async ({ teamName, claudeDir, taskId, from, note, notifyOwner, leadSessionId }) =>
       await Promise.resolve(
         jsonTextContent(
           getController(teamName, claudeDir).review.approveReview(taskId, {
-          ...(from ? { from } : {}),
-          ...(note ? { note } : {}),
-          ...(notifyOwner !== false ? { 'notify-owner': true } : {}),
+            ...(from ? { from } : {}),
+            ...(note ? { note } : {}),
+            ...(notifyOwner !== false ? { 'notify-owner': true } : {}),
+            ...(leadSessionId ? { leadSessionId } : {}),
           })
         )
       ),
@@ -60,13 +64,15 @@ export function registerReviewTools(server: Pick<FastMCP, 'addTool'>) {
       taskId: z.string().min(1),
       from: z.string().optional(),
       comment: z.string().optional(),
+      leadSessionId: z.string().optional(),
     }),
-    execute: async ({ teamName, claudeDir, taskId, from, comment }) =>
+    execute: async ({ teamName, claudeDir, taskId, from, comment, leadSessionId }) =>
       await Promise.resolve(
         jsonTextContent(
           getController(teamName, claudeDir).review.requestChanges(taskId, {
-          ...(from ? { from } : {}),
-          ...(comment ? { comment } : {}),
+            ...(from ? { from } : {}),
+            ...(comment ? { comment } : {}),
+            ...(leadSessionId ? { leadSessionId } : {}),
           })
         )
       ),
