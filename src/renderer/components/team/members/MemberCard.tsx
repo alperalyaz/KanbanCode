@@ -4,6 +4,7 @@ import { getTeamColorSet, getThemedBadge } from '@renderer/constants/teamColors'
 import { useTheme } from '@renderer/hooks/useTheme';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { agentAvatarUrl, getMemberDotClass, getPresenceLabel } from '@renderer/utils/memberHelpers';
+import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { GitBranch, Loader2, MessageSquare, Plus } from 'lucide-react';
 
 import type { TaskStatusCounts } from '@renderer/utils/pathNormalize';
@@ -63,7 +64,11 @@ export const MemberCard = ({
           borderLeft: `3px solid ${colors.border}`,
           background: `linear-gradient(to right, ${getThemedBadge(colors, isLight)}, transparent)`,
         }}
-        title={member.currentTaskId ? `Current task: ${member.currentTaskId}` : undefined}
+        title={
+          member.currentTaskId
+            ? `Current task: #${deriveTaskDisplayId(member.currentTaskId)}`
+            : undefined
+        }
         role="button"
         tabIndex={0}
         onClick={onClick}
@@ -122,7 +127,7 @@ export const MemberCard = ({
                     }
                   }}
                 >
-                  #{currentTask.id} {currentTask.subject.slice(0, 36)}
+                  {formatTaskDisplayLabel(currentTask)} {currentTask.subject.slice(0, 36)}
                   {currentTask.subject.length > 36 ? '…' : ''}
                 </button>
               </>
@@ -160,7 +165,7 @@ export const MemberCard = ({
                 isRemoved
                   ? 'This member has been removed'
                   : member.currentTaskId
-                    ? `Current task: ${member.currentTaskId}`
+                    ? `Current task: #${deriveTaskDisplayId(member.currentTaskId)}`
                     : undefined
               }
             >

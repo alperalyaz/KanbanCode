@@ -475,7 +475,10 @@ async function handleDeleteTeam(
   if (!validated.valid) {
     return { success: false, error: validated.error ?? 'Invalid teamName' };
   }
-  return wrapTeamHandler('deleteTeam', () => getTeamDataService().deleteTeam(validated.value!));
+  return wrapTeamHandler('deleteTeam', async () => {
+    getTeamProvisioningService().stopTeam(validated.value!);
+    await getTeamDataService().deleteTeam(validated.value!);
+  });
 }
 
 async function handleRestoreTeam(

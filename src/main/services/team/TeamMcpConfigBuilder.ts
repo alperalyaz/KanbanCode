@@ -1,3 +1,4 @@
+import { execFile } from 'child_process';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -37,11 +38,44 @@ async function pathExists(targetPath: string): Promise<boolean> {
   }
 }
 
+let _resolvedNodePath: string | undefined;
+
+/**
+ * Find the real `node` binary path. In Electron, process.execPath is the
+ * Electron binary — NOT node — so we must resolve node separately.
+ * Uses async execFile('node', ...) which is cross-platform (no /usr/bin/env dependency).
+ */
+async function resolveNodePath(): Promise<string> {
+  if (_resolvedNodePath) return _resolvedNodePath;
+
+  try {
+    const resolved = await new Promise<string>((resolve, reject) => {
+      execFile(
+        'node',
+        ['-e', 'process.stdout.write(process.execPath)'],
+        {
+          encoding: 'utf-8',
+          timeout: 5000,
+        },
+        (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))
+      );
+    });
+    if (resolved) {
+      _resolvedNodePath = resolved;
+      return _resolvedNodePath;
+    }
+  } catch {
+    // node not found or timed out — use bare 'node' and let the OS resolve it
+  }
+  _resolvedNodePath = 'node';
+  return _resolvedNodePath;
+}
+
 async function resolveMcpLaunchSpec(): Promise<McpLaunchSpec> {
   const builtEntry = getBuiltServerEntry();
   if (await pathExists(builtEntry)) {
     return {
-      command: process.execPath,
+      command: await resolveNodePath(),
       args: [builtEntry],
     };
   }
