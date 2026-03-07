@@ -49,7 +49,7 @@ A new approach to task management with AI agents.
 - **Attach code context** — reference files or snippets in messages, like in Cursor
 - **Notification system** — configurable alerts when tasks complete, agents need attention, or errors occur
 - **MCP integration** — supports the built-in `mcp-server` (see [mcp-server folder](./mcp-server)) for integrating external tools and extensible agent plugins out of the box
-
+- **Post-compact context recovery** — when Claude compresses its context, the app restores the key team-management instructions so kanban/task-board coordination stays consistent and important operational context is not lost
 </details>
 
 ## Installation

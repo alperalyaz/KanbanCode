@@ -3,16 +3,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { AttachmentPreviewList } from '@renderer/components/team/attachments/AttachmentPreviewList';
 import { DropZoneOverlay } from '@renderer/components/team/attachments/DropZoneOverlay';
-import { Button } from '@renderer/components/ui/button';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@renderer/components/ui/dialog';
-import { Input } from '@renderer/components/ui/input';
 import { Label } from '@renderer/components/ui/label';
 import { MemberSelect } from '@renderer/components/ui/MemberSelect';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
@@ -86,7 +83,6 @@ export const SendMessageDialog = ({
   const [member, setMember] = useState('');
   const textDraft = useDraftPersistence({ key: `sendMessage:${teamName}:text` });
   const chipDraft = useChipDraftPersistence(`sendMessage:${teamName}:chips`);
-  const [summary, setSummary] = useState('');
   const prevOpenRef = useRef(false);
   const prevResultRef = useRef<SendMessageResult | null>(null);
 
@@ -115,7 +111,6 @@ export const SendMessageDialog = ({
   useEffect(() => {
     if (open && !prevOpenRef.current) {
       setMember(defaultRecipient ?? '');
-      setSummary('');
       setQuote(quotedMessage);
       setQuoteExpanded(false);
       prevResultRef.current = lastResult;
@@ -145,7 +140,6 @@ export const SendMessageDialog = ({
     if (lastResult && lastResult !== prevResultRef.current) {
       prevResultRef.current = lastResult;
       setMember('');
-      setSummary('');
       setPendingAutoClose(true);
     }
   }, [open, lastResult]);
@@ -200,15 +194,7 @@ export const SendMessageDialog = ({
 
   const handleSubmit = (): void => {
     if (!canSend) return;
-    // TODO: Research whether duplicating message as summary is correct — the team lead
-    // may only see the Summary field and not the full Message body. Need to verify.
-    const effectiveSummary = summary.trim() || trimmedText;
-    onSend(
-      member.trim(),
-      finalText,
-      effectiveSummary,
-      attachments.length > 0 ? attachments : undefined
-    );
+    onSend(member.trim(), finalText, trimmedText, attachments.length > 0 ? attachments : undefined);
     textDraft.clearDraft();
     chipDraft.clearChipDraft();
     clearAttachments();
@@ -269,7 +255,7 @@ export const SendMessageDialog = ({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="sm:max-w-[720px]"
+        className="min-w-0 sm:max-w-4xl"
         onDragEnter={canAttach ? handleDragEnter : undefined}
         onDragLeave={canAttach ? handleDragLeave : undefined}
         onDragOver={canAttach ? handleDragOver : undefined}
@@ -440,27 +426,7 @@ export const SendMessageDialog = ({
               />
             </div>
           </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="smd-summary">Summary</Label>
-            <Input
-              id="smd-summary"
-              className="h-8 text-xs"
-              placeholder="Brief summary reflecting the message intent"
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-            />
-            <p className="text-[11px] text-[var(--color-text-muted)]">
-              Shown as notification preview. Team lead also sees this for peer messages.
-            </p>
-          </div>
         </div>
-
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose} disabled={sending}>
-            Cancel
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

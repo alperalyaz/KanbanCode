@@ -155,7 +155,7 @@ describe('TeamProvisioningService post-compact lifecycle', () => {
     await svc.cancelProvisioning(runId);
   });
 
-  it('compact_boundary does NOT set pending when reminder is already in-flight', async () => {
+  it('compact_boundary re-arms pending when reminder is already in-flight', async () => {
     const { svc, run, runId } = await setupRunningTeam('compact-test-3');
     run.postCompactReminderInFlight = true;
 
@@ -165,8 +165,8 @@ describe('TeamProvisioningService post-compact lifecycle', () => {
       compact_metadata: { trigger: 'auto' },
     });
 
-    // Should NOT be set because in-flight
-    expect(run.pendingPostCompactReminder).toBe(false);
+    // Should be re-armed even during in-flight — follow-up reminder after current completes
+    expect(run.pendingPostCompactReminder).toBe(true);
 
     run.postCompactReminderInFlight = false;
     await svc.cancelProvisioning(runId);
@@ -364,5 +364,110 @@ describe('TeamProvisioningService post-compact lifecycle', () => {
     expect(run.suppressPostCompactReminderOutput).toBe(false);
     // Should NOT re-arm pending (strict drop)
     expect(run.pendingPostCompactReminder).toBe(false);
+  });
+
+  it('result.error clears pending even when NOT in-flight (no stale pending survives)', async () => {
+    const { svc, run } = await setupRunningTeam('compact-test-13');
+    // pending set but reminder never started (no in-flight)
+    run.pendingPostCompactReminder = true;
+    run.postCompactReminderInFlight = false;
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    (svc as any).handleStreamJsonMessage(run, {
+      type: 'result',
+      subtype: 'error',
+      error: 'some error',
+    });
+
+    warnSpy.mockRestore();
+
+    // Pending must be cleared — must not fire on a later unrelated result.success
+    expect(run.pendingPostCompactReminder).toBe(false);
+    expect(run.postCompactReminderInFlight).toBe(false);
+  });
+
+  it('compact_boundary during in-flight produces follow-up reminder after current completes', async () => {
+    const { svc, run, runId, writeSpy } = await setupRunningTeam('compact-test-14');
+
+    // Start first reminder
+    run.pendingPostCompactReminder = true;
+    writeSpy.mockClear();
+    await (svc as any).injectPostCompactReminder(run);
+    expect(run.postCompactReminderInFlight).toBe(true);
+    expect(run.pendingPostCompactReminder).toBe(false);
+
+    // Compact fires while first reminder is in-flight
+    (svc as any).handleStreamJsonMessage(run, {
+      type: 'system',
+      subtype: 'compact_boundary',
+      compact_metadata: { trigger: 'auto' },
+    });
+    // Re-armed
+    expect(run.pendingPostCompactReminder).toBe(true);
+
+    // First reminder completes (result.success).
+    // The success handler clears in-flight, preserves pending, transitions to idle,
+    // then the injection hook fires immediately because pending=true && !inFlight.
+    // So after success, a NEW reminder is already in-flight.
+    writeSpy.mockClear();
+    (svc as any).handleStreamJsonMessage(run, {
+      type: 'result',
+      subtype: 'success',
+      result: {},
+    });
+
+    // Allow the void async injection to run
+    await new Promise((r) => setTimeout(r, 50));
+
+    // A follow-up reminder was triggered: in-flight again, pending consumed
+    expect(run.postCompactReminderInFlight).toBe(true);
+    expect(run.pendingPostCompactReminder).toBe(false);
+    // Verify a second write happened (the follow-up reminder)
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+
+    await svc.cancelProvisioning(runId);
+  });
+
+  it('reminder reads live config.json members instead of stale launch-time members', async () => {
+    const { svc, run, runId, writeSpy } = await setupRunningTeam('compact-test-15');
+
+    // Original launch had only alice
+    run.request.members = [{ name: 'alice', role: 'developer' }];
+
+    // Mock configReader.getConfig to return updated team with alice + bob
+    (svc as any).configReader = {
+      getConfig: vi.fn(async () => ({
+        name: 'compact-test-15',
+        description: 'Test team',
+        members: [
+          { name: 'team-lead', agentType: 'team-lead' },
+          { name: 'alice', agentType: 'teammate', role: 'developer' },
+          { name: 'bob', agentType: 'teammate', role: 'tester' },
+        ],
+      })),
+    };
+
+    run.pendingPostCompactReminder = true;
+    writeSpy.mockClear();
+    await (svc as any).injectPostCompactReminder(run);
+
+    const payload = String(writeSpy.mock.calls[0]?.[0] ?? '');
+    const parsed = JSON.parse(payload) as {
+      type: string;
+      message?: { role: string; content: { type: string; text?: string }[] };
+    };
+    const text = parsed.message?.content?.[0]?.text ?? '';
+
+    // Should contain bob from live config, not just alice from launch-time
+    expect(text).toContain('bob');
+    expect(text).toContain('alice');
+    // Should NOT be in solo mode — check for the actual solo constraint block
+    expect(text).not.toContain('SOLO MODE: This team CURRENTLY has ZERO teammates');
+    // Members section should include both
+    expect(text).toContain('- alice (developer)');
+    expect(text).toContain('- bob (tester)');
+
+    await svc.cancelProvisioning(runId);
   });
 });

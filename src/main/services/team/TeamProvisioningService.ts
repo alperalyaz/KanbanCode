@@ -3163,9 +3163,16 @@ export class TeamProvisioningService {
 
         if (run.provisioningComplete) {
           // If this was a post-compact reminder turn completing, clear in-flight and suppress flags.
+          // Preserve pendingPostCompactReminder if re-armed by a compact_boundary during this turn.
           if (run.postCompactReminderInFlight) {
-            clearPostCompactReminderState(run);
-            logger.info(`[${run.teamName}] post-compact reminder turn completed`);
+            const hadPendingRearm = run.pendingPostCompactReminder;
+            run.postCompactReminderInFlight = false;
+            run.suppressPostCompactReminderOutput = false;
+            logger.info(
+              `[${run.teamName}] post-compact reminder turn completed${
+                hadPendingRearm ? ' (follow-up reminder pending from re-compact)' : ''
+              }`
+            );
           }
 
           this.setLeadActivity(run, 'idle');
@@ -3227,11 +3234,13 @@ export class TeamProvisioningService {
           this.cleanupRun(run);
         } else if (run.provisioningComplete) {
           // Post-provisioning error: process alive, waiting for input.
-          // Drop post-compact reminder on error (strict drop-after-attempt policy).
-          if (run.postCompactReminderInFlight) {
+          // Always clear all post-compact reminder state on error — prevents a stale pending
+          // reminder from firing on the next unrelated successful turn.
+          if (run.pendingPostCompactReminder || run.postCompactReminderInFlight) {
+            const wasInFlight = run.postCompactReminderInFlight;
             clearPostCompactReminderState(run);
             logger.warn(
-              `[${run.teamName}] post-compact reminder turn errored — dropping (strict policy)`
+              `[${run.teamName}] post-compact reminder ${wasInFlight ? 'turn errored' : 'pending dropped'} — clearing (strict policy)`
             );
           }
           this.setLeadActivity(run, 'idle');
@@ -3273,14 +3282,15 @@ export class TeamProvisioningService {
         );
 
         // Schedule post-compact context reinjection on next idle.
-        // Guard: only set if provisioning is complete and no reminder is already pending/in-flight.
-        if (
-          run.provisioningComplete &&
-          !run.pendingPostCompactReminder &&
-          !run.postCompactReminderInFlight
-        ) {
+        // If a reminder is already in-flight, re-arm pending so a follow-up fires after it completes.
+        // This handles the case where the reminder prompt itself triggers another compaction.
+        if (run.provisioningComplete && !run.pendingPostCompactReminder) {
           run.pendingPostCompactReminder = true;
-          logger.info(`[${run.teamName}] post-compact reminder scheduled for next idle`);
+          logger.info(
+            `[${run.teamName}] post-compact reminder scheduled for next idle${
+              run.postCompactReminderInFlight ? ' (re-armed during in-flight reminder)' : ''
+            }`
+          );
         }
       }
     }
@@ -3333,16 +3343,43 @@ export class TeamProvisioningService {
       return;
     }
 
-    const leadName =
-      run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name || 'team-lead';
-    const isSolo = run.request.members.length === 0;
+    // Read current team config for up-to-date members (may have changed since launch).
+    let currentMembers: TeamCreateRequest['members'] = run.request.members;
+    let leadName = 'team-lead';
+    try {
+      const config = await this.configReader.getConfig(run.teamName);
+      if (config?.members) {
+        const configLead = config.members.find((m) => m?.agentType === 'team-lead');
+        leadName = configLead?.name?.trim() || 'team-lead';
+        // Convert config members (excluding lead) to TeamCreateRequest member format.
+        currentMembers = config.members
+          .filter((m) => m?.agentType !== 'team-lead' && m?.name)
+          .map((m) => ({
+            name: m.name!,
+            role: m.role ?? undefined,
+          }));
+      } else {
+        leadName =
+          run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name ||
+          'team-lead';
+      }
+    } catch {
+      // Fallback to launch-time members if config is unavailable.
+      leadName =
+        run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name ||
+        'team-lead';
+      logger.warn(
+        `[${run.teamName}] post-compact reminder: config unavailable, using launch-time members`
+      );
+    }
+    const isSolo = currentMembers.length === 0;
 
     // Build persistent lead context.
     const persistentContext = buildPersistentLeadContext({
       teamName: run.teamName,
       leadName,
       isSolo,
-      members: run.request.members,
+      members: currentMembers,
       compact: true,
     });
 

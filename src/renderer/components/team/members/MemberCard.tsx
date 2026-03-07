@@ -59,7 +59,7 @@ export const MemberCard = ({
         className="group relative cursor-pointer rounded px-2 py-1.5"
         style={{
           borderLeft: `3px solid ${colors.border}`,
-          backgroundColor: colors.badge,
+          background: `linear-gradient(to right, ${colors.badge}, transparent)`,
         }}
         title={member.currentTaskId ? `Current task: ${member.currentTaskId}` : undefined}
         role="button"
