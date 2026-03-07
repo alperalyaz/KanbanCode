@@ -430,6 +430,14 @@ function wireFileWatcherEvents(context: ServiceContext): void {
 
       // --- Inbox change events: relay to lead + native OS notifications ---
       if (row.type === 'inbox') {
+        if (teamDataService) {
+          void teamDataService
+            .reconcileTeamArtifacts(teamName)
+            .catch((e: unknown) =>
+              logger.warn(`[FileWatcher] reconcile failed for ${teamName}: ${String(e)}`)
+            );
+        }
+
         // Auto-relay ONLY lead-inbox changes into the live lead process.
         // (Relaying on *any* inbox change causes the lead to process irrelevant status noise.)
         if (teamProvisioningService.isTeamAlive(teamName) && detail.startsWith('inboxes/')) {
@@ -479,6 +487,12 @@ function wireFileWatcherEvents(context: ServiceContext): void {
 
       // --- Task change events: notify lead when teammate starts a task via CLI ---
       if (row.type === 'task' && detail.endsWith('.json') && teamDataService) {
+        void teamDataService
+          .reconcileTeamArtifacts(teamName)
+          .catch((e: unknown) =>
+            logger.warn(`[FileWatcher] task reconcile failed for ${teamName}: ${String(e)}`)
+          );
+
         const taskId = detail.replace('.json', '');
         void teamDataService
           .notifyLeadOnTeammateTaskStart(teamName, taskId)

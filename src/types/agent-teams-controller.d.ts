@@ -39,11 +39,13 @@ declare module 'agent-teams-controller' {
   }
 
   export interface ControllerReviewApi {
+    requestReview(taskId: string, flags?: Record<string, unknown>): unknown;
     approveReview(taskId: string, flags?: Record<string, unknown>): unknown;
     requestChanges(taskId: string, flags?: Record<string, unknown>): unknown;
   }
 
   export interface ControllerMessageApi {
+    appendSentMessage(flags: Record<string, unknown>): unknown;
     sendMessage(flags: Record<string, unknown>): unknown;
   }
 

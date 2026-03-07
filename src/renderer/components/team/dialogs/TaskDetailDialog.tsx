@@ -22,7 +22,6 @@ import { Textarea } from '@renderer/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { markAsRead } from '@renderer/services/commentReadStorage';
 import { useStore } from '@renderer/store';
-import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { isImageMimeType } from '@renderer/utils/attachmentUtils';
 import {
   buildMemberColorMap,
@@ -30,6 +29,8 @@ import {
   TASK_STATUS_LABELS,
   TASK_STATUS_STYLES,
 } from '@renderer/utils/memberHelpers';
+import { getTaskKanbanColumn } from '@shared/utils/reviewState';
+import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { formatDistanceToNow } from 'date-fns';
 import {
   AlignLeft,
@@ -287,7 +288,12 @@ export const TaskDetailDialog = ({
     );
   }
 
-  const kanbanColumn = kanbanTaskState?.column ?? currentTask.kanbanColumn;
+  const kanbanColumn =
+    kanbanTaskState?.column ??
+    getTaskKanbanColumn({
+      reviewState: currentTask.reviewState,
+      kanbanColumn: currentTask.kanbanColumn,
+    });
   const status = currentTask.status;
   const statusStyle =
     kanbanColumn && KANBAN_COLUMN_DISPLAY[kanbanColumn]

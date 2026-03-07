@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const taskStore = require('./taskStore.js');
 
 function nowIso() {
   return new Date().toISOString();
@@ -80,6 +81,10 @@ function setKanbanColumn(paths, teamName, taskId, column) {
       ? { column: 'review', reviewer: null, movedAt: nowIso() }
       : { column: 'approved', movedAt: nowIso() };
   writeKanbanState(paths, teamName, state);
+  taskStore.updateTask(paths, String(taskId), (task) => ({
+    ...task,
+    reviewState: column,
+  }));
   return state;
 }
 
@@ -87,6 +92,10 @@ function clearKanban(paths, teamName, taskId) {
   const state = readKanbanState(paths, teamName);
   delete state.tasks[String(taskId)];
   writeKanbanState(paths, teamName, state);
+  taskStore.updateTask(paths, String(taskId), (task) => ({
+    ...task,
+    reviewState: 'none',
+  }));
   return state;
 }
 

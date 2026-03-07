@@ -28,8 +28,9 @@ import { useStore } from '@renderer/store';
 import { chipToken, serializeChipsWithText } from '@renderer/types/inlineChip';
 import { removeChipTokenFromText } from '@renderer/utils/chipUtils';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
-import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { getTaskKanbanColumn } from '@shared/utils/reviewState';
+import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { AlertTriangle, Search } from 'lucide-react';
 
 import type { InlineChip } from '@renderer/types/inlineChip';
@@ -146,7 +147,7 @@ export const CreateTaskDialog = ({
 
   // Only show non-internal, non-deleted tasks as candidates for blocking
   const availableTasks = tasks.filter(
-    (t) => t.status !== 'deleted' && t.kanbanColumn !== 'approved'
+    (t) => t.status !== 'deleted' && getTaskKanbanColumn(t) !== 'approved'
   );
 
   const toggleBlockedBy = (taskId: string): void => {

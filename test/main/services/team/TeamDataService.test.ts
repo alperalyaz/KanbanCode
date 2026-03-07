@@ -5,7 +5,7 @@ import { TeamDataService } from '../../../../src/main/services/team/TeamDataServ
 import type { InboxMessage, TeamTask } from '../../../../src/shared/types/team';
 
 describe('TeamDataService', () => {
-  it('runs kanban garbage-collect only after tasks are loaded', async () => {
+  it('keeps getTeamData read-only and skips kanban garbage-collect', async () => {
     const order: string[] = [];
     const tasks: TeamTask[] = [
       {
@@ -44,10 +44,10 @@ describe('TeamDataService', () => {
     );
 
     await service.getTeamData('my-team');
-    expect(order).toEqual(['tasks', 'gc']);
+    expect(order).toEqual(['tasks']);
   });
 
-  it('does not sync automated comment notifications into task comments', async () => {
+  it('reconciles linked comments outside getTeamData and skips automated notifications', async () => {
     const tasks: TeamTask[] = [
       {
         id: '12',
@@ -106,14 +106,20 @@ describe('TeamDataService', () => {
       } as never,
       {
         readMessages: vi.fn(async () => []),
-      } as never
+      } as never,
+      () =>
+        ({
+          tasks: {
+            addTaskComment: addComment,
+          },
+        }) as never
     );
 
-    await service.getTeamData('my-team');
+    await service.reconcileTeamArtifacts('my-team');
     expect(addComment).not.toHaveBeenCalled();
   });
 
-  it('skips kanban garbage-collect when tasks fail to load', async () => {
+  it('skips reconcile writes when tasks fail to load', async () => {
     const garbageCollect = vi.fn(async () => undefined);
     const service = new TeamDataService(
       {
@@ -140,9 +146,8 @@ describe('TeamDataService', () => {
       } as never
     );
 
-    const result = await service.getTeamData('my-team');
+    await expect(service.reconcileTeamArtifacts('my-team')).rejects.toThrow('tasks failed');
     expect(garbageCollect).not.toHaveBeenCalled();
-    expect(result.warnings).toContain('Tasks failed to load');
   });
 
   it('includes projectPath from config when creating a task', async () => {
@@ -291,5 +296,80 @@ describe('TeamDataService', () => {
 
     expect(result.related).toEqual(['1', '2']);
     expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({ related: ['1', '2'] }));
+  });
+
+  it('routes durable inbox writes through controller message API', async () => {
+    const sendMessageMock = vi.fn(() => ({ deliveredToInbox: true, messageId: 'm-1' }));
+
+    const service = new TeamDataService(
+      {
+        listTeams: vi.fn(),
+        getConfig: vi.fn(async () => ({ name: 'My team', members: [], leadSessionId: 'lead-1' })),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      () =>
+        ({
+          messages: {
+            sendMessage: sendMessageMock,
+          },
+        }) as never
+    );
+
+    const result = await service.sendMessage('my-team', {
+      member: 'alice',
+      text: 'hello',
+      summary: 'ping',
+    });
+
+    expect(result).toEqual({ deliveredToInbox: true, messageId: 'm-1' });
+    expect(sendMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        member: 'alice',
+        text: 'hello',
+        summary: 'ping',
+        leadSessionId: 'lead-1',
+      })
+    );
+  });
+
+  it('delegates review entry to controller review API', async () => {
+    const requestReviewMock = vi.fn();
+
+    const service = new TeamDataService(
+      {
+        listTeams: vi.fn(),
+        getConfig: vi.fn(async () => ({
+          name: 'My team',
+          members: [{ name: 'lead', role: 'team lead' }],
+        })),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      () =>
+        ({
+          review: {
+            requestReview: requestReviewMock,
+          },
+        }) as never
+    );
+
+    await service.requestReview('my-team', 'task-1');
+
+    expect(requestReviewMock).toHaveBeenCalledWith('task-1', { from: 'lead' });
   });
 });

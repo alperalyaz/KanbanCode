@@ -79,10 +79,19 @@ function registerProcess(paths, flags) {
 
   const list = readProcesses(paths);
   const existingActiveIndex = list.findIndex((entry) => entry.pid === pid && !entry.stoppedAt);
-  const existingActive = existingActiveIndex >= 0 ? list[existingActiveIndex] : null;
+  const existingActive =
+    existingActiveIndex >= 0
+      ? {
+          ...list[existingActiveIndex],
+          ...(legacy.isProcessAlive(pid) ? {} : { stoppedAt: nowIso() }),
+        }
+      : null;
+  if (existingActiveIndex >= 0 && existingActive && existingActive.stoppedAt) {
+    list[existingActiveIndex] = existingActive;
+  }
   const now = nowIso();
   const entry = {
-    id: existingActive ? existingActive.id : crypto.randomUUID(),
+    id: existingActive && !existingActive.stoppedAt ? existingActive.id : crypto.randomUUID(),
     label,
     pid,
     ...(flags.port != null ? { port: Number(flags.port) } : {}),
@@ -94,10 +103,10 @@ function registerProcess(paths, flags) {
     ...(typeof flags.command === 'string' && flags.command.trim()
       ? { command: flags.command.trim() }
       : {}),
-    registeredAt: existingActive ? existingActive.registeredAt : now,
+    registeredAt: existingActive && !existingActive.stoppedAt ? existingActive.registeredAt : now,
   };
 
-  if (existingActiveIndex >= 0) {
+  if (existingActiveIndex >= 0 && existingActive && !existingActive.stoppedAt) {
     list[existingActiveIndex] = entry;
   } else {
     list.push(entry);

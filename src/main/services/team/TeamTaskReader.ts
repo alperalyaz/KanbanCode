@@ -2,6 +2,7 @@ import { yieldToEventLoop } from '@main/utils/asyncYield';
 import { readFileUtf8WithTimeout } from '@main/utils/fsRead';
 import { getTasksBasePath } from '@main/utils/pathDecoder';
 import { createLogger } from '@shared/utils/logger';
+import { normalizeReviewState } from '@shared/utils/reviewState';
 import { deriveTaskDisplayId } from '@shared/utils/taskIdentity';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -275,6 +276,7 @@ export class TeamTaskReader {
                   addedAt: a.addedAt,
                 }))
             : undefined,
+          reviewState: normalizeReviewState(parsed.reviewState),
         } satisfies Record<keyof TeamTask, unknown>;
         if (task.status === 'deleted') {
           continue;
@@ -376,6 +378,7 @@ export class TeamTaskReader {
           status: 'deleted',
           deletedAt: typeof parsed.deletedAt === 'string' ? parsed.deletedAt : undefined,
           createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : undefined,
+          reviewState: normalizeReviewState(parsed.reviewState),
         };
 
         tasks.push(task);

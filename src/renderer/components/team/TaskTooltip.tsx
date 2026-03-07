@@ -5,6 +5,7 @@ import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { getTaskKanbanColumn } from '@shared/utils/reviewState';
 import { formatTaskDisplayLabel, taskMatchesRef } from '@shared/utils/taskIdentity';
 
 import type { TeamTaskWithKanban } from '@shared/types';
@@ -25,7 +26,8 @@ const STATUS_COLORS: Record<string, { text: string; bg: string }> = {
 };
 
 function getEffectiveColumn(task: TeamTaskWithKanban): string {
-  if (task.kanbanColumn) return task.kanbanColumn;
+  const reviewColumn = getTaskKanbanColumn(task);
+  if (reviewColumn) return reviewColumn;
   if (task.status === 'pending') return 'todo';
   if (task.status === 'completed') return 'done';
   return task.status;

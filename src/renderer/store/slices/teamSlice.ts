@@ -2,6 +2,7 @@ import { api } from '@renderer/api';
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import { IpcError, unwrapIpc } from '@renderer/utils/unwrapIpc';
 import { createLogger } from '@shared/utils/logger';
+import { getTaskKanbanColumn } from '@shared/utils/reviewState';
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 
 import { getWorktreeNavigationState } from '../utils/stateResetHelpers';
@@ -155,7 +156,9 @@ function detectStatusChangeNotifications(
     if (!oldTask) continue;
 
     // Detect kanbanColumn change to 'approved' (status stays 'completed', column changes)
-    const becameApproved = task.kanbanColumn === 'approved' && oldTask.kanbanColumn !== 'approved';
+    const taskKanbanColumn = getTaskKanbanColumn(task);
+    const oldTaskKanbanColumn = getTaskKanbanColumn(oldTask);
+    const becameApproved = taskKanbanColumn === 'approved' && oldTaskKanbanColumn !== 'approved';
 
     const statusChanged = oldTask.status !== task.status;
     if (!statusChanged && !becameApproved) continue;
@@ -511,7 +514,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
             notifiedClarificationTaskKeys.add(`${task.teamName}:${task.id}`);
           }
           notifiedStatusChangeKeys.add(`${task.teamName}:${task.id}:${task.status}`);
-          if (task.kanbanColumn === 'approved') {
+          if (getTaskKanbanColumn(task) === 'approved') {
             notifiedStatusChangeKeys.add(`${task.teamName}:${task.id}:approved`);
           }
         }

@@ -14,10 +14,10 @@ import { NotificationTriggerSettings } from '../NotificationTriggerSettings';
 
 import type { RepositoryDropdownItem, SafeConfig } from '../hooks/useSettingsConfig';
 import type { NotificationTrigger } from '@renderer/types/data';
-import type { TeamTaskStatus } from '@shared/types';
+import type { TeamReviewState, TeamTaskStatus } from '@shared/types';
 
-/** Statuses available for notification filtering — real status values + kanban-only 'approved'. */
-type NotifiableStatus = TeamTaskStatus | 'approved';
+/** Notification targets span workflow status plus the explicit review axis. */
+type NotifiableStatus = TeamTaskStatus | Extract<TeamReviewState, 'approved'>;
 
 // Snooze duration options
 const SNOOZE_OPTIONS = [

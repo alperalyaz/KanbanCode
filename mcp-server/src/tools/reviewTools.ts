@@ -11,6 +11,24 @@ const toolContextSchema = {
 
 export function registerReviewTools(server: Pick<FastMCP, 'addTool'>) {
   server.addTool({
+    name: 'review_request',
+    description: 'Move a completed task into review and notify reviewer',
+    parameters: z.object({
+      ...toolContextSchema,
+      taskId: z.string().min(1),
+      from: z.string().optional(),
+      reviewer: z.string().optional(),
+    }),
+    execute: async ({ teamName, claudeDir, taskId, from, reviewer }) =>
+      jsonTextContent(
+        getController(teamName, claudeDir).review.requestReview(taskId, {
+          ...(from ? { from } : {}),
+          ...(reviewer ? { reviewer } : {}),
+        })
+      ),
+  });
+
+  server.addTool({
     name: 'review_approve',
     description: 'Approve task review and move kanban state accordingly',
     parameters: z.object({

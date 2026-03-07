@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const TASK_STATUSES = new Set(['pending', 'in_progress', 'completed', 'deleted']);
+const REVIEW_STATES = new Set(['none', 'review', 'approved']);
 const UUID_TASK_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -61,15 +62,43 @@ function normalizeTask(rawTask, filePath) {
       typeof rawTask.displayId === 'string' && rawTask.displayId.trim()
         ? rawTask.displayId.trim()
         : deriveDisplayId(id),
+    reviewState: normalizeTaskReviewState(rawTask.reviewState),
   };
 
   return task;
+}
+
+function normalizeTaskReviewState(value) {
+  return REVIEW_STATES.has(String(value || '').trim()) ? String(value).trim() : 'none';
+}
+
+function getOverlayReviewState(overlayTasks, taskId) {
+  if (!overlayTasks || typeof overlayTasks !== 'object') {
+    return 'none';
+  }
+
+  const entry = overlayTasks[String(taskId)];
+  if (!entry || typeof entry !== 'object') {
+    return 'none';
+  }
+
+  return entry.column === 'review' || entry.column === 'approved' ? entry.column : 'none';
+}
+
+function withCompatibleReviewState(task, overlayTasks) {
+  const explicit = normalizeTaskReviewState(task.reviewState);
+  return explicit === 'none' ? { ...task, reviewState: getOverlayReviewState(overlayTasks, task.id) } : task;
 }
 
 function listRawTasks(paths) {
   ensureDir(paths.tasksDir);
   const entries = fs.readdirSync(paths.tasksDir);
   const out = [];
+  const overlayState = readJson(paths.kanbanPath, null);
+  const overlayTasks =
+    overlayState && typeof overlayState === 'object' && overlayState.tasks && typeof overlayState.tasks === 'object'
+      ? overlayState.tasks
+      : null;
 
   for (const fileName of entries) {
     if (!fileName.endsWith('.json') || fileName.startsWith('.')) continue;
@@ -78,7 +107,7 @@ function listRawTasks(paths) {
     if (!rawTask) continue;
     if (rawTask.metadata && rawTask.metadata._internal === true) continue;
     try {
-      out.push(normalizeTask(rawTask, filePath));
+      out.push(withCompatibleReviewState(normalizeTask(rawTask, filePath), overlayTasks));
     } catch {
       // Skip unreadable task rows.
     }
@@ -136,7 +165,12 @@ function readTask(paths, taskRef, options = {}) {
   if (!rawTask) {
     throw new Error(`Task not found: ${String(taskRef)}`);
   }
-  return normalizeTask(rawTask, taskPath);
+  const overlayState = readJson(paths.kanbanPath, null);
+  const overlayTasks =
+    overlayState && typeof overlayState === 'object' && overlayState.tasks && typeof overlayState.tasks === 'object'
+      ? overlayState.tasks
+      : null;
+  return withCompatibleReviewState(normalizeTask(rawTask, taskPath), overlayTasks);
 }
 
 function createStatusTransition(history, from, to, actor, timestamp) {
@@ -291,6 +325,7 @@ function createTask(paths, input = {}) {
       input.needsClarification === 'lead' || input.needsClarification === 'user'
         ? input.needsClarification
         : undefined,
+    reviewState: normalizeTaskReviewState(input.reviewState),
     deletedAt:
       status === 'deleted' && typeof input.deletedAt === 'string' ? input.deletedAt : undefined,
     attachments: Array.isArray(input.attachments) ? input.attachments : undefined,
@@ -591,8 +626,14 @@ function formatTaskBriefing(paths, teamName, memberName) {
   for (const task of activeTasks) {
     const kanbanEntry = kanbanState.tasks ? kanbanState.tasks[task.id] : undefined;
     const reviewState = kanbanEntry && kanbanEntry.column ? `, review=${kanbanEntry.column}` : '';
+    const effectiveReviewState =
+      normalizeTaskReviewState(task.reviewState) !== 'none'
+        ? normalizeTaskReviewState(task.reviewState)
+        : reviewState
+            ? String(kanbanEntry.column)
+            : 'none';
     lines.push(
-      `${buildTaskReference(task)} [status=${task.status}${reviewState}] ${task.subject}`
+      `${buildTaskReference(task)} [status=${task.status}${effectiveReviewState !== 'none' ? `, review=${effectiveReviewState}` : ''}] ${task.subject}`
     );
     if (task.description) lines.push(`  Description: ${task.description}`);
     if (task.blockedBy && task.blockedBy.length > 0) {

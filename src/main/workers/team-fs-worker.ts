@@ -117,6 +117,7 @@ interface ParsedTask {
   projectPath?: unknown;
   comments?: unknown;
   needsClarification?: unknown;
+  reviewState?: unknown;
   metadata?: { _internal?: unknown };
   workIntervals?: unknown;
   statusHistory?: unknown;
@@ -600,6 +601,12 @@ async function readTasksDirForTeam(
         parsed.needsClarification === 'lead' || parsed.needsClarification === 'user'
           ? (parsed.needsClarification as string)
           : undefined;
+      const reviewState =
+        parsed.reviewState === 'review' ||
+        parsed.reviewState === 'approved' ||
+        parsed.reviewState === 'none'
+          ? parsed.reviewState
+          : 'none';
 
       tasks.push({
         id: typeof parsed.id === 'string' || typeof parsed.id === 'number' ? String(parsed.id) : '',
@@ -635,6 +642,7 @@ async function readTasksDirForTeam(
         projectPath: typeof parsed.projectPath === 'string' ? parsed.projectPath : undefined,
         comments: normalizeComments(parsed),
         needsClarification,
+        reviewState,
         deletedAt: undefined,
         attachments: Array.isArray(parsed.attachments)
           ? (parsed.attachments as unknown[])

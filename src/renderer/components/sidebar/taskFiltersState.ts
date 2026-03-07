@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 import { getSnapshot, getUnreadCount, subscribe } from '@renderer/services/commentReadStorage';
+import { getTaskKanbanColumn } from '@shared/utils/reviewState';
 
 export type TaskStatusFilterId = 'todo' | 'in_progress' | 'done' | 'review' | 'approved';
 
@@ -25,17 +26,22 @@ export const defaultTaskFiltersState = (): TaskFiltersState => ({
 });
 
 export function taskMatchesStatus(
-  task: { status: string; kanbanColumn?: 'review' | 'approved' },
+  task: {
+    status: string;
+    reviewState?: 'none' | 'review' | 'approved';
+    kanbanColumn?: 'review' | 'approved';
+  },
   statusIds: Set<TaskStatusFilterId>
 ): boolean {
   if (statusIds.size === 0) return false;
   if (statusIds.size === STATUS_OPTIONS.length) return task.status !== 'deleted';
 
-  const inTodo = task.status === 'pending' && !task.kanbanColumn;
-  const inProgress = task.status === 'in_progress' && !task.kanbanColumn;
-  const inDone = task.status === 'completed' && !task.kanbanColumn;
-  const inReview = task.kanbanColumn === 'review';
-  const inApproved = task.kanbanColumn === 'approved';
+  const kanbanColumn = getTaskKanbanColumn(task);
+  const inTodo = task.status === 'pending' && !kanbanColumn;
+  const inProgress = task.status === 'in_progress' && !kanbanColumn;
+  const inDone = task.status === 'completed' && !kanbanColumn;
+  const inReview = kanbanColumn === 'review';
+  const inApproved = kanbanColumn === 'approved';
 
   return (
     (statusIds.has('todo') && inTodo) ||

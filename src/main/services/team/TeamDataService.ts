@@ -1,5 +1,4 @@
 import { yieldToEventLoop } from '@main/utils/asyncYield';
-import { readFileUtf8WithTimeout } from '@main/utils/fsRead';
 import {
   encodePath,
   extractBaseDir,
@@ -8,7 +7,6 @@ import {
   getTasksBasePath,
   getTeamsBasePath,
 } from '@main/utils/pathDecoder';
-import { isProcessAlive } from '@main/utils/processHealth';
 import { killProcessByPid } from '@main/utils/processKill';
 import {
   AGENT_BLOCK_CLOSE,
@@ -17,6 +15,7 @@ import {
 } from '@shared/constants/agentBlocks';
 import { getMemberColor } from '@shared/constants/memberColors';
 import { createLogger } from '@shared/utils/logger';
+import { getKanbanColumnFromReviewState, normalizeReviewState } from '@shared/utils/reviewState';
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { parseNumericSuffixName } from '@shared/utils/teamMemberName';
 import { extractToolPreview, formatToolSummaryFromCalls } from '@shared/utils/toolSummary';
@@ -46,7 +45,6 @@ import type {
   InboxMessage,
   KanbanColumnId,
   KanbanState,
-  KanbanTaskState,
   ResolvedTeamMember,
   SendMessageRequest,
   SendMessageResult,
@@ -73,7 +71,6 @@ const logger = createLogger('Service:TeamDataService');
 const MIN_TEXT_LENGTH = 30;
 const MAX_LEAD_TEXTS = 150;
 const PROCESS_HEALTH_INTERVAL_MS = 2_000;
-const MAX_PROCESSES_FILE_BYTES = 2 * 1024 * 1024;
 const TASK_MAP_YIELD_EVERY = 250;
 
 export class TeamDataService {
@@ -86,7 +83,7 @@ export class TeamDataService {
     private readonly configReader: TeamConfigReader = new TeamConfigReader(),
     private readonly taskReader: TeamTaskReader = new TeamTaskReader(),
     private readonly inboxReader: TeamInboxReader = new TeamInboxReader(),
-    private readonly inboxWriter: TeamInboxWriter = new TeamInboxWriter(),
+    _inboxWriter: TeamInboxWriter = new TeamInboxWriter(),
     private readonly taskWriter: TeamTaskWriter = new TeamTaskWriter(),
     private readonly memberResolver: TeamMemberResolver = new TeamMemberResolver(),
     private readonly kanbanManager: TeamKanbanManager = new TeamKanbanManager(),
@@ -106,6 +103,28 @@ export class TeamDataService {
 
   private getTaskLabel(task: Pick<TeamTask, 'id' | 'displayId'>): string {
     return formatTaskDisplayLabel(task);
+  }
+
+  private resolveTaskReviewState(
+    task: Pick<TeamTask, 'id' | 'reviewState'>,
+    kanbanState?: Pick<KanbanState, 'tasks'>
+  ): 'none' | 'review' | 'approved' {
+    const explicit = normalizeReviewState(task.reviewState);
+    if (explicit !== 'none') {
+      return explicit;
+    }
+
+    const overlay = kanbanState?.tasks?.[task.id]?.column;
+    return overlay === 'review' || overlay === 'approved' ? overlay : 'none';
+  }
+
+  private attachKanbanCompatibility(task: TeamTask, kanbanState?: KanbanState): TeamTaskWithKanban {
+    const reviewState = this.resolveTaskReviewState(task, kanbanState);
+    return {
+      ...task,
+      reviewState,
+      kanbanColumn: getKanbanColumnFromReviewState(reviewState),
+    };
   }
 
   async listTeams(): Promise<TeamSummary[]> {
@@ -153,11 +172,8 @@ export class TeamDataService {
       }
       const info = teamInfoMap.get(task.teamName)!;
       const kanban = kanbanByTeam.get(task.teamName);
-      const kanbanEntry = kanban?.tasks[task.id];
-      const kanbanColumn =
-        kanbanEntry?.column === 'review' || kanbanEntry?.column === 'approved'
-          ? kanbanEntry.column
-          : undefined;
+      const reviewState = this.resolveTaskReviewState(task, kanban);
+      const kanbanColumn = getKanbanColumnFromReviewState(reviewState);
 
       // IPC payload safety: GlobalTask lists can be enormous (especially comments and large nested fields).
       // Return a "light" task object and defer heavy details to team/task detail views.
@@ -176,6 +192,7 @@ export class TeamDataService {
         projectPath,
         needsClarification: task.needsClarification,
         deletedAt: task.deletedAt,
+        reviewState,
         // Intentionally omit description/comments/activeForm/workIntervals/links to keep payload small
         kanbanColumn,
         teamName: task.teamName,
@@ -258,12 +275,10 @@ export class TeamDataService {
     const warnings: string[] = [];
 
     let tasks: TeamTask[] = [];
-    let tasksLoaded = true;
     try {
       tasks = await this.taskReader.getTasks(teamName);
     } catch {
       warnings.push('Tasks failed to load');
-      tasksLoaded = false;
     }
     mark('tasks');
 
@@ -407,21 +422,11 @@ export class TeamDataService {
     }
     mark('kanbanState');
 
-    if (canRunKanbanGc && tasksLoaded) {
-      try {
-        await this.kanbanManager.garbageCollect(teamName, new Set(tasks.map((task) => task.id)));
-        kanbanState = await this.kanbanManager.getState(teamName);
-      } catch {
-        warnings.push('Kanban state cleanup failed');
-      }
-    }
     mark('kanbanGc');
 
-    const tasksWithKanban: TeamTaskWithKanban[] = tasks.map((task) => {
-      const col = kanbanState.tasks[task.id]?.column;
-      const kanbanColumn = col === 'review' || col === 'approved' ? col : undefined;
-      return { ...task, kanbanColumn };
-    });
+    const tasksWithKanban: TeamTaskWithKanban[] = tasks.map((task) =>
+      this.attachKanbanCompatibility(task, canRunKanbanGc ? kanbanState : undefined)
+    );
 
     const members = this.memberResolver.resolveMembers(
       config,
@@ -436,25 +441,11 @@ export class TeamDataService {
     await this.enrichMemberBranches(members, config);
     mark('enrichBranches');
 
-    // Auto-sync: create comments from task-related inbox messages
-    if (tasksLoaded && messages.length > 0) {
-      try {
-        const didSync = await this.syncLinkedComments(teamName, tasks, messages);
-        if (didSync) {
-          // Re-read tasks only if new comments were actually written
-          tasks = await this.taskReader.getTasks(teamName);
-        }
-      } catch {
-        warnings.push('Comment sync from messages failed');
-      }
-    }
     mark('syncComments');
 
-    const tasksToReturn: TeamTaskWithKanban[] = tasks.map((task) => {
-      const col = kanbanState.tasks[task.id]?.column;
-      const kanbanColumn = col === 'review' || col === 'approved' ? col : undefined;
-      return { ...task, kanbanColumn };
-    });
+    const tasksToReturn: TeamTaskWithKanban[] = tasks.map((task) =>
+      this.attachKanbanCompatibility(task, canRunKanbanGc ? kanbanState : undefined)
+    );
 
     let processes: TeamProcess[] = [];
     try {
@@ -1090,7 +1081,15 @@ export class TeamDataService {
         // non-critical
       }
     }
-    return this.inboxWriter.sendMessage(teamName, enrichedRequest);
+    return this.getController(teamName).messages.sendMessage({
+      member: enrichedRequest.member,
+      from: enrichedRequest.from,
+      text: enrichedRequest.text,
+      summary: enrichedRequest.summary,
+      source: enrichedRequest.source,
+      leadSessionId: enrichedRequest.leadSessionId,
+      attachments: enrichedRequest.attachments,
+    }) as SendMessageResult;
   }
 
   private resolveLeadNameFromConfig(config: TeamConfig | null): string {
@@ -1121,8 +1120,6 @@ export class TeamDataService {
     summary?: string,
     attachments?: AttachmentMeta[]
   ): Promise<SendMessageResult> {
-    const messageId = randomUUID();
-
     let leadSessionId: string | undefined;
     try {
       const config = await this.configReader.getConfig(teamName);
@@ -1131,20 +1128,20 @@ export class TeamDataService {
       // non-critical — proceed without sessionId
     }
 
-    const msg: InboxMessage = {
+    const msg = this.getController(teamName).messages.appendSentMessage({
       from: 'user',
       to: leadName,
       text,
-      timestamp: new Date().toISOString(),
-      read: true,
       summary,
-      messageId,
       source: 'user_sent',
       attachments: attachments?.length ? attachments : undefined,
       leadSessionId,
+    }) as InboxMessage;
+    return {
+      deliveredToInbox: false,
+      deliveredViaStdin: true,
+      messageId: msg.messageId ?? randomUUID(),
     };
-    await this.sentMessagesStore.appendMessage(teamName, msg);
-    return { deliveredToInbox: false, deliveredViaStdin: true, messageId };
   }
 
   async getLeadMemberName(teamName: string): Promise<string | null> {
@@ -1175,43 +1172,8 @@ export class TeamDataService {
   }
 
   async requestReview(teamName: string, taskId: string): Promise<void> {
-    const tasks = await this.taskReader.getTasks(teamName);
-    const task = tasks.find((candidate) => candidate.id === taskId);
-    if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
-    if (task.status !== 'completed') {
-      throw new Error(`Task ${this.getTaskLabel(task)} must be completed before review`);
-    }
-
-    this.getController(teamName).kanban.setKanbanColumn(taskId, 'review');
-
-    const state = await this.kanbanManager.getState(teamName);
-    const reviewer = state.reviewers[0];
-    if (!reviewer) {
-      return;
-    }
-
-    try {
-      const leadName = await this.resolveLeadName(teamName);
-      await this.sendMessage(teamName, {
-        member: reviewer,
-        from: leadName,
-        text:
-          `Please review task ${this.getTaskLabel(task)}.\n\n` +
-          `${AGENT_BLOCK_OPEN}\n` +
-          `When approved, use MCP tool review_approve:\n` +
-          `{ teamName: "${teamName}", taskId: "${taskId}", notifyOwner: true }\n\n` +
-          `If changes are needed, use MCP tool review_request_changes:\n` +
-          `{ teamName: "${teamName}", taskId: "${taskId}", comment: "..." }\n` +
-          AGENT_BLOCK_CLOSE,
-        summary: `Review request for ${this.getTaskLabel(task)}`,
-        source: 'system_notification',
-      });
-    } catch (error) {
-      this.getController(teamName).kanban.clearKanban(taskId);
-      throw error;
-    }
+    const leadName = await this.resolveLeadName(teamName);
+    this.getController(teamName).review.requestReview(taskId, { from: leadName });
   }
 
   async createTeamConfig(request: TeamCreateConfigRequest): Promise<void> {
@@ -1265,6 +1227,18 @@ export class TeamDataService {
         joinedAt,
       }))
     );
+  }
+
+  async reconcileTeamArtifacts(teamName: string): Promise<void> {
+    const tasks = await this.taskReader.getTasks(teamName);
+    await this.kanbanManager.garbageCollect(teamName, new Set(tasks.map((task) => task.id)));
+
+    const messages = await this.inboxReader.getMessages(teamName);
+    if (messages.length === 0) {
+      return;
+    }
+
+    await this.syncLinkedComments(teamName, tasks, messages);
   }
 
   /**
@@ -1329,14 +1303,15 @@ export class TeamDataService {
         if (existing.some((c) => c.id === commentId)) continue;
 
         try {
-          await this.taskWriter.addComment(teamName, task.id, msg.text, {
+          this.getController(teamName).tasks.addTaskComment(task.id, {
+            text: msg.text,
             id: commentId,
-            author: msg.from,
+            from: msg.from,
             createdAt: msg.timestamp,
           });
           synced = true;
         } catch {
-          // Best-effort — don't fail getTeamData() on sync errors
+          // Best-effort — don't fail reconciliation on sync errors
         }
       }
     }
@@ -1511,7 +1486,8 @@ export class TeamDataService {
 
     if (patch.op === 'set_column') {
       if (patch.column === 'review') {
-        controller.kanban.setKanbanColumn(taskId, 'review');
+        const leadName = await this.resolveLeadName(teamName);
+        controller.review.requestReview(taskId, { from: leadName });
       } else {
         const leadName = await this.resolveLeadName(teamName);
         controller.review.approveReview(taskId, {

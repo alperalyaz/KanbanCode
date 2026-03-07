@@ -98,6 +98,25 @@ describe('agent-teams-mcp tools', () => {
     expect(loadedTask.needsClarification).toBe('user');
     expect(loadedTask.comments).toHaveLength(1);
     expect(loadedTask.comments[0].attachments).toHaveLength(1);
+
+    await getTool('task_set_status').execute({
+      claudeDir,
+      teamName,
+      taskId: createdTask.id,
+      status: 'completed',
+    });
+
+    const reviewRequested = parseJsonToolResult(
+      await getTool('review_request').execute({
+        claudeDir,
+        teamName,
+        taskId: createdTask.id,
+        from: 'lead',
+        reviewer: 'alice',
+      })
+    );
+
+    expect(reviewRequested.reviewState).toBe('review');
   });
 
   it('covers process register/list/stop without legacy stdout leaking into results', async () => {
@@ -140,5 +159,31 @@ describe('agent-teams-mcp tools', () => {
 
     expect(stopped.pid).toBe(pid);
     expect(typeof stopped.stoppedAt).toBe('string');
+  });
+
+  it('persists full message metadata through message_send', async () => {
+    const claudeDir = makeClaudeDir();
+    const teamName = 'gamma';
+
+    const sent = parseJsonToolResult(
+      await getTool('message_send').execute({
+        claudeDir,
+        teamName,
+        to: 'alice',
+        text: 'Check this',
+        from: 'lead',
+        summary: 'Metadata test',
+        source: 'system_notification',
+        leadSessionId: 'session-42',
+        attachments: [{ id: 'att-1', filename: 'note.txt', mimeType: 'text/plain', size: 4 }],
+      })
+    );
+
+    expect(sent.deliveredToInbox).toBe(true);
+    const inboxPath = path.join(claudeDir, 'teams', teamName, 'inboxes', 'alice.json');
+    const rows = JSON.parse(fs.readFileSync(inboxPath, 'utf8'));
+    expect(rows[0].source).toBe('system_notification');
+    expect(rows[0].leadSessionId).toBe('session-42');
+    expect(rows[0].attachments[0].filename).toBe('note.txt');
   });
 });

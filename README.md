@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <sub>100% free, open source. No API keys. No configuration. Runs entirely locally.</sub>
+  <sub>100% free, open source. No API keys. No configuration. Runs entirely locally. Not just coding agents.</sub>
 </p>
 
 <br />

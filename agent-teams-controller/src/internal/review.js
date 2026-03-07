@@ -2,6 +2,57 @@ const kanban = require('./kanban.js');
 const messages = require('./messages.js');
 const tasks = require('./tasks.js');
 
+function getReviewer(context, flags) {
+  if (typeof flags.reviewer === 'string' && flags.reviewer.trim()) {
+    return flags.reviewer.trim();
+  }
+  const state = kanban.getKanbanState(context);
+  return typeof state.reviewers[0] === 'string' && state.reviewers[0].trim()
+    ? state.reviewers[0].trim()
+    : null;
+}
+
+function requestReview(context, taskId, flags = {}) {
+  const task = tasks.getTask(context, taskId);
+  if (task.status !== 'completed') {
+    throw new Error(`Task #${task.displayId || task.id} must be completed before review`);
+  }
+
+  const from =
+    typeof flags.from === 'string' && flags.from.trim() ? flags.from.trim() : 'team-lead';
+  const reviewer = getReviewer(context, flags);
+
+  try {
+    kanban.setKanbanColumn(context, task.id, 'review');
+    if (!reviewer) {
+      return tasks.getTask(context, task.id);
+    }
+
+    messages.sendMessage(context, {
+      to: reviewer,
+      from,
+      text:
+        `Please review task #${task.displayId || task.id}.\n\n` +
+        '<agent-block>\n' +
+        `When approved, use MCP tool review_approve:\n` +
+        `{ teamName: "${context.teamName}", taskId: "${task.id}", notifyOwner: true }\n\n` +
+        `If changes are needed, use MCP tool review_request_changes:\n` +
+        `{ teamName: "${context.teamName}", taskId: "${task.id}", comment: "..." }\n` +
+        '</agent-block>',
+      summary: `Review request for #${task.displayId || task.id}`,
+      source: 'system_notification',
+    });
+    return tasks.getTask(context, task.id);
+  } catch (error) {
+    try {
+      kanban.clearKanban(context, task.id);
+    } catch {
+      // Best-effort rollback: keep the original error.
+    }
+    throw error;
+  }
+}
+
 function approveReview(context, taskId, flags = {}) {
   const task = tasks.getTask(context, taskId);
   const from =
@@ -66,5 +117,6 @@ function requestChanges(context, taskId, flags = {}) {
 
 module.exports = {
   approveReview,
+  requestReview,
   requestChanges,
 };

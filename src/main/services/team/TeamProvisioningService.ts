@@ -24,6 +24,7 @@ import { createLogger } from '@shared/utils/logger';
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { createCliAutoSuffixNameGuard } from '@shared/utils/teamMemberName';
 import { extractToolPreview, formatToolSummaryFromCalls } from '@shared/utils/toolSummary';
+import * as agentTeamsControllerModule from 'agent-teams-controller';
 import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -58,6 +59,7 @@ import type {
 } from '@shared/types';
 
 const logger = createLogger('Service:TeamProvisioning');
+const { createController } = agentTeamsControllerModule;
 const RUN_TIMEOUT_MS = 300_000;
 const VERIFY_TIMEOUT_MS = 15_000;
 const VERIFY_POLL_MS = 500;
@@ -1083,7 +1085,7 @@ export class TeamProvisioningService {
     private readonly configReader: TeamConfigReader = new TeamConfigReader(),
     private readonly inboxReader: TeamInboxReader = new TeamInboxReader(),
     private readonly membersMetaStore: TeamMembersMetaStore = new TeamMembersMetaStore(),
-    private readonly sentMessagesStore: TeamSentMessagesStore = new TeamSentMessagesStore(),
+    _sentMessagesStore: TeamSentMessagesStore = new TeamSentMessagesStore(),
     private readonly mcpConfigBuilder: TeamMcpConfigBuilder = new TeamMcpConfigBuilder()
   ) {}
 
@@ -1195,6 +1197,30 @@ export class TeamProvisioningService {
 
   setTeamChangeEmitter(emitter: ((event: TeamChangeEvent) => void) | null): void {
     this.teamChangeEmitter = emitter;
+  }
+
+  private persistSentMessage(teamName: string, message: InboxMessage): void {
+    try {
+      createController({
+        teamName,
+        claudeDir: getClaudeBasePath(),
+      }).messages.appendSentMessage({
+        from: message.from,
+        to: message.to,
+        text: message.text,
+        timestamp: message.timestamp,
+        summary: message.summary,
+        messageId: message.messageId,
+        source: message.source,
+        leadSessionId: message.leadSessionId,
+        attachments: message.attachments,
+        color: message.color,
+        toolSummary: message.toolSummary,
+        toolCalls: message.toolCalls,
+      });
+    } catch (error) {
+      logger.warn(`[${teamName}] sent-message persist failed: ${String(error)}`);
+    }
   }
 
   private toolApprovalEventEmitter: ((event: ToolApprovalEvent) => void) | null = null;
@@ -2611,11 +2637,7 @@ export class TeamProvisioningService {
         };
         this.pushLiveLeadProcessMessage(teamName, relayMsg);
         // Persist to disk so relayed replies survive app restart and trigger FileWatcher
-        void this.sentMessagesStore
-          .appendMessage(teamName, relayMsg)
-          .catch((e: unknown) =>
-            logger.warn(`[${teamName}] sentMessagesStore persist failed: ${String(e)}`)
-          );
+        this.persistSentMessage(teamName, relayMsg);
         this.teamChangeEmitter?.({
           type: 'inbox',
           teamName,
@@ -2831,13 +2853,7 @@ export class TeamProvisioningService {
       };
 
       this.pushLiveLeadProcessMessage(run.teamName, msg);
-      void this.sentMessagesStore
-        .appendMessage(run.teamName, msg)
-        .catch((e: unknown) =>
-          logger.warn(
-            `[${run.teamName}] sentMessagesStore persist (SendMessage capture) failed: ${String(e)}`
-          )
-        );
+      this.persistSentMessage(run.teamName, msg);
       this.teamChangeEmitter?.({
         type: 'inbox',
         teamName: run.teamName,

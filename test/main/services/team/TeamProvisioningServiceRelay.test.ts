@@ -42,6 +42,14 @@ const hoisted = vi.hoisted(() => {
     stat,
     readFile,
     atomicWrite,
+    appendSentMessage: vi.fn((teamName: string, message: Record<string, unknown>) => {
+      const sentMessagesPath = `/mock/teams/${teamName}/sentMessages.json`;
+      const current = files.get(sentMessagesPath);
+      const rows = current ? (JSON.parse(current) as unknown[]) : [];
+      rows.push(message);
+      files.set(sentMessagesPath, JSON.stringify(rows));
+      return message;
+    }),
     setAtomicWriteShouldFail: (next: boolean) => {
       atomicWriteShouldFail = next;
     },
@@ -71,6 +79,15 @@ vi.mock('../../../../src/main/utils/pathDecoder', async (importOriginal) => {
     getTeamsBasePath: () => '/mock/teams',
   };
 });
+
+vi.mock('agent-teams-controller', () => ({
+  createController: ({ teamName }: { teamName: string }) => ({
+    messages: {
+      appendSentMessage: (message: Record<string, unknown>) =>
+        hoisted.appendSentMessage(teamName, message),
+    },
+  }),
+}));
 
 import { TeamProvisioningService } from '../../../../src/main/services/team/TeamProvisioningService';
 
@@ -139,6 +156,7 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     hoisted.files.clear();
     hoisted.readFile.mockClear();
     hoisted.atomicWrite.mockClear();
+    hoisted.appendSentMessage.mockClear();
     hoisted.setAtomicWriteShouldFail(false);
   });
 
@@ -210,14 +228,7 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     expect(first).toBe(1);
     expect(second).toBe(0);
     expect(writeSpy).toHaveBeenCalledTimes(1);
-
-    // Relay now also persists to sentMessages.json via appendMessage() which uses
-    // atomicWriteAsync — expected to fail here since atomicWriteShouldFail=true.
-    expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining('TeamSentMessagesStore'),
-      expect.stringContaining('Failed to append sent message')
-    );
-    vi.mocked(console.error).mockClear();
+    expect(hoisted.appendSentMessage).toHaveBeenCalledTimes(1);
   });
 
   it('does not mark as relayed when stdin is not writable', async () => {

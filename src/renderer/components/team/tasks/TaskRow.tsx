@@ -1,4 +1,5 @@
 import { KANBAN_COLUMN_DISPLAY, TASK_STATUS_LABELS } from '@renderer/utils/memberHelpers';
+import { getTaskKanbanColumn } from '@shared/utils/reviewState';
 import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 
 import type { TeamTaskWithKanban } from '@shared/types';
@@ -10,6 +11,7 @@ interface TaskRowProps {
 export const TaskRow = ({ task }: TaskRowProps): React.JSX.Element => {
   const blockedByIds = task.blockedBy?.filter((id) => id.length > 0) ?? [];
   const blocksIds = task.blocks?.filter((id) => id.length > 0) ?? [];
+  const kanbanColumn = getTaskKanbanColumn(task);
 
   return (
     <tr className="border-t border-[var(--color-border)]">
@@ -21,8 +23,8 @@ export const TaskRow = ({ task }: TaskRowProps): React.JSX.Element => {
         {task.owner ?? 'Unassigned'}
       </td>
       <td className="px-3 py-2 text-xs text-[var(--color-text-muted)]">
-        {task.kanbanColumn && task.kanbanColumn in KANBAN_COLUMN_DISPLAY
-          ? KANBAN_COLUMN_DISPLAY[task.kanbanColumn].label
+        {kanbanColumn && kanbanColumn in KANBAN_COLUMN_DISPLAY
+          ? KANBAN_COLUMN_DISPLAY[kanbanColumn].label
           : (TASK_STATUS_LABELS[task.status] ?? task.status)}
       </td>
       <td className="px-3 py-2 text-xs">

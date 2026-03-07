@@ -56,6 +56,7 @@ export interface TeamSummary {
 }
 
 export type TeamTaskStatus = 'pending' | 'in_progress' | 'completed' | 'deleted';
+export type TeamReviewState = 'none' | 'review' | 'approved';
 
 export interface TaskWorkInterval {
   /** ISO timestamp when task entered in_progress */
@@ -129,6 +130,8 @@ export interface TeamTask {
   deletedAt?: string;
   /** Attachments associated with this task. Metadata only — actual files stored on disk. */
   attachments?: TaskAttachmentMeta[];
+  /** Separate review lifecycle axis. Persisted on modern tasks, derived for legacy rows when needed. */
+  reviewState?: TeamReviewState;
 }
 
 /** Task enriched for UI/DTO use (overlay from kanban-state.json). */
