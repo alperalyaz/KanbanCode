@@ -566,7 +566,7 @@ describe('ipc teams handlers', () => {
 
     it('rejects invalid task id', async () => {
       const handler = handlers.get(TEAM_ADD_TASK_RELATIONSHIP)!;
-      const result = (await handler({} as never, 'my-team', 'abc', '2', 'blockedBy')) as {
+      const result = (await handler({} as never, 'my-team', 'bad/id', '2', 'blockedBy')) as {
         success: boolean;
       };
       expect(result.success).toBe(false);

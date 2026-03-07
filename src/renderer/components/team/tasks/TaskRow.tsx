@@ -1,4 +1,5 @@
 import { KANBAN_COLUMN_DISPLAY, TASK_STATUS_LABELS } from '@renderer/utils/memberHelpers';
+import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 
 import type { TeamTaskWithKanban } from '@shared/types';
 
@@ -12,7 +13,9 @@ export const TaskRow = ({ task }: TaskRowProps): React.JSX.Element => {
 
   return (
     <tr className="border-t border-[var(--color-border)]">
-      <td className="px-3 py-2 text-xs text-[var(--color-text-muted)]">{task.id}</td>
+      <td className="px-3 py-2 text-xs text-[var(--color-text-muted)]">
+        {formatTaskDisplayLabel(task)}
+      </td>
       <td className="px-3 py-2 text-sm text-[var(--color-text)]">{task.subject}</td>
       <td className="px-3 py-2 text-xs text-[var(--color-text-muted)]">
         {task.owner ?? 'Unassigned'}
@@ -24,7 +27,9 @@ export const TaskRow = ({ task }: TaskRowProps): React.JSX.Element => {
       </td>
       <td className="px-3 py-2 text-xs">
         {blockedByIds.length > 0 ? (
-          <span className="text-yellow-300">{blockedByIds.map((id) => `#${id}`).join(', ')}</span>
+          <span className="text-yellow-300">
+            {blockedByIds.map((id) => `#${deriveTaskDisplayId(id)}`).join(', ')}
+          </span>
         ) : (
           <span className="text-[var(--color-text-muted)]">{'\u2014'}</span>
         )}
@@ -32,7 +37,7 @@ export const TaskRow = ({ task }: TaskRowProps): React.JSX.Element => {
       <td className="px-3 py-2 text-xs">
         {blocksIds.length > 0 ? (
           <span className="text-blue-600 dark:text-blue-400">
-            {blocksIds.map((id) => `#${id}`).join(', ')}
+            {blocksIds.map((id) => `#${deriveTaskDisplayId(id)}`).join(', ')}
           </span>
         ) : (
           <span className="text-[var(--color-text-muted)]">{'\u2014'}</span>

@@ -1,21 +1,30 @@
 const legacy = require('../legacy/teamctl.cli.js');
-const { captureStreamOutput } = require('./capture.js');
+const taskStore = require('./taskStore.js');
 
-function createTask(context, flags) {
-  return legacy.createTask(context.paths, flags);
+function createTask(context, input) {
+  return taskStore.createTask(context.paths, input);
 }
 
 function getTask(context, taskId) {
-  return legacy.readTask(context.paths, String(taskId)).task;
+  return taskStore.readTask(context.paths, taskId, { includeDeleted: true });
 }
 
 function listTasks(context) {
-  return legacy.listTaskIds(context.paths.tasksDir).map((taskId) => getTask(context, taskId));
+  return taskStore.listTasks(context.paths);
+}
+
+function listDeletedTasks(context) {
+  return taskStore.listTasks(context.paths, { includeDeleted: true }).filter(
+    (task) => task.status === 'deleted'
+  );
+}
+
+function resolveTaskId(context, taskRef) {
+  return taskStore.resolveTaskRef(context.paths, taskRef, { includeDeleted: true });
 }
 
 function setTaskStatus(context, taskId, status, actor) {
-  legacy.setTaskStatus(context.paths, String(taskId), String(status), actor);
-  return getTask(context, taskId);
+  return taskStore.setTaskStatus(context.paths, taskId, status, actor);
 }
 
 function startTask(context, taskId, actor) {
@@ -26,70 +35,108 @@ function completeTask(context, taskId, actor) {
   return setTaskStatus(context, taskId, 'completed', actor);
 }
 
+function softDeleteTask(context, taskId, actor) {
+  return setTaskStatus(context, taskId, 'deleted', actor);
+}
+
+function restoreTask(context, taskId, actor) {
+  return setTaskStatus(context, taskId, 'pending', actor || 'user');
+}
+
 function setTaskOwner(context, taskId, owner) {
-  return legacy.setTaskOwner(
-    context.paths,
-    String(taskId),
-    owner == null || owner === 'clear' || owner === 'none' ? null : String(owner)
-  );
+  return taskStore.setTaskOwner(context.paths, taskId, owner);
+}
+
+function updateTaskFields(context, taskId, fields) {
+  return taskStore.updateTaskFields(context.paths, taskId, fields);
 }
 
 function addTaskComment(context, taskId, flags) {
-  const result = legacy.addTaskComment(context.paths, String(taskId), flags);
+  const result = taskStore.addTaskComment(context.paths, taskId, flags.text, {
+    author:
+      typeof flags.from === 'string' && flags.from.trim()
+        ? flags.from.trim()
+        : legacy.inferLeadName(context.paths),
+    ...(flags.id ? { id: flags.id } : {}),
+    ...(flags.createdAt ? { createdAt: flags.createdAt } : {}),
+    ...(flags.type ? { type: flags.type } : {}),
+    ...(Array.isArray(flags.attachments) ? { attachments: flags.attachments } : {}),
+  });
+
   return {
-    ...result,
-    task: getTask(context, taskId),
+    commentId: result.comment.id,
+    taskId: result.task.id,
+    subject: result.task.subject,
+    owner: result.task.owner,
+    task: result.task,
+    comment: result.comment,
   };
 }
 
 function attachTaskFile(context, taskId, flags) {
-  const saved = legacy.saveTaskAttachmentFile(context.paths, String(taskId), flags);
-  legacy.addAttachmentToTask(context.paths, String(taskId), saved.meta);
-  return saved.meta;
+  const canonicalTaskId = resolveTaskId(context, taskId);
+  const saved = legacy.saveTaskAttachmentFile(context.paths, canonicalTaskId, flags);
+  const task = taskStore.addTaskAttachmentMeta(context.paths, canonicalTaskId, saved.meta);
+  return {
+    ...saved.meta,
+    task,
+  };
 }
 
 function attachCommentFile(context, taskId, commentId, flags) {
-  const saved = legacy.saveTaskAttachmentFile(context.paths, String(taskId), flags);
-  legacy.addAttachmentToComment(context.paths, String(taskId), String(commentId), saved.meta);
-  return saved.meta;
+  const canonicalTaskId = resolveTaskId(context, taskId);
+  const saved = legacy.saveTaskAttachmentFile(context.paths, canonicalTaskId, flags);
+  const task = taskStore.addCommentAttachmentMeta(context.paths, canonicalTaskId, commentId, saved.meta);
+  return {
+    ...saved.meta,
+    task,
+  };
+}
+
+function addTaskAttachmentMeta(context, taskId, meta) {
+  return taskStore.addTaskAttachmentMeta(context.paths, taskId, meta);
+}
+
+function removeTaskAttachment(context, taskId, attachmentId) {
+  return taskStore.removeTaskAttachment(context.paths, taskId, attachmentId);
 }
 
 function setNeedsClarification(context, taskId, value) {
-  const normalized = value == null ? 'clear' : String(value);
-  legacy.setNeedsClarification(context.paths, String(taskId), normalized);
-  return getTask(context, taskId);
+  return taskStore.setNeedsClarification(context.paths, taskId, value == null ? 'clear' : String(value));
 }
 
 function linkTask(context, taskId, targetId, linkType) {
-  legacy.linkTasks(context.paths, String(taskId), String(targetId), String(linkType));
-  return getTask(context, taskId);
+  return taskStore.linkTask(context.paths, taskId, targetId, String(linkType));
 }
 
 function unlinkTask(context, taskId, targetId, linkType) {
-  legacy.unlinkTasks(context.paths, String(taskId), String(targetId), String(linkType));
-  return getTask(context, taskId);
+  return taskStore.unlinkTask(context.paths, taskId, targetId, String(linkType));
 }
 
 async function taskBriefing(context, memberName) {
-  const { output } = await captureStreamOutput(process.stdout, () =>
-    legacy.taskBriefing(context.paths, context.teamName, { for: memberName })
-  );
-  return output;
+  return taskStore.formatTaskBriefing(context.paths, context.teamName, String(memberName));
 }
 
 module.exports = {
-  createTask,
-  getTask,
-  listTasks,
-  setTaskStatus,
-  startTask,
-  completeTask,
-  setTaskOwner,
+  addTaskAttachmentMeta,
   addTaskComment,
   attachTaskFile,
   attachCommentFile,
-  setNeedsClarification,
+  completeTask,
+  createTask,
+  getTask,
   linkTask,
-  unlinkTask,
+  listDeletedTasks,
+  listTasks,
+  removeTaskAttachment,
+  resolveTaskId,
+  restoreTask,
+  setNeedsClarification,
+  setTaskOwner,
+  setTaskStatus,
+  softDeleteTask,
+  startTask,
   taskBriefing,
+  unlinkTask,
+  updateTaskFields,
 };

@@ -23,6 +23,7 @@ import {
 } from '@renderer/utils/agentMessageFormatting';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
+import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { extractMarkdownPlainText } from '@shared/utils/markdownTextSearch';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
 import { AlertTriangle, ChevronRight, ListPlus, RefreshCw, Reply } from 'lucide-react';
@@ -94,7 +95,9 @@ function getNoiseLabel(parsed: StructuredMessage): string | null {
     const rawTaskId = parsed.taskId;
     const taskId =
       typeof rawTaskId === 'string' || typeof rawTaskId === 'number' ? rawTaskId : null;
-    return taskId !== null ? `Completed task #${taskId}` : 'Completed a task';
+    return taskId !== null
+      ? `Completed task ${formatTaskDisplayLabel({ id: String(taskId) })}`
+      : 'Completed a task';
   }
 
   return null;
@@ -132,8 +135,8 @@ const NoiseRow = ({
 
 const SYSTEM_MESSAGE_PATTERNS: { pattern: RegExp; label: string }[] = [
   { pattern: /^New task assigned to you:/, label: 'Task assignment' },
-  { pattern: /^Task #\d+\s+approved/, label: 'Task approved' },
-  { pattern: /^Task #\d+\s+needs fixes/, label: 'Review changes requested' },
+  { pattern: /^Task #[A-Za-z0-9-]+\s+approved/, label: 'Task approved' },
+  { pattern: /^Task #[A-Za-z0-9-]+\s+needs fixes/, label: 'Review changes requested' },
 ];
 
 function getSystemMessageLabel(text: string): string | null {
@@ -184,9 +187,9 @@ const AUTH_ERROR_PATTERNS = [
 // Full message card — left colored border, name badge, collapsible content
 // ---------------------------------------------------------------------------
 
-/** Convert `#<digits>` in plain text to markdown links with task:// protocol. */
+/** Convert `#<task-display-id>` in plain text to markdown links with task:// protocol. */
 export function linkifyTaskIdsInMarkdown(text: string): string {
-  return text.replace(/#(\d+)\b/g, '[#$1](task://$1)');
+  return text.replace(/#([A-Za-z0-9-]+)\b/g, '[#$1](task://$1)');
 }
 
 /**
@@ -211,10 +214,10 @@ export function linkifyMentionsInMarkdown(
     return `${prefix}[@${canonical}](mention://${encodeURIComponent(color)}/${encodeURIComponent(canonical)})`;
   });
 }
-/** Render `#<digits>` in plain text as clickable inline elements with TaskTooltip. */
+/** Render `#<task-display-id>` in plain text as clickable inline elements with TaskTooltip. */
 function linkifyTaskIds(text: string, onClick: (taskId: string) => void): React.ReactNode[] {
-  return text.split(/(#\d+\b)/g).map((part, i) => {
-    const match = /^#(\d+)$/.exec(part);
+  return text.split(/(#[A-Za-z0-9-]+\b)/g).map((part, i) => {
+    const match = /^#([A-Za-z0-9-]+)$/.exec(part);
     if (!match) return <span key={i}>{part}</span>;
     const taskId = match[1];
     return (

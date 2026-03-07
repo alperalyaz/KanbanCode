@@ -5,6 +5,7 @@ import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { formatTaskDisplayLabel, taskMatchesRef } from '@shared/utils/taskIdentity';
 
 import type { TeamTaskWithKanban } from '@shared/types';
 
@@ -45,7 +46,7 @@ function getStatusLabel(column: string): string {
 }
 
 interface TaskTooltipProps {
-  /** The task ID (number string, e.g. "10"). */
+  /** Canonical task id or short display id reference. */
   taskId: string;
   /** Rendered trigger element. */
   children: React.ReactElement;
@@ -65,10 +66,7 @@ export const TaskTooltip = ({
   const tasks = useStore((s) => s.selectedTeamData?.tasks);
   const members = useStore((s) => s.selectedTeamData?.members);
 
-  const task = useMemo(
-    () => tasks?.find((t) => t.id === taskId),
-    [tasks, taskId]
-  );
+  const task = useMemo(() => tasks?.find((t) => taskMatchesRef(t, taskId)), [tasks, taskId]);
 
   const colorMap = useMemo(
     () => (members ? buildMemberColorMap(members) : new Map<string, string>()),
@@ -85,13 +83,10 @@ export const TaskTooltip = ({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent
-        side={side}
-        className="max-w-xs space-y-1.5 p-2.5"
-      >
+      <TooltipContent side={side} className="max-w-xs space-y-1.5 p-2.5">
         {/* Subject */}
         <div className="text-xs font-medium text-[var(--color-text)]">
-          <span className="text-[var(--color-text-muted)]">#{taskId}</span>{' '}
+          <span className="text-[var(--color-text-muted)]">{formatTaskDisplayLabel(task)}</span>{' '}
           {task.subject}
         </div>
 
@@ -106,10 +101,7 @@ export const TaskTooltip = ({
 
           {/* Owner */}
           {task.owner ? (
-            <MemberBadge
-              name={task.owner}
-              color={colorMap.get(task.owner)}
-            />
+            <MemberBadge name={task.owner} color={colorMap.get(task.owner)} />
           ) : (
             <span className="text-[10px] text-[var(--color-text-muted)]">Unassigned</span>
           )}

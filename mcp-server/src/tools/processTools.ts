@@ -67,4 +67,15 @@ export function registerProcessTools(server: Pick<FastMCP, 'addTool'>) {
     execute: async ({ teamName, claudeDir, pid }) =>
       jsonTextContent(getController(teamName, claudeDir).processes.unregisterProcess({ pid })),
   });
+
+  server.addTool({
+    name: 'process_stop',
+    description: 'Mark a registered process as stopped while preserving history',
+    parameters: z.object({
+      ...toolContextSchema,
+      pid: z.number().int().positive(),
+    }),
+    execute: async ({ teamName, claudeDir, pid }) =>
+      jsonTextContent(getController(teamName, claudeDir).processes.stopProcess({ pid })),
+  });
 }

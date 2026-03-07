@@ -8,6 +8,7 @@ import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import { projectColor } from '@renderer/utils/projectColor';
+import { deriveTaskDisplayId } from '@shared/utils/taskIdentity';
 import {
   getNonEmptyTaskCategories,
   groupTasksByDate,
@@ -222,7 +223,7 @@ export const GlobalTaskList = ({
   const handleDeleteTask = async (teamName: string, taskId: string): Promise<void> => {
     const confirmed = await confirm({
       title: 'Delete task',
-      message: `Move task #${taskId} to trash?`,
+      message: `Move task #${deriveTaskDisplayId(taskId)} to trash?`,
       confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
       variant: 'danger',

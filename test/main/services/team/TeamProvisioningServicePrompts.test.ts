@@ -116,8 +116,8 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     expect(prompt).not.toContain('.claude/tools');
 
     const launchArgs = vi.mocked(spawnCli).mock.calls[0]?.[1] as string[];
-    expect(launchArgs).toContain('--strict-mcp-config');
     expect(launchArgs).toContain('--mcp-config');
+    expect(launchArgs).not.toContain('--strict-mcp-config');
 
     await svc.cancelProvisioning(runId);
   });
@@ -176,8 +176,8 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     expect(prompt).not.toContain('.claude/tools');
 
     const launchArgs = vi.mocked(spawnCli).mock.calls[0]?.[1] as string[];
-    expect(launchArgs).toContain('--strict-mcp-config');
     expect(launchArgs).toContain('--mcp-config');
+    expect(launchArgs).not.toContain('--strict-mcp-config');
 
     await svc.cancelProvisioning(runId);
   });

@@ -55,9 +55,9 @@ interface TaskCommentsSectionProps {
   containerClassName?: string;
 }
 
-/** Convert `#<digits>` in plain text to markdown links with task:// protocol. */
+/** Convert `#<task-display-id>` in plain text to markdown links with task:// protocol. */
 function linkifyTaskIdsInMarkdown(text: string): string {
-  return text.replace(/#(\d+)\b/g, '[#$1](task://$1)');
+  return text.replace(/#([A-Za-z0-9-]+)\b/g, '[#$1](task://$1)');
 }
 
 /** Convert `@memberName` to markdown links with mention:// protocol for colored badge rendering. */

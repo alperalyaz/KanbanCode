@@ -2,6 +2,7 @@ import { api } from '@renderer/api';
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import { IpcError, unwrapIpc } from '@renderer/utils/unwrapIpc';
 import { createLogger } from '@shared/utils/logger';
+import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 
 import { getWorktreeNavigationState } from '../utils/stateResetHelpers';
 
@@ -118,7 +119,8 @@ function detectClarificationNotifications(
 function fireClarificationNotification(task: GlobalTask, suppressToast: boolean): void {
   // Delegate to main process for native OS notification (cross-platform, no permission needed)
   const latestComment = task.comments?.length ? task.comments[task.comments.length - 1] : undefined;
-  const body = latestComment?.text || task.description || `Task #${task.id}: ${task.subject}`;
+  const body =
+    latestComment?.text || task.description || `${formatTaskDisplayLabel(task)}: ${task.subject}`;
 
   void api.teams
     ?.showMessageNotification({
@@ -126,7 +128,7 @@ function fireClarificationNotification(task: GlobalTask, suppressToast: boolean)
       teamDisplayName: task.teamDisplayName,
       from: latestComment?.author || 'team-lead',
       to: 'user',
-      summary: `Clarification needed — Task #${task.id}`,
+      summary: `Clarification needed — Task ${formatTaskDisplayLabel(task)}`,
       body,
       teamEventType: 'task_clarification',
       dedupeKey: `clarification:${task.teamName}:${task.id}:${task.updatedAt ?? Date.now()}`,
@@ -204,7 +206,7 @@ function fireStatusChangeNotification(
       teamDisplayName: task.teamDisplayName,
       from: task.owner ?? 'system',
       to: 'user',
-      summary: `Task #${task.id}: ${from} → ${to}`,
+      summary: `Task ${formatTaskDisplayLabel(task)}: ${from} → ${to}`,
       body: task.subject,
       teamEventType: 'task_status_change',
       dedupeKey: `status:${task.teamName}:${task.id}:${fromStatus}:${toStatus}:${task.updatedAt ?? Date.now()}`,

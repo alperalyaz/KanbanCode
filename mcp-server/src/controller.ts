@@ -1,4 +1,6 @@
-import { createController } from 'agent-teams-controller';
+import * as agentTeamsControllerModule from 'agent-teams-controller';
+
+const { createController } = agentTeamsControllerModule;
 
 export function getController(teamName: string, claudeDir?: string) {
   return createController({

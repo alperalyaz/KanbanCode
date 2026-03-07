@@ -2,6 +2,7 @@ import { yieldToEventLoop } from '@main/utils/asyncYield';
 import { readFileUtf8WithTimeout } from '@main/utils/fsRead';
 import { getTasksBasePath } from '@main/utils/pathDecoder';
 import { createLogger } from '@shared/utils/logger';
+import { deriveTaskDisplayId } from '@shared/utils/taskIdentity';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -165,6 +166,14 @@ export class TeamTaskReader {
         const task: TeamTask = {
           id:
             typeof parsed.id === 'string' || typeof parsed.id === 'number' ? String(parsed.id) : '',
+          displayId:
+            typeof parsed.displayId === 'string' && parsed.displayId.trim().length > 0
+              ? parsed.displayId.trim()
+              : deriveTaskDisplayId(
+                  typeof parsed.id === 'string' || typeof parsed.id === 'number'
+                    ? String(parsed.id)
+                    : ''
+                ),
           subject,
           description: typeof parsed.description === 'string' ? parsed.description : undefined,
           activeForm: typeof parsed.activeForm === 'string' ? parsed.activeForm : undefined,
@@ -280,14 +289,20 @@ export class TeamTaskReader {
       }
     }
 
-    // Sort by numeric ID so kanban default order is deterministic (#1, #2, ..., #10, #11).
-    // Fall back to stable lexicographic ordering for unexpected non-numeric IDs.
+    // Sort by display ID first for stable human-facing ordering, then canonical id.
     tasks.sort((a, b) => {
-      const aIsNumeric = /^\d+$/.test(a.id);
-      const bIsNumeric = /^\d+$/.test(b.id);
-      if (aIsNumeric && bIsNumeric) return Number(a.id) - Number(b.id);
+      const aLabel = a.displayId ?? a.id;
+      const bLabel = b.displayId ?? b.id;
+      const aIsNumeric = /^\d+$/.test(aLabel);
+      const bIsNumeric = /^\d+$/.test(bLabel);
+      if (aIsNumeric && bIsNumeric) return Number(aLabel) - Number(bLabel);
       if (aIsNumeric) return -1;
       if (bIsNumeric) return 1;
+      const byDisplay = aLabel.localeCompare(bLabel, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+      if (byDisplay !== 0) return byDisplay;
       return a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' });
     });
 
@@ -347,6 +362,14 @@ export class TeamTaskReader {
         const task: TeamTask = {
           id:
             typeof parsed.id === 'string' || typeof parsed.id === 'number' ? String(parsed.id) : '',
+          displayId:
+            typeof parsed.displayId === 'string' && parsed.displayId.trim().length > 0
+              ? parsed.displayId.trim()
+              : deriveTaskDisplayId(
+                  typeof parsed.id === 'string' || typeof parsed.id === 'number'
+                    ? String(parsed.id)
+                    : ''
+                ),
           subject,
           description: typeof parsed.description === 'string' ? parsed.description : undefined,
           owner: typeof parsed.owner === 'string' ? parsed.owner : undefined,

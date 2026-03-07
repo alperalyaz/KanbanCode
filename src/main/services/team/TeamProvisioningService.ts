@@ -21,6 +21,7 @@ import { getMemberColor } from '@shared/constants/memberColors';
 import { resolveLanguageName } from '@shared/utils/agentLanguage';
 import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 import { createLogger } from '@shared/utils/logger';
+import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { createCliAutoSuffixNameGuard } from '@shared/utils/teamMemberName';
 import { extractToolPreview, formatToolSummaryFromCalls } from '@shared/utils/toolSummary';
 import { spawn } from 'child_process';
@@ -452,6 +453,9 @@ ${processRegistration}`;
 
 function buildTaskStatusProtocol(teamName: string): string {
   return wrapInAgentBlock(`MANDATORY TASK STATUS PROTOCOL — you MUST follow this for EVERY task:
+0. IMPORTANT ID RULE:
+   - In MCP tool calls, ALWAYS use the exact canonical taskId value shown in the board/task snapshot.
+   - Human-facing summaries may use the short display label like #abcd1234 for readability.
 1. Use MCP tool task_start to mark task started:
    { teamName: "${teamName}", taskId: "<taskId>" }
    - Start the task ONLY when you are actually beginning work on it.
@@ -469,7 +473,7 @@ function buildTaskStatusProtocol(teamName: string): string {
 7. When discussing a task with a teammate and you have important findings, decisions, blockers, or progress updates — record them as a task comment:
    { teamName: "${teamName}", taskId: "<taskId>", text: "<summary of your finding or decision>", from: "<your-name>" }
    Do NOT comment on trivial coordination messages. Only comment when the information is valuable context for the task.
-8. When sending a message about a specific task, include #<taskId> in your SendMessage summary field for traceability.
+8. When sending a message about a specific task, include its short display label like #<displayId> in your SendMessage summary field for traceability.
 9. Review workflow clarity (IMPORTANT):
    - The work task (e.g. #1) is the thing that must end up APPROVED after review.
    - If you are reviewing work for task #X, run review_approve/review_request_changes on #X (the work task).
@@ -501,7 +505,7 @@ function buildProcessRegistrationProtocol(teamName: string): string {
    { teamName: "${teamName}", pid: <PID>, label: "<description>", from: "<your-name>", port?: <PORT>, url?: "http://localhost:<PORT>", command?: "<command>" }
 3. VERIFY registration succeeded (MANDATORY — never skip this step) using MCP tool process_list:
    { teamName: "${teamName}" }
-4. When stopping a process, use MCP tool process_unregister:
+4. When stopping a process, use MCP tool process_stop:
    { teamName: "${teamName}", pid: <PID> }
 If verification in step 3 fails or the process is missing from the list, re-register it.`);
 }
@@ -703,9 +707,13 @@ function buildMemberTaskSnapshot(memberName: string, tasks: TeamTask[]): string 
   const lines = activeTasks.map((t) => {
     const desc = t.description ? ` — ${t.description.slice(0, 120)}` : '';
     const deps = t.blockedBy?.length
-      ? ` [blocked by: ${t.blockedBy.map((id) => '#' + id).join(', ')}]`
+      ? ` [blocked by: ${t.blockedBy
+          .map((id) => tasks.find((candidate) => candidate.id === id))
+          .filter((task): task is TeamTask => Boolean(task))
+          .map((task) => formatTaskDisplayLabel(task))
+          .join(', ')}]`
       : '';
-    return `  - #${t.id} [${t.status}] ${t.subject}${deps}${desc}`;
+    return `  - ${formatTaskDisplayLabel(t)} (taskId: ${t.id}) [${t.status}] ${t.subject}${deps}${desc}`;
   });
   return `\nYour pending tasks from last session (RESUME these immediately):\n${lines.join('\n')}\n`;
 }
@@ -721,9 +729,13 @@ function buildTaskBoardSnapshot(tasks: TeamTask[]): string {
     const owner = t.owner ? ` (owner: ${t.owner})` : ' (unassigned)';
     const desc = t.description ? ` — ${t.description.slice(0, 120)}` : '';
     const deps = t.blockedBy?.length
-      ? ` [blocked by: ${t.blockedBy.map((id) => '#' + id).join(', ')}]`
+      ? ` [blocked by: ${t.blockedBy
+          .map((id) => tasks.find((candidate) => candidate.id === id))
+          .filter((task): task is TeamTask => Boolean(task))
+          .map((task) => formatTaskDisplayLabel(task))
+          .join(', ')}]`
       : '';
-    return `  - #${t.id} [${t.status}]${owner} ${t.subject}${deps}${desc}`;
+    return `  - ${formatTaskDisplayLabel(t)} (taskId: ${t.id}) [${t.status}]${owner} ${t.subject}${deps}${desc}`;
   });
   return `\nCurrent task board (pending/in_progress):\n${lines.join('\n')}\n`;
 }
@@ -1822,7 +1834,6 @@ export class TeamProvisioningService {
         '--verbose',
         '--setting-sources',
         'user,project,local',
-        '--strict-mcp-config',
         '--mcp-config',
         mcpConfigPath,
         '--disallowedTools',
@@ -2154,7 +2165,6 @@ export class TeamProvisioningService {
         '--verbose',
         '--setting-sources',
         'user,project,local',
-        '--strict-mcp-config',
         '--mcp-config',
         mcpConfigPath,
         '--disallowedTools',

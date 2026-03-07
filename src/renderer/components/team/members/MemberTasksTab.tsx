@@ -6,6 +6,7 @@ import {
   TASK_STATUS_LABELS,
   TASK_STATUS_STYLES,
 } from '@renderer/utils/memberHelpers';
+import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 
 import type { TeamTaskWithKanban } from '@shared/types';
 
@@ -58,7 +59,7 @@ export const MemberTasksTab = ({ tasks, onTaskClick }: MemberTasksTabProps): Rea
               onClick={() => onTaskClick?.(task)}
             >
               <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px] font-normal">
-                #{task.id}
+                {formatTaskDisplayLabel(task)}
               </Badge>
               <span className="min-w-0 flex-1 truncate text-sm text-[var(--color-text)]">
                 {task.subject}

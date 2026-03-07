@@ -92,6 +92,8 @@ export interface TaskComment {
 // Adding a field here without mapping it there will cause a compile error.
 export interface TeamTask {
   id: string;
+  /** Human-friendly short task label shown in UI. Canonical identity remains `id`. */
+  displayId?: string;
   subject: string;
   description?: string;
   activeForm?: string;

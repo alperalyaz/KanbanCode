@@ -3,6 +3,7 @@ import { readFileUtf8WithTimeout } from '@main/utils/fsRead';
 import {
   encodePath,
   extractBaseDir,
+  getClaudeBasePath,
   getProjectsBasePath,
   getTasksBasePath,
   getTeamsBasePath,
@@ -16,8 +17,10 @@ import {
 } from '@shared/constants/agentBlocks';
 import { getMemberColor } from '@shared/constants/memberColors';
 import { createLogger } from '@shared/utils/logger';
+import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { parseNumericSuffixName } from '@shared/utils/teamMemberName';
 import { extractToolPreview, formatToolSummaryFromCalls } from '@shared/utils/toolSummary';
+import * as agentTeamsControllerModule from 'agent-teams-controller';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -61,6 +64,9 @@ import type {
   ToolCallMeta,
   UpdateKanbanPatch,
 } from '@shared/types';
+import type { AgentTeamsController } from 'agent-teams-controller';
+
+const { createController } = agentTeamsControllerModule;
 
 const logger = createLogger('Service:TeamDataService');
 
@@ -86,8 +92,21 @@ export class TeamDataService {
     private readonly kanbanManager: TeamKanbanManager = new TeamKanbanManager(),
     _legacyToolsInstaller: unknown = null,
     private readonly membersMetaStore: TeamMembersMetaStore = new TeamMembersMetaStore(),
-    private readonly sentMessagesStore: TeamSentMessagesStore = new TeamSentMessagesStore()
+    private readonly sentMessagesStore: TeamSentMessagesStore = new TeamSentMessagesStore(),
+    private readonly controllerFactory: (teamName: string) => AgentTeamsController = (teamName) =>
+      createController({
+        teamName,
+        claudeDir: getClaudeBasePath(),
+      })
   ) {}
+
+  private getController(teamName: string): AgentTeamsController {
+    return this.controllerFactory(teamName);
+  }
+
+  private getTaskLabel(task: Pick<TeamTask, 'id' | 'displayId'>): string {
+    return formatTaskDisplayLabel(task);
+  }
 
   async listTeams(): Promise<TeamSummary[]> {
     return this.configReader.listTeams();
@@ -508,42 +527,7 @@ export class TeamDataService {
   private async processHealthTick(): Promise<void> {
     for (const teamName of this.processHealthTeams) {
       try {
-        const processesPath = path.join(getTeamsBasePath(), teamName, 'processes.json');
-        let raw: unknown[];
-        try {
-          const stat = await fs.promises.stat(processesPath);
-          if (!stat.isFile() || stat.size > MAX_PROCESSES_FILE_BYTES) {
-            continue;
-          }
-          const content = await readFileUtf8WithTimeout(processesPath, 5_000);
-          const parsed: unknown = JSON.parse(content);
-          raw = Array.isArray(parsed) ? (parsed as unknown[]) : [];
-        } catch {
-          continue;
-        }
-
-        const processes = raw.filter(
-          (p): p is TeamProcess =>
-            !!p &&
-            typeof p === 'object' &&
-            'pid' in p &&
-            typeof (p as TeamProcess).pid === 'number' &&
-            (p as TeamProcess).pid > 0
-        );
-
-        let dirty = false;
-        for (const proc of processes) {
-          if (!proc.stoppedAt && !isProcessAlive(proc.pid)) {
-            proc.stoppedAt = new Date().toISOString();
-            dirty = true;
-          }
-        }
-
-        if (dirty) {
-          await atomicWriteAsync(processesPath, JSON.stringify(processes, null, 2));
-          // atomicWrite triggers FileWatcher → team-change 'process' → UI refresh
-          // No need to emit manually — FileWatcher handles it.
-        }
+        this.getController(teamName).processes.listProcesses();
       } catch {
         // best-effort per team
       }
@@ -551,54 +535,13 @@ export class TeamDataService {
   }
 
   private async readProcesses(teamName: string): Promise<TeamProcess[]> {
-    const processesPath = path.join(getTeamsBasePath(), teamName, 'processes.json');
-    let raw: unknown[];
-    try {
-      const stat = await fs.promises.stat(processesPath);
-      if (!stat.isFile() || stat.size > MAX_PROCESSES_FILE_BYTES) {
-        return [];
-      }
-      const content = await readFileUtf8WithTimeout(processesPath, 5_000);
-      const parsed: unknown = JSON.parse(content);
-      raw = Array.isArray(parsed) ? (parsed as unknown[]) : [];
-    } catch {
-      return [];
-    }
-
-    const processes = raw.filter(
-      (p): p is TeamProcess =>
-        !!p &&
-        typeof p === 'object' &&
-        'pid' in p &&
-        typeof (p as TeamProcess).pid === 'number' &&
-        (p as TeamProcess).pid > 0
-    );
-
-    let dirty = false;
-    for (const proc of processes) {
-      if (!proc.stoppedAt && !isProcessAlive(proc.pid)) {
-        proc.stoppedAt = new Date().toISOString();
-        dirty = true;
-      }
-    }
-
-    if (dirty) {
-      try {
-        await atomicWriteAsync(processesPath, JSON.stringify(processes, null, 2));
-      } catch {
-        // best-effort write-back
-      }
-    }
-
-    return processes;
+    return this.getController(teamName).processes.listProcesses() as TeamProcess[];
   }
 
   /**
    * Kill a registered CLI process by PID (SIGTERM) and mark it as stopped in processes.json.
    */
   async killProcess(teamName: string, pid: number): Promise<void> {
-    const processesPath = path.join(getTeamsBasePath(), teamName, 'processes.json');
-
     // Try to kill the process (cross-platform: SIGTERM on Unix, taskkill on Windows)
     try {
       killProcessByPid(pid);
@@ -613,32 +556,10 @@ export class TeamDataService {
       }
     }
 
-    // Update processes.json to set stoppedAt
-    let raw: unknown[];
     try {
-      const content = await readFileUtf8WithTimeout(processesPath, 5_000);
-      const parsed: unknown = JSON.parse(content);
-      raw = Array.isArray(parsed) ? (parsed as unknown[]) : [];
+      this.getController(teamName).processes.stopProcess({ pid });
     } catch {
-      return; // No processes file — nothing to update
-    }
-
-    let dirty = false;
-    for (const entry of raw) {
-      if (
-        entry &&
-        typeof entry === 'object' &&
-        'pid' in entry &&
-        (entry as TeamProcess).pid === pid &&
-        !(entry as TeamProcess).stoppedAt
-      ) {
-        (entry as TeamProcess).stoppedAt = new Date().toISOString();
-        dirty = true;
-      }
-    }
-
-    if (dirty) {
-      await atomicWriteAsync(processesPath, JSON.stringify(raw, null, 2));
+      // Ignore missing persisted registry rows after OS-level stop.
     }
   }
 
@@ -840,20 +761,9 @@ export class TeamDataService {
   }
 
   async createTask(teamName: string, request: CreateTaskRequest): Promise<TeamTask> {
-    const nextId = await this.taskReader.getNextTaskId(teamName);
-
+    const controller = this.getController(teamName);
     const blockedBy = request.blockedBy?.filter((id) => id.length > 0) ?? [];
-    const related = request.related?.filter((id) => id.length > 0 && id !== nextId) ?? [];
-
-    let description = request.description
-      ? `${request.subject}\n\n${request.description}`
-      : request.subject;
-
-    if (request.prompt?.trim()) {
-      description = description
-        ? `${description}\n\n---\nPrompt: ${request.prompt.trim()}`
-        : `Prompt: ${request.prompt.trim()}`;
-    }
+    const related = request.related?.filter((id) => id.length > 0) ?? [];
 
     let projectPath: string | undefined;
     try {
@@ -864,26 +774,16 @@ export class TeamDataService {
     }
 
     const shouldStart = request.owner && request.startImmediately !== false;
-
-    const task: TeamTask = {
-      id: nextId,
+    const task = controller.tasks.createTask({
       subject: request.subject,
-      description,
-      owner: request.owner,
+      ...(request.description?.trim() ? { description: request.description.trim() } : {}),
+      ...(request.owner ? { owner: request.owner } : {}),
+      ...(blockedBy.length > 0 ? { blockedBy } : {}),
+      ...(related.length > 0 ? { related } : {}),
+      ...(projectPath ? { projectPath } : {}),
       createdBy: 'user',
-      status: shouldStart ? 'in_progress' : 'pending',
-      blocks: [],
-      blockedBy,
-      related: related.length > 0 ? related : undefined,
-      projectPath,
-    };
-
-    await this.taskWriter.createTask(teamName, task);
-
-    // Update blocks[] on each referenced task so the reverse link exists
-    for (const depId of blockedBy) {
-      await this.taskWriter.addBlocksEntry(teamName, depId, nextId);
-    }
+      ...(shouldStart ? { status: 'in_progress' } : { status: 'pending' }),
+    }) as TeamTask;
 
     if (shouldStart && request.owner) {
       try {
@@ -893,7 +793,7 @@ export class TeamDataService {
         if (!this.isLeadOwner(request.owner, leadName)) {
           // Build notification with full context — inbox is the primary delivery
           // channel to agents (Claude Code monitors inbox via fs.watch)
-          const parts = [`New task assigned to you: #${task.id} "${task.subject}".`];
+          const parts = [`New task assigned to you: ${this.getTaskLabel(task)} "${task.subject}".`];
 
           if (request.description?.trim()) {
             parts.push(`\nDescription:\n${request.description.trim()}`);
@@ -915,7 +815,7 @@ export class TeamDataService {
             member: request.owner,
             from: leadName,
             text: parts.join('\n'),
-            summary: `New task #${task.id} assigned`,
+            summary: `New task ${this.getTaskLabel(task)} assigned`,
             source: 'system_notification',
           });
         }
@@ -937,7 +837,7 @@ export class TeamDataService {
       throw new Error(`Task #${taskId} is not pending (current: ${task.status})`);
     }
 
-    await this.taskWriter.updateStatus(teamName, taskId, 'in_progress', 'user');
+    this.getController(teamName).tasks.startTask(taskId, 'user');
 
     if (task.owner) {
       try {
@@ -945,7 +845,7 @@ export class TeamDataService {
 
         // Skip inbox notification when lead starts their own task (solo teams)
         if (!this.isLeadOwner(task.owner, leadName)) {
-          const parts = [`Task #${task.id} "${task.subject}" has been started.`];
+          const parts = [`Task ${this.getTaskLabel(task)} "${task.subject}" has been started.`];
           if (task.description?.trim()) {
             parts.push(`\nDetails:\n${task.description.trim()}`);
           }
@@ -959,7 +859,7 @@ export class TeamDataService {
             member: task.owner,
             from: leadName,
             text: parts.join('\n'),
-            summary: `Task #${task.id} started`,
+            summary: `Task ${this.getTaskLabel(task)} started`,
             source: 'system_notification',
           });
         }
@@ -977,7 +877,7 @@ export class TeamDataService {
     status: TeamTaskStatus,
     actor?: string
   ): Promise<void> {
-    await this.taskWriter.updateStatus(teamName, taskId, status, actor);
+    this.getController(teamName).tasks.setTaskStatus(taskId, status, actor);
   }
 
   /**
@@ -1014,8 +914,8 @@ export class TeamDataService {
       await this.sendMessage(teamName, {
         member: leadName,
         from: last.actor,
-        text: `Task #${task.id} "${task.subject}" has been started by ${last.actor}.`,
-        summary: `Task #${task.id} started`,
+        text: `Task ${this.getTaskLabel(task)} "${task.subject}" has been started by ${last.actor}.`,
+        summary: `Task ${this.getTaskLabel(task)} started`,
         source: 'system_notification',
       });
     } catch (error) {
@@ -1024,11 +924,11 @@ export class TeamDataService {
   }
 
   async softDeleteTask(teamName: string, taskId: string): Promise<void> {
-    await this.taskWriter.softDelete(teamName, taskId, 'user');
+    this.getController(teamName).tasks.softDeleteTask(taskId, 'user');
   }
 
   async restoreTask(teamName: string, taskId: string): Promise<void> {
-    await this.taskWriter.restoreTask(teamName, taskId, 'user');
+    this.getController(teamName).tasks.restoreTask(taskId, 'user');
   }
 
   async getDeletedTasks(teamName: string): Promise<TeamTask[]> {
@@ -1036,7 +936,7 @@ export class TeamDataService {
   }
 
   async updateTaskOwner(teamName: string, taskId: string, owner: string | null): Promise<void> {
-    await this.taskWriter.updateOwner(teamName, taskId, owner);
+    this.getController(teamName).tasks.setTaskOwner(taskId, owner);
   }
 
   async updateTaskFields(
@@ -1044,7 +944,7 @@ export class TeamDataService {
     taskId: string,
     fields: { subject?: string; description?: string }
   ): Promise<void> {
-    await this.taskWriter.updateFields(teamName, taskId, fields);
+    this.getController(teamName).tasks.updateTaskFields(taskId, fields);
   }
 
   async addTaskAttachment(
@@ -1052,7 +952,10 @@ export class TeamDataService {
     taskId: string,
     meta: TaskAttachmentMeta
   ): Promise<void> {
-    await this.taskWriter.addAttachment(teamName, taskId, meta);
+    this.getController(teamName).tasks.addTaskAttachmentMeta(
+      taskId,
+      meta as unknown as Record<string, unknown>
+    );
   }
 
   async removeTaskAttachment(
@@ -1060,7 +963,7 @@ export class TeamDataService {
     taskId: string,
     attachmentId: string
   ): Promise<void> {
-    await this.taskWriter.removeAttachment(teamName, taskId, attachmentId);
+    this.getController(teamName).tasks.removeTaskAttachment(taskId, attachmentId);
   }
 
   async setTaskNeedsClarification(
@@ -1068,7 +971,7 @@ export class TeamDataService {
     taskId: string,
     value: 'lead' | 'user' | null
   ): Promise<void> {
-    await this.taskWriter.setNeedsClarification(teamName, taskId, value);
+    this.getController(teamName).tasks.setNeedsClarification(taskId, value);
   }
 
   async addTaskRelationship(
@@ -1077,7 +980,11 @@ export class TeamDataService {
     targetId: string,
     type: 'blockedBy' | 'blocks' | 'related'
   ): Promise<void> {
-    await this.taskWriter.addRelationship(teamName, taskId, targetId, type);
+    this.getController(teamName).tasks.linkTask(
+      taskId,
+      targetId,
+      type === 'blockedBy' ? 'blocked-by' : type
+    );
   }
 
   async removeTaskRelationship(
@@ -1086,7 +993,11 @@ export class TeamDataService {
     targetId: string,
     type: 'blockedBy' | 'blocks' | 'related'
   ): Promise<void> {
-    await this.taskWriter.removeRelationship(teamName, taskId, targetId, type);
+    this.getController(teamName).tasks.unlinkTask(
+      taskId,
+      targetId,
+      type === 'blockedBy' ? 'blocked-by' : type
+    );
   }
 
   async addTaskComment(
@@ -1095,28 +1006,40 @@ export class TeamDataService {
     text: string,
     attachments?: TaskAttachmentMeta[]
   ): Promise<TaskComment> {
-    const comment = await this.taskWriter.addComment(teamName, taskId, text, {
+    const controller = this.getController(teamName);
+    const addResult = controller.tasks.addTaskComment(taskId, {
+      text,
       attachments,
-    });
+    }) as { task?: TeamTask; comment?: TaskComment };
+    const comment =
+      addResult.comment ??
+      ({
+        id: randomUUID(),
+        author: 'user',
+        text,
+        createdAt: new Date().toISOString(),
+        type: 'regular',
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
+      } as TaskComment);
 
     try {
       const [tasks, config] = await Promise.all([
         this.taskReader.getTasks(teamName),
         this.configReader.getConfig(teamName).catch(() => null),
       ]);
-      const task = tasks.find((t) => t.id === taskId);
+      const task = addResult.task ?? tasks.find((t) => t.id === taskId);
       const leadName = this.resolveLeadNameFromConfig(config);
       const owner = task?.owner?.trim() || null;
       // Auto-clear needsClarification: "user" on UI comment
       // UI comments always have author "user" (TeamTaskWriter default)
       if (task?.needsClarification === 'user') {
-        await this.taskWriter.setNeedsClarification(teamName, taskId, null);
+        controller.tasks.setNeedsClarification(taskId, null);
       }
 
       if (task && owner && !this.isLeadOwner(owner, leadName)) {
         // Notify non-lead task owner via inbox (lead → member message)
         const parts = [
-          `Comment on task #${taskId} "${task.subject}":\n\n${text}`,
+          `Comment on task ${this.getTaskLabel(task)} "${task.subject}":\n\n${text}`,
           `\n${AGENT_BLOCK_OPEN}`,
           `Reply to this comment using MCP tool task_add_comment:`,
           `{ teamName: "${teamName}", taskId: "${taskId}", text: "<your reply>", from: "<your-name>" }`,
@@ -1126,14 +1049,14 @@ export class TeamDataService {
           member: owner,
           from: leadName,
           text: parts.join('\n'),
-          summary: `Comment on #${taskId}`,
+          summary: `Comment on ${this.getTaskLabel(task)}`,
           source: 'system_notification',
         });
       } else if (task && owner && this.isLeadOwner(owner, leadName)) {
         // Notify lead about user's comment on their own task.
         // Write to lead's inbox — relay delivers to stdin when process is alive.
         const parts = [
-          `New comment from user on your task #${taskId} "${task.subject}":\n\n${text}`,
+          `New comment from user on your task ${this.getTaskLabel(task)} "${task.subject}":\n\n${text}`,
           `\n${AGENT_BLOCK_OPEN}`,
           `Reply to this comment using MCP tool task_add_comment:`,
           `{ teamName: "${teamName}", taskId: "${taskId}", text: "<your reply>", from: "${leadName}" }`,
@@ -1143,7 +1066,7 @@ export class TeamDataService {
           member: leadName,
           from: 'user',
           text: parts.join('\n'),
-          summary: `Comment on #${taskId}`,
+          summary: `Comment on ${this.getTaskLabel(task)}`,
           source: 'system_notification',
         });
       }
@@ -1252,7 +1175,16 @@ export class TeamDataService {
   }
 
   async requestReview(teamName: string, taskId: string): Promise<void> {
-    await this.kanbanManager.updateTask(teamName, taskId, { op: 'set_column', column: 'review' });
+    const tasks = await this.taskReader.getTasks(teamName);
+    const task = tasks.find((candidate) => candidate.id === taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    if (task.status !== 'completed') {
+      throw new Error(`Task ${this.getTaskLabel(task)} must be completed before review`);
+    }
+
+    this.getController(teamName).kanban.setKanbanColumn(taskId, 'review');
 
     const state = await this.kanbanManager.getState(teamName);
     const reviewer = state.reviewers[0];
@@ -1266,20 +1198,18 @@ export class TeamDataService {
         member: reviewer,
         from: leadName,
         text:
-          `Please review task #${taskId}.\n\n` +
+          `Please review task ${this.getTaskLabel(task)}.\n\n` +
           `${AGENT_BLOCK_OPEN}\n` +
           `When approved, use MCP tool review_approve:\n` +
           `{ teamName: "${teamName}", taskId: "${taskId}", notifyOwner: true }\n\n` +
           `If changes are needed, use MCP tool review_request_changes:\n` +
           `{ teamName: "${teamName}", taskId: "${taskId}", comment: "..." }\n` +
           AGENT_BLOCK_CLOSE,
-        summary: `Review request for #${taskId}`,
+        summary: `Review request for ${this.getTaskLabel(task)}`,
         source: 'system_notification',
       });
     } catch (error) {
-      await this.kanbanManager
-        .updateTask(teamName, taskId, { op: 'remove' })
-        .catch(() => undefined);
+      this.getController(teamName).kanban.clearKanban(taskId);
       throw error;
     }
   }
@@ -1347,12 +1277,15 @@ export class TeamDataService {
     tasks: TeamTask[],
     messages: InboxMessage[]
   ): Promise<boolean> {
-    const TASK_ID_PATTERN = /#(\d+)/g;
+    const TASK_ID_PATTERN = /#([A-Za-z0-9-]+)/g;
     let synced = false;
 
     const tasksById = new Map<string, TeamTask>();
     for (const t of tasks) {
       tasksById.set(t.id, t);
+      if (t.displayId) {
+        tasksById.set(t.displayId, t);
+      }
     }
 
     // Dedup broadcasts: same sender + same text → process only once
@@ -1360,7 +1293,7 @@ export class TeamDataService {
 
     function isAutomatedCommentNotification(msg: InboxMessage): boolean {
       const summary = typeof msg.summary === 'string' ? msg.summary : '';
-      if (!/^Comment on #\d+/.test(summary)) return false;
+      if (!/^Comment on #[A-Za-z0-9-]+/.test(summary)) return false;
       const text = typeof msg.text === 'string' ? msg.text : '';
       if (!text) return false;
       // These are system-generated inbox messages that already correspond to a real task comment.
@@ -1396,7 +1329,7 @@ export class TeamDataService {
         if (existing.some((c) => c.id === commentId)) continue;
 
         try {
-          await this.taskWriter.addComment(teamName, taskId, msg.text, {
+          await this.taskWriter.addComment(teamName, task.id, msg.text, {
             id: commentId,
             author: msg.from,
             createdAt: msg.timestamp,
@@ -1569,74 +1502,32 @@ export class TeamDataService {
   }
 
   async updateKanban(teamName: string, taskId: string, patch: UpdateKanbanPatch): Promise<void> {
-    if (patch.op !== 'request_changes') {
-      // Keep kanban + task.status consistent:
-      // - moving a task into kanban review/approved implies the work is complete
-      // - request_changes already moves it back to in_progress and clears kanban entry
-      if (patch.op !== 'set_column') {
-        await this.kanbanManager.updateTask(teamName, taskId, patch);
-        return;
-      }
+    const controller = this.getController(teamName);
 
-      const previousState = await this.kanbanManager.getState(teamName);
-      const previousKanbanEntry: KanbanTaskState | undefined = previousState.tasks[taskId];
+    if (patch.op === 'remove') {
+      controller.kanban.clearKanban(taskId);
+      return;
+    }
 
-      await this.kanbanManager.updateTask(teamName, taskId, patch);
-
-      try {
-        await this.taskWriter.updateStatus(teamName, taskId, 'completed', 'user');
-      } catch (error) {
-        // Best-effort rollback of kanban move if task status update failed.
-        if (previousKanbanEntry) {
-          await this.kanbanManager
-            .updateTask(teamName, taskId, { op: 'set_column', column: previousKanbanEntry.column })
-            .catch(() => undefined);
-        } else {
-          await this.kanbanManager
-            .updateTask(teamName, taskId, { op: 'remove' })
-            .catch(() => undefined);
-        }
-        throw error;
+    if (patch.op === 'set_column') {
+      if (patch.column === 'review') {
+        controller.kanban.setKanbanColumn(taskId, 'review');
+      } else {
+        const leadName = await this.resolveLeadName(teamName);
+        controller.review.approveReview(taskId, {
+          from: leadName,
+          note: 'Approved from kanban',
+          'notify-owner': true,
+        });
       }
       return;
     }
 
-    const tasks = await this.taskReader.getTasks(teamName);
-    const task = tasks.find((candidate) => candidate.id === taskId);
-    if (!task?.owner) {
-      throw new Error(`No owner found for task ${taskId}`);
-    }
-
-    const previousStatus: TeamTaskStatus = task.status;
-    const previousState = await this.kanbanManager.getState(teamName);
-    const previousKanbanEntry: KanbanTaskState | undefined = previousState.tasks[taskId];
-
-    await this.kanbanManager.updateTask(teamName, taskId, { op: 'remove' });
-
-    try {
-      await this.taskWriter.updateStatus(teamName, taskId, 'in_progress', 'reviewer');
-      const leadName = await this.resolveLeadName(teamName);
-      await this.sendMessage(teamName, {
-        member: task.owner,
-        from: leadName,
-        text:
-          `Task #${taskId} needs fixes.\n\n` +
-          `${patch.comment?.trim() || 'Reviewer requested changes.'}\n\n` +
-          `Please fix and mark it as completed when ready.`,
-        summary: `Fix request for #${taskId}`,
-        source: 'system_notification',
-      });
-    } catch (error) {
-      await this.taskWriter
-        .updateStatus(teamName, taskId, previousStatus, 'system')
-        .catch(() => undefined);
-      if (previousKanbanEntry) {
-        await this.kanbanManager
-          .updateTask(teamName, taskId, { op: 'set_column', column: previousKanbanEntry.column })
-          .catch(() => undefined);
-      }
-      throw error;
-    }
+    const leadName = await this.resolveLeadName(teamName);
+    controller.review.requestChanges(taskId, {
+      from: leadName,
+      comment: patch.comment?.trim() || 'Reviewer requested changes.',
+    });
   }
 
   async updateKanbanColumnOrder(
@@ -1644,6 +1535,6 @@ export class TeamDataService {
     columnId: KanbanColumnId,
     orderedTaskIds: string[]
   ): Promise<void> {
-    await this.kanbanManager.updateColumnOrder(teamName, columnId, orderedTaskIds);
+    this.getController(teamName).kanban.updateColumnOrder(columnId, orderedTaskIds);
   }
 }

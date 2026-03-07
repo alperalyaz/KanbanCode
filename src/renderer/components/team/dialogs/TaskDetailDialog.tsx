@@ -22,6 +22,7 @@ import { Textarea } from '@renderer/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { markAsRead } from '@renderer/services/commentReadStorage';
 import { useStore } from '@renderer/store';
+import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { isImageMimeType } from '@renderer/utils/attachmentUtils';
 import {
   buildMemberColorMap,
@@ -755,10 +756,14 @@ export const TaskDetailDialog = ({
                           ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
                           : 'bg-yellow-500/15 text-yellow-300 hover:bg-yellow-500/25'
                       } cursor-pointer`}
-                      title={depTask ? `#${id}: ${depTask.subject}` : `#${id}`}
+                      title={
+                        depTask
+                          ? `${formatTaskDisplayLabel(depTask)}: ${depTask.subject}`
+                          : `#${deriveTaskDisplayId(id)}`
+                      }
                       onClick={() => handleDependencyClick(id)}
                     >
-                      #{id}
+                      {depTask ? formatTaskDisplayLabel(depTask) : `#${deriveTaskDisplayId(id)}`}
                     </button>
                   );
                 })}
@@ -783,10 +788,14 @@ export const TaskDetailDialog = ({
                           ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
                           : 'bg-blue-500/15 text-blue-400 hover:bg-blue-500/25'
                       } cursor-pointer`}
-                      title={depTask ? `#${id}: ${depTask.subject}` : `#${id}`}
+                      title={
+                        depTask
+                          ? `${formatTaskDisplayLabel(depTask)}: ${depTask.subject}`
+                          : `#${deriveTaskDisplayId(id)}`
+                      }
                       onClick={() => handleDependencyClick(id)}
                     >
-                      #{id}
+                      {depTask ? formatTaskDisplayLabel(depTask) : `#${deriveTaskDisplayId(id)}`}
                     </button>
                   );
                 })}
@@ -811,10 +820,16 @@ export const TaskDetailDialog = ({
                           key={`related:${currentTask.id}:${id}`}
                           type="button"
                           className="inline-flex items-center rounded bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-medium text-purple-300 transition-colors hover:bg-purple-500/25"
-                          title={depTask ? `#${id}: ${depTask.subject}` : `#${id}`}
+                          title={
+                            depTask
+                              ? `${formatTaskDisplayLabel(depTask)}: ${depTask.subject}`
+                              : `#${deriveTaskDisplayId(id)}`
+                          }
                           onClick={() => handleDependencyClick(id)}
                         >
-                          #{id}
+                          {depTask
+                            ? formatTaskDisplayLabel(depTask)
+                            : `#${deriveTaskDisplayId(id)}`}
                         </button>
                       );
                     })}
@@ -831,10 +846,16 @@ export const TaskDetailDialog = ({
                           key={`related-by:${currentTask.id}:${id}`}
                           type="button"
                           className="inline-flex items-center rounded bg-fuchsia-500/15 px-1.5 py-0.5 text-[10px] font-medium text-fuchsia-300 transition-colors hover:bg-fuchsia-500/25"
-                          title={depTask ? `#${id}: ${depTask.subject}` : `#${id}`}
+                          title={
+                            depTask
+                              ? `${formatTaskDisplayLabel(depTask)}: ${depTask.subject}`
+                              : `#${deriveTaskDisplayId(id)}`
+                          }
                           onClick={() => handleDependencyClick(id)}
                         >
-                          #{id}
+                          {depTask
+                            ? formatTaskDisplayLabel(depTask)
+                            : `#${deriveTaskDisplayId(id)}`}
                         </button>
                       );
                     })}

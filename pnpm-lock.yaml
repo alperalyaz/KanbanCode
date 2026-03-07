@@ -143,6 +143,9 @@ importers:
       '@xterm/xterm':
         specifier: ^6.0.0
         version: 6.0.0
+      agent-teams-controller:
+        specifier: workspace:*
+        version: link:agent-teams-controller
       chokidar:
         specifier: ^4.0.3
         version: 4.0.3

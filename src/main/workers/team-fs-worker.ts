@@ -29,6 +29,15 @@ type WorkerResponse =
   | { id: string; ok: true; result: unknown; diag?: unknown }
   | { id: string; ok: false; error: string };
 
+const UUID_TASK_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function deriveTaskDisplayId(taskId: string): string {
+  const normalized = taskId.trim();
+  if (!normalized) return normalized;
+  return UUID_TASK_ID_PATTERN.test(normalized) ? normalized.slice(0, 8).toLowerCase() : normalized;
+}
+
 // ---------------------------------------------------------------------------
 // Diagnostic types
 // ---------------------------------------------------------------------------
@@ -93,6 +102,7 @@ interface RawMember {
 
 interface ParsedTask {
   id?: unknown;
+  displayId?: unknown;
   subject?: unknown;
   title?: unknown;
   description?: unknown;
@@ -593,6 +603,14 @@ async function readTasksDirForTeam(
 
       tasks.push({
         id: typeof parsed.id === 'string' || typeof parsed.id === 'number' ? String(parsed.id) : '',
+        displayId:
+          typeof parsed.displayId === 'string' && parsed.displayId.trim().length > 0
+            ? parsed.displayId.trim()
+            : deriveTaskDisplayId(
+                typeof parsed.id === 'string' || typeof parsed.id === 'number'
+                  ? String(parsed.id)
+                  : ''
+              ),
         subject,
         description: typeof parsed.description === 'string' ? parsed.description : undefined,
         activeForm: typeof parsed.activeForm === 'string' ? parsed.activeForm : undefined,

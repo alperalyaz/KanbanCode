@@ -30,6 +30,7 @@ import { resolveProjectIdByPath } from '@renderer/utils/projectLookup';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
+import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import {
   AlertTriangle,
   Bell,
@@ -114,12 +115,13 @@ interface TimeWindow {
 function filterKanbanTasks(tasks: TeamTaskWithKanban[], query: string): TeamTaskWithKanban[] {
   if (query.startsWith('#')) {
     const id = query.slice(1);
-    return tasks.filter((t) => t.id === id);
+    return tasks.filter((t) => t.id === id || t.displayId === id);
   }
   const lower = query.toLowerCase();
   return tasks.filter(
     (t) =>
       t.id.toLowerCase().includes(lower) ||
+      (t.displayId?.toLowerCase().includes(lower) ?? false) ||
       t.subject.toLowerCase().includes(lower) ||
       (t.owner?.toLowerCase().includes(lower) ?? false)
   );
@@ -770,7 +772,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
       void (async () => {
         const confirmed = await confirm({
           title: 'Delete task',
-          message: `Move task #${taskId} to trash?`,
+          message: `Move task #${deriveTaskDisplayId(taskId)} to trash?`,
           confirmLabel: 'Delete',
           cancelLabel: 'Cancel',
           variant: 'danger',
@@ -1307,7 +1309,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                         if (result.notifiedOwner && task?.owner) {
                           await api.teams.processSend(
                             teamName,
-                            `Task #${taskId} "${task.subject}" has started. Please begin working on it.`
+                            `Task ${formatTaskDisplayLabel(task)} "${task.subject}" has started. Please begin working on it.`
                           );
                         } else if (!result.notifiedOwner) {
                           const desc = task?.description?.trim()
@@ -1315,7 +1317,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                             : '';
                           await api.teams.processSend(
                             teamName,
-                            `Task #${taskId} "${task?.subject ?? ''}" has been moved to IN PROGRESS but has no assignee.${desc}\nPlease assign it to an available team member, or take it yourself if everyone is busy.`
+                            `Task #${deriveTaskDisplayId(taskId)} "${task?.subject ?? ''}" has been moved to IN PROGRESS but has no assignee.${desc}\nPlease assign it to an available team member, or take it yourself if everyone is busy.`
                           );
                         }
                       } catch {
@@ -1347,8 +1349,8 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                       try {
                         await api.teams.sendMessage(teamName, {
                           member: task.owner,
-                          text: `Task #${taskId} "${task.subject}" has been CANCELLED by the user and moved back to TODO. Stop working on it immediately.`,
-                          summary: `Task #${taskId} cancelled`,
+                          text: `Task ${formatTaskDisplayLabel(task)} "${task.subject}" has been CANCELLED by the user and moved back to TODO. Stop working on it immediately.`,
+                          summary: `Task ${formatTaskDisplayLabel(task)} cancelled`,
                         });
                       } catch {
                         // best-effort
@@ -1363,7 +1365,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                           : '';
                         await api.teams.processSend(
                           teamName,
-                          `Task #${taskId} "${task?.subject ?? ''}" has been cancelled and moved back to TODO.${ownerSuffix}`
+                          `Task #${deriveTaskDisplayId(taskId)} "${task?.subject ?? ''}" has been cancelled and moved back to TODO.${ownerSuffix}`
                         );
                       } catch {
                         // best-effort
@@ -1582,7 +1584,9 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
               onMessageVisible={handleMessageVisible}
               onRestartTeam={() => setLaunchDialogOpen(true)}
               onTaskIdClick={(taskId) => {
-                const task = taskMap.get(taskId);
+                const task =
+                  taskMap.get(taskId) ??
+                  data.tasks.find((candidate) => candidate.displayId === taskId);
                 if (task) setSelectedTask(task);
               }}
             />

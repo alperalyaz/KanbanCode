@@ -3,6 +3,7 @@ import { getTeamColorSet, getThemedBadge } from '@renderer/constants/teamColors'
 import { useTheme } from '@renderer/hooks/useTheme';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { Loader2 } from 'lucide-react';
 
 import type { ResolvedTeamMember, TeamTaskWithKanban } from '@shared/types';
@@ -100,7 +101,7 @@ export const ActiveTasksBlock = ({
                     onClick={() => onTaskClick(task)}
                     title={task.subject}
                   >
-                    #{task.id} {task.subject}
+                    {formatTaskDisplayLabel(task)} {task.subject}
                   </button>
                 ) : (
                   <span
@@ -108,7 +109,7 @@ export const ActiveTasksBlock = ({
                     style={{ border: `1px solid ${colors.border}40` }}
                     title={task.subject}
                   >
-                    #{task.id} {task.subject}
+                    {formatTaskDisplayLabel(task)} {task.subject}
                   </span>
                 ))}
             </div>

@@ -1,16 +1,19 @@
-const legacy = require('../legacy/teamctl.cli.js');
+const kanbanStore = require('./kanbanStore.js');
+const tasks = require('./tasks.js');
 
 function getKanbanState(context) {
-  return legacy.readKanbanState(context.paths, context.teamName);
+  return kanbanStore.readKanbanState(context.paths, context.teamName);
 }
 
 function setKanbanColumn(context, taskId, column) {
-  legacy.setKanbanColumn(context.paths, context.teamName, String(taskId), String(column));
+  const canonicalTaskId = tasks.resolveTaskId(context, taskId);
+  kanbanStore.setKanbanColumn(context.paths, context.teamName, canonicalTaskId, String(column));
   return getKanbanState(context);
 }
 
 function clearKanban(context, taskId) {
-  legacy.clearKanban(context.paths, context.teamName, String(taskId));
+  const canonicalTaskId = tasks.resolveTaskId(context, taskId);
+  kanbanStore.clearKanban(context.paths, context.teamName, canonicalTaskId);
   return getKanbanState(context);
 }
 
@@ -22,7 +25,7 @@ function addReviewer(context, reviewer) {
   const state = getKanbanState(context);
   const next = new Set(state.reviewers);
   next.add(String(reviewer));
-  legacy.writeKanbanState(context.paths, {
+  kanbanStore.writeKanbanState(context.paths, context.teamName, {
     ...state,
     reviewers: [...next],
   });
@@ -32,11 +35,16 @@ function addReviewer(context, reviewer) {
 function removeReviewer(context, reviewer) {
   const state = getKanbanState(context);
   const next = state.reviewers.filter((entry) => entry !== reviewer);
-  legacy.writeKanbanState(context.paths, {
+  kanbanStore.writeKanbanState(context.paths, context.teamName, {
     ...state,
     reviewers: next,
   });
   return listReviewers(context);
+}
+
+function updateColumnOrder(context, columnId, orderedTaskIds) {
+  const canonicalIds = orderedTaskIds.map((taskId) => tasks.resolveTaskId(context, taskId));
+  return kanbanStore.updateColumnOrder(context.paths, context.teamName, columnId, canonicalIds);
 }
 
 module.exports = {
@@ -46,4 +54,5 @@ module.exports = {
   listReviewers,
   addReviewer,
   removeReviewer,
+  updateColumnOrder,
 };

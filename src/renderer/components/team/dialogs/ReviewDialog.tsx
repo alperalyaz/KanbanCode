@@ -15,6 +15,7 @@ import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
 import { useStore } from '@renderer/store';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { deriveTaskDisplayId } from '@shared/utils/taskIdentity';
 
 import type { MentionSuggestion } from '@renderer/types/mention';
 import type { ResolvedTeamMember } from '@shared/types';
@@ -76,7 +77,7 @@ export const ReviewDialog = ({
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle>Request Changes</DialogTitle>
-          <DialogDescription>Task #{taskId}</DialogDescription>
+          <DialogDescription>Task #{taskId ? deriveTaskDisplayId(taskId) : ''}</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-2 py-2">

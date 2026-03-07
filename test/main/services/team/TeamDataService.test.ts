@@ -146,7 +146,7 @@ describe('TeamDataService', () => {
   });
 
   it('includes projectPath from config when creating a task', async () => {
-    const createTaskMock = vi.fn(async () => undefined);
+    const createTaskMock = vi.fn((task) => task);
 
     const service = new TeamDataService(
       {
@@ -176,20 +176,28 @@ describe('TeamDataService', () => {
       {
         getState: vi.fn(async () => ({ teamName: 'my-team', reviewers: [], tasks: {} })),
         garbageCollect: vi.fn(async () => undefined),
-      } as never
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      (teamName: string) =>
+        ({
+          tasks: {
+            createTask: createTaskMock,
+          },
+        }) as never
     );
 
     const result = await service.createTask('my-team', { subject: 'Test' });
 
     expect(result.projectPath).toBe('/Users/dev/my-project');
     expect(createTaskMock).toHaveBeenCalledWith(
-      'my-team',
       expect.objectContaining({ projectPath: '/Users/dev/my-project' })
     );
   });
 
   it('creates task with status pending when startImmediately is false', async () => {
-    const createTaskMock = vi.fn(async () => undefined);
+    const createTaskMock = vi.fn((task) => task);
     const service = new TeamDataService(
       {
         listTeams: vi.fn(),
@@ -214,7 +222,16 @@ describe('TeamDataService', () => {
       {
         getState: vi.fn(async () => ({ teamName: 'my-team', reviewers: [], tasks: {} })),
         garbageCollect: vi.fn(async () => undefined),
-      } as never
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      (teamName: string) =>
+        ({
+          tasks: {
+            createTask: createTaskMock,
+          },
+        }) as never
     );
 
     const result = await service.createTask('my-team', {
@@ -225,13 +242,12 @@ describe('TeamDataService', () => {
 
     expect(result.status).toBe('pending');
     expect(createTaskMock).toHaveBeenCalledWith(
-      'my-team',
       expect.objectContaining({ status: 'pending', owner: 'alice', createdBy: 'user' })
     );
   });
 
   it('persists explicit related task links when creating a task', async () => {
-    const createTaskMock = vi.fn(async () => undefined);
+    const createTaskMock = vi.fn((task) => task);
     const service = new TeamDataService(
       {
         listTeams: vi.fn(),
@@ -256,7 +272,16 @@ describe('TeamDataService', () => {
       {
         getState: vi.fn(async () => ({ teamName: 'my-team', reviewers: [], tasks: {} })),
         garbageCollect: vi.fn(async () => undefined),
-      } as never
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      (teamName: string) =>
+        ({
+          tasks: {
+            createTask: createTaskMock,
+          },
+        }) as never
     );
 
     const result = await service.createTask('my-team', {
@@ -265,9 +290,6 @@ describe('TeamDataService', () => {
     });
 
     expect(result.related).toEqual(['1', '2']);
-    expect(createTaskMock).toHaveBeenCalledWith(
-      'my-team',
-      expect.objectContaining({ related: ['1', '2'] })
-    );
+    expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({ related: ['1', '2'] }));
   });
 });

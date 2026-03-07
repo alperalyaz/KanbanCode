@@ -100,15 +100,16 @@ describe('agent-teams-mcp tools', () => {
     expect(loadedTask.comments[0].attachments).toHaveLength(1);
   });
 
-  it('covers process register/list/unregister without legacy stdout leaking into results', async () => {
+  it('covers process register/list/stop without legacy stdout leaking into results', async () => {
     const claudeDir = makeClaudeDir();
     const teamName = 'beta';
+    const pid = process.pid;
 
     const registered = parseJsonToolResult(
       await getTool('process_register').execute({
         claudeDir,
         teamName,
-        pid: 43210,
+        pid,
         label: 'vite',
         command: 'pnpm dev',
         from: 'lead',
@@ -116,7 +117,7 @@ describe('agent-teams-mcp tools', () => {
       })
     );
 
-    expect(registered.pid).toBe(43210);
+    expect(registered.pid).toBe(pid);
     expect(registered.label).toBe('vite');
 
     const listed = parseJsonToolResult(
@@ -127,16 +128,17 @@ describe('agent-teams-mcp tools', () => {
     );
 
     expect(listed).toHaveLength(1);
-    expect(listed[0].pid).toBe(43210);
+    expect(listed[0].pid).toBe(pid);
 
-    const afterUnregister = parseJsonToolResult(
-      await getTool('process_unregister').execute({
+    const stopped = parseJsonToolResult(
+      await getTool('process_stop').execute({
         claudeDir,
         teamName,
-        pid: 43210,
+        pid,
       })
     );
 
-    expect(afterUnregister).toEqual([]);
+    expect(stopped.pid).toBe(pid);
+    expect(typeof stopped.stoppedAt).toBe('string');
   });
 });
