@@ -38,10 +38,12 @@ interface ToolUseInfo {
 const TEAMCTL_TASK_REGEX = /task\s+(start|complete|set-status)\s+(\d+)/;
 const MCP_TASK_BOUNDARY_TOOLS = new Set(['task_start', 'task_complete', 'task_set_status']);
 
+type DetectedMechanism = 'TaskUpdate' | 'teamctl' | 'mcp' | 'none';
+
 function pickDetectedMechanism(
-  current: 'TaskUpdate' | 'teamctl' | 'mcp' | 'none',
-  next: 'TaskUpdate' | 'teamctl' | 'mcp'
-): 'TaskUpdate' | 'teamctl' | 'mcp' | 'none' {
+  current: DetectedMechanism,
+  next: Exclude<DetectedMechanism, 'none'>
+): DetectedMechanism {
   const priority = {
     none: 0,
     teamctl: 1,
@@ -75,7 +77,7 @@ export class TaskBoundaryParser {
     const boundaries: TaskBoundary[] = [];
     const allToolUsesByLine = new Map<number, ToolUseInfo[]>();
     let lineNumber = 0;
-    let detectedMechanism: 'TaskUpdate' | 'teamctl' | 'mcp' | 'none' = 'none';
+    let detectedMechanism: DetectedMechanism = 'none';
 
     try {
       const stream = createReadStream(filePath, { encoding: 'utf8' });

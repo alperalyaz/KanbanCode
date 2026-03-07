@@ -106,13 +106,13 @@ import {
   TEAM_TOOL_APPROVAL_EVENT,
   TEAM_TOOL_APPROVAL_RESPOND,
   TEAM_UPDATE_CONFIG,
-  TEAM_VALIDATE_CLI_ARGS,
   TEAM_UPDATE_KANBAN,
   TEAM_UPDATE_KANBAN_COLUMN_ORDER,
   TEAM_UPDATE_MEMBER_ROLE,
   TEAM_UPDATE_TASK_FIELDS,
   TEAM_UPDATE_TASK_OWNER,
   TEAM_UPDATE_TASK_STATUS,
+  TEAM_VALIDATE_CLI_ARGS,
   TERMINAL_DATA,
   TERMINAL_EXIT,
   TERMINAL_KILL,
@@ -222,7 +222,6 @@ import type {
   UpdateKanbanPatch,
   WslClaudeRootCandidate,
 } from '@shared/types';
-import type { CliArgsValidationResult } from '@shared/utils/cliArgsParser';
 import type {
   BinaryPreviewResult,
   CreateDirResponse,
@@ -239,6 +238,7 @@ import type {
   WriteFileResponse,
 } from '@shared/types/editor';
 import type { PtySpawnOptions } from '@shared/types/terminal';
+import type { CliArgsValidationResult } from '@shared/utils/cliArgsParser';
 
 // =============================================================================
 // IPC Result Types and Helpers

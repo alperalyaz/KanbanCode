@@ -48,20 +48,23 @@ import {
   TEAM_STOP,
   TEAM_TOOL_APPROVAL_RESPOND,
   TEAM_UPDATE_CONFIG,
-  TEAM_VALIDATE_CLI_ARGS,
   TEAM_UPDATE_KANBAN,
   TEAM_UPDATE_KANBAN_COLUMN_ORDER,
   TEAM_UPDATE_MEMBER_ROLE,
   TEAM_UPDATE_TASK_FIELDS,
   TEAM_UPDATE_TASK_OWNER,
   TEAM_UPDATE_TASK_STATUS,
+  TEAM_VALIDATE_CLI_ARGS,
   // eslint-disable-next-line boundaries/element-types -- IPC channel constants are shared between main and preload by design
 } from '@preload/constants/ipcChannels';
 import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
 import { KANBAN_COLUMN_IDS } from '@shared/constants/kanban';
 import { MAX_TEXT_LENGTH } from '@shared/constants/teamLimits';
-import type { CliArgsValidationResult } from '@shared/utils/cliArgsParser';
-import { extractFlagsFromHelp, extractUserFlags, PROTECTED_CLI_FLAGS } from '@shared/utils/cliArgsParser';
+import {
+  extractFlagsFromHelp,
+  extractUserFlags,
+  PROTECTED_CLI_FLAGS,
+} from '@shared/utils/cliArgsParser';
 import { createLogger } from '@shared/utils/logger';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
 import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent, Notification } from 'electron';
@@ -122,6 +125,7 @@ import type {
   TeamUpdateConfigRequest,
   UpdateKanbanPatch,
 } from '@shared/types';
+import type { CliArgsValidationResult } from '@shared/utils/cliArgsParser';
 
 const logger = createLogger('IPC:teams');
 

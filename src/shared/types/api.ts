@@ -7,6 +7,7 @@
  * Shared between preload and renderer processes.
  */
 
+import type { CliArgsValidationResult } from '../utils/cliArgsParser';
 import type { CliInstallerAPI } from './cliInstaller';
 import type { EditorAPI, ProjectAPI } from './editor';
 import type {
@@ -64,7 +65,6 @@ import type {
   UpdateKanbanPatch,
 } from './team';
 import type { TerminalAPI } from './terminal';
-import type { CliArgsValidationResult } from '../utils/cliArgsParser';
 import type { WaterfallData } from './visualization';
 import type {
   ConversationGroup,

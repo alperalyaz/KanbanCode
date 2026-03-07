@@ -5254,10 +5254,18 @@ export class TeamProvisioningService {
       throw new Error('Claude CLI not found');
     }
     const { env } = await this.buildProvisioningEnv();
-    const result = await this.spawnProbe(probeResult.claudePath, ['--help'], targetCwd, env, 10_000);
+    const result = await this.spawnProbe(
+      probeResult.claudePath,
+      ['--help'],
+      targetCwd,
+      env,
+      10_000
+    );
     const output = (result.stdout + '\n' + result.stderr).trim();
     if (!output) {
-      throw new Error(`claude --help returned empty output (exit code: ${result.exitCode})`);
+      throw new Error(
+        `claude --help returned empty output (exit code: ${String(result.exitCode)})`
+      );
     }
     this.helpOutputCache = output;
     this.helpOutputCacheTime = Date.now();
