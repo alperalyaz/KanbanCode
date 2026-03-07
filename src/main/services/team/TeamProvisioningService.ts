@@ -3403,8 +3403,10 @@ export class TeamProvisioningService {
     }
     if (run.leadActivityState !== 'idle') {
       logger.info(
-        `[${run.teamName}] post-compact reminder aborted — lead activity changed to ${run.leadActivityState as string}`
+        `[${run.teamName}] post-compact reminder deferred — lead activity changed to ${run.leadActivityState as string}`
       );
+      // Re-arm so it triggers on next idle.
+      run.pendingPostCompactReminder = true;
       return;
     }
 
