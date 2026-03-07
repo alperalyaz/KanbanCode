@@ -6,6 +6,7 @@ import { registerTools } from '../src/tools';
 
 type RegisteredTool = {
   name: string;
+  parameters?: { safeParse: (value: unknown) => { success: boolean } };
   execute: (args: Record<string, unknown>) => Promise<unknown> | unknown;
 };
 
@@ -28,6 +29,36 @@ function parseJsonToolResult(result: unknown) {
 
 describe('agent-teams-mcp tools', () => {
   const tools = collectTools();
+  const expectedToolNames = [
+    'kanban_add_reviewer',
+    'kanban_clear',
+    'kanban_get',
+    'kanban_list_reviewers',
+    'kanban_remove_reviewer',
+    'kanban_set_column',
+    'message_send',
+    'process_list',
+    'process_register',
+    'process_stop',
+    'process_unregister',
+    'review_approve',
+    'review_request',
+    'review_request_changes',
+    'task_add_comment',
+    'task_attach_comment_file',
+    'task_attach_file',
+    'task_briefing',
+    'task_complete',
+    'task_create',
+    'task_get',
+    'task_link',
+    'task_list',
+    'task_set_clarification',
+    'task_set_owner',
+    'task_set_status',
+    'task_start',
+    'task_unlink',
+  ] as const;
 
   function getTool(name: string) {
     const tool = tools.get(name);
@@ -39,11 +70,23 @@ describe('agent-teams-mcp tools', () => {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'agent-teams-mcp-'));
   }
 
-  it('covers task clarification and comment attachment flows', async () => {
+  it('registers the full expected MCP tool surface', () => {
+    expect([...tools.keys()].sort()).toEqual([...expectedToolNames]);
+  });
+
+  it('covers task lifecycle, attachments, relationships, kanban, and review flows', async () => {
     const claudeDir = makeClaudeDir();
     const teamName = 'alpha';
     const attachmentPath = path.join(claudeDir, 'note.txt');
     fs.writeFileSync(attachmentPath, 'ship it');
+
+    const dependencyTask = parseJsonToolResult(
+      await getTool('task_create').execute({
+        claudeDir,
+        teamName,
+        subject: 'Dependency',
+      })
+    );
 
     const createdTask = parseJsonToolResult(
       await getTool('task_create').execute({
@@ -53,6 +96,46 @@ describe('agent-teams-mcp tools', () => {
         owner: 'alice',
       })
     );
+
+    const listedTasks = parseJsonToolResult(
+      await getTool('task_list').execute({
+        claudeDir,
+        teamName,
+      })
+    );
+    expect(listedTasks).toHaveLength(2);
+
+    const linked = parseJsonToolResult(
+      await getTool('task_link').execute({
+        claudeDir,
+        teamName,
+        taskId: createdTask.id,
+        targetId: dependencyTask.id,
+        relationship: 'blocked-by',
+      })
+    );
+    expect(linked.blockedBy).toContain(dependencyTask.id);
+
+    const unlinked = parseJsonToolResult(
+      await getTool('task_unlink').execute({
+        claudeDir,
+        teamName,
+        taskId: createdTask.id,
+        targetId: dependencyTask.id,
+        relationship: 'blocked-by',
+      })
+    );
+    expect(unlinked.blockedBy ?? []).not.toContain(dependencyTask.id);
+
+    const owned = parseJsonToolResult(
+      await getTool('task_set_owner').execute({
+        claudeDir,
+        teamName,
+        taskId: createdTask.id,
+        owner: 'alice',
+      })
+    );
+    expect(owned.owner).toBe('alice');
 
     const commented = parseJsonToolResult(
       await getTool('task_add_comment').execute({
@@ -80,6 +163,17 @@ describe('agent-teams-mcp tools', () => {
 
     expect(attachment.filename).toBe('note.txt');
 
+    const taskAttachment = parseJsonToolResult(
+      await getTool('task_attach_file').execute({
+        claudeDir,
+        teamName,
+        taskId: createdTask.id,
+        filePath: attachmentPath,
+        mode: 'copy',
+      })
+    );
+    expect(taskAttachment.filename).toBe('note.txt');
+
     await getTool('task_set_clarification').execute({
       claudeDir,
       teamName,
@@ -98,6 +192,17 @@ describe('agent-teams-mcp tools', () => {
     expect(loadedTask.needsClarification).toBe('user');
     expect(loadedTask.comments).toHaveLength(1);
     expect(loadedTask.comments[0].attachments).toHaveLength(1);
+    expect(loadedTask.attachments).toHaveLength(1);
+
+    const started = parseJsonToolResult(
+      await getTool('task_start').execute({
+        claudeDir,
+        teamName,
+        taskId: createdTask.id,
+        actor: 'alice',
+      })
+    );
+    expect(started.status).toBe('in_progress');
 
     await getTool('task_set_status').execute({
       claudeDir,
@@ -105,6 +210,21 @@ describe('agent-teams-mcp tools', () => {
       taskId: createdTask.id,
       status: 'completed',
     });
+
+    parseJsonToolResult(
+      await getTool('kanban_add_reviewer').execute({
+        claudeDir,
+        teamName,
+        reviewer: 'alice',
+      })
+    );
+    const reviewers = parseJsonToolResult(
+      await getTool('kanban_list_reviewers').execute({
+        claudeDir,
+        teamName,
+      })
+    );
+    expect(reviewers).toEqual(['alice']);
 
     const reviewRequested = parseJsonToolResult(
       await getTool('review_request').execute({
@@ -117,11 +237,87 @@ describe('agent-teams-mcp tools', () => {
     );
 
     expect(reviewRequested.reviewState).toBe('review');
+
+    const approved = parseJsonToolResult(
+      await getTool('review_approve').execute({
+        claudeDir,
+        teamName,
+        taskId: createdTask.id,
+        from: 'lead',
+        note: 'Looks good',
+        notifyOwner: true,
+      })
+    );
+    expect(approved.reviewState).toBe('approved');
+
+    const kanbanState = parseJsonToolResult(
+      await getTool('kanban_get').execute({
+        claudeDir,
+        teamName,
+      })
+    );
+    expect(kanbanState.tasks[createdTask.id].column).toBe('approved');
+
+    const briefing = await getTool('task_briefing').execute({
+      claudeDir,
+      teamName,
+      memberName: 'alice',
+    });
+    expect((briefing as { content: Array<{ text: string }> }).content[0]?.text).toContain(
+      'Review MCP adapter'
+    );
   });
 
-  it('covers process register/list/stop without legacy stdout leaking into results', async () => {
+  it('covers review_request_changes and full process lifecycle tools', async () => {
     const claudeDir = makeClaudeDir();
     const teamName = 'beta';
+
+    const createdTask = parseJsonToolResult(
+      await getTool('task_create').execute({
+        claudeDir,
+        teamName,
+        subject: 'Needs revision',
+        owner: 'bob',
+      })
+    );
+
+    await getTool('task_complete').execute({
+      claudeDir,
+      teamName,
+      taskId: createdTask.id,
+      actor: 'bob',
+    });
+
+    await getTool('review_request').execute({
+      claudeDir,
+      teamName,
+      taskId: createdTask.id,
+      from: 'lead',
+      reviewer: 'alice',
+    });
+
+    const changesRequested = parseJsonToolResult(
+      await getTool('review_request_changes').execute({
+        claudeDir,
+        teamName,
+        taskId: createdTask.id,
+        from: 'alice',
+        comment: 'Please revise this section.',
+      })
+    );
+
+    expect(changesRequested.status).toBe('in_progress');
+    expect(changesRequested.reviewState).toBe('none');
+
+    const kanbanCleared = parseJsonToolResult(
+      await getTool('kanban_clear').execute({
+        claudeDir,
+        teamName,
+        taskId: createdTask.id,
+      })
+    );
+    expect(kanbanCleared.tasks[createdTask.id]).toBeUndefined();
+
     const pid = process.pid;
 
     const registered = parseJsonToolResult(
@@ -159,6 +355,15 @@ describe('agent-teams-mcp tools', () => {
 
     expect(stopped.pid).toBe(pid);
     expect(typeof stopped.stoppedAt).toBe('string');
+
+    const unregistered = parseJsonToolResult(
+      await getTool('process_unregister').execute({
+        claudeDir,
+        teamName,
+        pid,
+      })
+    );
+    expect(unregistered).toEqual([]);
   });
 
   it('persists full message metadata through message_send', async () => {
@@ -185,5 +390,22 @@ describe('agent-teams-mcp tools', () => {
     expect(rows[0].source).toBe('system_notification');
     expect(rows[0].leadSessionId).toBe('session-42');
     expect(rows[0].attachments[0].filename).toBe('note.txt');
+  });
+
+  it('exposes zod schemas that reject obviously invalid payloads', () => {
+    expect(
+      getTool('task_create').parameters?.safeParse({
+        teamName: 'demo',
+        claudeDir: '/tmp/demo',
+      }).success
+    ).toBe(false);
+
+    expect(
+      getTool('process_register').parameters?.safeParse({
+        teamName: 'demo',
+        pid: 0,
+        label: '',
+      }).success
+    ).toBe(false);
   });
 });

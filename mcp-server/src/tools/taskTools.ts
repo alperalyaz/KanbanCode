@@ -27,8 +27,9 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
     }),
     execute: async ({ teamName, claudeDir, subject, description, owner, blockedBy, related, prompt, startImmediately }) => {
       const controller = getController(teamName, claudeDir);
-      return jsonTextContent(
-        controller.tasks.createTask({
+      return await Promise.resolve(
+        jsonTextContent(
+          controller.tasks.createTask({
           subject,
           ...(description ? { description } : {}),
           ...(owner ? { owner } : {}),
@@ -36,7 +37,8 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
           ...(related?.length ? { related: related.join(',') } : {}),
           ...(prompt ? { prompt } : {}),
           ...(startImmediately === false && owner ? { status: 'pending' } : {}),
-        })
+          })
+        )
       );
     },
   });
@@ -49,7 +51,7 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       taskId: z.string().min(1),
     }),
     execute: async ({ teamName, claudeDir, taskId }) =>
-      jsonTextContent(getController(teamName, claudeDir).tasks.getTask(taskId)),
+      await Promise.resolve(jsonTextContent(getController(teamName, claudeDir).tasks.getTask(taskId))),
   });
 
   server.addTool({
@@ -59,7 +61,7 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       ...toolContextSchema,
     }),
     execute: async ({ teamName, claudeDir }) =>
-      jsonTextContent(getController(teamName, claudeDir).tasks.listTasks()),
+      await Promise.resolve(jsonTextContent(getController(teamName, claudeDir).tasks.listTasks())),
   });
 
   server.addTool({
@@ -72,7 +74,9 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       actor: z.string().optional(),
     }),
     execute: async ({ teamName, claudeDir, taskId, status, actor }) =>
-      jsonTextContent(getController(teamName, claudeDir).tasks.setTaskStatus(taskId, status, actor)),
+      await Promise.resolve(
+        jsonTextContent(getController(teamName, claudeDir).tasks.setTaskStatus(taskId, status, actor))
+      ),
   });
 
   server.addTool({
@@ -84,7 +88,7 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       actor: z.string().optional(),
     }),
     execute: async ({ teamName, claudeDir, taskId, actor }) =>
-      jsonTextContent(getController(teamName, claudeDir).tasks.startTask(taskId, actor)),
+      await Promise.resolve(jsonTextContent(getController(teamName, claudeDir).tasks.startTask(taskId, actor))),
   });
 
   server.addTool({
@@ -96,7 +100,9 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       actor: z.string().optional(),
     }),
     execute: async ({ teamName, claudeDir, taskId, actor }) =>
-      jsonTextContent(getController(teamName, claudeDir).tasks.completeTask(taskId, actor)),
+      await Promise.resolve(
+        jsonTextContent(getController(teamName, claudeDir).tasks.completeTask(taskId, actor))
+      ),
   });
 
   server.addTool({
@@ -108,7 +114,9 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       owner: z.string().nullable(),
     }),
     execute: async ({ teamName, claudeDir, taskId, owner }) =>
-      jsonTextContent(getController(teamName, claudeDir).tasks.setTaskOwner(taskId, owner)),
+      await Promise.resolve(
+        jsonTextContent(getController(teamName, claudeDir).tasks.setTaskOwner(taskId, owner))
+      ),
   });
 
   server.addTool({
@@ -121,11 +129,13 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       from: z.string().optional(),
     }),
     execute: async ({ teamName, claudeDir, taskId, text, from }) =>
-      jsonTextContent(
-        getController(teamName, claudeDir).tasks.addTaskComment(taskId, {
+      await Promise.resolve(
+        jsonTextContent(
+          getController(teamName, claudeDir).tasks.addTaskComment(taskId, {
           text,
           ...(from ? { from } : {}),
-        })
+          })
+        )
       ),
   });
 
@@ -151,14 +161,16 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       mimeType,
       noFallback,
     }) =>
-      jsonTextContent(
-        getController(teamName, claudeDir).tasks.attachTaskFile(taskId, {
+      await Promise.resolve(
+        jsonTextContent(
+          getController(teamName, claudeDir).tasks.attachTaskFile(taskId, {
           file: filePath,
           ...(mode ? { mode } : {}),
           ...(filename ? { filename } : {}),
           ...(mimeType ? { 'mime-type': mimeType } : {}),
           ...(noFallback ? { 'no-fallback': true } : {}),
-        })
+          })
+        )
       ),
   });
 
@@ -186,14 +198,16 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       mimeType,
       noFallback,
     }) =>
-      jsonTextContent(
-        getController(teamName, claudeDir).tasks.attachCommentFile(taskId, commentId, {
+      await Promise.resolve(
+        jsonTextContent(
+          getController(teamName, claudeDir).tasks.attachCommentFile(taskId, commentId, {
           file: filePath,
           ...(mode ? { mode } : {}),
           ...(filename ? { filename } : {}),
           ...(mimeType ? { 'mime-type': mimeType } : {}),
           ...(noFallback ? { 'no-fallback': true } : {}),
-        })
+          })
+        )
       ),
   });
 
@@ -206,10 +220,12 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       value: z.enum(['lead', 'user', 'clear']),
     }),
     execute: async ({ teamName, claudeDir, taskId, value }) =>
-      jsonTextContent(
-        getController(teamName, claudeDir).tasks.setNeedsClarification(
+      await Promise.resolve(
+        jsonTextContent(
+          getController(teamName, claudeDir).tasks.setNeedsClarification(
           taskId,
           value === 'clear' ? null : value
+          )
         )
       ),
   });
@@ -224,7 +240,9 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       relationship: relationshipTypeSchema,
     }),
     execute: async ({ teamName, claudeDir, taskId, targetId, relationship }) =>
-      jsonTextContent(getController(teamName, claudeDir).tasks.linkTask(taskId, targetId, relationship)),
+      await Promise.resolve(
+        jsonTextContent(getController(teamName, claudeDir).tasks.linkTask(taskId, targetId, relationship))
+      ),
   });
 
   server.addTool({
@@ -237,8 +255,10 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       relationship: relationshipTypeSchema,
     }),
     execute: async ({ teamName, claudeDir, taskId, targetId, relationship }) =>
-      jsonTextContent(
-        getController(teamName, claudeDir).tasks.unlinkTask(taskId, targetId, relationship)
+      await Promise.resolve(
+        jsonTextContent(
+          getController(teamName, claudeDir).tasks.unlinkTask(taskId, targetId, relationship)
+        )
       ),
   });
 

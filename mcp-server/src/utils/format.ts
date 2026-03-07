@@ -1,4 +1,4 @@
-export function jsonTextContent(value: unknown): { content: Array<{ type: 'text'; text: string }> } {
+export function jsonTextContent(value: unknown): { content: { type: 'text'; text: string }[] } {
   return {
     content: [
       {

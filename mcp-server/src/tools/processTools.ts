@@ -34,8 +34,9 @@ export function registerProcessTools(server: Pick<FastMCP, 'addTool'>) {
       url,
       claudeProcessId,
     }) =>
-      jsonTextContent(
-        getController(teamName, claudeDir).processes.registerProcess({
+      await Promise.resolve(
+        jsonTextContent(
+          getController(teamName, claudeDir).processes.registerProcess({
           pid,
           label,
           ...(from ? { from } : {}),
@@ -43,7 +44,8 @@ export function registerProcessTools(server: Pick<FastMCP, 'addTool'>) {
           ...(port ? { port } : {}),
           ...(url ? { url } : {}),
           ...(claudeProcessId ? { 'claude-process-id': claudeProcessId } : {}),
-        })
+          })
+        )
       ),
   });
 
@@ -54,7 +56,9 @@ export function registerProcessTools(server: Pick<FastMCP, 'addTool'>) {
       ...toolContextSchema,
     }),
     execute: async ({ teamName, claudeDir }) =>
-      jsonTextContent(getController(teamName, claudeDir).processes.listProcesses()),
+      await Promise.resolve(
+        jsonTextContent(getController(teamName, claudeDir).processes.listProcesses())
+      ),
   });
 
   server.addTool({
@@ -65,7 +69,9 @@ export function registerProcessTools(server: Pick<FastMCP, 'addTool'>) {
       pid: z.number().int().positive(),
     }),
     execute: async ({ teamName, claudeDir, pid }) =>
-      jsonTextContent(getController(teamName, claudeDir).processes.unregisterProcess({ pid })),
+      await Promise.resolve(
+        jsonTextContent(getController(teamName, claudeDir).processes.unregisterProcess({ pid }))
+      ),
   });
 
   server.addTool({
@@ -76,6 +82,8 @@ export function registerProcessTools(server: Pick<FastMCP, 'addTool'>) {
       pid: z.number().int().positive(),
     }),
     execute: async ({ teamName, claudeDir, pid }) =>
-      jsonTextContent(getController(teamName, claudeDir).processes.stopProcess({ pid })),
+      await Promise.resolve(
+        jsonTextContent(getController(teamName, claudeDir).processes.stopProcess({ pid }))
+      ),
   });
 }

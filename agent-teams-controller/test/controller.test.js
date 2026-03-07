@@ -193,4 +193,157 @@ describe('agent-teams-controller API', () => {
     expect(second.staleColumnOrderRefsRemoved).toBe(0);
     expect(second.linkedCommentsCreated).toBe(0);
   });
+
+  it('derives reviewState from legacy kanban overlay and tolerates corrupt kanban state', () => {
+    const claudeDir = makeClaudeDir();
+    const controller = createController({ teamName: 'my-team', claudeDir });
+    const task = controller.tasks.createTask({ subject: 'Legacy review task' });
+    const taskPath = path.join(claudeDir, 'tasks', 'my-team', `${task.id}.json`);
+    const rawTask = JSON.parse(fs.readFileSync(taskPath, 'utf8'));
+    delete rawTask.reviewState;
+    fs.writeFileSync(taskPath, JSON.stringify(rawTask, null, 2));
+
+    const kanbanPath = path.join(claudeDir, 'teams', 'my-team', 'kanban-state.json');
+    fs.writeFileSync(
+      kanbanPath,
+      JSON.stringify(
+        {
+          teamName: 'my-team',
+          reviewers: [],
+          tasks: {
+            [task.id]: { column: 'review', movedAt: '2026-01-01T00:00:00.000Z', reviewer: null },
+          },
+        },
+        null,
+        2
+      )
+    );
+
+    expect(controller.tasks.getTask(task.id).reviewState).toBe('review');
+    expect(controller.tasks.listTasks()[0].reviewState).toBe('review');
+
+    fs.writeFileSync(kanbanPath, '{broken-json');
+    expect(controller.tasks.getTask(task.id).reviewState).toBe('none');
+    expect(controller.tasks.listTasks()[0].reviewState).toBe('none');
+  });
+
+  it('tracks lifecycle history and intervals without duplicate same-status transitions', () => {
+    const claudeDir = makeClaudeDir();
+    const controller = createController({ teamName: 'my-team', claudeDir });
+    const task = controller.tasks.createTask({ subject: 'Lifecycle task' });
+
+    expect(task.status).toBe('pending');
+    expect(task.statusHistory).toHaveLength(1);
+    expect(task.workIntervals).toBeUndefined();
+
+    const started = controller.tasks.startTask(task.id, 'bob');
+    const startedAgain = controller.tasks.startTask(task.id, 'bob');
+    const completed = controller.tasks.completeTask(task.id, 'bob');
+    const completedAgain = controller.tasks.completeTask(task.id, 'bob');
+    const deleted = controller.tasks.softDeleteTask(task.id, 'bob');
+    const restored = controller.tasks.restoreTask(task.id, 'bob');
+
+    expect(started.status).toBe('in_progress');
+    expect(startedAgain.statusHistory).toHaveLength(2);
+    expect(startedAgain.workIntervals).toHaveLength(1);
+    expect(startedAgain.workIntervals[0].startedAt).toBeTruthy();
+
+    expect(completed.status).toBe('completed');
+    expect(completedAgain.statusHistory).toHaveLength(3);
+    expect(completedAgain.workIntervals).toHaveLength(1);
+    expect(completedAgain.workIntervals[0].completedAt).toBeTruthy();
+
+    expect(deleted.status).toBe('deleted');
+    expect(deleted.deletedAt).toBeTruthy();
+    expect(restored.status).toBe('pending');
+    expect(restored.deletedAt).toBeUndefined();
+    expect(restored.statusHistory).toHaveLength(5);
+    expect(restored.statusHistory.map((entry) => entry.to)).toEqual([
+      'pending',
+      'in_progress',
+      'completed',
+      'deleted',
+      'pending',
+    ]);
+  });
+
+  it('persists full inbox metadata through controller messages.sendMessage', () => {
+    const claudeDir = makeClaudeDir();
+    const controller = createController({ teamName: 'my-team', claudeDir });
+
+    const sent = controller.messages.sendMessage({
+      to: 'bob',
+      from: 'team-lead',
+      text: 'Need your review',
+      summary: 'Review request',
+      source: 'system_notification',
+      leadSessionId: 'session-42',
+      attachments: [{ id: 'a1', filename: 'note.txt', mimeType: 'text/plain', size: 7 }],
+    });
+
+    expect(sent.deliveredToInbox).toBe(true);
+    expect(sent.messageId).toBeTruthy();
+
+    const inboxPath = path.join(claudeDir, 'teams', 'my-team', 'inboxes', 'bob.json');
+    const rows = JSON.parse(fs.readFileSync(inboxPath, 'utf8'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].source).toBe('system_notification');
+    expect(rows[0].leadSessionId).toBe('session-42');
+    expect(rows[0].attachments[0].filename).toBe('note.txt');
+  });
+
+  it('moves review back to in_progress and notifies owner on requestChanges', () => {
+    const claudeDir = makeClaudeDir();
+    const controller = createController({ teamName: 'my-team', claudeDir });
+    const task = controller.tasks.createTask({ subject: 'Needs revision', owner: 'bob' });
+
+    controller.tasks.completeTask(task.id, 'bob');
+    controller.review.requestReview(task.id, { from: 'alice', reviewer: 'alice' });
+    const updated = controller.review.requestChanges(task.id, {
+      from: 'alice',
+      comment: 'Please address review feedback.',
+    });
+
+    expect(updated.status).toBe('in_progress');
+    expect(updated.reviewState).toBe('none');
+    expect(updated.comments.at(-1).type).toBe('review_request');
+
+    const inboxPath = path.join(claudeDir, 'teams', 'my-team', 'inboxes', 'bob.json');
+    const rows = JSON.parse(fs.readFileSync(inboxPath, 'utf8'));
+    expect(rows.at(-1).source).toBe('system_notification');
+    expect(rows.at(-1).summary).toContain('Fix request');
+  });
+
+  it('marks stale processes stopped during listing and supports unregister', () => {
+    const claudeDir = makeClaudeDir();
+    const controller = createController({ teamName: 'my-team', claudeDir });
+    const processesPath = path.join(claudeDir, 'teams', 'my-team', 'processes.json');
+
+    fs.writeFileSync(
+      processesPath,
+      JSON.stringify(
+        [
+          {
+            id: 'stale-entry',
+            pid: 999999,
+            label: 'stale',
+            registeredAt: '2024-01-01T00:00:00.000Z',
+          },
+        ],
+        null,
+        2
+      )
+    );
+
+    const listed = controller.processes.listProcesses();
+    expect(listed).toHaveLength(1);
+    expect(listed[0].alive).toBe(false);
+    expect(listed[0].stoppedAt).toBeTruthy();
+
+    const persisted = JSON.parse(fs.readFileSync(processesPath, 'utf8'));
+    expect(persisted[0].stoppedAt).toBeTruthy();
+
+    controller.processes.unregisterProcess({ id: 'stale-entry' });
+    expect(controller.processes.listProcesses()).toEqual([]);
+  });
 });

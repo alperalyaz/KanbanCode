@@ -16,7 +16,7 @@ export function createServer() {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const server = createServer();
-  server.start({
+  void server.start({
     transportType: 'stdio',
   });
 }

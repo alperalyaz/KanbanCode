@@ -43,8 +43,9 @@ export function registerMessageTools(server: Pick<FastMCP, 'addTool'>) {
       leadSessionId,
       attachments,
     }) =>
-      jsonTextContent(
-        getController(teamName, claudeDir).messages.sendMessage({
+      await Promise.resolve(
+        jsonTextContent(
+          getController(teamName, claudeDir).messages.sendMessage({
           to,
           text,
           ...(from ? { from } : {}),
@@ -52,7 +53,8 @@ export function registerMessageTools(server: Pick<FastMCP, 'addTool'>) {
           ...(source ? { source } : {}),
           ...(leadSessionId ? { leadSessionId } : {}),
           ...(attachments?.length ? { attachments } : {}),
-        })
+          })
+        )
       ),
   });
 }

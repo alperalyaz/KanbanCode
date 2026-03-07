@@ -17,7 +17,7 @@ export function registerKanbanTools(server: Pick<FastMCP, 'addTool'>) {
       ...toolContextSchema,
     }),
     execute: async ({ teamName, claudeDir }) =>
-      jsonTextContent(getController(teamName, claudeDir).kanban.getKanbanState()),
+      await Promise.resolve(jsonTextContent(getController(teamName, claudeDir).kanban.getKanbanState())),
   });
 
   server.addTool({
@@ -29,7 +29,9 @@ export function registerKanbanTools(server: Pick<FastMCP, 'addTool'>) {
       column: z.enum(['review', 'approved']),
     }),
     execute: async ({ teamName, claudeDir, taskId, column }) =>
-      jsonTextContent(getController(teamName, claudeDir).kanban.setKanbanColumn(taskId, column)),
+      await Promise.resolve(
+        jsonTextContent(getController(teamName, claudeDir).kanban.setKanbanColumn(taskId, column))
+      ),
   });
 
   server.addTool({
@@ -40,7 +42,7 @@ export function registerKanbanTools(server: Pick<FastMCP, 'addTool'>) {
       taskId: z.string().min(1),
     }),
     execute: async ({ teamName, claudeDir, taskId }) =>
-      jsonTextContent(getController(teamName, claudeDir).kanban.clearKanban(taskId)),
+      await Promise.resolve(jsonTextContent(getController(teamName, claudeDir).kanban.clearKanban(taskId))),
   });
 
   server.addTool({
@@ -50,7 +52,7 @@ export function registerKanbanTools(server: Pick<FastMCP, 'addTool'>) {
       ...toolContextSchema,
     }),
     execute: async ({ teamName, claudeDir }) =>
-      jsonTextContent(getController(teamName, claudeDir).kanban.listReviewers()),
+      await Promise.resolve(jsonTextContent(getController(teamName, claudeDir).kanban.listReviewers())),
   });
 
   server.addTool({
@@ -61,7 +63,7 @@ export function registerKanbanTools(server: Pick<FastMCP, 'addTool'>) {
       reviewer: z.string().min(1),
     }),
     execute: async ({ teamName, claudeDir, reviewer }) =>
-      jsonTextContent(getController(teamName, claudeDir).kanban.addReviewer(reviewer)),
+      await Promise.resolve(jsonTextContent(getController(teamName, claudeDir).kanban.addReviewer(reviewer))),
   });
 
   server.addTool({
@@ -72,6 +74,8 @@ export function registerKanbanTools(server: Pick<FastMCP, 'addTool'>) {
       reviewer: z.string().min(1),
     }),
     execute: async ({ teamName, claudeDir, reviewer }) =>
-      jsonTextContent(getController(teamName, claudeDir).kanban.removeReviewer(reviewer)),
+      await Promise.resolve(
+        jsonTextContent(getController(teamName, claudeDir).kanban.removeReviewer(reviewer))
+      ),
   });
 }

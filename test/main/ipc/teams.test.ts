@@ -105,6 +105,7 @@ describe('ipc teams handlers', () => {
       kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
       processes: [],
     })),
+    reconcileTeamArtifacts: vi.fn(async () => undefined),
     deleteTeam: vi.fn(async () => undefined),
     sendMessage: vi.fn(async () => ({ deliveredToInbox: true, messageId: 'm1' })),
     createTask: vi.fn(async () => ({ id: '1', subject: 'Test', status: 'pending' })),
@@ -315,6 +316,19 @@ describe('ipc teams handlers', () => {
     const sources = result.data.messages.map((m) => m.source);
     expect(sources.filter((s) => s === 'lead_process')).toHaveLength(0);
     expect(sources.filter((s) => s === 'lead_session')).toHaveLength(1);
+  });
+
+  it('keeps TEAM_GET_DATA read-only and never triggers reconcile side effects', async () => {
+    const getDataHandler = handlers.get(TEAM_GET_DATA)!;
+    const result = (await getDataHandler({} as never, 'my-team')) as {
+      success: boolean;
+      data: { teamName: string };
+    };
+
+    expect(result.success).toBe(true);
+    expect(result.data.teamName).toBe('my-team');
+    expect(service.getTeamData).toHaveBeenCalledWith('my-team');
+    expect(service.reconcileTeamArtifacts).not.toHaveBeenCalled();
   });
 
   describe('createTask prompt validation', () => {

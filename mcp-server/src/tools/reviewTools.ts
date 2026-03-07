@@ -20,11 +20,13 @@ export function registerReviewTools(server: Pick<FastMCP, 'addTool'>) {
       reviewer: z.string().optional(),
     }),
     execute: async ({ teamName, claudeDir, taskId, from, reviewer }) =>
-      jsonTextContent(
-        getController(teamName, claudeDir).review.requestReview(taskId, {
+      await Promise.resolve(
+        jsonTextContent(
+          getController(teamName, claudeDir).review.requestReview(taskId, {
           ...(from ? { from } : {}),
           ...(reviewer ? { reviewer } : {}),
-        })
+          })
+        )
       ),
   });
 
@@ -39,12 +41,14 @@ export function registerReviewTools(server: Pick<FastMCP, 'addTool'>) {
       notifyOwner: z.boolean().optional(),
     }),
     execute: async ({ teamName, claudeDir, taskId, from, note, notifyOwner }) =>
-      jsonTextContent(
-        getController(teamName, claudeDir).review.approveReview(taskId, {
+      await Promise.resolve(
+        jsonTextContent(
+          getController(teamName, claudeDir).review.approveReview(taskId, {
           ...(from ? { from } : {}),
           ...(note ? { note } : {}),
           ...(notifyOwner !== false ? { 'notify-owner': true } : {}),
-        })
+          })
+        )
       ),
   });
 
@@ -58,11 +62,13 @@ export function registerReviewTools(server: Pick<FastMCP, 'addTool'>) {
       comment: z.string().optional(),
     }),
     execute: async ({ teamName, claudeDir, taskId, from, comment }) =>
-      jsonTextContent(
-        getController(teamName, claudeDir).review.requestChanges(taskId, {
+      await Promise.resolve(
+        jsonTextContent(
+          getController(teamName, claudeDir).review.requestChanges(taskId, {
           ...(from ? { from } : {}),
           ...(comment ? { comment } : {}),
-        })
+          })
+        )
       ),
   });
 }
