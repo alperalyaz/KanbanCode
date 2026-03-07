@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { AttachmentDisplay } from '@renderer/components/team/attachments/AttachmentDisplay';
@@ -13,7 +13,8 @@ import {
   CARD_ICON_MUTED,
   CARD_TEXT_LIGHT,
 } from '@renderer/constants/cssVariables';
-import { getTeamColorSet } from '@renderer/constants/teamColors';
+import { getTeamColorSet, getThemedBorder } from '@renderer/constants/teamColors';
+import { useTheme } from '@renderer/hooks/useTheme';
 import {
   getMessageTypeLabel,
   getStructuredMessageSummary,
@@ -26,8 +27,10 @@ import { extractMarkdownPlainText } from '@shared/utils/markdownTextSearch';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
 import { AlertTriangle, ChevronRight, ListPlus, RefreshCw, Reply } from 'lucide-react';
 
+import { isManagedCollapseState } from './collapseState';
 import { ReplyQuoteBlock } from './ReplyQuoteBlock';
 
+import type { ActivityCollapseState } from './collapseState';
 import type { TeamColorSet } from '@renderer/constants/teamColors';
 import type { InboxMessage } from '@shared/types';
 
@@ -52,6 +55,8 @@ interface ActivityItemProps {
   onRestartTeam?: () => void;
   /** When true, apply a subtle lighter background for zebra-striped lists. */
   zebraShade?: boolean;
+  /** Explicit collapse state for timeline-controlled collapsed mode. */
+  collapseState?: ActivityCollapseState;
 }
 
 function getStringField(obj: StructuredMessage, key: string): string | null {
@@ -138,6 +143,33 @@ function getSystemMessageLabel(text: string): string | null {
   return null;
 }
 
+/** Labels to highlight in task assignment / review messages (bold in markdown). */
+const TASK_MESSAGE_LABELS = [
+  'New task assigned to you:',
+  'Description:',
+  'Task approved',
+  'Task needs fixes',
+  'Review changes requested',
+  'Changes requested:',
+  'Comments:',
+  'Reviewer:',
+  'Related:',
+  'Blocked by:',
+  'Blocks:',
+];
+
+/** Make known structural labels bold in system/task messages. */
+function highlightSystemLabels(text: string, isSystem: boolean): string {
+  if (!isSystem) return text;
+  let result = text;
+  for (const label of TASK_MESSAGE_LABELS) {
+    // Escape any regex-special chars in the label, match at line start or after newline
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    result = result.replace(new RegExp(`(^|\\n)(${escaped})`, 'g'), '$1**$2**');
+  }
+  return result;
+}
+
 /** Detect authentication/authorization errors that may be resolved by restarting. */
 const AUTH_ERROR_PATTERNS = [
   /OAuth token has expired/i,
@@ -153,8 +185,8 @@ const AUTH_ERROR_PATTERNS = [
 // ---------------------------------------------------------------------------
 
 /** Convert `#<digits>` in plain text to markdown links with task:// protocol. */
-function linkifyTaskIdsInMarkdown(text: string): string {
-  return text.replace(/#(\d+)/g, '[#$1](task://$1)');
+export function linkifyTaskIdsInMarkdown(text: string): string {
+  return text.replace(/#(\d+)\b/g, '[#$1](task://$1)');
 }
 
 /**
@@ -162,7 +194,10 @@ function linkifyTaskIdsInMarkdown(text: string): string {
  * Encodes color in the URL so MarkdownViewer can render colored badges without extra context.
  * Greedy match: longer names are tried first to avoid partial matches.
  */
-function linkifyMentionsInMarkdown(text: string, memberColorMap: Map<string, string>): string {
+export function linkifyMentionsInMarkdown(
+  text: string,
+  memberColorMap: Map<string, string>
+): string {
   if (memberColorMap.size === 0) return text;
   // Sort by name length descending for greedy matching
   const names = [...memberColorMap.keys()].sort((a, b) => b.length - a.length);
@@ -178,7 +213,7 @@ function linkifyMentionsInMarkdown(text: string, memberColorMap: Map<string, str
 }
 /** Render `#<digits>` in plain text as clickable inline elements with TaskTooltip. */
 function linkifyTaskIds(text: string, onClick: (taskId: string) => void): React.ReactNode[] {
-  return text.split(/(#\d+)/g).map((part, i) => {
+  return text.split(/(#\d+\b)/g).map((part, i) => {
     const match = /^#(\d+)$/.exec(part);
     if (!match) return <span key={i}>{part}</span>;
     const taskId = match[1];
@@ -186,7 +221,7 @@ function linkifyTaskIds(text: string, onClick: (taskId: string) => void): React.
       <TaskTooltip key={i} taskId={taskId}>
         <button
           type="button"
-          className="cursor-pointer font-medium text-blue-400 hover:underline"
+          className="cursor-pointer font-medium text-blue-600 hover:underline dark:text-blue-400"
           onClick={(e) => {
             e.stopPropagation();
             onClick(taskId);
@@ -213,8 +248,10 @@ export const ActivityItem = ({
   onTaskIdClick,
   onRestartTeam,
   zebraShade,
+  collapseState,
 }: ActivityItemProps): React.JSX.Element => {
   const colors = getTeamColorSet(memberColor ?? message.color ?? '');
+  const { isLight } = useTheme();
   const formattedRole = formatAgentRole(memberRole);
 
   const timestamp = Number.isNaN(Date.parse(message.timestamp))
@@ -231,9 +268,9 @@ export const ActivityItem = ({
   // Never collapse rate limit messages as noise — they must be visible
   const noiseLabel = structured && !rateLimited ? getNoiseLabel(structured) : null;
 
-  // System/automated messages start collapsed (but not rate limits)
   const systemLabel = !structured && !rateLimited ? getSystemMessageLabel(message.text) : null;
-  const [isExpanded, setIsExpanded] = useState(!systemLabel);
+  const isManaged = isManagedCollapseState(collapseState);
+  const isExpanded = isManaged ? !collapseState.isCollapsed : true;
 
   // Strip agent-only blocks + normalize escape sequences (before linkification)
   const strippedText = useMemo(() => {
@@ -254,11 +291,12 @@ export const ActivityItem = ({
   // Linkify task IDs (always, for TaskTooltip) + @mentions for display
   const displayText = useMemo(() => {
     if (!strippedText) return null;
-    let result = linkifyTaskIdsInMarkdown(strippedText);
+    let result = highlightSystemLabels(strippedText, !!systemLabel);
+    result = linkifyTaskIdsInMarkdown(result);
     if (memberColorMap && memberColorMap.size > 0)
       result = linkifyMentionsInMarkdown(result, memberColorMap);
     return result;
-  }, [strippedText, memberColorMap]);
+  }, [strippedText, memberColorMap, systemLabel]);
 
   const rawSummary =
     message.summary || (structured ? getStructuredMessageSummary(structured) : '') || '';
@@ -282,9 +320,16 @@ export const ActivityItem = ({
     onCreateTask?.(subject, description);
   };
 
-  const isHeaderClickable = Boolean(systemLabel);
+  const isHeaderClickable = isManaged ? collapseState.canToggle : false;
+  const showChevron = isHeaderClickable;
   const isUserSent = message.source === 'user_sent';
   const isSystemMessage = message.from === 'system';
+  const onManagedToggle = isManaged ? collapseState.onToggle : undefined;
+  const handleHeaderToggle = isHeaderClickable
+    ? (): void => {
+        onManagedToggle?.();
+      }
+    : undefined;
 
   return (
     <article
@@ -310,7 +355,7 @@ export const ActivityItem = ({
             ? '3px solid var(--tool-result-error-text)'
             : isSystemMessage
               ? '3px solid var(--system-activity-accent)'
-              : `3px solid ${colors.border}`,
+              : `3px solid ${getThemedBorder(colors, isLight)}`,
       }}
     >
       {/* Header — div with role=button (cannot use <button> due to nested buttons inside) */}
@@ -322,13 +367,13 @@ export const ActivityItem = ({
           'flex items-center gap-2 px-3 py-2',
           isHeaderClickable ? 'cursor-pointer select-none' : '',
         ].join(' ')}
-        onClick={isHeaderClickable ? () => setIsExpanded((v) => !v) : undefined}
+        onClick={handleHeaderToggle}
         onKeyDown={
           isHeaderClickable
             ? (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  setIsExpanded((v) => !v);
+                  handleHeaderToggle?.();
                 }
               }
             : undefined
@@ -337,8 +382,8 @@ export const ActivityItem = ({
         {isUnread ? (
           <span className="size-2 shrink-0 rounded-full bg-blue-500" title="Unread" aria-hidden />
         ) : null}
-        {/* Chevron for collapsible system messages */}
-        {systemLabel ? (
+        {/* Chevron for collapsible messages */}
+        {showChevron ? (
           <ChevronRight
             className="size-3 shrink-0 transition-transform duration-150"
             style={{
@@ -483,7 +528,10 @@ export const ActivityItem = ({
               </details>
             </div>
           ) : parsedReply ? (
-            <ReplyQuoteBlock reply={parsedReply} memberColor={memberColorMap?.get(parsedReply.agentName)} />
+            <ReplyQuoteBlock
+              reply={parsedReply}
+              memberColor={memberColorMap?.get(parsedReply.agentName)}
+            />
           ) : displayText ? (
             <ExpandableContent>
               <span

@@ -21,7 +21,25 @@ export interface StreamJsonGroup {
   summary: string;
   /** Timestamp of first message in group */
   timestamp: Date;
+  /** If set, this group belongs to a subagent (not the lead). */
+  agentId?: string;
 }
+
+/** A subagent section wrapping consecutive groups from the same agentId. */
+export interface SubagentSection {
+  id: string;
+  agentId: string;
+  /** Human-readable description from the Agent tool_use that spawned this subagent */
+  description: string;
+  groups: StreamJsonGroup[];
+  toolCount: number;
+  timestamp: Date;
+}
+
+/** Union type for the final render list after subagent grouping. */
+export type StreamJsonEntry =
+  | { type: 'group'; group: StreamJsonGroup }
+  | { type: 'subagent-section'; section: SubagentSection };
 
 interface ContentBlock {
   type: string;
@@ -182,6 +200,7 @@ export function parseStreamJsonToGroups(cliLogsTail: string): StreamJsonGroup[] 
   let currentItems: AIGroupDisplayItem[] = [];
   let currentTimestamp: Date | null = null;
   let currentGroupId: string | null = null;
+  let currentAgentId: string | undefined = undefined;
   // Track how many times each messageId has been seen to disambiguate duplicates
   const msgIdOccurrences = new Map<string, number>();
 
@@ -193,10 +212,12 @@ export function parseStreamJsonToGroups(cliLogsTail: string): StreamJsonGroup[] 
         items: currentItems,
         summary: buildGroupSummary(currentItems),
         timestamp: currentTimestamp,
+        agentId: currentAgentId,
       });
       currentItems = [];
       currentTimestamp = null;
       currentGroupId = null;
+      currentAgentId = undefined;
     }
   };
 
@@ -227,6 +248,12 @@ export function parseStreamJsonToGroups(cliLogsTail: string): StreamJsonGroup[] 
       continue;
     }
 
+    // Extract agentId from top-level (subagent messages have it, lead messages don't)
+    const lineAgentId =
+      typeof (parsed as Record<string, unknown>).agentId === 'string'
+        ? ((parsed as Record<string, unknown>).agentId as string)
+        : undefined;
+
     if (!currentTimestamp) {
       // Use stable cached timestamp keyed by line content to survive re-parses
       let ts = lineTimestampCache.get(trimmed);
@@ -242,6 +269,7 @@ export function parseStreamJsonToGroups(cliLogsTail: string): StreamJsonGroup[] 
       currentTimestamp = ts;
     }
     if (!currentGroupId) {
+      currentAgentId = lineAgentId;
       const msgId = extractAssistantMessageId(parsed);
       if (msgId) {
         const occurrence = msgIdOccurrences.get(msgId) ?? 0;
@@ -261,4 +289,77 @@ export function parseStreamJsonToGroups(cliLogsTail: string): StreamJsonGroup[] 
   flushGroup();
 
   return groups;
+}
+
+/**
+ * Groups consecutive StreamJsonGroups by agentId into SubagentSections.
+ * Lead groups (no agentId) remain as individual entries.
+ * Must be called on chronological (oldest-first) groups.
+ */
+export function groupBySubagent(groups: StreamJsonGroup[]): StreamJsonEntry[] {
+  const result: StreamJsonEntry[] = [];
+  const pendingDescriptions: string[] = [];
+  const agentDescMap = new Map<string, string>();
+  const sectionCountByAgent = new Map<string, number>();
+  let currentRun: { agentId: string; groups: StreamJsonGroup[] } | null = null;
+
+  const flushRun = (): void => {
+    if (!currentRun) return;
+    const desc = agentDescMap.get(currentRun.agentId) ?? 'Subagent';
+    let toolCount = 0;
+    for (const g of currentRun.groups) {
+      for (const item of g.items) {
+        if (item.type === 'tool') toolCount++;
+      }
+    }
+    const count = sectionCountByAgent.get(currentRun.agentId) ?? 0;
+    sectionCountByAgent.set(currentRun.agentId, count + 1);
+    const idSuffix = count > 0 ? `-${count}` : '';
+    result.push({
+      type: 'subagent-section',
+      section: {
+        id: `subagent-section-${currentRun.agentId}${idSuffix}`,
+        agentId: currentRun.agentId,
+        description: desc,
+        groups: currentRun.groups,
+        toolCount,
+        timestamp: currentRun.groups[0].timestamp,
+      },
+    });
+    currentRun = null;
+  };
+
+  for (const group of groups) {
+    if (!group.agentId) {
+      // Lead group — check for Agent/Task tool_use and extract description
+      for (const item of group.items) {
+        if (item.type === 'tool' && (item.tool.name === 'Agent' || item.tool.name === 'Task')) {
+          const input = item.tool.input as Record<string, unknown> | undefined;
+          const desc =
+            (typeof input?.description === 'string' && input.description) ||
+            (typeof input?.prompt === 'string' && input.prompt.slice(0, 80)) ||
+            'Subagent';
+          pendingDescriptions.push(desc);
+        }
+      }
+      flushRun();
+      result.push({ type: 'group', group });
+    } else {
+      // Subagent group
+      if (!agentDescMap.has(group.agentId)) {
+        agentDescMap.set(group.agentId, pendingDescriptions.shift() ?? 'Subagent');
+      }
+
+      // eslint-disable-next-line @typescript-eslint/prefer-optional-chain -- optional chain narrows to `never` in loop body
+      if (currentRun && currentRun.agentId === group.agentId) {
+        currentRun.groups.push(group);
+      } else {
+        flushRun();
+        currentRun = { agentId: group.agentId, groups: [group] };
+      }
+    }
+  }
+
+  flushRun();
+  return result;
 }

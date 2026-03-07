@@ -3,16 +3,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { AttachmentPreviewList } from '@renderer/components/team/attachments/AttachmentPreviewList';
 import { DropZoneOverlay } from '@renderer/components/team/attachments/DropZoneOverlay';
-import { Button } from '@renderer/components/ui/button';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@renderer/components/ui/dialog';
-import { Input } from '@renderer/components/ui/input';
 import { Label } from '@renderer/components/ui/label';
 import { MemberSelect } from '@renderer/components/ui/MemberSelect';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
@@ -26,6 +23,7 @@ import { buildReplyBlock } from '@renderer/utils/agentMessageFormatting';
 import { removeChipTokenFromText } from '@renderer/utils/chipUtils';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { MAX_TEXT_LENGTH } from '@shared/constants';
 import { AlertCircle, ImagePlus, Send, X } from 'lucide-react';
 
 import { MemberBadge } from '../MemberBadge';
@@ -38,8 +36,6 @@ interface QuotedMessage {
   from: string;
   text: string;
 }
-
-const MAX_MESSAGE_LENGTH = 4000;
 
 interface SendMessageDialogProps {
   open: boolean;
@@ -86,7 +82,6 @@ export const SendMessageDialog = ({
   const [member, setMember] = useState('');
   const textDraft = useDraftPersistence({ key: `sendMessage:${teamName}:text` });
   const chipDraft = useChipDraftPersistence(`sendMessage:${teamName}:chips`);
-  const [summary, setSummary] = useState('');
   const prevOpenRef = useRef(false);
   const prevResultRef = useRef<SendMessageResult | null>(null);
 
@@ -115,7 +110,6 @@ export const SendMessageDialog = ({
   useEffect(() => {
     if (open && !prevOpenRef.current) {
       setMember(defaultRecipient ?? '');
-      setSummary('');
       setQuote(quotedMessage);
       setQuoteExpanded(false);
       prevResultRef.current = lastResult;
@@ -145,7 +139,6 @@ export const SendMessageDialog = ({
     if (lastResult && lastResult !== prevResultRef.current) {
       prevResultRef.current = lastResult;
       setMember('');
-      setSummary('');
       setPendingAutoClose(true);
     }
   }, [open, lastResult]);
@@ -181,13 +174,12 @@ export const SendMessageDialog = ({
   const trimmedText = textDraft.value.trim();
   const serialized = serializeChipsWithText(trimmedText, chipDraft.chips);
   const finalText = quote ? buildReplyBlock(quote.from, quote.text, serialized) : serialized;
-  const remaining = MAX_MESSAGE_LENGTH - finalText.length;
+  const remaining = MAX_TEXT_LENGTH - finalText.length;
 
   const canSend =
     member.trim().length > 0 &&
     finalText.length > 0 &&
-    finalText.length <= MAX_MESSAGE_LENGTH &&
-    summary.trim().length > 0 &&
+    finalText.length <= MAX_TEXT_LENGTH &&
     !sending &&
     !attachmentsBlocked;
 
@@ -201,12 +193,7 @@ export const SendMessageDialog = ({
 
   const handleSubmit = (): void => {
     if (!canSend) return;
-    onSend(
-      member.trim(),
-      finalText,
-      summary.trim(),
-      attachments.length > 0 ? attachments : undefined
-    );
+    onSend(member.trim(), finalText, trimmedText, attachments.length > 0 ? attachments : undefined);
     textDraft.clearDraft();
     chipDraft.clearChipDraft();
     clearAttachments();
@@ -267,7 +254,7 @@ export const SendMessageDialog = ({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="sm:max-w-[720px]"
+        className="min-w-0 max-w-3xl"
         onDragEnter={canAttach ? handleDragEnter : undefined}
         onDragLeave={canAttach ? handleDragLeave : undefined}
         onDragOver={canAttach ? handleDragOver : undefined}
@@ -343,9 +330,9 @@ export const SendMessageDialog = ({
 
             <div className={quote ? 'flex flex-col' : 'contents'}>
               {quote ? (
-                <div className="relative overflow-hidden rounded-t-md border border-b-0 border-blue-500/20 bg-blue-950/20 py-2 pl-3 pr-2">
+                <div className="relative overflow-hidden rounded-t-md border border-b-0 border-blue-400/30 bg-blue-100/80 py-2 pl-3 pr-2 dark:border-blue-500/20 dark:bg-blue-950/20">
                   {/* Decorative quotation mark */}
-                  <span className="pointer-events-none absolute -right-1 top-1/2 -translate-y-1/2 select-none font-serif text-[64px] leading-none text-blue-400/[0.08]">
+                  <span className="pointer-events-none absolute -right-1 top-1/2 -translate-y-1/2 select-none font-serif text-[64px] leading-none text-blue-500/[0.08] dark:text-blue-400/[0.08]">
                     &ldquo;
                   </span>
 
@@ -353,7 +340,7 @@ export const SendMessageDialog = ({
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        className="absolute right-1.5 top-1.5 z-10 rounded p-0.5 text-blue-300/40 hover:text-blue-200"
+                        className="absolute right-1.5 top-1.5 z-10 rounded p-0.5 text-blue-400/60 hover:text-blue-600 dark:text-blue-300/40 dark:hover:text-blue-200"
                         onClick={() => setQuote(undefined)}
                       >
                         <X size={12} />
@@ -363,11 +350,13 @@ export const SendMessageDialog = ({
                   </Tooltip>
 
                   <div className="mb-1 flex items-center gap-1.5">
-                    <span className="text-[10px] text-blue-300/60">Replying to</span>
+                    <span className="text-[10px] text-blue-600/70 dark:text-blue-300/60">
+                      Replying to
+                    </span>
                     <MemberBadge name={quote.from} color={colorMap.get(quote.from)} size="sm" />
                   </div>
                   <div
-                    className={`pr-5 opacity-50 ${quoteExpanded ? '' : 'max-h-[3.75rem] overflow-hidden'}`}
+                    className={`pr-5 opacity-60 dark:opacity-50 ${quoteExpanded ? '' : 'max-h-[3.75rem] overflow-hidden'}`}
                   >
                     <MarkdownViewer
                       content={quote.text}
@@ -378,7 +367,7 @@ export const SendMessageDialog = ({
                   {isQuoteLong ? (
                     <button
                       type="button"
-                      className="mt-0.5 text-[10px] text-blue-400/60 hover:text-blue-300"
+                      className="mt-0.5 text-[10px] text-blue-500 hover:text-blue-700 dark:text-blue-400/60 dark:hover:text-blue-300"
                       onClick={() => setQuoteExpanded((v) => !v)}
                     >
                       {quoteExpanded ? 'less' : 'more'}
@@ -400,7 +389,7 @@ export const SendMessageDialog = ({
                 onModEnter={handleSubmit}
                 minRows={4}
                 maxRows={12}
-                maxLength={MAX_MESSAGE_LENGTH}
+                maxLength={MAX_TEXT_LENGTH}
                 disabled={sending}
                 cornerAction={
                   <button
@@ -438,27 +427,7 @@ export const SendMessageDialog = ({
               />
             </div>
           </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="smd-summary">Summary</Label>
-            <Input
-              id="smd-summary"
-              className="h-8 text-xs"
-              placeholder="Brief summary reflecting the message intent"
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-            />
-            <p className="text-[11px] text-[var(--color-text-muted)]">
-              Shown as notification preview. Team lead also sees this for peer messages.
-            </p>
-          </div>
         </div>
-
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose} disabled={sending}>
-            Cancel
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

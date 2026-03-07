@@ -1,3 +1,4 @@
+import { useStore } from '@renderer/store';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 
 import { MemberCard } from './MemberCard';
@@ -32,6 +33,8 @@ export const MemberList = ({
   onAssignTask,
   onOpenTask,
 }: MemberListProps): React.JSX.Element => {
+  const sidebarCollapsed = useStore((s) => s.sidebarCollapsed);
+  const gridClass = sidebarCollapsed ? 'grid grid-cols-2 gap-1' : 'grid grid-cols-1 gap-1';
   const activeMembers = members
     .filter((m) => !m.removedAt)
     .sort((a, b) => {
@@ -75,14 +78,16 @@ export const MemberList = ({
   };
 
   return (
-    <div className="flex flex-col">
-      {activeMembers.map((member) => renderCard(member, false))}
+    <div className="flex flex-col gap-1">
+      <div className={gridClass}>{activeMembers.map((member) => renderCard(member, false))}</div>
       {removedMembers.length > 0 && (
         <>
           <div className="mt-2 text-[10px] text-[var(--color-text-muted)]">
             Removed ({removedMembers.length})
           </div>
-          {removedMembers.map((member) => renderCard(member, true))}
+          <div className={gridClass}>
+            {removedMembers.map((member) => renderCard(member, true))}
+          </div>
         </>
       )}
     </div>

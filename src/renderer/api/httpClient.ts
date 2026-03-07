@@ -249,11 +249,16 @@ export class HttpAPIClient implements ElectronAPI {
   getSessionDetail = (
     projectId: string,
     sessionId: string,
-    _options?: { bypassCache?: boolean }
-  ): Promise<SessionDetail | null> =>
-    this.get<SessionDetail | null>(
-      `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}`
+    options?: { bypassCache?: boolean }
+  ): Promise<SessionDetail | null> => {
+    const params = new URLSearchParams();
+    if (options?.bypassCache) params.set('bypassCache', 'true');
+    const qs = params.toString();
+    const suffix = qs ? `?${qs}` : '';
+    return this.get<SessionDetail | null>(
+      `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}${suffix}`
     );
+  };
 
   getSessionMetrics = (projectId: string, sessionId: string): Promise<SessionMetrics | null> =>
     this.get<SessionMetrics | null>(
@@ -269,11 +274,16 @@ export class HttpAPIClient implements ElectronAPI {
     projectId: string,
     sessionId: string,
     subagentId: string,
-    _options?: { bypassCache?: boolean }
-  ): Promise<SubagentDetail | null> =>
-    this.get<SubagentDetail | null>(
-      `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}`
+    options?: { bypassCache?: boolean }
+  ): Promise<SubagentDetail | null> => {
+    const params = new URLSearchParams();
+    if (options?.bypassCache) params.set('bypassCache', 'true');
+    const qs = params.toString();
+    const suffix = qs ? `?${qs}` : '';
+    return this.get<SubagentDetail | null>(
+      `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}${suffix}`
     );
+  };
 
   getSessionGroups = (projectId: string, sessionId: string): Promise<ConversationGroup[]> =>
     this.get<ConversationGroup[]>(
@@ -882,6 +892,12 @@ export class HttpAPIClient implements ElectronAPI {
     onProvisioningProgress: (
       _callback: (event: unknown, data: TeamProvisioningProgress) => void
     ): (() => void) => {
+      return () => {};
+    },
+    respondToToolApproval: async (): Promise<void> => {
+      throw new Error('Tool approval not available in browser mode');
+    },
+    onToolApprovalEvent: (): (() => void) => {
       return () => {};
     },
   };

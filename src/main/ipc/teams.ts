@@ -1,7 +1,6 @@
-import { randomUUID } from 'node:crypto';
-
 import { setCurrentMainOp } from '@main/services/infrastructure/EventLoopLagMonitor';
 import { getAppIconPath } from '@main/utils/appIcon';
+import { stripMarkdown } from '@main/utils/textFormatting';
 import {
   TEAM_ADD_MEMBER,
   TEAM_ADD_TASK_COMMENT,
@@ -47,6 +46,7 @@ import {
   TEAM_SOFT_DELETE_TASK,
   TEAM_START_TASK,
   TEAM_STOP,
+  TEAM_TOOL_APPROVAL_RESPOND,
   TEAM_UPDATE_CONFIG,
   TEAM_UPDATE_KANBAN,
   TEAM_UPDATE_KANBAN_COLUMN_ORDER,
@@ -58,6 +58,7 @@ import {
 } from '@preload/constants/ipcChannels';
 import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
 import { KANBAN_COLUMN_IDS } from '@shared/constants/kanban';
+import { MAX_TEXT_LENGTH } from '@shared/constants/teamLimits';
 import { createLogger } from '@shared/utils/logger';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
 import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent, Notification } from 'electron';
@@ -67,6 +68,8 @@ import * as path from 'path';
 import { ConfigManager } from '../services/infrastructure/ConfigManager';
 import { NotificationManager } from '../services/infrastructure/NotificationManager';
 import { gitIdentityResolver } from '../services/parsing/GitIdentityResolver';
+import { TeamAttachmentStore } from '../services/team/TeamAttachmentStore';
+import { TeamTaskAttachmentStore } from '../services/team/TeamTaskAttachmentStore';
 
 import {
   validateFromField,
@@ -75,13 +78,6 @@ import {
   validateTeammateName,
   validateTeamName,
 } from './guards';
-
-/** Track rate limit message keys already notified to avoid duplicate OS notifications across refreshes. */
-const notifiedRateLimitKeys = new Set<string>();
-const RATE_LIMIT_KEYS_MAX = 500;
-
-import { TeamAttachmentStore } from '../services/team/TeamAttachmentStore';
-import { TeamTaskAttachmentStore } from '../services/team/TeamTaskAttachmentStore';
 
 import type {
   MemberStatsComputer,
@@ -94,6 +90,7 @@ import type {
   AttachmentMeta,
   AttachmentPayload,
   CreateTaskRequest,
+  EffortLevel,
   GlobalTask,
   IpcResult,
   KanbanColumnId,
@@ -126,7 +123,17 @@ import type {
 const logger = createLogger('IPC:teams');
 
 /**
- * Check messages for rate limit indicators and fire native notifications for new ones.
+ * In-memory set of rate-limit message keys already processed.
+ * Independent of NotificationManager storage — survives notification deletion/pruning.
+ * Without this, deleted rate-limit notifications would re-appear on next getData() scan.
+ */
+const seenRateLimitKeys = new Set<string>();
+const SEEN_RATE_LIMIT_KEYS_MAX = 500;
+
+/**
+ * Check messages for rate limit indicators and fire notifications for new ones.
+ * Uses both in-memory seenRateLimitKeys (to prevent resurrection after deletion)
+ * and NotificationManager dedupeKey (to prevent storage duplicates).
  */
 function checkRateLimitMessages(
   messages: readonly { messageId?: string; from: string; text: string; timestamp: string }[],
@@ -138,33 +145,29 @@ function checkRateLimitMessages(
     if (msg.from === 'user') continue;
     if (!isRateLimitMessage(msg.text)) continue;
 
-    // Prefix key with teamName to avoid collisions across teams
     const rawKey = msg.messageId ?? `${msg.from}:${msg.timestamp}`;
-    const key = `${teamName}:${rawKey}`;
-    if (notifiedRateLimitKeys.has(key)) continue;
-    notifiedRateLimitKeys.add(key);
+    const dedupeKey = `rate-limit:${teamName}:${rawKey}`;
 
-    // Prevent unbounded memory growth
-    if (notifiedRateLimitKeys.size > RATE_LIMIT_KEYS_MAX) {
-      const first = notifiedRateLimitKeys.values().next().value!;
-      notifiedRateLimitKeys.delete(first);
+    // In-memory guard: prevents resurrection after user deletes the notification
+    if (seenRateLimitKeys.has(dedupeKey)) continue;
+    seenRateLimitKeys.add(dedupeKey);
+
+    // Evict oldest entries to prevent unbounded growth
+    if (seenRateLimitKeys.size > SEEN_RATE_LIMIT_KEYS_MAX) {
+      const first = seenRateLimitKeys.values().next().value;
+      if (first) seenRateLimitKeys.delete(first);
     }
 
     void NotificationManager.getInstance()
-      .addError({
-        id: randomUUID(),
-        timestamp: Date.now(),
-        sessionId: `team:${teamName}`,
-        projectId: teamName,
-        filePath: '',
-        source: 'rate-limit',
-        message: `[${msg.from}] ${msg.text.slice(0, 200)}`,
-        triggerColor: 'red',
-        triggerName: 'Rate Limit',
-        context: {
-          projectName: teamDisplayName,
-          cwd: projectPath,
-        },
+      .addTeamNotification({
+        teamEventType: 'rate_limit',
+        teamName,
+        teamDisplayName,
+        from: msg.from,
+        summary: `Rate limit: ${msg.from}`,
+        body: msg.text.slice(0, 200),
+        dedupeKey,
+        projectPath,
       })
       .catch(() => undefined);
   }
@@ -246,6 +249,7 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_SAVE_TASK_ATTACHMENT, handleSaveTaskAttachment);
   ipcMain.handle(TEAM_GET_TASK_ATTACHMENT, handleGetTaskAttachment);
   ipcMain.handle(TEAM_DELETE_TASK_ATTACHMENT, handleDeleteTaskAttachment);
+  ipcMain.handle(TEAM_TOOL_APPROVAL_RESPOND, handleToolApprovalRespond);
   logger.info('Team handlers registered');
 }
 
@@ -300,6 +304,7 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_SAVE_TASK_ATTACHMENT);
   ipcMain.removeHandler(TEAM_GET_TASK_ATTACHMENT);
   ipcMain.removeHandler(TEAM_DELETE_TASK_ATTACHMENT);
+  ipcMain.removeHandler(TEAM_TOOL_APPROVAL_RESPOND);
 }
 
 function getTeamDataService(): TeamDataService {
@@ -544,6 +549,12 @@ function isProvisioningTeamName(teamName: string): boolean {
   return parts.every((p) => /^[a-z0-9]+$/.test(p));
 }
 
+const VALID_EFFORT_LEVELS: readonly string[] = ['low', 'medium', 'high'];
+
+function isValidEffort(value: unknown): value is EffortLevel {
+  return typeof value === 'string' && VALID_EFFORT_LEVELS.includes(value);
+}
+
 async function validateProvisioningRequest(
   request: unknown
 ): Promise<{ valid: true; value: TeamCreateRequest } | { valid: false; error: string }> {
@@ -641,6 +652,9 @@ async function validateProvisioningRequest(
       cwd,
       prompt: typeof payload.prompt === 'string' ? payload.prompt.trim() || undefined : undefined,
       model: typeof payload.model === 'string' ? payload.model.trim() || undefined : undefined,
+      effort: isValidEffort(payload.effort) ? payload.effort : undefined,
+      skipPermissions:
+        typeof payload.skipPermissions === 'boolean' ? payload.skipPermissions : undefined,
     },
   };
 }
@@ -745,7 +759,10 @@ async function handleLaunchTeam(
         cwd,
         prompt: typeof payload.prompt === 'string' ? payload.prompt.trim() || undefined : undefined,
         model: typeof payload.model === 'string' ? payload.model.trim() || undefined : undefined,
+        effort: isValidEffort(payload.effort) ? payload.effort : undefined,
         clearContext: payload.clearContext === true ? true : undefined,
+        skipPermissions:
+          typeof payload.skipPermissions === 'boolean' ? payload.skipPermissions : undefined,
       },
       (progress) => {
         try {
@@ -1932,19 +1949,39 @@ async function handleShowMessageNotification(
   if (!d.teamDisplayName || !d.from || !d.body) {
     return { success: false, error: 'Missing required fields (teamDisplayName, from, body)' };
   }
+  if (!d.teamName) {
+    return {
+      success: false,
+      error: 'Missing required field: teamName (needed for deep-link navigation)',
+    };
+  }
 
-  showTeamNativeNotification({
-    title: d.teamDisplayName,
-    subtitle: d.summary ?? `${d.from} → ${d.to ?? 'team'}`,
-    body: d.body,
-  });
+  // Route through NotificationManager for unified storage + native toast.
+  // dedupeKey is required from renderer — built from stable identifiers (taskId, teamName, etc.)
+  const dedupeKey =
+    d.dedupeKey ?? `msg:${d.teamName}:${d.from}:${d.summary ?? d.body.slice(0, 50)}`;
+
+  void NotificationManager.getInstance()
+    .addTeamNotification({
+      teamEventType: d.teamEventType ?? 'task_clarification',
+      teamName: d.teamName,
+      teamDisplayName: d.teamDisplayName,
+      from: d.from,
+      to: d.to,
+      summary: d.summary ?? `${d.from} → ${d.to ?? 'team'}`,
+      body: d.body,
+      dedupeKey,
+      suppressToast: d.suppressToast,
+    })
+    .catch(() => undefined);
+
   return { success: true, data: undefined };
 }
 
 /**
  * Show a native OS notification for a team event.
- * Respects user's notification settings (enabled, snoozed).
- * Cross-platform: macOS, Linux, Windows via Electron Notification API.
+ * @deprecated Use NotificationManager.addTeamNotification() instead for unified storage + toast.
+ * Kept for backward compatibility with any remaining callers.
  */
 export function showTeamNativeNotification(opts: {
   title: string;
@@ -1971,8 +2008,8 @@ export function showTeamNativeNotification(opts: {
   }
 
   const isMac = process.platform === 'darwin';
-  const truncatedBody = opts.body.slice(0, 300);
-  const iconPath = getAppIconPath();
+  const truncatedBody = stripMarkdown(opts.body).slice(0, 300);
+  const iconPath = isMac ? undefined : getAppIconPath();
   const notification = new Notification({
     title: opts.title,
     ...(isMac && opts.subtitle ? { subtitle: opts.subtitle } : {}),
@@ -2014,8 +2051,8 @@ async function handleAddTaskComment(
   if (!vTask.valid) return { success: false, error: vTask.error ?? 'Invalid taskId' };
   if (typeof text !== 'string' || text.trim().length === 0)
     return { success: false, error: 'Comment text must be non-empty' };
-  if (text.trim().length > 2000)
-    return { success: false, error: 'Comment exceeds 2000 characters' };
+  if (text.trim().length > MAX_TEXT_LENGTH)
+    return { success: false, error: `Comment exceeds ${MAX_TEXT_LENGTH} characters` };
 
   const rawAttachments = Array.isArray(attachments) ? attachments : [];
   if (rawAttachments.length > MAX_ATTACHMENTS) {
@@ -2237,4 +2274,36 @@ async function handleDeleteTaskAttachment(
     // Remove metadata from task JSON
     await getTeamDataService().removeTaskAttachment(vTeam.value!, vTask.value!, safeAttId);
   });
+}
+
+async function handleToolApprovalRespond(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  runId: unknown,
+  requestId: unknown,
+  allow: unknown,
+  message?: unknown
+): Promise<IpcResult<void>> {
+  const validated = validateTeamName(teamName);
+  if (!validated.valid) {
+    return { success: false, error: validated.error ?? 'Invalid teamName' };
+  }
+  if (typeof runId !== 'string' || runId.trim().length === 0) {
+    return { success: false, error: 'runId must be a non-empty string' };
+  }
+  if (typeof requestId !== 'string' || requestId.trim().length === 0) {
+    return { success: false, error: 'requestId must be a non-empty string' };
+  }
+  if (typeof allow !== 'boolean') {
+    return { success: false, error: 'allow must be a boolean' };
+  }
+  return wrapTeamHandler('toolApprovalRespond', () =>
+    getTeamProvisioningService().respondToToolApproval(
+      validated.value!,
+      runId,
+      requestId,
+      allow,
+      typeof message === 'string' ? message : undefined
+    )
+  );
 }

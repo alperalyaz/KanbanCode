@@ -81,6 +81,11 @@ export const TaskFiltersPopover = ({
                   <Checkbox
                     checked={filters.statusIds.has(opt.id)}
                     onCheckedChange={() => toggleStatus(opt.id)}
+                    style={{ '--color-accent': opt.color } as React.CSSProperties}
+                  />
+                  <span
+                    className="inline-block size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: opt.color }}
                   />
                   {opt.label}
                 </label>

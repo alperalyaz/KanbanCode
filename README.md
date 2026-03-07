@@ -10,7 +10,8 @@
 
 <p align="center">
   <a href="https://github.com/777genius/claude_agent_teams_ui/releases/latest"><img src="https://img.shields.io/github/v/release/777genius/claude_agent_teams_ui?style=flat-square&label=version&color=blue" alt="Latest Release" /></a>&nbsp;
-  <a href="https://github.com/777genius/claude_agent_teams_ui/actions/workflows/ci.yml"><img src="https://github.com/777genius/claude_agent_teams_ui/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
+  <a href="https://github.com/777genius/claude_agent_teams_ui/actions/workflows/ci.yml"><img src="https://github.com/777genius/claude_agent_teams_ui/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>&nbsp;
+  <a href="https://discord.gg/m5gszZKG"><img src="https://img.shields.io/badge/Discord-Join%20us-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
 <p align="center">
@@ -18,6 +19,7 @@
 </p>
 
 <br />
+
 ## What is this
 
 A new approach to task management with AI agents.
@@ -47,7 +49,7 @@ A new approach to task management with AI agents.
 - **Attach code context** — reference files or snippets in messages, like in Cursor
 - **Notification system** — configurable alerts when tasks complete, agents need attention, or errors occur
 - **MCP integration** — supports the built-in `mcp-server` (see [mcp-server folder](./mcp-server)) for integrating external tools and extensible agent plugins out of the box
-
+- **Post-compact context recovery** — when Claude compresses its context, the app restores the key team-management instructions so kanban/task-board coordination stays consistent and important operational context is not lost
 </details>
 
 ## Installation

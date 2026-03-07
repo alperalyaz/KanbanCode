@@ -81,6 +81,7 @@ import type {
   TeamSummary,
   TeamTask,
   TeamTaskStatus,
+  ToolApprovalRequest,
   UpdateKanbanPatch,
 } from '@shared/types';
 import type { StateCreator } from 'zustand';
@@ -105,9 +106,8 @@ function detectClarificationNotifications(
       const oldTask = oldTasks.find((t) => t.teamName === task.teamName && t.id === task.id);
       if (oldTask?.needsClarification !== 'user' && !notifiedClarificationTaskKeys.has(key)) {
         notifiedClarificationTaskKeys.add(key);
-        if (notifyEnabled) {
-          fireClarificationNotification(task);
-        }
+        // Always store in-app; suppress OS toast when per-type toggle is off
+        fireClarificationNotification(task, !notifyEnabled);
       }
     } else {
       notifiedClarificationTaskKeys.delete(key);
@@ -115,18 +115,22 @@ function detectClarificationNotifications(
   }
 }
 
-function fireClarificationNotification(task: GlobalTask): void {
+function fireClarificationNotification(task: GlobalTask, suppressToast: boolean): void {
   // Delegate to main process for native OS notification (cross-platform, no permission needed)
   const latestComment = task.comments?.length ? task.comments[task.comments.length - 1] : undefined;
   const body = latestComment?.text || task.description || `Task #${task.id}: ${task.subject}`;
 
   void api.teams
     ?.showMessageNotification({
+      teamName: task.teamName,
       teamDisplayName: task.teamDisplayName,
       from: latestComment?.author || 'team-lead',
       to: 'user',
       summary: `Clarification needed — Task #${task.id}`,
       body,
+      teamEventType: 'task_clarification',
+      dedupeKey: `clarification:${task.teamName}:${task.id}:${task.updatedAt ?? Date.now()}`,
+      suppressToast,
     })
     .catch(() => undefined);
 }
@@ -137,13 +141,12 @@ function detectStatusChangeNotifications(
   config: AppConfig | null,
   teamByName: Record<string, TeamSummary>
 ): void {
-  if (!config?.notifications?.notifyOnStatusChange) return;
-  if (!config.notifications.enabled) return;
-
-  const statuses = config.notifications.statusChangeStatuses ?? ['in_progress', 'completed'];
+  const statusChangeEnabled =
+    !!config?.notifications?.notifyOnStatusChange && !!config.notifications.enabled;
+  const statuses = config?.notifications?.statusChangeStatuses ?? ['in_progress', 'completed'];
   if (statuses.length === 0) return;
 
-  const onlySolo = config.notifications.statusChangeOnlySolo ?? true;
+  const onlySolo = config?.notifications?.statusChangeOnlySolo ?? true;
 
   for (const task of newTasks) {
     const oldTask = oldTasks.find((t) => t.teamName === task.teamName && t.id === task.id);
@@ -169,14 +172,20 @@ function detectStatusChangeNotifications(
     notifiedStatusChangeKeys.add(key);
 
     const fromLabel = becameApproved ? 'Completed' : oldTask.status;
-    fireStatusChangeNotification(task, fromLabel, becameApproved ? 'approved' : undefined);
+    fireStatusChangeNotification(
+      task,
+      fromLabel,
+      becameApproved ? 'approved' : undefined,
+      !statusChangeEnabled
+    );
   }
 }
 
 function fireStatusChangeNotification(
   task: GlobalTask,
   fromStatus: string,
-  overrideToStatus?: string
+  overrideToStatus?: string,
+  suppressToast?: boolean
 ): void {
   const statusLabels: Record<string, string> = {
     pending: 'Pending',
@@ -191,11 +200,15 @@ function fireStatusChangeNotification(
 
   void api.teams
     ?.showMessageNotification({
+      teamName: task.teamName,
       teamDisplayName: task.teamDisplayName,
       from: task.owner ?? 'system',
       to: 'user',
       summary: `Task #${task.id}: ${from} → ${to}`,
       body: task.subject,
+      teamEventType: 'task_status_change',
+      dedupeKey: `status:${task.teamName}:${task.id}:${fromStatus}:${toStatus}:${task.updatedAt ?? Date.now()}`,
+      suppressToast,
     })
     .catch(() => undefined);
 }
@@ -353,6 +366,14 @@ export interface TeamSlice {
   onProvisioningProgress: (progress: TeamProvisioningProgress) => void;
   subscribeProvisioningProgress: () => void;
   unsubscribeProvisioningProgress: () => void;
+  pendingApprovals: ToolApprovalRequest[];
+  respondToToolApproval: (
+    teamName: string,
+    runId: string,
+    requestId: string,
+    allow: boolean,
+    message?: string
+  ) => Promise<void>;
 }
 
 export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, get) => ({
@@ -394,6 +415,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   provisioningProgressUnsubscribe: null,
   deletedTasks: [],
   deletedTasksLoading: false,
+  pendingApprovals: [],
 
   fetchBranches: async (paths: string[]) => {
     const results: Record<string, string | null> = {};
@@ -1156,6 +1178,21 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       get().onProvisioningProgress(progress);
     });
     set({ provisioningProgressUnsubscribe: unsubscribe });
+  },
+
+  respondToToolApproval: async (teamName, runId, requestId, allow, message) => {
+    try {
+      await api.teams.respondToToolApproval(teamName, runId, requestId, allow, message);
+      // Remove ONLY after successful IPC, by runId+requestId pair
+      set((s) => ({
+        pendingApprovals: s.pendingApprovals.filter(
+          (a) => !(a.runId === runId && a.requestId === requestId)
+        ),
+      }));
+    } catch {
+      // IPC failed — approval stays in UI, user can retry
+      // Do NOT modify pendingApprovals — nothing was removed, nothing to rollback
+    }
   },
 
   unsubscribeProvisioningProgress: () => {

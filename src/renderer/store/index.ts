@@ -32,6 +32,8 @@ import type {
   CliInstallerProgress,
   LeadContextUsage,
   TeamChangeEvent,
+  ToolApprovalEvent,
+  ToolApprovalRequest,
   UpdaterStatus,
 } from '@shared/types';
 
@@ -441,6 +443,29 @@ export function initializeNotificationListeners(): () => void {
           globalTasksRefreshTimer = null;
         }
       });
+    }
+  }
+
+  // Tool approval events from CLI control_request protocol
+  if (api.teams?.onToolApprovalEvent) {
+    const cleanup = api.teams.onToolApprovalEvent((_event: unknown, data: unknown) => {
+      const event = data as ToolApprovalEvent;
+      if ('dismissed' in event && event.dismissed) {
+        const dismiss = event;
+        useStore.setState((s) => ({
+          pendingApprovals: s.pendingApprovals.filter(
+            (a) => !(a.teamName === dismiss.teamName && a.runId === dismiss.runId)
+          ),
+        }));
+      } else {
+        const request = event as ToolApprovalRequest;
+        useStore.setState((s) => ({
+          pendingApprovals: [...s.pendingApprovals, request],
+        }));
+      }
+    });
+    if (typeof cleanup === 'function') {
+      cleanupFns.push(cleanup);
     }
   }
 

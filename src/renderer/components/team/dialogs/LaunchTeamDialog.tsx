@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 import { api } from '@renderer/api';
 import { ExtendedContextCheckbox } from '@renderer/components/team/dialogs/ExtendedContextCheckbox';
+import { SkipPermissionsCheckbox } from '@renderer/components/team/dialogs/SkipPermissionsCheckbox';
 import { Button } from '@renderer/components/ui/button';
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import {
@@ -23,12 +24,14 @@ import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import { AlertTriangle, CheckCircle2, Loader2, RotateCcw, X } from 'lucide-react';
 
+import { EffortLevelSelector } from './EffortLevelSelector';
 import { ProjectPathSelector } from './ProjectPathSelector';
 import { computeEffectiveTeamModel, TeamModelSelector } from './TeamModelSelector';
 
 import type { ActiveTeamRef } from './CreateTeamDialog';
 import type { MentionSuggestion } from '@renderer/types/mention';
 import type {
+  EffortLevel,
   Project,
   ResolvedTeamMember,
   TeamLaunchRequest,
@@ -78,6 +81,12 @@ export const LaunchTeamDialog = ({
   const [extendedContext, setExtendedContextRaw] = useState(
     () => localStorage.getItem('team:lastExtendedContext') === 'true'
   );
+  const [skipPermissions, setSkipPermissionsRaw] = useState(
+    () => localStorage.getItem('team:lastSkipPermissions') !== 'false'
+  );
+  const [selectedEffort, setSelectedEffortRaw] = useState(
+    () => localStorage.getItem('team:lastSelectedEffort') ?? ''
+  );
   const [clearContext, setClearContext] = useState(false);
   const [conflictDismissed, setConflictDismissed] = useState(false);
 
@@ -89,6 +98,16 @@ export const LaunchTeamDialog = ({
   const setExtendedContext = (value: boolean): void => {
     setExtendedContextRaw(value);
     localStorage.setItem('team:lastExtendedContext', String(value));
+  };
+
+  const setSkipPermissions = (value: boolean): void => {
+    setSkipPermissionsRaw(value);
+    localStorage.setItem('team:lastSkipPermissions', String(value));
+  };
+
+  const setSelectedEffort = (value: string): void => {
+    setSelectedEffortRaw(value);
+    localStorage.setItem('team:lastSelectedEffort', value);
   };
 
   const resetFormState = (): void => {
@@ -282,7 +301,9 @@ export const LaunchTeamDialog = ({
           cwd: effectiveCwd,
           prompt: promptDraft.value.trim() || undefined,
           model: computeEffectiveTeamModel(selectedModel, extendedContext),
+          effort: (selectedEffort as EffortLevel) || undefined,
           clearContext: clearContext || undefined,
+          skipPermissions,
         });
         resetFormState();
         onClose();
@@ -425,11 +446,21 @@ export const LaunchTeamDialog = ({
               onValueChange={setSelectedModel}
               id="launch-model"
             />
+            <EffortLevelSelector
+              value={selectedEffort}
+              onValueChange={setSelectedEffort}
+              id="launch-effort"
+            />
             <ExtendedContextCheckbox
               id="launch-extended-context"
               checked={extendedContext}
               onCheckedChange={setExtendedContext}
               disabled={selectedModel === 'haiku'}
+            />
+            <SkipPermissionsCheckbox
+              id="launch-skip-permissions"
+              checked={skipPermissions}
+              onCheckedChange={setSkipPermissions}
             />
           </div>
 
@@ -475,62 +506,70 @@ export const LaunchTeamDialog = ({
           </p>
         ) : null}
 
-        {prepareState === 'idle' || prepareState === 'loading' ? (
-          <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-            <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            <span>
-              {prepareMessage ??
-                (prepareState === 'idle'
-                  ? 'Warming up CLI environment...'
-                  : 'Preparing environment...')}
-            </span>
-          </div>
-        ) : null}
-
-        {prepareState === 'ready' ? (
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs text-emerald-400">
-              <CheckCircle2 className="size-3.5 shrink-0" />
-              <span>
-                {prepareWarnings.length > 0
-                  ? 'CLI environment ready (with notes)'
-                  : 'CLI environment ready'}
-              </span>
-            </div>
-            {prepareMessage ? (
-              <p className="text-[11px] text-[var(--color-text-muted)]">{prepareMessage}</p>
-            ) : null}
-            {prepareWarnings.length > 0 ? (
-              <div className="space-y-0.5">
-                {prepareWarnings.map((warning) => (
-                  <p key={warning} className="text-[11px] text-sky-300">
-                    {warning}
-                  </p>
-                ))}
+        <DialogFooter className="pt-4 sm:justify-between">
+          <div className="min-w-0">
+            {prepareState === 'idle' || prepareState === 'loading' ? (
+              <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                <span>
+                  {prepareMessage ??
+                    (prepareState === 'idle'
+                      ? 'Warming up CLI environment...'
+                      : 'Preparing environment...')}
+                </span>
               </div>
             ) : null}
-          </div>
-        ) : null}
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Close
-          </Button>
-          <Button
-            size="sm"
-            className="bg-emerald-600 text-white hover:bg-emerald-700"
-            disabled={isSubmitting || prepareState !== 'ready'}
-            onClick={handleSubmit}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                Launching...
-              </>
-            ) : (
-              'Launch'
-            )}
-          </Button>
+            {prepareState === 'ready' ? (
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+                  <CheckCircle2 className="size-3.5 shrink-0" />
+                  <span>
+                    {prepareWarnings.length > 0
+                      ? 'CLI environment ready (with notes)'
+                      : 'CLI environment ready'}
+                  </span>
+                </div>
+                {prepareMessage ? (
+                  <p className="mt-0.5 pl-5 text-[11px] text-[var(--color-text-muted)]">
+                    {prepareMessage}
+                  </p>
+                ) : null}
+                {prepareWarnings.length > 0 ? (
+                  <div className="mt-0.5 space-y-0.5 pl-5">
+                    {prepareWarnings.map((warning) => (
+                      <p key={warning} className="text-[11px] text-sky-300">
+                        {warning}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {prepareState === 'failed' ? <div /> : null}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <Button variant="outline" size="sm" onClick={onClose}>
+              Close
+            </Button>
+            <Button
+              size="sm"
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+              disabled={isSubmitting || prepareState !== 'ready'}
+              onClick={handleSubmit}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  Launching...
+                </>
+              ) : (
+                'Launch'
+              )}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

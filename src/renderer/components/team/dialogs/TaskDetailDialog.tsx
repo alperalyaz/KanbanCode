@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
+import { ImageLightbox } from '@renderer/components/team/attachments/ImageLightbox';
 import { CollapsibleTeamSection } from '@renderer/components/team/CollapsibleTeamSection';
+import { FileIcon } from '@renderer/components/team/editor/FileIcon';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { MemberLogsTab } from '@renderer/components/team/members/MemberLogsTab';
 import { Badge } from '@renderer/components/ui/badge';
@@ -10,7 +12,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@renderer/components/ui/dialog';
@@ -21,6 +22,7 @@ import { Textarea } from '@renderer/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { markAsRead } from '@renderer/services/commentReadStorage';
 import { useStore } from '@renderer/store';
+import { isImageMimeType } from '@renderer/utils/attachmentUtils';
 import {
   buildMemberColorMap,
   KANBAN_COLUMN_DISPLAY,
@@ -35,7 +37,6 @@ import {
   Check,
   Clock,
   Eye,
-  FileCode,
   FileDiff,
   GitCompareArrows,
   HelpCircle,
@@ -57,7 +58,12 @@ import { TaskAttachments } from './TaskAttachments';
 import { TaskCommentInput } from './TaskCommentInput';
 import { TaskCommentsSection } from './TaskCommentsSection';
 
-import type { KanbanTaskState, ResolvedTeamMember, TeamTaskWithKanban } from '@shared/types';
+import type {
+  KanbanTaskState,
+  ResolvedTeamMember,
+  TaskAttachmentMeta,
+  TeamTaskWithKanban,
+} from '@shared/types';
 
 interface TaskDetailDialogProps {
   open: boolean;
@@ -194,6 +200,22 @@ export const TaskDetailDialog = ({
     const latest = Math.max(...comments.map((c) => new Date(c.createdAt).getTime()));
     if (latest > 0) markAsRead(teamName, currentTask.id, latest);
   }, [open, teamName, currentTask]);
+
+  // Collect image attachments from comments for the Attachments section
+  const commentImageAttachments = useMemo(() => {
+    const comments = currentTask?.comments ?? [];
+    const result: { attachment: TaskAttachmentMeta; commentText: string; commentAuthor: string }[] =
+      [];
+    for (const c of comments) {
+      if (!c.attachments) continue;
+      for (const att of c.attachments) {
+        if (isImageMimeType(att.mimeType)) {
+          result.push({ attachment: att, commentText: c.text, commentAuthor: c.author });
+        }
+      }
+    }
+    return result;
+  }, [currentTask?.comments]);
 
   // Lazy-load task changes when dialog is open and task is completed
   const isTaskCompleted = currentTask?.status === 'completed';
@@ -514,25 +536,22 @@ export const TaskDetailDialog = ({
               </div>
             </div>
           ) : currentTask.description ? (
-            <div
-              role="button"
-              tabIndex={0}
-              className="group cursor-pointer"
-              onClick={startEditDescription}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  startEditDescription();
-                }
-              }}
-            >
+            <div className="group relative">
               <ExpandableContent collapsedHeight={200}>
                 <MarkdownViewer content={currentTask.description} maxHeight="max-h-none" bare />
               </ExpandableContent>
-              <Pencil
-                size={12}
-                className="mt-1 text-[var(--color-text-muted)] opacity-0 transition-opacity group-hover:opacity-100"
-              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="absolute right-0 top-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)] group-hover:opacity-100"
+                    onClick={startEditDescription}
+                  >
+                    <Pencil size={12} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Edit description</TooltipContent>
+              </Tooltip>
             </div>
           ) : (
             <button
@@ -550,20 +569,29 @@ export const TaskDetailDialog = ({
           title="Attachments"
           icon={<ImageIcon size={14} />}
           badge={
-            (currentTask.attachments?.length ?? 0) > 0
-              ? (currentTask.attachments?.length ?? 0)
+            (currentTask.attachments?.length ?? 0) + commentImageAttachments.length > 0
+              ? (currentTask.attachments?.length ?? 0) + commentImageAttachments.length
               : undefined
           }
           contentClassName="pl-2.5"
           headerClassName="-mx-6 w-[calc(100%+3rem)]"
           headerContentClassName="pl-6"
-          defaultOpen={(currentTask.attachments?.length ?? 0) > 0}
+          defaultOpen={
+            (currentTask.attachments?.length ?? 0) > 0 || commentImageAttachments.length > 0
+          }
         >
           <TaskAttachments
             teamName={teamName}
             taskId={currentTask.id}
             attachments={currentTask.attachments ?? []}
           />
+          {commentImageAttachments.length > 0 ? (
+            <CommentImagesGrid
+              items={commentImageAttachments}
+              teamName={teamName}
+              taskId={currentTask.id}
+            />
+          ) : null}
         </CollapsibleTeamSection>
 
         {/* Changes */}
@@ -589,7 +617,10 @@ export const TaskDetailDialog = ({
                     key={file.filePath}
                     className="group flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--color-surface-raised)]"
                   >
-                    <FileCode size={14} className="shrink-0 text-[var(--color-text-muted)]" />
+                    <FileIcon
+                      fileName={file.relativePath.split('/').pop() ?? file.relativePath}
+                      className="size-3.5"
+                    />
                     <button
                       type="button"
                       className="min-w-0 flex-1 truncate text-left font-mono text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text)]"
@@ -878,13 +909,120 @@ export const TaskDetailDialog = ({
             containerClassName="-mx-6"
           />
         </CollapsibleTeamSection>
-
-        <DialogFooter className="flex items-center justify-end sm:justify-end">
-          <Button variant="outline" onClick={handleClose}>
-            Close
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Comment images grid — accumulated images from task comments
+// ---------------------------------------------------------------------------
+
+interface CommentImageItem {
+  attachment: TaskAttachmentMeta;
+  commentText: string;
+  commentAuthor: string;
+}
+
+const CommentImagesGrid = ({
+  items,
+  teamName,
+  taskId,
+}: {
+  items: CommentImageItem[];
+  teamName: string;
+  taskId: string;
+}): React.JSX.Element => {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  return (
+    <div className="mt-3 space-y-1.5">
+      <div className="flex items-center gap-1.5 text-[10px] text-[var(--color-text-muted)]">
+        <MessageSquare size={10} />
+        From comments
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {items.map((item) => (
+          <CommentImageThumbnail
+            key={item.attachment.id}
+            item={item}
+            teamName={teamName}
+            taskId={taskId}
+            onPreview={setPreviewUrl}
+          />
+        ))}
+      </div>
+      {previewUrl ? (
+        <ImageLightbox
+          open
+          onClose={() => setPreviewUrl(null)}
+          src={previewUrl}
+          alt="Comment attachment"
+        />
+      ) : null}
+    </div>
+  );
+};
+
+const CommentImageThumbnail = ({
+  item,
+  teamName,
+  taskId,
+  onPreview,
+}: {
+  item: CommentImageItem;
+  teamName: string;
+  taskId: string;
+  onPreview: (dataUrl: string) => void;
+}): React.JSX.Element => {
+  const getTaskAttachmentData = useStore((s) => s.getTaskAttachmentData);
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const base64 = await getTaskAttachmentData(
+          teamName,
+          taskId,
+          item.attachment.id,
+          item.attachment.mimeType
+        );
+        if (!cancelled && base64) {
+          setThumbUrl(`data:${item.attachment.mimeType};base64,${base64}`);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [teamName, taskId, item.attachment.id, item.attachment.mimeType, getTaskAttachmentData]);
+
+  // Truncate comment text for tooltip
+  const tooltipText = `${item.commentAuthor}: ${item.commentText.length > 200 ? item.commentText.slice(0, 200) + '...' : item.commentText}`;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          className="group relative flex size-16 cursor-pointer items-center justify-center overflow-hidden rounded border border-[var(--color-border)] bg-[var(--color-surface)] transition-colors hover:border-[var(--color-border-emphasis)]"
+          onClick={() => thumbUrl && onPreview(thumbUrl)}
+        >
+          {thumbUrl ? (
+            <img src={thumbUrl} alt={item.attachment.filename} className="size-full object-cover" />
+          ) : (
+            <Loader2 size={12} className="animate-spin text-[var(--color-text-muted)]" />
+          )}
+          <div className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-0.5 py-px text-center text-[7px] text-white opacity-0 transition-opacity group-hover:opacity-100">
+            {item.attachment.filename}
+          </div>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[300px] text-xs">
+        {tooltipText}
+      </TooltipContent>
+    </Tooltip>
   );
 };

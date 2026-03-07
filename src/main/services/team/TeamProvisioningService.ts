@@ -50,6 +50,8 @@ import type {
   TeamProvisioningProgress,
   TeamProvisioningState,
   TeamTask,
+  ToolApprovalEvent,
+  ToolApprovalRequest,
   ToolCallMeta,
 } from '@shared/types';
 
@@ -201,6 +203,18 @@ interface ProvisioningRun {
     env: NodeJS.ProcessEnv;
     prompt: string;
   } | null;
+  /** Pending tool approval requests awaiting user response (control_request protocol). */
+  pendingApprovals: Map<string, ToolApprovalRequest>;
+  /**
+   * Post-compact context reinjection lifecycle.
+   * - pendingPostCompactReminder: compact_boundary was received; waiting for idle to inject.
+   * - postCompactReminderInFlight: the reminder turn has been injected via stdin, waiting for result.
+   * - suppressPostCompactReminderOutput: true while processing a reminder turn — suppress
+   *   low-value acknowledgement text so the user doesn't see "OK, I'll remember that."
+   */
+  pendingPostCompactReminder: boolean;
+  postCompactReminderInFlight: boolean;
+  suppressPostCompactReminderOutput: boolean;
 }
 
 type LeadActivityState = 'active' | 'idle' | 'offline';
@@ -402,6 +416,16 @@ function buildMembersPrompt(members: TeamCreateRequest['members']): string {
     .join('\n');
 }
 
+/** Compact roster: name + role only, no workflow details. Used for post-compact reminders. */
+function buildCompactMembersRoster(members: TeamCreateRequest['members']): string {
+  return members
+    .map((member) => {
+      const rolePart = member.role?.trim() ? ` (${member.role.trim()})` : '';
+      return `- ${member.name}${rolePart}`;
+    })
+    .join('\n');
+}
+
 function buildMemberSpawnPrompt(
   member: TeamCreateRequest['members'][number],
   displayName: string,
@@ -549,6 +573,78 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
   );
 }
 
+/**
+ * Builds the durable lead context — constraints, communication protocol, teamctl ops,
+ * and agent block policy — that must survive context compaction.
+ *
+ * Used by: buildProvisioningPrompt, buildLaunchPrompt, and post-compact reinjection.
+ */
+function buildPersistentLeadContext(opts: {
+  teamName: string;
+  leadName: string;
+  isSolo: boolean;
+  members: TeamCreateRequest['members'];
+  /** When true, emit a compact roster (name + role only, no workflows). Used for post-compact reminders. */
+  compact?: boolean;
+}): string {
+  const { teamName, leadName, isSolo, members, compact } = opts;
+  const languageInstruction = getAgentLanguageInstruction();
+  const agentBlockPolicy = buildAgentBlockUsagePolicy();
+  const teamCtlOps = buildTeamCtlOpsInstructions(teamName, leadName);
+
+  const soloConstraint = isSolo
+    ? `\n- SOLO MODE: This team CURRENTLY has ZERO teammates.` +
+      `\n  - FORBIDDEN (until teammates exist): Do NOT spawn teammates via the Task tool with a team_name parameter — there are no teammates to spawn yet.` +
+      `\n  - FORBIDDEN (until teammates exist): Do NOT call SendMessage to any teammate name — no teammates exist yet.` +
+      `\n  - ALLOWED: You may message "user" (the human operator) via SendMessage.` +
+      `\n  - ALLOWED: You may use the Task tool for regular subagents WITHOUT team_name — these are normal Claude Code helpers, not teammates.` +
+      `\n  - If teammates are added later (e.g. via UI), you may then spawn them using the Task tool with team_name + name.` +
+      `\n  - Work on tasks directly yourself. Use subagents for research and parallel work as needed.` +
+      `\n  - PROGRESS REPORTING (MANDATORY): Since you have no teammates, "user" is your only communication channel.` +
+      `\n    - SendMessage "user" at minimum: when you start a task (after marking it in_progress), when you complete a task, and when you hit a meaningful milestone/blocker/decision.` +
+      `\n    - Avoid long silent stretches. If something is taking longer than expected, send a brief update and the next step.` +
+      `\n  - TASK STATUS DISCIPLINE (MANDATORY):` +
+      `\n    - Only move a task to in_progress when you are actively starting work on it.` +
+      `\n    - Only move a task to completed when it is truly finished.` +
+      `\n    - Never bulk-move many tasks at the end — update status incrementally as you work.` +
+      `\n    - Default to working ONE task at a time (keep at most one task in_progress in solo mode), unless you explicitly need parallel background work (in that case explain why to "user").` +
+      `\n    - Record meaningful progress/decisions as task comments so the task board stays accurate and high-signal.`
+    : '';
+
+  const membersBlock = compact ? buildCompactMembersRoster(members) : buildMembersPrompt(members);
+  const membersFooter = membersBlock
+    ? `Members:\n${membersBlock}`
+    : 'Members: (none — solo team lead)';
+
+  return `${languageInstruction}
+
+Constraints:
+- Do NOT call TeamDelete under any circumstances.
+- Do NOT use TodoWrite.
+- Do NOT send shutdown_request messages (SendMessage type: "shutdown_request" is FORBIDDEN).
+- Do NOT shut down, terminate, or clean up the team or its members.
+- Do NOT spawn or create a member named "user". "user" is a reserved system name for the human operator — it is NOT a teammate.
+- Keep assistant text minimal.
+- NEVER send duplicate messages to the same member. One SendMessage per member per topic is enough.
+- Keep the task board high-signal: avoid creating tasks for trivial micro-items.
+- Use the team task board for assigned/substantial work.
+- DELEGATION-FIRST (behavior rule for ALL future turns): When "user" gives you work, your top priority is to (a) decompose into tasks, (b) create tasks on the team board, (c) assign them to teammates, and (d) SendMessage "user" a short confirmation (task IDs + owners). Do NOT start implementing yourself unless the team is truly in SOLO MODE (no teammates).
+- TaskCreate is optional for private planning only; do NOT use it for team-board tasks.
+- When messaging "user" (the human): NEVER mention teamctl.js, internal scripts, CLI commands, or file paths under ~/.claude/. The user sees messages in the UI — write plain human language. If a task needs a status update, do it yourself via Bash; never ask the user to run a command.${soloConstraint}
+
+${teamCtlOps}
+
+Communication protocol (CRITICAL — you are running headless, no one sees your text output):
+- When you receive a <teammate-message> from a teammate, ALWAYS reply using the SendMessage tool with the sender's name as recipient.
+- Your plain text output is invisible to teammates — they are separate processes and can only read their inbox.
+- Example: if you receive <teammate-message teammate_id="alice">...</teammate-message>, respond with SendMessage(type: "message", recipient: "alice", content: "your reply").
+
+Message formatting:
+${agentBlockPolicy}
+
+${membersFooter}`;
+}
+
 function buildAgentBlockUsagePolicy(): string {
   return `Agent-only formatting policy (applies to ALL messages you write):
 - Humans can see teammate inbox messages and coordination text in the UI.
@@ -634,42 +730,20 @@ function buildTaskBoardSnapshot(tasks: TeamTask[]): string {
 function buildProvisioningPrompt(request: TeamCreateRequest): string {
   const displayName = request.displayName?.trim() || request.teamName;
   const description = request.description?.trim() || 'No description';
-  const members = buildMembersPrompt(request.members);
   const taskProtocol = buildTaskStatusProtocol(request.teamName);
   const processRegistration = buildProcessRegistrationProtocol(request.teamName);
-  const languageInstruction = getAgentLanguageInstruction();
-  const agentBlockPolicy = buildAgentBlockUsagePolicy();
   const userPromptBlock = request.prompt?.trim()
     ? `\nAdditional instructions from the user:\n${request.prompt.trim()}\n`
     : '';
 
   const leadName =
     request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name || 'team-lead';
-  const teamCtlOps = buildTeamCtlOpsInstructions(request.teamName, leadName);
   const projectName = path.basename(request.cwd);
 
   const isSolo = request.members.length === 0;
-  const soloConstraint = isSolo
-    ? `\n- SOLO MODE: This team CURRENTLY has ZERO teammates.` +
-      `\n  - FORBIDDEN (until teammates exist): Do NOT spawn teammates via the Task tool with a team_name parameter — there are no teammates to spawn yet.` +
-      `\n  - FORBIDDEN (until teammates exist): Do NOT call SendMessage to any teammate name — no teammates exist yet.` +
-      `\n  - ALLOWED: You may message "user" (the human operator) via SendMessage.` +
-      `\n  - ALLOWED: You may use the Task tool for regular subagents WITHOUT team_name — these are normal Claude Code helpers, not teammates.` +
-      `\n  - If teammates are added later (e.g. via UI), you may then spawn them using the Task tool with team_name + name.` +
-      `\n  - Work on tasks directly yourself. Use subagents for research and parallel work as needed.` +
-      `\n  - PROGRESS REPORTING (MANDATORY): Since you have no teammates, "user" is your only communication channel.` +
-      `\n    - SendMessage "user" at minimum: when you start a task (after marking it in_progress), when you complete a task, and when you hit a meaningful milestone/blocker/decision.` +
-      `\n    - Avoid long silent stretches. If something is taking longer than expected, send a brief update and the next step.` +
-      `\n  - TASK STATUS DISCIPLINE (MANDATORY):` +
-      `\n    - Only move a task to in_progress when you are actively starting work on it.` +
-      `\n    - Only move a task to completed when it is truly finished.` +
-      `\n    - Never bulk-move many tasks at the end — update status incrementally as you work.` +
-      `\n    - Default to working ONE task at a time (keep at most one task in_progress in solo mode), unless you explicitly need parallel background work (in that case explain why to "user").` +
-      `\n    - Record meaningful progress/decisions as task comments so the task board stays accurate and high-signal.`
-    : '';
 
   const step3Block = isSolo
-    ? `3) If user instructions describe work to be done — create tasks on the team board and assign each task to yourself ("${leadName}") as owner.\n` +
+    ? `3) If user instructions describe work to be done — create tasks on the team board and assign each task to yourself (“${leadName}”) as owner.\n` +
       `   - Prefer fewer, broader tasks over many micro-tasks.\n` +
       `   - CRITICAL: Do NOT start working on the tasks now. Provisioning is ONLY for setting up the team structure.\n` +
       `   - The tasks will be executed after the team is launched separately.`
@@ -685,7 +759,7 @@ function buildProvisioningPrompt(request: TeamCreateRequest): string {
    - When tasks have natural ordering (e.g. setup → implementation → testing), use --blocked-by.
    - If a task is blocked (uses --blocked-by), it MUST be created as pending (use --status pending). Do NOT mark blocked tasks in_progress.
      - Review guidance:
-       - Prefer NOT creating a separate "review task". Our workflow reviews the work task itself: run review approve/request-changes on the implementation task #X.
+       - Prefer NOT creating a separate “review task”. Our workflow reviews the work task itself: run review approve/request-changes on the implementation task #X.
        - If you MUST create a separate review reminder/assignment task, create it as pending and link it to the work task:
          - Use --related to connect it to #X (non-blocking link).
          - If the review truly cannot start until #X is done, ALSO add --blocked-by #X.
@@ -699,12 +773,12 @@ function buildProvisioningPrompt(request: TeamCreateRequest): string {
 // NOTE: taskProtocol & processRegistration are deliberately inlined into EACH member's spawn prompt
 // below, even though the text is identical across members. This duplicates ~4K chars per member
 // in the lead's context, but ensures the lead passes the EXACT protocol verbatim via Task tool.
-// Extracting them once and telling the lead to "insert the protocol block" risks hallucination
+// Extracting them once and telling the lead to “insert the protocol block” risks hallucination
 // or omission — the lead may rephrase rules, skip items, or forget to include them.
 // Cost: ~1K tokens per extra member. At 200K context window this is negligible.
 ${request.members
   .map(
-    (m) => `   For "${m.name}":
+    (m) => `   For “${m.name}”:
    - prompt:
 ${buildMemberSpawnPrompt(m, displayName, request.teamName, taskProtocol, processRegistration)
   .split('\n')
@@ -713,53 +787,32 @@ ${buildMemberSpawnPrompt(m, displayName, request.teamName, taskProtocol, process
   )
   .join('\n\n')}`;
 
-  const membersFooter = members ? `Members:\n${members}` : 'Members: (none — solo team lead)';
+  const persistentContext = buildPersistentLeadContext({
+    teamName: request.teamName,
+    leadName,
+    isSolo,
+    members: request.members,
+  });
 
-  return `Team Start [Agent Team: "${request.teamName}" | Project: "${projectName}" | Lead: "${leadName}"]
+  return `Team Start [Agent Team: “${request.teamName}” | Project: “${projectName}” | Lead: “${leadName}”]
 
 You are running in a non-interactive CLI session. Do not ask questions. Do everything in a single turn.
-You are "${leadName}", the team lead.
+You are “${leadName}”, the team lead.
 
 Goal: Provision a Claude Code agent team${request.members.length === 0 ? ' (solo — lead only)' : ' with live teammates'}.
 ${userPromptBlock}
-${languageInstruction}
-
-Constraints:
-- Do NOT call TeamDelete under any circumstances.
-- Do NOT use TodoWrite.
-- Do NOT send shutdown_request messages (SendMessage type: "shutdown_request" is FORBIDDEN).
-- Do NOT shut down, terminate, or clean up the team or its members.
-- Do NOT spawn or create a member named "user". "user" is a reserved system name for the human operator — it is NOT a teammate.
-- Keep assistant text minimal.
-- NEVER send duplicate messages to the same member. One SendMessage per member per topic is enough.
-- Keep the task board high-signal: avoid creating tasks for trivial micro-items.
-- Use the team task board for assigned/substantial work.
-- DELEGATION-FIRST (behavior rule for ALL future turns): When "user" gives you work, your top priority is to (a) decompose into tasks, (b) create tasks on the team board, (c) assign them to teammates, and (d) SendMessage "user" a short confirmation (task IDs + owners). Do NOT start implementing yourself unless the team is truly in SOLO MODE (no teammates).
-- TaskCreate is optional for private planning only; do NOT use it for team-board tasks.
-- When messaging "user" (the human): NEVER mention teamctl.js, internal scripts, CLI commands, or file paths under ~/.claude/. The user sees messages in the UI — write plain human language. If a task needs a status update, do it yourself via Bash; never ask the user to run a command.${soloConstraint}
-
-${teamCtlOps}
-
-Communication protocol (CRITICAL — you are running headless, no one sees your text output):
-- When you receive a <teammate-message> from a teammate, ALWAYS reply using the SendMessage tool with the sender's name as recipient.
-- Your plain text output is invisible to teammates — they are separate processes and can only read their inbox.
-- Example: if you receive <teammate-message teammate_id="alice">...</teammate-message>, respond with SendMessage(type: "message", recipient: "alice", content: "your reply").
-
-Message formatting:
-${agentBlockPolicy}
+${persistentContext}
 
 Steps (execute in this exact order):
 
-1) TeamCreate — create team "${request.teamName}":
-   - description: "${description}"
+1) TeamCreate — create team “${request.teamName}”:
+   - description: “${description}”
 
 ${step2Block}
 
 ${step3Block}
 
 4) After all steps, output a short summary.
-
-${membersFooter}
 `;
 }
 
@@ -769,39 +822,18 @@ function buildLaunchPrompt(
   tasks: TeamTask[],
   isResume: boolean
 ): string {
-  const membersBlock = buildMembersPrompt(members);
   const userPromptBlock = request.prompt?.trim()
     ? `\nAdditional instructions from the user:\n${request.prompt.trim()}\n`
     : '';
   const taskProtocol = buildTaskStatusProtocol(request.teamName);
   const processRegistration = buildProcessRegistrationProtocol(request.teamName);
   const languageInstruction = getAgentLanguageInstruction();
-  const agentBlockPolicy = buildAgentBlockUsagePolicy();
   const taskBoardSnapshot = buildTaskBoardSnapshot(tasks);
 
   const leadName = members.find((m) => m.role?.toLowerCase().includes('lead'))?.name || 'team-lead';
-  const teamCtlOps = buildTeamCtlOpsInstructions(request.teamName, leadName);
   const projectName = path.basename(request.cwd);
 
   const isSolo = members.length === 0;
-  const soloConstraint = isSolo
-    ? `\n- SOLO MODE: This team CURRENTLY has ZERO teammates.` +
-      `\n  - FORBIDDEN (until teammates exist): Do NOT spawn teammates via the Task tool with a team_name parameter — there are no teammates to spawn yet.` +
-      `\n  - FORBIDDEN (until teammates exist): Do NOT call SendMessage to any teammate name — no teammates exist yet.` +
-      `\n  - ALLOWED: You may message "user" (the human operator) via SendMessage.` +
-      `\n  - ALLOWED: You may use the Task tool for regular subagents WITHOUT team_name — these are normal Claude Code helpers, not teammates.` +
-      `\n  - If teammates are added later (e.g. via UI), you may then spawn them using the Task tool with team_name + name.` +
-      `\n  - Work on tasks directly yourself. Use subagents for research and parallel work as needed.` +
-      `\n  - PROGRESS REPORTING (MANDATORY): Since you have no teammates, "user" is your only communication channel.` +
-      `\n    - SendMessage "user" at minimum: when you start a task (after marking it in_progress), when you complete a task, and when you hit a meaningful milestone/blocker/decision.` +
-      `\n    - Avoid long silent stretches. If something is taking longer than expected, send a brief update and the next step.` +
-      `\n  - TASK STATUS DISCIPLINE (MANDATORY):` +
-      `\n    - Only move a task to in_progress when you are actively starting work on it.` +
-      `\n    - Only move a task to completed when it is truly finished.` +
-      `\n    - Never bulk-move many tasks at the end — update status incrementally as you work.` +
-      `\n    - Default to working ONE task at a time (keep at most one task in_progress in solo mode), unless you explicitly need parallel background work (in that case explain why to "user").` +
-      `\n    - Record meaningful progress/decisions as task comments so the task board stays accurate and high-signal.`
-    : '';
 
   let step2And3Block: string;
   if (isSolo) {
@@ -872,9 +904,12 @@ ${memberSpawnInstructions}
 3) After spawning all members, check the task board. If any pending tasks are unassigned, assign them to appropriate members using teamctl.`;
   }
 
-  const membersFooter = membersBlock
-    ? `Members:\n${membersBlock}`
-    : 'Members: (none — solo team lead)';
+  const persistentContext = buildPersistentLeadContext({
+    teamName: request.teamName,
+    leadName,
+    isSolo,
+    members,
+  });
 
   const startLabel = isResume ? 'Team Start (resume)' : 'Team Start';
 
@@ -885,31 +920,8 @@ You are "${leadName}", the team lead.
 
 Goal: Reconnect with existing team "${request.teamName}" and resume pending work.
 ${userPromptBlock}
-${languageInstruction}
 ${taskBoardSnapshot}
-Constraints:
-- Do NOT call TeamDelete under any circumstances.
-- Do NOT use TodoWrite.
-- Do NOT send shutdown_request messages (SendMessage type: "shutdown_request" is FORBIDDEN).
-- Do NOT shut down, terminate, or clean up the team or its members.
-- Do NOT spawn or create a member named "user". "user" is a reserved system name for the human operator — it is NOT a teammate.
-- Keep assistant text minimal.
-- NEVER send duplicate messages to the same member. One SendMessage per member per topic is enough.
-- Keep the task board high-signal: avoid creating tasks for trivial micro-items.
-- Use the team task board for assigned/substantial work.
-- DELEGATION-FIRST (behavior rule for ALL future turns): When "user" gives you work, your top priority is to (a) decompose into tasks, (b) create tasks on the team board, (c) assign them to teammates, and (d) SendMessage "user" a short confirmation (task IDs + owners). Do NOT start implementing yourself unless the team is truly in SOLO MODE (no teammates).
-- TaskCreate is optional for private planning only; do NOT use it for team-board tasks.
-- When messaging "user" (the human): NEVER mention teamctl.js, internal scripts, CLI commands, or file paths under ~/.claude/. The user sees messages in the UI — write plain human language. If a task needs a status update, do it yourself via Bash; never ask the user to run a command.${soloConstraint}
-
-${teamCtlOps}
-
-Communication protocol (CRITICAL — you are running headless, no one sees your text output):
-- When you receive a <teammate-message> from a teammate, ALWAYS reply using the SendMessage tool with the sender's name as recipient.
-- Your plain text output is invisible to teammates — they are separate processes and can only read their inbox.
-- Example: if you receive <teammate-message teammate_id="alice">...</teammate-message>, respond with SendMessage(type: "message", recipient: "alice", content: "your reply").
-
-Message formatting:
-${agentBlockPolicy}
+${persistentContext}
 
 Steps (execute in this exact order):
 
@@ -918,9 +930,17 @@ Steps (execute in this exact order):
 ${step2And3Block}
 
 4) After all steps, output a short summary of reconnected members and what happens next.
-
-${membersFooter}
 `;
+}
+
+/**
+ * Unconditionally clears all post-compact reminder state on a run.
+ * Called from cleanupRun, cancel, and error paths.
+ */
+function clearPostCompactReminderState(run: ProvisioningRun): void {
+  run.pendingPostCompactReminder = false;
+  run.postCompactReminderInFlight = false;
+  run.suppressPostCompactReminderOutput = false;
 }
 
 function updateProgress(
@@ -1161,6 +1181,16 @@ export class TeamProvisioningService {
 
   setTeamChangeEmitter(emitter: ((event: TeamChangeEvent) => void) | null): void {
     this.teamChangeEmitter = emitter;
+  }
+
+  private toolApprovalEventEmitter: ((event: ToolApprovalEvent) => void) | null = null;
+
+  setToolApprovalEventEmitter(emitter: (event: ToolApprovalEvent) => void): void {
+    this.toolApprovalEventEmitter = emitter;
+  }
+
+  private emitToolApprovalEvent(event: ToolApprovalEvent): void {
+    this.toolApprovalEventEmitter?.(event);
   }
 
   getLiveLeadProcessMessages(teamName: string): InboxMessage[] {
@@ -1759,6 +1789,10 @@ export class TeamProvisioningService {
         authFailureRetried: false,
         authRetryInProgress: false,
         spawnContext: null,
+        pendingApprovals: new Map(),
+        pendingPostCompactReminder: false,
+        postCompactReminderInFlight: false,
+        suppressPostCompactReminderOutput: false,
         progress: {
           runId,
           teamName: request.teamName,
@@ -1787,8 +1821,9 @@ export class TeamProvisioningService {
         'user,project,local',
         '--disallowedTools',
         'TeamDelete,TodoWrite',
-        '--dangerously-skip-permissions',
+        ...(request.skipPermissions !== false ? ['--dangerously-skip-permissions'] : []),
         ...(request.model ? ['--model', request.model] : []),
+        ...(request.effort ? ['--effort', request.effort] : []),
       ];
       try {
         child = spawnCli(claudePath, spawnArgs, {
@@ -2018,6 +2053,7 @@ export class TeamProvisioningService {
         teamName: request.teamName,
         members: expectedMemberSpecs,
         cwd: request.cwd,
+        skipPermissions: request.skipPermissions,
       };
 
       const run: ProvisioningRun = {
@@ -2059,6 +2095,10 @@ export class TeamProvisioningService {
         authFailureRetried: false,
         authRetryInProgress: false,
         spawnContext: null,
+        pendingApprovals: new Map(),
+        pendingPostCompactReminder: false,
+        postCompactReminderInFlight: false,
+        suppressPostCompactReminderOutput: false,
         progress: {
           runId,
           teamName: request.teamName,
@@ -2109,7 +2149,7 @@ export class TeamProvisioningService {
         'user,project,local',
         '--disallowedTools',
         'TeamDelete,TodoWrite',
-        '--dangerously-skip-permissions',
+        ...(request.skipPermissions !== false ? ['--dangerously-skip-permissions'] : []),
       ];
       if (previousSessionId) {
         launchArgs.push('--resume', previousSessionId);
@@ -2119,6 +2159,9 @@ export class TeamProvisioningService {
       }
       if (request.model) {
         launchArgs.push('--model', request.model);
+      }
+      if (request.effort) {
+        launchArgs.push('--effort', request.effort);
       }
       // New sessions: CLI creates its own ID. No --resume with synthetic name — docs say
       // --resume is for existing sessions and may show an interactive picker if not found.
@@ -2917,7 +2960,11 @@ export class TeamProvisioningService {
           // Push each assistant text block as a separate live message (per-message pattern).
           // When the same assistant message includes SendMessage(to:"user"), skip text —
           // captureSendMessageToUser() handles it separately.
-          if (!run.silentUserDmForward && !hasSendMessageToUser) {
+          if (
+            !run.silentUserDmForward &&
+            !run.suppressPostCompactReminderOutput &&
+            !hasSendMessageToUser
+          ) {
             const cleanText = stripAgentBlocks(text).trim();
             if (cleanText.length > 0) {
               run.leadMsgSeq += 1;
@@ -3033,6 +3080,12 @@ export class TeamProvisioningService {
       }
     }
 
+    // Handle control_request — tool approval protocol (only when --dangerously-skip-permissions is NOT set)
+    if (msg.type === 'control_request') {
+      this.handleControlRequest(run, msg);
+      return;
+    }
+
     if (msg.type === 'result') {
       const subtype =
         typeof msg.subtype === 'string'
@@ -3109,6 +3162,19 @@ export class TeamProvisioningService {
         }
 
         if (run.provisioningComplete) {
+          // If this was a post-compact reminder turn completing, clear in-flight and suppress flags.
+          // Preserve pendingPostCompactReminder if re-armed by a compact_boundary during this turn.
+          if (run.postCompactReminderInFlight) {
+            const hadPendingRearm = run.pendingPostCompactReminder;
+            run.postCompactReminderInFlight = false;
+            run.suppressPostCompactReminderOutput = false;
+            logger.info(
+              `[${run.teamName}] post-compact reminder turn completed${
+                hadPendingRearm ? ' (follow-up reminder pending from re-compact)' : ''
+              }`
+            );
+          }
+
           this.setLeadActivity(run, 'idle');
         }
         if (run.leadRelayCapture) {
@@ -3122,6 +3188,18 @@ export class TeamProvisioningService {
           clearTimeout(run.silentUserDmForwardClearHandle);
           run.silentUserDmForwardClearHandle = null;
         }
+
+        // Deferred post-compact context reinjection: inject durable rules on first idle after compact.
+        // Placed AFTER leadRelayCapture/silentUserDmForward cleanup so a previously-deferred
+        // reminder can proceed now that the blocking conditions are cleared.
+        if (
+          run.provisioningComplete &&
+          run.pendingPostCompactReminder &&
+          !run.postCompactReminderInFlight
+        ) {
+          void this.injectPostCompactReminder(run);
+        }
+
         if (!run.provisioningComplete && !run.cancelRequested) {
           void this.handleProvisioningTurnComplete(run);
         }
@@ -3155,7 +3233,16 @@ export class TeamProvisioningService {
           killProcessTree(run.child);
           this.cleanupRun(run);
         } else if (run.provisioningComplete) {
-          // Post-provisioning error: process alive, waiting for input
+          // Post-provisioning error: process alive, waiting for input.
+          // Always clear all post-compact reminder state on error — prevents a stale pending
+          // reminder from firing on the next unrelated successful turn.
+          if (run.pendingPostCompactReminder || run.postCompactReminderInFlight) {
+            const wasInFlight = run.postCompactReminderInFlight;
+            clearPostCompactReminderState(run);
+            logger.warn(
+              `[${run.teamName}] post-compact reminder ${wasInFlight ? 'turn errored' : 'pending dropped'} — clearing (strict policy)`
+            );
+          }
           this.setLeadActivity(run, 'idle');
         }
       }
@@ -3193,8 +3280,313 @@ export class TeamProvisioningService {
         logger.info(
           `[${run.teamName}] compact_boundary — context will refresh on next turn${tokenInfo}`
         );
+
+        // Schedule post-compact context reinjection on next idle.
+        // If a reminder is already in-flight, re-arm pending so a follow-up fires after it completes.
+        // This handles the case where the reminder prompt itself triggers another compaction.
+        if (run.provisioningComplete && !run.pendingPostCompactReminder) {
+          run.pendingPostCompactReminder = true;
+          logger.info(
+            `[${run.teamName}] post-compact reminder scheduled for next idle${
+              run.postCompactReminderInFlight ? ' (re-armed during in-flight reminder)' : ''
+            }`
+          );
+        }
       }
     }
+  }
+
+  /**
+   * Injects a post-compact context reminder into the lead process via stdin.
+   * Reinjects durable lead rules (constraints, communication protocol, teamctl ops)
+   * plus a fresh task board snapshot so the lead recovers full operational context
+   * after context compaction.
+   *
+   * Policy: strict drop-after-attempt — one compact cycle gives at most one reminder turn.
+   * If the injection fails (stdin not writable, process killed), we do not retry.
+   */
+  private async injectPostCompactReminder(run: ProvisioningRun): Promise<void> {
+    // Consume the pending flag immediately — strict one-shot policy.
+    run.pendingPostCompactReminder = false;
+
+    // Guard: process must be alive and writable.
+    if (!run.child?.stdin?.writable || run.processKilled || run.cancelRequested) {
+      logger.warn(
+        `[${run.teamName}] post-compact reminder skipped — process not writable or killed`
+      );
+      return;
+    }
+
+    // Guard: don't inject if another turn is actively processing (race with user send / inbox relay).
+    if (run.leadActivityState !== 'idle') {
+      logger.info(
+        `[${run.teamName}] post-compact reminder deferred — lead is ${run.leadActivityState}, not idle`
+      );
+      // Re-arm so it triggers on next idle.
+      run.pendingPostCompactReminder = true;
+      return;
+    }
+
+    // Guard: don't inject while a relay capture is in-flight.
+    if (run.leadRelayCapture) {
+      logger.info(`[${run.teamName}] post-compact reminder deferred — relay capture in-flight`);
+      run.pendingPostCompactReminder = true;
+      return;
+    }
+
+    // Guard: don't inject while a silent DM forward is in progress.
+    if (run.silentUserDmForward) {
+      logger.info(
+        `[${run.teamName}] post-compact reminder deferred — silent DM forward in progress`
+      );
+      run.pendingPostCompactReminder = true;
+      return;
+    }
+
+    // Read current team config for up-to-date members (may have changed since launch).
+    let currentMembers: TeamCreateRequest['members'] = run.request.members;
+    let leadName = 'team-lead';
+    try {
+      const config = await this.configReader.getConfig(run.teamName);
+      if (config?.members) {
+        const configLead = config.members.find((m) => m?.agentType === 'team-lead');
+        leadName = configLead?.name?.trim() || 'team-lead';
+        // Convert config members (excluding lead) to TeamCreateRequest member format.
+        currentMembers = config.members
+          .filter((m) => m?.agentType !== 'team-lead' && m?.name)
+          .map((m) => ({
+            name: m.name,
+            role: m.role ?? undefined,
+          }));
+      } else {
+        leadName =
+          run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name ||
+          'team-lead';
+      }
+    } catch {
+      // Fallback to launch-time members if config is unavailable.
+      leadName =
+        run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name ||
+        'team-lead';
+      logger.warn(
+        `[${run.teamName}] post-compact reminder: config unavailable, using launch-time members`
+      );
+    }
+    const isSolo = currentMembers.length === 0;
+
+    // Build persistent lead context.
+    const persistentContext = buildPersistentLeadContext({
+      teamName: run.teamName,
+      leadName,
+      isSolo,
+      members: currentMembers,
+      compact: true,
+    });
+
+    // Best-effort: fetch fresh task board snapshot.
+    let taskBoardBlock = '';
+    try {
+      const taskReader = new TeamTaskReader();
+      const tasks = await taskReader.getTasks(run.teamName);
+      taskBoardBlock = buildTaskBoardSnapshot(tasks);
+    } catch {
+      // If tasks can't be read, inject without the snapshot.
+      logger.warn(`[${run.teamName}] post-compact reminder: task board snapshot unavailable`);
+    }
+
+    // Re-check guards after async work.
+    if (!run.child?.stdin?.writable || run.processKilled || run.cancelRequested) {
+      logger.warn(
+        `[${run.teamName}] post-compact reminder aborted — process state changed during preparation`
+      );
+      return;
+    }
+    if (run.leadActivityState !== 'idle') {
+      logger.info(
+        `[${run.teamName}] post-compact reminder aborted — lead activity changed to ${run.leadActivityState as string}`
+      );
+      return;
+    }
+
+    const message = [
+      `Context reminder (post-compaction) — your context was compacted. Here are your standing rules and current state:`,
+      ``,
+      `You are "${leadName}", the team lead of team "${run.teamName}".`,
+      `You are running in a non-interactive CLI session. Do not ask questions.`,
+      ``,
+      persistentContext,
+      taskBoardBlock.trim() ? `\n${taskBoardBlock}` : '',
+      ``,
+      `This is a context-only reminder. Do NOT start new work or execute tasks in this turn. Reply with a single word: "OK".`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const payload = JSON.stringify({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: message }],
+      },
+    });
+
+    run.postCompactReminderInFlight = true;
+    run.suppressPostCompactReminderOutput = true;
+    this.setLeadActivity(run, 'active');
+
+    try {
+      const stdin = run.child.stdin;
+      await new Promise<void>((resolve, reject) => {
+        stdin.write(payload + '\n', (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      logger.info(`[${run.teamName}] post-compact reminder injected`);
+    } catch (error) {
+      // Strict drop-after-attempt — do not re-arm.
+      clearPostCompactReminderState(run);
+      this.setLeadActivity(run, 'idle');
+      logger.warn(
+        `[${run.teamName}] post-compact reminder injection failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  /**
+   * Handles a control_request message from CLI stream-json output.
+   * `can_use_tool` → emits to renderer for manual approval.
+   * All other subtypes (hook_callback, etc.) → auto-allowed to prevent deadlock.
+   */
+  private handleControlRequest(run: ProvisioningRun, msg: Record<string, unknown>): void {
+    const requestId = typeof msg.request_id === 'string' ? msg.request_id : null;
+    if (!requestId) {
+      logger.warn(`[${run.teamName}] control_request missing request_id, ignoring`);
+      return;
+    }
+
+    const request = msg.request as Record<string, unknown> | undefined;
+    const subtype = request?.subtype;
+
+    // Non-`can_use_tool` subtypes (hook_callback, etc.) are auto-allowed to prevent
+    // CLI deadlock — hooks are user-configured and should not block on manual approval.
+    if (subtype !== 'can_use_tool') {
+      logger.debug(
+        `[${run.teamName}] control_request subtype=${String(subtype)}, auto-allowing to prevent deadlock`
+      );
+      this.autoAllowControlRequest(run, requestId);
+      return;
+    }
+
+    const toolName = typeof request?.tool_name === 'string' ? request.tool_name : 'Unknown';
+    const toolInput = (request?.input ?? {}) as Record<string, unknown>;
+
+    const approval: ToolApprovalRequest = {
+      requestId,
+      runId: run.runId,
+      teamName: run.teamName,
+      source: 'lead',
+      toolName,
+      toolInput,
+      receivedAt: new Date().toISOString(),
+    };
+
+    run.pendingApprovals.set(requestId, approval);
+    this.emitToolApprovalEvent(approval);
+  }
+
+  /**
+   * Immediately sends an "allow" control_response for a non-tool control_request.
+   * Prevents CLI deadlock for hook_callback and other non-`can_use_tool` subtypes.
+   */
+  private autoAllowControlRequest(run: ProvisioningRun, requestId: string): void {
+    if (!run.child?.stdin?.writable) {
+      logger.warn(`[${run.teamName}] Cannot auto-allow control_request: stdin not writable`);
+      return;
+    }
+
+    const response = {
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: requestId,
+        response: { behavior: 'allow' },
+      },
+    };
+
+    run.child.stdin.write(JSON.stringify(response) + '\n', (err) => {
+      if (err) {
+        logger.error(
+          `[${run.teamName}] Failed to auto-allow control_request ${requestId}: ${err.message}`
+        );
+      }
+    });
+  }
+
+  /**
+   * Respond to a pending tool approval — sends control_response to CLI stdin.
+   * Validates runId match and requestId existence before writing.
+   */
+  async respondToToolApproval(
+    teamName: string,
+    runId: string,
+    requestId: string,
+    allow: boolean,
+    message?: string
+  ): Promise<void> {
+    const currentRunId = this.activeByTeam.get(teamName);
+    if (!currentRunId) throw new Error(`No active process for team "${teamName}"`);
+    const run = this.runs.get(currentRunId);
+    if (!run) throw new Error(`Run not found for team "${teamName}"`);
+
+    if (run.runId !== runId) {
+      throw new Error(`Stale approval: runId mismatch (expected ${run.runId}, got ${runId})`);
+    }
+
+    if (!run.pendingApprovals.has(requestId)) {
+      throw new Error(`No pending approval with requestId "${requestId}"`);
+    }
+
+    if (!run.child?.stdin?.writable) {
+      throw new Error(`Team "${teamName}" process stdin is not writable`);
+    }
+
+    // IMPORTANT: request_id is NESTED inside response, NOT top-level
+    // (asymmetry with control_request — confirmed by Python SDK, Elixir SDK and issue #29991)
+    const response = allow
+      ? {
+          type: 'control_response',
+          response: {
+            subtype: 'success',
+            request_id: requestId,
+            response: { behavior: 'allow' },
+          },
+        }
+      : {
+          type: 'control_response',
+          response: {
+            subtype: 'success',
+            request_id: requestId,
+            response: { behavior: 'deny', message: message ?? 'User denied' },
+          },
+        };
+
+    const stdin = run.child.stdin;
+    await new Promise<void>((resolve, reject) => {
+      stdin.write(JSON.stringify(response) + '\n', (err) => {
+        if (err) {
+          logger.error(`[${teamName}] Failed to write control_response: ${err.message}`);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    // Only delete AFTER successful write
+    run.pendingApprovals.delete(requestId);
   }
 
   /**
@@ -3391,6 +3783,7 @@ export class TeamProvisioningService {
       clearTimeout(run.silentUserDmForwardClearHandle);
       run.silentUserDmForwardClearHandle = null;
     }
+    clearPostCompactReminderState(run);
     this.stopFilesystemMonitor(run);
     // Remove stream listeners to prevent data handlers firing on a cleaned-up run
     if (run.child) {
@@ -3402,6 +3795,11 @@ export class TeamProvisioningService {
     this.relayedLeadInboxMessageIds.delete(run.teamName);
     this.relayedLeadInboxFallbackKeys.delete(run.teamName);
     this.liveLeadProcessMessages.delete(run.teamName);
+    // Dismiss any pending tool approvals for this run
+    if (run.pendingApprovals.size > 0) {
+      this.emitToolApprovalEvent({ dismissed: true, teamName: run.teamName, runId: run.runId });
+      run.pendingApprovals.clear();
+    }
     // Remove from runs Map to free memory (stdoutBuffer, stderrBuffer, claudeLogLines)
     this.runs.delete(run.runId);
   }

@@ -1,10 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { toMessageKey } from '@renderer/utils/teamMessageKey';
 
 import { ActivityItem, isNoiseMessage } from './ActivityItem';
+import { AnimatedHeightReveal } from './AnimatedHeightReveal';
+import { findNewestMessageIndex, resolveTimelineCollapseState } from './collapseState';
 import { groupTimelineItems, isLeadThought, LeadThoughtsGroupRow } from './LeadThoughtsGroup';
+import { useNewItemKeys } from './useNewItemKeys';
 
+import type { ActivityCollapseState } from './collapseState';
 import type { TimelineItem } from './LeadThoughtsGroup';
 import type { InboxMessage, ResolvedTeamMember } from '@shared/types';
 
@@ -26,6 +31,12 @@ interface ActivityTimelineProps {
   onTaskIdClick?: (taskId: string) => void;
   /** Called when the user clicks "Restart team" on an auth error message. */
   onRestartTeam?: () => void;
+  /** When true, collapse all message bodies — show only headers with expand chevrons. */
+  allCollapsed?: boolean;
+  /** Set of stable message keys that the user has manually expanded in collapsed mode. */
+  expandOverrides?: Set<string>;
+  /** Called when user toggles expand/collapse override on a specific message. */
+  onToggleExpandOverride?: (key: string) => void;
 }
 
 const VIEWPORT_THRESHOLD = 0.15;
@@ -47,6 +58,7 @@ const MessageRowWithObserver = ({
   onVisible,
   onTaskIdClick,
   onRestartTeam,
+  collapseState,
 }: {
   message: InboxMessage;
   teamName: string;
@@ -63,6 +75,7 @@ const MessageRowWithObserver = ({
   onVisible?: (message: InboxMessage) => void;
   onTaskIdClick?: (taskId: string) => void;
   onRestartTeam?: () => void;
+  collapseState?: ActivityCollapseState;
 }): React.JSX.Element => {
   const ref = useRef<HTMLDivElement>(null);
   const reportedRef = useRef(false);
@@ -95,7 +108,7 @@ const MessageRowWithObserver = ({
   }, [onVisible]);
 
   return (
-    <div ref={ref} className={isNew ? 'message-enter-animate min-h-px' : 'min-h-px'}>
+    <AnimatedHeightReveal animate={isNew} containerRef={ref}>
       <ActivityItem
         message={message}
         teamName={teamName}
@@ -110,8 +123,9 @@ const MessageRowWithObserver = ({
         onReply={onReply}
         onTaskIdClick={onTaskIdClick}
         onRestartTeam={onRestartTeam}
+        collapseState={collapseState}
       />
-    </div>
+    </AnimatedHeightReveal>
   );
 };
 
@@ -126,13 +140,11 @@ export const ActivityTimeline = ({
   onMessageVisible,
   onTaskIdClick,
   onRestartTeam,
+  allCollapsed,
+  expandOverrides,
+  onToggleExpandOverride,
 }: ActivityTimelineProps): React.JSX.Element => {
   const [visibleCount, setVisibleCount] = useState(MESSAGES_PAGE_SIZE);
-
-  // --- New-message animation tracking ---
-  const knownKeysRef = useRef<Set<string>>(new Set<string>());
-  const isInitializedRef = useRef(false);
-  const prevVisibleCountRef = useRef(visibleCount);
 
   const colorMap = members ? buildMemberColorMap(members) : new Map<string, string>();
   const memberInfo = new Map<string, { role?: string; color?: string }>();
@@ -214,10 +226,7 @@ export const ActivityTimeline = ({
     return result;
   }, [timelineItems]);
 
-  // Determine which items are "new" (should animate).
-  /* eslint-disable react-hooks/refs -- intentional ref access during render for animation tracking */
-
-  const newItemKeys = useMemo(() => {
+  const timelineItemKeys = useMemo(() => {
     const getItemKey = (item: TimelineItem): string => {
       if (item.type === 'lead-thoughts') {
         // Stable key: identify group by its first thought, not by count (which changes)
@@ -227,43 +236,14 @@ export const ActivityTimeline = ({
       return `${msg.messageId ?? item.originalIndex}-${msg.timestamp}-${msg.from}`;
     };
 
-    const allKeys: string[] = [];
-    for (const item of timelineItems) {
-      allKeys.push(getItemKey(item));
-    }
+    return timelineItems.map(getItemKey);
+  }, [timelineItems]);
 
-    // First render: seed known keys, no animations
-    if (!isInitializedRef.current) {
-      isInitializedRef.current = true;
-      for (const key of allKeys) {
-        knownKeysRef.current.add(key);
-      }
-      prevVisibleCountRef.current = visibleCount;
-      return new Set<string>();
-    }
-
-    // Pagination expansion ("Show more" / "Show all"): add keys silently
-    const isPaginationExpansion = visibleCount > prevVisibleCountRef.current;
-    prevVisibleCountRef.current = visibleCount;
-
-    if (isPaginationExpansion) {
-      for (const key of allKeys) {
-        knownKeysRef.current.add(key);
-      }
-      return new Set<string>();
-    }
-
-    // Normal update: unknown keys are new items
-    const newKeys = new Set<string>();
-    for (const key of allKeys) {
-      if (!knownKeysRef.current.has(key)) {
-        newKeys.add(key);
-        knownKeysRef.current.add(key);
-      }
-    }
-    return newKeys;
-  }, [timelineItems, visibleCount]);
-  /* eslint-enable react-hooks/refs -- end animation tracking block */
+  const newItemKeys = useNewItemKeys({
+    itemKeys: timelineItemKeys,
+    paginationKey: visibleCount,
+    resetKey: teamName,
+  });
 
   const handleShowMore = (): void => {
     setVisibleCount((prev) => prev + MESSAGES_PAGE_SIZE);
@@ -272,15 +252,6 @@ export const ActivityTimeline = ({
   const handleShowAll = (): void => {
     setVisibleCount(Infinity);
   };
-
-  if (messages.length === 0) {
-    return (
-      <div className="rounded-md border border-[var(--color-border)] p-3 text-xs text-[var(--color-text-muted)]">
-        <p>No messages</p>
-        <p className="mt-1 text-[11px]">Send a message to a member to see activity.</p>
-      </div>
-    );
-  }
 
   const getItemSessionId = (item: TimelineItem): string | undefined =>
     item.type === 'lead-thoughts'
@@ -291,6 +262,40 @@ export const ActivityTimeline = ({
   const pinnedThoughtGroup = timelineItems[0]?.type === 'lead-thoughts' ? timelineItems[0] : null;
   const startIndex = pinnedThoughtGroup ? 1 : 0;
 
+  // Determine the index of the "newest" non-thought timeline item (for auto-expand).
+  const newestMessageIndex = useMemo(() => {
+    return findNewestMessageIndex(timelineItems);
+  }, [timelineItems]);
+
+  /**
+   * Compute the externally managed collapse state for an item in the timeline.
+   * In collapsed mode we always keep the newest real message open, keep the pinned
+   * thought group open, and let localStorage overrides reopen older items.
+   */
+  const getItemCollapseState = useCallback(
+    (stableKey: string, itemIndex: number): ActivityCollapseState =>
+      resolveTimelineCollapseState({
+        allCollapsed,
+        itemIndex,
+        newestMessageIndex,
+        isPinnedThoughtGroup: itemIndex === 0 && pinnedThoughtGroup != null,
+        isExpandedOverride: expandOverrides?.has(stableKey) ?? false,
+        onToggleOverride: onToggleExpandOverride
+          ? () => onToggleExpandOverride(stableKey)
+          : undefined,
+      }),
+    [allCollapsed, newestMessageIndex, pinnedThoughtGroup, expandOverrides, onToggleExpandOverride]
+  );
+
+  if (messages.length === 0) {
+    return (
+      <div className="rounded-md border border-[var(--color-border)] p-3 text-xs text-[var(--color-text-muted)]">
+        <p>No messages</p>
+        <p className="mt-1 text-[11px]">Send a message to a member to see activity.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-1">
       {/* Pinned (newest) thought group — always at top */}
@@ -300,6 +305,8 @@ export const ActivityTimeline = ({
           const firstThought = group.thoughts[0];
           const info = memberInfo.get(firstThought.from);
           const itemKey = `thoughts-${firstThought.messageId ?? pinnedThoughtGroup.originalIndices[0]}`;
+          const stableKey = toMessageKey(firstThought);
+          const collapseState = getItemCollapseState(stableKey, 0);
           return (
             <LeadThoughtsGroupRow
               key={itemKey}
@@ -309,6 +316,10 @@ export const ActivityTimeline = ({
               isNew={newItemKeys.has(itemKey)}
               onVisible={onMessageVisible}
               zebraShade={zebraShadeSet.has(0)}
+              collapseState={collapseState}
+              onTaskIdClick={onTaskIdClick}
+              memberColorMap={colorMap}
+              onReply={onReplyToMessage}
             />
           );
         })()}
@@ -328,9 +339,11 @@ export const ActivityTimeline = ({
                 className="flex items-center gap-3"
                 style={{ paddingTop: 90, paddingBottom: 90 }}
               >
-                <div className="h-px flex-1 bg-blue-400/30" />
-                <span className="whitespace-nowrap text-[11px] text-blue-400">New session</span>
-                <div className="h-px flex-1 bg-blue-400/30" />
+                <div className="h-px flex-1 bg-blue-600/30 dark:bg-blue-400/30" />
+                <span className="whitespace-nowrap text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                  New session
+                </span>
+                <div className="h-px flex-1 bg-blue-600/30 dark:bg-blue-400/30" />
               </div>
             );
           }
@@ -341,6 +354,8 @@ export const ActivityTimeline = ({
           const firstThought = group.thoughts[0];
           const info = memberInfo.get(firstThought.from);
           const itemKey = `thoughts-${firstThought.messageId ?? item.originalIndices[0]}`;
+          const stableKey = toMessageKey(firstThought);
+          const collapseState = getItemCollapseState(stableKey, realIndex);
           return (
             <React.Fragment key={itemKey}>
               {sessionSeparator}
@@ -351,6 +366,10 @@ export const ActivityTimeline = ({
                 isNew={newItemKeys.has(itemKey)}
                 onVisible={onMessageVisible}
                 zebraShade={zebraShadeSet.has(realIndex)}
+                collapseState={collapseState}
+                onTaskIdClick={onTaskIdClick}
+                memberColorMap={colorMap}
+                onReply={onReplyToMessage}
               />
             </React.Fragment>
           );
@@ -362,6 +381,8 @@ export const ActivityTimeline = ({
         const recipientColor =
           recipientInfo?.color ?? (message.to ? colorMap.get(message.to) : undefined);
         const messageKey = `${message.messageId ?? item.originalIndex}-${message.timestamp}-${message.from}`;
+        const stableKey = toMessageKey(message);
+        const collapseState = getItemCollapseState(stableKey, realIndex);
         const isUnread = readState
           ? !message.read && !readState.readSet.has(readState.getMessageKey(message))
           : !message.read;
@@ -384,6 +405,7 @@ export const ActivityTimeline = ({
               onVisible={onMessageVisible}
               onTaskIdClick={onTaskIdClick}
               onRestartTeam={onRestartTeam}
+              collapseState={collapseState}
             />
           </React.Fragment>
         );
@@ -411,7 +433,7 @@ export const ActivityTimeline = ({
             <span className="text-[11px] tabular-nums text-[var(--color-text-muted)]">
               +{hiddenCount} older
             </span>
-            <span className="h-3 w-px bg-blue-400/30" />
+            <span className="h-3 w-px bg-blue-600/30 dark:bg-blue-400/30" />
             <button
               onClick={handleShowMore}
               className="rounded-full px-2.5 py-0.5 text-[11px] font-medium text-[var(--color-text-secondary)] transition-all hover:bg-[rgba(255,255,255,0.08)] hover:text-[var(--color-text)]"
@@ -420,7 +442,7 @@ export const ActivityTimeline = ({
             </button>
             {hiddenCount > MESSAGES_PAGE_SIZE && (
               <>
-                <span className="h-3 w-px bg-blue-400/30" />
+                <span className="h-3 w-px bg-blue-600/30 dark:bg-blue-400/30" />
                 <button
                   onClick={handleShowAll}
                   className="rounded-full px-2.5 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-all hover:bg-[rgba(255,255,255,0.08)] hover:text-[var(--color-text-secondary)]"

@@ -4,12 +4,12 @@ import { getSnapshot, getUnreadCount, subscribe } from '@renderer/services/comme
 
 export type TaskStatusFilterId = 'todo' | 'in_progress' | 'done' | 'review' | 'approved';
 
-export const STATUS_OPTIONS: { id: TaskStatusFilterId; label: string }[] = [
-  { id: 'todo', label: 'TODO' },
-  { id: 'in_progress', label: 'IN PROGRESS' },
-  { id: 'done', label: 'DONE' },
-  { id: 'review', label: 'REVIEW' },
-  { id: 'approved', label: 'APPROVED' },
+export const STATUS_OPTIONS: { id: TaskStatusFilterId; label: string; color: string }[] = [
+  { id: 'todo', label: 'TODO', color: '#3b82f6' },
+  { id: 'in_progress', label: 'IN PROGRESS', color: '#eab308' },
+  { id: 'done', label: 'DONE', color: '#22c55e' },
+  { id: 'review', label: 'REVIEW', color: '#8b5cf6' },
+  { id: 'approved', label: 'APPROVED', color: '#16a34a' },
 ];
 
 export interface TaskFiltersState {

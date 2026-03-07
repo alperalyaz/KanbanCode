@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { confirm } from '@renderer/components/common/ConfirmDialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { useCollapsedGroups } from '@renderer/hooks/useCollapsedGroups';
 import { useTaskLocalState } from '@renderer/hooks/useTaskLocalState';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
@@ -13,10 +14,21 @@ import {
   groupTasksByProject,
   sortTasksByFreshness,
 } from '@renderer/utils/taskGrouping';
-import { Archive, ListTodo, Pin, Search, X } from 'lucide-react';
+import {
+  Archive,
+  ArrowUpDown,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ListTodo,
+  Pin,
+  Search,
+  X,
+} from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { Combobox, type ComboboxOption } from '../ui/combobox';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 
 import { SidebarTaskItem } from './SidebarTaskItem';
 import { TaskContextMenu } from './TaskContextMenu';
@@ -50,6 +62,58 @@ function saveGroupingMode(mode: TaskGroupingMode): void {
     localStorage.setItem(TASK_GROUPING_STORAGE_KEY, mode);
   } catch {
     /* ignore */
+  }
+}
+
+export type TaskSortMode = 'time' | 'project' | 'team';
+
+const TASK_SORT_STORAGE_KEY = 'sidebarTasksSort';
+
+const SORT_OPTIONS: { id: TaskSortMode; label: string }[] = [
+  { id: 'time', label: 'By time' },
+  { id: 'project', label: 'By project' },
+  { id: 'team', label: 'By team' },
+];
+
+function loadSortMode(): TaskSortMode {
+  try {
+    const v = localStorage.getItem(TASK_SORT_STORAGE_KEY);
+    if (v === 'time' || v === 'project' || v === 'team') return v;
+  } catch {
+    /* ignore */
+  }
+  return 'time';
+}
+
+function saveSortMode(mode: TaskSortMode): void {
+  try {
+    localStorage.setItem(TASK_SORT_STORAGE_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+}
+
+function applySortMode(tasks: GlobalTask[], mode: TaskSortMode): GlobalTask[] {
+  const sorted = [...tasks];
+  switch (mode) {
+    case 'time':
+      return sortTasksByFreshness(sorted);
+    case 'project':
+      return sorted.sort((a, b) => {
+        const pa = a.projectPath ?? '';
+        const pb = b.projectPath ?? '';
+        const cmp = pa.localeCompare(pb);
+        if (cmp !== 0) return cmp;
+        return (b.updatedAt ?? b.createdAt ?? '').localeCompare(a.updatedAt ?? a.createdAt ?? '');
+      });
+    case 'team':
+      return sorted.sort((a, b) => {
+        const cmp = a.teamDisplayName.localeCompare(b.teamDisplayName);
+        if (cmp !== 0) return cmp;
+        return (b.updatedAt ?? b.createdAt ?? '').localeCompare(a.updatedAt ?? a.createdAt ?? '');
+      });
+    default:
+      return sortTasksByFreshness(sorted);
   }
 }
 
@@ -124,6 +188,8 @@ export const GlobalTaskList = ({
   const setFiltersPopoverOpen = externalOnFiltersPopoverOpenChange ?? setInternalFiltersPopoverOpen;
   const [searchQuery, setSearchQuery] = useState('');
   const [groupingMode, setGroupingModeState] = useState<TaskGroupingMode>(loadGroupingMode);
+  const [sortMode, setSortModeState] = useState<TaskSortMode>(loadSortMode);
+  const [sortPopoverOpen, setSortPopoverOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [renamingTaskKey, setRenamingTaskKey] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -137,6 +203,11 @@ export const GlobalTaskList = ({
   const setGroupingMode = (mode: TaskGroupingMode): void => {
     setGroupingModeState(mode);
     saveGroupingMode(mode);
+  };
+
+  const setSortMode = (mode: TaskSortMode): void => {
+    setSortModeState(mode);
+    saveSortMode(mode);
   };
 
   const handleRenameComplete = (teamName: string, taskId: string, newSubject: string): void => {
@@ -265,10 +336,20 @@ export const GlobalTaskList = ({
     [filtered, taskLocalState]
   );
 
-  const sortedFlat = useMemo(() => sortTasksByFreshness(normalTasks), [normalTasks]);
+  const sortedFlat = useMemo(() => applySortMode(normalTasks, sortMode), [normalTasks, sortMode]);
   const grouped = useMemo(() => groupTasksByDate(normalTasks), [normalTasks]);
   const categories = useMemo(() => getNonEmptyTaskCategories(grouped), [grouped]);
   const projectGroups = useMemo(() => groupTasksByProject(normalTasks), [normalTasks]);
+
+  // Collapsed group keys for each grouping mode
+  const projectGroupKeys = useMemo(
+    () => projectGroups.filter((g) => g.tasks.length > 0).map((g) => g.projectKey),
+    [projectGroups]
+  );
+  const timeGroupKeys = useMemo(() => categories.map((c) => c), [categories]);
+
+  const projectCollapsed = useCollapsedGroups('project', projectGroupKeys);
+  const timeCollapsed = useCollapsedGroups('time', timeGroupKeys);
 
   const hasContent =
     pinnedTasks.length > 0 ||
@@ -315,6 +396,44 @@ export const GlobalTaskList = ({
             <X className="size-3" />
           </button>
         )}
+        <Popover open={sortPopoverOpen} onOpenChange={setSortPopoverOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="flex shrink-0 items-center justify-center rounded p-0.5 text-text-muted transition-colors hover:text-text-secondary data-[state=open]:bg-surface-raised data-[state=open]:text-text"
+            >
+              <ArrowUpDown className="size-3.5" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-40 p-1" align="end" sideOffset={6}>
+            <div className="flex flex-col">
+              {SORT_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => {
+                    setSortMode(opt.id);
+                    setSortPopoverOpen(false);
+                  }}
+                  className={cn(
+                    'flex items-center gap-2 rounded px-2 py-1.5 text-[12px] transition-colors',
+                    sortMode === opt.id
+                      ? 'bg-surface-raised text-text'
+                      : 'hover:bg-surface-raised/60 text-text-secondary hover:text-text'
+                  )}
+                >
+                  <Check
+                    className={cn(
+                      'size-3 shrink-0',
+                      sortMode === opt.id ? 'opacity-100' : 'opacity-0'
+                    )}
+                  />
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
         <TaskFiltersPopover
           open={filtersPopoverOpen}
           onOpenChange={setFiltersPopoverOpen}
@@ -375,7 +494,7 @@ export const GlobalTaskList = ({
       <div className="flex shrink-0 items-center gap-1.5 px-2 py-1">
         <span className="shrink-0 text-[11px] text-text-muted">Group by:</span>
         <div
-          className="bg-surface-raised/60 inline-flex rounded-md p-0.5 text-[11px]"
+          className="border-border-emphasis/40 inline-flex rounded-md border bg-[var(--color-surface)] p-0.5 text-[11px]"
           role="group"
           aria-label="Group by"
         >
@@ -389,7 +508,7 @@ export const GlobalTaskList = ({
                 className={cn(
                   'rounded px-2 py-0.5 transition-colors',
                   groupingMode === mode
-                    ? 'bg-surface-raised text-text shadow-sm'
+                    ? 'ring-border-emphasis/60 bg-surface-raised text-text shadow-sm ring-1'
                     : 'text-text-muted hover:text-text-secondary'
                 )}
               >
@@ -469,54 +588,71 @@ export const GlobalTaskList = ({
         {groupingMode === 'project' &&
           projectGroups.map((group) => {
             if (group.tasks.length === 0) return null;
+            const isGroupCollapsed = projectCollapsed.isCollapsed(group.projectKey);
             let lastTeam: string | null = null;
             return (
               <div key={group.projectKey}>
-                <div
-                  className="sticky top-0 z-10 flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold"
+                <button
+                  type="button"
+                  onClick={() => projectCollapsed.toggle(group.projectKey)}
+                  className="hover:bg-surface-raised/40 sticky top-0 z-10 flex w-full cursor-pointer items-center gap-1 px-2 py-1.5 text-[11px] font-semibold transition-colors"
                   style={{ backgroundColor: 'var(--color-surface-sidebar)' }}
                 >
+                  {isGroupCollapsed ? (
+                    <ChevronRight className="size-3 shrink-0 text-text-muted" />
+                  ) : (
+                    <ChevronDown className="size-3 shrink-0 text-text-muted" />
+                  )}
                   <span
                     className="inline-block size-1.5 shrink-0 rounded-full"
                     style={{ backgroundColor: projectColor(group.projectLabel).border }}
                   />
-                  <span style={{ color: projectColor(group.projectLabel).text }}>
+                  <span
+                    className="truncate"
+                    style={{ color: projectColor(group.projectLabel).text }}
+                  >
                     {group.projectLabel}
                   </span>
-                </div>
-                {group.tasks.map((task) => {
-                  const showTeamHeader = task.teamName !== lastTeam;
-                  lastTeam = task.teamName;
-                  return (
-                    <div key={`${task.teamName}-${task.id}`}>
-                      {showTeamHeader && (
-                        <div className="px-3 pb-0.5 pt-1.5 text-[10px] font-medium text-text-muted">
-                          Team: {task.teamDisplayName}
-                        </div>
-                      )}
-                      <TaskContextMenu
-                        task={task}
-                        isPinned={taskLocalState.isPinned(task.teamName, task.id)}
-                        isArchived={taskLocalState.isArchived(task.teamName, task.id)}
-                        onTogglePin={() => taskLocalState.togglePin(task.teamName, task.id)}
-                        onToggleArchive={() => taskLocalState.toggleArchive(task.teamName, task.id)}
-                        onRename={() => setRenamingTaskKey(`${task.teamName}:${task.id}`)}
-                        onDelete={() => handleDeleteTask(task.teamName, task.id)}
-                      >
-                        <SidebarTaskItem
+                  <span className="ml-auto shrink-0 text-[10px] font-normal text-text-muted">
+                    {group.tasks.length}
+                  </span>
+                </button>
+                {!isGroupCollapsed &&
+                  group.tasks.map((task) => {
+                    const showTeamHeader = task.teamName !== lastTeam;
+                    lastTeam = task.teamName;
+                    return (
+                      <div key={`${task.teamName}-${task.id}`}>
+                        {showTeamHeader && (
+                          <div className="px-3 pb-0.5 pt-1.5 text-[10px] font-medium text-text-muted">
+                            Team: {task.teamDisplayName}
+                          </div>
+                        )}
+                        <TaskContextMenu
                           task={task}
-                          hideTeamName
-                          renamingKey={renamingTaskKey}
-                          onRenameComplete={handleRenameComplete}
-                          onRenameCancel={handleRenameCancel}
-                          getDisplaySubject={(t) =>
-                            taskLocalState.getRenamedSubject(t.teamName, t.id)
+                          isPinned={taskLocalState.isPinned(task.teamName, task.id)}
+                          isArchived={taskLocalState.isArchived(task.teamName, task.id)}
+                          onTogglePin={() => taskLocalState.togglePin(task.teamName, task.id)}
+                          onToggleArchive={() =>
+                            taskLocalState.toggleArchive(task.teamName, task.id)
                           }
-                        />
-                      </TaskContextMenu>
-                    </div>
-                  );
-                })}
+                          onRename={() => setRenamingTaskKey(`${task.teamName}:${task.id}`)}
+                          onDelete={() => handleDeleteTask(task.teamName, task.id)}
+                        >
+                          <SidebarTaskItem
+                            task={task}
+                            hideTeamName
+                            renamingKey={renamingTaskKey}
+                            onRenameComplete={handleRenameComplete}
+                            onRenameCancel={handleRenameCancel}
+                            getDisplaySubject={(t) =>
+                              taskLocalState.getRenamedSubject(t.teamName, t.id)
+                            }
+                          />
+                        </TaskContextMenu>
+                      </div>
+                    );
+                  })}
               </div>
             );
           })}
@@ -524,50 +660,64 @@ export const GlobalTaskList = ({
         {groupingMode === 'time' &&
           categories.map((category) => {
             const tasks = grouped[category];
+            const isGroupCollapsed = timeCollapsed.isCollapsed(category);
             let lastTeam: string | null = null;
 
             return (
               <div key={category}>
-                <div
-                  className="sticky top-0 z-10 px-3 py-1.5 text-[11px] font-semibold text-text-secondary"
+                <button
+                  type="button"
+                  onClick={() => timeCollapsed.toggle(category)}
+                  className="hover:bg-surface-raised/40 sticky top-0 z-10 flex w-full cursor-pointer items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-text-secondary transition-colors"
                   style={{ backgroundColor: 'var(--color-surface-sidebar)' }}
                 >
-                  {dateCategoryLabels[category] ?? category}
-                </div>
+                  {isGroupCollapsed ? (
+                    <ChevronRight className="size-3 shrink-0 text-text-muted" />
+                  ) : (
+                    <ChevronDown className="size-3 shrink-0 text-text-muted" />
+                  )}
+                  <span className="truncate">{dateCategoryLabels[category] ?? category}</span>
+                  <span className="ml-auto shrink-0 text-[10px] font-normal text-text-muted">
+                    {tasks.length}
+                  </span>
+                </button>
 
-                {tasks.map((task) => {
-                  const showTeamHeader = task.teamName !== lastTeam;
-                  lastTeam = task.teamName;
+                {!isGroupCollapsed &&
+                  tasks.map((task) => {
+                    const showTeamHeader = task.teamName !== lastTeam;
+                    lastTeam = task.teamName;
 
-                  return (
-                    <div key={`${task.teamName}-${task.id}`}>
-                      {showTeamHeader && (
-                        <div className="px-3 pb-0.5 pt-1.5 text-[10px] font-medium text-text-muted">
-                          Team: {task.teamDisplayName}
-                        </div>
-                      )}
-                      <TaskContextMenu
-                        task={task}
-                        isPinned={taskLocalState.isPinned(task.teamName, task.id)}
-                        isArchived={taskLocalState.isArchived(task.teamName, task.id)}
-                        onTogglePin={() => taskLocalState.togglePin(task.teamName, task.id)}
-                        onToggleArchive={() => taskLocalState.toggleArchive(task.teamName, task.id)}
-                        onRename={() => setRenamingTaskKey(`${task.teamName}:${task.id}`)}
-                        onDelete={() => handleDeleteTask(task.teamName, task.id)}
-                      >
-                        <SidebarTaskItem
+                    return (
+                      <div key={`${task.teamName}-${task.id}`}>
+                        {showTeamHeader && (
+                          <div className="px-3 pb-0.5 pt-1.5 text-[10px] font-medium text-text-muted">
+                            Team: {task.teamDisplayName}
+                          </div>
+                        )}
+                        <TaskContextMenu
                           task={task}
-                          renamingKey={renamingTaskKey}
-                          onRenameComplete={handleRenameComplete}
-                          onRenameCancel={handleRenameCancel}
-                          getDisplaySubject={(t) =>
-                            taskLocalState.getRenamedSubject(t.teamName, t.id)
+                          isPinned={taskLocalState.isPinned(task.teamName, task.id)}
+                          isArchived={taskLocalState.isArchived(task.teamName, task.id)}
+                          onTogglePin={() => taskLocalState.togglePin(task.teamName, task.id)}
+                          onToggleArchive={() =>
+                            taskLocalState.toggleArchive(task.teamName, task.id)
                           }
-                        />
-                      </TaskContextMenu>
-                    </div>
-                  );
-                })}
+                          onRename={() => setRenamingTaskKey(`${task.teamName}:${task.id}`)}
+                          onDelete={() => handleDeleteTask(task.teamName, task.id)}
+                        >
+                          <SidebarTaskItem
+                            task={task}
+                            renamingKey={renamingTaskKey}
+                            onRenameComplete={handleRenameComplete}
+                            onRenameCancel={handleRenameCancel}
+                            getDisplaySubject={(t) =>
+                              taskLocalState.getRenamedSubject(t.teamName, t.id)
+                            }
+                          />
+                        </TaskContextMenu>
+                      </div>
+                    );
+                  })}
               </div>
             );
           })}

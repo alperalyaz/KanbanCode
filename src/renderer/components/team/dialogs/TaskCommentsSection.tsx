@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
+import { CopyButton } from '@renderer/components/common/CopyButton';
+import { AnimatedHeightReveal } from '@renderer/components/team/activity/AnimatedHeightReveal';
 import { ReplyQuoteBlock } from '@renderer/components/team/activity/ReplyQuoteBlock';
+import { useNewItemKeys } from '@renderer/components/team/activity/useNewItemKeys';
 import { ImageLightbox } from '@renderer/components/team/attachments/ImageLightbox';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { ExpandableContent } from '@renderer/components/ui/ExpandableContent';
@@ -14,6 +17,7 @@ import { buildReplyBlock, parseMessageReply } from '@renderer/utils/agentMessage
 import { isImageMimeType } from '@renderer/utils/attachmentUtils';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { MAX_TEXT_LENGTH } from '@shared/constants';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { formatDistanceToNow } from 'date-fns';
 import { CheckCircle2, Eye, File, Loader2, MessageSquare, Reply, Send, X } from 'lucide-react';
@@ -30,7 +34,6 @@ function normalizeLiteralNewlines(text: string): string {
   return text.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
 }
 
-const MAX_COMMENT_LENGTH = 2000;
 const INITIAL_VISIBLE_COMMENTS = 30;
 const VISIBLE_COMMENTS_STEP = 50;
 const MAX_COMMENTS_TO_RENDER = 2000;
@@ -54,7 +57,7 @@ interface TaskCommentsSectionProps {
 
 /** Convert `#<digits>` in plain text to markdown links with task:// protocol. */
 function linkifyTaskIdsInMarkdown(text: string): string {
-  return text.replace(/#(\d+)/g, '[#$1](task://$1)');
+  return text.replace(/#(\d+)\b/g, '[#$1](task://$1)');
 }
 
 /** Convert `@memberName` to markdown links with mention:// protocol for colored badge rendering. */
@@ -89,13 +92,17 @@ export const TaskCommentsSection = ({
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COMMENTS);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
-  // Reset local UI state when team/task changes.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync on prop change
+  // Reset local UI state when team/task changes using the
+  // "adjust state during render" pattern (no effect needed).
+  // See: https://react.dev/reference/react/useState#storing-information-from-previous-renders
+  const resetKey = `${teamName}:${taskId}`;
+  const [prevResetKey, setPrevResetKey] = useState(resetKey);
+  if (resetKey !== prevResetKey) {
+    setPrevResetKey(resetKey);
     setVisibleCount(INITIAL_VISIBLE_COMMENTS);
     setReplyTo(null);
     setPreviewImageUrl(null);
-  }, [teamName, taskId]);
+  }
 
   const draft = useDraftPersistence({ key: `taskComment:${teamName}:${taskId}` });
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
@@ -118,6 +125,16 @@ export const TaskCommentsSection = ({
     [sortedComments, visibleCount]
   );
 
+  const visibleCommentIds = useMemo(
+    () => visibleComments.map((comment) => comment.id),
+    [visibleComments]
+  );
+  const newCommentIds = useNewItemKeys({
+    itemKeys: visibleCommentIds,
+    paginationKey: visibleCount,
+    resetKey: `${teamName}:${taskId}`,
+  });
+
   const mentionSuggestions = useMemo<MentionSuggestion[]>(
     () =>
       members.map((m) => ({
@@ -130,8 +147,8 @@ export const TaskCommentsSection = ({
   );
 
   const trimmed = draft.value.trim();
-  const remaining = MAX_COMMENT_LENGTH - trimmed.length;
-  const canSubmit = trimmed.length > 0 && trimmed.length <= MAX_COMMENT_LENGTH && !addingComment;
+  const remaining = MAX_TEXT_LENGTH - trimmed.length;
+  const canSubmit = trimmed.length > 0 && trimmed.length <= MAX_TEXT_LENGTH && !addingComment;
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
@@ -170,126 +187,134 @@ export const TaskCommentsSection = ({
 
           <div className={containerClassName ?? ''}>
             {visibleComments.map((comment, index) => (
-              <div
-                key={comment.id}
-                className={[
-                  'group px-4 py-2.5',
-                  comment.type === 'review_approved'
-                    ? 'border-y border-emerald-500/20 bg-emerald-500/5'
-                    : comment.type === 'review_request'
-                      ? 'border-y border-blue-500/20 bg-blue-500/5'
-                      : '',
-                ].join(' ')}
-                style={
-                  !comment.type || comment.type === 'regular'
-                    ? {
-                        backgroundColor:
-                          index % 2 === 1 ? 'var(--card-bg-zebra)' : 'var(--card-bg)',
-                      }
-                    : undefined
-                }
-              >
-                <div className="mb-1 flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
-                  <MemberBadge name={comment.author} color={colorMap.get(comment.author)} />
-                  {comment.type === 'review_approved' ? (
-                    <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
-                      <CheckCircle2 size={10} />
-                      Approved
+              <AnimatedHeightReveal key={comment.id} animate={newCommentIds.has(comment.id)}>
+                <div
+                  className={[
+                    'group px-4 py-2.5',
+                    comment.type === 'review_approved'
+                      ? 'border-y border-emerald-500/20 bg-emerald-500/5'
+                      : comment.type === 'review_request'
+                        ? 'border-y border-blue-500/20 bg-blue-500/5'
+                        : '',
+                  ].join(' ')}
+                  style={
+                    !comment.type || comment.type === 'regular'
+                      ? {
+                          backgroundColor:
+                            index % 2 === 1 ? 'var(--card-bg-zebra)' : 'var(--card-bg)',
+                        }
+                      : undefined
+                  }
+                >
+                  <div className="mb-1 flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
+                    <MemberBadge
+                      name={comment.author}
+                      color={colorMap.get(comment.author)}
+                      hideAvatar={comment.author === 'user'}
+                    />
+                    {comment.type === 'review_approved' ? (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                        <CheckCircle2 size={10} />
+                        Approved
+                      </span>
+                    ) : comment.type === 'review_request' ? (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">
+                        <Eye size={10} />
+                        Review requested
+                      </span>
+                    ) : null}
+                    <span>
+                      {(() => {
+                        const date = new Date(comment.createdAt);
+                        return isNaN(date.getTime())
+                          ? 'unknown time'
+                          : formatDistanceToNow(date, { addSuffix: true });
+                      })()}
                     </span>
-                  ) : comment.type === 'review_request' ? (
-                    <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium text-blue-400">
-                      <Eye size={10} />
-                      Review requested
-                    </span>
-                  ) : null}
-                  <span>
-                    {(() => {
-                      const date = new Date(comment.createdAt);
-                      return isNaN(date.getTime())
-                        ? 'unknown time'
-                        : formatDistanceToNow(date, { addSuffix: true });
-                    })()}
-                  </span>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="ml-auto flex items-center gap-0.5 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:text-[var(--color-text-secondary)] group-hover:opacity-100"
-                        onClick={() => {
-                          const replyText = stripAgentBlocks(
-                            parseMessageReply(comment.text)?.replyText ?? comment.text
-                          );
-                          if (onReply) {
-                            onReply(comment.author, replyText);
-                          } else {
-                            setReplyTo({ author: comment.author, text: replyText });
-                          }
-                        }}
-                      >
-                        <Reply size={11} />
-                        Reply
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="left">Reply to comment</TooltipContent>
-                  </Tooltip>
-                </div>
-                {(() => {
-                  const reply = parseMessageReply(comment.text);
-                  const rawForDisplay = reply ? reply.replyText : comment.text;
-                  const displayText = normalizeLiteralNewlines(stripAgentBlocks(rawForDisplay));
-                  return (
-                    <ExpandableContent collapsedHeight={120} className="text-xs">
-                      {reply ? (
-                        <ReplyQuoteBlock
-                          reply={{
-                            ...reply,
-                            originalText: stripAgentBlocks(reply.originalText),
-                            replyText: stripAgentBlocks(reply.replyText),
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="ml-auto flex items-center gap-0.5 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:text-[var(--color-text-secondary)] group-hover:opacity-100"
+                          onClick={() => {
+                            const replyText = stripAgentBlocks(
+                              parseMessageReply(comment.text)?.replyText ?? comment.text
+                            );
+                            if (onReply) {
+                              onReply(comment.author, replyText);
+                            } else {
+                              setReplyTo({ author: comment.author, text: replyText });
+                            }
                           }}
-                          memberColor={colorMap.get(reply.agentName)}
-                          bodyMaxHeight="max-h-none"
-                        />
-                      ) : (
-                        <span
-                          onClickCapture={
-                            onTaskIdClick
-                              ? (e) => {
-                                  const link = (e.target as HTMLElement).closest<HTMLAnchorElement>(
-                                    'a[href^="task://"]'
-                                  );
-                                  if (link) {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    const id = link.getAttribute('href')?.replace('task://', '');
-                                    if (id) onTaskIdClick(id);
-                                  }
-                                }
-                              : undefined
-                          }
                         >
-                          <MarkdownViewer
-                            content={(() => {
-                              let t = linkifyTaskIdsInMarkdown(displayText);
-                              if (colorMap.size > 0) t = linkifyMentionsInMarkdown(t, colorMap);
-                              return t;
-                            })()}
-                            maxHeight="max-h-none"
-                            bare
+                          <Reply size={11} />
+                          Reply
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left">Reply to comment</TooltipContent>
+                    </Tooltip>
+                    <span className="opacity-0 transition-opacity group-hover:opacity-100">
+                      <CopyButton text={comment.text} inline />
+                    </span>
+                  </div>
+                  {(() => {
+                    const reply = parseMessageReply(comment.text);
+                    const rawForDisplay = reply ? reply.replyText : comment.text;
+                    const displayText = normalizeLiteralNewlines(stripAgentBlocks(rawForDisplay));
+                    return (
+                      <ExpandableContent collapsedHeight={120} className="text-xs">
+                        {reply ? (
+                          <ReplyQuoteBlock
+                            reply={{
+                              ...reply,
+                              originalText: stripAgentBlocks(reply.originalText),
+                              replyText: stripAgentBlocks(reply.replyText),
+                            }}
+                            memberColor={colorMap.get(reply.agentName)}
+                            bodyMaxHeight="max-h-none"
                           />
-                        </span>
-                      )}
-                    </ExpandableContent>
-                  );
-                })()}
-                {comment.attachments && comment.attachments.length > 0 ? (
-                  <CommentAttachments
-                    attachments={comment.attachments}
-                    teamName={teamName}
-                    taskId={taskId}
-                    onPreview={setPreviewImageUrl}
-                  />
-                ) : null}
-              </div>
+                        ) : (
+                          <span
+                            onClickCapture={
+                              onTaskIdClick
+                                ? (e) => {
+                                    const link = (
+                                      e.target as HTMLElement
+                                    ).closest<HTMLAnchorElement>('a[href^="task://"]');
+                                    if (link) {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      const id = link.getAttribute('href')?.replace('task://', '');
+                                      if (id) onTaskIdClick(id);
+                                    }
+                                  }
+                                : undefined
+                            }
+                          >
+                            <MarkdownViewer
+                              content={(() => {
+                                let t = linkifyTaskIdsInMarkdown(displayText);
+                                if (colorMap.size > 0) t = linkifyMentionsInMarkdown(t, colorMap);
+                                return t;
+                              })()}
+                              maxHeight="max-h-none"
+                              bare
+                            />
+                          </span>
+                        )}
+                      </ExpandableContent>
+                    );
+                  })()}
+                  {comment.attachments && comment.attachments.length > 0 ? (
+                    <CommentAttachments
+                      attachments={comment.attachments}
+                      teamName={teamName}
+                      taskId={taskId}
+                      onPreview={setPreviewImageUrl}
+                    />
+                  ) : null}
+                </div>
+              </AnimatedHeightReveal>
             ))}
           </div>
 
@@ -357,7 +382,7 @@ export const TaskCommentsSection = ({
               onModEnter={() => void handleSubmit()}
               minRows={2}
               maxRows={8}
-              maxLength={MAX_COMMENT_LENGTH}
+              maxLength={MAX_TEXT_LENGTH}
               disabled={addingComment}
               cornerAction={
                 <button

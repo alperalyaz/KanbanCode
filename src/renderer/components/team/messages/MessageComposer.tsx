@@ -6,14 +6,13 @@ import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
-import { useAttachments } from '@renderer/hooks/useAttachments';
-import { useChipDraftPersistence } from '@renderer/hooks/useChipDraftPersistence';
-import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
+import { useComposerDraft } from '@renderer/hooks/useComposerDraft';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { serializeChipsWithText } from '@renderer/types/inlineChip';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { MAX_TEXT_LENGTH } from '@shared/constants';
 import { AlertCircle, Check, ChevronDown, ImagePlus, Mic, Search, Send } from 'lucide-react';
 
 import type { MentionSuggestion } from '@renderer/types/mention';
@@ -32,8 +31,6 @@ interface MessageComposerProps {
     attachments?: AttachmentPayload[]
   ) => void;
 }
-
-const MAX_MESSAGE_LENGTH = 4000;
 
 /** Circular progress indicator for lead context usage. */
 const _ContextRing = ({ ctx }: { ctx: LeadContextUsage }): React.JSX.Element => {
@@ -114,24 +111,12 @@ export const MessageComposer = ({
     const lead = members.find((m) => m.role === 'lead' || m.name === 'team-lead');
     const next = lead?.name ?? members[0]?.name ?? '';
     if (next && next !== recipient) {
-      setRecipient(next);
+      queueMicrotask(() => setRecipient(next));
     }
   }, [members, recipient]);
 
   const projectPath = useStore((s) => s.selectedTeamData?.config.projectPath ?? null);
-  const draft = useDraftPersistence({ key: `compose:${teamName}` });
-  const chipDraft = useChipDraftPersistence(`compose:${teamName}:chips`);
-  const {
-    attachments,
-    error: attachmentError,
-    canAddMore,
-    addFiles,
-    removeAttachment,
-    clearAttachments,
-    clearError: clearAttachmentError,
-    handlePaste,
-    handleDrop,
-  } = useAttachments({ persistenceKey: `compose:${teamName}:attachments` });
+  const draft = useComposerDraft(teamName);
 
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
 
@@ -146,7 +131,7 @@ export const MessageComposer = ({
     [members, colorMap]
   );
 
-  const trimmed = draft.value.trim();
+  const trimmed = draft.text.trim();
 
   const selectedMember = members.find((m) => m.name === recipient);
   const selectedResolvedColor = selectedMember ? colorMap.get(selectedMember.name) : undefined;
@@ -157,12 +142,12 @@ export const MessageComposer = ({
   //   isLeadAgentRecipient ? s.leadContextByTeam[teamName] : undefined
   // );
   const supportsAttachments = isLeadRecipient;
-  const canAttach = supportsAttachments && canAddMore;
-  const attachmentsBlocked = attachments.length > 0 && !supportsAttachments;
+  const canAttach = supportsAttachments && draft.canAddMore;
+  const attachmentsBlocked = draft.attachments.length > 0 && !supportsAttachments;
   const canSend =
     recipient.length > 0 &&
     trimmed.length > 0 &&
-    trimmed.length <= MAX_MESSAGE_LENGTH &&
+    trimmed.length <= MAX_TEXT_LENGTH &&
     !sending &&
     !attachmentsBlocked;
 
@@ -172,10 +157,15 @@ export const MessageComposer = ({
   const handleSend = useCallback(() => {
     if (!canSend) return;
     pendingSendRef.current = true;
-    const serialized = serializeChipsWithText(trimmed, chipDraft.chips);
+    const serialized = serializeChipsWithText(trimmed, draft.chips);
     // Summary should stay compact (no expanded chip markdown)
-    onSend(recipient, serialized, trimmed, attachments.length > 0 ? attachments : undefined);
-  }, [canSend, recipient, trimmed, onSend, attachments, chipDraft.chips]);
+    onSend(
+      recipient,
+      serialized,
+      trimmed,
+      draft.attachments.length > 0 ? draft.attachments : undefined
+    );
+  }, [canSend, recipient, trimmed, onSend, draft.attachments, draft.chips]);
 
   // Clear draft only after send completes successfully (sending: true → false, no error)
   useEffect(() => {
@@ -183,12 +173,9 @@ export const MessageComposer = ({
       pendingSendRef.current = false;
       if (!sendError) {
         draft.clearDraft();
-        chipDraft.clearChipDraft();
-        clearAttachments();
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- clearChipDraft is stable (useCallback with [])
-  }, [sending, sendError, draft, clearAttachments, chipDraft.clearChipDraft]);
+  }, [sending, sendError, draft]);
 
   const handleKeyDownCapture = useCallback(
     (e: React.KeyboardEvent) => {
@@ -201,15 +188,16 @@ export const MessageComposer = ({
     [handleSend]
   );
 
+  const { addFiles: draftAddFiles } = draft;
   const handleFileInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const input = e.target;
       if (input.files?.length) {
-        void addFiles(input.files);
+        void draftAddFiles(input.files);
       }
       input.value = '';
     },
-    [addFiles]
+    [draftAddFiles]
   );
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -231,23 +219,25 @@ export const MessageComposer = ({
     e.preventDefault();
   }, []);
 
+  const { handleDrop: draftHandleDrop } = draft;
   const handleDropWrapper = useCallback(
     (e: React.DragEvent) => {
       dragCounterRef.current = 0;
       setIsDragOver(false);
-      if (canAttach) handleDrop(e);
+      if (canAttach) draftHandleDrop(e);
     },
-    [canAttach, handleDrop]
+    [canAttach, draftHandleDrop]
   );
 
+  const { handlePaste: draftHandlePaste } = draft;
   const handlePasteWrapper = useCallback(
     (e: React.ClipboardEvent) => {
-      if (canAttach) handlePaste(e);
+      if (canAttach) draftHandlePaste(e);
     },
-    [canAttach, handlePaste]
+    [canAttach, draftHandlePaste]
   );
 
-  const remaining = MAX_MESSAGE_LENGTH - trimmed.length;
+  const remaining = MAX_TEXT_LENGTH - trimmed.length;
 
   return (
     <div
@@ -262,7 +252,7 @@ export const MessageComposer = ({
     >
       <DropZoneOverlay active={isDragOver && !!canAttach} />
 
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-1 flex items-center gap-2">
         {isLeadRecipient ? (
           <>
             <input
@@ -278,7 +268,7 @@ export const MessageComposer = ({
                 <button
                   type="button"
                   className={cn(
-                    'inline-flex items-center gap-1 rounded p-1 transition-colors',
+                    'inline-flex shrink-0 items-center gap-1 rounded p-1 transition-colors',
                     canAttach
                       ? 'text-[var(--color-text-secondary)] hover:text-[var(--color-text)]'
                       : 'text-[var(--color-text-muted)] opacity-40'
@@ -292,15 +282,34 @@ export const MessageComposer = ({
               <TooltipContent side="top">
                 {!isTeamAlive
                   ? 'Team must be online to attach images'
-                  : !canAddMore
+                  : !draft.canAddMore
                     ? 'Maximum attachments reached'
                     : 'Attach images (paste or drag & drop)'}
               </TooltipContent>
             </Tooltip>
+            <div className="min-w-0 flex-1">
+              <AttachmentPreviewList
+                attachments={draft.attachments}
+                onRemove={draft.removeAttachment}
+                error={draft.attachmentError}
+                onDismissError={draft.clearAttachmentError}
+                disabled={attachmentsBlocked}
+                disabledHint="Image attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
+              />
+            </div>
           </>
-        ) : null}
+        ) : (
+          <AttachmentPreviewList
+            attachments={draft.attachments}
+            onRemove={draft.removeAttachment}
+            error={draft.attachmentError}
+            onDismissError={draft.clearAttachmentError}
+            disabled={attachmentsBlocked}
+            disabledHint="Image attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
+          />
+        )}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {!isTeamAlive ? (
             <span className="text-[10px]" style={{ color: 'var(--warning-text)' }}>
               Team offline
@@ -407,29 +416,20 @@ export const MessageComposer = ({
         </div>
       </div>
 
-      <AttachmentPreviewList
-        attachments={attachments}
-        onRemove={removeAttachment}
-        error={attachmentError}
-        onDismissError={clearAttachmentError}
-        disabled={attachmentsBlocked}
-        disabledHint="Image attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
-      />
-
       <MentionableTextarea
         id={`compose-${teamName}`}
         placeholder="Write a message... (Enter to send, Shift+Enter for new line)"
-        value={draft.value}
-        onValueChange={draft.setValue}
+        value={draft.text}
+        onValueChange={draft.setText}
         suggestions={mentionSuggestions}
-        chips={chipDraft.chips}
-        onChipRemove={chipDraft.removeChip}
+        chips={draft.chips}
+        onChipRemove={draft.removeChip}
         projectPath={projectPath}
-        onFileChipInsert={chipDraft.addChip}
+        onFileChipInsert={draft.addChip}
         onModEnter={handleSend}
         minRows={2}
         maxRows={6}
-        maxLength={MAX_MESSAGE_LENGTH}
+        maxLength={MAX_TEXT_LENGTH}
         disabled={sending}
         cornerAction={
           <div className="flex items-center gap-2">

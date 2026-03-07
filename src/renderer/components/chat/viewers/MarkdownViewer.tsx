@@ -23,7 +23,8 @@ import {
   PROSE_TABLE_BORDER,
   PROSE_TABLE_HEADER_BG,
 } from '@renderer/constants/cssVariables';
-import { getTeamColorSet } from '@renderer/constants/teamColors';
+import { getTeamColorSet, getThemedBadge } from '@renderer/constants/teamColors';
+import { useTheme } from '@renderer/hooks/useTheme';
 import { useStore } from '@renderer/store';
 import { REHYPE_PLUGINS, REHYPE_PLUGINS_NO_HIGHLIGHT } from '@renderer/utils/markdownPlugins';
 import { FileText } from 'lucide-react';
@@ -36,6 +37,7 @@ import {
   type SearchContext,
 } from '../searchHighlightUtils';
 
+import { FileLink, isRelativeUrl } from './FileLink';
 import { MermaidDiagram } from './MermaidDiagram';
 
 // =============================================================================
@@ -70,18 +72,6 @@ interface MarkdownViewerProps {
 function allowCustomProtocols(url: string): string {
   if (url.startsWith('task://') || url.startsWith('mention://')) return url;
   return defaultUrlTransform(url);
-}
-
-/** Check if a URL is relative (not absolute, not data, not mailto, not hash) */
-function isRelativeUrl(url: string): boolean {
-  return (
-    !!url &&
-    !url.startsWith('http://') &&
-    !url.startsWith('https://') &&
-    !url.startsWith('data:') &&
-    !url.startsWith('#') &&
-    !url.startsWith('mailto:')
-  );
 }
 
 /** Resolve a relative path to an absolute path given a base directory */
@@ -164,7 +154,10 @@ function hastToText(node: HastNode): string {
 // Component factories
 // =============================================================================
 
-function createViewerMarkdownComponents(searchCtx: SearchContext | null): Components {
+function createViewerMarkdownComponents(
+  searchCtx: SearchContext | null,
+  isLight = false
+): Components {
   const hl = (children: React.ReactNode): React.ReactNode =>
     searchCtx ? highlightSearchInChildren(children, searchCtx) : children;
 
@@ -225,7 +218,7 @@ function createViewerMarkdownComponents(searchCtx: SearchContext | null): Compon
           // malformed percent-encoding — use empty color
         }
         const colorSet = getTeamColorSet(color);
-        const bg = colorSet.badge;
+        const bg = getThemedBadge(colorSet, isLight);
         return (
           <span
             style={{
@@ -254,6 +247,10 @@ function createViewerMarkdownComponents(searchCtx: SearchContext | null): Compon
             </a>
           </TaskTooltip>
         );
+      }
+      // Relative file paths — open in built-in editor or copy path
+      if (href && isRelativeUrl(href)) {
+        return <FileLink href={href}>{children}</FileLink>;
       }
       return (
         <a
@@ -457,6 +454,7 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
 }) => {
   const [showRaw, setShowRaw] = React.useState(false);
   const [rawLimit, setRawLimit] = React.useState(LARGE_PREVIEW_CHARS);
+  const { isLight } = useTheme();
 
   const isTooLarge = content.length > MAX_MARKDOWN_CHARS;
   const disableHighlight = content.length > DISABLE_HIGHLIGHT_CHARS;
@@ -608,7 +606,11 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
   // Create markdown components with optional search highlighting
   // When search is active, create fresh each render (match counter is stateful and must start at 0)
   // useMemo would cache stale closures when parent re-renders without search deps changing
-  const baseComponents = searchCtx ? createViewerMarkdownComponents(searchCtx) : defaultComponents;
+  const baseComponents = searchCtx
+    ? createViewerMarkdownComponents(searchCtx, isLight)
+    : isLight
+      ? createViewerMarkdownComponents(null, true)
+      : defaultComponents;
 
   // When baseDir is set (editor preview), override img to load local files via IPC
   const components = baseDir

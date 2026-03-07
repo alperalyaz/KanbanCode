@@ -8,12 +8,12 @@ import { useStore } from '@renderer/store';
 import { buildReplyBlock } from '@renderer/utils/agentMessageFormatting';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { MAX_TEXT_LENGTH } from '@shared/constants';
 import { ImagePlus, Mic, Send, Trash2, X } from 'lucide-react';
 
 import type { MentionSuggestion } from '@renderer/types/mention';
 import type { CommentAttachmentPayload, ResolvedTeamMember } from '@shared/types';
 
-const MAX_COMMENT_LENGTH = 2000;
 const MAX_ATTACHMENTS = 5;
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const ACCEPTED_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -64,10 +64,10 @@ export const TaskCommentInput = ({
   );
 
   const trimmed = draft.value.trim();
-  const remaining = MAX_COMMENT_LENGTH - trimmed.length;
+  const remaining = MAX_TEXT_LENGTH - trimmed.length;
   const canSubmit =
     (trimmed.length > 0 || pendingAttachments.length > 0) &&
-    trimmed.length <= MAX_COMMENT_LENGTH &&
+    trimmed.length <= MAX_TEXT_LENGTH &&
     !addingComment;
 
   const addFiles = useCallback((files: FileList | File[]) => {
@@ -253,7 +253,7 @@ export const TaskCommentInput = ({
           onModEnter={() => void handleSubmit()}
           minRows={2}
           maxRows={8}
-          maxLength={MAX_COMMENT_LENGTH}
+          maxLength={MAX_TEXT_LENGTH}
           disabled={addingComment}
           cornerAction={
             <div className="flex items-center gap-1.5">

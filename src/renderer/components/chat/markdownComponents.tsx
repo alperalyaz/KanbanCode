@@ -2,6 +2,7 @@ import React from 'react';
 
 import { PROSE_BODY } from '@renderer/constants/cssVariables';
 
+import { FileLink, isRelativeUrl } from './viewers/FileLink';
 import { highlightSearchInChildren, type SearchContext } from './searchHighlightUtils';
 
 import type { Components } from 'react-markdown';
@@ -77,17 +78,22 @@ export function createMarkdownComponents(searchCtx: SearchContext | null): Compo
     ),
 
     // Links — inline element, no hl(); parent block element's hl() descends here
-    a: ({ href, children }) => (
-      <a
-        href={href}
-        className="no-underline hover:underline"
-        style={{ color: 'var(--prose-link)' }}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        {children}
-      </a>
-    ),
+    a: ({ href, children }) => {
+      if (href && isRelativeUrl(href)) {
+        return <FileLink href={href}>{children}</FileLink>;
+      }
+      return (
+        <a
+          href={href}
+          className="no-underline hover:underline"
+          style={{ color: 'var(--prose-link)' }}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {children}
+        </a>
+      );
+    },
 
     // Strong/Bold — inline element, no hl()
     strong: ({ children }) => (

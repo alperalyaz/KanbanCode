@@ -21,17 +21,20 @@ import {
 import { Input } from '@renderer/components/ui/input';
 import { Label } from '@renderer/components/ui/label';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
-import { getTeamColorSet } from '@renderer/constants/teamColors';
+import { getTeamColorSet, getThemedBadge } from '@renderer/constants/teamColors';
 import { useChipDraftPersistence } from '@renderer/hooks/useChipDraftPersistence';
 import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
 import { useFileListCacheWarmer } from '@renderer/hooks/useFileListCacheWarmer';
+import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import { getMemberColor } from '@shared/constants/memberColors';
 import { AlertTriangle, CheckCircle2, Info, Loader2, X } from 'lucide-react';
 
+import { EffortLevelSelector } from './EffortLevelSelector';
 import { ExtendedContextCheckbox } from './ExtendedContextCheckbox';
 import { ProjectPathSelector } from './ProjectPathSelector';
+import { SkipPermissionsCheckbox } from './SkipPermissionsCheckbox';
 import { computeEffectiveTeamModel, TeamModelSelector } from './TeamModelSelector';
 
 import type { MemberDraft } from '@renderer/components/team/members/membersEditorTypes';
@@ -49,6 +52,7 @@ const TEAM_COLOR_NAMES = [
 
 import type { MentionSuggestion } from '@renderer/types/mention';
 import type {
+  EffortLevel,
   Project,
   TeamCreateRequest,
   TeamProvisioningMemberInput,
@@ -200,6 +204,7 @@ export const CreateTeamDialog = ({
   onOpenTeam,
 }: CreateTeamDialogProps): React.JSX.Element => {
   const isDev = process.env.NODE_ENV !== 'production';
+  const { isLight } = useTheme();
 
   const [teamName, setTeamName] = useState('');
   const descriptionDraft = useDraftPersistence({ key: 'createTeam:description' });
@@ -233,6 +238,12 @@ export const CreateTeamDialog = ({
   const [extendedContext, setExtendedContextRaw] = useState(
     () => localStorage.getItem('team:lastExtendedContext') === 'true'
   );
+  const [skipPermissions, setSkipPermissionsRaw] = useState(
+    () => localStorage.getItem('team:lastSkipPermissions') !== 'false'
+  );
+  const [selectedEffort, setSelectedEffortRaw] = useState(
+    () => localStorage.getItem('team:lastSelectedEffort') ?? ''
+  );
 
   const setSelectedModel = (value: string): void => {
     setSelectedModelRaw(value);
@@ -242,6 +253,16 @@ export const CreateTeamDialog = ({
   const setExtendedContext = (value: boolean): void => {
     setExtendedContextRaw(value);
     localStorage.setItem('team:lastExtendedContext', String(value));
+  };
+
+  const setSkipPermissions = (value: boolean): void => {
+    setSkipPermissionsRaw(value);
+    localStorage.setItem('team:lastSkipPermissions', String(value));
+  };
+
+  const setSelectedEffort = (value: string): void => {
+    setSelectedEffortRaw(value);
+    localStorage.setItem('team:lastSelectedEffort', value);
   };
 
   const resetUIState = (): void => {
@@ -473,6 +494,8 @@ export const CreateTeamDialog = ({
       cwd: effectiveCwd,
       prompt: prompt.trim() || undefined,
       model: effectiveModel,
+      effort: (selectedEffort as EffortLevel) || undefined,
+      skipPermissions,
     }),
     [
       sanitizedTeamName,
@@ -483,6 +506,8 @@ export const CreateTeamDialog = ({
       effectiveCwd,
       prompt,
       effectiveModel,
+      selectedEffort,
+      skipPermissions,
     ]
   );
 
@@ -795,50 +820,25 @@ export const CreateTeamDialog = ({
                     onValueChange={setSelectedModel}
                     id="create-model"
                   />
+                  <EffortLevelSelector
+                    value={selectedEffort}
+                    onValueChange={setSelectedEffort}
+                    id="create-effort"
+                  />
                   <ExtendedContextCheckbox
                     id="create-extended-context"
                     checked={extendedContext}
                     onCheckedChange={setExtendedContext}
                     disabled={selectedModel === 'haiku'}
                   />
+                  {launchTeam && (
+                    <SkipPermissionsCheckbox
+                      id="create-skip-permissions"
+                      checked={skipPermissions}
+                      onCheckedChange={setSkipPermissions}
+                    />
+                  )}
                 </div>
-
-                {canCreate && (prepareState === 'idle' || prepareState === 'loading') ? (
-                  <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                    <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    <span>
-                      {prepareMessage ??
-                        (prepareState === 'idle'
-                          ? 'Warming up CLI environment...'
-                          : 'Preparing environment...')}
-                    </span>
-                  </div>
-                ) : null}
-
-                {canCreate && prepareState === 'ready' ? (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-xs text-emerald-400">
-                      <CheckCircle2 className="size-3.5 shrink-0" />
-                      <span>
-                        {prepareWarnings.length > 0
-                          ? 'CLI environment ready (with notes)'
-                          : 'CLI environment ready'}
-                      </span>
-                    </div>
-                    {prepareMessage ? (
-                      <p className="text-[11px] text-[var(--color-text-muted)]">{prepareMessage}</p>
-                    ) : null}
-                    {prepareWarnings.length > 0 ? (
-                      <div className="space-y-0.5">
-                        {prepareWarnings.map((warning) => (
-                          <p key={warning} className="text-[11px] text-sky-300">
-                            {warning}
-                          </p>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
               </div>
             ) : null}
           </div>
@@ -876,7 +876,7 @@ export const CreateTeamDialog = ({
                       isSelected ? 'scale-110' : 'opacity-70 hover:opacity-100'
                     )}
                     style={{
-                      backgroundColor: colorSet.badge,
+                      backgroundColor: getThemedBadge(colorSet, isLight),
                       borderColor: isSelected ? colorSet.border : 'transparent',
                     }}
                     title={colorName}
@@ -899,36 +899,79 @@ export const CreateTeamDialog = ({
           </p>
         ) : null}
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          {canOpenExistingTeam ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                onOpenTeam(request.teamName);
-                onClose();
-              }}
-            >
-              Open Existing Team
+        <DialogFooter className="pt-4 sm:justify-between">
+          <div className="min-w-0">
+            {canCreate && launchTeam && (prepareState === 'idle' || prepareState === 'loading') ? (
+              <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                <span>
+                  {prepareMessage ??
+                    (prepareState === 'idle'
+                      ? 'Warming up CLI environment...'
+                      : 'Preparing environment...')}
+                </span>
+              </div>
+            ) : null}
+
+            {canCreate && launchTeam && prepareState === 'ready' ? (
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+                  <CheckCircle2 className="size-3.5 shrink-0" />
+                  <span>
+                    {prepareWarnings.length > 0
+                      ? 'CLI environment ready (with notes)'
+                      : 'CLI environment ready'}
+                  </span>
+                </div>
+                {prepareMessage ? (
+                  <p className="mt-0.5 pl-5 text-[11px] text-[var(--color-text-muted)]">
+                    {prepareMessage}
+                  </p>
+                ) : null}
+                {prepareWarnings.length > 0 ? (
+                  <div className="mt-0.5 space-y-0.5 pl-5">
+                    {prepareWarnings.map((warning) => (
+                      <p key={warning} className="text-[11px] text-sky-300">
+                        {warning}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            {canOpenExistingTeam ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onOpenTeam(request.teamName);
+                  onClose();
+                }}
+              >
+                Open Existing Team
+              </Button>
+            ) : null}
+            <Button variant="outline" size="sm" onClick={onClose}>
+              Close
             </Button>
-          ) : null}
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Close
-          </Button>
-          <Button
-            size="sm"
-            disabled={!canCreate || isSubmitting || (launchTeam && prepareState !== 'ready')}
-            onClick={handleSubmit}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              'Create'
-            )}
-          </Button>
+            <Button
+              size="sm"
+              disabled={!canCreate || isSubmitting || (launchTeam && prepareState !== 'ready')}
+              onClick={handleSubmit}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                'Create'
+              )}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

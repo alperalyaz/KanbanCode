@@ -13,10 +13,12 @@ import {
   DialogTitle,
 } from '@renderer/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
-import { getTeamColorSet } from '@renderer/constants/teamColors';
+import { getTeamColorSet, getThemedBadge } from '@renderer/constants/teamColors';
 import { useBranchSync } from '@renderer/hooks/useBranchSync';
 import { useTabUI } from '@renderer/hooks/useTabUI';
+import { useTeamMessagesExpanded } from '@renderer/hooks/useTeamMessagesExpanded';
 import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
+import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { createChipFromSelection } from '@renderer/utils/chipUtils';
@@ -32,6 +34,8 @@ import {
   AlertTriangle,
   Bell,
   CheckCheck,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Code,
   Columns3,
   FolderOpen,
@@ -122,6 +126,7 @@ function filterKanbanTasks(tasks: TeamTaskWithKanban[], query: string): TeamTask
 }
 
 export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Element => {
+  const { isLight } = useTheme();
   const [requestChangesTaskId, setRequestChangesTaskId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<TeamTaskWithKanban | null>(null);
   const [selectedMember, setSelectedMember] = useState<ResolvedTeamMember | null>(null);
@@ -306,6 +311,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     showNoise: false,
   });
   const [messagesFilterOpen, setMessagesFilterOpen] = useState(false);
+  const [messagesCollapsed, setMessagesCollapsed] = useState(true);
 
   // Open editor overlay when a file reveal is requested (e.g. from chip click)
   const pendingRevealFile = useStore((s) => s.editorPendingRevealFile);
@@ -624,6 +630,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
   }, [data, timeWindow, messagesFilter, messagesSearchQuery, leadMemberName]);
 
   const { readSet, markRead, markAllRead } = useTeamMessagesRead(teamName ?? '');
+  const { expandedSet, toggle: toggleExpandOverride } = useTeamMessagesExpanded(teamName ?? '');
   const messagesUnreadCount = useMemo(
     () => filteredMessages.filter((m) => !m.read && !readSet.has(toMessageKey(m))).length,
     [filteredMessages, readSet]
@@ -956,7 +963,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
             {headerColorSet ? (
               <div
                 className="pointer-events-none absolute inset-0 z-0 rounded-lg"
-                style={{ backgroundColor: headerColorSet.badge }}
+                style={{ backgroundColor: getThemedBadge(headerColorSet, isLight) }}
               />
             ) : null}
             <div
@@ -1469,7 +1476,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
             }
             defaultOpen
             action={
-              <div className="flex items-center gap-2 pl-2">
+              <div className="flex items-center gap-2 pl-2 pr-2">
                 <div className="flex w-36 items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-transparent px-2 py-1">
                   <Search size={12} className="shrink-0 text-[var(--color-text-muted)]" />
                   <input
@@ -1498,6 +1505,28 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                   onOpenChange={setMessagesFilterOpen}
                   onApply={setMessagesFilter}
                 />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="pointer-events-auto size-7 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMessagesCollapsed((v) => !v);
+                      }}
+                    >
+                      {messagesCollapsed ? (
+                        <ChevronsUpDown size={14} />
+                      ) : (
+                        <ChevronsDownUp size={14} />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {messagesCollapsed ? 'Expand all messages' : 'Collapse all messages'}
+                  </TooltipContent>
+                </Tooltip>
               </div>
             }
           >
@@ -1536,6 +1565,9 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
               teamName={teamName}
               members={data.members}
               readState={{ readSet, getMessageKey: toMessageKey }}
+              allCollapsed={messagesCollapsed}
+              expandOverrides={expandedSet}
+              onToggleExpandOverride={toggleExpandOverride}
               onMemberClick={setSelectedMember}
               onCreateTaskFromMessage={(subject, description) => {
                 openCreateTaskDialog(subject, description);

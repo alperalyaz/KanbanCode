@@ -1,18 +1,36 @@
 {
-  "name": "@claude-team/mcp-server",
+  "name": "agent-teams-mcp",
   "version": "1.0.0",
-  "description": "MCP server for managing Claude Agent Teams kanban board and tasks",
+  "description": "MCP server for managing Claude Agent Teams kanban board and tasks via teamctl CLI",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "team-mcp-server": "dist/index.js"
+    "agent-teams-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "claude",
+    "agent-teams",
+    "kanban",
+    "task-management",
+    "model-context-protocol"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nickchernyy/agent-teams-mcp"
   },
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
     "fastmcp": "^3.34.0",

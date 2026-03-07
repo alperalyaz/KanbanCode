@@ -6,7 +6,7 @@ import { Combobox } from '@renderer/components/ui/combobox';
 import { Input } from '@renderer/components/ui/input';
 import { Label } from '@renderer/components/ui/label';
 import { cn } from '@renderer/lib/utils';
-import { Check } from 'lucide-react';
+import { Check, FolderOpen } from 'lucide-react';
 
 import type { Project } from '@shared/types';
 
@@ -102,34 +102,40 @@ export const ProjectPathSelector = ({
 
       {cwdMode === 'project' ? (
         <div className="space-y-1.5">
-          <Combobox
-            options={projects.map((project) => ({
-              value: project.path,
-              label: project.name,
-              description: project.path,
-            }))}
-            value={selectedProjectPath}
-            onValueChange={onSelectedProjectPathChange}
-            placeholder={projectsLoading ? 'Loading projects...' : 'Select a project...'}
-            searchPlaceholder="Search project by name or path"
-            emptyMessage="Nothing found"
-            disabled={projectsLoading || projects.length === 0}
-            renderOption={(option, isSelected, query) => (
-              <>
-                <Check
-                  className={cn('mr-2 size-3.5 shrink-0', isSelected ? 'opacity-100' : 'opacity-0')}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-[var(--color-text)]">
-                    {renderHighlightedText(option.label, query)}
-                  </p>
-                  <p className="truncate text-[var(--color-text-muted)]">
-                    {renderHighlightedText(option.description ?? '', query)}
-                  </p>
-                </div>
-              </>
-            )}
-          />
+          <div className="flex items-center gap-2">
+            <FolderOpen size={16} className="shrink-0 text-[var(--color-text-muted)]" />
+            <Combobox
+              options={projects.map((project) => ({
+                value: project.path,
+                label: project.name,
+                description: project.path,
+              }))}
+              value={selectedProjectPath}
+              onValueChange={onSelectedProjectPathChange}
+              placeholder={projectsLoading ? 'Loading projects...' : 'Select a project...'}
+              searchPlaceholder="Search project by name or path"
+              emptyMessage="Nothing found"
+              disabled={projectsLoading || projects.length === 0}
+              renderOption={(option, isSelected, query) => (
+                <>
+                  <Check
+                    className={cn(
+                      'mr-2 size-3.5 shrink-0',
+                      isSelected ? 'opacity-100' : 'opacity-0'
+                    )}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-[var(--color-text)]">
+                      {renderHighlightedText(option.label, query)}
+                    </p>
+                    <p className="truncate text-[var(--color-text-muted)]">
+                      {renderHighlightedText(option.description ?? '', query)}
+                    </p>
+                  </div>
+                </>
+              )}
+            />
+          </div>
           {!selectedProjectPath ? (
             <p className="text-[11px] text-[var(--color-text-muted)]">
               Select a project from the list
@@ -137,12 +143,15 @@ export const ProjectPathSelector = ({
           ) : null}
           {projectsError ? <p className="text-[11px] text-red-300">{projectsError}</p> : null}
           {!projectsLoading && projects.length === 0 ? (
-            <p className="text-[11px]" style={{ color: 'var(--warning-text)' }}>No projects found, switch to custom path.</p>
+            <p className="text-[11px]" style={{ color: 'var(--warning-text)' }}>
+              No projects found, switch to custom path.
+            </p>
           ) : null}
         </div>
       ) : (
         <div className="space-y-1.5">
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <FolderOpen size={16} className="shrink-0 text-[var(--color-text-muted)]" />
             <Input
               className="h-8 text-xs"
               value={customCwd}
