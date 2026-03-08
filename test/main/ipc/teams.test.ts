@@ -318,6 +318,53 @@ describe('ipc teams handlers', () => {
     expect(sources.filter((s) => s === 'lead_session')).toHaveLength(1);
   });
 
+  it('merges early live messages before durable lead_session backfill exists', async () => {
+    // Simulate: team just became readable but lead_session JSONL hasn't been written yet.
+    // Only live in-memory messages exist from the provisioning process.
+    service.getTeamData.mockResolvedValueOnce({
+      teamName: 'my-team',
+      config: { name: 'My Team' },
+      tasks: [],
+      members: [],
+      messages: [], // No durable messages yet
+      kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
+      processes: [],
+    });
+    provisioningService.getLiveLeadProcessMessages.mockReturnValueOnce([
+      {
+        from: 'team-lead',
+        text: 'Команда создана. Запускаю тиммейтов.',
+        timestamp: '2026-02-23T10:00:00.000Z',
+        read: true,
+        source: 'lead_process' as const,
+        messageId: 'lead-turn-run-1-1',
+      },
+      {
+        from: 'team-lead',
+        text: 'All teammates online!',
+        timestamp: '2026-02-23T10:00:01.000Z',
+        read: true,
+        source: 'lead_process' as const,
+        messageId: 'lead-turn-run-1-2',
+        to: 'user',
+      },
+    ]);
+
+    const getDataHandler = handlers.get(TEAM_GET_DATA)!;
+    const result = (await getDataHandler({} as never, 'my-team')) as {
+      success: boolean;
+      data: { messages: { source?: string; text: string }[] };
+    };
+    expect(result.success).toBe(true);
+    // Both live messages should appear since there's no durable backfill yet
+    // Sorted by timestamp descending (newest first)
+    expect(result.data.messages).toHaveLength(2);
+    expect(result.data.messages[0].source).toBe('lead_process');
+    expect(result.data.messages[0].text).toBe('All teammates online!');
+    expect(result.data.messages[1].source).toBe('lead_process');
+    expect(result.data.messages[1].text).toBe('Команда создана. Запускаю тиммейтов.');
+  });
+
   it('keeps TEAM_GET_DATA read-only and never triggers reconcile side effects', async () => {
     const getDataHandler = handlers.get(TEAM_GET_DATA)!;
     const result = (await getDataHandler({} as never, 'my-team')) as {

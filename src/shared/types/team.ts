@@ -347,7 +347,7 @@ export interface LeadContextUsage {
 }
 
 export interface TeamChangeEvent {
-  type: 'config' | 'inbox' | 'task' | 'lead-activity' | 'lead-context' | 'process';
+  type: 'config' | 'inbox' | 'task' | 'lead-activity' | 'lead-context' | 'lead-message' | 'process';
   teamName: string;
   detail?: string;
 }

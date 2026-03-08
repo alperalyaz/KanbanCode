@@ -1,0 +1,298 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const hoisted = vi.hoisted(() => {
+  const files = new Map<string, string>();
+
+  const norm = (p: string): string => p.replace(/\\/g, '/');
+
+  const stat = vi.fn(async (filePath: string) => {
+    const data = files.get(norm(filePath));
+    if (data === undefined) {
+      const error = new Error('ENOENT') as NodeJS.ErrnoException;
+      error.code = 'ENOENT';
+      throw error;
+    }
+    return { isFile: () => true, size: Buffer.byteLength(data, 'utf8') };
+  });
+
+  const readFile = vi.fn(async (filePath: string) => {
+    const data = files.get(norm(filePath));
+    if (data === undefined) {
+      const error = new Error('ENOENT') as NodeJS.ErrnoException;
+      error.code = 'ENOENT';
+      throw error;
+    }
+    return data;
+  });
+
+  const atomicWrite = vi.fn(async (filePath: string, data: string) => {
+    files.set(norm(filePath), data);
+  });
+
+  return {
+    files,
+    stat,
+    readFile,
+    atomicWrite,
+    appendSentMessage: vi.fn((teamName: string, message: Record<string, unknown>) => {
+      const p = `/mock/teams/${teamName}/sentMessages.json`;
+      const current = files.get(p);
+      const rows = current ? (JSON.parse(current) as unknown[]) : [];
+      rows.push(message);
+      files.set(p, JSON.stringify(rows));
+      return message;
+    }),
+  };
+});
+
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return {
+    ...actual,
+    promises: { ...actual.promises, stat: hoisted.stat, readFile: hoisted.readFile },
+  };
+});
+
+vi.mock('../../../../src/main/services/team/atomicWrite', () => ({
+  atomicWriteAsync: hoisted.atomicWrite,
+}));
+
+vi.mock('../../../../src/main/utils/pathDecoder', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/main/utils/pathDecoder')>();
+  return { ...actual, getTeamsBasePath: () => '/mock/teams' };
+});
+
+vi.mock('agent-teams-controller', () => ({
+  createController: ({ teamName }: { teamName: string }) => ({
+    messages: {
+      appendSentMessage: (message: Record<string, unknown>) =>
+        hoisted.appendSentMessage(teamName, message),
+    },
+  }),
+}));
+
+import type { TeamChangeEvent } from '@shared/types/team';
+import { TeamProvisioningService } from '../../../../src/main/services/team/TeamProvisioningService';
+
+function seedConfig(teamName: string): void {
+  hoisted.files.set(
+    `/mock/teams/${teamName}/config.json`,
+    JSON.stringify({
+      name: 'My Team',
+      members: [{ name: 'team-lead', agentType: 'team-lead' }],
+    })
+  );
+}
+
+interface RunLike {
+  runId: string;
+  teamName: string;
+  provisioningComplete: boolean;
+  leadMsgSeq: number;
+  pendingToolCalls: { name: string; preview: string }[];
+  lastLeadTextEmitMs: number;
+  leadRelayCapture: null;
+  silentUserDmForward: null;
+  suppressPostCompactReminderOutput?: boolean;
+  child: Record<string, unknown> | null;
+  processKilled: boolean;
+  cancelRequested: boolean;
+  provisioningOutputParts: string[];
+  request: { members: { name: string; role?: string }[] };
+}
+
+/**
+ * Attach a run to the service internals. `provisioningComplete` defaults to false
+ * (pre-ready) to test the early message pipeline.
+ */
+function attachRun(
+  service: TeamProvisioningService,
+  teamName: string,
+  opts?: { provisioningComplete?: boolean }
+): RunLike {
+  const runId = 'run-1';
+  const run: RunLike = {
+    runId,
+    teamName,
+    provisioningComplete: opts?.provisioningComplete ?? false,
+    leadMsgSeq: 0,
+    pendingToolCalls: [],
+    lastLeadTextEmitMs: 0,
+    leadRelayCapture: null,
+    silentUserDmForward: null,
+    child: { stdin: { writable: true, write: vi.fn(), end: vi.fn() } },
+    processKilled: false,
+    cancelRequested: false,
+    provisioningOutputParts: [],
+    request: { members: [{ name: 'team-lead', role: 'Team Lead' }] },
+  };
+
+  (service as unknown as { activeByTeam: Map<string, string> }).activeByTeam.set(teamName, runId);
+  (service as unknown as { runs: Map<string, unknown> }).runs.set(runId, run);
+
+  return run;
+}
+
+function callHandleStreamJsonMessage(
+  service: TeamProvisioningService,
+  run: RunLike,
+  msg: Record<string, unknown>
+): void {
+  (service as unknown as { handleStreamJsonMessage: (r: unknown, m: unknown) => void })
+    .handleStreamJsonMessage(run, msg);
+}
+
+describe('TeamProvisioningService pre-ready live messages', () => {
+  beforeEach(() => {
+    hoisted.files.clear();
+    hoisted.appendSentMessage.mockClear();
+  });
+
+  it('pre-ready assistant text is added to liveLeadProcessMessages', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const run = attachRun(service, 'my-team', { provisioningComplete: false });
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Команда создана. Запускаю всех тиммейтов параллельно.' }],
+    });
+
+    const live = service.getLiveLeadProcessMessages('my-team');
+    expect(live).toHaveLength(1);
+    expect(live[0].text).toBe('Команда создана. Запускаю всех тиммейтов параллельно.');
+    expect(live[0].source).toBe('lead_process');
+    expect(live[0].messageId).toMatch(/^lead-turn-run-1-1$/);
+
+    // Also still in provisioningOutputParts for the banner
+    expect(run.provisioningOutputParts).toHaveLength(1);
+  });
+
+  it('emits lead-message event type (not inbox)', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const emitter = vi.fn<(event: TeamChangeEvent) => void>();
+    service.setTeamChangeEmitter(emitter);
+    const run = attachRun(service, 'my-team', { provisioningComplete: false });
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Launching teammates now.' }],
+    });
+
+    expect(emitter).toHaveBeenCalledTimes(1);
+    expect(emitter).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'lead-message', teamName: 'my-team' })
+    );
+  });
+
+  it('coalesces rapid emissions via LEAD_TEXT_EMIT_THROTTLE_MS', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const emitter = vi.fn<(event: TeamChangeEvent) => void>();
+    service.setTeamChangeEmitter(emitter);
+    const run = attachRun(service, 'my-team', { provisioningComplete: false });
+
+    // First message: should emit
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Message 1' }],
+    });
+    expect(emitter).toHaveBeenCalledTimes(1);
+
+    // Second message immediately after: should be coalesced (not emitted again)
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Message 2' }],
+    });
+    expect(emitter).toHaveBeenCalledTimes(1); // Still 1
+
+    // Messages are still cached though
+    const live = service.getLiveLeadProcessMessages('my-team');
+    expect(live).toHaveLength(2);
+  });
+
+  it('early live messages carry toolCalls and toolSummary', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const run = attachRun(service, 'my-team', { provisioningComplete: false });
+
+    // First: tool_use message (no text)
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [
+        {
+          type: 'tool_use',
+          name: 'TeamCreate',
+          input: { team_name: 'super-team', description: 'test' },
+        },
+      ],
+    });
+
+    // Then: text message — should pick up pending tool calls
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Team created successfully.' }],
+    });
+
+    const live = service.getLiveLeadProcessMessages('my-team');
+    expect(live).toHaveLength(1);
+    expect(live[0].toolCalls).toBeDefined();
+    expect(live[0].toolCalls).toHaveLength(1);
+    expect(live[0].toolCalls![0].name).toBe('TeamCreate');
+    expect(live[0].toolSummary).toBeDefined();
+  });
+
+  it('provisioning-time SendMessage(to:user) is captured and persisted', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const run = attachRun(service, 'my-team', { provisioningComplete: false });
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [
+        {
+          type: 'tool_use',
+          name: 'SendMessage',
+          input: {
+            type: 'message',
+            recipient: 'user',
+            content: 'All teammates online!',
+            summary: 'Team ready',
+          },
+        },
+      ],
+    });
+
+    const live = service.getLiveLeadProcessMessages('my-team');
+    expect(live).toHaveLength(1);
+    expect(live[0].to).toBe('user');
+    expect(live[0].text).toBe('All teammates online!');
+    expect(live[0].source).toBe('lead_process');
+
+    // Also persisted to sentMessages.json
+    expect(hoisted.appendSentMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('post-ready path also uses the unified helper', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const emitter = vi.fn<(event: TeamChangeEvent) => void>();
+    service.setTeamChangeEmitter(emitter);
+    const run = attachRun(service, 'my-team', { provisioningComplete: true });
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Assigning tasks now.' }],
+    });
+
+    const live = service.getLiveLeadProcessMessages('my-team');
+    expect(live).toHaveLength(1);
+    expect(live[0].source).toBe('lead_process');
+
+    // Post-ready also emits lead-message
+    expect(emitter).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'lead-message', teamName: 'my-team' })
+    );
+  });
+});

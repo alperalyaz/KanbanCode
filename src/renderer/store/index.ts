@@ -132,7 +132,7 @@ export function initializeNotificationListeners(): () => void {
   });
   const pendingSessionRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const pendingProjectRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  let teamRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let teamRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   let teamListRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   let globalTasksRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -400,6 +400,24 @@ export function initializeNotificationListeners(): () => void {
         return;
       }
 
+      // Live lead-message events: only refresh the visible team detail, not team/task lists.
+      // This keeps the refresh lightweight and prevents one noisy team from starving another.
+      if (event.type === 'lead-message') {
+        if (!event?.teamName || !isTeamVisibleInAnyPane(event.teamName)) {
+          return;
+        }
+        if (teamRefreshTimers.has(event.teamName)) {
+          return;
+        }
+        const timer = setTimeout(() => {
+          teamRefreshTimers.delete(event.teamName);
+          const current = useStore.getState();
+          void current.refreshTeamData(event.teamName);
+        }, TEAM_REFRESH_THROTTLE_MS);
+        teamRefreshTimers.set(event.teamName, timer);
+        return;
+      }
+
       // Throttled refresh of summary list (keeps TeamListView current without flooding).
       if (!teamListRefreshTimer) {
         teamListRefreshTimer = setTimeout(() => {
@@ -420,26 +438,25 @@ export function initializeNotificationListeners(): () => void {
         return;
       }
 
-      // Throttle (not debounce): keep at most one pending detail refresh.
+      // Per-team throttle (not debounce): keep at most one pending detail refresh per team.
       // Debounce would delay indefinitely while inbox messages keep arriving.
-      if (teamRefreshTimer) {
+      if (teamRefreshTimers.has(event.teamName)) {
         return;
       }
 
-      teamRefreshTimer = setTimeout(() => {
-        teamRefreshTimer = null;
+      const timer = setTimeout(() => {
+        teamRefreshTimers.delete(event.teamName);
         const current = useStore.getState();
         void current.refreshTeamData(event.teamName);
       }, TEAM_REFRESH_THROTTLE_MS);
+      teamRefreshTimers.set(event.teamName, timer);
     });
 
     if (typeof cleanup === 'function') {
       cleanupFns.push(() => {
         cleanup();
-        if (teamRefreshTimer) {
-          clearTimeout(teamRefreshTimer);
-          teamRefreshTimer = null;
-        }
+        for (const t of teamRefreshTimers.values()) clearTimeout(t);
+        teamRefreshTimers = new Map();
         if (teamListRefreshTimer) {
           clearTimeout(teamListRefreshTimer);
           teamListRefreshTimer = null;

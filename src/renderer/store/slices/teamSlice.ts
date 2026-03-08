@@ -801,7 +801,24 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           : error instanceof Error
             ? error.message
             : 'Failed to refresh team data';
+
+      // During provisioning, team:getData may not be readable yet.
+      // Preserve existing data instead of showing a fatal error.
+      if (msg === 'TEAM_PROVISIONING' || msg.includes('TEAM_PROVISIONING')) {
+        logger.debug(`refreshTeamData(${teamName}) skipped: team is still provisioning`);
+        set({ selectedTeamError: null });
+        return;
+      }
+
       logger.warn(`refreshTeamData(${teamName}) failed: ${msg}`);
+
+      // Non-destructive: if we already have data, keep it visible.
+      // Only set error when there's nothing to show.
+      if (get().selectedTeamData) {
+        logger.debug(`refreshTeamData(${teamName}) preserving existing data after transient error`);
+        set({ selectedTeamError: null });
+        return;
+      }
       set({ selectedTeamError: msg });
     }
   },

@@ -2853,6 +2853,45 @@ export class TeamProvisioningService {
   }
 
   /**
+   * Create an InboxMessage from assistant text and push it into the live cache.
+   * Used for both pre-ready (provisioning) and post-ready assistant text.
+   * Emits a coalesced `lead-message` event for renderer refresh.
+   */
+  private pushLiveLeadTextMessage(run: ProvisioningRun, cleanText: string): void {
+    run.leadMsgSeq += 1;
+    const leadName =
+      run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name || 'team-lead';
+    const messageId = `lead-turn-${run.runId}-${run.leadMsgSeq}`;
+    // Attach accumulated tool call details from preceding tool_use messages, then reset.
+    const toolCalls = run.pendingToolCalls.length > 0 ? [...run.pendingToolCalls] : undefined;
+    const toolSummary = toolCalls ? formatToolSummaryFromCalls(toolCalls) : undefined;
+    run.pendingToolCalls = [];
+    const leadMsg: InboxMessage = {
+      from: leadName,
+      text: cleanText,
+      timestamp: nowIso(),
+      read: true,
+      summary: cleanText.length > 60 ? cleanText.slice(0, 57) + '...' : cleanText,
+      messageId,
+      source: 'lead_process',
+      toolSummary,
+      toolCalls,
+    };
+    this.pushLiveLeadProcessMessage(run.teamName, leadMsg);
+
+    // Coalesced refresh: at most one event per LEAD_TEXT_EMIT_THROTTLE_MS per team.
+    const now = Date.now();
+    if (now - run.lastLeadTextEmitMs >= TeamProvisioningService.LEAD_TEXT_EMIT_THROTTLE_MS) {
+      run.lastLeadTextEmitMs = now;
+      this.teamChangeEmitter?.({
+        type: 'lead-message',
+        teamName: run.teamName,
+        detail: 'lead-text',
+      });
+    }
+  }
+
+  /**
    * Stop the running process for a team. No-op if team is not running.
    */
   stopTeam(teamName: string): void {
@@ -2946,41 +2985,16 @@ export class TeamProvisioningService {
           ) {
             const cleanText = stripAgentBlocks(text).trim();
             if (cleanText.length > 0) {
-              run.leadMsgSeq += 1;
-              const leadName =
-                run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name ||
-                'team-lead';
-              const messageId = `lead-turn-${run.runId}-${run.leadMsgSeq}`;
-              // Attach accumulated tool call details from preceding tool_use messages, then reset.
-              const toolCalls =
-                run.pendingToolCalls.length > 0 ? [...run.pendingToolCalls] : undefined;
-              const toolSummary = toolCalls ? formatToolSummaryFromCalls(toolCalls) : undefined;
-              run.pendingToolCalls = [];
-              const leadMsg: InboxMessage = {
-                from: leadName,
-                text: cleanText,
-                timestamp: nowIso(),
-                read: true,
-                summary: cleanText.length > 60 ? cleanText.slice(0, 57) + '...' : cleanText,
-                messageId,
-                source: 'lead_process',
-                toolSummary,
-                toolCalls,
-              };
-              this.pushLiveLeadProcessMessage(run.teamName, leadMsg);
-
-              const now = Date.now();
-              if (
-                now - run.lastLeadTextEmitMs >=
-                TeamProvisioningService.LEAD_TEXT_EMIT_THROTTLE_MS
-              ) {
-                run.lastLeadTextEmitMs = now;
-                this.teamChangeEmitter?.({
-                  type: 'inbox',
-                  teamName: run.teamName,
-                  detail: 'lead-text',
-                });
-              }
+              this.pushLiveLeadTextMessage(run, cleanText);
+            }
+          }
+        } else {
+          // Pre-ready: also push to live cache so Messages shows early narration
+          // once team:getData becomes readable. The banner still uses provisioningOutputParts.
+          if (!run.silentUserDmForward && !hasSendMessageToUser) {
+            const cleanText = stripAgentBlocks(text).trim();
+            if (cleanText.length > 0) {
+              this.pushLiveLeadTextMessage(run, cleanText);
             }
           }
         }
@@ -2988,19 +3002,18 @@ export class TeamProvisioningService {
 
       // Accumulate tool_use details from tool-only messages (text + tool_use are separate in stream-json).
       // These details will be attached to the next text message as toolCalls/toolSummary.
-      if (run.provisioningComplete) {
-        for (const block of content ?? []) {
-          if (
-            block?.type === 'tool_use' &&
-            typeof block.name === 'string' &&
-            block.name !== 'SendMessage'
-          ) {
-            const input = (block.input ?? {}) as Record<string, unknown>;
-            run.pendingToolCalls.push({
-              name: block.name,
-              preview: extractToolPreview(block.name, input),
-            });
-          }
+      // Works in both pre-ready and post-ready phases so early live messages get tool metadata.
+      for (const block of content ?? []) {
+        if (
+          block?.type === 'tool_use' &&
+          typeof block.name === 'string' &&
+          block.name !== 'SendMessage'
+        ) {
+          const input = (block.input ?? {}) as Record<string, unknown>;
+          run.pendingToolCalls.push({
+            name: block.name,
+            preview: extractToolPreview(block.name, input),
+          });
         }
       }
 
@@ -3009,7 +3022,8 @@ export class TeamProvisioningService {
       // (e.g., after session resume when teamContext is lost). We intercept the tool calls
       // from stdout and persist them to sentMessages.json under the correct team name,
       // ensuring the UI and notifications show the right team.
-      if (run.provisioningComplete && !run.silentUserDmForward) {
+      // Works in both pre-ready and post-ready phases so provisioning-time user DMs are captured.
+      if (!run.silentUserDmForward) {
         this.captureSendMessageToUser(run, content ?? []);
       }
 
