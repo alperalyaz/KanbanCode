@@ -65,6 +65,7 @@ const MessageRowWithObserver = ({
   isNew,
   zebraShade,
   memberColorMap,
+  localMemberNames,
   onMemberNameClick,
   onCreateTask,
   onReply,
@@ -82,6 +83,7 @@ const MessageRowWithObserver = ({
   isNew?: boolean;
   zebraShade?: boolean;
   memberColorMap?: Map<string, string>;
+  localMemberNames?: Set<string>;
   onMemberNameClick?: (name: string) => void;
   onCreateTask?: (subject: string, description: string) => void;
   onReply?: (message: InboxMessage) => void;
@@ -131,6 +133,7 @@ const MessageRowWithObserver = ({
         isUnread={isUnread}
         zebraShade={zebraShade}
         memberColorMap={memberColorMap}
+        localMemberNames={localMemberNames}
         onMemberNameClick={onMemberNameClick}
         onCreateTask={onCreateTask}
         onReply={onReply}
@@ -162,6 +165,7 @@ export const ActivityTimeline = ({
   const [visibleCount, setVisibleCount] = useState(MESSAGES_PAGE_SIZE);
 
   const colorMap = members ? buildMemberColorMap(members) : new Map<string, string>();
+  const localMemberNames = new Set((members ?? []).map((member) => member.name.trim()));
   const memberInfo = new Map<string, { role?: string; color?: string }>();
   if (members) {
     for (const m of members) {
@@ -439,6 +443,7 @@ export const ActivityTimeline = ({
               isNew={newItemKeys.has(messageKey)}
               zebraShade={zebraShadeSet.has(realIndex)}
               memberColorMap={colorMap}
+              localMemberNames={localMemberNames}
               onMemberNameClick={onMemberClick ? handleMemberNameClick : undefined}
               onCreateTask={onCreateTaskFromMessage}
               onReply={onReplyToMessage}

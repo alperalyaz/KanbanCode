@@ -107,6 +107,23 @@ describe('TeamMemberResolver', () => {
     expect(names).toContain('ops.bot');
   });
 
+  it('keeps dotted names when config casing differs from inbox casing', () => {
+    const resolver = new TeamMemberResolver();
+    const config: TeamConfig = {
+      name: 'Team',
+      members: [
+        { name: 'team-lead', agentType: 'team-lead', role: 'lead' },
+        { name: 'Ops.Bot', agentType: 'general-purpose' },
+      ],
+    };
+
+    const members = resolver.resolveMembers(config, [], ['ops.bot'], [], []);
+    const names = members.map((m) => m.name);
+
+    expect(names).toContain('Ops.Bot');
+    expect(names).not.toContain('ops.bot');
+  });
+
   it('sets currentTaskId for in_progress task', () => {
     const resolver = new TeamMemberResolver();
     const config: TeamConfig = {

@@ -29,13 +29,22 @@ export class TeamMemberResolver {
   ): ResolvedTeamMember[] {
     const names = new Set<string>();
     const explicitNames = new Set<string>();
+    const seenNames = new Set<string>();
+    const addName = (name: string): void => {
+      const normalized = name.toLowerCase();
+      if (seenNames.has(normalized)) {
+        return;
+      }
+      seenNames.add(normalized);
+      names.add(name);
+    };
 
     if (Array.isArray(config.members)) {
       for (const member of config.members) {
         if (typeof member?.name === 'string' && member.name.trim() !== '') {
           const trimmed = member.name.trim();
-          names.add(trimmed);
-          explicitNames.add(trimmed);
+          addName(trimmed);
+          explicitNames.add(trimmed.toLowerCase());
         }
       }
     }
@@ -44,8 +53,8 @@ export class TeamMemberResolver {
       for (const member of metaMembers) {
         if (typeof member?.name === 'string' && member.name.trim() !== '') {
           const trimmed = member.name.trim();
-          names.add(trimmed);
-          explicitNames.add(trimmed);
+          addName(trimmed);
+          explicitNames.add(trimmed.toLowerCase());
         }
       }
     }
@@ -53,10 +62,13 @@ export class TeamMemberResolver {
     for (const inboxName of inboxNames) {
       if (typeof inboxName === 'string' && inboxName.trim() !== '') {
         const trimmed = inboxName.trim();
-        if (!explicitNames.has(trimmed) && looksLikeQualifiedExternalRecipient(trimmed)) {
+        if (
+          !explicitNames.has(trimmed.toLowerCase()) &&
+          looksLikeQualifiedExternalRecipient(trimmed)
+        ) {
           continue;
         }
-        names.add(trimmed);
+        addName(trimmed);
       }
     }
 

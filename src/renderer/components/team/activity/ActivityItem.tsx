@@ -58,9 +58,21 @@ function parseQualifiedRecipient(
   };
 }
 
+export function isQualifiedExternalRecipient(
+  value: string | undefined,
+  teamName: string,
+  localMemberNames?: Set<string>
+): boolean {
+  const recipient = parseQualifiedRecipient(value);
+  if (!recipient) return false;
+  if (recipient.teamName === teamName) return false;
+  return !localMemberNames?.has(value?.trim() ?? '');
+}
+
 interface ActivityItemProps {
   message: InboxMessage;
   teamName: string;
+  localMemberNames?: Set<string>;
   memberRole?: string;
   memberColor?: string;
   recipientColor?: string;
@@ -239,6 +251,7 @@ function linkifyTaskIds(text: string, onClick: (taskId: string) => void): React.
 export const ActivityItem = ({
   message,
   teamName,
+  localMemberNames,
   memberRole,
   memberColor,
   recipientColor,
@@ -284,7 +297,7 @@ export const ActivityItem = ({
   const isCrossTeamSent =
     message.source === CROSS_TEAM_SENT_SOURCE ||
     parsedCrossTeamReplyPrefix !== null ||
-    (qualifiedRecipient?.teamName !== undefined && qualifiedRecipient.teamName !== teamName);
+    isQualifiedExternalRecipient(message.to, teamName, localMemberNames);
   const isCrossTeamAny = isCrossTeam || isCrossTeamSent;
   const crossTeamOrigin = useMemo(() => {
     if (!isCrossTeam) return null;

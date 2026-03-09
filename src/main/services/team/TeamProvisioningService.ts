@@ -3117,7 +3117,10 @@ export class TeamProvisioningService {
             crossTeamMeta?.conversationId ??
             replyMeta?.conversationId,
         })
-          .then(() => {
+          .then((result) => {
+            if (result.deduplicated) {
+              return;
+            }
             const msg: InboxMessage = {
               from: 'user',
               to: `${crossTeamRecipient.teamName}.${crossTeamRecipient.memberName}`,
@@ -3128,7 +3131,7 @@ export class TeamProvisioningService {
                 (summary || strippedCrossTeamContent).length > 60
                   ? (summary || strippedCrossTeamContent).slice(0, 57) + '...'
                   : summary || strippedCrossTeamContent,
-              messageId,
+              messageId: result.messageId,
               source: 'cross_team_sent',
               conversationId:
                 explicitReplyMeta?.conversationId ??

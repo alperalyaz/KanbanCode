@@ -472,6 +472,49 @@ describe('TeamProvisioningService pre-ready live messages', () => {
     expect(hoisted.appendSentMessage).not.toHaveBeenCalled();
   });
 
+  it('does not push a duplicate live row when cross-team fallback deduplicates', async () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const emitter = vi.fn<(event: TeamChangeEvent) => void>();
+    const crossTeamSender = vi.fn(async () => ({
+      deliveredToInbox: true,
+      messageId: 'existing-cross-1',
+      deduplicated: true,
+    }));
+    service.setTeamChangeEmitter(emitter);
+    service.setCrossTeamSender(crossTeamSender);
+    const run = attachRun(service, 'my-team', { provisioningComplete: true });
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [
+        {
+          type: 'tool_use',
+          name: 'SendMessage',
+          input: {
+            type: 'message',
+            recipient: 'team-best.user',
+            content: 'Повтор без нового live row',
+            summary: 'Повтор',
+          },
+        },
+      ],
+    });
+
+    await vi.waitFor(() => {
+      expect(crossTeamSender).toHaveBeenCalledTimes(1);
+    });
+
+    expect(service.getLiveLeadProcessMessages('my-team')).toHaveLength(0);
+    expect(emitter).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'lead-message',
+        teamName: 'my-team',
+        detail: 'cross-team-send',
+      })
+    );
+  });
+
   it('does not upgrade dotted local teammate names into cross-team sends', async () => {
     const service = new TeamProvisioningService();
     seedConfig('my-team');

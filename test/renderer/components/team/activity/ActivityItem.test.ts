@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { getSystemMessageLabel } from '@renderer/components/team/activity/ActivityItem';
+import {
+  getSystemMessageLabel,
+  isQualifiedExternalRecipient,
+} from '@renderer/components/team/activity/ActivityItem';
 
 describe('ActivityItem legacy system message fallback', () => {
   it('recognizes historical assignment and review message wording', () => {
@@ -17,5 +20,12 @@ describe('ActivityItem legacy system message fallback', () => {
     expect(getSystemMessageLabel('Review request for #abcd1234')).toBeNull();
     expect(getSystemMessageLabel('Approved abcd1234')).toBeNull();
     expect(getSystemMessageLabel('Fix request for abcd1234')).toBeNull();
+  });
+
+  it('does not classify dotted local teammates as external recipients', () => {
+    expect(isQualifiedExternalRecipient('ops.bot', 'my-team', new Set(['ops.bot']))).toBe(false);
+    expect(isQualifiedExternalRecipient('team-best.user', 'my-team', new Set(['ops.bot']))).toBe(
+      true
+    );
   });
 });
