@@ -82,14 +82,30 @@ describe('CrossTeamService', () => {
 
       expect(result.deliveredToInbox).toBe(true);
       expect(result.messageId).toBeDefined();
-      expect(inboxWriter.sendMessage).toHaveBeenCalledOnce();
 
+      // First call: target team inbox, second call: sender copy (best-effort)
       const [teamName, req] = inboxWriter.sendMessage.mock.calls[0];
       expect(teamName).toBe('team-b');
       expect(req.member).toBe('team-lead');
       expect(req.source).toBe('cross_team');
       expect(req.from).toBe('team-a.lead');
-      expect(req.text).toContain('[Cross-team from team-a.lead | depth:0]');
+      expect(req.text).toBe('[Cross-team from team-a.lead | depth:0]\nHello from team-a');
+    });
+
+    it('writes sender copy to fromTeam inbox as user_sent', async () => {
+      await service.send(makeRequest());
+
+      // Wait for the best-effort sender copy (void promise)
+      await vi.waitFor(() => {
+        expect(inboxWriter.sendMessage).toHaveBeenCalledTimes(2);
+      });
+
+      const [senderTeam, senderReq] = inboxWriter.sendMessage.mock.calls[1];
+      expect(senderTeam).toBe('team-a');
+      expect(senderReq.from).toBe('user');
+      expect(senderReq.source).toBe('cross_team_sent');
+      expect(senderReq.to).toBe('team-b.team-lead');
+      expect(senderReq.text).toBe('Hello from team-a');
     });
 
     it('calls relayLeadInboxMessages when team is alive', async () => {

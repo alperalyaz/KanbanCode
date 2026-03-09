@@ -251,7 +251,8 @@ export interface InboxMessage {
     | 'lead_process'
     | 'user_sent'
     | 'system_notification'
-    | 'cross_team';
+    | 'cross_team'
+    | 'cross_team_sent';
   attachments?: AttachmentMeta[];
   /** Lead session ID that produced this message (for session boundary detection). */
   leadSessionId?: string;
@@ -266,6 +267,8 @@ export interface SendMessageRequest {
   text: string;
   summary?: string;
   from?: string;
+  /** Override the `to` field in the stored message (defaults to `member`). */
+  to?: string;
   attachments?: AttachmentPayload[];
   source?: InboxMessage['source'];
   /** Lead session ID for session boundary detection. */

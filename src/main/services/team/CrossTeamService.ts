@@ -76,7 +76,7 @@ export class CrossTeamService {
     const formattedText = `[Cross-team from ${from} | depth:${chainDepth}]\n${text}`;
     const messageId = randomUUID();
 
-    // 5. Inbox write (TeamInboxWriter handles file lock + in-process lock internally)
+    // 5. Inbox write to TARGET team (TeamInboxWriter handles file lock + in-process lock internally)
     await this.inboxWriter.sendMessage(toTeam, {
       member: leadName,
       text: formattedText,
@@ -85,7 +85,24 @@ export class CrossTeamService {
       source: 'cross_team',
     });
 
-    // 6. Best-effort relay (if online)
+    // 6. Write "sent" copy to SENDER's inbox so the message appears in their activity
+    const senderLeadName = (await this.dataService.getLeadMemberName(fromTeam)) ?? 'team-lead';
+    void this.inboxWriter
+      .sendMessage(fromTeam, {
+        member: senderLeadName,
+        text,
+        from: 'user',
+        to: `${toTeam}.${leadName}`,
+        summary: summary ?? `Cross-team message to ${toTeam}`,
+        source: 'cross_team_sent',
+      })
+      .catch((e: unknown) => {
+        logger.warn(
+          `Failed to write sender copy for ${fromTeam}: ${e instanceof Error ? e.message : String(e)}`
+        );
+      });
+
+    // 7. Best-effort relay (if online)
     if (this.provisioning?.isTeamAlive(toTeam)) {
       void this.provisioning.relayLeadInboxMessages(toTeam).catch((e: unknown) => {
         logger.warn(`Cross-team relay to ${toTeam}: ${e instanceof Error ? e.message : String(e)}`);

@@ -215,6 +215,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     updateTaskStatus,
     updateTaskOwner,
     sendTeamMessage,
+    sendCrossTeamMessage,
     requestReview,
     createTeamTask,
     startTask,
@@ -255,6 +256,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
       updateTaskStatus: s.updateTaskStatus,
       updateTaskOwner: s.updateTaskOwner,
       sendTeamMessage: s.sendTeamMessage,
+      sendCrossTeamMessage: s.sendCrossTeamMessage,
       requestReview: s.requestReview,
       createTeamTask: s.createTeamTask,
       startTask: s.startTask,
@@ -1565,6 +1567,15 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                     delete next[member];
                     return next;
                   });
+                });
+              }}
+              onCrossTeamSend={(toTeam, text, summary) => {
+                void sendCrossTeamMessage({
+                  fromTeam: teamName,
+                  fromMember: 'user',
+                  toTeam,
+                  text,
+                  summary,
                 });
               }}
             />

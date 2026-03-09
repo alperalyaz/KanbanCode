@@ -69,6 +69,7 @@ import type {
   AddMemberRequest,
   CommentAttachmentPayload,
   CreateTaskRequest,
+  CrossTeamSendRequest,
   GlobalTask,
   KanbanColumnId,
   LeadActivityState,
@@ -295,6 +296,10 @@ export interface TeamSlice {
   selectTeam: (teamName: string, opts?: { skipProjectAutoSelect?: boolean }) => Promise<void>;
   refreshTeamData: (teamName: string) => Promise<void>;
   sendTeamMessage: (teamName: string, request: SendMessageRequest) => Promise<void>;
+  crossTeamTargets: { teamName: string; displayName: string; description?: string }[];
+  crossTeamTargetsLoading: boolean;
+  fetchCrossTeamTargets: () => Promise<void>;
+  sendCrossTeamMessage: (request: CrossTeamSendRequest) => Promise<void>;
   requestReview: (teamName: string, taskId: string) => Promise<void>;
   updateKanban: (teamName: string, taskId: string, patch: UpdateKanbanPatch) => Promise<void>;
   updateKanbanColumnOrder: (
@@ -438,6 +443,8 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   sendingMessage: false,
   sendMessageError: null,
   lastSendMessageResult: null,
+  crossTeamTargets: [],
+  crossTeamTargetsLoading: false,
   reviewActionError: null,
   provisioningRuns: {},
   provisioningStartedAtFloorByTeam: {},
@@ -864,6 +871,39 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         lastSendMessageResult: result,
       });
       await get().refreshTeamData(teamName);
+    } catch (error) {
+      set({
+        sendingMessage: false,
+        lastSendMessageResult: null,
+        sendMessageError: mapSendMessageError(error),
+      });
+    }
+  },
+
+  fetchCrossTeamTargets: async () => {
+    set({ crossTeamTargetsLoading: true });
+    try {
+      const targets = await api.crossTeam.listTargets();
+      set({ crossTeamTargets: targets, crossTeamTargetsLoading: false });
+    } catch (error) {
+      logger.error('fetchCrossTeamTargets failed', error);
+      set({ crossTeamTargets: [], crossTeamTargetsLoading: false });
+    }
+  },
+
+  sendCrossTeamMessage: async (request: CrossTeamSendRequest) => {
+    set({ sendingMessage: true, sendMessageError: null, lastSendMessageResult: null });
+    try {
+      const result = await api.crossTeam.send(request);
+      set({
+        sendingMessage: false,
+        sendMessageError: null,
+        lastSendMessageResult: {
+          messageId: result.messageId,
+          deliveredToInbox: result.deliveredToInbox,
+        },
+      });
+      await get().refreshTeamData(request.fromTeam);
     } catch (error) {
       set({
         sendingMessage: false,

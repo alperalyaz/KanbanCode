@@ -13,7 +13,16 @@ import { serializeChipsWithText } from '@renderer/types/inlineChip';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { MAX_TEXT_LENGTH } from '@shared/constants';
-import { AlertCircle, Check, ChevronDown, ImagePlus, Mic, Search, Send } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowRightLeft,
+  Check,
+  ChevronDown,
+  ImagePlus,
+  Mic,
+  Search,
+  Send,
+} from 'lucide-react';
 
 import type { MentionSuggestion } from '@renderer/types/mention';
 import type { AttachmentPayload, LeadContextUsage, ResolvedTeamMember } from '@shared/types';
@@ -30,6 +39,7 @@ interface MessageComposerProps {
     summary?: string,
     attachments?: AttachmentPayload[]
   ) => void;
+  onCrossTeamSend?: (toTeam: string, text: string, summary?: string) => void;
 }
 
 /** Circular progress indicator for lead context usage. */
@@ -91,6 +101,7 @@ export const MessageComposer = ({
   sending,
   sendError,
   onSend,
+  onCrossTeamSend,
 }: MessageComposerProps): React.JSX.Element => {
   const [recipient, setRecipient] = useState<string>(() => {
     const lead = members.find((m) => m.role === 'lead' || m.name === 'team-lead');
@@ -104,6 +115,26 @@ export const MessageComposer = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageRestrictionError, setImageRestrictionError] = useState<string | null>(null);
   const imageRestrictionTimerRef = useRef(0);
+
+  // Cross-team state
+  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  const [teamSelectorOpen, setTeamSelectorOpen] = useState(false);
+  const allCrossTeamTargets = useStore((s) => s.crossTeamTargets);
+  const fetchCrossTeamTargets = useStore((s) => s.fetchCrossTeamTargets);
+
+  useEffect(() => {
+    void fetchCrossTeamTargets();
+  }, [fetchCrossTeamTargets]);
+
+  // Always filter out current team on the UI side (store is global, shared across tabs)
+  const crossTeamTargets = useMemo(
+    () => allCrossTeamTargets.filter((t) => t.teamName !== teamName),
+    [allCrossTeamTargets, teamName]
+  );
+
+  const isCrossTeam = selectedTeam !== null;
+  const targetDisplayName =
+    crossTeamTargets.find((t) => t.teamName === selectedTeam)?.displayName ?? selectedTeam;
 
   // Members load async with team data; keep recipient stable if valid, otherwise default to lead/first.
   useEffect(() => {
@@ -150,7 +181,7 @@ export const MessageComposer = ({
   // const leadContext = useStore((s) =>
   //   isLeadAgentRecipient ? s.leadContextByTeam[teamName] : undefined
   // );
-  const supportsAttachments = isLeadRecipient;
+  const supportsAttachments = isLeadRecipient && !isCrossTeam;
   const canAttach = supportsAttachments && draft.canAddMore;
   const attachmentsBlocked = draft.attachments.length > 0 && !supportsAttachments;
   const canSend =
@@ -158,7 +189,8 @@ export const MessageComposer = ({
     trimmed.length > 0 &&
     trimmed.length <= MAX_TEXT_LENGTH &&
     !sending &&
-    !attachmentsBlocked;
+    !attachmentsBlocked &&
+    (!isCrossTeam || onCrossTeamSend !== undefined);
 
   // Track whether we initiated a send — clear draft only on confirmed success
   const pendingSendRef = useRef(false);
@@ -167,14 +199,28 @@ export const MessageComposer = ({
     if (!canSend) return;
     pendingSendRef.current = true;
     const serialized = serializeChipsWithText(trimmed, draft.chips);
-    // Summary should stay compact (no expanded chip markdown)
-    onSend(
-      recipient,
-      serialized,
-      trimmed,
-      draft.attachments.length > 0 ? draft.attachments : undefined
-    );
-  }, [canSend, recipient, trimmed, onSend, draft.attachments, draft.chips]);
+    if (isCrossTeam && selectedTeam && onCrossTeamSend) {
+      onCrossTeamSend(selectedTeam, serialized, trimmed);
+    } else {
+      // Summary should stay compact (no expanded chip markdown)
+      onSend(
+        recipient,
+        serialized,
+        trimmed,
+        draft.attachments.length > 0 ? draft.attachments : undefined
+      );
+    }
+  }, [
+    canSend,
+    recipient,
+    trimmed,
+    onSend,
+    onCrossTeamSend,
+    isCrossTeam,
+    selectedTeam,
+    draft.attachments,
+    draft.chips,
+  ]);
 
   // Clear draft only after send completes successfully (sending: true → false, no error)
   useEffect(() => {
@@ -352,11 +398,109 @@ export const MessageComposer = ({
             </span>
           ) : null}
 
-          <Popover open={recipientOpen} onOpenChange={setRecipientOpen}>
+          {/* Cross-team selector */}
+          {crossTeamTargets.length > 0 ? (
+            <Popover open={teamSelectorOpen} onOpenChange={setTeamSelectorOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
+                    isCrossTeam
+                      ? 'border-[var(--cross-team-border)] bg-[var(--cross-team-bg)] text-purple-400 hover:border-purple-400/30'
+                      : 'border-[var(--color-border)] hover:border-[var(--color-border-emphasis)] hover:bg-[var(--color-surface-raised)]'
+                  )}
+                >
+                  {isCrossTeam ? (
+                    <>
+                      <ArrowRightLeft size={11} className="shrink-0" />
+                      <span className="max-w-[100px] truncate">{targetDisplayName}</span>
+                    </>
+                  ) : (
+                    <span className="text-[var(--color-text-secondary)]">This team</span>
+                  )}
+                  <ChevronDown size={12} className="shrink-0 text-[var(--color-text-muted)]" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-56 p-1.5">
+                <div className="max-h-48 space-y-0.5 overflow-y-auto">
+                  {/* Current team option */}
+                  <button
+                    type="button"
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--color-surface-raised)]',
+                      !isCrossTeam && 'bg-[var(--color-surface-raised)]'
+                    )}
+                    onClick={() => {
+                      setSelectedTeam(null);
+                      setTeamSelectorOpen(false);
+                    }}
+                  >
+                    <span className="truncate text-[var(--color-text)]">This team</span>
+                    <span className="shrink-0 text-[10px] text-[var(--color-text-muted)]">
+                      current
+                    </span>
+                    {!isCrossTeam ? (
+                      <Check size={12} className="ml-auto shrink-0 text-blue-400" />
+                    ) : null}
+                  </button>
+
+                  {/* Separator */}
+                  <div className="my-1 h-px bg-[var(--color-border)]" />
+
+                  {/* Other teams */}
+                  {crossTeamTargets.map((target) => {
+                    const isSelected = selectedTeam === target.teamName;
+                    return (
+                      <button
+                        key={target.teamName}
+                        type="button"
+                        className={cn(
+                          'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--color-surface-raised)]',
+                          isSelected && 'bg-[var(--cross-team-bg)]'
+                        )}
+                        onClick={() => {
+                          setSelectedTeam(target.teamName);
+                          setRecipient('team-lead');
+                          setTeamSelectorOpen(false);
+                        }}
+                      >
+                        <ArrowRightLeft size={11} className="shrink-0 text-purple-400" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[var(--color-text)]">
+                            {target.displayName}
+                          </div>
+                          {target.description ? (
+                            <div className="truncate text-[10px] text-[var(--color-text-muted)]">
+                              {target.description}
+                            </div>
+                          ) : null}
+                        </div>
+                        {isSelected ? (
+                          <Check size={12} className="ml-auto shrink-0 text-purple-400" />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+          ) : null}
+
+          <Popover
+            open={isCrossTeam ? false : recipientOpen}
+            onOpenChange={isCrossTeam ? undefined : setRecipientOpen}
+          >
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] px-2.5 py-1 text-xs transition-colors hover:border-[var(--color-border-emphasis)] hover:bg-[var(--color-surface-raised)]"
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] px-2.5 py-1 text-xs transition-colors',
+                  isCrossTeam
+                    ? 'cursor-default opacity-60'
+                    : 'hover:border-[var(--color-border-emphasis)] hover:bg-[var(--color-surface-raised)]'
+                )}
+                disabled={isCrossTeam}
               >
                 {recipient ? (
                   <MemberBadge
@@ -462,7 +606,9 @@ export const MessageComposer = ({
         placeholder={
           isProvisioning
             ? 'Team is launching... message will be queued for inbox delivery.'
-            : 'Write a message... (Enter to send, Shift+Enter for new line)'
+            : isCrossTeam
+              ? `Cross-team message to ${targetDisplayName ?? 'team'}...`
+              : 'Write a message... (Enter to send, Shift+Enter for new line)'
         }
         value={draft.text}
         onValueChange={draft.setText}

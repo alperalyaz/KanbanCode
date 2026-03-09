@@ -275,14 +275,37 @@ export const ActivityItem = ({
   const isManaged = isManagedCollapseState(collapseState);
   const isExpanded = isManaged ? !collapseState.isCollapsed : true;
 
+  const isCrossTeam = message.source === 'cross_team';
+  const isCrossTeamSent = message.source === 'cross_team_sent';
+  const isCrossTeamAny = isCrossTeam || isCrossTeamSent;
+  const crossTeamOrigin = useMemo(() => {
+    if (!isCrossTeam) return null;
+    const dot = message.from.indexOf('.');
+    if (dot <= 0 || dot === message.from.length - 1) return null;
+    return {
+      teamName: message.from.substring(0, dot),
+      memberName: message.from.substring(dot + 1),
+    };
+  }, [isCrossTeam, message.from]);
+  const crossTeamTarget = useMemo(() => {
+    if (!isCrossTeamSent || !message.to) return null;
+    const dot = message.to.indexOf('.');
+    if (dot <= 0) return message.to;
+    return message.to.substring(0, dot);
+  }, [isCrossTeamSent, message.to]);
+
   // Strip agent-only blocks + normalize escape sequences (before linkification)
   const strippedText = useMemo(() => {
     if (structured) return null;
-    const stripped = stripAgentBlocks(message.text).trim();
+    let stripped = stripAgentBlocks(message.text).trim();
     if (!stripped) return null; // All content was agent-only blocks → show summary instead
+    // Strip legacy cross-team prefix (e.g. "[Cross-team from team.lead | depth:0]\n")
+    if (isCrossTeamAny) {
+      stripped = stripped.replace(/^\[Cross-team from [^\]]+\]\n?/, '');
+    }
     // Normalize literal \n from historical CLI-produced text to real newlines
     return stripped.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
-  }, [structured, message.text]);
+  }, [structured, message.text, isCrossTeamAny]);
 
   // Parse reply BEFORE linkification — linkifyMentionsInMarkdown transforms @name
   // into markdown links which breaks the reply regex matcher
@@ -325,7 +348,7 @@ export const ActivityItem = ({
 
   const isHeaderClickable = isManaged ? collapseState.canToggle : false;
   const showChevron = isHeaderClickable;
-  const isUserSent = message.source === 'user_sent';
+  const isUserSent = message.source === 'user_sent' || isCrossTeamSent;
   const isSystemMessage = message.from === 'system';
   const onManagedToggle = isManaged ? collapseState.onToggle : undefined;
   const handleHeaderToggle = isHeaderClickable
@@ -342,23 +365,29 @@ export const ActivityItem = ({
         backgroundColor:
           rateLimited || isApiError
             ? 'var(--tool-result-error-bg)'
-            : isSystemMessage
-              ? 'var(--system-activity-bg)'
-              : zebraShade
-                ? CARD_BG_ZEBRA
-                : CARD_BG,
+            : isCrossTeamAny
+              ? 'var(--cross-team-bg)'
+              : isSystemMessage
+                ? 'var(--system-activity-bg)'
+                : zebraShade
+                  ? CARD_BG_ZEBRA
+                  : CARD_BG,
         border:
           rateLimited || isApiError
             ? '1px solid var(--tool-result-error-border)'
-            : isSystemMessage
-              ? '1px solid var(--system-activity-border)'
-              : CARD_BORDER_STYLE,
+            : isCrossTeamAny
+              ? '1px solid var(--cross-team-border)'
+              : isSystemMessage
+                ? '1px solid var(--system-activity-border)'
+                : CARD_BORDER_STYLE,
         borderLeft:
           rateLimited || isApiError
             ? '3px solid var(--tool-result-error-text)'
-            : isSystemMessage
-              ? '3px solid var(--system-activity-accent)'
-              : `3px solid ${getThemedBorder(colors, isLight)}`,
+            : isCrossTeamAny
+              ? '3px solid var(--cross-team-accent)'
+              : isSystemMessage
+                ? '3px solid var(--system-activity-accent)'
+                : `3px solid ${getThemedBorder(colors, isLight)}`,
       }}
     >
       {/* Header — div with role=button (cannot use <button> due to nested buttons inside) */}
@@ -398,8 +427,8 @@ export const ActivityItem = ({
 
         {/* Sender avatar + name badge */}
         <MemberBadge
-          name={message.from}
-          color={memberColor ?? message.color}
+          name={crossTeamOrigin ? crossTeamOrigin.memberName : message.from}
+          color={isCrossTeamAny ? 'purple' : (memberColor ?? message.color)}
           hideAvatar={message.from === 'user' || message.from === 'system'}
           onClick={onMemberNameClick}
         />
@@ -430,6 +459,26 @@ export const ActivityItem = ({
         ) : message.source === 'lead_process' ? (
           <span className="text-[10px] uppercase tracking-wide" style={{ color: CARD_ICON_MUTED }}>
             live
+          </span>
+        ) : null}
+
+        {/* Cross-team origin badge */}
+        {isCrossTeam && crossTeamOrigin ? (
+          <span
+            className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium tracking-wide"
+            style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#c084fc' }}
+          >
+            from {crossTeamOrigin.teamName}
+          </span>
+        ) : null}
+
+        {/* Cross-team sent badge */}
+        {isCrossTeamSent && crossTeamTarget ? (
+          <span
+            className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium tracking-wide"
+            style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#c084fc' }}
+          >
+            to {crossTeamTarget}
           </span>
         ) : null}
 
