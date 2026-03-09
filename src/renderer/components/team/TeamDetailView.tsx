@@ -622,11 +622,16 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     if (!messagesFilter.showNoise) {
       list = list.filter((m) => !isInboxNoiseMessage(typeof m.text === 'string' ? m.text : ''));
     }
-    if (messagesFilter.from.size > 0) {
-      list = list.filter((m) => m.from?.trim() && messagesFilter.from.has(m.from.trim()));
-    }
-    if (messagesFilter.to.size > 0) {
-      list = list.filter((m) => m.to?.trim() && messagesFilter.to.has(m.to.trim()));
+    const hasFrom = messagesFilter.from.size > 0;
+    const hasTo = messagesFilter.to.size > 0;
+    if (hasFrom || hasTo) {
+      list = list.filter((m) => {
+        const fromMatch = hasFrom && m.from?.trim() && messagesFilter.from.has(m.from.trim());
+        const toMatch = hasTo && m.to?.trim() && messagesFilter.to.has(m.to.trim());
+        // When both filters active → OR (show messages matching either direction)
+        // When only one active → just that filter
+        return fromMatch || toMatch;
+      });
     }
     const q = messagesSearchQuery.trim().toLowerCase();
     if (q) {
