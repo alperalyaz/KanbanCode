@@ -131,6 +131,7 @@ function approveReview(context, taskId, flags = {}) {
     text: note,
     from,
     type: 'review_approved',
+    notifyOwner: false,
   });
 
   if ((flags.notify === true || flags['notify-owner'] === true) && task.owner) {
@@ -184,6 +185,7 @@ function requestChanges(context, taskId, flags = {}) {
     text: comment,
     from,
     type: 'review_request',
+    notifyOwner: false,
   });
   messages.sendMessage(context, {
     to: task.owner,

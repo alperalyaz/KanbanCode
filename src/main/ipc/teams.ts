@@ -1143,13 +1143,12 @@ async function handleSendMessage(
       from: payload.from,
     });
 
-    // Best-effort: if team is alive and recipient is a teammate (not lead),
-    // also forward via the live lead process so in-process teammates receive it.
+    // Best-effort live relay so active processes see the inbox row promptly.
     if (!isLeadRecipient && isAlive) {
       try {
-        await provisioning.forwardUserDmToTeammate(tn, memberName, baseText, payload.summary);
+        await provisioning.relayMemberInboxMessages(tn, memberName);
       } catch (e: unknown) {
-        logger.warn(`Failed to forward user DM to teammate "${memberName}" via lead: ${String(e)}`);
+        logger.warn(`Relay after sendMessage failed for teammate "${memberName}": ${String(e)}`);
       }
     }
 

@@ -357,7 +357,7 @@ export const ActivityTimeline = ({
             sessionSeparator = (
               <div
                 className="flex items-center gap-3"
-                style={{ paddingTop: 90, paddingBottom: 90 }}
+                style={{ paddingTop: 45, paddingBottom: 45 }}
               >
                 <div className="h-px flex-1 bg-blue-600/30 dark:bg-blue-400/30" />
                 <span className="whitespace-nowrap text-[11px] font-medium text-blue-600 dark:text-blue-400">

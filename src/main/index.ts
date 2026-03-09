@@ -281,6 +281,7 @@ async function notifyNewSentMessages(teamName: string): Promise<void> {
 
     for (let i = 0; i < newMessages.length; i++) {
       const msg = newMessages[i];
+      if ((msg.to ?? '').trim() !== 'user') continue;
       // Skip messages sent from our own UI
       if (msg.source && suppressedSources.has(msg.source)) continue;
       // Skip internal coordination noise
@@ -454,8 +455,7 @@ function wireFileWatcherEvents(context: ServiceContext): void {
             );
         }
 
-        // Auto-relay ONLY lead-inbox changes into the live lead process.
-        // (Relaying on *any* inbox change causes the lead to process irrelevant status noise.)
+        // Relay inbox changes into active runtime recipients.
         if (teamProvisioningService.isTeamAlive(teamName) && detail.startsWith('inboxes/')) {
           const match = /^inboxes\/(.+)\.json$/.exec(detail);
           if (match && teamDataService) {
@@ -463,8 +463,11 @@ function wireFileWatcherEvents(context: ServiceContext): void {
             void teamDataService
               .getLeadMemberName(teamName)
               .then((leadName) => {
-                if (!leadName || inboxName !== leadName) return;
-                return teamProvisioningService.relayLeadInboxMessages(teamName);
+                if (!leadName) return;
+                if (inboxName === leadName) {
+                  return teamProvisioningService.relayLeadInboxMessages(teamName);
+                }
+                return teamProvisioningService.relayMemberInboxMessages(teamName, inboxName);
               })
               .catch((e: unknown) =>
                 logger.warn(`[FileWatcher] relay failed for ${teamName}: ${String(e)}`)

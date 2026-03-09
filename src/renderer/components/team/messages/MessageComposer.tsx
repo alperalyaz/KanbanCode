@@ -399,7 +399,12 @@ export const MessageComposer = ({
                       </div>
                     );
                   }
-                  return filtered.map((m) => {
+                  const sorted = [...filtered].sort((a, b) => {
+                    const aIsLead = a.role === 'lead' || a.name === 'team-lead' ? 1 : 0;
+                    const bIsLead = b.role === 'lead' || b.name === 'team-lead' ? 1 : 0;
+                    return bIsLead - aIsLead;
+                  });
+                  return sorted.map((m) => {
                     const resolvedColor = colorMap.get(m.name);
                     const role = formatAgentRole(m.role) ?? formatAgentRole(m.agentType);
                     const isSelected = m.name === recipient;

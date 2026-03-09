@@ -216,6 +216,9 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     expect(prompt).toContain(`  ${AGENT_BLOCK_OPEN}`);
     expect(prompt).toContain(`  ${AGENT_BLOCK_CLOSE}`);
     expect(prompt).toContain('NEVER use agent-only blocks in messages to "user".');
+    expect(prompt).toContain('you MUST do ALL steps below');
+    expect(prompt).toContain('STEP 2 — THEN, add a task comment describing exactly what you need');
+    expect(prompt).toContain('STEP 3 — THEN, send a message to your team lead via SendMessage');
     expect(prompt).toContain('use task_briefing as your compact queue view');
     expect(prompt).toContain('Use task_get when you need the full task context before starting a pending/needsFix task');
     expect(prompt).toContain('Use task_briefing as a compact queue view of your assigned tasks.');
@@ -278,6 +281,7 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     expect(prompt).toContain(`  ${AGENT_BLOCK_OPEN}`);
     expect(prompt).toContain(`  ${AGENT_BLOCK_CLOSE}`);
     expect(prompt).toContain('NEVER use agent-only blocks in messages to "user".');
+    expect(prompt).toContain('reply via task comment (preferred — auto-clears the flag and wakes the owner) or SendMessage');
     expect(prompt).toContain('Your FIRST action: call MCP tool task_briefing');
     expect(prompt).toContain('resume/finish those first');
     expect(prompt).toContain('Call task_get only if you need more context than task_briefing already gave you');

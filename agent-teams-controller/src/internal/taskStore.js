@@ -413,6 +413,10 @@ function updateTaskFields(paths, taskRef, fields) {
   });
 }
 
+function normalizeMemberName(value) {
+  return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : '';
+}
+
 function addTaskComment(paths, taskRef, text, options = {}) {
   if (typeof text !== 'string' || !text.trim()) {
     throw new Error('Missing comment text');
@@ -435,21 +439,31 @@ function addTaskComment(paths, taskRef, text, options = {}) {
       : {}),
   };
 
+  let inserted = false;
+  let clarificationCleared = false;
   const task = updateTask(paths, taskRef, (currentTask) => {
     const comments = Array.isArray(currentTask.comments) ? currentTask.comments : [];
     if (comments.some((entry) => entry.id === comment.id)) {
       return currentTask;
     }
 
-    if (currentTask.needsClarification === 'lead' && comment.author !== currentTask.owner) {
+    const authorName = normalizeMemberName(comment.author);
+    const ownerName = normalizeMemberName(currentTask.owner);
+    if (currentTask.needsClarification === 'lead' && authorName && authorName !== ownerName) {
       delete currentTask.needsClarification;
+      clarificationCleared = true;
+    }
+    if (currentTask.needsClarification === 'user' && authorName === 'user') {
+      delete currentTask.needsClarification;
+      clarificationCleared = true;
     }
 
     currentTask.comments = comments.concat([comment]);
+    inserted = true;
     return currentTask;
   });
 
-  return { comment, task };
+  return { comment, task, inserted, clarificationCleared };
 }
 
 function setNeedsClarification(paths, taskRef, value) {

@@ -11,6 +11,22 @@ function isSameMember(left, right) {
   return normalizeActorName(left).toLowerCase() === normalizeActorName(right).toLowerCase();
 }
 
+function isSameTaskMember(left, right, leadName) {
+  const normalizedLeft = normalizeActorName(left).toLowerCase();
+  const normalizedRight = normalizeActorName(right).toLowerCase();
+  const normalizedLead = normalizeActorName(leadName).toLowerCase();
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+  if (normalizedLeft === normalizedRight) {
+    return true;
+  }
+  return (
+    (normalizedLeft === 'team-lead' && normalizedRight === normalizedLead) ||
+    (normalizedRight === 'team-lead' && normalizedLeft === normalizedLead)
+  );
+}
+
 function buildAssignmentMessage(context, task, options = {}) {
   const description =
     typeof options.description === 'string' && options.description.trim()
@@ -45,6 +61,18 @@ function buildAssignmentMessage(context, task, options = {}) {
   return lines.join('\n');
 }
 
+function buildCommentNotificationMessage(context, task, comment) {
+  const taskLabel = `#${task.displayId || task.id}`;
+  return [
+    `Comment on task ${taskLabel} "${task.subject}":`,
+    ``,
+    comment.text,
+    ``,
+    wrapAgentBlock(`Reply to this comment using MCP tool task_add_comment:
+{ teamName: "${context.teamName}", taskId: "${task.id}", text: "<your reply>", from: "<your-name>" }`),
+  ].join('\n');
+}
+
 function maybeNotifyAssignedOwner(context, task, options = {}) {
   const owner = normalizeActorName(task.owner);
   if (!owner || task.status === 'deleted') {
@@ -64,6 +92,38 @@ function maybeNotifyAssignedOwner(context, task, options = {}) {
     from: sender,
     text: buildAssignmentMessage(context, task, options),
     summary,
+    source: 'system_notification',
+    ...(leadSessionId ? { leadSessionId } : {}),
+  });
+}
+
+function maybeNotifyTaskOwnerOnComment(context, task, comment, options = {}) {
+  if (!options.inserted || options.notifyOwner === false) {
+    return;
+  }
+  if (!task || task.status === 'deleted') {
+    return;
+  }
+  if (comment.type && comment.type !== 'regular') {
+    return;
+  }
+
+  const owner = normalizeActorName(task.owner);
+  if (!owner) {
+    return;
+  }
+
+  const leadName = runtimeHelpers.inferLeadName(context.paths);
+  if (isSameTaskMember(owner, comment.author, leadName)) {
+    return;
+  }
+
+  const leadSessionId = runtimeHelpers.resolveLeadSessionId(context.paths);
+  messages.sendMessage(context, {
+    member: owner,
+    from: normalizeActorName(comment.author) || leadName,
+    text: buildCommentNotificationMessage(context, task, comment),
+    summary: `Comment on #${task.displayId || task.id}`,
     source: 'system_notification',
     ...(leadSessionId ? { leadSessionId } : {}),
   });
@@ -150,6 +210,11 @@ function addTaskComment(context, taskId, flags) {
     ...(flags.createdAt ? { createdAt: flags.createdAt } : {}),
     ...(flags.type ? { type: flags.type } : {}),
     ...(Array.isArray(flags.attachments) ? { attachments: flags.attachments } : {}),
+  });
+
+  maybeNotifyTaskOwnerOnComment(context, result.task, result.comment, {
+    inserted: result.inserted,
+    notifyOwner: flags.notifyOwner,
   });
 
   return {

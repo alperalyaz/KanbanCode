@@ -85,6 +85,9 @@
   --diff-cm-changed-bg: #1a3a1a;
   --diff-cm-deleted-bg: #241517;
   /* CodeMirror merge buttons */
+  --diff-merge-undo-color: var(--color-text);
+  --diff-merge-undo-bg: var(--color-surface-raised);
+  --diff-merge-undo-border: var(--color-border);
   --diff-merge-undo-hover-bg: rgba(255, 255, 255, 0.1);
   --diff-merge-keep-color: #3fb950;
   --diff-merge-keep-bg: rgba(46, 160, 67, 0.25);
@@ -335,7 +338,10 @@
   --diff-cm-changed-bg: rgba(34, 197, 94, 0.14);
   --diff-cm-deleted-bg: rgba(239, 68, 68, 0.07);
   /* CodeMirror merge buttons - Light mode */
-  --diff-merge-undo-hover-bg: rgba(0, 0, 0, 0.08);
+  --diff-merge-undo-color: #991b1b;
+  --diff-merge-undo-bg: rgba(239, 68, 68, 0.08);
+  --diff-merge-undo-border: rgba(239, 68, 68, 0.3);
+  --diff-merge-undo-hover-bg: rgba(239, 68, 68, 0.15);
   --diff-merge-keep-color: #15803d;
   --diff-merge-keep-bg: rgba(34, 197, 94, 0.15);
   --diff-merge-keep-border: rgba(34, 197, 94, 0.4);

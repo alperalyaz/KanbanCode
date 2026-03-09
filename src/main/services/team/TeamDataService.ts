@@ -954,58 +954,6 @@ export class TeamDataService {
         ...(attachments && attachments.length > 0 ? { attachments } : {}),
       } as TaskComment);
 
-    try {
-      const [tasks, config] = await Promise.all([
-        this.taskReader.getTasks(teamName),
-        this.configReader.getConfig(teamName).catch(() => null),
-      ]);
-      const task = addResult.task ?? tasks.find((t) => t.id === taskId);
-      const leadName = this.resolveLeadNameFromConfig(config);
-      const owner = task?.owner?.trim() || null;
-      // Auto-clear needsClarification: "user" on UI comment
-      // UI comments always have author "user" (TeamTaskWriter default)
-      if (task?.needsClarification === 'user') {
-        controller.tasks.setNeedsClarification(taskId, null);
-      }
-
-      if (task && owner && !this.isLeadOwner(owner, leadName)) {
-        // Notify non-lead task owner via inbox (lead → member message)
-        const parts = [
-          `Comment on task ${this.getTaskLabel(task)} "${task.subject}":\n\n${text}`,
-          `\n${AGENT_BLOCK_OPEN}`,
-          `Reply to this comment using MCP tool task_add_comment:`,
-          `{ teamName: "${teamName}", taskId: "${taskId}", text: "<your reply>", from: "<your-name>" }`,
-          AGENT_BLOCK_CLOSE,
-        ];
-        await this.sendMessage(teamName, {
-          member: owner,
-          from: leadName,
-          text: parts.join('\n'),
-          summary: `Comment on ${this.getTaskLabel(task)}`,
-          source: 'system_notification',
-        });
-      } else if (task && owner && this.isLeadOwner(owner, leadName)) {
-        // Notify lead about user's comment on their own task.
-        // Write to lead's inbox — relay delivers to stdin when process is alive.
-        const parts = [
-          `New comment from user on your task ${this.getTaskLabel(task)} "${task.subject}":\n\n${text}`,
-          `\n${AGENT_BLOCK_OPEN}`,
-          `Reply to this comment using MCP tool task_add_comment:`,
-          `{ teamName: "${teamName}", taskId: "${taskId}", text: "<your reply>", from: "${leadName}" }`,
-          AGENT_BLOCK_CLOSE,
-        ];
-        await this.sendMessage(teamName, {
-          member: leadName,
-          from: 'user',
-          text: parts.join('\n'),
-          summary: `Comment on ${this.getTaskLabel(task)}`,
-          source: 'system_notification',
-        });
-      }
-    } catch {
-      // Notification is best-effort — don't fail comment save
-    }
-
     return comment;
   }
 

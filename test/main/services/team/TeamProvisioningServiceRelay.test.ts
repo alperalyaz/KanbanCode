@@ -105,6 +105,10 @@ function seedLeadInbox(teamName: string, messages: unknown[]): void {
   hoisted.files.set(`/mock/teams/${teamName}/inboxes/team-lead.json`, JSON.stringify(messages));
 }
 
+function seedMemberInbox(teamName: string, memberName: string, messages: unknown[]): void {
+  hoisted.files.set(`/mock/teams/${teamName}/inboxes/${memberName}.json`, JSON.stringify(messages));
+}
+
 function attachAliveRun(
   service: TeamProvisioningService,
   teamName: string,
@@ -292,5 +296,31 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     expect(relayed).toBe(0);
     expect(writeSpy).toHaveBeenCalledTimes(0);
     expect(hoisted.appendSentMessage).not.toHaveBeenCalled();
+  });
+
+  it('relays unread teammate inbox messages through the live team process', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    seedConfig(teamName);
+    seedMemberInbox(teamName, 'alice', [
+      {
+        from: 'team-lead',
+        text: 'Comment on task #abcd1234 "Investigate":\n\nPlease retry with logging enabled.',
+        timestamp: '2026-02-23T10:00:00.000Z',
+        read: false,
+        summary: 'Comment on #abcd1234',
+        messageId: 'm-alice-1',
+      },
+    ]);
+
+    const { writeSpy } = attachAliveRun(service, teamName);
+    const relayed = await service.relayMemberInboxMessages(teamName, 'alice');
+
+    expect(relayed).toBe(1);
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    const payload = String(writeSpy.mock.calls[0]?.[0] ?? '');
+    expect(payload).toContain('"type":"user"');
+    expect(payload).toContain('recipient=\\"alice\\"');
+    expect(payload).toContain('Please retry with logging enabled.');
   });
 });

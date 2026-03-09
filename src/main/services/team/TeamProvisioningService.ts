@@ -394,15 +394,17 @@ function buildTaskStatusProtocol(teamName: string): string {
      a) Owner finishes work on #X -> task_complete #X
      b) Reviewer accepts -> review_approve #X
 11. CLARIFICATION PROTOCOL (CRITICAL — MANDATORY):
-    When you are blocked and need information to continue a task, you MUST do BOTH steps below — skipping the MCP update breaks the task board:
-    a) STEP 1 — FIRST, set the clarification flag with MCP tool task_set_clarification:
-       { teamName: "${teamName}", taskId: "<taskId>", value: "lead" }
-    b) STEP 2 — THEN, send a message to your team lead via SendMessage explaining what you need.
-    IMPORTANT: Always update the task board BEFORE sending the message. The flag is what makes the task board show "needs clarification" — without it, your request is invisible on the board.
-    c) The flag is auto-cleared when the lead adds a task comment on your task.
-       If the lead replies via SendMessage instead, clear the flag yourself once you have the answer:
-       { teamName: "${teamName}", taskId: "<taskId>", value: "clear" }
-    d) Do NOT set clarification to "user" yourself — only the team lead escalates to the user.
+   When you are blocked and need information to continue a task, you MUST do ALL steps below — skipping the board update or comment breaks traceability:
+   a) STEP 1 — FIRST, set the clarification flag with MCP tool task_set_clarification:
+      { teamName: "${teamName}", taskId: "<taskId>", value: "lead" }
+   b) STEP 2 — THEN, add a task comment describing exactly what you need:
+      { teamName: "${teamName}", taskId: "<taskId>", text: "question / blocker / missing info", from: "<your-name>" }
+   c) STEP 3 — THEN, send a message to your team lead via SendMessage so they notice it promptly.
+   IMPORTANT: Always update the task board BEFORE sending the message. The flag + task comment are what make the request durable and visible on the board.
+   d) The flag is auto-cleared when the lead adds a task comment on your task.
+      If the lead replies via SendMessage instead, clear the flag yourself once you have the answer:
+      { teamName: "${teamName}", taskId: "<taskId>", value: "clear" }
+   e) Do NOT set clarification to "user" yourself — only the team lead escalates to the user.
 12. DEPENDENCY AWARENESS:
     When your task has blockedBy dependencies, check if they are completed before starting.
     When you complete a task that blocks others, mention this in your completion message so blocked teammates can proceed.
@@ -484,7 +486,7 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       `- Task assignment notifications are handled by the board runtime, so do NOT send a separate SendMessage for the same assignment unless you have extra context that is not already on the task.`,
       ``,
       `Clarification handling (CRITICAL — MANDATORY for correct task board state):`,
-      `- When a teammate needs clarification (needsClarification: "lead"), reply via task comment (preferred — auto-clears the flag) or SendMessage.`,
+      `- When a teammate needs clarification (needsClarification: "lead"), reply via task comment (preferred — auto-clears the flag and wakes the owner) or SendMessage.`,
       `- If you reply via SendMessage instead of task comment, also clear the flag manually:`,
       `  task_set_clarification { teamName: "${teamName}", taskId: "<taskId>", value: "clear" }`,
       `- If you cannot answer and the user needs to decide — ESCALATION PROTOCOL:`,
@@ -1000,6 +1002,8 @@ export class TeamProvisioningService {
   private readonly teamOpLocks = new Map<string, Promise<void>>();
   private readonly leadInboxRelayInFlight = new Map<string, Promise<number>>();
   private readonly relayedLeadInboxMessageIds = new Map<string, Set<string>>();
+  private readonly memberInboxRelayInFlight = new Map<string, Promise<number>>();
+  private readonly relayedMemberInboxMessageIds = new Map<string, Set<string>>();
   private readonly liveLeadProcessMessages = new Map<string, InboxMessage[]>();
   private teamChangeEmitter: ((event: TeamChangeEvent) => void) | null = null;
   private helpOutputCache: string | null = null;
@@ -1149,6 +1153,23 @@ export class TeamProvisioningService {
     } catch (error) {
       logger.warn(`[${teamName}] sent-message persist failed: ${String(error)}`);
     }
+  }
+
+  private getMemberRelayKey(teamName: string, memberName: string): string {
+    return `${teamName}:${memberName.trim()}`;
+  }
+
+  private armSilentTeammateForward(run: ProvisioningRun, teammateName: string): void {
+    run.silentUserDmForward = { target: teammateName, startedAt: nowIso() };
+    if (run.silentUserDmForwardClearHandle) {
+      clearTimeout(run.silentUserDmForwardClearHandle);
+      run.silentUserDmForwardClearHandle = null;
+    }
+    run.silentUserDmForwardClearHandle = setTimeout(() => {
+      run.silentUserDmForward = null;
+      run.silentUserDmForwardClearHandle = null;
+    }, 60_000);
+    run.silentUserDmForwardClearHandle.unref();
   }
 
   private toolApprovalEventEmitter: ((event: ToolApprovalEvent) => void) | null = null;
@@ -2379,17 +2400,7 @@ export class TeamProvisioningService {
       return;
     }
 
-    run.silentUserDmForward = { target: teammateName, startedAt: nowIso() };
-    if (run.silentUserDmForwardClearHandle) {
-      clearTimeout(run.silentUserDmForwardClearHandle);
-      run.silentUserDmForwardClearHandle = null;
-    }
-    // Safety valve: if the CLI never emits a result message, don't stay in "silent" mode forever.
-    run.silentUserDmForwardClearHandle = setTimeout(() => {
-      run.silentUserDmForward = null;
-      run.silentUserDmForwardClearHandle = null;
-    }, 60_000);
-    run.silentUserDmForwardClearHandle.unref();
+    this.armSilentTeammateForward(run, teammateName);
 
     const summaryLine = userSummary?.trim() ? `Summary: ${userSummary.trim()}` : null;
     const internal = wrapInAgentBlock(
@@ -2410,6 +2421,112 @@ export class TeamProvisioningService {
     ].join('\n');
 
     await this.sendMessageToTeam(teamName, message);
+  }
+
+  async relayMemberInboxMessages(teamName: string, memberName: string): Promise<number> {
+    const relayKey = this.getMemberRelayKey(teamName, memberName);
+    const existing = this.memberInboxRelayInFlight.get(relayKey);
+    if (existing) {
+      return existing;
+    }
+
+    const work = (async (): Promise<number> => {
+      const runId = this.activeByTeam.get(teamName);
+      if (!runId) return 0;
+      const run = this.runs.get(runId);
+      if (!run?.child || run.processKilled || run.cancelRequested) return 0;
+      if (!run.provisioningComplete) return 0;
+
+      const relayedIds = this.relayedMemberInboxMessageIds.get(relayKey) ?? new Set<string>();
+
+      let memberInboxMessages: Awaited<ReturnType<TeamInboxReader['getMessagesFor']>> = [];
+      try {
+        memberInboxMessages = await this.inboxReader.getMessagesFor(teamName, memberName);
+      } catch {
+        return 0;
+      }
+
+      const unread = memberInboxMessages
+        .filter((m): m is InboxMessage & { messageId: string } => {
+          if (m.read) return false;
+          if (typeof m.text !== 'string' || m.text.trim().length === 0) return false;
+          if (!this.hasStableMessageId(m)) return false;
+          return !relayedIds.has(m.messageId);
+        })
+        .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+
+      if (unread.length === 0) return 0;
+
+      const noiseUnread = unread.filter((m) => isInboxNoiseMessage(m.text));
+      if (noiseUnread.length > 0) {
+        try {
+          await this.markInboxMessagesRead(teamName, memberName, noiseUnread);
+        } catch {
+          // best-effort
+        }
+      }
+
+      const actionableUnread = unread.filter((m) => !isInboxNoiseMessage(m.text));
+      if (actionableUnread.length === 0) return 0;
+
+      const MAX_RELAY = 10;
+      const batch = actionableUnread.slice(0, MAX_RELAY);
+
+      this.armSilentTeammateForward(run, memberName);
+
+      const message = [
+        `Relay inbox messages to teammate "${memberName}".`,
+        wrapInAgentBlock(
+          [
+            `Use the SendMessage tool with recipient="${memberName}".`,
+            `Forward each inbox item below as a teammate message, preserving task IDs and critical instructions.`,
+            `Do NOT send any message to recipient "user" for this relay turn.`,
+            `Do NOT add extra narration outside the SendMessage calls.`,
+          ].join('\n')
+        ),
+        ``,
+        `Messages:`,
+        ...batch.flatMap((m, idx) => {
+          const summaryLine = m.summary?.trim() ? `Summary: ${m.summary.trim()}` : null;
+          return [
+            `${idx + 1}) From: ${m.from || 'unknown'}`,
+            `   Timestamp: ${m.timestamp}`,
+            ...(summaryLine ? [`   ${summaryLine}`] : []),
+            `   Text:`,
+            ...m.text.split('\n').map((line) => `   ${line}`),
+            ``,
+          ];
+        }),
+      ].join('\n');
+
+      try {
+        await this.sendMessageToTeam(teamName, message);
+      } catch {
+        return 0;
+      }
+
+      for (const m of batch) {
+        relayedIds.add(m.messageId);
+      }
+      this.relayedMemberInboxMessageIds.set(relayKey, this.trimRelayedSet(relayedIds));
+
+      try {
+        await this.markInboxMessagesRead(teamName, memberName, batch);
+      } catch {
+        // Best-effort: relay succeeded; marking read failed.
+      }
+
+      return batch.length;
+    })();
+
+    this.memberInboxRelayInFlight.set(relayKey, work);
+    try {
+      return await work;
+    } finally {
+      if (this.memberInboxRelayInFlight.get(relayKey) === work) {
+        this.memberInboxRelayInFlight.delete(relayKey);
+      }
+    }
   }
 
   /**
@@ -2763,24 +2880,22 @@ export class TeamProvisioningService {
   }
 
   /**
-   * Intercept SendMessage(to: "user") tool_use blocks from the lead's stream-json output.
+   * Intercept SendMessage tool_use blocks from the lead's stream-json output.
    *
    * Claude Code's internal teamContext may be lost after session resume (--resume), causing
-   * SendMessage to route messages to ~/.claude/teams/default/ instead of the real team.
-   * By capturing tool_use calls directly from stdout, we persist them to sentMessages.json
-   * under the correct team name — ensuring the UI and OS notifications work correctly
-   * regardless of the internal teamContext state.
+   * SendMessage routing to drift away from our canonical team artifacts. By capturing tool_use
+   * calls directly from stdout, we persist a durable message row under the correct team name so
+   * Messages stays accurate even if Claude's own routing is flaky.
    */
-  private captureSendMessageToUser(run: ProvisioningRun, content: Record<string, unknown>[]): void {
+  private captureSendMessages(run: ProvisioningRun, content: Record<string, unknown>[]): void {
     for (const part of content) {
       if (part.type !== 'tool_use' || part.name !== 'SendMessage') continue;
       const input = part.input;
       if (!input || typeof input !== 'object') continue;
       const inp = input as Record<string, unknown>;
 
-      // Only capture messages addressed to the human user
       const recipient = typeof inp.recipient === 'string' ? inp.recipient : '';
-      if (recipient !== 'user') continue;
+      if (!recipient.trim()) continue;
 
       const msgContent = typeof inp.content === 'string' ? inp.content : '';
       if (msgContent.trim().length === 0) continue;
@@ -2795,10 +2910,10 @@ export class TeamProvisioningService {
 
       const msg: InboxMessage = {
         from: leadName,
-        to: 'user',
+        to: recipient,
         text: cleanContent,
         timestamp: nowIso(),
-        read: false,
+        read: recipient !== 'user',
         summary:
           (summary || cleanContent).length > 60
             ? (summary || cleanContent).slice(0, 57) + '...'
@@ -2816,7 +2931,7 @@ export class TeamProvisioningService {
       });
 
       logger.debug(
-        `[${run.teamName}] Captured SendMessage→user from stdout: ${cleanContent.slice(0, 100)}`
+        `[${run.teamName}] Captured SendMessage→${recipient} from stdout: ${cleanContent.slice(0, 100)}`
       );
     }
   }
@@ -2947,12 +3062,13 @@ export class TeamProvisioningService {
             return Array.isArray(inner) ? (inner as Record<string, unknown>[]) : null;
           })();
 
-      const hasSendMessageToUser = (content ?? []).some((part) => {
+      const hasCapturedSendMessage = (content ?? []).some((part) => {
         if (!part || typeof part !== 'object') return false;
         if (part.type !== 'tool_use' || part.name !== 'SendMessage') return false;
         const input = part.input;
         if (!input || typeof input !== 'object') return false;
-        return (input as Record<string, unknown>).recipient === 'user';
+        const recipient = (input as Record<string, unknown>).recipient;
+        return typeof recipient === 'string' && recipient.trim().length > 0;
       });
 
       const textParts = (content ?? [])
@@ -2988,12 +3104,12 @@ export class TeamProvisioningService {
           }
         } else if (run.provisioningComplete) {
           // Push each assistant text block as a separate live message (per-message pattern).
-          // When the same assistant message includes SendMessage(to:"user"), skip text —
-          // captureSendMessageToUser() handles it separately.
+          // When the same assistant message includes SendMessage(...), skip text —
+          // captureSendMessages() handles the visible outbound message separately.
           if (
             !run.silentUserDmForward &&
             !run.suppressPostCompactReminderOutput &&
-            !hasSendMessageToUser
+            !hasCapturedSendMessage
           ) {
             const cleanText = stripAgentBlocks(text).trim();
             if (cleanText.length > 0) {
@@ -3003,7 +3119,7 @@ export class TeamProvisioningService {
         } else {
           // Pre-ready: also push to live cache so Messages shows early narration
           // once team:getData becomes readable. The banner still uses provisioningOutputParts.
-          if (!run.silentUserDmForward && !hasSendMessageToUser) {
+          if (!run.silentUserDmForward && !hasCapturedSendMessage) {
             const cleanText = stripAgentBlocks(text).trim();
             if (cleanText.length > 0) {
               this.pushLiveLeadTextMessage(run, cleanText);
@@ -3029,14 +3145,11 @@ export class TeamProvisioningService {
         }
       }
 
-      // Capture SendMessage(to: "user") tool_use blocks from assistant output.
-      // Claude Code's internal teamContext may route to "default" instead of the real team
-      // (e.g., after session resume when teamContext is lost). We intercept the tool calls
-      // from stdout and persist them to sentMessages.json under the correct team name,
-      // ensuring the UI and notifications show the right team.
-      // Works in both pre-ready and post-ready phases so provisioning-time user DMs are captured.
+      // Capture SendMessage tool_use blocks from assistant output.
+      // Works in both pre-ready and post-ready phases so outbound runtime messages
+      // are visible in our team message artifacts even if Claude's own routing drifts.
       if (!run.silentUserDmForward) {
-        this.captureSendMessageToUser(run, content ?? []);
+        this.captureSendMessages(run, content ?? []);
       }
 
       // Extract context window usage from message.usage for real-time tracking.
@@ -3947,6 +4060,16 @@ export class TeamProvisioningService {
     this.activeByTeam.delete(run.teamName);
     this.leadInboxRelayInFlight.delete(run.teamName);
     this.relayedLeadInboxMessageIds.delete(run.teamName);
+    for (const key of Array.from(this.memberInboxRelayInFlight.keys())) {
+      if (key.startsWith(`${run.teamName}:`)) {
+        this.memberInboxRelayInFlight.delete(key);
+      }
+    }
+    for (const key of Array.from(this.relayedMemberInboxMessageIds.keys())) {
+      if (key.startsWith(`${run.teamName}:`)) {
+        this.relayedMemberInboxMessageIds.delete(key);
+      }
+    }
     this.liveLeadProcessMessages.delete(run.teamName);
     // Dismiss any pending tool approvals for this run
     if (run.pendingApprovals.size > 0) {

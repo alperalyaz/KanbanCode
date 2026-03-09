@@ -154,6 +154,7 @@ describe('ipc teams handlers', () => {
     sendMessageToTeam: vi.fn(async () => undefined),
     isTeamAlive: vi.fn(() => true),
     relayLeadInboxMessages: vi.fn(async () => 0),
+    relayMemberInboxMessages: vi.fn(async () => 0),
     getLiveLeadProcessMessages: vi.fn(() => [] as InboxMessage[]),
     getAliveTeams: vi.fn(() => ['my-team']),
     getLeadActivityState: vi.fn(() => 'idle'),

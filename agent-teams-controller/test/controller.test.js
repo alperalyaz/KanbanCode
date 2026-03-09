@@ -382,6 +382,77 @@ describe('agent-teams-controller API', () => {
     expect(rows[0].attachments[0].filename).toBe('note.txt');
   });
 
+  it('wakes task owner on regular comment from another member', () => {
+    const claudeDir = makeClaudeDir();
+    const controller = createController({ teamName: 'my-team', claudeDir });
+    const task = controller.tasks.createTask({ subject: 'Investigate', owner: 'bob', notifyOwner: false });
+
+    const commented = controller.tasks.addTaskComment(task.id, {
+      from: 'alice',
+      text: 'I found the root cause.',
+    });
+
+    expect(commented.task.comments.at(-1).text).toBe('I found the root cause.');
+    const inboxPath = path.join(claudeDir, 'teams', 'my-team', 'inboxes', 'bob.json');
+    const rows = JSON.parse(fs.readFileSync(inboxPath, 'utf8'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].summary).toContain(`#${task.displayId}`);
+    expect(rows[0].text).toContain('I found the root cause.');
+    expect(rows[0].leadSessionId).toBe('lead-session-1');
+  });
+
+  it('does not wake owner for self-comments and clears user clarification when user replies', () => {
+    const claudeDir = makeClaudeDir();
+    const controller = createController({ teamName: 'my-team', claudeDir });
+    const task = controller.tasks.createTask({
+      subject: 'Need product input',
+      owner: 'bob',
+      needsClarification: 'user',
+      notifyOwner: false,
+    });
+
+    controller.tasks.addTaskComment(task.id, {
+      from: 'bob',
+      text: 'Starting to investigate.',
+    });
+
+    const ownerInboxPath = path.join(claudeDir, 'teams', 'my-team', 'inboxes', 'bob.json');
+    expect(fs.existsSync(ownerInboxPath)).toBe(false);
+
+    const replied = controller.tasks.addTaskComment(task.id, {
+      from: 'user',
+      text: 'Please use the safer option.',
+    });
+
+    expect(replied.task.needsClarification).toBeUndefined();
+    const reloaded = controller.tasks.getTask(task.id);
+    expect(reloaded.needsClarification).toBeUndefined();
+    const rows = JSON.parse(fs.readFileSync(ownerInboxPath, 'utf8'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].text).toContain('Please use the safer option.');
+  });
+
+  it('wakes lead owner on comment from another member', () => {
+    const claudeDir = makeClaudeDir();
+    const controller = createController({ teamName: 'my-team', claudeDir });
+    const task = controller.tasks.createTask({
+      subject: 'Lead-owned task',
+      owner: 'team-lead',
+      notifyOwner: false,
+    });
+
+    controller.tasks.addTaskComment(task.id, {
+      from: 'alice',
+      text: 'Need your decision here.',
+    });
+
+    const inboxPath = path.join(claudeDir, 'teams', 'my-team', 'inboxes', 'team-lead.json');
+    const rows = JSON.parse(fs.readFileSync(inboxPath, 'utf8'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].from).toBe('alice');
+    expect(rows[0].text).toContain('Need your decision here.');
+  });
+
   it('moves review back to pending+needsFix and notifies owner on requestChanges', () => {
     const claudeDir = makeClaudeDir();
     const controller = createController({ teamName: 'my-team', claudeDir });

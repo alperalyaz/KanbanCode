@@ -151,6 +151,11 @@ describe('agent-teams-mcp tools', () => {
     const commentId = commented.commentId;
     expect(commentId).toBeTruthy();
 
+    const ownerInboxPath = path.join(claudeDir, 'teams', teamName, 'inboxes', 'alice.json');
+    const ownerInbox = JSON.parse(fs.readFileSync(ownerInboxPath, 'utf8'));
+    expect(ownerInbox.at(-1).summary).toContain(`#${createdTask.displayId}`);
+    expect(ownerInbox.at(-1).text).toContain('Need one more check');
+
     const attachment = parseJsonToolResult(
       await getTool('task_attach_comment_file').execute({
         claudeDir,

@@ -39,6 +39,7 @@ export interface LeadThoughtGroup {
  * an official message (SendMessage, direct reply, inbox, etc.).
  */
 export function isLeadThought(msg: InboxMessage): boolean {
+  if (typeof msg.to === 'string' && msg.to.trim().length > 0) return false;
   if (msg.source === 'lead_session') return true;
   if (msg.source === 'lead_process') return true;
   return false;
@@ -362,7 +363,10 @@ const LeadThoughtItem = ({
           </div>
         )}
         <div className="group/thought relative flex text-[11px]">
-          <div className="min-w-0 flex-1 [&_>div>div]:p-0" style={{ color: CARD_TEXT_LIGHT }}>
+          <div
+            className="min-w-0 flex-1 [&>span>div>div>div]:py-2"
+            style={{ color: CARD_TEXT_LIGHT }}
+          >
             <span
               onClickCapture={
                 onTaskIdClick

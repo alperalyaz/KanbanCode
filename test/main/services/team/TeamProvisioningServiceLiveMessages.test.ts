@@ -274,6 +274,36 @@ describe('TeamProvisioningService pre-ready live messages', () => {
     expect(hoisted.appendSentMessage).toHaveBeenCalledTimes(1);
   });
 
+  it('captures SendMessage(to:team-lead) without rendering duplicate assistant thought text', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const run = attachRun(service, 'my-team', { provisioningComplete: true });
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [
+        { type: 'text', text: 'Forwarding the clarification request now.' },
+        {
+          type: 'tool_use',
+          name: 'SendMessage',
+          input: {
+            type: 'message',
+            recipient: 'team-lead',
+            content: 'Need clarification on #abcd1234',
+            summary: 'Clarification request',
+          },
+        },
+      ],
+    });
+
+    const live = service.getLiveLeadProcessMessages('my-team');
+    expect(live).toHaveLength(1);
+    expect(live[0].to).toBe('team-lead');
+    expect(live[0].text).toBe('Need clarification on #abcd1234');
+    expect(live[0].source).toBe('lead_process');
+    expect(hoisted.appendSentMessage).toHaveBeenCalledTimes(1);
+  });
+
   it('post-ready path also uses the unified helper', () => {
     const service = new TeamProvisioningService();
     seedConfig('my-team');

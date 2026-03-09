@@ -352,7 +352,7 @@ export const KanbanTaskCard = ({
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-1"
+                className="gap-1 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
                 aria-label={`Complete task ${task.id}`}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -370,7 +370,7 @@ export const KanbanTaskCard = ({
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-1"
+                className="gap-1 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
                 aria-label={`Complete task ${task.id}`}
                 onClick={(e) => {
                   e.stopPropagation();
