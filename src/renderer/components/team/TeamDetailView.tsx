@@ -27,9 +27,9 @@ import { formatProjectPath } from '@renderer/utils/pathDisplay';
 import { buildTaskCountsByOwner, normalizePath } from '@renderer/utils/pathNormalize';
 import { nameColorSet } from '@renderer/utils/projectColor';
 import { resolveProjectIdByPath } from '@renderer/utils/projectLookup';
+import { filterTeamMessages } from '@renderer/utils/teamMessageFiltering';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
-import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import {
   AlertTriangle,
@@ -600,51 +600,14 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     [data?.members]
   );
 
-  const leadMemberName = useMemo(
-    () => activeMembers.find((m) => m.agentType === 'team-lead')?.name,
-    [activeMembers]
-  );
-
   const filteredMessages = useMemo(() => {
     if (!data) return [];
-    let list = data.messages;
-    // Temporarily hide lead→user messages from the UI
-    // (notifications and other processing still receive them via data.messages)
-    if (leadMemberName) {
-      list = list.filter((m) => !(m.to?.trim() === 'user' && m.from?.trim() === leadMemberName));
-    }
-    if (timeWindow) {
-      list = list.filter((m) => {
-        const ts = new Date(m.timestamp).getTime();
-        return ts >= timeWindow.start && ts < timeWindow.end;
-      });
-    }
-    if (!messagesFilter.showNoise) {
-      list = list.filter((m) => !isInboxNoiseMessage(typeof m.text === 'string' ? m.text : ''));
-    }
-    const hasFrom = messagesFilter.from.size > 0;
-    const hasTo = messagesFilter.to.size > 0;
-    if (hasFrom || hasTo) {
-      list = list.filter((m) => {
-        const fromMatch = hasFrom && m.from?.trim() && messagesFilter.from.has(m.from.trim());
-        const toMatch = hasTo && m.to?.trim() && messagesFilter.to.has(m.to.trim());
-        // When both filters active → OR (show messages matching either direction)
-        // When only one active → just that filter
-        return fromMatch || toMatch;
-      });
-    }
-    const q = messagesSearchQuery.trim().toLowerCase();
-    if (q) {
-      list = list.filter((m) => {
-        const text = (m.text ?? '').toLowerCase();
-        const summary = (m.summary ?? '').toLowerCase();
-        const from = (m.from ?? '').toLowerCase();
-        const to = (m.to ?? '').toLowerCase();
-        return text.includes(q) || summary.includes(q) || from.includes(q) || to.includes(q);
-      });
-    }
-    return list;
-  }, [data, timeWindow, messagesFilter, messagesSearchQuery, leadMemberName]);
+    return filterTeamMessages(data.messages, {
+      timeWindow,
+      filter: messagesFilter,
+      searchQuery: messagesSearchQuery,
+    });
+  }, [data, timeWindow, messagesFilter, messagesSearchQuery]);
 
   const { readSet, markRead, markAllRead } = useTeamMessagesRead(teamName ?? '');
   const { expandedSet, toggle: toggleExpandOverride } = useTeamMessagesExpanded(teamName ?? '');

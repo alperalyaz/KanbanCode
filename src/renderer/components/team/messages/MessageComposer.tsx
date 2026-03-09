@@ -442,7 +442,14 @@ export const MessageComposer = ({
                           setTeamSelectorOpen(false);
                         }}
                       >
-                        <ArrowRightLeft size={11} className="shrink-0 text-purple-400" />
+                        {target.color ? (
+                          <span
+                            className="inline-block size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: target.color }}
+                          />
+                        ) : (
+                          <ArrowRightLeft size={11} className="shrink-0 text-purple-400" />
+                        )}
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-[var(--color-text)]">
                             {target.displayName}
