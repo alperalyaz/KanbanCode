@@ -64,4 +64,30 @@ describe('CrossTeamOutbox', () => {
     const result = await outbox.read('test-team');
     expect(result).toHaveLength(2);
   });
+
+  it('appendIfNotRecent returns duplicate for recent equivalent message', async () => {
+    const existing = makeMessage({
+      messageId: 'msg-existing',
+      text: 'Please   review this API',
+      summary: ' Review request ',
+    });
+    await outbox.append('test-team', existing);
+
+    const onBeforeAppend = vi.fn(async () => {});
+    const result = await outbox.appendIfNotRecent(
+      'test-team',
+      makeMessage({
+        messageId: 'msg-new',
+        text: 'please review this api',
+        summary: 'review request',
+      }),
+      onBeforeAppend
+    );
+
+    expect(result.duplicate?.messageId).toBe('msg-existing');
+    expect(onBeforeAppend).not.toHaveBeenCalled();
+
+    const list = await outbox.read('test-team');
+    expect(list).toHaveLength(1);
+  });
 });

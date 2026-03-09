@@ -1,3 +1,4 @@
+import { CROSS_TEAM_SENT_SOURCE, CROSS_TEAM_SOURCE, formatCrossTeamText } from '@shared/constants';
 import { getTeamsBasePath } from '@main/utils/pathDecoder';
 import { createLogger } from '@shared/utils/logger';
 import { randomUUID } from 'crypto';
@@ -67,23 +68,39 @@ export class CrossTeamService {
     // 2. Resolve lead
     const leadName = (await this.dataService.getLeadMemberName(toTeam)) ?? 'team-lead';
 
-    // 3. Cascade check
-    this.cascadeGuard.check(fromTeam, toTeam, chainDepth);
-    this.cascadeGuard.record(fromTeam, toTeam);
-
-    // 4. Format
+    // 3. Format
     const from = `${fromTeam}.${fromMember}`;
-    const formattedText = `[Cross-team from ${from} | depth:${chainDepth}]\n${text}`;
+    const formattedText = formatCrossTeamText(from, chainDepth, text);
     const messageId = randomUUID();
+    const outboxMessage: CrossTeamMessage = {
+      messageId,
+      fromTeam,
+      fromMember,
+      toTeam,
+      text,
+      summary,
+      chainDepth,
+      timestamp: new Date().toISOString(),
+    };
 
-    // 5. Inbox write to TARGET team (TeamInboxWriter handles file lock + in-process lock internally)
-    await this.inboxWriter.sendMessage(toTeam, {
-      member: leadName,
-      text: formattedText,
-      from,
-      summary: summary ?? `Cross-team message from ${fromTeam}`,
-      source: 'cross_team',
+    const { duplicate } = await this.outbox.appendIfNotRecent(fromTeam, outboxMessage, async () => {
+      // 4. Cascade check only for real new deliveries
+      this.cascadeGuard.check(fromTeam, toTeam, chainDepth);
+      this.cascadeGuard.record(fromTeam, toTeam);
+
+      // 5. Inbox write to TARGET team (TeamInboxWriter handles file lock + in-process lock internally)
+      await this.inboxWriter.sendMessage(toTeam, {
+        member: leadName,
+        text: formattedText,
+        from,
+        summary: summary ?? `Cross-team message from ${fromTeam}`,
+        source: CROSS_TEAM_SOURCE,
+      });
     });
+
+    if (duplicate) {
+      return { messageId: duplicate.messageId, deliveredToInbox: true, deduplicated: true };
+    }
 
     // 6. Write "sent" copy to SENDER's inbox so the message appears in their activity
     const senderLeadName = (await this.dataService.getLeadMemberName(fromTeam)) ?? 'team-lead';
@@ -94,7 +111,7 @@ export class CrossTeamService {
         from: 'user',
         to: `${toTeam}.${leadName}`,
         summary: summary ?? `Cross-team message to ${toTeam}`,
-        source: 'cross_team_sent',
+        source: CROSS_TEAM_SENT_SOURCE,
       })
       .catch((e: unknown) => {
         logger.warn(
@@ -108,23 +125,6 @@ export class CrossTeamService {
         logger.warn(`Cross-team relay to ${toTeam}: ${e instanceof Error ? e.message : String(e)}`);
       });
     }
-
-    // 7. Record outbox
-    const outboxMessage: CrossTeamMessage = {
-      messageId,
-      fromTeam,
-      fromMember,
-      toTeam,
-      text,
-      summary,
-      chainDepth,
-      timestamp: new Date().toISOString(),
-    };
-    void this.outbox.append(fromTeam, outboxMessage).catch((e: unknown) => {
-      logger.warn(
-        `Failed to write outbox for ${fromTeam}: ${e instanceof Error ? e.message : String(e)}`
-      );
-    });
 
     return { messageId, deliveredToInbox: true };
   }

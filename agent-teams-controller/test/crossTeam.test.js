@@ -3,6 +3,7 @@ const os = require('os');
 const path = require('path');
 
 const { createController } = require('../src/index.js');
+const { CROSS_TEAM_SOURCE, CROSS_TEAM_PREFIX_TAG } = require('../src/internal/crossTeamProtocol.js');
 
 describe('crossTeam module', () => {
   function makeClaudeDir(teams = {}) {
@@ -57,9 +58,9 @@ describe('crossTeam module', () => {
       const inboxPath = path.join(claudeDir, 'teams', 'team-b', 'inboxes', 'team-lead.json');
       const inbox = JSON.parse(fs.readFileSync(inboxPath, 'utf8'));
       expect(inbox).toHaveLength(1);
-      expect(inbox[0].source).toBe('cross_team');
+      expect(inbox[0].source).toBe(CROSS_TEAM_SOURCE);
       expect(inbox[0].from).toBe('team-a.lead');
-      expect(inbox[0].text).toContain('[Cross-team from team-a.lead | depth:0]');
+      expect(inbox[0].text).toContain(`[${CROSS_TEAM_PREFIX_TAG} team-a.lead | depth:0]`);
     });
 
     it('records outbox entry', () => {
@@ -83,6 +84,89 @@ describe('crossTeam module', () => {
       const outbox = controller.crossTeam.getCrossTeamOutbox();
       expect(outbox).toHaveLength(1);
       expect(outbox[0].toTeam).toBe('team-b');
+    });
+
+    it('deduplicates the same recent cross-team request', () => {
+      const claudeDir = makeClaudeDir({
+        'team-a': {
+          name: 'team-a',
+          members: [{ name: 'team-lead', agentType: 'team-lead' }],
+        },
+        'team-b': {
+          name: 'team-b',
+          members: [{ name: 'team-lead', agentType: 'team-lead' }],
+        },
+      });
+
+      const controller = createController({ teamName: 'team-a', claudeDir });
+      const first = controller.crossTeam.sendCrossTeamMessage({
+        toTeam: 'team-b',
+        fromMember: 'lead',
+        text: 'Please review the API contract',
+        summary: 'Review request',
+      });
+      const second = controller.crossTeam.sendCrossTeamMessage({
+        toTeam: 'team-b',
+        fromMember: 'lead',
+        text: 'Please   review the API contract',
+        summary: '  Review request  ',
+      });
+
+      expect(second.deliveredToInbox).toBe(true);
+      expect(second.deduplicated).toBe(true);
+      expect(second.messageId).toBe(first.messageId);
+
+      const inboxPath = path.join(claudeDir, 'teams', 'team-b', 'inboxes', 'team-lead.json');
+      const inbox = JSON.parse(fs.readFileSync(inboxPath, 'utf8'));
+      expect(inbox).toHaveLength(1);
+
+      const outbox = controller.crossTeam.getCrossTeamOutbox();
+      expect(outbox).toHaveLength(1);
+    });
+
+    it('allows resending after dedupe window expires', () => {
+      const claudeDir = makeClaudeDir({
+        'team-a': {
+          name: 'team-a',
+          members: [{ name: 'team-lead', agentType: 'team-lead' }],
+        },
+        'team-b': {
+          name: 'team-b',
+          members: [{ name: 'team-lead', agentType: 'team-lead' }],
+        },
+      });
+
+      const controller = createController({ teamName: 'team-a', claudeDir });
+      const originalNow = Date.now;
+      let now = originalNow();
+      Date.now = () => now;
+      try {
+        const first = controller.crossTeam.sendCrossTeamMessage({
+          toTeam: 'team-b',
+          text: 'Need a decision on the schema',
+          summary: 'Schema decision',
+        });
+
+        now += 6 * 60 * 1000;
+
+        const second = controller.crossTeam.sendCrossTeamMessage({
+          toTeam: 'team-b',
+          text: 'Need a decision on the schema',
+          summary: 'Schema decision',
+        });
+
+        expect(second.deduplicated).toBeUndefined();
+        expect(second.messageId).not.toBe(first.messageId);
+
+        const inboxPath = path.join(claudeDir, 'teams', 'team-b', 'inboxes', 'team-lead.json');
+        const inbox = JSON.parse(fs.readFileSync(inboxPath, 'utf8'));
+        expect(inbox).toHaveLength(2);
+
+        const updatedOutbox = controller.crossTeam.getCrossTeamOutbox();
+        expect(updatedOutbox).toHaveLength(2);
+      } finally {
+        Date.now = originalNow;
+      }
     });
 
     it('rejects self-send', () => {

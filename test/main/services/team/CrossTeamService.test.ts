@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as fs from 'fs';
 
 import { CrossTeamService } from '@main/services/team/CrossTeamService';
+import {
+  CROSS_TEAM_SENT_SOURCE,
+  CROSS_TEAM_SOURCE,
+  formatCrossTeamText,
+} from '@shared/constants/crossTeam';
 
 import type { TeamConfigReader } from '@main/services/team/TeamConfigReader';
 import type { TeamDataService } from '@main/services/team/TeamDataService';
@@ -11,6 +17,8 @@ import type { CrossTeamSendRequest, TeamConfig } from '@shared/types';
 vi.mock('@main/utils/pathDecoder', () => ({
   getTeamsBasePath: () => '/tmp/cross-team-test-nonexistent-dir-' + process.pid,
 }));
+
+const MOCK_TEAMS_BASE_PATH = '/tmp/cross-team-test-nonexistent-dir-' + process.pid;
 
 vi.mock('@shared/utils/logger', () => ({
   createLogger: () => ({
@@ -50,6 +58,7 @@ describe('CrossTeamService', () => {
   };
 
   beforeEach(() => {
+    fs.rmSync(MOCK_TEAMS_BASE_PATH, { recursive: true, force: true });
     configReader = {
       getConfig: vi.fn().mockResolvedValue(makeConfig()),
     };
@@ -74,6 +83,7 @@ describe('CrossTeamService', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    fs.rmSync(MOCK_TEAMS_BASE_PATH, { recursive: true, force: true });
   });
 
   describe('send', () => {
@@ -87,9 +97,9 @@ describe('CrossTeamService', () => {
       const [teamName, req] = inboxWriter.sendMessage.mock.calls[0];
       expect(teamName).toBe('team-b');
       expect(req.member).toBe('team-lead');
-      expect(req.source).toBe('cross_team');
+      expect(req.source).toBe(CROSS_TEAM_SOURCE);
       expect(req.from).toBe('team-a.lead');
-      expect(req.text).toBe('[Cross-team from team-a.lead | depth:0]\nHello from team-a');
+      expect(req.text).toBe(formatCrossTeamText('team-a.lead', 0, 'Hello from team-a'));
     });
 
     it('writes sender copy to fromTeam inbox as user_sent', async () => {
@@ -103,7 +113,7 @@ describe('CrossTeamService', () => {
       const [senderTeam, senderReq] = inboxWriter.sendMessage.mock.calls[1];
       expect(senderTeam).toBe('team-a');
       expect(senderReq.from).toBe('user');
-      expect(senderReq.source).toBe('cross_team_sent');
+      expect(senderReq.source).toBe(CROSS_TEAM_SENT_SOURCE);
       expect(senderReq.to).toBe('team-b.team-lead');
       expect(senderReq.text).toBe('Hello from team-a');
     });
@@ -199,6 +209,27 @@ describe('CrossTeamService', () => {
 
       const result = await svc.send(makeRequest());
       expect(result.deliveredToInbox).toBe(true);
+    });
+
+    it('deduplicates recent equivalent requests and reuses messageId', async () => {
+      const request = makeRequest({
+        fromTeam: 'team-a-dedupe',
+        toTeam: 'team-b-dedupe',
+        text: 'Please   review this contract',
+        summary: ' Review request ',
+      });
+      configReader.getConfig.mockResolvedValue(makeConfig({ name: 'team-b-dedupe' }));
+
+      const first = await service.send(request);
+      const second = await service.send({
+        ...request,
+        text: 'please review this contract',
+        summary: 'review request',
+      });
+
+      expect(second.deduplicated).toBe(true);
+      expect(second.messageId).toBe(first.messageId);
+      expect(inboxWriter.sendMessage).toHaveBeenCalledTimes(2);
     });
   });
 

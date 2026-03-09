@@ -276,6 +276,17 @@ describe('TeamProvisioningService post-compact lifecycle', () => {
     // Should contain persistent context
     expect(text).toContain('Constraints:');
     expect(text).toContain('Do NOT call TeamDelete');
+    expect(text).toContain('cross_team_send');
+    expect(text).toContain('cross_team_list_targets');
+    expect(text).toContain('cross_team_get_outbox');
+    expect(text).toContain('blocked by another team');
+    expect(text).toContain('one focused request per topic');
+    expect(text).toContain('If you receive a message that is clearly from another team');
+    expect(text).toContain('Do not wait silently on another team');
+    expect(text).toContain('Golden format for cross-team requests');
+    expect(text).toContain('Golden format for cross-team replies');
+    expect(text).toContain('Do NOT use cross-team messaging when your own team can answer');
+    expect(text).toContain('resolve it through your own task board and teammates first');
 
     await svc.cancelProvisioning(runId);
   });

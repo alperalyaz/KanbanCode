@@ -25,7 +25,12 @@ import {
 } from 'lucide-react';
 
 import type { MentionSuggestion } from '@renderer/types/mention';
-import type { AttachmentPayload, LeadContextUsage, ResolvedTeamMember } from '@shared/types';
+import type {
+  AttachmentPayload,
+  LeadContextUsage,
+  ResolvedTeamMember,
+  SendMessageResult,
+} from '@shared/types';
 
 interface MessageComposerProps {
   teamName: string;
@@ -33,6 +38,7 @@ interface MessageComposerProps {
   isTeamAlive?: boolean;
   sending: boolean;
   sendError: string | null;
+  lastResult?: SendMessageResult | null;
   onSend: (
     recipient: string,
     text: string,
@@ -100,6 +106,7 @@ export const MessageComposer = ({
   isTeamAlive,
   sending,
   sendError,
+  lastResult,
   onSend,
   onCrossTeamSend,
 }: MessageComposerProps): React.JSX.Element => {
@@ -655,6 +662,11 @@ export const MessageComposer = ({
               <span className="inline-flex items-center gap-1 rounded bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-400">
                 <AlertCircle size={10} className="shrink-0" />
                 {sendError}
+              </span>
+            ) : lastResult?.deduplicated ? (
+              <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
+                <Check size={10} className="shrink-0" />
+                Reused recent cross-team request
               </span>
             ) : null}
             {remaining < 200 ? (

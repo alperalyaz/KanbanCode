@@ -901,6 +901,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         lastSendMessageResult: {
           messageId: result.messageId,
           deliveredToInbox: result.deliveredToInbox,
+          deduplicated: result.deduplicated,
         },
       });
       await get().refreshTeamData(request.fromTeam);

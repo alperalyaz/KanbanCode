@@ -23,6 +23,11 @@ import {
 } from '@renderer/utils/agentMessageFormatting';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
+import {
+  CROSS_TEAM_SENT_SOURCE,
+  CROSS_TEAM_SOURCE,
+  stripCrossTeamPrefix,
+} from '@shared/constants/crossTeam';
 import { extractMarkdownPlainText } from '@shared/utils/markdownTextSearch';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
@@ -275,8 +280,8 @@ export const ActivityItem = ({
   const isManaged = isManagedCollapseState(collapseState);
   const isExpanded = isManaged ? !collapseState.isCollapsed : true;
 
-  const isCrossTeam = message.source === 'cross_team';
-  const isCrossTeamSent = message.source === 'cross_team_sent';
+  const isCrossTeam = message.source === CROSS_TEAM_SOURCE;
+  const isCrossTeamSent = message.source === CROSS_TEAM_SENT_SOURCE;
   const isCrossTeamAny = isCrossTeam || isCrossTeamSent;
   const crossTeamOrigin = useMemo(() => {
     if (!isCrossTeam) return null;
@@ -299,9 +304,9 @@ export const ActivityItem = ({
     if (structured) return null;
     let stripped = stripAgentBlocks(message.text).trim();
     if (!stripped) return null; // All content was agent-only blocks → show summary instead
-    // Strip legacy cross-team prefix (e.g. "[Cross-team from team.lead | depth:0]\n")
+    // Strip cross-team prefix (e.g. "[Cross-team from team.lead | depth:0]\n") — kept in stored text for CLI agents
     if (isCrossTeamAny) {
-      stripped = stripped.replace(/^\[Cross-team from [^\]]+\]\n?/, '');
+      stripped = stripCrossTeamPrefix(stripped);
     }
     // Normalize literal \n from historical CLI-produced text to real newlines
     return stripped.replace(/\\n/g, '\n').replace(/\\t/g, '\t');

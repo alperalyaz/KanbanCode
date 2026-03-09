@@ -19,6 +19,7 @@ import {
   AGENT_BLOCK_OPEN,
   stripAgentBlocks,
 } from '@shared/constants/agentBlocks';
+import { CROSS_TEAM_PREFIX_TAG } from '@shared/constants/crossTeam';
 import { getMemberColorByName } from '@shared/constants/memberColors';
 import { DEFAULT_TOOL_APPROVAL_SETTINGS } from '@shared/types/team';
 import { resolveLanguageName } from '@shared/utils/agentLanguage';
@@ -565,6 +566,22 @@ Communication protocol (CRITICAL — you are running headless, no one sees your 
 - When you receive a <teammate-message> from a teammate, ALWAYS reply using the SendMessage tool with the sender's name as recipient.
 - Your plain text output is invisible to teammates — they are separate processes and can only read their inbox.
 - Example: if you receive <teammate-message teammate_id="alice">...</teammate-message>, respond with SendMessage(type: "message", recipient: "alice", content: "your reply").
+- Cross-team communication: when work needs expertise, coordination, review, or a decision from ANOTHER team, use MCP tool "cross_team_send" with teamName: "${teamName}" and a focused actionable message.
+- Before sending cross-team, use MCP tool "cross_team_list_targets" with teamName: "${teamName}" to discover valid target teams.
+- To review messages your team already sent to other teams, use MCP tool "cross_team_get_outbox" with teamName: "${teamName}".
+- Cross-team delivery goes to the target team's lead inbox and may be relayed to that live lead automatically.
+- Prefer cross-team messaging when your team is blocked by another team's scope, needs another team's domain expertise, needs a review/approval from another team, or must coordinate a shared decision.
+- Prefer concise messages that state: what you need, why that team is relevant, the expected response, and any task or file references they need.
+- Keep cross-team requests high-signal: one focused request per topic, with clear next action and desired outcome.
+- Before sending a follow-up on the same topic, check "cross_team_get_outbox" so you do not resend the same request unnecessarily.
+- If you receive a message that is clearly from another team (for example prefixed with "[${CROSS_TEAM_PREFIX_TAG} ...]"), treat it as an actionable cross-team request and respond to the originating team with "cross_team_send" when a reply, decision, or status update is needed.
+- Do not wait silently on another team: if cross-team coordination is blocking progress, send the request promptly, then continue any useful local work that does not depend on that answer.
+- After a meaningful cross-team exchange, update the relevant task or plan context so your team retains the decision, dependency, or answer.
+- Golden format for cross-team requests: include (1) brief context, (2) the concrete ask, (3) why your team needs that team specifically, (4) the expected output or decision, and (5) any deadline or blocking impact if relevant.
+- Golden format for cross-team replies: answer the concrete ask first, then include the decision, recommendation, or status, and finally any important caveats, next steps, or handoff expectations.
+- Do NOT use cross-team messaging when your own team can answer the question locally, when no action/decision is required, when you are only thinking out loud, or when a task update belongs on your own board instead of another team's inbox.
+- If the issue is internal to your team, resolve it through your own task board and teammates first; use cross-team only for genuine inter-team dependency, expertise, approval, or coordination.
+- Do NOT spam other teams, and do NOT use cross-team messaging for trivial FYIs that do not require action, coordination, or domain knowledge.
 
 Message formatting:
 - When mentioning teammates by name in messages and text output, always use @ prefix (e.g. @alice, @bob) for UI highlighting. Do NOT use @ in tool parameters (recipient, owner, etc.) — those require plain names.

@@ -279,6 +279,7 @@ export interface SendMessageResult {
   deliveredToInbox: boolean;
   deliveredViaStdin?: boolean;
   messageId: string;
+  deduplicated?: boolean;
 }
 
 export type MemberStatus = 'active' | 'idle' | 'terminated' | 'unknown';
@@ -626,6 +627,7 @@ export interface CrossTeamSendRequest {
 export interface CrossTeamSendResult {
   messageId: string;
   deliveredToInbox: boolean;
+  deduplicated?: boolean;
 }
 
 // =============================================================================

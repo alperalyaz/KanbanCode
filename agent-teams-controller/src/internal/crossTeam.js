@@ -5,8 +5,10 @@ const { createControllerContext } = require('./context.js');
 const { withFileLockSync } = require('./fileLock.js');
 const cascadeGuard = require('./cascadeGuard.js');
 const runtimeHelpers = require('./runtimeHelpers.js');
+const { formatCrossTeamText, CROSS_TEAM_SOURCE } = require('./crossTeamProtocol.js');
 
 const TEAM_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,127}$/;
+const CROSS_TEAM_DEDUPE_WINDOW_MS = 5 * 60 * 1000;
 
 function readJson(filePath, fallbackValue) {
   try {
@@ -87,6 +89,50 @@ function createTargetContext(sourceContext, toTeam) {
   });
 }
 
+function normalizeForDedupe(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function buildCrossTeamDedupeKey(fromTeam, fromMember, toTeam, text, summary) {
+  return [
+    normalizeForDedupe(fromTeam),
+    normalizeForDedupe(fromMember),
+    normalizeForDedupe(toTeam),
+    normalizeForDedupe(summary),
+    normalizeForDedupe(text),
+  ].join('||');
+}
+
+function getCrossTeamMessageDedupeKey(message) {
+  if (!message || typeof message !== 'object') return '';
+  return buildCrossTeamDedupeKey(
+    message.fromTeam,
+    message.fromMember,
+    message.toTeam,
+    message.text,
+    message.summary
+  );
+}
+
+function findRecentDuplicate(outboxList, dedupeKey) {
+  if (!Array.isArray(outboxList) || !dedupeKey) return null;
+  const cutoff = Date.now() - CROSS_TEAM_DEDUPE_WINDOW_MS;
+  for (let i = outboxList.length - 1; i >= 0; i -= 1) {
+    const entry = outboxList[i];
+    const ts = Date.parse(entry && entry.timestamp ? entry.timestamp : '');
+    if (!Number.isFinite(ts) || ts < cutoff) {
+      break;
+    }
+    if (getCrossTeamMessageDedupeKey(entry) === dedupeKey) {
+      return entry;
+    }
+  }
+  return null;
+}
+
 function sendCrossTeamMessage(context, flags) {
   const fromTeam = context.teamName;
   const toTeam = typeof flags.toTeam === 'string' ? flags.toTeam.trim() : '';
@@ -119,45 +165,52 @@ function sendCrossTeamMessage(context, flags) {
   // Resolve lead
   const leadName = resolveTargetLead(targetContext.paths, targetConfig);
 
-  // Cascade check
-  cascadeGuard.check(fromTeam, toTeam, chainDepth);
-  cascadeGuard.record(fromTeam, toTeam);
-
   // Format
   const from = `${fromTeam}.${fromMember}`;
-  const formattedText = `[Cross-team from ${from} | depth:${chainDepth}]\n${text}`;
+  const formattedText = formatCrossTeamText(from, chainDepth, text);
   const messageId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+  const dedupeKey = buildCrossTeamDedupeKey(fromTeam, fromMember, toTeam, text, summary);
 
-  // Cross-process safe inbox write
   const inboxPath = path.join(targetContext.paths.teamDir, 'inboxes', `${leadName}.json`);
-  withFileLockSync(inboxPath, () => {
-    fs.mkdirSync(path.dirname(inboxPath), { recursive: true });
-    const current = readJson(inboxPath, []);
-    const list = Array.isArray(current) ? current : [];
-    list.push({
-      from,
-      to: leadName,
-      text: formattedText,
-      timestamp: new Date().toISOString(),
-      read: false,
-      summary: summary || `Cross-team message from ${fromTeam}`,
-      messageId,
-      source: 'cross_team',
-    });
-    writeJson(inboxPath, list);
-  });
-
-  // Verify
-  const inbox = readJson(inboxPath, []);
-  if (!inbox.some((m) => m.messageId === messageId)) {
-    throw new Error('Cross-team inbox write verification failed');
-  }
-
-  // Record outbox (with file lock)
   const outboxPath = path.join(context.paths.teamDir, 'sent-cross-team.json');
+  let duplicate = null;
   withFileLockSync(outboxPath, () => {
     const outbox = readJson(outboxPath, []);
     const outList = Array.isArray(outbox) ? outbox : [];
+    duplicate = findRecentDuplicate(outList, dedupeKey);
+    if (duplicate) {
+      return;
+    }
+
+    // Cascade check only for real new deliveries.
+    cascadeGuard.check(fromTeam, toTeam, chainDepth);
+    cascadeGuard.record(fromTeam, toTeam);
+
+    // Cross-process safe inbox write
+    withFileLockSync(inboxPath, () => {
+      fs.mkdirSync(path.dirname(inboxPath), { recursive: true });
+      const current = readJson(inboxPath, []);
+      const list = Array.isArray(current) ? current : [];
+      list.push({
+        from,
+        to: leadName,
+        text: formattedText,
+        timestamp: new Date().toISOString(),
+        read: false,
+        summary: summary || `Cross-team message from ${fromTeam}`,
+        messageId,
+        source: CROSS_TEAM_SOURCE,
+      });
+      writeJson(inboxPath, list);
+    });
+
+    // Verify while still inside dedupe lock so duplicate callers
+    // cannot append the same request to outbox concurrently.
+    const inbox = readJson(inboxPath, []);
+    if (!inbox.some((m) => m.messageId === messageId)) {
+      throw new Error('Cross-team inbox write verification failed');
+    }
+
     outList.push({
       messageId,
       fromTeam,
@@ -170,6 +223,14 @@ function sendCrossTeamMessage(context, flags) {
     });
     writeJson(outboxPath, outList);
   });
+
+  if (duplicate) {
+    return {
+      messageId: duplicate.messageId,
+      deliveredToInbox: true,
+      deduplicated: true,
+    };
+  }
 
   return { messageId, deliveredToInbox: true };
 }

@@ -1562,6 +1562,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
               isTeamAlive={data.isAlive}
               sending={sendingMessage}
               sendError={sendMessageError}
+              lastResult={lastSendMessageResult}
               onSend={(member, text, summary, attachments) => {
                 const sentAtMs = Date.now();
                 setPendingRepliesByMember((prev) => ({ ...prev, [member]: sentAtMs }));
