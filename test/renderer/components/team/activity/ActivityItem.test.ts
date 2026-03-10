@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  getCrossTeamSentMemberName,
   getCrossTeamSentTarget,
   getSystemMessageLabel,
   isQualifiedExternalRecipient,
@@ -37,5 +38,7 @@ describe('ActivityItem legacy system message fallback', () => {
     expect(getCrossTeamSentTarget('team-best.user', 'my-team', new Set(['ops.bot']))).toBe(
       'team-best'
     );
+    expect(getCrossTeamSentMemberName('team-best.user')).toBe('user');
+    expect(getCrossTeamSentMemberName('cross-team:team-best')).toBeNull();
   });
 });

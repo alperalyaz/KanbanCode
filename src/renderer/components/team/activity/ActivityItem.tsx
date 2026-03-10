@@ -91,6 +91,21 @@ export function getCrossTeamSentTarget(
   return recipient.teamName;
 }
 
+export function getCrossTeamSentMemberName(value: string | undefined): string | null {
+  return parseQualifiedRecipient(value)?.memberName ?? null;
+}
+
+function CrossTeamTeamBadge({ teamName }: { teamName: string }): React.JSX.Element {
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium tracking-wide"
+      style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#c084fc' }}
+    >
+      {teamName}
+    </span>
+  );
+}
+
 interface ActivityItemProps {
   message: InboxMessage;
   teamName: string;
@@ -319,6 +334,10 @@ export const ActivityItem = ({
     () => getCrossTeamSentTarget(message.to, teamName, localMemberNames),
     [message.to, teamName, localMemberNames]
   );
+  const crossTeamSentMemberName = useMemo(
+    () => getCrossTeamSentMemberName(message.to),
+    [message.to]
+  );
   const isCrossTeam = message.source === CROSS_TEAM_SOURCE || parsedCrossTeamPrefix !== null;
   const isCrossTeamSent =
     message.source === CROSS_TEAM_SENT_SOURCE ||
@@ -344,6 +363,10 @@ export const ActivityItem = ({
     if (dot <= 0) return message.to;
     return message.to.substring(0, dot);
   }, [crossTeamSentTarget, isCrossTeamSent, message.to, qualifiedRecipient]);
+  const senderName = crossTeamOrigin ? crossTeamOrigin.memberName : message.from;
+  const senderColor = crossTeamOrigin ? undefined : (memberColor ?? message.color);
+  const senderHideAvatar =
+    message.from === 'user' || message.from === 'system' || crossTeamOrigin?.memberName === 'user';
 
   // Strip agent-only blocks + normalize escape sequences (before linkification)
   const strippedText = useMemo(() => {
@@ -477,15 +500,13 @@ export const ActivityItem = ({
         ) : null}
 
         {/* Sender avatar + name badge */}
+        {crossTeamOrigin ? <CrossTeamTeamBadge teamName={crossTeamOrigin.teamName} /> : null}
         <MemberBadge
-          name={crossTeamOrigin ? crossTeamOrigin.memberName : message.from}
-          color={isCrossTeamAny ? 'purple' : (memberColor ?? message.color)}
-          hideAvatar={
-            message.from === 'user' ||
-            message.from === 'system' ||
-            crossTeamOrigin?.memberName === 'user'
-          }
+          name={senderName}
+          color={senderColor}
+          hideAvatar={senderHideAvatar}
           onClick={onMemberNameClick}
+          disableHoverCard={crossTeamOrigin != null}
         />
 
         {/* Role */}
@@ -517,26 +538,6 @@ export const ActivityItem = ({
           </span>
         ) : null}
 
-        {/* Cross-team origin badge */}
-        {isCrossTeam && crossTeamOrigin ? (
-          <span
-            className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium tracking-wide"
-            style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#c084fc' }}
-          >
-            from {crossTeamOrigin.teamName}
-          </span>
-        ) : null}
-
-        {/* Cross-team sent badge */}
-        {isCrossTeamSent && crossTeamTarget ? (
-          <span
-            className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium tracking-wide"
-            style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)', color: '#c084fc' }}
-          >
-            to {crossTeamTarget}
-          </span>
-        ) : null}
-
         {/* Rate limit warning badge */}
         {rateLimited ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-red-500/20 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
@@ -559,15 +560,19 @@ export const ActivityItem = ({
             <span style={{ color: CARD_ICON_MUTED }} className="text-[10px]">
               &rarr;
             </span>
-            <MemberBadge
-              name={qualifiedRecipient?.memberName ?? crossTeamSentTarget ?? message.to}
-              color={crossTeamSentTarget ? 'purple' : recipientColor}
-              hideAvatar={
-                crossTeamSentTarget !== null ||
-                (qualifiedRecipient?.memberName ?? message.to) === 'user'
-              }
-              onClick={onMemberNameClick}
-            />
+            {crossTeamTarget ? <CrossTeamTeamBadge teamName={crossTeamTarget} /> : null}
+            {crossTeamSentMemberName || !crossTeamTarget ? (
+              <MemberBadge
+                name={crossTeamSentMemberName ?? qualifiedRecipient?.memberName ?? message.to}
+                color={crossTeamTarget ? undefined : recipientColor}
+                hideAvatar={
+                  (crossTeamSentMemberName ?? qualifiedRecipient?.memberName ?? message.to) ===
+                  'user'
+                }
+                onClick={onMemberNameClick}
+                disableHoverCard={crossTeamTarget != null}
+              />
+            ) : null}
           </>
         ) : null}
 
