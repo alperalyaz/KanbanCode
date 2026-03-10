@@ -1426,7 +1426,7 @@ export class TeamProvisioningService {
       return;
     }
 
-    const toMark: InboxMessage[] = [];
+    const toMark: (InboxMessage & { messageId: string })[] = [];
     for (const block of deliveredBlocks) {
       const matchesBlock = (message: InboxMessage, requireExactText: boolean): boolean => {
         if (message.read || message.source !== CROSS_TEAM_SOURCE) return false;
@@ -1442,7 +1442,7 @@ export class TeamProvisioningService {
       const matched =
         leadInboxMessages.find((message) => matchesBlock(message, true)) ??
         leadInboxMessages.find((message) => matchesBlock(message, false));
-      if (!matched) continue;
+      if (!matched || !this.hasStableMessageId(matched)) continue;
       matched.read = true;
       toMark.push(matched);
     }

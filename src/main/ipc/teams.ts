@@ -1850,11 +1850,18 @@ async function handleAddMember(
   if (!payload || typeof payload !== 'object') {
     return { success: false, error: 'Invalid payload' };
   }
-  const { name, role } = payload as { name?: unknown; role?: unknown };
+  const { name, role, workflow } = payload as {
+    name?: unknown;
+    role?: unknown;
+    workflow?: unknown;
+  };
   const vName = validateTeammateName(name);
   if (!vName.valid) return { success: false, error: vName.error ?? 'Invalid member name' };
   if (role !== undefined && typeof role !== 'string') {
     return { success: false, error: 'role must be a string' };
+  }
+  if (workflow !== undefined && typeof workflow !== 'string') {
+    return { success: false, error: 'workflow must be a string' };
   }
 
   return wrapTeamHandler('addMember', async () => {
@@ -1863,15 +1870,20 @@ async function handleAddMember(
     await getTeamDataService().addMember(tn, {
       name: memberName,
       role: role,
+      workflow: typeof workflow === 'string' ? workflow.trim() || undefined : undefined,
     });
 
     // If team is alive, notify the lead to spawn the new teammate
     const provisioning = getTeamProvisioningService();
     if (provisioning.isTeamAlive(tn)) {
       const roleHint = typeof role === 'string' && role.trim() ? ` with role "${role.trim()}"` : '';
+      const workflowHint =
+        typeof workflow === 'string' && workflow.trim()
+          ? ` Their workflow: ${workflow.trim()}`
+          : '';
       const spawnMessage =
         `A new teammate "${memberName}"${roleHint} has been added to the team. ` +
-        `Please spawn them immediately using the Task tool with team_name="${tn}" and name="${memberName}".`;
+        `Please spawn them immediately using the Task tool with team_name="${tn}" and name="${memberName}".${workflowHint}`;
       try {
         await provisioning.sendMessageToTeam(tn, spawnMessage);
       } catch {

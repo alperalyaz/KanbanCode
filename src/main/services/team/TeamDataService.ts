@@ -599,6 +599,62 @@ export class TeamDataService {
     }
   }
 
+  /**
+   * Ensures a member exists in members.meta.json.
+   * Members can appear in the UI from three sources (see TeamMemberResolver):
+   *   1. members.meta.json
+   *   2. config.json members array (CLI-created)
+   *   3. inbox file presence (CLI-spawned teammates)
+   * If the member exists in source 2 or 3 but not in meta, migrates it so
+   * that edit/delete operations work.
+   */
+  private async ensureMemberInMeta(
+    teamName: string,
+    memberName: string
+  ): Promise<{ members: TeamMember[]; member: TeamMember }> {
+    const members = await this.membersMetaStore.getMembers(teamName);
+    let member = members.find((m) => m.name === memberName);
+
+    if (!member) {
+      // Try config.json first — it may have role/workflow info.
+      const config = await this.configReader.getConfig(teamName);
+      const configMember = config?.members?.find(
+        (m) => typeof m?.name === 'string' && m.name.trim() === memberName
+      );
+
+      if (configMember) {
+        member = {
+          name: configMember.name.trim(),
+          role: configMember.role,
+          workflow: configMember.workflow,
+          agentType: configMember.agentType ?? 'general-purpose',
+          color: configMember.color ?? getMemberColorByName(configMember.name.trim()),
+          joinedAt: configMember.joinedAt ?? Date.now(),
+          cwd: configMember.cwd,
+        };
+      } else {
+        // Member may exist only via inbox file (CLI-spawned teammate).
+        // Check if an inbox file exists for this name.
+        const inboxNames = await this.inboxReader.listInboxNames(teamName);
+        if (!inboxNames.includes(memberName)) {
+          throw new Error(`Member "${memberName}" not found`);
+        }
+
+        member = {
+          name: memberName,
+          agentType: 'general-purpose',
+          color: getMemberColorByName(memberName),
+          joinedAt: Date.now(),
+        };
+      }
+
+      members.push(member);
+      await this.membersMetaStore.writeMembers(teamName, members);
+    }
+
+    return { members, member };
+  }
+
   async addMember(teamName: string, request: AddMemberRequest): Promise<void> {
     const name = request.name.trim();
     if (!name) {
@@ -639,9 +695,7 @@ export class TeamDataService {
     memberName: string,
     newRole: string | undefined
   ): Promise<{ oldRole: string | undefined; changed: boolean }> {
-    const members = await this.membersMetaStore.getMembers(teamName);
-    const member = members.find((m) => m.name === memberName);
-    if (!member) throw new Error(`Member "${memberName}" not found`);
+    const { members, member } = await this.ensureMemberInMeta(teamName, memberName);
     if (member.removedAt) throw new Error(`Member "${memberName}" is removed`);
     if (member.agentType === 'team-lead') throw new Error('Cannot change team lead role');
 
@@ -716,12 +770,8 @@ export class TeamDataService {
   }
 
   async removeMember(teamName: string, memberName: string): Promise<void> {
-    const members = await this.membersMetaStore.getMembers(teamName);
-    const member = members.find((m) => m.name === memberName);
+    const { members, member } = await this.ensureMemberInMeta(teamName, memberName);
 
-    if (!member) {
-      throw new Error(`Member "${memberName}" not found`);
-    }
     if (member.removedAt) {
       throw new Error(`Member "${memberName}" is already removed`);
     }
