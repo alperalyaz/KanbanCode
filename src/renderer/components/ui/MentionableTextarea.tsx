@@ -6,6 +6,7 @@ import { useMentionDetection } from '@renderer/hooks/useMentionDetection';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
 import { chipToken } from '@renderer/types/inlineChip';
+import { nameColorSet } from '@renderer/utils/projectColor';
 import {
   createChipFromSelection,
   findChipBoundary,
@@ -207,6 +208,8 @@ interface MentionableTextareaProps extends Omit<
   projectPath?: string | null;
   /** Called when a file chip is created via @ selection. Parent must add chip to state. */
   onFileChipInsert?: (chip: InlineChip) => void;
+  /** Team suggestions for cross-team @mentions */
+  teamSuggestions?: MentionSuggestion[];
   /** Called when Enter (without Shift) is pressed. */
   onModEnter?: () => void;
 }
@@ -226,6 +229,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       onChipRemove,
       projectPath,
       onFileChipInsert,
+      teamSuggestions = [],
       onModEnter,
       style,
       className,
@@ -271,7 +275,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       value,
       onValueChange,
       textareaRef: internalRef,
-      enableTriggerAlways: enableFiles,
+      enableTriggerAlways: enableFiles || teamSuggestions.length > 0,
     });
 
     // --- File suggestions ---
@@ -281,12 +285,23 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       isOpen && enableFiles
     );
 
-    // Merged suggestion list: members first, then files
+    // --- Team suggestions filtered by query ---
+    const filteredTeamSuggestions = React.useMemo(() => {
+      if (teamSuggestions.length === 0 || !isOpen) return [];
+      if (!query) return teamSuggestions;
+      const lower = query.toLowerCase();
+      return teamSuggestions.filter((t) => t.name.toLowerCase().includes(lower));
+    }, [teamSuggestions, isOpen, query]);
+
+    // Merged suggestion list: members → online teams → offline teams → files
     const allSuggestions = React.useMemo(() => {
-      if (!enableFiles) return memberSuggestions;
-      if (fileSuggestions.length === 0) return memberSuggestions;
-      return [...memberSuggestions, ...fileSuggestions];
-    }, [enableFiles, memberSuggestions, fileSuggestions]);
+      const onlineTeams = filteredTeamSuggestions.filter((t) => t.isOnline);
+      const offlineTeams = filteredTeamSuggestions.filter((t) => !t.isOnline);
+      const merged = [...memberSuggestions, ...onlineTeams, ...offlineTeams];
+      if (!enableFiles) return merged;
+      if (fileSuggestions.length === 0) return merged;
+      return [...merged, ...fileSuggestions];
+    }, [memberSuggestions, filteredTeamSuggestions, enableFiles, fileSuggestions]);
 
     // When files are enabled, manage our own selectedIndex for the merged list
     const [mergedIndex, setMergedIndex] = React.useState(0);
@@ -296,9 +311,12 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       setMergedIndex(0);
     }, [query, allSuggestions.length]);
 
-    // Effective index: use merged when files enabled, hook's index otherwise
-    const effectiveIndex = enableFiles ? mergedIndex : selectedIndex;
-    const effectiveSuggestions = enableFiles ? allSuggestions : memberSuggestions;
+    // Use merged index when we have extra suggestion types (teams or files)
+    const hasMergedSuggestions = enableFiles || teamSuggestions.length > 0;
+
+    // Effective index: use merged when extra types present, hook's index otherwise
+    const effectiveIndex = hasMergedSuggestions ? mergedIndex : selectedIndex;
+    const effectiveSuggestions = hasMergedSuggestions ? allSuggestions : memberSuggestions;
 
     // --- File selection handler ---
     const handleFileSelect = React.useCallback(
@@ -386,11 +404,17 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     }, [value]);
 
     // --- Overlay activation ---
-    const hasOverlay = suggestions.length > 0 || chips.length > 0;
+    const hasOverlay = suggestions.length > 0 || teamSuggestions.length > 0 || chips.length > 0;
+
+    // Combine member + team suggestions for overlay parsing
+    const allOverlaySuggestions = React.useMemo(
+      () => (teamSuggestions.length > 0 ? [...suggestions, ...teamSuggestions] : suggestions),
+      [suggestions, teamSuggestions]
+    );
 
     const segments = React.useMemo(
-      () => (hasOverlay ? parseSegments(value, suggestions, chips) : []),
-      [hasOverlay, value, suggestions, chips]
+      () => (hasOverlay ? parseSegments(value, allOverlaySuggestions, chips) : []),
+      [hasOverlay, value, allOverlaySuggestions, chips]
     );
 
     // Sync backdrop scroll with textarea scroll + track scrollTop for interaction layer
@@ -512,7 +536,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         // When mention dropdown is open, let mention handler consume Enter/Arrow keys first
         if (isOpen && effectiveSuggestions.length > 0) {
-          if (enableFiles) {
+          if (hasMergedSuggestions) {
             fileMentionHandleKeyDown(e);
           } else {
             mentionHandleKeyDown(e);
@@ -527,7 +551,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
         }
         handleChipKeyDown(e);
         if (!e.defaultPrevented && !isOpen) {
-          if (enableFiles) {
+          if (hasMergedSuggestions) {
             fileMentionHandleKeyDown(e);
           } else {
             mentionHandleKeyDown(e);
@@ -537,7 +561,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       [
         onModEnter,
         handleChipKeyDown,
-        enableFiles,
+        hasMergedSuggestions,
         fileMentionHandleKeyDown,
         mentionHandleKeyDown,
         isOpen,
@@ -645,7 +669,8 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     }, [advanceTip]);
 
     const resolvedHintText = hintText ?? rotatingTips[tipIndex];
-    const showHintRow = showHint && (suggestions.length > 0 || enableFiles);
+    const showHintRow =
+      showHint && (suggestions.length > 0 || enableFiles || teamSuggestions.length > 0);
     const showFooter = showHintRow || footerRight;
 
     return (
@@ -673,10 +698,13 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
                 if (seg.type === 'chip') {
                   return <CodeChipBadge key={idx} chip={seg.chip} tokenText={seg.value} />;
                 }
-                // mention
+                // mention (member or team)
+                const isTeamMention = seg.suggestion.type === 'team';
                 const colorSet = seg.suggestion.color
                   ? getTeamColorSet(seg.suggestion.color)
-                  : null;
+                  : isTeamMention
+                    ? nameColorSet(seg.suggestion.name, isLight)
+                    : null;
                 const bg = colorSet ? getThemedBadge(colorSet, isLight) : DEFAULT_MENTION_BG;
                 const fg = colorSet?.text ?? DEFAULT_MENTION_TEXT;
                 return (
@@ -751,7 +779,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
             <MentionSuggestionList
               suggestions={effectiveSuggestions}
               selectedIndex={effectiveIndex}
-              onSelect={enableFiles ? handleMergedSelect : selectSuggestion}
+              onSelect={hasMergedSuggestions ? handleMergedSelect : selectSuggestion}
               query={query}
               hasFileSearch={enableFiles}
               filesLoading={enableFiles && filesLoading}

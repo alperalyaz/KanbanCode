@@ -7,8 +7,10 @@ export interface MentionSuggestion {
   subtitle?: string;
   /** Color name from TeamColorSet palette */
   color?: string;
-  /** Suggestion type — 'member' (default) or 'file' */
-  type?: 'member' | 'file';
+  /** Suggestion type — 'member' (default), 'team', or 'file' */
+  type?: 'member' | 'team' | 'file';
+  /** Whether the team is currently online (team suggestions only) */
+  isOnline?: boolean;
   /** Absolute file path (file suggestions only) */
   filePath?: string;
   /** Relative display path (file suggestions only) */

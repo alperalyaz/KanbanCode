@@ -100,3 +100,23 @@ export function sanitizeMcpServerName(displayName: string): string {
     .replace(/\s+/g, '-')
     .replace(/[^\w.-]/g, '');
 }
+
+/**
+ * Extract owner/repo from a GitHub URL. Returns null for non-GitHub URLs.
+ * Handles: https://github.com/owner/repo, https://github.com/owner/repo.git, trailing slashes.
+ */
+export function parseGitHubOwnerRepo(url: string): { owner: string; repo: string } | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname !== 'github.com') return null;
+    const parts = parsed.pathname
+      .replace(/^\//, '')
+      .replace(/\.git$/, '')
+      .replace(/\/+$/, '')
+      .split('/');
+    if (parts.length < 2 || !parts[0] || !parts[1]) return null;
+    return { owner: parts[0], repo: parts[1] };
+  } catch {
+    return null;
+  }
+}

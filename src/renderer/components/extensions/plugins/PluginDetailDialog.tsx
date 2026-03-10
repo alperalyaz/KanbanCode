@@ -28,7 +28,7 @@ import {
   inferCapabilities,
   normalizeCategory,
 } from '@shared/utils/extensionNormalizers';
-import { ExternalLink, Loader2 } from 'lucide-react';
+import { ExternalLink, Loader2, Mail } from 'lucide-react';
 
 import { InstallButton } from '../common/InstallButton';
 import { InstallCountBadge } from '../common/InstallCountBadge';
@@ -108,6 +108,12 @@ export const PluginDetailDialog = ({
             <span className="text-text-muted">Category</span>
             <p className="capitalize text-text">{category}</p>
           </div>
+          {plugin.version && (
+            <div>
+              <span className="text-text-muted">Version</span>
+              <p className="text-text">{plugin.version}</p>
+            </div>
+          )}
           <div>
             <span className="text-text-muted">Capabilities</span>
             <div className="mt-0.5 flex flex-wrap gap-1">
@@ -157,17 +163,29 @@ export const PluginDetailDialog = ({
           />
         </div>
 
-        {/* Homepage link */}
-        {plugin.homepage && (
-          <Button
-            variant="link"
-            className="h-auto justify-start p-0 text-sm text-blue-400"
-            onClick={() => void api.openExternal(plugin.homepage!)}
-          >
-            <ExternalLink className="mr-1 size-3.5" />
-            Homepage
-          </Button>
-        )}
+        {/* Links */}
+        <div className="flex items-center gap-4">
+          {plugin.homepage && (
+            <Button
+              variant="link"
+              className="h-auto justify-start p-0 text-sm text-blue-400"
+              onClick={() => void api.openExternal(plugin.homepage!)}
+            >
+              <ExternalLink className="mr-1 size-3.5" />
+              Homepage
+            </Button>
+          )}
+          {plugin.author?.email && (
+            <Button
+              variant="link"
+              className="h-auto justify-start p-0 text-sm text-blue-400"
+              onClick={() => void api.openExternal(`mailto:${plugin.author!.email}`)}
+            >
+              <Mail className="mr-1 size-3.5" />
+              Contact
+            </Button>
+          )}
+        </div>
 
         {/* README */}
         <div className="mt-2 max-h-80 overflow-y-auto rounded-md border border-border bg-surface-raised p-4">

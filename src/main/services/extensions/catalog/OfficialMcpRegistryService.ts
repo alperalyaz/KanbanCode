@@ -109,6 +109,8 @@ interface RegistryServerEntry {
     'io.modelcontextprotocol.registry/official'?: {
       status?: string;
       isLatest?: boolean;
+      publishedAt?: string;
+      updatedAt?: string;
     };
   };
 }
@@ -238,10 +240,17 @@ export class OfficialMcpRegistryService {
       return meta?.isLatest !== false; // include if isLatest is true or undefined
     });
 
+    // Filter to active only (include servers with no status or status "active")
+    const active = latest.filter((e) => {
+      const meta = e._meta?.['io.modelcontextprotocol.registry/official'];
+      const status = meta?.status;
+      return !status || status === 'active';
+    });
+
     // Deduplicate by server name (take first = latest version)
     const seen = new Set<string>();
     const unique: RegistryServerEntry[] = [];
-    for (const entry of latest) {
+    for (const entry of active) {
       if (!seen.has(entry.server.name)) {
         seen.add(entry.server.name);
         unique.push(entry);
@@ -253,6 +262,7 @@ export class OfficialMcpRegistryService {
 
   private normalizeEntry(entry: RegistryServerEntry): McpCatalogItem {
     const { server } = entry;
+    const meta = entry._meta?.['io.modelcontextprotocol.registry/official'];
     const installSpec = this.deriveInstallSpec(server);
     const envVars = this.collectEnvVars(server);
     const requiresAuth = this.detectAuthRequired(server);
@@ -271,6 +281,10 @@ export class OfficialMcpRegistryService {
       glamaUrl: undefined,
       requiresAuth,
       iconUrl: this.pickIconUrl(server.icons),
+      websiteUrl: server.websiteUrl,
+      status: meta?.status,
+      publishedAt: meta?.publishedAt,
+      updatedAt: meta?.updatedAt,
     };
   }
 

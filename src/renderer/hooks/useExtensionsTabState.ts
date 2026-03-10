@@ -16,7 +16,7 @@ import type {
   PluginSortField,
 } from '@shared/types/extensions';
 
-export type ExtensionsSubTab = 'plugins' | 'mcp-servers';
+export type ExtensionsSubTab = 'plugins' | 'mcp-servers' | 'api-keys';
 
 interface PluginSortState {
   field: PluginSortField;

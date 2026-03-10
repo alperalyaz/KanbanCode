@@ -605,3 +605,28 @@ export const MCP_REGISTRY_INSTALL = 'mcpRegistry:install';
 
 /** Uninstall an MCP server */
 export const MCP_REGISTRY_UNINSTALL = 'mcpRegistry:uninstall';
+
+/** Install a custom MCP server (bypasses registry) */
+export const MCP_REGISTRY_INSTALL_CUSTOM = 'mcpRegistry:installCustom';
+
+/** Fetch GitHub stars for MCP server repositories */
+export const MCP_GITHUB_STARS = 'mcpRegistry:githubStars';
+
+// =============================================================================
+// API Keys Management Channels
+// =============================================================================
+
+/** List all saved API keys (masked values) */
+export const API_KEYS_LIST = 'apiKeys:list';
+
+/** Save (create or update) an API key */
+export const API_KEYS_SAVE = 'apiKeys:save';
+
+/** Delete an API key by ID */
+export const API_KEYS_DELETE = 'apiKeys:delete';
+
+/** Lookup decrypted values by env var names (for auto-fill) */
+export const API_KEYS_LOOKUP = 'apiKeys:lookup';
+
+/** Get storage encryption status (for UI display) */
+export const API_KEYS_STORAGE_STATUS = 'apiKeys:storageStatus';

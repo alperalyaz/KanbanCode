@@ -13,7 +13,7 @@ import https from 'node:https';
 import http from 'node:http';
 
 import { createLogger } from '@shared/utils/logger';
-import type { McpCatalogItem, McpToolDef } from '@shared/types/extensions';
+import type { McpCatalogItem, McpHostingType, McpToolDef } from '@shared/types/extensions';
 
 const logger = createLogger('Extensions:GlamaMcp');
 
@@ -103,6 +103,7 @@ interface GlamaServer {
   repository?: { url: string };
   spdxLicense?: { name: string; url?: string } | null;
   tools?: { name?: string; description?: string }[];
+  attributes?: string[];
 }
 
 // ── Service ────────────────────────────────────────────────────────────────
@@ -171,6 +172,18 @@ export class GlamaMcpEnrichmentService {
       tools,
       glamaUrl: raw.url,
       requiresAuth: false,
+      author: raw.namespace,
+      hostingType: this.deriveHostingType(raw.attributes),
     };
+  }
+
+  private deriveHostingType(attributes?: string[]): McpHostingType | undefined {
+    if (!attributes?.length) return undefined;
+    const hasLocal = attributes.includes('hosting:local-only');
+    const hasRemote = attributes.includes('hosting:remote-capable');
+    if (hasLocal && hasRemote) return 'both';
+    if (hasLocal) return 'local';
+    if (hasRemote) return 'remote';
+    return undefined;
   }
 }

@@ -73,6 +73,7 @@ import {
   UpdaterService,
 } from './services';
 import {
+  ApiKeyService,
   ExtensionFacadeService,
   GlamaMcpEnrichmentService,
   McpCatalogAggregator,
@@ -720,6 +721,7 @@ function initializeServices(): void {
   // Install services — pass null for binary (uses PATH lookup via execCli fallback)
   const pluginInstallService = new PluginInstallService(null, pluginCatalogService);
   const mcpInstallService = new McpInstallService(null, mcpAggregator);
+  const apiKeyService = new ApiKeyService();
   // warmup() and ensureInstalled() are deferred to after window creation
   // (did-finish-load handler) to avoid thread pool contention at startup.
   httpServer = new HttpServer();
@@ -780,6 +782,7 @@ function initializeServices(): void {
     extensionFacadeService,
     pluginInstallService,
     mcpInstallService,
+    apiKeyService,
     crossTeamService
   );
 

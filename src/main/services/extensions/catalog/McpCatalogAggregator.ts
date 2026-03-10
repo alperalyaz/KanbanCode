@@ -141,6 +141,8 @@ export class McpCatalogAggregator {
         license: item.license ?? glamaMatch.license,
         tools: item.tools.length > 0 ? item.tools : glamaMatch.tools,
         glamaUrl: glamaMatch.glamaUrl,
+        author: item.author ?? glamaMatch.author,
+        hostingType: item.hostingType ?? glamaMatch.hostingType,
       };
     });
   }

@@ -7,11 +7,15 @@ import { api } from '@renderer/api';
 
 import type { AppState } from '../types';
 import type {
+  ApiKeyEntry,
+  ApiKeySaveRequest,
+  ApiKeyStorageStatus,
   EnrichedPlugin,
   ExtensionOperationState,
   InstallScope,
   InstalledMcpEntry,
   McpCatalogItem,
+  McpCustomInstallRequest,
   McpInstallRequest,
   PluginInstallRequest,
 } from '@shared/types/extensions';
@@ -43,6 +47,16 @@ export interface ExtensionsSlice {
   mcpInstallProgress: Record<string, ExtensionOperationState>;
   installErrors: Record<string, string>; // keyed by pluginId or registryId
 
+  // ── API Keys ──
+  apiKeys: ApiKeyEntry[];
+  apiKeysLoading: boolean;
+  apiKeysError: string | null;
+  apiKeySaving: boolean;
+  apiKeyStorageStatus: ApiKeyStorageStatus | null;
+
+  // ── GitHub Stars (supplementary) ──
+  mcpGitHubStars: Record<string, number>;
+
   // ── Read actions ──
   fetchPluginCatalog: (projectPath?: string, forceRefresh?: boolean) => Promise<void>;
   fetchPluginReadme: (pluginId: string) => void;
@@ -53,6 +67,7 @@ export interface ExtensionsSlice {
   installPlugin: (request: PluginInstallRequest) => Promise<void>;
   uninstallPlugin: (pluginId: string, scope?: InstallScope, projectPath?: string) => Promise<void>;
   installMcpServer: (request: McpInstallRequest) => Promise<void>;
+  installCustomMcpServer: (request: McpCustomInstallRequest) => Promise<void>;
   uninstallMcpServer: (
     registryId: string,
     name: string,
@@ -60,8 +75,17 @@ export interface ExtensionsSlice {
     projectPath?: string
   ) => Promise<void>;
 
+  // ── API Keys actions ──
+  fetchApiKeys: () => Promise<void>;
+  fetchApiKeyStorageStatus: () => Promise<void>;
+  saveApiKey: (request: ApiKeySaveRequest) => Promise<void>;
+  deleteApiKey: (id: string) => Promise<void>;
+
   // ── Tab opener ──
   openExtensionsTab: () => void;
+
+  // ── GitHub Stars ──
+  fetchMcpGitHubStars: (repositoryUrls: string[]) => void;
 }
 
 // =============================================================================
@@ -95,6 +119,14 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
   pluginInstallProgress: {},
   mcpInstallProgress: {},
   installErrors: {},
+
+  apiKeys: [],
+  apiKeysLoading: false,
+  apiKeysError: null,
+  apiKeySaving: false,
+  apiKeyStorageStatus: null,
+
+  mcpGitHubStars: {},
 
   // ── Plugin catalog fetch ──
   fetchPluginCatalog: async (projectPath?: string, forceRefresh?: boolean) => {
@@ -163,11 +195,23 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
     set({ mcpBrowseLoading: true, mcpBrowseError: null });
     try {
       const result = await api.mcpRegistry.browse(cursor);
-      set((prev) => ({
-        mcpBrowseCatalog: cursor ? [...prev.mcpBrowseCatalog, ...result.servers] : result.servers,
-        mcpBrowseNextCursor: result.nextCursor,
-        mcpBrowseLoading: false,
-      }));
+      set((prev) => {
+        if (!cursor) {
+          return {
+            mcpBrowseCatalog: result.servers,
+            mcpBrowseNextCursor: result.nextCursor,
+            mcpBrowseLoading: false,
+          };
+        }
+        // Deduplicate: existing IDs take precedence
+        const existingIds = new Set(prev.mcpBrowseCatalog.map((s) => s.id));
+        const newServers = result.servers.filter((s) => !existingIds.has(s.id));
+        return {
+          mcpBrowseCatalog: [...prev.mcpBrowseCatalog, ...newServers],
+          mcpBrowseNextCursor: result.nextCursor,
+          mcpBrowseLoading: false,
+        };
+      });
     } catch (err) {
       set({
         mcpBrowseLoading: false,
@@ -324,6 +368,53 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
     }
   },
 
+  // ── MCP custom install ──
+  installCustomMcpServer: async (request: McpCustomInstallRequest) => {
+    if (!api.mcpRegistry) {
+      const progressKey = `custom:${request.serverName}`;
+      set((prev) => ({
+        mcpInstallProgress: { ...prev.mcpInstallProgress, [progressKey]: 'error' },
+        installErrors: { ...prev.installErrors, [progressKey]: 'MCP Registry not available' },
+      }));
+      return;
+    }
+
+    const progressKey = `custom:${request.serverName}`;
+    set((prev) => ({
+      mcpInstallProgress: { ...prev.mcpInstallProgress, [progressKey]: 'pending' },
+    }));
+
+    try {
+      const result = await api.mcpRegistry.installCustom(request);
+      if (result.state === 'error') {
+        set((prev) => ({
+          mcpInstallProgress: { ...prev.mcpInstallProgress, [progressKey]: 'error' },
+          installErrors: { ...prev.installErrors, [progressKey]: result.error ?? 'Install failed' },
+        }));
+        return;
+      }
+
+      set((prev) => ({
+        mcpInstallProgress: { ...prev.mcpInstallProgress, [progressKey]: 'success' },
+      }));
+
+      // Refresh installed list
+      void get().mcpFetchInstalled(get().mcpInstalledProjectPath ?? undefined);
+
+      setTimeout(() => {
+        set((prev) => ({
+          mcpInstallProgress: { ...prev.mcpInstallProgress, [progressKey]: 'idle' },
+        }));
+      }, SUCCESS_DISPLAY_MS);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Install failed';
+      set((prev) => ({
+        mcpInstallProgress: { ...prev.mcpInstallProgress, [progressKey]: 'error' },
+        installErrors: { ...prev.installErrors, [progressKey]: message },
+      }));
+    }
+  },
+
   // ── MCP uninstall ──
   uninstallMcpServer: async (
     registryId: string,
@@ -376,6 +467,67 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
     }
   },
 
+  // ── API Keys fetch ──
+  fetchApiKeys: async () => {
+    if (!api.apiKeys) return;
+
+    set({ apiKeysLoading: true, apiKeysError: null });
+    try {
+      const keys = await api.apiKeys.list();
+      set({ apiKeys: keys, apiKeysLoading: false });
+    } catch (err) {
+      set({
+        apiKeysLoading: false,
+        apiKeysError: err instanceof Error ? err.message : 'Failed to load API keys',
+      });
+    }
+  },
+
+  fetchApiKeyStorageStatus: async () => {
+    if (!api.apiKeys) return;
+    try {
+      const status = await api.apiKeys.getStorageStatus();
+      set({ apiKeyStorageStatus: status });
+    } catch {
+      // Non-critical — UI will just not show the info icon
+    }
+  },
+
+  // ── API Key save ──
+  saveApiKey: async (request: ApiKeySaveRequest) => {
+    if (!api.apiKeys) return;
+
+    set({ apiKeySaving: true, apiKeysError: null });
+    try {
+      await api.apiKeys.save(request);
+      // Refresh the list to get updated masked values
+      const keys = await api.apiKeys.list();
+      set({ apiKeys: keys, apiKeySaving: false });
+    } catch (err) {
+      set({
+        apiKeySaving: false,
+        apiKeysError: err instanceof Error ? err.message : 'Failed to save API key',
+      });
+      throw err; // Re-throw so the dialog can show the error
+    }
+  },
+
+  // ── API Key delete ──
+  deleteApiKey: async (id: string) => {
+    if (!api.apiKeys) return;
+
+    try {
+      await api.apiKeys.delete(id);
+      set((prev) => ({
+        apiKeys: prev.apiKeys.filter((k) => k.id !== id),
+      }));
+    } catch (err) {
+      set({
+        apiKeysError: err instanceof Error ? err.message : 'Failed to delete API key',
+      });
+    }
+  },
+
   // ── Tab opener ──
   openExtensionsTab: () => {
     const state = get();
@@ -390,5 +542,22 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
       type: 'extensions',
       label: 'Extensions',
     });
+  },
+
+  // ── GitHub Stars (fire-and-forget) ──
+  fetchMcpGitHubStars: (repositoryUrls: string[]) => {
+    if (!api.mcpRegistry || repositoryUrls.length === 0) return;
+    void api.mcpRegistry
+      .githubStars(repositoryUrls)
+      .then((stars) => {
+        if (Object.keys(stars).length > 0) {
+          set((prev) => ({
+            mcpGitHubStars: { ...prev.mcpGitHubStars, ...stars },
+          }));
+        }
+      })
+      .catch(() => {
+        // Silent failure — stars are supplementary data
+      });
   },
 });

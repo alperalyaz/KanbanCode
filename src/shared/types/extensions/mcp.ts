@@ -4,6 +4,8 @@
 
 // ── Catalog item (normalized from Official Registry / Glama) ───────────────
 
+export type McpHostingType = 'local' | 'remote' | 'both';
+
 export interface McpCatalogItem {
   id: string; // Official: reverse-DNS (e.g. "io.github.upstash/context7"), Glama: "glama:<id>"
   name: string; // display name
@@ -18,6 +20,12 @@ export interface McpCatalogItem {
   glamaUrl?: string;
   requiresAuth: boolean; // true if HTTP server has required headers
   iconUrl?: string; // First icon URL from official registry (icons[0].src)
+  websiteUrl?: string;
+  status?: string;
+  publishedAt?: string;
+  updatedAt?: string;
+  author?: string;
+  hostingType?: McpHostingType;
 }
 
 export interface McpToolDef {
@@ -75,6 +83,17 @@ export interface McpInstallRequest {
   projectPath?: string; // required for 'project' scope
   envValues: Record<string, string>;
   headers: McpHeaderDef[]; // for HTTP/SSE servers (CLI --header flag)
+}
+
+// ── Custom install request (bypasses registry, user provides spec) ──────────
+
+export interface McpCustomInstallRequest {
+  serverName: string;
+  scope: 'local' | 'user' | 'project';
+  projectPath?: string;
+  installSpec: McpInstallSpec; // user provides directly
+  envValues: Record<string, string>;
+  headers: McpHeaderDef[];
 }
 
 // ── Search result wrapper ──────────────────────────────────────────────────

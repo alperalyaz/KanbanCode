@@ -22,10 +22,11 @@
 
 ## What is this
 
-A new approach to task management with AI agents.
+A new approach to task management with AI agent teams.
 
 - **Assemble your team** — create agent teams with different roles that work autonomously in parallel
 - **Agents talk to each other** — they communicate, create and manage their own tasks, and leave comments
+- **Cross-team communication** — agents can fully communicate across different teams; you can configure or prompt them to collaborate and message each other between teams
 - **Sit back and watch** — tasks change status on the kanban board while agents handle everything on their own
 - **Review changes like in Cursor** — see what code each task changed, then approve, reject, or comment
 - **Full tool visibility** — inspect exactly which tools an agent used to complete each task

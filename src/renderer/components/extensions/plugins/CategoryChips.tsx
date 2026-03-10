@@ -33,7 +33,7 @@ export const CategoryChips = ({
   if (categoryCounts.length === 0) return <></>;
 
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-2">
       {categoryCounts.map(([category, count]) => {
         const isActive = selected.includes(category);
         return (
@@ -42,14 +42,23 @@ export const CategoryChips = ({
             variant="ghost"
             size="sm"
             onClick={() => onToggle(category)}
-            className={`h-7 rounded-full px-2.5 text-xs font-medium ${
+            aria-pressed={isActive}
+            className={`h-8 rounded-full border px-3 text-xs font-medium transition-all ${
               isActive
-                ? 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/40 hover:bg-blue-500/30'
-                : 'text-text-muted hover:text-text-secondary'
+                ? 'border-blue-500/40 bg-blue-500/15 text-blue-300 shadow-sm'
+                : 'hover:bg-surface-raised/60 border-border bg-transparent text-text-secondary hover:border-border-emphasis hover:text-text'
             }`}
           >
-            {category}
-            <span className="ml-1 text-text-muted">({count})</span>
+            <span>{category}</span>
+            <span
+              className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] leading-none ${
+                isActive
+                  ? 'bg-surface-raised text-text-secondary'
+                  : 'bg-surface-raised/70 text-text-muted'
+              }`}
+            >
+              {count}
+            </span>
           </Button>
         );
       })}

@@ -10,7 +10,11 @@
 import { execCli } from '@main/utils/childProcess';
 import { createLogger } from '@shared/utils/logger';
 
-import type { McpInstallRequest, OperationResult } from '@shared/types/extensions';
+import type {
+  McpCustomInstallRequest,
+  McpInstallRequest,
+  OperationResult,
+} from '@shared/types/extensions';
 import type { McpCatalogAggregator } from '../catalog/McpCatalogAggregator';
 
 const logger = createLogger('Extensions:McpInstall');
@@ -176,6 +180,107 @@ export class McpInstallService {
         headers.map((h) => h.value)
       );
       logger.error(`MCP install failed: ${safeMessage}`);
+      return { state: 'error', error: safeMessage };
+    }
+  }
+
+  /**
+   * Install a custom MCP server — user provides installSpec directly (bypasses registry).
+   */
+  async installCustom(request: McpCustomInstallRequest): Promise<OperationResult> {
+    const { serverName, scope, projectPath, installSpec, envValues, headers } = request;
+
+    // Validate inputs (same rules as registry install)
+    if (!SERVER_NAME_RE.test(serverName)) {
+      return {
+        state: 'error',
+        error: `Invalid server name: "${serverName}". Use alphanumeric, dashes, underscores, dots.`,
+      };
+    }
+
+    if (scope && !VALID_SCOPES.has(scope)) {
+      return { state: 'error', error: `Invalid scope: "${scope}".` };
+    }
+
+    for (const key of Object.keys(envValues)) {
+      if (!ENV_KEY_RE.test(key)) {
+        return { state: 'error', error: `Invalid env var name: "${key}".` };
+      }
+    }
+
+    for (const header of headers) {
+      if (header.key && !HEADER_KEY_RE.test(header.key)) {
+        return { state: 'error', error: `Invalid header name: "${header.key}".` };
+      }
+    }
+
+    if (projectPath && !projectPath.startsWith('/')) {
+      return { state: 'error', error: 'projectPath must be an absolute path' };
+    }
+
+    // Build CLI args from provided installSpec
+    const args: string[] = ['mcp', 'add'];
+
+    if (scope && scope !== 'local') {
+      args.push('-s', scope);
+    }
+
+    if (installSpec.type === 'stdio') {
+      for (const [key, value] of Object.entries(envValues)) {
+        if (key && value) args.push('-e', `${key}=${value}`);
+      }
+
+      args.push(serverName);
+      args.push('--');
+      args.push('npx', '-y');
+
+      const pkg = installSpec.npmVersion
+        ? `${installSpec.npmPackage}@${installSpec.npmVersion}`
+        : installSpec.npmPackage;
+      args.push(pkg);
+    } else if (installSpec.type === 'http') {
+      const transport = installSpec.transportType === 'sse' ? 'sse' : 'http';
+      args.push('-t', transport);
+
+      for (const header of headers) {
+        if (header.key && header.value) {
+          args.push('-H', `${header.key}: ${header.value}`);
+        }
+      }
+
+      for (const [key, value] of Object.entries(envValues)) {
+        if (key && value) args.push('-e', `${key}=${value}`);
+      }
+
+      args.push(serverName);
+      args.push(installSpec.url);
+    } else {
+      return { state: 'error', error: 'Unsupported install spec type' };
+    }
+
+    logger.info(
+      `Installing custom MCP server: ${serverName} (type: ${installSpec.type}, scope: ${scope ?? 'local'})`
+    );
+
+    try {
+      const { stderr } = await execCli(this.claudeBinary, args, {
+        timeout: TIMEOUT_MS,
+        cwd: projectPath,
+      });
+
+      if (stderr) {
+        logger.warn(`Custom MCP install stderr: ${stderr.slice(0, 200)}`);
+      }
+
+      return { state: 'success' };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const safeMessage = maskSecrets(
+        message,
+        envValues,
+        headers.map((h) => h.value)
+      );
+      logger.error(`Custom MCP install failed: ${safeMessage}`);
       return { state: 'error', error: safeMessage };
     }
   }

@@ -73,6 +73,7 @@ export const McpServersPanel = ({
   const browseError = useStore((s) => s.mcpBrowseError);
   const mcpBrowse = useStore((s) => s.mcpBrowse);
   const installedServers = useStore((s) => s.mcpInstalledServers);
+  const fetchMcpGitHubStars = useStore((s) => s.fetchMcpGitHubStars);
 
   const [mcpSort, setMcpSort] = useState<McpSortValue>('name-asc');
   const [mcpInstalledOnly, setMcpInstalledOnly] = useState(false);
@@ -83,6 +84,14 @@ export const McpServersPanel = ({
       void mcpBrowse();
     }
   }, [browseCatalog.length, browseLoading, mcpBrowse]);
+
+  // Fetch GitHub stars after catalog loads (fire-and-forget)
+  useEffect(() => {
+    const urls = browseCatalog.map((s) => s.repositoryUrl).filter((u): u is string => !!u);
+    if (urls.length > 0) {
+      fetchMcpGitHubStars(urls);
+    }
+  }, [browseCatalog, fetchMcpGitHubStars]);
 
   // Decide which list to show: search results or browse
   const isSearching = mcpSearchQuery.trim().length > 0;

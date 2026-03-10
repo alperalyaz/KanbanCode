@@ -3,7 +3,7 @@
  * Uses Radix UI Kit for all form elements.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import {
   Dialog,
@@ -25,7 +25,7 @@ import {
 } from '@renderer/components/ui/select';
 import { useStore } from '@renderer/store';
 import { api } from '@renderer/api';
-import { ExternalLink, Lock, Plus, Server, Trash2, Wrench } from 'lucide-react';
+import { ExternalLink, Lock, Plus, Star, Trash2, Wrench } from 'lucide-react';
 
 import { InstallButton } from '../common/InstallButton';
 import { SourceBadge } from '../common/SourceBadge';
@@ -60,12 +60,16 @@ export const McpServerDetailDialog = ({
   const installMcpServer = useStore((s) => s.installMcpServer);
   const uninstallMcpServer = useStore((s) => s.uninstallMcpServer);
   const installError = useStore((s) => (server ? s.installErrors[server.id] : undefined));
+  const stars = useStore((s) =>
+    server?.repositoryUrl ? s.mcpGitHubStars[server.repositoryUrl] : undefined
+  );
 
   const [scope, setScope] = useState<Scope>('user');
   const [serverName, setServerName] = useState('');
   const [envValues, setEnvValues] = useState<Record<string, string>>({});
   const [headers, setHeaders] = useState<McpHeaderDef[]>([]);
   const [imgError, setImgError] = useState(false);
+  const [autoFilledFields, setAutoFilledFields] = useState<Set<string>>(new Set());
 
   // Initialize form when server changes
   const [lastServerId, setLastServerId] = useState<string | null>(null);
@@ -75,12 +79,69 @@ export const McpServerDetailDialog = ({
     setEnvValues(Object.fromEntries(server.envVars.map((env) => [env.name, ''])));
     setHeaders([]);
     setImgError(false);
+    setAutoFilledFields(new Set());
   }
+
+  // Auto-fill env values from saved API keys
+  useEffect(() => {
+    if (!server || !open || server.envVars.length === 0 || !api.apiKeys) return;
+
+    const envVarNames = server.envVars.map((e) => e.name);
+    void api.apiKeys.lookup(envVarNames).then(
+      (results) => {
+        if (results.length === 0) return;
+        const filled = new Set<string>();
+        const values: Record<string, string> = {};
+        for (const r of results) {
+          values[r.envVarName] = r.value;
+          filled.add(r.envVarName);
+        }
+        setEnvValues((prev) => ({ ...prev, ...values }));
+        setAutoFilledFields(filled);
+      },
+      () => {
+        // Silently fail — auto-fill is supplementary
+      }
+    );
+  }, [server?.id, open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-fill env vars from saved API keys
+  useEffect(() => {
+    if (!server || server.envVars.length === 0 || !api.apiKeys) return;
+
+    const envVarNames = server.envVars.map((env) => env.name);
+    void api.apiKeys.lookup(envVarNames).then(
+      (results) => {
+        if (results.length === 0) return;
+        const filled = new Set<string>();
+        const updates: Record<string, string> = {};
+        for (const r of results) {
+          updates[r.envVarName] = r.value;
+          filled.add(r.envVarName);
+        }
+        setEnvValues((prev) => {
+          const next = { ...prev };
+          for (const [k, v] of Object.entries(updates)) {
+            // Only auto-fill if the field is empty
+            if (!next[k]) {
+              next[k] = v;
+            }
+          }
+          return next;
+        });
+        setAutoFilledFields(filled);
+      },
+      () => {
+        // Silently ignore lookup failures
+      }
+    );
+  }, [server?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!server) return <></>;
 
   const canAutoInstall = !!server.installSpec;
   const isHttp = server.installSpec?.type === 'http';
+  const hasIcon = !!server.iconUrl && !imgError;
 
   const handleInstall = () => {
     installMcpServer({
@@ -113,19 +174,17 @@ export const McpServerDetailDialog = ({
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <div className="flex items-start gap-3">
-            {/* Server icon */}
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-raised">
-              {server.iconUrl && !imgError ? (
+            {/* Server icon (only when available) */}
+            {hasIcon && (
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-raised">
                 <img
-                  src={server.iconUrl}
+                  src={server.iconUrl!}
                   alt=""
                   className="size-8 rounded object-contain"
                   onError={() => setImgError(true)}
                 />
-              ) : (
-                <Server className="size-5 text-text-muted" />
-              )}
-            </div>
+              </div>
+            )}
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -154,6 +213,15 @@ export const McpServerDetailDialog = ({
             <span className="text-text-muted">Source</span>
             <p className="capitalize text-text">{server.source}</p>
           </div>
+          {stars != null && (
+            <div>
+              <span className="text-text-muted">GitHub Stars</span>
+              <p className="flex items-center gap-1 text-text">
+                <Star className="size-3.5 fill-amber-400 text-amber-400" />
+                {stars.toLocaleString()}
+              </p>
+            </div>
+          )}
           {server.version && (
             <div>
               <span className="text-text-muted">Version</span>
@@ -176,6 +244,30 @@ export const McpServerDetailDialog = ({
                 : 'Manual setup required'}
             </p>
           </div>
+          {server.author && (
+            <div>
+              <span className="text-text-muted">Author</span>
+              <p className="text-text">{server.author}</p>
+            </div>
+          )}
+          {server.hostingType && (
+            <div>
+              <span className="text-text-muted">Hosting</span>
+              <p className="capitalize text-text">{server.hostingType}</p>
+            </div>
+          )}
+          {server.publishedAt && (
+            <div>
+              <span className="text-text-muted">Published</span>
+              <p className="text-text">{new Date(server.publishedAt).toLocaleDateString()}</p>
+            </div>
+          )}
+          {server.updatedAt && (
+            <div>
+              <span className="text-text-muted">Updated</span>
+              <p className="text-text">{new Date(server.updatedAt).toLocaleDateString()}</p>
+            </div>
+          )}
         </div>
 
         {/* Auth indicator */}
@@ -243,6 +335,9 @@ export const McpServerDetailDialog = ({
                         className="h-7 flex-1 text-xs"
                         placeholder={env.description ?? env.name}
                       />
+                      {autoFilledFields.has(env.name) && envValues[env.name] && (
+                        <span className="shrink-0 text-[10px] text-emerald-400">Auto-filled</span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -355,6 +450,16 @@ export const McpServerDetailDialog = ({
             >
               <ExternalLink className="mr-1 size-3.5" />
               Glama
+            </Button>
+          )}
+          {server.websiteUrl && (
+            <Button
+              variant="link"
+              className="h-auto p-0 text-sm text-blue-400"
+              onClick={() => void api.openExternal(server.websiteUrl!)}
+            >
+              <ExternalLink className="mr-1 size-3.5" />
+              Website
             </Button>
           )}
         </div>

@@ -11,3 +11,5 @@ export { McpInstallationStateService } from './state/McpInstallationStateService
 export { ExtensionFacadeService } from './ExtensionFacadeService';
 export { PluginInstallService } from './install/PluginInstallService';
 export { McpInstallService } from './install/McpInstallService';
+export { ApiKeyService } from './apikeys/ApiKeyService';
+export { GitHubStarsService } from './catalog/GitHubStarsService';

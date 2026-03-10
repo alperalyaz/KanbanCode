@@ -4,6 +4,7 @@
 
 import { useMemo } from 'react';
 
+import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import { Label } from '@renderer/components/ui/label';
@@ -16,7 +17,7 @@ import {
 } from '@renderer/components/ui/select';
 import { useStore } from '@renderer/store';
 import { inferCapabilities, normalizeCategory } from '@shared/utils/extensionNormalizers';
-import { Puzzle, Search } from 'lucide-react';
+import { Filter, Puzzle, Search } from 'lucide-react';
 
 import { SearchInput } from '../common/SearchInput';
 
@@ -95,7 +96,7 @@ function selectFilteredPlugins(
   result = [...result].sort((a, b) => {
     switch (sort.field) {
       case 'popularity':
-        return (b.installCount - a.installCount) * direction;
+        return (a.installCount - b.installCount) * direction;
       case 'name':
         return a.name.localeCompare(b.name) * direction;
       case 'category':
@@ -137,11 +138,29 @@ export const PluginsPanel = ({
   );
 
   const sortValue = `${pluginSort.field}:${pluginSort.order}`;
+  const activeFilterCount =
+    pluginFilters.categories.length +
+    pluginFilters.capabilities.length +
+    (pluginFilters.installedOnly ? 1 : 0) +
+    (pluginFilters.search ? 1 : 0);
+  const totalCategoryCount = useMemo(
+    () => new Set(catalog.map((plugin) => normalizeCategory(plugin.category))).size,
+    [catalog]
+  );
+  const totalCapabilityCount = useMemo(() => {
+    const counts = new Set<PluginCapability>();
+    for (const plugin of catalog) {
+      for (const capability of inferCapabilities(plugin)) {
+        counts.add(capability);
+      }
+    }
+    return counts.size;
+  }, [catalog]);
 
   return (
     <div className="flex flex-col gap-4">
       {/* Search + Sort + Installed only row */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="flex-1">
           <SearchInput
             value={pluginFilters.search}
@@ -149,76 +168,132 @@ export const PluginsPanel = ({
             placeholder="Search plugins..."
           />
         </div>
-        <Select
-          value={sortValue}
-          onValueChange={(v) => {
-            const [field, order] = v.split(':') as [PluginSortField, 'asc' | 'desc'];
-            setPluginSort({ field, order });
-          }}
-        >
-          <SelectTrigger className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SORT_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="installed-only"
-            checked={pluginFilters.installedOnly}
-            onCheckedChange={toggleInstalledOnly}
-          />
-          <Label htmlFor="installed-only" className="whitespace-nowrap text-xs text-text-secondary">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Select
+            value={sortValue}
+            onValueChange={(v) => {
+              const [field, order] = v.split(':') as [PluginSortField, 'asc' | 'desc'];
+              setPluginSort({ field, order });
+            }}
+          >
+            <SelectTrigger className="w-full sm:w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SORT_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Label
+            htmlFor="installed-only"
+            className="bg-surface-raised/40 flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border px-3 text-xs text-text-secondary transition-colors hover:border-border-emphasis hover:text-text"
+          >
+            <Checkbox
+              id="installed-only"
+              checked={pluginFilters.installedOnly}
+              onCheckedChange={toggleInstalledOnly}
+            />
             Installed only
           </Label>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-surface-raised/50 rounded-md border border-border p-3">
-        <div className="flex flex-col gap-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-              Categories
-            </span>
+      <div className="bg-surface-raised/20 rounded-xl p-4">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="bg-surface-raised/60 flex size-8 items-center justify-center rounded-lg border border-border">
+                  <Filter className="size-4 text-text-muted" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-sm font-semibold text-text">Browse by fit</h2>
+                    <Badge variant="outline" className="text-[11px] text-text-muted">
+                      {activeFilterCount} active
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-text-muted">
+                    Narrow the catalog by category, capability, or installed state.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-[11px] text-text-muted">
+                <Badge variant="secondary" className="font-normal">
+                  {catalog.length} plugins
+                </Badge>
+                <Badge variant="secondary" className="font-normal">
+                  {totalCategoryCount} categories
+                </Badge>
+                <Badge variant="secondary" className="font-normal">
+                  {totalCapabilityCount} capabilities
+                </Badge>
+              </div>
+            </div>
             {hasActiveFilters && (
               <Button
-                variant="link"
+                variant="ghost"
                 size="sm"
                 onClick={clearFilters}
-                className="h-auto p-0 text-xs text-[var(--color-accent)]"
+                className="justify-start rounded-lg border border-border px-3 text-xs text-text-secondary hover:text-text lg:justify-center"
               >
-                Clear all
+                Clear all filters
               </Button>
             )}
           </div>
-          <CategoryChips
-            plugins={catalog}
-            selected={pluginFilters.categories}
-            onToggle={toggleCategory}
-          />
-          <div className="border-b border-border" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-            Capabilities
-          </span>
-          <CapabilityChips
-            plugins={catalog}
-            selected={pluginFilters.capabilities}
-            onToggle={toggleCapability}
-          />
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            <section className="space-y-3 rounded-lg border border-border bg-transparent p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-text-muted">
+                  Categories
+                </span>
+                <span className="text-[11px] text-text-muted">
+                  {pluginFilters.categories.length} selected
+                </span>
+              </div>
+              <CategoryChips
+                plugins={catalog}
+                selected={pluginFilters.categories}
+                onToggle={toggleCategory}
+              />
+            </section>
+
+            <section className="space-y-3 rounded-lg border border-border bg-transparent p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-text-muted">
+                  Capabilities
+                </span>
+                <span className="text-[11px] text-text-muted">
+                  {pluginFilters.capabilities.length} selected
+                </span>
+              </div>
+              <CapabilityChips
+                plugins={catalog}
+                selected={pluginFilters.capabilities}
+                onToggle={toggleCapability}
+              />
+            </section>
+          </div>
         </div>
       </div>
 
       {/* Result count */}
       {!loading && !error && filtered.length > 0 && (
-        <p className="text-xs text-text-muted">
-          {filtered.length} plugin{filtered.length !== 1 ? 's' : ''}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-text-muted">
+            Showing {filtered.length} of {catalog.length} plugin{catalog.length !== 1 ? 's' : ''}
+          </p>
+          {hasActiveFilters && (
+            <p className="text-xs text-text-muted">
+              Results update instantly as you refine filters.
+            </p>
+          )}
+        </div>
       )}
 
       {/* Content */}

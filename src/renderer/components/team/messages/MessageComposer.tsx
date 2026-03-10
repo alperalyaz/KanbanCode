@@ -8,6 +8,7 @@ import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useComposerDraft } from '@renderer/hooks/useComposerDraft';
+import { useTeamSuggestions } from '@renderer/hooks/useTeamSuggestions';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { serializeChipsWithText } from '@renderer/types/inlineChip';
@@ -130,6 +131,8 @@ export const MessageComposer = ({
       })),
     [members, colorMap]
   );
+
+  const { suggestions: teamMentionSuggestions } = useTeamSuggestions(teamName);
 
   const trimmed = draft.text.trim();
 
@@ -751,6 +754,7 @@ export const MessageComposer = ({
         value={draft.text}
         onValueChange={draft.setText}
         suggestions={mentionSuggestions}
+        teamSuggestions={teamMentionSuggestions}
         chips={draft.chips}
         onChipRemove={draft.removeChip}
         projectPath={projectPath}

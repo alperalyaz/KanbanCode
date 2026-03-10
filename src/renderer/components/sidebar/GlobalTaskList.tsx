@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { confirm } from '@renderer/components/common/ConfirmDialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
@@ -197,6 +197,41 @@ export const GlobalTaskList = ({
   const hasFetchedRef = useRef(false);
   const readState = useReadStateSnapshot();
   const taskLocalState = useTaskLocalState();
+
+  // --- New-task animation tracking (same pattern as ChatHistory) ---
+  const knownTaskIdsRef = useRef<Set<string>>(new Set());
+  const isInitialTaskLoadRef = useRef(true);
+
+  const newTaskIds = useMemo(() => {
+    if (!globalTasksInitialized || globalTasks.length === 0) {
+      return new Set<string>();
+    }
+
+    // First load: seed all known IDs, no animations
+    if (isInitialTaskLoadRef.current) {
+      isInitialTaskLoadRef.current = false;
+      for (const t of globalTasks) {
+        knownTaskIdsRef.current.add(`${t.teamName}:${t.id}`);
+      }
+      return new Set<string>();
+    }
+
+    // Subsequent updates: detect truly new tasks
+    const newIds = new Set<string>();
+    for (const t of globalTasks) {
+      const key = `${t.teamName}:${t.id}`;
+      if (!knownTaskIdsRef.current.has(key)) {
+        newIds.add(key);
+        knownTaskIdsRef.current.add(key);
+      }
+    }
+    return newIds;
+  }, [globalTasks, globalTasksInitialized]);
+
+  const isNewTask = useCallback(
+    (task: GlobalTask): boolean => newTaskIds.has(`${task.teamName}:${task.id}`),
+    [newTaskIds]
+  );
 
   // Local project filter (independent from sessions tab)
   const [localProjectFilter, setLocalProjectFilter] = useState<string | null>(null);
@@ -481,6 +516,7 @@ export const GlobalTaskList = ({
               <SidebarTaskItem
                 task={task}
                 showTeamName
+                isNew={isNewTask(task)}
                 renamingKey={renamingTaskKey}
                 onRenameComplete={handleRenameComplete}
                 onRenameCancel={handleRenameCancel}
@@ -578,6 +614,7 @@ export const GlobalTaskList = ({
               <SidebarTaskItem
                 task={task}
                 showTeamName
+                isNew={isNewTask(task)}
                 renamingKey={renamingTaskKey}
                 onRenameComplete={handleRenameComplete}
                 onRenameCancel={handleRenameCancel}
@@ -643,6 +680,7 @@ export const GlobalTaskList = ({
                           <SidebarTaskItem
                             task={task}
                             hideTeamName
+                            isNew={isNewTask(task)}
                             renamingKey={renamingTaskKey}
                             onRenameComplete={handleRenameComplete}
                             onRenameCancel={handleRenameCancel}
@@ -708,6 +746,7 @@ export const GlobalTaskList = ({
                         >
                           <SidebarTaskItem
                             task={task}
+                            isNew={isNewTask(task)}
                             renamingKey={renamingTaskKey}
                             onRenameComplete={handleRenameComplete}
                             onRenameCancel={handleRenameCancel}

@@ -107,6 +107,7 @@ import type { CrossTeamService } from '../services/team/CrossTeamService';
 import type { ExtensionFacadeService } from '../services/extensions/ExtensionFacadeService';
 import type { McpInstallService } from '../services/extensions/install/McpInstallService';
 import type { PluginInstallService } from '../services/extensions/install/PluginInstallService';
+import type { ApiKeyService } from '../services/extensions/apikeys/ApiKeyService';
 import type { SchedulerService } from '../services/schedule/SchedulerService';
 
 /**
@@ -139,6 +140,7 @@ export function initializeIpcHandlers(
   extensionFacade?: ExtensionFacadeService,
   pluginInstaller?: PluginInstallService,
   mcpInstaller?: McpInstallService,
+  apiKeyService?: ApiKeyService,
   crossTeamService?: CrossTeamService
 ): void {
   // Initialize domain handlers with registry
@@ -175,7 +177,7 @@ export function initializeIpcHandlers(
     initializeScheduleHandlers(schedulerService);
   }
   if (extensionFacade) {
-    initializeExtensionHandlers(extensionFacade, pluginInstaller, mcpInstaller);
+    initializeExtensionHandlers(extensionFacade, pluginInstaller, mcpInstaller, apiKeyService);
   }
   if (crossTeamService) {
     initializeCrossTeamHandlers(crossTeamService);

@@ -18,8 +18,10 @@ export { inferCapabilities } from './plugin';
 export type {
   InstalledMcpEntry,
   McpCatalogItem,
+  McpCustomInstallRequest,
   McpEnvVarDef,
   McpHeaderDef,
+  McpHostingType,
   McpHttpInstallSpec,
   McpInstallRequest,
   McpInstallSpec,
@@ -28,4 +30,11 @@ export type {
   McpToolDef,
 } from './mcp';
 
-export type { McpCatalogAPI, PluginCatalogAPI } from './api';
+export type {
+  ApiKeyEntry,
+  ApiKeyLookupResult,
+  ApiKeySaveRequest,
+  ApiKeyStorageStatus,
+} from './apikey';
+
+export type { ApiKeysAPI, McpCatalogAPI, PluginCatalogAPI } from './api';

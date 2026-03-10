@@ -4,7 +4,7 @@
  * Global catalog data comes from Zustand store.
  */
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { api } from '@renderer/api';
 import { Button } from '@renderer/components/ui/button';
@@ -17,13 +17,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@renderer/components/ui/tooltip';
-import { AlertTriangle, Info, Puzzle, RefreshCw, Server } from 'lucide-react';
+import { AlertTriangle, Info, Key, Plus, Puzzle, RefreshCw, Server } from 'lucide-react';
 
+import { ApiKeysPanel } from './apikeys/ApiKeysPanel';
+import { CustomMcpServerDialog } from './mcp/CustomMcpServerDialog';
 import { McpServersPanel } from './mcp/McpServersPanel';
 import { PluginsPanel } from './plugins/PluginsPanel';
 
 export const ExtensionStoreView = (): React.JSX.Element => {
   const fetchPluginCatalog = useStore((s) => s.fetchPluginCatalog);
+  const fetchApiKeys = useStore((s) => s.fetchApiKeys);
   const mcpBrowse = useStore((s) => s.mcpBrowse);
   const mcpFetchInstalled = useStore((s) => s.mcpFetchInstalled);
   const pluginCatalogLoading = useStore((s) => s.pluginCatalogLoading);
@@ -33,6 +36,7 @@ export const ExtensionStoreView = (): React.JSX.Element => {
   const hasOngoingSessions = useStore((s) => s.sessions.some((sess) => sess.isOngoing));
 
   const tabState = useExtensionsTabState();
+  const [customMcpDialogOpen, setCustomMcpDialogOpen] = useState(false);
 
   // Fetch plugin catalog on mount
   useEffect(() => {
@@ -43,6 +47,11 @@ export const ExtensionStoreView = (): React.JSX.Element => {
   useEffect(() => {
     void mcpFetchInstalled();
   }, [mcpFetchInstalled]);
+
+  // Fetch API keys on mount
+  useEffect(() => {
+    void fetchApiKeys();
+  }, [fetchApiKeys]);
 
   // Refresh all data (plugins + MCP browse + installed)
   const handleRefresh = useCallback(() => {
@@ -104,18 +113,37 @@ export const ExtensionStoreView = (): React.JSX.Element => {
         )}
         <Tabs
           value={tabState.activeSubTab}
-          onValueChange={(v) => tabState.setActiveSubTab(v as 'plugins' | 'mcp-servers')}
+          onValueChange={(v) =>
+            tabState.setActiveSubTab(v as 'plugins' | 'mcp-servers' | 'api-keys')
+          }
         >
-          <TabsList className="mb-4">
-            <TabsTrigger value="plugins" className="gap-1.5">
-              <Puzzle className="size-3.5" />
-              Plugins
-            </TabsTrigger>
-            <TabsTrigger value="mcp-servers" className="gap-1.5">
-              <Server className="size-3.5" />
-              MCP Servers
-            </TabsTrigger>
-          </TabsList>
+          <div className="mb-4 flex items-center justify-between">
+            <TabsList>
+              <TabsTrigger value="plugins" className="gap-1.5">
+                <Puzzle className="size-3.5" />
+                Plugins
+              </TabsTrigger>
+              <TabsTrigger value="mcp-servers" className="gap-1.5">
+                <Server className="size-3.5" />
+                MCP Servers
+              </TabsTrigger>
+              <TabsTrigger value="api-keys" className="gap-1.5">
+                <Key className="size-3.5" />
+                API Keys
+              </TabsTrigger>
+            </TabsList>
+            {tabState.activeSubTab === 'mcp-servers' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCustomMcpDialogOpen(true)}
+                className="whitespace-nowrap"
+              >
+                <Plus className="mr-1 size-3.5" />
+                Add Custom
+              </Button>
+            )}
+          </div>
 
           <TabsContent value="plugins">
             <PluginsPanel
@@ -144,7 +172,17 @@ export const ExtensionStoreView = (): React.JSX.Element => {
               setSelectedMcpServerId={tabState.setSelectedMcpServerId}
             />
           </TabsContent>
+
+          <TabsContent value="api-keys">
+            <ApiKeysPanel />
+          </TabsContent>
         </Tabs>
+
+        {/* Custom MCP server dialog (lifted to store view level) */}
+        <CustomMcpServerDialog
+          open={customMcpDialogOpen}
+          onClose={() => setCustomMcpDialogOpen(false)}
+        />
       </div>
     </div>
   );

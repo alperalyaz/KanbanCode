@@ -154,7 +154,14 @@ import {
   MCP_REGISTRY_GET_BY_ID,
   MCP_REGISTRY_GET_INSTALLED,
   MCP_REGISTRY_INSTALL,
+  MCP_REGISTRY_INSTALL_CUSTOM,
   MCP_REGISTRY_UNINSTALL,
+  MCP_GITHUB_STARS,
+  API_KEYS_LIST,
+  API_KEYS_SAVE,
+  API_KEYS_DELETE,
+  API_KEYS_LOOKUP,
+  API_KEYS_STORAGE_STATUS,
 } from './constants/ipcChannels';
 import {
   CONFIG_ADD_CUSTOM_PROJECT_PATH,
@@ -259,9 +266,14 @@ import type {
   WslClaudeRootCandidate,
 } from '@shared/types';
 import type {
+  ApiKeyEntry,
+  ApiKeyLookupResult,
+  ApiKeySaveRequest,
+  ApiKeyStorageStatus,
   EnrichedPlugin,
   InstalledMcpEntry,
   McpCatalogItem,
+  McpCustomInstallRequest,
   McpInstallRequest,
   McpSearchResult,
   OperationResult,
@@ -1384,8 +1396,22 @@ const electronAPI: ElectronAPI = {
       invokeIpcWithResult<InstalledMcpEntry[]>(MCP_REGISTRY_GET_INSTALLED, projectPath),
     install: (request: McpInstallRequest) =>
       invokeIpcWithResult<OperationResult>(MCP_REGISTRY_INSTALL, request),
+    installCustom: (request: McpCustomInstallRequest) =>
+      invokeIpcWithResult<OperationResult>(MCP_REGISTRY_INSTALL_CUSTOM, request),
     uninstall: (name: string, scope?: string, projectPath?: string) =>
       invokeIpcWithResult<OperationResult>(MCP_REGISTRY_UNINSTALL, name, scope, projectPath),
+    githubStars: (repositoryUrls: string[]) =>
+      invokeIpcWithResult<Record<string, number>>(MCP_GITHUB_STARS, repositoryUrls),
+  },
+
+  // ===== API Keys API (Electron-only) =====
+  apiKeys: {
+    list: () => invokeIpcWithResult<ApiKeyEntry[]>(API_KEYS_LIST),
+    save: (request: ApiKeySaveRequest) => invokeIpcWithResult<ApiKeyEntry>(API_KEYS_SAVE, request),
+    delete: (id: string) => invokeIpcWithResult<void>(API_KEYS_DELETE, id),
+    lookup: (envVarNames: string[]) =>
+      invokeIpcWithResult<ApiKeyLookupResult[]>(API_KEYS_LOOKUP, envVarNames),
+    getStorageStatus: () => invokeIpcWithResult<ApiKeyStorageStatus>(API_KEYS_STORAGE_STATUS),
   },
 };
 
