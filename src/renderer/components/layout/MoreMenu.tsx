@@ -1,7 +1,7 @@
 /**
  * MoreMenu - Dropdown menu behind a "..." icon for less-frequent toolbar actions.
  *
- * Groups: Search, Export (session-only), Analyze (session-only), Settings.
+ * Groups: Search, Export (session-only), Analyze (session-only).
  * Closes on outside click or Escape.
  */
 
@@ -10,7 +10,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from '@renderer/store';
 import { triggerDownload } from '@renderer/utils/sessionExporter';
 import { formatShortcut } from '@renderer/utils/stringUtils';
-import { Activity, Braces, FileText, MoreHorizontal, Search, Settings, Type } from 'lucide-react';
+import { Activity, Braces, FileText, MoreHorizontal, Search, Type } from 'lucide-react';
 
 import type { SessionDetail } from '@renderer/types/data';
 import type { Tab } from '@renderer/types/tabs';
@@ -41,7 +41,6 @@ export const MoreMenu = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const openCommandPalette = useStore((s) => s.openCommandPalette);
-  const openSettingsTab = useStore((s) => s.openSettingsTab);
   const openSessionReport = useStore((s) => s.openSessionReport);
 
   // Close on outside click
@@ -133,19 +132,6 @@ export const MoreMenu = ({
       ]
     : [];
 
-  const bottomItems: MenuItem[] = [
-    {
-      id: 'settings',
-      label: 'Settings',
-      icon: Settings,
-      shortcut: formatShortcut(','),
-      onClick: () => {
-        openSettingsTab();
-        setIsOpen(false);
-      },
-    },
-  ];
-
   const renderItem = (item: MenuItem): React.JSX.Element => (
     <button
       key={item.id}
@@ -192,7 +178,7 @@ export const MoreMenu = ({
       {/* Dropdown menu */}
       {isOpen && (
         <div
-          className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-md border shadow-lg"
+          className="absolute right-0 top-full z-50 mt-1 w-64 overflow-hidden rounded-md border py-1 shadow-lg"
           style={{
             backgroundColor: 'var(--color-surface-overlay)',
             borderColor: 'var(--color-border)',
@@ -206,9 +192,6 @@ export const MoreMenu = ({
               {sessionItems.map(renderItem)}
             </>
           )}
-
-          {separator}
-          {bottomItems.map(renderItem)}
         </div>
       )}
     </div>

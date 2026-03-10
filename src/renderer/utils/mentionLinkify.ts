@@ -58,7 +58,7 @@ export function linkifyTeamMentionsInMarkdown(
 
   return text.replace(pattern, (_match, prefix: string, name: string) => {
     const canonical = sorted.find((n) => n.toLowerCase() === name.toLowerCase()) ?? name;
-    return `${prefix}[@${canonical}](team://${encodeURIComponent(canonical)})`;
+    return `${prefix}[${canonical}](team://${encodeURIComponent(canonical)})`;
   });
 }
 

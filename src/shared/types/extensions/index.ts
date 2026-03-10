@@ -17,6 +17,7 @@ export { inferCapabilities } from './plugin';
 
 export type {
   InstalledMcpEntry,
+  McpAuthHeaderDef,
   McpCatalogItem,
   McpCustomInstallRequest,
   McpEnvVarDef,

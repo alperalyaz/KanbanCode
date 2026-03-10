@@ -161,7 +161,7 @@ export const TabBarActions = (): React.JSX.Element => {
         <Settings className="size-4" />
       </button>
 
-      {/* More menu (Search, Export, Analyze, Settings) */}
+      {/* More menu (Search, Export, Analyze) */}
       <MoreMenu
         activeTab={activeTab}
         activeTabSessionDetail={activeTabSessionDetail}

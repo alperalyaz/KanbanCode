@@ -6,6 +6,7 @@
 import { useState } from 'react';
 
 import { Badge } from '@renderer/components/ui/badge';
+import { Button } from '@renderer/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
 import { api } from '@renderer/api';
@@ -45,6 +46,11 @@ export const McpServerCard = ({
     server.repositoryUrl ? s.mcpGitHubStars[server.repositoryUrl] : undefined
   );
   const canAutoInstall = !!server.installSpec;
+  const requiresConfiguration =
+    server.installSpec?.type === 'http' ||
+    server.envVars.length > 0 ||
+    server.requiresAuth ||
+    (server.authHeaders?.length ?? 0) > 0;
   const [imgError, setImgError] = useState(false);
   const hasIcon = !!server.iconUrl && !imgError;
 
@@ -197,7 +203,7 @@ export const McpServerCard = ({
             </Tooltip>
           )}
         </div>
-        {canAutoInstall && (
+        {canAutoInstall && !requiresConfiguration && (
           <div className="shrink-0">
             <InstallButton
               state={installProgress}
@@ -215,6 +221,20 @@ export const McpServerCard = ({
               size="sm"
               errorMessage={installError}
             />
+          </div>
+        )}
+        {canAutoInstall && requiresConfiguration && (
+          <div className="shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClick(server.id);
+              }}
+            >
+              {isInstalled ? 'Manage' : 'Configure'}
+            </Button>
           </div>
         )}
       </div>
