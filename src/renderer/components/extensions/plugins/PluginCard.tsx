@@ -29,9 +29,17 @@ export const PluginCard = ({ plugin, onClick }: PluginCardProps): React.JSX.Elem
   const installError = useStore((s) => s.installErrors[plugin.pluginId]);
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onClick(plugin.pluginId)}
-      className={`flex w-full flex-col gap-2 rounded-lg border p-4 text-left transition-all duration-200 hover:border-border-emphasis hover:bg-surface-raised hover:shadow-[0_0_12px_rgba(255,255,255,0.02)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-border-emphasis)] ${
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick(plugin.pluginId);
+        }
+      }}
+      className={`flex w-full cursor-pointer flex-col gap-2 rounded-lg border p-4 text-left transition-all duration-200 hover:border-border-emphasis hover:bg-surface-raised hover:shadow-[0_0_12px_rgba(255,255,255,0.02)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-border-emphasis)] ${
         plugin.isInstalled ? 'border-l-2 border-border border-l-emerald-500/30' : 'border-border'
       }`}
     >
@@ -75,7 +83,8 @@ export const PluginCard = ({ plugin, onClick }: PluginCardProps): React.JSX.Elem
           </span>
           <InstallCountBadge count={plugin.installCount} />
         </div>
-        <div className="shrink-0">
+        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
           <InstallButton
             state={installProgress}
             isInstalled={plugin.isInstalled}
@@ -86,6 +95,6 @@ export const PluginCard = ({ plugin, onClick }: PluginCardProps): React.JSX.Elem
           />
         </div>
       </div>
-    </button>
+    </div>
   );
 };

@@ -368,6 +368,47 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     expect(updatedInbox[0]?.messageId).toBe('m-cross-team-sent-1');
   });
 
+  it('does not relay returned cross-team replies back into the originating lead', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    seedConfig(teamName);
+    seedLeadInbox(teamName, [
+      {
+        from: 'user',
+        to: 'other-team.team-lead',
+        text: 'Original outbound request',
+        timestamp: '2026-02-23T10:00:00.000Z',
+        read: true,
+        source: 'cross_team_sent',
+        messageId: 'm-cross-team-sent-1',
+        conversationId: 'conv-1',
+      },
+      {
+        from: 'other-team.team-lead',
+        to: 'team-lead',
+        text: '[Cross-team from other-team.team-lead | conversation:conv-1 | replyToConversation:conv-1] Reply back to origin.',
+        timestamp: '2026-02-23T10:01:00.000Z',
+        read: false,
+        source: 'cross_team',
+        messageId: 'm-cross-team-reply-1',
+        conversationId: 'conv-1',
+        replyToConversationId: 'conv-1',
+      },
+    ]);
+
+    const { writeSpy } = attachAliveRun(service, teamName);
+    const relayed = await service.relayLeadInboxMessages(teamName);
+
+    expect(relayed).toBe(0);
+    expect(writeSpy).toHaveBeenCalledTimes(0);
+
+    const updatedInbox = JSON.parse(
+      hoisted.files.get(`/mock/teams/${teamName}/inboxes/team-lead.json`) ?? '[]'
+    ) as Array<{ messageId?: string; read?: boolean }>;
+    expect(updatedInbox).toHaveLength(2);
+    expect(updatedInbox[1]?.messageId).toBe('m-cross-team-reply-1');
+  });
+
   it('relays unread teammate inbox messages through the live team process', async () => {
     const service = new TeamProvisioningService();
     const teamName = 'my-team';

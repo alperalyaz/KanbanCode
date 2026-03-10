@@ -21,6 +21,7 @@ import {
 } from '@shared/constants/agentBlocks';
 import {
   CROSS_TEAM_PREFIX_TAG,
+  CROSS_TEAM_SOURCE,
   CROSS_TEAM_SENT_SOURCE,
   parseCrossTeamPrefix,
   parseCrossTeamReplyPrefix,
@@ -2740,11 +2741,39 @@ export class TeamProvisioningService {
 
       if (unread.length === 0) return 0;
 
+      const outboundCrossTeamConversations = new Set(
+        leadInboxMessages.flatMap((message) => {
+          if (message.source !== CROSS_TEAM_SENT_SOURCE) return [];
+          const conversationId = message.conversationId?.trim();
+          const targetTeam =
+            typeof message.to === 'string' ? message.to.split('.', 1)[0]?.trim() : '';
+          if (!conversationId || !targetTeam) return [];
+          return [`${conversationId}\0${targetTeam}`];
+        })
+      );
+
+      const isCrossTeamReplyToOwnOutbound = (message: InboxMessage): boolean => {
+        if (message.source !== CROSS_TEAM_SOURCE) return false;
+        const conversationId =
+          message.replyToConversationId?.trim() ??
+          message.conversationId?.trim() ??
+          parseCrossTeamPrefix(message.text)?.conversationId;
+        if (!conversationId) return false;
+        const sourceTeam = message.from.includes('.') ? message.from.split('.', 1)[0]?.trim() : '';
+        if (!sourceTeam) return false;
+        return outboundCrossTeamConversations.has(`${conversationId}\0${sourceTeam}`);
+      };
+
       // Ignore (and auto-mark read) internal coordination noise like idle/shutdown messages.
       // Also ignore local sender-copy rows for cross-team traffic: those exist only so the UI
       // can show outbound activity and must not be re-injected into the live lead as new work.
+      // Incoming replies to our own outbound cross-team conversations should also remain visible
+      // in team history without waking the local lead into a reply loop.
       const ignoredUnread = unread.filter(
-        (m) => isInboxNoiseMessage(m.text) || m.source === CROSS_TEAM_SENT_SOURCE
+        (m) =>
+          isInboxNoiseMessage(m.text) ||
+          m.source === CROSS_TEAM_SENT_SOURCE ||
+          isCrossTeamReplyToOwnOutbound(m)
       );
       if (ignoredUnread.length > 0) {
         try {
@@ -2755,7 +2784,10 @@ export class TeamProvisioningService {
       }
 
       const actionableUnread = unread.filter(
-        (m) => !isInboxNoiseMessage(m.text) && m.source !== CROSS_TEAM_SENT_SOURCE
+        (m) =>
+          !isInboxNoiseMessage(m.text) &&
+          m.source !== CROSS_TEAM_SENT_SOURCE &&
+          !isCrossTeamReplyToOwnOutbound(m)
       );
       if (actionableUnread.length === 0) return 0;
 

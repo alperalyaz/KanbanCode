@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  getCrossTeamSentTarget,
   getSystemMessageLabel,
   isQualifiedExternalRecipient,
 } from '@renderer/components/team/activity/ActivityItem';
@@ -26,6 +27,15 @@ describe('ActivityItem legacy system message fallback', () => {
     expect(isQualifiedExternalRecipient('ops.bot', 'my-team', new Set(['ops.bot']))).toBe(false);
     expect(isQualifiedExternalRecipient('team-best.user', 'my-team', new Set(['ops.bot']))).toBe(
       true
+    );
+  });
+
+  it('recognizes pseudo cross-team recipients in activity rows', () => {
+    expect(getCrossTeamSentTarget('cross-team:team-best', 'my-team', new Set(['ops.bot']))).toBe(
+      'team-best'
+    );
+    expect(getCrossTeamSentTarget('team-best.user', 'my-team', new Set(['ops.bot']))).toBe(
+      'team-best'
     );
   });
 });

@@ -58,6 +58,14 @@ function parseQualifiedRecipient(
   };
 }
 
+function parseCrossTeamPseudoRecipient(value: string | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('cross-team:')) return null;
+  const teamName = trimmed.slice('cross-team:'.length).trim();
+  return teamName.length > 0 ? teamName : null;
+}
+
 export function isQualifiedExternalRecipient(
   value: string | undefined,
   teamName: string,
@@ -67,6 +75,20 @@ export function isQualifiedExternalRecipient(
   if (!recipient) return false;
   if (recipient.teamName === teamName) return false;
   return !localMemberNames?.has(value?.trim() ?? '');
+}
+
+export function getCrossTeamSentTarget(
+  value: string | undefined,
+  teamName: string,
+  localMemberNames?: Set<string>
+): string | null {
+  const pseudoTarget = parseCrossTeamPseudoRecipient(value);
+  if (pseudoTarget) return pseudoTarget;
+  const recipient = parseQualifiedRecipient(value);
+  if (!recipient) return null;
+  if (recipient.teamName === teamName) return null;
+  if (localMemberNames?.has(value?.trim() ?? '')) return null;
+  return recipient.teamName;
 }
 
 interface ActivityItemProps {
@@ -293,11 +315,15 @@ export const ActivityItem = ({
     [message.text]
   );
   const qualifiedRecipient = useMemo(() => parseQualifiedRecipient(message.to), [message.to]);
+  const crossTeamSentTarget = useMemo(
+    () => getCrossTeamSentTarget(message.to, teamName, localMemberNames),
+    [message.to, teamName, localMemberNames]
+  );
   const isCrossTeam = message.source === CROSS_TEAM_SOURCE || parsedCrossTeamPrefix !== null;
   const isCrossTeamSent =
     message.source === CROSS_TEAM_SENT_SOURCE ||
     parsedCrossTeamReplyPrefix !== null ||
-    isQualifiedExternalRecipient(message.to, teamName, localMemberNames);
+    crossTeamSentTarget !== null;
   const isCrossTeamAny = isCrossTeam || isCrossTeamSent;
   const crossTeamOrigin = useMemo(() => {
     if (!isCrossTeam) return null;
@@ -311,12 +337,13 @@ export const ActivityItem = ({
   }, [isCrossTeam, message.from, parsedCrossTeamPrefix]);
   const crossTeamTarget = useMemo(() => {
     if (!isCrossTeamSent) return null;
+    if (crossTeamSentTarget) return crossTeamSentTarget;
     if (qualifiedRecipient) return qualifiedRecipient.teamName;
     if (!message.to) return null;
     const dot = message.to.indexOf('.');
     if (dot <= 0) return message.to;
     return message.to.substring(0, dot);
-  }, [isCrossTeamSent, message.to, qualifiedRecipient]);
+  }, [crossTeamSentTarget, isCrossTeamSent, message.to, qualifiedRecipient]);
 
   // Strip agent-only blocks + normalize escape sequences (before linkification)
   const strippedText = useMemo(() => {
@@ -533,9 +560,12 @@ export const ActivityItem = ({
               &rarr;
             </span>
             <MemberBadge
-              name={qualifiedRecipient?.memberName ?? message.to}
-              color={recipientColor}
-              hideAvatar={(qualifiedRecipient?.memberName ?? message.to) === 'user'}
+              name={qualifiedRecipient?.memberName ?? crossTeamSentTarget ?? message.to}
+              color={crossTeamSentTarget ? 'purple' : recipientColor}
+              hideAvatar={
+                crossTeamSentTarget !== null ||
+                (qualifiedRecipient?.memberName ?? message.to) === 'user'
+              }
               onClick={onMemberNameClick}
             />
           </>
