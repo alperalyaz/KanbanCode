@@ -112,6 +112,9 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     expect(prompt).toContain('PROGRESS REPORTING (MANDATORY)');
     expect(prompt).toContain('Never bulk-move many tasks at the end');
     expect(prompt).toContain('Default to working ONE task at a time');
+    expect(prompt).toContain(
+      'review_request already notifies the reviewer, so do NOT send a second manual SendMessage for the same review request'
+    );
     expect(prompt).toContain('task_start');
     expect(prompt).toContain('task_complete');
     expect(prompt).toContain('TURN ACTION MODE PROTOCOL (HIGHEST PRIORITY FOR EACH USER TURN):');
@@ -180,6 +183,9 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     expect(prompt).toContain('Do NOT start the next task until the current task is completed');
     expect(prompt).toContain('Do NOT delay this reconnect turn by reading internal config files');
     expect(prompt).toContain('Treat it as a diagnostic cross-check, not as the first reconnect action.');
+    expect(prompt).toContain(
+      'review_request already notifies the reviewer, so do NOT send a second manual SendMessage for the same review request'
+    );
     expect(prompt).toContain('task_start');
     expect(prompt).toContain(`AGENT_BLOCK_OPEN is exactly: ${AGENT_BLOCK_OPEN}`);
     expect(prompt).toContain(`AGENT_BLOCK_CLOSE is exactly: ${AGENT_BLOCK_CLOSE}`);

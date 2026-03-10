@@ -97,7 +97,7 @@ export const AnimatedHeightReveal = ({
         ...style,
       }}
     >
-      <div style={{ minHeight: 0, overflow: 'hidden' }}>{children}</div>
+      <div style={{ minHeight: 0, overflow: isExpanded ? 'visible' : 'hidden' }}>{children}</div>
     </div>
   );
 };

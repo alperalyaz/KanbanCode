@@ -16,7 +16,11 @@ const SCROLL_THRESHOLD = 300;
 /** Must match the `w-80` (320px) context panel width used in the layout below. */
 const CONTEXT_PANEL_WIDTH_PX = 320;
 
-import { formatPercentOfTotal, sumContextInjectionTokens } from '@renderer/utils/contextMath';
+import {
+  computeRemainingContext,
+  formatPercentOfTotal,
+  sumContextInjectionTokens,
+} from '@renderer/utils/contextMath';
 
 import { ChatHistoryEmptyState } from './ChatHistoryEmptyState';
 import { ChatHistoryItem } from './ChatHistoryItem';
@@ -196,6 +200,11 @@ export const ChatHistory = ({ tabId }: ChatHistoryProps): JSX.Element => {
     const visibleTokens = sumContextInjectionTokens(allContextInjections);
     return formatPercentOfTotal(visibleTokens, lastAiGroupTotalTokens);
   }, [allContextInjections, lastAiGroupTotalTokens]);
+
+  const remainingContext = useMemo(
+    () => computeRemainingContext(lastAiGroupTotalTokens),
+    [lastAiGroupTotalTokens]
+  );
 
   // State for navigation highlight (blue, used for Turn navigation from CLAUDE.md panel)
   const [isNavigationHighlight, setIsNavigationHighlight] = useState(false);
@@ -835,7 +844,23 @@ export const ChatHistory = ({ tabId }: ChatHistoryProps): JSX.Element => {
                     : 'var(--color-text-secondary)',
                 }}
               >
-                {visibleContextPercentLabel ?? `Context (${allContextInjections.length})`}
+                {visibleContextPercentLabel ? (
+                  <>
+                    {visibleContextPercentLabel}
+                    {remainingContext && remainingContext.urgency !== 'normal' && (
+                      <span
+                        style={{
+                          color: remainingContext.urgency === 'critical' ? '#ef4444' : '#f59e0b',
+                        }}
+                      >
+                        {' '}
+                        ({remainingContext.remainingPct.toFixed(0)}% left)
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  `Context (${allContextInjections.length})`
+                )}
               </button>
             </div>
           )}

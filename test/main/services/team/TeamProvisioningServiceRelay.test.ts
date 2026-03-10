@@ -421,6 +421,7 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
         read: false,
         summary: 'Comment on #abcd1234',
         messageId: 'm-alice-1',
+        source: 'system_notification',
       },
     ]);
 
@@ -432,6 +433,8 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     const payload = String(writeSpy.mock.calls[0]?.[0] ?? '');
     expect(payload).toContain('"type":"user"');
     expect(payload).toContain('recipient=\\"alice\\"');
+    expect(payload).toContain('Source: system_notification');
+    expect(payload).toContain('Forward that automated notification exactly once;');
     expect(payload).toContain('Please retry with logging enabled.');
   });
 

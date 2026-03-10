@@ -425,7 +425,7 @@ export const ActivityItem = ({
 
   return (
     <article
-      className="group rounded-md [overflow:clip]"
+      className="group rounded-md"
       style={{
         marginLeft: isUserSent ? 15 : undefined,
         backgroundColor:

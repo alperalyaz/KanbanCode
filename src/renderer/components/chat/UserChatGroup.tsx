@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown, { type Components, defaultUrlTransform } from 'react-markdown';
 
 import { api } from '@renderer/api';
@@ -13,7 +13,7 @@ import { linkifyMentionsInMarkdown } from '@renderer/utils/mentionLinkify';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { createLogger } from '@shared/utils/logger';
 import { format } from 'date-fns';
-import { User } from 'lucide-react';
+import { ChevronDown, ChevronUp, User } from 'lucide-react';
 import remarkGfm from 'remark-gfm';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -479,6 +479,12 @@ const UserChatGroupInner = ({ userGroup }: Readonly<UserChatGroupProps>): React.
   // Combined expansion state: manual toggle or auto-expand for search
   const isExpanded = isManuallyExpanded || shouldAutoExpand;
 
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const handleCollapse = useCallback(() => {
+    setIsManuallyExpanded(false);
+    anchorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, []);
+
   // Determine display text
   const baseDisplayText = isLongContent && !isExpanded ? stripped.slice(0, 500) + '...' : stripped;
 
@@ -489,7 +495,7 @@ const UserChatGroupInner = ({ userGroup }: Readonly<UserChatGroupProps>): React.
   );
 
   return (
-    <div className="flex justify-end">
+    <div ref={anchorRef} className="flex justify-end">
       <div className="max-w-[85%] space-y-2">
         {/* Header - right aligned with improved hierarchy */}
         <div className="flex items-center justify-end gap-1.5">
@@ -524,17 +530,35 @@ const UserChatGroupInner = ({ userGroup }: Readonly<UserChatGroupProps>): React.
                 {displayText}
               </ReactMarkdown>
             </div>
-            {isLongContent && (
+            {isLongContent && !isExpanded && (
               <button
-                onClick={() => setIsManuallyExpanded(!isManuallyExpanded)}
-                className="mt-2 text-xs underline hover:opacity-80"
+                onClick={() => setIsManuallyExpanded(true)}
+                className="mt-2 flex items-center gap-1 text-xs hover:opacity-80"
                 style={{ color: 'var(--color-text-muted)' }}
               >
-                {isExpanded ? 'Show less' : 'Show more'}
+                <ChevronDown size={12} />
+                Show more
               </button>
             )}
           </div>
         )}
+
+        {/* Sticky Show less — outside overflow-hidden bubble so sticky works */}
+        {stripped && isLongContent && isExpanded ? (
+          <div className="sticky bottom-0 z-10 flex justify-center pb-1 pt-2">
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-2.5 py-1 text-[11px] text-[var(--color-text-muted)] shadow-sm transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text-secondary)]"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCollapse();
+              }}
+            >
+              <ChevronUp size={12} />
+              Show less
+            </button>
+          </div>
+        ) : null}
 
         {/* Images indicator */}
         {hasImages && (

@@ -508,6 +508,7 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       ``,
       `Notification policy:`,
       `- Task assignment notifications are handled by the board runtime, so do NOT send a separate SendMessage for the same assignment unless you have extra context that is not already on the task.`,
+      `- Review requests are also handled by the board runtime: review_request already notifies the reviewer, so do NOT send a second manual SendMessage for the same review request unless you are adding materially new context that is not already on the task.`,
       ``,
       `Clarification handling (CRITICAL — MANDATORY for correct task board state):`,
       `- When a teammate needs clarification (needsClarification: "lead"), reply via task comment (preferred — auto-clears the flag and wakes the owner) or SendMessage.`,
@@ -2706,6 +2707,8 @@ export class TeamProvisioningService {
           [
             `Use the SendMessage tool with recipient="${memberName}".`,
             `Forward each inbox item below as a teammate message, preserving task IDs and critical instructions.`,
+            `If an inbox item is marked Source: system_notification, treat it as an automated runtime notification.`,
+            `Forward that automated notification exactly once; do NOT send an additional paraphrased/manual follow-up for the same assignment/review/comment in this relay turn unless you truly need extra non-redundant context.`,
             `Do NOT send any message to recipient "user" for this relay turn.`,
             `Do NOT add extra narration outside the SendMessage calls.`,
           ].join('\n')
@@ -2733,6 +2736,9 @@ export class TeamProvisioningService {
             `${idx + 1}) From: ${m.from || 'unknown'}`,
             `   Timestamp: ${m.timestamp}`,
             ...(summaryLine ? [`   ${summaryLine}`] : []),
+            ...(typeof m.source === 'string' && m.source.trim()
+              ? [`   Source: ${m.source.trim()}`]
+              : []),
             ...replyInstructions,
             `   Text:`,
             ...m.text.split('\n').map((line) => `   ${line}`),
