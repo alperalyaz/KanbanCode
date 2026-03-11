@@ -57,6 +57,7 @@ import {
   REVIEW_GET_FILE_CONTENT,
   REVIEW_GET_GIT_FILE_LOG,
   REVIEW_GET_TASK_CHANGES,
+  REVIEW_INVALIDATE_TASK_CHANGE_SUMMARIES,
   REVIEW_LOAD_DECISIONS,
   REVIEW_PREVIEW_REJECT,
   REVIEW_REJECT_FILE,
@@ -1103,7 +1104,9 @@ const electronAPI: ElectronAPI = {
         status?: string;
         intervals?: { startedAt: string; completedAt?: string }[];
         since?: string;
+        stateBucket?: 'approved' | 'review' | 'completed' | 'active';
         summaryOnly?: boolean;
+        forceFresh?: boolean;
       }
     ) => {
       return invokeIpcWithResult<TaskChangeSetV2>(
@@ -1112,6 +1115,9 @@ const electronAPI: ElectronAPI = {
         taskId,
         options
       );
+    },
+    invalidateTaskChangeSummaries: async (teamName: string, taskIds: string[]) => {
+      return invokeIpcWithResult<void>(REVIEW_INVALIDATE_TASK_CHANGE_SUMMARIES, teamName, taskIds);
     },
     getChangeStats: async (teamName: string, memberName: string) => {
       return invokeIpcWithResult<ChangeStats>(REVIEW_GET_CHANGE_STATS, teamName, memberName);
