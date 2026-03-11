@@ -37,7 +37,6 @@ import { CustomTitleBar } from './CustomTitleBar';
 import { PaneContainer } from './PaneContainer';
 import { Sidebar } from './Sidebar';
 import { DragOverlayTab } from './SortableTab';
-import { TabBarActions } from './TabBarActions';
 import { TabBarRow } from './TabBarRow';
 
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
@@ -165,32 +164,16 @@ export const TabbedLayout = (): React.JSX.Element => {
           {/* Command Palette (Cmd+K) */}
           <CommandPalette />
 
-          {/* Sidebar - Task list / Sessions (280px) */}
-          <Sidebar />
-
-          {/* Content column: floating actions bar + pane content */}
+          {/* Content area */}
           <div
             className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
             style={{ background: 'transparent' }}
           >
-            {/* Content header with action buttons — floats over pane content */}
-            <div
-              className="absolute right-0 top-0 z-10 flex items-center justify-end pr-2"
-              style={{
-                height: '36px',
-                left: 0,
-                backgroundColor: 'rgba(20, 20, 22, 0.45)',
-                backdropFilter: 'blur(12px)',
-                WebkitBackdropFilter: 'blur(12px)',
-                borderBottom: '1px solid var(--color-border)',
-              }}
-            >
-              <TabBarActions />
-            </div>
-
-            {/* Multi-pane content area — renders from top:0, behind the floating bar */}
             <PaneContainer />
           </div>
+
+          {/* Sidebar - Task list / Sessions (right side) */}
+          <Sidebar />
         </div>
 
         {/* Drag overlay - semi-transparent ghost of the dragged tab */}

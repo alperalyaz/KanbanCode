@@ -399,33 +399,38 @@ function buildTaskStatusProtocol(teamName: string): string {
    - If a board/task snapshot shows a canonical taskId, prefer using that exact value in MCP tool calls.
    - task_briefing may show short display labels like #abcd1234; MCP task tools also accept that short task ref.
    - Human-facing summaries should use the short display label like #abcd1234 for readability.
-1. Use MCP tool task_start to mark task started:
+1. If you are about to do implementation/fix work on a task yourself, make sure the owner reflects the actual implementer:
+   - If the task is unassigned or assigned to someone else, FIRST reassign it to yourself with MCP tool task_set_owner:
+     { teamName: "${teamName}", taskId: "<taskId>", owner: "<your-name>" }
+   - Do this only when you are genuinely taking over the work.
+   - Reviewing, approving, or leaving comments does NOT require changing ownership.
+2. Use MCP tool task_start to mark task started:
    { teamName: "${teamName}", taskId: "<taskId>" }
    - Start the task ONLY when you are actually beginning work on it.
    - Do NOT start multiple tasks at once unless the team lead explicitly directs parallel work.
-2. Use MCP tool task_complete BEFORE sending your final reply:
+3. Use MCP tool task_complete BEFORE sending your final reply:
    { teamName: "${teamName}", taskId: "<taskId>" }
-3. If you are asked to review and the task is accepted, move it to APPROVED (not DONE) with MCP tool review_approve:
+4. If you are asked to review and the task is accepted, move it to APPROVED (not DONE) with MCP tool review_approve:
    { teamName: "${teamName}", taskId: "<taskId>", note?: "<optional note>", notifyOwner: true }
-4. If review fails and changes are needed, use MCP tool review_request_changes:
+5. If review fails and changes are needed, use MCP tool review_request_changes:
    { teamName: "${teamName}", taskId: "<taskId>", comment: "<what to fix>" }
-5. NEVER skip status updates. A task is NOT done until completed status is written.
+6. NEVER skip status updates. A task is NOT done until completed status is written.
    - Never "bulk-complete" a batch of tasks at the end. Update status incrementally as you work.
-6. To reply to a comment on a task, use MCP tool task_add_comment:
+7. To reply to a comment on a task, use MCP tool task_add_comment:
    { teamName: "${teamName}", taskId: "<taskId>", text: "<your reply>", from: "<your-name>" }
-7. When discussing a task with a teammate and you have important findings, decisions, blockers, or progress updates — record them as a task comment:
+8. When discussing a task with a teammate and you have important findings, decisions, blockers, or progress updates — record them as a task comment:
    { teamName: "${teamName}", taskId: "<taskId>", text: "<summary of your finding or decision>", from: "<your-name>" }
    Do NOT comment on trivial coordination messages. Only comment when the information is valuable context for the task.
-8. When sending a message about a specific task, include its short display label like #<displayId> in your SendMessage summary field for traceability.
-9. In ALL human-facing or teammate-facing message text, when you mention a task reference, ALWAYS write it with a leading # (for example: #abcd1234, not abcd1234 or "task abcd1234").
-10. Review workflow clarity (IMPORTANT):
+9. When sending a message about a specific task, include its short display label like #<displayId> in your SendMessage summary field for traceability.
+10. In ALL human-facing or teammate-facing message text, when you mention a task reference, ALWAYS write it with a leading # (for example: #abcd1234, not abcd1234 or "task abcd1234").
+11. Review workflow clarity (IMPORTANT):
    - The work task (e.g. #1) is the thing that must end up APPROVED after review.
    - If you are reviewing work for task #X, run review_approve/review_request_changes on #X (the work task).
    - Do NOT approve a separate "review task" (e.g. #2 created just to ask for a review) — that will put the wrong task into APPROVED.
    - Typical flow:
      a) Owner finishes work on #X -> task_complete #X
      b) Reviewer accepts -> review_approve #X
-11. CLARIFICATION PROTOCOL (CRITICAL — MANDATORY):
+12. CLARIFICATION PROTOCOL (CRITICAL — MANDATORY):
    When you are blocked and need information to continue a task, you MUST do ALL steps below — skipping the board update or comment breaks traceability:
    a) STEP 1 — FIRST, set the clarification flag with MCP tool task_set_clarification:
       { teamName: "${teamName}", taskId: "<taskId>", value: "lead" }
@@ -437,15 +442,17 @@ function buildTaskStatusProtocol(teamName: string): string {
       If the lead replies via SendMessage instead, clear the flag yourself once you have the answer:
       { teamName: "${teamName}", taskId: "<taskId>", value: "clear" }
    e) Do NOT set clarification to "user" yourself — only the team lead escalates to the user.
-12. DEPENDENCY AWARENESS:
+13. DEPENDENCY AWARENESS:
     When your task has blockedBy dependencies, check if they are completed before starting.
     When you complete a task that blocks others, mention this in your completion message so blocked teammates can proceed.
-13. TASK QUEUE DISCIPLINE:
+14. TASK QUEUE DISCIPLINE:
     - Use task_briefing as a compact queue view of your assigned tasks.
     - task_briefing may include full description/comments only for in_progress tasks; needsFix/pending/review/completed entries may be minimal on purpose.
     - Finish existing in_progress tasks first.
     - If you need more context for an in_progress task, you MAY call task_get, but it is not mandatory when task_briefing already gives enough detail.
-    - Before starting a needsFix or pending task, call task_get for that specific task first, then run task_start only when you truly begin.
+    - Before starting a needsFix or pending task, call task_get for that specific task first.
+    - If you are the one doing the implementation/fixes and the owner is missing or someone else, run task_set_owner to yourself immediately before task_start.
+    - Then run task_start only when you truly begin.
     - If you complete fixes for a needsFix task, mark it completed and then send it back through review_request when ready for another review pass.
 Failure to follow this protocol means the task board will show incorrect status.`);
 }
@@ -485,7 +492,7 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       `IMPORTANT: The board MCP only supports these domains: task, kanban, review, message, process. There is NO "member" domain — team members are managed by spawning teammates via the Task tool, not via the board MCP.`,
       ``,
       `Task board operations — use MCP tools directly:`,
-      `- Create task: task_create { teamName: "${teamName}", subject: "...", description?: "...", owner?: "<actual-member-name>", blockedBy?: ["1","2"], related?: ["3"] }`,
+      `- Create task: task_create { teamName: "${teamName}", subject: "...", description?: "...", owner?: "<actual-member-name>", createdBy?: "<your-name>", blockedBy?: ["1","2"], related?: ["3"] }`,
       `- Assign/reassign owner: task_set_owner { teamName: "${teamName}", taskId: "<id>", owner: "<member-name>" }`,
       `- Clear owner: task_set_owner { teamName: "${teamName}", taskId: "<id>", owner: null }`,
       `- Start task (preferred over set-status): task_start { teamName: "${teamName}", taskId: "<id>" }`,
@@ -496,7 +503,7 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       `- Attach file to a specific comment:`,
       `  1) Find commentId: task_get { teamName: "${teamName}", taskId: "<id>" }`,
       `  2) Attach: task_attach_comment_file { teamName: "${teamName}", taskId: "<id>", commentId: "<commentId>", filePath: "<path>", mode?: "copy|link", filename?: "<name>", mimeType?: "<type>" }`,
-      `- Create with deps (blocked work MUST be pending): task_create { teamName: "${teamName}", subject: "...", owner: "<member>", blockedBy: ["1","2"], related?: ["3"], startImmediately: false }`,
+      `- Create with deps (blocked work MUST be pending): task_create { teamName: "${teamName}", subject: "...", owner: "<member>", createdBy: "<your-name>", blockedBy: ["1","2"], related?: ["3"], startImmediately: false }`,
       `- Link dependency: task_link { teamName: "${teamName}", taskId: "<id>", targetId: "<targetId>", relationship: "blocked-by" }`,
       `- Link related: task_link { teamName: "${teamName}", taskId: "<id>", targetId: "<targetId>", relationship: "related" }`,
       `- Unlink: task_unlink { teamName: "${teamName}", taskId: "<id>", targetId: "<targetId>", relationship: "blocked-by" }`,
@@ -517,6 +524,8 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       `Notification policy:`,
       `- Task assignment notifications are handled by the board runtime, so do NOT send a separate SendMessage for the same assignment unless you have extra context that is not already on the task.`,
       `- Review requests are also handled by the board runtime: review_request already notifies the reviewer, so do NOT send a second manual SendMessage for the same review request unless you are adding materially new context that is not already on the task.`,
+      `- Ownership must reflect the person actually doing the implementation/fix work. If someone takes over execution, update the owner immediately before they start. Do NOT leave the lead/planner as owner when another member is doing the work.`,
+      `- Set createdBy when creating tasks so workflow history shows who created the task.`,
       ``,
       `Clarification handling (CRITICAL — MANDATORY for correct task board state):`,
       `- When a teammate needs clarification (needsClarification: "lead"), reply via task comment (preferred — auto-clears the flag and wakes the owner) or SendMessage.`,
@@ -851,7 +860,7 @@ function buildLaunchPrompt(
    When you receive that follow-up message:
    - Execute tasks sequentially and keep the board + user updated:
    - Identify the next READY task (pending, not blocked by incomplete dependencies).
-   - If the task is unassigned, set yourself ("${leadName}") as owner.
+   - If the task is unassigned or assigned to someone else but you are the one about to do the work, set yourself ("${leadName}") as owner.
    - If the work you are about to do is not represented on the board yet, create/update the task first before continuing.
    - BEFORE doing any work on a task: mark it started (in_progress).
    - Immediately SendMessage "user" that you started task #<id> (what you're doing + next step).
@@ -893,7 +902,9 @@ ${actionModeProtocol}
      Then:
      - If task_briefing shows any in_progress task, resume/finish those first. Call task_get only if you need more context than task_briefing already gave you.
      - After that, prioritize tasks marked Needs fixes after review, then normal pending tasks.
-     - Before you start any needsFix or pending task, call task_get for that specific task, and only then run task_start when you truly begin.
+     - Before you start any needsFix or pending task, call task_get for that specific task.
+     - If you are the one about to do the implementation/fixes and the owner is missing or someone else, run task_set_owner to yourself immediately before task_start.
+     - Only then run task_start when you truly begin.
      - If you have no tasks, wait for new assignments.`;
       })
       .join('\n\n');

@@ -42,12 +42,12 @@ export const Sidebar = (): React.JSX.Element => {
   const [isCollapseHovered, setIsCollapseHovered] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
 
-  // Handle mouse move during resize
+  // Handle mouse move during resize (right sidebar: width = viewport - clientX)
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
       if (!isResizing) return;
 
-      const newWidth = e.clientX;
+      const newWidth = window.innerWidth - e.clientX;
       if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
         setWidth(newWidth);
       }
@@ -85,18 +85,18 @@ export const Sidebar = (): React.JSX.Element => {
   return (
     <div
       ref={sidebarRef}
-      className="relative flex shrink-0 flex-col overflow-hidden border-r"
+      className="relative flex shrink-0 flex-col overflow-hidden border-l"
       style={{
         backgroundColor: 'var(--color-surface-sidebar)',
         borderColor: 'var(--color-border)',
         width: sidebarCollapsed ? 0 : width,
         minWidth: sidebarCollapsed ? 0 : undefined,
-        borderRightWidth: sidebarCollapsed ? 0 : undefined,
+        borderLeftWidth: sidebarCollapsed ? 0 : undefined,
         transition: 'width 0.22s ease-out, border-width 0.22s ease-out',
       }}
     >
       <div
-        className="flex min-w-0 flex-1 flex-col overflow-hidden pr-2"
+        className="flex min-w-0 flex-1 flex-col overflow-hidden pl-2"
         style={{
           width: '100%',
           minWidth: sidebarCollapsed ? 0 : width,
@@ -204,7 +204,7 @@ export const Sidebar = (): React.JSX.Element => {
         <button
           type="button"
           aria-label="Resize sidebar"
-          className={`absolute right-0 top-0 h-full w-1 cursor-col-resize border-0 bg-transparent p-0 transition-colors hover:bg-blue-500/50 ${
+          className={`absolute left-0 top-0 h-full w-1 cursor-col-resize border-0 bg-transparent p-0 transition-colors hover:bg-blue-500/50 ${
             isResizing ? 'bg-blue-500/50' : ''
           }`}
           onMouseDown={handleResizeStart}

@@ -23,9 +23,11 @@ import {
 
 import { KanbanColumn } from './KanbanColumn';
 import { KanbanFilterPopover } from './KanbanFilterPopover';
+import { KanbanSortPopover } from './KanbanSortPopover';
 import { KanbanTaskCard } from './KanbanTaskCard';
 
 import type { KanbanFilterState } from './KanbanFilterPopover';
+import type { KanbanSortField, KanbanSortState } from './KanbanSortPopover';
 import type { DragEndEvent } from '@dnd-kit/core';
 import type { Session } from '@renderer/types/data';
 import type { KanbanColumnId, KanbanState, ResolvedTeamMember, TeamTask } from '@shared/types';
@@ -66,10 +68,12 @@ interface KanbanBoardProps {
   teamName: string;
   kanbanState: KanbanState;
   filter: KanbanFilterState;
+  sort: KanbanSortState;
   sessions: Session[];
   leadSessionId?: string;
   members: ResolvedTeamMember[];
   onFilterChange: (filter: KanbanFilterState) => void;
+  onSortChange: (sort: KanbanSortState) => void;
   onRequestReview: (taskId: string) => void;
   onApprove: (taskId: string) => void;
   onRequestChanges: (taskId: string) => void;
@@ -147,6 +151,47 @@ function sortColumnTasksByOrder(columnTasks: TeamTask[], order?: string[]): Team
     }
   }
   return ordered;
+}
+
+/** Сортирует задачи по выбранному полю. */
+function sortColumnTasksByField(
+  columnTasks: TeamTask[],
+  field: KanbanSortField,
+  order?: string[]
+): TeamTask[] {
+  if (field === 'manual') {
+    return sortColumnTasksByOrder(columnTasks, order);
+  }
+
+  return [...columnTasks].sort((a, b) => {
+    if (field === 'updatedAt') {
+      const tsA = a.updatedAt
+        ? new Date(a.updatedAt).getTime()
+        : a.createdAt
+          ? new Date(a.createdAt).getTime()
+          : 0;
+      const tsB = b.updatedAt
+        ? new Date(b.updatedAt).getTime()
+        : b.createdAt
+          ? new Date(b.createdAt).getTime()
+          : 0;
+      return tsB - tsA; // desc — свежие вверху
+    }
+    if (field === 'createdAt') {
+      const tsA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tsB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tsB - tsA; // desc — новые вверху
+    }
+    if (field === 'owner') {
+      const ownerA = (a.owner ?? '').toLowerCase();
+      const ownerB = (b.owner ?? '').toLowerCase();
+      if (!ownerA && !ownerB) return 0;
+      if (!ownerA) return 1; // unassigned — в конец
+      if (!ownerB) return -1;
+      return ownerA.localeCompare(ownerB);
+    }
+    return 0;
+  });
 }
 
 interface SortableKanbanTaskCardProps {
@@ -234,10 +279,12 @@ export const KanbanBoard = ({
   teamName,
   kanbanState,
   filter,
+  sort,
   sessions,
   leadSessionId,
   members,
   onFilterChange,
+  onSortChange,
   onRequestReview,
   onApprove,
   onRequestChanges,
@@ -277,10 +324,10 @@ export const KanbanBoard = ({
     for (const column of COLUMNS) {
       const columnTasks = grouped.get(column.id) ?? [];
       const order = kanbanState.columnOrder?.[column.id];
-      result.set(column.id, sortColumnTasksByOrder(columnTasks, order));
+      result.set(column.id, sortColumnTasksByField(columnTasks, sort.field, order));
     }
     return result;
-  }, [grouped, kanbanState.columnOrder]);
+  }, [grouped, kanbanState.columnOrder, sort.field]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -343,7 +390,7 @@ export const KanbanBoard = ({
         )
       );
     }
-    if (onColumnOrderChange) {
+    if (onColumnOrderChange && sort.field === 'manual') {
       const itemIds = columnTasks.map((t) => t.id);
       return (
         <>
@@ -423,13 +470,17 @@ export const KanbanBoard = ({
       <div className={cn('mb-2 flex items-center gap-2', toolbarLeft == null && 'justify-end')}>
         {toolbarLeft != null && <div className="min-w-0 flex-1">{toolbarLeft}</div>}
         <div className="flex shrink-0 items-center gap-2">
-          <KanbanFilterPopover
-            filter={filter}
-            sessions={sessions}
-            leadSessionId={leadSessionId}
-            members={members}
-            onFilterChange={onFilterChange}
-          />
+          <div className="inline-flex items-center rounded-md border border-[var(--color-border)]">
+            <KanbanFilterPopover
+              filter={filter}
+              sessions={sessions}
+              leadSessionId={leadSessionId}
+              members={members}
+              onFilterChange={onFilterChange}
+            />
+            <div className="h-4 w-px bg-[var(--color-border)]" />
+            <KanbanSortPopover sort={sort} onSortChange={onSortChange} />
+          </div>
           {deletedTaskCount != null && deletedTaskCount > 0 && onOpenTrash ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -543,7 +594,7 @@ export const KanbanBoard = ({
     </>
   );
 
-  if (onColumnOrderChange) {
+  if (onColumnOrderChange && sort.field === 'manual') {
     return (
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         {boardContent}

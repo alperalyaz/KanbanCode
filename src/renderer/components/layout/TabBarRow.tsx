@@ -13,6 +13,7 @@ import { Plus } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { TabBar } from './TabBar';
+import { TabBarActions } from './TabBarActions';
 
 export const TabBarRow = (): React.JSX.Element => {
   const { panes, focusedPaneId, openDashboard } = useStore(
@@ -67,25 +68,28 @@ export const TabBarRow = (): React.JSX.Element => {
             </div>
           </Fragment>
         ))}
+
+        {/* New tab button — right after last tab */}
+        <button
+          onClick={openDashboard}
+          onMouseEnter={() => setNewTabHover(true)}
+          onMouseLeave={() => setNewTabHover(false)}
+          className="shrink-0 self-stretch px-2 transition-colors"
+          style={
+            {
+              WebkitAppRegion: 'no-drag',
+              color: newTabHover ? 'var(--color-text)' : 'var(--color-text-muted)',
+              backgroundColor: newTabHover ? 'var(--color-surface-raised)' : 'transparent',
+            } as React.CSSProperties
+          }
+          title="New tab (Dashboard)"
+        >
+          <Plus className="size-4" />
+        </button>
       </div>
 
-      {/* New tab button — right corner */}
-      <button
-        onClick={openDashboard}
-        onMouseEnter={() => setNewTabHover(true)}
-        onMouseLeave={() => setNewTabHover(false)}
-        className="mr-2 shrink-0 rounded-md p-2 transition-colors"
-        style={
-          {
-            WebkitAppRegion: 'no-drag',
-            color: newTabHover ? 'var(--color-text)' : 'var(--color-text-muted)',
-            backgroundColor: newTabHover ? 'var(--color-surface-raised)' : 'transparent',
-          } as React.CSSProperties
-        }
-        title="New tab (Dashboard)"
-      >
-        <Plus className="size-4" />
-      </button>
+      {/* Action buttons — right side */}
+      <TabBarActions />
     </div>
   );
 };

@@ -46,7 +46,6 @@ export const PaneView = ({ paneId }: PaneViewProps): React.JSX.Element => {
       className="relative flex min-w-0 flex-col"
       style={{
         width: `${pane.widthFraction * 100}%`,
-        paddingTop: '36px',
       }}
       onMouseDown={handleMouseDown}
     >

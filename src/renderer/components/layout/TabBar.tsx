@@ -14,7 +14,7 @@ import { horizontalListSortingStrategy, SortableContext } from '@dnd-kit/sortabl
 import { isElectronMode } from '@renderer/api';
 import { useStore } from '@renderer/store';
 import { formatShortcut } from '@renderer/utils/stringUtils';
-import { PanelLeft, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { SortableTab } from './SortableTab';
@@ -38,8 +38,6 @@ export const TabBar = ({ paneId }: TabBarProps): React.JSX.Element => {
     clearTabSelection,
     fetchSessionDetail,
     fetchSessions,
-    sidebarCollapsed,
-    toggleSidebar,
     splitPane,
     togglePinSession,
     pinnedSessionIds,
@@ -59,8 +57,6 @@ export const TabBar = ({ paneId }: TabBarProps): React.JSX.Element => {
       clearTabSelection: s.clearTabSelection,
       fetchSessionDetail: s.fetchSessionDetail,
       fetchSessions: s.fetchSessions,
-      sidebarCollapsed: s.sidebarCollapsed,
-      toggleSidebar: s.toggleSidebar,
       splitPane: s.splitPane,
       togglePinSession: s.togglePinSession,
       pinnedSessionIds: s.pinnedSessionIds,
@@ -80,7 +76,6 @@ export const TabBar = ({ paneId }: TabBarProps): React.JSX.Element => {
   const tabIds = useMemo(() => openTabs.map((t) => t.id), [openTabs]);
 
   // Hover states for buttons
-  const [expandHover, setExpandHover] = useState(false);
   const [refreshHover, setRefreshHover] = useState(false);
 
   // Context menu state
@@ -253,23 +248,6 @@ export const TabBar = ({ paneId }: TabBarProps): React.JSX.Element => {
         } as React.CSSProperties
       }
     >
-      {/* Expand sidebar button - show when collapsed (only in leftmost pane) */}
-      {sidebarCollapsed && isLeftmostPane && (
-        <button
-          onClick={toggleSidebar}
-          onMouseEnter={() => setExpandHover(true)}
-          onMouseLeave={() => setExpandHover(false)}
-          className="mr-2 shrink-0 rounded-md p-1.5 transition-colors"
-          style={{
-            color: expandHover ? 'var(--color-text)' : 'var(--color-text-muted)',
-            backgroundColor: expandHover ? 'var(--color-surface-raised)' : 'transparent',
-          }}
-          title="Expand sidebar"
-        >
-          <PanelLeft className="size-4" />
-        </button>
-      )}
-
       {/* Tab list with horizontal scroll, sortable DnD, and droppable area.
           Capped at 75% so the drag spacer always has room to the right. */}
       <div

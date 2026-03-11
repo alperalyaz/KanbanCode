@@ -47,7 +47,7 @@ export const WorkflowTimeline = ({ events, memberColorMap }: WorkflowTimelinePro
                     {time}
                   </span>
                   <EventContent event={event} memberColorMap={memberColorMap} />
-                  {event.actor ? (
+                  {shouldShowTrailingActor(event) && event.actor ? (
                     <span className="ml-auto shrink-0">
                       <MemberBadge
                         name={event.actor}
@@ -86,6 +86,17 @@ const EventContent = ({
           <Plus size={10} />
           Created as
           <StatusBadge status={event.status} />
+          {event.actor ? (
+            <>
+              <span className="text-[var(--color-text-muted)]">by</span>
+              <MemberBadge
+                name={event.actor}
+                color={memberColorMap?.get(event.actor)}
+                size="sm"
+                hideAvatar
+              />
+            </>
+          ) : null}
         </span>
       );
     case 'status_changed':
@@ -172,6 +183,10 @@ function dotColor(event: TaskHistoryEvent): string {
     default:
       return 'bg-zinc-500';
   }
+}
+
+function shouldShowTrailingActor(event: TaskHistoryEvent): boolean {
+  return event.type !== 'task_created';
 }
 
 function dotColorForStatus(status: TeamTaskStatus): string {

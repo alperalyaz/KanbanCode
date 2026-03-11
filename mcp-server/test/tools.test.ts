@@ -109,9 +109,11 @@ describe('agent-teams-mcp tools', () => {
         teamName,
         subject: 'Review MCP adapter',
         owner: 'alice',
+        createdBy: 'ui-fixer',
       })
     );
     expect(createdTask.status).toBe('pending');
+    expect(createdTask.historyEvents?.[0]?.actor).toBe('ui-fixer');
 
     const listedTasks = parseJsonToolResult(
       await getTool('task_list').execute({
@@ -557,6 +559,15 @@ describe('agent-teams-mcp tools', () => {
         claudeDir: '/tmp/demo',
       }).success
     ).toBe(false);
+
+    expect(
+      getTool('task_create').parameters?.safeParse({
+        teamName: 'demo',
+        claudeDir: '/tmp/demo',
+        subject: 'Created by schema',
+        createdBy: 'ui-fixer',
+      }).success
+    ).toBe(true);
 
     expect(
       getTool('process_register').parameters?.safeParse({

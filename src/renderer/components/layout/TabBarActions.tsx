@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 
 import { isElectronMode } from '@renderer/api';
 import { useStore } from '@renderer/store';
-import { Bell, Calendar, Puzzle, Settings, Users } from 'lucide-react';
+import { Bell, Puzzle, Settings, Users, PanelRight } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { MoreMenu } from './MoreMenu';
@@ -19,32 +19,34 @@ export const TabBarActions = (): React.JSX.Element => {
     openNotificationsTab,
     openTeamsTab,
     openExtensionsTab,
-    openSchedulesTab,
     openSettingsTab,
     activeTabId,
     openTabs,
     tabSessionData,
+    sidebarCollapsed,
+    toggleSidebar,
   } = useStore(
     useShallow((s) => ({
       unreadCount: s.unreadCount,
       openNotificationsTab: s.openNotificationsTab,
       openTeamsTab: s.openTeamsTab,
       openExtensionsTab: s.openExtensionsTab,
-      openSchedulesTab: s.openSchedulesTab,
       openSettingsTab: s.openSettingsTab,
       activeTabId: s.activeTabId,
       openTabs: s.openTabs,
       tabSessionData: s.tabSessionData,
+      sidebarCollapsed: s.sidebarCollapsed,
+      toggleSidebar: s.toggleSidebar,
     }))
   );
 
   // Hover states for buttons
   const [notificationsHover, setNotificationsHover] = useState(false);
   const [teamsHover, setTeamsHover] = useState(false);
-  const [schedulesHover, setSchedulesHover] = useState(false);
   const [extensionsHover, setExtensionsHover] = useState(false);
   const [githubHover, setGithubHover] = useState(false);
   const [settingsHover, setSettingsHover] = useState(false);
+  const [expandHover, setExpandHover] = useState(false);
 
   // Derive active tab and session detail for MoreMenu
   const activeTab = useMemo(
@@ -93,21 +95,6 @@ export const TabBarActions = (): React.JSX.Element => {
         title="Teams"
       >
         <Users className="size-4" />
-      </button>
-
-      {/* Schedules icon */}
-      <button
-        onClick={openSchedulesTab}
-        onMouseEnter={() => setSchedulesHover(true)}
-        onMouseLeave={() => setSchedulesHover(false)}
-        className="rounded-md p-2 transition-colors"
-        style={{
-          color: schedulesHover ? 'var(--color-text)' : 'var(--color-text-muted)',
-          backgroundColor: schedulesHover ? 'var(--color-surface-raised)' : 'transparent',
-        }}
-        title="Schedules"
-      >
-        <Calendar className="size-4" />
       </button>
 
       {/* Extensions icon */}
@@ -161,12 +148,29 @@ export const TabBarActions = (): React.JSX.Element => {
         <Settings className="size-4" />
       </button>
 
-      {/* More menu (Search, Export, Analyze) */}
+      {/* More menu (Search, Export, Analyze, Schedules) */}
       <MoreMenu
         activeTab={activeTab}
         activeTabSessionDetail={activeTabSessionDetail}
         activeTabId={activeTabId}
       />
+
+      {/* Expand sidebar — rightmost, only when collapsed */}
+      {sidebarCollapsed && (
+        <button
+          onClick={toggleSidebar}
+          onMouseEnter={() => setExpandHover(true)}
+          onMouseLeave={() => setExpandHover(false)}
+          className="mr-1 rounded-md p-2 transition-colors"
+          style={{
+            color: expandHover ? 'var(--color-text)' : 'var(--color-text-muted)',
+            backgroundColor: expandHover ? 'var(--color-surface-raised)' : 'transparent',
+          }}
+          title="Expand sidebar"
+        >
+          <PanelRight className="size-4" />
+        </button>
+      )}
     </div>
   );
 };

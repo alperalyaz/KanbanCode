@@ -89,6 +89,7 @@ import { TeamProvisioningBanner } from './TeamProvisioningBanner';
 import { TeamSessionsSection } from './TeamSessionsSection';
 
 import type { KanbanFilterState } from './kanban/KanbanFilterPopover';
+import type { KanbanSortState } from './kanban/KanbanSortPopover';
 import type { MessagesFilterState } from './messages/MessagesFilterPopover';
 import type { ContextInjection } from '@renderer/types/contextInjection';
 import type { Session } from '@renderer/types/data';
@@ -205,6 +206,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     selectedOwners: new Set(),
     columns: new Set(),
   });
+  const [kanbanSort, setKanbanSort] = useState<KanbanSortState>({ field: 'updatedAt' });
 
   const {
     data,
@@ -513,7 +515,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
 
     const id = window.setInterval(() => {
       void fetchSessionDetail(projectId, leadSessionId, tabId, { silent: true });
-    }, 30_000);
+    }, 10_000);
     return () => window.clearInterval(id);
   }, [isThisTabActive, tabId, projectId, leadSessionId, data?.isAlive, fetchSessionDetail]);
 
@@ -956,16 +958,65 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
   return (
     <>
       <div className="flex size-full overflow-hidden">
+        {/* Context panel sidebar (left) */}
+        {isContextPanelVisible && leadSessionId && (
+          <div className="w-80 shrink-0">
+            {leadSessionLoaded ? (
+              <SessionContextPanel
+                injections={allContextInjections}
+                onClose={() => setContextPanelVisible(false)}
+                projectRoot={leadSessionDetail?.session?.projectPath ?? data.config.projectPath}
+                totalSessionTokens={lastAiGroupTotalTokens}
+                sessionMetrics={leadSessionDetail?.metrics}
+                subagentCostUsd={leadSubagentCostUsd}
+                phaseInfo={leadSessionPhaseInfo ?? undefined}
+                selectedPhase={selectedContextPhase}
+                onPhaseChange={setSelectedContextPhase}
+                side="left"
+              />
+            ) : (
+              <div
+                className="flex h-full flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]"
+                style={{ backgroundColor: 'var(--color-surface)' }}
+              >
+                <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-[var(--color-text)]">Visible Context</p>
+                    <p className="text-[10px] text-[var(--color-text-muted)]">
+                      {leadSessionLoading ? 'Loading…' : 'No session loaded'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
+                    onClick={() => setContextPanelVisible(false)}
+                    aria-label="Close panel"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="flex flex-1 items-center justify-center p-4">
+                  <p className="text-xs text-[var(--color-text-muted)]">
+                    {leadSessionLoading
+                      ? 'Loading context…'
+                      : 'Open the team lead session to view context.'}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div
           ref={contentRef}
           className="relative size-full flex-1 overflow-auto p-4"
           data-team-name={teamName}
         >
-          {/* Context button pinned to bottom-right of viewport */}
+          {/* Context button pinned to bottom-left of viewport */}
           {leadSessionId && (
             <div
               className="pointer-events-none fixed bottom-4 z-20"
-              style={{ right: isContextPanelVisible ? 'calc(20rem + 1rem)' : '1rem' }}
+              style={{ left: isContextPanelVisible ? 'calc(20rem + 1rem)' : '1rem' }}
             >
               <button
                 onClick={() => {
@@ -1303,10 +1354,12 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
               teamName={teamName}
               kanbanState={data.kanbanState}
               filter={kanbanFilter}
+              sort={kanbanSort}
               sessions={teamSessions}
               leadSessionId={data.config.leadSessionId}
               members={activeMembers}
               onFilterChange={setKanbanFilter}
+              onSortChange={setKanbanSort}
               toolbarLeft={
                 <div className="relative max-w-[240px]">
                   <Search
@@ -2026,54 +2079,6 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
             onEditorAction={handleEditorAction}
           />
         </div>
-
-        {/* Context panel sidebar */}
-        {isContextPanelVisible && leadSessionId && (
-          <div className="w-80 shrink-0">
-            {leadSessionLoaded ? (
-              <SessionContextPanel
-                injections={allContextInjections}
-                onClose={() => setContextPanelVisible(false)}
-                projectRoot={leadSessionDetail?.session?.projectPath ?? data.config.projectPath}
-                totalSessionTokens={lastAiGroupTotalTokens}
-                sessionMetrics={leadSessionDetail?.metrics}
-                subagentCostUsd={leadSubagentCostUsd}
-                phaseInfo={leadSessionPhaseInfo ?? undefined}
-                selectedPhase={selectedContextPhase}
-                onPhaseChange={setSelectedContextPhase}
-              />
-            ) : (
-              <div
-                className="flex h-full flex-col border-l border-[var(--color-border)] bg-[var(--color-surface)]"
-                style={{ backgroundColor: 'var(--color-surface)' }}
-              >
-                <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-[var(--color-text)]">Visible Context</p>
-                    <p className="text-[10px] text-[var(--color-text-muted)]">
-                      {leadSessionLoading ? 'Loading…' : 'No session loaded'}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
-                    onClick={() => setContextPanelVisible(false)}
-                    aria-label="Close panel"
-                  >
-                    ×
-                  </button>
-                </div>
-                <div className="flex flex-1 items-center justify-center p-4">
-                  <p className="text-xs text-[var(--color-text-muted)]">
-                    {leadSessionLoading
-                      ? 'Loading context…'
-                      : 'Open the team lead session to view context.'}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {editorOpen && data.config.projectPath && (

@@ -10,7 +10,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from '@renderer/store';
 import { triggerDownload } from '@renderer/utils/sessionExporter';
 import { formatShortcut } from '@renderer/utils/stringUtils';
-import { Activity, Braces, FileText, MoreHorizontal, Search, Type } from 'lucide-react';
+import { Activity, Braces, Calendar, FileText, MoreHorizontal, Search, Type } from 'lucide-react';
 
 import type { SessionDetail } from '@renderer/types/data';
 import type { Tab } from '@renderer/types/tabs';
@@ -42,6 +42,7 @@ export const MoreMenu = ({
 
   const openCommandPalette = useStore((s) => s.openCommandPalette);
   const openSessionReport = useStore((s) => s.openSessionReport);
+  const openSchedulesTab = useStore((s) => s.openSchedulesTab);
 
   // Close on outside click
   useEffect(() => {
@@ -92,6 +93,15 @@ export const MoreMenu = ({
       shortcut: formatShortcut('K'),
       onClick: () => {
         openCommandPalette();
+        setIsOpen(false);
+      },
+    },
+    {
+      id: 'schedules',
+      label: 'Schedules',
+      icon: Calendar,
+      onClick: () => {
+        openSchedulesTab();
         setIsOpen(false);
       },
     },
