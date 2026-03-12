@@ -30,9 +30,16 @@ const skillEditorTheme = EditorView.theme({
 interface SkillCodeEditorProps {
   value: string;
   onChange: (value: string) => void;
+  scrollRef?: React.RefObject<HTMLElement | null>;
+  onScroll?: () => void;
 }
 
-export const SkillCodeEditor = ({ value, onChange }: SkillCodeEditorProps): React.JSX.Element => {
+export const SkillCodeEditor = ({
+  value,
+  onChange,
+  scrollRef,
+  onScroll,
+}: SkillCodeEditorProps): React.JSX.Element => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
@@ -72,13 +79,27 @@ export const SkillCodeEditor = ({ value, onChange }: SkillCodeEditorProps): Reac
     });
 
     viewRef.current = view;
+    if (onScroll) {
+      view.scrollDOM.addEventListener('scroll', onScroll, { passive: true });
+    }
+    if (scrollRef && 'current' in scrollRef) {
+      const mutableRef = scrollRef as React.MutableRefObject<HTMLElement | null>;
+      mutableRef.current = view.scrollDOM;
+    }
 
     return () => {
+      if (onScroll) {
+        view.scrollDOM.removeEventListener('scroll', onScroll);
+      }
+      if (scrollRef && 'current' in scrollRef) {
+        const mutableRef = scrollRef as React.MutableRefObject<HTMLElement | null>;
+        mutableRef.current = null;
+      }
       view.destroy();
       viewRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- create editor once per mount
-  }, []);
+  }, [onScroll, scrollRef]);
 
   useEffect(() => {
     const view = viewRef.current;

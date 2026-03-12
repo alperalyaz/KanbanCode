@@ -68,10 +68,13 @@ export interface ExtensionsSlice {
   // ── Skills catalog cache ──
   skillsUserCatalog: SkillCatalogItem[];
   skillsProjectCatalogByProjectPath: Record<string, SkillCatalogItem[]>;
+  skillsCatalogLoadingByProjectPath: Record<string, boolean>;
+  skillsCatalogErrorByProjectPath: Record<string, string | null>;
   skillsLoading: boolean;
   skillsError: string | null;
   skillsDetailsById: Record<string, SkillDetail | null | undefined>;
   skillsDetailLoadingById: Record<string, boolean>;
+  skillsDetailErrorById: Record<string, string | null>;
   skillsMutationLoading: boolean;
   skillsMutationError: string | null;
 
@@ -123,6 +126,20 @@ export interface ExtensionsSlice {
 
 let pluginFetchInFlight: Promise<void> | null = null;
 let mcpDiagnosticsInFlight: Promise<void> | null = null;
+let skillsCatalogRequestSeq = 0;
+let skillsDetailRequestSeq = 0;
+const latestSkillsCatalogRequestByKey = new Map<string, number>();
+const latestSkillsDetailRequestById = new Map<string, number>();
+
+const USER_SKILLS_CATALOG_KEY = '__user__';
+
+function hasAnyLoading(loadingMap: Record<string, boolean>): boolean {
+  return Object.values(loadingMap).some(Boolean);
+}
+
+function getSkillsCatalogKey(projectPath?: string): string {
+  return projectPath ?? USER_SKILLS_CATALOG_KEY;
+}
 
 /** Duration to show "success" state before returning to idle */
 const SUCCESS_DISPLAY_MS = 2_000;
@@ -162,10 +179,13 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
 
   skillsUserCatalog: [],
   skillsProjectCatalogByProjectPath: {},
+  skillsCatalogLoadingByProjectPath: {},
+  skillsCatalogErrorByProjectPath: {},
   skillsLoading: false,
   skillsError: null,
   skillsDetailsById: {},
   skillsDetailLoadingById: {},
+  skillsDetailErrorById: {},
   skillsMutationLoading: false,
   skillsMutationError: null,
 
@@ -317,11 +337,44 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
   fetchSkillsCatalog: async (projectPath?: string) => {
     if (!api.skills) return;
 
-    set({ skillsLoading: true, skillsError: null });
+    const requestKey = getSkillsCatalogKey(projectPath);
+    const requestId = ++skillsCatalogRequestSeq;
+    latestSkillsCatalogRequestByKey.set(requestKey, requestId);
+
+    set((prev) => {
+      const nextLoadingByProjectPath = {
+        ...prev.skillsCatalogLoadingByProjectPath,
+        [requestKey]: true,
+      };
+      return {
+        skillsCatalogLoadingByProjectPath: nextLoadingByProjectPath,
+        skillsCatalogErrorByProjectPath: {
+          ...prev.skillsCatalogErrorByProjectPath,
+          [requestKey]: null,
+        },
+        skillsLoading: hasAnyLoading(nextLoadingByProjectPath),
+        skillsError: null,
+      };
+    });
     try {
       const skills = await api.skills.list(projectPath);
+      if (latestSkillsCatalogRequestByKey.get(requestKey) !== requestId) {
+        return;
+      }
+
       set((prev) => ({
-        skillsLoading: false,
+        skillsCatalogLoadingByProjectPath: {
+          ...prev.skillsCatalogLoadingByProjectPath,
+          [requestKey]: false,
+        },
+        skillsCatalogErrorByProjectPath: {
+          ...prev.skillsCatalogErrorByProjectPath,
+          [requestKey]: null,
+        },
+        skillsLoading: hasAnyLoading({
+          ...prev.skillsCatalogLoadingByProjectPath,
+          [requestKey]: false,
+        }),
         skillsError: null,
         skillsUserCatalog: skills.filter((skill) => skill.scope === 'user'),
         skillsProjectCatalogByProjectPath: projectPath
@@ -332,31 +385,62 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
           : prev.skillsProjectCatalogByProjectPath,
       }));
     } catch (err) {
-      set({
-        skillsLoading: false,
-        skillsError: err instanceof Error ? err.message : 'Failed to load skills',
-      });
+      if (latestSkillsCatalogRequestByKey.get(requestKey) !== requestId) {
+        return;
+      }
+
+      const message = err instanceof Error ? err.message : 'Failed to load skills';
+      set((prev) => ({
+        skillsCatalogLoadingByProjectPath: {
+          ...prev.skillsCatalogLoadingByProjectPath,
+          [requestKey]: false,
+        },
+        skillsCatalogErrorByProjectPath: {
+          ...prev.skillsCatalogErrorByProjectPath,
+          [requestKey]: message,
+        },
+        skillsLoading: hasAnyLoading({
+          ...prev.skillsCatalogLoadingByProjectPath,
+          [requestKey]: false,
+        }),
+        skillsError: message,
+      }));
     }
   },
 
   fetchSkillDetail: async (skillId: string, projectPath?: string) => {
     if (!api.skills) return;
 
+    const requestId = ++skillsDetailRequestSeq;
+    latestSkillsDetailRequestById.set(skillId, requestId);
+
     set((prev) => ({
       skillsDetailLoadingById: { ...prev.skillsDetailLoadingById, [skillId]: true },
+      skillsDetailErrorById: { ...prev.skillsDetailErrorById, [skillId]: null },
     }));
 
     try {
       const detail = await api.skills.getDetail(skillId, projectPath);
+      if (latestSkillsDetailRequestById.get(skillId) !== requestId) {
+        return;
+      }
+
       set((prev) => ({
         skillsDetailsById: { ...prev.skillsDetailsById, [skillId]: detail },
         skillsDetailLoadingById: { ...prev.skillsDetailLoadingById, [skillId]: false },
+        skillsDetailErrorById: { ...prev.skillsDetailErrorById, [skillId]: null },
       }));
-    } catch {
+    } catch (err) {
+      if (latestSkillsDetailRequestById.get(skillId) !== requestId) {
+        return;
+      }
+
+      const message = err instanceof Error ? err.message : 'Failed to load skill details';
       set((prev) => ({
-        skillsDetailsById: { ...prev.skillsDetailsById, [skillId]: null },
         skillsDetailLoadingById: { ...prev.skillsDetailLoadingById, [skillId]: false },
+        skillsDetailErrorById: { ...prev.skillsDetailErrorById, [skillId]: message },
       }));
+      throw err;
     }
   },
 

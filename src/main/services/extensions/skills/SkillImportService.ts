@@ -13,6 +13,15 @@ export interface ImportedSkillSourceFile {
   isBinary: boolean;
 }
 
+export interface SkillImportInspection {
+  files: ImportedSkillSourceFile[];
+  warnings: string[];
+  hiddenEntriesSkipped: number;
+}
+
+const MAX_IMPORT_FILE_COUNT = 200;
+const MAX_IMPORT_TOTAL_BYTES = 10 * 1024 * 1024;
+
 export class SkillImportService {
   constructor(private readonly scanner = new SkillScanner()) {}
 
@@ -36,11 +45,11 @@ export class SkillImportService {
     return normalizedSourceDir;
   }
 
-  async readSourceFiles(sourceDir: string): Promise<ImportedSkillSourceFile[]> {
-    const entries = await this.walkDirectory(sourceDir);
-    return Promise.all(
-      entries.map(async (absolutePath) => {
-        const relativePath = path.relative(sourceDir, absolutePath).replace(/\\/g, '/');
+  async inspectSourceDir(sourceDir: string): Promise<SkillImportInspection> {
+    const normalizedSourceDir = await this.validateSourceDir(sourceDir);
+    const walked = await this.walkDirectory(normalizedSourceDir);
+    const files = await Promise.all(
+      walked.files.map(async ({ absolutePath, relativePath }) => {
         const binary = await isBinaryFile(absolutePath);
         return {
           relativePath,
@@ -50,6 +59,31 @@ export class SkillImportService {
         };
       })
     );
+
+    const warnings: string[] = [];
+    if (walked.hiddenEntriesSkipped > 0) {
+      warnings.push('Hidden files and folders were skipped during import.');
+    }
+    if (files.some((file) => file.isBinary)) {
+      warnings.push('This import includes binary files. Binary files will be copied as-is.');
+    }
+    if (
+      files.some(
+        (file) => file.relativePath === 'scripts' || file.relativePath.startsWith('scripts/')
+      )
+    ) {
+      warnings.push('This import includes scripts. Review them carefully before importing.');
+    }
+
+    return {
+      files,
+      warnings,
+      hiddenEntriesSkipped: walked.hiddenEntriesSkipped,
+    };
+  }
+
+  async readSourceFiles(sourceDir: string): Promise<ImportedSkillSourceFile[]> {
+    return (await this.inspectSourceDir(sourceDir)).files;
   }
 
   async writeImportedFiles(
@@ -67,17 +101,57 @@ export class SkillImportService {
     }
   }
 
-  private async walkDirectory(rootDir: string): Promise<string[]> {
-    const dirEntries = await fs.readdir(rootDir, { withFileTypes: true });
-    const results = await Promise.all(
-      dirEntries.map(async (entry) => {
-        const fullPath = path.join(rootDir, entry.name);
-        if (entry.isDirectory()) {
-          return this.walkDirectory(fullPath);
+  private async walkDirectory(
+    rootDir: string
+  ): Promise<{
+    files: Array<{ absolutePath: string; relativePath: string }>;
+    hiddenEntriesSkipped: number;
+  }> {
+    const allFiles: Array<{ absolutePath: string; relativePath: string }> = [];
+    let hiddenEntriesSkipped = 0;
+    let totalBytes = 0;
+
+    const visit = async (currentDir: string): Promise<void> => {
+      const dirEntries = await fs.readdir(currentDir, { withFileTypes: true });
+      for (const entry of dirEntries) {
+        if (entry.name.startsWith('.')) {
+          hiddenEntriesSkipped += 1;
+          continue;
         }
-        return [fullPath];
-      })
-    );
-    return results.flat().sort((a, b) => a.localeCompare(b));
+
+        const fullPath = path.join(currentDir, entry.name);
+        if (entry.isSymbolicLink()) {
+          throw new Error('Import source cannot contain symbolic links');
+        }
+
+        if (entry.isDirectory()) {
+          await visit(fullPath);
+          continue;
+        }
+
+        const stat = await fs.stat(fullPath);
+        totalBytes += stat.size;
+        if (allFiles.length + 1 > MAX_IMPORT_FILE_COUNT) {
+          throw new Error(`Import source has too many files (max ${MAX_IMPORT_FILE_COUNT})`);
+        }
+        if (totalBytes > MAX_IMPORT_TOTAL_BYTES) {
+          throw new Error(
+            `Import source is too large (max ${Math.floor(MAX_IMPORT_TOTAL_BYTES / (1024 * 1024))} MB)`
+          );
+        }
+
+        allFiles.push({
+          absolutePath: fullPath,
+          relativePath: path.relative(rootDir, fullPath).replace(/\\/g, '/'),
+        });
+      }
+    };
+
+    await visit(rootDir);
+
+    return {
+      files: allFiles.sort((a, b) => a.relativePath.localeCompare(b.relativePath)),
+      hiddenEntriesSkipped,
+    };
   }
 }

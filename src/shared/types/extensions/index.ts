@@ -50,6 +50,7 @@ export type {
   SkillReviewAction,
   SkillReviewFileChange,
   SkillReviewPreview,
+  SkillReviewSummary,
   SkillSaveResult,
   SkillScope,
   SkillSourceType,

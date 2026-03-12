@@ -3,12 +3,19 @@ import YAML from 'yaml';
 import type { SkillDraftFile, SkillDraftTemplateInput } from '@shared/types/extensions';
 
 const SKILL_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/u;
+const SECTION_TITLES = ['When to use', 'Steps', 'Notes'] as const;
 
 export interface SkillDraftOptions {
   rawContent: string;
   includeScripts: boolean;
   includeReferences: boolean;
   includeAssets: boolean;
+}
+
+export interface SkillTemplateParseResult extends Partial<SkillDraftTemplateInput> {
+  bodyMarkdown?: string;
+  hasStructuredSections: boolean;
+  hasUnstructuredBody: boolean;
 }
 
 function trimTrailingWhitespace(value: string): string {
@@ -20,6 +27,16 @@ function trimTrailingWhitespace(value: string): string {
 }
 
 export function buildSkillTemplate(input: SkillDraftTemplateInput): string {
+  const whenToUse = normalizeSectionContent(input.whenToUse, [
+    '- Add the conditions where this skill should be selected.',
+  ]);
+  const steps = normalizeSectionContent(input.steps, [
+    '1. Describe the first step.',
+    '2. Describe the second step.',
+  ]);
+  const notes = normalizeSectionContent(input.notes, [
+    '- Add caveats, review rules, or references.',
+  ]);
   const lines = [
     '---',
     `name: ${input.name || 'New Skill'}`,
@@ -34,43 +51,78 @@ export function buildSkillTemplate(input: SkillDraftTemplateInput): string {
     input.description || 'Describe what this skill helps with.',
     '',
     '## When to use',
-    '- Add the conditions where this skill should be selected.',
+    ...whenToUse,
     '',
     '## Steps',
-    '1. Describe the first step.',
-    '2. Describe the second step.',
+    ...steps,
     '',
     '## Notes',
-    '- Add caveats, review rules, or references.',
+    ...notes,
   ];
 
   return trimTrailingWhitespace(lines.join('\n'));
 }
 
-export function readSkillTemplateInput(rawContent: string): Partial<SkillDraftTemplateInput> {
+export function readSkillTemplateContent(rawContent: string): SkillTemplateParseResult {
   const content = rawContent.replace(/^\uFEFF/u, '');
   const match = content.match(SKILL_FRONTMATTER_PATTERN);
   if (!match) {
-    return {};
+    return {
+      hasStructuredSections: false,
+      hasUnstructuredBody: content.trim().length > 0,
+      bodyMarkdown: content.trim() || undefined,
+    };
   }
 
   try {
     const parsed = YAML.parse(match[1]);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return {};
+      const bodyMarkdown = (match[2] ?? '').trim() || undefined;
+      return {
+        hasStructuredSections: false,
+        hasUnstructuredBody: Boolean(bodyMarkdown),
+        bodyMarkdown,
+      };
     }
 
     const data = parsed as Record<string, unknown>;
+    const body = match[2] ?? '';
+    const whenToUse = extractSection(body, 'When to use');
+    const steps = extractSection(body, 'Steps');
+    const notes = extractSection(body, 'Notes');
+    const bodyMarkdown = body.trim() || undefined;
+    const hasStructuredSections = Boolean(whenToUse || steps || notes);
     return {
       name: typeof data.name === 'string' ? data.name : undefined,
       description: typeof data.description === 'string' ? data.description : undefined,
       license: typeof data.license === 'string' ? data.license : undefined,
       compatibility: typeof data.compatibility === 'string' ? data.compatibility : undefined,
       invocationMode: data['disable-model-invocation'] === true ? 'manual-only' : 'auto',
+      whenToUse,
+      steps,
+      notes,
+      bodyMarkdown,
+      hasStructuredSections,
+      hasUnstructuredBody: Boolean(bodyMarkdown) && !hasStructuredSections,
     };
   } catch {
-    return {};
+    const bodyMarkdown = (match[2] ?? '').trim() || undefined;
+    return {
+      hasStructuredSections: false,
+      hasUnstructuredBody: Boolean(bodyMarkdown),
+      bodyMarkdown,
+    };
   }
+}
+
+export function readSkillTemplateInput(rawContent: string): Partial<SkillDraftTemplateInput> {
+  const {
+    bodyMarkdown: _bodyMarkdown,
+    hasStructuredSections: _hasStructuredSections,
+    hasUnstructuredBody: _hasUnstructuredBody,
+    ...input
+  } = readSkillTemplateContent(rawContent);
+  return input;
 }
 
 export function updateSkillTemplateFrontmatter(
@@ -144,4 +196,39 @@ export function buildSkillDraftFiles(options: SkillDraftOptions): SkillDraftFile
   }
 
   return files;
+}
+
+function normalizeSectionContent(value: string, fallbackLines: string[]): string[] {
+  const lines = value
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter(
+      (line, index, allLines) =>
+        line.length > 0 || allLines.some((candidate) => candidate.length > 0)
+    );
+
+  return lines.some((line) => line.trim().length > 0) ? lines : fallbackLines;
+}
+
+function extractSection(body: string, title: (typeof SECTION_TITLES)[number]): string | undefined {
+  const normalizedBody = body.replace(/\r\n/g, '\n');
+  const heading = `## ${title}\n`;
+  const startIndex = normalizedBody.indexOf(heading);
+  if (startIndex === -1) {
+    return undefined;
+  }
+
+  const bodyStartIndex = startIndex + heading.length;
+  const nextSectionIndex = SECTION_TITLES.map((sectionTitle) =>
+    sectionTitle === title ? -1 : normalizedBody.indexOf(`\n## ${sectionTitle}\n`, bodyStartIndex)
+  )
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b)[0];
+
+  const rawSection =
+    nextSectionIndex === undefined
+      ? normalizedBody.slice(bodyStartIndex)
+      : normalizedBody.slice(bodyStartIndex, nextSectionIndex);
+
+  return rawSection.trim() || undefined;
 }

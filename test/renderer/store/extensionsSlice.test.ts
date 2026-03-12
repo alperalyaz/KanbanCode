@@ -41,7 +41,12 @@ vi.mock('../../../src/renderer/api', () => ({
 
 import { api } from '../../../src/renderer/api';
 
-import type { EnrichedPlugin, McpCatalogItem } from '../../../src/shared/types/extensions';
+import type {
+  EnrichedPlugin,
+  McpCatalogItem,
+  SkillCatalogItem,
+  SkillDetail,
+} from '../../../src/shared/types/extensions';
 
 const makePlugin = (overrides: Partial<EnrichedPlugin>): EnrichedPlugin => ({
   pluginId: 'test@marketplace',
@@ -72,6 +77,42 @@ const makeMcpServer = (overrides: Partial<McpCatalogItem>): McpCatalogItem => ({
   envVars: [],
   tools: [],
   requiresAuth: false,
+  ...overrides,
+});
+
+const makeSkill = (overrides: Partial<SkillCatalogItem>): SkillCatalogItem => ({
+  id: '/tmp/skills/demo',
+  sourceType: 'filesystem',
+  name: 'Demo Skill',
+  description: 'Helps with demo work',
+  folderName: 'demo',
+  scope: 'user',
+  rootKind: 'claude',
+  projectRoot: null,
+  discoveryRoot: '/tmp/skills',
+  skillDir: '/tmp/skills/demo',
+  skillFile: '/tmp/skills/demo/SKILL.md',
+  metadata: {},
+  invocationMode: 'auto',
+  flags: {
+    hasScripts: false,
+    hasReferences: false,
+    hasAssets: false,
+  },
+  isValid: true,
+  issues: [],
+  modifiedAt: 1,
+  ...overrides,
+});
+
+const makeSkillDetail = (overrides: Partial<SkillDetail>): SkillDetail => ({
+  item: makeSkill({ id: '/tmp/skills/demo', skillDir: '/tmp/skills/demo' }),
+  body: 'body',
+  rawContent: '# Demo',
+  rawFrontmatter: null,
+  referencesFiles: [],
+  scriptFiles: [],
+  assetFiles: [],
   ...overrides,
 });
 
@@ -294,6 +335,66 @@ describe('extensionsSlice', () => {
 
       await promise;
       expect(store.getState().mcpInstallProgress['test-id']).toBe('success');
+    });
+  });
+
+  describe('skills state hardening', () => {
+    it('ignores stale catalog responses for the same project key', async () => {
+      let resolveFirst: ((value: SkillCatalogItem[]) => void) | null = null;
+      const firstPromise = new Promise<SkillCatalogItem[]>((resolve) => {
+        resolveFirst = resolve;
+      });
+      const secondResult = [
+        makeSkill({
+          id: '/tmp/project/.claude/skills/newer',
+          skillDir: '/tmp/project/.claude/skills/newer',
+          skillFile: '/tmp/project/.claude/skills/newer/SKILL.md',
+          scope: 'project',
+          projectRoot: '/tmp/project',
+          discoveryRoot: '/tmp/project/.claude/skills',
+          name: 'Newer Skill',
+        }),
+      ];
+
+      (api.skills!.list as ReturnType<typeof vi.fn>)
+        .mockImplementationOnce(() => firstPromise)
+        .mockResolvedValueOnce(secondResult);
+
+      const firstFetch = store.getState().fetchSkillsCatalog('/tmp/project');
+      const secondFetch = store.getState().fetchSkillsCatalog('/tmp/project');
+
+      await secondFetch;
+      resolveFirst?.([
+        makeSkill({
+          id: '/tmp/project/.claude/skills/older',
+          skillDir: '/tmp/project/.claude/skills/older',
+          skillFile: '/tmp/project/.claude/skills/older/SKILL.md',
+          scope: 'project',
+          projectRoot: '/tmp/project',
+          discoveryRoot: '/tmp/project/.claude/skills',
+          name: 'Older Skill',
+        }),
+      ]);
+      await firstFetch;
+
+      expect(store.getState().skillsProjectCatalogByProjectPath['/tmp/project']).toEqual(
+        secondResult
+      );
+    });
+
+    it('keeps the previous detail cache when a detail fetch fails', async () => {
+      const cachedDetail = makeSkillDetail();
+      store.setState({
+        skillsDetailsById: { [cachedDetail.item.id]: cachedDetail },
+      });
+      (api.skills!.getDetail as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('detail fail'));
+
+      await expect(
+        store.getState().fetchSkillDetail(cachedDetail.item.id, '/tmp/project')
+      ).rejects.toThrow('detail fail');
+
+      expect(store.getState().skillsDetailsById[cachedDetail.item.id]).toEqual(cachedDetail);
+      expect(store.getState().skillsDetailErrorById[cachedDetail.item.id]).toBe('detail fail');
     });
   });
 });

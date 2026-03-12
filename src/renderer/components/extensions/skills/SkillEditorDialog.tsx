@@ -8,7 +8,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@renderer/components/ui/dialog';
@@ -21,6 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@renderer/components/ui/select';
+import { Textarea } from '@renderer/components/ui/textarea';
+import { useMarkdownScrollSync } from '@renderer/hooks/useMarkdownScrollSync';
 import { useStore } from '@renderer/store';
 import { FileSearch, RotateCcw, X } from 'lucide-react';
 
@@ -29,12 +30,11 @@ import { SkillReviewDialog } from './SkillReviewDialog';
 import {
   buildSkillDraftFiles,
   buildSkillTemplate,
-  readSkillTemplateInput,
+  readSkillTemplateContent,
   updateSkillTemplateFrontmatter,
 } from './skillDraftUtils';
 
 import type {
-  SkillCatalogItem,
   SkillDetail,
   SkillInvocationMode,
   SkillReviewPreview,
@@ -60,6 +60,16 @@ function parseInitialDescription(detail: SkillDetail | null): string {
   return detail?.item.description ?? '';
 }
 
+function toSuggestedFolderName(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[^\x00-\x7F]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
 export const SkillEditorDialog = ({
   open,
   mode,
@@ -70,11 +80,10 @@ export const SkillEditorDialog = ({
   onSaved,
 }: SkillEditorDialogProps): React.JSX.Element => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const editorScrollRef = useRef<HTMLElement | null>(null);
   const rawContentRef = useRef('');
   const previewSkillUpsert = useStore((s) => s.previewSkillUpsert);
   const applySkillUpsert = useStore((s) => s.applySkillUpsert);
-  const skillsMutationLoading = useStore((s) => s.skillsMutationLoading);
-  const skillsMutationError = useStore((s) => s.skillsMutationError);
 
   const [scope, setScope] = useState<'user' | 'project'>('user');
   const [rootKind, setRootKind] = useState<'claude' | 'cursor' | 'agents'>('claude');
@@ -84,17 +93,31 @@ export const SkillEditorDialog = ({
   const [license, setLicense] = useState('');
   const [compatibility, setCompatibility] = useState('');
   const [invocationMode, setInvocationMode] = useState<SkillInvocationMode>('auto');
+  const [whenToUse, setWhenToUse] = useState('');
+  const [steps, setSteps] = useState('');
+  const [notes, setNotes] = useState('');
   const [includeScripts, setIncludeScripts] = useState(false);
   const [includeReferences, setIncludeReferences] = useState(false);
   const [includeAssets, setIncludeAssets] = useState(false);
   const [rawContent, setRawContent] = useState('');
+  const [folderNameEdited, setFolderNameEdited] = useState(false);
+  const [customMarkdownDetected, setCustomMarkdownDetected] = useState(false);
   const [manualRawEdit, setManualRawEdit] = useState(false);
+  const [showAdvancedEditor, setShowAdvancedEditor] = useState(false);
   const [splitRatio, setSplitRatio] = useState(0.52);
   const [isResizing, setIsResizing] = useState(false);
   const [reviewPreview, setReviewPreview] = useState<SkillReviewPreview | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const scrollSync = useMarkdownScrollSync(
+    showAdvancedEditor,
+    detail?.item.id ?? (mode === 'create' ? 'create-skill' : 'edit-skill'),
+    { editorScrollRef }
+  );
 
-  const applyMetadataToRawContent = useCallback(
+  const applyFormToRawContent = useCallback(
     (
       nextValues: Partial<{
         name: string;
@@ -102,6 +125,9 @@ export const SkillEditorDialog = ({
         license: string;
         compatibility: string;
         invocationMode: SkillInvocationMode;
+        whenToUse: string;
+        steps: string;
+        notes: string;
       }>
     ) => {
       const merged = {
@@ -110,17 +136,31 @@ export const SkillEditorDialog = ({
         license,
         compatibility,
         invocationMode,
+        whenToUse,
+        steps,
+        notes,
         ...nextValues,
       };
       const nextRawContent =
-        mode === 'create' && !manualRawEdit
+        !manualRawEdit && !customMarkdownDetected
           ? buildSkillTemplate(merged)
           : updateSkillTemplateFrontmatter(rawContentRef.current, merged);
 
       rawContentRef.current = nextRawContent;
       setRawContent(nextRawContent);
     },
-    [compatibility, description, invocationMode, license, manualRawEdit, mode, name]
+    [
+      compatibility,
+      description,
+      invocationMode,
+      license,
+      manualRawEdit,
+      customMarkdownDetected,
+      name,
+      notes,
+      steps,
+      whenToUse,
+    ]
   );
 
   useEffect(() => {
@@ -135,6 +175,9 @@ export const SkillEditorDialog = ({
     const nextLicense = item?.license ?? '';
     const nextCompatibility = item?.compatibility ?? '';
     const nextInvocationMode = item?.invocationMode ?? 'auto';
+    const nextWhenToUse = 'Use this skill when the task matches these conditions.';
+    const nextSteps = '1. Describe the first step.\n2. Describe the second step.';
+    const nextNotes = '- Add caveats, review rules, or references.';
     const nextRawContent =
       detail?.rawContent ??
       buildSkillTemplate({
@@ -143,12 +186,18 @@ export const SkillEditorDialog = ({
         license: nextLicense,
         compatibility: nextCompatibility,
         invocationMode: nextInvocationMode,
+        whenToUse: nextWhenToUse,
+        steps: nextSteps,
+        notes: nextNotes,
       });
-    const rawInput = readSkillTemplateInput(nextRawContent);
+    const rawInput = readSkillTemplateContent(nextRawContent);
+    const suggestedFolderName = toSuggestedFolderName(nextName || 'New Skill');
+    const hasCustomMarkdown = mode === 'edit' && rawInput.hasUnstructuredBody;
 
     setScope(nextScope);
     setRootKind(nextRootKind);
-    setFolderName(nextFolderName || nextName || '');
+    setFolderName(nextFolderName || suggestedFolderName || nextName || '');
+    setFolderNameEdited(Boolean(item?.folderName));
     setName(rawInput.name || nextName || 'New Skill');
     setDescription(
       rawInput.description || nextDescription || 'Describe what this skill helps with.'
@@ -156,14 +205,26 @@ export const SkillEditorDialog = ({
     setLicense(rawInput.license ?? nextLicense);
     setCompatibility(rawInput.compatibility ?? nextCompatibility);
     setInvocationMode(rawInput.invocationMode ?? nextInvocationMode);
+    setWhenToUse(
+      hasCustomMarkdown
+        ? (rawInput.bodyMarkdown ?? nextRawContent)
+        : (rawInput.whenToUse ?? nextWhenToUse)
+    );
+    setSteps(hasCustomMarkdown ? '' : (rawInput.steps ?? nextSteps));
+    setNotes(hasCustomMarkdown ? '' : (rawInput.notes ?? nextNotes));
     setIncludeScripts(item?.flags.hasScripts ?? false);
     setIncludeReferences(item?.flags.hasReferences ?? false);
     setIncludeAssets(item?.flags.hasAssets ?? false);
+    setCustomMarkdownDetected(hasCustomMarkdown);
     rawContentRef.current = nextRawContent;
     setRawContent(nextRawContent);
     setManualRawEdit(false);
+    setShowAdvancedEditor(hasCustomMarkdown);
     setReviewPreview(null);
     setReviewOpen(false);
+    setReviewLoading(false);
+    setSaveLoading(false);
+    setMutationError(null);
   }, [detail, mode, open, projectPath]);
 
   useEffect(() => {
@@ -207,11 +268,28 @@ export const SkillEditorDialog = ({
   );
 
   const canUseProjectScope = Boolean(projectPath);
+  const instructionsLocked = manualRawEdit || customMarkdownDetected;
   const title = mode === 'create' ? 'Create skill' : 'Edit skill';
   const descriptionText =
     mode === 'create'
-      ? 'Draft a new local skill, review the filesystem changes, then save it into a supported skill root.'
-      : 'Update the selected skill and review the resulting file changes before saving.';
+      ? 'Describe the workflow in plain language, review the files that will be created, then save it.'
+      : 'Update this skill, review the resulting file changes, then save it.';
+
+  function validateBeforeReview(): string | null {
+    if (!name.trim()) {
+      return 'Add a skill name so people know what this workflow is for.';
+    }
+    if (!description.trim()) {
+      return 'Add a short description so it is clear what this skill helps with.';
+    }
+    if (!folderName.trim()) {
+      return 'Choose a folder name for this skill.';
+    }
+    if (scope === 'project' && !projectPath) {
+      return 'Project skills need an active project.';
+    }
+    return null;
+  }
 
   const handleMouseMove = useCallback((event: MouseEvent): void => {
     const container = containerRef.current;
@@ -242,16 +320,40 @@ export const SkillEditorDialog = ({
   }, [handleMouseMove, handleMouseUp, isResizing]);
 
   async function handleReview(): Promise<void> {
-    const preview = await previewSkillUpsert(request);
-    setReviewPreview(preview);
-    setReviewOpen(true);
+    const validationError = validateBeforeReview();
+    if (validationError) {
+      setMutationError(validationError);
+      return;
+    }
+    setReviewLoading(true);
+    setMutationError(null);
+    try {
+      const preview = await previewSkillUpsert(request);
+      setReviewPreview(preview);
+      setReviewOpen(true);
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Failed to review skill changes');
+    } finally {
+      setReviewLoading(false);
+    }
   }
 
   async function handleConfirmSave(): Promise<void> {
-    const saved = await applySkillUpsert(request);
-    setReviewOpen(false);
-    onSaved(saved?.item.id ?? detail?.item.id ?? null);
-    onClose();
+    setSaveLoading(true);
+    setMutationError(null);
+    try {
+      const saved = await applySkillUpsert({
+        ...request,
+        reviewPlanId: reviewPreview?.planId,
+      });
+      setReviewOpen(false);
+      onSaved(saved?.item.id ?? detail?.item.id ?? null);
+      onClose();
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Failed to save skill');
+    } finally {
+      setSaveLoading(false);
+    }
   }
 
   return (
@@ -266,9 +368,17 @@ export const SkillEditorDialog = ({
 
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
               <div className="space-y-5">
+                <section className="space-y-1">
+                  <h3 className="text-sm font-semibold text-text">1. Basics</h3>
+                  <p className="text-sm text-text-muted">
+                    Give this skill a clear name, choose who can use it, and decide where it should
+                    live.
+                  </p>
+                </section>
+
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <div className="space-y-2">
-                    <Label htmlFor="skill-scope">Scope</Label>
+                    <Label htmlFor="skill-scope">Who can use it</Label>
                     <Select
                       value={scope}
                       onValueChange={(value) => setScope(value as 'user' | 'project')}
@@ -289,7 +399,7 @@ export const SkillEditorDialog = ({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="skill-root">Root</Label>
+                    <Label htmlFor="skill-root">Where to store it</Label>
                     <Select
                       value={rootKind}
                       onValueChange={(value) =>
@@ -313,27 +423,36 @@ export const SkillEditorDialog = ({
                     <Input
                       id="skill-folder"
                       value={folderName}
-                      onChange={(event) => setFolderName(event.target.value)}
+                      onChange={(event) => {
+                        setFolderNameEdited(true);
+                        setFolderName(event.target.value);
+                      }}
                       disabled={mode === 'edit'}
                     />
+                    {mode === 'create' && (
+                      <p className="text-xs text-text-muted">
+                        We suggest this automatically from the skill name so review works right
+                        away.
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="skill-invocation">Invocation</Label>
+                    <Label htmlFor="skill-invocation">How Claude should use it</Label>
                     <Select
                       value={invocationMode}
                       onValueChange={(value) => {
                         const nextValue = value as SkillInvocationMode;
                         setInvocationMode(nextValue);
-                        applyMetadataToRawContent({ invocationMode: nextValue });
+                        applyFormToRawContent({ invocationMode: nextValue });
                       }}
                     >
                       <SelectTrigger id="skill-invocation">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="auto">Auto</SelectItem>
-                        <SelectItem value="manual-only">Manual only</SelectItem>
+                        <SelectItem value="auto">Claude can use it automatically</SelectItem>
+                        <SelectItem value="manual-only">Only when you ask for it</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -348,7 +467,10 @@ export const SkillEditorDialog = ({
                       onChange={(event) => {
                         const nextValue = event.target.value;
                         setName(nextValue);
-                        applyMetadataToRawContent({ name: nextValue });
+                        if (mode === 'create' && !folderNameEdited) {
+                          setFolderName(toSuggestedFolderName(nextValue || 'New Skill'));
+                        }
+                        applyFormToRawContent({ name: nextValue });
                       }}
                       placeholder="Write concise skill name"
                     />
@@ -361,7 +483,7 @@ export const SkillEditorDialog = ({
                       onChange={(event) => {
                         const nextValue = event.target.value;
                         setLicense(nextValue);
-                        applyMetadataToRawContent({ license: nextValue });
+                        applyFormToRawContent({ license: nextValue });
                       }}
                       placeholder="MIT"
                     />
@@ -377,7 +499,7 @@ export const SkillEditorDialog = ({
                       onChange={(event) => {
                         const nextValue = event.target.value;
                         setDescription(nextValue);
-                        applyMetadataToRawContent({ description: nextValue });
+                        applyFormToRawContent({ description: nextValue });
                       }}
                       placeholder="What this skill helps with"
                     />
@@ -390,12 +512,89 @@ export const SkillEditorDialog = ({
                       onChange={(event) => {
                         const nextValue = event.target.value;
                         setCompatibility(nextValue);
-                        applyMetadataToRawContent({ compatibility: nextValue });
+                        applyFormToRawContent({ compatibility: nextValue });
                       }}
                       placeholder="claude-code, cursor"
                     />
                   </div>
                 </div>
+
+                {!customMarkdownDetected && (
+                  <>
+                    <section className="space-y-1">
+                      <h3 className="text-sm font-semibold text-text">2. Instructions</h3>
+                      <p className="text-sm text-text-muted">
+                        These sections generate the skill file for you, so you do not need to edit
+                        markdown unless you want to.
+                      </p>
+                    </section>
+
+                    <div className="grid gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="skill-when-to-use">When Claude should reach for this</Label>
+                        <Textarea
+                          id="skill-when-to-use"
+                          value={whenToUse}
+                          disabled={instructionsLocked}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setWhenToUse(nextValue);
+                            applyFormToRawContent({ whenToUse: nextValue });
+                          }}
+                          placeholder="Example: Use this when the task is a code review or bug triage request."
+                          className="min-h-[88px]"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="skill-steps">Main steps Claude should follow</Label>
+                        <Textarea
+                          id="skill-steps"
+                          value={steps}
+                          disabled={instructionsLocked}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setSteps(nextValue);
+                            applyFormToRawContent({ steps: nextValue });
+                          }}
+                          placeholder={
+                            '1. Inspect the relevant files.\n2. Explain the main risk first.\n3. Suggest the safest fix.'
+                          }
+                          className="min-h-[120px]"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="skill-notes">Extra notes or guardrails</Label>
+                        <Textarea
+                          id="skill-notes"
+                          value={notes}
+                          disabled={instructionsLocked}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setNotes(nextValue);
+                            applyFormToRawContent({ notes: nextValue });
+                          }}
+                          placeholder="Example: Call out missing tests, regressions, and risky assumptions."
+                          className="min-h-[88px]"
+                        />
+                        {instructionsLocked && (
+                          <p className="text-xs text-text-muted">
+                            Structured fields are locked because you switched to manual `SKILL.md`
+                            editing below.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <section className="space-y-1">
+                  <h3 className="text-sm font-semibold text-text">3. Extra files</h3>
+                  <p className="text-sm text-text-muted">
+                    Add supporting docs, scripts, or assets only if this skill really needs them.
+                  </p>
+                </section>
 
                 <div className="rounded-lg border border-border p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -423,7 +622,7 @@ export const SkillEditorDialog = ({
                       <div>
                         <p className="font-medium text-text">References</p>
                         <p className="mt-1 text-xs text-text-muted">
-                          Add `references/README.md` for docs, links, and examples.
+                          Add supporting docs, links, or examples that Claude can look at.
                         </p>
                       </div>
                     </label>
@@ -437,7 +636,8 @@ export const SkillEditorDialog = ({
                       <div>
                         <p className="font-medium text-text">Scripts</p>
                         <p className="mt-1 text-xs text-text-muted">
-                          Add `scripts/README.md` for helper commands or setup notes.
+                          Add helper commands or setup notes. Review carefully before sharing this
+                          skill.
                         </p>
                       </div>
                     </label>
@@ -451,7 +651,7 @@ export const SkillEditorDialog = ({
                       <div>
                         <p className="font-medium text-text">Assets</p>
                         <p className="mt-1 text-xs text-text-muted">
-                          Add `assets/README.md` for screenshots or bundled media.
+                          Add screenshots or bundled media only if they help explain the workflow.
                         </p>
                       </div>
                     </label>
@@ -473,74 +673,117 @@ export const SkillEditorDialog = ({
                   )}
                 </div>
 
-                {skillsMutationError && (
+                {mutationError && (
                   <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-400">
-                    {skillsMutationError}
+                    {mutationError}
                   </div>
                 )}
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="skill-raw">SKILL.md</Label>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setManualRawEdit(false);
-                        const nextRawContent = buildSkillTemplate({
-                          name,
-                          description,
-                          license,
-                          compatibility,
-                          invocationMode,
-                        });
-                        rawContentRef.current = nextRawContent;
-                        setRawContent(nextRawContent);
-                      }}
-                    >
-                      <RotateCcw className="mr-1.5 size-3.5" />
-                      Reset From Template
-                    </Button>
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-text">
+                        {customMarkdownDetected
+                          ? '2. SKILL.md editor'
+                          : '4. Advanced SKILL.md editor'}
+                      </h3>
+                      <p className="text-sm text-text-muted">
+                        {customMarkdownDetected
+                          ? 'This skill uses a custom markdown format, so edit it directly here.'
+                          : 'Most people can skip this. Open it only if you want direct control over the raw markdown file.'}
+                      </p>
+                    </div>
+                    {!customMarkdownDetected && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowAdvancedEditor((prev) => !prev)}
+                      >
+                        {showAdvancedEditor ? 'Hide Advanced Editor' : 'Show Advanced Editor'}
+                      </Button>
+                    )}
                   </div>
 
-                  <div
-                    ref={containerRef}
-                    className="flex h-[520px] min-h-0 overflow-hidden rounded-lg border border-border"
-                  >
-                    <div className="min-w-0" style={{ width: `${splitRatio * 100}%` }}>
-                      <SkillCodeEditor
-                        value={rawContent}
-                        onChange={(value) => {
-                          setManualRawEdit(true);
-                          rawContentRef.current = value;
-                          setRawContent(value);
+                  {showAdvancedEditor && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="skill-raw">SKILL.md</Label>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setManualRawEdit(false);
+                            const nextRawContent = buildSkillTemplate({
+                              name,
+                              description,
+                              license,
+                              compatibility,
+                              invocationMode,
+                              whenToUse,
+                              steps,
+                              notes,
+                            });
+                            rawContentRef.current = nextRawContent;
+                            setRawContent(nextRawContent);
+                          }}
+                        >
+                          <RotateCcw className="mr-1.5 size-3.5" />
+                          Reset From Structured Fields
+                        </Button>
+                      </div>
 
-                          const rawInput = readSkillTemplateInput(value);
-                          if (rawInput.name !== undefined) setName(rawInput.name);
-                          if (rawInput.description !== undefined)
-                            setDescription(rawInput.description);
-                          if (rawInput.license !== undefined) setLicense(rawInput.license);
-                          if (rawInput.compatibility !== undefined)
-                            setCompatibility(rawInput.compatibility);
-                          if (rawInput.invocationMode !== undefined)
-                            setInvocationMode(rawInput.invocationMode);
-                        }}
-                      />
+                      <div
+                        ref={containerRef}
+                        className="flex h-[520px] min-h-0 overflow-hidden rounded-lg border border-border"
+                      >
+                        <div className="min-w-0" style={{ width: `${splitRatio * 100}%` }}>
+                          <SkillCodeEditor
+                            value={rawContent}
+                            scrollRef={editorScrollRef}
+                            onScroll={scrollSync.handleCodeScroll}
+                            onChange={(value) => {
+                              setManualRawEdit(true);
+                              rawContentRef.current = value;
+                              setRawContent(value);
+
+                              const rawInput = readSkillTemplateContent(value);
+                              setCustomMarkdownDetected(rawInput.hasUnstructuredBody);
+                              if (rawInput.name !== undefined) setName(rawInput.name);
+                              if (rawInput.description !== undefined)
+                                setDescription(rawInput.description);
+                              if (rawInput.license !== undefined) setLicense(rawInput.license);
+                              if (rawInput.compatibility !== undefined)
+                                setCompatibility(rawInput.compatibility);
+                              if (rawInput.invocationMode !== undefined)
+                                setInvocationMode(rawInput.invocationMode);
+                              if (rawInput.whenToUse !== undefined)
+                                setWhenToUse(rawInput.whenToUse);
+                              if (rawInput.steps !== undefined) setSteps(rawInput.steps);
+                              if (rawInput.notes !== undefined) setNotes(rawInput.notes);
+                            }}
+                          />
+                        </div>
+                        <div
+                          className={`w-1 shrink-0 cursor-col-resize border-x border-border ${
+                            isResizing ? 'bg-blue-500/50' : 'hover:bg-blue-500/30'
+                          }`}
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            setIsResizing(true);
+                          }}
+                        />
+                        <div className="min-w-0 flex-1 overflow-hidden">
+                          <MarkdownPreviewPane
+                            content={rawContent}
+                            baseDir={detail?.item.skillDir}
+                            scrollRef={scrollSync.previewScrollRef}
+                            onScroll={scrollSync.handlePreviewScroll}
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div
-                      className={`w-1 shrink-0 cursor-col-resize border-x border-border ${
-                        isResizing ? 'bg-blue-500/50' : 'hover:bg-blue-500/30'
-                      }`}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        setIsResizing(true);
-                      }}
-                    />
-                    <div className="min-w-0 flex-1 overflow-hidden">
-                      <MarkdownPreviewPane content={rawContent} baseDir={detail?.item.skillDir} />
-                    </div>
-                  </div>
-                </div>
+                  )}
+                </section>
               </div>
             </div>
 
@@ -549,12 +792,15 @@ export const SkillEditorDialog = ({
                 <X className="mr-1.5 size-3.5" />
                 Cancel
               </Button>
-              <p className="min-w-[16rem] flex-1 text-sm text-text-muted">
-                Review the file changes first, then confirm save in the next step.
-              </p>
-              <Button onClick={() => void handleReview()} disabled={skillsMutationLoading}>
+              <div className="min-w-[16rem] flex-1">
+                <p className="text-sm text-text-muted">
+                  Review the file changes first, then confirm save in the next step.
+                </p>
+                {mutationError && <p className="mt-1 text-sm text-red-400">{mutationError}</p>}
+              </div>
+              <Button onClick={() => void handleReview()} disabled={reviewLoading || saveLoading}>
                 <FileSearch className="mr-1.5 size-3.5" />
-                {skillsMutationLoading
+                {reviewLoading
                   ? 'Preparing...'
                   : mode === 'create'
                     ? 'Review And Create'
@@ -568,7 +814,8 @@ export const SkillEditorDialog = ({
       <SkillReviewDialog
         open={reviewOpen}
         preview={reviewPreview}
-        loading={skillsMutationLoading}
+        loading={saveLoading}
+        error={mutationError}
         onClose={() => setReviewOpen(false)}
         onConfirm={() => void handleConfirmSave()}
         confirmLabel={mode === 'create' ? 'Create Skill' : 'Save Skill'}

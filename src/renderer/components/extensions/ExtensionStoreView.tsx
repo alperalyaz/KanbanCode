@@ -11,7 +11,7 @@ import { Button } from '@renderer/components/ui/button';
 import { useTabIdOptional } from '@renderer/contexts/useTabUIContext';
 import { useExtensionsTabState } from '@renderer/hooks/useExtensionsTabState';
 import { useStore } from '@renderer/store';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs';
+import { Tabs, TabsContent, TabsList } from '@renderer/components/ui/tabs';
 import {
   Tooltip,
   TooltipContent,
@@ -21,6 +21,7 @@ import {
 import { AlertTriangle, BookOpen, Info, Key, Plus, Puzzle, RefreshCw, Server } from 'lucide-react';
 
 import { ApiKeysPanel } from './apikeys/ApiKeysPanel';
+import { ExtensionsSubTabTrigger } from './ExtensionsSubTabTrigger';
 import { CustomMcpServerDialog } from './mcp/CustomMcpServerDialog';
 import { McpServersPanel } from './mcp/McpServersPanel';
 import { PluginsPanel } from './plugins/PluginsPanel';
@@ -56,6 +57,39 @@ export const ExtensionStoreView = (): React.JSX.Element => {
   const projectLabel = useMemo(
     () => projects.find((project) => project.id === extensionsTabProjectId)?.name ?? null,
     [extensionsTabProjectId, projects]
+  );
+  const subTabs = useMemo(
+    () => [
+      {
+        value: 'plugins' as const,
+        label: 'Plugins',
+        icon: Puzzle,
+        description:
+          'Small add-ons for Claude. They give the app extra features and integrations you can install when you need them.',
+      },
+      {
+        value: 'mcp-servers' as const,
+        label: 'MCP Servers',
+        icon: Server,
+        description:
+          'Connections to outside tools and apps. They let Claude read data or do actions beyond this app.',
+      },
+      {
+        value: 'skills' as const,
+        label: 'Skills',
+        icon: BookOpen,
+        description:
+          'Ready-made instructions for common jobs. They help Claude do specific tasks better and more consistently.',
+      },
+      {
+        value: 'api-keys' as const,
+        label: 'API Keys',
+        icon: Key,
+        description:
+          'Secret keys for online services. Add them here so plugins, servers, and integrations can connect and work.',
+      },
+    ],
+    []
   );
 
   // Fetch plugin catalog on mount
@@ -102,15 +136,15 @@ export const ExtensionStoreView = (): React.JSX.Element => {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Puzzle className="size-5 text-text-muted" />
-            <h1 className="text-lg font-semibold text-text">Extensions</h1>
-          </div>
-          <TooltipProvider>
+    <TooltipProvider>
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex-1 overflow-y-auto">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4">
+            <div className="flex items-center gap-3">
+              <Puzzle className="size-5 text-text-muted" />
+              <h1 className="text-lg font-semibold text-text">Extensions</h1>
+            </div>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isRefreshing}>
@@ -119,116 +153,109 @@ export const ExtensionStoreView = (): React.JSX.Element => {
               </TooltipTrigger>
               <TooltipContent>Refresh catalog</TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-        </div>
+          </div>
 
-        {/* Sub-tabs */}
-        <div className="px-6 py-4">
-          {/* CLI not installed warning */}
-          {!cliInstalled && (
-            <div className="mb-4 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-400">
-              <AlertTriangle className="size-4 shrink-0" />
-              Claude CLI is required to install or uninstall extensions. Install it from Settings.
-            </div>
-          )}
-          {/* Active sessions warning */}
-          {hasOngoingSessions && (
-            <div className="mb-4 flex items-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/5 px-4 py-3 text-sm text-blue-400">
-              <Info className="size-4 shrink-0" />
-              Running sessions won&apos;t pick up extension changes until restarted.
-            </div>
-          )}
-          <Tabs
-            value={tabState.activeSubTab}
-            onValueChange={(v) =>
-              tabState.setActiveSubTab(v as 'plugins' | 'mcp-servers' | 'skills' | 'api-keys')
-            }
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <TabsList>
-                <TabsTrigger value="plugins" className="gap-1.5">
-                  <Puzzle className="size-3.5" />
-                  Plugins
-                </TabsTrigger>
-                <TabsTrigger value="mcp-servers" className="gap-1.5">
-                  <Server className="size-3.5" />
-                  MCP Servers
-                </TabsTrigger>
-                <TabsTrigger value="skills" className="gap-1.5">
-                  <BookOpen className="size-3.5" />
-                  Skills
-                </TabsTrigger>
-                <TabsTrigger value="api-keys" className="gap-1.5">
-                  <Key className="size-3.5" />
-                  API Keys
-                </TabsTrigger>
-              </TabsList>
-              {tabState.activeSubTab === 'mcp-servers' && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCustomMcpDialogOpen(true)}
-                  className="whitespace-nowrap"
-                >
-                  <Plus className="mr-1 size-3.5" />
-                  Add Custom
-                </Button>
-              )}
-            </div>
+          {/* Sub-tabs */}
+          <div className="px-6 py-4">
+            {/* CLI not installed warning */}
+            {!cliInstalled && (
+              <div className="mb-4 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-400">
+                <AlertTriangle className="size-4 shrink-0" />
+                Claude CLI is required to install or uninstall extensions. Install it from Settings.
+              </div>
+            )}
+            {/* Active sessions warning */}
+            {hasOngoingSessions && (
+              <div className="mb-4 flex items-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/5 px-4 py-3 text-sm text-blue-400">
+                <Info className="size-4 shrink-0" />
+                Running sessions won&apos;t pick up extension changes until restarted.
+              </div>
+            )}
+            <Tabs
+              value={tabState.activeSubTab}
+              onValueChange={(v) =>
+                tabState.setActiveSubTab(v as 'plugins' | 'mcp-servers' | 'skills' | 'api-keys')
+              }
+            >
+              <div className="-mx-6 flex items-end justify-between border-b border-border px-6">
+                <TabsList className="gap-1 rounded-b-none">
+                  {subTabs.map((subTab) => (
+                    <ExtensionsSubTabTrigger
+                      key={subTab.value}
+                      value={subTab.value}
+                      label={subTab.label}
+                      icon={subTab.icon}
+                      description={subTab.description}
+                    />
+                  ))}
+                </TabsList>
+                {tabState.activeSubTab === 'mcp-servers' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCustomMcpDialogOpen(true)}
+                    className="whitespace-nowrap"
+                  >
+                    <Plus className="mr-1 size-3.5" />
+                    Add Custom
+                  </Button>
+                )}
+              </div>
 
-            <TabsContent value="plugins">
-              <PluginsPanel
-                pluginFilters={tabState.pluginFilters}
-                pluginSort={tabState.pluginSort}
-                selectedPluginId={tabState.selectedPluginId}
-                updatePluginSearch={tabState.updatePluginSearch}
-                toggleCategory={tabState.toggleCategory}
-                toggleCapability={tabState.toggleCapability}
-                toggleInstalledOnly={tabState.toggleInstalledOnly}
-                setSelectedPluginId={tabState.setSelectedPluginId}
-                clearFilters={tabState.clearFilters}
-                hasActiveFilters={tabState.hasActiveFilters}
-                setPluginSort={tabState.setPluginSort}
-              />
-            </TabsContent>
+              <TabsContent value="plugins" className="mt-0 pt-4">
+                <PluginsPanel
+                  pluginFilters={tabState.pluginFilters}
+                  pluginSort={tabState.pluginSort}
+                  selectedPluginId={tabState.selectedPluginId}
+                  updatePluginSearch={tabState.updatePluginSearch}
+                  toggleCategory={tabState.toggleCategory}
+                  toggleCapability={tabState.toggleCapability}
+                  toggleInstalledOnly={tabState.toggleInstalledOnly}
+                  setSelectedPluginId={tabState.setSelectedPluginId}
+                  clearFilters={tabState.clearFilters}
+                  hasActiveFilters={tabState.hasActiveFilters}
+                  setPluginSort={tabState.setPluginSort}
+                />
+              </TabsContent>
 
-            <TabsContent value="mcp-servers">
-              <McpServersPanel
-                mcpSearchQuery={tabState.mcpSearchQuery}
-                mcpSearch={tabState.mcpSearch}
-                mcpSearchResults={tabState.mcpSearchResults}
-                mcpSearchLoading={tabState.mcpSearchLoading}
-                mcpSearchWarnings={tabState.mcpSearchWarnings}
-                selectedMcpServerId={tabState.selectedMcpServerId}
-                setSelectedMcpServerId={tabState.setSelectedMcpServerId}
-              />
-            </TabsContent>
+              <TabsContent value="mcp-servers" className="mt-0 pt-4">
+                <McpServersPanel
+                  mcpSearchQuery={tabState.mcpSearchQuery}
+                  mcpSearch={tabState.mcpSearch}
+                  mcpSearchResults={tabState.mcpSearchResults}
+                  mcpSearchLoading={tabState.mcpSearchLoading}
+                  mcpSearchWarnings={tabState.mcpSearchWarnings}
+                  selectedMcpServerId={tabState.selectedMcpServerId}
+                  setSelectedMcpServerId={tabState.setSelectedMcpServerId}
+                />
+              </TabsContent>
 
-            <TabsContent value="api-keys">
-              <ApiKeysPanel />
-            </TabsContent>
+              <TabsContent value="api-keys" className="mt-0 pt-4">
+                <ApiKeysPanel />
+              </TabsContent>
 
-            <TabsContent value="skills">
-              <SkillsPanel
-                projectPath={projectPath}
-                projectLabel={projectLabel}
-                skillsSearchQuery={tabState.skillsSearchQuery}
-                setSkillsSearchQuery={tabState.setSkillsSearchQuery}
-                skillsSort={tabState.skillsSort}
-                setSkillsSort={tabState.setSkillsSort}
-                selectedSkillId={tabState.selectedSkillId}
-                setSelectedSkillId={tabState.setSelectedSkillId}
-              />
-            </TabsContent>
-          </Tabs>
+              <TabsContent value="skills" className="mt-0 pt-4">
+                <SkillsPanel
+                  projectPath={projectPath}
+                  projectLabel={projectLabel}
+                  skillsSearchQuery={tabState.skillsSearchQuery}
+                  setSkillsSearchQuery={tabState.setSkillsSearchQuery}
+                  skillsSort={tabState.skillsSort}
+                  setSkillsSort={tabState.setSkillsSort}
+                  selectedSkillId={tabState.selectedSkillId}
+                  setSelectedSkillId={tabState.setSelectedSkillId}
+                />
+              </TabsContent>
+            </Tabs>
 
-          {/* Custom MCP server dialog (lifted to store view level) */}
-          <CustomMcpServerDialog
-            open={customMcpDialogOpen}
-            onClose={() => setCustomMcpDialogOpen(false)}
-          />
+            {/* Custom MCP server dialog (lifted to store view level) */}
+            <CustomMcpServerDialog
+              open={customMcpDialogOpen}
+              onClose={() => setCustomMcpDialogOpen(false)}
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 };

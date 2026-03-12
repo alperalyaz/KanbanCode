@@ -85,9 +85,12 @@ export interface SkillDraftTemplateInput {
   invocationMode: SkillInvocationMode;
   license: string;
   compatibility: string;
+  whenToUse: string;
+  steps: string;
+  notes: string;
 }
 
-export type SkillReviewAction = 'create' | 'update';
+export type SkillReviewAction = 'create' | 'update' | 'delete';
 
 export interface SkillReviewFileChange {
   relativePath: string;
@@ -98,10 +101,19 @@ export interface SkillReviewFileChange {
   isBinary: boolean;
 }
 
+export interface SkillReviewSummary {
+  created: number;
+  updated: number;
+  deleted: number;
+  binary: number;
+}
+
 export interface SkillReviewPreview {
+  planId: string;
   targetSkillDir: string;
   changes: SkillReviewFileChange[];
   warnings: string[];
+  summary: SkillReviewSummary;
 }
 
 export interface SkillUpsertRequest {
@@ -111,6 +123,7 @@ export interface SkillUpsertRequest {
   folderName: string;
   existingSkillId?: string;
   files: SkillDraftFile[];
+  reviewPlanId?: string;
 }
 
 export interface SkillImportRequest {
@@ -119,6 +132,7 @@ export interface SkillImportRequest {
   rootKind: SkillRootKind;
   projectPath?: string;
   folderName?: string;
+  reviewPlanId?: string;
 }
 
 export interface SkillDeleteRequest {

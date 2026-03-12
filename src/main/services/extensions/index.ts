@@ -21,6 +21,7 @@ export { SkillValidator } from './skills/SkillValidator';
 export { SkillsCatalogService } from './skills/SkillsCatalogService';
 export { SkillScaffoldService } from './skills/SkillScaffoldService';
 export { SkillImportService } from './skills/SkillImportService';
+export { SkillPlanService } from './skills/SkillPlanService';
 export { SkillReviewService } from './skills/SkillReviewService';
 export { SkillsMutationService } from './skills/SkillsMutationService';
 export { SkillsWatcherService } from './skills/SkillsWatcherService';

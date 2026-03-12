@@ -17,20 +17,24 @@ interface SkillReviewDialogProps {
   open: boolean;
   preview: SkillReviewPreview | null;
   loading?: boolean;
+  error?: string | null;
   onClose: () => void;
   onConfirm: () => void;
   confirmLabel: string;
   reviewLabel: string;
+  backLabel?: string;
 }
 
 export const SkillReviewDialog = ({
   open,
   preview,
   loading = false,
+  error = null,
   onClose,
   onConfirm,
   confirmLabel,
   reviewLabel,
+  backLabel = 'Back To Editor',
 }: SkillReviewDialogProps): React.JSX.Element => {
   const hasChanges = Boolean(preview && preview.changes.length > 0);
 
@@ -54,6 +58,18 @@ export const SkillReviewDialog = ({
                 <div className="bg-surface-raised/10 rounded-lg border border-border p-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="secondary">{preview.changes.length} file changes</Badge>
+                    {preview.summary.created > 0 && (
+                      <Badge variant="secondary">{preview.summary.created} new</Badge>
+                    )}
+                    {preview.summary.updated > 0 && (
+                      <Badge variant="outline">{preview.summary.updated} updated</Badge>
+                    )}
+                    {preview.summary.deleted > 0 && (
+                      <Badge variant="destructive">{preview.summary.deleted} removed</Badge>
+                    )}
+                    {preview.summary.binary > 0 && (
+                      <Badge variant="destructive">{preview.summary.binary} binary</Badge>
+                    )}
                   </div>
                   <div className="mt-3 break-all rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs text-text-muted">
                     {preview.targetSkillDir}
@@ -70,6 +86,12 @@ export const SkillReviewDialog = ({
                     {preview.warnings.map((warning, index) => (
                       <p key={`${warning}-${index}`}>{warning}</p>
                     ))}
+                  </div>
+                )}
+
+                {error && (
+                  <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-400">
+                    {error}
                   </div>
                 )}
 
@@ -117,7 +139,7 @@ export const SkillReviewDialog = ({
           <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t border-border bg-surface px-6 py-4 shadow-[0_-8px_24px_rgba(0,0,0,0.08)]">
             <Button variant="outline" onClick={onClose}>
               <ChevronLeft className="mr-1.5 size-3.5" />
-              Back To Editor
+              {backLabel}
             </Button>
             <Button onClick={onConfirm} disabled={loading || !preview || !hasChanges}>
               {loading ? (

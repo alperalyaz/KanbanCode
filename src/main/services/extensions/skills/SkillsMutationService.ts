@@ -13,7 +13,7 @@ import { shell } from 'electron';
 import { isPathWithinRoot, validateFileName } from '@main/utils/pathValidation';
 
 import { SkillImportService } from './SkillImportService';
-import { SkillReviewService } from './SkillReviewService';
+import { SkillPlanService } from './SkillPlanService';
 import { SkillScaffoldService } from './SkillScaffoldService';
 import { SkillRootsResolver } from './SkillRootsResolver';
 import { SkillsCatalogService } from './SkillsCatalogService';
@@ -24,7 +24,7 @@ export class SkillsMutationService {
     private readonly catalogService = new SkillsCatalogService(),
     private readonly scaffoldService = new SkillScaffoldService(rootsResolver),
     private readonly importService = new SkillImportService(),
-    private readonly reviewService = new SkillReviewService()
+    private readonly planService = new SkillPlanService()
   ) {}
 
   async previewUpsert(request: SkillUpsertRequest): Promise<SkillReviewPreview> {
@@ -36,15 +36,15 @@ export class SkillsMutationService {
       request.existingSkillId
     );
     const files = this.scaffoldService.normalizeDraftFiles(request.files);
-    const changes = await this.reviewService.buildTextChanges(targetSkillDir, files);
-    return {
-      targetSkillDir,
-      changes,
-      warnings: [],
-    };
+    const plan = await this.planService.buildUpsertPlan(targetSkillDir, files);
+    return plan.preview;
   }
 
   async applyUpsert(request: SkillUpsertRequest): Promise<SkillDetail | null> {
+    if (!request.reviewPlanId) {
+      throw new Error('Review the skill changes before saving.');
+    }
+
     const targetSkillDir = await this.scaffoldService.resolveUpsertTarget(
       request.scope,
       request.rootKind,
@@ -53,30 +53,33 @@ export class SkillsMutationService {
       request.existingSkillId
     );
     const files = this.scaffoldService.normalizeDraftFiles(request.files);
-    await this.scaffoldService.writeTextFiles(targetSkillDir, files);
+    const plan = await this.planService.buildUpsertPlan(targetSkillDir, files);
+    this.assertReviewedPlanMatches(request.reviewPlanId, plan.preview.planId);
+    await this.planService.applyPlan(plan);
 
     return this.catalogService.getDetail(targetSkillDir, request.projectPath);
   }
 
   async previewImport(request: SkillImportRequest): Promise<SkillReviewPreview> {
     const { sourceDir, targetSkillDir } = await this.resolveImportTarget(request);
-    const sourceFiles = await this.importService.readSourceFiles(sourceDir);
-    const changes = await this.reviewService.buildImportChanges(targetSkillDir, sourceFiles);
-    const warnings = changes.some((change) => change.isBinary)
-      ? ['This import includes binary files. Binary files will be copied as-is.']
-      : [];
-
+    const inspection = await this.importService.inspectSourceDir(sourceDir);
+    const plan = await this.planService.buildImportPlan(targetSkillDir, inspection.files);
     return {
-      targetSkillDir,
-      changes,
-      warnings,
+      ...plan.preview,
+      warnings: [...new Set([...inspection.warnings, ...plan.preview.warnings])],
     };
   }
 
   async applyImport(request: SkillImportRequest): Promise<SkillDetail | null> {
+    if (!request.reviewPlanId) {
+      throw new Error('Review the import changes before saving.');
+    }
+
     const { sourceDir, targetSkillDir } = await this.resolveImportTarget(request);
-    const sourceFiles = await this.importService.readSourceFiles(sourceDir);
-    await this.importService.writeImportedFiles(targetSkillDir, sourceFiles);
+    const inspection = await this.importService.inspectSourceDir(sourceDir);
+    const plan = await this.planService.buildImportPlan(targetSkillDir, inspection.files);
+    this.assertReviewedPlanMatches(request.reviewPlanId, plan.preview.planId);
+    await this.planService.applyPlan(plan);
 
     return this.catalogService.getDetail(targetSkillDir, request.projectPath);
   }
@@ -132,5 +135,13 @@ export class SkillsMutationService {
       throw new Error('Skill is outside the allowed roots');
     }
     return normalizedSkillDir;
+  }
+
+  private assertReviewedPlanMatches(reviewPlanId: string, currentPlanId: string): void {
+    if (reviewPlanId !== currentPlanId) {
+      throw new Error(
+        'The skill files changed after review. Review the latest changes and try again.'
+      );
+    }
   }
 }

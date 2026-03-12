@@ -44,10 +44,10 @@ export const PluginCard = ({ plugin, index, onClick }: PluginCardProps): React.J
           onClick(plugin.pluginId);
         }
       }}
-      className={`hover:bg-surface-raised/45 relative flex w-full cursor-pointer flex-col gap-3 rounded-xl border p-4 text-left transition-all duration-200 hover:border-border-emphasis hover:shadow-[0_0_12px_rgba(255,255,255,0.02)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-border-emphasis)] ${
-        baseStriped ? 'bg-surface-raised/10' : 'bg-transparent'
-      } ${smStriped ? 'sm:bg-surface-raised/10' : 'sm:bg-transparent'} ${
-        xlStriped ? 'xl:bg-surface-raised/10' : 'xl:bg-transparent'
+      className={`relative flex w-full cursor-pointer flex-col gap-3 rounded-xl border p-4 text-left transition-all duration-200 hover:border-border-emphasis hover:bg-white/[0.06] hover:shadow-[0_0_12px_rgba(255,255,255,0.02)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-border-emphasis)] ${
+        baseStriped ? 'bg-white/[0.045]' : 'bg-white/[0.015]'
+      } ${smStriped ? 'sm:bg-white/[0.045]' : 'sm:bg-white/[0.015]'} ${
+        xlStriped ? 'xl:bg-white/[0.045]' : 'xl:bg-white/[0.015]'
       } ${
         plugin.isInstalled ? 'border-l-2 border-border border-l-emerald-500/35' : 'border-border'
       }`}
