@@ -23,7 +23,6 @@ import type {
   FileChangeSummary,
   FileEditEvent,
   FileEditTimeline,
-  MemberLogSummary,
   SnippetDiff,
   TaskChangeScope,
   TaskChangeSetV2,
@@ -277,8 +276,11 @@ export class ChangeExtractorService {
     includeDetails: boolean
   ): Promise<TaskChangeSetV2> {
     const taskMeta = await this.readTaskMeta(teamName, taskId);
-    const logs = await this.logsFinder.findLogsForTask(teamName, taskId, effectiveOptions);
-    const logRefs = await this.resolveLogFileRefs(teamName, logs);
+    const logRefs = await this.logsFinder.findLogFileRefsForTask(
+      teamName,
+      taskId,
+      effectiveOptions
+    );
     if (logRefs.length === 0) {
       return this.emptyTaskChangeSet(teamName, taskId);
     }
@@ -883,47 +885,6 @@ export class ChangeExtractorService {
     return false;
   }
 
-  /** Конвертировать MemberLogSummary[] в LogFileRef[] */
-  private async resolveLogFileRefs(
-    teamName: string,
-    logs: MemberLogSummary[]
-  ): Promise<LogFileRef[]> {
-    const refs: LogFileRef[] = [];
-    const logsNeedingResolve: MemberLogSummary[] = [];
-
-    for (const log of logs) {
-      const memberName = log.memberName ?? 'unknown';
-      if (log.filePath) {
-        refs.push({ filePath: log.filePath, memberName });
-      } else {
-        logsNeedingResolve.push(log);
-      }
-    }
-
-    if (logsNeedingResolve.length === 0) return refs;
-
-    const byMember = new Map<string, MemberLogSummary[]>();
-    for (const log of logsNeedingResolve) {
-      const name = log.memberName ?? 'unknown';
-      if (!byMember.has(name)) byMember.set(name, []);
-      byMember.get(name)!.push(log);
-    }
-    for (const [memberName, memberLogs] of byMember) {
-      const paths = await this.logsFinder.findMemberLogPaths(teamName, memberName);
-      for (const log of memberLogs) {
-        const matchedPath = paths.find((p) =>
-          log.kind === 'subagent'
-            ? p.includes(log.sessionId) && p.includes(log.subagentId)
-            : p.includes(log.sessionId) && p.endsWith('.jsonl')
-        );
-        if (matchedPath) {
-          refs.push({ filePath: matchedPath, memberName });
-        }
-      }
-    }
-    return refs;
-  }
-
   /** Извлечь изменения из JSONL файлов, фильтруя по tool_use IDs */
   private async extractFilteredChanges(
     logRefs: LogFileRef[],
@@ -1260,8 +1221,11 @@ export class ChangeExtractorService {
       return;
     }
 
-    const logs = await this.logsFinder.findLogsForTask(teamName, taskId, effectiveOptions);
-    const logRefs = await this.resolveLogFileRefs(teamName, logs);
+    const logRefs = await this.logsFinder.findLogFileRefsForTask(
+      teamName,
+      taskId,
+      effectiveOptions
+    );
     const sourceFingerprint = await this.computeSourceFingerprint(logRefs);
     if (!sourceFingerprint || sourceFingerprint !== expectedSourceFingerprint) {
       await this.invalidateTaskChangeSummaries(teamName, [taskId], { deletePersisted: true });
@@ -1304,8 +1268,11 @@ export class ChangeExtractorService {
       return;
     }
 
-    const logs = await this.logsFinder.findLogsForTask(teamName, taskId, effectiveOptions);
-    const logRefs = await this.resolveLogFileRefs(teamName, logs);
+    const logRefs = await this.logsFinder.findLogFileRefsForTask(
+      teamName,
+      taskId,
+      effectiveOptions
+    );
     const sourceFingerprint = await this.computeSourceFingerprint(logRefs);
     const projectFingerprint = await this.computeProjectFingerprint(teamName);
     if (!sourceFingerprint || !projectFingerprint) {
@@ -1346,12 +1313,12 @@ export class ChangeExtractorService {
         return null;
       }
     }
-    return createHash('sha1').update(parts.join('|')).digest('hex');
+    return createHash('sha256').update(parts.join('|')).digest('hex');
   }
 
   private async computeProjectFingerprint(teamName: string): Promise<string | null> {
     const projectPath = await this.resolveProjectPath(teamName);
     if (!projectPath) return null;
-    return createHash('sha1').update(this.normalizeFilePathKey(projectPath)).digest('hex');
+    return createHash('sha256').update(this.normalizeFilePathKey(projectPath)).digest('hex');
   }
 }

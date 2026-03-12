@@ -54,6 +54,11 @@ import { initializeIpcHandlers, removeIpcHandlers } from './ipc/handlers';
 import { startEventLoopLagMonitor } from './services/infrastructure/EventLoopLagMonitor';
 import { HttpServer } from './services/infrastructure/HttpServer';
 import { TeamInboxReader } from './services/team/TeamInboxReader';
+import {
+  buildTeamControlApiBaseUrl,
+  clearTeamControlApiState,
+  writeTeamControlApiState,
+} from './services/team/TeamControlApiState';
 import { TeamSentMessagesStore } from './services/team/TeamSentMessagesStore';
 import { getAppIconPath } from './utils/appIcon';
 import { getProjectsBasePath, getTeamsBasePath, getTodosBasePath } from './utils/pathDecoder';
@@ -360,6 +365,24 @@ function getRendererIndexPath(): string {
     join(__dirname, '../renderer/index.html'),
   ];
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+}
+
+function getTeamControlApiBaseUrl(): string | null {
+  if (!httpServer?.isRunning()) {
+    return null;
+  }
+
+  return buildTeamControlApiBaseUrl(httpServer.getPort());
+}
+
+async function syncTeamControlApiState(): Promise<void> {
+  const baseUrl = getTeamControlApiBaseUrl();
+  if (!baseUrl) {
+    await clearTeamControlApiState();
+    return;
+  }
+
+  await writeTeamControlApiState(baseUrl);
 }
 
 /**
@@ -735,6 +758,13 @@ function initializeServices(): void {
   // warmup() and ensureInstalled() are deferred to after window creation
   // (did-finish-load handler) to avoid thread pool contention at startup.
   httpServer = new HttpServer();
+  teamProvisioningService.setControlApiBaseUrlResolver(async () => {
+    if (!httpServer.isRunning()) {
+      await startHttpServer(handleModeSwitch);
+    }
+
+    return getTeamControlApiBaseUrl();
+  });
 
   // Allow TeamProvisioningService to trigger team refresh events (e.g. live lead replies).
   const teamChangeEmitter = (event: TeamChangeEvent): void => {
@@ -841,6 +871,11 @@ async function startHttpServer(
   modeSwitchHandler: (mode: 'local' | 'ssh') => Promise<void>
 ): Promise<void> {
   try {
+    if (httpServer.isRunning()) {
+      await syncTeamControlApiState();
+      return;
+    }
+
     const config = configManager.getConfig();
     const activeContext = contextRegistry.getActive();
     const port = await httpServer.start(
@@ -852,12 +887,15 @@ async function startHttpServer(
         dataCache: activeContext.dataCache,
         updaterService,
         sshConnectionManager,
+        teamProvisioningService,
       },
       modeSwitchHandler,
       config.httpServer?.port ?? 3456
     );
+    await syncTeamControlApiState();
     logger.info(`HTTP sidecar server running on port ${port}`);
   } catch (error) {
+    await clearTeamControlApiState().catch(() => undefined);
     logger.error('Failed to start HTTP server:', error);
   }
 }
@@ -872,6 +910,7 @@ function shutdownServices(): void {
   if (httpServer?.isRunning()) {
     void httpServer.stop();
   }
+  void clearTeamControlApiState();
 
   // Clean up file watcher event listeners
   if (fileChangeCleanup) {

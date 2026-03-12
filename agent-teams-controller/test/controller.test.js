@@ -1,4 +1,5 @@
 const fs = require('fs');
+const http = require('http');
 const os = require('os');
 const path = require('path');
 
@@ -25,6 +26,36 @@ describe('agent-teams-controller API', () => {
       )
     );
     return dir;
+  }
+
+  async function startControlServer(handler) {
+    const server = http.createServer(async (req, res) => {
+      const chunks = [];
+      req.on('data', (chunk) => chunks.push(chunk));
+      req.on('end', async () => {
+        try {
+          const bodyText = Buffer.concat(chunks).toString('utf8');
+          const body = bodyText ? JSON.parse(bodyText) : undefined;
+          const result = await handler({
+            method: req.method,
+            url: req.url,
+            body,
+          });
+          res.writeHead(result.statusCode || 200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(result.body));
+        } catch (error) {
+          res.writeHead(500, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: error.message }));
+        }
+      });
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    return {
+      baseUrl: `http://127.0.0.1:${address.port}`,
+      close: async () => await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))),
+    };
   }
 
   it('creates tasks and exposes grouped controller modules', () => {
@@ -559,5 +590,94 @@ describe('agent-teams-controller API', () => {
     expect(commented.task.comments[0].text).toBe(
       'This should persist despite notification failure.'
     );
+  });
+
+  it('launches and stops a team through the runtime control API bridge', async () => {
+    const claudeDir = makeClaudeDir();
+    const controller = createController({ teamName: 'my-team', claudeDir });
+    const calls = [];
+
+    const server = await startControlServer(async ({ method, url, body }) => {
+      calls.push({ method, url, body });
+
+      if (method === 'POST' && url === '/api/teams/my-team/launch') {
+        return { body: { runId: 'run-123' } };
+      }
+      if (method === 'GET' && url === '/api/teams/provisioning/run-123') {
+        return {
+          body: {
+            runId: 'run-123',
+            teamName: 'my-team',
+            state: 'ready',
+            message: 'Ready',
+            startedAt: '2026-03-12T00:00:00.000Z',
+            updatedAt: '2026-03-12T00:00:01.000Z',
+          },
+        };
+      }
+      if (method === 'POST' && url === '/api/teams/my-team/stop') {
+        return {
+          body: {
+            teamName: 'my-team',
+            isAlive: false,
+            runId: null,
+            progress: null,
+          },
+        };
+      }
+      if (method === 'GET' && url === '/api/teams/my-team/runtime') {
+        return {
+          body: {
+            teamName: 'my-team',
+            isAlive: false,
+            runId: null,
+            progress: null,
+          },
+        };
+      }
+
+      return { statusCode: 404, body: { error: `Unhandled ${method} ${url}` } };
+    });
+
+    try {
+      const launched = await controller.runtime.launchTeam({
+        cwd: '/tmp/project',
+        controlUrl: server.baseUrl,
+      });
+      expect(launched.runId).toBe('run-123');
+      expect(launched.isAlive).toBe(true);
+      expect(launched.progress.state).toBe('ready');
+
+      const stopped = await controller.runtime.stopTeam({
+        controlUrl: server.baseUrl,
+      });
+      expect(stopped.isAlive).toBe(false);
+      expect(stopped.runId).toBeNull();
+
+      expect(calls).toEqual([
+        {
+          method: 'POST',
+          url: '/api/teams/my-team/launch',
+          body: { cwd: '/tmp/project' },
+        },
+        {
+          method: 'GET',
+          url: '/api/teams/provisioning/run-123',
+          body: undefined,
+        },
+        {
+          method: 'POST',
+          url: '/api/teams/my-team/stop',
+          body: undefined,
+        },
+        {
+          method: 'GET',
+          url: '/api/teams/my-team/runtime',
+          body: undefined,
+        },
+      ]);
+    } finally {
+      await server.close();
+    }
   });
 });

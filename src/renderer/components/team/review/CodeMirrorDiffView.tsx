@@ -204,6 +204,7 @@ export const CodeMirrorDiffView = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const endSentinelRef = useRef<HTMLDivElement>(null);
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   // Local ref to hold externalViewRef for syncing via useEffect
   const externalViewRefHolder = useRef(externalViewRef);
 
@@ -475,9 +476,10 @@ export const CodeMirrorDiffView = ({
         const chunkRect = chunkEl.getBoundingClientRect();
         const btnWidth = btnContainer.offsetWidth || 200;
         const margin = 12;
+        const { style } = btnContainer;
         // left is relative to .cm-deletedChunk — so we compute from scroller's right edge
-        btnContainer.style.left = `${scrollerRect.right - chunkRect.left - btnWidth - margin}px`;
-        btnContainer.style.right = 'auto';
+        style.left = `${scrollerRect.right - chunkRect.left - btnWidth - margin}px`;
+        style.right = 'auto';
       };
 
       // Helper: position a chunkButtons container so it's below the change block,
@@ -516,14 +518,48 @@ export const CodeMirrorDiffView = ({
         pinToViewportRight(btnContainer, scroller);
       };
 
-      // Find which chunk index the mouse is directly over, including inline deleted text.
-      const findHoveredChunkIndex = (event: MouseEvent, view: EditorView): number => {
-        const el = document.elementFromPoint(event.clientX, event.clientY);
+      interface RenderedChunkControl {
+        chunkIndex: number;
+        chunkEl: HTMLElement;
+        toolbar: HTMLElement;
+      }
+
+      const getRenderedChunkControls = (view: EditorView): RenderedChunkControl[] => {
+        const toolbars = view.dom.querySelectorAll<HTMLElement>('.cm-merge-toolbar');
+        const controls: RenderedChunkControl[] = [];
+        toolbars.forEach((toolbar) => {
+          const chunkEl = toolbar.closest<HTMLElement>('.cm-deletedChunk');
+          if (!chunkEl) return;
+          const pos = view.posAtDOM(toolbar);
+          controls.push({
+            chunkIndex: computeHunkIndexAtPos(view.state, pos),
+            chunkEl,
+            toolbar,
+          });
+        });
+        return controls;
+      };
+
+      const resolveChunkIndexFromDeletedChunk = (
+        deletedChunk: Element,
+        view: EditorView
+      ): number => {
+        const toolbar = deletedChunk.querySelector<HTMLElement>('.cm-merge-toolbar');
+        if (!toolbar) return -1;
+        return computeHunkIndexAtPos(view.state, view.posAtDOM(toolbar));
+      };
+
+      // Find which chunk index the pointer is directly over, including inline deleted text.
+      const findHoveredChunkIndex = (
+        clientX: number,
+        clientY: number,
+        view: EditorView
+      ): number => {
+        const el = document.elementFromPoint(clientX, clientY);
         if (!el) return -1;
         const deletedChunk = el.closest('.cm-deletedChunk');
         if (deletedChunk) {
-          const all = view.dom.querySelectorAll('.cm-deletedChunk');
-          return [...all].indexOf(deletedChunk);
+          return resolveChunkIndexFromDeletedChunk(deletedChunk, view);
         }
         if (
           el.closest(
@@ -532,7 +568,7 @@ export const CodeMirrorDiffView = ({
         ) {
           const allChunks = getChunks(view.state);
           if (!allChunks) return -1;
-          const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+          const pos = view.posAtCoords({ x: clientX, y: clientY });
           if (pos !== null) {
             for (let i = 0; i < allChunks.chunks.length; i++) {
               const chunk = allChunks.chunks[i];
@@ -543,55 +579,71 @@ export const CodeMirrorDiffView = ({
         return -1;
       };
 
-      // Find chunk nearest to cursor Y (for default "below block" display)
-      const findNearestChunkIndex = (clientY: number, view: EditorView): number => {
-        const allChunkEls = view.dom.querySelectorAll('.cm-deletedChunk');
-        let result = -1;
-        if (allChunkEls.length > 0) {
-          let bestIdx = 0;
-          let bestDist = Infinity;
-          allChunkEls.forEach((el, idx) => {
-            const rect = el.getBoundingClientRect();
-            const centerY = (rect.top + rect.bottom) / 2;
-            const dist = Math.abs(clientY - centerY);
-            if (dist < bestDist) {
-              bestDist = dist;
-              bestIdx = idx;
-            }
-          });
-          result = bestIdx;
+      const findNearestRenderedChunk = (
+        clientY: number,
+        renderedControls: RenderedChunkControl[]
+      ): RenderedChunkControl | null => {
+        let bestMatch: RenderedChunkControl | null = null;
+        let bestDist = Infinity;
+        renderedControls.forEach((control) => {
+          const rect = control.chunkEl.getBoundingClientRect();
+          const centerY = (rect.top + rect.bottom) / 2;
+          const dist = Math.abs(clientY - centerY);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestMatch = control;
+          }
+        });
+        return bestMatch;
+      };
+
+      const updateActiveToolbar = (
+        view: EditorView,
+        clientY: number,
+        options?: { clientX?: number; followCursor?: boolean }
+      ): void => {
+        const allChunks = getChunks(view.state);
+        if (!allChunks || allChunks.chunks.length === 0) return;
+
+        const renderedControls = getRenderedChunkControls(view);
+        if (renderedControls.length === 0) return;
+
+        const hoveredChunkIndex =
+          options?.clientX !== undefined
+            ? findHoveredChunkIndex(options.clientX, clientY, view)
+            : -1;
+        const activeControl =
+          renderedControls.find((control) => control.chunkIndex === hoveredChunkIndex) ??
+          findNearestRenderedChunk(clientY, renderedControls);
+
+        renderedControls.forEach((control) => {
+          control.toolbar.classList.toggle(
+            'cm-merge-toolbar-active',
+            activeControl?.chunkIndex === control.chunkIndex
+          );
+        });
+
+        if (!activeControl) return;
+
+        if (options?.followCursor && hoveredChunkIndex >= 0) {
+          positionAtCursor(activeControl.chunkEl, clientY, view.scrollDOM);
+        } else {
+          positionAtBottom(activeControl.chunkEl, view.scrollDOM);
         }
-        return result;
       };
 
       extensions.push(
         EditorView.domEventHandlers({
           mousemove(event, view) {
-            const allChunks = getChunks(view.state);
-            if (allChunks && allChunks.chunks.length > 0) {
-              const scroller = view.scrollDOM;
-              const allChunkEls = view.dom.querySelectorAll('.cm-deletedChunk');
-              const hoveredIdx = findHoveredChunkIndex(event, view);
-              const nearestIdx =
-                hoveredIdx >= 0 ? hoveredIdx : findNearestChunkIndex(event.clientY, view);
-
-              const toolbars = view.dom.querySelectorAll('.cm-merge-toolbar');
-              toolbars.forEach((tb, idx) => {
-                tb.classList.toggle('cm-merge-toolbar-active', idx === nearestIdx);
-              });
-
-              if (nearestIdx >= 0 && nearestIdx < allChunkEls.length) {
-                const chunkEl = allChunkEls[nearestIdx] as HTMLElement;
-                if (hoveredIdx >= 0) {
-                  positionAtCursor(chunkEl, event.clientY, scroller);
-                } else {
-                  positionAtBottom(chunkEl, scroller);
-                }
-              }
-            }
+            lastPointerRef.current = { x: event.clientX, y: event.clientY };
+            updateActiveToolbar(view, event.clientY, {
+              clientX: event.clientX,
+              followCursor: true,
+            });
             return false;
           },
           mouseleave(_event, view) {
+            lastPointerRef.current = null;
             // Keep active toolbar visible, reposition to "below block"
             const activeToolbar = view.dom.querySelector('.cm-merge-toolbar-active');
             if (activeToolbar) {
@@ -601,17 +653,22 @@ export const CodeMirrorDiffView = ({
             return false;
           },
           scroll(_event, view) {
-            // Reposition active toolbar on horizontal scroll so buttons stay at viewport edge
-            const activeToolbar = view.dom.querySelector('.cm-merge-toolbar-active');
-            if (activeToolbar) {
-              const chunkEl = activeToolbar.closest('.cm-deletedChunk');
-              if (chunkEl) {
-                const btnContainer = chunkEl.querySelector<HTMLElement>('.cm-chunkButtons');
-                if (btnContainer) {
-                  pinToViewportRight(btnContainer, view.scrollDOM);
-                }
-              }
-            }
+            const scrollerRect = view.scrollDOM.getBoundingClientRect();
+            const pointer = lastPointerRef.current;
+            const pointerInsideScroller =
+              pointer &&
+              pointer.x >= scrollerRect.left &&
+              pointer.x <= scrollerRect.right &&
+              pointer.y >= scrollerRect.top &&
+              pointer.y <= scrollerRect.bottom;
+            const targetY = pointerInsideScroller
+              ? pointer.y
+              : (scrollerRect.top + scrollerRect.bottom) / 2;
+
+            updateActiveToolbar(view, targetY, {
+              clientX: pointerInsideScroller ? pointer.x : undefined,
+              followCursor: Boolean(pointerInsideScroller),
+            });
             return false;
           },
         })
@@ -624,12 +681,8 @@ export const CodeMirrorDiffView = ({
           requestAnimationFrame(() => {
             const v = update.view;
             if (v.dom.querySelector('.cm-merge-toolbar-active')) return;
-            const first = v.dom.querySelector('.cm-merge-toolbar');
-            if (first) {
-              first.classList.add('cm-merge-toolbar-active');
-              const chunkEl = first.closest('.cm-deletedChunk');
-              if (chunkEl) positionAtBottom(chunkEl, v.scrollDOM);
-            }
+            const scrollerRect = v.scrollDOM.getBoundingClientRect();
+            updateActiveToolbar(v, (scrollerRect.top + scrollerRect.bottom) / 2);
           });
         })
       );

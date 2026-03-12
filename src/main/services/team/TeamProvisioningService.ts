@@ -69,6 +69,7 @@ import type {
   TeamProvisioningPrepareResult,
   TeamProvisioningProgress,
   TeamProvisioningState,
+  TeamRuntimeState,
   TeamTask,
   ToolApprovalAutoResolved,
   ToolApprovalEvent,
@@ -761,7 +762,6 @@ function buildTaskBoardSnapshot(tasks: TeamTask[]): string {
 
 function buildProvisioningPrompt(request: TeamCreateRequest): string {
   const displayName = request.displayName?.trim() || request.teamName;
-  const description = request.description?.trim() || 'No description';
   const taskProtocol = buildTaskStatusProtocol(request.teamName);
   const processRegistration = buildProcessRegistrationProtocol(request.teamName);
   const userPromptBlock = request.prompt?.trim()
@@ -838,14 +838,11 @@ ${persistentContext}
 
 Steps (execute in this exact order):
 
-1) TeamCreate — create team “${request.teamName}”:
-   - description: “${description}”
-
 ${step2Block}
 
 ${step3Block}
 
-4) After all steps, output a short summary.
+3) After all steps, output a short summary.
 `;
 }
 
@@ -1153,6 +1150,7 @@ export class TeamProvisioningService {
   private toolApprovalSettings: ToolApprovalSettings = DEFAULT_TOOL_APPROVAL_SETTINGS;
   private pendingTimeouts = new Map<string, NodeJS.Timeout>();
   private inFlightResponses = new Set<string>();
+  private controlApiBaseUrlResolver: (() => Promise<string | null>) | null = null;
   private crossTeamSender:
     | ((request: {
         fromTeam: string;
@@ -1191,6 +1189,10 @@ export class TeamProvisioningService {
       | null
   ): void {
     this.crossTeamSender = sender;
+  }
+
+  setControlApiBaseUrlResolver(resolver: (() => Promise<string | null>) | null): void {
+    this.controlApiBaseUrlResolver = resolver;
   }
 
   getClaudeLogs(
@@ -3688,6 +3690,18 @@ export class TeamProvisioningService {
     return Array.from(this.aliveRunByTeam.keys()).filter((name) => this.isTeamAlive(name));
   }
 
+  getRuntimeState(teamName: string): TeamRuntimeState {
+    const runId = this.getTrackedRunId(teamName);
+    const run = runId ? (this.runs.get(runId) ?? null) : null;
+
+    return {
+      teamName,
+      isAlive: this.isTeamAlive(teamName),
+      runId: run?.runId ?? runId ?? null,
+      progress: run?.progress ?? null,
+    };
+  }
+
   private languageChangeInFlight: Promise<void> = Promise.resolve();
 
   /**
@@ -5686,6 +5700,11 @@ export class TeamProvisioningService {
       CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
     };
 
+    const controlApiBaseUrl = await this.resolveControlApiBaseUrl();
+    if (controlApiBaseUrl) {
+      env.CLAUDE_TEAM_CONTROL_URL = controlApiBaseUrl;
+    }
+
     // SHELL is a Unix concept — only set it on non-Windows platforms.
     if (!isWindows) {
       env.SHELL = shell;
@@ -5727,6 +5746,23 @@ export class TeamProvisioningService {
     //    credentials file causes 401 errors because the stored token is
     //    often stale (CLI refreshes in-memory but rarely writes back).
     return { env, authSource: 'none' };
+  }
+
+  private async resolveControlApiBaseUrl(): Promise<string | null> {
+    if (!this.controlApiBaseUrlResolver) {
+      return null;
+    }
+
+    try {
+      return await this.controlApiBaseUrlResolver();
+    } catch (error) {
+      logger.warn(
+        `Failed to resolve team control API base URL: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return null;
+    }
   }
 
   /**

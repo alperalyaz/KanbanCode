@@ -212,22 +212,13 @@ export class TeamMemberLogsFinder {
 
       // Back-compat: single since timestamp -> treat as open interval.
       const sinceMsRaw = typeof options?.since === 'string' ? Date.parse(options.since) : NaN;
-      const sinceMs = Number.isFinite(sinceMsRaw) ? sinceMsRaw : null;
+      const sinceStartMs = Number.isFinite(sinceMsRaw) ? sinceMsRaw : null;
       const effectiveIntervals =
         normalizedIntervals.length > 0
           ? normalizedIntervals
-          : sinceMs != null
-            ? [{ startMs: sinceMs, endMs: null }]
+          : sinceStartMs != null
+            ? [{ startMs: sinceStartMs, endMs: null }]
             : [];
-
-      const overlapsAnyInterval = (logStartMs: number, logEndMs: number): boolean => {
-        for (const it of effectiveIntervals) {
-          const start = it.startMs - TASK_LOG_INTERVAL_GRACE_MS;
-          const end = (it.endMs ?? now) + TASK_LOG_INTERVAL_GRACE_MS;
-          if (logStartMs <= end && logEndMs >= start) return true;
-        }
-        return false;
-      };
 
       const filteredOwnerLogs = ownerLogs.filter((log) => {
         if (log.isOngoing) return true;
@@ -238,7 +229,13 @@ export class TeamMemberLogsFinder {
         const endMs = startMs + durationMs;
 
         if (effectiveIntervals.length > 0) {
-          return overlapsAnyInterval(startMs, endMs);
+          return this.logOverlapsIntervals(
+            startMs,
+            endMs,
+            effectiveIntervals,
+            now,
+            TASK_LOG_INTERVAL_GRACE_MS
+          );
         }
 
         return startMs >= now - fallbackRecentMs;
@@ -266,6 +263,156 @@ export class TeamMemberLogsFinder {
     return results.sort(
       (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
     );
+  }
+
+  /**
+   * Fast path for change extraction: returns task-related JSONL file refs directly without
+   * building full MemberLogSummary metadata for every matched log.
+   */
+  async findLogFileRefsForTask(
+    teamName: string,
+    taskId: string,
+    options?: {
+      owner?: string;
+      status?: string;
+      intervals?: { startedAt: string; completedAt?: string }[];
+      since?: string;
+    }
+  ): Promise<{ filePath: string; memberName: string }[]> {
+    const discovery = await this.discoverProjectSessions(teamName);
+    if (!discovery) return [];
+
+    const sinceMs = this.deriveSinceMs(options);
+    const { projectDir, config, sessionIds, knownMembers } = discovery;
+    const refs: { filePath: string; memberName: string; sortTime: number }[] = [];
+    const seen = new Set<string>();
+    const leadMemberName =
+      config.members?.find((m) => m?.agentType === 'team-lead')?.name?.trim() || 'team-lead';
+
+    const pushRef = (filePath: string, memberName: string, sortTime = 0): void => {
+      const key = `${memberName.toLowerCase()}:${filePath}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      refs.push({ filePath, memberName, sortTime });
+    };
+
+    if (config.leadSessionId) {
+      const leadJsonl = path.join(projectDir, `${config.leadSessionId}.jsonl`);
+      try {
+        await fs.access(leadJsonl);
+        if (await this.fileMentionsTaskIdCached(leadJsonl, teamName, taskId, true, sinceMs)) {
+          const firstTimestamp = await this.probeFirstTimestamp(leadJsonl);
+          pushRef(leadJsonl, leadMemberName, await this.getSortTime(leadJsonl, firstTimestamp));
+        }
+      } catch {
+        // file missing or unreadable
+      }
+    }
+
+    for (const sessionId of sessionIds) {
+      const subagentsDir = path.join(projectDir, sessionId, 'subagents');
+      let files: string[];
+      try {
+        files = await fs.readdir(subagentsDir);
+      } catch {
+        continue;
+      }
+      for (const file of files) {
+        if (!file.startsWith('agent-') || !file.endsWith('.jsonl')) continue;
+        if (file.startsWith('agent-acompact')) continue;
+
+        const filePath = path.join(subagentsDir, file);
+        if (!(await this.fileMentionsTaskIdCached(filePath, teamName, taskId, false, sinceMs))) {
+          continue;
+        }
+
+        const attribution = await this.attributeSubagent(filePath, knownMembers);
+        if (!attribution) continue;
+        pushRef(
+          filePath,
+          attribution.detectedMember,
+          await this.getSortTime(filePath, attribution.firstTimestamp)
+        );
+      }
+    }
+
+    const normalizedOwner =
+      typeof options?.owner === 'string' ? options.owner.trim() : options?.owner;
+    const isLeadOwner =
+      typeof normalizedOwner === 'string' &&
+      normalizedOwner.length > 0 &&
+      normalizedOwner.toLowerCase() === leadMemberName.toLowerCase();
+    const ownerRelevantStatus =
+      options?.status === 'in_progress' || options?.status === 'completed';
+    const includeOwnerSessions =
+      ownerRelevantStatus &&
+      typeof normalizedOwner === 'string' &&
+      normalizedOwner.length > 0 &&
+      !isLeadOwner;
+
+    if (includeOwnerSessions) {
+      const ownerLogs = await this.findMemberLogs(teamName, normalizedOwner);
+      const TASK_LOG_INTERVAL_GRACE_MS = 10_000;
+      const fallbackRecentMs = 30 * 60_000;
+      const now = Date.now();
+
+      const normalizedIntervals = Array.isArray(options?.intervals)
+        ? options.intervals
+            .map((i) => {
+              const startMs = Date.parse(i.startedAt);
+              const endMsRaw =
+                typeof i.completedAt === 'string' ? Date.parse(i.completedAt) : Number.NaN;
+              const endMs = Number.isFinite(endMsRaw) ? endMsRaw : null;
+              return Number.isFinite(startMs) ? { startMs, endMs } : null;
+            })
+            .filter((v): v is { startMs: number; endMs: number | null } => v !== null)
+        : [];
+
+      const sinceMsRaw = typeof options?.since === 'string' ? Date.parse(options.since) : NaN;
+      const sinceStartMs = Number.isFinite(sinceMsRaw) ? sinceMsRaw : null;
+      const effectiveIntervals =
+        normalizedIntervals.length > 0
+          ? normalizedIntervals
+          : sinceStartMs != null
+            ? [{ startMs: sinceStartMs, endMs: null }]
+            : [];
+
+      for (const log of ownerLogs) {
+        if (!log.filePath) continue;
+        if (!log.isOngoing) {
+          const startMs = new Date(log.startTime).getTime();
+          if (!Number.isFinite(startMs)) continue;
+          const durationMs =
+            typeof log.durationMs === 'number' && log.durationMs > 0 ? log.durationMs : 0;
+          const endMs = startMs + durationMs;
+
+          if (effectiveIntervals.length > 0) {
+            if (
+              !this.logOverlapsIntervals(
+                startMs,
+                endMs,
+                effectiveIntervals,
+                now,
+                TASK_LOG_INTERVAL_GRACE_MS
+              )
+            ) {
+              continue;
+            }
+          } else if (startMs < now - fallbackRecentMs) {
+            continue;
+          }
+        }
+
+        pushRef(
+          log.filePath,
+          log.memberName ?? normalizedOwner,
+          Number.isFinite(new Date(log.startTime).getTime()) ? new Date(log.startTime).getTime() : 0
+        );
+      }
+    }
+
+    const sortedRefs = [...refs].sort((a, b) => b.sortTime - a.sortTime);
+    return sortedRefs.map(({ filePath, memberName }) => ({ filePath, memberName }));
   }
 
   /**
@@ -508,6 +655,21 @@ export class TeamMemberLogsFinder {
     return earliest - TASK_SINCE_GRACE_MS;
   }
 
+  private logOverlapsIntervals(
+    logStartMs: number,
+    logEndMs: number,
+    intervals: { startMs: number; endMs: number | null }[],
+    now: number,
+    graceMs: number
+  ): boolean {
+    for (const it of intervals) {
+      const start = it.startMs - graceMs;
+      const end = (it.endMs ?? now) + graceMs;
+      if (logStartMs <= end && logEndMs >= start) return true;
+    }
+    return false;
+  }
+
   private async fileMentionsTaskIdCached(
     filePath: string,
     teamName: string,
@@ -649,8 +811,6 @@ export class TeamMemberLogsFinder {
             const b = block as Record<string, unknown>;
             if (b.type !== 'tool_use') continue;
 
-            const rawName = typeof b.name === 'string' ? b.name : '';
-            const toolName = rawName.replace(/^proxy_/, '');
             const input = b.input as Record<string, unknown> | undefined;
             if (!input) continue;
 
@@ -739,7 +899,8 @@ export class TeamMemberLogsFinder {
     // accurate timestamps and message count from the full file.
     const metadata = await this.streamFileMetadata(filePath);
 
-    const firstTimestamp = metadata.firstTimestamp ?? (await this.getFileMtime(filePath));
+    const firstTimestamp =
+      metadata.firstTimestamp ?? attribution.firstTimestamp ?? (await this.getFileMtime(filePath));
     const lastTimestamp = metadata.lastTimestamp ?? firstTimestamp;
 
     const startTime = new Date(firstTimestamp);
@@ -779,7 +940,11 @@ export class TeamMemberLogsFinder {
   private async attributeSubagent(
     filePath: string,
     knownMembers: Set<string>
-  ): Promise<{ detectedMember: string; description: string } | null> {
+  ): Promise<{
+    detectedMember: string;
+    description: string;
+    firstTimestamp: string | null;
+  } | null> {
     const lines: string[] = [];
 
     try {
@@ -806,8 +971,12 @@ export class TeamMemberLogsFinder {
     let description = '';
     let detectedMember: string | null = null;
     let detectionPriority = 0;
+    let firstTimestamp: string | null = null;
 
     for (const line of lines) {
+      if (!firstTimestamp) {
+        firstTimestamp = this.extractTimestampFromLine(line);
+      }
       // Early exit: both objectives met (member detected at max priority + description found)
       if (detectionPriority >= 3 && description) break;
 
@@ -888,7 +1057,7 @@ export class TeamMemberLogsFinder {
 
     if (!detectedMember) return null;
 
-    return { detectedMember, description };
+    return { detectedMember, description, firstTimestamp };
   }
 
   /**
@@ -1016,10 +1185,10 @@ export class TeamMemberLogsFinder {
 
         // Fast timestamp extraction without full JSON parse.
         // ISO prefix anchor avoids false positives from "timestamp" inside string values.
-        const tsMatch = /"timestamp"\s*:\s*"(\d{4}-\d{2}-\d{2}T[^"]+)"/.exec(trimmed);
-        if (tsMatch) {
-          if (!firstTimestamp) firstTimestamp = tsMatch[1];
-          lastTimestamp = tsMatch[1];
+        const ts = this.extractTimestampFromLine(trimmed);
+        if (ts) {
+          if (!firstTimestamp) firstTimestamp = ts;
+          lastTimestamp = ts;
         }
       }
       rl.close();
@@ -1029,6 +1198,46 @@ export class TeamMemberLogsFinder {
     }
 
     return { firstTimestamp, lastTimestamp, messageCount };
+  }
+
+  private extractTimestampFromLine(line: string): string | null {
+    const tsMatch = /"timestamp"\s*:\s*"(\d{4}-\d{2}-\d{2}T[^"]+)"/.exec(line);
+    return tsMatch?.[1] ?? null;
+  }
+
+  private async probeFirstTimestamp(
+    filePath: string,
+    maxLines = ATTRIBUTION_SCAN_LINES
+  ): Promise<string | null> {
+    try {
+      const stream = createReadStream(filePath, { encoding: 'utf8' });
+      const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+      let seen = 0;
+
+      for await (const line of rl) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const ts = this.extractTimestampFromLine(trimmed);
+        if (ts) {
+          rl.close();
+          stream.destroy();
+          return ts;
+        }
+        seen++;
+        if (seen >= maxLines) break;
+      }
+      rl.close();
+      stream.destroy();
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  private async getSortTime(filePath: string, timestamp: string | null): Promise<number> {
+    const resolvedTimestamp = timestamp ?? (await this.getFileMtime(filePath));
+    const sortTime = Date.parse(resolvedTimestamp);
+    return Number.isFinite(sortTime) ? sortTime : 0;
   }
 
   private async getFileMtime(filePath: string): Promise<string> {

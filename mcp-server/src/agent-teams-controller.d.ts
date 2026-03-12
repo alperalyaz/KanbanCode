@@ -66,6 +66,12 @@ declare module 'agent-teams-controller' {
     getCrossTeamOutbox(): unknown;
   }
 
+  export interface ControllerRuntimeApi {
+    launchTeam(flags: Record<string, unknown>): Promise<unknown>;
+    stopTeam(flags?: Record<string, unknown>): Promise<unknown>;
+    getRuntimeState(flags?: Record<string, unknown>): Promise<unknown>;
+  }
+
   export interface AgentTeamsController {
     tasks: ControllerTaskApi;
     kanban: ControllerKanbanApi;
@@ -74,6 +80,7 @@ declare module 'agent-teams-controller' {
     processes: ControllerProcessApi;
     maintenance: ControllerMaintenanceApi;
     crossTeam: ControllerCrossTeamApi;
+    runtime: ControllerRuntimeApi;
   }
 
   export function createController(options: ControllerContextOptions): AgentTeamsController;

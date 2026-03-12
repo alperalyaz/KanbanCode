@@ -1,4 +1,5 @@
 import fs from 'fs';
+import http from 'http';
 import os from 'os';
 import path from 'path';
 
@@ -61,6 +62,8 @@ describe('agent-teams-mcp tools', () => {
     'task_set_status',
     'task_start',
     'task_unlink',
+    'team_launch',
+    'team_stop',
   ] as const;
 
   function getTool(name: string) {
@@ -71,6 +74,45 @@ describe('agent-teams-mcp tools', () => {
 
   function makeClaudeDir() {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'agent-teams-mcp-'));
+  }
+
+  async function startControlServer(
+    handler: (request: {
+      method?: string;
+      url?: string;
+      body?: unknown;
+    }) => Promise<{ statusCode?: number; body: unknown }> | { statusCode?: number; body: unknown }
+  ) {
+    const server = http.createServer(async (req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (chunk) => chunks.push(chunk));
+      req.on('end', async () => {
+        try {
+          const bodyText = Buffer.concat(chunks).toString('utf8');
+          const body = bodyText ? JSON.parse(bodyText) : undefined;
+          const result = await handler({ method: req.method, url: req.url, body });
+          res.writeHead(result.statusCode ?? 200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(result.body));
+        } catch (error) {
+          res.writeHead(500, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        }
+      });
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Failed to bind control server');
+    }
+
+    return {
+      baseUrl: `http://127.0.0.1:${address.port}`,
+      close: async () =>
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve()))
+        ),
+    };
   }
 
   it('registers the full expected MCP tool surface', () => {
@@ -87,6 +129,97 @@ describe('agent-teams-mcp tools', () => {
     });
 
     expect(parsed?.success).toBe(true);
+  });
+
+  it('launches and stops teams through the runtime MCP tools', async () => {
+    const calls: Array<{ method?: string; url?: string; body?: unknown }> = [];
+    const server = await startControlServer(async ({ method, url, body }) => {
+      calls.push({ method, url, body });
+
+      if (method === 'POST' && url === '/api/teams/alpha/launch') {
+        return { body: { runId: 'run-555' } };
+      }
+      if (method === 'GET' && url === '/api/teams/provisioning/run-555') {
+        return {
+          body: {
+            runId: 'run-555',
+            teamName: 'alpha',
+            state: 'ready',
+            message: 'Ready',
+            startedAt: '2026-03-12T00:00:00.000Z',
+            updatedAt: '2026-03-12T00:00:02.000Z',
+          },
+        };
+      }
+      if (method === 'POST' && url === '/api/teams/alpha/stop') {
+        return {
+          body: {
+            teamName: 'alpha',
+            isAlive: false,
+            runId: null,
+            progress: null,
+          },
+        };
+      }
+      if (method === 'GET' && url === '/api/teams/alpha/runtime') {
+        return {
+          body: {
+            teamName: 'alpha',
+            isAlive: false,
+            runId: null,
+            progress: null,
+          },
+        };
+      }
+
+      return { statusCode: 404, body: { error: `Unhandled ${method} ${url}` } };
+    });
+
+    try {
+      const launched = parseJsonToolResult(
+        await getTool('team_launch').execute({
+          teamName: 'alpha',
+          cwd: '/tmp/project',
+          controlUrl: server.baseUrl,
+        })
+      );
+      expect(launched.runId).toBe('run-555');
+      expect(launched.isAlive).toBe(true);
+      expect(launched.progress.state).toBe('ready');
+
+      const stopped = parseJsonToolResult(
+        await getTool('team_stop').execute({
+          teamName: 'alpha',
+          controlUrl: server.baseUrl,
+        })
+      );
+      expect(stopped.isAlive).toBe(false);
+
+      expect(calls).toEqual([
+        {
+          method: 'POST',
+          url: '/api/teams/alpha/launch',
+          body: { cwd: '/tmp/project' },
+        },
+        {
+          method: 'GET',
+          url: '/api/teams/provisioning/run-555',
+          body: undefined,
+        },
+        {
+          method: 'POST',
+          url: '/api/teams/alpha/stop',
+          body: undefined,
+        },
+        {
+          method: 'GET',
+          url: '/api/teams/alpha/runtime',
+          body: undefined,
+        },
+      ]);
+    } finally {
+      await server.close();
+    }
   });
 
   it('covers task lifecycle, attachments, relationships, kanban, and review flows', async () => {

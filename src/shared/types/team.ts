@@ -566,6 +566,13 @@ export interface TeamProvisioningProgress {
   assistantOutput?: string;
 }
 
+export interface TeamRuntimeState {
+  teamName: string;
+  isAlive: boolean;
+  runId: string | null;
+  progress: TeamProvisioningProgress | null;
+}
+
 export interface GlobalTask extends TeamTaskWithKanban {
   teamName: string;
   teamDisplayName: string;
