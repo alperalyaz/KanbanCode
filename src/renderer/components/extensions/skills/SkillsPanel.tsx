@@ -388,7 +388,7 @@ export const SkillsPanel = ({
                   {visibleProjectSkills.length}
                 </Badge>
               </div>
-              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+              <div className="skills-grid grid grid-cols-1 gap-3 xl:grid-cols-2">
                 {visibleProjectSkills.map((skill) => (
                   <button
                     key={skill.id}
@@ -471,7 +471,7 @@ export const SkillsPanel = ({
                   {visibleUserSkills.length}
                 </Badge>
               </div>
-              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+              <div className="skills-grid grid grid-cols-1 gap-3 xl:grid-cols-2">
                 {visibleUserSkills.map((skill) => (
                   <button
                     key={skill.id}

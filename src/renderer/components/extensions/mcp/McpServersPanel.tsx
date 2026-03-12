@@ -6,8 +6,6 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
-import { Checkbox } from '@renderer/components/ui/checkbox';
-import { Label } from '@renderer/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -87,7 +85,6 @@ export const McpServersPanel = ({
   const runMcpDiagnostics = useStore((s) => s.runMcpDiagnostics);
 
   const [mcpSort, setMcpSort] = useState<McpSortValue>('name-asc');
-  const [mcpInstalledOnly, setMcpInstalledOnly] = useState(false);
 
   // Load initial browse data
   useEffect(() => {
@@ -155,14 +152,8 @@ export const McpServersPanel = ({
     }
   };
 
-  // Sort + filter
-  const displayServers = useMemo(() => {
-    let result = rawServers;
-    if (mcpInstalledOnly) {
-      result = result.filter(isServerInstalled);
-    }
-    return sortMcpServers(result, mcpSort);
-  }, [rawServers, mcpSort, mcpInstalledOnly, installedNames]);
+  // Sort displayed servers
+  const displayServers = useMemo(() => sortMcpServers(rawServers, mcpSort), [rawServers, mcpSort]);
 
   // Find selected server (search in both lists to avoid losing selection during search toggle)
   const selectedServer = useMemo(() => {
@@ -219,7 +210,7 @@ export const McpServersPanel = ({
               )}
             </div>
             {allDiagnostics.length > 0 ? (
-              <div className="max-h-[18.5rem] space-y-2 overflow-y-auto pr-1">
+              <div className="mcp-diagnostics-list max-h-[18.5rem] space-y-2 overflow-y-auto pr-1">
                 {allDiagnostics.map((diagnostic) => (
                   <div
                     key={diagnostic.name}
@@ -247,7 +238,7 @@ export const McpServersPanel = ({
         )}
       </div>
 
-      {/* Search + Sort + Installed only row */}
+      {/* Search + sort row */}
       <div className="flex items-center gap-3">
         <div className="flex-1">
           <SearchInput
@@ -268,19 +259,6 @@ export const McpServersPanel = ({
             ))}
           </SelectContent>
         </Select>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="mcp-installed-only"
-            checked={mcpInstalledOnly}
-            onCheckedChange={() => setMcpInstalledOnly(!mcpInstalledOnly)}
-          />
-          <Label
-            htmlFor="mcp-installed-only"
-            className="whitespace-nowrap text-xs text-text-secondary"
-          >
-            Installed only
-          </Label>
-        </div>
       </div>
 
       {/* Warnings */}
@@ -343,31 +321,23 @@ export const McpServersPanel = ({
       {!isLoading && displayServers.length === 0 && (
         <div className="flex flex-col items-center gap-3 rounded-sm border border-dashed border-border px-8 py-16">
           <div className="flex size-10 items-center justify-center rounded-lg border border-border bg-surface-raised">
-            {isSearching || mcpInstalledOnly ? (
+            {isSearching ? (
               <Search className="size-5 text-text-muted" />
             ) : (
               <Server className="size-5 text-text-muted" />
             )}
           </div>
           <p className="text-sm text-text-secondary">
-            {isSearching
-              ? 'No servers found'
-              : mcpInstalledOnly
-                ? 'No installed servers'
-                : 'No MCP servers available'}
+            {isSearching ? 'No servers found' : 'No MCP servers available'}
           </p>
           <p className="text-xs text-text-muted">
-            {isSearching
-              ? 'Try a different search term'
-              : mcpInstalledOnly
-                ? 'Install servers from the catalog to see them here'
-                : 'Check back later for new servers'}
+            {isSearching ? 'Try a different search term' : 'Check back later for new servers'}
           </p>
         </div>
       )}
 
       {displayServers.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mcp-servers-grid grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {displayServers.map((server) => (
             <McpServerCard
               key={server.id}

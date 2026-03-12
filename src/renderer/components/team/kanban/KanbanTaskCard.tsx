@@ -18,9 +18,9 @@ import {
   ArrowLeftFromLine,
   ArrowRightFromLine,
   CheckCircle2,
+  Eye,
   FileCode,
   FilePenLine,
-  GitPullRequestArrow,
   HelpCircle,
   Play,
   RotateCcw,
@@ -435,7 +435,7 @@ export const KanbanTaskCard = ({
               />
               <TaskActionIconButton
                 label="Request review"
-                icon={<GitPullRequestArrow size={14} />}
+                icon={<Eye size={14} />}
                 className="border-violet-500/40 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
                 onClick={(e) => {
                   e.stopPropagation();

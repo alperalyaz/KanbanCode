@@ -638,25 +638,37 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     if (!api.teams?.getMemberSpawnStatuses) return;
     try {
       const snapshot = await api.teams.getMemberSpawnStatuses(teamName);
-      set((prev) => ({
-        ...(snapshot.runId != null &&
-        prev.currentRuntimeRunIdByTeam[teamName] != null &&
-        prev.currentRuntimeRunIdByTeam[teamName] !== snapshot.runId
-          ? {}
-          : {
-              currentRuntimeRunIdByTeam:
-                snapshot.runId == null
-                  ? prev.currentRuntimeRunIdByTeam
-                  : {
-                      ...prev.currentRuntimeRunIdByTeam,
-                      [teamName]: prev.currentRuntimeRunIdByTeam[teamName] ?? snapshot.runId,
-                    },
-              memberSpawnStatusesByTeam: {
-                ...prev.memberSpawnStatusesByTeam,
-                [teamName]: snapshot.statuses,
-              },
-            }),
-      }));
+      set((prev) => {
+        if (
+          prev.currentRuntimeRunIdByTeam[teamName] == null &&
+          prev.leadActivityByTeam[teamName] === 'offline' &&
+          snapshot.runId != null
+        ) {
+          return {};
+        }
+
+        if (
+          snapshot.runId != null &&
+          prev.currentRuntimeRunIdByTeam[teamName] != null &&
+          prev.currentRuntimeRunIdByTeam[teamName] !== snapshot.runId
+        ) {
+          return {};
+        }
+
+        return {
+          currentRuntimeRunIdByTeam:
+            snapshot.runId == null
+              ? prev.currentRuntimeRunIdByTeam
+              : {
+                  ...prev.currentRuntimeRunIdByTeam,
+                  [teamName]: prev.currentRuntimeRunIdByTeam[teamName] ?? snapshot.runId,
+                },
+          memberSpawnStatusesByTeam: {
+            ...prev.memberSpawnStatusesByTeam,
+            [teamName]: snapshot.statuses,
+          },
+        };
+      });
     } catch {
       // ignore — spawn statuses are best-effort
     }
@@ -1683,6 +1695,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     }
 
     set((state) => {
+      const nextRuns: Record<string, TeamProvisioningProgress> = {
+        ...state.provisioningRuns,
+      };
       const nextCurrentRunIdByTeam = { ...state.currentProvisioningRunIdByTeam };
       const previousCurrentRunId = nextCurrentRunIdByTeam[progress.teamName];
       let isCanonicalRun = false;
@@ -1704,15 +1719,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         if (!(progress.runId in state.provisioningRuns)) {
           return {};
         }
-        const nextRuns = { ...state.provisioningRuns };
         delete nextRuns[progress.runId];
         return { provisioningRuns: nextRuns };
       }
 
-      const nextRuns: Record<string, TeamProvisioningProgress> = {
-        ...state.provisioningRuns,
-        [progress.runId]: progress,
-      };
+      nextRuns[progress.runId] = progress;
       for (const [runId, run] of Object.entries(nextRuns)) {
         if (runId !== progress.runId && run.teamName === progress.teamName) {
           delete nextRuns[runId];

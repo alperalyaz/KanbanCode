@@ -420,6 +420,45 @@ describe('teamSlice actions', () => {
       expect(store.getState().provisioningRuns['run-stale']).toBeUndefined();
     });
 
+    it('promotes a pending run to a real run without throwing', () => {
+      const store = createSliceStore();
+      store.setState({
+        provisioningRuns: {
+          'pending:my-team:1': {
+            runId: 'pending:my-team:1',
+            teamName: 'my-team',
+            state: 'spawning',
+            message: 'Launching',
+            startedAt: '2026-03-12T10:00:00.000Z',
+            updatedAt: '2026-03-12T10:00:00.000Z',
+          },
+        },
+        currentProvisioningRunIdByTeam: {
+          'my-team': 'pending:my-team:1',
+        },
+      });
+
+      expect(() =>
+        store.getState().onProvisioningProgress({
+          runId: 'run-real',
+          teamName: 'my-team',
+          state: 'monitoring',
+          message: 'Real run',
+          startedAt: '2026-03-12T10:00:01.000Z',
+          updatedAt: '2026-03-12T10:00:01.000Z',
+        })
+      ).not.toThrow();
+
+      expect(store.getState().currentProvisioningRunIdByTeam['my-team']).toBe('run-real');
+      expect(store.getState().provisioningRuns['pending:my-team:1']).toBeUndefined();
+      expect(store.getState().provisioningRuns['run-real']).toEqual(
+        expect.objectContaining({
+          runId: 'run-real',
+          state: 'monitoring',
+        })
+      );
+    });
+
     it('clears orphaned runs when polling reports Unknown runId', () => {
       const store = createSliceStore();
       store.setState({
@@ -505,6 +544,29 @@ describe('teamSlice actions', () => {
       expect(store.getState().memberSpawnStatusesByTeam['my-team']).toEqual({
         alice: { status: 'spawning', updatedAt: '2026-03-12T10:00:00.000Z' },
       });
+    });
+
+    it('ignores stale spawn-status fetches after runtime already went offline', async () => {
+      const store = createSliceStore();
+      store.setState({
+        currentProvisioningRunIdByTeam: {
+          'my-team': 'provisioning-run',
+        },
+        leadActivityByTeam: {
+          'my-team': 'offline',
+        },
+      });
+      hoisted.getMemberSpawnStatuses.mockResolvedValue({
+        runId: 'old-runtime-run',
+        statuses: {
+          alice: { status: 'spawning', updatedAt: '2026-03-12T10:00:00.000Z' },
+        },
+      });
+
+      await store.getState().fetchMemberSpawnStatuses('my-team');
+
+      expect(store.getState().currentRuntimeRunIdByTeam['my-team']).toBeUndefined();
+      expect(store.getState().memberSpawnStatusesByTeam['my-team']).toBeUndefined();
     });
 
     it('preserves current spawn statuses when clearing a non-canonical missing run', () => {

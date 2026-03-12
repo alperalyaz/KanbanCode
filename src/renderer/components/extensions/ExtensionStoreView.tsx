@@ -194,7 +194,7 @@ export const ExtensionStoreView = (): React.JSX.Element => {
                     variant="outline"
                     size="sm"
                     onClick={() => setCustomMcpDialogOpen(true)}
-                    className="whitespace-nowrap"
+                    className="mb-1 whitespace-nowrap"
                   >
                     <Plus className="mr-1 size-3.5" />
                     Add Custom

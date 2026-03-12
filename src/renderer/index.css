@@ -979,6 +979,92 @@ body {
   line-height: 0.875rem;
 }
 
+/* Extension list zebra rows */
+
+.mcp-servers-grid > *,
+.plugins-grid > *,
+.skills-grid > *,
+.mcp-diagnostics-list > * {
+  background-color: transparent;
+}
+
+@media (max-width: 639px) {
+  .mcp-servers-grid > *:nth-child(even),
+  .plugins-grid > *:nth-child(even),
+  .skills-grid > *:nth-child(even) {
+    background-color: rgba(148, 163, 184, 0.025);
+  }
+}
+
+@media (min-width: 640px) and (max-width: 1279px) {
+  .mcp-servers-grid > *:nth-child(4n + 3),
+  .mcp-servers-grid > *:nth-child(4n + 4),
+  .plugins-grid > *:nth-child(4n + 3),
+  .plugins-grid > *:nth-child(4n + 4),
+  .skills-grid > *:nth-child(even) {
+    background-color: rgba(148, 163, 184, 0.025);
+  }
+}
+
+@media (min-width: 1280px) {
+  .mcp-servers-grid > *:nth-child(6n + 4),
+  .mcp-servers-grid > *:nth-child(6n + 5),
+  .mcp-servers-grid > *:nth-child(6n + 6),
+  .plugins-grid > *:nth-child(6n + 4),
+  .plugins-grid > *:nth-child(6n + 5),
+  .plugins-grid > *:nth-child(6n + 6),
+  .skills-grid > *:nth-child(4n + 3),
+  .skills-grid > *:nth-child(4n + 4) {
+    background-color: rgba(148, 163, 184, 0.025);
+  }
+}
+
+:root.light .mcp-servers-grid > *,
+:root.light .plugins-grid > *,
+:root.light .skills-grid > *,
+:root.light .mcp-diagnostics-list > * {
+  background-color: transparent;
+}
+
+@media (max-width: 639px) {
+  :root.light .mcp-servers-grid > *:nth-child(even),
+  :root.light .plugins-grid > *:nth-child(even),
+  :root.light .skills-grid > *:nth-child(even) {
+    background-color: rgba(15, 23, 42, 0.05);
+  }
+}
+
+@media (min-width: 640px) and (max-width: 1279px) {
+  :root.light .mcp-servers-grid > *:nth-child(4n + 3),
+  :root.light .mcp-servers-grid > *:nth-child(4n + 4),
+  :root.light .plugins-grid > *:nth-child(4n + 3),
+  :root.light .plugins-grid > *:nth-child(4n + 4),
+  :root.light .skills-grid > *:nth-child(even) {
+    background-color: rgba(15, 23, 42, 0.05);
+  }
+}
+
+@media (min-width: 1280px) {
+  :root.light .mcp-servers-grid > *:nth-child(6n + 4),
+  :root.light .mcp-servers-grid > *:nth-child(6n + 5),
+  :root.light .mcp-servers-grid > *:nth-child(6n + 6),
+  :root.light .plugins-grid > *:nth-child(6n + 4),
+  :root.light .plugins-grid > *:nth-child(6n + 5),
+  :root.light .plugins-grid > *:nth-child(6n + 6),
+  :root.light .skills-grid > *:nth-child(4n + 3),
+  :root.light .skills-grid > *:nth-child(4n + 4) {
+    background-color: rgba(15, 23, 42, 0.05);
+  }
+}
+
+.mcp-diagnostics-list > *:nth-child(even) {
+  background-color: rgba(148, 163, 184, 0.025);
+}
+
+:root.light .mcp-diagnostics-list > *:nth-child(even) {
+  background-color: rgba(15, 23, 42, 0.05);
+}
+
 :root.light .checkerboard-bg {
   background-image:
     linear-gradient(45deg, #e2e8f0 25%, transparent 25%),

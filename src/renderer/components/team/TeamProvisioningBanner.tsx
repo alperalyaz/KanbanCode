@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@renderer/components/ui/button';
 import { useStore } from '@renderer/store';
@@ -25,12 +25,14 @@ export const TeamProvisioningBanner = ({
     }))
   );
   const [dismissed, setDismissed] = useState(false);
-  const prevRunIdRef = useRef(progress?.runId);
+  const bannerInstanceKey = useMemo(() => {
+    if (!progress) return null;
+    return `${teamName}:${progress.runId}:${progress.startedAt}`;
+  }, [teamName, progress?.runId, progress?.startedAt]);
 
-  if (prevRunIdRef.current !== progress?.runId) {
-    prevRunIdRef.current = progress?.runId;
+  useEffect(() => {
     setDismissed(false);
-  }
+  }, [bannerInstanceKey]);
 
   // NOTE: we intentionally do NOT auto-dismiss "ready" banners.
   // Users frequently need to inspect launch output after fast stop→start cycles,
