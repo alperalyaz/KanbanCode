@@ -6,7 +6,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui
 import { useTeamMessagesExpanded } from '@renderer/hooks/useTeamMessagesExpanded';
 import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { useStore } from '@renderer/store';
-import { computePendingCrossTeamReplies } from '@renderer/utils/crossTeamPendingReplies';
 import { filterTeamMessages } from '@renderer/utils/teamMessageFiltering';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
@@ -15,7 +14,6 @@ import {
   CheckCheck,
   ChevronsDownUp,
   ChevronsUpDown,
-  ChevronRight,
   MessageSquare,
   PanelLeftClose,
   PanelLeft,
@@ -23,12 +21,11 @@ import {
   X,
 } from 'lucide-react';
 
-import { ActiveTasksBlock } from '../activity/ActiveTasksBlock';
 import { ActivityTimeline } from '../activity/ActivityTimeline';
-import { PendingRepliesBlock } from '../activity/PendingRepliesBlock';
 import { CollapsibleTeamSection } from '../CollapsibleTeamSection';
 import { MessageComposer } from './MessageComposer';
 import { MessagesFilterPopover } from './MessagesFilterPopover';
+import { StatusBlock } from './StatusBlock';
 
 import type { MessagesFilterState } from './MessagesFilterPopover';
 import type { ActionMode } from './ActionModeSelector';
@@ -110,15 +107,6 @@ export const MessagesPanel = ({
   const [messagesFilterOpen, setMessagesFilterOpen] = useState(false);
   const [messagesCollapsed, setMessagesCollapsed] = useState(true);
   const [sidebarSearchVisible, setSidebarSearchVisible] = useState(false);
-  const [statusBlockCollapsed, setStatusBlockCollapsed] = useState(false);
-  const [pendingRepliesNowMs, setPendingRepliesNowMs] = useState(() => Date.now());
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setPendingRepliesNowMs(Date.now());
-    }, 1000);
-    return () => window.clearInterval(intervalId);
-  }, []);
 
   const filteredMessages = useMemo(() => {
     return filterTeamMessages(messages, {
@@ -147,28 +135,6 @@ export const MessagesPanel = ({
       .map((m) => toMessageKey(m));
     markAllRead(keys);
   }, [filteredMessages, readSet, markAllRead]);
-
-  const pendingCrossTeamReplies = useMemo(
-    () => computePendingCrossTeamReplies(messages, pendingRepliesNowMs),
-    [messages, pendingRepliesNowMs]
-  );
-
-  /** Whether the Status block has any visible items (pending replies or active tasks). */
-  const hasStatusItems = useMemo(() => {
-    const hasPendingReplies = Object.keys(pendingRepliesByMember).some((name) =>
-      members.some((m) => m.name === name)
-    );
-    if (hasPendingReplies) return true;
-    if (pendingCrossTeamReplies.length > 0) return true;
-
-    const tMap = new Map(tasks.map((t) => [t.id, t]));
-    return members.some((m) => {
-      if (!m.currentTaskId) return false;
-      const task = tMap.get(m.currentTaskId);
-      if (task && (task.reviewState === 'approved' || task.status === 'completed')) return false;
-      return true;
-    });
-  }, [members, tasks, pendingRepliesByMember, pendingCrossTeamReplies.length]);
 
   // Auto-clear pending replies when a member actually responds
   useEffect(() => {
@@ -312,42 +278,14 @@ export const MessagesPanel = ({
         onSend={handleSend}
         onCrossTeamSend={handleCrossTeamSend}
       />
-      {/* Status block: button floats right (absolute, no layout impact);
-          expanded content renders full-width in normal flow. */}
-      {hasStatusItems && (
-        <>
-          <div className="relative h-0">
-            <button
-              type="button"
-              className="absolute -top-[19px] right-0 z-10 flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
-              onClick={() => setStatusBlockCollapsed((prev) => !prev)}
-              aria-label={statusBlockCollapsed ? 'Expand status' : 'Collapse status'}
-            >
-              <ChevronRight
-                size={12}
-                className={`shrink-0 transition-transform duration-150 ${statusBlockCollapsed ? '' : 'rotate-90'}`}
-              />
-              Status
-            </button>
-          </div>
-          {!statusBlockCollapsed && (
-            <div className="mt-5">
-              <PendingRepliesBlock
-                members={members}
-                pendingRepliesByMember={pendingRepliesByMember}
-                pendingCrossTeamReplies={pendingCrossTeamReplies}
-                onMemberClick={onMemberClick}
-              />
-              <ActiveTasksBlock
-                members={members}
-                tasks={tasks}
-                onMemberClick={onMemberClick}
-                onTaskClick={onTaskClick}
-              />
-            </div>
-          )}
-        </>
-      )}
+      <StatusBlock
+        members={members}
+        tasks={tasks}
+        messages={messages}
+        pendingRepliesByMember={pendingRepliesByMember}
+        onMemberClick={onMemberClick}
+        onTaskClick={onTaskClick}
+      />
       <ActivityTimeline
         messages={filteredMessages}
         teamName={teamName}

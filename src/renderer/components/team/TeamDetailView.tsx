@@ -303,6 +303,8 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     selectedContextPhase,
     setSelectedContextPhase,
   } = useTabUI();
+  const activeTabId = useStore((s) => s.activeTabId);
+  const isThisTabActive = tabId ? activeTabId === tabId : false;
   const [isContextButtonHovered, setIsContextButtonHovered] = useState(false);
 
   // Messages panel resize
@@ -367,6 +369,18 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     void selectTeam(teamName);
     void fetchDeletedTasks(teamName);
   }, [teamName, selectTeam, fetchDeletedTasks]);
+
+  // Recovery: after HMR, all mounted TeamDetailView effects re-run simultaneously.
+  // With CSS display-toggle (all tabs stay mounted), the last selectTeam() call wins
+  // and other tabs get stuck with mismatched data (permanent skeleton).
+  // Re-trigger selectTeam when this tab becomes active and store data is stale.
+  const storedTeamName = data?.teamName;
+  useEffect(() => {
+    if (!isThisTabActive || !teamName || loading) return;
+    if (storedTeamName != null && storedTeamName !== teamName) {
+      void selectTeam(teamName);
+    }
+  }, [isThisTabActive, teamName, storedTeamName, loading, selectTeam]);
 
   // Fetch active teams when launch dialog opens (for conflict warning)
   useEffect(() => {
@@ -495,9 +509,6 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     () => formatPercentOfTotal(visibleContextTokens, lastAiGroupTotalTokens),
     [visibleContextTokens, lastAiGroupTotalTokens]
   );
-
-  const activeTabId = useStore((s) => s.activeTabId);
-  const isThisTabActive = tabId ? activeTabId === tabId : false;
 
   // Keep lead-session context fresh in the background while the team tab is active.
   // This keeps the button value current even when the panel is closed.
@@ -1097,6 +1108,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                     launchParams?.model &&
                     (() => {
                       const MODEL_LABELS: Record<string, string> = {
+                        default: 'Default',
                         opus: 'Opus 4.6',
                         sonnet: 'Sonnet 4.5',
                         haiku: 'Haiku 4.5',

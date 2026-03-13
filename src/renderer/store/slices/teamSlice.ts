@@ -537,14 +537,6 @@ function saveLaunchParams(teamName: string, params: TeamLaunchParams): void {
   }
 }
 
-function removeLaunchParams(teamName: string): void {
-  try {
-    localStorage.removeItem(LAUNCH_PARAMS_PREFIX + teamName);
-  } catch {
-    // ignore
-  }
-}
-
 /**
  * Parse raw model string from TeamLaunchRequest back into base model + extended context flag.
  * E.g. 'opus[1m]' → { model: 'opus', extendedContext: true }
@@ -1412,20 +1404,18 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
       // Persist per-team launch params (model, effort, extended context)
       const { model: baseModel, extendedContext } = parseModelString(request.model);
-      if (baseModel) {
-        const params: TeamLaunchParams = {
-          model: baseModel,
-          effort: request.effort,
-          extendedContext,
-        };
-        saveLaunchParams(request.teamName, params);
-        set((state) => ({
-          launchParamsByTeam: {
-            ...state.launchParamsByTeam,
-            [request.teamName]: params,
-          },
-        }));
-      }
+      const params: TeamLaunchParams = {
+        model: baseModel || 'default',
+        effort: request.effort,
+        extendedContext,
+      };
+      saveLaunchParams(request.teamName, params);
+      set((state) => ({
+        launchParamsByTeam: {
+          ...state.launchParamsByTeam,
+          [request.teamName]: params,
+        },
+      }));
 
       set((state) => {
         const nextRuns = { ...state.provisioningRuns };
@@ -1545,28 +1535,18 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
       // Persist per-team launch params (model, effort, extended context)
       const { model: baseModel, extendedContext } = parseModelString(request.model);
-      if (baseModel) {
-        const params: TeamLaunchParams = {
-          model: baseModel,
-          effort: request.effort,
-          extendedContext,
-        };
-        saveLaunchParams(request.teamName, params);
-        set((state) => ({
-          launchParamsByTeam: {
-            ...state.launchParamsByTeam,
-            [request.teamName]: params,
-          },
-        }));
-      } else {
-        // No model selected — clear stored params
-        removeLaunchParams(request.teamName);
-        set((state) => {
-          const updated = { ...state.launchParamsByTeam };
-          delete updated[request.teamName];
-          return { launchParamsByTeam: updated };
-        });
-      }
+      const params: TeamLaunchParams = {
+        model: baseModel || 'default',
+        effort: request.effort,
+        extendedContext,
+      };
+      saveLaunchParams(request.teamName, params);
+      set((state) => ({
+        launchParamsByTeam: {
+          ...state.launchParamsByTeam,
+          [request.teamName]: params,
+        },
+      }));
 
       set((state) => {
         const nextRuns = { ...state.provisioningRuns };
