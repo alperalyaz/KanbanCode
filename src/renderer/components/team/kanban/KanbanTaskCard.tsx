@@ -102,7 +102,7 @@ const TruncatedTitle = ({
   const checkTruncation = useCallback(() => {
     const el = ref.current;
     if (el) {
-      setIsTruncated(el.scrollWidth > el.clientWidth);
+      setIsTruncated(el.scrollHeight > el.clientHeight);
     }
   }, []);
 
@@ -111,7 +111,7 @@ const TruncatedTitle = ({
       <TooltipTrigger asChild>
         <h5
           ref={ref}
-          className={`truncate text-sm font-medium text-[var(--color-text)] ${className ?? ''}`}
+          className={`line-clamp-2 text-xs font-medium text-[var(--color-text)] ${className ?? ''}`}
           onMouseEnter={checkTruncation}
         >
           {text}
@@ -141,11 +141,11 @@ const CancelTaskButton = ({
             <Button
               variant="destructive"
               size="icon"
-              className="size-8 rounded-full shadow-sm"
+              className="size-6 rounded-full shadow-sm"
               aria-label={`Cancel task ${taskId}`}
               onClick={(e) => e.stopPropagation()}
             >
-              <XCircle size={14} />
+              <XCircle size={11} />
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
@@ -201,7 +201,7 @@ const TaskActionIconButton = ({
       <Button
         variant={variant}
         size="icon"
-        className={`size-8 shrink-0 rounded-full shadow-sm ${className}`}
+        className={`size-6 shrink-0 rounded-full shadow-sm ${className}`}
         aria-label={label}
         onClick={onClick}
       >
@@ -275,7 +275,7 @@ export const KanbanTaskCard = ({
       {showChangesColumn && taskHasChanges === true ? (
         <TaskActionIconButton
           label="Changes"
-          icon={<FileCode className="size-3.5" />}
+          icon={<FileCode className="size-2.5" />}
           variant="ghost"
           className="text-sky-400 hover:bg-sky-500/10 hover:text-sky-300"
           onClick={(e) => {
@@ -288,7 +288,7 @@ export const KanbanTaskCard = ({
       {onDeleteTask ? (
         <TaskActionIconButton
           label="Delete task"
-          icon={<Trash2 size={14} />}
+          icon={<Trash2 size={11} />}
           variant="ghost"
           className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
           onClick={(e) => {
@@ -303,7 +303,7 @@ export const KanbanTaskCard = ({
   return (
     <div
       data-task-id={task.id}
-      className={`relative cursor-pointer rounded-md border p-3 transition-colors hover:border-[var(--color-border-emphasis)] ${
+      className={`relative cursor-pointer rounded-md border px-1.5 py-3 transition-colors hover:border-[var(--color-border-emphasis)] ${
         hasBlockedBy
           ? 'border-yellow-500/30 bg-[var(--color-surface-raised)]'
           : 'border-[var(--color-border)] bg-[var(--color-surface-raised)]'
@@ -321,11 +321,13 @@ export const KanbanTaskCard = ({
       <span className="absolute left-[3px] top-[2px] text-[9px] leading-none text-[var(--color-text-muted)]">
         {formatTaskDisplayLabel(task)}
       </span>
-      <div className="mb-2 pt-2">
-        <div className="flex items-center gap-1">
-          {task.owner ? <MemberBadge name={task.owner} color={colorMap.get(task.owner)} /> : null}
-          {!compact && <TruncatedTitle text={task.subject} className="min-w-0" />}
-        </div>
+      {task.owner ? (
+        <span className="absolute right-[6px] top-[2px]">
+          <MemberBadge name={task.owner} color={colorMap.get(task.owner)} size="xs" />
+        </span>
+      ) : null}
+      <div className="mb-2 pt-[11px]">
+        {!compact && <TruncatedTitle text={task.subject} className="min-w-0" />}
         {task.needsClarification ? (
           <span
             className={`mt-1 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
@@ -388,7 +390,7 @@ export const KanbanTaskCard = ({
             <>
               <TaskActionIconButton
                 label="Start"
-                icon={<Play size={14} />}
+                icon={<Play size={11} />}
                 className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -397,7 +399,7 @@ export const KanbanTaskCard = ({
               />
               <TaskActionIconButton
                 label="Complete"
-                icon={<CheckCircle2 size={14} />}
+                icon={<CheckCircle2 size={11} />}
                 className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -411,7 +413,7 @@ export const KanbanTaskCard = ({
             <>
               <TaskActionIconButton
                 label="Complete"
-                icon={<CheckCircle2 size={14} />}
+                icon={<CheckCircle2 size={11} />}
                 className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -426,7 +428,7 @@ export const KanbanTaskCard = ({
             <>
               <TaskActionIconButton
                 label="Approve"
-                icon={<CheckCircle2 size={14} />}
+                icon={<CheckCircle2 size={11} />}
                 className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -435,7 +437,7 @@ export const KanbanTaskCard = ({
               />
               <TaskActionIconButton
                 label="Request review"
-                icon={<Eye size={14} />}
+                icon={<Eye size={11} />}
                 className="border-violet-500/40 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -446,16 +448,16 @@ export const KanbanTaskCard = ({
           ) : null}
 
           {columnId === 'review' ? (
-            <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               {isReviewManual ? (
-                <div className="min-w-0 shrink text-[11px] text-[var(--color-text-muted)]">
+                <div className="whitespace-nowrap text-[11px] text-[var(--color-text-muted)]">
                   Manual review
                 </div>
               ) : null}
-              <div className="flex shrink-0 flex-nowrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <TaskActionIconButton
                   label="Approve"
-                  icon={<CheckCircle2 size={14} />}
+                  icon={<CheckCircle2 size={11} />}
                   className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -464,7 +466,7 @@ export const KanbanTaskCard = ({
                 />
                 <TaskActionIconButton
                   label="Request changes"
-                  icon={<FilePenLine size={14} />}
+                  icon={<FilePenLine size={11} />}
                   variant="destructive"
                   className="bg-red-500/90 text-white hover:bg-red-500"
                   onClick={(e) => {
@@ -472,17 +474,15 @@ export const KanbanTaskCard = ({
                     onRequestChanges(task.id);
                   }}
                 />
+                {isReviewManual ? metaActions : null}
               </div>
-              {isReviewManual ? (
-                <div className="flex shrink-0 items-center gap-1.5">{metaActions}</div>
-              ) : null}
             </div>
           ) : null}
 
           {columnId === 'approved' ? (
             <TaskActionIconButton
               label="Disapprove"
-              icon={<RotateCcw size={14} />}
+              icon={<RotateCcw size={11} />}
               className="border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
               onClick={(e) => {
                 e.stopPropagation();

@@ -3,6 +3,9 @@
  */
 
 import { chipToken } from '@renderer/types/inlineChip';
+import { getSuggestionInsertionText } from '@renderer/utils/mentionSuggestions';
+
+import type { MentionSuggestion } from '@renderer/types/mention';
 import { getCodeFenceLanguage } from '@renderer/utils/buildSelectionAction';
 import { getBasename } from '@shared/utils/platformPath';
 
@@ -258,6 +261,81 @@ export function calculateInlineMatchPositions<T>(
 
   document.body.removeChild(mirror);
   return positions;
+}
+
+/**
+ * Calculates screen positions of @mention tokens in textarea using the mirror div technique.
+ */
+export interface MentionPosition {
+  suggestion: MentionSuggestion;
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+export function calculateMentionPositions(
+  textarea: HTMLTextAreaElement,
+  text: string,
+  suggestions: MentionSuggestion[]
+): MentionPosition[] {
+  if (suggestions.length === 0 || !text) return [];
+
+  // Filter to member/team suggestions only (not tasks/files)
+  const mentionSuggestions = suggestions.filter(
+    (s) => s.type !== 'task' && s.type !== 'file' && s.type !== 'folder'
+  );
+  if (mentionSuggestions.length === 0) return [];
+
+  // Sort by name length descending for greedy matching
+  const sorted = [...mentionSuggestions].sort((a, b) => {
+    const aText = getSuggestionInsertionText(a);
+    const bText = getSuggestionInsertionText(b);
+    return bText.length - aText.length;
+  });
+
+  const matches: InlineMatch<MentionSuggestion>[] = [];
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] !== '@') {
+      i++;
+      continue;
+    }
+    // @ must be at start or after whitespace
+    if (i > 0) {
+      const ch = text[i - 1];
+      if (ch !== ' ' && ch !== '\t' && ch !== '\n' && ch !== '\r') {
+        i++;
+        continue;
+      }
+    }
+    let matched = false;
+    for (const suggestion of sorted) {
+      const insertionText = getSuggestionInsertionText(suggestion);
+      const end = i + 1 + insertionText.length;
+      if (end > text.length) continue;
+      if (text.slice(i + 1, end).toLowerCase() !== insertionText.toLowerCase()) continue;
+      // Character after name must be boundary
+      if (end < text.length) {
+        const after = text[end];
+        // eslint-disable-next-line no-useless-escape
+        if (!/[\s,.:;!?\)\]\}\-]/.test(after)) continue;
+      }
+      matches.push({ item: suggestion, start: i, end, token: text.slice(i, end) });
+      i = end;
+      matched = true;
+      break;
+    }
+    if (!matched) i++;
+  }
+
+  return calculateInlineMatchPositions(textarea, text, matches).map((pos) => ({
+    suggestion: pos.item,
+    top: pos.top,
+    left: pos.left,
+    width: pos.width,
+    height: pos.height,
+  }));
 }
 
 /**

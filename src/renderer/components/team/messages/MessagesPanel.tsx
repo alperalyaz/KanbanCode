@@ -109,6 +109,7 @@ export const MessagesPanel = ({
   });
   const [messagesFilterOpen, setMessagesFilterOpen] = useState(false);
   const [messagesCollapsed, setMessagesCollapsed] = useState(true);
+  const [sidebarSearchVisible, setSidebarSearchVisible] = useState(false);
   const [statusBlockCollapsed, setStatusBlockCollapsed] = useState(false);
   const [pendingRepliesNowMs, setPendingRepliesNowMs] = useState(() => Date.now());
 
@@ -242,7 +243,7 @@ export const MessagesPanel = ({
   );
 
   // ---- Shared content (used in both modes) ----
-  const searchAndFilterBar = (
+  const searchAndFilterControls = (
     <div className="flex items-center gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-transparent px-2 py-1">
         <Search size={12} className="shrink-0 text-[var(--color-text-muted)]" />
@@ -272,6 +273,12 @@ export const MessagesPanel = ({
         onOpenChange={setMessagesFilterOpen}
         onApply={setMessagesFilter}
       />
+    </div>
+  );
+
+  const searchAndFilterBar = (
+    <div className="flex items-center gap-2">
+      {searchAndFilterControls}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -421,7 +428,37 @@ export const MessagesPanel = ({
             </TooltipTrigger>
             <TooltipContent side="top">Desktop notifications plugin</TooltipContent>
           </Tooltip>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="size-7 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                  onClick={() => setMessagesCollapsed((v) => !v)}
+                >
+                  {messagesCollapsed ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {messagesCollapsed ? 'Expand all messages' : 'Collapse all messages'}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="size-7 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                  onClick={() => setSidebarSearchVisible((v) => !v)}
+                >
+                  {sidebarSearchVisible ? <X size={14} /> : <Search size={14} />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {sidebarSearchVisible ? 'Hide search' : 'Search messages'}
+              </TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -437,10 +474,12 @@ export const MessagesPanel = ({
             </Tooltip>
           </div>
         </div>
-        {/* Search & filter bar */}
-        <div className="shrink-0 border-b border-[var(--color-border)] px-3 py-1.5">
-          {searchAndFilterBar}
-        </div>
+        {/* Search & filter bar (toggleable) */}
+        {sidebarSearchVisible && (
+          <div className="shrink-0 border-b border-[var(--color-border)] px-3 py-1.5">
+            {searchAndFilterControls}
+          </div>
+        )}
         {/* Scrollable content */}
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-2">
           {messagesContent}

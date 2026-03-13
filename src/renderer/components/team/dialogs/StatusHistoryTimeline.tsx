@@ -26,7 +26,7 @@ export const WorkflowTimeline = ({ events, memberColorMap }: WorkflowTimelinePro
   }
 
   return (
-    <div className="space-y-0 px-3 py-2">
+    <div className="px-3 py-2">
       {events.map((event, idx) => {
         const isLast = idx === events.length - 1;
         const time = formatTime(event.timestamp);
@@ -35,14 +35,14 @@ export const WorkflowTimeline = ({ events, memberColorMap }: WorkflowTimelinePro
           <div key={event.id} className="flex">
             {/* Timeline line + dot */}
             <div className="flex w-5 shrink-0 flex-col items-center">
-              <div className={cn('mt-1.5 size-2 shrink-0 rounded-full', dotColor(event))} />
-              {!isLast && <div className="w-px flex-1 bg-zinc-700" />}
+              <div className={cn('mt-2 size-2 shrink-0 rounded-full', dotColor(event))} />
+              {!isLast && <div className="mt-1 w-px flex-1 bg-zinc-700" />}
             </div>
 
             {/* Content */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="mb-1.5 flex w-full items-center gap-2 rounded px-1.5 py-1 text-xs text-[var(--color-text-secondary)]">
+                <div className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-xs text-[var(--color-text-secondary)]">
                   <span className="shrink-0 font-mono text-[10px] text-[var(--color-text-muted)]">
                     {time}
                   </span>

@@ -1077,9 +1077,43 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
               )}
             >
               <div className="min-w-0 flex-1">
-                <h2 className="text-base font-semibold text-[var(--color-text)]">
-                  {data.config.name}
-                </h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-semibold text-[var(--color-text)]">
+                    {data.config.name}
+                  </h2>
+                  {data.isAlive && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                      <span className="size-1.5 rounded-full bg-emerald-400" />
+                      Running
+                    </span>
+                  )}
+                  {!data.isAlive && isTeamProvisioning && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/15 px-1.5 py-0.5 text-[10px] font-medium text-yellow-400">
+                      <span className="size-1.5 animate-pulse rounded-full bg-yellow-400" />
+                      Launching...
+                    </span>
+                  )}
+                  {data.isAlive &&
+                    launchParams?.model &&
+                    (() => {
+                      const MODEL_LABELS: Record<string, string> = {
+                        opus: 'Opus 4.6',
+                        sonnet: 'Sonnet 4.5',
+                        haiku: 'Haiku 4.5',
+                      };
+                      const modelLabel = MODEL_LABELS[launchParams.model] ?? launchParams.model;
+                      const effortLabel = launchParams.effort
+                        ? launchParams.effort.charAt(0).toUpperCase() + launchParams.effort.slice(1)
+                        : '';
+                      const extLabel = launchParams.extendedContext ? '1M' : '';
+                      const parts = [modelLabel, effortLabel, extLabel].filter(Boolean).join(' ');
+                      return (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-surface-raised)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-text-secondary)]">
+                          {parts}
+                        </span>
+                      );
+                    })()}
+                </div>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 {data.isAlive && (
@@ -1173,38 +1207,6 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                   >
                     <GitBranch size={11} className="shrink-0 text-[var(--color-text-muted)]" />
                     <span className="max-w-32 truncate">{leadBranch}</span>
-                  </span>
-                )}
-                {data.isAlive && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
-                    <span className="size-1.5 rounded-full bg-emerald-400" />
-                    Running
-                  </span>
-                )}
-                {data.isAlive &&
-                  launchParams?.model &&
-                  (() => {
-                    const MODEL_LABELS: Record<string, string> = {
-                      opus: 'Opus 4.6',
-                      sonnet: 'Sonnet 4.5',
-                      haiku: 'Haiku 4.5',
-                    };
-                    const modelLabel = MODEL_LABELS[launchParams.model] ?? launchParams.model;
-                    const effortLabel = launchParams.effort
-                      ? launchParams.effort.charAt(0).toUpperCase() + launchParams.effort.slice(1)
-                      : '';
-                    const extLabel = launchParams.extendedContext ? '1M' : '';
-                    const parts = [modelLabel, effortLabel, extLabel].filter(Boolean).join(' ');
-                    return (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-surface-raised)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-text-secondary)]">
-                        {parts}
-                      </span>
-                    );
-                  })()}
-                {!data.isAlive && isTeamProvisioning && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/15 px-1.5 py-0.5 text-[10px] font-medium text-yellow-400">
-                    <span className="size-1.5 animate-pulse rounded-full bg-yellow-400" />
-                    Launching...
                   </span>
                 )}
               </div>

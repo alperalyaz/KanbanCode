@@ -121,7 +121,9 @@ export const CollapsibleTeamSection = ({
           {afterBadge}
           {headerExtra}
         </div>
-        {action && <div className="relative z-10 flex shrink-0 items-center">{action}</div>}
+        {action && (
+          <div className="relative z-10 flex shrink-0 items-center self-start">{action}</div>
+        )}
       </div>
       {isOpen && (
         <div className={cn('mt-1.5 min-w-0 overflow-x-clip pb-2', contentClassName)}>

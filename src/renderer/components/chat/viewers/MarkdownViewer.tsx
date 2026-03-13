@@ -161,7 +161,8 @@ function hastToText(node: HastNode): string {
 function createViewerMarkdownComponents(
   searchCtx: SearchContext | null,
   isLight = false,
-  teamColorByName: ReadonlyMap<string, string> = new Map()
+  teamColorByName: ReadonlyMap<string, string> = new Map(),
+  onTeamClick?: (teamName: string) => void
 ): Components {
   const hl = (children: React.ReactNode): React.ReactNode =>
     searchCtx ? highlightSearchInChildren(children, searchCtx) : children;
@@ -259,20 +260,39 @@ function createViewerMarkdownComponents(
         const teamColor = teamColorByName.get(teamLabel);
         const colorSet = teamColor ? getTeamColorSet(teamColor) : nameColorSet(teamLabel, isLight);
         const bg = getThemedBadge(colorSet, isLight);
+        const badgeStyle: React.CSSProperties = {
+          backgroundColor: bg,
+          color: colorSet.text,
+          borderRadius: '3px',
+          boxShadow: `0 0 0 1.5px ${bg}`,
+          fontSize: 'inherit',
+          cursor: onTeamClick ? 'pointer' : 'default',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '2px',
+          border: 'none',
+          padding: 0,
+          font: 'inherit',
+          lineHeight: 'inherit',
+        };
+        if (onTeamClick && teamLabel) {
+          return (
+            <button
+              type="button"
+              style={badgeStyle}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onTeamClick(teamLabel);
+              }}
+            >
+              <UsersRound size={11} style={{ flexShrink: 0 }} />
+              {children}
+            </button>
+          );
+        }
         return (
-          <span
-            style={{
-              backgroundColor: bg,
-              color: colorSet.text,
-              borderRadius: '3px',
-              boxShadow: `0 0 0 1.5px ${bg}`,
-              fontSize: 'inherit',
-              cursor: 'default',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '2px',
-            }}
-          >
+          <span style={badgeStyle}>
             <UsersRound size={11} style={{ flexShrink: 0 }} />
             {children}
           </span>
@@ -475,9 +495,6 @@ function createViewerMarkdownComponents(
   };
 }
 
-/** Default components without search highlighting */
-const defaultComponents = createViewerMarkdownComponents(null);
-
 // Markdown + syntax highlighting can freeze the renderer on some inputs
 // (very large text, huge code blocks, pathological markdown). Keep the UI responsive:
 // - for medium/large content: disable syntax highlighting
@@ -505,6 +522,8 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
   const [rawLimit, setRawLimit] = React.useState(LARGE_PREVIEW_CHARS);
   const { isLight } = useTheme();
   const teams = useStore((s) => s.teams);
+
+  const openTeamTab = useStore((s) => s.openTeamTab);
 
   const teamColorByName = React.useMemo(() => {
     const result = new Map<string, string>();
@@ -670,10 +689,10 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
   // When search is active, create fresh each render (match counter is stateful and must start at 0)
   // useMemo would cache stale closures when parent re-renders without search deps changing
   const baseComponents = searchCtx
-    ? createViewerMarkdownComponents(searchCtx, isLight, teamColorByName)
+    ? createViewerMarkdownComponents(searchCtx, isLight, teamColorByName, openTeamTab)
     : isLight
-      ? createViewerMarkdownComponents(null, true, teamColorByName)
-      : createViewerMarkdownComponents(null, false, teamColorByName);
+      ? createViewerMarkdownComponents(null, true, teamColorByName, openTeamTab)
+      : createViewerMarkdownComponents(null, false, teamColorByName, openTeamTab);
 
   // When baseDir is set (editor preview), override img to load local files via IPC
   const components = baseDir

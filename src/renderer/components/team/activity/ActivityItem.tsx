@@ -97,7 +97,34 @@ export function getCrossTeamSentMemberName(value: string | undefined): string | 
   return parseQualifiedRecipient(value)?.memberName ?? null;
 }
 
-function CrossTeamTeamBadge({ teamName }: { teamName: string }): React.JSX.Element {
+function CrossTeamTeamBadge({
+  teamName,
+  onClick,
+}: {
+  teamName: string;
+  onClick?: (teamName: string) => void;
+}): React.JSX.Element {
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium tracking-wide"
+        style={{
+          backgroundColor: 'rgba(168, 85, 247, 0.15)',
+          color: '#c084fc',
+          cursor: 'pointer',
+          border: 'none',
+          padding: '1px 6px',
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick(teamName);
+        }}
+      >
+        {teamName}
+      </button>
+    );
+  }
   return (
     <span
       className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium tracking-wide"
@@ -309,6 +336,7 @@ export const ActivityItem = ({
     memberRole && memberRole !== message.from ? formatAgentRole(memberRole) : null;
 
   const teams = useStore((s) => s.teams);
+  const openTeamTab = useStore((s) => s.openTeamTab);
   const teamNames = useMemo(
     () => teams.filter((t) => !t.deletedAt).map((t) => t.teamName),
     [teams]
@@ -526,7 +554,9 @@ export const ActivityItem = ({
         ) : null}
 
         {/* Sender avatar + name badge */}
-        {crossTeamOrigin ? <CrossTeamTeamBadge teamName={crossTeamOrigin.teamName} /> : null}
+        {crossTeamOrigin ? (
+          <CrossTeamTeamBadge teamName={crossTeamOrigin.teamName} onClick={openTeamTab} />
+        ) : null}
         <MemberBadge
           name={senderName}
           color={senderColor}
@@ -586,7 +616,9 @@ export const ActivityItem = ({
             <span style={{ color: CARD_ICON_MUTED }} className="text-[10px]">
               &rarr;
             </span>
-            {crossTeamTarget ? <CrossTeamTeamBadge teamName={crossTeamTarget} /> : null}
+            {crossTeamTarget ? (
+              <CrossTeamTeamBadge teamName={crossTeamTarget} onClick={openTeamTab} />
+            ) : null}
             {crossTeamSentMemberName || !crossTeamTarget ? (
               <MemberBadge
                 name={crossTeamSentMemberName ?? qualifiedRecipient?.memberName ?? message.to}

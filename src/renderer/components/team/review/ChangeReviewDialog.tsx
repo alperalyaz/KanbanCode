@@ -16,6 +16,7 @@ import { sortItemsAsTree } from '@renderer/utils/fileTreeBuilder';
 import { type TaskChangeRequestOptions } from '@renderer/utils/taskChangeRequest';
 import { ChevronDown, Clock, X } from 'lucide-react';
 
+import { ChangesLoadingAnimation } from './ChangesLoadingAnimation';
 import { acceptAllChunks, computeChunkIndexAtPos, rejectAllChunks } from './CodeMirrorDiffUtils';
 import { ContinuousScrollView } from './ContinuousScrollView';
 import { FileEditTimeline } from './FileEditTimeline';
@@ -1151,11 +1152,7 @@ export const ChangeReviewDialog = ({
 
       {/* Content */}
       <div className="flex flex-1 overflow-hidden">
-        {changeSetLoading && (
-          <div className="flex w-full items-center justify-center text-sm text-text-muted">
-            Loading changes...
-          </div>
-        )}
+        {changeSetLoading && <ChangesLoadingAnimation />}
 
         {changeSetError && (
           <div className="flex w-full items-center justify-center text-sm text-red-400">

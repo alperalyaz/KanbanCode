@@ -28,6 +28,7 @@ import {
 import { AutoResizeTextarea } from './auto-resize-textarea';
 import { ChipInteractionLayer } from './ChipInteractionLayer';
 import { CodeChipBadge } from './CodeChipBadge';
+import { MentionInteractionLayer } from './MentionInteractionLayer';
 import { MentionSuggestionList } from './MentionSuggestionList';
 import { TaskReferenceInteractionLayer } from './TaskReferenceInteractionLayer';
 import { UrlInteractionLayer } from './UrlInteractionLayer';
@@ -1078,6 +1079,15 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
                   internalRef.current?.setSelectionRange(match.start, match.start);
                 });
               }}
+            />
+          ) : null}
+
+          {mentionOverlaySuggestions.length > 0 ? (
+            <MentionInteractionLayer
+              suggestions={mentionOverlaySuggestions}
+              value={value}
+              textareaRef={internalRef}
+              scrollTop={scrollTop}
             />
           ) : null}
 
