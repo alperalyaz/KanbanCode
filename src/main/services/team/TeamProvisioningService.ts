@@ -2779,7 +2779,10 @@ export class TeamProvisioningService {
       try {
         child = spawnCli(claudePath, spawnArgs, {
           cwd: request.cwd,
-          env: { ...shellEnv },
+          env: {
+            ...shellEnv,
+            ...(request.limitContext ? { CLAUDE_CODE_DISABLE_1M_CONTEXT: '1' } : {}),
+          },
           stdio: ['pipe', 'pipe', 'pipe'],
         });
       } catch (error) {
@@ -2797,7 +2800,10 @@ export class TeamProvisioningService {
         claudePath,
         args: spawnArgs,
         cwd: request.cwd,
-        env: { ...shellEnv },
+        env: {
+          ...shellEnv,
+          ...(request.limitContext ? { CLAUDE_CODE_DISABLE_1M_CONTEXT: '1' } : {}),
+        },
         prompt,
       };
 
@@ -3182,6 +3188,7 @@ export class TeamProvisioningService {
           cwd: request.cwd,
           env: {
             ...shellEnv,
+            ...(request.limitContext ? { CLAUDE_CODE_DISABLE_1M_CONTEXT: '1' } : {}),
           },
           stdio: ['pipe', 'pipe', 'pipe'],
         });
@@ -3202,7 +3209,10 @@ export class TeamProvisioningService {
         claudePath,
         args: launchArgs,
         cwd: request.cwd,
-        env: { ...shellEnv },
+        env: {
+          ...shellEnv,
+          ...(request.limitContext ? { CLAUDE_CODE_DISABLE_1M_CONTEXT: '1' } : {}),
+        },
         prompt,
       };
 

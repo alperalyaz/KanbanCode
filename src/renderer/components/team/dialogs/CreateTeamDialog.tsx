@@ -36,7 +36,7 @@ import { AlertTriangle, CheckCircle2, Info, Loader2, X } from 'lucide-react';
 
 import { AdvancedCliSection } from './AdvancedCliSection';
 import { EffortLevelSelector } from './EffortLevelSelector';
-import { LimitContextCheckbox } from './ExtendedContextCheckbox';
+import { LimitContextCheckbox } from './LimitContextCheckbox';
 import { OptionalSettingsSection } from './OptionalSettingsSection';
 import { ProjectPathSelector } from './ProjectPathSelector';
 import { SkipPermissionsCheckbox } from './SkipPermissionsCheckbox';

@@ -310,7 +310,7 @@ export interface GlobalTaskDetailState {
 export interface TeamLaunchParams {
   model?: string; // 'opus' | 'sonnet' | 'haiku'
   effort?: EffortLevel;
-  extendedContext?: boolean;
+  limitContext?: boolean;
 }
 
 export interface TeamSlice {
@@ -542,15 +542,15 @@ function saveLaunchParams(teamName: string, params: TeamLaunchParams): void {
 }
 
 /**
- * Parse raw model string from TeamLaunchRequest back into base model + extended context flag.
- * E.g. 'opus[1m]' → { model: 'opus', extendedContext: true }
- *      'sonnet' → { model: 'sonnet', extendedContext: false }
+ * Parse raw model string — simply returns the base model name.
+ * The [1m] suffix is no longer used; context limiting is handled via env var.
  */
-function parseModelString(raw?: string): { model?: string; extendedContext: boolean } {
-  if (!raw) return { extendedContext: false };
+function parseModelString(raw?: string): { model?: string } {
+  if (!raw) return {};
+  // Strip legacy [1m] suffix if present in saved data
   const match = raw.match(/^(\w+)\[1m\]$/);
-  if (match) return { model: match[1], extendedContext: true };
-  return { model: raw, extendedContext: false };
+  if (match) return { model: match[1] };
+  return { model: raw };
 }
 
 function loadToolApprovalSettings(): ToolApprovalSettings {
@@ -1421,12 +1421,12 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       }
       const response = await unwrapIpc('team:create', () => api.teams.createTeam(request));
 
-      // Persist per-team launch params (model, effort, extended context)
-      const { model: baseModel, extendedContext } = parseModelString(request.model);
+      // Persist per-team launch params (model, effort, limit context)
+      const { model: baseModel } = parseModelString(request.model);
       const params: TeamLaunchParams = {
         model: baseModel || 'default',
         effort: request.effort,
-        extendedContext,
+        limitContext: request.limitContext,
       };
       saveLaunchParams(request.teamName, params);
       set((state) => ({
@@ -1558,12 +1558,12 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     try {
       const response = await unwrapIpc('team:launch', () => api.teams.launchTeam(request));
 
-      // Persist per-team launch params (model, effort, extended context)
-      const { model: baseModel, extendedContext } = parseModelString(request.model);
+      // Persist per-team launch params (model, effort, limit context)
+      const { model: baseModel } = parseModelString(request.model);
       const params: TeamLaunchParams = {
         model: baseModel || 'default',
         effort: request.effort,
-        extendedContext,
+        limitContext: request.limitContext,
       };
       saveLaunchParams(request.teamName, params);
       set((state) => ({

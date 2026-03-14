@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { api } from '@renderer/api';
-import { ExtendedContextCheckbox } from '@renderer/components/team/dialogs/ExtendedContextCheckbox';
+import { LimitContextCheckbox } from '@renderer/components/team/dialogs/LimitContextCheckbox';
 import { SkipPermissionsCheckbox } from '@renderer/components/team/dialogs/SkipPermissionsCheckbox';
 import { Button } from '@renderer/components/ui/button';
 import { Checkbox } from '@renderer/components/ui/checkbox';
@@ -170,8 +170,8 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   // Launch-only state
   // ---------------------------------------------------------------------------
 
-  const [extendedContext, setExtendedContextRaw] = useState(
-    () => localStorage.getItem('team:lastExtendedContext') === 'true'
+  const [limitContext, setLimitContextRaw] = useState(
+    () => localStorage.getItem('team:lastLimitContext') === 'true'
   );
   const [clearContext, setClearContext] = useState(false);
   const [conflictDismissed, setConflictDismissed] = useState(false);
@@ -235,9 +235,9 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     localStorage.setItem('team:lastSelectedModel', value);
   };
 
-  const setExtendedContext = (value: boolean): void => {
-    setExtendedContextRaw(value);
-    localStorage.setItem('team:lastExtendedContext', String(value));
+  const setLimitContext = (value: boolean): void => {
+    setLimitContextRaw(value);
+    localStorage.setItem('team:lastLimitContext', String(value));
   };
 
   const setSkipPermissions = (value: boolean): void => {
@@ -512,12 +512,12 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     args.push('--verbose', '--setting-sources', 'user,project,local');
     args.push('--mcp-config', '<auto>', '--disallowedTools', 'TeamDelete,TodoWrite');
     if (skipPermissions) args.push('--dangerously-skip-permissions');
-    const model = computeEffectiveTeamModel(selectedModel, extendedContext);
+    const model = computeEffectiveTeamModel(selectedModel);
     if (model) args.push('--model', model);
     if (selectedEffort) args.push('--effort', selectedEffort);
     if (!clearContext) args.push('--resume', '<previous>');
     return args;
-  }, [isLaunch, skipPermissions, selectedModel, extendedContext, selectedEffort, clearContext]);
+  }, [isLaunch, skipPermissions, selectedModel, selectedEffort, clearContext]);
 
   const launchOptionalSummary = useMemo(() => {
     if (!isLaunch) return [];
@@ -526,7 +526,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     if (promptDraft.value.trim()) summary.push('Lead prompt');
     if (selectedModel) summary.push(`Model: ${selectedModel}`);
     if (selectedEffort) summary.push(`Effort: ${selectedEffort}`);
-    if (extendedContext) summary.push('Extended context');
+    if (limitContext) summary.push('Limited to 200K context');
     if (skipPermissions) summary.push('Auto-approve tools');
     if (clearContext) summary.push('Fresh session');
     if (worktreeEnabled && worktreeName.trim()) summary.push(`Worktree: ${worktreeName.trim()}`);
@@ -537,7 +537,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     promptDraft.value,
     selectedModel,
     selectedEffort,
-    extendedContext,
+    limitContext,
     skipPermissions,
     clearContext,
     worktreeEnabled,
@@ -590,9 +590,10 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
             teamName: effectiveTeamName,
             cwd: effectiveCwd,
             prompt: promptDraft.value.trim() || undefined,
-            model: computeEffectiveTeamModel(selectedModel, extendedContext),
+            model: computeEffectiveTeamModel(selectedModel),
             effort: (selectedEffort as EffortLevel) || undefined,
             clearContext: clearContext || undefined,
+            limitContext: limitContext || undefined,
             skipPermissions,
             worktree: worktreeEnabled && worktreeName.trim() ? worktreeName.trim() : undefined,
             extraCliArgs: customArgs.trim() || undefined,
@@ -953,11 +954,10 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                     onValueChange={setSelectedEffort}
                     id="dialog-effort"
                   />
-                  <ExtendedContextCheckbox
-                    id="launch-extended-context"
-                    checked={extendedContext}
-                    onCheckedChange={setExtendedContext}
-                    disabled={selectedModel === 'haiku'}
+                  <LimitContextCheckbox
+                    id="launch-limit-context"
+                    checked={limitContext}
+                    onCheckedChange={setLimitContext}
                   />
                   <SkipPermissionsCheckbox
                     id="dialog-skip-permissions"

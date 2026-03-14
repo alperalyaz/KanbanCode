@@ -145,8 +145,17 @@ export class TeamMemberLogsFinder {
       since?: string;
     }
   ): Promise<MemberLogSummary[]> {
+    const t0 = performance.now();
+
     const discovery = await this.discoverProjectSessions(teamName);
-    if (!discovery) return [];
+    const tDiscovery = performance.now();
+
+    if (!discovery) {
+      logger.info(
+        `[perf] findLogsForTask(${taskId}) discovery=null ${(tDiscovery - t0).toFixed(0)}ms`
+      );
+      return [];
+    }
 
     const sinceMs = this.deriveSinceMs(options);
     const { projectDir, projectId, config, sessionIds, knownMembers } = discovery;
@@ -171,6 +180,12 @@ export class TeamMemberLogsFinder {
         // file missing or unreadable
       }
     }
+    const tLead = performance.now();
+
+    let totalFiles = 0;
+    let mentionHits = 0;
+    let cacheHits = 0;
+    const cacheSnapshotBefore = this.fileMentionsCache.size;
 
     for (const sessionId of sessionIds) {
       const subagentsDir = path.join(projectDir, sessionId, 'subagents');
@@ -183,9 +198,15 @@ export class TeamMemberLogsFinder {
       for (const file of files) {
         if (!file.startsWith('agent-') || !file.endsWith('.jsonl')) continue;
         if (file.startsWith('agent-acompact')) continue;
+        totalFiles++;
         const filePath = path.join(subagentsDir, file);
-        if (!(await this.fileMentionsTaskIdCached(filePath, teamName, taskId, false, sinceMs)))
+        const cacheSizeBefore = this.fileMentionsCache.size;
+        if (!(await this.fileMentionsTaskIdCached(filePath, teamName, taskId, false, sinceMs))) {
+          if (this.fileMentionsCache.size === cacheSizeBefore) cacheHits++;
           continue;
+        }
+        if (this.fileMentionsCache.size === cacheSizeBefore) cacheHits++;
+        mentionHits++;
         const attribution = await this.attributeSubagent(filePath, knownMembers);
         if (!attribution) continue;
         const summary = await this.parseSubagentSummary(
@@ -199,6 +220,7 @@ export class TeamMemberLogsFinder {
         if (summary) results.push(summary);
       }
     }
+    const tScan = performance.now();
 
     const normalizedOwner =
       typeof options?.owner === 'string' ? options.owner.trim() : options?.owner;
@@ -281,10 +303,25 @@ export class TeamMemberLogsFinder {
         }
       }
     }
+    const tOwner = performance.now();
 
-    return results.sort(
+    const sorted = results.sort(
       (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
     );
+    const tTotal = performance.now();
+
+    logger.info(
+      `[perf] findLogsForTask(${taskId}@${teamName}) ` +
+        `total=${(tTotal - t0).toFixed(0)}ms | ` +
+        `discovery=${(tDiscovery - t0).toFixed(0)}ms | ` +
+        `lead=${(tLead - tDiscovery).toFixed(0)}ms | ` +
+        `scan=${(tScan - tLead).toFixed(0)}ms (${totalFiles} files, ${mentionHits} hits, ${cacheHits} cache) | ` +
+        `owner=${(tOwner - tScan).toFixed(0)}ms | ` +
+        `sessions=${sessionIds.length} | cache=${cacheSnapshotBefore}→${this.fileMentionsCache.size} | ` +
+        `results=${sorted.length}`
+    );
+
+    return sorted;
   }
 
   /**
@@ -301,8 +338,17 @@ export class TeamMemberLogsFinder {
       since?: string;
     }
   ): Promise<{ filePath: string; memberName: string }[]> {
+    const t0 = performance.now();
+
     const discovery = await this.discoverProjectSessions(teamName);
-    if (!discovery) return [];
+    const tDiscovery = performance.now();
+
+    if (!discovery) {
+      logger.info(
+        `[perf] findLogFileRefsForTask(${taskId}) discovery=null ${(tDiscovery - t0).toFixed(0)}ms`
+      );
+      return [];
+    }
 
     const sinceMs = this.deriveSinceMs(options);
     const { projectDir, config, sessionIds, knownMembers } = discovery;
@@ -330,6 +376,10 @@ export class TeamMemberLogsFinder {
         // file missing or unreadable
       }
     }
+    const tLead = performance.now();
+
+    let totalFiles = 0;
+    let mentionHits = 0;
 
     for (const sessionId of sessionIds) {
       const subagentsDir = path.join(projectDir, sessionId, 'subagents');
@@ -342,11 +392,13 @@ export class TeamMemberLogsFinder {
       for (const file of files) {
         if (!file.startsWith('agent-') || !file.endsWith('.jsonl')) continue;
         if (file.startsWith('agent-acompact')) continue;
+        totalFiles++;
 
         const filePath = path.join(subagentsDir, file);
         if (!(await this.fileMentionsTaskIdCached(filePath, teamName, taskId, false, sinceMs))) {
           continue;
         }
+        mentionHits++;
 
         const attribution = await this.attributeSubagent(filePath, knownMembers);
         if (!attribution) continue;
@@ -357,6 +409,7 @@ export class TeamMemberLogsFinder {
         );
       }
     }
+    const tScan = performance.now();
 
     const normalizedOwner =
       typeof options?.owner === 'string' ? options.owner.trim() : options?.owner;
@@ -432,8 +485,21 @@ export class TeamMemberLogsFinder {
         );
       }
     }
+    const tOwner = performance.now();
 
     const sortedRefs = [...refs].sort((a, b) => b.sortTime - a.sortTime);
+    const tTotal = performance.now();
+
+    logger.info(
+      `[perf] findLogFileRefsForTask(${taskId}@${teamName}) ` +
+        `total=${(tTotal - t0).toFixed(0)}ms | ` +
+        `discovery=${(tDiscovery - t0).toFixed(0)}ms | ` +
+        `lead=${(tLead - tDiscovery).toFixed(0)}ms | ` +
+        `scan=${(tScan - tLead).toFixed(0)}ms (${totalFiles} files, ${mentionHits} hits) | ` +
+        `owner=${(tOwner - tScan).toFixed(0)}ms | ` +
+        `sessions=${sessionIds.length} | results=${sortedRefs.length}`
+    );
+
     return sortedRefs.map(({ filePath, memberName }) => ({ filePath, memberName }));
   }
 
@@ -1066,6 +1132,16 @@ export class TeamMemberLogsFinder {
         }
       } catch {
         // Skip malformed lines
+      }
+
+      // Early exit: reliable signal found and description extracted — no need to scan further.
+      // Only process_team and routing_sender trigger this; teammate_id is unreliable (identifies
+      // the message sender, not the agent) so we keep scanning for better signals.
+      if (
+        description &&
+        signals.some((s) => s.source === 'process_team' || s.source === 'routing_sender')
+      ) {
+        break;
       }
     }
 
