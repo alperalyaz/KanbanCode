@@ -151,7 +151,7 @@ export class TeamMemberLogsFinder {
     const tDiscovery = performance.now();
 
     if (!discovery) {
-      logger.info(
+      console.log(
         `[perf] findLogsForTask(${taskId}) discovery=null ${(tDiscovery - t0).toFixed(0)}ms`
       );
       return [];
@@ -310,7 +310,7 @@ export class TeamMemberLogsFinder {
     );
     const tTotal = performance.now();
 
-    logger.info(
+    console.log(
       `[perf] findLogsForTask(${taskId}@${teamName}) ` +
         `total=${(tTotal - t0).toFixed(0)}ms | ` +
         `discovery=${(tDiscovery - t0).toFixed(0)}ms | ` +
@@ -344,7 +344,7 @@ export class TeamMemberLogsFinder {
     const tDiscovery = performance.now();
 
     if (!discovery) {
-      logger.info(
+      console.log(
         `[perf] findLogFileRefsForTask(${taskId}) discovery=null ${(tDiscovery - t0).toFixed(0)}ms`
       );
       return [];
@@ -490,7 +490,7 @@ export class TeamMemberLogsFinder {
     const sortedRefs = [...refs].sort((a, b) => b.sortTime - a.sortTime);
     const tTotal = performance.now();
 
-    logger.info(
+    console.log(
       `[perf] findLogFileRefsForTask(${taskId}@${teamName}) ` +
         `total=${(tTotal - t0).toFixed(0)}ms | ` +
         `discovery=${(tDiscovery - t0).toFixed(0)}ms | ` +

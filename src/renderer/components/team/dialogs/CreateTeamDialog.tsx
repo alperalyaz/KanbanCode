@@ -546,7 +546,10 @@ export const CreateTeamDialog = ({
     [memberColorMap, members, soloTeam]
   );
 
-  const effectiveModel = useMemo(() => computeEffectiveTeamModel(selectedModel), [selectedModel]);
+  const effectiveModel = useMemo(
+    () => computeEffectiveTeamModel(selectedModel, limitContext),
+    [selectedModel, limitContext]
+  );
 
   const sanitizedTeamName = sanitizeTeamName(teamName.trim());
 
@@ -561,7 +564,6 @@ export const CreateTeamDialog = ({
       model: effectiveModel,
       effort: (selectedEffort as EffortLevel) || undefined,
       skipPermissions,
-      limitContext: limitContext || undefined,
       worktree: worktreeEnabled && worktreeName.trim() ? worktreeName.trim() : undefined,
       extraCliArgs: customArgs.trim() || undefined,
     }),
@@ -576,7 +578,6 @@ export const CreateTeamDialog = ({
       effectiveModel,
       selectedEffort,
       skipPermissions,
-      limitContext,
       worktreeEnabled,
       worktreeName,
       customArgs,
@@ -985,6 +986,7 @@ export const CreateTeamDialog = ({
                         id="create-limit-context"
                         checked={limitContext}
                         onCheckedChange={setLimitContext}
+                        disabled={selectedModel === 'haiku'}
                       />
                       <SkipPermissionsCheckbox
                         id="create-skip-permissions"

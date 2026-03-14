@@ -1168,7 +1168,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                       const MODEL_LABELS: Record<string, string> = {
                         default: 'Default',
                         opus: 'Opus 4.6',
-                        sonnet: 'Sonnet 4.5',
+                        sonnet: 'Sonnet 4.6',
                         haiku: 'Haiku 4.5',
                       };
                       const modelLabel = MODEL_LABELS[launchParams.model] ?? launchParams.model;

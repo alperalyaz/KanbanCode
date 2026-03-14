@@ -10,6 +10,7 @@ interface KanbanColumnProps {
   className?: string;
   headerClassName?: string;
   bodyClassName?: string;
+  headerDragClassName?: string;
   headerAccessory?: React.ReactNode;
   children: React.ReactNode;
 }
@@ -23,6 +24,7 @@ export const KanbanColumn = ({
   className,
   headerClassName,
   bodyClassName,
+  headerDragClassName,
   headerAccessory,
   children,
 }: KanbanColumnProps): React.JSX.Element => {
@@ -35,20 +37,27 @@ export const KanbanColumn = ({
       )}
       style={bodyBg ? { backgroundColor: bodyBg } : undefined}
     >
+      {count > 0 && (
+        <Badge
+          variant="secondary"
+          className="absolute -right-2 -top-2 z-10 min-w-5 px-1.5 py-0 text-[10px] font-medium leading-5"
+        >
+          {count}
+        </Badge>
+      )}
       <header
-        className={cn('border-b border-[var(--color-border)] px-3 py-2 pr-14', headerClassName)}
+        className={cn(
+          'border-b border-[var(--color-border)] px-3 py-2',
+          headerClassName,
+          headerDragClassName
+        )}
         style={headerBg ? { backgroundColor: headerBg } : undefined}
       >
         <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text)]">
           {icon}
           {title}
         </h4>
-        <div className="absolute right-2 top-2 z-10 flex items-center gap-2">
-          {headerAccessory}
-          <Badge variant="secondary" className="px-2 py-0.5 text-[10px] font-normal">
-            {count}
-          </Badge>
-        </div>
+        {headerAccessory && <div className="absolute right-2 top-2 z-10">{headerAccessory}</div>}
       </header>
       <div className={cn('flex max-h-[480px] flex-col gap-1.5 overflow-auto p-2', bodyClassName)}>
         {children}

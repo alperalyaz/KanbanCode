@@ -30,6 +30,7 @@ export const LimitContextCheckbox: React.FC<LimitContextCheckboxProps> = ({
       }`}
     >
       Limit context to 200K tokens
+      {disabled && <span className="text-[10px] italic">(always 200K for this model)</span>}
     </Label>
   </div>
 );

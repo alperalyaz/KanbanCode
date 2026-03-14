@@ -542,15 +542,16 @@ function saveLaunchParams(teamName: string, params: TeamLaunchParams): void {
 }
 
 /**
- * Parse raw model string — simply returns the base model name.
- * The [1m] suffix is no longer used; context limiting is handled via env var.
+ * Parse raw model string from TeamCreateRequest/TeamLaunchRequest.
+ * E.g. 'opus[1m]' → { model: 'opus', limitContext: false }
+ *      'sonnet' → { model: 'sonnet', limitContext: true }
+ * Models without [1m] suffix mean context is limited to 200K.
  */
-function parseModelString(raw?: string): { model?: string } {
-  if (!raw) return {};
-  // Strip legacy [1m] suffix if present in saved data
+function parseModelString(raw?: string): { model?: string; limitContext: boolean } {
+  if (!raw) return { limitContext: true };
   const match = raw.match(/^(\w+)\[1m\]$/);
-  if (match) return { model: match[1] };
-  return { model: raw };
+  if (match) return { model: match[1], limitContext: false };
+  return { model: raw, limitContext: true };
 }
 
 function loadToolApprovalSettings(): ToolApprovalSettings {
@@ -1422,11 +1423,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       const response = await unwrapIpc('team:create', () => api.teams.createTeam(request));
 
       // Persist per-team launch params (model, effort, limit context)
-      const { model: baseModel } = parseModelString(request.model);
+      const { model: baseModel, limitContext } = parseModelString(request.model);
       const params: TeamLaunchParams = {
         model: baseModel || 'default',
         effort: request.effort,
-        limitContext: request.limitContext,
+        limitContext,
       };
       saveLaunchParams(request.teamName, params);
       set((state) => ({
@@ -1559,11 +1560,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       const response = await unwrapIpc('team:launch', () => api.teams.launchTeam(request));
 
       // Persist per-team launch params (model, effort, limit context)
-      const { model: baseModel } = parseModelString(request.model);
+      const { model: baseModel, limitContext } = parseModelString(request.model);
       const params: TeamLaunchParams = {
         model: baseModel || 'default',
         effort: request.effort,
-        limitContext: request.limitContext,
+        limitContext,
       };
       saveLaunchParams(request.teamName, params);
       set((state) => ({

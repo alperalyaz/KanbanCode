@@ -4,7 +4,6 @@ import ReactGridLayout, { WidthProvider } from 'react-grid-layout/legacy';
 
 import { usePersistedGridLayout } from '@renderer/hooks/usePersistedGridLayout';
 import { browserGridLayoutRepository } from '@renderer/services/layout-system/BrowserGridLayoutRepository';
-import { GripVertical } from 'lucide-react';
 
 import { KanbanColumn } from './KanbanColumn';
 
@@ -213,15 +212,7 @@ const LoadedKanbanGridLayout = ({
                 className="flex h-full min-h-0 flex-col"
                 headerClassName="shrink-0"
                 bodyClassName="kanban-grid-no-drag min-h-0 max-h-none flex-1"
-                headerAccessory={
-                  <button
-                    type="button"
-                    className="kanban-grid-drag-handle inline-flex cursor-grab items-center justify-center rounded-sm p-1 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)] active:cursor-grabbing"
-                    aria-label={`Drag ${column.title} column`}
-                  >
-                    <GripVertical size={14} />
-                  </button>
-                }
+                headerDragClassName="kanban-grid-drag-handle cursor-grab active:cursor-grabbing"
               >
                 {column.content}
               </KanbanColumn>

@@ -2779,10 +2779,7 @@ export class TeamProvisioningService {
       try {
         child = spawnCli(claudePath, spawnArgs, {
           cwd: request.cwd,
-          env: {
-            ...shellEnv,
-            ...(request.limitContext ? { CLAUDE_CODE_DISABLE_1M_CONTEXT: '1' } : {}),
-          },
+          env: { ...shellEnv },
           stdio: ['pipe', 'pipe', 'pipe'],
         });
       } catch (error) {
@@ -2800,10 +2797,7 @@ export class TeamProvisioningService {
         claudePath,
         args: spawnArgs,
         cwd: request.cwd,
-        env: {
-          ...shellEnv,
-          ...(request.limitContext ? { CLAUDE_CODE_DISABLE_1M_CONTEXT: '1' } : {}),
-        },
+        env: { ...shellEnv },
         prompt,
       };
 
@@ -3186,10 +3180,7 @@ export class TeamProvisioningService {
       try {
         child = spawnCli(claudePath, launchArgs, {
           cwd: request.cwd,
-          env: {
-            ...shellEnv,
-            ...(request.limitContext ? { CLAUDE_CODE_DISABLE_1M_CONTEXT: '1' } : {}),
-          },
+          env: { ...shellEnv },
           stdio: ['pipe', 'pipe', 'pipe'],
         });
       } catch (error) {
@@ -3209,10 +3200,7 @@ export class TeamProvisioningService {
         claudePath,
         args: launchArgs,
         cwd: request.cwd,
-        env: {
-          ...shellEnv,
-          ...(request.limitContext ? { CLAUDE_CODE_DISABLE_1M_CONTEXT: '1' } : {}),
-        },
+        env: { ...shellEnv },
         prompt,
       };
 
@@ -4360,7 +4348,7 @@ export class TeamProvisioningService {
   /**
    * Stop the running process for a team. No-op if team is not running.
    */
-  stopTeam(teamName: string): void {
+  stopTeam(teamName: string, signal?: NodeJS.Signals): void {
     const runId = this.getTrackedRunId(teamName);
     if (!runId) {
       return;
@@ -4378,25 +4366,25 @@ export class TeamProvisioningService {
     run.cancelRequested = true;
     // Note: do NOT call stdin.end() before kill — EOF triggers CLI's graceful
     // shutdown which deletes team files (config.json, inboxes/, tasks/).
-    // SIGTERM alone kills the process before cleanup runs, preserving files.
-    killProcessTree(run.child);
+    // SIGTERM/SIGKILL kills the process before cleanup runs, preserving files.
+    killProcessTree(run.child, signal);
     const progress = updateProgress(run, 'disconnected', 'Team stopped by user');
     run.onProgress(progress);
     this.cleanupRun(run);
-    logger.info(`[${teamName}] Process stopped by user`);
+    logger.info(`[${teamName}] Process stopped (signal=${signal ?? 'SIGTERM'})`);
   }
 
   /**
-   * Stop all running team processes. Called during app shutdown to kill
-   * processes via SIGTERM before the OS closes stdin (which would trigger
-   * CLI's graceful cleanup and delete team files).
+   * Stop all running team processes. Called during app shutdown.
+   * Uses SIGKILL (uncatchable) to guarantee the process dies instantly
+   * without any cleanup — prevents CLI from deleting team files on exit.
    */
   stopAllTeams(): void {
     const alive = this.getAliveTeams();
     if (alive.length === 0) return;
-    logger.info(`Stopping all team processes on shutdown: ${alive.join(', ')}`);
+    logger.info(`Killing all team processes on shutdown (SIGKILL): ${alive.join(', ')}`);
     for (const teamName of alive) {
-      this.stopTeam(teamName);
+      this.stopTeam(teamName, 'SIGKILL');
     }
   }
 

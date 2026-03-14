@@ -512,12 +512,12 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     args.push('--verbose', '--setting-sources', 'user,project,local');
     args.push('--mcp-config', '<auto>', '--disallowedTools', 'TeamDelete,TodoWrite');
     if (skipPermissions) args.push('--dangerously-skip-permissions');
-    const model = computeEffectiveTeamModel(selectedModel);
+    const model = computeEffectiveTeamModel(selectedModel, limitContext);
     if (model) args.push('--model', model);
     if (selectedEffort) args.push('--effort', selectedEffort);
     if (!clearContext) args.push('--resume', '<previous>');
     return args;
-  }, [isLaunch, skipPermissions, selectedModel, selectedEffort, clearContext]);
+  }, [isLaunch, skipPermissions, selectedModel, limitContext, selectedEffort, clearContext]);
 
   const launchOptionalSummary = useMemo(() => {
     if (!isLaunch) return [];
@@ -590,10 +590,9 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
             teamName: effectiveTeamName,
             cwd: effectiveCwd,
             prompt: promptDraft.value.trim() || undefined,
-            model: computeEffectiveTeamModel(selectedModel),
+            model: computeEffectiveTeamModel(selectedModel, limitContext),
             effort: (selectedEffort as EffortLevel) || undefined,
             clearContext: clearContext || undefined,
-            limitContext: limitContext || undefined,
             skipPermissions,
             worktree: worktreeEnabled && worktreeName.trim() ? worktreeName.trim() : undefined,
             extraCliArgs: customArgs.trim() || undefined,
@@ -958,6 +957,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                     id="launch-limit-context"
                     checked={limitContext}
                     onCheckedChange={setLimitContext}
+                    disabled={selectedModel === 'haiku'}
                   />
                   <SkipPermissionsCheckbox
                     id="dialog-skip-permissions"
