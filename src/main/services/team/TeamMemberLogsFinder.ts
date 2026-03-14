@@ -1000,12 +1000,13 @@ export class TeamMemberLogsFinder {
                 parsed[0]?.summary || parsed[0]?.content?.slice(0, 200) || 'Teammate spawn';
             }
 
-            // teammate_id is a structured XML attribute — highest reliability signal
-            if (detectionPriority < 3 && parsed[0]?.teammateId) {
+            // teammate_id identifies the MESSAGE SENDER (e.g. "team-lead"), not the agent
+            // owning this file. Use priority 2 so routing.sender (priority 3) can override.
+            if (detectionPriority < 2 && parsed[0]?.teammateId) {
               const tmId = parsed[0].teammateId.trim().toLowerCase();
               if (tmId.length > 0 && knownMembers.has(tmId)) {
                 detectedMember = parsed[0].teammateId.trim();
-                detectionPriority = 3;
+                detectionPriority = 2;
               }
             }
           } else if (!description) {
