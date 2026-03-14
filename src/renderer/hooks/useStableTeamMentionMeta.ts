@@ -12,18 +12,27 @@ interface TeamMentionEntry {
   deletedAt: string;
 }
 
+function compareTeamMentionEntries(a: TeamMentionEntry, b: TeamMentionEntry): number {
+  return (
+    a.teamName.localeCompare(b.teamName, undefined, { sensitivity: 'base' }) ||
+    a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' })
+  );
+}
+
 export interface TeamMentionMeta {
   teamNames: string[];
   teamColorByName: ReadonlyMap<string, string>;
 }
 
 function buildTeamMentionEntries(teams: readonly TeamSummary[]): TeamMentionEntry[] {
-  return teams.map((team) => ({
-    teamName: team.teamName ?? '',
-    displayName: team.displayName ?? '',
-    color: team.color ?? '',
-    deletedAt: team.deletedAt ?? '',
-  }));
+  return teams
+    .map((team) => ({
+      teamName: team.teamName ?? '',
+      displayName: team.displayName ?? '',
+      color: team.color ?? '',
+      deletedAt: team.deletedAt ?? '',
+    }))
+    .sort(compareTeamMentionEntries);
 }
 
 function areTeamMentionEntriesEqual(
