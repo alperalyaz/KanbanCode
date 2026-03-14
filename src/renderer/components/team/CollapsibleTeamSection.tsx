@@ -79,7 +79,7 @@ export const CollapsibleTeamSection = ({
     <section ref={sectionRef} data-section-id={sectionId} className="min-w-0">
       <div
         className={cn(
-          'relative -mx-4 flex min-h-9 w-[calc(100%+2rem)] items-stretch py-1.5',
+          'relative -mx-[calc(1rem-5px)] flex min-h-9 w-[calc(100%+2rem-10px)] items-stretch py-1.5',
           headerClassName
         )}
       >

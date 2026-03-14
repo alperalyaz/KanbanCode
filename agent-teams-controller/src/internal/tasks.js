@@ -38,7 +38,10 @@ function buildAssignmentMessage(context, task, options = {}) {
   const prompt =
     typeof options.prompt === 'string' && options.prompt.trim() ? options.prompt.trim() : '';
   const taskLabel = `#${task.displayId || task.id}`;
-  const lines = [`New task assigned to you: ${taskLabel} "${task.subject}".`];
+  const lines = [
+    `New task assigned to you: ${taskLabel} "${task.subject}".`,
+    `If you are not currently working on another task, start this one now. If you are busy, start it as soon as your current task is finished.`,
+  ];
 
   if (description) {
     lines.push(``, `Description:`, description);
@@ -53,7 +56,7 @@ function buildAssignmentMessage(context, task, options = {}) {
     wrapAgentBlock(`Use the board MCP tools to work this task correctly:
 1. Check the latest full context before starting:
    task_get { teamName: "${context.teamName}", taskId: "${task.id}" }
-2. When you actually begin work, mark it started:
+2. If you are idle, start now; otherwise start as soon as your current task is done. When you actually begin work, mark it started:
    task_start { teamName: "${context.teamName}", taskId: "${task.id}" }
 3. When the work is done, mark it completed:
    task_complete { teamName: "${context.teamName}", taskId: "${task.id}" }`)

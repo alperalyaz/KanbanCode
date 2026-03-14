@@ -73,16 +73,16 @@ function persistedEntryPath(baseDir: string): string {
 function createService(params: {
   logPaths: string[];
   projectPath?: string;
-  findLogsForTask?: (teamName: string, taskId: string, options?: unknown) => Promise<unknown[]>;
+  findLogFileRefsForTask?: (teamName: string, taskId: string, options?: unknown) => Promise<unknown[]>;
 }) {
-  const findLogsForTask =
-    params.findLogsForTask ??
+  const findLogFileRefsForTask =
+    params.findLogFileRefsForTask ??
     vi.fn(async () => params.logPaths.map((filePath) => ({ filePath, memberName: 'alice' })));
   return {
-    findLogsForTask,
+    findLogFileRefsForTask,
     service: new ChangeExtractorService(
       {
-        findLogsForTask,
+        findLogFileRefsForTask,
         findMemberLogPaths: vi.fn(async () => []),
       } as any,
       {
@@ -118,10 +118,10 @@ describe('ChangeExtractorService', () => {
       buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
     ]);
 
-    const findLogsForTask = vi.fn(async (_teamName: string, _taskId: string, options?: any) =>
+    const findLogFileRefsForTask = vi.fn(async (_teamName: string, _taskId: string, options?: any) =>
       options?.owner === 'alice' ? [{ filePath: aliceLogPath, memberName: 'alice' }] : []
     );
-    const service = createService({ logPaths: [aliceLogPath], findLogsForTask }).service;
+    const service = createService({ logPaths: [aliceLogPath], findLogFileRefsForTask }).service;
 
     const empty = await service.getTaskChanges(TEAM_NAME, TASK_ID, { owner: 'bob', status: 'completed' });
     const populated = await service.getTaskChanges(TEAM_NAME, TASK_ID, {
@@ -131,7 +131,7 @@ describe('ChangeExtractorService', () => {
 
     expect(empty.files).toHaveLength(0);
     expect(populated.files).toHaveLength(1);
-    expect(findLogsForTask).toHaveBeenCalledTimes(2);
+    expect(findLogFileRefsForTask).toHaveBeenCalledTimes(2);
   });
 
   it('caches terminal summary requests in memory but keeps detailed requests fresh', async () => {
@@ -143,7 +143,7 @@ describe('ChangeExtractorService', () => {
       buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
     ]);
 
-    const { service, findLogsForTask } = createService({ logPaths: [logPath] });
+    const { service, findLogFileRefsForTask } = createService({ logPaths: [logPath] });
 
     await service.getTaskChanges(TEAM_NAME, TASK_ID, SUMMARY_OPTIONS);
     await service.getTaskChanges(TEAM_NAME, TASK_ID, SUMMARY_OPTIONS);
@@ -158,7 +158,7 @@ describe('ChangeExtractorService', () => {
       stateBucket: 'completed',
     });
 
-    expect(findLogsForTask).toHaveBeenCalledTimes(3);
+    expect(findLogFileRefsForTask).toHaveBeenCalledTimes(3);
   });
 
   it('restores a persisted terminal summary after a simulated restart', async () => {
@@ -179,7 +179,9 @@ describe('ChangeExtractorService', () => {
     expect(initial.files).toHaveLength(1);
     expect(restored.files).toHaveLength(1);
     expect(await fs.readFile(persistedEntryPath(tmpDir), 'utf8')).toContain('"taskId": "1"');
-    expect((second.findLogsForTask as any).mock.calls).toHaveLength(0);
+    // The second service restores from persisted cache; findLogFileRefsForTask may be called
+    // at most once for background validation (setTimeout(0) in schedulePersistedTaskChangeSummaryValidation)
+    expect((second.findLogFileRefsForTask as any).mock.calls.length).toBeLessThanOrEqual(1);
   });
 
   it('forceFresh overwrites the persisted terminal summary snapshot', async () => {
@@ -269,7 +271,7 @@ describe('ChangeExtractorService', () => {
       SUMMARY_OPTIONS
     );
 
-    expect((drifted.findLogsForTask as any).mock.calls.length).toBeGreaterThan(1);
+    expect((drifted.findLogFileRefsForTask as any).mock.calls.length).toBeGreaterThan(1);
   });
 
   it('rejects persisted summaries when the task file is missing on restart', async () => {
@@ -324,7 +326,7 @@ describe('ChangeExtractorService', () => {
 
     const service = new ChangeExtractorService(
       {
-        findLogsForTask: vi.fn(async () => [{ filePath: logPath, memberName: 'alice' }]),
+        findLogFileRefsForTask: vi.fn(async () => [{ filePath: logPath, memberName: 'alice' }]),
         findMemberLogPaths: vi.fn(async () => []),
       } as any,
       {
