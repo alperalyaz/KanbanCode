@@ -340,11 +340,19 @@ describe('agent-teams-controller API', () => {
     expect(ownerInbox[0].summary).toContain(`#${pendingTask.displayId}`);
     expect(ownerInbox[0].text).toContain('task_get');
     expect(ownerInbox[0].text).toContain('task_start');
+    expect(ownerInbox[0].text).toContain('task_add_comment');
+    expect(ownerInbox[0].text).toContain('If you are idle and this task is ready to start, start it now.');
     expect(ownerInbox[0].text).toContain(
-      'If you are not currently working on another task, start this one now.'
+      'If you are busy, blocked, or still need more context, immediately add a short task comment'
     );
+    expect(ownerInbox[0].text).toContain('Description:');
+    expect(ownerInbox[0].text).toContain('Do this later');
+    expect(ownerInbox[0].text).toContain('Instructions:');
+    expect(ownerInbox[0].text).toContain('Check the migration plan first.');
     expect(ownerInbox[0].leadSessionId).toBe('lead-session-1');
     expect(ownerInbox[3].summary).toContain(`#${reassignedTask.displayId}`);
+    expect(ownerInbox[3].text).toContain('If you are idle and this task is ready to start, start it now.');
+    expect(ownerInbox[3].text).toContain('task_add_comment');
 
     const briefing = await controller.tasks.taskBriefing('bob');
     expect(briefing).toContain('In progress:');

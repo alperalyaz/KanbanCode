@@ -613,8 +613,15 @@ describe('agent-teams-mcp tools', () => {
     expect(ownerInbox[0].summary).toContain(`#${queuedTask.displayId}`);
     expect(ownerInbox[0].text).toContain('task_get');
     expect(ownerInbox[0].text).toContain('task_start');
+    expect(ownerInbox[0].text).toContain('task_add_comment');
     expect(ownerInbox[0].text).toContain('Read the plan before starting.');
+    expect(ownerInbox[0].text).toContain('If you are idle and this task is ready to start, start it now.');
+    expect(ownerInbox[0].text).toContain(
+      'If you are busy, blocked, or still need more context, immediately add a short task comment'
+    );
     expect(ownerInbox[3].summary).toContain(`#${unassignedTask.displayId}`);
+    expect(ownerInbox[3].text).toContain('If you are idle and this task is ready to start, start it now.');
+    expect(ownerInbox[3].text).toContain('task_add_comment');
 
     const briefing = (await getTool('task_briefing').execute({
       claudeDir,
@@ -643,8 +650,9 @@ describe('agent-teams-mcp tools', () => {
       'You must NOT start work, claim tasks, or improvise task/process protocol'
     );
     expect(memberBriefingText).toContain(
-      'leave a short task comment on the waiting task immediately with the reason and your best ETA'
+      'A newly assigned task must NOT remain silently pending/TODO. If you are idle and the task is ready to start, start it now.'
     );
+    expect(memberBriefingText).toContain('reason and your best ETA or what you are waiting on');
     expect(memberBriefingText).toContain('IMPORTANT: Communicate in English.');
     expect(memberBriefingText).toContain('TURN ACTION MODE PROTOCOL (HIGHEST PRIORITY FOR EACH USER TURN):');
     expect(memberBriefingText).toContain('Task briefing for alice:');

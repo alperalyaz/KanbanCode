@@ -41,7 +41,7 @@ function buildAssignmentMessage(context, task, options = {}) {
   const lines = [
     `New task assigned to you: ${taskLabel} "${task.subject}".`,
     ``,
-    `*If you are not currently working on another task, start this one now. If you are busy, start it as soon as your current task is finished.*`,
+    `*If you are idle and this task is ready to start, start it now. If you are busy, blocked, or still need more context, immediately add a short task comment with the reason and your best ETA or what you are waiting on, and keep this task in TODO until you actually begin.*`,
   ];
 
   if (description) {
@@ -57,9 +57,11 @@ function buildAssignmentMessage(context, task, options = {}) {
     wrapAgentBlock(`Use the board MCP tools to work this task correctly:
 1. Check the latest full context before starting:
    task_get { teamName: "${context.teamName}", taskId: "${task.id}" }
-2. If you are idle, start now; otherwise start as soon as your current task is done. When you actually begin work, mark it started:
+2. If you are idle and the task is ready to start after checking dependencies and context, call task_start now:
    task_start { teamName: "${context.teamName}", taskId: "${task.id}" }
-3. When the work is done, mark it completed:
+3. If you are busy on another task, blocked, or still need more context, immediately add a task comment on this task with the reason and your best ETA or what you are waiting on, keep it pending/TODO, and do not call task_start until you truly begin:
+   task_add_comment { teamName: "${context.teamName}", taskId: "${task.id}", text: "<reason + ETA or blocker>", from: "<your-name>" }
+4. When the work is done, mark it completed:
    task_complete { teamName: "${context.teamName}", taskId: "${task.id}" }`)
   );
 
@@ -417,7 +419,7 @@ function buildMemberTaskProtocol(teamName) {
     - Use task_briefing as a compact queue view of your assigned tasks.
     - task_briefing may include full description/comments only for in_progress tasks; needsFix/pending/review/completed entries may be minimal on purpose.
     - Finish existing in_progress tasks first.
-    - If a newly assigned task must wait because you are still busy on another task, immediately add a short task comment on that waiting task with the reason and your best ETA.
+    - A newly assigned task must NOT remain silently pending/TODO. If you are idle and the task is ready to start, start it now. If it must wait because you are still busy on another task, blocked, or still need more context, immediately add a short task comment on that waiting task with the reason and your best ETA or what you are waiting on.
     - Keep any task you have not actually started in pending/TODO (use task_set_status pending if it was moved too early).
     - If you need more context for an in_progress task, you MAY call task_get, but it is not mandatory when task_briefing already gives enough detail.
     - Before starting a needsFix or pending task, call task_get for that specific task first.
@@ -507,7 +509,7 @@ async function memberBriefing(context, memberName) {
     `Member briefing for ${requestedMemberName} on team "${context.teamName}" (${context.teamName}).`,
     `Role: ${role}.`,
     `CRITICAL: If a task gets a new comment and you are going to do additional implementation/fix/follow-up work on that same task, FIRST leave a short task comment saying what you are about to do, THEN move it to in_progress with task_start, THEN do the work, and when finished leave a short result comment and move it to done with task_complete. Never skip this comment -> reopen -> work -> comment -> done cycle.`,
-    `CRITICAL: If a newly assigned task must wait because you are already finishing another task, leave a short task comment on the waiting task immediately with the reason and your best ETA, keep it in pending/TODO, and only move it to in_progress with task_start when you truly begin.`,
+    `CRITICAL: A newly assigned task must NOT remain silently pending/TODO. If you are idle and the task is ready to start, start it now. If it must wait because you are already finishing another task, blocked, or still need more context, leave a short task comment on the waiting task immediately with the reason and your best ETA or what you are waiting on, keep it in pending/TODO, and only move it to in_progress with task_start when you truly begin.`,
     `Team lead: ${leadName}.`,
     buildMemberLanguageInstruction(config),
     `You must NOT start work, claim tasks, or improvise task/process protocol before reading and following this briefing.`,
@@ -526,7 +528,7 @@ async function memberBriefing(context, memberName) {
     `Bootstrap flow:`,
     `1. Use this briefing as your durable rules source.`,
     `2. Use task_briefing as your compact queue view whenever you need to see assigned work.`,
-    `3. Before starting a pending or needs-fix task, call task_get for that specific task if you need the full context. If it must wait because another task is already active, add a short task comment with the reason + ETA and keep it pending/TODO until you actually begin.`,
+    `3. Before starting a pending or needs-fix task, call task_get for that specific task if you need the full context. A newly assigned task must not remain silently pending/TODO: if you are idle and the task is ready to start, start it now; if it must wait because another task is already active, because it is blocked, or because you still need more context, add a short task comment with the reason + ETA or what you are waiting on and keep it pending/TODO until you actually begin.`,
     `4. If this briefing was requested during reconnect, resume in_progress work first, then needs-fix tasks, then pending tasks.`,
     `5. If you cannot obtain the context you need, notify your team lead ("${leadName}") and wait instead of guessing.`
   );
