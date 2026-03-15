@@ -59,6 +59,9 @@ interface StreamedMetadata {
   lastTimestamp: string | null;
   messageCount: number;
   lastOutputPreview: string | null;
+  lastThinkingPreview: string | null;
+  /** Recent thinking/output previews with timestamps for task-scoped filtering. */
+  recentPreviews: { text: string; timestamp: string; kind: 'thinking' | 'output' }[];
 }
 
 /** Result of attributing a subagent file to a team member. */
@@ -1178,6 +1181,8 @@ export class TeamMemberLogsFinder {
       isOngoing,
       filePath,
       lastOutputPreview: metadata.lastOutputPreview ?? undefined,
+      lastThinkingPreview: metadata.lastThinkingPreview ?? undefined,
+      recentPreviews: metadata.recentPreviews.length > 0 ? metadata.recentPreviews : undefined,
     };
   }
 
@@ -1425,6 +1430,8 @@ export class TeamMemberLogsFinder {
       isOngoing,
       filePath: jsonlPath,
       lastOutputPreview: metadata.lastOutputPreview ?? undefined,
+      lastThinkingPreview: metadata.lastThinkingPreview ?? undefined,
+      recentPreviews: metadata.recentPreviews.length > 0 ? metadata.recentPreviews : undefined,
     };
   }
 
@@ -1437,6 +1444,9 @@ export class TeamMemberLogsFinder {
     let lastTimestamp: string | null = null;
     let messageCount = 0;
     let lastOutputPreview: string | null = null;
+    let lastThinkingPreview: string | null = null;
+    const MAX_RECENT_PREVIEWS = 20;
+    const recentPreviews: StreamedMetadata['recentPreviews'] = [];
 
     try {
       const stream = createReadStream(filePath, { encoding: 'utf8' });
@@ -1458,7 +1468,25 @@ export class TeamMemberLogsFinder {
         // Track last assistant text output (cheap regex, overwrites on each match).
         if (trimmed.includes('"role":"assistant"') || trimmed.includes('"role": "assistant"')) {
           const preview = TeamMemberLogsFinder.extractAssistantPreview(trimmed);
-          if (preview) lastOutputPreview = preview;
+          if (preview) {
+            lastOutputPreview = preview;
+            if (ts) {
+              recentPreviews.push({ text: preview, timestamp: ts, kind: 'output' });
+              if (recentPreviews.length > MAX_RECENT_PREVIEWS) recentPreviews.shift();
+            }
+          }
+        }
+
+        // Track last thinking block (cheap regex).
+        if (trimmed.includes('"type":"thinking"') || trimmed.includes('"type": "thinking"')) {
+          const thinkingPreview = TeamMemberLogsFinder.extractThinkingPreview(trimmed);
+          if (thinkingPreview) {
+            lastThinkingPreview = thinkingPreview;
+            if (ts) {
+              recentPreviews.push({ text: thinkingPreview, timestamp: ts, kind: 'thinking' });
+              if (recentPreviews.length > MAX_RECENT_PREVIEWS) recentPreviews.shift();
+            }
+          }
         }
       }
       rl.close();
@@ -1467,7 +1495,7 @@ export class TeamMemberLogsFinder {
       // ignore — return whatever we collected so far
     }
 
-    return { firstTimestamp, lastTimestamp, messageCount, lastOutputPreview };
+    return { firstTimestamp, lastTimestamp, messageCount, lastOutputPreview, lastThinkingPreview, recentPreviews };
   }
 
   private extractTimestampFromLine(line: string): string | null {
@@ -1494,6 +1522,23 @@ export class TeamMemberLogsFinder {
     const contentMatch = /"content"\s*:\s*"([^"]{1,200})/.exec(line);
     if (contentMatch?.[1]) {
       const raw = contentMatch[1]
+        .replace(/\\n/g, ' ')
+        .replace(/\\t/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return raw.length > 120 ? raw.slice(0, 120) + '...' : raw;
+    }
+    return null;
+  }
+
+  /**
+   * Extract a short preview from a thinking block line via regex.
+   * Thinking blocks use {"type":"thinking","thinking":"..."}.
+   */
+  private static extractThinkingPreview(line: string): string | null {
+    const match = /"thinking"\s*:\s*"([^"]{1,200})/.exec(line);
+    if (match?.[1]) {
+      const raw = match[1]
         .replace(/\\n/g, ' ')
         .replace(/\\t/g, ' ')
         .replace(/\s+/g, ' ')

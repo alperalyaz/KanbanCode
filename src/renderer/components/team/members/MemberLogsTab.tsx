@@ -266,43 +266,86 @@ export const MemberLogsTab = ({
   }, [shouldShowPreview, showLeadPreview, showSubagentPreview, sortedLogs, taskOwner]);
 
   const allPreviewMessages = useMemo((): SubagentPreviewMessage[] => {
+    // Build lead messages from recentPreviews, filtered by taskWorkIntervals.
+    const buildLeadPreviewMessages = (): SubagentPreviewMessage[] => {
+      if (!previewLog) return [];
+
+      // Use task-scoped recentPreviews when available
+      if (previewLog.recentPreviews && previewLog.recentPreviews.length > 0 && taskWorkIntervals && taskWorkIntervals.length > 0) {
+        const GRACE_BEFORE = 30_000;
+        const GRACE_AFTER = 15_000;
+        const now = Date.now();
+        const intervals = taskWorkIntervals
+          .map((i) => {
+            const s = Date.parse(i.startedAt);
+            if (!Number.isFinite(s)) return null;
+            const e = typeof i.completedAt === 'string' ? Date.parse(i.completedAt) : null;
+            return { startMs: s - GRACE_BEFORE, endMs: e != null && Number.isFinite(e) ? e + GRACE_AFTER : now + GRACE_AFTER };
+          })
+          .filter((v): v is { startMs: number; endMs: number } => v !== null);
+
+        if (intervals.length > 0) {
+          const scoped = previewLog.recentPreviews.filter((p) => {
+            const ms = Date.parse(p.timestamp);
+            if (!Number.isFinite(ms)) return false;
+            return intervals.some((i) => ms >= i.startMs && ms <= i.endMs);
+          });
+          if (scoped.length > 0) {
+            return scoped
+              .reverse()
+              .map((p, idx) => ({
+              id: `${previewLog.sessionId}:recent:${idx}`,
+              timestamp: new Date(p.timestamp),
+              kind: 'output' as const,
+              label: p.kind === 'thinking' ? 'Thinking' : 'Output',
+              content: p.text,
+            }));
+          }
+        }
+      }
+
+      // Fallback to last output/thinking
+      const msgs: SubagentPreviewMessage[] = [];
+      if (previewLog.lastOutputPreview) {
+        msgs.push({
+          id: `${previewLog.sessionId}:lastOutput`,
+          timestamp: new Date(previewLog.startTime),
+          kind: 'output',
+          label: 'Output',
+          content: previewLog.lastOutputPreview,
+        });
+      }
+      if (previewLog.lastThinkingPreview) {
+        msgs.push({
+          id: `${previewLog.sessionId}:lastThinking`,
+          timestamp: new Date(previewLog.startTime),
+          kind: 'output',
+          label: 'Thinking',
+          content: previewLog.lastThinkingPreview,
+        });
+      }
+      return msgs;
+    };
+
     if (!previewChunks || previewChunks.length === 0) {
-      // For lead preview without chunks, fall back to lastOutputPreview from the log summary.
-      if (showLeadPreview && previewLog?.lastOutputPreview) {
-        return [
-          {
-            id: `${previewLog.sessionId}:lastOutput`,
-            timestamp: new Date(previewLog.startTime),
-            kind: 'output',
-            label: 'Output',
-            content: previewLog.lastOutputPreview,
-          },
-        ];
+      if (showLeadPreview) {
+        return buildLeadPreviewMessages();
       }
       return [];
     }
     const raw = extractSubagentPreviewMessages(previewChunks);
     // For lead preview, user messages are system-generated prompts (not useful).
     // Show only AI outputs — the actual work results.
-    // If no outputs found, fall back to lastOutputPreview from the log summary.
+    // If no outputs found, fall back to summary previews.
     if (showLeadPreview) {
       const outputs = raw.filter((m) => m.kind !== 'user');
       if (outputs.length > 0) return outputs;
-      if (previewLog?.lastOutputPreview) {
-        return [
-          {
-            id: `${previewLog.sessionId}:lastOutput`,
-            timestamp: new Date(previewLog.startTime),
-            kind: 'output',
-            label: 'Output',
-            content: previewLog.lastOutputPreview,
-          },
-        ];
-      }
+      const fallback = buildLeadPreviewMessages();
+      if (fallback.length > 0) return fallback;
       return raw; // ultimate fallback: show everything including user messages
     }
     return raw;
-  }, [previewChunks, showLeadPreview, previewLog]);
+  }, [previewChunks, showLeadPreview, previewLog, taskWorkIntervals]);
 
   const previewMessages = useMemo((): SubagentPreviewMessage[] => {
     return allPreviewMessages.slice(0, previewVisibleCount);

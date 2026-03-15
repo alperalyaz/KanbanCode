@@ -618,6 +618,10 @@ export interface MemberLogSummaryBase {
   filePath?: string;
   /** Short preview of the last assistant output (truncated). */
   lastOutputPreview?: string;
+  /** Short preview of the last thinking block (truncated). */
+  lastThinkingPreview?: string;
+  /** Recent thinking/output previews with timestamps for task-scoped filtering. */
+  recentPreviews?: { text: string; timestamp: string; kind: 'thinking' | 'output' }[];
 }
 
 export interface MemberSubagentLogSummary extends MemberLogSummaryBase {
