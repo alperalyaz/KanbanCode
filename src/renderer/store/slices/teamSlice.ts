@@ -115,6 +115,7 @@ import type { StateCreator } from 'zustand';
 // handles clarification-specific logic (e.g., marking tasks as needing user input).
 const notifiedClarificationTaskKeys = new Set<string>();
 const notifiedStatusChangeKeys = new Set<string>();
+const notifiedCommentKeys = new Set<string>();
 
 let isFirstFetchAllTasks = true;
 
@@ -236,6 +237,59 @@ function fireStatusChangeNotification(
       body: task.subject,
       teamEventType: 'task_status_change',
       dedupeKey: `status:${task.teamName}:${task.id}:${fromStatus}:${toStatus}:${task.updatedAt ?? Date.now()}`,
+      suppressToast,
+    })
+    .catch(() => undefined);
+}
+
+function detectTaskCommentNotifications(
+  oldTasks: GlobalTask[],
+  newTasks: GlobalTask[],
+  notifyEnabled: boolean
+): void {
+  const oldTaskMap = new Map(oldTasks.map((t) => [`${t.teamName}:${t.id}`, t]));
+
+  for (const task of newTasks) {
+    const mapKey = `${task.teamName}:${task.id}`;
+    const oldTask = oldTaskMap.get(mapKey);
+    const oldCommentCount = oldTask?.comments?.length ?? 0;
+    const newCommentCount = task.comments?.length ?? 0;
+
+    if (newCommentCount <= oldCommentCount) continue;
+
+    const newComments = (task.comments ?? []).slice(oldCommentCount);
+    for (const comment of newComments) {
+      // Don't notify about user's own comments
+      if (comment.author === 'user') continue;
+      // Skip review-related comment types (already covered by status change notifications)
+      if (comment.type === 'review_request' || comment.type === 'review_approved') continue;
+
+      const key = `${task.teamName}:${task.id}:${comment.id}`;
+      if (notifiedCommentKeys.has(key)) continue;
+      notifiedCommentKeys.add(key);
+
+      fireTaskCommentNotification(task, comment, !notifyEnabled);
+    }
+  }
+}
+
+function fireTaskCommentNotification(
+  task: GlobalTask,
+  comment: { author: string; text: string; id: string },
+  suppressToast: boolean
+): void {
+  const preview = comment.text.length > 100 ? comment.text.slice(0, 100) + '...' : comment.text;
+
+  void api.teams
+    ?.showMessageNotification({
+      teamName: task.teamName,
+      teamDisplayName: task.teamDisplayName,
+      from: comment.author,
+      to: 'user',
+      summary: `Comment on ${formatTaskDisplayLabel(task)}: ${task.subject}`,
+      body: preview,
+      teamEventType: 'task_comment',
+      dedupeKey: `comment:${task.teamName}:${task.id}:${comment.id}`,
       suppressToast,
     })
     .catch(() => undefined);
@@ -800,6 +854,8 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           get().appConfig?.notifications?.notifyOnClarifications ?? true;
         detectClarificationNotifications(oldTasks, tasks, notifyOnClarifications);
         detectStatusChangeNotifications(oldTasks, tasks, get().appConfig, get().teamByName);
+        const notifyOnTaskComments = get().appConfig?.notifications?.notifyOnTaskComments ?? true;
+        detectTaskCommentNotifications(oldTasks, tasks, notifyOnTaskComments);
       } else {
         // Initial load — seed the Sets to prevent false notifications on next update
         for (const task of tasks) {
@@ -812,6 +868,10 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           }
           if (getTaskKanbanColumn(task) === 'approved') {
             notifiedStatusChangeKeys.add(`${task.teamName}:${task.id}:approved`);
+          }
+          // Seed comment keys to prevent false notifications
+          for (const comment of task.comments ?? []) {
+            notifiedCommentKeys.add(`${task.teamName}:${task.id}:${comment.id}`);
           }
         }
       }

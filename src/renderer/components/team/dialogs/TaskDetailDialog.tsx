@@ -6,6 +6,12 @@ import {
   ImageLightbox,
   LightboxLockProvider,
 } from '@renderer/components/team/attachments/ImageLightbox';
+import {
+  getTeamColorSet,
+  getThemedBadge,
+  getThemedBorder,
+  getThemedText,
+} from '@renderer/constants/teamColors';
 import { CollapsibleTeamSection } from '@renderer/components/team/CollapsibleTeamSection';
 import { FileIcon } from '@renderer/components/team/editor/FileIcon';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
@@ -26,6 +32,7 @@ import { TiptapEditor } from '@renderer/components/ui/tiptap';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { getLastReadTimestamp } from '@renderer/services/commentReadStorage';
 import { useStore } from '@renderer/store';
+import { useTheme } from '@renderer/hooks/useTheme';
 import { isImageMimeType } from '@renderer/utils/attachmentUtils';
 import {
   buildMemberColorMap,
@@ -33,6 +40,8 @@ import {
   REVIEW_STATE_DISPLAY,
   TASK_STATUS_LABELS,
   TASK_STATUS_STYLES,
+  agentAvatarUrl,
+  displayMemberName,
 } from '@renderer/utils/memberHelpers';
 import { buildTaskChangeRequestOptions, deriveTaskSince } from '@renderer/utils/taskChangeRequest';
 import { getTaskKanbanColumn } from '@shared/utils/reviewState';
@@ -113,6 +122,7 @@ export const TaskDetailDialog = ({
   headerExtra,
 }: TaskDetailDialogProps): React.JSX.Element => {
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
+  const { isLight } = useTheme();
   const currentTask = task ? (taskMap.get(task.id) ?? task) : null;
   const updateTaskFields = useStore((s) => s.updateTaskFields);
   const recordTaskHasChanges = useStore((s) => s.recordTaskHasChanges);
@@ -499,18 +509,46 @@ export const TaskDetailDialog = ({
               <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-normal">
                 {formatTaskDisplayLabel(currentTask)}
               </Badge>
-              <span
-                className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${statusStyle.bg} ${statusStyle.text}`}
-              >
-                {statusLabel}
-              </span>
               {currentTask.reviewState === 'approved' && currentTask.reviewer ? (
-                <MemberBadge
-                  name={currentTask.reviewer}
-                  color={colorMap.get(currentTask.reviewer)}
-                  size="sm"
-                />
-              ) : null}
+                (() => {
+                  const reviewerColor = colorMap.get(currentTask.reviewer);
+                  const colors = getTeamColorSet(reviewerColor ?? '');
+                  const reviewerBadgeStyle = {
+                    backgroundColor: getThemedBadge(colors, isLight),
+                    color: getThemedText(colors, isLight),
+                    borderTop: `1px solid ${getThemedBorder(colors, isLight)}40`,
+                    borderRight: `1px solid ${getThemedBorder(colors, isLight)}40`,
+                    borderBottom: `1px solid ${getThemedBorder(colors, isLight)}40`,
+                  };
+                  return (
+                    <span className="inline-flex items-stretch">
+                      <span
+                        className={`inline-flex items-center rounded-l-full px-2 py-0.5 text-[10px] font-medium ${statusStyle.bg} ${statusStyle.text}`}
+                      >
+                        {statusLabel}
+                      </span>
+                      <span
+                        className="inline-flex items-center gap-1 rounded-r-full px-1.5 py-0.5 text-[10px] font-medium"
+                        style={reviewerBadgeStyle}
+                      >
+                        <img
+                          src={agentAvatarUrl(currentTask.reviewer, 18)}
+                          alt=""
+                          className="size-4 shrink-0 rounded-full bg-[var(--color-surface-raised)]"
+                          loading="lazy"
+                        />
+                        {displayMemberName(currentTask.reviewer)}
+                      </span>
+                    </span>
+                  );
+                })()
+              ) : (
+                <span
+                  className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${statusStyle.bg} ${statusStyle.text}`}
+                >
+                  {statusLabel}
+                </span>
+              )}
               {currentTask.reviewState === 'needsFix' ? (
                 <span
                   className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${REVIEW_STATE_DISPLAY.needsFix.bg} ${REVIEW_STATE_DISPLAY.needsFix.text}`}

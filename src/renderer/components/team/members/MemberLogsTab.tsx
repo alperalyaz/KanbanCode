@@ -56,7 +56,7 @@ function filterChunksByWorkIntervals(
 
   if (parsed.length === 0) return chunks;
 
-  return chunks.filter((chunk) => {
+  const filtered = chunks.filter((chunk) => {
     const cs = chunk.startTime.getTime();
     const ce = chunk.endTime.getTime();
     if (!Number.isFinite(cs) || !Number.isFinite(ce)) return true;
@@ -65,6 +65,11 @@ function filterChunksByWorkIntervals(
       return cs <= end && ce >= i.startMs;
     });
   });
+  // DEBUG
+  console.log(
+    `[filterChunks] intervals=${parsed.length} chunks=${chunks.length}→${filtered.length}`
+  );
+  return filtered;
 }
 
 interface MemberLogsTabProps {
@@ -106,6 +111,12 @@ export const MemberLogsTab = ({
   showLeadPreview = false,
   onPreviewOnlineChange,
 }: MemberLogsTabProps): React.JSX.Element => {
+  // DEBUG: verify workIntervals reach this component
+  if (taskId && taskWorkIntervals) {
+    console.log(
+      `[MemberLogsTab] taskId=${taskId} workIntervals=${JSON.stringify(taskWorkIntervals)}`
+    );
+  }
   const MIN_REFRESH_VISIBLE_MS = 250;
   const intervalsKey = useMemo(
     () => (taskWorkIntervals ? JSON.stringify(taskWorkIntervals) : ''),

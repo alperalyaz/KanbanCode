@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   buildMembersFromDrafts,
@@ -127,24 +127,16 @@ export const AddMemberDialog = ({
 
   // Re-initialize drafts when the dialog opens with fresh suggested name
   // (existingNames may have changed since last close)
-  const handleAfterOpen = useMemo(() => {
-    if (open) {
-      return () => {
-        setMembers((prev) => {
-          // Only reset if previous state looks like a leftover from last session
-          const allEmpty = prev.every((m) => !m.name.trim());
-          if (prev.length === 0 || allEmpty) {
-            return buildInitialDrafts(existingNames);
-          }
-          return prev;
-        });
-      };
-    }
-    return undefined;
+  useEffect(() => {
+    if (!open) return;
+    setMembers((prev) => {
+      const allEmpty = prev.every((m) => !m.name.trim());
+      if (prev.length === 0 || allEmpty) {
+        return buildInitialDrafts(existingNames);
+      }
+      return prev;
+    });
   }, [open, existingNames]);
-
-  // Trigger on mount/open
-  useMemo(() => handleAfterOpen?.(), [handleAfterOpen]);
 
   const memberCount = members.filter((m) => m.name.trim() && !validateName(m.name)).length;
 

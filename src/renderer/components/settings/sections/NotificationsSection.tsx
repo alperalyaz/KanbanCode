@@ -44,6 +44,7 @@ interface NotificationsSectionProps {
       | 'notifyOnUserInbox'
       | 'notifyOnClarifications'
       | 'notifyOnStatusChange'
+      | 'notifyOnTaskComments'
       | 'statusChangeOnlySolo',
     value: boolean
   ) => void;
@@ -162,6 +163,16 @@ export const NotificationsSection = ({
         <SettingsToggle
           enabled={safeConfig.notifications.notifyOnClarifications}
           onChange={(v) => onNotificationToggle('notifyOnClarifications', v)}
+          disabled={saving || !safeConfig.notifications.enabled}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Task comment notifications"
+        description="Show native OS notifications when agents comment on tasks"
+      >
+        <SettingsToggle
+          enabled={safeConfig.notifications.notifyOnTaskComments}
+          onChange={(v) => onNotificationToggle('notifyOnTaskComments', v)}
           disabled={saving || !safeConfig.notifications.enabled}
         />
       </SettingRow>
