@@ -496,8 +496,68 @@ export const MessagesPanel = memo(function MessagesPanel({
           </div>
         )}
         {/* Scrollable content */}
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-2">
-          {messagesContent}
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden py-2 pr-3">
+          <div className="pl-3">
+            <MessageComposer
+              teamName={teamName}
+              members={members}
+              isTeamAlive={isTeamAlive}
+              sending={sendingMessage}
+              sendError={sendMessageError}
+              lastResult={lastSendMessageResult}
+              textareaRef={composerTextareaRef}
+              onSend={handleSend}
+              onCrossTeamSend={handleCrossTeamSend}
+            />
+            <StatusBlock
+              members={members}
+              tasks={tasks}
+              messages={messages}
+              pendingRepliesByMember={pendingRepliesByMember}
+              onMemberClick={onMemberClick}
+              onTaskClick={onTaskClick}
+            />
+          </div>
+          <ActivityTimeline
+            messages={filteredMessages}
+            teamName={teamName}
+            members={members}
+            readState={readState}
+            allCollapsed={messagesCollapsed}
+            expandOverrides={expandedSet}
+            onToggleExpandOverride={toggleExpandOverride}
+            teamSessionIds={teamSessionIds}
+            currentLeadSessionId={currentLeadSessionId}
+            isTeamAlive={isTeamAlive}
+            leadActivity={leadActivity}
+            leadContextUpdatedAt={leadContextUpdatedAt}
+            teamNames={teamNames}
+            teamColorByName={teamColorByName}
+            onTeamClick={openTeamTab}
+            onMemberClick={onMemberClick}
+            onCreateTaskFromMessage={onCreateTaskFromMessage}
+            onReplyToMessage={onReplyToMessage}
+            onMessageVisible={handleMessageVisible}
+            onRestartTeam={onRestartTeam}
+            onTaskIdClick={onTaskIdClick}
+            onExpandItem={handleExpandItem}
+            onExpandContent={handleExpandContent}
+          />
+          <MessageExpandDialog
+            expandedItem={expandedItem}
+            open={expandedItemKey !== null}
+            onOpenChange={handleExpandDialogChange}
+            teamName={teamName}
+            members={members}
+            onCreateTaskFromMessage={onCreateTaskFromMessage}
+            onReplyToMessage={onReplyToMessage}
+            onMemberClick={onMemberClick}
+            onTaskIdClick={onTaskIdClick}
+            onRestartTeam={onRestartTeam}
+            teamNames={teamNames}
+            teamColorByName={teamColorByName}
+            onTeamClick={openTeamTab}
+          />
         </div>
       </div>
     );

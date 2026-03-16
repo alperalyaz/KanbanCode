@@ -10,7 +10,6 @@ import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBloc
 let tempClaudeRoot = '';
 let tempTeamsBase = '';
 let tempTasksBase = '';
-let originalMemberBriefingBootstrapEnv: string | undefined;
 
 vi.mock('@main/services/team/ClaudeBinaryResolver', () => ({
   ClaudeBinaryResolver: { resolve: vi.fn() },
@@ -33,7 +32,6 @@ vi.mock('@main/utils/pathDecoder', async (importOriginal) => {
 });
 
 import {
-  MEMBER_BRIEFING_BOOTSTRAP_ENV,
   TeamProvisioningService,
 } from '@main/services/team/TeamProvisioningService';
 import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
@@ -71,8 +69,6 @@ function extractPromptFromWrite(writeSpy: ReturnType<typeof vi.fn>): string {
 describe('TeamProvisioningService prompt content (solo mode discipline)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    originalMemberBriefingBootstrapEnv = process.env[MEMBER_BRIEFING_BOOTSTRAP_ENV];
-    process.env[MEMBER_BRIEFING_BOOTSTRAP_ENV] = '1';
     tempClaudeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-team-prompts-'));
     tempTeamsBase = path.join(tempClaudeRoot, 'teams');
     tempTasksBase = path.join(tempClaudeRoot, 'tasks');
@@ -81,11 +77,6 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
   });
 
   afterEach(() => {
-    if (originalMemberBriefingBootstrapEnv === undefined) {
-      delete process.env[MEMBER_BRIEFING_BOOTSTRAP_ENV];
-    } else {
-      process.env[MEMBER_BRIEFING_BOOTSTRAP_ENV] = originalMemberBriefingBootstrapEnv;
-    }
     // Best-effort cleanup of temp dir (per-test)
     try {
       fs.rmSync(tempClaudeRoot, { recursive: true, force: true });
@@ -366,41 +357,6 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     expect(prompt).toContain(
       'leave a short task comment on that waiting task with the reason and your best ETA, keep it in pending/TODO'
     );
-
-    await svc.cancelProvisioning(runId);
-  });
-
-  it('createTeam prompt falls back to legacy inline protocol when bootstrap flag is disabled', async () => {
-    process.env[MEMBER_BRIEFING_BOOTSTRAP_ENV] = '0';
-    vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/fake/claude');
-    const { child, writeSpy } = createFakeChild();
-    vi.mocked(spawnCli).mockReturnValue(child as any);
-
-    const svc = new TeamProvisioningService();
-    (svc as any).buildProvisioningEnv = vi.fn(async () => ({
-      env: { ANTHROPIC_API_KEY: 'test' },
-      authSource: 'anthropic_api_key',
-    }));
-    (svc as any).startFilesystemMonitor = vi.fn();
-    (svc as any).pathExists = vi.fn(async () => false);
-
-    const { runId } = await svc.createTeam(
-      {
-        teamName: 'legacy-team',
-        cwd: process.cwd(),
-        members: [{ name: 'alice', role: 'developer' }],
-        description: 'Legacy prompt fallback test',
-      },
-      () => {}
-    );
-
-    const prompt = extractPromptFromWrite(writeSpy);
-    expect(prompt).toContain('Include the following agent-only instructions verbatim in the prompt:');
-    expect(prompt).toContain('Use task_briefing as a compact queue view of your assigned tasks.');
-    expect(prompt).toContain(
-      'If a newly assigned task must wait because you are still busy on another task, immediately add a short task comment on that waiting task with the reason and your best ETA.'
-    );
-    expect(prompt).not.toContain('Your FIRST action: call MCP tool member_briefing');
 
     await svc.cancelProvisioning(runId);
   });

@@ -92,12 +92,6 @@ import type {
   ToolCallMeta,
 } from '@shared/types';
 
-export const MEMBER_BRIEFING_BOOTSTRAP_ENV = 'CLAUDE_TEAM_ENABLE_MEMBER_BRIEFING_BOOTSTRAP';
-
-export function isMemberBriefingBootstrapEnabled(): boolean {
-  return process.env[MEMBER_BRIEFING_BOOTSTRAP_ENV] === '1';
-}
-
 const logger = createLogger('Service:TeamProvisioning');
 const { createController } = agentTeamsControllerModule;
 const TEAM_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,127}$/;
@@ -413,33 +407,6 @@ function buildTeammateAgentBlockReminder(): string {
   ].join('\n');
 }
 
-function buildLegacyMemberSpawnPrompt(
-  member: TeamCreateRequest['members'][number],
-  displayName: string,
-  teamName: string,
-  taskProtocol: string,
-  processRegistration: string
-): string {
-  const role = member.role?.trim() || 'team member';
-  const workflowBlock = member.workflow?.trim()
-    ? `\n\nYour workflow and how you should behave:${formatWorkflowBlock(member.workflow, '')}`
-    : '';
-  const actionModeProtocol = buildActionModeProtocol();
-  return `You are ${member.name}, a ${role} on team "${displayName}" (${teamName}).${workflowBlock}
-
-${getAgentLanguageInstruction()}
-Introduce yourself briefly (name and role) and confirm you are ready.
-Then wait for task assignments.
-When you later receive work or reconnect after a restart, use task_briefing as your compact queue view. Use task_get when you need the full task context before starting a pending/needsFix task or when the in_progress briefing details are not enough.
-${buildTeammateAgentBlockReminder()}
-${actionModeProtocol}
-Include the following agent-only instructions verbatim in the prompt:
-
-${taskProtocol}
-
-${processRegistration}`;
-}
-
 function buildMemberBootstrapPrompt(
   member: TeamCreateRequest['members'][number],
   displayName: string,
@@ -469,40 +436,6 @@ After member_briefing succeeds:
 - If a task-scoped update is already recorded in a task comment, do NOT send a duplicate SendMessage to the lead with the same content unless you need urgent non-task attention. When skipping a message, stay silent — never output meta-commentary about skipped or already-delivered messages.
 ${buildTeammateAgentBlockReminder()}
 ${actionModeProtocol}`;
-}
-
-function buildLegacyReconnectMemberSpawnPrompt(
-  member: TeamCreateRequest['members'][number],
-  teamName: string,
-  hasTasks: boolean
-): string {
-  const role = member.role?.trim() || 'team member';
-  const workflowBlock = member.workflow?.trim()
-    ? `\n\nYour workflow and how you should behave:${formatWorkflowBlock(member.workflow, '     ')}`
-    : '';
-  const actionModeProtocol = indentMultiline(buildActionModeProtocol(), '     ');
-  return `   For "${member.name}":
-   - prompt:
-     You are ${member.name}, a ${role} on team "${teamName}".${workflowBlock}
-
-     ${getAgentLanguageInstruction()}
-     The team has been reconnected after a restart.
-     ${hasTasks ? `You may have assigned tasks in states like in_progress, needsFix, pending, review, completed, or approved from the previous session.` : 'You have no assigned tasks currently.'}
-     ${buildTeammateAgentBlockReminder()}
-${actionModeProtocol}
-
-     Your FIRST action: call MCP tool task_briefing with:
-     { teamName: "${teamName}", memberName: "${member.name}" }
-     Then:
-     - If task_briefing shows any in_progress task, resume/finish those first. Call task_get only if you need more context than task_briefing already gave you.
-     - After that, prioritize tasks marked Needs fixes after review, then normal pending tasks.
-     - Before you start any needsFix or pending task, call task_get for that specific task.
-     - If a newly assigned needsFix or pending task must wait because you are still finishing another task, leave a short task comment on that waiting task with the reason and your best ETA, keep it in pending/TODO (use task_set_status pending if needed), and only run task_start when you truly begin.
-     - CRITICAL: If someone comments on your task, you MUST reply on that same task via task_add_comment. Never leave a user/lead/teammate task comment unanswered, even if the reply is only a short acknowledgement or status update. Do NOT treat status changes or direct messages as a substitute for an on-task reply.
-     - If you are the one about to do the implementation/fixes and the owner is missing or someone else, run task_set_owner to yourself immediately before task_start.
-     - Only then run task_start when you truly begin.
-     - If a task gets a new comment and you are going to do additional implementation/fix/follow-up work on it, FIRST leave a short task comment saying what you are about to do, THEN run task_start, then do the work, and when finished leave a short result comment and run task_complete again. Never skip this comment -> reopen -> work -> comment -> done cycle.
-     - If you have no tasks, wait for new assignments.`;
 }
 
 function buildReconnectMemberBootstrapPrompt(
@@ -553,19 +486,9 @@ function buildMemberSpawnPrompt(
   member: TeamCreateRequest['members'][number],
   displayName: string,
   teamName: string,
-  leadName: string,
-  taskProtocol: string,
-  processRegistration: string
+  leadName: string
 ): string {
-  return isMemberBriefingBootstrapEnabled()
-    ? buildMemberBootstrapPrompt(member, displayName, teamName, leadName)
-    : buildLegacyMemberSpawnPrompt(
-        member,
-        displayName,
-        teamName,
-        taskProtocol,
-        processRegistration
-      );
+  return buildMemberBootstrapPrompt(member, displayName, teamName, leadName);
 }
 
 function buildReconnectMemberSpawnPrompt(
@@ -574,9 +497,7 @@ function buildReconnectMemberSpawnPrompt(
   leadName: string,
   hasTasks: boolean
 ): string {
-  return isMemberBriefingBootstrapEnabled()
-    ? buildReconnectMemberBootstrapPrompt(member, teamName, leadName, hasTasks)
-    : buildLegacyReconnectMemberSpawnPrompt(member, teamName, hasTasks);
+  return buildReconnectMemberBootstrapPrompt(member, teamName, leadName, hasTasks);
 }
 
 export function buildAddMemberSpawnMessage(
@@ -594,13 +515,6 @@ export function buildAddMemberSpawnMessage(
       ? ` Their workflow: ${member.workflow.trim()}`
       : '';
 
-  if (!isMemberBriefingBootstrapEnabled()) {
-    return (
-      `A new teammate "${member.name}"${roleHint} has been added to the team. ` +
-      `Please spawn them immediately using the Task tool with team_name="${teamName}", name="${member.name}", and subagent_type="general-purpose".${workflowHint}`
-    );
-  }
-
   const prompt = buildMemberBootstrapPrompt(
     {
       name: member.name,
@@ -617,107 +531,6 @@ export function buildAddMemberSpawnMessage(
     `Please spawn them immediately using the Task tool with team_name="${teamName}", name="${member.name}", subagent_type="general-purpose", and the exact prompt below:${workflowHint}\n\n` +
     indentMultiline(prompt, '  ')
   );
-}
-
-function buildTaskStatusProtocol(teamName: string): string {
-  return wrapInAgentBlock(`MANDATORY TASK STATUS PROTOCOL — you MUST follow this for EVERY task:
-0. IMPORTANT ID RULE:
-   - If a board/task snapshot shows a canonical taskId, prefer using that exact value in MCP tool calls.
-   - task_briefing may show short display labels like #abcd1234; MCP task tools also accept that short task ref.
-   - Human-facing summaries should use the short display label like #abcd1234 for readability.
-1. If you are about to do implementation/fix work on a task yourself, make sure the owner reflects the actual implementer:
-   - If the task is unassigned or assigned to someone else, FIRST reassign it to yourself with MCP tool task_set_owner:
-     { teamName: "${teamName}", taskId: "<taskId>", owner: "<your-name>" }
-   - Do this only when you are genuinely taking over the work.
-   - Reviewing, approving, or leaving comments does NOT require changing ownership.
-2. Use MCP tool task_start to mark task started:
-   { teamName: "${teamName}", taskId: "<taskId>" }
-   - Start the task ONLY when you are actually beginning work on it.
-   - Do NOT start multiple tasks at once unless the team lead explicitly directs parallel work.
-3. Use MCP tool task_complete BEFORE sending your final reply:
-   { teamName: "${teamName}", taskId: "<taskId>" }
-   - If a new task comment means you must do more real work on that same task, FIRST add a short task comment saying what you are going to do, THEN run task_start again before doing the follow-up work.
-   - After that follow-up work finishes, add a short task comment with the result, what changed, or what you verified.
-   - After that, run task_complete again before your reply.
-   - Never do comment-driven implementation/fix work while the task is still shown as pending, review, completed, or approved.
-   - After task_complete, if the task needs review AND the team has a member whose role includes reviewing (e.g. "reviewer", "tech-lead", "qa"), IMMEDIATELY call review_request to move it to the review column and notify the reviewer:
-     { teamName: "${teamName}", taskId: "<taskId>", from: "<your-name>", reviewer: "<reviewer-name>" }
-     Do NOT leave a completed task without sending it to review when review is expected and a reviewer exists.
-     If no team member has a reviewer role, skip review_request — the task stays completed.` +
-     // No reviewer in team → user can manually drag to review from kanban if needed
-     `
-4. If you are asked to review and the task is accepted, move it to APPROVED (not DONE) with MCP tool review_approve:
-   { teamName: "${teamName}", taskId: "<taskId>", note?: "<optional note>", notifyOwner: true }
-5. If review fails and changes are needed, use MCP tool review_request_changes:
-   { teamName: "${teamName}", taskId: "<taskId>", comment: "<what to fix>" }
-6. NEVER skip status updates. A task is NOT done until completed status is written.
-   - Never "bulk-complete" a batch of tasks at the end. Update status incrementally as you work.
-7. To reply to a comment on a task, use MCP tool task_add_comment:
-   { teamName: "${teamName}", taskId: "<taskId>", text: "<your reply>", from: "<your-name>" }
-   - If a user, lead, or teammate comments on a task you own, are reviewing, or are actively handling, you MUST reply on that task. Never leave task comments unanswered.
-   - If more work is needed, reply in the task comments FIRST, then reopen/start the task if needed, do the work, and finish with another task comment.
-   - Direct messages and status changes are optional supplements only; they NEVER replace the required on-task reply.
-8. When discussing a task with a teammate and you have important findings, decisions, blockers, or progress updates — record them as a task comment:
-   { teamName: "${teamName}", taskId: "<taskId>", text: "<summary of your finding or decision>", from: "<your-name>" }
-   Do NOT comment on trivial coordination messages. Only comment when the information is valuable context for the task.
-   Do NOT send a duplicate SendMessage to the lead for the same task-scoped update unless you need urgent non-task attention. When skipping a message, stay silent — never output meta-commentary about skipped or already-delivered messages.
-   Direct messages to the lead are only for urgent attention, no-task situations, or when the lead explicitly asked for a direct reply.
-9. When sending a message about a specific task, include its short display label like #<displayId> in your SendMessage summary field for traceability.
-10. In ALL human-facing or teammate-facing message text, when you mention a task reference, ALWAYS write it with a leading # (for example: #abcd1234, not abcd1234 or "task abcd1234").
-11. Review workflow clarity (IMPORTANT):
-   - The work task (e.g. #1) is the thing that must end up APPROVED after review.
-   - If you are reviewing work for task #X, run review_approve/review_request_changes on #X (the work task).
-   - Do NOT approve a separate "review task" (e.g. #2 created just to ask for a review) — that will put the wrong task into APPROVED.
-   - Typical flow:
-     a) Owner finishes work on #X -> task_complete #X -> review_request #X (moves to review column, notifies reviewer)
-     b) Reviewer receives notification, reviews the work
-     c) Reviewer accepts -> review_approve #X
-     d) Reviewer rejects -> review_request_changes #X
-12. CLARIFICATION PROTOCOL (CRITICAL — MANDATORY):
-   When you are blocked and need information to continue a task, you MUST do ALL steps below — skipping the board update or comment breaks traceability:
-   a) STEP 1 — FIRST, set the clarification flag with MCP tool task_set_clarification:
-      { teamName: "${teamName}", taskId: "<taskId>", value: "lead" }
-   b) STEP 2 — THEN, add a task comment describing exactly what you need:
-      { teamName: "${teamName}", taskId: "<taskId>", text: "question / blocker / missing info", from: "<your-name>" }
-   c) STEP 3 — THEN, send a message to your team lead via SendMessage so they notice it promptly.
-   IMPORTANT: Always update the task board BEFORE sending the message. The flag + task comment are what make the request durable and visible on the board.
-   d) The flag is auto-cleared when the lead adds a task comment on your task.
-      If the lead replies via SendMessage instead, clear the flag yourself once you have the answer:
-      { teamName: "${teamName}", taskId: "<taskId>", value: "clear" }
-   e) Do NOT set clarification to "user" yourself — only the team lead escalates to the user.
-13. DEPENDENCY AWARENESS:
-    When your task has blockedBy dependencies, check if they are completed before starting.
-    When you complete a task that blocks others, mention this in your completion message so blocked teammates can proceed.
-14. TASK QUEUE DISCIPLINE:
-    - Use task_briefing as a compact queue view of your assigned tasks.
-    - task_briefing may include full description/comments only for in_progress tasks; needsFix/pending/review/completed entries may be minimal on purpose.
-    - Finish existing in_progress tasks first.
-    - If a newly assigned task must wait because you are still busy on another task, immediately add a short task comment on that waiting task with the reason and your best ETA.
-    - Keep any task you have not actually started in pending/TODO (use task_set_status pending if it was moved too early).
-    - If you need more context for an in_progress task, you MAY call task_get, but it is not mandatory when task_briefing already gives enough detail.
-    - Before starting a needsFix or pending task, call task_get for that specific task first.
-    - If you are the one doing the implementation/fixes and the owner is missing or someone else, run task_set_owner to yourself immediately before task_start.
-    - Then run task_start only when you truly begin.
-    - If you complete fixes for a needsFix task, mark it completed and then send it back through review_request when ready for another review pass.
-15. INVESTIGATION / TASK REFINEMENT:
-    - If the lead assigns you a broad investigation/triage task, you own the code inspection and scope discovery for that work.
-    - If you discover distinct substantial follow-up work that should be tracked separately, create the follow-up board task(s) yourself with task_create, assign them to the actual owner, and link them with related or blockedBy when useful.
-    - If you plan to execute one of those follow-up tasks yourself, make sure the owner is set to you before you start it.
-    - Record the new task refs in a task comment on the original investigation task so the lead can see the decomposition.
-Failure to follow this protocol means the task board will show incorrect status.`);
-}
-
-function buildProcessRegistrationProtocol(teamName: string): string {
-  return wrapInAgentBlock(`BACKGROUND PROCESS REGISTRATION — when you start a background process (dev server, watcher, database, etc.):
-1. Launch with & to get PID:
-   pnpm dev &
-2. Register immediately with MCP tool process_register (--port and --url are optional, use when the process listens on a port):
-   { teamName: "${teamName}", pid: <PID>, label: "<description>", from: "<your-name>", port?: <PORT>, url?: "http://localhost:<PORT>", command?: "<command>" }
-3. VERIFY registration succeeded (MANDATORY — never skip this step) using MCP tool process_list:
-   { teamName: "${teamName}" }
-4. When stopping a process, use MCP tool process_stop:
-   { teamName: "${teamName}", pid: <PID> }
-If verification in step 3 fails or the process is missing from the list, re-register it.`);
 }
 
 function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string {
@@ -1000,8 +813,6 @@ function buildTaskBoardSnapshot(tasks: TeamTask[]): string {
 
 function buildProvisioningPrompt(request: TeamCreateRequest): string {
   const displayName = request.displayName?.trim() || request.teamName;
-  const taskProtocol = buildTaskStatusProtocol(request.teamName);
-  const processRegistration = buildProcessRegistrationProtocol(request.teamName);
   const userPromptBlock = request.prompt?.trim()
     ? `\nAdditional instructions from the user:\n${request.prompt.trim()}\n`
     : '';
@@ -1040,7 +851,6 @@ function buildProvisioningPrompt(request: TeamCreateRequest): string {
       - There is no automatic status transition when dependencies resolve — the owner must explicitly start it (task_start / task_set_status in_progress) when ready.
   - Use related to connect tasks working on the same feature without blocking.`;
 
-  const bootstrapEnabledForCreate = isMemberBriefingBootstrapEnabled();
   const step2Block = isSolo
     ? '2) Skip — this is a solo team with no teammates to spawn.'
     : `2) Spawn each member as a live teammate using the Task tool:
@@ -1048,11 +858,7 @@ function buildProvisioningPrompt(request: TeamCreateRequest): string {
    - name: the member's name (see per-member list below)
    - subagent_type: “general-purpose”
    - IMPORTANT: Use the exact prompt shown for each member.
-     ${
-       bootstrapEnabledForCreate
-         ? 'With member_briefing bootstrap enabled, the teammate will fetch durable rules after spawn.'
-         : 'This prompt includes the full durable teammate rules directly.'
-     }
+     With member_briefing bootstrap enabled, the teammate will fetch durable rules after spawn.
 
    Per-member spawn instructions:
 ${request.members
@@ -1064,9 +870,7 @@ ${buildMemberSpawnPrompt(
   m,
   displayName,
   request.teamName,
-  leadName,
-  taskProtocol,
-  processRegistration
+  leadName
 )
   .split('\n')
   .map((line) => `     ${line}`)
@@ -1114,7 +918,6 @@ function buildLaunchPrompt(
   const userPromptBlock = request.prompt?.trim()
     ? `\nAdditional instructions from the user:\n${request.prompt.trim()}\n`
     : '';
-  const bootstrapEnabled = isMemberBriefingBootstrapEnabled();
   const taskBoardSnapshot = buildTaskBoardSnapshot(tasks);
 
   const leadName = members.find((m) => m.role?.toLowerCase().includes('lead'))?.name || 'team-lead';
@@ -1165,11 +968,7 @@ function buildLaunchPrompt(
    - name: the member's name
    - subagent_type: "general-purpose"
    - IMPORTANT: Use the exact prompt shown for each member.
-     ${
-       bootstrapEnabled
-         ? 'With member_briefing bootstrap enabled, the teammate will fetch durable rules after spawn.'
-         : 'This prompt includes the full durable teammate rules directly.'
-     }
+     With member_briefing bootstrap enabled, the teammate will fetch durable rules after spawn.
 
    Per-member spawn instructions:
 ${memberSpawnInstructions}

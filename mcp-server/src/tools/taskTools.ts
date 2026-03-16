@@ -2,7 +2,7 @@ import type { FastMCP } from 'fastmcp';
 import { z } from 'zod';
 
 import { agentBlocks, getController } from '../controller';
-import { jsonTextContent } from '../utils/format';
+import { jsonTextContent, taskWriteResult, slimTask } from '../utils/format';
 
 /** stripAgentBlocks from canonical agentBlocks module — single source of truth for the tag format. */
 const { stripAgentBlocks } = agentBlocks;
@@ -242,7 +242,7 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
     }),
     execute: async ({ teamName, claudeDir, taskId, status, actor }) =>
       await Promise.resolve(
-        jsonTextContent(getController(teamName, claudeDir).tasks.setTaskStatus(taskId, status, actor))
+        jsonTextContent(slimTask(getController(teamName, claudeDir).tasks.setTaskStatus(taskId, status, actor) as Record<string, unknown>))
       ),
   });
 
@@ -255,7 +255,7 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
       actor: z.string().optional(),
     }),
     execute: async ({ teamName, claudeDir, taskId, actor }) =>
-      await Promise.resolve(jsonTextContent(getController(teamName, claudeDir).tasks.startTask(taskId, actor))),
+      await Promise.resolve(jsonTextContent(slimTask(getController(teamName, claudeDir).tasks.startTask(taskId, actor) as Record<string, unknown>))),
   });
 
   server.addTool({
@@ -268,7 +268,7 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
     }),
     execute: async ({ teamName, claudeDir, taskId, actor }) =>
       await Promise.resolve(
-        jsonTextContent(getController(teamName, claudeDir).tasks.completeTask(taskId, actor))
+        jsonTextContent(slimTask(getController(teamName, claudeDir).tasks.completeTask(taskId, actor) as Record<string, unknown>))
       ),
   });
 
@@ -282,7 +282,7 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
     }),
     execute: async ({ teamName, claudeDir, taskId, owner }) =>
       await Promise.resolve(
-        jsonTextContent(getController(teamName, claudeDir).tasks.setTaskOwner(taskId, owner))
+        jsonTextContent(slimTask(getController(teamName, claudeDir).tasks.setTaskOwner(taskId, owner) as Record<string, unknown>))
       ),
   });
 
@@ -298,10 +298,12 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
     execute: async ({ teamName, claudeDir, taskId, text, from }) =>
       await Promise.resolve(
         jsonTextContent(
-          getController(teamName, claudeDir).tasks.addTaskComment(taskId, {
-          text,
-          ...(from ? { from } : {}),
-          })
+          taskWriteResult(
+            getController(teamName, claudeDir).tasks.addTaskComment(taskId, {
+            text,
+            ...(from ? { from } : {}),
+            }) as Record<string, unknown>
+          )
         )
       ),
   });
@@ -330,13 +332,15 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
     }) =>
       await Promise.resolve(
         jsonTextContent(
-          getController(teamName, claudeDir).tasks.attachTaskFile(taskId, {
-          file: filePath,
-          ...(mode ? { mode } : {}),
-          ...(filename ? { filename } : {}),
-          ...(mimeType ? { 'mime-type': mimeType } : {}),
-          ...(noFallback ? { 'no-fallback': true } : {}),
-          })
+          taskWriteResult(
+            getController(teamName, claudeDir).tasks.attachTaskFile(taskId, {
+            file: filePath,
+            ...(mode ? { mode } : {}),
+            ...(filename ? { filename } : {}),
+            ...(mimeType ? { 'mime-type': mimeType } : {}),
+            ...(noFallback ? { 'no-fallback': true } : {}),
+            }) as Record<string, unknown>
+          )
         )
       ),
   });
@@ -367,13 +371,15 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
     }) =>
       await Promise.resolve(
         jsonTextContent(
-          getController(teamName, claudeDir).tasks.attachCommentFile(taskId, commentId, {
-          file: filePath,
-          ...(mode ? { mode } : {}),
-          ...(filename ? { filename } : {}),
-          ...(mimeType ? { 'mime-type': mimeType } : {}),
-          ...(noFallback ? { 'no-fallback': true } : {}),
-          })
+          taskWriteResult(
+            getController(teamName, claudeDir).tasks.attachCommentFile(taskId, commentId, {
+            file: filePath,
+            ...(mode ? { mode } : {}),
+            ...(filename ? { filename } : {}),
+            ...(mimeType ? { 'mime-type': mimeType } : {}),
+            ...(noFallback ? { 'no-fallback': true } : {}),
+            }) as Record<string, unknown>
+          )
         )
       ),
   });
@@ -389,9 +395,11 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
     execute: async ({ teamName, claudeDir, taskId, value }) =>
       await Promise.resolve(
         jsonTextContent(
-          getController(teamName, claudeDir).tasks.setNeedsClarification(
-          taskId,
-          value === 'clear' ? null : value
+          slimTask(
+            getController(teamName, claudeDir).tasks.setNeedsClarification(
+            taskId,
+            value === 'clear' ? null : value
+            ) as Record<string, unknown>
           )
         )
       ),
@@ -408,7 +416,7 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
     }),
     execute: async ({ teamName, claudeDir, taskId, targetId, relationship }) =>
       await Promise.resolve(
-        jsonTextContent(getController(teamName, claudeDir).tasks.linkTask(taskId, targetId, relationship))
+        jsonTextContent(slimTask(getController(teamName, claudeDir).tasks.linkTask(taskId, targetId, relationship) as Record<string, unknown>))
       ),
   });
 
@@ -424,7 +432,7 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
     execute: async ({ teamName, claudeDir, taskId, targetId, relationship }) =>
       await Promise.resolve(
         jsonTextContent(
-          getController(teamName, claudeDir).tasks.unlinkTask(taskId, targetId, relationship)
+          slimTask(getController(teamName, claudeDir).tasks.unlinkTask(taskId, targetId, relationship) as Record<string, unknown>)
         )
       ),
   });
