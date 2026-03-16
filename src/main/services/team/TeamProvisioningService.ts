@@ -736,6 +736,7 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       ``,
       `Task board operations — use MCP tools directly:`,
       `- Create task: task_create { teamName: "${teamName}", subject: "...", description?: "...", owner?: "<actual-member-name>", createdBy?: "<your-name>", blockedBy?: ["1","2"], related?: ["3"] }`,
+      `- Create task from user message (preferred when you have a MessageId from a relayed inbox message): task_create_from_message { teamName: "${teamName}", messageId: "<exact-messageId>", subject: "...", owner?: "<member>", createdBy?: "<your-name>", blockedBy?: ["1","2"], related?: ["3"] }`,
       `- Assign/reassign owner: task_set_owner { teamName: "${teamName}", taskId: "<id>", owner: "<member-name>" }`,
       `- Clear owner: task_set_owner { teamName: "${teamName}", taskId: "<id>", owner: null }`,
       `- Start task (preferred over set-status): task_start { teamName: "${teamName}", taskId: "<id>" }`,
@@ -3614,6 +3615,7 @@ export class TeamProvisioningService {
           return [
             `${idx + 1}) From: ${m.from || 'unknown'}`,
             `   Timestamp: ${m.timestamp}`,
+            `   MessageId: ${m.messageId}`,
             ...(summaryLine ? [`   ${summaryLine}`] : []),
             ...(typeof m.source === 'string' && m.source.trim()
               ? [`   Source: ${m.source.trim()}`]
@@ -3831,6 +3833,7 @@ export class TeamProvisioningService {
         `IMPORTANT: Your text response here is shown to the user. Always include a brief human-readable summary (e.g. "Delegated to carol." or "No action needed."). Do NOT respond with only an agent-only block.`,
         AGENT_BLOCK_OPEN,
         `Internal note: for task assignments, prefer task_create and rely on the board/runtime notification path instead of sending a separate SendMessage for the same assignment.`,
+        `When creating a task from a user message that has a MessageId field, prefer task_create_from_message with that exact messageId for reliable provenance. Only use task_create_from_message when you have an explicit MessageId — never guess or fabricate one.`,
         `If a message below is marked Source: system_notification and its summary looks like "Comment on #...", treat it as a task-comment notification that REQUIRES an on-task reply via task_add_comment. Do NOT treat a direct message as a sufficient substitute.`,
         `If a message below is marked Source: cross_team, CALL the MCP tool named cross_team_send. Do NOT use SendMessage or message_send for cross-team replies.`,
         `NEVER set recipient="cross_team_send" or to="cross_team_send". "cross_team_send" is a tool name, not a teammate.`,
@@ -3860,6 +3863,7 @@ export class TeamProvisioningService {
           return [
             `${idx + 1}) From: ${m.from || 'unknown'}`,
             `   Timestamp: ${m.timestamp}`,
+            `   MessageId: ${m.messageId}`,
             ...(summaryLine ? [`   ${summaryLine}`] : []),
             ...(typeof m.source === 'string' && m.source.trim()
               ? [`   Source: ${m.source.trim()}`]

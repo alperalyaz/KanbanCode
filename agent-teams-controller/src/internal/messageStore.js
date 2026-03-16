@@ -168,11 +168,11 @@ function appendSentMessage(paths, flags) {
 /**
  * Exact readonly lookup by messageId across sent messages and all inbox files.
  *
- * Rules:
- * - Match only rows where row.messageId === requestedMessageId.
- * - Ignore rows where only relayOfMessageId matches.
- * - If more than one exact match exists, reject as ambiguous.
- * - Returns { message, store } or throws.
+ * Used by task_create_from_message to resolve provenance. Lookup is exact-messageId
+ * only and must never resolve by relayOfMessageId, text matching, or active context.
+ * Must reject ambiguous matches (same messageId in multiple stores) instead of guessing.
+ *
+ * Returns { message, store } or throws.
  */
 function lookupMessage(paths, messageId) {
   const id = typeof messageId === 'string' ? messageId.trim() : '';

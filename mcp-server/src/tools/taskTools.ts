@@ -18,8 +18,11 @@ const relationshipTypeSchema = z.enum(['blocked-by', 'blocks', 'related']);
 const USER_ORIGINATED_SOURCES = new Set(['user_sent']);
 
 /**
- * Shared payload builder for both task_create and task_create_from_message.
- * Keeps the canonical create-task shape in one place to avoid divergence.
+ * Shared payload builder for task_create and task_create_from_message.
+ *
+ * Both tools MUST stay semantically aligned — any new field added to task_create
+ * that also applies to message-derived tasks must be added here, not duplicated.
+ * Do not turn this into a repo-wide abstraction; keep it local to MCP tools.
  */
 function buildCreateTaskPayload(params: {
   subject: string;
@@ -99,6 +102,14 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
     },
   });
 
+  /*
+   * task_create_from_message — creates a task from an exact persisted user message.
+   *
+   * This is NOT a heuristic "current context" resolver. It requires an exact messageId
+   * that points to a persisted row in sentMessages.json or an inbox file.
+   * Must reject relay copies, non-user sources, and ambiguous matches.
+   * Must not auto-generate subject or infer importState from attachments.
+   */
   server.addTool({
     name: 'task_create_from_message',
     description:

@@ -128,6 +128,7 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     );
     expect(prompt).toContain('task_start');
     expect(prompt).toContain('task_complete');
+    expect(prompt).toContain('task_create_from_message');
     expect(prompt).toContain('TURN ACTION MODE PROTOCOL (HIGHEST PRIORITY FOR EACH USER TURN):');
     expect(prompt).toContain('ASK: Strict read-only conversation mode.');
     expect(prompt).toContain('DELEGATE: Strict orchestration mode for leads.');

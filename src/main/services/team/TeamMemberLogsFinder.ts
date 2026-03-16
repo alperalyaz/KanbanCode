@@ -1518,9 +1518,12 @@ export class TeamMemberLogsFinder {
         .replace(/\\\\/g, '\\')
         .replace(/\s+/g, ' ')
         .trim();
+      if (!raw) return null;
       return raw.length > 1500 ? raw.slice(0, 1500) + '...' : raw;
     }
-    // Fallback: top-level string content
+    // Fallback: top-level string content — skip lines with tool_use to avoid
+    // matching file content from Write/Edit tool inputs.
+    if (line.includes('"tool_use"')) return null;
     const contentMatch = /"content"\s*:\s*"((?:[^"\\]|\\.){1,400})/.exec(line);
     if (contentMatch?.[1]) {
       const raw = contentMatch[1]
@@ -1530,6 +1533,7 @@ export class TeamMemberLogsFinder {
         .replace(/\\\\/g, '\\')
         .replace(/\s+/g, ' ')
         .trim();
+      if (!raw) return null;
       return raw.length > 1500 ? raw.slice(0, 1500) + '...' : raw;
     }
     return null;
