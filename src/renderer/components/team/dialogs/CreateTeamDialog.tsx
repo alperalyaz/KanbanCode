@@ -40,8 +40,8 @@ import { LimitContextCheckbox } from './LimitContextCheckbox';
 import { OptionalSettingsSection } from './OptionalSettingsSection';
 import { ProjectPathSelector } from './ProjectPathSelector';
 import { SkipPermissionsCheckbox } from './SkipPermissionsCheckbox';
-import { getNextSuggestedTeamName } from './teamNameSets';
 import { computeEffectiveTeamModel, TeamModelSelector } from './TeamModelSelector';
+import { getNextSuggestedTeamName } from './teamNameSets';
 
 import type { MemberDraft } from '@renderer/components/team/members/membersEditorTypes';
 
@@ -107,10 +107,21 @@ const DEV_DEFAULT_TEAM = {
   teamName: 'signal-ops',
 } as const;
 
-const DEV_DEFAULT_MEMBERS: { name: string; roleSelection: string }[] = [
-  { name: 'alice', roleSelection: 'reviewer' },
+const DEV_DEFAULT_MEMBERS: { name: string; roleSelection: string; workflow?: string }[] = [
+  {
+    name: 'alice',
+    roleSelection: 'reviewer',
+    workflow:
+      'Review every completed task in the project. Read the code changes, check for correctness, style, and potential issues. Approve the task or request changes with clear feedback.',
+  },
+  {
+    name: 'tom',
+    roleSelection: 'reviewer',
+    workflow:
+      'Review every completed task in the project. Read the code changes, check for correctness, style, and potential issues. Approve the task or request changes with clear feedback.',
+  },
   { name: 'bob', roleSelection: 'developer' },
-  { name: 'carol', roleSelection: 'developer' },
+  { name: 'jack', roleSelection: 'developer' },
 ];
 
 /** Mirrors Claude CLI's `zuA()` sanitization: non-alphanumeric → `-`, then lowercase. */
@@ -425,6 +436,25 @@ export const CreateTeamDialog = ({
         if (cancelled) {
           return;
         }
+
+        // If defaultProjectPath is set but not in the fetched list (e.g. new project
+        // without Claude sessions), add it as a synthetic entry so the Combobox can
+        // display and select it.
+        if (
+          defaultProjectPath &&
+          !nextProjects.some((p) => normalizePath(p.path) === defaultProjectPath)
+        ) {
+          const folderName =
+            defaultProjectPath.split(/[/\\]/).filter(Boolean).pop() ?? defaultProjectPath;
+          nextProjects.unshift({
+            id: defaultProjectPath.replace(/[/\\]/g, '-'),
+            path: defaultProjectPath,
+            name: folderName,
+            sessions: [],
+            createdAt: Date.now(),
+          });
+        }
+
         setProjects(nextProjects);
       } catch (error) {
         if (cancelled) {
@@ -442,7 +472,7 @@ export const CreateTeamDialog = ({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, defaultProjectPath]);
 
   useEffect(() => {
     if (!open) {
@@ -479,6 +509,7 @@ export const CreateTeamDialog = ({
           createMemberDraft({
             name: member.name,
             roleSelection: member.roleSelection,
+            workflow: member.workflow,
           })
         )
       );
@@ -663,7 +694,7 @@ export const CreateTeamDialog = ({
     if (!validation.valid) {
       const errors = validation.errors ?? {};
       setFieldErrors(errors);
-      const messages = Object.values(errors).filter(Boolean) as string[];
+      const messages = Object.values(errors).filter(Boolean);
       setLocalError(messages.join(' · ') || 'Check form fields');
       return;
     }
@@ -714,7 +745,7 @@ export const CreateTeamDialog = ({
       if (!prev.teamName) return prev;
       // eslint-disable-next-line sonarjs/no-unused-vars -- destructured to omit teamName from rest
       const { teamName: _teamName, ...rest } = prev;
-      const remaining = Object.values(rest).filter(Boolean) as string[];
+      const remaining = Object.values(rest).filter(Boolean);
       if (remaining.length === 0) {
         setLocalError(null);
       } else {

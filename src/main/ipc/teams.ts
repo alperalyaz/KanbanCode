@@ -27,8 +27,8 @@ import {
   TEAM_LAUNCH,
   TEAM_LEAD_ACTIVITY,
   TEAM_LEAD_CONTEXT,
-  TEAM_MEMBER_SPAWN_STATUSES,
   TEAM_LIST,
+  TEAM_MEMBER_SPAWN_STATUSES,
   TEAM_PERMANENTLY_DELETE,
   TEAM_PREPARE_PROVISIONING,
   TEAM_PROCESS_ALIVE,
@@ -70,17 +70,18 @@ import {
 } from '@shared/utils/cliArgsParser';
 import { createLogger } from '@shared/utils/logger';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
+import crypto from 'crypto';
 import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent, Notification } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
 import { ConfigManager } from '../services/infrastructure/ConfigManager';
 import { NotificationManager } from '../services/infrastructure/NotificationManager';
+import { gitIdentityResolver } from '../services/parsing/GitIdentityResolver';
 import {
   buildActionModeAgentBlock,
   isAgentActionMode,
 } from '../services/team/actionModeInstructions';
-import { gitIdentityResolver } from '../services/parsing/GitIdentityResolver';
 import { TeamAttachmentStore } from '../services/team/TeamAttachmentStore';
 import { buildAddMemberSpawnMessage } from '../services/team/TeamProvisioningService';
 import { TeamTaskAttachmentStore } from '../services/team/TeamTaskAttachmentStore';
@@ -111,13 +112,13 @@ import type {
   GlobalTask,
   IpcResult,
   KanbanColumnId,
-  LeadContextUsage,
   LeadActivitySnapshot,
+  LeadContextUsage,
   LeadContextUsageSnapshot,
   MemberFullStats,
-  MemberSpawnStatusesSnapshot,
   MemberLogSummary,
   MemberSpawnStatusEntry,
+  MemberSpawnStatusesSnapshot,
   SendMessageRequest,
   SendMessageResult,
   TaskAttachmentMeta,
@@ -546,7 +547,10 @@ async function handlePermanentlyDeleteTeam(
       .rm(path.join(appData, 'attachments', validated.value!), { recursive: true, force: true })
       .catch(() => undefined);
     await fs.promises
-      .rm(path.join(appData, 'task-attachments', validated.value!), { recursive: true, force: true })
+      .rm(path.join(appData, 'task-attachments', validated.value!), {
+        recursive: true,
+        force: true,
+      })
       .catch(() => undefined);
     // Mark in backup registry AFTER successful deletion
     if (teamBackupService) {
@@ -1204,12 +1208,19 @@ async function handleSendMessage(
     // Smart routing: lead + alive → stdin direct, else → inbox
     if (isLeadRecipient && isAlive) {
       const resolvedLeadName = leadName ?? memberName;
+      // Pre-generate stable messageId so both stdin and persistence use the same identity.
+      // This allows the lead to call task_create_from_message with the exact messageId.
+      const preGeneratedMessageId = crypto.randomUUID();
       // Separate try blocks: stdin delivery vs persistence
       // If stdin succeeds but persistence fails, do NOT fallback to inbox (would duplicate)
       // Wrap with instructions so lead responds with visible text (not just agent-only blocks)
       const wrappedText = [
         `You received a direct message from the user.`,
         `IMPORTANT: Your text response here is shown to the user in the Messages panel. Always include a brief human-readable reply. Do NOT respond with only an agent-only block.`,
+        AGENT_BLOCK_OPEN,
+        `MessageId: ${preGeneratedMessageId}`,
+        `When creating a task from this user message, prefer task_create_from_message with messageId="${preGeneratedMessageId}" for reliable provenance. Only use this exact messageId — never guess or fabricate one.`,
+        AGENT_BLOCK_CLOSE,
         ``,
         `Message from user:`,
         buildMessageDeliveryText(payload.text!, {
@@ -1252,11 +1263,12 @@ async function handleSendMessage(
             payload.text!,
             payload.summary,
             attachmentMeta,
-            validatedTaskRefs.value
+            validatedTaskRefs.value,
+            preGeneratedMessageId
           );
         } catch (persistError) {
           logger.warn(`Persistence failed after stdin delivery for ${tn}: ${String(persistError)}`);
-          result = { deliveredToInbox: false, messageId: `stdin-${Date.now()}` };
+          result = { deliveredToInbox: false, messageId: preGeneratedMessageId };
         }
 
         // Save attachment binary data to disk (best-effort)

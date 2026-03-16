@@ -530,6 +530,50 @@ describe('agent-teams-controller API', () => {
     expect(inbox[0].leadSessionId).toBe('lead-session-1');
   });
 
+  it('starts review idempotently without requiring completed status', () => {
+    const claudeDir = makeClaudeDir();
+    const controller = createController({ teamName: 'my-team', claudeDir });
+    const task = controller.tasks.createTask({ subject: 'Review me', owner: 'bob' });
+
+    // startReview does not require completed status
+    const result = controller.review.startReview(task.id, { from: 'alice' });
+    expect(result.ok).toBe(true);
+    expect(result.taskId).toBe(task.id);
+    expect(result.displayId).toBe(task.displayId);
+    expect(result.column).toBe('review');
+
+    // Verify kanban state
+    const kanbanState = controller.kanban.getKanbanState();
+    expect(kanbanState.tasks[task.id].column).toBe('review');
+
+    // Verify task reviewState
+    const updatedTask = controller.tasks.getTask(task.id);
+    expect(updatedTask.reviewState).toBe('review');
+
+    // Verify history event
+    const reviewEvent = updatedTask.historyEvents.find((e) => e.type === 'review_started');
+    expect(reviewEvent).toBeDefined();
+    expect(reviewEvent.from).toBe('none');
+    expect(reviewEvent.to).toBe('review');
+    expect(reviewEvent.actor).toBe('alice');
+
+    // Idempotent: calling again should also succeed without duplicate events
+    const again = controller.review.startReview(task.id, { from: 'alice' });
+    expect(again.ok).toBe(true);
+    const reloaded = controller.tasks.getTask(task.id);
+    const startedEvents = reloaded.historyEvents.filter((e) => e.type === 'review_started');
+    expect(startedEvents).toHaveLength(1);
+  });
+
+  it('throws when starting review on a deleted task', () => {
+    const claudeDir = makeClaudeDir();
+    const controller = createController({ teamName: 'my-team', claudeDir });
+    const task = controller.tasks.createTask({ subject: 'Deleted task', owner: 'bob' });
+    controller.tasks.softDeleteTask(task.id, 'bob');
+
+    expect(() => controller.review.startReview(task.id, { from: 'alice' })).toThrow('is deleted');
+  });
+
   it('persists full inbox metadata through controller messages.sendMessage', () => {
     const claudeDir = makeClaudeDir();
     const controller = createController({ teamName: 'my-team', claudeDir });
@@ -617,14 +661,14 @@ describe('agent-teams-controller API', () => {
     });
 
     controller.tasks.addTaskComment(task.id, {
-      from: 'alice',
+      from: 'bob',
       text: 'Need your decision here.',
     });
 
     const inboxPath = path.join(claudeDir, 'teams', 'my-team', 'inboxes', 'team-lead.json');
     const rows = JSON.parse(fs.readFileSync(inboxPath, 'utf8'));
     expect(rows).toHaveLength(1);
-    expect(rows[0].from).toBe('alice');
+    expect(rows[0].from).toBe('bob');
     expect(rows[0].text).toContain('Need your decision here.');
   });
 
@@ -959,5 +1003,96 @@ describe('agent-teams-controller API', () => {
       await staleServer.close();
       await liveServer.close();
     }
+  });
+
+  describe('lookupMessage', () => {
+    it('finds a message by exact messageId from sentMessages', () => {
+      const claudeDir = makeClaudeDir();
+      const controller = createController({ teamName: 'my-team', claudeDir });
+
+      const sent = controller.messages.appendSentMessage({
+        from: 'team-lead',
+        to: 'bob',
+        text: 'Please check the logs',
+        source: 'user_sent',
+      });
+
+      const result = controller.messages.lookupMessage(sent.messageId);
+
+      expect(result.message.messageId).toBe(sent.messageId);
+      expect(result.message.text).toBe('Please check the logs');
+      expect(result.store).toBe('sent');
+    });
+
+    it('finds a message by exact messageId from inbox', () => {
+      const claudeDir = makeClaudeDir();
+      const controller = createController({ teamName: 'my-team', claudeDir });
+
+      const delivered = controller.messages.sendMessage({
+        to: 'bob',
+        from: 'user',
+        text: 'Deploy to staging',
+        source: 'inbox',
+      });
+
+      const result = controller.messages.lookupMessage(delivered.messageId);
+
+      expect(result.message.messageId).toBe(delivered.messageId);
+      expect(result.message.text).toBe('Deploy to staging');
+      expect(result.store).toBe('inbox:bob');
+    });
+
+    it('throws on unknown messageId', () => {
+      const claudeDir = makeClaudeDir();
+      const controller = createController({ teamName: 'my-team', claudeDir });
+
+      expect(() => controller.messages.lookupMessage('nonexistent-id')).toThrow(
+        'Message not found: nonexistent-id'
+      );
+    });
+
+    it('throws on missing messageId', () => {
+      const claudeDir = makeClaudeDir();
+      const controller = createController({ teamName: 'my-team', claudeDir });
+
+      expect(() => controller.messages.lookupMessage('')).toThrow('Missing messageId');
+    });
+
+    it('does not match by relayOfMessageId', () => {
+      const claudeDir = makeClaudeDir();
+      const controller = createController({ teamName: 'my-team', claudeDir });
+
+      controller.messages.sendMessage({
+        to: 'bob',
+        from: 'team-lead',
+        text: 'Relayed message',
+        relayOfMessageId: 'original-msg-123',
+        source: 'system_notification',
+      });
+
+      // The relayOfMessageId should NOT be found as a direct messageId match
+      expect(() => controller.messages.lookupMessage('original-msg-123')).toThrow(
+        'Message not found: original-msg-123'
+      );
+    });
+
+    it('rejects ambiguous messageId found in multiple stores', () => {
+      const claudeDir = makeClaudeDir();
+      const controller = createController({ teamName: 'my-team', claudeDir });
+
+      // Manually write same messageId to both sent and inbox
+      const sentPath = path.join(claudeDir, 'teams', 'my-team', 'sentMessages.json');
+      const inboxDir = path.join(claudeDir, 'teams', 'my-team', 'inboxes');
+      fs.mkdirSync(inboxDir, { recursive: true });
+      const inboxPath = path.join(inboxDir, 'bob.json');
+
+      const dupeId = 'dupe-message-id';
+      fs.writeFileSync(sentPath, JSON.stringify([{ messageId: dupeId, text: 'copy-1' }]));
+      fs.writeFileSync(inboxPath, JSON.stringify([{ messageId: dupeId, text: 'copy-2' }]));
+
+      expect(() => controller.messages.lookupMessage(dupeId)).toThrow(
+        'Ambiguous messageId: dupe-message-id found in multiple stores'
+      );
+    });
   });
 });

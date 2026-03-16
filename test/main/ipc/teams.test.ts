@@ -1,5 +1,5 @@
 import * as os from 'os';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InboxMessage, TeamCreateRequest, TeamProvisioningProgress } from '@shared/types/team';
 
 vi.mock('electron', () => ({
@@ -82,7 +82,6 @@ import {
   registerTeamHandlers,
   removeTeamHandlers,
 } from '../../../src/main/ipc/teams';
-import { MEMBER_BRIEFING_BOOTSTRAP_ENV } from '../../../src/main/services/team/TeamProvisioningService';
 
 describe('ipc teams handlers', () => {
   const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>();
@@ -94,7 +93,6 @@ describe('ipc teams handlers', () => {
       handlers.delete(channel);
     }),
   };
-  let originalMemberBriefingBootstrapEnv: string | undefined;
 
   const service = {
     listTeams: vi.fn(async () => [{ teamName: 'my-team', displayName: 'My Team' }]),
@@ -170,18 +168,8 @@ describe('ipc teams handlers', () => {
   beforeEach(() => {
     handlers.clear();
     vi.clearAllMocks();
-    originalMemberBriefingBootstrapEnv = process.env[MEMBER_BRIEFING_BOOTSTRAP_ENV];
-    process.env[MEMBER_BRIEFING_BOOTSTRAP_ENV] = '1';
     initializeTeamHandlers(service as never, provisioningService as never);
     registerTeamHandlers(ipcMain as never);
-  });
-
-  afterEach(() => {
-    if (originalMemberBriefingBootstrapEnv === undefined) {
-      delete process.env[MEMBER_BRIEFING_BOOTSTRAP_ENV];
-    } else {
-      process.env[MEMBER_BRIEFING_BOOTSTRAP_ENV] = originalMemberBriefingBootstrapEnv;
-    }
   });
 
   it('registers all expected handlers', () => {
@@ -268,7 +256,8 @@ describe('ipc teams handlers', () => {
       'Can you review the approach?',
       undefined,
       undefined,
-      undefined
+      undefined,
+      expect.any(String)
     );
   });
 
@@ -532,25 +521,6 @@ describe('ipc teams handlers', () => {
       expect(provisioningService.sendMessageToTeam).toHaveBeenCalledWith(
         'my-team',
         expect.stringContaining('Their workflow: Focus on frontend polish')
-      );
-    });
-
-    it('falls back to the legacy add-member spawn instruction when bootstrap flag is disabled', async () => {
-      process.env[MEMBER_BRIEFING_BOOTSTRAP_ENV] = '0';
-      const handler = handlers.get(TEAM_ADD_MEMBER)!;
-      const result = (await handler({} as never, 'my-team', {
-        name: 'alice',
-        role: 'developer',
-      })) as { success: boolean };
-
-      expect(result.success).toBe(true);
-      expect(provisioningService.sendMessageToTeam).toHaveBeenCalledWith(
-        'my-team',
-        expect.stringContaining('Please spawn them immediately using the Task tool with team_name="my-team" and name="alice".')
-      );
-      expect(provisioningService.sendMessageToTeam).not.toHaveBeenCalledWith(
-        'my-team',
-        expect.stringContaining('Your FIRST action: call MCP tool member_briefing')
       );
     });
 

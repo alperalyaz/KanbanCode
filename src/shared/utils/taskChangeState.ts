@@ -1,6 +1,6 @@
-import type { TaskHistoryEvent, TeamReviewState } from '@shared/types';
-
 import { getDerivedReviewState } from './taskHistory';
+
+import type { TaskHistoryEvent, TeamReviewState } from '@shared/types';
 
 export type TaskChangeStateBucket = 'approved' | 'review' | 'completed' | 'active';
 
@@ -45,4 +45,22 @@ export function isTaskChangeSummaryCacheable(
   const bucket =
     typeof taskOrBucket === 'string' ? taskOrBucket : getTaskChangeStateBucket(taskOrBucket);
   return bucket === 'completed' || bucket === 'approved';
+}
+
+/**
+ * Whether a task can display its file changes in the UI.
+ * Unlike `isTaskChangeSummaryCacheable` (permanent-cache gate for terminal states),
+ * this returns true for any task that could plausibly have changes:
+ * in_progress, review, approved, completed — everything except pending/backlog.
+ */
+export function canDisplayTaskChanges(
+  taskOrBucket: TaskChangeStateLike | TaskChangeStateBucket
+): boolean {
+  if (typeof taskOrBucket === 'string') {
+    return taskOrBucket !== 'active';
+  }
+  const bucket = getTaskChangeStateBucket(taskOrBucket);
+  if (bucket !== 'active') return true;
+  // 'active' bucket includes both pending and in_progress — show for in_progress only
+  return taskOrBucket.status === 'in_progress';
 }

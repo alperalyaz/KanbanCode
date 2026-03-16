@@ -3,9 +3,9 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { useStableTeamMentionMeta } from '@renderer/hooks/useStableTeamMentionMeta';
 import { useTeamMessagesExpanded } from '@renderer/hooks/useTeamMessagesExpanded';
 import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
-import { useStableTeamMentionMeta } from '@renderer/hooks/useStableTeamMentionMeta';
 import { useStore } from '@renderer/store';
 import { filterTeamMessages } from '@renderer/utils/teamMessageFiltering';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
@@ -16,8 +16,8 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   MessageSquare,
-  PanelLeftClose,
   PanelLeft,
+  PanelLeftClose,
   Search,
   X,
 } from 'lucide-react';
@@ -26,13 +26,14 @@ import { ActivityTimeline } from '../activity/ActivityTimeline';
 import { getThoughtGroupKey, groupTimelineItems } from '../activity/LeadThoughtsGroup';
 import { MessageExpandDialog } from '../activity/MessageExpandDialog';
 import { CollapsibleTeamSection } from '../CollapsibleTeamSection';
+
 import { MessageComposer } from './MessageComposer';
 import { MessagesFilterPopover } from './MessagesFilterPopover';
 import { StatusBlock } from './StatusBlock';
 
-import type { MessagesFilterState } from './MessagesFilterPopover';
-import type { ActionMode } from './ActionModeSelector';
 import type { TimelineItem } from '../activity/LeadThoughtsGroup';
+import type { ActionMode } from './ActionModeSelector';
+import type { MessagesFilterState } from './MessagesFilterPopover';
 import type { InboxMessage, ResolvedTeamMember, TaskRef, TeamTaskWithKanban } from '@shared/types';
 
 interface TimeWindow {
@@ -496,8 +497,68 @@ export const MessagesPanel = memo(function MessagesPanel({
           </div>
         )}
         {/* Scrollable content */}
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-2">
-          {messagesContent}
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden py-2 pr-3">
+          <div className="pl-3">
+            <MessageComposer
+              teamName={teamName}
+              members={members}
+              isTeamAlive={isTeamAlive}
+              sending={sendingMessage}
+              sendError={sendMessageError}
+              lastResult={lastSendMessageResult}
+              textareaRef={composerTextareaRef}
+              onSend={handleSend}
+              onCrossTeamSend={handleCrossTeamSend}
+            />
+            <StatusBlock
+              members={members}
+              tasks={tasks}
+              messages={messages}
+              pendingRepliesByMember={pendingRepliesByMember}
+              onMemberClick={onMemberClick}
+              onTaskClick={onTaskClick}
+            />
+          </div>
+          <ActivityTimeline
+            messages={filteredMessages}
+            teamName={teamName}
+            members={members}
+            readState={readState}
+            allCollapsed={messagesCollapsed}
+            expandOverrides={expandedSet}
+            onToggleExpandOverride={toggleExpandOverride}
+            teamSessionIds={teamSessionIds}
+            currentLeadSessionId={currentLeadSessionId}
+            isTeamAlive={isTeamAlive}
+            leadActivity={leadActivity}
+            leadContextUpdatedAt={leadContextUpdatedAt}
+            teamNames={teamNames}
+            teamColorByName={teamColorByName}
+            onTeamClick={openTeamTab}
+            onMemberClick={onMemberClick}
+            onCreateTaskFromMessage={onCreateTaskFromMessage}
+            onReplyToMessage={onReplyToMessage}
+            onMessageVisible={handleMessageVisible}
+            onRestartTeam={onRestartTeam}
+            onTaskIdClick={onTaskIdClick}
+            onExpandItem={handleExpandItem}
+            onExpandContent={handleExpandContent}
+          />
+          <MessageExpandDialog
+            expandedItem={expandedItem}
+            open={expandedItemKey !== null}
+            onOpenChange={handleExpandDialogChange}
+            teamName={teamName}
+            members={members}
+            onCreateTaskFromMessage={onCreateTaskFromMessage}
+            onReplyToMessage={onReplyToMessage}
+            onMemberClick={onMemberClick}
+            onTaskIdClick={onTaskIdClick}
+            onRestartTeam={onRestartTeam}
+            teamNames={teamNames}
+            teamColorByName={teamColorByName}
+            onTeamClick={openTeamTab}
+          />
         </div>
       </div>
     );
@@ -571,7 +632,7 @@ export const MessagesPanel = memo(function MessagesPanel({
         </>
       }
       defaultOpen
-      action={<div className="flex items-center gap-2 pl-2 pr-2">{searchAndFilterBar}</div>}
+      action={<div className="flex items-center gap-2 px-2">{searchAndFilterBar}</div>}
     >
       {messagesContent}
     </CollapsibleTeamSection>

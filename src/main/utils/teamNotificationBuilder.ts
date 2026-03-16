@@ -21,6 +21,9 @@ export type TeamEventType =
   | 'task_clarification'
   | 'task_status_change'
   | 'task_comment'
+  | 'task_created'
+  | 'all_tasks_completed'
+  | 'cross_team_message'
   | 'schedule_completed'
   | 'schedule_failed';
 
@@ -63,6 +66,9 @@ const TEAM_NOTIFICATION_CONFIG: Record<TeamEventType, TeamNotificationConfig> = 
   task_clarification: { triggerName: 'Clarification', triggerColor: 'orange' },
   task_status_change: { triggerName: 'Status Change', triggerColor: 'purple' },
   task_comment: { triggerName: 'Task Comment', triggerColor: 'cyan' },
+  task_created: { triggerName: 'Task Created', triggerColor: 'green' },
+  all_tasks_completed: { triggerName: 'All Done', triggerColor: 'green' },
+  cross_team_message: { triggerName: 'Cross-Team', triggerColor: 'cyan' },
   schedule_completed: { triggerName: 'Schedule Done', triggerColor: 'green' },
   schedule_failed: { triggerName: 'Schedule Failed', triggerColor: 'red' },
 };

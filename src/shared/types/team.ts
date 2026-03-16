@@ -108,12 +108,19 @@ export interface TaskReviewApprovedEvent extends TaskHistoryEventBase {
   note?: string;
 }
 
+export interface TaskReviewStartedEvent extends TaskHistoryEventBase {
+  type: 'review_started';
+  from: TeamReviewState;
+  to: 'review';
+}
+
 export type TaskHistoryEvent =
   | TaskCreatedEvent
   | TaskStatusChangedEvent
   | TaskReviewRequestedEvent
   | TaskReviewChangesRequestedEvent
-  | TaskReviewApprovedEvent;
+  | TaskReviewApprovedEvent
+  | TaskReviewStartedEvent;
 
 export type TaskCommentType = 'regular' | 'review_request' | 'review_approved';
 
@@ -132,6 +139,23 @@ export interface TaskComment {
   taskRefs?: TaskRef[];
   /** Attachments on this comment. Metadata only — files stored on disk. */
   attachments?: TaskAttachmentMeta[];
+}
+
+/**
+ * Snapshot of a user message captured at task-creation time.
+ * Stored as provenance — the original message identity is `sourceMessageId`.
+ */
+export interface SourceMessageSnapshot {
+  /** Sanitized message text (agent-only blocks stripped). */
+  text: string;
+  /** Who sent the message. */
+  from: string;
+  /** ISO timestamp of the original message. */
+  timestamp: string;
+  /** Message source type (e.g. "user_sent", "inbox"). */
+  source?: string;
+  /** Attachment metadata references (IDs only, no blobs). */
+  attachments?: { id: string; filename: string; mimeType: string; size: number }[];
 }
 
 // Fields are validated in TeamTaskReader.getTasks() using `satisfies Record<keyof TeamTask, unknown>`.
@@ -179,6 +203,10 @@ export interface TeamTask {
   attachments?: TaskAttachmentMeta[];
   /** Derived review state — computed from historyEvents, not persisted as authority. */
   reviewState?: TeamReviewState;
+  /** Exact messageId of the user message this task was created from. */
+  sourceMessageId?: string;
+  /** Snapshot of the source message at creation time (sanitized, no blobs). */
+  sourceMessage?: SourceMessageSnapshot;
 }
 
 /** Task enriched for UI/DTO use (overlay from kanban-state.json). */
@@ -618,6 +646,10 @@ export interface MemberLogSummaryBase {
   filePath?: string;
   /** Short preview of the last assistant output (truncated). */
   lastOutputPreview?: string;
+  /** Short preview of the last thinking block (truncated). */
+  lastThinkingPreview?: string;
+  /** Recent thinking/output previews with timestamps for task-scoped filtering. */
+  recentPreviews?: { text: string; timestamp: string; kind: 'thinking' | 'output' }[];
 }
 
 export interface MemberSubagentLogSummary extends MemberLogSummaryBase {
@@ -688,7 +720,12 @@ export interface TeamMessageNotificationData {
   /** Optional sender color for visual context. */
   color?: string;
   /** Team event sub-type for notification categorization. */
-  teamEventType?: 'task_clarification' | 'task_status_change' | 'task_comment';
+  teamEventType?:
+    | 'task_clarification'
+    | 'task_status_change'
+    | 'task_comment'
+    | 'task_created'
+    | 'all_tasks_completed';
   /** Stable key for storage deduplication. Required — no fallback to Date.now(). */
   dedupeKey?: string;
   /**

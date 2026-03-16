@@ -274,7 +274,7 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     const payload = String(writeSpy.mock.calls[0]?.[0] ?? '');
     expect(payload).toContain('Source: system_notification');
     expect(payload).toContain('summary looks like \\"Comment on #...\\"');
-    expect(payload).toContain('Prefer replying on the task via task_add_comment');
+    expect(payload).toContain('REQUIRES an on-task reply via task_add_comment');
 
     (service as any).handleStreamJsonMessage(run, {
       type: 'assistant',
@@ -772,5 +772,91 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
 
     expect(relayed).toBe(0);
     expect(writeSpy).toHaveBeenCalledTimes(0);
+  });
+
+  it('includes MessageId in lead inbox relay prompt for provenance', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    seedConfig(teamName);
+    seedLeadInbox(teamName, [
+      {
+        from: 'user',
+        text: 'Build the authentication module',
+        timestamp: '2026-02-23T14:00:00.000Z',
+        read: false,
+        summary: 'Auth module request',
+        messageId: 'msg-provenance-001',
+        source: 'user_sent',
+      },
+    ]);
+
+    const { writeSpy } = attachAliveRun(service, teamName);
+    const relayPromise = service.relayLeadInboxMessages(teamName);
+    const run = await waitForCapture(service);
+    (service as any).handleStreamJsonMessage(run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Creating task.' }],
+    });
+    (service as any).handleStreamJsonMessage(run, { type: 'result', subtype: 'success' });
+    await relayPromise;
+
+    const payload = String(writeSpy.mock.calls[0]?.[0] ?? '');
+    expect(payload).toContain('MessageId: msg-provenance-001');
+    expect(payload).toContain('Build the authentication module');
+  });
+
+  it('includes MessageId in member inbox relay prompt for provenance', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    seedConfig(teamName);
+    seedMemberInbox(teamName, 'alice', [
+      {
+        from: 'bob',
+        text: 'Please review my changes',
+        timestamp: '2026-02-23T15:00:00.000Z',
+        read: false,
+        summary: 'Review request',
+        messageId: 'msg-member-relay-001',
+      },
+    ]);
+
+    const { writeSpy } = attachAliveRun(service, teamName);
+    await service.relayMemberInboxMessages(teamName, 'alice');
+
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    const payload = String(writeSpy.mock.calls[0]?.[0] ?? '');
+    expect(payload).toContain('MessageId: msg-member-relay-001');
+    expect(payload).toContain('Please review my changes');
+  });
+
+  it('lead inbox relay prompt mentions task_create_from_message for user messages with messageId', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    seedConfig(teamName);
+    seedLeadInbox(teamName, [
+      {
+        from: 'user',
+        text: 'Implement dark mode',
+        timestamp: '2026-02-23T16:00:00.000Z',
+        read: false,
+        summary: 'Dark mode',
+        messageId: 'msg-task-pref-001',
+        source: 'user_sent',
+      },
+    ]);
+
+    const { writeSpy } = attachAliveRun(service, teamName);
+    const relayPromise = service.relayLeadInboxMessages(teamName);
+    const run = await waitForCapture(service);
+    (service as any).handleStreamJsonMessage(run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Got it.' }],
+    });
+    (service as any).handleStreamJsonMessage(run, { type: 'result', subtype: 'success' });
+    await relayPromise;
+
+    const payload = String(writeSpy.mock.calls[0]?.[0] ?? '');
+    expect(payload).toContain('task_create_from_message');
+    expect(payload).toContain('MessageId');
   });
 });

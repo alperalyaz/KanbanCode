@@ -60,6 +60,9 @@ export interface DetectedError {
     | 'task_clarification'
     | 'task_status_change'
     | 'task_comment'
+    | 'task_created'
+    | 'all_tasks_completed'
+    | 'cross_team_message'
     | 'schedule_completed'
     | 'schedule_failed';
   /** Explicit key for storage deduplication. Two notifications with the same dedupeKey won't be stored twice. */
@@ -271,6 +274,12 @@ export interface AppConfig {
     notifyOnStatusChange: boolean;
     /** Whether to show native OS notifications when a new comment is added to a task */
     notifyOnTaskComments: boolean;
+    /** Whether to show native OS notifications when a new task is created */
+    notifyOnTaskCreated: boolean;
+    /** Whether to show native OS notifications when all tasks in a team are completed */
+    notifyOnAllTasksCompleted: boolean;
+    /** Whether to show native OS notifications for cross-team messages */
+    notifyOnCrossTeamMessage: boolean;
     /** Only notify on status changes in solo teams (no teammates) */
     statusChangeOnlySolo: boolean;
     /** Which target statuses to notify about (e.g. ['in_progress', 'completed']) */

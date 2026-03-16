@@ -165,8 +165,71 @@ function appendSentMessage(paths, flags) {
   return payload;
 }
 
+/**
+ * Exact readonly lookup by messageId across sent messages and all inbox files.
+ *
+ * Used by task_create_from_message to resolve provenance. Lookup is exact-messageId
+ * only and must never resolve by relayOfMessageId, text matching, or active context.
+ * Must reject ambiguous matches (same messageId in multiple stores) instead of guessing.
+ *
+ * Returns { message, store } or throws.
+ */
+function lookupMessage(paths, messageId) {
+  const id = typeof messageId === 'string' ? messageId.trim() : '';
+  if (!id) {
+    throw new Error('Missing messageId');
+  }
+
+  let match = null;
+  let matchCount = 0;
+
+  // 1. Search sentMessages.json
+  const sentRows = readJson(getSentMessagesPath(paths), []);
+  if (Array.isArray(sentRows)) {
+    for (const row of sentRows) {
+      if (row && row.messageId === id) {
+        match = { message: row, store: 'sent' };
+        matchCount++;
+        if (matchCount > 1) {
+          throw new Error(`Ambiguous messageId: ${id} found in multiple stores`);
+        }
+      }
+    }
+  }
+
+  // 2. Search all inbox files (early-exit on ambiguity)
+  const inboxDir = path.join(paths.teamDir, 'inboxes');
+  let inboxFiles = [];
+  try {
+    inboxFiles = fs.readdirSync(inboxDir).filter((f) => f.endsWith('.json'));
+  } catch {
+    // No inboxes directory — that's fine.
+  }
+
+  for (const file of inboxFiles) {
+    const rows = readJson(path.join(inboxDir, file), []);
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      if (row && row.messageId === id) {
+        matchCount++;
+        if (matchCount > 1) {
+          throw new Error(`Ambiguous messageId: ${id} found in multiple stores`);
+        }
+        match = { message: row, store: `inbox:${file.replace('.json', '')}` };
+      }
+    }
+  }
+
+  if (matchCount === 0) {
+    throw new Error(`Message not found: ${id}`);
+  }
+
+  return match;
+}
+
 module.exports = {
   appendSentMessage,
+  lookupMessage,
   sendInboxMessage,
 };
 

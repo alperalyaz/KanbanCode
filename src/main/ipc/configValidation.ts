@@ -114,6 +114,9 @@ function validateNotificationsSection(
     'snoozeMinutes',
     'notifyOnStatusChange',
     'notifyOnTaskComments',
+    'notifyOnTaskCreated',
+    'notifyOnAllTasksCompleted',
+    'notifyOnCrossTeamMessage',
     'statusChangeOnlySolo',
     'statusChangeStatuses',
     'triggers',
@@ -177,6 +180,24 @@ function validateNotificationsSection(
           return { valid: false, error: `notifications.${key} must be a boolean` };
         }
         result.notifyOnTaskComments = value;
+        break;
+      case 'notifyOnTaskCreated':
+        if (typeof value !== 'boolean') {
+          return { valid: false, error: `notifications.${key} must be a boolean` };
+        }
+        result.notifyOnTaskCreated = value;
+        break;
+      case 'notifyOnAllTasksCompleted':
+        if (typeof value !== 'boolean') {
+          return { valid: false, error: `notifications.${key} must be a boolean` };
+        }
+        result.notifyOnAllTasksCompleted = value;
+        break;
+      case 'notifyOnCrossTeamMessage':
+        if (typeof value !== 'boolean') {
+          return { valid: false, error: `notifications.${key} must be a boolean` };
+        }
+        result.notifyOnCrossTeamMessage = value;
         break;
       case 'statusChangeOnlySolo':
         if (typeof value !== 'boolean') {

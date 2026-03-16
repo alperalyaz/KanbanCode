@@ -42,7 +42,7 @@ export const WorkflowTimeline = ({ events, memberColorMap }: WorkflowTimelinePro
             {/* Content */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-xs text-[var(--color-text-secondary)]">
+                <div className="flex w-full items-center gap-2 rounded p-1.5 text-xs text-[var(--color-text-secondary)]">
                   <span className="shrink-0 font-mono text-[10px] text-[var(--color-text-muted)]">
                     {time}
                   </span>
@@ -122,6 +122,13 @@ const EventContent = ({
           ) : null}
         </span>
       );
+    case 'review_started':
+      return (
+        <span className="flex items-center gap-1">
+          <Eye size={10} className="text-purple-400" />
+          Review started
+        </span>
+      );
     case 'review_changes_requested':
       return (
         <span className="flex items-center gap-1">
@@ -175,6 +182,8 @@ function dotColor(event: TaskHistoryEvent): string {
     case 'status_changed':
       return dotColorForStatus(event.to);
     case 'review_requested':
+      return 'bg-purple-400';
+    case 'review_started':
       return 'bg-purple-400';
     case 'review_changes_requested':
       return 'bg-amber-400';

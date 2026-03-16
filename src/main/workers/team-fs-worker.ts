@@ -135,6 +135,8 @@ interface ParsedTask {
   workIntervals?: unknown;
   historyEvents?: unknown;
   attachments?: unknown;
+  sourceMessageId?: unknown;
+  sourceMessage?: unknown;
 }
 
 interface RawWorkInterval {
@@ -533,7 +535,12 @@ function deriveReviewStateFromEvents(events: RawHistoryEvent[] | undefined): str
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i];
     const t = e.type;
-    if (t === 'review_requested' || t === 'review_changes_requested' || t === 'review_approved') {
+    if (
+      t === 'review_requested' ||
+      t === 'review_changes_requested' ||
+      t === 'review_approved' ||
+      t === 'review_started'
+    ) {
       const to = typeof e.to === 'string' ? e.to : 'none';
       return to === 'review' || to === 'needsFix' || to === 'approved' ? to : 'none';
     }
@@ -699,6 +706,18 @@ async function readTasksDirForTeam(
         attachments: Array.isArray(parsed.attachments)
           ? (parsed.attachments as unknown[])
           : undefined,
+        sourceMessageId:
+          typeof parsed.sourceMessageId === 'string' && parsed.sourceMessageId.trim()
+            ? parsed.sourceMessageId.trim()
+            : undefined,
+        sourceMessage:
+          parsed.sourceMessage &&
+          typeof parsed.sourceMessage === 'object' &&
+          typeof (parsed.sourceMessage as Record<string, unknown>).text === 'string' &&
+          typeof (parsed.sourceMessage as Record<string, unknown>).from === 'string' &&
+          typeof (parsed.sourceMessage as Record<string, unknown>).timestamp === 'string'
+            ? (parsed.sourceMessage as Record<string, unknown>)
+            : undefined,
         teamName,
       });
     } catch (error) {

@@ -6,12 +6,6 @@ import {
   ImageLightbox,
   LightboxLockProvider,
 } from '@renderer/components/team/attachments/ImageLightbox';
-import {
-  getTeamColorSet,
-  getThemedBadge,
-  getThemedBorder,
-  getThemedText,
-} from '@renderer/constants/teamColors';
 import { CollapsibleTeamSection } from '@renderer/components/team/CollapsibleTeamSection';
 import { FileIcon } from '@renderer/components/team/editor/FileIcon';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
@@ -30,25 +24,31 @@ import { Input } from '@renderer/components/ui/input';
 import { MemberSelect } from '@renderer/components/ui/MemberSelect';
 import { TiptapEditor } from '@renderer/components/ui/tiptap';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
-import { getLegacyCutoff, getReadCommentIds } from '@renderer/services/commentReadStorage';
-import { useStore } from '@renderer/store';
+import {
+  getTeamColorSet,
+  getThemedBadge,
+  getThemedBorder,
+  getThemedText,
+} from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { useViewportCommentRead } from '@renderer/hooks/useViewportCommentRead';
+import { getLegacyCutoff, getReadCommentIds } from '@renderer/services/commentReadStorage';
+import { useStore } from '@renderer/store';
 import { isImageMimeType } from '@renderer/utils/attachmentUtils';
 import {
+  agentAvatarUrl,
   buildMemberColorMap,
+  displayMemberName,
   KANBAN_COLUMN_DISPLAY,
   REVIEW_STATE_DISPLAY,
   TASK_STATUS_LABELS,
   TASK_STATUS_STYLES,
-  agentAvatarUrl,
-  displayMemberName,
 } from '@renderer/utils/memberHelpers';
 import { buildTaskChangeRequestOptions, deriveTaskSince } from '@renderer/utils/taskChangeRequest';
 import { linkifyTaskIdsInMarkdown, parseTaskLinkHref } from '@renderer/utils/taskReferenceUtils';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { getTaskKanbanColumn } from '@shared/utils/reviewState';
-import { isTaskChangeSummaryCacheable } from '@shared/utils/taskChangeState';
+import { canDisplayTaskChanges } from '@shared/utils/taskChangeState';
 import {
   deriveTaskDisplayId,
   formatTaskDisplayLabel,
@@ -77,6 +77,8 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+
+import { SourceMessageAttachments } from '../attachments/SourceMessageAttachments';
 
 import { WorkflowTimeline } from './StatusHistoryTimeline';
 import { TaskAttachments } from './TaskAttachments';
@@ -297,8 +299,13 @@ export const TaskDetailDialog = ({
     return result;
   }, [currentTask?.comments]);
 
-  // Lazy-load task changes only for terminal, cacheable states.
-  const canShowTaskChanges = currentTask ? isTaskChangeSummaryCacheable(currentTask) : false;
+  const sourceAttachmentCount =
+    currentTask?.sourceMessageId && currentTask?.sourceMessage?.attachments?.length
+      ? currentTask.sourceMessage.attachments.length
+      : 0;
+
+  // Lazy-load task changes for any displayable state (in_progress, review, approved, completed).
+  const canShowTaskChanges = currentTask ? canDisplayTaskChanges(currentTask) : false;
   const taskSince = useMemo(() => deriveTaskSince(currentTask), [currentTask]);
   const taskChangeRequestOptions = useMemo(
     () => (currentTask ? buildTaskChangeRequestOptions(currentTask) : null),
@@ -559,10 +566,12 @@ export const TaskDetailDialog = ({
                     borderRight: `1px solid ${getThemedBorder(colors, isLight)}40`,
                     borderBottom: `1px solid ${getThemedBorder(colors, isLight)}40`,
                   };
-                  const reviewEventType =
-                    currentTask.reviewState === 'approved' ? 'review_approved' : 'review_requested';
                   const lastReviewEvent = currentTask.historyEvents
-                    ?.filter((e) => e.type === reviewEventType)
+                    ?.filter((e) =>
+                      currentTask.reviewState === 'approved'
+                        ? e.type === 'review_approved'
+                        : e.type === 'review_requested' || e.type === 'review_started'
+                    )
                     .at(-1);
                   const reviewDate = lastReviewEvent
                     ? new Date(lastReviewEvent.timestamp)
@@ -915,17 +924,31 @@ export const TaskDetailDialog = ({
               title="Attachments"
               icon={<ImageIcon size={14} />}
               badge={
-                (currentTask.attachments?.length ?? 0) + commentImageAttachments.length > 0
-                  ? (currentTask.attachments?.length ?? 0) + commentImageAttachments.length
+                (currentTask.attachments?.length ?? 0) +
+                  commentImageAttachments.length +
+                  sourceAttachmentCount >
+                0
+                  ? (currentTask.attachments?.length ?? 0) +
+                    commentImageAttachments.length +
+                    sourceAttachmentCount
                   : undefined
               }
               contentClassName="pl-2.5"
               headerClassName="-mx-6 w-[calc(100%+3rem)]"
               headerContentClassName="pl-6"
               defaultOpen={
-                (currentTask.attachments?.length ?? 0) > 0 || commentImageAttachments.length > 0
+                (currentTask.attachments?.length ?? 0) > 0 ||
+                commentImageAttachments.length > 0 ||
+                sourceAttachmentCount > 0
               }
             >
+              {currentTask.sourceMessageId && currentTask.sourceMessage ? (
+                <SourceMessageAttachments
+                  teamName={teamName}
+                  sourceMessageId={currentTask.sourceMessageId}
+                  sourceMessage={currentTask.sourceMessage}
+                />
+              ) : null}
               <TaskAttachments
                 teamName={teamName}
                 taskId={currentTask.id}

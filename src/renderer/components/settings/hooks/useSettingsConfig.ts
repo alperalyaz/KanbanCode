@@ -47,6 +47,9 @@ export interface SafeConfig {
     notifyOnClarifications: boolean;
     notifyOnStatusChange: boolean;
     notifyOnTaskComments: boolean;
+    notifyOnTaskCreated: boolean;
+    notifyOnAllTasksCompleted: boolean;
+    notifyOnCrossTeamMessage: boolean;
     statusChangeOnlySolo: boolean;
     statusChangeStatuses: string[];
     triggers: AppConfig['notifications']['triggers'];
@@ -181,6 +184,10 @@ export function useSettingsConfig(): UseSettingsConfigReturn {
         notifyOnClarifications: displayConfig?.notifications?.notifyOnClarifications ?? true,
         notifyOnStatusChange: displayConfig?.notifications?.notifyOnStatusChange ?? true,
         notifyOnTaskComments: displayConfig?.notifications?.notifyOnTaskComments ?? true,
+        notifyOnTaskCreated: displayConfig?.notifications?.notifyOnTaskCreated ?? true,
+        notifyOnAllTasksCompleted:
+          displayConfig?.notifications?.notifyOnAllTasksCompleted ?? true,
+        notifyOnCrossTeamMessage: displayConfig?.notifications?.notifyOnCrossTeamMessage ?? true,
         statusChangeOnlySolo: displayConfig?.notifications?.statusChangeOnlySolo ?? true,
         statusChangeStatuses: displayConfig?.notifications?.statusChangeStatuses ?? [
           'in_progress',

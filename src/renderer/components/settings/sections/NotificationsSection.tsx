@@ -14,9 +14,12 @@ import {
   ArrowRightLeft,
   Bell,
   BellRing,
+  CheckCircle2,
+  CirclePlus,
   Clock,
   ExternalLink,
   EyeOff,
+  GitBranch,
   HelpCircle,
   Inbox,
   Info,
@@ -36,7 +39,9 @@ import type { NotificationTrigger } from '@renderer/types/data';
 import type { TeamReviewState, TeamTaskStatus } from '@shared/types';
 
 /** Notification targets span workflow status plus the explicit review axis. */
-type NotifiableStatus = TeamTaskStatus | Extract<TeamReviewState, 'needsFix' | 'approved'>;
+type NotifiableStatus =
+  | TeamTaskStatus
+  | Extract<TeamReviewState, 'review' | 'needsFix' | 'approved'>;
 
 // Snooze duration options
 const SNOOZE_OPTIONS = [
@@ -64,6 +69,9 @@ interface NotificationsSectionProps {
       | 'notifyOnClarifications'
       | 'notifyOnStatusChange'
       | 'notifyOnTaskComments'
+      | 'notifyOnTaskCreated'
+      | 'notifyOnAllTasksCompleted'
+      | 'notifyOnCrossTeamMessage'
       | 'statusChangeOnlySolo',
     value: boolean
   ) => void;
@@ -293,6 +301,39 @@ export const NotificationsSection = ({
             disabled={saving || !safeConfig.notifications.enabled}
           />
         </SettingRow>
+        <SettingRow
+          label="Task created notifications"
+          description="Show native OS notifications when a new task is created"
+          icon={<CirclePlus className="size-4" />}
+        >
+          <SettingsToggle
+            enabled={safeConfig.notifications.notifyOnTaskCreated}
+            onChange={(v) => onNotificationToggle('notifyOnTaskCreated', v)}
+            disabled={saving || !safeConfig.notifications.enabled}
+          />
+        </SettingRow>
+        <SettingRow
+          label="All tasks completed"
+          description="Notify when every task in a team reaches completed status"
+          icon={<CheckCircle2 className="size-4" />}
+        >
+          <SettingsToggle
+            enabled={safeConfig.notifications.notifyOnAllTasksCompleted}
+            onChange={(v) => onNotificationToggle('notifyOnAllTasksCompleted', v)}
+            disabled={saving || !safeConfig.notifications.enabled}
+          />
+        </SettingRow>
+        <SettingRow
+          label="Cross-team message notifications"
+          description="Notify when a message arrives from another team"
+          icon={<GitBranch className="size-4" />}
+        >
+          <SettingsToggle
+            enabled={safeConfig.notifications.notifyOnCrossTeamMessage}
+            onChange={(v) => onNotificationToggle('notifyOnCrossTeamMessage', v)}
+            disabled={saving || !safeConfig.notifications.enabled}
+          />
+        </SettingRow>
 
         {/* Task Status Change Notifications — nested within team card */}
         <div className="last:*:border-b-0">
@@ -434,6 +475,7 @@ export const NotificationsSection = ({
 const STATUS_OPTIONS: { value: NotifiableStatus; label: string }[] = [
   { value: 'in_progress', label: 'Started' },
   { value: 'completed', label: 'Completed' },
+  { value: 'review', label: 'Review' },
   { value: 'needsFix', label: 'Needs Fixes' },
   { value: 'approved', label: 'Approved' },
   { value: 'pending', label: 'Pending' },
