@@ -60,6 +60,8 @@ export interface DetectedError {
     | 'task_status_change'
     | 'task_comment'
     | 'task_created'
+    | 'all_tasks_completed'
+    | 'cross_team_message'
     | 'schedule_completed'
     | 'schedule_failed';
   /** Explicit key for storage deduplication. Two notifications with the same dedupeKey won't be stored twice. */

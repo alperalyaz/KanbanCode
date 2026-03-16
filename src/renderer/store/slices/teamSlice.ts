@@ -117,6 +117,7 @@ const notifiedClarificationTaskKeys = new Set<string>();
 const notifiedStatusChangeKeys = new Set<string>();
 const notifiedCommentKeys = new Set<string>();
 const notifiedCreatedTaskKeys = new Set<string>();
+const notifiedAllCompletedTeams = new Set<string>();
 
 let isFirstFetchAllTasks = true;
 
@@ -182,10 +183,11 @@ function detectStatusChangeNotifications(
     const taskKanbanColumn = getTaskKanbanColumn(task);
     const oldTaskKanbanColumn = getTaskKanbanColumn(oldTask);
     const becameApproved = taskKanbanColumn === 'approved' && oldTaskKanbanColumn !== 'approved';
+    const becameReview = taskKanbanColumn === 'review' && oldTaskKanbanColumn !== 'review';
     const becameNeedsFix = task.reviewState === 'needsFix' && oldTask.reviewState !== 'needsFix';
 
     const statusChanged = oldTask.status !== task.status;
-    if (!statusChanged && !becameApproved && !becameNeedsFix) continue;
+    if (!statusChanged && !becameApproved && !becameReview && !becameNeedsFix) continue;
 
     if (onlySolo) {
       const team = teamByName[task.teamName];
@@ -193,18 +195,24 @@ function detectStatusChangeNotifications(
     }
 
     // Resolve the effective status for notification matching
-    const effectiveStatus = becameApproved ? 'approved' : becameNeedsFix ? 'needsFix' : task.status;
+    const effectiveStatus = becameApproved
+      ? 'approved'
+      : becameReview
+        ? 'review'
+        : becameNeedsFix
+          ? 'needsFix'
+          : task.status;
     if (!statuses.includes(effectiveStatus)) continue;
 
     const key = `${task.teamName}:${task.id}:${effectiveStatus}`;
     if (notifiedStatusChangeKeys.has(key)) continue;
     notifiedStatusChangeKeys.add(key);
 
-    const fromLabel = becameApproved ? 'Completed' : oldTask.status;
+    const fromLabel = becameApproved ? 'Completed' : becameReview ? 'Completed' : oldTask.status;
     fireStatusChangeNotification(
       task,
       fromLabel,
-      becameApproved ? 'approved' : becameNeedsFix ? 'needsFix' : undefined,
+      becameApproved ? 'approved' : becameReview ? 'review' : becameNeedsFix ? 'needsFix' : undefined,
       !statusChangeEnabled
     );
   }
@@ -221,6 +229,7 @@ function fireStatusChangeNotification(
     in_progress: 'In Progress',
     completed: 'Completed',
     deleted: 'Deleted',
+    review: 'Review',
     needsFix: 'Needs Fixes',
     approved: 'Approved',
   };
@@ -324,6 +333,64 @@ function fireTaskCreatedNotification(task: GlobalTask, suppressToast: boolean): 
       body: task.description || task.subject,
       teamEventType: 'task_created',
       dedupeKey: `created:${task.teamName}:${task.id}`,
+      suppressToast,
+    })
+    .catch(() => undefined);
+}
+
+function detectAllTasksCompletedNotification(
+  oldTasks: GlobalTask[],
+  newTasks: GlobalTask[],
+  notifyEnabled: boolean
+): void {
+  // Group tasks by team
+  const teamTasks = new Map<string, GlobalTask[]>();
+  for (const task of newTasks) {
+    const list = teamTasks.get(task.teamName) ?? [];
+    list.push(task);
+    teamTasks.set(task.teamName, list);
+  }
+
+  for (const [teamName, tasks] of teamTasks) {
+    if (tasks.length === 0) continue;
+    const allCompleted = tasks.every((t) => t.status === 'completed' || t.status === 'deleted');
+    if (!allCompleted) {
+      // Reset so we can notify again if tasks become all-completed later
+      notifiedAllCompletedTeams.delete(teamName);
+      continue;
+    }
+    if (notifiedAllCompletedTeams.has(teamName)) continue;
+
+    // Check that at least one task was NOT completed before (real transition)
+    const oldTeamTasks = oldTasks.filter((t) => t.teamName === teamName);
+    const wasAlreadyAllCompleted =
+      oldTeamTasks.length > 0 &&
+      oldTeamTasks.every((t) => t.status === 'completed' || t.status === 'deleted');
+    if (wasAlreadyAllCompleted) {
+      notifiedAllCompletedTeams.add(teamName);
+      continue;
+    }
+
+    notifiedAllCompletedTeams.add(teamName);
+    fireAllTasksCompletedNotification(tasks[0], tasks.length, !notifyEnabled);
+  }
+}
+
+function fireAllTasksCompletedNotification(
+  sampleTask: GlobalTask,
+  taskCount: number,
+  suppressToast: boolean
+): void {
+  void api.teams
+    ?.showMessageNotification({
+      teamName: sampleTask.teamName,
+      teamDisplayName: sampleTask.teamDisplayName,
+      from: 'system',
+      to: 'user',
+      summary: `All ${taskCount} tasks completed`,
+      body: `All tasks in team "${sampleTask.teamDisplayName}" are done`,
+      teamEventType: 'all_tasks_completed',
+      dedupeKey: `all-done:${sampleTask.teamName}:${Date.now()}`,
       suppressToast,
     })
     .catch(() => undefined);
@@ -888,6 +955,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         detectTaskCommentNotifications(oldTasks, tasks, notifyOnTaskComments);
         const notifyOnTaskCreated = get().appConfig?.notifications?.notifyOnTaskCreated ?? true;
         detectTaskCreatedNotifications(oldTasks, tasks, notifyOnTaskCreated);
+        const notifyOnAllCompleted =
+          get().appConfig?.notifications?.notifyOnAllTasksCompleted ?? true;
+        detectAllTasksCompletedNotification(oldTasks, tasks, notifyOnAllCompleted);
       } else {
         // Initial load — seed the Sets to prevent false notifications on next update
         for (const task of tasks) {
@@ -901,12 +971,27 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           if (getTaskKanbanColumn(task) === 'approved') {
             notifiedStatusChangeKeys.add(`${task.teamName}:${task.id}:approved`);
           }
+          if (getTaskKanbanColumn(task) === 'review') {
+            notifiedStatusChangeKeys.add(`${task.teamName}:${task.id}:review`);
+          }
           // Seed comment keys to prevent false notifications
           for (const comment of task.comments ?? []) {
             notifiedCommentKeys.add(`${task.teamName}:${task.id}:${comment.id}`);
           }
           // Seed created task keys to prevent false notifications
           notifiedCreatedTaskKeys.add(`${task.teamName}:${task.id}`);
+        }
+        // Seed all-completed teams
+        const teamTasksMap = new Map<string, GlobalTask[]>();
+        for (const task of tasks) {
+          const list = teamTasksMap.get(task.teamName) ?? [];
+          list.push(task);
+          teamTasksMap.set(task.teamName, list);
+        }
+        for (const [teamName, teamTasks] of teamTasksMap) {
+          if (teamTasks.every((t) => t.status === 'completed' || t.status === 'deleted')) {
+            notifiedAllCompletedTeams.add(teamName);
+          }
         }
       }
 

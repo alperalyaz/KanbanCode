@@ -255,16 +255,27 @@ async function notifyNewInboxMessages(teamName: string, detail: string): Promise
       const summary = msg.summary || extracted.summary;
       const msgId = msg.timestamp ?? String(prevCount + i);
 
+      // Cross-team messages get their own event type and per-type toggle
+      const isCrossTeam = msg.source === 'cross_team';
+      const eventType: 'lead_inbox' | 'user_inbox' | 'cross_team_message' = isCrossTeam
+        ? 'cross_team_message'
+        : isLeadInbox
+          ? 'lead_inbox'
+          : 'user_inbox';
+      const effectiveSuppressToast = isCrossTeam
+        ? !config.notifications.enabled || !config.notifications.notifyOnCrossTeamMessage
+        : suppressToast;
+
       void notificationManager
         .addTeamNotification({
-          teamEventType: isLeadInbox ? 'lead_inbox' : 'user_inbox',
+          teamEventType: eventType,
           teamName,
           teamDisplayName,
           from: fromLabel,
           summary,
           body: extracted.body,
           dedupeKey: `inbox:${teamName}:${memberName}:${msgId}`,
-          suppressToast,
+          suppressToast: effectiveSuppressToast,
         })
         .catch(() => undefined);
     }
