@@ -541,6 +541,8 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       `IMPORTANT: The board MCP only supports these domains: task, kanban, review, message, process. There is NO "member" domain — team members are managed by spawning teammates via the Task tool, not via the board MCP.`,
       ``,
       `Task board operations — use MCP tools directly:`,
+      `- Get task details: task_get { teamName: "${teamName}", taskId: "<id>" }`,
+      `- List all tasks: task_list { teamName: "${teamName}" }`,
       `- Create task: task_create { teamName: "${teamName}", subject: "...", description?: "...", owner?: "<actual-member-name>", createdBy?: "<your-name>", blockedBy?: ["1","2"], related?: ["3"] }`,
       `- Create task from user message (preferred when you have a MessageId from a relayed inbox message): task_create_from_message { teamName: "${teamName}", messageId: "<exact-messageId>", subject: "...", owner?: "<member>", createdBy?: "<your-name>", blockedBy?: ["1","2"], related?: ["3"] }`,
       `- Assign/reassign owner: task_set_owner { teamName: "${teamName}", taskId: "<id>", owner: "<member-name>" }`,
