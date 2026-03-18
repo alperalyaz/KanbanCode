@@ -112,6 +112,9 @@ const PREFLIGHT_AUTH_RETRY_DELAY_MS = 2000;
 const PREFLIGHT_AUTH_MAX_RETRIES = 2;
 const FS_MONITOR_POLL_MS = 2000;
 const TASK_WAIT_FALLBACK_MS = 15_000;
+const STALL_CHECK_INTERVAL_MS = 10_000;
+const STALL_WARNING_THRESHOLD_MS = 45_000;
+const STALL_WARNING_REPEAT_MS = 30_000;
 const TEAM_JSON_READ_TIMEOUT_MS = 5_000;
 const TEAM_CONFIG_MAX_BYTES = 10 * 1024 * 1024;
 const TEAM_INBOX_MAX_BYTES = 2 * 1024 * 1024;
@@ -119,6 +122,13 @@ const CROSS_TEAM_TOOL_RECIPIENT_NAMES = new Set([
   'cross_team_send',
   'cross_team_list_targets',
   'cross_team_get_outbox',
+]);
+const HANDLED_STREAM_JSON_TYPES = new Set([
+  'user',
+  'assistant',
+  'control_request',
+  'result',
+  'system',
 ]);
 const PREFLIGHT_PING_PROMPT = 'Output only the single word PONG.';
 const PREFLIGHT_PING_ARGS = [
@@ -217,6 +227,12 @@ interface ProvisioningRun {
   expectedMembers: string[];
   request: TeamCreateRequest;
   lastLogProgressAt: number;
+  /** Monotonic ms timestamp of last stdout/stderr data. For stall detection. */
+  lastDataReceivedAt: number;
+  /** Stall watchdog interval handle. Cleared in cleanupRun(). */
+  stallCheckHandle: NodeJS.Timeout | null;
+  /** True after emitApiErrorWarning() fires once — prevents duplicate warnings and pre-complete false positives. */
+  apiErrorWarningEmitted: boolean;
   fsPhase: 'waiting_config' | 'waiting_members' | 'waiting_tasks' | 'all_files_found';
   waitingTasksSince: number | null;
   provisioningComplete: boolean;
@@ -2359,6 +2375,127 @@ export class TeamProvisioningService {
   }
 
   /**
+   * Shows a non-fatal API error warning in the Live output section.
+   * Unlike failProvisioningWithApiError, does NOT kill the process — lets the SDK retry.
+   * Deduplicates: only the first warning per run is shown.
+   */
+  private emitApiErrorWarning(run: ProvisioningRun, text: string): void {
+    if (run.provisioningComplete || run.processKilled || run.authRetryInProgress) return;
+    if (run.progress.state === 'failed' || run.cancelRequested) return;
+    if (run.apiErrorWarningEmitted) return;
+
+    run.apiErrorWarningEmitted = true;
+
+    const snippet = this.extractApiErrorSnippet(text);
+    const status = /api error:\s*(\d{3})\b/i.exec(text)?.[1] ?? null;
+    const label = status ? `API Error ${status}` : 'API Error';
+
+    const warningText = snippet
+      ? `**${label} — SDK is retrying**\n\n\`\`\`\n${snippet}\n\`\`\`\n\nОжидаем повторной попытки...`
+      : `**${label} — SDK is retrying**\n\nОжидаем повторной попытки...`;
+
+    run.provisioningOutputParts.push(warningText);
+    run.progress.message = `${label} — SDK retrying...`;
+    emitLogsProgress(run);
+    // Prevent double-emit: the calling stderr/stdout handler will also try throttled emitLogsProgress
+    // after this returns. Updating lastLogProgressAt ensures the throttle check rejects it.
+    run.lastLogProgressAt = Date.now();
+  }
+
+  /**
+   * Starts a periodic watchdog that detects when the CLI process has produced
+   * no stdout/stderr data for an extended period. Pushes progressive warnings
+   * into provisioningOutputParts so they appear in the Live output section.
+   */
+  private startStallWatchdog(run: ProvisioningRun): void {
+    if (run.stallCheckHandle) return;
+
+    let lastWarningAt = 0;
+
+    run.stallCheckHandle = setInterval(() => {
+      // try/catch: Node.js does NOT catch errors in setInterval callbacks —
+      // without this, an exception would silently kill the watchdog.
+      try {
+        if (
+          run.provisioningComplete ||
+          run.processKilled ||
+          run.cancelRequested ||
+          run.authRetryInProgress
+        ) {
+          this.stopStallWatchdog(run);
+          return;
+        }
+
+        const now = Date.now();
+        const silenceMs = now - run.lastDataReceivedAt;
+
+        if (silenceMs < STALL_WARNING_THRESHOLD_MS) return;
+        if (lastWarningAt > 0 && now - lastWarningAt < STALL_WARNING_REPEAT_MS) return;
+
+        lastWarningAt = now;
+        const silenceSec = Math.round(silenceMs / 1000);
+
+        run.provisioningOutputParts.push(this.buildStallWarningText(silenceSec));
+        const mins = Math.floor(silenceSec / 60);
+        const secs = silenceSec % 60;
+        const elapsed = mins > 0 ? `${mins} мин ${secs > 0 ? `${secs} сек` : ''}` : `${secs} сек`;
+        run.progress.message = `CLI не отвечает ${elapsed} — возможен rate limit`;
+        emitLogsProgress(run);
+      } catch (err) {
+        logger.error(
+          `[${run.teamName}] Stall watchdog error: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    }, STALL_CHECK_INTERVAL_MS);
+  }
+
+  private stopStallWatchdog(run: ProvisioningRun): void {
+    if (run.stallCheckHandle) {
+      clearInterval(run.stallCheckHandle);
+      run.stallCheckHandle = null;
+    }
+  }
+
+  private buildStallWarningText(silenceSec: number): string {
+    const mins = Math.floor(silenceSec / 60);
+    const secs = silenceSec % 60;
+    const elapsed = mins > 0 ? `${mins} мин ${secs > 0 ? `${secs} сек` : ''}` : `${secs} сек`;
+
+    if (silenceSec < 60) {
+      return (
+        `---\n\n` +
+        `**Ожидание ответа CLI** (тишина ${elapsed})\n\n` +
+        `Процесс запущен, но пока не выдаёт данных. ` +
+        `Это может быть вызвано задержкой API (rate limit / model cooldown) — ` +
+        `SDK выполняет повторные попытки автоматически.\n\n` +
+        `Ожидаем...`
+      );
+    }
+
+    if (silenceSec < 120) {
+      return (
+        `---\n\n` +
+        `**Ожидание ответа CLI** (тишина ${elapsed})\n\n` +
+        `Процесс по-прежнему не отвечает. Вероятна задержка из-за rate limiting ` +
+        `(ошибка 429 / model cooldown). SDK автоматически повторяет запрос — ` +
+        `обычно это проходит в течение 1-3 минут.\n\n` +
+        `Можно отменить и попробовать позже, если ожидание затянется.`
+      );
+    }
+
+    return (
+      `---\n\n` +
+      `**Длительное ожидание CLI** (тишина ${elapsed})\n\n` +
+      `Процесс молчит уже более ${mins} минут. Вероятные причины:\n` +
+      `- Rate limiting / model cooldown (429) — SDK повторяет автоматически\n` +
+      `- Перегрузка API сервера\n\n` +
+      `Рекомендуем отменить и попробовать через несколько минут.`
+    );
+  }
+
+  /**
    * Detects auth failure keywords in stderr/stdout during provisioning.
    * On first detection: kills process, waits, and respawns automatically.
    * On second detection (after retry): fails fast with a clear error.
@@ -2411,6 +2548,7 @@ export class TeamProvisioningService {
       run.timeoutHandle = null;
     }
     this.stopFilesystemMonitor(run);
+    this.stopStallWatchdog(run);
     if (run.child) {
       run.child.stdout?.removeAllListeners('data');
       run.child.stderr?.removeAllListeners('data');
@@ -2429,6 +2567,7 @@ export class TeamProvisioningService {
     run.stderrLogLineBuf = '';
     run.claudeLogsUpdatedAt = undefined;
     run.authFailureRetried = true;
+    run.apiErrorWarningEmitted = false;
 
     updateProgress(run, 'spawning', 'Auth failed — retrying after short delay');
     run.onProgress(run.progress);
@@ -2487,6 +2626,9 @@ export class TeamProvisioningService {
     // Reattach stderr handler
     this.attachStderrHandler(run);
 
+    run.lastDataReceivedAt = Date.now();
+    this.startStallWatchdog(run);
+
     // Restart filesystem monitor for createTeam (launch skips it)
     if (!run.isLaunch) {
       this.startFilesystemMonitor(run, run.request);
@@ -2538,6 +2680,8 @@ export class TeamProvisioningService {
 
     let stdoutLineBuf = '';
     child.stdout.on('data', (chunk: Buffer) => {
+      // Reset stall watchdog FIRST — any data (even partial JSON) means the CLI is alive.
+      run.lastDataReceivedAt = Date.now();
       const text = chunk.toString('utf8');
       this.appendCliLogs(run, 'stdout', text);
       run.stdoutBuffer += text;
@@ -2573,7 +2717,9 @@ export class TeamProvisioningService {
           // Not valid JSON — check for auth failure in raw text output
           this.handleAuthFailureInOutput(run, trimmed, 'stdout');
           if (this.hasApiError(trimmed) && !this.isAuthFailureWarning(trimmed, 'stdout')) {
-            this.failProvisioningWithApiError(run, trimmed);
+            // Show warning but do NOT kill — the SDK may be retrying internally (e.g. 429 model_cooldown).
+            // If all retries fail, result.subtype="error" will catch it and kill then.
+            this.emitApiErrorWarning(run, trimmed);
           }
         }
       }
@@ -2592,6 +2738,8 @@ export class TeamProvisioningService {
     if (!child?.stderr) return;
 
     child.stderr.on('data', (chunk: Buffer) => {
+      // Reset stall watchdog FIRST — any data (even partial JSON) means the CLI is alive.
+      run.lastDataReceivedAt = Date.now();
       const text = chunk.toString('utf8');
       this.appendCliLogs(run, 'stderr', text);
       run.stderrBuffer += text;
@@ -2602,7 +2750,9 @@ export class TeamProvisioningService {
       // Detect auth failure early instead of waiting for 5-minute timeout
       this.handleAuthFailureInOutput(run, text, 'stderr');
       if (this.hasApiError(text) && !this.isAuthFailureWarning(text, 'stderr')) {
-        this.failProvisioningWithApiError(run, text);
+        // Show warning but do NOT kill — the SDK may be retrying internally (e.g. 429 model_cooldown).
+        // If all retries fail, result.subtype="error" will catch it and kill then.
+        this.emitApiErrorWarning(run, text);
       }
 
       const currentTs = Date.now();
@@ -2679,6 +2829,9 @@ export class TeamProvisioningService {
         expectedMembers: request.members.map((member) => member.name),
         request,
         lastLogProgressAt: 0,
+        lastDataReceivedAt: 0, // intentionally 0 — real reset happens after spawn (see startStallWatchdog call sites)
+        stallCheckHandle: null,
+        apiErrorWarningEmitted: false,
         waitingTasksSince: null,
         provisioningComplete: false,
         isLaunch: false,
@@ -2791,6 +2944,11 @@ export class TeamProvisioningService {
 
       this.attachStdoutHandler(run);
       this.attachStderrHandler(run);
+
+      // Reset AFTER spawn — not at run init — because async operations (buildProvisioningEnv,
+      // writeConfigFile) between init and spawn can take seconds, causing false stall warnings.
+      run.lastDataReceivedAt = Date.now();
+      this.startStallWatchdog(run);
 
       // Filesystem-based progress monitor: actively polls team files instead
       // of relying on stdout (which only arrives at the end in text mode).
@@ -3043,6 +3201,9 @@ export class TeamProvisioningService {
         expectedMembers,
         request: syntheticRequest,
         lastLogProgressAt: 0,
+        lastDataReceivedAt: 0, // intentionally 0 — real reset happens after spawn (see startStallWatchdog call sites)
+        stallCheckHandle: null,
+        apiErrorWarningEmitted: false,
         waitingTasksSince: null,
         provisioningComplete: false,
         isLaunch: true,
@@ -3195,6 +3356,11 @@ export class TeamProvisioningService {
 
       this.attachStdoutHandler(run);
       this.attachStderrHandler(run);
+
+      // Reset AFTER spawn — not at run init — because async operations between init
+      // and spawn can take seconds, causing false stall warnings.
+      run.lastDataReceivedAt = Date.now();
+      this.startStallWatchdog(run);
 
       // For launch, skip the filesystem monitor — files (config, inboxes, tasks)
       // already exist from the previous run and would trigger immediate false
@@ -4865,6 +5031,23 @@ export class TeamProvisioningService {
         }
       }
     }
+
+    // Catch-all: detect API errors in unrecognised message types.
+    // Guards against future protocol additions that carry error payloads
+    // (e.g. type: "error") which would otherwise be silently dropped.
+    if (typeof msg.type === 'string' && !HANDLED_STREAM_JSON_TYPES.has(msg.type)) {
+      const raw = JSON.stringify(msg);
+      logger.warn(
+        `[${run.teamName}] Unhandled stream-json type "${msg.type}": ${raw.slice(0, 300)}`
+      );
+      if (
+        !run.provisioningComplete &&
+        this.hasApiError(raw) &&
+        !this.isAuthFailureWarning(raw, 'stdout')
+      ) {
+        this.emitApiErrorWarning(run, raw);
+      }
+    }
   }
 
   /**
@@ -5333,7 +5516,10 @@ export class TeamProvisioningService {
     if (
       preCompleteText &&
       this.hasApiError(preCompleteText) &&
-      !this.isAuthFailureWarning(preCompleteText, 'pre-complete')
+      !this.isAuthFailureWarning(preCompleteText, 'pre-complete') &&
+      // Skip if we already showed a warning for this error — the SDK had a chance to retry
+      // and the CLI reported success. Killing now would be a false positive.
+      !run.apiErrorWarningEmitted
     ) {
       this.failProvisioningWithApiError(run, preCompleteText);
       return;
@@ -5352,6 +5538,7 @@ export class TeamProvisioningService {
       run.timeoutHandle = null;
     }
     this.stopFilesystemMonitor(run);
+    this.stopStallWatchdog(run);
 
     if (run.isLaunch) {
       await this.updateConfigPostLaunch(
@@ -5811,6 +5998,7 @@ export class TeamProvisioningService {
       clearTimeout(run.timeoutHandle);
       run.timeoutHandle = null;
     }
+    this.stopStallWatchdog(run);
     if (run.silentUserDmForwardClearHandle) {
       clearTimeout(run.silentUserDmForwardClearHandle);
       run.silentUserDmForwardClearHandle = null;
@@ -6015,6 +6203,12 @@ export class TeamProvisioningService {
       );
       return;
     }
+
+    // IMPORTANT: stopStallWatchdog MUST be AFTER authRetryInProgress guard above!
+    // During respawn, the old process exit fires but run.stallCheckHandle already
+    // points to the NEW process's watchdog. Stopping it here would kill the wrong timer.
+    // The authRetryInProgress guard returns early, keeping the new watchdog alive.
+    this.stopStallWatchdog(run);
 
     // === Process exited AFTER provisioning completed ===
     // This means the team went offline (crash, kill, or natural exit).

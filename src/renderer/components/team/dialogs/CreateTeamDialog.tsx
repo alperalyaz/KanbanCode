@@ -255,7 +255,8 @@ export const CreateTeamDialog = ({
   const [teamColor, setTeamColor] = useState('');
   const [conflictDismissed, setConflictDismissed] = useState(false);
   const [selectedModel, setSelectedModelRaw] = useState(() => {
-    const stored = localStorage.getItem('team:lastSelectedModel') ?? '';
+    const stored = localStorage.getItem('team:lastSelectedModel');
+    if (stored === null) return 'opus';
     return stored === '__default__' ? '' : stored;
   });
   const [limitContext, setLimitContextRaw] = useState(
@@ -264,9 +265,10 @@ export const CreateTeamDialog = ({
   const [skipPermissions, setSkipPermissionsRaw] = useState(
     () => localStorage.getItem('team:lastSkipPermissions') !== 'false'
   );
-  const [selectedEffort, setSelectedEffortRaw] = useState(
-    () => localStorage.getItem('team:lastSelectedEffort') ?? ''
-  );
+  const [selectedEffort, setSelectedEffortRaw] = useState(() => {
+    const stored = localStorage.getItem('team:lastSelectedEffort');
+    return stored === null ? 'medium' : stored;
+  });
 
   // Advanced CLI section state (use teamName-derived key for localStorage)
   const advancedKey = sanitizeTeamName(teamName.trim()) || '_new_';
