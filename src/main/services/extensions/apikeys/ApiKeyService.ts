@@ -100,7 +100,6 @@ export class ApiKeyService {
         scope: request.scope,
         updatedAt: now,
       };
-      // Remove legacy field
       delete keys[idx].encrypted;
     } else {
       keys.push({
@@ -232,7 +231,6 @@ export class ApiKeyService {
   /** Resolve encryption method, handling legacy entries without encryptionMethod field */
   private resolveMethod(stored: StoredApiKey): EncryptionMethod {
     if (stored.encryptionMethod) return stored.encryptionMethod;
-    // Legacy migration: encrypted boolean → method
     return stored.encrypted ? 'safeStorage' : 'base64';
   }
 
@@ -266,7 +264,6 @@ export class ApiKeyService {
     const candidates = ['/etc/machine-id', '/var/lib/dbus/machine-id'];
     for (const p of candidates) {
       try {
-        // Synchronous read is OK — called once, result cached in aesKey
         const { readFileSync } = require('node:fs') as typeof import('node:fs');
         const id = readFileSync(p, 'utf-8').trim();
         if (id) return id;

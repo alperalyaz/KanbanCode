@@ -23,7 +23,7 @@ import { getCachedShellEnv } from '@main/utils/shellEnv';
 import { getErrorMessage } from '@shared/utils/errorHandling';
 import { createLogger } from '@shared/utils/logger';
 import { createHash } from 'crypto';
-import { createWriteStream, existsSync, realpathSync, promises as fsp } from 'fs';
+import { createWriteStream, existsSync, promises as fsp, realpathSync } from 'fs';
 import http from 'http';
 import https from 'https';
 import { tmpdir } from 'os';
