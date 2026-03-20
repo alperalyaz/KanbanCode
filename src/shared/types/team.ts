@@ -53,6 +53,8 @@ export interface TeamSummary {
   sessionHistory?: string[];
   /** Propagated from config.deletedAt — set when the team has been soft-deleted. */
   deletedAt?: string;
+  /** True when team.meta.json exists but config.json doesn't — provisioning failed before TeamCreate. */
+  pendingCreate?: boolean;
 }
 
 export type TeamTaskStatus = 'pending' | 'in_progress' | 'completed' | 'deleted';
@@ -803,6 +805,10 @@ export interface ToolApprovalRequest {
   toolInput: Record<string, unknown>;
   /** ISO timestamp when the request was received. */
   receivedAt: string;
+  /** Team color name (from config or create request) for badge rendering. */
+  teamColor?: string;
+  /** Team display name (from config or create request). */
+  teamDisplayName?: string;
 }
 
 /** Dismissal event — process died, all pending approvals for this team+run should be removed. */
@@ -853,3 +859,12 @@ export type ToolApprovalEvent =
   | ToolApprovalRequest
   | ToolApprovalDismiss
   | ToolApprovalAutoResolved;
+
+/** Result of reading a file for tool approval diff preview. */
+export interface ToolApprovalFileContent {
+  content: string;
+  exists: boolean;
+  truncated: boolean;
+  isBinary: boolean;
+  error?: string;
+}

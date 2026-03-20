@@ -1,10 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getTeamColorSet, getThemedBadge } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { useStore } from '@renderer/store';
-import { FileText, Search, Terminal } from 'lucide-react';
+import { highlightLines } from '@renderer/utils/syntaxHighlighter';
+import { AlertTriangle, FileText, Search, Terminal } from 'lucide-react';
 
+import { ToolApprovalDiffPreview } from './ToolApprovalDiffPreview';
 import { ToolApprovalSettingsPanel } from './dialogs/ToolApprovalSettingsPanel';
 
 import type { ToolApprovalRequest } from '@shared/types';
@@ -52,6 +54,24 @@ function renderToolInput(toolName: string, input: Record<string, unknown>): stri
   }
 }
 
+/** Map tool name to a virtual filename for syntax highlighting. */
+function getToolInputFileName(toolName: string, input: Record<string, unknown>): string {
+  switch (toolName) {
+    case 'Bash':
+      return 'command.sh';
+    case 'Edit':
+    case 'Read':
+    case 'Write':
+    case 'NotebookEdit':
+      return typeof input.file_path === 'string' ? input.file_path : 'input.json';
+    case 'Grep':
+    case 'Glob':
+      return 'pattern.txt';
+    default:
+      return 'input.json';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Elapsed timer hook
 // ---------------------------------------------------------------------------
@@ -78,25 +98,53 @@ function useElapsed(receivedAt: string): number {
 // Main component
 // ---------------------------------------------------------------------------
 
+/** Max time (ms) to wait for the IPC before considering it stuck */
+const RESPOND_TIMEOUT_MS = 10_000;
+
 export const ToolApprovalSheet: React.FC = () => {
   const pendingApprovals = useStore((s) => s.pendingApprovals);
   const respondToToolApproval = useStore((s) => s.respondToToolApproval);
   const teams = useStore((s) => s.teams);
+  const selectedTeamName = useStore((s) => s.selectedTeamName);
   const { isLight } = useTheme();
 
   const current: ToolApprovalRequest | undefined = pendingApprovals[0];
   const containerRef = useRef<HTMLDivElement>(null);
   const [disabled, setDisabled] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [diffExpanded, setDiffExpanded] = useState(false);
+
+  // Clear error and collapse diff when current approval changes
+  useEffect(() => {
+    setError(null);
+    setDiffExpanded(false);
+  }, [current?.requestId]);
 
   const handleRespond = useCallback(
     (allow: boolean) => {
       if (!current || disabled) return;
       setDisabled(true);
-      void respondToToolApproval(current.teamName, current.runId, current.requestId, allow).finally(
-        () => {
+      setError(null);
+
+      // Safety timeout — if IPC hangs (e.g. stdin.write callback never fires),
+      // re-enable the button so the user isn't stuck forever.
+      const safetyTimer = setTimeout(() => {
+        setDisabled(false);
+        setError('Response timed out — process may be unresponsive. Try again or stop the team.');
+      }, RESPOND_TIMEOUT_MS);
+
+      respondToToolApproval(current.teamName, current.runId, current.requestId, allow)
+        .then(() => {
+          clearTimeout(safetyTimer);
+          // Small delay before re-enabling to prevent accidental double-clicks
           setTimeout(() => setDisabled(false), 200);
-        }
-      );
+        })
+        .catch((err: unknown) => {
+          clearTimeout(safetyTimer);
+          const msg = err instanceof Error ? err.message : String(err);
+          setError(msg);
+          setDisabled(false);
+        });
     },
     [current, disabled, respondToToolApproval]
   );
@@ -120,13 +168,17 @@ export const ToolApprovalSheet: React.FC = () => {
 
   if (!current) return null;
 
+  // Prefer color from the approval itself (always available, even during provisioning),
+  // fall back to teams list for older approvals without the field.
   const teamSummary = teams.find((t) => t.teamName === current.teamName);
-  const teamColor = teamSummary?.color ? getTeamColorSet(teamSummary.color) : null;
+  const colorName = current.teamColor ?? teamSummary?.color;
+  const teamColor = colorName ? getTeamColorSet(colorName) : null;
+  const displayName = current.teamDisplayName ?? teamSummary?.displayName ?? current.teamName;
 
   return (
     <div
       ref={containerRef}
-      className="fixed bottom-4 left-1/2 z-[55] w-full max-w-[480px] -translate-x-1/2 rounded-lg border shadow-xl outline-none duration-200 animate-in fade-in slide-in-from-bottom-4"
+      className={`fixed bottom-4 left-1/2 z-[55] w-full -translate-x-1/2 rounded-lg border shadow-xl outline-none transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 ${diffExpanded ? 'max-w-[640px]' : 'max-w-[480px]'}`}
       style={{
         backgroundColor: 'var(--color-surface-overlay)',
         borderColor: 'var(--color-border-emphasis)',
@@ -144,37 +196,59 @@ export const ToolApprovalSheet: React.FC = () => {
           </span>
         </div>
         <div className="flex items-center gap-2.5">
-          {teamColor ? (
-            <span
-              className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-              style={{
-                backgroundColor: getThemedBadge(teamColor, isLight),
-                color: teamColor.text,
-                border: `1px solid ${teamColor.border}`,
-              }}
-            >
-              {teamSummary?.displayName ?? current.teamName}
-            </span>
-          ) : (
-            <span className="text-[10px] text-[var(--color-text-muted)]">{current.teamName}</span>
-          )}
+          {selectedTeamName !== current.teamName &&
+            (teamColor ? (
+              <span
+                className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                style={{
+                  backgroundColor: getThemedBadge(teamColor, isLight),
+                  color: teamColor.text,
+                  border: `1px solid ${teamColor.border}`,
+                }}
+              >
+                {displayName}
+              </span>
+            ) : (
+              <span
+                className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                style={{
+                  backgroundColor: 'var(--color-surface-raised)',
+                  color: 'var(--color-text-secondary)',
+                  border: '1px solid var(--color-border-emphasis)',
+                }}
+              >
+                {displayName}
+              </span>
+            ))}
           <ElapsedDisplay receivedAt={current.receivedAt} />
         </div>
       </div>
 
-      {/* Tool input preview */}
-      <div className="px-4 py-2.5">
-        <pre
-          className="custom-scrollbar max-h-[120px] overflow-auto whitespace-pre-wrap break-all rounded-md border p-2 font-mono text-xs"
+      {/* Tool input preview (syntax-highlighted) */}
+      <ToolInputPreview toolName={current.toolName} toolInput={current.toolInput} />
+
+      {/* Diff preview (Write/Edit/NotebookEdit only) */}
+      <ToolApprovalDiffPreview
+        toolName={current.toolName}
+        toolInput={current.toolInput}
+        requestId={current.requestId}
+        onExpandedChange={setDiffExpanded}
+      />
+
+      {/* Error feedback */}
+      {error && (
+        <div
+          className="mx-4 mb-1 flex items-start gap-2 rounded-md border px-3 py-2 text-xs"
           style={{
-            backgroundColor: 'var(--color-surface)',
-            borderColor: 'var(--color-border)',
-            color: 'var(--color-text-secondary)',
+            backgroundColor: 'rgba(239, 68, 68, 0.08)',
+            borderColor: 'rgba(239, 68, 68, 0.25)',
+            color: 'rgb(248, 113, 113)',
           }}
         >
-          {renderToolInput(current.toolName, current.toolInput)}
-        </pre>
-      </div>
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+          <span className="break-words">{error}</span>
+        </div>
+      )}
 
       {/* Actions */}
       <div
@@ -237,6 +311,46 @@ export const ToolApprovalSheet: React.FC = () => {
 };
 
 // ---------------------------------------------------------------------------
+// Syntax-highlighted tool input preview
+// ---------------------------------------------------------------------------
+
+const ToolInputPreview = ({
+  toolName,
+  toolInput,
+}: {
+  toolName: string;
+  toolInput: Record<string, unknown>;
+}): React.JSX.Element => {
+  const text = renderToolInput(toolName, toolInput);
+  const fileName = getToolInputFileName(toolName, toolInput);
+  const lines = useMemo(() => highlightLines(text, fileName), [text, fileName]);
+
+  return (
+    <div className="px-4 py-2.5">
+      <div
+        className="custom-scrollbar max-h-[120px] overflow-auto rounded-md border p-2 font-mono text-xs"
+        style={{
+          backgroundColor: 'var(--color-surface)',
+          borderColor: 'var(--color-border)',
+        }}
+      >
+        {/* highlightLines uses hljs which HTML-escapes all input text, producing only <span class="hljs-*"> tags.
+            This is safe: the source is our own renderToolInput() output, not arbitrary user HTML.
+            Same pattern used in ReviewDiffContent.tsx and DiffViewer for syntax highlighting. */}
+        {lines.map((html, i) => (
+          <div
+            key={i}
+            className="whitespace-pre-wrap break-all"
+            style={{ color: 'var(--color-text-secondary)' }}
+            dangerouslySetInnerHTML={{ __html: html || '&nbsp;' }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
 // Timeout progress bar sub-component
 // ---------------------------------------------------------------------------
 
@@ -268,7 +382,7 @@ const TimeoutProgress = ({ receivedAt }: { receivedAt: string }): React.JSX.Elem
         />
       </div>
       <span className="text-[10px] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
-        Auto-{settings.timeoutAction} in {remaining}s
+        Auto-{settings.timeoutAction} in {formatElapsed(remaining)}
       </span>
     </div>
   );
@@ -278,9 +392,18 @@ const TimeoutProgress = ({ receivedAt }: { receivedAt: string }): React.JSX.Elem
 // Elapsed display sub-component (uses hook)
 // ---------------------------------------------------------------------------
 
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
+
 const ElapsedDisplay = ({ receivedAt }: { receivedAt: string }): React.JSX.Element => {
   const elapsed = useElapsed(receivedAt);
   return (
-    <span className="text-[11px] tabular-nums text-[var(--color-text-muted)]">{elapsed}s</span>
+    <span className="text-[11px] tabular-nums text-[var(--color-text-muted)]">
+      {formatElapsed(elapsed)}
+    </span>
   );
 };

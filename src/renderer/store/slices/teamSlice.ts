@@ -1231,6 +1231,16 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         return;
       }
 
+      // Draft team: team.meta.json exists but config.json doesn't (provisioning failed)
+      if (msg === 'TEAM_DRAFT' || msg.includes('TEAM_DRAFT')) {
+        set({
+          selectedTeamLoading: false,
+          selectedTeamData: null,
+          selectedTeamError: 'TEAM_DRAFT',
+        });
+        return;
+      }
+
       const message =
         error instanceof IpcError
           ? error.message
@@ -1296,6 +1306,15 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       if (msg === 'TEAM_PROVISIONING' || msg.includes('TEAM_PROVISIONING')) {
         logger.debug(`refreshTeamData(${teamName}) skipped: team is still provisioning`);
         set({ selectedTeamError: null });
+        return;
+      }
+
+      if (msg === 'TEAM_DRAFT' || msg.includes('TEAM_DRAFT')) {
+        set({
+          selectedTeamLoading: false,
+          selectedTeamData: null,
+          selectedTeamError: 'TEAM_DRAFT',
+        });
         return;
       }
 
@@ -2061,9 +2080,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           (a) => !(a.runId === runId && a.requestId === requestId)
         ),
       }));
-    } catch {
-      // IPC failed — approval stays in UI, user can retry
-      // Do NOT modify pendingApprovals — nothing was removed, nothing to rollback
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`respondToToolApproval failed for ${teamName}/${requestId}: ${msg}`);
+      // Surface the error so ToolApprovalSheet can show feedback
+      throw err;
     }
   },
 

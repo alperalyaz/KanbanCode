@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 
 import { Checkbox } from '@renderer/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@renderer/components/ui/select';
 import { useStore } from '@renderer/store';
 import { ChevronDown, ChevronRight, Settings } from 'lucide-react';
 
@@ -80,22 +87,21 @@ export const ToolApprovalSettingsPanel: React.FC = () => {
             style={{ color: 'var(--color-text-secondary)' }}
           >
             <span className="shrink-0">On timeout:</span>
-            <select
+            <Select
               value={settings.timeoutAction}
-              onChange={(e) =>
-                void updateSettings({ timeoutAction: e.target.value as ToolApprovalTimeoutAction })
+              onValueChange={(value) =>
+                void updateSettings({ timeoutAction: value as ToolApprovalTimeoutAction })
               }
-              className="rounded border px-1.5 py-0.5 text-xs"
-              style={{
-                backgroundColor: 'var(--color-surface-raised)',
-                borderColor: 'var(--color-border)',
-                color: 'var(--color-text)',
-              }}
             >
-              <option value="wait">Wait forever</option>
-              <option value="allow">Allow</option>
-              <option value="deny">Deny</option>
-            </select>
+              <SelectTrigger className="h-7 w-[120px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="wait">Wait forever</SelectItem>
+                <SelectItem value="allow">Allow</SelectItem>
+                <SelectItem value="deny">Deny</SelectItem>
+              </SelectContent>
+            </Select>
 
             {settings.timeoutAction !== 'wait' && (
               <>

@@ -684,6 +684,13 @@ export class HttpAPIClient implements ElectronAPI {
     permanentlyDeleteTeam: async (_teamName: string): Promise<void> => {
       throw new Error('Permanent team deletion is not available in browser mode');
     },
+    getSavedRequest: async (_teamName: string): Promise<TeamCreateRequest | null> => {
+      console.warn('[HttpAPIClient] getSavedRequest is not available in browser mode');
+      return null;
+    },
+    deleteDraft: async (_teamName: string): Promise<void> => {
+      throw new Error('Draft team deletion is not available in browser mode');
+    },
     prepareProvisioning: async (_cwd?: string): Promise<TeamProvisioningPrepareResult> => {
       throw new Error('Team provisioning is not available in browser mode');
     },
@@ -915,6 +922,9 @@ export class HttpAPIClient implements ElectronAPI {
     },
     updateToolApprovalSettings: async (): Promise<void> => {
       console.warn('[HttpAPIClient] updateToolApprovalSettings is not available in browser mode');
+    },
+    readFileForToolApproval: async () => {
+      throw new Error('Tool approval file read not available in browser mode');
     },
   };
 

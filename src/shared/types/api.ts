@@ -74,6 +74,7 @@ import type {
   TeamTaskStatus,
   TeamUpdateConfigRequest,
   ToolApprovalEvent,
+  ToolApprovalFileContent,
   ToolApprovalSettings,
   UpdateKanbanPatch,
 } from './team';
@@ -419,6 +420,8 @@ export interface TeamsAPI {
   deleteTeam: (teamName: string) => Promise<void>;
   restoreTeam: (teamName: string) => Promise<void>;
   permanentlyDeleteTeam: (teamName: string) => Promise<void>;
+  getSavedRequest: (teamName: string) => Promise<TeamCreateRequest | null>;
+  deleteDraft: (teamName: string) => Promise<void>;
   prepareProvisioning: (cwd?: string) => Promise<TeamProvisioningPrepareResult>;
   createTeam: (request: TeamCreateRequest) => Promise<TeamCreateResponse>;
   getProvisioningStatus: (runId: string) => Promise<TeamProvisioningProgress>;
@@ -536,6 +539,7 @@ export interface TeamsAPI {
   validateCliArgs: (rawArgs: string) => Promise<CliArgsValidationResult>;
   onToolApprovalEvent: (callback: (event: unknown, data: ToolApprovalEvent) => void) => () => void;
   updateToolApprovalSettings: (settings: ToolApprovalSettings) => Promise<void>;
+  readFileForToolApproval: (filePath: string) => Promise<ToolApprovalFileContent>;
 }
 
 // =============================================================================

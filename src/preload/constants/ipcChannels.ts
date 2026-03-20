@@ -373,6 +373,12 @@ export const TEAM_VALIDATE_CLI_ARGS = 'team:validateCliArgs';
 /** Invoke: update tool approval settings (renderer → main) */
 export const TEAM_TOOL_APPROVAL_SETTINGS = 'team:toolApprovalSettings';
 
+/** Invoke: read file content for tool approval diff preview (renderer → main) */
+export const TEAM_TOOL_APPROVAL_READ_FILE = 'team:toolApprovalReadFile';
+
+export const TEAM_GET_SAVED_REQUEST = 'team:getSavedRequest';
+export const TEAM_DELETE_DRAFT = 'team:deleteDraft';
+
 // =============================================================================
 // Cross-Team Communication Channels
 // =============================================================================

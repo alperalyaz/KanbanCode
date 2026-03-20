@@ -132,6 +132,8 @@ import {
   TEAM_LIST,
   TEAM_MEMBER_SPAWN_STATUSES,
   TEAM_PERMANENTLY_DELETE,
+  TEAM_GET_SAVED_REQUEST,
+  TEAM_DELETE_DRAFT,
   TEAM_PREPARE_PROVISIONING,
   TEAM_PROCESS_ALIVE,
   TEAM_PROCESS_SEND,
@@ -151,6 +153,7 @@ import {
   TEAM_START_TASK,
   TEAM_STOP,
   TEAM_TOOL_APPROVAL_EVENT,
+  TEAM_TOOL_APPROVAL_READ_FILE,
   TEAM_TOOL_APPROVAL_RESPOND,
   TEAM_TOOL_APPROVAL_SETTINGS,
   TEAM_UPDATE_CONFIG,
@@ -275,6 +278,7 @@ import type {
   TeamTaskStatus,
   TeamUpdateConfigRequest,
   ToolApprovalEvent,
+  ToolApprovalFileContent,
   ToolApprovalSettings,
   TriggerTestResult,
   UpdateKanbanPatch,
@@ -806,6 +810,12 @@ const electronAPI: ElectronAPI = {
     permanentlyDeleteTeam: async (teamName: string) => {
       return invokeIpcWithResult<void>(TEAM_PERMANENTLY_DELETE, teamName);
     },
+    getSavedRequest: async (teamName: string) => {
+      return invokeIpcWithResult<TeamCreateRequest | null>(TEAM_GET_SAVED_REQUEST, teamName);
+    },
+    deleteDraft: async (teamName: string) => {
+      return invokeIpcWithResult<void>(TEAM_DELETE_DRAFT, teamName);
+    },
     prepareProvisioning: async (cwd?: string) => {
       return invokeIpcWithResult<TeamProvisioningPrepareResult>(TEAM_PREPARE_PROVISIONING, cwd);
     },
@@ -1092,6 +1102,9 @@ const electronAPI: ElectronAPI = {
     },
     updateToolApprovalSettings: async (settings: ToolApprovalSettings) => {
       return invokeIpcWithResult<void>(TEAM_TOOL_APPROVAL_SETTINGS, settings);
+    },
+    readFileForToolApproval: async (filePath: string) => {
+      return invokeIpcWithResult<ToolApprovalFileContent>(TEAM_TOOL_APPROVAL_READ_FILE, filePath);
     },
   },
   crossTeam: {

@@ -1,6 +1,6 @@
 import { setCurrentMainOp } from '@main/services/infrastructure/EventLoopLagMonitor';
 import { getAppIconPath } from '@main/utils/appIcon';
-import { getAppDataPath } from '@main/utils/pathDecoder';
+import { getAppDataPath, getTeamsBasePath } from '@main/utils/pathDecoder';
 import { stripMarkdown } from '@main/utils/textFormatting';
 import {
   TEAM_ADD_MEMBER,
@@ -48,8 +48,11 @@ import {
   TEAM_SOFT_DELETE_TASK,
   TEAM_START_TASK,
   TEAM_STOP,
+  TEAM_TOOL_APPROVAL_READ_FILE,
   TEAM_TOOL_APPROVAL_RESPOND,
   TEAM_TOOL_APPROVAL_SETTINGS,
+  TEAM_GET_SAVED_REQUEST,
+  TEAM_DELETE_DRAFT,
   TEAM_UPDATE_CONFIG,
   TEAM_UPDATE_KANBAN,
   TEAM_UPDATE_KANBAN_COLUMN_ORDER,
@@ -84,6 +87,8 @@ import {
   isAgentActionMode,
 } from '../services/team/actionModeInstructions';
 import { TeamAttachmentStore } from '../services/team/TeamAttachmentStore';
+import { TeamMembersMetaStore } from '../services/team/TeamMembersMetaStore';
+import { TeamMetaStore } from '../services/team/TeamMetaStore';
 import { buildAddMemberSpawnMessage } from '../services/team/TeamProvisioningService';
 import { TeamTaskAttachmentStore } from '../services/team/TeamTaskAttachmentStore';
 
@@ -141,6 +146,7 @@ import type {
   TeamTask,
   TeamTaskStatus,
   TeamUpdateConfigRequest,
+  ToolApprovalFileContent,
   ToolApprovalSettings,
   UpdateKanbanPatch,
 } from '@shared/types';
@@ -261,6 +267,7 @@ let teamBackupService: TeamBackupService | null = null;
 
 const attachmentStore = new TeamAttachmentStore();
 const taskAttachmentStore = new TeamTaskAttachmentStore();
+const teamMetaStore = new TeamMetaStore();
 
 const ALLOWED_ATTACHMENT_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB per file
@@ -340,8 +347,11 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_GET_TASK_ATTACHMENT, handleGetTaskAttachment);
   ipcMain.handle(TEAM_DELETE_TASK_ATTACHMENT, handleDeleteTaskAttachment);
   ipcMain.handle(TEAM_TOOL_APPROVAL_RESPOND, handleToolApprovalRespond);
+  ipcMain.handle(TEAM_TOOL_APPROVAL_READ_FILE, handleToolApprovalReadFile);
   ipcMain.handle(TEAM_VALIDATE_CLI_ARGS, handleValidateCliArgs);
   ipcMain.handle(TEAM_TOOL_APPROVAL_SETTINGS, handleToolApprovalSettings);
+  ipcMain.handle(TEAM_GET_SAVED_REQUEST, handleGetSavedRequest);
+  ipcMain.handle(TEAM_DELETE_DRAFT, handleDeleteDraft);
   logger.info('Team handlers registered');
 }
 
@@ -398,8 +408,11 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_GET_TASK_ATTACHMENT);
   ipcMain.removeHandler(TEAM_DELETE_TASK_ATTACHMENT);
   ipcMain.removeHandler(TEAM_TOOL_APPROVAL_RESPOND);
+  ipcMain.removeHandler(TEAM_TOOL_APPROVAL_READ_FILE);
   ipcMain.removeHandler(TEAM_VALIDATE_CLI_ARGS);
   ipcMain.removeHandler(TEAM_TOOL_APPROVAL_SETTINGS);
+  ipcMain.removeHandler(TEAM_GET_SAVED_REQUEST);
+  ipcMain.removeHandler(TEAM_DELETE_DRAFT);
 }
 
 function getTeamDataService(): TeamDataService {
@@ -481,6 +494,13 @@ async function handleGetData(
       getTeamProvisioningService().hasProvisioningRun(tn)
     ) {
       return { success: false, error: 'TEAM_PROVISIONING' };
+    }
+    // Draft team: team.meta.json exists but config.json doesn't (provisioning failed before TeamCreate)
+    if (message === `Team not found: ${tn}`) {
+      const meta = await teamMetaStore.getMeta(tn);
+      if (meta) {
+        return { success: false, error: 'TEAM_DRAFT' };
+      }
     }
     logger.error(`[teams:getData] ${message}`);
     return { success: false, error: message };
@@ -905,6 +925,58 @@ async function handleLaunchTeam(
 
   if (payload.model !== undefined && typeof payload.model !== 'string') {
     return { success: false, error: 'model must be a string' };
+  }
+
+  // Detect draft team: team.meta.json exists but config.json doesn't.
+  // This happens when user created team config without launching (launchTeam=false),
+  // or when provisioning failed before TeamCreate could run.
+  // Redirect to createTeam so TeamCreate runs properly.
+  const tn = validatedTeamName.value!;
+  const configPath = path.join(getTeamsBasePath(), tn, 'config.json');
+  let isDraft = false;
+  try {
+    await fs.promises.access(configPath, fs.constants.F_OK);
+  } catch {
+    const meta = await teamMetaStore.getMeta(tn);
+    if (meta) isDraft = true;
+  }
+
+  if (isDraft) {
+    const meta = await teamMetaStore.getMeta(tn);
+    const membersStore = new TeamMembersMetaStore();
+    const members = await membersStore.getMembers(tn);
+
+    const createRequest: TeamCreateRequest = {
+      teamName: tn,
+      displayName: meta?.displayName,
+      description: meta?.description,
+      color: meta?.color,
+      cwd,
+      prompt: typeof payload.prompt === 'string' ? payload.prompt.trim() || undefined : undefined,
+      model: typeof payload.model === 'string' ? payload.model.trim() || undefined : undefined,
+      effort: isValidEffort(payload.effort) ? payload.effort : undefined,
+      limitContext: typeof payload.limitContext === 'boolean' ? payload.limitContext : undefined,
+      skipPermissions:
+        typeof payload.skipPermissions === 'boolean' ? payload.skipPermissions : undefined,
+      worktree:
+        typeof payload.worktree === 'string' ? payload.worktree.trim() || undefined : undefined,
+      extraCliArgs:
+        typeof payload.extraCliArgs === 'string'
+          ? payload.extraCliArgs.trim() || undefined
+          : undefined,
+      members: members.map((m) => ({ name: m.name, role: m.role, workflow: m.workflow })),
+    };
+
+    return wrapTeamHandler('create', () =>
+      getTeamProvisioningService().createTeam(createRequest, (progress) => {
+        try {
+          event.sender.send(TEAM_PROVISIONING_PROGRESS, progress);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.warn(`Failed to emit draft launch provisioning progress: ${message}`);
+        }
+      })
+    );
   }
 
   return wrapTeamHandler('launch', () =>
@@ -2722,4 +2794,138 @@ async function handleToolApprovalSettings(
     };
   }
   return { success: true, data: undefined };
+}
+
+/** Max file size for tool approval diff preview (2MB). */
+const TOOL_APPROVAL_MAX_FILE_SIZE = 2 * 1024 * 1024;
+
+async function handleToolApprovalReadFile(
+  _event: IpcMainInvokeEvent,
+  filePath: unknown
+): Promise<IpcResult<ToolApprovalFileContent>> {
+  if (typeof filePath !== 'string' || filePath.trim().length === 0) {
+    return { success: false, error: 'filePath must be a non-empty string' };
+  }
+  if (!path.isAbsolute(filePath)) {
+    return { success: false, error: 'filePath must be an absolute path' };
+  }
+
+  try {
+    let stats: fs.Stats;
+    try {
+      stats = await fs.promises.stat(filePath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        return {
+          success: true,
+          data: { content: '', exists: false, truncated: false, isBinary: false },
+        };
+      }
+      throw err;
+    }
+
+    if (!stats.isFile()) {
+      return {
+        success: true,
+        data: { content: '', exists: true, truncated: false, isBinary: false, error: 'Not a file' },
+      };
+    }
+
+    const truncated = stats.size > TOOL_APPROVAL_MAX_FILE_SIZE;
+    const readSize = truncated ? TOOL_APPROVAL_MAX_FILE_SIZE : stats.size;
+
+    // Read file (potentially truncated)
+    const fd = await fs.promises.open(filePath, 'r');
+    try {
+      const buffer = Buffer.alloc(readSize);
+      await fd.read(buffer, 0, readSize, 0);
+
+      // Binary detection: check first 8KB for null bytes
+      const checkSize = Math.min(readSize, 8192);
+      for (let i = 0; i < checkSize; i++) {
+        if (buffer[i] === 0) {
+          return {
+            success: true,
+            data: { content: '', exists: true, truncated: false, isBinary: true },
+          };
+        }
+      }
+
+      return {
+        success: true,
+        data: { content: buffer.toString('utf-8'), exists: true, truncated, isBinary: false },
+      };
+    } finally {
+      await fd.close();
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      success: true,
+      data: { content: '', exists: true, truncated: false, isBinary: false, error: msg },
+    };
+  }
+}
+
+async function handleGetSavedRequest(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown
+): Promise<IpcResult<TeamCreateRequest | null>> {
+  const validated = validateTeamName(teamName);
+  if (!validated.valid) {
+    return { success: false, error: validated.error ?? 'Invalid teamName' };
+  }
+  const tn = validated.value!;
+
+  const meta = await teamMetaStore.getMeta(tn);
+  if (!meta) {
+    return { success: true, data: null };
+  }
+
+  const membersStore = new TeamMembersMetaStore();
+  const members = await membersStore.getMembers(tn);
+
+  return {
+    success: true,
+    data: {
+      teamName: tn,
+      displayName: meta.displayName,
+      description: meta.description,
+      color: meta.color,
+      cwd: meta.cwd,
+      prompt: meta.prompt,
+      model: meta.model,
+      effort: meta.effort as TeamCreateRequest['effort'],
+      skipPermissions: meta.skipPermissions,
+      worktree: meta.worktree,
+      extraCliArgs: meta.extraCliArgs,
+      limitContext: meta.limitContext,
+      members: members.map((m) => ({
+        name: m.name,
+        role: m.role,
+        workflow: m.workflow,
+      })),
+    },
+  };
+}
+
+async function handleDeleteDraft(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown
+): Promise<IpcResult<void>> {
+  const validated = validateTeamName(teamName);
+  if (!validated.valid) {
+    return { success: false, error: validated.error ?? 'Invalid teamName' };
+  }
+  return wrapTeamHandler('deleteDraft', async () => {
+    // Only allow deleting draft teams (no config.json)
+    const configPath = path.join(getTeamsBasePath(), validated.value!, 'config.json');
+    try {
+      await fs.promises.access(configPath, fs.constants.F_OK);
+      throw new Error('Cannot delete draft: team has config.json (use deleteTeam instead)');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    await getTeamDataService().permanentlyDeleteTeam(validated.value!);
+  });
 }

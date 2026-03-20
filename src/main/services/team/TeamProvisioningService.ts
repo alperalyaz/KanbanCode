@@ -54,6 +54,7 @@ import { withFileLock } from './fileLock';
 import { withInboxLock } from './inboxLock';
 import { TeamConfigReader } from './TeamConfigReader';
 import { TeamInboxReader } from './TeamInboxReader';
+import { TeamMetaStore } from './TeamMetaStore';
 import { TeamMcpConfigBuilder } from './TeamMcpConfigBuilder';
 import { TeamMembersMetaStore } from './TeamMembersMetaStore';
 import { TeamSentMessagesStore } from './TeamSentMessagesStore';
@@ -908,21 +909,21 @@ ${buildMemberSpawnPrompt(m, displayName, request.teamName, leadName)
     members: request.members,
   });
 
-  return `agent_teams_ui [Agent Team: “${request.teamName}” | Project: “${projectName}” | Lead: “${leadName}”] — team config has been pre-created. Proceed with provisioning.
+  return `agent_teams_ui [Agent Team: “${request.teamName}” | Project: “${projectName}” | Lead: “${leadName}”] — team does NOT exist yet. You must create it.
 
 You are running in a non-interactive CLI session. Do not ask questions. Do everything in a single turn.
 CRITICAL: Execute ALL steps directly yourself in sequence. Do NOT delegate any step to a sub-agent via the Agent tool. The ONLY valid use of the Agent tool is spawning individual teammates in step 2.
-Do NOT call mcp__agent-teams__team_launch, mcp__agent-teams__team_stop, or any other mcp__agent-teams__ runtime tool during provisioning. MCP board tools (task_create, task_set_status, etc.) are allowed only in step 3.
+CRITICAL: For step 1, use the BUILT-IN TeamCreate tool — NOT any mcp__agent-teams__* MCP tool. Do NOT call mcp__agent-teams__team_launch, mcp__agent-teams__team_stop, or any other mcp__agent-teams__ runtime tool during provisioning. MCP board tools (task_create, task_set_status, etc.) are allowed only in step 3.
 You are “${leadName}”, the team lead.
 
-Goal: Provision Claude Code agent team${request.members.length === 0 ? ' (solo — lead only)' : ' with live teammates'}.
-The team config has been pre-created (config.json, members metadata). Proceed with member provisioning.
+Goal: Create and provision a NEW Claude Code agent team${request.members.length === 0 ? ' (solo — lead only)' : ' with live teammates'}.
+The team does NOT exist yet — no config, no state, nothing. Step 1 is MANDATORY.
 ${userPromptBlock}
 ${persistentContext}
 
 Steps (execute in this exact order — do NOT skip any step):
 
-1) The team config has been pre-created. Proceed directly to step 2.
+1) MANDATORY FIRST STEP: Call the BUILT-IN TeamCreate tool (not any MCP tool) with team_name=”${request.teamName}”. This creates the team config and in-memory state. Without this step, teammate spawns will FAIL. Do NOT assume the team already exists.
 
 ${step2Block}
 
@@ -1263,7 +1264,8 @@ export class TeamProvisioningService {
     private readonly inboxReader: TeamInboxReader = new TeamInboxReader(),
     private readonly membersMetaStore: TeamMembersMetaStore = new TeamMembersMetaStore(),
     _sentMessagesStore: TeamSentMessagesStore = new TeamSentMessagesStore(),
-    private readonly mcpConfigBuilder: TeamMcpConfigBuilder = new TeamMcpConfigBuilder()
+    private readonly mcpConfigBuilder: TeamMcpConfigBuilder = new TeamMcpConfigBuilder(),
+    private readonly teamMetaStore: TeamMetaStore = new TeamMetaStore()
   ) {}
 
   setCrossTeamSender(
@@ -2438,6 +2440,10 @@ export class TeamProvisioningService {
         if (silenceMs < STALL_WARNING_THRESHOLD_MS) return;
         if (lastWarningAt > 0 && now - lastWarningAt < STALL_WARNING_REPEAT_MS) return;
 
+        // Don't show stall warnings if CLI has already produced output —
+        // silence between tool calls is normal (e.g. waiting for teammate spawn).
+        if (run.claudeLogLines.length > 0) return;
+
         lastWarningAt = now;
         const silenceSec = Math.round(silenceMs / 1000);
 
@@ -2846,7 +2852,7 @@ export class TeamProvisioningService {
         waitingTasksSince: null,
         provisioningComplete: false,
         isLaunch: false,
-        fsPhase: 'waiting_members',
+        fsPhase: 'waiting_config',
         leadRelayCapture: null,
         activeCrossTeamReplyHints: [],
         leadMsgSeq: 0,
@@ -2905,7 +2911,7 @@ export class TeamProvisioningService {
         '--mcp-config',
         mcpConfigPath,
         '--disallowedTools',
-        'TeamDelete,TodoWrite,TeamCreate',
+        'TeamDelete,TodoWrite',
         // Explicit --permission-mode overrides user's defaultMode in ~/.claude/settings.json
         // (e.g. "acceptEdits") which otherwise takes precedence over CLI flags
         ...(request.skipPermissions !== false
@@ -2917,14 +2923,46 @@ export class TeamProvisioningService {
         ...parseCliArgs(request.extraCliArgs),
       ];
       try {
-        await this.preCreateConfig(request);
+        // Pre-save our meta files before spawn — CLI doesn't touch these.
+        // If provisioning fails before TeamCreate, user can retry without re-entering config.
+        const teamDir = path.join(getTeamsBasePath(), request.teamName);
+        const tasksDir = path.join(getTasksBasePath(), request.teamName);
+        await fs.promises.mkdir(teamDir, { recursive: true });
+        await fs.promises.mkdir(tasksDir, { recursive: true });
+        await this.teamMetaStore.writeMeta(request.teamName, {
+          displayName: request.displayName,
+          description: request.description,
+          color: request.color,
+          cwd: request.cwd,
+          prompt: request.prompt,
+          model: request.model,
+          effort: request.effort,
+          skipPermissions: request.skipPermissions,
+          worktree: request.worktree,
+          extraCliArgs: request.extraCliArgs,
+          limitContext: request.limitContext,
+          createdAt: Date.now(),
+        });
+        await this.membersMetaStore.writeMembers(
+          request.teamName,
+          request.members.map((m) => ({
+            name: m.name.trim(),
+            role: m.role?.trim() || undefined,
+            workflow: m.workflow?.trim() || undefined,
+            agentType: 'general-purpose' as const,
+            color: getMemberColorByName(m.name.trim()),
+            joinedAt: Date.now(),
+          }))
+        );
+
         child = spawnCli(claudePath, spawnArgs, {
           cwd: request.cwd,
           env: { ...shellEnv },
           stdio: ['pipe', 'pipe', 'pipe'],
         });
       } catch (error) {
-        // Clean up pre-saved files (may not exist if preCreateConfig failed partway)
+        // Clean up pre-saved meta files if spawn failed (instant failure, not transient)
+        await this.teamMetaStore.deleteMeta(request.teamName).catch(() => {});
         const teamDir = path.join(getTeamsBasePath(), request.teamName);
         const tasksDir = path.join(getTasksBasePath(), request.teamName);
         await fs.promises.rm(teamDir, { recursive: true, force: true }).catch(() => {});
@@ -2936,7 +2974,6 @@ export class TeamProvisioningService {
 
       updateProgress(run, 'spawning', 'Starting Claude CLI process', {
         pid: child.pid ?? undefined,
-        configReady: true,
       });
       run.onProgress(run.progress);
       run.child = child;
@@ -5124,12 +5161,17 @@ export class TeamProvisioningService {
         const configLead = config.members.find((m) => isLeadAgentType(m?.agentType));
         leadName = configLead?.name?.trim() || 'team-lead';
         // Convert config members (excluding lead) to TeamCreateRequest member format.
-        currentMembers = config.members
+        const configTeammates = config.members
           .filter((m) => !isLeadAgentType(m?.agentType) && m?.name)
           .map((m) => ({
             name: m.name,
             role: m.role ?? undefined,
           }));
+        // When config.members only has the lead (pre-created config without
+        // TeamCreate), fall back to run.request.members for the teammate list.
+        if (configTeammates.length > 0) {
+          currentMembers = configTeammates;
+        }
       } else {
         leadName =
           run.request.members.find((m) => m.role?.toLowerCase().includes('lead'))?.name ||
@@ -5266,6 +5308,8 @@ export class TeamProvisioningService {
       toolName,
       toolInput,
       receivedAt: new Date().toISOString(),
+      teamColor: run.request.color,
+      teamDisplayName: run.request.displayName,
     };
 
     // Check auto-allow rules before prompting user
@@ -5445,7 +5489,8 @@ export class TeamProvisioningService {
     allow: boolean,
     message?: string
   ): Promise<void> {
-    const currentRunId = this.getAliveRunId(teamName);
+    // Look in both provisioning and alive runs — control_requests arrive during provisioning too
+    const currentRunId = this.getTrackedRunId(teamName);
     if (!currentRunId) throw new Error(`No active process for team "${teamName}"`);
     const run = this.runs.get(currentRunId);
     if (!run) throw new Error(`Run not found for team "${teamName}"`);
@@ -5494,13 +5539,25 @@ export class TeamProvisioningService {
         };
 
     const stdin = run.child.stdin;
+    const responseJson = JSON.stringify(response) + '\n';
+    logger.info(
+      `[${teamName}] Writing control_response for ${requestId}: ${allow ? 'allow' : 'deny'}`
+    );
     try {
       await new Promise<void>((resolve, reject) => {
-        stdin.write(JSON.stringify(response) + '\n', (err) => {
+        // Safety timeout — if stdin.write callback is never called (e.g. process died
+        // between the writable check and the write), reject instead of hanging forever.
+        const writeTimeout = setTimeout(() => {
+          reject(new Error(`Timeout writing control_response to stdin (process may have exited)`));
+        }, 5000);
+
+        stdin.write(responseJson, (err) => {
+          clearTimeout(writeTimeout);
           if (err) {
             logger.error(`[${teamName}] Failed to write control_response: ${err.message}`);
             reject(err);
           } else {
+            logger.info(`[${teamName}] control_response written successfully for ${requestId}`);
             resolve();
           }
         });
@@ -5691,6 +5748,9 @@ export class TeamProvisioningService {
       run.detectedSessionId,
       run.request.color
     );
+
+    // Clean up team.meta.json — provisioning succeeded, config.json is now authoritative.
+    await this.teamMetaStore.deleteMeta(run.teamName).catch(() => {});
 
     // Audit: flag any expected member not registered in config.json after provisioning.
     await this.auditMemberSpawnStatuses(run);
@@ -7197,41 +7257,6 @@ export class TeamProvisioningService {
         }
       }
     }
-  }
-
-  /**
-   * Pre-saves team config.json + members-meta.json + tasks/ dir to disk
-   * BEFORE spawning CLI. This guarantees the team persists even if CLI
-   * crashes (e.g. 429 rate limit) before it can call TeamCreate.
-   */
-  private async preCreateConfig(request: TeamCreateRequest): Promise<void> {
-    const teamDir = path.join(getTeamsBasePath(), request.teamName);
-    const tasksDir = path.join(getTasksBasePath(), request.teamName);
-    await fs.promises.mkdir(teamDir, { recursive: true });
-    await fs.promises.mkdir(tasksDir, { recursive: true });
-
-    const config: Record<string, unknown> = {
-      name: request.displayName?.trim() || request.teamName,
-      description: request.description?.trim() || undefined,
-      color: request.color?.trim() || undefined,
-    };
-    if (request.cwd?.trim()) {
-      config.projectPath = request.cwd.trim();
-      config.projectPathHistory = [request.cwd.trim()];
-    }
-    await atomicWriteAsync(path.join(teamDir, 'config.json'), JSON.stringify(config, null, 2));
-
-    const joinedAt = Date.now();
-    await this.membersMetaStore.writeMembers(
-      request.teamName,
-      request.members.map((m) => ({
-        name: m.name.trim(),
-        role: m.role?.trim() || undefined,
-        agentType: 'general-purpose' as const,
-        color: getMemberColorByName(m.name.trim()),
-        joinedAt,
-      }))
-    );
   }
 
   private async persistMembersMeta(teamName: string, request: TeamCreateRequest): Promise<void> {
