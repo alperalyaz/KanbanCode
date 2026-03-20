@@ -112,7 +112,7 @@ const PREFLIGHT_AUTH_MAX_RETRIES = 2;
 const FS_MONITOR_POLL_MS = 2000;
 const TASK_WAIT_FALLBACK_MS = 15_000;
 const STALL_CHECK_INTERVAL_MS = 10_000;
-const STALL_WARNING_THRESHOLD_MS = 45_000;
+const STALL_WARNING_THRESHOLD_MS = 20_000;
 const STALL_WARNING_REPEAT_MS = 30_000;
 const TEAM_JSON_READ_TIMEOUT_MS = 5_000;
 const TEAM_CONFIG_MAX_BYTES = 10 * 1024 * 1024;
@@ -453,7 +453,9 @@ After member_briefing succeeds:
 - If a newly assigned task cannot be started immediately because you are still busy on another task, leave a short task comment on that waiting task right away with the reason and your best ETA, keep it in pending/TODO, and only move it to in_progress with task_start when you truly begin.
 - CRITICAL: If someone comments on your task, you MUST reply on that same task via task_add_comment. Never leave a user/lead/teammate task comment unanswered, even if the reply is only a short acknowledgement or status update. Do NOT treat status changes or direct messages as a substitute for an on-task reply.
 - CRITICAL: If a task gets a new comment and you are going to do additional implementation/fix/follow-up work on that same task, FIRST leave a short task comment saying what you are about to do, THEN move it to in_progress with task_start, THEN do the work, and when finished leave a short result comment and move it to done with task_complete. Never skip this comment -> reopen -> work -> comment -> done cycle.
-- Direct messages to your team lead are only for urgent attention, no-task situations, or when the lead explicitly asked for a direct reply.
+- CRITICAL: When you finish a task, your results (findings, research report, analysis, code changes summary, or any deliverable) MUST be posted as a task comment BEFORE calling task_complete. The task comment is the primary delivery channel — the user reads results on the task board. A SendMessage to the lead is NOT a substitute: direct messages are ephemeral and not visible on the board. If you only SendMessage without a task comment, the user will never see your work.
+- After task_complete, send a notification to your team lead via SendMessage that includes: (a) which task is done (#<displayId>), (b) a brief summary of the outcome/key findings (2-4 sentences — enough to understand the gist without reading the full comment), (c) mention that full details are in the task comment (include the commentId returned by task_add_comment, e.g. "Full report in task comment <commentId>"), (d) what you will do next. Do NOT duplicate the entire results — keep it concise.
+- Beyond task-completion pings, direct messages to your team lead are only for urgent attention, no-task situations, or when the lead explicitly asked for a direct reply.
 - If a task-scoped update is already recorded in a task comment, do NOT send a duplicate SendMessage to the lead with the same content unless you need urgent non-task attention. When skipping a message, stay silent — never output meta-commentary about skipped or already-delivered messages.
 ${buildTeammateAgentBlockReminder()}
 ${actionModeProtocol}`;
@@ -501,7 +503,9 @@ ${actionModeProtocol}
      - If you are the one about to do the implementation/fixes and the owner is missing or someone else, run task_set_owner to yourself immediately before task_start.
      - Only then run task_start when you truly begin.
      - If a task gets a new comment and you are going to do additional implementation/fix/follow-up work on it, FIRST leave a short task comment saying what you are about to do, THEN run task_start, then do the work, and when finished leave a short result comment and run task_complete again. Never skip this comment -> reopen -> work -> comment -> done cycle.
-     - Direct messages to your team lead are only for urgent attention, no-task situations, or when the lead explicitly asked for a direct reply.
+     - CRITICAL: When you finish a task, your results (findings, research report, analysis, code changes summary, or any deliverable) MUST be posted as a task comment BEFORE calling task_complete. The task comment is the primary delivery channel — the user reads results on the task board. A SendMessage to the lead is NOT a substitute: direct messages are ephemeral and not visible on the board. If you only SendMessage without a task comment, the user will never see your work.
+     - After task_complete, send a notification to your team lead via SendMessage that includes: (a) which task is done (#<displayId>), (b) a brief summary of the outcome/key findings (2-4 sentences — enough to understand the gist without reading the full comment), (c) mention that full details are in the task comment (include the commentId returned by task_add_comment, e.g. "Full report in task comment <commentId>"), (d) what you will do next. Do NOT duplicate the entire results — keep it concise.
+     - Beyond task-completion pings, direct messages to your team lead are only for urgent attention, no-task situations, or when the lead explicitly asked for a direct reply.
      - If a task-scoped update is already recorded in a task comment, do NOT send a duplicate SendMessage to the lead with the same content unless you need urgent non-task attention. When skipping a message, stay silent — never output meta-commentary about skipped or already-delivered messages.
      - If you have no tasks, wait for new assignments.`;
 }
@@ -551,6 +555,7 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       `- If you assign work to a teammate who already has another in_progress task, create/keep the newly assigned task in pending/TODO. Do NOT move it to in_progress on their behalf before they actually start.`,
       `- Never bulk-move many tasks at the end of a session — update status incrementally as you work.`,
       `- Record meaningful progress, decisions, and blockers as task comments so context is preserved on the board.`,
+      `- CRITICAL: Task results (findings, reports, analysis, code changes) MUST be posted as task comments — the user reads results on the task board. Direct messages alone are not visible on the board and the user will miss them.`,
       ``,
       `Parallelization guideline (IMPORTANT):`,
       `- If a task is genuinely parallelizable, split it into multiple smaller tasks owned by different members.`,
@@ -958,7 +963,7 @@ function buildLaunchPrompt(
    - BEFORE doing any work on a task: mark it started (in_progress).
    - Immediately SendMessage "user" that you started task #<id> (what you're doing + next step).
    - While working: after each meaningful milestone/decision/blocker, add a task comment on #<id>. If the milestone is user-relevant, also SendMessage "user".
-   - On completion: add a final task comment (what changed + how to verify), mark the task completed, then SendMessage "user" that task #<id> is complete and what you will do next.
+   - On completion: add a final task comment with your full results (findings, report, analysis, code changes summary, or any deliverable), mark the task completed, then SendMessage "user" with a brief summary of the outcome (2-4 sentences) and mention that full details are in the task comment (include the commentId from the task_add_comment response). The task comment is the primary delivery channel — the user reads results on the task board.
    - Do NOT start the next task until the current task is completed (default: one task in_progress at a time).
 
    For this reconnect turn: review the task board snapshot above and output a short summary (1–2 sentences) confirming reconnect is complete and you are ready.`;
@@ -2390,8 +2395,8 @@ export class TeamProvisioningService {
     const label = status ? `API Error ${status}` : 'API Error';
 
     const warningText = snippet
-      ? `**${label} — SDK is retrying**\n\n\`\`\`\n${snippet}\n\`\`\`\n\nОжидаем повторной попытки...`
-      : `**${label} — SDK is retrying**\n\nОжидаем повторной попытки...`;
+      ? `**${label} — SDK is retrying**\n\n\`\`\`\n${snippet}\n\`\`\`\n\nWaiting for retry...`
+      : `**${label} — SDK is retrying**\n\nWaiting for retry...`;
 
     run.provisioningOutputParts.push(warningText);
     run.progress.message = `${label} — SDK retrying...`;
@@ -2434,11 +2439,11 @@ export class TeamProvisioningService {
         lastWarningAt = now;
         const silenceSec = Math.round(silenceMs / 1000);
 
-        run.provisioningOutputParts.push(this.buildStallWarningText(silenceSec));
+        run.provisioningOutputParts.push(this.buildStallWarningText(silenceSec, run));
         const mins = Math.floor(silenceSec / 60);
         const secs = silenceSec % 60;
-        const elapsed = mins > 0 ? `${mins} мин ${secs > 0 ? `${secs} сек` : ''}` : `${secs} сек`;
-        run.progress.message = `CLI не отвечает ${elapsed} — возможен rate limit`;
+        const elapsed = mins > 0 ? `${mins}m ${secs > 0 ? `${secs}s` : ''}` : `${secs}s`;
+        run.progress.message = `CLI not responding for ${elapsed} — possible rate limit`;
         emitLogsProgress(run);
       } catch (err) {
         logger.error(
@@ -2457,40 +2462,45 @@ export class TeamProvisioningService {
     }
   }
 
-  private buildStallWarningText(silenceSec: number): string {
+  private buildStallWarningText(silenceSec: number, run: ProvisioningRun): string {
     const mins = Math.floor(silenceSec / 60);
     const secs = silenceSec % 60;
-    const elapsed = mins > 0 ? `${mins} мин ${secs > 0 ? `${secs} сек` : ''}` : `${secs} сек`;
+    const elapsed = mins > 0 ? `${mins}m ${secs > 0 ? `${secs}s` : ''}` : `${secs}s`;
 
     if (silenceSec < 60) {
       return (
         `---\n\n` +
-        `**Ожидание ответа CLI** (тишина ${elapsed})\n\n` +
-        `Процесс запущен, но пока не выдаёт данных. ` +
-        `Это может быть вызвано задержкой API (rate limit / model cooldown) — ` +
-        `SDK выполняет повторные попытки автоматически.\n\n` +
-        `Ожидаем...`
+        `**Waiting for CLI response** (silent for ${elapsed})\n\n` +
+        `The process is running but not producing output yet. ` +
+        `This may be caused by an API delay (rate limit / model cooldown) — ` +
+        `the SDK retries automatically.\n\n` +
+        `Waiting...`
       );
     }
 
     if (silenceSec < 120) {
       return (
         `---\n\n` +
-        `**Ожидание ответа CLI** (тишина ${elapsed})\n\n` +
-        `Процесс по-прежнему не отвечает. Вероятна задержка из-за rate limiting ` +
-        `(ошибка 429 / model cooldown). SDK автоматически повторяет запрос — ` +
-        `обычно это проходит в течение 1-3 минут.\n\n` +
-        `Можно отменить и попробовать позже, если ожидание затянется.`
+        `**Waiting for CLI response** (silent for ${elapsed})\n\n` +
+        `The process is still not responding. Likely delayed due to rate limiting ` +
+        `(error 429 / model cooldown). The SDK retries the request automatically — ` +
+        `this usually resolves within 1-3 minutes.\n\n` +
+        `You can cancel and try again later if the wait continues.`
       );
     }
 
+    const modelName = run.request.model ?? 'default';
+    const effortLabel = run.request.effort ? ` (effort: ${run.request.effort})` : '';
+
     return (
       `---\n\n` +
-      `**Длительное ожидание CLI** (тишина ${elapsed})\n\n` +
-      `Процесс молчит уже более ${mins} минут. Вероятные причины:\n` +
-      `- Rate limiting / model cooldown (429) — SDK повторяет автоматически\n` +
-      `- Перегрузка API сервера\n\n` +
-      `Рекомендуем отменить и попробовать через несколько минут.`
+      `**Extended CLI wait** (silent for ${elapsed})\n\n` +
+      `Model **${modelName}**${effortLabel} appears to be under heavy load and is not responding. ` +
+      `Most likely this is a 429 error (rate limit / model cooldown).\n\n` +
+      `The process has been silent for over ${mins} minutes. Possible causes:\n` +
+      `- Rate limiting / model cooldown (429) — SDK retries automatically\n` +
+      `- API server overload for this model\n\n` +
+      `Consider canceling and trying with a different model.`
     );
   }
 
@@ -5620,7 +5630,7 @@ export class TeamProvisioningService {
               `- BEFORE doing any work on a task: mark it started (in_progress).`,
               `- Immediately SendMessage "user" that you started task #<id> (what you're doing + next step).`,
               `- While working: after each meaningful milestone/decision/blocker, add a task comment on #<id>. If user-relevant, also SendMessage "user".`,
-              `- On completion: add a final task comment (what changed + how to verify), mark the task completed, then SendMessage "user" that task #<id> is complete and what you will do next.`,
+              `- On completion: add a final task comment with your full results (findings, report, analysis, code changes summary, or any deliverable), then mark the task completed, then SendMessage "user" with a brief summary of the outcome (2-4 sentences) and mention that full details are in the task comment (include the commentId from the task_add_comment response). The task comment is the primary delivery channel — the user reads results on the task board.`,
               `- Do NOT start the next task until the current task is completed (default: one task in_progress at a time).`,
               board.trim(),
             ]

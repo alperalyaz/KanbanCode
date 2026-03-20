@@ -13,6 +13,8 @@ interface StatusBlockProps {
   tasks: TeamTaskWithKanban[];
   messages: InboxMessage[];
   pendingRepliesByMember: Record<string, number>;
+  /** Where the Messages panel is rendered — 'sidebar' hides "In progress" (already visible in MemberList). */
+  position?: 'sidebar' | 'inline';
   onMemberClick?: (member: ResolvedTeamMember) => void;
   onTaskClick?: (task: TeamTaskWithKanban) => void;
 }
@@ -28,6 +30,7 @@ export const StatusBlock = ({
   tasks,
   messages,
   pendingRepliesByMember,
+  position,
   onMemberClick,
   onTaskClick,
 }: StatusBlockProps): React.JSX.Element | null => {
@@ -92,6 +95,7 @@ export const StatusBlock = ({
           <ActiveTasksBlock
             members={members}
             tasks={tasks}
+            defaultCollapsed={position === 'sidebar'}
             onMemberClick={onMemberClick}
             onTaskClick={onTaskClick}
           />

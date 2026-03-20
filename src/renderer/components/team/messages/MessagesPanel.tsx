@@ -337,6 +337,7 @@ export const MessagesPanel = memo(function MessagesPanel({
         tasks={tasks}
         messages={messages}
         pendingRepliesByMember={pendingRepliesByMember}
+        position="inline"
         onMemberClick={onMemberClick}
         onTaskClick={onTaskClick}
       />
@@ -514,9 +515,10 @@ export const MessagesPanel = memo(function MessagesPanel({
               tasks={tasks}
               messages={messages}
               pendingRepliesByMember={pendingRepliesByMember}
+              position="sidebar"
               onMemberClick={onMemberClick}
               onTaskClick={onTaskClick}
-            />
+            />{' '}
           </div>
           <ActivityTimeline
             messages={filteredMessages}

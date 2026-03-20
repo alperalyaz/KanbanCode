@@ -48,10 +48,6 @@ export function useTiptapEditor({
     editable,
     shouldRerenderOnTransaction: false, // v3 performance — toolbar использует useEditorState
     autofocus: autoFocus ? 'end' : false,
-    enableContentCheck: true,
-    onContentError: ({ error }) => {
-      console.error('[TiptapEditor] Content error:', error);
-    },
     onUpdate: ({ editor: e }) => {
       if (isProgrammaticUpdate.current) return;
       try {

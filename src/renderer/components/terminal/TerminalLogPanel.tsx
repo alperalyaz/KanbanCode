@@ -73,7 +73,8 @@ export const TerminalLogPanel = ({
     if (!term) return;
 
     for (let i = writtenRef.current; i < chunks.length; i++) {
-      term.write(chunks[i]);
+      // xterm requires \r\n for proper line breaks; normalize bare \n from process output
+      term.write(chunks[i].replace(/\r?\n/g, '\r\n'));
     }
     writtenRef.current = chunks.length;
   }, [chunks]);

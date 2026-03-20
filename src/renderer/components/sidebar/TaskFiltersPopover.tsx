@@ -1,10 +1,23 @@
+import { useEffect, useState } from 'react';
+
 import { Button } from '@renderer/components/ui/button';
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import { Combobox } from '@renderer/components/ui/combobox';
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
 import { Filter } from 'lucide-react';
 
-import { STATUS_OPTIONS, type TaskFiltersState, type TaskStatusFilterId } from './taskFiltersState';
+import {
+  STATUS_OPTIONS,
+  type ReadFilter,
+  type TaskFiltersState,
+  type TaskStatusFilterId,
+} from './taskFiltersState';
+
+const READ_FILTER_OPTIONS: { value: ReadFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'unread', label: 'Unread' },
+  { value: 'read', label: 'Read' },
+];
 
 interface TaskFiltersPopoverProps {
   open: boolean;
@@ -23,28 +36,39 @@ export const TaskFiltersPopover = ({
   onFiltersChange,
   onApply,
 }: TaskFiltersPopoverProps): React.JSX.Element => {
+  // Draft state — all changes accumulate here and only commit on Apply
+  const [draft, setDraft] = useState<TaskFiltersState>(filters);
+
+  // Reset draft when popover opens
+  useEffect(() => {
+    if (open) {
+      setDraft(filters);
+    }
+  }, [open, filters]);
+
   const allSelected =
-    STATUS_OPTIONS.length > 0 && STATUS_OPTIONS.every((opt) => filters.statusIds.has(opt.id));
+    STATUS_OPTIONS.length > 0 && STATUS_OPTIONS.every((opt) => draft.statusIds.has(opt.id));
 
   const handleSelectAll = (): void => {
     if (allSelected) {
-      onFiltersChange({ ...filters, statusIds: new Set() });
+      setDraft({ ...draft, statusIds: new Set() });
     } else {
-      onFiltersChange({
-        ...filters,
+      setDraft({
+        ...draft,
         statusIds: new Set(STATUS_OPTIONS.map((o) => o.id)),
       });
     }
   };
 
   const toggleStatus = (id: TaskStatusFilterId): void => {
-    const next = new Set(filters.statusIds);
+    const next = new Set(draft.statusIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
-    onFiltersChange({ ...filters, statusIds: next });
+    setDraft({ ...draft, statusIds: next });
   };
 
   const handleApply = (): void => {
+    onFiltersChange(draft);
     onApply();
     onOpenChange(false);
   };
@@ -79,7 +103,7 @@ export const TaskFiltersPopover = ({
                   className="flex cursor-pointer items-center gap-2 text-[12px] text-text"
                 >
                   <Checkbox
-                    checked={filters.statusIds.has(opt.id)}
+                    checked={draft.statusIds.has(opt.id)}
                     onCheckedChange={() => toggleStatus(opt.id)}
                     style={{ '--color-accent': opt.color } as React.CSSProperties}
                   />
@@ -100,10 +124,10 @@ export const TaskFiltersPopover = ({
                 { value: '__all__', label: 'All teams' },
                 ...teams.map((t) => ({ value: t.teamName, label: t.displayName })),
               ]}
-              value={filters.teamName ?? '__all__'}
+              value={draft.teamName ?? '__all__'}
               onValueChange={(v) =>
-                onFiltersChange({
-                  ...filters,
+                setDraft({
+                  ...draft,
                   teamName: v === '__all__' ? null : v,
                 })
               }
@@ -114,16 +138,33 @@ export const TaskFiltersPopover = ({
             />
           </div>
 
-          {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- Checkbox is a custom component wrapping native input */}
-          <label className="flex cursor-pointer items-center gap-2 text-[12px] text-text">
-            <Checkbox
-              checked={filters.unreadOnly}
-              onCheckedChange={(checked) =>
-                onFiltersChange({ ...filters, unreadOnly: checked === true })
-              }
-            />
-            Tasks with unread comments
-          </label>
+          <div>
+            <span className="mb-1.5 block text-[11px] font-semibold text-text-secondary">
+              Comments
+            </span>
+            <div className="flex rounded-md border border-[var(--color-border)]">
+              {READ_FILTER_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`flex-1 px-2 py-1 text-[11px] font-medium transition-colors first:rounded-l-[5px] last:rounded-r-[5px] ${
+                    draft.readFilter === opt.value
+                      ? 'bg-[var(--color-surface-raised)] text-text'
+                      : 'text-text-muted hover:text-text-secondary'
+                  }`}
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      readFilter: opt.value,
+                      unreadOnly: opt.value === 'unread',
+                    })
+                  }
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <Button
             type="button"

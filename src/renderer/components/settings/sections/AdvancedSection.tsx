@@ -96,10 +96,10 @@ export const AdvancedSection = ({
   return (
     <div>
       <SettingsSectionHeader title="Configuration" />
-      <div className="space-y-2 py-2">
+      <div className="flex flex-wrap gap-2 py-2">
         <button
           onClick={() => setConfigEditorOpen(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-medium transition-all duration-150 hover:bg-white/5"
+          className="flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-all duration-150 hover:bg-white/5"
           style={{
             borderColor: 'var(--color-border)',
             color: 'var(--color-text)',
@@ -111,7 +111,7 @@ export const AdvancedSection = ({
         <button
           onClick={onResetToDefaults}
           disabled={saving}
-          className={`flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-medium transition-all duration-150 ${saving ? 'cursor-not-allowed opacity-50' : ''} `}
+          className={`flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-all duration-150 hover:bg-white/5 ${saving ? 'cursor-not-allowed opacity-50' : ''}`}
           style={{
             borderColor: 'var(--color-border)',
             color: 'var(--color-text-secondary)',
@@ -123,7 +123,7 @@ export const AdvancedSection = ({
         <button
           onClick={onExportConfig}
           disabled={saving}
-          className={`flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-medium transition-all duration-150 ${saving ? 'cursor-not-allowed opacity-50' : ''} `}
+          className={`flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-all duration-150 hover:bg-white/5 ${saving ? 'cursor-not-allowed opacity-50' : ''}`}
           style={{
             borderColor: 'var(--color-border)',
             color: 'var(--color-text-secondary)',
@@ -135,7 +135,7 @@ export const AdvancedSection = ({
         <button
           onClick={onImportConfig}
           disabled={saving}
-          className={`flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-medium transition-all duration-150 ${saving ? 'cursor-not-allowed opacity-50' : ''} `}
+          className={`flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-all duration-150 hover:bg-white/5 ${saving ? 'cursor-not-allowed opacity-50' : ''}`}
           style={{
             borderColor: 'var(--color-border)',
             color: 'var(--color-text-secondary)',
@@ -147,7 +147,7 @@ export const AdvancedSection = ({
         {isElectron && (
           <button
             onClick={onOpenInEditor}
-            className="flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-medium transition-all duration-150"
+            className="flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-all duration-150 hover:bg-white/5"
             style={{
               borderColor: 'var(--color-border)',
               color: 'var(--color-text-secondary)',

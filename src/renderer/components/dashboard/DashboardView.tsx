@@ -7,7 +7,7 @@
  * - Border-first project cards with minimal backgrounds
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { api } from '@renderer/api';
 import { Button } from '@renderer/components/ui/button';
@@ -44,6 +44,7 @@ interface CommandSearchProps {
 
 const CommandSearch = ({ value, onChange }: Readonly<CommandSearchProps>): React.JSX.Element => {
   const [isFocused, setIsFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const { openCommandPalette, selectedProjectId } = useStore(
     useShallow((s) => ({
       openCommandPalette: s.openCommandPalette,
@@ -64,6 +65,21 @@ const CommandSearch = ({ value, onChange }: Readonly<CommandSearchProps>): React
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [openCommandPalette]);
 
+  // Focus search when the dashboard mounts (packaged Electron can skip native autoFocus).
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) {
+      return;
+    }
+    el.focus({ preventScroll: true });
+    const t = window.setTimeout(() => {
+      if (document.activeElement !== el) {
+        el.focus({ preventScroll: true });
+      }
+    }, 50);
+    return () => window.clearTimeout(t);
+  }, []);
+
   return (
     <div className="relative w-full">
       {/* Search container with glow effect on focus */}
@@ -76,6 +92,7 @@ const CommandSearch = ({ value, onChange }: Readonly<CommandSearchProps>): React
       >
         <Search className="size-4 shrink-0 text-text-muted" />
         <input
+          ref={inputRef}
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}

@@ -96,7 +96,7 @@ export const Sidebar = (): React.JSX.Element => {
       }}
     >
       <div
-        className="flex min-w-0 flex-1 flex-col overflow-hidden pl-2"
+        className="flex min-w-0 flex-1 flex-col overflow-hidden"
         style={{
           width: '100%',
           minWidth: sidebarCollapsed ? 0 : width,

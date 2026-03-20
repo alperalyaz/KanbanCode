@@ -147,7 +147,7 @@ export const SidebarTaskItem = ({
   return (
     <button
       type="button"
-      className={`flex w-full cursor-pointer flex-col justify-center border-b px-2 py-1.5 text-left transition-colors hover:bg-surface-raised ${task.teamDeleted ? 'opacity-50' : ''}`}
+      className={`flex w-full cursor-pointer flex-col justify-center border-b px-2 py-1.5 text-left transition-colors hover:bg-surface-raised ${unreadCount > 0 ? 'bg-blue-500/[0.03]' : ''} ${task.teamDeleted ? 'opacity-50' : ''}`}
       style={{ borderColor: 'var(--color-border)' }}
       onClick={() => {
         if (!isRenaming) {
@@ -200,6 +200,14 @@ export const SidebarTaskItem = ({
                 style={{ color: 'var(--color-text-muted)' }}
               >
                 <StatusIcon className={`mr-1.5 inline-block size-3 align-[-1px] ${cfg.color}`} />
+                {unreadCount > 0 &&
+                  (unreadCount === 1 ? (
+                    <span className="mr-1 inline-block size-1.5 rounded-full bg-blue-400 align-middle" />
+                  ) : (
+                    <span className="mr-1 inline-flex size-3.5 items-center justify-center rounded-full bg-blue-500 align-middle text-[8px] font-bold leading-none text-white">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  ))}
                 {displaySubject}
                 {task.reviewState === 'needsFix' && (
                   <span
@@ -207,12 +215,6 @@ export const SidebarTaskItem = ({
                   >
                     {REVIEW_STATE_DISPLAY.needsFix.label}
                   </span>
-                )}
-                {unreadCount > 0 && (
-                  <span
-                    className="ml-1.5 inline-block size-1.5 rounded-full bg-blue-400 align-middle"
-                    title={`${unreadCount} unread`}
-                  />
                 )}
               </span>
             </TooltipTrigger>

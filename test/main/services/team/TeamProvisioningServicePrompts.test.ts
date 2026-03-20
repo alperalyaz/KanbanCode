@@ -246,7 +246,7 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
       'leave a short task comment on that waiting task right away with the reason and your best ETA, keep it in pending/TODO'
     );
     expect(prompt).toContain(
-      'Direct messages to your team lead are only for urgent attention, no-task situations, or when the lead explicitly asked for a direct reply.'
+      'Beyond task-completion pings, direct messages to your team lead are only for urgent attention, no-task situations, or when the lead explicitly asked for a direct reply.'
     );
     expect(prompt).toContain(
       'do NOT send a duplicate SendMessage to the lead with the same content unless you need urgent non-task attention.'

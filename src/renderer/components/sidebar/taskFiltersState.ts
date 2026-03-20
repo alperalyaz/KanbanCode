@@ -20,16 +20,21 @@ export const STATUS_OPTIONS: { id: TaskStatusFilterId; label: string; color: str
   { id: 'approved', label: 'APPROVED', color: '#16a34a' },
 ];
 
+export type ReadFilter = 'all' | 'unread' | 'read';
+
 export interface TaskFiltersState {
   statusIds: Set<TaskStatusFilterId>;
   teamName: string | null;
+  /** @deprecated Use readFilter instead */
   unreadOnly: boolean;
+  readFilter: ReadFilter;
 }
 
 export const defaultTaskFiltersState = (): TaskFiltersState => ({
   statusIds: new Set(STATUS_OPTIONS.map((o) => o.id)),
   teamName: null,
   unreadOnly: false,
+  readFilter: 'all',
 });
 
 export function taskMatchesStatus(

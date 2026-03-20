@@ -1244,14 +1244,24 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
                 )}
               >
                 {data.config.projectPath && (
-                  <span
-                    className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]"
-                    title={data.config.projectPath}
-                  >
+                  <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]">
                     <FolderOpen size={11} className="shrink-0 text-[var(--color-text-muted)]" />
-                    <span className="max-w-60 truncate font-mono">
-                      {formatProjectPath(data.config.projectPath)}
-                    </span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="max-w-60 truncate font-mono">
+                          {data.config.projectPath
+                            .replace(/\\/g, '/')
+                            .split('/')
+                            .filter(Boolean)
+                            .pop() ?? data.config.projectPath}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <span className="font-mono text-xs">
+                          {formatProjectPath(data.config.projectPath)}
+                        </span>
+                      </TooltipContent>
+                    </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button

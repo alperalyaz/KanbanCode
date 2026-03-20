@@ -110,6 +110,47 @@ const ErrorDisplay = ({
 };
 
 // =============================================================================
+// CLI checking spinner with delayed hint
+// =============================================================================
+
+const SLOW_CHECK_DELAY_MS = 5_000;
+
+const CliCheckingSpinner = ({
+  styles,
+}: {
+  styles: { border: string; bg: string };
+}): React.JSX.Element => {
+  const [showHint, setShowHint] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowHint(true), SLOW_CHECK_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div
+      className={`mb-6 flex items-center gap-3 rounded-lg border-l-4 px-4 py-3 ${BANNER_MIN_H}`}
+      style={{ borderColor: styles.border, backgroundColor: styles.bg }}
+    >
+      <Loader2
+        className="size-4 shrink-0 animate-spin"
+        style={{ color: 'var(--color-text-muted)' }}
+      />
+      <div>
+        <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+          Checking Claude CLI...
+        </span>
+        {showHint && (
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--color-text-muted)', opacity: 0.7 }}>
+            First check may take up to 30 seconds
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// =============================================================================
 // Installed banner (extracted sub-component)
 // =============================================================================
 
@@ -338,20 +379,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     }
 
     // Loading state: show spinner only while an actual request is in-flight.
-    return (
-      <div
-        className={`mb-6 flex items-center gap-3 rounded-lg border-l-4 px-4 py-3 ${BANNER_MIN_H}`}
-        style={{ borderColor: styles.border, backgroundColor: styles.bg }}
-      >
-        <Loader2
-          className="size-4 shrink-0 animate-spin"
-          style={{ color: 'var(--color-text-muted)' }}
-        />
-        <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-          Checking Claude CLI...
-        </span>
-      </div>
-    );
+    return <CliCheckingSpinner styles={styles} />;
   }
 
   // ── Downloading ────────────────────────────────────────────────────────

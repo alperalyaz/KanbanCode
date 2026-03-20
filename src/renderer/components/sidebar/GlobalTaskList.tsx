@@ -67,12 +67,13 @@ function saveGroupingMode(mode: TaskGroupingMode): void {
   }
 }
 
-export type TaskSortMode = 'time' | 'project' | 'team';
+export type TaskSortMode = 'time' | 'project' | 'team' | 'unread';
 
 const TASK_SORT_STORAGE_KEY = 'sidebarTasksSort';
 
 const SORT_OPTIONS: { id: TaskSortMode; label: string }[] = [
   { id: 'time', label: 'By time' },
+  { id: 'unread', label: 'By unread' },
   { id: 'project', label: 'By project' },
   { id: 'team', label: 'By team' },
 ];
@@ -80,7 +81,7 @@ const SORT_OPTIONS: { id: TaskSortMode; label: string }[] = [
 function loadSortMode(): TaskSortMode {
   try {
     const v = localStorage.getItem(TASK_SORT_STORAGE_KEY);
-    if (v === 'time' || v === 'project' || v === 'team') return v;
+    if (v === 'time' || v === 'project' || v === 'team' || v === 'unread') return v;
   } catch {
     /* ignore */
   }
@@ -95,11 +96,22 @@ function saveSortMode(mode: TaskSortMode): void {
   }
 }
 
-function applySortMode(tasks: GlobalTask[], mode: TaskSortMode): GlobalTask[] {
+function applySortMode(
+  tasks: GlobalTask[],
+  mode: TaskSortMode,
+  readState?: ReturnType<typeof useReadStateSnapshot>
+): GlobalTask[] {
   const sorted = [...tasks];
   switch (mode) {
     case 'time':
       return sortTasksByFreshness(sorted);
+    case 'unread':
+      return sorted.sort((a, b) => {
+        const ua = readState ? getTaskUnreadCount(readState, a.teamName, a.id, a.comments) : 0;
+        const ub = readState ? getTaskUnreadCount(readState, b.teamName, b.id, b.comments) : 0;
+        if (ub !== ua) return ub - ua;
+        return (b.updatedAt ?? b.createdAt ?? '').localeCompare(a.updatedAt ?? a.createdAt ?? '');
+      });
     case 'project':
       return sorted.sort((a, b) => {
         const pa = a.projectPath ?? '';
@@ -324,9 +336,13 @@ export const GlobalTaskList = ({
     if (filters.teamName) {
       result = result.filter((t) => t.teamName === filters.teamName);
     }
-    if (filters.unreadOnly) {
+    if (filters.readFilter === 'unread') {
       result = result.filter(
         (t) => getTaskUnreadCount(readState, t.teamName, t.id, t.comments) > 0
+      );
+    } else if (filters.readFilter === 'read') {
+      result = result.filter(
+        (t) => getTaskUnreadCount(readState, t.teamName, t.id, t.comments) === 0
       );
     }
     result = applySearch(result, searchQuery);
@@ -342,7 +358,7 @@ export const GlobalTaskList = ({
     selectedProjectPath,
     filters.statusIds,
     filters.teamName,
-    filters.unreadOnly,
+    filters.readFilter,
     searchQuery,
     readState,
     showArchived,
@@ -372,7 +388,10 @@ export const GlobalTaskList = ({
     [filtered, taskLocalState]
   );
 
-  const sortedFlat = useMemo(() => applySortMode(normalTasks, sortMode), [normalTasks, sortMode]);
+  const sortedFlat = useMemo(
+    () => applySortMode(normalTasks, sortMode, readState),
+    [normalTasks, sortMode, readState]
+  );
   const grouped = useMemo(() => groupTasksByDate(normalTasks), [normalTasks]);
   const categories = useMemo(() => getNonEmptyTaskCategories(grouped), [grouped]);
   const projectGroups = useMemo(() => groupTasksByProject(normalTasks), [normalTasks]);
