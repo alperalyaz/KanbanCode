@@ -7,8 +7,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui
 import { Filter } from 'lucide-react';
 
 import {
-  STATUS_OPTIONS,
   type ReadFilter,
+  STATUS_OPTIONS,
   type TaskFiltersState,
   type TaskStatusFilterId,
 } from './taskFiltersState';
