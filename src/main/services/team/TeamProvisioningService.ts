@@ -908,21 +908,21 @@ ${buildMemberSpawnPrompt(m, displayName, request.teamName, leadName)
     members: request.members,
   });
 
-  return `agent_teams_ui [Agent Team: “${request.teamName}” | Project: “${projectName}” | Lead: “${leadName}”] — team does NOT exist yet. You must create it.
+  return `agent_teams_ui [Agent Team: “${request.teamName}” | Project: “${projectName}” | Lead: “${leadName}”] — team config has been pre-created. Proceed with provisioning.
 
 You are running in a non-interactive CLI session. Do not ask questions. Do everything in a single turn.
 CRITICAL: Execute ALL steps directly yourself in sequence. Do NOT delegate any step to a sub-agent via the Agent tool. The ONLY valid use of the Agent tool is spawning individual teammates in step 2.
-CRITICAL: For step 1, use the BUILT-IN TeamCreate tool — NOT any mcp__agent-teams__* MCP tool. Do NOT call mcp__agent-teams__team_launch, mcp__agent-teams__team_stop, or any other mcp__agent-teams__ runtime tool during provisioning. MCP board tools (task_create, task_set_status, etc.) are allowed only in step 3.
+Do NOT call mcp__agent-teams__team_launch, mcp__agent-teams__team_stop, or any other mcp__agent-teams__ runtime tool during provisioning. MCP board tools (task_create, task_set_status, etc.) are allowed only in step 3.
 You are “${leadName}”, the team lead.
 
-Goal: Create and provision a NEW Claude Code agent team${request.members.length === 0 ? ' (solo — lead only)' : ' with live teammates'}.
-The team does NOT exist yet — no config, no state, nothing. Step 1 is MANDATORY.
+Goal: Provision Claude Code agent team${request.members.length === 0 ? ' (solo — lead only)' : ' with live teammates'}.
+The team config has been pre-created (config.json, members metadata). Proceed with member provisioning.
 ${userPromptBlock}
 ${persistentContext}
 
 Steps (execute in this exact order — do NOT skip any step):
 
-1) MANDATORY FIRST STEP: Call the BUILT-IN TeamCreate tool (not any MCP tool) with team_name=”${request.teamName}”. This creates the team config and in-memory state. Without this step, teammate spawns will FAIL. Do NOT assume the team already exists.
+1) The team config has been pre-created. Proceed directly to step 2.
 
 ${step2Block}
 
@@ -2846,7 +2846,7 @@ export class TeamProvisioningService {
         waitingTasksSince: null,
         provisioningComplete: false,
         isLaunch: false,
-        fsPhase: 'waiting_config',
+        fsPhase: 'waiting_members',
         leadRelayCapture: null,
         activeCrossTeamReplyHints: [],
         leadMsgSeq: 0,
@@ -2905,7 +2905,7 @@ export class TeamProvisioningService {
         '--mcp-config',
         mcpConfigPath,
         '--disallowedTools',
-        'TeamDelete,TodoWrite',
+        'TeamDelete,TodoWrite,TeamCreate',
         // Explicit --permission-mode overrides user's defaultMode in ~/.claude/settings.json
         // (e.g. "acceptEdits") which otherwise takes precedence over CLI flags
         ...(request.skipPermissions !== false
@@ -2917,12 +2917,18 @@ export class TeamProvisioningService {
         ...parseCliArgs(request.extraCliArgs),
       ];
       try {
+        await this.preCreateConfig(request);
         child = spawnCli(claudePath, spawnArgs, {
           cwd: request.cwd,
           env: { ...shellEnv },
           stdio: ['pipe', 'pipe', 'pipe'],
         });
       } catch (error) {
+        // Clean up pre-saved files (may not exist if preCreateConfig failed partway)
+        const teamDir = path.join(getTeamsBasePath(), request.teamName);
+        const tasksDir = path.join(getTasksBasePath(), request.teamName);
+        await fs.promises.rm(teamDir, { recursive: true, force: true }).catch(() => {});
+        await fs.promises.rm(tasksDir, { recursive: true, force: true }).catch(() => {});
         this.runs.delete(runId);
         this.provisioningRunByTeam.delete(request.teamName);
         throw error;
@@ -2930,6 +2936,7 @@ export class TeamProvisioningService {
 
       updateProgress(run, 'spawning', 'Starting Claude CLI process', {
         pid: child.pid ?? undefined,
+        configReady: true,
       });
       run.onProgress(run.progress);
       run.child = child;
@@ -7190,6 +7197,41 @@ export class TeamProvisioningService {
         }
       }
     }
+  }
+
+  /**
+   * Pre-saves team config.json + members-meta.json + tasks/ dir to disk
+   * BEFORE spawning CLI. This guarantees the team persists even if CLI
+   * crashes (e.g. 429 rate limit) before it can call TeamCreate.
+   */
+  private async preCreateConfig(request: TeamCreateRequest): Promise<void> {
+    const teamDir = path.join(getTeamsBasePath(), request.teamName);
+    const tasksDir = path.join(getTasksBasePath(), request.teamName);
+    await fs.promises.mkdir(teamDir, { recursive: true });
+    await fs.promises.mkdir(tasksDir, { recursive: true });
+
+    const config: Record<string, unknown> = {
+      name: request.displayName?.trim() || request.teamName,
+      description: request.description?.trim() || undefined,
+      color: request.color?.trim() || undefined,
+    };
+    if (request.cwd?.trim()) {
+      config.projectPath = request.cwd.trim();
+      config.projectPathHistory = [request.cwd.trim()];
+    }
+    await atomicWriteAsync(path.join(teamDir, 'config.json'), JSON.stringify(config, null, 2));
+
+    const joinedAt = Date.now();
+    await this.membersMetaStore.writeMembers(
+      request.teamName,
+      request.members.map((m) => ({
+        name: m.name.trim(),
+        role: m.role?.trim() || undefined,
+        agentType: 'general-purpose' as const,
+        color: getMemberColorByName(m.name.trim()),
+        joinedAt,
+      }))
+    );
   }
 
   private async persistMembersMeta(teamName: string, request: TeamCreateRequest): Promise<void> {
