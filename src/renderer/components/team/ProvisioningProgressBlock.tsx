@@ -7,15 +7,16 @@ import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import { MarkdownViewer } from '../chat/viewers/MarkdownViewer';
 
 import { CliLogsRichView } from './CliLogsRichView';
-import { STEP_LABELS, STEP_ORDER } from './provisioningSteps';
+import { DISPLAY_STEPS } from './provisioningSteps';
 import { StepProgressBar } from './StepProgressBar';
 
 import type { StepProgressBarStep } from './StepProgressBar';
 
-/** Pre-built step definitions for the provisioning stepper (excludes 'ready') */
-const PROVISIONING_STEPS: StepProgressBarStep[] = STEP_ORDER.filter((s) => s !== 'ready').map(
-  (s) => ({ key: s, label: STEP_LABELS[s] })
-);
+/** Pre-built step definitions for the provisioning stepper. */
+const PROVISIONING_STEPS: StepProgressBarStep[] = DISPLAY_STEPS.map((s) => ({
+  key: s.key,
+  label: s.label,
+}));
 
 export interface ProvisioningProgressBlockProps {
   /** Title above the steps, e.g. "Launching team" */
@@ -26,7 +27,7 @@ export interface ProvisioningProgressBlockProps {
   tone?: 'default' | 'error';
   /** Whether Live output is expanded by default */
   defaultLiveOutputOpen?: boolean;
-  /** Index of the current step in STEP_ORDER (0-based), or -1 if unknown */
+  /** Display step index (0-3 for active steps, 4 for ready/all done, -1 for terminal) */
   currentStepIndex: number;
   /** Show spinner next to title */
   loading?: boolean;
@@ -155,15 +156,23 @@ export const ProvisioningProgressBlock = ({
 
   // Open CLI logs while loading, collapse when done (unless error).
   const prevLoadingRef = useRef(loading);
+  const hadLogsRef = useRef(Boolean(cliLogsTail));
   useEffect(() => {
-    if (!isError && cliLogsTail) {
-      if (loading && !prevLoadingRef.current) {
-        // Started loading → open
+    if (!isError) {
+      const hasLogs = Boolean(cliLogsTail);
+
+      if (loading && hasLogs && !hadLogsRef.current) {
+        // Logs just appeared while loading → open
+        setLogsOpen(true);
+      } else if (loading && !prevLoadingRef.current && hasLogs) {
+        // Started loading with logs already present → open
         setLogsOpen(true);
       } else if (!loading && prevLoadingRef.current) {
         // Finished loading → collapse
         setLogsOpen(false);
       }
+
+      hadLogsRef.current = hasLogs;
     }
     prevLoadingRef.current = loading;
   }, [loading, cliLogsTail, isError]);

@@ -442,7 +442,7 @@ describe('teamSlice actions', () => {
         store.getState().onProvisioningProgress({
           runId: 'run-real',
           teamName: 'my-team',
-          state: 'monitoring',
+          state: 'assembling',
           message: 'Real run',
           startedAt: '2026-03-12T10:00:01.000Z',
           updatedAt: '2026-03-12T10:00:01.000Z',
@@ -454,7 +454,7 @@ describe('teamSlice actions', () => {
       expect(store.getState().provisioningRuns['run-real']).toEqual(
         expect.objectContaining({
           runId: 'run-real',
-          state: 'monitoring',
+          state: 'assembling',
         })
       );
     });
@@ -513,7 +513,7 @@ describe('teamSlice actions', () => {
       store.getState().onProvisioningProgress({
         runId: 'pending:my-team:1',
         teamName: 'my-team',
-        state: 'monitoring',
+        state: 'assembling',
         message: 'Late zombie progress',
         startedAt: '2026-03-12T10:00:00.000Z',
         updatedAt: '2026-03-12T10:00:02.000Z',
@@ -576,7 +576,7 @@ describe('teamSlice actions', () => {
           'run-current': {
             runId: 'run-current',
             teamName: 'my-team',
-            state: 'monitoring',
+            state: 'assembling',
             message: 'Current run',
             startedAt: '2026-03-12T10:00:00.000Z',
             updatedAt: '2026-03-12T10:00:00.000Z',
@@ -615,7 +615,7 @@ describe('teamSlice actions', () => {
       store.getState().onProvisioningProgress({
         runId: 'run-current',
         teamName: 'my-team',
-        state: 'monitoring',
+        state: 'assembling',
         message: 'Current run',
         startedAt,
         updatedAt: startedAt,

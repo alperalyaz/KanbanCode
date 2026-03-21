@@ -125,8 +125,8 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       progress: {
         runId: 'run-1',
         teamName: 'team-alpha',
-        state: 'monitoring',
-        message: 'Monitoring',
+        state: 'assembling',
+        message: 'Assembling',
         startedAt: '2026-03-12T10:00:00.000Z',
         updatedAt: '2026-03-12T10:00:00.000Z',
       },
@@ -183,8 +183,8 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       progress: {
         runId: 'run-2',
         teamName: 'team-alpha',
-        state: 'monitoring',
-        message: 'Monitoring',
+        state: 'assembling',
+        message: 'Assembling',
         startedAt: '2026-03-12T10:00:00.000Z',
         updatedAt: '2026-03-12T10:00:00.000Z',
       },

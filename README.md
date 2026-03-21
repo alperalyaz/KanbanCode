@@ -26,6 +26,17 @@ https://github.com/user-attachments/assets/9cae73cd-7f42-46e5-a8fb-ad6d41737ff8
 
 <br />
 
+## Table of contents
+
+- [What is this](#what-is-this)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [FAQ](#faq)
+- [Comparison](#comparison)
+- [Roadmap](#roadmap)
+- [Development](#development)
+- [Contributing](#contributing)
+
 ## What is this
 
 A new approach to task management with AI agent teams.
@@ -78,24 +89,6 @@ A new approach to task management with AI agent teams.
 
 </details>
 
-## Comparison
-
-How we compare to other multi-agent orchestration tools:
-
-| Feature | Claude Agent Teams UI | Vibe Kanban | Dorothy | Cursor | Claude Code CLI |
-|---|---|---|---|---|---|
-| **Agent-to-agent messaging** | ✅ Native real-time mailbox | ❌ Agents are independent | ⚠️ Only via Super Agent | ❌ | ✅ Built-in (no UI) |
-| **Cross-team communication** | ✅ | ❌ | ❌ | ❌ | ✅ (no UI) |
-| **Kanban board** | ✅ 5 columns, real-time | ✅ | ✅ Auto-assignment | ❌ | ❌ |
-| **Per-task code review** | ✅ Accept / reject / comment | ⚠️ PR-level only | ❌ | ✅ BugBot on PRs | ❌ |
-| **Hunk-level review** | ✅ Accept / reject individual hunks | ❌ | ❌ | ✅ | ❌ |
-| **Review workflow** | ✅ Agents review each other | ❌ | ❌ | ❌ | ✅ (no UI) |
-| **Session analysis** | ✅ 6-category token tracking | ❌ | ⚠️ Basic stats | ❌ | ❌ |
-| **Execution log viewer** | ✅ Tool calls, reasoning, timeline | ❌ | ❌ | ✅ | ❌ |
-| **Zero setup** | ✅ | ❌ Config required | ❌ Config required | ✅ | ✅ |
-| **Multi-agent backend** | 🗓️ Planned | ✅ 6+ agents | ✅ 3 agents | ✅ Own models | — |
-| **Git worktree isolation** | ✅ Optional | ✅ Built-in | ❌ | ✅ | ✅ |
-| **Price** | **Free** | Free / $30 user/mo | Free | $0–$200/mo | Claude subscription |
 
 ## Installation
 
@@ -203,6 +196,33 @@ Yes. The app works as a session viewer — browse, search, and analyze any Claud
 <br />
 Yes. Run multiple teams in one project or across different projects, even simultaneously. To avoid Git conflicts, ask agents to use git worktree in your provisioning prompt.
 </details>
+
+---
+
+## Comparison
+
+How we compare to other multi-agent orchestration tools:
+
+| Feature | Claude Agent Teams UI | Vibe Kanban | Aperant | Cursor | Claude Code CLI |
+|---|---|---|---|---|---|
+| **Agent-to-agent messaging** | ✅ Native real-time mailbox | ❌ Agents are independent | ❌ Fixed pipeline | ❌ | ✅⚠️ Built-in (no UI) |
+| **Cross-team communication** | ✅ | ❌ | ❌ | ❌ | ✅⚠️ (no UI) |
+| **Kanban board** | ✅ 5 columns, real-time | ✅ | ✅ 6 columns (pipeline) | ❌ | ❌ |
+| **Per-task code review** | ✅ Accept / reject / comment | ⚠️ PR-level only | ⚠️ File-level only | ✅ BugBot on PRs | ❌ |
+| **Hunk-level review** | ✅ Accept / reject individual hunks | ❌ | ❌ | ✅ | ❌ |
+| **Review workflow** | ✅ Agents review each other | ❌ | ⚠️ Auto QA pipeline | ❌ | ✅⚠️ (no UI) |
+| **Session analysis** | ✅ 6-category token tracking | ❌ | ⚠️ Execution logs | ❌ | ❌ |
+| **Execution log viewer** | ✅ Tool calls, reasoning, timeline | ❌ | ✅ Phase-based logs | ✅ | ❌ |
+| **Zero setup** | ✅ | ❌ Config required | ❌ Config required | ✅ | ✅ |
+| **Live processes** | ✅ View, stop, open URLs in browser | ❌ | ✅ 12 agent terminals | ✅ | ❌ |
+| **Flexible autonomy** | ✅ Granular settings, per-action approval, notifications | ❌ | ⚠️ Plan approval only | ✅ | ✅ |
+| **Full autonomy** | ✅ Agents create, assign, review tasks end-to-end | ❌ Human manages tasks | ❌ Fixed pipeline | ⚠️ Isolated tasks only | ✅⚠️ (no UI) |
+| **Task dependencies (blocked by)** | ✅ Guaranteed ordering | ❌ | ⚠️ Within plan only | ❌ | ❌ |
+| **Linked tasks** | ✅ Cross-references in messages | ⚠️ Subtasks only | ❌ | ❌ | ❌ |
+| **Task attachments** | ✅ Auto-attach, agents read & attach files | ❌ | ✅ Images + files | ❌ | ❌ |
+| **Multi-agent backend** | 🗓️ In development | ✅ 6+ agents | ✅ 11 providers | ✅ Own models | — |
+| **Git worktree isolation** | ✅ Optional | ⚠️ Mandatory | ⚠️ Mandatory | ✅ | ✅ |
+| **Price** | **Free** | Free / $30 user/mo | Free | $0–$200/mo | Claude subscription |
 
 ---
 

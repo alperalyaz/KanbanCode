@@ -2657,9 +2657,11 @@ export class TeamProvisioningService {
 
     // Restart filesystem monitor for createTeam (launch skips it)
     if (!run.isLaunch) {
+      updateProgress(run, 'configuring', 'Waiting for team configuration...');
+      run.onProgress(run.progress);
       this.startFilesystemMonitor(run, run.request);
     } else {
-      updateProgress(run, 'monitoring', 'CLI running — reconnecting with teammates');
+      updateProgress(run, 'configuring', 'CLI running — reconnecting with teammates');
       run.onProgress(run.progress);
     }
 
@@ -3018,6 +3020,8 @@ export class TeamProvisioningService {
       // of relying on stdout (which only arrives at the end in text mode).
       // When config + members + tasks are all present, kill the process early
       // rather than waiting for it to deadlock on system-reminder shutdown.
+      updateProgress(run, 'configuring', 'Waiting for team configuration...');
+      run.onProgress(run.progress);
       this.startFilesystemMonitor(run, request);
 
       run.timeoutHandle = setTimeout(() => {
@@ -3442,7 +3446,7 @@ export class TeamProvisioningService {
       // For launch, skip the filesystem monitor — files (config, inboxes, tasks)
       // already exist from the previous run and would trigger immediate false
       // completion on the first poll. Rely on stream-json result.success instead.
-      updateProgress(run, 'monitoring', 'CLI running — reconnecting with teammates');
+      updateProgress(run, 'configuring', 'CLI running — reconnecting with teammates');
       run.onProgress(run.progress);
 
       run.timeoutHandle = setTimeout(() => {
@@ -3502,7 +3506,11 @@ export class TeamProvisioningService {
     if (!run) {
       throw new Error('Unknown runId');
     }
-    if (!['spawning', 'monitoring', 'verifying'].includes(run.progress.state)) {
+    if (
+      !['spawning', 'configuring', 'assembling', 'finalizing', 'verifying'].includes(
+        run.progress.state
+      )
+    ) {
       throw new Error('Provisioning cannot be cancelled in current state');
     }
 
@@ -6325,7 +6333,7 @@ export class TeamProvisioningService {
             run.fsPhase = 'waiting_members';
             const progress = updateProgress(
               run,
-              'monitoring',
+              'assembling',
               'Team config created, waiting for members',
               { configReady: true }
             );
@@ -6336,11 +6344,7 @@ export class TeamProvisioningService {
         if (run.fsPhase === 'waiting_members') {
           if (request.members.length === 0) {
             run.fsPhase = 'waiting_tasks';
-            const progress = updateProgress(
-              run,
-              'monitoring',
-              'Solo team, skipping member inbox wait'
-            );
+            const progress = updateProgress(run, 'finalizing', 'Solo team, preparing workspace');
             run.onProgress(progress);
           } else {
             const teamDir = (await resolveTeamDir()) ?? configuredTeamDir;
@@ -6350,14 +6354,14 @@ export class TeamProvisioningService {
               run.fsPhase = 'waiting_tasks';
               const progress = updateProgress(
                 run,
-                'monitoring',
-                `All ${inboxCount} member inboxes created, waiting for tasks`
+                'finalizing',
+                `All ${inboxCount} member inboxes created, preparing workspace`
               );
               run.onProgress(progress);
             } else if (inboxCount > 0) {
               const progress = updateProgress(
                 run,
-                'monitoring',
+                'assembling',
                 `${inboxCount}/${request.members.length} member inboxes created`
               );
               run.onProgress(progress);

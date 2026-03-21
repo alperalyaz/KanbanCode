@@ -7,9 +7,8 @@ import { CheckCircle2, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { ProvisioningProgressBlock } from './ProvisioningProgressBlock';
-import { STEP_ORDER } from './provisioningSteps';
+import { getDisplayStepIndex } from './provisioningSteps';
 
-import type { ProvisioningStep } from './provisioningSteps';
 interface TeamProvisioningBannerProps {
   teamName: string;
 }
@@ -51,15 +50,19 @@ export const TeamProvisioningBanner = ({
   const isActive =
     progress.state === 'validating' ||
     progress.state === 'spawning' ||
-    progress.state === 'monitoring' ||
+    progress.state === 'configuring' ||
+    progress.state === 'assembling' ||
+    progress.state === 'finalizing' ||
     progress.state === 'verifying';
 
   const canCancel =
     progress.state === 'spawning' ||
-    progress.state === 'monitoring' ||
+    progress.state === 'configuring' ||
+    progress.state === 'assembling' ||
+    progress.state === 'finalizing' ||
     progress.state === 'verifying';
 
-  const progressStepIndex = STEP_ORDER.indexOf(progress.state as ProvisioningStep);
+  const progressStepIndex = getDisplayStepIndex(progress.state);
 
   if (isFailed) {
     return (

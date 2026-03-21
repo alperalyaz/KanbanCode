@@ -144,7 +144,9 @@ function resolveTeamStatus(
   }
   if (
     currentProgress &&
-    ['validating', 'spawning', 'monitoring', 'verifying'].includes(currentProgress.state)
+    ['validating', 'spawning', 'configuring', 'assembling', 'finalizing', 'verifying'].includes(
+      currentProgress.state
+    )
   ) {
     return 'provisioning';
   }

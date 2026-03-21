@@ -26,7 +26,14 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const ACTIVE_PROVISIONING_STATES = new Set(['validating', 'spawning', 'monitoring', 'verifying']);
+const ACTIVE_PROVISIONING_STATES = new Set([
+  'validating',
+  'spawning',
+  'configuring',
+  'assembling',
+  'finalizing',
+  'verifying',
+]);
 const TERMINAL_PROVISIONING_STATES = new Set(['ready', 'failed', 'disconnected', 'cancelled']);
 
 function isPendingProvisioningRunId(runId: string): boolean {
@@ -1689,7 +1696,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         if (pendingRun) {
           delete nextRuns[pendingRunId];
           // Only use pending data as fallback if real progress events haven't arrived yet.
-          // This prevents overwriting real progress (e.g. 'monitoring') with stale pending data ('spawning')
+          // This prevents overwriting real progress (e.g. 'assembling') with stale pending data ('spawning')
           // when the invoke response arrives before IPC progress events.
           if (!realProgressAlreadyExists) {
             nextRuns[response.runId] = { ...pendingRun, runId: response.runId };
@@ -1826,7 +1833,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         if (pendingRun) {
           delete nextRuns[pendingRunId];
           // Only use pending data as fallback if real progress events haven't arrived yet.
-          // This prevents overwriting real progress (e.g. 'monitoring') with stale pending data ('spawning')
+          // This prevents overwriting real progress (e.g. 'assembling') with stale pending data ('spawning')
           // when the invoke response arrives before IPC progress events.
           if (!realProgressAlreadyExists) {
             nextRuns[response.runId] = { ...pendingRun, runId: response.runId };
