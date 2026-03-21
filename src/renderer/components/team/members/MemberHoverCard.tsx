@@ -15,7 +15,7 @@ import {
   getMemberDotClass,
   getPresenceLabel,
 } from '@renderer/utils/memberHelpers';
-import { isLeadAgentType } from '@shared/utils/leadDetection';
+import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';
 import { ExternalLink } from 'lucide-react';
 
 import { CurrentTaskIndicator } from './CurrentTaskIndicator';
@@ -63,13 +63,13 @@ export const MemberHoverCard = ({
     member,
     isTeamAlive,
     false,
-    isLeadAgentType(member.agentType) ? leadActivity : undefined
+    isLeadMember(member) ? leadActivity : undefined
   );
   const dotClass = getMemberDotClass(
     member,
     isTeamAlive,
     false,
-    isLeadAgentType(member.agentType) ? leadActivity : undefined
+    isLeadMember(member) ? leadActivity : undefined
   );
   const currentTask: TeamTaskWithKanban | null =
     member.currentTaskId && tasks

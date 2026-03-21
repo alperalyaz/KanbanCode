@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
 import { cn } from '@renderer/lib/utils';
 import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
@@ -9,8 +8,14 @@ import { MarkdownViewer } from '../chat/viewers/MarkdownViewer';
 
 import { CliLogsRichView } from './CliLogsRichView';
 import { STEP_LABELS, STEP_ORDER } from './provisioningSteps';
+import { StepProgressBar } from './StepProgressBar';
 
-import type { ProvisioningStep } from './provisioningSteps';
+import type { StepProgressBarStep } from './StepProgressBar';
+
+/** Pre-built step definitions for the provisioning stepper (excludes 'ready') */
+const PROVISIONING_STEPS: StepProgressBarStep[] = STEP_ORDER.filter((s) => s !== 'ready').map(
+  (s) => ({ key: s, label: STEP_LABELS[s] })
+);
 
 export interface ProvisioningProgressBlockProps {
   /** Title above the steps, e.g. "Launching team" */
@@ -122,21 +127,11 @@ export const ProvisioningProgressBlock = ({
   className,
 }: ProvisioningProgressBlockProps): React.JSX.Element => {
   const elapsed = useElapsedTimer(startedAt, loading);
-  const [logsOpen, setLogsOpen] = useState(() => tone === 'error' && Boolean(cliLogsTail));
+  const [logsOpen, setLogsOpen] = useState(() => Boolean(cliLogsTail) && loading);
   const [liveOutputOpen, setLiveOutputOpen] = useState(defaultLiveOutputOpen);
   const outputScrollRef = useRef<HTMLDivElement>(null);
   const isError = tone === 'error';
   const displayAssistantOutput = sanitizeAssistantOutput(assistantOutput, isError);
-  const spawningStepIndex = STEP_ORDER.indexOf('spawning');
-  const isCliLaunchMessage =
-    message?.toLowerCase().includes('starting claude cli process') ?? false;
-  const isCliStarting =
-    !isError &&
-    Boolean(cliLogsTail) &&
-    loading &&
-    (currentStepIndex <= spawningStepIndex || isCliLaunchMessage);
-  const wasCliStartingRef = useRef(false);
-  const hadCliStartingPhaseRef = useRef(false);
 
   // Auto-scroll assistant output
   useEffect(() => {
@@ -158,28 +153,20 @@ export const ProvisioningProgressBlock = ({
     }
   }, [isError, cliLogsTail]);
 
-  // Keep CLI logs visible while the launch command is still starting,
-  // then collapse them once the spawned process is actually running.
+  // Open CLI logs while loading, collapse when done (unless error).
+  const prevLoadingRef = useRef(loading);
   useEffect(() => {
-    if (isError || !cliLogsTail) {
-      wasCliStartingRef.current = false;
-      hadCliStartingPhaseRef.current = false;
-      return;
+    if (!isError && cliLogsTail) {
+      if (loading && !prevLoadingRef.current) {
+        // Started loading → open
+        setLogsOpen(true);
+      } else if (!loading && prevLoadingRef.current) {
+        // Finished loading → collapse
+        setLogsOpen(false);
+      }
     }
-
-    if (isCliStarting && !wasCliStartingRef.current) {
-      setLogsOpen(true);
-    }
-
-    if (!isCliStarting && wasCliStartingRef.current && hadCliStartingPhaseRef.current) {
-      setLogsOpen(false);
-    }
-
-    wasCliStartingRef.current = isCliStarting;
-    if (isCliStarting) {
-      hadCliStartingPhaseRef.current = true;
-    }
-  }, [cliLogsTail, isCliStarting, isError]);
+    prevLoadingRef.current = loading;
+  }, [loading, cliLogsTail, isError]);
 
   return (
     <div
@@ -225,33 +212,8 @@ export const ProvisioningProgressBlock = ({
           {message}
         </p>
       ) : null}
-      <div className="mt-2 flex items-center justify-center gap-1 overflow-x-auto pb-0.5">
-        {STEP_ORDER.filter((s): s is ProvisioningStep => s !== 'ready').map((step, index) => {
-          const isDone = currentStepIndex >= 0 && index < currentStepIndex;
-          const isCurrent = currentStepIndex >= 0 && index === currentStepIndex;
-          return (
-            <div key={step} className="flex items-center gap-1">
-              <Badge
-                variant="secondary"
-                className={cn(
-                  'whitespace-nowrap px-2 py-0.5 text-[11px] font-normal',
-                  isDone &&
-                    'border-[var(--step-done-border)] bg-[var(--step-done-bg)] text-[var(--step-done-text)]',
-                  isCurrent &&
-                    'border-[var(--step-current-border)] bg-[var(--step-current-bg)] text-[var(--step-current-text)]'
-                )}
-              >
-                <span className="mr-1 inline-flex size-4 items-center justify-center rounded-full border border-current text-[10px]">
-                  {index + 1}
-                </span>
-                {STEP_LABELS[step]}
-              </Badge>
-              {index < STEP_ORDER.filter((s) => s !== 'ready').length - 1 ? (
-                <span className="text-[var(--color-text-muted)]">&rarr;</span>
-              ) : null}
-            </div>
-          );
-        })}
+      <div className="mt-2 px-2">
+        <StepProgressBar steps={PROVISIONING_STEPS} currentIndex={currentStepIndex} />
       </div>
       <div className="mt-2">
         <button

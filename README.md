@@ -35,6 +35,7 @@ A new approach to task management with AI agent teams.
 - **Cross-team communication** — agents can fully communicate across different teams; you can configure or prompt them to collaborate and message each other between teams
 - **Sit back and watch** — tasks change status on the kanban board while agents handle everything on their own
 - **Review changes like in Cursor** — see what code each task changed, then approve, reject, or comment
+- **Built-in review workflow** — easily see how agents review each other's tasks to make sure everything went exactly as planned
 - **Full tool visibility** — inspect exactly which tools an agent used to complete each task
 - **Task-specific logs and messages** — clearly see all Claude logs and messages in isolation for each individual task, making it easy to trace what happened for any assignment
 - **Live process section** — see which agents are running processes and open URLs directly in the browser
@@ -73,7 +74,28 @@ A new approach to task management with AI agent teams.
 
 - **Task context is preserved** — thanks to task descriptions, comments, and attachments, all essential information about each task remains available for ongoing work and future reference
 
+- **Workflow history** — see the full timeline of each task: when and how its status changed, which agents were involved, and every action that led to the current state
+
 </details>
+
+## Comparison
+
+How we compare to other multi-agent orchestration tools:
+
+| Feature | Claude Agent Teams UI | Vibe Kanban | Dorothy | Cursor | Claude Code CLI |
+|---|---|---|---|---|---|
+| **Agent-to-agent messaging** | ✅ Native real-time mailbox | ❌ Agents are independent | ⚠️ Only via Super Agent | ❌ | ✅ Built-in (no UI) |
+| **Cross-team communication** | ✅ | ❌ | ❌ | ❌ | ✅ (no UI) |
+| **Kanban board** | ✅ 5 columns, real-time | ✅ | ✅ Auto-assignment | ❌ | ❌ |
+| **Per-task code review** | ✅ Accept / reject / comment | ⚠️ PR-level only | ❌ | ✅ BugBot on PRs | ❌ |
+| **Hunk-level review** | ✅ Accept / reject individual hunks | ❌ | ❌ | ✅ | ❌ |
+| **Review workflow** | ✅ Agents review each other | ❌ | ❌ | ❌ | ✅ (no UI) |
+| **Session analysis** | ✅ 6-category token tracking | ❌ | ⚠️ Basic stats | ❌ | ❌ |
+| **Execution log viewer** | ✅ Tool calls, reasoning, timeline | ❌ | ❌ | ✅ | ❌ |
+| **Zero setup** | ✅ | ❌ Config required | ❌ Config required | ✅ | ✅ |
+| **Multi-agent backend** | 🗓️ Planned | ✅ 6+ agents | ✅ 3 agents | ✅ Own models | — |
+| **Git worktree isolation** | ✅ Optional | ✅ Built-in | ❌ | ✅ | ✅ |
+| **Price** | **Free** | Free / $30 user/mo | Free | $0–$200/mo | Claude subscription |
 
 ## Installation
 
@@ -234,7 +256,7 @@ pnpm dist            # macOS + Windows + Linux
 
 ---
 
-## TODO
+## Roadmap
 
 - [ ] CLI runtime: Run not only on a local PC but in any headless/console environment (web UI), e.g. VPS, remote server, etc.
 - [ ] Remote agent execution via SSH: launch and manage agent teams on remote machines over SSH (stream-json protocol over SSH channel, SFTP-based file monitoring for tasks/inboxes/config)

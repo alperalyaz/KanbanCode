@@ -3789,8 +3789,7 @@ export class TeamProvisioningService {
       }
       if (!config) return 0;
 
-      const leadName =
-        config.members?.find((m) => isLeadAgentType(m?.agentType))?.name?.trim() || 'team-lead';
+      const leadName = config.members?.find((m) => isLeadMember(m))?.name?.trim() || 'team-lead';
 
       let leadInboxMessages: Awaited<ReturnType<TeamInboxReader['getMessagesFor']>> = [];
       try {
@@ -5180,11 +5179,11 @@ export class TeamProvisioningService {
     try {
       const config = await this.configReader.getConfig(run.teamName);
       if (config?.members) {
-        const configLead = config.members.find((m) => isLeadAgentType(m?.agentType));
+        const configLead = config.members.find((m) => isLeadMember(m));
         leadName = configLead?.name?.trim() || 'team-lead';
         // Convert config members (excluding lead) to TeamCreateRequest member format.
         const configTeammates = config.members
-          .filter((m) => !isLeadAgentType(m?.agentType) && m?.name)
+          .filter((m) => !isLeadMember(m) && m?.name)
           .map((m) => ({
             name: m.name,
             role: m.role ?? undefined,
@@ -5779,8 +5778,7 @@ export class TeamProvisioningService {
             members?: { name?: string; agentType?: string }[];
           };
           const suffixed = (config.members ?? []).filter(
-            (m) =>
-              typeof m.name === 'string' && /-\d+$/.test(m.name) && !isLeadAgentType(m.agentType)
+            (m) => typeof m.name === 'string' && /-\d+$/.test(m.name) && !isLeadMember(m)
           );
           if (suffixed.length > 0) {
             logger.warn(
@@ -7143,6 +7141,9 @@ export class TeamProvisioningService {
       if (typeof agentType === 'string' && isLeadAgentType(agentType)) {
         return true;
       }
+      // Also check by name (CLI may set agentType to "general-purpose" for leads)
+      const name = typeof member.name === 'string' ? member.name.trim().toLowerCase() : '';
+      if (name === 'team-lead') return true;
       const leadAgentId = config.leadAgentId;
       return (
         typeof leadAgentId === 'string' &&

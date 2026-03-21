@@ -10,7 +10,7 @@ import {
   getMemberDotClass,
   getPresenceLabel,
 } from '@renderer/utils/memberHelpers';
-import { isLeadAgentType } from '@shared/utils/leadDetection';
+import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';
 import { Pencil } from 'lucide-react';
 
 import { MemberRoleEditor } from './MemberRoleEditor';
@@ -48,10 +48,7 @@ export const MemberDetailHeader = ({
   const dotClass = getMemberDotClass(member, isTeamAlive, isTeamProvisioning, leadActivity);
 
   const canEditRole =
-    !isLeadAgentType(member.agentType) &&
-    !member.removedAt &&
-    !isTeamProvisioning &&
-    !!onUpdateRole;
+    !isLeadMember(member) && !member.removedAt && !isTeamProvisioning && !!onUpdateRole;
 
   return (
     <div className="flex items-center gap-3">

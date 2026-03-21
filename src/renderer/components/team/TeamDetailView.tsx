@@ -1809,7 +1809,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
             currentName={data.config.name}
             currentDescription={data.config.description ?? ''}
             currentColor={data.config.color ?? ''}
-            currentMembers={data.members.filter((m) => !isLeadAgentType(m.agentType))}
+            currentMembers={data.members.filter((m) => !isLeadMember(m))}
             projectPath={data.config.projectPath}
             onClose={() => setEditDialogOpen(false)}
             onSaved={() => void selectTeam(teamName)}

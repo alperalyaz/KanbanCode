@@ -112,7 +112,7 @@ export const MessagesPanel = memo(function MessagesPanel({
 
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const handleExpandContent = useCallback(() => {
-    composerTextareaRef.current?.focus();
+    // no-op: user is reading expanded content, not composing
   }, []);
 
   const [messagesSearchQuery, setMessagesSearchQuery] = useState('');

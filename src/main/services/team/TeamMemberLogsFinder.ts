@@ -1,5 +1,5 @@
 import { encodePath, extractBaseDir, getProjectsBasePath } from '@main/utils/pathDecoder';
-import { isLeadAgentType } from '@shared/utils/leadDetection';
+import { isLeadMember as isLeadMemberCheck } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
 import { parseAllTeammateMessages } from '@shared/utils/teammateMessageParser';
 import { createReadStream } from 'fs';
@@ -113,7 +113,7 @@ export class TeamMemberLogsFinder {
     const results: MemberLogSummary[] = [];
 
     const leadMemberName =
-      config.members?.find((m) => isLeadAgentType(m?.agentType))?.name?.trim() || 'team-lead';
+      config.members?.find((m) => isLeadMemberCheck(m))?.name?.trim() || 'team-lead';
     if (isLeadMember && config.leadSessionId) {
       const leadJsonl = path.join(projectDir, `${config.leadSessionId}.jsonl`);
       const leadSummary = await this.parseLeadSessionSummary(
@@ -204,7 +204,7 @@ export class TeamMemberLogsFinder {
     const { projectDir, projectId, config, sessionIds, knownMembers } = discovery;
     const results: MemberLogSummary[] = [];
     const leadMemberName =
-      config.members?.find((m) => isLeadAgentType(m?.agentType))?.name?.trim() || 'team-lead';
+      config.members?.find((m) => isLeadMemberCheck(m))?.name?.trim() || 'team-lead';
 
     if (config.leadSessionId) {
       const leadJsonl = path.join(projectDir, `${config.leadSessionId}.jsonl`);
@@ -426,7 +426,7 @@ export class TeamMemberLogsFinder {
     const refs: { filePath: string; memberName: string; sortTime: number }[] = [];
     const seen = new Set<string>();
     const leadMemberName =
-      config.members?.find((m) => isLeadAgentType(m?.agentType))?.name?.trim() || 'team-lead';
+      config.members?.find((m) => isLeadMemberCheck(m))?.name?.trim() || 'team-lead';
 
     const pushRef = (filePath: string, memberName: string, sortTime = 0): void => {
       const key = `${memberName.toLowerCase()}:${filePath}`;
@@ -655,10 +655,11 @@ export class TeamMemberLogsFinder {
     const trimmedId = taskId.trim();
     // CLI agents may use displayId (first 8 chars of UUID) in tool inputs.
     // Build regex that matches either form.
-    const displayId =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedId)
-        ? trimmedId.slice(0, 8).toLowerCase()
-        : null;
+    const displayId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      trimmedId
+    )
+      ? trimmedId.slice(0, 8).toLowerCase()
+      : null;
     const idAlternation = displayId
       ? `(?:${trimmedId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}|${displayId})`
       : trimmedId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -830,7 +831,7 @@ export class TeamMemberLogsFinder {
     if (!discovery) return null;
     const { config } = discovery;
     const leadMemberName =
-      config.members?.find((m) => isLeadAgentType(m?.agentType))?.name?.trim() || 'team-lead';
+      config.members?.find((m) => isLeadMemberCheck(m))?.name?.trim() || 'team-lead';
     const isLeadMember = leadMemberName.toLowerCase() === memberName.trim().toLowerCase();
     return { ...discovery, isLeadMember };
   }
@@ -1495,7 +1496,14 @@ export class TeamMemberLogsFinder {
       // ignore — return whatever we collected so far
     }
 
-    return { firstTimestamp, lastTimestamp, messageCount, lastOutputPreview, lastThinkingPreview, recentPreviews };
+    return {
+      firstTimestamp,
+      lastTimestamp,
+      messageCount,
+      lastOutputPreview,
+      lastThinkingPreview,
+      recentPreviews,
+    };
   }
 
   private extractTimestampFromLine(line: string): string | null {

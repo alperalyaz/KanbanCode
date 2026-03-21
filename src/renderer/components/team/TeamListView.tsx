@@ -23,7 +23,7 @@ import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { buildTaskCountsByTeam, normalizePath } from '@renderer/utils/pathNormalize';
 import { getBaseName } from '@renderer/utils/pathUtils';
 import { nameColorSet } from '@renderer/utils/projectColor';
-import { isLeadAgentType } from '@shared/utils/leadDetection';
+import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';
 import {
   CheckCircle,
   Clock,
@@ -488,7 +488,7 @@ export const TeamListView = (): React.JSX.Element => {
           const existingNames = teams.map((t) => t.teamName);
           const uniqueName = generateUniqueName(teamName, existingNames);
           const members = (data.members ?? [])
-            .filter((m) => !m.removedAt && !isLeadAgentType(m.agentType))
+            .filter((m) => !m.removedAt && !isLeadMember(m))
             .map((m) => {
               let role = m.role;
               if (!role && m.agentType && m.agentType !== 'general-purpose') {

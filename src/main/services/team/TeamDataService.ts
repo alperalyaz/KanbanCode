@@ -762,7 +762,7 @@ export class TeamDataService {
   ): Promise<{ oldRole: string | undefined; changed: boolean }> {
     const { members, member } = await this.ensureMemberInMeta(teamName, memberName);
     if (member.removedAt) throw new Error(`Member "${memberName}" is removed`);
-    if (isLeadAgentType(member.agentType)) throw new Error('Cannot change team lead role');
+    if (isLeadMember(member)) throw new Error('Cannot change team lead role');
 
     const oldRole = member.role;
     const normalized = typeof newRole === 'string' && newRole.trim() ? newRole.trim() : undefined;
@@ -838,7 +838,7 @@ export class TeamDataService {
     if (member.removedAt) {
       throw new Error(`Member "${memberName}" is already removed`);
     }
-    if (isLeadAgentType(member.agentType)) {
+    if (isLeadMember(member)) {
       throw new Error('Cannot remove team lead');
     }
 
@@ -1872,7 +1872,7 @@ export class TeamDataService {
       return [];
     }
 
-    const leadName = config.members?.find((m) => isLeadAgentType(m.agentType))?.name ?? 'team-lead';
+    const leadName = config.members?.find((m) => isLeadMember(m))?.name ?? 'team-lead';
     const sessionIds = this.getRecentLeadSessionIds(config);
     if (sessionIds.length === 0) {
       return [];
