@@ -160,7 +160,8 @@ export const SendMessageDialog = ({
   // Reset form on open transition (avoid setState in render)
   useEffect(() => {
     if (open && !prevOpenRef.current) {
-      setMember(defaultRecipient ?? '');
+      const leadName = members.find((m) => isLeadMember(m))?.name;
+      setMember(defaultRecipient ?? leadName ?? '');
       setQuote(quotedMessage);
       setQuoteExpanded(false);
       prevResultRef.current = lastResult;
