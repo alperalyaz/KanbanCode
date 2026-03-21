@@ -1263,6 +1263,9 @@ function createWindow(): void {
     if (ptyTerminalService) {
       ptyTerminalService.setMainWindow(null);
     }
+    if (teamProvisioningService) {
+      teamProvisioningService.setMainWindow(null);
+    }
     setEditorMainWindow(null);
     setReviewMainWindow(null);
     cleanupEditorState();
@@ -1286,6 +1289,9 @@ function createWindow(): void {
   }
   if (ptyTerminalService) {
     ptyTerminalService.setMainWindow(mainWindow);
+  }
+  if (teamProvisioningService) {
+    teamProvisioningService.setMainWindow(mainWindow);
   }
   setEditorMainWindow(mainWindow);
   setReviewMainWindow(mainWindow);

@@ -5449,14 +5449,6 @@ export class TeamProvisioningService {
     }
   }
 
-  /** Dismiss all OS notifications for a team's approvals (e.g. on team stop). */
-  private dismissAllApprovalNotifications(): void {
-    for (const [, notification] of this.activeApprovalNotifications) {
-      notification.close();
-    }
-    this.activeApprovalNotifications.clear();
-  }
-
   private formatToolApprovalBody(toolName: string, toolInput: Record<string, unknown>): string {
     switch (toolName) {
       case 'Bash':
