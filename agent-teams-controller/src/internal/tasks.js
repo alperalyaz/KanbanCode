@@ -231,8 +231,79 @@ function startTask(context, taskId, actor) {
     return task;
 }
 
+function notifyUnblockedOwners(context, completedTask) {
+    const blockedIds = Array.isArray(completedTask.blocks) ? completedTask.blocks : [];
+    if (blockedIds.length === 0) return;
+
+    const completedLabel = `#${completedTask.displayId || completedTask.id}`;
+
+    for (const blockedId of blockedIds) {
+        try {
+            const blockedTask = taskStore.readTask(context.paths, blockedId, { includeDeleted: true });
+            if (blockedTask.status === 'deleted' || blockedTask.status === 'completed') continue;
+            if (!normalizeActorName(blockedTask.owner)) continue;
+
+            const allBlockerIds = Array.isArray(blockedTask.blockedBy) ? blockedTask.blockedBy : [];
+            const pendingBlockers = allBlockerIds.filter((id) => {
+                if (id === completedTask.id) return false;
+                try {
+                    const t = taskStore.readTask(context.paths, id, { includeDeleted: true });
+                    return t.status !== 'completed' && t.status !== 'deleted';
+                } catch { return false; }
+            });
+
+            const allResolved = pendingBlockers.length === 0;
+            const blockedLabel = `#${blockedTask.displayId || blockedTask.id}`;
+
+            let pendingList = '';
+            if (!allResolved) {
+                const refs = pendingBlockers.map((id) => {
+                    try {
+                        const t = taskStore.readTask(context.paths, id, { includeDeleted: true });
+                        return `#${t.displayId || t.id}`;
+                    } catch { return `#${id.slice(0, 8)}`; }
+                });
+                pendingList = refs.join(', ');
+            }
+
+            const lines = [
+                `**Dependency resolved** — task ${completedLabel} _${completedTask.subject}_ completed.`,
+                ``,
+                allResolved
+                    ? `All blockers for ${blockedLabel} are resolved — this task is ready to start.`
+                    : `${allBlockerIds.length - pendingBlockers.length} of ${allBlockerIds.length} blockers resolved. Still waiting on: ${pendingList}.`,
+            ];
+
+            if (allResolved) {
+                lines.push(
+                    ``,
+                    wrapAgentBlock(
+                        `All dependencies for this task are now resolved.\n` +
+                        `If you are idle, start working on it now:\n` +
+                        `1. Check the full context: task_get { teamName: "${context.teamName}", taskId: "${blockedTask.id}" }\n` +
+                        `2. Start the task: task_start { teamName: "${context.teamName}", taskId: "${blockedTask.id}" }`
+                    )
+                );
+            }
+
+            addTaskComment(context, blockedTask.id, {
+                text: lines.join('\n'),
+                from: 'system',
+            });
+        } catch {
+            // Best-effort per blocked task: skip on failure
+        }
+    }
+}
+
 function completeTask(context, taskId, actor) {
-    return setTaskStatus(context, taskId, 'completed', actor);
+    const task = setTaskStatus(context, taskId, 'completed', actor);
+    try {
+        notifyUnblockedOwners(context, task, actor);
+    } catch {
+        // Best-effort: task completion succeeded, notification failure is non-fatal
+    }
+    return task;
 }
 
 function softDeleteTask(context, taskId, actor) {
@@ -475,7 +546,7 @@ function buildMemberTaskProtocol(teamName) {
    e) Do NOT set clarification to "user" yourself — only the team lead escalates to the user.
 13. DEPENDENCY AWARENESS:
     When your task has blockedBy dependencies, check if they are completed before starting.
-    When you complete a task that blocks others, mention this in your completion message so blocked teammates can proceed.
+    When you complete a task that blocks others, blocked task owners are notified automatically via a task comment.
 14. TASK QUEUE DISCIPLINE:
     - Use task_briefing as a compact queue view of your assigned tasks.
     - task_briefing may include full description/comments only for in_progress tasks; needsFix/pending/review/completed entries may be minimal on purpose.
