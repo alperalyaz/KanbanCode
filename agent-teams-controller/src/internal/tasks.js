@@ -46,9 +46,9 @@ function buildAssignmentMessage(context, task, options = {}) {
         typeof options.prompt === 'string' && options.prompt.trim() ? options.prompt.trim() : '';
     const taskLabel = `#${task.displayId || task.id}`;
     const lines = [
-        `New task assigned to you: ${taskLabel} "${task.subject}".`,
+        `New task assigned to you: ${taskLabel} *${task.subject}*`,
         ``,
-        `*If you are idle and this task is ready to start, start it now. If you are busy, blocked, or still need more context, immediately add a short task comment with the reason and your best ETA or what you are waiting on, and keep this task in TODO until you actually begin.*`,
+        wrapAgentBlock(`If you are idle and this task is ready to start, start it now. If you are busy, blocked, or still need more context, immediately add a short task comment with the reason and your best ETA or what you are waiting on, and keep this task in TODO until you actually begin.`),
     ];
 
     if (description) {

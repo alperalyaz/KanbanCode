@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
-import { isLeadAgentType } from '@shared/utils/leadDetection';
+import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';
 
 import { MemberCard } from './MemberCard';
 
@@ -70,8 +70,8 @@ export const MemberList = ({
   const activeMembers = members
     .filter((m) => !m.removedAt)
     .sort((a, b) => {
-      if (isLeadAgentType(a.agentType)) return -1;
-      if (isLeadAgentType(b.agentType)) return 1;
+      if (isLeadMember(a)) return -1;
+      if (isLeadMember(b)) return 1;
       return 0;
     });
   const removedMembers = members.filter((m) => m.removedAt);

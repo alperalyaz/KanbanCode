@@ -7,9 +7,9 @@ import { shortenDisplayPath } from '@renderer/utils/pathDisplay';
 import { highlightLines } from '@renderer/utils/syntaxHighlighter';
 import { AlertTriangle, FileText, Search, Terminal } from 'lucide-react';
 
-import { ToolApprovalDiffPreview } from './ToolApprovalDiffPreview';
 import { ToolApprovalSettingsPanel } from './dialogs/ToolApprovalSettingsPanel';
 import { FileIcon } from './editor/FileIcon';
+import { ToolApprovalDiffPreview } from './ToolApprovalDiffPreview';
 
 import type { ToolApprovalRequest } from '@shared/types';
 
@@ -188,7 +188,7 @@ export const ToolApprovalSheet: React.FC = () => {
   return (
     <div
       ref={containerRef}
-      className={`fixed bottom-4 left-1/2 z-[55] w-full -translate-x-1/2 rounded-lg border shadow-xl outline-none transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 ${diffExpanded ? 'max-w-[640px]' : 'max-w-[480px]'}`}
+      className={`fixed bottom-4 left-1/2 z-[55] w-full -translate-x-1/2 rounded-lg border shadow-xl outline-none transition-all duration-200 animate-in fade-in slide-in-from-bottom-4 ${diffExpanded ? 'max-w-screen-sm' : 'max-w-[480px]'}`}
       style={{
         backgroundColor: 'var(--color-surface-overlay)',
         borderColor: 'var(--color-border-emphasis)',

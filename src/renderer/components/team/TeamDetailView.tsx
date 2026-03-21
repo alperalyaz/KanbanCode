@@ -1029,7 +1029,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           <TeamProvisioningBanner teamName={teamName} />
         </div>
         <div className="flex flex-1 items-center justify-center p-6 text-sm text-[var(--color-text-muted)]">
-          No team data available
+          Team data will appear once provisioning completes
         </div>
       </div>
     );

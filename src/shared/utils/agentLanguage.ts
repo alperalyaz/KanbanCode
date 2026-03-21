@@ -30,7 +30,7 @@ export const AGENT_LANGUAGE_OPTIONS: readonly AgentLanguageOption[] = [
   { value: 'da', label: 'Danish', flag: '\u{1F1E9}\u{1F1F0}' },
   { value: 'de', label: 'German', flag: '\u{1F1E9}\u{1F1EA}' },
   { value: 'el', label: 'Greek', flag: '\u{1F1EC}\u{1F1F7}' },
-  { value: 'en', label: 'English', flag: '\u{1F1EC}\u{1F1E7}' },
+  { value: 'en', label: 'English', flag: '\u{1F1FA}\u{1F1F8}' },
   { value: 'es', label: 'Spanish', flag: '\u{1F1EA}\u{1F1F8}' },
   { value: 'et', label: 'Estonian', flag: '\u{1F1EA}\u{1F1EA}' },
   { value: 'eu', label: 'Basque', flag: '\u{1F1EA}\u{1F1F8}' },
