@@ -5380,16 +5380,21 @@ export class TeamProvisioningService {
     if (!ElectronNotification.isSupported()) return;
 
     const isMac = process.platform === 'darwin';
+    const isLinux = process.platform === 'linux';
     const iconPath = isMac ? undefined : getAppIconPath();
     const teamLabel = run.request.displayName ?? run.teamName;
     const body = this.formatToolApprovalBody(approval.toolName, approval.toolInput);
+
+    // Actions (Allow/Deny buttons) supported on macOS and Windows.
+    // Linux libnotify doesn't fire the 'action' event — users get click-to-focus.
+    const supportsActions = !isLinux;
 
     const notification = new ElectronNotification({
       title: `Tool Approval — ${teamLabel}`,
       body,
       sound: config.notifications.soundEnabled ? 'default' : undefined,
       ...(iconPath ? { icon: iconPath } : {}),
-      ...(isMac
+      ...(supportsActions
         ? {
             actions: [
               { type: 'button' as const, text: 'Allow' },
@@ -5417,8 +5422,9 @@ export class TeamProvisioningService {
 
     notification.on('close', cleanup);
 
-    // macOS action buttons: Allow (index 0) / Deny (index 1)
-    if (isMac) {
+    // Action buttons: Allow (index 0) / Deny (index 1)
+    // 'action' event fires on macOS and Windows (not Linux)
+    if (supportsActions) {
       notification.on('action', (_event, index) => {
         cleanup();
         const allow = index === 0;
