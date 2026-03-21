@@ -9,6 +9,7 @@ import { AlertTriangle, FileText, Search, Terminal } from 'lucide-react';
 
 import { ToolApprovalDiffPreview } from './ToolApprovalDiffPreview';
 import { ToolApprovalSettingsPanel } from './dialogs/ToolApprovalSettingsPanel';
+import { FileIcon } from './editor/FileIcon';
 
 import type { ToolApprovalRequest } from '@shared/types';
 
@@ -341,6 +342,8 @@ export const ToolApprovalSheet: React.FC = () => {
 // Syntax-highlighted tool input preview
 // ---------------------------------------------------------------------------
 
+const FILE_TOOLS = new Set(['Edit', 'Read', 'Write', 'NotebookEdit']);
+
 const ToolInputPreview = ({
   toolName,
   toolInput,
@@ -353,6 +356,8 @@ const ToolInputPreview = ({
   const text = renderToolInput(toolName, toolInput, projectPath);
   const fileName = getToolInputFileName(toolName, toolInput);
   const lines = useMemo(() => highlightLines(text, fileName), [text, fileName]);
+  const rawFilePath = typeof toolInput.file_path === 'string' ? toolInput.file_path : null;
+  const isFileTool = FILE_TOOLS.has(toolName) && rawFilePath;
 
   return (
     <div className="px-4 py-2.5">
@@ -364,16 +369,23 @@ const ToolInputPreview = ({
           color: 'var(--color-text-secondary)',
         }}
       >
-        {/* highlightLines uses hljs which HTML-escapes all input text, producing only <span class="hljs-*"> tags.
-            This is safe: the source is our own renderToolInput() output, not arbitrary user HTML.
-            Same pattern used in ReviewDiffContent.tsx and DiffViewer for syntax highlighting. */}
-        {lines.map((html, i) => (
-          <div
-            key={i}
-            className="whitespace-pre-wrap break-all"
-            dangerouslySetInnerHTML={{ __html: html || '&nbsp;' }}
-          />
-        ))}
+        {isFileTool ? (
+          <div className="flex items-center gap-1.5">
+            <FileIcon fileName={rawFilePath} className="size-3.5 shrink-0" />
+            <span className="break-all">{text}</span>
+          </div>
+        ) : (
+          /* highlightLines uses hljs which HTML-escapes all input text, producing only <span class="hljs-*"> tags.
+             This is safe: the source is our own renderToolInput() output, not arbitrary user HTML.
+             Same pattern used in ReviewDiffContent.tsx and DiffViewer for syntax highlighting. */
+          lines.map((html, i) => (
+            <div
+              key={i}
+              className="whitespace-pre-wrap break-all"
+              dangerouslySetInnerHTML={{ __html: html || '&nbsp;' }}
+            />
+          ))
+        )}
       </div>
     </div>
   );
