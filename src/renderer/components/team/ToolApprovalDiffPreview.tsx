@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 import { DiffViewer } from '@renderer/components/chat/viewers/DiffViewer';
 import { useToolApprovalDiff } from '@renderer/hooks/useToolApprovalDiff';
@@ -16,6 +16,71 @@ interface ToolApprovalDiffPreviewProps {
 }
 
 const DIFF_TOOLS = new Set(['Write', 'Edit', 'NotebookEdit']);
+const STORAGE_KEY = 'tool-approval:preview-expanded';
+
+function loadExpandedPref(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function saveExpandedPref(value: boolean): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, String(value));
+  } catch {
+    // quota or disabled — ignore
+  }
+}
+
+// =============================================================================
+// Diff stats helper
+// =============================================================================
+
+function computeDiffStats(
+  oldString: string,
+  newString: string
+): { added: number; removed: number } {
+  const oldLines = oldString.split(/\r?\n/);
+  const newLines = newString.split(/\r?\n/);
+  // Simple line-count based stats (matches DiffViewer's own count)
+  const maxLen = Math.max(oldLines.length, newLines.length);
+  let added = 0;
+  let removed = 0;
+  // Count lines that differ
+  if (oldString === '' && newString !== '') {
+    added = newLines.length;
+  } else if (newString === '' && oldString !== '') {
+    removed = oldLines.length;
+  } else {
+    // Diff-based: count added/removed from line diff
+    const oldSet = new Map<string, number>();
+    for (const line of oldLines) {
+      oldSet.set(line, (oldSet.get(line) ?? 0) + 1);
+    }
+    const newSet = new Map<string, number>();
+    for (const line of newLines) {
+      newSet.set(line, (newSet.get(line) ?? 0) + 1);
+    }
+    // Lines in new but not in old
+    for (const [line, count] of newSet) {
+      const oldCount = oldSet.get(line) ?? 0;
+      if (count > oldCount) added += count - oldCount;
+    }
+    // Lines in old but not in new
+    for (const [line, count] of oldSet) {
+      const newCount = newSet.get(line) ?? 0;
+      if (count > newCount) removed += count - newCount;
+    }
+    // Ensure at least something shows if strings differ but stats are 0
+    if (added === 0 && removed === 0 && oldString !== newString) {
+      added = Math.max(0, newLines.length - maxLen);
+      removed = Math.max(0, oldLines.length - maxLen);
+    }
+  }
+  return { added, removed };
+}
 
 // =============================================================================
 // Component
@@ -27,21 +92,21 @@ export const ToolApprovalDiffPreview: React.FC<ToolApprovalDiffPreviewProps> = (
   requestId,
   onExpandedChange,
 }) => {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(loadExpandedPref);
   const diff = useToolApprovalDiff(toolName, toolInput, requestId, expanded);
 
-  // Collapse when approval changes
-  useEffect(() => {
-    setExpanded(false);
-    onExpandedChange?.(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onExpandedChange is stable setter, only reset on requestId change
-  }, [requestId]);
+  const stats = useMemo(() => {
+    if (!diff.hasDiff || diff.loading || diff.isBinary || diff.error) return null;
+    if (!diff.oldString && !diff.newString) return null;
+    return computeDiffStats(diff.oldString, diff.newString);
+  }, [diff.hasDiff, diff.loading, diff.isBinary, diff.error, diff.oldString, diff.newString]);
 
   if (!DIFF_TOOLS.has(toolName)) return null;
 
   const toggleExpanded = (): void => {
     const next = !expanded;
     setExpanded(next);
+    saveExpandedPref(next);
     onExpandedChange?.(next);
   };
 
@@ -64,6 +129,14 @@ export const ToolApprovalDiffPreview: React.FC<ToolApprovalDiffPreviewProps> = (
       >
         <FileDiff className="size-3" />
         <span>Preview changes</span>
+        {stats && (
+          <>
+            {stats.added > 0 && <span style={{ color: 'rgb(46, 160, 67)' }}>+{stats.added}</span>}
+            {stats.removed > 0 && (
+              <span style={{ color: 'rgb(248, 81, 73)' }}>-{stats.removed}</span>
+            )}
+          </>
+        )}
         {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
       </button>
 

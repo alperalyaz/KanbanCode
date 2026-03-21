@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getTeamColorSet, getThemedBadge } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { useStore } from '@renderer/store';
+import { shortenDisplayPath } from '@renderer/utils/pathDisplay';
 import { highlightLines } from '@renderer/utils/syntaxHighlighter';
 import { AlertTriangle, FileText, Search, Terminal } from 'lucide-react';
 
@@ -37,15 +38,22 @@ function getToolIcon(toolName: string): React.JSX.Element {
 // Smart input preview
 // ---------------------------------------------------------------------------
 
-function renderToolInput(toolName: string, input: Record<string, unknown>): string {
+function renderToolInput(
+  toolName: string,
+  input: Record<string, unknown>,
+  projectPath?: string
+): string {
   switch (toolName) {
     case 'Bash':
       return typeof input.command === 'string' ? input.command : JSON.stringify(input, null, 2);
     case 'Edit':
     case 'Read':
     case 'Write':
-    case 'NotebookEdit':
-      return typeof input.file_path === 'string' ? input.file_path : JSON.stringify(input, null, 2);
+    case 'NotebookEdit': {
+      const fp = typeof input.file_path === 'string' ? input.file_path : null;
+      if (!fp) return JSON.stringify(input, null, 2);
+      return projectPath ? shortenDisplayPath(fp, projectPath, 200) : fp;
+    }
     case 'Grep':
     case 'Glob':
       return typeof input.pattern === 'string' ? input.pattern : JSON.stringify(input, null, 2);
@@ -107,6 +115,7 @@ export const ToolApprovalSheet: React.FC = () => {
   const updateToolApprovalSettings = useStore((s) => s.updateToolApprovalSettings);
   const teams = useStore((s) => s.teams);
   const selectedTeamName = useStore((s) => s.selectedTeamName);
+  const selectedTeamData = useStore((s) => s.selectedTeamData);
   const { isLight } = useTheme();
 
   const current: ToolApprovalRequest | undefined = pendingApprovals[0];
@@ -115,10 +124,9 @@ export const ToolApprovalSheet: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [diffExpanded, setDiffExpanded] = useState(false);
 
-  // Clear error and collapse diff when current approval changes
+  // Clear error when current approval changes
   useEffect(() => {
     setError(null);
-    setDiffExpanded(false);
   }, [current?.requestId]);
 
   const handleRespond = useCallback(
@@ -214,7 +222,11 @@ export const ToolApprovalSheet: React.FC = () => {
       </div>
 
       {/* Tool input preview (syntax-highlighted) */}
-      <ToolInputPreview toolName={current.toolName} toolInput={current.toolInput} />
+      <ToolInputPreview
+        toolName={current.toolName}
+        toolInput={current.toolInput}
+        projectPath={selectedTeamData?.config?.projectPath}
+      />
 
       {/* Diff preview (Write/Edit/NotebookEdit only) */}
       <ToolApprovalDiffPreview
@@ -332,11 +344,13 @@ export const ToolApprovalSheet: React.FC = () => {
 const ToolInputPreview = ({
   toolName,
   toolInput,
+  projectPath,
 }: {
   toolName: string;
   toolInput: Record<string, unknown>;
+  projectPath?: string;
 }): React.JSX.Element => {
-  const text = renderToolInput(toolName, toolInput);
+  const text = renderToolInput(toolName, toolInput, projectPath);
   const fileName = getToolInputFileName(toolName, toolInput);
   const lines = useMemo(() => highlightLines(text, fileName), [text, fileName]);
 
