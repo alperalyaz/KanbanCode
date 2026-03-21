@@ -153,6 +153,11 @@ function approveReview(context, taskId, flags = {}) {
   const leadSessionId = resolveLeadSessionId(context, flags);
   const prevReviewState = getCurrentReviewState(task);
 
+  // Idempotent: already approved → skip duplicate comment/event, only add note if new
+  if (prevReviewState === 'approved') {
+    return { ok: true, taskId: task.id, displayId: task.displayId, column: 'approved', alreadyApproved: true };
+  }
+
   kanban.setKanbanColumn(context, task.id, 'approved');
 
   // Append review_approved event

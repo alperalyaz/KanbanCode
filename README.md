@@ -39,12 +39,13 @@ A new approach to task management with AI agent teams.
 - **Task-specific logs and messages** — clearly see all Claude logs and messages in isolation for each individual task, making it easy to trace what happened for any assignment
 - **Live process section** — see which agents are running processes and open URLs directly in the browser
 - **Stay in control** — send a direct message to any agent, drop a comment on a task, or pick a quick action right on the kanban card whenever you want to clarify something or add new work
+- **Flexible autonomy** — let agents run fully autonomous, or review and approve each action one by one (you'll get a notification) — configure the level of control that fits your security needs
 - **Solo mode** — one-member team: a single agent that creates its own tasks and shows live progress. Saves tokens; can expand to a full team anytime
 
 <details>
 <summary><strong>More features</strong></summary>
 
-- **Task creation with attachments** — Simply send a message to the team lead with any attached images (planed all files). The lead will automatically create a fully described task and attach your files directly to the task for complete context.
+- **Task creation with attachments** — send a message to the team lead with any attached images. The lead will automatically create a fully described task and attach your files directly to the task for complete context.
 
 - **Deep session analysis** — detailed breakdown of what happened in each Claude session: bash commands, reasoning, subprocesses
 
@@ -64,7 +65,7 @@ A new approach to task management with AI agent teams.
 
 - **Attach code context** — reference files or snippets in messages, like in Cursor. You can also mention tasks using `#task-id`, or refer to another team with `@team-name` in your messages.
 
-- **Notification system** — configurable alerts when tasks complete, agents need attention, or errors occur
+- **Notification system** — configurable alerts when tasks complete, agents need your response, new comments arrive, or errors occur
 
 - **MCP integration** — supports the built-in `mcp-server` (see [mcp-server folder](./mcp-server)) for integrating external tools and extensible agent plugins out of the box
 
@@ -117,7 +118,7 @@ No prerequisites — Claude Code can be installed and configured directly from t
 
 ### Tech stack
 
-Electron, React 18, TypeScript 5, Tailwind CSS 3, Zustand 4. Data from `~/.claude/` (session logs, todos, tasks). No cloud backend — everything runs locally.
+Electron 40, React 18, TypeScript 5, Tailwind CSS 3, Zustand 4. Data from `~/.claude/` (session logs, todos, tasks). No cloud backend — everything runs locally.
 
 ---
 

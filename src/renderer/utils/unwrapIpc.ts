@@ -14,7 +14,7 @@ export class IpcError extends Error {
 }
 
 /** Error messages that represent expected transient states, not real failures. */
-const EXPECTED_IPC_SIGNALS = ['TEAM_PROVISIONING'];
+const EXPECTED_IPC_SIGNALS = ['TEAM_PROVISIONING', 'TEAM_DRAFT'];
 
 export async function unwrapIpc<T>(operation: string, fn: () => Promise<T>): Promise<T> {
   try {

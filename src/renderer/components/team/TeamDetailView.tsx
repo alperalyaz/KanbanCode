@@ -971,8 +971,10 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           <div className="max-w-md text-center">
             <p className="text-sm font-medium text-text">Team not launched yet</p>
             <p className="mt-2 text-xs text-text-secondary">
-              {teamSummary?.displayName || teamName} configuration has been saved. Launch to start
-              provisioning with CLI.
+              This is a draft team — <strong>{teamSummary?.displayName || teamName}</strong> has
+              been configured with {teamSummary?.memberCount ?? 0} member
+              {teamSummary?.memberCount === 1 ? '' : 's'} but hasn&apos;t been provisioned by CLI
+              yet. Click Launch to select a model and start the team.
             </p>
             <div className="mt-4 flex justify-center gap-2">
               <button
@@ -1022,8 +1024,13 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
 
   if (!data) {
     return (
-      <div className="flex size-full items-center justify-center p-6 text-sm text-[var(--color-text-muted)]">
-        No team data available
+      <div className="size-full overflow-auto p-4">
+        <div ref={provisioningBannerRef}>
+          <TeamProvisioningBanner teamName={teamName} />
+        </div>
+        <div className="flex flex-1 items-center justify-center p-6 text-sm text-[var(--color-text-muted)]">
+          No team data available
+        </div>
       </div>
     );
   }
