@@ -27,6 +27,7 @@ import { useKeyboardShortcuts } from '@renderer/hooks/useKeyboardShortcuts';
 import { useZoomFactor } from '@renderer/hooks/useZoomFactor';
 import { useStore } from '@renderer/store';
 
+import { CliInstallWarningBanner } from '../common/CliInstallWarningBanner';
 import { UpdateBanner } from '../common/UpdateBanner';
 import { UpdateDialog } from '../common/UpdateDialog';
 import { WorkspaceIndicator } from '../common/WorkspaceIndicator';
@@ -160,6 +161,7 @@ export const TabbedLayout = (): React.JSX.Element => {
         onDragEnd={handleDragEnd}
       >
         <TabBarRow />
+        <CliInstallWarningBanner />
         <div className="flex flex-1 overflow-hidden">
           {/* Command Palette (Cmd+K) */}
           <CommandPalette />
