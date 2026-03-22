@@ -18,6 +18,7 @@
  */
 
 import { getAutoDetectedClaudeBasePath, getClaudeBasePath } from '@main/utils/pathDecoder';
+import { syncTelemetryFlag } from '@main/sentry';
 import { getErrorMessage } from '@shared/utils/errorHandling';
 import { createLogger } from '@shared/utils/logger';
 import { execFile } from 'child_process';
@@ -170,6 +171,14 @@ async function handleUpdateConfig(
         : undefined;
 
     configManager.updateConfig(validation.section, validation.data);
+
+    // Sync Sentry opt-in when general.telemetryEnabled changes
+    if (
+      validation.section === 'general' &&
+      Object.prototype.hasOwnProperty.call(validation.data, 'telemetryEnabled')
+    ) {
+      syncTelemetryFlag(configManager.getConfig().general.telemetryEnabled);
+    }
 
     if (isClaudeRootUpdate && onClaudeRootPathUpdated) {
       const nextClaudeRootPath = (validation.data as { claudeRootPath?: string | null })

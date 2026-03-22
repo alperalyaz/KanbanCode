@@ -12,6 +12,10 @@
  * - CORS_ORIGIN: CORS origin policy (default '*')
  */
 
+// Note: Sentry is NOT imported here. @sentry/electron/main requires Electron
+// runtime which is unavailable in standalone (pure Node.js) mode. Standalone
+// error tracking can be added later with @sentry/node if needed.
+
 import { createLogger } from '@shared/utils/logger';
 
 import { HttpServer } from './services/infrastructure/HttpServer';

@@ -1,4 +1,5 @@
 import { setCurrentMainOp } from '@main/services/infrastructure/EventLoopLagMonitor';
+import { addMainBreadcrumb } from '@main/sentry';
 import { getAppIconPath } from '@main/utils/appIcon';
 import { getAppDataPath, getTeamsBasePath } from '@main/utils/pathDecoder';
 import { stripMarkdown } from '@main/utils/textFormatting';
@@ -876,16 +877,17 @@ async function handleCreateTeam(
     return { success: false, error: validation.error };
   }
 
-  return wrapTeamHandler('create', () =>
-    getTeamProvisioningService().createTeam(validation.value, (progress) => {
+  return wrapTeamHandler('create', () => {
+    addMainBreadcrumb('team', 'create', { teamName: validation.value.teamName });
+    return getTeamProvisioningService().createTeam(validation.value, (progress) => {
       try {
         event.sender.send(TEAM_PROVISIONING_PROGRESS, progress);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         logger.warn(`Failed to emit provisioning progress: ${message}`);
       }
-    })
-  );
+    });
+  });
 }
 
 async function handleLaunchTeam(
@@ -979,8 +981,9 @@ async function handleLaunchTeam(
     );
   }
 
-  return wrapTeamHandler('launch', () =>
-    getTeamProvisioningService().launchTeam(
+  return wrapTeamHandler('launch', () => {
+    addMainBreadcrumb('team', 'launch', { teamName: validatedTeamName.value! });
+    return getTeamProvisioningService().launchTeam(
       {
         teamName: validatedTeamName.value!,
         cwd,
@@ -1005,8 +1008,8 @@ async function handleLaunchTeam(
           logger.warn(`Failed to emit launch provisioning progress: ${message}`);
         }
       }
-    )
-  );
+    );
+  });
 }
 
 async function handleValidateCliArgs(
@@ -2055,6 +2058,7 @@ async function handleStopTeam(
     return { success: false, error: validated.error ?? 'Invalid teamName' };
   }
   return wrapTeamHandler('stop', async () => {
+    addMainBreadcrumb('team', 'stop', { teamName: validated.value! });
     getTeamProvisioningService().stopTeam(validated.value!);
   });
 }

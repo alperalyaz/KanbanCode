@@ -1,11 +1,13 @@
 <p align="center">
-  <a href="docs/screenshots/1.jpg"><img src="docs/screenshots/1.jpg" width="95" alt="Kanban Board" /></a>&nbsp;
-  <a href="docs/screenshots/7.png"><img src="docs/screenshots/7.png" width="95" alt="Code Review" /></a>&nbsp;
-  <a href="docs/screenshots/2.jpg"><img src="docs/screenshots/2.jpg" width="95" alt="Team View" /></a>&nbsp;
-  <img src="resources/icons/png/1024x1024.png" alt="Claude Agent Teams UI" width="100" />&nbsp;
-  <a href="docs/screenshots/3.jpg"><img src="docs/screenshots/3.jpg" width="95" alt="Agent Comments" /></a>&nbsp;
-  <a href="docs/screenshots/4.png"><img src="docs/screenshots/4.png" width="95" alt="Create Team" /></a>&nbsp;
-  <a href="docs/screenshots/6.png"><img src="docs/screenshots/6.png" width="80" alt="Settings" /></a>
+  <a href="docs/screenshots/1.jpg"><img src="docs/screenshots/1.jpg" width="75" alt="Kanban Board" /></a>&nbsp;
+  <a href="docs/screenshots/7.png"><img src="docs/screenshots/7.png" width="75" alt="Code Review" /></a>&nbsp;
+  <a href="docs/screenshots/2.jpg"><img src="docs/screenshots/2.jpg" width="75" alt="Team View" /></a>&nbsp;
+  <a href="docs/screenshots/8.png"><img src="docs/screenshots/8.png" width="75" alt="Task Detail" /></a>&nbsp;
+  <img src="resources/icons/png/1024x1024.png" alt="Claude Agent Teams UI" width="80" />&nbsp;
+  <a href="docs/screenshots/9.png"><img src="docs/screenshots/9.png" width="75" alt="Execution Logs" /></a>&nbsp;
+  <a href="docs/screenshots/3.jpg"><img src="docs/screenshots/3.jpg" width="75" alt="Agent Comments" /></a>&nbsp;
+  <a href="docs/screenshots/4.png"><img src="docs/screenshots/4.png" width="75" alt="Create Team" /></a>&nbsp;
+  <a href="docs/screenshots/6.png"><img src="docs/screenshots/6.png" width="65" alt="Settings" /></a>
 </p>
 
 <h1 align="center">Claude Agent Teams UI</h1>

@@ -16,6 +16,10 @@
 // On Windows this saturates all threads, blocking the event loop.
 process.env.UV_THREADPOOL_SIZE ??= '16';
 
+// Sentry must be the first import to capture early errors.
+import './sentry';
+import { syncTelemetryFlag } from './sentry';
+
 import { JsonScheduleRepository } from '@main/services/schedule/JsonScheduleRepository';
 import { ScheduledTaskExecutor } from '@main/services/schedule/ScheduledTaskExecutor';
 import { SchedulerService } from '@main/services/schedule/SchedulerService';
@@ -1319,6 +1323,9 @@ void app.whenReady().then(() => {
 
     // Apply configuration settings
     const config = configManager.getConfig();
+
+    // Sync Sentry telemetry opt-in flag from persisted config
+    syncTelemetryFlag(config.general.telemetryEnabled);
 
     // Apply launch-at-login setting only in packaged builds.
     // In dev, macOS may deny this (and Electron logs a noisy error to stderr).

@@ -210,6 +210,8 @@ export interface GeneralConfig {
   useNativeTitleBar: boolean;
   /** Paths manually added via "Select Folder" that persist across app restarts */
   customProjectPaths: string[];
+  /** Send anonymous crash & performance telemetry (requires SENTRY_DSN at build time) */
+  telemetryEnabled: boolean;
 }
 
 export interface DisplayConfig {
@@ -293,6 +295,7 @@ const DEFAULT_CONFIG: AppConfig = {
     autoExpandAIGroups: false,
     useNativeTitleBar: false,
     customProjectPaths: [],
+    telemetryEnabled: true,
   },
   display: {
     showTimestamps: true,

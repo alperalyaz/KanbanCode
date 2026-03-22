@@ -3,6 +3,7 @@
  */
 
 import { api } from '@renderer/api';
+import { syncRendererTelemetry } from '@renderer/sentry';
 import { createLogger } from '@shared/utils/logger';
 
 import type { AppState } from '../types';
@@ -66,6 +67,8 @@ export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (s
       // Refresh config after update
       const config = await api.config.get();
       set({ appConfig: config });
+      // Sync Sentry telemetry gate when config changes
+      syncRendererTelemetry(config.general?.telemetryEnabled ?? true);
     } catch (error) {
       logger.error('Failed to update config:', error);
       set({

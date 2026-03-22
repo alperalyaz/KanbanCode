@@ -6,6 +6,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 
 import { App } from './App';
+import { initSentryRenderer } from './sentry';
 import { initializeNotificationListeners } from './store';
 
 declare global {
@@ -13,6 +14,9 @@ declare global {
     __claudeTeamsUiDidInit?: boolean;
   }
 }
+
+// Sentry must be initialised before React renders.
+initSentryRenderer();
 
 // React 18 StrictMode intentionally mounts/unmounts effects twice in dev,
 // which can start duplicate IPC init chains. Make initialization a one-time

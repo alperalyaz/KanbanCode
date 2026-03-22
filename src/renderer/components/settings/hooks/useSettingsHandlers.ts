@@ -318,6 +318,7 @@ export function useSettingsHandlers({
           agentLanguage: 'system',
           autoExpandAIGroups: false,
           useNativeTitleBar: false,
+          telemetryEnabled: true,
         },
         display: {
           showTimestamps: true,

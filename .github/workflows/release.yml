@@ -36,6 +36,11 @@ jobs:
           pnpm pkg set version="$VERSION"
 
       - name: Build app
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: quant-jump-pro
+          SENTRY_PROJECT: electron
         run: pnpm build
 
       - name: Create GitHub Release
@@ -106,6 +111,11 @@ jobs:
           pnpm pkg set version="$VERSION"
 
       - name: Build app (macOS ${{ matrix.arch }})
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: quant-jump-pro
+          SENTRY_PROJECT: electron
         run: pnpm build
 
       - name: Verify packaged inputs (macOS ${{ matrix.arch }})
@@ -173,6 +183,11 @@ jobs:
           pnpm pkg set version="$VERSION"
 
       - name: Build app (Windows)
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: quant-jump-pro
+          SENTRY_PROJECT: electron
         run: pnpm build
 
       - name: Verify packaged inputs (Windows)
@@ -241,6 +256,11 @@ jobs:
           pnpm pkg set version="$VERSION"
 
       - name: Build app (Linux)
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: quant-jump-pro
+          SENTRY_PROJECT: electron
         run: pnpm build
 
       - name: Verify packaged inputs (Linux)

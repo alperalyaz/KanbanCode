@@ -5,6 +5,7 @@
  * and returns IpcResult<T> for consistent renderer-side handling.
  */
 
+import { addMainBreadcrumb } from '@main/sentry';
 import { createLogger } from '@shared/utils/logger';
 
 import type { IpcResult } from '@shared/types/ipc';
@@ -13,6 +14,7 @@ export function createIpcWrapper(logPrefix: string) {
   const log = createLogger(logPrefix);
 
   return async function wrap<T>(operation: string, fn: () => Promise<T>): Promise<IpcResult<T>> {
+    addMainBreadcrumb('ipc', `${logPrefix}:${operation}`);
     try {
       const data = await fn();
       return { success: true, data };

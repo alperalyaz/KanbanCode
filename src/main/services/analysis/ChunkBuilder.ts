@@ -39,6 +39,7 @@ import {
 import { calculateMetrics } from '@main/utils/jsonl';
 import { createLogger } from '@shared/utils/logger';
 
+import { startMainSpan } from '../../sentry';
 import type { WaterfallData, WaterfallItem } from '@shared/types';
 
 const logger = createLogger('Service:ChunkBuilder');
@@ -80,81 +81,83 @@ export class ChunkBuilder {
     subagents: Process[] = [],
     options?: { includeSidechain?: boolean }
   ): EnhancedChunk[] {
-    const chunks: EnhancedChunk[] = [];
+    return startMainSpan('chunks.build', 'build', () => {
+      const chunks: EnhancedChunk[] = [];
 
-    // Filter to main thread messages (non-sidechain)
-    const mainMessages = options?.includeSidechain
-      ? messages
-      : messages.filter((m) => !m.isSidechain);
-    logger.debug(`Total messages: ${messages.length}, Main thread: ${mainMessages.length}`);
+      // Filter to main thread messages (non-sidechain)
+      const mainMessages = options?.includeSidechain
+        ? messages
+        : messages.filter((m) => !m.isSidechain);
+      logger.debug(`Total messages: ${messages.length}, Main thread: ${mainMessages.length}`);
 
-    // Classify each message into categories using MessageClassifier
-    const classified = classifyMessages(mainMessages);
+      // Classify each message into categories using MessageClassifier
+      const classified = classifyMessages(mainMessages);
 
-    // Log classification summary
-    const categoryCounts = new Map<MessageCategory, number>();
-    for (const { category } of classified) {
-      categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
-    }
-    logger.debug('Message classification:', Object.fromEntries(categoryCounts));
-
-    // Build chunks from classification - AI chunks are INDEPENDENT
-    let aiBuffer: ParsedMessage[] = [];
-
-    for (const { message, category } of classified) {
-      switch (category) {
-        case 'hardNoise':
-          // Skip - filtered out
-          break;
-
-        case 'compact':
-          // Flush any buffered AI messages first
-          if (aiBuffer.length > 0) {
-            chunks.push(buildAIChunkFromBuffer(aiBuffer, subagents, messages));
-            aiBuffer = [];
-          }
-          chunks.push(buildCompactChunk(message));
-          break;
-
-        case 'user':
-          // Flush any buffered AI messages first
-          if (aiBuffer.length > 0) {
-            chunks.push(buildAIChunkFromBuffer(aiBuffer, subagents, messages));
-            aiBuffer = [];
-          }
-          chunks.push(buildUserChunk(message));
-          break;
-
-        case 'system':
-          // Flush any buffered AI messages first
-          if (aiBuffer.length > 0) {
-            chunks.push(buildAIChunkFromBuffer(aiBuffer, subagents, messages));
-            aiBuffer = [];
-          }
-          chunks.push(buildSystemChunk(message));
-          break;
-
-        case 'ai':
-          aiBuffer.push(message);
-          break;
+      // Log classification summary
+      const categoryCounts = new Map<MessageCategory, number>();
+      for (const { category } of classified) {
+        categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
       }
-    }
+      logger.debug('Message classification:', Object.fromEntries(categoryCounts));
 
-    // Flush remaining AI buffer
-    if (aiBuffer.length > 0) {
-      chunks.push(buildAIChunkFromBuffer(aiBuffer, subagents, messages));
-    }
+      // Build chunks from classification - AI chunks are INDEPENDENT
+      let aiBuffer: ParsedMessage[] = [];
 
-    // Log final chunk summary
-    const userChunkCount = chunks.filter(isUserChunk).length;
-    const aiChunkCount = chunks.filter(isAIChunk).length;
-    const systemChunkCount = chunks.filter(isSystemChunk).length;
-    const compactChunkCount = chunks.filter(isCompactChunk).length;
-    logger.debug(
-      `Created ${chunks.length} chunks: ${userChunkCount} user, ${aiChunkCount} AI, ${systemChunkCount} system, ${compactChunkCount} compact`
-    );
+      for (const { message, category } of classified) {
+        switch (category) {
+          case 'hardNoise':
+            // Skip - filtered out
+            break;
 
-    return chunks;
+          case 'compact':
+            // Flush any buffered AI messages first
+            if (aiBuffer.length > 0) {
+              chunks.push(buildAIChunkFromBuffer(aiBuffer, subagents, messages));
+              aiBuffer = [];
+            }
+            chunks.push(buildCompactChunk(message));
+            break;
+
+          case 'user':
+            // Flush any buffered AI messages first
+            if (aiBuffer.length > 0) {
+              chunks.push(buildAIChunkFromBuffer(aiBuffer, subagents, messages));
+              aiBuffer = [];
+            }
+            chunks.push(buildUserChunk(message));
+            break;
+
+          case 'system':
+            // Flush any buffered AI messages first
+            if (aiBuffer.length > 0) {
+              chunks.push(buildAIChunkFromBuffer(aiBuffer, subagents, messages));
+              aiBuffer = [];
+            }
+            chunks.push(buildSystemChunk(message));
+            break;
+
+          case 'ai':
+            aiBuffer.push(message);
+            break;
+        }
+      }
+
+      // Flush remaining AI buffer
+      if (aiBuffer.length > 0) {
+        chunks.push(buildAIChunkFromBuffer(aiBuffer, subagents, messages));
+      }
+
+      // Log final chunk summary
+      const userChunkCount = chunks.filter(isUserChunk).length;
+      const aiChunkCount = chunks.filter(isAIChunk).length;
+      const systemChunkCount = chunks.filter(isSystemChunk).length;
+      const compactChunkCount = chunks.filter(isCompactChunk).length;
+      logger.debug(
+        `Created ${chunks.length} chunks: ${userChunkCount} user, ${aiChunkCount} AI, ${systemChunkCount} system, ${compactChunkCount} compact`
+      );
+
+      return chunks;
+    }); // startMainSpan
   }
 
   // ===========================================================================

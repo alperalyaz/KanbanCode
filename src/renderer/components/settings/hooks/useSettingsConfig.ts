@@ -33,6 +33,7 @@ export interface SafeConfig {
     agentLanguage: string;
     autoExpandAIGroups: boolean;
     useNativeTitleBar: boolean;
+    telemetryEnabled: boolean;
   };
   notifications: {
     enabled: boolean;
@@ -172,6 +173,7 @@ export function useSettingsConfig(): UseSettingsConfigReturn {
         agentLanguage: displayConfig?.general?.agentLanguage ?? 'system',
         autoExpandAIGroups: displayConfig?.general?.autoExpandAIGroups ?? false,
         useNativeTitleBar: displayConfig?.general?.useNativeTitleBar ?? false,
+        telemetryEnabled: displayConfig?.general?.telemetryEnabled ?? true,
       },
       notifications: {
         enabled: displayConfig?.notifications?.enabled ?? true,

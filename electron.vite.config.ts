@@ -1,4 +1,5 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 import react from '@vitejs/plugin-react'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
@@ -32,14 +33,36 @@ function nativeModuleStub(): Plugin {
   }
 }
 
+// Sentry source map upload — only active in CI when SENTRY_AUTH_TOKEN is set.
+const sentryPlugins = process.env.SENTRY_AUTH_TOKEN
+  ? [
+      sentryVitePlugin({
+        org: process.env.SENTRY_ORG ?? 'quant-jump-pro',
+        project: process.env.SENTRY_PROJECT ?? 'electron',
+        authToken: process.env.SENTRY_AUTH_TOKEN,
+        release: { name: `claude-agent-teams-ui@${pkg.version}` },
+        sourcemaps: {
+          filesToDeleteAfterUpload: ['./out/renderer/**/*.map', './dist-electron/**/*.map'],
+        },
+      }),
+    ]
+  : []
+
 export default defineConfig({
   main: {
     plugins: [
       externalizeDepsPlugin({
         exclude: bundledDeps
       }),
-      nativeModuleStub()
+      nativeModuleStub(),
+      ...sentryPlugins,
     ],
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+      // Inject DSN at compile time — process.env.SENTRY_DSN is NOT available
+      // at runtime in packaged Electron apps (only during CI build).
+      'process.env.SENTRY_DSN': JSON.stringify(process.env.SENTRY_DSN ?? ''),
+    },
     resolve: {
       alias: {
         '@main': resolve(__dirname, 'src/main'),
@@ -48,6 +71,7 @@ export default defineConfig({
       }
     },
     build: {
+      sourcemap: 'hidden',
       outDir: 'dist-electron/main',
       rollupOptions: {
         input: {
@@ -94,6 +118,11 @@ export default defineConfig({
     optimizeDeps: {
       include: ['@codemirror/language-data']
     },
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+      // Pass SENTRY_DSN to renderer as VITE_SENTRY_DSN (Vite replaces at compile time)
+      'import.meta.env.VITE_SENTRY_DSN': JSON.stringify(process.env.SENTRY_DSN ?? ''),
+    },
     resolve: {
       alias: {
         '@renderer': resolve(__dirname, 'src/renderer'),
@@ -101,8 +130,9 @@ export default defineConfig({
         '@main': resolve(__dirname, 'src/main')
       }
     },
-    plugins: [react()],
+    plugins: [react(), ...sentryPlugins],
     build: {
+      sourcemap: 'hidden',
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/renderer/index.html')

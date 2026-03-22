@@ -24,6 +24,7 @@ import {
 } from '@main/utils/jsonl';
 import * as path from 'path';
 
+import { startMainSpan } from '../../sentry';
 import { type ProjectScanner } from '../discovery/ProjectScanner';
 
 /**
@@ -74,8 +75,10 @@ export class SessionParser {
    * Parse a JSONL file at the given path.
    */
   async parseSessionFile(filePath: string): Promise<ParsedSession> {
-    const messages = await parseJsonlFile(filePath, this.projectScanner.getFileSystemProvider());
-    return this.processMessages(messages);
+    return startMainSpan('session.parse', 'parse', async () => {
+      const messages = await parseJsonlFile(filePath, this.projectScanner.getFileSystemProvider());
+      return this.processMessages(messages);
+    });
   }
 
   /**

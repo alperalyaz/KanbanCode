@@ -13,6 +13,7 @@ import {
   truncateLabel,
 } from '@renderer/types/tabs';
 import { normalizePath } from '@renderer/utils/pathNormalize';
+import { addNavigationBreadcrumb } from '@renderer/sentry';
 
 import {
   findPane,
@@ -253,6 +254,14 @@ export const createTabSlice: StateCreator<AppState, [], [], TabSlice> = (set, ge
   setActiveTab: (tabId: string) => {
     const state = get();
     const { paneLayout } = state;
+
+    // Sentry breadcrumb for tab navigation
+    const prevTab = state.getActiveTab();
+    const targetPane = findPaneByTabId(paneLayout, tabId);
+    const targetTab = targetPane?.tabs.find((t) => t.id === tabId);
+    if (prevTab?.id !== tabId) {
+      addNavigationBreadcrumb(prevTab?.label ?? 'none', targetTab?.label ?? tabId);
+    }
 
     // Find which pane contains this tab
     const pane = findPaneByTabId(paneLayout, tabId);

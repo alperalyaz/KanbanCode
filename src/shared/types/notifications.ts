@@ -316,6 +316,8 @@ export interface AppConfig {
     autoExpandAIGroups: boolean;
     /** Whether to use the native OS title bar instead of the custom one (Linux/Windows) */
     useNativeTitleBar: boolean;
+    /** Send anonymous crash & performance telemetry (requires SENTRY_DSN at build time) */
+    telemetryEnabled: boolean;
   };
   /** Display and UI settings */
   display: {

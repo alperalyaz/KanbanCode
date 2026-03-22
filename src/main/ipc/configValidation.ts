@@ -290,6 +290,7 @@ function validateGeneralSection(data: unknown): ValidationSuccess<'general'> | V
     'agentLanguage',
     'autoExpandAIGroups',
     'useNativeTitleBar',
+    'telemetryEnabled',
   ];
 
   const result: Partial<GeneralConfig> = {};
@@ -371,6 +372,12 @@ function validateGeneralSection(data: unknown): ValidationSuccess<'general'> | V
           return { valid: false, error: `general.${key} must be a boolean` };
         }
         result.useNativeTitleBar = value;
+        break;
+      case 'telemetryEnabled':
+        if (typeof value !== 'boolean') {
+          return { valid: false, error: `general.${key} must be a boolean` };
+        }
+        result.telemetryEnabled = value;
         break;
       default:
         return { valid: false, error: `Unsupported general key: ${key}` };

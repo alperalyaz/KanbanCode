@@ -3,6 +3,7 @@
  */
 
 import { api } from '@renderer/api';
+import { syncRendererTelemetry } from '@renderer/sentry';
 import { cleanupStale as cleanupCommentReadState } from '@renderer/services/commentReadStorage';
 import { create } from 'zustand';
 
@@ -95,6 +96,10 @@ export function initializeNotificationListeners(): () => void {
   void (async () => {
     // Config: fast (in-memory read) — needed for theme before first paint.
     await useStore.getState().fetchConfig();
+
+    // Sync Sentry renderer telemetry gate from loaded config
+    const loadedConfig = useStore.getState().appConfig;
+    syncRendererTelemetry(loadedConfig?.general?.telemetryEnabled ?? true);
 
     // Remaining fetches have no data dependency on each other — run in parallel
     // to avoid blocking teams/notifications behind a slow repository scan.

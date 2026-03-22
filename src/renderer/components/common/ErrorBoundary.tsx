@@ -1,5 +1,6 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 
+import { captureRendererException, isSentryRendererActive } from '@renderer/sentry';
 import { useStore } from '@renderer/store';
 import {
   type BugReportContext,
@@ -43,6 +44,14 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     logger.error('ErrorBoundary caught an error:', error, errorInfo);
     this.setState({ errorInfo });
+
+    // Report to Sentry when telemetry is active
+    if (isSentryRendererActive()) {
+      captureRendererException(error, {
+        componentStack: errorInfo.componentStack,
+        ...this.getBugReportContext(),
+      });
+    }
   }
 
   handleReload = (): void => {

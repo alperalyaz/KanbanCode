@@ -109,6 +109,8 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@sentry/electron": "^7.10.0",
+    "@sentry/react": "^10.45.0",
     "@tanstack/react-virtual": "^3.10.8",
     "@tiptap/extension-placeholder": "^3.20.1",
     "@tiptap/markdown": "^3.20.1",
@@ -162,6 +164,7 @@
     "@electron/rebuild": "^4.0.3",
     "@eslint-community/eslint-plugin-eslint-comments": "^4.6.0",
     "@eslint/js": "^9.39.2",
+    "@sentry/vite-plugin": "^5.1.1",
     "@tailwindcss/typography": "^0.5.19",
     "@types/hast": "^3.0.4",
     "@types/mdast": "^4.0.4",
@@ -212,7 +215,8 @@
     "files": [
       "out/renderer/**",
       "dist-electron/**",
-      "package.json"
+      "package.json",
+      "!**/*.map"
     ],
     "asar": true,
     "asarUnpack": [

@@ -15,6 +15,8 @@ import { LocalFileSystemProvider } from '@main/services/infrastructure/LocalFile
 import { parseJsonlFile } from '@main/utils/jsonl';
 import { extractBaseDir, extractSessionId } from '@main/utils/pathDecoder';
 import { createLogger } from '@shared/utils/logger';
+
+import { startMainSpan } from '../../sentry';
 import {
   extractMarkdownPlainText,
   findMarkdownSearchMatches,
@@ -62,135 +64,140 @@ export class SessionSearcher {
     query: string,
     maxResults: number = 50
   ): Promise<SearchSessionsResult> {
-    const startedAt = Date.now();
-    const results: SearchResult[] = [];
-    let sessionsSearched = 0;
-    const fastMode = this.fsProvider.type === 'ssh';
-    let isPartial = false;
+    return startMainSpan('session.search', 'search', async () => {
+      const startedAt = Date.now();
+      const results: SearchResult[] = [];
+      let sessionsSearched = 0;
+      const fastMode = this.fsProvider.type === 'ssh';
+      let isPartial = false;
 
-    if (!query || query.trim().length === 0) {
-      return { results: [], totalMatches: 0, sessionsSearched: 0, query };
-    }
-
-    const normalizedQuery = query.toLowerCase().trim();
-
-    try {
-      const baseDir = extractBaseDir(projectId);
-      const projectPath = path.join(this.projectsDir, baseDir);
-      const sessionFilter = subprojectRegistry.getSessionFilter(projectId);
-
-      if (!(await this.fsProvider.exists(projectPath))) {
+      if (!query || query.trim().length === 0) {
         return { results: [], totalMatches: 0, sessionsSearched: 0, query };
       }
 
-      // Get all session files
-      const entries = await this.fsProvider.readdir(projectPath);
-      const sessionEntries = entries.filter((entry) => {
-        if (!entry.isFile() || !entry.name.endsWith('.jsonl')) return false;
-        // Filter to only sessions belonging to this subproject
-        if (sessionFilter) {
-          const sessionId = extractSessionId(entry.name);
-          return sessionFilter.has(sessionId);
-        }
-        return true;
-      });
-      const sessionFiles = await this.collectFulfilledInBatches(
-        sessionEntries,
-        this.fsProvider.type === 'ssh' ? 24 : 128,
-        async (entry) => {
-          const filePath = path.join(projectPath, entry.name);
-          const mtimeMs =
-            typeof entry.mtimeMs === 'number'
-              ? entry.mtimeMs
-              : (await this.fsProvider.stat(filePath)).mtimeMs;
-          return { name: entry.name, filePath, mtimeMs };
-        }
-      );
-      sessionFiles.sort((a, b) => b.mtimeMs - a.mtimeMs);
+      const normalizedQuery = query.toLowerCase().trim();
 
-      // Search session files with bounded concurrency and staged breadth in SSH mode.
-      const searchBatchSize = fastMode ? 3 : 8;
-      const stageBoundaries = fastMode
-        ? this.buildFastSearchStageBoundaries(sessionFiles.length)
-        : [sessionFiles.length];
-      let searchedUntil = 0;
-      let shouldStop = false;
+      try {
+        const baseDir = extractBaseDir(projectId);
+        const projectPath = path.join(this.projectsDir, baseDir);
+        const sessionFilter = subprojectRegistry.getSessionFilter(projectId);
 
-      for (const stageBoundary of stageBoundaries) {
-        for (
-          let i = searchedUntil;
-          i < stageBoundary && results.length < maxResults;
-          i += searchBatchSize
-        ) {
-          if (fastMode && Date.now() - startedAt >= SSH_FAST_SEARCH_TIME_BUDGET_MS) {
-            isPartial = true;
-            shouldStop = true;
+        if (!(await this.fsProvider.exists(projectPath))) {
+          return { results: [], totalMatches: 0, sessionsSearched: 0, query };
+        }
+
+        // Get all session files
+        const entries = await this.fsProvider.readdir(projectPath);
+        const sessionEntries = entries.filter((entry) => {
+          if (!entry.isFile() || !entry.name.endsWith('.jsonl')) return false;
+          // Filter to only sessions belonging to this subproject
+          if (sessionFilter) {
+            const sessionId = extractSessionId(entry.name);
+            return sessionFilter.has(sessionId);
+          }
+          return true;
+        });
+        const sessionFiles = await this.collectFulfilledInBatches(
+          sessionEntries,
+          this.fsProvider.type === 'ssh' ? 24 : 128,
+          async (entry) => {
+            const filePath = path.join(projectPath, entry.name);
+            const mtimeMs =
+              typeof entry.mtimeMs === 'number'
+                ? entry.mtimeMs
+                : (await this.fsProvider.stat(filePath)).mtimeMs;
+            return { name: entry.name, filePath, mtimeMs };
+          }
+        );
+        sessionFiles.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+        // Search session files with bounded concurrency and staged breadth in SSH mode.
+        const searchBatchSize = fastMode ? 3 : 8;
+        const stageBoundaries = fastMode
+          ? this.buildFastSearchStageBoundaries(sessionFiles.length)
+          : [sessionFiles.length];
+        let searchedUntil = 0;
+        let shouldStop = false;
+
+        for (const stageBoundary of stageBoundaries) {
+          for (
+            let i = searchedUntil;
+            i < stageBoundary && results.length < maxResults;
+            i += searchBatchSize
+          ) {
+            if (fastMode && Date.now() - startedAt >= SSH_FAST_SEARCH_TIME_BUDGET_MS) {
+              isPartial = true;
+              shouldStop = true;
+              break;
+            }
+
+            const batch = sessionFiles.slice(i, i + searchBatchSize);
+            sessionsSearched += batch.length;
+
+            const settled = await Promise.allSettled(
+              batch.map(async (file) => {
+                const sessionId = extractSessionId(file.name);
+                return this.searchSessionFile(
+                  projectId,
+                  sessionId,
+                  file.filePath,
+                  normalizedQuery,
+                  maxResults,
+                  file.mtimeMs
+                );
+              })
+            );
+
+            for (const result of settled) {
+              if (results.length >= maxResults) {
+                break;
+              }
+              if (result.status !== 'fulfilled' || result.value.length === 0) {
+                continue;
+              }
+
+              const remaining = maxResults - results.length;
+              results.push(...result.value.slice(0, remaining));
+            }
+          }
+
+          searchedUntil = stageBoundary;
+
+          if (shouldStop || !fastMode || results.length >= maxResults) {
             break;
           }
 
-          const batch = sessionFiles.slice(i, i + searchBatchSize);
-          sessionsSearched += batch.length;
-
-          const settled = await Promise.allSettled(
-            batch.map(async (file) => {
-              const sessionId = extractSessionId(file.name);
-              return this.searchSessionFile(
-                projectId,
-                sessionId,
-                file.filePath,
-                normalizedQuery,
-                maxResults,
-                file.mtimeMs
-              );
-            })
-          );
-
-          for (const result of settled) {
-            if (results.length >= maxResults) {
-              break;
-            }
-            if (result.status !== 'fulfilled' || result.value.length === 0) {
-              continue;
-            }
-
-            const remaining = maxResults - results.length;
-            results.push(...result.value.slice(0, remaining));
+          if (
+            stageBoundary < sessionFiles.length &&
+            results.length >= SSH_FAST_SEARCH_MIN_RESULTS
+          ) {
+            isPartial = true;
+            break;
           }
         }
 
-        searchedUntil = stageBoundary;
-
-        if (shouldStop || !fastMode || results.length >= maxResults) {
-          break;
-        }
-
-        if (stageBoundary < sessionFiles.length && results.length >= SSH_FAST_SEARCH_MIN_RESULTS) {
+        if (fastMode && results.length < maxResults && sessionsSearched < sessionFiles.length) {
           isPartial = true;
-          break;
         }
-      }
 
-      if (fastMode && results.length < maxResults && sessionsSearched < sessionFiles.length) {
-        isPartial = true;
-      }
+        if (fastMode) {
+          logger.debug(
+            `SSH fast search scanned ${sessionsSearched}/${sessionFiles.length} sessions in ${Date.now() - startedAt}ms (results=${results.length}, partial=${isPartial})`
+          );
+        }
 
-      if (fastMode) {
-        logger.debug(
-          `SSH fast search scanned ${sessionsSearched}/${sessionFiles.length} sessions in ${Date.now() - startedAt}ms (results=${results.length}, partial=${isPartial})`
-        );
+        return {
+          results,
+          totalMatches: results.length,
+          sessionsSearched,
+          query,
+          isPartial: fastMode ? isPartial : undefined,
+        };
+      } catch (error) {
+        logger.error(`Error searching sessions for project ${projectId}:`, error);
+        return { results: [], totalMatches: 0, sessionsSearched: 0, query };
       }
-
-      return {
-        results,
-        totalMatches: results.length,
-        sessionsSearched,
-        query,
-        isPartial: fastMode ? isPartial : undefined,
-      };
-    } catch (error) {
-      logger.error(`Error searching sessions for project ${projectId}:`, error);
-      return { results: [], totalMatches: 0, sessionsSearched: 0, query };
-    }
+    }); // startMainSpan
   }
 
   /**
