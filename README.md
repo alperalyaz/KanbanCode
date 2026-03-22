@@ -1,6 +1,14 @@
-<p align="center">
-  <img src="resources/icons/png/1024x1024.png" alt="Claude Agent Teams UI" width="120" />
-</p>
+<table align="center" border="0">
+<tr valign="middle">
+  <td><a href="docs/screenshots/1.jpg"><img src="docs/screenshots/1.jpg" width="95" alt="Kanban Board" /></a></td>
+  <td><a href="docs/screenshots/7.png"><img src="docs/screenshots/7.png" width="95" alt="Code Review" /></a></td>
+  <td><a href="docs/screenshots/2.jpg"><img src="docs/screenshots/2.jpg" width="95" alt="Team View" /></a></td>
+  <td><img src="resources/icons/png/1024x1024.png" alt="Claude Agent Teams UI" width="100" /></td>
+  <td><a href="docs/screenshots/3.jpg"><img src="docs/screenshots/3.jpg" width="95" alt="Agent Comments" /></a></td>
+  <td><a href="docs/screenshots/4.png"><img src="docs/screenshots/4.png" width="95" alt="Create Team" /></a></td>
+  <td><a href="docs/screenshots/6.png"><img src="docs/screenshots/6.png" width="95" alt="Settings" /></a></td>
+</tr>
+</table>
 
 <h1 align="center">Claude Agent Teams UI</h1>
 
@@ -133,24 +141,24 @@ A new approach to task management with AI agent teams.
 
 | Feature | Claude Agent Teams UI | Vibe Kanban | Aperant | Cursor | Claude Code CLI |
 |---|---|---|---|---|---|
-| **Cross-team communication** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Cross-team communication** | ✅ | ❌ | ❌ | — | ❌ |
 | **Agent-to-agent messaging** | ✅ Native real-time mailbox | ❌ Agents are independent | ❌ Fixed pipeline | ❌ | ✅⚠️ Built-in (no UI) |
-| **Full autonomy** | ✅ Agents create, assign, review tasks end-to-end | ❌ Human manages tasks | ❌ Fixed pipeline | ⚠️ Isolated tasks only | ✅⚠️ (no UI) |
-| **Task dependencies (blocked by)** | ✅ Guaranteed ordering | ❌ | ⚠️ Within plan only | ❌ | ❌ |
 | **Linked tasks** | ✅ Cross-references in messages | ⚠️ Subtasks only | ❌ | ❌ | ❌ |
 | **Session analysis** | ✅ 6-category token tracking | ❌ | ⚠️ Execution logs | ❌ | ❌ |
-| **Task attachments** | ✅ Auto-attach, agents read & attach files | ❌ | ✅ Images + files | ❌ | ❌ |
+| **Task attachments** | ✅ Auto-attach, agents read & attach files | ❌ | ✅ Images + files | ⚠️ Chat session only | ❌ |
 | **Hunk-level review** | ✅ Accept / reject individual hunks | ❌ | ❌ | ✅ | ❌ |
 | **Built-in code editor** | ✅ With Git support | ❌ | ❌ | ✅ Full IDE | ❌ |
+| **Full autonomy** | ✅ Agents create, assign, review tasks end-to-end | ❌ Human manages tasks | ❌ Fixed pipeline | ⚠️ Isolated tasks only | ✅⚠️ (no UI) |
+| **Task dependencies (blocked by)** | ✅ Guaranteed ordering | ❌ | ⚠️ Within plan only | ❌ | ✅⚠️ (no UI) |
 | **Review workflow** | ✅ Agents review each other | ❌ | ⚠️ Auto QA pipeline | ❌ | ✅⚠️ (no UI) |
-| **Per-task code review** | ✅ Accept / reject / comment | ⚠️ PR-level only | ⚠️ File-level only | ✅ BugBot on PRs | ❌ |
+| **Zero setup** | ✅ | ❌ Config required | ❌ Config required | ✅ | ⚠️ CLI install required |
 | **Kanban board** | ✅ 5 columns, real-time | ✅ | ✅ 6 columns (pipeline) | ❌ | ❌ |
 | **Execution log viewer** | ✅ Tool calls, reasoning, timeline | ❌ | ✅ Phase-based logs | ✅ | ❌ |
-| **Zero setup** | ✅ | ❌ Config required | ❌ Config required | ✅ | ✅ |
 | **Live processes** | ✅ View, stop, open URLs in browser | ❌ | ✅ 12 agent terminals | ✅ | ❌ |
+| **Per-task code review** | ✅ Accept / reject / comment | ⚠️ PR-level only | ⚠️ File-level only | ✅ BugBot on PRs | ❌ |
 | **Flexible autonomy** | ✅ Granular settings, per-action approval, notifications | ❌ | ⚠️ Plan approval only | ✅ | ✅ |
 | **Git worktree isolation** | ✅ Optional | ⚠️ Mandatory | ⚠️ Mandatory | ✅ | ✅ |
-| **Multi-agent backend** | 🗓️ [In development](https://github.com/Alishahryar1/free-claude-code) | ✅ 6+ agents | ✅ 11 providers | ✅ Own models | — |
+| **Multi-agent backend** | 🗓️ [In development](https://github.com/Alishahryar1/free-claude-code) | ✅ 6+ agents | ✅ 11 providers | ✅ Multi-model | — |
 | **Price** | **Free** | Free / $30 user/mo | Free | $0–$200/mo | Claude subscription |
 
 ---
