@@ -119,7 +119,7 @@ describe('TeamInboxReader', () => {
     expect(merged[1].text).toBe('older');
   });
 
-  it('ignores legacy inbox rows without messageId', async () => {
+  it('generates deterministic messageId for legacy inbox rows without messageId', async () => {
     hoisted.files.set(
       '/mock/teams/my-team/inboxes/alice.json',
       JSON.stringify([
@@ -140,8 +140,14 @@ describe('TeamInboxReader', () => {
     );
 
     const messages = await reader.getMessagesFor('my-team', 'alice');
-    expect(messages).toHaveLength(1);
-    expect(messages[0].text).toBe('supported');
-    expect(messages[0].messageId).toBe('m-1');
+    expect(messages).toHaveLength(2);
+    // Legacy row gets a deterministic hash-based messageId
+    const legacy = messages.find((m) => m.text === 'legacy');
+    expect(legacy).toBeDefined();
+    expect(legacy!.messageId).toMatch(/^inbox-[a-f0-9]{16}$/);
+    // Explicit messageId is preserved
+    const supported = messages.find((m) => m.text === 'supported');
+    expect(supported).toBeDefined();
+    expect(supported!.messageId).toBe('m-1');
   });
 });

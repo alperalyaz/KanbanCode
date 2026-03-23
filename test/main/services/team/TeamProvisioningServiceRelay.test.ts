@@ -368,7 +368,7 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     expect(writeSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('ignores unread lead inbox rows without messageId', async () => {
+  it('relays legacy lead inbox rows with generated messageId', async () => {
     const service = new TeamProvisioningService();
     const teamName = 'my-team';
     seedConfig(teamName);
@@ -382,11 +382,18 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     ]);
 
     const { writeSpy } = attachAliveRun(service, teamName);
-    const relayed = await service.relayLeadInboxMessages(teamName);
+    const relayPromise = service.relayLeadInboxMessages(teamName);
+    const run = await waitForCapture(service);
+    expect(run?.leadRelayCapture).toBeTruthy();
+    (service as any).handleStreamJsonMessage(run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Ok.' }],
+    });
+    (service as any).handleStreamJsonMessage(run, { type: 'result', subtype: 'success' });
+    const relayed = await relayPromise;
 
-    expect(relayed).toBe(0);
-    expect(writeSpy).toHaveBeenCalledTimes(0);
-    expect(hoisted.appendSentMessage).not.toHaveBeenCalled();
+    expect(relayed).toBe(1);
+    expect(writeSpy).toHaveBeenCalledTimes(1);
   });
 
   it('resolves cross-team reply metadata only for a single matching team hint', async () => {
@@ -625,7 +632,7 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     expect(payload).toContain('"type":"user"');
     expect(payload).toContain('recipient=\\"alice\\"');
     expect(payload).toContain('Source: system_notification');
-    expect(payload).toContain('Forward that automated notification exactly once;');
+    expect(payload).toContain('forward that notification exactly once without paraphrasing');
     expect(payload).toContain('Please retry with logging enabled.');
   });
 
