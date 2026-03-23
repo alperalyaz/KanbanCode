@@ -20,6 +20,7 @@ const screenshots = [
 ];
 
 const swiperRef = ref<HTMLElement | null>(null);
+const swiperReady = ref(false);
 const lightboxOpen = ref(false);
 const lightboxIndex = ref(0);
 
@@ -67,6 +68,31 @@ onMounted(() => {
       pagination: {
         clickable: true,
       },
+      injectStyles: [`
+        .swiper-pagination {
+          position: relative !important;
+          bottom: auto !important;
+          margin-top: 28px;
+        }
+        .swiper-pagination-bullet {
+          width: 10px;
+          height: 10px;
+          background: rgba(0, 240, 255, 0.4);
+          opacity: 1;
+          transition: all 0.2s ease;
+        }
+        .swiper-pagination-bullet-active {
+          background: #00f0ff;
+          width: 28px;
+          border-radius: 5px;
+        }
+        :host-context(.v-theme--light) .swiper-pagination-bullet {
+          background: rgba(0, 139, 178, 0.35);
+        }
+        :host-context(.v-theme--light) .swiper-pagination-bullet-active {
+          background: #0891b2;
+        }
+      `],
       breakpoints: {
         600: {
           slidesPerView: 1.5,
@@ -83,6 +109,7 @@ onMounted(() => {
       },
     });
     (swiperRef.value as any).initialize();
+    swiperReady.value = true;
   }
 });
 
@@ -115,7 +142,7 @@ function slideNext() {
       </div>
     </v-container>
 
-    <div class="screenshots-section__carousel-wrap">
+    <div class="screenshots-section__carousel-wrap" :class="{ 'is-ready': swiperReady }">
       <swiper-container
         ref="swiperRef"
         init="false"
@@ -196,7 +223,6 @@ function slideNext() {
 <style scoped>
 .screenshots-section {
   position: relative;
-  overflow: visible;
 }
 
 .screenshots-section__header {
@@ -229,15 +255,20 @@ function slideNext() {
 /* ─── Carousel ─── */
 .screenshots-section__carousel-wrap {
   position: relative;
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 60px 40px;
-  overflow: visible;
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
+  padding: 0 0 40px;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.screenshots-section__carousel-wrap.is-ready {
+  opacity: 1;
 }
 
 .screenshots-section__swiper {
-  overflow: visible;
-  padding-bottom: 120px;
+  overflow: hidden;
 }
 
 .screenshots-section__slide {
@@ -286,7 +317,7 @@ function slideNext() {
 .screenshots-section__nav {
   position: absolute;
   top: 50%;
-  transform: translateY(calc(-50% - 20px));
+  transform: translateY(calc(-50% - 24px));
   z-index: 10;
   width: 44px;
   height: 44px;
@@ -310,30 +341,11 @@ function slideNext() {
 }
 
 .screenshots-section__nav--prev {
-  left: 4px;
+  left: 16px;
 }
 
 .screenshots-section__nav--next {
-  right: 4px;
-}
-
-/* ─── Swiper pagination ─── */
-.screenshots-section__swiper::part(pagination) {
-  bottom: -20px;
-  position: relative;
-}
-
-.screenshots-section__swiper::part(bullet) {
-  width: 8px;
-  height: 8px;
-  background: rgba(0, 240, 255, 0.3);
-  opacity: 1;
-}
-
-.screenshots-section__swiper::part(bullet-active) {
-  background: #00f0ff;
-  width: 24px;
-  border-radius: 4px;
+  right: 16px;
 }
 
 /* ─── Lightbox ─── */

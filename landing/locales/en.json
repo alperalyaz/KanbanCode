@@ -1,8 +1,10 @@
 {
   "nav": {
     "features": "Features",
+    "screenshots": "Screenshots",
     "comparison": "Compare",
     "download": "Download",
+    "pricing": "Pricing",
     "faq": "FAQ",
     "viewOnGithub": "View on GitHub"
   },

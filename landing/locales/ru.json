@@ -1,8 +1,10 @@
 {
   "nav": {
     "features": "Возможности",
+    "screenshots": "Скриншоты",
     "comparison": "Сравнение",
     "download": "Скачать",
+    "pricing": "Цены",
     "faq": "FAQ",
     "viewOnGithub": "View on GitHub"
   },

@@ -5,8 +5,10 @@ const { t } = useI18n();
 const menuOpen = ref(false);
 
 const navItems = computed(() => [
-  { id: 'comparison', label: t('nav.comparison') },
+  { id: 'screenshots', label: t('nav.screenshots') },
   { id: 'download', label: t('nav.download') },
+  { id: 'comparison', label: t('nav.comparison') },
+  { id: 'pricing', label: t('nav.pricing') },
   { id: 'faq', label: t('nav.faq') },
 ]);
 </script>

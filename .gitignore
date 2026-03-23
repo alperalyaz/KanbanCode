@@ -39,6 +39,7 @@ yarn-error.log*
 
 .pnpm-store/
 package-lock.json
+!landing/package-lock.json
 notification_example/
 temp/
 .claude/
