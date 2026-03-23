@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 
-import { Loader2 } from 'lucide-react';
-
-import { isImageMime } from '@renderer/utils/attachmentUtils';
-
 import { FileIcon } from '@renderer/components/team/editor/FileIcon';
+import { isImageMime } from '@renderer/utils/attachmentUtils';
+import { Loader2 } from 'lucide-react';
 
 import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { ImageLightbox } from './ImageLightbox';

@@ -1,7 +1,6 @@
+import { FileIcon } from '@renderer/components/team/editor/FileIcon';
 import { formatFileSize, isImageMime } from '@renderer/utils/attachmentUtils';
 import { Ban, X } from 'lucide-react';
-
-import { FileIcon } from '@renderer/components/team/editor/FileIcon';
 
 import { AttachmentThumbnail } from './AttachmentThumbnail';
 

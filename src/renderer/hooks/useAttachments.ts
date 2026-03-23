@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { draftStorage } from '@renderer/services/draftStorage';
-import { categorizeFile } from '@shared/constants/attachments';
 import {
   fileToAttachmentPayload,
   MAX_FILES,
   MAX_TOTAL_SIZE,
   validateAttachment,
 } from '@renderer/utils/attachmentUtils';
+import { categorizeFile } from '@shared/constants/attachments';
 
 import type { AttachmentPayload } from '@shared/types';
 

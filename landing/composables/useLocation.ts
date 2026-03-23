@@ -16,15 +16,19 @@ export const useLocation = () => {
   };
 
   const initLocale = () => {
+    // Sync store with actual i18n locale (already resolved from route by nuxt-i18n)
+    const currentLocale = i18n?.locale?.value || "en";
+
     if (cookie.value) {
-      localeStore.setLocale(cookie.value, false);
-      if (i18n?.setLocale) {
-        i18n.setLocale(cookie.value);
-      } else if (i18n?.locale?.value) {
-        i18n.locale.value = cookie.value;
+      // Cookie exists — sync store, but don't override route-based locale
+      localeStore.setLocale(currentLocale, false);
+      if (cookie.value !== currentLocale) {
+        cookie.value = currentLocale;
       }
       return;
     }
+
+    // No cookie — detect from browser and set
     const detected = getBrowserLocale();
     localeStore.setLocale(detected, false);
     if (i18n?.setLocale) {

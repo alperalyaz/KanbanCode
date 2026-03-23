@@ -1,10 +1,11 @@
 <script setup lang="ts">
+const { baseURL } = useRuntimeConfig().app;
 </script>
 
 <template>
   <NuxtLink to="/" class="app-logo">
     <img
-      src="/logo-192.png"
+      :src="`${baseURL}logo-192.png`"
       alt="Claude Agent Teams"
       class="app-logo__img"
       width="36"

@@ -1,7 +1,6 @@
-import { createHash } from 'crypto';
-
 import { FileReadTimeoutError, readFileUtf8WithTimeout } from '@main/utils/fsRead';
 import { getTeamsBasePath } from '@main/utils/pathDecoder';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 

@@ -9,6 +9,13 @@ const switchLocalePath = useSwitchLocalePath();
 const props = defineProps<{ fullWidth?: boolean; compact?: boolean; iconOnly?: boolean }>();
 const localeStore = useLocaleStore();
 
+// Sync store with actual i18n locale on mount (handles SSG hydration)
+onMounted(() => {
+  if (locale.value && locale.value !== localeStore.current) {
+    localeStore.setLocale(locale.value as string, false);
+  }
+});
+
 const flagIconMap: Record<string, string> = {
   en: "circle-flags:us",
   ru: "circle-flags:ru"

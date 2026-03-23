@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 
 import type { TeamSummary } from '@shared/types';
 
@@ -35,29 +35,6 @@ function buildTeamMentionEntries(teams: readonly TeamSummary[]): TeamMentionEntr
     .sort(compareTeamMentionEntries);
 }
 
-function areTeamMentionEntriesEqual(
-  prev: readonly TeamMentionEntry[],
-  next: readonly TeamMentionEntry[]
-): boolean {
-  if (prev === next) return true;
-  if (prev.length !== next.length) return false;
-
-  for (let i = 0; i < prev.length; i++) {
-    const prevEntry = prev[i];
-    const nextEntry = next[i];
-    if (
-      prevEntry.teamName !== nextEntry.teamName ||
-      prevEntry.displayName !== nextEntry.displayName ||
-      prevEntry.color !== nextEntry.color ||
-      prevEntry.deletedAt !== nextEntry.deletedAt
-    ) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 function buildTeamMentionMeta(entries: readonly TeamMentionEntry[]): TeamMentionMeta {
   if (entries.length === 0) {
     return { teamNames: EMPTY_TEAM_NAMES, teamColorByName: EMPTY_TEAM_COLOR_MAP };
@@ -84,24 +61,8 @@ function buildTeamMentionMeta(entries: readonly TeamMentionEntry[]): TeamMention
 
 export function useStableTeamMentionMeta(teams: readonly TeamSummary[]): TeamMentionMeta {
   const entries = useMemo(() => buildTeamMentionEntries(teams), [teams]);
-  const stableRef = useRef<{ entries: readonly TeamMentionEntry[]; value: TeamMentionMeta } | null>(
-    null
-  );
 
-  // Intentional ref-as-cache pattern: avoids allocating a new object every
-  // render while still returning a referentially-stable value when the
-  // underlying data hasn't changed.
+  const meta = useMemo(() => buildTeamMentionMeta(entries), [entries]);
 
-  if (
-    stableRef.current === null ||
-    !areTeamMentionEntriesEqual(stableRef.current.entries, entries)
-  ) {
-    stableRef.current = {
-      entries,
-      value: buildTeamMentionMeta(entries),
-    };
-  }
-
-  // eslint-disable-next-line react-hooks/refs -- stable ref cache pattern
-  return stableRef.current.value;
+  return meta;
 }

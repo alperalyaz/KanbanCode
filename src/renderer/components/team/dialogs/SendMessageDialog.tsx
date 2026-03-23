@@ -124,6 +124,7 @@ export const SendMessageDialog = ({
     addFiles,
     removeAttachment,
     clearAttachments,
+    clearError: clearAttachmentError,
     handlePaste,
     handleDrop,
   } = useAttachments({ persistenceKey: `sendMessage:${teamName}:attachments` });
@@ -417,6 +418,7 @@ export const SendMessageDialog = ({
               attachments={attachments}
               onRemove={removeAttachment}
               error={attachmentError ?? fileRestrictionError}
+              onDismissError={clearAttachmentError}
               disabled={attachmentsBlocked}
               disabledHint="File attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
             />

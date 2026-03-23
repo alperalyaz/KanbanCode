@@ -255,7 +255,7 @@ export const MessageComposer = ({
   // const leadContext = useStore((s) =>
   //   isLeadAgentRecipient ? s.leadContextByTeam[teamName] : undefined
   // );
-  const supportsAttachments = isLeadRecipient && !isCrossTeam;
+  const supportsAttachments = isLeadRecipient && !isCrossTeam && !!isTeamAlive;
   const canAttach = supportsAttachments && draft.canAddMore;
   const attachmentsBlocked = draft.attachments.length > 0 && !supportsAttachments;
   const canSend =
@@ -370,22 +370,22 @@ export const MessageComposer = ({
       e.preventDefault();
       dragCounterRef.current = 0;
       setIsDragOver(false);
-      if (!isLeadRecipient) {
+      if (!supportsAttachments) {
         const files = e.dataTransfer?.files;
         if (files?.length) {
           showFileRestrictionError();
         }
         return;
       }
-      if (canAttach) draftHandleDrop(e);
+      draftHandleDrop(e);
     },
-    [isLeadRecipient, canAttach, draftHandleDrop, showFileRestrictionError]
+    [supportsAttachments, draftHandleDrop, showFileRestrictionError]
   );
 
   const { handlePaste: draftHandlePaste } = draft;
   const handlePasteWrapper = useCallback(
     (e: React.ClipboardEvent) => {
-      if (!isLeadRecipient) {
+      if (!supportsAttachments) {
         const hasFiles = Array.from(e.clipboardData.items).some((item) => item.kind === 'file');
         if (hasFiles) {
           e.preventDefault();
@@ -393,9 +393,9 @@ export const MessageComposer = ({
         }
         return;
       }
-      if (canAttach) draftHandlePaste(e);
+      draftHandlePaste(e);
     },
-    [isLeadRecipient, canAttach, draftHandlePaste, showFileRestrictionError]
+    [supportsAttachments, draftHandlePaste, showFileRestrictionError]
   );
 
   const remaining = MAX_TEXT_LENGTH - trimmed.length;

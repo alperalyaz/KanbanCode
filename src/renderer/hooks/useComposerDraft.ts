@@ -17,13 +17,13 @@ import {
   type ComposerDraftSnapshot,
   composerDraftStorage,
 } from '@renderer/services/composerDraftStorage';
-import { categorizeFile } from '@shared/constants/attachments';
 import {
   fileToAttachmentPayload,
   MAX_FILES,
   MAX_TOTAL_SIZE,
   validateAttachment,
 } from '@renderer/utils/attachmentUtils';
+import { categorizeFile } from '@shared/constants/attachments';
 
 import type { InlineChip } from '@renderer/types/inlineChip';
 import type { AgentActionMode, AttachmentPayload } from '@shared/types';

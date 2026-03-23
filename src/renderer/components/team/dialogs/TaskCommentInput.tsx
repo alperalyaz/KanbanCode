@@ -88,17 +88,23 @@ export const TaskCommentInput = ({
     !addingComment;
 
   const addFiles = useCallback(
-    (files: FileList | File[]) => {
+    async (files: FileList | File[]) => {
       setAttachError(null);
       const fileArray = Array.from(files);
+
+      // 1. Separate unsupported files → path prepend
+      const supported: File[] = [];
       for (const file of fileArray) {
         if (categorizeFile(file) === 'unsupported') {
-          // Insert absolute file path into comment text for unsupported types
           const filePath = (file as { path?: string }).path;
           if (filePath) {
             const current = draft.value;
             draft.setValue(current ? filePath + '\n' + current : filePath + '\n');
           }
+          continue;
+        }
+        if (file.size === 0) {
+          setAttachError(`File "${file.name}" is empty`);
           continue;
         }
         if (file.size > MAX_FILE_SIZE) {
@@ -107,31 +113,41 @@ export const TaskCommentInput = ({
           );
           continue;
         }
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          const base64 = result.split(',')[1];
-          if (!base64) return;
-          const id = crypto.randomUUID();
-          setPendingAttachments((prev) => {
-            if (prev.length >= MAX_ATTACHMENTS) {
-              setAttachError(`Maximum ${MAX_ATTACHMENTS} attachments per comment`);
-              return prev;
-            }
-            return [
-              ...prev,
-              {
-                id,
-                filename: file.name,
-                mimeType: getEffectiveMimeType(file),
-                base64Data: base64,
-                previewUrl: result,
-                size: file.size,
-              },
-            ];
-          });
-        };
-        reader.readAsDataURL(file);
+        supported.push(file);
+      }
+
+      if (supported.length === 0) return;
+
+      // 2. Read all files sequentially to avoid race condition with MAX_ATTACHMENTS
+      for (const file of supported) {
+        const result = await new Promise<string | null>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(file);
+        });
+        if (!result) continue;
+        const base64 = result.split(',')[1];
+        if (!base64) continue;
+
+        const id = crypto.randomUUID();
+        setPendingAttachments((prev) => {
+          if (prev.length >= MAX_ATTACHMENTS) {
+            setAttachError(`Maximum ${MAX_ATTACHMENTS} attachments per comment`);
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              id,
+              filename: file.name,
+              mimeType: getEffectiveMimeType(file),
+              base64Data: base64,
+              previewUrl: result,
+              size: file.size,
+            },
+          ];
+        });
       }
     },
     [draft]
@@ -194,12 +210,12 @@ export const TaskCommentInput = ({
       for (const item of Array.from(items)) {
         if (item.kind === 'file') {
           const file = item.getAsFile();
-          if (file && categorizeFile(file) !== 'unsupported') pastedFiles.push(file);
+          if (file) pastedFiles.push(file);
         }
       }
       if (pastedFiles.length > 0) {
         e.preventDefault();
-        addFiles(pastedFiles);
+        void addFiles(pastedFiles);
       }
     },
     [addFiles]
@@ -318,7 +334,7 @@ export const TaskCommentInput = ({
           multiple
           className="hidden"
           onChange={(e) => {
-            if (e.target.files) addFiles(e.target.files);
+            if (e.target.files) void addFiles(e.target.files);
 
             e.target.value = '';
           }}

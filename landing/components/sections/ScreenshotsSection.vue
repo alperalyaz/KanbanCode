@@ -4,19 +4,22 @@ import { register } from 'swiper/element/bundle';
 import { mdiChevronLeft, mdiChevronRight, mdiClose, mdiArrowExpand } from '@mdi/js';
 
 const { t } = useI18n();
+const { baseURL } = useRuntimeConfig().app;
 
 register();
 
+const publicPath = (path: string) => `${baseURL}${path.replace(/^\//, '')}`;
+
 const screenshots = [
-  { src: '/screenshots/1.jpg', alt: 'Kanban board with agent tasks' },
-  { src: '/screenshots/2.jpg', alt: 'Agent team communication' },
-  { src: '/screenshots/3.png', alt: 'Code review diff view' },
-  { src: '/screenshots/4.png', alt: 'Team management dashboard' },
-  { src: '/screenshots/5.png', alt: 'Live process monitoring' },
-  { src: '/screenshots/6.png', alt: 'Session context analysis' },
-  { src: '/screenshots/7.png', alt: 'Cross-team messaging' },
-  { src: '/screenshots/8.png', alt: 'Task details and comments' },
-  { src: '/screenshots/9.png', alt: 'Built-in code editor' },
+  { src: publicPath('/screenshots/1.jpg'), alt: 'Kanban board with agent tasks' },
+  { src: publicPath('/screenshots/2.jpg'), alt: 'Agent team communication' },
+  { src: publicPath('/screenshots/3.png'), alt: 'Code review diff view' },
+  { src: publicPath('/screenshots/4.png'), alt: 'Team management dashboard' },
+  { src: publicPath('/screenshots/5.png'), alt: 'Live process monitoring' },
+  { src: publicPath('/screenshots/6.png'), alt: 'Session context analysis' },
+  { src: publicPath('/screenshots/7.png'), alt: 'Cross-team messaging' },
+  { src: publicPath('/screenshots/8.png'), alt: 'Task details and comments' },
+  { src: publicPath('/screenshots/9.png'), alt: 'Built-in code editor' },
 ];
 
 const swiperRef = ref<HTMLElement | null>(null);

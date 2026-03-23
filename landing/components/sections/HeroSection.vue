@@ -3,6 +3,7 @@ import { mdiRobotOutline, mdiViewDashboardOutline, mdiOpenSourceInitiative } fro
 
 const { content } = useLandingContent();
 const { t } = useI18n();
+const { baseURL } = useRuntimeConfig().app;
 </script>
 
 <template>
@@ -13,7 +14,7 @@ const { t } = useI18n();
         <v-col cols="12" md="6" class="hero-section__content">
           <h1 class="hero-section__title">
             <img
-              src="/logo-192.png"
+              :src="`${baseURL}logo-192.png`"
               alt=""
               class="hero-section__logo"
               width="56"

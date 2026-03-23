@@ -7,6 +7,7 @@ declare const process: any;
 const siteUrl = process.env.NUXT_PUBLIC_SITE_URL || "https://claude-agent-teams.dev";
 const githubRepo = process.env.NUXT_PUBLIC_GITHUB_REPO || "777genius/claude_agent_teams_ui";
 const githubReleasesUrl = `https://github.com/${githubRepo}/releases`;
+const baseURL = process.env.NUXT_APP_BASE_URL || "/";
 
 export default defineNuxtConfig({
   compatibilityDate: "2026-01-19",
@@ -15,9 +16,10 @@ export default defineNuxtConfig({
     inlineSSRStyles: false
   },
   app: {
+    baseURL,
     head: {
       link: [
-        { rel: "icon", type: "image/x-icon", href: "/favicon.ico" },
+        { rel: "icon", type: "image/x-icon", href: `${baseURL}favicon.ico` },
         { rel: "preconnect", href: "https://fonts.googleapis.com" },
         { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" },
         { rel: "preload", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap", as: "style" },

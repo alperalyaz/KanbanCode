@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { AlertCircle, X } from 'lucide-react';
-
 import { isImageMime } from '@renderer/utils/attachmentUtils';
+import { AlertCircle, X } from 'lucide-react';
 
 import { AttachmentPreviewItem } from './AttachmentPreviewItem';
 import { ImageLightbox } from './ImageLightbox';
