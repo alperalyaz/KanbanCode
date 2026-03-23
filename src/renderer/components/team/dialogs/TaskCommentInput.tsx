@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { ImageLightbox } from '@renderer/components/team/attachments/ImageLightbox';
+import { FileIcon } from '@renderer/components/team/editor/FileIcon';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
@@ -19,7 +20,7 @@ import {
   stripEncodedTaskReferenceMetadata,
 } from '@renderer/utils/taskReferenceUtils';
 import { MAX_TEXT_LENGTH } from '@shared/constants';
-import { categorizeFile, getEffectiveMimeType } from '@shared/constants/attachments';
+import { categorizeFile, getEffectiveMimeType, isImageMime } from '@shared/constants/attachments';
 import { Mic, Paperclip, Send, Trash2, X } from 'lucide-react';
 
 import type { MentionSuggestion } from '@renderer/types/mention';
@@ -254,25 +255,40 @@ export const TaskCommentInput = ({
       {/* Pending attachment previews */}
       {pendingAttachments.length > 0 ? (
         <div className="mb-2 flex flex-wrap gap-1.5">
-          {pendingAttachments.map((att, idx) => (
-            <div
-              key={att.id}
-              className="group relative size-14 cursor-pointer overflow-hidden rounded border border-[var(--color-border)] bg-[var(--color-surface)] transition-colors hover:border-[var(--color-border-emphasis)]"
-              onClick={() => setLightboxIndex(idx)}
-            >
-              <img src={att.previewUrl} alt={att.filename} className="size-full object-cover" />
-              <button
-                type="button"
-                className="absolute right-0.5 top-0.5 rounded bg-black/60 p-0.5 text-white opacity-0 transition-opacity hover:bg-red-600 group-hover:opacity-100"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeAttachment(att.id);
-                }}
+          {pendingAttachments.map((att, idx) => {
+            const isImage = isImageMime(att.mimeType);
+            const lightboxIdx = isImage
+              ? pendingAttachments.slice(0, idx).filter((a) => isImageMime(a.mimeType)).length
+              : -1;
+            return (
+              <div
+                key={att.id}
+                className="group relative size-14 cursor-pointer overflow-hidden rounded border border-[var(--color-border)] bg-[var(--color-surface)] transition-colors hover:border-[var(--color-border-emphasis)]"
+                onClick={isImage ? () => setLightboxIndex(lightboxIdx) : undefined}
               >
-                <Trash2 size={8} />
-              </button>
-            </div>
-          ))}
+                {isImage ? (
+                  <img src={att.previewUrl} alt={att.filename} className="size-full object-cover" />
+                ) : (
+                  <div className="flex size-full flex-col items-center justify-center gap-0.5">
+                    <FileIcon fileName={att.filename} className="size-5" />
+                    <span className="max-w-[48px] truncate text-[7px] text-[var(--color-text-muted)]">
+                      {att.filename}
+                    </span>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="absolute right-0.5 top-0.5 rounded bg-black/60 p-0.5 text-white opacity-0 transition-opacity hover:bg-red-600 group-hover:opacity-100"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeAttachment(att.id);
+                  }}
+                >
+                  <Trash2 size={8} />
+                </button>
+              </div>
+            );
+          })}
         </div>
       ) : null}
 
@@ -280,13 +296,15 @@ export const TaskCommentInput = ({
         <ImageLightbox
           open
           onClose={() => setLightboxIndex(null)}
-          slides={pendingAttachments.map((att) => ({
-            src: att.previewUrl,
-            alt: att.filename,
-            title: att.filename,
-          }))}
+          slides={pendingAttachments
+            .filter((att) => isImageMime(att.mimeType))
+            .map((att) => ({
+              src: att.previewUrl,
+              alt: att.filename,
+              title: att.filename,
+            }))}
           index={lightboxIndex}
-          showCounter={pendingAttachments.length > 1}
+          showCounter={pendingAttachments.filter((a) => isImageMime(a.mimeType)).length > 1}
         />
       ) : null}
 

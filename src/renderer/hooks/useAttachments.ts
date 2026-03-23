@@ -270,19 +270,17 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
       const items = event.clipboardData?.items;
       if (!items) return;
 
-      const supportedFiles: File[] = [];
+      const pastedFiles: File[] = [];
       for (const item of Array.from(items)) {
         if (item.kind === 'file') {
           const file = item.getAsFile();
-          if (file && categorizeFile(file) !== 'unsupported') {
-            supportedFiles.push(file);
-          }
+          if (file) pastedFiles.push(file);
         }
       }
 
-      if (supportedFiles.length > 0) {
+      if (pastedFiles.length > 0) {
         event.preventDefault();
-        void addFiles(supportedFiles);
+        void addFiles(pastedFiles);
       }
     },
     [addFiles]

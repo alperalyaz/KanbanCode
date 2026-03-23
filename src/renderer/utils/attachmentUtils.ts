@@ -22,6 +22,9 @@ export function validateAttachment(file: File): { valid: true } | { valid: false
   if (cat === 'unsupported') {
     return { valid: false, error: `Unsupported file type: ${file.name}` };
   }
+  if (file.size === 0) {
+    return { valid: false, error: `File "${file.name}" is empty` };
+  }
   if (file.size > MAX_FILE_SIZE) {
     return { valid: false, error: `File "${file.name}" exceeds 10MB limit` };
   }

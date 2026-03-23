@@ -3624,18 +3624,33 @@ export class TeamProvisioningService {
               media_type: 'application/pdf',
               data: att.data,
             },
+            title: att.filename,
           });
         } else if (att.mimeType === 'text/plain') {
           // Text file → document block with text source (decode base64 → UTF-8)
-          contentBlocks.push({
-            type: 'document',
-            source: {
-              type: 'text',
-              media_type: 'text/plain',
-              data: Buffer.from(att.data, 'base64').toString('utf-8'),
-            },
-            title: att.filename,
-          });
+          const decoded = Buffer.from(att.data, 'base64').toString('utf-8');
+          if (decoded.includes('\uFFFD')) {
+            // Non-UTF-8 file: fallback to base64 document to avoid garbled content
+            contentBlocks.push({
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'text/plain',
+                data: att.data,
+              },
+              title: att.filename,
+            });
+          } else {
+            contentBlocks.push({
+              type: 'document',
+              source: {
+                type: 'text',
+                media_type: 'text/plain',
+                data: decoded,
+              },
+              title: att.filename,
+            });
+          }
         } else {
           // Image (default) → image block
           contentBlocks.push({
