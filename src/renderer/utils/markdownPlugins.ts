@@ -36,14 +36,8 @@ const sanitizeSchema: SanitizeSchema = {
   ],
   attributes: {
     ...defaultSchema.attributes,
-    // Preserve default global attributes
-    '*': [...(defaultSchema.attributes?.['*'] ?? [])],
     // Allow title on abbr (for tooltip definitions)
-    abbr: ['title'],
-    // Preserve all existing attribute rules
-    ...Object.fromEntries(
-      Object.entries(defaultSchema.attributes ?? {}).filter(([k]) => k !== '*')
-    ),
+    abbr: [...(defaultSchema.attributes?.['abbr'] ?? []), 'title'],
   },
 };
 
