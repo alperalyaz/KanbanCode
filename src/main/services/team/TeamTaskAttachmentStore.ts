@@ -180,7 +180,7 @@ export class TeamTaskAttachmentStore {
     try {
       const entries = await fs.promises.readdir(dir);
       if (entries.length === 0) {
-        await fs.promises.rmdir(dir);
+        await fs.promises.rm(dir);
       }
     } catch {
       // ignore cleanup errors

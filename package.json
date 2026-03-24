@@ -177,7 +177,7 @@
     "@vitest/coverage-v8": "^3.1.4",
     "autoprefixer": "^10.4.17",
     "electron": "^40.3.0",
-    "electron-builder": "^25.1.8",
+    "electron-builder": "^26.8.1",
     "electron-vite": "^2.3.0",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
@@ -244,6 +244,7 @@
     },
     "mac": {
       "category": "public.app-category.developer-tools",
+      "minimumSystemVersion": "12.0",
       "target": [
         "dmg",
         "zip"

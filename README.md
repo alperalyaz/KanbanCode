@@ -243,7 +243,7 @@ Yes. Run multiple teams in one project or across different projects, even simult
 
 ## Tech stack
 
-Electron 40, React 18, TypeScript 5, Tailwind CSS 3, Zustand 4. Data from `~/.claude/` (session logs, todos, tasks). No cloud backend — everything runs locally.
+Electron 40, React 19, TypeScript 5, Tailwind CSS 3, Zustand 4. Data from `~/.claude/` (session logs, todos, tasks). No cloud backend — everything runs locally.
 
 <details>
 <summary><strong>Build from source</strong></summary>
