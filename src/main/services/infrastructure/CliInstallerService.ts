@@ -32,7 +32,7 @@ import { createHash } from 'crypto';
 import { createWriteStream, existsSync, promises as fsp } from 'fs';
 import http from 'http';
 import https from 'https';
-import { tmpdir } from 'os';
+import { tmpdir, userInfo } from 'os';
 import { join, posix as pathPosix, win32 as pathWin32 } from 'path';
 
 import { ClaudeBinaryResolver } from '../team/ClaudeBinaryResolver';
@@ -88,11 +88,20 @@ const AUTH_STATUS_RETRY_DELAY_MS = 1500;
  */
 function buildChildEnv(binaryPath?: string | null): NodeJS.ProcessEnv {
   const home = getShellPreferredHome();
+  const shellEnv = getCachedShellEnv();
+  let osUsername = '';
+  try {
+    osUsername = userInfo().username;
+  } catch {
+    // userInfo() can throw in restricted environments (Docker, no passwd entry)
+  }
+  const user = shellEnv?.USER?.trim() || process.env.USER?.trim() || osUsername || '';
   return {
     ...process.env,
     HOME: home,
     USERPROFILE: home,
     PATH: buildMergedCliPath(binaryPath),
+    ...(user ? { USER: user, LOGNAME: user } : {}),
   };
 }
 

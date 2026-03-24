@@ -295,14 +295,14 @@ pnpm dist            # macOS + Windows + Linux
 
 ## Roadmap
 
-- [ ] CLI runtime: Run not only on a local PC but in any headless/console environment (web UI), e.g. VPS, remote server, etc.
-- [ ] Remote agent execution via SSH: launch and manage agent teams on remote machines over SSH (stream-json protocol over SSH channel, SFTP-based file monitoring for tasks/inboxes/config)
-- [ ] 2 modes: current (agent teams), and a new mode: regular subagents (no communication between them)
-- [ ] Visual workflow editor ([@xyflow/react](https://github.com/xyflow/xyflow)) for building and orchestrating agent pipelines with drag & drop
 - [ ] Planning mode to organize agent plans before execution
-- [ ] Curate what context each agent sees (files, docs, MCP servers, skills)
+- [ ] Visual workflow editor ([@xyflow/react](https://github.com/xyflow/xyflow)) for building and 
 - [ ] Multi-model support: proxy layer to use other popular LLMs (GPT, Gemini, DeepSeek, Llama, etc.), including offline/local models
-- [ ] Attach any files to messages/comments/tasks
+- [ ] Remote agent execution via SSH: launch and manage agent teams on remote machines over SSH (stream-json protocol over SSH channel, SFTP-based file monitoring for tasks/inboxes/config)
+- [ ] CLI runtime: Run not only on a local PC but in any headless/console environment (web UI), e.g. VPS, remote server, etc.
+- [ ] 2 modes: current (agent teams), and a new mode: regular subagents (no communication between them)
+orchestrating agent pipelines with drag & drop
+- [ ] Curate what context each agent sees (files, docs, MCP servers, skills)
 - [ ] Slash commands
 
 ---
