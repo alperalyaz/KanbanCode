@@ -203,8 +203,9 @@ export const AdvancedSection = ({
             Version {version || '...'}
           </p>
           <p className="mt-2 text-xs leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
-            Visualize and analyze Claude Code session executions with interactive waterfall charts
-            and detailed insights.
+            Assemble AI agent teams that work autonomously in parallel, communicate across teams,
+            and manage tasks on a kanban board — with built-in code review, live process monitoring,
+            and full tool visibility.
           </p>
         </div>
       </div>
