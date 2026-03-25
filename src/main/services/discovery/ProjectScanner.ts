@@ -984,6 +984,12 @@ export class ProjectScanner {
         ? firstMessageTimestampMs
         : birthtimeMs;
 
+    // If messages suggest ongoing but the file hasn't been written to in 5+ minutes,
+    // the session likely crashed/was killed (upstream fix #94)
+    const STALE_SESSION_THRESHOLD_MS = 5 * 60 * 1000;
+    const isOngoing =
+      metadata.isOngoing && Date.now() - effectiveMtime < STALE_SESSION_THRESHOLD_MS;
+
     return {
       id: sessionId,
       projectId,
@@ -993,7 +999,7 @@ export class ProjectScanner {
       messageTimestamp: metadata.firstUserMessage?.timestamp,
       hasSubagents,
       messageCount: metadata.messageCount,
-      isOngoing: metadata.isOngoing,
+      isOngoing,
       gitBranch: metadata.gitBranch ?? undefined,
       metadataLevel,
       contextConsumption: metadata.contextConsumption,
