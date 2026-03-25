@@ -3,6 +3,11 @@
  *
  * Forwards update lifecycle events to the renderer via IPC.
  * Auto-download is disabled so users must confirm before downloading.
+ *
+ * Before notifying the renderer about a new version, verifies that the
+ * platform-specific installer asset actually exists in the GitHub release.
+ * This prevents showing "update available" while CI is still uploading
+ * artifacts for the current platform.
  */
 
 import { getErrorMessage } from '@shared/utils/errorHandling';
@@ -13,8 +18,46 @@ const { autoUpdater } = electronUpdater;
 
 import type { UpdaterStatus } from '@shared/types';
 import type { BrowserWindow } from 'electron';
+import { net } from 'electron';
 
 const logger = createLogger('UpdaterService');
+
+const REPO_OWNER = '777genius';
+const REPO_NAME = 'claude_agent_teams_ui';
+
+/**
+ * Build the expected download URL for the platform-specific installer asset.
+ * Returns null if the current platform is unrecognized.
+ */
+function getExpectedAssetUrl(version: string): string | null {
+  const base = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/v${version}`;
+
+  switch (process.platform) {
+    case 'darwin':
+      return process.arch === 'arm64'
+        ? `${base}/Claude.Agent.Teams.UI-${version}-arm64.dmg`
+        : `${base}/Claude.Agent.Teams.UI-${version}.dmg`;
+    case 'win32':
+      return `${base}/Claude.Agent.Teams.UI.Setup.${version}.exe`;
+    case 'linux':
+      return `${base}/Claude.Agent.Teams.UI-${version}.AppImage`;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Check if a remote URL exists using a HEAD request.
+ * Follows redirects (GitHub releases use 302 → S3).
+ */
+async function assetExists(url: string): Promise<boolean> {
+  try {
+    const response = await net.fetch(url, { method: 'HEAD' });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
 
 export class UpdaterService {
   private mainWindow: BrowserWindow | null = null;
@@ -94,6 +137,33 @@ export class UpdaterService {
     }
   }
 
+  /**
+   * Verify that the platform-specific asset exists before notifying the renderer.
+   * If CI hasn't finished uploading the artifact for this OS yet, suppress the
+   * notification — the next periodic check will retry.
+   */
+  private async verifyAndNotify(info: {
+    version: string;
+    releaseNotes?: string | unknown;
+  }): Promise<void> {
+    const url = getExpectedAssetUrl(info.version);
+    if (url) {
+      const exists = await assetExists(url);
+      if (!exists) {
+        logger.warn(
+          `Asset not yet available for ${process.platform}/${process.arch}, suppressing update notification (${url})`
+        );
+        return;
+      }
+    }
+
+    this.sendStatus({
+      type: 'available',
+      version: info.version,
+      releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
+    });
+  }
+
   private bindEvents(): void {
     autoUpdater.on('checking-for-update', () => {
       logger.info('Checking for update...');
@@ -102,11 +172,7 @@ export class UpdaterService {
 
     autoUpdater.on('update-available', (info) => {
       logger.info('Update available:', info.version);
-      this.sendStatus({
-        type: 'available',
-        version: info.version,
-        releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
-      });
+      void this.verifyAndNotify(info);
     });
 
     autoUpdater.on('update-not-available', () => {
