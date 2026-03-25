@@ -18,7 +18,10 @@ import { formatBytes } from '@renderer/utils/formatters';
 import {
   AlertTriangle,
   CheckCircle,
+  ChevronDown,
+  ChevronUp,
   Download,
+  HelpCircle,
   Loader2,
   LogIn,
   Puzzle,
@@ -279,6 +282,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
 
   const [showLoginTerminal, setShowLoginTerminal] = useState(false);
   const [isVerifyingAuth, setIsVerifyingAuth] = useState(false);
+  const [showTroubleshoot, setShowTroubleshoot] = useState(false);
 
   useEffect(() => {
     if (!isElectron) return;
@@ -566,15 +570,115 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => setShowLoginTerminal(true)}
-              className="flex shrink-0 items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors"
-              style={{ backgroundColor: '#f59e0b' }}
-            >
-              <LogIn className="size-4" />
-              Login
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={() => setShowTroubleshoot((v) => !v)}
+                className="flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs transition-colors hover:bg-white/5"
+                style={{
+                  borderColor: 'var(--color-border-emphasis)',
+                  color: 'var(--color-text-secondary)',
+                }}
+              >
+                <HelpCircle className="size-3.5" />
+                Already logged in?
+                {showTroubleshoot ? (
+                  <ChevronUp className="size-3" />
+                ) : (
+                  <ChevronDown className="size-3" />
+                )}
+              </button>
+              <button
+                onClick={() => setShowLoginTerminal(true)}
+                className="flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors"
+                style={{ backgroundColor: '#f59e0b' }}
+              >
+                <LogIn className="size-4" />
+                Login
+              </button>
+            </div>
           </div>
+
+          {showTroubleshoot && (
+            <div
+              className="mt-3 rounded-md border p-3"
+              style={{
+                borderColor: 'var(--color-border)',
+                backgroundColor: 'var(--color-surface)',
+              }}
+            >
+              <p
+                className="mb-2 text-xs font-medium"
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
+                If you&apos;re sure you&apos;re logged in, try these steps:
+              </p>
+              <ol
+                className="ml-4 list-decimal space-y-1.5 text-xs"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                <li>
+                  Click{' '}
+                  <button
+                    onClick={async () => {
+                      setIsVerifyingAuth(true);
+                      try {
+                        await invalidateCliStatus();
+                        await fetchCliStatus();
+                      } finally {
+                        setIsVerifyingAuth(false);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium transition-colors hover:bg-white/10"
+                    style={{
+                      color: '#fbbf24',
+                      backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    }}
+                  >
+                    <RefreshCw className="size-3" />
+                    Re-check
+                  </button>{' '}
+                  — sometimes the status is cached for a few seconds
+                </li>
+                <li>
+                  Open your terminal and run:{' '}
+                  <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[11px]">
+                    claude auth status
+                  </code>{' '}
+                  — check if it shows &quot;Logged in&quot;
+                </li>
+                <li>
+                  If it says logged in but the app doesn&apos;t see it, try:{' '}
+                  <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[11px]">
+                    claude auth logout
+                  </code>{' '}
+                  then{' '}
+                  <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[11px]">
+                    claude auth login
+                  </code>{' '}
+                  again
+                </li>
+                <li>
+                  Make sure{' '}
+                  <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[11px]">
+                    claude
+                  </code>{' '}
+                  in your terminal is the same binary the app uses
+                  {cliStatus.binaryPath && (
+                    <span>
+                      :{' '}
+                      <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[11px]">
+                        {cliStatus.binaryPath}
+                      </code>
+                    </span>
+                  )}
+                </li>
+              </ol>
+              <p className="mt-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                Browsing sessions and projects works without login. Login is only needed to run
+                agent teams.
+              </p>
+            </div>
+          )}
         </div>
         {showLoginTerminal && cliStatus.binaryPath && (
           <TerminalModal
