@@ -39,6 +39,7 @@ import {
   highlightSearchInChildren,
   type SearchContext,
 } from '../searchHighlightUtils';
+import { highlightLine } from '../viewers/syntaxHighlighter';
 
 import { FileLink, isRelativeUrl } from './FileLink';
 import { MermaidDiagram } from './MermaidDiagram';
@@ -535,12 +536,21 @@ function createViewerMarkdownComponents(
       const isBlock = (hasLanguage ?? false) || isMultiLine;
 
       if (isBlock) {
+        const lang = codeClassName?.replace('language-', '') ?? '';
+        const raw = typeof children === 'string' ? children : '';
+        const text = raw.replace(/\n$/, '');
+        const lines = text.split('\n');
         return (
           <code
             className={`font-mono text-xs ${codeClassName ?? ''}`.trim()}
             style={{ color: COLOR_TEXT }}
           >
-            {hl(children)}
+            {lines.map((line, i) => (
+              <React.Fragment key={i}>
+                {hl(highlightLine(line, lang))}
+                {i < lines.length - 1 ? '\n' : null}
+              </React.Fragment>
+            ))}
           </code>
         );
       }
