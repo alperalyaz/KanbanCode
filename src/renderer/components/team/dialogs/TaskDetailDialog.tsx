@@ -627,7 +627,7 @@ export const TaskDetailDialog = ({
       open={open}
       onOpenChange={(v) => {
         if (!v && lightboxOpenRef.current) return;
-        if (!v) onClose();
+        if (!v) handleClose();
       }}
     >
       <DialogContent

@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { Button } from '@renderer/components/ui/button';
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
+import { formatSessionLabel } from '@renderer/utils/sessionTitleParser';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { displayMemberName } from '@renderer/utils/memberHelpers';
 import { Crown, Filter } from 'lucide-react';
@@ -122,7 +123,7 @@ export const KanbanFilterPopover = ({
             {sessions.map((session) => {
               const isLead = session.id === leadSessionId;
               const isSelected = filter.sessionId === session.id;
-              const label = session.firstMessage?.slice(0, 50) ?? session.id.slice(0, 8);
+              const label = formatSessionLabel(session.firstMessage) || session.id.slice(0, 8);
               return (
                 <button
                   key={session.id}
