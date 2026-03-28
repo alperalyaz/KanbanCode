@@ -66,7 +66,7 @@ export const NODE = {
 // ─── Task pill dimensions ───────────────────────────────────────────────────
 
 export const TASK_PILL = {
-  width: 120,
+  width: 160,
   height: 36,
   borderRadius: 6,
   statusDotRadius: 4,
@@ -234,8 +234,8 @@ export const BACKGROUND = {
 // ─── Kanban zone layout ─────────────────────────────────────────────────────
 
 export const KANBAN_ZONE = {
-  /** Column width: pill (120) + gap (20) */
-  columnWidth: 140,
+  /** Column width: pill (160) + gap (20) */
+  columnWidth: 180,
   /** Row height: pill (36) + gap (10) */
   rowHeight: 46,
   /** Zone starts this far below member node center */
