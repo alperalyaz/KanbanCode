@@ -261,6 +261,8 @@ interface ProvisioningRun {
   fsPhase: 'waiting_config' | 'waiting_members' | 'waiting_tasks' | 'all_files_found';
   waitingTasksSince: number | null;
   provisioningComplete: boolean;
+  /** Path to the generated MCP config file for later cleanup. */
+  mcpConfigPath: string | null;
   isLaunch: boolean;
   leadRelayCapture: {
     leadName: string;
@@ -2773,6 +2775,32 @@ export class TeamProvisioningService {
       return;
     }
 
+    // Verify --mcp-config still exists; regenerate if deleted (e.g. by stale GC)
+    const mcpFlagIdx = ctx.args.indexOf('--mcp-config');
+    if (mcpFlagIdx !== -1 && mcpFlagIdx + 1 < ctx.args.length) {
+      const existingConfigPath = ctx.args[mcpFlagIdx + 1];
+      try {
+        await fs.promises.access(existingConfigPath, fs.constants.F_OK);
+      } catch {
+        logger.warn(`[${run.teamName}] MCP config ${existingConfigPath} missing, regenerating`);
+        try {
+          const newConfigPath = await this.mcpConfigBuilder.writeConfigFile(ctx.cwd);
+          ctx.args[mcpFlagIdx + 1] = newConfigPath;
+          run.mcpConfigPath = newConfigPath;
+          logger.info(`[${run.teamName}] Regenerated MCP config at ${newConfigPath}`);
+        } catch (regenErr) {
+          run.authRetryInProgress = false;
+          const progress = updateProgress(run, 'failed', 'Failed to regenerate MCP config', {
+            error: regenErr instanceof Error ? regenErr.message : String(regenErr),
+            cliLogsTail: extractCliLogsFromRun(run),
+          });
+          run.onProgress(progress);
+          this.cleanupRun(run);
+          return;
+        }
+      }
+    }
+
     // Respawn with saved context — CLI handles its own auth refresh.
     let child: ReturnType<typeof spawn>;
     try {
@@ -3053,6 +3081,7 @@ export class TeamProvisioningService {
         apiErrorWarningEmitted: false,
         waitingTasksSince: null,
         provisioningComplete: false,
+        mcpConfigPath: null,
         isLaunch: false,
         fsPhase: 'waiting_config',
         leadRelayCapture: null,
@@ -3101,6 +3130,7 @@ export class TeamProvisioningService {
       let mcpConfigPath: string;
       try {
         mcpConfigPath = await this.mcpConfigBuilder.writeConfigFile(request.cwd);
+        run.mcpConfigPath = mcpConfigPath;
       } catch (error) {
         this.runs.delete(runId);
         this.provisioningRunByTeam.delete(request.teamName);
@@ -3487,6 +3517,7 @@ export class TeamProvisioningService {
         apiErrorWarningEmitted: false,
         waitingTasksSince: null,
         provisioningComplete: false,
+        mcpConfigPath: null,
         isLaunch: true,
         fsPhase: 'waiting_members',
         leadRelayCapture: null,
@@ -3557,6 +3588,7 @@ export class TeamProvisioningService {
       let mcpConfigPath: string;
       try {
         mcpConfigPath = await this.mcpConfigBuilder.writeConfigFile(request.cwd);
+        run.mcpConfigPath = mcpConfigPath;
       } catch (error) {
         this.runs.delete(runId);
         this.provisioningRunByTeam.delete(request.teamName);
@@ -6880,6 +6912,11 @@ export class TeamProvisioningService {
       }
       this.emitToolApprovalEvent({ dismissed: true, teamName: run.teamName, runId: run.runId });
       run.pendingApprovals.clear();
+    }
+    // Clean up the generated MCP config file (best-effort, fire-and-forget)
+    if (run.mcpConfigPath) {
+      void this.mcpConfigBuilder.removeConfigFile(run.mcpConfigPath);
+      run.mcpConfigPath = null;
     }
     // Remove from runs Map to free memory (stdoutBuffer, stderrBuffer, claudeLogLines)
     this.runs.delete(run.runId);
