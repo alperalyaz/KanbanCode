@@ -7,7 +7,7 @@
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
 import { agentAvatarUrl } from '@renderer/utils/memberHelpers';
-import { MessageSquare, ExternalLink, User, Plus } from 'lucide-react';
+import { Loader2, MessageSquare, ExternalLink, User, Plus } from 'lucide-react';
 
 import type { GraphNode } from '@claude-teams/agent-graph';
 
@@ -36,6 +36,7 @@ export function GraphNodePopover({
         onSendMessage={onSendMessage}
         onOpenProfile={onOpenMemberProfile}
         onCreateTask={onCreateTask}
+        onOpenTask={onOpenTaskDetail}
       />
     );
   }
@@ -70,12 +71,14 @@ function MemberPopoverContent({
   onSendMessage,
   onOpenProfile,
   onCreateTask,
+  onOpenTask,
 }: {
   node: GraphNode;
   onClose: () => void;
   onSendMessage?: (name: string) => void;
   onOpenProfile?: (name: string) => void;
   onCreateTask?: (owner: string) => void;
+  onOpenTask?: (taskId: string) => void;
 }): React.JSX.Element {
   const memberName = node.domainRef.kind === 'member' ? node.domainRef.memberName : 'team-lead';
   const avatarSrc = node.avatarUrl ?? agentAvatarUrl(memberName, 64);
@@ -168,6 +171,31 @@ function MemberPopoverContent({
               }}
             />
           </div>
+        </div>
+      )}
+
+      {/* Current task indicator — reuses same pattern as MemberCard */}
+      {node.currentTaskId && node.currentTaskSubject && (
+        <div className="mt-2 flex items-center gap-1.5 text-[10px]">
+          <Loader2
+            className="size-3 shrink-0 animate-spin"
+            style={{ color: node.color ?? '#66ccff' }}
+          />
+          <span className="shrink-0 text-[var(--color-text-muted)]">working on</span>
+          <button
+            type="button"
+            className="min-w-0 truncate rounded px-1.5 py-0.5 font-medium text-[var(--color-text)] transition-opacity hover:opacity-90"
+            style={{ border: `1px solid ${node.color ?? '#66ccff'}40` }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenTask?.(node.currentTaskId!);
+              onClose();
+            }}
+          >
+            {node.currentTaskSubject.length > 30
+              ? `${node.currentTaskSubject.slice(0, 30)}…`
+              : node.currentTaskSubject}
+          </button>
         </div>
       )}
 

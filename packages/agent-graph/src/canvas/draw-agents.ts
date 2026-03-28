@@ -50,6 +50,17 @@ export function drawAgents(
     // Breathing animation + spawn/waiting effects
     drawBreathing(ctx, x, y, r, node.state, time, node.spawnStatus);
 
+    // Working indicator: subtle spinning arc when member has active task
+    if (node.currentTaskId && (node.state === 'active' || node.state === 'thinking' || node.state === 'tool_calling')) {
+      const ringR = r + 4;
+      const rotation = time * 1.5;
+      ctx.beginPath();
+      ctx.arc(x, y, ringR, rotation, rotation + Math.PI * 0.8);
+      ctx.strokeStyle = hexWithAlpha(color, 0.4);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
     // Name + role label (single line: "jack · developer")
     const labelText = node.role ? `${node.label} · ${node.role}` : node.label;
     drawLabel(ctx, x, y, r, labelText, color);

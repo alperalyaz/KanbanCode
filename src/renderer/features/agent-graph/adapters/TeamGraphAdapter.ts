@@ -158,6 +158,10 @@ export class TeamGraphAdapter {
         role: member.role ?? undefined,
         spawnStatus: spawn?.status,
         avatarUrl: agentAvatarUrl(member.name, 64),
+        currentTaskId: member.currentTaskId ?? undefined,
+        currentTaskSubject: member.currentTaskId
+          ? data.tasks.find((t) => t.id === member.currentTaskId)?.subject
+          : undefined,
         domainRef: { kind: 'member', teamName, memberName: member.name },
       });
 

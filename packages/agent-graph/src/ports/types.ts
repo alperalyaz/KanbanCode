@@ -49,6 +49,10 @@ export interface GraphNode {
   spawnStatus?: 'offline' | 'waiting' | 'spawning' | 'online' | 'error';
   /** Context window usage ratio (0..1), available for lead only */
   contextUsage?: number;
+  /** Current task ID this member is working on */
+  currentTaskId?: string | null;
+  /** Current task subject (for display in popover) */
+  currentTaskSubject?: string;
 
   // ─── Task-specific ─────────────────────────────────────────────────────
   /** Short display ID (e.g., "#3") */
