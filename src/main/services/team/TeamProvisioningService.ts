@@ -3203,6 +3203,10 @@ export class TeamProvisioningService {
         const tasksDir = path.join(getTasksBasePath(), request.teamName);
         await fs.promises.rm(teamDir, { recursive: true, force: true }).catch(() => {});
         await fs.promises.rm(tasksDir, { recursive: true, force: true }).catch(() => {});
+        if (run.mcpConfigPath) {
+          await this.mcpConfigBuilder.removeConfigFile(run.mcpConfigPath).catch(() => {});
+          run.mcpConfigPath = null;
+        }
         this.runs.delete(runId);
         this.provisioningRunByTeam.delete(request.teamName);
         throw error;
@@ -3639,6 +3643,10 @@ export class TeamProvisioningService {
           stdio: ['pipe', 'pipe', 'pipe'],
         });
       } catch (error) {
+        if (run.mcpConfigPath) {
+          await this.mcpConfigBuilder.removeConfigFile(run.mcpConfigPath).catch(() => {});
+          run.mcpConfigPath = null;
+        }
         this.runs.delete(runId);
         this.provisioningRunByTeam.delete(request.teamName);
         await this.restorePrelaunchConfig(request.teamName);
