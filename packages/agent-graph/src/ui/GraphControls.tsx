@@ -1,9 +1,22 @@
 /**
  * GraphControls — floating toolbar over the canvas.
- * Zoom, fit, filter toggles, pause, pin-as-tab, close.
+ * Positioned below system buttons (top-10) to avoid overlap on macOS.
  */
 
 import { useCallback } from 'react';
+import {
+  Columns3,
+  Eye,
+  EyeOff,
+  Maximize2,
+  Minus,
+  Pause,
+  Pin,
+  Play,
+  Plus,
+  Server,
+  X,
+} from 'lucide-react';
 
 export interface GraphFilterState {
   showTasks: boolean;
@@ -21,6 +34,7 @@ export interface GraphControlsProps {
   onRequestClose?: () => void;
   onRequestPinAsTab?: () => void;
   teamName: string;
+  teamColor?: string;
   isAlive?: boolean;
 }
 
@@ -33,6 +47,7 @@ export function GraphControls({
   onRequestClose,
   onRequestPinAsTab,
   teamName,
+  teamColor,
   isAlive,
 }: GraphControlsProps): React.JSX.Element {
   const toggle = useCallback(
@@ -42,72 +57,139 @@ export function GraphControls({
     [filters, onFiltersChange],
   );
 
+  const nameColor = teamColor ?? '#aaeeff';
+
   return (
-    <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
-      {/* Left: title + status */}
-      <div className="flex items-center gap-2 pointer-events-auto">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-          style={{ background: 'rgba(8, 12, 24, 0.85)', border: '1px solid rgba(100, 200, 255, 0.1)' }}>
+    <div className="absolute top-10 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
+      {/* Left: team name + status indicator */}
+      <div className="flex items-center pointer-events-auto">
+        <div
+          className="flex items-center gap-2 rounded-lg px-3 py-1.5 backdrop-blur-sm"
+          style={{
+            background: 'rgba(8, 12, 24, 0.8)',
+            border: `1px solid ${nameColor}25`,
+          }}
+        >
           {isAlive && (
-            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            <div
+              className="size-2 rounded-full animate-pulse"
+              style={{ background: nameColor }}
+            />
           )}
-          <span style={{ color: '#aaeeff', fontSize: '12px', fontFamily: 'monospace' }}>
+          <span
+            className="text-xs font-mono font-semibold"
+            style={{ color: nameColor }}
+          >
             {teamName}
           </span>
         </div>
       </div>
 
-      {/* Center: filters */}
-      <div className="flex items-center gap-1 pointer-events-auto">
-        <ToolbarButton active={filters.showTasks} onClick={() => toggle('showTasks')} label="Tasks" />
-        <ToolbarButton active={filters.showProcesses} onClick={() => toggle('showProcesses')} label="Proc" />
-        <ToolbarButton active={filters.showEdges} onClick={() => toggle('showEdges')} label="Edges" />
-        <div className="w-px h-4 mx-1" style={{ background: 'rgba(100, 200, 255, 0.1)' }} />
-        <ToolbarButton active={!filters.paused} onClick={() => toggle('paused')} label={filters.paused ? '▶' : '⏸'} />
+      {/* Center: filter toggles */}
+      <div
+        className="flex items-center gap-0.5 rounded-lg px-1 py-0.5 pointer-events-auto backdrop-blur-sm"
+        style={{ background: 'rgba(8, 12, 24, 0.8)', border: '1px solid rgba(100, 200, 255, 0.08)' }}
+      >
+        <ToolbarToggle
+          active={filters.showTasks}
+          onClick={() => toggle('showTasks')}
+          icon={<Columns3 size={13} />}
+          label="Tasks"
+        />
+        <ToolbarToggle
+          active={filters.showProcesses}
+          onClick={() => toggle('showProcesses')}
+          icon={<Server size={13} />}
+          label="Proc"
+        />
+        <ToolbarToggle
+          active={filters.showEdges}
+          onClick={() => toggle('showEdges')}
+          icon={filters.showEdges ? <Eye size={13} /> : <EyeOff size={13} />}
+          label="Edges"
+        />
+        <Separator />
+        <ToolbarButton
+          onClick={() => toggle('paused')}
+          icon={filters.paused ? <Play size={13} /> : <Pause size={13} />}
+        />
       </div>
 
       {/* Right: zoom + actions */}
-      <div className="flex items-center gap-1 pointer-events-auto">
-        <ToolbarButton onClick={onZoomOut} label="−" />
-        <ToolbarButton onClick={onZoomToFit} label="⊡" />
-        <ToolbarButton onClick={onZoomIn} label="+" />
+      <div
+        className="flex items-center gap-0.5 rounded-lg px-1 py-0.5 pointer-events-auto backdrop-blur-sm"
+        style={{ background: 'rgba(8, 12, 24, 0.8)', border: '1px solid rgba(100, 200, 255, 0.08)' }}
+      >
+        <ToolbarButton onClick={onZoomOut} icon={<Minus size={13} />} />
+        <ToolbarButton onClick={onZoomToFit} icon={<Maximize2 size={13} />} />
+        <ToolbarButton onClick={onZoomIn} icon={<Plus size={13} />} />
         {onRequestPinAsTab && (
           <>
-            <div className="w-px h-4 mx-1" style={{ background: 'rgba(100, 200, 255, 0.1)' }} />
-            <ToolbarButton onClick={onRequestPinAsTab} label="⊞ Pin" />
+            <Separator />
+            <ToolbarButton
+              onClick={onRequestPinAsTab}
+              icon={<Pin size={13} />}
+              label="Pin"
+            />
           </>
         )}
         {onRequestClose && (
-          <ToolbarButton onClick={onRequestClose} label="✕" />
+          <ToolbarButton onClick={onRequestClose} icon={<X size={13} />} />
         )}
       </div>
     </div>
   );
 }
 
-// ─── Toolbar Button ─────────────────────────────────────────────────────────
+// ─── Primitives ─────────────────────────────────────────────────────────────
 
 function ToolbarButton({
-  active,
   onClick,
+  icon,
   label,
 }: {
-  active?: boolean;
   onClick?: () => void;
+  icon: React.ReactNode;
+  label?: string;
+}): React.JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-mono transition-colors
+        text-[#66ccff90] hover:text-[#aaeeff] hover:bg-[rgba(100,200,255,0.1)] cursor-pointer"
+    >
+      {icon}
+      {label && <span>{label}</span>}
+    </button>
+  );
+}
+
+function ToolbarToggle({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
   label: string;
 }): React.JSX.Element {
   return (
     <button
       onClick={onClick}
-      className="px-2 py-1 rounded text-xs font-mono transition-colors"
-      style={{
-        background: active ? 'rgba(100, 200, 255, 0.15)' : 'rgba(100, 200, 255, 0.05)',
-        border: '1px solid rgba(100, 200, 255, 0.1)',
-        color: active ? '#aaeeff' : '#66ccff90',
-        cursor: 'pointer',
-      }}
+      className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-mono transition-colors cursor-pointer
+        ${active
+          ? 'text-[#aaeeff] bg-[rgba(100,200,255,0.12)]'
+          : 'text-[#66ccff50] hover:text-[#66ccff90]'
+        }`}
     >
-      {label}
+      {icon}
+      <span>{label}</span>
     </button>
   );
+}
+
+function Separator(): React.JSX.Element {
+  return <div className="mx-0.5 h-4 w-px bg-[rgba(100,200,255,0.08)]" />;
 }

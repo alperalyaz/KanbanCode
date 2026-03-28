@@ -328,6 +328,7 @@ export function GraphView({
         onRequestClose={onRequestClose}
         onRequestPinAsTab={onRequestPinAsTab}
         teamName={data.teamName}
+        teamColor={data.teamColor}
         isAlive={data.isAlive}
       />
 
