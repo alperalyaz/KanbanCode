@@ -16,6 +16,7 @@ import {
 } from '@renderer/constants/cssVariables';
 import { getTeamColorSet, getThemedBorder } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
+import { useStore } from '@renderer/store';
 import {
   getMessageTypeLabel,
   getStructuredMessageSummary,
@@ -47,12 +48,15 @@ import {
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import {
   AlertTriangle,
+  Check,
   ChevronRight,
+  Clock,
   Command,
   ListPlus,
   Maximize2,
   RefreshCw,
   Reply,
+  X,
 } from 'lucide-react';
 
 import { ReplyQuoteBlock } from './ReplyQuoteBlock';
@@ -269,10 +273,12 @@ const NoiseRow = ({
   name,
   label,
   colors,
+  icon,
 }: {
   name: string;
   label: string;
   colors: TeamColorSet;
+  icon?: React.ReactNode;
 }): React.JSX.Element => (
   <div className="flex items-center gap-2 px-3 py-1" style={{ opacity: 0.45 }}>
     <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: colors.border }} />
@@ -282,6 +288,7 @@ const NoiseRow = ({
     <span className="text-[11px]" style={{ color: CARD_ICON_MUTED }}>
       {label}
     </span>
+    {icon}
   </div>
 );
 
@@ -594,9 +601,36 @@ export const ActivityItem = memo(
     ]);
     const summaryText = useMemo(() => extractMarkdownPlainText(rawSummary), [rawSummary]);
 
+    // Permission request status icon (check/x/clock)
+    const pendingApprovals = useStore((s) => s.pendingApprovals);
+    const resolvedApprovals = useStore((s) => s.resolvedApprovals);
+    const permissionIcon = useMemo(() => {
+      if (!structured) return null;
+      const type = typeof structured.type === 'string' ? structured.type : null;
+      if (type !== 'permission_request') return null;
+      const requestId = typeof structured.request_id === 'string' ? structured.request_id : null;
+      if (!requestId) return null;
+
+      const resolved = resolvedApprovals.get(requestId);
+      if (resolved === true) {
+        return <Check size={12} className="text-emerald-400" />;
+      }
+      if (resolved === false) {
+        return <X size={12} className="text-red-400" />;
+      }
+      const isPending = pendingApprovals.some((a) => a.requestId === requestId);
+      if (isPending) {
+        return <Clock size={12} className="animate-pulse text-amber-400" />;
+      }
+      // Not in pending and not resolved — already handled before we started tracking
+      return <Check size={12} className="text-emerald-400/50" />;
+    }, [structured, pendingApprovals, resolvedApprovals]);
+
     // Noise messages: minimal inline row
     if (noiseLabel) {
-      return <NoiseRow name={message.from} label={noiseLabel} colors={colors} />;
+      return (
+        <NoiseRow name={message.from} label={noiseLabel} colors={colors} icon={permissionIcon} />
+      );
     }
 
     const messageType =

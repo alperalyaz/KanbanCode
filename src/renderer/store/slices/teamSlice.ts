@@ -687,6 +687,8 @@ export interface TeamSlice {
   subscribeProvisioningProgress: () => void;
   unsubscribeProvisioningProgress: () => void;
   pendingApprovals: ToolApprovalRequest[];
+  /** Resolved permission approvals: request_id → allowed (true/false). Used for noise row icons. */
+  resolvedApprovals: Map<string, boolean>;
   toolApprovalSettings: ToolApprovalSettings;
   updateToolApprovalSettings: (patch: Partial<ToolApprovalSettings>) => Promise<void>;
   respondToToolApproval: (
@@ -896,6 +898,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   deletedTasks: [],
   deletedTasksLoading: false,
   pendingApprovals: [],
+  resolvedApprovals: new Map(),
   toolApprovalSettings: loadToolApprovalSettings(),
 
   // Messages panel UI state
@@ -2201,11 +2204,16 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     try {
       await api.teams.respondToToolApproval(teamName, runId, requestId, allow, message);
       // Remove ONLY after successful IPC, by runId+requestId pair
-      set((s) => ({
-        pendingApprovals: s.pendingApprovals.filter(
-          (a) => !(a.runId === runId && a.requestId === requestId)
-        ),
-      }));
+      set((s) => {
+        const next = new Map(s.resolvedApprovals);
+        next.set(requestId, allow);
+        return {
+          pendingApprovals: s.pendingApprovals.filter(
+            (a) => !(a.runId === runId && a.requestId === requestId)
+          ),
+          resolvedApprovals: next,
+        };
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error(`respondToToolApproval failed for ${teamName}/${requestId}: ${msg}`);

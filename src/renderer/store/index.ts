@@ -683,12 +683,18 @@ export function initializeNotificationListeners(): () => void {
     const cleanup = api.teams.onToolApprovalEvent((_event: unknown, data: unknown) => {
       const event = data as ToolApprovalEvent;
       if ('autoResolved' in event && event.autoResolved) {
-        // Timeout or auto-allow resolved in main — remove from UI
-        useStore.setState((s) => ({
-          pendingApprovals: s.pendingApprovals.filter(
-            (a) => !(a.runId === event.runId && a.requestId === event.requestId)
-          ),
-        }));
+        // Timeout or auto-allow resolved in main — remove from UI and record result
+        const allowed = event.reason !== 'timeout_deny';
+        useStore.setState((s) => {
+          const next = new Map(s.resolvedApprovals);
+          next.set(event.requestId, allowed);
+          return {
+            pendingApprovals: s.pendingApprovals.filter(
+              (a) => !(a.runId === event.runId && a.requestId === event.requestId)
+            ),
+            resolvedApprovals: next,
+          };
+        });
       } else if ('dismissed' in event && event.dismissed) {
         const dismiss = event;
         useStore.setState((s) => ({
