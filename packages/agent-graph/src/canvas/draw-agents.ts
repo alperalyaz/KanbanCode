@@ -50,13 +50,9 @@ export function drawAgents(
     // Breathing animation + spawn/waiting effects
     drawBreathing(ctx, x, y, r, node.state, time, node.spawnStatus);
 
-    // Name label
-    drawLabel(ctx, x, y, r, node.label, color);
-
-    // Role subtitle
-    if (node.role) {
-      drawSublabel(ctx, x, y, r, node.role);
-    }
+    // Name + role label (single line: "jack · developer")
+    const labelText = node.role ? `${node.label} · ${node.role}` : node.label;
+    drawLabel(ctx, x, y, r, labelText, color);
 
     // Context ring for lead
     if (node.kind === 'lead' && node.contextUsage != null) {
@@ -279,25 +275,12 @@ function drawLabel(
   label: string,
   color: string,
 ): void {
-  ctx.font = `bold 10px monospace`;
+  const labelY = y + r + AGENT_DRAW.labelYOffset;
+  ctx.font = '9px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.fillStyle = color;
-  ctx.fillText(label, x, y + r + AGENT_DRAW.labelYOffset);
-}
-
-function drawSublabel(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  r: number,
-  sublabel: string,
-): void {
-  ctx.font = '7px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.fillStyle = COLORS.textDim;
-  ctx.fillText(sublabel, x, y + r + AGENT_DRAW.labelYOffset + 13);
+  ctx.fillText(label, x, labelY);
 }
 
 /**

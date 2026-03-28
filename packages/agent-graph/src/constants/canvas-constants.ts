@@ -239,7 +239,7 @@ export const KANBAN_ZONE = {
   /** Row height: pill (36) + gap (10) */
   rowHeight: 46,
   /** Zone starts this far below member node center */
-  offsetY: 60,
+  offsetY: 70,
   /** Column order: todo → wip → done → review → approved */
   columns: ['todo', 'wip', 'done', 'review', 'approved'] as const,
   /** Max tasks shown per column (overflow hidden) */
