@@ -265,10 +265,8 @@ function tickFrame(
     }
   }
 
-  // Re-layout tasks in kanban zones ONLY when members moved (alpha > 0 or drag)
-  if (!sim || sim.alpha() > 0.001 || state.particles.length > 0) {
-    KanbanLayoutEngine.layout(state.nodes);
-  }
+  // Re-layout tasks in kanban zones — always run to handle new/moved tasks
+  KanbanLayoutEngine.layout(state.nodes);
 
   // Update particle progress — in-place removal (no new array allocation)
   let pw = 0;
