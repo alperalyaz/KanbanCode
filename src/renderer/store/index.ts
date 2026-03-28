@@ -143,6 +143,8 @@ export function initializeNotificationListeners(): () => void {
   cleanupFns.push(() => {
     if (cliStatusTimer) clearTimeout(cliStatusTimer);
   });
+  // This lightweight renderer-side poll keeps visible in-progress task badges fresh.
+  // It is intentionally independent from the backend log-source tracking feature flag below.
   const inProgressChangePresencePollTimer = setInterval(() => {
     void pollVisibleTeamInProgressChangePresence();
   }, IN_PROGRESS_CHANGE_PRESENCE_POLL_MS);

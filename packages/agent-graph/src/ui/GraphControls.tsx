@@ -178,10 +178,10 @@ function ToolbarToggle({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-mono transition-colors cursor-pointer
+      className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-mono transition-all cursor-pointer border
         ${active
-          ? 'text-[#aaeeff] bg-[rgba(100,200,255,0.12)]'
-          : 'text-[#66ccff50] hover:text-[#66ccff90]'
+          ? 'text-[#aaeeff] bg-[rgba(100,200,255,0.18)] border-[rgba(100,200,255,0.3)] shadow-[0_0_6px_rgba(100,200,255,0.15)]'
+          : 'text-[#66ccff40] bg-transparent border-transparent hover:text-[#66ccff70] hover:border-[rgba(100,200,255,0.1)]'
         }`}
     >
       {icon}
