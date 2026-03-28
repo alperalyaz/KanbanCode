@@ -254,7 +254,7 @@ export function drawContextRing(
   // Background ring
   ctx.beginPath();
   ctx.arc(x, y, ringR, 0, Math.PI * 2);
-  ctx.strokeStyle = COLORS.holoBright + '15';
+  ctx.strokeStyle = hexWithAlpha(COLORS.holoBright, 0.08);
   ctx.lineWidth = CONTEXT_RING.ringWidth;
   ctx.stroke();
 
@@ -282,13 +282,11 @@ export function drawContextRing(
   ctx.lineWidth = CONTEXT_RING.ringWidth;
   ctx.stroke();
 
-  // Percentage label
-  if (usage > CONTEXT_RING.percentLabelThreshold) {
-    ctx.font = '7px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = ringColor;
-    ctx.fillText(`${Math.round(usage * 100)}%`, x, y - r - CONTEXT_RING.percentYOffset);
-  }
+  // Percentage label — always show for lead
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = ringColor;
+  ctx.fillText(`${Math.round(usage * 100)}% context`, x, y - r - CONTEXT_RING.percentYOffset);
 }
 
 function drawSelectionRing(
