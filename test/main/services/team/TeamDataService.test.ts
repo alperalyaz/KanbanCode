@@ -147,11 +147,7 @@ describe('TeamDataService', () => {
   });
 
   it('starts and stops task change presence tracking outside getTeamData', async () => {
-    const ensureTracking = vi.fn(async () => ({
-      projectFingerprint: 'project-fingerprint',
-      logSourceGeneration: 'generation-1',
-    }));
-    const stopTracking = vi.fn(async () => undefined);
+    const setTracking = vi.fn(async () => undefined);
 
     const service = new TeamDataService(
       {
@@ -178,8 +174,7 @@ describe('TeamDataService', () => {
         deleteTasks: vi.fn(async () => undefined),
       } as never,
       {
-        ensureTracking,
-        stopTracking,
+        setTracking,
       } as never
     );
 
@@ -187,8 +182,8 @@ describe('TeamDataService', () => {
     service.setTaskChangePresenceTracking('my-team', false);
     await Promise.resolve();
 
-    expect(ensureTracking).toHaveBeenCalledWith('my-team');
-    expect(stopTracking).toHaveBeenCalledWith('my-team');
+    expect(setTracking).toHaveBeenNthCalledWith(1, 'my-team', 'change_presence', true);
+    expect(setTracking).toHaveBeenNthCalledWith(2, 'my-team', 'change_presence', false);
   });
 
   it('surfaces controller reconcile failures', async () => {

@@ -134,6 +134,7 @@ interface RunLike {
   provisioningComplete: boolean;
   leadMsgSeq: number;
   pendingToolCalls: { name: string; preview: string }[];
+  activeToolCalls: Map<string, unknown>;
   pendingDirectCrossTeamSendRefresh: boolean;
   lastLeadTextEmitMs: number;
   leadRelayCapture: null;
@@ -166,6 +167,7 @@ function attachRun(
     provisioningComplete: opts?.provisioningComplete ?? false,
     leadMsgSeq: 0,
     pendingToolCalls: [],
+    activeToolCalls: new Map(),
     pendingDirectCrossTeamSendRefresh: false,
     lastLeadTextEmitMs: 0,
     leadRelayCapture: null,

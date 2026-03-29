@@ -149,6 +149,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       timeoutHandle: null,
       fsMonitorHandle: null,
       claudeLogLines: [],
+      activeToolCalls: new Map(),
       leadActivityState: 'active',
       leadContextUsage: null,
     };
@@ -205,6 +206,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       timeoutHandle: null,
       fsMonitorHandle: null,
       claudeLogLines: [],
+      activeToolCalls: new Map(),
       leadActivityState: 'active',
       leadContextUsage: null,
     };
