@@ -17,6 +17,8 @@ export interface VisualEffect {
   color: string;
   age: number;
   duration: number;
+  /** Node radius for scaling the effect */
+  nodeRadius?: number;
   particles?: ShatterParticle[];
 }
 
@@ -29,8 +31,8 @@ interface ShatterParticle {
 /**
  * Create a spawn effect at position.
  */
-export function createSpawnEffect(x: number, y: number, color: string): VisualEffect {
-  return { type: 'spawn', x, y, color, age: 0, duration: 0.8 };
+export function createSpawnEffect(x: number, y: number, color: string, nodeRadius?: number): VisualEffect {
+  return { type: 'spawn', x, y, color, age: 0, duration: 0.8, nodeRadius };
 }
 
 /**
@@ -76,7 +78,8 @@ export function drawEffects(
 
 function drawSpawnEffect(ctx: CanvasRenderingContext2D, fx: VisualEffect, progress: number): void {
   const alpha = SPAWN_FX.maxAlpha * (1 - progress);
-  const ringR = SPAWN_FX.ringStart + SPAWN_FX.ringExpand * progress;
+  const baseR = fx.nodeRadius ?? SPAWN_FX.ringStart;
+  const ringR = baseR + SPAWN_FX.ringExpand * progress;
 
   ctx.save();
   ctx.globalAlpha = alpha;

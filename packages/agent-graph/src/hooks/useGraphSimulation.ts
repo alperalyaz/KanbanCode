@@ -18,7 +18,7 @@ import {
   type SimulationLinkDatum,
 } from 'd3-force';
 import type { GraphNode, GraphEdge, GraphParticle, GraphNodeKind } from '../ports/types';
-import { FORCE, ANIM_SPEED } from '../constants/canvas-constants';
+import { FORCE, ANIM_SPEED, NODE } from '../constants/canvas-constants';
 import { getNodeStrategy } from '../strategies';
 import { createSpawnEffect, createCompleteEffect, type VisualEffect } from '../canvas/draw-effects';
 import { getStateColor } from '../constants/colors';
@@ -200,7 +200,8 @@ export function useGraphSimulation(): UseGraphSimulationResult {
       // New node appeared → spawn effect (only if truly new, never seen before).
       // Nodes returning from filter (e.g. Tasks toggle OFF→ON) are already in allKnown.
       if (!allKnown.has(node.id) && node.x != null && node.y != null) {
-        state.effects.push(createSpawnEffect(node.x, node.y, node.color ?? getStateColor(node.state)));
+        const nodeR = node.kind === 'lead' ? NODE.radiusLead : node.kind === 'member' ? NODE.radiusMember : undefined;
+        state.effects.push(createSpawnEffect(node.x, node.y, node.color ?? getStateColor(node.state), nodeR));
       }
 
       // Task completed → shatter effect

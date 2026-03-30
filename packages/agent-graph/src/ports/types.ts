@@ -90,10 +90,22 @@ export interface GraphNode {
   reviewState?: 'none' | 'review' | 'needsFix' | 'approved';
   /** Requires clarification indicator */
   needsClarification?: 'lead' | 'user' | null;
+  /** Task is blocked by other tasks */
+  isBlocked?: boolean;
+  /** Display IDs of tasks blocking this one */
+  blockedByDisplayIds?: string[];
+  /** Display IDs of tasks this one blocks */
+  blocksDisplayIds?: string[];
 
   // ─── Process-specific ──────────────────────────────────────────────────
   /** Clickable URL for process */
   processUrl?: string;
+  /** Who registered the process */
+  processRegisteredBy?: string;
+  /** Command used to start the process */
+  processCommand?: string;
+  /** When the process was registered (ISO) */
+  processRegisteredAt?: string;
 
   // ─── Force simulation (managed by the package internally) ──────────────
   x?: number;

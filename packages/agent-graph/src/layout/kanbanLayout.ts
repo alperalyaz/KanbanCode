@@ -17,6 +17,10 @@ export interface KanbanColumnHeader {
   x: number;
   y: number;
   color: string;
+  /** Number of hidden overflow tasks in this column */
+  overflowCount: number;
+  /** Y position for the overflow badge */
+  overflowY: number;
 }
 
 /** Zone info per owner for rendering headers */
@@ -125,6 +129,8 @@ export class KanbanLayoutEngine {
     for (const [colIdx, col] of activeColumns.entries()) {
       const colX = baseX + colIdx * columnWidth;
       const config = COLUMN_LABELS[col.name] ?? { label: col.name, color: '#888' };
+      const overflow = Math.max(0, col.tasks.length - maxVisibleRows);
+      const visibleCount = Math.min(col.tasks.length, maxVisibleRows);
 
       // Column header — centered over pill area (pill center = colX since drawTaskPill translates to x,y)
       headers.push({
@@ -132,6 +138,8 @@ export class KanbanLayoutEngine {
         x: colX, // pill center = task.x = colX
         y: baseY,
         color: config.color,
+        overflowCount: overflow,
+        overflowY: baseY + headerHeight + visibleCount * rowHeight,
       });
 
       // Position tasks below header

@@ -7,7 +7,7 @@
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
 import { agentAvatarUrl } from '@renderer/utils/memberHelpers';
-import { ExternalLink, Loader2, MessageSquare, Plus, User } from 'lucide-react';
+import { Ban, ExternalLink, Loader2, MessageSquare, Plus, User } from 'lucide-react';
 
 import type { GraphNode } from '@claude-teams/agent-graph';
 
@@ -78,8 +78,23 @@ export const GraphNodePopover = ({
 
   // Process
   return (
-    <div className="min-w-[180px] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-3 shadow-xl">
+    <div className="min-w-[180px] max-w-[260px] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-3 shadow-xl">
       <div className="font-mono text-xs font-bold text-[var(--color-text)]">{node.label}</div>
+      {node.processCommand && (
+        <div className="mt-1 truncate font-mono text-[10px] text-[var(--color-text-muted)]">
+          $ {node.processCommand}
+        </div>
+      )}
+      <div className="mt-2 space-y-0.5 text-[10px] text-[var(--color-text-muted)]">
+        {node.processRegisteredBy && (
+          <div>
+            Started by: <span className="text-[var(--color-text)]">{node.processRegisteredBy}</span>
+          </div>
+        )}
+        {node.processRegisteredAt && (
+          <div>At: {new Date(node.processRegisteredAt).toLocaleTimeString()}</div>
+        )}
+      </div>
       {node.processUrl && (
         <a
           href={node.processUrl}
@@ -254,7 +269,7 @@ const MemberPopoverContent = ({
             Recent tools
           </div>
           <div className="space-y-1">
-            {node.recentTools.slice(0, 3).map((tool) => {
+            {node.recentTools.slice(0, 5).map((tool) => {
               const shortName = formatToolName(tool.name);
               const shortPreview = formatToolPreview(tool.preview);
               return (
@@ -368,6 +383,14 @@ const TaskPopoverContent = ({
             {node.reviewState}
           </Badge>
         )}
+        {node.isBlocked && (
+          <Badge
+            variant="outline"
+            className="border-red-500/30 px-1.5 py-0 text-[10px] text-red-400"
+          >
+            <Ban size={10} className="mr-0.5" /> blocked
+          </Badge>
+        )}
         {node.needsClarification && (
           <Badge
             variant="outline"
@@ -377,6 +400,18 @@ const TaskPopoverContent = ({
           </Badge>
         )}
       </div>
+
+      {/* Task dependencies */}
+      {node.blockedByDisplayIds && node.blockedByDisplayIds.length > 0 && (
+        <div className="mt-2 text-[10px] text-[var(--color-text-muted)]">
+          <span className="text-red-400">Blocked by:</span> {node.blockedByDisplayIds.join(', ')}
+        </div>
+      )}
+      {node.blocksDisplayIds && node.blocksDisplayIds.length > 0 && (
+        <div className="mt-1 text-[10px] text-[var(--color-text-muted)]">
+          <span className="text-amber-400">Blocks:</span> {node.blocksDisplayIds.join(', ')}
+        </div>
+      )}
 
       <div className="mt-3">
         <Button

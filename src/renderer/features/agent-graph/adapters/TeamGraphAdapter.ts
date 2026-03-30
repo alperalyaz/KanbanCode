@@ -279,7 +279,7 @@ export class TeamGraphAdapter {
         : undefined,
       recentTools: (toolHistory?.[leadName] ?? [])
         .filter((tool) => tool.state !== 'running' && !!tool.finishedAt)
-        .slice(0, 3)
+        .slice(0, 5)
         .map((tool) => ({
           name: tool.toolName,
           preview: tool.preview,
@@ -346,7 +346,7 @@ export class TeamGraphAdapter {
           : undefined,
         recentTools: (toolHistory?.[member.name] ?? [])
           .filter((tool) => tool.state !== 'running' && !!tool.finishedAt)
-          .slice(0, 3)
+          .slice(0, 5)
           .map((tool) => ({
             name: tool.toolName,
             preview: tool.preview,
@@ -369,10 +369,31 @@ export class TeamGraphAdapter {
   }
 
   #buildTaskNodes(nodes: GraphNode[], edges: GraphEdge[], data: TeamData, teamName: string): void {
+    // Build lookup tables for fast resolution
+    const completedTaskIds = new Set<string>();
+    const taskDisplayIds = new Map<string, string>();
+    for (const t of data.tasks) {
+      if (t.status === 'completed' || t.status === 'deleted') completedTaskIds.add(t.id);
+      taskDisplayIds.set(t.id, t.displayId ?? `#${t.id.slice(0, 6)}`);
+    }
+
     for (const task of data.tasks) {
       if (task.status === 'deleted') continue;
       const taskId = `task:${teamName}:${task.id}`;
       const ownerMemberId = task.owner ? `member:${teamName}:${task.owner}` : null;
+
+      // Task is blocked if any blockedBy task is still not completed
+      const isBlocked =
+        (task.blockedBy?.length ?? 0) > 0 &&
+        task.blockedBy!.some((id) => !completedTaskIds.has(id));
+
+      // Resolve display IDs for dependencies
+      const blockedByDisplayIds = task.blockedBy?.length
+        ? task.blockedBy.map((id) => taskDisplayIds.get(id) ?? `#${id.slice(0, 6)}`)
+        : undefined;
+      const blocksDisplayIds = task.blocks?.length
+        ? task.blocks.map((id) => taskDisplayIds.get(id) ?? `#${id.slice(0, 6)}`)
+        : undefined;
 
       nodes.push({
         id: taskId,
@@ -385,6 +406,9 @@ export class TeamGraphAdapter {
         displayId: task.displayId ?? undefined,
         ownerId: ownerMemberId,
         needsClarification: task.needsClarification ?? null,
+        isBlocked,
+        blockedByDisplayIds,
+        blocksDisplayIds,
         domainRef: { kind: 'task', teamName, taskId: task.id },
       });
 
@@ -453,6 +477,9 @@ export class TeamGraphAdapter {
         label: proc.label,
         state: 'active',
         processUrl: proc.url ?? undefined,
+        processRegisteredBy: proc.registeredBy ?? undefined,
+        processCommand: proc.command ?? undefined,
+        processRegisteredAt: proc.registeredAt,
         domainRef: { kind: 'process', teamName, processId: proc.id },
       });
 

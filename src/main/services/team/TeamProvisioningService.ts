@@ -6457,6 +6457,28 @@ export class TeamProvisioningService {
         );
       }
     }
+
+    // Also attempt control_response via stdin — the lead runtime MAY forward it
+    // to the teammate subprocess. This was broken before (missing updatedInput: {})
+    // but is now fixed. Belt-and-suspenders: settings handle future calls,
+    // control_response may unblock the CURRENT waiting prompt.
+    if (allow && run.child?.stdin?.writable) {
+      const controlResponse = {
+        type: 'control_response',
+        response: {
+          subtype: 'success',
+          request_id: requestId,
+          response: { behavior: 'allow', updatedInput: {} },
+        },
+      };
+      run.child.stdin.write(JSON.stringify(controlResponse) + '\n', (err) => {
+        if (err) {
+          logger.warn(
+            `[${run.teamName}] control_response via stdin for teammate ${agentId} failed (non-critical): ${err.message}`
+          );
+        }
+      });
+    }
   }
 
   /**

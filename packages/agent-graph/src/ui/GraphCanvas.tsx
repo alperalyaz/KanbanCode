@@ -201,9 +201,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(funct
       }
       drawEdges(ctx, visibleEdges, nodeMap, state.time, activeParticleEdges);
 
-      // 2b. Particles (cap at 50 for performance)
-      const cappedParticles = state.particles.length > 50
-        ? state.particles.slice(-50)
+      // 2b. Particles (cap at 100 for performance)
+      const cappedParticles = state.particles.length > 100
+        ? state.particles.slice(-100)
         : state.particles;
       drawParticles(ctx, cappedParticles, edgeMap, nodeMap, state.time);
 

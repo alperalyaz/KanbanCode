@@ -52,7 +52,7 @@ export function drawAgents(
 
     // Pending approval indicator: pulsing amber ring
     if (node.pendingApproval) {
-      const pulseAlpha = 0.3 + 0.35 * Math.sin(time * 3);
+      const pulseAlpha = 0.3 + 0.35 * Math.sin(time * 7);
       const ringR = r + 5;
       ctx.beginPath();
       ctx.arc(x, y, ringR, 0, Math.PI * 2);
@@ -367,20 +367,31 @@ function drawBreathing(
   }
 }
 
-// ─── Avatar image cache ─────────────────────────────────────────────────────
+// ─── Avatar image cache with LRU eviction ───────────────────────────────────
 
+const AVATAR_CACHE_MAX = 100;
 const avatarCache = new Map<string, HTMLImageElement>();
 const avatarLoading = new Set<string>();
 
 function getAvatarImage(url: string): HTMLImageElement | null {
   const cached = avatarCache.get(url);
-  if (cached) return cached;
+  if (cached) {
+    // Move to end (most recently used)
+    avatarCache.delete(url);
+    avatarCache.set(url, cached);
+    return cached;
+  }
   if (avatarLoading.has(url)) return null;
 
   avatarLoading.add(url);
   const img = new Image();
   img.crossOrigin = 'anonymous';
   img.onload = () => {
+    // Evict oldest entry if over limit
+    if (avatarCache.size >= AVATAR_CACHE_MAX) {
+      const first = avatarCache.keys().next().value;
+      if (first != null) avatarCache.delete(first);
+    }
     avatarCache.set(url, img);
     avatarLoading.delete(url);
   };

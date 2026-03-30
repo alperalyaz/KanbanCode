@@ -83,9 +83,11 @@ function drawTaskPill(
   ctx.translate(x, y);
   ctx.scale(scale, scale);
 
-  // Shadow — stronger for attention tasks
-  ctx.shadowColor = hexWithAlpha(statusColor, 0.25);
-  ctx.shadowBlur = needsAttention ? 12 : 4;
+  // Shadow — stronger for attention tasks, red for blocked
+  ctx.shadowColor = node.isBlocked
+    ? hexWithAlpha(COLORS.edgeBlocking, 0.3)
+    : hexWithAlpha(statusColor, 0.25);
+  ctx.shadowBlur = needsAttention || node.isBlocked ? 12 : 4;
 
   // Background fill
   ctx.beginPath();
@@ -98,12 +100,25 @@ function drawTaskPill(
   ctx.fill();
   ctx.shadowBlur = 0;
 
-  // Border
+  // Border — red for blocked tasks
   ctx.beginPath();
   ctx.roundRect(-halfW, -halfH, w, h, r);
-  ctx.strokeStyle = hexWithAlpha(statusColor, isSelected ? 0.8 : 0.5);
-  ctx.lineWidth = isSelected ? 2 : 1;
+  if (node.isBlocked) {
+    ctx.strokeStyle = hexWithAlpha(COLORS.edgeBlocking, isSelected ? 0.9 : 0.7);
+    ctx.lineWidth = isSelected ? 2.5 : 1.8;
+  } else {
+    ctx.strokeStyle = hexWithAlpha(statusColor, isSelected ? 0.8 : 0.5);
+    ctx.lineWidth = isSelected ? 2 : 1;
+  }
   ctx.stroke();
+
+  // Blocked indicator — red left stripe
+  if (node.isBlocked) {
+    ctx.fillStyle = hexWithAlpha(COLORS.edgeBlocking, 0.6);
+    ctx.beginPath();
+    ctx.roundRect(-halfW, -halfH, 4, h, [r, 0, 0, r]);
+    ctx.fill();
+  }
 
   // Review state overlay border — pulsing for review/needsFix, STATIC for approved
   if (reviewColor !== 'transparent') {
@@ -203,6 +218,16 @@ export function drawColumnHeaders(
       ctx.strokeStyle = hexWithAlpha(header.color, 0.2);
       ctx.lineWidth = 0.5;
       ctx.stroke();
+
+      // Overflow badge: "+N more"
+      if (header.overflowCount > 0) {
+        const badgeText = `+${header.overflowCount} more`;
+        ctx.font = '7px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = hexWithAlpha(header.color, 0.45);
+        ctx.fillText(badgeText, header.x, header.overflowY + 4);
+      }
     }
   }
 }
