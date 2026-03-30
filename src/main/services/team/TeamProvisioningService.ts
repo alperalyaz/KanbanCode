@@ -6014,7 +6014,7 @@ export class TeamProvisioningService {
       response: {
         subtype: 'success',
         request_id: requestId,
-        response: { behavior: 'allow' },
+        response: { behavior: 'allow', updatedInput: {} },
       },
     };
 
@@ -6239,7 +6239,7 @@ export class TeamProvisioningService {
 
     // IMPORTANT: request_id is NESTED inside response, NOT top-level
     // (asymmetry with control_request — confirmed by Python SDK, Elixir SDK and issue #29991)
-    const allowResponse: Record<string, unknown> = { behavior: 'allow' };
+    const allowResponse: Record<string, unknown> = { behavior: 'allow', updatedInput: {} };
     // For AskUserQuestion: pass user's answers via updatedInput so the CLI
     // can deliver them without re-prompting. Format follows --permission-prompt-tool spec.
     if (allow && message) {
