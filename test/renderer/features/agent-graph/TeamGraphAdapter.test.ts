@@ -78,7 +78,7 @@ describe('TeamGraphAdapter particles', () => {
     expect(graph.particles[0]).toMatchObject({
       kind: 'inbox_message',
       progress: 0,
-      label: '✉ Please check the latest b…',
+      label: '✉ Please check the latest build output now',
     });
   });
 
@@ -126,7 +126,7 @@ describe('TeamGraphAdapter particles', () => {
     expect(graph.particles).toHaveLength(1);
     expect(graph.particles[0]).toMatchObject({
       kind: 'task_comment',
-      label: '💬 Need clarification on the…',
+      label: '💬 Need clarification on the acceptance criteria befor…',
     });
   });
 
@@ -174,7 +174,7 @@ describe('TeamGraphAdapter particles', () => {
     expect(graph.particles).toHaveLength(1);
     expect(graph.particles[0]).toMatchObject({
       kind: 'task_comment',
-      label: '💬 I found the root cause, h…',
+      label: '💬 I found the root cause, handing notes over now',
     });
     expect(
       graph.edges.some((edge) => edge.id === 'edge:msg:member:my-team:alice:task:my-team:task-2')

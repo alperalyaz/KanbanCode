@@ -703,6 +703,7 @@ describe('ChangeExtractorService', () => {
         taskId: TASK_ID,
         presence: 'has_changes',
         taskSignature: buildTaskChangePresenceDescriptor({
+          createdAt: '2026-03-01T09:55:00.000Z',
           owner: 'alice',
           status: 'completed',
           intervals: [
