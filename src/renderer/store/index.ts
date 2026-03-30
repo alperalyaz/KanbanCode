@@ -6,6 +6,7 @@ import { api } from '@renderer/api';
 import { syncRendererTelemetry } from '@renderer/sentry';
 import { cleanupStale as cleanupCommentReadState } from '@renderer/services/commentReadStorage';
 import { normalizePath } from '@renderer/utils/pathNormalize';
+import { isVersionOlder, normalizeVersion } from '@shared/utils/version';
 import {
   buildTaskChangePresenceKey,
   buildTaskChangeRequestOptions,
@@ -53,6 +54,8 @@ const ENABLE_AUTO_TEAM_CHANGE_PRESENCE_TRACKING = false;
 const IN_PROGRESS_CHANGE_PRESENCE_POLL_MS = 10_000;
 const FINISHED_TOOL_DISPLAY_MS = 1_500;
 const MAX_TOOL_HISTORY_PER_MEMBER = 6;
+const CURRENT_APP_VERSION =
+  typeof __APP_VERSION__ === 'string' ? normalizeVersion(__APP_VERSION__) : '0.0.0';
 
 // =============================================================================
 // Store Creation
@@ -1199,12 +1202,16 @@ export function initializeNotificationListeners(): () => void {
           if (currentStatus === 'downloading' || currentStatus === 'downloaded') {
             break;
           }
+          const nextVersion = s.version ? normalizeVersion(s.version) : null;
+          if (!nextVersion || !isVersionOlder(CURRENT_APP_VERSION, nextVersion)) {
+            break;
+          }
           const dismissed = useStore.getState().dismissedUpdateVersion;
           useStore.setState({
             updateStatus: 'available',
-            availableVersion: s.version ?? null,
+            availableVersion: nextVersion,
             releaseNotes: s.releaseNotes ?? null,
-            showUpdateDialog: (s.version ?? null) !== dismissed,
+            showUpdateDialog: nextVersion !== dismissed,
           });
           break;
         }
@@ -1223,10 +1230,15 @@ export function initializeNotificationListeners(): () => void {
           });
           break;
         case 'downloaded':
+          if (s.version && !isVersionOlder(CURRENT_APP_VERSION, normalizeVersion(s.version))) {
+            break;
+          }
           useStore.setState({
             updateStatus: 'downloaded',
             downloadProgress: 100,
-            availableVersion: s.version ?? useStore.getState().availableVersion,
+            availableVersion: s.version
+              ? normalizeVersion(s.version)
+              : useStore.getState().availableVersion,
           });
           break;
         case 'error': {

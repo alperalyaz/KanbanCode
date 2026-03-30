@@ -223,4 +223,61 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       })
     );
   });
+
+  it('emits a lead-message refresh after provisioning reaches ready', async () => {
+    const svc = new TeamProvisioningService();
+    const emitter = vi.fn();
+    svc.setTeamChangeEmitter(emitter);
+
+    const run = {
+      runId: 'run-3',
+      teamName: 'team-alpha',
+      request: {
+        cwd: tempRoot,
+        color: 'blue',
+        members: [{ name: 'dev', role: 'engineer' }],
+      },
+      progress: {
+        runId: 'run-3',
+        teamName: 'team-alpha',
+        state: 'assembling',
+        message: 'Assembling',
+        startedAt: '2026-03-12T10:00:00.000Z',
+        updatedAt: '2026-03-12T10:00:00.000Z',
+      },
+      provisioningComplete: false,
+      cancelRequested: false,
+      processKilled: false,
+      stdoutBuffer: '',
+      stdoutLogLineBuf: '',
+      stdoutParserCarry: '',
+      stdoutParserCarryIsCompleteJson: false,
+      stdoutParserCarryLooksLikeClaudeJson: false,
+      stderrBuffer: '',
+      stderrLogLineBuf: '',
+      provisioningOutputParts: [],
+      onProgress: vi.fn(),
+      isLaunch: true,
+      detectedSessionId: null,
+      timeoutHandle: null,
+      fsMonitorHandle: null,
+      claudeLogLines: [],
+      activeToolCalls: new Map(),
+      leadActivityState: 'active',
+      leadContextUsage: null,
+    };
+
+    (svc as any).provisioningRunByTeam.set(run.teamName, run.runId);
+
+    await (svc as any).handleProvisioningTurnComplete(run);
+
+    expect(emitter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'lead-message',
+        teamName: 'team-alpha',
+        runId: 'run-3',
+        detail: 'lead-session-sync',
+      })
+    );
+  });
 });

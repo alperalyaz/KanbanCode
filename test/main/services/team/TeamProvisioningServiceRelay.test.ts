@@ -257,6 +257,55 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     expect(service.getLiveLeadProcessMessages(teamName)).toHaveLength(1);
   });
 
+  it('shows assistant text after relay capture has already settled', () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    seedConfig(teamName);
+    attachAliveRun(service, teamName);
+
+    const run = (service as unknown as { runs: Map<string, unknown> }).runs.get('run-1') as {
+      leadRelayCapture: {
+        leadName: string;
+        startedAt: string;
+        textParts: string[];
+        settled: boolean;
+        idleHandle: NodeJS.Timeout | null;
+        idleMs: number;
+        resolveOnce: (text: string) => void;
+        rejectOnce: (error: string) => void;
+        timeoutHandle: NodeJS.Timeout;
+      } | null;
+    };
+
+    run.leadRelayCapture = {
+      leadName: 'team-lead',
+      startedAt: new Date().toISOString(),
+      textParts: [],
+      settled: true,
+      idleHandle: null,
+      idleMs: 800,
+      resolveOnce: vi.fn(),
+      rejectOnce: vi.fn(),
+      timeoutHandle: setTimeout(() => undefined, 60_000),
+    };
+
+    try {
+      (service as any).handleStreamJsonMessage(run, {
+        type: 'assistant',
+        content: [{ type: 'text', text: 'Late reply after relay completion.' }],
+      });
+
+      const live = service.getLiveLeadProcessMessages(teamName);
+      expect(live).toHaveLength(1);
+      expect(live[0].to).toBeUndefined();
+      expect(live[0].text).toBe('Late reply after relay completion.');
+      expect(live[0].source).toBe('lead_process');
+    } finally {
+      clearTimeout(run.leadRelayCapture.timeoutHandle);
+      run.leadRelayCapture = null;
+    }
+  });
+
   it('adds task-first reply guidance for task comment notifications in lead relay prompts', async () => {
     const service = new TeamProvisioningService();
     const teamName = 'my-team';

@@ -1695,6 +1695,28 @@ export class TeamProvisioningService {
     return Array.isArray(innerContent) ? (innerContent as Record<string, unknown>[]) : [];
   }
 
+  private hasCapturedVisibleMessageToUser(content: Record<string, unknown>[]): boolean {
+    return content.some((part) => {
+      if (!part || typeof part !== 'object') return false;
+      if (part.type !== 'tool_use' || typeof part.name !== 'string') return false;
+
+      // Only native SendMessage(to="user") is guaranteed to be materialized as a
+      // visible outbound message by captureSendMessages().
+      // Keep this intentionally narrower than captureSendMessages(): if another tool path
+      // later starts creating its own user-visible row, expand this helper in lockstep.
+      if (part.name !== 'SendMessage') return false;
+
+      const input = part.input;
+      if (!input || typeof input !== 'object') return false;
+      const inp = input as Record<string, unknown>;
+      const target = (
+        typeof inp.recipient === 'string' ? inp.recipient : typeof inp.to === 'string' ? inp.to : ''
+      ).trim();
+
+      return target.toLowerCase() === 'user';
+    });
+  }
+
   private async matchCrossTeamLeadInboxMessages(
     teamName: string,
     leadName: string,
@@ -5142,14 +5164,7 @@ export class TeamProvisioningService {
     if (msg.type === 'assistant') {
       const content = this.extractStreamContentBlocks(msg);
 
-      const hasCapturedSendMessage = content.some((part) => {
-        if (!part || typeof part !== 'object') return false;
-        if (part.type !== 'tool_use' || part.name !== 'SendMessage') return false;
-        const input = part.input;
-        if (!input || typeof input !== 'object') return false;
-        const recipient = (input as Record<string, unknown>).recipient;
-        return typeof recipient === 'string' && recipient.trim().length > 0;
-      });
+      const hasCapturedVisibleMessageToUser = this.hasCapturedVisibleMessageToUser(content);
 
       const textParts = content
         .filter((part) => part.type === 'text' && typeof part.text === 'string')
@@ -5170,26 +5185,27 @@ export class TeamProvisioningService {
           run.provisioningOutputParts.push(text);
         }
 
-        if (run.leadRelayCapture) {
+        // Once relay capture is settled, later assistant chunks belong to the normal live
+        // message flow. Keeping them in the capture branch would drop them on the floor
+        // until relayLeadInboxMessages() finally clears run.leadRelayCapture.
+        if (run.leadRelayCapture && !run.leadRelayCapture.settled) {
           const capture = run.leadRelayCapture;
-          if (!capture.settled) {
-            capture.textParts.push(text);
-            if (capture.idleHandle) {
-              clearTimeout(capture.idleHandle);
-            }
-            capture.idleHandle = setTimeout(() => {
-              const combined = capture.textParts.join('\n').trim();
-              capture.resolveOnce(combined);
-            }, capture.idleMs);
+          capture.textParts.push(text);
+          if (capture.idleHandle) {
+            clearTimeout(capture.idleHandle);
           }
+          capture.idleHandle = setTimeout(() => {
+            const combined = capture.textParts.join('\n').trim();
+            capture.resolveOnce(combined);
+          }, capture.idleMs);
         } else if (run.provisioningComplete) {
           // Push each assistant text block as a separate live message (per-message pattern).
-          // When the same assistant message includes SendMessage(...), skip text —
+          // When the same assistant message includes a user-visible message send, skip text —
           // captureSendMessages() handles the visible outbound message separately.
           if (
             !run.silentUserDmForward &&
             !run.suppressPostCompactReminderOutput &&
-            !hasCapturedSendMessage
+            !hasCapturedVisibleMessageToUser
           ) {
             const cleanText = stripAgentBlocks(text).trim();
             if (cleanText.length > 0) {
@@ -5203,7 +5219,7 @@ export class TeamProvisioningService {
         } else {
           // Pre-ready: keep showing provisioning narration in the banner, but also mirror it
           // into the live cache so Messages/Activity can show the earliest assistant output.
-          if (!run.silentUserDmForward && !hasCapturedSendMessage) {
+          if (!run.silentUserDmForward && !hasCapturedVisibleMessageToUser) {
             const cleanText = stripAgentBlocks(text).trim();
             if (cleanText.length > 0) {
               this.pushLiveLeadTextMessage(
@@ -6530,6 +6546,15 @@ export class TeamProvisioningService {
       this.aliveRunByTeam.set(run.teamName, run.runId);
       logger.info(`[${run.teamName}] Launch complete. Process alive for subsequent tasks.`);
 
+      // Force a post-ready detail refresh so Messages reload persisted lead_session
+      // texts from JSONL even if the last visible assistant output only reached disk.
+      this.teamChangeEmitter?.({
+        type: 'lead-message',
+        teamName: run.teamName,
+        runId: run.runId,
+        detail: 'lead-session-sync',
+      });
+
       // Fire "Team Launched" notification
       void this.fireTeamLaunchedNotification(run);
 
@@ -6628,6 +6653,15 @@ export class TeamProvisioningService {
     this.provisioningRunByTeam.delete(run.teamName);
     this.aliveRunByTeam.set(run.teamName, run.runId);
     logger.info(`[${run.teamName}] Provisioning complete. Process alive for subsequent tasks.`);
+
+    // Force a post-ready detail refresh so Messages reload persisted lead_session
+    // texts from JSONL even if the last visible assistant output only reached disk.
+    this.teamChangeEmitter?.({
+      type: 'lead-message',
+      teamName: run.teamName,
+      runId: run.runId,
+      detail: 'lead-session-sync',
+    });
 
     // Fire "Team Launched" notification
     void this.fireTeamLaunchedNotification(run);

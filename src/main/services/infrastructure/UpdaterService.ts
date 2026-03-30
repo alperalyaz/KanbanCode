@@ -13,11 +13,12 @@
 import { safeSendToRenderer } from '@main/utils/safeWebContentsSend';
 import { getErrorMessage } from '@shared/utils/errorHandling';
 import { createLogger } from '@shared/utils/logger';
+import { isVersionOlder, normalizeVersion } from '@shared/utils/version';
 import electronUpdater from 'electron-updater';
 
 const { autoUpdater } = electronUpdater;
 
-import { net } from 'electron';
+import { app, net } from 'electron';
 
 import type { UpdaterStatus } from '@shared/types';
 import type { BrowserWindow } from 'electron';
@@ -64,6 +65,7 @@ async function assetExists(url: string): Promise<boolean> {
 export class UpdaterService {
   private mainWindow: BrowserWindow | null = null;
   private periodicTimer: ReturnType<typeof setInterval> | null = null;
+  private downloadedVersion: string | null = null;
 
   constructor() {
     autoUpdater.autoDownload = false;
@@ -109,6 +111,17 @@ export class UpdaterService {
    * isForceRunAfter=true launches the app after install. Other platforms ignore these.
    */
   quitAndInstall(): void {
+    if (!this.downloadedVersion || !this.isNewerThanCurrent(this.downloadedVersion)) {
+      logger.warn(
+        `Refusing to install non-newer update. current=${app.getVersion()} downloaded=${this.downloadedVersion ?? 'unknown'}`
+      );
+      this.sendStatus({
+        type: 'error',
+        error: 'Refused to install a non-newer app version.',
+      });
+      return;
+    }
+
     autoUpdater.quitAndInstall(true, true);
   }
 
@@ -137,6 +150,10 @@ export class UpdaterService {
     safeSendToRenderer(this.mainWindow, 'updater:status', status);
   }
 
+  private isNewerThanCurrent(candidateVersion: string): boolean {
+    return isVersionOlder(normalizeVersion(app.getVersion()), normalizeVersion(candidateVersion));
+  }
+
   /**
    * Verify that the platform-specific asset exists before notifying the renderer.
    * If CI hasn't finished uploading the artifact for this OS yet, suppress the
@@ -146,6 +163,13 @@ export class UpdaterService {
     version: string;
     releaseNotes?: string | unknown;
   }): Promise<void> {
+    if (!this.isNewerThanCurrent(info.version)) {
+      logger.warn(
+        `Suppressing non-newer update notification. current=${app.getVersion()} candidate=${info.version}`
+      );
+      return;
+    }
+
     const url = getExpectedAssetUrl(info.version);
     if (url) {
       const exists = await assetExists(url);
@@ -192,6 +216,14 @@ export class UpdaterService {
     });
 
     autoUpdater.on('update-downloaded', (info) => {
+      if (!this.isNewerThanCurrent(info.version)) {
+        logger.warn(
+          `Ignoring downloaded non-newer update. current=${app.getVersion()} downloaded=${info.version}`
+        );
+        return;
+      }
+
+      this.downloadedVersion = info.version;
       logger.info('Update downloaded:', info.version);
       this.sendStatus({
         type: 'downloaded',
