@@ -1584,7 +1584,12 @@ export const TeamDetailView = ({
                     });
                   }}
                 >
-                  <Network size={12} />
+                  <span className="relative">
+                    <Network size={12} />
+                    <span className="absolute -right-3.5 -top-2.5 rounded-sm bg-emerald-500/20 px-0.5 py-px text-[7px] font-bold leading-none text-emerald-400">
+                      NEW
+                    </span>
+                  </span>
                   Graph
                 </Button>
                 <Button

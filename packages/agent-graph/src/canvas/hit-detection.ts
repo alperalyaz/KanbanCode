@@ -49,8 +49,9 @@ export function findNodeAt(
         }
         break;
       }
-      case 'process': {
-        const r = NODE.radiusProcess + HIT_DETECTION.agentPadding;
+      case 'process':
+      case 'crossteam': {
+        const r = (node.kind === 'crossteam' ? NODE.radiusCrossTeam : NODE.radiusProcess) + HIT_DETECTION.agentPadding;
         const dx = worldX - x;
         const dy = worldY - y;
         if (dx * dx + dy * dy <= r * r) {

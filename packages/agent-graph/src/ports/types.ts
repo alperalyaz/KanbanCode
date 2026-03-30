@@ -5,7 +5,7 @@
 
 // ─── Node Kinds ──────────────────────────────────────────────────────────────
 
-export type GraphNodeKind = 'lead' | 'member' | 'task' | 'process';
+export type GraphNodeKind = 'lead' | 'member' | 'task' | 'process' | 'crossteam';
 
 export type GraphNodeState =
   | 'idle'
@@ -161,4 +161,5 @@ export type GraphDomainRef =
   | { kind: 'lead'; teamName: string; memberName: string }
   | { kind: 'member'; teamName: string; memberName: string }
   | { kind: 'task'; teamName: string; taskId: string }
-  | { kind: 'process'; teamName: string; processId: string };
+  | { kind: 'process'; teamName: string; processId: string }
+  | { kind: 'crossteam'; teamName: string; externalTeamName: string };

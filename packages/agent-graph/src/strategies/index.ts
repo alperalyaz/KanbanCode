@@ -14,6 +14,7 @@ const STRATEGIES: Record<GraphNodeKind, NodeRenderStrategy> = {
   member: new MemberStrategy(),
   task: new TaskStrategy(),
   process: new ProcessStrategy(),
+  crossteam: new ProcessStrategy(), // Reuse process strategy (similar small node)
 };
 
 export function getNodeStrategy(kind: GraphNodeKind): NodeRenderStrategy {

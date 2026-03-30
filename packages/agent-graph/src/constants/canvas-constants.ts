@@ -61,6 +61,8 @@ export const NODE = {
   radiusMember: 24,
   /** Process node radius */
   radiusProcess: 14,
+  /** Cross-team ghost node radius */
+  radiusCrossTeam: 20,
 } as const;
 
 // ─── Task pill dimensions ───────────────────────────────────────────────────

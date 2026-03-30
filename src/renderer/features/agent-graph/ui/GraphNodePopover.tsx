@@ -111,6 +111,21 @@ export const GraphNodePopover = ({
     );
   }
 
+  // Cross-team ghost node
+  if (node.kind === 'crossteam') {
+    const extTeamName =
+      node.domainRef.kind === 'crossteam' ? node.domainRef.externalTeamName : node.label;
+    return (
+      <div className="min-w-[180px] rounded-lg border border-purple-500/30 bg-[var(--color-surface-raised)] p-3 shadow-xl">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-purple-400">{'\u{2194}'}</span>
+          <span className="font-mono text-xs font-bold text-purple-300">{extTeamName}</span>
+        </div>
+        <div className="mt-1 text-[10px] text-[var(--color-text-muted)]">External team</div>
+      </div>
+    );
+  }
+
   // Process
   return (
     <div className="min-w-[180px] max-w-[260px] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-3 shadow-xl">

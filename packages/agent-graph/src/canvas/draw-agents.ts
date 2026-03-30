@@ -106,6 +106,69 @@ export function drawAgents(
   }
 }
 
+/**
+ * Draw cross-team ghost nodes — semi-transparent dashed hexagons.
+ */
+export function drawCrossTeamNodes(
+  ctx: CanvasRenderingContext2D,
+  nodes: GraphNode[],
+  time: number,
+  selectedId: string | null,
+  hoveredId: string | null,
+): void {
+  for (const node of nodes) {
+    if (node.kind !== 'crossteam') continue;
+
+    const x = node.x ?? 0;
+    const y = node.y ?? 0;
+    const r = NODE.radiusCrossTeam;
+    const color = node.color ?? '#cc88ff';
+    const isSelected = node.id === selectedId;
+    const isHovered = node.id === hoveredId;
+
+    ctx.save();
+    ctx.globalAlpha = isHovered ? 0.7 : 0.5;
+
+    // Subtle glow
+    const glowR = r + AGENT_DRAW.glowPadding;
+    const sprite = getAgentGlowSprite(color, r, glowR);
+    ctx.drawImage(sprite, x - glowR, y - glowR);
+
+    // Dashed hexagon body
+    drawHexagon(ctx, x, y, r);
+    ctx.fillStyle = 'rgba(10, 15, 40, 0.4)';
+    ctx.fill();
+
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = hexWithAlpha(color, 0.6);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Link icon (two arrows ↔) in center
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = hexWithAlpha(color, 0.8);
+    ctx.fillText('\u{2194}', x, y); // ↔
+
+    // Label below
+    ctx.globalAlpha = 0.7;
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = hexWithAlpha(color, 0.7);
+    ctx.fillText(node.label, x, y + r + 6);
+
+    // Selection ring
+    if (isSelected) {
+      drawSelectionRing(ctx, x, y, r, color);
+    }
+
+    ctx.restore();
+  }
+}
+
 // ─── Private Helpers ────────────────────────────────────────────────────────
 
 function getNodeOpacity(node: GraphNode): number {

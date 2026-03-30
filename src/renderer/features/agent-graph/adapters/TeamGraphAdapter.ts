@@ -9,6 +9,7 @@
 
 import { getUnreadCount } from '@renderer/services/commentReadStorage';
 import { agentAvatarUrl } from '@renderer/utils/memberHelpers';
+import { stripCrossTeamPrefix } from '@shared/constants/crossTeam';
 import { getInboxJsonType, isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 import { isLeadMember } from '@shared/utils/leadDetection';
 
@@ -195,7 +196,15 @@ export class TeamGraphAdapter {
     );
     this.#buildTaskNodes(nodes, edges, teamData, teamName, commentReadState);
     this.#buildProcessNodes(nodes, edges, teamData, teamName);
-    this.#buildMessageParticles(particles, teamData.messages, teamName, leadId, leadName, edges);
+    this.#buildMessageParticles(
+      particles,
+      nodes,
+      teamData.messages,
+      teamName,
+      leadId,
+      leadName,
+      edges
+    );
     this.#buildCommentParticles(particles, teamData, teamName, leadId, leadName, edges);
 
     this.#cachedResult = {
@@ -518,6 +527,7 @@ export class TeamGraphAdapter {
 
   #buildMessageParticles(
     particles: GraphParticle[],
+    nodes: GraphNode[],
     messages: readonly InboxMessage[],
     teamName: string,
     leadId: string,
@@ -534,8 +544,17 @@ export class TeamGraphAdapter {
         const msgKey = TeamGraphAdapter.#getMessageParticleKey(msg);
         this.#seenMessageIds.add(msgKey);
       }
+      // Still create ghost nodes for cross-team (without particles)
+      for (const msg of ordered) {
+        if (msg.source === 'cross_team' || msg.source === 'cross_team_sent') {
+          TeamGraphAdapter.#ensureCrossTeamNode(nodes, edges, msg, teamName, leadId);
+        }
+      }
       return;
     }
+
+    // Track which ghost nodes we've already created this cycle
+    const seenGhostTeams = new Set<string>();
 
     // Subsequent calls: only create particles for messages not yet seen.
     for (const msg of ordered) {
@@ -553,6 +572,42 @@ export class TeamGraphAdapter {
         // Show idle as a simple label, don't skip
       } else if (isInboxNoiseMessage(msgText)) {
         continue; // skip shutdown_approved, teammate_terminated, shutdown_request
+      }
+
+      // Cross-team messages: create ghost node + edge + particle
+      if (msg.source === 'cross_team' || msg.source === 'cross_team_sent') {
+        const ghostNodeId = TeamGraphAdapter.#ensureCrossTeamNode(
+          nodes,
+          edges,
+          msg,
+          teamName,
+          leadId
+        );
+        if (!ghostNodeId) continue;
+
+        const edgeId = edges.find(
+          (e) =>
+            (e.source === ghostNodeId && e.target === leadId) ||
+            (e.source === leadId && e.target === ghostNodeId)
+        )?.id;
+        if (!edgeId) continue;
+
+        // incoming = from external team → lead (reverse on lead→ghost edge)
+        // sent = from lead → external team (forward on lead→ghost edge)
+        const isIncoming = msg.source === 'cross_team';
+        const cleanText = stripCrossTeamPrefix(msg.text ?? '');
+        const label = TeamGraphAdapter.#buildParticleLabel(msg.summary ?? cleanText, 'inbox');
+
+        particles.push({
+          id: `particle:msg:${teamName}:${msgKey}`,
+          edgeId,
+          progress: 0,
+          kind: 'inbox_message',
+          color: '#cc88ff',
+          label,
+          reverse: !isIncoming, // ghost→lead edge: incoming = forward, sent = reverse
+        });
+        continue;
       }
 
       const edgeId = TeamGraphAdapter.#resolveMessageEdge(msg, teamName, leadId, leadName, edges);
@@ -583,6 +638,17 @@ export class TeamGraphAdapter {
         label: particleLabel,
         reverse: isFromTeammate,
       });
+    }
+
+    // Also ensure ghost nodes exist for ALL cross-team messages (not just new ones)
+    for (const msg of ordered) {
+      if (msg.source === 'cross_team' || msg.source === 'cross_team_sent') {
+        const extTeam = TeamGraphAdapter.#extractExternalTeamName(msg.from ?? '');
+        if (extTeam && !seenGhostTeams.has(extTeam)) {
+          seenGhostTeams.add(extTeam);
+          TeamGraphAdapter.#ensureCrossTeamNode(nodes, edges, msg, teamName, leadId);
+        }
+      }
     }
   }
 
@@ -767,6 +833,52 @@ export class TeamGraphAdapter {
     if (normalized === 'user' || normalized === 'team-lead') return leadId;
     if (leadName && normalized === leadName.trim().toLowerCase()) return leadId;
     return `member:${teamName}:${name}`;
+  }
+
+  /** Extract external team name from cross-team "from" field like "team-b.alice" */
+  static #extractExternalTeamName(from: string): string | null {
+    const dotIdx = from.indexOf('.');
+    if (dotIdx <= 0) return null;
+    return from.slice(0, dotIdx);
+  }
+
+  /** Create or find ghost node + edge for an external team. Returns ghost node ID. */
+  static #ensureCrossTeamNode(
+    nodes: GraphNode[],
+    edges: GraphEdge[],
+    msg: InboxMessage,
+    teamName: string,
+    leadId: string
+  ): string | null {
+    const extTeam = TeamGraphAdapter.#extractExternalTeamName(msg.from ?? '');
+    if (!extTeam) return null;
+
+    const ghostId = `crossteam:${extTeam}`;
+
+    // Create ghost node if not exists
+    if (!nodes.some((n) => n.id === ghostId)) {
+      nodes.push({
+        id: ghostId,
+        kind: 'crossteam',
+        label: extTeam,
+        state: 'active',
+        color: '#cc88ff',
+        domainRef: { kind: 'crossteam', teamName, externalTeamName: extTeam },
+      });
+    }
+
+    // Create edge ghost↔lead if not exists
+    const edgeId = `edge:crossteam:${ghostId}:${leadId}`;
+    if (!edges.some((e) => e.id === edgeId)) {
+      edges.push({
+        id: edgeId,
+        source: ghostId,
+        target: leadId,
+        type: 'message',
+      });
+    }
+
+    return ghostId;
   }
 
   static #buildParticleLabel(

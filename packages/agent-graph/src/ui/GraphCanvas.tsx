@@ -11,7 +11,7 @@ import type { GraphNode, GraphEdge, GraphParticle } from '../ports/types';
 import { drawBackground, createDepthParticles, updateDepthParticles, type DepthParticle } from '../canvas/background-layer';
 import { drawEdges } from '../canvas/draw-edges';
 import { drawParticles } from '../canvas/draw-particles';
-import { drawAgents } from '../canvas/draw-agents';
+import { drawAgents, drawCrossTeamNodes } from '../canvas/draw-agents';
 import { drawTasks, drawColumnHeaders } from '../canvas/draw-tasks';
 import { drawProcesses } from '../canvas/draw-processes';
 import { drawEffects, type VisualEffect } from '../canvas/draw-effects';
@@ -209,6 +209,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(funct
 
       // 2c. Visible nodes only (back to front: process → task → member/lead)
       drawProcesses(ctx, visibleNodes, state.time, state.selectedNodeId, state.hoveredNodeId);
+      drawCrossTeamNodes(ctx, visibleNodes, state.time, state.selectedNodeId, state.hoveredNodeId);
       drawColumnHeaders(ctx, KanbanLayoutEngine.zones);
       drawTasks(ctx, visibleNodes, state.time, state.selectedNodeId, state.hoveredNodeId);
       drawAgents(ctx, visibleNodes, state.time, state.selectedNodeId, state.hoveredNodeId);
