@@ -1,4 +1,4 @@
-import { getHomeDir, getMcpConfigsBasePath, getMcpServerBasePath } from '@main/utils/pathDecoder';
+import { getMcpConfigsBasePath, getMcpServerBasePath } from '@main/utils/pathDecoder';
 import { createLogger } from '@shared/utils/logger';
 import { execFile } from 'child_process';
 import { randomUUID } from 'crypto';
@@ -14,8 +14,6 @@ interface McpLaunchSpec {
 
 const MCP_SERVER_NAME = 'agent-teams';
 const logger = createLogger('Service:TeamMcpConfigBuilder');
-const USER_MCP_CONFIG_NAME = '.claude.json';
-
 const MCP_CONFIG_PREFIX = 'agent-teams-mcp-';
 /**
  * Stale configs older than this are removed on startup (best-effort).
@@ -26,10 +24,6 @@ const MCP_CONFIG_PREFIX = 'agent-teams-mcp-';
 const MCP_CONFIG_STALE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 type McpServerConfig = Record<string, unknown>;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
 
 function isPackagedApp(): boolean {
   try {
@@ -250,21 +244,23 @@ export class TeamMcpConfigBuilder {
       configDir,
       `${MCP_CONFIG_PREFIX}${process.pid}-${Date.now()}-${randomUUID()}.json`
     );
-    const userServers = await this.readUserMcpServers();
+    // Keep the team bootstrap config minimal: recent Claude sidechain runs can
+    // lose the agent-teams tool surface when we inline large user MCP bundles
+    // into the generated --mcp-config. User/project/local MCP remain loaded
+    // through Claude's native settings sources.
     const generatedServers: Record<string, McpServerConfig> = {
       [MCP_SERVER_NAME]: {
         command: launchSpec.command,
         args: launchSpec.args,
       },
     };
-    const mergedServers = this.mergeServers(userServers, generatedServers);
 
     await fs.promises.mkdir(configDir, { recursive: true });
     await atomicWriteAsync(
       configPath,
       JSON.stringify(
         {
-          mcpServers: mergedServers,
+          mcpServers: generatedServers,
         },
         null,
         2
@@ -335,62 +331,5 @@ export class TeamMcpConfigBuilder {
         logger.warn(`Failed to GC stale MCP configs: ${err.message}`);
       }
     }
-  }
-
-  private async readUserMcpServers(): Promise<Record<string, McpServerConfig>> {
-    const configPath = path.join(getHomeDir(), USER_MCP_CONFIG_NAME);
-    return this.readMcpServersFromFile(configPath, 'user');
-  }
-
-  private async readMcpServersFromFile(
-    filePath: string,
-    scope: 'user'
-  ): Promise<Record<string, McpServerConfig>> {
-    try {
-      const raw = await fs.promises.readFile(filePath, 'utf8');
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      const mcpServers = parsed.mcpServers;
-      if (!isRecord(mcpServers)) {
-        return {};
-      }
-
-      return Object.fromEntries(
-        Object.entries(mcpServers).filter(([, config]) => isRecord(config))
-      ) as Record<string, McpServerConfig>;
-    } catch (error) {
-      const err = error as NodeJS.ErrnoException;
-      if (err.code === 'ENOENT') {
-        return {};
-      }
-
-      logger.warn(
-        `Failed to read ${scope} MCP config from ${filePath}: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      return {};
-    }
-  }
-
-  private mergeServers(
-    userServers: Record<string, McpServerConfig>,
-    generatedServers: Record<string, McpServerConfig>
-  ): Record<string, McpServerConfig> {
-    const duplicates = Object.keys(userServers).filter((name) =>
-      Object.hasOwn(generatedServers, name)
-    );
-
-    if (duplicates.length > 0) {
-      logger.info(`Merging MCP configs with overrides for: ${duplicates.join(', ')}`);
-    }
-
-    // We inline only top-level user MCP into --mcp-config.
-    // Project/local scopes are still loaded natively by Claude via
-    // --setting-sources user,project,local, which preserves documented precedence:
-    // local > project > user. Generated agent-teams must always win on name collision.
-    return {
-      ...userServers,
-      ...generatedServers,
-    };
   }
 }

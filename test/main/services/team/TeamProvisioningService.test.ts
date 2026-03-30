@@ -53,6 +53,7 @@ vi.mock('@main/utils/pathDecoder', async (importOriginal) => {
 import { TeamProvisioningService } from '@main/services/team/TeamProvisioningService';
 import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
 import { spawnCli } from '@main/utils/childProcess';
+import { AGENT_TEAMS_NAMESPACED_TEAMMATE_OPERATIONAL_TOOL_NAMES } from 'agent-teams-controller';
 
 function allowConsoleLogs() {
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -323,5 +324,161 @@ describe('TeamProvisioningService', () => {
       clearTimeout(run.timeoutHandle);
       run.timeoutHandle = null;
     }
+  });
+
+  it('pre-seeds teammate operational MCP permissions before createTeam spawn', async () => {
+    allowConsoleLogs();
+    vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
+    vi.mocked(spawnCli).mockImplementation(() => {
+      throw new Error('spawn EINVAL');
+    });
+
+    const mcpConfigBuilder = {
+      writeConfigFile: vi.fn(async () => '/mock/mcp-config-create.json'),
+      removeConfigFile: vi.fn(async () => {}),
+    };
+    const membersMetaStore = {
+      writeMembers: vi.fn(async () => {}),
+    };
+    const teamMetaStore = {
+      writeMeta: vi.fn(async () => {}),
+      deleteMeta: vi.fn(async () => {}),
+    };
+
+    const svc = new TeamProvisioningService(
+      undefined,
+      undefined,
+      membersMetaStore as any,
+      undefined,
+      mcpConfigBuilder as any,
+      teamMetaStore as any
+    );
+    (svc as any).buildProvisioningEnv = vi.fn(async () => ({
+      env: { ANTHROPIC_API_KEY: 'test' },
+      authSource: 'anthropic_api_key',
+    }));
+    (svc as any).pathExists = vi.fn(async () => false);
+
+    await expect(
+      svc.createTeam(
+        {
+          teamName: 'seeded-team',
+          cwd: tempClaudeRoot,
+          members: [{ name: 'alice' }],
+          skipPermissions: false,
+        },
+        () => {}
+      )
+    ).rejects.toThrow('spawn EINVAL');
+
+    const settingsPath = path.join(tempClaudeRoot, '.claude', 'settings.local.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as {
+      permissions?: { allow?: string[] };
+    };
+    expect(settings.permissions?.allow).toEqual(
+      expect.arrayContaining([...AGENT_TEAMS_NAMESPACED_TEAMMATE_OPERATIONAL_TOOL_NAMES])
+    );
+    expect(settings.permissions?.allow).not.toContain('mcp__agent-teams__team_stop');
+    expect(settings.permissions?.allow).not.toContain('mcp__agent-teams__kanban_clear');
+  });
+
+  it('expands teammate permission suggestions to the operational tool set only', async () => {
+    allowConsoleLogs();
+    const svc = new TeamProvisioningService(
+      {
+        getConfig: vi.fn(async () => ({
+          projectPath: tempClaudeRoot,
+          members: [{ cwd: tempClaudeRoot }],
+        })),
+      } as any
+    );
+
+    await (svc as any).respondToTeammatePermission(
+      { teamName: 'ops-team' },
+      'alice',
+      'req-1',
+      true,
+      undefined,
+      [
+        {
+          type: 'addRules',
+          behavior: 'allow',
+          destination: 'localSettings',
+          rules: [{ toolName: 'mcp__agent-teams__task_get' }],
+        },
+      ]
+    );
+
+    const settingsPath = path.join(tempClaudeRoot, '.claude', 'settings.local.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as {
+      permissions?: { allow?: string[] };
+    };
+    expect(settings.permissions?.allow).toEqual(
+      expect.arrayContaining([...AGENT_TEAMS_NAMESPACED_TEAMMATE_OPERATIONAL_TOOL_NAMES])
+    );
+    expect(settings.permissions?.allow).not.toContain('mcp__agent-teams__team_stop');
+    expect(settings.permissions?.allow).not.toContain('mcp__agent-teams__kanban_clear');
+  });
+
+  it('does not broaden admin/runtime teammate permission suggestions', async () => {
+    allowConsoleLogs();
+    const svc = new TeamProvisioningService(
+      {
+        getConfig: vi.fn(async () => ({
+          projectPath: tempClaudeRoot,
+          members: [{ cwd: tempClaudeRoot }],
+        })),
+      } as any
+    );
+
+    await (svc as any).respondToTeammatePermission(
+      { teamName: 'ops-team' },
+      'alice',
+      'req-2',
+      true,
+      undefined,
+      [
+        {
+          type: 'addRules',
+          behavior: 'allow',
+          destination: 'localSettings',
+          rules: [{ toolName: 'mcp__agent-teams__team_stop' }],
+        },
+      ]
+    );
+
+    const settingsPath = path.join(tempClaudeRoot, '.claude', 'settings.local.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as {
+      permissions?: { allow?: string[] };
+    };
+    expect(settings.permissions?.allow).toEqual(['mcp__agent-teams__team_stop']);
+  });
+
+  it('uses a non-alarming cloud delay message before 2 minutes of silence', () => {
+    const svc = new TeamProvisioningService();
+
+    expect((svc as any).buildStallProgressMessage(90, '1m 30s')).toBe(
+      'Waiting on Cloud response for 1m 30s — logs can be delayed, this is still OK'
+    );
+
+    expect(
+      (svc as any).buildStallWarningText(90, {
+        request: { model: 'sonnet' },
+      })
+    ).toContain('Logs can sometimes show up after 1-1.5 minutes, and that is still okay.');
+  });
+
+  it('marks a cloud wait as unusual after 2 minutes of silence', () => {
+    const svc = new TeamProvisioningService();
+
+    expect((svc as any).buildStallProgressMessage(120, '2m')).toBe(
+      'Still waiting on Cloud response for 2m — this is unusual'
+    );
+
+    expect(
+      (svc as any).buildStallWarningText(120, {
+        request: { model: 'sonnet' },
+      })
+    ).toContain('but no logs for 2m is already unusual.');
   });
 });

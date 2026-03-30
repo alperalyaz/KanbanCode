@@ -181,7 +181,7 @@ describe('TeamMcpConfigBuilder', () => {
     ]);
   });
 
-  it('merges top-level user MCP with generated agent-teams config', async () => {
+  it('keeps generated team MCP config minimal and does not inline top-level user MCP', async () => {
     const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-home-'));
     const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-project-'));
     createdDirs.push(homeDir, projectDir);
@@ -223,19 +223,9 @@ describe('TeamMcpConfigBuilder', () => {
       mcpServers: Record<string, { command?: string; args?: string[]; type?: string; url?: string }>;
     };
 
-    expect(Object.keys(parsed.mcpServers).sort()).toEqual([
-      'agent-teams',
-      'duplicateServer',
-      'globalOnly',
-    ]);
-    expect(parsed.mcpServers.globalOnly).toMatchObject({
-      type: 'http',
-      url: 'https://global.example.com/mcp',
-    });
-    expect(parsed.mcpServers.duplicateServer).toMatchObject({
-      type: 'http',
-      url: 'https://global.example.com/duplicate',
-    });
+    expect(Object.keys(parsed.mcpServers)).toEqual(['agent-teams']);
+    expect(parsed.mcpServers.globalOnly).toBeUndefined();
+    expect(parsed.mcpServers.duplicateServer).toBeUndefined();
   });
 
   it('does not inline project MCP config to preserve native Claude precedence', async () => {
@@ -270,7 +260,7 @@ describe('TeamMcpConfigBuilder', () => {
     expect(Object.keys(parsed.mcpServers)).toEqual(['agent-teams']);
   });
 
-  it('generated agent-teams server overrides same-named user MCP entry', async () => {
+  it('generated agent-teams server ignores same-named user MCP entry', async () => {
     const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-home-'));
     createdDirs.push(homeDir);
     mockHomeDir = homeDir;

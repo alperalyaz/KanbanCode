@@ -112,9 +112,7 @@ const DEFAULT_MEMBERS: { name: string; roleSelection: string; workflow?: string 
   },
   {
     name: 'tom',
-    roleSelection: 'researcher',
-    workflow:
-      'Research topics, gather information, and analyze relevant sources. Investigate questions, explore options, and provide detailed findings with clear summaries for the team.',
+    roleSelection: 'developer',
   },
   { name: 'bob', roleSelection: 'developer' },
   { name: 'jack', roleSelection: 'developer' },

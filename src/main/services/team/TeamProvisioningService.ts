@@ -34,8 +34,8 @@ import { resolveLanguageName } from '@shared/utils/agentLanguage';
 import { parseCliArgs } from '@shared/utils/cliArgsParser';
 import {
   isInboxNoiseMessage,
-  parsePermissionRequest,
   type ParsedPermissionRequest,
+  parsePermissionRequest,
 } from '@shared/utils/inboxNoise';
 import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
@@ -109,7 +109,8 @@ import type {
 } from '@shared/types';
 
 const logger = createLogger('Service:TeamProvisioning');
-const { createController, protocols } = agentTeamsControllerModule;
+const { AGENT_TEAMS_NAMESPACED_TEAMMATE_OPERATIONAL_TOOL_NAMES, createController, protocols } =
+  agentTeamsControllerModule;
 const TEAM_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,127}$/;
 const RUN_TIMEOUT_MS = 300_000;
 const VERIFY_TIMEOUT_MS = 15_000;
@@ -2641,7 +2642,7 @@ export class TeamProvisioningService {
 
         const mins = Math.floor(silenceSec / 60);
         const secs = silenceSec % 60;
-        const elapsed = mins > 0 ? `${mins}m ${secs > 0 ? `${secs}s` : ''}` : `${secs}s`;
+        const elapsed = mins > 0 ? (secs > 0 ? `${mins}m ${secs}s` : `${mins}m`) : `${secs}s`;
 
         // If retry messages are flowing, they are more informative than our
         // generic stall text — don't overwrite progress.message / severity.
@@ -2652,7 +2653,7 @@ export class TeamProvisioningService {
           ...run.progress,
           updatedAt: nowIso(),
           ...(!retryActive && {
-            message: `CLI not responding for ${elapsed} — possible rate limit`,
+            message: this.buildStallProgressMessage(silenceSec, elapsed),
             messageSeverity: 'warning' as const,
           }),
           assistantOutput: run.provisioningOutputParts.join('\n\n'),
@@ -2678,15 +2679,15 @@ export class TeamProvisioningService {
   private buildStallWarningText(silenceSec: number, run: ProvisioningRun): string {
     const mins = Math.floor(silenceSec / 60);
     const secs = silenceSec % 60;
-    const elapsed = mins > 0 ? `${mins}m ${secs > 0 ? `${secs}s` : ''}` : `${secs}s`;
+    const elapsed = mins > 0 ? (secs > 0 ? `${mins}m ${secs}s` : `${mins}m`) : `${secs}s`;
 
     if (silenceSec < 60) {
       return (
         `---\n\n` +
         `**Waiting for CLI response** (silent for ${elapsed})\n\n` +
-        `The process is running but not producing output yet. ` +
-        `This may be caused by an API delay (rate limit / model cooldown) — ` +
-        `the SDK retries automatically.\n\n` +
+        `The process is running but not producing output yet. Cloud sometimes delays logs, ` +
+        `and short waits like this are normal. The SDK also retries automatically if the ` +
+        `request briefly hits rate limiting.\n\n` +
         `Waiting...`
       );
     }
@@ -2695,9 +2696,10 @@ export class TeamProvisioningService {
       return (
         `---\n\n` +
         `**Waiting for CLI response** (silent for ${elapsed})\n\n` +
-        `The process is still not responding. Likely delayed due to rate limiting ` +
-        `(error 429 / model cooldown). The SDK retries the request automatically — ` +
-        `this usually resolves within 1-3 minutes.\n\n` +
+        `The process is still waiting on Cloud. Logs can sometimes show up after ` +
+        `1-1.5 minutes, and that is still okay. The SDK retries automatically if the ` +
+        `request hits rate limiting (error 429 / model cooldown).\n\n` +
+        `If there is still no output after 2 minutes, that starts to look unusual.\n\n` +
         `You can cancel and try again later if the wait continues.`
       );
     }
@@ -2708,13 +2710,21 @@ export class TeamProvisioningService {
     return (
       `---\n\n` +
       `**Extended CLI wait** (silent for ${elapsed})\n\n` +
-      `Model **${modelName}**${effortLabel} appears to be under heavy load and is not responding. ` +
-      `Most likely this is a 429 error (rate limit / model cooldown).\n\n` +
-      `The process has been silent for over ${mins} minutes. Possible causes:\n` +
+      `Model **${modelName}**${effortLabel} is still waiting on Cloud. Some delay is normal, ` +
+      `but no logs for ${elapsed} is already unusual.\n\n` +
+      `Possible causes:\n` +
       `- Rate limiting / model cooldown (429) — SDK retries automatically\n` +
-      `- API server overload for this model\n\n` +
+      `- API server overload for this model\n` +
+      `- A stalled or delayed Cloud response\n\n` +
       `Consider canceling and trying with a different model.`
     );
+  }
+
+  private buildStallProgressMessage(silenceSec: number, elapsed: string): string {
+    if (silenceSec < 120) {
+      return `Waiting on Cloud response for ${elapsed} — logs can be delayed, this is still OK`;
+    }
+    return `Still waiting on Cloud response for ${elapsed} — this is unusual`;
   }
 
   /**
@@ -3216,6 +3226,9 @@ export class TeamProvisioningService {
             joinedAt: Date.now(),
           }))
         );
+        if (request.skipPermissions === false) {
+          await this.seedTeammateOperationalPermissionRules(request.teamName, request.cwd);
+        }
 
         child = spawnCli(claudePath, spawnArgs, {
           cwd: request.cwd,
@@ -3663,6 +3676,9 @@ export class TeamProvisioningService {
       // Without it, CLI creates a fresh session ID automatically.
 
       try {
+        if (request.skipPermissions === false) {
+          await this.seedTeammateOperationalPermissionRules(request.teamName, request.cwd);
+        }
         child = spawnCli(claudePath, launchArgs, {
           cwd: request.cwd,
           env: { ...shellEnv },
@@ -6375,23 +6391,18 @@ export class TeamProvisioningService {
         .filter((name): name is string => typeof name === 'string' && name.length > 0);
       if (toolNames.length === 0) continue;
 
-      // When approving ANY mcp__agent-teams__ tool, proactively add ALL agent-teams tools.
-      // FACT: Teammates need multiple MCP tools (member_briefing, task_get, task_start, etc.)
-      // FACT: Each tool generates a separate permission_request, but by the time we process it
-      // the teammate is already stuck waiting. Pre-adding all tools prevents future blocks.
-      if (toolNames.some((name) => name.startsWith('mcp__agent-teams__'))) {
-        const agentTeamsTools = [
-          'mcp__agent-teams__member_briefing',
-          'mcp__agent-teams__task_briefing',
-          'mcp__agent-teams__task_create',
-          'mcp__agent-teams__task_get',
-          'mcp__agent-teams__task_list',
-          'mcp__agent-teams__task_start',
-          'mcp__agent-teams__task_complete',
-          'mcp__agent-teams__task_set_status',
-          'mcp__agent-teams__task_add_comment',
-        ];
-        const merged = new Set([...toolNames, ...agentTeamsTools]);
+      // Expand teammate-safe operational tools only.
+      // This removes the bootstrap/task workflow race without accidentally granting
+      // admin/runtime tools like team_stop or kanban_clear.
+      if (
+        toolNames.some((name) =>
+          AGENT_TEAMS_NAMESPACED_TEAMMATE_OPERATIONAL_TOOL_NAMES.includes(name)
+        )
+      ) {
+        const merged = new Set([
+          ...toolNames,
+          ...AGENT_TEAMS_NAMESPACED_TEAMMATE_OPERATIONAL_TOOL_NAMES,
+        ]);
         toolNames = Array.from(merged);
       }
 
@@ -6426,7 +6437,7 @@ export class TeamProvisioningService {
     settingsPath: string,
     toolNames: string[],
     behavior: string
-  ): Promise<void> {
+  ): Promise<number> {
     const dir = path.dirname(settingsPath);
     await fs.promises.mkdir(dir, { recursive: true });
 
@@ -6465,9 +6476,33 @@ export class TeamProvisioningService {
       }
     }
 
-    if (added === 0) return; // Nothing new to add
+    if (added === 0) return 0; // Nothing new to add
 
-    await fs.promises.writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+    await atomicWriteAsync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+    return added;
+  }
+
+  private async seedTeammateOperationalPermissionRules(
+    teamName: string,
+    projectCwd: string
+  ): Promise<void> {
+    const settingsPath = path.join(projectCwd, '.claude', 'settings.local.json');
+    try {
+      const added = await this.addPermissionRulesToSettings(
+        settingsPath,
+        [...AGENT_TEAMS_NAMESPACED_TEAMMATE_OPERATIONAL_TOOL_NAMES],
+        'allow'
+      );
+      logger.info(
+        `[${teamName}] Seeded teammate operational MCP rules in ${settingsPath} (${added} added)`
+      );
+    } catch (error) {
+      logger.warn(
+        `[${teamName}] Failed to seed teammate operational MCP rules: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
   }
 
   /**

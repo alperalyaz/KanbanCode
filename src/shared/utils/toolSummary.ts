@@ -112,7 +112,15 @@ export function extractToolPreview(
     case 'WebSearch':
       return typeof input.query === 'string' ? truncateStr(input.query, 40) : undefined;
     default: {
-      const v = input.name ?? input.path ?? input.file ?? input.query ?? input.command;
+      const v =
+        input.subject ??
+        input.name ??
+        input.description ??
+        input.prompt ??
+        input.path ??
+        input.file ??
+        input.query ??
+        input.command;
       return typeof v === 'string' ? truncateStr(v, 50) : undefined;
     }
   }
