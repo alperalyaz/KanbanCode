@@ -8,6 +8,7 @@ import { useStableTeamMentionMeta } from '@renderer/hooks/useStableTeamMentionMe
 import { useTeamMessagesExpanded } from '@renderer/hooks/useTeamMessagesExpanded';
 import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { useStore } from '@renderer/store';
+import { mergeTeamMessages } from '@renderer/utils/mergeTeamMessages';
 import { useShallow } from 'zustand/react/shallow';
 import { filterTeamMessages } from '@renderer/utils/teamMessageFiltering';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
@@ -166,13 +167,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     const interval = setInterval(async () => {
       try {
         const page = await api.teams.getMessagesPage(teamName, { limit: PAGE_SIZE });
-        setFetchedMessages((prev) => {
-          const existingIds = new Set(prev.map((m) => m.messageId ?? `${m.timestamp}\0${m.from}`));
-          const newMessages = page.messages.filter(
-            (m) => !existingIds.has(m.messageId ?? `${m.timestamp}\0${m.from}`)
-          );
-          return newMessages.length > 0 ? [...newMessages, ...prev] : prev;
-        });
+        setFetchedMessages((prev) => mergeTeamMessages(prev, page.messages));
       } catch {
         // best-effort
       }
@@ -188,14 +183,7 @@ export const MessagesPanel = memo(function MessagesPanel({
         beforeTimestamp: nextCursor,
         limit: PAGE_SIZE,
       });
-      // Dedup: only append messages we don't already have
-      setFetchedMessages((prev) => {
-        const existingIds = new Set(prev.map((m) => m.messageId ?? `${m.timestamp}\0${m.from}`));
-        const newMessages = page.messages.filter(
-          (m) => !existingIds.has(m.messageId ?? `${m.timestamp}\0${m.from}`)
-        );
-        return [...prev, ...newMessages];
-      });
+      setFetchedMessages((prev) => mergeTeamMessages(prev, page.messages));
       setNextCursor(page.nextCursor);
       setHasMore(page.hasMore);
     } catch {
@@ -206,7 +194,10 @@ export const MessagesPanel = memo(function MessagesPanel({
   }, [teamName, nextCursor, messagesLoading]);
 
   // Use fetched messages, fall back to prop messages during initial load
-  const effectiveMessages = fetchedMessages.length > 0 ? fetchedMessages : messages;
+  const effectiveMessages = useMemo(() => {
+    if (fetchedMessages.length === 0) return messages;
+    return mergeTeamMessages(fetchedMessages, messages);
+  }, [fetchedMessages, messages]);
 
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const sidebarScrollRef = useRef<HTMLDivElement | null>(null);
@@ -437,7 +428,7 @@ export const MessagesPanel = memo(function MessagesPanel({
       </div>
       <MessagesFilterPopover
         filter={messagesFilter}
-        messages={messages}
+        messages={effectiveMessages}
         open={messagesFilterOpen}
         onOpenChange={setMessagesFilterOpen}
         onApply={setMessagesFilter}
@@ -485,7 +476,7 @@ export const MessagesPanel = memo(function MessagesPanel({
       <StatusBlock
         members={members}
         tasks={tasks}
-        messages={messages}
+        messages={effectiveMessages}
         pendingRepliesByMember={pendingRepliesByMember}
         position="inline"
         onMemberClick={onMemberClick}
@@ -663,7 +654,7 @@ export const MessagesPanel = memo(function MessagesPanel({
             <StatusBlock
               members={members}
               tasks={tasks}
-              messages={messages}
+              messages={effectiveMessages}
               pendingRepliesByMember={pendingRepliesByMember}
               position="sidebar"
               onMemberClick={onMemberClick}

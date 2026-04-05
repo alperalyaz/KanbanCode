@@ -389,7 +389,7 @@ export interface InboxMessage {
 /** Cursor-based paginated messages response. */
 export interface MessagesPage {
   messages: InboxMessage[];
-  /** ISO timestamp cursor for fetching older messages. Null when no more pages. */
+  /** Opaque cursor string for fetching older messages. Null when no more pages. */
   nextCursor: string | null;
   hasMore: boolean;
 }

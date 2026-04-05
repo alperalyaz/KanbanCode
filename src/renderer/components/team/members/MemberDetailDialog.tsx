@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
+import { api } from '@renderer/api';
 import { Button } from '@renderer/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader } from '@renderer/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs';
 import { useMemberStats } from '@renderer/hooks/useMemberStats';
+import { mergeTeamMessages } from '@renderer/utils/mergeTeamMessages';
 import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';
 import { BarChart3, FileText, ListPlus, MessageSquare, UserMinus } from 'lucide-react';
 
@@ -40,6 +42,8 @@ interface MemberDetailDialogProps {
   onViewMemberChanges?: (memberName: string, filePath?: string) => void;
 }
 
+const MEMBER_MESSAGES_PAGE_SIZE = 200;
+
 export const MemberDetailDialog = ({
   open,
   member,
@@ -63,9 +67,55 @@ export const MemberDetailDialog = ({
     [tasks, member]
   );
 
-  const memberMessages = useMemo(
+  const seedMemberMessages = useMemo(
     () => (member ? messages.filter((m) => m.from === member.name || m.to === member.name) : []),
     [messages, member]
+  );
+  const [pagedMemberMessages, setPagedMemberMessages] = useState<InboxMessage[] | null>(null);
+
+  useEffect(() => {
+    if (!open || !member) {
+      setPagedMemberMessages(null);
+      return;
+    }
+
+    let cancelled = false;
+    setPagedMemberMessages(null);
+
+    void (async () => {
+      let cursor: string | undefined;
+      let hasMore = true;
+      let allMessages: InboxMessage[] = [];
+
+      while (!cancelled && hasMore) {
+        const page = await api.teams.getMessagesPage(teamName, {
+          beforeTimestamp: cursor,
+          limit: MEMBER_MESSAGES_PAGE_SIZE,
+        });
+        allMessages = mergeTeamMessages(allMessages, page.messages);
+        hasMore = page.hasMore && page.nextCursor != null;
+        cursor = page.nextCursor ?? undefined;
+      }
+
+      if (cancelled) return;
+
+      setPagedMemberMessages(
+        allMessages.filter((message) => message.from === member.name || message.to === member.name)
+      );
+    })().catch(() => {
+      if (!cancelled) {
+        setPagedMemberMessages([]);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, teamName, member?.name]);
+
+  const memberMessages = useMemo(
+    () => mergeTeamMessages(seedMemberMessages, pagedMemberMessages ?? []),
+    [seedMemberMessages, pagedMemberMessages]
   );
 
   const inProgressTasks = useMemo(
