@@ -782,19 +782,70 @@ export class TeamDataService {
       });
     }
 
-    // Sort newest-first
-    messages.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+    // Enrich: propagate leadSessionId to messages missing it (same as getTeamData)
+    if (config.leadSessionId || messages.some((m) => m.leadSessionId)) {
+      messages.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+      const anchors: { time: number; sessionId: string }[] = [];
+      for (const msg of messages) {
+        if (msg.leadSessionId) {
+          anchors.push({ time: Date.parse(msg.timestamp), sessionId: msg.leadSessionId });
+        }
+      }
+      if (anchors.length > 0) {
+        for (const msg of messages) {
+          if (msg.leadSessionId) continue;
+          const msgTime = Date.parse(msg.timestamp);
+          let best = anchors[0];
+          let bestDist = Math.abs(msgTime - best.time);
+          for (const a of anchors) {
+            const dist = Math.abs(msgTime - a.time);
+            if (dist < bestDist) {
+              bestDist = dist;
+              best = a;
+            } else if (dist > bestDist && a.time > msgTime) {
+              break;
+            }
+          }
+          msg.leadSessionId = best.sessionId;
+        }
+      } else if (config.leadSessionId) {
+        for (const msg of messages) {
+          msg.leadSessionId = config.leadSessionId;
+        }
+      }
+    }
 
-    // Apply cursor filter
+    // Enrich: annotate slash command responses
+    this.annotateSlashCommandResponses(messages);
+
+    // Sort newest-first, with stable tie-breaker by messageId
+    messages.sort((a, b) => {
+      const diff = Date.parse(b.timestamp) - Date.parse(a.timestamp);
+      if (diff !== 0) return diff;
+      return (a.messageId ?? '').localeCompare(b.messageId ?? '');
+    });
+
+    // Apply cursor filter. Cursor format: "timestamp|messageId" (compound)
+    // to handle multiple messages sharing the same timestamp.
     if (options.beforeTimestamp) {
-      const cursorMs = Date.parse(options.beforeTimestamp);
-      messages = messages.filter((m) => Date.parse(m.timestamp) < cursorMs);
+      const [cursorTs, cursorId] = options.beforeTimestamp.split('|');
+      const cursorMs = Date.parse(cursorTs);
+      messages = messages.filter((m) => {
+        const ms = Date.parse(m.timestamp);
+        if (ms < cursorMs) return true;
+        if (ms > cursorMs) return false;
+        // Same timestamp — use messageId tie-breaker
+        if (!cursorId) return false;
+        return (m.messageId ?? '').localeCompare(cursorId) > 0;
+      });
     }
 
     // Paginate
     const hasMore = messages.length > options.limit;
     const page = messages.slice(0, options.limit);
-    const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].timestamp : null;
+    const lastMsg = page[page.length - 1];
+    const nextCursor =
+      hasMore && lastMsg ? `${lastMsg.timestamp}|${lastMsg.messageId ?? ''}` : null;
 
     return { messages: page, nextCursor, hasMore };
   }

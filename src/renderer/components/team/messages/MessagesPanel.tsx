@@ -159,24 +159,20 @@ export const MessagesPanel = memo(function MessagesPanel({
     })();
   }, [teamName]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally only on teamName change
 
-  // Auto-refresh: poll for new messages (newest page only)
+  // Auto-refresh: poll for NEW messages only (prepend to head).
+  // Does NOT touch nextCursor/hasMore — those belong to the "Load older" flow.
   useEffect(() => {
     if (!isTeamAlive && leadActivity !== 'active') return;
     const interval = setInterval(async () => {
       try {
         const page = await api.teams.getMessagesPage(teamName, { limit: PAGE_SIZE });
         setFetchedMessages((prev) => {
-          // Merge: keep older messages that aren't in the new page
-          const newIds = new Set(page.messages.map((m) => m.messageId ?? m.timestamp));
-          const older = prev.filter(
-            (m) =>
-              !newIds.has(m.messageId ?? m.timestamp) &&
-              !page.messages.some((n) => n.timestamp === m.timestamp && n.from === m.from)
+          const existingIds = new Set(prev.map((m) => m.messageId ?? `${m.timestamp}\0${m.from}`));
+          const newMessages = page.messages.filter(
+            (m) => !existingIds.has(m.messageId ?? `${m.timestamp}\0${m.from}`)
           );
-          return [...page.messages, ...older];
+          return newMessages.length > 0 ? [...newMessages, ...prev] : prev;
         });
-        setNextCursor(page.nextCursor);
-        setHasMore(page.hasMore);
       } catch {
         // best-effort
       }
@@ -192,7 +188,14 @@ export const MessagesPanel = memo(function MessagesPanel({
         beforeTimestamp: nextCursor,
         limit: PAGE_SIZE,
       });
-      setFetchedMessages((prev) => [...prev, ...page.messages]);
+      // Dedup: only append messages we don't already have
+      setFetchedMessages((prev) => {
+        const existingIds = new Set(prev.map((m) => m.messageId ?? `${m.timestamp}\0${m.from}`));
+        const newMessages = page.messages.filter(
+          (m) => !existingIds.has(m.messageId ?? `${m.timestamp}\0${m.from}`)
+        );
+        return [...prev, ...newMessages];
+      });
       setNextCursor(page.nextCursor);
       setHasMore(page.hasMore);
     } catch {
