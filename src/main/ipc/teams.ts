@@ -577,6 +577,12 @@ async function handleGetData(
   if (getDataMs >= 1500) {
     logger.warn(`[teams:getData] slow team=${tn} ms=${getDataMs}`);
   }
+  const teamDataService = getTeamDataService();
+  if (data.processes.some((process) => !process.stoppedAt)) {
+    teamDataService.trackProcessHealthForTeam?.(tn);
+  } else {
+    teamDataService.untrackProcessHealthForTeam?.(tn);
+  }
   const provisioning = getTeamProvisioningService();
   const isAlive = provisioning.isTeamAlive(tn);
 
