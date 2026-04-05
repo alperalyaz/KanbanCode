@@ -723,15 +723,19 @@ export class TeamDataService {
       this.processHealthTeams.delete(teamName);
     }
 
-    // Messages are now served separately via getMessagesPage() for pagination.
-    // Sending an empty array here keeps the TeamData shape unchanged while
-    // eliminating the ~1MB messages payload from every getTeamData refresh.
+    // Cap messages to keep IPC payloads small. Full history is available
+    // via the paginated getMessagesPage() API. We still include a small
+    // batch here for backward compatibility (notifications, dedup, etc.).
+    const MAX_RETURN_MESSAGES = 50;
+    const cappedMessages =
+      messages.length > MAX_RETURN_MESSAGES ? messages.slice(0, MAX_RETURN_MESSAGES) : messages;
+
     return {
       teamName,
       config,
       tasks: tasksWithKanban,
       members,
-      messages: [],
+      messages: cappedMessages,
       kanbanState,
       processes,
       warnings: warnings.length > 0 ? warnings : undefined,
