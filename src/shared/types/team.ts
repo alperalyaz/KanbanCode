@@ -440,15 +440,12 @@ export interface AddTaskCommentRequest {
 
 export type MemberStatus = 'active' | 'idle' | 'terminated' | 'unknown';
 
-/**
- * Spawn lifecycle status for a team member during team launch/reconnect.
- * - offline: queued, Agent tool_use not sent yet
- * - spawning: Agent tool_use sent, awaiting tool_result
- * - waiting: teammate process accepted by runtime, awaiting first heartbeat/inbox signal
- * - online: first heartbeat/inbox signal received
- * - error: spawn failed (tool_result with error)
- */
 export type MemberSpawnStatus = 'offline' | 'waiting' | 'spawning' | 'online' | 'error';
+export type MemberLaunchState =
+  | 'starting'
+  | 'runtime_pending_bootstrap'
+  | 'confirmed_alive'
+  | 'failed_to_start';
 
 export type KanbanColumnId = 'todo' | 'in_progress' | 'done' | 'review' | 'approved';
 
@@ -610,14 +607,29 @@ export interface ProjectBranchChangeEvent {
 /** Per-member spawn status entry, exposed to renderer via IPC. */
 export interface MemberSpawnStatusEntry {
   status: MemberSpawnStatus;
+  launchState: MemberLaunchState;
   /** Error message when status === 'error'. */
   error?: string;
+  /** Hard failure reason for failed_to_start. */
+  hardFailureReason?: string;
   /**
    * Optional provenance for `online`.
    * - heartbeat: teammate sent a real inbox/native message after bootstrap
    * - process: runtime process is alive, but bootstrap/first reply is not yet confirmed
    */
   livenessSource?: MemberSpawnLivenessSource;
+  /** Agent tool_result confirmed the spawn request was accepted by the runtime. */
+  agentToolAccepted?: boolean;
+  /** Runtime process or registered teammate runtime is currently alive. */
+  runtimeAlive?: boolean;
+  /** A real teammate heartbeat/bootstrap confirmation was observed. */
+  bootstrapConfirmed?: boolean;
+  /** Hard failure observed from spawn/bootstrap/runtime evidence. */
+  hardFailure?: boolean;
+  /** ISO timestamp of the first accepted teammate spawn for this member. */
+  firstSpawnAcceptedAt?: string;
+  /** ISO timestamp of the latest confirmed heartbeat/bootstrap message. */
+  lastHeartbeatAt?: string;
   /** ISO timestamp of the last status change. */
   updatedAt: string;
 }

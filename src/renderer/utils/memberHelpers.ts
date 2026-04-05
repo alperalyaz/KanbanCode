@@ -7,6 +7,7 @@ import { isLeadMember } from '@shared/utils/leadDetection';
 
 import type {
   LeadActivityState,
+  MemberLaunchState,
   MemberSpawnLivenessSource,
   MemberSpawnStatus,
   MemberStatus,
@@ -99,7 +100,7 @@ export const SPAWN_DOT_COLORS: Record<MemberSpawnStatus, string> = {
 
 export const SPAWN_PRESENCE_LABELS: Record<MemberSpawnStatus, string> = {
   offline: 'offline',
-  waiting: 'awaiting heartbeat',
+  waiting: 'bootstrap pending',
   spawning: 'starting',
   online: 'ready',
   error: 'spawn failed',
@@ -112,12 +113,16 @@ export const SPAWN_PRESENCE_LABELS: Record<MemberSpawnStatus, string> = {
 export function getSpawnAwareDotClass(
   member: ResolvedTeamMember,
   spawnStatus: MemberSpawnStatus | undefined,
+  spawnLaunchState: MemberLaunchState | undefined,
   isTeamAlive?: boolean,
   isTeamProvisioning?: boolean,
   leadActivity?: LeadActivityState
 ): string {
-  if (spawnStatus === 'error') {
+  if (spawnLaunchState === 'failed_to_start' || spawnStatus === 'error') {
     return SPAWN_DOT_COLORS.error;
+  }
+  if (spawnLaunchState === 'runtime_pending_bootstrap' && spawnStatus === 'online') {
+    return SPAWN_DOT_COLORS.spawning;
   }
   if (spawnStatus === 'waiting') {
     return SPAWN_DOT_COLORS.waiting;
@@ -140,22 +145,27 @@ export function getSpawnAwareDotClass(
 export function getSpawnAwarePresenceLabel(
   member: ResolvedTeamMember,
   spawnStatus: MemberSpawnStatus | undefined,
+  spawnLaunchState: MemberLaunchState | undefined,
   livenessSource: MemberSpawnLivenessSource | undefined,
+  runtimeAlive: boolean | undefined,
   isTeamAlive?: boolean,
   isTeamProvisioning?: boolean,
   leadActivity?: LeadActivityState
 ): string {
-  if (spawnStatus === 'error') {
+  if (spawnLaunchState === 'failed_to_start' || spawnStatus === 'error') {
     return SPAWN_PRESENCE_LABELS.error;
   }
   if (spawnStatus === 'offline' && isTeamProvisioning) {
     return 'waiting for Agent';
   }
+  if (spawnLaunchState === 'runtime_pending_bootstrap' && runtimeAlive) {
+    return 'bootstrap pending';
+  }
   if (spawnStatus === 'waiting') {
     return SPAWN_PRESENCE_LABELS.waiting;
   }
   if (spawnStatus === 'online' && livenessSource === 'process') {
-    return 'running';
+    return 'bootstrap pending';
   }
   if (spawnStatus && isTeamProvisioning) {
     return SPAWN_PRESENCE_LABELS[spawnStatus];

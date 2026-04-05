@@ -18,6 +18,7 @@ import { CurrentTaskIndicator } from './CurrentTaskIndicator';
 import type { TaskStatusCounts } from '@renderer/utils/pathNormalize';
 import type {
   LeadActivityState,
+  MemberLaunchState,
   MemberSpawnLivenessSource,
   MemberSpawnStatus,
   ResolvedTeamMember,
@@ -39,6 +40,8 @@ interface MemberCardProps {
   spawnStatus?: MemberSpawnStatus;
   spawnError?: string;
   spawnLivenessSource?: MemberSpawnLivenessSource;
+  spawnLaunchState?: MemberLaunchState;
+  spawnRuntimeAlive?: boolean;
   onOpenTask?: () => void;
   onOpenReviewTask?: () => void;
   onClick?: () => void;
@@ -61,6 +64,8 @@ export const MemberCard = ({
   spawnStatus,
   spawnError,
   spawnLivenessSource,
+  spawnLaunchState,
+  spawnRuntimeAlive,
   onOpenTask,
   onOpenReviewTask,
   onClick,
@@ -75,6 +80,7 @@ export const MemberCard = ({
   const dotClass = getSpawnAwareDotClass(
     member,
     spawnStatus,
+    spawnLaunchState,
     isTeamAlive,
     isTeamProvisioning,
     leadActivity
@@ -82,7 +88,9 @@ export const MemberCard = ({
   const presenceLabel = getSpawnAwarePresenceLabel(
     member,
     spawnStatus,
+    spawnLaunchState,
     spawnLivenessSource,
+    spawnRuntimeAlive,
     isTeamAlive,
     isTeamProvisioning,
     leadActivity

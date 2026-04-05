@@ -15,24 +15,17 @@ import { MemberCard } from './MemberCard';
 import type { TaskStatusCounts } from '@renderer/utils/pathNormalize';
 import type {
   LeadActivityState,
-  MemberSpawnLivenessSource,
-  MemberSpawnStatus,
+  MemberSpawnStatusEntry,
   ResolvedTeamMember,
   TeamTaskWithKanban,
 } from '@shared/types';
-
-export interface MemberSpawnEntry {
-  status: MemberSpawnStatus;
-  error?: string;
-  livenessSource?: MemberSpawnLivenessSource;
-}
 
 interface MemberListProps {
   members: ResolvedTeamMember[];
   memberTaskCounts?: Map<string, TaskStatusCounts>;
   taskMap?: Map<string, TeamTaskWithKanban>;
   pendingRepliesByMember?: Record<string, number>;
-  memberSpawnStatuses?: Map<string, MemberSpawnEntry>;
+  memberSpawnStatuses?: Map<string, MemberSpawnStatusEntry>;
   isTeamAlive?: boolean;
   isTeamProvisioning?: boolean;
   leadActivity?: LeadActivityState;
@@ -137,6 +130,8 @@ export const MemberList = ({
         spawnStatus={isRemoved ? undefined : spawnEntry?.status}
         spawnError={isRemoved ? undefined : spawnEntry?.error}
         spawnLivenessSource={isRemoved ? undefined : spawnEntry?.livenessSource}
+        spawnLaunchState={isRemoved ? undefined : spawnEntry?.launchState}
+        spawnRuntimeAlive={isRemoved ? undefined : spawnEntry?.runtimeAlive}
         onOpenTask={!isRemoved && currentTask ? () => onOpenTask?.(currentTask) : undefined}
         onOpenReviewTask={!isRemoved && reviewTask ? () => onOpenTask?.(reviewTask) : undefined}
         onClick={() => onMemberClick?.(member)}

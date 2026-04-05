@@ -577,14 +577,20 @@ export const TeamDetailView = ({
       string,
       {
         status: MemberSpawnStatusEntry['status'];
+        launchState: MemberSpawnStatusEntry['launchState'];
         error?: string;
+        updatedAt: string;
+        runtimeAlive?: boolean;
         livenessSource?: MemberSpawnStatusEntry['livenessSource'];
       }
     >();
     for (const [name, entry] of Object.entries(memberSpawnStatuses)) {
       map.set(name, {
         status: entry.status,
+        launchState: entry.launchState,
         error: entry.error,
+        updatedAt: entry.updatedAt,
+        runtimeAlive: entry.runtimeAlive,
         livenessSource: entry.livenessSource,
       });
     }

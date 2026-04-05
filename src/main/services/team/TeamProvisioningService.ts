@@ -106,6 +106,7 @@ import type {
   CrossTeamSendResult,
   InboxMessage,
   LeadContextUsage,
+  MemberLaunchState,
   MemberSpawnStatus,
   MemberSpawnLivenessSource,
   MemberSpawnStatusEntry,
@@ -591,8 +592,16 @@ interface ProvisioningRun {
     string,
     {
       status: MemberSpawnStatus;
+      launchState: MemberLaunchState;
       error?: string;
+      hardFailureReason?: string;
       livenessSource?: MemberSpawnLivenessSource;
+      agentToolAccepted?: boolean;
+      runtimeAlive?: boolean;
+      bootstrapConfirmed?: boolean;
+      hardFailure?: boolean;
+      firstSpawnAcceptedAt?: string;
+      lastHeartbeatAt?: string;
       updatedAt: string;
     }
   >;
@@ -620,8 +629,42 @@ interface PromptSizeSummary {
   lines: number;
 }
 
+const MEMBER_LAUNCH_GRACE_MS = 90_000;
+
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function createInitialMemberSpawnStatusEntry(): MemberSpawnStatusEntry {
+  const updatedAt = nowIso();
+  return {
+    status: 'offline',
+    launchState: 'starting',
+    agentToolAccepted: false,
+    runtimeAlive: false,
+    bootstrapConfirmed: false,
+    hardFailure: false,
+    updatedAt,
+  };
+}
+
+function deriveMemberLaunchState(entry: {
+  status: MemberSpawnStatus;
+  agentToolAccepted?: boolean;
+  runtimeAlive?: boolean;
+  bootstrapConfirmed?: boolean;
+  hardFailure?: boolean;
+}): MemberLaunchState {
+  if (entry.hardFailure || entry.status === 'error') {
+    return 'failed_to_start';
+  }
+  if (entry.bootstrapConfirmed) {
+    return 'confirmed_alive';
+  }
+  if (entry.runtimeAlive || entry.agentToolAccepted || entry.status === 'waiting') {
+    return 'runtime_pending_bootstrap';
+  }
+  return 'starting';
 }
 
 function sleep(ms: number): Promise<void> {
@@ -1720,15 +1763,17 @@ function buildGeminiPostLaunchHydrationPrompt(
         .map((member) => {
           const status = run.memberSpawnStatuses.get(member.name);
           const label =
-            status?.status === 'error'
-              ? `failed to start${status.error ? ` — ${status.error}` : ''}`
-              : status?.status === 'online'
+            status?.launchState === 'failed_to_start'
+              ? `failed to start${status.hardFailureReason ? ` — ${status.hardFailureReason}` : status.error ? ` — ${status.error}` : ''}`
+              : status?.launchState === 'confirmed_alive'
                 ? 'bootstrap confirmed'
-                : status?.status === 'waiting'
+                : status?.runtimeAlive
                   ? 'runtime started, bootstrap pending'
-                  : status?.status === 'spawning'
-                    ? 'spawn in progress'
-                    : 'runtime state unclear';
+                  : status?.launchState === 'runtime_pending_bootstrap'
+                    ? 'spawn accepted, bootstrap pending'
+                    : status?.status === 'spawning'
+                      ? 'spawn in progress'
+                      : 'runtime state unclear';
           return `- @${member.name}: ${label}`;
         })
         .join('\n')}\n`
@@ -2580,6 +2625,44 @@ export class TeamProvisioningService {
     }
   }
 
+  private async refreshMemberSpawnStatusesFromLeadInbox(run: ProvisioningRun): Promise<void> {
+    const leadName = this.getRunLeadName(run);
+    let leadInboxMessages: Awaited<ReturnType<TeamInboxReader['getMessagesFor']>> = [];
+    try {
+      leadInboxMessages = await this.inboxReader.getMessagesFor(run.teamName, leadName);
+    } catch {
+      return;
+    }
+
+    const runStartedAtMs = Date.parse(run.startedAt);
+    const teammateMessages = leadInboxMessages
+      .filter((message) => {
+        const from = typeof message.from === 'string' ? message.from.trim() : '';
+        if (!from || from === leadName || from === 'user' || from === 'system') return false;
+        if (!run.expectedMembers.includes(from)) return false;
+        const messageTs = Date.parse(message.timestamp);
+        if (
+          Number.isFinite(messageTs) &&
+          Number.isFinite(runStartedAtMs) &&
+          messageTs < runStartedAtMs
+        ) {
+          return false;
+        }
+        return typeof message.text === 'string' && message.text.trim().length > 0;
+      })
+      .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+
+    for (const message of teammateMessages) {
+      const from = message.from.trim();
+      const reason = extractBootstrapFailureReason(message.text);
+      if (reason) {
+        this.setMemberSpawnStatus(run, from, 'error', reason);
+        continue;
+      }
+      this.setMemberSpawnStatus(run, from, 'online', undefined, 'heartbeat');
+    }
+  }
+
   private persistSentMessage(teamName: string, message: InboxMessage): void {
     try {
       createController({
@@ -3008,20 +3091,65 @@ export class TeamProvisioningService {
     error?: string,
     livenessSource?: MemberSpawnLivenessSource
   ): void {
-    const prev = run.memberSpawnStatuses.get(memberName);
+    const prev = run.memberSpawnStatuses.get(memberName) ?? createInitialMemberSpawnStatusEntry();
+    const updatedAt = nowIso();
+    const next: MemberSpawnStatusEntry = {
+      ...prev,
+      status,
+      updatedAt,
+    };
+
+    if (status === 'spawning') {
+      next.launchState = 'starting';
+    } else if (status === 'waiting') {
+      next.agentToolAccepted = true;
+      next.hardFailure = false;
+      next.error = undefined;
+      next.hardFailureReason = undefined;
+      next.firstSpawnAcceptedAt = prev.firstSpawnAcceptedAt ?? updatedAt;
+      next.launchState = 'runtime_pending_bootstrap';
+    } else if (status === 'online') {
+      next.agentToolAccepted = true;
+      next.runtimeAlive = true;
+      next.livenessSource = livenessSource;
+      next.firstSpawnAcceptedAt = prev.firstSpawnAcceptedAt ?? updatedAt;
+      if (livenessSource === 'heartbeat') {
+        next.bootstrapConfirmed = true;
+        next.lastHeartbeatAt = updatedAt;
+      }
+      next.hardFailure = false;
+      next.error = undefined;
+      next.hardFailureReason = undefined;
+      next.launchState = deriveMemberLaunchState(next);
+    } else if (status === 'error') {
+      next.error = error;
+      next.hardFailure = true;
+      next.hardFailureReason = error;
+      next.launchState = 'failed_to_start';
+    } else if (status === 'offline') {
+      Object.assign(next, createInitialMemberSpawnStatusEntry(), { updatedAt });
+    }
+
+    next.launchState = deriveMemberLaunchState(next);
     if (
-      prev?.status === status &&
-      prev?.error === error &&
-      prev?.livenessSource === livenessSource
+      prev.status === next.status &&
+      prev.launchState === next.launchState &&
+      prev.error === next.error &&
+      prev.hardFailureReason === next.hardFailureReason &&
+      prev.livenessSource === next.livenessSource &&
+      prev.agentToolAccepted === next.agentToolAccepted &&
+      prev.runtimeAlive === next.runtimeAlive &&
+      prev.bootstrapConfirmed === next.bootstrapConfirmed &&
+      prev.hardFailure === next.hardFailure &&
+      prev.firstSpawnAcceptedAt === next.firstSpawnAcceptedAt &&
+      prev.lastHeartbeatAt === next.lastHeartbeatAt
     ) {
       return;
     }
-    run.memberSpawnStatuses.set(memberName, {
-      status,
-      error,
-      livenessSource,
-      updatedAt: nowIso(),
-    });
+
+    run.memberSpawnStatuses.set(memberName, next);
+    this.syncMemberLaunchGraceCheck(run, memberName, next);
+
     if (status === 'spawning') {
       this.appendMemberBootstrapDiagnostic(run, memberName, 'Agent tool invoked');
     } else if (status === 'waiting') {
@@ -3074,12 +3202,94 @@ export class TeamProvisioningService {
     for (const [name, entry] of run.memberSpawnStatuses) {
       result[name] = {
         status: entry.status,
+        launchState: entry.launchState,
         error: entry.error,
+        hardFailureReason: entry.hardFailureReason,
         livenessSource: entry.livenessSource,
+        agentToolAccepted: entry.agentToolAccepted,
+        runtimeAlive: entry.runtimeAlive,
+        bootstrapConfirmed: entry.bootstrapConfirmed,
+        hardFailure: entry.hardFailure,
+        firstSpawnAcceptedAt: entry.firstSpawnAcceptedAt,
+        lastHeartbeatAt: entry.lastHeartbeatAt,
         updatedAt: entry.updatedAt,
       };
     }
     return { statuses: result, runId };
+  }
+
+  private getMemberLaunchGraceKey(run: ProvisioningRun, memberName: string): string {
+    return `member-launch-grace:${run.runId}:${memberName}`;
+  }
+
+  private syncMemberLaunchGraceCheck(
+    run: ProvisioningRun,
+    memberName: string,
+    entry: MemberSpawnStatusEntry
+  ): void {
+    const key = this.getMemberLaunchGraceKey(run, memberName);
+    const existing = this.pendingTimeouts.get(key);
+    if (entry.launchState === 'failed_to_start' || entry.launchState === 'confirmed_alive') {
+      if (existing) {
+        clearTimeout(existing);
+        this.pendingTimeouts.delete(key);
+      }
+      return;
+    }
+    if (!entry.firstSpawnAcceptedAt) {
+      return;
+    }
+    const remainingMs =
+      Date.parse(entry.firstSpawnAcceptedAt) + MEMBER_LAUNCH_GRACE_MS - Date.now();
+    if (remainingMs <= 0) {
+      if (existing) {
+        clearTimeout(existing);
+        this.pendingTimeouts.delete(key);
+      }
+      void this.reevaluateMemberLaunchStatus(run, memberName);
+      return;
+    }
+    if (existing) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.pendingTimeouts.delete(key);
+      void this.reevaluateMemberLaunchStatus(run, memberName);
+    }, remainingMs);
+    timer.unref?.();
+    this.pendingTimeouts.set(key, timer);
+  }
+
+  private async reevaluateMemberLaunchStatus(
+    run: ProvisioningRun,
+    memberName: string
+  ): Promise<void> {
+    const current = run.memberSpawnStatuses.get(memberName);
+    if (!current) return;
+    if (
+      current.launchState === 'failed_to_start' ||
+      current.launchState === 'confirmed_alive' ||
+      !current.firstSpawnAcceptedAt
+    ) {
+      return;
+    }
+    await this.refreshMemberSpawnStatusesFromLeadInbox(run);
+    await this.auditMemberSpawnStatuses(run);
+    const refreshed = run.memberSpawnStatuses.get(memberName);
+    if (!refreshed) return;
+    if (
+      refreshed.launchState === 'failed_to_start' ||
+      refreshed.launchState === 'confirmed_alive' ||
+      refreshed.runtimeAlive
+    ) {
+      return;
+    }
+    this.setMemberSpawnStatus(
+      run,
+      memberName,
+      'error',
+      'Teammate did not join within the launch grace window.'
+    );
   }
 
   private static readonly CONTEXT_EMIT_THROTTLE_MS = 2000;
@@ -4063,7 +4273,7 @@ export class TeamProvisioningService {
         geminiPostLaunchHydrationSent: false,
         suppressGeminiPostLaunchHydrationOutput: false,
         memberSpawnStatuses: new Map(
-          request.members.map((m) => [m.name, { status: 'offline' as const, updatedAt: nowIso() }])
+          request.members.map((m) => [m.name, createInitialMemberSpawnStatusEntry()])
         ),
         memberSpawnToolUseIds: new Map(),
         progress: {
@@ -4545,7 +4755,7 @@ export class TeamProvisioningService {
         geminiPostLaunchHydrationSent: false,
         suppressGeminiPostLaunchHydrationOutput: false,
         memberSpawnStatuses: new Map(
-          expectedMembers.map((name) => [name, { status: 'offline' as const, updatedAt: nowIso() }])
+          expectedMembers.map((name) => [name, createInitialMemberSpawnStatusEntry()])
         ),
         memberSpawnToolUseIds: new Map(),
         progress: {
@@ -5155,6 +5365,8 @@ export class TeamProvisioningService {
         return 0;
       }
 
+      await this.refreshMemberSpawnStatusesFromLeadInbox(run);
+
       const unread = leadInboxMessages
         .filter((m): m is InboxMessage & { messageId: string } => {
           if (m.read) return false;
@@ -5731,7 +5943,12 @@ export class TeamProvisioningService {
     // Flag any expected member not found in config.json (excluding the lead)
     for (const expected of run.expectedMembers) {
       const current = run.memberSpawnStatuses.get(expected);
-      if (current?.status === 'error' || current?.status === 'online') continue;
+      if (
+        current?.launchState === 'failed_to_start' ||
+        current?.launchState === 'confirmed_alive'
+      ) {
+        continue;
+      }
 
       const matchedRuntimeNames = [...registeredNames].filter((name) => {
         if (name === expected) return true;
@@ -5739,30 +5956,50 @@ export class TeamProvisioningService {
         return parsed !== null && parsed.suffix >= 2 && parsed.base === expected;
       });
 
-      // A teammate may intentionally stay silent after bootstrap. If Claude Code
-      // registered the runtime and the OS process is still alive, treat it as
-      // process-confirmed running. Keep this distinct from heartbeat-confirmed online.
-      if (
+      const runtimeAlive =
         matchedRuntimeNames.length > 0 &&
         matchedRuntimeNames.some((runtimeName) =>
           this.hasLiveTeamAgentProcess(run.teamName, runtimeName)
-        )
-      ) {
+        );
+
+      // A teammate may intentionally stay silent after bootstrap. If Claude Code
+      // registered the runtime and the OS process is still alive, treat it as
+      // process-confirmed running. Keep this distinct from heartbeat-confirmed online.
+      if (runtimeAlive) {
         this.setMemberSpawnStatus(run, expected, 'online', undefined, 'process');
         continue;
       }
 
-      if (matchedRuntimeNames.length > 0) continue;
+      if (matchedRuntimeNames.length > 0) {
+        if (current?.agentToolAccepted) {
+          this.setMemberSpawnStatus(run, expected, 'waiting');
+        }
+        continue;
+      }
+
+      const acceptedAtMs =
+        current?.firstSpawnAcceptedAt != null ? Date.parse(current.firstSpawnAcceptedAt) : NaN;
+      const graceExpired =
+        current?.agentToolAccepted === true &&
+        Number.isFinite(acceptedAtMs) &&
+        Date.now() - acceptedAtMs >= MEMBER_LAUNCH_GRACE_MS;
+
+      if (current?.agentToolAccepted && !graceExpired) {
+        this.setMemberSpawnStatus(run, expected, 'waiting');
+        continue;
+      }
 
       logger.warn(
         `[${run.teamName}] Member "${expected}" not found in config.json members after provisioning`
       );
-      this.setMemberSpawnStatus(
-        run,
-        expected,
-        'error',
-        'Teammate not registered after provisioning — spawned incorrectly. Restart the team to fix.'
-      );
+      if (graceExpired) {
+        this.setMemberSpawnStatus(
+          run,
+          expected,
+          'error',
+          'Teammate not registered after provisioning within the launch grace window.'
+        );
+      }
     }
   }
 
@@ -5802,9 +6039,41 @@ export class TeamProvisioningService {
     run: ProvisioningRun
   ): { name: string; error?: string; updatedAt: string }[] {
     return [...run.memberSpawnStatuses.entries()]
-      .filter(([, entry]) => entry.status === 'error')
-      .map(([name, entry]) => ({ name, error: entry.error, updatedAt: entry.updatedAt }))
+      .filter(([, entry]) => entry.launchState === 'failed_to_start')
+      .map(([name, entry]) => ({
+        name,
+        error: entry.hardFailureReason ?? entry.error,
+        updatedAt: entry.updatedAt,
+      }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  private getMemberLaunchSummary(run: ProvisioningRun): {
+    confirmedCount: number;
+    pendingCount: number;
+    failedCount: number;
+    runtimeAlivePendingCount: number;
+  } {
+    let confirmedCount = 0;
+    let pendingCount = 0;
+    let failedCount = 0;
+    let runtimeAlivePendingCount = 0;
+    for (const expected of run.expectedMembers) {
+      const entry = run.memberSpawnStatuses.get(expected) ?? createInitialMemberSpawnStatusEntry();
+      if (entry.launchState === 'confirmed_alive') {
+        confirmedCount += 1;
+        continue;
+      }
+      if (entry.launchState === 'failed_to_start') {
+        failedCount += 1;
+        continue;
+      }
+      pendingCount += 1;
+      if (entry.runtimeAlive) {
+        runtimeAlivePendingCount += 1;
+      }
+    }
+    return { confirmedCount, pendingCount, failedCount, runtimeAlivePendingCount };
   }
 
   private async persistPartialLaunchState(run: ProvisioningRun): Promise<void> {
@@ -8140,18 +8409,24 @@ export class TeamProvisioningService {
       }
 
       // Audit: flag any expected member not registered in config.json after launch.
+      await this.refreshMemberSpawnStatusesFromLeadInbox(run);
       await this.auditMemberSpawnStatuses(run);
       await this.persistPartialLaunchState(run);
       const failedSpawnMembers = this.getFailedSpawnMembers(run);
+      const launchSummary = this.getMemberLaunchSummary(run);
       const hasSpawnFailures = failedSpawnMembers.length > 0;
+      const hasPendingBootstrap =
+        !hasSpawnFailures && launchSummary.pendingCount > 0 && run.expectedMembers.length > 0;
       const readyMessage = hasSpawnFailures
         ? `Launch completed with teammate errors — ${failedSpawnMembers
             .map((member) => member.name)
             .join(', ')} failed to start`
-        : 'Team launched — process alive and ready';
+        : hasPendingBootstrap
+          ? `Launch completed — ${launchSummary.confirmedCount}/${run.expectedMembers.length} teammates confirmed alive, bootstrap still pending`
+          : 'Team launched — process alive and ready';
       const progress = updateProgress(run, 'ready', readyMessage, {
         cliLogsTail: extractCliLogsFromRun(run),
-        messageSeverity: hasSpawnFailures ? 'warning' : undefined,
+        messageSeverity: hasSpawnFailures || hasPendingBootstrap ? 'warning' : undefined,
       });
       run.onProgress(progress);
       this.provisioningRunByTeam.delete(run.teamName);
@@ -8171,7 +8446,7 @@ export class TeamProvisioningService {
         detail: 'lead-session-sync',
       });
 
-      if (!hasSpawnFailures) {
+      if (!hasSpawnFailures && !hasPendingBootstrap) {
         // Fire "Team Launched" notification only for clean launches.
         void this.fireTeamLaunchedNotification(run);
       }
@@ -8293,10 +8568,14 @@ export class TeamProvisioningService {
     await this.teamMetaStore.deleteMeta(run.teamName).catch(() => {});
 
     // Audit: flag any expected member not registered in config.json after provisioning.
+    await this.refreshMemberSpawnStatusesFromLeadInbox(run);
     await this.auditMemberSpawnStatuses(run);
     await this.clearPartialLaunchState(run.teamName);
     const failedSpawnMembers = this.getFailedSpawnMembers(run);
+    const launchSummary = this.getMemberLaunchSummary(run);
     const hasSpawnFailures = failedSpawnMembers.length > 0;
+    const hasPendingBootstrap =
+      !hasSpawnFailures && launchSummary.pendingCount > 0 && run.expectedMembers.length > 0;
     const progress = updateProgress(
       run,
       'ready',
@@ -8304,10 +8583,12 @@ export class TeamProvisioningService {
         ? `Provisioning completed with teammate errors — ${failedSpawnMembers
             .map((member) => member.name)
             .join(', ')} failed to start`
-        : 'Team provisioned — process alive and ready',
+        : hasPendingBootstrap
+          ? `Team provisioned — ${launchSummary.confirmedCount}/${run.expectedMembers.length} teammates confirmed alive, bootstrap still pending`
+          : 'Team provisioned — process alive and ready',
       {
         cliLogsTail: extractCliLogsFromRun(run),
-        messageSeverity: hasSpawnFailures ? 'warning' : undefined,
+        messageSeverity: hasSpawnFailures || hasPendingBootstrap ? 'warning' : undefined,
       }
     );
     run.onProgress(progress);
@@ -8328,7 +8609,7 @@ export class TeamProvisioningService {
       detail: 'lead-session-sync',
     });
 
-    if (!hasSpawnFailures) {
+    if (!hasSpawnFailures && !hasPendingBootstrap) {
       // Fire "Team Launched" notification only for clean launches.
       void this.fireTeamLaunchedNotification(run);
     }
@@ -8696,6 +8977,14 @@ export class TeamProvisioningService {
     // Clear same-team retry timers
     for (const suffix of ['deferred', 'persist']) {
       const key = `same-team-${suffix}:${run.teamName}`;
+      const timer = this.pendingTimeouts.get(key);
+      if (timer) {
+        clearTimeout(timer);
+        this.pendingTimeouts.delete(key);
+      }
+    }
+    for (const memberName of run.memberSpawnStatuses.keys()) {
+      const key = this.getMemberLaunchGraceKey(run, memberName);
       const timer = this.pendingTimeouts.get(key);
       if (timer) {
         clearTimeout(timer);

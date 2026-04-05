@@ -106,20 +106,23 @@ export const TeamProvisioningBanner = ({
 
   const teammates = (teamMembers ?? []).filter((member) => !isLeadMember(member));
   const failedSpawnEntries = Object.entries(memberSpawnStatuses ?? {}).filter(
-    ([, entry]) => entry.status === 'error'
+    ([, entry]) => entry.launchState === 'failed_to_start'
   );
   const failedSpawnCount = failedSpawnEntries.length;
   const heartbeatConfirmedCount = teammates.filter((member) => {
     const entry = memberSpawnStatuses?.[member.name];
-    return entry?.status === 'online' && entry.livenessSource === 'heartbeat';
+    return entry?.launchState === 'confirmed_alive';
   }).length;
   const processOnlyAliveCount = teammates.filter((member) => {
     const entry = memberSpawnStatuses?.[member.name];
-    return entry?.status === 'online' && entry.livenessSource === 'process';
+    return entry?.launchState === 'runtime_pending_bootstrap' && entry.runtimeAlive === true;
   }).length;
-  const awaitingHeartbeatCount = teammates.filter((member) => {
+  const pendingSpawnCount = teammates.filter((member) => {
     const entry = memberSpawnStatuses?.[member.name];
-    return entry?.status === 'waiting';
+    return (
+      entry?.launchState === 'starting' ||
+      (entry?.launchState === 'runtime_pending_bootstrap' && entry.runtimeAlive !== true)
+    );
   }).length;
   const allTeammatesConfirmedAlive =
     teammates.length > 0 && failedSpawnCount === 0 && heartbeatConfirmedCount === teammates.length;
@@ -132,8 +135,8 @@ export const TeamProvisioningBanner = ({
           ? 'Team launched — lead online'
           : allTeammatesConfirmedAlive
             ? `Team launched — all ${teammates.length} teammates confirmed alive`
-            : processOnlyAliveCount > 0 || awaitingHeartbeatCount > 0
-              ? `Team launched — ${heartbeatConfirmedCount}/${teammates.length} teammates confirmed alive${processOnlyAliveCount > 0 ? `, ${processOnlyAliveCount} runtime${processOnlyAliveCount === 1 ? '' : 's'} alive but bootstrap still pending` : ''}${awaitingHeartbeatCount > 0 ? `${processOnlyAliveCount > 0 ? ', ' : ', '}${awaitingHeartbeatCount} awaiting first heartbeat` : ''}`
+            : processOnlyAliveCount > 0 || pendingSpawnCount > 0
+              ? `Team launched — ${heartbeatConfirmedCount}/${teammates.length} teammates confirmed alive${processOnlyAliveCount > 0 ? `, ${processOnlyAliveCount} runtime${processOnlyAliveCount === 1 ? '' : 's'} alive but bootstrap still pending` : ''}${pendingSpawnCount > 0 ? `${processOnlyAliveCount > 0 ? ', ' : ', '}${pendingSpawnCount} still starting` : ''}`
               : 'Team launched — teammate liveness is still being confirmed';
 
     return (
@@ -151,7 +154,11 @@ export const TeamProvisioningBanner = ({
           defaultLiveOutputOpen={false}
           onCancel={null}
           successMessage={readyMessage}
-          successMessageSeverity={failedSpawnCount > 0 ? 'warning' : 'success'}
+          successMessageSeverity={
+            failedSpawnCount > 0 || processOnlyAliveCount > 0 || pendingSpawnCount > 0
+              ? 'warning'
+              : 'success'
+          }
           onDismiss={() => setDismissed(true)}
         />
       </div>
