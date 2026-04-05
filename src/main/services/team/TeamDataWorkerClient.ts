@@ -43,7 +43,9 @@ function resolveWorkerPath(): string | null {
       /* ignore */
     }
   }
-  logger.warn('team-data-worker not found in expected locations');
+  // Don't warn here — resolveWorkerPath runs at module load time and
+  // the worker file is expected to be absent during tests.
+  // isAvailable() warns once on first access instead.
   return null;
 }
 
@@ -61,7 +63,7 @@ export class TeamDataWorkerClient {
   isAvailable(): boolean {
     if (!this.workerPath && !this.warnedUnavailable) {
       this.warnedUnavailable = true;
-      logger.warn('team-data-worker not found; falling back to main-thread execution');
+      logger.debug('team-data-worker not found; falling back to main-thread execution');
     }
     return this.workerPath !== null;
   }
