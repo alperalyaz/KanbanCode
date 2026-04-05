@@ -1557,11 +1557,16 @@ export const TeamDetailView = ({
             >
               <span className="flex items-center gap-1.5 text-xs">
                 <AlertTriangle size={14} className="shrink-0" />
-                {currentTeamSummary?.partialLaunchFailure
-                  ? currentTeamSummary.missingMembers?.length
-                    ? `Last launch failed partway — ${currentTeamSummary.missingMembers.length}/${currentTeamSummary.expectedMemberCount ?? currentTeamSummary.missingMembers.length} teammates did not join`
-                    : 'Last launch failed partway'
-                  : 'Team is offline'}
+                {currentTeamSummary?.teamLaunchState === 'partial_pending'
+                  ? currentTeamSummary.runtimeAlivePendingCount &&
+                    currentTeamSummary.runtimeAlivePendingCount > 0
+                    ? `Last launch is still reconciling — ${currentTeamSummary.confirmedCount ?? 0}/${currentTeamSummary.expectedMemberCount ?? currentTeamSummary.memberCount} teammates confirmed alive, ${currentTeamSummary.runtimeAlivePendingCount} runtime${currentTeamSummary.runtimeAlivePendingCount === 1 ? '' : 's'} pending bootstrap`
+                    : 'Last launch is still reconciling'
+                  : currentTeamSummary?.partialLaunchFailure
+                    ? currentTeamSummary.missingMembers?.length
+                      ? `Last launch failed partway — ${currentTeamSummary.missingMembers.length}/${currentTeamSummary.expectedMemberCount ?? currentTeamSummary.missingMembers.length} teammates did not join`
+                      : 'Last launch failed partway'
+                    : 'Team is offline'}
               </span>
               <Button
                 variant="ghost"

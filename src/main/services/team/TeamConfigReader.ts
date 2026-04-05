@@ -12,6 +12,7 @@ import * as path from 'path';
 import { getTeamFsWorkerClient } from './TeamFsWorkerClient';
 import { TeamMembersMetaStore } from './TeamMembersMetaStore';
 import { TeamMetaStore } from './TeamMetaStore';
+import { normalizePersistedLaunchSnapshot } from './TeamLaunchStateEvaluator';
 
 import type { TeamConfig, TeamMember, TeamSummary, TeamSummaryMember } from '@shared/types';
 
@@ -27,16 +28,20 @@ const MAX_PROJECT_PATH_HISTORY_IN_SUMMARY = 200;
 const MAX_LAUNCH_STATE_BYTES = 32 * 1024;
 const TEAM_LAUNCH_STATE_FILE = 'launch-state.json';
 
-interface PartialLaunchStateSummary {
-  partialLaunchFailure: true;
-  expectedMemberCount: number;
-  confirmedMemberCount: number;
-  missingMembers: string[];
+interface LaunchStateSummary {
+  partialLaunchFailure?: true;
+  expectedMemberCount?: number;
+  confirmedMemberCount?: number;
+  missingMembers?: string[];
+  teamLaunchState?: TeamSummary['teamLaunchState'];
+  launchUpdatedAt?: string;
+  confirmedCount?: number;
+  pendingCount?: number;
+  failedCount?: number;
+  runtimeAlivePendingCount?: number;
 }
 
-async function readPartialLaunchStateSummary(
-  teamDir: string
-): Promise<PartialLaunchStateSummary | null> {
+async function readLaunchStateSummary(teamDir: string): Promise<LaunchStateSummary | null> {
   const launchStatePath = path.join(teamDir, TEAM_LAUNCH_STATE_FILE);
   try {
     const stat = await fs.promises.stat(launchStatePath);
@@ -44,38 +49,31 @@ async function readPartialLaunchStateSummary(
       return null;
     }
     const raw = await readFileUtf8WithTimeout(launchStatePath, PER_TEAM_READ_TIMEOUT_MS);
-    const parsed = JSON.parse(raw) as {
-      state?: unknown;
-      expectedMembers?: unknown;
-      confirmedMembers?: unknown;
-      missingMembers?: unknown;
-    };
-    if (parsed.state !== 'partial_launch_failure') {
+    const snapshot = normalizePersistedLaunchSnapshot(path.basename(teamDir), JSON.parse(raw));
+    if (!snapshot) {
       return null;
     }
-    const expectedMembers = Array.isArray(parsed.expectedMembers)
-      ? parsed.expectedMembers.filter(
-          (name): name is string => typeof name === 'string' && name.trim().length > 0
-        )
-      : [];
-    const confirmedMembers = Array.isArray(parsed.confirmedMembers)
-      ? parsed.confirmedMembers.filter(
-          (name): name is string => typeof name === 'string' && name.trim().length > 0
-        )
-      : [];
-    const missingMembers = Array.isArray(parsed.missingMembers)
-      ? parsed.missingMembers.filter(
-          (name): name is string => typeof name === 'string' && name.trim().length > 0
-        )
-      : [];
-    if (expectedMembers.length === 0 || missingMembers.length === 0) {
-      return null;
-    }
+    const missingMembers = snapshot.expectedMembers.filter((name) => {
+      const member = snapshot.members[name];
+      return member?.launchState === 'failed_to_start';
+    });
     return {
-      partialLaunchFailure: true,
-      expectedMemberCount: expectedMembers.length,
-      confirmedMemberCount: confirmedMembers.length,
-      missingMembers,
+      ...(snapshot.teamLaunchState === 'partial_failure'
+        ? { partialLaunchFailure: true as const }
+        : {}),
+      ...(snapshot.expectedMembers.length > 0
+        ? { expectedMemberCount: snapshot.expectedMembers.length }
+        : {}),
+      ...(snapshot.summary.confirmedCount > 0
+        ? { confirmedMemberCount: snapshot.summary.confirmedCount }
+        : {}),
+      ...(missingMembers.length > 0 ? { missingMembers } : {}),
+      teamLaunchState: snapshot.teamLaunchState,
+      launchUpdatedAt: snapshot.updatedAt,
+      confirmedCount: snapshot.summary.confirmedCount,
+      pendingCount: snapshot.summary.pendingCount,
+      failedCount: snapshot.summary.failedCount,
+      runtimeAlivePendingCount: snapshot.summary.runtimeAlivePendingCount,
     };
   } catch {
     return null;
@@ -340,8 +338,8 @@ export class TeamConfigReader {
       }
 
       const members = Array.from(memberMap.values());
-      const partialLaunchState =
-        (await readPartialLaunchStateSummary(teamDir)) ??
+      const launchStateSummary =
+        (await readLaunchStateSummary(teamDir)) ??
         (() => {
           if (
             !leadSessionId ||
@@ -377,7 +375,7 @@ export class TeamConfigReader {
         ...(projectPathHistory ? { projectPathHistory } : {}),
         ...(sessionHistory ? { sessionHistory } : {}),
         ...(deletedAt ? { deletedAt } : {}),
-        ...(partialLaunchState ?? {}),
+        ...(launchStateSummary ?? {}),
       };
       return summary;
     } catch {

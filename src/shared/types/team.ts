@@ -66,6 +66,15 @@ export interface TeamSummary {
   confirmedMemberCount?: number;
   /** Missing teammate names from the last partial launch marker. */
   missingMembers?: string[];
+  /** Durable aggregate launch state derived from persisted launch-state evidence. */
+  teamLaunchState?: TeamLaunchAggregateState;
+  /** ISO timestamp of the last durable launch-state evaluation. */
+  launchUpdatedAt?: string;
+  /** Durable aggregate teammate counts from launch-state evidence. */
+  confirmedCount?: number;
+  pendingCount?: number;
+  failedCount?: number;
+  runtimeAlivePendingCount?: number;
 }
 
 export type TeamTaskStatus = 'pending' | 'in_progress' | 'completed' | 'deleted';
@@ -446,6 +455,8 @@ export type MemberLaunchState =
   | 'runtime_pending_bootstrap'
   | 'confirmed_alive'
   | 'failed_to_start';
+export type TeamLaunchAggregateState = 'clean_success' | 'partial_pending' | 'partial_failure';
+export type PersistedTeamLaunchPhase = 'active' | 'finished' | 'reconciled';
 
 export type KanbanColumnId = 'todo' | 'in_progress' | 'done' | 'review' | 'approved';
 
@@ -575,9 +586,60 @@ export interface LeadContextUsageSnapshot {
   runId: string | null;
 }
 
+export interface PersistedTeamLaunchMemberSources {
+  inboxHeartbeat?: boolean;
+  nativeHeartbeat?: boolean;
+  processAlive?: boolean;
+  configRegistered?: boolean;
+  configDrift?: boolean;
+  hardFailureSignal?: boolean;
+  duplicateRespawnBlocked?: boolean;
+}
+
+export interface PersistedTeamLaunchMemberState {
+  name: string;
+  launchState: MemberLaunchState;
+  agentToolAccepted: boolean;
+  runtimeAlive: boolean;
+  bootstrapConfirmed: boolean;
+  hardFailure: boolean;
+  hardFailureReason?: string;
+  firstSpawnAcceptedAt?: string;
+  lastHeartbeatAt?: string;
+  lastRuntimeAliveAt?: string;
+  lastEvaluatedAt: string;
+  sources?: PersistedTeamLaunchMemberSources;
+  diagnostics?: string[];
+}
+
+export interface PersistedTeamLaunchSummary {
+  confirmedCount: number;
+  pendingCount: number;
+  failedCount: number;
+  runtimeAlivePendingCount: number;
+}
+
+export interface PersistedTeamLaunchSnapshot {
+  version: 2;
+  teamName: string;
+  updatedAt: string;
+  leadSessionId?: string;
+  launchPhase: PersistedTeamLaunchPhase;
+  expectedMembers: string[];
+  members: Record<string, PersistedTeamLaunchMemberState>;
+  summary: PersistedTeamLaunchSummary;
+  teamLaunchState: TeamLaunchAggregateState;
+}
+
 export interface MemberSpawnStatusesSnapshot {
   statuses: Record<string, MemberSpawnStatusEntry>;
   runId: string | null;
+  teamLaunchState?: TeamLaunchAggregateState;
+  launchPhase?: PersistedTeamLaunchPhase;
+  expectedMembers?: string[];
+  updatedAt?: string;
+  summary?: PersistedTeamLaunchSummary;
+  source?: 'live' | 'persisted' | 'merged';
 }
 
 export type MemberSpawnLivenessSource = 'heartbeat' | 'process';

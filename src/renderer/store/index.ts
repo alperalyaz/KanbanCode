@@ -168,6 +168,7 @@ export function initializeNotificationListeners(): () => void {
   const pendingProjectRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let teamRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let teamPresenceRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  let memberSpawnRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let toolActivityTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let inProgressChangePresencePollInFlight = false;
   const inProgressChangePresenceCursorByTeam = new Map<string, number>();
@@ -178,6 +179,7 @@ export function initializeNotificationListeners(): () => void {
   const PROJECT_REFRESH_DEBOUNCE_MS = 300;
   const TEAM_REFRESH_THROTTLE_MS = 800;
   const TEAM_PRESENCE_REFRESH_THROTTLE_MS = 400;
+  const TEAM_MEMBER_SPAWN_REFRESH_THROTTLE_MS = 500;
   const TEAM_LIST_REFRESH_THROTTLE_MS = 2000;
   const GLOBAL_TASKS_REFRESH_THROTTLE_MS = 500;
   const buildToolActivityTimerKey = (
@@ -919,6 +921,20 @@ export function initializeNotificationListeners(): () => void {
         return;
       }
 
+      if (event.type === 'inbox' || event.type === 'config' || event.type === 'process') {
+        if (!event?.teamName || !isTeamVisibleInAnyPane(event.teamName)) {
+          return;
+        }
+        if (memberSpawnRefreshTimers.has(event.teamName)) {
+          return;
+        }
+        const timer = setTimeout(() => {
+          memberSpawnRefreshTimers.delete(event.teamName);
+          void useStore.getState().fetchMemberSpawnStatuses(event.teamName);
+        }, TEAM_MEMBER_SPAWN_REFRESH_THROTTLE_MS);
+        memberSpawnRefreshTimers.set(event.teamName, timer);
+      }
+
       // Live lead-message events: only refresh the visible team detail, not team/task lists.
       // This keeps the refresh lightweight and prevents one noisy team from starving another.
       if (event.type === 'lead-message') {
@@ -998,6 +1014,8 @@ export function initializeNotificationListeners(): () => void {
         teamRefreshTimers = new Map();
         for (const t of teamPresenceRefreshTimers.values()) clearTimeout(t);
         teamPresenceRefreshTimers = new Map();
+        for (const t of memberSpawnRefreshTimers.values()) clearTimeout(t);
+        memberSpawnRefreshTimers = new Map();
         for (const t of toolActivityTimers.values()) clearTimeout(t);
         toolActivityTimers = new Map();
         if (teamListRefreshTimer) {

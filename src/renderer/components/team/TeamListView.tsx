@@ -64,7 +64,13 @@ function generateUniqueName(sourceName: string, existingNames: string[]): string
   }
 }
 
-type TeamStatus = 'active' | 'idle' | 'provisioning' | 'offline' | 'partial_failure';
+type TeamStatus =
+  | 'active'
+  | 'idle'
+  | 'provisioning'
+  | 'offline'
+  | 'partial_failure'
+  | 'partial_pending';
 
 function getRecentProjects(team: TeamSummary): string[] {
   const history = team.projectPathHistory;
@@ -174,7 +180,10 @@ function resolveTeamStatus(
   ) {
     return 'provisioning';
   }
-  if (team.partialLaunchFailure) {
+  if (team.teamLaunchState === 'partial_pending') {
+    return 'partial_pending';
+  }
+  if (team.partialLaunchFailure || team.teamLaunchState === 'partial_failure') {
     return 'partial_failure';
   }
   return 'offline';
@@ -215,6 +224,13 @@ const StatusBadge = ({ status }: { status: TeamStatus }): React.JSX.Element => {
         <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">
           <span className="size-1.5 rounded-full bg-amber-400" />
           Launch failed partway
+        </span>
+      );
+    case 'partial_pending':
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+          <span className="size-1.5 rounded-full bg-amber-300" />
+          Bootstrap pending
         </span>
       );
   }
@@ -381,7 +397,8 @@ export const TeamListView = (): React.JSX.Element => {
           getCurrentProvisioningProgressForTeam(provisioningState, t.teamName),
           leadActivityByTeam
         );
-        const isRunning = status !== 'offline' && status !== 'partial_failure';
+        const isRunning =
+          status !== 'offline' && status !== 'partial_failure' && status !== 'partial_pending';
         if (filter.selectedStatuses.has('running') && isRunning) return true;
         if (filter.selectedStatuses.has('offline') && !isRunning) return true;
         return false;
@@ -850,7 +867,9 @@ export const TeamListView = (): React.JSX.Element => {
                         })()}
                     </div>
                     <div className="flex shrink-0 gap-1">
-                      {(status === 'offline' || status === 'partial_failure') &&
+                      {(status === 'offline' ||
+                        status === 'partial_failure' ||
+                        status === 'partial_pending') &&
                         team.projectPath && (
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -924,7 +943,13 @@ export const TeamListView = (): React.JSX.Element => {
                       {team.description || 'No description'}
                     </p>
                   </div>
-                  {team.partialLaunchFailure ? (
+                  {team.teamLaunchState === 'partial_pending' ? (
+                    <p className="mt-2 text-[11px] text-amber-300">
+                      {team.runtimeAlivePendingCount && team.runtimeAlivePendingCount > 0
+                        ? `Last launch is still reconciling — ${team.confirmedCount ?? 0}/${team.expectedMemberCount ?? team.memberCount} teammates confirmed alive, ${team.runtimeAlivePendingCount} runtime${team.runtimeAlivePendingCount === 1 ? '' : 's'} pending bootstrap.`
+                        : 'Last launch is still reconciling.'}
+                    </p>
+                  ) : team.partialLaunchFailure || team.teamLaunchState === 'partial_failure' ? (
                     <p className="mt-2 text-[11px] text-amber-400">
                       {team.missingMembers?.length
                         ? `Last launch stopped before ${team.missingMembers.length}/${team.expectedMemberCount ?? team.missingMembers.length} teammate${team.missingMembers.length === 1 ? '' : 's'} joined.`

@@ -49,6 +49,7 @@ import { createCliAutoSuffixNameGuard, parseNumericSuffixName } from '@shared/ut
 import { normalizeOptionalTeamProviderId } from '@shared/utils/teamProvider';
 import {
   extractToolPreview,
+  parseAgentToolResultStatus,
   extractToolResultPreview,
   formatToolSummaryFromCalls,
 } from '@shared/utils/toolSummary';
@@ -71,6 +72,12 @@ import { TeamMembersMetaStore } from './TeamMembersMetaStore';
 import { TeamMetaStore } from './TeamMetaStore';
 import { TeamSentMessagesStore } from './TeamSentMessagesStore';
 import { TeamTaskReader } from './TeamTaskReader';
+import { TeamLaunchStateStore } from './TeamLaunchStateStore';
+import {
+  createPersistedLaunchSnapshot,
+  snapshotFromRuntimeMemberStatuses,
+  snapshotToMemberSpawnStatuses,
+} from './TeamLaunchStateEvaluator';
 import {
   applyConfiguredRuntimeBackendsEnv,
   applyProviderRuntimeEnv,
@@ -110,9 +117,12 @@ import type {
   MemberSpawnStatus,
   MemberSpawnLivenessSource,
   MemberSpawnStatusEntry,
+  PersistedTeamLaunchPhase,
+  PersistedTeamLaunchSummary,
   TeamChangeEvent,
   TeamCreateRequest,
   TeamCreateResponse,
+  TeamLaunchAggregateState,
   TeamLaunchRequest,
   TeamLaunchResponse,
   TeamProvisioningPrepareResult,
@@ -154,7 +164,6 @@ const STALL_WARNING_THRESHOLD_MS = 20_000;
 const TEAM_JSON_READ_TIMEOUT_MS = 5_000;
 const TEAM_CONFIG_MAX_BYTES = 10 * 1024 * 1024;
 const TEAM_INBOX_MAX_BYTES = 2 * 1024 * 1024;
-const TEAM_LAUNCH_STATE_FILE = 'launch-state.json';
 const CROSS_TEAM_TOOL_RECIPIENT_NAMES = new Set([
   'cross_team_send',
   'cross_team_list_targets',
@@ -383,16 +392,6 @@ type ValidConfigProbeResult =
   | { ok: true; location: TeamsBaseLocation; configPath: string }
   | { ok: false };
 
-interface PartialLaunchStateFile {
-  version: 1;
-  state: 'partial_launch_failure';
-  updatedAt: string;
-  leadSessionId?: string;
-  expectedMembers: string[];
-  confirmedMembers: string[];
-  missingMembers: string[];
-}
-
 function getTeamsBasePathsToProbe(): { location: TeamsBaseLocation; basePath: string }[] {
   const configured = getTeamsBasePath();
   const defaultBase = path.join(getAutoDetectedClaudeBasePath(), 'teams');
@@ -434,10 +433,6 @@ function looksLikeClaudeStdoutJsonFragment(text: string): boolean {
     /"subtype"\s*:/.test(trimmed) ||
     /"session_id"\s*:/.test(trimmed)
   );
-}
-
-function getTeamLaunchStatePath(teamName: string): string {
-  return path.join(getTeamsBasePath(), teamName, TEAM_LAUNCH_STATE_FILE);
 }
 
 interface ProvisioningRun {
@@ -649,19 +644,18 @@ function createInitialMemberSpawnStatusEntry(): MemberSpawnStatusEntry {
 }
 
 function deriveMemberLaunchState(entry: {
-  status: MemberSpawnStatus;
   agentToolAccepted?: boolean;
   runtimeAlive?: boolean;
   bootstrapConfirmed?: boolean;
   hardFailure?: boolean;
 }): MemberLaunchState {
-  if (entry.hardFailure || entry.status === 'error') {
+  if (entry.hardFailure) {
     return 'failed_to_start';
   }
   if (entry.bootstrapConfirmed) {
     return 'confirmed_alive';
   }
-  if (entry.runtimeAlive || entry.agentToolAccepted || entry.status === 'waiting') {
+  if (entry.runtimeAlive || entry.agentToolAccepted) {
     return 'runtime_pending_bootstrap';
   }
   return 'starting';
@@ -859,6 +853,20 @@ function buildTeammateAgentBlockReminder(): string {
     `- Keep normal human-readable coordination outside the block.`,
     `- NEVER use agent-only blocks in messages to "user".`,
   ].join('\n');
+}
+
+function extractHeartbeatTimestamp(text: string, fallback?: string): string | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) return fallback?.trim() || undefined;
+  try {
+    const parsed = JSON.parse(trimmed) as { timestamp?: unknown };
+    if (typeof parsed.timestamp === 'string' && parsed.timestamp.trim().length > 0) {
+      return parsed.timestamp.trim();
+    }
+  } catch {
+    // Best-effort only. Non-JSON teammate messages still use the inbox timestamp fallback.
+  }
+  return fallback?.trim() || undefined;
 }
 
 function extractBootstrapFailureReason(text: string): string | null {
@@ -2026,6 +2034,7 @@ export class TeamProvisioningService {
     string,
     NativeSameTeamFingerprint[]
   >();
+  private readonly launchStateStore = new TeamLaunchStateStore();
   private teamChangeEmitter: ((event: TeamChangeEvent) => void) | null = null;
   private helpOutputCache: string | null = null;
   private helpOutputCacheTime = 0;
@@ -2659,7 +2668,14 @@ export class TeamProvisioningService {
         this.setMemberSpawnStatus(run, from, 'error', reason);
         continue;
       }
-      this.setMemberSpawnStatus(run, from, 'online', undefined, 'heartbeat');
+      this.setMemberSpawnStatus(
+        run,
+        from,
+        'online',
+        undefined,
+        'heartbeat',
+        extractHeartbeatTimestamp(message.text, message.timestamp)
+      );
     }
   }
 
@@ -3011,9 +3027,21 @@ export class TeamProvisioningService {
       if (isError) {
         const resultPreview = extractToolResultPreview(resultContent);
         this.handleMemberSpawnFailure(run, spawnedMemberName, resultPreview);
-      } else {
+      } else if (active.toolName === 'Agent') {
+        const parsedStatus = parseAgentToolResultStatus(resultContent);
+        if (parsedStatus?.status === 'duplicate_skipped') {
+          const detail =
+            parsedStatus.reason === 'already_running'
+              ? 'duplicate spawn skipped - already running'
+              : 'duplicate spawn skipped - bootstrap pending';
+          this.appendMemberBootstrapDiagnostic(run, spawnedMemberName, detail);
+          return;
+        }
+
         // Agent tool_result only confirms that the runtime accepted the spawn.
         // The teammate becomes truly "online" only after the first inbox heartbeat.
+        this.setMemberSpawnStatus(run, spawnedMemberName, 'waiting');
+      } else {
         this.setMemberSpawnStatus(run, spawnedMemberName, 'waiting');
       }
     }
@@ -3089,7 +3117,8 @@ export class TeamProvisioningService {
     memberName: string,
     status: MemberSpawnStatus,
     error?: string,
-    livenessSource?: MemberSpawnLivenessSource
+    livenessSource?: MemberSpawnLivenessSource,
+    heartbeatAt?: string
   ): void {
     const prev = run.memberSpawnStatuses.get(memberName) ?? createInitialMemberSpawnStatusEntry();
     const updatedAt = nowIso();
@@ -3115,7 +3144,7 @@ export class TeamProvisioningService {
       next.firstSpawnAcceptedAt = prev.firstSpawnAcceptedAt ?? updatedAt;
       if (livenessSource === 'heartbeat') {
         next.bootstrapConfirmed = true;
-        next.lastHeartbeatAt = updatedAt;
+        next.lastHeartbeatAt = heartbeatAt?.trim() || prev.lastHeartbeatAt || updatedAt;
       }
       next.hardFailure = false;
       next.error = undefined;
@@ -3158,7 +3187,7 @@ export class TeamProvisioningService {
         memberName,
         'spawn accepted, waiting for bootstrap'
       );
-    } else if (status === 'online' && livenessSource === 'heartbeat') {
+    } else if (status === 'online' && livenessSource === 'heartbeat' && !prev.bootstrapConfirmed) {
       this.appendMemberBootstrapDiagnostic(
         run,
         memberName,
@@ -3184,38 +3213,67 @@ export class TeamProvisioningService {
       runId: run.runId,
       detail: memberName,
     });
+    if (run.isLaunch) {
+      void this.persistLaunchStateSnapshot(run, run.provisioningComplete ? 'finished' : 'active');
+    }
   }
 
   /**
    * Get current member spawn statuses for a team.
    * Returns a map of memberName → MemberSpawnStatusEntry.
    */
-  getMemberSpawnStatuses(teamName: string): {
+  async getMemberSpawnStatuses(teamName: string): Promise<{
     statuses: Record<string, MemberSpawnStatusEntry>;
     runId: string | null;
-  } {
+    teamLaunchState?: TeamLaunchAggregateState;
+    launchPhase?: PersistedTeamLaunchPhase;
+    expectedMembers?: string[];
+    updatedAt?: string;
+    summary?: PersistedTeamLaunchSummary;
+    source?: 'live' | 'persisted' | 'merged';
+  }> {
     const runId = this.getTrackedRunId(teamName);
-    if (!runId) return { statuses: {}, runId: null };
-    const run = this.runs.get(runId);
-    if (!run) return { statuses: {}, runId: null };
-    const result: Record<string, MemberSpawnStatusEntry> = {};
-    for (const [name, entry] of run.memberSpawnStatuses) {
-      result[name] = {
-        status: entry.status,
-        launchState: entry.launchState,
-        error: entry.error,
-        hardFailureReason: entry.hardFailureReason,
-        livenessSource: entry.livenessSource,
-        agentToolAccepted: entry.agentToolAccepted,
-        runtimeAlive: entry.runtimeAlive,
-        bootstrapConfirmed: entry.bootstrapConfirmed,
-        hardFailure: entry.hardFailure,
-        firstSpawnAcceptedAt: entry.firstSpawnAcceptedAt,
-        lastHeartbeatAt: entry.lastHeartbeatAt,
-        updatedAt: entry.updatedAt,
-      };
+    if (!runId) {
+      return this.reconcilePersistedLaunchState(teamName).then(({ snapshot, statuses }) => ({
+        statuses,
+        runId: null,
+        teamLaunchState: snapshot?.teamLaunchState,
+        launchPhase: snapshot?.launchPhase,
+        expectedMembers: snapshot?.expectedMembers,
+        updatedAt: snapshot?.updatedAt,
+        summary: snapshot?.summary,
+        source: snapshot ? 'persisted' : 'persisted',
+      }));
     }
-    return { statuses: result, runId };
+    const run = this.runs.get(runId);
+    if (!run) {
+      return { statuses: {}, runId: null, source: 'persisted' };
+    }
+
+    await this.refreshMemberSpawnStatusesFromLeadInbox(run);
+    await this.auditMemberSpawnStatuses(run);
+    await this.persistLaunchStateSnapshot(run, run.provisioningComplete ? 'finished' : 'active');
+
+    const persisted = await this.launchStateStore.read(teamName);
+    const liveSnapshot = snapshotFromRuntimeMemberStatuses({
+      teamName: run.teamName,
+      expectedMembers: run.expectedMembers,
+      leadSessionId: run.detectedSessionId ?? undefined,
+      launchPhase: run.provisioningComplete ? 'finished' : 'active',
+      statuses: this.buildRuntimeSpawnStatusRecord(run),
+    });
+    const snapshot = persisted ?? liveSnapshot;
+    const statuses = snapshotToMemberSpawnStatuses(snapshot);
+    return {
+      statuses,
+      runId,
+      teamLaunchState: snapshot.teamLaunchState,
+      launchPhase: snapshot.launchPhase,
+      expectedMembers: snapshot.expectedMembers,
+      updatedAt: snapshot.updatedAt,
+      summary: snapshot.summary,
+      source: persisted ? 'merged' : 'live',
+    };
   }
 
   private getMemberLaunchGraceKey(run: ProvisioningRun, memberName: string): string {
@@ -4290,7 +4348,7 @@ export class TeamProvisioningService {
       this.runs.set(runId, run);
       this.provisioningRunByTeam.set(request.teamName, runId);
       run.onProgress(run.progress);
-      await this.clearPartialLaunchState(request.teamName);
+      await this.clearPersistedLaunchState(request.teamName);
 
       const prompt = buildProvisioningPrompt(request, effectiveMemberSpecs);
       const promptSize = getPromptSizeSummary(prompt);
@@ -5886,6 +5944,19 @@ export class TeamProvisioningService {
       }
       // Only track spawns for this team
       if (teamName !== run.teamName) continue;
+      const existing = run.memberSpawnStatuses.get(memberName);
+      if (
+        existing &&
+        !existing.hardFailure &&
+        (existing.bootstrapConfirmed || existing.runtimeAlive || existing.agentToolAccepted)
+      ) {
+        this.appendMemberBootstrapDiagnostic(
+          run,
+          memberName,
+          'respawn blocked as duplicate — teammate already alive or bootstrap pending'
+        );
+        continue;
+      }
       this.setMemberSpawnStatus(run, memberName, 'spawning');
       const toolUseId = typeof part.id === 'string' ? part.id.trim() : '';
       if (toolUseId) {
@@ -5940,6 +6011,8 @@ export class TeamProvisioningService {
       return;
     }
 
+    const liveAgentNames = this.getLiveTeamAgentNames(run.teamName);
+
     // Flag any expected member not found in config.json (excluding the lead)
     for (const expected of run.expectedMembers) {
       const current = run.memberSpawnStatuses.get(expected);
@@ -5957,10 +6030,8 @@ export class TeamProvisioningService {
       });
 
       const runtimeAlive =
-        matchedRuntimeNames.length > 0 &&
-        matchedRuntimeNames.some((runtimeName) =>
-          this.hasLiveTeamAgentProcess(run.teamName, runtimeName)
-        );
+        liveAgentNames.has(expected) ||
+        matchedRuntimeNames.some((runtimeName) => liveAgentNames.has(runtimeName));
 
       // A teammate may intentionally stay silent after bootstrap. If Claude Code
       // registered the runtime and the OS process is still alive, treat it as
@@ -6004,8 +6075,12 @@ export class TeamProvisioningService {
   }
 
   private hasLiveTeamAgentProcess(teamName: string, memberName: string): boolean {
+    return this.getLiveTeamAgentNames(teamName).has(memberName);
+  }
+
+  private getLiveTeamAgentNames(teamName: string): Set<string> {
     if (process.platform === 'win32') {
-      return false;
+      return new Set();
     }
 
     let output = '';
@@ -6015,24 +6090,26 @@ export class TeamProvisioningService {
         stdio: ['ignore', 'pipe', 'ignore'],
       });
     } catch {
-      return false;
+      return new Set();
     }
 
     const teamMarker = `--team-name ${teamName}`;
-    const memberMarker = `--agent-id ${memberName}@${teamName}`;
-
-    return output.split('\n').some((line) => {
+    const names = new Set<string>();
+    for (const line of output.split('\n')) {
       const trimmed = line.trim();
-      return trimmed.includes(teamMarker) && trimmed.includes(memberMarker);
-    });
+      if (!trimmed.includes(teamMarker)) continue;
+      const match = trimmed.match(/--agent-id\s+([^\s@]+)@/);
+      if (!match) continue;
+      const agentName = match[1]?.trim();
+      if (agentName) {
+        names.add(agentName);
+      }
+    }
+    return names;
   }
 
-  private async clearPartialLaunchState(teamName: string): Promise<void> {
-    try {
-      await fs.promises.rm(getTeamLaunchStatePath(teamName), { force: true });
-    } catch {
-      // best-effort
-    }
+  private async clearPersistedLaunchState(teamName: string): Promise<void> {
+    await this.launchStateStore.clear(teamName);
   }
 
   private getFailedSpawnMembers(
@@ -6076,95 +6153,190 @@ export class TeamProvisioningService {
     return { confirmedCount, pendingCount, failedCount, runtimeAlivePendingCount };
   }
 
-  private async persistPartialLaunchState(run: ProvisioningRun): Promise<void> {
+  private buildRuntimeSpawnStatusRecord(
+    run: ProvisioningRun
+  ): Record<string, MemberSpawnStatusEntry> {
+    const statuses: Record<string, MemberSpawnStatusEntry> = {};
+    for (const expected of run.expectedMembers) {
+      statuses[expected] =
+        run.memberSpawnStatuses.get(expected) ?? createInitialMemberSpawnStatusEntry();
+    }
+    return statuses;
+  }
+
+  private async persistLaunchStateSnapshot(
+    run: ProvisioningRun,
+    launchPhase: 'active' | 'finished' | 'reconciled' = run.provisioningComplete
+      ? 'finished'
+      : 'active'
+  ): Promise<void> {
     if (!run.isLaunch || !run.expectedMembers || run.expectedMembers.length === 0) {
       if (run.isLaunch) {
-        await this.clearPartialLaunchState(run.teamName);
+        await this.clearPersistedLaunchState(run.teamName);
       }
       return;
     }
 
-    const expectedMembers = Array.from(
-      new Set(
-        run.expectedMembers
-          .map((name) => name.trim())
-          .filter((name) => name.length > 0 && name !== 'user' && !isLeadMember({ name }))
-      )
-    );
-    if (expectedMembers.length === 0) {
-      await this.clearPartialLaunchState(run.teamName);
+    const snapshot = snapshotFromRuntimeMemberStatuses({
+      teamName: run.teamName,
+      expectedMembers: run.expectedMembers,
+      leadSessionId: run.detectedSessionId ?? undefined,
+      launchPhase,
+      statuses: this.buildRuntimeSpawnStatusRecord(run),
+    });
+
+    if (snapshot.teamLaunchState === 'clean_success' && launchPhase !== 'active') {
+      await this.clearPersistedLaunchState(run.teamName);
       return;
     }
 
-    const configPath = path.join(getTeamsBasePath(), run.teamName, 'config.json');
-    let registeredMembers = new Set<string>();
-    let leadSessionId: string | undefined;
+    await this.launchStateStore.write(run.teamName, snapshot);
+  }
+
+  private async reconcilePersistedLaunchState(teamName: string): Promise<{
+    snapshot: ReturnType<typeof createPersistedLaunchSnapshot> | null;
+    statuses: Record<string, MemberSpawnStatusEntry>;
+  }> {
+    const persisted = await this.launchStateStore.read(teamName);
+    if (!persisted) {
+      return { snapshot: null, statuses: {} };
+    }
+
+    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    let configMembers = new Set<string>();
+    let leadName = 'team-lead';
     try {
       const raw = await tryReadRegularFileUtf8(configPath, {
         timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
         maxBytes: TEAM_CONFIG_MAX_BYTES,
       });
-      if (!raw) {
-        await this.clearPartialLaunchState(run.teamName);
-        return;
+      if (raw) {
+        const config = JSON.parse(raw) as {
+          members?: { name?: string; agentType?: string }[];
+        };
+        leadName = config.members?.find((member) => isLeadMember(member))?.name?.trim() || leadName;
+        configMembers = new Set(
+          (config.members ?? [])
+            .map((member) => (typeof member?.name === 'string' ? member.name.trim() : ''))
+            .filter((name) => name.length > 0 && !isLeadMember({ name }))
+        );
       }
-      const config = JSON.parse(raw) as {
-        leadSessionId?: unknown;
-        members?: { name?: unknown }[];
-      };
-      leadSessionId =
-        typeof config.leadSessionId === 'string' && config.leadSessionId.trim().length > 0
-          ? config.leadSessionId.trim()
-          : undefined;
-      registeredMembers = new Set(
-        (config.members ?? [])
-          .map((member) => (typeof member?.name === 'string' ? member.name.trim() : ''))
-          .filter((name) => name.length > 0 && !isLeadMember({ name }))
-      );
     } catch {
-      await this.clearPartialLaunchState(run.teamName);
-      return;
+      // best-effort
     }
 
-    const inboxNames = await this.inboxReader
-      .listInboxNames(run.teamName)
-      .catch(() => [] as string[]);
-    const confirmedMembers = Array.from(
-      new Set(
-        [...registeredMembers, ...inboxNames]
-          .map((name) => name.trim())
-          .filter((name) => expectedMembers.includes(name))
-      )
-    );
-    const missingMembers = expectedMembers.filter((name) => !confirmedMembers.includes(name));
-
-    if (missingMembers.length === 0 || confirmedMembers.length === 0) {
-      await this.clearPartialLaunchState(run.teamName);
-      return;
-    }
-
-    const payload: PartialLaunchStateFile = {
-      version: 1,
-      state: 'partial_launch_failure',
-      updatedAt: new Date().toISOString(),
-      ...(leadSessionId ? { leadSessionId } : {}),
-      expectedMembers,
-      confirmedMembers,
-      missingMembers,
-    };
-
+    let leadInboxMessages: Awaited<ReturnType<TeamInboxReader['getMessagesFor']>> = [];
     try {
-      await atomicWriteAsync(
-        getTeamLaunchStatePath(run.teamName),
-        JSON.stringify(payload, null, 2)
-      );
-    } catch (error) {
-      logger.warn(
-        `[${run.teamName}] Failed to persist partial launch state: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
+      leadInboxMessages = await this.inboxReader.getMessagesFor(teamName, leadName);
+    } catch {
+      // best-effort
     }
+
+    const liveAgentNames = this.getLiveTeamAgentNames(teamName);
+    const nextMembers = { ...persisted.members };
+    const now = nowIso();
+    for (const expected of persisted.expectedMembers) {
+      const current = nextMembers[expected] ?? {
+        name: expected,
+        launchState: 'starting',
+        agentToolAccepted: false,
+        runtimeAlive: false,
+        bootstrapConfirmed: false,
+        hardFailure: false,
+        lastEvaluatedAt: now,
+      };
+      const matchedRuntimeNames = [...configMembers].filter((name) => {
+        if (name === expected) return true;
+        const parsed = parseNumericSuffixName(name);
+        return parsed !== null && parsed.suffix >= 2 && parsed.base === expected;
+      });
+      const runtimeAlive =
+        liveAgentNames.has(expected) ||
+        matchedRuntimeNames.some((runtimeName) => liveAgentNames.has(runtimeName));
+      const heartbeatMessage = leadInboxMessages.find((message) => {
+        if (typeof message.from !== 'string' || message.from.trim() !== expected) return false;
+        if (typeof message.text !== 'string' || message.text.trim().length === 0) return false;
+        const firstAcceptedAt = current.firstSpawnAcceptedAt
+          ? Date.parse(current.firstSpawnAcceptedAt)
+          : NaN;
+        const messageTs = Date.parse(message.timestamp);
+        if (
+          Number.isFinite(firstAcceptedAt) &&
+          Number.isFinite(messageTs) &&
+          messageTs < firstAcceptedAt
+        ) {
+          return false;
+        }
+        return true;
+      });
+      const heartbeatReason = heartbeatMessage
+        ? extractBootstrapFailureReason(heartbeatMessage.text)
+        : null;
+      current.runtimeAlive = runtimeAlive;
+      current.lastRuntimeAliveAt = runtimeAlive ? now : current.lastRuntimeAliveAt;
+      current.sources = {
+        ...(current.sources ?? {}),
+        processAlive: runtimeAlive || undefined,
+        configRegistered: matchedRuntimeNames.length > 0 || undefined,
+        configDrift:
+          heartbeatMessage != null && matchedRuntimeNames.length === 0
+            ? true
+            : current.sources?.configDrift,
+        inboxHeartbeat: heartbeatMessage != null ? true : current.sources?.inboxHeartbeat,
+      };
+      if (heartbeatReason) {
+        current.hardFailure = true;
+        current.hardFailureReason = heartbeatReason;
+        current.sources.hardFailureSignal = true;
+      } else if (heartbeatMessage) {
+        current.bootstrapConfirmed = true;
+        current.lastHeartbeatAt = heartbeatMessage.timestamp;
+        current.hardFailure = false;
+        current.hardFailureReason = undefined;
+      }
+      const acceptedAtMs =
+        current.firstSpawnAcceptedAt != null ? Date.parse(current.firstSpawnAcceptedAt) : NaN;
+      const graceExpired =
+        current.agentToolAccepted === true &&
+        Number.isFinite(acceptedAtMs) &&
+        Date.now() - acceptedAtMs >= MEMBER_LAUNCH_GRACE_MS;
+      if (
+        !current.bootstrapConfirmed &&
+        !current.runtimeAlive &&
+        !current.hardFailure &&
+        graceExpired
+      ) {
+        current.hardFailure = true;
+        current.hardFailureReason =
+          current.hardFailureReason ?? 'Teammate did not join within the launch grace window.';
+      }
+      current.launchState = deriveMemberLaunchState(current);
+      current.lastEvaluatedAt = now;
+      nextMembers[expected] = {
+        ...current,
+        diagnostics: undefined,
+      };
+    }
+
+    const reconciled = createPersistedLaunchSnapshot({
+      teamName,
+      expectedMembers: persisted.expectedMembers,
+      leadSessionId: persisted.leadSessionId,
+      launchPhase: persisted.launchPhase === 'active' ? 'active' : 'reconciled',
+      members: nextMembers,
+      updatedAt: now,
+    });
+
+    if (reconciled.teamLaunchState === 'clean_success') {
+      await this.clearPersistedLaunchState(teamName);
+      return { snapshot: null, statuses: {} };
+    }
+
+    await this.launchStateStore.write(teamName, reconciled);
+    return {
+      snapshot: reconciled,
+      statuses: snapshotToMemberSpawnStatuses(reconciled),
+    };
   }
 
   private captureSendMessages(run: ProvisioningRun, content: Record<string, unknown>[]): void {
@@ -8411,7 +8583,7 @@ export class TeamProvisioningService {
       // Audit: flag any expected member not registered in config.json after launch.
       await this.refreshMemberSpawnStatusesFromLeadInbox(run);
       await this.auditMemberSpawnStatuses(run);
-      await this.persistPartialLaunchState(run);
+      await this.persistLaunchStateSnapshot(run, 'finished');
       const failedSpawnMembers = this.getFailedSpawnMembers(run);
       const launchSummary = this.getMemberLaunchSummary(run);
       const hasSpawnFailures = failedSpawnMembers.length > 0;
@@ -8570,7 +8742,7 @@ export class TeamProvisioningService {
     // Audit: flag any expected member not registered in config.json after provisioning.
     await this.refreshMemberSpawnStatusesFromLeadInbox(run);
     await this.auditMemberSpawnStatuses(run);
-    await this.clearPartialLaunchState(run.teamName);
+    await this.persistLaunchStateSnapshot(run, 'finished');
     const failedSpawnMembers = this.getFailedSpawnMembers(run);
     const launchSummary = this.getMemberLaunchSummary(run);
     const hasSpawnFailures = failedSpawnMembers.length > 0;
@@ -8941,7 +9113,7 @@ export class TeamProvisioningService {
    */
   private cleanupRun(run: ProvisioningRun): void {
     if (run.isLaunch && !run.provisioningComplete) {
-      void this.persistPartialLaunchState(run);
+      void this.persistLaunchStateSnapshot(run, 'finished');
     }
     this.resetRuntimeToolActivity(run);
     this.setLeadActivity(run, 'offline');

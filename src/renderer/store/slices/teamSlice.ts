@@ -139,6 +139,7 @@ import type {
   KanbanColumnId,
   LeadActivityState,
   LeadContextUsage,
+  MemberSpawnStatusesSnapshot,
   MemberSpawnStatusEntry,
   SendMessageRequest,
   SendMessageResult,
@@ -625,6 +626,7 @@ export interface TeamSlice {
   toolHistoryByTeam: Record<string, Record<string, ActiveToolCall[]>>;
   /** Per-team per-member spawn statuses during team provisioning/launch. */
   memberSpawnStatusesByTeam: Record<string, Record<string, MemberSpawnStatusEntry>>;
+  memberSpawnSnapshotsByTeam: Record<string, MemberSpawnStatusesSnapshot>;
   fetchMemberSpawnStatuses: (teamName: string) => Promise<void>;
   provisioningErrorByTeam: Record<string, string | null>;
   clearProvisioningError: (teamName?: string) => void;
@@ -910,6 +912,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   finishedVisibleByTeam: {},
   toolHistoryByTeam: {},
   memberSpawnStatusesByTeam: {},
+  memberSpawnSnapshotsByTeam: {},
   provisioningErrorByTeam: {},
   clearProvisioningError: (teamName?: string) =>
     set((state) => {
@@ -970,6 +973,10 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           memberSpawnStatusesByTeam: {
             ...prev.memberSpawnStatusesByTeam,
             [teamName]: snapshot.statuses,
+          },
+          memberSpawnSnapshotsByTeam: {
+            ...prev.memberSpawnSnapshotsByTeam,
+            [teamName]: snapshot,
           },
         };
       });
@@ -1861,6 +1868,8 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       delete nextErrors[request.teamName];
       const nextSpawnStatuses = { ...state.memberSpawnStatusesByTeam };
       delete nextSpawnStatuses[request.teamName];
+      const nextSpawnSnapshots = { ...state.memberSpawnSnapshotsByTeam };
+      delete nextSpawnSnapshots[request.teamName];
       const nextActiveTools = { ...state.activeToolsByTeam };
       delete nextActiveTools[request.teamName];
       const nextFinishedVisible = { ...state.finishedVisibleByTeam };
@@ -1893,6 +1902,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         provisioningRuns: cleaned,
         provisioningErrorByTeam: nextErrors,
         memberSpawnStatusesByTeam: nextSpawnStatuses,
+        memberSpawnSnapshotsByTeam: nextSpawnSnapshots,
         activeToolsByTeam: nextActiveTools,
         finishedVisibleByTeam: nextFinishedVisible,
         toolHistoryByTeam: nextToolHistory,
@@ -2056,6 +2066,8 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       delete nextErrors[request.teamName];
       const nextSpawnStatuses = { ...state.memberSpawnStatusesByTeam };
       delete nextSpawnStatuses[request.teamName];
+      const nextSpawnSnapshots = { ...state.memberSpawnSnapshotsByTeam };
+      delete nextSpawnSnapshots[request.teamName];
       const nextActiveTools = { ...state.activeToolsByTeam };
       delete nextActiveTools[request.teamName];
       const nextFinishedVisible = { ...state.finishedVisibleByTeam };
@@ -2088,6 +2100,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         provisioningRuns: cleaned,
         provisioningErrorByTeam: nextErrors,
         memberSpawnStatusesByTeam: nextSpawnStatuses,
+        memberSpawnSnapshotsByTeam: nextSpawnSnapshots,
         activeToolsByTeam: nextActiveTools,
         finishedVisibleByTeam: nextFinishedVisible,
         toolHistoryByTeam: nextToolHistory,
@@ -2248,8 +2261,10 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           : state.ignoredRuntimeRunIds;
 
       const nextSpawnStatuses = { ...state.memberSpawnStatusesByTeam };
+      const nextSpawnSnapshots = { ...state.memberSpawnSnapshotsByTeam };
       if (isCanonicalRun) {
         delete nextSpawnStatuses[existing.teamName];
+        delete nextSpawnSnapshots[existing.teamName];
       }
       const nextActiveTools = { ...state.activeToolsByTeam };
       const nextFinishedVisible = { ...state.finishedVisibleByTeam };
@@ -2265,6 +2280,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         currentProvisioningRunIdByTeam: nextCurrentRunIdByTeam,
         currentRuntimeRunIdByTeam: nextRuntimeRunIdByTeam,
         memberSpawnStatusesByTeam: nextSpawnStatuses,
+        memberSpawnSnapshotsByTeam: nextSpawnSnapshots,
         activeToolsByTeam: nextActiveTools,
         finishedVisibleByTeam: nextFinishedVisible,
         toolHistoryByTeam: nextToolHistory,
@@ -2387,13 +2403,20 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     if (isCanonicalRun && TERMINAL_PROVISIONING_STATES.has(progress.state)) {
       set((prev) => {
         const next = { ...prev.memberSpawnStatusesByTeam };
+        const nextSnapshots = { ...prev.memberSpawnSnapshotsByTeam };
         const currentStatuses = next[progress.teamName];
         if (!currentStatuses) {
-          return { memberSpawnStatusesByTeam: next };
+          return {
+            memberSpawnStatusesByTeam: next,
+            memberSpawnSnapshotsByTeam: nextSnapshots,
+          };
         }
         if (progress.state === 'ready') {
           next[progress.teamName] = currentStatuses;
-          return { memberSpawnStatusesByTeam: next };
+          return {
+            memberSpawnStatusesByTeam: next,
+            memberSpawnSnapshotsByTeam: nextSnapshots,
+          };
         }
         const retainedStatuses = Object.fromEntries(
           Object.entries(currentStatuses).filter(([, entry]) => entry.status === 'error')
@@ -2402,8 +2425,12 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           next[progress.teamName] = retainedStatuses;
         } else {
           delete next[progress.teamName];
+          delete nextSnapshots[progress.teamName];
         }
-        return { memberSpawnStatusesByTeam: next };
+        return {
+          memberSpawnStatusesByTeam: next,
+          memberSpawnSnapshotsByTeam: nextSnapshots,
+        };
       });
     }
 

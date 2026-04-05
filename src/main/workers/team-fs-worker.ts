@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { parentPort } from 'node:worker_threads';
 
 import { isLeadMember } from '@shared/utils/leadDetection';
+import { normalizePersistedLaunchSnapshot } from '@main/services/team/TeamLaunchStateEvaluator';
 
 interface ListTeamsPayload {
   teamsDir: string;
@@ -319,48 +320,49 @@ function dropCliProvisionerMembers(
   }
 }
 
-async function readPartialLaunchState(
+async function readLaunchState(
   teamsDir: string,
   teamName: string
 ): Promise<{
-  partialLaunchFailure: true;
-  expectedMemberCount: number;
-  confirmedMemberCount: number;
-  missingMembers: string[];
+  partialLaunchFailure?: true;
+  expectedMemberCount?: number;
+  confirmedMemberCount?: number;
+  missingMembers?: string[];
+  teamLaunchState?: string;
+  launchUpdatedAt?: string;
+  confirmedCount?: number;
+  pendingCount?: number;
+  failedCount?: number;
+  runtimeAlivePendingCount?: number;
 } | null> {
   const launchStatePath = path.join(teamsDir, teamName, TEAM_LAUNCH_STATE_FILE);
   try {
     const stat = await fs.promises.stat(launchStatePath);
     if (!stat.isFile() || stat.size > MAX_LAUNCH_STATE_BYTES) return null;
     const raw = await fs.promises.readFile(launchStatePath, 'utf8');
-    const parsed = JSON.parse(raw) as {
-      state?: unknown;
-      expectedMembers?: unknown;
-      confirmedMembers?: unknown;
-      missingMembers?: unknown;
-    };
-    if (parsed.state !== 'partial_launch_failure') return null;
-    const expectedMembers = Array.isArray(parsed.expectedMembers)
-      ? parsed.expectedMembers.filter(
-          (name): name is string => typeof name === 'string' && name.trim().length > 0
-        )
-      : [];
-    const confirmedMembers = Array.isArray(parsed.confirmedMembers)
-      ? parsed.confirmedMembers.filter(
-          (name): name is string => typeof name === 'string' && name.trim().length > 0
-        )
-      : [];
-    const missingMembers = Array.isArray(parsed.missingMembers)
-      ? parsed.missingMembers.filter(
-          (name): name is string => typeof name === 'string' && name.trim().length > 0
-        )
-      : [];
-    if (expectedMembers.length === 0 || missingMembers.length === 0) return null;
+    const snapshot = normalizePersistedLaunchSnapshot(teamName, JSON.parse(raw));
+    if (!snapshot) return null;
+    const missingMembers = snapshot.expectedMembers.filter((name) => {
+      const member = snapshot.members[name];
+      return member?.launchState === 'failed_to_start';
+    });
     return {
-      partialLaunchFailure: true,
-      expectedMemberCount: expectedMembers.length,
-      confirmedMemberCount: confirmedMembers.length,
-      missingMembers,
+      ...(snapshot.teamLaunchState === 'partial_failure'
+        ? { partialLaunchFailure: true as const }
+        : {}),
+      ...(snapshot.expectedMembers.length > 0
+        ? { expectedMemberCount: snapshot.expectedMembers.length }
+        : {}),
+      ...(snapshot.summary.confirmedCount > 0
+        ? { confirmedMemberCount: snapshot.summary.confirmedCount }
+        : {}),
+      ...(missingMembers.length > 0 ? { missingMembers } : {}),
+      teamLaunchState: snapshot.teamLaunchState,
+      launchUpdatedAt: snapshot.updatedAt,
+      confirmedCount: snapshot.summary.confirmedCount,
+      pendingCount: snapshot.summary.pendingCount,
+      failedCount: snapshot.summary.failedCount,
+      runtimeAlivePendingCount: snapshot.summary.runtimeAlivePendingCount,
     };
   } catch {
     return null;
@@ -591,8 +593,8 @@ async function listTeams(
     dropCliProvisionerMembers(memberMap);
 
     const members = Array.from(memberMap.values());
-    const partialLaunchState =
-      (await readPartialLaunchState(payload.teamsDir, teamName)) ??
+    const launchStateSummary =
+      (await readLaunchState(payload.teamsDir, teamName)) ??
       (() => {
         if (
           !leadSessionId ||
@@ -628,7 +630,7 @@ async function listTeams(
       ...(projectPathHistory ? { projectPathHistory } : {}),
       ...(sessionHistory ? { sessionHistory } : {}),
       ...(deletedAt ? { deletedAt } : {}),
-      ...(partialLaunchState ?? {}),
+      ...(launchStateSummary ?? {}),
     };
 
     const ms = nowMs() - t0;

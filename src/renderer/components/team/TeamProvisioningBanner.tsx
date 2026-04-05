@@ -17,14 +17,16 @@ interface TeamProvisioningBannerProps {
 export const TeamProvisioningBanner = ({
   teamName,
 }: TeamProvisioningBannerProps): React.JSX.Element | null => {
-  const { progress, cancelProvisioning, teamMembers, memberSpawnStatuses } = useStore(
-    useShallow((s) => ({
-      progress: getCurrentProvisioningProgressForTeam(s, teamName),
-      cancelProvisioning: s.cancelProvisioning,
-      teamMembers: s.selectedTeamData?.members,
-      memberSpawnStatuses: s.memberSpawnStatusesByTeam[teamName],
-    }))
-  );
+  const { progress, cancelProvisioning, teamMembers, memberSpawnStatuses, memberSpawnSnapshot } =
+    useStore(
+      useShallow((s) => ({
+        progress: getCurrentProvisioningProgressForTeam(s, teamName),
+        cancelProvisioning: s.cancelProvisioning,
+        teamMembers: s.selectedTeamData?.members,
+        memberSpawnStatuses: s.memberSpawnStatusesByTeam[teamName],
+        memberSpawnSnapshot: s.memberSpawnSnapshotsByTeam[teamName],
+      }))
+    );
   const [dismissed, setDismissed] = useState(false);
   const lastActiveStepRef = useRef(-1);
   const bannerInstanceKey = useMemo(() => {
@@ -105,38 +107,49 @@ export const TeamProvisioningBanner = ({
   }
 
   const teammates = (teamMembers ?? []).filter((member) => !isLeadMember(member));
+  const expectedTeammateCount = memberSpawnSnapshot?.expectedMembers?.length;
+  const fallbackTeammateCount = expectedTeammateCount ?? teammates.length;
+  const snapshotSummary = memberSpawnSnapshot?.summary;
   const failedSpawnEntries = Object.entries(memberSpawnStatuses ?? {}).filter(
     ([, entry]) => entry.launchState === 'failed_to_start'
   );
-  const failedSpawnCount = failedSpawnEntries.length;
-  const heartbeatConfirmedCount = teammates.filter((member) => {
-    const entry = memberSpawnStatuses?.[member.name];
-    return entry?.launchState === 'confirmed_alive';
-  }).length;
-  const processOnlyAliveCount = teammates.filter((member) => {
-    const entry = memberSpawnStatuses?.[member.name];
-    return entry?.launchState === 'runtime_pending_bootstrap' && entry.runtimeAlive === true;
-  }).length;
-  const pendingSpawnCount = teammates.filter((member) => {
-    const entry = memberSpawnStatuses?.[member.name];
-    return (
-      entry?.launchState === 'starting' ||
-      (entry?.launchState === 'runtime_pending_bootstrap' && entry.runtimeAlive !== true)
-    );
-  }).length;
+  const failedSpawnCount = snapshotSummary?.failedCount ?? failedSpawnEntries.length;
+  const heartbeatConfirmedCount =
+    snapshotSummary?.confirmedCount ??
+    teammates.filter((member) => {
+      const entry = memberSpawnStatuses?.[member.name];
+      return entry?.launchState === 'confirmed_alive';
+    }).length;
+  const processOnlyAliveCount =
+    snapshotSummary?.runtimeAlivePendingCount ??
+    teammates.filter((member) => {
+      const entry = memberSpawnStatuses?.[member.name];
+      return entry?.launchState === 'runtime_pending_bootstrap' && entry.runtimeAlive === true;
+    }).length;
+  const pendingSpawnCount =
+    snapshotSummary?.pendingCount ??
+    teammates.filter((member) => {
+      const entry = memberSpawnStatuses?.[member.name];
+      return (
+        entry?.launchState === 'starting' ||
+        (entry?.launchState === 'runtime_pending_bootstrap' && entry.runtimeAlive !== true)
+      );
+    }).length;
   const allTeammatesConfirmedAlive =
-    teammates.length > 0 && failedSpawnCount === 0 && heartbeatConfirmedCount === teammates.length;
+    fallbackTeammateCount > 0 &&
+    failedSpawnCount === 0 &&
+    heartbeatConfirmedCount === fallbackTeammateCount;
 
   if (isReady) {
     const readyMessage =
       failedSpawnCount > 0
-        ? `Launch finished with errors — ${failedSpawnCount}/${Math.max(teammates.length, failedSpawnCount)} teammates failed to start`
-        : teammates.length === 0
+        ? `Launch finished with errors — ${failedSpawnCount}/${Math.max(fallbackTeammateCount, failedSpawnCount)} teammates failed to start`
+        : fallbackTeammateCount === 0
           ? 'Team launched — lead online'
           : allTeammatesConfirmedAlive
-            ? `Team launched — all ${teammates.length} teammates confirmed alive`
+            ? `Team launched — all ${fallbackTeammateCount} teammates confirmed alive`
             : processOnlyAliveCount > 0 || pendingSpawnCount > 0
-              ? `Team launched — ${heartbeatConfirmedCount}/${teammates.length} teammates confirmed alive${processOnlyAliveCount > 0 ? `, ${processOnlyAliveCount} runtime${processOnlyAliveCount === 1 ? '' : 's'} alive but bootstrap still pending` : ''}${pendingSpawnCount > 0 ? `${processOnlyAliveCount > 0 ? ', ' : ', '}${pendingSpawnCount} still starting` : ''}`
+              ? `Team launched — ${heartbeatConfirmedCount}/${fallbackTeammateCount} teammates confirmed alive${processOnlyAliveCount > 0 ? `, ${processOnlyAliveCount} runtime${processOnlyAliveCount === 1 ? '' : 's'} alive but bootstrap still pending` : ''}${pendingSpawnCount > 0 ? `${processOnlyAliveCount > 0 ? ', ' : ', '}${pendingSpawnCount} still starting` : ''}`
               : 'Team launched — teammate liveness is still being confirmed';
 
     return (
