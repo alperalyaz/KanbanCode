@@ -44,7 +44,10 @@ parentPort?.on('message', async (msg: TeamDataWorkerRequest) => {
       }
       case 'findLogsForTask': {
         const { teamName, taskId, options } = msg.payload;
-        const cacheKey = `${teamName}:${taskId}:${options?.owner ?? ''}:${options?.status ?? ''}:${options?.since ?? ''}:${options?.intervals?.length ?? 0}`;
+        const intervalsKey = options?.intervals
+          ? options.intervals.map((i) => `${i.startedAt}~${i.completedAt ?? ''}`).join(',')
+          : '';
+        const cacheKey = `${teamName}:${taskId}:${options?.owner ?? ''}:${options?.status ?? ''}:${options?.since ?? ''}:${intervalsKey}`;
 
         // Check result cache
         const cached = logsResultCache.get(cacheKey);
