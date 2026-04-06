@@ -1194,7 +1194,7 @@ export function buildAddMemberSpawnMessage(
 
 type RuntimeBootstrapMemberSpec = {
   name: string;
-  prompt: string;
+  prompt?: string;
   cwd?: string;
   model?: string;
   provider?: TeamProviderId;
@@ -1224,6 +1224,7 @@ type RuntimeBootstrapSpec = {
     providerId?: TeamProviderId;
     model?: string;
     effort?: EffortLevel;
+    agentLanguage?: string;
     skipPermissions?: boolean;
     worktree?: string | null;
     extraCliArgs?: string[];
@@ -1239,20 +1240,11 @@ type RuntimeBootstrapSpec = {
   };
 };
 
-function memberHasAssignedBoardWork(memberName: string, tasks: TeamTask[]): boolean {
-  return tasks.some((task) => task.owner === memberName && !task.id.startsWith('_internal'));
-}
-
 function buildDeterministicCreateBootstrapSpec(
   runId: string,
   request: TeamCreateRequest,
   effectiveMembers: TeamCreateRequest['members']
 ): RuntimeBootstrapSpec {
-  const displayName = request.displayName?.trim() || request.teamName;
-  const leadName =
-    effectiveMembers.find((member) => member.role?.toLowerCase().includes('lead'))?.name ||
-    'team-lead';
-
   return {
     version: 1,
     runId,
@@ -1272,6 +1264,7 @@ function buildDeterministicCreateBootstrapSpec(
       ...(request.providerId ? { providerId: request.providerId } : {}),
       ...(request.model?.trim() ? { model: request.model.trim() } : {}),
       ...(request.effort ? { effort: request.effort } : {}),
+      agentLanguage: getConfiguredAgentLanguageName(),
       ...(request.skipPermissions !== undefined
         ? { skipPermissions: request.skipPermissions }
         : {}),
@@ -1280,7 +1273,6 @@ function buildDeterministicCreateBootstrapSpec(
     },
     members: effectiveMembers.map((member) => ({
       name: member.name,
-      prompt: buildMemberSpawnPrompt(member, displayName, request.teamName, leadName),
       ...(member.role?.trim() ? { role: member.role.trim() } : {}),
       ...(member.workflow?.trim() ? { workflow: member.workflow.trim() } : {}),
       ...(request.cwd ? { cwd: request.cwd } : {}),
@@ -1301,13 +1293,8 @@ function buildDeterministicCreateBootstrapSpec(
 function buildDeterministicLaunchBootstrapSpec(
   runId: string,
   request: TeamLaunchRequest,
-  effectiveMembers: TeamCreateRequest['members'],
-  tasks: TeamTask[]
+  effectiveMembers: TeamCreateRequest['members']
 ): RuntimeBootstrapSpec {
-  const leadName =
-    effectiveMembers.find((member) => member.role?.toLowerCase().includes('lead'))?.name ||
-    'team-lead';
-
   return {
     version: 1,
     runId,
@@ -1324,33 +1311,23 @@ function buildDeterministicLaunchBootstrapSpec(
       ...(request.providerId ? { providerId: request.providerId } : {}),
       ...(request.model?.trim() ? { model: request.model.trim() } : {}),
       ...(request.effort ? { effort: request.effort } : {}),
+      agentLanguage: getConfiguredAgentLanguageName(),
       ...(request.skipPermissions !== undefined
         ? { skipPermissions: request.skipPermissions }
         : {}),
       ...(request.worktree ? { worktree: request.worktree } : {}),
       ...(request.extraCliArgs ? { extraCliArgs: parseCliArgs(request.extraCliArgs) } : {}),
     },
-    members: effectiveMembers.map((member) => {
-      const reconnectPrompt = shouldUseGeminiStagedLaunch(member.providerId)
-        ? buildGeminiReconnectMemberSpawnPrompt(member, request.teamName, leadName)
-        : buildReconnectMemberSpawnPrompt(
-            member,
-            request.teamName,
-            leadName,
-            memberHasAssignedBoardWork(member.name, tasks)
-          );
-      return {
-        name: member.name,
-        prompt: reconnectPrompt,
-        ...(request.cwd ? { cwd: request.cwd } : {}),
-        ...(member.model?.trim() ? { model: member.model.trim() } : {}),
-        ...(member.providerId ? { provider: member.providerId } : {}),
-        ...(member.effort ? { effort: member.effort } : {}),
-        ...(member.role?.trim() ? { role: member.role.trim() } : {}),
-        ...(member.workflow?.trim() ? { workflow: member.workflow.trim() } : {}),
-        ...(member.role?.trim() ? { description: member.role.trim() } : {}),
-      };
-    }),
+    members: effectiveMembers.map((member) => ({
+      name: member.name,
+      ...(request.cwd ? { cwd: request.cwd } : {}),
+      ...(member.model?.trim() ? { model: member.model.trim() } : {}),
+      ...(member.providerId ? { provider: member.providerId } : {}),
+      ...(member.effort ? { effort: member.effort } : {}),
+      ...(member.role?.trim() ? { role: member.role.trim() } : {}),
+      ...(member.workflow?.trim() ? { workflow: member.workflow.trim() } : {}),
+      ...(member.role?.trim() ? { description: member.role.trim() } : {}),
+    })),
     launch: {
       continueOnPartialFailure: true,
     },
@@ -1638,11 +1615,15 @@ function getSystemLocale(): string {
   }
 }
 
-function getAgentLanguageInstruction(): string {
+function getConfiguredAgentLanguageName(): string {
   const config = ConfigManager.getInstance().getConfig();
   const langCode = config.general.agentLanguage || 'system';
   const systemLocale = getSystemLocale();
-  const languageName = resolveLanguageName(langCode, systemLocale);
+  return resolveLanguageName(langCode, systemLocale);
+}
+
+function getAgentLanguageInstruction(): string {
+  const languageName = getConfiguredAgentLanguageName();
   return `IMPORTANT: Communicate in ${languageName}. All messages, summaries, and task descriptions MUST be in ${languageName}.`;
 }
 
@@ -4977,8 +4958,7 @@ export class TeamProvisioningService {
         const bootstrapSpec = buildDeterministicLaunchBootstrapSpec(
           runId,
           request,
-          effectiveMemberSpecs,
-          existingTasks
+          effectiveMemberSpecs
         );
         bootstrapSpecPath = await writeDeterministicBootstrapSpecFile(bootstrapSpec);
         run.bootstrapSpecPath = bootstrapSpecPath;
