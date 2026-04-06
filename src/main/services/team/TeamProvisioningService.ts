@@ -660,6 +660,8 @@ interface ProvisioningRun {
   >;
   /** Agent tool_use_id -> teammate name for persistent teammate spawns. */
   memberSpawnToolUseIds: Map<string, string>;
+  /** Highest accepted deterministic bootstrap event sequence for this run. */
+  lastDeterministicBootstrapSeq: number;
   /** Throttles config/inbox audit work triggered by frequent status polling. */
   lastMemberSpawnAuditAt: number;
   /** Throttles repeated audit warnings when config.json is temporarily unreadable. */
@@ -705,6 +707,33 @@ function createInitialMemberSpawnStatusEntry(): MemberSpawnStatusEntry {
     hardFailure: false,
     updatedAt,
   };
+}
+
+export function shouldAcceptDeterministicBootstrapEvent(params: {
+  runId: string;
+  teamName: string;
+  lastSeq: number;
+  msg: Record<string, unknown>;
+}): { accept: boolean; nextSeq: number } {
+  const msgRunId = typeof params.msg.run_id === 'string' ? params.msg.run_id.trim() : '';
+  if (msgRunId && msgRunId !== params.runId) {
+    return { accept: false, nextSeq: params.lastSeq };
+  }
+
+  const msgTeamName = typeof params.msg.team_name === 'string' ? params.msg.team_name.trim() : '';
+  if (msgTeamName && msgTeamName !== params.teamName) {
+    return { accept: false, nextSeq: params.lastSeq };
+  }
+
+  const seq = typeof params.msg.seq === 'number' ? params.msg.seq : NaN;
+  if (Number.isFinite(seq)) {
+    if (!Number.isInteger(seq) || seq <= params.lastSeq) {
+      return { accept: false, nextSeq: params.lastSeq };
+    }
+    return { accept: true, nextSeq: seq };
+  }
+
+  return { accept: true, nextSeq: params.lastSeq };
 }
 
 function deriveMemberLaunchState(entry: {
@@ -4386,6 +4415,7 @@ export class TeamProvisioningService {
           request.members.map((m) => [m.name, createInitialMemberSpawnStatusEntry()])
         ),
         memberSpawnToolUseIds: new Map(),
+        lastDeterministicBootstrapSeq: 0,
         lastMemberSpawnAuditAt: 0,
         lastMemberSpawnAuditConfigReadWarningAt: 0,
         lastMemberSpawnAuditMissingWarningAt: new Map(),
@@ -4899,6 +4929,7 @@ export class TeamProvisioningService {
           expectedMembers.map((name) => [name, createInitialMemberSpawnStatusEntry()])
         ),
         memberSpawnToolUseIds: new Map(),
+        lastDeterministicBootstrapSeq: 0,
         lastMemberSpawnAuditAt: 0,
         lastMemberSpawnAuditConfigReadWarningAt: 0,
         lastMemberSpawnAuditMissingWarningAt: new Map(),
@@ -7068,6 +7099,17 @@ export class TeamProvisioningService {
     if (msg.type !== 'system' || msg.subtype !== 'team_bootstrap') {
       return false;
     }
+
+    const acceptance = shouldAcceptDeterministicBootstrapEvent({
+      runId: run.runId,
+      teamName: run.teamName,
+      lastSeq: run.lastDeterministicBootstrapSeq,
+      msg,
+    });
+    if (!acceptance.accept) {
+      return true;
+    }
+    run.lastDeterministicBootstrapSeq = acceptance.nextSeq;
 
     const event = typeof msg.event === 'string' ? msg.event : undefined;
     if (!event) {
