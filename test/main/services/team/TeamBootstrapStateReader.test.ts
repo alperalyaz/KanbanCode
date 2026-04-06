@@ -142,6 +142,41 @@ describe('TeamBootstrapStateReader', () => {
     nowSpy.mockRestore();
   });
 
+  it('surfaces unreadable bootstrap journal as a warning without breaking active recovery', async () => {
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true as never);
+
+    hoisted.files.set('/mock/teams/demo/bootstrap-state.json', {
+      contents: JSON.stringify({
+        version: 1,
+        runId: 'run-123',
+        teamName: 'demo',
+        ownerPid: 4242,
+        startedAt: 1700000000000,
+        updatedAt: 1700000000500,
+        phase: 'spawning_members',
+        members: [{ name: 'alice', status: 'pending' }],
+      }),
+    });
+    hoisted.files.set('/mock/teams/demo/bootstrap-journal.jsonl', {
+      contents: '{invalid-json',
+    });
+
+    await expect(readBootstrapRuntimeState('demo')).resolves.toMatchObject({
+      teamName: 'demo',
+      isAlive: false,
+      runId: 'run-123',
+      progress: {
+        state: 'assembling',
+        message: 'Spawning teammate runtimes (1)',
+        warnings: [
+          'Persisted deterministic bootstrap journal is unreadable because bootstrap-journal.jsonl is invalid, truncated, or inaccessible.',
+        ],
+      },
+    });
+
+    killSpy.mockRestore();
+  });
+
   it('ignores terminal bootstrap-state for runtime recovery projection', async () => {
     hoisted.files.set('/mock/teams/demo/bootstrap-state.json', {
       contents: JSON.stringify({

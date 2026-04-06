@@ -363,7 +363,11 @@ async function readBootstrapLockMetadata(teamName: string): Promise<BootstrapLoc
 }
 
 async function readBootstrapJournalWarnings(teamName: string): Promise<string[] | undefined> {
-  return (await inspectBootstrapJournal(teamName)).warnings;
+  const inspection = await inspectBootstrapJournal(teamName);
+  const warnings = [inspection.issue, ...(inspection.warnings ?? [])].filter(
+    (item): item is string => typeof item === 'string' && item.trim().length > 0
+  );
+  return warnings.length > 0 ? warnings : undefined;
 }
 
 async function inspectBootstrapJournal(teamName: string): Promise<BootstrapJournalInspection> {
@@ -435,6 +439,13 @@ async function inspectBootstrapJournal(teamName: string): Promise<BootstrapJourn
         return null;
       })
       .filter((item): item is string => Boolean(item));
+
+    if (lines.length > 0 && messages.length === 0) {
+      return {
+        issue:
+          'Persisted deterministic bootstrap journal is unreadable because bootstrap-journal.jsonl is invalid, truncated, or inaccessible.',
+      };
+    }
 
     return {
       warnings:
