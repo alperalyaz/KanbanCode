@@ -1254,7 +1254,6 @@ type RuntimeBootstrapSpec = {
     model?: string;
     effort?: EffortLevel;
     agentLanguage?: string;
-    skipPermissions?: boolean;
     worktree?: string | null;
     extraCliArgs?: string[];
   };
@@ -1302,9 +1301,6 @@ function buildDeterministicCreateBootstrapSpec(
               'NotebookEdit',
             ],
           }
-        : {}),
-      ...(request.skipPermissions !== undefined
-        ? { skipPermissions: request.skipPermissions }
         : {}),
       ...(request.worktree ? { worktree: request.worktree } : {}),
       ...(request.extraCliArgs ? { extraCliArgs: parseCliArgs(request.extraCliArgs) } : {}),
@@ -1359,9 +1355,6 @@ function buildDeterministicLaunchBootstrapSpec(
               'NotebookEdit',
             ],
           }
-        : {}),
-      ...(request.skipPermissions !== undefined
-        ? { skipPermissions: request.skipPermissions }
         : {}),
       ...(request.worktree ? { worktree: request.worktree } : {}),
       ...(request.extraCliArgs ? { extraCliArgs: parseCliArgs(request.extraCliArgs) } : {}),
