@@ -50,6 +50,8 @@ export const ClaudeLogsPanel = ({
     pendingNewCount,
     isAlive,
     filteredText,
+    totalGroupCount,
+    filteredGroupCount,
     showMoreVisible,
     searchQuery,
     setSearchQuery,
@@ -70,10 +72,17 @@ export const ClaudeLogsPanel = ({
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 pb-2">
         <span className="text-[11px] text-[var(--color-text-muted)]">
-          {data.total > 0 ? (
+          {totalGroupCount > 0 ? (
             <>
-              <span className="font-mono">{Math.min(data.total, data.lines.length)}</span> of{' '}
-              <span className="font-mono">{data.total}</span>
+              <span className="font-mono">{filteredGroupCount}</span> of{' '}
+              <span className="font-mono">{totalGroupCount}</span> groups
+              {data.total !== totalGroupCount ? (
+                <>
+                  {' '}
+                  <span aria-hidden="true">·</span> <span className="font-mono">{data.total}</span>{' '}
+                  raw lines
+                </>
+              ) : null}
             </>
           ) : isAlive ? (
             'No logs yet.'

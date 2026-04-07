@@ -19,6 +19,7 @@ import {
   setTeamClaudeLogsSidebarUiState,
 } from './sidebar/teamSidebarUiState';
 import { DEFAULT_CLAUDE_LOGS_FILTER } from './ClaudeLogsFilterPopover';
+import { parseStreamJsonToGroups } from '@renderer/utils/streamJsonParser';
 
 import type { ClaudeLogsFilterState } from './ClaudeLogsFilterPopover';
 import type { ClaudeLogsViewerState } from './CliLogsRichView';
@@ -59,6 +60,8 @@ export interface ClaudeLogsController {
   filteredText: string;
   online: boolean;
   badge: number | undefined;
+  totalGroupCount: number;
+  filteredGroupCount: number;
   showMoreVisible: boolean;
   lastLogPreview: LastLogPreview | null;
 
@@ -585,13 +588,14 @@ export function useClaudeLogsController(teamName: string): ClaudeLogsController 
 
   // ── Computed values ───────────────────────────────────────────────────
   const online = useMemo(() => isRecent(data.updatedAt), [data.updatedAt]);
-  const badge = data.total > 0 ? data.total : undefined;
   const showMoreVisible = data.hasMore || loadingMore;
 
   const lastLogPreview = useMemo(
     () => (data.lines.length > 0 ? extractLastLogPreview(data.lines) : null),
     [data.lines]
   );
+
+  const normalizedText = useMemo(() => normalizeToStreamJsonText(data.lines), [data.lines]);
 
   const filteredText = useMemo(() => {
     if (data.lines.length === 0) return '';
@@ -601,11 +605,19 @@ export function useClaudeLogsController(teamName: string): ClaudeLogsController 
       [...DEFAULT_CLAUDE_LOGS_FILTER.streams].every((s) => filter.streams.has(s)) &&
       [...DEFAULT_CLAUDE_LOGS_FILTER.kinds].every((k) => filter.kinds.has(k));
 
-    if (!searchQuery.trim() && isDefault) {
-      return normalizeToStreamJsonText(data.lines);
-    }
+    if (!searchQuery.trim() && isDefault) return normalizedText;
     return filterStreamJsonText(data.lines, searchQuery, filter);
-  }, [data.lines, searchQuery, filter]);
+  }, [data.lines, normalizedText, searchQuery, filter]);
+
+  const totalGroupCount = useMemo(
+    () => parseStreamJsonToGroups(normalizedText).length,
+    [normalizedText]
+  );
+  const filteredGroupCount = useMemo(
+    () => parseStreamJsonToGroups(filteredText).length,
+    [filteredText]
+  );
+  const badge = totalGroupCount > 0 ? totalGroupCount : undefined;
 
   // ── Container ref callback ────────────────────────────────────────────
   const containerRefCallback = useCallback((el: HTMLDivElement | null) => {
@@ -647,6 +659,8 @@ export function useClaudeLogsController(teamName: string): ClaudeLogsController 
     filteredText,
     online,
     badge,
+    totalGroupCount,
+    filteredGroupCount,
     showMoreVisible,
     lastLogPreview,
     searchQuery,
