@@ -9,7 +9,7 @@
  * - Handle JSON parse errors gracefully
  */
 
-import { getHomeDir, setClaudeBasePathOverride } from '@main/utils/pathDecoder';
+import { getClaudeBasePath, setClaudeBasePathOverride } from '@main/utils/pathDecoder';
 import { validateRegexPattern } from '@main/utils/regexValidation';
 import { createLogger } from '@shared/utils/logger';
 import * as fs from 'fs';
@@ -23,9 +23,11 @@ import type { SshConnectionProfile } from '@shared/types/api';
 
 const logger = createLogger('Service:ConfigManager');
 
-const CONFIG_DIR = path.join(getHomeDir(), '.claude');
 const CONFIG_FILENAME = 'claude-devtools-config.json';
-const DEFAULT_CONFIG_PATH = path.join(CONFIG_DIR, CONFIG_FILENAME);
+
+function getDefaultConfigPath(): string {
+  return path.join(getClaudeBasePath(), CONFIG_FILENAME);
+}
 
 // ===========================================================================
 // Types
@@ -377,7 +379,7 @@ export class ConfigManager {
   private triggerManager: TriggerManager;
 
   constructor(configPath?: string) {
-    this.configPath = configPath ?? DEFAULT_CONFIG_PATH;
+    this.configPath = configPath ?? getDefaultConfigPath();
     this.config = this.loadConfig();
     setClaudeBasePathOverride(this.config.general.claudeRootPath);
     this.triggerManager = new TriggerManager(this.config.notifications.triggers, () =>
