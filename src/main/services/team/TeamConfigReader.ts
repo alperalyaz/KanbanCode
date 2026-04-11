@@ -9,14 +9,14 @@ import {
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { getTeamFsWorkerClient } from './TeamFsWorkerClient';
-import { TeamMembersMetaStore } from './TeamMembersMetaStore';
-import { TeamMetaStore } from './TeamMetaStore';
 import {
   choosePreferredLaunchSnapshot,
   readBootstrapLaunchSnapshot,
 } from './TeamBootstrapStateReader';
+import { getTeamFsWorkerClient } from './TeamFsWorkerClient';
 import { normalizePersistedLaunchSnapshot } from './TeamLaunchStateEvaluator';
+import { TeamMembersMetaStore } from './TeamMembersMetaStore';
+import { TeamMetaStore } from './TeamMetaStore';
 
 import type { TeamConfig, TeamMember, TeamSummary, TeamSummaryMember } from '@shared/types';
 
@@ -48,18 +48,19 @@ interface LaunchStateSummary {
 async function readLaunchStateSummary(teamDir: string): Promise<LaunchStateSummary | null> {
   const bootstrapSnapshot = await readBootstrapLaunchSnapshot(path.basename(teamDir));
   const launchStatePath = path.join(teamDir, TEAM_LAUNCH_STATE_FILE);
-  let launchSnapshot = null;
-  try {
-    const stat = await fs.promises.stat(launchStatePath);
-    if (!stat.isFile() || stat.size > MAX_LAUNCH_STATE_BYTES) {
-      launchSnapshot = null;
-    } else {
+  const launchSnapshot = await (async () => {
+    try {
+      const stat = await fs.promises.stat(launchStatePath);
+      if (!stat.isFile() || stat.size > MAX_LAUNCH_STATE_BYTES) {
+        return null;
+      }
+
       const raw = await readFileUtf8WithTimeout(launchStatePath, PER_TEAM_READ_TIMEOUT_MS);
-      launchSnapshot = normalizePersistedLaunchSnapshot(path.basename(teamDir), JSON.parse(raw));
+      return normalizePersistedLaunchSnapshot(path.basename(teamDir), JSON.parse(raw));
+    } catch {
+      return null;
     }
-  } catch {
-    launchSnapshot = null;
-  }
+  })();
 
   const snapshot = choosePreferredLaunchSnapshot(bootstrapSnapshot, launchSnapshot);
   if (!snapshot) {

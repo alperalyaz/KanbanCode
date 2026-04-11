@@ -549,7 +549,7 @@ describe('TeamGraphAdapter particles', () => {
       'GPT-5.4 Mini · Medium'
     );
     expect(graph.nodes.find((node) => node.id === 'member:my-team:alice')?.runtimeLabel).toBe(
-      'Anthropic · sonnet · High'
+      'Anthropic · Sonnet 4.6 · High'
     );
   });
 });

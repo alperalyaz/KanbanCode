@@ -21,6 +21,13 @@ const { mockAddTeamNotification } = vi.hoisted(() => ({
 const { mockGetMembersMeta } = vi.hoisted(() => ({
   mockGetMembersMeta: vi.fn(),
 }));
+const { mockTeamDataWorkerClient } = vi.hoisted(() => ({
+  mockTeamDataWorkerClient: {
+    isAvailable: vi.fn(),
+    getTeamData: vi.fn(),
+    findLogsForTask: vi.fn(),
+  },
+}));
 vi.mock('@main/services/infrastructure/NotificationManager', () => ({
   NotificationManager: {
     getInstance: vi.fn().mockReturnValue({
@@ -32,6 +39,9 @@ vi.mock('@main/services/team/TeamMembersMetaStore', () => ({
   TeamMembersMetaStore: vi.fn().mockImplementation(() => ({
     getMembers: mockGetMembersMeta,
   })),
+}));
+vi.mock('@main/services/team/TeamDataWorkerClient', () => ({
+  getTeamDataWorkerClient: () => mockTeamDataWorkerClient,
 }));
 
 import {
@@ -182,6 +192,9 @@ describe('ipc teams handlers', () => {
     vi.clearAllMocks();
     mockGetMembersMeta.mockReset();
     mockGetMembersMeta.mockResolvedValue([]);
+    mockTeamDataWorkerClient.isAvailable.mockReturnValue(false);
+    mockTeamDataWorkerClient.getTeamData.mockReset();
+    mockTeamDataWorkerClient.findLogsForTask.mockReset();
     initializeTeamHandlers(service as never, provisioningService as never);
     registerTeamHandlers(ipcMain as never);
   });

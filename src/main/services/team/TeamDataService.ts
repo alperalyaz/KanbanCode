@@ -15,9 +15,9 @@ import {
   wrapAgentBlock,
 } from '@shared/constants/agentBlocks';
 import { getMemberColorByName } from '@shared/constants/memberColors';
+import { classifyIdleNotificationText } from '@shared/utils/idleNotificationSemantics';
 import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
-import { classifyIdleNotificationText } from '@shared/utils/idleNotificationSemantics';
 import { getKanbanColumnFromReviewState, normalizeReviewState } from '@shared/utils/reviewState';
 import { buildStandaloneSlashCommandMeta } from '@shared/utils/slashCommands';
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
@@ -31,13 +31,13 @@ import * as path from 'path';
 
 import { gitIdentityResolver } from '../parsing/GitIdentityResolver';
 
-import { atomicWriteAsync } from './atomicWrite';
 import {
   areLeadSessionFileSignaturesEqual,
-  LeadSessionParseCache,
   type LeadSessionFileSignature,
+  LeadSessionParseCache,
   type LeadSessionParseCacheKey,
 } from './cache/LeadSessionParseCache';
+import { atomicWriteAsync } from './atomicWrite';
 import { extractLeadSessionMessagesFromJsonl } from './leadSessionMessageExtractor';
 import { buildTaskChangePresenceDescriptor } from './taskChangePresenceUtils';
 import { TeamConfigReader } from './TeamConfigReader';
@@ -62,9 +62,9 @@ import type {
   CreateTaskRequest,
   GlobalTask,
   InboxMessage,
-  MessagesPage,
   KanbanColumnId,
   KanbanState,
+  MessagesPage,
   ResolvedTeamMember,
   SendMessageRequest,
   SendMessageResult,
@@ -134,11 +134,11 @@ function normalizePassiveUserReplyLinkText(value: string | undefined): string {
 
 function extractPassiveUserPeerSummaryBody(text: string): string | null {
   const classified = classifyIdleNotificationText(text);
-  if (!classified || classified.primaryKind !== 'heartbeat' || !classified.peerSummary) {
+  if (classified?.primaryKind !== 'heartbeat' || !classified.peerSummary) {
     return null;
   }
 
-  const match = classified.peerSummary.match(/^\[to\s+user\]\s*(.*)$/i);
+  const match = /^\[to\s+user\]\s*(.*)$/i.exec(classified.peerSummary);
   if (!match) {
     return null;
   }
@@ -677,7 +677,7 @@ export class TeamDataService {
     const runWithConcurrencyLimit = (() => {
       const limit = 2;
       let active = 0;
-      const queue: Array<() => void> = [];
+      const queue: (() => void)[] = [];
       const releaseNext = (): void => {
         if (active >= limit) return;
         const next = queue.shift();
@@ -811,8 +811,8 @@ export class TeamDataService {
     if (metaMembersStepResult.warning) warnings.push(metaMembersStepResult.warning);
     if (kanbanStateStepResult.warning) warnings.push(kanbanStateStepResult.warning);
 
-    let tasks: TeamTask[] = tasksStepResult.value;
-    let inboxNames: string[] = inboxNamesStepResult.value;
+    const tasks: TeamTask[] = tasksStepResult.value;
+    const inboxNames: string[] = inboxNamesStepResult.value;
     let messages: InboxMessage[] = messagesStepResult.value;
     const leadTexts: InboxMessage[] = leadTextsStepResult.value;
     const sentMessages: InboxMessage[] = sentMessagesStepResult.value;
@@ -2064,8 +2064,37 @@ export class TeamDataService {
       return true;
     }
 
-    return /^(принято|принял|приняла|ок|ok|okay|на связи|понял|поняла|roger|ack)(?:[ ,.-]+(на связи|остаюсь на связи|жду(?: [^.!?]+)?|ждём(?: [^.!?]+)?|готов(?:а)?(?: [^.!?]+)?|буду ждать(?: [^.!?]+)?))?$/.test(
-      normalized
+    const startsWithAckPrefix = Array.from(exactMatches).find((prefix) => {
+      if (!normalized.startsWith(prefix)) {
+        return false;
+      }
+      const remainder = normalized.slice(prefix.length);
+      return remainder.length > 0 && /^[ ,.-]+/.test(remainder);
+    });
+    if (!startsWithAckPrefix) {
+      return false;
+    }
+
+    const qualifier = normalized
+      .slice(startsWithAckPrefix.length)
+      .replace(/^[ ,.-]+/, '')
+      .trim();
+    if (!qualifier) {
+      return true;
+    }
+
+    const matchesQualifierWithOptionalDetail = (phrase: string): boolean =>
+      qualifier === phrase ||
+      (qualifier.startsWith(`${phrase} `) && !/[.!?]/.test(qualifier.slice(phrase.length + 1)));
+
+    return (
+      qualifier === 'на связи' ||
+      qualifier === 'остаюсь на связи' ||
+      matchesQualifierWithOptionalDetail('жду') ||
+      matchesQualifierWithOptionalDetail('ждём') ||
+      matchesQualifierWithOptionalDetail('готов') ||
+      matchesQualifierWithOptionalDetail('готова') ||
+      matchesQualifierWithOptionalDetail('буду ждать')
     );
   }
 

@@ -1450,10 +1450,14 @@ async function writeDeterministicBootstrapSpecFile(spec: RuntimeBootstrapSpec): 
   return filePath;
 }
 
-async function removeDeterministicBootstrapSpecFile(filePath: string | null): Promise<void> {
+async function removeDeterministicBootstrapTempFile(filePath: string | null): Promise<void> {
   if (!filePath) return;
   await fs.promises.rm(filePath, { force: true }).catch(() => {});
   await fs.promises.rmdir(path.dirname(filePath)).catch(() => {});
+}
+
+async function removeDeterministicBootstrapSpecFile(filePath: string | null): Promise<void> {
+  await removeDeterministicBootstrapTempFile(filePath);
 }
 
 async function writeDeterministicBootstrapUserPromptFile(prompt: string): Promise<string> {
@@ -1469,9 +1473,7 @@ async function writeDeterministicBootstrapUserPromptFile(prompt: string): Promis
 }
 
 async function removeDeterministicBootstrapUserPromptFile(filePath: string | null): Promise<void> {
-  if (!filePath) return;
-  await fs.promises.rm(filePath, { force: true }).catch(() => {});
-  await fs.promises.rmdir(path.dirname(filePath)).catch(() => {});
+  await removeDeterministicBootstrapTempFile(filePath);
 }
 
 function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string {
@@ -1577,7 +1579,7 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
 function buildLeadRosterContextBlock(
   teamName: string,
   leadName: string,
-  teammates: Array<{ name: string; role?: string }>
+  teammates: { name: string; role?: string }[]
 ): string | null {
   if (teammates.length === 0) return null;
 
