@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TeamGraphAdapter } from '@renderer/features/agent-graph/adapters/TeamGraphAdapter';
 
@@ -59,6 +59,15 @@ function findNode(graph: GraphDataPort, nodeId: string) {
 }
 
 describe('TeamGraphAdapter particles', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-28T19:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('creates a message particle for a new incoming message from the newest message set', () => {
     const adapter = TeamGraphAdapter.create();
     const baseline = createBaseTeamData();
@@ -133,6 +142,80 @@ describe('TeamGraphAdapter particles', () => {
       kind: 'task_comment',
       label: '💬 Need clarification on the acceptance criteria befor…',
     });
+  });
+
+  it('does not replay old inbox messages that arrive after the graph already opened', () => {
+    vi.setSystemTime(new Date('2026-03-28T19:00:10.000Z'));
+
+    const adapter = TeamGraphAdapter.create();
+    adapter.adapt(createBaseTeamData(), 'my-team');
+
+    const graph = adapter.adapt(
+      createBaseTeamData({
+        messages: [
+          {
+            from: 'alice',
+            to: 'team-lead',
+            text: 'Old backlog message',
+            timestamp: '2026-03-28T19:00:01.000Z',
+            read: false,
+            messageId: 'msg-old',
+          },
+        ],
+      }),
+      'my-team'
+    );
+
+    expect(graph.particles).toHaveLength(0);
+  });
+
+  it('does not replay old task comments that appear after the graph already opened', () => {
+    vi.setSystemTime(new Date('2026-03-28T19:00:10.000Z'));
+
+    const adapter = TeamGraphAdapter.create();
+    adapter.adapt(
+      createBaseTeamData({
+        tasks: [
+          {
+            id: 'task-old-comment',
+            displayId: '#9',
+            subject: 'Review backlog',
+            owner: 'alice',
+            status: 'in_progress',
+            comments: [],
+            reviewState: 'none',
+          } as TeamTaskWithKanban,
+        ],
+      }),
+      'my-team'
+    );
+
+    const graph = adapter.adapt(
+      createBaseTeamData({
+        tasks: [
+          {
+            id: 'task-old-comment',
+            displayId: '#9',
+            subject: 'Review backlog',
+            owner: 'alice',
+            status: 'in_progress',
+            comments: [
+              {
+                id: 'comment-old',
+                author: 'alice',
+                text: 'Old backlog comment',
+                createdAt: '2026-03-28T19:00:01.000Z',
+                type: 'regular',
+              },
+            ],
+            reviewState: 'none',
+          } as TeamTaskWithKanban,
+        ],
+      }),
+      'my-team'
+    );
+
+    expect(graph.particles).toHaveLength(0);
   });
 
   it('creates a synthetic message edge for comments from non-owner participants', () => {
@@ -685,6 +768,51 @@ describe('TeamGraphAdapter particles', () => {
     expect(inProgressGraph.edges.filter((edge) => edge.type === 'blocking')).toHaveLength(1);
     expect(findNode(inProgressGraph, 'task:my-team:task-b')?.isBlocked).toBe(true);
     expect(findNode(completedGraph, 'task:my-team:task-b')?.isBlocked).toBe(false);
+  });
+
+  it('aggregates blocking edges through overflow stacks so hidden blockers stay visible', () => {
+    const adapter = TeamGraphAdapter.create();
+    const graph = adapter.adapt(
+      createBaseTeamData({
+        tasks: [
+          ...Array.from({ length: 7 }, (_, index) => ({
+            id: `task-a-${index + 1}`,
+            displayId: `#A${index + 1}`,
+            subject: `Alice task ${index + 1}`,
+            owner: 'alice',
+            status: 'pending',
+            reviewState: 'none',
+            blocks: index >= 5 ? ['task-b-1'] : [],
+          })),
+          {
+            id: 'task-b-1',
+            displayId: '#B1',
+            subject: 'Visible blocked task',
+            owner: 'bob',
+            status: 'pending',
+            reviewState: 'none',
+            blockedBy: ['task-a-6', 'task-a-7'],
+          } as TeamTaskWithKanban,
+        ] as TeamTaskWithKanban[],
+      }),
+      'my-team'
+    );
+
+    const overflowNode = graph.nodes.find(
+      (node) => node.kind === 'task' && node.isOverflowStack && node.ownerId === 'member:my-team:alice'
+    );
+    const blockingEdges = graph.edges.filter((edge) => edge.type === 'blocking');
+
+    expect(overflowNode).toBeDefined();
+    expect(blockingEdges).toContainEqual(
+      expect.objectContaining({
+        source: overflowNode?.id,
+        target: 'task:my-team:task-b-1',
+        aggregateCount: 2,
+        sourceTaskIds: ['task-a-6', 'task-a-7'],
+        targetTaskIds: ['task-b-1'],
+      })
+    );
   });
 
   it('adds compact review handoff metadata for active review tasks', () => {

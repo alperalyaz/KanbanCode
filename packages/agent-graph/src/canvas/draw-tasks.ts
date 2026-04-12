@@ -266,9 +266,18 @@ function drawOverflowStack(
       ? 'rgba(15, 20, 40, 0.78)'
       : COLORS.cardBg;
   ctx.fill();
-  ctx.strokeStyle = hexWithAlpha(COLORS.taskPending, isSelected ? 0.85 : 0.55);
-  ctx.lineWidth = isSelected ? 2 : 1;
+  ctx.strokeStyle = node.isBlocked
+    ? hexWithAlpha(COLORS.edgeBlocking, isSelected ? 0.85 : 0.65)
+    : hexWithAlpha(COLORS.taskPending, isSelected ? 0.85 : 0.55);
+  ctx.lineWidth = node.isBlocked ? (isSelected ? 2.4 : 1.5) : isSelected ? 2 : 1;
   ctx.stroke();
+
+  if (node.isBlocked) {
+    ctx.fillStyle = hexWithAlpha(COLORS.edgeBlocking, 0.6);
+    ctx.beginPath();
+    ctx.roundRect(-halfW, -halfH, 4, TASK_PILL.height, [r, 0, 0, r]);
+    ctx.fill();
+  }
 
   ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'left';

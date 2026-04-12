@@ -39,6 +39,7 @@ export interface GraphControlsProps {
   teamName: string;
   teamColor?: string;
   isAlive?: boolean;
+  showBlockingHint?: boolean;
 }
 
 export function GraphControls({
@@ -53,6 +54,7 @@ export function GraphControls({
   teamName,
   teamColor,
   isAlive,
+  showBlockingHint = false,
 }: GraphControlsProps): React.JSX.Element {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
@@ -203,6 +205,21 @@ export function GraphControls({
           <ToolbarButton onClick={onZoomIn} icon={<ZoomIn size={14} />} />
         </div>
       </div>
+
+      {showBlockingHint && (
+        <div className="absolute bottom-3 left-3 z-10 pointer-events-none">
+          <div
+            className="pointer-events-auto rounded-lg px-2.5 py-1 text-[10px] font-mono backdrop-blur-sm"
+            style={{
+              background: 'rgba(40, 10, 18, 0.78)',
+              border: '1px solid rgba(239, 68, 68, 0.18)',
+              color: 'rgba(254, 202, 202, 0.95)',
+            }}
+          >
+            Red lines - blockers, click to inspect
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -28,25 +28,15 @@ function addNodeAndIncidentEdges(
 
 export function buildFocusState(
   selectedNodeId: string | null,
+  selectedEdgeId: string | null,
   nodes: GraphNode[],
   edges: GraphEdge[]
 ): GraphFocusState {
-  if (!selectedNodeId) {
+  if (!selectedNodeId && !selectedEdgeId) {
     return { focusNodeIds: null, focusEdgeIds: null };
   }
 
-  const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null;
-  if (
-    !selectedNode ||
-    selectedNode.kind === 'process' ||
-    selectedNode.kind === 'crossteam' ||
-    selectedNode.isOverflowStack
-  ) {
-    return { focusNodeIds: null, focusEdgeIds: null };
-  }
-
-  const nodeIds = new Set<string>([selectedNodeId]);
-  const edgeIds = new Set<string>();
+  const nodeById = new Map(nodes.map((node) => [node.id, node] as const));
   const adjacency = new Map<string, GraphEdge[]>();
 
   for (const edge of edges) {
@@ -59,20 +49,117 @@ export function buildFocusState(
     adjacency.set(edge.target, targetEdges);
   }
 
+  if (selectedNodeId == null && selectedEdgeId != null) {
+    const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId) ?? null;
+    if (!selectedEdge || selectedEdge.type !== 'blocking') {
+      return { focusNodeIds: null, focusEdgeIds: null };
+    }
+
+    const sourceNode = nodeById.get(selectedEdge.source);
+    const targetNode = nodeById.get(selectedEdge.target);
+    if (!sourceNode || !targetNode) {
+      return { focusNodeIds: null, focusEdgeIds: null };
+    }
+
+    const nodeIds = new Set<string>([selectedEdge.source, selectedEdge.target]);
+    const edgeIds = new Set<string>([selectedEdge.id]);
+    const queue = [selectedEdge.source, selectedEdge.target];
+
+    while (queue.length > 0) {
+      const currentNodeId = queue.shift()!;
+      const currentNode = nodeById.get(currentNodeId);
+      if (!currentNode || currentNode.kind !== 'task') {
+        continue;
+      }
+
+      for (const edge of adjacency.get(currentNodeId) ?? []) {
+        if (edge.type !== 'blocking') {
+          continue;
+        }
+        if (!edgeIds.has(edge.id)) {
+          edgeIds.add(edge.id);
+        }
+        const neighborId = edge.source === currentNodeId ? edge.target : edge.source;
+        if (!nodeIds.has(neighborId)) {
+          nodeIds.add(neighborId);
+          queue.push(neighborId);
+        }
+      }
+    }
+
+    for (const nodeId of Array.from(nodeIds)) {
+      const node = nodeById.get(nodeId);
+      if (!node || node.kind !== 'task') {
+        continue;
+      }
+      if (node.ownerId) {
+        nodeIds.add(node.ownerId);
+      }
+      if (node.reviewerName) {
+        const reviewerNode = nodes.find(
+          (candidate) =>
+            candidate.kind === 'member' &&
+            candidate.domainRef.kind === 'member' &&
+            candidate.domainRef.memberName === node.reviewerName
+        );
+        if (reviewerNode) {
+          nodeIds.add(reviewerNode.id);
+        }
+      }
+      for (const edge of adjacency.get(node.id) ?? []) {
+        if (edge.type === 'ownership') {
+          edgeIds.add(edge.id);
+          nodeIds.add(edge.source);
+          nodeIds.add(edge.target);
+        }
+      }
+    }
+
+    for (const nodeId of Array.from(nodeIds)) {
+      const node = nodeById.get(nodeId);
+      if (node?.kind !== 'member') continue;
+      for (const edge of adjacency.get(nodeId) ?? []) {
+        if (edge.type === 'parent-child') {
+          edgeIds.add(edge.id);
+          nodeIds.add(edge.source);
+          nodeIds.add(edge.target);
+        }
+      }
+    }
+
+    return {
+      focusNodeIds: nodeIds,
+      focusEdgeIds: edgeIds,
+    };
+  }
+
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null;
+  if (
+    !selectedNode ||
+    selectedNode.kind === 'process' ||
+    selectedNode.kind === 'crossteam' ||
+    selectedNode.isOverflowStack
+  ) {
+    return { focusNodeIds: null, focusEdgeIds: null };
+  }
+
+  const nodeIds = new Set<string>([selectedNode.id]);
+  const edgeIds = new Set<string>();
+
   const selectedMemberName =
     selectedNode.domainRef.kind === 'member' || selectedNode.domainRef.kind === 'lead'
       ? selectedNode.domainRef.memberName
       : null;
 
   if (selectedNode.kind === 'lead') {
-    addNodeAndIncidentEdges(nodeIds, edgeIds, selectedNodeId, adjacency);
+    addNodeAndIncidentEdges(nodeIds, edgeIds, selectedNode.id, adjacency);
   } else if (selectedNode.kind === 'member') {
-    addNodeAndIncidentEdges(nodeIds, edgeIds, selectedNodeId, adjacency);
+    addNodeAndIncidentEdges(nodeIds, edgeIds, selectedNode.id, adjacency);
 
     for (const node of nodes) {
       if (node.kind !== 'task') continue;
       if (node.isOverflowStack) {
-        if (node.ownerId === selectedNodeId) {
+        if (node.ownerId === selectedNode.id) {
           nodeIds.add(node.id);
           for (const edge of adjacency.get(node.id) ?? []) {
             edgeIds.add(edge.id);
@@ -81,7 +168,7 @@ export function buildFocusState(
         continue;
       }
 
-      const isOwnedTask = node.ownerId === selectedNodeId;
+      const isOwnedTask = node.ownerId === selectedNode.id;
       const isReviewTask =
         selectedMemberName != null &&
         node.reviewerName === selectedMemberName &&
@@ -115,7 +202,7 @@ export function buildFocusState(
       }
     }
 
-    for (const edge of adjacency.get(selectedNodeId) ?? []) {
+    for (const edge of adjacency.get(selectedNode.id) ?? []) {
       if (edge.type === 'ownership' || edge.type === 'blocking') {
         edgeIds.add(edge.id);
         nodeIds.add(edge.source);
@@ -125,7 +212,7 @@ export function buildFocusState(
   }
 
   const focusedMemberIds = Array.from(nodeIds).filter((nodeId) => {
-    const node = nodes.find((candidate) => candidate.id === nodeId);
+    const node = nodeById.get(nodeId);
     return node?.kind === 'member';
   });
 

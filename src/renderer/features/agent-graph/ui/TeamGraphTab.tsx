@@ -10,6 +10,7 @@ import { TeamSidebarHost } from '@renderer/components/team/sidebar/TeamSidebarHo
 
 import { useTeamGraphAdapter } from '../adapters/useTeamGraphAdapter';
 
+import { GraphBlockingEdgePopover } from './GraphBlockingEdgePopover';
 import { GraphNodePopover } from './GraphNodePopover';
 
 import type { GraphDomainRef, GraphEventPort, GraphNode } from '@claude-teams/agent-graph';
@@ -116,6 +117,17 @@ export const TeamGraphTab = ({
           className="size-full"
           suspendAnimation={!isActive}
           onRequestFullscreen={() => setFullscreen(true)}
+          renderEdgeOverlay={({ edge, sourceNode, targetNode, onClose, onSelectNode }) => (
+            <GraphBlockingEdgePopover
+              teamName={teamName}
+              edge={edge}
+              sourceNode={sourceNode}
+              targetNode={targetNode}
+              onClose={onClose}
+              onSelectNode={onSelectNode}
+              onOpenTaskDetail={dispatchOpenTask}
+            />
+          )}
           renderOverlay={({ node, onClose }) => (
             <GraphNodePopover
               node={node}

@@ -18,7 +18,7 @@ import {
 import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 import { isLeadMember } from '@shared/utils/leadDetection';
 
-import { collapseOverflowStacks } from '../utils/collapseOverflowStacks';
+import { collapseOverflowStacksWithMeta } from '../utils/collapseOverflowStacks';
 import {
   isTaskBlocked,
   isTaskInReviewCycle,
@@ -47,8 +47,10 @@ export class TeamGraphAdapter {
   readonly #seenRelated = new Set<string>();
   readonly #seenMessageIds = new Set<string>();
   #initialMessagesSeen = false;
+  #messageParticleCutoffMs: number | null = null;
   readonly #seenCommentCounts = new Map<string, number>();
   #initialCommentsSeen = false;
+  #commentParticleCutoffMs: number | null = null;
 
   // ─── Static factory ──────────────────────────────────────────────────────
   static create(): TeamGraphAdapter {
@@ -84,8 +86,10 @@ export class TeamGraphAdapter {
     if (teamName !== this.#lastTeamName) {
       this.#seenMessageIds.clear();
       this.#initialMessagesSeen = false;
+      this.#messageParticleCutoffMs = null;
       this.#seenCommentCounts.clear();
       this.#initialCommentsSeen = false;
+      this.#commentParticleCutoffMs = null;
     }
 
     this.#lastTeamName = teamName;
@@ -152,8 +156,10 @@ export class TeamGraphAdapter {
     this.#seenRelated.clear();
     this.#seenMessageIds.clear();
     this.#initialMessagesSeen = false;
+    this.#messageParticleCutoffMs = null;
     this.#seenCommentCounts.clear();
     this.#initialCommentsSeen = false;
+    this.#commentParticleCutoffMs = null;
     this.#lastTeamName = '';
   }
 
@@ -161,6 +167,14 @@ export class TeamGraphAdapter {
 
   static #getLeadMemberName(data: TeamData, teamName: string): string {
     return data.members.find((member) => isLeadMember(member))?.name ?? `${teamName}-lead`;
+  }
+
+  static #isBeforeParticleCutoff(timestamp: string | undefined, cutoffMs: number | null): boolean {
+    if (!timestamp || cutoffMs == null) {
+      return false;
+    }
+    const parsed = Date.parse(timestamp);
+    return Number.isFinite(parsed) && parsed < cutoffMs;
   }
 
   static #getRuntimeLabel(
@@ -425,7 +439,8 @@ export class TeamGraphAdapter {
       });
     }
 
-    const visibleTaskNodes = collapseOverflowStacks(rawTaskNodes, teamName, 6);
+    const { visibleNodes: visibleTaskNodes, visibleNodeIdByTaskId } =
+      collapseOverflowStacksWithMeta(rawTaskNodes, teamName, 6);
     const visibleTaskIds = new Set(
       visibleTaskNodes.flatMap((taskNode) =>
         taskNode.domainRef.kind === 'task' ? [taskNode.domainRef.taskId] : []
@@ -444,36 +459,59 @@ export class TeamGraphAdapter {
       });
     }
 
-    const seenBlockingEdges = new Set<string>();
+    const seenBlockingRelations = new Set<string>();
+    const blockingEdges = new Map<
+      string,
+      {
+        source: string;
+        target: string;
+        aggregateCount: number;
+        sourceTaskIds: Set<string>;
+        targetTaskIds: Set<string>;
+      }
+    >();
+    const addBlockingRelation = (blockerId: string, blockedId: string): void => {
+      if (blockerId === blockedId) return;
+      const rawRelationKey = `${blockerId}->${blockedId}`;
+      if (seenBlockingRelations.has(rawRelationKey)) return;
+      seenBlockingRelations.add(rawRelationKey);
+
+      const sourceNodeId = visibleNodeIdByTaskId.get(blockerId);
+      const targetNodeId = visibleNodeIdByTaskId.get(blockedId);
+      if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) {
+        return;
+      }
+
+      const edgeId = TeamGraphAdapter.#buildBlockingEdgeId(sourceNodeId, targetNodeId);
+      const existing = blockingEdges.get(edgeId);
+      if (existing) {
+        existing.aggregateCount += 1;
+        existing.sourceTaskIds.add(blockerId);
+        existing.targetTaskIds.add(blockedId);
+        return;
+      }
+      blockingEdges.set(edgeId, {
+        source: sourceNodeId,
+        target: targetNodeId,
+        aggregateCount: 1,
+        sourceTaskIds: new Set([blockerId]),
+        targetTaskIds: new Set([blockedId]),
+      });
+    };
+
     for (const task of data.tasks) {
-      if (task.status === 'deleted' || !visibleTaskIds.has(task.id)) continue;
+      if (task.status === 'deleted') continue;
       const taskNodeId = `task:${teamName}:${task.id}`;
 
       for (const blockerId of task.blockedBy ?? []) {
-        if (!visibleTaskIds.has(blockerId)) continue;
-        const edgeId = TeamGraphAdapter.#buildBlockingEdgeId(teamName, blockerId, task.id);
-        if (seenBlockingEdges.has(edgeId)) continue;
-        seenBlockingEdges.add(edgeId);
-        edges.push({
-          id: edgeId,
-          source: `task:${teamName}:${blockerId}`,
-          target: taskNodeId,
-          type: 'blocking',
-        });
+        addBlockingRelation(blockerId, task.id);
       }
 
       for (const blockedId of task.blocks ?? []) {
-        if (!visibleTaskIds.has(blockedId)) continue;
-        const edgeId = TeamGraphAdapter.#buildBlockingEdgeId(teamName, task.id, blockedId);
-        if (seenBlockingEdges.has(edgeId)) continue;
-        seenBlockingEdges.add(edgeId);
-        edges.push({
-          id: edgeId,
-          source: taskNodeId,
-          target: `task:${teamName}:${blockedId}`,
-          type: 'blocking',
-        });
+        addBlockingRelation(task.id, blockedId);
       }
+
+      if (!visibleTaskIds.has(task.id)) continue;
 
       for (const relatedId of task.related ?? []) {
         if (!visibleTaskIds.has(relatedId)) continue;
@@ -488,6 +526,23 @@ export class TeamGraphAdapter {
         });
       }
     }
+
+    edges.push(
+      ...Array.from(blockingEdges.entries()).map(([edgeId, edge]) => ({
+        id: edgeId,
+        source: edge.source,
+        target: edge.target,
+        type: 'blocking' as const,
+        aggregateCount: edge.aggregateCount,
+        sourceTaskIds: Array.from(edge.sourceTaskIds),
+        targetTaskIds: Array.from(edge.targetTaskIds),
+        label:
+          edge.aggregateCount > 1 &&
+          (edge.source.includes(':overflow:') || edge.target.includes(':overflow:'))
+            ? `${edge.aggregateCount} hidden blocking links`
+            : undefined,
+      }))
+    );
   }
 
   #buildProcessNodes(
@@ -539,6 +594,7 @@ export class TeamGraphAdapter {
     // This prevents old messages from spawning particles when the graph opens.
     if (!this.#initialMessagesSeen) {
       this.#initialMessagesSeen = true;
+      this.#messageParticleCutoffMs = Date.now();
       for (const msg of ordered) {
         const msgKey = TeamGraphAdapter.#getMessageParticleKey(msg);
         this.#seenMessageIds.add(msgKey);
@@ -560,6 +616,9 @@ export class TeamGraphAdapter {
       const msgKey = TeamGraphAdapter.#getMessageParticleKey(msg);
       if (this.#seenMessageIds.has(msgKey)) continue;
       this.#seenMessageIds.add(msgKey);
+      if (TeamGraphAdapter.#isBeforeParticleCutoff(msg.timestamp, this.#messageParticleCutoffMs)) {
+        continue;
+      }
 
       // Skip comment notifications — #buildCommentParticles handles them with real text
       if (msg.summary?.startsWith('Comment on ')) continue;
@@ -659,6 +718,7 @@ export class TeamGraphAdapter {
     // This prevents pre-existing comments from spawning particles when the graph opens.
     if (!this.#initialCommentsSeen) {
       this.#initialCommentsSeen = true;
+      this.#commentParticleCutoffMs = Date.now();
       for (const task of data.tasks) {
         this.#seenCommentCounts.set(task.id, task.comments?.length ?? 0);
       }
@@ -681,6 +741,14 @@ export class TeamGraphAdapter {
         for (let index = prevCount; index < currentCount; index += 1) {
           const newComment = task.comments?.[index];
           if (!newComment) continue;
+          if (
+            TeamGraphAdapter.#isBeforeParticleCutoff(
+              newComment.createdAt,
+              this.#commentParticleCutoffMs
+            )
+          ) {
+            continue;
+          }
           const authorNodeId = TeamGraphAdapter.#resolveParticipantId(
             newComment.author,
             teamName,
@@ -726,8 +794,8 @@ export class TeamGraphAdapter {
 
   // ─── Static mappers ──────────────────────────────────────────────────────
 
-  static #buildBlockingEdgeId(teamName: string, blockerId: string, blockedId: string): string {
-    return `edge:block:task:${teamName}:${blockerId}:task:${teamName}:${blockedId}`;
+  static #buildBlockingEdgeId(sourceNodeId: string, targetNodeId: string): string {
+    return `edge:block:${sourceNodeId}:${targetNodeId}`;
   }
 
   static #buildMemberException(

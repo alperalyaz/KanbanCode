@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { collapseOverflowStacks } from '@renderer/features/agent-graph/utils/collapseOverflowStacks';
+import {
+  collapseOverflowStacks,
+  collapseOverflowStacksWithMeta,
+} from '@renderer/features/agent-graph/utils/collapseOverflowStacks';
 
 import type { GraphNode } from '@claude-teams/agent-graph';
 
@@ -72,5 +75,17 @@ describe('collapseOverflowStacks', () => {
         columnKey: 'todo',
       },
     });
+  });
+
+  it('returns a visible-node mapping for hidden tasks behind the stack', () => {
+    const nodes = Array.from({ length: 7 }, (_, index) => makeTaskNode(`task-${index + 1}`));
+
+    const result = collapseOverflowStacksWithMeta(nodes, 'my-team', 6);
+    const stackNode = result.visibleNodes.find((node) => node.isOverflowStack);
+
+    expect(stackNode).toBeDefined();
+    expect(result.visibleNodeIdByTaskId.get('task-1')).toBe('task:my-team:task-1');
+    expect(result.visibleNodeIdByTaskId.get('task-6')).toBe(stackNode?.id);
+    expect(result.visibleNodeIdByTaskId.get('task-7')).toBe(stackNode?.id);
   });
 });

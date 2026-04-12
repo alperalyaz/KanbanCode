@@ -155,6 +155,12 @@ export interface GraphEdge {
   label?: string;
   /** Edge color override */
   color?: string;
+  /** Number of aggregated raw relations behind this visual edge */
+  aggregateCount?: number;
+  /** Raw source-side task ids represented by this visual edge */
+  sourceTaskIds?: string[];
+  /** Raw target-side task ids represented by this visual edge */
+  targetTaskIds?: string[];
 }
 
 // ─── Graph Particle ──────────────────────────────────────────────────────────

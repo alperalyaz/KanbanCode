@@ -218,6 +218,8 @@ export const HIT_DETECTION = {
   agentPadding: 8,
   /** Task pill hit area padding */
   taskPadding: 4,
+  /** Extra padding around curved edges for easier inspection */
+  edgePadding: 6,
 } as const;
 
 // ─── Background ─────────────────────────────────────────────────────────────

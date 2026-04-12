@@ -75,6 +75,8 @@ export function drawEdges(
   _time: number,
   hasActiveParticles: Set<string>,
   focusEdgeIds?: ReadonlySet<string> | null,
+  hoveredEdgeId?: string | null,
+  selectedEdgeId?: string | null,
 ): void {
   for (const edge of edges) {
     const source = nodeMap.get(edge.source);
@@ -84,23 +86,27 @@ export function drawEdges(
 
     const style = EDGE_STYLES[edge.type] ?? EDGE_STYLES['parent-child'];
     const isActive = hasActiveParticles.has(edge.id);
+    const isSelected = selectedEdgeId === edge.id;
+    const isHovered = !isSelected && hoveredEdgeId === edge.id;
     // Pulse alpha when particles are travelling: base 0.3 + 0.2 * sin wave
     const alpha = isActive
       ? BEAM.activeAlpha + 0.2 * Math.sin(_time * 6)
       : BEAM.idleAlpha;
     const focusAlpha = focusEdgeIds && !focusEdgeIds.has(edge.id) ? 0.1 : 1;
+    const interactionAlpha = isSelected ? 0.95 : isHovered ? 0.6 : 0;
+    const finalAlpha = Math.max(alpha * focusAlpha, interactionAlpha);
 
-    if (alpha * focusAlpha < MIN_VISIBLE_OPACITY) continue;
+    if (finalAlpha < MIN_VISIBLE_OPACITY) continue;
 
     const cp = computeControlPoints(source.x, source.y, target.x, target.y);
 
     ctx.save();
-    ctx.globalAlpha = alpha * focusAlpha;
+    ctx.globalAlpha = finalAlpha;
 
     // Subtle glow pass when edge has active particles
-    if (isActive) {
+    if (isActive || isSelected || isHovered) {
       ctx.shadowColor = edge.color ?? style.color;
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = isSelected ? 16 : isHovered ? 10 : 12;
     }
 
     // Draw tapered bezier
@@ -119,7 +125,7 @@ export function drawEdges(
 
     // Arrow for blocking edges
     if (edge.type === 'blocking') {
-      drawArrowHead(ctx, cp, target.x, target.y, style.color, alpha);
+      drawArrowHead(ctx, cp, target.x, target.y, style.color, finalAlpha);
     }
 
     ctx.restore();

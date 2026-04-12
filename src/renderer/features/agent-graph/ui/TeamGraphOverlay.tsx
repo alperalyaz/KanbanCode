@@ -10,6 +10,7 @@ import { TeamSidebarHost } from '@renderer/components/team/sidebar/TeamSidebarHo
 
 import { useTeamGraphAdapter } from '../adapters/useTeamGraphAdapter';
 
+import { GraphBlockingEdgePopover } from './GraphBlockingEdgePopover';
 import { GraphNodePopover } from './GraphNodePopover';
 
 import type { GraphDomainRef, GraphEventPort } from '@claude-teams/agent-graph';
@@ -84,6 +85,17 @@ export const TeamGraphOverlay = ({
         onRequestClose={onClose}
         onRequestPinAsTab={onPinAsTab}
         className="min-w-0 flex-1"
+        renderEdgeOverlay={({ edge, sourceNode, targetNode, onClose: closeEdge, onSelectNode }) => (
+          <GraphBlockingEdgePopover
+            teamName={teamName}
+            edge={edge}
+            sourceNode={sourceNode}
+            targetNode={targetNode}
+            onClose={closeEdge}
+            onSelectNode={onSelectNode}
+            onOpenTaskDetail={onOpenTaskDetail}
+          />
+        )}
         renderOverlay={({ node, onClose: closePopover }) => (
           <GraphNodePopover
             node={node}

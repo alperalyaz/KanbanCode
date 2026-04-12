@@ -17,6 +17,7 @@ import { drawProcesses } from '../canvas/draw-processes';
 import { drawEffects, type VisualEffect } from '../canvas/draw-effects';
 import { BloomRenderer } from '../canvas/bloom-renderer';
 import { KanbanLayoutEngine } from '../layout/kanbanLayout';
+import { computeAdaptiveParticleBudget, selectRenderableParticles } from './selectRenderableParticles';
 import type { CameraTransform } from '../hooks/useGraphCamera';
 
 // ─── Draw State (passed by ref, not by props — no React re-renders) ─────────
@@ -30,6 +31,8 @@ export interface GraphDrawState {
   camera: CameraTransform;
   selectedNodeId: string | null;
   hoveredNodeId: string | null;
+  selectedEdgeId: string | null;
+  hoveredEdgeId: string | null;
   focusNodeIds: ReadonlySet<string> | null;
   focusEdgeIds: ReadonlySet<string> | null;
 }
@@ -118,6 +121,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(funct
   const visibleNodesCache = useRef<GraphNode[]>([]);
   const visibleEdgesCache = useRef<GraphEdge[]>([]);
   const visibleNodeIdsCache = useRef(new Set<string>());
+  const visibleEdgeIdsCache = useRef(new Set<string>());
   const activeParticleEdgesCache = useRef(new Set<string>());
 
   // Imperative draw function — called from RAF, NOT from React render
@@ -196,18 +200,41 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(funct
 
       const visibleEdges = visibleEdgesCache.current;
       visibleEdges.length = 0;
+      const visibleEdgeIds = visibleEdgeIdsCache.current;
+      visibleEdgeIds.clear();
       for (const e of state.edges) {
         if (visibleNodeIds.has(e.source) || visibleNodeIds.has(e.target)) {
           visibleEdges.push(e);
+          visibleEdgeIds.add(e.id);
         }
       }
-      drawEdges(ctx, visibleEdges, nodeMap, state.time, activeParticleEdges, state.focusEdgeIds);
+      const prioritizedEdgeIds =
+        state.focusEdgeIds ?? (state.selectedEdgeId ? new Set([state.selectedEdgeId]) : null);
+      drawEdges(
+        ctx,
+        visibleEdges,
+        nodeMap,
+        state.time,
+        activeParticleEdges,
+        prioritizedEdgeIds,
+        state.hoveredEdgeId,
+        state.selectedEdgeId
+      );
 
-      // 2b. Particles (cap at 100 for performance)
-      const cappedParticles = state.particles.length > 100
-        ? state.particles.slice(-100)
-        : state.particles;
-      drawParticles(ctx, cappedParticles, edgeMap, nodeMap, state.time, state.focusEdgeIds);
+      // 2b. Particles - adaptive degradation keeps one visible particle per active edge
+      const particleBudget = computeAdaptiveParticleBudget({
+        visibleNodeCount: visibleNodes.length,
+        visibleEdgeCount: visibleEdges.length,
+        frameTimeMs: perfRef.current.frameTimeMs,
+        hasFocusedEdges: (prioritizedEdgeIds?.size ?? 0) > 0,
+      });
+      const renderableParticles = selectRenderableParticles({
+        particles: state.particles,
+        visibleEdgeIds,
+        focusEdgeIds: prioritizedEdgeIds,
+        budget: particleBudget,
+      });
+      drawParticles(ctx, renderableParticles, edgeMap, nodeMap, state.time, prioritizedEdgeIds);
 
       // 2c. Visible nodes only (back to front: process → task → member/lead)
       drawProcesses(

@@ -15,15 +15,21 @@ import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/d
 import type { GraphDataPort } from '../ports/GraphDataPort';
 import type { GraphEventPort } from '../ports/GraphEventPort';
 import type { GraphConfigPort } from '../ports/GraphConfigPort';
-import type { GraphNode } from '../ports/types';
+import type { GraphEdge, GraphNode } from '../ports/types';
 import { GraphCanvas, type GraphCanvasHandle, type GraphDrawState } from './GraphCanvas';
 import { GraphControls, type GraphFilterState } from './GraphControls';
 import { GraphOverlay } from './GraphOverlay';
+import { GraphEdgeOverlay } from './GraphEdgeOverlay';
 import { buildFocusState } from './buildFocusState';
 import { useGraphSimulation } from '../hooks/useGraphSimulation';
 import { useGraphCamera } from '../hooks/useGraphCamera';
 import { useGraphInteraction } from '../hooks/useGraphInteraction';
-import { findNodeAt } from '../canvas/hit-detection';
+import {
+  collectInteractiveEdgesInViewport,
+  findEdgeAt,
+  findNodeAt,
+  getEdgeMidpoint,
+} from '../canvas/hit-detection';
 import { ANIM_SPEED } from '../constants/canvas-constants';
 
 export interface GraphViewProps {
@@ -41,6 +47,13 @@ export interface GraphViewProps {
     screenPos: { x: number; y: number };
     onClose: () => void;
   }) => React.ReactNode;
+  renderEdgeOverlay?: (props: {
+    edge: GraphEdge;
+    sourceNode: GraphNode | undefined;
+    targetNode: GraphNode | undefined;
+    onClose: () => void;
+    onSelectNode: (nodeId: string) => void;
+  }) => React.ReactNode;
 }
 
 export function GraphView({
@@ -53,9 +66,11 @@ export function GraphView({
   onRequestPinAsTab,
   onRequestFullscreen,
   renderOverlay,
+  renderEdgeOverlay,
 }: GraphViewProps): React.JSX.Element {
   // ─── React state (user-facing only) ─────────────────────────────────────
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [filters, setFilters] = useState<GraphFilterState>({
     showTasks: config?.showTasks ?? true,
     showProcesses: config?.showProcesses ?? true,
@@ -67,6 +82,9 @@ export function GraphView({
   // Ref mirror of selectedNodeId — read by RAF loop to avoid recreating animate on selection change
   const selectedNodeIdRef = useRef<string | null>(null);
   selectedNodeIdRef.current = selectedNodeId;
+  const selectedEdgeIdRef = useRef<string | null>(null);
+  selectedEdgeIdRef.current = selectedEdgeId;
+  const hoveredEdgeIdRef = useRef<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasHandle = useRef<GraphCanvasHandle>(null);
@@ -76,6 +94,8 @@ export function GraphView({
   const runningRef = useRef(false);
   const hasAutoFit = useRef(false);
   const allowAutoFitRef = useRef(true);
+  const nodeMapRef = useRef(new Map<string, GraphNode>());
+  const nodeMapNodesRef = useRef<GraphNode[] | null>(null);
 
   // ─── Hooks ──────────────────────────────────────────────────────────────
   const simulation = useGraphSimulation();
@@ -116,8 +136,37 @@ export function GraphView({
   // ─── UNIFIED RAF LOOP: tick simulation + draw canvas ────────────────────
   const idleFrameSkip = useRef(0);
   const focusState = useMemo(
-    () => buildFocusState(selectedNodeId, data.nodes, data.edges),
-    [selectedNodeId, data.edges, data.nodes]
+    () => buildFocusState(selectedNodeId, selectedEdgeId, data.nodes, data.edges),
+    [selectedEdgeId, selectedNodeId, data.edges, data.nodes]
+  );
+
+  const getNodeMap = useCallback((nodes: GraphNode[]): Map<string, GraphNode> => {
+    if (nodeMapNodesRef.current === nodes) {
+      return nodeMapRef.current;
+    }
+    const nodeMap = nodeMapRef.current;
+    nodeMap.clear();
+    for (const node of nodes) {
+      nodeMap.set(node.id, node);
+    }
+    nodeMapNodesRef.current = nodes;
+    return nodeMap;
+  }, []);
+
+  const getInteractiveEdges = useCallback(
+    (canvas: HTMLCanvasElement, nodes: GraphNode[], edges: GraphEdge[]): GraphEdge[] => {
+      const nodeMap = getNodeMap(nodes);
+      const rect = canvas.getBoundingClientRect();
+      const transform = camera.transformRef.current;
+      const bounds = {
+        left: -transform.x / transform.zoom,
+        top: -transform.y / transform.zoom,
+        right: (rect.width - transform.x) / transform.zoom,
+        bottom: (rect.height - transform.y) / transform.zoom,
+      };
+      return collectInteractiveEdgesInViewport(edges, nodeMap, bounds);
+    },
+    [camera.transformRef, getNodeMap]
   );
 
   const animate = useCallback(() => {
@@ -159,6 +208,8 @@ export function GraphView({
       camera: cameraRef.current.transformRef.current,
       selectedNodeId: selectedNodeIdRef.current,
       hoveredNodeId: interaction.hoveredNodeId.current,
+      selectedEdgeId: selectedEdgeIdRef.current,
+      hoveredEdgeId: hoveredEdgeIdRef.current,
       focusNodeIds: focusState.focusNodeIds,
       focusEdgeIds: focusState.focusEdgeIds,
     });
@@ -243,6 +294,7 @@ export function GraphView({
 
   // ─── Mouse handlers (Figma-style: drag empty space = pan, drag node = move) ─
   const isPanningRef = useRef(false);
+  const edgeMouseDownRef = useRef<{ id: string; x: number; y: number } | null>(null);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return; // only left click
@@ -251,22 +303,38 @@ export function GraphView({
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const world = camera.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+    const nodes = simulation.stateRef.current.nodes;
+    const edges = simulation.stateRef.current.edges;
+    const nodeMap = getNodeMap(nodes);
+    const interactiveEdges = getInteractiveEdges(canvas, nodes, edges);
 
     // Check if we hit a node
-    interaction.handleMouseDown(world.x, world.y, simulation.stateRef.current.nodes);
+    interaction.handleMouseDown(world.x, world.y, nodes);
 
     // Hit a node (draggable or clickable) → don't pan
-    const hitNode = findNodeAt(world.x, world.y, simulation.stateRef.current.nodes);
+    const hitNode = findNodeAt(world.x, world.y, nodes);
     if (hitNode) {
       markUserInteracted();
       isPanningRef.current = false;
+      edgeMouseDownRef.current = null;
+      hoveredEdgeIdRef.current = null;
     } else {
-      // Hit empty space → pan
-      markUserInteracted();
-      isPanningRef.current = true;
-      camera.handlePanStart(e.clientX, e.clientY);
+      const hitEdge = findEdgeAt(world.x, world.y, interactiveEdges, nodeMap);
+      if (hitEdge) {
+        markUserInteracted();
+        isPanningRef.current = false;
+        edgeMouseDownRef.current = { id: hitEdge, x: world.x, y: world.y };
+        hoveredEdgeIdRef.current = hitEdge;
+      } else {
+        // Hit empty space → pan
+        markUserInteracted();
+        isPanningRef.current = true;
+        edgeMouseDownRef.current = null;
+        hoveredEdgeIdRef.current = null;
+        camera.handlePanStart(e.clientX, e.clientY);
+      }
     }
-  }, [camera, interaction, markUserInteracted, simulation.stateRef]);
+  }, [camera, getInteractiveEdges, getNodeMap, interaction, markUserInteracted, simulation.stateRef]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     // Dragging with left button held
@@ -288,26 +356,65 @@ export function GraphView({
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const world = camera.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-    interaction.hoveredNodeId.current = findNodeAt(world.x, world.y, simulation.stateRef.current.nodes);
-    canvas.style.cursor = interaction.hoveredNodeId.current ? 'pointer' : 'grab';
-  }, [camera, interaction, simulation.stateRef]);
+    const nodes = simulation.stateRef.current.nodes;
+    const edges = simulation.stateRef.current.edges;
+    const hoveredNodeId = findNodeAt(world.x, world.y, nodes);
+    interaction.hoveredNodeId.current = hoveredNodeId;
 
-  const handleMouseUp = useCallback(() => {
+    if (hoveredNodeId) {
+      hoveredEdgeIdRef.current = null;
+      canvas.style.cursor = 'pointer';
+      return;
+    }
+
+    const nodeMap = getNodeMap(nodes);
+    const interactiveEdges = getInteractiveEdges(canvas, nodes, edges);
+    hoveredEdgeIdRef.current = findEdgeAt(world.x, world.y, interactiveEdges, nodeMap);
+    canvas.style.cursor = hoveredEdgeIdRef.current ? 'pointer' : 'grab';
+  }, [camera, getInteractiveEdges, getNodeMap, interaction, simulation.stateRef]);
+
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
     if (isPanningRef.current) {
       camera.handlePanEnd();
       isPanningRef.current = false;
       setSelectedNodeId(null); // hide popover after pan
+      setSelectedEdgeId(null);
+      edgeMouseDownRef.current = null;
       return;
     }
 
     const clickedId = interaction.handleMouseUp();
     if (clickedId) {
       setSelectedNodeId(clickedId);
+      setSelectedEdgeId(null);
       const node = simulation.stateRef.current.nodes.find((n) => n.id === clickedId);
       if (node) events?.onNodeClick?.(node.domainRef);
     } else {
-      setSelectedNodeId(null); // click on empty space — hide popover
-      if (!interaction.isDragging.current) {
+      const canvas = canvasHandle.current?.getCanvas();
+      let clickedEdgeId: string | null = null;
+      if (canvas && edgeMouseDownRef.current && !interaction.isDragging.current) {
+        const rect = canvas.getBoundingClientRect();
+        const world = camera.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        const dx = world.x - edgeMouseDownRef.current.x;
+        const dy = world.y - edgeMouseDownRef.current.y;
+        if (dx * dx + dy * dy <= 25) {
+          clickedEdgeId = edgeMouseDownRef.current.id;
+        }
+      }
+      edgeMouseDownRef.current = null;
+
+      if (clickedEdgeId) {
+        setSelectedNodeId(null);
+        setSelectedEdgeId(clickedEdgeId);
+        const edge = simulation.stateRef.current.edges.find((candidate) => candidate.id === clickedEdgeId);
+        if (edge) {
+          events?.onEdgeClick?.(edge);
+        }
+      } else {
+        setSelectedNodeId(null); // click on empty space — hide popover
+        setSelectedEdgeId(null);
+      }
+      if (!interaction.isDragging.current && !clickedEdgeId) {
         events?.onBackgroundClick?.();
       }
     }
@@ -320,6 +427,7 @@ export function GraphView({
     const world = camera.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
     const nodeId = interaction.handleDoubleClick(world.x, world.y, simulation.stateRef.current.nodes);
     if (nodeId) {
+      setSelectedEdgeId(null);
       const node = simulation.stateRef.current.nodes.find((n) => n.id === nodeId);
       if (node) {
         // Unpin if pinned (toggle)
@@ -340,8 +448,9 @@ export function GraphView({
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
 
       if (e.key === 'Escape') {
-        if (selectedNodeId) {
+        if (selectedNodeId || selectedEdgeId) {
           setSelectedNodeId(null);
+          setSelectedEdgeId(null);
         } else {
           onRequestClose?.();
         }
@@ -357,16 +466,28 @@ export function GraphView({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedNodeId, onRequestClose, camera, simulation.stateRef]);
+  }, [selectedEdgeId, selectedNodeId, onRequestClose, camera, simulation.stateRef]);
 
   // ─── Selected node for overlay ──────────────────────────────────────────
   const selectedNode: GraphNode | null =
     selectedNodeId
       ? simulation.stateRef.current.nodes.find((n) => n.id === selectedNodeId) ?? null
       : null;
+  const selectedEdge: GraphEdge | null =
+    selectedEdgeId
+      ? simulation.stateRef.current.edges.find((edge) => edge.id === selectedEdgeId) ?? null
+      : null;
+  const hasBlockingEdges = useMemo(
+    () => data.edges.some((edge) => edge.type === 'blocking'),
+    [data.edges]
+  );
+  const selectedEdgeNodeMap = useMemo(
+    () => getNodeMap(simulation.stateRef.current.nodes),
+    [data.nodes, getNodeMap, selectedEdgeId, simulation.stateRef]
+  );
 
   useLayoutEffect(() => {
-    if (!selectedNode || !containerRef.current || !overlayRef.current) {
+    if ((!selectedNode && !selectedEdgeId) || !containerRef.current || !overlayRef.current) {
       return;
     }
 
@@ -376,7 +497,25 @@ export function GraphView({
     const reference = {
       getBoundingClientRect(): DOMRect {
         const containerRect = container.getBoundingClientRect();
-        const screenPos = camera.worldToScreen(selectedNode.x ?? 0, selectedNode.y ?? 0);
+        const screenPos = (() => {
+          if (selectedNode) {
+            return camera.worldToScreen(selectedNode.x ?? 0, selectedNode.y ?? 0);
+          }
+          if (selectedEdgeId) {
+            const currentNodes = simulation.stateRef.current.nodes;
+            const currentEdge = simulation.stateRef.current.edges.find(
+              (edge) => edge.id === selectedEdgeId
+            );
+            if (currentEdge) {
+              const nodeMap = getNodeMap(currentNodes);
+              const midpoint = getEdgeMidpoint(currentEdge, nodeMap);
+              if (midpoint) {
+                return camera.worldToScreen(midpoint.x, midpoint.y);
+              }
+            }
+          }
+          return camera.worldToScreen(0, 0);
+        })();
         return DOMRect.fromRect({
           x: containerRect.left + screenPos.x,
           y: containerRect.top + screenPos.y,
@@ -415,7 +554,7 @@ export function GraphView({
     void updatePosition();
 
     return cleanup;
-  }, [camera, selectedNode]);
+  }, [camera, getNodeMap, selectedEdgeId, selectedNode, simulation.stateRef]);
 
   // ─── Render ─────────────────────────────────────────────────────────────
   return (
@@ -454,23 +593,46 @@ export function GraphView({
         teamName={data.teamName}
         teamColor={data.teamColor}
         isAlive={data.isAlive}
+        showBlockingHint={filters.showEdges && hasBlockingEdges && !selectedNode && !selectedEdge}
       />
 
-      {selectedNode && (
+      {(selectedNode || selectedEdge) && (
         <div ref={overlayRef} className="fixed z-20 pointer-events-auto">
-          {renderOverlay ? (
-            renderOverlay({
-              node: selectedNode,
-              screenPos: camera.worldToScreen(selectedNode.x ?? 0, selectedNode.y ?? 0),
-              onClose: () => setSelectedNodeId(null),
-            })
-          ) : (
-            <GraphOverlay
-              selectedNode={selectedNode}
-              events={events}
-              onDeselect={() => setSelectedNodeId(null)}
-            />
-          )}
+          {selectedNode ? (
+            renderOverlay ? (
+              renderOverlay({
+                node: selectedNode,
+                screenPos: camera.worldToScreen(selectedNode.x ?? 0, selectedNode.y ?? 0),
+                onClose: () => setSelectedNodeId(null),
+              })
+            ) : (
+              <GraphOverlay
+                selectedNode={selectedNode}
+                events={events}
+                onDeselect={() => setSelectedNodeId(null)}
+              />
+            )
+          ) : selectedEdge ? (
+            renderEdgeOverlay ? (
+              renderEdgeOverlay({
+                edge: selectedEdge,
+                sourceNode: selectedEdgeNodeMap.get(selectedEdge.source),
+                targetNode: selectedEdgeNodeMap.get(selectedEdge.target),
+                onClose: () => setSelectedEdgeId(null),
+                onSelectNode: (nodeId: string) => {
+                  setSelectedEdgeId(null);
+                  setSelectedNodeId(nodeId);
+                },
+              })
+            ) : (
+              <GraphEdgeOverlay
+                edge={selectedEdge}
+                sourceNode={selectedEdgeNodeMap.get(selectedEdge.source)}
+                targetNode={selectedEdgeNodeMap.get(selectedEdge.target)}
+                onClose={() => setSelectedEdgeId(null)}
+              />
+            )
+          ) : null}
         </div>
       )}
     </div>

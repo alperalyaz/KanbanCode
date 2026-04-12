@@ -118,7 +118,7 @@ const nodes = [leadNode, aliceNode, bobNode, blockerNode, reviewTaskNode, overfl
 
 describe('buildFocusState', () => {
   it('focuses task selection on its owner, reviewer, direct blockers, and connecting edges', () => {
-    const focus = buildFocusState(reviewTaskNode.id, nodes, edges);
+    const focus = buildFocusState(reviewTaskNode.id, null, nodes, edges);
 
     expect(Array.from(focus.focusNodeIds ?? []).sort()).toEqual(
       [
@@ -141,7 +141,7 @@ describe('buildFocusState', () => {
   });
 
   it('includes review-assigned tasks and owned overflow stacks when focusing a member', () => {
-    const focus = buildFocusState(bobNode.id, nodes, edges);
+    const focus = buildFocusState(bobNode.id, null, nodes, edges);
 
     expect(focus.focusNodeIds?.has(bobNode.id)).toBe(true);
     expect(focus.focusNodeIds?.has(reviewTaskNode.id)).toBe(true);
@@ -149,12 +149,12 @@ describe('buildFocusState', () => {
     expect(focus.focusEdgeIds?.has('edge:parent:lead:bob')).toBe(true);
     expect(focus.focusEdgeIds?.has('edge:own:alice:review')).toBe(true);
 
-    const aliceFocus = buildFocusState(aliceNode.id, nodes, edges);
+    const aliceFocus = buildFocusState(aliceNode.id, null, nodes, edges);
     expect(aliceFocus.focusNodeIds?.has(overflowNode.id)).toBe(true);
   });
 
   it('focuses a lead on direct neighbors only', () => {
-    const focus = buildFocusState(leadNode.id, nodes, edges);
+    const focus = buildFocusState(leadNode.id, null, nodes, edges);
 
     expect(focus.focusNodeIds).toEqual(
       new Set([leadNode.id, aliceNode.id, bobNode.id])
@@ -165,9 +165,26 @@ describe('buildFocusState', () => {
   });
 
   it('does not enable global dimming for overflow stack selections', () => {
-    const focus = buildFocusState(overflowNode.id, nodes, edges);
+    const focus = buildFocusState(overflowNode.id, null, nodes, edges);
 
     expect(focus.focusNodeIds).toBeNull();
     expect(focus.focusEdgeIds).toBeNull();
+  });
+
+  it('focuses the connected blocking chain when a blocking edge is selected', () => {
+    const focus = buildFocusState(null, 'edge:block:blocker:review', nodes, edges);
+
+    expect(focus.focusNodeIds).toEqual(
+      new Set([leadNode.id, aliceNode.id, bobNode.id, blockerNode.id, reviewTaskNode.id])
+    );
+    expect(focus.focusEdgeIds).toEqual(
+      new Set([
+        'edge:block:blocker:review',
+        'edge:own:alice:blocker',
+        'edge:own:alice:review',
+        'edge:parent:lead:alice',
+        'edge:parent:lead:bob',
+      ])
+    );
   });
 });
