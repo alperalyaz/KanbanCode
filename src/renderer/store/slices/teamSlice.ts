@@ -14,6 +14,8 @@ import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 
 import { getWorktreeNavigationState } from '../utils/stateResetHelpers';
 
+import type { TeamMessagesPanelMode } from '@renderer/types/teamMessagesPanelMode';
+
 const logger = createLogger('teamSlice');
 
 const TEAM_GET_DATA_TIMEOUT_MS = 30_000;
@@ -40,9 +42,9 @@ const teamRefreshBurstDiagnostics = new Map<
   { windowStartedAt: number; count: number; lastWarnAt: number }
 >();
 const memberSpawnUiEqualLastWarnAtByTeam = new Map<string, number>();
-type RefreshTeamDataOptions = {
+interface RefreshTeamDataOptions {
   withDedup?: boolean;
-};
+}
 
 export function isTeamDataRefreshPending(teamName: string): boolean {
   return (
@@ -487,9 +489,9 @@ import type {
   KanbanColumnId,
   LeadActivityState,
   LeadContextUsage,
-  PersistedTeamLaunchSummary,
-  MemberSpawnStatusesSnapshot,
   MemberSpawnStatusEntry,
+  MemberSpawnStatusesSnapshot,
+  PersistedTeamLaunchSummary,
   SendMessageRequest,
   SendMessageResult,
   TaskChangePresenceState,
@@ -852,11 +854,7 @@ function preserveKnownTaskChangePresence(
     }
 
     const previousTask = prevTaskById.get(task.id);
-    if (
-      !previousTask ||
-      !previousTask.changePresence ||
-      previousTask.changePresence === 'unknown'
-    ) {
+    if (!previousTask?.changePresence || previousTask.changePresence === 'unknown') {
       return task;
     }
 
@@ -1111,10 +1109,10 @@ export interface TeamSlice {
   ) => Promise<void>;
 
   // Messages panel UI state
-  messagesPanelMode: 'sidebar' | 'inline';
+  messagesPanelMode: TeamMessagesPanelMode;
   messagesPanelWidth: number;
   sidebarLogsHeight: number;
-  setMessagesPanelMode: (mode: 'sidebar' | 'inline') => void;
+  setMessagesPanelMode: (mode: TeamMessagesPanelMode) => void;
   setMessagesPanelWidth: (width: number) => void;
   setSidebarLogsHeight: (height: number) => void;
 }
@@ -1395,7 +1393,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   messagesPanelMode: 'sidebar' as const,
   messagesPanelWidth: 340,
   sidebarLogsHeight: 213,
-  setMessagesPanelMode: (mode: 'sidebar' | 'inline') => set({ messagesPanelMode: mode }),
+  setMessagesPanelMode: (mode: TeamMessagesPanelMode) => set({ messagesPanelMode: mode }),
   setMessagesPanelWidth: (width: number) => set({ messagesPanelWidth: width }),
   setSidebarLogsHeight: (height: number) => set({ sidebarLogsHeight: height }),
 
