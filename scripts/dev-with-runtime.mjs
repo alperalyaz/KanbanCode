@@ -96,7 +96,10 @@ function getPlatformAssetKey() {
 }
 
 function getReleaseAssetUrl(runtimeLock, asset) {
-  return `https://github.com/${runtimeLock.releaseRepository}/releases/download/${runtimeLock.sourceRef}/${encodeURIComponent(asset.file)}`;
+  const releaseTag = typeof runtimeLock.releaseTag === 'string' && runtimeLock.releaseTag.trim().length > 0
+    ? runtimeLock.releaseTag.trim()
+    : runtimeLock.sourceRef;
+  return `https://github.com/${runtimeLock.releaseRepository}/releases/download/${releaseTag}/${encodeURIComponent(asset.file)}`;
 }
 
 function ensureDir(dirPath) {
