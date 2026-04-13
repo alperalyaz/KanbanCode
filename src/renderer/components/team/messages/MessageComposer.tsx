@@ -445,6 +445,7 @@ export const MessageComposer = ({
   const remaining = MAX_TEXT_LENGTH - trimmed.length;
   const hasAttachmentPreviewContent =
     draft.attachments.length > 0 || Boolean(draft.attachmentError ?? fileRestrictionError);
+  const shouldDockRecipientSelector = !hasAttachmentPreviewContent;
   const isCompactLayout = layout === 'compact';
   const compactFooterNotice = slashCommandRestrictionReason ? (
     <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
@@ -473,7 +474,12 @@ export const MessageComposer = ({
       onDrop={handleDropWrapper}
       onPaste={handlePasteWrapper}
     >
-      <div className={cn('mb-1', isCompactLayout ? 'space-y-1.5' : 'space-y-2')}>
+      <div
+        className={cn(
+          shouldDockRecipientSelector ? 'mb-0' : 'mb-1',
+          isCompactLayout ? 'space-y-1.5' : 'space-y-2'
+        )}
+      >
         <div className="flex items-center gap-2">
           {isLeadRecipient ? (
             <>
@@ -522,7 +528,10 @@ export const MessageComposer = ({
             {/* Combined team + member selector */}
             <div
               className={cn(
-                'inline-flex items-center rounded-full border text-xs transition-colors',
+                'mr-[15px] inline-flex items-center border text-xs transition-colors',
+                shouldDockRecipientSelector
+                  ? 'relative z-10 -mb-px overflow-hidden rounded-b-none rounded-t-[1.35rem] border-b-0 bg-[var(--color-surface-raised)]'
+                  : 'rounded-full',
                 isCrossTeam ? 'border-[var(--cross-team-border)]' : 'border-[var(--color-border)]'
               )}
             >
@@ -531,7 +540,10 @@ export const MessageComposer = ({
                   <button
                     type="button"
                     className={cn(
-                      'inline-flex items-center gap-1.5 rounded-l-full border-r border-r-[var(--color-border)] px-2.5 py-1 text-xs transition-colors',
+                      'inline-flex items-center gap-1.5 border-r border-r-[var(--color-border)] px-2.5 py-1 text-xs transition-colors',
+                      shouldDockRecipientSelector
+                        ? 'rounded-bl-none rounded-tl-[1.35rem]'
+                        : 'rounded-l-full',
                       isCrossTeam
                         ? 'hover:bg-[var(--cross-team-bg)]/80 bg-[var(--cross-team-bg)] text-purple-400'
                         : 'hover:bg-[var(--color-surface-raised)]'
@@ -675,7 +687,10 @@ export const MessageComposer = ({
                   <button
                     type="button"
                     className={cn(
-                      'inline-flex items-center gap-1.5 rounded-r-full px-2.5 py-1 text-xs transition-colors',
+                      'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs transition-colors',
+                      shouldDockRecipientSelector
+                        ? 'rounded-br-none rounded-tr-[1.35rem]'
+                        : 'rounded-r-full',
                       isCrossTeam
                         ? 'cursor-default bg-[var(--cross-team-bg)] opacity-60'
                         : 'hover:bg-[var(--color-surface-raised)]'

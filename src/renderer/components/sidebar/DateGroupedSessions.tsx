@@ -739,15 +739,15 @@ export const DateGroupedSessions = (): React.JSX.Element => {
       <div className="flex items-center gap-2 px-2 py-1.5">
         <Calendar className="size-3.5" style={{ color: 'var(--color-text-muted)' }} />
         <h2
-          className="text-[11px] uppercase tracking-wider"
-          style={{ color: 'var(--color-text-muted)' }}
+          className="text-[12px] font-semibold text-text-secondary"
+          style={{ color: 'var(--color-text-secondary)' }}
         >
           {sessionSortMode === 'most-context' ? 'By Context' : 'Sessions'}
         </h2>
         {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- tooltip trigger via hover, not interactive */}
         <span
           ref={countRef}
-          className="text-[11px]"
+          className="text-[10px]"
           style={{ color: 'var(--color-text-muted)', opacity: 0.6 }}
           onMouseEnter={() => setShowCountTooltip(true)}
           onMouseLeave={() => setShowCountTooltip(false)}
@@ -898,11 +898,11 @@ export const DateGroupedSessions = (): React.JSX.Element => {
               >
                 {item.type === 'pinned-header' ? (
                   <div
-                    className="sticky top-0 flex h-full items-center gap-1.5 border-t px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider backdrop-blur-sm"
+                    className="sticky top-0 flex h-full items-center gap-1.5 border-t px-2 py-1.5 text-[11px] font-semibold text-text-secondary backdrop-blur-sm"
                     style={{
                       backgroundColor:
                         'color-mix(in srgb, var(--color-surface-sidebar) 95%, transparent)',
-                      color: 'var(--color-text-muted)',
+                      color: 'var(--color-text-secondary)',
                       borderColor: 'var(--color-border-emphasis)',
                     }}
                   >
@@ -911,11 +911,11 @@ export const DateGroupedSessions = (): React.JSX.Element => {
                   </div>
                 ) : item.type === 'header' ? (
                   <div
-                    className="sticky top-0 flex h-full items-center border-t px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider backdrop-blur-sm"
+                    className="sticky top-0 flex h-full items-center border-t px-2 py-1.5 text-[11px] font-semibold text-text-secondary backdrop-blur-sm"
                     style={{
                       backgroundColor:
                         'color-mix(in srgb, var(--color-surface-sidebar) 95%, transparent)',
-                      color: 'var(--color-text-muted)',
+                      color: 'var(--color-text-secondary)',
                       borderColor: 'var(--color-border-emphasis)',
                     }}
                   >

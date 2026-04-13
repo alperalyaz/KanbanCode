@@ -2,10 +2,17 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { BoardTaskActivityEntry } from '../../../../../src/shared/types';
+import type {
+  BoardTaskActivityDetailResult,
+  BoardTaskActivityEntry,
+} from '../../../../../src/shared/types';
 
 const apiState = {
   getTaskActivity: vi.fn<(teamName: string, taskId: string) => Promise<BoardTaskActivityEntry[]>>(),
+  getTaskActivityDetail:
+    vi.fn<
+      (teamName: string, taskId: string, activityId: string) => Promise<BoardTaskActivityDetailResult>
+    >(),
 };
 
 vi.mock('@renderer/api', () => ({
@@ -13,8 +20,57 @@ vi.mock('@renderer/api', () => ({
     teams: {
       getTaskActivity: (...args: Parameters<typeof apiState.getTaskActivity>) =>
         apiState.getTaskActivity(...args),
+      getTaskActivityDetail: (...args: Parameters<typeof apiState.getTaskActivityDetail>) =>
+        apiState.getTaskActivityDetail(...args),
     },
   },
+}));
+
+vi.mock('@renderer/components/team/members/MemberExecutionLog', () => ({
+  MemberExecutionLog: ({
+    memberName,
+    chunks,
+  }: {
+    memberName?: string;
+    chunks: { id: string }[];
+  }) =>
+    React.createElement(
+      'div',
+      { 'data-testid': 'member-execution-log' },
+      `${memberName ?? 'lead'}:${chunks.length}`
+    ),
+}));
+
+vi.mock('@renderer/types/data', () => ({
+  asEnhancedChunkArray: (value: unknown) => value,
+}));
+
+vi.mock('@shared/utils/boardTaskActivityPresentation', () => ({
+  describeBoardTaskActivityActorLabel: (actor: { memberName?: string }) =>
+    actor.memberName ?? 'lead session',
+  describeBoardTaskActivityContextLines: (entry: {
+    actorContext?: { relation?: string; activeTask?: { taskRef?: { displayId?: string } } };
+  }) =>
+    entry.actorContext?.relation === 'other_active_task'
+      ? [`while working on #${entry.actorContext.activeTask?.taskRef?.displayId ?? 'unknown'}`]
+      : [],
+}));
+
+vi.mock('@shared/utils/boardTaskActivityLabels', () => ({
+  describeBoardTaskActivityLabel: (entry: { action?: { canonicalToolName?: string } }) => {
+    switch (entry.action?.canonicalToolName) {
+      case 'task_get':
+        return 'Viewed task';
+      case 'task_start':
+        return 'Started work';
+      case 'task_add_comment':
+        return 'Added a comment';
+      default:
+        return 'Worked on task';
+    }
+  },
+  formatBoardTaskActivityTaskLabel: (task?: { taskRef?: { displayId?: string } }) =>
+    task?.taskRef?.displayId ? `#${task.taskRef.displayId}` : null,
 }));
 
 import { TaskActivitySection } from '@renderer/components/team/taskLogs/TaskActivitySection';
@@ -69,6 +125,7 @@ describe('TaskActivitySection', () => {
   afterEach(() => {
     document.body.innerHTML = '';
     apiState.getTaskActivity.mockReset();
+    apiState.getTaskActivityDetail.mockReset();
     vi.unstubAllGlobals();
   });
 
@@ -146,6 +203,103 @@ describe('TaskActivitySection', () => {
     expect(host.textContent).toContain('No key task activity was found yet');
     expect(host.textContent).toContain('Task Log Stream');
     expect(host.textContent).not.toContain('Worked on task');
+
+    await act(async () => {
+      root.unmount();
+      await flushMicrotasks();
+    });
+  });
+
+  it('loads inline detail lazily and renders metadata plus a focused log snippet', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    apiState.getTaskActivity.mockResolvedValue([
+      makeEntry({
+        id: 'comment-1',
+        timestamp: '2026-04-13T10:35:00.000Z',
+        linkKind: 'board_action',
+        actorContext: {
+          relation: 'other_active_task',
+          activePhase: 'work',
+          activeTask: {
+            locator: {
+              ref: 'peer12345',
+              refKind: 'display',
+            },
+            resolution: 'resolved',
+            taskRef: {
+              taskId: 'task-2',
+              displayId: 'peer12345',
+              teamName: 'demo',
+            },
+          },
+        },
+        action: {
+          canonicalToolName: 'task_add_comment',
+          category: 'comment',
+          toolUseId: 'tool-1',
+          details: {
+            commentId: '42',
+          },
+        },
+        source: {
+          messageUuid: 'comment-1-message',
+          filePath: '/tmp/transcript.jsonl',
+          toolUseId: 'tool-1',
+          sourceOrder: 5,
+        },
+      }),
+    ]);
+    apiState.getTaskActivityDetail.mockResolvedValue({
+      status: 'ok',
+      detail: {
+        entryId: 'comment-1',
+        summaryLabel: 'Added a comment',
+        actorLabel: 'bob',
+        timestamp: '2026-04-13T10:35:00.000Z',
+        contextLines: ['while working on #peer12345'],
+        metadataRows: [
+          { label: 'Task', value: '#abc12345' },
+          { label: 'Tool', value: 'task_add_comment' },
+          { label: 'Comment', value: '42' },
+        ],
+        logDetail: {
+          id: 'activity:comment-1',
+          chunks: [{ id: 'chunk-1' }] as never,
+        },
+      },
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(TaskActivitySection, { teamName: 'demo', taskId: 'task-a' }));
+      await flushMicrotasks();
+    });
+
+    const button = host.querySelector('button');
+    expect(button).not.toBeNull();
+
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushMicrotasks();
+    });
+
+    expect(apiState.getTaskActivityDetail).toHaveBeenCalledWith('demo', 'task-a', 'comment-1');
+    expect(host.textContent).toContain('Tool');
+    expect(host.textContent).toContain('task_add_comment');
+    expect(host.textContent).toContain('Comment');
+    expect(host.textContent).toContain('42');
+    expect(host.textContent).toContain('while working on #peer12345');
+    expect(host.querySelector('[data-testid="member-execution-log"]')?.textContent).toBe('bob:1');
+
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushMicrotasks();
+    });
+
+    expect(host.querySelector('[data-testid="member-execution-log"]')).toBeNull();
 
     await act(async () => {
       root.unmount();

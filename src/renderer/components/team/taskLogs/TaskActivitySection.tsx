@@ -1,13 +1,23 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { api } from '@renderer/api';
+import { MemberExecutionLog } from '@renderer/components/team/members/MemberExecutionLog';
+import { asEnhancedChunkArray } from '@renderer/types/data';
 import {
   describeBoardTaskActivityLabel,
   formatBoardTaskActivityTaskLabel,
 } from '@shared/utils/boardTaskActivityLabels';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import {
+  describeBoardTaskActivityActorLabel,
+  describeBoardTaskActivityContextLines,
+} from '@shared/utils/boardTaskActivityPresentation';
+import { AlertCircle, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 
-import type { BoardTaskActivityEntry, BoardTaskActivityTaskRef } from '@shared/types';
+import type {
+  BoardTaskActivityDetail,
+  BoardTaskActivityEntry,
+  BoardTaskActivityTaskRef,
+} from '@shared/types';
 
 interface TaskActivitySectionProps {
   teamName: string;
@@ -54,78 +64,174 @@ function formatTaskLabel(task: BoardTaskActivityTaskRef | undefined): string | n
   return formatBoardTaskActivityTaskLabel(task);
 }
 
-function relationshipContextLabel(entry: BoardTaskActivityEntry): string | null {
-  const peerTaskLabel = formatTaskLabel(entry.action?.peerTask);
-  if (!peerTaskLabel) return null;
-
-  switch (entry.action?.relationshipPerspective) {
-    case 'incoming':
-      return `from ${peerTaskLabel}`;
-    case 'outgoing':
-      return `to ${peerTaskLabel}`;
-    default:
-      return `with ${peerTaskLabel}`;
-  }
+function describeCollapsedContext(entry: BoardTaskActivityEntry): string | null {
+  const contextLines = describeBoardTaskActivityContextLines(entry);
+  return contextLines.length > 0 ? contextLines.join(' - ') : null;
 }
 
-function describeContext(entry: BoardTaskActivityEntry): string | null {
-  const parts: string[] = [];
+type ActivityDetailState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'missing' }
+  | { status: 'error'; error: string }
+  | { status: 'ok'; detail: BoardTaskActivityDetail };
 
-  const relationshipContext = relationshipContextLabel(entry);
-  if (relationshipContext) {
-    parts.push(relationshipContext);
+function normalizeDetail(detail: BoardTaskActivityDetail): BoardTaskActivityDetail {
+  if (!detail.logDetail) {
+    return detail;
   }
 
-  if (entry.actorContext.relation === 'other_active_task') {
-    const activeTaskLabel = formatTaskLabel(entry.actorContext.activeTask);
-    if (activeTaskLabel) {
-      parts.push(`while working on ${activeTaskLabel}`);
-    } else {
-      parts.push('while another task was active');
-    }
-  } else if (entry.actorContext.relation === 'ambiguous') {
-    parts.push('while multiple task scopes were active');
-  } else if (entry.actorContext.relation === 'idle' && entry.linkKind !== 'execution') {
-    parts.push('without an active task scope');
-  }
-
-  if (entry.task.resolution === 'deleted') {
-    parts.push('task is deleted');
-  } else if (entry.task.resolution === 'ambiguous') {
-    parts.push('task resolution is ambiguous');
-  } else if (entry.task.resolution === 'unresolved') {
-    parts.push('task could not be resolved');
-  }
-
-  return parts.length > 0 ? parts.join(' - ') : null;
+  return {
+    ...detail,
+    logDetail: {
+      ...detail.logDetail,
+      chunks: asEnhancedChunkArray(detail.logDetail.chunks),
+    },
+  };
 }
 
-function actorLabel(entry: BoardTaskActivityEntry): string {
-  if (entry.actor.memberName) {
-    return entry.actor.memberName;
+function ActivityMetadata({
+  detail,
+}: {
+  detail: BoardTaskActivityDetail;
+}): React.JSX.Element | null {
+  const hasMetadata = detail.metadataRows.length > 0;
+  const hasContext = detail.contextLines.length > 0;
+
+  if (!hasMetadata && !hasContext) {
+    return null;
   }
-  if (entry.actor.role === 'lead' || entry.actor.isSidechain === false) {
-    return 'lead session';
-  }
-  return 'unknown actor';
+
+  return (
+    <div className="space-y-3">
+      {hasContext ? (
+        <div className="space-y-1">
+          {detail.contextLines.map((line) => (
+            <p key={line} className="text-xs text-[var(--color-text-muted)]">
+              {line}
+            </p>
+          ))}
+        </div>
+      ) : null}
+
+      {hasMetadata ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {detail.metadataRows.map((row) => (
+            <div
+              key={`${row.label}:${row.value}`}
+              className="border-[var(--color-border-muted)]/50 bg-[var(--color-bg-elevated)]/30 rounded-md border px-2.5 py-2"
+            >
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                {row.label}
+              </div>
+              <div className="mt-1 text-xs text-[var(--color-text)]">{row.value}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
-const Row = ({ entry }: { entry: BoardTaskActivityEntry }): React.JSX.Element => {
-  const context = describeContext(entry);
+function ActivityDetailPanel({
+  detailState,
+}: {
+  detailState: ActivityDetailState;
+}): React.JSX.Element {
+  if (detailState.status === 'loading') {
+    return (
+      <div className="border-[var(--color-border-muted)]/50 bg-[var(--color-bg-elevated)]/25 flex items-center gap-2 rounded-md border px-3 py-3 text-xs text-[var(--color-text-muted)]">
+        <Loader2 size={12} className="animate-spin" />
+        Loading activity details...
+      </div>
+    );
+  }
+
+  if (detailState.status === 'error') {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-300">
+        <AlertCircle size={12} />
+        {detailState.error}
+      </div>
+    );
+  }
+
+  if (detailState.status === 'missing') {
+    return (
+      <div className="border-[var(--color-border-muted)]/50 bg-[var(--color-bg-elevated)]/25 rounded-md border px-3 py-3 text-xs text-[var(--color-text-muted)]">
+        Detailed transcript context is no longer available for this activity.
+      </div>
+    );
+  }
+
+  if (detailState.status !== 'ok') {
+    return <></>;
+  }
+
+  const { detail } = detailState;
+
+  return (
+    <div className="border-[var(--color-border-muted)]/50 bg-[var(--color-bg-elevated)]/25 space-y-3 rounded-md border px-3 py-3">
+      <div className="border-[var(--color-border-muted)]/50 bg-[var(--color-bg-elevated)]/35 rounded-md border px-3 py-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 text-sm text-[var(--color-text)]">
+            <span className="font-medium">{detail.actorLabel}</span>
+            <span className="text-[var(--color-text-muted)]"> - </span>
+            <span>{detail.summaryLabel}</span>
+          </div>
+          <div className="shrink-0 text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+            {formatEntryTime(detail.timestamp)}
+          </div>
+        </div>
+      </div>
+
+      <ActivityMetadata detail={detail} />
+
+      {detail.logDetail ? (
+        <div className="border-[var(--chat-ai-border)]/50 border-l-2 pl-3">
+          <MemberExecutionLog
+            chunks={detail.logDetail.chunks}
+            memberName={detail.actorLabel === 'lead session' ? undefined : detail.actorLabel}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const Row = ({
+  detailState,
+  entry,
+  expanded,
+  onToggle,
+}: {
+  detailState: ActivityDetailState;
+  entry: BoardTaskActivityEntry;
+  expanded: boolean;
+  onToggle: () => void;
+}): React.JSX.Element => {
+  const context = describeCollapsedContext(entry);
   const tone =
     entry.task.resolution === 'resolved'
       ? 'text-[var(--color-text)]'
       : 'text-[var(--color-text-muted)]';
 
   return (
-    <div className="border-[var(--color-border-muted)]/60 bg-[var(--color-bg-elevated)]/40 rounded-md border px-3 py-2">
-      <div className="flex items-start gap-3">
+    <div className="border-[var(--color-border-muted)]/60 bg-[var(--color-bg-elevated)]/40 rounded-md border">
+      <button
+        type="button"
+        className="hover:bg-[var(--color-bg-elevated)]/35 flex w-full items-start gap-3 px-3 py-2 text-left transition-colors"
+        onClick={onToggle}
+      >
+        <div className="pt-0.5 text-[var(--color-text-muted)]">
+          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </div>
         <div className="min-w-12 pt-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
           {formatEntryTime(entry.timestamp)}
         </div>
         <div className="min-w-0 flex-1">
           <div className={`text-sm ${tone}`}>
-            <span className="font-medium">{actorLabel(entry)}</span>
+            <span className="font-medium">{describeBoardTaskActivityActorLabel(entry.actor)}</span>
             <span className="text-[var(--color-text-muted)]"> - </span>
             <span>{describeBoardTaskActivityLabel(entry)}</span>
           </div>
@@ -133,7 +239,13 @@ const Row = ({ entry }: { entry: BoardTaskActivityEntry }): React.JSX.Element =>
             <p className="mt-1 text-xs text-[var(--color-text-muted)]">{context}</p>
           ) : null}
         </div>
-      </div>
+      </button>
+
+      {expanded ? (
+        <div className="px-3 pb-3">
+          <ActivityDetailPanel detailState={detailState} />
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -142,16 +254,79 @@ export const TaskActivitySection = ({
   teamName,
   taskId,
 }: TaskActivitySectionProps): React.JSX.Element => {
+  const [detailStates, setDetailStates] = useState<Record<string, ActivityDetailState>>({});
   const [entries, setEntries] = useState<BoardTaskActivityEntry[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const fetchDetail = useCallback(
+    async (entry: BoardTaskActivityEntry): Promise<void> => {
+      setDetailStates((prev) => ({
+        ...prev,
+        [entry.id]: { status: 'loading' },
+      }));
+
+      try {
+        const result = await api.teams.getTaskActivityDetail(teamName, taskId, entry.id);
+        setDetailStates((prev) => ({
+          ...prev,
+          [entry.id]:
+            result.status === 'ok'
+              ? { status: 'ok', detail: normalizeDetail(result.detail) }
+              : { status: 'missing' },
+        }));
+      } catch (detailError) {
+        setDetailStates((prev) => ({
+          ...prev,
+          [entry.id]: {
+            status: 'error',
+            error:
+              detailError instanceof Error ? detailError.message : 'Failed to load activity detail',
+          },
+        }));
+      }
+    },
+    [taskId, teamName]
+  );
+
+  const handleToggle = useCallback(
+    async (entry: BoardTaskActivityEntry): Promise<void> => {
+      if (expandedId === entry.id) {
+        setExpandedId(null);
+        return;
+      }
+
+      setExpandedId(entry.id);
+      const existing = detailStates[entry.id];
+      if (
+        existing &&
+        existing.status !== 'idle' &&
+        existing.status !== 'error' &&
+        existing.status !== 'loading'
+      ) {
+        return;
+      }
+      if (existing?.status === 'loading') {
+        return;
+      }
+      await fetchDetail(entry);
+    },
+    [detailStates, expandedId, fetchDetail]
+  );
 
   useEffect(() => {
     let cancelled = false;
 
-    const load = async (): Promise<void> => {
+    setEntries([]);
+    setExpandedId(null);
+    setDetailStates({});
+    setLoading(true);
+    setError(null);
+
+    const load = async (showSpinner: boolean): Promise<void> => {
       try {
-        if (!cancelled && entries.length === 0) {
+        if (!cancelled && showSpinner) {
           setLoading(true);
         }
         if (!cancelled) {
@@ -173,16 +348,16 @@ export const TaskActivitySection = ({
       }
     };
 
-    void load();
+    void load(true);
     const intervalId = window.setInterval(() => {
-      void load();
+      void load(false);
     }, 8000);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [entries.length, teamName, taskId]);
+  }, [teamName, taskId]);
 
   const visibleEntries = useMemo(
     () =>
@@ -225,11 +400,25 @@ export const TaskActivitySection = ({
     return (
       <div className="space-y-2">
         {visibleEntries.map((entry) => (
-          <Row key={entry.id} entry={entry} />
+          <Row
+            key={entry.id}
+            detailState={detailStates[entry.id] ?? { status: 'idle' }}
+            entry={entry}
+            expanded={expandedId === entry.id}
+            onToggle={() => void handleToggle(entry)}
+          />
         ))}
       </div>
     );
-  }, [error, hasOnlyLowSignalExecution, loading, visibleEntries]);
+  }, [
+    detailStates,
+    error,
+    expandedId,
+    handleToggle,
+    hasOnlyLowSignalExecution,
+    loading,
+    visibleEntries,
+  ]);
 
   return (
     <div className="space-y-2">

@@ -1,6 +1,7 @@
 import * as os from 'os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
+  BoardTaskActivityDetailResult,
   BoardTaskActivityEntry,
   BoardTaskLogStreamResponse,
   BoardTaskExactLogDetailResult,
@@ -73,6 +74,7 @@ import {
   TEAM_GET_ALL_TASKS,
   TEAM_GET_LOGS_FOR_TASK,
   TEAM_GET_TASK_ACTIVITY,
+  TEAM_GET_TASK_ACTIVITY_DETAIL,
   TEAM_GET_TASK_LOG_STREAM,
   TEAM_GET_TASK_EXACT_LOG_DETAIL,
   TEAM_GET_TASK_EXACT_LOG_SUMMARIES,
@@ -201,6 +203,10 @@ describe('ipc teams handlers', () => {
   const boardTaskActivityService = {
     getTaskActivity: vi.fn<() => Promise<BoardTaskActivityEntry[]>>(async () => []),
   };
+  const boardTaskActivityDetailService = {
+    getTaskActivityDetail:
+      vi.fn<() => Promise<BoardTaskActivityDetailResult>>(async () => ({ status: 'missing' })),
+  };
   const boardTaskLogStreamService = {
     getTaskLogStream:
       vi.fn<() => Promise<BoardTaskLogStreamResponse>>(async () => ({
@@ -235,6 +241,7 @@ describe('ipc teams handlers', () => {
       undefined,
       undefined,
       boardTaskActivityService as never,
+      boardTaskActivityDetailService as never,
       boardTaskLogStreamService as never,
       boardTaskExactLogsService as never,
       boardTaskExactLogDetailService as never,
@@ -1152,6 +1159,36 @@ describe('ipc teams handlers', () => {
 
     expect(result).toEqual({ success: true, data: activityRows });
     expect(boardTaskActivityService.getTaskActivity).toHaveBeenCalledWith('my-team', 'task-1');
+  });
+
+  it('returns focused task activity detail for one row', async () => {
+    const handler = handlers.get(TEAM_GET_TASK_ACTIVITY_DETAIL);
+    expect(handler).toBeDefined();
+
+    boardTaskActivityDetailService.getTaskActivityDetail.mockResolvedValueOnce({
+      status: 'ok',
+      detail: {
+        entryId: 'activity-1',
+        summaryLabel: 'Added a comment',
+        actorLabel: 'bob',
+        timestamp: '2026-04-13T10:35:00.000Z',
+        contextLines: ['while working on #peer12345'],
+        metadataRows: [{ label: 'Comment', value: '42' }],
+      },
+    });
+
+    const result = (await handler!({} as never, 'my-team', 'task-1', 'activity-1')) as {
+      success: boolean;
+      data?: BoardTaskActivityDetailResult;
+    };
+
+    expect(result.success).toBe(true);
+    expect(result.data?.status).toBe('ok');
+    expect(boardTaskActivityDetailService.getTaskActivityDetail).toHaveBeenCalledWith(
+      'my-team',
+      'task-1',
+      'activity-1'
+    );
   });
 
   describe('addTaskRelationship', () => {

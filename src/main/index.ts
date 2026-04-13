@@ -103,6 +103,7 @@ import {
 import { syncTelemetryFlag } from './sentry';
 import {
   BoardTaskActivityRecordSource,
+  BoardTaskActivityDetailService,
   BoardTaskActivityService,
   BoardTaskExactLogDetailService,
   BoardTaskExactLogsService,
@@ -786,6 +787,9 @@ async function initializeServices(): Promise<void> {
   const teamMemberLogsFinder = new TeamMemberLogsFinder();
   const boardTaskActivityRecordSource = new BoardTaskActivityRecordSource();
   const boardTaskActivityService = new BoardTaskActivityService(boardTaskActivityRecordSource);
+  const boardTaskActivityDetailService = new BoardTaskActivityDetailService(
+    boardTaskActivityRecordSource
+  );
   const boardTaskExactLogsService = new BoardTaskExactLogsService(boardTaskActivityRecordSource);
   const boardTaskExactLogDetailService = new BoardTaskExactLogDetailService(
     boardTaskActivityRecordSource
@@ -937,6 +941,7 @@ async function initializeServices(): Promise<void> {
     teamMemberLogsFinder,
     memberStatsComputer,
     boardTaskActivityService,
+    boardTaskActivityDetailService,
     boardTaskLogStreamService,
     boardTaskExactLogsService,
     boardTaskExactLogDetailService,

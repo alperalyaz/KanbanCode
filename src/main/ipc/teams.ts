@@ -28,6 +28,7 @@ import {
   TEAM_GET_PROJECT_BRANCH,
   TEAM_GET_SAVED_REQUEST,
   TEAM_GET_TASK_ACTIVITY,
+  TEAM_GET_TASK_ACTIVITY_DETAIL,
   TEAM_GET_TASK_ATTACHMENT,
   TEAM_GET_TASK_CHANGE_PRESENCE,
   TEAM_GET_TASK_EXACT_LOG_DETAIL,
@@ -122,6 +123,7 @@ import {
 
 import type {
   BoardTaskActivityService,
+  BoardTaskActivityDetailService,
   BoardTaskExactLogDetailService,
   BoardTaskExactLogsService,
   BoardTaskLogStreamService,
@@ -140,6 +142,7 @@ import type {
   AttachmentMeta,
   AttachmentPayload,
   BoardTaskActivityEntry,
+  BoardTaskActivityDetailResult,
   BoardTaskExactLogDetailResult,
   BoardTaskExactLogSummariesResponse,
   BoardTaskLogStreamResponse,
@@ -390,6 +393,7 @@ let teamBackupService: TeamBackupService | null = null;
 let teammateToolTracker: TeammateToolTracker | null = null;
 let branchStatusService: BranchStatusService | null = null;
 let boardTaskActivityService: BoardTaskActivityService | null = null;
+let boardTaskActivityDetailService: BoardTaskActivityDetailService | null = null;
 let boardTaskLogStreamService: BoardTaskLogStreamService | null = null;
 let boardTaskExactLogsService: BoardTaskExactLogsService | null = null;
 let boardTaskExactLogDetailService: BoardTaskExactLogDetailService | null = null;
@@ -425,6 +429,7 @@ export function initializeTeamHandlers(
   toolTracker?: TeammateToolTracker,
   branchTracker?: BranchStatusService,
   taskActivityService?: BoardTaskActivityService,
+  taskActivityDetailService?: BoardTaskActivityDetailService,
   taskLogStreamService?: BoardTaskLogStreamService,
   taskExactLogsService?: BoardTaskExactLogsService,
   taskExactLogDetailService?: BoardTaskExactLogDetailService
@@ -437,6 +442,7 @@ export function initializeTeamHandlers(
   teammateToolTracker = toolTracker ?? null;
   branchStatusService = branchTracker ?? null;
   boardTaskActivityService = taskActivityService ?? null;
+  boardTaskActivityDetailService = taskActivityDetailService ?? null;
   boardTaskLogStreamService = taskLogStreamService ?? null;
   boardTaskExactLogsService = taskExactLogsService ?? null;
   boardTaskExactLogDetailService = taskExactLogDetailService ?? null;
@@ -475,6 +481,7 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_GET_MEMBER_LOGS, handleGetMemberLogs);
   ipcMain.handle(TEAM_GET_LOGS_FOR_TASK, handleGetLogsForTask);
   ipcMain.handle(TEAM_GET_TASK_ACTIVITY, handleGetTaskActivity);
+  ipcMain.handle(TEAM_GET_TASK_ACTIVITY_DETAIL, handleGetTaskActivityDetail);
   ipcMain.handle(TEAM_GET_TASK_LOG_STREAM, handleGetTaskLogStream);
   ipcMain.handle(TEAM_GET_TASK_EXACT_LOG_SUMMARIES, handleGetTaskExactLogSummaries);
   ipcMain.handle(TEAM_GET_TASK_EXACT_LOG_DETAIL, handleGetTaskExactLogDetail);
@@ -546,6 +553,7 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_GET_MEMBER_LOGS);
   ipcMain.removeHandler(TEAM_GET_LOGS_FOR_TASK);
   ipcMain.removeHandler(TEAM_GET_TASK_ACTIVITY);
+  ipcMain.removeHandler(TEAM_GET_TASK_ACTIVITY_DETAIL);
   ipcMain.removeHandler(TEAM_GET_TASK_LOG_STREAM);
   ipcMain.removeHandler(TEAM_GET_TASK_EXACT_LOG_SUMMARIES);
   ipcMain.removeHandler(TEAM_GET_TASK_EXACT_LOG_DETAIL);
@@ -616,6 +624,13 @@ function getBoardTaskActivityService(): BoardTaskActivityService {
     throw new Error('Board task activity service is not initialized');
   }
   return boardTaskActivityService;
+}
+
+function getBoardTaskActivityDetailService(): BoardTaskActivityDetailService {
+  if (!boardTaskActivityDetailService) {
+    throw new Error('Board task activity detail service is not initialized');
+  }
+  return boardTaskActivityDetailService;
 }
 
 function getBoardTaskLogStreamService(): BoardTaskLogStreamService {
@@ -2515,6 +2530,32 @@ async function handleGetTaskActivity(
   }
   return wrapTeamHandler('getTaskActivity', () =>
     getBoardTaskActivityService().getTaskActivity(vTeam.value!, vTask.value!)
+  );
+}
+
+async function handleGetTaskActivityDetail(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  taskId: unknown,
+  activityId: unknown
+): Promise<IpcResult<BoardTaskActivityDetailResult>> {
+  const vTeam = validateTeamName(teamName);
+  if (!vTeam.valid) {
+    return { success: false, error: vTeam.error ?? 'Invalid teamName' };
+  }
+  const vTask = validateTaskId(taskId);
+  if (!vTask.valid) {
+    return { success: false, error: vTask.error ?? 'Invalid taskId' };
+  }
+  if (typeof activityId !== 'string' || activityId.trim().length === 0) {
+    return { success: false, error: 'activityId must be a non-empty string' };
+  }
+  return wrapTeamHandler('getTaskActivityDetail', () =>
+    getBoardTaskActivityDetailService().getTaskActivityDetail(
+      vTeam.value!,
+      vTask.value!,
+      activityId.trim()
+    )
   );
 }
 

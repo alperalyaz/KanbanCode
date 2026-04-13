@@ -39,6 +39,7 @@ import type {
 import type {
   AddMemberRequest,
   AddTaskCommentRequest,
+  BoardTaskActivityDetailResult,
   AttachmentFileData,
   BoardTaskActivityEntry,
   BoardTaskExactLogDetailResult,
@@ -482,6 +483,11 @@ export interface TeamsAPI {
     }
   ) => Promise<MemberLogSummary[]>;
   getTaskActivity: (teamName: string, taskId: string) => Promise<BoardTaskActivityEntry[]>;
+  getTaskActivityDetail: (
+    teamName: string,
+    taskId: string,
+    activityId: string
+  ) => Promise<BoardTaskActivityDetailResult>;
   getTaskLogStream: (teamName: string, taskId: string) => Promise<BoardTaskLogStreamResponse>;
   getTaskExactLogSummaries: (
     teamName: string,

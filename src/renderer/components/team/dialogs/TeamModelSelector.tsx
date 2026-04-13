@@ -18,6 +18,7 @@ import {
 } from '@renderer/utils/geminiUiFreeze';
 import {
   doesTeamModelCarryProviderBrand,
+  getProviderScopedTeamModelLabel,
   getTeamModelLabel as getCatalogTeamModelLabel,
   getTeamModelUiDisabledReason,
   getTeamProviderLabel as getCatalogTeamProviderLabel,
@@ -26,6 +27,8 @@ import {
   TEAM_MODEL_UI_DISABLED_BADGE_LABEL,
 } from '@renderer/utils/teamModelCatalog';
 import { Info } from 'lucide-react';
+
+export { getProviderScopedTeamModelLabel } from '@renderer/utils/teamModelCatalog';
 
 // --- Provider definitions ---
 
@@ -46,17 +49,6 @@ const OPENCODE_UI_DISABLED_REASON = 'OpenCode in development';
 
 export function getTeamModelLabel(model: string): string {
   return getCatalogTeamModelLabel(model) ?? model;
-}
-
-export function getProviderScopedTeamModelLabel(
-  providerId: 'anthropic' | 'codex' | 'gemini',
-  model: string
-): string {
-  const baseLabel = getTeamModelLabel(model);
-  if (providerId !== 'codex') {
-    return baseLabel;
-  }
-  return baseLabel.replace(/^GPT-/i, '');
 }
 
 export function getTeamProviderLabel(providerId: 'anthropic' | 'codex' | 'gemini'): string {

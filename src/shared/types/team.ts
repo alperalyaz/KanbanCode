@@ -236,6 +236,30 @@ export interface BoardTaskActivityEntry {
   };
 }
 
+export interface BoardTaskActivityDetailMetadataRow {
+  label: string;
+  value: string;
+}
+
+export interface BoardTaskActivityDetail {
+  entryId: string;
+  summaryLabel: string;
+  actorLabel: string;
+  timestamp: string;
+  contextLines: string[];
+  metadataRows: BoardTaskActivityDetailMetadataRow[];
+  logDetail?: BoardTaskExactLogDetail;
+}
+
+export type BoardTaskActivityDetailResult =
+  | {
+      status: 'ok';
+      detail: BoardTaskActivityDetail;
+    }
+  | {
+      status: 'missing';
+    };
+
 export interface BoardTaskExactLogActor {
   memberName?: string;
   role: 'member' | 'lead' | 'unknown';

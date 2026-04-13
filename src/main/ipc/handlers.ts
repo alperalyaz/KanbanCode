@@ -89,6 +89,7 @@ import { registerValidationHandlers, removeValidationHandlers } from './validati
 import { registerWindowHandlers, removeWindowHandlers } from './window';
 
 import type {
+  BoardTaskActivityDetailService,
   BoardTaskActivityService,
   BoardTaskExactLogDetailService,
   BoardTaskExactLogsService,
@@ -135,6 +136,7 @@ export function initializeIpcHandlers(
   teamMemberLogsFinder: TeamMemberLogsFinder,
   memberStatsComputer: MemberStatsComputer,
   boardTaskActivityService: BoardTaskActivityService,
+  boardTaskActivityDetailService: BoardTaskActivityDetailService,
   boardTaskLogStreamService: BoardTaskLogStreamService,
   boardTaskExactLogsService: BoardTaskExactLogsService,
   boardTaskExactLogDetailService: BoardTaskExactLogDetailService,
@@ -184,6 +186,7 @@ export function initializeIpcHandlers(
     teammateToolTracker,
     branchStatusService,
     boardTaskActivityService,
+    boardTaskActivityDetailService,
     boardTaskLogStreamService,
     boardTaskExactLogsService,
     boardTaskExactLogDetailService

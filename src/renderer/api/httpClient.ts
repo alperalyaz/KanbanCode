@@ -9,6 +9,7 @@
 import type {
   AppConfig,
   AttachmentFileData,
+  BoardTaskActivityDetailResult,
   BoardTaskExactLogDetailResult,
   BoardTaskExactLogSummariesResponse,
   BoardTaskLogStreamResponse,
@@ -810,6 +811,10 @@ export class HttpAPIClient implements ElectronAPI {
     getTaskActivity: async () => {
       console.warn('[HttpAPIClient] getTaskActivity is not available in browser mode');
       return [];
+    },
+    getTaskActivityDetail: async (): Promise<BoardTaskActivityDetailResult> => {
+      console.warn('[HttpAPIClient] getTaskActivityDetail is not available in browser mode');
+      return { status: 'missing' };
     },
     getTaskLogStream: async (): Promise<BoardTaskLogStreamResponse> => {
       console.warn('[HttpAPIClient] getTaskLogStream is not available in browser mode');

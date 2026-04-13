@@ -11,6 +11,7 @@ export { MemberStatsComputer } from './MemberStatsComputer';
 export { ReviewApplierService } from './ReviewApplierService';
 export { TaskBoundaryParser } from './TaskBoundaryParser';
 export { BoardTaskActivityRecordSource } from './taskLogs/activity/BoardTaskActivityRecordSource';
+export { BoardTaskActivityDetailService } from './taskLogs/activity/BoardTaskActivityDetailService';
 export { BoardTaskActivityService } from './taskLogs/activity/BoardTaskActivityService';
 export { BoardTaskExactLogDetailService } from './taskLogs/exact/BoardTaskExactLogDetailService';
 export { BoardTaskExactLogsService } from './taskLogs/exact/BoardTaskExactLogsService';

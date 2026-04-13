@@ -304,6 +304,9 @@ export const TEAM_GET_LOGS_FOR_TASK = 'team:getLogsForTask';
 /** Get explicit board-task activity derived from transcript metadata */
 export const TEAM_GET_TASK_ACTIVITY = 'team:getTaskActivity';
 
+/** Get focused inline detail for one task-activity entry */
+export const TEAM_GET_TASK_ACTIVITY_DETAIL = 'team:getTaskActivityDetail';
+
 /** Get one task-scoped log stream derived from explicit board-task activity */
 export const TEAM_GET_TASK_LOG_STREAM = 'team:getTaskLogStream';
 

@@ -130,6 +130,7 @@ import {
   TEAM_GET_PROJECT_BRANCH,
   TEAM_GET_SAVED_REQUEST,
   TEAM_GET_TASK_ACTIVITY,
+  TEAM_GET_TASK_ACTIVITY_DETAIL,
   TEAM_GET_TASK_ATTACHMENT,
   TEAM_GET_TASK_CHANGE_PRESENCE,
   TEAM_GET_TASK_EXACT_LOG_DETAIL,
@@ -232,6 +233,7 @@ import type {
   ApplyReviewRequest,
   ApplyReviewResult,
   AttachmentFileData,
+  BoardTaskActivityDetailResult,
   BoardTaskActivityEntry,
   BoardTaskExactLogDetailResult,
   BoardTaskExactLogSummariesResponse,
@@ -967,6 +969,14 @@ const electronAPI: ElectronAPI = {
         TEAM_GET_TASK_ACTIVITY,
         teamName,
         taskId
+      );
+    },
+    getTaskActivityDetail: async (teamName: string, taskId: string, activityId: string) => {
+      return invokeIpcWithResult<BoardTaskActivityDetailResult>(
+        TEAM_GET_TASK_ACTIVITY_DETAIL,
+        teamName,
+        taskId,
+        activityId
       );
     },
     getTaskLogStream: async (teamName: string, taskId: string) => {

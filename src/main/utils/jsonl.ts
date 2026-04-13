@@ -480,6 +480,7 @@ export interface SessionFileMetadata {
   messageCount: number;
   isOngoing: boolean;
   gitBranch: string | null;
+  model?: string | null;
   /** Total context consumed (compaction-aware) */
   contextConsumption?: number;
   /** Number of compaction events */
@@ -502,6 +503,7 @@ export async function analyzeSessionFileMetadata(
       messageCount: 0,
       isOngoing: false,
       gitBranch: null,
+      model: null,
     };
   }
 
@@ -514,6 +516,7 @@ export async function analyzeSessionFileMetadata(
         messageCount: 0,
         isOngoing: false,
         gitBranch: null,
+        model: null,
       };
     }
     if (stat.size > MAX_DEEP_SCAN_BYTES) {
@@ -526,6 +529,7 @@ export async function analyzeSessionFileMetadata(
           messageCount: 0,
           isOngoing: false,
           gitBranch: null,
+          model: null,
         };
       } catch {
         return {
@@ -533,6 +537,7 @@ export async function analyzeSessionFileMetadata(
           messageCount: 0,
           isOngoing: false,
           gitBranch: null,
+          model: null,
         };
       }
     }
@@ -552,6 +557,7 @@ export async function analyzeSessionFileMetadata(
   // After a UserGroup, await the first main-thread assistant message to count the AIGroup
   let awaitingAIGroup = false;
   let gitBranch: string | null = null;
+  let model: string | null = null;
 
   let activityIndex = 0;
   let lastEndingIndex = -1;
@@ -605,6 +611,10 @@ export async function analyzeSessionFileMetadata(
 
     if (!gitBranch && 'gitBranch' in entry && entry.gitBranch) {
       gitBranch = entry.gitBranch;
+    }
+
+    if (parsed.type === 'assistant' && !parsed.isSidechain && parsed.model !== '<synthetic>') {
+      model = parsed.model ?? model;
     }
 
     if (!firstUserMessage && entry.type === 'user') {
@@ -803,6 +813,7 @@ export async function analyzeSessionFileMetadata(
     messageCount,
     isOngoing: lastEndingIndex === -1 ? hasAnyOngoingActivity : hasActivityAfterLastEnding,
     gitBranch,
+    model,
     contextConsumption,
     compactionCount: compactionPhases.length > 0 ? compactionPhases.length : undefined,
     phaseBreakdown,
