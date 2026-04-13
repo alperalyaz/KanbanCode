@@ -136,6 +136,104 @@ describe('BoardTaskActivityDetailService', () => {
     );
   });
 
+  it('keeps lifecycle tool-backed activity renderable when focused detail contains a tool execution', async () => {
+    const record = makeRecord({
+      id: 'record-complete',
+      linkKind: 'lifecycle',
+      action: {
+        canonicalToolName: 'task_complete',
+        toolUseId: 'tool-complete',
+        category: 'status',
+      },
+      source: {
+        filePath: '/tmp/task.jsonl',
+        messageUuid: 'msg-complete',
+        toolUseId: 'tool-complete',
+        sourceOrder: 9,
+      },
+    });
+
+    const service = new BoardTaskActivityDetailService(
+      { getTaskRecords: vi.fn(async () => [record]) } as never,
+      { parseFiles: vi.fn(async () => new Map([['/tmp/task.jsonl', []]])) } as never,
+      {
+        selectDetail: vi.fn(() => ({
+          id: 'activity:record-complete',
+          timestamp: record.timestamp,
+          actor: record.actor,
+          source: record.source,
+          records: [record],
+          filteredMessages: [
+            {
+              uuid: 'msg-complete-assistant',
+              parentUuid: null,
+              type: 'assistant',
+              timestamp: new Date(record.timestamp),
+              role: 'assistant',
+              content: [{ type: 'tool_use', id: 'tool-complete', name: 'task_complete', input: {} }],
+              isSidechain: true,
+              isMeta: false,
+              toolCalls: [{ id: 'tool-complete', name: 'task_complete', input: {}, isTask: false }],
+              toolResults: [],
+            } as never,
+            {
+              uuid: 'msg-complete-user',
+              parentUuid: 'msg-complete-assistant',
+              type: 'user',
+              timestamp: new Date(record.timestamp),
+              role: 'user',
+              content: [{ type: 'tool_result', tool_use_id: 'tool-complete', content: '' }],
+              isSidechain: true,
+              isMeta: true,
+              toolCalls: [],
+              toolResults: [{ toolUseId: 'tool-complete', content: '', isError: false }],
+              toolUseResult: { content: '' },
+            } as never,
+          ],
+        })),
+      } as never,
+      {
+        buildBundleChunks: vi.fn(() => [
+          {
+            id: 'chunk-complete',
+            chunkType: 'ai',
+            toolExecutions: [
+              {
+                toolCall: {
+                  id: 'tool-complete',
+                  name: 'task_complete',
+                  input: {},
+                  isTask: false,
+                },
+                startTime: new Date(record.timestamp),
+              },
+            ],
+            semanticSteps: [
+              { id: 'step-complete-call', type: 'tool_call' },
+              { id: 'step-complete-result', type: 'tool_result' },
+            ],
+          },
+        ]),
+      } as never
+    );
+
+    const result = await service.getTaskActivityDetail('demo', 'task-a', 'record-complete');
+
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') {
+      throw new Error('expected ok detail');
+    }
+    expect(result.detail.summaryLabel).toBe('Completed task');
+    expect(result.detail.logDetail?.chunks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'chunk-complete',
+          chunkType: 'ai',
+        }),
+      ])
+    );
+  });
+
   it('returns metadata only for non-tool-backed activity without parsing transcript content', async () => {
     const record = makeRecord({
       id: 'record-2',

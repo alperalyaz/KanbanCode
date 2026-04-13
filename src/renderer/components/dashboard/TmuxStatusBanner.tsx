@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, isElectronMode } from '@renderer/api';
 import { AlertTriangle, ExternalLink, RefreshCw, Wrench } from 'lucide-react';
 
-import type { TmuxStatus } from '@shared/types';
+import type { TmuxPlatform, TmuxStatus } from '@shared/types';
 
 const OFFICIAL_TMUX_INSTALL_URL = 'https://github.com/tmux/tmux/wiki/Installing';
 const TMUX_README_URL = 'https://github.com/tmux/tmux/blob/master/README';
@@ -16,12 +16,74 @@ interface SourceLink {
   url: string;
 }
 
+interface PlatformInstallGuideStep {
+  kind: 'text' | 'code';
+  value: string;
+}
+
+interface PlatformInstallGuide {
+  platform: Exclude<TmuxPlatform, 'unknown'>;
+  title: string;
+  steps: PlatformInstallGuideStep[];
+  sources: SourceLink[];
+}
+
 type BannerState =
   | { loading: true; status: null; error: null }
   | { loading: false; status: TmuxStatus; error: null }
   | { loading: false; status: null; error: string };
 
 const INITIAL_STATE: BannerState = { loading: true, status: null, error: null };
+
+const PLATFORM_INSTALL_GUIDES: readonly PlatformInstallGuide[] = [
+  {
+    platform: 'darwin',
+    title: 'macOS',
+    steps: [
+      { kind: 'text', value: 'Recommended: Homebrew' },
+      { kind: 'code', value: 'brew install tmux' },
+      { kind: 'text', value: 'Alternative: MacPorts' },
+      { kind: 'code', value: 'sudo port install tmux' },
+    ],
+    sources: [
+      { label: 'tmux guide', url: OFFICIAL_TMUX_INSTALL_URL },
+      { label: 'Homebrew', url: HOMEBREW_TMUX_URL },
+      { label: 'MacPorts', url: MACPORTS_TMUX_URL },
+    ],
+  },
+  {
+    platform: 'linux',
+    title: 'Linux',
+    steps: [
+      { kind: 'text', value: 'Use your distro package manager:' },
+      { kind: 'code', value: 'sudo apt install tmux' },
+      { kind: 'code', value: 'sudo dnf install tmux' },
+      { kind: 'code', value: 'sudo yum install tmux' },
+      { kind: 'code', value: 'sudo zypper install tmux' },
+      { kind: 'code', value: 'sudo pacman -S tmux' },
+    ],
+    sources: [{ label: 'tmux guide', url: OFFICIAL_TMUX_INSTALL_URL }],
+  },
+  {
+    platform: 'win32',
+    title: 'Windows',
+    steps: [
+      {
+        kind: 'text',
+        value: 'The tmux docs do not provide an official native Windows install command.',
+      },
+      { kind: 'text', value: '1. Install WSL' },
+      { kind: 'code', value: 'wsl --install' },
+      { kind: 'text', value: '2. Inside Ubuntu or another distro' },
+      { kind: 'code', value: 'sudo apt install tmux' },
+    ],
+    sources: [
+      { label: 'tmux README', url: TMUX_README_URL },
+      { label: 'tmux guide', url: OFFICIAL_TMUX_INSTALL_URL },
+      { label: 'Microsoft WSL', url: MICROSOFT_WSL_INSTALL_URL },
+    ],
+  },
+] as const;
 
 const SourceLinks = ({ links }: { links: SourceLink[] }): React.JSX.Element => {
   return (
@@ -50,91 +112,65 @@ const SourceLinks = ({ links }: { links: SourceLink[] }): React.JSX.Element => {
   );
 };
 
-const PlatformInstallMatrix = (): React.JSX.Element => {
+function getPlatformLabel(platform: TmuxPlatform): string {
+  if (platform === 'darwin') return 'macOS';
+  if (platform === 'linux') return 'Linux';
+  if (platform === 'win32') return 'Windows';
+  return 'your OS';
+}
+
+const PlatformInstallCard = ({ guide }: { guide: PlatformInstallGuide }): React.JSX.Element => {
   return (
-    <div className="mt-3 grid gap-2 lg:grid-cols-3">
-      <div
-        className="rounded-md border px-3 py-2"
-        style={{
-          borderColor: 'rgba(245, 158, 11, 0.18)',
-          backgroundColor: 'rgba(255, 255, 255, 0.02)',
-        }}
-      >
-        <div className="mb-1 text-xs font-semibold" style={{ color: 'var(--color-text)' }}>
-          macOS
-        </div>
-        <div className="space-y-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-          <div>Recommended: Homebrew</div>
-          <code className="block rounded bg-black/20 px-2 py-1 font-mono">brew install tmux</code>
-          <div>Alternative: MacPorts</div>
-          <code className="block rounded bg-black/20 px-2 py-1 font-mono">
-            sudo port install tmux
-          </code>
-          <SourceLinks
-            links={[
-              { label: 'tmux guide', url: OFFICIAL_TMUX_INSTALL_URL },
-              { label: 'Homebrew', url: HOMEBREW_TMUX_URL },
-              { label: 'MacPorts', url: MACPORTS_TMUX_URL },
-            ]}
-          />
-        </div>
+    <div
+      className="rounded-md border px-3 py-2"
+      style={{
+        borderColor: 'rgba(245, 158, 11, 0.18)',
+        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+      }}
+    >
+      <div className="mb-1 text-xs font-semibold" style={{ color: 'var(--color-text)' }}>
+        {guide.title}
       </div>
-
-      <div
-        className="rounded-md border px-3 py-2"
-        style={{
-          borderColor: 'rgba(245, 158, 11, 0.18)',
-          backgroundColor: 'rgba(255, 255, 255, 0.02)',
-        }}
-      >
-        <div className="mb-1 text-xs font-semibold" style={{ color: 'var(--color-text)' }}>
-          Linux
-        </div>
-        <div className="space-y-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-          <div>Use your distro package manager:</div>
-          <code className="block rounded bg-black/20 px-2 py-1 font-mono">
-            sudo apt install tmux
-          </code>
-          <code className="block rounded bg-black/20 px-2 py-1 font-mono">
-            sudo dnf install tmux
-          </code>
-          <code className="block rounded bg-black/20 px-2 py-1 font-mono">
-            sudo yum install tmux
-          </code>
-          <code className="block rounded bg-black/20 px-2 py-1 font-mono">
-            sudo zypper install tmux
-          </code>
-          <code className="block rounded bg-black/20 px-2 py-1 font-mono">sudo pacman -S tmux</code>
-          <SourceLinks links={[{ label: 'tmux guide', url: OFFICIAL_TMUX_INSTALL_URL }]} />
-        </div>
+      <div className="space-y-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+        {guide.steps.map((step) =>
+          step.kind === 'code' ? (
+            <code
+              key={`${guide.platform}-${step.value}`}
+              className="block rounded bg-black/20 px-2 py-1 font-mono"
+            >
+              {step.value}
+            </code>
+          ) : (
+            <div key={`${guide.platform}-${step.value}`}>{step.value}</div>
+          )
+        )}
+        <SourceLinks links={guide.sources} />
       </div>
+    </div>
+  );
+};
 
-      <div
-        className="rounded-md border px-3 py-2"
-        style={{
-          borderColor: 'rgba(245, 158, 11, 0.18)',
-          backgroundColor: 'rgba(255, 255, 255, 0.02)',
-        }}
-      >
-        <div className="mb-1 text-xs font-semibold" style={{ color: 'var(--color-text)' }}>
-          Windows
+const PlatformInstallMatrix = ({ platform }: { platform: TmuxPlatform }): React.JSX.Element => {
+  const guides =
+    platform === 'unknown'
+      ? PLATFORM_INSTALL_GUIDES
+      : PLATFORM_INSTALL_GUIDES.filter((guide) => guide.platform === platform);
+  const singleGuide = guides.length === 1;
+
+  return (
+    <div className="mt-3">
+      {singleGuide && (
+        <div
+          className="mb-2 text-[10px] uppercase tracking-wide"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          Detected OS: {getPlatformLabel(platform)}
         </div>
-        <div className="space-y-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-          <p>The tmux docs do not provide an official native Windows install command.</p>
-          <div>1. Install WSL</div>
-          <code className="block rounded bg-black/20 px-2 py-1 font-mono">wsl --install</code>
-          <div>2. Inside Ubuntu or another distro</div>
-          <code className="block rounded bg-black/20 px-2 py-1 font-mono">
-            sudo apt install tmux
-          </code>
-          <SourceLinks
-            links={[
-              { label: 'tmux README', url: TMUX_README_URL },
-              { label: 'tmux guide', url: OFFICIAL_TMUX_INSTALL_URL },
-              { label: 'Microsoft WSL', url: MICROSOFT_WSL_INSTALL_URL },
-            ]}
-          />
-        </div>
+      )}
+      <div className={singleGuide ? 'max-w-xl' : 'grid gap-2 lg:grid-cols-3'}>
+        {guides.map((guide) => (
+          <PlatformInstallCard key={guide.platform} guide={guide} />
+        ))}
       </div>
     </div>
   );
@@ -305,7 +341,7 @@ export const TmuxStatusBanner = (): React.JSX.Element | null => {
         </div>
       </div>
 
-      <PlatformInstallMatrix />
+      <PlatformInstallMatrix platform={state.status.platform} />
     </div>
   );
 };

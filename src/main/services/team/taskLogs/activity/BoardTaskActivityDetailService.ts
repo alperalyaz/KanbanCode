@@ -549,31 +549,6 @@ function sanitizeDetailMessages(
   );
 }
 
-function hasMeaningfulText(value: string): boolean {
-  const trimmed = value.trim();
-  return trimmed.length > 0 && !looksLikeJsonPayload(trimmed);
-}
-
-function hasUsefulLinkedToolMessages(messages: ParsedMessage[]): boolean {
-  return messages.some((message) => {
-    if (hasMeaningfulToolUseResult(message)) {
-      return true;
-    }
-
-    if (typeof message.content === 'string') {
-      return hasMeaningfulText(message.content);
-    }
-
-    return message.content.some((block) => {
-      if (block.type !== 'text') {
-        return false;
-      }
-
-      return hasMeaningfulText(block.text);
-    });
-  });
-}
-
 function hasUsefulLinkedToolChunks(chunks: EnhancedChunk[]): boolean {
   return chunks.some((chunk) => isEnhancedAIChunk(chunk) && chunk.toolExecutions.length > 0);
 }
@@ -621,11 +596,7 @@ export class BoardTaskActivityDetailService {
           record.source.toolUseId
         );
         const chunks = this.chunkBuilder.buildBundleChunks(filteredMessages);
-        if (
-          chunks.length > 0 &&
-          hasUsefulLinkedToolMessages(filteredMessages) &&
-          hasUsefulLinkedToolChunks(chunks)
-        ) {
+        if (chunks.length > 0 && hasUsefulLinkedToolChunks(chunks)) {
           detail.logDetail = {
             id: detailCandidate.id,
             chunks,

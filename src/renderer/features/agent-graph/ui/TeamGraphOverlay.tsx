@@ -15,6 +15,7 @@ import { GraphActivityHud } from './GraphActivityHud';
 import { GraphBlockingEdgePopover } from './GraphBlockingEdgePopover';
 import { GraphNodePopover } from './GraphNodePopover';
 import { GraphProvisioningHud } from './GraphProvisioningHud';
+import { useGraphCreateTaskDialog } from './useGraphCreateTaskDialog';
 
 import type { GraphDomainRef, GraphEventPort } from '@claude-teams/agent-graph';
 import type {
@@ -46,6 +47,7 @@ export const TeamGraphOverlay = ({
   onOpenMemberProfile,
 }: TeamGraphOverlayProps): React.JSX.Element => {
   const graphData = useTeamGraphAdapter(teamName);
+  const { dialog: createTaskDialog, openCreateTaskDialog } = useGraphCreateTaskDialog(teamName);
   const leadNodeId = useMemo(
     () => graphData.nodes.find((node) => node.kind === 'lead')?.id ?? null,
     [graphData.nodes]
@@ -75,8 +77,8 @@ export const TeamGraphOverlay = ({
     onClose();
   }, [onClose, teamName]);
   const openCreateTask = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('graph:create-task', { detail: { teamName, owner: '' } }));
-  }, [teamName]);
+    openCreateTaskDialog('');
+  }, [openCreateTaskDialog]);
 
   const events: GraphEventPort = {
     onNodeDoubleClick: useCallback(
@@ -154,6 +156,7 @@ export const TeamGraphOverlay = ({
               onSendMessage?.(name);
               closePopover();
             }}
+            onCreateTask={openCreateTaskDialog}
             onOpenTaskDetail={(id) => {
               onOpenTaskDetail?.(id);
               closePopover();
@@ -166,6 +169,7 @@ export const TeamGraphOverlay = ({
           />
         )}
       />
+      {createTaskDialog}
     </div>
   );
 };

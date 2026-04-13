@@ -15,6 +15,7 @@ import { GraphActivityHud } from './GraphActivityHud';
 import { GraphBlockingEdgePopover } from './GraphBlockingEdgePopover';
 import { GraphNodePopover } from './GraphNodePopover';
 import { GraphProvisioningHud } from './GraphProvisioningHud';
+import { useGraphCreateTaskDialog } from './useGraphCreateTaskDialog';
 
 import type { GraphDomainRef, GraphEventPort, GraphNode } from '@claude-teams/agent-graph';
 import type {
@@ -48,6 +49,7 @@ export const TeamGraphTab = ({
     [graphData.nodes]
   );
   const [fullscreen, setFullscreen] = useState(false);
+  const { dialog: createTaskDialog, openCreateTaskDialog } = useGraphCreateTaskDialog(teamName);
 
   // Typed event dispatchers (DRY — used in both events + renderOverlay)
   const dispatchOpenTask = useCallback(
@@ -71,20 +73,12 @@ export const TeamGraphTab = ({
       ),
     [teamName]
   );
-  const dispatchCreateTask = useCallback(
-    (owner: string) =>
-      window.dispatchEvent(new CustomEvent('graph:create-task', { detail: { teamName, owner } })),
-    [teamName]
-  );
   const openTeamPage = useCallback(() => {
     useStore.getState().openTeamTab(teamName);
   }, [teamName]);
   const openCreateTask = useCallback(() => {
-    useStore.getState().openTeamTab(teamName);
-    window.setTimeout(() => {
-      dispatchCreateTask('');
-    }, 0);
-  }, [dispatchCreateTask, teamName]);
+    openCreateTaskDialog('');
+  }, [openCreateTaskDialog]);
 
   // Task action dispatchers
   const dispatchTaskAction = useCallback(
@@ -195,7 +189,7 @@ export const TeamGraphTab = ({
               onSendMessage={dispatchSendMessage}
               onOpenTaskDetail={dispatchOpenTask}
               onOpenMemberProfile={dispatchOpenProfile}
-              onCreateTask={dispatchCreateTask}
+              onCreateTask={openCreateTaskDialog}
               onStartTask={dispatchStartTask}
               onCompleteTask={dispatchCompleteTask}
               onApproveTask={dispatchApproveTask}
@@ -208,6 +202,7 @@ export const TeamGraphTab = ({
           )}
         />
       </div>
+      {createTaskDialog}
       {fullscreen && (
         <Suspense fallback={null}>
           <TeamGraphOverlay

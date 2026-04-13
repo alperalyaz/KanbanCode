@@ -1418,10 +1418,13 @@ body.theme-transitioning {
   stroke: rgba(138, 130, 118, 0.2);
 }
 
-:root.light .team-graph-view > .absolute.left-20.top-3 {
-  display: none !important;
+:root.light .team-graph-view > .absolute.left-3.top-3 > div {
+  background: rgba(248, 244, 237, 0.9) !important;
+  border-color: rgba(120, 113, 108, 0.18) !important;
+  box-shadow: 0 10px 24px rgba(120, 113, 108, 0.1);
 }
 
+:root.light .team-graph-view > .absolute.left-3.top-3 > div,
 :root.light .team-graph-view > .absolute.right-3.top-3 > div:not(.relative),
 :root.light .team-graph-view > .absolute.right-3.top-3 > .relative > div:first-child,
 :root.light .team-graph-view > .absolute.bottom-3.right-3 > div,
@@ -1437,34 +1440,38 @@ body.theme-transitioning {
   box-shadow: 0 16px 32px rgba(120, 113, 108, 0.12);
 }
 
+.team-graph-view > .absolute.left-3.top-3 > div,
 .team-graph-view > .absolute.right-3.top-3 > div:not(.relative),
 .team-graph-view > .absolute.right-3.top-3 > .relative > div:first-child {
-  width: 32px !important;
-  min-width: 32px !important;
-  height: 32px !important;
-  min-height: 32px !important;
+  width: 25px !important;
+  min-width: 25px !important;
+  height: 25px !important;
+  min-height: 25px !important;
   padding: 0 !important;
   justify-content: center !important;
-  border-radius: 10px !important;
+  border-radius: 6px !important;
 }
 
+.team-graph-view > .absolute.left-3.top-3 > div > button,
 .team-graph-view > .absolute.right-3.top-3 > div:not(.relative) > button,
 .team-graph-view > .absolute.right-3.top-3 > .relative > div:first-child > button {
   width: 100% !important;
   height: 100% !important;
   min-width: 100% !important;
   min-height: 100% !important;
-  padding: 6px !important;
+  padding: 0 !important;
   justify-content: center !important;
   gap: 0 !important;
 }
 
+.team-graph-view > .absolute.left-3.top-3 > div > button svg,
 .team-graph-view > .absolute.right-3.top-3 > div:not(.relative) > button svg,
 .team-graph-view > .absolute.right-3.top-3 > .relative > div:first-child > button svg {
-  width: 100% !important;
-  height: 100% !important;
+  width: 10px !important;
+  height: 10px !important;
 }
 
+.team-graph-view > .absolute.left-3.top-3 > div > button span,
 .team-graph-view > .absolute.right-3.top-3 > div:not(.relative) > button span,
 .team-graph-view > .absolute.right-3.top-3 > .relative > div:first-child > button span {
   display: none !important;

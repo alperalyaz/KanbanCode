@@ -1,7 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { api } from '@renderer/api';
-import { MemberExecutionLog } from '@renderer/components/team/members/MemberExecutionLog';
 import { asEnhancedChunkArray } from '@renderer/types/data';
 import { enhanceAIGroup } from '@renderer/utils/aiGroupEnhancer';
 import { transformChunksToConversation } from '@renderer/utils/groupTransformer';
@@ -15,11 +14,14 @@ import {
 } from '@shared/utils/boardTaskActivityPresentation';
 import { AlertCircle, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 
+import { TaskActivityLinkedToolCard } from './TaskActivityLinkedToolCard';
+
 import type {
   BoardTaskActivityDetail,
   BoardTaskActivityEntry,
   BoardTaskActivityTaskRef,
 } from '@shared/types';
+import type { AIGroupDisplayItem, LinkedToolItem } from '@renderer/types/groups';
 
 interface TaskActivitySectionProps {
   teamName: string;
@@ -92,18 +94,27 @@ function normalizeDetail(detail: BoardTaskActivityDetail): BoardTaskActivityDeta
   };
 }
 
-function hasRenderableLinkedTool(detail: BoardTaskActivityDetail): boolean {
+function getFirstRenderableLinkedTool(detail: BoardTaskActivityDetail): LinkedToolItem | null {
   if (!detail.logDetail || detail.logDetail.chunks.length === 0) {
-    return false;
+    return null;
   }
 
   const conversation = transformChunksToConversation(detail.logDetail.chunks, [], false);
-  return conversation.items.some((item) => {
+  for (const item of conversation.items) {
     if (item.type !== 'ai') {
-      return false;
+      continue;
     }
-    return enhanceAIGroup(item.group).displayItems.length > 0;
-  });
+
+    const linkedTool = enhanceAIGroup(item.group).displayItems.find(
+      (displayItem): displayItem is Extract<AIGroupDisplayItem, { type: 'tool' }> =>
+        displayItem.type === 'tool'
+    );
+    if (linkedTool) {
+      return linkedTool.tool;
+    }
+  }
+
+  return null;
 }
 
 function ActivityMetadata({
@@ -153,7 +164,7 @@ function ActivityDetailPanel({
 }): React.JSX.Element {
   if (detailState.status === 'loading') {
     return (
-      <div className="border-[var(--color-border-muted)]/50 bg-[var(--color-bg-elevated)]/25 flex items-center gap-2 rounded-md border px-3 py-3 text-xs text-[var(--color-text-muted)]">
+      <div className="border-[var(--color-border)]/20 bg-[var(--color-bg-elevated)]/18 flex items-center gap-2 rounded-md border px-3 py-3 text-xs text-[var(--color-text-muted)]">
         <Loader2 size={12} className="animate-spin" />
         Loading activity details...
       </div>
@@ -171,7 +182,7 @@ function ActivityDetailPanel({
 
   if (detailState.status === 'missing') {
     return (
-      <div className="border-[var(--color-border-muted)]/50 bg-[var(--color-bg-elevated)]/25 rounded-md border px-3 py-3 text-xs text-[var(--color-text-muted)]">
+      <div className="border-[var(--color-border)]/20 bg-[var(--color-bg-elevated)]/18 rounded-md border px-3 py-3 text-xs text-[var(--color-text-muted)]">
         Detailed transcript context is no longer available for this activity.
       </div>
     );
@@ -182,20 +193,13 @@ function ActivityDetailPanel({
   }
 
   const { detail } = detailState;
-  const hasRenderableLog = hasRenderableLinkedTool(detail);
+  const linkedTool = getFirstRenderableLinkedTool(detail);
 
   return (
-    <div className="border-[var(--color-border-muted)]/50 space-y-3 border-t pt-3">
+    <div className="border-[var(--color-border)]/18 space-y-3 border-t pt-3">
       <ActivityMetadata detail={detail} />
 
-      {detail.logDetail && hasRenderableLog ? (
-        <div className="pt-1">
-          <MemberExecutionLog
-            chunks={detail.logDetail.chunks}
-            memberName={detail.actorLabel === 'lead session' ? undefined : detail.actorLabel}
-          />
-        </div>
-      ) : null}
+      {linkedTool ? <TaskActivityLinkedToolCard linkedTool={linkedTool} /> : null}
     </div>
   );
 }
@@ -218,10 +222,14 @@ const Row = ({
       : 'text-[var(--color-text-muted)]';
 
   return (
-    <div className="border-[var(--color-border-muted)]/60 bg-[var(--color-bg-elevated)]/40 rounded-md border">
+    <div
+      className={`bg-[var(--color-bg-elevated)]/20 rounded-md border shadow-sm shadow-black/10 transition-colors ${
+        expanded ? 'border-[var(--color-border-emphasis)]' : 'border-[var(--color-border-subtle)]'
+      }`}
+    >
       <button
         type="button"
-        className="hover:bg-[var(--color-bg-elevated)]/35 flex w-full items-start gap-3 px-3 py-2 text-left transition-colors"
+        className="hover:bg-[var(--color-bg-elevated)]/28 flex w-full items-start gap-3 px-3 py-2 text-left transition-colors"
         onClick={onToggle}
       >
         <div className="pt-0.5 text-[var(--color-text-muted)]">
