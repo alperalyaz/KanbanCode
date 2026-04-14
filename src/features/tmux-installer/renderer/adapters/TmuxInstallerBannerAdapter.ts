@@ -58,19 +58,19 @@ export class TmuxInstallerBannerAdapter {
   adapt(input: AdaptInput): TmuxInstallerBannerViewModel {
     const status = input.status;
     const snapshot = input.snapshot;
+    const hasActiveInstallFlow =
+      snapshot.phase !== 'idle' && snapshot.phase !== 'completed' && snapshot.phase !== 'cancelled';
+    const tmuxMissing = status ? !status.effective.available : !input.loading;
     const visible =
-      snapshot.phase !== 'idle' ||
-      (!input.loading && (status ? !status.effective.runtimeReady : true));
+      hasActiveInstallFlow || (snapshot.phase !== 'completed' && !input.loading && tmuxMissing);
     const title =
-      snapshot.phase === 'idle' && status?.effective.available && !status.effective.runtimeReady
-        ? 'tmux needs one more step'
-        : snapshot.message &&
-            (snapshot.phase === 'pending_external_elevation' ||
-              snapshot.phase === 'waiting_for_external_step' ||
-              snapshot.phase === 'needs_restart' ||
-              snapshot.phase === 'needs_manual_step')
-          ? snapshot.message
-          : formatTmuxInstallerTitle(snapshot.phase);
+      snapshot.message &&
+      (snapshot.phase === 'pending_external_elevation' ||
+        snapshot.phase === 'waiting_for_external_step' ||
+        snapshot.phase === 'needs_restart' ||
+        snapshot.phase === 'needs_manual_step')
+        ? snapshot.message
+        : formatTmuxInstallerTitle(snapshot.phase);
     const primaryGuideUrl =
       status?.autoInstall.manualHints.find((hint) => typeof hint.url === 'string')?.url ?? null;
     const body =
@@ -82,7 +82,7 @@ export class TmuxInstallerBannerAdapter {
       status?.wsl?.statusDetail ??
       'tmux improves persistent teammate reliability and cleaner recovery for long-running tasks.';
     const benefitsBody =
-      status && !status.effective.runtimeReady ? formatTmuxOptionalBenefits(status.platform) : null;
+      status && !status.effective.available ? formatTmuxOptionalBenefits(status.platform) : null;
     const runtimeReadyLabel = status
       ? status.effective.runtimeReady
         ? 'Ready for persistent teammates'

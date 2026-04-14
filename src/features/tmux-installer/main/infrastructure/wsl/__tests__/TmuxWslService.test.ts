@@ -174,4 +174,81 @@ describe('TmuxWslService', () => {
     expect(result.preference?.source).toBe('default');
     expect(preferenceStore.getPreferredDistroSync()).toBeNull();
   });
+
+  it('detects a reboot requirement from localized Windows output', async () => {
+    const service = new TmuxWslService(
+      createExecFileMock({
+        '--status': {
+          stdout:
+            'Требуемая операция выполнена успешно. Чтобы сделанные изменения вступили в силу, следует перезагрузить систему.',
+        },
+        '--list --quiet': { stdout: '' },
+      }),
+      createPreferenceStore() as never
+    );
+
+    const result = await service.probe();
+
+    expect(result.status.wslInstalled).toBe(true);
+    expect(result.status.rebootRequired).toBe(true);
+    expect(result.status.statusDetail).toContain('restart');
+  });
+
+  it('detects a reboot requirement from pending Windows optional feature state', async () => {
+    const execFileMock = (
+      command: string,
+      args: string[],
+      _options: {
+        timeout: number;
+        windowsHide: boolean;
+        maxBuffer: number;
+        encoding: 'buffer';
+      },
+      callback: (error: Error | null, stdout: string | Buffer, stderr: string | Buffer) => void
+    ) => {
+      if (command === 'powershell.exe') {
+        callback(
+          null,
+          JSON.stringify([
+            {
+              FeatureName: 'Microsoft-Windows-Subsystem-Linux',
+              State: 'EnablePending',
+              RestartRequired: 'Possible',
+            },
+            {
+              FeatureName: 'VirtualMachinePlatform',
+              State: 'EnablePending',
+              RestartRequired: 'Possible',
+            },
+          ]),
+          ''
+        );
+        return;
+      }
+
+      const key = args.join(' ');
+      if (key === '--status') {
+        callback(null, 'ok', '');
+        return;
+      }
+      if (key === '--list --quiet') {
+        callback(null, '', '');
+        return;
+      }
+
+      callback(
+        Object.assign(new Error(`Unexpected command: ${command} ${key}`), { code: 'EFAIL' }),
+        '',
+        ''
+      );
+    };
+
+    const service = new TmuxWslService(execFileMock, createPreferenceStore() as never);
+
+    const result = await service.probe();
+
+    expect(result.status.wslInstalled).toBe(true);
+    expect(result.status.rebootRequired).toBe(true);
+    expect(result.status.statusDetail).toContain('restart');
+  });
 });

@@ -23,6 +23,17 @@ interface WslVerboseDistroEntry {
   version: 1 | 2 | null;
 }
 
+interface WindowsOptionalFeatureState {
+  FeatureName?: string | null;
+  State?: string | null;
+  RestartRequired?: string | boolean | null;
+}
+
+interface WindowsOptionalFeatureProbe {
+  restartPending: boolean;
+  hasConfiguredWslFeature: boolean;
+}
+
 type ExecFileCallback = (
   error: Error | null,
   stdout: string | Buffer,
@@ -48,6 +59,11 @@ export interface TmuxWslProbeResult {
 
 const MAX_BUFFER_BYTES = 1024 * 1024;
 const WSL_NOT_AVAILABLE_DETAIL = 'WSL is not available on this Windows machine yet.';
+const WINDOWS_WSL_FEATURE_NAMES = ['Microsoft-Windows-Subsystem-Linux', 'VirtualMachinePlatform'];
+const POWERSHELL_FEATURE_QUERY = [
+  '$features = Get-WindowsOptionalFeature -Online -FeatureName "Microsoft-Windows-Subsystem-Linux","VirtualMachinePlatform"',
+  '$features | Select-Object FeatureName, State, RestartRequired | ConvertTo-Json -Compress',
+].join('; ');
 
 export class TmuxWslService {
   readonly #execFile: ExecFileLike;
@@ -64,11 +80,15 @@ export class TmuxWslService {
   async probe(): Promise<TmuxWslProbeResult> {
     const statusProbe = await this.#run(['--status'], 4_000);
     const distroListProbe = await this.#run(['--list', '--quiet'], 4_000);
+    const featureProbe = await this.#queryWindowsOptionalFeatures();
     const persistedPreferredDistro = await this.#preferenceStore.getPreferredDistro();
-    const wslInstalled = statusProbe.exitCode === 0 || distroListProbe.exitCode === 0;
-    const rebootRequired = this.#looksLikeRestartRequired(
-      `${statusProbe.stdout}\n${statusProbe.stderr}`
-    );
+    const wslInstalled =
+      statusProbe.exitCode === 0 ||
+      distroListProbe.exitCode === 0 ||
+      featureProbe?.hasConfiguredWslFeature === true;
+    const rebootRequired =
+      featureProbe?.restartPending === true ||
+      this.#looksLikeRestartRequired(`${statusProbe.stdout}\n${statusProbe.stderr}`);
 
     if (!wslInstalled) {
       if (persistedPreferredDistro) {
@@ -438,7 +458,79 @@ export class TmuxWslService {
 
   #looksLikeRestartRequired(output: string): boolean {
     const lowered = output.toLowerCase();
-    return lowered.includes('restart') || lowered.includes('reboot');
+    return (
+      lowered.includes('restart') ||
+      lowered.includes('reboot') ||
+      lowered.includes('перезагруз') ||
+      lowered.includes('требуется перезагрузка')
+    );
+  }
+
+  async #queryWindowsOptionalFeatures(): Promise<WindowsOptionalFeatureProbe | null> {
+    const result = await this.#execPowerShell(
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', POWERSHELL_FEATURE_QUERY],
+      6_000
+    );
+    if (!result || result.exitCode !== 0 || !result.stdout.trim()) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(result.stdout) as
+        | WindowsOptionalFeatureState
+        | WindowsOptionalFeatureState[];
+      const features = Array.isArray(parsed) ? parsed : [parsed];
+      const relevantFeatures = features.filter((feature) =>
+        WINDOWS_WSL_FEATURE_NAMES.includes(feature.FeatureName ?? '')
+      );
+      if (relevantFeatures.length === 0) {
+        return null;
+      }
+
+      return {
+        restartPending: relevantFeatures.some((feature) =>
+          String(feature.State ?? '')
+            .toLowerCase()
+            .includes('pending')
+        ),
+        hasConfiguredWslFeature: relevantFeatures.some((feature) => {
+          const state = String(feature.State ?? '').toLowerCase();
+          return state.length > 0 && state !== 'disabled' && state !== 'disabledwithpayloadremoved';
+        }),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async #execPowerShell(args: string[], timeout: number): Promise<ExecWslResult | null> {
+    return new Promise((resolve) => {
+      this.#execFile(
+        'powershell.exe',
+        args,
+        {
+          timeout,
+          windowsHide: true,
+          maxBuffer: MAX_BUFFER_BYTES,
+          encoding: 'buffer',
+        },
+        (error, stdout, stderr) => {
+          const errorCode =
+            typeof error === 'object' && error !== null && 'code' in error
+              ? (error as NodeJS.ErrnoException).code
+              : undefined;
+          if (errorCode === 'ENOENT') {
+            resolve(null);
+            return;
+          }
+          resolve({
+            exitCode: typeof errorCode === 'number' ? errorCode : error ? 1 : 0,
+            stdout: this.#decodeOutput(stdout),
+            stderr: this.#decodeOutput(stderr) || (error instanceof Error ? error.message : ''),
+          });
+        }
+      );
+    });
   }
 
   #firstNonEmpty(...values: (string | null | undefined)[]): string {

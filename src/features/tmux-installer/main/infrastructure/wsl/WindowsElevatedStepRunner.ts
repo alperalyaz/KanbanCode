@@ -15,9 +15,18 @@ interface ExecResult {
   stderr: string;
 }
 
+interface PersistedFeatureState {
+  featureName?: string | null;
+  state?: string | null;
+  restartRequired?: string | boolean | null;
+}
+
 interface PersistedElevationResult {
   ok?: boolean;
   detail?: string | null;
+  restartRequired?: boolean | null;
+  featureStates?: PersistedFeatureState[] | null;
+  commandExitCode?: number | null;
 }
 
 type ExecFileCallback = (
@@ -47,6 +56,8 @@ export interface WindowsElevatedStepResult {
     | 'elevated_failed'
     | 'elevated_unknown_outcome';
   detail: string | null;
+  restartRequired: boolean;
+  featureStates: PersistedFeatureState[];
   resultFilePath: string | null;
 }
 
@@ -84,6 +95,8 @@ export class WindowsElevatedStepRunner {
       return {
         outcome: persistedResult.ok ? 'elevated_succeeded' : 'elevated_failed',
         detail: persistedResult.detail ?? null,
+        restartRequired: persistedResult.restartRequired === true,
+        featureStates: persistedResult.featureStates ?? [],
         resultFilePath,
       };
     }
@@ -92,6 +105,8 @@ export class WindowsElevatedStepRunner {
       return {
         outcome: 'elevated_cancelled',
         detail: 'Administrator permission request was cancelled.',
+        restartRequired: false,
+        featureStates: [],
         resultFilePath: null,
       };
     }
@@ -103,6 +118,8 @@ export class WindowsElevatedStepRunner {
     return {
       outcome: 'elevated_unknown_outcome',
       detail: this.#firstNonEmpty(result.stderr, result.stdout),
+      restartRequired: false,
+      featureStates: [],
       resultFilePath: null,
     };
   }
@@ -170,9 +187,14 @@ export class WindowsElevatedStepRunner {
       '$ErrorActionPreference = "Stop"',
       `$resultFile = '${escapedResultFilePath}'`,
       `$wslArgs = @(${quotedArgs})`,
-      '$result = @{ ok = $false; detail = $null }',
+      '$featureNames = @("Microsoft-Windows-Subsystem-Linux", "VirtualMachinePlatform")',
+      '$result = @{ ok = $false; detail = $null; restartRequired = $false; featureStates = @(); commandExitCode = $null }',
       'try {',
       '  & wsl.exe @wslArgs',
+      '  $result.commandExitCode = $LASTEXITCODE',
+      '  $features = @(Get-WindowsOptionalFeature -Online -FeatureName $featureNames | Select-Object FeatureName, State, RestartRequired)',
+      '  $result.featureStates = @($features | ForEach-Object { @{ featureName = $_.FeatureName; state = [string]$_.State; restartRequired = $_.RestartRequired } })',
+      '  $result.restartRequired = @($features | Where-Object { "$($_.State)" -like "*Pending*" }).Count -gt 0',
       '  if ($LASTEXITCODE -eq 0) {',
       '    $result.ok = $true',
       '    $result.detail = "WSL core installation command completed."',

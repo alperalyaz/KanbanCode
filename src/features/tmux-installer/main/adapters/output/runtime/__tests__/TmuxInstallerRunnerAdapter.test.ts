@@ -467,4 +467,100 @@ describe('TmuxInstallerRunnerAdapter', () => {
     expect(runner.getSnapshot().message).toContain('Finish Ubuntu setup');
     expect(runner.getSnapshot().detail).toContain('Wait a moment, then click Re-check');
   });
+
+  it('switches Windows WSL setup into needs_restart when the elevated step reports a localized reboot message', async () => {
+    const presenter = createPresenter();
+    const initialStatus = createBaseStatus({
+      platform: 'win32',
+      autoInstall: {
+        supported: true,
+        strategy: 'wsl',
+        packageManagerLabel: 'WSL',
+        requiresTerminalInput: false,
+        requiresAdmin: true,
+        requiresRestart: true,
+        mayOpenExternalWindow: true,
+        reasonIfUnsupported: null,
+        manualHints: [],
+      },
+      wsl: {
+        wslInstalled: false,
+        rebootRequired: false,
+        distroName: null,
+        distroVersion: null,
+        distroBootstrapped: false,
+        innerPackageManager: null,
+        tmuxAvailableInsideWsl: false,
+        tmuxVersion: null,
+        tmuxBinaryPath: null,
+        statusDetail: 'WSL is not installed yet.',
+      },
+    });
+    const refreshedStatus = createBaseStatus({
+      platform: 'win32',
+      autoInstall: initialStatus.autoInstall,
+      wsl: {
+        wslInstalled: true,
+        rebootRequired: false,
+        distroName: null,
+        distroVersion: null,
+        distroBootstrapped: false,
+        innerPackageManager: null,
+        tmuxAvailableInsideWsl: false,
+        tmuxVersion: null,
+        tmuxBinaryPath: null,
+        statusDetail: 'WSL is available, but no Linux distribution is installed yet.',
+      },
+    });
+    let statusCallCount = 0;
+    const statusSource = {
+      getStatus: vi.fn(async () => {
+        statusCallCount += 1;
+        return statusCallCount === 1 ? initialStatus : refreshedStatus;
+      }),
+      invalidateStatus: vi.fn(),
+    };
+    const runner = new TmuxInstallerRunnerAdapter(
+      statusSource as never,
+      presenter as never,
+      {
+        resolve: vi.fn(async () => {
+          throw new Error('resolve() should not run before restart');
+        }),
+      } as never,
+      {
+        run: vi.fn(),
+        cancel: vi.fn(),
+      } as never,
+      {
+        run: vi.fn(),
+        writeLine: vi.fn(),
+        cancel: vi.fn(),
+      } as never,
+      {
+        persistPreferredDistro: vi.fn(async () => undefined),
+      } as never,
+      {
+        runWslCoreInstall: vi.fn(async () => ({
+          outcome: 'elevated_succeeded',
+          detail: 'WSL core installation command completed.',
+          restartRequired: true,
+          featureStates: [
+            {
+              featureName: 'VirtualMachinePlatform',
+              state: 'EnablePending',
+              restartRequired: 'Possible',
+            },
+          ],
+          resultFilePath: 'C:\\temp\\result.json',
+        })),
+      } as never
+    );
+
+    await expect(runner.install()).resolves.toBeUndefined();
+
+    expect(runner.getSnapshot().phase).toBe('needs_restart');
+    expect(runner.getSnapshot().message).toContain('Restart Windows');
+    expect(runner.getSnapshot().detail).toContain('WSL core installation command completed');
+  });
 });

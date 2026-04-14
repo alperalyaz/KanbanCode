@@ -14,7 +14,18 @@ describe('WindowsElevatedStepRunner', () => {
         const resultFilePath = path.join(path.dirname(launcherScriptPath), 'result.json');
         await fsp.writeFile(
           resultFilePath,
-          JSON.stringify({ ok: true, detail: 'WSL core installation command completed.' }),
+          JSON.stringify({
+            ok: true,
+            detail: 'WSL core installation command completed.',
+            restartRequired: false,
+            featureStates: [
+              {
+                featureName: 'Microsoft-Windows-Subsystem-Linux',
+                state: 'Enabled',
+                restartRequired: false,
+              },
+            ],
+          }),
           'utf8'
         );
         callback(null, '', '');
@@ -26,6 +37,8 @@ describe('WindowsElevatedStepRunner', () => {
 
     expect(result.outcome).toBe('elevated_succeeded');
     expect(result.detail).toContain('completed');
+    expect(result.restartRequired).toBe(false);
+    expect(result.featureStates[0]?.featureName).toBe('Microsoft-Windows-Subsystem-Linux');
     expect(result.resultFilePath).toContain('result.json');
   });
 
@@ -36,7 +49,18 @@ describe('WindowsElevatedStepRunner', () => {
         const resultFilePath = path.join(path.dirname(launcherScriptPath), 'result.json');
         await fsp.writeFile(
           resultFilePath,
-          `\uFEFF${JSON.stringify({ ok: true, detail: 'WSL core installation command completed.' })}`,
+          `\uFEFF${JSON.stringify({
+            ok: true,
+            detail: 'WSL core installation command completed.',
+            restartRequired: true,
+            featureStates: [
+              {
+                featureName: 'VirtualMachinePlatform',
+                state: 'EnablePending',
+                restartRequired: 'Possible',
+              },
+            ],
+          })}`,
           'utf8'
         );
         callback(null, '', '');
@@ -48,6 +72,8 @@ describe('WindowsElevatedStepRunner', () => {
 
     expect(result.outcome).toBe('elevated_succeeded');
     expect(result.detail).toContain('completed');
+    expect(result.restartRequired).toBe(true);
+    expect(result.featureStates[0]?.state).toBe('EnablePending');
   });
 
   it('treats a missing result file plus cancel text as elevation cancellation', async () => {
@@ -66,6 +92,8 @@ describe('WindowsElevatedStepRunner', () => {
 
     expect(result.outcome).toBe('elevated_cancelled');
     expect(result.detail).toContain('cancelled');
+    expect(result.restartRequired).toBe(false);
+    expect(result.featureStates).toEqual([]);
     expect(result.resultFilePath).toBeNull();
   });
 
@@ -90,6 +118,7 @@ describe('WindowsElevatedStepRunner', () => {
 
       expect(result.outcome).toBe('elevated_unknown_outcome');
       expect(result.detail).toContain('Требуемая операция выполнена успешно');
+      expect(result.restartRequired).toBe(false);
     } finally {
       consoleWarnSpy.mockRestore();
     }

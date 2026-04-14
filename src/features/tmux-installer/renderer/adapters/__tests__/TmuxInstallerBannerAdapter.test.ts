@@ -174,7 +174,7 @@ describe('TmuxInstallerBannerAdapter', () => {
     expect(result.showRefreshButton).toBe(true);
   });
 
-  it('keeps the banner visible when tmux is installed but runtime is not ready yet', () => {
+  it('hides the banner when tmux is already installed', () => {
     const adapter = TmuxInstallerBannerAdapter.create();
 
     const result = adapter.adapt({
@@ -196,12 +196,40 @@ describe('TmuxInstallerBannerAdapter', () => {
       detailsOpen: false,
     });
 
-    expect(result.visible).toBe(true);
-    expect(result.title).toBe('tmux needs one more step');
+    expect(result.visible).toBe(false);
     expect(result.locationLabel).toBe('Host runtime');
     expect(result.runtimeReadyLabel).toBe('Installed, but not active yet');
     expect(result.versionLabel).toBe('tmux 3.4');
-    expect(result.benefitsBody).toContain('With tmux in WSL');
+    expect(result.benefitsBody).toBeNull();
+  });
+
+  it('hides a completed installer banner once tmux is available', () => {
+    const adapter = TmuxInstallerBannerAdapter.create();
+
+    const result = adapter.adapt({
+      status: {
+        ...baseStatus,
+        effective: {
+          available: true,
+          location: 'host',
+          version: 'tmux 3.6a',
+          binaryPath: '/opt/homebrew/bin/tmux',
+          runtimeReady: true,
+          detail: 'tmux is available for persistent teammates.',
+        },
+      },
+      snapshot: {
+        ...idleSnapshot,
+        phase: 'completed',
+        strategy: 'homebrew',
+        message: 'tmux installed',
+      },
+      loading: false,
+      error: null,
+      detailsOpen: false,
+    });
+
+    expect(result.visible).toBe(false);
   });
 
   it('exposes installer input metadata for interactive privilege flows', () => {

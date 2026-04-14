@@ -17,6 +17,7 @@ const RETRY_WITH_UPDATE_PATTERNS = ['unable to locate package', 'failed to fetch
 const RECOMMENDED_WSL_DISTRO_NAME = 'Ubuntu';
 const WINDOWS_DISTRO_APPEAR_RETRY_DELAY_MS = 2_000;
 const WINDOWS_DISTRO_APPEAR_RETRY_ATTEMPTS = 6;
+const RESTART_REQUIRED_PATTERNS = ['restart', 'reboot', 'перезагруз', 'требуется перезагрузка'];
 
 class TmuxInstallCancelledError extends Error {
   constructor() {
@@ -325,13 +326,28 @@ export class TmuxInstallerRunnerAdapter
       return status;
     }
 
-    if (status.wsl?.rebootRequired) {
+    const rebootRequired =
+      elevationResult.restartRequired ||
+      status.wsl?.rebootRequired ||
+      this.#looksLikeRestartRequired(elevationResult.detail);
+    if (rebootRequired) {
+      const rebootStatus = status.wsl
+        ? {
+            ...status,
+            wsl: {
+              ...status.wsl,
+              rebootRequired: true,
+              statusDetail: elevationResult.detail ?? status.wsl.statusDetail,
+            },
+          }
+        : status;
       this.#setSnapshot({
         phase: 'needs_restart',
         strategy: 'wsl',
         message: 'Restart Windows before continuing with tmux setup',
         detail:
-          status.wsl.statusDetail ??
+          elevationResult.detail ??
+          status.wsl?.statusDetail ??
           'WSL was installed, but Windows still needs a restart before tmux setup can continue.',
         error: null,
         canCancel: false,
@@ -339,7 +355,7 @@ export class TmuxInstallerRunnerAdapter
         inputPrompt: null,
         inputSecret: false,
       });
-      return status;
+      return rebootStatus;
     }
 
     if (!status.wsl?.wslInstalled) {
@@ -462,6 +478,11 @@ export class TmuxInstallerRunnerAdapter
       status = await this.#refreshStatus();
     }
     return status;
+  }
+
+  #looksLikeRestartRequired(value: string | null | undefined): boolean {
+    const lowered = value?.toLowerCase() ?? '';
+    return RESTART_REQUIRED_PATTERNS.some((pattern) => lowered.includes(pattern));
   }
 
   async #runResolvedPlan(plan: TmuxInstallPlan, resetLogs = true): Promise<void> {
