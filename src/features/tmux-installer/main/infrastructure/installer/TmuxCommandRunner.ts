@@ -33,9 +33,14 @@ export class TmuxCommandRunner {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       this.#activeChild = child;
+      const platform = process.platform;
 
-      const createBufferedLineWriter = (): { push: (chunk: string) => void; flush: () => void } => {
+      const createBufferedLineWriter = (): {
+        push: (chunk: Buffer | string) => void;
+        flush: () => void;
+      } => {
         let pending = '';
+        let pendingBytes = Buffer.alloc(0);
 
         const emitLine = (line: string): void => {
           const normalizedLine = line.replace(/\r$/, '');
@@ -45,8 +50,24 @@ export class TmuxCommandRunner {
         };
 
         return {
-          push: (chunk: string): void => {
-            pending += chunk;
+          push: (chunk: Buffer | string): void => {
+            let decodedChunk = '';
+            if (typeof chunk === 'string') {
+              decodedChunk = chunk;
+            } else {
+              let nextBuffer =
+                pendingBytes.length > 0 ? Buffer.concat([pendingBytes, chunk]) : chunk;
+              if (platform === 'win32' && nextBuffer.length % 2 === 1) {
+                pendingBytes = nextBuffer.subarray(nextBuffer.length - 1);
+                nextBuffer = nextBuffer.subarray(0, nextBuffer.length - 1);
+              } else {
+                pendingBytes = Buffer.alloc(0);
+              }
+              if (nextBuffer.length > 0) {
+                decodedChunk = decodeInstallerProcessOutput(nextBuffer, platform);
+              }
+            }
+            pending += decodedChunk;
             const normalizedPending = pending.replace(/\r(?!\n)/g, '\n');
             const lines = normalizedPending.split('\n');
             pending = lines.pop() ?? '';
@@ -55,6 +76,10 @@ export class TmuxCommandRunner {
             }
           },
           flush: (): void => {
+            if (pendingBytes.length > 0) {
+              pending += decodeInstallerProcessOutput(pendingBytes, platform);
+              pendingBytes = Buffer.alloc(0);
+            }
             if (!pending) {
               return;
             }
@@ -67,12 +92,8 @@ export class TmuxCommandRunner {
       const stdoutWriter = createBufferedLineWriter();
       const stderrWriter = createBufferedLineWriter();
 
-      child.stdout.on('data', (chunk: Buffer | string) =>
-        stdoutWriter.push(decodeInstallerProcessOutput(chunk))
-      );
-      child.stderr.on('data', (chunk: Buffer | string) =>
-        stderrWriter.push(decodeInstallerProcessOutput(chunk))
-      );
+      child.stdout.on('data', (chunk: Buffer | string) => stdoutWriter.push(chunk));
+      child.stderr.on('data', (chunk: Buffer | string) => stderrWriter.push(chunk));
       child.on('error', (error) => {
         this.#activeChild = null;
         reject(error);

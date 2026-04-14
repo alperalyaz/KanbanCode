@@ -208,6 +208,129 @@ describe('useTmuxInstallerBanner', () => {
     });
   });
 
+  it('keeps the banner visible during background refreshes after installer progress updates', async () => {
+    let resolveStatus: ((value: TmuxStatus) => void) | null = null;
+    let resolveSnapshot: ((value: TmuxInstallerSnapshot) => void) | null = null;
+    mockApi.tmux.getStatus.mockResolvedValueOnce(baseStatus).mockImplementationOnce(
+      () =>
+        new Promise<TmuxStatus>((resolve) => {
+          resolveStatus = resolve;
+        })
+    );
+    mockApi.tmux.getInstallerSnapshot.mockResolvedValueOnce(idleSnapshot).mockImplementationOnce(
+      () =>
+        new Promise<TmuxInstallerSnapshot>((resolve) => {
+          resolveSnapshot = resolve;
+        })
+    );
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(Harness));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(capturedHook?.viewModel.visible).toBe(true);
+
+    await act(async () => {
+      progressListener?.(null, {
+        ...idleSnapshot,
+        phase: 'waiting_for_external_step',
+        message: 'Finish Ubuntu setup in WSL',
+      });
+      await Promise.resolve();
+    });
+
+    expect(capturedHook?.viewModel.visible).toBe(true);
+    expect(capturedHook?.viewModel.phase).toBe('waiting_for_external_step');
+
+    await act(async () => {
+      resolveStatus?.(baseStatus);
+      resolveSnapshot?.({
+        ...idleSnapshot,
+        phase: 'waiting_for_external_step',
+        message: 'Finish Ubuntu setup in WSL',
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(capturedHook?.viewModel.visible).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('does not let an older refreshed snapshot overwrite newer live progress', async () => {
+    let resolveStatus: ((value: TmuxStatus) => void) | null = null;
+    let resolveSnapshot: ((value: TmuxInstallerSnapshot) => void) | null = null;
+    const olderSnapshot = {
+      ...idleSnapshot,
+      phase: 'idle' as const,
+      updatedAt: '2099-04-14T10:00:00.000Z',
+    };
+    const newerProgress = {
+      ...idleSnapshot,
+      phase: 'waiting_for_external_step' as const,
+      message: 'Finish Ubuntu setup in WSL',
+      updatedAt: '2099-04-14T10:00:05.000Z',
+    };
+
+    mockApi.tmux.getStatus.mockResolvedValueOnce(baseStatus).mockImplementationOnce(
+      () =>
+        new Promise<TmuxStatus>((resolve) => {
+          resolveStatus = resolve;
+        })
+    );
+    mockApi.tmux.getInstallerSnapshot.mockResolvedValueOnce(idleSnapshot).mockImplementationOnce(
+      () =>
+        new Promise<TmuxInstallerSnapshot>((resolve) => {
+          resolveSnapshot = resolve;
+        })
+    );
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(Harness));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      progressListener?.(null, newerProgress);
+      await Promise.resolve();
+    });
+
+    expect(capturedHook?.viewModel.phase).toBe('waiting_for_external_step');
+
+    await act(async () => {
+      resolveStatus?.({
+        ...baseStatus,
+        checkedAt: '2099-04-14T10:00:00.000Z',
+      });
+      resolveSnapshot?.(olderSnapshot);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(capturedHook?.viewModel.phase).toBe('waiting_for_external_step');
+    expect(capturedHook?.viewModel.title).toBe('Finish Ubuntu setup in WSL');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('stores action errors instead of letting rejected installer calls disappear', async () => {
     mockApi.tmux.install.mockRejectedValueOnce(new Error('bridge failed'));
 

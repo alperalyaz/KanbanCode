@@ -2,6 +2,7 @@ const UTF8_DECODER = new TextDecoder('utf-8');
 const UTF16LE_DECODER = new TextDecoder('utf-16le');
 const IBM866_DECODER = new TextDecoder('ibm866');
 const WINDOWS_1251_DECODER = new TextDecoder('windows-1251');
+const TEXT_ENCODER = new TextEncoder();
 
 export function decodeInstallerProcessOutput(
   output: string | Buffer,
@@ -14,12 +15,16 @@ export function decodeInstallerProcessOutput(
     return '';
   }
 
+  const utf16le = stripNulls(UTF16LE_DECODER.decode(output));
   if (hasUtf16LeBom(output) || looksLikeUtf16Le(output)) {
-    return stripNulls(UTF16LE_DECODER.decode(output));
+    return utf16le;
   }
 
   const utf8 = stripNulls(UTF8_DECODER.decode(output));
   if (platform !== 'win32') {
+    return utf8;
+  }
+  if (isExactUtf8RoundTrip(output, utf8)) {
     return utf8;
   }
 
@@ -28,11 +33,30 @@ export function decodeInstallerProcessOutput(
     stripNulls(IBM866_DECODER.decode(output)),
     stripNulls(WINDOWS_1251_DECODER.decode(output)),
   ];
+  if (platform === 'win32') {
+    candidates.push(utf16le);
+  }
 
-  return candidates.slice(1).reduce(
-    (best, candidate) => (scoreDecodedText(candidate) > scoreDecodedText(best) ? candidate : best),
-    candidates[0] ?? utf8
-  );
+  return candidates
+    .slice(1)
+    .reduce(
+      (best, candidate) =>
+        scoreDecodedText(candidate) > scoreDecodedText(best) ? candidate : best,
+      candidates[0] ?? utf16le
+    );
+}
+
+function isExactUtf8RoundTrip(buffer: Buffer, decoded: string): boolean {
+  const encoded = TEXT_ENCODER.encode(decoded);
+  if (encoded.length !== buffer.length) {
+    return false;
+  }
+  for (let index = 0; index < encoded.length; index += 1) {
+    if (encoded[index] !== buffer[index]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function stripNulls(value: string): string {
@@ -51,14 +75,24 @@ function looksLikeUtf16Le(buffer: Buffer): boolean {
 
   let pairs = 0;
   let nullsAtOddIndex = 0;
+  let likelyUtf16OddBytes = 0;
   for (let i = 0; i + 1 < sampleSize; i += 2) {
     pairs += 1;
-    if (buffer[i + 1] === 0) {
+    const oddByte = buffer[i + 1];
+    const evenByte = buffer[i];
+    if (oddByte === 0) {
       nullsAtOddIndex += 1;
+    }
+    if (oddByte === 0x04 || oddByte === 0x05) {
+      likelyUtf16OddBytes += 1;
+      continue;
+    }
+    if (oddByte === 0x00 && evenByte >= 0x20 && evenByte <= 0x7e) {
+      likelyUtf16OddBytes += 1;
     }
   }
 
-  return pairs > 0 && nullsAtOddIndex / pairs >= 0.3;
+  return pairs > 0 && (nullsAtOddIndex / pairs >= 0.3 || likelyUtf16OddBytes / pairs >= 0.3);
 }
 
 function scoreDecodedText(value: string): number {

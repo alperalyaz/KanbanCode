@@ -3,6 +3,8 @@ import * as fsp from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import { decodeInstallerProcessOutput } from '../runtime/decodeInstallerProcessOutput';
+
 import { createLogger } from '@shared/utils/logger';
 
 const logger = createLogger('Feature:tmux-installer:windows-elevation');
@@ -31,6 +33,7 @@ type ExecFileLike = (
     timeout: number;
     windowsHide: boolean;
     maxBuffer: number;
+    encoding: 'buffer';
   },
   callback: ExecFileCallback
 ) => void;
@@ -113,6 +116,7 @@ export class WindowsElevatedStepRunner {
           timeout,
           windowsHide: true,
           maxBuffer: MAX_BUFFER_BYTES,
+          encoding: 'buffer',
         },
         (error, stdout, stderr) => {
           const errorCode =
@@ -121,8 +125,10 @@ export class WindowsElevatedStepRunner {
               : undefined;
           resolve({
             exitCode: typeof errorCode === 'number' ? errorCode : error ? 1 : 0,
-            stdout: String(stdout),
-            stderr: String(stderr) || (error instanceof Error ? error.message : ''),
+            stdout: decodeInstallerProcessOutput(stdout, 'win32'),
+            stderr:
+              decodeInstallerProcessOutput(stderr, 'win32') ||
+              (error instanceof Error ? error.message : ''),
           });
         }
       );

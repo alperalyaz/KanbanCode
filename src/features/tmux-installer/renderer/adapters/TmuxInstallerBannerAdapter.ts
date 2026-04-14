@@ -58,9 +58,9 @@ export class TmuxInstallerBannerAdapter {
   adapt(input: AdaptInput): TmuxInstallerBannerViewModel {
     const status = input.status;
     const snapshot = input.snapshot;
-    const visible = input.loading
-      ? false
-      : (status ? !status.effective.runtimeReady : true) || snapshot.phase !== 'idle';
+    const visible =
+      snapshot.phase !== 'idle' ||
+      (!input.loading && (status ? !status.effective.runtimeReady : true));
     const title =
       snapshot.phase === 'idle' && status?.effective.available && !status.effective.runtimeReady
         ? 'tmux needs one more step'
@@ -70,7 +70,7 @@ export class TmuxInstallerBannerAdapter {
               snapshot.phase === 'needs_restart' ||
               snapshot.phase === 'needs_manual_step')
           ? snapshot.message
-        : formatTmuxInstallerTitle(snapshot.phase);
+          : formatTmuxInstallerTitle(snapshot.phase);
     const primaryGuideUrl =
       status?.autoInstall.manualHints.find((hint) => typeof hint.url === 'string')?.url ?? null;
     const body =

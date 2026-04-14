@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { api, isElectronMode } from '@renderer/api';
 
@@ -20,6 +20,14 @@ const IDLE_SNAPSHOT: TmuxInstallerSnapshot = {
   updatedAt: new Date(0).toISOString(),
 };
 
+function getIsoTimestamp(value: string | null | undefined): number {
+  if (!value) {
+    return 0;
+  }
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 export function useTmuxInstallerBanner(): {
   viewModel: ReturnType<TmuxInstallerBannerAdapter['adapt']>;
   install: () => Promise<void>;
@@ -36,32 +44,50 @@ export function useTmuxInstallerBanner(): {
   const [loading, setLoading] = useState(electronMode);
   const [error, setError] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const hasLoadedRef = useRef(!electronMode);
 
   const getErrorMessage = useCallback((value: unknown, fallback: string): string => {
     return value instanceof Error ? value.message : fallback;
   }, []);
 
-  const refresh = useCallback(async () => {
-    if (!electronMode) {
-      setLoading(false);
-      return;
-    }
+  const refresh = useCallback(
+    async (options?: { background?: boolean }) => {
+      if (!electronMode) {
+        setLoading(false);
+        return;
+      }
 
-    setLoading(true);
-    setError(null);
-    try {
-      const [nextStatus, nextSnapshot] = await Promise.all([
-        api.tmux.getStatus(),
-        api.tmux.getInstallerSnapshot(),
-      ]);
-      setStatus(nextStatus);
-      setSnapshot(nextSnapshot);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Failed to load tmux state');
-    } finally {
-      setLoading(false);
-    }
-  }, [electronMode]);
+      const background = options?.background ?? hasLoadedRef.current;
+      if (!background) {
+        setLoading(true);
+      }
+      setError(null);
+      try {
+        const [nextStatus, nextSnapshot] = await Promise.all([
+          api.tmux.getStatus(),
+          api.tmux.getInstallerSnapshot(),
+        ]);
+        setStatus((current) =>
+          getIsoTimestamp(nextStatus.checkedAt) >= getIsoTimestamp(current?.checkedAt)
+            ? nextStatus
+            : current
+        );
+        setSnapshot((current) =>
+          getIsoTimestamp(nextSnapshot.updatedAt) >= getIsoTimestamp(current.updatedAt)
+            ? nextSnapshot
+            : current
+        );
+        hasLoadedRef.current = true;
+      } catch (nextError) {
+        setError(nextError instanceof Error ? nextError.message : 'Failed to load tmux state');
+      } finally {
+        if (!background) {
+          setLoading(false);
+        }
+      }
+    },
+    [electronMode]
+  );
 
   useEffect(() => {
     if (!electronMode) {
@@ -69,10 +95,14 @@ export function useTmuxInstallerBanner(): {
       return;
     }
 
-    void refresh();
+    void refresh({ background: false });
 
     return api.tmux.onProgress((_event, progress) => {
-      setSnapshot(progress);
+      setSnapshot((current) =>
+        getIsoTimestamp(progress.updatedAt) >= getIsoTimestamp(current.updatedAt)
+          ? progress
+          : current
+      );
       if (
         progress.phase === 'completed' ||
         progress.phase === 'needs_manual_step' ||
@@ -81,7 +111,7 @@ export function useTmuxInstallerBanner(): {
         progress.phase === 'error' ||
         progress.phase === 'cancelled'
       ) {
-        void refresh();
+        void refresh({ background: true });
       }
     });
   }, [electronMode, refresh]);

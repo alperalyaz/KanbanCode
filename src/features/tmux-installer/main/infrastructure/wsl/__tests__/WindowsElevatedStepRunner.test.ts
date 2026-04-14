@@ -2,7 +2,7 @@ import * as fsp from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { WindowsElevatedStepRunner } from '../WindowsElevatedStepRunner';
 
@@ -67,5 +67,31 @@ describe('WindowsElevatedStepRunner', () => {
     expect(result.outcome).toBe('elevated_cancelled');
     expect(result.detail).toContain('cancelled');
     expect(result.resultFilePath).toBeNull();
+  });
+
+  it('decodes localized Windows stderr from the launcher process', async () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const runner = new WindowsElevatedStepRunner(
+        (_command, _args, _options, callback) => {
+          callback(
+            Object.assign(new Error('restart required'), { code: 1 }),
+            Buffer.alloc(0),
+            Buffer.from(
+              'Требуемая операция выполнена успешно. Чтобы заданные изменения вступили в силу, следует перезагрузить систему.',
+              'utf16le'
+            )
+          );
+        },
+        (prefix) => fsp.mkdtemp(path.join(tmpdir(), prefix))
+      );
+
+      const result = await runner.runWslCoreInstall();
+
+      expect(result.outcome).toBe('elevated_unknown_outcome');
+      expect(result.detail).toContain('Требуемая операция выполнена успешно');
+    } finally {
+      consoleWarnSpy.mockRestore();
+    }
   });
 });

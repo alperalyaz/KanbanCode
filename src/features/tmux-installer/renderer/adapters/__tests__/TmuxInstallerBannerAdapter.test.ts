@@ -111,6 +111,26 @@ describe('TmuxInstallerBannerAdapter', () => {
     expect(result.installButtonPrimary).toBe(false);
   });
 
+  it('keeps the banner visible while loading if installer progress is already active', () => {
+    const adapter = TmuxInstallerBannerAdapter.create();
+
+    const result = adapter.adapt({
+      status: null,
+      snapshot: {
+        ...idleSnapshot,
+        phase: 'waiting_for_external_step',
+        strategy: 'wsl',
+        message: 'Finish Ubuntu setup in WSL',
+      },
+      loading: true,
+      error: null,
+      detailsOpen: false,
+    });
+
+    expect(result.visible).toBe(true);
+    expect(result.title).toBe('Finish Ubuntu setup in WSL');
+  });
+
   it('exposes a manual guide url when auto install is unavailable', () => {
     const adapter = TmuxInstallerBannerAdapter.create();
 
