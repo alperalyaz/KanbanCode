@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { recordRecentProjectOpenPaths } from '@features/recent-projects/renderer';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import {
@@ -351,8 +352,20 @@ export const DateGroupedSessions = (): React.JSX.Element => {
   }, [activeProjectValue, effectiveSelectedRepositoryId, projects, repositoryGroups, viewMode]);
 
   const handleProjectValueChange = (id: string): void => {
-    if (viewMode === 'grouped') selectRepository(id);
-    else setActiveProject(id);
+    if (viewMode === 'grouped') {
+      const repositoryGroup = repositoryGroups.find((repo) => repo.id === id);
+      if (repositoryGroup) {
+        recordRecentProjectOpenPaths(repositoryGroup.worktrees.map((worktree) => worktree.path));
+      }
+      selectRepository(id);
+      return;
+    }
+
+    const project = projects.find((candidate) => candidate.id === id);
+    if (project?.path) {
+      recordRecentProjectOpenPaths([project.path]);
+    }
+    setActiveProject(id);
   };
 
   // Worktree state
@@ -368,6 +381,7 @@ export const DateGroupedSessions = (): React.JSX.Element => {
   const worktreeName = activeWorktree?.name ?? 'main';
 
   const handleSelectWorktree = (worktree: Worktree): void => {
+    recordRecentProjectOpenPaths([worktree.path]);
     selectWorktree(worktree.id);
     setIsWorktreeDropdownOpen(false);
   };

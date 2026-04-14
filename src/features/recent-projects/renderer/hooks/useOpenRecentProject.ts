@@ -15,6 +15,7 @@ import {
   findMatchingWorktree,
   type WorktreeMatch,
 } from '../utils/navigation';
+import { recordRecentProjectOpenPaths } from '../utils/recentProjectOpenHistory';
 
 const logger = createLogger('Feature:RecentProjects:open');
 
@@ -92,6 +93,7 @@ export function useOpenRecentProject(): {
     async (project: DashboardRecentProject): Promise<void> => {
       try {
         await openTarget(project.openTarget, project.associatedPaths);
+        recordRecentProjectOpenPaths([project.primaryPath, ...project.associatedPaths]);
       } catch (error) {
         logger.error('Failed to open recent project', error);
       }
@@ -116,6 +118,7 @@ export function useOpenRecentProject(): {
       }
 
       await openSyntheticPath(selectedPath, [selectedPath]);
+      recordRecentProjectOpenPaths([selectedPath]);
     } catch (error) {
       logger.error('Failed to select project folder', error);
     }

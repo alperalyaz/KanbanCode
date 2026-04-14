@@ -8,6 +8,10 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { adaptRecentProjectsSection } from '../adapters/RecentProjectsSectionAdapter';
 import {
+  sortRecentProjectsByDisplayPriority,
+  subscribeRecentProjectOpenHistory,
+} from '../utils/recentProjectOpenHistory';
+import {
   getRecentProjectsClientSnapshot,
   loadRecentProjectsWithClientCache,
 } from '../utils/recentProjectsClientCache';
@@ -74,6 +78,7 @@ export function useRecentProjectsSection(
   const [error, setError] = useState<string | null>(null);
   const [visibleProjects, setVisibleProjects] = useState(maxProjects);
   const [aliveTeams, setAliveTeams] = useState<string[]>([]);
+  const [openHistoryVersion, setOpenHistoryVersion] = useState(0);
   const hasFetchedTasksRef = useRef(globalTasksInitialized);
   const recentProjectsRef = useRef<DashboardRecentProject[]>(initialSnapshot?.projects ?? []);
 
@@ -144,6 +149,11 @@ export function useRecentProjectsSection(
     }
   }, [maxProjects, searchQuery]);
 
+  useEffect(
+    () => subscribeRecentProjectOpenHistory(() => setOpenHistoryVersion((current) => current + 1)),
+    []
+  );
+
   const taskCountsByProject = useMemo(() => buildTaskCountsByProject(globalTasks), [globalTasks]);
 
   const activeTeamsByProject = useMemo(() => {
@@ -170,12 +180,18 @@ export function useRecentProjectsSection(
   const decoratedCards = useMemo(
     () =>
       adaptRecentProjectsSection({
-        projects: recentProjects,
+        projects: sortRecentProjectsByDisplayPriority(recentProjects),
         taskCountsByProject,
         activeTeamsByProject,
         tasksLoading: globalTasksLoading,
       }),
-    [activeTeamsByProject, globalTasksLoading, recentProjects, taskCountsByProject]
+    [
+      activeTeamsByProject,
+      globalTasksLoading,
+      openHistoryVersion,
+      recentProjects,
+      taskCountsByProject,
+    ]
   );
 
   const filteredCards = useMemo(

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { recordRecentProjectOpenPaths } from '@features/recent-projects/renderer';
 import { api, isElectronMode } from '@renderer/api';
 import { confirm } from '@renderer/components/common/ConfirmDialog';
 import { Badge } from '@renderer/components/ui/badge';
@@ -475,10 +476,12 @@ export const TeamListView = (): React.JSX.Element => {
       if (target.kind === 'grouped') {
         useStore.setState(getWorktreeNavigationState(target.repositoryId, target.worktreeId));
         void useStore.getState().fetchSessionsInitial(target.worktreeId);
+        recordRecentProjectOpenPaths([projectPath]);
         return;
       }
 
       useStore.getState().selectProject(target.projectId);
+      recordRecentProjectOpenPaths([projectPath]);
     },
     [projects, repositoryGroups]
   );
