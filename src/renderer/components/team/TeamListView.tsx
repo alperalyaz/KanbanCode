@@ -846,13 +846,9 @@ export const TeamListView = (): React.JSX.Element => {
             const teamColorSet = team.color
               ? getTeamColorSet(team.color)
               : nameColorSet(team.displayName);
-            const matchesCurrentProject =
-              !!currentProjectPath &&
-              ((team.projectPath
-                ? normalizePath(team.projectPath) === currentProjectPath
-                : false) ||
-                (team.projectPathHistory?.some((p) => normalizePath(p) === currentProjectPath) ??
-                  false));
+            const matchesCurrentProject = currentProjectPath
+              ? teamMatchesProjectSelection(team, currentProjectPath)
+              : false;
             return (
               <div
                 key={team.teamName}
