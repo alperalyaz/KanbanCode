@@ -2,7 +2,7 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { GraphActivityHud } from '@renderer/features/agent-graph/ui/GraphActivityHud';
+import { GraphActivityHud } from '@features/agent-graph/renderer/ui/GraphActivityHud';
 
 import type { GraphNode } from '@claude-teams/agent-graph';
 import type { InboxMessage } from '@shared/types/team';
@@ -17,16 +17,22 @@ const teamState = {
     tasks: [],
     messages: [],
   },
-  teamDataCacheByName: {
-    'demo-team': {
-      members: [
-        { name: 'team-lead', agentType: 'team-lead' },
-        { name: 'jack', agentType: 'developer' },
-      ],
-      tasks: [],
-      messages: [],
-    },
-  } as Record<string, { members: Array<Record<string, unknown>>; tasks: unknown[]; messages: unknown[] }>,
+  teamDataCacheByName: new Map<
+    string,
+    { members: Record<string, unknown>[]; tasks: unknown[]; messages: unknown[] }
+  >([
+    [
+      'demo-team',
+      {
+        members: [
+          { name: 'team-lead', agentType: 'team-lead' },
+          { name: 'jack', agentType: 'developer' },
+        ],
+        tasks: [],
+        messages: [],
+      },
+    ],
+  ]),
   teams: [],
 };
 
@@ -38,7 +44,7 @@ vi.mock('@renderer/store', () => ({
 
 vi.mock('@renderer/store/slices/teamSlice', () => ({
   selectTeamDataForName: (_state: typeof teamState, teamName: string) =>
-    teamState.teamDataCacheByName[teamName] ??
+    teamState.teamDataCacheByName.get(teamName) ??
     (teamState.selectedTeamName === teamName ? teamState.selectedTeamData : null),
 }));
 
@@ -79,7 +85,7 @@ vi.mock('@renderer/components/team/activity/activityMessageContext', () => ({
   resolveMessageRenderProps: () => ({}),
 }));
 
-vi.mock('@renderer/features/agent-graph/utils/buildInlineActivityEntries', () => ({
+vi.mock('@features/agent-graph/core/domain/buildInlineActivityEntries', () => ({
   buildInlineActivityEntries: (...args: unknown[]) => buildInlineActivityEntries(...args),
   getGraphLeadMemberName: () => 'team-lead',
 }));

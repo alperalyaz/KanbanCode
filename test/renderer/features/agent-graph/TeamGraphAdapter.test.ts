@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { TeamGraphAdapter } from '@renderer/features/agent-graph/adapters/TeamGraphAdapter';
+import { TeamGraphAdapter } from '@features/agent-graph/renderer/adapters/TeamGraphAdapter';
 
 import type { InboxMessage, TeamData, TeamTaskWithKanban } from '@shared/types/team';
 import type { GraphDataPort } from '@claude-teams/agent-graph';
@@ -459,7 +459,7 @@ describe('TeamGraphAdapter particles', () => {
     const graph = adapter.adapt(next, 'my-team');
 
     expect(graph.particles).toHaveLength(2);
-    expect(graph.particles.map((particle) => particle.kind).sort()).toEqual([
+    expect(graph.particles.map((particle) => particle.kind).toSorted((a, b) => a.localeCompare(b))).toEqual([
       'inbox_message',
       'task_comment',
     ]);

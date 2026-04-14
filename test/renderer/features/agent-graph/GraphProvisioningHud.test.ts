@@ -2,6 +2,8 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { GraphProvisioningHud } from '@features/agent-graph/renderer/ui/GraphProvisioningHud';
+
 const hookState = {
   presentation: null as
     | {
@@ -43,8 +45,6 @@ vi.mock('@renderer/components/team/TeamProvisioningPanel', () => ({
       'provisioning-panel'
     ),
 }));
-
-import { GraphProvisioningHud } from '@renderer/features/agent-graph/ui/GraphProvisioningHud';
 
 const placement = { x: 120, y: 80, scale: 1, visible: true };
 

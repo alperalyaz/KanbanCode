@@ -262,6 +262,12 @@ A smaller feature may skip `core/` and `preload/` when it is:
 - not adding a new use case
 - not adding a new transport boundary
 
+If the feature still owns meaningful pure semantics or projection rules, keep
+`core/` and skip only the process layers you do not need.
+
+Example:
+- `src/features/agent-graph` keeps `core/domain` and `renderer`, but does not add fake `main/` or `preload/` folders because the transport boundary lives elsewhere.
+
 ## Definition Of Done For A Reference Feature
 
 A feature is reference-quality when:
@@ -295,3 +301,15 @@ Use it as the example for:
 - renderer dumb UI + hook orchestration
 - browser-friendly transport direction
 - feature-level lint guard rails
+
+## Agent Graph As The Thin-Slice Reference
+
+`src/features/agent-graph` is the thin-slice example for a renderer integration
+feature built on top of a reusable package.
+
+Use it as the example for:
+
+- keeping pure graph semantics in `core/domain`
+- exposing a renderer-only public entrypoint
+- integrating `packages/agent-graph` without inventing fake process layers
+- migrating legacy `src/renderer/features/*` code into the canonical feature root

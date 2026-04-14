@@ -160,7 +160,7 @@ export function buildInlineActivityEntries({
   for (const [ownerNodeId, entries] of entriesByOwnerNodeId) {
     entriesByOwnerNodeId.set(
       ownerNodeId,
-      entries.sort((a, b) => b.graphItem.timestamp.localeCompare(a.graphItem.timestamp))
+      entries.toSorted((a, b) => b.graphItem.timestamp.localeCompare(a.graphItem.timestamp))
     );
   }
 

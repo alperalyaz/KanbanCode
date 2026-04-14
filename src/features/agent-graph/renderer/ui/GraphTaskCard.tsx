@@ -1,6 +1,7 @@
 /**
  * GraphTaskCard — wraps the REAL KanbanTaskCard with graph-specific glow/pulse effects.
- * Lives in features/ so it CAN import from @renderer/.
+ * This is a renderer integration component, so it is allowed to compose
+ * project UI primitives and store-backed selectors.
  */
 
 import { useMemo } from 'react';
@@ -10,10 +11,10 @@ import { useStore } from '@renderer/store';
 import { selectTeamDataForName } from '@renderer/store/slices/teamSlice';
 import { useShallow } from 'zustand/react/shallow';
 
-import { isTaskBlocked, resolveTaskGraphColumn } from '../utils/taskGraphSemantics';
+import { isTaskBlocked, resolveTaskGraphColumn } from '../../core/domain/taskGraphSemantics';
 
 import type { GraphNode } from '@claude-teams/agent-graph';
-import type { KanbanColumnId, TeamTask, TeamTaskWithKanban } from '@shared/types';
+import type { KanbanColumnId, TeamTask } from '@shared/types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -119,8 +120,8 @@ export const GraphTaskCard = ({
   const columnId = resolveColumn(task);
   const taskWithKanban = task;
 
-  const closeAct = (fn?: (id: string) => void) => (taskId: string) => {
-    fn?.(taskId);
+  const closeAct = (fn?: (id: string) => void) => (nextTaskId: string) => {
+    fn?.(nextTaskId);
     onClose();
   };
 

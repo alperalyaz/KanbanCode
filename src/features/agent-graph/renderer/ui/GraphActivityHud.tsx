@@ -17,7 +17,7 @@ import {
   buildInlineActivityEntries,
   getGraphLeadMemberName,
   type InlineActivityEntry,
-} from '../utils/buildInlineActivityEntries';
+} from '../../core/domain/buildInlineActivityEntries';
 
 import type { GraphNode } from '@claude-teams/agent-graph';
 import type { TimelineItem } from '@renderer/components/team/activity/LeadThoughtsGroup';

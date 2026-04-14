@@ -13,7 +13,7 @@ import {
 } from '@renderer/store/slices/teamSlice';
 import { useShallow } from 'zustand/react/shallow';
 
-import { TeamGraphAdapter } from './TeamGraphAdapter';
+import { TeamGraphAdapter } from '../adapters/TeamGraphAdapter';
 
 import type { GraphDataPort } from '@claude-teams/agent-graph';
 

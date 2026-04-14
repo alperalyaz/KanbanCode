@@ -1,8 +1,9 @@
 /**
  * TeamGraphAdapter — transforms Zustand TeamData → GraphDataPort.
  *
- * This is the ONLY file in this feature that imports from @renderer/store.
- * If the project data model changes, ONLY this class needs updating.
+ * This adapter owns the graph projection from team runtime state into the
+ * reusable package port model. Renderer hooks may still read store state, but
+ * projection rules stay here so the mapping logic has one main reason to change.
  *
  * Class-based with ES #private fields and DI-ready constructor.
  */
@@ -26,16 +27,15 @@ import { isLeadMember } from '@shared/utils/leadDetection';
 import {
   buildInlineActivityEntries,
   getGraphLeadMemberName,
-} from '../utils/buildInlineActivityEntries';
-import { collapseOverflowStacksWithMeta } from '../utils/collapseOverflowStacks';
+} from '../../core/domain/buildInlineActivityEntries';
+import { collapseOverflowStacksWithMeta } from '../../core/domain/collapseOverflowStacks';
 import {
   isTaskBlocked,
   isTaskInReviewCycle,
   resolveTaskReviewer,
-} from '../utils/taskGraphSemantics';
+} from '../../core/domain/taskGraphSemantics';
 
 import type {
-  GraphActivityItem,
   GraphDataPort,
   GraphEdge,
   GraphNode,
@@ -571,7 +571,10 @@ export class TeamGraphAdapter {
 
       for (const relatedId of task.related ?? []) {
         if (!visibleTaskIds.has(relatedId)) continue;
-        const key = [task.id, relatedId].sort().join(':');
+        const key =
+          task.id.localeCompare(relatedId) <= 0
+            ? `${task.id}:${relatedId}`
+            : `${relatedId}:${task.id}`;
         if (this.#seenRelated.has(key)) continue;
         this.#seenRelated.add(key);
         edges.push({

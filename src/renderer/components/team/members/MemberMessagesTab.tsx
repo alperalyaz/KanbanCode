@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { buildInlineActivityEntries } from '@features/agent-graph/renderer';
 import { api } from '@renderer/api';
 import { ActivityItem } from '@renderer/components/team/activity/ActivityItem';
 import {
@@ -8,7 +9,6 @@ import {
 } from '@renderer/components/team/activity/activityMessageContext';
 import { MessageExpandDialog } from '@renderer/components/team/activity/MessageExpandDialog';
 import { Button } from '@renderer/components/ui/button';
-import { buildInlineActivityEntries } from '@renderer/features/agent-graph/utils/buildInlineActivityEntries';
 import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { mergeTeamMessages } from '@renderer/utils/mergeTeamMessages';
 import { filterTeamMessages } from '@renderer/utils/teamMessageFiltering';

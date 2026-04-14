@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildInlineActivityEntries,
   getGraphLeadMemberName,
-} from '@renderer/features/agent-graph/utils/buildInlineActivityEntries';
+} from '@features/agent-graph/core/domain/buildInlineActivityEntries';
 
 import type { InboxMessage, TeamData, TeamTaskWithKanban } from '@shared/types/team';
 

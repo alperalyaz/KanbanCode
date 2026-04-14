@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { buildInlineActivityEntries } from '@features/agent-graph/renderer';
 import { Button } from '@renderer/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader } from '@renderer/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs';
-import { buildInlineActivityEntries } from '@renderer/features/agent-graph/utils/buildInlineActivityEntries';
 import { useMemberStats } from '@renderer/hooks/useMemberStats';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { BarChart3, FileText, ListPlus, MessageSquare, UserMinus } from 'lucide-react';

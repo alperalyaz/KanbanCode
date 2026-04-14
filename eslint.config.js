@@ -227,6 +227,77 @@ export default defineConfig([
       ],
     },
   },
+  {
+    name: 'feature-agent-graph-public-entrypoints',
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/features/agent-graph/**/*'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@features/agent-graph/core/**',
+                '@features/agent-graph/renderer/**',
+              ],
+              message:
+                'Import agent-graph only through its public entrypoint: @features/agent-graph/renderer.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    name: 'feature-agent-graph-core-domain-guards',
+    files: ['src/features/agent-graph/core/domain/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@features/agent-graph/renderer/**',
+                '@main/**',
+                '@renderer/**',
+                '@preload/**',
+                'electron',
+                'fastify',
+                'child_process',
+                'node:child_process',
+              ],
+              message:
+                'agent-graph core/domain must stay pure and cannot depend on renderer, main, preload, or platform code.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    name: 'feature-agent-graph-renderer-boundaries',
+    files: ['src/features/agent-graph/renderer/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@main/**',
+                '@preload/**',
+                'electron',
+              ],
+              message:
+                'agent-graph renderer may depend on shared, renderer, package, and feature-local modules, but not on main/preload or Electron APIs directly.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 
   // Module boundaries - Enforce Electron three-process architecture
   {

@@ -9,13 +9,13 @@ import { GraphView } from '@claude-teams/agent-graph';
 import { TeamSidebarHost } from '@renderer/components/team/sidebar/TeamSidebarHost';
 import { useStore } from '@renderer/store';
 
-import { useTeamGraphAdapter } from '../adapters/useTeamGraphAdapter';
+import { useGraphCreateTaskDialog } from '../hooks/useGraphCreateTaskDialog';
+import { useTeamGraphAdapter } from '../hooks/useTeamGraphAdapter';
 
 import { GraphActivityHud } from './GraphActivityHud';
 import { GraphBlockingEdgePopover } from './GraphBlockingEdgePopover';
 import { GraphNodePopover } from './GraphNodePopover';
 import { GraphProvisioningHud } from './GraphProvisioningHud';
-import { useGraphCreateTaskDialog } from './useGraphCreateTaskDialog';
 
 import type { GraphDomainRef, GraphEventPort } from '@claude-teams/agent-graph';
 import type {

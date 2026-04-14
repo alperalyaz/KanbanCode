@@ -1,7 +1,7 @@
 /**
  * GraphNodePopover — renders popover for graph nodes using project UI components.
- * Lives in features/ (not in package) so it CAN import from @renderer/.
- * Reuses agentAvatarUrl, status helpers, and UI primitives from the project.
+ * This stays in the renderer slice instead of the reusable package because it
+ * composes project-specific UI, selectors, and presentation helpers.
  */
 
 import { Badge } from '@renderer/components/ui/badge';
@@ -16,7 +16,7 @@ import { buildTeamProvisioningPresentation } from '@renderer/utils/teamProvision
 import { ExternalLink, Loader2, MessageSquare, Plus, User } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
-import { isTaskInReviewCycle, resolveTaskReviewer } from '../utils/taskGraphSemantics';
+import { isTaskInReviewCycle, resolveTaskReviewer } from '../../core/domain/taskGraphSemantics';
 
 import { GraphTaskCard } from './GraphTaskCard';
 
@@ -40,11 +40,22 @@ function formatToolPreview(preview: string | undefined): string | undefined {
   // If it looks like raw JSON object, try to extract a readable field
   if (preview.startsWith('{') || preview.startsWith('[')) {
     try {
-      const obj = JSON.parse(preview.length > 200 ? preview.slice(0, 200) : preview);
-      // Common readable fields
-      return (
-        obj.subject ?? obj.name ?? obj.label ?? obj.file_path ?? obj.path ?? obj.query ?? undefined
-      );
+      const parsed: unknown = JSON.parse(preview.length > 200 ? preview.slice(0, 200) : preview);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const previewRecord = parsed as Record<string, unknown>;
+        const candidates = [
+          previewRecord.subject,
+          previewRecord.name,
+          previewRecord.label,
+          previewRecord.file_path,
+          previewRecord.path,
+          previewRecord.query,
+        ];
+        const firstText = candidates.find((value) => typeof value === 'string');
+        if (typeof firstText === 'string') {
+          return firstText;
+        }
+      }
     } catch {
       // Truncated JSON — extract first quoted value
       const match = /"(?:subject|name|label|path|query)":\s*"([^"]{1,60})"/.exec(preview);
@@ -421,7 +432,7 @@ const MemberPopoverContent = ({
         )}
       </div>
 
-      {/* TODO: Context usage disabled — LeadContextUsage.percent unreliable (jumps) */}
+      {/* Context usage stays hidden for now because LeadContextUsage.percent is unreliable. */}
 
       {/* Current task indicator — reuses same pattern as MemberCard */}
       {node.currentTaskId && node.currentTaskSubject && (

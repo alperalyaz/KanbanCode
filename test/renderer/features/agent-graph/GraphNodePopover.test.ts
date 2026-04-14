@@ -13,11 +13,11 @@ vi.mock('@renderer/components/ui/button', () => ({
     React.createElement('button', { type: 'button' }, children),
 }));
 
-vi.mock('@renderer/features/agent-graph/ui/GraphTaskCard', () => ({
+vi.mock('@features/agent-graph/renderer/ui/GraphTaskCard', () => ({
   GraphTaskCard: () => React.createElement('div', null, 'task-card'),
 }));
 
-import { GraphNodePopover } from '@renderer/features/agent-graph/ui/GraphNodePopover';
+import { GraphNodePopover } from '@features/agent-graph/renderer/ui/GraphNodePopover';
 
 import type { GraphNode } from '@claude-teams/agent-graph';
 
