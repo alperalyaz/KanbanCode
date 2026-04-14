@@ -38,26 +38,38 @@ export interface CodexThreadSummary {
   path?: string | null;
 }
 
+export interface CodexThreadSegmentResult {
+  threads: CodexThreadSummary[];
+  error?: string;
+}
+
+export interface CodexRecentThreadsResult {
+  live: CodexThreadSegmentResult;
+  archived: CodexThreadSegmentResult;
+}
+
 export class CodexAppServerClient {
   constructor(private readonly rpcClient: JsonRpcStdioClient) {}
 
-  async listThreads(
+  async listRecentThreads(
     binaryPath: string,
     options: {
-      archived: boolean;
       limit: number;
-      requestTimeoutMs?: number;
+      liveRequestTimeoutMs?: number;
+      archivedRequestTimeoutMs?: number;
       totalTimeoutMs?: number;
     }
-  ): Promise<CodexThreadSummary[]> {
-    const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  ): Promise<CodexRecentThreadsResult> {
+    const liveRequestTimeoutMs = options.liveRequestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    const archivedRequestTimeoutMs = options.archivedRequestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    const sessionRequestTimeoutMs = Math.max(liveRequestTimeoutMs, archivedRequestTimeoutMs);
     const totalTimeoutMs = options.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS;
 
     return this.rpcClient.withSession(
       {
         binaryPath,
         args: ['app-server'],
-        requestTimeoutMs,
+        requestTimeoutMs: sessionRequestTimeoutMs,
         totalTimeoutMs,
         label: 'codex app-server thread/list',
       },
@@ -75,22 +87,51 @@ export class CodexAppServerClient {
               optOutNotificationMethods: SUPPRESSED_NOTIFICATION_METHODS,
             },
           },
-          requestTimeoutMs
+          sessionRequestTimeoutMs
         );
 
         await session.notify('initialized');
 
-        const response = await session.request<ThreadListResponse>(
-          'thread/list',
-          {
-            archived: options.archived,
-            limit: options.limit,
-            sortKey: 'updated_at',
-          },
-          requestTimeoutMs
-        );
+        const [live, archived] = await Promise.allSettled([
+          session.request<ThreadListResponse>(
+            'thread/list',
+            {
+              archived: false,
+              limit: options.limit,
+              sortKey: 'updated_at',
+            },
+            liveRequestTimeoutMs
+          ),
+          session.request<ThreadListResponse>(
+            'thread/list',
+            {
+              archived: true,
+              limit: options.limit,
+              sortKey: 'updated_at',
+            },
+            archivedRequestTimeoutMs
+          ),
+        ]);
 
-        return response.data ?? [];
+        return {
+          live:
+            live.status === 'fulfilled'
+              ? { threads: live.value.data ?? [] }
+              : {
+                  threads: [],
+                  error: live.reason instanceof Error ? live.reason.message : String(live.reason),
+                },
+          archived:
+            archived.status === 'fulfilled'
+              ? { threads: archived.value.data ?? [] }
+              : {
+                  threads: [],
+                  error:
+                    archived.reason instanceof Error
+                      ? archived.reason.message
+                      : String(archived.reason),
+                },
+        };
       }
     );
   }

@@ -6,6 +6,7 @@ import type { RecentProjectsSourcePort } from '@features/recent-projects/core/ap
 import type { RecentProjectCandidate } from '@features/recent-projects/core/domain/models/RecentProjectCandidate';
 import type {
   CodexAppServerClient,
+  CodexRecentThreadsResult,
   CodexThreadSummary,
 } from '@features/recent-projects/main/infrastructure/codex/CodexAppServerClient';
 import type { RecentProjectIdentityResolver } from '@features/recent-projects/main/infrastructure/identity/RecentProjectIdentityResolver';
@@ -14,9 +15,7 @@ import type { ServiceContext } from '@main/services';
 const CODEX_THREAD_LIMIT = 40;
 const CODEX_LIVE_FETCH_TIMEOUT_MS = 4_500;
 const CODEX_ARCHIVED_FETCH_TIMEOUT_MS = 2_500;
-const CODEX_REQUEST_TIMEOUT_MS = 4_500;
 const CODEX_SOURCE_TIMEOUT_MS = 5_200;
-const FAST_ARCHIVED_MERGE_TIMEOUT_MS = 150;
 
 function isInteractiveSource(source: unknown): boolean {
   return source === 'vscode' || source === 'cli';
@@ -58,18 +57,11 @@ export class CodexRecentProjectsSourceAdapter implements RecentProjectsSourcePor
       return [];
     }
 
-    const liveThreads = await this.#listThreadsSegmentSafe(binaryPath, 'live', {
-      archived: false,
-      totalTimeoutMs: CODEX_LIVE_FETCH_TIMEOUT_MS,
-    });
-    const archivedPromise = this.#listThreadsSegmentSafe(binaryPath, 'archived', {
-      archived: true,
-      totalTimeoutMs: CODEX_ARCHIVED_FETCH_TIMEOUT_MS,
-    });
-    const archivedThreads =
-      liveThreads.length > 0
-        ? await this.#awaitWithTimeout(archivedPromise, FAST_ARCHIVED_MERGE_TIMEOUT_MS)
-        : await archivedPromise;
+    const threadSegments = await this.#listRecentThreadsSafe(binaryPath);
+    this.#logSegmentFailure(threadSegments, 'live');
+    this.#logSegmentFailure(threadSegments, 'archived');
+    const liveThreads = threadSegments.live.threads;
+    const archivedThreads = threadSegments.archived.threads;
 
     const interactiveThreads = [...liveThreads, ...archivedThreads].filter(
       (thread) => Boolean(thread.cwd) && isInteractiveSource(thread.source)
@@ -86,67 +78,45 @@ export class CodexRecentProjectsSourceAdapter implements RecentProjectsSourcePor
     return candidates;
   }
 
-  async #listThreadsSegment(
-    binaryPath: string,
-    segment: 'live' | 'archived',
-    options: {
-      archived: boolean;
-      totalTimeoutMs: number;
-    }
-  ): Promise<CodexThreadSummary[]> {
-    const result = await this.deps.appServerClient.listThreads(binaryPath, {
-      archived: options.archived,
+  async #listRecentThreads(binaryPath: string): Promise<CodexRecentThreadsResult> {
+    const result = await this.deps.appServerClient.listRecentThreads(binaryPath, {
       limit: CODEX_THREAD_LIMIT,
-      requestTimeoutMs: CODEX_REQUEST_TIMEOUT_MS,
-      totalTimeoutMs: options.totalTimeoutMs,
+      liveRequestTimeoutMs: CODEX_LIVE_FETCH_TIMEOUT_MS,
+      archivedRequestTimeoutMs: CODEX_ARCHIVED_FETCH_TIMEOUT_MS,
+      totalTimeoutMs: CODEX_LIVE_FETCH_TIMEOUT_MS,
     });
 
-    this.deps.logger.info('codex recent-projects thread list loaded', {
-      segment,
-      count: result.length,
+    this.deps.logger.info('codex recent-projects thread lists loaded', {
+      liveCount: result.live.threads.length,
+      archivedCount: result.archived.threads.length,
     });
     return result;
   }
 
-  async #awaitWithTimeout(
-    promise: Promise<CodexThreadSummary[]>,
-    timeoutMs: number
-  ): Promise<CodexThreadSummary[]> {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    try {
-      return await Promise.race([
-        promise,
-        new Promise<CodexThreadSummary[]>((resolve) => {
-          timer = setTimeout(() => resolve([]), timeoutMs);
-        }),
-      ]);
-    } finally {
-      if (timer) {
-        clearTimeout(timer);
-      }
+  #logSegmentFailure(result: CodexRecentThreadsResult, segment: 'live' | 'archived'): void {
+    const error = result[segment].error;
+    if (!error) {
+      return;
     }
-  }
 
-  #unwrapThreadListError(error: unknown, segment: 'live' | 'archived'): CodexThreadSummary[] {
     this.deps.logger.warn('codex recent-projects thread list failed', {
       segment,
-      error: error instanceof Error ? error.message : String(error),
+      error,
     });
-    return [];
   }
 
-  async #listThreadsSegmentSafe(
-    binaryPath: string,
-    segment: 'live' | 'archived',
-    options: {
-      archived: boolean;
-      totalTimeoutMs: number;
-    }
-  ): Promise<CodexThreadSummary[]> {
+  async #listRecentThreadsSafe(binaryPath: string): Promise<CodexRecentThreadsResult> {
     try {
-      return await this.#listThreadsSegment(binaryPath, segment, options);
+      return await this.#listRecentThreads(binaryPath);
     } catch (error) {
-      return this.#unwrapThreadListError(error, segment);
+      const message = error instanceof Error ? error.message : String(error);
+      this.deps.logger.warn('codex recent-projects thread list session failed', {
+        error: message,
+      });
+      return {
+        live: { threads: [], error: message },
+        archived: { threads: [], error: message },
+      };
     }
   }
 
