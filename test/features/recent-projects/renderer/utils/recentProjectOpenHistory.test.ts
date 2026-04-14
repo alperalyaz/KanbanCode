@@ -98,4 +98,36 @@ describe('recentProjectOpenHistory', () => {
       ).map((project) => project.id)
     ).toEqual(['repo:active', 'repo:opened']);
   });
+
+  it('does not collapse distinct case-variant paths when history contains ambiguous entries', () => {
+    recordRecentProjectOpenPaths(['/Work/Repo'], 5_000);
+    recordRecentProjectOpenPaths(['/work/repo'], 8_000);
+
+    expect(
+      getRecentProjectLastOpenedAt(
+        makeProject({
+          primaryPath: '/Work/Repo',
+          associatedPaths: ['/Work/Repo'],
+        })
+      )
+    ).toBe(5_000);
+
+    expect(
+      getRecentProjectLastOpenedAt(
+        makeProject({
+          primaryPath: '/work/repo',
+          associatedPaths: ['/work/repo'],
+        })
+      )
+    ).toBe(8_000);
+
+    expect(
+      getRecentProjectLastOpenedAt(
+        makeProject({
+          primaryPath: '/WORK/repo',
+          associatedPaths: ['/WORK/repo'],
+        })
+      )
+    ).toBe(0);
+  });
 });

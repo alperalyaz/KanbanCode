@@ -248,7 +248,7 @@ describe('ListDashboardRecentProjectsUseCase', () => {
     }
   });
 
-  it('returns stale cached data when a source degrades after cache expiry', async () => {
+  it('prefers fresh healthy-source results over stale cache when degraded sources still leave usable projects', async () => {
     const stale: TestViewModel = { ids: ['repo:stale'], sources: ['mixed'] };
     const cache: RecentProjectsCachePort<TestViewModel> = {
       get: vi.fn().mockResolvedValue(null),
@@ -271,6 +271,72 @@ describe('ListDashboardRecentProjectsUseCase', () => {
             sourceKind: 'claude',
           }),
         ]),
+      },
+      {
+        sourceId: 'codex',
+        list: vi.fn().mockRejectedValue(new Error('codex unavailable')),
+      },
+    ];
+    const logger = createLogger();
+    let now = 15_000;
+
+    const useCase = new ListDashboardRecentProjectsUseCase({
+      sources,
+      cache,
+      output,
+      clock: {
+        now: () => {
+          const current = now;
+          now += 200;
+          return current;
+        },
+      },
+      logger,
+    });
+
+    await expect(useCase.execute('recent-projects:stale')).resolves.toEqual({
+      ids: ['repo:fresh'],
+      sources: ['claude'],
+    });
+    expect(output.present).toHaveBeenCalledWith({
+      projects: [
+        expect.objectContaining({
+          identity: 'repo:fresh',
+          source: 'claude',
+        }),
+      ],
+    });
+    expect(cache.set).toHaveBeenCalledWith(
+      'recent-projects:stale',
+      { ids: ['repo:fresh'], sources: ['claude'] },
+      1_500
+    );
+    expect(logger.info).toHaveBeenCalledWith('recent-projects loaded', {
+      cacheKey: 'recent-projects:stale',
+      count: 1,
+      degradedSources: 1,
+      cacheTtlMs: 1_500,
+      durationMs: 200,
+    });
+  });
+
+  it('falls back to stale cache only when degraded sources leave no usable fresh projects', async () => {
+    const stale: TestViewModel = { ids: ['repo:stale'], sources: ['mixed'] };
+    const cache: RecentProjectsCachePort<TestViewModel> = {
+      get: vi.fn().mockResolvedValue(null),
+      getStale: vi.fn().mockResolvedValue(stale),
+      set: vi.fn().mockResolvedValue(undefined),
+    };
+    const output: ListDashboardRecentProjectsOutputPort<TestViewModel> = {
+      present: vi.fn((response: ListDashboardRecentProjectsResponse) => ({
+        ids: response.projects.map((project) => project.identity),
+        sources: response.projects.map((project) => project.source),
+      })),
+    };
+    const sources: RecentProjectsSourcePort[] = [
+      {
+        sourceId: 'claude',
+        list: vi.fn().mockResolvedValue([]),
       },
       {
         sourceId: 'codex',

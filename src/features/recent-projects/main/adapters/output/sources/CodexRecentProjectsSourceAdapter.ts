@@ -17,8 +17,10 @@ const CODEX_LIVE_FETCH_TIMEOUT_MS = 4_500;
 const CODEX_ARCHIVED_FETCH_TIMEOUT_MS = 2_500;
 const CODEX_SESSION_OVERHEAD_TIMEOUT_MS = 1_500;
 const CODEX_TOTAL_FETCH_TIMEOUT_MS =
-  CODEX_LIVE_FETCH_TIMEOUT_MS + CODEX_SESSION_OVERHEAD_TIMEOUT_MS;
+  CODEX_LIVE_FETCH_TIMEOUT_MS + CODEX_ARCHIVED_FETCH_TIMEOUT_MS + CODEX_SESSION_OVERHEAD_TIMEOUT_MS;
 const CODEX_SOURCE_TIMEOUT_MS = CODEX_TOTAL_FETCH_TIMEOUT_MS + 500;
+const CODEX_LIVE_ONLY_FALLBACK_TOTAL_TIMEOUT_MS =
+  CODEX_LIVE_FETCH_TIMEOUT_MS + CODEX_SESSION_OVERHEAD_TIMEOUT_MS + 1_500;
 
 function isInteractiveSource(source: unknown): boolean {
   return source === 'vscode' || source === 'cli';
@@ -116,6 +118,37 @@ export class CodexRecentProjectsSourceAdapter implements RecentProjectsSourcePor
       this.deps.logger.warn('codex recent-projects thread list session failed', {
         error: message,
       });
+
+      if (message.toLowerCase().includes('timed out')) {
+        return {
+          live: { threads: [], error: message },
+          archived: { threads: [], error: message },
+        };
+      }
+
+      try {
+        const liveFallback = await this.deps.appServerClient.listRecentLiveThreads(binaryPath, {
+          limit: CODEX_THREAD_LIMIT,
+          requestTimeoutMs: CODEX_LIVE_FETCH_TIMEOUT_MS,
+          totalTimeoutMs: CODEX_LIVE_ONLY_FALLBACK_TOTAL_TIMEOUT_MS,
+        });
+
+        this.deps.logger.info('codex recent-projects recovered with live-only fallback', {
+          liveCount: liveFallback.threads.length,
+        });
+
+        return {
+          live: liveFallback,
+          archived: { threads: [], error: message },
+        };
+      } catch (fallbackError) {
+        const fallbackMessage =
+          fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        this.deps.logger.warn('codex recent-projects live-only fallback failed', {
+          error: fallbackMessage,
+        });
+      }
+
       return {
         live: { threads: [], error: message },
         archived: { threads: [], error: message },

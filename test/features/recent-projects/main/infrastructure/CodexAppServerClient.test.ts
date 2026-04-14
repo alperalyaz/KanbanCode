@@ -53,7 +53,7 @@ describe('CodexAppServerClient', () => {
       expect.objectContaining({
         binaryPath: '/usr/local/bin/codex',
         requestTimeoutMs: 4500,
-        totalTimeoutMs: 6000,
+        totalTimeoutMs: 8500,
       }),
       expect.any(Function)
     );
@@ -135,9 +135,49 @@ describe('CodexAppServerClient', () => {
 
     expect(withSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        totalTimeoutMs: 6000,
+        totalTimeoutMs: 8500,
       }),
       expect.any(Function)
     );
+  });
+
+  it('can load only live threads in a dedicated fallback session', async () => {
+    const session = createSession(
+      vi.fn().mockImplementation((method: string, params?: { archived?: boolean }) => {
+        if (method === 'initialize') {
+          return Promise.resolve({});
+        }
+
+        if (method === 'thread/list' && params?.archived === false) {
+          return Promise.resolve({
+            data: [{ id: 'live-1', cwd: '/Users/test/live-project', source: 'cli' }],
+          });
+        }
+
+        return Promise.reject(new Error(`Unexpected method: ${method}`));
+      })
+    );
+
+    const withSession = vi.fn().mockImplementation((_options, handler) => handler(session));
+    const client = new CodexAppServerClient({ withSession } as unknown as JsonRpcStdioClient);
+
+    const result = await client.listRecentLiveThreads('/usr/local/bin/codex', {
+      limit: 40,
+      requestTimeoutMs: 4500,
+      totalTimeoutMs: 6000,
+    });
+
+    expect(withSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        binaryPath: '/usr/local/bin/codex',
+        requestTimeoutMs: 4500,
+        totalTimeoutMs: 6000,
+        label: 'codex app-server thread/list live',
+      }),
+      expect.any(Function)
+    );
+    expect(result).toEqual({
+      threads: [{ id: 'live-1', cwd: '/Users/test/live-project', source: 'cli' }],
+    });
   });
 });

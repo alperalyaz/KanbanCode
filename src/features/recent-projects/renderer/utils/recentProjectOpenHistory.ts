@@ -1,5 +1,3 @@
-import { normalizePath } from '@renderer/utils/pathNormalize';
-
 import type { DashboardRecentProject } from '@features/recent-projects/contracts';
 
 const RECENT_PROJECT_OPEN_HISTORY_KEY = 'recent-projects:open-history';
@@ -22,11 +20,20 @@ function canUseLocalStorage(): boolean {
 }
 
 function normalizeHistoryPath(projectPath: string): string | null {
-  const trimmed = projectPath.trim();
-  if (!trimmed) {
+  let normalizedPath = projectPath.trim().replace(/\\/g, '/');
+  if (!normalizedPath) {
     return null;
   }
-  return normalizePath(trimmed);
+  if (normalizedPath !== '/' && !/^[A-Za-z]:\/$/.test(normalizedPath)) {
+    while (normalizedPath.endsWith('/')) {
+      normalizedPath = normalizedPath.slice(0, -1);
+    }
+  }
+  return normalizedPath;
+}
+
+function foldHistoryPath(projectPath: string): string {
+  return projectPath.toLowerCase();
 }
 
 function readHistoryState(): RecentProjectOpenHistoryState {
@@ -99,16 +106,72 @@ function writeHistoryEntries(entries: readonly RecentProjectOpenHistoryEntry[]):
   }
 }
 
-function createHistoryLookup(): Map<string, number> {
-  return new Map(readHistoryState().entries.map((entry) => [entry.path, entry.openedAt]));
+interface HistoryLookup {
+  exact: Map<string, number>;
+  folded: Map<
+    string,
+    {
+      openedAt: number;
+      exactPaths: Set<string>;
+    }
+  >;
 }
 
-function getProjectPaths(
+function createHistoryLookup(): HistoryLookup {
+  const exact = new Map<string, number>();
+  const folded = new Map<string, { openedAt: number; exactPaths: Set<string> }>();
+
+  for (const entry of readHistoryState().entries) {
+    const normalizedPath = normalizeHistoryPath(entry.path);
+    if (!normalizedPath) {
+      continue;
+    }
+
+    exact.set(normalizedPath, Math.max(exact.get(normalizedPath) ?? 0, entry.openedAt));
+
+    const foldedKey = foldHistoryPath(normalizedPath);
+    const existingFolded = folded.get(foldedKey);
+    if (existingFolded) {
+      existingFolded.openedAt = Math.max(existingFolded.openedAt, entry.openedAt);
+      existingFolded.exactPaths.add(normalizedPath);
+    } else {
+      folded.set(foldedKey, {
+        openedAt: entry.openedAt,
+        exactPaths: new Set([normalizedPath]),
+      });
+    }
+  }
+
+  return { exact, folded };
+}
+
+function resolveHistoryOpenedAt(lookup: HistoryLookup, projectPath: string): number {
+  const normalizedPath = normalizeHistoryPath(projectPath);
+  if (!normalizedPath) {
+    return 0;
+  }
+
+  const exactMatch = lookup.exact.get(normalizedPath);
+  if (exactMatch != null) {
+    return exactMatch;
+  }
+
+  const foldedMatch = lookup.folded.get(foldHistoryPath(normalizedPath));
+  if (!foldedMatch || foldedMatch.exactPaths.size !== 1) {
+    return 0;
+  }
+
+  return foldedMatch.openedAt;
+}
+
+function getProjectLastOpenedAtFromLookup(
+  lookup: HistoryLookup,
   project: Pick<DashboardRecentProject, 'primaryPath' | 'associatedPaths'>
-): string[] {
-  return [project.primaryPath, ...project.associatedPaths]
-    .map((projectPath) => normalizeHistoryPath(projectPath))
-    .filter((projectPath): projectPath is string => Boolean(projectPath));
+): number {
+  return [project.primaryPath, ...project.associatedPaths].reduce(
+    (latest, projectPath) => Math.max(latest, resolveHistoryOpenedAt(lookup, projectPath)),
+    0
+  );
 }
 
 export function recordRecentProjectOpenPaths(
@@ -141,10 +204,7 @@ export function getRecentProjectLastOpenedAt(
   project: Pick<DashboardRecentProject, 'primaryPath' | 'associatedPaths'>
 ): number {
   const historyLookup = createHistoryLookup();
-  return getProjectPaths(project).reduce(
-    (latest, projectPath) => Math.max(latest, historyLookup.get(projectPath) ?? 0),
-    0
-  );
+  return getProjectLastOpenedAtFromLookup(historyLookup, project);
 }
 
 export function sortRecentProjectsByDisplayPriority(
@@ -153,20 +213,12 @@ export function sortRecentProjectsByDisplayPriority(
 ): DashboardRecentProject[] {
   const historyLookup = createHistoryLookup();
 
-  const getLastOpenedAt = (
-    project: Pick<DashboardRecentProject, 'primaryPath' | 'associatedPaths'>
-  ): number =>
-    getProjectPaths(project).reduce(
-      (latest, projectPath) => Math.max(latest, historyLookup.get(projectPath) ?? 0),
-      0
-    );
-
   const isPriorityOpen = (openedAt: number): boolean =>
     openedAt > 0 && now - openedAt <= OPEN_PRIORITY_WINDOW_MS;
 
   return [...projects].sort((left, right) => {
-    const leftOpenedAt = getLastOpenedAt(left);
-    const rightOpenedAt = getLastOpenedAt(right);
+    const leftOpenedAt = getProjectLastOpenedAtFromLookup(historyLookup, left);
+    const rightOpenedAt = getProjectLastOpenedAtFromLookup(historyLookup, right);
     const leftPriority = isPriorityOpen(leftOpenedAt);
     const rightPriority = isPriorityOpen(rightOpenedAt);
 

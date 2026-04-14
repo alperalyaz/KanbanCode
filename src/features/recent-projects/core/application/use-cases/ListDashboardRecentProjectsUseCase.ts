@@ -64,8 +64,11 @@ export class ListDashboardRecentProjectsUseCase<TViewModel> {
 
     const successful = results.flatMap((result) => result.candidates);
     const hasDegradedSources = results.some((result) => result.degraded);
+    const response: ListDashboardRecentProjectsResponse = {
+      projects: mergeRecentProjectCandidates(successful),
+    };
 
-    if (hasDegradedSources && stale) {
+    if (hasDegradedSources && stale && response.projects.length === 0) {
       await this.deps.cache.set(cacheKey, stale, this.#degradedCacheTtlMs);
       this.deps.logger.info('recent-projects served stale cache', {
         cacheKey,
@@ -76,9 +79,6 @@ export class ListDashboardRecentProjectsUseCase<TViewModel> {
       return stale;
     }
 
-    const response: ListDashboardRecentProjectsResponse = {
-      projects: mergeRecentProjectCandidates(successful),
-    };
     const viewModel = this.deps.output.present(response);
     const cacheTtlMs = hasDegradedSources
       ? Math.min(this.#cacheTtlMs, this.#degradedCacheTtlMs)

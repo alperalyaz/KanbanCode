@@ -1,4 +1,4 @@
-import type { JsonRpcStdioClient } from './JsonRpcStdioClient';
+import type { JsonRpcSession, JsonRpcStdioClient } from './JsonRpcStdioClient';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 3_000;
 const DEFAULT_TOTAL_TIMEOUT_MS = 8_000;
@@ -49,8 +49,54 @@ export interface CodexRecentThreadsResult {
   archived: CodexThreadSegmentResult;
 }
 
+interface ThreadListSessionOptions {
+  binaryPath: string;
+  requestTimeoutMs: number;
+  totalTimeoutMs: number;
+  label: string;
+}
+
 export class CodexAppServerClient {
   constructor(private readonly rpcClient: JsonRpcStdioClient) {}
+
+  async listRecentLiveThreads(
+    binaryPath: string,
+    options: {
+      limit: number;
+      requestTimeoutMs?: number;
+      totalTimeoutMs?: number;
+    }
+  ): Promise<CodexThreadSegmentResult> {
+    const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    const totalTimeoutMs = Math.max(
+      options.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS,
+      requestTimeoutMs + MIN_SESSION_OVERHEAD_TIMEOUT_MS
+    );
+
+    return this.#withThreadListSession(
+      {
+        binaryPath,
+        requestTimeoutMs,
+        totalTimeoutMs,
+        label: 'codex app-server thread/list live',
+      },
+      async (session) => {
+        const live = await session.request<ThreadListResponse>(
+          'thread/list',
+          {
+            archived: false,
+            limit: options.limit,
+            sortKey: 'updated_at',
+          },
+          requestTimeoutMs
+        );
+
+        return {
+          threads: live.data ?? [],
+        };
+      }
+    );
+  }
 
   async listRecentThreads(
     binaryPath: string,
@@ -66,36 +112,17 @@ export class CodexAppServerClient {
     const sessionRequestTimeoutMs = Math.max(liveRequestTimeoutMs, archivedRequestTimeoutMs);
     const totalTimeoutMs = Math.max(
       options.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS,
-      sessionRequestTimeoutMs + MIN_SESSION_OVERHEAD_TIMEOUT_MS
+      liveRequestTimeoutMs + archivedRequestTimeoutMs + MIN_SESSION_OVERHEAD_TIMEOUT_MS
     );
 
-    return this.rpcClient.withSession(
+    return this.#withThreadListSession(
       {
         binaryPath,
-        args: ['app-server'],
         requestTimeoutMs: sessionRequestTimeoutMs,
         totalTimeoutMs,
         label: 'codex app-server thread/list',
       },
       async (session) => {
-        await session.request(
-          'initialize',
-          {
-            clientInfo: {
-              name: 'claude-agent-teams-ui',
-              title: 'Claude Agent Teams UI',
-              version: '0.1.0',
-            },
-            capabilities: {
-              experimentalApi: false,
-              optOutNotificationMethods: SUPPRESSED_NOTIFICATION_METHODS,
-            },
-          },
-          sessionRequestTimeoutMs
-        );
-
-        await session.notify('initialized');
-
         const [live, archived] = await Promise.allSettled([
           session.request<ThreadListResponse>(
             'thread/list',
@@ -136,6 +163,41 @@ export class CodexAppServerClient {
                       : String(archived.reason),
                 },
         };
+      }
+    );
+  }
+
+  async #withThreadListSession<T>(
+    options: ThreadListSessionOptions,
+    handler: (session: JsonRpcSession) => Promise<T>
+  ): Promise<T> {
+    return this.rpcClient.withSession(
+      {
+        binaryPath: options.binaryPath,
+        args: ['app-server'],
+        requestTimeoutMs: options.requestTimeoutMs,
+        totalTimeoutMs: options.totalTimeoutMs,
+        label: options.label,
+      },
+      async (session) => {
+        await session.request(
+          'initialize',
+          {
+            clientInfo: {
+              name: 'claude-agent-teams-ui',
+              title: 'Claude Agent Teams UI',
+              version: '0.1.0',
+            },
+            capabilities: {
+              experimentalApi: false,
+              optOutNotificationMethods: SUPPRESSED_NOTIFICATION_METHODS,
+            },
+          },
+          options.requestTimeoutMs
+        );
+
+        await session.notify('initialized');
+        return handler(session);
       }
     );
   }
