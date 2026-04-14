@@ -207,6 +207,8 @@ export const MemberMessagesTab = ({
           ? 'No loaded messages for this member yet'
           : 'No messages with this member'
         : 'No activity with this member';
+  const canLoadOlderMessages =
+    hasMore && activityFilter !== 'comments' && displayEntries.length > 0;
 
   return (
     <div className="space-y-3">
@@ -281,7 +283,7 @@ export const MemberMessagesTab = ({
           </div>
         )}
 
-        {hasMore && activityFilter !== 'comments' && (
+        {canLoadOlderMessages && (
           <div className="flex justify-center pt-2">
             <Button
               variant="ghost"
