@@ -11,12 +11,10 @@ import { Filter } from 'lucide-react';
 import type { TeamSummary } from '@shared/types';
 
 export interface TeamListFilterState {
-  selectedProjects: Set<string>;
   selectedStatuses: Set<string>;
 }
 
 export const EMPTY_TEAM_FILTER: TeamListFilterState = {
-  selectedProjects: new Set(),
   selectedStatuses: new Set(),
 };
 
@@ -26,31 +24,38 @@ function folderName(fullPath: string): string {
 
 interface TeamListFilterPopoverProps {
   filter: TeamListFilterState;
+  selectedProjectPath: string | null;
   teams: TeamSummary[];
   aliveTeams: string[];
   onFilterChange: (filter: TeamListFilterState) => void;
+  onProjectChange: (projectPath: string | null) => void;
 }
 
 export const TeamListFilterPopover = ({
   filter,
+  selectedProjectPath,
   teams,
   aliveTeams,
   onFilterChange,
+  onProjectChange,
 }: TeamListFilterPopoverProps): React.JSX.Element => {
   const activeCount = useMemo(() => {
     let count = 0;
     if (filter.selectedStatuses.size > 0) count += 1;
-    if (filter.selectedProjects.size > 0) count += 1;
+    if (selectedProjectPath) count += 1;
     return count;
-  }, [filter.selectedStatuses, filter.selectedProjects]);
+  }, [filter.selectedStatuses, selectedProjectPath]);
 
   const uniqueProjects = useMemo(() => {
     const paths = new Set<string>();
     for (const team of teams) {
       if (team.projectPath?.trim()) paths.add(team.projectPath.trim());
     }
+    if (selectedProjectPath?.trim()) {
+      paths.add(selectedProjectPath.trim());
+    }
     return [...paths].sort((a, b) => folderName(a).localeCompare(folderName(b)));
-  }, [teams]);
+  }, [selectedProjectPath, teams]);
 
   const handleStatusToggle = (status: string): void => {
     const next = new Set(filter.selectedStatuses);
@@ -63,17 +68,12 @@ export const TeamListFilterPopover = ({
   };
 
   const handleProjectToggle = (project: string): void => {
-    const next = new Set(filter.selectedProjects);
-    if (next.has(project)) {
-      next.delete(project);
-    } else {
-      next.add(project);
-    }
-    onFilterChange({ ...filter, selectedProjects: next });
+    onProjectChange(selectedProjectPath === project ? null : project);
   };
 
   const handleClearAll = (): void => {
     onFilterChange(EMPTY_TEAM_FILTER);
+    onProjectChange(null);
   };
 
   const aliveSet = useMemo(() => new Set(aliveTeams), [aliveTeams]);
@@ -156,7 +156,7 @@ export const TeamListFilterPopover = ({
                   title={project}
                 >
                   <Checkbox
-                    checked={filter.selectedProjects.has(project)}
+                    checked={selectedProjectPath === project}
                     onCheckedChange={() => handleProjectToggle(project)}
                   />
                   <span className="truncate">{folderName(project)}</span>

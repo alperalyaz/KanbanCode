@@ -19,6 +19,10 @@ import {
   getCurrentProvisioningProgressForTeam,
   isTeamProvisioningActive,
 } from '@renderer/store/slices/teamSlice';
+import {
+  getProjectSelectionResetState,
+  getWorktreeNavigationState,
+} from '@renderer/store/utils/stateResetHelpers';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { buildTaskCountsByTeam, normalizePath } from '@renderer/utils/pathNormalize';
 import { getBaseName } from '@renderer/utils/pathUtils';
@@ -42,6 +46,11 @@ import { CreateTeamDialog } from './dialogs/CreateTeamDialog';
 import { LaunchTeamDialog } from './dialogs/LaunchTeamDialog';
 import { TeamEmptyState } from './TeamEmptyState';
 import { EMPTY_TEAM_FILTER, TeamListFilterPopover } from './TeamListFilterPopover';
+import {
+  findTeamProjectSelectionTarget,
+  resolveTeamProjectSelection,
+  teamMatchesProjectSelection,
+} from './teamProjectSelection';
 
 import type { ActiveTeamRef, TeamCopyData } from './dialogs/CreateTeamDialog';
 import type { TeamListFilterState } from './TeamListFilterPopover';
@@ -256,10 +265,10 @@ export const TeamListView = (): React.JSX.Element => {
     projects,
     globalTasks,
     fetchAllTasks,
-    viewMode,
     repositoryGroups,
     selectedRepositoryId,
     selectedWorktreeId,
+    selectedProjectId,
     activeProjectId,
     branchByPath,
   } = useStore(
@@ -275,10 +284,10 @@ export const TeamListView = (): React.JSX.Element => {
       projects: s.projects,
       globalTasks: s.globalTasks,
       fetchAllTasks: s.fetchAllTasks,
-      viewMode: s.viewMode,
       repositoryGroups: s.repositoryGroups,
       selectedRepositoryId: s.selectedRepositoryId,
       selectedWorktreeId: s.selectedWorktreeId,
+      selectedProjectId: s.selectedProjectId,
       activeProjectId: s.activeProjectId,
       branchByPath: s.branchByPath,
     }))
@@ -361,23 +370,26 @@ export const TeamListView = (): React.JSX.Element => {
     };
   }, [electronMode, showCreateDialog]);
 
-  const currentProjectPath = useMemo(() => {
-    if (viewMode === 'grouped') {
-      const repo = repositoryGroups.find((r) => r.id === selectedRepositoryId);
-      const worktree = repo?.worktrees.find((w) => w.id === selectedWorktreeId);
-      const path = worktree?.path ?? null;
-      return path ? normalizePath(path) : null;
-    }
-    const project = projects.find((p) => p.id === activeProjectId);
-    return project ? normalizePath(project.path) : null;
-  }, [
-    viewMode,
-    repositoryGroups,
-    selectedRepositoryId,
-    selectedWorktreeId,
-    projects,
-    activeProjectId,
-  ]);
+  const currentProjectSelection = useMemo(
+    () =>
+      resolveTeamProjectSelection({
+        repositoryGroups,
+        projects,
+        selectedRepositoryId,
+        selectedWorktreeId,
+        selectedProjectId,
+        activeProjectId,
+      }),
+    [
+      repositoryGroups,
+      projects,
+      selectedRepositoryId,
+      selectedWorktreeId,
+      selectedProjectId,
+      activeProjectId,
+    ]
+  );
+  const currentProjectPath = currentProjectSelection.projectPath;
 
   const filteredTeams = useMemo<TeamSummary[]>(() => {
     let result = teamsWithProvisioning;
@@ -409,21 +421,11 @@ export const TeamListView = (): React.JSX.Element => {
       });
     }
 
-    if (filter.selectedProjects.size > 0) {
-      result = result.filter(
-        (t) => t.projectPath != null && filter.selectedProjects.has(t.projectPath.trim())
-      );
+    if (currentProjectPath) {
+      result = result.filter((team) => teamMatchesProjectSelection(team, currentProjectPath));
     }
 
     const aliveSet = new Set(aliveTeams);
-    const matchesProject = currentProjectPath
-      ? (t: TeamSummary): boolean => {
-          if (t.projectPath && normalizePath(t.projectPath) === currentProjectPath) return true;
-          return (
-            t.projectPathHistory?.some((p) => normalizePath(p) === currentProjectPath) ?? false
-          );
-        }
-      : null;
 
     result = [...result].sort((a, b) => {
       // 1. Alive (running) teams first
@@ -431,19 +433,12 @@ export const TeamListView = (): React.JSX.Element => {
       const aliveB = aliveSet.has(b.teamName) ? 0 : 1;
       if (aliveA !== aliveB) return aliveA - aliveB;
 
-      // 2. Matching current project second
-      if (matchesProject) {
-        const projA = matchesProject(a) ? 0 : 1;
-        const projB = matchesProject(b) ? 0 : 1;
-        if (projA !== projB) return projA - projB;
-      }
-
-      // 3. Most recently active teams first (stable secondary sort)
+      // 2. Most recently active teams first (stable secondary sort)
       const tsA = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
       const tsB = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
       if (tsA !== tsB) return tsB - tsA;
 
-      // 4. Fallback: alphabetical by team name for deterministic order
+      // 3. Fallback: alphabetical by team name for deterministic order
       return a.teamName.localeCompare(b.teamName);
     });
 
@@ -458,6 +453,34 @@ export const TeamListView = (): React.JSX.Element => {
     provisioningRuns,
     leadActivityByTeam,
   ]);
+
+  const handleProjectSelectionChange = useCallback(
+    (projectPath: string | null): void => {
+      if (!projectPath) {
+        useStore.setState(getProjectSelectionResetState());
+        return;
+      }
+
+      const target = findTeamProjectSelectionTarget(repositoryGroups, projects, projectPath);
+      if (!target) {
+        console.warn('Unable to resolve selected team project path:', projectPath);
+        return;
+      }
+
+      if (target.kind === 'grouped') {
+        useStore.setState(getWorktreeNavigationState(target.repositoryId, target.worktreeId));
+        void useStore.getState().fetchSessionsInitial(target.worktreeId);
+        return;
+      }
+
+      useStore.getState().selectProject(target.projectId);
+    },
+    [projects, repositoryGroups]
+  );
+
+  const handleResetProjectSelection = useCallback((): void => {
+    handleProjectSelectionChange(null);
+  }, [handleProjectSelectionChange]);
 
   // Fetch branches once for all visible team project paths (no live polling)
   const teamPaths = useMemo(
@@ -731,6 +754,35 @@ export const TeamListView = (): React.JSX.Element => {
           Only available in local Electron mode.
         </p>
       ) : null}
+      {currentProjectPath ? (
+        <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5">
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-muted)]">
+              Selected project
+            </p>
+            <div className="mt-1 flex items-center gap-2 text-sm text-[var(--color-text)]">
+              <FolderOpen size={14} className="shrink-0 text-[var(--color-text-muted)]" />
+              <span className="truncate font-medium" title={currentProjectPath}>
+                {folderName(currentProjectPath)}
+              </span>
+            </div>
+            <p
+              className="mt-1 truncate text-xs text-[var(--color-text-muted)]"
+              title={currentProjectPath}
+            >
+              {currentProjectPath}
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0"
+            onClick={handleResetProjectSelection}
+          >
+            Reset
+          </Button>
+        </div>
+      ) : null}
 
       {teamsWithProvisioning.length > 0 ? (
         <div className="mt-3 flex items-center gap-2">
@@ -749,9 +801,11 @@ export const TeamListView = (): React.JSX.Element => {
           </div>
           <TeamListFilterPopover
             filter={filter}
+            selectedProjectPath={currentProjectPath}
             teams={teamsWithProvisioning}
             aliveTeams={aliveTeams}
             onFilterChange={setFilter}
+            onProjectChange={handleProjectSelectionChange}
           />
         </div>
       ) : null}
@@ -794,7 +848,7 @@ export const TeamListView = (): React.JSX.Element => {
       );
     }
 
-    const hasActiveFilters = filter.selectedStatuses.size > 0 || filter.selectedProjects.size > 0;
+    const hasActiveFilters = filter.selectedStatuses.size > 0 || currentProjectPath != null;
     if (filteredTeams.length === 0 && (searchQuery.trim() || hasActiveFilters)) {
       return (
         <div className="flex items-center justify-center py-12 text-sm text-[var(--color-text-muted)]">
