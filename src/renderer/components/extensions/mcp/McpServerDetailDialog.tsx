@@ -128,38 +128,6 @@ export const McpServerDetailDialog = ({
     );
   }, [server?.id, open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-fill env vars from saved API keys
-  useEffect(() => {
-    if (!server || server.envVars.length === 0 || !api.apiKeys) return;
-
-    const envVarNames = server.envVars.map((env) => env.name);
-    void api.apiKeys.lookup(envVarNames).then(
-      (results) => {
-        if (results.length === 0) return;
-        const filled = new Set<string>();
-        const updates: Record<string, string> = {};
-        for (const r of results) {
-          updates[r.envVarName] = r.value;
-          filled.add(r.envVarName);
-        }
-        setEnvValues((prev) => {
-          const next = { ...prev };
-          for (const [k, v] of Object.entries(updates)) {
-            // Only auto-fill if the field is empty
-            if (!next[k]) {
-              next[k] = v;
-            }
-          }
-          return next;
-        });
-        setAutoFilledFields(filled);
-      },
-      () => {
-        // Silently ignore lookup failures
-      }
-    );
-  }, [server?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
   if (!server) return <></>;
 
   const canAutoInstall = !!server.installSpec;

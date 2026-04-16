@@ -219,4 +219,42 @@ describe('McpServerDetailDialog installed entry handling', () => {
       await Promise.resolve();
     });
   });
+
+  it('looks up saved API keys only once per dialog open', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const server = makeServer();
+    server.envVars = [{ name: 'CONTEXT7_API_KEY', isSecret: true }];
+    lookupMock.mockResolvedValue([
+      {
+        envVarName: 'CONTEXT7_API_KEY',
+        value: 'secret',
+      },
+    ]);
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServerDetailDialog, {
+          server,
+          isInstalled: false,
+          installedEntry: null,
+          diagnostic: null,
+          diagnosticsLoading: false,
+          open: true,
+          onClose: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(lookupMock).toHaveBeenCalledTimes(1);
+    expect(lookupMock).toHaveBeenCalledWith(['CONTEXT7_API_KEY']);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
 });
