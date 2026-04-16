@@ -149,7 +149,10 @@ export function getInstallationSummaryLabel(
  */
 export function getExtensionActionDisableReason(options: {
   isInstalled: boolean;
-  cliStatus: Pick<CliInstallationStatus, 'installed' | 'authLoggedIn'> | null;
+  cliStatus: Pick<
+    CliInstallationStatus,
+    'installed' | 'authLoggedIn' | 'binaryPath' | 'launchError'
+  > | null;
   cliStatusLoading: boolean;
 }): string | null {
   const { isInstalled, cliStatus, cliStatusLoading } = options;
@@ -162,6 +165,9 @@ export function getExtensionActionDisableReason(options: {
   }
 
   if (cliStatus.installed === false) {
+    if (cliStatus.binaryPath && cliStatus.launchError) {
+      return 'Claude CLI was found but failed to start. Open the Dashboard to repair or reinstall it.';
+    }
     return 'Claude CLI required. Install it from the Dashboard.';
   }
 

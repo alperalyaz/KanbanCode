@@ -207,7 +207,7 @@ describe('getExtensionActionDisableReason', () => {
     expect(
       getExtensionActionDisableReason({
         isInstalled: false,
-        cliStatus: { installed: true, authLoggedIn: false },
+        cliStatus: { installed: true, authLoggedIn: false, binaryPath: null, launchError: null },
         cliStatusLoading: false,
       }),
     ).toContain('not signed in');
@@ -217,7 +217,7 @@ describe('getExtensionActionDisableReason', () => {
     expect(
       getExtensionActionDisableReason({
         isInstalled: true,
-        cliStatus: { installed: true, authLoggedIn: false },
+        cliStatus: { installed: true, authLoggedIn: false, binaryPath: null, launchError: null },
         cliStatusLoading: false,
       }),
     ).toBeNull();
@@ -227,10 +227,25 @@ describe('getExtensionActionDisableReason', () => {
     expect(
       getExtensionActionDisableReason({
         isInstalled: true,
-        cliStatus: { installed: false, authLoggedIn: false },
+        cliStatus: { installed: false, authLoggedIn: false, binaryPath: null, launchError: null },
         cliStatusLoading: false,
       }),
     ).toContain('Claude CLI required');
+  });
+
+  it('surfaces startup health-check failures separately from missing CLI', () => {
+    expect(
+      getExtensionActionDisableReason({
+        isInstalled: false,
+        cliStatus: {
+          installed: false,
+          authLoggedIn: false,
+          binaryPath: '/usr/local/bin/claude',
+          launchError: 'spawn EACCES',
+        },
+        cliStatusLoading: false,
+      }),
+    ).toContain('failed to start');
   });
 });
 
