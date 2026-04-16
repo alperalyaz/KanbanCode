@@ -48,6 +48,13 @@ export class PluginInstallService {
       };
     }
 
+    if (scope === 'project' && !projectPath) {
+      return {
+        state: 'error',
+        error: 'projectPath is required for project-scoped plugin installs',
+      };
+    }
+
     // 3. Resolve qualifiedName from catalog (NOT from renderer)
     const resolved = await this.catalogService.resolvePlugin(pluginId);
     if (!resolved) {
@@ -120,6 +127,13 @@ export class PluginInstallService {
       return {
         state: 'error',
         error: 'projectPath must be an absolute path',
+      };
+    }
+
+    if (scope === 'project' && !projectPath) {
+      return {
+        state: 'error',
+        error: 'projectPath is required for project-scoped plugin uninstalls',
       };
     }
 

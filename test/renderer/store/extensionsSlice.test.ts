@@ -116,6 +116,23 @@ const makeSkillDetail = (overrides: Partial<SkillDetail> = {}): SkillDetail => (
   ...overrides,
 });
 
+const makeReadyCliStatus = () => ({
+  flavor: 'claude' as const,
+  displayName: 'Claude',
+  supportsSelfUpdate: true,
+  showVersionDetails: true,
+  showBinaryPath: true,
+  installed: true,
+  installedVersion: '1.0.0',
+  binaryPath: '/usr/local/bin/claude',
+  latestVersion: '1.0.0',
+  updateAvailable: false,
+  authLoggedIn: true,
+  authStatusChecking: false,
+  authMethod: 'oauth_token' as const,
+  providers: [],
+});
+
 describe('extensionsSlice', () => {
   let store: TestStore;
 
@@ -298,24 +315,7 @@ describe('extensionsSlice', () => {
 
   describe('installPlugin', () => {
     it('sets progress to pending then success', async () => {
-      store.setState({
-        cliStatus: {
-          flavor: 'claude',
-          displayName: 'Claude',
-          supportsSelfUpdate: true,
-          showVersionDetails: true,
-          showBinaryPath: true,
-          installed: true,
-          installedVersion: '1.0.0',
-          binaryPath: '/usr/local/bin/claude',
-          latestVersion: '1.0.0',
-          updateAvailable: false,
-          authLoggedIn: true,
-          authStatusChecking: false,
-          authMethod: 'oauth_token',
-          providers: [],
-        },
-      });
+      store.setState({ cliStatus: makeReadyCliStatus() });
       const plugins = [makePlugin({ pluginId: 'a@m' })];
       (api.plugins!.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(plugins);
       (api.plugins!.install as ReturnType<typeof vi.fn>).mockResolvedValue({ state: 'success' });
@@ -330,24 +330,7 @@ describe('extensionsSlice', () => {
     });
 
     it('sets progress to error on failure', async () => {
-      store.setState({
-        cliStatus: {
-          flavor: 'claude',
-          displayName: 'Claude',
-          supportsSelfUpdate: true,
-          showVersionDetails: true,
-          showBinaryPath: true,
-          installed: true,
-          installedVersion: '1.0.0',
-          binaryPath: '/usr/local/bin/claude',
-          latestVersion: '1.0.0',
-          updateAvailable: false,
-          authLoggedIn: true,
-          authStatusChecking: false,
-          authMethod: 'oauth_token',
-          providers: [],
-        },
-      });
+      store.setState({ cliStatus: makeReadyCliStatus() });
       (api.plugins!.install as ReturnType<typeof vi.fn>).mockResolvedValue({
         state: 'error',
         error: 'Not found',
@@ -356,6 +339,32 @@ describe('extensionsSlice', () => {
       await store.getState().installPlugin({ pluginId: 'fail@m', scope: 'user' });
 
       expect(store.getState().pluginInstallProgress['fail@m']).toBe('error');
+    });
+
+    it('fills missing projectPath from the active Extensions project context', async () => {
+      store.setState({
+        cliStatus: makeReadyCliStatus(),
+        pluginCatalogProjectPath: '/tmp/project-a',
+      });
+      (api.plugins!.install as ReturnType<typeof vi.fn>).mockResolvedValue({ state: 'success' });
+
+      await store.getState().installPlugin({ pluginId: 'project@m', scope: 'project' });
+
+      expect(api.plugins!.install).toHaveBeenCalledWith({
+        pluginId: 'project@m',
+        scope: 'project',
+        projectPath: '/tmp/project-a',
+      });
+    });
+
+    it('fails fast for project scope when there is no active project path', async () => {
+      store.setState({ cliStatus: makeReadyCliStatus(), pluginCatalogProjectPath: null });
+
+      await store.getState().installPlugin({ pluginId: 'project@m', scope: 'project' });
+
+      expect(api.plugins!.install).not.toHaveBeenCalled();
+      expect(store.getState().pluginInstallProgress['project@m']).toBe('error');
+      expect(store.getState().installErrors['project@m']).toContain('active project');
     });
   });
 
@@ -371,6 +380,25 @@ describe('extensionsSlice', () => {
 
       await promise;
       expect(store.getState().pluginInstallProgress['test@m']).toBe('success');
+    });
+
+    it('fills missing projectPath from the active Extensions project context', async () => {
+      store.setState({ pluginCatalogProjectPath: '/tmp/project-a' });
+      (api.plugins!.uninstall as ReturnType<typeof vi.fn>).mockResolvedValue({ state: 'success' });
+
+      await store.getState().uninstallPlugin('project@m', 'project');
+
+      expect(api.plugins!.uninstall).toHaveBeenCalledWith('project@m', 'project', '/tmp/project-a');
+    });
+
+    it('fails fast for project uninstall when there is no active project path', async () => {
+      store.setState({ pluginCatalogProjectPath: null });
+
+      await store.getState().uninstallPlugin('project@m', 'project');
+
+      expect(api.plugins!.uninstall).not.toHaveBeenCalled();
+      expect(store.getState().pluginInstallProgress['project@m']).toBe('error');
+      expect(store.getState().installErrors['project@m']).toContain('active project');
     });
   });
 

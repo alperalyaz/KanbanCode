@@ -152,6 +152,8 @@ const CLI_HEALTHCHECK_FAILED_MESSAGE =
   'Claude CLI was found but failed its startup health check. Open the Dashboard to repair or reinstall it before retrying.';
 const CLI_STATUS_UNKNOWN_MESSAGE =
   'Unable to verify Claude CLI status. Open the Dashboard and check the CLI before retrying.';
+const PROJECT_SCOPE_REQUIRED_MESSAGE =
+  'Project-scoped plugins require an active project in the Extensions tab.';
 
 export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSlice> = (
   set,
@@ -561,6 +563,15 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
   installPlugin: async (request: PluginInstallRequest) => {
     if (!api.plugins) return;
 
+    const effectiveProjectPath =
+      request.scope === 'project'
+        ? (request.projectPath ?? get().pluginCatalogProjectPath ?? undefined)
+        : request.projectPath;
+    const effectiveRequest =
+      effectiveProjectPath === request.projectPath
+        ? request
+        : { ...request, projectPath: effectiveProjectPath };
+
     const preflightState = get();
     if (preflightState.cliStatus === null || preflightState.cliStatusLoading) {
       try {
@@ -572,15 +583,17 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
 
     const cliStatus = get().cliStatus;
     const preflightError =
-      cliStatus === null
-        ? CLI_STATUS_UNKNOWN_MESSAGE
-        : !cliStatus.installed
-          ? cliStatus.binaryPath && cliStatus.launchError
-            ? CLI_HEALTHCHECK_FAILED_MESSAGE
-            : CLI_NOT_FOUND_MESSAGE
-          : !cliStatus.authLoggedIn
-            ? CLI_AUTH_REQUIRED_MESSAGE
-            : null;
+      effectiveRequest.scope === 'project' && !effectiveRequest.projectPath
+        ? PROJECT_SCOPE_REQUIRED_MESSAGE
+        : cliStatus === null
+          ? CLI_STATUS_UNKNOWN_MESSAGE
+          : !cliStatus.installed
+            ? cliStatus.binaryPath && cliStatus.launchError
+              ? CLI_HEALTHCHECK_FAILED_MESSAGE
+              : CLI_NOT_FOUND_MESSAGE
+            : !cliStatus.authLoggedIn
+              ? CLI_AUTH_REQUIRED_MESSAGE
+              : null;
 
     if (preflightError) {
       set((prev) => ({
@@ -596,7 +609,7 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
     }));
 
     try {
-      const result = await api.plugins.install(request);
+      const result = await api.plugins.install(effectiveRequest);
       if (result.state === 'error') {
         set((prev) => ({
           pluginInstallProgress: { ...prev.pluginInstallProgress, [request.pluginId]: 'error' },
@@ -634,12 +647,24 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
   uninstallPlugin: async (pluginId: string, scope?: InstallScope, projectPath?: string) => {
     if (!api.plugins) return;
 
+    const effectiveProjectPath =
+      scope === 'project'
+        ? (projectPath ?? get().pluginCatalogProjectPath ?? undefined)
+        : projectPath;
+    if (scope === 'project' && !effectiveProjectPath) {
+      set((prev) => ({
+        pluginInstallProgress: { ...prev.pluginInstallProgress, [pluginId]: 'error' },
+        installErrors: { ...prev.installErrors, [pluginId]: PROJECT_SCOPE_REQUIRED_MESSAGE },
+      }));
+      return;
+    }
+
     set((prev) => ({
       pluginInstallProgress: { ...prev.pluginInstallProgress, [pluginId]: 'pending' },
     }));
 
     try {
-      const result = await api.plugins.uninstall(pluginId, scope, projectPath);
+      const result = await api.plugins.uninstall(pluginId, scope, effectiveProjectPath);
       if (result.state === 'error') {
         set((prev) => ({
           pluginInstallProgress: { ...prev.pluginInstallProgress, [pluginId]: 'error' },

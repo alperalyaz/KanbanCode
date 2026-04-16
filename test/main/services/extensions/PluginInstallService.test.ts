@@ -121,6 +121,14 @@ describe('PluginInstallService', () => {
       expect(result.state).toBe('error');
       expect(result.error).toContain('Command failed');
     });
+
+    it('rejects project scope when projectPath is missing', async () => {
+      const result = await service.install({ pluginId: 'context7', scope: 'project' });
+
+      expect(result.state).toBe('error');
+      expect(result.error).toContain('projectPath is required');
+      expect(mockExecCli).not.toHaveBeenCalled();
+    });
   });
 
   // ── uninstall ───────────────────────────────────────────────────────────────
@@ -170,6 +178,14 @@ describe('PluginInstallService', () => {
 
       expect(result.state).toBe('error');
       expect(result.error).toContain('Cannot uninstall');
+    });
+
+    it('rejects project scope when projectPath is missing', async () => {
+      const result = await service.uninstall('context7', 'project');
+
+      expect(result.state).toBe('error');
+      expect(result.error).toContain('projectPath is required');
+      expect(mockExecCli).not.toHaveBeenCalled();
     });
   });
 });
