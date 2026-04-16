@@ -220,6 +220,18 @@ export const SkillEditorDialog = ({
   }, [detail, mode, open, projectPath]);
 
   useEffect(() => {
+    if (open) {
+      return;
+    }
+
+    setReviewPreview(null);
+    setReviewOpen(false);
+    setReviewLoading(false);
+    setSaveLoading(false);
+    setMutationError(null);
+  }, [open]);
+
+  useEffect(() => {
     if (open && mode === 'create' && scope === 'project' && !projectPath) {
       setScope('user');
     }

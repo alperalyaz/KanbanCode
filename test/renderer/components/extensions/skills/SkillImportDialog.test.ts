@@ -93,7 +93,8 @@ vi.mock('@renderer/components/ui/select', () => ({
 }));
 
 vi.mock('@renderer/components/extensions/skills/SkillReviewDialog', () => ({
-  SkillReviewDialog: () => null,
+  SkillReviewDialog: ({ open }: { open: boolean }) =>
+    open ? React.createElement('div', { 'data-testid': 'skill-review-dialog' }, 'Review') : null,
 }));
 
 vi.mock('lucide-react', () => {
@@ -296,6 +297,81 @@ describe('SkillImportDialog', () => {
       (option) => option.value === 'project'
     ) as HTMLOptionElement;
     expect(projectOption.disabled).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('clears review state when the import dialog closes externally', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    storeState.previewSkillImport.mockResolvedValue({
+      planId: 'plan-1',
+      targetSkillDir: '/tmp/imported-skill',
+      changes: [
+        {
+          relativePath: 'SKILL.md',
+          absolutePath: '/tmp/imported-skill/SKILL.md',
+          action: 'create',
+          oldContent: null,
+          newContent: '# Skill',
+          isBinary: false,
+        },
+      ],
+      warnings: [],
+      summary: { created: 1, updated: 0, deleted: 0, binary: 0 },
+    });
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillImportDialog, {
+          open: true,
+          projectPath: null,
+          projectLabel: null,
+          onClose: vi.fn(),
+          onImported: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const sourceInput = host.querySelector('#skill-import-source') as HTMLInputElement;
+    await act(async () => {
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      setValue?.call(sourceInput, '/tmp/source-skill');
+      sourceInput.dispatchEvent(new Event('input', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const reviewButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Review And Import')
+    ) as HTMLButtonElement;
+    await act(async () => {
+      reviewButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[data-testid="skill-review-dialog"]')).not.toBeNull();
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillImportDialog, {
+          open: false,
+          projectPath: null,
+          projectLabel: null,
+          onClose: vi.fn(),
+          onImported: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[data-testid="skill-review-dialog"]')).toBeNull();
 
     await act(async () => {
       root.unmount();

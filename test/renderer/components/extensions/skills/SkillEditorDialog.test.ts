@@ -132,7 +132,8 @@ vi.mock('@renderer/components/extensions/skills/SkillCodeEditor', () => ({
 }));
 
 vi.mock('@renderer/components/extensions/skills/SkillReviewDialog', () => ({
-  SkillReviewDialog: () => null,
+  SkillReviewDialog: ({ open }: { open: boolean }) =>
+    open ? React.createElement('div', { 'data-testid': 'skill-review-dialog' }, 'Review') : null,
 }));
 
 vi.mock('lucide-react', () => {
@@ -236,6 +237,76 @@ This file uses a freeform layout without generated sections.
     const whenToUseField = host.querySelector('#skill-when-to-use') as HTMLTextAreaElement;
     expect(whenToUseField).not.toBeNull();
     expect(whenToUseField.disabled).toBe(false);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('clears review state when the editor closes externally', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    storeState.previewSkillUpsert.mockResolvedValue({
+      planId: 'plan-1',
+      targetSkillDir: '/tmp/project/.claude/skills/new-skill',
+      changes: [
+        {
+          relativePath: 'SKILL.md',
+          absolutePath: '/tmp/project/.claude/skills/new-skill/SKILL.md',
+          action: 'create',
+          oldContent: null,
+          newContent: '# Skill',
+          isBinary: false,
+        },
+      ],
+      warnings: [],
+      summary: { created: 1, updated: 0, deleted: 0, binary: 0 },
+    });
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillEditorDialog, {
+          open: true,
+          mode: 'create',
+          projectPath: '/tmp/project',
+          projectLabel: 'Project',
+          detail: null,
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const reviewButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Review And Create')
+    ) as HTMLButtonElement;
+    await act(async () => {
+      reviewButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[data-testid="skill-review-dialog"]')).not.toBeNull();
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillEditorDialog, {
+          open: false,
+          mode: 'create',
+          projectPath: '/tmp/project',
+          projectLabel: 'Project',
+          detail: null,
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[data-testid="skill-review-dialog"]')).toBeNull();
 
     await act(async () => {
       root.unmount();

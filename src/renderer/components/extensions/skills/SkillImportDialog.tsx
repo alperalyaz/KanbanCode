@@ -94,6 +94,18 @@ export const SkillImportDialog = ({
   }, [open, projectPath]);
 
   useEffect(() => {
+    if (open) {
+      return;
+    }
+
+    setPreview(null);
+    setReviewOpen(false);
+    setReviewLoading(false);
+    setImportLoading(false);
+    setMutationError(null);
+  }, [open]);
+
+  useEffect(() => {
     if (!open || folderNameEdited) {
       return;
     }
