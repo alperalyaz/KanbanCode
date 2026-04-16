@@ -990,6 +990,7 @@ export interface TeamCreateResponse {
 export interface TeamProvisioningPrepareResult {
   ready: boolean;
   message: string;
+  details?: string[];
   warnings?: string[];
 }
 

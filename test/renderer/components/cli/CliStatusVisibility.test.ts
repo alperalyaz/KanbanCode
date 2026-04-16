@@ -537,4 +537,74 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
   });
+
+  it('shows runtime model availability badges on the dashboard', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      displayName: 'agent_teams_orchestrator',
+      supportsSelfUpdate: false,
+      showVersionDetails: false,
+      showBinaryPath: false,
+      authLoggedIn: true,
+      providers: [
+        {
+          providerId: 'codex',
+          displayName: 'Codex',
+          supported: true,
+          authenticated: true,
+          authMethod: 'oauth_token',
+          verificationState: 'verified',
+          modelVerificationState: 'verified',
+          statusMessage: null,
+          models: ['gpt-5.4', 'gpt-5.1-codex-max', 'gpt-5.2-codex'],
+          modelAvailability: [
+            { modelId: 'gpt-5.4', status: 'available', checkedAt: '2026-04-16T12:00:00.000Z' },
+            {
+              modelId: 'gpt-5.1-codex-max',
+              status: 'unavailable',
+              reason: 'The requested model is not available for your account.',
+              checkedAt: '2026-04-16T12:00:00.000Z',
+            },
+            {
+              modelId: 'gpt-5.2-codex',
+              status: 'unavailable',
+              reason: 'The requested model is not available for your account.',
+              checkedAt: '2026-04-16T12:00:00.000Z',
+            },
+          ],
+          canLoginFromUi: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+          },
+          backend: {
+            kind: 'openai',
+            label: 'OpenAI',
+            endpointLabel: 'chatgpt.com/backend-api/codex/responses',
+          },
+        },
+      ],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('5.4');
+    expect(host.textContent).not.toContain('5.1-codex-max');
+    expect(host.textContent).not.toContain('5.2-codex');
+    expect(host.textContent).not.toContain('Unavailable');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
 });

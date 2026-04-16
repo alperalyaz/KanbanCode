@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, isElectronMode } from '@renderer/api';
 import { confirm } from '@renderer/components/common/ConfirmDialog';
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
+import { ProviderModelBadges } from '@renderer/components/runtime/ProviderModelBadges';
 import {
   formatProviderStatusText,
   getProviderConnectionModeSummary,
@@ -32,10 +33,6 @@ import { useStore } from '@renderer/store';
 import { createLoadingMultimodelCliStatus } from '@renderer/store/slices/cliInstallerSlice';
 import { formatBytes } from '@renderer/utils/formatters';
 import { filterMainScreenCliProviders } from '@renderer/utils/geminiUiFreeze';
-import {
-  getTeamModelBadgeLabel,
-  getVisibleTeamProviderModels,
-} from '@renderer/utils/teamModelCatalog';
 import {
   AlertTriangle,
   CheckCircle,
@@ -265,37 +262,6 @@ function getProviderTerminalLogoutCommand(provider: CliProviderStatus): {
     args: ['auth', 'logout', '--provider', provider.providerId],
   };
 }
-
-function formatModelBadgeLabel(providerId: CliProviderId, model: string): string {
-  return getTeamModelBadgeLabel(providerId, model) ?? model;
-}
-
-const ModelBadges = ({
-  providerId,
-  models,
-}: {
-  readonly providerId: CliProviderId;
-  readonly models: string[];
-}): React.JSX.Element => {
-  const visibleModels = getVisibleTeamProviderModels(providerId, models);
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {visibleModels.map((model) => (
-        <span
-          key={model}
-          className="rounded-md border px-1.5 py-px font-mono text-[10px] leading-4"
-          style={{
-            borderColor: 'var(--color-border-subtle)',
-            backgroundColor: 'rgba(255, 255, 255, 0.03)',
-            color: 'var(--color-text-secondary)',
-          }}
-        >
-          {formatModelBadgeLabel(providerId, model)}
-        </span>
-      ))}
-    </div>
-  );
-};
 
 const ProviderDetailSkeleton = (): React.JSX.Element => {
   return (
@@ -659,7 +625,12 @@ const InstalledBanner = ({
                 </div>
                 {!showSkeleton && provider.models.length > 0 && (
                   <div className="col-span-2">
-                    <ModelBadges providerId={provider.providerId} models={provider.models} />
+                    <ProviderModelBadges
+                      providerId={provider.providerId}
+                      models={provider.models}
+                      modelAvailability={provider.modelAvailability}
+                      providerStatus={provider}
+                    />
                   </div>
                 )}
               </div>
