@@ -18,11 +18,16 @@ import { Github as GithubIcon } from 'lucide-react';
 import { InstallButton } from '../common/InstallButton';
 import { SourceBadge } from '../common/SourceBadge';
 
-import type { McpCatalogItem, McpServerDiagnostic } from '@shared/types/extensions';
+import type {
+  InstalledMcpEntry,
+  McpCatalogItem,
+  McpServerDiagnostic,
+} from '@shared/types/extensions';
 
 interface McpServerCardProps {
   server: McpCatalogItem;
   isInstalled: boolean;
+  installedEntry?: InstalledMcpEntry | null;
   diagnostic?: McpServerDiagnostic | null;
   diagnosticsLoading?: boolean;
   onClick: (serverId: string) => void;
@@ -31,6 +36,7 @@ interface McpServerCardProps {
 export const McpServerCard = ({
   server,
   isInstalled,
+  installedEntry,
   diagnostic,
   diagnosticsLoading,
   onClick,
@@ -48,6 +54,14 @@ export const McpServerCard = ({
     server.envVars.length > 0 ||
     server.requiresAuth ||
     (server.authHeaders?.length ?? 0) > 0;
+  const defaultServerName = sanitizeMcpServerName(server.name);
+  const supportsDirectInstalledAction =
+    isInstalled &&
+    installedEntry?.scope === 'user' &&
+    installedEntry.name === defaultServerName &&
+    !requiresConfiguration;
+  const shouldShowDirectInstallButton =
+    canAutoInstall && (!isInstalled ? !requiresConfiguration : supportsDirectInstalledAction);
   const [imgError, setImgError] = useState(false);
   const hasIcon = !!server.iconUrl && !imgError;
   const diagnosticBadgeClass =
@@ -224,7 +238,7 @@ export const McpServerCard = ({
             </Tooltip>
           )}
         </div>
-        {canAutoInstall && !requiresConfiguration && (
+        {shouldShowDirectInstallButton && (
           <div className="shrink-0">
             <InstallButton
               state={installProgress}
@@ -232,19 +246,21 @@ export const McpServerCard = ({
               onInstall={() =>
                 installMcpServer({
                   registryId: server.id,
-                  serverName: sanitizeMcpServerName(server.name),
+                  serverName: defaultServerName,
                   scope: 'user',
                   envValues: {},
                   headers: [],
                 })
               }
-              onUninstall={() => uninstallMcpServer(server.id, sanitizeMcpServerName(server.name))}
+              onUninstall={() =>
+                uninstallMcpServer(server.id, installedEntry?.name ?? defaultServerName, 'user')
+              }
               size="sm"
               errorMessage={installError}
             />
           </div>
         )}
-        {canAutoInstall && requiresConfiguration && (
+        {canAutoInstall && (!shouldShowDirectInstallButton || requiresConfiguration) && (
           <div className="shrink-0">
             <Button
               size="sm"

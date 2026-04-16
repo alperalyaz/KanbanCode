@@ -31,11 +31,17 @@ import { ExternalLink, Lock, Plus, Star, Trash2, Wrench } from 'lucide-react';
 import { InstallButton } from '../common/InstallButton';
 import { SourceBadge } from '../common/SourceBadge';
 
-import type { McpCatalogItem, McpHeaderDef, McpServerDiagnostic } from '@shared/types/extensions';
+import type {
+  InstalledMcpEntry,
+  McpCatalogItem,
+  McpHeaderDef,
+  McpServerDiagnostic,
+} from '@shared/types/extensions';
 
 interface McpServerDetailDialogProps {
   server: McpCatalogItem | null;
   isInstalled: boolean;
+  installedEntry?: InstalledMcpEntry | null;
   diagnostic?: McpServerDiagnostic | null;
   diagnosticsLoading?: boolean;
   open: boolean;
@@ -52,6 +58,7 @@ const SCOPE_OPTIONS: { value: Scope; label: string }[] = [
 export const McpServerDetailDialog = ({
   server,
   isInstalled,
+  installedEntry,
   diagnostic,
   diagnosticsLoading,
   open,
@@ -80,7 +87,6 @@ export const McpServerDetailDialog = ({
       return;
     }
 
-    setServerName(sanitizeMcpServerName(server.name));
     setEnvValues(Object.fromEntries(server.envVars.map((env) => [env.name, ''])));
     setHeaders(
       (server.authHeaders ?? []).map((header) => ({
@@ -93,10 +99,11 @@ export const McpServerDetailDialog = ({
         locked: true,
       }))
     );
-    setScope('user');
+    setServerName(installedEntry?.name ?? sanitizeMcpServerName(server.name));
+    setScope(installedEntry?.scope === 'local' ? 'local' : 'user');
     setImgError(false);
     setAutoFilledFields(new Set());
-  }, [server?.id, open]);
+  }, [installedEntry?.name, installedEntry?.scope, open, server?.id]);
 
   // Auto-fill env values from saved API keys
   useEffect(() => {
@@ -170,6 +177,8 @@ export const McpServerDetailDialog = ({
     (header) => header.isRequired && !header.value.trim()
   );
   const installDisabled = !serverName.trim() || missingRequiredEnvVars || missingRequiredHeaders;
+  const uninstallServerName = installedEntry?.name ?? serverName;
+  const uninstallScope = installedEntry?.scope ?? scope;
   const diagnosticBadgeClass =
     diagnostic?.status === 'connected'
       ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
@@ -190,7 +199,7 @@ export const McpServerDetailDialog = ({
   };
 
   const handleUninstall = () => {
-    uninstallMcpServer(server.id, serverName, scope);
+    uninstallMcpServer(server.id, uninstallServerName, uninstallScope);
   };
 
   const addHeader = () => {
@@ -380,6 +389,7 @@ export const McpServerDetailDialog = ({
                 onChange={(e) => setServerName(e.target.value)}
                 placeholder="my-server"
                 className="h-8 text-sm"
+                disabled={isInstalled}
               />
             </div>
 

@@ -374,6 +374,7 @@ export const McpServersPanel = ({
               key={server.id}
               server={server}
               isInstalled={isServerInstalled(server)}
+              installedEntry={getInstalledEntry(server)}
               diagnostic={getDiagnostic(server)}
               diagnosticsLoading={mcpDiagnosticsLoading}
               onClick={setSelectedMcpServerId}
@@ -400,6 +401,7 @@ export const McpServersPanel = ({
       <McpServerDetailDialog
         server={selectedServer}
         isInstalled={selectedServer ? isServerInstalled(selectedServer) : false}
+        installedEntry={selectedServer ? getInstalledEntry(selectedServer) : null}
         diagnostic={selectedServer ? getDiagnostic(selectedServer) : null}
         diagnosticsLoading={mcpDiagnosticsLoading}
         open={selectedMcpServerId !== null}
