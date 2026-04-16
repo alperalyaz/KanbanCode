@@ -439,7 +439,9 @@ export interface TeamsAPI {
   prepareProvisioning: (
     cwd?: string,
     providerId?: TeamLaunchRequest['providerId'],
-    providerIds?: TeamLaunchRequest['providerId'][]
+    providerIds?: TeamLaunchRequest['providerId'][],
+    selectedModels?: string[],
+    limitContext?: boolean
   ) => Promise<TeamProvisioningPrepareResult>;
   createTeam: (request: TeamCreateRequest) => Promise<TeamCreateResponse>;
   getProvisioningStatus: (runId: string) => Promise<TeamProvisioningProgress>;

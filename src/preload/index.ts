@@ -15,6 +15,7 @@ import {
   CLI_INSTALLER_INSTALL,
   CLI_INSTALLER_INVALIDATE_STATUS,
   CLI_INSTALLER_PROGRESS,
+  CLI_INSTALLER_VERIFY_PROVIDER_MODELS,
   CONTEXT_CHANGED,
   CONTEXT_GET_ACTIVE,
   CONTEXT_LIST,
@@ -859,13 +860,17 @@ const electronAPI: ElectronAPI = {
     prepareProvisioning: async (
       cwd?: string,
       providerId?: TeamLaunchRequest['providerId'],
-      providerIds?: TeamLaunchRequest['providerId'][]
+      providerIds?: TeamLaunchRequest['providerId'][],
+      selectedModels?: string[],
+      limitContext?: boolean
     ) => {
       return invokeIpcWithResult<TeamProvisioningPrepareResult>(
         TEAM_PREPARE_PROVISIONING,
         cwd,
         providerId,
-        providerIds
+        providerIds,
+        selectedModels,
+        limitContext
       );
     },
     createTeam: async (request: TeamCreateRequest) => {
@@ -1417,6 +1422,9 @@ const electronAPI: ElectronAPI = {
     },
     getProviderStatus: async (providerId: CliProviderId) => {
       return invokeIpcWithResult(CLI_INSTALLER_GET_PROVIDER_STATUS, providerId);
+    },
+    verifyProviderModels: async (providerId: CliProviderId) => {
+      return invokeIpcWithResult(CLI_INSTALLER_VERIFY_PROVIDER_MODELS, providerId);
     },
     install: async (): Promise<void> => {
       return invokeIpcWithResult<void>(CLI_INSTALLER_INSTALL);

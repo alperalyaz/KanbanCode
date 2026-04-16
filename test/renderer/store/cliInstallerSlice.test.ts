@@ -6,6 +6,7 @@ vi.mock('@renderer/api', () => ({
     cliInstaller: {
       getStatus: vi.fn(),
       getProviderStatus: vi.fn(),
+      verifyProviderModels: vi.fn(),
       invalidateStatus: vi.fn(),
       install: vi.fn(),
       onProgress: vi.fn(() => vi.fn()),

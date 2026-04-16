@@ -718,7 +718,9 @@ export class HttpAPIClient implements ElectronAPI {
     prepareProvisioning: async (
       _cwd?: string,
       _providerId?: TeamLaunchRequest['providerId'],
-      _providerIds?: TeamLaunchRequest['providerId'][]
+      _providerIds?: TeamLaunchRequest['providerId'][],
+      _selectedModels?: string[],
+      _limitContext?: boolean
     ): Promise<TeamProvisioningPrepareResult> => {
       throw new Error('Team provisioning is not available in browser mode');
     },
@@ -1126,6 +1128,7 @@ export class HttpAPIClient implements ElectronAPI {
       providers: [],
     }),
     getProviderStatus: async (): Promise<null> => null,
+    verifyProviderModels: async (): Promise<null> => null,
     install: async (): Promise<void> => {
       console.warn('[HttpAPIClient] CLI installer not available in browser mode');
     },

@@ -121,8 +121,10 @@ function createDefaultProviderStatus(providerId: CliProviderId): CliProviderStat
     authenticated: false,
     authMethod: null,
     verificationState: 'unknown',
+    modelVerificationState: 'idle',
     statusMessage: null,
     models: [],
+    modelAvailability: [],
     canLoginFromUi: true,
     capabilities: {
       teamLaunch: false,

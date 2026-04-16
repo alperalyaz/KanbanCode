@@ -441,6 +441,9 @@ export const CLI_INSTALLER_GET_STATUS = 'cliInstaller:getStatus';
 /** Get status for a single provider */
 export const CLI_INSTALLER_GET_PROVIDER_STATUS = 'cliInstaller:getProviderStatus';
 
+/** Trigger on-demand model verification for a single provider */
+export const CLI_INSTALLER_VERIFY_PROVIDER_MODELS = 'cliInstaller:verifyProviderModels';
+
 /** Start CLI install/update */
 export const CLI_INSTALLER_INSTALL = 'cliInstaller:install';
 
