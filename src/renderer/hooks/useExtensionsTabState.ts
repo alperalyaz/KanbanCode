@@ -58,6 +58,7 @@ export function useExtensionsTabState() {
 
   // ── Debounced MCP search ──
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mcpSearchRequestSeqRef = useRef(0);
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -65,6 +66,7 @@ export function useExtensionsTabState() {
       if (searchTimerRef.current) {
         clearTimeout(searchTimerRef.current);
       }
+      mcpSearchRequestSeqRef.current += 1;
     };
   }, []);
 
@@ -82,6 +84,7 @@ export function useExtensionsTabState() {
 
   const mcpSearch = useCallback((query: string) => {
     setMcpSearchQuery(query);
+    const requestId = ++mcpSearchRequestSeqRef.current;
 
     if (searchTimerRef.current) {
       clearTimeout(searchTimerRef.current);
@@ -98,17 +101,25 @@ export function useExtensionsTabState() {
 
     searchTimerRef.current = setTimeout(() => {
       if (!api.mcpRegistry) {
-        setMcpSearchLoading(false);
+        if (mcpSearchRequestSeqRef.current === requestId) {
+          setMcpSearchLoading(false);
+        }
         return;
       }
 
       void api.mcpRegistry.search(query).then(
         (result: McpSearchResult) => {
+          if (mcpSearchRequestSeqRef.current !== requestId) {
+            return;
+          }
           setMcpSearchResults(result.servers);
           setMcpSearchWarnings(result.warnings);
           setMcpSearchLoading(false);
         },
         () => {
+          if (mcpSearchRequestSeqRef.current !== requestId) {
+            return;
+          }
           setMcpSearchLoading(false);
           setMcpSearchWarnings(['Search failed']);
         }
