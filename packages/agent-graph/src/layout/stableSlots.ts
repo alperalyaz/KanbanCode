@@ -60,6 +60,7 @@ export interface StableSlotLayoutSnapshot {
   launchAnchor: { x: number; y: number } | null;
   leadCentralReservedBlock: StableRect;
   runtimeCentralExclusion: StableRect;
+  centralCollisionRects: StableRect[];
   memberSlotFrames: SlotFrame[];
   memberSlotFrameByOwnerId: Map<string, SlotFrame>;
   unassignedTaskRect: StableRect | null;
@@ -113,6 +114,7 @@ const SLOT_GEOMETRY = {
 
 const PROCESS_RAIL_NODE_GAP = 42;
 const PROCESS_RAIL_NODE_FOOTPRINT = 28;
+const GEOMETRY_EPSILON = 0.001;
 
 const SECTOR_VECTORS = STABLE_SLOT_SECTOR_VECTORS;
 
@@ -143,27 +145,30 @@ export function buildStableSlotLayoutSnapshot({
 
   const ownerFootprints = computeOwnerFootprints(nodes, layout);
   const unassignedTaskRect = buildUnassignedTaskRect(nodes, leadCentralReservedBlock);
+  const centralCollisionRects = buildCentralCollisionRects({
+    leadCoreRect,
+    leadActivityRect,
+    launchHudRect,
+    unassignedTaskRect,
+  });
   const runtimeCentralExclusion = padRect(
-    unionRects(
-      unassignedTaskRect
-        ? [leadCentralReservedBlock, unassignedTaskRect]
-        : [leadCentralReservedBlock]
-    ),
+    unionRects(centralCollisionRects),
     SLOT_GEOMETRY.centralPadding
   );
 
-  const memberSlotFrames = planOwnerSlots(ownerFootprints, runtimeCentralExclusion, layout);
+  const memberSlotFrames = planOwnerSlots(
+    ownerFootprints,
+    centralCollisionRects,
+    runtimeCentralExclusion,
+    layout
+  );
   const memberSlotFrameByOwnerId = new Map(
     memberSlotFrames.map((frame) => [frame.ownerId, frame] as const)
   );
   const fitBounds = unionRects(
     [
-      leadCentralReservedBlock,
-      leadActivityRect,
-      launchHudRect,
       runtimeCentralExclusion,
       ...memberSlotFrames.map((frame) => frame.bounds),
-      ...(unassignedTaskRect ? [unassignedTaskRect] : []),
     ].filter(Boolean)
   );
 
@@ -180,11 +185,39 @@ export function buildStableSlotLayoutSnapshot({
     },
     leadCentralReservedBlock,
     runtimeCentralExclusion,
+    centralCollisionRects,
     memberSlotFrames,
     memberSlotFrameByOwnerId,
     unassignedTaskRect,
     fitBounds,
   };
+}
+
+function buildCentralCollisionRects(args: {
+  leadCoreRect: StableRect;
+  leadActivityRect: StableRect;
+  launchHudRect: StableRect;
+  unassignedTaskRect: StableRect | null;
+}): StableRect[] {
+  const rects = [args.leadCoreRect, args.leadActivityRect, args.launchHudRect];
+  if (args.unassignedTaskRect) {
+    rects.push(args.unassignedTaskRect);
+  }
+  return rects;
+}
+
+function padCentralCollisionRects(
+  rects: readonly StableRect[],
+  padding: number
+): StableRect[] {
+  return rects.map((rect) => padRect(rect, padding));
+}
+
+function rectOverlapsAnyCentralRect(
+  rect: StableRect,
+  centralCollisionRects: readonly StableRect[]
+): boolean {
+  return centralCollisionRects.some((centralRect) => rectsOverlap(rect, centralRect));
 }
 
 export function computeOwnerFootprints(
@@ -347,6 +380,7 @@ export function resolveNearestSlotAssignment(args: {
       footprintByOwnerId,
       currentFrame,
       existingFrames,
+      centralCollisionRects: args.snapshot.centralCollisionRects,
       runtimeCentralExclusion: args.snapshot.runtimeCentralExclusion,
       ringStates,
       pointerX: args.ownerX,
@@ -418,6 +452,9 @@ function validateStaticSnapshotRects(
     ['leadCentralReservedBlock', snapshot.leadCentralReservedBlock],
     ['runtimeCentralExclusion', snapshot.runtimeCentralExclusion],
     ['fitBounds', snapshot.fitBounds],
+    ...snapshot.centralCollisionRects.map(
+      (rect, index) => [`centralCollisionRects[${index}]`, rect] as [string, StableRect]
+    ),
   ];
 
   if (snapshot.unassignedTaskRect) {
@@ -452,11 +489,19 @@ function validateLeadSnapshotRects(
   if (!rectContainsRect(snapshot.runtimeCentralExclusion, snapshot.leadCentralReservedBlock)) {
     return { valid: false, reason: 'runtimeCentralExclusion must contain leadCentralReservedBlock' };
   }
+  const paddedCentralCollisionRects = padCentralCollisionRects(
+    snapshot.centralCollisionRects,
+    SLOT_GEOMETRY.centralPadding
+  );
   if (
-    snapshot.unassignedTaskRect &&
-    !rectContainsRect(snapshot.runtimeCentralExclusion, snapshot.unassignedTaskRect)
+    paddedCentralCollisionRects.some(
+      (rect) => !rectContainsRect(snapshot.runtimeCentralExclusion, rect)
+    )
   ) {
-    return { valid: false, reason: 'runtimeCentralExclusion must contain unassignedTaskRect' };
+    return {
+      valid: false,
+      reason: 'runtimeCentralExclusion must contain all centralCollisionRects',
+    };
   }
 
   return null;
@@ -485,8 +530,11 @@ function validateMemberSlotFrame(
   }
   seenAssignments.add(assignmentKey);
 
-  if (rectsOverlap(frame.bounds, snapshot.runtimeCentralExclusion)) {
-    return { valid: false, reason: `slot frame for ${frame.ownerId} overlaps runtimeCentralExclusion` };
+  if (rectOverlapsAnyCentralRect(frame.bounds, snapshot.centralCollisionRects)) {
+    return {
+      valid: false,
+      reason: `slot frame for ${frame.ownerId} overlaps centralCollisionRects`,
+    };
   }
   if (!rectContainsRect(frame.bounds, frame.boardBandRect)) {
     return { valid: false, reason: `boardBandRect escapes slot bounds for ${frame.ownerId}` };
@@ -614,7 +662,8 @@ function buildUnassignedTaskRect(
 
 function planOwnerSlots(
   ownerFootprints: OwnerFootprint[],
-  centralExclusion: StableRect,
+  centralCollisionRects: readonly StableRect[],
+  runtimeCentralExclusion: StableRect,
   layout?: GraphLayoutPort
 ): SlotFrame[] {
   const placedFrames: SlotFrame[] = [];
@@ -626,7 +675,8 @@ function planOwnerSlots(
   for (const footprint of ownerFootprints) {
     const resolvedFrame = resolveOwnerSlotFrame({
       footprint,
-      centralExclusion,
+      centralCollisionRects,
+      runtimeCentralExclusion,
       ringStates,
       preferredAssignment: preferredAssignments.get(footprint.ownerId),
       usedSlotKeys,
@@ -667,7 +717,8 @@ function buildPreferredAssignmentsMap(
 
 function resolveOwnerSlotFrame(args: {
   footprint: OwnerFootprint;
-  centralExclusion: StableRect;
+  centralCollisionRects: readonly StableRect[];
+  runtimeCentralExclusion: StableRect;
   ringStates: RingLayoutStateMap;
   preferredAssignment?: GraphOwnerSlotAssignment;
   usedSlotKeys: Set<string>;
@@ -676,7 +727,8 @@ function resolveOwnerSlotFrame(args: {
 }): SlotFrame {
   const {
     footprint,
-    centralExclusion,
+    centralCollisionRects,
+    runtimeCentralExclusion,
     ringStates,
     preferredAssignment,
     usedSlotKeys,
@@ -690,7 +742,8 @@ function resolveOwnerSlotFrame(args: {
   const directMatch = findFirstValidSlotFrame({
     candidateAssignments: candidates,
     footprint,
-    centralExclusion,
+    centralCollisionRects,
+    runtimeCentralExclusion,
     ringStates,
     usedSlotKeys,
     placedFrames,
@@ -706,7 +759,8 @@ function resolveOwnerSlotFrame(args: {
   const spilloverMatch = findFirstValidSlotFrame({
     candidateAssignments: spilloverCandidates,
     footprint,
-    centralExclusion,
+    centralCollisionRects,
+    runtimeCentralExclusion,
     ringStates,
     usedSlotKeys,
     placedFrames,
@@ -717,7 +771,8 @@ function resolveOwnerSlotFrame(args: {
 
   return buildEmergencyFallbackSlotFrame({
     footprint,
-    centralExclusion,
+    centralCollisionRects,
+    runtimeCentralExclusion,
     ringStates,
     usedSlotKeys,
     placedOwnerCount: placedFrames.length,
@@ -728,19 +783,29 @@ function resolveOwnerSlotFrame(args: {
 function buildSlotFrame(
   footprint: OwnerFootprint,
   assignment: GraphOwnerSlotAssignment,
-  centralExclusion: StableRect,
+  centralCollisionRects: readonly StableRect[],
+  runtimeCentralExclusion: StableRect,
   options: { ringStates: RingLayoutStateMap }
 ): SlotFrame | null {
-  const vector = SECTOR_VECTORS[assignment.sectorIndex % SECTOR_VECTORS.length] ?? SECTOR_VECTORS[0];
   const radius = resolveRingRadiusForAssignment({
     assignment,
     footprint,
-    centralExclusion,
+    centralCollisionRects,
+    runtimeCentralExclusion,
     ringStates: options.ringStates,
   });
   if (radius == null) {
     return null;
   }
+  return buildSlotFrameAtRadius(footprint, assignment, radius);
+}
+
+function buildSlotFrameAtRadius(
+  footprint: OwnerFootprint,
+  assignment: GraphOwnerSlotAssignment,
+  radius: number
+): SlotFrame {
+  const vector = SECTOR_VECTORS[assignment.sectorIndex % SECTOR_VECTORS.length] ?? SECTOR_VECTORS[0];
   const ownerX = vector.x * radius;
   const ownerY = vector.y * radius;
   const slotTop =
@@ -844,7 +909,8 @@ function ownerFootprintsSpillBudget(placedOwnerCount: number): number {
 
 function buildEmergencyFallbackSlotFrame(args: {
   footprint: OwnerFootprint;
-  centralExclusion: StableRect;
+  centralCollisionRects: readonly StableRect[];
+  runtimeCentralExclusion: StableRect;
   ringStates: RingLayoutStateMap;
   usedSlotKeys: Set<string>;
   placedOwnerCount: number;
@@ -855,9 +921,15 @@ function buildEmergencyFallbackSlotFrame(args: {
     sectorIndex: 0,
   };
   args.usedSlotKeys.add(buildAssignmentKey(assignment));
-  const frame = buildSlotFrame(args.footprint, assignment, args.centralExclusion, {
-    ringStates: args.ringStates,
-  });
+  const frame = buildSlotFrame(
+    args.footprint,
+    assignment,
+    args.centralCollisionRects,
+    args.runtimeCentralExclusion,
+    {
+      ringStates: args.ringStates,
+    }
+  );
   if (!frame) {
     throw new Error(`failed to build emergency fallback slot frame for ${args.footprint.ownerId}`);
   }
@@ -871,6 +943,7 @@ function rankNearestSlotAssignmentResult(args: {
   footprintByOwnerId: ReadonlyMap<string, OwnerFootprint>;
   currentFrame: SlotFrame;
   existingFrames: readonly SlotFrame[];
+  centralCollisionRects: readonly StableRect[];
   runtimeCentralExclusion: StableRect;
   ringStates: RingLayoutStateMap;
   pointerX: number;
@@ -883,14 +956,21 @@ function rankNearestSlotAssignmentResult(args: {
     footprintByOwnerId,
     currentFrame,
     existingFrames,
+    centralCollisionRects,
     runtimeCentralExclusion,
     ringStates,
     pointerX,
     pointerY,
   } = args;
-  const frame = buildSlotFrame(footprint, assignment, runtimeCentralExclusion, {
-    ringStates,
-  });
+  const frame = buildSlotFrame(
+    footprint,
+    assignment,
+    centralCollisionRects,
+    runtimeCentralExclusion,
+    {
+      ringStates,
+    }
+  );
   if (!frame) {
     return null;
   }
@@ -900,6 +980,7 @@ function rankNearestSlotAssignmentResult(args: {
       occupiedFrame,
       footprintByOwnerId,
       currentFrame,
+      centralCollisionRects,
       runtimeCentralExclusion,
       ringStates,
     });
@@ -908,8 +989,8 @@ function rankNearestSlotAssignmentResult(args: {
     }
     const otherFrames = existingFrames.filter((existing) => existing.ownerId !== occupiedFrame.ownerId);
     if (
-      !isSlotFramePlacementValid(frame, otherFrames, runtimeCentralExclusion) ||
-      !isSlotFramePlacementValid(displacedFrame, otherFrames, runtimeCentralExclusion) ||
+      !isSlotFramePlacementValid(frame, otherFrames, centralCollisionRects) ||
+      !isSlotFramePlacementValid(displacedFrame, otherFrames, centralCollisionRects) ||
       rectsOverlapWithGap(frame.bounds, displacedFrame.bounds, SLOT_GEOMETRY.ringPadding)
     ) {
       return null;
@@ -927,7 +1008,7 @@ function rankNearestSlotAssignmentResult(args: {
     });
   }
 
-  if (!isSlotFramePlacementValid(frame, existingFrames, runtimeCentralExclusion)) {
+  if (!isSlotFramePlacementValid(frame, existingFrames, centralCollisionRects)) {
     return null;
   }
 
@@ -943,6 +1024,7 @@ function buildDisplacedFrameForNearestAssignment(args: {
   occupiedFrame: SlotFrame;
   footprintByOwnerId: ReadonlyMap<string, OwnerFootprint>;
   currentFrame: SlotFrame;
+  centralCollisionRects: readonly StableRect[];
   runtimeCentralExclusion: StableRect;
   ringStates: RingLayoutStateMap;
 }): SlotFrame | null {
@@ -956,6 +1038,7 @@ function buildDisplacedFrameForNearestAssignment(args: {
       ringIndex: args.currentFrame.ringIndex,
       sectorIndex: args.currentFrame.sectorIndex,
     },
+    args.centralCollisionRects,
     args.runtimeCentralExclusion,
     { ringStates: args.ringStates }
   );
@@ -982,7 +1065,8 @@ function buildRankedNearestSlotAssignmentResult(args: {
 function findFirstValidSlotFrame(args: {
   candidateAssignments: readonly GraphOwnerSlotAssignment[];
   footprint: OwnerFootprint;
-  centralExclusion: StableRect;
+  centralCollisionRects: readonly StableRect[];
+  runtimeCentralExclusion: StableRect;
   ringStates: RingLayoutStateMap;
   usedSlotKeys: Set<string>;
   placedFrames: readonly SlotFrame[];
@@ -1000,7 +1084,8 @@ function findFirstValidSlotFrame(args: {
 function tryBuildValidSlotFrame(
   args: {
     footprint: OwnerFootprint;
-    centralExclusion: StableRect;
+    centralCollisionRects: readonly StableRect[];
+    runtimeCentralExclusion: StableRect;
     ringStates: RingLayoutStateMap;
     usedSlotKeys: Set<string>;
     placedFrames: readonly SlotFrame[];
@@ -1012,13 +1097,19 @@ function tryBuildValidSlotFrame(
   if (args.usedSlotKeys.has(slotKey) && !isSameAssignment(args.preferredAssignment, assignment)) {
     return null;
   }
-  const frame = buildSlotFrame(args.footprint, assignment, args.centralExclusion, {
-    ringStates: args.ringStates,
-  });
+  const frame = buildSlotFrame(
+    args.footprint,
+    assignment,
+    args.centralCollisionRects,
+    args.runtimeCentralExclusion,
+    {
+      ringStates: args.ringStates,
+    }
+  );
   if (!frame) {
     return null;
   }
-  if (!isSlotFramePlacementValid(frame, args.placedFrames, args.centralExclusion)) {
+  if (!isSlotFramePlacementValid(frame, args.placedFrames, args.centralCollisionRects)) {
     return null;
   }
   args.usedSlotKeys.add(slotKey);
@@ -1152,12 +1243,18 @@ function computeSlotDirectionalDepths(
 function resolveRingRadiusForAssignment(args: {
   assignment: GraphOwnerSlotAssignment;
   footprint: OwnerFootprint;
-  centralExclusion: StableRect;
+  centralCollisionRects: readonly StableRect[];
+  runtimeCentralExclusion: StableRect;
   ringStates: RingLayoutStateMap;
 }): number | null {
   const vector =
     SECTOR_VECTORS[args.assignment.sectorIndex % SECTOR_VECTORS.length] ?? SECTOR_VECTORS[0];
-  const minRadius = computeMinimumRingRadius(vector, args.footprint, args.centralExclusion);
+  const minRadius = resolveMinimumDirectionalRadius({
+    assignment: args.assignment,
+    footprint: args.footprint,
+    centralCollisionRects: args.centralCollisionRects,
+    runtimeCentralExclusion: args.runtimeCentralExclusion,
+  });
   const directionalDepths = computeSlotDirectionalDepths(args.footprint, vector);
   const ringState = resolveVirtualRingState(
     args.assignment.sectorIndex,
@@ -1211,7 +1308,48 @@ function buildSectorRingStateKey(sectorIndex: number, ringIndex: number): string
   return `${sectorIndex}:${ringIndex}`;
 }
 
-function computeMinimumRingRadius(
+function resolveMinimumDirectionalRadius(args: {
+  assignment: GraphOwnerSlotAssignment;
+  footprint: OwnerFootprint;
+  centralCollisionRects: readonly StableRect[];
+  runtimeCentralExclusion: StableRect;
+}): number {
+  const legacyRadiusHint = computeLegacyMinimumRingRadius(
+    SECTOR_VECTORS[args.assignment.sectorIndex % SECTOR_VECTORS.length] ?? SECTOR_VECTORS[0],
+    args.footprint,
+    args.runtimeCentralExclusion
+  );
+  const overlapsCentralCollision = (radius: number): boolean => {
+    const frame = buildSlotFrameAtRadius(args.footprint, args.assignment, radius);
+    return rectOverlapsAnyCentralRect(frame.bounds, args.centralCollisionRects);
+  };
+
+  if (!overlapsCentralCollision(0)) {
+    return 0;
+  }
+
+  let low = 0;
+  let high = Math.max(legacyRadiusHint, SLOT_GEOMETRY.ringGap);
+  let expansionCount = 0;
+  while (overlapsCentralCollision(high) && expansionCount < 24) {
+    low = high;
+    high = Math.max(high * 2, high + SLOT_GEOMETRY.ringGap);
+    expansionCount += 1;
+  }
+
+  for (let iteration = 0; iteration < 24; iteration += 1) {
+    const mid = (low + high) / 2;
+    if (overlapsCentralCollision(mid)) {
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+
+  return Math.ceil(high);
+}
+
+function computeLegacyMinimumRingRadius(
   vector: { x: number; y: number },
   footprint: OwnerFootprint,
   centralExclusion: StableRect
@@ -1253,15 +1391,20 @@ function rectsOverlap(a: StableRect, b: StableRect): boolean {
 
 function rectContainsRect(outer: StableRect, inner: StableRect): boolean {
   return (
-    inner.left >= outer.left &&
-    inner.right <= outer.right &&
-    inner.top >= outer.top &&
-    inner.bottom <= outer.bottom
+    inner.left >= outer.left - GEOMETRY_EPSILON &&
+    inner.right <= outer.right + GEOMETRY_EPSILON &&
+    inner.top >= outer.top - GEOMETRY_EPSILON &&
+    inner.bottom <= outer.bottom + GEOMETRY_EPSILON
   );
 }
 
 function pointInRect(x: number, y: number, rect: StableRect): boolean {
-  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  return (
+    x >= rect.left - GEOMETRY_EPSILON &&
+    x <= rect.right + GEOMETRY_EPSILON &&
+    y >= rect.top - GEOMETRY_EPSILON &&
+    y <= rect.bottom + GEOMETRY_EPSILON
+  );
 }
 
 function isFiniteRect(rect: StableRect): boolean {
@@ -1278,12 +1421,12 @@ function isFiniteRect(rect: StableRect): boolean {
 function isSlotFramePlacementValid(
   frame: SlotFrame,
   existingFrames: readonly SlotFrame[],
-  runtimeCentralExclusion: StableRect
+  centralCollisionRects: readonly StableRect[]
 ): boolean {
   if (!isFiniteRect(frame.bounds)) {
     return false;
   }
-  if (rectsOverlap(frame.bounds, runtimeCentralExclusion)) {
+  if (rectOverlapsAnyCentralRect(frame.bounds, centralCollisionRects)) {
     return false;
   }
   return !existingFrames.some((existing) =>

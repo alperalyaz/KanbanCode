@@ -6,12 +6,16 @@ import {
   computeProcessBandWidth,
   resolveNearestSlotAssignment,
   snapshotToWorldBounds,
+  translateSlotFrame,
   validateStableSlotLayout,
 } from '../../../../packages/agent-graph/src/layout/stableSlots';
 import { KanbanLayoutEngine } from '../../../../packages/agent-graph/src/layout/kanbanLayout';
 import { TASK_PILL } from '../../../../packages/agent-graph/src/constants/canvas-constants';
 import { ACTIVITY_LANE } from '../../../../packages/agent-graph/src/layout/activityLane';
-import { STABLE_SLOT_GEOMETRY } from '../../../../packages/agent-graph/src/layout/stableSlotGeometry';
+import {
+  STABLE_SLOT_GEOMETRY,
+  STABLE_SLOT_SECTOR_VECTORS,
+} from '../../../../packages/agent-graph/src/layout/stableSlotGeometry';
 
 import type { GraphLayoutPort, GraphNode } from '@claude-teams/agent-graph';
 
@@ -63,6 +67,18 @@ function createProcess(teamName: string, processId: string, ownerId: string): Gr
     ownerId,
     domainRef: { kind: 'process', teamName, processId },
   };
+}
+
+function rectsOverlap(
+  left: { left: number; right: number; top: number; bottom: number },
+  right: { left: number; right: number; top: number; bottom: number }
+): boolean {
+  return (
+    left.left < right.right &&
+    left.right > right.left &&
+    left.top < right.bottom &&
+    left.bottom > right.top
+  );
 }
 
 describe('stable slot layout planner', () => {
@@ -164,6 +180,48 @@ describe('stable slot layout planner', () => {
     );
   });
 
+  it('keeps diagonal ring-zero sectors closer than the legacy coarse central box radius', () => {
+    const teamName = 'team-directional-radius';
+    const lead = createLead(teamName);
+    const alice = createMember(teamName, 'agent-alice', 'alice');
+    const layout: GraphLayoutPort = {
+      version: 'stable-slots-v1',
+      ownerOrder: [alice.id],
+      slotAssignments: {
+        [alice.id]: { ringIndex: 0, sectorIndex: 1 },
+      },
+    };
+
+    const snapshot = buildStableSlotLayoutSnapshot({
+      teamName,
+      nodes: [lead, alice],
+      layout,
+    });
+    const [footprint] = computeOwnerFootprints([lead, alice], layout);
+    const frame = snapshot?.memberSlotFrames[0];
+    const sectorVector = STABLE_SLOT_SECTOR_VECTORS[1];
+
+    expect(snapshot).not.toBeNull();
+    expect(frame).toBeDefined();
+    expect(footprint).toBeDefined();
+
+    const legacyHorizontalExtent = snapshot!.runtimeCentralExclusion.right;
+    const legacyVerticalExtent = Math.abs(snapshot!.runtimeCentralExclusion.top);
+    const legacyRequiredX =
+      (legacyHorizontalExtent + footprint!.slotWidth / 2 + STABLE_SLOT_GEOMETRY.ringPadding) /
+      Math.abs(sectorVector.x);
+    const legacyRequiredY =
+      (legacyVerticalExtent + footprint!.slotHeight / 2 + STABLE_SLOT_GEOMETRY.ringPadding) /
+      Math.abs(sectorVector.y);
+    const legacyMinRadius = Math.max(legacyRequiredX, legacyRequiredY, 0);
+    const actualRadius = Math.abs(frame!.ownerX / sectorVector.x);
+
+    expect(actualRadius).toBeLessThan(legacyMinRadius);
+    expect(
+      snapshot!.centralCollisionRects.some((rect) => rectsOverlap(frame!.bounds, rect))
+    ).toBe(false);
+  });
+
   it('grows process band width when an owner has multiple visible process nodes', () => {
     const teamName = 'team-process-growth';
     const lead = createLead(teamName);
@@ -251,6 +309,51 @@ describe('stable slot layout planner', () => {
     expect(validateStableSlotLayout(invalid).valid).toBe(false);
   });
 
+  it('rejects member frames that overlap lead activity and launch central collision rects', () => {
+    const teamName = 'team-central-rects';
+    const lead = createLead(teamName);
+    const alice = createMember(teamName, 'agent-alice', 'alice');
+    const layout: GraphLayoutPort = {
+      version: 'stable-slots-v1',
+      ownerOrder: [alice.id],
+      slotAssignments: {
+        [alice.id]: { ringIndex: 0, sectorIndex: 1 },
+      },
+    };
+
+    const snapshot = buildStableSlotLayoutSnapshot({
+      teamName,
+      nodes: [lead, alice],
+      layout,
+    });
+
+    expect(snapshot).not.toBeNull();
+    const [frame] = snapshot!.memberSlotFrames;
+    const overlappingLeadActivity = translateSlotFrame(
+      frame,
+      snapshot!.leadActivityRect.left - frame.bounds.left + 1,
+      snapshot!.leadActivityRect.top - frame.bounds.top + 1
+    );
+    const overlappingLaunchHud = translateSlotFrame(
+      frame,
+      snapshot!.launchHudRect.left - frame.bounds.left + 1,
+      snapshot!.launchHudRect.top - frame.bounds.top + 1
+    );
+
+    expect(
+      validateStableSlotLayout({
+        ...snapshot!,
+        memberSlotFrames: [overlappingLeadActivity],
+      }).valid
+    ).toBe(false);
+    expect(
+      validateStableSlotLayout({
+        ...snapshot!,
+        memberSlotFrames: [overlappingLaunchHud],
+      }).valid
+    ).toBe(false);
+  });
+
   it('prefers the occupied target slot when dragging near another owner anchor', () => {
     const teamName = 'team-b';
     const lead = createLead(teamName);
@@ -290,6 +393,64 @@ describe('stable slot layout planner', () => {
     expect(nearest?.displacedAssignment).toEqual({ ringIndex: 0, sectorIndex: 1 });
   });
 
+  it('keeps nearest-slot drag resolution on the same central collision model as the planner', () => {
+    const teamName = 'team-drag-central-collision';
+    const lead = createLead(teamName);
+    const alice = createMember(teamName, 'agent-alice', 'alice');
+    const bob = createMember(teamName, 'agent-bob', 'bob');
+    const layout: GraphLayoutPort = {
+      version: 'stable-slots-v1',
+      ownerOrder: [alice.id, bob.id],
+      slotAssignments: {
+        [alice.id]: { ringIndex: 0, sectorIndex: 1 },
+        [bob.id]: { ringIndex: 0, sectorIndex: 2 },
+      },
+    };
+
+    const snapshot = buildStableSlotLayoutSnapshot({
+      teamName,
+      nodes: [lead, alice, bob],
+      layout,
+    });
+
+    expect(snapshot).not.toBeNull();
+    const nearest = resolveNearestSlotAssignment({
+      ownerId: alice.id,
+      ownerX: snapshot!.leadActivityRect.left + snapshot!.leadActivityRect.width / 2,
+      ownerY: snapshot!.leadActivityRect.top + snapshot!.leadActivityRect.height / 2,
+      nodes: [lead, alice, bob],
+      snapshot: snapshot!,
+      layout,
+    });
+
+    expect(nearest).not.toBeNull();
+    const replannedSnapshot = buildStableSlotLayoutSnapshot({
+      teamName,
+      nodes: [lead, alice, bob],
+      layout: {
+        ...layout,
+        slotAssignments: {
+          ...layout.slotAssignments,
+          [alice.id]: nearest!.assignment,
+          ...(nearest?.displacedOwnerId && nearest.displacedAssignment
+            ? { [nearest.displacedOwnerId]: nearest.displacedAssignment }
+            : {}),
+        },
+      },
+    });
+    const replannedFrame = replannedSnapshot?.memberSlotFrames.find(
+      (frame) => frame.ownerId === alice.id
+    );
+
+    expect(replannedSnapshot).not.toBeNull();
+    expect(replannedFrame).toBeDefined();
+    expect(
+      replannedSnapshot!.centralCollisionRects.some((rect) =>
+        rectsOverlap(replannedFrame!.bounds, rect)
+      )
+    ).toBe(false);
+  });
+
   it('treats tasks with missing owner nodes as unassigned topology actors', () => {
     const teamName = 'team-orphan-task';
     const lead = createLead(teamName);
@@ -311,6 +472,45 @@ describe('stable slot layout planner', () => {
 
     expect(snapshot).not.toBeNull();
     expect(snapshot?.unassignedTaskRect).not.toBeNull();
+  });
+
+  it('rejects member frames that overlap the unassigned central collision rect', () => {
+    const teamName = 'team-unassigned-central-rect';
+    const lead = createLead(teamName);
+    const alice = createMember(teamName, 'agent-alice', 'alice');
+    const orphanTask = createTask(
+      teamName,
+      'task-orphan',
+      'member:team-unassigned-central-rect:ghost'
+    );
+    const layout: GraphLayoutPort = {
+      version: 'stable-slots-v1',
+      ownerOrder: [alice.id],
+      slotAssignments: {
+        [alice.id]: { ringIndex: 0, sectorIndex: 1 },
+      },
+    };
+
+    const snapshot = buildStableSlotLayoutSnapshot({
+      teamName,
+      nodes: [lead, alice, orphanTask],
+      layout,
+    });
+
+    expect(snapshot?.unassignedTaskRect).not.toBeNull();
+    const [frame] = snapshot!.memberSlotFrames;
+    const overlappingUnassigned = translateSlotFrame(
+      frame,
+      snapshot!.unassignedTaskRect!.left - frame.bounds.left + 1,
+      snapshot!.unassignedTaskRect!.top - frame.bounds.top + 1
+    );
+
+    expect(
+      validateStableSlotLayout({
+        ...snapshot!,
+        memberSlotFrames: [overlappingUnassigned],
+      }).valid
+    ).toBe(false);
   });
 
   it('computes the next ring radius from previous ring depth, not member count', () => {
