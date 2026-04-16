@@ -125,7 +125,7 @@ describe('CustomMcpServerDialog project scope', () => {
     vi.unstubAllGlobals();
   });
 
-  it('disables project scope without an active project', async () => {
+  it('disables non-user scopes without an active project', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -142,7 +142,9 @@ describe('CustomMcpServerDialog project scope', () => {
     });
 
     const projectOption = host.querySelector('option[value="project"]') as HTMLOptionElement;
+    const localOption = host.querySelector('option[value="local"]') as HTMLOptionElement;
     expect(projectOption.disabled).toBe(true);
+    expect(localOption.disabled).toBe(true);
 
     await act(async () => {
       root.unmount();
@@ -193,6 +195,60 @@ describe('CustomMcpServerDialog project scope', () => {
       expect.objectContaining({
         serverName: 'custom-context7',
         scope: 'project',
+        projectPath,
+      })
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('passes projectPath for local-scoped custom installs', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onClose = vi.fn();
+    const projectPath = '/tmp/custom-mcp-project';
+
+    await act(async () => {
+      root.render(
+        React.createElement(CustomMcpServerDialog, {
+          open: true,
+          onClose,
+          projectPath,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const nameInput = host.querySelector('#custom-name') as HTMLInputElement;
+    const packageInput = host.querySelector('#custom-npm') as HTMLInputElement;
+    const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
+
+    await act(async () => {
+      setNativeValue(nameInput, 'local-context7', 'input');
+      setNativeValue(packageInput, '@upstash/context7-mcp', 'input');
+      setNativeValue(scopeSelect, 'local', 'change');
+      await Promise.resolve();
+    });
+
+    const installButton = Array.from(host.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Install'
+    ) as HTMLButtonElement;
+    expect(installButton.disabled).toBe(false);
+
+    await act(async () => {
+      installButton.click();
+      await Promise.resolve();
+    });
+
+    expect(storeState.installCustomMcpServer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        serverName: 'local-context7',
+        scope: 'local',
         projectPath,
       })
     );

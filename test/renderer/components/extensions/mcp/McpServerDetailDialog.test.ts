@@ -217,7 +217,7 @@ describe('McpServerDetailDialog installed entry handling', () => {
       'io.github.upstash/context7',
       'context7-local',
       'local',
-      undefined
+      '/tmp/project'
     );
 
     await act(async () => {
@@ -258,6 +258,10 @@ describe('McpServerDetailDialog installed entry handling', () => {
 
     expect(lookupMock).toHaveBeenCalledTimes(1);
     expect(lookupMock).toHaveBeenCalledWith(['CONTEXT7_API_KEY']);
+    const projectOption = host.querySelector('option[value="project"]') as HTMLOptionElement;
+    const localOption = host.querySelector('option[value="local"]') as HTMLOptionElement;
+    expect(projectOption.disabled).toBe(true);
+    expect(localOption.disabled).toBe(true);
 
     await act(async () => {
       root.unmount();
@@ -342,6 +346,90 @@ describe('McpServerDetailDialog installed entry handling', () => {
       expect.objectContaining({
         registryId: 'io.github.upstash/context7',
         scope: 'project',
+        projectPath,
+      })
+    );
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('passes project path for local-scoped installs and uninstalls', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const projectPath = '/tmp/local-context7';
+    const installedEntry: InstalledMcpEntry = {
+      name: 'context7-local',
+      scope: 'local',
+    };
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServerDetailDialog, {
+          server: makeServer(),
+          isInstalled: true,
+          installedEntry,
+          installedEntries: [installedEntry],
+          diagnostic: null,
+          diagnosticsLoading: false,
+          projectPath,
+          open: true,
+          onClose: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const uninstallButton = host.querySelector('[data-testid="install-button"]') as HTMLButtonElement;
+    await act(async () => {
+      uninstallButton.click();
+      await Promise.resolve();
+    });
+
+    expect(storeState.uninstallMcpServer).toHaveBeenCalledWith(
+      'io.github.upstash/context7',
+      'context7-local',
+      'local',
+      projectPath
+    );
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServerDetailDialog, {
+          server: makeServer(),
+          isInstalled: false,
+          installedEntry: null,
+          installedEntries: [],
+          diagnostic: null,
+          diagnosticsLoading: false,
+          projectPath,
+          open: true,
+          onClose: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
+    await act(async () => {
+      scopeSelect.value = 'local';
+      scopeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const installButton = host.querySelector('[data-testid="install-button"]') as HTMLButtonElement;
+    await act(async () => {
+      installButton.click();
+      await Promise.resolve();
+    });
+
+    expect(storeState.installMcpServer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        registryId: 'io.github.upstash/context7',
+        scope: 'local',
         projectPath,
       })
     );

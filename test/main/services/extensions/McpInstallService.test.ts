@@ -130,6 +130,7 @@ describe('McpInstallService', () => {
         registryId: 'upstash/context7-mcp',
         serverName: 'context7',
         scope: 'local',
+        projectPath: '/tmp/test',
         envValues: {},
         headers: [],
       });
@@ -230,6 +231,20 @@ describe('McpInstallService', () => {
       expect(result.error).toContain('projectPath is required');
       expect(mockExecCli).not.toHaveBeenCalled();
     });
+
+    it('rejects local scope install without project path', async () => {
+      const result = await service.install({
+        registryId: 'upstash/context7-mcp',
+        serverName: 'context7',
+        scope: 'local',
+        envValues: {},
+        headers: [],
+      });
+
+      expect(result.state).toBe('error');
+      expect(result.error).toContain('projectPath is required');
+      expect(mockExecCli).not.toHaveBeenCalled();
+    });
   });
 
   // ── install: error masking ──────────────────────────────────────────────────
@@ -290,6 +305,23 @@ describe('McpInstallService', () => {
       expect(result.error).toContain('projectPath is required');
       expect(mockExecCli).not.toHaveBeenCalled();
     });
+
+    it('rejects local scope custom install without project path', async () => {
+      const result = await service.installCustom({
+        serverName: 'custom-context7',
+        scope: 'local',
+        installSpec: {
+          type: 'stdio',
+          npmPackage: '@upstash/context7-mcp',
+        },
+        envValues: {},
+        headers: [],
+      });
+
+      expect(result.state).toBe('error');
+      expect(result.error).toContain('projectPath is required');
+      expect(mockExecCli).not.toHaveBeenCalled();
+    });
   });
 
   // ── uninstall ───────────────────────────────────────────────────────────────
@@ -328,6 +360,14 @@ describe('McpInstallService', () => {
 
     it('rejects project scope uninstall without project path', async () => {
       const result = await service.uninstall('context7', 'project');
+
+      expect(result.state).toBe('error');
+      expect(result.error).toContain('projectPath is required');
+      expect(mockExecCli).not.toHaveBeenCalled();
+    });
+
+    it('rejects local scope uninstall without project path', async () => {
+      const result = await service.uninstall('context7', 'local');
 
       expect(result.state).toBe('error');
       expect(result.error).toContain('projectPath is required');

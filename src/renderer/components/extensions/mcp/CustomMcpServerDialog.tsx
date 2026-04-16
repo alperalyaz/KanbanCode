@@ -105,7 +105,7 @@ export const CustomMcpServerDialog = ({
   }, [open]);
 
   useEffect(() => {
-    if (open && scope === 'project' && !projectPath) {
+    if (open && scope !== 'user' && !projectPath) {
       setScope('user');
     }
   }, [open, projectPath, scope]);
@@ -177,7 +177,7 @@ export const CustomMcpServerDialog = ({
     const request: McpCustomInstallRequest = {
       serverName,
       scope,
-      projectPath: scope === 'project' ? (projectPath ?? undefined) : undefined,
+      projectPath: scope !== 'user' ? (projectPath ?? undefined) : undefined,
       installSpec,
       envValues,
       headers: headers.filter((h) => h.key.trim() && h.value.trim()),
@@ -207,7 +207,7 @@ export const CustomMcpServerDialog = ({
   const canSubmit =
     serverName.trim() &&
     (transportMode === 'stdio' ? npmPackage.trim() : httpUrl.trim()) &&
-    !(scope === 'project' && !projectPath) &&
+    !(scope !== 'user' && !projectPath) &&
     !installing;
 
   return (
@@ -386,7 +386,7 @@ export const CustomMcpServerDialog = ({
                   <SelectItem
                     key={opt.value}
                     value={opt.value}
-                    disabled={opt.value === 'project' && !projectPath}
+                    disabled={opt.value !== 'user' && !projectPath}
                   >
                     {opt.label}
                   </SelectItem>

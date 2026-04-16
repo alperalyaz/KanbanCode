@@ -37,6 +37,10 @@ const HEADER_KEY_RE = /^[A-Za-z][\w-]{0,100}$/;
 
 const TIMEOUT_MS = 30_000;
 
+function scopeRequiresProjectPath(scope?: string): boolean {
+  return scope === 'local' || scope === 'project';
+}
+
 export class McpInstallService {
   constructor(private readonly aggregator: McpCatalogAggregator) {}
 
@@ -59,10 +63,10 @@ export class McpInstallService {
       };
     }
 
-    if (scope === 'project' && !projectPath) {
+    if (scopeRequiresProjectPath(scope) && !projectPath) {
       return {
         state: 'error',
-        error: 'projectPath is required for project scope',
+        error: `projectPath is required for ${scope} scope`,
       };
     }
 
@@ -219,8 +223,8 @@ export class McpInstallService {
       return { state: 'error', error: `Invalid scope: "${scope}".` };
     }
 
-    if (scope === 'project' && !projectPath) {
-      return { state: 'error', error: 'projectPath is required for project scope' };
+    if (scopeRequiresProjectPath(scope) && !projectPath) {
+      return { state: 'error', error: `projectPath is required for ${scope} scope` };
     }
 
     for (const key of Object.keys(envValues)) {
@@ -330,10 +334,10 @@ export class McpInstallService {
       };
     }
 
-    if (scope === 'project' && !projectPath) {
+    if (scopeRequiresProjectPath(scope) && !projectPath) {
       return {
         state: 'error',
-        error: 'projectPath is required for project scope',
+        error: `projectPath is required for ${scope} scope`,
       };
     }
 

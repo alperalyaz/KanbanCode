@@ -132,7 +132,7 @@ export const McpServerDetailDialog = ({
   }, [open, scope, selectedInstalledEntry?.name, server]);
 
   useEffect(() => {
-    if (open && scope === 'project' && !projectPath) {
+    if (open && scope !== 'user' && !projectPath) {
       setScope('user');
     }
   }, [open, projectPath, scope]);
@@ -179,7 +179,7 @@ export const McpServerDetailDialog = ({
   const isInstalledForScope = selectedInstalledEntry !== null;
   const uninstallServerName = selectedInstalledEntry?.name ?? serverName;
   const uninstallScope = selectedInstalledEntry?.scope ?? scope;
-  const scopeRequiresProjectPath = scope === 'project' && !projectPath;
+  const scopeRequiresProjectPath = scope !== 'user' && !projectPath;
   const installDisabled =
     !serverName.trim() ||
     missingRequiredEnvVars ||
@@ -199,7 +199,7 @@ export const McpServerDetailDialog = ({
       registryId: server.id,
       serverName,
       scope,
-      projectPath: scope === 'project' ? (projectPath ?? undefined) : undefined,
+      projectPath: scope !== 'user' ? (projectPath ?? undefined) : undefined,
       envValues,
       headers,
     });
@@ -210,7 +210,7 @@ export const McpServerDetailDialog = ({
       server.id,
       uninstallServerName,
       uninstallScope,
-      uninstallScope === 'project' ? (projectPath ?? undefined) : undefined
+      uninstallScope !== 'user' ? (projectPath ?? undefined) : undefined
     );
   };
 
@@ -417,7 +417,7 @@ export const McpServerDetailDialog = ({
                     <SelectItem
                       key={opt.value}
                       value={opt.value}
-                      disabled={opt.value === 'project' && !projectPath}
+                      disabled={opt.value !== 'user' && !projectPath}
                     >
                       {opt.label}
                     </SelectItem>
