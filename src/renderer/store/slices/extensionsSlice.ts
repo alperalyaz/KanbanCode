@@ -4,9 +4,9 @@
  */
 
 import { api } from '@renderer/api';
-import { CLI_NOT_FOUND_MESSAGE } from '@shared/constants/cli';
 import { isProjectScopedMcpScope } from '@shared/utils/mcpScopes';
 import {
+  getExtensionActionDisableReason,
   getMcpDiagnosticKey,
   getMcpProjectStateKey,
   getMcpOperationKey,
@@ -338,12 +338,6 @@ function getSkillsCatalogKey(projectPath?: string): string {
 
 /** Duration to show "success" state before returning to idle */
 const SUCCESS_DISPLAY_MS = 2_000;
-const CLI_AUTH_REQUIRED_MESSAGE =
-  'Claude CLI is installed but not signed in. Go to the Dashboard and sign in to enable plugin installs.';
-const CLI_HEALTHCHECK_FAILED_MESSAGE =
-  'Claude CLI was found but failed its startup health check. Open the Dashboard to repair or reinstall it before retrying.';
-const CLI_STATUS_UNKNOWN_MESSAGE =
-  'Unable to verify Claude CLI status. Open the Dashboard and check the CLI before retrying.';
 const PROJECT_SCOPE_REQUIRED_MESSAGE =
   'Project- and local-scoped plugins require an active project in the Extensions tab.';
 export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSlice> = (
@@ -898,15 +892,12 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
     const preflightError =
       effectiveRequest.scope !== 'user' && !effectiveRequest.projectPath
         ? PROJECT_SCOPE_REQUIRED_MESSAGE
-        : cliStatus === null
-          ? CLI_STATUS_UNKNOWN_MESSAGE
-          : !cliStatus.installed
-            ? cliStatus.binaryPath && cliStatus.launchError
-              ? CLI_HEALTHCHECK_FAILED_MESSAGE
-              : CLI_NOT_FOUND_MESSAGE
-            : !cliStatus.authLoggedIn
-              ? CLI_AUTH_REQUIRED_MESSAGE
-              : null;
+        : getExtensionActionDisableReason({
+            isInstalled: false,
+            cliStatus,
+            cliStatusLoading: get().cliStatusLoading,
+            section: 'plugins',
+          });
 
     if (preflightError) {
       clearPluginSuccessResetTimer(operationKey);
@@ -979,6 +970,30 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
       return;
     }
 
+    const preflightState = get();
+    if (preflightState.cliStatus === null || preflightState.cliStatusLoading) {
+      try {
+        await preflightState.fetchCliStatus();
+      } catch {
+        // fetchCliStatus stores the error in cliStatusError; map to a user-facing uninstall error below.
+      }
+    }
+
+    const uninstallDisableReason = getExtensionActionDisableReason({
+      isInstalled: true,
+      cliStatus: get().cliStatus,
+      cliStatusLoading: get().cliStatusLoading,
+      section: 'plugins',
+    });
+    if (uninstallDisableReason) {
+      clearPluginSuccessResetTimer(operationKey);
+      set((prev) => ({
+        pluginInstallProgress: { ...prev.pluginInstallProgress, [operationKey]: 'error' },
+        installErrors: { ...prev.installErrors, [operationKey]: uninstallDisableReason },
+      }));
+      return;
+    }
+
     clearPluginSuccessResetTimer(operationKey);
     set((prev) => ({
       pluginInstallProgress: { ...prev.pluginInstallProgress, [operationKey]: 'pending' },
@@ -1033,6 +1048,30 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
       return;
     }
 
+    const preflightState = get();
+    if (preflightState.cliStatus === null || preflightState.cliStatusLoading) {
+      try {
+        await preflightState.fetchCliStatus();
+      } catch {
+        // fetchCliStatus stores the error in cliStatusError; map to a user-facing install error below.
+      }
+    }
+
+    const installDisableReason = getExtensionActionDisableReason({
+      isInstalled: false,
+      cliStatus: get().cliStatus,
+      cliStatusLoading: get().cliStatusLoading,
+      section: 'mcp',
+    });
+    if (installDisableReason) {
+      clearMcpSuccessResetTimer(operationKey);
+      set((prev) => ({
+        mcpInstallProgress: { ...prev.mcpInstallProgress, [operationKey]: 'error' },
+        installErrors: { ...prev.installErrors, [operationKey]: installDisableReason },
+      }));
+      return;
+    }
+
     clearMcpSuccessResetTimer(operationKey);
     set((prev) => ({
       mcpInstallProgress: { ...prev.mcpInstallProgress, [operationKey]: 'pending' },
@@ -1079,28 +1118,38 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
       operationScope,
       request.projectPath
     );
-    if (!api.mcpRegistry) {
+    try {
+      if (!api.mcpRegistry) {
+        throw new Error('MCP Registry not available');
+      }
+
+      const preflightState = get();
+      if (preflightState.cliStatus === null || preflightState.cliStatusLoading) {
+        try {
+          await preflightState.fetchCliStatus();
+        } catch {
+          // fetchCliStatus stores the error in cliStatusError; map to a user-facing install error below.
+        }
+      }
+
+      const installDisableReason = getExtensionActionDisableReason({
+        isInstalled: false,
+        cliStatus: get().cliStatus,
+        cliStatusLoading: get().cliStatusLoading,
+        section: 'mcp',
+      });
+      if (installDisableReason) {
+        throw new Error(installDisableReason);
+      }
+
       clearMcpSuccessResetTimer(progressKey);
       set((prev) => ({
-        mcpInstallProgress: { ...prev.mcpInstallProgress, [progressKey]: 'error' },
-        installErrors: { ...prev.installErrors, [progressKey]: 'MCP Registry not available' },
+        mcpInstallProgress: { ...prev.mcpInstallProgress, [progressKey]: 'pending' },
       }));
-      return;
-    }
 
-    clearMcpSuccessResetTimer(progressKey);
-    set((prev) => ({
-      mcpInstallProgress: { ...prev.mcpInstallProgress, [progressKey]: 'pending' },
-    }));
-
-    try {
       const result = await api.mcpRegistry.installCustom(request);
       if (result.state === 'error') {
-        set((prev) => ({
-          mcpInstallProgress: { ...prev.mcpInstallProgress, [progressKey]: 'error' },
-          installErrors: { ...prev.installErrors, [progressKey]: result.error ?? 'Install failed' },
-        }));
-        return;
+        throw new Error(result.error ?? 'Install failed');
       }
 
       await Promise.all([
@@ -1120,6 +1169,7 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
         mcpInstallProgress: { ...prev.mcpInstallProgress, [progressKey]: 'error' },
         installErrors: { ...prev.installErrors, [progressKey]: message },
       }));
+      throw err instanceof Error ? err : new Error(message);
     }
   },
 
@@ -1138,6 +1188,30 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
       set((prev) => ({
         mcpInstallProgress: { ...prev.mcpInstallProgress, [operationKey]: 'error' },
         installErrors: { ...prev.installErrors, [operationKey]: 'MCP Registry not available' },
+      }));
+      return;
+    }
+
+    const preflightState = get();
+    if (preflightState.cliStatus === null || preflightState.cliStatusLoading) {
+      try {
+        await preflightState.fetchCliStatus();
+      } catch {
+        // fetchCliStatus stores the error in cliStatusError; map to a user-facing uninstall error below.
+      }
+    }
+
+    const uninstallDisableReason = getExtensionActionDisableReason({
+      isInstalled: true,
+      cliStatus: get().cliStatus,
+      cliStatusLoading: get().cliStatusLoading,
+      section: 'mcp',
+    });
+    if (uninstallDisableReason) {
+      clearMcpSuccessResetTimer(operationKey);
+      set((prev) => ({
+        mcpInstallProgress: { ...prev.mcpInstallProgress, [operationKey]: 'error' },
+        installErrors: { ...prev.installErrors, [operationKey]: uninstallDisableReason },
       }));
       return;
     }

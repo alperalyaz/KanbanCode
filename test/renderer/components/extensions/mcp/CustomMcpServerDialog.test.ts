@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface StoreState {
   installCustomMcpServer: ReturnType<typeof vi.fn>;
-  cliStatus?: { flavor: 'claude' | 'agent_teams_orchestrator' } | null;
+  cliStatus?: Record<string, unknown> | null;
+  cliStatusLoading?: boolean;
 }
 
 const storeState = {} as StoreState;
@@ -117,7 +118,15 @@ describe('CustomMcpServerDialog project scope', () => {
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.installCustomMcpServer = vi.fn().mockResolvedValue(undefined);
-    storeState.cliStatus = null;
+    storeState.cliStatus = {
+      flavor: 'claude',
+      installed: true,
+      authLoggedIn: true,
+      binaryPath: '/usr/local/bin/claude',
+      launchError: null,
+      providers: [],
+    };
+    storeState.cliStatusLoading = false;
     lookupMock.mockReset();
     lookupMock.mockResolvedValue([]);
   });
@@ -173,6 +182,68 @@ describe('CustomMcpServerDialog project scope', () => {
 
     const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
     expect(scopeSelect.value).toBe('global');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('disables installation when the runtime declares MCP writes unavailable', async () => {
+    storeState.cliStatus = {
+      flavor: 'agent_teams_orchestrator',
+      installed: true,
+      authLoggedIn: true,
+      binaryPath: '/usr/local/bin/claude-multimodel',
+      launchError: null,
+      providers: [
+        {
+          providerId: 'anthropic',
+          displayName: 'Anthropic',
+          supported: true,
+          authenticated: true,
+          authMethod: 'oauth_token',
+          verificationState: 'verified',
+          models: [],
+          canLoginFromUi: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+            extensions: {
+              plugins: { status: 'supported', ownership: 'shared', reason: null },
+              mcp: {
+                status: 'read-only',
+                ownership: 'shared',
+                reason: 'MCP writes unavailable',
+              },
+              skills: { status: 'supported', ownership: 'shared', reason: null },
+              apiKeys: { status: 'supported', ownership: 'shared', reason: null },
+            },
+          },
+        },
+      ],
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(CustomMcpServerDialog, {
+          open: true,
+          onClose: vi.fn(),
+          projectPath: null,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('MCP writes unavailable');
+    const installButton = Array.from(host.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Install')
+    ) as HTMLButtonElement | undefined;
+    expect(installButton).toBeDefined();
+    expect(installButton?.disabled).toBe(true);
 
     await act(async () => {
       root.unmount();

@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@renderer/components/ui/select';
 import { useStore } from '@renderer/store';
+import { getExtensionActionDisableReason } from '@shared/utils/extensionNormalizers';
 import {
   getDefaultMcpSharedScope,
   getMcpScopeLabel,
@@ -67,6 +68,7 @@ export const CustomMcpServerDialog = ({
 }: CustomMcpServerDialogProps): React.JSX.Element => {
   const installCustomMcpServer = useStore((s) => s.installCustomMcpServer);
   const cliStatus = useStore((s) => s.cliStatus);
+  const cliStatusLoading = useStore((s) => s.cliStatusLoading);
   const defaultSharedScope = getDefaultMcpSharedScope(cliStatus?.flavor);
   const scopeOptions: { value: Scope; label: string }[] = [
     { value: defaultSharedScope, label: getMcpScopeLabel(defaultSharedScope, cliStatus?.flavor) },
@@ -101,6 +103,12 @@ export const CustomMcpServerDialog = ({
   const apiKeyLookupProjectPath = isProjectScopedMcpScope(scope)
     ? (projectPath ?? undefined)
     : undefined;
+  const mutationDisableReason = getExtensionActionDisableReason({
+    isInstalled: false,
+    cliStatus,
+    cliStatusLoading,
+    section: 'mcp',
+  });
 
   // Reset on open
   useEffect(() => {
@@ -181,6 +189,11 @@ export const CustomMcpServerDialog = ({
   const handleInstall = async () => {
     setError(null);
 
+    if (mutationDisableReason) {
+      setError(mutationDisableReason);
+      return;
+    }
+
     if (!serverName.trim()) {
       setError('Server name is required');
       return;
@@ -255,6 +268,7 @@ export const CustomMcpServerDialog = ({
     serverName.trim() &&
     (transportMode === 'stdio' ? npmPackage.trim() : httpUrl.trim()) &&
     !(isProjectScopedMcpScope(scope) && !projectPath) &&
+    !mutationDisableReason &&
     !installing;
 
   return (
@@ -483,6 +497,11 @@ export const CustomMcpServerDialog = ({
           </div>
 
           {/* Error */}
+          {mutationDisableReason && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
+              {mutationDisableReason}
+            </div>
+          )}
           {error && (
             <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-400">
               {error}

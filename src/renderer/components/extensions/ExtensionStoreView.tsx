@@ -21,6 +21,7 @@ import { useTabIdOptional } from '@renderer/contexts/useTabUIContext';
 import { useExtensionsTabState } from '@renderer/hooks/useExtensionsTabState';
 import { useStore } from '@renderer/store';
 import { resolveProjectPathById } from '@renderer/utils/projectLookup';
+import { getExtensionActionDisableReason } from '@shared/utils/extensionNormalizers';
 import { AlertTriangle, BookOpen, Info, Key, Plus, Puzzle, RefreshCw, Server } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -165,6 +166,16 @@ export const ExtensionStoreView = (): React.JSX.Element => {
 
   const isRefreshing =
     cliStatusLoading || apiKeysLoading || pluginCatalogLoading || mcpBrowseLoading || skillsLoading;
+  const mcpMutationDisableReason = useMemo(
+    () =>
+      getExtensionActionDisableReason({
+        isInstalled: false,
+        cliStatus,
+        cliStatusLoading,
+        section: 'mcp',
+      }),
+    [cliStatus, cliStatusLoading]
+  );
   const cliStatusBanner = useMemo(() => {
     const providers = cliStatus?.providers ?? [];
     const visibleProviders = providers.filter((provider) => provider.providerId !== 'gemini');
@@ -388,15 +399,25 @@ export const ExtensionStoreView = (): React.JSX.Element => {
                   ))}
                 </TabsList>
                 {tabState.activeSubTab === 'mcp-servers' && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCustomMcpDialogOpen(true)}
-                    className="mb-1 whitespace-nowrap"
-                  >
-                    <Plus className="mr-1 size-3.5" />
-                    Add Custom
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span tabIndex={mcpMutationDisableReason ? 0 : -1}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCustomMcpDialogOpen(true)}
+                          className="mb-1 whitespace-nowrap"
+                          disabled={Boolean(mcpMutationDisableReason)}
+                        >
+                          <Plus className="mr-1 size-3.5" />
+                          Add Custom
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    {mcpMutationDisableReason && (
+                      <TooltipContent>{mcpMutationDisableReason}</TooltipContent>
+                    )}
+                  </Tooltip>
                 )}
               </div>
 

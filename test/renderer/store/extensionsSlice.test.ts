@@ -22,6 +22,7 @@ vi.mock('../../../src/renderer/api', () => ({
       getInstalled: vi.fn(),
       diagnose: vi.fn(),
       install: vi.fn(),
+      installCustom: vi.fn(),
       uninstall: vi.fn(),
     },
     skills: {
@@ -151,6 +152,52 @@ const makeReadyCliStatus = () => ({
   authStatusChecking: false,
   authMethod: 'oauth_token' as const,
   providers: [],
+});
+
+const makeLimitedMultimodelCliStatus = (section: 'plugins' | 'mcp', reason: string) => ({
+  flavor: 'agent_teams_orchestrator' as const,
+  displayName: 'Claude Multimodel',
+  supportsSelfUpdate: false,
+  showVersionDetails: true,
+  showBinaryPath: true,
+  installed: true,
+  installedVersion: '1.0.0',
+  binaryPath: '/usr/local/bin/claude-multimodel',
+  latestVersion: '1.0.0',
+  updateAvailable: false,
+  authLoggedIn: true,
+  authStatusChecking: false,
+  authMethod: null,
+  providers: [
+    {
+      providerId: 'anthropic' as const,
+      displayName: 'Anthropic',
+      supported: true,
+      authenticated: true,
+      authMethod: 'oauth_token',
+      verificationState: 'verified' as const,
+      models: [],
+      canLoginFromUi: true,
+      capabilities: {
+        teamLaunch: true,
+        oneShot: true,
+        extensions: {
+          plugins: {
+            status: section === 'plugins' ? 'unsupported' : 'supported',
+            ownership: 'shared' as const,
+            reason: section === 'plugins' ? reason : null,
+          },
+          mcp: {
+            status: section === 'mcp' ? 'read-only' : 'supported',
+            ownership: 'shared' as const,
+            reason: section === 'mcp' ? reason : null,
+          },
+          skills: { status: 'supported', ownership: 'shared' as const, reason: null },
+          apiKeys: { status: 'supported', ownership: 'shared' as const, reason: null },
+        },
+      },
+    },
+  ],
 });
 
 const pluginOperationKey = (
@@ -618,6 +665,22 @@ describe('extensionsSlice', () => {
       );
     });
 
+    it('fails fast when multimodel runtime declares plugin installs unsupported', async () => {
+      store.setState({
+        cliStatus: makeLimitedMultimodelCliStatus('plugins', 'Plugin writes unavailable'),
+      });
+
+      await store.getState().installPlugin({ pluginId: 'unsupported@m', scope: 'user' });
+
+      expect(api.plugins!.install).not.toHaveBeenCalled();
+      expect(store.getState().pluginInstallProgress[pluginOperationKey('unsupported@m')]).toBe(
+        'error',
+      );
+      expect(store.getState().installErrors[pluginOperationKey('unsupported@m')]).toContain(
+        'Plugin writes unavailable',
+      );
+    });
+
     it('fills missing projectPath for local scope from the active Extensions project context', async () => {
       store.setState({
         cliStatus: makeReadyCliStatus(),
@@ -682,6 +745,7 @@ describe('extensionsSlice', () => {
 
   describe('uninstallPlugin', () => {
     it('sets progress to pending then success', async () => {
+      store.setState({ cliStatus: makeReadyCliStatus() });
       const plugins = [makePlugin({ pluginId: 'a@m', isInstalled: false })];
       (api.plugins!.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(plugins);
       (api.plugins!.uninstall as ReturnType<typeof vi.fn>).mockResolvedValue({ state: 'success' });
@@ -785,6 +849,7 @@ describe('extensionsSlice', () => {
 
   describe('installMcpServer', () => {
     it('sets progress to pending then success', async () => {
+      store.setState({ cliStatus: makeReadyCliStatus() });
       (api.mcpRegistry!.install as ReturnType<typeof vi.fn>).mockResolvedValue({ state: 'success' });
       (api.mcpRegistry!.getInstalled as ReturnType<typeof vi.fn>).mockResolvedValue([]);
       (api.mcpRegistry!.diagnose as ReturnType<typeof vi.fn>).mockResolvedValue([]);
@@ -840,10 +905,60 @@ describe('extensionsSlice', () => {
         store.getState().mcpInstallProgress[mcpOperationKey('test-id', 'project', '/tmp/project-a')]
       ).toBeUndefined();
     });
+
+    it('fails fast when multimodel runtime exposes MCP as read-only', async () => {
+      store.setState({
+        cliStatus: makeLimitedMultimodelCliStatus('mcp', 'MCP writes unavailable'),
+      });
+
+      await store.getState().installMcpServer({
+        registryId: 'test-id',
+        serverName: 'test-server',
+        scope: 'global',
+        envValues: {},
+        headers: [],
+      });
+
+      expect(api.mcpRegistry!.install).not.toHaveBeenCalled();
+      expect(store.getState().mcpInstallProgress[mcpOperationKey('test-id', 'global')]).toBe(
+        'error',
+      );
+      expect(store.getState().installErrors[mcpOperationKey('test-id', 'global')]).toContain(
+        'MCP writes unavailable',
+      );
+    });
+  });
+
+  describe('installCustomMcpServer', () => {
+    it('rejects and records an error when MCP writes are unavailable', async () => {
+      store.setState({
+        cliStatus: makeLimitedMultimodelCliStatus('mcp', 'MCP writes unavailable'),
+      });
+
+      await expect(
+        store.getState().installCustomMcpServer({
+          serverName: 'custom-server',
+          scope: 'global',
+          installSpec: {
+            type: 'stdio',
+            npmPackage: '@example/custom-mcp',
+          },
+          envValues: {},
+          headers: [],
+        }),
+      ).rejects.toThrow('MCP writes unavailable');
+
+      expect(api.mcpRegistry!.installCustom).not.toHaveBeenCalled();
+      expect(store.getState().mcpInstallProgress['mcp-custom:custom-server:global']).toBe('error');
+      expect(store.getState().installErrors['mcp-custom:custom-server:global']).toContain(
+        'MCP writes unavailable',
+      );
+    });
   });
 
   describe('uninstallMcpServer', () => {
     it('sets progress to pending then success', async () => {
+      store.setState({ cliStatus: makeReadyCliStatus() });
       (api.mcpRegistry!.uninstall as ReturnType<typeof vi.fn>).mockResolvedValue({ state: 'success' });
       (api.mcpRegistry!.getInstalled as ReturnType<typeof vi.fn>).mockResolvedValue([]);
       (api.mcpRegistry!.diagnose as ReturnType<typeof vi.fn>).mockResolvedValue([]);
@@ -857,6 +972,22 @@ describe('extensionsSlice', () => {
       await promise;
       expect(store.getState().mcpInstallProgress[mcpOperationKey('test-id', 'user')]).toBe(
         'success',
+      );
+    });
+
+    it('fails fast when multimodel runtime exposes MCP as read-only', async () => {
+      store.setState({
+        cliStatus: makeLimitedMultimodelCliStatus('mcp', 'MCP writes unavailable'),
+      });
+
+      await store.getState().uninstallMcpServer('test-id', 'test-server', 'global');
+
+      expect(api.mcpRegistry!.uninstall).not.toHaveBeenCalled();
+      expect(store.getState().mcpInstallProgress[mcpOperationKey('test-id', 'global')]).toBe(
+        'error',
+      );
+      expect(store.getState().installErrors[mcpOperationKey('test-id', 'global')]).toContain(
+        'MCP writes unavailable',
       );
     });
   });
