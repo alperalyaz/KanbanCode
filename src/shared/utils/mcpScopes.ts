@@ -8,6 +8,10 @@ export function getDefaultMcpSharedScope(flavor?: CliFlavor | null): McpSharedSc
   return flavor === 'agent_teams_orchestrator' ? 'global' : 'user';
 }
 
+export function isSharedMcpScope(scope?: string): scope is McpSharedScope {
+  return scope === 'user' || scope === 'global';
+}
+
 export function isProjectScopedMcpScope(scope?: string): scope is 'project' | 'local' {
   return scope === 'project' || scope === 'local';
 }

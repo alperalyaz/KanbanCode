@@ -29,6 +29,7 @@ import {
   getDefaultMcpSharedScope,
   getMcpScopeLabel,
   isProjectScopedMcpScope,
+  isSharedMcpScope,
 } from '@shared/utils/mcpScopes';
 import { Plus, Server, Trash2 } from 'lucide-react';
 
@@ -95,6 +96,8 @@ export const CustomMcpServerDialog = ({
   const [error, setError] = useState<string | null>(null);
   const [installing, setInstalling] = useState(false);
   const autoFilledValuesRef = useRef<Record<string, string>>({});
+  const wasOpenRef = useRef(false);
+  const previousDefaultSharedScopeRef = useRef<Scope>(defaultSharedScope);
   const envVarLookupNames = envVars
     .map((entry) => entry.key.trim())
     .filter(Boolean)
@@ -112,7 +115,8 @@ export const CustomMcpServerDialog = ({
 
   // Reset on open
   useEffect(() => {
-    if (open) {
+    const justOpened = open && !wasOpenRef.current;
+    if (justOpened) {
       setServerName('');
       setTransportMode('stdio');
       setScope(defaultSharedScope);
@@ -126,7 +130,29 @@ export const CustomMcpServerDialog = ({
       setInstalling(false);
       autoFilledValuesRef.current = {};
     }
+    wasOpenRef.current = open;
+    if (!open) {
+      previousDefaultSharedScopeRef.current = defaultSharedScope;
+    }
   }, [defaultSharedScope, open]);
+
+  useEffect(() => {
+    if (!open) {
+      previousDefaultSharedScopeRef.current = defaultSharedScope;
+      return;
+    }
+
+    const previousDefaultSharedScope = previousDefaultSharedScopeRef.current;
+    if (
+      previousDefaultSharedScope !== defaultSharedScope &&
+      scope === previousDefaultSharedScope &&
+      isSharedMcpScope(scope)
+    ) {
+      setScope(defaultSharedScope);
+    }
+
+    previousDefaultSharedScopeRef.current = defaultSharedScope;
+  }, [defaultSharedScope, open, scope]);
 
   useEffect(() => {
     if (open && isProjectScopedMcpScope(scope) && !projectPath) {

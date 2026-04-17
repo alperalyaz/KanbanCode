@@ -189,6 +189,63 @@ describe('CustomMcpServerDialog project scope', () => {
     });
   });
 
+  it('preserves entered values when multimodel scope metadata loads after open', async () => {
+    storeState.cliStatus = null;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(CustomMcpServerDialog, {
+          open: true,
+          onClose: vi.fn(),
+          projectPath: null,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const nameInput = host.querySelector('#custom-name') as HTMLInputElement;
+    const packageInput = host.querySelector('#custom-npm') as HTMLInputElement;
+    const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
+
+    await act(async () => {
+      setNativeValue(nameInput, 'late-hydration-server', 'input');
+      setNativeValue(packageInput, '@example/late-hydration', 'input');
+      await Promise.resolve();
+    });
+
+    expect(scopeSelect.value).toBe('user');
+
+    storeState.cliStatus = { flavor: 'agent_teams_orchestrator' };
+    await act(async () => {
+      root.render(
+        React.createElement(CustomMcpServerDialog, {
+          open: true,
+          onClose: vi.fn(),
+          projectPath: null,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect((host.querySelector('#custom-name') as HTMLInputElement).value).toBe(
+      'late-hydration-server'
+    );
+    expect((host.querySelector('#custom-npm') as HTMLInputElement).value).toBe(
+      '@example/late-hydration'
+    );
+    expect((host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement).value).toBe(
+      'global'
+    );
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('disables installation when the runtime declares MCP writes unavailable', async () => {
     storeState.cliStatus = {
       flavor: 'agent_teams_orchestrator',

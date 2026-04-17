@@ -29,6 +29,7 @@ import {
   getDefaultMcpSharedScope,
   getMcpScopeLabel,
   isProjectScopedMcpScope,
+  isSharedMcpScope,
 } from '@shared/utils/mcpScopes';
 import {
   getMcpInstallationSummaryLabel,
@@ -93,6 +94,7 @@ export const McpServerDetailDialog = ({
   const [imgError, setImgError] = useState(false);
   const [autoFilledFields, setAutoFilledFields] = useState<Set<string>>(new Set());
   const autoFilledValuesRef = useRef<Record<string, string>>({});
+  const previousDefaultSharedScopeRef = useRef<Scope>(defaultSharedScope);
   const normalizedInstalledEntries = installedEntries.length
     ? installedEntries
     : installedEntry
@@ -143,21 +145,34 @@ export const McpServerDetailDialog = ({
     setImgError(false);
     setAutoFilledFields(new Set());
     autoFilledValuesRef.current = {};
-  }, [
-    defaultSharedScope,
-    open,
-    preferredInstalledEntry?.name,
-    preferredInstalledEntry?.scope,
-    server?.id,
-  ]);
+  }, [open, preferredInstalledEntry?.name, preferredInstalledEntry?.scope, server?.id]);
 
   useEffect(() => {
-    if (!server || !open) {
+    if (!open) {
+      previousDefaultSharedScopeRef.current = defaultSharedScope;
       return;
     }
 
-    setServerName(selectedInstalledEntry?.name ?? sanitizeMcpServerName(server.name));
-  }, [open, scope, selectedInstalledEntry?.name, server]);
+    const previousDefaultSharedScope = previousDefaultSharedScopeRef.current;
+    if (
+      previousDefaultSharedScope !== defaultSharedScope &&
+      !preferredInstalledEntry &&
+      scope === previousDefaultSharedScope &&
+      isSharedMcpScope(scope)
+    ) {
+      setScope(defaultSharedScope);
+    }
+
+    previousDefaultSharedScopeRef.current = defaultSharedScope;
+  }, [defaultSharedScope, open, preferredInstalledEntry, scope]);
+
+  useEffect(() => {
+    if (!server || !open || !selectedInstalledEntry) {
+      return;
+    }
+
+    setServerName(selectedInstalledEntry.name);
+  }, [open, selectedInstalledEntry, server]);
 
   useEffect(() => {
     if (open && isProjectScopedMcpScope(scope) && !projectPath) {
