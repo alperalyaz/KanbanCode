@@ -27,6 +27,7 @@ import {
 } from '@renderer/utils/multimodelProviderVisibility';
 import { resolveProjectPathById } from '@renderer/utils/projectLookup';
 import { getExtensionActionDisableReason } from '@shared/utils/extensionNormalizers';
+import { getCliProviderExtensionCapabilities } from '@shared/utils/providerExtensionCapabilities';
 import { AlertTriangle, BookOpen, Info, Key, Plus, Puzzle, RefreshCw, Server } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -277,7 +278,8 @@ export const ExtensionStoreView = (): React.JSX.Element => {
                   : provider.supported
                     ? 'Needs setup'
                     : 'Unsupported';
-                const pluginStatus = provider.capabilities.extensions.plugins.status;
+                const extensionCapabilities = getCliProviderExtensionCapabilities(provider);
+                const pluginStatus = extensionCapabilities.plugins.status;
 
                 return (
                   <div
@@ -308,13 +310,10 @@ export const ExtensionStoreView = (): React.JSX.Element => {
                         Plugins: {formatCliExtensionCapabilityStatus(pluginStatus)}
                       </Badge>
                       <Badge variant="secondary">
-                        MCP:{' '}
-                        {formatCliExtensionCapabilityStatus(
-                          provider.capabilities.extensions.mcp.status
-                        )}
+                        MCP: {formatCliExtensionCapabilityStatus(extensionCapabilities.mcp.status)}
                       </Badge>
                       <Badge variant="secondary">
-                        Skills: {provider.capabilities.extensions.skills.ownership}
+                        Skills: {extensionCapabilities.skills.ownership}
                       </Badge>
                     </div>
                   </div>
