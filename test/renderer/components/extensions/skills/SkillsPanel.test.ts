@@ -168,6 +168,20 @@ function makeUserSkill(): SkillCatalogItem {
   };
 }
 
+function makeCodexSkill(): SkillCatalogItem {
+  return {
+    ...makeUserSkill(),
+    id: '/Users/me/.codex/skills/codex-helper',
+    name: 'Codex Helper',
+    description: 'Helps only Codex sessions',
+    folderName: 'codex-helper',
+    rootKind: 'codex',
+    discoveryRoot: '/Users/me/.codex/skills',
+    skillDir: '/Users/me/.codex/skills/codex-helper',
+    skillFile: '/Users/me/.codex/skills/codex-helper/SKILL.md',
+  };
+}
+
 function makeMultimodelStatus(
   overrides?: Partial<CliInstallationStatus>
 ): CliInstallationStatus {
@@ -367,6 +381,104 @@ describe('SkillsPanel', () => {
       'Shared skills in `.claude`, `.cursor`, and `.agents` are available to Anthropic.'
     );
     expect(host.textContent).not.toContain('available to both Anthropic and Codex');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('resets the codex-only quick filter when codex entries disappear', async () => {
+    storeState.cliStatus = makeMultimodelStatus({
+      providers: [
+        ...makeMultimodelStatus().providers,
+        {
+          providerId: 'codex',
+          displayName: 'Codex',
+          supported: true,
+          authenticated: true,
+          authMethod: 'api_key',
+          verificationState: 'verified',
+          statusMessage: 'Connected',
+          models: [],
+          canLoginFromUi: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+            extensions: {
+              plugins: { status: 'unsupported', ownership: 'provider', reason: null },
+              mcp: { status: 'supported', ownership: 'shared', reason: null },
+              skills: { status: 'supported', ownership: 'shared', reason: null },
+              apiKeys: { status: 'supported', ownership: 'shared', reason: null },
+            },
+          },
+          connection: null,
+          backend: null,
+        },
+      ],
+    });
+    storeState.skillsUserCatalog = [makeUserSkill(), makeCodexSkill()];
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillsPanel, {
+          projectPath: '/tmp/project-a',
+          projectLabel: 'Project A',
+          skillsSearchQuery: '',
+          setSkillsSearchQuery: vi.fn(),
+          skillsSort: 'name-asc',
+          setSkillsSort: vi.fn(),
+          selectedSkillId: null,
+          setSelectedSkillId: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const codexOnlyButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Codex only')
+    );
+    expect(codexOnlyButton).toBeDefined();
+
+    await act(async () => {
+      (codexOnlyButton as HTMLButtonElement).click();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Codex Helper');
+    expect(host.textContent).not.toContain('Review Helper');
+
+    storeState.cliStatus = {
+      ...storeState.cliStatus,
+      providers: storeState.cliStatus.providers.filter((provider) => provider.providerId !== 'codex'),
+    };
+    storeState.skillsUserCatalog = [makeUserSkill()];
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillsPanel, {
+          projectPath: '/tmp/project-a',
+          projectLabel: 'Project A',
+          skillsSearchQuery: '',
+          setSkillsSearchQuery: vi.fn(),
+          skillsSort: 'name-asc',
+          setSkillsSort: vi.fn(),
+          selectedSkillId: null,
+          setSelectedSkillId: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Review Helper');
+    expect(host.textContent).not.toContain('Codex Helper');
+    expect(host.textContent).not.toContain('No skills yet');
 
     await act(async () => {
       root.unmount();

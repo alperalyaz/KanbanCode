@@ -174,6 +174,12 @@ export const SkillsPanel = ({
     : null;
 
   useEffect(() => {
+    if (quickFilter === 'codex-only' && !showCodexOnlyUi) {
+      setQuickFilter('all');
+    }
+  }, [quickFilter, showCodexOnlyUi]);
+
+  useEffect(() => {
     if (!selectedSkillId) return;
     if (mergedSkills.some((skill) => skill.id === selectedSkillId)) return;
     setSelectedSkillId(null);
