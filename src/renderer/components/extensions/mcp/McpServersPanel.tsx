@@ -100,6 +100,7 @@ export const McpServersPanel = ({
     mcpDiagnosticsLastCheckedAtFallback,
     runMcpDiagnostics,
     cliStatus,
+    cliStatusLoading,
   } = useStore(
     useShallow((s) => ({
       browseCatalog: s.mcpBrowseCatalog,
@@ -120,6 +121,7 @@ export const McpServersPanel = ({
       mcpDiagnosticsLastCheckedAtFallback: s.mcpDiagnosticsLastCheckedAt,
       runMcpDiagnostics: s.runMcpDiagnostics,
       cliStatus: s.cliStatus,
+      cliStatusLoading: s.cliStatusLoading,
     }))
   );
   const installedServers =
@@ -144,9 +146,27 @@ export const McpServersPanel = ({
     }
   }, [browseCatalog.length, browseError, browseLoading, mcpBrowse]);
 
+  const diagnosticsDisableReason = useMemo(() => {
+    if (cliStatusLoading) {
+      return 'Checking runtime status...';
+    }
+
+    if (cliStatus?.installed === false) {
+      if (cliStatus.binaryPath && cliStatus.launchError) {
+        return 'The configured runtime was found but failed to start. Open the Dashboard to repair or reinstall it.';
+      }
+      return 'The configured runtime is required. Install or repair it from the Dashboard.';
+    }
+
+    return null;
+  }, [cliStatus, cliStatusLoading]);
+
   useEffect(() => {
+    if (diagnosticsDisableReason) {
+      return;
+    }
     void runMcpDiagnostics(projectPath ?? undefined);
-  }, [projectPath, runMcpDiagnostics]);
+  }, [diagnosticsDisableReason, projectPath, runMcpDiagnostics]);
 
   // Fetch GitHub stars after catalog loads (fire-and-forget)
   useEffect(() => {
@@ -240,6 +260,8 @@ export const McpServersPanel = ({
             <p className="text-xs text-text-muted">
               {mcpDiagnosticsLoading ? (
                 <>Checking installed MCP servers via {runtimeLabel} ...</>
+              ) : diagnosticsDisableReason ? (
+                diagnosticsDisableReason
               ) : mcpDiagnosticsLastCheckedAt ? (
                 `Last checked ${formatRelativeTime(new Date(mcpDiagnosticsLastCheckedAt).toISOString())}`
               ) : (
@@ -251,7 +273,7 @@ export const McpServersPanel = ({
             variant="outline"
             size="sm"
             onClick={() => void runMcpDiagnostics(projectPath ?? undefined)}
-            disabled={mcpDiagnosticsLoading}
+            disabled={mcpDiagnosticsLoading || Boolean(diagnosticsDisableReason)}
             className="whitespace-nowrap"
           >
             <RefreshCw
@@ -299,9 +321,7 @@ export const McpServersPanel = ({
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-text-muted">
-                Waiting for <code>{diagnosticsCommand}</code> results...
-              </p>
+              <p className="text-xs text-text-muted">Waiting for diagnostics results...</p>
             )}
           </div>
         )}

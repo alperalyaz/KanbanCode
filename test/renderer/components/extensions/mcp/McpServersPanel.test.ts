@@ -34,8 +34,12 @@ interface StoreState {
   mcpDiagnosticsLastCheckedAt: number | null;
   mcpDiagnosticsLastCheckedAtByProjectPath?: Record<string, number | null>;
   runMcpDiagnostics: ReturnType<typeof vi.fn>;
+  cliStatusLoading: boolean;
   cliStatus?: {
     flavor?: 'claude' | 'agent_teams_orchestrator';
+    installed?: boolean;
+    binaryPath?: string | null;
+    launchError?: string | null;
   };
 }
 
@@ -144,6 +148,7 @@ describe('McpServersPanel initial browse loading', () => {
     storeState.mcpDiagnosticsLastCheckedAt = null;
     storeState.mcpDiagnosticsLastCheckedAtByProjectPath = undefined;
     storeState.runMcpDiagnostics = vi.fn();
+    storeState.cliStatusLoading = false;
     storeState.cliStatus = undefined;
   });
 
@@ -303,6 +308,81 @@ describe('McpServersPanel initial browse loading', () => {
     expect(host.textContent).toContain('Configured runtime not available');
     expect(host.textContent).toContain('MCP health checks require the configured runtime');
     expect(host.textContent).not.toContain('Claude CLI not installed');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('does not auto-run diagnostics when the configured runtime is unavailable', async () => {
+    storeState.cliStatus = {
+      flavor: 'agent_teams_orchestrator',
+      installed: false,
+      binaryPath: null,
+      launchError: null,
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServersPanel, {
+          projectPath: null,
+          mcpSearchQuery: '',
+          mcpSearch: vi.fn(),
+          mcpSearchResults: [],
+          mcpSearchLoading: false,
+          mcpSearchWarnings: [],
+          selectedMcpServerId: null,
+          setSelectedMcpServerId: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(storeState.runMcpDiagnostics).not.toHaveBeenCalled();
+    expect(host.textContent).toContain(
+      'The configured runtime is required. Install or repair it from the Dashboard.'
+    );
+    const checkStatusButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Check Status')
+    );
+    expect(checkStatusButton).toBeDefined();
+    expect((checkStatusButton as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('renders provider-neutral waiting copy while diagnostics are still running', async () => {
+    storeState.mcpDiagnosticsLoading = true;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServersPanel, {
+          projectPath: null,
+          mcpSearchQuery: '',
+          mcpSearch: vi.fn(),
+          mcpSearchResults: [],
+          mcpSearchLoading: false,
+          mcpSearchWarnings: [],
+          selectedMcpServerId: null,
+          setSelectedMcpServerId: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Waiting for diagnostics results...');
 
     await act(async () => {
       root.unmount();
