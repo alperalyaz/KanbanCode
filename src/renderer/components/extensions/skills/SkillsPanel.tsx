@@ -10,6 +10,7 @@ import {
   formatSkillRootKind,
   getSkillAudience,
   getSkillAudienceLabel,
+  isCodexSkillOverlayAvailable,
 } from '@shared/utils/skillRoots';
 import {
   AlertTriangle,
@@ -126,11 +127,16 @@ export const SkillsPanel = ({
     () => [...projectSkills, ...userSkills],
     [projectSkills, userSkills]
   );
+  const codexSkillOverlayAvailable = useMemo(
+    () => isCodexSkillOverlayAvailable(cliStatus),
+    [cliStatus]
+  );
   const codexOnlySkillsCount = useMemo(
     () => mergedSkills.filter((skill) => getSkillAudience(skill.rootKind) === 'codex').length,
     [mergedSkills]
   );
   const sharedSkillsCount = mergedSkills.length - codexOnlySkillsCount;
+  const showCodexOnlyUi = codexSkillOverlayAvailable || codexOnlySkillsCount > 0;
   const selectedDetail = selectedSkillId ? (detailById[selectedSkillId] ?? null) : null;
   selectedSkillItemRef.current = selectedSkillId
     ? (selectedDetail?.item ?? mergedSkills.find((skill) => skill.id === selectedSkillId) ?? null)
@@ -266,8 +272,10 @@ export const SkillsPanel = ({
             </p>
             <p className="max-w-2xl text-xs leading-5 text-text-muted">
               Use personal skills for habits you want everywhere. Use project skills for workflows
-              that only make sense inside one codebase. Use `.codex` when a skill should stay
-              Codex-only.
+              that only make sense inside one codebase.
+              {codexSkillOverlayAvailable
+                ? ' Use `.codex` when a skill should stay Codex-only.'
+                : ' Existing `.codex` skills stay editable here, but new Codex-only skills need the Codex runtime enabled.'}
             </p>
           </div>
 
@@ -348,9 +356,11 @@ export const SkillsPanel = ({
               <Badge variant="secondary" className="font-normal">
                 {sharedSkillsCount} shared
               </Badge>
-              <Badge variant="secondary" className="font-normal">
-                {codexOnlySkillsCount} Codex only
-              </Badge>
+              {showCodexOnlyUi && (
+                <Badge variant="secondary" className="font-normal">
+                  {codexOnlySkillsCount} Codex only
+                </Badge>
+              )}
             </div>
           </div>
         </div>
@@ -363,7 +373,9 @@ export const SkillsPanel = ({
             ['project', 'Project'],
             ['personal', 'Personal'],
             ['shared', 'Shared'],
-            ['codex-only', 'Codex only'],
+            ...(showCodexOnlyUi
+              ? ([['codex-only', 'Codex only']] as [SkillsQuickFilter, string][])
+              : []),
             ['needs-attention', 'Needs attention'],
             ['has-scripts', 'Has scripts'],
           ] as [SkillsQuickFilter, string][]
@@ -616,6 +628,7 @@ export const SkillsPanel = ({
         mode="create"
         projectPath={projectPath}
         projectLabel={projectLabel}
+        allowCodexRootKind={codexSkillOverlayAvailable}
         detail={null}
         onClose={() => setCreateOpen(false)}
         onSaved={(skillId) => {
@@ -631,6 +644,7 @@ export const SkillsPanel = ({
         mode="edit"
         projectPath={projectPath}
         projectLabel={projectLabel}
+        allowCodexRootKind={codexSkillOverlayAvailable}
         detail={editingDetail}
         onClose={() => {
           setEditOpen(false);
@@ -648,6 +662,7 @@ export const SkillsPanel = ({
         open={importOpen}
         projectPath={projectPath}
         projectLabel={projectLabel}
+        allowCodexRootKind={codexSkillOverlayAvailable}
         onClose={() => setImportOpen(false)}
         onImported={(skillId) => {
           setImportOpen(false);

@@ -56,6 +56,7 @@ interface SkillImportDialogProps {
   open: boolean;
   projectPath: string | null;
   projectLabel: string | null;
+  allowCodexRootKind: boolean;
   onClose: () => void;
   onImported: (skillId: string | null) => void;
 }
@@ -64,6 +65,7 @@ export const SkillImportDialog = ({
   open,
   projectPath,
   projectLabel,
+  allowCodexRootKind,
   onClose,
   onImported,
 }: SkillImportDialogProps): React.JSX.Element => {
@@ -119,6 +121,16 @@ export const SkillImportDialog = ({
       setScope('user');
     }
   }, [open, projectPath, scope]);
+
+  useEffect(() => {
+    if (open && rootKind === 'codex' && !allowCodexRootKind) {
+      setRootKind('claude');
+    }
+  }, [allowCodexRootKind, open, rootKind]);
+
+  const visibleRootDefinitions = SKILL_ROOT_DEFINITIONS.filter(
+    (definition) => definition.rootKind !== 'codex' || allowCodexRootKind
+  );
 
   async function handleChooseFolder(): Promise<void> {
     const selected = await api.config.selectFolders();
@@ -280,7 +292,7 @@ export const SkillImportDialog = ({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {SKILL_ROOT_DEFINITIONS.map((definition) => (
+                        {visibleRootDefinitions.map((definition) => (
                           <SelectItem key={definition.rootKind} value={definition.rootKind}>
                             {definition.directoryName}
                             {definition.audience === 'codex' ? ' - Codex only' : ' - Shared'}

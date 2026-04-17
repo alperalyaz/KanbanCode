@@ -52,6 +52,7 @@ interface SkillEditorDialogProps {
   mode: EditorMode;
   projectPath: string | null;
   projectLabel: string | null;
+  allowCodexRootKind: boolean;
   detail: SkillDetail | null;
   onClose: () => void;
   onSaved: (skillId: string | null) => void;
@@ -70,6 +71,7 @@ export const SkillEditorDialog = ({
   mode,
   projectPath,
   projectLabel,
+  allowCodexRootKind,
   detail,
   onClose,
   onSaved,
@@ -220,7 +222,7 @@ export const SkillEditorDialog = ({
     setReviewLoading(false);
     setSaveLoading(false);
     setMutationError(null);
-  }, [detail, mode, open, projectPath]);
+  }, [allowCodexRootKind, detail, mode, open, projectPath]);
 
   useEffect(() => {
     if (open) {
@@ -239,6 +241,12 @@ export const SkillEditorDialog = ({
       setScope('user');
     }
   }, [mode, open, projectPath, scope]);
+
+  useEffect(() => {
+    if (open && mode === 'create' && rootKind === 'codex' && !allowCodexRootKind) {
+      setRootKind('claude');
+    }
+  }, [allowCodexRootKind, mode, open, rootKind]);
 
   useEffect(() => {
     rawContentRef.current = rawContent;
@@ -291,6 +299,14 @@ export const SkillEditorDialog = ({
   );
 
   const canUseProjectScope = Boolean(projectPath);
+  const visibleRootDefinitions = useMemo(
+    () =>
+      SKILL_ROOT_DEFINITIONS.filter(
+        (definition) =>
+          definition.rootKind !== 'codex' || allowCodexRootKind || detail?.item.rootKind === 'codex'
+      ),
+    [allowCodexRootKind, detail?.item.rootKind]
+  );
   const instructionsLocked = manualRawEdit || customMarkdownDetected;
   const title = mode === 'create' ? 'Create skill' : 'Edit skill';
   const descriptionText =
@@ -436,7 +452,7 @@ export const SkillEditorDialog = ({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {SKILL_ROOT_DEFINITIONS.map((definition) => (
+                        {visibleRootDefinitions.map((definition) => (
                           <SelectItem key={definition.rootKind} value={definition.rootKind}>
                             {definition.directoryName}
                             {definition.audience === 'codex' ? ' - Codex only' : ' - Shared'}

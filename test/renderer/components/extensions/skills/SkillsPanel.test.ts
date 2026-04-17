@@ -2,6 +2,7 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { CliInstallationStatus } from '@shared/types';
 import type { SkillCatalogItem } from '@shared/types/extensions';
 
 interface StoreState {
@@ -12,6 +13,7 @@ interface StoreState {
   skillsDetailsById: Record<string, unknown>;
   skillsUserCatalog: SkillCatalogItem[];
   skillsProjectCatalogByProjectPath: Record<string, SkillCatalogItem[]>;
+  cliStatus: CliInstallationStatus | null;
 }
 
 const storeState = {} as StoreState;
@@ -107,11 +109,19 @@ vi.mock('@renderer/components/extensions/skills/SkillDetailDialog', () => ({
 }));
 
 vi.mock('@renderer/components/extensions/skills/SkillEditorDialog', () => ({
-  SkillEditorDialog: () => null,
+  SkillEditorDialog: ({ allowCodexRootKind }: { allowCodexRootKind: boolean }) =>
+    React.createElement('div', {
+      'data-testid': 'skill-editor-dialog',
+      'data-allow-codex-root-kind': String(allowCodexRootKind),
+    }),
 }));
 
 vi.mock('@renderer/components/extensions/skills/SkillImportDialog', () => ({
-  SkillImportDialog: () => null,
+  SkillImportDialog: ({ allowCodexRootKind }: { allowCodexRootKind: boolean }) =>
+    React.createElement('div', {
+      'data-testid': 'skill-import-dialog',
+      'data-allow-codex-root-kind': String(allowCodexRootKind),
+    }),
 }));
 
 vi.mock('lucide-react', () => {
@@ -170,6 +180,22 @@ describe('SkillsPanel', () => {
     storeState.skillsProjectCatalogByProjectPath = {
       '/tmp/project-a': [],
     };
+    storeState.cliStatus = {
+      flavor: 'claude',
+      displayName: 'Claude CLI',
+      supportsSelfUpdate: true,
+      showVersionDetails: true,
+      showBinaryPath: true,
+      installed: true,
+      installedVersion: '1.0.0',
+      binaryPath: '/usr/local/bin/claude',
+      latestVersion: '1.0.0',
+      updateAvailable: false,
+      authLoggedIn: true,
+      authStatusChecking: false,
+      authMethod: 'oauth',
+      providers: [],
+    };
     startWatchingMock.mockReset();
     stopWatchingMock.mockReset();
     onChangedMock.mockReset();
@@ -226,6 +252,41 @@ describe('SkillsPanel', () => {
 
     expect(storeState.fetchSkillsCatalog).toHaveBeenCalledWith('/tmp/project-a');
     expect(storeState.fetchSkillDetail).toHaveBeenCalledWith(skill.id, undefined);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('hides codex-only create and import affordances when codex runtime is unavailable', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillsPanel, {
+          projectPath: '/tmp/project-a',
+          projectLabel: 'Project A',
+          skillsSearchQuery: '',
+          setSkillsSearchQuery: vi.fn(),
+          skillsSort: 'name-asc',
+          setSkillsSort: vi.fn(),
+          selectedSkillId: null,
+          setSelectedSkillId: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).not.toContain('Codex only');
+    for (const node of host.querySelectorAll('[data-testid="skill-editor-dialog"]')) {
+      expect(node.getAttribute('data-allow-codex-root-kind')).toBe('false');
+    }
+    const importDialog = host.querySelector('[data-testid="skill-import-dialog"]');
+    expect(importDialog?.getAttribute('data-allow-codex-root-kind')).toBe('false');
 
     await act(async () => {
       root.unmount();

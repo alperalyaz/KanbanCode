@@ -1,4 +1,10 @@
+import {
+  getCliProviderExtensionCapability,
+  isCliExtensionCapabilityAvailable,
+} from './providerExtensionCapabilities';
+
 import type { TeamProviderId } from '@shared/types';
+import type { CliInstallationStatus } from '@shared/types';
 import type { SkillRootKind } from '@shared/types/extensions';
 
 export type SkillAudience = 'shared' | 'codex';
@@ -58,4 +64,21 @@ export function isSkillAvailableForProvider(
   providerId?: TeamProviderId
 ): boolean {
   return getSkillAudience(rootKind) === 'shared' || providerId === 'codex';
+}
+
+export function isCodexSkillOverlayAvailable(
+  cliStatus: Pick<CliInstallationStatus, 'flavor' | 'providers'> | null | undefined
+): boolean {
+  if (cliStatus?.flavor !== 'agent_teams_orchestrator') {
+    return false;
+  }
+
+  const codexProvider = cliStatus.providers.find((provider) => provider.providerId === 'codex');
+  if (!codexProvider?.supported) {
+    return false;
+  }
+
+  return isCliExtensionCapabilityAvailable(
+    getCliProviderExtensionCapability(codexProvider, 'skills')
+  );
 }
