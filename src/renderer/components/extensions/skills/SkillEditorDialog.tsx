@@ -482,7 +482,7 @@ export const SkillEditorDialog = ({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="skill-invocation">How Claude should use it</Label>
+                    <Label htmlFor="skill-invocation">How it should be used</Label>
                     <Select
                       value={invocationMode}
                       onValueChange={(value) => {
@@ -495,7 +495,7 @@ export const SkillEditorDialog = ({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="auto">Claude can use it automatically</SelectItem>
+                        <SelectItem value="auto">Can be used automatically</SelectItem>
                         <SelectItem value="manual-only">Only when you ask for it</SelectItem>
                       </SelectContent>
                     </Select>
@@ -575,7 +575,7 @@ export const SkillEditorDialog = ({
 
                     <div className="grid gap-3">
                       <div className="space-y-2">
-                        <Label htmlFor="skill-when-to-use">When Claude should reach for this</Label>
+                        <Label htmlFor="skill-when-to-use">When to reach for this</Label>
                         <Textarea
                           id="skill-when-to-use"
                           value={whenToUse}
@@ -591,7 +591,7 @@ export const SkillEditorDialog = ({
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="skill-steps">Main steps Claude should follow</Label>
+                        <Label htmlFor="skill-steps">Main steps to follow</Label>
                         <Textarea
                           id="skill-steps"
                           value={steps}
@@ -666,7 +666,7 @@ export const SkillEditorDialog = ({
                       <div>
                         <p className="font-medium text-text">References</p>
                         <p className="mt-1 text-xs text-text-muted">
-                          Add supporting docs, links, or examples that Claude can look at.
+                          Add supporting docs, links, or examples the runtime can look at.
                         </p>
                       </div>
                     </label>

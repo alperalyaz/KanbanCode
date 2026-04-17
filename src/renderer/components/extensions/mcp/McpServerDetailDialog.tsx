@@ -118,6 +118,8 @@ export const McpServerDetailDialog = ({
       .map((entry) => entry.name)
       .sort()
       .join('\0') ?? '';
+  const statusSectionLabel =
+    cliStatus?.flavor === 'agent_teams_orchestrator' ? 'Runtime Status' : 'Claude Status';
   const apiKeyLookupProjectPath = isProjectScopedMcpScope(scope)
     ? (projectPath ?? undefined)
     : undefined;
@@ -409,7 +411,7 @@ export const McpServerDetailDialog = ({
         {isInstalledForScope && (
           <div className="space-y-2 rounded-md border border-border bg-surface-raised px-4 py-3">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm font-medium text-text">Claude Status</span>
+              <span className="text-sm font-medium text-text">{statusSectionLabel}</span>
               {diagnosticsLoading && !diagnostic ? (
                 <Badge
                   className="border-border bg-surface-raised text-text-muted"

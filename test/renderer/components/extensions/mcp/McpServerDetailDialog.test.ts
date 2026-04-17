@@ -425,6 +425,42 @@ describe('McpServerDetailDialog installed entry handling', () => {
     });
   });
 
+  it('uses a runtime-aware status label in multimodel mode', async () => {
+    storeState.cliStatus = { flavor: 'agent_teams_orchestrator' };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const installedEntry: InstalledMcpEntry = {
+      name: 'context7-global',
+      scope: 'global',
+    };
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServerDetailDialog, {
+          server: makeServer(),
+          isInstalled: true,
+          installedEntry,
+          installedEntries: [installedEntry],
+          diagnostic: null,
+          diagnosticsLoading: false,
+          projectPath: null,
+          open: true,
+          onClose: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Runtime Status');
+    expect(host.textContent).not.toContain('Claude Status');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('preserves edited fields when multimodel scope metadata loads after open', async () => {
     storeState.cliStatus = null;
     const host = document.createElement('div');

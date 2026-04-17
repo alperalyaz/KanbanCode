@@ -192,7 +192,7 @@ export const SkillDetailDialog = ({
               </div>
               <div className="space-y-1">
                 <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-                  How Claude uses it
+                  How it is used
                 </p>
                 <p className="text-sm text-text">{formatInvocationLabel(item.invocationMode)}</p>
               </div>
