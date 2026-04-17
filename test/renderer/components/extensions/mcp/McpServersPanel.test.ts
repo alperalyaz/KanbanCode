@@ -75,19 +75,14 @@ vi.mock('@renderer/components/ui/select', () => ({
   SelectTrigger: ({ children }: React.PropsWithChildren) =>
     React.createElement('button', { type: 'button' }, children),
   SelectValue: () => React.createElement('span', null, 'select-value'),
-  SelectContent: ({ children }: React.PropsWithChildren) => React.createElement('div', null, children),
+  SelectContent: ({ children }: React.PropsWithChildren) =>
+    React.createElement('div', null, children),
   SelectItem: ({ children }: React.PropsWithChildren<{ value: string }>) =>
     React.createElement('button', { type: 'button' }, children),
 }));
 
 vi.mock('@renderer/components/extensions/common/SearchInput', () => ({
-  SearchInput: ({
-    value,
-    onChange,
-  }: {
-    value: string;
-    onChange: (value: string) => void;
-  }) =>
+  SearchInput: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
     React.createElement('input', {
       value,
       onChange: (event: React.ChangeEvent<HTMLInputElement>) => onChange(event.target.value),
@@ -96,7 +91,11 @@ vi.mock('@renderer/components/extensions/common/SearchInput', () => ({
 
 vi.mock('@renderer/components/extensions/mcp/McpServerCard', () => ({
   McpServerCard: ({ server }: { server: { id: string; name: string } }) =>
-    React.createElement('div', { 'data-testid': 'mcp-card', 'data-server-id': server.id }, server.name),
+    React.createElement(
+      'div',
+      { 'data-testid': 'mcp-card', 'data-server-id': server.id },
+      server.name
+    ),
 }));
 
 vi.mock('@renderer/components/extensions/mcp/McpServerDetailDialog', () => ({
@@ -218,6 +217,50 @@ describe('McpServersPanel initial browse loading', () => {
     });
 
     expect(storeState.mcpBrowse).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('uses truthful diagnostics copy instead of suggesting a hard-coded CLI command', async () => {
+    storeState.mcpBrowseCatalog = [
+      {
+        id: 'context7',
+        name: 'Context7',
+        description: 'Docs MCP',
+        source: 'official',
+        installSpec: null,
+        envVars: [],
+        tools: [],
+        requiresAuth: false,
+      },
+    ];
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServersPanel, {
+          projectPath: null,
+          mcpSearchQuery: '',
+          mcpSearch: vi.fn(),
+          mcpSearchResults: [],
+          mcpSearchLoading: false,
+          mcpSearchWarnings: [],
+          selectedMcpServerId: null,
+          setSelectedMcpServerId: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Run diagnostics from this page');
+    expect(host.textContent).not.toContain('claude-multimodel mcp diagnose');
+    expect(host.textContent).not.toContain('claude mcp list');
 
     await act(async () => {
       root.unmount();

@@ -219,10 +219,6 @@ export const McpServersPanel = ({
   const displayServers = useMemo(() => sortMcpServers(rawServers, mcpSort), [rawServers, mcpSort]);
   const runtimeLabel =
     cliStatus?.flavor === 'agent_teams_orchestrator' ? 'multimodel runtime' : 'Claude CLI';
-  const diagnosticsCommand =
-    cliStatus?.flavor === 'agent_teams_orchestrator'
-      ? 'claude-multimodel mcp diagnose'
-      : 'claude mcp list';
 
   // Find selected server (search in both lists to avoid losing selection during search toggle)
   const selectedServer = useMemo(() => {
@@ -247,10 +243,7 @@ export const McpServersPanel = ({
               ) : mcpDiagnosticsLastCheckedAt ? (
                 `Last checked ${formatRelativeTime(new Date(mcpDiagnosticsLastCheckedAt).toISOString())}`
               ) : (
-                <>
-                  Run diagnostics (<code>{diagnosticsCommand}</code>) to verify installed MCP
-                  connectivity.
-                </>
+                <>Run diagnostics from this page to verify installed MCP connectivity.</>
               )}
             </p>
           </div>
