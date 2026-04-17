@@ -93,7 +93,16 @@ describe('ClaudeMultimodelBridgeService', () => {
                 authMethod: 'oauth_token',
                 verificationState: 'verified',
                 canLoginFromUi: true,
-                capabilities: { teamLaunch: true, oneShot: true },
+                capabilities: {
+                  teamLaunch: true,
+                  oneShot: true,
+                  extensions: {
+                    plugins: { status: 'supported', ownership: 'shared', reason: null },
+                    mcp: { status: 'supported', ownership: 'shared', reason: null },
+                    skills: { status: 'supported', ownership: 'shared', reason: null },
+                    apiKeys: { status: 'supported', ownership: 'shared', reason: null },
+                  },
+                },
                 backend: { kind: 'anthropic', label: 'Anthropic' },
               },
               codex: {
@@ -102,7 +111,20 @@ describe('ClaudeMultimodelBridgeService', () => {
                 verificationState: 'verified',
                 canLoginFromUi: true,
                 statusMessage: 'Not connected',
-                capabilities: { teamLaunch: true, oneShot: true },
+                capabilities: {
+                  teamLaunch: true,
+                  oneShot: true,
+                  extensions: {
+                    plugins: {
+                      status: 'unsupported',
+                      ownership: 'shared',
+                      reason: 'Anthropic only',
+                    },
+                    mcp: { status: 'supported', ownership: 'shared', reason: null },
+                    skills: { status: 'supported', ownership: 'shared', reason: null },
+                    apiKeys: { status: 'supported', ownership: 'shared', reason: null },
+                  },
+                },
                 backend: { kind: 'openai', label: 'OpenAI' },
               },
             },
@@ -166,6 +188,15 @@ describe('ClaudeMultimodelBridgeService', () => {
       authenticated: false,
       models: ['gpt-5-codex'],
       statusMessage: 'Not connected',
+      capabilities: {
+        extensions: {
+          plugins: {
+            status: 'unsupported',
+            ownership: 'shared',
+            reason: 'Anthropic only',
+          },
+        },
+      },
     });
     expect(providers[2]).toMatchObject({
       providerId: 'gemini',

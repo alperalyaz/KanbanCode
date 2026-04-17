@@ -239,8 +239,13 @@ function getMcpHealthDiagnostics(): McpHealthDiagnosticsService {
   return mcpHealthDiagnostics;
 }
 
-async function handleMcpDiagnose(): Promise<IpcResult<McpServerDiagnostic[]>> {
-  return wrapHandler('mcpDiagnose', () => getMcpHealthDiagnostics().diagnose());
+async function handleMcpDiagnose(
+  _event: IpcMainInvokeEvent,
+  projectPath?: string
+): Promise<IpcResult<McpServerDiagnostic[]>> {
+  return wrapHandler('mcpDiagnose', () =>
+    getMcpHealthDiagnostics().diagnose(typeof projectPath === 'string' ? projectPath : undefined)
+  );
 }
 
 // ── Install/Uninstall Handlers ────────────────────────────────────────────

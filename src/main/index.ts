@@ -84,6 +84,7 @@ import {
   SkillsCatalogService,
   SkillsMutationService,
   SkillsWatcherService,
+  createExtensionsRuntimeAdapter,
 } from './services/extensions';
 import { startEventLoopLagMonitor } from './services/infrastructure/EventLoopLagMonitor';
 import { HttpServer } from './services/infrastructure/HttpServer';
@@ -871,8 +872,9 @@ async function initializeServices(): Promise<void> {
   const officialMcpRegistry = new OfficialMcpRegistryService();
   const glamaMcpService = new GlamaMcpEnrichmentService();
   const mcpAggregator = new McpCatalogAggregator(officialMcpRegistry, glamaMcpService);
-  const mcpStateService = new McpInstallationStateService();
-  const mcpHealthDiagnosticsService = new McpHealthDiagnosticsService();
+  const extensionsRuntimeAdapter = createExtensionsRuntimeAdapter();
+  const mcpStateService = new McpInstallationStateService(extensionsRuntimeAdapter);
+  const mcpHealthDiagnosticsService = new McpHealthDiagnosticsService(extensionsRuntimeAdapter);
   const skillsCatalogService = new SkillsCatalogService();
   const skillsMutationService = new SkillsMutationService();
   skillsWatcherService = new SkillsWatcherService();
@@ -884,8 +886,11 @@ async function initializeServices(): Promise<void> {
   );
 
   // Install services — resolve binary dynamically via ClaudeBinaryResolver
-  const pluginInstallService = new PluginInstallService(pluginCatalogService);
-  const mcpInstallService = new McpInstallService(mcpAggregator);
+  const pluginInstallService = new PluginInstallService(
+    pluginCatalogService,
+    extensionsRuntimeAdapter
+  );
+  const mcpInstallService = new McpInstallService(mcpAggregator, extensionsRuntimeAdapter);
   const apiKeyService = new ApiKeyService();
   await apiKeyService.syncProcessEnv(RUNTIME_MANAGED_API_KEY_ENV_VARS);
   // warmup() and ensureInstalled() are deferred to after window creation

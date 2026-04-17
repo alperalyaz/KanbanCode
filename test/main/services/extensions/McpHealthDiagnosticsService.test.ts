@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { parseMcpDiagnosticsOutput } from '@main/services/extensions/state/McpHealthDiagnosticsService';
+import {
+  McpHealthDiagnosticsService,
+  parseMcpDiagnosticsJsonOutput,
+  parseMcpDiagnosticsOutput,
+} from '@main/services/extensions/state/McpHealthDiagnosticsService';
 
 describe('parseMcpDiagnosticsOutput', () => {
   it('parses mixed MCP health lines from claude mcp list', () => {
@@ -39,5 +43,66 @@ random log line
 another log line`);
 
     expect(diagnostics).toEqual([]);
+  });
+
+  it('parses structured multimodel MCP diagnostics JSON', () => {
+    const diagnostics = parseMcpDiagnosticsJsonOutput(
+      JSON.stringify({
+        checkedAt: '2026-04-17T10:00:00.000Z',
+        diagnostics: [
+          {
+            name: 'context7',
+            target: 'npx -y @upstash/context7-mcp',
+            status: 'connected',
+            statusLabel: 'Connected',
+          },
+          {
+            name: 'tavily',
+            target: 'https://mcp.tavily.com/mcp',
+            status: 'timeout',
+            statusLabel: 'Timed out',
+          },
+        ],
+      })
+    );
+
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        name: 'context7',
+        status: 'connected',
+        statusLabel: 'Connected',
+      }),
+      expect.objectContaining({
+        name: 'tavily',
+        status: 'failed',
+        statusLabel: 'Timed out',
+      }),
+    ]);
+  });
+});
+
+describe('McpHealthDiagnosticsService', () => {
+  it('delegates diagnostics to the active runtime adapter', async () => {
+    const diagnoseMcp = vi.fn().mockResolvedValue([
+      {
+        name: 'context7',
+        target: 'npx -y @upstash/context7-mcp',
+        status: 'connected',
+        statusLabel: 'Connected',
+        rawLine: 'context7: npx -y @upstash/context7-mcp - Connected',
+        checkedAt: 1,
+      },
+    ]);
+    const service = new McpHealthDiagnosticsService({
+      flavor: 'agent_teams_orchestrator',
+      buildManagementCliEnv: vi.fn(),
+      getInstalledMcp: vi.fn(),
+      diagnoseMcp,
+    });
+
+    await expect(service.diagnose('/tmp/project-a')).resolves.toEqual([
+      expect.objectContaining({ name: 'context7' }),
+    ]);
+    expect(diagnoseMcp).toHaveBeenCalledWith('/tmp/project-a');
   });
 });

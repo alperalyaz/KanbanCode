@@ -9,12 +9,14 @@
 
 import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
 import { execCli } from '@main/utils/childProcess';
-import { buildEnrichedEnv } from '@main/utils/cliEnv';
 import { CLI_NOT_FOUND_MESSAGE } from '@shared/constants/cli';
 import { createLogger } from '@shared/utils/logger';
 import path from 'path';
 
+import { createExtensionsRuntimeAdapter } from '../runtime/ExtensionsRuntimeAdapter';
+
 import type { McpCatalogAggregator } from '../catalog/McpCatalogAggregator';
+import type { ExtensionsRuntimeAdapter } from '../runtime/ExtensionsRuntimeAdapter';
 import type {
   McpCustomInstallRequest,
   McpInstallRequest,
@@ -42,7 +44,10 @@ function scopeRequiresProjectPath(scope?: string): boolean {
 }
 
 export class McpInstallService {
-  constructor(private readonly aggregator: McpCatalogAggregator) {}
+  constructor(
+    private readonly aggregator: McpCatalogAggregator,
+    private readonly runtimeAdapter: ExtensionsRuntimeAdapter = createExtensionsRuntimeAdapter()
+  ) {}
 
   async install(request: McpInstallRequest): Promise<OperationResult> {
     const { registryId, serverName, scope, projectPath, envValues, headers } = request;
@@ -180,11 +185,12 @@ export class McpInstallService {
           error: CLI_NOT_FOUND_MESSAGE,
         };
       }
+      const env = await this.runtimeAdapter.buildManagementCliEnv(claudeBinary);
 
       const { stderr } = await execCli(claudeBinary, args, {
         timeout: TIMEOUT_MS,
         cwd: projectPath,
-        env: buildEnrichedEnv(claudeBinary),
+        env,
       });
 
       if (stderr) {
@@ -295,11 +301,12 @@ export class McpInstallService {
           error: CLI_NOT_FOUND_MESSAGE,
         };
       }
+      const env = await this.runtimeAdapter.buildManagementCliEnv(claudeBinary);
 
       const { stderr } = await execCli(claudeBinary, args, {
         timeout: TIMEOUT_MS,
         cwd: projectPath,
-        env: buildEnrichedEnv(claudeBinary),
+        env,
       });
 
       if (stderr) {
@@ -364,11 +371,12 @@ export class McpInstallService {
           error: CLI_NOT_FOUND_MESSAGE,
         };
       }
+      const env = await this.runtimeAdapter.buildManagementCliEnv(claudeBinary);
 
       await execCli(claudeBinary, args, {
         timeout: TIMEOUT_MS,
         cwd: projectPath,
-        env: buildEnrichedEnv(claudeBinary),
+        env,
       });
       return { state: 'success' };
     } catch (err) {

@@ -1578,7 +1578,8 @@ const electronAPI: ElectronAPI = {
       invokeIpcWithResult<McpCatalogItem | null>(MCP_REGISTRY_GET_BY_ID, registryId),
     getInstalled: (projectPath?: string) =>
       invokeIpcWithResult<InstalledMcpEntry[]>(MCP_REGISTRY_GET_INSTALLED, projectPath),
-    diagnose: () => invokeIpcWithResult<McpServerDiagnostic[]>(MCP_REGISTRY_DIAGNOSE),
+    diagnose: (projectPath?: string) =>
+      invokeIpcWithResult<McpServerDiagnostic[]>(MCP_REGISTRY_DIAGNOSE, projectPath),
     install: (request: McpInstallRequest) =>
       invokeIpcWithResult<OperationResult>(MCP_REGISTRY_INSTALL, request),
     installCustom: (request: McpCustomInstallRequest) =>
