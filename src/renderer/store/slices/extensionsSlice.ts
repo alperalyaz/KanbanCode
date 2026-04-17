@@ -90,7 +90,7 @@ export interface ExtensionsSlice {
   fetchPluginReadme: (pluginId: string) => void;
   mcpBrowse: (cursor?: string) => Promise<void>;
   mcpFetchInstalled: (projectPath?: string) => Promise<void>;
-  runMcpDiagnostics: () => Promise<void>;
+  runMcpDiagnostics: (projectPath?: string) => Promise<void>;
   fetchSkillsCatalog: (projectPath?: string) => Promise<void>;
   fetchSkillDetail: (skillId: string, projectPath?: string) => Promise<void>;
   previewSkillUpsert: (request: SkillUpsertRequest) => Promise<SkillReviewPreview>;
@@ -375,7 +375,8 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
     const requestSeq = ++pluginCatalogRequestSeq;
     set({ pluginCatalogLoading: true, pluginCatalogError: null });
 
-    const promise = (async () => {
+    let currentPromise: Promise<void> | null = null;
+    currentPromise = (async () => {
       try {
         const result = await api.plugins!.getAll(projectPath, forceRefresh);
         set((prev) => {
@@ -431,14 +432,14 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
           };
         });
       } finally {
-        if (pluginFetchInFlight?.promise === promise) {
+        if (currentPromise && pluginFetchInFlight?.promise === currentPromise) {
           pluginFetchInFlight = null;
         }
       }
     })();
 
-    pluginFetchInFlight = { key: requestKey, promise };
-    await promise;
+    pluginFetchInFlight = { key: requestKey, promise: currentPromise };
+    await currentPromise;
   },
 
   // ── Plugin README fetch ──
@@ -537,7 +538,7 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
     }
   },
 
-  runMcpDiagnostics: async () => {
+  runMcpDiagnostics: async (projectPath?: string) => {
     const mcpRegistry = api.mcpRegistry;
     if (!mcpRegistry) return;
 
@@ -550,7 +551,7 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
 
     const promise = (async () => {
       try {
-        const diagnostics = await mcpRegistry.diagnose();
+        const diagnostics = await mcpRegistry.diagnose(projectPath);
         set({
           mcpDiagnostics: Object.fromEntries(
             diagnostics.map((entry) => [entry.name, entry] as const)
@@ -960,7 +961,7 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
 
       await Promise.all([
         get().mcpFetchInstalled(get().mcpInstalledProjectPath ?? undefined),
-        get().runMcpDiagnostics(),
+        get().runMcpDiagnostics(get().mcpInstalledProjectPath ?? undefined),
       ]);
 
       set((prev) => ({
@@ -1008,7 +1009,7 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
 
       await Promise.all([
         get().mcpFetchInstalled(get().mcpInstalledProjectPath ?? undefined),
-        get().runMcpDiagnostics(),
+        get().runMcpDiagnostics(get().mcpInstalledProjectPath ?? undefined),
       ]);
 
       set((prev) => ({
@@ -1064,7 +1065,7 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
 
       await Promise.all([
         get().mcpFetchInstalled(get().mcpInstalledProjectPath ?? undefined),
-        get().runMcpDiagnostics(),
+        get().runMcpDiagnostics(get().mcpInstalledProjectPath ?? undefined),
       ]);
 
       set((prev) => ({
@@ -1116,7 +1117,7 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
     try {
       await api.apiKeys.save(request);
       // Refresh the list to get updated masked values
-      const keys = await api.apiKeys.list();
+      const [keys] = await Promise.all([api.apiKeys.list(), get().fetchCliStatus()]);
       set({ apiKeys: keys, apiKeySaving: false });
     } catch (err) {
       set({
@@ -1133,6 +1134,7 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
 
     try {
       await api.apiKeys.delete(id);
+      await get().fetchCliStatus();
       set((prev) => ({
         apiKeys: prev.apiKeys.filter((k) => k.id !== id),
       }));

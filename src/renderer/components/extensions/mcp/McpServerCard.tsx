@@ -258,6 +258,7 @@ export const McpServerCard = ({
             <InstallButton
               state={installProgress}
               isInstalled={isInstalled}
+              section="mcp"
               onInstall={() =>
                 installMcpServer({
                   registryId: server.id,

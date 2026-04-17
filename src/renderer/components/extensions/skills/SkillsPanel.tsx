@@ -94,6 +94,7 @@ export const SkillsPanel = ({
   const catalogKey = projectPath ?? USER_SKILLS_CATALOG_KEY;
   const fetchSkillsCatalog = useStore((s) => s.fetchSkillsCatalog);
   const fetchSkillDetail = useStore((s) => s.fetchSkillDetail);
+  const cliStatus = useStore((s) => s.cliStatus);
   const skillsLoading = useStore((s) => s.skillsCatalogLoadingByProjectPath[catalogKey] ?? false);
   const skillsError = useStore((s) => s.skillsCatalogErrorByProjectPath[catalogKey] ?? null);
   const detailById = useStore(useShallow((s) => s.skillsDetailsById));
@@ -226,6 +227,12 @@ export const SkillsPanel = ({
 
   return (
     <div className="flex flex-col gap-4">
+      {cliStatus?.flavor === 'agent_teams_orchestrator' && (
+        <div className="rounded-md border border-blue-500/30 bg-blue-500/5 px-4 py-3 text-sm text-blue-300">
+          Skills are shared across providers in this runtime. A personal or project skill you edit
+          here is available to both Anthropic and Codex sessions that support skills.
+        </div>
+      )}
       <div className="bg-surface-raised/20 rounded-xl border border-border p-4">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0 flex-1 space-y-1 xl:max-w-2xl">

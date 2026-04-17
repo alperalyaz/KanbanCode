@@ -36,6 +36,20 @@ vi.mock('../../../src/renderer/api', () => ({
       stopWatching: vi.fn(),
       onChanged: vi.fn(),
     },
+    apiKeys: {
+      list: vi.fn(),
+      save: vi.fn(),
+      delete: vi.fn(),
+      lookup: vi.fn(),
+      getStorageStatus: vi.fn(),
+    },
+    cliInstaller: {
+      getStatus: vi.fn(),
+      getProviderStatus: vi.fn(),
+      verifyProviderModels: vi.fn(),
+      invalidateStatus: vi.fn(),
+      onProgress: vi.fn(),
+    },
   },
 }));
 
@@ -148,6 +162,7 @@ describe('extensionsSlice', () => {
   beforeEach(() => {
     store = createTestStore();
     vi.clearAllMocks();
+    (api.cliInstaller!.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue(makeReadyCliStatus());
   });
 
   afterEach(() => {
@@ -762,6 +777,61 @@ describe('extensionsSlice', () => {
       expect(store.getState().mcpInstallProgress[mcpOperationKey('test-id', 'user')]).toBe(
         'success',
       );
+    });
+  });
+
+  describe('provider-aware runtime refresh', () => {
+    it('passes projectPath through MCP diagnostics', async () => {
+      (api.mcpRegistry!.diagnose as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+      await store.getState().runMcpDiagnostics('/tmp/project-a');
+
+      expect(api.mcpRegistry!.diagnose).toHaveBeenCalledWith('/tmp/project-a');
+    });
+
+    it('refreshes CLI status after saving an API key', async () => {
+      (api.apiKeys!.save as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'k1' });
+      (api.apiKeys!.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+        {
+          id: 'k1',
+          name: 'Codex key',
+          envVarName: 'OPENAI_API_KEY',
+          maskedValue: '***',
+          scope: 'user',
+          createdAt: '2026-04-17T10:00:00.000Z',
+        },
+      ]);
+
+      await store.getState().saveApiKey({
+        name: 'Codex key',
+        envVarName: 'OPENAI_API_KEY',
+        value: 'secret',
+        scope: 'user',
+      });
+
+      expect(api.cliInstaller!.getStatus).toHaveBeenCalled();
+      expect(store.getState().apiKeys).toHaveLength(1);
+    });
+
+    it('refreshes CLI status after deleting an API key', async () => {
+      store.setState({
+        apiKeys: [
+          {
+            id: 'k1',
+            name: 'Codex key',
+            envVarName: 'OPENAI_API_KEY',
+            maskedValue: '***',
+            scope: 'user',
+            createdAt: '2026-04-17T10:00:00.000Z',
+          },
+        ],
+      });
+      (api.apiKeys!.delete as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+      await store.getState().deleteApiKey('k1');
+
+      expect(api.cliInstaller!.getStatus).toHaveBeenCalled();
+      expect(store.getState().apiKeys).toEqual([]);
     });
   });
 

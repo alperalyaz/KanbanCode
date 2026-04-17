@@ -252,11 +252,28 @@ describe('getMcpInstallationSummaryLabel', () => {
 });
 
 describe('getExtensionActionDisableReason', () => {
+  const createDirectCliStatus = (
+    overrides: Partial<{
+      installed: boolean;
+      authLoggedIn: boolean;
+      binaryPath: string | null;
+      launchError: string | null;
+    }> = {}
+  ) => ({
+    flavor: 'claude' as const,
+    installed: true,
+    authLoggedIn: true,
+    binaryPath: null,
+    launchError: null,
+    providers: [],
+    ...overrides,
+  });
+
   it('requires auth only for install actions', () => {
     expect(
       getExtensionActionDisableReason({
         isInstalled: false,
-        cliStatus: { installed: true, authLoggedIn: false, binaryPath: null, launchError: null },
+        cliStatus: createDirectCliStatus({ authLoggedIn: false }),
         cliStatusLoading: false,
       }),
     ).toContain('not signed in');
@@ -266,7 +283,7 @@ describe('getExtensionActionDisableReason', () => {
     expect(
       getExtensionActionDisableReason({
         isInstalled: true,
-        cliStatus: { installed: true, authLoggedIn: false, binaryPath: null, launchError: null },
+        cliStatus: createDirectCliStatus({ authLoggedIn: false }),
         cliStatusLoading: false,
       }),
     ).toBeNull();
@@ -276,10 +293,10 @@ describe('getExtensionActionDisableReason', () => {
     expect(
       getExtensionActionDisableReason({
         isInstalled: true,
-        cliStatus: { installed: false, authLoggedIn: false, binaryPath: null, launchError: null },
+        cliStatus: createDirectCliStatus({ installed: false, authLoggedIn: false }),
         cliStatusLoading: false,
       }),
-    ).toContain('Claude CLI required');
+    ).toContain('configured runtime');
   });
 
   it('surfaces startup health-check failures separately from missing CLI', () => {
@@ -287,14 +304,98 @@ describe('getExtensionActionDisableReason', () => {
       getExtensionActionDisableReason({
         isInstalled: false,
         cliStatus: {
-          installed: false,
-          authLoggedIn: false,
-          binaryPath: '/usr/local/bin/claude',
-          launchError: 'spawn EACCES',
+          ...createDirectCliStatus({
+            installed: false,
+            authLoggedIn: false,
+            binaryPath: '/usr/local/bin/claude',
+            launchError: 'spawn EACCES',
+          }),
         },
         cliStatusLoading: false,
       }),
     ).toContain('failed to start');
+  });
+
+  it('disables multimodel plugin installs when the runtime declares plugins unsupported', () => {
+    expect(
+      getExtensionActionDisableReason({
+        isInstalled: false,
+        section: 'plugins',
+        cliStatus: {
+          installed: true,
+          authLoggedIn: true,
+          binaryPath: '/usr/local/bin/claude-multimodel',
+          launchError: null,
+          flavor: 'agent_teams_orchestrator',
+          providers: [
+            {
+              providerId: 'anthropic',
+              displayName: 'Anthropic',
+              supported: true,
+              authenticated: false,
+              authMethod: null,
+              verificationState: 'unknown',
+              models: [],
+              canLoginFromUi: true,
+              capabilities: {
+                teamLaunch: true,
+                oneShot: true,
+                extensions: {
+                  plugins: {
+                    status: 'unsupported',
+                    ownership: 'shared',
+                    reason: 'Anthropic plugins unavailable',
+                  },
+                  mcp: { status: 'supported', ownership: 'shared', reason: null },
+                  skills: { status: 'supported', ownership: 'shared', reason: null },
+                  apiKeys: { status: 'supported', ownership: 'shared', reason: null },
+                },
+              },
+            },
+          ],
+        },
+        cliStatusLoading: false,
+      }),
+    ).toContain('Anthropic plugins unavailable');
+  });
+
+  it('allows multimodel MCP actions without aggregate auth when MCP support is declared', () => {
+    expect(
+      getExtensionActionDisableReason({
+        isInstalled: false,
+        section: 'mcp',
+        cliStatus: {
+          installed: true,
+          authLoggedIn: false,
+          binaryPath: '/usr/local/bin/claude-multimodel',
+          launchError: null,
+          flavor: 'agent_teams_orchestrator',
+          providers: [
+            {
+              providerId: 'codex',
+              displayName: 'Codex',
+              supported: true,
+              authenticated: false,
+              authMethod: null,
+              verificationState: 'unknown',
+              models: [],
+              canLoginFromUi: true,
+              capabilities: {
+                teamLaunch: true,
+                oneShot: true,
+                extensions: {
+                  plugins: { status: 'unsupported', ownership: 'shared', reason: null },
+                  mcp: { status: 'supported', ownership: 'shared', reason: null },
+                  skills: { status: 'supported', ownership: 'shared', reason: null },
+                  apiKeys: { status: 'supported', ownership: 'shared', reason: null },
+                },
+              },
+            },
+          ],
+        },
+        cliStatusLoading: false,
+      }),
+    ).toBeNull();
   });
 });
 

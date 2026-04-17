@@ -91,6 +91,7 @@ export const McpServersPanel = ({
     mcpDiagnosticsError,
     mcpDiagnosticsLastCheckedAt,
     runMcpDiagnostics,
+    cliStatus,
   } = useStore(
     useShallow((s) => ({
       browseCatalog: s.mcpBrowseCatalog,
@@ -105,6 +106,7 @@ export const McpServersPanel = ({
       mcpDiagnosticsError: s.mcpDiagnosticsError,
       mcpDiagnosticsLastCheckedAt: s.mcpDiagnosticsLastCheckedAt,
       runMcpDiagnostics: s.runMcpDiagnostics,
+      cliStatus: s.cliStatus,
     }))
   );
 
@@ -118,8 +120,8 @@ export const McpServersPanel = ({
   }, [browseCatalog.length, browseError, browseLoading, mcpBrowse]);
 
   useEffect(() => {
-    void runMcpDiagnostics();
-  }, [runMcpDiagnostics]);
+    void runMcpDiagnostics(projectPath ?? undefined);
+  }, [projectPath, runMcpDiagnostics]);
 
   // Fetch GitHub stars after catalog loads (fire-and-forget)
   useEffect(() => {
@@ -185,6 +187,12 @@ export const McpServersPanel = ({
 
   // Sort displayed servers
   const displayServers = useMemo(() => sortMcpServers(rawServers, mcpSort), [rawServers, mcpSort]);
+  const runtimeLabel =
+    cliStatus?.flavor === 'agent_teams_orchestrator' ? 'multimodel runtime' : 'Claude CLI';
+  const diagnosticsCommand =
+    cliStatus?.flavor === 'agent_teams_orchestrator'
+      ? 'claude-multimodel mcp diagnose'
+      : 'claude mcp list';
 
   // Find selected server (search in both lists to avoid losing selection during search toggle)
   const selectedServer = useMemo(() => {
@@ -205,14 +213,12 @@ export const McpServersPanel = ({
             <p className="text-sm font-medium text-text">MCP Health Status</p>
             <p className="text-xs text-text-muted">
               {mcpDiagnosticsLoading ? (
-                <>
-                  Checking installed MCP servers via Claude CLI (<code>claude mcp list</code>) ...
-                </>
+                <>Checking installed MCP servers via {runtimeLabel} ...</>
               ) : mcpDiagnosticsLastCheckedAt ? (
                 `Last checked ${formatRelativeTime(new Date(mcpDiagnosticsLastCheckedAt).toISOString())}`
               ) : (
                 <>
-                  Run diagnostics (<code>claude mcp list</code>) to verify installed MCP
+                  Run diagnostics (<code>{diagnosticsCommand}</code>) to verify installed MCP
                   connectivity.
                 </>
               )}
@@ -221,7 +227,7 @@ export const McpServersPanel = ({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => void runMcpDiagnostics()}
+            onClick={() => void runMcpDiagnostics(projectPath ?? undefined)}
             disabled={mcpDiagnosticsLoading}
             className="whitespace-nowrap"
           >
@@ -235,7 +241,7 @@ export const McpServersPanel = ({
         {(mcpDiagnosticsLoading || allDiagnostics.length > 0) && (
           <div className="mt-4 border-t border-black/10 pt-4 dark:border-white/10">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-text">Claude MCP List Results</p>
+              <p className="text-sm font-medium text-text">Runtime MCP Diagnostics</p>
               {allDiagnostics.length > 0 && (
                 <span className="text-xs text-text-muted">{allDiagnostics.length} servers</span>
               )}

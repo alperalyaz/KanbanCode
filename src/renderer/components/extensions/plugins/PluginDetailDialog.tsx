@@ -195,6 +195,7 @@ export const PluginDetailDialog = ({
           <InstallButton
             state={installProgress}
             isInstalled={isInstalledForScope}
+            section="plugins"
             onInstall={() =>
               installPlugin({
                 pluginId: plugin.pluginId,

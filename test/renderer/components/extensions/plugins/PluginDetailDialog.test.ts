@@ -258,8 +258,12 @@ describe('PluginDetailDialog project context', () => {
 
     const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
     expect(scopeSelect).not.toBeNull();
-    expect(scopeSelect.querySelector('option[value="project"]')?.disabled).toBe(true);
-    expect(scopeSelect.querySelector('option[value="local"]')?.disabled).toBe(true);
+    expect(
+      (scopeSelect.querySelector('option[value="project"]') as HTMLOptionElement | null)?.disabled
+    ).toBe(true);
+    expect(
+      (scopeSelect.querySelector('option[value="local"]') as HTMLOptionElement | null)?.disabled
+    ).toBe(true);
 
     await act(async () => {
       root.unmount();

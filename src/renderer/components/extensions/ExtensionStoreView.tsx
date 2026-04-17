@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { api } from '@renderer/api';
+import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
 import { Tabs, TabsContent, TabsList } from '@renderer/components/ui/tabs';
 import {
@@ -164,14 +165,20 @@ export const ExtensionStoreView = (): React.JSX.Element => {
   const isRefreshing =
     cliStatusLoading || apiKeysLoading || pluginCatalogLoading || mcpBrowseLoading || skillsLoading;
   const cliStatusBanner = useMemo(() => {
+    const providers = cliStatus?.providers ?? [];
+    const isMultimodel = cliStatus?.flavor === 'agent_teams_orchestrator' && providers.length > 0;
+
     if (cliStatusLoading || cliStatus === null) {
       return (
         <div className="bg-surface/70 mx-4 mt-3 flex items-start gap-3 rounded-md border border-border px-4 py-3">
           <Info className="mt-0.5 size-4 shrink-0 text-text-secondary" />
           <div>
-            <p className="text-sm font-medium text-text">Checking Claude CLI availability</p>
+            <p className="text-sm font-medium text-text">
+              Checking extensions runtime availability
+            </p>
             <p className="mt-0.5 text-xs text-text-muted">
-              Extensions need Claude CLI to install plugins, run MCP servers, and validate auth.
+              Extensions need the configured runtime to manage plugins, MCP servers, skills, and
+              provider connections.
             </p>
           </div>
         </div>
@@ -186,13 +193,13 @@ export const ExtensionStoreView = (): React.JSX.Element => {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-amber-300">
               {cliLaunchIssue
-                ? 'Claude CLI was found but failed to start'
-                : 'Claude CLI is not available'}
+                ? 'The configured runtime was found but failed to start'
+                : 'The configured runtime is not available'}
             </p>
             <p className="mt-0.5 text-xs text-text-muted">
               {cliLaunchIssue
-                ? 'Plugin installs are disabled until Claude CLI passes its startup health check. Open the Dashboard to repair or reinstall it.'
-                : 'Plugin installs are disabled until Claude CLI is installed. Open the Dashboard to install it and retry.'}
+                ? 'Extensions are disabled until the runtime passes its startup health check. Open the Dashboard to repair or reinstall it.'
+                : 'Extensions are disabled until the runtime is installed. Open the Dashboard to install it and retry.'}
             </p>
             {cliLaunchIssue && cliStatus.launchError && (
               <p className="mt-2 break-all font-mono text-[11px] text-text-muted">
@@ -207,7 +214,7 @@ export const ExtensionStoreView = (): React.JSX.Element => {
       );
     }
 
-    if (!cliStatus.authLoggedIn) {
+    if (!isMultimodel && !cliStatus.authLoggedIn) {
       return (
         <div className="mx-4 mt-3 flex items-start gap-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
@@ -222,6 +229,68 @@ export const ExtensionStoreView = (): React.JSX.Element => {
           <Button size="sm" variant="outline" onClick={openDashboard}>
             Open Dashboard
           </Button>
+        </div>
+      );
+    }
+
+    if (isMultimodel) {
+      return (
+        <div className="bg-surface/70 mx-4 mt-3 rounded-md border border-border px-4 py-3">
+          <div className="flex items-start gap-3">
+            <Info className="mt-0.5 size-4 shrink-0 text-text-secondary" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-text">Multimodel runtime capabilities</p>
+              <p className="mt-0.5 text-xs text-text-muted">
+                Provider support can differ by section. Plugins are shown only where the runtime
+                explicitly declares support.
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {providers.map((provider) => {
+              const statusTone = provider.authenticated
+                ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300'
+                : provider.supported
+                  ? 'border-amber-500/30 bg-amber-500/5 text-amber-300'
+                  : 'border-border bg-surface-raised text-text-muted';
+              const statusLabel = provider.authenticated
+                ? 'Connected'
+                : provider.supported
+                  ? 'Needs setup'
+                  : 'Unsupported';
+              const pluginStatus = provider.capabilities.extensions.plugins.status;
+
+              return (
+                <div
+                  key={provider.providerId}
+                  className={`rounded-md border px-3 py-2 ${statusTone}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{provider.displayName}</p>
+                      <p className="truncate text-[11px] text-text-muted">
+                        {provider.statusMessage ?? provider.backend?.label ?? 'Ready to configure'}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="shrink-0">
+                      {statusLabel}
+                    </Badge>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                    <Badge variant="secondary">
+                      Plugins: {pluginStatus === 'supported' ? 'supported' : 'limited'}
+                    </Badge>
+                    <Badge variant="secondary">
+                      MCP: {provider.capabilities.extensions.mcp.status}
+                    </Badge>
+                    <Badge variant="secondary">
+                      Skills: {provider.capabilities.extensions.skills.ownership}
+                    </Badge>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       );
     }
@@ -280,7 +349,8 @@ export const ExtensionStoreView = (): React.JSX.Element => {
             {!cliInstalled && (
               <div className="mb-4 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-400">
                 <AlertTriangle className="size-4 shrink-0" />
-                Claude CLI is required to install or uninstall extensions. Install it from Settings.
+                The configured runtime is required to install or uninstall extensions. Install or
+                repair it from the Dashboard.
               </div>
             )}
             {/* Active sessions warning */}

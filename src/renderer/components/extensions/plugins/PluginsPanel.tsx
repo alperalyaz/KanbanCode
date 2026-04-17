@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@renderer/components/ui/select';
 import { useStore } from '@renderer/store';
+import { getCliProviderExtensionCapability } from '@shared/utils/providerExtensionCapabilities';
 import { inferCapabilities, normalizeCategory } from '@shared/utils/extensionNormalizers';
 import { ArrowUpDown, Filter, Puzzle, Search } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
@@ -125,11 +126,12 @@ export const PluginsPanel = ({
   hasActiveFilters,
   setPluginSort,
 }: PluginsPanelProps): React.JSX.Element => {
-  const { catalog, loading, error } = useStore(
+  const { catalog, loading, error, cliStatus } = useStore(
     useShallow((s) => ({
       catalog: s.pluginCatalog,
       loading: s.pluginCatalogLoading,
       error: s.pluginCatalogError,
+      cliStatus: s.cliStatus,
     }))
   );
 
@@ -175,9 +177,26 @@ export const PluginsPanel = ({
     }
     return counts.size;
   }, [catalog]);
-
   return (
     <div className="flex flex-col gap-4">
+      {cliStatus?.flavor === 'agent_teams_orchestrator' &&
+        (() => {
+          const codexProvider = cliStatus.providers.find(
+            (provider) => provider.providerId === 'codex'
+          );
+          if (!codexProvider) return null;
+          const capability = getCliProviderExtensionCapability(codexProvider, 'plugins');
+          if (capability.status === 'supported') {
+            return null;
+          }
+
+          return (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
+              Plugins currently apply to Anthropic sessions in the multimodel runtime.
+              {capability.reason ? ` ${capability.reason}` : ''}
+            </div>
+          );
+        })()}
       {/* Search + Sort + Installed only row */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="flex-1">

@@ -2,6 +2,11 @@
  * Pure-function normalizers for Extension Store data.
  */
 
+import {
+  getCliProviderExtensionCapability,
+  isCliExtensionCapabilityMutable,
+} from './providerExtensionCapabilities';
+
 import type {
   CliInstallationStatus,
   InstallScope,
@@ -208,28 +213,74 @@ export function getExtensionActionDisableReason(options: {
   isInstalled: boolean;
   cliStatus: Pick<
     CliInstallationStatus,
-    'installed' | 'authLoggedIn' | 'binaryPath' | 'launchError'
+    'installed' | 'authLoggedIn' | 'binaryPath' | 'launchError' | 'flavor' | 'providers'
   > | null;
   cliStatusLoading: boolean;
+  section?: 'plugins' | 'mcp';
 }): string | null {
-  const { isInstalled, cliStatus, cliStatusLoading } = options;
+  const { isInstalled, cliStatus, cliStatusLoading, section = 'plugins' } = options;
   if (cliStatusLoading) {
-    return 'Checking Claude CLI status...';
+    return 'Checking runtime status...';
   }
 
   if (cliStatus === null) {
-    return 'Checking Claude CLI availability...';
+    return 'Checking runtime availability...';
   }
 
   if (cliStatus.installed === false) {
     if (cliStatus.binaryPath && cliStatus.launchError) {
-      return 'Claude CLI was found but failed to start. Open the Dashboard to repair or reinstall it.';
+      return 'The configured runtime was found but failed to start. Open the Dashboard to repair or reinstall it.';
     }
-    return 'Claude CLI required. Install it from the Dashboard.';
+    return 'The configured runtime is required. Install or repair it from the Dashboard.';
   }
 
-  if (!isInstalled && !cliStatus.authLoggedIn) {
-    return 'Claude CLI is installed but not signed in. Open the Dashboard to sign in.';
+  const providers = cliStatus.providers ?? [];
+  const isMultimodel = cliStatus.flavor === 'agent_teams_orchestrator' && providers.length > 0;
+
+  if (section === 'mcp') {
+    if (!isMultimodel) {
+      return null;
+    }
+
+    const mutableProviders = providers.filter((provider) =>
+      isCliExtensionCapabilityMutable(getCliProviderExtensionCapability(provider, 'mcp'))
+    );
+    if (mutableProviders.length > 0) {
+      return null;
+    }
+
+    const reason = providers
+      .map((provider) => getCliProviderExtensionCapability(provider, 'mcp').reason)
+      .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+    return reason ?? 'MCP management is not supported by the current runtime.';
+  }
+
+  if (!isMultimodel) {
+    if (!isInstalled && !cliStatus.authLoggedIn) {
+      return 'Claude CLI is installed but not signed in. Open the Dashboard to sign in.';
+    }
+    return null;
+  }
+
+  const pluginProviders = providers.filter((provider) =>
+    isCliExtensionCapabilityMutable(getCliProviderExtensionCapability(provider, 'plugins'))
+  );
+
+  if (pluginProviders.length === 0) {
+    const reason = providers
+      .map((provider) => getCliProviderExtensionCapability(provider, 'plugins').reason)
+      .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+    return reason ?? 'Plugin installs are not supported by the current runtime.';
+  }
+
+  if (isInstalled) {
+    return null;
+  }
+
+  const authenticatedProvider = pluginProviders.find((provider) => provider.authenticated);
+  if (!authenticatedProvider) {
+    return `${pluginProviders[0]?.displayName ?? 'Anthropic'} is not connected. Open the Dashboard to sign in.`;
   }
 
   return null;

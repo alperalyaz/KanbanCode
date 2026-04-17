@@ -528,6 +528,7 @@ export const McpServerDetailDialog = ({
               <InstallButton
                 state={installProgress}
                 isInstalled={isInstalledForScope}
+                section="mcp"
                 onInstall={handleInstall}
                 onUninstall={handleUninstall}
                 disabled={installDisabled}
