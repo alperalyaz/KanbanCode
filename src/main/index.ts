@@ -1,5 +1,5 @@
 /**
- * Main process entry point for Claude Agent Teams UI.
+ * Main process entry point for Agent Teams UI.
  *
  * Responsibilities:
  * - Initialize Electron app and main window
@@ -1212,7 +1212,7 @@ function createWindow(): void {
     backgroundColor: '#1a1a1a',
     ...(useNativeTitleBar ? {} : { titleBarStyle: 'hidden' as const }),
     ...(isMac && { trafficLightPosition: getTrafficLightPositionForZoom(1) }),
-    title: 'Claude Agent Teams UI',
+    title: 'Agent Teams UI',
   });
   markRendererUnavailable(mainWindow);
 
