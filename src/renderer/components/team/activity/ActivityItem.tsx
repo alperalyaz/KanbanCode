@@ -1,6 +1,9 @@
 import { Fragment, memo, useCallback, useMemo } from 'react';
 
-import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
+import {
+  CompactMarkdownPreview,
+  MarkdownViewer,
+} from '@renderer/components/chat/viewers/MarkdownViewer';
 import { CopyButton } from '@renderer/components/common/CopyButton';
 import { AttachmentDisplay } from '@renderer/components/team/attachments/AttachmentDisplay';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
@@ -823,7 +826,7 @@ export const ActivityItem = memo(
       structured,
     ]);
     const summaryText = extractMarkdownPlainText(rawSummary);
-    const compactPreviewText = useMemo(() => {
+    const compactPreviewMarkdown = useMemo(() => {
       if (idleSemantic?.hasPeerSummary && idleSemantic.peerSummary) {
         return idleSemantic.peerSummary;
       }
@@ -839,14 +842,15 @@ export const ActivityItem = memo(
       }
       if (crossTeamPreview) return crossTeamPreview;
 
-      const fullText = strippedText?.trim() ?? '';
-      if (fullText) {
-        return extractMarkdownPlainText(fullText).replace(/\n+/g, ' ').trim();
+      const formattedDisplayText = displayText?.trim() ?? '';
+      if (formattedDisplayText) {
+        return formattedDisplayText;
       }
 
       return summaryText || rawSummary;
     }, [
       crossTeamPreview,
+      displayText,
       idleSemantic,
       isSlashCommandMessage,
       isSlashCommandResult,
@@ -856,6 +860,12 @@ export const ActivityItem = memo(
       slashCommandMeta,
       summaryText,
     ]);
+    const compactPreviewTooltipText = useMemo(() => {
+      const normalized = extractMarkdownPlainText(compactPreviewMarkdown)
+        .replace(/\n+/g, ' ')
+        .trim();
+      return normalized || compactPreviewMarkdown;
+    }, [compactPreviewMarkdown]);
     const commentTaskRef =
       message.messageKind === 'task_comment_notification' ? (message.taskRefs?.[0] ?? null) : null;
     const commentTaskDisplayId =
@@ -1218,11 +1228,13 @@ export const ActivityItem = memo(
               <TooltipProvider delayDuration={1000}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div
-                      className="mt-1 line-clamp-2 w-full min-w-0 max-w-full break-words text-[11px] leading-4"
-                      style={{ color: CARD_TEXT_LIGHT }}
-                    >
-                      {compactPreviewText}
+                    <div>
+                      <CompactMarkdownPreview
+                        content={compactPreviewMarkdown}
+                        className="mt-1 line-clamp-2 w-full min-w-0 max-w-full break-words text-[11px] leading-4"
+                        teamColorByName={teamColorByName}
+                        onTeamClick={onTeamClick}
+                      />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent
@@ -1230,7 +1242,7 @@ export const ActivityItem = memo(
                     align="start"
                     className="max-w-sm whitespace-normal break-words"
                   >
-                    {compactPreviewText}
+                    {compactPreviewTooltipText}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -1298,11 +1310,13 @@ export const ActivityItem = memo(
               <TooltipProvider delayDuration={1000}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div
-                      className="mt-1 line-clamp-2 w-full min-w-0 max-w-full break-words text-[11px] leading-4"
-                      style={{ color: CARD_TEXT_LIGHT }}
-                    >
-                      {compactPreviewText}
+                    <div>
+                      <CompactMarkdownPreview
+                        content={compactPreviewMarkdown}
+                        className="mt-1 line-clamp-2 w-full min-w-0 max-w-full break-words text-[11px] leading-4"
+                        teamColorByName={teamColorByName}
+                        onTeamClick={onTeamClick}
+                      />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent
@@ -1310,7 +1324,7 @@ export const ActivityItem = memo(
                     align="start"
                     className="max-w-sm whitespace-normal break-words"
                   >
-                    {compactPreviewText}
+                    {compactPreviewTooltipText}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

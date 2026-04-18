@@ -7,6 +7,8 @@ vi.mock('@renderer/hooks/useTheme', () => ({
 }));
 vi.mock('@renderer/components/chat/viewers/MarkdownViewer', () => ({
   MarkdownViewer: ({ content }: { content: string }) => React.createElement('div', null, content),
+  CompactMarkdownPreview: ({ content, className }: { content: string; className?: string }) =>
+    React.createElement('div', { className }, content),
 }));
 vi.mock('@renderer/components/common/CopyButton', () => ({
   CopyButton: () => null,
@@ -175,9 +177,54 @@ describe('ActivityItem compact header preview', () => {
 
     const preview = host.querySelector('.line-clamp-2');
     expect(preview).not.toBeNull();
-    expect(preview?.textContent).toBe(visibleText);
+    expect(preview?.textContent).toContain('**New task assigned to you:**');
+    expect(preview?.textContent).toContain('[#3fd70e2](task://3fd70e2)');
+    expect(preview?.textContent).toContain('Собрать fix-batch');
     expect(preview?.textContent).not.toContain('info_for_agent');
     expect(preview?.textContent).not.toContain('internal only');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('reuses markdown display content for compact preview formatting', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const markdownText = '**Важно** проверить `CurrentTaskIndicator` и #abc123';
+
+    const message: InboxMessage = {
+      from: 'team-lead',
+      text: markdownText,
+      timestamp: new Date('2026-04-18T16:31:00.000Z').toISOString(),
+      read: true,
+      source: 'lead_process',
+      taskRefs: [{ taskId: 'abc123', displayId: '#abc123', teamName: 'my-team' }],
+    };
+
+    await act(async () => {
+      root.render(
+        React.createElement(ActivityItem, {
+          message,
+          teamName: 'my-team',
+          compactHeader: true,
+          collapseMode: 'managed',
+          isCollapsed: true,
+          canToggleCollapse: true,
+          collapseToggleKey: 'message-key-markdown-preview',
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const preview = host.querySelector('.line-clamp-2');
+    expect(preview).not.toBeNull();
+    expect(preview?.textContent).toContain('**Важно**');
+    expect(preview?.textContent).toContain('task://abc123');
+    expect(preview?.textContent).toContain('`CurrentTaskIndicator`');
 
     await act(async () => {
       root.unmount();

@@ -6,6 +6,10 @@ import { afterEach, beforeEach, vi } from 'vitest';
 vi.mock('@renderer/components/team/MemberBadge', () => ({
   MemberBadge: ({ name }: { name: string }) => React.createElement('span', null, name),
 }));
+vi.mock('@renderer/components/chat/viewers/MarkdownViewer', () => ({
+  CompactMarkdownPreview: ({ content, className }: { content: string; className?: string }) =>
+    React.createElement('div', { className }, content),
+}));
 vi.mock('@renderer/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
   Tooltip: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
@@ -314,6 +318,43 @@ describe('LeadThoughtsGroup', () => {
     const previewNode = host.querySelector('.line-clamp-2');
     expect(previewNode).not.toBeNull();
     expect(previewNode?.textContent).toBe(preview);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('reuses the expanded thought markdown preprocessing for compact preview', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const thought = makeLeadSessionMsg('**Важно** проверить #task123 и ping @alice', {
+      messageId: 'thought-4',
+      leadSessionId: 'lead-session-4',
+      taskRefs: [{ taskId: 'task123', displayId: '#task123', teamName: 'my-team' }],
+    });
+
+    await act(async () => {
+      root.render(
+        React.createElement(LeadThoughtsGroupRow, {
+          group: { type: 'lead-thoughts', thoughts: [thought] },
+          collapseMode: 'managed',
+          isCollapsed: true,
+          canToggleCollapse: true,
+          compactHeader: true,
+          memberColorMap: new Map([['alice', 'blue']]),
+          teamNames: ['my-team'],
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const previewNode = host.querySelector('.line-clamp-2');
+    expect(previewNode).not.toBeNull();
+    expect(previewNode?.textContent).toContain('**Важно**');
+    expect(previewNode?.textContent).toContain('[#task123](task://task123)');
+    expect(previewNode?.textContent).toContain('mention://blue/alice');
 
     await act(async () => {
       root.unmount();

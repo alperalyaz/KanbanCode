@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react';
 
+import { CompactMarkdownPreview } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import {
   Tooltip,
@@ -42,6 +43,7 @@ import {
   ENTRY_REVEAL_ANIMATION_MS,
   ENTRY_REVEAL_EASING,
 } from './AnimatedHeightReveal';
+import { buildThoughtDisplayContent } from './activityMarkdown';
 import { ThoughtBodyContent } from './ThoughtBodyContent';
 
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
@@ -588,20 +590,30 @@ const LeadThoughtsGroupRowComponent = ({
     return calls.length > 0 ? calls : undefined;
   }, [thoughts]);
 
-  // Extract text preview for header: use newest thought's text, fallback through group
-  const headerTextPreview = useMemo(() => {
+  // Reuse the same markdown preprocessing as the expanded thought body.
+  const compactPreviewMarkdown = useMemo(() => {
     // Try newest first (most relevant), then scan for any text
     for (const t of thoughts) {
       if (t.text && t.text.trim()) {
-        const plain = extractMarkdownPlainText(stripAgentBlocks(t.text));
-        const normalized = plain.replace(/\n+/g, ' ').trim();
-        if (normalized) {
-          return normalized;
+        const stripped = stripAgentBlocks(t.text).trim();
+        if (stripped) {
+          return buildThoughtDisplayContent(t, memberColorMap, teamNames, {
+            preserveLineBreaks: false,
+            stripAgentOnlyBlocks: true,
+          })
+            .replace(/\n+/g, ' ')
+            .trim();
         }
       }
     }
-    return null;
-  }, [thoughts]);
+    return totalToolSummary;
+  }, [memberColorMap, teamNames, thoughts, totalToolSummary]);
+  const compactPreviewTooltipText = useMemo(() => {
+    const normalized = extractMarkdownPlainText(compactPreviewMarkdown ?? '')
+      .replace(/\n+/g, ' ')
+      .trim();
+    return normalized || compactPreviewMarkdown;
+  }, [compactPreviewMarkdown]);
 
   // Detect if any thought in this group is an API error
   const hasApiError = useMemo(() => thoughts.some((t) => isApiErrorMessage(t.text)), [thoughts]);
@@ -764,7 +776,6 @@ const LeadThoughtsGroupRowComponent = ({
       ? formatTime(oldest.timestamp)
       : `${formatTime(oldest.timestamp)}–${formatTime(newest.timestamp)}`;
   const useCompactCollapsedHeader = compactHeader && !isBodyVisible;
-  const compactPreviewText = headerTextPreview ?? totalToolSummary;
 
   return (
     <AnimatedHeightReveal animate={isNew} containerRef={ref} style={{ overflowAnchor: 'none' }}>
@@ -837,15 +848,17 @@ const LeadThoughtsGroupRowComponent = ({
                   )}
                 </div>
               </div>
-              {compactPreviewText ? (
+              {compactPreviewMarkdown ? (
                 <TooltipProvider delayDuration={1000}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div
-                        className="mt-1 line-clamp-2 w-full min-w-0 max-w-full break-words text-[11px] leading-4"
-                        style={{ color: headerTextPreview ? CARD_TEXT_LIGHT : CARD_ICON_MUTED }}
-                      >
-                        {compactPreviewText}
+                      <div>
+                        <CompactMarkdownPreview
+                          content={compactPreviewMarkdown}
+                          className="mt-1 line-clamp-2 w-full min-w-0 max-w-full break-words text-[11px] leading-4"
+                          teamColorByName={teamColorByName}
+                          onTeamClick={onTeamClick}
+                        />
                       </div>
                     </TooltipTrigger>
                     <TooltipContent
@@ -853,7 +866,7 @@ const LeadThoughtsGroupRowComponent = ({
                       align="start"
                       className="max-w-sm whitespace-normal break-words"
                     >
-                      {compactPreviewText}
+                      {compactPreviewTooltipText}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -920,15 +933,17 @@ const LeadThoughtsGroupRowComponent = ({
                   )}
                 </div>
               </div>
-              {compactPreviewText ? (
+              {compactPreviewMarkdown ? (
                 <TooltipProvider delayDuration={1000}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div
-                        className="mt-1 line-clamp-2 w-full min-w-0 max-w-full break-words text-[11px] leading-4"
-                        style={{ color: headerTextPreview ? CARD_TEXT_LIGHT : CARD_ICON_MUTED }}
-                      >
-                        {compactPreviewText}
+                      <div>
+                        <CompactMarkdownPreview
+                          content={compactPreviewMarkdown}
+                          className="mt-1 line-clamp-2 w-full min-w-0 max-w-full break-words text-[11px] leading-4"
+                          teamColorByName={teamColorByName}
+                          onTeamClick={onTeamClick}
+                        />
                       </div>
                     </TooltipTrigger>
                     <TooltipContent
@@ -936,7 +951,7 @@ const LeadThoughtsGroupRowComponent = ({
                       align="start"
                       className="max-w-sm whitespace-normal break-words"
                     >
-                      {compactPreviewText}
+                      {compactPreviewTooltipText}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
