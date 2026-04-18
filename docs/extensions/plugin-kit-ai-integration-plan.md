@@ -499,6 +499,24 @@ For example:
 
 But the first plugin page rollout in `claude_team` should optimize for a clear and reliable main surface, not for exposing the entire backend target universe at once.
 
+### Why packaged support still does not mean first-class app actionability
+
+Current `platformmeta` already exposes packaged profiles for:
+
+- `claude`
+- `codex-package`
+- `codex-runtime`
+
+That still does **not** mean all three should become first-class action lanes in `claude_team`.
+
+Recommended rule:
+
+- packaged/backend support answers “can the backend understand this target family?”
+- app-primary actionability answers “should this app expose install/manage actions for this target in the first rollout?”
+- those questions are related but not identical
+
+This is one of the most important places where the plan must stay conservative.
+
 ## Catalog Support Projection Rules
 
 Catalog generation should preserve three different truths without collapsing them:
@@ -2863,6 +2881,24 @@ Keep separate fields for:
 - authored target support
 - backend-manageable lifecycle support
 - app-primary action targets
+
+## Phase-1 Conservative Defaults
+
+These defaults are intentional.
+They should not be treated as missing polish or as accidental gaps.
+
+| Risky seam | Phase-1 default | Why |
+|---|---|---|
+| `local` scope for universal plugins | hide it | backend does not honestly support it yet |
+| native external uninstall | do not expose | destructive authority is not proven yet |
+| `adopt` | do not expose | visibility is needed before ownership conversion |
+| popularity sorting | optional, not blocking | migration should not depend on a metric the backend does not yet own |
+| target-specific metadata | enhance detail only | shared storefront truth should stay stable |
+| heuristic universal matching | advisory only | avoids false ownership merge |
+| ambiguous Codex observed state | degrade to `observed_degraded` | safer than over-claiming active state |
+| stale catalog while managed installs exist | keep managed entry visible | `list` wins for managed existence |
+| stale discover while catalog works | keep catalog visible and warn | do not claim “no installed plugins” |
+| grouped lifecycle keys missing | treat as incompatible payload | do not reconstruct entry groups in app |
 
 ## Final Recommendation
 
