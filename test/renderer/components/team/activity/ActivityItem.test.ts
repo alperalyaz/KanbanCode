@@ -25,6 +25,8 @@ vi.mock('@renderer/components/ui/ExpandableContent', () => ({
     React.createElement(React.Fragment, null, children),
 }));
 vi.mock('@renderer/components/ui/tooltip', () => ({
+  TooltipProvider: ({ children }: { children: React.ReactNode }) =>
+    React.createElement(React.Fragment, null, children),
   Tooltip: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
   TooltipTrigger: ({ children }: { children: React.ReactNode }) =>
     React.createElement(React.Fragment, null, children),
@@ -44,6 +46,186 @@ import {
   isQualifiedExternalRecipient,
 } from '@renderer/components/team/activity/ActivityItem';
 import type { InboxMessage } from '@shared/types';
+
+describe('ActivityItem compact header preview', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.unstubAllGlobals();
+  });
+
+  it('uses a two-line clamped preview in compact mode', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const summary =
+      'Делегировал alice длинную задачу с заметно более длинным описанием, чтобы превью занимало больше одной строки в компактном режиме.';
+
+    const message: InboxMessage = {
+      from: 'team-lead',
+      text: summary,
+      summary,
+      timestamp: new Date('2026-04-18T16:30:00.000Z').toISOString(),
+      read: true,
+      source: 'lead_process',
+    };
+
+    await act(async () => {
+      root.render(
+        React.createElement(ActivityItem, {
+          message,
+          teamName: 'my-team',
+          compactHeader: true,
+          collapseMode: 'managed',
+          isCollapsed: true,
+          canToggleCollapse: true,
+          collapseToggleKey: 'message-key',
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const preview = host.querySelector('.line-clamp-2');
+    expect(preview).not.toBeNull();
+    expect(preview?.textContent).toBe(summary);
+    expect(preview?.getAttribute('title')).toBeNull();
+    expect(preview?.className).toContain('line-clamp-2');
+    expect(preview?.className).toContain('w-full');
+    expect(preview?.className).toContain('max-w-full');
+    expect(preview?.className).not.toContain('min-h-8');
+    expect(preview?.className).not.toContain('truncate');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('prefers full message text over a pre-truncated summary in compact mode', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const fullText =
+      'Делегировал bob ещё один узкий шаг: собрать fix-batch с учётом landing P0 по render->generate и пройтись по оставшимся edge cases.';
+
+    const message: InboxMessage = {
+      from: 'team-lead',
+      text: fullText,
+      summary: 'Делегировал bob ещё один узкий шаг: собрать fix-batch с у...',
+      timestamp: new Date('2026-04-18T16:29:00.000Z').toISOString(),
+      read: true,
+      source: 'lead_process',
+    };
+
+    await act(async () => {
+      root.render(
+        React.createElement(ActivityItem, {
+          message,
+          teamName: 'my-team',
+          compactHeader: true,
+          collapseMode: 'managed',
+          isCollapsed: true,
+          canToggleCollapse: true,
+          collapseToggleKey: 'message-key-full-text',
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const preview = host.querySelector('.line-clamp-2');
+    expect(preview).not.toBeNull();
+    expect(preview?.textContent).toBe(fullText);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('strips info_for_agent blocks from compact preview text', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    const visibleText = 'New task assigned to you: #3fd70e2 Собрать fix-batch';
+    const message: InboxMessage = {
+      from: 'team-lead',
+      text: `${visibleText}\n<info_for_agent>\ninternal only\n</info_for_agent>`,
+      timestamp: new Date('2026-04-18T16:28:00.000Z').toISOString(),
+      read: true,
+      source: 'lead_process',
+    };
+
+    await act(async () => {
+      root.render(
+        React.createElement(ActivityItem, {
+          message,
+          teamName: 'my-team',
+          compactHeader: true,
+          collapseMode: 'managed',
+          isCollapsed: true,
+          canToggleCollapse: true,
+          collapseToggleKey: 'message-key-strip-agent-block',
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const preview = host.querySelector('.line-clamp-2');
+    expect(preview).not.toBeNull();
+    expect(preview?.textContent).toBe(visibleText);
+    expect(preview?.textContent).not.toContain('info_for_agent');
+    expect(preview?.textContent).not.toContain('internal only');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('uses a two-line preview in collapsed wide mode, not inline one-line summary', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const fullText =
+      'Делегировал alice финальную общую сводку и remediation plan по всем findings команды.';
+
+    const message: InboxMessage = {
+      from: 'team-lead',
+      text: fullText,
+      timestamp: new Date('2026-04-18T16:30:00.000Z').toISOString(),
+      read: true,
+      source: 'lead_process',
+    };
+
+    await act(async () => {
+      root.render(
+        React.createElement(ActivityItem, {
+          message,
+          teamName: 'my-team',
+          compactHeader: false,
+          collapseMode: 'managed',
+          isCollapsed: true,
+          canToggleCollapse: true,
+          collapseToggleKey: 'message-key-wide-collapsed',
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const preview = host.querySelector('.line-clamp-2');
+    expect(preview).not.toBeNull();
+    expect(preview?.textContent).toBe(fullText);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+});
 
 describe('ActivityItem slash command rendering', () => {
   afterEach(() => {

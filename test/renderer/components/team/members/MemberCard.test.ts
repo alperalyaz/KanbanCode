@@ -240,4 +240,38 @@ describe('MemberCard starting-state visuals', () => {
       await Promise.resolve();
     });
   });
+
+  it('shows member color on the avatar ring instead of a colored card rail', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberCard, {
+          member,
+          memberColor: 'blue',
+          isTeamAlive: true,
+          isTeamProvisioning: false,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const img = host.querySelector('img');
+    const avatarRing = img?.parentElement;
+    const clickableCard = host.querySelector('[role="button"]') as HTMLElement | null;
+
+    expect(avatarRing).not.toBeNull();
+    expect(avatarRing?.style.borderColor).toBe('#3b82f6');
+    expect(clickableCard?.style.borderLeft).toBe('');
+    expect(clickableCard?.style.background).toBe('');
+    expect(clickableCard?.className).not.toContain('px-');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
 });

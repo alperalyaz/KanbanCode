@@ -10,7 +10,12 @@ import {
 } from 'react';
 
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@renderer/components/ui/tooltip';
 import {
   CARD_BG,
   CARD_BG_ZEBRA,
@@ -39,6 +44,7 @@ import {
 } from './AnimatedHeightReveal';
 import { ThoughtBodyContent } from './ThoughtBodyContent';
 
+import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import type { InboxMessage, ToolCallMeta } from '@shared/types';
 
 export interface LeadThoughtGroup {
@@ -587,9 +593,11 @@ const LeadThoughtsGroupRowComponent = ({
     // Try newest first (most relevant), then scan for any text
     for (const t of thoughts) {
       if (t.text && t.text.trim()) {
-        const plain = extractMarkdownPlainText(t.text);
-        const firstLine = plain.split('\n').find((l) => l.trim().length > 0) ?? '';
-        return firstLine.trim();
+        const plain = extractMarkdownPlainText(stripAgentBlocks(t.text));
+        const normalized = plain.replace(/\n+/g, ' ').trim();
+        if (normalized) {
+          return normalized;
+        }
       }
     }
     return null;
@@ -830,13 +838,108 @@ const LeadThoughtsGroupRowComponent = ({
                 </div>
               </div>
               {compactPreviewText ? (
-                <div
-                  className="mt-1 min-w-0 truncate text-[11px]"
-                  style={{ color: headerTextPreview ? CARD_TEXT_LIGHT : CARD_ICON_MUTED }}
-                  title={compactPreviewText}
-                >
-                  {compactPreviewText}
+                <TooltipProvider delayDuration={1000}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div
+                        className="mt-1 line-clamp-2 w-full min-w-0 max-w-full break-words text-[11px] leading-4"
+                        style={{ color: headerTextPreview ? CARD_TEXT_LIGHT : CARD_ICON_MUTED }}
+                      >
+                        {compactPreviewText}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="bottom"
+                      align="start"
+                      className="max-w-sm whitespace-normal break-words"
+                    >
+                      {compactPreviewText}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : null}
+            </div>
+          ) : !isBodyVisible ? (
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2">
+                {canToggleBodyVisibility && !compactHeader ? (
+                  <ChevronRight
+                    className="size-3 shrink-0 transition-transform duration-150"
+                    style={{
+                      color: CARD_ICON_MUTED,
+                      transform: isBodyVisible ? 'rotate(90deg)' : undefined,
+                    }}
+                  />
+                ) : null}
+                {!compactHeader ? (
+                  <div className="relative shrink-0">
+                    <img
+                      src={agentAvatarUrl(leadName, 24)}
+                      alt=""
+                      className="size-5 rounded-full bg-[var(--color-surface-raised)]"
+                      loading="lazy"
+                    />
+                    <LiveThoughtStatusBadge
+                      canBeLive={canBeLive}
+                      isTeamAlive={isTeamAlive}
+                      leadActivity={leadActivity}
+                      leadContextUpdatedAt={leadContextUpdatedAt}
+                      newestTimestamp={newest.timestamp}
+                    />
+                  </div>
+                ) : null}
+                <MemberBadge name={leadName} color={memberColor} hideAvatar />
+                <span className="text-[10px]" style={{ color: CARD_ICON_MUTED }}>
+                  {thoughts.length} thoughts
+                </span>
+                <div className="relative ml-auto flex shrink-0 items-center">
+                  <span
+                    className={
+                      onExpand && expandItemKey
+                        ? 'text-[10px] transition-opacity group-hover:opacity-0'
+                        : 'text-[10px]'
+                    }
+                    style={{ color: CARD_ICON_MUTED }}
+                  >
+                    {timestampLabel}
+                  </span>
+                  {onExpand && expandItemKey && (
+                    <button
+                      type="button"
+                      aria-label="Expand thoughts"
+                      className="absolute right-0 top-1/2 -translate-y-1/2 rounded p-0.5 opacity-0 transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500/50 group-hover:opacity-100"
+                      style={{ color: CARD_ICON_MUTED }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onExpand(expandItemKey);
+                      }}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <Maximize2 size={12} />
+                    </button>
+                  )}
                 </div>
+              </div>
+              {compactPreviewText ? (
+                <TooltipProvider delayDuration={1000}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div
+                        className="mt-1 line-clamp-2 w-full min-w-0 max-w-full break-words text-[11px] leading-4"
+                        style={{ color: headerTextPreview ? CARD_TEXT_LIGHT : CARD_ICON_MUTED }}
+                      >
+                        {compactPreviewText}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="bottom"
+                      align="start"
+                      className="max-w-sm whitespace-normal break-words"
+                    >
+                      {compactPreviewText}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               ) : null}
             </div>
           ) : (
@@ -871,26 +974,7 @@ const LeadThoughtsGroupRowComponent = ({
               <span className="text-[10px]" style={{ color: CARD_ICON_MUTED }}>
                 {thoughts.length} thoughts
               </span>
-              {!isBodyVisible && headerTextPreview ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      className="min-w-0 flex-1 cursor-default truncate text-[10px]"
-                      style={{ color: CARD_TEXT_LIGHT }}
-                    >
-                      {headerTextPreview}
-                    </span>
-                  </TooltipTrigger>
-                  {totalToolSummary ? (
-                    <TooltipContent side="bottom" className="max-w-[420px] font-mono text-[11px]">
-                      <ToolSummaryTooltipContent
-                        toolCalls={allToolCalls}
-                        toolSummary={totalToolSummary}
-                      />
-                    </TooltipContent>
-                  ) : null}
-                </Tooltip>
-              ) : totalToolSummary ? (
+              {totalToolSummary ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="cursor-default text-[10px]" style={{ color: CARD_ICON_MUTED }}>
