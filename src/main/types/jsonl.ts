@@ -145,6 +145,7 @@ interface ConversationalEntry extends BaseEntry {
   sessionId: string;
   version: string;
   gitBranch: string;
+  agentName?: string;
   slug?: string;
 }
 
