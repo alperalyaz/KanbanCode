@@ -79,7 +79,6 @@ export const TeamGraphTab = ({
   const openCreateTask = useCallback(() => {
     openCreateTaskDialog('');
   }, [openCreateTaskDialog]);
-
   // Task action dispatchers
   const dispatchTaskAction = useCallback(
     (action: string) => (taskId: string) =>

@@ -16,13 +16,14 @@ import {
   TEAM_DELETE_DRAFT,
   TEAM_DELETE_TASK_ATTACHMENT,
   TEAM_DELETE_TEAM,
+  TEAM_GET_AGENT_RUNTIME,
   TEAM_GET_ALL_TASKS,
   TEAM_GET_ATTACHMENTS,
-  TEAM_GET_AGENT_RUNTIME,
   TEAM_GET_CLAUDE_LOGS,
   TEAM_GET_DATA,
   TEAM_GET_DELETED_TASKS,
   TEAM_GET_LOGS_FOR_TASK,
+  TEAM_GET_MEMBER_ACTIVITY_META,
   TEAM_GET_MEMBER_LOGS,
   TEAM_GET_MEMBER_STATS,
   TEAM_GET_MESSAGES_PAGE,
@@ -59,8 +60,8 @@ import {
   TEAM_SEND_MESSAGE,
   TEAM_SET_CHANGE_PRESENCE_TRACKING,
   TEAM_SET_PROJECT_BRANCH_TRACKING,
-  TEAM_SET_TASK_LOG_STREAM_TRACKING,
   TEAM_SET_TASK_CLARIFICATION,
+  TEAM_SET_TASK_LOG_STREAM_TRACKING,
   TEAM_SET_TOOL_ACTIVITY_TRACKING,
   TEAM_SHOW_MESSAGE_NOTIFICATION,
   TEAM_SOFT_DELETE_TASK,
@@ -96,7 +97,7 @@ import {
   parseStandaloneSlashCommand,
 } from '@shared/utils/slashCommands';
 import crypto from 'crypto';
-import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent, Notification } from 'electron';
+import { app, BrowserWindow, type IpcMain, type IpcMainInvokeEvent, Notification } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -166,7 +167,6 @@ import type {
   LeadContextUsageSnapshot,
   MemberFullStats,
   MemberLogSummary,
-  TeamAgentRuntimeSnapshot,
   MemberSpawnStatusesSnapshot,
   MessagesPage,
   SendMessageRequest,
@@ -174,15 +174,16 @@ import type {
   TaskAttachmentMeta,
   TaskComment,
   TaskRef,
+  TeamAgentRuntimeSnapshot,
   TeamClaudeLogsQuery,
   TeamClaudeLogsResponse,
   TeamConfig,
   TeamCreateConfigRequest,
   TeamCreateRequest,
   TeamCreateResponse,
-  TeamData,
   TeamLaunchRequest,
   TeamLaunchResponse,
+  TeamMemberActivityMeta,
   TeamMessageNotificationData,
   TeamProvisioningPrepareResult,
   TeamProvisioningProgress,
@@ -190,6 +191,7 @@ import type {
   TeamTask,
   TeamTaskStatus,
   TeamUpdateConfigRequest,
+  TeamViewSnapshot,
   ToolApprovalFileContent,
   ToolApprovalSettings,
   UpdateKanbanPatch,
@@ -205,6 +207,16 @@ const logger = createLogger('IPC:teams');
  */
 const seenRateLimitKeys = new Set<string>();
 const SEEN_RATE_LIMIT_KEYS_MAX = 500;
+
+function noteHeavyTeamDataWorkerFallback(operation: string): void {
+  if (!app.isPackaged) {
+    return;
+  }
+
+  logger.error(
+    `[${operation}] team-data-worker unavailable in packaged runtime; falling back to main-thread execution for heavy message/activity path`
+  );
+}
 
 async function getDurableLeadTeammateRoster(
   teamName: string,
@@ -436,6 +448,19 @@ function checkApiErrorMessages(
   }
 }
 
+function scanTeamMessageNotifications(
+  messages: readonly { messageId?: string; from: string; text: string; timestamp: string }[],
+  teamName: string,
+  teamDisplayName: string,
+  projectPath?: string
+): void {
+  if (messages.length === 0) {
+    return;
+  }
+  checkRateLimitMessages(messages, teamName, teamDisplayName, projectPath);
+  checkApiErrorMessages(messages, teamName, teamDisplayName, projectPath);
+}
+
 let teamDataService: TeamDataService | null = null;
 let teamProvisioningService: TeamProvisioningService | null = null;
 let teamMemberLogsFinder: TeamMemberLogsFinder | null = null;
@@ -519,6 +544,7 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_CANCEL_PROVISIONING, handleCancelProvisioning);
   ipcMain.handle(TEAM_SEND_MESSAGE, handleSendMessage);
   ipcMain.handle(TEAM_GET_MESSAGES_PAGE, handleGetMessagesPage);
+  ipcMain.handle(TEAM_GET_MEMBER_ACTIVITY_META, handleGetMemberActivityMeta);
   ipcMain.handle(TEAM_CREATE_TASK, handleCreateTask);
   ipcMain.handle(TEAM_REQUEST_REVIEW, handleRequestReview);
   ipcMain.handle(TEAM_UPDATE_KANBAN, handleUpdateKanban);
@@ -595,6 +621,7 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_CANCEL_PROVISIONING);
   ipcMain.removeHandler(TEAM_SEND_MESSAGE);
   ipcMain.removeHandler(TEAM_GET_MESSAGES_PAGE);
+  ipcMain.removeHandler(TEAM_GET_MEMBER_ACTIVITY_META);
   ipcMain.removeHandler(TEAM_CREATE_TASK);
   ipcMain.removeHandler(TEAM_REQUEST_REVIEW);
   ipcMain.removeHandler(TEAM_UPDATE_KANBAN);
@@ -772,14 +799,14 @@ async function handleListTeams(_event: IpcMainInvokeEvent): Promise<IpcResult<Te
 async function handleGetData(
   _event: IpcMainInvokeEvent,
   teamName: unknown
-): Promise<IpcResult<TeamData>> {
+): Promise<IpcResult<TeamViewSnapshot>> {
   const validated = validateTeamName(teamName);
   if (!validated.valid) {
     return { success: false, error: validated.error ?? 'Invalid teamName' };
   }
   const tn = validated.value!;
   const startedAt = Date.now();
-  let data: TeamData;
+  let data: TeamViewSnapshot;
   setCurrentMainOp('team:getData');
   try {
     // Prefer worker thread to keep main event loop responsive
@@ -791,9 +818,11 @@ async function handleGetData(
         logger.warn(
           `[teams:getData] worker failed, falling back: ${workerErr instanceof Error ? workerErr.message : workerErr}`
         );
+        noteHeavyTeamDataWorkerFallback('teams:getData');
         data = await getTeamDataService().getTeamData(tn);
       }
     } else {
+      noteHeavyTeamDataWorkerFallback('teams:getData');
       data = await getTeamDataService().getTeamData(tn);
     }
   } catch (error) {
@@ -833,22 +862,30 @@ async function handleGetData(
 
   const displayName = data.config.name || tn;
   const projectPath = data.config.projectPath;
-
   const live = provisioning.getLiveLeadProcessMessages(tn);
+  const durableMessages = Array.isArray((data as { messages?: unknown }).messages)
+    ? ((data as { messages?: typeof live }).messages ?? [])
+    : [];
+
   if (live.length === 0) {
-    checkRateLimitMessages(
-      data.messages,
-      tn,
-      displayName,
-      projectPath,
-      isAlive,
-      currentLeadSessionId
-    );
-    checkApiErrorMessages(data.messages, tn, displayName, projectPath);
+    if (durableMessages.length > 0) {
+      checkRateLimitMessages(
+        durableMessages,
+        tn,
+        displayName,
+        projectPath,
+        isAlive,
+        currentLeadSessionId
+      );
+      checkApiErrorMessages(durableMessages, tn, displayName, projectPath);
+    } else {
+      scanTeamMessageNotifications(live, tn, displayName, projectPath);
+    }
     return { success: true, data: { ...data, isAlive } };
   }
-  let merged = mergeLiveLeadProcessMessages(data.messages, live);
-  if (data.messages.length >= 50) {
+
+  let merged = mergeLiveLeadProcessMessages(durableMessages, live);
+  if (durableMessages.length >= 50) {
     try {
       const newestPage = await teamDataService.getMessagesPage(tn, {
         limit: 50,
@@ -866,7 +903,7 @@ async function handleGetData(
 
   checkRateLimitMessages(merged, tn, displayName, projectPath, isAlive, currentLeadSessionId);
   checkApiErrorMessages(merged, tn, displayName, projectPath);
-  return { success: true, data: { ...data, isAlive, messages: merged } };
+  return { success: true, data: { ...data, isAlive } };
 }
 
 async function handleGetTaskChangePresence(
@@ -1767,19 +1804,89 @@ async function handleGetMessagesPage(
     return { success: false, error: vTeam.error ?? 'Invalid teamName' };
   }
   const opts = (options && typeof options === 'object' ? options : {}) as {
-    beforeTimestamp?: string;
+    cursor?: string | null;
     limit?: number;
   };
   const limit = Math.min(Math.max(1, opts.limit ?? 50), 200);
-  const beforeTimestamp =
-    typeof opts.beforeTimestamp === 'string' ? opts.beforeTimestamp : undefined;
+  const cursor =
+    typeof opts.cursor === 'string' ? opts.cursor : opts.cursor === null ? null : undefined;
 
   return wrapTeamHandler('getMessagesPage', async () => {
-    const service = getTeamDataService();
-    const liveMessages = beforeTimestamp
-      ? undefined
-      : getTeamProvisioningService().getLiveLeadProcessMessages(vTeam.value!);
-    return service.getMessagesPage(vTeam.value!, { beforeTimestamp, limit, liveMessages });
+    let page: MessagesPage;
+    const notificationContext = await getTeamDataService().getTeamNotificationContext(vTeam.value!);
+    const liveMessages =
+      cursor == null ? getTeamProvisioningService().getLiveLeadProcessMessages(vTeam.value!) : [];
+
+    if (liveMessages.length > 0) {
+      page = await getTeamDataService().getMessagesPage(vTeam.value!, {
+        cursor,
+        limit,
+        liveMessages,
+      });
+      scanTeamMessageNotifications(
+        page.messages,
+        vTeam.value!,
+        notificationContext.displayName,
+        notificationContext.projectPath
+      );
+      return page;
+    }
+
+    const worker = getTeamDataWorkerClient();
+    if (worker.isAvailable()) {
+      try {
+        page = await worker.getMessagesPage(vTeam.value!, { cursor, limit });
+        scanTeamMessageNotifications(
+          page.messages,
+          vTeam.value!,
+          notificationContext.displayName,
+          notificationContext.projectPath
+        );
+        return page;
+      } catch (workerErr) {
+        logger.warn(
+          `[teams:getMessagesPage] worker failed, falling back: ${
+            workerErr instanceof Error ? workerErr.message : workerErr
+          }`
+        );
+      }
+    }
+    noteHeavyTeamDataWorkerFallback('teams:getMessagesPage');
+    page = await getTeamDataService().getMessagesPage(vTeam.value!, { cursor, limit });
+    scanTeamMessageNotifications(
+      page.messages,
+      vTeam.value!,
+      notificationContext.displayName,
+      notificationContext.projectPath
+    );
+    return page;
+  });
+}
+
+async function handleGetMemberActivityMeta(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown
+): Promise<IpcResult<TeamMemberActivityMeta>> {
+  const vTeam = validateTeamName(teamName);
+  if (!vTeam.valid) {
+    return { success: false, error: vTeam.error ?? 'Invalid teamName' };
+  }
+
+  return wrapTeamHandler('getMemberActivityMeta', async () => {
+    const worker = getTeamDataWorkerClient();
+    if (worker.isAvailable()) {
+      try {
+        return await worker.getMemberActivityMeta(vTeam.value!);
+      } catch (workerErr) {
+        logger.warn(
+          `[teams:getMemberActivityMeta] worker failed, falling back: ${
+            workerErr instanceof Error ? workerErr.message : workerErr
+          }`
+        );
+      }
+    }
+    noteHeavyTeamDataWorkerFallback('teams:getMemberActivityMeta');
+    return getTeamDataService().getMemberActivityMeta(vTeam.value!);
   });
 }
 

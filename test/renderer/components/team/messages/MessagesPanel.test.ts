@@ -12,6 +12,21 @@ const storeState = {
   lastSendMessageResult: null,
   teams: [],
   openTeamTab: vi.fn(),
+  loadOlderTeamMessages: vi.fn().mockResolvedValue(undefined),
+  teamMessagesByName: {} as Record<
+    string,
+    {
+      canonicalMessages: InboxMessage[];
+      optimisticMessages: InboxMessage[];
+      feedRevision: string | null;
+      nextCursor: string | null;
+      hasMore: boolean;
+      lastFetchedAt: number | null;
+      loadingHead: boolean;
+      loadingOlder: boolean;
+      headHydrated: boolean;
+    }
+  >,
 };
 
 const readHookState = {
@@ -146,6 +161,8 @@ describe('MessagesPanel idle summary invariants', () => {
     storeState.sendTeamMessage.mockClear();
     storeState.sendCrossTeamMessage.mockClear();
     storeState.openTeamTab.mockClear();
+    storeState.loadOlderTeamMessages.mockClear();
+    storeState.teamMessagesByName = {};
   });
 
   it('keeps read passive peer summaries in the activity timeline while unread badge only counts filtered unread messages', async () => {
@@ -175,6 +192,17 @@ describe('MessagesPanel idle summary invariants', () => {
     ];
 
     await act(async () => {
+      storeState.teamMessagesByName['atlas-hq'] = {
+        canonicalMessages: messages,
+        optimisticMessages: [],
+        feedRevision: 'rev-1',
+        nextCursor: null,
+        hasMore: false,
+        lastFetchedAt: Date.now(),
+        loadingHead: false,
+        loadingOlder: false,
+        headHydrated: true,
+      };
       root.render(
         React.createElement(MessagesPanel, {
           teamName: 'atlas-hq',
@@ -182,7 +210,6 @@ describe('MessagesPanel idle summary invariants', () => {
           onPositionChange: vi.fn(),
           members: [],
           tasks: [],
-          messages,
           timeWindow: null,
           pendingRepliesByMember: {},
           onPendingReplyChange: vi.fn(),
@@ -225,6 +252,17 @@ describe('MessagesPanel idle summary invariants', () => {
     ];
 
     await act(async () => {
+      storeState.teamMessagesByName['atlas-hq'] = {
+        canonicalMessages: messages,
+        optimisticMessages: [],
+        feedRevision: 'rev-1',
+        nextCursor: null,
+        hasMore: false,
+        lastFetchedAt: Date.now(),
+        loadingHead: false,
+        loadingOlder: false,
+        headHydrated: true,
+      };
       root.render(
         React.createElement(MessagesPanel, {
           teamName: 'atlas-hq',
@@ -232,7 +270,6 @@ describe('MessagesPanel idle summary invariants', () => {
           onPositionChange: vi.fn(),
           members: [],
           tasks: [],
-          messages,
           timeWindow: null,
           pendingRepliesByMember: { alice: pendingSentAtMs },
           onPendingReplyChange,
@@ -269,6 +306,17 @@ describe('MessagesPanel idle summary invariants', () => {
     ];
 
     await act(async () => {
+      storeState.teamMessagesByName['atlas-hq'] = {
+        canonicalMessages: messages,
+        optimisticMessages: [],
+        feedRevision: 'rev-1',
+        nextCursor: null,
+        hasMore: false,
+        lastFetchedAt: Date.now(),
+        loadingHead: false,
+        loadingOlder: false,
+        headHydrated: true,
+      };
       root.render(
         React.createElement(MessagesPanel, {
           teamName: 'atlas-hq',
@@ -276,7 +324,6 @@ describe('MessagesPanel idle summary invariants', () => {
           onPositionChange: vi.fn(),
           members: [],
           tasks: [],
-          messages,
           timeWindow: null,
           pendingRepliesByMember: { alice: pendingSentAtMs },
           onPendingReplyChange,
@@ -306,6 +353,17 @@ describe('MessagesPanel idle summary invariants', () => {
     const root = createRoot(host);
 
     await act(async () => {
+      storeState.teamMessagesByName['atlas-hq'] = {
+        canonicalMessages: [makeMessage()],
+        optimisticMessages: [],
+        feedRevision: 'rev-1',
+        nextCursor: null,
+        hasMore: false,
+        lastFetchedAt: Date.now(),
+        loadingHead: false,
+        loadingOlder: false,
+        headHydrated: true,
+      };
       root.render(
         React.createElement(MessagesPanel, {
           teamName: 'atlas-hq',
@@ -314,7 +372,6 @@ describe('MessagesPanel idle summary invariants', () => {
           onPositionChange: vi.fn(),
           members: [],
           tasks: [],
-          messages: [makeMessage()],
           timeWindow: null,
           pendingRepliesByMember: {},
           onPendingReplyChange: vi.fn(),

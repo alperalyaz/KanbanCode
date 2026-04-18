@@ -515,8 +515,7 @@ export class ConfigManager {
         ignoredRepositories:
           loadedNotifications.ignoredRepositories ??
           DEFAULT_CONFIG.notifications.ignoredRepositories,
-        snoozedUntil:
-          loadedNotifications.snoozedUntil ?? DEFAULT_CONFIG.notifications.snoozedUntil,
+        snoozedUntil: loadedNotifications.snoozedUntil ?? DEFAULT_CONFIG.notifications.snoozedUntil,
         snoozeMinutes:
           loadedNotifications.snoozeMinutes ?? DEFAULT_CONFIG.notifications.snoozeMinutes,
         includeSubagentErrors:

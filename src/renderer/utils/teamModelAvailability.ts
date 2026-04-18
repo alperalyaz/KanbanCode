@@ -1,6 +1,5 @@
 import {
   getProviderScopedTeamModelLabel,
-  isSupportedAnthropicTeamModel,
   getRuntimeAwareTeamModelUiDisabledReason,
   getTeamProviderLabel,
   getTeamProviderModelOptions,
@@ -12,11 +11,13 @@ import {
   GPT_5_2_CODEX_UI_DISABLED_REASON,
   GPT_5_3_CODEX_SPARK_UI_DISABLED_MODEL,
   GPT_5_3_CODEX_SPARK_UI_DISABLED_REASON,
+  isSupportedAnthropicTeamModel,
   normalizeTeamModelForUi as normalizeCatalogTeamModelForUi,
   sortTeamProviderModels,
   TEAM_MODEL_UI_DISABLED_BADGE_LABEL,
   type TeamProviderModelOption,
 } from './teamModelCatalog';
+import { extractProviderScopedBaseModel } from './teamModelContext';
 
 import type {
   CliProviderId,
@@ -235,6 +236,14 @@ export function isTeamModelAvailableForUi(
   }
 
   return getRuntimeModelAvailability(providerId, trimmed, providerStatus) === 'available';
+}
+
+export function normalizeExplicitTeamModelForUi(
+  providerId: SupportedProviderId | undefined,
+  model: string | undefined
+): string {
+  const normalized = extractProviderScopedBaseModel(model, providerId) ?? '';
+  return normalizeCatalogTeamModelForUi(providerId, normalized).trim();
 }
 
 export function normalizeTeamModelForUi(

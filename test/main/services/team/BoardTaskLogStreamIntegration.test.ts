@@ -826,7 +826,6 @@ describe('BoardTaskLogStreamService integration', () => {
     expect(bashCommands).not.toContain('echo alien');
     expect(rawMessages.some((message) => message.uuid === 'u-bash-alice-real')).toBe(false);
   });
-
   it('falls back to createdAt/updatedAt time window when workIntervals are missing', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'task-log-stream-created-window-'));
     tempDirs.push(dir);

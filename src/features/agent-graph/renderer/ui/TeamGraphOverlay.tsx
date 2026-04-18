@@ -89,7 +89,6 @@ export const TeamGraphOverlay = ({
   const openCreateTask = useCallback(() => {
     openCreateTaskDialog('');
   }, [openCreateTaskDialog]);
-
   const events: GraphEventPort = {
     onNodeDoubleClick: useCallback(
       (ref: GraphDomainRef) => {

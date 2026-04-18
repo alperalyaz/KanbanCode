@@ -59,15 +59,16 @@ import type {
   TeamClaudeLogsResponse,
   TeamCreateRequest,
   TeamCreateResponse,
-  TeamData,
   TeamLaunchRequest,
   TeamLaunchResponse,
+  TeamMemberActivityMeta,
   TeamProvisioningPrepareResult,
   TeamProvisioningProgress,
   TeamsAPI,
   TeamSummary,
   TeamTask,
   TeamTaskStatus,
+  TeamViewSnapshot,
   TmuxAPI,
   TmuxStatus,
   TriggerTestResult,
@@ -678,7 +679,7 @@ export class HttpAPIClient implements ElectronAPI {
       console.warn('[HttpAPIClient] teams API is not available in browser mode');
       return [];
     },
-    getData: async (_teamName: string): Promise<TeamData> => {
+    getData: async (_teamName: string): Promise<TeamViewSnapshot> => {
       throw new Error('Teams detail is not available in browser mode');
     },
     getTaskChangePresence: async (): Promise<
@@ -746,7 +747,15 @@ export class HttpAPIClient implements ElectronAPI {
       throw new Error('Team messaging is not available in browser mode');
     },
     getMessagesPage: async () => {
-      return { messages: [], nextCursor: null, hasMore: false };
+      return { messages: [], nextCursor: null, hasMore: false, feedRevision: 'empty' };
+    },
+    getMemberActivityMeta: async (_teamName: string): Promise<TeamMemberActivityMeta> => {
+      return {
+        teamName: _teamName,
+        computedAt: new Date(0).toISOString(),
+        members: {},
+        feedRevision: 'empty',
+      };
     },
     createTask: async (_teamName: string, _request: CreateTaskRequest): Promise<TeamTask> => {
       throw new Error('Team task creation is not available in browser mode');

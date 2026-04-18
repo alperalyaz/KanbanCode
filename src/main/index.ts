@@ -88,6 +88,7 @@ import {
 } from './services/extensions';
 import { startEventLoopLagMonitor } from './services/infrastructure/EventLoopLagMonitor';
 import { HttpServer } from './services/infrastructure/HttpServer';
+import { clearAutoResumeService } from './services/team/AutoResumeService';
 import {
   buildTeamControlApiBaseUrl,
   clearTeamControlApiState,
@@ -100,7 +101,6 @@ import {
   type TeamReconcileTrigger,
 } from './services/team/TeamReconcileDrainScheduler';
 import { TeamSentMessagesStore } from './services/team/TeamSentMessagesStore';
-import { clearAutoResumeService } from './services/team/AutoResumeService';
 import { getAppIconPath } from './utils/appIcon';
 import { getProjectsBasePath, getTeamsBasePath, getTodosBasePath } from './utils/pathDecoder';
 import {
@@ -564,6 +564,13 @@ function wireFileWatcherEvents(context: ServiceContext): void {
       const teamName = row.teamName.trim();
       const detail = typeof row.detail === 'string' ? row.detail : '';
 
+      if (
+        teamDataService &&
+        (row.type === 'inbox' || row.type === 'lead-message' || row.type === 'config')
+      ) {
+        teamDataService.invalidateMessageFeed(teamName);
+      }
+
       // --- Inbox change events: relay to lead + native OS notifications ---
       if (row.type === 'inbox') {
         if (reconcileScheduler) {
@@ -906,6 +913,12 @@ async function initializeServices(): Promise<void> {
   });
 
   const forwardTeamChange = (event: TeamChangeEvent): void => {
+    if (
+      teamDataService &&
+      (event.type === 'inbox' || event.type === 'lead-message' || event.type === 'config')
+    ) {
+      teamDataService.invalidateMessageFeed(event.teamName);
+    }
     safeSendToRenderer(mainWindow, TEAM_CHANGE, event);
     httpServer?.broadcast('team-change', event);
   };

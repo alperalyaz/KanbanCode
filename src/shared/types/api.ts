@@ -56,7 +56,6 @@ import type {
   LeadContextUsageSnapshot,
   MemberFullStats,
   MemberLogSummary,
-  TeamAgentRuntimeSnapshot,
   MemberSpawnStatusesSnapshot,
   MessagesPage,
   ProjectBranchChangeEvent,
@@ -66,6 +65,7 @@ import type {
   TaskAttachmentMeta,
   TaskChangePresenceState,
   TaskComment,
+  TeamAgentRuntimeSnapshot,
   TeamChangeEvent,
   TeamClaudeLogsQuery,
   TeamClaudeLogsResponse,
@@ -73,9 +73,9 @@ import type {
   TeamCreateConfigRequest,
   TeamCreateRequest,
   TeamCreateResponse,
-  TeamData,
   TeamLaunchRequest,
   TeamLaunchResponse,
+  TeamMemberActivityMeta,
   TeamMessageNotificationData,
   TeamProvisioningPrepareResult,
   TeamProvisioningProgress,
@@ -83,6 +83,7 @@ import type {
   TeamTask,
   TeamTaskStatus,
   TeamUpdateConfigRequest,
+  TeamViewSnapshot,
   ToolApprovalEvent,
   ToolApprovalFileContent,
   ToolApprovalSettings,
@@ -427,7 +428,7 @@ export interface HttpServerAPI {
 
 export interface TeamsAPI {
   list: () => Promise<TeamSummary[]>;
-  getData: (teamName: string) => Promise<TeamData>;
+  getData: (teamName: string) => Promise<TeamViewSnapshot>;
   getTaskChangePresence: (teamName: string) => Promise<Record<string, TaskChangePresenceState>>;
   setChangePresenceTracking: (teamName: string, enabled: boolean) => Promise<void>;
   setToolActivityTracking: (teamName: string, enabled: boolean) => Promise<void>;
@@ -451,8 +452,9 @@ export interface TeamsAPI {
   sendMessage: (teamName: string, request: SendMessageRequest) => Promise<SendMessageResult>;
   getMessagesPage: (
     teamName: string,
-    options?: { beforeTimestamp?: string; limit?: number }
+    options?: { cursor?: string | null; limit?: number }
   ) => Promise<MessagesPage>;
+  getMemberActivityMeta: (teamName: string) => Promise<TeamMemberActivityMeta>;
   createTask: (teamName: string, request: CreateTaskRequest) => Promise<TeamTask>;
   requestReview: (teamName: string, taskId: string) => Promise<void>;
   updateKanban: (teamName: string, taskId: string, patch: UpdateKanbanPatch) => Promise<void>;

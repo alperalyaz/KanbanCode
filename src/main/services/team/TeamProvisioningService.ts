@@ -90,6 +90,7 @@ import { buildActionModeProtocol } from './actionModeInstructions';
 import { atomicWriteAsync } from './atomicWrite';
 import { peekAutoResumeService } from './AutoResumeService';
 import { ClaudeBinaryResolver } from './ClaudeBinaryResolver';
+import { getConfiguredCliCommandLabel } from './cliFlavor';
 import { withFileLock } from './fileLock';
 import {
   type ClassifiedMainProcessIdle,
@@ -721,6 +722,8 @@ interface ProvisioningRun {
   >;
   /** Agent tool_use_id -> teammate name for persistent teammate spawns. */
   memberSpawnToolUseIds: Map<string, string>;
+  /** Per-member latest processed lead-inbox bootstrap signal cursor for the current live run. */
+  memberSpawnLeadInboxCursorByMember: Map<string, MemberSpawnInboxCursor>;
   /** Highest accepted deterministic bootstrap event sequence for this run. */
   lastDeterministicBootstrapSeq: number;
   /** Throttles config/inbox audit work triggered by frequent status polling. */
@@ -837,6 +840,75 @@ function matchesTeamMemberIdentity(leftName: string, rightName: string): boolean
   return (
     matchesMemberNameOrBase(leftName, rightName) || matchesMemberNameOrBase(rightName, leftName)
   );
+}
+
+interface MemberSpawnInboxCursor {
+  timestamp: string;
+  messageId: string;
+}
+
+type LeadInboxMemberSpawnMessage = InboxMessage & { messageId: string };
+
+function compareMemberSpawnInboxCursor(
+  left: MemberSpawnInboxCursor,
+  right: MemberSpawnInboxCursor
+): number {
+  const leftMs = Date.parse(left.timestamp);
+  const rightMs = Date.parse(right.timestamp);
+  const leftValid = Number.isFinite(leftMs);
+  const rightValid = Number.isFinite(rightMs);
+
+  if (leftValid && rightValid && leftMs !== rightMs) {
+    return leftMs - rightMs;
+  }
+  if (leftValid !== rightValid) {
+    return leftValid ? -1 : 1;
+  }
+  return left.messageId.localeCompare(right.messageId);
+}
+
+function toMemberSpawnInboxCursor(
+  message: Pick<InboxMessage, 'timestamp' | 'messageId'>
+): MemberSpawnInboxCursor | null {
+  const messageId = typeof message.messageId === 'string' ? message.messageId.trim() : '';
+  if (!messageId) {
+    return null;
+  }
+  return {
+    timestamp: message.timestamp,
+    messageId,
+  };
+}
+
+function maxMemberSpawnInboxCursor(
+  left: MemberSpawnInboxCursor | undefined,
+  right: MemberSpawnInboxCursor
+): MemberSpawnInboxCursor {
+  if (!left) {
+    return right;
+  }
+  return compareMemberSpawnInboxCursor(left, right) >= 0 ? left : right;
+}
+
+function isMemberSpawnHeartbeatTimestampNewer(
+  previous: string | undefined,
+  incoming: string | undefined
+): boolean {
+  const normalizedIncoming = incoming?.trim();
+  if (!normalizedIncoming) {
+    return false;
+  }
+  const normalizedPrevious = previous?.trim();
+  if (!normalizedPrevious) {
+    return true;
+  }
+
+  const previousMs = Date.parse(normalizedPrevious);
+  const incomingMs = Date.parse(normalizedIncoming);
+  if (Number.isFinite(previousMs) && Number.isFinite(incomingMs)) {
+    return incomingMs > previousMs;
+  }
+  return normalizedIncoming > normalizedPrevious;
 }
 
 function stripWrappedCliFlagValue(raw: string | undefined): string | undefined {
@@ -1339,6 +1411,8 @@ ${buildCanonicalSendMessageExample({ to: leadName, summary: 'short update', mess
 After member_briefing succeeds:
 - Do NOT send a "ready", "online", "status accepted", or other acknowledgement-only message just to confirm you started successfully.
 - If bootstrap succeeded and you have no task yet, stay silent and wait for task assignments.
+- If bootstrap succeeded and you have no task, produce ZERO assistant text for that turn and end it immediately after the successful tool result.
+- Do NOT ask the user or the lead to send you a task ID, task description, or "next task" right after bootstrap.
 - Only SendMessage the lead after bootstrap when there is a real blocker, a failed bootstrap, an explicit question, an urgent coordination need, or a completed task result to report.
 - Never send raw tool output, JSON, dict/object dumps, Python-style structs, or internal state payloads to the lead or the user. If you need to report bootstrap/task/tool status, rewrite it as one short natural-language sentence.
 - When you later receive work or reconnect after a restart, use task_briefing as your compact queue view. Use task_get when you need the full task context before starting a pending/needsFix task or when the in_progress briefing details are not enough.
@@ -1409,6 +1483,8 @@ ${actionModeProtocol}
      After member_briefing succeeds:
      - Do NOT send a "ready", "online", "status accepted", or other acknowledgement-only message just to confirm you reconnected successfully.
      - If reconnect bootstrap succeeded and you have no immediate blocker or question, stay silent and continue with your queue.
+     - If reconnect bootstrap succeeded and you have no immediate blocker, question, or task, produce ZERO assistant text for that turn and end it immediately.
+     - Do NOT ask the user or the lead to send you a task ID, task description, or "next task" right after reconnect bootstrap.
      - Never send raw tool output, JSON, dict/object dumps, Python-style structs, or internal state payloads to the lead or the user. If you need to report bootstrap/task/tool status, rewrite it as one short natural-language sentence.
      - Use task_briefing as your compact queue view.
      - If task_briefing shows any in_progress task, resume/finish those first. Call task_get only if you need more context than task_briefing already gave you.
@@ -3094,12 +3170,15 @@ export class TeamProvisioningService {
     }
 
     const runStartedAtMs = Date.parse(run.startedAt);
-    const expectedMembers = Array.isArray(run.expectedMembers) ? run.expectedMembers : [];
+    const expectedMembers = new Set(Array.isArray(run.expectedMembers) ? run.expectedMembers : []);
     const teammateMessages = leadInboxMessages
-      .filter((message) => {
+      .filter((message): message is LeadInboxMemberSpawnMessage => {
         const from = typeof message.from === 'string' ? message.from.trim() : '';
         if (!from || from === leadName || from === 'user' || from === 'system') return false;
-        if (!expectedMembers.includes(from)) return false;
+        if (!expectedMembers.has(from)) return false;
+        if (typeof message.messageId !== 'string' || message.messageId.trim().length === 0) {
+          return false;
+        }
         const messageTs = Date.parse(message.timestamp);
         if (
           Number.isFinite(messageTs) &&
@@ -3110,24 +3189,67 @@ export class TeamProvisioningService {
         }
         return typeof message.text === 'string' && message.text.trim().length > 0;
       })
-      .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
-
-    for (const message of teammateMessages) {
-      const from = message.from.trim();
-      const reason = extractBootstrapFailureReason(message.text);
-      if (reason) {
-        this.setMemberSpawnStatus(run, from, 'error', reason);
-        continue;
-      }
-      this.setMemberSpawnStatus(
-        run,
-        from,
-        'online',
-        undefined,
-        'heartbeat',
-        extractHeartbeatTimestamp(message.text, message.timestamp)
+      .sort((left, right) =>
+        compareMemberSpawnInboxCursor(
+          { timestamp: left.timestamp, messageId: left.messageId },
+          { timestamp: right.timestamp, messageId: right.messageId }
+        )
       );
+
+    const messagesByMember = new Map<string, LeadInboxMemberSpawnMessage[]>();
+    for (const message of teammateMessages) {
+      const memberName = message.from.trim();
+      const bucket = messagesByMember.get(memberName) ?? [];
+      bucket.push(message);
+      messagesByMember.set(memberName, bucket);
     }
+
+    for (const [memberName, messages] of messagesByMember.entries()) {
+      const currentCursor = run.memberSpawnLeadInboxCursorByMember.get(memberName);
+      let nextCursor = currentCursor;
+
+      for (const message of messages) {
+        const messageCursor = toMemberSpawnInboxCursor(message);
+        const effectiveCursor = nextCursor ?? currentCursor;
+        if (messageCursor && effectiveCursor) {
+          if (compareMemberSpawnInboxCursor(messageCursor, effectiveCursor) <= 0) {
+            continue;
+          }
+        }
+
+        this.applyLeadInboxSpawnSignal(run, memberName, message);
+        if (messageCursor) {
+          nextCursor = maxMemberSpawnInboxCursor(nextCursor, messageCursor);
+        }
+      }
+
+      if (
+        nextCursor &&
+        (currentCursor == null || compareMemberSpawnInboxCursor(nextCursor, currentCursor) > 0)
+      ) {
+        run.memberSpawnLeadInboxCursorByMember.set(memberName, nextCursor);
+      }
+    }
+  }
+
+  private applyLeadInboxSpawnSignal(
+    run: ProvisioningRun,
+    memberName: string,
+    message: LeadInboxMemberSpawnMessage
+  ): void {
+    const reason = extractBootstrapFailureReason(message.text);
+    if (reason) {
+      this.setMemberSpawnStatus(run, memberName, 'error', reason);
+      return;
+    }
+    this.setMemberSpawnStatus(
+      run,
+      memberName,
+      'online',
+      undefined,
+      'heartbeat',
+      extractHeartbeatTimestamp(message.text, message.timestamp)
+    );
   }
 
   private persistSentMessage(teamName: string, message: InboxMessage): void {
@@ -3725,8 +3847,14 @@ export class TeamProvisioningService {
       next.livenessSource = livenessSource;
       next.firstSpawnAcceptedAt = prev.firstSpawnAcceptedAt ?? updatedAt;
       if (livenessSource === 'heartbeat') {
+        const incomingHeartbeatAt = heartbeatAt?.trim() || updatedAt;
         next.bootstrapConfirmed = true;
-        next.lastHeartbeatAt = heartbeatAt?.trim() || prev.lastHeartbeatAt || updatedAt;
+        next.lastHeartbeatAt = isMemberSpawnHeartbeatTimestampNewer(
+          prev.lastHeartbeatAt,
+          incomingHeartbeatAt
+        )
+          ? incomingHeartbeatAt
+          : prev.lastHeartbeatAt;
       }
       next.hardFailure = false;
       next.error = undefined;
@@ -5612,6 +5740,7 @@ export class TeamProvisioningService {
           request.members.map((m) => [m.name, createInitialMemberSpawnStatusEntry()])
         ),
         memberSpawnToolUseIds: new Map(),
+        memberSpawnLeadInboxCursorByMember: new Map(),
         lastDeterministicBootstrapSeq: 0,
         lastMemberSpawnAuditAt: 0,
         lastMemberSpawnAuditConfigReadWarningAt: 0,
@@ -6192,6 +6321,7 @@ export class TeamProvisioningService {
           expectedMembers.map((name) => [name, createInitialMemberSpawnStatusEntry()])
         ),
         memberSpawnToolUseIds: new Map(),
+        memberSpawnLeadInboxCursorByMember: new Map(),
         lastDeterministicBootstrapSeq: 0,
         lastMemberSpawnAuditAt: 0,
         lastMemberSpawnAuditConfigReadWarningAt: 0,
@@ -12968,6 +13098,7 @@ export class TeamProvisioningService {
     providerId: TeamProviderId | undefined = 'anthropic'
   ): Promise<{ warning?: string }> {
     const resolvedProviderId = resolveTeamProviderId(providerId);
+    const cliCommandLabel = getConfiguredCliCommandLabel();
     try {
       const versionProbe = await this.spawnProbe(
         claudePath,
@@ -12979,9 +13110,9 @@ export class TeamProvisioningService {
       if (versionProbe.exitCode !== 0) {
         const errorText =
           buildCombinedLogs(versionProbe.stdout, versionProbe.stderr) ||
-          `Claude CLI exited with code ${versionProbe.exitCode ?? 'unknown'} during warm-up`;
+          `${cliCommandLabel} exited with code ${versionProbe.exitCode ?? 'unknown'} during warm-up`;
         return {
-          warning: `Claude CLI binary failed to start correctly. Details: ${errorText}`,
+          warning: `${cliCommandLabel} binary failed to start correctly. Details: ${errorText}`,
         };
       }
     } catch (error) {
@@ -12992,7 +13123,7 @@ export class TeamProvisioningService {
         };
       }
       return {
-        warning: `Claude CLI binary failed to start. Details: ${message}`,
+        warning: `${cliCommandLabel} binary failed to start. Details: ${message}`,
       };
     }
 
@@ -13054,7 +13185,7 @@ export class TeamProvisioningService {
         }
         return {
           warning:
-            'Preflight check for `claude -p` did not complete. ' +
+            `Preflight check for \`${cliCommandLabel} -p\` did not complete. ` +
             `Proceeding anyway. Details: ${message}`,
         };
       }
@@ -13075,13 +13206,15 @@ export class TeamProvisioningService {
         const hint = isAuthFailure
           ? resolvedProviderId === 'codex'
             ? 'Codex provider is not authenticated for `-p` mode. ' +
-              'Run `claude-multimodel auth login --provider codex` and retry.' +
+              `Authenticate Codex in ${cliCommandLabel} and retry.` +
               (attempt > 1 ? ` (failed after ${attempt} attempts)` : '')
-            : 'Claude CLI `-p` mode is not authenticated. ' +
-              'Run `claude auth login` (or start `claude` and run `/login`) to authenticate. ' +
+            : `${cliCommandLabel} \`-p\` mode is not authenticated. ` +
+              (cliCommandLabel === 'claude'
+                ? 'Run `claude auth login` (or start `claude` and run `/login`) to authenticate. '
+                : `Authenticate Anthropic in ${cliCommandLabel} and retry. `) +
               'For automation/headless use, set ANTHROPIC_API_KEY.' +
               (attempt > 1 ? ` (failed after ${attempt} attempts)` : '')
-          : `Claude CLI preflight check failed (exit code ${pingProbe.exitCode ?? 'unknown'}).`;
+          : `${cliCommandLabel} preflight check failed (exit code ${pingProbe.exitCode ?? 'unknown'}).`;
         return { warning: hint };
       }
 
@@ -13122,7 +13255,7 @@ export class TeamProvisioningService {
     const targetCwd = cwd ?? process.cwd();
     const probeResult = await this.getCachedOrProbeResult(targetCwd, 'anthropic');
     if (!probeResult?.claudePath) {
-      throw new Error('Claude CLI not found');
+      throw new Error(`${getConfiguredCliCommandLabel()} not found`);
     }
     const { env } = await this.buildProvisioningEnv();
     const result = await this.spawnProbe(
@@ -13135,7 +13268,7 @@ export class TeamProvisioningService {
     const output = (result.stdout + '\n' + result.stderr).trim();
     if (!output) {
       throw new Error(
-        `claude --help returned empty output (exit code: ${String(result.exitCode)})`
+        `${getConfiguredCliCommandLabel()} --help returned empty output (exit code: ${String(result.exitCode)})`
       );
     }
     this.helpOutputCache = output;
@@ -13493,7 +13626,7 @@ export class TeamProvisioningService {
       const timeoutHandle = setTimeout(() => {
         settled = true;
         killProcessTree(child);
-        reject(new Error(`Timeout running: claude ${args.join(' ')}`));
+        reject(new Error(`Timeout running: ${getConfiguredCliCommandLabel()} ${args.join(' ')}`));
       }, timeoutMs);
 
       const maybeResolveEarly = (): void => {
