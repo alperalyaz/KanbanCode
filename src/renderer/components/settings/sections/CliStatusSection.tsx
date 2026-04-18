@@ -20,6 +20,7 @@ import {
   isConnectionManagedRuntimeProvider,
   shouldShowProviderConnectAction,
 } from '@renderer/components/runtime/providerConnectionUi';
+import { ProviderModelBadges } from '@renderer/components/runtime/ProviderModelBadges';
 import { getProviderRuntimeBackendSummary } from '@renderer/components/runtime/ProviderRuntimeBackendSelector';
 import { ProviderRuntimeSettingsDialog } from '@renderer/components/runtime/ProviderRuntimeSettingsDialog';
 import { SettingsToggle } from '@renderer/components/settings/components';
@@ -28,10 +29,6 @@ import { useCliInstaller } from '@renderer/hooks/useCliInstaller';
 import { useStore } from '@renderer/store';
 import { createLoadingMultimodelCliStatus } from '@renderer/store/slices/cliInstallerSlice';
 import { formatBytes } from '@renderer/utils/formatters';
-import {
-  getTeamModelBadgeLabel,
-  getVisibleTeamProviderModels,
-} from '@renderer/utils/teamModelCatalog';
 import {
   AlertTriangle,
   CheckCircle,
@@ -48,37 +45,6 @@ import {
 import { SettingsSectionHeader } from '../components';
 
 import type { CliProviderId, CliProviderStatus } from '@shared/types';
-
-function formatModelBadgeLabel(providerId: CliProviderId, model: string): string {
-  return getTeamModelBadgeLabel(providerId, model) ?? model;
-}
-
-const ModelBadges = ({
-  providerId,
-  models,
-}: {
-  readonly providerId: CliProviderId;
-  readonly models: string[];
-}): React.JSX.Element => {
-  const visibleModels = getVisibleTeamProviderModels(providerId, models);
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {visibleModels.map((model) => (
-        <span
-          key={model}
-          className="rounded-md border px-1.5 py-px font-mono text-[10px] leading-4"
-          style={{
-            borderColor: 'var(--color-border-subtle)',
-            backgroundColor: 'rgba(255, 255, 255, 0.03)',
-            color: 'var(--color-text-secondary)',
-          }}
-        >
-          {formatModelBadgeLabel(providerId, model)}
-        </span>
-      ))}
-    </div>
-  );
-};
 
 const ProviderDetailSkeleton = (): React.JSX.Element => {
   return (
@@ -197,6 +163,7 @@ export const CliStatusSection = (): React.JSX.Element | null => {
     !cliStatus && cliStatusLoading && multimodelEnabled
       ? createLoadingMultimodelCliStatus()
       : cliStatus;
+  const canOpenExtensions = effectiveCliStatus?.installed === true;
   const showInstalledControls =
     effectiveCliStatus !== null && (installerState === 'idle' || installerState === 'completed');
 
@@ -430,7 +397,7 @@ export const CliStatusSection = (): React.JSX.Element | null => {
                     </button>
                   ) : null}
                   {/* Extensions button — right-aligned */}
-                  {effectiveCliStatus.authLoggedIn && (
+                  {canOpenExtensions && (
                     <button
                       type="button"
                       onClick={openExtensionsTab}
@@ -600,9 +567,11 @@ export const CliStatusSection = (): React.JSX.Element | null => {
                               </div>
                               {!showSkeleton && provider.models.length > 0 && (
                                 <div className="col-span-2">
-                                  <ModelBadges
+                                  <ProviderModelBadges
                                     providerId={provider.providerId}
                                     models={provider.models}
+                                    modelAvailability={provider.modelAvailability}
+                                    providerStatus={provider}
                                   />
                                 </div>
                               )}
