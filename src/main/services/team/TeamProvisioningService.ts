@@ -2290,9 +2290,12 @@ function updateProgress(
   return run.progress;
 }
 
-function buildCombinedLogs(stdoutBuffer: string, stderrBuffer: string): string {
-  const stdoutTrimmed = stdoutBuffer.trim();
-  const stderrTrimmed = stderrBuffer.trim();
+function buildCombinedLogs(
+  stdoutBuffer: string | undefined,
+  stderrBuffer: string | undefined
+): string {
+  const stdoutTrimmed = (stdoutBuffer ?? '').trim();
+  const stderrTrimmed = (stderrBuffer ?? '').trim();
 
   if (stdoutTrimmed.length === 0 && stderrTrimmed.length === 0) {
     return '';
@@ -2372,7 +2375,10 @@ function normalizeRecordStringValues(value: unknown): Record<string, string> {
   );
 }
 
-function extractLogsTail(stdoutBuffer: string, stderrBuffer: string): string | undefined {
+function extractLogsTail(
+  stdoutBuffer: string | undefined,
+  stderrBuffer: string | undefined
+): string | undefined {
   const trimmed = buildCombinedLogs(stdoutBuffer, stderrBuffer).trim();
   if (trimmed.length === 0) {
     return undefined;
@@ -2394,8 +2400,9 @@ function extractLogsTail(stdoutBuffer: string, stderrBuffer: string): string | u
  * in provisioning before any output has been line-split).
  */
 function extractCliLogsFromRun(run: ProvisioningRun): string | undefined {
-  if (run.claudeLogLines.length > 0) {
-    const joined = run.claudeLogLines.join('\n').trim();
+  const claudeLogLines = Array.isArray(run.claudeLogLines) ? run.claudeLogLines : [];
+  if (claudeLogLines.length > 0) {
+    const joined = claudeLogLines.join('\n').trim();
     if (joined.length === 0) {
       return undefined;
     }
@@ -2417,9 +2424,10 @@ interface PersistedTranscriptClaudeLogsCacheEntry {
 }
 
 function buildRetainedClaudeLogsSnapshot(run: ProvisioningRun): RetainedClaudeLogsSnapshot | null {
-  if (run.claudeLogLines.length > 0) {
+  const claudeLogLines = Array.isArray(run.claudeLogLines) ? run.claudeLogLines : [];
+  if (claudeLogLines.length > 0) {
     return {
-      lines: [...run.claudeLogLines],
+      lines: [...claudeLogLines],
       updatedAt: run.claudeLogsUpdatedAt,
     };
   }
