@@ -282,11 +282,15 @@ export const MessagesPanel = memo(function MessagesPanel({
   ]);
 
   useEffect(() => {
-    if (messagesSearchBarVisible || messagesSearchQuery.trim().length === 0) {
+    const hasActiveParticipantFilter = messagesFilter.from.size > 0 || messagesFilter.to.size > 0;
+    if (
+      messagesSearchBarVisible ||
+      (messagesSearchQuery.trim().length === 0 && !hasActiveParticipantFilter)
+    ) {
       return;
     }
     setMessagesSearchBarVisible(true);
-  }, [messagesSearchBarVisible, messagesSearchQuery]);
+  }, [messagesFilter.from, messagesFilter.to, messagesSearchBarVisible, messagesSearchQuery]);
 
   useEffect(() => {
     if (!teamName) {

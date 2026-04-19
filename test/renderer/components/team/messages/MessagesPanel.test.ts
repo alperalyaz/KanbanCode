@@ -504,6 +504,54 @@ describe('MessagesPanel idle summary invariants', () => {
     });
   });
 
+  it('reopens the search and filter bar when a persisted member filter is active', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    sidebarUiState.messagesFilter = {
+      from: new Set<string>(),
+      to: new Set<string>(['jack']),
+      showNoise: false,
+    };
+    sidebarUiState.messagesSearchBarVisible = false;
+
+    await act(async () => {
+      storeState.teamMessagesByName['atlas-hq'] = {
+        canonicalMessages: [makeMessage({ to: 'jack', text: 'Тут?' })],
+        optimisticMessages: [],
+        feedRevision: 'rev-1',
+        nextCursor: null,
+        hasMore: false,
+        lastFetchedAt: Date.now(),
+        loadingHead: false,
+        loadingOlder: false,
+        headHydrated: true,
+      };
+      root.render(
+        React.createElement(MessagesPanel, {
+          teamName: 'atlas-hq',
+          position: 'sidebar',
+          onPositionChange: vi.fn(),
+          members: [],
+          tasks: [],
+          timeWindow: null,
+          pendingRepliesByMember: {},
+          onPendingReplyChange: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('input[placeholder=\"Search...\"]')).not.toBeNull();
+    expect(host.textContent).toContain('filter-popover');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('requests a one-shot head refresh when the messages cache is empty', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');

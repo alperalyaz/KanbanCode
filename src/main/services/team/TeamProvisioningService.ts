@@ -865,6 +865,11 @@ function isConfigRegistrationFailureReason(reason?: string): boolean {
   );
 }
 
+function isTmuxNoServerRunningError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error ?? '');
+  return /no server running on /i.test(text);
+}
+
 function isAutoClearableLaunchFailureReason(reason?: string): boolean {
   return (
     isNeverSpawnedDuringLaunchReason(reason) ||
@@ -1101,6 +1106,9 @@ async function waitForTmuxPanesToExit(
       livePanePidById = await listTmuxPanePidsForCurrentPlatform(remainingPaneIds);
       lastError = null;
     } catch (error) {
+      if (isTmuxNoServerRunningError(error)) {
+        return [];
+      }
       lastError = error;
       await sleep(opts.pollMs);
       continue;

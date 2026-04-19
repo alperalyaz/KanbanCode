@@ -1301,6 +1301,60 @@ describe('TeamProvisioningService', () => {
       expect(sendMessageToRun).not.toHaveBeenCalled();
     });
 
+    it('treats a dead tmux server as successful pane exit verification after kill', async () => {
+      vi.useFakeTimers();
+
+      const svc = new TeamProvisioningService();
+      const run = createMemberSpawnRun({
+        teamName: 'tmux-team',
+        expectedMembers: ['forge'],
+        memberSpawnStatuses: new Map(),
+      });
+      run.child = { pid: 111 };
+      run.processKilled = false;
+      run.cancelRequested = false;
+
+      const sendMessageToRun = vi.fn(async () => {});
+      (svc as any).sendMessageToRun = sendMessageToRun;
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          name: 'Tmux Team',
+          members: [{ name: 'team-lead', agentType: 'team-lead' }],
+        })),
+      };
+      (svc as any).membersMetaStore = {
+        getMembers: vi.fn(async () => [
+          {
+            name: 'forge',
+            role: 'Developer',
+            providerId: 'codex',
+            model: 'gpt-5.4',
+            effort: 'medium',
+            agentType: 'general-purpose',
+          },
+        ]),
+      };
+      (svc as any).readPersistedRuntimeMembers = vi.fn(() => [
+        {
+          name: 'forge',
+          agentId: 'forge@tmux-team',
+          backendType: 'tmux',
+          tmuxPaneId: '%2',
+        },
+      ]);
+      (svc as any).getLiveTeamAgentRuntimeMetadata = vi.fn(async () => new Map());
+      (svc as any).aliveRunByTeam.set('tmux-team', run.runId);
+      (svc as any).runs.set(run.runId, run);
+
+      vi.mocked(listTmuxPanePidsForCurrentPlatform).mockRejectedValue(
+        new Error('no server running on /private/tmp/tmux-501/default')
+      );
+
+      await svc.restartMember('tmux-team', 'forge');
+
+      expect(sendMessageToRun).toHaveBeenCalledTimes(1);
+    });
+
     it('fails early when the previous process backend runtime does not exit before restart', async () => {
       vi.useFakeTimers();
 
