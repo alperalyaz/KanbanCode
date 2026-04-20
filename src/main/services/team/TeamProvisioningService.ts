@@ -1131,7 +1131,7 @@ async function waitForTmuxPanesToExit(
   }
 
   if (lastError) {
-    throw (lastError instanceof Error ? lastError : new Error(getErrorMessage(lastError)));
+    throw lastError instanceof Error ? lastError : new Error(getErrorMessage(lastError));
   }
   return remainingPaneIds;
 }
