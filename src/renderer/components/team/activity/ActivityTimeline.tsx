@@ -1,4 +1,12 @@
-import React, { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import {
   areInboxMessagesEquivalentForRender,
@@ -135,6 +143,7 @@ const EMPTY_TEAM_NAMES: string[] = [];
 const EMPTY_TEAM_COLOR_MAP = new Map<string, string>();
 const DEFAULT_COLLAPSE_MODE = 'default' as const;
 const VIRTUALIZER_OVERSCAN = 8;
+const VIRTUALIZATION_ROW_GAP_PX = 4;
 
 /**
  * Row count above which virtualization is worth its complexity cost. Below
@@ -157,6 +166,35 @@ const ROW_SIZE_ESTIMATES: Record<TimelineRow['kind'], number> = {
   'lead-thought-group': 220,
   'message-row': 140,
 };
+
+function collectScrollMarginObserverTargets(
+  rootElement: HTMLElement,
+  scrollElement: HTMLElement
+): HTMLElement[] {
+  const targets = new Set<HTMLElement>([rootElement, scrollElement]);
+
+  let current: HTMLElement | null = rootElement;
+  while (current && current !== scrollElement) {
+    const parentElement: HTMLElement | null = current.parentElement;
+    if (!parentElement) {
+      break;
+    }
+
+    targets.add(parentElement);
+
+    let previousSibling: Element | null = current.previousElementSibling;
+    while (previousSibling) {
+      if (previousSibling instanceof HTMLElement) {
+        targets.add(previousSibling);
+      }
+      previousSibling = previousSibling.previousElementSibling;
+    }
+
+    current = parentElement;
+  }
+
+  return [...targets];
+}
 
 function getItemSessionAnchorId(item: TimelineItem): string | undefined {
   if (item.type === 'lead-thoughts') {
@@ -607,13 +645,12 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
     renderRows.length >= VIRTUALIZATION_ROW_THRESHOLD;
 
   // DOM-measured distance from the scroll container's scroll origin to the
-  // timeline root. Hand-summing composer/status/padding heights would drift as
-  // soon as any of those blocks change size; measuring the actual offset via
-  // `getBoundingClientRect` keeps the virtualizer accurate without coupling
-  // to layout internals.
+  // timeline root. We avoid re-measuring on every scroll: the offset only
+  // changes when layout above the timeline changes, so observe the timeline,
+  // its ancestor chain, and all previous siblings that can push it down.
   const [measuredScrollMargin, setMeasuredScrollMargin] = useState(0);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!shouldVirtualize) return;
     const scrollEl = viewport?.scrollElementRef?.current ?? null;
     const rootEl = rootRef.current;
@@ -638,18 +675,14 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
     };
 
     measure();
-    const scrollObserver = new ResizeObserver(measure);
-    scrollObserver.observe(scrollEl);
-    const rootObserver = new ResizeObserver(measure);
-    rootObserver.observe(rootEl);
-    scrollEl.addEventListener('scroll', measure, { passive: true });
+    const resizeObserver = new ResizeObserver(measure);
+    const observedTargets = collectScrollMarginObserverTargets(rootEl, scrollEl);
+    observedTargets.forEach((target) => resizeObserver.observe(target));
     window.addEventListener('resize', measure);
 
     return () => {
       if (rafId !== null) cancelAnimationFrame(rafId);
-      scrollObserver.disconnect();
-      rootObserver.disconnect();
-      scrollEl.removeEventListener('scroll', measure);
+      resizeObserver.disconnect();
       window.removeEventListener('resize', measure);
     };
   }, [shouldVirtualize, viewport?.scrollElementRef]);
@@ -660,6 +693,7 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
     estimateSize: (index) => ROW_SIZE_ESTIMATES[renderRows[index]?.kind ?? 'message-row'],
     getItemKey: (index) => renderRows[index]?.key ?? `row-${index}`,
     overscan: VIRTUALIZER_OVERSCAN,
+    gap: VIRTUALIZATION_ROW_GAP_PX,
     scrollMargin: measuredScrollMargin,
   });
 
