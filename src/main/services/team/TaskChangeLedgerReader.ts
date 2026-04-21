@@ -1381,7 +1381,7 @@ export class TaskChangeLedgerReader {
   private normalizeLedgerFilePath(filePath: string): string {
     const slashPath = filePath.replace(/\\/g, '/');
     const isWindowsAbsolute = /^[A-Za-z]:\//.test(slashPath) || slashPath.startsWith('//');
-    if (path.isAbsolute(filePath) || isWindowsAbsolute) {
+    if (isWindowsAbsolute || (process.platform !== 'win32' && path.isAbsolute(filePath))) {
       return path.normalize(filePath);
     }
     return slashPath;
