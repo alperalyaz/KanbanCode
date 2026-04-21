@@ -26,6 +26,7 @@ const TASK_CHANGE_SUMMARY_SCHEMA_VERSION = 2;
 const TASK_CHANGE_FRESHNESS_SCHEMA_VERSION = 2;
 const TASK_CHANGE_LEDGER_DIRNAME = '.board-task-changes';
 const TASK_CHANGE_FRESHNESS_DIRNAME = '.board-task-change-freshness';
+const MAX_TASK_ID_ARTIFACT_SEGMENT_LENGTH = 120;
 
 function isWindowsReservedArtifactSegment(segment: string): boolean {
   const stem = segment.split('.')[0]?.toUpperCase() ?? '';
@@ -42,7 +43,8 @@ function isWindowsReservedArtifactSegment(segment: string): boolean {
 
 function encodeTaskId(taskId: string): string {
   const encoded = encodeURIComponent(taskId);
-  return isWindowsReservedArtifactSegment(encoded)
+  return isWindowsReservedArtifactSegment(encoded) ||
+    encoded.length > MAX_TASK_ID_ARTIFACT_SEGMENT_LENGTH
     ? `task-id-${createHash('sha256').update(taskId).digest('hex').slice(0, 32)}`
     : encoded;
 }
@@ -424,7 +426,11 @@ export class TaskChangeLedgerReader {
     ) {
       return {
         bundle,
-        provenance: this.buildLedgerProvenance(journalStamp, bundle.integrity, bundle.schemaVersion),
+        provenance: this.buildLedgerProvenance(
+          journalStamp,
+          bundle.integrity,
+          bundle.schemaVersion
+        ),
         mode: 'validated',
       };
     }
@@ -625,7 +631,10 @@ export class TaskChangeLedgerReader {
     return { entries, recovered };
   }
 
-  private bundleMatchesFreshness(bundle: LedgerSummaryBundleV2, freshness: LedgerFreshnessV2): boolean {
+  private bundleMatchesFreshness(
+    bundle: LedgerSummaryBundleV2,
+    freshness: LedgerFreshnessV2
+  ): boolean {
     return (
       JSON.stringify(bundle.journalStamp) === JSON.stringify(freshness.journalStamp) &&
       bundle.eventCount === freshness.eventCount &&
@@ -791,7 +800,10 @@ export class TaskChangeLedgerReader {
       scope = this.mapV2Scope(params.taskId, params.bundle.scope, params.bundle.files);
       diffStatCompleteness = params.bundle.diffStatCompleteness;
     } else {
-      const fallback = this.buildFallbackFilesFromGroupedSnippets(groupedSnippets, params.projectPath);
+      const fallback = this.buildFallbackFilesFromGroupedSnippets(
+        groupedSnippets,
+        params.projectPath
+      );
       files = fallback.files;
       totalLinesAdded = fallback.totalLinesAdded;
       totalLinesRemoved = fallback.totalLinesRemoved;
@@ -801,11 +813,18 @@ export class TaskChangeLedgerReader {
         : params.journal.events.some((event) => event.confidence === 'medium')
           ? 'medium'
           : 'high';
-      scope = this.buildFallbackScope(params.taskId, files, params.journal.events, params.journal.notices);
+      scope = this.buildFallbackScope(
+        params.taskId,
+        files,
+        params.journal.events,
+        params.journal.notices
+      );
       diffStatCompleteness = fallback.files.every((file) => file.diffStatKnown !== false)
         ? 'complete'
         : 'partial';
-      warnings.push('Ledger detail view fell back to journal reconstruction because summary bundle v2 was unavailable.');
+      warnings.push(
+        'Ledger detail view fell back to journal reconstruction because summary bundle v2 was unavailable.'
+      );
     }
 
     return {
@@ -972,7 +991,11 @@ export class TaskChangeLedgerReader {
     return {
       taskId,
       memberName:
-        scope.memberName || scope.primaryMemberName || scope.primaryAgentId || scope.primaryActorKey || '',
+        scope.memberName ||
+        scope.primaryMemberName ||
+        scope.primaryAgentId ||
+        scope.primaryActorKey ||
+        '',
       startLine: 0,
       endLine: 0,
       startTimestamp: scope.startTimestamp,
@@ -1004,7 +1027,10 @@ export class TaskChangeLedgerReader {
     );
   }
 
-  private async readContentRef(projectDir: string, ref: LedgerContentRef | null): Promise<string | null> {
+  private async readContentRef(
+    projectDir: string,
+    ref: LedgerContentRef | null
+  ): Promise<string | null> {
     if (!ref?.blobRef) {
       return null;
     }
@@ -1116,7 +1142,10 @@ export class TaskChangeLedgerReader {
   }
 
   private buildFallbackFilesFromGroupedSnippets(
-    grouped: Map<string, { filePath: string; relation?: LedgerChangeRelation; snippets: SnippetDiff[] }>,
+    grouped: Map<
+      string,
+      { filePath: string; relation?: LedgerChangeRelation; snippets: SnippetDiff[] }
+    >,
     projectPath?: string
   ): { files: FileChangeSummary[]; totalLinesAdded: number; totalLinesRemoved: number } {
     const files: FileChangeSummary[] = [];
@@ -1157,9 +1186,7 @@ export class TaskChangeLedgerReader {
           ...(relation ? { relation } : {}),
           latestOperation:
             entry.snippets[entry.snippets.length - 1]?.ledger?.operation ??
-            (entry.snippets[entry.snippets.length - 1]?.type === 'write-new'
-              ? 'create'
-              : 'modify'),
+            (entry.snippets[entry.snippets.length - 1]?.type === 'write-new' ? 'create' : 'modify'),
         },
         timeline: this.buildTimeline(displayPath, entry.snippets),
       });
@@ -1347,7 +1374,11 @@ export class TaskChangeLedgerReader {
     return `${normalizedAnchor.slice(0, normalizedAnchor.length - normalizedAnchorRelation.length)}${targetRelationPath.replace(/\\/g, '/')}`;
   }
 
-  private relativePath(filePath: string, projectPath?: string, explicitRelativePath?: string): string {
+  private relativePath(
+    filePath: string,
+    projectPath?: string,
+    explicitRelativePath?: string
+  ): string {
     if (explicitRelativePath) {
       return explicitRelativePath.replace(/\\/g, '/');
     }

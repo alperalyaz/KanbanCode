@@ -96,6 +96,41 @@ describe('TaskChangeLedgerReader', () => {
     expect(result?.warnings).toContain('reserved segment safe path');
   });
 
+  it('reads ledger artifacts stored under hashed long task id segments', async () => {
+    tmpDir = await fsTempDir();
+    const taskId = `task-${'x'.repeat(180)}`;
+    const bundleDir = path.join(tmpDir, '.board-task-changes', 'bundles');
+    await mkdir(bundleDir, { recursive: true });
+    await writeFile(
+      path.join(bundleDir, `${safeTaskIdSegment(taskId)}.json`),
+      JSON.stringify({
+        schemaVersion: 1,
+        source: 'task-change-ledger',
+        taskId,
+        generatedAt: '2026-03-01T10:00:00.000Z',
+        eventCount: 0,
+        files: [],
+        totalLinesAdded: 0,
+        totalLinesRemoved: 0,
+        totalFiles: 0,
+        confidence: 'high',
+        warnings: ['long task id safe path'],
+        events: [],
+      }),
+      'utf8'
+    );
+
+    const reader = new TaskChangeLedgerReader();
+    const result = await reader.readTaskChanges({
+      teamName: 'team',
+      taskId,
+      projectDir: tmpDir,
+      includeDetails: true,
+    });
+
+    expect(result?.warnings).toContain('long task id safe path');
+  });
+
   it('maps ledger state and rename relation into snippets', async () => {
     tmpDir = await makeLedgerBundle({
       events: [

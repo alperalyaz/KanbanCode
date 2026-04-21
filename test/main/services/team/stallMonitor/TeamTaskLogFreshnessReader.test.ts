@@ -83,4 +83,29 @@ describe('TeamTaskLogFreshnessReader', () => {
     );
     expect(signals.get('CON')?.transcriptFileBasename).toBe('session-con.jsonl');
   });
+
+  it('reads hashed freshness files for very long task ids', async () => {
+    const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'stall-freshness-'));
+    tempDirs.push(projectDir);
+    const signalDir = path.join(projectDir, '.board-task-log-freshness');
+    await fs.mkdir(signalDir, { recursive: true });
+    const taskId = `task-${'x'.repeat(180)}`;
+
+    await fs.writeFile(
+      path.join(signalDir, `${safeTaskIdSegment(taskId)}.json`),
+      JSON.stringify({
+        taskId,
+        updatedAt: '2026-04-19T12:00:00.000Z',
+        transcriptFile: 'session-long.jsonl',
+      }),
+      'utf8'
+    );
+
+    const signals = await new TeamTaskLogFreshnessReader().readSignals(projectDir, [taskId]);
+
+    expect(signals.get(taskId)?.filePath).toBe(
+      path.join(signalDir, `${safeTaskIdSegment(taskId)}.json`)
+    );
+    expect(signals.get(taskId)?.transcriptFileBasename).toBe('session-long.jsonl');
+  });
 });

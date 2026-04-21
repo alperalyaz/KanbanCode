@@ -8,6 +8,7 @@ import type { TaskLogFreshnessSignal } from './TeamTaskStallTypes';
 
 const BOARD_TASK_LOG_FRESHNESS_DIRNAME = '.board-task-log-freshness';
 const BOARD_TASK_LOG_FRESHNESS_FILE_SUFFIX = '.json';
+const MAX_TASK_ID_ARTIFACT_SEGMENT_LENGTH = 120;
 
 interface ParsedFreshnessSignal {
   taskId: string;
@@ -30,7 +31,8 @@ function isWindowsReservedArtifactSegment(segment: string): boolean {
 
 function encodeTaskId(taskId: string): string {
   const encoded = encodeURIComponent(taskId);
-  return isWindowsReservedArtifactSegment(encoded)
+  return isWindowsReservedArtifactSegment(encoded) ||
+    encoded.length > MAX_TASK_ID_ARTIFACT_SEGMENT_LENGTH
     ? `task-id-${createHash('sha256').update(taskId).digest('hex').slice(0, 32)}`
     : encoded;
 }
