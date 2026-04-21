@@ -336,10 +336,25 @@ export interface BoardTaskLogSegment {
   chunks: EnhancedChunk[];
 }
 
+export interface BoardTaskLogStreamRuntimeProjection {
+  provider: 'opencode';
+  mode: 'attribution' | 'heuristic';
+  attributionRecordCount: number;
+  projectedMessageCount: number;
+  fallbackReason?:
+    | 'no_attribution_records'
+    | 'attribution_no_projected_messages'
+    | 'task_tool_markers';
+  markerMatchCount?: number;
+  markerSpanCount?: number;
+}
+
 export interface BoardTaskLogStreamResponse {
   participants: BoardTaskLogParticipant[];
   defaultFilter: 'all' | string;
   segments: BoardTaskLogSegment[];
+  source?: 'transcript' | 'opencode_runtime_fallback' | 'opencode_runtime_attribution';
+  runtimeProjection?: BoardTaskLogStreamRuntimeProjection;
 }
 
 export interface BoardTaskLogStreamSummary {
@@ -450,7 +465,7 @@ export interface TeamTask {
 }
 
 /** Task enriched for UI/DTO use (overlay from kanban-state.json). */
-export type TaskChangePresenceState = 'has_changes' | 'no_changes' | 'unknown';
+export type TaskChangePresenceState = 'has_changes' | 'needs_attention' | 'no_changes' | 'unknown';
 
 export interface TeamTaskWithKanban extends TeamTask {
   /** Set when task is in team kanban (review or approved column). */
@@ -782,9 +797,31 @@ export interface TeamViewSnapshot {
   isAlive?: boolean;
 }
 
-export type EffortLevel = 'low' | 'medium' | 'high';
-export type TeamProviderId = 'anthropic' | 'codex' | 'gemini';
+export type EffortLevel = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type TeamProviderId = 'anthropic' | 'codex' | 'gemini' | 'opencode';
 export type TeamProviderBackendId = 'auto' | 'adapter' | 'api' | 'cli-sdk' | 'codex-native';
+export type TeamFastMode = 'inherit' | 'on' | 'off';
+
+export interface ProviderModelLaunchIdentity {
+  providerId: TeamProviderId;
+  providerBackendId: TeamProviderBackendId | null;
+  selectedModel: string | null;
+  selectedModelKind: 'default' | 'explicit';
+  resolvedLaunchModel: string | null;
+  catalogId: string | null;
+  catalogSource:
+    | 'anthropic-models-api'
+    | 'app-server'
+    | 'static-fallback'
+    | 'runtime'
+    | 'unavailable';
+  catalogFetchedAt: string | null;
+  selectedEffort: EffortLevel | null;
+  resolvedEffort: EffortLevel | null;
+  selectedFastMode?: TeamFastMode | null;
+  resolvedFastMode?: boolean | null;
+  fastResolutionReason?: string | null;
+}
 
 export interface TeamLaunchRequest {
   teamName: string;
@@ -794,6 +831,7 @@ export interface TeamLaunchRequest {
   providerBackendId?: TeamProviderBackendId;
   model?: string;
   effort?: EffortLevel;
+  fastMode?: TeamFastMode;
   /** When true, context window is limited to 200K tokens instead of the default. */
   limitContext?: boolean;
   /** When true, skip --resume and start a fresh session (clears context memory). */
@@ -931,6 +969,7 @@ export interface TeamAgentRuntimeSnapshot {
   updatedAt: string;
   runId: string | null;
   providerBackendId?: TeamProviderBackendId;
+  fastMode?: TeamFastMode;
   members: Record<string, TeamAgentRuntimeEntry>;
 }
 
@@ -1043,6 +1082,7 @@ export interface TeamCreateRequest {
   providerBackendId?: TeamProviderBackendId;
   model?: string;
   effort?: EffortLevel;
+  fastMode?: TeamFastMode;
   /** When true, context window is limited to 200K tokens instead of the default. */
   limitContext?: boolean;
   /** When false, run WITHOUT --dangerously-skip-permissions (manual tool approval). Default: true. */
@@ -1061,6 +1101,7 @@ export interface TeamCreateConfigRequest {
   members: TeamProvisioningMemberInput[];
   cwd?: string;
   providerBackendId?: TeamProviderBackendId;
+  fastMode?: TeamFastMode;
 }
 
 export interface TeamCreateResponse {

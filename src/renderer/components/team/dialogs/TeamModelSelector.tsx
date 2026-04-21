@@ -1,9 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
 
-import {
-  mergeCodexCliStatusWithSnapshot,
-  useCodexAccountSnapshot,
-} from '@features/codex-account/renderer';
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
 import { Label } from '@renderer/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@renderer/components/ui/tabs';
@@ -13,8 +9,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@renderer/components/ui/tooltip';
+import { useEffectiveCliProviderStatus } from '@renderer/hooks/useEffectiveCliProviderStatus';
 import { cn } from '@renderer/lib/utils';
-import { createLoadingMultimodelCliStatus } from '@renderer/store/slices/cliInstallerSlice';
 import { useStore } from '@renderer/store';
 import {
   GEMINI_UI_DISABLED_BADGE_LABEL,
@@ -30,20 +26,26 @@ import {
 import {
   doesTeamModelCarryProviderBrand,
   getProviderScopedTeamModelLabel,
+  getRuntimeAwareProviderScopedTeamModelLabel,
   getTeamModelLabel as getCatalogTeamModelLabel,
+  getTeamModelSourceBadgeLabel,
   getTeamProviderLabel as getCatalogTeamProviderLabel,
   isAnthropicHaikuTeamModel,
 } from '@renderer/utils/teamModelCatalog';
 import { extractProviderScopedBaseModel } from '@renderer/utils/teamModelContext';
+import { resolveAnthropicLaunchModel } from '@shared/utils/anthropicLaunchModel';
 import { getAnthropicDefaultTeamModel } from '@shared/utils/anthropicModelDefaults';
+import { isTeamProviderId } from '@shared/utils/teamProvider';
 import { AlertTriangle, Info } from 'lucide-react';
+
+import type { CliProviderStatus, TeamProviderId } from '@shared/types';
 
 export { getProviderScopedTeamModelLabel } from '@renderer/utils/teamModelCatalog';
 
 // --- Provider definitions ---
 
 interface ProviderDef {
-  id: 'anthropic' | 'codex' | 'gemini' | 'opencode';
+  id: TeamProviderId;
   label: string;
   comingSoon: boolean;
 }
@@ -55,28 +57,33 @@ const PROVIDERS: ProviderDef[] = [
   { id: 'opencode', label: 'OpenCode', comingSoon: false },
 ];
 
-const OPENCODE_UI_DISABLED_REASON = 'OpenCode in development';
+const OPENCODE_UI_DISABLED_REASON = 'OpenCode team launch is not ready.';
 
 export function getTeamModelLabel(model: string): string {
   return getCatalogTeamModelLabel(model) ?? model;
 }
 
-export function getTeamProviderLabel(providerId: 'anthropic' | 'codex' | 'gemini'): string {
+export function getTeamProviderLabel(providerId: TeamProviderId): string {
   return getCatalogTeamProviderLabel(providerId) ?? 'Anthropic';
 }
 
 export function getTeamEffortLabel(effort: string): string {
   const trimmed = effort.trim();
   if (!trimmed) return 'Default';
+  if (trimmed === 'xhigh') return 'XHigh';
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 export function formatTeamModelSummary(
-  providerId: 'anthropic' | 'codex' | 'gemini',
+  providerId: TeamProviderId,
   model: string,
   effort?: string
 ): string {
   const providerLabel = getTeamProviderLabel(providerId);
+  const routeLabel =
+    providerId === 'opencode'
+      ? (getTeamModelSourceBadgeLabel(providerId, model.trim()) ?? providerLabel)
+      : providerLabel;
   const rawModelLabel = model.trim() ? getTeamModelLabel(model.trim()) : 'Default';
   const modelLabel = model.trim()
     ? getProviderScopedTeamModelLabel(providerId, model.trim())
@@ -92,7 +99,7 @@ export function formatTeamModelSummary(
   const parts = modelAlreadyCarriesProviderBrand
     ? [modelLabel, effortLabel]
     : providerActsAsBackendOnly
-      ? [modelLabel, `via ${providerLabel}`, effortLabel]
+      ? [modelLabel, `via ${routeLabel}`, effortLabel]
       : [providerLabel, modelLabel, effortLabel];
 
   return parts.filter(Boolean).join(' · ');
@@ -107,21 +114,29 @@ export function formatTeamModelSummary(
 export function computeEffectiveTeamModel(
   selectedModel: string,
   limitContext: boolean,
-  providerId: 'anthropic' | 'codex' | 'gemini' = 'anthropic'
+  providerId: TeamProviderId = 'anthropic',
+  providerStatus?: Pick<CliProviderStatus, 'providerId' | 'modelCatalog'> | null
 ): string | undefined {
   if (providerId !== 'anthropic') {
     return selectedModel.trim() || undefined;
   }
 
-  const base = extractProviderScopedBaseModel(selectedModel, providerId);
-  if (limitContext) return base || getAnthropicDefaultTeamModel(true);
-  if (isAnthropicHaikuTeamModel(base)) return base;
-  return base ? `${base}[1m]` : getAnthropicDefaultTeamModel(limitContext);
+  const catalog =
+    providerStatus?.providerId === 'anthropic' ? (providerStatus.modelCatalog ?? null) : null;
+
+  return (
+    resolveAnthropicLaunchModel({
+      selectedModel,
+      limitContext,
+      availableLaunchModels: catalog?.models.map((model) => model.launchModel),
+      defaultLaunchModel: catalog?.defaultLaunchModel ?? null,
+    }) ?? getAnthropicDefaultTeamModel(limitContext)
+  );
 }
 
 export interface TeamModelSelectorProps {
-  providerId: 'anthropic' | 'codex' | 'gemini';
-  onProviderChange: (providerId: 'anthropic' | 'codex' | 'gemini') => void;
+  providerId: TeamProviderId;
+  onProviderChange: (providerId: TeamProviderId) => void;
   value: string;
   onValueChange: (value: string) => void;
   id?: string;
@@ -138,38 +153,71 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
   disableGeminiOption = false,
   modelIssueReasonByValue,
 }) => {
-  const cliStatus = useStore((s) => s.cliStatus);
-  const cliStatusLoading = useStore((s) => s.cliStatusLoading);
   const multimodelEnabled = useStore((s) => s.appConfig?.general?.multimodelEnabled ?? true);
-  const loadingCliStatus = useMemo(
-    () =>
-      !cliStatus && cliStatusLoading && multimodelEnabled
-        ? createLoadingMultimodelCliStatus()
-        : cliStatus,
-    [cliStatus, cliStatusLoading, multimodelEnabled]
-  );
 
   const effectiveProviderId =
     disableGeminiOption && isGeminiUiFrozen() && providerId === 'gemini' ? 'anthropic' : providerId;
-  const codexAccount = useCodexAccountSnapshot({
-    enabled: multimodelEnabled && effectiveProviderId === 'codex',
-  });
-  const effectiveCliStatus = useMemo(
-    () => mergeCodexCliStatusWithSnapshot(loadingCliStatus, codexAccount.snapshot),
-    [codexAccount.snapshot, loadingCliStatus]
-  );
-  const effectiveCliStatusLoading = cliStatusLoading && effectiveCliStatus === null;
+  const {
+    cliStatus: effectiveCliStatus,
+    providerStatus: runtimeProviderStatus,
+    loading: effectiveCliStatusLoading,
+  } = useEffectiveCliProviderStatus(effectiveProviderId);
   const multimodelAvailable =
     multimodelEnabled || effectiveCliStatus?.flavor === 'agent_teams_orchestrator';
+  const runtimeProviderStatusById = useMemo(
+    () =>
+      new Map(
+        (effectiveCliStatus?.providers ?? []).map((provider) => [provider.providerId, provider])
+      ),
+    [effectiveCliStatus?.providers]
+  );
   const defaultModelTooltip = useMemo(() => {
     if (effectiveProviderId === 'anthropic') {
-      return 'Uses the Claude team default model.\nResolves to Opus 4.7 with 1M context, or Opus 4.7 with 200K context when Limit context is enabled.';
+      const defaultLongContextModel =
+        getRuntimeAwareProviderScopedTeamModelLabel(
+          'anthropic',
+          getAnthropicDefaultTeamModel(false),
+          runtimeProviderStatus
+        ) ?? 'Opus 4.7 (1M)';
+      const defaultLimitedContextModel =
+        getRuntimeAwareProviderScopedTeamModelLabel(
+          'anthropic',
+          getAnthropicDefaultTeamModel(true),
+          runtimeProviderStatus
+        ) ?? 'Opus 4.7';
+
+      return `Uses the Claude team default model.\nResolves to ${defaultLongContextModel} with 1M context, or ${defaultLimitedContextModel} with 200K context when Limit context is enabled.`;
     }
     return 'Uses the runtime default for the selected provider.';
-  }, [effectiveProviderId]);
+  }, [effectiveProviderId, runtimeProviderStatus]);
   const getProviderDisabledReason = (candidateProviderId: string): string | null => {
     if (candidateProviderId === 'opencode') {
-      return OPENCODE_UI_DISABLED_REASON;
+      const providerStatus = runtimeProviderStatusById.get('opencode') ?? null;
+      if (!providerStatus) {
+        return 'OpenCode runtime status is still loading.';
+      }
+      if (!providerStatus.supported) {
+        return (
+          providerStatus.detailMessage ??
+          providerStatus.statusMessage ??
+          'OpenCode CLI is not installed.'
+        );
+      }
+      if (!providerStatus.authenticated) {
+        return (
+          providerStatus.detailMessage ??
+          providerStatus.statusMessage ??
+          'OpenCode has no connected provider.'
+        );
+      }
+      if (!providerStatus.capabilities.teamLaunch) {
+        return (
+          providerStatus.detailMessage ??
+          providerStatus.statusMessage ??
+          OPENCODE_UI_DISABLED_REASON
+        );
+      }
+      return null;
     }
     if (disableGeminiOption && isGeminiUiFrozen() && candidateProviderId === 'gemini') {
       return GEMINI_UI_DISABLED_REASON;
@@ -184,7 +232,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
   const activeProviderSelectable = isProviderSelectable(effectiveProviderId);
   const getProviderStatusBadge = (candidateProviderId: string): string | null => {
     if (candidateProviderId === 'opencode') {
-      return 'In development';
+      return getProviderDisabledReason(candidateProviderId) ? 'Gated' : null;
     }
 
     const providerDisabledReason = getProviderDisabledReason(candidateProviderId);
@@ -199,8 +247,8 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
     return null;
   };
   const getProviderStatusBadgeLabel = (statusBadge: string | null): string | null => {
-    if (statusBadge === 'In development') {
-      return 'Dev';
+    if (statusBadge === 'Gated') {
+      return 'Gate';
     }
 
     if (statusBadge === 'Multimodel off') {
@@ -209,13 +257,6 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
 
     return statusBadge;
   };
-  const runtimeProviderStatus = useMemo(
-    () =>
-      effectiveCliStatus?.providers.find(
-        (provider) => provider.providerId === effectiveProviderId
-      ) ?? null,
-    [effectiveCliStatus?.providers, effectiveProviderId]
-  );
   const shouldAwaitRuntimeModelList =
     effectiveProviderId !== 'anthropic' &&
     (effectiveCliStatus == null || effectiveCliStatusLoading) &&
@@ -247,10 +288,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
       <Tabs
         value={effectiveProviderId}
         onValueChange={(nextValue) => {
-          if (
-            (nextValue === 'anthropic' || nextValue === 'codex' || nextValue === 'gemini') &&
-            isProviderSelectable(nextValue)
-          ) {
+          if (isTeamProviderId(nextValue) && isProviderSelectable(nextValue)) {
             onProviderChange(nextValue);
           }
         }}
@@ -350,6 +388,10 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                         availabilityStatus === 'available');
                     const modelStatusMessage =
                       modelIssueReason ?? modelDisabledReason ?? availabilityReason ?? null;
+                    const sourceBadgeLabel =
+                      effectiveProviderId === 'opencode' && opt.value !== ''
+                        ? opt.badgeLabel?.trim() || null
+                        : null;
 
                     return (
                       <button
@@ -379,6 +421,19 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                       >
                         <span className="flex flex-col items-center justify-center gap-0.5">
                           <span className="leading-tight">{opt.label}</span>
+                          {sourceBadgeLabel ? (
+                            <span
+                              className="rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                              style={{
+                                borderColor: 'var(--color-border-subtle)',
+                                backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                                color: 'var(--color-text-secondary)',
+                              }}
+                              title={`Source: ${sourceBadgeLabel}`}
+                            >
+                              {sourceBadgeLabel}
+                            </span>
+                          ) : null}
                           {opt.value === '' && (
                             <span className="flex items-center justify-center gap-1">
                               <TooltipProvider delayDuration={200}>

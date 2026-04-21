@@ -18,6 +18,8 @@ const AGENT_TEAMS_TASK_TOOL_NAMES = [
   'task_unlink',
 ];
 
+const AGENT_TEAMS_LEAD_TOOL_NAMES = ['lead_briefing'];
+
 const AGENT_TEAMS_REVIEW_TOOL_NAMES = [
   'review_approve',
   'review_request',
@@ -49,13 +51,25 @@ const AGENT_TEAMS_KANBAN_TOOL_NAMES = [
   'kanban_set_column',
 ];
 
-const AGENT_TEAMS_RUNTIME_TOOL_NAMES = ['team_launch', 'team_stop'];
+const AGENT_TEAMS_RUNTIME_TOOL_NAMES = [
+  'team_launch',
+  'team_stop',
+  'runtime_bootstrap_checkin',
+  'runtime_deliver_message',
+  'runtime_task_event',
+  'runtime_heartbeat',
+];
 
 const AGENT_TEAMS_MCP_TOOL_GROUPS = [
   {
     id: 'task',
     teammateOperational: true,
     toolNames: AGENT_TEAMS_TASK_TOOL_NAMES,
+  },
+  {
+    id: 'lead',
+    teammateOperational: false,
+    toolNames: AGENT_TEAMS_LEAD_TOOL_NAMES,
   },
   {
     id: 'kanban',
@@ -100,8 +114,17 @@ const AGENT_TEAMS_TEAMMATE_OPERATIONAL_TOOL_NAMES = AGENT_TEAMS_MCP_TOOL_GROUPS.
 const AGENT_TEAMS_NAMESPACED_TEAMMATE_OPERATIONAL_TOOL_NAMES =
   AGENT_TEAMS_TEAMMATE_OPERATIONAL_TOOL_NAMES.map((toolName) => `mcp__agent-teams__${toolName}`);
 
+const AGENT_TEAMS_LEAD_BOOTSTRAP_TOOL_NAMES = [
+  ...AGENT_TEAMS_TEAMMATE_OPERATIONAL_TOOL_NAMES,
+  ...AGENT_TEAMS_LEAD_TOOL_NAMES,
+];
+
+const AGENT_TEAMS_NAMESPACED_LEAD_BOOTSTRAP_TOOL_NAMES =
+  AGENT_TEAMS_LEAD_BOOTSTRAP_TOOL_NAMES.map((toolName) => `mcp__agent-teams__${toolName}`);
+
 module.exports = {
   AGENT_TEAMS_TASK_TOOL_NAMES,
+  AGENT_TEAMS_LEAD_TOOL_NAMES,
   AGENT_TEAMS_REVIEW_TOOL_NAMES,
   AGENT_TEAMS_MESSAGE_TOOL_NAMES,
   AGENT_TEAMS_CROSS_TEAM_TOOL_NAMES,
@@ -112,4 +135,6 @@ module.exports = {
   AGENT_TEAMS_REGISTERED_TOOL_NAMES,
   AGENT_TEAMS_TEAMMATE_OPERATIONAL_TOOL_NAMES,
   AGENT_TEAMS_NAMESPACED_TEAMMATE_OPERATIONAL_TOOL_NAMES,
+  AGENT_TEAMS_LEAD_BOOTSTRAP_TOOL_NAMES,
+  AGENT_TEAMS_NAMESPACED_LEAD_BOOTSTRAP_TOOL_NAMES,
 };

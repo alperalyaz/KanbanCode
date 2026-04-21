@@ -91,8 +91,13 @@ import {
   PROTECTED_CLI_FLAGS,
 } from '@shared/utils/cliArgsParser';
 import { createLogger } from '@shared/utils/logger';
+import {
+  formatEffortLevelListForProvider,
+  isTeamEffortLevelForProvider,
+} from '@shared/utils/effortLevels';
 import { isTeamProviderBackendId, migrateProviderBackendId } from '@shared/utils/providerBackend';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
+import { isTeamProviderId } from '@shared/utils/teamProvider';
 import {
   buildStandaloneSlashCommandMeta,
   parseStandaloneSlashCommand,
@@ -173,6 +178,7 @@ import type {
   SendMessageRequest,
   SendMessageResult,
   TaskAttachmentMeta,
+  TaskChangePresenceState,
   TaskComment,
   TaskRef,
   TeamAgentRuntimeSnapshot,
@@ -186,6 +192,7 @@ import type {
   TeamLaunchResponse,
   TeamMemberActivityMeta,
   TeamMessageNotificationData,
+  TeamFastMode,
   TeamProviderBackendId,
   TeamProviderId,
   TeamProvisioningPrepareResult,
@@ -912,7 +919,7 @@ async function handleGetData(
 async function handleGetTaskChangePresence(
   _event: IpcMainInvokeEvent,
   teamName: unknown
-): Promise<IpcResult<Record<string, 'has_changes' | 'no_changes' | 'unknown'>>> {
+): Promise<IpcResult<Record<string, TaskChangePresenceState>>> {
   const validated = validateTeamName(teamName);
   if (!validated.valid) {
     return { success: false, error: validated.error ?? 'Invalid teamName' };
@@ -1112,24 +1119,20 @@ function isProvisioningTeamName(teamName: string): boolean {
   return parts.every((p) => /^[a-z0-9]+$/.test(p));
 }
 
-const VALID_EFFORT_LEVELS: readonly string[] = ['low', 'medium', 'high'];
-
-function isValidEffort(value: unknown): value is EffortLevel {
-  return typeof value === 'string' && VALID_EFFORT_LEVELS.includes(value);
+function isValidEffort(value: unknown, providerId?: TeamProviderId | null): value is EffortLevel {
+  return isTeamEffortLevelForProvider(value, providerId);
 }
 
 function parseOptionalMemberProviderId(
   value: unknown
-):
-  | { valid: true; value: 'anthropic' | 'codex' | 'gemini' | undefined }
-  | { valid: false; error: string } {
+): { valid: true; value: TeamProviderId | undefined } | { valid: false; error: string } {
   if (value === undefined || value === null || value === '') {
     return { valid: true, value: undefined };
   }
-  if (value === 'anthropic' || value === 'codex' || value === 'gemini') {
+  if (isTeamProviderId(value)) {
     return { valid: true, value };
   }
-  return { valid: false, error: 'member providerId must be anthropic, codex, or gemini' };
+  return { valid: false, error: 'member providerId must be anthropic, codex, gemini, or opencode' };
 }
 
 function parseOptionalProviderBackendId(
@@ -1165,15 +1168,50 @@ function parseOptionalProviderBackendId(
 }
 
 function parseOptionalMemberEffort(
-  value: unknown
+  value: unknown,
+  providerId?: TeamProviderId | null
 ): { valid: true; value: EffortLevel | undefined } | { valid: false; error: string } {
   if (value === undefined || value === null || value === '') {
     return { valid: true, value: undefined };
   }
-  if (isValidEffort(value)) {
+  if (isValidEffort(value, providerId)) {
     return { valid: true, value };
   }
-  return { valid: false, error: 'member effort must be low, medium, or high' };
+  return {
+    valid: false,
+    error: `member effort must be one of ${formatEffortLevelListForProvider(providerId)}`,
+  };
+}
+
+function parseOptionalTeamEffort(
+  value: unknown,
+  providerId?: TeamProviderId | null
+): { valid: true; value: EffortLevel | undefined } | { valid: false; error: string } {
+  if (value === undefined || value === null || value === '') {
+    return { valid: true, value: undefined };
+  }
+  if (isValidEffort(value, providerId)) {
+    return { valid: true, value };
+  }
+  return {
+    valid: false,
+    error: `effort must be one of ${formatEffortLevelListForProvider(providerId)}`,
+  };
+}
+
+function parseOptionalTeamFastMode(
+  value: unknown
+): { valid: true; value: TeamFastMode | undefined } | { valid: false; error: string } {
+  if (value === undefined || value === null || value === '') {
+    return { valid: true, value: undefined };
+  }
+  if (value === 'inherit' || value === 'on' || value === 'off') {
+    return { valid: true, value };
+  }
+  return {
+    valid: false,
+    error: 'fastMode must be one of inherit, on, or off',
+  };
 }
 
 async function validateProvisioningRequest(
@@ -1202,6 +1240,15 @@ async function validateProvisioningRequest(
   if (!Array.isArray(payload.members)) {
     return { valid: false, error: 'members must be an array' };
   }
+  const explicitProviderId =
+    payload.providerId === 'codex'
+      ? 'codex'
+      : payload.providerId === 'gemini'
+        ? 'gemini'
+        : payload.providerId === 'anthropic'
+          ? 'anthropic'
+          : undefined;
+  const providerId = explicitProviderId ?? 'anthropic';
 
   const seenNames = new Set<string>();
   const members: TeamCreateRequest['members'] = [];
@@ -1237,12 +1284,20 @@ async function validateProvisioningRequest(
     if (model !== undefined && typeof model !== 'string') {
       return { valid: false, error: 'member model must be string' };
     }
+    const effortValidation = parseOptionalMemberEffort(
+      (member as { effort?: unknown }).effort,
+      providerValidation.value ?? providerId
+    );
+    if (!effortValidation.valid) {
+      return { valid: false, error: effortValidation.error };
+    }
     members.push({
       name: memberName,
       role: typeof role === 'string' ? role.trim() : undefined,
       workflow: typeof workflow === 'string' ? workflow.trim() : undefined,
       providerId: providerValidation.value,
       model: typeof model === 'string' ? model.trim() || undefined : undefined,
+      effort: effortValidation.value,
     });
   }
 
@@ -1257,18 +1312,20 @@ async function validateProvisioningRequest(
   if (payload.prompt !== undefined && typeof payload.prompt !== 'string') {
     return { valid: false, error: 'prompt must be a string' };
   }
-  const providerId =
-    payload.providerId === 'codex'
-      ? 'codex'
-      : payload.providerId === 'gemini'
-        ? 'gemini'
-        : 'anthropic';
   const providerBackendValidation = parseOptionalProviderBackendId(
     payload.providerBackendId,
     providerId
   );
   if (!providerBackendValidation.valid) {
     return { valid: false, error: providerBackendValidation.error };
+  }
+  const effortValidation = parseOptionalTeamEffort(payload.effort, providerId);
+  if (!effortValidation.valid) {
+    return { valid: false, error: effortValidation.error };
+  }
+  const fastModeValidation = parseOptionalTeamFastMode(payload.fastMode);
+  if (!fastModeValidation.valid) {
+    return { valid: false, error: fastModeValidation.error };
   }
 
   try {
@@ -1324,7 +1381,8 @@ async function validateProvisioningRequest(
       providerId,
       providerBackendId: providerBackendValidation.value,
       model: typeof payload.model === 'string' ? payload.model.trim() || undefined : undefined,
-      effort: isValidEffort(payload.effort) ? payload.effort : undefined,
+      effort: effortValidation.value,
+      fastMode: fastModeValidation.value,
       skipPermissions:
         typeof payload.skipPermissions === 'boolean' ? payload.skipPermissions : undefined,
       worktree:
@@ -1432,12 +1490,15 @@ async function handleLaunchTeam(
   if (payload.model !== undefined && typeof payload.model !== 'string') {
     return { success: false, error: 'model must be a string' };
   }
-  const providerId =
+  const explicitProviderId =
     payload.providerId === 'codex'
       ? 'codex'
       : payload.providerId === 'gemini'
         ? 'gemini'
-        : 'anthropic';
+        : payload.providerId === 'anthropic'
+          ? 'anthropic'
+          : undefined;
+  const providerId = explicitProviderId ?? 'anthropic';
   const providerBackendValidation = parseOptionalProviderBackendId(
     payload.providerBackendId,
     providerId
@@ -1474,6 +1535,14 @@ async function handleLaunchTeam(
           : meta?.providerId === 'gemini'
             ? 'gemini'
             : 'anthropic';
+    const effortValidation = parseOptionalTeamEffort(payload.effort, resolvedProviderId);
+    if (!effortValidation.valid) {
+      return { success: false, error: effortValidation.error };
+    }
+    const fastModeValidation = parseOptionalTeamFastMode(payload.fastMode);
+    if (!fastModeValidation.valid) {
+      return { success: false, error: fastModeValidation.error };
+    }
 
     const createRequest: TeamCreateRequest = {
       teamName: tn,
@@ -1488,7 +1557,8 @@ async function handleLaunchTeam(
         providerBackendValidation.value ?? meta?.providerBackendId ?? membersMeta?.providerBackendId
       ),
       model: typeof payload.model === 'string' ? payload.model.trim() || undefined : undefined,
-      effort: isValidEffort(payload.effort) ? payload.effort : undefined,
+      effort: effortValidation.value,
+      fastMode: fastModeValidation.value ?? meta?.fastMode,
       limitContext: typeof payload.limitContext === 'boolean' ? payload.limitContext : undefined,
       skipPermissions:
         typeof payload.skipPermissions === 'boolean' ? payload.skipPermissions : undefined,
@@ -1520,6 +1590,45 @@ async function handleLaunchTeam(
     );
   }
 
+  const persistedMeta = await teamMetaStore.getMeta(tn).catch(() => null);
+  const launchProviderId = explicitProviderId ?? persistedMeta?.providerId ?? providerId;
+  const rawLaunchProviderBackendId =
+    payload.providerBackendId ??
+    persistedMeta?.providerBackendId ??
+    persistedMeta?.launchIdentity?.providerBackendId ??
+    undefined;
+  const launchProviderBackendValidation = parseOptionalProviderBackendId(
+    rawLaunchProviderBackendId,
+    launchProviderId
+  );
+  if (!launchProviderBackendValidation.valid) {
+    return { success: false, error: launchProviderBackendValidation.error };
+  }
+  const rawLaunchEffort =
+    payload.effort ??
+    persistedMeta?.effort ??
+    persistedMeta?.launchIdentity?.selectedEffort ??
+    undefined;
+  const effortValidation = parseOptionalTeamEffort(rawLaunchEffort, launchProviderId);
+  if (!effortValidation.valid) {
+    return { success: false, error: effortValidation.error };
+  }
+  const rawLaunchFastMode =
+    payload.fastMode ??
+    persistedMeta?.fastMode ??
+    persistedMeta?.launchIdentity?.selectedFastMode ??
+    undefined;
+  const fastModeValidation = parseOptionalTeamFastMode(rawLaunchFastMode);
+  if (!fastModeValidation.valid) {
+    return { success: false, error: fastModeValidation.error };
+  }
+  const rawLaunchModel =
+    typeof payload.model === 'string' && payload.model.trim().length > 0
+      ? payload.model.trim()
+      : (persistedMeta?.model ?? persistedMeta?.launchIdentity?.selectedModel ?? undefined);
+  const launchLimitContext =
+    typeof payload.limitContext === 'boolean' ? payload.limitContext : persistedMeta?.limitContext;
+
   return wrapTeamHandler('launch', () => {
     addMainBreadcrumb('team', 'launch', { teamName: validatedTeamName.value! });
     return getTeamProvisioningService().launchTeam(
@@ -1527,10 +1636,12 @@ async function handleLaunchTeam(
         teamName: validatedTeamName.value!,
         cwd,
         prompt: typeof payload.prompt === 'string' ? payload.prompt.trim() || undefined : undefined,
-        providerId,
-        providerBackendId: providerBackendValidation.value,
-        model: typeof payload.model === 'string' ? payload.model.trim() || undefined : undefined,
-        effort: isValidEffort(payload.effort) ? payload.effort : undefined,
+        providerId: launchProviderId,
+        providerBackendId: launchProviderBackendValidation.value,
+        model: rawLaunchModel,
+        effort: effortValidation.value,
+        fastMode: fastModeValidation.value,
+        limitContext: launchLimitContext,
         clearContext: payload.clearContext === true ? true : undefined,
         skipPermissions:
           typeof payload.skipPermissions === 'boolean' ? payload.skipPermissions : undefined,
@@ -1589,7 +1700,7 @@ async function handlePrepareProvisioning(
 ): Promise<IpcResult<TeamProvisioningPrepareResult>> {
   let validatedCwd: string | undefined;
   let validatedProviderId: TeamLaunchRequest['providerId'];
-  let validatedProviderIds: ('anthropic' | 'codex' | 'gemini')[] | undefined;
+  let validatedProviderIds: TeamProviderId[] | undefined;
   let validatedSelectedModels: string[] | undefined;
   let validatedLimitContext: boolean | undefined;
   if (cwd !== undefined) {
@@ -1602,8 +1713,8 @@ async function handlePrepareProvisioning(
     }
   }
   if (providerId !== undefined) {
-    if (providerId !== 'anthropic' && providerId !== 'codex' && providerId !== 'gemini') {
-      return { success: false, error: 'providerId must be anthropic, codex, or gemini' };
+    if (!isTeamProviderId(providerId)) {
+      return { success: false, error: 'providerId must be anthropic, codex, gemini, or opencode' };
     }
     validatedProviderId = providerId;
   }
@@ -1611,10 +1722,13 @@ async function handlePrepareProvisioning(
     if (!Array.isArray(providerIds)) {
       return { success: false, error: 'providerIds must be an array when provided' };
     }
-    const normalized: ('anthropic' | 'codex' | 'gemini')[] = [];
+    const normalized: TeamProviderId[] = [];
     for (const entry of providerIds) {
-      if (entry !== 'anthropic' && entry !== 'codex' && entry !== 'gemini') {
-        return { success: false, error: 'providerIds entries must be anthropic, codex, or gemini' };
+      if (!isTeamProviderId(entry)) {
+        return {
+          success: false,
+          error: 'providerIds entries must be anthropic, codex, gemini, or opencode',
+        };
       }
       if (!normalized.includes(entry)) {
         normalized.push(entry);
@@ -2617,6 +2731,10 @@ async function handleCreateConfig(
   if (!providerBackendValidation.valid) {
     return { success: false, error: providerBackendValidation.error };
   }
+  const fastModeValidation = parseOptionalTeamFastMode(payload.fastMode);
+  if (!fastModeValidation.valid) {
+    return { success: false, error: fastModeValidation.error };
+  }
 
   const seenNames = new Set<string>();
   const members: TeamCreateConfigRequest['members'] = [];
@@ -2652,7 +2770,10 @@ async function handleCreateConfig(
     if (model !== undefined && typeof model !== 'string') {
       return { success: false, error: 'member model must be string' };
     }
-    const effortValidation = parseOptionalMemberEffort((member as { effort?: unknown }).effort);
+    const effortValidation = parseOptionalMemberEffort(
+      (member as { effort?: unknown }).effort,
+      providerValidation.value
+    );
     if (!effortValidation.valid) {
       return { success: false, error: effortValidation.error };
     }
@@ -2675,6 +2796,7 @@ async function handleCreateConfig(
       members,
       cwd: typeof payload.cwd === 'string' ? payload.cwd.trim() || undefined : undefined,
       providerBackendId: providerBackendValidation.value,
+      fastMode: fastModeValidation.value,
     })
   );
 }
@@ -3090,7 +3212,10 @@ async function handleAddMember(
   if (model !== undefined && typeof model !== 'string') {
     return { success: false, error: 'model must be a string' };
   }
-  const effortValidation = parseOptionalMemberEffort((payload as { effort?: unknown }).effort);
+  const effortValidation = parseOptionalMemberEffort(
+    (payload as { effort?: unknown }).effort,
+    providerValidation.value
+  );
   if (!effortValidation.valid) {
     return { success: false, error: effortValidation.error };
   }
@@ -3160,9 +3285,9 @@ async function handleReplaceMembers(
     name: string;
     role?: string;
     workflow?: string;
-    providerId?: 'anthropic' | 'codex' | 'gemini';
+    providerId?: TeamProviderId;
     model?: string;
-    effort?: 'low' | 'medium' | 'high';
+    effort?: EffortLevel;
   }[] = [];
   for (const item of payload.members) {
     if (!item || typeof item !== 'object') {
@@ -3196,7 +3321,10 @@ async function handleReplaceMembers(
     if (m.model !== undefined && typeof m.model !== 'string') {
       return { success: false, error: 'member model must be string' };
     }
-    const effortValidation = parseOptionalMemberEffort((m as { effort?: unknown }).effort);
+    const effortValidation = parseOptionalMemberEffort(
+      (m as { effort?: unknown }).effort,
+      providerValidation.value
+    );
     if (!effortValidation.valid) {
       return { success: false, error: effortValidation.error };
     }
@@ -3971,6 +4099,7 @@ async function handleGetSavedRequest(
       ),
       model: meta.model,
       effort: meta.effort as TeamCreateRequest['effort'],
+      fastMode: meta.fastMode as TeamCreateRequest['fastMode'],
       skipPermissions: meta.skipPermissions,
       worktree: meta.worktree,
       extraCliArgs: meta.extraCliArgs,

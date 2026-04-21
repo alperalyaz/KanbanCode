@@ -1,18 +1,21 @@
 import { validateTeamName } from '@main/ipc/guards';
 import { getErrorMessage } from '@shared/utils/errorHandling';
+import {
+  formatEffortLevelListForProvider,
+  isTeamEffortLevelForProvider,
+} from '@shared/utils/effortLevels';
 import { createLogger } from '@shared/utils/logger';
 import { migrateProviderBackendId } from '@shared/utils/providerBackend';
+import { isTeamProviderId } from '@shared/utils/teamProvider';
 import { isAbsolute } from 'path';
 
 import type { HttpServices } from './index';
-import type { EffortLevel, TeamLaunchRequest } from '@shared/types/team';
+import type { EffortLevel, TeamFastMode, TeamLaunchRequest } from '@shared/types/team';
 import type { FastifyInstance } from 'fastify';
 
 const logger = createLogger('HTTP:teams');
 
 type LaunchBody = Omit<TeamLaunchRequest, 'teamName'>;
-
-const EFFORT_LEVELS = new Set<EffortLevel>(['low', 'medium', 'high']);
 
 class HttpBadRequestError extends Error {}
 class HttpFeatureUnavailableError extends Error {}
@@ -30,6 +33,9 @@ function getStatusCode(error: unknown, fallback: number = 500): number {
   }
   if (error instanceof HttpFeatureUnavailableError) {
     return 501;
+  }
+  if (error instanceof Error && error.name === 'RuntimeStaleEvidenceError') {
+    return 409;
   }
   return fallback;
 }
@@ -76,30 +82,47 @@ function assertOptionalBoolean(value: unknown, fieldName: string): boolean | und
   return value;
 }
 
-function assertOptionalEffort(value: unknown): EffortLevel | undefined {
+function assertOptionalEffort(
+  value: unknown,
+  providerId: TeamLaunchRequest['providerId']
+): EffortLevel | undefined {
   if (value == null) {
     return undefined;
   }
 
-  if (typeof value !== 'string' || !EFFORT_LEVELS.has(value as EffortLevel)) {
-    throw new HttpBadRequestError('effort must be one of: low, medium, high');
+  if (!isTeamEffortLevelForProvider(value, providerId)) {
+    throw new HttpBadRequestError(
+      `effort must be one of: ${formatEffortLevelListForProvider(providerId)}`
+    );
   }
 
-  return value as EffortLevel;
+  return value;
+}
+
+function assertOptionalFastMode(value: unknown): TeamFastMode | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  if (value !== 'inherit' && value !== 'on' && value !== 'off') {
+    throw new HttpBadRequestError('fastMode must be one of: inherit, on, off');
+  }
+
+  return value;
 }
 
 function parseLaunchRequest(teamName: string, body: unknown): TeamLaunchRequest {
   const payload = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
   const providerId =
-    payload.providerId === 'codex'
-      ? 'codex'
-      : payload.providerId === 'gemini'
-        ? 'gemini'
-        : payload.providerId == null || payload.providerId === 'anthropic'
-          ? 'anthropic'
-          : (() => {
-              throw new HttpBadRequestError('providerId must be anthropic, codex, or gemini');
-            })();
+    payload.providerId == null
+      ? 'anthropic'
+      : isTeamProviderId(payload.providerId)
+        ? payload.providerId
+        : (() => {
+            throw new HttpBadRequestError(
+              'providerId must be anthropic, codex, gemini, or opencode'
+            );
+          })();
   const prompt = assertOptionalString(payload.prompt, 'prompt');
   const rawProviderBackendId = assertOptionalString(payload.providerBackendId, 'providerBackendId');
   const providerBackendId = migrateProviderBackendId(providerId, rawProviderBackendId);
@@ -109,7 +132,8 @@ function parseLaunchRequest(teamName: string, body: unknown): TeamLaunchRequest 
     );
   }
   const model = assertOptionalString(payload.model, 'model');
-  const effort = assertOptionalEffort(payload.effort);
+  const effort = assertOptionalEffort(payload.effort, providerId);
+  const fastMode = assertOptionalFastMode(payload.fastMode);
   const clearContext = assertOptionalBoolean(payload.clearContext, 'clearContext');
   const skipPermissions = assertOptionalBoolean(payload.skipPermissions, 'skipPermissions');
   const worktree = assertOptionalString(payload.worktree, 'worktree');
@@ -131,6 +155,9 @@ function parseLaunchRequest(teamName: string, body: unknown): TeamLaunchRequest 
     ...(effort && {
       effort,
     }),
+    ...(fastMode && {
+      fastMode,
+    }),
     ...(clearContext !== undefined && {
       clearContext,
     }),
@@ -144,6 +171,18 @@ function parseLaunchRequest(teamName: string, body: unknown): TeamLaunchRequest 
       extraCliArgs,
     }),
   };
+}
+
+function withRuntimeTeamName(teamName: string, body: unknown): Record<string, unknown> {
+  const payload =
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : {};
+  const bodyTeamName = typeof payload.teamName === 'string' ? payload.teamName.trim() : '';
+  if (bodyTeamName && bodyTeamName !== teamName) {
+    throw new HttpBadRequestError('runtime body teamName must match route teamName');
+  }
+  return { ...payload, teamName };
 }
 
 export function registerTeamRoutes(app: FastifyInstance, services: HttpServices): void {
@@ -260,4 +299,104 @@ export function registerTeamRoutes(app: FastifyInstance, services: HttpServices)
       return reply.status(getStatusCode(error)).send({ error: getErrorMessage(error) });
     }
   });
+
+  app.post<{ Params: { teamName: string }; Body: Record<string, unknown> }>(
+    '/api/teams/:teamName/opencode/runtime/bootstrap-checkin',
+    async (request, reply) => {
+      try {
+        const validatedTeamName = validateTeamName(request.params.teamName);
+        if (!validatedTeamName.valid) {
+          return reply.status(400).send({ error: validatedTeamName.error });
+        }
+        return reply.send(
+          await getTeamProvisioningService(services).recordOpenCodeRuntimeBootstrapCheckin(
+            withRuntimeTeamName(validatedTeamName.value!, request.body)
+          )
+        );
+      } catch (error) {
+        if (shouldLogError(error)) {
+          logger.error(
+            `Error in POST /api/teams/${request.params.teamName}/opencode/runtime/bootstrap-checkin:`,
+            getErrorMessage(error)
+          );
+        }
+        return reply.status(getStatusCode(error)).send({ error: getErrorMessage(error) });
+      }
+    }
+  );
+
+  app.post<{ Params: { teamName: string }; Body: Record<string, unknown> }>(
+    '/api/teams/:teamName/opencode/runtime/deliver-message',
+    async (request, reply) => {
+      try {
+        const validatedTeamName = validateTeamName(request.params.teamName);
+        if (!validatedTeamName.valid) {
+          return reply.status(400).send({ error: validatedTeamName.error });
+        }
+        return reply.send(
+          await getTeamProvisioningService(services).deliverOpenCodeRuntimeMessage(
+            withRuntimeTeamName(validatedTeamName.value!, request.body)
+          )
+        );
+      } catch (error) {
+        if (shouldLogError(error)) {
+          logger.error(
+            `Error in POST /api/teams/${request.params.teamName}/opencode/runtime/deliver-message:`,
+            getErrorMessage(error)
+          );
+        }
+        return reply.status(getStatusCode(error)).send({ error: getErrorMessage(error) });
+      }
+    }
+  );
+
+  app.post<{ Params: { teamName: string }; Body: Record<string, unknown> }>(
+    '/api/teams/:teamName/opencode/runtime/task-event',
+    async (request, reply) => {
+      try {
+        const validatedTeamName = validateTeamName(request.params.teamName);
+        if (!validatedTeamName.valid) {
+          return reply.status(400).send({ error: validatedTeamName.error });
+        }
+        return reply.send(
+          await getTeamProvisioningService(services).recordOpenCodeRuntimeTaskEvent(
+            withRuntimeTeamName(validatedTeamName.value!, request.body)
+          )
+        );
+      } catch (error) {
+        if (shouldLogError(error)) {
+          logger.error(
+            `Error in POST /api/teams/${request.params.teamName}/opencode/runtime/task-event:`,
+            getErrorMessage(error)
+          );
+        }
+        return reply.status(getStatusCode(error)).send({ error: getErrorMessage(error) });
+      }
+    }
+  );
+
+  app.post<{ Params: { teamName: string }; Body: Record<string, unknown> }>(
+    '/api/teams/:teamName/opencode/runtime/heartbeat',
+    async (request, reply) => {
+      try {
+        const validatedTeamName = validateTeamName(request.params.teamName);
+        if (!validatedTeamName.valid) {
+          return reply.status(400).send({ error: validatedTeamName.error });
+        }
+        return reply.send(
+          await getTeamProvisioningService(services).recordOpenCodeRuntimeHeartbeat(
+            withRuntimeTeamName(validatedTeamName.value!, request.body)
+          )
+        );
+      } catch (error) {
+        if (shouldLogError(error)) {
+          logger.error(
+            `Error in POST /api/teams/${request.params.teamName}/opencode/runtime/heartbeat:`,
+            getErrorMessage(error)
+          );
+        }
+        return reply.status(getStatusCode(error)).send({ error: getErrorMessage(error) });
+      }
+    }
+  );
 }

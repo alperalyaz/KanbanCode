@@ -1,3 +1,4 @@
+import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -28,8 +29,70 @@ vi.mock('@main/services/infrastructure/NotificationManager', () => ({
   },
 }));
 
+const execCliMock = vi.fn(async (_binaryPath: string | null, args: string[]) => {
+  if (args[0] === 'model') {
+    return {
+      stdout: JSON.stringify({
+        schemaVersion: 1,
+        providers: {
+          anthropic: {
+            defaultModel: 'opus[1m]',
+            models: [
+              { id: 'opus', label: 'Opus 4.7', description: 'Anthropic default family alias' },
+              {
+                id: 'opus[1m]',
+                label: 'Opus 4.7 (1M)',
+                description: 'Anthropic long-context default',
+              },
+            ],
+          },
+          codex: {
+            defaultModel: 'gpt-5.4-mini',
+            models: [{ id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', description: 'Codex default' }],
+          },
+          gemini: {
+            defaultModel: 'gemini-2.5-pro',
+            models: [{ id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Default' }],
+          },
+        },
+      }),
+      stderr: '',
+      exitCode: 0,
+    };
+  }
+
+  if (args[0] === 'runtime') {
+    return {
+      stdout: JSON.stringify({
+        providers: {
+          codex: {
+            runtimeCapabilities: {
+              modelCatalog: { dynamic: false, source: 'runtime' },
+              reasoningEffort: {
+                supported: true,
+                values: ['low', 'medium', 'high'],
+                configPassthrough: false,
+              },
+            },
+          },
+        },
+      }),
+      stderr: '',
+      exitCode: 0,
+    };
+  }
+
+  return { stdout: '', stderr: '', exitCode: 0 };
+});
+vi.mock('@main/utils/childProcess', () => ({
+  execCli: (...args: Parameters<typeof execCliMock>) => execCliMock(...args),
+  spawnCli: vi.fn(),
+  killProcessTree: vi.fn(),
+}));
+
 import { TeamProvisioningService } from '@main/services/team/TeamProvisioningService';
 import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
+import { spawnCli } from '@main/utils/childProcess';
 import { resolveInteractiveShellEnv } from '@main/utils/shellEnv';
 
 function getRealAgentTeamsMcpLaunchSpec(): { command: string; args: string[] } {
@@ -74,23 +137,19 @@ function writeMcpConfig(
 
 function writeMockMcpServer(
   targetDir: string,
-  variant: 'missing-member-briefing' | 'member-briefing-error'
+  variant:
+    | 'missing-member-briefing'
+    | 'missing-lead-briefing'
+    | 'member-briefing-error'
+    | 'lead-briefing-error'
 ): string {
   const scriptPath = path.join(targetDir, `mock-mcp-${variant}.js`);
   const tools =
     variant === 'missing-member-briefing'
-      ? [{ name: 'task_create' }]
-      : [{ name: 'member_briefing' }];
-  const toolCallResult =
-    variant === 'member-briefing-error'
-      ? {
-          content: [{ type: 'text', text: 'mock member_briefing failure' }],
-          isError: true,
-        }
-      : {
-          content: [{ type: 'text', text: 'ok' }],
-          isError: false,
-        };
+      ? [{ name: 'lead_briefing' }]
+      : variant === 'missing-lead-briefing'
+        ? [{ name: 'member_briefing' }]
+        : [{ name: 'member_briefing' }, { name: 'lead_briefing' }];
 
   fs.writeFileSync(
     scriptPath,
@@ -129,10 +188,26 @@ process.stdin.on('data', (chunk) => {
       continue;
     }
     if (message.method === 'tools/call') {
+      const toolName = message.params?.name;
+      const toolCallResult =
+        (${JSON.stringify(variant)} === 'member-briefing-error' && toolName === 'member_briefing')
+          ? {
+              content: [{ type: 'text', text: 'mock member_briefing failure' }],
+              isError: true,
+            }
+          : (${JSON.stringify(variant)} === 'lead-briefing-error' && toolName === 'lead_briefing')
+            ? {
+                content: [{ type: 'text', text: 'mock lead_briefing failure' }],
+                isError: true,
+              }
+            : {
+                content: [{ type: 'text', text: 'ok' }],
+                isError: false,
+              };
       send({
         jsonrpc: '2.0',
         id: message.id,
-        result: ${JSON.stringify(toolCallResult)},
+        result: toolCallResult,
       });
     }
   }
@@ -142,6 +217,19 @@ process.stdin.on('data', (chunk) => {
   );
 
   return scriptPath;
+}
+
+function spawnRealCli(
+  command: string,
+  args: readonly string[],
+  options?: Parameters<typeof spawn>[2]
+) {
+  const spawnOptions = options ?? {};
+  const needsWindowsCommandShell = process.platform === 'win32' && /\.(bat|cmd)$/i.test(command);
+  return spawn(command, [...args], {
+    ...spawnOptions,
+    ...(needsWindowsCommandShell ? { shell: true } : {}),
+  });
 }
 
 async function removeTempRoot(dirPath: string): Promise<void> {
@@ -169,6 +257,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    execCliMock.mockClear();
     addTeamNotificationMock.mockResolvedValue(null);
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-team-prepare-'));
     vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/fake/claude');
@@ -202,6 +291,40 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     await svc.prepareForProvisioning(missingCwd, { forceFresh: true });
 
     expect(fs.existsSync(missingCwd)).toBe(false);
+  });
+
+  it('blocks OpenCode prepare without probing the legacy Claude stream-json runtime', async () => {
+    const svc = new TeamProvisioningService();
+    const probeSpy = vi.spyOn(svc as any, 'getCachedOrProbeResult');
+
+    const result = await svc.prepareForProvisioning(tempRoot, {
+      providerId: 'opencode',
+      forceFresh: true,
+    });
+
+    expect(result).toMatchObject({
+      ready: false,
+      message:
+        'OpenCode team launch is not enabled yet. Production launch requires the gated OpenCode runtime adapter.',
+    });
+    expect(probeSpy).not.toHaveBeenCalled();
+  });
+
+  it('blocks OpenCode createTeam before resolving the legacy Claude binary', async () => {
+    const svc = new TeamProvisioningService();
+
+    await expect(
+      svc.createTeam(
+        {
+          teamName: 'opencode-team',
+          cwd: tempRoot,
+          providerId: 'opencode',
+          members: [],
+        },
+        () => {}
+      )
+    ).rejects.toThrow('OpenCode team launch is not enabled in the legacy Claude stream-json');
+    expect(ClaudeBinaryResolver.resolve).not.toHaveBeenCalled();
   });
 
   it('keys the prepare probe cache by cwd', async () => {
@@ -366,6 +489,64 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     expect(result.details).toContain(
       `Selected model ${DEFAULT_PROVIDER_MODEL_SELECTION} verified for launch.`
     );
+    expect(spawnProbe).toHaveBeenCalledWith(
+      '/fake/claude',
+      expect.arrayContaining(['--model', 'opus']),
+      tempRoot,
+      expect.any(Object),
+      60_000,
+      expect.any(Object)
+    );
+  });
+
+  it('falls back from an unavailable Anthropic 1M launch id to the base model during prepare', async () => {
+    execCliMock.mockImplementationOnce(async (_binaryPath: string | null, args: string[]) => {
+      if (args[0] === 'model') {
+        return {
+          stdout: JSON.stringify({
+            schemaVersion: 1,
+            providers: {
+              anthropic: {
+                defaultModel: 'opus',
+                models: [{ id: 'opus', label: 'Opus 4.8', description: 'Only base launch value' }],
+              },
+            },
+          }),
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+
+    const svc = new TeamProvisioningService();
+    vi.spyOn(svc as any, 'getCachedOrProbeResult').mockResolvedValue({
+      claudePath: '/fake/claude',
+      authSource: 'oauth_token',
+    });
+    vi.spyOn(svc as any, 'buildProvisioningEnv').mockResolvedValue({
+      env: {
+        PATH: '/usr/bin',
+        SHELL: '/bin/zsh',
+      },
+      authSource: 'oauth_token',
+      geminiRuntimeAuth: null,
+    });
+    const spawnProbe = vi.spyOn(svc as any, 'spawnProbe').mockResolvedValue({
+      stdout: 'PONG',
+      stderr: '',
+      exitCode: 0,
+    });
+
+    const result = await svc.prepareForProvisioning(tempRoot, {
+      forceFresh: true,
+      providerId: 'anthropic',
+      modelIds: ['opus[1m]'],
+      limitContext: false,
+    });
+
+    expect(result.ready).toBe(true);
+    expect(result.details).toContain('Selected model opus[1m] verified for launch.');
     expect(spawnProbe).toHaveBeenCalledWith(
       '/fake/claude',
       expect.arrayContaining(['--model', 'opus']),
@@ -719,6 +900,153 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     });
   });
 
+  it('builds Anthropic launch identity with exact max effort and resolved fast mode', () => {
+    const svc = new TeamProvisioningService();
+    const launchIdentity = (svc as any).buildProviderModelLaunchIdentity({
+      request: {
+        providerId: 'anthropic',
+        model: 'claude-opus-4-6',
+        effort: 'max',
+        fastMode: 'on',
+        limitContext: true,
+      },
+      facts: {
+        defaultModel: 'opus[1m]',
+        modelIds: new Set(['claude-opus-4-6']),
+        modelCatalog: {
+          schemaVersion: 1,
+          providerId: 'anthropic',
+          source: 'anthropic-models-api',
+          status: 'ready',
+          fetchedAt: '2026-04-21T00:00:00.000Z',
+          staleAt: '2026-04-21T00:01:00.000Z',
+          defaultModelId: 'opus',
+          defaultLaunchModel: 'opus[1m]',
+          models: [
+            {
+              id: 'claude-opus-4-6',
+              launchModel: 'claude-opus-4-6',
+              displayName: 'Opus 4.6',
+              hidden: false,
+              supportedReasoningEfforts: ['low', 'medium', 'high', 'max'],
+              defaultReasoningEffort: 'high',
+              supportsFastMode: true,
+              inputModalities: ['text', 'image'],
+              supportsPersonality: false,
+              isDefault: false,
+              upgrade: false,
+              source: 'anthropic-models-api',
+            },
+          ],
+          diagnostics: {
+            configReadState: 'ready',
+            appServerState: 'healthy',
+          },
+        },
+        runtimeCapabilities: {
+          modelCatalog: { dynamic: true, source: 'anthropic-models-api' },
+          reasoningEffort: {
+            supported: true,
+            values: ['low', 'medium', 'high', 'max'],
+            configPassthrough: true,
+          },
+          fastMode: {
+            supported: true,
+            available: true,
+            reason: null,
+            source: 'runtime',
+          },
+        },
+      },
+    });
+
+    expect(launchIdentity).toMatchObject({
+      providerId: 'anthropic',
+      selectedModel: 'claude-opus-4-6',
+      selectedModelKind: 'explicit',
+      resolvedLaunchModel: 'claude-opus-4-6',
+      selectedEffort: 'max',
+      resolvedEffort: 'max',
+      selectedFastMode: 'on',
+      resolvedFastMode: true,
+      fastResolutionReason: null,
+    });
+  });
+
+  it('rejects Anthropic max and fast when the exact resolved launch model does not support them', () => {
+    const svc = new TeamProvisioningService();
+    const facts = {
+      defaultModel: 'opus[1m]',
+      modelIds: new Set(['opus[1m]']),
+      modelCatalog: {
+        schemaVersion: 1,
+        providerId: 'anthropic',
+        source: 'anthropic-models-api',
+        status: 'ready',
+        fetchedAt: '2026-04-21T00:00:00.000Z',
+        staleAt: '2026-04-21T00:01:00.000Z',
+        defaultModelId: 'opus',
+        defaultLaunchModel: 'opus[1m]',
+        models: [
+          {
+            id: 'opus[1m]',
+            launchModel: 'opus[1m]',
+            displayName: 'Opus 4.7 (1M)',
+            hidden: false,
+            supportedReasoningEfforts: [],
+            defaultReasoningEffort: null,
+            supportsFastMode: false,
+            inputModalities: ['text', 'image'],
+            supportsPersonality: false,
+            isDefault: true,
+            upgrade: false,
+            source: 'anthropic-models-api',
+          },
+        ],
+        diagnostics: {
+          configReadState: 'ready',
+          appServerState: 'healthy',
+        },
+      },
+      runtimeCapabilities: {
+        modelCatalog: { dynamic: true, source: 'anthropic-models-api' },
+        reasoningEffort: {
+          supported: true,
+          values: ['low', 'medium', 'high', 'max'],
+          configPassthrough: true,
+        },
+        fastMode: {
+          supported: true,
+          available: true,
+          reason: null,
+          source: 'runtime',
+        },
+      },
+    };
+
+    expect(() =>
+      (svc as any).validateRuntimeLaunchSelection({
+        actorLabel: 'Team lead',
+        providerId: 'anthropic',
+        model: 'opus',
+        effort: 'max',
+        limitContext: false,
+        facts,
+      })
+    ).toThrow('does not support it in the current runtime');
+
+    expect(() =>
+      (svc as any).validateRuntimeLaunchSelection({
+        actorLabel: 'Team lead',
+        providerId: 'anthropic',
+        model: 'opus',
+        fastMode: 'on',
+        limitContext: false,
+        facts,
+      })
+    ).toThrow('enables Anthropic Fast mode');
+  });
+
   it('emits a lead-message refresh after provisioning reaches ready', async () => {
     const svc = new TeamProvisioningService();
     const emitter = vi.fn();
@@ -786,6 +1114,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       const configPath = writeMcpConfig(tempRoot, {
         'agent-teams': getRealAgentTeamsMcpLaunchSpec(),
       });
+      vi.mocked(spawnCli).mockImplementation(spawnRealCli);
 
       await expect(
         (svc as any).validateAgentTeamsMcpRuntime('/fake/claude', tempRoot, process.env, configPath)
@@ -814,10 +1143,26 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
         args: [mockServerPath],
       },
     });
+    vi.mocked(spawnCli).mockImplementation(spawnRealCli);
 
     await expect(
       (svc as any).validateAgentTeamsMcpRuntime('/fake/claude', tempRoot, process.env, configPath)
     ).rejects.toThrow('tools/list did not include member_briefing');
+  });
+
+  it('fails validation when tools/list does not include lead_briefing', async () => {
+    const svc = new TeamProvisioningService();
+    const mockServerPath = writeMockMcpServer(tempRoot, 'missing-lead-briefing');
+    const configPath = writeMcpConfig(tempRoot, {
+      'agent-teams': {
+        command: process.execPath,
+        args: [mockServerPath],
+      },
+    });
+
+    await expect(
+      (svc as any).validateAgentTeamsMcpRuntime('/fake/claude', tempRoot, process.env, configPath)
+    ).rejects.toThrow('tools/list did not include lead_briefing');
   });
 
   it('fails validation when member_briefing itself returns an MCP error', async () => {
@@ -829,9 +1174,25 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
         args: [mockServerPath],
       },
     });
+    vi.mocked(spawnCli).mockImplementation(spawnRealCli);
 
     await expect(
       (svc as any).validateAgentTeamsMcpRuntime('/fake/claude', tempRoot, process.env, configPath)
     ).rejects.toThrow('mock member_briefing failure');
+  });
+
+  it('fails validation when lead_briefing itself returns an MCP error', async () => {
+    const svc = new TeamProvisioningService();
+    const mockServerPath = writeMockMcpServer(tempRoot, 'lead-briefing-error');
+    const configPath = writeMcpConfig(tempRoot, {
+      'agent-teams': {
+        command: process.execPath,
+        args: [mockServerPath],
+      },
+    });
+
+    await expect(
+      (svc as any).validateAgentTeamsMcpRuntime('/fake/claude', tempRoot, process.env, configPath)
+    ).rejects.toThrow('mock lead_briefing failure');
   });
 });

@@ -33,7 +33,7 @@ export type CliPlatform =
 
 export type CliFlavor = 'claude' | 'agent_teams_orchestrator';
 
-export type CliProviderId = 'anthropic' | 'codex' | 'gemini';
+export type CliProviderId = 'anthropic' | 'codex' | 'gemini' | 'opencode';
 export type CliProviderAuthMode = 'auto' | 'oauth' | 'chatgpt' | 'api_key';
 
 export interface CliProviderConnectionInfo {
@@ -117,6 +117,74 @@ export interface CliProviderModelAvailability {
   checkedAt?: string | null;
 }
 
+export type CliProviderReasoningEffort =
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max';
+
+export type CliProviderModelCatalogSource =
+  | 'anthropic-models-api'
+  | 'app-server'
+  | 'static-fallback';
+export type CliProviderModelCatalogStatus = 'ready' | 'stale' | 'degraded' | 'unavailable';
+
+export interface CliProviderModelCatalogItem {
+  id: string;
+  launchModel: string;
+  displayName: string;
+  hidden: boolean;
+  supportedReasoningEfforts: CliProviderReasoningEffort[];
+  defaultReasoningEffort: CliProviderReasoningEffort | null;
+  supportsFastMode?: boolean;
+  inputModalities: string[];
+  supportsPersonality: boolean;
+  isDefault: boolean;
+  upgrade: boolean;
+  source: CliProviderModelCatalogSource;
+  badgeLabel?: string | null;
+  statusMessage?: string | null;
+}
+
+export interface CliProviderModelCatalog {
+  schemaVersion: 1;
+  providerId: CliProviderId;
+  source: CliProviderModelCatalogSource;
+  status: CliProviderModelCatalogStatus;
+  fetchedAt: string;
+  staleAt: string;
+  defaultModelId: string | null;
+  defaultLaunchModel: string | null;
+  models: CliProviderModelCatalogItem[];
+  diagnostics: {
+    configReadState: 'ready' | 'unsupported' | 'failed' | 'skipped';
+    appServerState: 'healthy' | 'degraded' | 'runtime-missing' | 'incompatible';
+    message?: string | null;
+    code?: string | null;
+  };
+}
+
+export interface CliProviderRuntimeCapabilities {
+  modelCatalog?: {
+    dynamic: boolean;
+    source?: CliProviderModelCatalogSource | 'runtime';
+  };
+  reasoningEffort?: {
+    supported: boolean;
+    values: CliProviderReasoningEffort[];
+    configPassthrough?: boolean;
+  };
+  fastMode?: {
+    supported: boolean;
+    available: boolean;
+    reason?: string | null;
+    source: 'runtime';
+  };
+}
+
 export interface CliProviderStatus {
   providerId: CliProviderId;
   displayName: string;
@@ -126,8 +194,11 @@ export interface CliProviderStatus {
   verificationState: 'verified' | 'unknown' | 'offline' | 'error';
   modelVerificationState?: 'idle' | 'verifying' | 'verified';
   statusMessage?: string | null;
+  detailMessage?: string | null;
   models: string[];
+  modelCatalog?: CliProviderModelCatalog | null;
   modelAvailability?: CliProviderModelAvailability[];
+  runtimeCapabilities?: CliProviderRuntimeCapabilities | null;
   canLoginFromUi: boolean;
   capabilities: {
     teamLaunch: boolean;

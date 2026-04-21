@@ -22,6 +22,7 @@ import {
   type TaskChangeEffectiveOptions,
   type TaskChangeTaskMeta,
 } from './taskChangeWorkerTypes';
+import { TaskChangeLedgerReader } from './TaskChangeLedgerReader';
 import { TeamConfigReader } from './TeamConfigReader';
 
 import type { TaskChangePresenceRepository } from './cache/TaskChangePresenceRepository';
@@ -30,6 +31,7 @@ import type { TaskChangeWorkerClient } from './TaskChangeWorkerClient';
 import type { TeamLogSourceTracker } from './TeamLogSourceTracker';
 import type { TeamMemberLogsFinder } from './TeamMemberLogsFinder';
 import type { AgentChangeSet, ChangeStats, TaskChangeSetV2 } from '@shared/types';
+import { resolveTaskChangePresenceFromResult } from '@shared/utils/taskChangePresence';
 
 const logger = createLogger('Service:ChangeExtractorService');
 
@@ -66,6 +68,7 @@ export class ChangeExtractorService {
   private taskChangePresenceRepository: TaskChangePresenceRepository | null = null;
   private teamLogSourceTracker: TeamLogSourceTracker | null = null;
   private readonly taskChangeComputer: TaskChangeComputer;
+  private readonly taskChangeLedgerReader = new TaskChangeLedgerReader();
 
   constructor(
     private readonly logsFinder: TeamMemberLogsFinder,
@@ -163,6 +166,18 @@ export class ChangeExtractorService {
       projectPath,
       includeDetails,
     };
+
+    const ledgerResult = await this.readLedgerTaskChanges(resolvedInput);
+    if (ledgerResult) {
+      await this.recordTaskChangePresence(
+        teamName,
+        taskId,
+        taskMeta,
+        effectiveOptions,
+        ledgerResult
+      );
+      return ledgerResult;
+    }
 
     if (!shouldUseSummaryCache) {
       const result = await this.computeTaskChangesPreferred(resolvedInput);
@@ -291,6 +306,32 @@ export class ChangeExtractorService {
     }
 
     return this.taskChangeComputer.computeTaskChanges(input);
+  }
+
+  private async readLedgerTaskChanges(
+    input: ResolvedTaskChangeComputeInput
+  ): Promise<TaskChangeSetV2 | null> {
+    try {
+      if (typeof this.logsFinder.getLogSourceWatchContext !== 'function') {
+        return null;
+      }
+      const context = await this.logsFinder.getLogSourceWatchContext(input.teamName);
+      if (!context?.projectDir) {
+        return null;
+      }
+      return await this.taskChangeLedgerReader.readTaskChanges({
+        teamName: input.teamName,
+        taskId: input.taskId,
+        projectDir: context.projectDir,
+        projectPath: input.projectPath ?? context.projectPath,
+        includeDetails: input.includeDetails,
+      });
+    } catch (error) {
+      logger.warn(
+        `Task change ledger read failed for ${input.teamName}/${input.taskId}: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return null;
+    }
   }
 
   private isValidWorkerTaskChangeResult(
@@ -719,11 +760,8 @@ export class ChangeExtractorService {
       return;
     }
 
-    if (
-      result.files.length === 0 &&
-      result.confidence !== 'high' &&
-      result.confidence !== 'medium'
-    ) {
+    const resolvedPresence = resolveTaskChangePresenceFromResult(result);
+    if (!resolvedPresence) {
       return;
     }
 
@@ -749,7 +787,7 @@ export class ChangeExtractorService {
       {
         taskId,
         taskSignature: descriptor.taskSignature,
-        presence: result.files.length > 0 ? 'has_changes' : 'no_changes',
+        presence: resolvedPresence,
         writtenAt: now,
         logSourceGeneration: snapshot.logSourceGeneration,
       }

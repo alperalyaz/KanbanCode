@@ -1,7 +1,13 @@
+import { isTeamEffortLevel } from '@shared/utils/effortLevels';
 import { normalizeOptionalTeamProviderId } from '@shared/utils/teamProvider';
 
 import type { MemberDraft } from '@renderer/components/team/members/membersEditorTypes';
-import type { ResolvedTeamMember, TeamProvisioningMemberInput } from '@shared/types';
+import type {
+  EffortLevel,
+  ResolvedTeamMember,
+  TeamProviderId,
+  TeamProvisioningMemberInput,
+} from '@shared/types';
 
 function normalizeRestartSensitiveMemberContract(member: {
   role?: string;
@@ -12,18 +18,15 @@ function normalizeRestartSensitiveMemberContract(member: {
 }): {
   role?: string;
   workflow?: string;
-  providerId?: 'anthropic' | 'codex' | 'gemini';
+  providerId?: TeamProviderId;
   model?: string;
-  effort?: 'low' | 'medium' | 'high';
+  effort?: EffortLevel;
 } {
   const role = member.role?.trim() || undefined;
   const workflow = member.workflow?.trim() || undefined;
   const providerId = normalizeOptionalTeamProviderId(member.providerId);
   const model = member.model?.trim() || undefined;
-  const effort =
-    member.effort === 'low' || member.effort === 'medium' || member.effort === 'high'
-      ? member.effort
-      : undefined;
+  const effort = isTeamEffortLevel(member.effort) ? member.effort : undefined;
   return { role, workflow, providerId, model, effort };
 }
 
@@ -126,9 +129,9 @@ function normalizeEditableMemberSnapshot(member: {
   name: string;
   role?: string;
   workflow?: string;
-  providerId?: 'anthropic' | 'codex' | 'gemini';
+  providerId?: TeamProviderId;
   model?: string;
-  effort?: 'low' | 'medium' | 'high';
+  effort?: EffortLevel;
 } | null {
   if (member.removedAt) {
     return null;

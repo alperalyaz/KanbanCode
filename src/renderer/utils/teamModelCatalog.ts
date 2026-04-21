@@ -1,5 +1,9 @@
 import { parseModelString } from '@shared/utils/modelParser';
 import {
+  getOpenCodeQualifiedModelSourceLabel,
+  parseOpenCodeQualifiedModelRef,
+} from '@shared/utils/opencodeModelRef';
+import {
   filterVisibleProviderRuntimeModels,
   GPT_5_1_CODEX_MINI_UI_DISABLED_MODEL,
   GPT_5_2_CODEX_UI_DISABLED_MODEL,
@@ -15,7 +19,10 @@ export {
 } from '@shared/utils/providerModelVisibility';
 
 type SupportedProviderId = CliProviderId | TeamProviderId;
-type RuntimeAwareProviderStatus = Pick<CliProviderStatus, 'providerId' | 'authMethod' | 'backend'>;
+type RuntimeAwareProviderStatus = Pick<
+  CliProviderStatus,
+  'providerId' | 'authMethod' | 'backend' | 'modelCatalog' | 'runtimeCapabilities'
+>;
 
 export interface TeamProviderModelOption {
   value: string;
@@ -33,11 +40,14 @@ export const GPT_5_2_CODEX_UI_DISABLED_REASON =
   'Temporarily disabled for team agents - this model is not currently available on the Codex native runtime.';
 export const GPT_5_3_CODEX_SPARK_UI_DISABLED_REASON =
   'Temporarily disabled for team agents - this model has been less reliable with bootstrap, task, and reply tool contracts.';
+export const CODEX_DYNAMIC_MODEL_REQUIRES_RUNTIME_SUPPORT_REASON =
+  'Available in Codex, waiting for Agent Teams runtime support.';
 
 const TEAM_PROVIDER_LABELS: Record<SupportedProviderId, string> = {
   anthropic: 'Anthropic',
   codex: 'Codex',
   gemini: 'Gemini',
+  opencode: 'OpenCode',
 };
 
 const ANTHROPIC_ALIAS_LABELS = {
@@ -133,12 +143,16 @@ const TEAM_PROVIDER_MODEL_OPTIONS: Record<SupportedProviderId, readonly TeamProv
         badgeLabel: '2.5-flash-lite',
       },
     ],
+    opencode: [{ value: '', label: 'Default', badgeLabel: 'Default' }],
   };
 
 const TEAM_PROVIDER_MODEL_ORDER: Record<SupportedProviderId, Map<string, number>> = {
   anthropic: new Map(ANTHROPIC_MODEL_ORDER.map((model, index) => [model, index])),
   codex: new Map(TEAM_PROVIDER_MODEL_OPTIONS.codex.map((option, index) => [option.value, index])),
   gemini: new Map(TEAM_PROVIDER_MODEL_OPTIONS.gemini.map((option, index) => [option.value, index])),
+  opencode: new Map(
+    TEAM_PROVIDER_MODEL_OPTIONS.opencode.map((option, index) => [option.value, index])
+  ),
 };
 
 function getKnownTeamProviderModelOption(
@@ -150,6 +164,13 @@ function getKnownTeamProviderModelOption(
     return undefined;
   }
   return TEAM_PROVIDER_MODEL_OPTIONS[providerId].find((option) => option.value === trimmed);
+}
+
+function isKnownTeamProviderModel(
+  providerId: SupportedProviderId | undefined,
+  model: string | undefined
+): boolean {
+  return Boolean(getKnownTeamProviderModelOption(providerId, model));
 }
 
 export function getTeamProviderModelOptions(
@@ -240,12 +261,32 @@ export function getTeamModelLabel(model: string | undefined): string | undefined
     return undefined;
   }
 
-  const overrideLabel = TEAM_MODEL_LABEL_OVERRIDES[trimmed];
+  const parsedOpenCodeModel = parseOpenCodeQualifiedModelRef(trimmed);
+  const labelTarget = parsedOpenCodeModel?.modelId ?? trimmed;
+
+  const overrideLabel = TEAM_MODEL_LABEL_OVERRIDES[labelTarget];
   if (overrideLabel) {
     return overrideLabel;
   }
 
-  return formatParsedClaudeModelLabel(trimmed) ?? trimmed;
+  return formatParsedClaudeModelLabel(labelTarget) ?? labelTarget;
+}
+
+function getRuntimeCatalogModel(
+  providerId: SupportedProviderId | undefined,
+  model: string | undefined,
+  providerStatus?: RuntimeAwareProviderStatus | null
+): NonNullable<RuntimeAwareProviderStatus['modelCatalog']>['models'][number] | null {
+  const trimmed = model?.trim();
+  if (!providerId || !trimmed || providerStatus?.modelCatalog?.providerId !== providerId) {
+    return null;
+  }
+
+  return (
+    providerStatus.modelCatalog.models.find(
+      (item) => item.launchModel === trimmed || item.id === trimmed
+    ) ?? null
+  );
 }
 
 export function getTeamModelBadgeLabel(
@@ -275,7 +316,21 @@ export function getTeamModelBadgeLabel(
   if (providerId === 'gemini') {
     return trimmed.replace(/^gemini-/, '');
   }
+  if (providerId === 'opencode') {
+    return getTeamModelLabel(trimmed) ?? trimmed;
+  }
   return trimmed;
+}
+
+export function getTeamModelSourceBadgeLabel(
+  providerId: SupportedProviderId,
+  model: string | undefined
+): string | undefined {
+  if (providerId !== 'opencode') {
+    return undefined;
+  }
+
+  return getOpenCodeQualifiedModelSourceLabel(model) ?? undefined;
 }
 
 export function getProviderScopedTeamModelLabel(
@@ -293,6 +348,33 @@ export function getProviderScopedTeamModelLabel(
   }
 
   return baseLabel.replace(/^GPT-/i, '');
+}
+
+export function getRuntimeAwareProviderScopedTeamModelLabel(
+  providerId: SupportedProviderId,
+  model: string | undefined,
+  providerStatus?: RuntimeAwareProviderStatus | null
+): string | undefined {
+  const runtimeModel = getRuntimeCatalogModel(providerId, model, providerStatus);
+  const runtimeLabel = runtimeModel?.displayName?.trim();
+  if (runtimeLabel) {
+    return getProviderScopedTeamModelLabel(providerId, runtimeLabel) ?? runtimeLabel;
+  }
+
+  return getProviderScopedTeamModelLabel(providerId, model);
+}
+
+export function getRuntimeAwareTeamModelBadgeLabel(
+  providerId: SupportedProviderId,
+  model: string | undefined,
+  providerStatus?: RuntimeAwareProviderStatus | null
+): string | undefined {
+  const runtimeModel = getRuntimeCatalogModel(providerId, model, providerStatus);
+  if (runtimeModel?.badgeLabel?.trim()) {
+    return runtimeModel.badgeLabel.trim();
+  }
+
+  return getTeamModelBadgeLabel(providerId, model);
 }
 
 export function sortTeamProviderModels(
@@ -387,6 +469,18 @@ export function getRuntimeAwareTeamModelUiDisabledReason(
   const trimmed = model?.trim();
   if (!providerId || !trimmed) {
     return null;
+  }
+
+  if (
+    providerId === 'codex' &&
+    providerStatus?.modelCatalog?.providerId === 'codex' &&
+    providerStatus.modelCatalog.models.some(
+      (item) => item.launchModel === trimmed || item.id === trimmed
+    ) &&
+    !isKnownTeamProviderModel(providerId, trimmed) &&
+    providerStatus.runtimeCapabilities?.modelCatalog?.dynamic !== true
+  ) {
+    return CODEX_DYNAMIC_MODEL_REQUIRES_RUNTIME_SUPPORT_REASON;
   }
 
   return isRuntimeHiddenTeamModel(providerId, trimmed, providerStatus)

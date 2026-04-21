@@ -11,10 +11,12 @@ import type {
   CodexAccountSnapshotDto,
 } from '@features/codex-account/contracts';
 import type { CodexAccountFeatureFacade } from '@features/codex-account/main';
+import type { CodexModelCatalogFeatureFacade } from '@features/codex-model-catalog/main';
 import type {
   CliProviderAuthMode,
   CliProviderConnectionInfo,
   CliProviderId,
+  CliProviderReasoningEffort,
   CliProviderStatus,
 } from '@shared/types';
 
@@ -40,6 +42,11 @@ const PROVIDER_CAPABILITIES: Record<
   gemini: {
     supportsOAuth: false,
     supportsApiKey: true,
+    configurableAuthModes: [],
+  },
+  opencode: {
+    supportsOAuth: false,
+    supportsApiKey: false,
     configurableAuthModes: [],
   },
 };
@@ -77,6 +84,8 @@ function buildCodexForcedLoginLaunchArgs(
 export class ProviderConnectionService {
   private static instance: ProviderConnectionService | null = null;
   private codexAccountFeature: Pick<CodexAccountFeatureFacade, 'getSnapshot'> | null = null;
+  private codexModelCatalogFeature: Pick<CodexModelCatalogFeatureFacade, 'getCatalog'> | null =
+    null;
 
   constructor(
     private readonly apiKeyService = new ApiKeyService(),
@@ -90,6 +99,12 @@ export class ProviderConnectionService {
 
   setCodexAccountFeature(feature: Pick<CodexAccountFeatureFacade, 'getSnapshot'> | null): void {
     this.codexAccountFeature = feature;
+  }
+
+  setCodexModelCatalogFeature(
+    feature: Pick<CodexModelCatalogFeatureFacade, 'getCatalog'> | null
+  ): void {
+    this.codexModelCatalogFeature = feature;
   }
 
   getConfiguredAuthMode(providerId: CliProviderId): CliProviderAuthMode | null {
@@ -174,7 +189,7 @@ export class ProviderConnectionService {
 
   async applyAllConfiguredConnectionEnv(env: NodeJS.ProcessEnv): Promise<NodeJS.ProcessEnv> {
     let nextEnv = env;
-    for (const providerId of ['anthropic', 'codex', 'gemini'] as const) {
+    for (const providerId of ['anthropic', 'codex', 'gemini', 'opencode'] as const) {
       nextEnv = await this.applyConfiguredConnectionEnv(nextEnv, providerId);
     }
     return nextEnv;
@@ -228,7 +243,7 @@ export class ProviderConnectionService {
 
   async augmentAllConfiguredConnectionEnv(env: NodeJS.ProcessEnv): Promise<NodeJS.ProcessEnv> {
     let nextEnv = env;
-    for (const providerId of ['anthropic', 'codex', 'gemini'] as const) {
+    for (const providerId of ['anthropic', 'codex', 'gemini', 'opencode'] as const) {
       nextEnv = await this.augmentConfiguredConnectionEnv(nextEnv, providerId);
     }
     return nextEnv;
@@ -298,7 +313,7 @@ export class ProviderConnectionService {
 
   async getConfiguredConnectionIssues(
     env: NodeJS.ProcessEnv,
-    providerIds: readonly CliProviderId[] = ['anthropic', 'codex', 'gemini'],
+    providerIds: readonly CliProviderId[] = ['anthropic', 'codex', 'gemini', 'opencode'],
     runtimeBackendOverrides?: Partial<Record<CliProviderId, string>>
   ): Promise<Partial<Record<CliProviderId, string>>> {
     const issues: Partial<Record<CliProviderId, string>> = {};
@@ -353,10 +368,53 @@ export class ProviderConnectionService {
   }
 
   async enrichProviderStatus(provider: CliProviderStatus): Promise<CliProviderStatus> {
-    return {
+    const withConnection = {
       ...provider,
       connection: await this.getConnectionInfo(provider.providerId),
     };
+
+    if (provider.providerId !== 'codex' || !this.codexModelCatalogFeature) {
+      return withConnection;
+    }
+
+    try {
+      const catalog = await this.codexModelCatalogFeature.getCatalog();
+      const models = catalog.models
+        .filter((model) => !model.hidden)
+        .map((model) => model.launchModel.trim())
+        .filter(Boolean);
+      const reasoningEfforts = Array.from(
+        new Set(
+          catalog.models.flatMap<CliProviderReasoningEffort>(
+            (model) => model.supportedReasoningEfforts
+          )
+        )
+      );
+      const runtimeReasoningCapability = withConnection.runtimeCapabilities?.reasoningEffort;
+      const runtimeModelCatalogCapability = withConnection.runtimeCapabilities?.modelCatalog;
+      return {
+        ...withConnection,
+        models: models.length > 0 ? models : withConnection.models,
+        modelCatalog: catalog,
+        runtimeCapabilities: {
+          ...withConnection.runtimeCapabilities,
+          modelCatalog: {
+            dynamic: runtimeModelCatalogCapability?.dynamic === true,
+            source: catalog.source,
+          },
+          reasoningEffort: {
+            supported: runtimeReasoningCapability?.supported ?? reasoningEfforts.length > 0,
+            values:
+              runtimeReasoningCapability?.values && runtimeReasoningCapability.values.length > 0
+                ? runtimeReasoningCapability.values
+                : (['low', 'medium', 'high'] satisfies CliProviderReasoningEffort[]),
+            configPassthrough: runtimeReasoningCapability?.configPassthrough === true,
+          },
+        },
+      };
+    } catch {
+      return withConnection;
+    }
   }
 
   async enrichProviderStatuses(providers: CliProviderStatus[]): Promise<CliProviderStatus[]> {

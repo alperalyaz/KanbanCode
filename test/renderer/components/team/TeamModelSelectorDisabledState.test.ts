@@ -33,7 +33,8 @@ vi.mock('@renderer/components/ui/tabs', () => {
       currentOnValueChange = onValueChange ?? null;
       return React.createElement('div', { 'data-tabs-value': value }, children);
     },
-    TabsList: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+    TabsList: ({ children }: { children: React.ReactNode }) =>
+      React.createElement('div', null, children),
     TabsTrigger: ({
       children,
       value,
@@ -542,9 +543,7 @@ describe('TeamModelSelector disabled Codex models', () => {
       button.textContent?.includes('5.2 Codex')
     );
     expect(issueButton?.className).toContain('border-red-500/40');
-    expect(issueButton?.getAttribute('title')).toBe(
-      'Not available on this Codex native runtime'
-    );
+    expect(issueButton?.getAttribute('title')).toBe('Not available on this Codex native runtime');
 
     await act(async () => {
       root.unmount();
@@ -552,7 +551,149 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
   });
 
-  it('shows OpenCode as an in-development provider and keeps it non-selectable', async () => {
+  it('keeps the curated Anthropic picker surface while showing runtime-backed labels', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = {
+      providers: [
+        {
+          providerId: 'anthropic',
+          models: ['opus', 'claude-opus-4-6', 'sonnet', 'haiku'],
+          modelCatalog: {
+            schemaVersion: 1,
+            providerId: 'anthropic',
+            source: 'anthropic-models-api',
+            status: 'ready',
+            fetchedAt: '2026-04-21T00:00:00.000Z',
+            staleAt: '2026-04-21T00:10:00.000Z',
+            defaultModelId: 'opus[1m]',
+            defaultLaunchModel: 'opus[1m]',
+            models: [
+              {
+                id: 'opus',
+                launchModel: 'opus',
+                displayName: 'Opus 4.8',
+                hidden: false,
+                supportedReasoningEfforts: ['low', 'medium', 'high'],
+                defaultReasoningEffort: null,
+                inputModalities: ['text', 'image'],
+                supportsPersonality: false,
+                isDefault: false,
+                upgrade: false,
+                source: 'anthropic-models-api',
+                badgeLabel: 'Opus 4.8',
+              },
+              {
+                id: 'opus[1m]',
+                launchModel: 'opus[1m]',
+                displayName: 'Opus 4.8 (1M)',
+                hidden: true,
+                supportedReasoningEfforts: ['low', 'medium', 'high'],
+                defaultReasoningEffort: null,
+                inputModalities: ['text', 'image'],
+                supportsPersonality: false,
+                isDefault: true,
+                upgrade: false,
+                source: 'anthropic-models-api',
+              },
+              {
+                id: 'claude-opus-4-6',
+                launchModel: 'claude-opus-4-6',
+                displayName: 'Opus 4.6',
+                hidden: false,
+                supportedReasoningEfforts: ['low', 'medium', 'high'],
+                defaultReasoningEffort: null,
+                inputModalities: ['text', 'image'],
+                supportsPersonality: false,
+                isDefault: false,
+                upgrade: false,
+                source: 'anthropic-models-api',
+                badgeLabel: 'Opus 4.6',
+              },
+              {
+                id: 'sonnet',
+                launchModel: 'sonnet',
+                displayName: 'Sonnet 4.7',
+                hidden: false,
+                supportedReasoningEfforts: ['low', 'medium', 'high'],
+                defaultReasoningEffort: null,
+                inputModalities: ['text', 'image'],
+                supportsPersonality: false,
+                isDefault: false,
+                upgrade: false,
+                source: 'anthropic-models-api',
+                badgeLabel: 'Sonnet 4.7',
+              },
+              {
+                id: 'haiku',
+                launchModel: 'haiku',
+                displayName: 'Haiku 4.6',
+                hidden: false,
+                supportedReasoningEfforts: [],
+                defaultReasoningEffort: null,
+                inputModalities: ['text', 'image'],
+                supportsPersonality: false,
+                isDefault: false,
+                upgrade: false,
+                source: 'anthropic-models-api',
+                badgeLabel: 'Haiku 4.6',
+              },
+            ],
+            diagnostics: {
+              configReadState: 'ready',
+              appServerState: 'healthy',
+              message: null,
+              code: null,
+            },
+          },
+          runtimeCapabilities: {
+            modelCatalog: {
+              dynamic: true,
+              source: 'anthropic-models-api',
+            },
+            reasoningEffort: {
+              supported: true,
+              values: ['low', 'medium', 'high'],
+              configPassthrough: false,
+            },
+          },
+        },
+      ],
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'anthropic',
+          onProviderChange: () => undefined,
+          value: '',
+          onValueChange: () => undefined,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const modelButtons = Array.from(host.querySelectorAll('button')).map(
+      (button) => button.textContent?.trim() ?? ''
+    );
+
+    expect(modelButtons.some((text) => text.startsWith('Default'))).toBe(true);
+    expect(modelButtons).toContain('Opus 4.8');
+    expect(modelButtons).toContain('Opus 4.6');
+    expect(modelButtons).toContain('Sonnet 4.7');
+    expect(modelButtons).toContain('Haiku 4.6');
+    expect(modelButtons).not.toContain('Opus 4.8 (1M)');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('shows OpenCode as readiness-gated and keeps it non-selectable', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -579,7 +720,9 @@ describe('TeamModelSelector disabled Codex models', () => {
     const openCodeButton = buttons.find((button) => button.textContent?.includes('OpenCode'));
     expect(openCodeButton).not.toBeNull();
     expect(openCodeButton?.hasAttribute('disabled')).toBe(true);
-    expect(openCodeButton?.getAttribute('title')).toContain('OpenCode in development');
+    expect(openCodeButton?.getAttribute('title')).toContain(
+      'OpenCode runtime status is still loading.'
+    );
 
     await act(async () => {
       openCodeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -587,6 +730,52 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
 
     expect(onProviderChange).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('uses backend OpenCode readiness detail as the disabled reason', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = {
+      providers: [
+        {
+          providerId: 'opencode',
+          supported: true,
+          authenticated: true,
+          statusMessage: 'OpenCode team launch is gated',
+          detailMessage: 'OpenCode production E2E evidence is missing',
+          capabilities: { teamLaunch: false },
+          models: [],
+        },
+      ],
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'anthropic',
+          onProviderChange: () => undefined,
+          value: '',
+          onValueChange: () => undefined,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const openCodeButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('OpenCode')
+    );
+    expect(openCodeButton?.hasAttribute('disabled')).toBe(true);
+    expect(openCodeButton?.getAttribute('title')).toContain(
+      'OpenCode production E2E evidence is missing'
+    );
+    expect(openCodeButton?.textContent).toContain('Gate');
 
     await act(async () => {
       root.unmount();
@@ -625,6 +814,65 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
 
     expect(onProviderChange).toHaveBeenCalledWith('codex');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('renders OpenCode source badges and keeps raw model ids on selection', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = {
+      providers: [
+        {
+          providerId: 'opencode',
+          supported: true,
+          authenticated: true,
+          detailMessage: null,
+          statusMessage: null,
+          capabilities: {
+            teamLaunch: true,
+          },
+          models: ['openai/gpt-5.4', 'openrouter/moonshotai/kimi-k2'],
+        },
+      ],
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onValueChange = vi.fn();
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'opencode',
+          onProviderChange: () => undefined,
+          value: '',
+          onValueChange,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('GPT-5.4');
+    expect(host.textContent).toContain('OpenAI');
+    expect(host.textContent).toContain('moonshotai/kimi-k2');
+    expect(host.textContent).toContain('OpenRouter');
+
+    const openRouterButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('OpenRouter')
+    );
+
+    expect(openRouterButton).toBeTruthy();
+
+    await act(async () => {
+      openRouterButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(onValueChange).toHaveBeenCalledWith('openrouter/moonshotai/kimi-k2');
 
     await act(async () => {
       root.unmount();

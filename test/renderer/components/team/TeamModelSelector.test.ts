@@ -34,6 +34,15 @@ describe('formatTeamModelSummary', () => {
     expect(formatTeamModelSummary('codex', 'gpt-5.4', 'medium')).toBe('5.4 · Medium');
   });
 
+  it('formats OpenCode models with source-aware summaries while preserving opaque ids', () => {
+    expect(formatTeamModelSummary('opencode', 'openai/gpt-5.4', 'medium')).toBe(
+      'GPT-5.4 · via OpenAI · Medium'
+    );
+    expect(formatTeamModelSummary('opencode', 'openrouter/moonshotai/kimi-k2', 'low')).toBe(
+      'moonshotai/kimi-k2 · via OpenRouter · Low'
+    );
+  });
+
   it('marks the known disabled Codex models only for Codex team selection', () => {
     expect(getTeamModelUiDisabledReason('codex', 'gpt-5.1-codex-mini')).toBe(
       GPT_5_1_CODEX_MINI_UI_DISABLED_REASON
@@ -122,6 +131,48 @@ describe('computeEffectiveTeamModel', () => {
   it('appends [1m] for anthropic models', () => {
     expect(computeEffectiveTeamModel('opus', false, 'anthropic')).toBe('opus[1m]');
     expect(computeEffectiveTeamModel('sonnet', false, 'anthropic')).toBe('sonnet[1m]');
+  });
+
+  it('falls back to the base Anthropic launch value when runtime catalog does not confirm a 1M variant', () => {
+    expect(
+      computeEffectiveTeamModel(
+        'opus',
+        false,
+        'anthropic',
+        {
+          providerId: 'anthropic',
+          modelCatalog: {
+            schemaVersion: 1,
+            providerId: 'anthropic',
+            source: 'anthropic-models-api',
+            status: 'ready',
+            fetchedAt: '2026-04-21T00:00:00.000Z',
+            staleAt: '2026-04-21T00:10:00.000Z',
+            defaultModelId: 'opus',
+            defaultLaunchModel: 'opus',
+            models: [
+              {
+                id: 'opus',
+                launchModel: 'opus',
+                displayName: 'Opus 4.8',
+                hidden: false,
+                supportedReasoningEfforts: ['low', 'medium', 'high'],
+                defaultReasoningEffort: null,
+                inputModalities: ['text', 'image'],
+                supportsPersonality: false,
+                isDefault: true,
+                upgrade: false,
+                source: 'anthropic-models-api',
+              },
+            ],
+            diagnostics: {
+              configReadState: 'ready',
+              appServerState: 'healthy',
+            },
+          },
+        }
+      )
+    ).toBe('opus');
   });
 
   it('does not double-append [1m] when input already has it', () => {

@@ -29,6 +29,26 @@ function createCodexProviderStatus(
   };
 }
 
+function createOpenCodeProviderStatus(
+  models: string[],
+  overrides: Partial<TeamModelRuntimeProviderStatus> = {}
+): TeamModelRuntimeProviderStatus {
+  return {
+    providerId: 'opencode',
+    models,
+    authMethod: 'opencode_managed',
+    backend: {
+      kind: 'opencode-cli',
+      label: 'OpenCode CLI',
+    },
+    authenticated: true,
+    supported: true,
+    modelVerificationState: 'idle',
+    modelAvailability: [],
+    ...overrides,
+  };
+}
+
 describe('teamModelAvailability', () => {
   it('uses runtime-reported Codex models as the source of truth', () => {
     const providerStatus = createCodexProviderStatus(['gpt-5.4', 'gpt-5.3-codex']);
@@ -103,6 +123,48 @@ describe('teamModelAvailability', () => {
     ]);
   });
 
+  it('keeps OpenCode raw ids intact while exposing readable labels and source badges', () => {
+    const providerStatus = createOpenCodeProviderStatus([
+      'openai/gpt-5.4',
+      'openrouter/moonshotai/kimi-k2',
+      'opencode/big-pickle',
+    ]);
+
+    expect(getAvailableTeamProviderModels('opencode', providerStatus)).toEqual([
+      'openai/gpt-5.4',
+      'opencode/big-pickle',
+      'openrouter/moonshotai/kimi-k2',
+    ]);
+
+    expect(getAvailableTeamProviderModelOptions('opencode', providerStatus)).toEqual([
+      { value: '', label: 'Default', badgeLabel: 'Default' },
+      {
+        value: 'openai/gpt-5.4',
+        label: 'GPT-5.4',
+        badgeLabel: 'OpenAI',
+        availabilityStatus: 'available',
+        availabilityReason: null,
+      },
+      {
+        value: 'opencode/big-pickle',
+        label: 'big-pickle',
+        badgeLabel: 'OpenCode',
+        availabilityStatus: 'available',
+        availabilityReason: null,
+      },
+      {
+        value: 'openrouter/moonshotai/kimi-k2',
+        label: 'moonshotai/kimi-k2',
+        badgeLabel: 'OpenRouter',
+        availabilityStatus: 'available',
+        availabilityReason: null,
+      },
+    ]);
+    expect(
+      normalizeTeamModelForUi('opencode', 'openrouter/moonshotai/kimi-k2', providerStatus)
+    ).toBe('openrouter/moonshotai/kimi-k2');
+  });
+
   it('clears stale Codex selections when runtime no longer reports that model', () => {
     const providerStatus = createCodexProviderStatus(['gpt-5.4', 'gpt-5.3-codex']);
 
@@ -140,11 +202,41 @@ describe('teamModelAvailability', () => {
 
   it('keeps both Anthropic Opus 4.7 and explicit Opus 4.6 in the fallback selector options', () => {
     expect(getAvailableTeamProviderModelOptions('anthropic')).toEqual([
-      { value: '', label: 'Default', badgeLabel: 'Default' },
-      { value: 'opus', label: 'Opus 4.7', badgeLabel: 'Opus 4.7' },
-      { value: 'claude-opus-4-6', label: 'Opus 4.6', badgeLabel: 'Opus 4.6' },
-      { value: 'sonnet', label: 'Sonnet 4.6', badgeLabel: 'Sonnet 4.6' },
-      { value: 'haiku', label: 'Haiku 4.5', badgeLabel: 'Haiku 4.5' },
+      {
+        value: '',
+        label: 'Default',
+        badgeLabel: 'Default',
+        availabilityStatus: undefined,
+        availabilityReason: undefined,
+      },
+      {
+        value: 'opus',
+        label: 'Opus 4.7',
+        badgeLabel: 'Opus 4.7',
+        availabilityStatus: 'available',
+        availabilityReason: null,
+      },
+      {
+        value: 'claude-opus-4-6',
+        label: 'Opus 4.6',
+        badgeLabel: 'Opus 4.6',
+        availabilityStatus: 'available',
+        availabilityReason: null,
+      },
+      {
+        value: 'sonnet',
+        label: 'Sonnet 4.6',
+        badgeLabel: 'Sonnet 4.6',
+        availabilityStatus: 'available',
+        availabilityReason: null,
+      },
+      {
+        value: 'haiku',
+        label: 'Haiku 4.5',
+        badgeLabel: 'Haiku 4.5',
+        availabilityStatus: 'available',
+        availabilityReason: null,
+      },
     ]);
   });
 

@@ -6,6 +6,8 @@ import * as path from 'path';
 
 import { atomicWriteAsync } from './atomicWrite';
 
+import type { ProviderModelLaunchIdentity, TeamFastMode, TeamProviderId } from '@shared/types';
+
 /**
  * Persisted team-level metadata saved by the UI before CLI provisioning.
  * CLI does not know about this file — it only reads/writes config.json.
@@ -19,14 +21,16 @@ export interface TeamMetaFile {
   color?: string;
   cwd: string;
   prompt?: string;
-  providerId?: 'anthropic' | 'codex' | 'gemini';
+  providerId?: TeamProviderId;
   providerBackendId?: string;
   model?: string;
   effort?: string;
+  fastMode?: TeamFastMode;
   skipPermissions?: boolean;
   worktree?: string;
   extraCliArgs?: string;
   limitContext?: boolean;
+  launchIdentity?: ProviderModelLaunchIdentity;
   createdAt: number;
 }
 
@@ -38,6 +42,80 @@ function normalizeOptionalBackendId(value: unknown): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeProviderId(value: unknown): TeamProviderId | undefined {
+  return value === 'anthropic' || value === 'codex' || value === 'gemini' ? value : undefined;
+}
+
+function normalizeOptionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function normalizeFastMode(value: unknown): TeamFastMode | null {
+  return value === 'inherit' || value === 'on' || value === 'off' ? value : null;
+}
+
+function normalizeLaunchIdentity(value: unknown): ProviderModelLaunchIdentity | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const raw = value as Partial<ProviderModelLaunchIdentity>;
+  const providerId = normalizeProviderId(raw.providerId);
+  const selectedModelKind =
+    raw.selectedModelKind === 'default' || raw.selectedModelKind === 'explicit'
+      ? raw.selectedModelKind
+      : null;
+  if (!providerId || !selectedModelKind) {
+    return undefined;
+  }
+
+  const catalogSource =
+    raw.catalogSource === 'anthropic-models-api' ||
+    raw.catalogSource === 'app-server' ||
+    raw.catalogSource === 'static-fallback' ||
+    raw.catalogSource === 'runtime' ||
+    raw.catalogSource === 'unavailable'
+      ? raw.catalogSource
+      : 'unavailable';
+  const selectedEffort =
+    raw.selectedEffort === 'none' ||
+    raw.selectedEffort === 'minimal' ||
+    raw.selectedEffort === 'low' ||
+    raw.selectedEffort === 'medium' ||
+    raw.selectedEffort === 'high' ||
+    raw.selectedEffort === 'xhigh' ||
+    raw.selectedEffort === 'max'
+      ? raw.selectedEffort
+      : null;
+  const resolvedEffort =
+    raw.resolvedEffort === 'none' ||
+    raw.resolvedEffort === 'minimal' ||
+    raw.resolvedEffort === 'low' ||
+    raw.resolvedEffort === 'medium' ||
+    raw.resolvedEffort === 'high' ||
+    raw.resolvedEffort === 'xhigh' ||
+    raw.resolvedEffort === 'max'
+      ? raw.resolvedEffort
+      : null;
+
+  return {
+    providerId,
+    providerBackendId:
+      migrateProviderBackendId(providerId, normalizeOptionalString(raw.providerBackendId)) ?? null,
+    selectedModel: normalizeOptionalString(raw.selectedModel),
+    selectedModelKind,
+    resolvedLaunchModel: normalizeOptionalString(raw.resolvedLaunchModel),
+    catalogId: normalizeOptionalString(raw.catalogId),
+    catalogSource,
+    catalogFetchedAt: normalizeOptionalString(raw.catalogFetchedAt),
+    selectedEffort,
+    resolvedEffort,
+    selectedFastMode: normalizeFastMode(raw.selectedFastMode),
+    resolvedFastMode: typeof raw.resolvedFastMode === 'boolean' ? raw.resolvedFastMode : null,
+    fastResolutionReason: normalizeOptionalString(raw.fastResolutionReason),
+  };
 }
 
 export class TeamMetaStore {
@@ -105,11 +183,13 @@ export class TeamMetaStore {
       ),
       model: typeof file.model === 'string' ? file.model.trim() || undefined : undefined,
       effort: typeof file.effort === 'string' ? file.effort.trim() || undefined : undefined,
+      fastMode: normalizeFastMode(file.fastMode) ?? undefined,
       skipPermissions: typeof file.skipPermissions === 'boolean' ? file.skipPermissions : undefined,
       worktree: typeof file.worktree === 'string' ? file.worktree.trim() || undefined : undefined,
       extraCliArgs:
         typeof file.extraCliArgs === 'string' ? file.extraCliArgs.trim() || undefined : undefined,
       limitContext: typeof file.limitContext === 'boolean' ? file.limitContext : undefined,
+      launchIdentity: normalizeLaunchIdentity(file.launchIdentity),
       createdAt: typeof file.createdAt === 'number' ? file.createdAt : Date.now(),
     };
   }
@@ -129,10 +209,12 @@ export class TeamMetaStore {
       ),
       model: data.model?.trim() || undefined,
       effort: data.effort?.trim() || undefined,
+      fastMode: normalizeFastMode(data.fastMode) ?? undefined,
       skipPermissions: data.skipPermissions,
       worktree: data.worktree?.trim() || undefined,
       extraCliArgs: data.extraCliArgs?.trim() || undefined,
       limitContext: data.limitContext,
+      launchIdentity: normalizeLaunchIdentity(data.launchIdentity),
       createdAt: data.createdAt,
     };
     await atomicWriteAsync(this.getMetaPath(teamName), JSON.stringify(payload, null, 2));

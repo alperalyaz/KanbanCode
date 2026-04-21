@@ -20,17 +20,22 @@ process.env.UV_THREADPOOL_SIZE ??= '16';
 import './sentry';
 
 import {
-  createCodexAccountFeature,
   type CodexAccountFeatureFacade,
+  createCodexAccountFeature,
   registerCodexAccountIpc,
   removeCodexAccountIpc,
 } from '@features/codex-account/main';
+import {
+  type CodexModelCatalogFeatureFacade,
+  createCodexModelCatalogFeature,
+} from '@features/codex-model-catalog/main';
 import {
   createRecentProjectsFeature,
   type RecentProjectsFeatureFacade,
   registerRecentProjectsIpc,
   removeRecentProjectsIpc,
 } from '@features/recent-projects/main';
+import { providerConnectionService } from '@main/services/runtime/ProviderConnectionService';
 import { JsonScheduleRepository } from '@main/services/schedule/JsonScheduleRepository';
 import { ScheduledTaskExecutor } from '@main/services/schedule/ScheduledTaskExecutor';
 import { SchedulerService } from '@main/services/schedule/SchedulerService';
@@ -43,9 +48,11 @@ import { ReviewApplierService } from '@main/services/team/ReviewApplierService';
 import { TeamBackupService } from '@main/services/team/TeamBackupService';
 import { TeamConfigReader } from '@main/services/team/TeamConfigReader';
 import { TeamInboxWriter } from '@main/services/team/TeamInboxWriter';
-import { TeamMcpConfigBuilder } from '@main/services/team/TeamMcpConfigBuilder';
+import {
+  resolveAgentTeamsMcpLaunchSpec,
+  TeamMcpConfigBuilder,
+} from '@main/services/team/TeamMcpConfigBuilder';
 import { resolveInteractiveShellEnv } from '@main/utils/shellEnv';
-import { providerConnectionService } from '@main/services/runtime/ProviderConnectionService';
 import {
   CONTEXT_CHANGED,
   SCHEDULE_CHANGE,
@@ -96,6 +103,19 @@ import {
 import { startEventLoopLagMonitor } from './services/infrastructure/EventLoopLagMonitor';
 import { HttpServer } from './services/infrastructure/HttpServer';
 import { clearAutoResumeService } from './services/team/AutoResumeService';
+import { OpenCodeBridgeCommandClient } from './services/team/opencode/bridge/OpenCodeBridgeCommandClient';
+import {
+  createOpenCodeBridgeCommandLeaseStore,
+  createOpenCodeBridgeCommandLedgerStore,
+} from './services/team/opencode/bridge/OpenCodeBridgeCommandLedgerStore';
+import {
+  createOpenCodeBridgeClientIdentity,
+  OpenCodeBridgeCommandHandshakePort,
+} from './services/team/opencode/bridge/OpenCodeBridgeHandshakeClient';
+import { OpenCodeStateChangingBridgeCommandService } from './services/team/opencode/bridge/OpenCodeStateChangingBridgeCommandService';
+import { resolveOpenCodeProductionE2EEvidencePath } from './services/team/opencode/e2e/OpenCodeProductionE2EEvidencePath';
+import { OpenCodeProductionE2EEvidenceStore } from './services/team/opencode/e2e/OpenCodeProductionE2EEvidenceStore';
+import { OpenCodeRuntimeManifestEvidenceReader } from './services/team/opencode/store/OpenCodeRuntimeManifestEvidenceReader';
 import {
   buildTeamControlApiBaseUrl,
   clearTeamControlApiState,
@@ -126,11 +146,14 @@ import {
   BoardTaskExactLogsService,
   BoardTaskLogStreamService,
   BranchStatusService,
+  ClaudeBinaryResolver,
   CliInstallerService,
   configManager,
   LocalFileSystemProvider,
   MemberStatsComputer,
   NotificationManager,
+  OpenCodeReadinessBridge,
+  OpenCodeTeamRuntimeAdapter,
   PtyTerminalService,
   ServiceContext,
   ServiceContextRegistry,
@@ -138,17 +161,19 @@ import {
   TaskBoundaryParser,
   TeamDataService,
   TeamLogSourceTracker,
+  TeammateToolTracker,
+  TeamMemberLogsFinder,
+  TeamProvisioningService,
+  TeamRuntimeAdapterRegistry,
   TeamTaskStallJournal,
   TeamTaskStallMonitor,
   TeamTaskStallNotifier,
   TeamTaskStallPolicy,
   TeamTaskStallSnapshotSource,
-  TeammateToolTracker,
-  TeamMemberLogsFinder,
-  TeamProvisioningService,
   UpdaterService,
 } from './services';
 
+import type { OpenCodeTeamLaunchMode } from './services/team';
 import type { FileChangeEvent } from '@main/types';
 import type { TeamChangeEvent } from '@shared/types';
 
@@ -174,6 +199,83 @@ const inboxNotifyTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const INBOX_NOTIFY_DEBOUNCE_MS = 500;
 /** Messages sent from our UI (user_sent) — suppress notifications for these. */
 const suppressedSources = new Set(['user_sent']);
+
+function resolveOpenCodeTeamLaunchModeFromEnv(): OpenCodeTeamLaunchMode {
+  const raw = process.env.CLAUDE_TEAM_OPENCODE_LAUNCH_MODE?.trim().toLowerCase();
+  if (raw === 'dogfood' || raw === 'production' || raw === 'disabled') {
+    return raw;
+  }
+  if (process.env.CLAUDE_TEAM_OPENCODE_DOGFOOD === '1') {
+    return 'dogfood';
+  }
+  return 'disabled';
+}
+
+async function createOpenCodeRuntimeAdapterRegistry(): Promise<TeamRuntimeAdapterRegistry> {
+  const binaryPath = await ClaudeBinaryResolver.resolve();
+  if (!binaryPath) {
+    logger.warn('[OpenCode] Runtime adapter bridge disabled: orchestrator CLI binary not resolved');
+    return new TeamRuntimeAdapterRegistry();
+  }
+
+  const bridgeEnv = { ...process.env };
+  try {
+    const mcpLaunchSpec = await resolveAgentTeamsMcpLaunchSpec();
+    const mcpEntry = mcpLaunchSpec.args[0];
+    if (mcpEntry) {
+      bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND = mcpLaunchSpec.command;
+      bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY = mcpEntry;
+    }
+  } catch (error) {
+    logger.warn(
+      `[OpenCode] Runtime adapter bridge MCP entrypoint unresolved: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+
+  const bridgeClient = new OpenCodeBridgeCommandClient({
+    binaryPath,
+    tempDirectory: join(app.getPath('temp'), 'claude-team-opencode-bridge'),
+    env: bridgeEnv,
+  });
+  const bridgeControlDir = join(app.getPath('userData'), 'opencode-bridge');
+  const clientIdentity = createOpenCodeBridgeClientIdentity({
+    appVersion: typeof app.getVersion === 'function' ? app.getVersion() : '1.3.0',
+    gitSha: process.env.VITE_GIT_SHA ?? process.env.GIT_SHA ?? null,
+    buildId: process.env.VITE_BUILD_ID ?? process.env.BUILD_ID ?? null,
+  });
+  const stateChangingCommands = new OpenCodeStateChangingBridgeCommandService({
+    expectedClientIdentity: clientIdentity,
+    handshakePort: new OpenCodeBridgeCommandHandshakePort({
+      bridge: bridgeClient,
+      clientIdentity,
+    }),
+    leaseStore: createOpenCodeBridgeCommandLeaseStore({
+      filePath: join(bridgeControlDir, 'command-leases.json'),
+    }),
+    ledger: createOpenCodeBridgeCommandLedgerStore({
+      filePath: join(bridgeControlDir, 'command-ledger.json'),
+    }),
+    bridge: bridgeClient,
+    manifestReader: new OpenCodeRuntimeManifestEvidenceReader({
+      teamsBasePath: getTeamsBasePath(),
+    }),
+  });
+  return new TeamRuntimeAdapterRegistry([
+    new OpenCodeTeamRuntimeAdapter(
+      new OpenCodeReadinessBridge(bridgeClient, {
+        stateChangingCommands,
+        productionE2eEvidence: new OpenCodeProductionE2EEvidenceStore({
+          filePath: resolveOpenCodeProductionE2EEvidencePath({ bridgeControlDir }),
+        }),
+      }),
+      {
+        launchMode: resolveOpenCodeTeamLaunchModeFromEnv(),
+      }
+    ),
+  ]);
+}
 
 // --- Team display name cache (avoid listTeams() on every notification) ---
 const TEAM_DISPLAY_NAME_TTL_MS = 30_000;
@@ -422,6 +524,7 @@ let notificationManager: NotificationManager;
 let updaterService: UpdaterService;
 let sshConnectionManager: SshConnectionManager;
 let codexAccountFeature: CodexAccountFeatureFacade | null = null;
+let codexModelCatalogFeature: CodexModelCatalogFeatureFacade | null = null;
 let recentProjectsFeature: RecentProjectsFeatureFacade;
 let teamDataService: TeamDataService;
 let teamProvisioningService: TeamProvisioningService;
@@ -833,6 +936,7 @@ async function initializeServices(): Promise<void> {
   teamDataService = new TeamDataService();
   teamDataService.setMemberRuntimeAdvisoryService(teamMemberRuntimeAdvisoryService);
   teamProvisioningService = new TeamProvisioningService();
+  teamProvisioningService.setRuntimeAdapterRegistry(await createOpenCodeRuntimeAdapterRegistry());
   // Startup GC: remove stale MCP config files from previous sessions (best-effort)
   void new TeamMcpConfigBuilder().gcStaleConfigs();
   void teamDataService
@@ -988,6 +1092,11 @@ async function initializeServices(): Promise<void> {
     configManager,
   });
   providerConnectionService.setCodexAccountFeature(codexAccountFeature);
+  codexModelCatalogFeature = createCodexModelCatalogFeature({
+    logger: createLogger('Feature:CodexModelCatalog'),
+    codexAccountFeature,
+  });
+  providerConnectionService.setCodexModelCatalogFeature(codexModelCatalogFeature);
 
   // startProcessHealthPolling() is deferred to after window creation
   // (did-finish-load handler) to avoid thread pool contention at startup.
@@ -1185,7 +1294,10 @@ function shutdownServices(): void {
   }
 
   void skillsWatcherService?.stopAll();
+  providerConnectionService.setCodexModelCatalogFeature(null);
   providerConnectionService.setCodexAccountFeature(null);
+  void codexModelCatalogFeature?.dispose();
+  codexModelCatalogFeature = null;
   void codexAccountFeature?.dispose();
   codexAccountFeature = null;
 

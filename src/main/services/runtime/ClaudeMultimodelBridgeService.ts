@@ -1,6 +1,7 @@
 import { execCli } from '@main/utils/childProcess';
 import { resolveInteractiveShellEnv } from '@main/utils/shellEnv';
 import { createLogger } from '@shared/utils/logger';
+import { filterVisibleProviderRuntimeModels } from '@shared/utils/providerModelVisibility';
 import {
   createDefaultCliExtensionCapabilities,
   createLegacyRuntimeFallbackCliExtensionCapabilities,
@@ -10,12 +11,18 @@ import { resolveGeminiRuntimeAuth } from './geminiRuntimeAuth';
 import { buildProviderAwareCliEnv } from './providerAwareCliEnv';
 import { providerConnectionService } from './ProviderConnectionService';
 
-import type { CliProviderId, CliProviderStatus } from '@shared/types';
+import type {
+  CliProviderId,
+  CliProviderModelAvailability,
+  CliProviderReasoningEffort,
+  CliProviderStatus,
+} from '@shared/types';
 
 const logger = createLogger('ClaudeMultimodelBridgeService');
 
 const PROVIDER_STATUS_TIMEOUT_MS = 10_000;
 const PROVIDER_MODELS_TIMEOUT_MS = 10_000;
+const OPENCODE_MODEL_VERIFY_TIMEOUT_MS = 60_000;
 
 interface RuntimeExtensionCapabilityResponse {
   status?: 'supported' | 'read-only' | 'unsupported';
@@ -30,6 +37,59 @@ interface RuntimeExtensionCapabilitiesResponse {
   apiKeys?: RuntimeExtensionCapabilityResponse;
 }
 
+interface RuntimeProviderCapabilitiesResponse {
+  modelCatalog?: {
+    dynamic?: boolean;
+    source?: 'anthropic-models-api' | 'app-server' | 'static-fallback' | 'runtime';
+  };
+  reasoningEffort?: {
+    supported?: boolean;
+    values?: string[];
+    configPassthrough?: boolean;
+  };
+  fastMode?: {
+    supported?: boolean;
+    available?: boolean;
+    reason?: string | null;
+    source?: 'runtime';
+  };
+}
+
+interface RuntimeProviderModelCatalogItemResponse {
+  id?: string;
+  launchModel?: string;
+  displayName?: string;
+  hidden?: boolean;
+  supportedReasoningEfforts?: string[];
+  defaultReasoningEffort?: string | null;
+  supportsFastMode?: boolean;
+  inputModalities?: string[];
+  supportsPersonality?: boolean;
+  isDefault?: boolean;
+  upgrade?: boolean;
+  source?: 'anthropic-models-api' | 'app-server' | 'static-fallback';
+  badgeLabel?: string | null;
+  statusMessage?: string | null;
+}
+
+interface RuntimeProviderModelCatalogResponse {
+  schemaVersion?: number;
+  providerId?: CliProviderId;
+  source?: 'anthropic-models-api' | 'app-server' | 'static-fallback';
+  status?: 'ready' | 'stale' | 'degraded' | 'unavailable';
+  fetchedAt?: string;
+  staleAt?: string;
+  defaultModelId?: string | null;
+  defaultLaunchModel?: string | null;
+  models?: RuntimeProviderModelCatalogItemResponse[];
+  diagnostics?: {
+    configReadState?: 'ready' | 'unsupported' | 'failed' | 'skipped';
+    appServerState?: 'healthy' | 'degraded' | 'runtime-missing' | 'incompatible';
+    message?: string | null;
+    code?: string | null;
+  };
+}
+
 interface ProviderStatusCommandResponse {
   schemaVersion?: number;
   providers?: Record<
@@ -41,6 +101,7 @@ interface ProviderStatusCommandResponse {
       verificationState?: 'verified' | 'unknown' | 'offline' | 'error';
       canLoginFromUi?: boolean;
       statusMessage?: string | null;
+      detailMessage?: string | null;
       capabilities?: {
         teamLaunch?: boolean;
         oneShot?: boolean;
@@ -53,6 +114,7 @@ interface ProviderStatusCommandResponse {
         projectId?: string | null;
         authMethodDetail?: string | null;
       } | null;
+      runtimeCapabilities?: RuntimeProviderCapabilitiesResponse;
     }
   >;
 }
@@ -107,6 +169,7 @@ interface UnifiedRuntimeStatusResponse {
         detailMessage?: string | null;
       }[];
       models?: (string | { id?: string; label?: string; description?: string })[];
+      modelCatalog?: RuntimeProviderModelCatalogResponse | null;
       capabilities?: {
         teamLaunch?: boolean;
         oneShot?: boolean;
@@ -119,11 +182,146 @@ interface UnifiedRuntimeStatusResponse {
         projectId?: string | null;
         authMethodDetail?: string | null;
       } | null;
+      runtimeCapabilities?: RuntimeProviderCapabilitiesResponse;
     }
   >;
 }
 
-const ORDERED_PROVIDER_IDS: CliProviderId[] = ['anthropic', 'codex', 'gemini'];
+interface OpenCodeRuntimeVerifyResponse {
+  schemaVersion?: number;
+  providerId?: 'opencode';
+  snapshot?: {
+    detected?: boolean;
+    hostHealthy?: boolean;
+    probeError?: string | null;
+    diagnostics?: string[];
+    host?: {
+      version?: string | null;
+      resolvedConfigFingerprint?: string | null;
+    } | null;
+    profile?: {
+      profileRootKey?: string;
+      projectBehaviorFingerprint?: string;
+      managedConfigFingerprint?: string;
+    } | null;
+    config?: {
+      default_agent?: string;
+      share?: string | null;
+      snapshot?: boolean;
+      autoupdate?: boolean | string;
+    } | null;
+  } | null;
+}
+
+export interface OpenCodeRuntimeTranscriptResponse {
+  schemaVersion?: number;
+  providerId?: 'opencode';
+  transcript?: {
+    sessionId?: string;
+    durableState?: string;
+    staleReason?: string | null;
+    messageCount?: number;
+    toolCallCount?: number;
+    errorCount?: number;
+    latestAssistantText?: string | null;
+    latestAssistantPreview?: string | null;
+    messages?: unknown[];
+    diagnostics?: string[];
+    logProjection?: {
+      sessionId?: string;
+      durableState?: string;
+      sourceMessageCount?: number;
+      projectedMessageCount?: number;
+      syntheticMessageCount?: number;
+      toolCallCount?: number;
+      errorCount?: number;
+      diagnostics?: string[];
+      messages?: OpenCodeRuntimeTranscriptLogMessage[];
+    } | null;
+  } | null;
+}
+
+export type OpenCodeRuntimeTranscriptLogContentBlock =
+  | {
+      type: 'text';
+      text: string;
+    }
+  | {
+      type: 'thinking';
+      thinking: string;
+      signature: string;
+    }
+  | {
+      type: 'tool_use';
+      id: string;
+      name: string;
+      input: Record<string, unknown>;
+    }
+  | {
+      type: 'tool_result';
+      tool_use_id: string;
+      content: string | OpenCodeRuntimeTranscriptLogContentBlock[];
+      is_error?: boolean;
+    };
+
+export interface OpenCodeRuntimeTranscriptLogToolCall {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+  isTask: boolean;
+  taskDescription?: string;
+  taskSubagentType?: string;
+}
+
+export interface OpenCodeRuntimeTranscriptLogToolResult {
+  toolUseId: string;
+  content: string | OpenCodeRuntimeTranscriptLogContentBlock[];
+  isError: boolean;
+}
+
+export interface OpenCodeRuntimeTranscriptLogMessage {
+  uuid: string;
+  parentUuid: string | null;
+  type: 'assistant' | 'user' | 'system';
+  timestamp: string;
+  role?: string;
+  content: OpenCodeRuntimeTranscriptLogContentBlock[] | string;
+  model?: string;
+  agentName?: string;
+  isMeta: boolean;
+  sessionId: string;
+  toolCalls: OpenCodeRuntimeTranscriptLogToolCall[];
+  toolResults: OpenCodeRuntimeTranscriptLogToolResult[];
+  sourceToolUseID?: string;
+  sourceToolAssistantUUID?: string;
+  subtype?: string;
+  level?: string;
+}
+
+interface OpenCodeRuntimeVerifyModelResponse {
+  schemaVersion?: number;
+  providerId?: 'opencode';
+  result?: {
+    modelId?: string;
+    outcome?: 'available' | 'unavailable' | 'unknown';
+    reason?: string | null;
+  } | null;
+}
+
+const ORDERED_PROVIDER_IDS: CliProviderId[] = ['anthropic', 'codex', 'gemini', 'opencode'];
+
+function getProviderDisplayName(providerId: CliProviderId): string {
+  switch (providerId) {
+    case 'anthropic':
+      return 'Anthropic';
+    case 'codex':
+      return 'Codex';
+    case 'gemini':
+      return 'Gemini';
+    case 'opencode':
+      return 'OpenCode';
+  }
+}
 
 function extractJsonObject<T>(raw: string): T {
   const trimmed = raw.trim();
@@ -142,17 +340,17 @@ function extractJsonObject<T>(raw: string): T {
 function createDefaultProviderStatus(providerId: CliProviderId): CliProviderStatus {
   return {
     providerId,
-    displayName:
-      providerId === 'anthropic' ? 'Anthropic' : providerId === 'codex' ? 'Codex' : 'Gemini',
+    displayName: getProviderDisplayName(providerId),
     supported: false,
     authenticated: false,
     authMethod: null,
     verificationState: 'unknown',
     modelVerificationState: 'idle',
     statusMessage: null,
+    detailMessage: null,
     models: [],
     modelAvailability: [],
-    canLoginFromUi: true,
+    canLoginFromUi: providerId !== 'opencode',
     capabilities: {
       teamLaunch: false,
       oneShot: false,
@@ -164,6 +362,8 @@ function createDefaultProviderStatus(providerId: CliProviderId): CliProviderStat
     externalRuntimeDiagnostics: [],
     backend: null,
     connection: null,
+    modelCatalog: null,
+    runtimeCapabilities: null,
   };
 }
 
@@ -220,6 +420,114 @@ function extractModelIds(
   });
 }
 
+function normalizeRuntimeReasoningEffort(
+  value: string | null | undefined
+): CliProviderReasoningEffort | null {
+  return value === 'none' ||
+    value === 'minimal' ||
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'xhigh' ||
+    value === 'max'
+    ? value
+    : null;
+}
+
+function collectRuntimeReasoningEfforts(values?: string[]): CliProviderReasoningEffort[] {
+  return (
+    values?.flatMap((value) => {
+      const normalized = normalizeRuntimeReasoningEffort(value);
+      return normalized ? [normalized] : [];
+    }) ?? []
+  );
+}
+
+function mapRuntimeProviderModelCatalog(
+  providerId: CliProviderId,
+  modelCatalog?: RuntimeProviderModelCatalogResponse | null
+): CliProviderStatus['modelCatalog'] {
+  if (modelCatalog?.providerId !== providerId) {
+    return null;
+  }
+
+  const fetchedAt = modelCatalog.fetchedAt?.trim();
+  const staleAt = modelCatalog.staleAt?.trim();
+  const source = modelCatalog.source;
+  const status = modelCatalog.status;
+  if (
+    modelCatalog.schemaVersion !== 1 ||
+    !fetchedAt ||
+    !staleAt ||
+    (source !== 'anthropic-models-api' &&
+      source !== 'app-server' &&
+      source !== 'static-fallback') ||
+    (status !== 'ready' && status !== 'stale' && status !== 'degraded' && status !== 'unavailable')
+  ) {
+    return null;
+  }
+
+  const models: NonNullable<CliProviderStatus['modelCatalog']>['models'] =
+    modelCatalog.models?.flatMap((model) => {
+      const id = model.id?.trim();
+      const launchModel = model.launchModel?.trim();
+      const displayName = model.displayName?.trim();
+      if (!id || !launchModel || !displayName) {
+        return [];
+      }
+
+      const supportedReasoningEfforts = collectRuntimeReasoningEfforts(
+        model.supportedReasoningEfforts
+      );
+      const defaultReasoningEffort = normalizeRuntimeReasoningEffort(
+        model.defaultReasoningEffort ?? null
+      );
+      const itemSource =
+        model.source === 'anthropic-models-api' ||
+        model.source === 'app-server' ||
+        model.source === 'static-fallback'
+          ? model.source
+          : source;
+
+      return [
+        {
+          id,
+          launchModel,
+          displayName,
+          hidden: model.hidden === true,
+          supportedReasoningEfforts,
+          defaultReasoningEffort,
+          supportsFastMode: model.supportsFastMode === true,
+          inputModalities: model.inputModalities?.filter((value) => value.trim().length > 0) ?? [],
+          supportsPersonality: model.supportsPersonality === true,
+          isDefault: model.isDefault === true,
+          upgrade: model.upgrade === true,
+          source: itemSource,
+          badgeLabel: model.badgeLabel ?? null,
+          statusMessage: model.statusMessage ?? null,
+        },
+      ];
+    }) ?? [];
+
+  return {
+    schemaVersion: 1,
+    providerId,
+    source,
+    status,
+    fetchedAt,
+    staleAt,
+    defaultModelId: modelCatalog.defaultModelId ?? null,
+    defaultLaunchModel: modelCatalog.defaultLaunchModel ?? null,
+    models,
+    diagnostics: {
+      configReadState: modelCatalog.diagnostics?.configReadState ?? 'skipped',
+      appServerState: modelCatalog.diagnostics?.appServerState ?? 'degraded',
+      message: modelCatalog.diagnostics?.message ?? null,
+      code: modelCatalog.diagnostics?.code ?? null,
+    },
+  };
+}
+
 export class ClaudeMultimodelBridgeService {
   private async buildCliEnv(
     binaryPath: string
@@ -262,6 +570,7 @@ export class ClaudeMultimodelBridgeService {
       authMethod: runtimeStatus.authMethod ?? null,
       verificationState: runtimeStatus.verificationState ?? 'unknown',
       statusMessage: runtimeStatus.statusMessage ?? null,
+      detailMessage: runtimeStatus.detailMessage ?? null,
       canLoginFromUi: runtimeStatus.canLoginFromUi !== false,
       capabilities: {
         teamLaunch: runtimeStatus.capabilities?.teamLaunch === true,
@@ -292,6 +601,7 @@ export class ClaudeMultimodelBridgeService {
           detailMessage: diagnostic.detailMessage ?? null,
         })) ?? [],
       models: extractModelIds(runtimeStatus.models),
+      modelCatalog: mapRuntimeProviderModelCatalog(providerId, runtimeStatus.modelCatalog),
       backend: runtimeStatus.backend?.kind
         ? {
             kind: runtimeStatus.backend.kind,
@@ -299,6 +609,34 @@ export class ClaudeMultimodelBridgeService {
             endpointLabel: runtimeStatus.backend.endpointLabel ?? null,
             projectId: runtimeStatus.backend.projectId ?? null,
             authMethodDetail: runtimeStatus.backend.authMethodDetail ?? null,
+          }
+        : null,
+      runtimeCapabilities: runtimeStatus.runtimeCapabilities
+        ? {
+            modelCatalog: runtimeStatus.runtimeCapabilities.modelCatalog
+              ? {
+                  dynamic: runtimeStatus.runtimeCapabilities.modelCatalog.dynamic === true,
+                  source: runtimeStatus.runtimeCapabilities.modelCatalog.source,
+                }
+              : undefined,
+            reasoningEffort: runtimeStatus.runtimeCapabilities.reasoningEffort
+              ? {
+                  supported: runtimeStatus.runtimeCapabilities.reasoningEffort.supported === true,
+                  values: collectRuntimeReasoningEfforts(
+                    runtimeStatus.runtimeCapabilities.reasoningEffort.values
+                  ),
+                  configPassthrough:
+                    runtimeStatus.runtimeCapabilities.reasoningEffort.configPassthrough === true,
+                }
+              : undefined,
+            fastMode: runtimeStatus.runtimeCapabilities.fastMode
+              ? {
+                  supported: runtimeStatus.runtimeCapabilities.fastMode.supported === true,
+                  available: runtimeStatus.runtimeCapabilities.fastMode.available === true,
+                  reason: runtimeStatus.runtimeCapabilities.fastMode.reason ?? null,
+                  source: 'runtime',
+                }
+              : undefined,
           }
         : null,
     };
@@ -319,6 +657,7 @@ export class ClaudeMultimodelBridgeService {
       authMethod: null,
       verificationState: 'error',
       statusMessage: issue,
+      detailMessage: null,
       backend: null,
     };
   }
@@ -328,6 +667,94 @@ export class ClaudeMultimodelBridgeService {
     connectionIssues: Partial<Record<CliProviderId, string>>
   ): CliProviderStatus[] {
     return providers.map((provider) => this.applyConnectionIssue(provider, connectionIssues));
+  }
+
+  private async getOpenCodeVerifySnapshot(
+    binaryPath: string
+  ): Promise<OpenCodeRuntimeVerifyResponse['snapshot'] | null> {
+    const { env } = await this.buildCliEnv(binaryPath);
+    const { stdout } = await execCli(
+      binaryPath,
+      ['runtime', 'verify', '--json', '--provider', 'opencode'],
+      {
+        timeout: PROVIDER_STATUS_TIMEOUT_MS,
+        env,
+      }
+    );
+    const parsed = extractJsonObject<OpenCodeRuntimeVerifyResponse>(stdout);
+    return parsed.providerId === 'opencode' ? (parsed.snapshot ?? null) : null;
+  }
+
+  private mergeOpenCodeVerification(
+    provider: CliProviderStatus,
+    snapshot: OpenCodeRuntimeVerifyResponse['snapshot']
+  ): CliProviderStatus {
+    if (!snapshot) {
+      return provider;
+    }
+
+    const diagnostics = snapshot.diagnostics ?? [];
+    const diagnosticsSummary = diagnostics.slice(0, 2).join(' - ');
+    const liveIssuesPresent =
+      snapshot.detected === false ||
+      snapshot.hostHealthy !== true ||
+      Boolean(snapshot.probeError) ||
+      diagnostics.length > 0;
+
+    const detailParts = [
+      provider.detailMessage ?? null,
+      snapshot.host?.resolvedConfigFingerprint
+        ? `live ${snapshot.host.resolvedConfigFingerprint.slice(0, 12)}`
+        : null,
+      snapshot.profile?.managedConfigFingerprint
+        ? `managed ${snapshot.profile.managedConfigFingerprint.slice(0, 12)}`
+        : null,
+      snapshot.profile?.projectBehaviorFingerprint
+        ? `behavior ${snapshot.profile.projectBehaviorFingerprint.slice(0, 12)}`
+        : null,
+      diagnosticsSummary || null,
+    ].filter((value): value is string => Boolean(value));
+
+    const nextDiagnostics = [
+      ...(provider.externalRuntimeDiagnostics ?? []),
+      {
+        id: 'opencode-live-host',
+        label: 'OpenCode live host',
+        detected: snapshot.hostHealthy === true,
+        statusMessage: snapshot.hostHealthy === true ? 'Healthy' : 'Unavailable',
+        detailMessage: snapshot.probeError ?? null,
+      },
+      {
+        id: 'opencode-managed-runtime',
+        label: 'OpenCode managed runtime',
+        detected: !liveIssuesPresent,
+        statusMessage: liveIssuesPresent
+          ? 'Live verification found runtime drift'
+          : 'Managed runtime verified',
+        detailMessage: diagnosticsSummary || null,
+      },
+    ];
+
+    return {
+      ...provider,
+      verificationState: liveIssuesPresent ? 'error' : 'verified',
+      statusMessage: liveIssuesPresent
+        ? (snapshot.probeError ??
+          diagnostics[0] ??
+          'OpenCode live verification found runtime drift')
+        : provider.statusMessage,
+      detailMessage: detailParts.length > 0 ? detailParts.join(' - ') : provider.detailMessage,
+      externalRuntimeDiagnostics: nextDiagnostics,
+      backend: provider.backend
+        ? {
+            ...provider.backend,
+            authMethodDetail:
+              snapshot.config?.default_agent === 'teammate'
+                ? 'managed teammate agent'
+                : (provider.backend.authMethodDetail ?? null),
+          }
+        : provider.backend,
+    };
   }
 
   async getProviderStatus(
@@ -368,6 +795,134 @@ export class ClaudeMultimodelBridgeService {
       providers.find((provider) => provider.providerId === providerId) ??
       createDefaultProviderStatus(providerId)
     );
+  }
+
+  async verifyProviderStatus(
+    binaryPath: string,
+    providerId: CliProviderId
+  ): Promise<CliProviderStatus> {
+    const provider = await this.getProviderStatus(binaryPath, providerId);
+    if (providerId !== 'opencode') {
+      return provider;
+    }
+
+    try {
+      const snapshot = await this.getOpenCodeVerifySnapshot(binaryPath);
+      return this.mergeOpenCodeVerification(provider, snapshot);
+    } catch (error) {
+      logger.warn(
+        `OpenCode live verification unavailable: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return {
+        ...provider,
+        verificationState: 'error',
+        statusMessage: 'OpenCode live verification failed',
+        detailMessage: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  async getOpenCodeTranscript(
+    binaryPath: string,
+    params: {
+      teamId: string;
+      memberName: string;
+      limit?: number;
+    }
+  ): Promise<OpenCodeRuntimeTranscriptResponse['transcript'] | null> {
+    const { env } = await this.buildCliEnv(binaryPath);
+    const args = [
+      'runtime',
+      'transcript',
+      '--json',
+      '--provider',
+      'opencode',
+      '--team',
+      params.teamId,
+      '--member',
+      params.memberName,
+    ];
+    if (typeof params.limit === 'number') {
+      args.push('--limit', String(params.limit));
+    }
+
+    const { stdout } = await execCli(binaryPath, args, {
+      timeout: PROVIDER_STATUS_TIMEOUT_MS,
+      env,
+    });
+    const parsed = extractJsonObject<OpenCodeRuntimeTranscriptResponse>(stdout);
+    return parsed.providerId === 'opencode' ? (parsed.transcript ?? null) : null;
+  }
+
+  private async verifyOpenCodeModel(
+    binaryPath: string,
+    modelId: string
+  ): Promise<CliProviderModelAvailability> {
+    const { env } = await this.buildCliEnv(binaryPath);
+    try {
+      const { stdout } = await execCli(
+        binaryPath,
+        ['runtime', 'verify-model', '--json', '--provider', 'opencode', '--model', modelId],
+        {
+          timeout: OPENCODE_MODEL_VERIFY_TIMEOUT_MS,
+          env,
+        }
+      );
+      const parsed = extractJsonObject<OpenCodeRuntimeVerifyModelResponse>(stdout);
+      const outcome = parsed.providerId === 'opencode' ? parsed.result?.outcome : undefined;
+      const reason = parsed.providerId === 'opencode' ? (parsed.result?.reason ?? null) : null;
+
+      return {
+        modelId,
+        status:
+          outcome === 'available'
+            ? 'available'
+            : outcome === 'unavailable'
+              ? 'unavailable'
+              : 'unknown',
+        reason,
+        checkedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      return {
+        modelId,
+        status: 'unknown',
+        reason: error instanceof Error ? error.message : String(error),
+        checkedAt: new Date().toISOString(),
+      };
+    }
+  }
+
+  async verifyOpenCodeModels(
+    binaryPath: string,
+    provider: CliProviderStatus
+  ): Promise<CliProviderStatus> {
+    const visibleModels = filterVisibleProviderRuntimeModels(provider.providerId, provider.models);
+    if (
+      provider.providerId !== 'opencode' ||
+      provider.supported !== true ||
+      provider.authenticated !== true ||
+      visibleModels.length === 0
+    ) {
+      return {
+        ...provider,
+        modelVerificationState: 'idle',
+        modelAvailability: [],
+      };
+    }
+
+    const modelAvailability: CliProviderModelAvailability[] = [];
+    for (const modelId of visibleModels) {
+      modelAvailability.push(await this.verifyOpenCodeModel(binaryPath, modelId));
+    }
+
+    return {
+      ...provider,
+      modelVerificationState: 'verified',
+      modelAvailability,
+    };
   }
 
   private async buildGeminiStatus(binaryPath: string): Promise<CliProviderStatus> {
@@ -491,6 +1046,7 @@ export class ClaudeMultimodelBridgeService {
             authMethod: runtimeStatus.authMethod ?? null,
             verificationState: runtimeStatus.verificationState ?? 'unknown',
             statusMessage: runtimeStatus.statusMessage ?? null,
+            detailMessage: runtimeStatus.detailMessage ?? null,
             canLoginFromUi: runtimeStatus.canLoginFromUi !== false,
             capabilities: {
               teamLaunch: runtimeStatus.capabilities?.teamLaunch === true,
