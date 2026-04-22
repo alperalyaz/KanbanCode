@@ -123,6 +123,7 @@ describe('MemberDetailHeader spawn-aware presence', () => {
 
     expect(host.textContent).toContain('connecting');
     expect(host.textContent).not.toContain('online');
+    expect(host.querySelector('[aria-label="connecting"]')).not.toBeNull();
 
     await act(async () => {
       root.unmount();

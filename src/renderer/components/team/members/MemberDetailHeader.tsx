@@ -105,7 +105,7 @@ export const MemberDetailHeader = ({
         />
         <span
           className={`absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-[var(--color-surface)] ${dotClass}`}
-          aria-label={presenceLabel}
+          aria-label={badgeLabel}
         />
       </div>
       <div className="min-w-0 flex-1">

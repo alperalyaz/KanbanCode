@@ -126,6 +126,10 @@ export const MemberCard = ({
   const spawnCardClass = launchPresentation.cardClass;
   const launchVisualState = launchPresentation.launchVisualState;
   const launchStatusLabel = launchPresentation.launchStatusLabel;
+  const displayPresenceLabel =
+    launchVisualState === 'runtime_pending' || launchVisualState === 'permission_pending'
+      ? (launchStatusLabel ?? presenceLabel)
+      : presenceLabel;
   const colors = getTeamColorSet(memberColor);
   const { isLight } = useTheme();
   const pending = taskCounts?.pending ?? 0;
@@ -155,8 +159,7 @@ export const MemberCard = ({
     (presenceLabel === 'starting' ||
       presenceLabel === 'connecting' ||
       launchVisualState === 'runtime_pending');
-  const launchBadgeLabel =
-    presenceLabel === 'starting' ? presenceLabel : (launchStatusLabel ?? presenceLabel);
+  const launchBadgeLabel = presenceLabel === 'starting' ? presenceLabel : displayPresenceLabel;
   const showRuntimeAdvisoryBadge =
     !isRemoved &&
     Boolean(runtimeAdvisoryLabel) &&
@@ -201,7 +204,7 @@ export const MemberCard = ({
             </div>
             <span
               className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-[var(--color-surface)] ${dotClass}`}
-              aria-label={presenceLabel}
+              aria-label={displayPresenceLabel}
             />
           </div>
           <div className="min-w-0 flex-1">
@@ -295,7 +298,7 @@ export const MemberCard = ({
                     variant="secondary"
                     className="shrink-0 bg-red-500/15 px-1.5 py-0.5 text-[10px] font-normal leading-none text-red-400"
                   >
-                    {presenceLabel}
+                    {displayPresenceLabel}
                   </Badge>
                 </span>
               </TooltipTrigger>
@@ -325,7 +328,7 @@ export const MemberCard = ({
               className={`shrink-0 px-1.5 py-0.5 text-[10px] font-normal leading-none ${isRemoved ? 'bg-zinc-600 text-zinc-300' : 'text-[var(--color-text-muted)]'}`}
               title={isRemoved ? 'This member has been removed' : activityTitle}
             >
-              {isRemoved ? 'removed' : presenceLabel}
+              {isRemoved ? 'removed' : displayPresenceLabel}
             </Badge>
           ) : null}
           {showStartingSkeleton ? (
