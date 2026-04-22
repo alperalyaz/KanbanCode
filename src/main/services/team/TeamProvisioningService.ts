@@ -11858,7 +11858,9 @@ export class TeamProvisioningService {
     },
     snapshot?: PersistedTeamLaunchSnapshot | null
   ): string {
-    const expectedTeammateCount = snapshot?.expectedMembers.length ?? run.expectedMembers.length;
+    const expectedTeammateCount = snapshot
+      ? this.getPersistedLaunchMemberNames(snapshot).length
+      : run.expectedMembers.length;
     const permissionPendingCount = snapshot
       ? this.countSnapshotPermissionPendingMembers(snapshot)
       : this.countRunPermissionPendingMembers(run);
@@ -11908,7 +11910,8 @@ export class TeamProvisioningService {
       return this.buildPendingBootstrapStatusMessage(prefix, run, launchSummary, snapshot);
     }
 
-    const allPendingMembers = snapshot.expectedMembers.filter((memberName) => {
+    const persistedMemberNames = this.getPersistedLaunchMemberNames(snapshot);
+    const allPendingMembers = persistedMemberNames.filter((memberName) => {
       const member = snapshot.members[memberName];
       if (!member) {
         return false;
@@ -11935,7 +11938,7 @@ export class TeamProvisioningService {
     const primaryExpectedMembers = new Set(
       snapshot.bootstrapExpectedMembers ?? run.expectedMembers
     );
-    const secondaryPendingMembers = snapshot.expectedMembers.filter((memberName) => {
+    const secondaryPendingMembers = persistedMemberNames.filter((memberName) => {
       if (primaryExpectedMembers.has(memberName)) {
         return false;
       }
@@ -11976,7 +11979,7 @@ export class TeamProvisioningService {
 
   private countSnapshotPermissionPendingMembers(snapshot: PersistedTeamLaunchSnapshot): number {
     let count = 0;
-    for (const memberName of snapshot.expectedMembers) {
+    for (const memberName of this.getPersistedLaunchMemberNames(snapshot)) {
       const member = snapshot.members[memberName];
       if (!member) {
         continue;
@@ -11998,8 +12001,14 @@ export class TeamProvisioningService {
     },
     snapshot?: PersistedTeamLaunchSnapshot | null
   ): boolean {
-    const expectedCount = snapshot?.expectedMembers.length ?? run.expectedMembers?.length ?? 0;
+    const expectedCount = snapshot
+      ? this.getPersistedLaunchMemberNames(snapshot).length
+      : (run.expectedMembers?.length ?? 0);
     return launchSummary.pendingCount > 0 && expectedCount > 0;
+  }
+
+  private getPersistedLaunchMemberNames(snapshot: PersistedTeamLaunchSnapshot): string[] {
+    return Array.from(new Set([...snapshot.expectedMembers, ...Object.keys(snapshot.members)]));
   }
 
   private buildLiveLaunchSnapshotForRun(
