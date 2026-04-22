@@ -236,6 +236,37 @@ describe('MemberCard starting-state visuals', () => {
     });
   });
 
+  it('shows an awaiting permission badge for teammates blocked on runtime permissions', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberCard, {
+          member,
+          memberColor: 'blue',
+          isTeamAlive: true,
+          isTeamProvisioning: false,
+          spawnStatus: 'online',
+          spawnLaunchState: 'runtime_pending_permission',
+          spawnRuntimeAlive: true,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('awaiting permission');
+    expect(host.querySelector('[aria-label="connecting"]')).not.toBeNull();
+    expect(host.querySelector('.member-waiting-shimmer')).not.toBeNull();
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('shows ready instead of idle for confirmed teammates while launch is still settling', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');

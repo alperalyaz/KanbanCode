@@ -137,6 +137,9 @@ function isLaunchStillStarting(
   if (spawnLaunchState === 'failed_to_start') {
     return false;
   }
+  if (spawnLaunchState === 'runtime_pending_permission') {
+    return false;
+  }
   if (spawnLaunchState === 'runtime_pending_bootstrap') {
     if (runtimeAlive !== true) {
       return true;
@@ -166,6 +169,9 @@ export function getSpawnAwareDotClass(
   }
   if (spawnLaunchState === 'failed_to_start' || spawnStatus === 'error') {
     return SPAWN_DOT_COLORS.error;
+  }
+  if (spawnLaunchState === 'runtime_pending_permission') {
+    return 'bg-amber-400 animate-pulse';
   }
   if (
     isLaunchStillStarting(spawnStatus, spawnLaunchState, runtimeAlive, keepLaunchSettlingVisuals)
@@ -211,6 +217,9 @@ export function getSpawnAwarePresenceLabel(
   if (spawnLaunchState === 'failed_to_start' || spawnStatus === 'error') {
     return SPAWN_PRESENCE_LABELS.error;
   }
+  if (spawnLaunchState === 'runtime_pending_permission') {
+    return 'connecting';
+  }
   if (
     isLaunchStillStarting(spawnStatus, spawnLaunchState, runtimeAlive, keepLaunchSettlingVisuals)
   ) {
@@ -247,6 +256,9 @@ export function getSpawnCardClass(
   if (
     isLaunchStillStarting(spawnStatus, spawnLaunchState, runtimeAlive, keepLaunchSettlingVisuals)
   ) {
+    return 'member-waiting-shimmer';
+  }
+  if (spawnLaunchState === 'runtime_pending_permission') {
     return 'member-waiting-shimmer';
   }
   switch (spawnStatus) {
@@ -433,6 +445,7 @@ export function getLaunchAwarePresenceLabel(
 export type MemberLaunchVisualState =
   | 'waiting'
   | 'spawning'
+  | 'permission_pending'
   | 'runtime_pending'
   | 'settling'
   | 'error'
@@ -455,6 +468,8 @@ export function getMemberLaunchStatusLabel(visualState: MemberLaunchVisualState)
       return 'waiting to start';
     case 'spawning':
       return 'starting';
+    case 'permission_pending':
+      return 'awaiting permission';
     case 'runtime_pending':
       return 'connecting';
     case 'settling':
@@ -527,6 +542,8 @@ export function buildMemberLaunchPresentation({
   if (isTeamAlive !== false || isTeamProvisioning) {
     if (spawnLaunchState === 'failed_to_start' || spawnStatus === 'error') {
       launchVisualState = 'error';
+    } else if (spawnLaunchState === 'runtime_pending_permission') {
+      launchVisualState = 'permission_pending';
     } else if (
       spawnLaunchState === 'runtime_pending_bootstrap' &&
       spawnStatus === 'online' &&

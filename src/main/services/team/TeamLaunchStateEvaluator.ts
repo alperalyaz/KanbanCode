@@ -36,10 +36,22 @@ type RuntimeMemberSpawnState = Pick<
   | 'runtimeAlive'
   | 'bootstrapConfirmed'
   | 'hardFailure'
+  | 'pendingPermissionRequestIds'
   | 'firstSpawnAcceptedAt'
   | 'lastHeartbeatAt'
   | 'updatedAt'
 >;
+
+function normalizePendingPermissionRequestIds(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const normalized = value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : undefined;
+}
 
 function normalizeMemberName(name: string): string {
   return name.trim();
@@ -48,15 +60,23 @@ function normalizeMemberName(name: string): string {
 function buildDiagnostics(
   member: Pick<
     PersistedTeamLaunchMemberState,
-    'agentToolAccepted' | 'runtimeAlive' | 'bootstrapConfirmed' | 'hardFailureReason' | 'sources'
+    | 'agentToolAccepted'
+    | 'runtimeAlive'
+    | 'bootstrapConfirmed'
+    | 'hardFailureReason'
+    | 'sources'
+    | 'pendingPermissionRequestIds'
   >
 ): string[] {
   const diagnostics: string[] = [];
   if (member.agentToolAccepted) diagnostics.push('spawn accepted');
   if (member.runtimeAlive) diagnostics.push('runtime alive');
   if (member.bootstrapConfirmed) diagnostics.push('late heartbeat received');
-  if (member.runtimeAlive && !member.bootstrapConfirmed)
+  if ((member.pendingPermissionRequestIds?.length ?? 0) > 0) {
+    diagnostics.push('waiting for permission approval');
+  } else if (member.runtimeAlive && !member.bootstrapConfirmed) {
     diagnostics.push('waiting for teammate check-in');
+  }
   if (member.hardFailureReason)
     diagnostics.push(`hard failure reason: ${member.hardFailureReason}`);
   if (member.sources?.duplicateRespawnBlocked) diagnostics.push('respawn blocked as duplicate');
@@ -133,7 +153,11 @@ export function hasMixedPersistedLaunchMetadata(
 function deriveMemberLaunchState(
   member: Pick<
     PersistedTeamLaunchMemberState,
-    'hardFailure' | 'bootstrapConfirmed' | 'runtimeAlive' | 'agentToolAccepted'
+    | 'hardFailure'
+    | 'bootstrapConfirmed'
+    | 'runtimeAlive'
+    | 'agentToolAccepted'
+    | 'pendingPermissionRequestIds'
   >
 ): MemberLaunchState {
   if (member.hardFailure) {
@@ -141,6 +165,9 @@ function deriveMemberLaunchState(
   }
   if (member.bootstrapConfirmed) {
     return 'confirmed_alive';
+  }
+  if ((member.pendingPermissionRequestIds?.length ?? 0) > 0) {
+    return 'runtime_pending_permission';
   }
   if (member.runtimeAlive || member.agentToolAccepted) {
     return 'runtime_pending_bootstrap';
@@ -297,6 +324,9 @@ function normalizePersistedMemberState(
       typeof parsed.hardFailureReason === 'string' && parsed.hardFailureReason.trim().length > 0
         ? parsed.hardFailureReason.trim()
         : undefined,
+    pendingPermissionRequestIds: normalizePendingPermissionRequestIds(
+      parsed.pendingPermissionRequestIds
+    ),
     firstSpawnAcceptedAt:
       typeof parsed.firstSpawnAcceptedAt === 'string' ? parsed.firstSpawnAcceptedAt : undefined,
     lastHeartbeatAt:
@@ -315,6 +345,7 @@ function normalizePersistedMemberState(
   const launchState =
     parsed.launchState === 'starting' ||
     parsed.launchState === 'runtime_pending_bootstrap' ||
+    parsed.launchState === 'runtime_pending_permission' ||
     parsed.launchState === 'confirmed_alive' ||
     parsed.launchState === 'failed_to_start'
       ? parsed.launchState
@@ -423,6 +454,9 @@ export function snapshotFromRuntimeMemberStatuses(params: {
       bootstrapConfirmed: runtime?.bootstrapConfirmed === true,
       hardFailure: runtime?.hardFailure === true || runtime?.launchState === 'failed_to_start',
       hardFailureReason: runtime?.hardFailureReason ?? runtime?.error,
+      pendingPermissionRequestIds: runtime?.pendingPermissionRequestIds?.length
+        ? [...new Set(runtime.pendingPermissionRequestIds)]
+        : undefined,
       firstSpawnAcceptedAt: runtime?.firstSpawnAcceptedAt,
       lastHeartbeatAt: runtime?.lastHeartbeatAt,
       lastRuntimeAliveAt: runtime?.runtimeAlive ? updatedAt : undefined,
@@ -460,6 +494,9 @@ export function snapshotToMemberSpawnStatuses(
     } else if (entry.launchState === 'confirmed_alive') {
       status = 'online';
       livenessSource = 'heartbeat';
+    } else if (entry.launchState === 'runtime_pending_permission') {
+      status = entry.runtimeAlive ? 'online' : 'waiting';
+      livenessSource = entry.runtimeAlive ? 'process' : undefined;
     } else if (entry.launchState === 'runtime_pending_bootstrap') {
       status = entry.runtimeAlive ? 'online' : 'waiting';
       livenessSource = entry.runtimeAlive ? 'process' : undefined;
@@ -476,6 +513,7 @@ export function snapshotToMemberSpawnStatuses(
       runtimeAlive: entry.runtimeAlive,
       bootstrapConfirmed: entry.bootstrapConfirmed,
       hardFailure: entry.hardFailure,
+      pendingPermissionRequestIds: entry.pendingPermissionRequestIds,
       firstSpawnAcceptedAt: entry.firstSpawnAcceptedAt,
       lastHeartbeatAt: entry.lastHeartbeatAt,
       updatedAt: entry.lastEvaluatedAt,

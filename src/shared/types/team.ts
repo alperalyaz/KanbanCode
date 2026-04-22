@@ -679,6 +679,7 @@ export type MemberSpawnStatus = 'offline' | 'waiting' | 'spawning' | 'online' | 
 export type MemberLaunchState =
   | 'starting'
   | 'runtime_pending_bootstrap'
+  | 'runtime_pending_permission'
   | 'confirmed_alive'
   | 'failed_to_start';
 export type TeamLaunchAggregateState = 'clean_success' | 'partial_pending' | 'partial_failure';
@@ -933,6 +934,7 @@ export interface PersistedTeamLaunchMemberState {
   bootstrapConfirmed: boolean;
   hardFailure: boolean;
   hardFailureReason?: string;
+  pendingPermissionRequestIds?: string[];
   firstSpawnAcceptedAt?: string;
   lastHeartbeatAt?: string;
   lastRuntimeAliveAt?: string;
@@ -1046,6 +1048,8 @@ export interface MemberSpawnStatusEntry {
   bootstrapConfirmed?: boolean;
   /** Hard failure observed from spawn/bootstrap/runtime evidence. */
   hardFailure?: boolean;
+  /** Pending runtime permission request ids currently blocking bootstrap. */
+  pendingPermissionRequestIds?: string[];
   /** ISO timestamp of the first accepted teammate spawn for this member. */
   firstSpawnAcceptedAt?: string;
   /** ISO timestamp of the latest confirmed heartbeat/bootstrap message. */

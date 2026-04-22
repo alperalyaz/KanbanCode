@@ -1535,12 +1535,16 @@ function deriveMemberLaunchState(entry: {
   runtimeAlive?: boolean;
   bootstrapConfirmed?: boolean;
   hardFailure?: boolean;
+  pendingPermissionRequestIds?: string[];
 }): MemberLaunchState {
   if (entry.hardFailure) {
     return 'failed_to_start';
   }
   if (entry.bootstrapConfirmed) {
     return 'confirmed_alive';
+  }
+  if ((entry.pendingPermissionRequestIds?.length ?? 0) > 0) {
+    return 'runtime_pending_permission';
   }
   if (entry.runtimeAlive || entry.agentToolAccepted) {
     return 'runtime_pending_bootstrap';
@@ -2846,16 +2850,20 @@ function buildGeminiPostLaunchHydrationPrompt(
           const status = run.memberSpawnStatuses.get(member.name);
           const label =
             status?.launchState === 'failed_to_start'
-              ? `failed to start${status.hardFailureReason ? ` — ${status.hardFailureReason}` : status.error ? ` — ${status.error}` : ''}`
+              ? `failed to start${status.hardFailureReason ? ` - ${status.hardFailureReason}` : status.error ? ` - ${status.error}` : ''}`
               : status?.launchState === 'confirmed_alive'
                 ? 'bootstrap confirmed'
-                : status?.runtimeAlive
-                  ? 'runtime online and ready for instructions'
-                  : status?.launchState === 'runtime_pending_bootstrap'
-                    ? 'spawn accepted, runtime not confirmed yet'
-                    : status?.status === 'spawning'
-                      ? 'spawn in progress'
-                      : 'runtime state unclear';
+                : status?.launchState === 'runtime_pending_permission'
+                  ? status?.runtimeAlive
+                    ? 'runtime online and waiting for permission approval'
+                    : 'waiting for permission approval'
+                  : status?.runtimeAlive
+                    ? 'runtime online and ready for instructions'
+                    : status?.launchState === 'runtime_pending_bootstrap'
+                      ? 'spawn accepted, runtime not confirmed yet'
+                      : status?.status === 'spawning'
+                        ? 'spawn in progress'
+                        : 'runtime state unclear';
           return `- @${member.name}: ${label}`;
         })
         .join('\n')}\n`

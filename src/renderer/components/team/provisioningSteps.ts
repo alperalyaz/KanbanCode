@@ -75,7 +75,10 @@ function summarizeLiveLaunchJoinMilestones(params: {
       heartbeatConfirmedCount += 1;
       continue;
     }
-    if (entry.launchState === 'runtime_pending_bootstrap') {
+    if (
+      entry.launchState === 'runtime_pending_bootstrap' ||
+      entry.launchState === 'runtime_pending_permission'
+    ) {
       if (entry.runtimeAlive === true) {
         processOnlyAliveCount += 1;
       } else {

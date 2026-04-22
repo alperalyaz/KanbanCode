@@ -34,6 +34,7 @@ function isMemberLaunchPending(spawnEntry: MemberSpawnStatusEntry | undefined): 
   return (
     spawnEntry.launchState === 'starting' ||
     spawnEntry.launchState === 'runtime_pending_bootstrap' ||
+    spawnEntry.launchState === 'runtime_pending_permission' ||
     spawnEntry.status === 'waiting' ||
     spawnEntry.status === 'spawning'
   );

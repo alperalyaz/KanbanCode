@@ -207,6 +207,26 @@ describe('memberHelpers spawn-aware presence', () => {
     expect(settling.launchStatusLabel).toBe('joining team');
   });
 
+  it('surfaces permission-blocked teammates as awaiting permission instead of generic starting', () => {
+    const permissionPending = buildMemberLaunchPresentation({
+      member,
+      spawnStatus: 'online',
+      spawnLaunchState: 'runtime_pending_permission',
+      spawnLivenessSource: 'process',
+      spawnRuntimeAlive: true,
+      runtimeAdvisory: undefined,
+      isLaunchSettling: false,
+      isTeamAlive: true,
+      isTeamProvisioning: false,
+    });
+
+    expect(permissionPending.presenceLabel).toBe('connecting');
+    expect(permissionPending.launchVisualState).toBe('permission_pending');
+    expect(permissionPending.launchStatusLabel).toBe('awaiting permission');
+    expect(permissionPending.dotClass).toContain('bg-amber-400');
+    expect(permissionPending.cardClass).toContain('member-waiting-shimmer');
+  });
+
   it('returns shared launch status labels without changing generic presence labels', () => {
     expect(
       buildMemberLaunchPresentation({
