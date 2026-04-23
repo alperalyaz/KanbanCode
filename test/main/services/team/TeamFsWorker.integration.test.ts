@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Worker } from 'worker_threads';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 import { createPersistedLaunchSummaryProjection } from '../../../../src/main/services/team/TeamLaunchSummaryProjection';
 
@@ -15,26 +15,37 @@ interface WorkerResponse {
   error?: string;
 }
 
-function getWorkerInfo(): { path: string; execArgv?: string[] } {
+let bundledWorkerPathPromise: Promise<string> | null = null;
+
+async function getWorkerPath(): Promise<string> {
   const builtWorkerPath = path.join(process.cwd(), 'dist-electron', 'main', 'team-fs-worker.cjs');
   if (existsSync(builtWorkerPath)) {
-    return { path: builtWorkerPath };
+    return builtWorkerPath;
   }
 
-  return {
-    path: path.join(process.cwd(), 'src', 'main', 'workers', 'team-fs-worker.ts'),
-    execArgv: ['--import', 'tsx'],
-  };
+  bundledWorkerPathPromise ??= bundleWorkerForTests();
+  return bundledWorkerPathPromise;
 }
 
-function createWorker(workerInfo: { path: string; execArgv?: string[] }): Worker {
-  return new Worker(workerInfo.path, {
-    ...(workerInfo.execArgv ? { execArgv: workerInfo.execArgv } : {}),
-    env: {
-      ...process.env,
-      TSX_TSCONFIG_PATH: path.join(process.cwd(), 'tsconfig.json'),
-    },
-  });
+async function bundleWorkerForTests(): Promise<string> {
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'team-fs-worker-bundle-'));
+  const outfile = path.join(outDir, 'team-fs-worker.cjs');
+  await fs.writeFile(
+    outfile,
+    [
+      "const path = require('node:path');",
+      "const { register } = require('tsx/cjs/api');",
+      "register({ tsconfigPath: path.join(process.cwd(), 'tsconfig.json') });",
+      "require(path.join(process.cwd(), 'src', 'main', 'workers', 'team-fs-worker.ts'));",
+      '',
+    ].join('\n'),
+    'utf8'
+  );
+  return outfile;
+}
+
+function createWorker(workerPath: string): Worker {
+  return new Worker(workerPath);
 }
 
 function callListTeams(worker: Worker, teamsDir: string): Promise<unknown[]> {
@@ -91,6 +102,13 @@ function callListTeams(worker: Worker, teamsDir: string): Promise<unknown[]> {
 describe('team-fs-worker integration', () => {
   let tempDir = '';
 
+  afterAll(async () => {
+    const bundledWorkerPath = bundledWorkerPathPromise ? await bundledWorkerPathPromise : null;
+    if (bundledWorkerPath) {
+      await fs.rm(path.dirname(bundledWorkerPath), { recursive: true, force: true });
+    }
+  });
+
   afterEach(async () => {
     if (tempDir) {
       await fs.rm(tempDir, { recursive: true, force: true });
@@ -99,7 +117,7 @@ describe('team-fs-worker integration', () => {
   });
 
   it('uses launch-summary.json when launch-state.json is too large for mixed-team summaries', async () => {
-    const workerInfo = getWorkerInfo();
+    const workerPath = await getWorkerPath();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'team-fs-worker-'));
     const teamName = 'mixed-worker-team';
     const teamDir = path.join(tempDir, teamName);
@@ -167,7 +185,7 @@ describe('team-fs-worker integration', () => {
       'utf8'
     );
 
-    const worker = createWorker(workerInfo);
+    const worker = createWorker(workerPath);
     try {
       const teams = (await callListTeams(worker, tempDir)) as Array<Record<string, unknown>>;
       expect(teams).toHaveLength(1);
@@ -189,7 +207,7 @@ describe('team-fs-worker integration', () => {
   });
 
   it('ignores removed and lead members when draft-team worker summary counts members', async () => {
-    const workerInfo = getWorkerInfo();
+    const workerPath = await getWorkerPath();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'team-fs-worker-'));
     const teamName = 'draft-worker-team';
     const teamDir = path.join(tempDir, teamName);
@@ -218,7 +236,7 @@ describe('team-fs-worker integration', () => {
       'utf8'
     );
 
-    const worker = createWorker(workerInfo);
+    const worker = createWorker(workerPath);
     try {
       const teams = (await callListTeams(worker, tempDir)) as Array<Record<string, unknown>>;
       expect(teams).toHaveLength(1);
