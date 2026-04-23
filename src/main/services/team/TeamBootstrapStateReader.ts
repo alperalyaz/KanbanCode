@@ -822,6 +822,7 @@ function isLaunchSnapshotLike(value: unknown): value is PersistedTeamLaunchSnaps
 }
 
 function getLaunchSnapshotRichness(snapshot: PersistedTeamLaunchSnapshot): number {
+  const persistedMemberCount = getPersistedLaunchMemberNames(snapshot).length;
   let metadataScore = 0;
   for (const member of Object.values(snapshot.members)) {
     if (!member || typeof member !== 'object') continue;
@@ -835,11 +836,15 @@ function getLaunchSnapshotRichness(snapshot: PersistedTeamLaunchSnapshot): numbe
     if (member.launchIdentity) metadataScore += 6;
   }
   return (
-    snapshot.expectedMembers.length * 10 +
+    persistedMemberCount * 10 +
     Object.keys(snapshot.members).length * 5 +
     metadataScore +
     (snapshot.bootstrapExpectedMembers?.length ? 20 : 0)
   );
+}
+
+function getPersistedLaunchMemberNames(snapshot: PersistedTeamLaunchSnapshot): string[] {
+  return Array.from(new Set([...snapshot.expectedMembers, ...Object.keys(snapshot.members)]));
 }
 
 export function shouldIgnoreTerminalBootstrapOnlyPendingSnapshot(
@@ -875,16 +880,12 @@ export function choosePreferredLaunchSnapshot<T extends { updatedAt?: string }>(
   if (isLaunchSnapshotLike(bootstrapSnapshot) && isLaunchSnapshotLike(launchSnapshot)) {
     const bootstrapRichness = getLaunchSnapshotRichness(bootstrapSnapshot);
     const launchRichness = getLaunchSnapshotRichness(launchSnapshot);
-    if (
-      launchRichness > bootstrapRichness &&
-      launchSnapshot.expectedMembers.length >= bootstrapSnapshot.expectedMembers.length
-    ) {
+    const bootstrapMemberCount = getPersistedLaunchMemberNames(bootstrapSnapshot).length;
+    const launchMemberCount = getPersistedLaunchMemberNames(launchSnapshot).length;
+    if (launchRichness > bootstrapRichness && launchMemberCount >= bootstrapMemberCount) {
       return launchSnapshot as T;
     }
-    if (
-      bootstrapRichness > launchRichness &&
-      bootstrapSnapshot.expectedMembers.length >= launchSnapshot.expectedMembers.length
-    ) {
+    if (bootstrapRichness > launchRichness && bootstrapMemberCount >= launchMemberCount) {
       return bootstrapSnapshot as T;
     }
   }
