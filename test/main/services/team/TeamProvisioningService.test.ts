@@ -5030,6 +5030,37 @@ describe('TeamProvisioningService', () => {
     });
   });
 
+  it('maps suffixed teammate heartbeats back onto the expected member during live refresh', async () => {
+    const svc = new TeamProvisioningService();
+    const run = createMemberSpawnRun({
+      startedAt: '2026-04-16T09:00:00.000Z',
+      expectedMembers: ['alice'],
+    });
+
+    vi.spyOn((svc as any).inboxReader, 'getMessagesFor').mockResolvedValue([
+      {
+        from: 'alice-2',
+        text: '{"type":"heartbeat","timestamp":"2026-04-16T10:00:00.000Z"}',
+        timestamp: '2026-04-16T10:00:00.000Z',
+        messageId: 'msg-suffixed',
+        read: false,
+      },
+    ]);
+
+    await (svc as any).refreshMemberSpawnStatusesFromLeadInbox(run);
+
+    expect(run.memberSpawnStatuses.get('alice')).toMatchObject({
+      status: 'online',
+      launchState: 'confirmed_alive',
+      bootstrapConfirmed: true,
+      lastHeartbeatAt: '2026-04-16T10:00:00.000Z',
+    });
+    expect(run.memberSpawnLeadInboxCursorByMember.get('alice')).toEqual({
+      timestamp: '2026-04-16T10:00:00.000Z',
+      messageId: 'msg-suffixed',
+    });
+  });
+
   it('ignores teammate lead inbox signals that predate the current run', async () => {
     const svc = new TeamProvisioningService();
     const run = createMemberSpawnRun({
@@ -5749,7 +5780,7 @@ describe('TeamProvisioningService', () => {
           teamName,
           leadSessionId: 'lead-session',
           launchPhase: 'active',
-          expectedMembers: ['alice'],
+          expectedMembers: ['alice', 'bob'],
           members: {
             alice: {
               name: 'alice',
@@ -5827,6 +5858,68 @@ describe('TeamProvisioningService', () => {
       status: 'online',
       launchState: 'runtime_pending_bootstrap',
       runtimeAlive: true,
+    });
+  });
+
+  it('treats suffixed persisted heartbeat senders as the expected member during reconcile', async () => {
+    const teamName = 'suffixed-heartbeat-reconcile-team';
+    const svc = new TeamProvisioningService();
+    (svc as any).launchStateStore = {
+      read: vi.fn(async () =>
+        createPersistedLaunchSnapshot({
+          teamName,
+          leadSessionId: 'lead-session',
+          launchPhase: 'active',
+          expectedMembers: ['alice'],
+          members: {
+            alice: {
+              name: 'alice',
+              launchState: 'runtime_pending_bootstrap',
+              agentToolAccepted: true,
+              runtimeAlive: false,
+              bootstrapConfirmed: false,
+              hardFailure: false,
+              hardFailureReason: undefined,
+              firstSpawnAcceptedAt: '2026-04-16T09:55:00.000Z',
+              lastEvaluatedAt: '2026-04-16T09:55:00.000Z',
+            },
+            bob: {
+              name: 'bob',
+              launchState: 'starting',
+              agentToolAccepted: false,
+              runtimeAlive: false,
+              bootstrapConfirmed: false,
+              hardFailure: false,
+              lastEvaluatedAt: '2026-04-16T09:55:00.000Z',
+            },
+          },
+          updatedAt: '2026-04-16T09:55:00.000Z',
+        })
+      ),
+      write: vi.fn(async () => {}),
+      clear: vi.fn(async () => {}),
+    };
+    vi.spyOn((svc as any).inboxReader, 'getMessagesFor').mockResolvedValue([
+      {
+        from: 'alice-2',
+        text: 'heartbeat',
+        timestamp: '2026-04-16T10:00:00.000Z',
+        messageId: 'msg-suffixed-reconcile',
+        read: false,
+      },
+    ]);
+    (svc as any).getLiveTeamAgentNames = vi.fn(async () => new Set<string>());
+
+    const result = await (svc as any).reconcilePersistedLaunchState(teamName);
+
+    expect(result.snapshot.members.alice).toMatchObject({
+      launchState: 'confirmed_alive',
+      bootstrapConfirmed: true,
+      lastHeartbeatAt: '2026-04-16T10:00:00.000Z',
+    });
+    expect(result.statuses.alice).toMatchObject({
+      status: 'online',
+      launchState: 'confirmed_alive',
     });
   });
 

@@ -4682,12 +4682,12 @@ export class TeamProvisioningService {
     }
 
     const runStartedAtMs = Date.parse(run.startedAt);
-    const expectedMembers = new Set(Array.isArray(run.expectedMembers) ? run.expectedMembers : []);
+    const expectedMembers = Array.isArray(run.expectedMembers) ? run.expectedMembers : [];
     const teammateMessages = leadInboxMessages
       .filter((message): message is LeadInboxMemberSpawnMessage => {
         const from = typeof message.from === 'string' ? message.from.trim() : '';
         if (!from || from === leadName || from === 'user' || from === 'system') return false;
-        if (!expectedMembers.has(from)) return false;
+        if (!this.resolveExpectedLaunchMemberName(expectedMembers, from)) return false;
         if (typeof message.messageId !== 'string' || message.messageId.trim().length === 0) {
           return false;
         }
@@ -4710,7 +4710,10 @@ export class TeamProvisioningService {
 
     const messagesByMember = new Map<string, LeadInboxMemberSpawnMessage[]>();
     for (const message of teammateMessages) {
-      const memberName = message.from.trim();
+      const memberName = this.resolveExpectedLaunchMemberName(expectedMembers, message.from);
+      if (!memberName) {
+        continue;
+      }
       const bucket = messagesByMember.get(memberName) ?? [];
       bucket.push(message);
       messagesByMember.set(memberName, bucket);
@@ -4762,6 +4765,28 @@ export class TeamProvisioningService {
       'heartbeat',
       extractHeartbeatTimestamp(message.text, message.timestamp)
     );
+  }
+
+  private resolveExpectedLaunchMemberName(
+    expectedMembers: readonly string[] | undefined,
+    candidateName: string
+  ): string | null {
+    const trimmedCandidate = candidateName.trim();
+    if (!trimmedCandidate || !Array.isArray(expectedMembers) || expectedMembers.length === 0) {
+      return null;
+    }
+
+    const exact = expectedMembers.find((memberName) =>
+      matchesExactTeamMemberName(memberName, trimmedCandidate)
+    );
+    if (exact) {
+      return exact;
+    }
+
+    const matches = expectedMembers.filter((memberName) =>
+      matchesTeamMemberIdentity(memberName, trimmedCandidate)
+    );
+    return matches.length === 1 ? (matches[0] ?? null) : null;
   }
 
   private persistSentMessage(teamName: string, message: InboxMessage): void {
@@ -12673,7 +12698,12 @@ export class TeamProvisioningService {
         matchesTeamMemberIdentity(name, expected)
       );
       const heartbeatMessage = leadInboxMessages.find((message) => {
-        if (typeof message.from !== 'string' || message.from.trim() !== expected) return false;
+        if (
+          typeof message.from !== 'string' ||
+          this.resolveExpectedLaunchMemberName(persistedMemberNames, message.from) !== expected
+        ) {
+          return false;
+        }
         if (
           typeof message.text !== 'string' ||
           !isMeaningfulBootstrapCheckInMessage(message.text)
