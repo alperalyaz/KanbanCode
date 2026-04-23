@@ -5738,6 +5738,54 @@ describe('TeamProvisioningService', () => {
     });
   });
 
+  it('returns persisted expectedMembers as the union of expected and materialized launch members', async () => {
+    const teamName = 'persisted-union-member-spawn-team';
+    const teamDir = path.join(tempTeamsBase, teamName);
+    fs.mkdirSync(teamDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(teamDir, 'launch-state.json'),
+      JSON.stringify(
+        createPersistedLaunchSnapshot({
+          teamName,
+          leadSessionId: 'lead-session',
+          launchPhase: 'active',
+          expectedMembers: ['alice'],
+          members: {
+            alice: {
+              name: 'alice',
+              launchState: 'confirmed_alive',
+              agentToolAccepted: true,
+              runtimeAlive: true,
+              bootstrapConfirmed: true,
+              hardFailure: false,
+              lastEvaluatedAt: '2026-04-23T10:00:00.000Z',
+            },
+            bob: {
+              name: 'bob',
+              launchState: 'runtime_pending_permission',
+              agentToolAccepted: true,
+              runtimeAlive: true,
+              bootstrapConfirmed: false,
+              hardFailure: false,
+              pendingPermissionRequestIds: ['perm-bob'],
+              lastEvaluatedAt: '2026-04-23T10:00:00.000Z',
+            },
+          },
+          updatedAt: '2026-04-23T10:00:00.000Z',
+        })
+      ),
+      'utf8'
+    );
+
+    const svc = new TeamProvisioningService();
+    const result = await svc.getMemberSpawnStatuses(teamName);
+
+    expect(result.expectedMembers).toEqual(['alice', 'bob']);
+    expect(result.statuses.bob).toMatchObject({
+      launchState: 'runtime_pending_permission',
+    });
+  });
+
   it('recovers stale mixed secondary lanes when lanes.json says active but lane state is missing', async () => {
     const teamName = 'signal-ops-6212';
     writeTeamMeta(teamName, {
