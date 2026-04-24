@@ -32,23 +32,23 @@
 - `mcp-server/src/tools/runtimeTools.ts` уже содержит `runtime_bootstrap_checkin` и `runtime_heartbeat`. Это сильный сигнал, его надо сделать главным источником подтверждения.
 - `agent-teams-controller/src/internal/runtime.js` уже прокидывает `runtimeBootstrapCheckin()` в desktop runtime.
 - `src/main/services/team/TeamBootstrapStateReader.ts` уже читает `bootstrap-state.json`, `bootstrap-journal.jsonl` и классифицирует stuck bootstrap. Там уже есть важные тайминги: `ACTIVE_BOOTSTRAP_STUCK_CLASSIFICATION_MS = 3 min` и `TERMINAL_BOOTSTRAP_ONLY_PENDING_GRACE_MS = 5 min`.
-- `TeamProvisioningService.getLiveTeamAgentRuntimeMetadata()` сейчас собирает evidence из config/meta/persisted runtime/tmux/process table.
-- Для tmux сейчас читается только `#{pane_id}\t#{pane_pid}` через `listTmuxPanePidsForCurrentPlatform()`. `pane_pid` часто является shell (`zsh`, `bash`, `sh`), поэтому `2 MB` выглядит логично.
-- `attachLiveRuntimeMetadataToStatuses()` превращает `metadata.alive` в `runtimeAlive: true` и `livenessSource: "process"`.
-- `reevaluateMemberLaunchStatus()` не fail-ит member после grace timeout, если `runtimeAlive === true`.
-- `OpenCodeTeamRuntimeAdapter.mapBridgeMemberToRuntimeEvidence()` сейчас может выставить `runtimeAlive: true`, если bridge просто вернул member в состоянии `created` или `permission_blocked`. Это полезный материализационный сигнал, но он слабее реального `runtimePid` и слабее bootstrap.
+- `TeamProvisioningService.getLiveTeamAgentRuntimeMetadata()` собирает evidence из config/meta/persisted runtime/tmux/process table и прогоняет его через strict resolver.
+- Для tmux раньше читался только `#{pane_id}\t#{pane_pid}` через `listTmuxPanePidsForCurrentPlatform()`. `pane_pid` часто является shell (`zsh`, `bash`, `sh`), поэтому `2 MB` выглядело логично.
+- `attachLiveRuntimeMetadataToStatuses()` теперь повышает member до `runtimeAlive: true` только через strong evidence: `confirmed_bootstrap` или `runtime_process`.
+- `reevaluateMemberLaunchStatus()` больше не доверяет старому `runtimeAlive === true` без live metadata.
+- `OpenCodeTeamRuntimeAdapter.mapBridgeMemberToRuntimeEvidence()` теперь не выставляет `runtimeAlive: true` для bridge-only `created` или `permission_blocked`. Такие сигналы остаются candidate/pending до bootstrap или OS verification.
 - `recordOpenCodeRuntimeBootstrapCheckin()` и `recordOpenCodeRuntimeHeartbeat()` уже пишут `confirmed_alive`, `runtimeAlive: true`, `bootstrapConfirmed: true`, `nativeHeartbeat: true` через `updateOpenCodeRuntimeMemberLiveness()`. Значит confirmed state уже есть, надо не дать слабым сигналам выглядеть как он.
 - `OpenCodeLaunchTransactionStore.canMarkOpenCodeRunReady()` уже требует `member_session_recorded`, `required_tools_proven` и `bootstrap_confirmed`. Это strict readiness precedent, который надо сохранить.
 - Renderer уже получает оба источника: `memberSpawnStatuses` и `teamAgentRuntimeByTeam`. Но `MemberCard` сейчас получает только `runtimeSummary` строкой, а не сам `TeamAgentRuntimeEntry`.
-- `teamSlice.areTeamAgentRuntimeEntriesEqual()` сейчас сравнивает только `memberName`, `alive`, `restartable`, `backendType`, `pid`, `runtimeModel`, `rssBytes`. Если добавить `livenessKind`, `pidSource`, `diagnostics`, но не обновить comparator, UI может не перерендериться.
-- `teamSlice.areMemberSpawnStatusEntriesEqual()` сейчас намеренно игнорирует timing fields и сравнивает только visible spawn fields. Если добавить `livenessKind/runtimeDiagnostic`, comparator тоже надо обновить.
-- `areLaunchSummaryCountsEqual()` сейчас знает только `confirmedCount`, `pendingCount`, `failedCount`, `runtimeAlivePendingCount`. Новые aggregate diagnostic counts не будут обновлять UI без расширения comparator.
+- `teamSlice.areTeamAgentRuntimeEntriesEqual()` должен сравнивать `livenessKind`, `pidSource` и diagnostic fields, иначе UI может не перерендериться при смене strict evidence.
+- `teamSlice.areMemberSpawnStatusEntriesEqual()` должен сравнивать visible liveness fields (`livenessKind/runtimeDiagnostic`) и продолжать игнорировать timing-only fields.
+- `areLaunchSummaryCountsEqual()` должен сравнивать aggregate diagnostic counts (`shellOnlyPendingCount`, `runtimeProcessPendingCount`, `runtimeCandidatePendingCount`, `noRuntimePendingCount`, `permissionPendingCount`). UI не должен использовать legacy `runtimeAlivePendingCount` как process evidence.
 - `TeamAgentRuntimeWatcher` обновляет runtime snapshot раз в 5 секунд, а spawn statuses раз в 2.5 секунды. Диагностические поля должны попадать либо в оба snapshot слоя, либо UX должен быть устойчив к задержке runtime snapshot.
 - Renderer `member-spawn` event сейчас вызывает refresh spawn statuses, но не runtime snapshot. Если tooltip/detail зависят от `TeamAgentRuntimeSnapshot`, event handler тоже должен запланировать runtime refresh.
 - Runtime tools принимают `metadata`, но `recordOpenCodeRuntimeBootstrapCheckin()` и `recordOpenCodeRuntimeHeartbeat()` сейчас используют только `diagnostics`. Если runtime присылает PID/version/command в `metadata`, эта информация теряется.
-- `handleMemberSpawnToolResult()` при reason `already_running` сейчас делает `setMemberSpawnStatus(..., "online", ..., "process")`. В strict model это нельзя оставлять как strong liveness без проверки актуального runtime identity.
+- `handleMemberSpawnToolResult()` раньше при reason `already_running` делал `setMemberSpawnStatus(..., "online", ..., "process")`. В strict model это заменено на `waiting` + runtime re-evaluation.
 - `waitForTmuxPanesToExit()` использует `listTmuxPanePidsForCurrentPlatform()` только как "pane exists" check. Поэтому старый `listPanePids()` wrapper должен остаться ровно pane-existence helper, а не получить новую liveness-семантику.
-- В проекте уже есть env-mode precedent: `CLAUDE_TEAM_OPENCODE_LAUNCH_MODE` с `dogfood`/`production`/`disabled`. Для liveness rollout лучше использовать такой же явный режим, а не скрытый boolean.
+- В проекте есть env-mode precedent: `CLAUDE_TEAM_OPENCODE_LAUNCH_MODE` с `dogfood`/`production`/`disabled`. Для member liveness финальное решение другое: strict model включена по умолчанию без отдельного env-флага.
 - `src/shared/types/api.ts`, `src/preload/index.ts` и `src/renderer/api/httpClient.ts` уже прокидывают `getMemberSpawnStatuses()` и `getTeamAgentRuntime()` через shared snapshot types. Новый контракт можно добавить optional fields без нового IPC channel, но browser HTTP fallback должен возвращать валидный старый shape.
 - `TeamProvisioningService.readUnixProcessTableRows()` сейчас приватный, sync и читает только `pid,command`. Для надежного liveness нужен `ppid`, WSL-aware execution и unit-test seam. Это не должно оставаться приватным ad hoc helper внутри огромного service.
 - `getLiveTeamAgentRuntimeMetadata()` сейчас читает tmux panes и process table внутри одного метода. После strict model там станет слишком много правил, поэтому план должен вынести pure resolution в отдельный helper/module.
@@ -142,58 +142,21 @@ const MEMBER_BOOTSTRAP_STALL_MS = 5 * 60_000;
 
 ## Rollout mode
 
-Строгая модель меняет поведение launch timeout, поэтому ее надо включать контролируемо.
+Строгая модель меняет поведение launch timeout, поэтому изначальный план рассматривал rollout через отдельный флаг.
+Текущая реализация после hardening включает strict liveness по умолчанию и не содержит старый переключатель режима.
 
-Топ 3 rollout вариантов:
+Актуальное поведение:
 
-1. Diagnostics-only default, strict behind env flag
-   🎯 9 🛡️ 9 🧠 5 Примерно 80-140 строк.
-   По умолчанию UI получает новые diagnostics, но `runtimeAlive` behavior остается старым. Strict включается через env для dogfood. Это самый безопасный путь для первого PR.
+| Area                           | Strict-only behavior                     |
+| ------------------------------ | ---------------------------------------- |
+| `livenessKind`                 | always filled when evidence exists       |
+| UI labels                      | enabled                                  |
+| `runtimeAlive` from shell-only | always false                             |
+| `already_running` shortcut     | waits for strong runtime verification    |
+| timeout self-heal              | strong evidence only                     |
+| launchDiagnostics              | enabled for warning/error states         |
 
-2. Strict default сразу
-   🎯 6 🛡️ 6 🧠 4 Примерно 40-80 строк.
-   Быстрее исправляет проблему, но риск false negative выше, если реальные teammate processes не содержат ожидаемые identity args.
-
-3. Полный app setting + env override
-   🎯 8 🛡️ 8 🧠 7 Примерно 180-260 строк.
-   Удобно для пользователей, но это больше surface area: settings UI, persistence, migration, tests. Лучше после dogfood данных.
-
-Рекомендация: вариант 1.
-
-Добавить mode resolver рядом с team runtime кодом:
-
-```ts
-export type TeamMemberLivenessMode = 'diagnostics' | 'strict';
-
-export const CLAUDE_TEAM_MEMBER_LIVENESS_MODE_ENV = 'CLAUDE_TEAM_MEMBER_LIVENESS_MODE';
-
-export function resolveTeamMemberLivenessModeFromEnv(
-  env: NodeJS.ProcessEnv = process.env
-): TeamMemberLivenessMode {
-  const raw = env[CLAUDE_TEAM_MEMBER_LIVENESS_MODE_ENV]?.trim().toLowerCase();
-  if (raw === 'strict') return 'strict';
-  return 'diagnostics';
-}
-```
-
-Behavior by mode:
-
-| Area                           | `diagnostics`                            | `strict`                    |
-| ------------------------------ | ---------------------------------------- | --------------------------- |
-| `livenessKind`                 | filled                                   | filled                      |
-| UI labels                      | enabled                                  | enabled                     |
-| `runtimeAlive` from shell-only | old behavior may remain temporarily      | always false                |
-| `already_running` shortcut     | warning diagnostic, old fallback allowed | must verify strong evidence |
-| timeout self-heal              | old behavior                             | strong evidence only        |
-| launchDiagnostics              | enabled                                  | enabled                     |
-
-Important default:
-
-- In local dogfood, run with `CLAUDE_TEAM_MEMBER_LIVENESS_MODE=strict`.
-- Production default can stay `diagnostics` for one release if Phase 0 data is unknown.
-- After manual scenarios pass, flip default to `strict` and keep env as rollback: `CLAUDE_TEAM_MEMBER_LIVENESS_MODE=diagnostics`.
-
-This gives an emergency fallback without reverting the UI diagnostics work.
+Operational rollback должен быть отдельным code revert или follow-up setting, а не скрытым env-флагом.
 
 ## Structured launch diagnostics
 
@@ -1251,7 +1214,7 @@ if (
 
 Файл: `src/main/services/team/TeamProvisioningService.ts`
 
-`handleMemberSpawnToolResult()` сейчас содержит shortcut:
+`handleMemberSpawnToolResult()` раньше содержал shortcut:
 
 ```ts
 if (parsedStatus.reason === 'already_running') {
@@ -1261,23 +1224,19 @@ if (parsedStatus.reason === 'already_running') {
 
 В strict liveness модели это опасно: `already_running` доказывает, что runtime/CLI отказался дублировать spawn, но не доказывает, что нужный teammate сейчас прошел bootstrap или что текущий pane PID является runtime процессом.
 
-Новая логика:
+Итоговая логика:
 
 ```ts
 if (parsedStatus.reason === 'already_running') {
   this.agentRuntimeSnapshotCache.delete(run.teamName);
   this.liveTeamAgentRuntimeMetadataCache.delete(run.teamName);
-  const runtime = await this.findStrongRuntimeEvidenceForMember(run.teamName, spawnedMemberName);
-  if (isStrongRuntimeEvidence(runtime)) {
-    this.setMemberSpawnStatus(run, spawnedMemberName, 'online', undefined, 'process');
-  } else {
-    this.setMemberSpawnStatus(run, spawnedMemberName, 'waiting');
-    this.setMemberRuntimeDiagnostic(run, spawnedMemberName, {
-      livenessKind: runtime?.livenessKind ?? 'registered_only',
-      message: 'Runtime reported already running, but no verified member process was found yet.',
-      severity: 'warning',
-    });
-  }
+  this.setMemberSpawnStatus(run, spawnedMemberName, 'waiting');
+  this.appendMemberBootstrapDiagnostic(
+    run,
+    spawnedMemberName,
+    'already_running requires strong runtime verification'
+  );
+  void this.reevaluateMemberLaunchStatus(run, spawnedMemberName);
 }
 ```
 
@@ -1825,6 +1784,7 @@ export interface PersistedTeamLaunchSummary {
   confirmedCount: number;
   pendingCount: number;
   failedCount: number;
+  // Compatibility aggregate only. Do not use as process evidence in UI.
   runtimeAlivePendingCount: number;
   shellOnlyPendingCount?: number;
   runtimeProcessPendingCount?: number;
@@ -1905,11 +1865,6 @@ Backend/shared:
   - добавить компактные diagnostic fields в `MemberSpawnStatusEntry`.
   - добавить bounded `TeamLaunchDiagnosticItem` и `TeamProvisioningProgress.launchDiagnostics`.
 
-- `src/main/services/team/TeamMemberLivenessMode.ts`
-  - добавить `CLAUDE_TEAM_MEMBER_LIVENESS_MODE`;
-  - добавить resolver `diagnostics`/`strict`;
-  - использовать как dogfood/rollback lever.
-
 - `src/main/services/team/TeamRuntimeLivenessResolver.ts`
   - вынести pure liveness classification;
   - принимать tmux/process/OpenCode/persisted facts;
@@ -1928,7 +1883,6 @@ Backend/shared:
   - расширить `LiveTeamAgentRuntimeMetadata`;
   - parse sanitized runtime tool `metadata`;
   - добавить strict evidence helpers;
-  - подключить `TeamMemberLivenessMode`;
   - использовать `TeamRuntimeLivenessResolver`;
   - обновить `updateProgress()` extras для `launchDiagnostics`;
   - переписать tmux/process resolution;
@@ -2004,11 +1958,6 @@ Renderer:
 ## Tests
 
 Backend:
-
-- `TeamMemberLivenessMode.test.ts`
-  - default mode is `diagnostics`;
-  - `CLAUDE_TEAM_MEMBER_LIVENESS_MODE=strict` enables strict;
-  - unknown values fall back to `diagnostics`.
 
 - `TeamRuntimeLivenessResolver.test.ts`
   - tmux foreground shell + no child -> `shell_only`;
@@ -2088,9 +2037,9 @@ Renderer:
 
 Add:
 
-- `TeamMemberLivenessMode` with default `diagnostics`;
 - `TeamRuntimeLivenessResolver` pure tests;
-- process table/tmux providers, but strict behavior disabled by default.
+- process table/tmux providers;
+- strict-only runtime evidence flow without a runtime-mode switch.
 
 Verification:
 
@@ -2103,14 +2052,11 @@ pnpm exec vitest run test/main/features/tmux-installer test/main/services/team/T
 
 🎯 9 🛡️ 9 🧠 7 Примерно 220-320 строк.
 
-Переключить `attachLiveRuntimeMetadataToStatuses()` на strong evidence only when `CLAUDE_TEAM_MEMBER_LIVENESS_MODE=strict`. Shell/pane/candidate больше не выставляют `runtimeAlive` в strict mode.
-
-Keep diagnostics mode as rollback until manual launch scenarios pass.
+Переключить `attachLiveRuntimeMetadataToStatuses()` на strong evidence only. Shell/pane/candidate больше не выставляют `runtimeAlive`.
 
 Verification:
 
 ```bash
-CLAUDE_TEAM_MEMBER_LIVENESS_MODE=strict pnpm exec vitest run test/main/services/team/TeamProvisioningService.test.ts
 pnpm exec vitest run test/main/services/team/TeamProvisioningService.test.ts
 ```
 
@@ -2204,9 +2150,9 @@ Scenarios:
    - `member-spawn` event refreshes runtime snapshot.
 
 9. Rollout безопасен:
-   - default `diagnostics` mode не меняет hard timeout behavior до включения strict;
-   - `CLAUDE_TEAM_MEMBER_LIVENESS_MODE=strict` включает strong-only behavior;
-   - `CLAUDE_TEAM_MEMBER_LIVENESS_MODE=diagnostics` работает как rollback без удаления UI diagnostics.
+   - strict behavior включен по умолчанию;
+   - diagnostics UI остается доступным без отдельного mode flag;
+   - rollback требует явного code revert или отдельного follow-up setting.
 
 10. Provider failures не создают ложный ready:
 
@@ -2282,22 +2228,21 @@ Mitigation:
 ## Minimal safe patch order
 
 1. Добавить типы и optional fields.
-2. Добавить `TeamMemberLivenessMode` default `diagnostics`.
-3. Добавить sanitized runtime tool metadata parser.
-4. Добавить tmux `listPaneRuntimeInfo()` и сохранить wrapper `listPanePids()`.
-5. Добавить process table provider/parser с `ppid`.
-6. Вынести `TeamRuntimeLivenessResolver`.
-7. Заполнить `livenessKind` без behavior change.
-8. Написать backend tests на shell-only, verified runtime, stale event, metadata PID.
-9. Переключить `attachLiveRuntimeMetadataToStatuses()` на strong evidence behind strict mode.
-10. Исправить `already_running` shortcut behind strict mode.
-11. Переключить timeout/self-heal logic behind strict mode.
-12. Исправить OpenCode bridge mapping.
-13. Обновить persisted summary diagnostics и store equality.
-14. Добавить `launchDiagnostics` в progress payload и UI disclosure.
-15. Добавить renderer labels/tooltips/banner.
-16. Добавить copy diagnostics.
-17. После manual validation включить strict default или оставить env rollback на один release.
+2. Добавить sanitized runtime tool metadata parser.
+3. Добавить tmux `listPaneRuntimeInfo()` и сохранить wrapper `listPanePids()`.
+4. Добавить process table provider/parser с `ppid`.
+5. Вынести `TeamRuntimeLivenessResolver`.
+6. Заполнить `livenessKind`.
+7. Написать backend tests на shell-only, verified runtime, stale event, metadata PID.
+8. Переключить `attachLiveRuntimeMetadataToStatuses()` на strong evidence.
+9. Исправить `already_running` shortcut.
+10. Переключить timeout/self-heal logic на strong evidence.
+11. Исправить OpenCode bridge mapping.
+12. Обновить persisted summary diagnostics и store equality.
+13. Добавить `launchDiagnostics` в progress payload и UI disclosure.
+14. Добавить renderer labels/tooltips/banner.
+15. Добавить copy diagnostics.
+16. Manual validation: создать команду, проверить pending names, runtime diagnostics и отсутствие false-ready shell-only процесса.
 
 ## Expected UX
 

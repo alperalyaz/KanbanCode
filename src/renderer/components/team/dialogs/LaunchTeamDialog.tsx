@@ -79,6 +79,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Info,
   Loader2,
   RotateCcw,
   X,
@@ -1618,10 +1619,12 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     summary.push(`Provider: ${getProviderLabel(selectedProviderId)}`);
     if (selectedModel) summary.push(`Model: ${selectedModel}`);
     if (selectedEffort) summary.push(`Effort: ${selectedEffort}`);
-    if (selectedProviderId === 'anthropic') {
+    if (selectedProviderId === 'anthropic' || selectedProviderId === 'codex') {
       if (selectedFastMode === 'on') summary.push('Fast mode');
       else if (selectedFastMode === 'off') summary.push('Fast disabled');
-      else if (anthropicProviderFastModeDefault) summary.push('Fast default');
+      else if (selectedProviderId === 'anthropic' && anthropicProviderFastModeDefault) {
+        summary.push('Fast default');
+      }
     }
     if (selectedProviderId === 'anthropic' && limitContext) summary.push('Limited to 200K context');
     if (skipPermissions) summary.push('Auto-approve tools');
@@ -2263,6 +2266,52 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
               summary={launchOptionalSummary}
             >
               <div className="space-y-4">
+                {selectedProviderId === 'anthropic' ? (
+                  <div className="space-y-2">
+                    <AnthropicFastModeSelector
+                      value={selectedFastMode}
+                      onValueChange={setSelectedFastMode}
+                      providerFastModeDefault={anthropicProviderFastModeDefault}
+                      model={selectedModel}
+                      limitContext={effectiveAnthropicRuntimeLimitContext}
+                      id="launch-fast-mode"
+                    />
+                    {anthropicRuntimeNotice ? (
+                      <div className="bg-amber-500/8 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
+                        <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
+                        <p>{anthropicRuntimeNotice}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {selectedProviderId === 'codex' ? (
+                  <div className="space-y-2">
+                    <CodexFastModeSelector
+                      value={selectedFastMode}
+                      onValueChange={setSelectedFastMode}
+                      model={selectedModel}
+                      providerBackendId={
+                        resolveUiOwnedProviderBackendId(
+                          'codex',
+                          runtimeProviderStatusById.get('codex')
+                        ) ??
+                        migrateProviderBackendId(
+                          'codex',
+                          previousLaunchParams?.providerBackendId ?? savedLaunchProviderBackendId
+                        ) ??
+                        undefined
+                      }
+                      id="launch-fast-mode"
+                    />
+                    {anthropicRuntimeNotice ? (
+                      <div className="bg-amber-500/8 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
+                        <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
+                        <p>{anthropicRuntimeNotice}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <TeamRosterEditorSection
                   members={membersDrafts}
                   onMembersChange={setMembersDrafts}
@@ -2285,13 +2334,10 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                   providerId={selectedProviderId}
                   model={selectedModel}
                   effort={(selectedEffort as EffortLevel) || undefined}
-                  fastMode={selectedFastMode}
-                  providerFastModeDefault={anthropicProviderFastModeDefault}
                   limitContext={limitContext}
                   onProviderChange={setSelectedProviderId}
                   onModelChange={setSelectedModel}
                   onEffortChange={setSelectedEffort}
-                  onFastModeChange={setSelectedFastMode}
                   onLimitContextChange={setLimitContext}
                   syncModelsWithTeammates={syncModelsWithLead}
                   onSyncModelsWithTeammatesChange={setSyncModelsWithLead}
@@ -2299,7 +2345,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                   teammateWorktreeDefault={teammateWorktreeDefault}
                   onTeammateWorktreeDefaultChange={setTeammateWorktreeDefault}
                   leadWarningText={leadRuntimeWarningText}
-                  leadFastModeNotice={anthropicRuntimeNotice}
                   memberWarningById={memberRuntimeWarningById}
                   leadModelIssueText={leadModelIssueText}
                   memberModelIssueById={memberModelIssueById}

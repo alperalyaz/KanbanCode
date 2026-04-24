@@ -128,6 +128,10 @@ function isVerifiedRuntimeProcess(params: {
   );
 }
 
+function isOpenCodeRuntimeProcess(command: string | undefined): boolean {
+  return (command ?? '').toLowerCase().includes('opencode');
+}
+
 function hasPersistedEvidence(input: ResolveTeamMemberRuntimeLivenessInput): boolean {
   return Boolean(
     input.agentId?.trim() ||
@@ -186,18 +190,6 @@ export function resolveTeamMemberRuntimeLiveness(
     diagnostics.push('process table unavailable');
   }
 
-  if (tracked?.bootstrapConfirmed === true || tracked?.launchState === 'confirmed_alive') {
-    return result({
-      alive: true,
-      livenessKind: 'confirmed_bootstrap',
-      pidSource: 'runtime_bootstrap',
-      runtimeSessionId,
-      runtimeLastSeenAt: tracked.lastHeartbeatAt ?? tracked.updatedAt,
-      runtimeDiagnostic: 'bootstrap confirmed',
-      diagnostics: [...diagnostics, 'bootstrap confirmed'],
-    });
-  }
-
   if (
     tracked?.launchState === 'runtime_pending_permission' ||
     (tracked?.pendingPermissionRequestIds?.length ?? 0) > 0
@@ -236,15 +228,44 @@ export function resolveTeamMemberRuntimeLiveness(
       ? input.processRows.find((row) => row.pid === runtimePid)
       : undefined;
   if (runtimePidRow && input.providerId === 'opencode') {
+    const processCommand = sanitizeProcessCommandForDiagnostics(runtimePidRow.command);
+    if (isOpenCodeRuntimeProcess(runtimePidRow.command)) {
+      return result({
+        alive: true,
+        livenessKind: 'runtime_process',
+        pidSource: 'opencode_bridge',
+        pid: runtimePidRow.pid,
+        runtimeSessionId,
+        processCommand,
+        runtimeDiagnostic: 'OpenCode runtime process detected',
+        diagnostics: [...diagnostics, 'matched OpenCode runtime pid and process identity'],
+      });
+    }
     return result({
-      alive: true,
-      livenessKind: 'runtime_process',
+      alive: false,
+      livenessKind: 'runtime_process_candidate',
       pidSource: 'opencode_bridge',
       pid: runtimePidRow.pid,
       runtimeSessionId,
-      processCommand: sanitizeProcessCommandForDiagnostics(runtimePidRow.command),
-      runtimeDiagnostic: 'OpenCode runtime process detected',
-      diagnostics: [...diagnostics, 'matched OpenCode runtime pid in process table'],
+      processCommand,
+      runtimeDiagnostic: 'OpenCode runtime pid is alive, but process identity is unverified',
+      runtimeDiagnosticSeverity: 'warning',
+      diagnostics: [
+        ...diagnostics,
+        'matched OpenCode runtime pid without OpenCode process identity',
+      ],
+    });
+  }
+
+  if (tracked?.bootstrapConfirmed === true || tracked?.launchState === 'confirmed_alive') {
+    return result({
+      alive: true,
+      livenessKind: 'confirmed_bootstrap',
+      pidSource: 'runtime_bootstrap',
+      runtimeSessionId,
+      runtimeLastSeenAt: tracked.lastHeartbeatAt ?? tracked.updatedAt,
+      runtimeDiagnostic: 'bootstrap confirmed',
+      diagnostics: [...diagnostics, 'bootstrap confirmed'],
     });
   }
 
@@ -311,6 +332,18 @@ export function resolveTeamMemberRuntimeLiveness(
   }
 
   if (runtimePid && !runtimePidRow) {
+    if (!input.processTableAvailable) {
+      return result({
+        alive: false,
+        livenessKind: 'registered_only',
+        pidSource: 'persisted_metadata',
+        pid: runtimePid,
+        runtimeSessionId,
+        runtimeDiagnostic: 'runtime pid could not be verified because process table is unavailable',
+        runtimeDiagnosticSeverity: 'warning',
+        diagnostics: [...diagnostics, 'runtime pid could not be verified'],
+      });
+    }
     return result({
       alive: false,
       livenessKind: 'stale_metadata',

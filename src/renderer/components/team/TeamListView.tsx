@@ -981,12 +981,12 @@ export const TeamListView = (): React.JSX.Element => {
                   </div>
                   {team.teamLaunchState === 'partial_pending' ? (
                     <p className="mt-2 text-[11px] text-amber-300">
-                      {team.runtimeAlivePendingCount && team.runtimeAlivePendingCount > 0
+                      {team.runtimeProcessPendingCount && team.runtimeProcessPendingCount > 0
                         ? buildPendingRuntimeSummaryCopy({
                             confirmedCount: team.confirmedCount,
                             expectedMemberCount: team.expectedMemberCount,
                             memberCount: team.memberCount,
-                            runtimeAlivePendingCount: team.runtimeAlivePendingCount,
+                            runtimeProcessPendingCount: team.runtimeProcessPendingCount,
                             includePeriod: true,
                           })
                         : 'Last launch is still reconciling.'}

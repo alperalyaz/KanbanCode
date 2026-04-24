@@ -80,6 +80,23 @@ function normalizeLivenessKind(value: unknown): TeamAgentRuntimeLivenessKind | u
     : undefined;
 }
 
+function preservesStrongRuntimeAlive(
+  value:
+    | {
+        runtimeAlive?: boolean;
+        bootstrapConfirmed?: boolean;
+        livenessKind?: TeamAgentRuntimeLivenessKind;
+      }
+    | undefined
+): boolean {
+  return (
+    value?.runtimeAlive === true &&
+    (value.bootstrapConfirmed === true ||
+      value.livenessKind === 'confirmed_bootstrap' ||
+      value.livenessKind === 'runtime_process')
+  );
+}
+
 function normalizePidSource(value: unknown): TeamAgentRuntimePidSource | undefined {
   return value === 'lead_process' ||
     value === 'tmux_pane' ||
@@ -181,7 +198,7 @@ export function summarizePersistedLaunchMembers(
       continue;
     }
     pendingCount += 1;
-    if (entry.runtimeAlive) {
+    if (preservesStrongRuntimeAlive(entry)) {
       runtimeAlivePendingCount += 1;
     }
     if (entry.launchState === 'runtime_pending_permission') {
@@ -193,7 +210,11 @@ export function summarizePersistedLaunchMembers(
       runtimeProcessPendingCount += 1;
     } else if (entry.livenessKind === 'runtime_process_candidate') {
       runtimeCandidatePendingCount += 1;
-    } else if (entry.livenessKind === 'not_found' || entry.livenessKind === 'stale_metadata') {
+    } else if (
+      entry.livenessKind === 'not_found' ||
+      entry.livenessKind === 'stale_metadata' ||
+      entry.livenessKind === 'registered_only'
+    ) {
       noRuntimePendingCount += 1;
     }
   }
@@ -369,6 +390,18 @@ function normalizePersistedMemberState(
     return null;
   }
   const providerId = normalizeOptionalTeamProviderId(parsed.providerId);
+  const bootstrapConfirmed =
+    toBoolean(parsed.bootstrapConfirmed) || parsed.launchState === 'confirmed_alive';
+  const livenessKind = normalizeLivenessKind(parsed.livenessKind);
+  const runtimeAlive = preservesStrongRuntimeAlive({
+    runtimeAlive: toBoolean(parsed.runtimeAlive),
+    bootstrapConfirmed,
+    livenessKind,
+  });
+  const sources = normalizeSources(parsed.sources) ?? {};
+  if (!runtimeAlive) {
+    sources.processAlive = undefined;
+  }
   const next: PersistedTeamLaunchMemberState = {
     name: normalizedName,
     providerId,
@@ -399,8 +432,8 @@ function normalizePersistedMemberState(
     launchIdentity: normalizeLaunchIdentity(parsed.launchIdentity, providerId),
     launchState: 'starting',
     agentToolAccepted: toBoolean(parsed.agentToolAccepted),
-    runtimeAlive: toBoolean(parsed.runtimeAlive),
-    bootstrapConfirmed: toBoolean(parsed.bootstrapConfirmed),
+    runtimeAlive,
+    bootstrapConfirmed,
     hardFailure: toBoolean(parsed.hardFailure),
     hardFailureReason:
       typeof parsed.hardFailureReason === 'string' && parsed.hardFailureReason.trim().length > 0
@@ -411,7 +444,7 @@ function normalizePersistedMemberState(
     ),
     runtimePid: normalizeRuntimePid(parsed.runtimePid),
     runtimeSessionId: normalizeOptionalString(parsed.runtimeSessionId),
-    livenessKind: normalizeLivenessKind(parsed.livenessKind),
+    livenessKind,
     pidSource: normalizePidSource(parsed.pidSource),
     runtimeDiagnostic: normalizeOptionalString(parsed.runtimeDiagnostic),
     runtimeDiagnosticSeverity: normalizeDiagnosticSeverity(parsed.runtimeDiagnosticSeverity),
@@ -424,7 +457,7 @@ function normalizePersistedMemberState(
       typeof parsed.lastRuntimeAliveAt === 'string' ? parsed.lastRuntimeAliveAt : undefined,
     lastEvaluatedAt:
       typeof parsed.lastEvaluatedAt === 'string' ? parsed.lastEvaluatedAt : updatedAtFallback,
-    sources: normalizeSources(parsed.sources),
+    sources: Object.values(sources).some(Boolean) ? sources : undefined,
     diagnostics: Array.isArray(parsed.diagnostics)
       ? parsed.diagnostics.filter(
           (item): item is string => typeof item === 'string' && item.trim().length > 0
@@ -554,14 +587,15 @@ export function snapshotFromRuntimeMemberStatuses(params: {
       sources.nativeHeartbeat = true;
       sources.inboxHeartbeat = true;
     }
-    if (runtime?.livenessSource === 'process' || runtime?.runtimeAlive) {
+    const runtimeAlive = preservesStrongRuntimeAlive(runtime);
+    if (runtime?.livenessSource === 'process' && runtimeAlive) {
       sources.processAlive = true;
     }
     const entry: PersistedTeamLaunchMemberState = {
       name,
       launchState: runtime?.launchState ?? 'starting',
       agentToolAccepted: runtime?.agentToolAccepted === true,
-      runtimeAlive: runtime?.runtimeAlive === true,
+      runtimeAlive,
       bootstrapConfirmed: runtime?.bootstrapConfirmed === true,
       hardFailure: runtime?.hardFailure === true || runtime?.launchState === 'failed_to_start',
       hardFailureReason: runtime?.hardFailureReason ?? runtime?.error,
@@ -574,7 +608,7 @@ export function snapshotFromRuntimeMemberStatuses(params: {
       runtimeLastSeenAt: runtime?.livenessLastCheckedAt,
       firstSpawnAcceptedAt: runtime?.firstSpawnAcceptedAt,
       lastHeartbeatAt: runtime?.lastHeartbeatAt,
-      lastRuntimeAliveAt: runtime?.runtimeAlive ? updatedAt : undefined,
+      lastRuntimeAliveAt: runtimeAlive ? updatedAt : undefined,
       lastEvaluatedAt: runtime?.updatedAt ?? updatedAt,
       sources: Object.values(sources).some(Boolean) ? sources : undefined,
       diagnostics: undefined,
@@ -610,6 +644,7 @@ export function snapshotToMemberSpawnStatuses(
     if (!entry) continue;
     let status: MemberSpawnStatusEntry['status'] = 'offline';
     let livenessSource: MemberSpawnLivenessSource | undefined;
+    const runtimeAlive = preservesStrongRuntimeAlive(entry);
     if (entry.launchState === 'failed_to_start') {
       status = 'error';
     } else if (entry.launchState === 'confirmed_alive') {
@@ -619,8 +654,8 @@ export function snapshotToMemberSpawnStatuses(
       entry.launchState === 'runtime_pending_permission' ||
       entry.launchState === 'runtime_pending_bootstrap'
     ) {
-      status = entry.runtimeAlive ? 'online' : 'waiting';
-      livenessSource = entry.runtimeAlive ? 'process' : undefined;
+      status = runtimeAlive ? 'online' : 'waiting';
+      livenessSource = runtimeAlive ? 'process' : undefined;
     } else {
       status = entry.agentToolAccepted ? 'waiting' : 'spawning';
     }
@@ -631,7 +666,7 @@ export function snapshotToMemberSpawnStatuses(
       hardFailureReason: entry.hardFailureReason,
       livenessSource,
       agentToolAccepted: entry.agentToolAccepted,
-      runtimeAlive: entry.runtimeAlive,
+      runtimeAlive,
       bootstrapConfirmed: entry.bootstrapConfirmed,
       hardFailure: entry.hardFailure,
       pendingPermissionRequestIds: entry.pendingPermissionRequestIds,

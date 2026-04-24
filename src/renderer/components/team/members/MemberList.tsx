@@ -23,6 +23,7 @@ interface MemberListProps {
   pendingRepliesByMember?: Record<string, number>;
   memberSpawnStatuses?: Map<string, MemberSpawnStatusEntry>;
   memberRuntimeEntries?: Map<string, TeamAgentRuntimeEntry>;
+  runtimeRunId?: string | null;
   isLaunchSettling?: boolean;
   isTeamAlive?: boolean;
   isTeamProvisioning?: boolean;
@@ -192,20 +193,34 @@ function areMemberRuntimeEntriesEquivalent(
   if (left.size !== right.size) return false;
   for (const [key, leftEntry] of left) {
     const rightEntry = right.get(key);
+    const leftDiagnostics = leftEntry.diagnostics ?? [];
+    const rightDiagnostics = rightEntry?.diagnostics ?? [];
     if (
       leftEntry.memberName !== rightEntry?.memberName ||
       leftEntry.alive !== rightEntry?.alive ||
       leftEntry.restartable !== rightEntry?.restartable ||
       leftEntry.backendType !== rightEntry?.backendType ||
+      leftEntry.providerId !== rightEntry?.providerId ||
+      leftEntry.providerBackendId !== rightEntry?.providerBackendId ||
+      leftEntry.laneId !== rightEntry?.laneId ||
+      leftEntry.laneKind !== rightEntry?.laneKind ||
       leftEntry.pid !== rightEntry?.pid ||
       leftEntry.runtimeModel !== rightEntry?.runtimeModel ||
       leftEntry.rssBytes !== rightEntry?.rssBytes ||
       leftEntry.livenessKind !== rightEntry?.livenessKind ||
       leftEntry.pidSource !== rightEntry?.pidSource ||
+      leftEntry.processCommand !== rightEntry?.processCommand ||
+      leftEntry.paneId !== rightEntry?.paneId ||
+      leftEntry.panePid !== rightEntry?.panePid ||
       leftEntry.paneCurrentCommand !== rightEntry?.paneCurrentCommand ||
+      leftEntry.runtimePid !== rightEntry?.runtimePid ||
+      leftEntry.runtimeSessionId !== rightEntry?.runtimeSessionId ||
       leftEntry.runtimeDiagnostic !== rightEntry?.runtimeDiagnostic ||
       leftEntry.runtimeDiagnosticSeverity !== rightEntry?.runtimeDiagnosticSeverity ||
-      leftEntry.runtimeLastSeenAt !== rightEntry?.runtimeLastSeenAt
+      leftEntry.runtimeLastSeenAt !== rightEntry?.runtimeLastSeenAt ||
+      leftEntry.historicalBootstrapConfirmed !== rightEntry?.historicalBootstrapConfirmed ||
+      leftDiagnostics.length !== rightDiagnostics.length ||
+      !leftDiagnostics.every((value, index) => value === rightDiagnostics[index])
     ) {
       return false;
     }
@@ -224,6 +239,7 @@ function areMemberListPropsEqual(
     arePendingRepliesEquivalent(prev.pendingRepliesByMember, next.pendingRepliesByMember) &&
     areMemberSpawnStatusesEquivalent(prev.memberSpawnStatuses, next.memberSpawnStatuses) &&
     areMemberRuntimeEntriesEquivalent(prev.memberRuntimeEntries, next.memberRuntimeEntries) &&
+    prev.runtimeRunId === next.runtimeRunId &&
     prev.isLaunchSettling === next.isLaunchSettling &&
     prev.isTeamAlive === next.isTeamAlive &&
     prev.isTeamProvisioning === next.isTeamProvisioning &&
@@ -239,6 +255,7 @@ export const MemberList = memo(function MemberList({
   pendingRepliesByMember,
   memberSpawnStatuses,
   memberRuntimeEntries,
+  runtimeRunId,
   isLaunchSettling,
   isTeamAlive,
   isTeamProvisioning,
@@ -342,7 +359,9 @@ export const MemberList = memo(function MemberList({
           isRemoved ? undefined : runtimeEntry
         )}
         runtimeEntry={isRemoved ? undefined : runtimeEntry}
+        runtimeRunId={isRemoved ? undefined : runtimeRunId}
         spawnStatus={isRemoved ? undefined : spawnEntry?.status}
+        spawnEntry={isRemoved ? undefined : spawnEntry}
         spawnError={isRemoved ? undefined : (spawnEntry?.error ?? spawnEntry?.hardFailureReason)}
         spawnLivenessSource={isRemoved ? undefined : spawnEntry?.livenessSource}
         spawnLaunchState={isRemoved ? undefined : spawnEntry?.launchState}

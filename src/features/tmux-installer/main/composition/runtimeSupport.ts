@@ -1,8 +1,8 @@
 import { TmuxStatusSourceAdapter } from '../adapters/output/sources/TmuxStatusSourceAdapter';
 import {
-  TmuxPlatformCommandExecutor,
   type RuntimeProcessTableRow,
   type TmuxPaneRuntimeInfo,
+  TmuxPlatformCommandExecutor,
 } from '../infrastructure/runtime/TmuxPlatformCommandExecutor';
 
 const runtimeStatusSource = new TmuxStatusSourceAdapter();

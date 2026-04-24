@@ -657,12 +657,6 @@ export function buildMemberLaunchPresentation({
     ) {
       launchVisualState = 'stale_runtime';
     } else if (
-      spawnLaunchState === 'runtime_pending_bootstrap' &&
-      (runtimeEntry?.livenessKind === 'runtime_process' ||
-        (spawnStatus === 'online' && spawnRuntimeAlive === true))
-    ) {
-      launchVisualState = 'runtime_pending';
-    } else if (
       isLaunchStillStarting(
         spawnStatus,
         spawnLaunchState,
@@ -671,6 +665,12 @@ export function buildMemberLaunchPresentation({
       )
     ) {
       launchVisualState = spawnStatus === 'spawning' ? 'spawning' : 'waiting';
+    } else if (
+      spawnLaunchState === 'runtime_pending_bootstrap' &&
+      (runtimeEntry?.livenessKind === 'runtime_process' ||
+        (spawnStatus === 'online' && spawnRuntimeAlive === true))
+    ) {
+      launchVisualState = 'runtime_pending';
     } else if (
       isLaunchSettling &&
       spawnStatus === 'online' &&
@@ -681,15 +681,19 @@ export function buildMemberLaunchPresentation({
   }
 
   const launchStatusLabel = getMemberLaunchStatusLabel(launchVisualState);
-  const displayPresenceLabel =
+  const shouldShowLaunchStatusAsPresence =
     launchVisualState === 'permission_pending' ||
     launchVisualState === 'runtime_pending' ||
     launchVisualState === 'shell_only' ||
     launchVisualState === 'runtime_candidate' ||
     launchVisualState === 'registered_only' ||
-    launchVisualState === 'stale_runtime'
-      ? (launchStatusLabel ?? presenceLabel)
-      : presenceLabel;
+    launchVisualState === 'stale_runtime';
+  const displayPresenceLabel =
+    runtimeAdvisoryTone === 'error' && runtimeAdvisoryLabel
+      ? runtimeAdvisoryLabel
+      : shouldShowLaunchStatusAsPresence
+        ? (launchStatusLabel ?? presenceLabel)
+        : presenceLabel;
   const spawnBadgeLabel =
     spawnStatus && spawnStatus !== 'online'
       ? spawnStatus === 'waiting' || spawnStatus === 'spawning'

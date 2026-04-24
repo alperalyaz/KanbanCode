@@ -257,7 +257,7 @@ const TeamOfflineStatusBanner = memo(function TeamOfflineStatusBanner({
         memberCount: team.memberCount,
         expectedMemberCount: team.expectedMemberCount,
         confirmedCount: team.confirmedCount,
-        runtimeAlivePendingCount: team.runtimeAlivePendingCount,
+        runtimeProcessPendingCount: team.runtimeProcessPendingCount,
         teamLaunchState: team.teamLaunchState,
         partialLaunchFailure: team.partialLaunchFailure,
         missingMemberCount: team.missingMembers?.length ?? 0,
@@ -267,12 +267,12 @@ const TeamOfflineStatusBanner = memo(function TeamOfflineStatusBanner({
 
   const message =
     summary?.teamLaunchState === 'partial_pending'
-      ? summary.runtimeAlivePendingCount != null && summary.runtimeAlivePendingCount > 0
+      ? summary.runtimeProcessPendingCount != null && summary.runtimeProcessPendingCount > 0
         ? buildPendingRuntimeSummaryCopy({
             confirmedCount: summary.confirmedCount,
             expectedMemberCount: summary.expectedMemberCount,
             memberCount: summary.memberCount,
-            runtimeAlivePendingCount: summary.runtimeAlivePendingCount,
+            runtimeProcessPendingCount: summary.runtimeProcessPendingCount,
           })
         : 'Last launch is still reconciling'
       : summary?.partialLaunchFailure
@@ -809,6 +809,7 @@ const TeamMemberListBridge = memo(function TeamMemberListBridge({
     () => buildTeamAgentRuntimeMap(runtimeSnapshot?.members),
     [runtimeSnapshot?.members]
   );
+  const runtimeRunId = runtimeSnapshot?.runId ?? memberSpawnSnapshot?.runId ?? progress?.runId;
   const isLaunchSettling = useMemo(() => {
     if (progress?.state !== 'ready') {
       return false;
@@ -828,6 +829,7 @@ const TeamMemberListBridge = memo(function TeamMemberListBridge({
       leadActivity={leadActivity}
       memberSpawnStatuses={memberSpawnStatusMap}
       memberRuntimeEntries={memberRuntimeMap}
+      runtimeRunId={runtimeRunId}
       isLaunchSettling={isLaunchSettling}
     />
   );
@@ -889,6 +891,7 @@ const TeamMemberDetailDialogBridge = memo(function TeamMemberDetailDialogBridge(
     memberSpawnStatuses,
     memberSpawnSnapshot,
     spawnEntry,
+    runtimeRunId,
     runtimeEntry,
   } = useStore(
     useShallow((s) => ({
@@ -899,6 +902,10 @@ const TeamMemberDetailDialogBridge = memo(function TeamMemberDetailDialogBridge(
       memberSpawnStatuses: s.memberSpawnStatusesByTeam[teamName],
       memberSpawnSnapshot: s.memberSpawnSnapshotsByTeam[teamName],
       spawnEntry: member ? s.memberSpawnStatusesByTeam[teamName]?.[member.name] : undefined,
+      runtimeRunId:
+        s.teamAgentRuntimeByTeam[teamName]?.runId ??
+        s.memberSpawnSnapshotsByTeam[teamName]?.runId ??
+        getCurrentProvisioningProgressForTeam(s, teamName)?.runId,
       runtimeEntry: member ? s.teamAgentRuntimeByTeam[teamName]?.members[member.name] : undefined,
     }))
   );
@@ -924,6 +931,7 @@ const TeamMemberDetailDialogBridge = memo(function TeamMemberDetailDialogBridge(
       leadActivity={leadActivity}
       spawnEntry={spawnEntry}
       runtimeEntry={runtimeEntry}
+      runtimeRunId={runtimeRunId}
     />
   );
 });

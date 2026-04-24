@@ -32,6 +32,17 @@ interface FailedSpawnDetail {
   reason: string | null;
 }
 
+type PendingDiagnosticBucket =
+  | 'shellOnly'
+  | 'runtimeProcess'
+  | 'runtimeCandidate'
+  | 'permission'
+  | 'noRuntime';
+
+type PendingDiagnosticNameGroups = Record<PendingDiagnosticBucket, string[]>;
+
+const MAX_PENDING_DIAGNOSTIC_NAMES = 4;
+
 function parseStatusUpdatedAtMs(value: string | undefined): number | null {
   if (!value) {
     return null;
@@ -126,25 +137,130 @@ function buildAwaitingPermissionPhrase(count: number): string {
     : `${count} teammates awaiting permission approval`;
 }
 
-function buildPendingDiagnosticPhrase(
-  summary: MemberSpawnStatusesSnapshot['summary'] | undefined,
-  fallbackJoiningPhrase: string
-): string {
+function getMemberNamesFromSpawnSources(params: {
+  memberSpawnStatuses: MemberSpawnStatusCollection;
+  memberSpawnSnapshotStatuses?: MemberSpawnStatusesSnapshot['statuses'];
+}): string[] {
+  const names = new Set<string>();
+  if (params.memberSpawnStatuses instanceof Map) {
+    for (const name of params.memberSpawnStatuses.keys()) {
+      names.add(name);
+    }
+  } else if (params.memberSpawnStatuses) {
+    for (const name of Object.keys(params.memberSpawnStatuses)) {
+      names.add(name);
+    }
+  }
+  for (const name of Object.keys(params.memberSpawnSnapshotStatuses ?? {})) {
+    names.add(name);
+  }
+  return [...names].sort((left, right) => left.localeCompare(right));
+}
+
+function getPendingDiagnosticNameGroups(params: {
+  memberSpawnStatuses: MemberSpawnStatusCollection;
+  memberSpawnSnapshotStatuses?: MemberSpawnStatusesSnapshot['statuses'];
+  memberSpawnSnapshotUpdatedAt?: string;
+}): PendingDiagnosticNameGroups {
+  const groups: PendingDiagnosticNameGroups = {
+    shellOnly: [],
+    runtimeProcess: [],
+    runtimeCandidate: [],
+    permission: [],
+    noRuntime: [],
+  };
+
+  for (const name of getMemberNamesFromSpawnSources(params)) {
+    const liveEntry =
+      params.memberSpawnStatuses instanceof Map
+        ? params.memberSpawnStatuses.get(name)
+        : params.memberSpawnStatuses?.[name];
+    const snapshotEntry = params.memberSpawnSnapshotStatuses?.[name];
+    const entry = getPreferredSpawnEntry({
+      liveEntry,
+      snapshotEntry,
+      snapshotUpdatedAt: params.memberSpawnSnapshotUpdatedAt,
+    });
+    if (!entry || entry.launchState === 'confirmed_alive' || isFailedSpawnEntry(entry)) {
+      continue;
+    }
+    if (
+      entry.launchState === 'runtime_pending_permission' ||
+      (entry.pendingPermissionRequestIds?.length ?? 0) > 0
+    ) {
+      groups.permission.push(name);
+      continue;
+    }
+    if (entry.livenessKind === 'shell_only') {
+      groups.shellOnly.push(name);
+    } else if (entry.livenessKind === 'runtime_process') {
+      groups.runtimeProcess.push(name);
+    } else if (entry.livenessKind === 'runtime_process_candidate') {
+      groups.runtimeCandidate.push(name);
+    } else if (
+      entry.livenessKind === 'not_found' ||
+      entry.livenessKind === 'stale_metadata' ||
+      entry.livenessKind === 'registered_only'
+    ) {
+      groups.noRuntime.push(name);
+    }
+  }
+
+  return groups;
+}
+
+function formatNamedPendingDiagnostic(label: string, names: readonly string[]): string | null {
+  if (names.length === 0) {
+    return null;
+  }
+  const listedNames = names.slice(0, MAX_PENDING_DIAGNOSTIC_NAMES).join(', ');
+  const remainingCount = names.length - Math.min(names.length, MAX_PENDING_DIAGNOSTIC_NAMES);
+  return `${label}: ${listedNames}${remainingCount > 0 ? `, +${remainingCount} more` : ''}`;
+}
+
+function formatCountPendingDiagnostic(count: number | undefined, label: string): string | null {
+  return count && count > 0 ? `${count} ${label}` : null;
+}
+
+function buildPendingDiagnosticPhrase({
+  summary,
+  memberSpawnStatuses,
+  memberSpawnSnapshotStatuses,
+  memberSpawnSnapshotUpdatedAt,
+  fallbackJoiningPhrase,
+}: {
+  summary: MemberSpawnStatusesSnapshot['summary'] | undefined;
+  memberSpawnStatuses: MemberSpawnStatusCollection;
+  memberSpawnSnapshotStatuses?: MemberSpawnStatusesSnapshot['statuses'];
+  memberSpawnSnapshotUpdatedAt?: string;
+  fallbackJoiningPhrase: string;
+}): string {
+  const groups = getPendingDiagnosticNameGroups({
+    memberSpawnStatuses,
+    memberSpawnSnapshotStatuses,
+    memberSpawnSnapshotUpdatedAt,
+  });
+  const namedParts = [
+    formatNamedPendingDiagnostic('Shell-only', groups.shellOnly),
+    formatNamedPendingDiagnostic('Waiting for bootstrap', groups.runtimeProcess),
+    formatNamedPendingDiagnostic('Process candidates', groups.runtimeCandidate),
+    formatNamedPendingDiagnostic('Awaiting permission', groups.permission),
+    formatNamedPendingDiagnostic('No runtime found', groups.noRuntime),
+  ].filter(Boolean);
+  if (namedParts.length > 0) {
+    return namedParts.join(', ');
+  }
   if (!summary) {
     return fallbackJoiningPhrase;
   }
-  const parts = [
-    summary.shellOnlyPendingCount ? `${summary.shellOnlyPendingCount} shell-only` : '',
-    summary.runtimeProcessPendingCount
-      ? `${summary.runtimeProcessPendingCount} waiting for bootstrap`
-      : '',
-    summary.runtimeCandidatePendingCount
-      ? `${summary.runtimeCandidatePendingCount} process candidates`
-      : '',
-    summary.permissionPendingCount ? `${summary.permissionPendingCount} awaiting permission` : '',
-    summary.noRuntimePendingCount ? `${summary.noRuntimePendingCount} no runtime found` : '',
+  const countParts = [
+    formatCountPendingDiagnostic(summary.shellOnlyPendingCount, 'shell-only'),
+    formatCountPendingDiagnostic(summary.runtimeProcessPendingCount, 'waiting for bootstrap'),
+    formatCountPendingDiagnostic(summary.runtimeCandidatePendingCount, 'process candidates'),
+    formatCountPendingDiagnostic(summary.permissionPendingCount, 'awaiting permission'),
+    formatCountPendingDiagnostic(summary.noRuntimePendingCount, 'no runtime found'),
   ].filter(Boolean);
-  return parts.length > 0 ? parts.join(', ') : fallbackJoiningPhrase;
+  return countParts.length > 0 ? countParts.join(', ') : fallbackJoiningPhrase;
 }
 
 const ACTIVE_PROVISIONING_STATES = new Set([
@@ -415,7 +531,13 @@ export function buildTeamProvisioningPresentation({
       permissionBlockedCount === remainingJoinCount;
     const pendingDetailPhrase = pendingMembersAwaitApproval
       ? buildAwaitingPermissionPhrase(permissionBlockedCount)
-      : buildPendingDiagnosticPhrase(memberSpawnSnapshot?.summary, joiningPhrase);
+      : buildPendingDiagnosticPhrase({
+          summary: memberSpawnSnapshot?.summary,
+          memberSpawnStatuses,
+          memberSpawnSnapshotStatuses: memberSpawnSnapshot?.statuses,
+          memberSpawnSnapshotUpdatedAt: memberSpawnSnapshot?.updatedAt,
+          fallbackJoiningPhrase: joiningPhrase,
+        });
     const readyCompactDetail =
       failedSpawnCount > 0
         ? (failedSpawnCompactDetail ??
@@ -492,7 +614,13 @@ export function buildTeamProvisioningPresentation({
       permissionBlockedCount > 0 &&
       permissionBlockedCount === remainingJoinCount
         ? buildAwaitingPermissionPhrase(permissionBlockedCount)
-        : buildPendingDiagnosticPhrase(memberSpawnSnapshot?.summary, activeJoiningPhrase);
+        : buildPendingDiagnosticPhrase({
+            summary: memberSpawnSnapshot?.summary,
+            memberSpawnStatuses,
+            memberSpawnSnapshotStatuses: memberSpawnSnapshot?.statuses,
+            memberSpawnSnapshotUpdatedAt: memberSpawnSnapshot?.updatedAt,
+            fallbackJoiningPhrase: activeJoiningPhrase,
+          });
     return {
       progress,
       isActive: true,

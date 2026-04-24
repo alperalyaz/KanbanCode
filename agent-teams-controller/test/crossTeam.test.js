@@ -59,8 +59,8 @@ describe('crossTeam module', () => {
       const inbox = JSON.parse(fs.readFileSync(inboxPath, 'utf8'));
       expect(inbox).toHaveLength(1);
       expect(inbox[0].source).toBe(CROSS_TEAM_SOURCE);
-      expect(inbox[0].from).toBe('team-a.lead');
-      expect(inbox[0].text).toContain(`<${CROSS_TEAM_TAG_NAME} from="team-a.lead" depth="0"`);
+      expect(inbox[0].from).toBe('team-a.team-lead');
+      expect(inbox[0].text).toContain(`<${CROSS_TEAM_TAG_NAME} from="team-a.team-lead" depth="0"`);
       expect(inbox[0].conversationId).toBeTruthy();
       expect(inbox[0].text).toContain(`conversationId="${inbox[0].conversationId}"`);
     });
@@ -312,6 +312,108 @@ describe('crossTeam module', () => {
 
       const inboxPath = path.join(claudeDir, 'teams', 'team-b', 'inboxes', 'beta-lead.json');
       expect(fs.existsSync(inboxPath)).toBe(true);
+    });
+
+    it('resolves supported lead agent types before tech-lead role text', () => {
+      const claudeDir = makeClaudeDir({
+        'team-a': {
+          name: 'team-a',
+          members: [{ name: 'team-lead', agentType: 'team-lead' }],
+        },
+        'team-b': {
+          name: 'team-b',
+          members: [
+            { name: 'alice', role: 'tech lead' },
+            { name: 'olivia', agentType: 'lead' },
+          ],
+        },
+      });
+
+      const controller = createController({ teamName: 'team-a', claudeDir });
+      controller.crossTeam.sendCrossTeamMessage({
+        toTeam: 'team-b',
+        text: 'Hello',
+      });
+
+      expect(fs.existsSync(path.join(claudeDir, 'teams', 'team-b', 'inboxes', 'olivia.json'))).toBe(true);
+      expect(fs.existsSync(path.join(claudeDir, 'teams', 'team-b', 'inboxes', 'alice.json'))).toBe(false);
+    });
+
+    it('resolves orchestrator lead from members.meta.json', () => {
+      const claudeDir = makeClaudeDir({
+        'team-a': {
+          name: 'team-a',
+          members: [{ name: 'team-lead', agentType: 'team-lead' }],
+        },
+        'team-b': {
+          name: 'team-b',
+          members: [],
+        },
+      });
+
+      const metaPath = path.join(claudeDir, 'teams', 'team-b', 'members.meta.json');
+      fs.writeFileSync(
+        metaPath,
+        JSON.stringify({
+          members: [
+            { name: 'alice', role: 'tech lead' },
+            { name: 'orla', agentType: 'orchestrator' },
+          ],
+        })
+      );
+
+      const controller = createController({ teamName: 'team-a', claudeDir });
+      controller.crossTeam.sendCrossTeamMessage({
+        toTeam: 'team-b',
+        text: 'Hello',
+      });
+
+      expect(fs.existsSync(path.join(claudeDir, 'teams', 'team-b', 'inboxes', 'orla.json'))).toBe(true);
+      expect(fs.existsSync(path.join(claudeDir, 'teams', 'team-b', 'inboxes', 'alice.json'))).toBe(false);
+    });
+
+    it('rejects phantom source teams before delivery or outbox writes', () => {
+      const claudeDir = makeClaudeDir({
+        'team-b': {
+          name: 'team-b',
+          members: [{ name: 'team-lead', agentType: 'team-lead' }],
+        },
+      });
+
+      const controller = createController({ teamName: 'team-a', claudeDir });
+
+      expect(() =>
+        controller.crossTeam.sendCrossTeamMessage({
+          toTeam: 'team-b',
+          text: 'Hello from nowhere',
+        })
+      ).toThrow('Source team not found: team-a');
+      expect(fs.existsSync(path.join(claudeDir, 'teams', 'team-a'))).toBe(false);
+      expect(fs.existsSync(path.join(claudeDir, 'teams', 'team-b', 'inboxes', 'team-lead.json'))).toBe(false);
+    });
+
+    it('rejects unknown cross-team senders', () => {
+      const claudeDir = makeClaudeDir({
+        'team-a': {
+          name: 'team-a',
+          members: [{ name: 'team-lead', agentType: 'team-lead' }],
+        },
+        'team-b': {
+          name: 'team-b',
+          members: [{ name: 'team-lead', agentType: 'team-lead' }],
+        },
+      });
+
+      const controller = createController({ teamName: 'team-a', claudeDir });
+
+      expect(() =>
+        controller.crossTeam.sendCrossTeamMessage({
+          toTeam: 'team-b',
+          fromMember: 'alicce',
+          text: 'Hello',
+        })
+      ).toThrow('Unknown cross-team sender: alicce');
+      expect(fs.existsSync(path.join(claudeDir, 'teams', 'team-b', 'inboxes', 'team-lead.json'))).toBe(false);
     });
 
     it('resolves lead by name fallback', () => {

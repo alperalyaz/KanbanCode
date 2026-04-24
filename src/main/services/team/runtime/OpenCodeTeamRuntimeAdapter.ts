@@ -302,7 +302,7 @@ export class OpenCodeTeamRuntimeAdapter implements TeamLaunchRuntimeAdapter {
             providerId: this.providerId,
             launchState: member.launchState,
             agentToolAccepted: member.agentToolAccepted,
-            runtimeAlive: member.runtimeAlive,
+            runtimeAlive: member.bootstrapConfirmed === true,
             bootstrapConfirmed: member.bootstrapConfirmed,
             hardFailure: member.hardFailure,
             hardFailureReason: member.hardFailureReason,
@@ -544,7 +544,6 @@ function mapBridgeMemberToRuntimeEvidence(
   diagnostics: string[]
 ): TeamRuntimeMemberLaunchEvidence {
   const confirmed = launchState === 'confirmed_alive';
-  const createdOrBlocked = launchState === 'created' || launchState === 'permission_blocked';
   const failed = launchState === 'failed';
   const hasRuntimePid =
     typeof runtimePid === 'number' && Number.isFinite(runtimePid) && runtimePid > 0;
@@ -552,14 +551,14 @@ function mapBridgeMemberToRuntimeEvidence(
   const livenessKind = confirmed
     ? 'confirmed_bootstrap'
     : pendingRuntimeObserved
-      ? 'runtime_process'
+      ? 'runtime_process_candidate'
       : launchState === 'permission_blocked'
         ? 'permission_blocked'
         : runtimeMaterialized || sessionId
           ? 'runtime_process_candidate'
           : 'registered_only';
   const runtimeDiagnostic = pendingRuntimeObserved
-    ? 'OpenCode runtime process reported by bridge'
+    ? 'OpenCode runtime pid reported by bridge without local process verification'
     : launchState === 'permission_blocked'
       ? 'OpenCode runtime is waiting for permission approval'
       : runtimeMaterialized || sessionId
@@ -575,8 +574,13 @@ function mapBridgeMemberToRuntimeEvidence(
         : launchState === 'permission_blocked'
           ? 'runtime_pending_permission'
           : 'runtime_pending_bootstrap',
-    agentToolAccepted: confirmed || createdOrBlocked || runtimeMaterialized,
-    runtimeAlive: confirmed || pendingRuntimeObserved,
+    agentToolAccepted:
+      confirmed ||
+      pendingRuntimeObserved ||
+      launchState === 'permission_blocked' ||
+      runtimeMaterialized ||
+      Boolean(sessionId),
+    runtimeAlive: confirmed,
     bootstrapConfirmed: confirmed,
     hardFailure: failed,
     hardFailureReason: failed ? 'OpenCode bridge reported member launch failure' : undefined,

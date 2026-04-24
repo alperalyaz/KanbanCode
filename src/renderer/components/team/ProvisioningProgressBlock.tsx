@@ -167,6 +167,9 @@ export const ProvisioningProgressBlock = ({
   const outputScrollRef = useRef<HTMLDivElement>(null);
   const isError = tone === 'error';
   const displayAssistantOutput = sanitizeAssistantOutput(assistantOutput, isError);
+  const visibleLaunchDiagnostics =
+    launchDiagnostics?.filter((item) => item.severity === 'warning' || item.severity === 'error') ??
+    [];
 
   // Auto-scroll assistant output
   useEffect(() => {
@@ -298,7 +301,7 @@ export const ProvisioningProgressBlock = ({
           errorIndex={errorStepIndex}
         />
       </div>
-      {launchDiagnostics && launchDiagnostics.length > 0 ? (
+      {visibleLaunchDiagnostics.length > 0 ? (
         <div className="mt-2">
           <button
             type="button"
@@ -310,7 +313,7 @@ export const ProvisioningProgressBlock = ({
           </button>
           {diagnosticsOpen ? (
             <div className="mt-1 space-y-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-2">
-              {launchDiagnostics.map((item) => (
+              {visibleLaunchDiagnostics.map((item) => (
                 <div key={item.id} className="text-[11px]">
                   <div
                     className={cn(

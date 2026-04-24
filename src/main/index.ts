@@ -17,8 +17,6 @@
 process.env.UV_THREADPOOL_SIZE ??= '16';
 
 // Keep userData stable before any integration can initialize Electron storage.
-import { earlyElectronUserDataMigrationResult } from './bootstrapUserDataMigration';
-
 // Sentry must stay near the top to capture early errors after storage migration.
 import './sentry';
 
@@ -142,6 +140,7 @@ import {
   markRendererUnavailable,
   safeSendToRenderer,
 } from './utils/safeWebContentsSend';
+import { earlyElectronUserDataMigrationResult } from './bootstrapUserDataMigration';
 import { syncTelemetryFlag } from './sentry';
 import {
   ActiveTeamRegistry,

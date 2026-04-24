@@ -96,4 +96,26 @@ describe('TmuxPlatformCommandExecutor', () => {
       3_000
     );
   });
+
+  it('lists runtime processes inside WSL on Windows instead of using host ps', async () => {
+    setPlatform('win32');
+    const execInPreferredDistro = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: '  42   1 opencode runtime --team-name demo\n',
+      stderr: '',
+    }));
+    const executor = new TmuxPlatformCommandExecutor(
+      {
+        execInPreferredDistro,
+        getPersistedPreferredDistroSync: () => 'Ubuntu',
+      } as never,
+      {} as never
+    );
+
+    await expect(executor.listRuntimeProcesses()).resolves.toEqual([
+      { pid: 42, ppid: 1, command: 'opencode runtime --team-name demo' },
+    ]);
+    expect(execInPreferredDistro).toHaveBeenCalledWith(['ps', '-ax', '-o', 'pid=,ppid=,command=']);
+    expect(childProcess.execFile).not.toHaveBeenCalled();
+  });
 });

@@ -13,10 +13,17 @@ import {
   buildMemberLaunchPresentation,
   displayMemberName,
 } from '@renderer/utils/memberHelpers';
+import {
+  buildMemberLaunchDiagnosticsPayload,
+  hasMemberLaunchDiagnosticsDetails,
+  hasMemberLaunchDiagnosticsError,
+} from '@renderer/utils/memberLaunchDiagnostics';
+import { getRuntimeMemorySourceLabel } from '@renderer/utils/memberRuntimeSummary';
 import { deriveTaskDisplayId } from '@shared/utils/taskIdentity';
 import { AlertTriangle, GitBranch, Loader2, MessageSquare, Plus } from 'lucide-react';
 
 import { CurrentTaskIndicator } from './CurrentTaskIndicator';
+import { MemberLaunchDiagnosticsButton } from './MemberLaunchDiagnosticsButton';
 
 import type { TaskStatusCounts } from '@renderer/utils/pathNormalize';
 import type {
@@ -24,6 +31,7 @@ import type {
   MemberLaunchState,
   MemberSpawnLivenessSource,
   MemberSpawnStatus,
+  MemberSpawnStatusEntry,
   ResolvedTeamMember,
   TeamAgentRuntimeEntry,
   TeamTaskWithKanban,
@@ -34,6 +42,7 @@ interface MemberCardProps {
   memberColor: string;
   runtimeSummary?: string;
   runtimeEntry?: TeamAgentRuntimeEntry;
+  runtimeRunId?: string | null;
   taskCounts?: TaskStatusCounts | null;
   isTeamAlive?: boolean;
   isTeamProvisioning?: boolean;
@@ -43,6 +52,7 @@ interface MemberCardProps {
   isAwaitingReply?: boolean;
   isRemoved?: boolean;
   spawnStatus?: MemberSpawnStatus;
+  spawnEntry?: MemberSpawnStatusEntry;
   spawnError?: string;
   spawnLivenessSource?: MemberSpawnLivenessSource;
   spawnLaunchState?: MemberLaunchState;
@@ -80,6 +90,7 @@ export const MemberCard = ({
   memberColor,
   runtimeSummary,
   runtimeEntry,
+  runtimeRunId,
   taskCounts,
   isTeamAlive,
   isTeamProvisioning,
@@ -89,6 +100,7 @@ export const MemberCard = ({
   isAwaitingReply,
   isRemoved,
   spawnStatus,
+  spawnEntry,
   spawnError,
   spawnLivenessSource,
   spawnLaunchState,
@@ -150,6 +162,7 @@ export const MemberCard = ({
   const roleLabel = formatAgentRole(member.role) ?? formatAgentRole(member.agentType);
   const { summary: runtimeSummaryText, memory: memoryLabel } =
     splitRuntimeSummaryMemory(runtimeSummary);
+  const memorySourceLabel = getRuntimeMemorySourceLabel(runtimeEntry);
   const activityTask = currentTask ?? reviewTask ?? null;
   const activityTitle = currentTask
     ? `Current task: #${deriveTaskDisplayId(currentTask.id)}`
@@ -174,6 +187,33 @@ export const MemberCard = ({
       launchVisualState === 'registered_only' ||
       launchVisualState === 'stale_runtime');
   const launchBadgeLabel = presenceLabel === 'starting' ? presenceLabel : displayPresenceLabel;
+  const launchDiagnosticsPayload = useMemo(
+    () =>
+      buildMemberLaunchDiagnosticsPayload({
+        teamName: selectedTeamName,
+        runId: runtimeRunId,
+        memberName: member.name,
+        spawnStatus,
+        launchState: spawnLaunchState,
+        livenessSource: spawnLivenessSource,
+        spawnEntry,
+        runtimeEntry,
+      }),
+    [
+      member.name,
+      runtimeEntry,
+      runtimeRunId,
+      selectedTeamName,
+      spawnEntry,
+      spawnLaunchState,
+      spawnLivenessSource,
+      spawnStatus,
+    ]
+  );
+  const showCopyDiagnostics =
+    !isRemoved &&
+    hasMemberLaunchDiagnosticsError(launchDiagnosticsPayload) &&
+    hasMemberLaunchDiagnosticsDetails(launchDiagnosticsPayload);
   const showRuntimeAdvisoryBadge =
     !isRemoved &&
     Boolean(runtimeAdvisoryLabel) &&
@@ -297,16 +337,7 @@ export const MemberCard = ({
                   <span className="shrink-0 opacity-60">•</span>
                 ) : null}
                 {memoryLabel ? (
-                  <span
-                    className="shrink-0"
-                    title={
-                      runtimeEntry?.pidSource === 'tmux_pane'
-                        ? 'RSS source: tmux pane shell'
-                        : runtimeEntry?.pidSource
-                          ? `PID source: ${runtimeEntry.pidSource}`
-                          : undefined
-                    }
-                  >
+                  <span className="shrink-0" title={memorySourceLabel}>
                     {memoryLabel}
                   </span>
                 ) : null}
@@ -330,20 +361,28 @@ export const MemberCard = ({
               </Badge>
             </span>
           ) : spawnStatus === 'error' ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="flex shrink-0 items-center gap-1">
-                  <AlertTriangle className="size-3.5 shrink-0 text-red-400" />
-                  <Badge
-                    variant="secondary"
-                    className="shrink-0 bg-red-500/15 px-1.5 py-0.5 text-[10px] font-normal leading-none text-red-400"
-                  >
-                    {displayPresenceLabel}
-                  </Badge>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{spawnError ?? 'Spawn failed'}</TooltipContent>
-            </Tooltip>
+            <span className="flex shrink-0 items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="flex shrink-0 items-center gap-1">
+                    <AlertTriangle className="size-3.5 shrink-0 text-red-400" />
+                    <Badge
+                      variant="secondary"
+                      className="shrink-0 bg-red-500/15 px-1.5 py-0.5 text-[10px] font-normal leading-none text-red-400"
+                    >
+                      {displayPresenceLabel}
+                    </Badge>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{spawnError ?? 'Spawn failed'}</TooltipContent>
+              </Tooltip>
+              {showCopyDiagnostics ? (
+                <MemberLaunchDiagnosticsButton
+                  payload={launchDiagnosticsPayload}
+                  className="size-auto rounded p-1 text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200"
+                />
+              ) : null}
+            </span>
           ) : showRuntimeAdvisoryBadge ? (
             <Tooltip>
               <TooltipTrigger asChild>

@@ -810,20 +810,34 @@ function areTeamAgentRuntimeEntriesEqual(
 ): boolean {
   if (left === right) return true;
   if (!left || !right) return left === right;
+  const leftDiagnostics = left.diagnostics ?? [];
+  const rightDiagnostics = right.diagnostics ?? [];
   return (
     left.memberName === right.memberName &&
     left.alive === right.alive &&
     left.restartable === right.restartable &&
     left.backendType === right.backendType &&
+    left.providerId === right.providerId &&
+    left.providerBackendId === right.providerBackendId &&
+    left.laneId === right.laneId &&
+    left.laneKind === right.laneKind &&
     left.pid === right.pid &&
     left.runtimeModel === right.runtimeModel &&
     left.rssBytes === right.rssBytes &&
     left.livenessKind === right.livenessKind &&
     left.pidSource === right.pidSource &&
+    left.processCommand === right.processCommand &&
+    left.paneId === right.paneId &&
+    left.panePid === right.panePid &&
     left.paneCurrentCommand === right.paneCurrentCommand &&
+    left.runtimePid === right.runtimePid &&
+    left.runtimeSessionId === right.runtimeSessionId &&
     left.runtimeDiagnostic === right.runtimeDiagnostic &&
     left.runtimeDiagnosticSeverity === right.runtimeDiagnosticSeverity &&
-    left.runtimeLastSeenAt === right.runtimeLastSeenAt
+    left.runtimeLastSeenAt === right.runtimeLastSeenAt &&
+    left.historicalBootstrapConfirmed === right.historicalBootstrapConfirmed &&
+    leftDiagnostics.length === rightDiagnostics.length &&
+    leftDiagnostics.every((value, index) => value === rightDiagnostics[index])
   );
 }
 

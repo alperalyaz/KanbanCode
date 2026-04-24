@@ -63,6 +63,10 @@ function isFailedSpawnEntry(entry: MemberSpawnStatusEntry | undefined): boolean 
   return entry?.launchState === 'failed_to_start' || entry?.status === 'error';
 }
 
+function isStrongRuntimeProcessSpawnEntry(entry: MemberSpawnStatusEntry): boolean {
+  return entry.runtimeAlive === true && entry.livenessKind === 'runtime_process';
+}
+
 function shouldPreferSnapshotEntryOverLive(
   liveEntry: MemberSpawnStatusEntry | undefined,
   snapshotEntry: MemberSpawnStatusEntry | undefined,
@@ -127,11 +131,12 @@ function summarizeLiveLaunchJoinMilestones(params: {
       heartbeatConfirmedCount += 1;
       continue;
     }
-    if (
-      entry.launchState === 'runtime_pending_bootstrap' ||
-      entry.launchState === 'runtime_pending_permission'
-    ) {
-      if (entry.runtimeAlive === true && entry.livenessKind !== 'shell_only') {
+    if (entry.launchState === 'runtime_pending_permission') {
+      pendingSpawnCount += 1;
+      continue;
+    }
+    if (entry.launchState === 'runtime_pending_bootstrap') {
+      if (isStrongRuntimeProcessSpawnEntry(entry)) {
         processOnlyAliveCount += 1;
       } else {
         pendingSpawnCount += 1;
@@ -196,15 +201,12 @@ export function getLaunchJoinMilestonesFromMembers({
   });
 
   if (snapshotSummary) {
+    const snapshotProcessOnlyAliveCount = snapshotSummary.runtimeProcessPendingCount ?? 0;
     const snapshotMilestones = {
       expectedTeammateCount,
       heartbeatConfirmedCount: snapshotSummary.confirmedCount,
-      processOnlyAliveCount:
-        snapshotSummary.runtimeProcessPendingCount ?? snapshotSummary.runtimeAlivePendingCount,
-      pendingSpawnCount: Math.max(
-        0,
-        snapshotSummary.pendingCount - snapshotSummary.runtimeAlivePendingCount
-      ),
+      processOnlyAliveCount: snapshotProcessOnlyAliveCount,
+      pendingSpawnCount: Math.max(0, snapshotSummary.pendingCount - snapshotProcessOnlyAliveCount),
       failedSpawnCount: snapshotSummary.failedCount,
     };
 

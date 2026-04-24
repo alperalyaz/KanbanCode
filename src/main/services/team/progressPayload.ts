@@ -18,6 +18,8 @@ export const PROGRESS_LOG_TAIL_LINES = 200;
 export const PROGRESS_OUTPUT_TAIL_PARTS = 20;
 export const PROGRESS_LAUNCH_DIAGNOSTICS_LIMIT = 20;
 const PROGRESS_LAUNCH_DIAGNOSTIC_TEXT_LIMIT = 500;
+const SECRET_FLAG_PATTERN =
+  /(--(?:api-key|token|password|secret|authorization|auth-token)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi;
 
 /**
  * Return the trailing `maxLines` of a line-buffered CLI log, joined with "\n"
@@ -60,9 +62,10 @@ function boundDiagnosticText(value: string | undefined): string | undefined {
   if (!trimmed) {
     return undefined;
   }
-  return trimmed.length > PROGRESS_LAUNCH_DIAGNOSTIC_TEXT_LIMIT
-    ? `${trimmed.slice(0, PROGRESS_LAUNCH_DIAGNOSTIC_TEXT_LIMIT - 3).trimEnd()}...`
-    : trimmed;
+  const redacted = trimmed.replace(SECRET_FLAG_PATTERN, '$1[redacted]');
+  return redacted.length > PROGRESS_LAUNCH_DIAGNOSTIC_TEXT_LIMIT
+    ? `${redacted.slice(0, PROGRESS_LAUNCH_DIAGNOSTIC_TEXT_LIMIT - 3).trimEnd()}...`
+    : redacted;
 }
 
 export function boundLaunchDiagnostics(

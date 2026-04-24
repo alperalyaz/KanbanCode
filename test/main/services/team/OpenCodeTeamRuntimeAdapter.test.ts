@@ -311,7 +311,7 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
         alice: {
           providerId: 'opencode',
           launchState: 'runtime_pending_bootstrap',
-          runtimeAlive: true,
+          runtimeAlive: false,
           bootstrapConfirmed: false,
         },
       },
@@ -501,8 +501,9 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
           providerId: 'opencode',
           launchState: 'runtime_pending_permission',
           pendingPermissionRequestIds: ['perm-1', 'perm-2'],
-          runtimeAlive: true,
+          runtimeAlive: false,
           agentToolAccepted: true,
+          livenessKind: 'permission_blocked',
           bootstrapConfirmed: false,
           hardFailure: false,
         },
@@ -514,6 +515,116 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
           diagnostics: expect.arrayContaining(['waiting for permission approval']),
         },
       },
+    });
+  });
+
+  it('does not mark created bridge members without runtimePid as runtimeAlive', async () => {
+    const launchOpenCodeTeam = vi.fn(
+      async () =>
+        ({
+          runId: 'run-1',
+          teamLaunchState: 'launching',
+          members: {
+            alice: {
+              sessionId: 'oc-session-1',
+              launchState: 'created',
+              model: 'openai/gpt-5.4-mini',
+              evidence: [],
+            },
+          },
+          warnings: [],
+          diagnostics: [],
+        }) satisfies OpenCodeLaunchTeamCommandData
+    );
+    const adapter = new OpenCodeTeamRuntimeAdapter(
+      bridgePort(readiness({ state: 'ready', launchAllowed: true }), {
+        launchOpenCodeTeam,
+      }),
+      { launchMode: 'dogfood' }
+    );
+
+    const result = await adapter.launch(launchInput());
+
+    expect(result.members.alice).toMatchObject({
+      launchState: 'runtime_pending_bootstrap',
+      agentToolAccepted: true,
+      runtimeAlive: false,
+      livenessKind: 'runtime_process_candidate',
+      runtimeDiagnostic: 'OpenCode session exists without verified runtime pid',
+    });
+  });
+
+  it('keeps created bridge runtimePid provisional until local process verification', async () => {
+    const launchOpenCodeTeam = vi.fn(
+      async () =>
+        ({
+          runId: 'run-1',
+          teamLaunchState: 'launching',
+          members: {
+            alice: {
+              sessionId: 'oc-session-1',
+              launchState: 'created',
+              runtimePid: 123,
+              model: 'openai/gpt-5.4-mini',
+              evidence: [],
+            },
+          },
+          warnings: [],
+          diagnostics: [],
+        }) satisfies OpenCodeLaunchTeamCommandData
+    );
+    const adapter = new OpenCodeTeamRuntimeAdapter(
+      bridgePort(readiness({ state: 'ready', launchAllowed: true }), {
+        launchOpenCodeTeam,
+      }),
+      { launchMode: 'dogfood' }
+    );
+
+    const result = await adapter.launch(launchInput());
+
+    expect(result.members.alice).toMatchObject({
+      launchState: 'runtime_pending_bootstrap',
+      agentToolAccepted: true,
+      runtimeAlive: false,
+      livenessKind: 'runtime_process_candidate',
+      runtimePid: 123,
+      runtimeDiagnostic: 'OpenCode runtime pid reported by bridge without local process verification',
+    });
+  });
+
+  it('treats materialized bridge members without session or pid as accepted but not alive', async () => {
+    const launchOpenCodeTeam = vi.fn(
+      async () =>
+        ({
+          runId: 'run-1',
+          teamLaunchState: 'launching',
+          members: {
+            alice: {
+              sessionId: '',
+              launchState: 'created',
+              model: 'openai/gpt-5.4-mini',
+              evidence: [],
+            },
+          },
+          warnings: [],
+          diagnostics: [],
+        }) satisfies OpenCodeLaunchTeamCommandData
+    );
+    const adapter = new OpenCodeTeamRuntimeAdapter(
+      bridgePort(readiness({ state: 'ready', launchAllowed: true }), {
+        launchOpenCodeTeam,
+      }),
+      { launchMode: 'dogfood' }
+    );
+
+    const result = await adapter.launch(launchInput());
+
+    expect(result.members.alice).toMatchObject({
+      launchState: 'runtime_pending_bootstrap',
+      agentToolAccepted: true,
+      runtimeAlive: false,
+      livenessKind: 'runtime_process_candidate',
+      runtimeDiagnostic: 'OpenCode session exists without verified runtime pid',
     });
   });
 

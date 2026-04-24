@@ -1043,6 +1043,8 @@ export interface TeamAgentRuntimeEntry {
   runtimeSessionId?: string;
   runtimeLeaseExpiresAt?: string;
   runtimeLastSeenAt?: string;
+  /** True when a previous/persisted launch confirmed bootstrap, separate from current live liveness. */
+  historicalBootstrapConfirmed?: boolean;
   runtimeDiagnostic?: string;
   runtimeDiagnosticSeverity?: TeamAgentRuntimeDiagnosticSeverity;
   diagnostics?: string[];

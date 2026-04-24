@@ -17,3 +17,4 @@ export type {
   RuntimeProcessTableRow,
   TmuxPaneRuntimeInfo,
 } from './infrastructure/runtime/TmuxPlatformCommandExecutor';
+export { parseRuntimeProcessTable } from './infrastructure/runtime/TmuxPlatformCommandExecutor';

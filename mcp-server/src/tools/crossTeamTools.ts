@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { getController } from '../controller';
 import { jsonTextContent } from '../utils/format';
+import { assertConfiguredTeam } from '../utils/teamConfig';
 
 const toolContextSchema = {
   teamName: z.string().min(1),
@@ -34,8 +35,9 @@ export function registerCrossTeamTools(server: Pick<FastMCP, 'addTool'>) {
       conversationId,
       replyToConversationId,
       chainDepth,
-    }) =>
-      await Promise.resolve(
+    }) => {
+      assertConfiguredTeam(teamName, claudeDir);
+      return await Promise.resolve(
         jsonTextContent(
           getController(teamName, claudeDir).crossTeam.sendCrossTeamMessage({
             toTeam,
@@ -47,7 +49,8 @@ export function registerCrossTeamTools(server: Pick<FastMCP, 'addTool'>) {
             ...(chainDepth !== undefined ? { chainDepth } : {}),
           })
         )
-      ),
+      );
+    },
   });
 
   server.addTool({
@@ -57,14 +60,16 @@ export function registerCrossTeamTools(server: Pick<FastMCP, 'addTool'>) {
       ...toolContextSchema,
       excludeTeam: z.string().optional(),
     }),
-    execute: async ({ teamName, claudeDir, excludeTeam }) =>
-      await Promise.resolve(
+    execute: async ({ teamName, claudeDir, excludeTeam }) => {
+      assertConfiguredTeam(teamName, claudeDir);
+      return await Promise.resolve(
         jsonTextContent(
           getController(teamName, claudeDir).crossTeam.listCrossTeamTargets({
             ...(excludeTeam ? { excludeTeam } : {}),
           })
         )
-      ),
+      );
+    },
   });
 
   server.addTool({
@@ -73,9 +78,11 @@ export function registerCrossTeamTools(server: Pick<FastMCP, 'addTool'>) {
     parameters: z.object({
       ...toolContextSchema,
     }),
-    execute: async ({ teamName, claudeDir }) =>
-      await Promise.resolve(
+    execute: async ({ teamName, claudeDir }) => {
+      assertConfiguredTeam(teamName, claudeDir);
+      return await Promise.resolve(
         jsonTextContent(getController(teamName, claudeDir).crossTeam.getCrossTeamOutbox())
-      ),
+      );
+    },
   });
 }

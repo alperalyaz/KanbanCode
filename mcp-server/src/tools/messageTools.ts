@@ -2,6 +2,7 @@ import type { FastMCP } from 'fastmcp';
 import { z } from 'zod';
 
 import { getController } from '../controller';
+import { assertConfiguredTeam } from '../utils/teamConfig';
 import { jsonTextContent } from '../utils/format';
 
 const toolContextSchema = {
@@ -42,8 +43,9 @@ export function registerMessageTools(server: Pick<FastMCP, 'addTool'>) {
       source,
       leadSessionId,
       attachments,
-    }) =>
-      await Promise.resolve(
+    }) => {
+      assertConfiguredTeam(teamName, claudeDir);
+      return await Promise.resolve(
         jsonTextContent(
           getController(teamName, claudeDir).messages.sendMessage({
           to,
@@ -55,6 +57,7 @@ export function registerMessageTools(server: Pick<FastMCP, 'addTool'>) {
           ...(attachments?.length ? { attachments } : {}),
           })
         )
-      ),
+      );
+    },
   });
 }
