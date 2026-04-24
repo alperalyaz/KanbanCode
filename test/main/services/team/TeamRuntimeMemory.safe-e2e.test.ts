@@ -31,7 +31,9 @@ describe('Team runtime memory safe e2e', () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it('reports RSS for a bootstrap-confirmed Anthropic teammate discovered from the real process table', async () => {
+  const nativeProcessTableIt = process.platform === 'win32' ? it.skip : it;
+
+  nativeProcessTableIt('reports RSS for a bootstrap-confirmed Anthropic teammate discovered from the real process table', async () => {
     const teamName = `anthropic-rss-${process.pid}`;
     const memberName = 'alice';
     const agentId = `${memberName}@${teamName}`;
