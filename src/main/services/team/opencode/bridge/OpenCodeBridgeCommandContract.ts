@@ -122,6 +122,7 @@ export interface OpenCodeCleanupHostsCommandBody {
   mode?: 'stale' | 'force';
   projectPath?: string;
   staleAgeMs?: number | null;
+  leaseStaleAgeMs?: number | null;
 }
 
 export interface OpenCodeCleanupHostsCommandData {

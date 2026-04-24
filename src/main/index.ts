@@ -289,6 +289,7 @@ async function cleanupOpenCodeHostsForLifecycle(reason: 'startup' | 'shutdown'):
     reason,
     mode: reason === 'shutdown' ? 'force' : 'stale',
     staleAgeMs: reason === 'startup' ? 5 * 60_000 : null,
+    leaseStaleAgeMs: reason === 'startup' ? 24 * 60 * 60_000 : null,
   });
   if (result.cleaned > 0) {
     logger.info(
