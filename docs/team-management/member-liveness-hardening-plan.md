@@ -48,7 +48,7 @@
 - Runtime tools принимают `metadata`, но `recordOpenCodeRuntimeBootstrapCheckin()` и `recordOpenCodeRuntimeHeartbeat()` сейчас используют только `diagnostics`. Если runtime присылает PID/version/command в `metadata`, эта информация теряется.
 - `handleMemberSpawnToolResult()` раньше при reason `already_running` делал `setMemberSpawnStatus(..., "online", ..., "process")`. В strict model это заменено на `waiting` + runtime re-evaluation.
 - `waitForTmuxPanesToExit()` использует `listTmuxPanePidsForCurrentPlatform()` только как "pane exists" check. Поэтому старый `listPanePids()` wrapper должен остаться ровно pane-existence helper, а не получить новую liveness-семантику.
-- В проекте есть env-mode precedent: `CLAUDE_TEAM_OPENCODE_LAUNCH_MODE` с `dogfood`/`production`/`disabled`. Для member liveness финальное решение другое: strict model включена по умолчанию без отдельного env-флага.
+- Для member liveness strict model включена по умолчанию без отдельного env-флага.
 - `src/shared/types/api.ts`, `src/preload/index.ts` и `src/renderer/api/httpClient.ts` уже прокидывают `getMemberSpawnStatuses()` и `getTeamAgentRuntime()` через shared snapshot types. Новый контракт можно добавить optional fields без нового IPC channel, но browser HTTP fallback должен возвращать валидный старый shape.
 - `TeamProvisioningService.readUnixProcessTableRows()` сейчас приватный, sync и читает только `pid,command`. Для надежного liveness нужен `ppid`, WSL-aware execution и unit-test seam. Это не должно оставаться приватным ad hoc helper внутри огромного service.
 - `getLiveTeamAgentRuntimeMetadata()` сейчас читает tmux panes и process table внутри одного метода. После strict model там станет слишком много правил, поэтому план должен вынести pure resolution в отдельный helper/module.
@@ -147,14 +147,14 @@ const MEMBER_BOOTSTRAP_STALL_MS = 5 * 60_000;
 
 Актуальное поведение:
 
-| Area                           | Strict-only behavior                     |
-| ------------------------------ | ---------------------------------------- |
-| `livenessKind`                 | always filled when evidence exists       |
-| UI labels                      | enabled                                  |
-| `runtimeAlive` from shell-only | always false                             |
-| `already_running` shortcut     | waits for strong runtime verification    |
-| timeout self-heal              | strong evidence only                     |
-| launchDiagnostics              | enabled for warning/error states         |
+| Area                           | Strict-only behavior                  |
+| ------------------------------ | ------------------------------------- |
+| `livenessKind`                 | always filled when evidence exists    |
+| UI labels                      | enabled                               |
+| `runtimeAlive` from shell-only | always false                          |
+| `already_running` shortcut     | waits for strong runtime verification |
+| timeout self-heal              | strong evidence only                  |
+| launchDiagnostics              | enabled for warning/error states      |
 
 Operational rollback должен быть отдельным code revert или follow-up setting, а не скрытым env-флагом.
 

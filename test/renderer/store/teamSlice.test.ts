@@ -29,6 +29,7 @@ const hoisted = vi.hoisted(() => ({
   permanentlyDeleteTeam: vi.fn(),
   sendMessage: vi.fn(),
   restartMember: vi.fn(),
+  skipMemberForLaunch: vi.fn(),
   requestReview: vi.fn(),
   updateKanban: vi.fn(),
   invalidateTaskChangeSummaries: vi.fn(),
@@ -53,6 +54,7 @@ vi.mock('@renderer/api', () => ({
       permanentlyDeleteTeam: hoisted.permanentlyDeleteTeam,
       sendMessage: hoisted.sendMessage,
       restartMember: hoisted.restartMember,
+      skipMemberForLaunch: hoisted.skipMemberForLaunch,
       requestReview: hoisted.requestReview,
       updateKanban: hoisted.updateKanban,
       onProvisioningProgress: hoisted.onProvisioningProgress,
@@ -233,6 +235,7 @@ describe('teamSlice actions', () => {
     hoisted.restoreTeam.mockResolvedValue(undefined);
     hoisted.permanentlyDeleteTeam.mockResolvedValue(undefined);
     hoisted.restartMember.mockResolvedValue(undefined);
+    hoisted.skipMemberForLaunch.mockResolvedValue(undefined);
   });
 
   it('maps inbox verify failure to user-friendly text', async () => {
@@ -2535,6 +2538,57 @@ describe('teamSlice actions', () => {
 
     expect(refreshSpawnStatuses).toHaveBeenCalledWith('my-team');
     expect(refreshRuntimeSnapshot).toHaveBeenCalledWith('my-team');
+  });
+
+  it('skipMemberForLaunch refreshes spawn statuses, runtime snapshot, and team list', async () => {
+    const store = createSliceStore();
+    const refreshTeams = vi.fn(async () => undefined);
+    store.setState({ fetchTeams: refreshTeams });
+    hoisted.getMemberSpawnStatuses.mockResolvedValue({
+      statuses: {
+        alice: createMemberSpawnStatus({
+          status: 'skipped',
+          launchState: 'skipped_for_launch',
+          skippedForLaunch: true,
+        }),
+      },
+      runId: 'runtime-run',
+    });
+    hoisted.getTeamAgentRuntime.mockResolvedValue(createRuntimeSnapshot());
+
+    await store.getState().skipMemberForLaunch('my-team', 'alice');
+
+    expect(hoisted.skipMemberForLaunch).toHaveBeenCalledWith('my-team', 'alice');
+    expect(store.getState().memberSpawnStatusesByTeam['my-team']).toEqual({
+      alice: expect.objectContaining({
+        status: 'skipped',
+        launchState: 'skipped_for_launch',
+        skippedForLaunch: true,
+      }),
+    });
+    expect(store.getState().teamAgentRuntimeByTeam['my-team']).toEqual(createRuntimeSnapshot());
+    expect(refreshTeams).toHaveBeenCalled();
+  });
+
+  it('skipMemberForLaunch refreshes launch data even when skip fails', async () => {
+    const store = createSliceStore();
+    const refreshSpawnStatuses = vi.fn(async (_teamName: string) => undefined);
+    const refreshRuntimeSnapshot = vi.fn(async (_teamName: string) => undefined);
+    const refreshTeams = vi.fn(async () => undefined);
+    store.setState({
+      fetchMemberSpawnStatuses: refreshSpawnStatuses,
+      fetchTeamAgentRuntime: refreshRuntimeSnapshot,
+      fetchTeams: refreshTeams,
+    });
+    hoisted.skipMemberForLaunch.mockRejectedValueOnce(new Error('skip failed'));
+
+    await expect(store.getState().skipMemberForLaunch('my-team', 'alice')).rejects.toThrow(
+      'skip failed'
+    );
+
+    expect(refreshSpawnStatuses).toHaveBeenCalledWith('my-team');
+    expect(refreshRuntimeSnapshot).toHaveBeenCalledWith('my-team');
+    expect(refreshTeams).toHaveBeenCalled();
   });
 
   it('clears stale runtime snapshots on delete', async () => {

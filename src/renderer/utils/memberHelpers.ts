@@ -119,6 +119,7 @@ export const SPAWN_DOT_COLORS: Record<MemberSpawnStatus, string> = {
   spawning: 'bg-amber-400',
   online: 'bg-emerald-400 animate-[dot-online-jelly_0.45s_ease-out]',
   error: 'bg-red-400',
+  skipped: 'bg-zinc-500',
 };
 
 export const SPAWN_PRESENCE_LABELS: Record<MemberSpawnStatus, string> = {
@@ -127,6 +128,7 @@ export const SPAWN_PRESENCE_LABELS: Record<MemberSpawnStatus, string> = {
   spawning: 'starting',
   online: 'ready',
   error: 'spawn failed',
+  skipped: 'skipped',
 };
 
 function isLaunchStillStarting(
@@ -136,6 +138,9 @@ function isLaunchStillStarting(
   keepRuntimePendingInStarting = false
 ): boolean {
   if (spawnLaunchState === 'failed_to_start') {
+    return false;
+  }
+  if (spawnLaunchState === 'skipped_for_launch') {
     return false;
   }
   if (spawnLaunchState === 'runtime_pending_permission') {
@@ -170,6 +175,9 @@ export function getSpawnAwareDotClass(
   }
   if (spawnLaunchState === 'failed_to_start' || spawnStatus === 'error') {
     return SPAWN_DOT_COLORS.error;
+  }
+  if (spawnLaunchState === 'skipped_for_launch' || spawnStatus === 'skipped') {
+    return SPAWN_DOT_COLORS.skipped;
   }
   if (spawnLaunchState === 'runtime_pending_permission') {
     return 'bg-amber-400 animate-pulse';
@@ -218,6 +226,9 @@ export function getSpawnAwarePresenceLabel(
   if (spawnLaunchState === 'failed_to_start' || spawnStatus === 'error') {
     return SPAWN_PRESENCE_LABELS.error;
   }
+  if (spawnLaunchState === 'skipped_for_launch' || spawnStatus === 'skipped') {
+    return SPAWN_PRESENCE_LABELS.skipped;
+  }
   if (spawnLaunchState === 'runtime_pending_permission') {
     return 'connecting';
   }
@@ -258,6 +269,9 @@ export function getSpawnCardClass(
     isLaunchStillStarting(spawnStatus, spawnLaunchState, runtimeAlive, keepLaunchSettlingVisuals)
   ) {
     return 'member-waiting-shimmer';
+  }
+  if (spawnLaunchState === 'skipped_for_launch' || spawnStatus === 'skipped') {
+    return 'opacity-70';
   }
   if (spawnLaunchState === 'runtime_pending_permission') {
     return 'member-waiting-shimmer';
@@ -518,6 +532,7 @@ export function getLaunchAwarePresenceLabel(
     basePresenceLabel === 'starting' ||
     basePresenceLabel === 'connecting' ||
     basePresenceLabel === 'spawn failed' ||
+    basePresenceLabel === 'skipped' ||
     basePresenceLabel === 'offline' ||
     basePresenceLabel === 'terminated'
   ) {
@@ -538,6 +553,7 @@ export type MemberLaunchVisualState =
   | 'stale_runtime'
   | 'settling'
   | 'error'
+  | 'skipped'
   | null;
 
 export interface MemberLaunchPresentation {
@@ -574,6 +590,8 @@ export function getMemberLaunchStatusLabel(visualState: MemberLaunchVisualState)
       return 'joining team';
     case 'error':
       return 'failed';
+    case 'skipped':
+      return 'skipped';
     default:
       return null;
   }
@@ -643,6 +661,8 @@ export function buildMemberLaunchPresentation({
   if (isTeamAlive !== false || isTeamProvisioning) {
     if (spawnLaunchState === 'failed_to_start' || spawnStatus === 'error') {
       launchVisualState = 'error';
+    } else if (spawnLaunchState === 'skipped_for_launch' || spawnStatus === 'skipped') {
+      launchVisualState = 'skipped';
     } else if (spawnLaunchState === 'runtime_pending_permission') {
       launchVisualState = 'permission_pending';
     } else if (runtimeEntry?.livenessKind === 'shell_only') {

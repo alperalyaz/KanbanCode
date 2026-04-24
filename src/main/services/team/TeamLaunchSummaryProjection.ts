@@ -13,11 +13,13 @@ export interface LaunchStateSummary {
   expectedMemberCount?: number;
   confirmedMemberCount?: number;
   missingMembers?: string[];
+  skippedMembers?: string[];
   teamLaunchState?: TeamSummary['teamLaunchState'];
   launchUpdatedAt?: string;
   confirmedCount?: number;
   pendingCount?: number;
   failedCount?: number;
+  skippedCount?: number;
   runtimeAlivePendingCount?: number;
   shellOnlyPendingCount?: number;
   runtimeProcessPendingCount?: number;
@@ -60,6 +62,10 @@ export function createLaunchStateSummary(
     const member = snapshot.members[name];
     return member?.launchState === 'failed_to_start';
   });
+  const skippedMembers = persistedMemberNames.filter((name) => {
+    const member = snapshot.members[name];
+    return member?.launchState === 'skipped_for_launch' || member?.skippedForLaunch === true;
+  });
 
   return {
     ...(snapshot.teamLaunchState === 'partial_failure'
@@ -72,11 +78,13 @@ export function createLaunchStateSummary(
       ? { confirmedMemberCount: snapshot.summary.confirmedCount }
       : {}),
     ...(missingMembers.length > 0 ? { missingMembers } : {}),
+    ...(skippedMembers.length > 0 ? { skippedMembers } : {}),
     teamLaunchState: snapshot.teamLaunchState,
     launchUpdatedAt: snapshot.updatedAt,
     confirmedCount: snapshot.summary.confirmedCount,
     pendingCount: snapshot.summary.pendingCount,
     failedCount: snapshot.summary.failedCount,
+    skippedCount: snapshot.summary.skippedCount,
     runtimeAlivePendingCount: snapshot.summary.runtimeAlivePendingCount,
     shellOnlyPendingCount: snapshot.summary.shellOnlyPendingCount,
     runtimeProcessPendingCount: snapshot.summary.runtimeProcessPendingCount,
@@ -138,8 +146,17 @@ export function normalizePersistedLaunchSummaryProjection(
       normalized.missingMembers = missingMembers;
     }
   }
+  if (Array.isArray(record.skippedMembers)) {
+    const skippedMembers = record.skippedMembers.filter(
+      (member): member is string => typeof member === 'string' && member.trim().length > 0
+    );
+    if (skippedMembers.length > 0) {
+      normalized.skippedMembers = skippedMembers;
+    }
+  }
   if (
     record.teamLaunchState === 'partial_failure' ||
+    record.teamLaunchState === 'partial_skipped' ||
     record.teamLaunchState === 'partial_pending' ||
     record.teamLaunchState === 'clean_success'
   ) {
@@ -153,6 +170,9 @@ export function normalizePersistedLaunchSummaryProjection(
   }
   if (typeof record.failedCount === 'number' && record.failedCount >= 0) {
     normalized.failedCount = record.failedCount;
+  }
+  if (typeof record.skippedCount === 'number' && record.skippedCount >= 0) {
+    normalized.skippedCount = record.skippedCount;
   }
   if (typeof record.runtimeAlivePendingCount === 'number' && record.runtimeAlivePendingCount >= 0) {
     normalized.runtimeAlivePendingCount = record.runtimeAlivePendingCount;

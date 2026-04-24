@@ -27,6 +27,7 @@ export interface LaunchJoinMilestones {
   processOnlyAliveCount: number;
   pendingSpawnCount: number;
   failedSpawnCount: number;
+  skippedSpawnCount: number;
 }
 
 type DisplayStepMilestones = LaunchJoinMilestones & {
@@ -106,6 +107,7 @@ function summarizeLiveLaunchJoinMilestones(params: {
   let processOnlyAliveCount = 0;
   let pendingSpawnCount = 0;
   let failedSpawnCount = 0;
+  let skippedSpawnCount = 0;
   let observedTeammateCount = 0;
 
   for (const memberName of teammateNames) {
@@ -125,6 +127,10 @@ function summarizeLiveLaunchJoinMilestones(params: {
     observedTeammateCount += 1;
     if (entry.launchState === 'failed_to_start') {
       failedSpawnCount += 1;
+      continue;
+    }
+    if (entry.launchState === 'skipped_for_launch' || entry.skippedForLaunch === true) {
+      skippedSpawnCount += 1;
       continue;
     }
     if (entry.launchState === 'confirmed_alive') {
@@ -153,6 +159,7 @@ function summarizeLiveLaunchJoinMilestones(params: {
     processOnlyAliveCount,
     pendingSpawnCount,
     failedSpawnCount,
+    skippedSpawnCount,
     observedTeammateCount,
   };
 }
@@ -208,19 +215,23 @@ export function getLaunchJoinMilestonesFromMembers({
       processOnlyAliveCount: snapshotProcessOnlyAliveCount,
       pendingSpawnCount: Math.max(0, snapshotSummary.pendingCount - snapshotProcessOnlyAliveCount),
       failedSpawnCount: snapshotSummary.failedCount,
+      skippedSpawnCount: snapshotSummary.skippedCount ?? 0,
     };
 
     const snapshotAccountedFor =
       snapshotMilestones.heartbeatConfirmedCount +
       snapshotMilestones.processOnlyAliveCount +
-      snapshotMilestones.failedSpawnCount;
+      snapshotMilestones.failedSpawnCount +
+      snapshotMilestones.skippedSpawnCount;
     const liveAccountedFor =
       liveSummary.heartbeatConfirmedCount +
       liveSummary.processOnlyAliveCount +
-      liveSummary.failedSpawnCount;
+      liveSummary.failedSpawnCount +
+      liveSummary.skippedSpawnCount;
 
     const liveSummaryIsMoreAdvanced =
       liveSummary.failedSpawnCount > snapshotMilestones.failedSpawnCount ||
+      liveSummary.skippedSpawnCount > snapshotMilestones.skippedSpawnCount ||
       liveSummary.heartbeatConfirmedCount > snapshotMilestones.heartbeatConfirmedCount ||
       liveSummary.processOnlyAliveCount > snapshotMilestones.processOnlyAliveCount ||
       (snapshotMilestones.failedSpawnCount === 0 &&
@@ -248,6 +259,7 @@ export function getLaunchJoinState({
   processOnlyAliveCount,
   pendingSpawnCount,
   failedSpawnCount,
+  skippedSpawnCount,
 }: LaunchJoinMilestones): {
   allTeammatesConfirmedAlive: boolean;
   hasMembersStillJoining: boolean;
@@ -256,14 +268,16 @@ export function getLaunchJoinState({
   const allTeammatesConfirmedAlive =
     expectedTeammateCount > 0 &&
     failedSpawnCount === 0 &&
+    skippedSpawnCount === 0 &&
     heartbeatConfirmedCount >= expectedTeammateCount;
   const remainingJoinCount =
-    expectedTeammateCount > 0 && failedSpawnCount === 0
+    expectedTeammateCount > 0 && failedSpawnCount === 0 && skippedSpawnCount === 0
       ? Math.max(0, expectedTeammateCount - heartbeatConfirmedCount)
       : 0;
   const hasMembersStillJoining =
     expectedTeammateCount > 0 &&
     failedSpawnCount === 0 &&
+    skippedSpawnCount === 0 &&
     remainingJoinCount > 0 &&
     (processOnlyAliveCount > 0 || pendingSpawnCount > 0);
 
@@ -295,6 +309,7 @@ export function getDisplayStepIndex({
   processOnlyAliveCount,
   pendingSpawnCount,
   failedSpawnCount,
+  skippedSpawnCount,
 }: DisplayStepMilestones): number {
   switch (progress.state) {
     case 'ready':
@@ -322,8 +337,12 @@ export function getDisplayStepIndex({
   if (failedSpawnCount > 0) {
     return 2;
   }
+  if (skippedSpawnCount > 0) {
+    return 2;
+  }
 
-  const accountedForTeammates = heartbeatConfirmedCount + processOnlyAliveCount + failedSpawnCount;
+  const accountedForTeammates =
+    heartbeatConfirmedCount + processOnlyAliveCount + failedSpawnCount + skippedSpawnCount;
 
   if (pendingSpawnCount > 0 || accountedForTeammates < expectedTeammateCount) {
     return 2;

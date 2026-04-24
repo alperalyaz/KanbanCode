@@ -73,6 +73,8 @@ export interface TeamSummary {
   confirmedMemberCount?: number;
   /** Missing teammate names from the last partial launch marker. */
   missingMembers?: string[];
+  /** Teammates intentionally skipped for the last launch. */
+  skippedMembers?: string[];
   /** Durable aggregate launch state derived from persisted launch-state evidence. */
   teamLaunchState?: TeamLaunchAggregateState;
   /** ISO timestamp of the last durable launch-state evaluation. */
@@ -81,6 +83,7 @@ export interface TeamSummary {
   confirmedCount?: number;
   pendingCount?: number;
   failedCount?: number;
+  skippedCount?: number;
   runtimeAlivePendingCount?: number;
   shellOnlyPendingCount?: number;
   runtimeProcessPendingCount?: number;
@@ -683,14 +686,19 @@ export interface AddTaskCommentRequest {
 
 export type MemberStatus = 'active' | 'idle' | 'terminated' | 'unknown';
 
-export type MemberSpawnStatus = 'offline' | 'waiting' | 'spawning' | 'online' | 'error';
+export type MemberSpawnStatus = 'offline' | 'waiting' | 'spawning' | 'online' | 'error' | 'skipped';
 export type MemberLaunchState =
   | 'starting'
   | 'runtime_pending_bootstrap'
   | 'runtime_pending_permission'
   | 'confirmed_alive'
-  | 'failed_to_start';
-export type TeamLaunchAggregateState = 'clean_success' | 'partial_pending' | 'partial_failure';
+  | 'failed_to_start'
+  | 'skipped_for_launch';
+export type TeamLaunchAggregateState =
+  | 'clean_success'
+  | 'partial_pending'
+  | 'partial_failure'
+  | 'partial_skipped';
 export type PersistedTeamLaunchPhase = 'active' | 'finished' | 'reconciled';
 
 export type KanbanColumnId = 'todo' | 'in_progress' | 'done' | 'review' | 'approved';
@@ -939,6 +947,9 @@ export interface PersistedTeamLaunchMemberState {
   laneOwnerProviderId?: TeamProviderId;
   launchIdentity?: ProviderModelLaunchIdentity;
   launchState: MemberLaunchState;
+  skippedForLaunch?: boolean;
+  skipReason?: string;
+  skippedAt?: string;
   agentToolAccepted: boolean;
   runtimeAlive: boolean;
   bootstrapConfirmed: boolean;
@@ -964,6 +975,7 @@ export interface PersistedTeamLaunchSummary {
   confirmedCount: number;
   pendingCount: number;
   failedCount: number;
+  skippedCount?: number;
   runtimeAlivePendingCount: number;
   shellOnlyPendingCount?: number;
   runtimeProcessPendingCount?: number;
@@ -1092,6 +1104,10 @@ export interface MemberSpawnStatusEntry {
   error?: string;
   /** Hard failure reason for failed_to_start. */
   hardFailureReason?: string;
+  /** True when the user intentionally skipped this teammate for the current launch only. */
+  skippedForLaunch?: boolean;
+  skipReason?: string;
+  skippedAt?: string;
   /**
    * Optional provenance for `online`.
    * - heartbeat: teammate sent a real inbox/native message after bootstrap

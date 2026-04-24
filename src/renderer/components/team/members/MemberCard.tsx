@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 import { Badge } from '@renderer/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
@@ -20,7 +20,16 @@ import {
 } from '@renderer/utils/memberLaunchDiagnostics';
 import { getRuntimeMemorySourceLabel } from '@renderer/utils/memberRuntimeSummary';
 import { deriveTaskDisplayId } from '@shared/utils/taskIdentity';
-import { AlertTriangle, GitBranch, Loader2, MessageSquare, Plus } from 'lucide-react';
+import { isLeadMember } from '@shared/utils/leadDetection';
+import {
+  AlertTriangle,
+  Ban,
+  GitBranch,
+  Loader2,
+  MessageSquare,
+  Plus,
+  RotateCcw,
+} from 'lucide-react';
 
 import { CurrentTaskIndicator } from './CurrentTaskIndicator';
 import { MemberLaunchDiagnosticsButton } from './MemberLaunchDiagnosticsButton';
@@ -63,6 +72,8 @@ interface MemberCardProps {
   onClick?: () => void;
   onSendMessage?: () => void;
   onAssignTask?: () => void;
+  onRestartMember?: (memberName: string) => Promise<void> | void;
+  onSkipMemberForLaunch?: (memberName: string) => Promise<void> | void;
 }
 
 function splitRuntimeSummaryMemory(runtimeSummary: string | undefined): {
@@ -111,6 +122,8 @@ export const MemberCard = ({
   onClick,
   onSendMessage,
   onAssignTask,
+  onRestartMember,
+  onSkipMemberForLaunch,
 }: MemberCardProps): React.JSX.Element => {
   // NOTE: lead context display disabled — usage formula is inaccurate
   // const teamName = useStore((s) => s.selectedTeamName);
@@ -118,6 +131,10 @@ export const MemberCard = ({
   //   member.agentType === 'team-lead' && teamName ? s.leadContextByTeam[teamName] : undefined
   // );
   const selectedTeamName = useStore((s) => s.selectedTeamName);
+  const [retryingLaunch, setRetryingLaunch] = useState(false);
+  const [retryLaunchError, setRetryLaunchError] = useState<string | null>(null);
+  const [skippingLaunch, setSkippingLaunch] = useState(false);
+  const [skipLaunchError, setSkipLaunchError] = useState<string | null>(null);
   const teamMembers = useStore((s) =>
     selectedTeamName ? selectResolvedMembersForTeamName(s, selectedTeamName) : []
   );
@@ -214,12 +231,68 @@ export const MemberCard = ({
     !isRemoved &&
     hasMemberLaunchDiagnosticsError(launchDiagnosticsPayload) &&
     hasMemberLaunchDiagnosticsDetails(launchDiagnosticsPayload);
+  const isFailedLaunch = spawnStatus === 'error' || spawnLaunchState === 'failed_to_start';
+  const isSkippedLaunch =
+    spawnStatus === 'skipped' ||
+    spawnLaunchState === 'skipped_for_launch' ||
+    spawnEntry?.skippedForLaunch === true;
+  const showFailedLaunchBadge = !isRemoved && isFailedLaunch;
+  const showSkippedLaunchBadge = !isRemoved && isSkippedLaunch;
+  const hasLiveLaunchControls =
+    isTeamAlive === true || isTeamProvisioning === true || isLaunchSettling === true;
+  const canRetryLaunch =
+    (showFailedLaunchBadge || showSkippedLaunchBadge) &&
+    !isLeadMember(member) &&
+    Boolean(onRestartMember) &&
+    hasLiveLaunchControls;
+  const canSkipFailedLaunch =
+    showFailedLaunchBadge &&
+    !isLeadMember(member) &&
+    Boolean(onSkipMemberForLaunch) &&
+    hasLiveLaunchControls;
   const showRuntimeAdvisoryBadge =
     !isRemoved &&
     Boolean(runtimeAdvisoryLabel) &&
     !showLaunchBadge &&
-    spawnStatus !== 'error' &&
+    !isFailedLaunch &&
+    !isSkippedLaunch &&
     (Boolean(activityTask) || !isAwaitingReply);
+  const handleRetryFailedLaunch = async (
+    event: React.MouseEvent<HTMLButtonElement>
+  ): Promise<void> => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!onRestartMember || retryingLaunch) {
+      return;
+    }
+    setRetryLaunchError(null);
+    setRetryingLaunch(true);
+    try {
+      await onRestartMember(member.name);
+    } catch (error) {
+      setRetryLaunchError(error instanceof Error ? error.message : 'Failed to retry teammate');
+    } finally {
+      setRetryingLaunch(false);
+    }
+  };
+  const handleSkipFailedLaunch = async (
+    event: React.MouseEvent<HTMLButtonElement>
+  ): Promise<void> => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!onSkipMemberForLaunch || skippingLaunch) {
+      return;
+    }
+    setSkipLaunchError(null);
+    setSkippingLaunch(true);
+    try {
+      await onSkipMemberForLaunch(member.name);
+    } catch (error) {
+      setSkipLaunchError(error instanceof Error ? error.message : 'Failed to skip teammate');
+    } finally {
+      setSkippingLaunch(false);
+    }
+  };
 
   return (
     <div
@@ -360,7 +433,7 @@ export const MemberCard = ({
                 {launchBadgeLabel}
               </Badge>
             </span>
-          ) : spawnStatus === 'error' ? (
+          ) : showFailedLaunchBadge ? (
             <span className="flex shrink-0 items-center gap-1">
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -381,6 +454,94 @@ export const MemberCard = ({
                   payload={launchDiagnosticsPayload}
                   className="size-auto rounded p-1 text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200"
                 />
+              ) : null}
+              {canSkipFailedLaunch ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={skippingLaunch ? 'Skipping teammate' : 'Skip for this launch'}
+                      className="rounded p-1 text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={skippingLaunch || retryingLaunch}
+                      onClick={handleSkipFailedLaunch}
+                    >
+                      {skippingLaunch ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Ban className="size-3.5" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {skipLaunchError ??
+                      (skippingLaunch ? 'Skipping teammate...' : 'Skip for this launch')}
+                  </TooltipContent>
+                </Tooltip>
+              ) : null}
+              {canRetryLaunch ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={retryingLaunch ? 'Retrying teammate' : 'Retry teammate'}
+                      className="rounded p-1 text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={retryingLaunch || skippingLaunch}
+                      onClick={handleRetryFailedLaunch}
+                    >
+                      {retryingLaunch ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <RotateCcw className="size-3.5" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {retryLaunchError ??
+                      (retryingLaunch ? 'Retrying teammate...' : 'Retry teammate')}
+                  </TooltipContent>
+                </Tooltip>
+              ) : null}
+            </span>
+          ) : showSkippedLaunchBadge ? (
+            <span className="flex shrink-0 items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="flex shrink-0 items-center gap-1">
+                    <Ban className="size-3.5 shrink-0 text-zinc-400" />
+                    <Badge
+                      variant="secondary"
+                      className="shrink-0 bg-zinc-500/15 px-1.5 py-0.5 text-[10px] font-normal leading-none text-zinc-300"
+                    >
+                      {displayPresenceLabel}
+                    </Badge>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {spawnEntry?.skipReason ?? 'Skipped for this launch'}
+                </TooltipContent>
+              </Tooltip>
+              {canRetryLaunch ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={retryingLaunch ? 'Retrying teammate' : 'Retry teammate'}
+                      className="rounded p-1 text-zinc-300 transition-colors hover:bg-zinc-500/10 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={retryingLaunch}
+                      onClick={handleRetryFailedLaunch}
+                    >
+                      {retryingLaunch ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <RotateCcw className="size-3.5" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {retryLaunchError ??
+                      (retryingLaunch ? 'Retrying teammate...' : 'Retry teammate')}
+                  </TooltipContent>
+                </Tooltip>
               ) : null}
             </span>
           ) : showRuntimeAdvisoryBadge ? (

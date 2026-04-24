@@ -32,6 +32,11 @@ interface FailedSpawnDetail {
   reason: string | null;
 }
 
+interface SkippedSpawnDetail {
+  name: string;
+  reason: string | null;
+}
+
 type PendingDiagnosticBucket =
   | 'shellOnly'
   | 'runtimeProcess'
@@ -53,6 +58,10 @@ function parseStatusUpdatedAtMs(value: string | undefined): number | null {
 
 function isFailedSpawnEntry(entry: MemberSpawnStatusEntry | undefined): boolean {
   return entry?.launchState === 'failed_to_start' || entry?.status === 'error';
+}
+
+function isSkippedSpawnEntry(entry: MemberSpawnStatusEntry | undefined): boolean {
+  return entry?.launchState === 'skipped_for_launch' || entry?.skippedForLaunch === true;
 }
 
 function shouldPreferSnapshotEntryOverLive(params: {
@@ -181,7 +190,12 @@ function getPendingDiagnosticNameGroups(params: {
       snapshotEntry,
       snapshotUpdatedAt: params.memberSpawnSnapshotUpdatedAt,
     });
-    if (!entry || entry.launchState === 'confirmed_alive' || isFailedSpawnEntry(entry)) {
+    if (
+      !entry ||
+      entry.launchState === 'confirmed_alive' ||
+      isFailedSpawnEntry(entry) ||
+      isSkippedSpawnEntry(entry)
+    ) {
       continue;
     }
     if (
@@ -326,6 +340,56 @@ function getFailedSpawnDetails(params: {
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
+function getSkippedSpawnDetails(params: {
+  memberSpawnStatuses: MemberSpawnStatusCollection;
+  memberSpawnSnapshotStatuses?: MemberSpawnStatusesSnapshot['statuses'];
+  memberSpawnSnapshotUpdatedAt?: string;
+}): SkippedSpawnDetail[] {
+  const names = new Set<string>();
+  if (params.memberSpawnStatuses instanceof Map) {
+    for (const name of params.memberSpawnStatuses.keys()) {
+      names.add(name);
+    }
+  } else if (params.memberSpawnStatuses) {
+    for (const name of Object.keys(params.memberSpawnStatuses)) {
+      names.add(name);
+    }
+  }
+  for (const name of Object.keys(params.memberSpawnSnapshotStatuses ?? {})) {
+    names.add(name);
+  }
+
+  if (names.size === 0) {
+    return [];
+  }
+
+  return [...names]
+    .map((name) => {
+      const liveEntry =
+        params.memberSpawnStatuses instanceof Map
+          ? params.memberSpawnStatuses.get(name)
+          : params.memberSpawnStatuses?.[name];
+      const snapshotEntry = params.memberSpawnSnapshotStatuses?.[name];
+      return [
+        name,
+        getPreferredSpawnEntry({
+          liveEntry,
+          snapshotEntry,
+          snapshotUpdatedAt: params.memberSpawnSnapshotUpdatedAt,
+        }),
+      ] as const;
+    })
+    .filter(([, entry]) => isSkippedSpawnEntry(entry))
+    .map(([name, entry]) => ({
+      name,
+      reason:
+        typeof entry?.skipReason === 'string' && entry.skipReason.trim().length > 0
+          ? entry.skipReason.trim()
+          : null,
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
 function truncateFailureReason(reason: string, maxLength = 160): string {
   const normalized = reason.replace(/\s+/g, ' ').trim();
   if (normalized.length <= maxLength) {
@@ -381,6 +445,42 @@ function buildGenericFailedSpawnPanelMessage(
   return `${failedSpawnCount}/${Math.max(expectedTeammateCount, failedSpawnCount)} teammates failed to start`;
 }
 
+function buildSkippedSpawnPanelMessage(
+  skippedSpawnDetails: readonly SkippedSpawnDetail[]
+): string | null {
+  if (skippedSpawnDetails.length === 0) {
+    return null;
+  }
+  if (skippedSpawnDetails.length === 1) {
+    const [skipped] = skippedSpawnDetails;
+    return skipped.reason
+      ? `${skipped.name} skipped for this launch - ${truncateFailureReason(skipped.reason, 220)}`
+      : `${skipped.name} skipped for this launch`;
+  }
+  const listedSkipped = skippedSpawnDetails
+    .slice(0, 3)
+    .map((skipped) =>
+      skipped.reason
+        ? `${skipped.name} - ${truncateFailureReason(skipped.reason, 100)}`
+        : skipped.name
+    )
+    .join('; ');
+  const remainingCount = skippedSpawnDetails.length - Math.min(skippedSpawnDetails.length, 3);
+  return `Skipped teammates: ${listedSkipped}${remainingCount > 0 ? `; +${remainingCount} more` : ''}`;
+}
+
+function buildSkippedSpawnCompactDetail(
+  skippedSpawnDetails: readonly SkippedSpawnDetail[]
+): string | null {
+  if (skippedSpawnDetails.length === 0) {
+    return null;
+  }
+  if (skippedSpawnDetails.length === 1) {
+    return `${skippedSpawnDetails[0].name} skipped`;
+  }
+  return `${skippedSpawnDetails.length} teammates skipped`;
+}
+
 export interface TeamProvisioningPresentation {
   progress: TeamProvisioningProgress;
   isActive: boolean;
@@ -393,6 +493,7 @@ export interface TeamProvisioningPresentation {
   processOnlyAliveCount: number;
   pendingSpawnCount: number;
   failedSpawnCount: number;
+  skippedSpawnCount: number;
   allTeammatesConfirmedAlive: boolean;
   hasMembersStillJoining: boolean;
   remainingJoinCount: number;
@@ -454,6 +555,7 @@ export function buildTeamProvisioningPresentation({
     processOnlyAliveCount,
     pendingSpawnCount,
     failedSpawnCount,
+    skippedSpawnCount,
   } = getLaunchJoinMilestonesFromMembers({
     members,
     memberSpawnStatuses,
@@ -470,6 +572,13 @@ export function buildTeamProvisioningPresentation({
     failedSpawnCount,
     expectedTeammateCount
   );
+  const skippedSpawnDetails = getSkippedSpawnDetails({
+    memberSpawnStatuses,
+    memberSpawnSnapshotStatuses: memberSpawnSnapshot?.statuses,
+    memberSpawnSnapshotUpdatedAt: memberSpawnSnapshot?.updatedAt,
+  });
+  const skippedSpawnPanelMessage = buildSkippedSpawnPanelMessage(skippedSpawnDetails);
+  const skippedSpawnCompactDetail = buildSkippedSpawnCompactDetail(skippedSpawnDetails);
   const permissionBlockedCount = countPermissionBlockedMembers({
     memberSpawnStatuses,
     memberSpawnSnapshotStatuses: memberSpawnSnapshot?.statuses,
@@ -483,6 +592,7 @@ export function buildTeamProvisioningPresentation({
       processOnlyAliveCount,
       pendingSpawnCount,
       failedSpawnCount,
+      skippedSpawnCount,
     });
 
   const progressStepIndex = getDisplayStepIndex({
@@ -492,6 +602,7 @@ export function buildTeamProvisioningPresentation({
     processOnlyAliveCount,
     pendingSpawnCount,
     failedSpawnCount,
+    skippedSpawnCount,
   });
 
   if (isFailed) {
@@ -507,6 +618,7 @@ export function buildTeamProvisioningPresentation({
       processOnlyAliveCount,
       pendingSpawnCount,
       failedSpawnCount,
+      skippedSpawnCount,
       allTeammatesConfirmedAlive,
       hasMembersStillJoining,
       remainingJoinCount,
@@ -542,31 +654,43 @@ export function buildTeamProvisioningPresentation({
       failedSpawnCount > 0
         ? (failedSpawnCompactDetail ??
           `${failedSpawnCount} teammate${failedSpawnCount === 1 ? '' : 's'} failed to start`)
-        : hasMembersStillJoining
-          ? pendingDetailPhrase
-          : expectedTeammateCount === 0
-            ? 'Lead online'
-            : `All ${expectedTeammateCount} teammates joined`;
+        : skippedSpawnCount > 0
+          ? (skippedSpawnCompactDetail ??
+            `${skippedSpawnCount} teammate${skippedSpawnCount === 1 ? '' : 's'} skipped`)
+          : hasMembersStillJoining
+            ? pendingDetailPhrase
+            : expectedTeammateCount === 0
+              ? 'Lead online'
+              : `All ${expectedTeammateCount} teammates joined`;
     const readyDetailMessage =
       failedSpawnCount > 0
         ? (failedSpawnPanelMessage ?? genericFailedSpawnPanelMessage ?? progress.message)
-        : expectedTeammateCount === 0
-          ? 'Team provisioned - lead online'
-          : allTeammatesConfirmedAlive
-            ? `Team provisioned - all ${expectedTeammateCount} teammates joined`
-            : hasMembersStillJoining
-              ? pendingDetailPhrase
-              : 'Team provisioned - teammates are still joining';
+        : skippedSpawnCount > 0
+          ? (skippedSpawnPanelMessage ??
+            `${skippedSpawnCount}/${Math.max(expectedTeammateCount, skippedSpawnCount)} teammates skipped for this launch`)
+          : expectedTeammateCount === 0
+            ? 'Team provisioned - lead online'
+            : allTeammatesConfirmedAlive
+              ? `Team provisioned - all ${expectedTeammateCount} teammates joined`
+              : hasMembersStillJoining
+                ? pendingDetailPhrase
+                : 'Team provisioned - teammates are still joining';
     const readyDetailSeverity =
-      failedSpawnCount > 0 ? 'warning' : hasMembersStillJoining ? 'info' : undefined;
+      failedSpawnCount > 0 || skippedSpawnCount > 0
+        ? 'warning'
+        : hasMembersStillJoining
+          ? 'info'
+          : undefined;
     const readyMessage =
       failedSpawnCount > 0
         ? `Launch finished with errors - ${failedSpawnCount}/${Math.max(expectedTeammateCount, failedSpawnCount)} teammates failed to start`
-        : expectedTeammateCount === 0
-          ? 'Team launched - lead online'
-          : allTeammatesConfirmedAlive
-            ? `Team launched - all ${expectedTeammateCount} teammates joined`
-            : 'Finishing launch';
+        : skippedSpawnCount > 0
+          ? `Launch continued - ${skippedSpawnCount}/${Math.max(expectedTeammateCount, skippedSpawnCount)} teammates skipped`
+          : expectedTeammateCount === 0
+            ? 'Team launched - lead online'
+            : allTeammatesConfirmedAlive
+              ? `Team launched - all ${expectedTeammateCount} teammates joined`
+              : 'Finishing launch';
 
     return {
       progress,
@@ -579,27 +703,45 @@ export function buildTeamProvisioningPresentation({
       processOnlyAliveCount,
       pendingSpawnCount,
       failedSpawnCount,
+      skippedSpawnCount,
       allTeammatesConfirmedAlive,
       hasMembersStillJoining,
       remainingJoinCount,
       panelTitle: 'Launch details',
-      panelMessage: failedSpawnCount > 0 || hasMembersStillJoining ? readyDetailMessage : null,
+      panelMessage:
+        failedSpawnCount > 0 || skippedSpawnCount > 0 || hasMembersStillJoining
+          ? readyDetailMessage
+          : null,
       panelMessageSeverity: readyDetailSeverity,
       successMessage: readyMessage,
       successMessageSeverity:
-        failedSpawnCount > 0 ? 'warning' : hasMembersStillJoining ? 'info' : 'success',
+        failedSpawnCount > 0 || skippedSpawnCount > 0
+          ? 'warning'
+          : hasMembersStillJoining
+            ? 'info'
+            : 'success',
       defaultLiveOutputOpen: false,
       compactTitle:
         failedSpawnCount > 0
           ? 'Launch finished with errors'
-          : hasMembersStillJoining
-            ? 'Finishing launch'
-            : 'Team launched',
+          : skippedSpawnCount > 0
+            ? 'Launch continued with skipped teammates'
+            : hasMembersStillJoining
+              ? 'Finishing launch'
+              : 'Team launched',
       compactDetail: readyCompactDetail,
       compactTone:
-        failedSpawnCount > 0 ? 'warning' : hasMembersStillJoining ? 'default' : 'success',
+        failedSpawnCount > 0 || skippedSpawnCount > 0
+          ? 'warning'
+          : hasMembersStillJoining
+            ? 'default'
+            : 'success',
       currentStepIndex:
-        failedSpawnCount > 0 ? 2 : hasMembersStillJoining ? 2 : DISPLAY_COMPLETE_STEP_INDEX,
+        failedSpawnCount > 0 || skippedSpawnCount > 0
+          ? 2
+          : hasMembersStillJoining
+            ? 2
+            : DISPLAY_COMPLETE_STEP_INDEX,
     };
   }
 
@@ -633,6 +775,7 @@ export function buildTeamProvisioningPresentation({
       processOnlyAliveCount,
       pendingSpawnCount,
       failedSpawnCount,
+      skippedSpawnCount,
       allTeammatesConfirmedAlive,
       hasMembersStillJoining,
       remainingJoinCount,
@@ -640,26 +783,33 @@ export function buildTeamProvisioningPresentation({
       panelMessage:
         failedSpawnCount > 0
           ? (failedSpawnPanelMessage ?? genericFailedSpawnPanelMessage ?? progress.message)
-          : hasMembersStillJoining &&
-              permissionBlockedCount > 0 &&
-              permissionBlockedCount === remainingJoinCount
-            ? activePendingDetailPhrase
-            : progress.message,
-      panelMessageSeverity: failedSpawnCount > 0 ? 'warning' : progress.messageSeverity,
+          : skippedSpawnCount > 0
+            ? (skippedSpawnPanelMessage ??
+              `${skippedSpawnCount}/${Math.max(expectedTeammateCount, skippedSpawnCount)} teammates skipped for this launch`)
+            : hasMembersStillJoining &&
+                permissionBlockedCount > 0 &&
+                permissionBlockedCount === remainingJoinCount
+              ? activePendingDetailPhrase
+              : progress.message,
+      panelMessageSeverity:
+        failedSpawnCount > 0 || skippedSpawnCount > 0 ? 'warning' : progress.messageSeverity,
       defaultLiveOutputOpen: false,
       compactTitle: 'Launching team',
       compactDetail:
         failedSpawnCount > 0
           ? (failedSpawnCompactDetail ??
             `${failedSpawnCount} teammate${failedSpawnCount === 1 ? '' : 's'} failed to start`)
-          : hasMembersStillJoining && failedSpawnCount === 0 && permissionBlockedCount > 0
-            ? permissionBlockedCount === remainingJoinCount
-              ? buildAwaitingPermissionPhrase(permissionBlockedCount)
-              : `${heartbeatConfirmedCount}/${expectedTeammateCount} teammates confirmed`
-            : expectedTeammateCount > 0 && progressStepIndex >= 2
-              ? `${heartbeatConfirmedCount}/${expectedTeammateCount} teammates confirmed`
-              : progress.message,
-      compactTone: failedSpawnCount > 0 ? 'warning' : 'default',
+          : skippedSpawnCount > 0
+            ? (skippedSpawnCompactDetail ??
+              `${skippedSpawnCount} teammate${skippedSpawnCount === 1 ? '' : 's'} skipped`)
+            : hasMembersStillJoining && failedSpawnCount === 0 && permissionBlockedCount > 0
+              ? permissionBlockedCount === remainingJoinCount
+                ? buildAwaitingPermissionPhrase(permissionBlockedCount)
+                : `${heartbeatConfirmedCount}/${expectedTeammateCount} teammates confirmed`
+              : expectedTeammateCount > 0 && progressStepIndex >= 2
+                ? `${heartbeatConfirmedCount}/${expectedTeammateCount} teammates confirmed`
+                : progress.message,
+      compactTone: failedSpawnCount > 0 || skippedSpawnCount > 0 ? 'warning' : 'default',
     };
   }
 

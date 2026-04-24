@@ -2,7 +2,7 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { ResolvedTeamMember, TeamTaskWithKanban } from '@shared/types';
+import type { MemberSpawnStatusEntry, ResolvedTeamMember, TeamTaskWithKanban } from '@shared/types';
 
 vi.mock('@renderer/components/ui/badge', () => ({
   Badge: ({
@@ -55,6 +55,33 @@ const currentTask: TeamTaskWithKanban = {
   subject: 'Build calculator UI',
   status: 'in_progress',
 } as unknown as TeamTaskWithKanban;
+
+const failedSpawnEntry: MemberSpawnStatusEntry = {
+  status: 'error',
+  launchState: 'failed_to_start',
+  runtimeAlive: false,
+  bootstrapConfirmed: false,
+  hardFailure: true,
+  hardFailureReason: 'spawn failed',
+  agentToolAccepted: false,
+  livenessKind: 'not_found',
+  runtimeDiagnostic: 'spawn failed',
+  runtimeDiagnosticSeverity: 'error',
+  updatedAt: '2026-04-24T12:00:00.000Z',
+};
+
+const skippedSpawnEntry: MemberSpawnStatusEntry = {
+  status: 'skipped',
+  launchState: 'skipped_for_launch',
+  runtimeAlive: false,
+  bootstrapConfirmed: false,
+  hardFailure: false,
+  agentToolAccepted: false,
+  skippedForLaunch: true,
+  skipReason: 'Skipped by user after launch failure: spawn failed',
+  skippedAt: '2026-04-24T12:01:00.000Z',
+  updatedAt: '2026-04-24T12:01:00.000Z',
+};
 
 describe('MemberCard starting-state visuals', () => {
   afterEach(() => {
@@ -576,6 +603,311 @@ describe('MemberCard starting-state visuals', () => {
     expect(payload.runId).toBe('run-42');
     expect(payload.livenessKind).toBe('not_found');
     expect(payload.processCommand).toContain('--token [redacted]');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('renders retry for failed teammate launches', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberCard, {
+          member,
+          memberColor: 'blue',
+          isTeamAlive: true,
+          isTeamProvisioning: false,
+          spawnStatus: 'error',
+          spawnLaunchState: 'failed_to_start',
+          spawnRuntimeAlive: false,
+          spawnError: 'spawn failed',
+          spawnEntry: failedSpawnEntry,
+          onRestartMember: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[aria-label="Retry teammate"]')).not.toBeNull();
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('renders skip for failed teammate launches', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberCard, {
+          member,
+          memberColor: 'blue',
+          isTeamAlive: true,
+          isTeamProvisioning: false,
+          spawnStatus: 'error',
+          spawnLaunchState: 'failed_to_start',
+          spawnRuntimeAlive: false,
+          spawnError: 'spawn failed',
+          spawnEntry: failedSpawnEntry,
+          onSkipMemberForLaunch: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[aria-label="Skip for this launch"]')).not.toBeNull();
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('retries failed teammate launches without opening the member row', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onClick = vi.fn();
+    let resolveRetry!: () => void;
+    const retryPromise = new Promise<void>((resolve) => {
+      resolveRetry = resolve;
+    });
+    const onRestartMember = vi.fn(() => retryPromise);
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberCard, {
+          member,
+          memberColor: 'blue',
+          isTeamAlive: true,
+          isTeamProvisioning: false,
+          spawnStatus: 'error',
+          spawnLaunchState: 'failed_to_start',
+          spawnRuntimeAlive: false,
+          spawnError: 'spawn failed',
+          spawnEntry: failedSpawnEntry,
+          onClick,
+          onRestartMember,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const button = host.querySelector('[aria-label="Retry teammate"]') as HTMLButtonElement;
+    expect(button).not.toBeNull();
+
+    await act(async () => {
+      button.click();
+      await Promise.resolve();
+    });
+
+    expect(onRestartMember).toHaveBeenCalledWith('alice');
+    expect(onClick).not.toHaveBeenCalled();
+    expect(host.querySelector('[aria-label="Retrying teammate"]')).not.toBeNull();
+
+    await act(async () => {
+      resolveRetry();
+      await retryPromise;
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[aria-label="Retry teammate"]')).not.toBeNull();
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('skips failed teammate launches without opening the member row', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onClick = vi.fn();
+    let resolveSkip!: () => void;
+    const skipPromise = new Promise<void>((resolve) => {
+      resolveSkip = resolve;
+    });
+    const onSkipMemberForLaunch = vi.fn(() => skipPromise);
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberCard, {
+          member,
+          memberColor: 'blue',
+          isTeamAlive: true,
+          isTeamProvisioning: false,
+          spawnStatus: 'error',
+          spawnLaunchState: 'failed_to_start',
+          spawnRuntimeAlive: false,
+          spawnError: 'spawn failed',
+          spawnEntry: failedSpawnEntry,
+          onClick,
+          onSkipMemberForLaunch,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const button = host.querySelector('[aria-label="Skip for this launch"]') as HTMLButtonElement;
+    expect(button).not.toBeNull();
+
+    await act(async () => {
+      button.click();
+      await Promise.resolve();
+    });
+
+    expect(onSkipMemberForLaunch).toHaveBeenCalledWith('alice');
+    expect(onClick).not.toHaveBeenCalled();
+    expect(host.querySelector('[aria-label="Skipping teammate"]')).not.toBeNull();
+
+    await act(async () => {
+      resolveSkip();
+      await skipPromise;
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[aria-label="Skip for this launch"]')).not.toBeNull();
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('keeps retry available and exposes retry errors after rejection', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onRestartMember = vi.fn(async () => {
+      throw new Error('restart failed');
+    });
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberCard, {
+          member,
+          memberColor: 'blue',
+          isTeamAlive: true,
+          isTeamProvisioning: false,
+          spawnStatus: 'error',
+          spawnLaunchState: 'failed_to_start',
+          spawnRuntimeAlive: false,
+          spawnError: 'spawn failed',
+          spawnEntry: failedSpawnEntry,
+          onRestartMember,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const button = host.querySelector('[aria-label="Retry teammate"]') as HTMLButtonElement;
+    expect(button).not.toBeNull();
+
+    await act(async () => {
+      button.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onRestartMember).toHaveBeenCalledWith('alice');
+    expect(host.querySelector('[aria-label="Retry teammate"]')).not.toBeNull();
+    expect(host.textContent).toContain('restart failed');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('keeps skip available and exposes skip errors after rejection', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onSkipMemberForLaunch = vi.fn(async () => {
+      throw new Error('skip failed');
+    });
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberCard, {
+          member,
+          memberColor: 'blue',
+          isTeamAlive: true,
+          isTeamProvisioning: false,
+          spawnStatus: 'error',
+          spawnLaunchState: 'failed_to_start',
+          spawnRuntimeAlive: false,
+          spawnError: 'spawn failed',
+          spawnEntry: failedSpawnEntry,
+          onSkipMemberForLaunch,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const button = host.querySelector('[aria-label="Skip for this launch"]') as HTMLButtonElement;
+    expect(button).not.toBeNull();
+
+    await act(async () => {
+      button.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onSkipMemberForLaunch).toHaveBeenCalledWith('alice');
+    expect(host.querySelector('[aria-label="Skip for this launch"]')).not.toBeNull();
+    expect(host.textContent).toContain('skip failed');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('shows skipped teammates as skipped and keeps retry available', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberCard, {
+          member,
+          memberColor: 'blue',
+          isTeamAlive: true,
+          isTeamProvisioning: false,
+          spawnStatus: 'skipped',
+          spawnLaunchState: 'skipped_for_launch',
+          spawnRuntimeAlive: false,
+          spawnEntry: skippedSpawnEntry,
+          onRestartMember: vi.fn(),
+          onSkipMemberForLaunch: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('skipped');
+    expect(host.textContent).toContain('Skipped by user after launch failure');
+    expect(host.querySelector('[aria-label="Retry teammate"]')).not.toBeNull();
+    expect(host.querySelector('[aria-label="Skip for this launch"]')).toBeNull();
 
     await act(async () => {
       root.unmount();

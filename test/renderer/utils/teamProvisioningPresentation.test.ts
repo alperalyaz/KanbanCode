@@ -293,6 +293,75 @@ describe('buildTeamProvisioningPresentation', () => {
     expect(presentation?.compactTone).toBe('warning');
   });
 
+  it('shows skipped teammates as a continued launch instead of still joining', () => {
+    const presentation = buildTeamProvisioningPresentation({
+      progress: {
+        runId: 'run-3d',
+        teamName: 'mixed-team',
+        state: 'ready',
+        startedAt: '2026-04-13T10:00:00.000Z',
+        updatedAt: '2026-04-13T10:00:08.000Z',
+        message: 'Launch completed',
+        messageSeverity: undefined,
+        pid: 4321,
+        configReady: true,
+        cliLogsTail: '',
+        assistantOutput: '',
+      },
+      members: [
+        {
+          name: 'team-lead',
+          agentType: 'team-lead',
+          status: 'active',
+          currentTaskId: null,
+          taskCount: 0,
+          lastActiveAt: null,
+          messageCount: 0,
+        },
+        {
+          name: 'bob',
+          agentType: 'developer',
+          status: 'unknown',
+          currentTaskId: null,
+          taskCount: 0,
+          lastActiveAt: null,
+          messageCount: 0,
+        },
+      ],
+      memberSpawnStatuses: {
+        bob: {
+          status: 'skipped',
+          launchState: 'skipped_for_launch',
+          updatedAt: '2026-04-13T10:00:07.000Z',
+          runtimeAlive: false,
+          bootstrapConfirmed: false,
+          hardFailure: false,
+          agentToolAccepted: false,
+          skippedForLaunch: true,
+          skipReason: 'Skipped by user after launch failure: OpenCode lane failed',
+        },
+      },
+      memberSpawnSnapshot: {
+        expectedMembers: ['bob'],
+        summary: {
+          confirmedCount: 0,
+          pendingCount: 0,
+          failedCount: 0,
+          skippedCount: 1,
+          runtimeAlivePendingCount: 0,
+        },
+      },
+    });
+
+    expect(presentation?.successMessage).toBe('Launch continued - 1/1 teammates skipped');
+    expect(presentation?.panelMessage).toContain('bob skipped for this launch');
+    expect(presentation?.compactTitle).toBe('Launch continued with skipped teammates');
+    expect(presentation?.compactDetail).toBe('bob skipped');
+    expect(presentation?.compactTone).toBe('warning');
+    expect(presentation?.currentStepIndex).toBe(2);
+    expect(presentation?.hasMembersStillJoining).toBe(false);
+  });
+
   it('prefers live member spawn statuses over a stale persisted launch summary', () => {
     const presentation = buildTeamProvisioningPresentation({
       progress: {

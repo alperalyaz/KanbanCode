@@ -20,7 +20,7 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
         diagnostics: ['OpenCode missing canonical app MCP tool id'],
       })
     );
-    const adapter = new OpenCodeTeamRuntimeAdapter(bridge, { launchMode: 'production' });
+    const adapter = new OpenCodeTeamRuntimeAdapter(bridge);
 
     await expect(adapter.prepare(launchInput())).resolves.toEqual({
       ok: false,
@@ -34,13 +34,12 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
       projectPath: '/repo',
       selectedModel: 'openai/gpt-5.4-mini',
       requireExecutionProbe: true,
-      launchMode: 'production',
     });
   });
 
   it('uses runtime-only readiness for model-less preflight checks', async () => {
     const bridge = bridgePort(readiness({ state: 'ready', launchAllowed: true, modelId: null }));
-    const adapter = new OpenCodeTeamRuntimeAdapter(bridge, { launchMode: 'production' });
+    const adapter = new OpenCodeTeamRuntimeAdapter(bridge);
 
     await expect(
       adapter.prepare(launchInput({ model: undefined, runtimeOnly: true }))
@@ -54,7 +53,6 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
       projectPath: '/repo',
       selectedModel: null,
       requireExecutionProbe: false,
-      launchMode: undefined,
     });
   });
 
@@ -69,7 +67,7 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
         missing: ['OpenCode bridge command timed out'],
       })
     );
-    const adapter = new OpenCodeTeamRuntimeAdapter(bridge, { launchMode: 'production' });
+    const adapter = new OpenCodeTeamRuntimeAdapter(bridge);
 
     await expect(adapter.launch(launchInput())).resolves.toMatchObject({
       teamLaunchState: 'partial_failure',
@@ -87,25 +85,12 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     });
   });
 
-  it('fails closed when launch mode is disabled', async () => {
-    const bridge = bridgePort(readiness({ state: 'ready', launchAllowed: true }));
-    const adapter = new OpenCodeTeamRuntimeAdapter(bridge);
-
-    await expect(adapter.prepare(launchInput())).resolves.toMatchObject({
-      ok: false,
-      providerId: 'opencode',
-      reason: 'opencode_team_launch_disabled',
-      retryable: false,
-    });
-    expect(bridge.checkOpenCodeTeamLaunchReadiness).not.toHaveBeenCalled();
-  });
-
   it('rejects non-OpenCode members before readiness or launch bridge dispatch', async () => {
     const launchOpenCodeTeam = vi.fn();
     const bridge = bridgePort(readiness({ state: 'ready', launchAllowed: true }), {
       launchOpenCodeTeam,
     });
-    const adapter = new OpenCodeTeamRuntimeAdapter(bridge, { launchMode: 'production' });
+    const adapter = new OpenCodeTeamRuntimeAdapter(bridge);
 
     const result = await adapter.launch(
       launchInput({
@@ -138,7 +123,7 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     const bridge = bridgePort(readiness({ state: 'ready', launchAllowed: true }), {
       launchOpenCodeTeam,
     });
-    const adapter = new OpenCodeTeamRuntimeAdapter(bridge, { launchMode: 'production' });
+    const adapter = new OpenCodeTeamRuntimeAdapter(bridge);
 
     const result = await adapter.launch(launchInput({ expectedMembers: [] }));
 
@@ -187,8 +172,7 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
           capabilitySnapshotId: 'cap-1',
         })),
         launchOpenCodeTeam,
-      }),
-      { launchMode: 'dogfood' }
+      })
     );
 
     await expect(adapter.launch(launchInput())).resolves.toMatchObject({
@@ -257,8 +241,7 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     const adapter = new OpenCodeTeamRuntimeAdapter(
       bridgePort(readiness({ state: 'ready', launchAllowed: true }), {
         launchOpenCodeTeam,
-      }),
-      { launchMode: 'dogfood' }
+      })
     );
 
     const result = await adapter.launch({
@@ -393,8 +376,7 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     const adapter = new OpenCodeTeamRuntimeAdapter(
       bridgePort(readiness({ state: 'ready', launchAllowed: true }), {
         reconcileOpenCodeTeam,
-      }),
-      { launchMode: 'dogfood' }
+      })
     );
 
     const result = await adapter.reconcile({
@@ -488,8 +470,7 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
           capabilitySnapshotId: 'cap-1',
         })),
         launchOpenCodeTeam,
-      }),
-      { launchMode: 'dogfood' }
+      })
     );
 
     const result = await adapter.launch(launchInput());
@@ -539,8 +520,7 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     const adapter = new OpenCodeTeamRuntimeAdapter(
       bridgePort(readiness({ state: 'ready', launchAllowed: true }), {
         launchOpenCodeTeam,
-      }),
-      { launchMode: 'dogfood' }
+      })
     );
 
     const result = await adapter.launch(launchInput());
@@ -576,8 +556,7 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     const adapter = new OpenCodeTeamRuntimeAdapter(
       bridgePort(readiness({ state: 'ready', launchAllowed: true }), {
         launchOpenCodeTeam,
-      }),
-      { launchMode: 'dogfood' }
+      })
     );
 
     const result = await adapter.launch(launchInput());
@@ -588,7 +567,8 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
       runtimeAlive: false,
       livenessKind: 'runtime_process_candidate',
       runtimePid: 123,
-      runtimeDiagnostic: 'OpenCode runtime pid reported by bridge without local process verification',
+      runtimeDiagnostic:
+        'OpenCode runtime pid reported by bridge without local process verification',
     });
   });
 
@@ -613,8 +593,7 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     const adapter = new OpenCodeTeamRuntimeAdapter(
       bridgePort(readiness({ state: 'ready', launchAllowed: true }), {
         launchOpenCodeTeam,
-      }),
-      { launchMode: 'dogfood' }
+      })
     );
 
     const result = await adapter.launch(launchInput());
@@ -663,8 +642,7 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
           capabilitySnapshotId: 'cap-1',
         })),
         launchOpenCodeTeam,
-      }),
-      { launchMode: 'dogfood' }
+      })
     );
 
     const result = await adapter.launch(

@@ -64,6 +64,7 @@ import {
   TEAM_SET_TASK_LOG_STREAM_TRACKING,
   TEAM_SET_TOOL_ACTIVITY_TRACKING,
   TEAM_SHOW_MESSAGE_NOTIFICATION,
+  TEAM_SKIP_MEMBER_FOR_LAUNCH,
   TEAM_SOFT_DELETE_TASK,
   TEAM_START_TASK,
   TEAM_START_TASK_BY_USER,
@@ -599,6 +600,7 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_MEMBER_SPAWN_STATUSES, handleMemberSpawnStatuses);
   ipcMain.handle(TEAM_GET_AGENT_RUNTIME, handleGetAgentRuntime);
   ipcMain.handle(TEAM_RESTART_MEMBER, handleRestartMember);
+  ipcMain.handle(TEAM_SKIP_MEMBER_FOR_LAUNCH, handleSkipMemberForLaunch);
   ipcMain.handle(TEAM_SOFT_DELETE_TASK, handleSoftDeleteTask);
   ipcMain.handle(TEAM_RESTORE_TASK, handleRestoreTask);
   ipcMain.handle(TEAM_GET_DELETED_TASKS, handleGetDeletedTasks);
@@ -676,6 +678,7 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_MEMBER_SPAWN_STATUSES);
   ipcMain.removeHandler(TEAM_GET_AGENT_RUNTIME);
   ipcMain.removeHandler(TEAM_RESTART_MEMBER);
+  ipcMain.removeHandler(TEAM_SKIP_MEMBER_FOR_LAUNCH);
   ipcMain.removeHandler(TEAM_SOFT_DELETE_TASK);
   ipcMain.removeHandler(TEAM_RESTORE_TASK);
   ipcMain.removeHandler(TEAM_GET_DELETED_TASKS);
@@ -3388,6 +3391,27 @@ async function handleRestartMember(
   }
   return wrapTeamHandler('restartMember', async () =>
     getTeamProvisioningService().restartMember(validatedTeamName.value!, validatedMemberName.value!)
+  );
+}
+
+async function handleSkipMemberForLaunch(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  memberName: unknown
+): Promise<IpcResult<void>> {
+  const validatedTeamName = validateTeamName(teamName);
+  if (!validatedTeamName.valid) {
+    return { success: false, error: validatedTeamName.error ?? 'Invalid teamName' };
+  }
+  const validatedMemberName = validateMemberName(memberName);
+  if (!validatedMemberName.valid) {
+    return { success: false, error: validatedMemberName.error ?? 'Invalid memberName' };
+  }
+  return wrapTeamHandler('skipMemberForLaunch', async () =>
+    getTeamProvisioningService().skipMemberForLaunch(
+      validatedTeamName.value!,
+      validatedMemberName.value!
+    )
   );
 }
 

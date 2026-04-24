@@ -1550,6 +1550,191 @@ describe('TeamProvisioningService', () => {
       expect(restartMessage).toContain('Their workflow: Use the updated checklist');
     });
 
+    it('retries a failed teammate without live runtime by resetting spawn status to spawning', async () => {
+      const svc = new TeamProvisioningService();
+      const run = createMemberSpawnRun({
+        teamName: 'codex-team',
+        expectedMembers: ['bob'],
+        memberSpawnStatuses: new Map([
+          [
+            'bob',
+            createMemberSpawnStatusEntry({
+              status: 'error',
+              launchState: 'failed_to_start',
+              runtimeAlive: false,
+              bootstrapConfirmed: false,
+              hardFailure: true,
+              hardFailureReason: 'Teammate "bob" failed to start: spawn failed',
+              error: 'Teammate "bob" failed to start: spawn failed',
+              agentToolAccepted: false,
+              firstSpawnAcceptedAt: undefined,
+            }),
+          ],
+        ]),
+      });
+      run.child = { pid: 111 };
+      run.processKilled = false;
+      run.cancelRequested = false;
+
+      const sendMessageToRun = vi.fn(async () => {});
+      (svc as any).sendMessageToRun = sendMessageToRun;
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          name: 'Codex Team',
+          members: [{ name: 'team-lead', agentType: 'team-lead' }],
+        })),
+      };
+      (svc as any).membersMetaStore = {
+        getMembers: vi.fn(async () => [
+          {
+            name: 'bob',
+            role: 'Developer',
+            providerId: 'codex',
+            model: 'gpt-5.2',
+            effort: 'medium',
+            agentType: 'general-purpose',
+          },
+        ]),
+      };
+      (svc as any).readPersistedRuntimeMembers = vi.fn(() => []);
+      (svc as any).getLiveTeamAgentRuntimeMetadata = vi.fn(async () => new Map());
+      (svc as any).aliveRunByTeam.set('codex-team', run.runId);
+      (svc as any).runs.set(run.runId, run);
+
+      await svc.restartMember('codex-team', 'bob');
+
+      expect(run.memberSpawnStatuses.get('bob')).toMatchObject({
+        status: 'spawning',
+        launchState: 'starting',
+        runtimeAlive: false,
+        bootstrapConfirmed: false,
+        hardFailure: false,
+        hardFailureReason: undefined,
+        error: undefined,
+        agentToolAccepted: false,
+      });
+      expect(run.pendingMemberRestarts.has('bob')).toBe(true);
+      expect(sendMessageToRun).toHaveBeenCalledTimes(1);
+      expect(sendMessageToRun).toHaveBeenCalledWith(
+        run,
+        expect.stringContaining('Teammate "bob" with role "Developer" was restarted from the UI.')
+      );
+    });
+
+    it('skips a failed teammate for the current launch without marking it alive', async () => {
+      const svc = new TeamProvisioningService();
+      const run = createMemberSpawnRun({
+        teamName: 'codex-team',
+        expectedMembers: ['bob'],
+        memberSpawnStatuses: new Map([
+          [
+            'bob',
+            createMemberSpawnStatusEntry({
+              status: 'error',
+              launchState: 'failed_to_start',
+              runtimeAlive: false,
+              bootstrapConfirmed: false,
+              hardFailure: true,
+              hardFailureReason: 'Teammate "bob" failed to start: spawn failed',
+              error: 'Teammate "bob" failed to start: spawn failed',
+              agentToolAccepted: false,
+              firstSpawnAcceptedAt: undefined,
+            }),
+          ],
+        ]),
+      });
+      run.child = { pid: 111 };
+      run.processKilled = false;
+      run.cancelRequested = false;
+      run.isLaunch = true;
+
+      const sendMessageToRun = vi.fn(async () => {});
+      (svc as any).sendMessageToRun = sendMessageToRun;
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          name: 'Codex Team',
+          members: [{ name: 'team-lead', agentType: 'team-lead' }],
+        })),
+      };
+      (svc as any).membersMetaStore = {
+        getMembers: vi.fn(async () => [
+          {
+            name: 'bob',
+            role: 'Developer',
+            providerId: 'codex',
+            model: 'gpt-5.2',
+            effort: 'medium',
+            agentType: 'general-purpose',
+          },
+        ]),
+      };
+      (svc as any).aliveRunByTeam.set('codex-team', run.runId);
+      (svc as any).runs.set(run.runId, run);
+
+      await svc.skipMemberForLaunch('codex-team', 'bob');
+
+      expect(run.memberSpawnStatuses.get('bob')).toMatchObject({
+        status: 'skipped',
+        launchState: 'skipped_for_launch',
+        skippedForLaunch: true,
+        runtimeAlive: false,
+        bootstrapConfirmed: false,
+        hardFailure: false,
+        hardFailureReason: undefined,
+        error: undefined,
+        agentToolAccepted: false,
+      });
+      expect(run.pendingMemberRestarts.has('bob')).toBe(false);
+      expect(sendMessageToRun).toHaveBeenCalledWith(
+        run,
+        expect.stringContaining('Teammate "bob" was skipped for this launch')
+      );
+    });
+
+    it('rejects skipping a failed teammate while a retry is already in progress', async () => {
+      const svc = new TeamProvisioningService();
+      const run = createMemberSpawnRun({
+        teamName: 'codex-team',
+        expectedMembers: ['bob'],
+        memberSpawnStatuses: new Map([
+          [
+            'bob',
+            createMemberSpawnStatusEntry({
+              status: 'error',
+              launchState: 'failed_to_start',
+              hardFailure: true,
+              hardFailureReason: 'spawn failed',
+              error: 'spawn failed',
+            }),
+          ],
+        ]),
+      });
+      run.child = { pid: 111 };
+      run.processKilled = false;
+      run.cancelRequested = false;
+      run.pendingMemberRestarts.set('bob', {
+        requestedAt: new Date().toISOString(),
+        desired: { name: 'bob', role: 'Developer' },
+      });
+
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          name: 'Codex Team',
+          members: [
+            { name: 'team-lead', agentType: 'team-lead' },
+            { name: 'bob', role: 'Developer' },
+          ],
+        })),
+      };
+      (svc as any).membersMetaStore = { getMembers: vi.fn(async () => []) };
+      (svc as any).aliveRunByTeam.set('codex-team', run.runId);
+      (svc as any).runs.set(run.runId, run);
+
+      await expect(svc.skipMemberForLaunch('codex-team', 'bob')).rejects.toThrow(
+        'already in progress'
+      );
+    });
+
     it('does not let removed base-member metadata override a suffixed teammate during restart', async () => {
       const svc = new TeamProvisioningService();
       const run = createMemberSpawnRun({
@@ -7106,7 +7291,8 @@ describe('TeamProvisioningService', () => {
             {
               alive: false,
               livenessKind: 'runtime_process_candidate',
-              runtimeDiagnostic: 'OpenCode runtime pid is alive, but process identity is unverified',
+              runtimeDiagnostic:
+                'OpenCode runtime pid is alive, but process identity is unverified',
               runtimeDiagnosticSeverity: 'warning',
             },
           ],
@@ -7334,6 +7520,117 @@ describe('TeamProvisioningService', () => {
       hardFailureReason: 'Teammate did not join within the launch grace window.',
       error: 'Teammate did not join within the launch grace window.',
       runtimeModel: 'gpt-5.3-codex',
+    });
+  });
+
+  it('does not resurrect a skipped teammate when live runtime metadata is strong', async () => {
+    const svc = new TeamProvisioningService();
+    (svc as any).getLiveTeamAgentRuntimeMetadata = vi.fn(
+      async () =>
+        new Map([
+          [
+            'bob',
+            {
+              alive: true,
+              livenessKind: 'runtime_process',
+              pid: 123,
+              providerId: 'codex',
+            },
+          ],
+        ])
+    );
+
+    const result = await (svc as any).attachLiveRuntimeMetadataToStatuses('codex-team', {
+      bob: createMemberSpawnStatusEntry({
+        status: 'skipped',
+        launchState: 'skipped_for_launch',
+        skippedForLaunch: true,
+        runtimeAlive: false,
+        bootstrapConfirmed: false,
+        hardFailure: false,
+        agentToolAccepted: false,
+        skipReason: 'Skipped by user after launch failure: spawn failed',
+      }),
+    });
+
+    expect(result.bob).toMatchObject({
+      status: 'skipped',
+      launchState: 'skipped_for_launch',
+      skippedForLaunch: true,
+      runtimeAlive: false,
+      bootstrapConfirmed: false,
+      hardFailure: false,
+      error: undefined,
+      livenessSource: undefined,
+    });
+  });
+
+  it('does not resurrect a skipped teammate during spawn status audit', async () => {
+    const run = createMemberSpawnRun({
+      expectedMembers: ['bob'],
+      memberSpawnStatuses: new Map([
+        [
+          'bob',
+          createMemberSpawnStatusEntry({
+            status: 'skipped',
+            launchState: 'skipped_for_launch',
+            skippedForLaunch: true,
+            skipReason: 'Skipped by user after launch failure: spawn failed',
+            agentToolAccepted: false,
+            runtimeAlive: false,
+            bootstrapConfirmed: false,
+            firstSpawnAcceptedAt: undefined,
+          }),
+        ],
+      ]),
+    });
+    const svc = new TeamProvisioningService();
+    (svc as any).getRegisteredTeamMemberNames = vi.fn(async () => new Set(['bob']));
+    (svc as any).getLiveTeamAgentNames = vi.fn(async () => new Set(['bob']));
+
+    await (svc as any).auditMemberSpawnStatuses(run);
+
+    expect(run.memberSpawnStatuses.get('bob')).toMatchObject({
+      status: 'skipped',
+      launchState: 'skipped_for_launch',
+      skippedForLaunch: true,
+      runtimeAlive: false,
+      bootstrapConfirmed: false,
+      hardFailure: false,
+    });
+  });
+
+  it('does not convert a skipped teammate to failed during final missing-member reconciliation', async () => {
+    const run = createMemberSpawnRun({
+      expectedMembers: ['bob'],
+      memberSpawnStatuses: new Map([
+        [
+          'bob',
+          createMemberSpawnStatusEntry({
+            status: 'skipped',
+            launchState: 'skipped_for_launch',
+            skippedForLaunch: true,
+            skipReason: 'Skipped by user after launch failure: spawn failed',
+            agentToolAccepted: false,
+            runtimeAlive: false,
+            bootstrapConfirmed: false,
+            firstSpawnAcceptedAt: undefined,
+          }),
+        ],
+      ]),
+    });
+    const svc = new TeamProvisioningService();
+    (svc as any).getRegisteredTeamMemberNames = vi.fn(async () => new Set());
+
+    await (svc as any).finalizeMissingRegisteredMembersAsFailed(run);
+
+    expect(run.memberSpawnStatuses.get('bob')).toMatchObject({
+      status: 'skipped',
+      launchState: 'skipped_for_launch',
+      skippedForLaunch: true,
+      runtimeAlive: false,
+      bootstrapConfirmed: false,
+      hardFailure: false,
     });
   });
 

@@ -33,6 +33,8 @@ interface MemberListProps {
   onSendMessage?: (member: ResolvedTeamMember) => void;
   onAssignTask?: (member: ResolvedTeamMember) => void;
   onOpenTask?: (taskId: string) => void;
+  onRestartMember?: (memberName: string) => Promise<void> | void;
+  onSkipMemberForLaunch?: (memberName: string) => Promise<void> | void;
 }
 
 function areResolvedMembersEquivalent(
@@ -151,6 +153,9 @@ function areMemberSpawnStatusesEquivalent(
       leftEntry.error !== rightEntry.error ||
       leftEntry.hardFailure !== rightEntry.hardFailure ||
       leftEntry.hardFailureReason !== rightEntry.hardFailureReason ||
+      leftEntry.skippedForLaunch !== rightEntry.skippedForLaunch ||
+      leftEntry.skipReason !== rightEntry.skipReason ||
+      leftEntry.skippedAt !== rightEntry.skippedAt ||
       leftEntry.livenessSource !== rightEntry.livenessSource ||
       leftEntry.livenessKind !== rightEntry.livenessKind ||
       leftEntry.runtimeDiagnostic !== rightEntry.runtimeDiagnostic ||
@@ -244,6 +249,8 @@ function areMemberListPropsEqual(
     prev.isTeamAlive === next.isTeamAlive &&
     prev.isTeamProvisioning === next.isTeamProvisioning &&
     prev.leadActivity === next.leadActivity &&
+    prev.onRestartMember === next.onRestartMember &&
+    prev.onSkipMemberForLaunch === next.onSkipMemberForLaunch &&
     areLaunchParamsEquivalent(prev.launchParams, next.launchParams)
   );
 }
@@ -265,6 +272,8 @@ export const MemberList = memo(function MemberList({
   onSendMessage,
   onAssignTask,
   onOpenTask,
+  onRestartMember,
+  onSkipMemberForLaunch,
 }: MemberListProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isWide, setIsWide] = useState(false);
@@ -372,6 +381,8 @@ export const MemberList = memo(function MemberList({
         onClick={() => onMemberClick?.(member)}
         onSendMessage={() => onSendMessage?.(member)}
         onAssignTask={() => onAssignTask?.(member)}
+        onRestartMember={isRemoved ? undefined : onRestartMember}
+        onSkipMemberForLaunch={isRemoved ? undefined : onSkipMemberForLaunch}
       />
     );
   };

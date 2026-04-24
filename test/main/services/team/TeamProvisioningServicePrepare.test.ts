@@ -473,11 +473,9 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
         return {
           ok: false as const,
           providerId: 'opencode' as const,
-          reason: 'e2e_missing',
+          reason: 'model_unavailable',
           retryable: false,
-          diagnostics: [
-            'OpenCode production E2E evidence artifact has no entry for selected model opencode/nemotron-3-super-free',
-          ],
+          diagnostics: ['Selected model opencode/nemotron-3-super-free is not available'],
           warnings: [],
         };
       }
@@ -529,7 +527,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       'Selected model opencode/minimax-m2.5-free verified for launch.'
     );
     expect(result.message).toBe(
-      'Selected model opencode/nemotron-3-super-free is unavailable. OpenCode production E2E evidence artifact has no entry for selected model opencode/nemotron-3-super-free'
+      'Selected model opencode/nemotron-3-super-free is unavailable. Selected model opencode/nemotron-3-super-free is not available'
     );
   });
 
@@ -677,56 +675,6 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       'Selected model opencode/minimax-m2.5-free is compatible. Deep verification pending.',
       'Selected model opencode/nemotron-3-super-free is compatible. Deep verification pending.',
     ]);
-    expect(prepare).toHaveBeenCalledTimes(1);
-    expect(prepare).toHaveBeenCalledWith(
-      expect.objectContaining({
-        providerId: 'opencode',
-        model: undefined,
-        runtimeOnly: true,
-      })
-    );
-  });
-
-  it('reports missing OpenCode project evidence as a provider note instead of model failures', async () => {
-    const projectEvidenceDiagnostic =
-      'OpenCode production E2E evidence artifact has no entry for the current working directory';
-    const projectEvidenceNote =
-      'OpenCode has not been verified on this project yet. This does not mean the selected models are broken.';
-    const prepare = vi.fn(async () => ({
-      ok: false as const,
-      providerId: 'opencode' as const,
-      reason: 'e2e_missing',
-      retryable: false,
-      diagnostics: [projectEvidenceDiagnostic],
-      warnings: [],
-    }));
-    const registry = new TeamRuntimeAdapterRegistry([
-      {
-        providerId: 'opencode',
-        prepare,
-        launch: vi.fn(),
-        reconcile: vi.fn(),
-        stop: vi.fn(),
-      } as any,
-    ]);
-    const svc = new TeamProvisioningService();
-    svc.setRuntimeAdapterRegistry(registry);
-
-    const result = await svc.prepareForProvisioning(tempRoot, {
-      providerId: 'opencode',
-      forceFresh: true,
-      modelIds: ['opencode/minimax-m2.5-free', 'opencode/ling-2.6-flash-free'],
-      modelVerificationMode: 'compatibility',
-    });
-
-    expect(result.ready).toBe(true);
-    expect(result.message).toBe('CLI is ready to launch (see notes)');
-    expect(result.details).toEqual([
-      'Selected model opencode/minimax-m2.5-free verified for launch.',
-      'Selected model opencode/ling-2.6-flash-free verified for launch.',
-    ]);
-    expect(result.warnings).toEqual([projectEvidenceNote]);
-    expect(result.message).not.toContain('unavailable');
     expect(prepare).toHaveBeenCalledTimes(1);
     expect(prepare).toHaveBeenCalledWith(
       expect.objectContaining({

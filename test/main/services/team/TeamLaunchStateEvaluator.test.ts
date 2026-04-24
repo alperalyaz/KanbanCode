@@ -77,12 +77,79 @@ describe('TeamLaunchStateEvaluator', () => {
       confirmedCount: 0,
       pendingCount: 2,
       failedCount: 0,
+      skippedCount: 0,
       runtimeAlivePendingCount: 0,
       shellOnlyPendingCount: 0,
       runtimeProcessPendingCount: 0,
       runtimeCandidatePendingCount: 0,
       noRuntimePendingCount: 0,
       permissionPendingCount: 1,
+    });
+  });
+
+  it('keeps skipped members terminal and out of pending counts', () => {
+    const summary = summarizePersistedLaunchMembers(['alice', 'bob'], {
+      alice: {
+        launchState: 'skipped_for_launch',
+        skippedForLaunch: true,
+        runtimeAlive: false,
+        bootstrapConfirmed: false,
+        hardFailure: false,
+      },
+      bob: {
+        launchState: 'confirmed_alive',
+        runtimeAlive: true,
+        bootstrapConfirmed: true,
+        hardFailure: false,
+      },
+    } as any);
+
+    expect(summary).toMatchObject({
+      confirmedCount: 1,
+      pendingCount: 0,
+      failedCount: 0,
+      skippedCount: 1,
+    });
+  });
+
+  it('does not preserve runtimeAlive for skipped persisted members', () => {
+    const snapshot = normalizePersistedLaunchSnapshot('demo', {
+      version: 2,
+      teamName: 'demo',
+      updatedAt: '2026-04-23T00:00:00.000Z',
+      launchPhase: 'finished',
+      expectedMembers: ['alice'],
+      members: {
+        alice: {
+          name: 'alice',
+          launchState: 'skipped_for_launch',
+          skippedForLaunch: true,
+          agentToolAccepted: true,
+          runtimeAlive: true,
+          bootstrapConfirmed: true,
+          hardFailure: false,
+          livenessKind: 'runtime_process',
+          lastEvaluatedAt: '2026-04-23T00:00:00.000Z',
+        },
+      },
+    });
+
+    expect(snapshot?.members.alice).toMatchObject({
+      launchState: 'skipped_for_launch',
+      runtimeAlive: false,
+      bootstrapConfirmed: false,
+      agentToolAccepted: false,
+      skippedForLaunch: true,
+    });
+
+    const statuses = snapshotToMemberSpawnStatuses(snapshot!);
+    expect(statuses.alice).toMatchObject({
+      status: 'skipped',
+      launchState: 'skipped_for_launch',
+      runtimeAlive: false,
+      bootstrapConfirmed: false,
+      agentToolAccepted: false,
+      skippedForLaunch: true,
     });
   });
 

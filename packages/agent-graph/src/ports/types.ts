@@ -27,7 +27,8 @@ export type GraphLaunchVisualState =
   | 'registered_only'
   | 'stale_runtime'
   | 'settling'
-  | 'error';
+  | 'error'
+  | 'skipped';
 
 // ─── Edge & Particle Types ───────────────────────────────────────────────────
 
@@ -86,7 +87,7 @@ export interface GraphNode {
   /** Avatar image URL (e.g., robohash) */
   avatarUrl?: string;
   /** Spawn lifecycle status */
-  spawnStatus?: 'offline' | 'waiting' | 'spawning' | 'online' | 'error';
+  spawnStatus?: 'offline' | 'waiting' | 'spawning' | 'online' | 'error' | 'skipped';
   /** Shared launch-stage visual derived by the host app */
   launchVisualState?: GraphLaunchVisualState;
   /** Shared launch-stage text shown beside the node during launch only */

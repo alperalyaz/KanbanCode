@@ -116,9 +116,6 @@ import {
   OpenCodeBridgeCommandHandshakePort,
 } from './services/team/opencode/bridge/OpenCodeBridgeHandshakeClient';
 import { OpenCodeStateChangingBridgeCommandService } from './services/team/opencode/bridge/OpenCodeStateChangingBridgeCommandService';
-import { resolveOpenCodeTeamLaunchModeFromEnv } from './services/team/opencode/config/OpenCodeLaunchModeEnv';
-import { resolveOpenCodeProductionE2EEvidencePath } from './services/team/opencode/e2e/OpenCodeProductionE2EEvidencePath';
-import { OpenCodeProductionE2EEvidenceStore } from './services/team/opencode/e2e/OpenCodeProductionE2EEvidenceStore';
 import { OpenCodeRuntimeManifestEvidenceReader } from './services/team/opencode/store/OpenCodeRuntimeManifestEvidenceReader';
 import {
   buildTeamControlApiBaseUrl,
@@ -273,13 +270,7 @@ async function createOpenCodeRuntimeAdapterRegistry(): Promise<TeamRuntimeAdapte
     new OpenCodeTeamRuntimeAdapter(
       new OpenCodeReadinessBridge(bridgeClient, {
         stateChangingCommands,
-        productionE2eEvidence: new OpenCodeProductionE2EEvidenceStore({
-          filePath: resolveOpenCodeProductionE2EEvidencePath({ bridgeControlDir }),
-        }),
-      }),
-      {
-        launchMode: resolveOpenCodeTeamLaunchModeFromEnv(),
-      }
+      })
     ),
   ]);
 }

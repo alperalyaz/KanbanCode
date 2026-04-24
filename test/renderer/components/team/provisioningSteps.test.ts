@@ -104,4 +104,25 @@ describe('getLaunchJoinMilestonesFromMembers', () => {
     expect(milestones.processOnlyAliveCount).toBe(0);
     expect(milestones.pendingSpawnCount).toBe(4);
   });
+
+  it('counts skipped teammates separately from pending and failed launch members', () => {
+    const milestones = getLaunchJoinMilestonesFromMembers({
+      members,
+      memberSpawnStatuses: {
+        alice: {
+          status: 'skipped',
+          launchState: 'skipped_for_launch',
+          skippedForLaunch: true,
+          runtimeAlive: false,
+          bootstrapConfirmed: false,
+          hardFailure: false,
+          updatedAt: '2026-04-24T12:00:00.000Z',
+        },
+      },
+    });
+
+    expect(milestones.skippedSpawnCount).toBe(1);
+    expect(milestones.failedSpawnCount).toBe(0);
+    expect(milestones.pendingSpawnCount).toBe(3);
+  });
 });

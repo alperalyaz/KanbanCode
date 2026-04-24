@@ -563,32 +563,6 @@ const PREFLIGHT_BINARY_TIMEOUT_MS = 8000;
 const PREFLIGHT_AUTH_RETRY_DELAY_MS = 2000;
 const PREFLIGHT_AUTH_MAX_RETRIES = 2;
 const OPENCODE_PREFLIGHT_MODEL_PROBE_CONCURRENCY = 2;
-const OPENCODE_PROJECT_EVIDENCE_MISSING_DIAGNOSTIC =
-  'OpenCode production E2E evidence artifact has no entry for the current working directory';
-const OPENCODE_PROJECT_EVIDENCE_NOTE =
-  'OpenCode has not been verified on this project yet. This does not mean the selected models are broken.';
-
-function pushUniqueProvisioningWarning(warnings: string[], warning: string): void {
-  if (!warnings.includes(warning)) {
-    warnings.push(warning);
-  }
-}
-
-function isOpenCodeProjectEvidenceMissingDiagnostic(value: string): boolean {
-  return value.trim() === OPENCODE_PROJECT_EVIDENCE_MISSING_DIAGNOSTIC;
-}
-
-function isOpenCodeProjectEvidenceMissingPrepareFailure(
-  prepare: TeamRuntimePrepareResult
-): boolean {
-  if (prepare.ok || prepare.reason !== 'e2e_missing') {
-    return false;
-  }
-  const diagnostics = prepare.diagnostics
-    .map((diagnostic) => diagnostic.trim())
-    .filter((diagnostic) => diagnostic.length > 0);
-  return diagnostics.length > 0 && diagnostics.every(isOpenCodeProjectEvidenceMissingDiagnostic);
-}
 
 function applyDistinctProvisioningMemberColors<
   T extends { name: string; color?: string; removedAt?: number },
@@ -1576,6 +1550,7 @@ function summarizeMemberSpawnStatusRecord(
   let confirmedCount = 0;
   let pendingCount = 0;
   let failedCount = 0;
+  let skippedCount = 0;
   let runtimeAlivePendingCount = 0;
   let shellOnlyPendingCount = 0;
   let runtimeProcessPendingCount = 0;
@@ -1592,6 +1567,10 @@ function summarizeMemberSpawnStatusRecord(
     }
     if (entry.launchState === 'confirmed_alive') {
       confirmedCount += 1;
+      continue;
+    }
+    if (entry.launchState === 'skipped_for_launch' || entry.skippedForLaunch === true) {
+      skippedCount += 1;
       continue;
     }
     if (entry.launchState === 'failed_to_start') {
@@ -1624,6 +1603,7 @@ function summarizeMemberSpawnStatusRecord(
     confirmedCount,
     pendingCount,
     failedCount,
+    skippedCount,
     runtimeAlivePendingCount,
     shellOnlyPendingCount,
     runtimeProcessPendingCount,
@@ -1828,8 +1808,12 @@ function deriveMemberLaunchState(entry: {
   runtimeAlive?: boolean;
   bootstrapConfirmed?: boolean;
   hardFailure?: boolean;
+  skippedForLaunch?: boolean;
   pendingPermissionRequestIds?: string[];
 }): MemberLaunchState {
+  if (entry.skippedForLaunch) {
+    return 'skipped_for_launch';
+  }
   if (entry.hardFailure) {
     return 'failed_to_start';
   }
@@ -2364,7 +2348,9 @@ ${getAgentLanguageInstruction()}
 Your FIRST action: call MCP tool member_briefing with:
 { teamName: "${teamName}", memberName: "${member.name}" }
 Call member_briefing directly. Do NOT use Agent, any subagent, or any delegated helper for this step.
-If member_briefing fails, SendMessage "${leadName}" one short natural-language sentence with the exact error text. Do NOT send only "bootstrap failed".
+If tool search says agent-teams is still connecting, wait briefly and retry tool search at most once.
+If member_briefing is still unavailable after that one retry, SendMessage "${leadName}" exactly one short natural-language sentence with the exact error text, then stop this turn and wait. Do NOT send only "bootstrap failed".
+Do NOT keep searching for member_briefing, check tasks, or send repeated status/idle messages after reporting the bootstrap failure.
 ${getCanonicalSendMessageFieldRule()}
 Correct example:
 ${buildCanonicalSendMessageExample({ to: leadName, summary: 'bootstrap error', message: 'exact error text' })}
@@ -2393,7 +2379,9 @@ The team has just been reconnected after a restart.
 Your FIRST action: call MCP tool member_briefing with:
 { teamName: "${teamName}", memberName: "${member.name}" }
 Call member_briefing directly. Do NOT use Agent, any subagent, or any delegated helper for this step.
-If member_briefing fails, SendMessage "${leadName}" one short natural-language sentence with the exact error text. Do NOT send only "bootstrap failed".
+If tool search says agent-teams is still connecting, wait briefly and retry tool search at most once.
+If member_briefing is still unavailable after that one retry, SendMessage "${leadName}" exactly one short natural-language sentence with the exact error text, then stop this turn and wait. Do NOT send only "bootstrap failed".
+Do NOT keep searching for member_briefing, check tasks, or send repeated status/idle messages after reporting the bootstrap failure.
 ${getCanonicalSendMessageFieldRule()}
 Correct example:
 ${buildCanonicalSendMessageExample({ to: leadName, summary: 'bootstrap error', message: 'exact error text' })}
@@ -2439,7 +2427,9 @@ Your FIRST action: call MCP tool member_briefing with:
 Call member_briefing directly as your own MCP tool call. Do NOT use the Agent tool, any subagent, or any delegated helper for this step.
 member_briefing is expected to be available in your initial MCP tool list. If it is missing or unavailable, treat that as a real bootstrap error and report the exact error text to your team lead.
 Do NOT start work, claim tasks, or improvise workflow/task/process rules before member_briefing succeeds.
-If member_briefing fails, send one short natural-language message to your team lead "${leadName}" that includes the exact failure reason (for example the API error, validation error, or lookup failure), then wait. Do NOT send only "bootstrap failed".
+If tool search says agent-teams is still connecting, wait briefly and retry tool search at most once.
+If member_briefing is still unavailable after that one retry, send exactly one short natural-language message to your team lead "${leadName}" that includes the exact failure reason (for example the API error, validation error, or lookup failure), then stop this turn and wait. Do NOT send only "bootstrap failed".
+Do NOT keep searching for member_briefing, check tasks, or send repeated status/idle messages after reporting the bootstrap failure.
 IMPORTANT: When sending messages to the team lead, always use the exact name "${leadName}" in the \`to\` field of SendMessage. Never abbreviate or shorten it (e.g. do NOT use "lead" instead of "team-lead").
 ${getCanonicalSendMessageFieldRule()}
 Correct example:
@@ -2513,7 +2503,9 @@ ${providerArgLine}${modelArgLine}${effortArgLine}   - prompt:
      Call member_briefing directly as your own MCP tool call. Do NOT use the Agent tool, any subagent, or any delegated helper for this step.
      member_briefing is expected to be available in your initial MCP tool list. If it is missing or unavailable, treat that as a real bootstrap error and report the exact error text to your team lead.
      Do NOT start work, claim tasks, or improvise workflow/task/process rules before member_briefing succeeds.
-     If member_briefing fails, send one short natural-language message to your team lead "${leadName}" that includes the exact failure reason (for example the API error, validation error, or lookup failure), then wait. Do NOT send only "bootstrap failed".
+     If tool search says agent-teams is still connecting, wait briefly and retry tool search at most once.
+     If member_briefing is still unavailable after that one retry, send exactly one short natural-language message to your team lead "${leadName}" that includes the exact failure reason (for example the API error, validation error, or lookup failure), then stop this turn and wait. Do NOT send only "bootstrap failed".
+     Do NOT keep searching for member_briefing, check tasks, or send repeated status/idle messages after reporting the bootstrap failure.
      IMPORTANT: When sending messages to the team lead, always use the exact name "${leadName}" in the \`to\` field of SendMessage. Never abbreviate or shorten it (e.g. do NOT use "lead" instead of "team-lead").
      ${buildTeammateAgentBlockReminder()}
 ${actionModeProtocol}
@@ -6754,6 +6746,9 @@ export class TeamProvisioningService {
     };
 
     if (status === 'spawning') {
+      next.skippedForLaunch = false;
+      next.skipReason = undefined;
+      next.skippedAt = undefined;
       next.agentToolAccepted = false;
       next.runtimeAlive = false;
       next.bootstrapConfirmed = false;
@@ -6769,6 +6764,9 @@ export class TeamProvisioningService {
       next.lastHeartbeatAt = undefined;
       next.launchState = 'starting';
     } else if (status === 'waiting') {
+      next.skippedForLaunch = false;
+      next.skipReason = undefined;
+      next.skippedAt = undefined;
       next.agentToolAccepted = true;
       next.runtimeAlive = false;
       next.bootstrapConfirmed = false;
@@ -6784,6 +6782,9 @@ export class TeamProvisioningService {
       next.lastHeartbeatAt = undefined;
       next.launchState = 'runtime_pending_bootstrap';
     } else if (status === 'online') {
+      next.skippedForLaunch = false;
+      next.skipReason = undefined;
+      next.skippedAt = undefined;
       next.agentToolAccepted = true;
       next.runtimeAlive = true;
       next.livenessSource = livenessSource;
@@ -6803,14 +6804,39 @@ export class TeamProvisioningService {
       next.hardFailureReason = undefined;
       next.launchState = deriveMemberLaunchState(next);
     } else if (status === 'error') {
+      next.skippedForLaunch = false;
+      next.skipReason = undefined;
+      next.skippedAt = undefined;
       next.error = error;
       next.hardFailure = true;
       next.hardFailureReason = error;
       next.launchState = 'failed_to_start';
+    } else if (status === 'skipped') {
+      next.skippedForLaunch = true;
+      next.skipReason =
+        error?.trim() || prev.hardFailureReason || prev.error || 'Skipped for this launch';
+      next.skippedAt = updatedAt;
+      next.agentToolAccepted = false;
+      next.runtimeAlive = false;
+      next.bootstrapConfirmed = false;
+      next.hardFailure = false;
+      next.error = undefined;
+      next.hardFailureReason = undefined;
+      next.livenessSource = undefined;
+      next.livenessKind = undefined;
+      next.runtimeDiagnostic = undefined;
+      next.runtimeDiagnosticSeverity = undefined;
+      next.livenessLastCheckedAt = undefined;
+      next.firstSpawnAcceptedAt = undefined;
+      next.lastHeartbeatAt = undefined;
+      next.launchState = 'skipped_for_launch';
     } else if (status === 'offline') {
       Object.assign(next, createInitialMemberSpawnStatusEntry(), { updatedAt });
       next.error = undefined;
       next.hardFailureReason = undefined;
+      next.skippedForLaunch = false;
+      next.skipReason = undefined;
+      next.skippedAt = undefined;
       next.livenessSource = undefined;
       next.livenessKind = undefined;
       next.runtimeDiagnostic = undefined;
@@ -6826,6 +6852,9 @@ export class TeamProvisioningService {
       prev.launchState === next.launchState &&
       prev.error === next.error &&
       prev.hardFailureReason === next.hardFailureReason &&
+      (prev.skippedForLaunch === true) === (next.skippedForLaunch === true) &&
+      prev.skipReason === next.skipReason &&
+      prev.skippedAt === next.skippedAt &&
       prev.livenessSource === next.livenessSource &&
       prev.agentToolAccepted === next.agentToolAccepted &&
       prev.runtimeAlive === next.runtimeAlive &&
@@ -6844,7 +6873,8 @@ export class TeamProvisioningService {
     if (
       (status === 'online' && (next.bootstrapConfirmed || livenessSource === 'process')) ||
       status === 'offline' ||
-      status === 'error'
+      status === 'error' ||
+      status === 'skipped'
     ) {
       run.pendingMemberRestarts?.delete(memberName);
     }
@@ -6884,6 +6914,14 @@ export class TeamProvisioningService {
         run,
         memberName,
         error?.trim().length ? error.trim() : 'bootstrap failed'
+      );
+    } else if (status === 'skipped') {
+      this.appendMemberBootstrapDiagnostic(
+        run,
+        memberName,
+        error?.trim().length
+          ? `skipped for this launch: ${error.trim()}`
+          : 'skipped for this launch'
       );
     }
     if (!this.isCurrentTrackedRun(run)) return;
@@ -7515,6 +7553,144 @@ export class TeamProvisioningService {
     }
   }
 
+  async skipMemberForLaunch(teamName: string, memberName: string): Promise<void> {
+    const normalizedMemberName = memberName.trim();
+    if (!normalizedMemberName) {
+      throw new Error('Member name is required');
+    }
+
+    const config = await this.configReader.getConfig(teamName);
+    if (!config) {
+      throw new Error(`Team "${teamName}" configuration is no longer available`);
+    }
+
+    let metaMembers: Awaited<ReturnType<TeamMembersMetaStore['getMembers']>> = [];
+    try {
+      metaMembers = await this.membersMetaStore.getMembers(teamName);
+    } catch {
+      metaMembers = [];
+    }
+
+    const configuredMember = this.resolveEffectiveConfiguredMember(
+      config.members ?? [],
+      metaMembers,
+      normalizedMemberName
+    );
+    if (!configuredMember) {
+      throw new Error(`Member "${normalizedMemberName}" is not configured in team "${teamName}"`);
+    }
+    if (configuredMember.removedAt) {
+      throw new Error(`Member "${normalizedMemberName}" has been removed`);
+    }
+    if (isLeadMember({ name: normalizedMemberName, agentType: configuredMember.agentType })) {
+      throw new Error('Lead cannot be skipped for a launch');
+    }
+
+    const runId = this.getTrackedRunId(teamName);
+    const run = runId ? this.runs.get(runId) : undefined;
+    const persistedSnapshot = await this.launchStateStore.read(teamName).catch(() => null);
+    const runEntry = run?.memberSpawnStatuses.get(normalizedMemberName);
+    const persistedMember = persistedSnapshot?.members[normalizedMemberName];
+    const alreadySkipped =
+      runEntry?.launchState === 'skipped_for_launch' ||
+      runEntry?.skippedForLaunch === true ||
+      persistedMember?.launchState === 'skipped_for_launch' ||
+      persistedMember?.skippedForLaunch === true;
+
+    if (alreadySkipped) {
+      return;
+    }
+
+    const failedThisLaunch =
+      runEntry?.launchState === 'failed_to_start' ||
+      runEntry?.status === 'error' ||
+      persistedMember?.launchState === 'failed_to_start' ||
+      persistedMember?.hardFailure === true;
+    if (!failedThisLaunch) {
+      throw new Error(`Member "${normalizedMemberName}" has not failed this launch`);
+    }
+
+    if (run?.pendingMemberRestarts.has(normalizedMemberName)) {
+      throw new Error(`Restart for teammate "${normalizedMemberName}" is already in progress`);
+    }
+
+    const previousFailureReason =
+      runEntry?.hardFailureReason ??
+      runEntry?.error ??
+      persistedMember?.hardFailureReason ??
+      persistedMember?.runtimeDiagnostic;
+    const reason = previousFailureReason?.trim()
+      ? `Skipped by user after launch failure: ${previousFailureReason.trim()}`
+      : 'Skipped by user for this launch';
+
+    if (run && !run.processKilled && !run.cancelRequested) {
+      this.agentRuntimeSnapshotCache.delete(teamName);
+      this.liveTeamAgentRuntimeMetadataCache.delete(teamName);
+      this.resetRuntimeToolActivity(run, normalizedMemberName);
+      this.clearMemberSpawnToolTracking(run, normalizedMemberName);
+      this.setMemberSpawnStatus(run, normalizedMemberName, 'skipped', reason);
+      if (run.isLaunch) {
+        await this.persistLaunchStateSnapshot(
+          run,
+          run.provisioningComplete ? 'finished' : 'active'
+        );
+      }
+
+      try {
+        await this.sendMessageToRun(
+          run,
+          `Teammate "${normalizedMemberName}" was skipped for this launch after a startup failure. Continue without waiting for this teammate unless the user retries it.`
+        );
+      } catch (error) {
+        logger.debug(
+          `[${teamName}] Failed to notify lead about skipped teammate "${normalizedMemberName}": ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+      return;
+    }
+
+    if (!persistedSnapshot || !persistedMember) {
+      throw new Error(`No launch state is available for member "${normalizedMemberName}"`);
+    }
+
+    const updatedAt = nowIso();
+    const nextMembers = {
+      ...persistedSnapshot.members,
+      [normalizedMemberName]: {
+        ...persistedMember,
+        launchState: 'skipped_for_launch' as const,
+        skippedForLaunch: true,
+        skipReason: reason,
+        skippedAt: updatedAt,
+        agentToolAccepted: false,
+        runtimeAlive: false,
+        bootstrapConfirmed: false,
+        hardFailure: false,
+        hardFailureReason: undefined,
+        pendingPermissionRequestIds: undefined,
+        livenessKind: undefined,
+        runtimeDiagnostic: undefined,
+        runtimeDiagnosticSeverity: undefined,
+        lastEvaluatedAt: updatedAt,
+        diagnostics: [`skipped for this launch: ${reason}`],
+      },
+    };
+    const nextSnapshot = createPersistedLaunchSnapshot({
+      teamName: persistedSnapshot.teamName,
+      expectedMembers: persistedSnapshot.expectedMembers,
+      bootstrapExpectedMembers: persistedSnapshot.bootstrapExpectedMembers,
+      leadSessionId: persistedSnapshot.leadSessionId,
+      launchPhase: persistedSnapshot.launchPhase,
+      members: nextMembers,
+      updatedAt,
+    });
+    await this.launchStateStore.write(teamName, nextSnapshot);
+    this.agentRuntimeSnapshotCache.delete(teamName);
+    this.liveTeamAgentRuntimeMetadataCache.delete(teamName);
+  }
+
   private getMutableAliveRunOrThrow(teamName: string): ProvisioningRun {
     const runId = this.getAliveRunId(teamName);
     if (!runId) {
@@ -7801,7 +7977,11 @@ export class TeamProvisioningService {
     }
     return run.expectedMembers.every((memberName) => {
       const entry = run.memberSpawnStatuses.get(memberName);
-      return entry?.launchState === 'failed_to_start' || entry?.launchState === 'confirmed_alive';
+      return (
+        entry?.launchState === 'failed_to_start' ||
+        entry?.launchState === 'confirmed_alive' ||
+        entry?.launchState === 'skipped_for_launch'
+      );
     });
   }
 
@@ -8267,12 +8447,6 @@ export class TeamProvisioningService {
 
       const primaryReason =
         prepare.diagnostics.find((entry) => entry.trim().length > 0) ?? prepare.reason;
-      if (isOpenCodeProjectEvidenceMissingPrepareFailure(prepare)) {
-        details.push(`Selected model ${modelId} verified for launch.`);
-        pushUniqueProvisioningWarning(warnings, OPENCODE_PROJECT_EVIDENCE_NOTE);
-        continue;
-      }
-
       const unavailableLine = `Selected model ${modelId} is unavailable. ${primaryReason}`;
       const verificationWarningLine = `Selected model ${modelId} could not be verified. ${primaryReason}`;
       if (prepare.retryable) {
@@ -8362,14 +8536,6 @@ export class TeamProvisioningService {
     if (!sharedPrepare.ok) {
       const primaryReason =
         sharedPrepare.diagnostics.find((entry) => entry.trim().length > 0) ?? sharedPrepare.reason;
-      if (isOpenCodeProjectEvidenceMissingPrepareFailure(sharedPrepare)) {
-        pushUniqueProvisioningWarning(warnings, OPENCODE_PROJECT_EVIDENCE_NOTE);
-        for (const modelId of modelIds) {
-          details.push(`Selected model ${modelId} verified for launch.`);
-        }
-        return { details, warnings, blockingMessages };
-      }
-
       for (const modelId of modelIds) {
         const unavailableLine = `Selected model ${modelId} is unavailable. ${primaryReason}`;
         const verificationWarningLine = `Selected model ${modelId} could not be verified. ${primaryReason}`;
@@ -12378,7 +12544,9 @@ export class TeamProvisioningService {
       const current = run.memberSpawnStatuses.get(expected);
       if (
         current?.launchState === 'failed_to_start' ||
-        current?.launchState === 'confirmed_alive'
+        current?.launchState === 'confirmed_alive' ||
+        current?.launchState === 'skipped_for_launch' ||
+        current?.skippedForLaunch === true
       ) {
         continue;
       }
@@ -12466,6 +12634,8 @@ export class TeamProvisioningService {
       const current = run.memberSpawnStatuses.get(expected);
       if (
         current?.launchState === 'failed_to_start' ||
+        current?.launchState === 'skipped_for_launch' ||
+        current?.skippedForLaunch === true ||
         current?.bootstrapConfirmed ||
         current?.runtimeAlive
       ) {
@@ -12502,6 +12672,22 @@ export class TeamProvisioningService {
       }
       const current = nextStatuses[resolvedStatusKey];
       if (!current) {
+        continue;
+      }
+      if (current.launchState === 'skipped_for_launch' || current.skippedForLaunch === true) {
+        nextStatuses[resolvedStatusKey] = {
+          ...current,
+          status: 'skipped',
+          launchState: 'skipped_for_launch',
+          skippedForLaunch: true,
+          runtimeAlive: false,
+          bootstrapConfirmed: false,
+          hardFailure: false,
+          hardFailureReason: undefined,
+          error: undefined,
+          livenessSource: undefined,
+          livenessLastCheckedAt: nowIso(),
+        };
         continue;
       }
       const runtimeDiagnostic = buildRuntimeDiagnosticForSpawn(metadata);
@@ -13196,6 +13382,7 @@ export class TeamProvisioningService {
     confirmedCount: number;
     pendingCount: number;
     failedCount: number;
+    skippedCount?: number;
     runtimeAlivePendingCount: number;
     shellOnlyPendingCount?: number;
     runtimeProcessPendingCount?: number;
@@ -13208,6 +13395,7 @@ export class TeamProvisioningService {
     let confirmedCount = 0;
     let pendingCount = 0;
     let failedCount = 0;
+    let skippedCount = 0;
     let runtimeAlivePendingCount = 0;
     let shellOnlyPendingCount = 0;
     let runtimeProcessPendingCount = 0;
@@ -13218,6 +13406,10 @@ export class TeamProvisioningService {
       const entry = memberSpawnStatuses.get(expected) ?? createInitialMemberSpawnStatusEntry();
       if (entry.launchState === 'confirmed_alive') {
         confirmedCount += 1;
+        continue;
+      }
+      if (entry.launchState === 'skipped_for_launch' || entry.skippedForLaunch === true) {
+        skippedCount += 1;
         continue;
       }
       if (entry.launchState === 'failed_to_start') {
@@ -13249,6 +13441,7 @@ export class TeamProvisioningService {
       confirmedCount,
       pendingCount,
       failedCount,
+      skippedCount,
       runtimeAlivePendingCount,
       shellOnlyPendingCount,
       runtimeProcessPendingCount,
@@ -13339,13 +13532,18 @@ export class TeamProvisioningService {
     }
 
     const persistedMemberNames = this.getPersistedLaunchMemberNames(snapshot);
-    const allPendingMembers = persistedMemberNames.filter((memberName) => {
-      const member = snapshot.members[memberName];
-      if (!member) {
-        return false;
-      }
-      return member.launchState !== 'confirmed_alive' && member.launchState !== 'failed_to_start';
-    });
+    const allPendingMembers = persistedMemberNames
+      .filter((memberName) => {
+        const member = snapshot.members[memberName];
+        if (!member) {
+          return false;
+        }
+        return member.launchState !== 'confirmed_alive' && member.launchState !== 'failed_to_start';
+      })
+      .filter((memberName) => {
+        const member = snapshot.members[memberName];
+        return member?.launchState !== 'skipped_for_launch';
+      });
     if (
       allPendingMembers.length > 0 &&
       allPendingMembers.every((memberName) => {
@@ -13374,7 +13572,11 @@ export class TeamProvisioningService {
       if (!member) {
         return true;
       }
-      return member.launchState !== 'confirmed_alive' && member.launchState !== 'failed_to_start';
+      return (
+        member.launchState !== 'confirmed_alive' &&
+        member.launchState !== 'failed_to_start' &&
+        member.launchState !== 'skipped_for_launch'
+      );
     });
     if (secondaryPendingMembers.length === 0) {
       return this.buildPendingBootstrapStatusMessage(prefix, run, launchSummary);
