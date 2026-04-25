@@ -2,10 +2,7 @@ import { KANBAN_ZONE, TASK_PILL } from '../constants/canvas-constants';
 import type { GraphLayoutPort, GraphNode, GraphOwnerSlotAssignment } from '../ports/types';
 import { ACTIVITY_LANE } from './activityLane';
 import type { WorldBounds } from './launchAnchor';
-import {
-  STABLE_SLOT_GEOMETRY,
-  STABLE_SLOT_SECTOR_VECTORS,
-} from './stableSlotGeometry';
+import { STABLE_SLOT_GEOMETRY, STABLE_SLOT_SECTOR_VECTORS } from './stableSlotGeometry';
 
 export type StableSlotWidthBucket = 'S' | 'M' | 'L';
 
@@ -81,6 +78,12 @@ interface NearestSlotAssignmentResult {
   previewOwnerY: number;
 }
 
+interface NearestGridOwnerTargetResult {
+  targetOwnerId: string;
+  previewOwnerX: number;
+  previewOwnerY: number;
+}
+
 interface RankedNearestSlotAssignmentResult extends NearestSlotAssignmentResult {
   distanceSquared: number;
 }
@@ -110,8 +113,7 @@ const SLOT_GEOMETRY = {
   boardColumnGap: 24,
   processRailMinWidth: STABLE_SLOT_GEOMETRY.processRailWidth,
   kanbanBandHeight:
-    KANBAN_ZONE.headerHeight +
-    STABLE_SLOT_GEOMETRY.taskMaxVisibleRows * KANBAN_ZONE.rowHeight,
+    KANBAN_ZONE.headerHeight + STABLE_SLOT_GEOMETRY.taskMaxVisibleRows * KANBAN_ZONE.rowHeight,
   centralPadding: STABLE_SLOT_GEOMETRY.centralSafetyPadding,
 } as const;
 
@@ -120,6 +122,9 @@ const PROCESS_RAIL_NODE_FOOTPRINT = 28;
 const GEOMETRY_EPSILON = 0.001;
 const SMALL_TEAM_CARDINAL_RADIUS_STEP = 24;
 const SMALL_TEAM_CARDINAL_VERTICAL_PADDING = 77.7;
+const GRID_UNDER_LEAD_COLUMN_COUNT = 2;
+const GRID_UNDER_LEAD_LEAD_GAP = 77.7;
+const GRID_UNDER_LEAD_ROW_GAP = 77.7;
 
 const SECTOR_VECTORS = STABLE_SLOT_SECTOR_VECTORS;
 const SMALL_TEAM_CARDINAL_LAYOUTS: ReadonlyArray<
@@ -166,12 +171,8 @@ export function buildStableSlotLayoutSnapshot({
   }
 
   const leadCoreRect = createCenteredRect(0, 0, 200, 96);
-  const leadFootprint = computeOwnerFootprintForOwnerId(nodes, leadNode.id);
-  const leadSlotFrame = buildSlotFrameAtRadius(
-    leadFootprint,
-    { ringIndex: 0, sectorIndex: 0 },
-    0
-  );
+  const leadFootprint = computeOwnerFootprintForOwnerId(nodes, leadNode.id, layout);
+  const leadSlotFrame = buildSlotFrameAtRadius(leadFootprint, { ringIndex: 0, sectorIndex: 0 }, 0);
   const leadActivityRect = leadSlotFrame.activityColumnRect;
   const launchHudRect = createRect(leadCoreRect.right, leadCoreRect.top, 0, 0);
   const leadCentralReservedBlock = buildLeadCentralReservedBlock({
@@ -191,20 +192,15 @@ export function buildStableSlotLayoutSnapshot({
     SLOT_GEOMETRY.centralPadding
   );
 
-  const memberSlotFrames = planOwnerSlots(
-    ownerFootprints,
-    centralCollisionRects,
-    runtimeCentralExclusion,
-    layout
-  );
+  const memberSlotFrames =
+    (layout?.mode ?? 'radial') === 'grid-under-lead'
+      ? planGridUnderLeadOwnerSlots(ownerFootprints, centralCollisionRects)
+      : planOwnerSlots(ownerFootprints, centralCollisionRects, runtimeCentralExclusion, layout);
   const memberSlotFrameByOwnerId = new Map(
     memberSlotFrames.map((frame) => [frame.ownerId, frame] as const)
   );
   const fitBounds = unionRects(
-    [
-      runtimeCentralExclusion,
-      ...memberSlotFrames.map((frame) => frame.bounds),
-    ].filter(Boolean)
+    [runtimeCentralExclusion, ...memberSlotFrames.map((frame) => frame.bounds)].filter(Boolean)
   );
 
   return {
@@ -255,10 +251,7 @@ function buildLeadCentralReservedBlock(args: {
   ]);
 }
 
-function padCentralCollisionRects(
-  rects: readonly StableRect[],
-  padding: number
-): StableRect[] {
+function padCentralCollisionRects(rects: readonly StableRect[], padding: number): StableRect[] {
   return rects.map((rect) => padRect(rect, padding));
 }
 
@@ -276,6 +269,7 @@ export function computeOwnerFootprints(
   layout?: GraphLayoutPort
 ): OwnerFootprint[] {
   const ownerNodes = nodes.filter((node) => node.kind === 'member');
+  const showActivity = layout?.showActivity ?? true;
   const ownerNodeById = new Map(ownerNodes.map((node) => [node.id, node] as const));
   const taskColumnsByOwnerId = new Map<string, Set<string>>();
   const processCountByOwnerId = new Map<string, number>();
@@ -309,6 +303,7 @@ export function computeOwnerFootprints(
         ownerId,
         taskColumnCount: taskColumnsByOwnerId.get(ownerId)?.size ?? 0,
         processCount: processCountByOwnerId.get(ownerId) ?? 0,
+        showActivity,
       }),
     ];
   });
@@ -316,7 +311,8 @@ export function computeOwnerFootprints(
 
 function computeOwnerFootprintForOwnerId(
   nodes: readonly GraphNode[],
-  ownerId: string
+  ownerId: string,
+  layout?: GraphLayoutPort
 ): OwnerFootprint {
   const taskColumns = new Set<string>();
   let processCount = 0;
@@ -334,6 +330,7 @@ function computeOwnerFootprintForOwnerId(
     ownerId,
     taskColumnCount: taskColumns.size,
     processCount,
+    showActivity: layout?.showActivity ?? true,
   });
 }
 
@@ -341,25 +338,19 @@ function buildOwnerFootprint(args: {
   ownerId: string;
   taskColumnCount: number;
   processCount: number;
+  showActivity: boolean;
 }): OwnerFootprint {
+  const activityColumnWidth = args.showActivity ? SLOT_GEOMETRY.activityColumnWidth : 0;
+  const activityColumnHeight = args.showActivity ? SLOT_GEOMETRY.activityColumnHeight : 0;
+  const activityToKanbanGap = args.showActivity ? SLOT_GEOMETRY.boardColumnGap : 0;
   const kanbanBandWidth =
     args.taskColumnCount <= 1
       ? TASK_PILL.width
       : TASK_PILL.width + (args.taskColumnCount - 1) * KANBAN_ZONE.columnWidth;
   const processBandWidth = computeProcessBandWidth(args.processCount);
-  const boardBandWidth =
-    SLOT_GEOMETRY.activityColumnWidth +
-    SLOT_GEOMETRY.boardColumnGap +
-    kanbanBandWidth;
-  const boardBandHeight = Math.max(
-    SLOT_GEOMETRY.activityColumnHeight,
-    SLOT_GEOMETRY.kanbanBandHeight
-  );
-  const innerContentWidth = Math.max(
-    SLOT_GEOMETRY.ownerMinWidth,
-    processBandWidth,
-    boardBandWidth
-  );
+  const boardBandWidth = activityColumnWidth + activityToKanbanGap + kanbanBandWidth;
+  const boardBandHeight = Math.max(activityColumnHeight, SLOT_GEOMETRY.kanbanBandHeight);
+  const innerContentWidth = Math.max(SLOT_GEOMETRY.ownerMinWidth, processBandWidth, boardBandWidth);
   const slotWidth = innerContentWidth + SLOT_GEOMETRY.memberSlotInnerPadding * 2;
   const slotHeight =
     SLOT_GEOMETRY.memberSlotInnerPadding * 2 +
@@ -384,8 +375,8 @@ function buildOwnerFootprint(args: {
     slotHeight,
     widthBucket: classifyWidthBucket(slotWidth),
     radialDepth,
-    activityColumnWidth: SLOT_GEOMETRY.activityColumnWidth,
-    activityColumnHeight: SLOT_GEOMETRY.activityColumnHeight,
+    activityColumnWidth,
+    activityColumnHeight,
     processBandWidth,
     kanbanBandWidth,
     kanbanBandHeight: SLOT_GEOMETRY.kanbanBandHeight,
@@ -411,8 +402,7 @@ export function computeProcessBandWidth(processCount: number): number {
     return SLOT_GEOMETRY.processRailMinWidth;
   }
 
-  const occupiedWidth =
-    (processCount - 1) * PROCESS_RAIL_NODE_GAP + PROCESS_RAIL_NODE_FOOTPRINT;
+  const occupiedWidth = (processCount - 1) * PROCESS_RAIL_NODE_GAP + PROCESS_RAIL_NODE_FOOTPRINT;
   return Math.max(SLOT_GEOMETRY.processRailMinWidth, occupiedWidth);
 }
 
@@ -424,10 +414,12 @@ export function resolveNearestSlotAssignment(args: {
   snapshot: StableSlotLayoutSnapshot;
   layout?: GraphLayoutPort;
 }): NearestSlotAssignmentResult | null {
+  if ((args.layout?.mode ?? 'radial') === 'grid-under-lead') {
+    return null;
+  }
+
   const allFootprints = computeOwnerFootprints(args.nodes, args.layout);
-  const footprintByOwnerId = new Map(
-    allFootprints.map((item) => [item.ownerId, item] as const)
-  );
+  const footprintByOwnerId = new Map(allFootprints.map((item) => [item.ownerId, item] as const));
   const footprint = footprintByOwnerId.get(args.ownerId);
   if (!footprint) {
     return null;
@@ -449,7 +441,9 @@ export function resolveNearestSlotAssignment(args: {
     return strictSmallTeamCandidate;
   }
 
-  const existingFrames = args.snapshot.memberSlotFrames.filter((frame) => frame.ownerId !== args.ownerId);
+  const existingFrames = args.snapshot.memberSlotFrames.filter(
+    (frame) => frame.ownerId !== args.ownerId
+  );
   const maxOccupiedRing = existingFrames.reduce((max, frame) => Math.max(max, frame.ringIndex), 0);
   const candidateAssignments = buildCandidateAssignments(
     Math.max(SLOT_GEOMETRY.maxGeneratedRings, maxOccupiedRing + allFootprints.length + 2)
@@ -500,6 +494,41 @@ export function resolveNearestSlotAssignment(args: {
     : null;
 }
 
+export function resolveNearestGridOwnerTarget(args: {
+  ownerId: string;
+  ownerX: number;
+  ownerY: number;
+  snapshot: StableSlotLayoutSnapshot;
+}): NearestGridOwnerTargetResult | null {
+  if (!args.snapshot.memberSlotFrameByOwnerId.has(args.ownerId)) {
+    return null;
+  }
+
+  let best: {
+    frame: SlotFrame;
+    distanceSquared: number;
+  } | null = null;
+
+  for (const frame of args.snapshot.memberSlotFrames) {
+    const dx = frame.ownerX - args.ownerX;
+    const dy = frame.ownerY - args.ownerY;
+    const distanceSquared = dx * dx + dy * dy;
+    if (!best || distanceSquared < best.distanceSquared) {
+      best = { frame, distanceSquared };
+    }
+  }
+
+  if (!best) {
+    return null;
+  }
+
+  return {
+    targetOwnerId: best.frame.ownerId,
+    previewOwnerX: best.frame.ownerX,
+    previewOwnerY: best.frame.ownerY,
+  };
+}
+
 function resolveStrictSmallTeamNearestSlotAssignment(args: {
   ownerId: string;
   ownerX: number;
@@ -512,12 +541,10 @@ function resolveStrictSmallTeamNearestSlotAssignment(args: {
     return null;
   }
 
-  let best:
-    | {
-        frame: SlotFrame;
-        distanceSquared: number;
-      }
-    | null = null;
+  let best: {
+    frame: SlotFrame;
+    distanceSquared: number;
+  } | null = null;
   for (const frame of strictFrames) {
     const dx = frame.ownerX - args.ownerX;
     const dy = frame.ownerY - args.ownerY;
@@ -568,7 +595,9 @@ function getStrictSmallTeamFrames(frames: readonly SlotFrame[]): readonly SlotFr
   }
 
   const actualAssignmentKeys = frames
-    .map((frame) => buildAssignmentKey({ ringIndex: frame.ringIndex, sectorIndex: frame.sectorIndex }))
+    .map((frame) =>
+      buildAssignmentKey({ ringIndex: frame.ringIndex, sectorIndex: frame.sectorIndex })
+    )
     .sort();
   const presetAssignmentKeys = preset.map((assignment) => buildAssignmentKey(assignment)).sort();
 
@@ -600,12 +629,7 @@ export function validateStableSlotLayout(
   const seenOwnerIds = new Set<string>();
   const seenAssignments = new Set<string>();
   for (const frame of snapshot.memberSlotFrames) {
-    const frameValidation = validateMemberSlotFrame(
-      frame,
-      snapshot,
-      seenOwnerIds,
-      seenAssignments
-    );
+    const frameValidation = validateMemberSlotFrame(frame, snapshot, seenOwnerIds, seenAssignments);
     if (frameValidation) {
       return frameValidation;
     }
@@ -673,8 +697,13 @@ function validateLeadSnapshotRects(
   if (!rectContainsRect(snapshot.leadCentralReservedBlock, snapshot.leadActivityRect)) {
     return { valid: false, reason: 'leadActivityRect must fit inside leadCentralReservedBlock' };
   }
-  if (!rectContainsRect(snapshot.leadCentralReservedBlock, snapshot.leadSlotFrame.processBandRect)) {
-    return { valid: false, reason: 'lead processBandRect must fit inside leadCentralReservedBlock' };
+  if (
+    !rectContainsRect(snapshot.leadCentralReservedBlock, snapshot.leadSlotFrame.processBandRect)
+  ) {
+    return {
+      valid: false,
+      reason: 'lead processBandRect must fit inside leadCentralReservedBlock',
+    };
   }
   if (!rectContainsRect(snapshot.leadCentralReservedBlock, snapshot.leadSlotFrame.kanbanBandRect)) {
     return { valid: false, reason: 'lead kanbanBandRect must fit inside leadCentralReservedBlock' };
@@ -692,7 +721,10 @@ function validateLeadSnapshotRects(
     };
   }
   if (!rectContainsRect(snapshot.runtimeCentralExclusion, snapshot.leadCentralReservedBlock)) {
-    return { valid: false, reason: 'runtimeCentralExclusion must contain leadCentralReservedBlock' };
+    return {
+      valid: false,
+      reason: 'runtimeCentralExclusion must contain leadCentralReservedBlock',
+    };
   }
   const paddedCentralCollisionRects = padCentralCollisionRects(
     snapshot.centralCollisionRects,
@@ -855,13 +887,10 @@ function buildUnassignedTaskRect(
   leadCentralReservedBlock: StableRect
 ): StableRect | null {
   const visibleOwnerIds = new Set(
-    nodes
-      .filter((node) => node.kind === 'lead' || node.kind === 'member')
-      .map((node) => node.id)
+    nodes.filter((node) => node.kind === 'lead' || node.kind === 'member').map((node) => node.id)
   );
   const unassignedTasks = nodes.filter(
-    (node) =>
-      node.kind === 'task' && (!node.ownerId || !visibleOwnerIds.has(node.ownerId))
+    (node) => node.kind === 'task' && (!node.ownerId || !visibleOwnerIds.has(node.ownerId))
   );
   if (unassignedTasks.length === 0) {
     return null;
@@ -921,6 +950,52 @@ function planOwnerSlots(
   }
 
   return placedFrames;
+}
+
+function planGridUnderLeadOwnerSlots(
+  ownerFootprints: readonly OwnerFootprint[],
+  centralCollisionRects: readonly StableRect[]
+): SlotFrame[] {
+  const frames: SlotFrame[] = [];
+  const centralBlock = unionRects([...centralCollisionRects]);
+  let rowTop = centralBlock.bottom + GRID_UNDER_LEAD_LEAD_GAP;
+
+  for (
+    let rowStartIndex = 0;
+    rowStartIndex < ownerFootprints.length;
+    rowStartIndex += GRID_UNDER_LEAD_COLUMN_COUNT
+  ) {
+    const rowFootprints = ownerFootprints.slice(
+      rowStartIndex,
+      rowStartIndex + GRID_UNDER_LEAD_COLUMN_COUNT
+    );
+    const rowWidth =
+      rowFootprints.reduce((sum, footprint) => sum + footprint.slotWidth, 0) +
+      Math.max(0, rowFootprints.length - 1) * SLOT_GEOMETRY.slotHorizontalGap;
+    const rowHeight = Math.max(...rowFootprints.map((footprint) => footprint.slotHeight));
+    const ownerY = rowTop + getOwnerAnchorTopOffset();
+    let nextLeft = -rowWidth / 2;
+
+    rowFootprints.forEach((footprint, columnIndex) => {
+      const ownerX = nextLeft + footprint.slotWidth / 2;
+      frames.push(
+        buildSlotFrameAtOwnerAnchor(
+          footprint,
+          {
+            ringIndex: Math.floor(rowStartIndex / GRID_UNDER_LEAD_COLUMN_COUNT),
+            sectorIndex: columnIndex,
+          },
+          ownerX,
+          ownerY
+        )
+      );
+      nextLeft += footprint.slotWidth + SLOT_GEOMETRY.slotHorizontalGap;
+    });
+
+    rowTop += rowHeight + GRID_UNDER_LEAD_ROW_GAP;
+  }
+
+  return frames;
 }
 
 function shouldUseStrictSmallTeamCardinalLayout(
@@ -1052,7 +1127,10 @@ function resolveStrictSmallTeamRadiusByAxis(
   return radiusByAxis;
 }
 
-function resolveStrictSmallTeamVectorAxis(vector: { x: number; y: number }): 'horizontal' | 'vertical' {
+function resolveStrictSmallTeamVectorAxis(vector: {
+  x: number;
+  y: number;
+}): 'horizontal' | 'vertical' {
   return Math.abs(vector.x) >= Math.abs(vector.y) ? 'horizontal' : 'vertical';
 }
 
@@ -1171,7 +1249,8 @@ function buildSlotFrameAtRadius(
   assignment: GraphOwnerSlotAssignment,
   radius: number
 ): SlotFrame {
-  const vector = SECTOR_VECTORS[assignment.sectorIndex % SECTOR_VECTORS.length] ?? SECTOR_VECTORS[0];
+  const vector =
+    SECTOR_VECTORS[assignment.sectorIndex % SECTOR_VECTORS.length] ?? SECTOR_VECTORS[0];
   return buildSlotFrameAtRadiusWithVector(footprint, assignment, radius, vector);
 }
 
@@ -1183,8 +1262,16 @@ function buildSlotFrameAtRadiusWithVector(
 ): SlotFrame {
   const ownerX = vector.x * radius;
   const ownerY = vector.y * radius;
-  const slotTop =
-    ownerY - (SLOT_GEOMETRY.memberSlotInnerPadding + SLOT_GEOMETRY.ownerBandHeight / 2);
+  return buildSlotFrameAtOwnerAnchor(footprint, assignment, ownerX, ownerY);
+}
+
+function buildSlotFrameAtOwnerAnchor(
+  footprint: OwnerFootprint,
+  assignment: GraphOwnerSlotAssignment,
+  ownerX: number,
+  ownerY: number
+): SlotFrame {
+  const slotTop = ownerY - getOwnerAnchorTopOffset();
   const bounds = createRect(
     ownerX - footprint.slotWidth / 2,
     slotTop,
@@ -1209,8 +1296,9 @@ function buildSlotFrameAtRadiusWithVector(
     footprint.activityColumnWidth,
     footprint.activityColumnHeight
   );
+  const activityToKanbanGap = footprint.activityColumnWidth > 0 ? SLOT_GEOMETRY.boardColumnGap : 0;
   const kanbanBandRect = createRect(
-    activityColumnRect.right + SLOT_GEOMETRY.boardColumnGap,
+    activityColumnRect.right + activityToKanbanGap,
     boardBandRect.top,
     footprint.kanbanBandWidth,
     footprint.kanbanBandHeight
@@ -1230,6 +1318,10 @@ function buildSlotFrameAtRadiusWithVector(
     kanbanBandRect,
     taskColumnCount: footprint.taskColumnCount,
   };
+}
+
+function getOwnerAnchorTopOffset(): number {
+  return SLOT_GEOMETRY.memberSlotInnerPadding + SLOT_GEOMETRY.ownerBandHeight / 2;
 }
 
 function buildCandidateAssignments(maxRingExclusive: number): GraphOwnerSlotAssignment[] {
@@ -1272,10 +1364,7 @@ function computePlannerRingLimit(
     (max, assignment) => Math.max(max, assignment.ringIndex),
     0
   );
-  return Math.max(
-    SLOT_GEOMETRY.maxGeneratedRings,
-    maxAssignedRing + ownerFootprints.length + 2
-  );
+  return Math.max(SLOT_GEOMETRY.maxGeneratedRings, maxAssignedRing + ownerFootprints.length + 2);
 }
 
 function ownerFootprintsSpillBudget(placedOwnerCount: number): number {
@@ -1362,7 +1451,9 @@ function rankNearestSlotAssignmentResult(args: {
     if (!displacedFrame) {
       return null;
     }
-    const otherFrames = existingFrames.filter((existing) => existing.ownerId !== occupiedFrame.ownerId);
+    const otherFrames = existingFrames.filter(
+      (existing) => existing.ownerId !== occupiedFrame.ownerId
+    );
     if (
       !isSlotFramePlacementValid(frame, otherFrames, centralCollisionRects) ||
       !isSlotFramePlacementValid(displacedFrame, otherFrames, centralCollisionRects) ||
@@ -1692,7 +1783,8 @@ function resolveMinimumDirectionalRadius(args: {
   runtimeCentralExclusion: StableRect;
 }): number {
   return resolveMinimumDirectionalRadiusForVector({
-    vector: SECTOR_VECTORS[args.assignment.sectorIndex % SECTOR_VECTORS.length] ?? SECTOR_VECTORS[0],
+    vector:
+      SECTOR_VECTORS[args.assignment.sectorIndex % SECTOR_VECTORS.length] ?? SECTOR_VECTORS[0],
     footprint: args.footprint,
     centralCollisionRects: args.centralCollisionRects,
     runtimeCentralExclusion: args.runtimeCentralExclusion,
@@ -1750,12 +1842,12 @@ function computeLegacyMinimumRingRadius(
   footprint: OwnerFootprint,
   centralExclusion: StableRect
 ): number {
-  const horizontalExtent =
-    vector.x >= 0 ? centralExclusion.right : Math.abs(centralExclusion.left);
+  const horizontalExtent = vector.x >= 0 ? centralExclusion.right : Math.abs(centralExclusion.left);
   const verticalExtent = vector.y >= 0 ? centralExclusion.bottom : Math.abs(centralExclusion.top);
   const requiredX =
     Math.abs(vector.x) > 0.001
-      ? (horizontalExtent + footprint.slotWidth / 2 + SLOT_GEOMETRY.ringPadding) / Math.abs(vector.x)
+      ? (horizontalExtent + footprint.slotWidth / 2 + SLOT_GEOMETRY.ringPadding) /
+        Math.abs(vector.x)
       : 0;
   const requiredY =
     Math.abs(vector.y) > 0.001
@@ -1791,12 +1883,7 @@ function rectsOverlap(a: StableRect, b: StableRect): boolean {
 }
 
 function ownerSlotFramesOverlap(a: StableRect, b: StableRect): boolean {
-  return rectsOverlapWithAxisGap(
-    a,
-    b,
-    SLOT_GEOMETRY.slotHorizontalGap,
-    SLOT_GEOMETRY.ringPadding
-  );
+  return rectsOverlapWithAxisGap(a, b, SLOT_GEOMETRY.slotHorizontalGap, SLOT_GEOMETRY.ringPadding);
 }
 
 function rectContainsRect(outer: StableRect, inner: StableRect): boolean {
@@ -1850,10 +1937,7 @@ function isSameAssignment(
   left: GraphOwnerSlotAssignment | undefined,
   right: GraphOwnerSlotAssignment
 ): boolean {
-  return (
-    left?.ringIndex === right.ringIndex &&
-    left?.sectorIndex === right.sectorIndex
-  );
+  return left?.ringIndex === right.ringIndex && left?.sectorIndex === right.sectorIndex;
 }
 
 function createRect(left: number, top: number, width: number, height: number): StableRect {
@@ -1867,12 +1951,22 @@ function createRect(left: number, top: number, width: number, height: number): S
   };
 }
 
-function createCenteredRect(centerX: number, centerY: number, width: number, height: number): StableRect {
+function createCenteredRect(
+  centerX: number,
+  centerY: number,
+  width: number,
+  height: number
+): StableRect {
   return createRect(centerX - width / 2, centerY - height / 2, width, height);
 }
 
 function padRect(rect: StableRect, padding: number): StableRect {
-  return createRect(rect.left - padding, rect.top - padding, rect.width + padding * 2, rect.height + padding * 2);
+  return createRect(
+    rect.left - padding,
+    rect.top - padding,
+    rect.width + padding * 2,
+    rect.height + padding * 2
+  );
 }
 
 function translateRect(rect: StableRect, dx: number, dy: number): StableRect {

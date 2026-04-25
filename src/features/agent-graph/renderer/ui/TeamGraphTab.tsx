@@ -46,7 +46,8 @@ export const TeamGraphTab = ({
   isPaneFocused = false,
 }: TeamGraphTabProps): React.JSX.Element => {
   const graphData = useTeamGraphAdapter(teamName);
-  const { openTeamPage, commitOwnerSlotDrop } = useTeamGraphSurfaceActions(teamName);
+  const { openTeamPage, commitOwnerSlotDrop, commitOwnerGridOrderDrop, setLayoutMode } =
+    useTeamGraphSurfaceActions(teamName);
   const [fullscreen, setFullscreen] = useState(false);
   const { sidebarVisible, toggleSidebarVisible } = useGraphSidebarVisibility();
   const { dialog: createTaskDialog, openCreateTaskDialog } = useGraphCreateTaskDialog(teamName);
@@ -149,7 +150,9 @@ export const TeamGraphTab = ({
           renderTopToolbarContent={() => (
             <GraphProvisioningHud teamName={teamName} enabled={isActive} />
           )}
+          onLayoutModeChange={setLayoutMode}
           onOwnerSlotDrop={commitOwnerSlotDrop}
+          onOwnerGridOrderDrop={commitOwnerGridOrderDrop}
           renderHud={(hudProps) => {
             const extraHudProps = hudProps as typeof hudProps & {
               getViewportSize?: () => { width: number; height: number };

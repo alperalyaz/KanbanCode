@@ -2,8 +2,10 @@ import { constants as fsConstants, promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { registerTeamRoutes } from '../../../../src/main/http/teams';
 import { OpenCodeBridgeCommandClient } from '../../../../src/main/services/team/opencode/bridge/OpenCodeBridgeCommandClient';
 import {
   createOpenCodeBridgeCommandLeaseStore,
@@ -27,6 +29,7 @@ import {
   setClaudeBasePathOverride,
 } from '../../../../src/main/utils/pathDecoder';
 
+import type { HttpServices } from '../../../../src/main/http';
 import type { OpenCodeBridgeCommandExecutor } from '../../../../src/main/services/team/opencode/bridge/OpenCodeStateChangingBridgeCommandService';
 import type { RuntimeStoreManifestEvidence } from '../../../../src/main/services/team/opencode/bridge/OpenCodeBridgeCommandContract';
 import type { RuntimeStoreManifestReader } from '../../../../src/main/services/team/opencode/bridge/OpenCodeStateChangingBridgeCommandService';
@@ -68,7 +71,7 @@ liveDescribe('OpenCode semantic messaging live e2e', () => {
   it(
     'delivers a desktop message to an OpenCode member and records the reply through agent-teams_message_send',
     async () => {
-      const { bridgeClient, selectedModel, svc } = await createOpenCodeLiveHarness(tempDir);
+      const { bridgeClient, selectedModel, svc, dispose } = await createOpenCodeLiveHarness(tempDir);
 
       const teamName = `opencode-semantic-message-${Date.now()}`;
       const memberName = 'bob';
@@ -164,7 +167,8 @@ liveDescribe('OpenCode semantic messaging live e2e', () => {
         });
         expect(reply.text).toContain(expectedReply);
       } finally {
-        svc.stopTeam(teamName);
+        await svc.stopTeam(teamName).catch(() => undefined);
+        await dispose();
         await waitUntil(async () => {
           const laneIndex = await readOpenCodeRuntimeLaneIndex(getTeamsBasePath(), teamName);
           return Object.keys(laneIndex.lanes).length === 0;
@@ -177,7 +181,7 @@ liveDescribe('OpenCode semantic messaging live e2e', () => {
   it(
     'relays an OpenCode teammate message into another OpenCode member runtime and records the reply',
     async () => {
-      const { bridgeClient, selectedModel, svc } = await createOpenCodeLiveHarness(tempDir);
+      const { bridgeClient, selectedModel, svc, dispose } = await createOpenCodeLiveHarness(tempDir);
 
       const teamName = `opencode-peer-message-${Date.now()}`;
       const senderName = 'bob';
@@ -186,7 +190,8 @@ liveDescribe('OpenCode semantic messaging live e2e', () => {
       const replyToken = `opencode-peer-reply-e2e-${Date.now()}`;
       const peerInstructionText = [
         `Peer relay token: ${peerToken}.`,
-        `${recipientName}, call agent-teams_message_send with teamName="${teamName}", to="user", from="${recipientName}", text exactly "${replyToken}", and summary "peer reply".`,
+        `Please reply to the app user with exactly ${replyToken}.`,
+        `Use agent-teams_message_send with teamName="${teamName}", to="user", from="${recipientName}", text exactly "${replyToken}", and summary "peer reply".`,
       ].join(' ');
       const progressEvents: TeamProvisioningProgress[] = [];
 
@@ -274,7 +279,7 @@ liveDescribe('OpenCode semantic messaging live e2e', () => {
             teamName,
             recipientName,
             senderName,
-            [peerToken, replyToken],
+            replyToken,
             90_000
           );
         } catch (error) {
@@ -321,7 +326,8 @@ liveDescribe('OpenCode semantic messaging live e2e', () => {
         });
         expect(reply.text).toContain(replyToken);
       } finally {
-        svc.stopTeam(teamName);
+        await svc.stopTeam(teamName).catch(() => undefined);
+        await dispose();
         await waitUntil(async () => {
           const laneIndex = await readOpenCodeRuntimeLaneIndex(getTeamsBasePath(), teamName);
           return Object.keys(laneIndex.lanes).length === 0;
@@ -435,11 +441,16 @@ async function createOpenCodeLiveHarness(tempDir: string): Promise<{
   bridgeClient: OpenCodeBridgeCommandClient;
   selectedModel: string;
   svc: TeamProvisioningService;
+  dispose: () => Promise<void>;
 }> {
   const selectedModel = process.env.OPENCODE_E2E_MODEL?.trim() || DEFAULT_MODEL;
   const orchestratorCli =
     process.env.CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH?.trim() || DEFAULT_ORCHESTRATOR_CLI;
   await assertExecutable(orchestratorCli);
+
+  const svc = new TeamProvisioningService();
+  const controlApi = await startLiveTeamControlApi(svc);
+  svc.setControlApiBaseUrlResolver(async () => controlApi.baseUrl);
 
   const mcpLaunchSpec = await resolveAgentTeamsMcpLaunchSpec();
   const bridgeEnv = {
@@ -447,6 +458,7 @@ async function createOpenCodeLiveHarness(tempDir: string): Promise<{
     PATH: withBunOnPath(process.env.PATH ?? ''),
     XDG_DATA_HOME: path.join(tempDir, 'xdg-data'),
     AGENT_TEAMS_MCP_CLAUDE_DIR: getClaudeBasePath(),
+    CLAUDE_TEAM_CONTROL_URL: controlApi.baseUrl,
     CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND: mcpLaunchSpec.command,
     CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY: mcpLaunchSpec.args[0] ?? '',
   };
@@ -467,9 +479,39 @@ async function createOpenCodeLiveHarness(tempDir: string): Promise<{
     stopTimeoutMs: 90_000,
   });
   const adapter = new OpenCodeTeamRuntimeAdapter(readinessBridge);
-  const svc = new TeamProvisioningService();
   svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([adapter]));
-  return { bridgeClient, selectedModel, svc };
+  return {
+    bridgeClient,
+    selectedModel,
+    svc,
+    dispose: async () => {
+      svc.setControlApiBaseUrlResolver(null);
+      await controlApi.close();
+    },
+  };
+}
+
+async function startLiveTeamControlApi(svc: TeamProvisioningService): Promise<{
+  baseUrl: string;
+  close: () => Promise<void>;
+}> {
+  const app = Fastify({ logger: false });
+  registerTeamRoutes(app, {
+    teamProvisioningService: svc,
+  } as HttpServices);
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address();
+  if (!address || typeof address === 'string') {
+    await app.close();
+    throw new Error('Failed to start live team control API');
+  }
+
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    close: async () => {
+      await app.close();
+    },
+  };
 }
 
 async function getRuntimeTranscript(

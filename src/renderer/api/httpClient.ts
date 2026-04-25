@@ -8,6 +8,7 @@
 
 import type { CodexAccountSnapshotDto } from '@features/codex-account/contracts';
 import type { DashboardRecentProjectsPayload } from '@features/recent-projects/contracts';
+import type { RuntimeProviderManagementApi } from '@features/runtime-provider-management/contracts';
 import type {
   AppConfig,
   AttachmentFileData,
@@ -1185,6 +1186,63 @@ export class HttpAPIClient implements ElectronAPI {
     onProgress: (): (() => void) => {
       return () => {};
     },
+  };
+
+  runtimeProviderManagement: RuntimeProviderManagementApi = {
+    loadView: async (input) => ({
+      schemaVersion: 1,
+      runtimeId: input.runtimeId,
+      error: {
+        code: 'runtime-unhealthy',
+        message: 'Runtime provider management is not available in browser mode.',
+        recoverable: true,
+      },
+    }),
+    connectWithApiKey: async (input) => ({
+      schemaVersion: 1,
+      runtimeId: input.runtimeId,
+      error: {
+        code: 'unsupported-action',
+        message: 'Runtime provider management is not available in browser mode.',
+        recoverable: true,
+      },
+    }),
+    forgetCredential: async (input) => ({
+      schemaVersion: 1,
+      runtimeId: input.runtimeId,
+      error: {
+        code: 'unsupported-action',
+        message: 'Runtime provider management is not available in browser mode.',
+        recoverable: true,
+      },
+    }),
+    loadModels: async (input) => ({
+      schemaVersion: 1,
+      runtimeId: input.runtimeId,
+      error: {
+        code: 'unsupported-action',
+        message: 'Runtime provider management is not available in browser mode.',
+        recoverable: true,
+      },
+    }),
+    testModel: async (input) => ({
+      schemaVersion: 1,
+      runtimeId: input.runtimeId,
+      error: {
+        code: 'unsupported-action',
+        message: 'Runtime provider management is not available in browser mode.',
+        recoverable: true,
+      },
+    }),
+    setDefaultModel: async (input) => ({
+      schemaVersion: 1,
+      runtimeId: input.runtimeId,
+      error: {
+        code: 'unsupported-action',
+        message: 'Runtime provider management is not available in browser mode.',
+        recoverable: true,
+      },
+    }),
   };
 
   tmux: TmuxAPI = {

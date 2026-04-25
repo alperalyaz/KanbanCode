@@ -4,6 +4,7 @@ import {
   buildStableSlotLayoutSnapshot,
   computeOwnerFootprints,
   computeProcessBandWidth,
+  resolveNearestGridOwnerTarget,
   resolveNearestSlotAssignment,
   snapshotToWorldBounds,
   translateSlotFrame,
@@ -356,6 +357,38 @@ describe('stable slot layout planner', () => {
     );
   });
 
+  it('removes the reserved activity column when activity is hidden', () => {
+    const teamName = 'team-hidden-activity-slot';
+    const lead = createLead(teamName);
+    const alice = createMember(teamName, 'agent-alice', 'alice');
+    const layout: GraphLayoutPort = {
+      version: 'stable-slots-v1',
+      showActivity: false,
+      ownerOrder: [alice.id],
+      slotAssignments: {
+        [alice.id]: { ringIndex: 0, sectorIndex: 1 },
+      },
+    };
+
+    const [footprint] = computeOwnerFootprints([lead, alice], layout);
+    const snapshot = buildStableSlotLayoutSnapshot({
+      teamName,
+      nodes: [lead, alice],
+      layout,
+    });
+    const frame = snapshot?.memberSlotFrames[0];
+
+    expect(footprint).toBeDefined();
+    expect(footprint?.activityColumnWidth).toBe(0);
+    expect(footprint?.activityColumnHeight).toBe(0);
+    expect(footprint?.boardBandWidth).toBe(footprint?.kanbanBandWidth);
+    expect(snapshot).not.toBeNull();
+    expect(validateStableSlotLayout(snapshot!)).toEqual({ valid: true });
+    expect(frame?.activityColumnRect.width).toBe(0);
+    expect(frame?.activityColumnRect.height).toBe(0);
+    expect(frame?.kanbanBandRect.left).toBe(frame?.boardBandRect.left);
+  });
+
   it('keeps diagonal ring-zero sectors closer than the legacy coarse central box radius', () => {
     const teamName = 'team-directional-radius';
     const lead = createLead(teamName);
@@ -393,9 +426,9 @@ describe('stable slot layout planner', () => {
     const actualRadius = Math.abs(frame!.ownerX / sectorVector.x);
 
     expect(actualRadius).toBeLessThan(legacyMinRadius);
-    expect(
-      snapshot!.centralCollisionRects.some((rect) => rectsOverlap(frame!.bounds, rect))
-    ).toBe(false);
+    expect(snapshot!.centralCollisionRects.some((rect) => rectsOverlap(frame!.bounds, rect))).toBe(
+      false
+    );
   });
 
   it('grows process band width when an owner has multiple visible process nodes', () => {
@@ -740,12 +773,8 @@ describe('stable slot layout planner', () => {
       layout,
     });
     const footprints = computeOwnerFootprints([lead, first, second], layout);
-    const firstRingFrame = snapshot?.memberSlotFrames.find(
-      (frame) => frame.ownerId === first.id
-    );
-    const secondRingFrame = snapshot?.memberSlotFrames.find(
-      (frame) => frame.ownerId === second.id
-    );
+    const firstRingFrame = snapshot?.memberSlotFrames.find((frame) => frame.ownerId === first.id);
+    const secondRingFrame = snapshot?.memberSlotFrames.find((frame) => frame.ownerId === second.id);
 
     expect(snapshot).not.toBeNull();
     expect(firstRingFrame).toBeDefined();
@@ -756,8 +785,9 @@ describe('stable slot layout planner', () => {
       throw new Error('expected first footprint for ring-depth test');
     }
 
-    const ringDelta = Math.hypot(secondRingFrame!.ownerX, secondRingFrame!.ownerY)
-      - Math.hypot(firstRingFrame!.ownerX, firstRingFrame!.ownerY);
+    const ringDelta =
+      Math.hypot(secondRingFrame!.ownerX, secondRingFrame!.ownerY) -
+      Math.hypot(firstRingFrame!.ownerX, firstRingFrame!.ownerY);
     const sectorVector = { x: 0.82, y: -0.57 };
     const ownerLocalY =
       STABLE_SLOT_GEOMETRY.memberSlotInnerPadding + STABLE_SLOT_GEOMETRY.ownerBandHeight / 2;
@@ -834,6 +864,141 @@ describe('stable slot layout planner', () => {
       expect(task.y).toBeGreaterThanOrEqual(ownerFrame!.kanbanBandRect.top);
       expect(task.y).toBeLessThanOrEqual(ownerFrame!.kanbanBandRect.bottom);
     }
+  });
+
+  it('places grid-under-lead members in centered rows of two', () => {
+    const teamName = 'team-grid-layout';
+    const lead = createLead(teamName);
+    const members = [
+      createMember(teamName, 'agent-alice', 'alice'),
+      createMember(teamName, 'agent-bob', 'bob'),
+      createMember(teamName, 'agent-tom', 'tom'),
+      createMember(teamName, 'agent-jack', 'jack'),
+      createMember(teamName, 'agent-eve', 'eve'),
+    ];
+    const layout: GraphLayoutPort = {
+      version: 'stable-slots-v1',
+      mode: 'grid-under-lead',
+      ownerOrder: members.map((member) => member.id),
+      slotAssignments: {},
+    };
+
+    const snapshot = buildStableSlotLayoutSnapshot({
+      teamName,
+      nodes: [lead, ...members],
+      layout,
+    });
+
+    expect(snapshot).not.toBeNull();
+    expect(validateStableSlotLayout(snapshot!)).toEqual({ valid: true });
+
+    const frames = snapshot!.memberSlotFrames;
+    expect(frames).toHaveLength(5);
+    expect(frames[0].ownerY).toBe(frames[1].ownerY);
+    expect(frames[2].ownerY).toBe(frames[3].ownerY);
+    expect(frames[2].ownerY).toBeGreaterThan(frames[0].ownerY);
+    expect(frames[4].ownerY).toBeGreaterThan(frames[2].ownerY);
+    expect(frames[0].ownerX).toBeLessThan(0);
+    expect(frames[1].ownerX).toBeGreaterThan(0);
+    expect(frames[4].ownerX).toBeCloseTo(0, 3);
+    expect(frames[0].processBandRect.height).toBe(STABLE_SLOT_GEOMETRY.processBandHeight);
+  });
+
+  it('keeps wide grid-under-lead rows from overlapping horizontally', () => {
+    const teamName = 'team-grid-wide';
+    const lead = createLead(teamName);
+    const members = [
+      createMember(teamName, 'agent-alice', 'alice'),
+      createMember(teamName, 'agent-bob', 'bob'),
+      createMember(teamName, 'agent-tom', 'tom'),
+      createMember(teamName, 'agent-jack', 'jack'),
+    ];
+    const tasks = [
+      createTask(teamName, 'alice-todo', members[0].id, { taskStatus: 'pending' }),
+      createTask(teamName, 'alice-wip', members[0].id, { taskStatus: 'in_progress' }),
+      createTask(teamName, 'alice-done', members[0].id, { taskStatus: 'completed' }),
+      createTask(teamName, 'alice-review', members[0].id, { reviewState: 'review' }),
+      createTask(teamName, 'bob-todo', members[1].id, { taskStatus: 'pending' }),
+      createTask(teamName, 'bob-wip', members[1].id, { taskStatus: 'in_progress' }),
+      createTask(teamName, 'bob-done', members[1].id, { taskStatus: 'completed' }),
+      createTask(teamName, 'bob-review', members[1].id, { reviewState: 'review' }),
+    ];
+    const layout: GraphLayoutPort = {
+      version: 'stable-slots-v1',
+      mode: 'grid-under-lead',
+      ownerOrder: members.map((member) => member.id),
+      slotAssignments: {
+        [members[0].id]: { ringIndex: 3, sectorIndex: 7 },
+        [members[1].id]: { ringIndex: 3, sectorIndex: 7 },
+      },
+    };
+
+    const snapshot = buildStableSlotLayoutSnapshot({
+      teamName,
+      nodes: [lead, ...members, ...tasks],
+      layout,
+    });
+
+    expect(snapshot).not.toBeNull();
+    expect(validateStableSlotLayout(snapshot!)).toEqual({ valid: true });
+    expect(
+      horizontalGapBetween(
+        snapshot!.memberSlotFrames[0].bounds,
+        snapshot!.memberSlotFrames[1].bounds
+      )
+    ).toBeGreaterThanOrEqual(STABLE_SLOT_GEOMETRY.slotHorizontalGap);
+    expect(snapshot!.memberSlotFrames[0].ringIndex).toBe(0);
+    expect(snapshot!.memberSlotFrames[0].sectorIndex).toBe(0);
+    expect(snapshot!.memberSlotFrames[1].ringIndex).toBe(0);
+    expect(snapshot!.memberSlotFrames[1].sectorIndex).toBe(1);
+  });
+
+  it('uses a separate nearest owner target for grid-under-lead drag-drop', () => {
+    const teamName = 'team-grid-drag-target';
+    const lead = createLead(teamName);
+    const members = [
+      createMember(teamName, 'agent-alice', 'alice'),
+      createMember(teamName, 'agent-bob', 'bob'),
+    ];
+    const layout: GraphLayoutPort = {
+      version: 'stable-slots-v1',
+      mode: 'grid-under-lead',
+      ownerOrder: members.map((member) => member.id),
+      slotAssignments: {},
+    };
+
+    const snapshot = buildStableSlotLayoutSnapshot({
+      teamName,
+      nodes: [lead, ...members],
+      layout,
+    });
+
+    expect(snapshot).not.toBeNull();
+    const targetFrame = snapshot!.memberSlotFrames[1]!;
+
+    expect(
+      resolveNearestSlotAssignment({
+        ownerId: members[0].id,
+        ownerX: targetFrame.ownerX,
+        ownerY: targetFrame.ownerY,
+        nodes: [lead, ...members],
+        snapshot: snapshot!,
+        layout,
+      })
+    ).toBeNull();
+
+    expect(
+      resolveNearestGridOwnerTarget({
+        ownerId: members[0].id,
+        ownerX: targetFrame.ownerX,
+        ownerY: targetFrame.ownerY,
+        snapshot: snapshot!,
+      })
+    ).toEqual({
+      targetOwnerId: members[1].id,
+      previewOwnerX: targetFrame.ownerX,
+      previewOwnerY: targetFrame.ownerY,
+    });
   });
 
   it('positions lead-owned tasks inside the lead kanban band instead of unassigned', () => {

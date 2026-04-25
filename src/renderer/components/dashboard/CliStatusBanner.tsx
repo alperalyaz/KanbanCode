@@ -285,7 +285,7 @@ function getProviderLabel(providerId: CliProviderId): string {
     case 'gemini':
       return 'Gemini';
     case 'opencode':
-      return 'OpenCode';
+      return 'OpenCode (75+ LLM providers)';
   }
 }
 
@@ -758,7 +758,9 @@ const InstalledBanner = ({
                           className="text-xs font-medium"
                           style={{ color: 'var(--color-text)' }}
                         >
-                          {provider.displayName}
+                          {provider.providerId === 'opencode'
+                            ? getProviderLabel(provider.providerId)
+                            : provider.displayName}
                         </span>
                         {provider.providerId === 'opencode' ? <OpenCodeBetaBadge /> : null}
                       </span>
@@ -802,6 +804,7 @@ const InstalledBanner = ({
                           models={provider.models}
                           modelAvailability={provider.modelAvailability}
                           providerStatus={provider}
+                          collapseAfter={15}
                         />
                         {codexDashboardRateLimits!.map((item) => (
                           <div
@@ -960,6 +963,7 @@ const InstalledBanner = ({
                       models={provider.models}
                       modelAvailability={provider.modelAvailability}
                       providerStatus={provider}
+                      collapseAfter={15}
                     />
                   </div>
                 )}
@@ -1177,9 +1181,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
 
   const handleProviderRefresh = useCallback(
     (providerId: CliProviderId) => {
-      void fetchCliProviderStatus(providerId, {
-        verifyModels: providerId === 'opencode',
-      });
+      void fetchCliProviderStatus(providerId);
     },
     [fetchCliProviderStatus]
   );
@@ -1265,11 +1267,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
           providerStatusLoading={cliProviderStatusLoading}
           disabled={isBusy || cliStatusLoading || !renderCliStatus.binaryPath}
           onSelectBackend={handleProviderBackendChange}
-          onRefreshProvider={(providerId) =>
-            fetchCliProviderStatus(providerId, {
-              verifyModels: providerId === 'opencode',
-            })
-          }
+          onRefreshProvider={(providerId) => fetchCliProviderStatus(providerId)}
           onRequestLogin={(providerId) => setProviderTerminal({ providerId, action: 'login' })}
         />
         {providerTerminal && renderCliStatus.binaryPath && (
