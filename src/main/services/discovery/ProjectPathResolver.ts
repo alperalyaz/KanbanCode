@@ -32,6 +32,11 @@ interface ResolveProjectPathOptions {
   forceRefresh?: boolean;
 }
 
+function isAbsolutePathLike(value: string): boolean {
+  const slashPath = value.replace(/\\/g, '/');
+  return path.isAbsolute(value) || /^[a-zA-Z]:\//.test(slashPath) || slashPath.startsWith('//');
+}
+
 export class ProjectPathResolver {
   private readonly projectsDir: string;
   private readonly fsProvider: FileSystemProvider;
@@ -66,7 +71,7 @@ export class ProjectPathResolver {
     }
 
     const cwdHint = opts.cwdHint?.trim();
-    if (cwdHint && path.isAbsolute(cwdHint)) {
+    if (cwdHint && isAbsolutePathLike(cwdHint)) {
       this.projectPathCache.set(projectId, cwdHint);
       return cwdHint;
     }
@@ -85,7 +90,7 @@ export class ProjectPathResolver {
     for (const sessionPath of sessionPaths.slice(0, maxPathsToInspect)) {
       try {
         const cwd = await extractCwd(sessionPath, this.fsProvider);
-        if (cwd && path.isAbsolute(cwd)) {
+        if (cwd && isAbsolutePathLike(cwd)) {
           this.projectPathCache.set(projectId, cwd);
           return cwd;
         }

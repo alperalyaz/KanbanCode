@@ -115,11 +115,14 @@ export class TmuxWslService {
       };
     }
 
-    const distros = this.#parseWslDistros(distroListProbe.stdout);
+    const listedDistros = this.#parseWslDistros(distroListProbe.stdout);
+    const serviceDistros = listedDistros.filter((distro) => this.#isInternalWslDistro(distro));
+    const distros = listedDistros.filter((distro) => !this.#isInternalWslDistro(distro));
     if (distros.length === 0) {
       if (persistedPreferredDistro) {
         await this.#preferenceStore.clearPreferredDistro();
       }
+      const hasOnlyServiceDistros = serviceDistros.length > 0;
       return {
         preference: null,
         status: {
@@ -134,7 +137,9 @@ export class TmuxWslService {
           tmuxBinaryPath: null,
           statusDetail: rebootRequired
             ? 'WSL was installed, but Windows still needs a restart before a Linux distro can be configured.'
-            : 'WSL is available, but no Linux distribution is installed yet.',
+            : hasOnlyServiceDistros
+              ? `WSL has only service distributions (${serviceDistros.join(', ')}). Install a Linux distribution such as Ubuntu for teammate runtime support.`
+              : 'WSL is available, but no Linux distribution is installed yet.',
         },
       };
     }
@@ -420,7 +425,6 @@ export class TmuxWslService {
       .split(/\r?\n/)
       .map((line) => line.replace(/\0/g, '').trim())
       .map((line) => line.replace(/^\*\s*/, '').trim())
-      .filter((line) => !this.#isInternalWslDistro(line))
       .filter(Boolean);
   }
 

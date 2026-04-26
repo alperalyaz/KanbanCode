@@ -162,7 +162,8 @@ describe('TmuxWslService', () => {
 
     expect(result.status.wslInstalled).toBe(true);
     expect(result.status.distroName).toBeNull();
-    expect(result.status.statusDetail).toContain('no Linux distribution');
+    expect(result.status.statusDetail).toContain('only service distributions');
+    expect(result.status.statusDetail).toContain('docker-desktop');
   });
 
   it('switches preference source away from persisted after clearing a stale distro', async () => {
