@@ -564,7 +564,6 @@ async function runModelGauntlet(input: {
     runtimeTransportFailures,
     modelBehaviorFailures,
     harnessFailures,
-    consistencyScore: scoreStability.consistencyScore,
     stageFailureImpact,
     taskRefPassRates,
     protocolViolationTotals,
