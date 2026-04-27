@@ -133,6 +133,7 @@ import { getTeamLaunchStatePath } from '@main/services/team/TeamLaunchStateStore
 import {
   getOpenCodeLaneScopedRuntimeFilePath,
   getOpenCodeRuntimeManifestPath,
+  OpenCodeRuntimeManifestEvidenceReader,
   readOpenCodeRuntimeLaneIndex,
   upsertOpenCodeRuntimeLaneIndexEntry,
 } from '@main/services/team/opencode/store/OpenCodeRuntimeManifestEvidenceReader';
@@ -4510,6 +4511,102 @@ describe('TeamProvisioningService', () => {
       expect(retryText).toContain('What did you find?');
     });
 
+    it('keeps OpenCode task delivery pending after read-only non-visible tool activity', async () => {
+      const svc = new TeamProvisioningService();
+      const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+        ok: true,
+        providerId: 'opencode',
+        memberName: String(input.memberName),
+        sessionId: 'oc-session-bob',
+        prePromptCursor: 'cursor-before',
+        responseObservation: {
+          state: 'responded_non_visible_tool' as const,
+          deliveredUserMessageId: 'oc-user-task',
+          assistantMessageId: 'oc-assistant-read',
+          toolCallNames: ['read', 'bash'],
+          visibleMessageToolCallId: null,
+          visibleReplyMessageId: null,
+          visibleReplyCorrelation: null,
+          latestAssistantPreview: null,
+          reason: null,
+        },
+        diagnostics: [],
+      }));
+      const registry = new TeamRuntimeAdapterRegistry([
+        {
+          providerId: 'opencode',
+          prepare: vi.fn(),
+          launch: vi.fn(),
+          reconcile: vi.fn(),
+          stop: vi.fn(),
+          sendMessageToMember,
+          observeMessageDelivery: vi.fn(),
+        } as any,
+      ]);
+      svc.setRuntimeAdapterRegistry(registry);
+
+      (svc as any).getTrackedRunId = vi.fn(() => 'run-1');
+      (svc as any).provisioningRunByTeam.set('team-a', 'run-1');
+      (svc as any).setSecondaryRuntimeRun({
+        teamName: 'team-a',
+        runId: 'opencode-run-bob',
+        providerId: 'opencode',
+        laneId: 'secondary:opencode:bob',
+        memberName: 'bob',
+        cwd: '/repo',
+      });
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          projectPath: '/repo',
+          members: [
+            { name: 'team-lead', providerId: 'codex', model: 'gpt-5.4' },
+            { name: 'bob', providerId: 'opencode', model: 'minimax-m2.5-free' },
+          ],
+        })),
+      };
+      (svc as any).teamMetaStore = {
+        getMeta: vi.fn(async () => ({
+          launchIdentity: { providerId: 'codex' },
+          providerId: 'codex',
+        })),
+      };
+      (svc as any).membersMetaStore = {
+        getMembers: vi.fn(async () => [
+          {
+            name: 'bob',
+            providerId: 'opencode',
+            model: 'opencode/minimax-m2.5-free',
+          },
+        ]),
+      };
+
+      await expect(
+        svc.deliverOpenCodeMemberMessage('team-a', {
+          memberName: 'bob',
+          text: 'Start task #task-1 now.',
+          messageId: 'msg-task-read-only',
+          replyRecipient: 'team-lead',
+          actionMode: 'do',
+          taskRefs: [
+            {
+              taskId: 'task-1',
+              displayId: 'task-1',
+              teamName: 'team-a',
+            },
+          ],
+          source: 'watcher',
+          inboxTimestamp: '2026-04-25T10:00:00.000Z',
+        })
+      ).resolves.toMatchObject({
+        delivered: true,
+        accepted: true,
+        responsePending: true,
+        responseState: 'responded_non_visible_tool',
+        ledgerStatus: 'retry_scheduled',
+        reason: 'non_visible_tool_without_task_progress',
+      });
+    });
+
     it('marks OpenCode delivery terminal after max attempts instead of leaving it pending', async () => {
       const svc = new TeamProvisioningService();
       const emptyResponseObservation = {
@@ -5191,10 +5288,40 @@ describe('TeamProvisioningService', () => {
           diagnostics: [],
         },
       ];
+      const manifestPath = getOpenCodeRuntimeManifestPath(
+        tempTeamsBase,
+        teamName,
+        'secondary:opencode:bob'
+      );
+      await fsPromises.mkdir(path.dirname(manifestPath), { recursive: true });
+      await fsPromises.writeFile(
+        manifestPath,
+        `${JSON.stringify(
+          {
+            ...createDefaultRuntimeStoreManifest(teamName, '2026-04-22T10:00:00.000Z'),
+            activeRunId: 'stale-run',
+            highWatermark: 2,
+          },
+          null,
+          2
+        )}\n`,
+        'utf8'
+      );
 
       await (svc as any).launchMixedSecondaryLaneIfNeeded(run);
       await vi.waitFor(async () => {
         expect(adapterLaunch).toHaveBeenCalledTimes(1);
+        const launchInput = adapterLaunch.mock.calls[0]?.[0] as { runId?: string } | undefined;
+        expect(launchInput?.runId).toEqual(expect.any(String));
+        await expect(
+          new OpenCodeRuntimeManifestEvidenceReader({ teamsBasePath: tempTeamsBase }).read(
+            teamName,
+            'secondary:opencode:bob'
+          )
+        ).resolves.toMatchObject({
+          activeRunId: launchInput?.runId,
+          highWatermark: 0,
+        });
         await expect(readOpenCodeRuntimeLaneIndex(tempTeamsBase, teamName)).resolves.toMatchObject({
           lanes: {
             'secondary:opencode:bob': {
@@ -7683,6 +7810,112 @@ describe('TeamProvisioningService', () => {
       await svc.cancelProvisioning(runId);
     });
 
+    it('restores missing OpenCode teammates into config before post-launch registration audit', async () => {
+      allowConsoleLogs();
+      const teamName = 'mixed-opencode-post-launch-config';
+      const teamDir = path.join(tempTeamsBase, teamName);
+      const jackWorktree = path.join(tempClaudeRoot, 'worktrees', 'jack');
+      fs.mkdirSync(teamDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(teamDir, 'config.json'),
+        `${JSON.stringify(
+          {
+            name: teamName,
+            projectPath: '/old/project',
+            leadSessionId: 'old-lead-session',
+            members: [{ name: 'team-lead', agentType: 'team-lead', providerId: 'anthropic' }],
+          },
+          null,
+          2
+        )}\n`,
+        'utf8'
+      );
+
+      const { svc } = createSafeLaunchService();
+      await (svc as any).updateConfigPostLaunch(
+        teamName,
+        tempClaudeRoot,
+        'new-lead-session',
+        undefined,
+        {
+          providerId: 'codex',
+          model: 'gpt-5.4',
+          effort: 'medium',
+          members: [
+            {
+              name: 'alice',
+              role: 'Reviewer',
+              providerId: 'codex',
+              model: 'gpt-5.4-mini',
+            },
+            {
+              name: 'bob',
+              role: 'Developer',
+              providerId: 'opencode',
+              model: 'openrouter/google/gemini-2.5-flash',
+            },
+            {
+              name: 'jack',
+              role: 'Developer',
+              workflow: 'Work in the isolated checkout.',
+              providerId: 'opencode',
+              model: 'openrouter/qwen/qwen3-coder',
+              isolation: 'worktree',
+              cwd: jackWorktree,
+            },
+          ],
+        }
+      );
+
+      const config = JSON.parse(
+        fs.readFileSync(path.join(teamDir, 'config.json'), 'utf8')
+      ) as {
+        leadSessionId?: string;
+        projectPath?: string;
+        members: Array<{
+          name: string;
+          agentId?: string;
+          agentType?: string;
+          providerId?: string;
+          model?: string;
+          role?: string;
+          workflow?: string;
+          isolation?: string;
+          cwd?: string;
+        }>;
+      };
+
+      expect(config.leadSessionId).toBe('new-lead-session');
+      expect(config.projectPath).toBe(tempClaudeRoot);
+      expect(config.members).toEqual([
+        expect.objectContaining({
+          name: 'team-lead',
+          providerId: 'codex',
+          model: 'gpt-5.4',
+        }),
+        expect.objectContaining({
+          name: 'bob',
+          agentId: `bob@${teamName}`,
+          agentType: 'general-purpose',
+          role: 'Developer',
+          providerId: 'opencode',
+          model: 'openrouter/google/gemini-2.5-flash',
+        }),
+        expect.objectContaining({
+          name: 'jack',
+          agentId: `jack@${teamName}`,
+          agentType: 'general-purpose',
+          role: 'Developer',
+          workflow: 'Work in the isolated checkout.',
+          providerId: 'opencode',
+          model: 'openrouter/qwen/qwen3-coder',
+          isolation: 'worktree',
+          cwd: jackWorktree,
+        }),
+      ]);
+      expect(config.members.some((member) => member.name === 'alice')).toBe(false);
+    });
+
     it('launches isolated OpenCode side lanes from the resolved member worktree cwd', async () => {
       allowConsoleLogs();
       vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
@@ -9655,6 +9888,50 @@ describe('TeamProvisioningService', () => {
       hardFailureReason: undefined,
       error: undefined,
       runtimeModel: 'gpt-5.2',
+      livenessSource: 'process',
+    });
+  });
+
+  it('clears stale OpenCode bridge launch failure when the runtime process is verified alive', async () => {
+    const svc = new TeamProvisioningService();
+    (svc as any).getLiveTeamAgentRuntimeMetadata = vi.fn(
+      async () =>
+        new Map([
+          [
+            'bob',
+            {
+              alive: true,
+              model: 'openrouter/google/gemini-2.5-flash',
+              livenessKind: 'runtime_process',
+              providerId: 'opencode',
+              runtimeDiagnostic: 'OpenCode runtime process detected',
+              runtimeDiagnosticSeverity: 'info',
+            },
+          ],
+        ])
+    );
+
+    const result = await (svc as any).attachLiveRuntimeMetadataToStatuses('12vector-room-10', {
+      bob: createMemberSpawnStatusEntry({
+        status: 'error',
+        launchState: 'failed_to_start',
+        error: 'OpenCode bridge reported member launch failure',
+        hardFailure: true,
+        hardFailureReason: 'OpenCode bridge reported member launch failure',
+      }),
+    });
+
+    expect(result.bob).toMatchObject({
+      status: 'online',
+      launchState: 'runtime_pending_bootstrap',
+      runtimeAlive: true,
+      hardFailure: false,
+      hardFailureReason: undefined,
+      error: undefined,
+      runtimeModel: 'openrouter/google/gemini-2.5-flash',
+      livenessKind: 'runtime_process',
+      runtimeDiagnostic: 'OpenCode runtime process detected',
+      runtimeDiagnosticSeverity: 'info',
       livenessSource: 'process',
     });
   });

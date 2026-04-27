@@ -1,4 +1,5 @@
 import { createLogger } from '@shared/utils/logger';
+import { sanitizeDisplayContent } from '@shared/utils/contentSanitizer';
 
 import { ClaudeMultimodelBridgeService } from '../../../runtime/ClaudeMultimodelBridgeService';
 import { canonicalizeAgentTeamsToolName } from '../../agentTeamsToolNames';
@@ -737,8 +738,10 @@ function mapOpenCodeContentBlock(
   block: OpenCodeRuntimeTranscriptLogContentBlock
 ): ContentBlock | null {
   switch (block.type) {
-    case 'text':
-      return { type: 'text', text: block.text };
+    case 'text': {
+      const text = sanitizeDisplayContent(block.text);
+      return text.length > 0 ? { type: 'text', text } : null;
+    }
     case 'thinking':
       return {
         type: 'thinking',
@@ -795,7 +798,7 @@ function toParsedMessage(message: OpenCodeRuntimeTranscriptLogMessage): ParsedMe
 
   const normalizedContent: ContentBlock[] | string =
     typeof message.content === 'string'
-      ? message.content
+      ? sanitizeDisplayContent(message.content)
       : message.content
           .map(mapOpenCodeContentBlock)
           .filter((item): item is ContentBlock => item !== null);

@@ -4739,6 +4739,8 @@ async function handleGetSavedRequest(
         name: m.name,
         role: m.role,
         workflow: m.workflow,
+        isolation: m.isolation,
+        cwd: m.cwd,
         providerId: m.providerId,
         model: m.model,
         effort: m.effort,

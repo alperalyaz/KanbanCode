@@ -260,6 +260,70 @@ describe('OpenCodeTaskLogStreamSource', () => {
     expect(second).toEqual(first);
   });
 
+  it('sanitizes OpenCode delivery retry envelopes from projected task log text', async () => {
+    const bridge = {
+      getOpenCodeTranscript: vi.fn(async () => ({
+        sessionId: 'session-opencode',
+        logProjection: {
+          messages: [
+            textLogMessage({
+              uuid: 'task-delivery',
+              type: 'user',
+              role: 'user',
+              timestamp: '2026-04-21T10:05:00.000Z',
+              content: [
+                {
+                  type: 'text',
+                  text: [
+                    '<opencode_inbound_app_message>',
+                    '<opencode_delivery_retry>',
+                    'This is retry attempt 3/3 for inbound app messageId "message-1".',
+                    '</opencode_delivery_retry>',
+                    '',
+                    'New task assigned to you: #task-a Investigate failing command',
+                    '</opencode_inbound_app_message>',
+                  ].join('\n'),
+                },
+              ],
+            }),
+          ],
+        },
+      })),
+    };
+    const chunkBuilder = {
+      buildBundleChunks: vi.fn((messages) => [
+        {
+          id: 'chunk-sanitized',
+          kind: 'assistant',
+          messages,
+        },
+      ]),
+    };
+    const source = new OpenCodeTaskLogStreamSource(
+      bridge as never,
+      { resolve: async () => '/tmp/claude' },
+      {
+        getTasks: async () => [createTask()],
+        getDeletedTasks: async () => [],
+      } as never,
+      chunkBuilder as never,
+      { readTaskRecords: vi.fn(async () => []) }
+    );
+
+    const response = await source.getTaskLogStream('team-a', 'task-a');
+
+    expect(response?.source).toBe('opencode_runtime_fallback');
+    const projectedMessage = chunkBuilder.buildBundleChunks.mock.calls[0]?.[0]?.[0] as
+      | { content: Array<{ type: string; text?: string }> }
+      | undefined;
+    expect(projectedMessage?.content).toEqual([
+      {
+        type: 'text',
+        text: 'New task assigned to you: #task-a Investigate failing command',
+      },
+    ]);
+  });
+
   it('returns null when the task has no owner', async () => {
     const source = new OpenCodeTaskLogStreamSource(
       { getOpenCodeTranscript: vi.fn() } as never,

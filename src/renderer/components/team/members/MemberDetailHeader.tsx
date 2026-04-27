@@ -16,6 +16,7 @@ import { isLeadMember } from '@shared/utils/leadDetection';
 import { Pencil } from 'lucide-react';
 
 import { MemberRoleEditor } from './MemberRoleEditor';
+import { MemberPresenceDot } from './MemberPresenceDot';
 
 import type {
   LeadActivityState,
@@ -116,10 +117,7 @@ export const MemberDetailHeader = ({
           className="size-12 rounded-full bg-[var(--color-surface-raised)]"
           loading="lazy"
         />
-        <span
-          className={`absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-[var(--color-surface)] ${dotClass}`}
-          aria-label={badgeLabel}
-        />
+        <MemberPresenceDot className={`size-3 ${dotClass}`} label={badgeLabel} />
       </div>
       <div className="min-w-0 flex-1">
         <DialogTitle className="truncate" style={{ color: colors.text }}>

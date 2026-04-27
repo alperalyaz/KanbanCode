@@ -159,6 +159,7 @@ import {
   readOpenCodeRuntimeLaneIndex,
   recoverStaleOpenCodeRuntimeLaneIndexEntry,
   removeOpenCodeRuntimeLaneIndexEntry,
+  setOpenCodeRuntimeActiveRunManifest,
   upsertOpenCodeRuntimeLaneIndexEntry,
 } from './opencode/store/OpenCodeRuntimeManifestEvidenceReader';
 import {
@@ -1596,6 +1597,10 @@ function isConfigRegistrationFailureReason(reason?: string): boolean {
   );
 }
 
+function isOpenCodeBridgeLaunchFailureReason(reason?: string): boolean {
+  return reason?.trim() === 'OpenCode bridge reported member launch failure';
+}
+
 function isTmuxNoServerRunningError(error: unknown): boolean {
   const text = error instanceof Error ? error.message : String(error ?? '');
   return (
@@ -1608,7 +1613,8 @@ function isAutoClearableLaunchFailureReason(reason?: string): boolean {
   return (
     isNeverSpawnedDuringLaunchReason(reason) ||
     isLaunchGraceWindowFailureReason(reason) ||
-    isConfigRegistrationFailureReason(reason)
+    isConfigRegistrationFailureReason(reason) ||
+    isOpenCodeBridgeLaunchFailureReason(reason)
   );
 }
 
@@ -4621,7 +4627,41 @@ export class TeamProvisioningService {
       });
     }
     const hasTaskRefs = (input.taskRefs ?? []).length > 0;
-    return hasTaskRefs || input.actionMode === 'do' || input.actionMode === 'delegate';
+    if (!hasTaskRefs && input.actionMode !== 'do' && input.actionMode !== 'delegate') {
+      return false;
+    }
+    return this.hasOpenCodeNonVisibleProgressProof(input.ledgerRecord);
+  }
+
+  private hasOpenCodeNonVisibleProgressProof(
+    ledgerRecord?: OpenCodePromptDeliveryLedgerRecord | null
+  ): boolean {
+    const toolNames = ledgerRecord?.observedToolCallNames ?? [];
+    return toolNames.some((toolName) => {
+      const normalized = this.normalizeOpenCodeObservedToolName(toolName);
+      return (
+        normalized === 'task_start' ||
+        normalized === 'task_add_comment' ||
+        normalized === 'task_complete' ||
+        normalized === 'task_set_status' ||
+        normalized === 'task_set_clarification' ||
+        normalized === 'task_create' ||
+        normalized === 'task_link' ||
+        normalized === 'runtime_task_event' ||
+        normalized === 'write' ||
+        normalized === 'edit' ||
+        normalized === 'patch'
+      );
+    });
+  }
+
+  private normalizeOpenCodeObservedToolName(toolName: string): string {
+    return toolName
+      .trim()
+      .replace(/^mcp__agent[-_]teams__/, '')
+      .replace(/^agent[-_]teams_/, '')
+      .replace(/^mcp__agent_teams__/, '')
+      .replace(/^agent_teams_/, '');
   }
 
   private isOpenCodePlainTextResponseReadCommitAllowed(input: {
@@ -4672,6 +4712,9 @@ export class TeamProvisioningService {
       const hasTaskRefs = (input.taskRefs ?? []).length > 0;
       if (!hasTaskRefs && input.actionMode !== 'do' && input.actionMode !== 'delegate') {
         return 'visible_reply_still_required';
+      }
+      if (!this.hasOpenCodeNonVisibleProgressProof(record)) {
+        return 'non_visible_tool_without_task_progress';
       }
     }
     if (state === 'empty_assistant_turn') {
@@ -12178,6 +12221,12 @@ export class TeamProvisioningService {
     );
 
     try {
+      await setOpenCodeRuntimeActiveRunManifest({
+        teamsBasePath: getTeamsBasePath(),
+        teamName: input.request.teamName,
+        laneId: 'primary',
+        runId,
+      });
       const result = await adapter.launch(launchInput);
       if (
         this.cancelledRuntimeAdapterRunIds.delete(runId) ||
@@ -12337,6 +12386,7 @@ export class TeamProvisioningService {
   ): PersistedTeamLaunchMemberState {
     const now = nowIso();
     const launchState = evidence?.launchState ?? 'failed_to_start';
+    const hardFailure = evidence?.hardFailure === true || launchState === 'failed_to_start';
     return {
       name: member.name,
       providerId: 'opencode',
@@ -12351,8 +12401,8 @@ export class TeamProvisioningService {
       agentToolAccepted: evidence?.agentToolAccepted === true,
       runtimeAlive: evidence?.runtimeAlive === true,
       bootstrapConfirmed: evidence?.bootstrapConfirmed === true,
-      hardFailure: evidence?.hardFailure === true || launchState === 'failed_to_start',
-      hardFailureReason: evidence?.hardFailureReason,
+      hardFailure,
+      hardFailureReason: hardFailure ? evidence?.hardFailureReason : undefined,
       pendingPermissionRequestIds: evidence?.pendingPermissionRequestIds?.length
         ? [...new Set(evidence.pendingPermissionRequestIds)]
         : undefined,
@@ -16282,6 +16332,12 @@ export class TeamProvisioningService {
     const previousLaunchState = await this.launchStateStore.read(run.teamName);
 
     try {
+      await setOpenCodeRuntimeActiveRunManifest({
+        teamsBasePath: getTeamsBasePath(),
+        teamName: run.teamName,
+        laneId: lane.laneId,
+        runId: lane.runId,
+      });
       const result = await adapter.launch({
         runId: lane.runId,
         laneId: lane.laneId,
@@ -20026,7 +20082,7 @@ export class TeamProvisioningService {
           providerId: run.request.providerId,
           model: run.request.model,
           effort: run.request.effort,
-          members: run.effectiveMembers,
+          members: run.allEffectiveMembers,
         }
       );
       await this.cleanupPrelaunchBackup(run.teamName);
@@ -20228,7 +20284,7 @@ export class TeamProvisioningService {
         providerId: run.request.providerId,
         model: run.request.model,
         effort: run.request.effort,
-        members: run.effectiveMembers,
+        members: run.allEffectiveMembers,
       }
     );
 
@@ -21169,7 +21225,7 @@ export class TeamProvisioningService {
         providerId: run.request.providerId,
         model: run.request.model,
         effort: run.request.effort,
-        members: run.effectiveMembers,
+        members: run.allEffectiveMembers,
       }
     );
     await this.refreshMemberSpawnStatusesFromLeadInbox(run);
@@ -21396,6 +21452,7 @@ export class TeamProvisioningService {
   }
 
   private applyEffectiveLaunchStateToConfig(
+    teamName: string,
     config: Record<string, unknown>,
     launchState?: {
       providerId?: TeamProviderId;
@@ -21419,7 +21476,7 @@ export class TeamProvisioningService {
       (launchState.members ?? []).map((member) => [member.name.toLowerCase(), member] as const)
     );
 
-    config.members = (config.members as Record<string, unknown>[]).map((member) => {
+    const nextMembers = (config.members as Record<string, unknown>[]).map((member) => {
       if (!member || typeof member !== 'object') {
         return member;
       }
@@ -21477,6 +21534,53 @@ export class TeamProvisioningService {
       });
       return nextMember;
     });
+
+    const existingNames = new Set(
+      nextMembers
+        .map((member) => (typeof member.name === 'string' ? member.name.trim().toLowerCase() : ''))
+        .filter(Boolean)
+    );
+
+    for (const member of launchState.members ?? []) {
+      const name = member.name?.trim();
+      if (!name || existingNames.has(name.toLowerCase())) {
+        continue;
+      }
+
+      const providerId = normalizeTeamMemberProviderId(member.providerId);
+      if (providerId !== 'opencode') {
+        continue;
+      }
+
+      nextMembers.push(this.buildOpenCodeConfigMemberFromLaunchMember(teamName, member));
+      existingNames.add(name.toLowerCase());
+    }
+
+    config.members = nextMembers;
+  }
+
+  private buildOpenCodeConfigMemberFromLaunchMember(
+    teamName: string,
+    member: TeamCreateRequest['members'][number]
+  ): Record<string, unknown> {
+    const name = member.name.trim();
+    const configMember: Record<string, unknown> = {
+      name,
+      agentId: `${name}@${teamName}`,
+      agentType: 'general-purpose',
+      role: member.role?.trim() || undefined,
+      workflow: member.workflow?.trim() || undefined,
+      isolation: member.isolation === 'worktree' ? 'worktree' : undefined,
+      providerId: 'opencode',
+      model: member.model?.trim() || undefined,
+      effort: isTeamEffortLevel(member.effort) ? member.effort : undefined,
+      cwd: member.cwd?.trim() || undefined,
+      joinedAt: Date.now(),
+    };
+
+    return Object.fromEntries(
+      Object.entries(configMember).filter(([, value]) => value !== undefined)
+    );
   }
 
   /**
@@ -21571,7 +21675,7 @@ export class TeamProvisioningService {
             : pathHistory;
       }
 
-      this.applyEffectiveLaunchStateToConfig(config, launchState);
+      this.applyEffectiveLaunchStateToConfig(teamName, config, launchState);
 
       await atomicWriteAsync(configPath, JSON.stringify(config, null, 2));
     } catch (error) {

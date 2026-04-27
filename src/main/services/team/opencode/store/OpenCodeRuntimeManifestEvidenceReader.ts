@@ -8,6 +8,8 @@ import { withFileLock } from '../../fileLock';
 
 import {
   createDefaultRuntimeStoreManifest,
+  createRuntimeStoreManifestStore,
+  OPENCODE_RUNTIME_STORE_MANIFEST_SCHEMA_VERSION,
   validateRuntimeStoreManifest,
 } from './RuntimeStoreManifest';
 
@@ -384,6 +386,75 @@ export async function upsertOpenCodeRuntimeLaneIndexEntry(params: {
     };
     await writeOpenCodeRuntimeLaneIndexUnlocked(params.teamsBasePath, params.teamName, index);
   });
+}
+
+export async function setOpenCodeRuntimeActiveRunManifest(params: {
+  teamsBasePath: string;
+  teamName: string;
+  laneId?: string | null;
+  runId: string | null;
+  clock?: () => Date;
+}): Promise<void> {
+  const manifestPath = getOpenCodeRuntimeManifestPath(
+    params.teamsBasePath,
+    params.teamName,
+    params.laneId
+  );
+  await ensureRuntimeManifestEnvelope(
+    manifestPath,
+    params.teamName,
+    params.clock ?? (() => new Date())
+  );
+  const manifestStore = createRuntimeStoreManifestStore({
+    filePath: manifestPath,
+    teamName: params.teamName,
+    clock: params.clock,
+  });
+  await manifestStore.setActiveRun({ runId: params.runId });
+}
+
+async function ensureRuntimeManifestEnvelope(
+  manifestPath: string,
+  teamName: string,
+  clock: () => Date
+): Promise<void> {
+  let raw: string;
+  try {
+    raw = await readFile(manifestPath, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return;
+    }
+    throw error;
+  }
+
+  const parsed = JSON.parse(raw) as unknown;
+  if (
+    parsed &&
+    typeof parsed === 'object' &&
+    !Array.isArray(parsed) &&
+    Object.prototype.hasOwnProperty.call(parsed, 'data')
+  ) {
+    return;
+  }
+
+  const manifest = validateRuntimeStoreManifest(parsed);
+  await mkdir(path.dirname(manifestPath), { recursive: true });
+  await atomicWriteAsync(
+    manifestPath,
+    `${JSON.stringify(
+      {
+        schemaVersion: OPENCODE_RUNTIME_STORE_MANIFEST_SCHEMA_VERSION,
+        updatedAt: clock().toISOString(),
+        data: {
+          ...manifest,
+          teamName,
+        },
+      },
+      null,
+      2
+    )}\n`
+  );
 }
 
 export async function removeOpenCodeRuntimeLaneIndexEntry(params: {
