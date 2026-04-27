@@ -364,9 +364,8 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     expect(sentText).toContain('<opencode_delivery_context>');
     expect(sentText).toContain('"kind":"opencode-delivery-context"');
     expect(sentText).toContain('"inboundMessageId":"msg-1"');
-    expect(sentText).toContain(
-      'If your reply is about these tasks, include taskRefs exactly: [{"taskId":"task-1","displayId":"abcd1234","teamName":"team-a"}]'
-    );
+    expect(sentText).not.toContain('include taskRefs exactly');
+    expect(sentText).not.toContain('The inbound app messageId is');
     expect(sentText).toContain('Do not use SendMessage or runtime_deliver_message');
     expect(sentText).toContain('never use #00000000');
   });

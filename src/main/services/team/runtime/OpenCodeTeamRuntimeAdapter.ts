@@ -635,7 +635,6 @@ function buildMemberBootstrapPrompt(
 
 function buildOpenCodeRuntimeMessageText(input: OpenCodeTeamRuntimeMessageInput): string {
   const replyRecipient = input.replyRecipient?.trim() || 'user';
-  const taskRefs = input.taskRefs?.length ? JSON.stringify(input.taskRefs) : null;
   const deliveryContext =
     input.messageId && input.taskRefs?.length
       ? JSON.stringify({
@@ -668,8 +667,6 @@ function buildOpenCodeRuntimeMessageText(input: OpenCodeTeamRuntimeMessageInput)
     'The inbound app message follows. Treat it as the actual instruction to process now, not as background context.',
     'If the inbound message asks for exact reply text, use that exact text. Do not replace concrete instructions with a generic greeting or availability message.',
     input.actionMode ? `Action mode for this message: ${input.actionMode}.` : null,
-    taskRefs ? `If your reply is about these tasks, include taskRefs exactly: ${taskRefs}` : null,
-    input.messageId ? `The inbound app messageId is "${input.messageId}".` : null,
     '</opencode_app_message_delivery>',
     '',
     '<opencode_inbound_app_message>',
