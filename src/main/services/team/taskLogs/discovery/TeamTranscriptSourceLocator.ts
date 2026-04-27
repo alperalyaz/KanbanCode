@@ -1,9 +1,15 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
+import { createLogger } from '@shared/utils/logger';
+
 import { TeamTranscriptProjectResolver } from '../../TeamTranscriptProjectResolver';
 
 import type { TeamConfig } from '@shared/types';
+
+const logger = createLogger('Service:TeamTranscriptSourceLocator');
+const TRANSCRIPT_DISCOVERY_WARN_MS = 3_000;
+const TRANSCRIPT_DISCOVERY_FILE_COUNT_WARN = 500;
 
 export interface TeamTranscriptSourceContext {
   projectDir: string;
@@ -25,7 +31,17 @@ export class TeamTranscriptSourceLocator {
     }
 
     const { projectDir, projectId, config, sessionIds } = context;
+    const startedAt = Date.now();
     const transcriptFiles = await this.listTranscriptFilesForSessions(projectDir, sessionIds);
+    const elapsedMs = Date.now() - startedAt;
+    if (
+      elapsedMs >= TRANSCRIPT_DISCOVERY_WARN_MS ||
+      transcriptFiles.length >= TRANSCRIPT_DISCOVERY_FILE_COUNT_WARN
+    ) {
+      logger.warn(
+        `Large task-log transcript discovery: team=${teamName} sessions=${sessionIds.length} files=${transcriptFiles.length} elapsedMs=${elapsedMs}`
+      );
+    }
     return { projectDir, projectId, config, sessionIds, transcriptFiles };
   }
 

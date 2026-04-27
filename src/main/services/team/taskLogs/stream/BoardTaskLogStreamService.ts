@@ -66,6 +66,7 @@ const INFERRED_RECORD_RANGE_BEFORE_MS = 5 * 60_000;
 const INFERRED_RECORD_RANGE_AFTER_MS = 60_000;
 const STREAM_LAYOUT_CACHE_TTL_MS = 1_000;
 const STREAM_LAYOUT_BUILD_WARN_MS = 3_000;
+const RUNTIME_FALLBACK_WARN_MS = 3_000;
 const HISTORICAL_BOARD_LIFECYCLE_TOOL_NAMES = new Set([
   'task_complete',
   'task_set_status',
@@ -1925,9 +1926,17 @@ export class BoardTaskLogStreamService {
 
     const layout = await this.getStreamLayout(teamName, taskId);
     if (layout.visibleSlices.length === 0) {
-      return (
-        (await this.runtimeFallbackSource.getTaskLogStream(teamName, taskId)) ?? emptyResponse()
-      );
+      const startedAt = Date.now();
+      const fallback = await this.runtimeFallbackSource.getTaskLogStream(teamName, taskId);
+      const elapsedMs = Date.now() - startedAt;
+      if (elapsedMs >= RUNTIME_FALLBACK_WARN_MS) {
+        logger.warn(
+          `Slow OpenCode task-log runtime fallback: team=${teamName} task=${taskId} hit=${Boolean(
+            fallback
+          )} elapsedMs=${elapsedMs}`
+        );
+      }
+      return fallback ?? emptyResponse();
     }
 
     const segments: BoardTaskLogSegment[] = [];

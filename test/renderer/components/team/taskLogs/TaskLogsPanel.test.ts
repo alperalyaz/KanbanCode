@@ -370,7 +370,7 @@ describe('TaskLogsPanel', () => {
     expect(apiState.setTaskLogStreamTracking).toHaveBeenLastCalledWith('demo', false);
   });
 
-  it('does not mount Task Log Stream content while the section is collapsed but still pulses on matching updates', async () => {
+  it('defers Task Log Stream work while collapsed, then starts tracking after first open', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     vi.useFakeTimers();
 
@@ -401,23 +401,43 @@ describe('TaskLogsPanel', () => {
 
     expect(host.querySelector('[data-testid="task-log-stream"]')).toBeNull();
     expect(taskLogStreamProps.calls).toHaveLength(0);
+    expect(apiState.getTaskLogStreamSummary).not.toHaveBeenCalled();
+    expect(apiState.setTaskLogStreamTracking).not.toHaveBeenCalled();
+    expect(apiState.onTeamChange).not.toHaveBeenCalled();
+    expect(handler).toBeNull();
+    expect(activityStates).toEqual([false]);
+
+    await act(async () => {
+      root.render(
+        React.createElement(TaskLogsPanel, {
+          teamName: 'demo',
+          task: makeTask(),
+          isOpen: true,
+          onTaskLogActivityChange: (isActive: boolean) => activityStates.push(isActive),
+        })
+      );
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+
+    expect(host.querySelector('[data-testid="task-log-stream"]')).not.toBeNull();
+    expect(apiState.getTaskLogStreamSummary).toHaveBeenCalledWith('demo', 'task-1');
     expect(apiState.setTaskLogStreamTracking).toHaveBeenCalledWith('demo', true);
     expect(handler).toBeTypeOf('function');
-    expect(activityStates).toEqual([false]);
 
     await act(async () => {
       handler?.(null, { teamName: 'demo', type: 'task-log-change', taskId: 'task-1' });
       await flushMicrotasks();
     });
 
-    expect(activityStates).toEqual([false, true]);
+    expect(activityStates).toEqual([false, false, true]);
 
     await act(async () => {
       vi.advanceTimersByTime(1800);
       await flushMicrotasks();
     });
 
-    expect(activityStates).toEqual([false, true, false]);
+    expect(activityStates).toEqual([false, false, true, false]);
 
     await act(async () => {
       root.unmount();

@@ -64,8 +64,9 @@ export const TaskLogsPanel = ({
   const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countRequestSeqRef = useRef(0);
-  const taskLogTrackingEnabled = task.status === 'in_progress' && availableTabs.includes('stream');
-  const taskLogSummaryEnabled = availableTabs.includes('stream');
+  const taskLogTrackingEnabled =
+    hasOpenedContent && task.status === 'in_progress' && availableTabs.includes('stream');
+  const taskLogSummaryEnabled = hasOpenedContent && availableTabs.includes('stream');
 
   useEffect(() => {
     setActiveTab(defaultTab);
