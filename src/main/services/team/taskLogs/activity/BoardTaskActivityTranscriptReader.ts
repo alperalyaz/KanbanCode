@@ -123,6 +123,12 @@ export class BoardTaskActivityTranscriptReader {
     for await (const line of rl) {
       if (!line.trim()) continue;
       lineCount += 1;
+      if (!line.includes('"boardTaskLinks"')) {
+        if (lineCount % 500 === 0) {
+          await yieldToEventLoop();
+        }
+        continue;
+      }
 
       try {
         const parsed = JSON.parse(line) as unknown;

@@ -10,6 +10,7 @@ import type { TeamConfig } from '@shared/types';
 const logger = createLogger('Service:TeamTranscriptSourceLocator');
 const TRANSCRIPT_DISCOVERY_WARN_MS = 3_000;
 const TRANSCRIPT_DISCOVERY_FILE_COUNT_WARN = 500;
+const TRANSCRIPT_DISCOVERY_SESSION_CONCURRENCY = process.platform === 'win32' ? 4 : 8;
 
 export interface TeamTranscriptSourceContext {
   projectDir: string;
@@ -17,6 +18,28 @@ export interface TeamTranscriptSourceContext {
   config: TeamConfig;
   sessionIds: string[];
   transcriptFiles: string[];
+}
+
+async function mapLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let index = 0;
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  const workers = new Array(workerCount).fill(0).map(async () => {
+    while (true) {
+      const currentIndex = index;
+      index += 1;
+      if (currentIndex >= items.length) {
+        return;
+      }
+      results[currentIndex] = await fn(items[currentIndex]!);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 export class TeamTranscriptSourceLocator {
@@ -55,29 +78,41 @@ export class TeamTranscriptSourceLocator {
   ): Promise<string[]> {
     const transcriptFiles = new Set<string>();
 
-    for (const sessionId of sessionIds) {
-      const mainTranscript = path.join(projectDir, `${sessionId}.jsonl`);
-      try {
-        const stat = await fs.stat(mainTranscript);
-        if (stat.isFile()) {
-          transcriptFiles.add(mainTranscript);
+    const filesBySession = await mapLimit(
+      sessionIds,
+      TRANSCRIPT_DISCOVERY_SESSION_CONCURRENCY,
+      async (sessionId) => {
+        const sessionFiles: string[] = [];
+        const mainTranscript = path.join(projectDir, `${sessionId}.jsonl`);
+        try {
+          const stat = await fs.stat(mainTranscript);
+          if (stat.isFile()) {
+            sessionFiles.push(mainTranscript);
+          }
+        } catch {
+          // ignore missing root transcript
         }
-      } catch {
-        // ignore missing root transcript
-      }
 
-      const subagentsDir = path.join(projectDir, sessionId, 'subagents');
-      try {
-        const dirEntries = await fs.readdir(subagentsDir, { withFileTypes: true });
-        for (const entry of dirEntries) {
-          if (!entry.isFile()) continue;
-          if (!entry.name.endsWith('.jsonl')) continue;
-          if (!entry.name.startsWith('agent-')) continue;
-          if (entry.name.startsWith('agent-acompact')) continue;
-          transcriptFiles.add(path.join(subagentsDir, entry.name));
+        const subagentsDir = path.join(projectDir, sessionId, 'subagents');
+        try {
+          const dirEntries = await fs.readdir(subagentsDir, { withFileTypes: true });
+          for (const entry of dirEntries) {
+            if (!entry.isFile()) continue;
+            if (!entry.name.endsWith('.jsonl')) continue;
+            if (!entry.name.startsWith('agent-')) continue;
+            if (entry.name.startsWith('agent-acompact')) continue;
+            sessionFiles.push(path.join(subagentsDir, entry.name));
+          }
+        } catch {
+          // ignore missing subagent dir
         }
-      } catch {
-        // ignore missing subagent dir
+        return sessionFiles;
+      }
+    );
+
+    for (const sessionFiles of filesBySession) {
+      for (const filePath of sessionFiles) {
+        transcriptFiles.add(filePath);
       }
     }
 

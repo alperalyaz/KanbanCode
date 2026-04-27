@@ -111,4 +111,75 @@ describe('TeamTranscriptSourceLocator', () => {
     );
     expect(transcriptFiles).not.toContain(path.join(projectRoot, 'unrelated-session.jsonl'));
   });
+
+  it('returns the same sorted transcript set across multiple session directories', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-transcripts-'));
+    setClaudeBasePathOverride(tmpDir);
+
+    const teamName = 'bounded-discovery-test';
+    const projectPath = '/Users/test/bounded-discovery';
+    const projectId = '-Users-test-bounded-discovery';
+    const sessionIds = Array.from({ length: 12 }, (_, index) => `member-${index + 1}`);
+
+    await fs.mkdir(path.join(tmpDir, 'teams', teamName), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'teams', teamName, 'config.json'),
+      JSON.stringify(
+        {
+          name: teamName,
+          projectPath,
+          members: sessionIds.map((sessionId, index) => ({
+            name: `member-${index + 1}`,
+            agentType: 'general-purpose',
+            sessionId,
+            cwd: projectPath,
+          })),
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+
+    const projectRoot = path.join(tmpDir, 'projects', projectId);
+    const expectedFiles: string[] = [];
+
+    for (const sessionId of sessionIds) {
+      const rootTranscript = path.join(projectRoot, `${sessionId}.jsonl`);
+      const subagentsDir = path.join(projectRoot, sessionId, 'subagents');
+      const subagentTranscript = path.join(subagentsDir, 'agent-worker.jsonl');
+
+      await fs.mkdir(subagentsDir, { recursive: true });
+      await fs.writeFile(
+        rootTranscript,
+        JSON.stringify({
+          timestamp: '2026-04-15T14:02:00.000Z',
+          type: 'user',
+          teamName,
+          message: { role: 'user', content: `Bootstrap ${sessionId} for ${teamName}` },
+        }) + '\n',
+        'utf8'
+      );
+      await fs.writeFile(
+        subagentTranscript,
+        JSON.stringify({
+          timestamp: '2026-04-15T14:02:01.000Z',
+          type: 'user',
+          message: { role: 'user', content: `Subagent for ${sessionId}` },
+        }) + '\n',
+        'utf8'
+      );
+      await fs.writeFile(
+        path.join(subagentsDir, 'agent-acompact-ignore.jsonl'),
+        '{}\n',
+        'utf8'
+      );
+
+      expectedFiles.push(rootTranscript, subagentTranscript);
+    }
+
+    const transcriptFiles = await new TeamTranscriptSourceLocator().listTranscriptFiles(teamName);
+
+    expect(transcriptFiles).toEqual([...expectedFiles].sort((a, b) => a.localeCompare(b)));
+  });
 });

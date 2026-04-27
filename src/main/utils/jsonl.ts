@@ -203,6 +203,10 @@ export function parseJsonlLine(line: string): ParsedMessage | null {
   }
 
   const entry = JSON.parse(normalized) as ChatHistoryEntry;
+  return parseJsonlEntry(entry);
+}
+
+export function parseJsonlEntry(entry: ChatHistoryEntry): ParsedMessage | null {
   return parseChatHistoryEntry(entry);
 }
 

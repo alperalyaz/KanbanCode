@@ -1,5 +1,5 @@
 import { yieldToEventLoop } from '@main/utils/asyncYield';
-import { parseJsonlLine } from '@main/utils/jsonl';
+import { parseJsonlEntry } from '@main/utils/jsonl';
 import { createLogger } from '@shared/utils/logger';
 import { createReadStream } from 'fs';
 import * as fs from 'fs/promises';
@@ -8,6 +8,7 @@ import * as readline from 'readline';
 import { BoardTaskExactLogsParseCache } from './BoardTaskExactLogsParseCache';
 
 import type { ParsedMessage } from '@main/types';
+import type { ChatHistoryEntry } from '@main/types';
 
 const logger = createLogger('Service:BoardTaskExactLogStrictParser');
 const EXACT_LOG_PARSE_CONCURRENCY = process.platform === 'win32' ? 4 : 8;
@@ -123,7 +124,7 @@ export class BoardTaskExactLogStrictParser {
           continue;
         }
 
-        const parsed = parseJsonlLine(line);
+        const parsed = parseJsonlEntry(record as unknown as ChatHistoryEntry);
         if (parsed) {
           results.push(parsed);
         }
