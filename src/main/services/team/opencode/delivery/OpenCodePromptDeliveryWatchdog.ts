@@ -1,5 +1,6 @@
 import type { AgentActionMode, InboxMessage, TaskRef } from '@shared/types/team';
 import type { OpenCodeDeliveryResponseState } from '../bridge/OpenCodeBridgeCommandContract';
+import type { OpenCodePromptDeliveryStatus } from './OpenCodePromptDeliveryLedger';
 
 export const OPENCODE_PROMPT_DELIVERY_OBSERVE_DELAY_MS = 3_000;
 export const OPENCODE_PROMPT_DELIVERY_RETRY_DELAY_MS = 15_000;
@@ -93,6 +94,23 @@ export function isOpenCodePromptDeliveryRetryableResponseState(
     state === 'reconcile_failed' ||
     state === 'not_observed' ||
     state === 'session_stale'
+  );
+}
+
+export function isOpenCodePromptDeliveryRetryAttemptDue(input: {
+  attemptDue: boolean;
+  ledgerRecord: {
+    status: OpenCodePromptDeliveryStatus;
+    responseState: OpenCodeDeliveryResponseState;
+  };
+}): boolean {
+  if (!input.attemptDue) {
+    return false;
+  }
+  return (
+    input.ledgerRecord.status === 'retry_scheduled' ||
+    input.ledgerRecord.status === 'failed_retryable' ||
+    isOpenCodePromptDeliveryRetryableResponseState(input.ledgerRecord.responseState)
   );
 }
 

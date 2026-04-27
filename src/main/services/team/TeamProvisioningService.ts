@@ -133,6 +133,7 @@ import {
 } from './opencode/delivery/OpenCodePromptDeliveryLedger';
 import {
   isOpenCodePromptDeliveryObserveLaterResponseState,
+  isOpenCodePromptDeliveryRetryAttemptDue,
   isOpenCodePromptDeliveryRetryableResponseState,
   isOpenCodeVisibleReplySemanticallySufficient,
   isOpenCodeVisibleReplyReadCommitAllowed,
@@ -1502,20 +1503,6 @@ export function shouldWarnOnMissingRegisteredMember(params: {
 
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-export function isOpenCodePromptDeliveryRetryAttemptDue(input: {
-  attemptDue: boolean;
-  ledgerRecord: Pick<OpenCodePromptDeliveryLedgerRecord, 'status' | 'responseState'>;
-}): boolean {
-  if (!input.attemptDue) {
-    return false;
-  }
-  return (
-    input.ledgerRecord.status === 'retry_scheduled' ||
-    input.ledgerRecord.status === 'failed_retryable' ||
-    isOpenCodePromptDeliveryRetryableResponseState(input.ledgerRecord.responseState)
-  );
 }
 
 function createInitialMemberSpawnStatusEntry(): MemberSpawnStatusEntry {

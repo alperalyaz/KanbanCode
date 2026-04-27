@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isOpenCodePromptDeliveryObserveLaterResponseState,
+  isOpenCodePromptDeliveryRetryAttemptDue,
   isOpenCodePromptDeliveryRetryableResponseState,
 } from '@main/services/team/opencode/delivery/OpenCodePromptDeliveryWatchdog';
-import { isOpenCodePromptDeliveryRetryAttemptDue } from '@main/services/team/TeamProvisioningService';
 
 describe('OpenCodePromptDeliveryWatchdog retry policy', () => {
   it('treats stale OpenCode sessions as retryable after observation', () => {
