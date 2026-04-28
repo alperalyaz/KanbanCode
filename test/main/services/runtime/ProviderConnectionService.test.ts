@@ -285,6 +285,122 @@ describe('ProviderConnectionService', () => {
     expect(result.CODEX_API_KEY).toBe('shell-openai-key');
   });
 
+  it('passes Codex runtime context while clearing API keys for ChatGPT launches', async () => {
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred: vi.fn().mockResolvedValue(null),
+      } as never,
+      {
+        getConfig: () => createConfig('auto'),
+      } as never
+    );
+
+    service.setCodexAccountFeature({
+      getSnapshot: vi.fn().mockResolvedValue({
+        preferredAuthMode: 'chatgpt',
+        effectiveAuthMode: 'chatgpt',
+        launchAllowed: true,
+        launchIssueMessage: null,
+        launchReadinessState: 'ready_chatgpt',
+        appServerState: 'healthy',
+        appServerStatusMessage: null,
+        managedAccount: {
+          type: 'chatgpt',
+          email: 'user@example.com',
+          planType: 'pro',
+        },
+        apiKey: {
+          available: false,
+          source: null,
+          sourceLabel: null,
+        },
+        requiresOpenaiAuth: false,
+        runtimeContext: {
+          binaryPath: '/opt/codex/bin/codex',
+          codexHome: '/Users/tester/.codex-custom',
+        },
+        login: {
+          status: 'idle',
+          error: null,
+          startedAt: null,
+        },
+        rateLimits: null,
+        updatedAt: '2026-04-20T00:00:00.000Z',
+      }),
+    } as never);
+
+    const result = await service.applyConfiguredConnectionEnv(
+      {
+        OPENAI_API_KEY: 'ambient-openai-key',
+        CODEX_API_KEY: 'ambient-codex-key',
+      },
+      'codex'
+    );
+
+    expect(result.OPENAI_API_KEY).toBeUndefined();
+    expect(result.CODEX_API_KEY).toBeUndefined();
+    expect(result.CODEX_CLI_PATH).toBe('/opt/codex/bin/codex');
+    expect(result.CODEX_HOME).toBe('/Users/tester/.codex-custom');
+  });
+
+  it('keeps Codex runtime context when API-key mode mirrors credentials', async () => {
+    const lookupPreferred = vi.fn().mockResolvedValue({
+      envVarName: 'OPENAI_API_KEY',
+      value: 'stored-openai-key',
+    });
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred,
+      } as never,
+      {
+        getConfig: () => createConfig('auto'),
+      } as never
+    );
+
+    service.setCodexAccountFeature({
+      getSnapshot: vi.fn().mockResolvedValue({
+        preferredAuthMode: 'api_key',
+        effectiveAuthMode: 'api_key',
+        launchAllowed: true,
+        launchIssueMessage: null,
+        launchReadinessState: 'ready_api_key',
+        appServerState: 'healthy',
+        appServerStatusMessage: null,
+        managedAccount: null,
+        apiKey: {
+          available: true,
+          source: 'stored',
+          sourceLabel: 'Stored in app',
+        },
+        requiresOpenaiAuth: false,
+        runtimeContext: {
+          binaryPath: '/opt/codex/bin/codex.cmd',
+          codexHome: 'C:\\Users\\tester\\.codex',
+        },
+        login: {
+          status: 'idle',
+          error: null,
+          startedAt: null,
+        },
+        rateLimits: null,
+        updatedAt: '2026-04-20T00:00:00.000Z',
+      }),
+    } as never);
+
+    const result = await service.applyConfiguredConnectionEnv({}, 'codex');
+
+    expect(result.OPENAI_API_KEY).toBe('stored-openai-key');
+    expect(result.CODEX_API_KEY).toBe('stored-openai-key');
+    expect(result.CODEX_CLI_PATH).toBe('/opt/codex/bin/codex.cmd');
+    expect(result.CODEX_HOME).toBe('C:\\Users\\tester\\.codex');
+  });
+
   it('accepts CODEX_API_KEY as the native external credential source for Codex', async () => {
     getCachedShellEnvMock.mockReturnValue({
       CODEX_API_KEY: 'native-key',
