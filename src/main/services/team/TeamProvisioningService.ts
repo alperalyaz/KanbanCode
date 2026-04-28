@@ -67,9 +67,9 @@ import { getMemberColorByName } from '@shared/constants/memberColors';
 import { DEFAULT_TOOL_APPROVAL_SETTINGS } from '@shared/types/team';
 import { resolveLanguageName } from '@shared/utils/agentLanguage';
 import { resolveAnthropicLaunchModel } from '@shared/utils/anthropicLaunchModel';
-import { isUsableCodexModelCatalog } from '@shared/utils/codexModelCatalog';
 import { getAnthropicDefaultTeamModel } from '@shared/utils/anthropicModelDefaults';
 import { parseCliArgs } from '@shared/utils/cliArgsParser';
+import { isUsableCodexModelCatalog } from '@shared/utils/codexModelCatalog';
 import { deriveContextMetrics, inferContextWindowTokens } from '@shared/utils/contextMetrics';
 import { isTeamEffortLevel } from '@shared/utils/effortLevels';
 import { getErrorMessage } from '@shared/utils/errorHandling';
@@ -4320,6 +4320,7 @@ export class TeamProvisioningService {
   private runtimeAdapterRegistry: TeamRuntimeAdapterRegistry | null = null;
   private controlApiBaseUrlResolver: (() => Promise<string | null>) | null = null;
   private readonly stoppedTeamOpenCodeRuntimeCleanupInFlight = new Map<string, Promise<number>>();
+  private readonly cleanedStoppedTeamOpenCodeRuntimeLanes = new Set<string>();
   private crossTeamSender:
     | ((request: {
         fromTeam: string;
@@ -4934,6 +4935,7 @@ export class TeamProvisioningService {
       teamsBasePath: getTeamsBasePath(),
     });
     let stopped = 0;
+    let cleaned = 0;
     for (const laneId of activeLaneIds) {
       const evidence = await evidenceReader.read(teamName, laneId).catch(() => null);
       const runId = evidence?.activeRunId?.trim() || null;
@@ -4979,12 +4981,16 @@ export class TeamProvisioningService {
         teamName,
         laneId,
       }).catch(() => undefined);
+      cleaned += 1;
       this.deleteSecondaryRuntimeRun(teamName, laneId);
       if (laneId === 'primary') {
         this.runtimeAdapterRunByTeam.delete(teamName);
         this.aliveRunByTeam.delete(teamName);
         this.provisioningRunByTeam.delete(teamName);
       }
+    }
+    if (cleaned > 0) {
+      this.cleanedStoppedTeamOpenCodeRuntimeLanes.add(teamName);
     }
     return stopped;
   }
@@ -5852,11 +5858,6 @@ export class TeamProvisioningService {
     if (!adapter) {
       return { delivered: false, reason: 'opencode_runtime_message_bridge_unavailable' };
     }
-    if (!this.canDeliverToOpenCodeRuntimeForTeam(teamName)) {
-      this.cleanupStoppedTeamOpenCodeRuntimeLanesInBackground(teamName);
-      return { delivered: false, reason: 'opencode_runtime_not_active' };
-    }
-
     const [config, teamMeta, metaMembers] = await Promise.all([
       this.configReader.getConfig(teamName).catch(() => null),
       this.teamMetaStore.getMeta(teamName).catch(() => null),
@@ -5992,6 +5993,7 @@ export class TeamProvisioningService {
       }
     }
     if (!runtimeActive) {
+      this.cleanupStoppedTeamOpenCodeRuntimeLanesInBackground(teamName);
       return { delivered: false, reason: 'opencode_runtime_not_active' };
     }
 
@@ -12712,6 +12714,7 @@ export class TeamProvisioningService {
     request: TeamCreateRequest,
     onProgress: (progress: TeamProvisioningProgress) => void
   ): Promise<TeamCreateResponse> {
+    this.cleanedStoppedTeamOpenCodeRuntimeLanes.delete(request.teamName);
     const existingProvisioningRunId = this.getProvisioningRunId(request.teamName);
     if (existingProvisioningRunId) {
       return { runId: existingProvisioningRunId };
@@ -14825,17 +14828,6 @@ export class TeamProvisioningService {
     memberName: string,
     options: OpenCodeMemberInboxRelayOptions = {}
   ): Promise<OpenCodeMemberInboxRelayResult> {
-    if (!this.canDeliverToOpenCodeRuntimeForTeam(teamName)) {
-      this.cleanupStoppedTeamOpenCodeRuntimeLanesInBackground(teamName);
-      return {
-        relayed: 0,
-        attempted: 0,
-        delivered: 0,
-        failed: 1,
-        lastDelivery: { delivered: false, reason: 'opencode_runtime_not_active' },
-        diagnostics: ['opencode_runtime_not_active'],
-      };
-    }
     const relayKey = this.getOpenCodeMemberRelayKey(teamName, memberName);
     const existing = this.openCodeMemberInboxRelayInFlight.get(relayKey);
     if (existing) {
@@ -15126,11 +15118,16 @@ export class TeamProvisioningService {
             ...(result.diagnostics ?? []),
             ...(delivery.diagnostics ?? [delivery.reason ?? 'opencode_message_delivery_failed']),
           ];
-          logger.warn(
-            `[${teamName}] OpenCode inbox relay failed for ${memberName}/${message.messageId}: ${
-              delivery.reason ?? 'unknown error'
-            }`
-          );
+          if (
+            delivery.reason !== 'opencode_runtime_not_active' ||
+            !this.cleanedStoppedTeamOpenCodeRuntimeLanes.has(teamName)
+          ) {
+            logger.warn(
+              `[${teamName}] OpenCode inbox relay failed for ${memberName}/${message.messageId}: ${
+                delivery.reason ?? 'unknown error'
+              }`
+            );
+          }
           break;
         }
         if (delivery.responsePending) {
