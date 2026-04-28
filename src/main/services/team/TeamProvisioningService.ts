@@ -186,7 +186,11 @@ import {
   buildProgressAssistantOutput,
   buildProgressLogsTail,
 } from './progressPayload';
-import { resolveDesktopTeammateModeDecision } from './runtimeTeammateMode';
+import {
+  applyDesktopTeammateModeDecisionToEnv,
+  buildDesktopTeammateModeCliArgs,
+  resolveDesktopTeammateModeDecision,
+} from './runtimeTeammateMode';
 import {
   choosePreferredLaunchSnapshot,
   clearBootstrapState,
@@ -1101,6 +1105,9 @@ function buildRuntimeLaunchWarning(
   if (env.CLAUDE_CODE_CODEX_BACKEND) {
     flags.push(`CODEX_BACKEND=${env.CLAUDE_CODE_CODEX_BACKEND}`);
   }
+  if (env.CLAUDE_TEAM_FORCE_PROCESS_TEAMMATES === '1') {
+    flags.push('FORCE_PROCESS_TEAMMATES');
+  }
   const backendPart = backend ? `, backend ${backend}` : '';
   const flagsPart = flags.length > 0 ? `, env ${flags.join(', ')}` : '';
   const geminiAuth = options?.geminiRuntimeAuth;
@@ -1164,6 +1171,7 @@ function logRuntimeLaunchSnapshot(
       CLAUDE_CODE_ENTRY_PROVIDER: env.CLAUDE_CODE_ENTRY_PROVIDER ?? null,
       CLAUDE_CODE_GEMINI_BACKEND: env.CLAUDE_CODE_GEMINI_BACKEND ?? null,
       CLAUDE_CODE_CODEX_BACKEND: env.CLAUDE_CODE_CODEX_BACKEND ?? null,
+      CLAUDE_TEAM_FORCE_PROCESS_TEAMMATES: env.CLAUDE_TEAM_FORCE_PROCESS_TEAMMATES ?? null,
       CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR ?? null,
       CLAUDE_TEAM_CONTROL_URL: env.CLAUDE_TEAM_CONTROL_URL ?? null,
     },
@@ -11788,9 +11796,7 @@ export class TeamProvisioningService {
       let child: ReturnType<typeof spawn>;
       shellEnv.CLAUDE_ENABLE_DETERMINISTIC_TEAM_BOOTSTRAP = '1';
       const teammateModeDecision = await resolveDesktopTeammateModeDecision(request.extraCliArgs);
-      if (teammateModeDecision.forceProcessTeammates) {
-        shellEnv.CLAUDE_TEAM_FORCE_PROCESS_TEAMMATES = '1';
-      }
+      applyDesktopTeammateModeDecisionToEnv(shellEnv, teammateModeDecision);
       let mcpConfigPath: string;
       let bootstrapSpecPath: string;
       let bootstrapUserPromptPath: string | null = null;
@@ -11854,6 +11860,7 @@ export class TeamProvisioningService {
         ...(launchIdentity.resolvedEffort ? ['--effort', launchIdentity.resolvedEffort] : []),
         ...providerFastModeArgs,
         ...(request.worktree ? ['--worktree', request.worktree] : []),
+        ...buildDesktopTeammateModeCliArgs(teammateModeDecision),
         ...parseCliArgs(request.extraCliArgs),
         ...providerArgs,
       ]);
@@ -12863,9 +12870,7 @@ export class TeamProvisioningService {
       let child: ReturnType<typeof spawn>;
       shellEnv.CLAUDE_ENABLE_DETERMINISTIC_TEAM_BOOTSTRAP = '1';
       const teammateModeDecision = await resolveDesktopTeammateModeDecision(request.extraCliArgs);
-      if (teammateModeDecision.forceProcessTeammates) {
-        shellEnv.CLAUDE_TEAM_FORCE_PROCESS_TEAMMATES = '1';
-      }
+      applyDesktopTeammateModeDecisionToEnv(shellEnv, teammateModeDecision);
       let mcpConfigPath: string;
       let bootstrapSpecPath: string;
       let bootstrapUserPromptPath: string | null = null;
@@ -12945,6 +12950,7 @@ export class TeamProvisioningService {
       if (request.worktree) {
         launchArgs.push('--worktree', request.worktree);
       }
+      launchArgs.push(...buildDesktopTeammateModeCliArgs(teammateModeDecision));
       launchArgs.push(...parseCliArgs(request.extraCliArgs));
       launchArgs.push(...providerArgs);
       // When the lead uses a different provider than some teammates (e.g., anthropic lead
@@ -15500,8 +15506,9 @@ export class TeamProvisioningService {
     }
 
     const paneIds = [...metadataByMember.values()]
+      .filter((metadata) => metadata.backendType === 'tmux' || metadata.backendType === undefined)
       .map((metadata) => metadata.tmuxPaneId?.trim() ?? '')
-      .filter((paneId) => paneId.length > 0);
+      .filter((paneId) => paneId.length > 0 && !paneId.startsWith('process:'));
     let paneInfoById = new Map<string, TmuxPaneRuntimeInfo>();
     if (paneIds.length > 0) {
       try {
