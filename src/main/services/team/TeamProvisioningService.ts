@@ -1595,6 +1595,84 @@ function isDefinitiveOpenCodePreLaunchFailure(
   );
 }
 
+function hasOpenCodeRuntimeHandle(
+  value:
+    | Pick<PersistedTeamLaunchMemberState, 'runtimePid' | 'runtimeSessionId' | 'livenessKind'>
+    | Pick<TeamRuntimeMemberLaunchEvidence, 'runtimePid' | 'sessionId' | 'livenessKind'>
+    | undefined
+): boolean {
+  if (!value) {
+    return false;
+  }
+  const runtimePid =
+    typeof value.runtimePid === 'number' &&
+    Number.isFinite(value.runtimePid) &&
+    value.runtimePid > 0;
+  const runtimeSessionId = (value as { runtimeSessionId?: unknown }).runtimeSessionId;
+  const runtimeEvidenceSessionId = (value as { sessionId?: unknown }).sessionId;
+  const sessionId =
+    (typeof runtimeSessionId === 'string' && runtimeSessionId.trim().length > 0) ||
+    (typeof runtimeEvidenceSessionId === 'string' && runtimeEvidenceSessionId.trim().length > 0);
+  return runtimePid || sessionId;
+}
+
+function hasOpenCodeRuntimeLivenessMarker(
+  value: Pick<TeamRuntimeMemberLaunchEvidence, 'livenessKind'> | undefined
+): boolean {
+  return (
+    value?.livenessKind === 'runtime_process' ||
+    value?.livenessKind === 'runtime_process_candidate' ||
+    value?.livenessKind === 'permission_blocked'
+  );
+}
+
+function isRecoverablePersistedOpenCodeRuntimeCandidate(
+  member: PersistedTeamLaunchMemberState | undefined | null
+): boolean {
+  if (!member || member.skippedForLaunch) {
+    return false;
+  }
+  if (
+    member.providerId !== 'opencode' ||
+    member.laneKind !== 'secondary' ||
+    member.laneOwnerProviderId !== 'opencode' ||
+    typeof member.laneId !== 'string' ||
+    member.laneId.trim().length === 0
+  ) {
+    return false;
+  }
+  const hasPendingPermission = (member.pendingPermissionRequestIds?.length ?? 0) > 0;
+  return (
+    member.agentToolAccepted === true && (hasOpenCodeRuntimeHandle(member) || hasPendingPermission)
+  );
+}
+
+function isRecoverablePersistedOpenCodeTerminalRuntimeCandidate(
+  member: PersistedTeamLaunchMemberState | undefined | null
+): boolean {
+  return (
+    isRecoverablePersistedOpenCodeRuntimeCandidate(member) &&
+    member?.launchState === 'failed_to_start' &&
+    member.hardFailure === true &&
+    hasOpenCodeRuntimeHandle(member)
+  );
+}
+
+function isRecoverableOpenCodeRuntimeEvidence(
+  evidence: TeamRuntimeMemberLaunchEvidence | undefined | null
+): evidence is TeamRuntimeMemberLaunchEvidence {
+  if (!evidence) {
+    return false;
+  }
+  return (
+    evidence.runtimeAlive === true ||
+    evidence.bootstrapConfirmed === true ||
+    (evidence.pendingPermissionRequestIds?.length ?? 0) > 0 ||
+    hasOpenCodeRuntimeHandle(evidence) ||
+    (evidence.agentToolAccepted === true && hasOpenCodeRuntimeLivenessMarker(evidence))
+  );
+}
+
 function isLaunchGraceWindowFailureReason(reason?: string): boolean {
   return reason?.trim() === 'Teammate did not join within the launch grace window.';
 }
@@ -5161,12 +5239,16 @@ export class TeamProvisioningService {
     if (!laneIndex) {
       return 0;
     }
-    return await this.scanOpenCodePromptDeliveryWatchdogForActiveLanes(
-      teamName,
-      Object.values(laneIndex.lanes)
-        .filter((lane) => lane.state === 'active')
-        .map((lane) => lane.laneId)
-    );
+    let activeLaneIds = Object.values(laneIndex.lanes)
+      .filter((lane) => lane.state === 'active')
+      .map((lane) => lane.laneId);
+    activeLaneIds = [
+      ...new Set([
+        ...activeLaneIds,
+        ...(await this.tryRecoverOpenCodeRuntimeLanesForDeliveryWatchdog(teamName)),
+      ]),
+    ];
+    return await this.scanOpenCodePromptDeliveryWatchdogForActiveLanes(teamName, activeLaneIds);
   }
 
   private async scanOpenCodePromptDeliveryWatchdogForActiveLanes(
@@ -5392,7 +5474,7 @@ export class TeamProvisioningService {
         return { delivered: false, reason: 'opencode_runtime_not_active' };
       }
     }
-    const runtimeRunId =
+    let runtimeRunId =
       laneIdentity.laneKind === 'secondary' && laneIdentity.laneOwnerProviderId === 'opencode'
         ? (liveSecondaryLaneRunId ??
           (await this.resolveCurrentOpenCodeRuntimeRunId(teamName, laneIdentity.laneId)))
@@ -5410,6 +5492,33 @@ export class TeamProvisioningService {
         return { delivered: false, reason: 'opencode_runtime_not_active' };
       }
       runtimeActive = await this.isOpenCodeRuntimeLaneIndexActive(teamName, laneIdentity.laneId);
+    }
+    if (
+      !runtimeActive &&
+      laneIdentity.laneKind === 'secondary' &&
+      laneIdentity.laneOwnerProviderId === 'opencode'
+    ) {
+      const recovered = await this.tryRecoverOpenCodeRuntimeLaneBeforeDelivery({
+        teamName,
+        laneId: laneIdentity.laneId,
+        member: {
+          ...(configMember ?? {}),
+          ...(metaMember ?? {}),
+          name: canonicalMemberName,
+          providerId: 'opencode',
+          model: metaMember?.model ?? configMember?.model,
+          role: metaMember?.role ?? configMember?.role,
+          workflow: metaMember?.workflow ?? configMember?.workflow,
+          effort: metaMember?.effort ?? configMember?.effort,
+          cwd: memberRuntimeCwd || undefined,
+          isolation: metaMember?.isolation ?? configMember?.isolation,
+        },
+        projectPath: config?.projectPath?.trim() || this.readPersistedTeamProjectPath(teamName),
+      });
+      if (recovered) {
+        runtimeRunId = await this.resolveCurrentOpenCodeRuntimeRunId(teamName, laneIdentity.laneId);
+        runtimeActive = true;
+      }
     }
     if (!runtimeActive) {
       return { delivered: false, reason: 'opencode_runtime_not_active' };
@@ -6256,6 +6365,108 @@ export class TeamProvisioningService {
       () => null
     );
     return laneIndex?.lanes[laneId]?.state === 'active';
+  }
+
+  private async tryRecoverOpenCodeRuntimeLaneBeforeDelivery(input: {
+    teamName: string;
+    laneId: string;
+    member: TeamMember;
+    projectPath: string | null;
+  }): Promise<boolean> {
+    const snapshot = await this.launchStateStore.read(input.teamName).catch(() => null);
+    const persistedMember =
+      snapshot?.members?.[input.member.name] ??
+      Object.values(snapshot?.members ?? {}).find((member) => member.laneId === input.laneId);
+    if (!persistedMember || !isRecoverablePersistedOpenCodeRuntimeCandidate(persistedMember)) {
+      return false;
+    }
+    const runtimeEvidence = await this.tryRecoverMissingOpenCodeSecondaryLaneFromRuntime({
+      teamName: input.teamName,
+      laneId: input.laneId,
+      member: input.member,
+      projectPath: input.projectPath,
+      previousLaunchState: snapshot,
+      persistedMember,
+    });
+    if (!runtimeEvidence) {
+      return false;
+    }
+    logger.info(
+      `[${input.teamName}] Recovered OpenCode lane ${input.laneId} before message delivery.`
+    );
+    return true;
+  }
+
+  private async tryRecoverOpenCodeRuntimeLanesForDeliveryWatchdog(
+    teamName: string
+  ): Promise<string[]> {
+    const snapshot = await this.launchStateStore.read(teamName).catch(() => null);
+    const candidates = Object.values(snapshot?.members ?? {}).filter(
+      isRecoverablePersistedOpenCodeRuntimeCandidate
+    );
+    if (candidates.length === 0) {
+      return [];
+    }
+
+    const [config, teamMeta, metaMembers, currentLaneIndex] = await Promise.all([
+      this.configReader.getConfig(teamName).catch(() => null),
+      this.teamMetaStore.getMeta(teamName).catch(() => null),
+      this.membersMetaStore.getMembers(teamName).catch(() => []),
+      readOpenCodeRuntimeLaneIndex(getTeamsBasePath(), teamName).catch(() => null),
+    ]);
+    const projectPath = config?.projectPath?.trim() || this.readPersistedTeamProjectPath(teamName);
+    const leadMember = config?.members?.find((member) => isLeadMember(member));
+    const leadProviderId =
+      normalizeOptionalTeamProviderId(teamMeta?.launchIdentity?.providerId) ??
+      normalizeOptionalTeamProviderId(teamMeta?.providerId) ??
+      normalizeOptionalTeamProviderId(leadMember?.providerId);
+    const recoveredLaneIds: string[] = [];
+    for (const persistedMember of candidates) {
+      const memberName = persistedMember.name.trim();
+      const configMember = config?.members?.find(
+        (member) => member.name?.trim().toLowerCase() === memberName.toLowerCase()
+      );
+      const metaMember = metaMembers.find(
+        (member) => member.name?.trim().toLowerCase() === memberName.toLowerCase()
+      );
+      if (metaMember?.removedAt != null || configMember?.removedAt != null) {
+        continue;
+      }
+      const laneIdentity = buildPlannedMemberLaneIdentity({
+        leadProviderId,
+        member: {
+          name: memberName,
+          providerId: 'opencode',
+        },
+      });
+      if (laneIdentity.laneId !== persistedMember.laneId) {
+        continue;
+      }
+      if (currentLaneIndex?.lanes[laneIdentity.laneId]) {
+        continue;
+      }
+      const recovered = await this.tryRecoverOpenCodeRuntimeLaneBeforeDelivery({
+        teamName,
+        laneId: laneIdentity.laneId,
+        member: {
+          ...(configMember ?? {}),
+          ...(metaMember ?? {}),
+          name: memberName,
+          providerId: 'opencode',
+          model: metaMember?.model ?? configMember?.model ?? persistedMember.model,
+          role: metaMember?.role ?? configMember?.role,
+          workflow: metaMember?.workflow ?? configMember?.workflow,
+          effort: metaMember?.effort ?? configMember?.effort ?? persistedMember.effort,
+          cwd: metaMember?.cwd ?? configMember?.cwd ?? persistedMember.cwd,
+          isolation: metaMember?.isolation ?? configMember?.isolation,
+        },
+        projectPath,
+      });
+      if (recovered) {
+        recoveredLaneIds.push(laneIdentity.laneId);
+      }
+    }
+    return [...new Set(recoveredLaneIds)];
   }
 
   private async resolveOpenCodeRuntimeLaneId(params: {
@@ -16240,6 +16451,13 @@ export class TeamProvisioningService {
   private shouldRecoverStalePersistedMixedLaunchSnapshot(
     snapshot: PersistedTeamLaunchSnapshot
   ): boolean {
+    const hasRecoverableOpenCodeRuntimeCandidate = Object.values(snapshot.members).some((member) =>
+      isRecoverablePersistedOpenCodeTerminalRuntimeCandidate(member)
+    );
+    if (hasRecoverableOpenCodeRuntimeCandidate) {
+      return true;
+    }
+
     if (snapshot.teamLaunchState !== 'partial_pending') {
       return false;
     }
@@ -16692,6 +16910,49 @@ export class TeamProvisioningService {
       }
 
       let laneEntry = laneIndex.lanes[laneIdentity.laneId];
+      const persistedMember =
+        persistedSnapshot?.members?.[member.name] ?? bootstrapSnapshot?.members?.[member.name];
+      if (
+        !laneEntry &&
+        persistedMember &&
+        isRecoverablePersistedOpenCodeRuntimeCandidate(persistedMember) &&
+        persistedMember.laneId === laneIdentity.laneId
+      ) {
+        const runtimeEvidence = await this.tryRecoverMissingOpenCodeSecondaryLaneFromRuntime({
+          teamName,
+          laneId: laneIdentity.laneId,
+          member,
+          projectPath,
+          previousLaunchState: persistedSnapshot ?? bootstrapSnapshot,
+          persistedMember,
+        });
+        if (runtimeEvidence) {
+          recoveredAny = true;
+          secondaryMembers.push({
+            laneId: laneIdentity.laneId,
+            member,
+            leadDefaults,
+            evidence: {
+              launchState: runtimeEvidence.launchState,
+              agentToolAccepted: runtimeEvidence.agentToolAccepted,
+              runtimeAlive: runtimeEvidence.runtimeAlive,
+              bootstrapConfirmed: runtimeEvidence.bootstrapConfirmed,
+              hardFailure: runtimeEvidence.hardFailure,
+              hardFailureReason: runtimeEvidence.hardFailureReason,
+              pendingPermissionRequestIds: runtimeEvidence.pendingPermissionRequestIds,
+              runtimePid: runtimeEvidence.runtimePid,
+              sessionId: runtimeEvidence.sessionId,
+              runtimeSessionId: runtimeEvidence.sessionId,
+              livenessKind: runtimeEvidence.livenessKind,
+              pidSource: runtimeEvidence.pidSource,
+              runtimeDiagnostic: runtimeEvidence.runtimeDiagnostic,
+              runtimeDiagnosticSeverity: runtimeEvidence.runtimeDiagnosticSeverity,
+              diagnostics: runtimeEvidence.diagnostics,
+            },
+          });
+          continue;
+        }
+      }
       if (laneEntry?.state === 'active') {
         const runtimeEvidence = await this.tryRecoverActiveOpenCodeSecondaryLaneFromRuntime({
           teamName,
@@ -16842,6 +17103,61 @@ export class TeamProvisioningService {
       );
       return null;
     }
+  }
+
+  private async tryRecoverMissingOpenCodeSecondaryLaneFromRuntime(params: {
+    teamName: string;
+    laneId: string;
+    member: TeamMember;
+    projectPath: string | null;
+    previousLaunchState: PersistedTeamLaunchSnapshot | null;
+    persistedMember: PersistedTeamLaunchMemberState;
+  }): Promise<TeamRuntimeMemberLaunchEvidence | null> {
+    const currentLaneIndex = await readOpenCodeRuntimeLaneIndex(
+      getTeamsBasePath(),
+      params.teamName
+    ).catch(() => null);
+    const currentEntry = currentLaneIndex?.lanes[params.laneId];
+    if (currentEntry?.state === 'degraded' || currentEntry?.state === 'stopped') {
+      return null;
+    }
+    if (!isRecoverablePersistedOpenCodeRuntimeCandidate(params.persistedMember)) {
+      return null;
+    }
+
+    const runtimeEvidence = await this.tryRecoverActiveOpenCodeSecondaryLaneFromRuntime({
+      teamName: params.teamName,
+      laneId: params.laneId,
+      member: params.member,
+      projectPath: params.projectPath,
+      previousLaunchState: params.previousLaunchState,
+    });
+    if (!isRecoverableOpenCodeRuntimeEvidence(runtimeEvidence)) {
+      return null;
+    }
+
+    const diagnostics = Array.from(
+      new Set([
+        'Recovered missing OpenCode runtime lane index from persisted runtime evidence.',
+        ...(runtimeEvidence.diagnostics ?? []),
+      ])
+    );
+    await upsertOpenCodeRuntimeLaneIndexEntry({
+      teamsBasePath: getTeamsBasePath(),
+      teamName: params.teamName,
+      laneId: params.laneId,
+      state: 'active',
+      diagnostics,
+    }).catch((error: unknown) => {
+      logger.warn(
+        `[${params.teamName}] Failed to recover missing OpenCode lane index ${params.laneId}: ${getErrorMessage(error)}`
+      );
+    });
+
+    return {
+      ...runtimeEvidence,
+      diagnostics,
+    };
   }
 
   private async readLeadInboxMessagesForLaunchReconcile(

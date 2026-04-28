@@ -28,6 +28,11 @@ const OPENCODE_TEAM_RUNTIME_LANES_DIR = 'lanes';
 const OPENCODE_TEAM_RUNTIME_LANES_INDEX_FILE = 'lanes.json';
 const OPENCODE_RUNTIME_MANIFEST_FILE = 'manifest.json';
 const OPENCODE_RUNTIME_RUN_TOMBSTONES_FILE = 'opencode-run-tombstones.json';
+const OPENCODE_LANE_INDEX_LOCK_OPTIONS = {
+  acquireTimeoutMs: 30_000,
+  staleTimeoutMs: 25_000,
+  retryIntervalMs: 25,
+} as const;
 
 export interface OpenCodeRuntimeLaneIndexEntry {
   laneId: string;
@@ -362,9 +367,13 @@ export async function writeOpenCodeRuntimeLaneIndex(
   index: OpenCodeRuntimeLaneIndex
 ): Promise<void> {
   const filePath = getOpenCodeRuntimeLaneIndexPath(teamsBasePath, teamName);
-  await withFileLock(filePath, async () => {
-    await writeOpenCodeRuntimeLaneIndexUnlocked(teamsBasePath, teamName, index);
-  });
+  await withFileLock(
+    filePath,
+    async () => {
+      await writeOpenCodeRuntimeLaneIndexUnlocked(teamsBasePath, teamName, index);
+    },
+    OPENCODE_LANE_INDEX_LOCK_OPTIONS
+  );
 }
 
 export async function upsertOpenCodeRuntimeLaneIndexEntry(params: {
@@ -375,17 +384,24 @@ export async function upsertOpenCodeRuntimeLaneIndexEntry(params: {
   diagnostics?: string[];
 }): Promise<void> {
   const filePath = getOpenCodeRuntimeLaneIndexPath(params.teamsBasePath, params.teamName);
-  await withFileLock(filePath, async () => {
-    const index = await readOpenCodeRuntimeLaneIndexUnlocked(params.teamsBasePath, params.teamName);
-    index.updatedAt = new Date().toISOString();
-    index.lanes[params.laneId] = {
-      laneId: params.laneId,
-      state: params.state,
-      updatedAt: index.updatedAt,
-      diagnostics: params.diagnostics?.length ? [...params.diagnostics] : undefined,
-    };
-    await writeOpenCodeRuntimeLaneIndexUnlocked(params.teamsBasePath, params.teamName, index);
-  });
+  await withFileLock(
+    filePath,
+    async () => {
+      const index = await readOpenCodeRuntimeLaneIndexUnlocked(
+        params.teamsBasePath,
+        params.teamName
+      );
+      index.updatedAt = new Date().toISOString();
+      index.lanes[params.laneId] = {
+        laneId: params.laneId,
+        state: params.state,
+        updatedAt: index.updatedAt,
+        diagnostics: params.diagnostics?.length ? [...params.diagnostics] : undefined,
+      };
+      await writeOpenCodeRuntimeLaneIndexUnlocked(params.teamsBasePath, params.teamName, index);
+    },
+    OPENCODE_LANE_INDEX_LOCK_OPTIONS
+  );
 }
 
 export async function setOpenCodeRuntimeActiveRunManifest(params: {
@@ -463,15 +479,22 @@ export async function removeOpenCodeRuntimeLaneIndexEntry(params: {
   laneId: string;
 }): Promise<void> {
   const filePath = getOpenCodeRuntimeLaneIndexPath(params.teamsBasePath, params.teamName);
-  await withFileLock(filePath, async () => {
-    const index = await readOpenCodeRuntimeLaneIndexUnlocked(params.teamsBasePath, params.teamName);
-    if (!index.lanes[params.laneId]) {
-      return;
-    }
-    delete index.lanes[params.laneId];
-    index.updatedAt = new Date().toISOString();
-    await writeOpenCodeRuntimeLaneIndexUnlocked(params.teamsBasePath, params.teamName, index);
-  });
+  await withFileLock(
+    filePath,
+    async () => {
+      const index = await readOpenCodeRuntimeLaneIndexUnlocked(
+        params.teamsBasePath,
+        params.teamName
+      );
+      if (!index.lanes[params.laneId]) {
+        return;
+      }
+      delete index.lanes[params.laneId];
+      index.updatedAt = new Date().toISOString();
+      await writeOpenCodeRuntimeLaneIndexUnlocked(params.teamsBasePath, params.teamName, index);
+    },
+    OPENCODE_LANE_INDEX_LOCK_OPTIONS
+  );
 }
 
 export async function clearOpenCodeRuntimeLaneStorage(params: {

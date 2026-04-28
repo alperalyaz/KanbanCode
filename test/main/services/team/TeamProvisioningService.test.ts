@@ -10955,6 +10955,152 @@ describe('TeamProvisioningService', () => {
     });
   });
 
+  it('recovers missing mixed secondary lane index from materialized OpenCode runtime evidence', async () => {
+    const teamName = 'relay-works-missing-lane-recovery';
+    writeTeamMeta(teamName, {
+      providerId: 'codex',
+      providerBackendId: 'codex-native',
+      model: 'gpt-5.4',
+    });
+    writeMembersMeta(teamName, [
+      {
+        name: 'atlas',
+        providerId: 'opencode',
+        model: 'opencode/nemotron-3-super-free',
+      },
+      {
+        name: 'bob',
+        providerId: 'codex',
+        model: 'gpt-5.4',
+      },
+    ]);
+    writeLaunchConfig(teamName, '/Users/test/proj', 'lead-session', ['bob']);
+    writeBootstrapState(teamName, [{ name: 'bob', status: 'registered' }]);
+    fs.writeFileSync(
+      getTeamLaunchStatePath(teamName),
+      `${JSON.stringify(
+        {
+          version: 2,
+          teamName,
+          updatedAt: '2026-04-23T10:00:00.000Z',
+          expectedMembers: ['atlas', 'bob'],
+          bootstrapExpectedMembers: ['bob'],
+          leadSessionId: 'lead-session',
+          launchPhase: 'reconciled',
+          members: {
+            atlas: {
+              name: 'atlas',
+              providerId: 'opencode',
+              model: 'opencode/nemotron-3-super-free',
+              laneId: 'secondary:opencode:atlas',
+              laneKind: 'secondary',
+              laneOwnerProviderId: 'opencode',
+              launchState: 'failed_to_start',
+              agentToolAccepted: true,
+              runtimeAlive: false,
+              bootstrapConfirmed: false,
+              hardFailure: true,
+              hardFailureReason: 'OpenCode bridge reported member launch failure',
+              runtimePid: 44123,
+              runtimeSessionId: 'ses_atlas_materialized',
+              livenessKind: 'runtime_process_candidate',
+              pidSource: 'opencode_bridge',
+              lastEvaluatedAt: '2026-04-23T10:00:00.000Z',
+            },
+            bob: {
+              name: 'bob',
+              providerId: 'codex',
+              laneId: 'primary',
+              laneKind: 'primary',
+              laneOwnerProviderId: 'codex',
+              launchState: 'confirmed_alive',
+              agentToolAccepted: true,
+              runtimeAlive: true,
+              bootstrapConfirmed: true,
+              hardFailure: false,
+              lastEvaluatedAt: '2026-04-23T10:00:00.000Z',
+            },
+          },
+          summary: {
+            confirmedCount: 1,
+            pendingCount: 0,
+            failedCount: 1,
+            runtimeAlivePendingCount: 0,
+          },
+          teamLaunchState: 'partial_failure',
+        },
+        null,
+        2
+      )}\n`,
+      'utf8'
+    );
+
+    const adapterReconcile = vi.fn(async (input: Record<string, unknown>) => {
+      const member = (input.expectedMembers as Array<{ name: string }>)[0]?.name;
+      return {
+        runId: String(input.runId),
+        teamName,
+        launchPhase: 'reconciled',
+        teamLaunchState: 'partial_pending',
+        members: member
+          ? {
+              [member]: {
+                memberName: member,
+                providerId: 'opencode',
+                launchState: 'runtime_pending_bootstrap',
+                agentToolAccepted: true,
+                runtimeAlive: false,
+                bootstrapConfirmed: false,
+                hardFailure: false,
+                runtimePid: 44123,
+                sessionId: 'ses_atlas_materialized',
+                livenessKind: 'runtime_process_candidate',
+                diagnostics: ['runtime process candidate recovered'],
+              },
+            }
+          : {},
+        snapshot: null,
+        warnings: [],
+        diagnostics: ['fake reconcile recovered materialized runtime'],
+      };
+    });
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(
+      new TeamRuntimeAdapterRegistry([
+        {
+          providerId: 'opencode',
+          prepare: vi.fn(),
+          launch: vi.fn(),
+          reconcile: adapterReconcile,
+          stop: vi.fn(),
+        } as any,
+      ])
+    );
+
+    const result = await svc.getMemberSpawnStatuses(teamName);
+
+    expect(adapterReconcile).toHaveBeenCalledTimes(1);
+    expect(adapterReconcile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        teamName,
+        laneId: 'secondary:opencode:atlas',
+        reason: 'startup_recovery',
+      })
+    );
+    expect(result.expectedMembers).toEqual(expect.arrayContaining(['atlas', 'bob']));
+    expect(result.statuses.atlas).toMatchObject({
+      status: 'waiting',
+      launchState: 'runtime_pending_bootstrap',
+    });
+    await expect(readOpenCodeRuntimeLaneIndex(tempTeamsBase, teamName)).resolves.toMatchObject({
+      lanes: {
+        'secondary:opencode:atlas': {
+          state: 'active',
+        },
+      },
+    });
+  });
+
   it('reconciles stale persisted mixed pending OpenCode lanes instead of keeping them pending forever', async () => {
     const teamName = 'signal-ops-7';
     writeTeamMeta(teamName, {
