@@ -603,6 +603,41 @@ describe('TeamProvisioningService', () => {
       });
     });
 
+    it('does not send legacy process backend pane markers to tmux liveness lookup', async () => {
+      const svc = new TeamProvisioningService();
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          members: [
+            { name: 'team-lead', agentType: 'team-lead' },
+            { name: 'alice', model: 'gpt-5.4-mini' },
+          ],
+        })),
+      };
+      (svc as any).readPersistedRuntimeMembers = vi.fn(() => [
+        {
+          name: 'alice',
+          agentId: 'alice@runtime-team',
+          tmuxPaneId: 'process:4242',
+        },
+      ]);
+      (svc as any).aliveRunByTeam.set('runtime-team', 'run-1');
+      (svc as any).runs.set('run-1', {
+        runId: 'run-1',
+        child: { pid: 111 },
+        request: { model: 'gpt-5.4' },
+        processKilled: false,
+        cancelRequested: false,
+        spawnContext: null,
+      });
+      vi.mocked(pidusage).mockResolvedValueOnce({
+        '111': createPidusageStat(111, 123_000_000),
+      } as any);
+
+      await svc.getTeamAgentRuntimeSnapshot('runtime-team');
+
+      expect(listTmuxPaneRuntimeInfoForCurrentPlatform).not.toHaveBeenCalled();
+    });
+
     it('exposes providerBackendId from the live run request when available', async () => {
       const svc = new TeamProvisioningService();
       (svc as any).configReader = {
