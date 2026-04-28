@@ -415,6 +415,7 @@ export class TeamGraphAdapter {
   ): void {
     const percent = leadContext?.contextUsedPercent;
     const leadMember = data.members.find((member) => member.name === leadName);
+    const isTeamVisualOnline = data.isAlive || isTeamProvisioning;
     const activeTool = TeamGraphAdapter.#selectVisibleTool(
       activeTools?.[leadName],
       finishedVisible?.[leadName]
@@ -437,7 +438,7 @@ export class TeamGraphAdapter {
         })
       : null;
     const leadState =
-      leadActivity === 'offline'
+      !isTeamVisualOnline || leadActivity === 'offline'
         ? 'terminated'
         : leadActivity === 'idle'
           ? 'idle'
@@ -445,7 +446,7 @@ export class TeamGraphAdapter {
             ? 'tool_calling'
             : 'active';
     const leadException =
-      leadActivity === 'offline'
+      !isTeamVisualOnline || leadActivity === 'offline'
         ? { exceptionTone: 'error' as const, exceptionLabel: 'offline' }
         : pendingApproval
           ? { exceptionTone: 'warning' as const, exceptionLabel: 'awaiting approval' }
@@ -455,7 +456,7 @@ export class TeamGraphAdapter {
       kind: 'lead',
       label: data.config.name || teamName,
       state: leadState,
-      color: data.config.color ?? undefined,
+      color: isTeamVisualOnline ? (data.config.color ?? undefined) : undefined,
       runtimeLabel: TeamGraphAdapter.#getRuntimeLabel(
         leadMember?.providerId,
         leadMember?.model,
@@ -516,6 +517,7 @@ export class TeamGraphAdapter {
       if (member.removedAt) continue;
       if (isLeadMember(member)) continue;
 
+      const isTeamVisualOnline = data.isAlive || isTeamProvisioning;
       const memberId =
         memberNodeIdByAlias.get(member.name) ?? buildGraphMemberNodeIdForMember(teamName, member);
       const spawn = spawnStatuses?.[member.name];
@@ -546,19 +548,25 @@ export class TeamGraphAdapter {
         id: memberId,
         kind: 'member',
         label: member.name,
-        state: hasRunningTool
-          ? 'tool_calling'
-          : TeamGraphAdapter.#mapMemberStatus(member.status, spawn),
-        color: member.color ?? undefined,
+        state: !isTeamVisualOnline
+          ? 'terminated'
+          : hasRunningTool
+            ? 'tool_calling'
+            : TeamGraphAdapter.#mapMemberStatus(member.status, spawn),
+        color: isTeamVisualOnline ? (member.color ?? undefined) : undefined,
         role: member.role ?? undefined,
         runtimeLabel: TeamGraphAdapter.#getRuntimeLabel(
           member.providerId,
           member.model,
           member.effort
         ),
-        spawnStatus: spawn?.status,
-        launchVisualState: launchPresentation.launchVisualState ?? undefined,
-        launchStatusLabel: launchPresentation.launchStatusLabel ?? undefined,
+        spawnStatus: isTeamVisualOnline ? spawn?.status : undefined,
+        launchVisualState: isTeamVisualOnline
+          ? (launchPresentation.launchVisualState ?? undefined)
+          : undefined,
+        launchStatusLabel: isTeamVisualOnline
+          ? (launchPresentation.launchStatusLabel ?? undefined)
+          : undefined,
         avatarUrl: resolveMemberAvatarUrl(member, avatarMap, 64),
         currentTaskId: member.currentTaskId ?? undefined,
         currentTaskSubject: member.currentTaskId
