@@ -19,6 +19,7 @@ import {
   listRuntimeProcessesForCurrentTmuxPlatform,
   listTmuxPanePidsForCurrentPlatform,
   listTmuxPaneRuntimeInfoForCurrentPlatform,
+  sendKeysToTmuxPaneForCurrentPlatform,
   type TmuxPaneRuntimeInfo,
 } from '@features/tmux-installer/main';
 import { ConfigManager } from '@main/services/infrastructure/ConfigManager';
@@ -642,6 +643,60 @@ const STALL_CHECK_INTERVAL_MS = 10_000;
 const STALL_WARNING_THRESHOLD_MS = 20_000;
 const APP_TEAM_RUNTIME_DISALLOWED_TOOLS =
   'TeamDelete,TodoWrite,TaskCreate,TaskUpdate,mcp__agent-teams__team_launch,mcp__agent-teams__team_stop';
+const DIRECT_TMUX_RESTART_ENV_KEYS = [
+  'CLAUDE_CONFIG_DIR',
+  'CLAUDE_TEAM_CONTROL_URL',
+  'CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST',
+  'CLAUDE_CODE_USE_OPENAI',
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'CLAUDE_CODE_USE_FOUNDRY',
+  'CLAUDE_CODE_USE_GEMINI',
+  'CLAUDE_CODE_ENTRY_PROVIDER',
+  'CLAUDE_CODE_GEMINI_BACKEND',
+  'CLAUDE_CODE_CODEX_BACKEND',
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'GEMINI_BASE_URL',
+  'GEMINI_API_VERSION',
+  'GEMINI_API_KEY',
+  'CODEX_API_KEY',
+  'OPENAI_API_KEY',
+  'GOOGLE_APPLICATION_CREDENTIALS',
+  'GOOGLE_CLOUD_PROJECT',
+  'GOOGLE_CLOUD_PROJECT_ID',
+  'GCLOUD_PROJECT',
+  'HTTPS_PROXY',
+  'https_proxy',
+  'HTTP_PROXY',
+  'http_proxy',
+  'NO_PROXY',
+  'no_proxy',
+  'SSL_CERT_FILE',
+  'NODE_EXTRA_CA_CERTS',
+  'REQUESTS_CA_BUNDLE',
+  'CURL_CA_BUNDLE',
+] as const;
+const DIRECT_TMUX_PROVIDER_SELECTION_ENV_KEYS = [
+  'CLAUDE_CODE_USE_OPENAI',
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'CLAUDE_CODE_USE_FOUNDRY',
+  'CLAUDE_CODE_USE_GEMINI',
+  'CLAUDE_CODE_ENTRY_PROVIDER',
+] as const;
+const INTERACTIVE_SHELL_COMMANDS = new Set([
+  'bash',
+  'zsh',
+  'sh',
+  'fish',
+  'nu',
+  'pwsh',
+  'powershell',
+  'cmd',
+  'cmd.exe',
+]);
 const TEAM_JSON_READ_TIMEOUT_MS = 5_000;
 const TEAM_CONFIG_MAX_BYTES = 10 * 1024 * 1024;
 const TEAM_INBOX_MAX_BYTES = 2 * 1024 * 1024;
@@ -710,6 +765,69 @@ function getPreflightTimeoutMs(providerId: TeamProviderId | undefined): number {
 
 function buildProviderCliCommandArgs(providerArgs: string[], args: string[]): string[] {
   return mergeJsonSettingsArgs([...providerArgs, ...args]);
+}
+
+function shellQuote(value: string): string {
+  if (value.length === 0) {
+    return "''";
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function isInteractiveShellCommand(command: string | undefined): boolean {
+  const normalized = command?.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return INTERACTIVE_SHELL_COMMANDS.has(path.basename(normalized));
+}
+
+function getDirectRestartEntryProvider(providerId: TeamProviderId): string {
+  return providerId === 'codex' || providerId === 'gemini' ? providerId : 'anthropic';
+}
+
+function buildDirectTmuxRestartEnvAssignments(
+  env: NodeJS.ProcessEnv,
+  providerId: TeamProviderId
+): string {
+  const assignments = new Map<string, string>();
+  assignments.set('CLAUDECODE', '1');
+  assignments.set('CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', '1');
+
+  for (const key of DIRECT_TMUX_RESTART_ENV_KEYS) {
+    const value = env[key];
+    if (typeof value === 'string' && value.length > 0) {
+      assignments.set(key, value);
+    }
+  }
+
+  for (const key of DIRECT_TMUX_PROVIDER_SELECTION_ENV_KEYS) {
+    assignments.set(key, '');
+  }
+  assignments.set('CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST', '1');
+  assignments.set('CLAUDE_CODE_ENTRY_PROVIDER', getDirectRestartEntryProvider(providerId));
+
+  return [...assignments.entries()].map(([key, value]) => `${key}=${shellQuote(value)}`).join(' ');
+}
+
+function buildDirectTmuxRestartCommand(input: {
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  providerId: TeamProviderId;
+  binaryPath: string;
+  args: string[];
+}): string {
+  const envAssignments = buildDirectTmuxRestartEnvAssignments(input.env, input.providerId);
+  const command = [
+    'cd',
+    shellQuote(input.cwd),
+    '&&',
+    'env',
+    envAssignments,
+    shellQuote(input.binaryPath),
+    ...input.args.map(shellQuote),
+  ].join(' ');
+  return `(${command}); __claude_teammate_exit=$?; printf '\\n__CLAUDE_TEAMMATE_EXIT__:%s\\n' "$__claude_teammate_exit"`;
 }
 
 interface ProviderModelListCommandResponse {
@@ -4781,8 +4899,7 @@ export class TeamProvisioningService {
     if (existing) {
       return existing;
     }
-    let cleanup!: Promise<number>;
-    cleanup = this.stopOpenCodeRuntimeLanesForStoppedTeamInternal(teamName).finally(() => {
+    const cleanup = this.stopOpenCodeRuntimeLanesForStoppedTeamInternal(teamName).finally(() => {
       if (this.stoppedTeamOpenCodeRuntimeCleanupInFlight.get(teamName) === cleanup) {
         this.stoppedTeamOpenCodeRuntimeCleanupInFlight.delete(teamName);
       }
@@ -9536,6 +9653,282 @@ export class TeamProvisioningService {
     return snapshot;
   }
 
+  private getDirectTmuxRestartPaneId(
+    persistedRuntimeMembers: readonly PersistedRuntimeMemberLike[],
+    memberName: string
+  ): string | null {
+    for (const persistedRuntimeMember of persistedRuntimeMembers) {
+      const backendType = persistedRuntimeMember.backendType?.trim().toLowerCase();
+      const paneId =
+        typeof persistedRuntimeMember.tmuxPaneId === 'string'
+          ? persistedRuntimeMember.tmuxPaneId.trim()
+          : '';
+      const runtimeMemberName =
+        typeof persistedRuntimeMember.name === 'string' ? persistedRuntimeMember.name : '';
+      if (
+        backendType === 'tmux' &&
+        paneId &&
+        matchesMemberNameOrBase(runtimeMemberName, memberName)
+      ) {
+        return paneId;
+      }
+    }
+    return null;
+  }
+
+  private resolveDirectRestartRuntimeCwd(params: {
+    configuredMember: NonNullable<
+      ReturnType<TeamProvisioningService['resolveEffectiveConfiguredMember']>
+    >;
+    persistedRuntimeMembers: readonly PersistedRuntimeMemberLike[];
+    config: TeamConfig;
+    run: ProvisioningRun;
+  }): string {
+    const configuredCwd = params.configuredMember.cwd?.trim();
+    if (configuredCwd) {
+      return path.resolve(configuredCwd);
+    }
+
+    for (const runtimeMember of params.persistedRuntimeMembers) {
+      const cwd = typeof runtimeMember.cwd === 'string' ? runtimeMember.cwd.trim() : '';
+      if (cwd) {
+        return path.resolve(cwd);
+      }
+    }
+
+    const projectPath = params.config.projectPath?.trim();
+    if (projectPath) {
+      return path.resolve(projectPath);
+    }
+
+    const runCwd = this.getRunTrackedCwd(params.run);
+    if (runCwd) {
+      return path.resolve(runCwd);
+    }
+
+    throw new Error('Cannot restart teammate because its runtime cwd is unavailable');
+  }
+
+  private async updateDirectTmuxRestartMemberConfig(input: {
+    teamName: string;
+    memberName: string;
+    member: NonNullable<ReturnType<TeamProvisioningService['resolveEffectiveConfiguredMember']>>;
+    agentId: string;
+    color: string;
+    prompt: string;
+    paneId: string;
+    cwd: string;
+    providerId: TeamProviderId;
+    joinedAt: number;
+    bootstrapExpectedAfter: string;
+  }): Promise<void> {
+    const configPath = path.join(getTeamsBasePath(), input.teamName, 'config.json');
+    const raw = await tryReadRegularFileUtf8(configPath, {
+      timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
+      maxBytes: TEAM_CONFIG_MAX_BYTES,
+    });
+    if (!raw) {
+      throw new Error(`Team "${input.teamName}" configuration is no longer available`);
+    }
+
+    const parsed = JSON.parse(raw) as TeamConfig & { members?: Record<string, unknown>[] };
+    const members = Array.isArray(parsed.members) ? parsed.members : [];
+    const existingIndex = members.findIndex((member) => {
+      const candidateName = typeof member?.name === 'string' ? member.name.trim() : '';
+      return (
+        candidateName.length > 0 && matchesExactTeamMemberName(candidateName, input.memberName)
+      );
+    });
+    const existing: Record<string, unknown> =
+      existingIndex >= 0 ? (members[existingIndex] ?? {}) : {};
+    const nextMember = {
+      ...existing,
+      agentId: input.agentId,
+      name: input.member.name,
+      ...(input.member.role ? { role: input.member.role } : {}),
+      ...(input.member.workflow ? { workflow: input.member.workflow } : {}),
+      ...(input.member.agentType ? { agentType: input.member.agentType } : {}),
+      provider: input.providerId,
+      providerId: input.providerId,
+      ...(input.member.model ? { model: input.member.model } : {}),
+      ...(input.member.effort ? { effort: input.member.effort } : {}),
+      prompt: input.prompt,
+      color: input.color,
+      joinedAt: input.joinedAt,
+      bootstrapExpectedAfter: input.bootstrapExpectedAfter,
+      tmuxPaneId: input.paneId,
+      cwd: input.cwd,
+      subscriptions: Array.isArray(existing.subscriptions) ? existing.subscriptions : [],
+      backendType: 'tmux',
+    };
+
+    if (existingIndex >= 0) {
+      members[existingIndex] = nextMember;
+    } else {
+      members.push(nextMember);
+    }
+    parsed.members = members;
+    await atomicWriteAsync(configPath, `${JSON.stringify(parsed, null, 2)}\n`);
+  }
+
+  private enqueueDirectRestartPrompt(input: {
+    teamName: string;
+    memberName: string;
+    leadName: string;
+    leadSessionId: string | null;
+    prompt: string;
+  }): void {
+    const timestamp = nowIso();
+    this.persistInboxMessage(input.teamName, input.memberName, {
+      from: input.leadName,
+      to: input.memberName,
+      text: input.prompt,
+      timestamp,
+      read: false,
+      source: 'system_notification',
+      leadSessionId: input.leadSessionId ?? undefined,
+      messageId: `direct-restart-${input.memberName}-${randomUUID()}`,
+      summary: `Restart bootstrap instructions for ${input.memberName}`,
+    });
+  }
+
+  private async launchDirectTmuxMemberRestart(input: {
+    run: ProvisioningRun;
+    teamName: string;
+    displayName: string;
+    leadName: string;
+    memberName: string;
+    config: TeamConfig;
+    configuredMember: NonNullable<
+      ReturnType<TeamProvisioningService['resolveEffectiveConfiguredMember']>
+    >;
+    persistedRuntimeMembers: readonly PersistedRuntimeMemberLike[];
+    paneId: string;
+  }): Promise<void> {
+    const paneInfo = (await listTmuxPaneRuntimeInfoForCurrentPlatform([input.paneId])).get(
+      input.paneId
+    );
+    if (!paneInfo) {
+      throw new Error(
+        `Cannot restart teammate "${input.memberName}" because tmux pane ${input.paneId} is not available`
+      );
+    }
+    if (!isInteractiveShellCommand(paneInfo.currentCommand)) {
+      throw new Error(
+        `Cannot restart teammate "${input.memberName}" because tmux pane ${input.paneId} is busy (${paneInfo.currentCommand ?? 'unknown command'})`
+      );
+    }
+
+    const providerId = resolveTeamProviderId(input.configuredMember.providerId);
+    const claudePath = await ClaudeBinaryResolver.resolve();
+    if (!claudePath) {
+      throw new Error('Claude CLI not found; install it or provide a valid path');
+    }
+
+    const cwd = this.resolveDirectRestartRuntimeCwd({
+      configuredMember: input.configuredMember,
+      persistedRuntimeMembers: input.persistedRuntimeMembers,
+      config: input.config,
+      run: input.run,
+    });
+    await ensureCwdExists(cwd);
+
+    const provisioningEnv = await this.buildProvisioningEnv(
+      providerId,
+      input.configuredMember.providerBackendId
+    );
+    if (provisioningEnv.warning) {
+      throw new Error(provisioningEnv.warning);
+    }
+
+    const mcpConfigPath = await this.mcpConfigBuilder.writeConfigFile(cwd);
+    const agentId = `${input.configuredMember.name}@${input.teamName}`;
+    const color =
+      input.config.members
+        ?.find((member) => matchesExactTeamMemberName(member.name, input.memberName))
+        ?.color?.trim() || getMemberColorByName(input.configuredMember.name);
+    const parentSessionId =
+      input.run.detectedSessionId?.trim() || input.config.leadSessionId?.trim() || input.run.runId;
+    const prompt = buildMemberSpawnPrompt(
+      {
+        name: input.configuredMember.name,
+        ...(input.configuredMember.role ? { role: input.configuredMember.role } : {}),
+        ...(input.configuredMember.workflow ? { workflow: input.configuredMember.workflow } : {}),
+        ...(input.configuredMember.providerId
+          ? { providerId: input.configuredMember.providerId }
+          : {}),
+        ...(input.configuredMember.model ? { model: input.configuredMember.model } : {}),
+        ...(input.configuredMember.effort ? { effort: input.configuredMember.effort } : {}),
+      },
+      input.displayName,
+      input.teamName,
+      input.leadName
+    );
+    const bootstrapExpectedAfter = nowIso();
+
+    const runtimeArgs = mergeJsonSettingsArgs([
+      '--agent-id',
+      agentId,
+      '--agent-name',
+      input.configuredMember.name,
+      '--team-name',
+      input.teamName,
+      '--agent-color',
+      color,
+      '--parent-session-id',
+      parentSessionId,
+      ...(input.configuredMember.agentType
+        ? ['--agent-type', input.configuredMember.agentType]
+        : []),
+      '--mcp-config',
+      mcpConfigPath,
+      '--strict-mcp-config',
+      '--disallowedTools',
+      APP_TEAM_RUNTIME_DISALLOWED_TOOLS,
+      ...(input.run.request.skipPermissions !== false
+        ? ['--dangerously-skip-permissions', '--permission-mode', 'bypassPermissions']
+        : ['--permission-prompt-tool', 'stdio', '--permission-mode', 'default']),
+      ...(input.configuredMember.model ? ['--model', input.configuredMember.model] : []),
+      ...(input.configuredMember.effort ? ['--effort', input.configuredMember.effort] : []),
+      ...(provisioningEnv.providerArgs ?? []),
+    ]);
+    const command = buildDirectTmuxRestartCommand({
+      cwd,
+      env: provisioningEnv.env,
+      providerId,
+      binaryPath: claudePath,
+      args: runtimeArgs,
+    });
+
+    await this.updateDirectTmuxRestartMemberConfig({
+      teamName: input.teamName,
+      memberName: input.memberName,
+      member: input.configuredMember,
+      agentId,
+      color,
+      prompt,
+      paneId: input.paneId,
+      cwd,
+      providerId,
+      joinedAt: Date.now(),
+      bootstrapExpectedAfter,
+    });
+    this.enqueueDirectRestartPrompt({
+      teamName: input.teamName,
+      memberName: input.configuredMember.name,
+      leadName: input.leadName,
+      leadSessionId: parentSessionId,
+      prompt,
+    });
+    await sendKeysToTmuxPaneForCurrentPlatform(input.paneId, command);
+    this.appendMemberBootstrapDiagnostic(
+      input.run,
+      input.memberName,
+      `restart command delivered to tmux pane ${input.paneId}`
+    );
+    this.setMemberSpawnStatus(input.run, input.memberName, 'waiting');
+  }
+
   async restartMember(teamName: string, memberName: string): Promise<void> {
     const runId = this.getAliveRunId(teamName);
     if (!runId) {
@@ -9573,8 +9966,9 @@ export class TeamProvisioningService {
       };
     };
 
-    let { config, configuredMembers, metaMembers, configuredMember } =
-      await readCurrentConfiguredMember();
+    let currentConfiguredMemberState = await readCurrentConfiguredMember();
+    let config = currentConfiguredMemberState.config;
+    let configuredMember = currentConfiguredMemberState.configuredMember;
     if (!config) {
       throw new Error(`Team "${teamName}" configuration is no longer available`);
     }
@@ -9609,6 +10003,10 @@ export class TeamProvisioningService {
       const candidateName = typeof member.name === 'string' ? member.name.trim() : '';
       return candidateName.length > 0 && matchesMemberNameOrBase(candidateName, memberName);
     });
+    const directTmuxRestartCandidatePaneId = this.getDirectTmuxRestartPaneId(
+      persistedRuntimeMembers,
+      memberName
+    );
 
     const backendTypes = new Set(
       persistedRuntimeMembers
@@ -9645,28 +10043,48 @@ export class TeamProvisioningService {
       );
     }
 
-    const tmuxPaneIdsToVerify: string[] = [];
-    for (const persistedRuntimeMember of persistedRuntimeMembers) {
-      const paneId =
-        typeof persistedRuntimeMember.tmuxPaneId === 'string'
-          ? persistedRuntimeMember.tmuxPaneId.trim()
-          : '';
-      const backendType = persistedRuntimeMember.backendType?.trim().toLowerCase();
-      if (!paneId || backendType !== 'tmux') {
-        continue;
-      }
-      tmuxPaneIdsToVerify.push(paneId);
+    let directTmuxRestartPaneId: string | null = null;
+    if (directTmuxRestartCandidatePaneId) {
       try {
-        killTmuxPaneForCurrentPlatformSync(paneId);
-        logger.info(
-          `[${teamName}] Killed teammate pane ${memberName} (${paneId}) for manual restart`
-        );
+        const paneInfo = (
+          await listTmuxPaneRuntimeInfoForCurrentPlatform([directTmuxRestartCandidatePaneId])
+        ).get(directTmuxRestartCandidatePaneId);
+        if (paneInfo && isInteractiveShellCommand(paneInfo.currentCommand)) {
+          directTmuxRestartPaneId = directTmuxRestartCandidatePaneId;
+        }
       } catch (error) {
         logger.debug(
-          `[${teamName}] Failed to kill teammate pane ${memberName} (${paneId}) for manual restart: ${
+          `[${teamName}] Direct tmux restart probe failed for ${memberName}: ${
             error instanceof Error ? error.message : String(error)
           }`
         );
+      }
+    }
+
+    const tmuxPaneIdsToVerify: string[] = [];
+    if (!directTmuxRestartPaneId) {
+      for (const persistedRuntimeMember of persistedRuntimeMembers) {
+        const paneId =
+          typeof persistedRuntimeMember.tmuxPaneId === 'string'
+            ? persistedRuntimeMember.tmuxPaneId.trim()
+            : '';
+        const backendType = persistedRuntimeMember.backendType?.trim().toLowerCase();
+        if (!paneId || backendType !== 'tmux') {
+          continue;
+        }
+        tmuxPaneIdsToVerify.push(paneId);
+        try {
+          killTmuxPaneForCurrentPlatformSync(paneId);
+          logger.info(
+            `[${teamName}] Killed teammate pane ${memberName} (${paneId}) for manual restart`
+          );
+        } catch (error) {
+          logger.debug(
+            `[${teamName}] Failed to kill teammate pane ${memberName} (${paneId}) for manual restart: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
       }
     }
 
@@ -9729,8 +10147,9 @@ export class TeamProvisioningService {
       throw new Error(`Team "${teamName}" is not currently running`);
     }
 
-    ({ config, configuredMembers, metaMembers, configuredMember } =
-      await readCurrentConfiguredMember());
+    currentConfiguredMemberState = await readCurrentConfiguredMember();
+    config = currentConfiguredMemberState.config;
+    configuredMember = currentConfiguredMemberState.configuredMember;
     if (!config) {
       throw new Error(`Team "${teamName}" configuration disappeared while restart was in progress`);
     }
@@ -9765,7 +10184,36 @@ export class TeamProvisioningService {
       },
     });
 
-    const leadName = this.resolveLeadMemberName(configuredMembers, metaMembers);
+    const leadName = this.resolveLeadMemberName(
+      currentConfiguredMemberState.configuredMembers,
+      currentConfiguredMemberState.metaMembers
+    );
+    if (directTmuxRestartPaneId) {
+      try {
+        await this.launchDirectTmuxMemberRestart({
+          run,
+          teamName,
+          displayName: config?.name?.trim() || teamName,
+          leadName,
+          memberName,
+          config,
+          configuredMember,
+          persistedRuntimeMembers,
+          paneId: directTmuxRestartPaneId,
+        });
+        return;
+      } catch (error) {
+        run.pendingMemberRestarts.delete(memberName);
+        this.setMemberSpawnStatus(
+          run,
+          memberName,
+          'error',
+          error instanceof Error ? error.message : String(error)
+        );
+        throw error;
+      }
+    }
+
     const restartMessage = buildRestartMemberSpawnMessage(
       teamName,
       config?.name?.trim() || teamName,
@@ -17730,6 +18178,37 @@ export class TeamProvisioningService {
     return false;
   }
 
+  private needsBootstrapAcceptanceReconcile(
+    snapshot: PersistedTeamLaunchSnapshot | null,
+    bootstrapSnapshot: PersistedTeamLaunchSnapshot | null
+  ): boolean {
+    if (!snapshot || !bootstrapSnapshot) {
+      return false;
+    }
+    for (const expected of this.getPersistedLaunchMemberNames(snapshot)) {
+      const current = snapshot.members[expected];
+      const bootstrapMember = bootstrapSnapshot.members[expected];
+      if (!current || !bootstrapMember) {
+        continue;
+      }
+      const bootstrapProvesSpawnAcceptance =
+        bootstrapMember.agentToolAccepted === true ||
+        typeof bootstrapMember.firstSpawnAcceptedAt === 'string';
+      if (!bootstrapProvesSpawnAcceptance) {
+        continue;
+      }
+      const currentProvesSpawnAcceptance =
+        current.agentToolAccepted === true || typeof current.firstSpawnAcceptedAt === 'string';
+      if (!currentProvesSpawnAcceptance) {
+        return true;
+      }
+      if (isNeverSpawnedDuringLaunchReason(current.hardFailureReason)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private async reconcilePersistedLaunchState(teamName: string): Promise<{
     snapshot: ReturnType<typeof createPersistedLaunchSnapshot> | null;
     statuses: Record<string, MemberSpawnStatusEntry>;
@@ -17745,8 +18224,15 @@ export class TeamProvisioningService {
     const filteredRecoveredMixedSnapshot = recoveredMixedSnapshot
       ? this.filterRemovedMembersFromLaunchSnapshot(recoveredMixedSnapshot, metaMembers)
       : null;
+    const filteredBootstrapSnapshot = bootstrapSnapshot
+      ? this.filterRemovedMembersFromLaunchSnapshot(bootstrapSnapshot, metaMembers)
+      : null;
     if (
       filteredRecoveredMixedSnapshot &&
+      !this.needsBootstrapAcceptanceReconcile(
+        filteredRecoveredMixedSnapshot,
+        filteredBootstrapSnapshot
+      ) &&
       !(await this.hasBootstrapTranscriptLaunchReconcileOutcome(filteredRecoveredMixedSnapshot))
     ) {
       return {
@@ -17754,9 +18240,6 @@ export class TeamProvisioningService {
         statuses: snapshotToMemberSpawnStatuses(filteredRecoveredMixedSnapshot),
       };
     }
-    const filteredBootstrapSnapshot = bootstrapSnapshot
-      ? this.filterRemovedMembersFromLaunchSnapshot(bootstrapSnapshot, metaMembers)
-      : null;
     const filteredPersisted =
       filteredRecoveredMixedSnapshot ??
       (persisted ? this.filterRemovedMembersFromLaunchSnapshot(persisted, metaMembers) : null);
@@ -17805,6 +18288,7 @@ export class TeamProvisioningService {
     if (
       this.hasPrimaryOnlyLaneAwareLaunchMetadata(filteredPersisted) &&
       !this.hasLeadInboxLaunchReconcileHeartbeat(filteredPersisted, leadInboxMessages) &&
+      !this.needsBootstrapAcceptanceReconcile(filteredPersisted, filteredBootstrapSnapshot) &&
       !(await this.hasBootstrapTranscriptLaunchReconcileOutcome(filteredPersisted))
     ) {
       return {

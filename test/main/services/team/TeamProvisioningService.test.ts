@@ -30,6 +30,7 @@ vi.mock('@features/tmux-installer/main', () => ({
   listRuntimeProcessesForCurrentTmuxPlatform: vi.fn(async () => []),
   listTmuxPanePidsForCurrentPlatform: vi.fn(async () => new Map()),
   listTmuxPaneRuntimeInfoForCurrentPlatform: vi.fn(async () => new Map()),
+  sendKeysToTmuxPaneForCurrentPlatform: vi.fn(async () => undefined),
   isTmuxRuntimeReadyForCurrentPlatform: vi.fn(async () => true),
 }));
 
@@ -152,6 +153,7 @@ import {
   listRuntimeProcessesForCurrentTmuxPlatform,
   listTmuxPanePidsForCurrentPlatform,
   listTmuxPaneRuntimeInfoForCurrentPlatform,
+  sendKeysToTmuxPaneForCurrentPlatform,
 } from '@features/tmux-installer/main';
 import pidusage from 'pidusage';
 
@@ -444,6 +446,8 @@ describe('TeamProvisioningService', () => {
     vi.mocked(listTmuxPanePidsForCurrentPlatform).mockResolvedValue(new Map());
     vi.mocked(listTmuxPaneRuntimeInfoForCurrentPlatform).mockReset();
     vi.mocked(listTmuxPaneRuntimeInfoForCurrentPlatform).mockResolvedValue(new Map());
+    vi.mocked(sendKeysToTmuxPaneForCurrentPlatform).mockReset();
+    vi.mocked(sendKeysToTmuxPaneForCurrentPlatform).mockResolvedValue(undefined);
     tempClaudeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-team-provisioning-'));
     tempTeamsBase = path.join(tempClaudeRoot, 'teams');
     tempTasksBase = path.join(tempClaudeRoot, 'tasks');
@@ -1683,6 +1687,178 @@ describe('TeamProvisioningService', () => {
         run,
         expect.stringContaining('Teammate "bob" with role "Developer" was restarted from the UI.')
       );
+    });
+
+    it('restarts a tmux teammate directly in its shell-only pane after the runtime process disappeared', async () => {
+      const teamName = 'forge-labs-10';
+      const teamDir = path.join(tempTeamsBase, teamName);
+      const projectPath = path.join(tempClaudeRoot, 'forge-project');
+      fs.mkdirSync(teamDir, { recursive: true });
+      fs.mkdirSync(projectPath, { recursive: true });
+      fs.writeFileSync(
+        path.join(teamDir, 'config.json'),
+        JSON.stringify(
+          {
+            name: 'Forge Labs 10',
+            projectPath,
+            leadSessionId: 'lead-session-1',
+            members: [
+              { name: 'team-lead', agentType: 'team-lead' },
+              {
+                name: 'bob',
+                role: 'Developer',
+                providerId: 'codex',
+                model: 'gpt-5.4',
+                effort: 'high',
+                agentType: 'general-purpose',
+                tmuxPaneId: '%1',
+                backendType: 'tmux',
+              },
+            ],
+          },
+          null,
+          2
+        ),
+        'utf8'
+      );
+
+      vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
+      vi.mocked(listTmuxPaneRuntimeInfoForCurrentPlatform).mockResolvedValue(
+        new Map([
+          [
+            '%1',
+            {
+              paneId: '%1',
+              panePid: 4242,
+              currentCommand: 'zsh',
+              currentPath: projectPath,
+            },
+          ],
+        ])
+      );
+
+      const svc = new TeamProvisioningService(undefined, undefined, undefined, undefined, {
+        writeConfigFile: vi.fn(async () => '/mock/mcp-config.json'),
+      } as any);
+      const run = createMemberSpawnRun({
+        teamName,
+        expectedMembers: ['bob'],
+        memberSpawnStatuses: new Map([
+          [
+            'bob',
+            createMemberSpawnStatusEntry({
+              status: 'error',
+              launchState: 'failed_to_start',
+              runtimeAlive: false,
+              bootstrapConfirmed: false,
+              hardFailure: true,
+              hardFailureReason: 'Teammate was never spawned during launch.',
+              error: 'Teammate was never spawned during launch.',
+              agentToolAccepted: false,
+              firstSpawnAcceptedAt: undefined,
+            }),
+          ],
+        ]),
+      });
+      run.child = { pid: 111 };
+      run.processKilled = false;
+      run.cancelRequested = false;
+      run.detectedSessionId = 'lead-session-1';
+      run.request = { providerId: 'codex', skipPermissions: true };
+
+      const sendMessageToRun = vi.fn(async () => {});
+      (svc as any).sendMessageToRun = sendMessageToRun;
+      (svc as any).buildProvisioningEnv = vi.fn(async () => ({
+        env: { OPENAI_API_KEY: 'test-openai-key' },
+        authSource: 'openai_api_key',
+        providerArgs: [],
+      }));
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          name: 'Forge Labs 10',
+          projectPath,
+          leadSessionId: 'lead-session-1',
+          members: [
+            { name: 'team-lead', agentType: 'team-lead' },
+            {
+              name: 'bob',
+              role: 'Developer',
+              providerId: 'codex',
+              model: 'gpt-5.4',
+              effort: 'high',
+            },
+          ],
+        })),
+      };
+      (svc as any).membersMetaStore = {
+        getMembers: vi.fn(async () => [
+          {
+            name: 'bob',
+            role: 'Developer',
+            providerId: 'codex',
+            model: 'gpt-5.4',
+            effort: 'high',
+            agentType: 'general-purpose',
+          },
+        ]),
+      };
+      (svc as any).readPersistedRuntimeMembers = vi.fn(() => [
+        {
+          name: 'bob',
+          agentId: 'bob@forge-labs-10',
+          backendType: 'tmux',
+          tmuxPaneId: '%1',
+          cwd: projectPath,
+        },
+      ]);
+      (svc as any).getLiveTeamAgentRuntimeMetadata = vi.fn(async () => new Map());
+      (svc as any).aliveRunByTeam.set(teamName, run.runId);
+      (svc as any).runs.set(run.runId, run);
+
+      await svc.restartMember(teamName, 'bob');
+
+      expect(killTmuxPaneForCurrentPlatformSync).not.toHaveBeenCalled();
+      expect(sendMessageToRun).not.toHaveBeenCalled();
+      expect(sendKeysToTmuxPaneForCurrentPlatform).toHaveBeenCalledTimes(1);
+      const [paneId, command] = vi.mocked(sendKeysToTmuxPaneForCurrentPlatform).mock.calls[0] ?? [];
+      expect(paneId).toBe('%1');
+      expect(command).toContain("cd '");
+      expect(command).toContain(projectPath);
+      expect(command).toContain("'/mock/claude'");
+      expect(command).toContain("'--agent-id' 'bob@forge-labs-10'");
+      expect(command).toContain("'--team-name' 'forge-labs-10'");
+      expect(command).toContain("'--parent-session-id' 'lead-session-1'");
+      expect(command).toContain("'--mcp-config' '/mock/mcp-config.json'");
+      expect(command).toContain("'--model' 'gpt-5.4'");
+      expect(command).toContain("'--effort' 'high'");
+      expect(command).toContain('__CLAUDE_TEAMMATE_EXIT__');
+      expect(run.pendingMemberRestarts.has('bob')).toBe(true);
+      expect(run.memberSpawnStatuses.get('bob')).toMatchObject({
+        status: 'waiting',
+        launchState: 'runtime_pending_bootstrap',
+        hardFailure: false,
+      });
+
+      const updatedConfig = JSON.parse(
+        fs.readFileSync(path.join(teamDir, 'config.json'), 'utf8')
+      ) as { members: Array<Record<string, unknown>> };
+      expect(updatedConfig.members.find((member) => member.name === 'bob')).toMatchObject({
+        agentId: 'bob@forge-labs-10',
+        tmuxPaneId: '%1',
+        backendType: 'tmux',
+        providerId: 'codex',
+        model: 'gpt-5.4',
+        effort: 'high',
+      });
+      const inbox = JSON.parse(
+        fs.readFileSync(path.join(teamDir, 'inboxes', 'bob.json'), 'utf8')
+      ) as Array<Record<string, unknown>>;
+      expect(inbox.at(-1)).toMatchObject({
+        from: 'team-lead',
+        to: 'bob',
+        source: 'system_notification',
+        leadSessionId: 'lead-session-1',
+      });
     });
 
     it('skips a failed teammate for the current launch without marking it alive', async () => {
