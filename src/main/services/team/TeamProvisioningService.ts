@@ -1714,6 +1714,10 @@ function isOpenCodeBridgeLaunchFailureReason(reason?: string): boolean {
   return reason?.trim() === 'OpenCode bridge reported member launch failure';
 }
 
+function isRegisteredRuntimeMetadataFailureReason(reason?: string): boolean {
+  return reason?.trim() === 'registered runtime metadata without live process';
+}
+
 function isTmuxNoServerRunningError(error: unknown): boolean {
   const text = error instanceof Error ? error.message : String(error ?? '');
   return (
@@ -1727,6 +1731,7 @@ function isAutoClearableLaunchFailureReason(reason?: string): boolean {
     isNeverSpawnedDuringLaunchReason(reason) ||
     isLaunchGraceWindowFailureReason(reason) ||
     isConfigRegistrationFailureReason(reason) ||
+    isRegisteredRuntimeMetadataFailureReason(reason) ||
     isOpenCodeBridgeLaunchFailureReason(reason)
   );
 }
@@ -4179,6 +4184,7 @@ export class TeamProvisioningService {
   private inFlightResponses = new Set<string>();
   private runtimeAdapterRegistry: TeamRuntimeAdapterRegistry | null = null;
   private controlApiBaseUrlResolver: (() => Promise<string | null>) | null = null;
+  private readonly stoppedTeamOpenCodeRuntimeCleanupInFlight = new Map<string, Promise<number>>();
   private crossTeamSender:
     | ((request: {
         fromTeam: string;
@@ -4726,6 +4732,246 @@ export class TeamProvisioningService {
       }
     }
     return null;
+  }
+
+  private canDeliverToOpenCodeRuntimeForTeam(teamName: string): boolean {
+    if (this.isTeamAlive(teamName)) {
+      return true;
+    }
+    return this.hasAlivePersistedTeamProcess(teamName);
+  }
+
+  private hasAlivePersistedTeamProcess(teamName: string): boolean {
+    const processesPath = path.join(getTeamsBasePath(), teamName, 'processes.json');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fs.readFileSync(processesPath, 'utf8')) as unknown;
+    } catch {
+      return false;
+    }
+    if (!Array.isArray(parsed)) {
+      return false;
+    }
+    return parsed.some((row) => {
+      if (!row || typeof row !== 'object') {
+        return false;
+      }
+      const processRow = row as { pid?: unknown; stoppedAt?: unknown };
+      return (
+        typeof processRow.pid === 'number' &&
+        Number.isFinite(processRow.pid) &&
+        processRow.stoppedAt == null &&
+        isProcessAlive(processRow.pid)
+      );
+    });
+  }
+
+  private cleanupStoppedTeamOpenCodeRuntimeLanesInBackground(teamName: string): void {
+    void this.stopOpenCodeRuntimeLanesForStoppedTeam(teamName).catch((error) => {
+      logger.warn(
+        `[${teamName}] Failed to clean up stopped-team OpenCode runtime lanes: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    });
+  }
+
+  private stopOpenCodeRuntimeLanesForStoppedTeam(teamName: string): Promise<number> {
+    const existing = this.stoppedTeamOpenCodeRuntimeCleanupInFlight.get(teamName);
+    if (existing) {
+      return existing;
+    }
+    let cleanup!: Promise<number>;
+    cleanup = this.stopOpenCodeRuntimeLanesForStoppedTeamInternal(teamName).finally(() => {
+      if (this.stoppedTeamOpenCodeRuntimeCleanupInFlight.get(teamName) === cleanup) {
+        this.stoppedTeamOpenCodeRuntimeCleanupInFlight.delete(teamName);
+      }
+    });
+    this.stoppedTeamOpenCodeRuntimeCleanupInFlight.set(teamName, cleanup);
+    return cleanup;
+  }
+
+  private async stopOpenCodeRuntimeLanesForStoppedTeamInternal(teamName: string): Promise<number> {
+    if (this.canDeliverToOpenCodeRuntimeForTeam(teamName)) {
+      return 0;
+    }
+    const laneIndex = await readOpenCodeRuntimeLaneIndex(getTeamsBasePath(), teamName).catch(
+      () => null
+    );
+    const activeLaneIds = Object.entries(laneIndex?.lanes ?? {})
+      .filter(([, entry]) => entry.state === 'active')
+      .map(([laneId]) => laneId)
+      .sort((left, right) => left.localeCompare(right));
+    if (activeLaneIds.length === 0) {
+      return 0;
+    }
+
+    const adapter = this.getOpenCodeRuntimeAdapter();
+    const previousLaunchState = await this.launchStateStore.read(teamName).catch(() => null);
+    const [config, metaMembers] = await Promise.all([
+      this.configReader.getConfig(teamName).catch(() => null),
+      this.membersMetaStore.getMembers(teamName).catch(() => []),
+    ]);
+    const evidenceReader = new OpenCodeRuntimeManifestEvidenceReader({
+      teamsBasePath: getTeamsBasePath(),
+    });
+    let stopped = 0;
+    for (const laneId of activeLaneIds) {
+      const evidence = await evidenceReader.read(teamName, laneId).catch(() => null);
+      const runId = evidence?.activeRunId?.trim() || null;
+      if (adapter && runId) {
+        try {
+          await adapter.stop({
+            runId,
+            laneId,
+            teamName,
+            cwd: this.resolveOpenCodeRuntimeLaneCleanupCwd(teamName, laneId, config, metaMembers),
+            providerId: 'opencode',
+            reason: 'cleanup',
+            previousLaunchState,
+            force: true,
+          });
+          stopped += 1;
+        } catch (error) {
+          logger.warn(
+            `[${teamName}] Failed to stop orphaned OpenCode lane ${laneId}: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+          continue;
+        }
+      } else if (runId) {
+        logger.warn(
+          `[${teamName}] OpenCode lane ${laneId} belongs to stopped team, but runtime adapter is unavailable.`
+        );
+        continue;
+      } else if (!runId) {
+        const pidStopResult = this.tryStopPersistedOpenCodeRuntimePidForStoppedLane({
+          teamName,
+          laneId,
+          previousLaunchState,
+        });
+        if (pidStopResult === 'unsafe') {
+          continue;
+        }
+      }
+
+      await clearOpenCodeRuntimeLaneStorage({
+        teamsBasePath: getTeamsBasePath(),
+        teamName,
+        laneId,
+      }).catch(() => undefined);
+      this.deleteSecondaryRuntimeRun(teamName, laneId);
+      if (laneId === 'primary') {
+        this.runtimeAdapterRunByTeam.delete(teamName);
+        this.aliveRunByTeam.delete(teamName);
+        this.provisioningRunByTeam.delete(teamName);
+      }
+    }
+    return stopped;
+  }
+
+  private tryStopPersistedOpenCodeRuntimePidForStoppedLane(input: {
+    teamName: string;
+    laneId: string;
+    previousLaunchState: PersistedTeamLaunchSnapshot | null;
+  }): 'stopped' | 'no_pid' | 'unsafe' {
+    const persistedMember = Object.values(input.previousLaunchState?.members ?? {}).find(
+      (member) => member.providerId === 'opencode' && member.laneId === input.laneId
+    );
+    if (!persistedMember) {
+      return 'no_pid';
+    }
+    const pid = persistedMember.runtimePid;
+    if (typeof pid !== 'number' || !Number.isFinite(pid) || pid <= 0) {
+      return 'no_pid';
+    }
+    const command = this.readProcessCommandByPid(pid);
+    if (!command) {
+      return 'no_pid';
+    }
+    const persistedProcessCommand = (persistedMember as { processCommand?: unknown })
+      .processCommand;
+    const expectedCommand =
+      typeof persistedProcessCommand === 'string' ? persistedProcessCommand.trim() : '';
+    if (expectedCommand && command !== expectedCommand) {
+      logger.warn(
+        `[${input.teamName}] Refusing to stop persisted OpenCode pid ${pid} for lane ${input.laneId}: process command changed.`
+      );
+      return 'unsafe';
+    }
+    if (!this.isOpenCodeServeCommand(command)) {
+      logger.warn(
+        `[${input.teamName}] Refusing to stop persisted OpenCode pid ${pid} for lane ${input.laneId}: process is not opencode serve.`
+      );
+      return 'unsafe';
+    }
+    try {
+      killProcessByPid(pid);
+      logger.info(
+        `[${input.teamName}] Killed orphaned OpenCode runtime pid=${pid} for stopped lane ${input.laneId}`
+      );
+      return 'stopped';
+    } catch (error) {
+      logger.warn(
+        `[${input.teamName}] Failed to kill orphaned OpenCode runtime pid=${pid} for stopped lane ${
+          input.laneId
+        }: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return 'unsafe';
+    }
+  }
+
+  private readProcessCommandByPid(pid: number): string | null {
+    if (process.platform === 'win32') {
+      try {
+        return (
+          listWindowsProcessTableSync()
+            .find((row) => row.pid === pid)
+            ?.command?.trim() || null
+        );
+      } catch {
+        return null;
+      }
+    }
+    try {
+      return execFileSync('ps', ['-p', String(pid), '-o', 'command='], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+    } catch {
+      return null;
+    }
+  }
+
+  private isOpenCodeServeCommand(command: string): boolean {
+    return /(^|[/\\\s])opencode(?:\.exe)?(\s|$)/i.test(command) && /\sserve(\s|$)/i.test(command);
+  }
+
+  private resolveOpenCodeRuntimeLaneCleanupCwd(
+    teamName: string,
+    laneId: string,
+    config: TeamConfig | null,
+    metaMembers: readonly TeamMember[]
+  ): string | undefined {
+    const projectPath = config?.projectPath?.trim() || this.readPersistedTeamProjectPath(teamName);
+    const memberName = this.extractOpenCodeRuntimeLaneMemberName(laneId);
+    if (!memberName) {
+      return projectPath || undefined;
+    }
+    const normalized = memberName.toLowerCase();
+    const configMember = config?.members?.find(
+      (member) => member.name?.trim().toLowerCase() === normalized
+    );
+    const metaMember = metaMembers.find(
+      (member) => member.name?.trim().toLowerCase() === normalized
+    );
+    return metaMember?.cwd?.trim() || configMember?.cwd?.trim() || projectPath || undefined;
+  }
+
+  private extractOpenCodeRuntimeLaneMemberName(laneId: string): string | null {
+    const match = /^secondary:opencode:(.+)$/i.exec(laneId.trim());
+    return match?.[1]?.trim() || null;
   }
 
   private getOpenCodeRuntimeAdapter(): TeamLaunchRuntimeAdapter | null {
@@ -5332,6 +5578,10 @@ export class TeamProvisioningService {
     if (!this.isOpenCodePromptDeliveryWatchdogEnabled()) {
       return 0;
     }
+    if (!this.canDeliverToOpenCodeRuntimeForTeam(teamName)) {
+      await this.stopOpenCodeRuntimeLanesForStoppedTeam(teamName);
+      return 0;
+    }
     const laneIndex = await readOpenCodeRuntimeLaneIndex(getTeamsBasePath(), teamName).catch(
       () => null
     );
@@ -5483,6 +5733,10 @@ export class TeamProvisioningService {
     const adapter = this.getOpenCodeRuntimeMessageAdapter();
     if (!adapter) {
       return { delivered: false, reason: 'opencode_runtime_message_bridge_unavailable' };
+    }
+    if (!this.canDeliverToOpenCodeRuntimeForTeam(teamName)) {
+      this.cleanupStoppedTeamOpenCodeRuntimeLanesInBackground(teamName);
+      return { delivered: false, reason: 'opencode_runtime_not_active' };
     }
 
     const [config, teamMeta, metaMembers] = await Promise.all([
@@ -6472,6 +6726,10 @@ export class TeamProvisioningService {
     member: TeamMember;
     projectPath: string | null;
   }): Promise<boolean> {
+    if (!this.canDeliverToOpenCodeRuntimeForTeam(input.teamName)) {
+      this.cleanupStoppedTeamOpenCodeRuntimeLanesInBackground(input.teamName);
+      return false;
+    }
     const snapshot = await this.launchStateStore.read(input.teamName).catch(() => null);
     const persistedMember =
       snapshot?.members?.[input.member.name] ??
@@ -6499,6 +6757,10 @@ export class TeamProvisioningService {
   private async tryRecoverOpenCodeRuntimeLanesForDeliveryWatchdog(
     teamName: string
   ): Promise<string[]> {
+    if (!this.canDeliverToOpenCodeRuntimeForTeam(teamName)) {
+      this.cleanupStoppedTeamOpenCodeRuntimeLanesInBackground(teamName);
+      return [];
+    }
     const snapshot = await this.launchStateStore.read(teamName).catch(() => null);
     const candidates = Object.values(snapshot?.members ?? {}).filter(
       isRecoverablePersistedOpenCodeRuntimeCandidate
@@ -14114,6 +14376,17 @@ export class TeamProvisioningService {
     memberName: string,
     options: OpenCodeMemberInboxRelayOptions = {}
   ): Promise<OpenCodeMemberInboxRelayResult> {
+    if (!this.canDeliverToOpenCodeRuntimeForTeam(teamName)) {
+      this.cleanupStoppedTeamOpenCodeRuntimeLanesInBackground(teamName);
+      return {
+        relayed: 0,
+        attempted: 0,
+        delivered: 0,
+        failed: 1,
+        lastDelivery: { delivered: false, reason: 'opencode_runtime_not_active' },
+        diagnostics: ['opencode_runtime_not_active'],
+      };
+    }
     const relayKey = this.getOpenCodeMemberRelayKey(teamName, memberName);
     const existing = this.openCodeMemberInboxRelayInFlight.get(relayKey);
     if (existing) {
@@ -17874,46 +18147,111 @@ export class TeamProvisioningService {
     } catch {
       return [];
     }
-    const projectPath = config?.projectPath?.trim();
-    if (!projectPath) {
-      return [];
-    }
-
-    const projectDir = path.join(getProjectsBasePath(), extractBaseDir(encodePath(projectPath)));
-    let entries: fs.Dirent[];
-    try {
-      entries = await fs.promises.readdir(projectDir, { withFileTypes: true });
-    } catch {
-      return [];
-    }
-
     const outcomes: BootstrapTranscriptOutcome[] = [];
-    const jsonlFiles = entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'))
-      .sort((left, right) => right.name.localeCompare(left.name));
+    const projectDirs = await this.collectBootstrapTranscriptProjectDirs(
+      teamName,
+      memberName,
+      config
+    );
     const contextMemberNames = [
       memberName,
       ...((config?.members ?? [])
         .map((member) => member.name?.trim())
         .filter((name): name is string => Boolean(name)) ?? []),
     ];
-    for (const entry of jsonlFiles) {
-      if (config?.leadSessionId && entry.name === `${config.leadSessionId}.jsonl`) {
+    for (const projectDir of projectDirs) {
+      let entries: fs.Dirent[];
+      try {
+        entries = await fs.promises.readdir(projectDir, { withFileTypes: true });
+      } catch {
         continue;
       }
-      const outcome = await this.readRecentBootstrapTranscriptOutcome(
-        path.join(projectDir, entry.name),
-        sinceMs,
-        memberName,
-        teamName,
-        { contextMemberNames }
-      );
-      if (outcome) {
-        outcomes.push(outcome);
+
+      const jsonlFiles = entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'))
+        .sort((left, right) => right.name.localeCompare(left.name));
+      for (const entry of jsonlFiles) {
+        if (config?.leadSessionId && entry.name === `${config.leadSessionId}.jsonl`) {
+          continue;
+        }
+        const outcome = await this.readRecentBootstrapTranscriptOutcome(
+          path.join(projectDir, entry.name),
+          sinceMs,
+          memberName,
+          teamName,
+          { contextMemberNames }
+        );
+        if (outcome) {
+          outcomes.push(outcome);
+        }
       }
     }
 
     return outcomes;
+  }
+
+  private async collectBootstrapTranscriptProjectDirs(
+    teamName: string,
+    memberName: string,
+    config: Awaited<ReturnType<TeamConfigReader['getConfig']>>
+  ): Promise<string[]> {
+    const pathCandidates: string[] = [];
+    const pathSeen = new Set<string>();
+    const pushPath = (value: unknown): void => {
+      if (typeof value !== 'string') {
+        return;
+      }
+      let trimmed = value.trim();
+      while (trimmed.endsWith('/') || trimmed.endsWith('\\')) {
+        trimmed = trimmed.slice(0, -1);
+      }
+      if (!trimmed || pathSeen.has(trimmed)) {
+        return;
+      }
+      pathSeen.add(trimmed);
+      pathCandidates.push(trimmed);
+    };
+
+    pushPath(config?.projectPath);
+    if (Array.isArray(config?.projectPathHistory)) {
+      for (let index = config.projectPathHistory.length - 1; index >= 0; index -= 1) {
+        pushPath(config.projectPathHistory[index]);
+      }
+    }
+
+    const normalizedMemberName = memberName.trim().toLowerCase();
+    const pushMatchingMemberCwd = (member: { name?: unknown; cwd?: unknown }): void => {
+      const candidateName = typeof member.name === 'string' ? member.name.trim().toLowerCase() : '';
+      if (candidateName && matchesTeamMemberIdentity(candidateName, normalizedMemberName)) {
+        pushPath(member.cwd);
+      }
+    };
+    for (const member of config?.members ?? []) {
+      pushMatchingMemberCwd(member);
+    }
+
+    const metaMembers = await this.membersMetaStore.getMembers(teamName).catch(() => []);
+    for (const member of metaMembers) {
+      pushMatchingMemberCwd(member);
+    }
+
+    const dirs: string[] = [];
+    const dirSeen = new Set<string>();
+    const pushDir = (dir: string): void => {
+      if (!dir || dirSeen.has(dir)) {
+        return;
+      }
+      dirSeen.add(dir);
+      dirs.push(dir);
+    };
+    for (const projectPath of pathCandidates) {
+      const projectId = extractBaseDir(encodePath(projectPath));
+      pushDir(path.join(getProjectsBasePath(), projectId));
+      if (projectId.includes('_')) {
+        pushDir(path.join(getProjectsBasePath(), projectId.replace(/_/g, '-')));
+      }
+    }
+    return dirs;
   }
 
   private selectLatestBootstrapTranscriptOutcome(
