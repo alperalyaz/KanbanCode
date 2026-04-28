@@ -20,6 +20,7 @@ import { OpenCodeTaskLogStreamSource } from './OpenCodeTaskLogStreamSource';
 
 import type { BoardTaskActivityRecord } from '../activity/BoardTaskActivityRecord';
 import type { BoardTaskExactLogDetailCandidate } from '../exact/BoardTaskExactLogTypes';
+import type { TaskLogRuntimeStreamSource } from './TaskLogRuntimeStreamSource';
 import type { ContentBlock, ParsedMessage, ToolUseResultData } from '@main/types';
 import type {
   BoardTaskActivityCategory,
@@ -59,7 +60,7 @@ interface TimeWindow {
 interface StreamLayout {
   participants: BoardTaskLogParticipant[];
   visibleSlices: StreamSlice[];
-  shouldMergeOpenCodeRuntimeFallback?: boolean;
+  shouldMergeRuntimeFallback?: boolean;
 }
 
 const logger = createLogger('Service:BoardTaskLogStreamService');
@@ -90,6 +91,7 @@ const HISTORICAL_BOARD_ACTION_TOOL_NAMES = new Set([
   'task_set_owner',
   'task_unlink',
 ]);
+const READ_ONLY_BOARD_TOOL_NAMES = new Set(['task_get', 'task_get_comment']);
 const TASK_REFERENCE_KEYS = new Set(['task', 'taskid', 'id', 'displayid', 'targetid']);
 
 function emptyResponse(): BoardTaskLogStreamResponse {
@@ -267,6 +269,24 @@ function inferHistoricalActionCategory(canonicalToolName: string): BoardTaskActi
     default:
       return 'other';
   }
+}
+
+function historicalBoardToolReferencesTask(args: {
+  canonicalToolName: string;
+  input: Record<string, unknown>;
+  resultPayload: unknown;
+  taskRefs: Set<string>;
+}): boolean {
+  const { canonicalToolName, input, resultPayload, taskRefs } = args;
+  if (valueReferencesTask(input, taskRefs)) {
+    return true;
+  }
+
+  if (canonicalToolName === 'task_get' || canonicalToolName === 'task_get_comment') {
+    return false;
+  }
+
+  return valueReferencesTask(resultPayload, taskRefs);
 }
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
@@ -519,6 +539,74 @@ function parseJsonLikeString(value: string): unknown {
   }
 }
 
+function formatTaskStatusPayload(payload: Record<string, unknown>): string | null {
+  const displayId =
+    typeof payload.displayId === 'string' && payload.displayId.trim().length > 0
+      ? payload.displayId.trim()
+      : typeof payload.id === 'string' && payload.id.trim().length > 0
+        ? payload.id.trim()
+        : null;
+  const status =
+    typeof payload.status === 'string' && payload.status.trim().length > 0
+      ? payload.status.trim()
+      : null;
+  if (!displayId || !status) {
+    return null;
+  }
+  return `Task ${displayId} ${status}`;
+}
+
+function formatMessageSendPayload(payload: Record<string, unknown>): string | null {
+  const routing = payload.routing as Record<string, unknown> | undefined;
+  const messageRecord =
+    typeof payload.message === 'object' && payload.message !== null
+      ? (payload.message as Record<string, unknown>)
+      : undefined;
+  const deliveryMessage =
+    typeof payload.message === 'string' && payload.message.trim().length > 0
+      ? payload.message.trim()
+      : null;
+  const summary =
+    typeof messageRecord?.summary === 'string' && messageRecord.summary.trim().length > 0
+      ? messageRecord.summary.trim()
+      : typeof routing?.summary === 'string' && routing.summary.trim().length > 0
+        ? routing.summary.trim()
+        : null;
+  const target =
+    typeof messageRecord?.to === 'string' && messageRecord.to.trim().length > 0
+      ? messageRecord.to.trim()
+      : typeof routing?.target === 'string' && routing.target.trim().length > 0
+        ? routing.target.trim()
+        : null;
+  const messageText =
+    typeof messageRecord?.text === 'string' && messageRecord.text.trim().length > 0
+      ? messageRecord.text.trim()
+      : null;
+
+  if (deliveryMessage && summary) {
+    return `${deliveryMessage} - ${summary}`;
+  }
+  if (summary && target) {
+    return `Message sent to ${target} - ${summary}`;
+  }
+  if (summary) {
+    return summary;
+  }
+  if (deliveryMessage) {
+    return deliveryMessage;
+  }
+  if (messageText && target) {
+    return `Message sent to ${target} - ${messageText}`;
+  }
+  if (messageText) {
+    return messageText;
+  }
+  if (target) {
+    return `Message sent to ${target}`;
+  }
+  return null;
+}
+
 function extractBoardToolOutputText(
   toolName: string | undefined,
   parsedPayload: unknown
@@ -527,7 +615,7 @@ function extractBoardToolOutputText(
     return null;
   }
 
-  const normalizedToolName = toolName.trim().toLowerCase();
+  const normalizedToolName = canonicalizeBoardToolName(toolName) ?? toolName.trim().toLowerCase();
   const payload = unwrapAgentTeamsResponsePayload(parsedPayload as Record<string, unknown>);
   if (normalizedToolName === 'task_add_comment' || normalizedToolName === 'task_get_comment') {
     const comment = payload.comment as Record<string, unknown> | undefined;
@@ -536,36 +624,20 @@ function extractBoardToolOutputText(
     }
   }
 
-  if (normalizedToolName === 'sendmessage') {
-    const routing = payload.routing as Record<string, unknown> | undefined;
-    const deliveryMessage =
-      typeof payload.message === 'string' && payload.message.trim().length > 0
-        ? payload.message.trim()
-        : null;
-    const summary =
-      typeof routing?.summary === 'string' && routing.summary.trim().length > 0
-        ? routing.summary.trim()
-        : null;
-    const target =
-      typeof routing?.target === 'string' && routing.target.trim().length > 0
-        ? routing.target.trim()
-        : null;
+  if (normalizedToolName === 'task_complete') {
+    return formatTaskStatusPayload(payload) ?? 'Task completed';
+  }
 
-    if (deliveryMessage && summary) {
-      return `${deliveryMessage} - ${summary}`;
-    }
-    if (summary && target) {
-      return `Message sent to ${target} - ${summary}`;
-    }
-    if (summary) {
-      return summary;
-    }
-    if (deliveryMessage) {
-      return deliveryMessage;
-    }
-    if (target) {
-      return `Message sent to ${target}`;
-    }
+  if (normalizedToolName === 'sendmessage' || normalizedToolName === 'message_send') {
+    return formatMessageSendPayload(payload);
+  }
+
+  if (payload.message) {
+    return formatMessageSendPayload(payload);
+  }
+
+  if (payload.status) {
+    return formatTaskStatusPayload(payload);
   }
 
   return null;
@@ -1303,7 +1375,10 @@ function collectExplicitToolUseIds(
 
 function collectAllowedMemberNames(
   task: TeamTask,
-  records: { actor: { memberName?: string } }[]
+  records: {
+    actor: { memberName?: string };
+    action?: { category?: BoardTaskActivityCategory; canonicalToolName?: string };
+  }[]
 ): Set<string> {
   const allowedNames = new Set<string>();
 
@@ -1312,6 +1387,14 @@ function collectAllowedMemberNames(
   }
 
   for (const record of records) {
+    const canonicalToolName = canonicalizeBoardToolName(record.action?.canonicalToolName);
+    if (
+      record.action?.category === 'read' ||
+      (canonicalToolName !== null && READ_ONLY_BOARD_TOOL_NAMES.has(canonicalToolName))
+    ) {
+      continue;
+    }
+
     if (typeof record.actor.memberName === 'string' && record.actor.memberName.trim().length > 0) {
       allowedNames.add(normalizeMemberName(record.actor.memberName));
     }
@@ -1523,7 +1606,7 @@ export class BoardTaskLogStreamService {
     private readonly chunkBuilder: BoardTaskExactLogChunkBuilder = new BoardTaskExactLogChunkBuilder(),
     private readonly taskReader: TeamTaskReader = new TeamTaskReader(),
     private readonly transcriptSourceLocator: TeamTranscriptSourceLocator = new TeamTranscriptSourceLocator(),
-    private readonly runtimeFallbackSource: OpenCodeTaskLogStreamSource = new OpenCodeTaskLogStreamSource(),
+    private readonly runtimeFallbackSource: TaskLogRuntimeStreamSource = new OpenCodeTaskLogStreamSource(),
     private readonly membersMetaStore: TeamMembersMetaStore = new TeamMembersMetaStore(),
     private readonly configReader: TeamConfigReader = new TeamConfigReader()
   ) {}
@@ -1792,8 +1875,12 @@ export class BoardTaskLogStreamService {
 
           const resultPayload = resolveToolResultPayload(message, toolResult);
           if (
-            !valueReferencesTask(toolCall.input, taskRefs) &&
-            !valueReferencesTask(resultPayload, taskRefs)
+            !historicalBoardToolReferencesTask({
+              canonicalToolName: toolCall.canonicalToolName,
+              input: toolCall.input,
+              resultPayload,
+              taskRefs,
+            })
           ) {
             continue;
           }
@@ -1983,15 +2070,11 @@ export class BoardTaskLogStreamService {
     return {
       participants: buildOrderedParticipants(visibleSlices),
       visibleSlices,
-      shouldMergeOpenCodeRuntimeFallback: await this.shouldMergeOpenCodeRuntimeFallback(
-        teamName,
-        taskId,
-        records
-      ),
+      shouldMergeRuntimeFallback: await this.shouldMergeRuntimeFallback(teamName, taskId, records),
     };
   }
 
-  private async shouldMergeOpenCodeRuntimeFallback(
+  private async shouldMergeRuntimeFallback(
     teamName: string,
     taskId: string,
     records: BoardTaskActivityRecord[]
@@ -2032,7 +2115,7 @@ export class BoardTaskLogStreamService {
     const elapsedMs = Date.now() - startedAt;
     if (elapsedMs >= RUNTIME_FALLBACK_WARN_MS) {
       logger.warn(
-        `Slow OpenCode task-log runtime fallback: team=${teamName} task=${taskId} hit=${Boolean(
+        `Slow task-log runtime fallback: team=${teamName} task=${taskId} hit=${Boolean(
           fallback
         )} elapsedMs=${elapsedMs}`
       );
@@ -2121,7 +2204,7 @@ export class BoardTaskLogStreamService {
       source: 'transcript',
     };
 
-    if (!layout.shouldMergeOpenCodeRuntimeFallback) {
+    if (!layout.shouldMergeRuntimeFallback) {
       return primaryResponse;
     }
 
