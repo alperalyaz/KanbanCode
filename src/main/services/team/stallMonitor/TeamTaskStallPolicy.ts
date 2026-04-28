@@ -1,5 +1,7 @@
-import type { BoardTaskActivityRecord } from '../taskLogs/activity/BoardTaskActivityRecord';
+import { getOpenCodeWeakStartStallThresholdMs } from './featureGates';
 import { classifyTaskProgressTouch, type TaskProgressSignal } from './TaskProgressSignalClassifier';
+
+import type { BoardTaskActivityRecord } from '../taskLogs/activity/BoardTaskActivityRecord';
 import type {
   ReviewTaskContext,
   TaskStallBranch,
@@ -9,7 +11,6 @@ import type {
   TeamTaskStallSnapshot,
   WorkTaskContext,
 } from './TeamTaskStallTypes';
-import { getOpenCodeWeakStartStallThresholdMs } from './featureGates';
 import type { TaskHistoryEvent, TaskWorkInterval, TeamTask } from '@shared/types';
 
 const WORK_TOUCH_TOOLS = new Set(['task_start', 'task_add_comment', 'task_set_status']);

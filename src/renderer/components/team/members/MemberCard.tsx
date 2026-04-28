@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 
 import { Badge } from '@renderer/components/ui/badge';
+import { SyncedLoader2 } from '@renderer/components/ui/SyncedLoader2';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { useStore } from '@renderer/store';
 import { selectResolvedMembersForTeamName } from '@renderer/store/slices/teamSlice';
-import { SyncedLoader2 } from '@renderer/components/ui/SyncedLoader2';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import {
   agentAvatarUrl,

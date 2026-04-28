@@ -1,6 +1,6 @@
+import { ClaudeMultimodelBridgeService } from '../../runtime/ClaudeMultimodelBridgeService';
 import { canonicalizeAgentTeamsToolName } from '../agentTeamsToolNames';
 import { ClaudeBinaryResolver } from '../ClaudeBinaryResolver';
-import { ClaudeMultimodelBridgeService } from '../../runtime/ClaudeMultimodelBridgeService';
 
 import type {
   OpenCodeRuntimeTranscriptLogMessage,

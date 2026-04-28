@@ -8,7 +8,10 @@ interface MemberPresenceDotProps {
   label: string;
 }
 
-export function MemberPresenceDot({ className, label }: MemberPresenceDotProps): React.JSX.Element {
+export const MemberPresenceDot = ({
+  className,
+  label,
+}: MemberPresenceDotProps): React.JSX.Element => {
   const shouldSyncPulse = className?.includes('animate-pulse') === true;
   const syncedPulseStyle = useSyncedAnimationStyle(shouldSyncPulse, PULSE_DURATION_MS);
 
@@ -22,4 +25,4 @@ export function MemberPresenceDot({ className, label }: MemberPresenceDotProps):
       aria-label={label}
     />
   );
-}
+};

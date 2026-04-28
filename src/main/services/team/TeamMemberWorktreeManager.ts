@@ -1,6 +1,6 @@
 import { getAppDataPath, getClaudeBasePath } from '@main/utils/pathDecoder';
-import { createHash } from 'crypto';
 import { execFile } from 'child_process';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 

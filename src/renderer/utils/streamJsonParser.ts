@@ -51,7 +51,7 @@ interface ContentBlock {
   input?: Record<string, unknown>;
 }
 
-type CodexNativeJsonEvent = {
+interface CodexNativeJsonEvent {
   type?: string;
   thread_id?: string;
   item?: {
@@ -70,16 +70,16 @@ type CodexNativeJsonEvent = {
     cached_input_tokens?: number;
     output_tokens?: number;
   };
-};
+}
 
-type CodexNativeProjectedSystemEvent = {
+interface CodexNativeProjectedSystemEvent {
   type?: string;
   subtype?: string;
   content?: string;
   level?: string;
   codexNativeThreadStatus?: string;
   codexNativeThreadId?: string;
-};
+}
 
 /**
  * Content-based hash for deterministic fallback IDs that survive
@@ -265,7 +265,7 @@ function codexNativeProjectedSystemToDisplayItems(
   timestamp: Date
 ): AIGroupDisplayItem[] | null {
   const event = asRecord(parsed) as CodexNativeProjectedSystemEvent | null;
-  if (!event || event.type !== 'system' || typeof event.subtype !== 'string') {
+  if (event?.type !== 'system' || typeof event.subtype !== 'string') {
     return null;
   }
 

@@ -1,5 +1,5 @@
-import { getTasksBasePath, getTeamsBasePath } from '@main/utils/pathDecoder';
 import { appendOpenCodeTaskChangeDiag } from '@main/utils/openCodeTaskChangeDiagLog';
+import { getTasksBasePath, getTeamsBasePath } from '@main/utils/pathDecoder';
 import { createLogger } from '@shared/utils/logger';
 import { resolveTaskChangePresenceFromResult } from '@shared/utils/taskChangePresence';
 import {
@@ -9,19 +9,18 @@ import {
 } from '@shared/utils/taskChangeState';
 import { createHash } from 'crypto';
 import { existsSync } from 'fs';
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 
 import { JsonTaskChangeSummaryCacheRepository } from './cache/JsonTaskChangeSummaryCacheRepository';
-import { TeamMetaStore } from './TeamMetaStore';
-import { TaskChangeComputer } from './TaskChangeComputer';
-import { TaskChangeLedgerReader } from './TaskChangeLedgerReader';
 import {
   getOpenCodeLaneScopedRuntimeFilePath,
   getOpenCodeTeamRuntimeDirectory,
   readOpenCodeRuntimeLaneIndex,
 } from './opencode/store/OpenCodeRuntimeManifestEvidenceReader';
+import { TaskChangeComputer } from './TaskChangeComputer';
+import { TaskChangeLedgerReader } from './TaskChangeLedgerReader';
 import {
   buildTaskChangePresenceDescriptor,
   computeTaskChangePresenceProjectFingerprint,
@@ -34,14 +33,15 @@ import {
   type TaskChangeTaskMeta,
 } from './taskChangeWorkerTypes';
 import { TeamConfigReader } from './TeamConfigReader';
+import { TeamMetaStore } from './TeamMetaStore';
 
 import type { TaskChangePresenceRepository } from './cache/TaskChangePresenceRepository';
+import type { OpenCodeLedgerBackfillPort } from './opencode/bridge/OpenCodeReadinessBridge';
+import type { OpenCodePromptDeliveryLedgerRecord } from './opencode/delivery/OpenCodePromptDeliveryLedger';
 import type { TaskBoundaryParser } from './TaskBoundaryParser';
 import type { TaskChangeWorkerClient } from './TaskChangeWorkerClient';
 import type { TeamLogSourceTracker } from './TeamLogSourceTracker';
 import type { TeamMemberLogsFinder } from './TeamMemberLogsFinder';
-import type { OpenCodeLedgerBackfillPort } from './opencode/bridge/OpenCodeReadinessBridge';
-import type { OpenCodePromptDeliveryLedgerRecord } from './opencode/delivery/OpenCodePromptDeliveryLedger';
 import type { AgentChangeSet, ChangeStats, TaskChangeSetV2 } from '@shared/types';
 
 const logger = createLogger('Service:ChangeExtractorService');
@@ -678,7 +678,7 @@ export class ChangeExtractorService {
     teamName: string,
     taskId: string
   ): Promise<
-    Array<{
+    {
       memberName: string;
       laneId?: string;
       runtimeSessionId: string | null;
@@ -687,8 +687,8 @@ export class ChangeExtractorService {
       observedAssistantMessageId: string | null;
       prePromptCursor: string | null;
       postPromptCursor: string | null;
-      taskRefs: Array<{ taskId: string; displayId: string; teamName: string }>;
-    }>
+      taskRefs: { taskId: string; displayId: string; teamName: string }[];
+    }[]
   > {
     const teamsBasePath = getTeamsBasePath();
     const laneIds = new Set<string>(['primary']);
@@ -704,7 +704,7 @@ export class ChangeExtractorService {
       laneIds.add(laneId);
     }
 
-    const records: Array<{
+    const records: {
       memberName: string;
       laneId?: string;
       runtimeSessionId: string | null;
@@ -713,8 +713,8 @@ export class ChangeExtractorService {
       observedAssistantMessageId: string | null;
       prePromptCursor: string | null;
       postPromptCursor: string | null;
-      taskRefs: Array<{ taskId: string; displayId: string; teamName: string }>;
-    }> = [];
+      taskRefs: { taskId: string; displayId: string; teamName: string }[];
+    }[] = [];
 
     for (const laneId of laneIds) {
       const filePath = getOpenCodeLaneScopedRuntimeFilePath({

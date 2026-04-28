@@ -15,8 +15,8 @@ import {
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { Pencil } from 'lucide-react';
 
-import { MemberRoleEditor } from './MemberRoleEditor';
 import { MemberPresenceDot } from './MemberPresenceDot';
+import { MemberRoleEditor } from './MemberRoleEditor';
 
 import type {
   LeadActivityState,

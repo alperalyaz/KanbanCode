@@ -1,8 +1,9 @@
-import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { createLogger } from '@shared/utils/logger';
+import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 
 import { TeamInboxReader } from '../TeamInboxReader';
 import { TeamInboxWriter } from '../TeamInboxWriter';
+
 import type { TeamDataService } from '../TeamDataService';
 import type { TeamProvisioningService } from '../TeamProvisioningService';
 import type { TaskStallAlert } from './TeamTaskStallTypes';

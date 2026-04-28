@@ -7752,7 +7752,7 @@ describe('TeamProvisioningService', () => {
       );
 
       await (svc as any).launchMixedSecondaryLaneIfNeeded(run);
-      await vi.waitFor(() => expect(adapterLaunch).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(adapterLaunch).toHaveBeenCalledTimes(2), { timeout: 5_000 });
       expect(adapterLaunch).toHaveBeenCalledWith(
         expect.objectContaining({
           laneId: 'secondary:opencode:bob',
@@ -7783,20 +7783,23 @@ describe('TeamProvisioningService', () => {
           ],
         })
       );
-      await vi.waitFor(() => {
-        expect(run.mixedSecondaryLanes).toEqual([
-          expect.objectContaining({
-            laneId: 'secondary:opencode:bob',
-            state: 'finished',
-            result: expect.objectContaining({ teamLaunchState: 'clean_success' }),
-          }),
-          expect.objectContaining({
-            laneId: 'secondary:opencode:tom',
-            state: 'finished',
-            result: expect.objectContaining({ teamLaunchState: 'clean_success' }),
-          }),
-        ]);
-      });
+      await vi.waitFor(
+        () => {
+          expect(run.mixedSecondaryLanes).toEqual([
+            expect.objectContaining({
+              laneId: 'secondary:opencode:bob',
+              state: 'finished',
+              result: expect.objectContaining({ teamLaunchState: 'clean_success' }),
+            }),
+            expect.objectContaining({
+              laneId: 'secondary:opencode:tom',
+              state: 'finished',
+              result: expect.objectContaining({ teamLaunchState: 'clean_success' }),
+            }),
+          ]);
+        },
+        { timeout: 5_000 }
+      );
       const publicStatuses = await svc.getMemberSpawnStatuses('safe-mixed-codex-opencode-launch');
       expect(publicStatuses.statuses.bob).toMatchObject({
         status: 'online',

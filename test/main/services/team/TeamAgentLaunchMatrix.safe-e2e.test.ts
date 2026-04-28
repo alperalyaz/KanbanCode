@@ -10398,7 +10398,7 @@ describe('Team agent launch matrix safe e2e', () => {
     const launchAdapter = new FakeOpenCodeRuntimeAdapter();
     const firstService = new TeamProvisioningService();
     firstService.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([launchAdapter]));
-    await firstService.createTeam(
+    const launch = await firstService.createTeam(
       {
         teamName,
         cwd: projectPath,
@@ -10426,6 +10426,7 @@ describe('Team agent launch matrix safe e2e', () => {
     });
     expect(messageAdapter.messageInputs).toHaveLength(1);
     expect(messageAdapter.messageInputs[0]).toMatchObject({
+      runId: launch.runId,
       teamName,
       laneId: 'primary',
       memberName: 'alice',
@@ -10433,7 +10434,6 @@ describe('Team agent launch matrix safe e2e', () => {
       text: 'message recovered pure opencode lane',
       messageId: 'msg-recovered-pure-opencode',
     });
-    expect(messageAdapter.messageInputs[0]?.runId).toBeUndefined();
   });
 
   it('delivers direct OpenCode member messages to recovered pure OpenCode lanes despite stale terminal provisioning state', async () => {

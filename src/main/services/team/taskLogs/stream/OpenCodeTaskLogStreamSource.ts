@@ -1,5 +1,5 @@
-import { createLogger } from '@shared/utils/logger';
 import { sanitizeDisplayContent } from '@shared/utils/contentSanitizer';
+import { createLogger } from '@shared/utils/logger';
 
 import { ClaudeMultimodelBridgeService } from '../../../runtime/ClaudeMultimodelBridgeService';
 import { canonicalizeAgentTeamsToolName } from '../../agentTeamsToolNames';

@@ -1,20 +1,21 @@
+import {
+  inferTeamProviderIdFromModel,
+  normalizeOptionalTeamProviderId,
+} from '@shared/utils/teamProvider';
+
 import { BoardTaskActivityTranscriptReader } from '../taskLogs/activity/BoardTaskActivityTranscriptReader';
 import { isBoardTaskActivityReadEnabled } from '../taskLogs/activity/featureGates';
 import { TeamTranscriptSourceLocator } from '../taskLogs/discovery/TeamTranscriptSourceLocator';
 import { isBoardTaskExactLogsReadEnabled } from '../taskLogs/exact/featureGates';
 import { TeamKanbanManager } from '../TeamKanbanManager';
-import { TeamTaskReader } from '../TeamTaskReader';
 import { TeamMembersMetaStore } from '../TeamMembersMetaStore';
+import { TeamTaskReader } from '../TeamTaskReader';
 
 import { BoardTaskActivityBatchIndexer } from './BoardTaskActivityBatchIndexer';
 import { OpenCodeTaskStallEvidenceSource } from './OpenCodeTaskStallEvidenceSource';
 import { buildResolvedReviewerIndex } from './reviewerResolution';
 import { TeamTaskLogFreshnessReader } from './TeamTaskLogFreshnessReader';
 import { TeamTaskStallExactRowReader } from './TeamTaskStallExactRowReader';
-import {
-  inferTeamProviderIdFromModel,
-  normalizeOptionalTeamProviderId,
-} from '@shared/utils/teamProvider';
 
 import type { BoardTaskActivityRecord } from '../taskLogs/activity/BoardTaskActivityRecord';
 import type { TeamTaskStallExactRow, TeamTaskStallSnapshot } from './TeamTaskStallTypes';

@@ -3959,10 +3959,10 @@ export class TeamProvisioningService {
     Promise<OpenCodeMemberInboxRelayResult>
   >();
   private readonly openCodePromptDeliveryWatchdogTimers = new Map<string, NodeJS.Timeout>();
-  private readonly openCodePromptDeliveryWatchdogQueue: Array<{
+  private readonly openCodePromptDeliveryWatchdogQueue: {
     teamName: string;
     run: () => Promise<void>;
-  }> = [];
+  }[] = [];
   private openCodePromptDeliveryWatchdogInFlight = 0;
   private openCodePromptDeliveryWatchdogDisabledLogged = false;
   private readonly openCodePromptDeliveryWatchdogInFlightByTeam = new Map<string, number>();
@@ -13625,7 +13625,7 @@ export class TeamProvisioningService {
         (config) => config?.members?.find((member) => isLeadMember(member))?.name?.trim() || null
       )
       .catch(() => null);
-    if (leadName && inboxName.trim().toLowerCase() === leadName.toLowerCase()) {
+    if (inboxName.trim().toLowerCase() === leadName?.toLowerCase()) {
       if (await this.isOpenCodeRuntimeRecipient(teamName, inboxName)) {
         const diagnostic =
           'opencode_lead_runtime_session_missing: OpenCode lead inbox relay is unsupported in v1; leaving inbox unread for durable retry/diagnostics.';
@@ -18154,7 +18154,7 @@ export class TeamProvisioningService {
       ? this.runs.get(this.getTrackedRunId(teamName)!)?.child?.pid
       : undefined;
     const pids = new Set<number>();
-    const rows: Array<{ pid: number; command: string }> = [];
+    const rows: { pid: number; command: string }[] = [];
 
     if (process.platform === 'win32') {
       try {

@@ -15,28 +15,185 @@ export interface TaskProgressTouchClassification {
   reason: string;
 }
 
-const CONCRETE_FILE_OR_PATH_RE =
-  /(?:^|\s)(?:\.{1,2}\/|~\/|\/|\w[\w.-]*\/)[\w./\s-]+|\b[\w.-]+\.(?:[cm]?[tj]sx?|json|md|css|scss|py|go|rs|java|kt|swift|ya?ml|toml|lock|sh|sql)\b/i;
-const TASK_OR_ISSUE_REF_RE = /#[a-f0-9]{6,}|\btask-[\w-]+/i;
-const TEST_OR_BUILD_RESULT_RE =
-  /\b(?:test(?:s|ed|ing)?|vitest|jest|playwright|pnpm|npm|bun|build|typecheck|lint|passed|failed|green|red|error|exception|stack trace)\b|тест|сборк|линт|ошибк|упал|прош[её]л/i;
-const SUBSTANTIVE_WORK_RE =
-  /\b(?:implemented|fixed|added|updated|changed|removed|found|verified|confirmed|completed|created|refactored|patched|root cause|next step)\b|исправ|добав|обнов|измен|удал|наш[её]л|подтверд|готово|сделал|сделана|причин|следующ/i;
-const BLOCKER_OR_CLARIFICATION_RE =
-  /\?|(?:^|\b)(?:blocked|blocker|cannot|can't|need|needs|waiting|clarification|question|permission|access denied|not enough context)\b|не могу|не получается|нужн|жду|блок|уточн|вопрос|нет доступа|недостаточно контекст/i;
-const WEAK_START_ONLY_RE =
-  /^(?:я\s+)?(?:начинаю(?:\s+работу)?|начну|приступаю(?:\s+к\s+работе)?|беру\s+в\s+работу|проверю|сейчас\s+проверю|посмотрю|разберусь|готов(?:а)?\s+приступить|готов(?:а)?\s+к\s+работе|will\s+start|starting\s+work|starting|taking\s+this|i(?:'|’)?ll\s+start|i\s+will\s+start|i\s+am\s+starting|i(?:'|’)?ll\s+check|i\s+will\s+check|checking\s+now|on\s+it)(?:[.!…\s]*)$/i;
+const FILE_EXTENSIONS = [
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.cts',
+  '.mts',
+  '.ctsx',
+  '.mtsx',
+  '.json',
+  '.md',
+  '.css',
+  '.scss',
+  '.py',
+  '.go',
+  '.rs',
+  '.java',
+  '.kt',
+  '.swift',
+  '.yaml',
+  '.yml',
+  '.toml',
+  '.lock',
+  '.sh',
+  '.sql',
+] as const;
+
+const TEST_OR_BUILD_KEYWORDS = [
+  'test',
+  'tests',
+  'tested',
+  'testing',
+  'vitest',
+  'jest',
+  'playwright',
+  'pnpm',
+  'npm',
+  'bun',
+  'build',
+  'typecheck',
+  'lint',
+  'passed',
+  'failed',
+  'green',
+  'red',
+  'error',
+  'exception',
+  'stack trace',
+  'тест',
+  'сборк',
+  'линт',
+  'ошибк',
+  'упал',
+  'прошел',
+  'прошёл',
+] as const;
+
+const SUBSTANTIVE_WORK_KEYWORDS = [
+  'implemented',
+  'fixed',
+  'added',
+  'updated',
+  'changed',
+  'removed',
+  'found',
+  'verified',
+  'confirmed',
+  'completed',
+  'created',
+  'refactored',
+  'patched',
+  'root cause',
+  'next step',
+  'исправ',
+  'добав',
+  'обнов',
+  'измен',
+  'удал',
+  'нашел',
+  'нашёл',
+  'подтверд',
+  'готово',
+  'сделал',
+  'сделана',
+  'причин',
+  'следующ',
+] as const;
+
+const BLOCKER_OR_CLARIFICATION_KEYWORDS = [
+  'blocked',
+  'blocker',
+  'cannot',
+  "can't",
+  'need',
+  'needs',
+  'waiting',
+  'clarification',
+  'question',
+  'permission',
+  'access denied',
+  'not enough context',
+  'не могу',
+  'не получается',
+  'нужн',
+  'жду',
+  'блок',
+  'уточн',
+  'вопрос',
+  'нет доступа',
+  'недостаточно контекст',
+] as const;
+
+const WEAK_START_ONLY_PHRASES = [
+  'начинаю',
+  'начинаю работу',
+  'начну',
+  'приступаю',
+  'приступаю к работе',
+  'беру в работу',
+  'проверю',
+  'сейчас проверю',
+  'посмотрю',
+  'разберусь',
+  'готов приступить',
+  'готова приступить',
+  'готов к работе',
+  'готова к работе',
+  'will start',
+  'starting work',
+  'starting',
+  'taking this',
+  "i'll start",
+  'i’ll start',
+  'i will start',
+  'i am starting',
+  "i'll check",
+  'i’ll check',
+  'i will check',
+  'checking now',
+  'on it',
+] as const;
 
 function normalizeCommentText(text: string): string {
   return stripAgentBlocks(text).replace(/\s+/g, ' ').trim();
 }
 
+function includesAnyKeyword(text: string, keywords: readonly string[]): boolean {
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
+function containsTaskOrIssueRef(text: string): boolean {
+  return text.includes('task-') || /#[a-f0-9]{6,}/i.test(text);
+}
+
+function containsConcreteFileOrPath(text: string): boolean {
+  const parts = text.split(/\s+/);
+  return (
+    parts.some(
+      (part) => part.startsWith('./') || part.startsWith('../') || part.startsWith('~/')
+    ) ||
+    parts.some((part) => part.includes('/') && /[a-z0-9_]/i.test(part)) ||
+    FILE_EXTENSIONS.some((extension) => text.includes(extension))
+  );
+}
+
+function isWeakStartOnly(text: string): boolean {
+  const normalized = text
+    .replace(/[.!…\s]+$/g, '')
+    .replace(/^я\s+/, '')
+    .trim();
+  return WEAK_START_ONLY_PHRASES.includes(normalized as (typeof WEAK_START_ONLY_PHRASES)[number]);
+}
+
 function isConcreteProgress(text: string): boolean {
   return (
-    CONCRETE_FILE_OR_PATH_RE.test(text) ||
-    TASK_OR_ISSUE_REF_RE.test(text) ||
-    TEST_OR_BUILD_RESULT_RE.test(text) ||
-    SUBSTANTIVE_WORK_RE.test(text)
+    containsConcreteFileOrPath(text) ||
+    containsTaskOrIssueRef(text) ||
+    includesAnyKeyword(text, TEST_OR_BUILD_KEYWORDS) ||
+    includesAnyKeyword(text, SUBSTANTIVE_WORK_KEYWORDS)
   );
 }
 
@@ -46,18 +203,20 @@ function classifyTaskCommentText(text: string): TaskProgressTouchClassification 
     return { signal: 'unknown', reason: 'comment_text_empty' };
   }
 
-  if (BLOCKER_OR_CLARIFICATION_RE.test(normalized)) {
+  const lowerText = normalized.toLowerCase();
+
+  if (lowerText.includes('?') || includesAnyKeyword(lowerText, BLOCKER_OR_CLARIFICATION_KEYWORDS)) {
     return {
       signal: 'blocker_or_clarification',
       reason: 'comment_mentions_blocker_or_clarification',
     };
   }
 
-  if (isConcreteProgress(normalized)) {
+  if (isConcreteProgress(lowerText)) {
     return { signal: 'strong_progress', reason: 'comment_contains_concrete_progress' };
   }
 
-  if (normalized.length <= 120 && WEAK_START_ONLY_RE.test(normalized)) {
+  if (lowerText.length <= 120 && isWeakStartOnly(lowerText)) {
     return { signal: 'weak_start_only', reason: 'comment_is_start_only' };
   }
 

@@ -1,5 +1,5 @@
-import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { SyncedLoader2 } from '@renderer/components/ui/SyncedLoader2';
+import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 
 import type { TeamTaskWithKanban } from '@shared/types';
 

@@ -1487,7 +1487,7 @@ function mergeSegments(
 
 function chooseDefaultFilter(participants: BoardTaskLogParticipant[]): 'all' | string {
   const namedParticipants = participants.filter((participant) => !participant.isLead);
-  return namedParticipants.length === 1 ? namedParticipants[0]!.key : 'all';
+  return namedParticipants.length === 1 ? namedParticipants[0].key : 'all';
 }
 
 function mergeRuntimeFallbackResponse(

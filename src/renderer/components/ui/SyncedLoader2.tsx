@@ -10,12 +10,12 @@ export type SyncedLoader2Props = ComponentProps<typeof Loader2> & {
   spinDurationMs?: number;
 };
 
-export function SyncedLoader2({
+export const SyncedLoader2 = ({
   className,
   style,
   spinDurationMs = DEFAULT_SPIN_DURATION_MS,
   ...props
-}: SyncedLoader2Props): React.JSX.Element {
+}: SyncedLoader2Props): React.JSX.Element => {
   const syncedStyle = useSyncedAnimationStyle(true, spinDurationMs);
 
   return (
@@ -25,4 +25,4 @@ export function SyncedLoader2({
       style={{ ...syncedStyle, ...style }}
     />
   );
-}
+};
