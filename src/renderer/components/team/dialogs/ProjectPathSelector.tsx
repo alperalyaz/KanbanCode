@@ -38,13 +38,16 @@ function renderHighlightedText(text: string, query: string): React.JSX.Element {
           return <span key={`${part}-${index}`}>{part}</span>;
         }
         return (
-          <mark
+          <span
             key={`${part}-${index}`}
-            // eslint-disable-next-line tailwindcss/no-custom-classname -- Tailwind arbitrary value with CSS variable
-            className="bg-[var(--color-accent)]/25 rounded px-0.5 text-[var(--color-text)]"
+            className="rounded px-0.5 font-semibold text-[var(--color-text)]"
+            style={{
+              backgroundColor: 'color-mix(in srgb, var(--color-accent) 35%, transparent)',
+              boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent)',
+            }}
           >
             {part}
-          </mark>
+          </span>
         );
       })}
     </span>

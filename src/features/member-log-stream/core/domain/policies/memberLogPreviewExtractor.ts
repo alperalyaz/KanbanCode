@@ -522,6 +522,102 @@ function formatGenericToolResultTitle(
   return `${formatToolTitle(toolContext.name)} ${isError ? 'error' : 'result'}`;
 }
 
+function formatShellResultContext(toolContext: ToolUseContext | undefined): string | null {
+  if (
+    !toolContext ||
+    (toolContext.canonicalName !== 'bash' && toolContext.canonicalName !== 'shell')
+  ) {
+    return null;
+  }
+  const input = asRecord(toolContext.input);
+  return stringField(input, 'description') ?? stringField(input, 'command');
+}
+
+function addContextToSuccessResultPreview(
+  preview: ValuePreview,
+  context: string | null,
+  limit: number,
+  order: 'context-first' | 'result-first'
+): ValuePreview {
+  if (!context) {
+    return preview;
+  }
+  const compactContext = compactWhitespace(context);
+  if (!compactContext) {
+    return preview;
+  }
+  if (!preview.preview) {
+    const fallback = truncatePreview(compactContext, limit);
+    return {
+      ...fallback,
+      truncated: preview.truncated || fallback.truncated,
+      ...(preview.title ? { title: preview.title } : {}),
+    };
+  }
+  const compactPreview = compactWhitespace(preview.preview);
+  if (!compactContext || compactPreview.toLowerCase().startsWith(compactContext.toLowerCase())) {
+    return preview;
+  }
+  const combinedText =
+    order === 'context-first'
+      ? `${compactContext} - ${compactPreview}`
+      : `${compactPreview} - ${compactContext}`;
+  const combined = truncatePreview(combinedText, limit);
+  return {
+    ...combined,
+    truncated: preview.truncated || combined.truncated,
+    ...(preview.title ? { title: preview.title } : {}),
+  };
+}
+
+function formatFileToolResultContext(toolContext: ToolUseContext | undefined): string | null {
+  if (!toolContext) {
+    return null;
+  }
+  const input = asRecord(toolContext.input);
+  const path =
+    stringField(input, 'file_path') ??
+    stringField(input, 'filePath') ??
+    stringField(input, 'path') ??
+    stringField(input, 'cwd');
+  if (toolContext.canonicalName === 'grep') {
+    const query = stringField(input, 'query') ?? stringField(input, 'pattern');
+    if (query && path) return `${query} in ${path}`;
+    return query ?? path;
+  }
+  if (toolContext.canonicalName === 'glob') {
+    const pattern = stringField(input, 'pattern') ?? stringField(input, 'glob');
+    if (pattern && path) return `${pattern} in ${path}`;
+    return pattern ?? path;
+  }
+  if (
+    toolContext.canonicalName === 'read' ||
+    toolContext.canonicalName === 'write' ||
+    toolContext.canonicalName === 'edit' ||
+    toolContext.canonicalName === 'ls'
+  ) {
+    return path;
+  }
+  return null;
+}
+
+function addToolContextToSuccessResultPreview(
+  preview: ValuePreview,
+  toolContext: ToolUseContext | undefined,
+  limit: number
+): ValuePreview {
+  const shellContext = formatShellResultContext(toolContext);
+  if (shellContext) {
+    return addContextToSuccessResultPreview(preview, shellContext, limit, 'result-first');
+  }
+  return addContextToSuccessResultPreview(
+    preview,
+    formatFileToolResultContext(toolContext),
+    limit,
+    'context-first'
+  );
+}
+
 function buildToolUseKey(input: {
   provider: MemberLogStreamProvider;
   sourceId: string;
@@ -535,6 +631,12 @@ function isToolUseSupersededBySuccessResult(toolName: string): boolean {
   return (
     canonical === 'bash' ||
     canonical === 'shell' ||
+    canonical === 'read' ||
+    canonical === 'write' ||
+    canonical === 'edit' ||
+    canonical === 'grep' ||
+    canonical === 'glob' ||
+    canonical === 'ls' ||
     canonical === 'sendmessage' ||
     canonical === 'message_send' ||
     canonical.startsWith('cross_team_') ||
@@ -2057,13 +2159,16 @@ function collectToolResultCandidates(input: {
       sourceId: input.sourceId,
       toolUseId: id,
     });
-    const preview = previewUnknownValue(
+    const rawPreview = previewUnknownValue(
       result.content,
       input.textLimit,
       TOOL_RESULT_PRIORITY_KEYS,
       toolContext
     );
-    const isError = result.isError === true || preview.title === 'Tool error';
+    const isError = result.isError === true || rawPreview.title === 'Tool error';
+    const preview = isError
+      ? rawPreview
+      : addToolContextToSuccessResultPreview(rawPreview, toolContext, input.textLimit);
     const title =
       preview.title === 'Tool error'
         ? formatGenericToolResultTitle(toolContext, true)

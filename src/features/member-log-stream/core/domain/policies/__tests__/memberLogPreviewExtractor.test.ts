@@ -1599,9 +1599,99 @@ Reply to this comment using MCP tool task_add_comment.
     expect(result.items[0]).toMatchObject({
       kind: 'tool_result',
       title: 'Bash result',
-      preview: 'Tests passed',
+      preview: 'Tests passed - pnpm test',
     });
     expect(result.items).toHaveLength(1);
+  });
+
+  it('keeps successful file tool results compact with input context', () => {
+    const result = extractMemberLogPreviewItems({
+      provider: 'claude_transcript',
+      maxItems: 3,
+      textLimit: 160,
+      messages: [
+        message({
+          uuid: 'read-call',
+          timestamp: '2026-04-01T10:00:00.000Z',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-read',
+              name: 'Read',
+              input: {
+                file_path: 'src/app.ts',
+              },
+            },
+          ],
+        }),
+        message({
+          uuid: 'read-result',
+          type: 'user',
+          role: 'user',
+          timestamp: '2026-04-01T10:01:00.000Z',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tool-read',
+              content: 'export function app() { return true; }',
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      kind: 'tool_result',
+      title: 'Read result',
+      preview: 'src/app.ts - export function app() { return true; }',
+    });
+  });
+
+  it('keeps empty successful file tool results readable without duplicate input rows', () => {
+    const result = extractMemberLogPreviewItems({
+      provider: 'claude_transcript',
+      maxItems: 3,
+      textLimit: 160,
+      messages: [
+        message({
+          uuid: 'edit-call',
+          timestamp: '2026-04-01T10:00:00.000Z',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-edit',
+              name: 'Edit',
+              input: {
+                file_path: 'src/app.ts',
+                old_string: 'a',
+                new_string: 'b',
+              },
+            },
+          ],
+        }),
+        message({
+          uuid: 'edit-result',
+          type: 'user',
+          role: 'user',
+          timestamp: '2026-04-01T10:01:00.000Z',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tool-edit',
+              content: '',
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      kind: 'tool_result',
+      title: 'Edit result',
+      preview: 'src/app.ts',
+    });
   });
 
   it('does not label arbitrary message fields as sent messages', () => {

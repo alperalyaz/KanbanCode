@@ -444,6 +444,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   const [prepareWarnings, setPrepareWarnings] = useState<string[]>([]);
   const [prepareChecks, setPrepareChecks] = useState<ProvisioningProviderCheck[]>([]);
   const prepareRequestSeqRef = useRef(0);
+  const appliedDefaultProjectPathRef = useRef<string | null>(null);
   const storeMembers = useStore((s) => selectResolvedMembersForTeamName(s, s.selectedTeamName));
   const previousLaunchParams = useStore((s) =>
     effectiveTeamName ? s.launchParamsByTeam[effectiveTeamName] : undefined
@@ -1628,9 +1629,29 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   // Pre-select defaultProjectPath (launch mode) or first project
 
   useEffect(() => {
-    if (!open || cwdMode !== 'project' || selectedProjectPath) return;
+    if (!open) {
+      appliedDefaultProjectPathRef.current = null;
+      return;
+    }
+    if (cwdMode !== 'project') return;
     const selectableProjects = projects.filter((project) => !isEphemeralProjectPath(project.path));
     if (selectableProjects.length === 0) return;
+    if (defaultProjectPath && !isEphemeralProjectPath(defaultProjectPath)) {
+      const normalizedDefaultProjectPath = normalizePath(defaultProjectPath);
+      const defaultAlreadyApplied =
+        appliedDefaultProjectPathRef.current === normalizedDefaultProjectPath;
+      const match = selectableProjects.find(
+        (p) => normalizePath(p.path) === normalizedDefaultProjectPath
+      );
+      if (match && !defaultAlreadyApplied) {
+        appliedDefaultProjectPathRef.current = normalizedDefaultProjectPath;
+        if (normalizePath(selectedProjectPath) !== normalizedDefaultProjectPath) {
+          setSelectedProjectPath(match.path);
+        }
+        return;
+      }
+    }
+    if (selectedProjectPath) return;
     if (defaultProjectPath && !isEphemeralProjectPath(defaultProjectPath)) {
       const normalizedDefaultProjectPath = normalizePath(defaultProjectPath);
       const match = selectableProjects.find(

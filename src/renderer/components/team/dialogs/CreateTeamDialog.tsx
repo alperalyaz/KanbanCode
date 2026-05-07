@@ -412,6 +412,7 @@ export const CreateTeamDialog = ({
   const [prepareWarnings, setPrepareWarnings] = useState<string[]>([]);
   const [prepareChecks, setPrepareChecks] = useState<ProvisioningProviderCheck[]>([]);
   const prepareRequestSeqRef = useRef(0);
+  const appliedDefaultProjectPathRef = useRef<string | null>(null);
   const lastAutoDescriptionRef = useRef<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
     teamName?: string;
@@ -1092,15 +1093,33 @@ export const CreateTeamDialog = ({
 
   // Pre-select defaultProjectPath when projects loaded (only while dialog is open)
   useEffect(() => {
-    if (!open) return;
-    if (cwdMode !== 'project') {
+    if (!open) {
+      appliedDefaultProjectPathRef.current = null;
       return;
     }
-    if (selectedProjectPath) {
+    if (cwdMode !== 'project') {
       return;
     }
     const selectableProjects = projects.filter((project) => !isEphemeralProjectPath(project.path));
     if (selectableProjects.length === 0) {
+      return;
+    }
+    if (defaultProjectPath && !isEphemeralProjectPath(defaultProjectPath)) {
+      const normalizedDefaultProjectPath = normalizePath(defaultProjectPath);
+      const defaultAlreadyApplied =
+        appliedDefaultProjectPathRef.current === normalizedDefaultProjectPath;
+      const match = selectableProjects.find(
+        (p) => normalizePath(p.path) === normalizedDefaultProjectPath
+      );
+      if (match && !defaultAlreadyApplied) {
+        appliedDefaultProjectPathRef.current = normalizedDefaultProjectPath;
+        if (normalizePath(selectedProjectPath) !== normalizedDefaultProjectPath) {
+          setSelectedProjectPath(match.path);
+        }
+        return;
+      }
+    }
+    if (selectedProjectPath) {
       return;
     }
     if (defaultProjectPath && !isEphemeralProjectPath(defaultProjectPath)) {
@@ -1678,7 +1697,7 @@ export const CreateTeamDialog = ({
           <DialogDescription className="text-xs">
             {initialData
               ? 'Create a new team based on an existing one.'
-              : 'Team provisioning via local Claude CLI.'}
+              : 'Set up your team and choose how it starts.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -2188,7 +2207,8 @@ export const CreateTeamDialog = ({
               </Button>
             ) : null}
             <Button
-              size="sm"
+              size="lg"
+              className="min-w-32 text-sm"
               disabled={!canCreate || !draftLoaded || isSubmitting || hasCreateFormErrors}
               onClick={handleSubmit}
             >
