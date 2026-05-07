@@ -192,7 +192,7 @@ function parseJsonLikeString(value: string): unknown {
 }
 
 function truncatePreview(value: string, limit: number): { preview: string; truncated: boolean } {
-  const compact = compactWhitespace(value);
+  const compact = compactWhitespace(removeHiddenInstructionBlocks(value));
   if (compact.length <= limit) {
     return { preview: compact, truncated: false };
   }
@@ -388,7 +388,7 @@ function formatRuntimeErrorText(
   value: string,
   limit: number
 ): (ValuePreview & { title: string }) | null {
-  const compact = compactWhitespace(value);
+  const compact = compactWhitespace(removeHiddenInstructionBlocks(value));
   if (!compact) {
     return null;
   }
@@ -642,7 +642,11 @@ function countArrayField(payload: Record<string, unknown>, keys: readonly string
   return null;
 }
 
-function formatTaskCollectionItem(task: Record<string, unknown>): string | null {
+function formatTaskCollectionItem(item: unknown): string | null {
+  const task = asRecord(item);
+  if (!task) {
+    return formatTaskRef(stringifyPrimitive(item));
+  }
   const taskRef = taskRefFromPayload(task);
   const taskSummary = shortTaskSummary(task);
   if (taskRef && taskSummary) return `${taskRef}: ${taskSummary}`;
@@ -659,20 +663,17 @@ function formatTaskCollectionArrayPayload(
     return null;
   }
 
-  const tasks = items
-    .map((item) => asRecord(item))
-    .filter((item): item is Record<string, unknown> => Boolean(item));
-  if (tasks.length === 0) {
+  if (items.length === 0) {
     return {
       title: canonical === 'task_briefing' ? 'Task briefing' : 'Task list',
       text: '0 tasks',
     };
   }
 
-  const taskSummaries = tasks.slice(0, 3).map(formatTaskCollectionItem).filter(Boolean);
-  const remainingTaskCount = Math.max(0, tasks.length - taskSummaries.length);
+  const taskSummaries = items.slice(0, 3).map(formatTaskCollectionItem).filter(Boolean);
+  const remainingTaskCount = Math.max(0, items.length - taskSummaries.length);
   const moreText = remainingTaskCount > 0 ? `; +${remainingTaskCount} more` : '';
-  const countText = `${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}`;
+  const countText = `${items.length} ${items.length === 1 ? 'task' : 'tasks'}`;
   return {
     title: canonical === 'task_briefing' ? 'Task briefing' : 'Task list',
     text:
@@ -713,32 +714,7 @@ function formatProcessCollectionPayload(
     (Array.isArray(payload.processes) ? payload.processes : null) ??
     (Array.isArray(payload.items) ? payload.items : null);
   if (rawProcesses) {
-    const processes = rawProcesses
-      .map((item) => asRecord(item))
-      .filter((item): item is Record<string, unknown> => Boolean(item));
-    const processSummaries = processes
-      .slice(0, 3)
-      .map((process) => {
-        const label =
-          stringField(process, 'label') ??
-          stringField(process, 'name') ??
-          stringField(process, 'command') ??
-          stringField(process, 'pid');
-        const status = stringField(process, 'status');
-        if (label && status) return `${label} ${status}`;
-        return label ?? status;
-      })
-      .filter(Boolean);
-    const remainingCount = Math.max(0, processes.length - processSummaries.length);
-    const moreText = remainingCount > 0 ? `; +${remainingCount} more` : '';
-    const countText = `${processes.length} ${processes.length === 1 ? 'process' : 'processes'}`;
-    return {
-      title: 'Process list',
-      text:
-        processSummaries.length > 0
-          ? `${countText} - ${processSummaries.join('; ')}${moreText}`
-          : countText,
-    };
+    return formatProcessCollectionArrayPayload(rawProcesses);
   }
 
   const processCount = countArrayField(payload, ['processes', 'items']);
@@ -749,12 +725,11 @@ function formatProcessCollectionPayload(
 }
 
 function formatProcessCollectionArrayPayload(items: readonly unknown[]): KnownPayloadPreview {
-  const processes = items
-    .map((item) => asRecord(item))
-    .filter((item): item is Record<string, unknown> => Boolean(item));
-  const processSummaries = processes
+  const processSummaries = items
     .slice(0, 3)
-    .map((process) => {
+    .map((item) => {
+      const process = asRecord(item);
+      if (!process) return stringifyPrimitive(item);
       const label =
         stringField(process, 'label') ??
         stringField(process, 'name') ??
@@ -764,10 +739,10 @@ function formatProcessCollectionArrayPayload(items: readonly unknown[]): KnownPa
       if (label && status) return `${label} ${status}`;
       return label || status;
     })
-    .filter(Boolean);
-  const remainingCount = Math.max(0, processes.length - processSummaries.length);
+    .filter((summary): summary is string => Boolean(summary));
+  const remainingCount = Math.max(0, items.length - processSummaries.length);
   const moreText = remainingCount > 0 ? `; +${remainingCount} more` : '';
-  const countText = `${processes.length} ${processes.length === 1 ? 'process' : 'processes'}`;
+  const countText = `${items.length} ${items.length === 1 ? 'process' : 'processes'}`;
   return {
     title: 'Process list',
     text:
@@ -787,14 +762,14 @@ function processLabelFromPayload(
       stringField(payload, 'label'),
       stringField(payload, 'name'),
       stringField(payload, 'command'),
-      stringField(payload, 'processId'),
-      stringField(payload, 'id'),
-      stringifyPrimitive(payload.pid),
       stringField(process, 'label'),
       stringField(process, 'name'),
       stringField(process, 'command'),
+      stringField(payload, 'processId'),
+      stringField(payload, 'id'),
       stringField(process, 'processId'),
       stringField(process, 'id'),
+      stringifyPrimitive(payload.pid),
       stringifyPrimitive(process?.pid),
       stringField(fallbackInput ?? undefined, 'label'),
       stringField(fallbackInput ?? undefined, 'name'),
@@ -882,29 +857,28 @@ function formatCrossTeamCollectionArrayPayload(
         : null;
   if (!title) return null;
 
-  const records = items
-    .map((item) => asRecord(item))
-    .filter((item): item is Record<string, unknown> => Boolean(item));
-  const summaries = records
+  const summaries = items
     .slice(0, 3)
-    .map((item) =>
-      canonical === 'cross_team_list_targets'
-        ? formatCrossTeamTargetItem(item)
-        : formatCrossTeamOutboxItem(item)
-    )
-    .filter(Boolean);
-  const remainingCount = Math.max(0, records.length - summaries.length);
+    .map((item) => {
+      const record = asRecord(item);
+      if (!record) return stringifyPrimitive(item);
+      return canonical === 'cross_team_list_targets'
+        ? formatCrossTeamTargetItem(record)
+        : formatCrossTeamOutboxItem(record);
+    })
+    .filter((summary): summary is string => Boolean(summary));
+  const remainingCount = Math.max(0, items.length - summaries.length);
   const moreText = remainingCount > 0 ? `; +${remainingCount} more` : '';
 
   if (canonical === 'cross_team_list_targets') {
-    const countText = `${records.length} ${records.length === 1 ? 'team' : 'teams'}`;
+    const countText = `${items.length} ${items.length === 1 ? 'team' : 'teams'}`;
     return {
       title,
       text: summaries.length > 0 ? `${countText} - ${summaries.join('; ')}${moreText}` : countText,
     };
   }
 
-  const countText = `${records.length} ${records.length === 1 ? 'message' : 'messages'}`;
+  const countText = `${items.length} ${items.length === 1 ? 'message' : 'messages'}`;
   return {
     title,
     text: summaries.length > 0 ? `${countText} - ${summaries.join('; ')}${moreText}` : countText,
@@ -1240,6 +1214,12 @@ function formatErrorPayload(payload: Record<string, unknown>): KnownPayloadPrevi
   return null;
 }
 
+function stripMessageSentPrefix(value: string): string | null {
+  const compact = compactWhitespace(value);
+  const stripped = compact.replace(/^message sent\b/i, '').trim();
+  return stripped.length > 0 ? stripped : null;
+}
+
 function formatMessageSendPayload(payload: Record<string, unknown>): string | null {
   const routing = asRecord(payload.routing) ?? undefined;
   const messageRecord = asRecord(payload.message) ?? undefined;
@@ -1251,13 +1231,16 @@ function formatMessageSendPayload(payload: Record<string, unknown>): string | nu
     stringField(messageRecord, 'content') ??
     stringField(routing, 'content');
 
-  if (deliveryMessage && summary) return `${deliveryMessage} - ${summary}`;
-  if (summary && target) return `Message sent to ${target} - ${summary}`;
+  if (deliveryMessage && summary) {
+    const deliveryTarget = stripMessageSentPrefix(deliveryMessage);
+    return deliveryTarget ? `${deliveryTarget} - ${summary}` : summary;
+  }
+  if (summary && target) return `to ${target} - ${summary}`;
   if (summary) return summary;
-  if (deliveryMessage) return deliveryMessage;
-  if (messageText && target) return `Message sent to ${target} - ${messageText}`;
+  if (deliveryMessage) return stripMessageSentPrefix(deliveryMessage) ?? deliveryMessage;
+  if (messageText && target) return `to ${target} - ${messageText}`;
   if (messageText) return messageText;
-  if (target) return `Message sent to ${target}`;
+  if (target) return `to ${target}`;
   return null;
 }
 
@@ -1284,8 +1267,8 @@ function formatMessageSendResultFromInput(payload: Record<string, unknown>): str
     stringField(payload, 'text') ??
     stringField(payload, 'message') ??
     stringField(payload, 'content');
-  if (target && summary) return `Message sent to ${target} - ${summary}`;
-  if (target) return `Message sent to ${target}`;
+  if (target && summary) return `to ${target} - ${summary}`;
+  if (target) return `to ${target}`;
   if (summary) return summary;
   return null;
 }
@@ -1399,7 +1382,7 @@ function formatPlainToolResultStatus(
 }
 
 function formatPlainToolErrorText(value: string, limit: number): ValuePreview | null {
-  const compact = compactWhitespace(value);
+  const compact = compactWhitespace(removeHiddenInstructionBlocks(value));
   if (!compact) {
     return null;
   }
@@ -2023,12 +2006,6 @@ function collectToolUseCandidates(input: {
     );
   };
 
-  input.message.toolCalls?.forEach((toolCall, index) => {
-    const normalized = normalizeToolCall(toolCall);
-    if (normalized) {
-      addTool(normalized, 100 + index);
-    }
-  });
   if (Array.isArray(input.message.content)) {
     input.message.content.forEach((block, index) => {
       if (!isToolUseBlock(block)) return;
@@ -2042,6 +2019,12 @@ function collectToolUseCandidates(input: {
       );
     });
   }
+  input.message.toolCalls?.forEach((toolCall, index) => {
+    const normalized = normalizeToolCall(toolCall);
+    if (normalized) {
+      addTool(normalized, 100 + index);
+    }
+  });
 
   return candidates;
 }
@@ -2105,6 +2088,19 @@ function collectToolResultCandidates(input: {
     );
   };
 
+  if (Array.isArray(input.message.content)) {
+    input.message.content.forEach((block, index) => {
+      if (!isToolResultBlock(block)) return;
+      addResult(
+        {
+          toolUseId: block.tool_use_id,
+          content: block.content,
+          isError: block.is_error === true,
+        },
+        index
+      );
+    });
+  }
   input.message.toolResults?.forEach((result, index) =>
     addResult(
       {
@@ -2124,19 +2120,6 @@ function collectToolResultCandidates(input: {
       },
       240
     );
-  }
-  if (Array.isArray(input.message.content)) {
-    input.message.content.forEach((block, index) => {
-      if (!isToolResultBlock(block)) return;
-      addResult(
-        {
-          toolUseId: block.tool_use_id,
-          content: block.content,
-          isError: block.is_error === true,
-        },
-        index
-      );
-    });
   }
 
   return candidates;

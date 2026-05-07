@@ -28,8 +28,8 @@ import type {
 const LOG_PREVIEW_FALLBACK_WIDTH = 260;
 const LOG_PREVIEW_FALLBACK_HEIGHT = 292;
 const NEW_LOG_HIGHLIGHT_MS = 1_000;
-const COMPACT_ROW_TEXT_LIMIT = 92;
-const COMPACT_ROW_MIN_PREVIEW_LIMIT = 48;
+const COMPACT_ROW_TEXT_LIMIT = 76;
+const COMPACT_ROW_MIN_PREVIEW_LIMIT = 40;
 
 interface StableRectLike {
   left: number;
@@ -434,18 +434,18 @@ export const GraphMemberLogPreviewHud = ({
           ? 'border-rose-400/35 bg-rose-950/20 hover:border-rose-300/50 hover:bg-rose-950/30'
           : 'border-white/10 bg-[rgba(8,14,28,0.52)] hover:border-white/20 hover:bg-[rgba(12,20,40,0.78)]';
       const iconClassName = isError
-        ? 'float-left mr-2 inline-flex size-5 shrink-0 items-center justify-center rounded bg-rose-500/10'
-        : 'float-left mr-2 inline-flex size-5 shrink-0 items-center justify-center rounded bg-white/5';
-      const headerClassName = 'inline-flex h-5 items-center align-top';
+        ? 'float-left mr-2 mt-px inline-flex size-5 shrink-0 items-center justify-center rounded bg-rose-500/10'
+        : 'float-left mr-2 mt-px inline-flex size-5 shrink-0 items-center justify-center rounded bg-white/5';
+      const headerClassName = 'inline align-baseline';
       const titleClassName = isError
-        ? 'text-[11px] font-medium leading-[18px] text-rose-100'
-        : 'text-[11px] font-medium leading-[18px] text-slate-200';
+        ? 'align-baseline text-[11px] font-medium leading-[18px] text-rose-100'
+        : 'align-baseline text-[11px] font-medium leading-[18px] text-slate-200';
       const timeClassName = isError
-        ? 'ml-1 text-[9px] font-normal leading-[18px] text-rose-300/70'
-        : 'ml-1 text-[9px] font-normal leading-[18px] text-slate-500';
+        ? 'ml-1 align-baseline text-[9px] font-normal leading-[18px] text-rose-300/70'
+        : 'ml-1 align-baseline text-[9px] font-normal leading-[18px] text-slate-500';
       const previewClassName = isError
-        ? 'ml-1 break-words align-top text-[10px] leading-[18px] text-rose-100/85'
-        : 'ml-1 break-words align-top text-[10px] leading-[18px] text-slate-300/85';
+        ? 'ml-1 break-words align-baseline text-[10px] leading-[18px] text-rose-100/85'
+        : 'ml-1 break-words align-baseline text-[10px] leading-[18px] text-slate-300/85';
 
       return (
         <button

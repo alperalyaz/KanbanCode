@@ -39,7 +39,12 @@ describe('memberLogPreviewExtractor', () => {
         message({
           uuid: 'new',
           timestamp: '2026-04-01T10:01:00.000Z',
-          content: [{ type: 'text', text: '<system-reminder>latest answer</system-reminder>' }],
+          content: [
+            {
+              type: 'text',
+              text: 'latest answer <system-reminder>hidden reminder text</system-reminder>',
+            },
+          ],
         }),
       ],
     });
@@ -51,6 +56,40 @@ describe('memberLogPreviewExtractor', () => {
       preview: 'latest answer',
     });
     expect(result.items[1]?.preview).toBe('older answer');
+    expect(JSON.stringify(result.items)).not.toContain('hidden reminder text');
+  });
+
+  it('removes agent-only blocks from generic assistant text previews', () => {
+    const result = extractMemberLogPreviewItems({
+      provider: 'opencode_runtime',
+      maxItems: 3,
+      textLimit: 160,
+      messages: [
+        message({
+          uuid: 'assistant-hidden-block',
+          timestamp: '2026-04-01T10:00:00.000Z',
+          content: [
+            {
+              type: 'text',
+              text: `Visible user-facing update.
+
+<info_for_agent>
+API Error: 500 hidden MCP protocol instructions.
+</info_for_agent>`,
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(result.items[0]).toMatchObject({
+      kind: 'text',
+      title: 'Assistant',
+      preview: 'Visible user-facing update.',
+      tone: 'neutral',
+    });
+    expect(JSON.stringify(result.items)).not.toContain('Hidden MCP protocol');
+    expect(JSON.stringify(result.items)).not.toContain('API Error: 500');
   });
 
   it('marks assistant runtime error text as error tone without flagging normal text', () => {
@@ -276,7 +315,7 @@ Reply to this comment using MCP tool task_add_comment.
     expect(result.items[0]).toMatchObject({
       kind: 'tool_result',
       title: 'Message sent',
-      preview: 'Message sent to team-lead - #abc done',
+      preview: 'to team-lead - #abc done',
     });
     expect(result.items).toHaveLength(1);
     expect(JSON.stringify(result.items)).not.toContain('deliveredToInbox');
@@ -856,6 +895,47 @@ Reply to this comment using MCP tool task_add_comment.
     expect(result.items[0]?.preview).not.toContain('[{');
   });
 
+  it('formats primitive task list arrays as task refs instead of empty lists', () => {
+    const result = extractMemberLogPreviewItems({
+      provider: 'claude_transcript',
+      maxItems: 3,
+      textLimit: 160,
+      messages: [
+        message({
+          uuid: 'primitive-list-call',
+          timestamp: '2026-04-01T10:00:00.000Z',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-primitive-list',
+              name: 'mcp__agent-teams__task_list',
+              input: { teamName: 'demo' },
+            },
+          ],
+        }),
+        message({
+          uuid: 'primitive-list-result',
+          type: 'user',
+          role: 'user',
+          timestamp: '2026-04-01T10:01:00.000Z',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tool-primitive-list',
+              content: JSON.stringify(['abc12345', 'def67890']),
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(result.items[0]).toMatchObject({
+      kind: 'tool_result',
+      title: 'Task list',
+      preview: '2 tasks - #abc12345; #def67890',
+    });
+  });
+
   it('formats sourceToolUseID result wrappers with text-block content arrays', () => {
     const result = extractMemberLogPreviewItems({
       provider: 'claude_transcript',
@@ -1258,6 +1338,84 @@ Reply to this comment using MCP tool task_add_comment.
     });
     expect(processResult.items[0]?.preview).not.toContain('[{');
 
+    const primitiveProcessResult = extractMemberLogPreviewItems({
+      provider: 'opencode_runtime',
+      maxItems: 3,
+      textLimit: 160,
+      messages: [
+        message({
+          uuid: 'primitive-process-call',
+          timestamp: '2026-04-01T10:00:00.000Z',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-primitive-process-list',
+              name: 'agent-teams_process_list',
+              input: { teamName: 'relay-works-10' },
+            },
+          ],
+        }),
+        message({
+          uuid: 'primitive-process-result',
+          type: 'user',
+          role: 'user',
+          timestamp: '2026-04-01T10:01:00.000Z',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tool-primitive-process-list',
+              content: ['vite dev', 'pnpm test'],
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(primitiveProcessResult.items[0]).toMatchObject({
+      kind: 'tool_result',
+      title: 'Process list',
+      preview: '2 processes - vite dev; pnpm test',
+    });
+
+    const wrappedPrimitiveProcessResult = extractMemberLogPreviewItems({
+      provider: 'opencode_runtime',
+      maxItems: 3,
+      textLimit: 160,
+      messages: [
+        message({
+          uuid: 'wrapped-primitive-process-call',
+          timestamp: '2026-04-01T10:00:00.000Z',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-wrapped-primitive-process-list',
+              name: 'agent-teams_process_list',
+              input: { teamName: 'relay-works-10' },
+            },
+          ],
+        }),
+        message({
+          uuid: 'wrapped-primitive-process-result',
+          type: 'user',
+          role: 'user',
+          timestamp: '2026-04-01T10:01:00.000Z',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tool-wrapped-primitive-process-list',
+              content: { processes: ['vite dev', 'pnpm test'] },
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(wrappedPrimitiveProcessResult.items[0]).toMatchObject({
+      kind: 'tool_result',
+      title: 'Process list',
+      preview: '2 processes - vite dev; pnpm test',
+    });
+
     const taskUpdateResult = extractMemberLogPreviewItems({
       provider: 'opencode_runtime',
       maxItems: 3,
@@ -1321,7 +1479,7 @@ Reply to this comment using MCP tool task_add_comment.
       {
         toolName: 'agent-teams_cross_team_list_targets',
         input: { teamName: 'relay-works-10' },
-        result: JSON.stringify([{ teamName: 'qa-team' }, { name: 'design-team' }]),
+        result: JSON.stringify(['qa-team', 'design-team']),
         expectedTitle: 'Cross-team targets',
         expectedPreview: '2 teams - qa-team; design-team',
       },
@@ -1337,7 +1495,7 @@ Reply to this comment using MCP tool task_add_comment.
       {
         toolName: 'agent-teams_process_register',
         input: { label: 'vite dev', command: 'pnpm dev' },
-        result: { process: { label: 'vite dev', status: 'running' } },
+        result: { pid: 123, process: { label: 'vite dev', status: 'running' } },
         expectedTitle: 'Process registered',
         expectedPreview: 'Registered vite dev running',
       },
@@ -1546,6 +1704,43 @@ Reply to this comment using MCP tool task_add_comment.
       title: 'Tool result',
       preview: 'orphan result still matters',
       tone: 'success',
+    });
+  });
+
+  it('uses content block order before mirrored toolCalls for same-message readability', () => {
+    const result = extractMemberLogPreviewItems({
+      provider: 'claude_transcript',
+      maxItems: 3,
+      textLimit: 120,
+      messages: [
+        message({
+          uuid: 'mirrored-tool-call',
+          timestamp: '2026-04-01T10:01:00.000Z',
+          content: [
+            { type: 'text', text: 'I will inspect the files first.' },
+            {
+              type: 'tool_use',
+              id: 'tool-read',
+              name: 'Read',
+              input: { file_path: 'src/app.ts' },
+            },
+          ],
+          toolCalls: [
+            {
+              id: 'tool-read',
+              name: 'Read',
+              input: { file_path: 'src/app.ts' },
+              isTask: false,
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(result.items.map((item) => item.title)).toEqual(['Assistant', 'Read']);
+    expect(result.items[0]).toMatchObject({
+      kind: 'text',
+      preview: 'I will inspect the files first.',
     });
   });
 
