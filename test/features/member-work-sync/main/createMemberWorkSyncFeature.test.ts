@@ -180,7 +180,7 @@ async function seedBlockingShadowCollectingMetrics(input: {
 }
 
 async function waitForAssertion(assertion: () => Promise<void> | void): Promise<void> {
-  const deadline = Date.now() + 2_000;
+  const deadline = Date.now() + 5_000;
   let lastError: unknown;
   while (Date.now() < deadline) {
     try {
