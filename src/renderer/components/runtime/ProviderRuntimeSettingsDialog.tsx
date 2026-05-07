@@ -1439,7 +1439,7 @@ export const ProviderRuntimeSettingsDialog = ({
                               onClick={() => void handleCodexStartLogin()}
                             >
                               <Link2 className="mr-1 size-3.5" />
-                              {codexNeedsReconnect ? 'Reconnect ChatGPT' : 'Connect ChatGPT'}
+                              {codexNeedsReconnect ? 'Generate link' : 'Connect ChatGPT'}
                             </Button>
                           </>
                         )}

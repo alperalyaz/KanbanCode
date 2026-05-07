@@ -12356,6 +12356,56 @@ describe('TeamProvisioningService', () => {
     await svc.cancelProvisioning(runId);
   });
 
+  it('waits for child close before handling launch process exit so stream-json can drain', async () => {
+    allowConsoleLogs();
+    const teamName = 'launch-close-drains-stdout-team';
+    const leadSessionId = 'lead-session-close-drain';
+    writeLaunchConfig(teamName, tempClaudeRoot, leadSessionId, ['alice']);
+
+    vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
+    const child = createRunningChild();
+    vi.mocked(spawnCli).mockReturnValue(child as any);
+
+    const svc = new TeamProvisioningService(undefined, undefined, undefined, undefined, {
+      writeConfigFile: vi.fn(async () => '/mock/mcp-config-launch.json'),
+      removeConfigFile: vi.fn(async () => {}),
+    } as any);
+    (svc as any).buildProvisioningEnv = vi.fn(async () => ({
+      env: { ANTHROPIC_API_KEY: 'test' },
+      authSource: 'anthropic_api_key',
+    }));
+    (svc as any).resolveLaunchExpectedMembers = vi.fn(async () => ({
+      members: [{ name: 'alice' }],
+      source: 'members-meta',
+      warning: undefined,
+    }));
+    (svc as any).normalizeTeamConfigForLaunch = vi.fn(async () => {});
+    (svc as any).assertConfigLeadOnlyForLaunch = vi.fn(async () => {});
+    (svc as any).updateConfigProjectPath = vi.fn(async () => {});
+    (svc as any).restorePrelaunchConfig = vi.fn(async () => {});
+    (svc as any).validateAgentTeamsMcpRuntime = vi.fn(async () => {});
+    (svc as any).persistLaunchStateSnapshot = vi.fn(async () => {});
+    (svc as any).startFilesystemMonitor = vi.fn();
+    (svc as any).pathExists = vi.fn(async (targetPath: string) =>
+      targetPath.endsWith(`${leadSessionId}.jsonl`)
+    );
+    const handleProcessExit = vi
+      .spyOn(svc as any, 'handleProcessExit')
+      .mockResolvedValue(undefined);
+
+    const { runId } = await svc.launchTeam({ teamName, cwd: tempClaudeRoot }, () => {});
+
+    child.emit('exit', 0);
+    await Promise.resolve();
+    expect(handleProcessExit).not.toHaveBeenCalled();
+
+    child.emit('close', 0);
+    await vi.waitFor(() => expect(handleProcessExit).toHaveBeenCalledTimes(1));
+    expect(handleProcessExit.mock.calls[0]?.[1]).toBe(0);
+
+    await svc.cancelProvisioning(runId);
+  });
+
   it('clears stale team-scoped transient state before starting a new launch run', async () => {
     allowConsoleLogs();
     vi.useFakeTimers();

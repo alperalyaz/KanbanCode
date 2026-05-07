@@ -16230,6 +16230,7 @@ export class TeamProvisioningService {
       run.child.stderr?.removeAllListeners('data');
       run.child.removeAllListeners('error');
       run.child.removeAllListeners('exit');
+      run.child.removeAllListeners('close');
       killTeamProcess(run.child);
       run.child = null;
     }
@@ -16469,7 +16470,7 @@ export class TeamProvisioningService {
       this.cleanupRun(run);
     });
 
-    child.once('exit', (code) => {
+    child.once('close', (code) => {
       void this.handleProcessExit(run, code);
     });
   }
@@ -17083,7 +17084,7 @@ export class TeamProvisioningService {
         this.cleanupRun(run);
       });
 
-      child.once('exit', (code) => {
+      child.once('close', (code) => {
         void this.handleProcessExit(run, code);
       });
 
@@ -18381,7 +18382,7 @@ export class TeamProvisioningService {
         this.cleanupRun(run);
       });
 
-      child.once('exit', (code) => {
+      child.once('close', (code) => {
         void this.handleProcessExit(run, code);
       });
 

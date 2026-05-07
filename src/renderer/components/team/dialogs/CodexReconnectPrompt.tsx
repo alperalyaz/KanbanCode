@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { CodexLoginLinkCopyButton } from '@renderer/components/runtime/CodexLoginLinkCopyButton';
+import { api } from '@renderer/api';
 import { LogIn } from 'lucide-react';
 
 import type { ProvisioningProviderCheck } from './ProvisioningProviderStatusList';
@@ -78,13 +79,19 @@ export const CodexReconnectPrompt = ({
     >
       <div className="flex flex-wrap items-center gap-2">
         <p className="min-w-0 flex-1 text-[11px] text-amber-100/90">
-          Codex found the local ChatGPT account, but this session is stale. Reconnect ChatGPT, then
-          finish login in the browser and retry this dialog.
+          Codex found the local ChatGPT account, but this session is stale. Sign in with ChatGPT,
+          then finish login in the browser and retry this dialog.
         </p>
         <CodexLoginLinkCopyButton authUrl={authUrl} disabled={reconnectBusy} size="xs" />
         <button
           type="button"
-          onClick={onReconnect}
+          onClick={() => {
+            if (authUrl) {
+              void api.openExternal(authUrl);
+              return;
+            }
+            onReconnect();
+          }}
           disabled={reconnectBusy}
           className="inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium text-amber-300 transition-colors hover:bg-white/5 disabled:opacity-50"
           style={{
@@ -93,7 +100,7 @@ export const CodexReconnectPrompt = ({
           }}
         >
           <LogIn className="size-3" />
-          {reconnectBusy ? 'Opening...' : 'Reconnect ChatGPT'}
+          {reconnectBusy ? 'Generating...' : authUrl ? 'Open login' : 'Generate link'}
         </button>
       </div>
     </div>

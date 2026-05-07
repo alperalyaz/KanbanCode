@@ -590,16 +590,9 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
 
   const handleCodexReconnect = React.useCallback(() => {
     void (async () => {
-      const success = await codexAccount.startChatgptLogin();
-      if (success) {
-        await refreshCliStatusForCurrentMode({
-          multimodelEnabled,
-          bootstrapCliStatus,
-          fetchCliStatus,
-        });
-      }
+      await codexAccount.startChatgptLogin();
     })();
-  }, [bootstrapCliStatus, codexAccount, fetchCliStatus, multimodelEnabled]);
+  }, [codexAccount]);
 
   // Schedule store actions
   const createSchedule = useStore((s) => s.createSchedule);

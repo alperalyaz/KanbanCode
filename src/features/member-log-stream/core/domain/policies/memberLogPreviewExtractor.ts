@@ -191,8 +191,15 @@ function parseJsonLikeString(value: string): unknown {
   }
 }
 
+function shortenLongIdsForPreview(value: string): string {
+  return value.replace(
+    /\b([0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,
+    '$1'
+  );
+}
+
 function truncatePreview(value: string, limit: number): { preview: string; truncated: boolean } {
-  const compact = compactWhitespace(removeHiddenInstructionBlocks(value));
+  const compact = shortenLongIdsForPreview(compactWhitespace(removeHiddenInstructionBlocks(value)));
   if (compact.length <= limit) {
     return { preview: compact, truncated: false };
   }
@@ -533,6 +540,30 @@ function formatShellResultContext(toolContext: ToolUseContext | undefined): stri
   return stringField(input, 'description') ?? stringField(input, 'command');
 }
 
+function shortenPathForPreview(value: string): string {
+  const compact = compactWhitespace(value);
+  if (!compact) {
+    return '';
+  }
+  const normalized = compact.replace(/\\/g, '/');
+  if (!normalized.startsWith('/') && normalized.length <= 56) {
+    return normalized;
+  }
+  const parts = normalized.split('/').filter(Boolean);
+  if (parts.length <= 3) {
+    return normalized.startsWith('/') ? parts.join('/') : normalized;
+  }
+  const projectsIndex = parts.lastIndexOf('projects');
+  if (projectsIndex >= 0 && projectsIndex < parts.length - 1) {
+    const projectRelative = parts.slice(projectsIndex + 1);
+    if (projectRelative.length <= 4) {
+      return projectRelative.join('/');
+    }
+  }
+  const tail = parts.slice(-3);
+  return tail[0] === 'projects' ? parts.slice(-2).join('/') : tail.join('/');
+}
+
 function addContextToSuccessResultPreview(
   preview: ValuePreview,
   context: string | null,
@@ -580,15 +611,16 @@ function formatFileToolResultContext(toolContext: ToolUseContext | undefined): s
     stringField(input, 'filePath') ??
     stringField(input, 'path') ??
     stringField(input, 'cwd');
+  const compactPath = path ? shortenPathForPreview(path) : null;
   if (toolContext.canonicalName === 'grep') {
     const query = stringField(input, 'query') ?? stringField(input, 'pattern');
-    if (query && path) return `${query} in ${path}`;
-    return query ?? path;
+    if (query && compactPath) return `${query} in ${compactPath}`;
+    return query ?? compactPath;
   }
   if (toolContext.canonicalName === 'glob') {
     const pattern = stringField(input, 'pattern') ?? stringField(input, 'glob');
-    if (pattern && path) return `${pattern} in ${path}`;
-    return pattern ?? path;
+    if (pattern && compactPath) return `${pattern} in ${compactPath}`;
+    return pattern ?? compactPath;
   }
   if (
     toolContext.canonicalName === 'read' ||
@@ -596,7 +628,7 @@ function formatFileToolResultContext(toolContext: ToolUseContext | undefined): s
     toolContext.canonicalName === 'edit' ||
     toolContext.canonicalName === 'ls'
   ) {
-    return path;
+    return compactPath;
   }
   return null;
 }
@@ -733,7 +765,7 @@ function formatTaskCommentPayload(
   if (author && taskRef) return `Comment by ${author} on ${taskRef}: ${commentText}`;
   if (author) return `Comment by ${author}: ${commentText}`;
   if (taskRef) return `Comment on ${taskRef}: ${commentText}`;
-  return `Comment: ${commentText}`;
+  return commentText;
 }
 
 function countArrayField(payload: Record<string, unknown>, keys: readonly string[]): number | null {
@@ -1485,6 +1517,34 @@ function formatPlainToolResultStatus(
   );
 }
 
+function taggedSection(value: string, tag: string): string | null {
+  const match = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i').exec(value);
+  return match?.[1]?.trim() || null;
+}
+
+function stripTaggedFileLineNumbers(value: string): string {
+  return value
+    .replace(/\(End of file - total \d+ lines?\)/gi, ' ')
+    .replace(/\(\d+ entries\)/gi, ' ')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*\d+:\s*/, '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function formatTaggedFileToolResult(value: string): string | null {
+  const content = taggedSection(value, 'content') ?? taggedSection(value, 'entries');
+  if (!content) {
+    return null;
+  }
+  const type = taggedSection(value, 'type')?.toLowerCase();
+  const body = compactWhitespace(stripTaggedFileLineNumbers(content));
+  if (!body) {
+    return null;
+  }
+  return type === 'directory' ? `directory ${body}` : body;
+}
+
 function formatPlainToolErrorText(value: string, limit: number): ValuePreview | null {
   const compact = compactWhitespace(removeHiddenInstructionBlocks(value));
   if (!compact) {
@@ -1649,6 +1709,10 @@ function previewUnknownValue(
     if (plainStatus) {
       return { ...truncatePreview(plainStatus.text, limit), title: plainStatus.title };
     }
+    const taggedFileResult = formatTaggedFileToolResult(value);
+    if (taggedFileResult) {
+      return truncatePreview(taggedFileResult, limit);
+    }
     const parsed = parseJsonLikeString(value);
     if (parsed != null) {
       return previewUnknownValue(parsed, limit, priorityKeys, toolContext);
@@ -1748,6 +1812,15 @@ function previewToolInputValue(toolName: string, value: unknown, limit: number):
           ? `for ${teamName}`
           : 'Read cross-team outbox';
     return truncatePreview(text, limit);
+  }
+  const fileToolContext = formatFileToolResultContext({
+    id: '',
+    name: toolName,
+    canonicalName: canonical,
+    input: value,
+  });
+  if (fileToolContext) {
+    return truncatePreview(fileToolContext, limit);
   }
   const payload = recordFromUnknown(value);
   if (payload) {

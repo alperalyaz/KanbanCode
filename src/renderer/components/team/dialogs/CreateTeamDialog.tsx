@@ -713,16 +713,9 @@ export const CreateTeamDialog = ({
 
   const handleCodexReconnect = useCallback(() => {
     void (async () => {
-      const success = await codexAccount.startChatgptLogin();
-      if (success) {
-        await refreshCliStatusForCurrentMode({
-          multimodelEnabled,
-          bootstrapCliStatus,
-          fetchCliStatus,
-        });
-      }
+      await codexAccount.startChatgptLogin();
     })();
-  }, [bootstrapCliStatus, codexAccount, fetchCliStatus, multimodelEnabled]);
+  }, [codexAccount]);
 
   useEffect(() => {
     if (!open || !canCreate || !launchTeam) {

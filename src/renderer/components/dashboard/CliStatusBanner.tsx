@@ -908,7 +908,7 @@ const InstalledBanner = ({
                                   color: '#fbbf24',
                                 }}
                               >
-                                {codexLoginAuthUrl ? 'Open login' : 'Reconnect ChatGPT'}
+                                {codexLoginAuthUrl ? 'Open login' : 'Generate link'}
                               </button>
                             </>
                           ) : null}
@@ -1153,16 +1153,9 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
 
   const handleCodexDashboardLogin = useCallback(() => {
     void (async () => {
-      const success = await codexAccount.startChatgptLogin();
-      if (success) {
-        await refreshCliStatusForCurrentMode({
-          multimodelEnabled,
-          bootstrapCliStatus,
-          fetchCliStatus,
-        });
-      }
+      await codexAccount.startChatgptLogin();
     })();
-  }, [bootstrapCliStatus, codexAccount, fetchCliStatus, multimodelEnabled]);
+  }, [codexAccount]);
 
   const recheckAuthState = useCallback(() => {
     setIsVerifyingAuth(true);

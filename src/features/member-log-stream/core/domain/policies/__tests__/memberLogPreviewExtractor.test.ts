@@ -537,8 +537,7 @@ Reply to this comment using MCP tool task_add_comment.
     expect(result.items[0]).toMatchObject({
       kind: 'tool_result',
       title: 'Read task error',
-      preview:
-        "Tool 'task_get' execution failed: Task not found: 211e430b-0901-4c9e-9296-2b6e2059a08f",
+      preview: "Tool 'task_get' execution failed: Task not found: 211e430b",
       tone: 'error',
     });
   });
@@ -636,6 +635,39 @@ Reply to this comment using MCP tool task_add_comment.
       preview: 'Comment by tom on #task-799: Done with UI review',
     });
     expect(result.items).toHaveLength(1);
+  });
+
+  it('does not repeat generic comment titles in compact previews', () => {
+    const result = extractMemberLogPreviewItems({
+      provider: 'claude_transcript',
+      maxItems: 3,
+      textLimit: 160,
+      messages: [
+        message({
+          uuid: 'comment-result',
+          type: 'user',
+          role: 'user',
+          timestamp: '2026-04-01T10:01:00.000Z',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tool-comment',
+              content: JSON.stringify({
+                comment: {
+                  text: 'Focused checks passed.',
+                },
+              }),
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(result.items[0]).toMatchObject({
+      kind: 'tool_result',
+      title: 'Comment',
+      preview: 'Focused checks passed.',
+    });
   });
 
   it('distinguishes read-comment results from add-comment results', () => {
@@ -1692,6 +1724,115 @@ Reply to this comment using MCP tool task_add_comment.
       title: 'Edit result',
       preview: 'src/app.ts',
     });
+  });
+
+  it('cleans tagged file tool output and shortens absolute paths for compact rows', () => {
+    const result = extractMemberLogPreviewItems({
+      provider: 'opencode_runtime',
+      maxItems: 3,
+      textLimit: 160,
+      messages: [
+        message({
+          uuid: 'read-call',
+          timestamp: '2026-04-01T10:00:00.000Z',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-read',
+              name: 'Read',
+              input: {
+                file_path: '/Users/belief/dev/projects/demo/app/page.tsx',
+              },
+            },
+          ],
+        }),
+        message({
+          uuid: 'read-result',
+          type: 'user',
+          role: 'user',
+          timestamp: '2026-04-01T10:01:00.000Z',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tool-read',
+              content: `<path>/Users/belief/dev/projects/demo/app/page.tsx</path>
+<type>file</type>
+<content>
+1: export default function Page() {
+2:   return null;
+3: }
+
+(End of file - total 3 lines)
+</content>`,
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      kind: 'tool_result',
+      title: 'Read result',
+      preview: 'demo/app/page.tsx - export default function Page() { return null; }',
+    });
+    expect(result.items[0]?.preview).not.toContain('/Users/belief');
+    expect(result.items[0]?.preview).not.toContain('<path>');
+    expect(result.items[0]?.preview).not.toContain('1:');
+  });
+
+  it('cleans tagged directory tool output without repeating absolute paths', () => {
+    const result = extractMemberLogPreviewItems({
+      provider: 'opencode_runtime',
+      maxItems: 3,
+      textLimit: 160,
+      messages: [
+        message({
+          uuid: 'read-call',
+          timestamp: '2026-04-01T10:00:00.000Z',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-read',
+              name: 'Read',
+              input: {
+                file_path: '/Users/belief/dev/projects/demo',
+              },
+            },
+          ],
+        }),
+        message({
+          uuid: 'read-result',
+          type: 'user',
+          role: 'user',
+          timestamp: '2026-04-01T10:01:00.000Z',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tool-read',
+              content: `<path>/Users/belief/dev/projects/demo</path>
+<type>directory</type>
+<entries>
+app/
+package.json
+README.md
+
+(3 entries)
+</entries>`,
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      kind: 'tool_result',
+      title: 'Read result',
+      preview: 'demo - directory app/ package.json README.md',
+    });
+    expect(result.items[0]?.preview).not.toContain('/Users/belief');
+    expect(result.items[0]?.preview).not.toContain('(3 entries)');
   });
 
   it('does not label arbitrary message fields as sent messages', () => {

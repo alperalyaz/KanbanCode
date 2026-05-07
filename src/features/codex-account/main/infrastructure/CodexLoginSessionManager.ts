@@ -4,7 +4,6 @@ import {
   type CodexAppServerLoginAccountResponse,
   type CodexAppServerSession,
 } from '@main/services/infrastructure/codexAppServer';
-import { shell } from 'electron';
 
 import type { CodexLoginStateDto } from '@features/codex-account/contracts';
 import type { CodexAppServerSessionFactory } from '@main/services/infrastructure/codexAppServer';
@@ -139,8 +138,6 @@ export class CodexLoginSessionManager {
         startedAt: this.state.startedAt,
         authUrl: authUrl.toString(),
       });
-
-      await shell.openExternal(authUrl.toString());
     } catch (error) {
       const wasAbandonedDuringStart =
         this.pendingStartToken !== startToken &&

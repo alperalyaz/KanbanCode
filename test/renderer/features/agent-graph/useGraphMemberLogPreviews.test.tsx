@@ -337,6 +337,78 @@ describe('useGraphMemberLogPreviews', () => {
     });
   });
 
+  it('ignores stale responses when the same member receives a newer lane request', async () => {
+    const oldLaneLoad = createDeferred<MemberLogPreviewResponse>();
+    const newLaneLoad = createDeferred<MemberLogPreviewResponse>();
+    apiMock.memberLogStream.getMemberLogPreviews
+      .mockReturnValueOnce(oldLaneLoad.promise)
+      .mockReturnValueOnce(newLaneLoad.promise);
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const states: ReturnType<typeof useGraphMemberLogPreviews>[] = [];
+    const onState = vi.fn((state: ReturnType<typeof useGraphMemberLogPreviews>) => {
+      states.push(state);
+    });
+    const latestState = (): ReturnType<typeof useGraphMemberLogPreviews> | undefined =>
+      states.at(-1);
+
+    await act(async () => {
+      root.render(
+        <HookProbe
+          teamName="alpha-team"
+          memberNames={['alice']}
+          laneIdsByMember={{ alice: 'secondary:opencode:alice:old' }}
+          onState={onState}
+        />
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(700);
+      await Promise.resolve();
+    });
+    expect(apiMock.memberLogStream.getMemberLogPreviews).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.render(
+        <HookProbe
+          teamName="alpha-team"
+          memberNames={['alice']}
+          laneIdsByMember={{ alice: 'secondary:opencode:alice:new' }}
+          onState={onState}
+        />
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(700);
+      await Promise.resolve();
+    });
+    expect(apiMock.memberLogStream.getMemberLogPreviews).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      newLaneLoad.resolve(response('alice', '2026-04-03T00:01:00.000Z'));
+      await Promise.resolve();
+    });
+    expect(latestState()?.previewsByMember.get('alice')?.items[0]?.id).toBe(
+      'alice:2026-04-03T00:01:00.000Z'
+    );
+
+    await act(async () => {
+      oldLaneLoad.resolve(response('alice', '2026-04-03T00:00:00.000Z'));
+      await Promise.resolve();
+    });
+    expect(latestState()?.previewsByMember.get('alice')?.items[0]?.id).toBe(
+      'alice:2026-04-03T00:01:00.000Z'
+    );
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
   it('reloads visible members on log-source events with force refresh', async () => {
     let teamChangeListener:
       | ((event: unknown, data: { teamName: string; type: string }) => void)

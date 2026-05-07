@@ -184,6 +184,7 @@ export function useGraphMemberLogPreviews(input: {
   const cacheRef = useRef(new Map<string, { expiresAt: number; member: MemberLogPreviewMember }>());
   const previewsByMemberRef = useRef(previewsByMember);
   const inFlightRef = useRef(new Map<string, Promise<Map<string, MemberLogPreviewMember>>>());
+  const activeRequestKeyByMemberRef = useRef(new Map<string, string>());
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const teamNameRef = useRef(input.teamName);
 
@@ -196,6 +197,7 @@ export function useGraphMemberLogPreviews(input: {
       teamNameRef.current = input.teamName;
       cacheRef.current.clear();
       inFlightRef.current.clear();
+      activeRequestKeyByMemberRef.current.clear();
       setPreviewsByMember(new Map());
     }
     if (!enabled || memberNames.length === 0) {
@@ -261,6 +263,9 @@ export function useGraphMemberLogPreviews(input: {
         forceRefresh: options?.forceRefresh,
       });
       const requestTeamName = input.teamName;
+      for (const memberName of membersToRequest) {
+        activeRequestKeyByMemberRef.current.set(normalizeMemberName(memberName), requestKey);
+      }
 
       if (!options?.background && hasMissingPreview) {
         setLoading(true);
@@ -310,7 +315,15 @@ export function useGraphMemberLogPreviews(input: {
         if (teamNameRef.current !== requestTeamName) {
           return;
         }
-        setPreviewsByMember((current) => mergeMemberPreviews(current, members.values()));
+        const currentMembers = Array.from(members.values()).filter((member) => {
+          return (
+            activeRequestKeyByMemberRef.current.get(normalizeMemberName(member.memberName)) ===
+            requestKey
+          );
+        });
+        if (currentMembers.length > 0) {
+          setPreviewsByMember((current) => mergeMemberPreviews(current, currentMembers));
+        }
         setError(null);
       } catch (loadError) {
         if (teamNameRef.current !== requestTeamName) {
