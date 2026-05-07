@@ -1,4 +1,8 @@
-import type { MemberLogStreamResponse } from './dto';
+import type {
+  MemberLogPreviewMember,
+  MemberLogPreviewResponse,
+  MemberLogStreamResponse,
+} from './dto';
 
 export function createEmptyMemberLogStreamResponse(
   generatedAt = new Date().toISOString()
@@ -40,5 +44,50 @@ export function normalizeMemberLogStreamResponse(
       ...createEmptyMemberLogStreamResponse(response.generatedAt).metadata,
       ...(response.metadata ?? {}),
     },
+  };
+}
+
+export function createEmptyMemberLogPreviewResponse(
+  generatedAt = new Date().toISOString()
+): MemberLogPreviewResponse {
+  return {
+    members: [],
+    generatedAt,
+  };
+}
+
+function normalizeMemberLogPreviewMember(member: MemberLogPreviewMember): MemberLogPreviewMember {
+  return {
+    memberName: typeof member.memberName === 'string' ? member.memberName : '',
+    items: Array.isArray(member.items) ? member.items : [],
+    coverage: Array.isArray(member.coverage) ? member.coverage : [],
+    warnings: Array.isArray(member.warnings) ? member.warnings : [],
+    truncated: member.truncated === true,
+    overflowCount:
+      typeof member.overflowCount === 'number' && Number.isFinite(member.overflowCount)
+        ? Math.max(0, Math.floor(member.overflowCount))
+        : 0,
+    generatedAt:
+      typeof member.generatedAt === 'string' && member.generatedAt.length > 0
+        ? member.generatedAt
+        : new Date().toISOString(),
+  };
+}
+
+export function normalizeMemberLogPreviewResponse(
+  response: MemberLogPreviewResponse | null | undefined
+): MemberLogPreviewResponse {
+  if (!response) {
+    return createEmptyMemberLogPreviewResponse();
+  }
+
+  return {
+    members: Array.isArray(response.members)
+      ? response.members.map(normalizeMemberLogPreviewMember)
+      : [],
+    generatedAt:
+      typeof response.generatedAt === 'string' && response.generatedAt.length > 0
+        ? response.generatedAt
+        : new Date().toISOString(),
   };
 }

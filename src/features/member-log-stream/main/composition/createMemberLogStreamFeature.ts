@@ -2,17 +2,25 @@ import { BoardTaskExactLogChunkBuilder } from '@main/services/team/taskLogs/exac
 import { BoardTaskExactLogStrictParser } from '@main/services/team/taskLogs/exact/BoardTaskExactLogStrictParser';
 import { TeamConfigReader } from '@main/services/team/TeamConfigReader';
 
-import { createEmptyMemberLogStreamResponse } from '../../contracts';
+import {
+  createEmptyMemberLogPreviewResponse,
+  createEmptyMemberLogStreamResponse,
+} from '../../contracts';
+import { GetMemberLogPreviewsUseCase } from '../../core/application/use-cases/GetMemberLogPreviewsUseCase';
 import { GetMemberLogStreamUseCase } from '../../core/application/use-cases/GetMemberLogStreamUseCase';
 import { SetMemberLogStreamTrackingUseCase } from '../../core/application/use-cases/SetMemberLogStreamTrackingUseCase';
+import { ClaudeMemberTranscriptPreviewSource } from '../adapters/output/sources/ClaudeMemberTranscriptPreviewSource';
 import { ClaudeMemberTranscriptStreamSource } from '../adapters/output/sources/ClaudeMemberTranscriptStreamSource';
+import { CodexNativeMemberTracePreviewSource } from '../adapters/output/sources/CodexNativeMemberTracePreviewSource';
 import { CodexNativeMemberTraceStreamSource } from '../adapters/output/sources/CodexNativeMemberTraceStreamSource';
+import { OpenCodeMemberRuntimePreviewSource } from '../adapters/output/sources/OpenCodeMemberRuntimePreviewSource';
 import { OpenCodeMemberRuntimeStreamSource } from '../adapters/output/sources/OpenCodeMemberRuntimeStreamSource';
 import { isMemberLogStreamReadEnabled } from '../featureGates';
 
-import type { MemberLogStreamResponse } from '../../contracts';
+import type { MemberLogPreviewResponse, MemberLogStreamResponse } from '../../contracts';
 import type { LoggerPort } from '../../core/application/ports/LoggerPort';
 import type { MemberLogStreamTrackingPort } from '../../core/application/ports/MemberLogStreamTrackingPort';
+import type { GetMemberLogPreviewsInput } from '../../core/application/use-cases/GetMemberLogPreviewsUseCase';
 import type { GetMemberLogStreamInput } from '../../core/application/use-cases/GetMemberLogStreamUseCase';
 import type { ClaudeMultimodelBridgeService } from '@main/services/runtime/ClaudeMultimodelBridgeService';
 import type { TeamLogSourceTracker } from '@main/services/team/TeamLogSourceTracker';
@@ -20,6 +28,7 @@ import type { TeamMemberLogsFinder } from '@main/services/team/TeamMemberLogsFin
 
 export interface MemberLogStreamFeatureFacade {
   getMemberLogStream(input: GetMemberLogStreamInput): Promise<MemberLogStreamResponse>;
+  getMemberLogPreviews(input: GetMemberLogPreviewsInput): Promise<MemberLogPreviewResponse>;
   setMemberLogStreamTracking(teamName: string, enabled: boolean): Promise<void>;
 }
 
@@ -43,18 +52,30 @@ export function createMemberLogStreamFeature(deps: {
   logger: LoggerPort;
 }): MemberLogStreamFeatureFacade {
   const chunkBuilder = new BoardTaskExactLogChunkBuilder();
+  const strictParser = new BoardTaskExactLogStrictParser();
+  const configReader = deps.configReader ?? new TeamConfigReader();
   const sources = [
     new ClaudeMemberTranscriptStreamSource(
       deps.logsFinder,
-      new BoardTaskExactLogStrictParser(),
+      strictParser,
       chunkBuilder,
       deps.logger
     ),
     new OpenCodeMemberRuntimeStreamSource(deps.runtimeBridge, chunkBuilder),
-    new CodexNativeMemberTraceStreamSource(deps.configReader ?? new TeamConfigReader()),
+    new CodexNativeMemberTraceStreamSource(configReader),
+  ];
+  const previewSources = [
+    new ClaudeMemberTranscriptPreviewSource(deps.logsFinder, strictParser, deps.logger),
+    new OpenCodeMemberRuntimePreviewSource(deps.runtimeBridge),
+    new CodexNativeMemberTracePreviewSource(configReader),
   ];
   const getUseCase = new GetMemberLogStreamUseCase({
     sources,
+    clock: { now: () => Date.now() },
+    logger: deps.logger,
+  });
+  const getPreviewsUseCase = new GetMemberLogPreviewsUseCase({
+    sources: previewSources,
     clock: { now: () => Date.now() },
     logger: deps.logger,
   });
@@ -69,7 +90,12 @@ export function createMemberLogStreamFeature(deps: {
       }
       return getUseCase.execute(input);
     },
-    setMemberLogStreamTracking: (teamName, enabled) =>
-      trackingUseCase.execute(teamName, enabled),
+    getMemberLogPreviews: async (input) => {
+      if (!isMemberLogStreamReadEnabled()) {
+        return createEmptyMemberLogPreviewResponse();
+      }
+      return getPreviewsUseCase.execute(input);
+    },
+    setMemberLogStreamTracking: (teamName, enabled) => trackingUseCase.execute(teamName, enabled),
   };
 }

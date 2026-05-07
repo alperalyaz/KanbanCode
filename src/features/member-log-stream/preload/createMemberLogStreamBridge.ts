@@ -2,11 +2,15 @@ import { ipcRenderer } from 'electron';
 
 import {
   MEMBER_LOG_STREAM_GET,
+  MEMBER_LOG_STREAM_GET_PREVIEWS,
   MEMBER_LOG_STREAM_SET_TRACKING,
+  normalizeMemberLogPreviewResponse,
   normalizeMemberLogStreamResponse,
 } from '../contracts';
 
 import type {
+  MemberLogPreviewRequestOptions,
+  MemberLogPreviewResponse,
   MemberLogStreamApi,
   MemberLogStreamRequestOptions,
   MemberLogStreamResponse,
@@ -33,6 +37,19 @@ export function createMemberLogStreamBridge(): MemberLogStreamApi {
           MEMBER_LOG_STREAM_GET,
           teamName,
           memberName,
+          options
+        )
+      ),
+    getMemberLogPreviews: async (
+      teamName: string,
+      memberNames: string[],
+      options?: MemberLogPreviewRequestOptions
+    ): Promise<MemberLogPreviewResponse> =>
+      normalizeMemberLogPreviewResponse(
+        await invokeIpcWithResult<MemberLogPreviewResponse>(
+          MEMBER_LOG_STREAM_GET_PREVIEWS,
+          teamName,
+          memberNames,
           options
         )
       ),

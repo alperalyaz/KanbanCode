@@ -18,6 +18,13 @@ export interface MemberLogStreamRequestOptions {
   forceRefresh?: boolean;
 }
 
+export interface MemberLogPreviewRequestOptions {
+  maxItemsPerMember?: number;
+  textLimit?: number;
+  laneIdsByMember?: Record<string, string>;
+  forceRefresh?: boolean;
+}
+
 export interface MemberLogStreamCoverage {
   provider: MemberLogStreamProvider;
   status: 'included' | 'partial' | 'skipped';
@@ -69,4 +76,37 @@ export interface MemberLogStreamResponse {
   truncated: boolean;
   generatedAt: string;
   metadata: MemberLogStreamMetadata;
+}
+
+export type MemberLogPreviewItemKind = 'text' | 'tool_use' | 'tool_result' | 'thinking';
+
+export type MemberLogPreviewItemTone = 'neutral' | 'success' | 'warning' | 'error';
+
+export interface MemberLogPreviewItem {
+  id: string;
+  kind: MemberLogPreviewItemKind;
+  provider: MemberLogStreamProvider;
+  timestamp: string;
+  title: string;
+  preview?: string;
+  tone: MemberLogPreviewItemTone;
+  toolName?: string;
+  sourceLabel?: string;
+  sessionId?: string;
+  laneId?: string;
+}
+
+export interface MemberLogPreviewMember {
+  memberName: string;
+  items: MemberLogPreviewItem[];
+  coverage: MemberLogStreamCoverage[];
+  warnings: MemberLogStreamWarning[];
+  truncated: boolean;
+  overflowCount: number;
+  generatedAt: string;
+}
+
+export interface MemberLogPreviewResponse {
+  members: MemberLogPreviewMember[];
+  generatedAt: string;
 }

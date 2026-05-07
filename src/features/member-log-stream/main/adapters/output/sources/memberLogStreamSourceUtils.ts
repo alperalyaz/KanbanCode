@@ -1,9 +1,7 @@
 import { createHash } from 'crypto';
 
-import type {
-  MemberLogStreamProvider,
-  MemberLogStreamSegmentSource,
-} from '../../../../contracts';
+import type { MemberLogStreamProvider, MemberLogStreamSegmentSource } from '../../../../contracts';
+import type { MemberLogFileRef } from '@main/services/team/TeamMemberLogsFinder';
 import type {
   BoardTaskLogActor,
   BoardTaskLogParticipant,
@@ -16,6 +14,49 @@ export function normalizeMemberName(value: string): string {
 
 export function normalizeTeamName(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function isPreferredRef(candidate: MemberLogFileRef, existing: MemberLogFileRef): boolean {
+  const candidateMessageCount = candidate.messageCount ?? -1;
+  const existingMessageCount = existing.messageCount ?? -1;
+  if (candidateMessageCount !== existingMessageCount) {
+    return candidateMessageCount > existingMessageCount;
+  }
+
+  const candidateSize = candidate.sizeBytes ?? -1;
+  const existingSize = existing.sizeBytes ?? -1;
+  if (candidateSize !== existingSize) {
+    return candidateSize > existingSize;
+  }
+
+  return candidate.mtimeMs > existing.mtimeMs;
+}
+
+export function dedupeMemberLogRefs(refs: readonly MemberLogFileRef[]): MemberLogFileRef[] {
+  const byFilePath = new Map<string, MemberLogFileRef>();
+  const bySession = new Map<string, MemberLogFileRef>();
+  const passthrough: MemberLogFileRef[] = [];
+
+  for (const ref of refs) {
+    if (byFilePath.has(ref.filePath)) continue;
+    byFilePath.set(ref.filePath, ref);
+
+    if (ref.kind === 'lead_session') {
+      passthrough.push(ref);
+      continue;
+    }
+
+    const key = `${ref.kind ?? 'unknown'}:${normalizeMemberName(ref.memberName)}:${ref.sessionId}`;
+    const existing = bySession.get(key);
+    if (!existing || isPreferredRef(ref, existing)) {
+      bySession.set(key, ref);
+    }
+  }
+
+  return [...passthrough, ...bySession.values()].sort((left, right) => {
+    const byTime = right.mtimeMs - left.mtimeMs;
+    return byTime !== 0 ? byTime : left.filePath.localeCompare(right.filePath);
+  });
 }
 
 export function buildMemberParticipant(

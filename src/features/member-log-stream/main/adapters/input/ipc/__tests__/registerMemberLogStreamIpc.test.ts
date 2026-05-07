@@ -1,12 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { MEMBER_LOG_STREAM_GET, MEMBER_LOG_STREAM_SET_TRACKING } from '../../../../../contracts';
+import {
+  MEMBER_LOG_STREAM_GET,
+  MEMBER_LOG_STREAM_GET_PREVIEWS,
+  MEMBER_LOG_STREAM_SET_TRACKING,
+} from '../../../../../contracts';
 import {
   registerMemberLogStreamIpc,
   removeMemberLogStreamIpc,
 } from '../registerMemberLogStreamIpc';
 
-import type { MemberLogStreamResponse } from '../../../../../contracts';
+import type { MemberLogPreviewResponse, MemberLogStreamResponse } from '../../../../../contracts';
 import type { MemberLogStreamFeatureFacade } from '../../../../composition/createMemberLogStreamFeature';
 import type { IpcMainInvokeEvent } from 'electron';
 
@@ -39,6 +43,13 @@ function emptyResponse(): MemberLogStreamResponse {
   };
 }
 
+function emptyPreviewResponse(): MemberLogPreviewResponse {
+  return {
+    members: [],
+    generatedAt: '2026-03-01T00:00:00.000Z',
+  };
+}
+
 function createFakeIpcMain(): {
   handlers: Map<string, (...args: unknown[]) => unknown>;
   ipcMain: {
@@ -66,6 +77,7 @@ describe('registerMemberLogStreamIpc', () => {
     const getMemberLogStream = vi.fn().mockResolvedValue(emptyResponse());
     const feature: MemberLogStreamFeatureFacade = {
       getMemberLogStream,
+      getMemberLogPreviews: vi.fn().mockResolvedValue(emptyPreviewResponse()),
       setMemberLogStreamTracking: vi.fn(),
     };
 
@@ -98,6 +110,7 @@ describe('registerMemberLogStreamIpc', () => {
     const getMemberLogStream = vi.fn().mockResolvedValue(emptyResponse());
     const feature: MemberLogStreamFeatureFacade = {
       getMemberLogStream,
+      getMemberLogPreviews: vi.fn().mockResolvedValue(emptyPreviewResponse()),
       setMemberLogStreamTracking: vi.fn(),
     };
 
@@ -124,6 +137,7 @@ describe('registerMemberLogStreamIpc', () => {
     const getMemberLogStream = vi.fn().mockResolvedValue(emptyResponse());
     const feature: MemberLogStreamFeatureFacade = {
       getMemberLogStream,
+      getMemberLogPreviews: vi.fn().mockResolvedValue(emptyPreviewResponse()),
       setMemberLogStreamTracking: vi.fn(),
     };
 
@@ -172,6 +186,7 @@ describe('registerMemberLogStreamIpc', () => {
     const setMemberLogStreamTracking = vi.fn().mockResolvedValue(undefined);
     const feature: MemberLogStreamFeatureFacade = {
       getMemberLogStream: vi.fn().mockResolvedValue(emptyResponse()),
+      getMemberLogPreviews: vi.fn().mockResolvedValue(emptyPreviewResponse()),
       setMemberLogStreamTracking,
     };
 
@@ -190,6 +205,70 @@ describe('registerMemberLogStreamIpc', () => {
     removeMemberLogStreamIpc(ipcMain as never);
 
     expect(handlers.has(MEMBER_LOG_STREAM_GET)).toBe(false);
+    expect(handlers.has(MEMBER_LOG_STREAM_GET_PREVIEWS)).toBe(false);
     expect(handlers.has(MEMBER_LOG_STREAM_SET_TRACKING)).toBe(false);
+  });
+
+  it('validates batch preview requests before calling the feature facade', async () => {
+    const { handlers, ipcMain } = createFakeIpcMain();
+    const getMemberLogPreviews = vi.fn().mockResolvedValue(emptyPreviewResponse());
+    const feature: MemberLogStreamFeatureFacade = {
+      getMemberLogStream: vi.fn().mockResolvedValue(emptyResponse()),
+      getMemberLogPreviews,
+      setMemberLogStreamTracking: vi.fn(),
+    };
+
+    registerMemberLogStreamIpc(ipcMain as never, feature);
+    const getPreviews = handlers.get(MEMBER_LOG_STREAM_GET_PREVIEWS)!;
+
+    await expect(
+      getPreviews({} as IpcMainInvokeEvent, 'alpha-team', ['alice', 'bob'], {
+        maxItemsPerMember: 10,
+        textLimit: 999,
+        laneIdsByMember: {
+          alice: ' secondary:opencode:alice ',
+        },
+        forceRefresh: true,
+      })
+    ).resolves.toEqual({ success: true, data: emptyPreviewResponse() });
+    expect(getMemberLogPreviews).toHaveBeenCalledWith({
+      teamName: 'alpha-team',
+      memberNames: ['alice', 'bob'],
+      maxItemsPerMember: 3,
+      textLimit: 240,
+      laneIdsByMember: {
+        alice: 'secondary:opencode:alice',
+      },
+      forceRefresh: true,
+    });
+  });
+
+  it('rejects unknown batch preview options and unsafe lane maps', async () => {
+    const { handlers, ipcMain } = createFakeIpcMain();
+    const getMemberLogPreviews = vi.fn().mockResolvedValue(emptyPreviewResponse());
+    const feature: MemberLogStreamFeatureFacade = {
+      getMemberLogStream: vi.fn().mockResolvedValue(emptyResponse()),
+      getMemberLogPreviews,
+      setMemberLogStreamTracking: vi.fn(),
+    };
+
+    registerMemberLogStreamIpc(ipcMain as never, feature);
+    const getPreviews = handlers.get(MEMBER_LOG_STREAM_GET_PREVIEWS)!;
+
+    await expect(
+      getPreviews({} as IpcMainInvokeEvent, 'alpha-team', ['alice'], { nope: true })
+    ).resolves.toEqual({
+      success: false,
+      error: 'Unknown getMemberLogPreviews option: nope',
+    });
+    await expect(
+      getPreviews({} as IpcMainInvokeEvent, 'alpha-team', ['alice'], {
+        laneIdsByMember: { alice: '../bad' },
+      })
+    ).resolves.toEqual({
+      success: false,
+      error: 'laneId contains invalid characters',
+    });
+    expect(getMemberLogPreviews).not.toHaveBeenCalled();
   });
 });

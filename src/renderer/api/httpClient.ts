@@ -6,7 +6,10 @@
  * to run in a regular browser connected to an HTTP server.
  */
 
-import { createEmptyMemberLogStreamResponse } from '@features/member-log-stream/contracts';
+import {
+  createEmptyMemberLogPreviewResponse,
+  createEmptyMemberLogStreamResponse,
+} from '@features/member-log-stream/contracts';
 
 import type { CodexAccountSnapshotDto } from '@features/codex-account/contracts';
 import type { MemberLogStreamApi } from '@features/member-log-stream/contracts';
@@ -258,6 +261,10 @@ export class HttpAPIClient implements ElectronAPI {
     getMemberLogStream: async () => {
       console.warn('[HttpAPIClient] getMemberLogStream is not available in browser mode');
       return createEmptyMemberLogStreamResponse();
+    },
+    getMemberLogPreviews: async () => {
+      console.warn('[HttpAPIClient] getMemberLogPreviews is not available in browser mode');
+      return createEmptyMemberLogPreviewResponse();
     },
     setMemberLogStreamTracking: async () => {
       // Not available in browser mode - no-op.

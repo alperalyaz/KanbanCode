@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   MEMBER_LOG_STREAM_GET,
+  MEMBER_LOG_STREAM_GET_PREVIEWS,
   MEMBER_LOG_STREAM_SET_TRACKING,
 } from '../../contracts';
 import { createMemberLogStreamBridge } from '../createMemberLogStreamBridge';
@@ -77,6 +78,48 @@ describe('createMemberLogStreamBridge', () => {
       MEMBER_LOG_STREAM_SET_TRACKING,
       'alpha-team',
       true
+    );
+  });
+
+  it('forwards batch member log preview IPC requests and normalizes response payloads', async () => {
+    mocks.ipcRenderer.invoke.mockResolvedValueOnce({
+      success: true,
+      data: {
+        members: [
+          {
+            memberName: 'alice',
+            items: [],
+            generatedAt: '2026-04-02T00:00:00.000Z',
+          },
+        ],
+        generatedAt: '2026-04-02T00:00:00.000Z',
+      },
+    });
+    const bridge = createMemberLogStreamBridge();
+
+    const response = await bridge.getMemberLogPreviews('alpha-team', ['alice'], {
+      maxItemsPerMember: 3,
+      textLimit: 200,
+      laneIdsByMember: { alice: 'secondary:opencode:alice' },
+    });
+
+    expect(response.members[0]).toMatchObject({
+      memberName: 'alice',
+      items: [],
+      coverage: [],
+      warnings: [],
+      truncated: false,
+      overflowCount: 0,
+    });
+    expect(mocks.ipcRenderer.invoke).toHaveBeenCalledWith(
+      MEMBER_LOG_STREAM_GET_PREVIEWS,
+      'alpha-team',
+      ['alice'],
+      {
+        maxItemsPerMember: 3,
+        textLimit: 200,
+        laneIdsByMember: { alice: 'secondary:opencode:alice' },
+      }
     );
   });
 });

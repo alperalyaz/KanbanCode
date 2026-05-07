@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { DEFAULT_MEMBER_LOG_PREVIEW_BUDGET } from '../../../../../core/domain/models/MemberLogPreviewBudget';
 import { DEFAULT_MEMBER_LOG_STREAM_BUDGET } from '../../../../../core/domain/models/MemberLogStreamBudget';
+import { ClaudeMemberTranscriptPreviewSource } from '../ClaudeMemberTranscriptPreviewSource';
 import { ClaudeMemberTranscriptStreamSource } from '../ClaudeMemberTranscriptStreamSource';
+import { CodexNativeMemberTracePreviewSource } from '../CodexNativeMemberTracePreviewSource';
 import { CodexNativeMemberTraceStreamSource } from '../CodexNativeMemberTraceStreamSource';
+import { OpenCodeMemberRuntimePreviewSource } from '../OpenCodeMemberRuntimePreviewSource';
 import { OpenCodeMemberRuntimeStreamSource } from '../OpenCodeMemberRuntimeStreamSource';
 
+import type { MemberLogPreviewSourceInput } from '../../../../../core/application/ports/MemberLogPreviewSource';
 import type { MemberLogStreamSourceInput } from '../../../../../core/application/ports/MemberLogStreamSource';
 import type { EnhancedChunk, ParsedMessage } from '@main/types';
 
@@ -49,11 +54,26 @@ function fakeChunk(id: string): EnhancedChunk {
   };
 }
 
-function sourceInput(overrides: Partial<MemberLogStreamSourceInput> = {}): MemberLogStreamSourceInput {
+function sourceInput(
+  overrides: Partial<MemberLogStreamSourceInput> = {}
+): MemberLogStreamSourceInput {
   return {
     teamName: 'alpha-team',
     memberName: 'alice',
     budget: DEFAULT_MEMBER_LOG_STREAM_BUDGET,
+    ...overrides,
+  };
+}
+
+function previewInput(
+  overrides: Partial<MemberLogPreviewSourceInput> = {}
+): MemberLogPreviewSourceInput {
+  return {
+    teamName: 'alpha-team',
+    memberName: 'alice',
+    budget: DEFAULT_MEMBER_LOG_PREVIEW_BUDGET,
+    maxItems: 3,
+    textLimit: 200,
     ...overrides,
   };
 }
@@ -114,6 +134,67 @@ describe('ClaudeMemberTranscriptStreamSource', () => {
   });
 });
 
+describe('ClaudeMemberTranscriptPreviewSource', () => {
+  it('builds compact previews from parsed transcript messages without chunk building', async () => {
+    const parseFiles = vi.fn().mockResolvedValue(
+      new Map<string, ParsedMessage[]>([
+        [
+          '/transcripts/latest.jsonl',
+          [
+            {
+              ...parsedMessage('tool-call', '2026-04-04T00:00:00.000Z'),
+              content: [
+                {
+                  type: 'tool_use',
+                  id: 'toolu-1',
+                  name: 'Bash',
+                  input: { command: 'pnpm test', ignored: 'x'.repeat(5_000) },
+                },
+              ],
+            },
+            {
+              ...parsedMessage('tool-result', '2026-04-04T00:01:00.000Z'),
+              type: 'user',
+              role: 'user',
+              content: [
+                {
+                  type: 'tool_result',
+                  tool_use_id: 'toolu-1',
+                  content: 'x'.repeat(5_000),
+                },
+              ],
+            },
+          ],
+        ],
+      ])
+    );
+    const source = new ClaudeMemberTranscriptPreviewSource(
+      {
+        findRecentMemberLogFileRefsByMember: vi.fn().mockResolvedValue([
+          {
+            memberName: 'alice',
+            sessionId: 'session-1',
+            filePath: '/transcripts/latest.jsonl',
+            mtimeMs: 20,
+            sizeBytes: 5_000,
+            messageCount: 2,
+            kind: 'subagent',
+          },
+        ]),
+      } as never,
+      { parseFiles } as never,
+      { warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+    );
+
+    const result = await source.loadPreview(previewInput({ textLimit: 160 }));
+
+    expect(result.status).toBe('included');
+    expect(result.items.map((item) => item.kind)).toEqual(['tool_result', 'tool_use']);
+    expect(result.items[0]?.preview?.length).toBeLessThanOrEqual(160);
+    expect(parseFiles).toHaveBeenCalledWith(['/transcripts/latest.jsonl']);
+  });
+});
+
 describe('OpenCodeMemberRuntimeStreamSource', () => {
   it('enforces member message and content budgets before building OpenCode chunks', async () => {
     const getOpenCodeTranscript = vi.fn().mockResolvedValue({
@@ -133,9 +214,7 @@ describe('OpenCodeMemberRuntimeStreamSource', () => {
         })),
       },
     });
-    const buildBundleChunks = vi.fn((_: ParsedMessage[]) => [
-      fakeChunk('opencode-budgeted-chunk'),
-    ]);
+    const buildBundleChunks = vi.fn((_: ParsedMessage[]) => [fakeChunk('opencode-budgeted-chunk')]);
     const source = new OpenCodeMemberRuntimeStreamSource(
       { getOpenCodeTranscript } as never,
       { buildBundleChunks } as never,
@@ -226,7 +305,9 @@ describe('OpenCodeMemberRuntimeStreamSource', () => {
   it('reports ambiguous OpenCode lane errors as skipped provider warnings', async () => {
     const source = new OpenCodeMemberRuntimeStreamSource(
       {
-        getOpenCodeTranscript: vi.fn().mockRejectedValue(new Error('multiple records, pass --lane')),
+        getOpenCodeTranscript: vi
+          .fn()
+          .mockRejectedValue(new Error('multiple records, pass --lane')),
       } as never,
       { buildBundleChunks: vi.fn(() => [fakeChunk('opencode-chunk')]) } as never,
       { resolve: vi.fn().mockResolvedValue('/mock/orchestrator') }
@@ -244,6 +325,77 @@ describe('OpenCodeMemberRuntimeStreamSource', () => {
         },
       ],
     });
+  });
+});
+
+describe('OpenCodeMemberRuntimePreviewSource', () => {
+  it('skips OpenCode preview without a safe lane id before touching the runtime bridge', async () => {
+    const getOpenCodeTranscript = vi.fn();
+    const resolve = vi.fn();
+    const source = new OpenCodeMemberRuntimePreviewSource({ getOpenCodeTranscript } as never, {
+      resolve,
+    });
+
+    const result = await source.loadPreview(previewInput());
+
+    expect(result).toMatchObject({
+      provider: 'opencode_runtime',
+      status: 'skipped',
+      reason: 'opencode_safe_lane_unavailable',
+      items: [],
+      warnings: [],
+    });
+    expect(resolve).not.toHaveBeenCalled();
+    expect(getOpenCodeTranscript).not.toHaveBeenCalled();
+  });
+
+  it('uses bounded OpenCode projection messages and preserves safe lane ids', async () => {
+    const getOpenCodeTranscript = vi.fn().mockResolvedValue({
+      sessionId: 'opencode-session',
+      logProjection: {
+        messages: [
+          {
+            uuid: 'opencode-1',
+            parentUuid: null,
+            type: 'assistant',
+            timestamp: '2026-04-04T00:00:00.000Z',
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                id: 'toolu-1',
+                name: 'Edit',
+                input: { filePath: 'src/app.ts' },
+              },
+            ],
+            toolCalls: [],
+            toolResults: [],
+            isMeta: false,
+            sessionId: 'opencode-session',
+          },
+        ],
+      },
+    });
+    const source = new OpenCodeMemberRuntimePreviewSource({ getOpenCodeTranscript } as never, {
+      resolve: vi.fn().mockResolvedValue('/mock/orchestrator'),
+    });
+
+    const result = await source.loadPreview(previewInput({ laneId: 'secondary:opencode:alice' }));
+
+    expect(result.status).toBe('included');
+    expect(result.items[0]).toMatchObject({
+      kind: 'tool_use',
+      title: 'Edit',
+      laneId: 'secondary:opencode:alice',
+    });
+    expect(getOpenCodeTranscript).toHaveBeenCalledWith(
+      '/mock/orchestrator',
+      expect.objectContaining({
+        limit: DEFAULT_MEMBER_LOG_PREVIEW_BUDGET.openCodeMessageLimit,
+        timeoutMs: DEFAULT_MEMBER_LOG_PREVIEW_BUDGET.openCodeTimeoutMs,
+        laneId: 'secondary:opencode:alice',
+      })
+    );
   });
 });
 
@@ -267,6 +419,23 @@ describe('CodexNativeMemberTraceStreamSource', () => {
     await expect(nonCodexSource.load(sourceInput())).resolves.toMatchObject({
       status: 'skipped',
       warnings: [],
+    });
+  });
+});
+
+describe('CodexNativeMemberTracePreviewSource', () => {
+  it('returns unsupported empty coverage for Codex preview without breaking the batch', async () => {
+    const source = new CodexNativeMemberTracePreviewSource({
+      getConfig: vi.fn().mockResolvedValue({
+        members: [{ name: 'alice', providerId: 'codex' }],
+      }),
+    } as never);
+
+    await expect(source.loadPreview(previewInput())).resolves.toMatchObject({
+      provider: 'codex_native_trace',
+      status: 'skipped',
+      items: [],
+      warnings: [{ code: 'codex_member_wide_not_supported' }],
     });
   });
 });
