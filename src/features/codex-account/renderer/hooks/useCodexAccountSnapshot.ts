@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { api, isElectronMode } from '@renderer/api';
 
-import type { CodexAccountSnapshotDto } from '@features/codex-account/contracts';
+import type {
+  CodexAccountSnapshotDto,
+  CodexChatgptLoginMode,
+} from '@features/codex-account/contracts';
 
 const CODEX_PENDING_LOGIN_REFRESH_MS = 3_000;
 const CODEX_VISIBLE_RATE_LIMITS_REFRESH_MS = 10_000;
@@ -47,7 +50,7 @@ export function useCodexAccountSnapshot(options: {
     forceRefreshToken?: boolean;
     silent?: boolean;
   }) => Promise<void>;
-  startChatgptLogin: () => Promise<boolean>;
+  startChatgptLogin: (mode?: CodexChatgptLoginMode) => Promise<boolean>;
   cancelChatgptLogin: () => Promise<boolean>;
   logout: () => Promise<boolean>;
 } {
@@ -223,7 +226,7 @@ export function useCodexAccountSnapshot(options: {
       loading,
       error,
       refresh,
-      startChatgptLogin: () => runAction(() => api.startCodexChatgptLogin()),
+      startChatgptLogin: (mode) => runAction(() => api.startCodexChatgptLogin({ mode })),
       cancelChatgptLogin: () => runAction(() => api.cancelCodexChatgptLogin()),
       logout: () => runAction(() => api.logoutCodexAccount()),
     }),

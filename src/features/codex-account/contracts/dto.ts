@@ -16,6 +16,7 @@ export type CodexAccountAppServerState =
   | 'runtime-missing'
   | 'incompatible';
 export type CodexAccountLoginStatus = 'idle' | 'starting' | 'pending' | 'failed' | 'cancelled';
+export type CodexChatgptLoginMode = 'browser' | 'device_code';
 export type CodexLaunchReadinessState =
   | 'ready_chatgpt'
   | 'ready_api_key'

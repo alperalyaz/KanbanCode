@@ -711,11 +711,14 @@ export const CreateTeamDialog = ({
     });
   }, [bootstrapCliStatus, cliStatus, cliStatusLoading, fetchCliStatus, multimodelEnabled, open]);
 
-  const handleCodexReconnect = useCallback(() => {
-    void (async () => {
-      await codexAccount.startChatgptLogin();
-    })();
-  }, [codexAccount]);
+  const handleCodexReconnect = useCallback(
+    (mode: 'browser' | 'device_code' = 'browser') => {
+      void (async () => {
+        await codexAccount.startChatgptLogin(mode);
+      })();
+    },
+    [codexAccount]
+  );
 
   useEffect(() => {
     if (!open || !canCreate || !launchTeam) {
@@ -2179,7 +2182,8 @@ export const CreateTeamDialog = ({
                       authUrl={codexAccount.snapshot?.login.authUrl ?? null}
                       userCode={codexAccount.snapshot?.login.userCode ?? null}
                       reconnectBusy={codexAccount.loading}
-                      onReconnect={handleCodexReconnect}
+                      onReconnect={() => handleCodexReconnect('browser')}
+                      onDeviceCodeReconnect={() => handleCodexReconnect('device_code')}
                     />
                   </div>
                 ) : null}

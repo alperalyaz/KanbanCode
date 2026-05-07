@@ -28,6 +28,7 @@ import type {
 const LOG_PREVIEW_FALLBACK_WIDTH = 260;
 const LOG_PREVIEW_FALLBACK_HEIGHT = 292;
 const NEW_LOG_HIGHLIGHT_MS = 1_000;
+const COMPACT_ROW_TITLE_LIMIT = 24;
 const COMPACT_ROW_TEXT_LIMIT = 76;
 const COMPACT_ROW_MIN_PREVIEW_LIMIT = 40;
 
@@ -63,7 +64,7 @@ function normalizeMemberName(value: string): string {
 }
 
 function buildRenderedItemKey(memberName: string, itemId: string): string {
-  return `${normalizeMemberName(memberName)}:${itemId}`;
+  return JSON.stringify([normalizeMemberName(memberName), itemId]);
 }
 
 function formatRelativeTime(timestamp: string): string {
@@ -120,8 +121,21 @@ function resolveEmptyText(
   return 'No recent logs';
 }
 
+function fallbackDisplayTitle(item: MemberLogPreviewItem): string {
+  if (item.kind === 'tool_result') {
+    return item.tone === 'error' ? 'Tool error' : 'Tool result';
+  }
+  if (item.kind === 'tool_use') {
+    return item.toolName?.trim() || 'Tool use';
+  }
+  if (item.kind === 'thinking') {
+    return 'Thinking';
+  }
+  return item.tone === 'error' ? 'Error' : 'Log event';
+}
+
 function compactDisplayTitle(item: MemberLogPreviewItem): string {
-  const title = item.title.trim();
+  const title = item.title.trim() || fallbackDisplayTitle(item);
   if (title.toLowerCase() === 'tool result') {
     return title;
   }
@@ -129,6 +143,14 @@ function compactDisplayTitle(item: MemberLogPreviewItem): string {
     return title.slice(0, -' result'.length).trim() || title;
   }
   return title;
+}
+
+function truncateCompactTitle(value: string): string {
+  const compact = value.replace(/\s+/g, ' ').trim();
+  if (compact.length <= COMPACT_ROW_TITLE_LIMIT) {
+    return compact;
+  }
+  return `${compact.slice(0, COMPACT_ROW_TITLE_LIMIT - 3).trimEnd()}...`;
 }
 
 function trimRepeatedTitlePrefix(preview: string, title: string): string {
@@ -146,12 +168,16 @@ function trimRepeatedTitlePrefix(preview: string, title: string): string {
   return preview;
 }
 
-function compactPreviewText(item: MemberLogPreviewItem, displayTitle: string): string {
+function compactPreviewText(
+  item: MemberLogPreviewItem,
+  displayTitle: string,
+  rawDisplayTitle = displayTitle
+): string {
   const preview = item.preview?.trim();
   if (preview) {
     const rawTitle = item.title.trim();
     const compact = trimRepeatedTitlePrefix(
-      trimRepeatedTitlePrefix(preview, rawTitle),
+      trimRepeatedTitlePrefix(trimRepeatedTitlePrefix(preview, rawTitle), rawDisplayTitle),
       displayTitle
     );
     return compact || preview;
@@ -175,6 +201,13 @@ function truncateCompactRowPreview(
   const previewLimit = Math.max(COMPACT_ROW_MIN_PREVIEW_LIMIT, COMPACT_ROW_TEXT_LIMIT - metaLength);
   if (normalized.length <= previewLimit) return normalized;
   return `${normalized.slice(0, Math.max(0, previewLimit - 3)).trimEnd()}...`;
+}
+
+function compactRowLabel(parts: readonly (string | null | undefined)[]): string {
+  return parts
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .join(' ');
 }
 
 function setShellHidden(shell: HTMLDivElement): void {
@@ -426,12 +459,11 @@ export const GraphMemberLogPreviewHud = ({
   const renderItem = useCallback(
     (memberName: string, item: MemberLogPreviewItem) => {
       const relativeTime = formatRelativeTime(item.timestamp);
-      const displayTitle = compactDisplayTitle(item);
-      const fullPreviewText = compactPreviewText(item, displayTitle);
+      const rawDisplayTitle = compactDisplayTitle(item);
+      const displayTitle = truncateCompactTitle(rawDisplayTitle);
+      const fullPreviewText = compactPreviewText(item, displayTitle, rawDisplayTitle);
       const previewText = truncateCompactRowPreview(fullPreviewText, displayTitle, relativeTime);
-      const titleText = relativeTime
-        ? `${displayTitle} ${relativeTime} ${fullPreviewText}`
-        : `${displayTitle} ${fullPreviewText}`;
+      const titleText = compactRowLabel([rawDisplayTitle, relativeTime, fullPreviewText]);
       const isHighlighted = highlightedItemIds.has(buildRenderedItemKey(memberName, item.id));
       const isError = item.tone === 'error';
       const rowStateClassName = isHighlighted
@@ -442,28 +474,29 @@ export const GraphMemberLogPreviewHud = ({
           ? 'border-rose-400/35 bg-rose-950/20 hover:border-rose-300/50 hover:bg-rose-950/30'
           : 'border-white/10 bg-[rgba(8,14,28,0.52)] hover:border-white/20 hover:bg-[rgba(12,20,40,0.78)]';
       const iconClassName = isError
-        ? 'float-left mr-2 mt-px inline-flex size-5 shrink-0 items-center justify-center rounded bg-rose-500/10'
-        : 'float-left mr-2 mt-px inline-flex size-5 shrink-0 items-center justify-center rounded bg-white/5';
+        ? 'float-left mr-2 mt-0 inline-flex size-5 shrink-0 items-center justify-center rounded bg-rose-500/10'
+        : 'float-left mr-2 mt-0 inline-flex size-5 shrink-0 items-center justify-center rounded bg-white/5';
       const headerClassName = 'inline align-baseline';
       const titleClassName = isError
-        ? 'align-baseline text-[11px] font-medium leading-[18px] text-rose-100'
-        : 'align-baseline text-[11px] font-medium leading-[18px] text-slate-200';
+        ? 'align-baseline text-[11px] font-medium leading-5 text-rose-100'
+        : 'align-baseline text-[11px] font-medium leading-5 text-slate-200';
       const timeClassName = isError
-        ? 'ml-1 align-baseline text-[9px] font-normal leading-[18px] text-rose-300/70'
-        : 'ml-1 align-baseline text-[9px] font-normal leading-[18px] text-slate-500';
+        ? 'ml-1 align-baseline text-[9px] font-normal leading-5 text-rose-300/70'
+        : 'ml-1 align-baseline text-[9px] font-normal leading-5 text-slate-500';
       const previewClassName = isError
-        ? 'ml-1 break-words align-baseline text-[10px] leading-[18px] text-rose-100/85'
-        : 'ml-1 break-words align-baseline text-[10px] leading-[18px] text-slate-300/85';
+        ? 'ml-1 break-words align-baseline text-[10px] leading-5 text-rose-100/85'
+        : 'ml-1 break-words align-baseline text-[10px] leading-5 text-slate-300/85';
 
       return (
         <button
           key={item.id}
           type="button"
           className={[
-            'block h-[68px] min-h-[68px] w-full min-w-0 overflow-hidden rounded-md border px-2.5 py-1.5 text-left text-slate-400 transition-[border-color,background-color,box-shadow] duration-500',
+            'block h-[72px] min-h-[72px] w-full min-w-0 overflow-hidden rounded-md border px-2.5 py-1 text-left text-slate-400 transition-[border-color,background-color,box-shadow] duration-500',
             rowStateClassName,
           ].join(' ')}
           title={titleText}
+          aria-label={titleText}
           onClick={() => openLogs(memberName)}
         >
           <span className={iconClassName} aria-hidden="true">
@@ -517,7 +550,7 @@ export const GraphMemberLogPreviewHud = ({
             }}
           >
             <div className="flex h-full min-w-0 max-w-full flex-col overflow-hidden">
-              <div className="mb-1 flex h-5 min-h-5 items-center gap-1 px-1 text-[10px] font-semibold tracking-[0.2em] text-slate-400/70">
+              <div className="flex h-5 min-h-5 items-center gap-1 px-1 text-[10px] font-semibold tracking-[0.2em] text-slate-400/70">
                 <Wrench className="size-3 text-slate-500" />
                 Logs
               </div>
@@ -527,7 +560,7 @@ export const GraphMemberLogPreviewHud = ({
                 ) : (
                   <button
                     type="button"
-                    className="flex h-[68px] min-h-[68px] items-center rounded-md border border-dashed border-white/10 bg-[rgba(8,14,28,0.28)] px-3 text-left text-[11px] text-slate-400/60"
+                    className="flex h-[72px] min-h-[72px] items-center rounded-md border border-dashed border-white/10 bg-[rgba(8,14,28,0.28)] px-3 text-left text-[11px] text-slate-400/60"
                     onClick={() => openLogs(memberName)}
                   >
                     {resolveEmptyText(preview, loading, error)}

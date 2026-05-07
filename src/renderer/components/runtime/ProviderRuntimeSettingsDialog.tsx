@@ -1019,9 +1019,11 @@ export const ProviderRuntimeSettingsDialog = ({
     }
   };
 
-  const handleCodexStartLogin = async (): Promise<void> => {
+  const handleCodexStartLogin = async (
+    mode: 'browser' | 'device_code' = 'browser'
+  ): Promise<void> => {
     setConnectionError(null);
-    const success = await codexAccount.startChatgptLogin();
+    const success = await codexAccount.startChatgptLogin(mode);
     if (!success && codexAccount.error) {
       setConnectionError(codexAccount.error);
     }
@@ -1444,7 +1446,16 @@ export const ProviderRuntimeSettingsDialog = ({
                               size="sm"
                               variant="outline"
                               disabled={codexActionBusy}
-                              onClick={() => void handleCodexStartLogin()}
+                              onClick={() => void handleCodexStartLogin('device_code')}
+                            >
+                              <Link2 className="mr-1 size-3.5" />
+                              Use code
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={codexActionBusy}
+                              onClick={() => void handleCodexStartLogin('browser')}
                             >
                               <Link2 className="mr-1 size-3.5" />
                               {codexNeedsReconnect ? 'Generate link' : 'Connect ChatGPT'}

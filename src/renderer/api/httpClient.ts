@@ -11,7 +11,10 @@ import {
   createEmptyMemberLogStreamResponse,
 } from '@features/member-log-stream/contracts';
 
-import type { CodexAccountSnapshotDto } from '@features/codex-account/contracts';
+import type {
+  CodexAccountSnapshotDto,
+  CodexStartChatgptLoginOptions,
+} from '@features/codex-account/contracts';
 import type { MemberLogStreamApi } from '@features/member-log-stream/contracts';
 import type { DashboardRecentProjectsPayload } from '@features/recent-projects/contracts';
 import type { RuntimeProviderManagementApi } from '@features/runtime-provider-management/contracts';
@@ -240,7 +243,9 @@ export class HttpAPIClient implements ElectronAPI {
   }): Promise<CodexAccountSnapshotDto> =>
     Promise.reject(new Error('Codex account bridge is unavailable in browser mode'));
 
-  startCodexChatgptLogin = (): Promise<CodexAccountSnapshotDto> =>
+  startCodexChatgptLogin = (
+    _options?: CodexStartChatgptLoginOptions
+  ): Promise<CodexAccountSnapshotDto> =>
     Promise.reject(new Error('Codex account bridge is unavailable in browser mode'));
 
   cancelCodexChatgptLogin = (): Promise<CodexAccountSnapshotDto> =>

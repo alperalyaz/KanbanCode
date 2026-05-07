@@ -411,6 +411,9 @@ describe('CodexNativeMemberTraceStreamSource', () => {
         members: [{ name: 'alice', providerId: 'opencode' }],
       }),
     } as never);
+    const unknownLeadSource = new CodexNativeMemberTraceStreamSource({
+      getConfig: vi.fn().mockRejectedValue(new Error('config unavailable')),
+    } as never);
 
     await expect(codexSource.load(sourceInput())).resolves.toMatchObject({
       status: 'skipped',
@@ -420,22 +423,39 @@ describe('CodexNativeMemberTraceStreamSource', () => {
       status: 'skipped',
       warnings: [],
     });
+    await expect(
+      unknownLeadSource.load(sourceInput({ memberName: 'team-lead' }))
+    ).resolves.toMatchObject({
+      status: 'skipped',
+      warnings: [],
+    });
   });
 });
 
 describe('CodexNativeMemberTracePreviewSource', () => {
-  it('returns unsupported empty coverage for Codex preview without breaking the batch', async () => {
-    const source = new CodexNativeMemberTracePreviewSource({
+  it('returns unsupported empty coverage for known Codex previews without breaking the batch', async () => {
+    const codexSource = new CodexNativeMemberTracePreviewSource({
       getConfig: vi.fn().mockResolvedValue({
         members: [{ name: 'alice', providerId: 'codex' }],
       }),
     } as never);
+    const unknownLeadSource = new CodexNativeMemberTracePreviewSource({
+      getConfig: vi.fn().mockRejectedValue(new Error('config unavailable')),
+    } as never);
 
-    await expect(source.loadPreview(previewInput())).resolves.toMatchObject({
+    await expect(codexSource.loadPreview(previewInput())).resolves.toMatchObject({
       provider: 'codex_native_trace',
       status: 'skipped',
       items: [],
       warnings: [{ code: 'codex_member_wide_not_supported' }],
+    });
+    await expect(
+      unknownLeadSource.loadPreview(previewInput({ memberName: 'team-lead' }))
+    ).resolves.toMatchObject({
+      provider: 'codex_native_trace',
+      status: 'skipped',
+      items: [],
+      warnings: [],
     });
   });
 });

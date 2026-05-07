@@ -1757,6 +1757,19 @@ interface OpenCodeSecondaryRetryOutcome {
   reason?: string;
 }
 
+type MemberLifecycleOperationKind =
+  | 'manual_restart'
+  | 'opencode_retry'
+  | 'opencode_member_added'
+  | 'opencode_member_updated'
+  | 'opencode_member_removed';
+
+interface MemberLifecycleOperation {
+  kind: MemberLifecycleOperationKind;
+  token: symbol;
+  startedAtMs: number;
+}
+
 function formatOpenCodeLaneTimingMs(value: number | null | undefined): string {
   return typeof value === 'number' && Number.isFinite(value)
     ? `${Math.max(0, Math.round(value))}ms`
@@ -5372,6 +5385,7 @@ export class TeamProvisioningService {
     string,
     Promise<RetryFailedOpenCodeSecondaryLanesResult>
   >();
+  private readonly memberLifecycleOperations = new Map<string, MemberLifecycleOperation>();
   private memberRuntimeAdvisoryInvalidator:
     | ((teamName: string, memberName: string) => void)
     | null = null;
@@ -13081,7 +13095,79 @@ export class TeamProvisioningService {
     this.setMemberSpawnStatus(input.run, input.memberName, 'waiting');
   }
 
+  private getMemberLifecycleOperationKey(teamName: string, memberName: string): string {
+    return `${teamName.trim().toLowerCase()}\u0000${memberName.trim().toLowerCase()}`;
+  }
+
+  private getActiveMemberLifecycleOperation(
+    teamName: string,
+    memberName: string
+  ): MemberLifecycleOperation | null {
+    return (
+      this.memberLifecycleOperations.get(
+        this.getMemberLifecycleOperationKey(teamName, memberName)
+      ) ?? null
+    );
+  }
+
+  private isMemberLifecycleOperationActive(teamName: string, memberName: string): boolean {
+    return this.getActiveMemberLifecycleOperation(teamName, memberName) !== null;
+  }
+
+  private createMemberLifecycleOperationInProgressError(memberName: string): Error {
+    return new Error(`Lifecycle operation for teammate "${memberName}" is already in progress`);
+  }
+
+  private isMemberLifecycleOperationInProgressError(error: unknown): boolean {
+    return (
+      error instanceof Error &&
+      /^Lifecycle operation for teammate ".+" is already in progress$/.test(error.message)
+    );
+  }
+
+  private async runMemberLifecycleOperation<T>(
+    teamName: string,
+    memberName: string,
+    kind: MemberLifecycleOperationKind,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    const key = this.getMemberLifecycleOperationKey(teamName, memberName);
+    if (this.memberLifecycleOperations.has(key)) {
+      throw this.createMemberLifecycleOperationInProgressError(memberName);
+    }
+
+    const token = Symbol(`${kind}:${teamName}:${memberName}`);
+    this.memberLifecycleOperations.set(key, {
+      kind,
+      token,
+      startedAtMs: Date.now(),
+    });
+    this.invalidateRuntimeSnapshotCaches(teamName);
+    try {
+      return await operation();
+    } finally {
+      if (this.memberLifecycleOperations.get(key)?.token === token) {
+        this.memberLifecycleOperations.delete(key);
+      }
+      this.invalidateRuntimeSnapshotCaches(teamName);
+    }
+  }
+
+  private getOpenCodeReattachLifecycleKind(
+    reason?: 'member_added' | 'member_updated' | 'manual_restart'
+  ): MemberLifecycleOperationKind {
+    if (reason === 'member_added') return 'opencode_member_added';
+    if (reason === 'member_updated') return 'opencode_member_updated';
+    return 'manual_restart';
+  }
+
   async restartMember(teamName: string, memberName: string): Promise<void> {
+    return this.runMemberLifecycleOperation(teamName, memberName, 'manual_restart', () =>
+      this.restartMemberUnlocked(teamName, memberName)
+    );
+  }
+
+  private async restartMemberUnlocked(teamName: string, memberName: string): Promise<void> {
     const runId = this.getAliveRunId(teamName);
     if (!runId) {
       throw new Error(`Team "${teamName}" is not currently running`);
@@ -13142,7 +13228,7 @@ export class TeamProvisioningService {
     const leadProviderId = resolveTeamProviderId(run.request.providerId);
     const desiredSecondaryLane = desiredProviderId === 'opencode' && leadProviderId !== 'opencode';
     if (liveSecondaryLaneMemberName === memberName || desiredSecondaryLane) {
-      await this.reattachOpenCodeOwnedMemberLane(teamName, memberName, {
+      await this.reattachOpenCodeOwnedMemberLaneUnlocked(teamName, memberName, {
         reason: 'manual_restart',
       });
       return;
@@ -13447,9 +13533,15 @@ export class TeamProvisioningService {
       }
 
       try {
-        await this.reattachOpenCodeOwnedMemberLane(teamName, candidate.memberName, {
-          reason: 'manual_restart',
-        });
+        await this.runMemberLifecycleOperation(
+          teamName,
+          candidate.memberName,
+          'opencode_retry',
+          () =>
+            this.reattachOpenCodeOwnedMemberLaneUnlocked(teamName, candidate.memberName, {
+              reason: 'manual_restart',
+            })
+        );
         result.attempted.push(candidate.memberName);
 
         const outcome = await this.readOpenCodeSecondaryRetryOutcome(
@@ -13473,10 +13565,17 @@ export class TeamProvisioningService {
           result.pending.push(candidate.memberName);
         }
       } catch (error) {
-        result.failed.push({
-          memberName: candidate.memberName,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        if (this.isMemberLifecycleOperationInProgressError(error)) {
+          result.skipped.push({
+            memberName: candidate.memberName,
+            reason: 'Lifecycle operation already in progress',
+          });
+        } else {
+          result.failed.push({
+            memberName: candidate.memberName,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
     }
 
@@ -13905,6 +14004,19 @@ export class TeamProvisioningService {
     memberName: string,
     options?: { reason?: 'member_added' | 'member_updated' | 'manual_restart' }
   ): Promise<void> {
+    return this.runMemberLifecycleOperation(
+      teamName,
+      memberName,
+      this.getOpenCodeReattachLifecycleKind(options?.reason),
+      () => this.reattachOpenCodeOwnedMemberLaneUnlocked(teamName, memberName, options)
+    );
+  }
+
+  private async reattachOpenCodeOwnedMemberLaneUnlocked(
+    teamName: string,
+    memberName: string,
+    options?: { reason?: 'member_added' | 'member_updated' | 'manual_restart' }
+  ): Promise<void> {
     const run = this.getMutableAliveRunOrThrow(teamName);
     const leadProviderId = resolveTeamProviderId(run.request.providerId);
     if (leadProviderId === 'opencode') {
@@ -14058,6 +14170,15 @@ export class TeamProvisioningService {
   }
 
   async detachOpenCodeOwnedMemberLane(teamName: string, memberName: string): Promise<void> {
+    return this.runMemberLifecycleOperation(teamName, memberName, 'opencode_member_removed', () =>
+      this.detachOpenCodeOwnedMemberLaneUnlocked(teamName, memberName)
+    );
+  }
+
+  private async detachOpenCodeOwnedMemberLaneUnlocked(
+    teamName: string,
+    memberName: string
+  ): Promise<void> {
     const run = this.getMutableAliveRunOrThrow(teamName);
     const laneIndex = run.mixedSecondaryLanes.findIndex((lane) =>
       matchesTeamMemberIdentity(lane.member.name, memberName)
@@ -16529,13 +16650,51 @@ export class TeamProvisioningService {
   }
 
   private flushStdoutParserCarry(run: ProvisioningRun): void {
-    const trimmed = run.stdoutParserCarry.trim();
+    const stdoutParserCarry =
+      typeof run.stdoutParserCarry === 'string' ? run.stdoutParserCarry : '';
+    const trimmed = stdoutParserCarry.trim();
     if (!trimmed || !run.stdoutParserCarryIsCompleteJson) {
       return;
     }
 
+    logger.warn(
+      `[${run.teamName}] Flushing final stream-json stdout carry before process close handling`,
+      this.buildStdoutCarryDiagnostic(run)
+    );
     this.handleStdoutParserLine(run, trimmed);
     this.updateStdoutParserCarry(run, '');
+  }
+
+  private buildStdoutCarryDiagnostic(run: ProvisioningRun): Record<string, unknown> {
+    const stdoutParserCarry =
+      typeof run.stdoutParserCarry === 'string' ? run.stdoutParserCarry : '';
+    const diagnostic: Record<string, unknown> = {
+      runId: run.runId,
+      stdoutCarryLength: stdoutParserCarry.length,
+      stdoutCarryCompleteJson: run.stdoutParserCarryIsCompleteJson === true,
+      stdoutCarryLooksLikeClaudeJson: run.stdoutParserCarryLooksLikeClaudeJson === true,
+    };
+
+    if (run.stdoutParserCarryIsCompleteJson === true) {
+      try {
+        const parsed = JSON.parse(stdoutParserCarry.trim()) as Record<string, unknown>;
+        diagnostic.messageType = typeof parsed.type === 'string' ? parsed.type : null;
+        diagnostic.messageSubtype = typeof parsed.subtype === 'string' ? parsed.subtype : null;
+        diagnostic.bootstrapEvent = typeof parsed.event === 'string' ? parsed.event : null;
+        diagnostic.sequence = typeof parsed.seq === 'number' ? parsed.seq : null;
+      } catch {
+        diagnostic.messageType = null;
+      }
+    }
+
+    return diagnostic;
+  }
+
+  private getUnconfirmedBootstrapMemberNames(run: ProvisioningRun): string[] {
+    return run.expectedMembers.filter((expected) => {
+      const status = run.memberSpawnStatuses.get(expected);
+      return status?.bootstrapConfirmed !== true && status?.skippedForLaunch !== true;
+    });
   }
 
   private handleStdoutParserLine(run: ProvisioningRun, trimmed: string): void {
@@ -20366,6 +20525,9 @@ export class TeamProvisioningService {
       if (matchedRuntimeNames.length > 0) {
         continue;
       }
+      if (this.isMemberLifecycleOperationActive(run.teamName, expected)) {
+        continue;
+      }
 
       const current = run.memberSpawnStatuses.get(expected);
       if (
@@ -20399,22 +20561,26 @@ export class TeamProvisioningService {
       if (prev.bootstrapConfirmed || prev.skippedForLaunch) {
         continue;
       }
-      const hasExistingFailure =
+      if (this.isMemberLifecycleOperationActive(run.teamName, expected)) {
+        continue;
+      }
+      const hasExistingTerminalFailure =
         prev.status === 'error' ||
         prev.launchState === 'failed_to_start' ||
         prev.hardFailure === true ||
-        Boolean(prev.error) ||
         Boolean(prev.hardFailureReason);
-      if (options?.preserveExistingFailure && hasExistingFailure) {
-        continue;
-      }
+      const preservedFailureReason =
+        options?.preserveExistingFailure && hasExistingTerminalFailure
+          ? (prev.hardFailureReason ?? prev.error)?.trim()
+          : undefined;
 
       const runtimeWasAlive = prev.runtimeAlive === true || prev.livenessSource === 'process';
-      const hardFailureReason = runtimeWasAlive
+      const fallbackFailureReason = runtimeWasAlive
         ? `${baseReason} Runtime process was alive after bootstrap failure${
             options?.cleanupRequested ? '; launch-owned cleanup requested.' : '.'
           }`
         : baseReason;
+      const hardFailureReason = preservedFailureReason || fallbackFailureReason;
       const next: MemberSpawnStatusEntry = {
         ...prev,
         status: 'error',
@@ -28356,6 +28522,15 @@ export class TeamProvisioningService {
           : run.progress.state === 'failed' && run.progress.message.trim()
             ? run.progress.message.trim()
             : 'Launch ended before teammate bootstrap completed.';
+      logger.warn(`[${run.teamName}] Launch cleanup finalizing unconfirmed bootstrap members`, {
+        runId: run.runId,
+        progressState: run.progress.state,
+        progressMessage: run.progress.message,
+        progressError: run.progress.error ?? null,
+        cleanupReason,
+        unconfirmedMembers: this.getUnconfirmedBootstrapMemberNames(run),
+        ...this.buildStdoutCarryDiagnostic(run),
+      });
       this.markUnconfirmedBootstrapMembersFailed(run, cleanupReason, {
         cleanupRequested: true,
         preserveExistingFailure: true,
@@ -28640,6 +28815,10 @@ export class TeamProvisioningService {
     }
   }
 
+  private isProvisioningRunFailed(run: ProvisioningRun): boolean {
+    return run.progress.state === 'failed';
+  }
+
   private async handleProcessExit(run: ProvisioningRun, code: number | null): Promise<void> {
     if (run.finalizingByTimeout) {
       return;
@@ -28655,7 +28834,25 @@ export class TeamProvisioningService {
       return;
     }
 
+    if (
+      (typeof run.stdoutParserCarry === 'string' ? run.stdoutParserCarry.trim() : '') &&
+      !run.stdoutParserCarryIsCompleteJson &&
+      run.stdoutParserCarryLooksLikeClaudeJson
+    ) {
+      logger.warn(
+        `[${run.teamName}] Process closed with incomplete stream-json stdout carry`,
+        this.buildStdoutCarryDiagnostic(run)
+      );
+    }
     this.flushStdoutParserCarry(run);
+    if (
+      this.isProvisioningRunFailed(run) ||
+      run.cancelRequested ||
+      run.processKilled ||
+      run.authRetryInProgress
+    ) {
+      return;
+    }
 
     // IMPORTANT: stopStallWatchdog MUST be AFTER authRetryInProgress guard above!
     // During respawn, the old process exit fires but run.stallCheckHandle already

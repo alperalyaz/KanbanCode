@@ -2,6 +2,7 @@ import {
   type CodexAccountAuthMode,
   type CodexAccountSnapshotDto,
   type CodexApiKeyAvailabilityDto,
+  type CodexChatgptLoginMode,
   type CodexCreditsSnapshotDto,
   type CodexLoginStateDto,
   type CodexManagedAccountDto,
@@ -234,7 +235,7 @@ export interface CodexAccountFeatureFacade {
     includeRateLimits?: boolean;
     forceRefreshToken?: boolean;
   }): Promise<CodexAccountSnapshotDto>;
-  startChatgptLogin(): Promise<CodexAccountSnapshotDto>;
+  startChatgptLogin(options?: { mode?: CodexChatgptLoginMode }): Promise<CodexAccountSnapshotDto>;
   cancelLogin(): Promise<CodexAccountSnapshotDto>;
   logout(): Promise<CodexAccountSnapshotDto>;
   subscribe(listener: (snapshot: CodexAccountSnapshotDto) => void): () => void;
@@ -323,7 +324,9 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
     return this.refreshPromise;
   }
 
-  async startChatgptLogin(): Promise<CodexAccountSnapshotDto> {
+  async startChatgptLogin(options?: {
+    mode?: CodexChatgptLoginMode;
+  }): Promise<CodexAccountSnapshotDto> {
     let binaryMissing = false;
     await this.runSerializedMutation(async () => {
       const binaryPath = await CodexBinaryResolver.resolve();
@@ -333,7 +336,7 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
       }
 
       const env = this.envBuilder.buildControlPlaneEnv({ binaryPath });
-      await this.loginSessionManager.start({ binaryPath, env });
+      await this.loginSessionManager.start({ binaryPath, env, mode: options?.mode });
     });
 
     if (binaryMissing) {

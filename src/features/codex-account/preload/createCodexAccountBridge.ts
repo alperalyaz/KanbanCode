@@ -21,7 +21,8 @@ export function createCodexAccountBridge({
     getCodexAccountSnapshot: () => ipcRenderer.invoke(CODEX_ACCOUNT_GET_SNAPSHOT),
     refreshCodexAccountSnapshot: (options) =>
       ipcRenderer.invoke(CODEX_ACCOUNT_REFRESH_SNAPSHOT, options),
-    startCodexChatgptLogin: () => ipcRenderer.invoke(CODEX_ACCOUNT_START_CHATGPT_LOGIN),
+    startCodexChatgptLogin: (options) =>
+      ipcRenderer.invoke(CODEX_ACCOUNT_START_CHATGPT_LOGIN, options),
     cancelCodexChatgptLogin: () => ipcRenderer.invoke(CODEX_ACCOUNT_CANCEL_CHATGPT_LOGIN),
     logoutCodexAccount: () => ipcRenderer.invoke(CODEX_ACCOUNT_LOGOUT),
     onCodexAccountSnapshotChanged: (callback) => {

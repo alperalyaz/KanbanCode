@@ -1,4 +1,8 @@
-import type { CodexAccountSnapshotDto } from './dto';
+import type { CodexAccountSnapshotDto, CodexChatgptLoginMode } from './dto';
+
+export interface CodexStartChatgptLoginOptions {
+  mode?: CodexChatgptLoginMode;
+}
 
 export interface CodexAccountElectronApi {
   getCodexAccountSnapshot: () => Promise<CodexAccountSnapshotDto>;
@@ -6,7 +10,9 @@ export interface CodexAccountElectronApi {
     includeRateLimits?: boolean;
     forceRefreshToken?: boolean;
   }) => Promise<CodexAccountSnapshotDto>;
-  startCodexChatgptLogin: () => Promise<CodexAccountSnapshotDto>;
+  startCodexChatgptLogin: (
+    options?: CodexStartChatgptLoginOptions
+  ) => Promise<CodexAccountSnapshotDto>;
   cancelCodexChatgptLogin: () => Promise<CodexAccountSnapshotDto>;
   logoutCodexAccount: () => Promise<CodexAccountSnapshotDto>;
   onCodexAccountSnapshotChanged: (

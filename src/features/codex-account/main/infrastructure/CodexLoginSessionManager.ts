@@ -5,7 +5,7 @@ import {
   type CodexAppServerSession,
 } from '@main/services/infrastructure/codexAppServer';
 
-import type { CodexLoginStateDto } from '@features/codex-account/contracts';
+import type { CodexChatgptLoginMode, CodexLoginStateDto } from '@features/codex-account/contracts';
 import type { CodexAppServerSessionFactory } from '@main/services/infrastructure/codexAppServer';
 
 const LOGIN_REQUEST_TIMEOUT_MS = 5_000;
@@ -59,7 +59,11 @@ export class CodexLoginSessionManager {
     return structuredClone(this.state);
   }
 
-  async start(options: { binaryPath: string; env: NodeJS.ProcessEnv }): Promise<void> {
+  async start(options: {
+    binaryPath: string;
+    env: NodeJS.ProcessEnv;
+    mode?: CodexChatgptLoginMode;
+  }): Promise<void> {
     if (this.activeSession || this.pendingStartToken) {
       return;
     }
@@ -89,9 +93,11 @@ export class CodexLoginSessionManager {
         return;
       }
 
+      const requestedResponseType =
+        options.mode === 'device_code' ? 'chatgptDeviceCode' : 'chatgpt';
       const response = await session.request<CodexAppServerLoginAccountResponse>(
         'account/login/start',
-        { type: 'chatgptDeviceCode' },
+        { type: requestedResponseType },
         LOGIN_REQUEST_TIMEOUT_MS
       );
 
@@ -100,16 +106,19 @@ export class CodexLoginSessionManager {
         return;
       }
 
-      if (response.type !== 'chatgptDeviceCode') {
+      if (response.type !== requestedResponseType) {
         throw new Error('Codex app-server returned an unexpected login response type');
       }
 
-      const authUrl = new URL(response.verificationUrl);
+      const authUrl = new URL(
+        response.type === 'chatgptDeviceCode' ? response.verificationUrl : response.authUrl
+      );
       if (authUrl.protocol !== 'https:') {
         throw new Error('Codex app-server returned a non-https auth URL');
       }
 
-      if (!response.userCode.trim()) {
+      const userCode = response.type === 'chatgptDeviceCode' ? response.userCode.trim() : null;
+      if (response.type === 'chatgptDeviceCode' && !userCode) {
         throw new Error('Codex app-server returned an empty ChatGPT login code');
       }
 
@@ -143,7 +152,7 @@ export class CodexLoginSessionManager {
         error: null,
         startedAt: this.state.startedAt,
         authUrl: authUrl.toString(),
-        userCode: response.userCode,
+        userCode,
       });
     } catch (error) {
       const wasAbandonedDuringStart =

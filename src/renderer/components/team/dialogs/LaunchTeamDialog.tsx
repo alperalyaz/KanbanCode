@@ -588,11 +588,14 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     });
   }, [bootstrapCliStatus, cliStatus, cliStatusLoading, fetchCliStatus, multimodelEnabled, open]);
 
-  const handleCodexReconnect = React.useCallback(() => {
-    void (async () => {
-      await codexAccount.startChatgptLogin();
-    })();
-  }, [codexAccount]);
+  const handleCodexReconnect = React.useCallback(
+    (mode: 'browser' | 'device_code' = 'browser') => {
+      void (async () => {
+        await codexAccount.startChatgptLogin(mode);
+      })();
+    },
+    [codexAccount]
+  );
 
   // Schedule store actions
   const createSchedule = useStore((s) => s.createSchedule);
@@ -2912,7 +2915,8 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                         authUrl={codexAccount.snapshot?.login.authUrl ?? null}
                         userCode={codexAccount.snapshot?.login.userCode ?? null}
                         reconnectBusy={codexAccount.loading}
-                        onReconnect={handleCodexReconnect}
+                        onReconnect={() => handleCodexReconnect('browser')}
+                        onDeviceCodeReconnect={() => handleCodexReconnect('device_code')}
                       />
                     </div>
                   ) : null}

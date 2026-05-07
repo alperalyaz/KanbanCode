@@ -68,11 +68,13 @@ export const CodexReconnectPrompt = ({
   userCode,
   reconnectBusy,
   onReconnect,
+  onDeviceCodeReconnect,
 }: {
   authUrl: string | null;
   userCode: string | null;
   reconnectBusy: boolean;
   onReconnect: () => void;
+  onDeviceCodeReconnect: () => void;
 }): React.JSX.Element => {
   return (
     <div
@@ -94,6 +96,20 @@ export const CodexReconnectPrompt = ({
           disabled={reconnectBusy}
           size="xs"
         />
+        {!authUrl ? (
+          <button
+            type="button"
+            onClick={onDeviceCodeReconnect}
+            disabled={reconnectBusy}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium text-amber-300 transition-colors hover:bg-white/5 disabled:opacity-50"
+            style={{
+              borderColor: 'rgba(245, 158, 11, 0.24)',
+              backgroundColor: 'rgba(245, 158, 11, 0.05)',
+            }}
+          >
+            Use code
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => {

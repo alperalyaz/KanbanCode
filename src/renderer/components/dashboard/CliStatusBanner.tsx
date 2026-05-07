@@ -281,6 +281,7 @@ interface InstalledBannerProps {
   onProviderManage: (providerId: CliProviderId) => void;
   onProviderRefresh: (providerId: CliProviderId) => void;
   onCodexReconnect: () => void;
+  onCodexDeviceCodeLogin: () => void;
   codexReconnectBusy: boolean;
   variant: BannerVariant;
 }
@@ -584,6 +585,7 @@ const InstalledBanner = ({
   onProviderManage,
   onProviderRefresh,
   onCodexReconnect,
+  onCodexDeviceCodeLogin,
   codexReconnectBusy,
   variant,
 }: InstalledBannerProps): React.JSX.Element => {
@@ -899,6 +901,21 @@ const InstalledBanner = ({
                                 size="xs"
                               />
                               <CodexLoginUserCodeBadge userCode={codexLoginUserCode} />
+                              {!codexLoginAuthUrl ? (
+                                <button
+                                  type="button"
+                                  onClick={onCodexDeviceCodeLogin}
+                                  disabled={codexReconnectBusy || actionDisabled}
+                                  className="shrink-0 rounded-md border px-2 py-1 text-[10px] font-medium transition-colors hover:bg-white/5 disabled:opacity-50"
+                                  style={{
+                                    borderColor: 'rgba(245, 158, 11, 0.22)',
+                                    backgroundColor: 'rgba(245, 158, 11, 0.05)',
+                                    color: '#fbbf24',
+                                  }}
+                                >
+                                  Use code
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1161,7 +1178,13 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
 
   const handleCodexDashboardLogin = useCallback(() => {
     void (async () => {
-      await codexAccount.startChatgptLogin();
+      await codexAccount.startChatgptLogin('browser');
+    })();
+  }, [codexAccount]);
+
+  const handleCodexDashboardDeviceCodeLogin = useCallback(() => {
+    void (async () => {
+      await codexAccount.startChatgptLogin('device_code');
     })();
   }, [codexAccount]);
 
@@ -1412,6 +1435,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
           onProviderManage={handleProviderManage}
           onProviderRefresh={handleProviderRefresh}
           onCodexReconnect={handleCodexDashboardLogin}
+          onCodexDeviceCodeLogin={handleCodexDashboardDeviceCodeLogin}
           codexReconnectBusy={codexAccount.loading}
           variant="info"
         />
@@ -1637,6 +1661,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
             onProviderManage={handleProviderManage}
             onProviderRefresh={handleProviderRefresh}
             onCodexReconnect={handleCodexDashboardLogin}
+            onCodexDeviceCodeLogin={handleCodexDashboardDeviceCodeLogin}
             codexReconnectBusy={codexAccount.loading}
             variant={variant}
           />
@@ -1696,6 +1721,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
           onProviderManage={handleProviderManage}
           onProviderRefresh={handleProviderRefresh}
           onCodexReconnect={handleCodexDashboardLogin}
+          onCodexDeviceCodeLogin={handleCodexDashboardDeviceCodeLogin}
           codexReconnectBusy={codexAccount.loading}
           variant={variant}
         />
@@ -1915,6 +1941,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
         onProviderManage={handleProviderManage}
         onProviderRefresh={handleProviderRefresh}
         onCodexReconnect={handleCodexDashboardLogin}
+        onCodexDeviceCodeLogin={handleCodexDashboardDeviceCodeLogin}
         codexReconnectBusy={codexAccount.loading}
         variant={variant}
       />

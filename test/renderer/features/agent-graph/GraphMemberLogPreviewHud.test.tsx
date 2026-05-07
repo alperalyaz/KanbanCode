@@ -164,8 +164,8 @@ describe('GraphMemberLogPreviewHud', () => {
     expect(row).not.toBeUndefined();
     expect(row?.querySelector('.float-left')).not.toBeNull();
     expect(row?.querySelector('.line-clamp-3')).toBeNull();
-    expect(row?.className).toContain('h-[68px]');
-    expect(row?.querySelector('span.text-slate-200')?.className).toContain('leading-[18px]');
+    expect(row?.className).toContain('h-[72px]');
+    expect(row?.querySelector('span.text-slate-200')?.className).toContain('leading-5');
     expect(row?.textContent).toContain('pnpm test');
 
     const errorRow = Array.from(host.querySelectorAll('button')).find((button) =>
@@ -564,6 +564,87 @@ describe('GraphMemberLogPreviewHud', () => {
     });
   });
 
+  it('renders distinct empty states for unsupported and simply empty members', async () => {
+    const codexNode: GraphNode = {
+      id: 'member:alpha-team:codex-dev',
+      kind: 'member',
+      label: 'codex-dev',
+      state: 'idle',
+      domainRef: { kind: 'member', teamName: 'alpha-team', memberName: 'codex-dev' },
+    };
+    const quietNode: GraphNode = {
+      id: 'member:alpha-team:quiet-dev',
+      kind: 'member',
+      label: 'quiet-dev',
+      state: 'idle',
+      domainRef: { kind: 'member', teamName: 'alpha-team', memberName: 'quiet-dev' },
+    };
+    mockedPreviewsByMember = new Map<string, MemberLogPreviewMember>([
+      [
+        'codex-dev',
+        {
+          memberName: 'codex-dev',
+          items: [],
+          coverage: [{ provider: 'codex_native_trace', status: 'skipped' }],
+          warnings: [
+            {
+              code: 'codex_member_wide_not_supported',
+              message: 'Codex member-wide native trace is not available in this variant yet.',
+            },
+          ],
+          truncated: false,
+          overflowCount: 0,
+          generatedAt: '2026-04-03T00:00:00.000Z',
+        },
+      ],
+      [
+        'quiet-dev',
+        {
+          memberName: 'quiet-dev',
+          items: [],
+          coverage: [{ provider: 'claude_transcript', status: 'skipped' }],
+          warnings: [],
+          truncated: false,
+          overflowCount: 0,
+          generatedAt: '2026-04-03T00:00:00.000Z',
+        },
+      ],
+    ]);
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <GraphMemberLogPreviewHud
+          teamName="alpha-team"
+          nodes={[codexNode, quietNode]}
+          getLogWorldRect={(ownerNodeId) => ({
+            left: ownerNodeId.includes('quiet') ? 360 : 40,
+            top: 80,
+            right: ownerNodeId.includes('quiet') ? 620 : 300,
+            bottom: 372,
+            width: 260,
+            height: 292,
+          })}
+          getCameraZoom={() => 1}
+          worldToScreen={(x, y) => ({ x, y })}
+          getViewportSize={() => ({ width: 1200, height: 800 })}
+          focusNodeIds={null}
+        />
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Unsupported provider');
+    expect(host.textContent).toContain('No recent logs');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
   it('renders lead log previews and opens the lead profile logs tab', async () => {
     const leadNode: GraphNode = {
       id: 'lead:alpha-team',
@@ -712,6 +793,157 @@ describe('GraphMemberLogPreviewHud', () => {
     expect(bashResultRow?.textContent).toContain('Bash');
     expect(bashResultRow?.textContent).not.toContain('Bash result');
     expect(bashResultRow?.textContent).not.toContain('result app/components');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('truncates long event titles without losing the full tooltip context', async () => {
+    mockedPreviewsByMember = new Map<string, MemberLogPreviewMember>([
+      [
+        'alice',
+        {
+          memberName: 'alice',
+          items: [
+            {
+              id: 'long-title-preview',
+              kind: 'tool_use',
+              provider: 'claude_transcript',
+              timestamp: '2026-04-03T00:01:00.000Z',
+              title: 'Very long custom provider tool name',
+              preview:
+                'Very long custom provider tool name: compact body should still remain visible',
+              tone: 'warning',
+            },
+          ],
+          coverage: [{ provider: 'claude_transcript', status: 'included' }],
+          warnings: [],
+          truncated: false,
+          overflowCount: 0,
+          generatedAt: '2026-04-03T00:01:00.000Z',
+        },
+      ],
+    ]);
+    const node: GraphNode = {
+      id: 'member:alpha-team:alice',
+      kind: 'member',
+      label: 'alice',
+      state: 'active',
+      domainRef: { kind: 'member', teamName: 'alpha-team', memberName: 'alice' },
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <GraphMemberLogPreviewHud
+          teamName="alpha-team"
+          nodes={[node]}
+          getLogWorldRect={() => ({
+            left: 40,
+            top: 80,
+            right: 300,
+            bottom: 372,
+            width: 260,
+            height: 292,
+          })}
+          getCameraZoom={() => 1}
+          worldToScreen={(x, y) => ({ x, y })}
+          getViewportSize={() => ({ width: 1200, height: 800 })}
+          focusNodeIds={null}
+        />
+      );
+      await Promise.resolve();
+    });
+
+    const row = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('compact body')
+    );
+    expect(row?.textContent).toContain('Very long custom prov...');
+    expect(row?.textContent).toContain('compact body should still remain visible');
+    expect(row?.textContent).not.toContain('Very long custom provider tool nameVery long');
+    expect(row?.getAttribute('title')).toContain('Very long custom provider tool name');
+    expect(row?.getAttribute('aria-label')).toContain('Very long custom provider tool name');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('uses safe fallback titles for malformed compact events', async () => {
+    mockedPreviewsByMember = new Map<string, MemberLogPreviewMember>([
+      [
+        'alice',
+        {
+          memberName: 'alice',
+          items: [
+            {
+              id: 'empty-title-result',
+              kind: 'tool_result',
+              provider: 'claude_transcript',
+              timestamp: '2026-04-03T00:01:00.000Z',
+              title: '   ',
+              preview: 'stored',
+              tone: 'success',
+            },
+            {
+              id: 'empty-title-error',
+              kind: 'text',
+              provider: 'claude_transcript',
+              timestamp: 'bad timestamp',
+              title: '',
+              preview: 'provider returned malformed timestamp',
+              tone: 'error',
+            },
+          ],
+          coverage: [{ provider: 'claude_transcript', status: 'included' }],
+          warnings: [],
+          truncated: false,
+          overflowCount: 0,
+          generatedAt: '2026-04-03T00:01:00.000Z',
+        },
+      ],
+    ]);
+    const node: GraphNode = {
+      id: 'member:alpha-team:alice',
+      kind: 'member',
+      label: 'alice',
+      state: 'active',
+      domainRef: { kind: 'member', teamName: 'alpha-team', memberName: 'alice' },
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <GraphMemberLogPreviewHud
+          teamName="alpha-team"
+          nodes={[node]}
+          getLogWorldRect={() => ({
+            left: 40,
+            top: 80,
+            right: 300,
+            bottom: 372,
+            width: 260,
+            height: 292,
+          })}
+          getCameraZoom={() => 1}
+          worldToScreen={(x, y) => ({ x, y })}
+          getViewportSize={() => ({ width: 1200, height: 800 })}
+          focusNodeIds={null}
+        />
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Tool result');
+    expect(host.textContent).toContain('stored');
+    expect(host.textContent).toContain('Error');
+    expect(host.textContent).toContain('provider returned malformed timestamp');
+    expect(host.textContent).not.toContain('undefined');
 
     act(() => {
       root.unmount();

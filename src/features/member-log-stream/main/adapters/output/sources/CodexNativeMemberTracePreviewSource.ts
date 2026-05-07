@@ -1,5 +1,3 @@
-import { isLeadMember } from '@shared/utils/leadDetection';
-
 import type {
   MemberLogPreviewSource,
   MemberLogPreviewSourceInput,
@@ -18,9 +16,7 @@ export class CodexNativeMemberTracePreviewSource implements MemberLogPreviewSour
       (item) => item.name.trim().toLowerCase() === input.memberName.trim().toLowerCase()
     );
     const isCodexMember =
-      member?.providerId === 'codex' ||
-      member?.providerBackendId === 'codex-native' ||
-      (member ? false : isLeadMember({ name: input.memberName }));
+      member?.providerId === 'codex' || member?.providerBackendId === 'codex-native';
 
     return {
       provider: this.provider,
