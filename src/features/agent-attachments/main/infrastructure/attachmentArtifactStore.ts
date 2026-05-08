@@ -6,8 +6,10 @@ import * as path from 'path';
 export type AgentAttachmentArtifactFileName =
   | 'original.png'
   | 'original.jpg'
+  | 'original.webp'
   | 'optimized.png'
   | 'optimized.jpg'
+  | 'optimized.webp'
   | 'thumb.jpg'
   | 'meta.json';
 
