@@ -18,6 +18,10 @@ import {
   composerDraftStorage,
 } from '@renderer/services/composerDraftStorage';
 import {
+  DEFAULT_AGENT_IMAGE_OPTIMIZATION_BUDGET,
+  optimizeImageForAgent,
+} from '@features/agent-attachments/renderer';
+import {
   fileToAttachmentPayload,
   MAX_FILES,
   MAX_TOTAL_SIZE,
@@ -103,6 +107,40 @@ function snapshotMatchesContent(
     draftPayloadEquals(snapshot.chips, content.chips) &&
     draftPayloadEquals(snapshot.attachments, content.attachments)
   );
+}
+
+function imageOutputFilename(filename: string, mimeType: 'image/png' | 'image/jpeg'): string {
+  const trimmed = filename.trim() || 'image';
+  const withoutExtension = trimmed.replace(/\.[^.\\/]+$/, '') || 'image';
+  return `${withoutExtension}.${mimeType === 'image/png' ? 'png' : 'jpg'}`;
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+      resolve(dataUrl.split(',')[1] ?? '');
+    };
+    reader.onerror = () => reject(new Error('Failed to read optimized image'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function fileToAgentAttachmentPayload(file: File): Promise<AttachmentPayload> {
+  const category = categorizeFile(file);
+  if (category !== 'image' || file.type === 'image/gif') {
+    return fileToAttachmentPayload(file);
+  }
+
+  const optimized = await optimizeImageForAgent({ file });
+  return {
+    id: crypto.randomUUID(),
+    filename: imageOutputFilename(file.name, optimized.optimized.mimeType),
+    mimeType: optimized.optimized.mimeType,
+    size: optimized.optimized.sizeBytes,
+    data: await blobToBase64(optimized.optimized.blob),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -403,23 +441,23 @@ export function useComposerDraft(teamName: string): UseComposerDraftResult {
 
       if (supported.length === 0) return;
 
-      let batchSize = 0;
       for (const file of supported) {
         const validation = validateAttachment(file);
         if (!validation.valid) {
           setAttachmentError(validation.error);
           return;
         }
-        batchSize += file.size;
       }
 
       const newPayloads: AttachmentPayload[] = [];
       for (const file of supported) {
         try {
-          const payload = await fileToAttachmentPayload(file);
+          const payload = await fileToAgentAttachmentPayload(file);
           newPayloads.push(payload);
-        } catch {
-          setAttachmentError(`Failed to read file: ${file.name}`);
+        } catch (error) {
+          const reason =
+            error instanceof Error ? error.message : `Failed to read file: ${file.name}`;
+          setAttachmentError(reason);
           return;
         }
       }
@@ -430,8 +468,16 @@ export function useComposerDraft(teamName: string): UseComposerDraftResult {
         return;
       }
       const currentTotal = prev.reduce((sum, a) => sum + a.size, 0);
+      const batchSize = newPayloads.reduce((sum, a) => sum + a.size, 0);
       if (currentTotal + batchSize > MAX_TOTAL_SIZE) {
         setAttachmentError('Total attachment size exceeds 20MB limit');
+        return;
+      }
+      const optimizedImageBytes = [...prev, ...newPayloads]
+        .filter((attachment) => attachment.mimeType.startsWith('image/'))
+        .reduce((sum, attachment) => sum + attachment.size, 0);
+      if (optimizedImageBytes > DEFAULT_AGENT_IMAGE_OPTIMIZATION_BUDGET.maxOutputBytesTotal) {
+        setAttachmentError('Optimized image attachments exceed the safe runtime size limit');
         return;
       }
 
