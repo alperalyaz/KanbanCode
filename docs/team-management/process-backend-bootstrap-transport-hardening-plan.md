@@ -333,7 +333,7 @@ const runtimeFilePrefixCases = [
   ['bob.team', 'bob-team'],
   ['bob_team', 'bob-team'],
   ['con', '_con'],
-  ['con.txt', '_con-txt'],
+  ['con.txt', 'con-txt'],
   ['aux', '_aux'],
   ['COM1', '_com1'],
   ['LPT9', '_lpt9'],
@@ -424,6 +424,18 @@ These values are structured output and can be shown in diagnostics immediately. 
 `launch-summary.json` derives `missingMembers` from members whose `launchState === 'failed_to_start'` and counts from `snapshot.summary`. Therefore enrichment must happen before `createPersistedLaunchSummaryProjection(snapshot)`. If enrichment changes a member from pending to `failed_to_start`, the summary must show the same failed count/missing member as Team Detail.
 
 `clean_success` finished launches can clear persisted launch-state. This is fine. Transport diagnostics matter for failed/pending launches, not clean success.
+
+Clean-success clear rule:
+
+- if the normalized snapshot is truly `clean_success` after proof/provider/transport overlays and `launchPhase !== 'active'`, preserve existing behavior and clear persisted launch-state;
+- process transport enrichment must not keep a stale diagnostic alive after every expected member is confirmed/skipped according to existing summary semantics;
+- if any process member is still `runtime_pending_bootstrap`, `failed_to_start`, or permission-pending, the snapshot is not clean success and must not be cleared;
+- do not use runtime event absence to prevent clean-success clearing. Absence of a best-effort diagnostic file is not a reason to keep launch-state;
+- `clearPersistedLaunchStateNow(...)` also clears bootstrap-state. Therefore clean-success clear must be fenced by current run identity immediately before clearing, not only before building the snapshot;
+- a stale clean-success finalizer from an older run must not clear launch-state or bootstrap-state for a newer active/restarted run;
+- if the current run identity cannot be proven at clear time, skip clear and keep the conservative persisted state;
+- tests should cover clean-success launch with missing runtime event files and assert launch-state can still clear.
+- tests should cover stale clean-success finalizer racing with a newer launch and assert neither launch-state nor bootstrap-state is cleared for the newer run.
 
 ### 27. Shared/public launch status types must not expose transport internals
 
@@ -636,13 +648,47 @@ type LaunchTransitionReason =
 function mergeProcessBootstrapLaunchState(
   previous: PersistedTeamLaunchMemberState,
   evidence: ProcessBootstrapTransportEvidence,
-  context: { launchPhase: 'active' | 'terminal'; currentAttempt: boolean },
+  context: {
+    launchPhase: PersistedTeamLaunchPhase
+    projectionPhase: 'active' | 'final'
+    currentAttempt: boolean
+  },
 ): { next: PersistedTeamLaunchMemberState; changed: boolean; reason: LaunchTransitionReason } {
   // pure function, no filesystem, no process table, no renderer imports
 }
 ```
 
 Keep this transition helper pure and test it directly. Do not scatter transition checks across `TeamProvisioningService`, summary projection, and renderer helpers.
+
+### Persisted launch phase compatibility
+
+Current shared type is:
+
+```ts
+export type PersistedTeamLaunchPhase = 'active' | 'finished' | 'reconciled'
+```
+
+Do not add new persisted values like `finalizing` or `terminal` for this phase. If merge logic needs an internal terminal/final concept, derive it as a local non-persisted value:
+
+```ts
+type ProcessTransportProjectionPhase = 'active' | 'final'
+
+function deriveProcessTransportProjectionPhase(input: {
+  launchPhase: PersistedTeamLaunchPhase
+  finalTimeoutReached?: boolean
+}): ProcessTransportProjectionPhase {
+  if (input.launchPhase !== 'active') return 'final'
+  return input.finalTimeoutReached === true ? 'final' : 'active'
+}
+```
+
+Rules:
+
+- persisted snapshots keep `launchPhase: 'active' | 'finished' | 'reconciled'` only;
+- runner UI/progress step `finalizing` is not the same thing as persisted `launchPhase`;
+- process transport merge can use internal `projectionPhase: 'final'` to decide timeout-to-failure behavior;
+- do not cast new phase strings with `as PersistedTeamLaunchPhase`;
+- tests must assert unknown phase strings are normalized by existing evaluator behavior, not introduced by this change.
 
 ## Transport failure taxonomy
 
@@ -1852,11 +1898,16 @@ Reader safety:
 - do not reuse `readBoundRegularUtf8File(...)` directly for runtime JSONL, because oversized runtime logs should be tailed rather than rejected;
 - use the opened file handle's `stat().size` as the source of truth for the tail range. If the file grows while reading, that is acceptable; read only the selected stable range and skip a final partial line;
 - tolerate corrupt/partial JSON lines by skipping only those lines;
+- impose a per-line byte/char cap before `JSON.parse`, for example `16 KiB`. Oversized lines are treated as corrupt diagnostic noise and skipped;
+- if a single oversized line consumes the whole tail slice, return an empty list and rely on timeout/fallback. Do not retry with a larger read just to recover diagnostics;
+- parse at most a bounded number of lines/events from one file, for example last `256` candidate lines, after tail slicing;
 - normalize optional fields defensively: `retryable` is used only when it is a boolean, `attempt` only when it is a positive finite number, and unknown event types remain readable but are ignored by process-transport classifiers;
 - when reading a tail slice, drop the first line because it can be a partial middle-of-file line;
 - if the last line has no trailing newline, treat it as potentially partial and skip it unless it parses cleanly and has required event shape;
 - never throw from malformed runtime event content during launch finalization;
 - keep max bytes low enough for hot polling but high enough for bursty startup, default `256 KiB`.
+
+Reader output must preserve append order among accepted parsed events. Skipped corrupt/oversized lines do not create placeholder events and do not affect stage rank except through absence.
 
 ## Phase 4 - Add bootstrap submission outcome waiter
 
@@ -2608,7 +2659,8 @@ export interface ProcessBootstrapTransportMergeInput {
   evidence: ProcessBootstrapTransportEvidence
   diagnostic: ProcessBootstrapTransportDiagnostic
   attemptMatch: 'strict-current' | 'legacy-current' | 'diagnostic-only' | 'no-match'
-  launchPhase: 'active' | 'finalizing' | 'terminal'
+  launchPhase: PersistedTeamLaunchPhase
+  projectionPhase: 'active' | 'final'
 }
 ```
 
@@ -2618,40 +2670,92 @@ Merge helper rules:
 - `diagnostic-only` can append internal log/debug diagnostics but cannot change launch state;
 - `legacy-current` can only produce pending diagnostics, not terminal failure, unless the final timeout path also confirms the current launch boundary;
 - `strict-current` is required for immediate terminal transport failure;
-- `launchPhase: 'active'` cannot convert retryable rejection into `failed_to_start`;
-- `launchPhase: 'terminal'` can convert timeout kinds into `failed_to_start` if no higher-priority provider/root failure exists.
+- `projectionPhase: 'active'` cannot convert retryable rejection or timeout-only pending stages into `failed_to_start`;
+- `projectionPhase: 'final'` can convert timeout kinds into `failed_to_start` if no higher-priority provider/root failure exists.
 
 Projection coordinator shape:
 
 ```ts
-async function enrichAndPersistCurrentLaunchSnapshot(run: MutableTeamRun): Promise<void> {
-  const identitySnapshot = buildCurrentAttemptIdentities(run)
-  const evidenceSnapshot = await readProcessTransportEvidence(identitySnapshot)
+async function writeLaunchStateSnapshotNow(teamName, snapshot, options) {
+  const previousSnapshot = await this.launchStateStore.read(teamName).catch(() => null)
+  const metaMembers = await this.membersMetaStore.getMembers(teamName).catch(() => [])
 
-  if (!isStillCurrentRun(run, identitySnapshot)) {
-    return
+  const openCodeOverlaid = await applyOpenCodeSecondaryEvidenceOverlay({
+    teamName,
+    snapshot,
+    previousSnapshot,
+    metaMembers,
+  })
+
+  const processOverlaid = await applyProcessTransportEvidenceOverlay({
+    teamName,
+    snapshot: openCodeOverlaid,
+    previousSnapshot,
+    metaMembers,
+    runIdentity: options?.runIdentity,
+  })
+
+  if (!isStillCurrentBeforeLaunchStateWrite(teamName, options?.runIdentity)) {
+    return { snapshot: previousSnapshot ?? processOverlaid, wrote: false, stale: true }
   }
 
-  const statuses = mergeProcessTransportEvidence(run.memberStatuses, evidenceSnapshot)
-  const snapshot = buildLiveLaunchSnapshotForRun({ ...run, memberStatuses: statuses })
-  await this.teamLaunchStateStore.write(run.teamName, snapshot)
+  const normalizedSnapshot =
+    applyOpenCodeSecondaryBootstrapStallOverlay(processOverlaid) ?? processOverlaid
+
+  if (await canSkipLaunchStateWriteAndSummaryIsFresh(previousSnapshot, normalizedSnapshot, options)) {
+    return { snapshot: previousSnapshot, wrote: false }
+  }
+
+  if (normalizedSnapshot.teamLaunchState === 'clean_success' && normalizedSnapshot.launchPhase !== 'active') {
+    if (!isStillCurrentBeforeLaunchStateClear(teamName, options?.runIdentity)) {
+      return { snapshot: previousSnapshot ?? normalizedSnapshot, wrote: false, stale: true }
+    }
+    await clearPersistedLaunchStateNow(teamName)
+    return { snapshot: null, wrote: true, cleared: true }
+  }
+
+  await this.launchStateStore.write(teamName, normalizedSnapshot)
+  return { snapshot: normalizedSnapshot, wrote: true }
 }
 ```
 
 Rules:
 
-- `identitySnapshot` is immutable for the projection pass;
+- the existing per-team `enqueueLaunchStateStoreOperation(...)` remains the serialization boundary. Do not create a parallel writer or a second read/compare/write queue;
+- `previousSnapshot` is read once inside the queued operation and passed into overlays. Do not let each overlay call `launchStateStore.read(...)` independently;
+- `metaMembers` is read once inside the queued operation and passed into overlays. Do not let OpenCode and process overlays race on separate member metadata reads;
+- `runIdentity` / attempt identity is immutable for the projection pass;
 - evidence read failures degrade to no enrichment, not launch crash;
 - evidence read budget exhaustion degrades remaining members to no enrichment and records internal debug/log detail only;
 - `isStillCurrentRun(...)` checks team name, run id, cancellation/killed state, and any restart generation if available;
 - `TeamLaunchStateStore.write(...)` remains the only persistence point for detailed and compact launch projections;
-- never mutate `run.memberStatuses` while iterating over event files. Build a merged copy and persist it atomically through the store.
+- never mutate `run.memberStatuses` while iterating over event files. Build a merged copy and persist it atomically through the store;
 - integrate this inside the existing `persistLaunchStateSnapshot(...)` / `enqueueLaunchStateStoreOperation(...)` flow;
 - do not add a second launch-state writer for transport enrichment;
 - if `TeamLaunchStateStore.write(...)` writes detail but summary write later fails, accept detailed state as truth and let existing stale-summary logic/list refresh recover.
 - account for existing `writeLaunchStateSnapshotNow(...)` overlays: OpenCode secondary overlays and bootstrap-stall overlays already run before normalized snapshot write. Process transport enrichment should compose with them without changing OpenCode behavior.
 - preferred order inside `writeLaunchStateSnapshotNow(...)`: previous snapshot read -> existing OpenCode overlays -> process transport enrichment for non-OpenCode process members -> bootstrap-stall/normalization -> no-op/summary repair check -> store write.
 - if this order conflicts with existing proof overlay in `persistLaunchStateSnapshotNow(...)`, preserve proof overlay as higher priority and document the exact order in code comments.
+- do not evaluate clean-success clear before process transport enrichment and final current-run fence. A pre-enrichment clean-success check can erase evidence that would have kept a partial launch visible.
+
+Queue and IO budget:
+
+- bounded runtime event tail reads may happen inside the queued operation only if the total budget is small and deterministic. This keeps previous-snapshot comparison consistent;
+- do not perform broad process table scans, project transcript scans, or network/provider checks inside the queued operation;
+- if runtime event IO budget would be exceeded, stop reading more members and return no enrichment for the rest. Do not hold the queue for best-effort diagnostics;
+- do not recursively call `persistLaunchStateSnapshot(...)` or `writeLaunchStateSnapshot(...)` from inside an overlay;
+- overlay helpers return new snapshot objects. They do not write files, emit IPC, notify lead/user, or mutate live run maps.
+
+No-op skip and summary repair:
+
+- transport enrichment must be included before `areLaunchStateSnapshotsSemanticallyEqual(...)`;
+- no-op skip is allowed only after checking whether `launch-summary.json` is present/fresh enough for the normalized detailed snapshot;
+- if summary is missing/stale and detailed state is semantically unchanged, force `TeamLaunchStateStore.write(...)` to repair both files;
+- the summary repair check must be bounded and must run inside the same serialized operation as the detailed-state comparison;
+- do not direct-write `launch-summary.json`;
+- do not update `launchStateWrittenRunIdByTeam` before the detailed + summary write path has succeeded or a verified no-op skip has occurred.
+- clean-success clear is a write operation and must happen inside the same serialized queue with the same final run-identity fence as normal writes;
+- because clear also removes bootstrap-state, it needs a stricter current-run check than ordinary diagnostic enrichment.
 
 Normalizer interaction hazard:
 
@@ -3072,6 +3176,8 @@ Cases:
 
 - bounded reader reads tail and drops first partial line;
 - bounded reader skips corrupt and final partial JSONL lines without throwing;
+- bounded reader skips oversized JSONL lines before parse and does not increase read budget to recover diagnostics;
+- bounded reader caps candidate lines/events per file and preserves append order for accepted events;
 - missing event file returns empty list;
 - append order beats misleading future/past timestamps for stage selection;
 - low-value later heartbeat does not hide earlier submit/failure stage in timeout diagnostic;
@@ -3220,6 +3326,10 @@ Cases:
 - no evidence still allows `never spawned`;
 - terminal launchPhase with `bootstrap_submitted` evidence does not trigger normalizer's `Teammate was never spawned during launch.`;
 - terminal launchPhase with only true missing member still triggers `Teammate was never spawned during launch.`;
+- process transport merge uses internal `projectionPhase` and never writes persisted launchPhase values outside `active | finished | reconciled`;
+- unknown persisted launchPhase strings continue to normalize through existing evaluator fallback and are not produced by new code;
+- clean-success finished launch can still clear persisted launch-state even when runtime event files are missing/unreadable;
+- partial/pending process member prevents clean-success clearing and keeps launch-state visible;
 - `bootstrap_submitted` yields pending/unconfirmed, not confirmed;
 - retryable rejection remains pending/warning during active launch;
 - parent failed event yields `failed_to_start` with exact reason;
@@ -3360,6 +3470,7 @@ Use this checklist before committing implementation.
 - No selected user-facing transport diagnostic is stored only in `diagnostics[]`.
 - No pending transport state uses `runtimeDiagnosticSeverity: 'error'`.
 - No ordinary submitted/waiting transport state sets `bootstrapStalled`.
+- No new persisted `launchPhase` string is introduced. Internal final/terminal concepts stay internal.
 - No stale finalizer/timeout path can persist after stop/cancel/restart identity changed.
 - No pending-only evidence clears provider/runtime hard failure.
 - No generic transport timeout overwrites provider/auth/quota/model root cause.

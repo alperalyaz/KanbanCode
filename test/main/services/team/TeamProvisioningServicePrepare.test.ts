@@ -2101,6 +2101,28 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     });
   });
 
+  it('blocks launch args when a secondary Codex provider reports a concrete auth issue', async () => {
+    const svc = new TeamProvisioningService();
+    buildProviderAwareCliEnvMock.mockImplementation(
+      ({ providerId, env }: { providerId?: string; env: NodeJS.ProcessEnv }) =>
+        Promise.resolve({
+          env,
+          authSource: providerId === 'codex' ? 'configured_api_key_missing' : 'none',
+          geminiRuntimeAuth: null,
+          connectionIssues:
+            providerId === 'codex' ? { codex: 'Codex CLI login status is not active' } : {},
+          warning: providerId === 'codex' ? 'Codex CLI login status is not active' : undefined,
+        })
+    );
+
+    await expect(
+      (svc as any).buildCrossProviderMemberArgs('anthropic', [
+        { name: 'alice', providerId: 'anthropic' },
+        { name: 'jack', providerId: 'codex' },
+      ])
+    ).rejects.toThrow('Codex: Codex CLI login status is not active');
+  });
+
   it('adds Codex turn-settled env when a secondary member infers Codex from model', async () => {
     const svc = new TeamProvisioningService();
     svc.setRuntimeTurnSettledEnvironmentProvider(async ({ provider }) =>

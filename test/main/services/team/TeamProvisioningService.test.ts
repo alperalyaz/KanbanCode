@@ -12594,6 +12594,122 @@ describe('TeamProvisioningService', () => {
     await vi.waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
   });
 
+  it('recovers ready progress when deterministic create finalization stalls after completed bootstrap-state', async () => {
+    allowConsoleLogs();
+    vi.useFakeTimers();
+    const teamName = 'create-completed-bootstrap-finalization-stall';
+    const child = createRunningChild();
+    vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
+    vi.mocked(spawnCli).mockReturnValue(child as any);
+
+    const mcpConfigBuilder = {
+      writeConfigFile: vi.fn(async () => '/mock/mcp-config-create.json'),
+      removeConfigFile: vi.fn(async () => {}),
+    };
+    const membersMetaStore = {
+      writeMembers: vi.fn(async () => {}),
+      getMembers: vi.fn(async () => []),
+    };
+    const teamMetaStore = {
+      writeMeta: vi.fn(async () => {}),
+      deleteMeta: vi.fn(async () => {}),
+      getMeta: vi.fn(async () => null),
+    };
+
+    const svc = new TeamProvisioningService(
+      undefined,
+      undefined,
+      membersMetaStore as any,
+      undefined,
+      mcpConfigBuilder as any,
+      teamMetaStore as any
+    );
+    (svc as any).buildProvisioningEnv = vi.fn(async () => ({
+      env: { CODEX_API_KEY: 'test' },
+      authSource: 'codex_runtime',
+    }));
+    (svc as any).validateAgentTeamsMcpRuntime = vi.fn(async () => {});
+    (svc as any).pathExists = vi.fn(async () => false);
+    (svc as any).startFilesystemMonitor = vi.fn();
+    (svc as any).startStallWatchdog = vi.fn();
+    (svc as any).stopStallWatchdog = vi.fn();
+    (svc as any).resolveAndValidateLaunchIdentity = vi.fn(async () => ({
+      providerId: 'codex',
+      providerBackendId: 'codex-native',
+      selectedModel: 'gpt-5.5',
+      selectedModelKind: 'explicit',
+      resolvedLaunchModel: 'gpt-5.5',
+      catalogId: 'gpt-5.5',
+      catalogSource: 'test',
+      catalogFetchedAt: '2026-05-07T00:00:00.000Z',
+      selectedEffort: 'medium',
+      resolvedEffort: 'medium',
+      selectedFastMode: null,
+      resolvedFastMode: null,
+      fastResolutionReason: null,
+    }));
+    const waitForValidConfig = vi.fn(() => new Promise(() => {}));
+    (svc as any).waitForValidConfig = waitForValidConfig;
+
+    const progressStates: string[] = [];
+    const { runId } = await svc.createTeam(
+      {
+        teamName,
+        cwd: tempClaudeRoot,
+        providerId: 'codex',
+        providerBackendId: 'codex-native',
+        model: 'gpt-5.5',
+        members: [{ name: 'alice' }, { name: 'tom' }],
+      },
+      (progress) => {
+        progressStates.push(progress.state);
+      }
+    );
+    const run = (svc as any).runs.get(runId);
+    expect(run).toBeTruthy();
+    run.deterministicBootstrap = true;
+    const scheduleRecovery = vi.spyOn(
+      svc as any,
+      'scheduleDeterministicBootstrapCompletionRecovery'
+    );
+
+    writeBootstrapState(
+      teamName,
+      [
+        { name: 'alice', status: 'bootstrap_confirmed' },
+        { name: 'tom', status: 'bootstrap_confirmed' },
+      ],
+      new Date(Date.now() + 1_000).toISOString()
+    );
+
+    child.stdout.emit(
+      'data',
+      Buffer.from(
+        `${JSON.stringify({
+          type: 'system',
+          subtype: 'team_bootstrap',
+          event: 'completed',
+          run_id: runId,
+          team_name: teamName,
+          seq: 1,
+          failed_members: [],
+        })}\n`,
+        'utf8'
+      )
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(waitForValidConfig).toHaveBeenCalledTimes(1);
+    expect(scheduleRecovery).toHaveBeenCalledWith(run);
+    expect(progressStates.at(-1)).not.toBe('ready');
+
+    await (svc as any).recoverDeterministicBootstrapCompletion(run);
+    expect(progressStates.at(-1)).toBe('ready');
+    expect((svc as any).provisioningRunByTeam.has(teamName)).toBe(false);
+    expect((svc as any).aliveRunByTeam.get(teamName)).toBe(runId);
+  });
+
   it('does not verify provisioning again after flushing a final newline-less error result', async () => {
     allowConsoleLogs();
     const teamName = 'launch-close-flushes-final-error-team';
@@ -13435,6 +13551,266 @@ describe('TeamProvisioningService', () => {
       bootstrapConfirmed: false,
       hardFailure: true,
     });
+  });
+
+  it('keeps active process bootstrap transport progress pending without turning retryable rejection into failure', async () => {
+    allowConsoleLogs();
+    const teamName = 'zz-unit-process-bootstrap-transport-pending';
+    const leadSessionId = 'lead-session';
+    const projectPath = '/Users/test/proj';
+    const acceptedAt = new Date(Date.now() - 15_000).toISOString();
+    const bootstrapRunId = 'run-process-transport-pending';
+    const runtimePid = 1234;
+    const runtimeEventsPath = path.join(tempTeamsBase, teamName, 'runtime', 'jack.runtime.jsonl');
+
+    writeLaunchConfig(teamName, projectPath, leadSessionId, ['jack']);
+    const configPath = path.join(tempTeamsBase, teamName, 'config.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
+      members: Array<Record<string, unknown>>;
+    };
+    config.members = config.members.map((member) =>
+      member.name === 'jack'
+        ? {
+            ...member,
+            agentId: `jack@${teamName}`,
+            backendType: 'process',
+            tmuxPaneId: `process:${runtimePid}`,
+            runtimePid,
+            bootstrapExpectedAfter: acceptedAt,
+            bootstrapRunId,
+            bootstrapRuntimeEventsPath: runtimeEventsPath,
+          }
+        : member
+    );
+    fs.writeFileSync(configPath, JSON.stringify(config), 'utf8');
+    writeLaunchState(
+      teamName,
+      leadSessionId,
+      {
+        jack: {
+          launchState: 'runtime_pending_bootstrap',
+          agentToolAccepted: true,
+          runtimeAlive: true,
+          runtimePid,
+          runtimeRunId: bootstrapRunId,
+          tmuxPaneId: `process:${runtimePid}`,
+          backendType: 'process',
+          bootstrapConfirmed: false,
+          hardFailure: false,
+          hardFailureReason: undefined,
+          firstSpawnAcceptedAt: acceptedAt,
+        },
+      },
+      { launchPhase: 'active' }
+    );
+    fs.mkdirSync(path.dirname(runtimeEventsPath), { recursive: true });
+    fs.writeFileSync(
+      runtimeEventsPath,
+      [
+        {
+          version: 1,
+          type: 'runtime_ready',
+          timestamp: acceptedAt,
+          pid: runtimePid,
+          teamName,
+          agentName: 'jack',
+          agentId: `jack@${teamName}`,
+          bootstrapRunId,
+          detail: 'ready',
+        },
+        {
+          version: 1,
+          type: 'bootstrap_submit_rejected',
+          timestamp: new Date(Date.now() - 10_000).toISOString(),
+          pid: runtimePid,
+          teamName,
+          agentName: 'jack',
+          agentId: `jack@${teamName}`,
+          bootstrapRunId,
+          retryable: true,
+          detail: 'cooldown before retry',
+        },
+      ]
+        .map((event) => JSON.stringify(event))
+        .join('\n') + '\n',
+      'utf8'
+    );
+
+    const svc = new TeamProvisioningService();
+    const result = await svc.getMemberSpawnStatuses(teamName);
+
+    expect(result.statuses.jack).toMatchObject({
+      launchState: 'runtime_pending_bootstrap',
+      bootstrapConfirmed: false,
+      hardFailure: false,
+      runtimeDiagnosticSeverity: 'warning',
+    });
+    expect(result.statuses.jack?.runtimeDiagnostic).toContain(
+      'Bootstrap transport reached bootstrap submit rejected'
+    );
+  });
+
+  it('uses the last process transport stage when active launch grace expires', async () => {
+    allowConsoleLogs();
+    const teamName = 'zz-unit-process-bootstrap-transport-timeout';
+    const leadSessionId = 'lead-session';
+    const projectPath = '/Users/test/proj';
+    const acceptedAt = new Date(Date.now() - 15 * 60_000).toISOString();
+    const bootstrapRunId = 'run-process-transport-timeout';
+    const runtimePid = 1235;
+    const runtimeEventsPath = path.join(tempTeamsBase, teamName, 'runtime', 'jack.runtime.jsonl');
+
+    writeLaunchConfig(teamName, projectPath, leadSessionId, ['jack']);
+    const configPath = path.join(tempTeamsBase, teamName, 'config.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
+      members: Array<Record<string, unknown>>;
+    };
+    config.members = config.members.map((member) =>
+      member.name === 'jack'
+        ? {
+            ...member,
+            agentId: `jack@${teamName}`,
+            backendType: 'process',
+            tmuxPaneId: `process:${runtimePid}`,
+            runtimePid,
+            bootstrapExpectedAfter: acceptedAt,
+            bootstrapRunId,
+            bootstrapRuntimeEventsPath: runtimeEventsPath,
+          }
+        : member
+    );
+    fs.writeFileSync(configPath, JSON.stringify(config), 'utf8');
+    writeLaunchState(
+      teamName,
+      leadSessionId,
+      {
+        jack: {
+          launchState: 'runtime_pending_bootstrap',
+          agentToolAccepted: true,
+          runtimeAlive: false,
+          runtimePid,
+          runtimeRunId: bootstrapRunId,
+          tmuxPaneId: `process:${runtimePid}`,
+          backendType: 'process',
+          bootstrapConfirmed: false,
+          hardFailure: false,
+          hardFailureReason: undefined,
+          firstSpawnAcceptedAt: acceptedAt,
+        },
+      },
+      { launchPhase: 'active' }
+    );
+    fs.mkdirSync(path.dirname(runtimeEventsPath), { recursive: true });
+    fs.writeFileSync(
+      runtimeEventsPath,
+      `${JSON.stringify({
+        version: 1,
+        type: 'bootstrap_prompt_observed',
+        timestamp: new Date(Date.now() - 14 * 60_000).toISOString(),
+        pid: runtimePid,
+        teamName,
+        agentName: 'jack',
+        agentId: `jack@${teamName}`,
+        bootstrapRunId,
+        detail: 'prompt seen',
+      })}\n`,
+      'utf8'
+    );
+
+    const svc = new TeamProvisioningService();
+    const result = await svc.getMemberSpawnStatuses(teamName);
+
+    expect(result.statuses.jack).toMatchObject({
+      launchState: 'failed_to_start',
+      bootstrapConfirmed: false,
+      hardFailure: true,
+      runtimeDiagnosticSeverity: 'error',
+    });
+    expect(result.statuses.jack?.hardFailureReason).toContain(
+      'Last transport stage: bootstrap prompt observed: prompt seen'
+    );
+  });
+
+  it('uses non-retryable process transport rejection as terminal launch failure', async () => {
+    allowConsoleLogs();
+    const teamName = 'zz-unit-process-bootstrap-transport-terminal';
+    const leadSessionId = 'lead-session';
+    const projectPath = '/Users/test/proj';
+    const acceptedAt = new Date(Date.now() - 15_000).toISOString();
+    const bootstrapRunId = 'run-process-transport-terminal';
+    const runtimePid = 1236;
+    const runtimeEventsPath = path.join(tempTeamsBase, teamName, 'runtime', 'jack.runtime.jsonl');
+
+    writeLaunchConfig(teamName, projectPath, leadSessionId, ['jack']);
+    const configPath = path.join(tempTeamsBase, teamName, 'config.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
+      members: Array<Record<string, unknown>>;
+    };
+    config.members = config.members.map((member) =>
+      member.name === 'jack'
+        ? {
+            ...member,
+            agentId: `jack@${teamName}`,
+            backendType: 'process',
+            tmuxPaneId: `process:${runtimePid}`,
+            runtimePid,
+            bootstrapExpectedAfter: acceptedAt,
+            bootstrapRunId,
+            bootstrapRuntimeEventsPath: runtimeEventsPath,
+          }
+        : member
+    );
+    fs.writeFileSync(configPath, JSON.stringify(config), 'utf8');
+    writeLaunchState(
+      teamName,
+      leadSessionId,
+      {
+        jack: {
+          launchState: 'runtime_pending_bootstrap',
+          agentToolAccepted: true,
+          runtimeAlive: true,
+          runtimePid,
+          runtimeRunId: bootstrapRunId,
+          tmuxPaneId: `process:${runtimePid}`,
+          backendType: 'process',
+          bootstrapConfirmed: false,
+          hardFailure: false,
+          hardFailureReason: undefined,
+          firstSpawnAcceptedAt: acceptedAt,
+        },
+      },
+      { launchPhase: 'active' }
+    );
+    fs.mkdirSync(path.dirname(runtimeEventsPath), { recursive: true });
+    fs.writeFileSync(
+      runtimeEventsPath,
+      `${JSON.stringify({
+        version: 1,
+        type: 'bootstrap_submit_rejected',
+        timestamp: new Date(Date.now() - 10_000).toISOString(),
+        pid: runtimePid,
+        teamName,
+        agentName: 'jack',
+        agentId: `jack@${teamName}`,
+        bootstrapRunId,
+        retryable: false,
+        detail: 'fatal submit rejection',
+      })}\n`,
+      'utf8'
+    );
+
+    const svc = new TeamProvisioningService();
+    const result = await svc.getMemberSpawnStatuses(teamName);
+
+    expect(result.statuses.jack).toMatchObject({
+      launchState: 'failed_to_start',
+      bootstrapConfirmed: false,
+      hardFailure: true,
+      runtimeDiagnosticSeverity: 'error',
+    });
+    expect(result.statuses.jack?.hardFailureReason).toBe(
+      'bootstrap submit rejected: fatal submit rejection'
+    );
   });
 
   it('does not classify the bootstrap instruction prompt as a member launch failure', async () => {

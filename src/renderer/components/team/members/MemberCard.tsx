@@ -106,13 +106,6 @@ function normalizeLaunchFailureReason(value: string | undefined): string | null 
   return normalized && normalized.length > 0 ? normalized : null;
 }
 
-function truncateLaunchFailureReason(value: string, maxLength = 220): string {
-  if (value.length <= maxLength) {
-    return value;
-  }
-  return `${value.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
-}
-
 function getLaunchFailureLinkLabel(url: string): string {
   try {
     const parsed = new URL(url);
@@ -297,9 +290,6 @@ export const MemberCard = memo(function MemberCard({
     spawnEntry?.error;
   const launchFailureReason = showFailedLaunchBadge
     ? normalizeLaunchFailureReason(rawLaunchFailureReason)
-    : null;
-  const displayedLaunchFailureReason = launchFailureReason
-    ? truncateLaunchFailureReason(launchFailureReason)
     : null;
   const hasLiveLaunchControls =
     isTeamAlive === true || isTeamProvisioning === true || isLaunchSettling === true;
@@ -512,14 +502,14 @@ export const MemberCard = memo(function MemberCard({
                 ) : null}
               </div>
             ) : null}
-            {displayedLaunchFailureReason ? (
+            {launchFailureReason ? (
               <div
                 data-testid="member-launch-failure-reason"
-                className="mt-1 min-w-0 text-[10px] font-medium leading-snug text-red-300/90"
+                className="mt-1 min-w-0 whitespace-pre-wrap break-words text-[10px] font-medium leading-snug text-red-300/90"
                 title={rawLaunchFailureReason}
               >
-                <span className="line-clamp-2 break-words">
-                  {renderLinkifiedText(displayedLaunchFailureReason, {
+                <span>
+                  {renderLinkifiedText(launchFailureReason, {
                     linkClassName: 'underline underline-offset-2 hover:text-red-200',
                     stopPropagation: true,
                     getLinkLabel: getLaunchFailureLinkLabel,

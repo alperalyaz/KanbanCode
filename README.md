@@ -10,15 +10,15 @@
   <a href="docs/screenshots/6.png"><img src="docs/screenshots/6.png" width="65" alt="Settings" /></a>
 </p>
 
-<h1 align="center"><a href="https://777genius.github.io/claude_agent_teams_ui/">Agent Teams</a></h1>
+<h1 align="center"><a href="https://777genius.github.io/agent-teams-ai/">Agent Teams</a></h1>
 
 <p align="center">
   <strong><code>You're the CTO, agents are your team. They handle tasks themselves, message each other, review each other. You just look at the kanban board and drink coffee.</code></strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/latest"><img src="https://img.shields.io/github/v/tag/777genius/claude_agent_teams_ui?style=flat-square&label=version&color=blue" alt="Latest Release" /></a>&nbsp;
-  <a href="https://github.com/777genius/claude_agent_teams_ui/actions/workflows/ci.yml"><img src="https://github.com/777genius/claude_agent_teams_ui/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>&nbsp;
+  <a href="https://github.com/777genius/agent-teams-ai/releases/latest"><img src="https://img.shields.io/github/v/tag/777genius/agent-teams-ai?style=flat-square&label=version&color=blue" alt="Latest Release" /></a>&nbsp;
+  <a href="https://github.com/777genius/agent-teams-ai/actions/workflows/ci.yml"><img src="https://github.com/777genius/agent-teams-ai/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>&nbsp;
   <a href="https://discord.gg/qtqSZSyuEc"><img src="https://img.shields.io/badge/Discord-Join%20us-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
@@ -54,33 +54,33 @@ If you want the FRESHEST version, clone the repo and run it from the `dev` branc
 <table align="center">
 <tr>
 <td align="center">
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/latest/download/Claude-Agent-Teams-UI-arm64.dmg">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/latest/download/Claude-Agent-Teams-UI-arm64.dmg">
     <img src="https://img.shields.io/badge/macOS_Apple_Silicon-.dmg-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Apple Silicon" />
   </a>
   <br />
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/latest/download/Claude-Agent-Teams-UI-x64.dmg">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/latest/download/Claude-Agent-Teams-UI-x64.dmg">
     <img src="https://img.shields.io/badge/macOS_Intel-.dmg-434343?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Intel" />
   </a>
 </td>
 <td align="center">
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/latest/download/Claude-Agent-Teams-UI-Setup.exe">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/latest/download/Claude-Agent-Teams-UI-Setup.exe">
     <img src="https://img.shields.io/badge/Windows-Download_.exe-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
   </a>
   <br />
   <sub>May trigger SmartScreen — click "More info" → "Run anyway"</sub>
 </td>
 <td align="center">
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/latest/download/Claude-Agent-Teams-UI.AppImage">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/latest/download/Claude-Agent-Teams-UI.AppImage">
     <img src="https://img.shields.io/badge/Linux-Download_.AppImage-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux AppImage" />
   </a>
   <br />
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/latest/download/Claude-Agent-Teams-UI-amd64.deb">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/latest/download/Claude-Agent-Teams-UI-amd64.deb">
     <img src="https://img.shields.io/badge/.deb-E95420?style=flat-square&logo=ubuntu&logoColor=white" alt=".deb" />
   </a>&nbsp;
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/latest/download/Claude-Agent-Teams-UI-x86_64.rpm">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/latest/download/Claude-Agent-Teams-UI-x86_64.rpm">
     <img src="https://img.shields.io/badge/.rpm-294172?style=flat-square&logo=redhat&logoColor=white" alt=".rpm" />
   </a>&nbsp;
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/latest/download/Claude-Agent-Teams-UI.pacman">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/latest/download/Claude-Agent-Teams-UI.pacman">
     <img src="https://img.shields.io/badge/.pacman-1793D1?style=flat-square&logo=archlinux&logoColor=white" alt=".pacman" />
   </a>
 </td>
@@ -268,8 +268,8 @@ Electron 40, React 19, TypeScript 5, Tailwind CSS 3, Zustand 4. Data from `~/.cl
 **Prerequisites:** Node.js 20+, pnpm 10+
 
 ```bash
-git clone https://github.com/777genius/claude_agent_teams_ui.git
-cd claude_agent_teams_ui
+git clone https://github.com/777genius/agent-teams-ai.git
+cd agent-teams-ai
 pnpm install
 pnpm dev
 ```

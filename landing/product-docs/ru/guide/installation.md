@@ -28,11 +28,11 @@ Agent Teams распространяется как desktop-приложение
 
 ## Запуск из исходников
 
-<InstallBlock command="git clone https://github.com/777genius/claude_agent_teams_ui.git && cd claude_agent_teams_ui && pnpm install && pnpm dev" label="Скопировать" copied-label="Скопировано" />
+<InstallBlock command="git clone https://github.com/777genius/agent-teams-ai.git && cd agent-teams-ai && pnpm install && pnpm dev" label="Скопировать" copied-label="Скопировано" />
 
 ```bash
-git clone https://github.com/777genius/claude_agent_teams_ui.git
-cd claude_agent_teams_ui
+git clone https://github.com/777genius/agent-teams-ai.git
+cd agent-teams-ai
 pnpm install
 pnpm dev
 ```

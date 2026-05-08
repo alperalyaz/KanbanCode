@@ -44,6 +44,7 @@ import {
 } from '@main/utils/pathDecoder';
 import { isProcessAlive } from '@main/utils/processHealth';
 import { killProcessByPid } from '@main/utils/processKill';
+import { isPathWithinRoot } from '@main/utils/pathValidation';
 import { resolveInteractiveShellEnv } from '@main/utils/shellEnv';
 import { shouldAutoAllow } from '@main/utils/toolApprovalRules';
 import {
@@ -156,6 +157,15 @@ import {
   parseBootstrapRuntimeProofDetail,
   validateBootstrapRuntimeProofEnvelope,
 } from './bootstrap/BootstrapProofValidation';
+import {
+  buildProcessBootstrapPendingDiagnostic,
+  buildProcessBootstrapTimeoutDiagnostic,
+  deriveProcessTransportProjectionPhase,
+  sanitizeProcessRuntimeEventFilePrefix,
+  summarizeProcessBootstrapTransportEvents,
+  type ProcessBootstrapTransportEvent,
+  type ProcessBootstrapTransportSummary,
+} from './ProcessBootstrapTransportEvidence';
 import {
   buildNativeAppManagedBootstrapSpecs,
   type NativeAppManagedBootstrapSpec,
@@ -372,11 +382,46 @@ interface LaunchStateWriteResult {
 type BootstrapTranscriptSuccessSource = 'member_briefing' | 'assistant_text';
 
 const BOOTSTRAP_RUNTIME_PROOF_TAIL_BYTES = 256 * 1024;
+const BOOTSTRAP_RUNTIME_EVENT_MAX_LINES = 256;
+const BOOTSTRAP_RUNTIME_EVENT_MAX_LINE_BYTES = 16 * 1024;
 
-function sanitizeRuntimeEventFilePrefix(value: string): string {
-  return String(value || 'default')
-    .replace(/[^a-zA-Z0-9]/g, '-')
-    .toLowerCase();
+function getTeamRuntimeEventsDir(teamName: string): string {
+  return path.join(getTeamsBasePath(), teamName, 'runtime');
+}
+
+function isProcessBootstrapTransportDiagnostic(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    (value.startsWith('Bootstrap transport ') ||
+      value.includes('Last transport stage:') ||
+      value.startsWith('bootstrap submit ') ||
+      value.startsWith('runtime failed') ||
+      value.startsWith('runtime exited'))
+  );
+}
+
+function realpathIfExists(inputPath: string): string | null {
+  try {
+    return fs.realpathSync.native(inputPath);
+  } catch {
+    return null;
+  }
+}
+
+function isContainedTeamRuntimeEventsPath(teamName: string, candidatePath: string): boolean {
+  const runtimeDir = getTeamRuntimeEventsDir(teamName);
+  const resolvedRuntimeDir = path.resolve(runtimeDir);
+  const resolvedCandidate = path.resolve(candidatePath);
+  if (!isPathWithinRoot(resolvedCandidate, resolvedRuntimeDir)) {
+    return false;
+  }
+
+  const realRuntimeDir = realpathIfExists(resolvedRuntimeDir);
+  const realCandidate = realpathIfExists(resolvedCandidate);
+  if (realCandidate) {
+    return isPathWithinRoot(realCandidate, realRuntimeDir ?? resolvedRuntimeDir);
+  }
+  return true;
 }
 
 type BootstrapTranscriptOutcome =
@@ -1541,6 +1586,12 @@ function looksLikeClaudeStdoutJsonFragment(text: string): boolean {
     /"subtype"\s*:/.test(trimmed) ||
     /"session_id"\s*:/.test(trimmed)
   );
+}
+
+const DETERMINISTIC_BOOTSTRAP_COMPLETION_RECOVERY_MS = 12_000;
+
+function isTerminalFailureProvisioningState(state: TeamProvisioningProgress['state']): boolean {
+  return state === 'failed' || state === 'cancelled' || state === 'disconnected';
 }
 
 interface ProvisioningRun {
@@ -20660,7 +20711,14 @@ export class TeamProvisioningService {
         };
         continue;
       }
-      const runtimeDiagnostic = buildRuntimeDiagnosticForSpawn(metadata);
+      const shouldPreserveProcessBootstrapTransportDiagnostic =
+        current.bootstrapConfirmed !== true &&
+        (current.launchState === 'runtime_pending_bootstrap' ||
+          current.launchState === 'failed_to_start') &&
+        isProcessBootstrapTransportDiagnostic(current.runtimeDiagnostic);
+      const runtimeDiagnostic = shouldPreserveProcessBootstrapTransportDiagnostic
+        ? current.runtimeDiagnostic
+        : buildRuntimeDiagnosticForSpawn(metadata);
       const metadataLivenessKind =
         current.bootstrapConfirmed === true || current.launchState === 'confirmed_alive'
           ? metadata.livenessKind === 'runtime_process' ||
@@ -20673,9 +20731,11 @@ export class TeamProvisioningService {
         ...(metadata.model ? { runtimeModel: metadata.model } : {}),
         ...(metadataLivenessKind ? { livenessKind: metadataLivenessKind } : {}),
         ...(runtimeDiagnostic ? { runtimeDiagnostic } : {}),
-        ...(metadata.runtimeDiagnosticSeverity
-          ? { runtimeDiagnosticSeverity: metadata.runtimeDiagnosticSeverity }
-          : {}),
+        ...(shouldPreserveProcessBootstrapTransportDiagnostic
+          ? { runtimeDiagnosticSeverity: current.runtimeDiagnosticSeverity }
+          : metadata.runtimeDiagnosticSeverity
+            ? { runtimeDiagnosticSeverity: metadata.runtimeDiagnosticSeverity }
+            : {}),
         livenessLastCheckedAt: nowIso(),
       };
       const failureReason = current.hardFailureReason ?? current.error;
@@ -21583,6 +21643,28 @@ export class TeamProvisioningService {
         processTableAvailable: memberProcessTableAvailable,
         nowIso: nowIso(),
       });
+      const bootstrapTransportDiagnostic =
+        status?.runtimeDiagnostic ?? launchMember?.runtimeDiagnostic;
+      const bootstrapTransportDiagnosticSeverity =
+        status?.runtimeDiagnosticSeverity ?? launchMember?.runtimeDiagnosticSeverity;
+      const bootstrapTransportLaunchState = status?.launchState ?? launchMember?.launchState;
+      const bootstrapTransportConfirmed =
+        status?.bootstrapConfirmed === true || launchMember?.bootstrapConfirmed === true;
+      const hasProcessBootstrapTransportDiagnostic =
+        (metadata.backendType === 'process' || metadata.tmuxPaneId?.startsWith('process:')) &&
+        !bootstrapTransportConfirmed &&
+        (bootstrapTransportLaunchState === 'runtime_pending_bootstrap' ||
+          bootstrapTransportLaunchState === 'failed_to_start') &&
+        isProcessBootstrapTransportDiagnostic(bootstrapTransportDiagnostic);
+      // Prefer bootstrap transport diagnostics over generic pid/liveness text
+      // while launch is unconfirmed, otherwise the UI hides the exact stage
+      // where process bootstrap got stuck.
+      const runtimeDiagnostic = hasProcessBootstrapTransportDiagnostic
+        ? bootstrapTransportDiagnostic
+        : resolved.runtimeDiagnostic;
+      const runtimeDiagnosticSeverity = hasProcessBootstrapTransportDiagnostic
+        ? (bootstrapTransportDiagnosticSeverity ?? resolved.runtimeDiagnosticSeverity)
+        : resolved.runtimeDiagnosticSeverity;
       metadataByMember.set(memberName, {
         ...metadata,
         alive: resolved.alive,
@@ -21599,9 +21681,11 @@ export class TeamProvisioningService {
         ...(resolved.paneCurrentCommand ? { paneCurrentCommand: resolved.paneCurrentCommand } : {}),
         ...(resolved.runtimeSessionId ? { runtimeSessionId: resolved.runtimeSessionId } : {}),
         ...(resolved.runtimeLastSeenAt ? { runtimeLastSeenAt: resolved.runtimeLastSeenAt } : {}),
-        runtimeDiagnostic: resolved.runtimeDiagnostic,
-        runtimeDiagnosticSeverity: resolved.runtimeDiagnosticSeverity,
-        diagnostics: resolved.diagnostics,
+        runtimeDiagnostic,
+        runtimeDiagnosticSeverity,
+        diagnostics: hasProcessBootstrapTransportDiagnostic
+          ? mergeRuntimeDiagnostics(resolved.diagnostics, [bootstrapTransportDiagnostic])
+          : resolved.diagnostics,
       });
     }
 
@@ -21659,13 +21743,43 @@ export class TeamProvisioningService {
     return rssBytesByPid;
   }
 
-  private async clearPersistedLaunchState(teamName: string): Promise<void> {
+  private async clearPersistedLaunchState(
+    teamName: string,
+    options?: { expectedRunId?: string }
+  ): Promise<void> {
     await this.enqueueLaunchStateStoreOperation(teamName, () =>
-      this.clearPersistedLaunchStateNow(teamName)
+      this.clearPersistedLaunchStateNow(teamName, options)
     );
   }
 
-  private async clearPersistedLaunchStateNow(teamName: string): Promise<void> {
+  private canClearPersistedLaunchStateForRun(
+    teamName: string,
+    expectedRunId: string | undefined
+  ): boolean {
+    if (!expectedRunId) {
+      return true;
+    }
+    const trackedRunId = this.getTrackedRunId(teamName);
+    if (trackedRunId && trackedRunId !== expectedRunId) {
+      return false;
+    }
+    const lastWrittenRunId = this.launchStateWrittenRunIdByTeam.get(teamName);
+    if (lastWrittenRunId && lastWrittenRunId !== expectedRunId) {
+      return false;
+    }
+    return true;
+  }
+
+  private async clearPersistedLaunchStateNow(
+    teamName: string,
+    options?: { expectedRunId?: string }
+  ): Promise<void> {
+    if (!this.canClearPersistedLaunchStateForRun(teamName, options?.expectedRunId)) {
+      logger.debug(
+        `[${teamName}] Skipping stale launch-state clear for run ${options?.expectedRunId}`
+      );
+      return;
+    }
     await this.launchStateStore.clear(teamName);
     this.launchStateWrittenRunIdByTeam.delete(teamName);
     await clearBootstrapState(teamName);
@@ -22512,6 +22626,130 @@ export class TeamProvisioningService {
     }
   }
 
+  private scheduleDeterministicBootstrapCompletionRecovery(run: ProvisioningRun): void {
+    if (!run.deterministicBootstrap) {
+      return;
+    }
+
+    const handle = setTimeout(() => {
+      void this.recoverDeterministicBootstrapCompletion(run).catch((error: unknown) => {
+        logger.warn(
+          `[${run.teamName}] Failed to recover completed deterministic bootstrap state: ${getErrorMessage(
+            error
+          )}`
+        );
+      });
+    }, DETERMINISTIC_BOOTSTRAP_COMPLETION_RECOVERY_MS);
+    handle.unref?.();
+  }
+
+  private async recoverDeterministicBootstrapCompletion(run: ProvisioningRun): Promise<void> {
+    if (
+      !run.provisioningComplete ||
+      run.cancelRequested ||
+      run.processKilled ||
+      isTerminalFailureProvisioningState(run.progress.state) ||
+      this.isProvisioningRunPromotedToAlive(run) ||
+      this.provisioningRunByTeam.get(run.teamName) !== run.runId
+    ) {
+      return;
+    }
+
+    if ((run.mixedSecondaryLanes ?? []).length > 0) {
+      return;
+    }
+
+    const snapshot = await readBootstrapLaunchSnapshot(run.teamName).catch(() => null);
+    if (
+      !snapshot ||
+      (snapshot.launchPhase !== 'finished' && snapshot.launchPhase !== 'reconciled')
+    ) {
+      return;
+    }
+
+    const runStartedAtMs = Date.parse(run.startedAt);
+    const snapshotUpdatedAtMs = Date.parse(snapshot.updatedAt);
+    if (
+      Number.isFinite(runStartedAtMs) &&
+      Number.isFinite(snapshotUpdatedAtMs) &&
+      snapshotUpdatedAtMs < runStartedAtMs
+    ) {
+      return;
+    }
+
+    const memberNames = this.getPersistedLaunchMemberNames(snapshot);
+    if (memberNames.length === 0) {
+      return;
+    }
+
+    this.syncRunMemberSpawnStatusesFromSnapshot(run, snapshot);
+    await this.writeLaunchStateSnapshot(run.teamName, snapshot).catch((error: unknown) => {
+      logger.warn(
+        `[${run.teamName}] Failed to persist recovered deterministic bootstrap snapshot: ${getErrorMessage(
+          error
+        )}`
+      );
+    });
+
+    const failedSpawnMembers = memberNames
+      .filter((memberName) => snapshot.members[memberName]?.launchState === 'failed_to_start')
+      .map((memberName) => ({
+        name: memberName,
+        error: snapshot.members[memberName]?.hardFailureReason,
+        updatedAt: snapshot.members[memberName]?.lastEvaluatedAt ?? nowIso(),
+      }));
+    const launchSummary = snapshot.summary ?? this.getMemberLaunchSummary(run);
+    const hasSpawnFailures = failedSpawnMembers.length > 0;
+    const hasPendingBootstrap =
+      !hasSpawnFailures && this.hasPendingLaunchMembers(run, launchSummary, snapshot);
+    const messagePrefix = run.isLaunch ? 'Launch completed' : 'Team provisioned';
+    const readyMessage = hasSpawnFailures
+      ? `${messagePrefix} with teammate errors - ${failedSpawnMembers
+          .map((member) => member.name)
+          .join(', ')} failed to start`
+      : hasPendingBootstrap
+        ? this.buildAggregatePendingLaunchMessage(messagePrefix, run, launchSummary, snapshot)
+        : run.isLaunch
+          ? 'Team launched - process alive and ready'
+          : 'Team provisioned - process alive and ready';
+
+    const progress = updateProgress(run, 'ready', readyMessage, {
+      cliLogsTail: extractCliLogsFromRun(run),
+      messageSeverity: hasSpawnFailures || hasPendingBootstrap ? 'warning' : undefined,
+    });
+    run.onProgress(progress);
+    this.provisioningRunByTeam.delete(run.teamName);
+    this.aliveRunByTeam.set(run.teamName, run.runId);
+    logger.warn(
+      `[${run.teamName}] Recovered ready state from completed deterministic bootstrap snapshot after post-bootstrap finalization delay.`
+    );
+
+    this.teamChangeEmitter?.({
+      type: 'lead-message',
+      teamName: run.teamName,
+      runId: run.runId,
+      detail: 'lead-session-sync',
+    });
+
+    if (!hasSpawnFailures && !hasPendingBootstrap) {
+      void this.fireTeamLaunchedNotification(run);
+    } else if (hasSpawnFailures) {
+      void this.fireTeamLaunchIncompleteNotification(
+        run,
+        failedSpawnMembers,
+        launchSummary,
+        snapshot
+      );
+    }
+  }
+
+  private isProvisioningRunPromotedToAlive(run: ProvisioningRun): boolean {
+    return (
+      this.aliveRunByTeam.get(run.teamName) === run.runId &&
+      this.provisioningRunByTeam.get(run.teamName) !== run.runId
+    );
+  }
+
   private syncRunMemberSpawnStatusesFromSnapshot(
     run: ProvisioningRun,
     snapshot: PersistedTeamLaunchSnapshot
@@ -22995,7 +23233,7 @@ export class TeamProvisioningService {
     const snapshot = this.buildLiveLaunchSnapshotForRun(run, launchPhase);
     if (!snapshot) {
       if (run.isLaunch) {
-        await this.clearPersistedLaunchStateNow(run.teamName);
+        await this.clearPersistedLaunchStateNow(run.teamName, { expectedRunId: run.runId });
       }
       return null;
     }
@@ -23004,7 +23242,7 @@ export class TeamProvisioningService {
     const filteredSnapshot = this.filterRemovedMembersFromLaunchSnapshot(snapshot, metaMembers);
 
     if (filteredSnapshot.teamLaunchState === 'clean_success' && launchPhase !== 'active') {
-      await this.clearPersistedLaunchStateNow(run.teamName);
+      await this.clearPersistedLaunchStateNow(run.teamName, { expectedRunId: run.runId });
       this.invalidateRuntimeSnapshotCaches(run.teamName);
       return null;
     }
@@ -23943,11 +24181,11 @@ export class TeamProvisioningService {
     runtimeMember: PersistedRuntimeMemberLike | undefined
   ): string {
     const configuredPath = runtimeMember?.bootstrapRuntimeEventsPath?.trim();
-    if (configuredPath) {
+    if (configuredPath && isContainedTeamRuntimeEventsPath(teamName, configuredPath)) {
       return configuredPath;
     }
-    const filePrefix = sanitizeRuntimeEventFilePrefix(runtimeMember?.name ?? memberName);
-    return path.join(getTeamsBasePath(), teamName, 'runtime', `${filePrefix}.runtime.jsonl`);
+    const filePrefix = sanitizeProcessRuntimeEventFilePrefix(runtimeMember?.name ?? memberName);
+    return path.join(getTeamRuntimeEventsDir(teamName), `${filePrefix}.runtime.jsonl`);
   }
 
   private async readRuntimeBootstrapProofEvents(
@@ -23955,6 +24193,10 @@ export class TeamProvisioningService {
   ): Promise<Record<string, unknown>[]> {
     let handle: fs.promises.FileHandle | null = null;
     try {
+      const pathStat = await fs.promises.lstat(eventsPath);
+      if (!pathStat.isFile()) {
+        return [];
+      }
       handle = await fs.promises.open(eventsPath, 'r');
       const stat = await handle.stat();
       if (!stat.isFile() || stat.size <= 0) {
@@ -23970,10 +24212,16 @@ export class TeamProvisioningService {
       if (start > 0) {
         lines.shift();
       }
+      if (lines.length > BOOTSTRAP_RUNTIME_EVENT_MAX_LINES) {
+        lines.splice(0, lines.length - BOOTSTRAP_RUNTIME_EVENT_MAX_LINES);
+      }
       const events: Record<string, unknown>[] = [];
       for (const rawLine of lines) {
         const line = rawLine.trim();
         if (!line) continue;
+        if (Buffer.byteLength(line, 'utf8') > BOOTSTRAP_RUNTIME_EVENT_MAX_LINE_BYTES) {
+          continue;
+        }
         try {
           const parsed = JSON.parse(line) as unknown;
           if (
@@ -24075,6 +24323,216 @@ export class TeamProvisioningService {
       }
     }
     return latest;
+  }
+
+  private isRuntimeBootstrapTransportEventCurrent(input: {
+    event: Record<string, unknown>;
+    teamName: string;
+    memberName: string;
+    runtimeMember?: PersistedRuntimeMemberLike;
+    expectedPid?: number;
+    expectedBootstrapRunId?: string;
+    boundaryMs: number;
+  }): boolean {
+    const { event, teamName, memberName, runtimeMember, expectedPid, expectedBootstrapRunId } =
+      input;
+    const eventTeamName = typeof event.teamName === 'string' ? event.teamName.trim() : '';
+    if (eventTeamName && eventTeamName !== teamName) {
+      return false;
+    }
+    const eventAgentId = typeof event.agentId === 'string' ? event.agentId.trim() : '';
+    const expectedAgentId = runtimeMember?.agentId?.trim() ?? '';
+    if (eventAgentId && expectedAgentId && eventAgentId !== expectedAgentId) {
+      return false;
+    }
+    const eventAgentName = typeof event.agentName === 'string' ? event.agentName.trim() : '';
+    const runtimeName = runtimeMember?.name?.trim() ?? '';
+    if (
+      eventAgentName &&
+      !matchesMemberNameOrBase(eventAgentName, memberName) &&
+      !(runtimeName && matchesTeamMemberIdentity(eventAgentName, runtimeName))
+    ) {
+      return false;
+    }
+    const eventBootstrapRunId =
+      typeof event.bootstrapRunId === 'string' ? event.bootstrapRunId.trim() : '';
+    if (
+      expectedBootstrapRunId &&
+      eventBootstrapRunId &&
+      eventBootstrapRunId !== expectedBootstrapRunId
+    ) {
+      return false;
+    }
+    const eventPid = typeof event.pid === 'number' && Number.isFinite(event.pid) ? event.pid : NaN;
+    if (typeof expectedPid === 'number' && expectedPid > 0 && eventPid !== expectedPid) {
+      return false;
+    }
+    if (Number.isFinite(input.boundaryMs)) {
+      const timestamp = typeof event.timestamp === 'string' ? event.timestamp : '';
+      const timestampMs = Date.parse(timestamp);
+      if (!Number.isFinite(timestampMs) || timestampMs < input.boundaryMs) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private async readProcessBootstrapTransportSummary(input: {
+    teamName: string;
+    memberName: string;
+    member: PersistedTeamLaunchMemberState;
+  }): Promise<ProcessBootstrapTransportSummary | null> {
+    const { teamName, memberName, member } = input;
+    const runtimeMember = this.resolveBootstrapRuntimeMember(teamName, memberName);
+    const memberRecord = member as unknown as Record<string, unknown>;
+    const runtimeBackendType =
+      runtimeMember?.backendType?.trim() ||
+      (typeof memberRecord.backendType === 'string' ? memberRecord.backendType.trim() : '');
+    const processPaneId =
+      runtimeMember?.tmuxPaneId?.trim() ||
+      (typeof memberRecord.tmuxPaneId === 'string' ? memberRecord.tmuxPaneId.trim() : '');
+    if (runtimeBackendType !== 'process' && !processPaneId?.startsWith('process:')) {
+      return null;
+    }
+    const boundaryText = member.firstSpawnAcceptedAt ?? runtimeMember?.bootstrapExpectedAfter;
+    const boundaryMs = boundaryText ? Date.parse(boundaryText) : Number.NaN;
+    const expectedPid =
+      typeof member.runtimePid === 'number' && member.runtimePid > 0
+        ? member.runtimePid
+        : typeof runtimeMember?.runtimePid === 'number' && runtimeMember.runtimePid > 0
+          ? runtimeMember.runtimePid
+          : undefined;
+    const expectedBootstrapRunId =
+      runtimeMember?.bootstrapRunId?.trim() ||
+      (typeof member.runtimeRunId === 'string' ? member.runtimeRunId.trim() : '') ||
+      (typeof memberRecord.bootstrapRunId === 'string' ? memberRecord.bootstrapRunId.trim() : '');
+    if (!expectedBootstrapRunId && !Number.isFinite(boundaryMs) && !expectedPid) {
+      return null;
+    }
+
+    const eventsPath = this.getBootstrapRuntimeEventsPath(teamName, memberName, runtimeMember);
+    // Runtime event paths are persisted by process teammates. Keep both path
+    // containment and payload identity checks so stale or foreign JSONL cannot
+    // affect another team/member launch.
+    if (!isContainedTeamRuntimeEventsPath(teamName, eventsPath)) {
+      return null;
+    }
+    const events = await this.readRuntimeBootstrapProofEvents(eventsPath);
+    const currentEvents = events.filter((event) =>
+      this.isRuntimeBootstrapTransportEventCurrent({
+        event,
+        teamName,
+        memberName,
+        runtimeMember,
+        expectedPid,
+        expectedBootstrapRunId,
+        boundaryMs,
+      })
+    );
+    return summarizeProcessBootstrapTransportEvents(
+      currentEvents as ProcessBootstrapTransportEvent[]
+    );
+  }
+
+  private applyProcessBootstrapTransportOverlay(input: {
+    member: PersistedTeamLaunchMemberState;
+    summary: ProcessBootstrapTransportSummary | null;
+    launchPhase: PersistedTeamLaunchPhase;
+    finalTimeoutReached?: boolean;
+  }): PersistedTeamLaunchMemberState {
+    const { member, summary } = input;
+    if (
+      !summary ||
+      member.bootstrapConfirmed ||
+      member.launchState === 'confirmed_alive' ||
+      member.launchState === 'skipped_for_launch' ||
+      member.launchState === 'runtime_pending_permission' ||
+      member.skippedForLaunch === true
+    ) {
+      return member;
+    }
+    const existingFailure = member.hardFailureReason ?? member.runtimeDiagnostic;
+    if (
+      member.launchState === 'failed_to_start' &&
+      member.hardFailure === true &&
+      !isAutoClearableLaunchFailureReason(existingFailure)
+    ) {
+      return member;
+    }
+
+    const projectionPhase = deriveProcessTransportProjectionPhase({
+      launchPhase: input.launchPhase,
+      finalTimeoutReached: input.finalTimeoutReached,
+    });
+    const base: PersistedTeamLaunchMemberState = {
+      ...member,
+      agentToolAccepted: true,
+      lastEvaluatedAt: nowIso(),
+    };
+
+    if (summary.terminalFailure) {
+      // Terminal transport events are failures for bootstrap only. They are
+      // surfaced as hard failure text, but still do not create readiness proof.
+      const reason = summary.terminalFailure.reason;
+      return {
+        ...base,
+        launchState: 'failed_to_start',
+        bootstrapConfirmed: false,
+        hardFailure: true,
+        hardFailureReason: reason,
+        runtimeDiagnostic: reason,
+        runtimeDiagnosticSeverity: 'error',
+        diagnostics: mergeRuntimeDiagnostics(base.diagnostics, [reason, summary.lastStage]),
+        sources: {
+          ...(base.sources ?? {}),
+          hardFailureSignal: true,
+        },
+      };
+    }
+
+    if (!summary.hasProgress) {
+      return member;
+    }
+
+    if (projectionPhase === 'final') {
+      const reason = buildProcessBootstrapTimeoutDiagnostic(summary);
+      return {
+        ...base,
+        launchState: 'failed_to_start',
+        bootstrapConfirmed: false,
+        hardFailure: true,
+        hardFailureReason: reason,
+        runtimeDiagnostic: reason,
+        runtimeDiagnosticSeverity: 'error',
+        diagnostics: mergeRuntimeDiagnostics(base.diagnostics, [reason, summary.lastStage]),
+        sources: {
+          ...(base.sources ?? {}),
+          hardFailureSignal: true,
+        },
+      };
+    }
+
+    const runtimeDiagnostic = buildProcessBootstrapPendingDiagnostic(summary);
+    // Active launch progress remains pending. A submitted bootstrap prompt is
+    // not enough for confirmed_alive; durable bootstrap proof is handled by
+    // the runtime/transcript evidence path above.
+    return {
+      ...base,
+      launchState: 'runtime_pending_bootstrap',
+      bootstrapConfirmed: false,
+      hardFailure: false,
+      hardFailureReason: undefined,
+      runtimeDiagnostic,
+      runtimeDiagnosticSeverity: summary.submitted ? 'info' : 'warning',
+      diagnostics: mergeRuntimeDiagnostics(base.diagnostics, [
+        runtimeDiagnostic,
+        summary.lastStage,
+      ]),
+      sources: {
+        ...(base.sources ?? {}),
+        hardFailureSignal: undefined,
+      },
+    };
   }
 
   private async applyBootstrapTranscriptEvidenceOverlay(
@@ -24376,7 +24834,7 @@ export class TeamProvisioningService {
     const now = nowIso();
     for (const expected of persistedMemberNames) {
       const bootstrapMember = bootstrapSnapshot?.members[expected];
-      const current = nextMembers[expected] ?? {
+      let current = nextMembers[expected] ?? {
         name: expected,
         launchState: 'starting',
         agentToolAccepted: false,
@@ -24514,9 +24972,19 @@ export class TeamProvisioningService {
         }
       }
       const graceExpired =
-        current.agentToolAccepted === true &&
-        Number.isFinite(acceptedAtMs) &&
-        Date.now() - acceptedAtMs >= MEMBER_LAUNCH_GRACE_MS;
+        Number.isFinite(acceptedAtMs) && Date.now() - acceptedAtMs >= MEMBER_LAUNCH_GRACE_MS;
+      if (!isOpenCodeSecondaryLaneMember) {
+        current = this.applyProcessBootstrapTransportOverlay({
+          member: current,
+          summary: await this.readProcessBootstrapTransportSummary({
+            teamName,
+            memberName: expected,
+            member: current,
+          }),
+          launchPhase: persistedWithCommittedEvidence.launchPhase,
+          finalTimeoutReached: graceExpired,
+        });
+      }
       if (
         isOpenCodeSecondaryLaneMember &&
         shouldMarkPersistedOpenCodeBootstrapStalled(current, Date.now())
@@ -24540,6 +25008,7 @@ export class TeamProvisioningService {
         ]);
       }
       if (
+        current.agentToolAccepted === true &&
         !current.bootstrapConfirmed &&
         !current.runtimeAlive &&
         !current.hardFailure &&
@@ -27665,6 +28134,7 @@ export class TeamProvisioningService {
     }
 
     run.provisioningComplete = true;
+    this.scheduleDeterministicBootstrapCompletionRecovery(run);
     this.resetRuntimeToolActivity(run, this.getRunLeadName(run));
     this.setLeadActivity(run, 'idle');
 
@@ -27743,6 +28213,9 @@ export class TeamProvisioningService {
       const hasPendingBootstrap =
         !hasSpawnFailures &&
         this.hasPendingLaunchMembers(run, launchSummary, persistedLaunchSnapshot);
+      if (this.isProvisioningRunPromotedToAlive(run)) {
+        return;
+      }
       const readyMessage = hasSpawnFailures
         ? `Launch completed with teammate errors — ${failedSpawnMembers
             .map((member) => member.name)
@@ -27923,6 +28396,9 @@ export class TeamProvisioningService {
     const hasPendingBootstrap =
       !hasSpawnFailures &&
       this.hasPendingLaunchMembers(run, launchSummary, persistedLaunchSnapshot);
+    if (this.isProvisioningRunPromotedToAlive(run)) {
+      return;
+    }
     const progress = updateProgress(
       run,
       'ready',
@@ -29357,30 +29833,36 @@ export class TeamProvisioningService {
     const envPatch: NodeJS.ProcessEnv = {};
     let usesAnthropicApiKeyHelper = false;
     for (const providerId of crossProviderIds) {
+      let env: ProvisioningEnvResolution;
       try {
-        const env = await this.buildProvisioningEnv(providerId, undefined, {
+        env = await this.buildProvisioningEnv(providerId, undefined, {
           teamRuntimeAuth: options?.teamRuntimeAuth,
         });
-        args.push(...(await this.buildRuntimeTurnSettledHookSettingsArgs(providerId)));
-        const providerArgs = env.providerArgs ?? [];
-        providerArgsByProvider.set(providerId, providerArgs);
-        if (env.anthropicApiKeyHelper) {
-          usesAnthropicApiKeyHelper = true;
-          Object.assign(envPatch, env.anthropicApiKeyHelper.envPatch);
-        }
-        const flattenedArgs =
-          providerId === 'anthropic' && env.anthropicApiKeyHelper
-            ? filterOutSettingsPathArgs(providerArgs, env.anthropicApiKeyHelper.settingsPath)
-            : providerArgs;
-        if (flattenedArgs.length > 0) {
-          args.push(...flattenedArgs);
-        }
       } catch (error) {
         console.error(
           `[TeamProvisioningService] Failed to build cross-provider args for provider "${providerId}"`,
           error
         );
         // Best-effort: don't block launch if cross-provider env resolution fails
+        // before the provider can report a concrete auth/readiness issue.
+        continue;
+      }
+      if (env.warning) {
+        throw new Error(`${getTeamProviderLabel(providerId)}: ${env.warning}`);
+      }
+      args.push(...(await this.buildRuntimeTurnSettledHookSettingsArgs(providerId)));
+      const providerArgs = env.providerArgs ?? [];
+      providerArgsByProvider.set(providerId, providerArgs);
+      if (env.anthropicApiKeyHelper) {
+        usesAnthropicApiKeyHelper = true;
+        Object.assign(envPatch, env.anthropicApiKeyHelper.envPatch);
+      }
+      const flattenedArgs =
+        providerId === 'anthropic' && env.anthropicApiKeyHelper
+          ? filterOutSettingsPathArgs(providerArgs, env.anthropicApiKeyHelper.settingsPath)
+          : providerArgs;
+      if (flattenedArgs.length > 0) {
+        args.push(...flattenedArgs);
       }
     }
     return { args, providerArgsByProvider, envPatch, usesAnthropicApiKeyHelper };

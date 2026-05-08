@@ -28,11 +28,11 @@ For source development, use:
 
 ## Run from source
 
-<InstallBlock command="git clone https://github.com/777genius/claude_agent_teams_ui.git && cd claude_agent_teams_ui && pnpm install && pnpm dev" />
+<InstallBlock command="git clone https://github.com/777genius/agent-teams-ai.git && cd agent-teams-ai && pnpm install && pnpm dev" />
 
 ```bash
-git clone https://github.com/777genius/claude_agent_teams_ui.git
-cd claude_agent_teams_ui
+git clone https://github.com/777genius/agent-teams-ai.git
+cd agent-teams-ai
 pnpm install
 pnpm dev
 ```

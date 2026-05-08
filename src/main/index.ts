@@ -18,6 +18,7 @@ process.env.UV_THREADPOOL_SIZE ??= '16';
 
 // Keep userData stable before any integration can initialize Electron storage.
 // Sentry must stay near the top to capture early errors after storage migration.
+import { earlyElectronUserDataMigrationResult } from './bootstrapUserDataMigration';
 import './sentry';
 
 import {
@@ -166,7 +167,6 @@ import {
   markRendererUnavailable,
   safeSendToRenderer,
 } from './utils/safeWebContentsSend';
-import { earlyElectronUserDataMigrationResult } from './bootstrapUserDataMigration';
 import { syncTelemetryFlag } from './sentry';
 import {
   ActiveTeamRegistry,
@@ -220,6 +220,13 @@ if (
 ) {
   logger.info(
     `Migrated Electron userData from ${earlyElectronUserDataMigrationResult.legacyPath} to ${earlyElectronUserDataMigrationResult.currentPath}`
+  );
+} else if (
+  earlyElectronUserDataMigrationResult.reason === 'legacy-reused' &&
+  earlyElectronUserDataMigrationResult.legacyPath
+) {
+  logger.info(
+    `Reusing legacy Electron userData at ${earlyElectronUserDataMigrationResult.legacyPath}`
   );
 } else if (
   earlyElectronUserDataMigrationResult.fallbackToLegacy &&

@@ -117,13 +117,13 @@ export const TabBarActions = (): React.JSX.Element => {
             onClick={async () => {
               if (isElectronMode()) {
                 await window.electronAPI.openExternal(
-                  'https://github.com/777genius/claude_agent_teams_ui'
+                  'https://github.com/777genius/agent-teams-ai'
                 );
                 return;
               }
 
               window.open(
-                'https://github.com/777genius/claude_agent_teams_ui',
+                'https://github.com/777genius/agent-teams-ai',
                 '_blank',
                 'noopener,noreferrer'
               );

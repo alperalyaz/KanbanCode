@@ -15,7 +15,7 @@ Initial release: Agent Teams with reliable CLI detection in packaged builds (she
 After CI uploads artifacts, optional notes update:
 
 ```bash
-gh release edit v1.0.0 --repo 777genius/claude_agent_teams_ui --notes "$(cat <<'EOF'
+gh release edit v1.0.0 --repo 777genius/agent-teams-ai --notes "$(cat <<'EOF'
 ## Agent Teams v1.0.0
 
 First stable build: CLI/auth reliability in packaged apps, IPC hardening, and platform packaging.
@@ -37,33 +37,33 @@ First stable build: CLI/auth reliability in packaged apps, IPC hardening, and pl
 <table>
 <tr>
 <td align="center">
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v1.0.0/Claude.Agent.Teams.UI-1.0.0-arm64.dmg">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/Claude.Agent.Teams.UI-1.0.0-arm64.dmg">
     <img src="https://img.shields.io/badge/macOS_Apple_Silicon-.dmg-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Apple Silicon" />
   </a>
   <br />
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v1.0.0/Claude.Agent.Teams.UI-1.0.0.dmg">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/Claude.Agent.Teams.UI-1.0.0.dmg">
     <img src="https://img.shields.io/badge/macOS_Intel-.dmg-434343?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Intel" />
   </a>
 </td>
 <td align="center">
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v1.0.0/Claude.Agent.Teams.UI.Setup.1.0.0.exe">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/Claude.Agent.Teams.UI.Setup.1.0.0.exe">
     <img src="https://img.shields.io/badge/Windows-Download_.exe-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
   </a>
   <br />
   <sub>May trigger SmartScreen — click "More info" → "Run anyway"</sub>
 </td>
 <td align="center">
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v1.0.0/Claude.Agent.Teams.UI-1.0.0.AppImage">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/Claude.Agent.Teams.UI-1.0.0.AppImage">
     <img src="https://img.shields.io/badge/Linux-Download_.AppImage-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux AppImage" />
   </a>
   <br />
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v1.0.0/claude-agent-teams-ui_1.0.0_amd64.deb">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/claude-agent-teams-ui_1.0.0_amd64.deb">
     <img src="https://img.shields.io/badge/.deb-E95420?style=flat-square&logo=ubuntu&logoColor=white" alt=".deb" />
   </a>&nbsp;
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v1.0.0/claude-agent-teams-ui-1.0.0.x86_64.rpm">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/claude-agent-teams-ui-1.0.0.x86_64.rpm">
     <img src="https://img.shields.io/badge/.rpm-294172?style=flat-square&logo=redhat&logoColor=white" alt=".rpm" />
   </a>&nbsp;
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v1.0.0/claude-agent-teams-ui-1.0.0.pacman">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/claude-agent-teams-ui-1.0.0.pacman">
     <img src="https://img.shields.io/badge/.pacman-1793D1?style=flat-square&logo=archlinux&logoColor=white" alt=".pacman" />
   </a>
 </td>
@@ -112,7 +112,7 @@ This triggers the `release.yml` GitHub Actions workflow which:
 After the workflow completes, edit the release notes:
 
 ```bash
-gh release edit v<VERSION> --repo 777genius/claude_agent_teams_ui --notes "$(cat <<'EOF'
+gh release edit v<VERSION> --repo 777genius/agent-teams-ai --notes "$(cat <<'EOF'
 <paste release notes here>
 EOF
 )"
@@ -140,33 +140,33 @@ EOF
 <table>
 <tr>
 <td align="center">
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/Claude.Agent.Teams.UI-<VERSION>-arm64.dmg">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v<VERSION>/Agent.Teams.AI-<VERSION>-arm64.dmg">
     <img src="https://img.shields.io/badge/macOS_Apple_Silicon-.dmg-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Apple Silicon" />
   </a>
   <br />
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/Claude.Agent.Teams.UI-<VERSION>-x64.dmg">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v<VERSION>/Agent.Teams.AI-<VERSION>-x64.dmg">
     <img src="https://img.shields.io/badge/macOS_Intel-.dmg-434343?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Intel" />
   </a>
 </td>
 <td align="center">
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/Claude.Agent.Teams.UI.Setup.<VERSION>.exe">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v<VERSION>/Agent.Teams.AI.Setup.<VERSION>.exe">
     <img src="https://img.shields.io/badge/Windows-Download_.exe-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
   </a>
   <br />
   <sub>May trigger SmartScreen — click "More info" → "Run anyway"</sub>
 </td>
 <td align="center">
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/Claude.Agent.Teams.UI-<VERSION>.AppImage">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v<VERSION>/Agent.Teams.AI-<VERSION>.AppImage">
     <img src="https://img.shields.io/badge/Linux-Download_.AppImage-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux AppImage" />
   </a>
   <br />
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/claude-agent-teams-ui_<VERSION>_amd64.deb">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v<VERSION>/agent-teams-ai_<VERSION>_amd64.deb">
     <img src="https://img.shields.io/badge/.deb-E95420?style=flat-square&logo=ubuntu&logoColor=white" alt=".deb" />
   </a>&nbsp;
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/claude-agent-teams-ui-<VERSION>.x86_64.rpm">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v<VERSION>/agent-teams-ai-<VERSION>.x86_64.rpm">
     <img src="https://img.shields.io/badge/.rpm-294172?style=flat-square&logo=redhat&logoColor=white" alt=".rpm" />
   </a>&nbsp;
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/claude-agent-teams-ui-<VERSION>.pacman">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v<VERSION>/agent-teams-ai-<VERSION>.pacman">
     <img src="https://img.shields.io/badge/.pacman-1793D1?style=flat-square&logo=archlinux&logoColor=white" alt=".pacman" />
   </a>
 </td>
@@ -196,15 +196,15 @@ electron-builder generates these artifacts per platform:
 
 | Platform         | Versioned Name                                   | Stable Name (for /latest/download)         |
 |------------------|--------------------------------------------------|--------------------------------------------|
-| macOS arm64 DMG  | `Claude.Agent.Teams.UI-<VER>-arm64.dmg`          | `Claude-Agent-Teams-UI-arm64.dmg`          |
-| macOS x64 DMG    | `Claude.Agent.Teams.UI-<VER>-x64.dmg`            | `Claude-Agent-Teams-UI-x64.dmg`            |
-| macOS arm64 ZIP  | `Claude.Agent.Teams.UI-<VER>-arm64-mac.zip`      | -                                          |
-| macOS x64 ZIP    | `Claude.Agent.Teams.UI-<VER>-x64-mac.zip`        | -                                          |
-| Windows          | `Claude.Agent.Teams.UI.Setup.<VER>.exe`          | `Claude-Agent-Teams-UI-Setup.exe`          |
-| Linux AppImage   | `Claude.Agent.Teams.UI-<VER>.AppImage`           | `Claude-Agent-Teams-UI.AppImage`           |
-| Linux deb        | `claude-agent-teams-ui_<VER>_amd64.deb`          | `Claude-Agent-Teams-UI-amd64.deb`          |
-| Linux rpm        | `claude-agent-teams-ui-<VER>.x86_64.rpm`         | `Claude-Agent-Teams-UI-x86_64.rpm`         |
-| Linux pacman     | `claude-agent-teams-ui-<VER>.pacman`              | `Claude-Agent-Teams-UI.pacman`             |
+| macOS arm64 DMG  | `Agent.Teams.AI-<VER>-arm64.dmg`                 | `Claude-Agent-Teams-UI-arm64.dmg`          |
+| macOS x64 DMG    | `Agent.Teams.AI-<VER>-x64.dmg`                   | `Claude-Agent-Teams-UI-x64.dmg`            |
+| macOS arm64 ZIP  | `Agent.Teams.AI-<VER>-arm64-mac.zip`             | -                                          |
+| macOS x64 ZIP    | `Agent.Teams.AI-<VER>-x64-mac.zip`               | -                                          |
+| Windows          | `Agent.Teams.AI.Setup.<VER>.exe`                 | `Claude-Agent-Teams-UI-Setup.exe`          |
+| Linux AppImage   | `Agent.Teams.AI-<VER>.AppImage`                  | `Claude-Agent-Teams-UI.AppImage`           |
+| Linux deb        | `agent-teams-ai_<VER>_amd64.deb`                 | `Claude-Agent-Teams-UI-amd64.deb`          |
+| Linux rpm        | `agent-teams-ai-<VER>.x86_64.rpm`                | `Claude-Agent-Teams-UI-x86_64.rpm`         |
+| Linux pacman     | `agent-teams-ai-<VER>.pacman`                    | `Claude-Agent-Teams-UI.pacman`             |
 
 ## Stable Download Links
 
@@ -214,7 +214,7 @@ It starts only after **release-mac** (two matrix jobs), **release-win**, and **r
 This enables permanent links in README that always point to the latest release:
 
 ```
-https://github.com/777genius/claude_agent_teams_ui/releases/latest/download/Claude-Agent-Teams-UI-arm64.dmg
+https://github.com/777genius/agent-teams-ai/releases/latest/download/Claude-Agent-Teams-UI-arm64.dmg
 ```
 
 GitHub automatically redirects `/releases/latest/download/FILENAME` to the asset from the most recent release. No README updates needed when releasing a new version.
@@ -251,10 +251,10 @@ git push origin v1.0.0
 # Wait for CI to finish (~10 min), then update notes
 
 # Delete a release (if needed)
-gh release delete v1.0.0 --repo 777genius/claude_agent_teams_ui --yes
+gh release delete v1.0.0 --repo 777genius/agent-teams-ai --yes
 git tag -d v1.0.0
 git push origin :refs/tags/v1.0.0
 
 # Check workflow status
-gh run list --repo 777genius/claude_agent_teams_ui --workflow release.yml --limit 3
+gh run list --repo 777genius/agent-teams-ai --workflow release.yml --limit 3
 ```

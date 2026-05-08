@@ -85,6 +85,7 @@ vi.mock(
     detectCodexLocalAccountState: detectLocalAccountStateMock,
     detectCodexLocalAccountArtifacts: async () =>
       (await detectLocalAccountStateMock()).hasArtifacts,
+    ensureCodexLegacyAuthFromActiveAccount: vi.fn().mockResolvedValue(null),
   })
 );
 
@@ -610,6 +611,99 @@ describe('createCodexAccountFeature', () => {
     }
   });
 
+  it('keeps last known rate limits visible during a transient optional rate limit refresh failure', async () => {
+    readAccountMock.mockResolvedValue({
+      account: createAccountResponse(),
+      initialize: {
+        codexHome: '/Users/test/.codex',
+        platformFamily: 'unix',
+        platformOs: 'macos',
+      },
+    });
+    readRateLimitsMock
+      .mockResolvedValueOnce(createRateLimitsResponse())
+      .mockRejectedValueOnce(new Error('codex account authentication required to read rate limits'));
+    const logger = createLoggerPort();
+    const feature = createCodexAccountFeature({
+      logger,
+      configManager: createConfigManager('chatgpt'),
+    });
+    const dateNowSpy = vi.spyOn(Date, 'now');
+
+    try {
+      dateNowSpy.mockReturnValue(1_776_000_000_000);
+      const firstSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+      dateNowSpy.mockReturnValue(1_776_000_060_000);
+      const secondSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+
+      expect(firstSnapshot.rateLimits?.primary?.usedPercent).toBe(77);
+      expect(secondSnapshot.appServerState).toBe('healthy');
+      expect(secondSnapshot.managedAccount?.email).toBe('user@example.com');
+      expect(secondSnapshot.rateLimits?.primary?.usedPercent).toBe(77);
+      expect(logger.warn).toHaveBeenCalledWith('codex account rate limits refresh failed', {
+        error: 'codex account authentication required to read rate limits',
+      });
+    } finally {
+      dateNowSpy.mockRestore();
+      await feature.dispose();
+    }
+  });
+
+  it('does not reuse stale rate limits after the active ChatGPT account changes', async () => {
+    readAccountMock
+      .mockResolvedValueOnce({
+        account: createAccountResponse({
+          account: {
+            type: 'chatgpt',
+            email: 'first@example.com',
+            planType: 'pro',
+          },
+        }),
+        initialize: {
+          codexHome: '/Users/test/.codex',
+          platformFamily: 'unix',
+          platformOs: 'macos',
+        },
+      })
+      .mockResolvedValueOnce({
+        account: createAccountResponse({
+          account: {
+            type: 'chatgpt',
+            email: 'second@example.com',
+            planType: 'pro',
+          },
+        }),
+        initialize: {
+          codexHome: '/Users/test/.codex',
+          platformFamily: 'unix',
+          platformOs: 'macos',
+        },
+      });
+    readRateLimitsMock
+      .mockResolvedValueOnce(createRateLimitsResponse())
+      .mockRejectedValueOnce(new Error('rate limit service unavailable'));
+    const feature = createCodexAccountFeature({
+      logger: createLoggerPort(),
+      configManager: createConfigManager('chatgpt'),
+    });
+    const dateNowSpy = vi.spyOn(Date, 'now');
+
+    try {
+      dateNowSpy.mockReturnValue(1_776_000_000_000);
+      const firstSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+      dateNowSpy.mockReturnValue(1_776_000_060_000);
+      const secondSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+
+      expect(firstSnapshot.managedAccount?.email).toBe('first@example.com');
+      expect(firstSnapshot.rateLimits?.primary?.usedPercent).toBe(77);
+      expect(secondSnapshot.managedAccount?.email).toBe('second@example.com');
+      expect(secondSnapshot.rateLimits).toBeNull();
+    } finally {
+      dateNowSpy.mockRestore();
+      await feature.dispose();
+    }
+  });
+
   it('keeps the last known managed account during a transient degraded read', async () => {
     readAccountMock
       .mockResolvedValueOnce({
@@ -686,7 +780,7 @@ describe('createCodexAccountFeature', () => {
       dateNowSpy.mockReturnValue(1_776_000_000_000);
       const firstSnapshot = await feature.refreshSnapshot();
       dateNowSpy.mockReturnValue(1_776_000_006_000);
-      const secondSnapshot = await feature.refreshSnapshot();
+      const secondSnapshot = await feature.refreshSnapshot({ forceRefreshToken: true });
 
       expect(firstSnapshot.managedAccount?.email).toBe('user@example.com');
       expect(secondSnapshot.managedAccount).toMatchObject({

@@ -837,6 +837,48 @@ describe('MemberCard starting-state visuals', () => {
     });
   });
 
+  it('does not truncate long failed launch reasons on the member row', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const reason = `APIError - ${'Codex runtime context includes missing login session. '.repeat(
+      8
+    )}final diagnostic marker`;
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberCard, {
+          member,
+          memberColor: 'blue',
+          isTeamAlive: true,
+          isTeamProvisioning: false,
+          spawnStatus: 'error',
+          spawnLaunchState: 'failed_to_start',
+          spawnRuntimeAlive: false,
+          spawnError: reason,
+          spawnEntry: {
+            ...failedSpawnEntry,
+            hardFailureReason: reason,
+            runtimeDiagnostic: reason,
+          },
+          onRestartMember: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const failureReason = host.querySelector('[data-testid="member-launch-failure-reason"]');
+    expect(failureReason?.textContent).toContain('final diagnostic marker');
+    expect(failureReason?.querySelector('.line-clamp-2')).toBeNull();
+    expect(failureReason?.textContent).not.toContain('...');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('renders Relaunch OpenCode for registered-only OpenCode teammates', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');

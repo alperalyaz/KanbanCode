@@ -4,6 +4,8 @@ import * as path from 'path';
 const LEGACY_USER_DATA_DIR_NAMES = [
   'Claude Agent Teams UI',
   'claude-agent-teams-ui',
+  'agent-teams-ai',
+  'Agent Teams UI',
   'claude-devtools',
   'claude-code-context',
 ] as const;
@@ -20,6 +22,7 @@ export interface ElectronUserDataMigrationResult {
   fallbackToLegacy: boolean;
   reason:
     | 'migrated'
+    | 'legacy-reused'
     | 'current-populated'
     | 'current-path-exists'
     | 'legacy-missing'
@@ -35,7 +38,41 @@ interface LoggerLike {
 interface ElectronUserDataMigrationOptions {
   logger?: LoggerLike;
   copyDirectory?: (sourcePath: string, targetPath: string) => void;
+  strategy?: 'reuse-legacy' | 'copy';
 }
+
+const TRANSIENT_CHROMIUM_DIRECTORY_NAMES = new Set([
+  'Cache',
+  'Code Cache',
+  'Crashpad',
+  'Crash Reports',
+  'DawnGraphiteCache',
+  'DawnWebGPUCache',
+  'GPUCache',
+  'GrShaderCache',
+  'ShaderCache',
+  'Session Storage',
+  'Shared Dictionary',
+  'Service Worker',
+  'VideoDecodeStats',
+  'blob_storage',
+]);
+
+const TRANSIENT_CHROMIUM_FILE_NAMES = new Set([
+  'DIPS',
+  'DIPS-journal',
+  'DIPS-wal',
+  'LOCK',
+  'Network Persistent State',
+  'SingletonCookie',
+  'SingletonLock',
+  'SingletonSocket',
+  'TransportSecurity',
+  'Trust Tokens',
+  'Trust Tokens-journal',
+]);
+
+const STALE_MIGRATION_TEMP_MAX_AGE_MS = 60 * 60 * 1000;
 
 export function getLegacyElectronUserDataCandidates(currentPath: string): string[] {
   const parent = path.dirname(currentPath);
@@ -55,6 +92,7 @@ export function migrateElectronUserDataDirectory(
 
   try {
     currentPath = app.getPath('userData');
+    scheduleStaleMigrationTempCleanup(currentPath, logger);
   } catch (error) {
     logger?.warn(`Electron userData migration skipped: ${stringifyError(error)}`);
     return {
@@ -66,7 +104,7 @@ export function migrateElectronUserDataDirectory(
     };
   }
 
-  if (directoryExists(currentPath) && directoryHasEntries(currentPath)) {
+  if (directoryExists(currentPath) && directoryHasDurableUserDataEntries(currentPath)) {
     return {
       currentPath,
       legacyPath: null,
@@ -98,6 +136,29 @@ export function migrateElectronUserDataDirectory(
     };
   }
 
+  if ((options.strategy ?? 'reuse-legacy') === 'reuse-legacy') {
+    try {
+      setLegacyElectronPaths(app, legacyPath, logger);
+      logger?.info(`Reusing legacy Electron userData at ${legacyPath}`);
+      return {
+        currentPath,
+        legacyPath,
+        migrated: false,
+        fallbackToLegacy: false,
+        reason: 'legacy-reused',
+      };
+    } catch (error) {
+      logger?.warn(`Electron userData legacy reuse failed: ${stringifyError(error)}`);
+      return {
+        currentPath,
+        legacyPath,
+        migrated: false,
+        fallbackToLegacy: false,
+        reason: 'error',
+      };
+    }
+  }
+
   const migrated = copyLegacyUserDataDirectory(
     legacyPath,
     currentPath,
@@ -115,7 +176,7 @@ export function migrateElectronUserDataDirectory(
     };
   }
 
-  if (directoryExists(currentPath) && directoryHasEntries(currentPath)) {
+  if (directoryExists(currentPath) && directoryHasDurableUserDataEntries(currentPath)) {
     return {
       currentPath,
       legacyPath: null,
@@ -150,7 +211,10 @@ export function migrateElectronUserDataDirectory(
 function selectLegacyElectronUserDataPath(currentPath: string): string | null {
   const candidates = getLegacyElectronUserDataCandidates(currentPath).filter(directoryExists);
   return (
-    candidates.find((candidatePath) => directoryHasEntries(candidatePath)) ?? candidates[0] ?? null
+    candidates.find((candidatePath) => directoryHasDurableUserDataEntries(candidatePath)) ??
+    candidates.find((candidatePath) => directoryHasEntries(candidatePath)) ??
+    candidates[0] ??
+    null
   );
 }
 
@@ -212,7 +276,71 @@ function copyDirectorySync(sourcePath: string, targetPath: string): void {
     recursive: true,
     errorOnExist: false,
     force: false,
+    filter: (sourceEntryPath) => shouldCopyElectronUserDataEntry(sourcePath, sourceEntryPath),
   });
+}
+
+function scheduleStaleMigrationTempCleanup(currentPath: string, logger?: LoggerLike): void {
+  const parent = path.dirname(currentPath);
+  const prefix = `${path.basename(currentPath)}.migrating-`;
+
+  const timeout = setTimeout(() => {
+    fs.readdir(parent, { withFileTypes: true }, (readError, entries) => {
+      if (readError) {
+        return;
+      }
+
+      const now = Date.now();
+      for (const entry of entries) {
+        if (!entry.isDirectory() || !entry.name.startsWith(prefix)) {
+          continue;
+        }
+
+        const stalePath = path.join(parent, entry.name);
+        fs.stat(stalePath, (statError, stats) => {
+          if (statError || now - stats.mtimeMs < STALE_MIGRATION_TEMP_MAX_AGE_MS) {
+            return;
+          }
+
+          fs.rm(stalePath, { recursive: true, force: true }, (removeError) => {
+            if (removeError) {
+              logger?.warn(
+                `Failed to remove stale Electron userData migration temp path: ${stringifyError(
+                  removeError
+                )}`
+              );
+              return;
+            }
+            logger?.info(`Removed stale Electron userData migration temp path: ${stalePath}`);
+          });
+        });
+      }
+    });
+  }, 30_000);
+
+  timeout.unref?.();
+}
+
+export function shouldCopyElectronUserDataEntry(
+  sourceRootPath: string,
+  sourceEntryPath: string
+): boolean {
+  const relativePath = path.relative(sourceRootPath, sourceEntryPath);
+  if (!relativePath || relativePath === '.') {
+    return true;
+  }
+
+  const segments = relativePath.split(path.sep).filter(Boolean);
+  if (segments.some((segment) => TRANSIENT_CHROMIUM_DIRECTORY_NAMES.has(segment))) {
+    return false;
+  }
+
+  const basename = segments[segments.length - 1];
+  if (TRANSIENT_CHROMIUM_FILE_NAMES.has(basename)) {
+    return false;
+  }
+
+  return true;
 }
 
 function pathExists(targetPath: string): boolean {
@@ -238,6 +366,35 @@ function directoryHasEntries(targetPath: string): boolean {
   } catch {
     return false;
   }
+}
+
+function directoryHasDurableUserDataEntries(targetPath: string): boolean {
+  try {
+    return directoryHasDurableUserDataEntriesWithin(targetPath, targetPath);
+  } catch {
+    return false;
+  }
+}
+
+function directoryHasDurableUserDataEntriesWithin(rootPath: string, targetPath: string): boolean {
+  const entries = fs.readdirSync(targetPath, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const entryPath = path.join(targetPath, entry.name);
+    if (!shouldCopyElectronUserDataEntry(rootPath, entryPath)) {
+      continue;
+    }
+
+    if (!entry.isDirectory()) {
+      return true;
+    }
+
+    if (directoryHasDurableUserDataEntriesWithin(rootPath, entryPath)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function stringifyError(error: unknown): string {

@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process';
 import path from 'node:path';
 
 import { evaluateCodexLaunchReadiness } from '@features/codex-account';
@@ -70,6 +71,19 @@ const CODEX_CLI_PATH_ENV_VAR = 'CODEX_CLI_PATH';
 const CODEX_HOME_ENV_VAR = 'CODEX_HOME';
 const CODEX_FORCED_LOGIN_METHOD_ENV_VAR = 'CLAUDE_CODE_CODEX_FORCED_LOGIN_METHOD';
 const CODEX_NATIVE_BACKEND_ID = 'codex-native';
+const CODEX_LOGIN_STATUS_TIMEOUT_MS = 5_000;
+
+type CodexCliLoginStatus = 'logged_in' | 'not_logged_in' | 'unknown';
+
+interface CodexCliLoginStatusCheckResult {
+  status: CodexCliLoginStatus;
+  detail: string | null;
+}
+
+type CodexCliLoginStatusChecker = (params: {
+  binaryPath: string | null;
+  env: NodeJS.ProcessEnv;
+}) => Promise<CodexCliLoginStatusCheckResult>;
 
 function isCodexExecBinary(binaryPath?: string | null): boolean {
   const binaryName = path.basename(binaryPath?.trim() ?? '').toLowerCase();
@@ -119,6 +133,57 @@ function applyCodexForcedLoginMethodEnv(
   delete env[CODEX_FORCED_LOGIN_METHOD_ENV_VAR];
 }
 
+function sanitizeCodexLoginStatusDetail(detail: string): string {
+  return detail
+    .replace(/sk-[A-Za-z0-9_-]+/g, '[redacted-api-key]')
+    .replace(
+      /"?(access_token|refresh_token|id_token)"?\s*[:=]\s*"?[^"\s,}]+/gi,
+      '$1=[redacted-token]'
+    )
+    .trim()
+    .slice(0, 500);
+}
+
+async function checkCodexCliLoginStatus({
+  binaryPath,
+  env,
+}: {
+  binaryPath: string | null;
+  env: NodeJS.ProcessEnv;
+}): Promise<CodexCliLoginStatusCheckResult> {
+  const executable = binaryPath?.trim() || 'codex';
+  const args = [...buildCodexForcedLoginLaunchArgs(executable, 'chatgpt'), 'login', 'status'];
+
+  return new Promise((resolve) => {
+    execFile(
+      executable,
+      args,
+      {
+        env,
+        timeout: CODEX_LOGIN_STATUS_TIMEOUT_MS,
+        windowsHide: true,
+        maxBuffer: 128 * 1024,
+      },
+      (error, stdout, stderr) => {
+        const detail = sanitizeCodexLoginStatusDetail(`${stdout ?? ''}\n${stderr ?? ''}`);
+        if (!error) {
+          resolve({ status: 'logged_in', detail: detail || null });
+          return;
+        }
+
+        if (/not logged in/i.test(detail)) {
+          resolve({ status: 'not_logged_in', detail: detail || null });
+          return;
+        }
+
+        const fallback =
+          error instanceof Error ? sanitizeCodexLoginStatusDetail(error.message) : null;
+        resolve({ status: 'unknown', detail: detail || fallback || null });
+      }
+    );
+  });
+}
+
 export class ProviderConnectionService {
   private static instance: ProviderConnectionService | null = null;
   private codexAccountFeature: Pick<CodexAccountFeatureFacade, 'getSnapshot'> | null = null;
@@ -127,7 +192,8 @@ export class ProviderConnectionService {
 
   constructor(
     private apiKeyService = new ApiKeyService(),
-    private readonly configManager = ConfigManager.getInstance()
+    private readonly configManager = ConfigManager.getInstance(),
+    private readonly codexCliLoginStatusChecker: CodexCliLoginStatusChecker = checkCodexCliLoginStatus
   ) {}
 
   static getInstance(): ProviderConnectionService {
@@ -331,7 +397,7 @@ export class ProviderConnectionService {
   async getConfiguredConnectionIssue(
     env: NodeJS.ProcessEnv,
     providerId: CliProviderId,
-    _runtimeBackendOverride?: string | null
+    runtimeBackendOverride?: string | null
   ): Promise<string | null> {
     if (providerId === 'anthropic') {
       if (this.getConfiguredAuthMode(providerId) !== 'api_key') {
@@ -358,6 +424,8 @@ export class ProviderConnectionService {
     }
 
     const snapshot = this.mergeCodexApiKeyAvailability(await this.getCodexAccountSnapshot(), env);
+    const runtimeEnv = { ...env };
+    applyCodexRuntimeContextEnv(runtimeEnv, snapshot);
     const readiness = evaluateCodexLaunchReadiness({
       preferredAuthMode: snapshot.preferredAuthMode,
       managedAccount: snapshot.managedAccount,
@@ -368,7 +436,41 @@ export class ProviderConnectionService {
     });
 
     if (readiness.launchAllowed) {
-      return null;
+      if (
+        readiness.effectiveAuthMode !== 'chatgpt' ||
+        this.getConfiguredCodexRuntimeBackend(runtimeBackendOverride) !== CODEX_NATIVE_BACKEND_ID
+      ) {
+        return null;
+      }
+
+      if (snapshot.appServerState === 'healthy' && snapshot.managedAccount?.type === 'chatgpt') {
+        return null;
+      }
+
+      delete runtimeEnv.OPENAI_API_KEY;
+      delete runtimeEnv[CODEX_NATIVE_API_KEY_ENV_VAR];
+      applyCodexForcedLoginMethodEnv(runtimeEnv, 'chatgpt');
+
+      const loginStatus = await this.codexCliLoginStatusChecker({
+        binaryPath: snapshot.runtimeContext?.binaryPath?.trim() || null,
+        env: runtimeEnv,
+      });
+      if (loginStatus.status === 'logged_in') {
+        return null;
+      }
+
+      const base =
+        loginStatus.status === 'not_logged_in'
+          ? 'Codex ChatGPT account mode is selected, but the Codex CLI login status is not active for the launch runtime.'
+          : 'Codex ChatGPT account mode is selected, but the Codex CLI login status could not be verified for the launch runtime.';
+      const reconnectHint = snapshot.localActiveChatgptAccountPresent
+        ? 'Reconnect ChatGPT to refresh the current Codex subscription session.'
+        : snapshot.localAccountArtifactsPresent
+          ? 'Local Codex account data exists, but the launch runtime cannot use it. Reconnect ChatGPT.'
+          : 'Connect ChatGPT again or switch Codex auth mode to API key.';
+      return `${base} ${reconnectHint}${
+        loginStatus.detail ? ` Details: ${loginStatus.detail}` : ''
+      }`;
     }
 
     if (readiness.state === 'missing_auth') {

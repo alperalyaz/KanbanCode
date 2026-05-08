@@ -708,6 +708,149 @@ describe('ProviderConnectionService', () => {
     );
   });
 
+  it('does not block launch when the Codex app-server freshly verifies ChatGPT auth', async () => {
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+    const loginStatusChecker = vi.fn().mockResolvedValue({
+      status: 'not_logged_in',
+      detail: 'Not logged in',
+    });
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred: vi.fn().mockResolvedValue(null),
+      } as never,
+      {
+        getConfig: () => createConfig('auto'),
+      } as never,
+      loginStatusChecker
+    );
+
+    service.setCodexAccountFeature({
+      getSnapshot: vi.fn().mockResolvedValue({
+        preferredAuthMode: 'chatgpt',
+        effectiveAuthMode: 'chatgpt',
+        launchAllowed: true,
+        launchIssueMessage: null,
+        launchReadinessState: 'ready_chatgpt',
+        appServerState: 'healthy',
+        appServerStatusMessage: null,
+        managedAccount: {
+          type: 'chatgpt',
+          email: 'user@example.com',
+          planType: 'pro',
+        },
+        apiKey: {
+          available: false,
+          source: null,
+          sourceLabel: null,
+        },
+        requiresOpenaiAuth: true,
+        localAccountArtifactsPresent: true,
+        localActiveChatgptAccountPresent: true,
+        runtimeContext: {
+          binaryPath: '/opt/codex/bin/codex',
+          codexHome: '/Users/tester/.codex-custom',
+        },
+        login: {
+          status: 'idle',
+          error: null,
+          startedAt: null,
+        },
+        rateLimits: null,
+        updatedAt: '2026-04-20T00:00:00.000Z',
+      }),
+    } as never);
+
+    await expect(
+      service.getConfiguredConnectionIssue(
+        {
+          OPENAI_API_KEY: 'ambient-openai-key',
+          CODEX_API_KEY: 'ambient-codex-key',
+        },
+        'codex'
+      )
+    ).resolves.toBeNull();
+
+    expect(loginStatusChecker).not.toHaveBeenCalled();
+  });
+
+  it('blocks launch when managed ChatGPT is selected but degraded exact runtime login is logged out', async () => {
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+    const loginStatusChecker = vi.fn().mockResolvedValue({
+      status: 'not_logged_in',
+      detail: 'Not logged in',
+    });
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred: vi.fn().mockResolvedValue(null),
+      } as never,
+      {
+        getConfig: () => createConfig('auto'),
+      } as never,
+      loginStatusChecker
+    );
+
+    service.setCodexAccountFeature({
+      getSnapshot: vi.fn().mockResolvedValue({
+        preferredAuthMode: 'chatgpt',
+        effectiveAuthMode: 'chatgpt',
+        launchAllowed: true,
+        launchIssueMessage: null,
+        launchReadinessState: 'warning_degraded_but_launchable',
+        appServerState: 'degraded',
+        appServerStatusMessage: 'Using cached ChatGPT account after transient app-server failure.',
+        managedAccount: {
+          type: 'chatgpt',
+          email: 'user@example.com',
+          planType: 'pro',
+        },
+        apiKey: {
+          available: false,
+          source: null,
+          sourceLabel: null,
+        },
+        requiresOpenaiAuth: true,
+        localAccountArtifactsPresent: true,
+        localActiveChatgptAccountPresent: true,
+        runtimeContext: {
+          binaryPath: '/opt/codex/bin/codex',
+          codexHome: '/Users/tester/.codex-custom',
+        },
+        login: {
+          status: 'idle',
+          error: null,
+          startedAt: null,
+        },
+        rateLimits: null,
+        updatedAt: '2026-04-20T00:00:00.000Z',
+      }),
+    } as never);
+
+    const issue = await service.getConfiguredConnectionIssue(
+      {
+        OPENAI_API_KEY: 'ambient-openai-key',
+        CODEX_API_KEY: 'ambient-codex-key',
+      },
+      'codex'
+    );
+
+    expect(issue).toContain('Codex CLI login status is not active');
+    expect(issue).toContain('Reconnect ChatGPT');
+    expect(loginStatusChecker).toHaveBeenCalledWith({
+      binaryPath: '/opt/codex/bin/codex',
+      env: expect.objectContaining({
+        CODEX_CLI_PATH: '/opt/codex/bin/codex',
+        CODEX_HOME: '/Users/tester/.codex-custom',
+        CLAUDE_CODE_CODEX_FORCED_LOGIN_METHOD: 'chatgpt',
+      }),
+    });
+    expect(loginStatusChecker.mock.calls[0]?.[0].env.OPENAI_API_KEY).toBeUndefined();
+    expect(loginStatusChecker.mock.calls[0]?.[0].env.CODEX_API_KEY).toBeUndefined();
+  });
+
   it('reports a pinned Codex API-key mode as missing only the API key credential', async () => {
     const { ProviderConnectionService } =
       await import('@main/services/runtime/ProviderConnectionService');

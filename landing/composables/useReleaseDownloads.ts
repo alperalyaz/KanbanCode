@@ -111,7 +111,7 @@ function writeCache(data: DownloadsApiResponse): void {
 
 export const useReleaseDownloads = () => {
   const config = useRuntimeConfig();
-  const githubRepo = (config.public.githubRepo as string) || "777genius/claude_agent_teams_ui";
+  const githubRepo = (config.public.githubRepo as string) || "777genius/agent-teams-ai";
 
   const fallbackUrl =
     (config.public.githubReleasesUrl as string) ||

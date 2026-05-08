@@ -57,6 +57,7 @@ export class ApiKeyService {
   private readonly filePath: string;
   private cache: StoredApiKey[] | null = null;
   private aesKey: Buffer | null = null;
+  private readonly reportedDecryptFailures = new Set<string>();
   private readonly originalProcessEnv = new Map<string, string | undefined>();
 
   constructor(claudeDir?: string) {
@@ -288,7 +289,7 @@ export class ApiKeyService {
           return Buffer.from(stored.encryptedValue, 'base64').toString('utf-8');
       }
     } catch (err) {
-      logger.error(`Failed to decrypt API key "${stored.name}":`, err);
+      this.reportDecryptFailure(stored, err);
       return '';
     }
   }
@@ -311,6 +312,30 @@ export class ApiKeyService {
     }
 
     return matching.find((key) => key.scope === 'user') ?? null;
+  }
+
+  private reportDecryptFailure(stored: StoredApiKey, err: unknown): void {
+    const method = this.resolveMethod(stored);
+    const failureKey = [stored.id, stored.updatedAt ?? stored.createdAt, method].join(':');
+
+    if (this.reportedDecryptFailures.has(failureKey)) {
+      return;
+    }
+
+    this.reportedDecryptFailures.add(failureKey);
+    logger.debug(
+      [
+        'Stored API key could not be decrypted; ignoring it until it is saved again.',
+        `envVarName=${stored.envVarName}`,
+        `method=${method}`,
+        `reason=${this.getErrorMessage(err)}`,
+      ].join(' ')
+    );
+  }
+
+  private getErrorMessage(err: unknown): string {
+    const message = err instanceof Error ? err.message : String(err);
+    return message.replace(/\s+/g, ' ').trim() || 'unknown';
   }
 
   // ── AES-256-GCM local encryption ───────────────────────────────────────

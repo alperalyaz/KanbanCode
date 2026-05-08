@@ -13,6 +13,8 @@ vi.mock('electron', () => ({
   },
 }));
 
+import { safeStorage } from 'electron';
+
 import { ApiKeyService } from '@main/services/extensions/apikeys/ApiKeyService';
 
 describe('ApiKeyService', () => {
@@ -20,6 +22,11 @@ describe('ApiKeyService', () => {
   let service: ApiKeyService;
 
   beforeEach(async () => {
+    vi.mocked(safeStorage.isEncryptionAvailable).mockReturnValue(false);
+    vi.mocked(safeStorage.getSelectedStorageBackend).mockReturnValue('basic_text');
+    vi.mocked(safeStorage.encryptString).mockReset();
+    vi.mocked(safeStorage.decryptString).mockReset();
+
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'apikey-service-'));
     service = new ApiKeyService(tempDir);
   });
@@ -116,5 +123,36 @@ describe('ApiKeyService', () => {
 
     await expect(service.lookup(['TAVILY_API_KEY'])).resolves.toEqual([]);
     await expect(service.lookupPreferred('TAVILY_API_KEY')).resolves.toBeNull();
+  });
+
+  it('does not print decrypt failures to the normal console', async () => {
+    vi.mocked(safeStorage.isEncryptionAvailable).mockReturnValue(true);
+    vi.mocked(safeStorage.getSelectedStorageBackend).mockReturnValue('gnome_libsecret');
+    vi.mocked(safeStorage.encryptString).mockReturnValue(Buffer.from('encrypted-value'));
+    vi.mocked(safeStorage.decryptString).mockImplementation(() => {
+      throw new Error('Error while decrypting the ciphertext provided to safeStorage.decryptString.');
+    });
+
+    await service.save({
+      name: 'Anthropic API Key',
+      envVarName: 'ANTHROPIC_API_KEY',
+      value: 'secret',
+      scope: 'user',
+    });
+
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    try {
+      await expect(service.lookupPreferred('ANTHROPIC_API_KEY')).resolves.toEqual({
+        envVarName: 'ANTHROPIC_API_KEY',
+        value: '',
+      });
+      expect(consoleError).not.toHaveBeenCalled();
+      expect(consoleWarn).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+      consoleWarn.mockRestore();
+    }
   });
 });

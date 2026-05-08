@@ -2,7 +2,7 @@
   "version": "0.0.22",
   "sourceRef": "v0.0.22",
   "sourceRepository": "777genius/agent_teams_orchestrator",
-  "releaseRepository": "777genius/claude_agent_teams_ui",
+  "releaseRepository": "777genius/agent-teams-ai",
   "releaseTag": "v1.2.0",
   "assets": {
     "darwin-arm64": {
