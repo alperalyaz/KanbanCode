@@ -221,16 +221,29 @@ async function buildClaudeStreamJsonPrompt(imagePath) {
 
 function parseArgs(argv) {
   const selected = [];
+  let all = false;
+  let list = false;
+  let jsonPath = null;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--case' && argv[index + 1]) {
       selected.push(argv[index + 1]);
       index += 1;
     } else if (arg === '--list') {
-      return { list: true, selected };
+      list = true;
+    } else if (arg === '--all') {
+      all = true;
+    } else if (arg === '--json' && argv[index + 1]) {
+      jsonPath = argv[index + 1];
+      index += 1;
+    } else {
+      throw new Error(`Unknown or incomplete argument: ${arg}`);
     }
   }
-  return { list: false, selected };
+  if (all && selected.length) {
+    throw new Error('Use either --all or one or more --case arguments, not both');
+  }
+  return { all, jsonPath, list, selected };
 }
 
 function runCommand(command) {
@@ -268,6 +281,25 @@ function runCommand(command) {
   });
 }
 
+function redactSmokeText(value) {
+  let redacted = value
+    .replace(/(data:image\/[a-z0-9.+-]+;base64,)[a-z0-9+/=]+/gi, '$1[redacted]')
+    .replace(/("[Dd]ata"\s*:\s*")[a-z0-9+/=]{80,}(")/g, '$1[redacted]$2')
+    .replace(/(Authorization\s*[:=]\s*Bearer\s+)[^\s"']+/gi, '$1[redacted]')
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]{20,}/g, '$1[redacted]')
+    .replace(/\b(sk-(?:ant|or|proj|live|test|codex|openai)[A-Za-z0-9._~+/=-]{12,})\b/g, '[redacted api key]');
+
+  for (const [name, secret] of Object.entries(process.env)) {
+    if (!secret || secret.length < 8) continue;
+    if (!/(API[_-]?KEY|TOKEN|SECRET|AUTH|PASSWORD|OPENROUTER|ANTHROPIC|OPENAI|CODEX)/i.test(name)) {
+      continue;
+    }
+    redacted = redacted.split(secret).join(`[redacted ${name}]`);
+  }
+
+  return redacted;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.list) {
@@ -275,9 +307,10 @@ async function main() {
     return;
   }
 
-  const selected = args.selected.length
-    ? CASES.filter((testCase) => args.selected.includes(testCase.id))
-    : CASES;
+  const selected =
+    args.all || !args.selected.length
+      ? CASES
+      : CASES.filter((testCase) => args.selected.includes(testCase.id));
   const missing = args.selected.filter((id) => !CASES.some((testCase) => testCase.id === id));
   if (missing.length) {
     throw new Error(`Unknown smoke case: ${missing.join(', ')}`);
@@ -319,12 +352,16 @@ async function main() {
           : 'failed',
       exitCode: result.exitCode,
       timedOut: result.timedOut,
-      stdoutTail: result.stdout.slice(-4000),
-      stderrTail: result.stderr.slice(-4000),
+      stdoutTail: redactSmokeText(result.stdout.slice(-4000)),
+      stderrTail: redactSmokeText(result.stderr.slice(-4000)),
     });
   }
 
-  console.log(JSON.stringify({ imagePath, results }, null, 2));
+  const report = { imagePath, results };
+  if (args.jsonPath) {
+    await writeFile(path.resolve(args.jsonPath), `${JSON.stringify(report, null, 2)}\n`);
+  }
+  console.log(JSON.stringify(report, null, 2));
   if (results.some((result) => result.status === 'failed')) {
     process.exitCode = 1;
   }

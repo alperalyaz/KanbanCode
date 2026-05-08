@@ -58,10 +58,22 @@ List cases:
 node scripts/smoke/agent-attachments-smoke.mjs --list
 ```
 
+Run all cases and save a JSON report:
+
+```bash
+node scripts/smoke/agent-attachments-smoke.mjs --all --json /tmp/agent-attachments-smoke.json
+```
+
 Run Codex native:
 
 ```bash
 node scripts/smoke/agent-attachments-smoke.mjs --case codex-native-gpt-5-4-mini
+```
+
+Run Claude subscription stream-json:
+
+```bash
+node scripts/smoke/agent-attachments-smoke.mjs --case claude-subscription-streaming
 ```
 
 Run OpenCode OpenAI:
