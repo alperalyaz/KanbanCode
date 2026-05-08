@@ -3,6 +3,8 @@ import { createLogger } from '@shared/utils/logger';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { atomicWriteAsync } from './atomicWrite';
+
 import type { AttachmentFileData, AttachmentPayload } from '@shared/types';
 
 const logger = createLogger('Service:TeamAttachmentStore');
@@ -108,7 +110,7 @@ export class TeamAttachmentStore {
 
       const storedPath = this.getStoredFilePath(teamName, messageId, att.id, att.filename);
       try {
-        await fs.promises.writeFile(storedPath, buffer);
+        await atomicWriteAsync(storedPath, buffer);
       } catch (writeError) {
         logger.warn(`[${teamName}] Failed to write attachment ${att.id}: ${writeError}`);
         continue;
@@ -125,7 +127,7 @@ export class TeamAttachmentStore {
     // Write metadata index for successful files (mimeType, original filename)
     if (indexEntries.length > 0) {
       const indexPath = this.getIndexPath(teamName, messageId);
-      await fs.promises.writeFile(indexPath, JSON.stringify(indexEntries, null, 2));
+      await atomicWriteAsync(indexPath, JSON.stringify(indexEntries, null, 2));
     }
 
     logger.debug(
