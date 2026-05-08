@@ -6,6 +6,10 @@ import { getAppDataPath, getTeamsBasePath } from '@main/utils/pathDecoder';
 import { safeSendToRenderer } from '@main/utils/safeWebContentsSend';
 import { stripMarkdown } from '@main/utils/textFormatting';
 import {
+  estimateAgentAttachmentSerializedPayloadBytes,
+  MAX_AGENT_ATTACHMENT_SERIALIZED_PAYLOAD_BYTES,
+} from '@features/agent-attachments/core/domain';
+import {
   TEAM_ADD_MEMBER,
   TEAM_ADD_TASK_COMMENT,
   TEAM_ADD_TASK_RELATIONSHIP,
@@ -2492,6 +2496,30 @@ function validateAttachments(
   return { valid: true, value: result };
 }
 
+function formatAttachmentBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function validateAttachmentSerializedPayload(input: {
+  text: string;
+  attachments: AttachmentPayload[];
+}): { valid: true } | { valid: false; error: string } {
+  const estimatedBytes = estimateAgentAttachmentSerializedPayloadBytes(input);
+  if (estimatedBytes <= MAX_AGENT_ATTACHMENT_SERIALIZED_PAYLOAD_BYTES) {
+    return { valid: true };
+  }
+  return {
+    valid: false,
+    error: `Attachment payload is too large after optimization: ${formatAttachmentBytes(
+      estimatedBytes
+    )} serialized. Limit is ${formatAttachmentBytes(
+      MAX_AGENT_ATTACHMENT_SERIALIZED_PAYLOAD_BYTES
+    )}. Remove an image or use a smaller screenshot.`,
+  };
+}
+
 function buildMessageDeliveryText(
   baseText: string,
   opts: {
@@ -2725,6 +2753,13 @@ async function handleSendMessage(
       return { success: false, error: attResult.error };
     }
     validatedAttachments = attResult.value;
+    const serializedResult = validateAttachmentSerializedPayload({
+      text: payload.text!,
+      attachments: validatedAttachments,
+    });
+    if (!serializedResult.valid) {
+      return { success: false, error: serializedResult.error };
+    }
   }
 
   const tn = validatedTeamName.value!;

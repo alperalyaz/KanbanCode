@@ -1,4 +1,9 @@
-import { allocateImageBudgets, planResizeDimensions, sortAttachmentsForDelivery } from './budgets';
+import {
+  allocateImageBudgets,
+  estimateAgentAttachmentSerializedPayloadBytes,
+  planResizeDimensions,
+  sortAttachmentsForDelivery,
+} from './budgets';
 
 describe('agent attachment budgets', () => {
   it('does not upscale small images', () => {
@@ -35,5 +40,20 @@ describe('agent attachment budgets', () => {
       { id: 'a', order: 1 },
     ]);
     expect(sorted.map((item) => item.id)).toEqual(['a', 'b']);
+  });
+
+  it('estimates serialized provider payload bytes including base64 overhead', () => {
+    const bytes = estimateAgentAttachmentSerializedPayloadBytes({
+      text: 'hello',
+      attachments: [
+        {
+          filename: 'red.png',
+          mimeType: 'image/png',
+          data: 'a'.repeat(128),
+        },
+      ],
+    });
+
+    expect(bytes).toBeGreaterThan(128);
   });
 });

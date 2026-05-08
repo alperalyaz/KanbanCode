@@ -9,6 +9,47 @@ export const DEFAULT_AGENT_IMAGE_OPTIMIZATION_BUDGET: ImageOptimizationBudget = 
   jpegQualityAttempts: [0.86, 0.82, 0.78, 0.74, 0.72],
 };
 
+export const MAX_AGENT_ATTACHMENT_SERIALIZED_PAYLOAD_BYTES = 7_500_000;
+
+const utf8Encoder = new TextEncoder();
+
+export function estimateAgentAttachmentSerializedPayloadBytes(input: {
+  text?: string;
+  attachments: Array<{
+    mimeType: string;
+    data: string;
+    filename?: string;
+  }>;
+}): number {
+  const contentBlocks: unknown[] = [{ type: 'text', text: input.text ?? '' }];
+  for (const attachment of input.attachments) {
+    const isImage = attachment.mimeType.startsWith('image/');
+    contentBlocks.push({
+      type: isImage ? 'image' : 'document',
+      ...(isImage
+        ? {}
+        : {
+            title: attachment.filename ?? 'attachment',
+          }),
+      source: {
+        type: 'base64',
+        media_type: attachment.mimeType,
+        data: attachment.data,
+      },
+    });
+  }
+
+  return utf8Encoder.encode(
+    JSON.stringify({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: contentBlocks,
+      },
+    })
+  ).byteLength;
+}
+
 export function calculatePixelCount(dimensions: ImageDimensions): number {
   return dimensions.width * dimensions.height;
 }
