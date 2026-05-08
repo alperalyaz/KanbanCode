@@ -90,7 +90,21 @@ OPENROUTER_API_KEY=... node scripts/smoke/agent-attachments-smoke.mjs --case ope
 OPENROUTER_API_KEY=... node scripts/smoke/agent-attachments-smoke.mjs --case opencode-openrouter-glm-5-1-negative
 ```
 
-The script redacts nothing from stdout/stderr tails except that it never prints generated image bytes or configured secrets.
+The script redacts stdout/stderr tails for generated image bytes, data URLs, bearer tokens, API keys, environment-provided secrets, and long provider metadata signatures.
+
+## Live verification record
+
+Latest local verification: 2026-05-09.
+
+| Scope | Command or case | Result | Notes |
+| --- | --- | --- | --- |
+| Claude visual transport | `claude-subscription-streaming` | passed | Real Claude CLI `stream-json` run answered `red` for generated PNG. |
+| Codex visual transport | `codex-native-gpt-5-4-mini` | passed | Real Codex native `--image` run answered `red` for generated PNG. |
+| OpenCode OpenAI visual transport | `opencode-openai-gpt-5-4-mini` | passed | Real OpenCode file attachment run answered `red` for generated PNG. |
+| CLI process launch | `scripts/prove-agent-cli-launch.mjs` | passed | Real `opencode`, `codex`, and `claude` binaries launched through `execCli` and `spawnCli`. |
+| OpenCode team provisioning | `scripts/prove-opencode-team-provisioning.mjs` with `OPENCODE_E2E_MODEL=openai/gpt-5.4-mini` | passed | Real pure OpenCode team created through `TeamProvisioningService`, live members verified, then stopped. |
+| OpenRouter Kimi/GLM visual transports | OpenRouter smoke cases | skipped | `OPENROUTER_API_KEY` was not present in the shell environment. |
+| Mixed Anthropic + Codex + OpenCode team launch | `MixedProviderTeamLaunch.live.test.ts` | not run | Requires `ANTHROPIC_API_KEY` and real app credentials in env. Do not paste secrets into commands or logs. |
 
 ## Release checklist
 
