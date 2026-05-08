@@ -1774,6 +1774,34 @@ export function initializeNotificationListeners(): () => void {
 
       if (event.type === 'inbox') {
         scheduleTrackedTeamMessageRefresh(event.teamName, 'event:inbox');
+        if (!event?.teamName || !isTeamVisibleInAnyPane(event.teamName)) {
+          return;
+        }
+        const existingDetailTimer = teamRefreshTimers.get(event.teamName);
+        if (existingDetailTimer) {
+          return;
+        }
+        const eventReason = `${buildTeamChangeFanoutReason(event.type)}:structural-safety`;
+        const timer = setTimeout(() => {
+          teamRefreshTimers.delete(event.teamName);
+          const current = useStore.getState();
+          if (!isTeamVisibleInAnyPane(event.teamName)) {
+            return;
+          }
+          noteTeamRefreshFanout({
+            teamName: event.teamName,
+            surface: 'team-change-listener',
+            phase: 'executed',
+            reason: eventReason,
+            operation: 'refreshTeamData',
+            eventType: event.type,
+            selected: current.selectedTeamName === event.teamName,
+            visible: true,
+            activeTab: getFocusedVisibleTeamName() === event.teamName,
+          });
+          void current.refreshTeamData(event.teamName, { withDedup: true });
+        }, TEAM_REFRESH_THROTTLE_MS);
+        teamRefreshTimers.set(event.teamName, timer);
         return;
       }
 

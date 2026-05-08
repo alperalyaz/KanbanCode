@@ -60,6 +60,11 @@ import {
   taskMatchesRef,
 } from '@shared/utils/taskIdentity';
 import {
+  calculateTaskImplementationDuration,
+  formatTaskImplementationDuration,
+  shouldShowTaskImplementationDuration,
+} from '@shared/utils/taskWorkDuration';
+import {
   getTeamTaskWorkflowColumn,
   isTeamTaskFinishedForDependency,
   isTeamTaskNeedsFixActionable,
@@ -330,6 +335,10 @@ export const TaskDetailDialog = ({
     currentTask?.sourceMessageId && currentTask?.sourceMessage?.attachments?.length
       ? currentTask.sourceMessage.attachments.length
       : 0;
+  const attachmentCount =
+    (currentTask?.attachments?.length ?? 0) +
+    commentImageAttachments.length +
+    sourceAttachmentCount;
 
   // Changes is the explicit lazy-load entry point. Keep it visible for all team tasks,
   // including old/pending tasks that may resolve to an empty result.
@@ -573,6 +582,29 @@ export const TaskDetailDialog = ({
   const handleChangesSectionOpenChange = useCallback((isOpen: boolean): void => {
     setChangesSectionOpen(isOpen);
   }, []);
+
+  const [taskDurationNowMs, setTaskDurationNowMs] = useState(() => Date.now());
+  const taskImplementationDuration = useMemo(
+    () => calculateTaskImplementationDuration(currentTask, taskDurationNowMs),
+    [currentTask, taskDurationNowMs]
+  );
+  const showTaskImplementationDuration = shouldShowTaskImplementationDuration(
+    taskImplementationDuration
+  );
+  const taskImplementationDurationLabel = formatTaskImplementationDuration(
+    taskImplementationDuration.elapsedMs
+  );
+
+  useEffect(() => {
+    if (!open || !taskImplementationDuration.hasRunningInterval) return;
+
+    setTaskDurationNowMs(Date.now());
+    const intervalId = window.setInterval(() => {
+      setTaskDurationNowMs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [open, taskImplementationDuration.hasRunningInterval, currentTask?.id]);
 
   if (loading) {
     return (
@@ -1121,24 +1153,11 @@ export const TaskDetailDialog = ({
             <CollapsibleTeamSection
               title="Attachments"
               icon={<ImageIcon size={14} />}
-              badge={
-                (currentTask.attachments?.length ?? 0) +
-                  commentImageAttachments.length +
-                  sourceAttachmentCount >
-                0
-                  ? (currentTask.attachments?.length ?? 0) +
-                    commentImageAttachments.length +
-                    sourceAttachmentCount
-                  : undefined
-              }
+              badge={attachmentCount}
               contentClassName="pl-2.5"
               headerClassName="-mx-6 w-[calc(100%+3rem)]"
               headerContentClassName="pl-6"
-              defaultOpen={
-                (currentTask.attachments?.length ?? 0) > 0 ||
-                commentImageAttachments.length > 0 ||
-                sourceAttachmentCount > 0
-              }
+              defaultOpen={attachmentCount > 0}
             >
               {currentTask.sourceMessageId && currentTask.sourceMessage ? (
                 <SourceMessageAttachments
@@ -1352,6 +1371,17 @@ export const TaskDetailDialog = ({
                 contentClassName="pl-2.5"
                 headerClassName="-mx-6 w-[calc(100%+3rem)]"
                 headerContentClassName="pl-6"
+                headerExtra={
+                  showTaskImplementationDuration ? (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-1.5 py-0.5 text-[10px] font-normal leading-none text-[var(--color-text-muted)]"
+                      title="Implementation time from persisted work intervals"
+                    >
+                      <Clock size={10} />
+                      <span>Work time {taskImplementationDurationLabel}</span>
+                    </span>
+                  ) : undefined
+                }
                 defaultOpen={false}
               >
                 <WorkflowTimeline events={currentTask.historyEvents} memberColorMap={colorMap} />

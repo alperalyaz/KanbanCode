@@ -120,6 +120,14 @@ export const MessageComposer = ({
       }
     };
   }, [externalTextareaRef]);
+  const focusComposerTextarea = useCallback(() => {
+    const focus = (): void => {
+      internalTextareaRef.current?.focus();
+    };
+    focus();
+    queueMicrotask(focus);
+    window.requestAnimationFrame(focus);
+  }, []);
   const [recipient, setRecipient] = useState<string>(() => {
     const lead = members.find((m) => isLeadMember(m));
     return lead?.name ?? members[0]?.name ?? '';
@@ -251,6 +259,7 @@ export const MessageComposer = ({
   );
   const userSkills = useStore(useShallow((s) => s.skillsUserCatalog));
   const fetchSkillsCatalog = useStore((s) => s.fetchSkillsCatalog);
+  const isLaunchBlocking = isProvisioning && !isTeamAlive;
 
   // Fetch skills catalog for the team's project on mount / project change
   useEffect(() => {
@@ -285,9 +294,9 @@ export const MessageComposer = ({
   useEffect(() => {
     if (prevActionModeRef.current !== actionMode) {
       prevActionModeRef.current = actionMode;
-      internalTextareaRef.current?.focus();
+      focusComposerTextarea();
     }
-  }, [actionMode]);
+  }, [actionMode, focusComposerTextarea]);
 
   // Auto-select delegate when lead recipient is chosen by the user.
   // Wait until draft is restored from IndexedDB (draftLoaded) before running,
@@ -358,7 +367,7 @@ export const MessageComposer = ({
     trimmed.length > 0 &&
     trimmed.length <= MAX_TEXT_LENGTH &&
     !sending &&
-    !isProvisioning &&
+    !isLaunchBlocking &&
     !attachmentsBlocked &&
     !slashCommandRestrictionReason &&
     (!isCrossTeam || onCrossTeamSend !== undefined);
@@ -404,6 +413,7 @@ export const MessageComposer = ({
         taskRefs
       );
     }
+    focusComposerTextarea();
   }, [
     actionMode,
     canSend,
@@ -418,6 +428,7 @@ export const MessageComposer = ({
     draft.chips,
     draft.text,
     lastResult,
+    focusComposerTextarea,
     taskSuggestions,
     teamName,
   ]);
@@ -642,7 +653,7 @@ export const MessageComposer = ({
           ) : null}
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            {!isTeamAlive && !isProvisioning && (
+            {!isTeamAlive && !isLaunchBlocking && (
               <span className="text-[10px]" style={{ color: 'var(--warning-text)' }}>
                 Team offline
               </span>
@@ -717,6 +728,7 @@ export const MessageComposer = ({
                       onClick={() => {
                         setSelectedTeam(null);
                         setTeamSelectorOpen(false);
+                        focusComposerTextarea();
                       }}
                     >
                       {currentTeamColor ? (
@@ -752,6 +764,7 @@ export const MessageComposer = ({
                                 setSelectedTeam(target.teamName);
                                 setRecipient('team-lead');
                                 setTeamSelectorOpen(false);
+                                focusComposerTextarea();
                               }}
                             >
                               <span
@@ -894,6 +907,7 @@ export const MessageComposer = ({
                               setRecipient(m.name);
                               setRecipientOpen(false);
                               setRecipientSearch('');
+                              focusComposerTextarea();
                             }}
                           >
                             <MemberBadge
@@ -944,7 +958,7 @@ export const MessageComposer = ({
           ref={textareaRef}
           id={`compose-${teamName}`}
           placeholder={
-            isProvisioning
+            isLaunchBlocking
               ? 'Team is launching... message will be queued for inbox delivery.'
               : isCrossTeam
                 ? `Cross-team message to ${targetDisplayName ?? 'team'}...`
@@ -1013,7 +1027,7 @@ export const MessageComposer = ({
                 </TooltipTrigger>
                 {slashCommandRestrictionReason ? (
                   <TooltipContent side="top">{slashCommandRestrictionReason}</TooltipContent>
-                ) : isProvisioning && !sending ? (
+                ) : isLaunchBlocking && !sending ? (
                   <TooltipContent side="top">
                     Sending unavailable while team is launching
                   </TooltipContent>

@@ -13,8 +13,14 @@ import {
 } from './opencode/store/OpenCodeRuntimeManifestEvidenceReader';
 import { TeamInboxReader } from './TeamInboxReader';
 import { TeamMemberLogsFinder } from './TeamMemberLogsFinder';
+import { TeamTaskReader } from './TeamTaskReader';
 
-import type { MemberLogSummary, MemberRuntimeAdvisory, ResolvedTeamMember } from '@shared/types';
+import type {
+  MemberLogSummary,
+  MemberRuntimeAdvisory,
+  ResolvedTeamMember,
+  TeamTask,
+} from '@shared/types';
 
 interface RuntimeAdvisoryLogFileRef {
   memberName: string;
@@ -108,6 +114,11 @@ interface CachedTeamBatchAdvisories {
   membersSignature: string;
   value: Map<string, MemberRuntimeAdvisory>;
   expiresAt: number;
+}
+
+interface OpenCodeRuntimeDeliverySupersedingProofTimes {
+  visibleReplyTimes: ReadonlyMap<string, number>;
+  taskProgressTimes: ReadonlyMap<string, number>;
 }
 
 function includesAnyToken(value: string, tokens: readonly string[]): boolean {
@@ -204,6 +215,7 @@ async function mapLimit<T, R>(
 
 export class TeamMemberRuntimeAdvisoryService {
   private readonly inboxReader = new TeamInboxReader();
+  private readonly taskReader = new TeamTaskReader();
   private readonly memberCache = new Map<string, CachedRuntimeAdvisory>();
   private readonly teamBatchCacheByTeam = new Map<string, CachedTeamBatchAdvisories>();
   private readonly cacheGenerationByTeam = new Map<string, number>();
@@ -552,9 +564,10 @@ export class TeamMemberRuntimeAdvisoryService {
       return new Map();
     }
 
-    const visibleRuntimeReplyTimes = await this.readVisibleOpenCodeRuntimeDeliveryReplyTimes(
+    const supersedingProofTimes = await this.readOpenCodeRuntimeDeliverySupersedingProofTimes(
       teamName,
-      memberKeysWithRecentErrors
+      memberKeysWithRecentErrors,
+      recordsByMember
     );
     const result = new Map<string, MemberRuntimeAdvisory>();
     for (const [memberKey, records] of recordsByMember) {
@@ -567,7 +580,7 @@ export class TeamMemberRuntimeAdvisoryService {
             originalName,
             records,
             now,
-            visibleRuntimeReplyTimes
+            supersedingProofTimes
           )
         : null;
       if (advisory && originalName) {
@@ -589,7 +602,7 @@ export class TeamMemberRuntimeAdvisoryService {
     memberName: string,
     records: readonly OpenCodePromptDeliveryLedgerRecord[],
     now: number,
-    visibleRuntimeReplyTimes: ReadonlyMap<string, number>
+    supersedingProofTimes: OpenCodeRuntimeDeliverySupersedingProofTimes
   ): MemberRuntimeAdvisory | null {
     const ordered = records
       .slice()
@@ -610,10 +623,10 @@ export class TeamMemberRuntimeAdvisoryService {
       return null;
     }
     if (
-      this.hasVisibleRuntimeReplyForOpenCodeDeliveryRecord(
+      this.hasSupersedingProofForOpenCodeDeliveryRecord(
         memberName,
         latestError,
-        visibleRuntimeReplyTimes
+        supersedingProofTimes
       )
     ) {
       return null;
@@ -630,6 +643,18 @@ export class TeamMemberRuntimeAdvisoryService {
       reasonCode: classifyRetryReason(message),
       message,
     };
+  }
+
+  private async readOpenCodeRuntimeDeliverySupersedingProofTimes(
+    teamName: string,
+    activeMemberKeys: ReadonlySet<string>,
+    recordsByMember: ReadonlyMap<string, readonly OpenCodePromptDeliveryLedgerRecord[]>
+  ): Promise<OpenCodeRuntimeDeliverySupersedingProofTimes> {
+    const [visibleReplyTimes, taskProgressTimes] = await Promise.all([
+      this.readVisibleOpenCodeRuntimeDeliveryReplyTimes(teamName, activeMemberKeys),
+      this.readTaskProgressProofTimes(teamName, activeMemberKeys, recordsByMember),
+    ]);
+    return { visibleReplyTimes, taskProgressTimes };
   }
 
   private async readVisibleOpenCodeRuntimeDeliveryReplyTimes(
@@ -673,8 +698,131 @@ export class TeamMemberRuntimeAdvisoryService {
     return typeof replyObservedAt === 'number' && replyObservedAt > getRecordTimeMs(record);
   }
 
+  private hasSupersedingProofForOpenCodeDeliveryRecord(
+    memberName: string,
+    record: OpenCodePromptDeliveryLedgerRecord,
+    proofTimes: OpenCodeRuntimeDeliverySupersedingProofTimes
+  ): boolean {
+    if (
+      this.hasVisibleRuntimeReplyForOpenCodeDeliveryRecord(
+        memberName,
+        record,
+        proofTimes.visibleReplyTimes
+      )
+    ) {
+      return true;
+    }
+
+    return this.hasTaskProgressProofForOpenCodeDeliveryRecord(
+      memberName,
+      record,
+      proofTimes.taskProgressTimes
+    );
+  }
+
+  private async readTaskProgressProofTimes(
+    teamName: string,
+    activeMemberKeys: ReadonlySet<string>,
+    recordsByMember: ReadonlyMap<string, readonly OpenCodePromptDeliveryLedgerRecord[]>
+  ): Promise<Map<string, number>> {
+    const taskIdsByMember = new Map<string, Set<string>>();
+    for (const [memberKey, records] of recordsByMember) {
+      if (!activeMemberKeys.has(memberKey)) {
+        continue;
+      }
+      for (const record of records) {
+        for (const taskRef of record.taskRefs) {
+          const taskId = taskRef.taskId?.trim();
+          if (!taskId) {
+            continue;
+          }
+          const taskIds = taskIdsByMember.get(memberKey) ?? new Set<string>();
+          taskIds.add(taskId);
+          taskIdsByMember.set(memberKey, taskIds);
+        }
+      }
+    }
+    if (taskIdsByMember.size === 0) {
+      return new Map();
+    }
+
+    const tasks = await this.taskReader.getTasks(teamName).catch(() => []);
+    if (tasks.length === 0) {
+      return new Map();
+    }
+
+    const result = new Map<string, number>();
+    for (const task of tasks) {
+      const taskId = task.id?.trim();
+      if (!taskId) {
+        continue;
+      }
+      for (const [memberKey, taskIds] of taskIdsByMember) {
+        if (!taskIds.has(taskId)) {
+          continue;
+        }
+        const proofAt = this.getLatestMemberTaskProgressTime(task, memberKey);
+        if (proofAt <= 0) {
+          continue;
+        }
+        const key = this.getOpenCodeTaskProgressProofKey(memberKey, taskId);
+        result.set(key, Math.max(result.get(key) ?? 0, proofAt));
+      }
+    }
+    return result;
+  }
+
+  private getLatestMemberTaskProgressTime(task: TeamTask, memberKey: string): number {
+    let latest = 0;
+    for (const comment of task.comments ?? []) {
+      if (this.normalizeToken(comment.author) !== memberKey) {
+        continue;
+      }
+      const createdAt = Date.parse(comment.createdAt);
+      if (Number.isFinite(createdAt)) {
+        latest = Math.max(latest, createdAt);
+      }
+    }
+    for (const event of task.historyEvents ?? []) {
+      if (this.normalizeToken(event.actor ?? '') !== memberKey) {
+        continue;
+      }
+      const timestamp = Date.parse(event.timestamp);
+      if (Number.isFinite(timestamp)) {
+        latest = Math.max(latest, timestamp);
+      }
+    }
+    return latest;
+  }
+
+  private hasTaskProgressProofForOpenCodeDeliveryRecord(
+    memberName: string,
+    record: OpenCodePromptDeliveryLedgerRecord,
+    taskProgressTimes: ReadonlyMap<string, number>
+  ): boolean {
+    const recordTime = getRecordTimeMs(record);
+    if (!Number.isFinite(recordTime) || recordTime <= 0 || record.taskRefs.length === 0) {
+      return false;
+    }
+    const memberKey = this.normalizeToken(memberName);
+    return record.taskRefs.some((taskRef) => {
+      const taskId = taskRef.taskId?.trim();
+      if (!taskId) {
+        return false;
+      }
+      const proofAt = taskProgressTimes.get(
+        this.getOpenCodeTaskProgressProofKey(memberKey, taskId)
+      );
+      return typeof proofAt === 'number' && proofAt > recordTime;
+    });
+  }
+
   private getOpenCodeRuntimeReplyKey(memberKey: string, relayOfMessageId: string): string {
     return `${memberKey}::${relayOfMessageId.trim()}`;
+  }
+
+  private getOpenCodeTaskProgressProofKey(memberKey: string, taskId: string): string {
+    return `${memberKey}::task::${taskId.trim()}`;
   }
 
   private async findRecentMemberAdvisoriesFromBatchRefs(

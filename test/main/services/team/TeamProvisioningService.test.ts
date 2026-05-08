@@ -122,7 +122,10 @@ vi.mock('@main/utils/pathDecoder', async (importOriginal) => {
   };
 });
 
-import { TeamProvisioningService } from '@main/services/team/TeamProvisioningService';
+import {
+  getMixedLaunchFallbackRecoveryError,
+  TeamProvisioningService,
+} from '@main/services/team/TeamProvisioningService';
 import {
   clearAutoResumeService,
   getAutoResumeService,
@@ -11049,6 +11052,91 @@ describe('TeamProvisioningService', () => {
         }>;
       };
     }
+
+    it('materializes members.meta.json before config normalization for a repairable legacy launch', async () => {
+      allowConsoleLogs();
+      const teamName = 'legacy-pure-launch-repair';
+      const leadSessionId = 'legacy-pure-launch-session';
+      writeLaunchConfig(teamName, tempClaudeRoot, leadSessionId, ['alice', 'bob']);
+      vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
+      vi.mocked(spawnCli).mockReturnValue(createRunningChild() as any);
+
+      const { svc, membersMetaStore } = createSafeLaunchService();
+      const normalizeSpy = vi.spyOn(svc as any, 'normalizeTeamConfigForLaunch');
+
+      const { runId } = await svc.launchTeam(
+        {
+          teamName,
+          cwd: tempClaudeRoot,
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          model: 'gpt-5.4',
+        },
+        () => {}
+      );
+
+      expect(membersMetaStore.writeMembers).toHaveBeenCalledWith(
+        teamName,
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'alice' }),
+          expect.objectContaining({ name: 'bob' }),
+        ]),
+        expect.objectContaining({ providerBackendId: 'codex-native' })
+      );
+      expect(membersMetaStore.writeMembers.mock.invocationCallOrder[0]).toBeLessThan(
+        normalizeSpy.mock.invocationCallOrder[0]
+      );
+
+      await svc.cancelProvisioning(runId);
+    });
+
+    it('blocks unsafe old mixed OpenCode launches before config normalization or launch-state cleanup', async () => {
+      allowConsoleLogs();
+      const teamName = 'legacy-mixed-unsafe-launch';
+      const teamDir = path.join(tempTeamsBase, teamName);
+      fs.mkdirSync(teamDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(teamDir, 'config.json'),
+        `${JSON.stringify(
+          {
+            name: teamName,
+            projectPath: tempClaudeRoot,
+            leadSessionId: 'legacy-mixed-unsafe-session',
+            members: [
+              { name: 'team-lead', agentType: 'team-lead', providerId: 'codex' },
+              { name: 'jack', role: 'Developer', providerId: 'opencode' },
+            ],
+          },
+          null,
+          2
+        )}\n`,
+        'utf8'
+      );
+      vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
+      vi.mocked(spawnCli).mockReturnValue(createRunningChild() as any);
+
+      const { svc, membersMetaStore } = createSafeLaunchService();
+      const normalizeSpy = vi.spyOn(svc as any, 'normalizeTeamConfigForLaunch');
+      const clearLaunchStateSpy = vi.spyOn(svc as any, 'clearPersistedLaunchState');
+
+      await expect(
+        svc.launchTeam(
+          {
+            teamName,
+            cwd: tempClaudeRoot,
+            providerId: 'codex',
+            providerBackendId: 'codex-native',
+            model: 'gpt-5.4',
+          },
+          () => {}
+        )
+      ).rejects.toThrow(getMixedLaunchFallbackRecoveryError());
+
+      expect(membersMetaStore.writeMembers).not.toHaveBeenCalled();
+      expect(normalizeSpy).not.toHaveBeenCalled();
+      expect(clearLaunchStateSpy).not.toHaveBeenCalled();
+      expect(spawnCli).not.toHaveBeenCalled();
+    });
 
     it('invalidates config cache after writing OpenCode team config', async () => {
       const teamName = 'opencode-config-cache-prime';

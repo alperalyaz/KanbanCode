@@ -108,7 +108,8 @@ vi.mock('@renderer/components/ui/tooltip', () => ({
 }));
 
 vi.mock('@renderer/components/ui/badge', () => ({
-  Badge: ({ children }: { children: React.ReactNode }) => React.createElement('span', null, children),
+  Badge: ({ children }: { children: React.ReactNode }) =>
+    React.createElement('span', null, children),
 }));
 
 vi.mock('@renderer/components/ui/button', () => ({
@@ -261,6 +262,36 @@ describe('TaskDetailDialog changes summary loading', () => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it('shows a zero attachments count in the attachments section header', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(TaskDetailDialog, {
+          open: true,
+          variant: 'team',
+          teamName: 'team-a',
+          task: { ...makeTask('task-empty-attachments'), workIntervals: [] },
+          taskMap: new Map<string, TeamTaskWithKanban>(),
+          members: [],
+          onClose: vi.fn(),
+          onViewChanges: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[data-testid="section-badge-Attachments"]')?.textContent).toBe('0');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
   });
 
   it('does not drop a new task changes request while another task summary is still in flight', async () => {
@@ -523,6 +554,58 @@ describe('TaskDetailDialog changes summary loading', () => {
       expect.objectContaining({ summaryOnly: true })
     );
     expect(host.textContent).toContain('src/task-pending.ts');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('shows total implementation time in the workflow history header', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-20T10:07:30.000Z'));
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+
+    const task: TeamTaskWithKanban = {
+      ...makeTask('task-duration'),
+      workIntervals: [
+        {
+          startedAt: '2026-04-20T10:00:00.000Z',
+          completedAt: '2026-04-20T10:02:30.000Z',
+        },
+        { startedAt: '2026-04-20T10:05:00.000Z' },
+      ],
+      historyEvents: [
+        {
+          id: 'event-created',
+          timestamp: '2026-04-20T10:00:00.000Z',
+          type: 'task_created',
+          status: 'in_progress',
+          actor: 'lead',
+        },
+      ],
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(TaskDetailDialog, {
+          open: true,
+          variant: 'team',
+          teamName: 'team-a',
+          task,
+          taskMap: new Map<string, TeamTaskWithKanban>(),
+          members: [],
+          onClose: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Workflow History');
+    expect(host.textContent).toContain('Work time 5m 00s');
 
     await act(async () => {
       root.unmount();

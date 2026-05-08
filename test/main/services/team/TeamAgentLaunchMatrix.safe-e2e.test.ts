@@ -5,7 +5,10 @@ import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TeamConfigReader } from '../../../../src/main/services/team/TeamConfigReader';
-import { TeamProvisioningService } from '../../../../src/main/services/team/TeamProvisioningService';
+import {
+  getMixedLaunchFallbackRecoveryError,
+  TeamProvisioningService,
+} from '../../../../src/main/services/team/TeamProvisioningService';
 import type {
   OpenCodeTeamRuntimeMessageInput,
   OpenCodeTeamRuntimeMessageResult,
@@ -231,6 +234,71 @@ describe('Team agent launch matrix safe e2e', () => {
       status: 'online',
       launchState: 'confirmed_alive',
     });
+  });
+
+  it('materializes members metadata before relaunching a legacy pure team config', async () => {
+    const teamName = 'legacy-pure-config-repair-safe-e2e';
+    await writePureAnthropicTeamConfigWithMembers({
+      teamName,
+      projectPath,
+      members: ['alice', 'bob'],
+    });
+    const svc = new TeamProvisioningService();
+    vi.spyOn(svc as any, 'normalizeTeamConfigForLaunch').mockImplementation(async () => {
+      throw new Error('stop after compatibility repair');
+    });
+
+    await expect(
+      svc.launchTeam(
+        {
+          teamName,
+          cwd: projectPath,
+          providerId: 'anthropic',
+          model: 'sonnet',
+          skipPermissions: true,
+        },
+        () => undefined
+      )
+    ).rejects.toThrow('stop after compatibility repair');
+
+    const membersMeta = JSON.parse(
+      await fs.readFile(path.join(getTeamsBasePath(), teamName, 'members.meta.json'), 'utf8')
+    ) as { members: Array<{ name: string; providerId?: string; model?: string }> };
+    expect(membersMeta.members).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'alice', providerId: 'anthropic', model: 'haiku' }),
+        expect.objectContaining({ name: 'bob', providerId: 'anthropic', model: 'sonnet' }),
+      ])
+    );
+  });
+
+  it('fails unsafe old mixed OpenCode config without launch-state or members metadata mutation', async () => {
+    const teamName = 'legacy-mixed-config-unsafe-safe-e2e';
+    await writeMixedTeamConfigWithoutOpenCodeProviderMetadata({ teamName, projectPath });
+    const svc = new TeamProvisioningService();
+    const normalizeSpy = vi.spyOn(svc as any, 'normalizeTeamConfigForLaunch');
+
+    await expect(
+      svc.launchTeam(
+        {
+          teamName,
+          cwd: projectPath,
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          model: 'gpt-5.4',
+          skipPermissions: true,
+        },
+        () => undefined
+      )
+    ).rejects.toThrow(getMixedLaunchFallbackRecoveryError());
+
+    expect(normalizeSpy).not.toHaveBeenCalled();
+    await expect(
+      fs.readFile(path.join(getTeamsBasePath(), teamName, 'members.meta.json'), 'utf8')
+    ).rejects.toThrow();
+    await expect(
+      fs.readFile(path.join(getTeamsBasePath(), teamName, 'launch-state.json'), 'utf8')
+    ).rejects.toThrow();
   });
 
   it('keeps permission-pending OpenCode members pending instead of reading the team as fully ready', async () => {

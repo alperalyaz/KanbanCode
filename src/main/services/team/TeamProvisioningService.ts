@@ -1374,11 +1374,20 @@ export function getOpenCodeMixedProviderProvisioningError(): string {
 }
 
 export function getMixedLaunchFallbackRecoveryError(): string {
-  return (
-    'Persisted mixed-team launch recovery requires members.meta.json lane-aware roster truth. ' +
-    'Inbox/config fallback cannot safely reconstruct an OpenCode secondary lane in V1. ' +
-    'Run a fresh team bootstrap or restore the missing mixed-team metadata first.'
-  );
+  return 'This old mixed team is missing stable member metadata. Open Edit Team and save the roster once before launching.';
+}
+
+type TeamLaunchCompatibilityLevel = 'ready' | 'repairable' | 'unsafe';
+type TeamLaunchCompatibilityRosterSource = 'members-meta' | 'config' | 'inboxes' | 'missing';
+type TeamLaunchCompatibilityRepairAction = 'materialize-members-meta';
+
+interface TeamLaunchCompatibilityReport {
+  level: TeamLaunchCompatibilityLevel;
+  rosterSource: TeamLaunchCompatibilityRosterSource;
+  members: TeamCreateRequest['members'];
+  warnings: string[];
+  blockers: string[];
+  repairAction?: TeamLaunchCompatibilityRepairAction;
 }
 
 function assertOpenCodeNotLaunchedThroughLegacyProvisioning(request: {
@@ -7206,6 +7215,7 @@ export class TeamProvisioningService {
           : [],
         observedAt: nowIso(),
       });
+      this.emitRuntimeDeliveryReplyAdvisoryRefresh(input.teamName, existing.message);
       return { ledgerRecord, visibleReply: existing };
     }
 
@@ -7251,6 +7261,7 @@ export class TeamProvisioningService {
           : ['opencode_plain_text_reply_materialized_to_user_inbox'],
         observedAt: nowIso(),
       });
+      this.emitRuntimeDeliveryReplyAdvisoryRefresh(input.teamName, visibleReply.message);
       return { ledgerRecord, visibleReply };
     } catch (error) {
       logger.warn(
@@ -7746,6 +7757,41 @@ export class TeamProvisioningService {
     } catch (error) {
       logger.warn(
         `[${record.teamName}] Failed to emit member advisory refresh for ${record.memberName}: ${getErrorMessage(error)}`
+      );
+    }
+  }
+
+  private emitRuntimeDeliveryReplyAdvisoryRefresh(teamName: string, message: InboxMessage): void {
+    if (
+      message.source !== 'runtime_delivery' ||
+      typeof message.relayOfMessageId !== 'string' ||
+      message.relayOfMessageId.trim().length === 0
+    ) {
+      return;
+    }
+
+    const memberName = message.from?.trim();
+    if (!memberName || memberName === 'user' || memberName === 'system') {
+      return;
+    }
+
+    try {
+      this.memberRuntimeAdvisoryInvalidator?.(teamName, memberName);
+    } catch (error) {
+      logger.warn(
+        `[${teamName}] Failed to invalidate runtime advisory after runtime delivery reply for ${memberName}: ${getErrorMessage(error)}`
+      );
+    }
+
+    try {
+      this.teamChangeEmitter?.({
+        type: 'member-advisory',
+        teamName,
+        detail: `runtime-delivery-reply:${memberName}:${message.relayOfMessageId.trim()}`,
+      });
+    } catch (error) {
+      logger.warn(
+        `[${teamName}] Failed to emit runtime advisory refresh after runtime delivery reply for ${memberName}: ${getErrorMessage(error)}`
       );
     }
   }
@@ -10111,6 +10157,7 @@ export class TeamProvisioningService {
         slashCommand: message.slashCommand,
         commandOutput: message.commandOutput,
       });
+      this.emitRuntimeDeliveryReplyAdvisoryRefresh(teamName, message);
     } catch (error) {
       logger.warn(`[${teamName}] inbox-message persist for ${recipient} failed: ${String(error)}`);
     }
@@ -17936,11 +17983,23 @@ export class TeamProvisioningService {
         }
       }
 
+      const launchCompatibility = await this.probeLaunchCompatibility(
+        request.teamName,
+        configRaw,
+        request.providerId
+      );
+      if (launchCompatibility.level === 'unsafe') {
+        this.provisioningRunByTeam.delete(request.teamName);
+        throw new Error(launchCompatibility.blockers[0] ?? getMixedLaunchFallbackRecoveryError());
+      }
+      if (launchCompatibility.repairAction === 'materialize-members-meta') {
+        await this.materializeLaunchCompatibilityRepair(request, launchCompatibility);
+      }
       const {
         members: expectedMemberSpecs,
         source,
         warning,
-      } = await this.resolveLaunchExpectedMembers(request.teamName, configRaw, request.providerId);
+      } = this.resolveLaunchExpectedMembersFromCompatibility(launchCompatibility);
       assertOpenCodeNotLaunchedThroughLegacyProvisioning({
         providerId: request.providerId,
         members: expectedMemberSpecs,
@@ -30680,54 +30739,54 @@ export class TeamProvisioningService {
     source: 'members-meta' | 'inboxes' | 'config-fallback';
     warning?: string;
   }> {
+    return this.resolveLaunchExpectedMembersFromCompatibility(
+      await this.probeLaunchCompatibility(teamName, configRaw, leadProviderId)
+    );
+  }
+
+  private resolveLaunchExpectedMembersFromCompatibility(report: TeamLaunchCompatibilityReport): {
+    members: TeamCreateRequest['members'];
+    source: 'members-meta' | 'inboxes' | 'config-fallback';
+    warning?: string;
+  } {
+    if (report.level === 'unsafe') {
+      throw new Error(report.blockers[0] ?? getMixedLaunchFallbackRecoveryError());
+    }
+    return {
+      members: report.members,
+      source:
+        report.rosterSource === 'members-meta'
+          ? 'members-meta'
+          : report.rosterSource === 'inboxes'
+            ? 'inboxes'
+            : 'config-fallback',
+      ...(report.warnings.length > 0 ? { warning: report.warnings.join(' ') } : {}),
+    };
+  }
+
+  private async probeLaunchCompatibility(
+    teamName: string,
+    configRaw: string,
+    leadProviderId?: TeamProviderId
+  ): Promise<TeamLaunchCompatibilityReport> {
+    // Keep this probe read-only: launch-state/bootstrap-state may inform existing resume guards,
+    // but compatibility repair must not mutate or trust stale runtime projections.
+    await Promise.allSettled([
+      this.launchStateStore.read(teamName),
+      readBootstrapLaunchSnapshot(teamName),
+    ]);
+
     try {
       const metaMembers = await this.membersMetaStore.getMembers(teamName);
-      const byName = new Map<string, TeamCreateRequest['members'][number]>();
-      for (const member of metaMembers) {
-        const rawName = member.name?.trim() ?? '';
-        const lower = rawName.toLowerCase();
-        if (isLeadMember(member) || lower === 'user') {
-          continue;
-        }
-        const name = rawName;
-        if (!name) continue;
-        if (member.removedAt) continue;
-        const role = typeof member.role === 'string' ? member.role.trim() || undefined : undefined;
-        const workflow =
-          typeof member.workflow === 'string' ? member.workflow.trim() || undefined : undefined;
-        const isolation = member.isolation === 'worktree' ? 'worktree' : undefined;
-        const providerId = normalizeOptionalTeamProviderId(member.providerId);
-        const model =
-          typeof member.model === 'string' ? member.model.trim() || undefined : undefined;
-        const effort = isTeamEffortLevel(member.effort) ? member.effort : undefined;
-        const cwd = typeof member.cwd === 'string' ? member.cwd.trim() || undefined : undefined;
-        const prev = byName.get(name);
-        if (!prev) {
-          byName.set(name, { name, role, workflow, isolation, cwd, providerId, model, effort });
-        } else {
-          byName.set(name, {
-            ...prev,
-            role: prev.role || role,
-            workflow: prev.workflow || workflow,
-            isolation: prev.isolation || isolation,
-            cwd: prev.cwd || cwd,
-            providerId: prev.providerId || providerId,
-            model: prev.model || model,
-            effort: prev.effort || effort,
-          });
-        }
-      }
-      // Defense: ignore CLI auto-suffixed duplicates (alice-2) when base name exists.
-      const allNames = Array.from(byName.keys());
-      const keepName = createCliAutoSuffixNameGuard(allNames);
-      for (const name of allNames) {
-        if (!keepName(name)) {
-          byName.delete(name);
-        }
-      }
-      const members = Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+      const members = this.buildLaunchMembersFromMeta(metaMembers);
       if (members.length > 0) {
-        return { members, source: 'members-meta' };
+        return {
+          level: 'ready',
+          rosterSource: 'members-meta',
+          members,
+          warnings: [],
+          blockers: [],
+        };
       }
     } catch (error) {
       logger.warn(
@@ -30781,28 +30840,37 @@ export class TeamProvisioningService {
         const memberOverridesUsed = members.some(
           (member) => member.providerId || member.model || member.effort || member.isolation
         );
-        this.assertMixedLaunchFallbackSafe({
-          teamName,
-          leadProviderId,
-          source: 'inboxes',
-          members,
-        });
+        if (
+          this.hasIncompleteOpenCodeLaunchCompatibilityMember(members) ||
+          this.isUnsafeMixedLaunchFallback({
+            leadProviderId,
+            members,
+          })
+        ) {
+          return {
+            level: 'unsafe',
+            rosterSource: 'inboxes',
+            members: [],
+            warnings: [],
+            blockers: [
+              `[${teamName}] ${getMixedLaunchFallbackRecoveryError()} Fallback source: inboxes.`,
+            ],
+          };
+        }
         return {
+          level: 'ready',
+          rosterSource: 'inboxes',
           members,
-          source: 'inboxes',
-          ...(memberOverridesUsed
-            ? {
-                warning:
-                  'Launch roster was recovered from inboxes and merged with config.json provider/model/effort overrides. ' +
+          warnings: memberOverridesUsed
+            ? [
+                'Launch roster was recovered from inboxes and merged with config.json provider/model/effort overrides. ' +
                   'Multimodel reconnect is best-effort in this fallback path.',
-              }
-            : {}),
+              ]
+            : [],
+          blockers: [],
         };
       }
     } catch (error) {
-      if (error instanceof Error && error.message.includes(getMixedLaunchFallbackRecoveryError())) {
-        throw error;
-      }
       logger.warn(
         `[${teamName}] Failed to read inbox member names: ${
           error instanceof Error ? error.message : String(error)
@@ -30812,18 +30880,51 @@ export class TeamProvisioningService {
 
     const configMembers = this.extractTeammateSpecsFromConfig(teamName, configRaw);
     if (configMembers.length > 0) {
-      this.assertMixedLaunchFallbackSafe({
-        teamName,
+      if (this.hasIncompleteOpenCodeLaunchCompatibilityMember(configMembers)) {
+        return {
+          level: 'unsafe',
+          rosterSource: 'config',
+          members: [],
+          warnings: [],
+          blockers: [
+            `[${teamName}] ${getMixedLaunchFallbackRecoveryError()} Fallback source: config.`,
+          ],
+        };
+      }
+      const lanePlan = this.runtimeLaneCoordinator.planProvisioningMembers({
         leadProviderId,
-        source: 'config-fallback',
         members: configMembers,
+        hasOpenCodeRuntimeAdapter: true,
       });
+      if (this.runtimeLaneCoordinator.isMixedSideLanePlan(lanePlan)) {
+        const sideLanesHaveExplicitProviderModels = lanePlan.sideLanes.every(
+          (lane) =>
+            normalizeOptionalTeamProviderId(lane.member.providerId) === 'opencode' &&
+            typeof lane.member.model === 'string' &&
+            lane.member.model.trim().length > 0
+        );
+        if (!sideLanesHaveExplicitProviderModels) {
+          return {
+            level: 'unsafe',
+            rosterSource: 'config',
+            members: [],
+            warnings: [],
+            blockers: [
+              `[${teamName}] ${getMixedLaunchFallbackRecoveryError()} Fallback source: config.`,
+            ],
+          };
+        }
+      }
       return {
+        level: 'repairable',
+        rosterSource: 'config',
         members: configMembers,
-        source: 'config-fallback',
-        warning:
+        warnings: [
           'members.meta.json and inboxes are empty; launch fell back to config.json members. ' +
-          'Run a fresh team bootstrap to persist stable member metadata.',
+            'Run a fresh team bootstrap to persist stable member metadata.',
+        ],
+        blockers: [],
+        repairAction: 'materialize-members-meta',
       };
     }
 
@@ -30835,16 +30936,107 @@ export class TeamProvisioningService {
     }
 
     return {
+      level: 'ready',
+      rosterSource: 'missing',
       members: [],
-      source: 'config-fallback',
-      ...(configParseFailed
-        ? {
-            warning:
-              'Config could not be parsed during launch roster discovery. ' +
+      warnings: configParseFailed
+        ? [
+            'Config could not be parsed during launch roster discovery. ' +
               'Launch will continue without explicit teammate names.',
-          }
-        : {}),
+          ]
+        : [],
+      blockers: [],
     };
+  }
+
+  private buildLaunchMembersFromMeta(metaMembers: TeamMember[]): TeamCreateRequest['members'] {
+    const byName = new Map<string, TeamCreateRequest['members'][number]>();
+    for (const member of metaMembers) {
+      const rawName = member.name?.trim() ?? '';
+      const lower = rawName.toLowerCase();
+      if (isLeadMember(member) || lower === 'user') {
+        continue;
+      }
+      const name = rawName;
+      if (!name) continue;
+      if (member.removedAt) continue;
+      const role = typeof member.role === 'string' ? member.role.trim() || undefined : undefined;
+      const workflow =
+        typeof member.workflow === 'string' ? member.workflow.trim() || undefined : undefined;
+      const isolation = member.isolation === 'worktree' ? 'worktree' : undefined;
+      const providerId = normalizeOptionalTeamProviderId(member.providerId);
+      const model = typeof member.model === 'string' ? member.model.trim() || undefined : undefined;
+      const effort = isTeamEffortLevel(member.effort) ? member.effort : undefined;
+      const cwd = typeof member.cwd === 'string' ? member.cwd.trim() || undefined : undefined;
+      const prev = byName.get(name);
+      if (!prev) {
+        byName.set(name, { name, role, workflow, isolation, cwd, providerId, model, effort });
+      } else {
+        byName.set(name, {
+          ...prev,
+          role: prev.role || role,
+          workflow: prev.workflow || workflow,
+          isolation: prev.isolation || isolation,
+          cwd: prev.cwd || cwd,
+          providerId: prev.providerId || providerId,
+          model: prev.model || model,
+          effort: prev.effort || effort,
+        });
+      }
+    }
+    const allNames = Array.from(byName.keys());
+    const keepName = createCliAutoSuffixNameGuard(allNames);
+    for (const name of allNames) {
+      if (!keepName(name)) {
+        byName.delete(name);
+      }
+    }
+    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  private async materializeLaunchCompatibilityRepair(
+    request: TeamLaunchRequest,
+    report: TeamLaunchCompatibilityReport
+  ): Promise<void> {
+    if (report.repairAction !== 'materialize-members-meta' || report.members.length === 0) {
+      return;
+    }
+    const joinedAt = Date.now();
+    const membersToWrite = this.buildMembersMetaWritePayload(
+      report.members.map((member) => ({
+        ...member,
+        joinedAt,
+      }))
+    );
+    await this.membersMetaStore.writeMembers(request.teamName, membersToWrite, {
+      providerBackendId: request.providerBackendId,
+    });
+  }
+
+  private isUnsafeMixedLaunchFallback(params: {
+    leadProviderId?: TeamProviderId;
+    members: TeamCreateRequest['members'];
+  }): boolean {
+    const lanePlan = this.runtimeLaneCoordinator.planProvisioningMembers({
+      leadProviderId: params.leadProviderId,
+      members: params.members,
+      hasOpenCodeRuntimeAdapter: true,
+    });
+    return this.runtimeLaneCoordinator.isMixedSideLanePlan(lanePlan);
+  }
+
+  private hasIncompleteOpenCodeLaunchCompatibilityMember(
+    members: TeamCreateRequest['members']
+  ): boolean {
+    return members.some((member) => {
+      const providerId = normalizeOptionalTeamProviderId(member.providerId);
+      const model = typeof member.model === 'string' ? member.model.trim() : '';
+      const inferredProviderId = inferTeamProviderIdFromModel(model);
+      return (
+        (providerId === 'opencode' && model.length === 0) ||
+        (!providerId && inferredProviderId === 'opencode')
+      );
+    });
   }
 
   private assertMixedLaunchFallbackSafe(params: {
@@ -30853,12 +31045,12 @@ export class TeamProvisioningService {
     source: 'inboxes' | 'config-fallback';
     members: TeamCreateRequest['members'];
   }): void {
-    const lanePlan = this.runtimeLaneCoordinator.planProvisioningMembers({
-      leadProviderId: params.leadProviderId,
-      members: params.members,
-      hasOpenCodeRuntimeAdapter: true,
-    });
-    if (this.runtimeLaneCoordinator.isMixedSideLanePlan(lanePlan)) {
+    if (
+      this.isUnsafeMixedLaunchFallback({
+        leadProviderId: params.leadProviderId,
+        members: params.members,
+      })
+    ) {
       throw new Error(
         `[${params.teamName}] ${getMixedLaunchFallbackRecoveryError()} Fallback source: ${params.source}.`
       );
@@ -30882,6 +31074,7 @@ export class TeamProvisioningService {
           model?: string;
           effort?: string;
           cwd?: string;
+          removedAt?: unknown;
         }[];
       };
       if (!Array.isArray(parsed.members)) {
@@ -30894,6 +31087,7 @@ export class TeamProvisioningService {
         if (!member || isLeadMember(member) || lower === 'user') continue;
         const name = rawName;
         if (!name) continue;
+        if (member.removedAt != null) continue;
         byName.set(name, {
           name,
           role: typeof member.role === 'string' ? member.role.trim() || undefined : undefined,

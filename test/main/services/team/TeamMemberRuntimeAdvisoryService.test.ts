@@ -562,6 +562,127 @@ describe('TeamMemberRuntimeAdvisoryService', () => {
     expect(advisory).toBeNull();
   });
 
+  it('suppresses stale OpenCode proof advisories after same-task member progress exists', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-advisory-'));
+    setClaudeBasePathOverride(tmpDir);
+
+    const teamName = 'mission-control';
+    const laneId = 'secondary:opencode:bob';
+    const taskId = '10d1c1b5-e8be-4dc9-a500-a7e2bc619c9e';
+    const laneDir = path.join(
+      tmpDir,
+      'teams',
+      teamName,
+      '.opencode-runtime',
+      'lanes',
+      encodeURIComponent(laneId)
+    );
+    await fs.mkdir(laneDir, { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'tasks', teamName), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'teams', teamName, '.opencode-runtime', 'lanes.json'),
+      JSON.stringify({
+        version: 1,
+        updatedAt: '2026-05-08T06:37:47.470Z',
+        lanes: {
+          [laneId]: { laneId, state: 'active', updatedAt: '2026-05-08T06:37:47.470Z' },
+        },
+      }),
+      'utf8'
+    );
+    await fs.writeFile(
+      path.join(laneDir, 'opencode-prompt-delivery-ledger.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        updatedAt: '2026-05-08T06:37:47.470Z',
+        data: [
+          {
+            id: 'opencode-prompt:task-progress-missing',
+            teamName,
+            memberName: 'bob',
+            laneId,
+            runId: 'run-1',
+            runtimeSessionId: 'ses-1',
+            inboxMessageId: 'task-assignment-1',
+            inboxTimestamp: '2026-05-08T06:36:00.000Z',
+            source: 'watcher',
+            messageKind: null,
+            replyRecipient: 'team-lead',
+            actionMode: null,
+            taskRefs: [{ taskId, displayId: '10d1c1b5', teamName }],
+            payloadHash: 'sha256:test',
+            status: 'failed_terminal',
+            responseState: 'empty_assistant_turn',
+            attempts: 3,
+            maxAttempts: 3,
+            acceptanceUnknown: false,
+            nextAttemptAt: null,
+            lastAttemptAt: '2026-05-08T06:37:30.000Z',
+            lastObservedAt: '2026-05-08T06:37:33.167Z',
+            acceptedAt: '2026-05-08T06:36:29.651Z',
+            respondedAt: '2026-05-08T06:37:33.167Z',
+            failedAt: '2026-05-08T06:37:47.470Z',
+            inboxReadCommittedAt: null,
+            inboxReadCommitError: null,
+            prePromptCursor: null,
+            postPromptCursor: null,
+            deliveredUserMessageId: 'delivered-1',
+            observedAssistantMessageId: 'assistant-1',
+            observedAssistantPreview: null,
+            observedToolCallNames: [],
+            observedVisibleMessageId: null,
+            visibleReplyMessageId: null,
+            visibleReplyInbox: null,
+            visibleReplyCorrelation: null,
+            lastReason: 'empty_assistant_turn',
+            diagnostics: ['empty_assistant_turn'],
+            createdAt: '2026-05-08T06:36:00.000Z',
+            updatedAt: '2026-05-08T06:37:47.470Z',
+          },
+        ],
+      }),
+      'utf8'
+    );
+    await fs.writeFile(
+      path.join(tmpDir, 'tasks', teamName, `${taskId}.json`),
+      JSON.stringify({
+        id: taskId,
+        displayId: '10d1c1b5',
+        subject: 'Keyboard shortcuts',
+        owner: 'bob',
+        status: 'completed',
+        updatedAt: '2026-05-08T06:40:55.128Z',
+        comments: [
+          {
+            id: 'progress-comment-1',
+            author: 'bob',
+            text: 'Keyboard shortcuts implemented and verified.',
+            createdAt: '2026-05-08T06:39:40.805Z',
+            type: 'regular',
+          },
+        ],
+        historyEvents: [
+          {
+            id: 'status-event-1',
+            type: 'status_changed',
+            from: 'in_progress',
+            to: 'completed',
+            actor: 'bob',
+            timestamp: '2026-05-08T06:40:55.128Z',
+          },
+        ],
+      }),
+      'utf8'
+    );
+
+    const service = new TeamMemberRuntimeAdvisoryService({
+      findMemberLogs: vi.fn(async () => []),
+    });
+    const advisory = await service.getMemberAdvisory(teamName, 'bob');
+
+    expect(advisory).toBeNull();
+  });
+
   it('ignores expired retry advisories', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-advisory-'));
     setClaudeBasePathOverride(tmpDir);

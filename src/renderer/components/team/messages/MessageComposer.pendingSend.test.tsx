@@ -59,6 +59,38 @@ const draftHarness = vi.hoisted(() => {
   };
 });
 
+const provisioningHarness = vi.hoisted(() => {
+  const state = {
+    active: false,
+  };
+  return {
+    reset: () => {
+      state.active = false;
+    },
+    state,
+  };
+});
+
+const storeHarness = vi.hoisted(() => {
+  const state = {
+    crossTeamTargets: [] as {
+      teamName: string;
+      displayName: string;
+      description?: string;
+      color?: string;
+      leadName?: string;
+      leadColor?: string;
+      isOnline?: boolean;
+    }[],
+  };
+  return {
+    reset: () => {
+      state.crossTeamTargets = [];
+    },
+    state,
+  };
+});
+
 vi.mock('@renderer/api', () => ({
   api: {
     teams: {
@@ -176,7 +208,7 @@ vi.mock('@renderer/hooks/useTeamSuggestions', () => ({
 vi.mock('@renderer/store', () => ({
   useStore: (selector: (state: Record<string, unknown>) => unknown) =>
     selector({
-      crossTeamTargets: [],
+      crossTeamTargets: storeHarness.state.crossTeamTargets,
       fetchCrossTeamTargets: vi.fn(),
       fetchSkillsCatalog: vi.fn(),
       selectedTeamData: null,
@@ -187,7 +219,7 @@ vi.mock('@renderer/store', () => ({
 }));
 
 vi.mock('@renderer/store/slices/teamSlice', () => ({
-  isTeamProvisioningActive: () => false,
+  isTeamProvisioningActive: () => provisioningHarness.state.active,
 }));
 
 import { MessageComposer } from './MessageComposer';
@@ -199,6 +231,16 @@ const members: ResolvedTeamMember[] = [
     lastActiveAt: null,
     messageCount: 0,
     name: 'alice',
+    role: 'Developer',
+    status: 'idle',
+    taskCount: 0,
+  },
+  {
+    agentType: 'developer',
+    currentTaskId: null,
+    lastActiveAt: null,
+    messageCount: 0,
+    name: 'bob',
     role: 'Developer',
     status: 'idle',
     taskCount: 0,
@@ -255,10 +297,22 @@ function getTextarea(host: HTMLElement): HTMLTextAreaElement {
   return textarea;
 }
 
+function getButtonContainingText(host: HTMLElement, text: string): HTMLButtonElement {
+  const button = Array.from(host.querySelectorAll('button')).find((candidate) =>
+    candidate.textContent?.includes(text)
+  );
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Button containing "${text}" not found`);
+  }
+  return button;
+}
+
 describe('MessageComposer pending send lifecycle', () => {
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     draftHarness.reset();
+    provisioningHarness.reset();
+    storeHarness.reset();
   });
 
   afterEach(() => {
@@ -372,6 +426,103 @@ describe('MessageComposer pending send lifecycle', () => {
     expect(draftHarness.methods.hideDraftForPendingSend).not.toHaveBeenCalled();
     expect(draftHarness.methods.finalizePendingSendClear).not.toHaveBeenCalled();
     expect(draftHarness.state.text).toBe('');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('keeps send enabled when stale provisioning state remains after the team is alive', () => {
+    provisioningHarness.state.active = true;
+    const { host, onSend, root } = renderComposer({ isTeamAlive: true });
+
+    expect(getSendButton(host).disabled).toBe(false);
+
+    act(() => {
+      getSendButton(host).click();
+    });
+
+    expect(onSend).toHaveBeenCalledOnce();
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('keeps send disabled while provisioning before the team is alive', () => {
+    provisioningHarness.state.active = true;
+    const { host, onSend, root } = renderComposer({ isTeamAlive: false });
+
+    expect(getSendButton(host).disabled).toBe(true);
+
+    act(() => {
+      getSendButton(host).click();
+    });
+
+    expect(onSend).not.toHaveBeenCalled();
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('returns focus to the textarea after sending', () => {
+    const { host, root } = renderComposer();
+    const sendButton = getSendButton(host);
+    const textarea = getTextarea(host);
+
+    sendButton.focus();
+    expect(document.activeElement).toBe(sendButton);
+
+    act(() => {
+      sendButton.click();
+    });
+
+    expect(document.activeElement).toBe(textarea);
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('returns focus to the textarea after selecting a recipient member', () => {
+    const { host, root } = renderComposer();
+    const bobButton = getButtonContainingText(host, 'bob');
+    const textarea = getTextarea(host);
+
+    bobButton.focus();
+    expect(document.activeElement).toBe(bobButton);
+
+    act(() => {
+      bobButton.click();
+    });
+
+    expect(document.activeElement).toBe(textarea);
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('returns focus to the textarea after selecting a cross-team recipient', () => {
+    storeHarness.state.crossTeamTargets = [
+      {
+        teamName: 'team-beta',
+        displayName: 'Beta Team',
+      },
+    ];
+    const { host, root } = renderComposer({ onCrossTeamSend: vi.fn() });
+    const betaTeamButton = getButtonContainingText(host, 'Beta Team');
+    const textarea = getTextarea(host);
+
+    betaTeamButton.focus();
+    expect(document.activeElement).toBe(betaTeamButton);
+
+    act(() => {
+      betaTeamButton.click();
+    });
+
+    expect(document.activeElement).toBe(textarea);
 
     act(() => {
       root.unmount();

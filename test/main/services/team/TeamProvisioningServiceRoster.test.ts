@@ -120,6 +120,39 @@ describe('TeamProvisioningService (launch roster discovery)', () => {
     expect(result.members.map((m: { name: string }) => m.name)).toEqual(['bob']);
   });
 
+  it('marks pure Claude/Codex legacy config without members.meta.json as repairable', async () => {
+    const svc = new TeamProvisioningService(
+      {} as never,
+      { listInboxNames: vi.fn(async () => []) } as never,
+      { getMembers: vi.fn(async () => []) } as never,
+      {} as never
+    );
+
+    const configRaw = JSON.stringify({
+      name: 'legacy-pure',
+      members: [
+        { name: 'alice', role: 'reviewer', provider: 'anthropic', model: 'claude-opus-4-6' },
+        { name: 'tom', role: 'developer', provider: 'codex', model: 'gpt-5.4' },
+      ],
+    });
+
+    const report = await (svc as unknown as any).probeLaunchCompatibility(
+      'legacy-pure',
+      configRaw,
+      'anthropic'
+    );
+
+    expect(report).toMatchObject({
+      level: 'repairable',
+      rosterSource: 'config',
+      repairAction: 'materialize-members-meta',
+    });
+    expect(report.members.map((member: { name: string }) => member.name)).toEqual([
+      'alice',
+      'tom',
+    ]);
+  });
+
   it('rejects inbox fallback when it would reconstruct a mixed OpenCode side lane without members.meta truth', async () => {
     const svc = new TeamProvisioningService(
       {} as never,
@@ -138,7 +171,7 @@ describe('TeamProvisioningService (launch roster discovery)', () => {
     ).rejects.toThrow(getMixedLaunchFallbackRecoveryError());
   });
 
-  it('rejects config fallback when it would reconstruct a mixed OpenCode side lane without members.meta truth', async () => {
+  it('marks complete mixed OpenCode config fallback as repairable', async () => {
     const svc = new TeamProvisioningService(
       {} as never,
       { listInboxNames: vi.fn(async () => []) } as never,
@@ -149,6 +182,48 @@ describe('TeamProvisioningService (launch roster discovery)', () => {
     const configRaw = JSON.stringify({
       name: 't',
       members: [{ name: 'tom', role: 'developer', provider: 'opencode', model: 'minimax-m2.5-free' }],
+    });
+
+    const report = await (svc as unknown as any).probeLaunchCompatibility('t', configRaw, 'codex');
+    expect(report).toMatchObject({
+      level: 'repairable',
+      rosterSource: 'config',
+      repairAction: 'materialize-members-meta',
+    });
+    expect(report.members).toMatchObject([
+      { name: 'tom', role: 'developer', providerId: 'opencode', model: 'minimax-m2.5-free' },
+    ]);
+  });
+
+  it('rejects mixed OpenCode config fallback when the side lane is missing an explicit model', async () => {
+    const svc = new TeamProvisioningService(
+      {} as never,
+      { listInboxNames: vi.fn(async () => []) } as never,
+      { getMembers: vi.fn(async () => []) } as never,
+      {} as never
+    );
+
+    const configRaw = JSON.stringify({
+      name: 't',
+      members: [{ name: 'tom', role: 'developer', provider: 'opencode' }],
+    });
+
+    await expect(
+      (svc as unknown as any).resolveLaunchExpectedMembers('t', configRaw, 'codex')
+    ).rejects.toThrow(getMixedLaunchFallbackRecoveryError());
+  });
+
+  it('rejects config fallback when an OpenCode-looking model is missing an explicit provider', async () => {
+    const svc = new TeamProvisioningService(
+      {} as never,
+      { listInboxNames: vi.fn(async () => []) } as never,
+      { getMembers: vi.fn(async () => []) } as never,
+      {} as never
+    );
+
+    const configRaw = JSON.stringify({
+      name: 't',
+      members: [{ name: 'tom', role: 'developer', model: 'opencode/minimax-m2.5-free' }],
     });
 
     await expect(
