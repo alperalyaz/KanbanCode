@@ -1,4 +1,9 @@
 import {
+  buildClaudeAttachmentDeliveryParts,
+  buildCodexNativeAttachmentDeliveryParts,
+  type CodexNativeImageArgPart,
+} from '@features/agent-attachments/main';
+import {
   resolveAnthropicFastMode,
   resolveAnthropicRuntimeSelection,
 } from '@features/anthropic-runtime-profile/main';
@@ -65,7 +70,7 @@ import {
   stripCrossTeamPrefix,
 } from '@shared/constants/crossTeam';
 import { getMemberColorByName } from '@shared/constants/memberColors';
-import { DEFAULT_TOOL_APPROVAL_SETTINGS } from '@shared/types/team';
+import { DEFAULT_TOOL_APPROVAL_SETTINGS, type AttachmentPayload } from '@shared/types/team';
 import { resolveLanguageName } from '@shared/utils/agentLanguage';
 import { resolveAnthropicLaunchModel } from '@shared/utils/anthropicLaunchModel';
 import { getAnthropicDefaultTeamModel } from '@shared/utils/anthropicModelDefaults';
@@ -19615,58 +19620,15 @@ export class TeamProvisioningService {
       throw new Error(`Team "${run.teamName}" process stdin is not writable`);
     }
 
-    const contentBlocks: Record<string, unknown>[] = [{ type: 'text', text: message }];
-    if (attachments?.length) {
-      for (const att of attachments) {
-        if (att.mimeType === 'application/pdf') {
-          // PDF → document block with base64 source
-          contentBlocks.push({
-            type: 'document',
-            source: {
-              type: 'base64',
-              media_type: 'application/pdf',
-              data: att.data,
-            },
-            title: att.filename,
-          });
-        } else if (att.mimeType === 'text/plain') {
-          // Text file → document block with text source (decode base64 → UTF-8)
-          const decoded = Buffer.from(att.data, 'base64').toString('utf-8');
-          if (decoded.includes('\uFFFD')) {
-            // Non-UTF-8 file: fallback to base64 document to avoid garbled content
-            contentBlocks.push({
-              type: 'document',
-              source: {
-                type: 'base64',
-                media_type: 'text/plain',
-                data: att.data,
-              },
-              title: att.filename,
-            });
-          } else {
-            contentBlocks.push({
-              type: 'document',
-              source: {
-                type: 'text',
-                media_type: 'text/plain',
-                data: decoded,
-              },
-              title: att.filename,
-            });
-          }
-        } else {
-          // Image (default) → image block
-          contentBlocks.push({
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: att.mimeType,
-              data: att.data,
-            },
-          });
-        }
-      }
-    }
+    const attachmentPayloads = this.toLeadAttachmentPayloads(attachments);
+    const contentBlocks =
+      normalizeOptionalTeamProviderId(run.request.providerId) === 'codex' &&
+      attachmentPayloads.length > 0
+        ? await this.buildCodexLeadAttachmentContentBlocks(run, message, attachmentPayloads)
+        : (buildClaudeAttachmentDeliveryParts({
+            text: message,
+            attachments: attachmentPayloads,
+          }).blocks as Record<string, unknown>[]);
 
     const payload = JSON.stringify({
       type: 'user',
@@ -19683,6 +19645,50 @@ export class TeamProvisioningService {
       });
     });
     this.setLeadActivity(run, 'active');
+  }
+
+  private toLeadAttachmentPayloads(
+    attachments?: { data: string; mimeType: string; filename?: string }[]
+  ): AttachmentPayload[] {
+    return (attachments ?? []).map((attachment, index) => {
+      const filename = attachment.filename?.trim() || `attachment-${index + 1}`;
+      const bytes = Buffer.from(attachment.data, 'base64');
+      return {
+        id: `lead_att_${index + 1}`,
+        filename,
+        mimeType: attachment.mimeType,
+        size: bytes.byteLength,
+        data: attachment.data,
+      };
+    });
+  }
+
+  private async buildCodexLeadAttachmentContentBlocks(
+    run: ProvisioningRun,
+    message: string,
+    attachments: AttachmentPayload[]
+  ): Promise<Record<string, unknown>[]> {
+    const prepared = await buildCodexNativeAttachmentDeliveryParts({
+      teamName: run.teamName,
+      messageId: `lead_${run.runId}_${Date.now()}`,
+      text: message,
+      attachments,
+    });
+    return [
+      { type: 'text', text: prepared.promptText },
+      ...prepared.imageParts.map((part) => this.codexImagePartToContentBlock(part)),
+    ];
+  }
+
+  private codexImagePartToContentBlock(part: CodexNativeImageArgPart): Record<string, unknown> {
+    return {
+      type: 'image',
+      source: {
+        type: 'file',
+        path: part.path,
+        media_type: part.mimeType,
+      },
+    };
   }
 
   /**
