@@ -613,3 +613,567 @@ it('does not write to stdin when attachment payload exceeds Claude budget', asyn
 ## Code review notes
 
 If the diff shows a new `if (mimeType)` ladder inside `TeamProvisioningService`, the refactor failed. That logic belongs in adapter/helper tests.
+
+## Detailed Implementation Checklist
+
+### Step 1 - Locate and isolate current Claude message serialization
+
+Do not rewrite the full delivery path. Add a seam where text and attachments are converted into Claude input blocks.
+
+Target shape:
+
+```ts
+export function buildClaudeInputBlocks(input: {
+  text: string;
+  attachments: AgentAttachmentPayload[];
+}): ClaudeInputBlock[] {
+  return [
+    { type: 'text', text: input.text },
+    ...input.attachments.map(toClaudeImageBlock),
+  ];
+}
+```
+
+### Step 2 - Use provider-native image blocks only
+
+For Claude, image data should be represented as structured image blocks for the SDK/stream-json path. Do not paste base64 into text.
+
+```ts
+function toClaudeImageBlock(attachment: AgentAttachmentPayload): ClaudeInputBlock {
+  const artifact = selectBestImageArtifact(attachment, 'claude');
+  return {
+    type: 'image',
+    source: {
+      type: 'base64',
+      media_type: artifact.mimeType,
+      data: artifact.base64,
+    },
+  };
+}
+```
+
+Important: this function should live in a Claude adapter, not in the composer or generic delivery service.
+
+### Step 3 - Preserve text-only path
+
+Guard the new block builder so text-only Claude messages produce byte-for-byte equivalent semantic behavior.
+
+```ts
+if (attachments.length === 0) {
+  return buildExistingClaudeTextPayload(text);
+}
+```
+
+Only remove this branch after tests prove the generic block path is fully equivalent.
+
+### Step 4 - Add exact diagnostics
+
+Claude attachment failures should say what failed:
+
+- `Claude image artifact missing`
+- `Claude image MIME type unsupported: image/webp`
+- `Claude image payload exceeds budget after optimization`
+- `Claude stream-json image delivery rejected: <redacted provider error>`
+
+Avoid saying “teammate crashed” unless process liveness confirms that.
+
+## Claude-Specific Edge Cases
+
+| Case | Risk | Safe behavior |
+|---|---|---|
+| Claude subscription not logged in | Could be misread as attachment failure | Preserve existing auth diagnostic. |
+| Multiple images | Token/latency spike | Enforce count and total byte budget before SDK call. |
+| Image plus task delegation | Tool-call response still expected | Existing proof gates stay unchanged. |
+| Lead prompt with images | Lead may consume image but not delegate | This is normal model behavior, not transport failure. |
+| Assistant refuses visual task | Delivery succeeded, model response is semantic failure | Do not retry transport automatically. |
+| Claude CLI path lacking image support | Attachment delivery blocked with provider capability error | Do not fallback to base64 text. |
+
+## Golden Serialization Tests
+
+Add tests that validate payload shape without hitting Claude.
+
+```ts
+it('serializes a png as a Claude image block', () => {
+  const blocks = buildClaudeInputBlocks({
+    text: 'What color?',
+    attachments: [fakePngAttachment({ base64: 'abc' })],
+  });
+
+  expect(blocks).toEqual([
+    { type: 'text', text: 'What color?' },
+    {
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/png', data: 'abc' },
+    },
+  ]);
+});
+```
+
+Negative test:
+
+```ts
+it('does not serialize image as plain base64 text', () => {
+  const payload = JSON.stringify(buildClaudeInputBlocks(input));
+  expect(payload).not.toContain('data:image/png;base64');
+});
+```
+
+## Manual Claude QA
+
+Use the known-good red-card PNG:
+
+1. Send to Claude lead: “What color is the square? Answer one word.”
+2. Expected answer: `red` or equivalent.
+3. Send two images if supported by budget.
+4. Send oversized image and verify UI blocks before provider call.
+5. Temporarily break auth and verify auth error is preserved, not attachment error.
+
+## Phase 2 Exit Criteria
+
+- Claude text-only delivery remains green.
+- Claude image delivery answers visual smoke prompt.
+- Claude oversized image is blocked before SDK/provider call.
+- Claude provider rejection is shown as delivery failure, not launch failure.
+- No Codex or OpenCode code path changes are required for Phase 2 to pass.
+
+
+## Implementation Safeguards
+
+### Claude adapter should be additive
+
+Do not refactor all Claude runtime code just to add image support. Add a small adapter and call it from the existing send path only when attachments are present.
+
+```ts
+if (validatedAttachments.length > 0) {
+  const payload = await claudeAttachmentAdapter.buildDeliveryParts({
+    text,
+    attachments: validatedAttachments,
+    budget,
+  });
+  return sendClaudeStructuredPayload(payload);
+}
+
+return sendClaudeTextOnlyPayload(text);
+```
+
+This limits blast radius.
+
+### Do not infer readiness from Claude image response
+
+A Claude member answering an image prompt proves message delivery, not bootstrap readiness. Keep these concepts separate:
+
+- `bootstrapConfirmed`: launch/runtime proof.
+- `messageDelivered`: prompt delivery proof.
+- `visibleReply`: user-visible response proof.
+
+### Claude streaming failure mapping
+
+| Failure source | User-facing classification |
+|---|---|
+| SDK rejects image MIME | `attachment_type_unsupported` |
+| SDK rejects payload size | `attachment_too_large` |
+| Auth token invalidated | existing provider auth error |
+| Runtime exits after request | runtime crash/exit diagnostic |
+| Assistant answers “cannot view image” | semantic model response, not transport failure |
+| Stream closes without response | delivery failure, eligible for existing bounded retry only if text path already retries |
+
+### Claude PR review checklist
+
+- Does the text-only path avoid new serialization code?
+- Are images sent as structured image blocks, not text?
+- Is artifact content loaded as late as possible?
+- Are size and MIME checked before reading large file into memory?
+- Is provider error redacted?
+- Does delivery failure preserve the inbox message?
+
+### Additional Claude tests
+
+```ts
+it('keeps text-only Claude path unchanged', async () => {
+  const result = await buildClaudeDeliveryRequest({ text: 'hello', attachments: [] });
+  expect(result.kind).toBe('legacy_text');
+});
+
+it('classifies missing optimized artifact before provider call', async () => {
+  await expect(buildClaudeDeliveryRequest({
+    text: 'see image',
+    attachments: [fakeAttachmentWithMissingPath()],
+  })).rejects.toMatchObject({ code: 'attachment_artifact_missing' });
+});
+```
+
+
+## Failure Injection Tests for Phase 2
+
+```ts
+describe('Claude attachment delivery failures', () => {
+  it('does not mark teammate offline when Claude rejects image payload', async () => {
+    const result = await deliverClaudeMessageWithAttachment(fakeProviderRejectsImage());
+
+    expect(result.delivery.status).toBe('failed');
+    expect(result.delivery.failureCode).toBe('attachment_provider_rejected');
+    expect(result.memberPatch).toBeUndefined();
+  });
+
+  it('preserves existing auth error when Claude token is invalid', async () => {
+    const result = await deliverClaudeMessageWithAttachment(fakeInvalidAuth());
+
+    expect(result.error.message).toMatch(/authentication|sign in|token/i);
+    expect(result.error.code).not.toBe('attachment_provider_rejected');
+  });
+});
+```
+
+## Claude Serialization Gotchas
+
+- Some Claude SDK/CLI surfaces accept message arrays, some accept stream-json lines, and some accept plain prompt text. Attachments must use the surface that truly supports image blocks.
+- If the current runtime path cannot send image blocks safely, Phase 2 must block image send with a clear message instead of falling back to base64 text.
+- Do not mix `@file` syntax with image block syntax unless that exact runtime path has been tested.
+- If multiple Claude launch contexts exist, validate the one used by the app, not only a standalone prototype.
+
+## Claude Runtime Exit Correlation
+
+If Claude process exits shortly after image delivery, diagnostics should show both facts separately:
+
+```text
+Image delivery was attempted using Claude image blocks.
+The Claude runtime exited 18s later.
+Last stderr: <redacted tail>
+```
+
+Do not claim the image caused the exit unless provider stderr explicitly says so.
+
+## Phase 2 Stop Conditions
+
+Stop and reassess if:
+
+- Claude implementation requires changing team bootstrap prompts.
+- Claude text-only path must be rewritten broadly.
+- Auth/session diagnostics change unexpectedly.
+- Provider image block support is not available in the actual app runtime path.
+
+
+## File-Level Implementation Plan
+
+Suggested files:
+
+```text
+src/features/agent-attachments/main/providers/claudeAttachmentAdapter.ts
+src/features/agent-attachments/main/providers/claudeAttachmentAdapter.test.ts
+```
+
+Existing delivery call site should import only the adapter public function, not internal attachment storage helpers.
+
+### Adapter skeleton
+
+```ts
+export async function buildClaudeAttachmentDeliveryParts(input: {
+  text: string;
+  attachments: AgentAttachmentPayload[];
+  readArtifact: AttachmentArtifactReader;
+}): Promise<ClaudeDeliveryParts> {
+  const blocks: ClaudeInputBlock[] = [];
+  if (input.text.trim().length > 0) {
+    blocks.push({ type: 'text', text: input.text });
+  }
+
+  for (const attachment of input.attachments) {
+    const artifact = selectProviderImageArtifact(attachment, 'anthropic');
+    const bytes = await input.readArtifact.readBytes(artifact.artifactId);
+    blocks.push(toClaudeImageBlock(artifact.mimeType, bytes));
+  }
+
+  return { kind: 'claude_structured_blocks', blocks };
+}
+```
+
+### Artifact reader abstraction
+
+```ts
+export interface AttachmentArtifactReader {
+  readBytes(artifactId: string): Promise<Buffer>;
+  stat(artifactId: string): Promise<{ sizeBytes: number }>;
+}
+```
+
+This makes adapter unit tests independent from filesystem.
+
+### Claude image block conversion
+
+```ts
+function toClaudeImageBlock(mimeType: string, bytes: Buffer): ClaudeInputBlock {
+  if (mimeType !== 'image/png' && mimeType !== 'image/jpeg') {
+    throw new AttachmentDeliveryError('attachment_type_unsupported', `Claude image MIME unsupported: ${mimeType}`);
+  }
+
+  return {
+    type: 'image',
+    source: {
+      type: 'base64',
+      media_type: mimeType,
+      data: bytes.toString('base64'),
+    },
+  };
+}
+```
+
+This base64 is provider-native structured payload data, not prompt text. That distinction should be documented in code comments because it is easy to confuse.
+
+### Claude phase review traps
+
+- If a reviewer sees `data:image` in prompt text, reject.
+- If a reviewer sees `spawnStatus` or `launchState` imports in adapter, reject.
+- If a reviewer sees attachment adapter imported by bootstrap/provisioning code, reject.
+- If text-only Claude messages start going through `readArtifact`, reject.
+
+
+## Phase 2 Deep Review Addendum
+
+### Claude adapter contract tests
+
+Test adapter without real Claude first. The real smoke test should only prove provider behavior after contract is stable.
+
+```ts
+describe('buildClaudeAttachmentDeliveryParts', () => {
+  it('preserves text order before images', async () => {
+    const parts = await buildClaudeAttachmentDeliveryParts(fakeInputWithOneImage());
+    expect(parts.blocks[0]).toMatchObject({ type: 'text' });
+    expect(parts.blocks[1]).toMatchObject({ type: 'image' });
+  });
+
+  it('rejects webp until explicitly supported', async () => {
+    await expect(buildClaudeAttachmentDeliveryParts(fakeWebpInput()))
+      .rejects.toMatchObject({ code: 'attachment_type_unsupported' });
+  });
+});
+```
+
+### Claude delivery proof matrix
+
+| Message target | Required proof after Claude response |
+|---|---|
+| Direct user ask | visible reply or safe plain text materialization |
+| Delegate to teammate | structured relay/message proof if current flow requires it |
+| Work-sync | existing work-sync proof, not visual answer |
+| Task progress | existing task/progress proof |
+
+Image support must not weaken these proof gates.
+
+### Live smoke minimum
+
+Use a prompt that cannot be answered correctly without image access:
+
+```text
+Look at the attached image. What is the single dominant color of the square? Answer with one English word.
+```
+
+Passing answer: `red`.
+
+Failing answers:
+
+- `I cannot view images`.
+- Any generic guess not grounded in image.
+- Empty turn.
+- Tool-only response without visible answer for direct ask.
+
+
+## Phase 2 Implementation Contract Addendum
+
+### Runtime path decision tree
+
+Before implementing, identify the exact Claude runtime path used by team messages.
+
+```text
+Does app path support structured image blocks?
+  yes -> implement native Claude image blocks
+  no -> block image send for Claude with clear unsupported runtime message
+```
+
+Do not implement a fallback that pastes base64 text.
+
+### Claude provider adapter return shape
+
+```ts
+export type ClaudeAttachmentDeliveryParts =
+  | { kind: 'legacy_text'; text: string }
+  | { kind: 'structured_blocks'; blocks: ClaudeInputBlock[] };
+```
+
+Rules:
+
+- `legacy_text` only when no attachments.
+- `structured_blocks` when attachments exist.
+- Call site must handle both explicitly.
+- Any unsupported attachment throws typed `AgentAttachmentError` before provider call.
+
+### Claude provider smoke record format
+
+Record smoke results in PR notes:
+
+```text
+Provider: Claude subscription
+Runtime path: <actual app path>
+Model: <model>
+Prompt: What color is the square? One word.
+Image: red-square.png
+Expected: red
+Observed: red
+Date: 2026-05-09
+Result: pass
+```
+
+This avoids relying on stale memory about prototype success.
+
+
+## Implementation Readiness Addendum
+
+### Definition of Ready for Phase 2
+
+Before coding Phase 2:
+
+- Phase 1 normalized attachment payload exists and is tested.
+- Backend can read optimized artifact bytes by attachment id.
+- Exact Claude app runtime path for team messages is identified.
+- Text-only Claude delivery tests are green before changes.
+
+### Mocking strategy
+
+Use a fake artifact reader and fake Claude sender.
+
+```ts
+const fakeArtifactReader: AttachmentArtifactReader = {
+  async readBytes(id) {
+    if (id === 'missing') throw new AgentAttachmentError('attachment_artifact_missing', 'missing');
+    return Buffer.from([1, 2, 3]);
+  },
+  async stat() {
+    return { sizeBytes: 3 };
+  },
+};
+```
+
+Do not unit-test by invoking real Claude. Real Claude belongs to smoke/e2e only.
+
+### Claude fallback decision
+
+If structured image blocks are unavailable in the actual app runtime:
+
+- Block image send for Claude.
+- Keep text-only send working.
+- Add diagnostic: `Claude runtime path does not support image attachments yet.`
+- Do not fallback to `@file`, Markdown image links, or base64 text unless separately proven.
+
+### Claude additional edge cases
+
+| Edge case | Expected behavior |
+|---|---|
+| Empty text with image | Allow if UX supports image-only prompt, otherwise require text. Do not crash adapter. |
+| Multiple images | Preserve order. |
+| Unsupported MIME after hydration | Typed pre-provider error. |
+| Artifact read fails | Message saved, delivery fails actionable. |
+| Claude returns visible refusal | Delivery succeeded with refusal visible to user. |
+
+
+## Final Phase 2 Acceptance Specs
+
+### Spec 1 - Claude text-only no regression
+
+```gherkin
+Given a user sends a text-only message to a Claude target
+When the message is delivered
+Then the legacy Claude text path is used
+And no artifact reader is invoked
+And existing proof gates are unchanged
+```
+
+### Spec 2 - Claude image delivered through structured block
+
+```gherkin
+Given a user sends a PNG image to a Claude target
+When the Claude adapter builds delivery parts
+Then it returns structured blocks
+And the first block is the text prompt
+And the second block is a provider-native image block
+And no data:image text is present in the prompt
+```
+
+### Spec 3 - Claude artifact missing
+
+```gherkin
+Given a message references an optimized image artifact
+And the artifact file is missing
+When delivery is attempted
+Then delivery fails with attachment_artifact_missing
+And the member launch state is unchanged
+And the message remains available for user action
+```
+
+### Phase 2 exact PR contract
+
+The Phase 2 PR is acceptable only if:
+
+- It adds a Claude adapter with fake artifact-reader tests.
+- It preserves text-only fast path.
+- It maps provider image rejection to attachment delivery failure.
+- It preserves Claude auth/session diagnostics.
+- It includes one real smoke note or explicitly marks smoke as pending.
+- It does not touch Codex/OpenCode delivery code except shared types.
+
+### Claude provider-native base64 comment requirement
+
+If implementation converts bytes to base64 for Claude structured image blocks, add a comment explaining why this is not the forbidden base64-in-text fallback.
+
+```ts
+// Claude expects image bytes inside the structured image block as base64.
+// This is provider-native payload data, not text appended to the user prompt.
+```
+
+
+## Phase 2 Pre-Mortem and Extra Safeguards
+
+### Likely Claude mistakes
+
+| Mistake | Concrete prevention |
+|---|---|
+| Testing standalone Claude path but shipping different app path | Smoke actual app-managed team delivery path. |
+| Treating Claude visible refusal as transport failure | Visible refusal is delivered response. |
+| Weakening relay/work-sync proof gates | Keep existing proof gates after response. |
+| Reading large artifact before budget validation | Validate size before reading bytes. |
+| Logging structured payload with base64 | Redact image block data in diagnostics. |
+
+### Redaction helper requirement
+
+Claude structured payload may contain base64. Any debug output must redact it.
+
+```ts
+export function redactClaudeBlocksForDiagnostics(blocks: ClaudeInputBlock[]): unknown[] {
+  return blocks.map((block) => {
+    if (block.type !== 'image') return block;
+    return {
+      ...block,
+      source: {
+        ...block.source,
+        data: `[redacted image bytes: ${block.source.media_type}]`,
+      },
+    };
+  });
+}
+```
+
+### Claude adapter test for redaction
+
+```ts
+it('redacts image bytes in diagnostics', () => {
+  const redacted = redactClaudeBlocksForDiagnostics([fakeClaudeImageBlock('SECRET_BASE64')]);
+  expect(JSON.stringify(redacted)).not.toContain('SECRET_BASE64');
+});
+```
+
+### Claude stream handling edge case
+
+If Claude streams partial text then errors:
+
+- Preserve partial visible text only if existing delivery layer already supports partials safely.
+- Otherwise report delivery failed with provider diagnostic.
+- Do not mark message read if required visible proof was not committed.
+

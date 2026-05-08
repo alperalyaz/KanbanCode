@@ -692,3 +692,646 @@ it('serializes image file part without changing response observer', async () => 
 | provider key logged in smoke | redactor in smoke script |
 | model capability string hardcoded in UI only | backend resolver is source of truth |
 | OpenRouter model id normalization inconsistent | shared `normalizeOpenCodeModelRef` tests |
+
+## Detailed Implementation Checklist
+
+### Step 1 - Add OpenCode capability matrix
+
+OpenCode support depends on provider and model, not just provider id.
+
+```ts
+export interface OpenCodeModelVisionCapability {
+  provider: 'openai' | 'openrouter' | string;
+  modelPattern: RegExp;
+  vision: 'yes' | 'no' | 'unknown';
+  evidence: 'live-smoke' | 'docs' | 'manual' | 'default';
+}
+```
+
+Initial known evidence from prototype:
+
+- `openai/gpt-5.4-mini`: vision yes.
+- `openrouter/moonshotai/kimi-k2.6`: vision yes.
+- `openrouter/z-ai/glm-4.5v`: vision yes.
+- `openrouter/z-ai/glm-5.1`: vision no or unreliable for images based on smoke result.
+
+Unknown models should not silently accept images. Use warning/block depending on UX decision:
+
+- For release-safe behavior: block unknown vision models and explain.
+- For exploratory dev behavior: allow with explicit “model may not support images” warning only if user confirms. Not recommended before release.
+
+### Step 2 - Route OpenCode attachments through file parts
+
+Use OpenCode file attachment mechanism, not base64 text.
+
+Conceptual orchestrator command:
+
+```ts
+const args = ['run', '--format', 'json', '--model', model, prompt];
+for (const image of request.images) {
+  args.push('-f', image.path);
+}
+```
+
+If using HTTP/server API instead of CLI, keep the same contract: file path/part is transport-native.
+
+### Step 3 - Integrate with delivery ledger safely
+
+Attachment delivery result must still satisfy the existing prompt delivery proof rules.
+
+| Result | Ledger behavior |
+|---|---|
+| Model returns visible reply | Existing success path. |
+| Model returns plain text direct user reply | Existing safe materialization path. |
+| Model says it cannot view image | Delivery succeeded, semantic unsupported response. Mark delivered if visible reply exists. |
+| Provider rejects file | Delivery failed with provider diagnostic. |
+| Empty assistant turn | Existing bounded repair policy applies. |
+| Non-visible tool without progress | Existing proof-directed repair applies. |
+
+### Step 4 - Add exact diagnostics
+
+OpenCode attachment diagnostics should include provider/model context but redact secrets.
+
+Examples:
+
+- `OpenCode model openrouter/z-ai/glm-5.1 is not marked vision-capable for image attachments.`
+- `OpenCode image artifact missing before delivery.`
+- `OpenCode provider rejected image attachment: <redacted error>`
+- `OpenCode returned a visible reply saying it cannot inspect images.`
+
+Do not turn a model “I cannot see images” answer into transport failure if the model produced a visible answer. That is useful user feedback.
+
+## OpenCode Edge Cases
+
+| Case | Expected behavior |
+|---|---|
+| OpenRouter key quota exceeded | Provider failure with exact redacted diagnostic. |
+| OpenCode OAuth stale | Auth/session failure, not attachment failure. |
+| Model vision unknown | Block or warn according to release setting, default block. |
+| Model claims no image support despite capability yes | Visible semantic answer, not retry-loop. |
+| File path accepted but model returns empty turn | Existing bounded empty-turn repair. |
+| Concurrent messages with images | Ledger correlation by original message id remains authoritative. |
+| Retry of failed image delivery | Reuse same managed artifact if still present, otherwise fail artifact missing. |
+| User restarts member after image failure | Restart does not delete inbox message or attachment metadata. |
+
+## Capability Governance
+
+Do not scatter model lists across UI and backend.
+
+Recommended single source:
+
+```text
+src/features/agent-attachments/shared/opencodeVisionCapabilities.ts
+```
+
+Export both backend and renderer-safe functions:
+
+```ts
+export function resolveOpenCodeVisionCapability(input: {
+  providerId: string;
+  model: string;
+}): AgentAttachmentCapability {
+  // Pure function, no filesystem, no network.
+}
+```
+
+When adding a new model:
+
+1. Add capability entry with evidence comment.
+2. Add unit test.
+3. Add manual smoke result to this plan or docs.
+4. Do not infer full provider support from one model.
+
+## Manual OpenCode QA
+
+Run at least these visual prompts:
+
+1. `openai/gpt-5.4-mini`: red-card image -> expected `red`.
+2. `openrouter/moonshotai/kimi-k2.6`: red-card image -> expected `red`.
+3. `openrouter/z-ai/glm-4.5v`: red-card image -> expected `red`.
+4. `openrouter/z-ai/glm-5.1`: red-card image -> expected block or clear unsupported warning.
+5. Quota/key failure simulation -> exact provider error visible, no teammate offline unless runtime exits.
+
+## Phase 4 Exit Criteria
+
+- OpenCode text-only prompt path unchanged.
+- Vision-capable OpenCode models receive real image files.
+- Non-vision/unknown OpenCode models do not silently hallucinate image answers.
+- Existing OpenCode repair policy remains bounded.
+- Provider quota/auth errors remain exact and do not become generic “spawn failed”.
+
+
+## Implementation Safeguards
+
+### Capability result must be explainable
+
+Users need to understand why one OpenCode model supports screenshots and another does not.
+
+```ts
+export interface CapabilityExplanation {
+  supported: boolean;
+  reason: 'known_vision_model' | 'known_non_vision_model' | 'unknown_model' | 'unsupported_provider';
+  displayText: string;
+}
+```
+
+Examples:
+
+- `openai/gpt-5.4-mini supports image attachments.`
+- `openrouter/z-ai/glm-5.1 is not marked as image-capable. Choose a vision-capable model or remove images.`
+- `This OpenCode model has unknown image support. Image delivery is blocked for reliability.`
+
+### Do not couple OpenCode vision support to weak-model repair
+
+The proof-directed repair policy handles missing response proof. It should not decide model vision support.
+
+Keep separate:
+
+- `OpenCodeVisionCapability`: can this model receive images?
+- `OpenCodePromptDeliveryRepairPolicy`: did a delivered prompt produce required proof?
+- `OpenCodeDeliveryLedger`: what happened to this message attempt?
+
+### OpenCode provider rejection mapping
+
+OpenRouter/OpenCode errors should remain exact but redacted.
+
+| Provider error | Mapping |
+|---|---|
+| Quota/credits/token budget | provider rejected attachment/message, exact diagnostic. |
+| Model not found | model/provider config diagnostic. |
+| Unsupported file/input | attachment provider rejected. |
+| OAuth/session stale | provider auth/session diagnostic. |
+| Empty assistant turn | existing bounded no-response repair. |
+
+No regex classification is required to decide business logic. Regex/string matching can be used only for safe redaction and known diagnostic display cleanup.
+
+### OpenCode PR checklist
+
+- Unknown models do not silently receive images.
+- Supported models use native file parts.
+- No model-specific prompt hacks are added.
+- Existing text-only OpenCode tests still pass.
+- Existing empty-turn retry remains bounded.
+- Provider quota/auth errors are not masked by attachment code.
+
+### Additional OpenCode tests
+
+```ts
+it('blocks unknown OpenCode vision model before delivery', () => {
+  const decision = resolveOpenCodeVisionCapability({
+    providerId: 'openrouter',
+    model: 'some/new-model',
+  });
+
+  expect(decision.supported).toBe(false);
+  expect(decision.reason).toBe('unknown_model');
+});
+
+it('does not invoke repair policy for model capability block', () => {
+  const result = planOpenCodeAttachmentDelivery(unknownVisionModelInput());
+  expect(result.status).toBe('blocked');
+  expect(result.retryable).toBe(false);
+});
+```
+
+
+## Failure Injection Tests for Phase 4
+
+```ts
+describe('OpenCode image capability and delivery', () => {
+  it('blocks a known non-vision OpenCode model before prompt delivery', () => {
+    const result = planOpenCodeImageDelivery({
+      providerId: 'openrouter',
+      model: 'z-ai/glm-5.1',
+      attachments: [fakeImageAttachment()],
+    });
+
+    expect(result.status).toBe('blocked');
+    expect(result.failureCode).toBe('attachment_model_unsupported');
+  });
+
+  it('does not retry provider quota rejection as proof repair', async () => {
+    const result = await deliverOpenCodeImage(fakeOpenRouterQuotaError());
+
+    expect(result.retryKind).not.toBe('proof_directed_repair');
+    expect(result.failureCode).toBe('attachment_provider_rejected');
+  });
+});
+```
+
+## OpenCode Multi-Hop Edge Cases
+
+| Scenario | Safe behavior |
+|---|---|
+| User sends image to lead, lead delegates to OpenCode member | Lead message contains image; delegated message should include image only if explicitly attached/forwarded by lead protocol. Do not automatically leak user image to all teammates. |
+| User sends direct image to OpenCode member | Direct delivery uses OpenCode file parts. |
+| OpenCode member replies with tool call but no visible reply | Existing proof policy decides, not image layer. |
+| OpenCode member starts task from image | Task evidence/progress still required for task state. |
+| OpenCode model answers “I cannot access images” | Visible reply delivered; UI can show model limitation, no retry loop. |
+
+## Privacy Boundary for Delegation
+
+Do not automatically fan out attachments to every teammate. Attachment propagation should follow explicit message routing.
+
+Rules:
+
+- Direct `user -> member`: deliver attachment to that member only.
+- `user -> lead`: deliver attachment to lead only.
+- Lead delegation: attachment forwarded only if the generated structured message includes or references the attachment intentionally.
+- System nudges/work-sync: do not include user attachments.
+
+This avoids accidental data exposure across teammates.
+
+## Phase 4 Stop Conditions
+
+Stop and reassess if:
+
+- OpenCode requires model-specific prompt hacks to see images.
+- Unknown models must be allowed silently for UX convenience.
+- Existing proof repair tests start changing because of image capability logic.
+- Provider quota errors get converted into generic delivery proof failures.
+
+
+## File-Level Implementation Plan
+
+Desktop suggested files:
+
+```text
+src/features/agent-attachments/main/providers/opencodeAttachmentAdapter.ts
+src/features/agent-attachments/shared/opencodeVisionCapabilities.ts
+src/features/agent-attachments/main/providers/opencodeAttachmentAdapter.test.ts
+```
+
+Orchestrator suggested files:
+
+```text
+src/runtime/opencode/opencodeFileParts.ts
+src/runtime/opencode/opencodeFileParts.test.ts
+```
+
+### Capability matrix skeleton
+
+```ts
+const OPENCODE_VISION_MODELS: OpenCodeModelVisionCapability[] = [
+  {
+    provider: 'openai',
+    modelPattern: /^gpt-5\.4-mini$/,
+    vision: 'yes',
+    evidence: 'live-smoke',
+  },
+  {
+    provider: 'openrouter',
+    modelPattern: /^moonshotai\/kimi-k2\.6$/,
+    vision: 'yes',
+    evidence: 'live-smoke',
+  },
+  {
+    provider: 'openrouter',
+    modelPattern: /^z-ai\/glm-4\.5v$/,
+    vision: 'yes',
+    evidence: 'live-smoke',
+  },
+  {
+    provider: 'openrouter',
+    modelPattern: /^z-ai\/glm-5\.1$/,
+    vision: 'no',
+    evidence: 'live-smoke',
+  },
+];
+```
+
+Keep comments near each entry with date and smoke summary. Do not infer provider-wide support.
+
+### OpenCode adapter skeleton
+
+```ts
+export function buildOpenCodeAttachmentPromptRequest(input: {
+  text: string;
+  providerId: string;
+  model: string;
+  attachments: AgentAttachmentPayload[];
+}): OpenCodePromptRequest {
+  const capability = resolveOpenCodeVisionCapability({ providerId: input.providerId, model: input.model });
+  if (!capability.supported) {
+    throw new AttachmentDeliveryError('attachment_model_unsupported', capability.displayText);
+  }
+
+  return {
+    text: input.text,
+    files: input.attachments.map((attachment) => selectProviderImageArtifact(attachment, 'opencode').absolutePath),
+  };
+}
+```
+
+### OpenCode warning copy examples
+
+Use precise user-facing copy:
+
+```text
+This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.
+```
+
+```text
+OpenCode provider rejected the image attachment: <redacted provider error>
+```
+
+Avoid vague copy:
+
+```text
+Message failed.
+```
+
+```text
+OpenCode error.
+```
+
+
+## Phase 4 Deep Review Addendum
+
+### OpenCode capability decision must be cached but refreshable
+
+Model capability matrix is mostly static, but the user may change provider/model in Edit Team.
+
+Rules:
+
+- Resolve capability from current member metadata at send time.
+- Do not cache capability per member forever.
+- If member model changes, next send uses new model capability.
+- UI warnings should refresh after Edit Team save/restart.
+
+### OpenCode direct vs lead-routed images
+
+Direct user to OpenCode member:
+
+```text
+user -> alice(OpenCode) with image
+```
+
+Deliver image to Alice only.
+
+User to lead:
+
+```text
+user -> lead with image
+```
+
+Deliver image to lead only. Lead may choose to ask teammate, but automatic image forwarding should not happen unless future protocol explicitly supports attachment references.
+
+This is a privacy and predictability decision.
+
+### OpenCode unsupported model message examples
+
+For direct send:
+
+```text
+Alice is using openrouter/z-ai/glm-5.1, which is not verified for image attachments. Remove the image or switch Alice to a vision-capable model.
+```
+
+For team send to lead where lead is not OpenCode:
+
+```text
+The lead can receive this image. It will not be automatically forwarded to OpenCode teammates unless the lead explicitly sends it.
+```
+
+### OpenCode model capability update procedure
+
+When adding a new OpenCode vision model:
+
+1. Run red-square smoke test.
+2. Record provider, exact model id, date, result.
+3. Add capability matrix entry.
+4. Add unit test.
+5. If model is unreliable, mark unsupported or unknown, not supported.
+
+
+## Phase 4 Implementation Contract Addendum
+
+### Provider/model canonicalization
+
+OpenCode model ids can appear with or without provider prefix depending on UI/runtime source. Normalize before capability lookup.
+
+```ts
+export function canonicalizeOpenCodeModel(input: {
+  providerId: string;
+  model: string;
+}): { providerId: string; model: string } {
+  const providerId = input.providerId.toLowerCase();
+  const model = input.model.replace(/^openrouter\//, '').replace(/^openai\//, '');
+  return { providerId, model };
+}
+```
+
+Capability tests must cover both forms:
+
+- `providerId=openrouter`, `model=moonshotai/kimi-k2.6`
+- `providerId=openrouter`, `model=openrouter/moonshotai/kimi-k2.6`
+
+### OpenCode DTO between desktop and orchestrator
+
+```ts
+export interface OpenCodePromptRuntimeRequest {
+  text: string;
+  files?: Array<{
+    artifactId: string;
+    path: string;
+    mimeType: 'image/png' | 'image/jpeg';
+    sizeBytes: number;
+  }>;
+}
+```
+
+Rules:
+
+- `files` are provider-native attachments, not arbitrary user paths.
+- `files` empty means text-only behavior.
+- Orchestrator validates path before passing `-f` or HTTP file part.
+
+### OpenCode ledger interaction examples
+
+```ts
+if (capability.supported === false) {
+  return {
+    accepted: false,
+    delivered: false,
+    retryable: false,
+    failureCode: 'attachment_model_unsupported',
+  };
+}
+```
+
+This must not create a ledger retry attempt because the prompt was not delivered.
+
+If provider accepts prompt but returns empty assistant turn, existing ledger retry applies:
+
+```ts
+return {
+  accepted: true,
+  delivered: false,
+  retryable: true,
+  failureCode: 'empty_assistant_turn',
+};
+```
+
+
+## Implementation Readiness Addendum
+
+### Definition of Ready for Phase 4
+
+Before coding Phase 4:
+
+- Phase 1 normalized artifacts are stable.
+- Existing OpenCode delivery ledger tests are green.
+- OpenCode text-only direct reply path is green.
+- Capability matrix initial entries are accepted.
+- Orchestrator OpenCode file-part mechanism is identified.
+
+### OpenCode mocked sender strategy
+
+Use fake OpenCode sender outcomes:
+
+```ts
+type FakeOpenCodeOutcome =
+  | { kind: 'visible_reply'; text: string }
+  | { kind: 'empty_assistant_turn' }
+  | { kind: 'provider_error'; message: string }
+  | { kind: 'non_visible_tool' };
+```
+
+Test attachment adapter and ledger separately:
+
+- Adapter tests: capability and file-part request building.
+- Ledger tests: how delivery outcome affects retry/proof.
+- Do not combine both in one huge brittle test unless it is e2e.
+
+### OpenCode additional edge cases
+
+| Edge case | Expected behavior |
+|---|---|
+| Model id casing differs | Canonicalize before capability lookup. |
+| Provider prefix duplicated | Canonicalize. |
+| OpenRouter key missing | Existing provider auth diagnostic. |
+| OpenRouter credits exhausted | Provider diagnostic, no proof repair. |
+| Vision model returns empty | Existing bounded empty-turn retry. |
+| Non-vision model says cannot see image | If blocked before send, this should not occur. If it occurs from stale capability, visible reply is shown and capability should be corrected. |
+
+### Capability matrix change control
+
+Do not accept capability entries without evidence.
+
+Required evidence for `vision: yes`:
+
+- Real smoke prompt.
+- Model id exactly as runtime uses it.
+- Date.
+- Observed answer.
+
+Required evidence for `vision: no`:
+
+- Real smoke or provider documentation.
+- Observed refusal/unsupported behavior.
+
+
+## Final Phase 4 Acceptance Specs
+
+### Spec 1 - known vision OpenCode model
+
+```gherkin
+Given a user sends an image to openrouter/moonshotai/kimi-k2.6
+And the capability matrix marks it vision-capable
+When delivery is planned
+Then the image is sent as a native file part
+And existing ledger proof gates decide delivery success
+```
+
+### Spec 2 - known non-vision OpenCode model
+
+```gherkin
+Given a user sends an image to openrouter/z-ai/glm-5.1
+And the capability matrix marks it unsupported
+When delivery is planned
+Then delivery is blocked before prompt send
+And no retry ledger attempt is created
+And the UI explains that the model is not verified for image attachments
+```
+
+### Spec 3 - OpenCode provider quota error
+
+```gherkin
+Given an OpenCode provider rejects a message due to quota
+When an image message is sent
+Then the exact redacted provider diagnostic is shown
+And the failure is not converted into proof repair
+And the member launch state is unchanged
+```
+
+### Phase 4 exact PR contract
+
+The Phase 4 PR is acceptable only if:
+
+- Capability matrix has tests for every entry.
+- Unknown models default safe.
+- File-part request builder has tests.
+- Existing OpenCode ledger bounded retry tests remain green.
+- Unsupported capability block does not create a retry attempt.
+- Direct and lead-routed privacy rules are documented in tests or code comments.
+
+### OpenCode capability copy examples
+
+```text
+Jack is using openrouter/z-ai/glm-5.1, which is not verified for image attachments. Switch to a vision-capable model or remove the image.
+```
+
+```text
+Alice can receive this image because openai/gpt-5.4-mini is verified for image attachments.
+```
+
+
+## Phase 4 Pre-Mortem and Extra Safeguards
+
+### Likely OpenCode mistakes
+
+| Mistake | Concrete prevention |
+|---|---|
+| Unknown model allowed because “maybe vision” | Unknown defaults blocked. |
+| Capability lookup misses provider prefix variant | Canonicalization tests. |
+| Provider quota error enters proof repair | Provider rejection is terminal for that attempt, not proof repair. |
+| Direct user image gets auto-forwarded to teammates | Explicit route-only attachment propagation. |
+| Non-vision model gets image-less prompt silently | Capability block before delivery. |
+
+### OpenCode file-part transport abstraction
+
+Do not let high-level delivery know whether OpenCode uses CLI `-f` or HTTP multipart internally.
+
+```ts
+export interface OpenCodeFilePartTransport {
+  sendPrompt(input: {
+    sessionId: string;
+    text: string;
+    files: OpenCodeRuntimeFilePart[];
+  }): Promise<OpenCodePromptOutcome>;
+}
+```
+
+This allows future switch from CLI to server API without changing capability or ledger logic.
+
+### OpenCode semantic refusal handling
+
+If model responds visibly with “I cannot inspect images”:
+
+- Direct user message: show response as delivered.
+- Add optional diagnostic warning that capability matrix may be wrong.
+- Do not retry automatically.
+- Consider downgrading capability entry after repeated smoke failure.
+
+### OpenCode tests for no silent drop
+
+```ts
+it('does not send text-only prompt when image is unsupported', async () => {
+  const sender = createFakeOpenCodeSender();
+  await expect(deliverImageToUnsupportedOpenCodeModel(sender)).rejects.toMatchObject({
+    code: 'attachment_model_unsupported',
+  });
+  expect(sender.calls).toHaveLength(0);
+});
+```
+

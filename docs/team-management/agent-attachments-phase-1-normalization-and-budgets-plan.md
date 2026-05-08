@@ -909,3 +909,811 @@ describe('picaImageOptimizer', () => {
   });
 });
 ```
+
+## Detailed Implementation Checklist
+
+### Step 1 - Add pure domain module
+
+Create a feature-local domain module with no Electron, DOM, or filesystem dependency.
+
+Suggested files:
+
+```text
+src/features/agent-attachments/shared/types.ts
+src/features/agent-attachments/shared/budgets.ts
+src/features/agent-attachments/shared/capabilities.ts
+src/features/agent-attachments/shared/validation.ts
+src/features/agent-attachments/shared/index.ts
+```
+
+The first implementation should be intentionally boring:
+
+```ts
+export function classifyAttachmentMime(mimeType: string): AttachmentKind {
+  if (mimeType === 'image/png') return 'image';
+  if (mimeType === 'image/jpeg') return 'image';
+  if (mimeType === 'image/webp') return 'image';
+  if (mimeType === 'application/pdf') return 'file';
+  if (mimeType.startsWith('text/')) return 'file';
+  return 'unsupported';
+}
+```
+
+Avoid clever extension guessing in v1. Extension fallback can be a later hardening step if real users need it.
+
+### Step 2 - Add renderer optimizer behind composer-only call site
+
+Keep optimization in renderer because browser APIs are good at image decode and `pica` is browser-oriented.
+
+```ts
+export interface OptimizeImageForAgentInput {
+  file: File;
+  budget: ImageOptimizationBudget;
+}
+
+export interface OptimizeImageForAgentResult {
+  original: BrowserAttachmentArtifact;
+  optimized: BrowserAttachmentArtifact;
+  warnings: string[];
+}
+```
+
+Implementation order:
+
+1. Decode image dimensions with `createImageBitmap` where available.
+2. Compute target dimensions from total batch budget and per-image max dimension.
+3. Use `pica.resize` into canvas.
+4. Encode JPEG/PNG based on input and transparency.
+5. Return warnings, not thrown errors, for non-fatal resize degradation.
+
+### Step 3 - Add backend validation
+
+Main process must re-check everything received from renderer.
+
+```ts
+export function validateNormalizedAttachmentForSend(input: {
+  attachment: AgentAttachmentPayload;
+  target: ProviderTarget;
+}): AttachmentValidationResult {
+  const capability = resolveAgentAttachmentCapability(input.target);
+  const sizeResult = validateAttachmentBudget(input.attachment, capability);
+  if (!sizeResult.ok) return sizeResult;
+  return { ok: true, warnings: [] };
+}
+```
+
+Backend validation should never trust:
+
+- MIME type from browser alone.
+- File name extension.
+- Renderer-provided optimized dimensions.
+- Renderer-provided `supported: true` capability result.
+
+### Step 4 - Wire UI warnings without changing delivery
+
+Before provider adapters are implemented, UI can show warnings but must not pretend unsupported providers work.
+
+Safe UX:
+
+- Allow attach, show preview.
+- On send, block if selected target cannot receive the attachment yet.
+- Explain which phase/provider support is missing.
+- Keep text-only send untouched.
+
+## Phase 1 Exit Criteria
+
+Phase 1 is complete when:
+
+- Text-only composer behavior is unchanged.
+- Image preview still works for small images.
+- Large image preview shows optimized size and warnings.
+- Unsupported file type produces a clear local validation error.
+- Backend rejects forged oversized attachment metadata.
+- No provider delivery path receives new attachment data yet unless explicitly wired in later phases.
+
+## Edge Case Matrix
+
+| Case | Expected behavior |
+|---|---|
+| Animated GIF | Treat as unsupported for image delivery in v1, or convert first frame only with explicit warning if implemented. |
+| Transparent PNG | Prefer PNG if small, JPEG only if transparency is absent or user accepts flattened background. |
+| Huge panorama | Downscale by max edge and total pixel budget. |
+| Tiny image | Do not upscale. |
+| Corrupt image | Show decode failed, do not send attachment. |
+| HEIC on macOS | Do not promise support unless decode pipeline is explicitly tested. |
+| Clipboard image with no filename | Generate stable display name like `clipboard-image.png`. |
+| Same image attached twice | Keep two attachment ids, do not dedupe content silently. |
+| Multiple images exceed total budget | Optimize all proportionally, then block if still over cap. |
+| User switches target after attaching | Recompute warnings for new provider/model before send. |
+
+## Common Bug Patterns to Avoid
+
+- Storing base64 in message JSON. This can bloat inboxes and break process stdin.
+- Mutating the original attachment when optimization runs.
+- Letting renderer decide final support without backend validation.
+- Showing “sent” when attachment was dropped from provider payload.
+- Collapsing all failures into generic “delivery failed”.
+- Running optimization in Electron main with a new native dependency right before release.
+- Changing current file attachment behavior for text/PDF before image flow is stable.
+
+## Focused Test Examples
+
+```ts
+describe('attachment budgets', () => {
+  it('blocks a single optimized image over hard cap', () => {
+    const result = validateAttachmentBudget(
+      fakeImage({ sizeBytes: 12 * 1024 * 1024 }),
+      codexVisionCapability()
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('attachment_too_large');
+  });
+
+  it('does not upscale small images', () => {
+    const plan = planImageResize({ width: 320, height: 200 }, { maxEdge: 1600 });
+    expect(plan.width).toBe(320);
+    expect(plan.height).toBe(200);
+  });
+});
+```
+
+## Manual QA Script
+
+Use a clean dev profile and verify:
+
+1. Attach a 200 KB PNG screenshot - preview appears, no warning.
+2. Attach a 12 MB PNG screenshot - preview appears, optimized size shown.
+3. Attach three screenshots - total budget warning is deterministic.
+4. Attach a `.txt` file - current file behavior remains unchanged.
+5. Attach a corrupt image renamed `.png` - decode error appears.
+6. Switch target from Claude to non-vision OpenCode model - unsupported warning appears.
+7. Remove attachment - warnings clear.
+
+## Rollback Plan
+
+If Phase 1 causes UI instability:
+
+- Keep domain files, but remove composer call to optimizer.
+- Leave backend validation unused.
+- No persisted migration is needed if message schema was not changed.
+
+
+## Implementation Safeguards
+
+### Keep Phase 1 read-only for provider delivery
+
+Phase 1 should not change how messages are sent to agents. It should only add normalization, previews, warnings, and backend validation primitives.
+
+Safe call sites:
+
+- Composer attachment selection.
+- Composer warning rendering.
+- Draft serialization of normalized metadata.
+- Backend validation helper tests.
+
+Unsafe call sites for Phase 1:
+
+- Claude delivery transport.
+- Codex runtime invocation.
+- OpenCode prompt ledger.
+- Team launch/provisioning.
+- Member runtime liveness.
+
+### Suggested internal state machine
+
+```ts
+type AttachmentPrepareState =
+  | { status: 'idle' }
+  | { status: 'decoding'; attachmentId: string }
+  | { status: 'optimizing'; attachmentId: string; progress?: number }
+  | { status: 'ready'; attachment: AgentAttachmentPayload }
+  | { status: 'blocked'; attachmentId: string; reason: AttachmentDeliveryFailureCode }
+  | { status: 'failed'; attachmentId: string; error: string };
+```
+
+UI rule:
+
+- `blocked` means user can fix/remove/change target.
+- `failed` means local processing failed.
+- Neither state should enqueue runtime delivery.
+
+### Budget planning algorithm
+
+Use deterministic, simple budget allocation. Do not optimize each image independently to the max, because a batch can still exceed total budget.
+
+```ts
+export function allocateImageBudgets(input: {
+  images: ImageCandidate[];
+  totalMaxBytes: number;
+  perImageMaxBytes: number;
+}): ImageBudgetAllocation[] {
+  const perImageFairShare = Math.floor(input.totalMaxBytes / Math.max(1, input.images.length));
+  const targetBytes = Math.min(input.perImageMaxBytes, perImageFairShare);
+  return input.images.map((image) => ({ imageId: image.id, targetBytes }));
+}
+```
+
+If the optimized output is still above target:
+
+1. Reduce dimensions down to min edge threshold.
+2. Reduce JPEG quality down to minimum acceptable quality.
+3. If still too large, block and explain.
+
+Do not loop indefinitely.
+
+### Cancellation edge cases
+
+| User action | Safe behavior |
+|---|---|
+| Removes image during optimization | Cancel or ignore result by generation id. |
+| Adds image then switches team | Cancel or detach optimization result from old draft. |
+| Switches provider/model | Recompute capability warnings without re-encoding if artifact is reusable. |
+| Sends while optimization pending | Disable send or show “attachment still processing”. |
+| Closes app mid-optimization | No partially written artifact should be treated as ready. |
+
+### Generation id pattern
+
+```ts
+let prepareGeneration = 0;
+
+async function prepareAttachments(files: File[]) {
+  const generation = ++prepareGeneration;
+  const result = await optimize(files);
+  if (generation !== prepareGeneration) return;
+  setPreparedAttachments(result);
+}
+```
+
+This avoids stale async results restoring removed attachments.
+
+### Phase 1 PR checklist
+
+- No provider delivery path changed.
+- No launch/runtime tests need snapshot updates.
+- Text-only message send still works manually.
+- Image preview removal cannot leave hidden payload in draft.
+- Backend validation is stricter than renderer validation.
+- All user-visible errors are actionable.
+
+
+## Failure Injection Tests for Phase 1
+
+Add tests that intentionally simulate bad renderer or corrupted local state.
+
+```ts
+describe('attachment backend validation hardening', () => {
+  it('rejects renderer supplied absolute paths outside managed storage', () => {
+    const result = validateAttachmentStorageReference({
+      artifactId: 'att_1',
+      path: '/Users/belief/.ssh/id_rsa',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('attachment_artifact_path_unsafe');
+  });
+
+  it('rejects metadata that claims small size but file is large', async () => {
+    const result = await validateAttachmentArtifactOnDisk({
+      expectedSizeBytes: 100,
+      actualPath: fixturePath('large-image.png'),
+      maxBytes: 1024,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('attachment_too_large');
+  });
+});
+```
+
+## Browser and Platform Edge Cases
+
+| Edge case | Safe implementation note |
+|---|---|
+| Safari/WebKit image decode differences | Use feature detection, not browser assumptions. |
+| macOS clipboard TIFF/HEIC | Treat unsupported until explicitly converted/tested. |
+| EXIF orientation | Prefer decode path that respects orientation or normalize orientation during canvas draw. |
+| Color profiles | Accept minor color shift for screenshots, do not promise color-managed output. |
+| Canvas memory pressure | Bound megapixels before drawing. |
+| Pica worker failure | Fall back to canvas resize with warning, or block with clear error. |
+| Transparent UI screenshot | Avoid JPEG flattening unless transparency absent or user warning is shown. |
+| Very long screenshot | Limit max edge and total pixels to prevent huge canvas allocation. |
+
+## Memory Safety Budget
+
+Renderer memory is the main Phase 1 risk.
+
+Recommended starting limits:
+
+```ts
+export const ATTACHMENT_IMAGE_LIMITS = {
+  maxInputBytes: 20 * 1024 * 1024,
+  maxInputPixels: 32_000_000,
+  maxOutputBytesPerImage: 4 * 1024 * 1024,
+  maxOutputBytesTotal: 8 * 1024 * 1024,
+  maxOutputEdge: 2400,
+  minJpegQuality: 0.72,
+  defaultJpegQuality: 0.86,
+};
+```
+
+These are release-safe starting values, not final product limits. They should be tuned after real usage.
+
+## Phase 1 Stop Conditions
+
+Stop implementation and reassess if any of these happen:
+
+- Optimized images are stored as base64 in persisted message JSON.
+- Main process needs a new native image dependency.
+- Existing file attachments stop sending.
+- Composer draft state becomes provider-specific.
+- Text-only messages require schema migration.
+
+
+## File-Level Implementation Plan
+
+Suggested new files:
+
+```text
+src/features/agent-attachments/shared/types.ts
+src/features/agent-attachments/shared/budgets.ts
+src/features/agent-attachments/shared/capabilities.ts
+src/features/agent-attachments/shared/validation.ts
+src/features/agent-attachments/shared/storageIds.ts
+src/features/agent-attachments/renderer/optimizeImageForAgent.ts
+src/features/agent-attachments/renderer/usePreparedAttachments.ts
+src/features/agent-attachments/main/validateAttachmentArtifact.ts
+src/features/agent-attachments/main/attachmentArtifactStore.ts
+```
+
+Suggested tests:
+
+```text
+test/features/agent-attachments/budgets.test.ts
+test/features/agent-attachments/capabilities.test.ts
+test/features/agent-attachments/validation.test.ts
+test/features/agent-attachments/attachmentArtifactStore.test.ts
+```
+
+### Storage id validation
+
+```ts
+const SAFE_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,120}$/;
+
+export function assertSafeAttachmentStorageId(name: string, value: string): void {
+  if (!SAFE_ID_RE.test(value)) {
+    throw new Error(`Invalid ${name}`);
+  }
+}
+```
+
+Use this for `teamName`, `messageId`, and `attachmentId` before building artifact paths.
+
+### Managed path resolver
+
+```ts
+export function resolveAttachmentArtifactPath(input: {
+  teamRoot: string;
+  teamName: string;
+  messageId: string;
+  attachmentId: string;
+  fileName: 'original.png' | 'original.jpg' | 'optimized.png' | 'optimized.jpg' | 'thumb.jpg' | 'meta.json';
+}): string {
+  assertSafeAttachmentStorageId('teamName', input.teamName);
+  assertSafeAttachmentStorageId('messageId', input.messageId);
+  assertSafeAttachmentStorageId('attachmentId', input.attachmentId);
+
+  const base = path.resolve(input.teamRoot, input.teamName, 'attachments', input.messageId, input.attachmentId);
+  const resolved = path.resolve(base, input.fileName);
+  if (!resolved.startsWith(base + path.sep)) {
+    throw new Error('Attachment artifact path escaped managed directory');
+  }
+  return resolved;
+}
+```
+
+### Renderer optimizer guardrails
+
+```ts
+export async function optimizeImageForAgent(input: OptimizeImageForAgentInput): Promise<OptimizeImageForAgentResult> {
+  const bitmap = await createImageBitmap(input.file);
+  assertPixelBudget(bitmap.width, bitmap.height, input.budget.maxInputPixels);
+
+  const target = planResizeDimensions({
+    width: bitmap.width,
+    height: bitmap.height,
+    maxEdge: input.budget.maxOutputEdge,
+  });
+
+  const canvas = document.createElement('canvas');
+  canvas.width = target.width;
+  canvas.height = target.height;
+
+  await resizeWithPicaOrFallback(bitmap, canvas);
+  const blob = await encodeCanvasForProvider(canvas, input.budget);
+  return buildOptimizationResult(input.file, blob, target);
+}
+```
+
+Do not implement infinite quality-search loops. Use a small bounded set of quality attempts like `[0.86, 0.8, 0.74, 0.72]`.
+
+### Phase 1 exact acceptance criteria
+
+- Backend path resolver rejects traversal in tests.
+- Budget tests cover single, multiple, and oversized images.
+- Renderer hook ignores stale optimization result after removal.
+- Composer cannot send while any attachment is `optimizing`.
+- Existing text-only composer tests do not need behavioral changes.
+- No provider delivery module imports renderer optimizer.
+
+
+## Phase 1 Deep Review Addendum
+
+### Exact UI states
+
+Composer should expose these states clearly:
+
+| State | Send allowed | Copy |
+|---|---:|---|
+| No attachments | yes | normal text-only behavior |
+| Attachments optimizing | no | `Preparing image...` |
+| Attachments ready and supported | yes | optional optimized size summary |
+| Attachment too large after optimization | no | `Image is too large after optimization. Remove it or use a smaller image.` |
+| Target model unsupported | no | `Selected model does not support image attachments.` |
+| Decode failed | no | `Could not read this image.` |
+| Artifact persistence failed | no | `Could not prepare attachment for sending.` |
+
+### Accessibility and UX guardrails
+
+- Warning text should be readable without relying on color.
+- Remove button must remain available for blocked attachments.
+- If multiple attachments have warnings, show per-attachment reason and aggregate reason near send.
+- Do not hide text draft when attachment fails.
+- If user removes the blocked attachment, send button should recover immediately.
+
+### Persistence safety
+
+When user sends a message with attachments:
+
+1. Generate message id first.
+2. Persist original/optimized artifacts under message id.
+3. Persist message record referencing attachment ids.
+4. Begin provider delivery.
+
+Do not begin provider delivery before message record and artifacts are durably written.
+
+This avoids a retry state where ledger knows about a message but artifacts are missing because write happened later.
+
+### Phase 1 anti-regression tests
+
+```ts
+it('does not serialize image bytes into message json', () => {
+  const message = buildMessageRecordWithAttachment(fakeAttachment());
+  expect(JSON.stringify(message)).not.toContain('base64');
+  expect(JSON.stringify(message)).not.toContain('data:image');
+});
+
+it('restores send button after removing blocked attachment', () => {
+  const state = reducer(blockedAttachmentState(), removeAttachment('att_1'));
+  expect(selectCanSend(state)).toBe(true);
+});
+```
+
+### Phase 1 implementation order
+
+Implement in this order to reduce bug risk:
+
+1. Pure budget/capability tests.
+2. Safe id/path helpers.
+3. Artifact store tests.
+4. Renderer optimization hook without composer integration.
+5. Composer preview/warning integration.
+6. Send blocking.
+7. Backend validation on send.
+
+If a later step fails, earlier pure modules remain useful and low-risk.
+
+
+## Phase 1 Implementation Contract Addendum
+
+### Exact domain types
+
+```ts
+export type AttachmentWarningCode =
+  | 'image_was_resized'
+  | 'image_was_reencoded'
+  | 'image_quality_reduced'
+  | 'model_support_unknown'
+  | 'model_does_not_support_images'
+  | 'file_type_not_supported';
+
+export interface AttachmentWarning {
+  code: AttachmentWarningCode;
+  message: string;
+  attachmentId?: string;
+}
+
+export interface ImageOptimizationBudget {
+  maxInputBytes: number;
+  maxInputPixels: number;
+  maxOutputBytesPerImage: number;
+  maxOutputBytesTotal: number;
+  maxOutputEdge: number;
+  jpegQualityAttempts: readonly number[];
+}
+```
+
+Keep these in shared pure code. Renderer and main may import types and pure validators, but renderer-specific optimizer code must not be imported by main.
+
+### Quality strategy
+
+Use a deterministic quality strategy instead of adaptive unbounded loops.
+
+```ts
+const JPEG_QUALITY_ATTEMPTS = [0.86, 0.82, 0.78, 0.74, 0.72] as const;
+
+for (const quality of JPEG_QUALITY_ATTEMPTS) {
+  const blob = await encodeCanvas(canvas, 'image/jpeg', quality);
+  if (blob.size <= targetBytes) return blob;
+}
+
+throw new AgentAttachmentError(
+  'attachment_too_large',
+  'Image is too large after optimization. Remove it or use a smaller image.'
+);
+```
+
+PNG strategy:
+
+- Keep PNG for small screenshots and transparency.
+- Re-encode to JPEG only when transparency is absent and size requires it.
+- If transparency exists and PNG remains too large, block with clear reason instead of silently flattening unless product explicitly accepts flattening.
+
+### UI copy table
+
+| Code | Copy |
+|---|---|
+| `attachment_too_large` | `Image is too large after optimization. Remove it or use a smaller image.` |
+| `attachment_type_unsupported` | `This file type is not supported for agent image delivery.` |
+| `attachment_model_unsupported` | `Selected model does not support image attachments. Switch model or remove the image.` |
+| `attachment_optimization_failed` | `Could not prepare this image for sending.` |
+| `attachment_artifact_missing` | `Prepared image file is missing. Remove and attach the image again.` |
+
+Copy should be short in UI. Detailed diagnostics can go into copy diagnostics/logs.
+
+### Batch behavior
+
+Multiple images should preserve user order.
+
+```ts
+export function sortAttachmentsForDelivery(attachments: AgentAttachmentPayload[]): AgentAttachmentPayload[] {
+  return [...attachments].sort((a, b) => a.order - b.order);
+}
+```
+
+Do not sort by size or file name because the prompt may refer to “first image” and “second image”.
+
+### Draft persistence edge cases
+
+- Draft can reference attachment ids before final message id exists.
+- On send, draft attachment ids should be reparented or copied into message artifact directory.
+- If reparenting fails, send should stop before provider delivery.
+- Removing attachment from draft should remove draft artifact eventually, but not synchronously block UI.
+
+
+## Implementation Readiness Addendum
+
+### Definition of Ready for Phase 1
+
+Before coding Phase 1:
+
+- Confirm exact composer components that own attachment state.
+- Confirm where message ids are generated for user sends.
+- Confirm where existing attachments are persisted today.
+- Confirm whether current image previews store bytes, paths, or blobs.
+- Confirm no provider delivery changes are included in the Phase 1 PR.
+
+### Exact reducer-style behavior
+
+```ts
+type ComposerAttachmentAction =
+  | { type: 'attachment_added'; file: File; draftAttachmentId: string }
+  | { type: 'attachment_prepare_started'; draftAttachmentId: string; generation: number }
+  | { type: 'attachment_prepare_succeeded'; draftAttachmentId: string; generation: number; payload: AgentAttachmentPayload }
+  | { type: 'attachment_prepare_failed'; draftAttachmentId: string; generation: number; error: AgentAttachmentErrorJson }
+  | { type: 'attachment_removed'; draftAttachmentId: string }
+  | { type: 'target_changed'; target: ProviderTarget };
+```
+
+Reducer rule:
+
+- Ignore `attachment_prepare_succeeded` if generation is stale.
+- Ignore prepare results for removed attachment ids.
+- Recompute capability warnings on `target_changed` without reprocessing image bytes.
+- Do not clear text draft when attachment fails.
+
+### Backend artifact write order
+
+```ts
+async function persistMessageAttachments(input: PersistMessageAttachmentsInput): Promise<PersistedAttachmentBundle> {
+  const messageDir = resolveMessageAttachmentDir(input.teamName, input.messageId);
+  await fs.mkdir(messageDir, { recursive: true });
+
+  const persisted: PersistedAttachment[] = [];
+  for (const attachment of input.attachments) {
+    const paths = resolveAttachmentPaths(input.teamName, input.messageId, attachment.id);
+    await writeFileAtomic(paths.original, attachment.originalBytes);
+    if (attachment.optimizedBytes) await writeFileAtomic(paths.optimized, attachment.optimizedBytes);
+    await writeFileAtomic(paths.meta, JSON.stringify(buildMeta(attachment), null, 2));
+    persisted.push(toPersistedAttachment(paths, attachment));
+  }
+  return { attachments: persisted };
+}
+```
+
+Use atomic writes for metadata and artifacts where practical. A partially written optimized image must not be treated as ready.
+
+### Atomic write requirement
+
+```ts
+async function writeFileAtomic(path: string, bytes: Buffer | string): Promise<void> {
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  await fs.writeFile(tmp, bytes);
+  await fs.rename(tmp, path);
+}
+```
+
+If write fails, cleanup tmp best-effort and return typed error.
+
+### Phase 1 additional edge cases
+
+| Edge case | Expected behavior |
+|---|---|
+| Disk full during artifact write | Send blocked, text draft preserved, typed error shown. |
+| App crashes after artifacts written before message record | Orphan artifacts may remain, later GC can clean. No message corruption. |
+| App crashes after message record before provider delivery | Message exists with attachments and can be retried later. |
+| Thumbnail write fails | Do not block delivery if original/optimized artifact is valid. Show preview fallback. |
+| Original write succeeds, optimized write fails | Block image delivery unless original fits provider budget. |
+
+
+## Final Phase 1 Acceptance Specs
+
+### Spec 1 - small supported image
+
+```gherkin
+Given a user attaches a 200 KB PNG screenshot
+And the selected target supports images
+When the composer prepares the attachment
+Then the preview is shown
+And the send button remains enabled
+And the persisted message references artifact ids
+And the message JSON does not contain base64
+```
+
+### Spec 2 - oversized image optimized successfully
+
+```gherkin
+Given a user attaches a 12 MB PNG screenshot
+When optimization completes below provider budget
+Then the user sees that the image was optimized
+And the send button is enabled
+And the optimized artifact is used for provider delivery later
+And the original artifact remains available for retry/regeneration
+```
+
+### Spec 3 - oversized image still too large
+
+```gherkin
+Given a user attaches a huge image
+When bounded optimization cannot bring it below budget
+Then the send button is disabled
+And the text draft remains intact
+And the user can remove the image
+And no provider delivery is attempted
+```
+
+### Spec 4 - stale optimization result
+
+```gherkin
+Given a user attaches an image
+And removes it while optimization is running
+When the optimization promise resolves
+Then the removed attachment is not restored
+And the send state reflects the current draft only
+```
+
+### Phase 1 exact PR contract
+
+The Phase 1 PR is acceptable only if:
+
+- It adds shared attachment domain types.
+- It adds budget/capability/validation tests.
+- It adds safe managed artifact path/id helpers.
+- It adds renderer optimization or a clearly documented placeholder if split.
+- It does not change provider delivery behavior.
+- It does not import provider runtime code into renderer optimizer.
+- It does not import attachment feature into launch/provisioning.
+
+### Phase 1 likely review findings to prevent
+
+| Finding | Prevention |
+|---|---|
+| Message JSON contains base64 | persist artifact ids only |
+| Send starts before artifact write | enforce write-before-delivery order |
+| Draft removal race restores attachment | generation id guard |
+| Backend trusts renderer size | stat artifact on disk |
+| Unsupported model warning only in UI | backend validation also blocks |
+
+
+## Phase 1 Pre-Mortem and Extra Safeguards
+
+### Likely Phase 1 mistakes
+
+| Mistake | Concrete prevention |
+|---|---|
+| Optimizer result races with removed attachment | Generation id guard in reducer/hook. |
+| Backend trusts renderer MIME | Backend validates by allowlist and artifact metadata. |
+| Draft artifacts leak forever | Mark draft artifacts and add later GC policy. |
+| UI blocks text-only send after image error removed | Selector tests for `canSend`. |
+| Multiple images reorder | Preserve user-provided order field. |
+| Image-only send unclear | Product decision before coding: allow image-only with default prompt or require text. |
+
+### Image-only message decision
+
+Top options:
+
+1. Require text with image - 🎯 8.5   🛡️ 9   🧠 2, примерно `20-50` строк.
+
+   Safest release behavior. It avoids confusing empty prompt behavior across providers.
+
+2. Allow image-only with generated prompt - 🎯 7   🛡️ 7.5   🧠 4, примерно `60-120` строк.
+
+   Useful UX, but generated prompts can surprise users and differ by action mode.
+
+3. Allow image-only raw - 🎯 5.5   🛡️ 5   🧠 2, примерно `20-40` строк.
+
+   Some providers may accept it, but behavior is inconsistent.
+
+Recommendation: start with option 1 for release.
+
+### Pica wrapper contract
+
+```ts
+export interface ImageResizeEngine {
+  resize(input: {
+    source: ImageBitmap;
+    targetWidth: number;
+    targetHeight: number;
+  }): Promise<HTMLCanvasElement>;
+}
+```
+
+Reason:
+
+- Keeps `pica` behind a tiny interface.
+- Allows tests with fake resize engine.
+- Allows fallback or replacement without changing composer state.
+
+### Quality acceptance rules
+
+- UI screenshots should remain legible at common zoom levels after resize.
+- Do not reduce JPEG quality below configured floor.
+- If text in screenshot becomes unreadable in manual QA, increase budget before release.
+- If multiple images exceed total budget, prefer blocking over making all unreadable.
+
+### Phase 1 contract tests to add before UI wiring
+
+```ts
+it('preserves attachment order for delivery', () => {
+  const sorted = sortAttachmentsForDelivery([
+    fakeImageAttachment({ id: 'b', order: 2 }),
+    fakeImageAttachment({ id: 'a', order: 1 }),
+  ]);
+  expect(sorted.map((item) => item.id)).toEqual(['a', 'b']);
+});
+
+it('does not allow send while attachment is optimizing', () => {
+  expect(selectCanSend(fakeDraft({ attachmentState: 'optimizing' }))).toBe(false);
+});
+```
+

@@ -629,3 +629,683 @@ All OpenRouter models support screenshots.
 | docs become stale | capability catalog references live smoke date |
 | unsupported negative model changes behavior | update catalog/test explicitly |
 | copied diagnostics leak image data | redaction unit tests |
+
+## Detailed E2E Matrix
+
+Use one tiny deterministic image fixture: a red square with no metadata dependencies.
+
+| Provider path | Model | Prompt | Expected |
+|---|---|---|---|
+| Claude subscription | current configured Claude model | `What color is the square? One word.` | `red` |
+| Codex subscription | `gpt-5.4-mini` or available vision model | same | `red` |
+| OpenCode OpenAI | `openai/gpt-5.4-mini` | same | `red` |
+| OpenCode OpenRouter | `openrouter/moonshotai/kimi-k2.6` | same | `red` |
+| OpenCode OpenRouter | `openrouter/z-ai/glm-4.5v` | same | `red` |
+| OpenCode OpenRouter | `openrouter/z-ai/glm-5.1` | same | blocked/unsupported |
+
+## Negative E2E Matrix
+
+| Scenario | Expected |
+|---|---|
+| Oversized image | UI blocks before send with size/optimization details. |
+| Corrupt image | UI blocks with decode error. |
+| Missing optimized artifact | Delivery fails actionable, message preserved. |
+| Provider quota exhausted | Provider diagnostic shown, no generic spawn failed. |
+| Codex logged out | Existing Codex login diagnostic shown. |
+| OpenCode model no vision | Unsupported warning/block shown. |
+| Multiple images over total budget | Deterministic budget warning. |
+| Runtime exits after send | Runtime exit diagnostic separate from attachment validation. |
+
+## Automated Test Layers
+
+### Pure tests
+
+- Budget selection.
+- Capability resolution.
+- MIME/type classification.
+- Provider adapter serialization.
+- Redaction.
+
+### Main process tests
+
+- IPC validation rejects invalid attachment ids.
+- Backend never accepts raw renderer paths.
+- Missing artifacts produce controlled failure.
+- Delivery failure does not mutate launch state.
+
+### Renderer tests
+
+- Preview and optimization warnings.
+- Target switching recomputes capability warning.
+- Send button blocks unsupported attachments.
+- Removing attachments clears warnings.
+
+### Safe E2E tests
+
+- Provider command builders receive native attachment parts.
+- One real smoke per supported provider before release.
+
+## Release Checklist
+
+Before enabling broadly:
+
+- `pnpm typecheck --pretty false` passes.
+- Focused attachment pure tests pass.
+- Existing team launch tests still pass.
+- Existing OpenCode delivery tests still pass.
+- At least one real visual smoke is green for Claude, Codex, and OpenCode.
+- No new dependency is added without version/license check.
+- App logs do not contain raw base64 image data.
+- Copy diagnostics redacts paths/secrets where required.
+- User-facing warnings are clear and actionable.
+
+## Observability Additions
+
+Add lightweight diagnostics that help debug without leaking content.
+
+Safe diagnostic fields:
+
+```ts
+interface AttachmentDiagnosticSummary {
+  attachmentCount: number;
+  totalBytes: number;
+  optimizedTotalBytes: number;
+  providers: string[];
+  blockedReason?: AttachmentDeliveryFailureCode;
+  warningCodes: string[];
+}
+```
+
+Unsafe diagnostic fields:
+
+- Base64 content.
+- Full OCR/text extracted from images.
+- Provider API keys.
+- User home directory paths unless already part of explicit local diagnostics.
+- Full binary file hashes if privacy-sensitive.
+
+## Post-Release Monitoring
+
+Watch for these regressions after release:
+
+- Users report team going offline after sending images.
+- Users report image sent but model says it cannot see image on a supposedly vision-capable model.
+- Inbox/message JSON grows unexpectedly large.
+- Renderer memory spikes after attaching multiple screenshots.
+- Codex/OpenCode diagnostics become generic after attachment failures.
+- Retry loops repeat the same image message without bounded attempts.
+
+If any happen:
+
+1. Disable only affected provider adapter path.
+2. Keep normalization and UI warnings if stable.
+3. Preserve messages and attachment metadata for forensic debugging.
+4. Do not revert unrelated bootstrap/process backend changes in the same hotfix.
+
+## Final Safety Review Questions
+
+Before implementation starts, answer these in the PR description:
+
+- Does any provider receive base64 as plain text? If yes, why is that unavoidable?
+- Can renderer force backend to read an arbitrary file path? It must not.
+- What happens if optimized artifact is deleted before retry?
+- What happens if user switches target model after attaching image?
+- What happens if a provider supports text but not vision?
+- Does this change launch readiness or only message delivery?
+- Are all retries bounded by existing ledger/runtime rules?
+
+
+## Deep Verification Plan
+
+### Deterministic fixture generation
+
+Keep fixture generation local and deterministic so E2E does not depend on external image files.
+
+```ts
+export async function createRedSquareFixture(path: string): Promise<void> {
+  // Use a tiny PNG fixture committed to test fixtures, or generate with deterministic bytes.
+}
+```
+
+Preferred:
+
+- Commit a tiny PNG fixture under test fixtures if repository policy allows binary fixtures.
+- Otherwise generate once in test setup using a deterministic encoder.
+
+### E2E assertion style
+
+Do not require exact model wording. Normalize response and assert semantic color.
+
+```ts
+function answerMentionsRed(text: string): boolean {
+  return /\bred\b/i.test(text) || /красн/i.test(text);
+}
+```
+
+Avoid accepting `I cannot view images` as pass.
+
+### E2E timeout strategy
+
+- Provider smoke tests should have generous but bounded timeout.
+- Failure should print provider/model, delivery path, and redacted stderr tail.
+- One provider failure should not hide other provider results.
+
+### Release-blocking vs non-blocking tests
+
+Release-blocking:
+
+- Pure unit tests.
+- Serialization tests.
+- One Claude smoke if Claude support is enabled.
+- One Codex smoke if Codex support is enabled.
+- One OpenCode OpenAI smoke if OpenCode image support is enabled for OpenAI.
+
+Non-blocking/manual before release:
+
+- Multiple OpenRouter model smokes.
+- Very large image performance test.
+- HEIC/clipboard platform-specific tests.
+
+### User documentation checklist
+
+Document these user-facing facts:
+
+- Screenshots are automatically optimized before sending.
+- Some OpenCode models do not support image attachments.
+- If a model cannot receive images, the UI will ask the user to switch model or remove images.
+- Raw files are not pasted as base64 into messages.
+- If delivery fails, the message is preserved and the error explains whether it was size, model support, auth, quota, or runtime.
+
+### Final PR template section
+
+Each implementation PR should include:
+
+```md
+## Attachment safety checklist
+
+- [ ] Text-only messages unchanged.
+- [ ] No base64 plain-text prompt fallback.
+- [ ] Backend validates attachment ids and paths.
+- [ ] Unsupported model behavior tested.
+- [ ] Provider auth errors remain provider auth errors.
+- [ ] Delivery failure does not mark teammate offline unless runtime exits.
+- [ ] Copy diagnostics redacts secrets.
+- [ ] E2E smoke listed or intentionally deferred.
+```
+
+
+## Failure Injection E2E Scenarios
+
+These should be run after unit coverage is green.
+
+### Runtime survives attachment failure
+
+1. Start a team with one known working member.
+2. Send unsupported oversized image.
+3. Verify send is blocked or delivery fails without marking team/member offline.
+4. Send text-only message afterward.
+5. Verify member still responds.
+
+### Provider auth failure remains auth failure
+
+1. Temporarily use stale/invalid provider auth in test environment.
+2. Send image message.
+3. Verify diagnostics mention auth/login, not image unsupported.
+4. Restore auth.
+
+### Non-vision model blocked
+
+1. Select known non-vision OpenCode model.
+2. Attach image.
+3. Verify UI blocks before delivery.
+4. Remove image.
+5. Verify text-only send works.
+
+### Artifact missing on retry
+
+1. Save message with image artifact.
+2. Delete artifact file in test harness before retry.
+3. Trigger retry.
+4. Verify `attachment_artifact_missing` and no text-only fallback.
+
+## Release Candidate Checklist
+
+A release candidate can include attachment support only if:
+
+- All Phase 1 pure/domain tests pass.
+- Provider enabled in UI has at least one real visual smoke test green.
+- Unsupported model UX has been manually verified.
+- Copy diagnostics includes attachment error code and provider/model, but no base64.
+- Team launch tests are unchanged or green.
+- Existing user message delivery tests are green.
+- OpenCode proof repair tests are green.
+- Codex auth/preflight tests are green.
+
+## Suggested rollout order in release notes
+
+1. “Image attachments are optimized before sending.”
+2. “Claude and Codex vision-capable models receive screenshots through native image channels.”
+3. “OpenCode image support depends on the selected model. The UI warns when a model is not image-capable.”
+4. “Unsupported images are blocked with actionable diagnostics instead of being pasted as text.”
+
+## Post-Implementation Audit Checklist
+
+After all phases are implemented, search the codebase for these anti-patterns:
+
+```text
+base64,
+data:image,
+--image,
+-f,
+attachment_provider_rejected,
+attachment_model_unsupported,
+launch-state,
+spawnStatus,
+bootstrapConfirmed
+```
+
+Audit goals:
+
+- `base64` appears only in provider-native block serialization or tests.
+- `data:image` is not inserted into prompt text.
+- `--image` appears only in Codex command builder and tests.
+- `-f` image usage appears only in OpenCode adapter/command builder and tests.
+- Attachment failures do not write launch-state/spawn status.
+- Bootstrap code does not import attachment modules.
+
+
+## Implementation Completion Checklist by Phase
+
+### Phase 1 completion evidence
+
+Attach to PR:
+
+- Unit test output for budget/validation/capability modules.
+- Screenshot of composer warning for unsupported/oversized image.
+- Screenshot of optimized image metadata display if UI exposes it.
+- Confirmation that no provider delivery code changed.
+
+### Phase 2 completion evidence
+
+Attach to PR:
+
+- Claude serialization test output.
+- Real Claude visual smoke result.
+- Text-only Claude regression result.
+- Diagnostic screenshot for oversized image block.
+
+### Phase 3 completion evidence
+
+Attach to PR:
+
+- Codex command builder test output.
+- Real Codex visual smoke result using subscription mode.
+- Confirmation Codex auth diagnostics unchanged.
+- Confirmation no shell string command construction was added.
+
+### Phase 4 completion evidence
+
+Attach to PR:
+
+- OpenCode capability matrix tests.
+- OpenCode OpenAI visual smoke result.
+- OpenRouter Kimi/GLM visual smoke results if enabled.
+- Unsupported GLM/non-vision model warning screenshot.
+- Confirmation OpenCode proof repair lifecycle unchanged.
+
+### Phase 5 completion evidence
+
+Attach to PR:
+
+- Full focused test list.
+- Manual smoke matrix with provider/model/date.
+- Known limitations section.
+- Release note draft.
+
+## Final bug-prevention checklist
+
+Before merging the final phase, manually inspect these concerns:
+
+- Does every provider adapter have tests for empty attachments and image attachments?
+- Does every adapter reject unsupported MIME types?
+- Does every adapter avoid changing text-only behavior?
+- Does any code parse provider error text to decide model capability? It should not.
+- Does any code write attachment failures into launch state? It must not.
+- Does any code drop attachments silently? It must not.
+- Does unsupported model UI block send or require explicit user action? It should.
+- Does retry preserve attachment identity? It must.
+- Does artifact missing produce a clear error? It must.
+
+## Honest risk estimate after this planning
+
+If implemented phase-by-phase exactly as planned:
+
+- Phase 1 risk: `2.5/10`
+- Phase 2 risk: `3/10`
+- Phase 3 risk: `4/10`
+- Phase 4 risk: `5/10`
+- Phase 5 risk: `2/10`
+- Overall release risk: `3.5/10`
+
+If implemented as one broad refactor:
+
+- Overall release risk: `7/10`
+
+Main reason: the dangerous part is not image resizing itself. The dangerous part is accidentally coupling attachments to delivery proofs, runtime liveness, auth diagnostics, or provider-specific launch code.
+
+
+## Phase 5 Deep Review Addendum
+
+### Cross-provider E2E script shape
+
+A single script can reduce manual drift, but it should not be required for normal unit tests.
+
+Conceptual CLI:
+
+```bash
+pnpm tsx scripts/smoke-agent-attachments.ts \
+  --provider claude \
+  --model current \
+  --image test/fixtures/red-square.png
+```
+
+Output should be machine-readable enough for logs:
+
+```json
+{
+  "provider": "codex",
+  "model": "gpt-5.4-mini",
+  "image": "red-square.png",
+  "result": "pass",
+  "answerPreview": "red",
+  "durationMs": 18432
+}
+```
+
+### E2E failure report template
+
+When an image smoke fails, report:
+
+```text
+Provider: OpenCode
+Model: openrouter/z-ai/glm-5.1
+Expected: red
+Observed: I cannot view images
+Classification: model_not_vision_capable
+Action: keep blocked/unsupported in capability matrix
+```
+
+Do not report it as generic runtime failure.
+
+### Manual release drill
+
+Before release, do this exact drill:
+
+1. Start app fresh.
+2. Create or open a simple team with Claude lead.
+3. Send text-only message, confirm normal reply.
+4. Send one screenshot to Claude, confirm visual answer.
+5. Switch to Codex member, send same screenshot, confirm visual answer.
+6. Switch to OpenCode vision member, send same screenshot, confirm visual answer.
+7. Switch to OpenCode unsupported model, confirm UI blocks image.
+8. Send text-only to unsupported model, confirm it still works.
+9. Restart app, verify messages render and attachments do not disappear.
+10. Copy diagnostics from failed unsupported send, verify no base64/secrets.
+
+### Final release confidence rating target
+
+Do not ship broad attachment support unless confidence reaches:
+
+- 🎯 at least `8.5/10` for Claude.
+- 🎯 at least `8/10` for Codex.
+- 🎯 at least `7.5/10` for OpenCode vision-capable known models.
+- 🛡️ at least `9/10` that unsupported models fail safely.
+- 🛡️ at least `9/10` that launch/readiness is unaffected.
+
+
+## Phase 5 Implementation Contract Addendum
+
+### Test command matrix
+
+Focused checks after each phase should be small and targeted.
+
+Phase 1:
+
+```bash
+pnpm vitest run test/features/agent-attachments/budgets.test.ts test/features/agent-attachments/validation.test.ts
+pnpm typecheck --pretty false
+```
+
+Phase 2:
+
+```bash
+pnpm vitest run test/features/agent-attachments/claudeAttachmentAdapter.test.ts
+pnpm vitest run test/main/services/team/TeamProvisioningServiceRelay.test.ts
+```
+
+Phase 3:
+
+```bash
+pnpm vitest run test/features/agent-attachments/codexAttachmentAdapter.test.ts
+# plus orchestrator codex command builder test in agent_teams_orchestrator
+```
+
+Phase 4:
+
+```bash
+pnpm vitest run test/features/agent-attachments/opencodeAttachmentAdapter.test.ts
+pnpm vitest run test/main/services/team/OpenCodePromptDeliveryLedger.test.ts test/main/services/team/OpenCodePromptDeliveryWatchdog.test.ts
+```
+
+Phase 5:
+
+```bash
+pnpm typecheck --pretty false
+pnpm vitest run test/features/agent-attachments/**/*.test.ts
+```
+
+Exact test paths may change during implementation, but the test categories should remain.
+
+### Smoke result ledger
+
+Create a simple markdown table in PR or docs after live smokes:
+
+| Date | Provider | Model | Runtime path | Result | Notes |
+|---|---|---|---|---|---|
+| 2026-05-09 | Claude | current | app team delivery | pass | red-square -> red |
+| 2026-05-09 | Codex | gpt-5.4-mini | app team delivery | pass | red-square -> red |
+| 2026-05-09 | OpenCode | openai/gpt-5.4-mini | app team delivery | pass | red-square -> red |
+
+This prevents accidental reliance on standalone prototype results when app path differs.
+
+### Final implementation order reminder
+
+Do not start with provider adapters. Start with Phase 1 domain and storage because provider adapters need a stable input contract.
+
+Correct order:
+
+1. Normalize and persist artifacts safely.
+2. Block unsupported/oversized sends.
+3. Add Claude adapter.
+4. Add Codex adapter.
+5. Add OpenCode adapter.
+6. Add E2E and docs polish.
+
+Wrong order:
+
+1. Hack provider CLI args.
+2. Later figure out storage.
+3. Later figure out UI warnings.
+4. Later discover retries lost files.
+
+
+## Implementation Readiness Addendum
+
+### Definition of Ready for Phase 5
+
+Before Phase 5:
+
+- All provider adapters have unit tests.
+- At least one provider image path works in app-managed runtime.
+- Unsupported model UX exists.
+- Diagnostics taxonomy is implemented.
+
+### Fixture strategy
+
+Prefer one committed tiny PNG fixture plus optional generated variants.
+
+Fixtures:
+
+```text
+test/fixtures/attachments/red-square.png
+test/fixtures/attachments/red-square-large.png
+test/fixtures/attachments/corrupt.png
+test/fixtures/attachments/not-image.txt
+```
+
+If binary fixtures are not desired, generate in test setup, but keep generation deterministic.
+
+### Smoke classification helper
+
+```ts
+export function classifyVisualSmokeAnswer(answer: string): 'pass' | 'refusal' | 'wrong' | 'empty' {
+  const normalized = answer.trim().toLowerCase();
+  if (!normalized) return 'empty';
+  if (/cannot|can't|unable|view|image/.test(normalized) && !/red/.test(normalized)) return 'refusal';
+  if (/\bred\b|красн/.test(normalized)) return 'pass';
+  return 'wrong';
+}
+```
+
+Do not overfit this helper to one provider. It is only for smoke classification.
+
+### Release notes limitations section
+
+Document limitations honestly:
+
+```md
+Known limitations:
+
+- Image support depends on selected provider and model.
+- Some OpenCode/OpenRouter models are intentionally blocked until verified for vision.
+- Very large images are optimized and may lose some detail.
+- Non-image files continue using existing file behavior and are not part of the new image pipeline.
+```
+
+### Final post-merge watchlist
+
+For the first release after merge, watch for:
+
+- Increased renderer memory usage after attaching screenshots.
+- Any report of team launch failures after sending images.
+- Any report that images appear in message text as base64.
+- Any OpenCode model that should be marked unsupported.
+- Any Codex auth diagnostic regression.
+- Any failed retry due to missing artifacts.
+
+
+## Final Phase 5 Acceptance Specs
+
+### Spec 1 - cross-provider visual smoke matrix
+
+```gherkin
+Given the red-square fixture
+When visual smoke runs for each enabled provider path
+Then every supported provider/model answers red
+And every unsupported model is blocked or classified unsupported
+And no failure is reported as generic spawn failure
+```
+
+### Spec 2 - diagnostics are safe
+
+```gherkin
+Given an attachment delivery fails
+When the user copies diagnostics
+Then diagnostics include provider, model, failure code, and redacted reason
+And diagnostics do not include base64 image bytes
+And diagnostics do not include API keys or bearer tokens
+```
+
+### Spec 3 - launch unaffected
+
+```gherkin
+Given a team launches without attachments
+When launch completes
+Then launch behavior matches pre-attachment behavior
+And no attachment module participates in bootstrap readiness
+```
+
+### Phase 5 exact PR contract
+
+The Phase 5 PR is acceptable only if:
+
+- Smoke results are recorded with date/provider/model/runtime path.
+- Unsupported model behavior is manually verified.
+- Existing launch and delivery focused tests are green.
+- Documentation explains limitations honestly.
+- Release notes avoid promising universal vision support.
+- Post-merge watchlist is included in release checklist.
+
+### Final “do not ship if” list
+
+Do not ship if any of these are true:
+
+- Text-only messages regress for any provider.
+- Any provider receives base64 as plain prompt text.
+- Unsupported OpenCode models silently accept image messages.
+- Attachment failure marks teammate spawn failed without runtime exit evidence.
+- Codex subscription auth diagnostics regress.
+- Image retry can silently send text without the original image.
+- Copy diagnostics leaks base64 or secrets.
+
+
+## Phase 5 Pre-Mortem and Extra Safeguards
+
+### Likely verification mistakes
+
+| Mistake | Prevention |
+|---|---|
+| Standalone provider smoke passes but app path fails | Smoke through app-managed team delivery. |
+| E2E accepts refusal as pass | Use classifier that rejects “cannot view image”. |
+| Only happy path tested | Include unsupported model, artifact missing, and auth failure. |
+| Logs leak base64 | Copy diagnostics test searches for base64 markers. |
+| Release notes overpromise | Explicit known limitations section. |
+
+### Copy diagnostics acceptance test
+
+```ts
+it('copy diagnostics omits image bytes and secrets', () => {
+  const text = buildAttachmentFailureDiagnostics(fakeImageFailure());
+  expect(text).toContain('attachment_model_unsupported');
+  expect(text).not.toContain('data:image');
+  expect(text).not.toMatch(/[A-Za-z0-9+/]{200,}={0,2}/);
+  expect(text).not.toMatch(/sk-[a-zA-Z0-9_-]+/);
+});
+```
+
+### App-path smoke script must prove route
+
+Smoke result should include route:
+
+```json
+{
+  "route": "user->lead",
+  "teamName": "attachment-smoke-claude",
+  "provider": "anthropic",
+  "model": "current",
+  "attachmentTransport": "claude_structured_blocks",
+  "result": "pass"
+}
+```
+
+If route is standalone CLI only, mark as prototype evidence, not release evidence.
+
+### Release manager checklist
+
+- Read all `Do not ship if` items.
+- Confirm no broad feature flag remains.
+- Confirm capability gates are user-visible product behavior.
+- Confirm no launch/provisioning files import attachment modules.
+- Confirm provider smoke evidence is app-path evidence.
+- Confirm rollback by provider is possible without data migration.
+

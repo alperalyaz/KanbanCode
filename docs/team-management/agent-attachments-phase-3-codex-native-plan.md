@@ -624,3 +624,595 @@ it('does not include image path in prompt stdin', async () => {
 | base64 path from renderer | backend-only artifact store |
 | Codex auth failure hidden | do not catch provider errors as attachment errors |
 | unsupported PDF converted to prompt text silently | block explicitly |
+
+## Detailed Implementation Checklist
+
+### Step 1 - Define desktop to orchestrator attachment contract
+
+Codex native invocation details should stay in the runtime/orchestrator boundary. Desktop should pass managed artifact references, not raw arbitrary paths.
+
+```ts
+export interface CodexNativeAttachmentRequest {
+  kind: 'image';
+  artifactId: string;
+  mimeType: 'image/png' | 'image/jpeg';
+  absolutePath: string;
+  sizeBytes: number;
+}
+```
+
+Validation before crossing process boundary:
+
+- Path must be under app-managed attachment artifact directory.
+- MIME type must be PNG/JPEG for Phase 3.
+- File must exist and match expected size budget.
+- File path must not come directly from renderer.
+
+### Step 2 - Add Codex adapter in desktop
+
+Desktop adapter should produce a provider-neutral runtime request, not CLI args directly.
+
+```ts
+export function buildCodexAttachmentRuntimeRequest(input: {
+  text: string;
+  attachments: AgentAttachmentPayload[];
+}): CodexRuntimePromptRequest {
+  return {
+    text: input.text,
+    images: input.attachments.map((attachment) => ({
+      path: selectBestImageArtifact(attachment, 'codex').path,
+      mimeType: selectBestImageArtifact(attachment, 'codex').mimeType,
+    })),
+  };
+}
+```
+
+### Step 3 - Add orchestrator CLI serialization
+
+In orchestrator, serialize to Codex-native image args only at the final command builder.
+
+Expected conceptual shape:
+
+```ts
+const args = ['exec', '--json', '--model', model];
+for (const image of request.images) {
+  args.push('--image', image.path);
+}
+args.push('-');
+```
+
+Do not use base64 text fallback.
+
+### Step 4 - Preserve Codex auth behavior
+
+Codex attachment changes must not modify:
+
+- `CODEX_HOME` selection.
+- ChatGPT subscription vs API key logic.
+- `forced_login_method=chatgpt` propagation.
+- existing diagnostics for “ChatGPT login is required”.
+
+If Codex auth fails, the error should remain auth-specific, not attachment-specific.
+
+## Codex-Specific Edge Cases
+
+| Case | Expected behavior |
+|---|---|
+| Codex ChatGPT subscription logged out | Preserve existing login required diagnostic. |
+| Codex API key mode selected but native subscription expected | Preserve existing auth mode diagnostic. |
+| Image artifact path deleted before send | Delivery fails with artifact missing. |
+| Large image after optimization | Block before Codex CLI. |
+| Non-image file | Phase 3 does not route it through `--image`. |
+| Multiple images | Pass repeated `--image` args if Codex supports them, otherwise enforce count 1 with clear warning. |
+| Codex model without vision | Block based on capability matrix if known. |
+
+## Cross-Repo Contract Test Idea
+
+Add a small pure test in orchestrator for command building:
+
+```ts
+it('passes codex images as repeated --image args', () => {
+  const command = buildCodexExecCommand({
+    prompt: 'What color?',
+    images: ['/tmp/a.png', '/tmp/b.jpg'],
+  });
+
+  expect(command.args).toContainSequence(['--image', '/tmp/a.png']);
+  expect(command.args).toContainSequence(['--image', '/tmp/b.jpg']);
+  expect(command.stdin).toBe('What color?');
+});
+```
+
+Add desktop-side test for path safety:
+
+```ts
+it('rejects codex image paths outside managed artifact directory', () => {
+  expect(() => validateManagedArtifactPath('/etc/passwd')).toThrow(/outside managed attachment directory/);
+});
+```
+
+## Manual Codex QA
+
+1. Confirm dashboard shows Codex ChatGPT account ready.
+2. Send red-card image to Codex lead or member.
+3. Expected answer: `red` or equivalent.
+4. Send unsupported model if available and verify warning.
+5. Send oversized optimized image and verify block before runtime call.
+6. Temporarily invalidate Codex login and verify auth diagnostic remains clear.
+
+## Phase 3 Exit Criteria
+
+- Codex text-only prompt path unchanged.
+- Codex image prompt uses native image channel, not base64 text.
+- Codex auth diagnostics still match current behavior.
+- Desktop never passes renderer-provided arbitrary file paths to orchestrator.
+- One real Codex subscription visual smoke test passes.
+
+
+## Implementation Safeguards
+
+### Keep Codex login/session handling untouched
+
+The recent launch stability work around Codex auth is fragile and should not be mixed with attachment delivery.
+
+Do not change:
+
+- Codex auth discovery.
+- ChatGPT account vs API key selection.
+- `CODEX_HOME` propagation.
+- `forced_login_method=chatgpt` settings.
+- preflight auth status copy.
+
+Attachment support should sit after auth has already resolved.
+
+### Avoid stdin bloat
+
+Codex image paths should be CLI args or native request fields. The prompt on stdin should stay text-only.
+
+Bad:
+
+```ts
+stdin = `${prompt}\n\nIMAGE_BASE64=${base64}`;
+```
+
+Good:
+
+```ts
+args.push('--image', managedImagePath);
+stdin = prompt;
+```
+
+### Artifact lifetime
+
+Codex runtime may read image files after process spawn. Do not delete artifacts immediately after creating command args.
+
+Safe policy:
+
+- Keep managed artifacts at least until delivery result is terminal.
+- If message remains retryable, keep artifacts until retry window expires.
+- Garbage collect old artifacts by age and reachability from message records.
+
+### Codex retry edge cases
+
+| Case | Safe behavior |
+|---|---|
+| Retry after artifact GC | Fail with artifact missing, do not send text-only replacement silently. |
+| Retry after model switch | Revalidate capability and budgets. |
+| Retry after Codex logout | Show auth error, preserve message. |
+| Runtime exits after receiving image | Runtime diagnostic, not attachment validation failure. |
+
+### Cross-repo PR checklist
+
+Desktop repo:
+
+- Produces provider-neutral image request.
+- Validates managed artifact paths.
+- Preserves message/ledger semantics.
+
+Orchestrator repo:
+
+- Converts request to Codex native args.
+- Does not inspect renderer metadata.
+- Redacts command diagnostics.
+- Tests command builder with one and multiple images.
+
+
+## Failure Injection Tests for Phase 3
+
+```ts
+describe('Codex native image delivery', () => {
+  it('keeps prompt on stdin and images as args', () => {
+    const command = buildCodexNativeCommand({
+      prompt: 'What color?',
+      images: [managedImage('/tmp/app/attachments/a.png')],
+    });
+
+    expect(command.stdin).toBe('What color?');
+    expect(command.args).toContain('--image');
+    expect(command.stdin).not.toContain('base64');
+  });
+
+  it('does not mask Codex login failure as attachment failure', async () => {
+    const result = await runCodexImageDelivery(fakeCodexLoggedOut());
+
+    expect(result.error.message).toMatch(/codex login|ChatGPT/i);
+    expect(result.error.code).not.toBe('attachment_provider_rejected');
+  });
+});
+```
+
+## Codex Command Builder Invariants
+
+- `--image` args must appear before prompt stdin is consumed if Codex CLI requires it.
+- Paths must be absolute managed artifact paths.
+- Do not shell-concatenate paths. Use argv array.
+- Do not quote manually inside argv array.
+- Do not pass images through environment variables.
+- Do not write temp prompt files containing base64 image text.
+
+## Codex Existing-Team Edge Case
+
+Existing teams may have members created before attachment support. That must not matter. Attachment capability is based on current provider/model/runtime, not team creation date.
+
+If old metadata lacks provider/model:
+
+- Use existing compatibility probe behavior.
+- Do not infer vision support from old inbox names.
+- Block image send until team/member metadata is stable.
+
+## Phase 3 Stop Conditions
+
+Stop and reassess if:
+
+- Codex image support requires changing auth detection.
+- Codex CLI version in app runtime does not support `--image`.
+- Image args only work in standalone shell but not app-managed runtime.
+- Provider diagnostics start saying API key mode when ChatGPT subscription was selected.
+
+
+## File-Level Implementation Plan
+
+Desktop suggested files:
+
+```text
+src/features/agent-attachments/main/providers/codexAttachmentAdapter.ts
+src/features/agent-attachments/main/providers/codexAttachmentAdapter.test.ts
+```
+
+Orchestrator suggested files:
+
+```text
+src/runtime/codex/codexImageArgs.ts
+src/runtime/codex/codexImageArgs.test.ts
+```
+
+Use actual repo structure names during implementation, but keep this separation: desktop plans delivery, orchestrator serializes runtime command.
+
+### Desktop adapter skeleton
+
+```ts
+export function buildCodexNativeAttachmentRequest(input: {
+  text: string;
+  attachments: AgentAttachmentPayload[];
+}): CodexNativePromptRequest {
+  return {
+    text: input.text,
+    images: input.attachments.map((attachment) => {
+      const artifact = selectProviderImageArtifact(attachment, 'codex');
+      return {
+        artifactId: artifact.artifactId,
+        path: artifact.absolutePath,
+        mimeType: artifact.mimeType,
+        sizeBytes: artifact.sizeBytes,
+      };
+    }),
+  };
+}
+```
+
+### Orchestrator command args skeleton
+
+```ts
+export function appendCodexImageArgs(args: string[], images: CodexRuntimeImage[]): void {
+  for (const image of images) {
+    assertManagedRuntimeImagePath(image.path);
+    args.push('--image', image.path);
+  }
+}
+```
+
+Never build a shell string like:
+
+```ts
+`codex exec --image ${path}`
+```
+
+Use argv arrays only.
+
+### Codex provider proof interaction
+
+Codex image delivery should reuse existing delivery proof gates. Image delivery itself is not success.
+
+Success examples:
+
+- Visible direct reply to user.
+- Correct `message_send` relay for delegated/peer path.
+- Correct work-sync report for work-sync path.
+
+Failure examples:
+
+- Codex command exits before assistant message.
+- Codex auth fails.
+- Codex returns text saying it cannot inspect image.
+
+The last one may still be a visible reply. Treat it as delivered but semantically unhelpful, not as transport failure.
+
+
+## Phase 3 Deep Review Addendum
+
+### Codex runtime compatibility probe
+
+Before enabling Codex image delivery in UI, the app should know whether the configured Codex runtime supports image args.
+
+Conservative options:
+
+1. Static capability by known runtime version - 🎯 8   🛡️ 8.5   🧠 4, примерно `80-160` строк.
+2. One-time local CLI help parse/cache - 🎯 7.5   🛡️ 8   🧠 5, примерно `120-220` строк.
+3. Always attempt and surface provider error - 🎯 6   🛡️ 6.5   🧠 2, примерно `30-80` строк.
+
+Recommended for release: option 1 if runtime version is already controlled by the app, otherwise option 2 with short cache.
+
+Do not run expensive live Codex image probes on every composer render.
+
+### Codex request lifecycle
+
+```text
+Composer send
+  -> persist message and artifacts
+  -> backend validates Codex capability
+  -> desktop builds Codex runtime request
+  -> orchestrator builds argv with --image
+  -> Codex runtime produces response
+  -> existing delivery proof gates decide delivered/failed
+```
+
+Every arrow should have tests or explicit diagnostics.
+
+### Codex diagnostics examples
+
+Good:
+
+```text
+Codex image delivery failed: optimized image artifact is missing. The message was saved but cannot be retried with the image.
+```
+
+```text
+Codex ChatGPT login is required before sending image attachments.
+```
+
+Bad:
+
+```text
+Agent failed.
+```
+
+```text
+Spawn failed.
+```
+
+unless process launch actually failed.
+
+
+## Phase 3 Implementation Contract Addendum
+
+### Codex DTO between desktop and orchestrator
+
+Use a stable JSON-serializable shape.
+
+```ts
+export interface CodexImageAttachmentForRuntime {
+  artifactId: string;
+  path: string;
+  mimeType: 'image/png' | 'image/jpeg';
+  sizeBytes: number;
+}
+
+export interface CodexPromptRuntimeRequest {
+  text: string;
+  images?: CodexImageAttachmentForRuntime[];
+}
+```
+
+Rules:
+
+- `images` omitted or empty means exact text-only legacy behavior.
+- `images` present means orchestrator appends native `--image` args.
+- Unknown fields should be ignored or rejected consistently, not partially consumed.
+
+### Codex compatibility check
+
+If the app bundles/controls Codex CLI version, use static support knowledge. If not, parse `codex exec --help` once and cache whether `--image` exists.
+
+Pseudo-code:
+
+```ts
+export async function detectCodexImageArgSupport(runtime: CodexRuntime): Promise<boolean> {
+  const cached = codexImageSupportCache.get(runtime.binaryPath);
+  if (cached) return cached.supported;
+
+  const help = await runtime.run(['exec', '--help'], { timeoutMs: 5000 });
+  const supported = /--image\b/.test(help.stdout + help.stderr);
+  codexImageSupportCache.set(runtime.binaryPath, { supported, checkedAt: Date.now() });
+  return supported;
+}
+```
+
+Do not run this on every message send if it is slow.
+
+### Codex error mapping table
+
+| Error text category | Final classification |
+|---|---|
+| login required / ChatGPT session | provider auth/session error |
+| unknown option `--image` | runtime does not support image attachments |
+| file not found | attachment artifact missing |
+| max tokens/quota | provider rejected message |
+| model cannot inspect image | visible semantic response if delivered |
+
+Business logic should not depend on fragile regex except for display cleanup. Prefer structured exit codes/known adapter failures where available.
+
+
+## Implementation Readiness Addendum
+
+### Definition of Ready for Phase 3
+
+Before coding Phase 3:
+
+- Phase 1 normalized artifact storage is in place.
+- Codex text-only delivery tests are green.
+- Orchestrator branch/worktree is aligned with desktop branch.
+- Actual app-managed Codex runtime has been checked for image support.
+
+### Cross-repo compatibility rule
+
+Desktop must tolerate orchestrator without image support during development by failing safely before send, not by crashing runtime.
+
+```ts
+if (!runtimeCapabilities.codexImageArgs) {
+  throw new AgentAttachmentError(
+    'attachment_runtime_transport_failed',
+    'Current Codex runtime does not support image attachments.'
+  );
+}
+```
+
+### Codex no-regression assertions
+
+- Text-only Codex request shape unchanged when `images` is empty.
+- Codex ChatGPT account mode still selected when user chose subscription.
+- No `OPENAI_API_KEY` fallback is introduced for subscription image send.
+- `CODEX_HOME` still points to expected local auth state.
+- Provider auth errors are not swallowed by attachment adapter.
+
+### Codex additional edge cases
+
+| Edge case | Expected behavior |
+|---|---|
+| `--image` unsupported | Block with runtime unsupported diagnostic. |
+| Two images but Codex supports one only | Block or reduce with explicit user choice, no silent drop. |
+| Image path contains spaces | argv array handles it. Test it. |
+| Image path contains shell metacharacters | argv array handles it. No shell interpolation. |
+| Codex returns answer in non-English | Accept semantic visual answer if it clearly identifies image. |
+
+
+## Final Phase 3 Acceptance Specs
+
+### Spec 1 - Codex text-only no regression
+
+```gherkin
+Given a user sends a text-only message to a Codex target
+When the runtime request is built
+Then images is omitted or empty
+And the existing Codex text-only path is used
+And auth/session handling is unchanged
+```
+
+### Spec 2 - Codex image uses native args
+
+```gherkin
+Given a user sends a PNG image to Codex
+When the orchestrator command is built
+Then the prompt remains text-only stdin
+And the image path is passed with --image argv
+And no shell string interpolation is used
+And no base64 appears in stdin
+```
+
+### Spec 3 - Codex runtime lacks image support
+
+```gherkin
+Given the configured Codex runtime does not support --image
+When the user tries to send an image
+Then the send is blocked or delivery fails before runtime prompt
+And the diagnostic says Codex runtime does not support image attachments
+And text-only Codex messages still work
+```
+
+### Phase 3 exact PR contract
+
+The Phase 3 PR is acceptable only if:
+
+- Desktop and orchestrator agree on DTO shape.
+- Orchestrator command builder has argv tests.
+- Codex auth tests or diagnostics are not weakened.
+- Runtime support detection is cached or static, not repeated on every render.
+- Paths with spaces are covered in tests.
+- No API-key fallback is introduced for subscription mode.
+
+### Codex failure copy examples
+
+```text
+Codex image delivery is unavailable because the configured Codex runtime does not support --image.
+```
+
+```text
+Codex ChatGPT login is required before this image can be sent.
+```
+
+```text
+Prepared image file is missing. Remove and attach the image again.
+```
+
+
+## Phase 3 Pre-Mortem and Extra Safeguards
+
+### Likely Codex mistakes
+
+| Mistake | Concrete prevention |
+|---|---|
+| `--image` command built through shell string | Use argv arrays only. |
+| Image support check runs too often | Cache runtime capability. |
+| API key mode accidentally used for subscription | Preserve selected auth mode and existing env rules. |
+| Orchestrator receives desktop fields it ignores | Add contract test across DTO. |
+| Runtime does not support image but UI allows send | Capability gate checks runtime support. |
+
+### Cross-version DTO tolerance
+
+During development, desktop and orchestrator can briefly be out of sync. The final merged state must be compatible, but code should fail clearly if mismatch happens.
+
+```ts
+export function assertCodexRuntimeUnderstandsImages(runtimeCaps: RuntimeCapabilities): void {
+  if (!runtimeCaps.codexImages) {
+    throw new AgentAttachmentError(
+      'attachment_runtime_transport_failed',
+      'This Codex runtime does not support image attachments yet.'
+    );
+  }
+}
+```
+
+### Codex diagnostic redaction
+
+If command args are included in diagnostics, redact paths if needed and never include prompt text with secrets.
+
+Safe diagnostic:
+
+```json
+{
+  "provider": "codex",
+  "model": "gpt-5.4-mini",
+  "imageCount": 1,
+  "imageArgsUsed": true,
+  "stdinBytes": 31
+}
+```
+
+Unsafe diagnostic:
+
+```json
+{
+  "stdin": "full user prompt with private text",
+  "imageBase64": "..."
+}
+```
+
