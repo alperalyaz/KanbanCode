@@ -7362,7 +7362,7 @@ export class TeamProvisioningService {
         ledgerRecord: input.ledgerRecord,
         visibleReply: {
           inboxName,
-          message: { ...match, messageId: match.messageId.trim() },
+          message: { ...match, messageId: expectedMessageId },
           missingRuntimeDeliverySource: match.source !== 'runtime_delivery',
         },
         diagnostic: 'opencode_visible_reply_recovered_by_observed_message_id',
