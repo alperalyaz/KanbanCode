@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-08T21:28:15.433Z",
+  "generatedAt": "2026-05-08T22:48:31.416Z",
   "runsPerModel": 1,
   "qualification": {
     "minimumAverageScore": 80,
@@ -25,8 +25,8 @@
       "runtimeTransportFailures": 0,
       "modelBehaviorFailures": 0,
       "harnessFailures": 0,
-      "p50DurationMs": 173403,
-      "p95DurationMs": 173403,
+      "p50DurationMs": 118757,
+      "p95DurationMs": 118757,
       "stagePassRates": {
         "launchBootstrap": {
           "passed": 1,
@@ -217,17 +217,17 @@
           "outcome": "passed",
           "failureCategory": "none",
           "primaryFailure": null,
-          "durationMs": 173403,
+          "durationMs": 118757,
           "hardFailure": false,
           "stageDurationsMs": {
-            "setup": 191,
-            "launchBootstrap": 24869,
-            "materializeTasks": 33,
-            "directReply": 11982,
-            "peerRelayAB": 24984,
-            "peerRelayBC": 24320,
-            "concurrentReplies": 77988,
-            "hygiene": 2
+            "setup": 225,
+            "launchBootstrap": 20591,
+            "materializeTasks": 36,
+            "directReply": 14820,
+            "peerRelayAB": 32039,
+            "peerRelayBC": 27306,
+            "concurrentReplies": 15426,
+            "hygiene": 1
           },
           "stageFailures": {},
           "taskRefChecks": {
@@ -253,7 +253,7 @@
             "latencyStable": true
           },
           "diagnostics": [
-            "runId=55b87bf5-abe4-4c21-9b98-db1ed8c22cfb"
+            "runId=44f5aa40-e169-49ed-9ea3-4c72aaf4a9f1"
           ]
         }
       ]

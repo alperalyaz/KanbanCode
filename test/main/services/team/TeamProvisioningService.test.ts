@@ -439,6 +439,7 @@ async function configureOpenCodeBobDeliveryService(input: {
   svc: TeamProvisioningService;
   sendMessageToMember: ReturnType<typeof vi.fn>;
   observeMessageDelivery?: ReturnType<typeof vi.fn>;
+  memberModel?: string;
 }): Promise<void> {
   const registry = new TeamRuntimeAdapterRegistry([
     {
@@ -469,7 +470,11 @@ async function configureOpenCodeBobDeliveryService(input: {
       projectPath: '/repo',
       members: [
         { name: 'team-lead', providerId: 'codex', model: 'gpt-5.4' },
-        { name: 'bob', providerId: 'opencode', model: 'minimax-m2.5-free' },
+        {
+          name: 'bob',
+          providerId: 'opencode',
+          model: input.memberModel ?? 'minimax-m2.5-free',
+        },
       ],
     })),
   };
@@ -484,7 +489,7 @@ async function configureOpenCodeBobDeliveryService(input: {
       {
         name: 'bob',
         providerId: 'opencode',
-        model: 'opencode/minimax-m2.5-free',
+        model: input.memberModel ?? 'opencode/minimax-m2.5-free',
       },
     ]),
   };
@@ -5156,15 +5161,17 @@ describe('TeamProvisioningService', () => {
         delivered: true,
         diagnostics: [],
       });
-      expect(sendMessageToMember).toHaveBeenCalledWith({
-        runId: 'opencode-run-bob',
-        teamName: 'team-a',
-        laneId: 'secondary:opencode:bob',
-        memberName: 'bob',
-        cwd: '/repo',
-        text: 'hello bob',
-        messageId: 'msg-1',
-      });
+      expect(sendMessageToMember).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runId: 'opencode-run-bob',
+          teamName: 'team-a',
+          laneId: 'secondary:opencode:bob',
+          memberName: 'bob',
+          cwd: '/repo',
+          text: 'hello bob',
+          messageId: 'msg-1',
+        })
+      );
     });
 
     it('persists verified OpenCode bridge runtime pids so member cards can show memory', async () => {
@@ -6082,7 +6089,7 @@ describe('TeamProvisioningService', () => {
       });
     });
 
-    it('observes OpenCode message_send tool errors quickly before retrying duplicate prompts', async () => {
+    it('waits through delayed OpenCode message_send tool-error fallback inline', async () => {
       const svc = new TeamProvisioningService();
       const taskRef = {
         taskId: 'task-tool-error-observe-first',
@@ -6108,36 +6115,60 @@ describe('TeamProvisioningService', () => {
         },
         diagnostics: ['OpenCode tool failed without output'],
       }));
-      const observeMessageDelivery = vi.fn(async (input: Record<string, unknown>) => ({
-        ok: true,
+      let observeAttempts = 0;
+      const opencodeAdapter = {
         providerId: 'opencode',
-        memberName: String(input.memberName),
-        sessionId: 'oc-session-bob',
-        responseObservation: {
-          state: 'responded_plain_text',
-          deliveredUserMessageId: 'oc-user-tool-error-observe',
-          assistantMessageId: 'oc-assistant-plain-fallback',
-          toolCallNames: ['agent-teams_message_send'],
-          visibleMessageToolCallId: 'call-message-send-observe',
-          visibleReplyMessageId: null,
-          visibleReplyCorrelation: 'plain_assistant_text',
-          latestAssistantPreview: 'GAUNTLET_OBSERVE_FIRST_OK_1',
-          reason: 'assistant_replied_with_plain_text',
-        },
-        diagnostics: ['Observed OpenCode plain-text fallback after message_send tool error'],
-      }));
-      svc.setRuntimeAdapterRegistry(
-        new TeamRuntimeAdapterRegistry([
-          {
+        prepare: vi.fn(),
+        launch: vi.fn(),
+        reconcile: vi.fn(),
+        stop: vi.fn(),
+        sendMessageToMember,
+        observeMessageDelivery: vi.fn(async function (
+          this: unknown,
+          input: Record<string, unknown>
+        ) {
+          expect(this).toBe(opencodeAdapter);
+          observeAttempts += 1;
+          return {
+            ok: true,
             providerId: 'opencode',
-            prepare: vi.fn(),
-            launch: vi.fn(),
-            reconcile: vi.fn(),
-            stop: vi.fn(),
-            sendMessageToMember,
-            observeMessageDelivery,
-          } as any,
-        ])
+            memberName: String(input.memberName),
+            sessionId: 'oc-session-bob',
+            responseObservation:
+              observeAttempts === 1
+                ? {
+                    state: 'pending',
+                    deliveredUserMessageId: 'oc-user-tool-error-observe',
+                    assistantMessageId: null,
+                    toolCallNames: ['agent-teams_message_send'],
+                    visibleMessageToolCallId: 'call-message-send-observe',
+                    visibleReplyMessageId: null,
+                    visibleReplyCorrelation: null,
+                    latestAssistantPreview: null,
+                    reason: 'assistant_reply_not_visible_yet',
+                  }
+                : {
+                    state: 'responded_plain_text',
+                    deliveredUserMessageId: 'oc-user-tool-error-observe',
+                    assistantMessageId: 'oc-assistant-plain-fallback',
+                    toolCallNames: ['agent-teams_message_send'],
+                    visibleMessageToolCallId: 'call-message-send-observe',
+                    visibleReplyMessageId: null,
+                    visibleReplyCorrelation: 'plain_assistant_text',
+                    latestAssistantPreview: 'GAUNTLET_OBSERVE_FIRST_OK_1',
+                    reason: 'assistant_replied_with_plain_text',
+                  },
+            diagnostics: [
+              observeAttempts === 1
+                ? 'OpenCode assistant reply not visible yet'
+                : 'Observed OpenCode plain-text fallback after message_send tool error',
+            ],
+          };
+        }),
+      } as any;
+      const observeMessageDelivery = opencodeAdapter.observeMessageDelivery;
+      svc.setRuntimeAdapterRegistry(
+        new TeamRuntimeAdapterRegistry([opencodeAdapter])
       );
 
       (svc as any).getTrackedRunId = vi.fn(() => 'run-1');
@@ -6190,45 +6221,14 @@ describe('TeamProvisioningService', () => {
       ).resolves.toMatchObject({
         delivered: true,
         accepted: true,
-        responsePending: true,
-        responseState: 'tool_error',
-        reason: 'tool_error_without_required_delivery_proof',
-      });
-
-      const ledgerPath = getOpenCodeLaneScopedRuntimeFilePath({
-        teamsBasePath: tempTeamsBase,
-        teamName: 'team-a',
-        laneId: 'secondary:opencode:bob',
-        fileName: 'opencode-prompt-delivery-ledger.json',
-      });
-      const ledgerEnvelope = JSON.parse(await fsPromises.readFile(ledgerPath, 'utf8')) as {
-        data: Array<{ nextAttemptAt: string | null }>;
-      };
-      const nextAttemptAt = ledgerEnvelope.data[0]?.nextAttemptAt;
-      expect(nextAttemptAt).toBeTruthy();
-      const delayMs = Date.parse(nextAttemptAt!) - Date.now();
-      expect(delayMs).toBeGreaterThanOrEqual(0);
-      expect(delayMs).toBeLessThanOrEqual(5_000);
-
-      ledgerEnvelope.data[0]!.nextAttemptAt = '2000-01-01T00:00:00.000Z';
-      await fsPromises.writeFile(ledgerPath, JSON.stringify(ledgerEnvelope, null, 2), 'utf8');
-
-      await expect(
-        svc.deliverOpenCodeMemberMessage('team-a', {
-          memberName: 'bob',
-          text: 'Reply to user with GAUNTLET_OBSERVE_FIRST_OK_1.',
-          messageId: 'msg-tool-error-observe-first',
-          replyRecipient: 'user',
-          actionMode: 'ask',
-          taskRefs: [taskRef],
-          source: 'watcher',
-          inboxTimestamp: '2026-04-25T10:00:00.000Z',
-        })
-      ).resolves.toMatchObject({
-        delivered: true,
         responsePending: false,
         responseState: 'responded_plain_text',
         visibleReplyCorrelation: 'plain_assistant_text',
+        diagnostics: expect.arrayContaining([
+          'opencode_message_send_tool_error_inline_observe',
+          'opencode_direct_user_delivery_inline_observe_attempt_2',
+          'opencode_plain_text_reply_materialized_to_user_inbox',
+        ]),
       });
 
       const userInbox = JSON.parse(
@@ -6247,13 +6247,219 @@ describe('TeamProvisioningService', () => {
         taskRefs: [taskRef],
       });
       expect(sendMessageToMember).toHaveBeenCalledTimes(1);
-      expect(observeMessageDelivery).toHaveBeenCalledTimes(1);
+      expect(observeMessageDelivery).toHaveBeenCalledTimes(2);
       expect(observeMessageDelivery).toHaveBeenCalledWith(
         expect.objectContaining({
           messageId: 'msg-tool-error-observe-first',
           prePromptCursor: 'cursor-before-tool-error',
         })
       );
+    }, 15_000);
+
+    it('keeps accepted OpenCode delivery retryable when inline observe throws', async () => {
+      const svc = new TeamProvisioningService();
+      const taskRef = {
+        taskId: 'task-tool-error-observe-throws',
+        displayId: 'obsthrow',
+        teamName: 'team-a',
+      };
+      const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+        ok: true,
+        providerId: 'opencode',
+        memberName: String(input.memberName),
+        sessionId: 'oc-session-bob',
+        prePromptCursor: 'cursor-before-observe-throws',
+        responseObservation: {
+          state: 'tool_error',
+          deliveredUserMessageId: 'oc-user-observe-throws',
+          assistantMessageId: 'oc-assistant-observe-throws',
+          toolCallNames: ['agent-teams_message_send'],
+          visibleMessageToolCallId: 'call-message-send-observe-throws',
+          visibleReplyMessageId: null,
+          visibleReplyCorrelation: null,
+          latestAssistantPreview: null,
+          reason: 'message_send_tool_error_without_visible_reply_proof',
+        },
+        diagnostics: ['OpenCode tool failed without output'],
+      }));
+      const observeMessageDelivery = vi.fn(async () => {
+        throw new Error('observe bridge fs write failed');
+      });
+      await configureOpenCodeBobDeliveryService({
+        svc,
+        sendMessageToMember,
+        observeMessageDelivery,
+      });
+
+      await expect(
+        svc.deliverOpenCodeMemberMessage('team-a', {
+          memberName: 'bob',
+          text: 'Reply to user with GAUNTLET_OBSERVE_THROW_OK_1.',
+          messageId: 'msg-tool-error-observe-throws',
+          replyRecipient: 'user',
+          actionMode: 'ask',
+          taskRefs: [taskRef],
+          source: 'watcher',
+          inboxTimestamp: '2026-04-25T10:00:00.000Z',
+        })
+      ).resolves.toMatchObject({
+        delivered: true,
+        accepted: true,
+        responsePending: true,
+        responseState: 'reconcile_failed',
+        ledgerStatus: 'retry_scheduled',
+        reason: expect.stringContaining('opencode_direct_user_delivery_inline_observe_failed'),
+        diagnostics: expect.arrayContaining([
+          'opencode_direct_user_delivery_inline_observe_attempt_1',
+          expect.stringContaining('observe bridge fs write failed'),
+        ]),
+      });
+      expect(sendMessageToMember).toHaveBeenCalledTimes(1);
+      expect(observeMessageDelivery).toHaveBeenCalledTimes(1);
+    }, 10_000);
+
+    it('resolves stored attachment payloads for OpenCode inbox relay before delivery', async () => {
+      const svc = new TeamProvisioningService();
+      const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+        ok: true,
+        providerId: 'opencode',
+        memberName: String(input.memberName),
+        sessionId: 'oc-session-bob',
+        responseObservation: {
+          state: 'responded_plain_text',
+          deliveredUserMessageId: 'oc-user-attachment',
+          assistantMessageId: 'oc-assistant-attachment',
+          toolCallNames: [],
+          visibleMessageToolCallId: null,
+          visibleReplyMessageId: null,
+          visibleReplyCorrelation: null,
+          latestAssistantPreview: 'I reviewed the attached image and can proceed.',
+          reason: 'assistant_replied_with_plain_text',
+        },
+        diagnostics: [],
+      }));
+      await configureOpenCodeBobDeliveryService({
+        svc,
+        sendMessageToMember,
+        memberModel: 'openai/gpt-5.4-mini',
+      });
+      await (svc as any).attachmentStore.saveAttachments('team-a', 'msg-image-attachment', [
+        {
+          id: 'att-1',
+          filename: 'diagram.png',
+          mimeType: 'image/png',
+          size: 5,
+          data: 'aW1nMQ==',
+        },
+      ]);
+      const inboxDir = path.join(tempTeamsBase, 'team-a', 'inboxes');
+      await fsPromises.mkdir(inboxDir, { recursive: true });
+      await fsPromises.writeFile(
+        path.join(inboxDir, 'bob.json'),
+        `${JSON.stringify(
+          [
+            {
+              from: 'team-lead',
+              to: 'bob',
+              text: 'Review this image.',
+              timestamp: '2026-04-25T10:00:00.000Z',
+              read: false,
+              messageId: 'msg-image-attachment',
+              attachments: [
+                {
+                  id: 'att-1',
+                  filename: 'diagram.png',
+                  mimeType: 'image/png',
+                  size: 5,
+                },
+              ],
+            },
+          ],
+          null,
+          2
+        )}\n`,
+        'utf8'
+      );
+
+      await expect(
+        svc.relayOpenCodeMemberInboxMessages('team-a', 'bob', {
+          onlyMessageId: 'msg-image-attachment',
+        })
+      ).resolves.toMatchObject({
+        attempted: 1,
+        delivered: 1,
+        failed: 0,
+        relayed: 1,
+      });
+      expect(sendMessageToMember).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId: 'msg-image-attachment',
+          fileParts: [
+            {
+              type: 'file',
+              mime: 'image/png',
+              url: 'data:image/png;base64,aW1nMQ==',
+              filename: 'diagram.png',
+            },
+          ],
+        })
+      );
+    });
+
+    it('keeps OpenCode inbox relay unread when attachment payload data is unavailable', async () => {
+      const svc = new TeamProvisioningService();
+      const sendMessageToMember = vi.fn();
+      await configureOpenCodeBobDeliveryService({ svc, sendMessageToMember });
+      const inboxDir = path.join(tempTeamsBase, 'team-a', 'inboxes');
+      await fsPromises.mkdir(inboxDir, { recursive: true });
+      await fsPromises.writeFile(
+        path.join(inboxDir, 'bob.json'),
+        `${JSON.stringify(
+          [
+            {
+              from: 'team-lead',
+              to: 'bob',
+              text: 'Review this image.',
+              timestamp: '2026-04-25T10:00:00.000Z',
+              read: false,
+              messageId: 'msg-missing-attachment',
+              attachments: [
+                {
+                  id: 'missing-att',
+                  filename: 'missing.png',
+                  mimeType: 'image/png',
+                  size: 5,
+                },
+              ],
+            },
+          ],
+          null,
+          2
+        )}\n`,
+        'utf8'
+      );
+
+      await expect(
+        svc.relayOpenCodeMemberInboxMessages('team-a', 'bob', {
+          onlyMessageId: 'msg-missing-attachment',
+        })
+      ).resolves.toMatchObject({
+        attempted: 1,
+        delivered: 0,
+        failed: 1,
+        relayed: 0,
+        lastDelivery: {
+          delivered: false,
+          reason: 'opencode_inbox_attachment_payload_unavailable: missing-att',
+        },
+      });
+      expect(sendMessageToMember).not.toHaveBeenCalled();
+
+      const inbox = JSON.parse(await fsPromises.readFile(path.join(inboxDir, 'bob.json'), 'utf8'));
+      expect(inbox[0]).toMatchObject({
+        messageId: 'msg-missing-attachment',
+        read: false,
+      });
     });
 
     it('treats OpenCode send bridge timeouts as acceptance-unknown observe-first records', async () => {

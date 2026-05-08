@@ -1,6 +1,6 @@
 # OpenCode Model Gauntlet Results
 
-Generated: 2026-05-08T21:28:15.433Z
+Generated: 2026-05-08T22:48:31.416Z
 
 Runs per model: 1
 Recommended threshold: average >= 80, successful runs >= 1, consistency >= 85, hard failures = 0
@@ -13,7 +13,7 @@ Scoring weights: launchBootstrap=15, directReply=10, peerRelayAB=15, peerRelayBC
 
 | Model | Verdict | Confidence | Readiness | Consistency | Score Spread | Behavior Avg | Overall Avg | Counted | Pass Runs | Weakest Stage | Weakest TaskRef | Dominant Failure | Blockers | Provider Infra | Runtime Transport | Model Fails | Protocol Runs | p50 | p95 |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `opencode/big-pickle` | Recommended | low | 100 | 100 | 0 | 100 | 100 | 1/1 | 1/1 | cleanTranscript 1/1 (100%) | concurrentBob 1/1 (100%) | none | - | 0 | 0 | 0 | 0 | 173403ms | 173403ms |
+| `opencode/big-pickle` | Recommended | low | 100 | 100 | 0 | 100 | 100 | 1/1 | 1/1 | cleanTranscript 1/1 (100%) | concurrentBob 1/1 (100%) | none | - | 0 | 0 | 0 | 0 | 118757ms | 118757ms |
 
 ## opencode/big-pickle
 
@@ -33,5 +33,5 @@ Protocol totals: badMessages=0, duplicateOrMissingTokens=0, affectedRuns=0.
 
 | Run | Outcome | Category | Score | Counted | Duration | Failed Stages | Slowest Stage | TaskRefs | Protocol | Diagnostics |
 | ---: | --- | --- | ---: | --- | ---: | --- | --- | --- | --- | --- |
-| 1 | passed | none | 100 | yes | 173403ms | - | concurrentReplies:77988ms | directReply:ok, peerRelayAB:ok, peerRelayBC:ok, concurrentBob:ok, concurrentTom:ok | - | runId=55b87bf5-abe4-4c21-9b98-db1ed8c22cfb |
+| 1 | passed | none | 100 | yes | 118757ms | - | peerRelayAB:32039ms | directReply:ok, peerRelayAB:ok, peerRelayBC:ok, concurrentBob:ok, concurrentTom:ok | - | runId=44f5aa40-e169-49ed-9ea3-4c72aaf4a9f1 |
 

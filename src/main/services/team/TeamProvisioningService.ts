@@ -5,6 +5,7 @@ import {
   type CodexNativeImageArgPart,
   type OpenCodeFilePart,
 } from '@features/agent-attachments/main';
+import { AgentAttachmentError } from '@features/agent-attachments/core/domain';
 import {
   resolveAnthropicFastMode,
   resolveAnthropicRuntimeSelection,
@@ -321,6 +322,15 @@ import type {
   TeamRuntimeStopInput,
 } from './runtime';
 import type { RuntimeTurnSettledProvider } from '@features/member-work-sync/main';
+
+type OpenCodeRuntimeMessageAdapter = TeamLaunchRuntimeAdapter & {
+  sendMessageToMember(
+    input: OpenCodeTeamRuntimeMessageInput
+  ): Promise<OpenCodeTeamRuntimeMessageResult>;
+  observeMessageDelivery?(
+    input: OpenCodeTeamRuntimeMessageInput & { prePromptCursor?: string | null }
+  ): Promise<OpenCodeTeamRuntimeMessageResult>;
+};
 
 /**
  * Kill a team CLI process using SIGKILL (uncatchable).
@@ -6739,28 +6749,12 @@ export class TeamProvisioningService {
     return this.runtimeAdapterRegistry.get('opencode');
   }
 
-  private getOpenCodeRuntimeMessageAdapter():
-    | (TeamLaunchRuntimeAdapter & {
-        sendMessageToMember(
-          input: OpenCodeTeamRuntimeMessageInput
-        ): Promise<OpenCodeTeamRuntimeMessageResult>;
-        observeMessageDelivery?(
-          input: OpenCodeTeamRuntimeMessageInput & { prePromptCursor?: string | null }
-        ): Promise<OpenCodeTeamRuntimeMessageResult>;
-      })
-    | null {
+  private getOpenCodeRuntimeMessageAdapter(): OpenCodeRuntimeMessageAdapter | null {
     const adapter = this.getOpenCodeRuntimeAdapter();
     if (!adapter || !('sendMessageToMember' in adapter)) {
       return null;
     }
-    return adapter as TeamLaunchRuntimeAdapter & {
-      sendMessageToMember(
-        input: OpenCodeTeamRuntimeMessageInput
-      ): Promise<OpenCodeTeamRuntimeMessageResult>;
-      observeMessageDelivery?(
-        input: OpenCodeTeamRuntimeMessageInput & { prePromptCursor?: string | null }
-      ): Promise<OpenCodeTeamRuntimeMessageResult>;
-    };
+    return adapter as OpenCodeRuntimeMessageAdapter;
   }
 
   private resolveRuntimeRecipientProviderIdFromSources(
@@ -7844,6 +7838,161 @@ export class TeamProvisioningService {
     }
   }
 
+  private async observeOpenCodeDirectUserDeliveryInlineIfNeeded(input: {
+    adapter: OpenCodeRuntimeMessageAdapter;
+    ledger: OpenCodePromptDeliveryLedgerStore;
+    ledgerRecord: OpenCodePromptDeliveryLedgerRecord;
+    teamName: string;
+    memberName: string;
+    laneId: string;
+    cwd: string;
+    text: string;
+    messageId: string;
+    runtimeRunId?: string | null;
+    replyRecipient?: string | null;
+    actionMode?: AgentActionMode;
+    messageKind?: OpenCodeTeamRuntimeMessageInput['messageKind'];
+    taskRefs?: TaskRef[];
+    promptAccepted: boolean;
+    visibleReply?: OpenCodeVisibleReplyProof | null;
+  }): Promise<{
+    ledgerRecord: OpenCodePromptDeliveryLedgerRecord;
+    visibleReply: OpenCodeVisibleReplyProof | null;
+  }> {
+    let ledgerRecord = input.ledgerRecord;
+    let visibleReply = input.visibleReply ?? null;
+    const observeMessageDelivery = input.adapter.observeMessageDelivery;
+    const readAllowed = this.isOpenCodeDeliveryResponseReadCommitAllowed({
+      responseState: ledgerRecord.responseState,
+      actionMode: ledgerRecord.actionMode ?? undefined,
+      taskRefs: ledgerRecord.taskRefs,
+      visibleReply,
+      ledgerRecord,
+    });
+    const shouldObserveInline =
+      observeMessageDelivery &&
+      input.promptAccepted &&
+      this.isOpenCodeDirectUserPromptDelivery(ledgerRecord) &&
+      (ledgerRecord.source === 'manual' ||
+        (ledgerRecord.responseState === 'tool_error' &&
+          this.hasOpenCodeObservedMessageSendToolCall(ledgerRecord))) &&
+      !readAllowed &&
+      !visibleReply &&
+      !ledgerRecord.visibleReplyMessageId;
+
+    if (!shouldObserveInline || !observeMessageDelivery) {
+      return { ledgerRecord, visibleReply };
+    }
+
+    for (let inlineObserveAttempt = 1; inlineObserveAttempt <= 4; inlineObserveAttempt += 1) {
+      await sleep(OPENCODE_PROMPT_DELIVERY_OBSERVE_DELAY_MS);
+      let observed: OpenCodeTeamRuntimeMessageResult;
+      try {
+        observed = await observeMessageDelivery.call(input.adapter, {
+          ...(input.runtimeRunId ? { runId: input.runtimeRunId } : {}),
+          teamName: input.teamName,
+          laneId: input.laneId,
+          memberName: input.memberName,
+          cwd: input.cwd,
+          text: input.text,
+          messageId: input.messageId,
+          replyRecipient: input.replyRecipient ?? undefined,
+          actionMode: input.actionMode,
+          messageKind: input.messageKind,
+          taskRefs: input.taskRefs,
+          prePromptCursor: ledgerRecord.prePromptCursor,
+        });
+      } catch (error) {
+        const reason = `opencode_direct_user_delivery_inline_observe_failed: ${getErrorMessage(
+          error
+        )}`;
+        ledgerRecord = await input.ledger.applyObservation({
+          id: ledgerRecord.id,
+          responseObservation: {
+            state: 'reconcile_failed',
+            deliveredUserMessageId: null,
+            assistantMessageId: null,
+            toolCallNames: [],
+            visibleMessageToolCallId: null,
+            visibleReplyMessageId: null,
+            visibleReplyCorrelation: null,
+            latestAssistantPreview: null,
+            reason,
+          },
+          diagnostics: [
+            `opencode_direct_user_delivery_inline_observe_attempt_${inlineObserveAttempt}`,
+            reason,
+          ],
+          observedAt: nowIso(),
+        });
+        break;
+      }
+      await this.rememberOpenCodeRuntimePidFromBridge({
+        teamName: input.teamName,
+        memberName: input.memberName,
+        laneId: input.laneId,
+        runId: input.runtimeRunId,
+        runtimeSessionId: observed.sessionId,
+        runtimePid: observed.runtimePid,
+        reason: 'opencode_delivery_inline_observe_runtime_pid_observed',
+      });
+      const observedResponse = this.normalizeOpenCodeDeliveryResponseObservation(
+        observed.responseObservation
+      );
+      const hadMessageSendToolError = this.hasOpenCodeObservedMessageSendToolCall(ledgerRecord);
+      ledgerRecord = await input.ledger.applyObservation({
+        id: ledgerRecord.id,
+        responseObservation: observedResponse ?? {
+          state: observed.ok ? 'not_observed' : 'reconcile_failed',
+          deliveredUserMessageId: null,
+          assistantMessageId: null,
+          toolCallNames: [],
+          visibleMessageToolCallId: null,
+          visibleReplyMessageId: null,
+          visibleReplyCorrelation: null,
+          latestAssistantPreview: null,
+          reason: observed.diagnostics[0] ?? null,
+        },
+        diagnostics: [
+          `opencode_direct_user_delivery_inline_observe_attempt_${inlineObserveAttempt}`,
+          ...(hadMessageSendToolError ? ['opencode_message_send_tool_error_inline_observe'] : []),
+          ...observed.diagnostics,
+        ],
+        observedAt: nowIso(),
+      });
+      const proof = await this.applyOpenCodeVisibleDestinationProof({
+        ledger: input.ledger,
+        ledgerRecord,
+        teamName: input.teamName,
+        replyRecipient: input.replyRecipient,
+        memberName: input.memberName,
+      });
+      ledgerRecord = proof.ledgerRecord;
+      visibleReply = proof.visibleReply;
+      const materialized = await this.materializeOpenCodePlainTextReplyIfNeeded({
+        ledger: input.ledger,
+        ledgerRecord,
+        teamName: input.teamName,
+        memberName: input.memberName,
+        visibleReply,
+      });
+      ledgerRecord = materialized.ledgerRecord;
+      visibleReply = materialized.visibleReply;
+      const observedReadAllowed = this.isOpenCodeDeliveryResponseReadCommitAllowed({
+        responseState: ledgerRecord.responseState,
+        actionMode: ledgerRecord.actionMode ?? undefined,
+        taskRefs: ledgerRecord.taskRefs,
+        visibleReply,
+        ledgerRecord,
+      });
+      if (observedReadAllowed) {
+        break;
+      }
+    }
+
+    return { ledgerRecord, visibleReply };
+  }
+
   private getOpenCodeDeliveryWatchdogKey(input: {
     teamName: string;
     memberName: string;
@@ -8788,14 +8937,27 @@ export class TeamProvisioningService {
       }
     }
 
-    const openCodeFileParts: OpenCodeFilePart[] =
-      input.attachments?.length && laneIdentity.laneOwnerProviderId === 'opencode'
-        ? buildOpenCodeAttachmentDeliveryParts({
-            text: input.text,
-            model: metaMember?.model ?? configMember?.model ?? '',
-            attachments: input.attachments,
-          }).fileParts
-        : [];
+    let openCodeFileParts: OpenCodeFilePart[] = [];
+    if (input.attachments?.length && laneIdentity.laneOwnerProviderId === 'opencode') {
+      try {
+        openCodeFileParts = buildOpenCodeAttachmentDeliveryParts({
+          text: input.text,
+          model: metaMember?.model ?? configMember?.model ?? '',
+          attachments: input.attachments,
+        }).fileParts;
+      } catch (error) {
+        const reason =
+          error instanceof AgentAttachmentError
+            ? error.code
+            : 'opencode_attachment_delivery_prepare_failed';
+        const diagnostic = `opencode_attachment_delivery_prepare_failed: ${getErrorMessage(error)}`;
+        return {
+          delivered: false,
+          reason,
+          diagnostics: [diagnostic],
+        };
+      }
+    }
 
     if (!this.isOpenCodePromptDeliveryWatchdogEnabled()) {
       const result = await adapter.sendMessageToMember({
@@ -9248,6 +9410,25 @@ export class TeamProvisioningService {
         ledgerRecord,
         teamName,
         memberName: canonicalMemberName,
+        visibleReply: proof.visibleReply,
+      });
+      ledgerRecord = proof.ledgerRecord;
+      proof = await this.observeOpenCodeDirectUserDeliveryInlineIfNeeded({
+        adapter,
+        ledger,
+        ledgerRecord,
+        teamName,
+        memberName: canonicalMemberName,
+        laneId: laneIdentity.laneId,
+        cwd,
+        text: input.text,
+        messageId: ledgerRecord.inboxMessageId,
+        runtimeRunId,
+        replyRecipient: input.replyRecipient,
+        actionMode: input.actionMode,
+        messageKind: input.messageKind,
+        taskRefs: input.taskRefs,
+        promptAccepted,
         visibleReply: proof.visibleReply,
       });
       ledgerRecord = proof.ledgerRecord;
@@ -20040,7 +20221,7 @@ export class TeamProvisioningService {
 
   private asOpenCodeAttachmentPayload(meta: AttachmentMeta): AttachmentPayload | null {
     const data = (meta as Partial<AttachmentPayload>).data;
-    return typeof data === 'string' && data.length > 0
+    return typeof data === 'string'
       ? {
           ...meta,
           data,
@@ -20284,6 +20465,7 @@ export class TeamProvisioningService {
         const effectiveTaskRefs =
           existingRecord?.taskRefs ?? options.deliveryMetadata?.taskRefs ?? message.taskRefs ?? [];
         const effectiveSource = existingRecord?.source ?? options.source ?? 'watcher';
+        result.attempted += 1;
         const attachmentPayloads = await this.resolveOpenCodeInboxAttachmentPayloads({
           teamName,
           message,
@@ -20298,7 +20480,6 @@ export class TeamProvisioningService {
           };
           break;
         }
-        result.attempted += 1;
         const delivery = await this.deliverOpenCodeMemberMessage(teamName, {
           memberName,
           text: message.text,
