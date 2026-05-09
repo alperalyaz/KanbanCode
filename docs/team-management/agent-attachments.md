@@ -100,11 +100,15 @@ Latest local verification: 2026-05-09.
 | --- | --- | --- | --- |
 | Claude visual transport | `claude-subscription-streaming` | passed | Real Claude CLI `stream-json` run answered `red` for generated PNG. |
 | Codex visual transport | `codex-native-gpt-5-4-mini` | passed | Real Codex native `--image` run answered `red` for generated PNG. |
-| OpenCode OpenAI visual transport | `opencode-openai-gpt-5-4-mini` | passed | Real OpenCode file attachment run answered `red` for generated PNG. |
+| OpenCode OpenAI visual transport | `opencode-openai-gpt-5-4-mini` | blocked locally | The current local OpenCode OpenAI OAuth token is invalidated. The attachment path reached provider execution, but provider auth returned 401. |
+| OpenRouter Kimi visual transport | `opencode-openrouter-kimi-k2-6` | passed | Real OpenCode file attachment run through OpenRouter answered `red` for generated PNG. |
+| OpenRouter GLM vision transport | `opencode-openrouter-glm-4-5v` | passed | Real OpenCode file attachment run through OpenRouter answered `red` for generated PNG. |
+| OpenRouter GLM non-vision guard | `opencode-openrouter-glm-5-1-negative` | passed as guard | Model responded that it cannot process images. The app policy blocks this model for image attachments. |
 | CLI process launch | `scripts/prove-agent-cli-launch.mjs` | passed | Real `opencode`, `codex`, and `claude` binaries launched through `execCli` and `spawnCli`. |
 | OpenCode team provisioning | `scripts/prove-opencode-team-provisioning.mjs` with `OPENCODE_E2E_MODEL=openai/gpt-5.4-mini` | passed | Real pure OpenCode team created through `TeamProvisioningService`, live members verified, then stopped. |
-| OpenRouter Kimi/GLM visual transports | OpenRouter smoke cases | skipped | `OPENROUTER_API_KEY` was not present in the shell environment. |
-| Mixed Anthropic + Codex + OpenCode team launch | `MixedProviderTeamLaunch.live.test.ts` | not run | Requires `ANTHROPIC_API_KEY` and real app credentials in env. Do not paste secrets into commands or logs. |
+| Mixed Anthropic + Codex + OpenCode team launch | `MixedProviderTeamLaunch.live.test.ts` | passed | Real mixed team launch passed with Claude subscription auth, Codex subscription auth, and OpenCode. |
+
+`--all` can return non-zero when it includes a locally invalid provider auth case or an unsupported-model negative case. Treat the per-case rows above as the release signal.
 
 ## Release checklist
 

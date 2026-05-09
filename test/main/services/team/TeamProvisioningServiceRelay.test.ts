@@ -2249,7 +2249,7 @@ Messages:
     expect(rows.map((row: { read?: boolean }) => row.read)).toEqual([false, true]);
   });
 
-  it('fails OpenCode secondary rows with attachments terminally without text-only delivery', async () => {
+  it('fails OpenCode secondary rows with missing attachment payloads without text-only delivery', async () => {
     const service = new TeamProvisioningService();
     const teamName = 'my-team';
     hoisted.files.set(
@@ -2313,6 +2313,7 @@ Messages:
     const deliverSpy = vi.spyOn(service, 'deliverOpenCodeMemberMessage');
 
     const relay = await service.relayOpenCodeMemberInboxMessages(teamName, 'jack');
+    const expectedReason = 'opencode_inbox_attachment_payload_unavailable: att-1';
 
     expect(relay).toMatchObject({
       relayed: 0,
@@ -2321,20 +2322,18 @@ Messages:
       failed: 1,
       lastDelivery: {
         delivered: false,
-        reason: 'opencode_attachments_not_supported_for_secondary_runtime',
+        reason: expectedReason,
       },
     });
     expect(deliverSpy).not.toHaveBeenCalled();
-    expect(vi.mocked(console.warn).mock.calls[0]?.join(' ')).toContain(
-      'opencode_attachments_not_supported_for_secondary_runtime'
-    );
+    expect(relay.diagnostics?.join('\n')).toContain(expectedReason);
     vi.mocked(console.warn).mockClear();
     const rows = JSON.parse(hoisted.files.get(`/mock/teams/${teamName}/inboxes/jack.json`) ?? '[]');
     expect(rows[0].read).toBe(false);
     expect(records[0]).toMatchObject({
       inboxMessageId: 'opencode-attachment-1',
       status: 'failed_terminal',
-      lastReason: 'opencode_attachments_not_supported_for_secondary_runtime',
+      lastReason: expectedReason,
     });
   });
 

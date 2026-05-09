@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { readOpenCodeRuntimeLaneIndex } from '../../../../src/main/services/team/opencode/store/OpenCodeRuntimeManifestEvidenceReader';
 import {
+  getTasksBasePath,
   getTeamsBasePath,
   setClaudeBasePathOverride,
 } from '../../../../src/main/utils/pathDecoder';
@@ -30,7 +31,7 @@ const liveDescribe =
   process.env.MIXED_PROVIDER_TEAM_LIVE === '1' &&
   process.env.OPENCODE_E2E === '1' &&
   process.env.OPENCODE_E2E_USE_REAL_APP_CREDENTIALS === '1' &&
-  Boolean(process.env.ANTHROPIC_API_KEY?.trim())
+  (Boolean(process.env.ANTHROPIC_API_KEY?.trim()) || shouldUseAnthropicSubscriptionAuth())
     ? describe
     : describe.skip;
 
@@ -49,6 +50,9 @@ liveDescribe('Mixed provider team launch live e2e', () => {
   let previousCodexHome: string | undefined;
   let previousHome: string | undefined;
   let previousUserProfile: string | undefined;
+  let previousAnthropicApiKey: string | undefined;
+  let previousAnthropicAuthToken: string | undefined;
+  let previousClaudeJsonConfig: string | null | undefined;
   let previousNodeEnv: string | undefined;
   let previousDisableAppBootstrap: string | undefined;
   let previousDisableRuntimeBootstrap: string | undefined;
@@ -58,13 +62,19 @@ liveDescribe('Mixed provider team launch live e2e', () => {
   let providerConnectionService: {
     setCodexAccountFeature(feature: { getSnapshot(): Promise<unknown> } | null): void;
   } | null;
+  let usingAnthropicSubscriptionAuth = false;
 
   beforeEach(async () => {
+    usingAnthropicSubscriptionAuth = shouldUseAnthropicSubscriptionAuth();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mixed-provider-team-live-'));
-    tempClaudeRoot = path.join(tempDir, '.claude');
+    tempClaudeRoot = usingAnthropicSubscriptionAuth
+      ? os.userInfo().homedir
+      : path.join(tempDir, '.claude');
     tempHome = path.join(tempDir, 'home');
     projectPath = path.join(tempDir, 'project');
-    await fs.mkdir(tempClaudeRoot, { recursive: true });
+    if (!usingAnthropicSubscriptionAuth) {
+      await fs.mkdir(tempClaudeRoot, { recursive: true });
+    }
     await fs.mkdir(tempHome, { recursive: true });
     await fs.mkdir(projectPath, { recursive: true });
     await fs.writeFile(
@@ -72,14 +82,28 @@ liveDescribe('Mixed provider team launch live e2e', () => {
       '# Mixed provider team live e2e\n\nThis project is intentionally tiny.\n',
       'utf8'
     );
-    await writeTrustedClaudeConfig(tempClaudeRoot, projectPath);
-    setClaudeBasePathOverride(tempClaudeRoot);
+    if (usingAnthropicSubscriptionAuth) {
+      // Claude subscription/OAuth is tied to the user's normal Claude config/keychain namespace.
+      // Do not point CLAUDE_CONFIG_DIR at an isolated temp dir in this mode or the live smoke
+      // will test a different auth namespace than the app/runtime actually uses.
+      setClaudeBasePathOverride(null);
+      previousClaudeJsonConfig = await upsertTrustedClaudeProjectConfig(
+        tempClaudeRoot,
+        projectPath
+      );
+    } else {
+      await writeTrustedClaudeConfig(tempClaudeRoot, projectPath);
+      setClaudeBasePathOverride(tempClaudeRoot);
+      previousClaudeJsonConfig = undefined;
+    }
 
     previousCliPath = process.env.CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH;
     previousCliFlavor = process.env.CLAUDE_TEAM_CLI_FLAVOR;
     previousCodexHome = process.env.CODEX_HOME;
     previousHome = process.env.HOME;
     previousUserProfile = process.env.USERPROFILE;
+    previousAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
+    previousAnthropicAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
     previousNodeEnv = process.env.NODE_ENV;
     previousDisableAppBootstrap = process.env.CLAUDE_APP_DISABLE_DETERMINISTIC_TEAM_BOOTSTRAP;
     previousDisableRuntimeBootstrap = process.env.CLAUDE_DISABLE_DETERMINISTIC_TEAM_BOOTSTRAP;
@@ -88,8 +112,12 @@ liveDescribe('Mixed provider team launch live e2e', () => {
       process.env.CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH?.trim() || DEFAULT_ORCHESTRATOR_CLI;
     process.env.CLAUDE_TEAM_CLI_FLAVOR = 'agent_teams_orchestrator';
     process.env.CODEX_HOME = resolveConnectedCodexHome(previousCodexHome);
-    process.env.HOME = tempHome;
-    process.env.USERPROFILE = tempHome;
+    process.env.HOME = usingAnthropicSubscriptionAuth ? os.userInfo().homedir : tempHome;
+    process.env.USERPROFILE = usingAnthropicSubscriptionAuth ? os.userInfo().homedir : tempHome;
+    if (usingAnthropicSubscriptionAuth) {
+      delete process.env.ANTHROPIC_API_KEY;
+      delete process.env.ANTHROPIC_AUTH_TOKEN;
+    }
     process.env.NODE_ENV = 'production';
     delete process.env.CLAUDE_APP_DISABLE_DETERMINISTIC_TEAM_BOOTSTRAP;
     delete process.env.CLAUDE_DISABLE_DETERMINISTIC_TEAM_BOOTSTRAP;
@@ -106,10 +134,17 @@ liveDescribe('Mixed provider team launch live e2e', () => {
       await harness.svc.stopTeam(teamName).catch(() => undefined);
       await waitForOpenCodeLanesStopped(teamName, 90_000).catch(() => undefined);
     }
+    if (!keepProcesses && usingAnthropicSubscriptionAuth && teamName) {
+      await fs.rm(path.join(getTeamsBasePath(), teamName), { recursive: true, force: true });
+      await fs.rm(path.join(getTasksBasePath(), teamName), { recursive: true, force: true });
+    }
     providerConnectionService?.setCodexAccountFeature(null);
     await codexAccountFeature?.dispose().catch(() => undefined);
     if (!keepProcesses) {
       await harness?.dispose().catch(() => undefined);
+    }
+    if (usingAnthropicSubscriptionAuth && previousClaudeJsonConfig !== undefined) {
+      await restoreClaudeJsonConfig(tempClaudeRoot, previousClaudeJsonConfig);
     }
     setClaudeBasePathOverride(null);
 
@@ -118,6 +153,8 @@ liveDescribe('Mixed provider team launch live e2e', () => {
     restoreEnv('CODEX_HOME', previousCodexHome);
     restoreEnv('HOME', previousHome);
     restoreEnv('USERPROFILE', previousUserProfile);
+    restoreEnv('ANTHROPIC_API_KEY', previousAnthropicApiKey);
+    restoreEnv('ANTHROPIC_AUTH_TOKEN', previousAnthropicAuthToken);
     restoreEnv('NODE_ENV', previousNodeEnv);
     restoreEnv('CLAUDE_APP_DISABLE_DETERMINISTIC_TEAM_BOOTSTRAP', previousDisableAppBootstrap);
     restoreEnv('CLAUDE_DISABLE_DETERMINISTIC_TEAM_BOOTSTRAP', previousDisableRuntimeBootstrap);
@@ -135,7 +172,7 @@ liveDescribe('Mixed provider team launch live e2e', () => {
       const orchestratorCli = process.env.CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH?.trim();
       expect(orchestratorCli).toBeTruthy();
       await assertExecutable(orchestratorCli!);
-      await assertExecutable(path.join(process.env.CODEX_HOME!, 'auth.json'));
+      await assertCodexSubscriptionAuthAvailable(process.env.CODEX_HOME!);
 
       const anthropicModel =
         process.env.MIXED_PROVIDER_TEAM_ANTHROPIC_MODEL?.trim() || DEFAULT_ANTHROPIC_MODEL;
@@ -278,8 +315,102 @@ function restoreEnv(name: string, previous: string | undefined): void {
   }
 }
 
+function shouldUseAnthropicSubscriptionAuth(): boolean {
+  const mode = process.env.MIXED_PROVIDER_TEAM_ANTHROPIC_AUTH?.trim().toLowerCase();
+  return mode === 'subscription' || mode === 'oauth';
+}
+
 async function assertExecutable(filePath: string): Promise<void> {
   await fs.access(filePath, fsConstants.R_OK);
+}
+
+async function assertCodexSubscriptionAuthAvailable(codexHome: string): Promise<void> {
+  const legacyAuthPath = path.join(codexHome, 'auth.json');
+  if (await pathReadable(legacyAuthPath)) {
+    const legacyAuth = await readJsonObject(legacyAuthPath);
+    if (isCodexChatGptSubscriptionAuth(legacyAuth)) {
+      return;
+    }
+  }
+
+  const accountsDir = path.join(codexHome, 'accounts');
+  const registryPath = path.join(accountsDir, 'registry.json');
+  const registry = await readJsonObject(registryPath).catch(() => null);
+  const activeAccountId =
+    readStringProperty(registry, 'active_account_id') ??
+    readStringProperty(registry, 'activeAccountId') ??
+    readStringProperty(registry, 'current_account_id') ??
+    readStringProperty(registry, 'currentAccountId');
+
+  const candidates = new Set<string>();
+  if (activeAccountId) {
+    candidates.add(path.join(accountsDir, `${activeAccountId}.auth.json`));
+    candidates.add(path.join(accountsDir, activeAccountId));
+  }
+  const entries = await fs.readdir(accountsDir).catch(() => []);
+  for (const entry of entries) {
+    if (entry.endsWith('.auth.json')) {
+      candidates.add(path.join(accountsDir, entry));
+    }
+  }
+
+  for (const candidate of candidates) {
+    const auth = await readJsonObject(candidate).catch(() => null);
+    if (isCodexChatGptSubscriptionAuth(auth)) {
+      return;
+    }
+  }
+
+  throw new Error(
+    `Codex subscription auth not found in ${codexHome}. Expected auth.json or accounts/*.auth.json with a refresh token.`
+  );
+}
+
+async function pathReadable(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath, fsConstants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readJsonObject(filePath: string): Promise<Record<string, unknown>> {
+  const parsed = JSON.parse(await fs.readFile(filePath, 'utf8'));
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`Expected JSON object in ${filePath}`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function readStringProperty(source: Record<string, unknown> | null, key: string): string | null {
+  const value = source?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function hasCodexRefreshToken(source: Record<string, unknown> | null): boolean {
+  const direct = readStringProperty(source, 'refresh_token');
+  const tokens = source?.tokens;
+  const nested =
+    tokens && typeof tokens === 'object' && !Array.isArray(tokens)
+      ? readStringProperty(tokens as Record<string, unknown>, 'refresh_token')
+      : null;
+  return Boolean(direct || nested);
+}
+
+function isCodexChatGptSubscriptionAuth(source: Record<string, unknown> | null): boolean {
+  if (!source || !hasCodexRefreshToken(source)) {
+    return false;
+  }
+  const authMode =
+    readStringProperty(source, 'auth_mode') ??
+    readStringProperty(source, 'authMode') ??
+    readStringProperty(source, 'mode');
+  if (!authMode) {
+    // New account files may omit an explicit mode. A refresh token is the stable OAuth signal.
+    return true;
+  }
+  return authMode.toLowerCase() === 'chatgpt';
 }
 
 async function writeTrustedClaudeConfig(configDir: string, projectPath: string): Promise<void> {
@@ -307,6 +438,69 @@ async function writeTrustedClaudeConfig(configDir: string, projectPath: string):
     `${JSON.stringify(config, null, 2)}\n`,
     'utf8'
   );
+}
+
+async function upsertTrustedClaudeProjectConfig(
+  configDir: string,
+  projectPath: string
+): Promise<string | null> {
+  const configPath = path.join(configDir, '.claude.json');
+  const previous = await fs.readFile(configPath, 'utf8').catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  });
+  const existing = parseJsonObject(previous) ?? {};
+  const canonicalProjectPath = await fs.realpath(projectPath).catch(() => projectPath);
+  const normalizedProjectPath = path.normalize(canonicalProjectPath).replace(/\\/g, '/');
+  const projects =
+    existing.projects && typeof existing.projects === 'object' && !Array.isArray(existing.projects)
+      ? { ...(existing.projects as Record<string, unknown>) }
+      : {};
+  const currentProject =
+    projects[normalizedProjectPath] &&
+    typeof projects[normalizedProjectPath] === 'object' &&
+    !Array.isArray(projects[normalizedProjectPath])
+      ? (projects[normalizedProjectPath] as Record<string, unknown>)
+      : {};
+  projects[normalizedProjectPath] = {
+    ...currentProject,
+    hasTrustDialogAccepted: true,
+  };
+  await fs.mkdir(configDir, { recursive: true });
+  await fs.writeFile(
+    configPath,
+    `${JSON.stringify(
+      {
+        ...existing,
+        projects,
+      },
+      null,
+      2
+    )}\n`,
+    'utf8'
+  );
+  return previous;
+}
+
+async function restoreClaudeJsonConfig(configDir: string, previous: string | null): Promise<void> {
+  const configPath = path.join(configDir, '.claude.json');
+  if (previous === null) {
+    await fs.rm(configPath, { force: true });
+    return;
+  }
+  await fs.writeFile(configPath, previous, 'utf8');
+}
+
+function parseJsonObject(raw: string | null): Record<string, unknown> | null {
+  if (!raw) {
+    return null;
+  }
+  const parsed = JSON.parse(raw);
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : null;
 }
 
 function resolveConnectedCodexHome(previousCodexHome: string | undefined): string {

@@ -20471,11 +20471,68 @@ export class TeamProvisioningService {
           message,
         });
         if (!attachmentPayloads.ok) {
+          let failedRecord: OpenCodePromptDeliveryLedgerRecord | null = null;
+          try {
+            const markedAt = nowIso();
+            const pendingRecord =
+              existingRecord ??
+              (await promptLedger.ensurePending({
+                teamName,
+                memberName: memberIdentity.canonicalMemberName,
+                laneId: memberIdentity.laneId,
+                runId: await this.resolveCurrentOpenCodeRuntimeRunId(
+                  teamName,
+                  memberIdentity.laneId
+                ),
+                inboxMessageId: message.messageId,
+                inboxTimestamp: message.timestamp,
+                source: effectiveSource,
+                replyRecipient: effectiveReplyRecipient,
+                actionMode: effectiveActionMode ?? null,
+                messageKind: message.messageKind ?? null,
+                taskRefs: effectiveTaskRefs,
+                payloadHash: hashOpenCodePromptDeliveryPayload({
+                  text: message.text,
+                  replyRecipient: effectiveReplyRecipient,
+                  actionMode: effectiveActionMode ?? null,
+                  taskRefs: effectiveTaskRefs,
+                  attachments: message.attachments,
+                  source: effectiveSource,
+                }),
+                now: markedAt,
+              }));
+            if (pendingRecord.createdAt === markedAt) {
+              this.logOpenCodePromptDeliveryEvent(
+                'opencode_prompt_delivery_ledger_created',
+                pendingRecord
+              );
+            }
+            failedRecord = await promptLedger.markFailedTerminal({
+              id: pendingRecord.id,
+              reason: attachmentPayloads.reason,
+              diagnostics: attachmentPayloads.diagnostics,
+              failedAt: nowIso(),
+            });
+            this.logOpenCodePromptDeliveryEvent(
+              'opencode_prompt_delivery_response_observed',
+              failedRecord,
+              { attachmentPayloadUnavailable: true }
+            );
+          } catch (error) {
+            const diagnostic = `opencode_inbox_attachment_terminal_ledger_failed: ${getErrorMessage(
+              error
+            )}`;
+            result.diagnostics = [...(result.diagnostics ?? []), diagnostic];
+          }
           result.failed += 1;
           result.diagnostics = [...(result.diagnostics ?? []), ...attachmentPayloads.diagnostics];
           result.lastDelivery = {
             delivered: false,
             reason: attachmentPayloads.reason,
+            accepted: false,
+            ledgerStatus: failedRecord?.status,
+            ledgerRecordId: failedRecord?.id,
+            laneId: memberIdentity.laneId,
             diagnostics: attachmentPayloads.diagnostics,
           };
           break;
