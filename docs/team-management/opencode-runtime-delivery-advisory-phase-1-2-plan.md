@@ -1112,7 +1112,25 @@ case 'invalidateMemberRuntimeAdvisory':
   };
 ```
 
-When the worker handles `invalidateTeamConfig`, clear runtime advisories for that team too. Team config changes can change the member roster, provider, model, or lane metadata, and a cached advisory from the previous shape should not survive a config invalidation:
+When `forwardTeamChange` handles config/meta changes, clear runtime advisories in both main and worker services. Team config changes can change the member roster, provider, model, cwd, lane metadata, or removed status, and a cached advisory from the previous shape should not survive a config invalidation.
+
+Main thread:
+
+```ts
+if (
+  event.type === 'config' &&
+  (event.detail === 'config.json' ||
+    event.detail === 'team.meta.json' ||
+    event.detail === 'members.meta.json')
+) {
+  teamMemberRuntimeAdvisoryService.invalidateTeamAdvisories(event.teamName);
+  getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(event.teamName);
+}
+```
+
+Do not call both `teamMemberRuntimeAdvisoryService.invalidateTeamAdvisories()` and `teamDataService.invalidateTeamRuntimeAdvisories()` in the current main wiring if they point at the same service instance. Pick one path to avoid double generation bumps in tests. The public `TeamDataService` invalidator still exists for worker and future encapsulated callers.
+
+Worker:
 
 ```ts
 case 'invalidateTeamConfig': {
@@ -1284,6 +1302,7 @@ Cases:
 ```ts
 it('posts invalidateMemberRuntimeAdvisory to the worker', async () => {});
 it('clears worker-side member runtime advisory cache on invalidateMemberRuntimeAdvisory', async () => {});
+it('clears main-thread advisory cache during config/team.meta/members.meta forwarding', async () => {});
 it('clears worker-side advisory cache during invalidateTeamConfig', async () => {});
 it('invalidates worker advisory cache before forwarding member-advisory events to the renderer', async () => {});
 it('summarizes invalidateMemberRuntimeAdvisory worker requests in diagnostics', async () => {});
