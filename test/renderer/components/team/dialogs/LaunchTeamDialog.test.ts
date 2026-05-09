@@ -671,6 +671,194 @@ describe('LaunchTeamDialog', () => {
     });
   });
 
+  it('does not submit a stale Anthropic context limit after the last Anthropic runtime is removed', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    vi.mocked(isTeamModelAvailableForUi).mockImplementation(() => true);
+    storeState.cliStatus = {
+      flavor: 'agent_teams_orchestrator',
+      providers: [
+        {
+          providerId: 'codex',
+          supported: true,
+          authenticated: true,
+          verificationState: 'verified',
+          selectedBackendId: 'codex-native',
+          resolvedBackendId: 'codex-native',
+          models: ['gpt-5.4'],
+          capabilities: { teamLaunch: true, oneShot: true },
+        },
+        {
+          providerId: 'anthropic',
+          supported: true,
+          authenticated: true,
+          verificationState: 'verified',
+          models: ['sonnet'],
+          capabilities: { teamLaunch: true, oneShot: true },
+        },
+      ],
+    } as any;
+    vi.mocked(api.teams.getSavedRequest).mockResolvedValueOnce({
+      teamName: 'team-alpha',
+      cwd: '/tmp/project',
+      providerId: 'codex',
+      model: 'gpt-5.4',
+      limitContext: true,
+      members: [
+        {
+          name: 'alice',
+          role: 'Reviewer',
+          providerId: 'anthropic',
+          model: 'sonnet',
+        },
+      ],
+    } as any);
+    const onLaunch = vi.fn<(request: { limitContext?: boolean }) => Promise<void>>(async () => {});
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(LaunchTeamDialog, {
+          mode: 'launch',
+          open: true,
+          teamName: 'team-alpha',
+          members: [],
+          defaultProjectPath: '/tmp/project',
+          provisioningError: null,
+          clearProvisioningError: vi.fn(),
+          activeTeams: [],
+          onClose: vi.fn(),
+          onLaunch,
+        })
+      );
+      await flush();
+      await flush();
+    });
+
+    expect(teamRosterEditorSectionMock.lastProps?.limitContext).toBe(true);
+
+    await act(async () => {
+      teamRosterEditorSectionMock.lastProps?.onMembersChange([
+        {
+          id: 'draft-0',
+          name: 'alice',
+          originalName: 'alice',
+          roleSelection: '',
+          customRole: 'Reviewer',
+          workflow: '',
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          model: 'gpt-5.4',
+        },
+      ]);
+      await flush();
+    });
+
+    expect(teamRosterEditorSectionMock.lastProps?.limitContext).toBe(false);
+
+    const submitButton = Array.from(host.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Launch team'
+    );
+    expect(submitButton).toBeTruthy();
+
+    await act(async () => {
+      submitButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flush();
+      await flush();
+    });
+
+    expect(onLaunch).toHaveBeenCalledTimes(1);
+    const launchRequest = onLaunch.mock.calls[0]?.[0] as { limitContext?: boolean } | undefined;
+    expect(launchRequest?.limitContext).toBe(false);
+
+    await act(async () => {
+      root.unmount();
+      await flush();
+    });
+  });
+
+  it('preserves the Anthropic context limit when the lead changes but Anthropic teammates remain', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    vi.mocked(isTeamModelAvailableForUi).mockImplementation(() => true);
+    storeState.cliStatus = {
+      flavor: 'agent_teams_orchestrator',
+      providers: [
+        {
+          providerId: 'codex',
+          supported: true,
+          authenticated: true,
+          verificationState: 'verified',
+          selectedBackendId: 'codex-native',
+          resolvedBackendId: 'codex-native',
+          models: ['gpt-5.4'],
+          capabilities: { teamLaunch: true, oneShot: true },
+        },
+        {
+          providerId: 'anthropic',
+          supported: true,
+          authenticated: true,
+          verificationState: 'verified',
+          models: ['sonnet'],
+          capabilities: { teamLaunch: true, oneShot: true },
+        },
+      ],
+    } as any;
+    vi.mocked(api.teams.getSavedRequest).mockResolvedValueOnce({
+      teamName: 'team-alpha',
+      cwd: '/tmp/project',
+      providerId: 'anthropic',
+      model: 'sonnet',
+      limitContext: true,
+      members: [
+        {
+          name: 'alice',
+          role: 'Reviewer',
+          providerId: 'anthropic',
+          model: 'sonnet',
+        },
+      ],
+    } as any);
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(LaunchTeamDialog, {
+          mode: 'launch',
+          open: true,
+          teamName: 'team-alpha',
+          members: [],
+          defaultProjectPath: '/tmp/project',
+          provisioningError: null,
+          clearProvisioningError: vi.fn(),
+          activeTeams: [],
+          onClose: vi.fn(),
+          onLaunch: vi.fn(async () => {}),
+        })
+      );
+      await flush();
+      await flush();
+    });
+
+    expect(teamRosterEditorSectionMock.lastProps?.limitContext).toBe(true);
+
+    await act(async () => {
+      teamRosterEditorSectionMock.lastProps?.onProviderChange('codex');
+      await flush();
+    });
+
+    expect(teamRosterEditorSectionMock.lastProps?.limitContext).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+      await flush();
+    });
+  });
+
   it('submits relaunch through onRelaunch without replacing members in-dialog', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 

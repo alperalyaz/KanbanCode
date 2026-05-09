@@ -43,6 +43,13 @@ describe('isValidFilePath', () => {
     expect(isValidFilePath('  /tmp/file.txt  ')).toBe(true);
     expect(isValidFilePath('  null  ')).toBe(false);
   });
+
+  it('rejects null-device paths', () => {
+    expect(isValidFilePath('/dev/null')).toBe(false);
+    expect(isValidFilePath('/dev/null;')).toBe(false);
+    expect(isValidFilePath('C:/NUL')).toBe(false);
+    expect(isValidFilePath('//./NUL')).toBe(false);
+  });
 });
 
 describe('estimateBashLinesChanged', () => {

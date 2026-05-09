@@ -19,6 +19,7 @@ import {
   REVIEW_GET_FILE_CONTENT,
   REVIEW_GET_GIT_FILE_LOG,
   REVIEW_GET_TASK_CHANGES,
+  REVIEW_GET_TEAM_TASK_CHANGE_SUMMARIES,
   REVIEW_INVALIDATE_TASK_CHANGE_SUMMARIES,
   REVIEW_LOAD_DECISIONS,
   REVIEW_PREVIEW_REJECT,
@@ -49,7 +50,10 @@ import type {
   HunkDecision,
   RejectResult,
   SnippetDiff,
+  TaskChangeRequestOptions,
   TaskChangeSetV2,
+  TeamTaskChangeSummariesResponse,
+  TeamTaskChangeSummaryRequest,
 } from '@shared/types/review';
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
 
@@ -102,6 +106,7 @@ export function registerReviewHandlers(ipcMain: IpcMain): void {
   // Phase 1
   ipcMain.handle(REVIEW_GET_AGENT_CHANGES, handleGetAgentChanges);
   ipcMain.handle(REVIEW_GET_TASK_CHANGES, handleGetTaskChanges);
+  ipcMain.handle(REVIEW_GET_TEAM_TASK_CHANGE_SUMMARIES, handleGetTeamTaskChangeSummaries);
   ipcMain.handle(REVIEW_INVALIDATE_TASK_CHANGE_SUMMARIES, handleInvalidateTaskChangeSummaries);
   ipcMain.handle(REVIEW_GET_CHANGE_STATS, handleGetChangeStats);
   // Phase 2
@@ -127,6 +132,7 @@ export function removeReviewHandlers(ipcMain: IpcMain): void {
   // Phase 1
   ipcMain.removeHandler(REVIEW_GET_AGENT_CHANGES);
   ipcMain.removeHandler(REVIEW_GET_TASK_CHANGES);
+  ipcMain.removeHandler(REVIEW_GET_TEAM_TASK_CHANGE_SUMMARIES);
   ipcMain.removeHandler(REVIEW_INVALIDATE_TASK_CHANGE_SUMMARIES);
   ipcMain.removeHandler(REVIEW_GET_CHANGE_STATS);
   // Phase 2
@@ -166,55 +172,76 @@ async function handleGetAgentChanges(
   );
 }
 
+function sanitizeTaskChangeOptions(options?: unknown): TaskChangeRequestOptions | undefined {
+  if (!options || typeof options !== 'object') {
+    return undefined;
+  }
+
+  const raw = options as Record<string, unknown>;
+  return {
+    owner: typeof raw.owner === 'string' ? raw.owner : undefined,
+    status: typeof raw.status === 'string' ? raw.status : undefined,
+    since: typeof raw.since === 'string' ? raw.since : undefined,
+    intervals: Array.isArray(raw.intervals)
+      ? (raw.intervals.filter(
+          (i): i is { startedAt: string; completedAt?: string } =>
+            Boolean(i) &&
+            typeof i === 'object' &&
+            typeof (i as Record<string, unknown>).startedAt === 'string' &&
+            ((i as Record<string, unknown>).completedAt === undefined ||
+              typeof (i as Record<string, unknown>).completedAt === 'string')
+        ) as { startedAt: string; completedAt?: string }[])
+      : undefined,
+    stateBucket:
+      raw.stateBucket === 'approved' ||
+      raw.stateBucket === 'review' ||
+      raw.stateBucket === 'completed' ||
+      raw.stateBucket === 'active'
+        ? raw.stateBucket
+        : undefined,
+    summaryOnly: raw.summaryOnly === true,
+    forceFresh: raw.forceFresh === true,
+  };
+}
+
 async function handleGetTaskChanges(
   _event: IpcMainInvokeEvent,
   teamName: string,
   taskId: string,
   options?: unknown
 ): Promise<IpcResult<TaskChangeSetV2>> {
-  const opts =
-    options && typeof options === 'object'
-      ? {
-          owner:
-            typeof (options as Record<string, unknown>).owner === 'string'
-              ? ((options as Record<string, unknown>).owner as string)
-              : undefined,
-          status:
-            typeof (options as Record<string, unknown>).status === 'string'
-              ? ((options as Record<string, unknown>).status as string)
-              : undefined,
-          since:
-            typeof (options as Record<string, unknown>).since === 'string'
-              ? ((options as Record<string, unknown>).since as string)
-              : undefined,
-          intervals: Array.isArray((options as Record<string, unknown>).intervals)
-            ? (((options as Record<string, unknown>).intervals as unknown[]).filter(
-                (i): i is { startedAt: string; completedAt?: string } =>
-                  Boolean(i) &&
-                  typeof i === 'object' &&
-                  typeof (i as Record<string, unknown>).startedAt === 'string' &&
-                  ((i as Record<string, unknown>).completedAt === undefined ||
-                    typeof (i as Record<string, unknown>).completedAt === 'string')
-              ) as { startedAt: string; completedAt?: string }[])
-            : undefined,
-          stateBucket:
-            (options as Record<string, unknown>).stateBucket === 'approved' ||
-            (options as Record<string, unknown>).stateBucket === 'review' ||
-            (options as Record<string, unknown>).stateBucket === 'completed' ||
-            (options as Record<string, unknown>).stateBucket === 'active'
-              ? ((options as Record<string, unknown>).stateBucket as
-                  | 'approved'
-                  | 'review'
-                  | 'completed'
-                  | 'active')
-              : undefined,
-          summaryOnly: (options as Record<string, unknown>).summaryOnly === true,
-          forceFresh: (options as Record<string, unknown>).forceFresh === true,
-        }
-      : undefined;
+  const opts = sanitizeTaskChangeOptions(options);
 
   return wrapReviewHandler('getTaskChanges', () =>
     getChangeExtractor().getTaskChanges(teamName, taskId, opts)
+  );
+}
+
+async function handleGetTeamTaskChangeSummaries(
+  _event: IpcMainInvokeEvent,
+  teamName: string,
+  requests: unknown
+): Promise<IpcResult<TeamTaskChangeSummariesResponse>> {
+  const sanitizedRequests: TeamTaskChangeSummaryRequest[] = Array.isArray(requests)
+    ? requests
+        .map((request): TeamTaskChangeSummaryRequest | null => {
+          if (!request || typeof request !== 'object') {
+            return null;
+          }
+          const raw = request as Record<string, unknown>;
+          if (typeof raw.taskId !== 'string' || raw.taskId.trim().length === 0) {
+            return null;
+          }
+          return {
+            taskId: raw.taskId.trim(),
+            options: sanitizeTaskChangeOptions(raw.options),
+          };
+        })
+        .filter((request): request is TeamTaskChangeSummaryRequest => request !== null)
+    : [];
+
+  return wrapReviewHandler('getTeamTaskChangeSummaries', () =>
+    getChangeExtractor().getTeamTaskChangeSummaries(teamName, sanitizedRequests)
   );
 }
 

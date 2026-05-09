@@ -120,7 +120,8 @@ export function formatTeamModelSummary(
  * Computes the effective model string for team provisioning.
  * By default adds [1m] suffix for Opus 1M context.
  * When limitContext=true, returns base model without [1m] (200K context).
- * Sonnet and Haiku default to standard context to avoid extra-usage-only variants.
+ * Standard Sonnet and Haiku selections stay standard context. Explicit Sonnet 1M selections keep
+ * their [1m] suffix unless the 200K limit is enabled.
  */
 export function computeEffectiveTeamModel(
   selectedModel: string,

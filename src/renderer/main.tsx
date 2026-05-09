@@ -91,6 +91,11 @@ function renderStartupTimeline(status: AppStartupStatus): void {
   const timeline = document.getElementById('splash-timeline');
   if (!timeline) return;
 
+  if (!status.error) {
+    timeline.replaceChildren();
+    return;
+  }
+
   const steps = (status.steps ?? []).slice(-TIMELINE_STEP_LIMIT);
   timeline.replaceChildren();
 
@@ -109,7 +114,8 @@ function renderStartupTimeline(status: AppStartupStatus): void {
 
     const time = document.createElement('div');
     time.className = 'splash-step-time';
-    time.textContent = formatDuration(getStepElapsedMs(step, status));
+    const elapsed = formatDuration(getStepElapsedMs(step, status));
+    time.textContent = step.finishedAt ? `took ${elapsed}` : `running ${elapsed}`;
 
     row.append(dot, label, time);
     timeline.append(row);

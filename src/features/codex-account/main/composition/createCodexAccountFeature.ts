@@ -159,6 +159,10 @@ function asRateLimits(
   };
 }
 
+function hasVisibleRateLimitData(snapshot: CodexRateLimitSnapshotDto | null): boolean {
+  return Boolean(snapshot?.primary || snapshot?.secondary || snapshot?.credits);
+}
+
 function createRuntimeContext(
   binaryPath: string | null | undefined,
   codexHome: string | null | undefined
@@ -507,6 +511,7 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
     const shouldRequestRateLimits =
       options?.includeRateLimits === true && !cachedRateLimitsAreFresh;
     let rateLimitsReadFailure: unknown | null = null;
+    let rateLimitsReadReturnedEmpty = false;
 
     try {
       const accountResult = await this.appServerClient.readAccountSnapshot({
@@ -542,11 +547,18 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
         };
       }
       if (accountResult.rateLimits?.ok) {
-        this.lastKnownRateLimits = {
-          payload: accountResult.rateLimits.payload,
-          observedAt: now,
-          accountSignature: getCodexAccountSignature(accountResult.account.account),
-        };
+        const nextRateLimits = asRateLimits(accountResult.rateLimits.payload.rateLimits);
+        if (hasVisibleRateLimitData(nextRateLimits)) {
+          this.lastKnownRateLimits = {
+            payload: accountResult.rateLimits.payload,
+            observedAt: now,
+            accountSignature:
+              getCodexAccountSignature(accountResult.account.account) ??
+              getCodexAccountSignature(accountPayload?.account ?? null),
+          };
+        } else {
+          rateLimitsReadReturnedEmpty = true;
+        }
       } else if (accountResult.rateLimits) {
         rateLimitsReadFailure = accountResult.rateLimits.error;
       }
@@ -587,13 +599,15 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
     if (shouldLoadRateLimits) {
       if (this.hasFreshRateLimits(now) && reusableLastKnownRateLimits) {
         rateLimits = asRateLimits(reusableLastKnownRateLimits.payload.rateLimits);
-      } else if (rateLimitsReadFailure) {
-        this.logger.warn('codex account rate limits refresh failed', {
-          error:
-            rateLimitsReadFailure instanceof Error
-              ? rateLimitsReadFailure.message
-              : String(rateLimitsReadFailure),
-        });
+      } else if (rateLimitsReadFailure || rateLimitsReadReturnedEmpty) {
+        if (rateLimitsReadFailure) {
+          this.logger.warn('codex account rate limits refresh failed', {
+            error:
+              rateLimitsReadFailure instanceof Error
+                ? rateLimitsReadFailure.message
+                : String(rateLimitsReadFailure),
+          });
+        }
         if (reusableLastKnownRateLimits) {
           rateLimits = asRateLimits(reusableLastKnownRateLimits.payload.rateLimits);
         }

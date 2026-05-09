@@ -546,6 +546,22 @@ describe('TeamProvisioningService pre-ready live messages', () => {
     );
   });
 
+  it('suppresses bare transcript speaker placeholders from lead thought output', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const emitter = vi.fn<(event: TeamChangeEvent) => void>();
+    service.setTeamChangeEmitter(emitter);
+    const run = attachRun(service, 'my-team', { provisioningComplete: true });
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Human: ' }],
+    });
+
+    expect(service.getLiveLeadProcessMessages('my-team')).toHaveLength(0);
+    expect(emitter).not.toHaveBeenCalled();
+  });
+
   it('SendMessage(to:teammate) creates inbox row and emits inbox detail for recipient', () => {
     const service = new TeamProvisioningService();
     seedConfig('my-team');
@@ -620,6 +636,34 @@ describe('TeamProvisioningService pre-ready live messages', () => {
         detail: 'sentMessages.json',
       })
     );
+  });
+
+  it('canonicalizes capitalized SendMessage user recipients before persistence', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const run = attachRun(service, 'my-team', { provisioningComplete: true });
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [
+        {
+          type: 'tool_use',
+          name: 'SendMessage',
+          input: {
+            type: 'message',
+            recipient: 'User',
+            content: 'Task completed!',
+            summary: 'Done',
+          },
+        },
+      ],
+    });
+
+    expect(hoisted.appendSentMessage).toHaveBeenCalledWith(
+      'my-team',
+      expect.objectContaining({ to: 'user' })
+    );
+    expect(hoisted.sendInboxMessage).not.toHaveBeenCalled();
   });
 
   it('upgrades qualified SendMessage recipients into cross-team sends', async () => {

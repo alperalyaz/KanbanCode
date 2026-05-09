@@ -14,7 +14,12 @@ vi.mock('@renderer/components/team/dialogs/EffortLevelSelector', () => ({
 }));
 
 vi.mock('@renderer/components/team/dialogs/LimitContextCheckbox', () => ({
-  LimitContextCheckbox: () => React.createElement('div', null, 'limit-context'),
+  LimitContextCheckbox: ({ disabled, scopeLabel }: { disabled?: boolean; scopeLabel?: string }) =>
+    React.createElement(
+      'div',
+      null,
+      ['limit-context', scopeLabel, disabled ? 'disabled' : 'enabled'].filter(Boolean).join(' ')
+    ),
 }));
 
 vi.mock('@renderer/components/team/dialogs/TeamModelSelector', () => ({
@@ -55,8 +60,8 @@ vi.mock('@renderer/hooks/useTheme', () => ({
 
 vi.mock('@renderer/utils/teamModelCatalog', () => ({
   isAnthropicHaikuTeamModel: () => false,
-  isAnthropicSonnetTeamModel: (model: string | undefined) =>
-    model === 'sonnet' || model === 'claude-sonnet-4-6' || model === 'sonnet[1m]',
+  isAnthropicSonnetOneMillionContextTeamModel: (model: string | undefined) =>
+    model === 'sonnet[1m]' || model === 'claude-sonnet-4-6' || model === 'claude-sonnet-4-6[1m]',
 }));
 
 vi.mock('../../ui/button', () => ({
@@ -135,15 +140,16 @@ describe('LeadModelRow', () => {
     });
   });
 
-  it('warns that unchecked 200K limit can put Sonnet on Anthropic Extra Usage', () => {
+  it('warns that unchecked 200K limit can affect Sonnet 1M billing by plan/runtime', () => {
     const { host, root } = renderLeadModelRow({
       providerId: 'anthropic',
-      model: 'sonnet',
+      model: 'sonnet[1m]',
       limitContext: false,
     });
 
-    expect(host.textContent).toContain('Sonnet with 1M context can use Anthropic Extra Usage');
-    expect(host.textContent).toContain('Requests over 200K input tokens');
+    expect(host.textContent).toContain('Sonnet 1M context can affect billing');
+    expect(host.textContent).toContain('standard API pricing');
+    expect(host.textContent).toContain('Extra Usage for Sonnet 1M');
     const docsLink = host.querySelector(`a[href="${ANTHROPIC_LONG_CONTEXT_PRICING_URL}"]`);
 
     expect(docsLink?.textContent).toContain('Anthropic pricing docs');
@@ -158,11 +164,84 @@ describe('LeadModelRow', () => {
   it('does not show the Sonnet Extra Usage warning when 200K limit is enabled', () => {
     const { host, root } = renderLeadModelRow({
       providerId: 'anthropic',
-      model: 'sonnet',
+      model: 'sonnet[1m]',
       limitContext: true,
     });
 
     expect(host.textContent).not.toContain('Anthropic Extra Usage');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('does not show the Sonnet Extra Usage warning for standard-context Sonnet', () => {
+    const { host, root } = renderLeadModelRow({
+      providerId: 'anthropic',
+      model: 'sonnet',
+      limitContext: false,
+    });
+
+    expect(host.textContent).not.toContain('Anthropic Extra Usage');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('warns for native 1M Sonnet launch ids without an explicit suffix', () => {
+    const { host, root } = renderLeadModelRow({
+      providerId: 'anthropic',
+      model: 'claude-sonnet-4-6',
+      limitContext: false,
+    });
+
+    expect(host.textContent).toContain('Sonnet 1M context can affect billing');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('shows the team-wide Anthropic context control when only teammates use Anthropic', () => {
+    const { host, root } = renderLeadModelRow({
+      providerId: 'codex',
+      model: 'gpt-5.4',
+      showAnthropicContextLimit: true,
+    });
+
+    const modelButton = host.querySelector(
+      'button[aria-label="codex provider, gpt-5.4"]'
+    ) as HTMLButtonElement;
+    act(() => {
+      modelButton.click();
+    });
+
+    expect(host.textContent).toContain('limit-context Anthropic team-wide');
+    expect(host.textContent).toContain(
+      'The 200K context limit is team-wide for Anthropic runtimes'
+    );
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('honors the explicit disabled state for the Anthropic context control', () => {
+    const { host, root } = renderLeadModelRow({
+      providerId: 'anthropic',
+      model: 'haiku',
+      disableAnthropicContextLimit: true,
+    });
+
+    const modelButton = host.querySelector(
+      'button[aria-label="anthropic provider, haiku"]'
+    ) as HTMLButtonElement;
+    act(() => {
+      modelButton.click();
+    });
+
+    expect(host.textContent).toContain('limit-context disabled');
 
     act(() => {
       root.unmount();

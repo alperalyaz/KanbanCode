@@ -463,10 +463,6 @@ export const CreateTeamDialog = ({
     const normalizedValue = normalizeLeadProviderForMode(value, multimodelEnabled);
     setSelectedProviderIdRaw(normalizedValue);
     setStoredCreateTeamProvider(normalizedValue);
-    if (normalizedValue !== 'anthropic') {
-      setLimitContextRaw(false);
-      setStoredCreateTeamLimitContext(false);
-    }
     setSelectedModelRaw(getStoredTeamModel(normalizedValue));
   };
 
@@ -589,6 +585,8 @@ export const CreateTeamDialog = ({
       ])
     );
   }, [members, multimodelEnabled, selectedProviderId, soloTeam, syncModelsWithLead]);
+  const hasSelectedAnthropicRuntime = selectedMemberProviders.includes('anthropic');
+  const effectiveAnthropicRuntimeLimitContext = hasSelectedAnthropicRuntime ? limitContext : false;
 
   const runtimeBackendSummaryByProvider = useMemo(() => {
     const entries: (readonly [TeamProviderId, string | null])[] = (
@@ -670,13 +668,13 @@ export const CreateTeamDialog = ({
         selectedProviderId,
         selectedModel,
         selectedMemberProviders,
-        limitContext,
+        limitContext: effectiveAnthropicRuntimeLimitContext,
         runtimeStatusSignature: prepareRuntimeStatusSignature,
         membersSignature: prepareMembersSignature,
       }),
     [
       effectiveCwd,
-      limitContext,
+      effectiveAnthropicRuntimeLimitContext,
       prepareMembersSignature,
       prepareRuntimeStatusSignature,
       selectedMemberProviders,
@@ -777,7 +775,7 @@ export const CreateTeamDialog = ({
             (providerId === 'anthropic' && selectedProviderId === 'anthropic');
           const leadModel = computeEffectiveTeamModel(
             selectedModel,
-            limitContext,
+            effectiveAnthropicRuntimeLimitContext,
             selectedProviderId
           );
           if (selectedProviderId === providerId && selectedModel.trim()) {
@@ -816,7 +814,7 @@ export const CreateTeamDialog = ({
           cwd: effectiveCwd,
           providerId,
           backendSummary,
-          limitContext,
+          limitContext: effectiveAnthropicRuntimeLimitContext,
           runtimeStatusSignature: prepareRuntimeStatusSignature,
         });
         const cachedModelResultsById = {
@@ -859,7 +857,7 @@ export const CreateTeamDialog = ({
               providerId: plan.providerId,
               selectedModelIds: plan.selectedModelChecks,
               prepareProvisioning: api.teams.prepareProvisioning,
-              limitContext,
+              limitContext: effectiveAnthropicRuntimeLimitContext,
               cachedModelResultsById: plan.cachedModelResultsById,
               onModelProgress: ({ status, details }) => {
                 checks = updateProviderCheck(checks, plan.providerId, {
@@ -940,7 +938,7 @@ export const CreateTeamDialog = ({
     launchTeam,
     effectiveCwd,
     effectiveMemberDrafts,
-    limitContext,
+    effectiveAnthropicRuntimeLimitContext,
     prepareRequestSignature,
     runtimeProviderStatusById,
     selectedModel,
@@ -1169,11 +1167,16 @@ export const CreateTeamDialog = ({
     () =>
       computeEffectiveTeamModel(
         selectedModel,
-        limitContext,
+        effectiveAnthropicRuntimeLimitContext,
         selectedProviderId,
         runtimeProviderStatusById.get(selectedProviderId)
       ),
-    [limitContext, runtimeProviderStatusById, selectedModel, selectedProviderId]
+    [
+      effectiveAnthropicRuntimeLimitContext,
+      runtimeProviderStatusById,
+      selectedModel,
+      selectedProviderId,
+    ]
   );
   const teammateRuntimeCompatibility = useMemo(
     () =>
@@ -1209,10 +1212,15 @@ export const CreateTeamDialog = ({
               runtimeCapabilities: runtimeProviderStatusById.get('anthropic')?.runtimeCapabilities,
             },
             selectedModel,
-            limitContext,
+            limitContext: effectiveAnthropicRuntimeLimitContext,
           })
         : null,
-    [limitContext, runtimeProviderStatusById, selectedModel, selectedProviderId]
+    [
+      effectiveAnthropicRuntimeLimitContext,
+      runtimeProviderStatusById,
+      selectedModel,
+      selectedProviderId,
+    ]
   );
   const anthropicFastModeResolution = useMemo(
     () =>
@@ -1274,7 +1282,7 @@ export const CreateTeamDialog = ({
                   runtimeCapabilities: null,
                 },
                 selectedModel,
-                limitContext,
+                limitContext: effectiveAnthropicRuntimeLimitContext,
               }),
             selectedEffort,
             selectedFastMode,
@@ -1320,7 +1328,7 @@ export const CreateTeamDialog = ({
     anthropicProviderFastModeDefault,
     anthropicRuntimeSelection,
     codexRuntimeSelection,
-    limitContext,
+    effectiveAnthropicRuntimeLimitContext,
     runtimeProviderStatusById,
     selectedEffort,
     selectedFastMode,
@@ -1350,7 +1358,7 @@ export const CreateTeamDialog = ({
         selectedProviderId === 'anthropic' || selectedProviderId === 'codex'
           ? selectedFastMode
           : undefined,
-      limitContext,
+      limitContext: effectiveAnthropicRuntimeLimitContext,
       skipPermissions,
       worktree: worktreeEnabled && worktreeName.trim() ? worktreeName.trim() : undefined,
       extraCliArgs: customArgs.trim() || undefined,
@@ -1368,7 +1376,7 @@ export const CreateTeamDialog = ({
       effectiveModel,
       selectedEffort,
       selectedFastMode,
-      limitContext,
+      effectiveAnthropicRuntimeLimitContext,
       skipPermissions,
       worktreeEnabled,
       worktreeName,
@@ -1512,12 +1520,16 @@ export const CreateTeamDialog = ({
         summary.push('Fast default');
       }
     }
+    if (effectiveAnthropicRuntimeLimitContext) {
+      summary.push('Anthropic limited to 200K context');
+    }
     if (worktreeEnabled && worktreeName.trim()) summary.push(`Worktree: ${worktreeName.trim()}`);
     if (customArgs.trim()) summary.push('Custom CLI args');
     return summary;
   }, [
     anthropicProviderFastModeDefault,
     customArgs,
+    effectiveAnthropicRuntimeLimitContext,
     prompt,
     selectedFastMode,
     selectedProviderId,
@@ -1833,7 +1845,7 @@ export const CreateTeamDialog = ({
               providerId={selectedProviderId}
               model={selectedModel}
               effort={(selectedEffort as EffortLevel) || undefined}
-              limitContext={limitContext}
+              limitContext={effectiveAnthropicRuntimeLimitContext}
               onProviderChange={setSelectedProviderId}
               onModelChange={setSelectedModel}
               onEffortChange={setSelectedEffort}
@@ -1944,7 +1956,7 @@ export const CreateTeamDialog = ({
                           onValueChange={setSelectedFastMode}
                           providerFastModeDefault={anthropicProviderFastModeDefault}
                           model={selectedModel}
-                          limitContext={limitContext}
+                          limitContext={effectiveAnthropicRuntimeLimitContext}
                           id="create-fast-mode"
                         />
                         {anthropicRuntimeNotice ? (

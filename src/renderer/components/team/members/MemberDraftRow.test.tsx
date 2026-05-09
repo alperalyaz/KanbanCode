@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ANTHROPIC_LONG_CONTEXT_PRICING_URL } from '@renderer/components/team/dialogs/AnthropicExtraUsageWarning';
+
 vi.mock('@renderer/components/common/ProviderBrandLogo', () => ({
   ProviderBrandLogo: () => React.createElement('span', { 'data-testid': 'provider-logo' }),
 }));
@@ -177,6 +179,91 @@ describe('MemberDraftRow', () => {
     expect(host.textContent).toContain(
       'Provider, model, and effort are inherited from the lead while sync is enabled.'
     );
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('explains that Anthropic context limit is team-wide for teammate overrides', () => {
+    const { host, root } = renderMemberDraftRow({
+      limitContext: true,
+    });
+
+    const modelButton = host.querySelector(
+      'button[aria-label="anthropic provider, opus"]'
+    ) as HTMLButtonElement;
+    act(() => {
+      modelButton.click();
+    });
+
+    expect(host.textContent).toContain('Anthropic context is team-wide for this launch');
+    expect(host.textContent).toContain('200K limit enabled');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('warns custom Anthropic Sonnet teammates about plan/runtime billing when 200K limit is off', () => {
+    const { host, root } = renderMemberDraftRow({
+      member: {
+        id: 'member-1',
+        name: 'alice',
+        roleSelection: 'developer',
+        customRole: '',
+        providerId: 'anthropic',
+        model: 'sonnet[1m]',
+      },
+      limitContext: false,
+    });
+
+    expect(host.textContent).toContain('Sonnet 1M context can affect billing');
+    expect(host.textContent).toContain('Extra Usage for Sonnet 1M');
+    const docsLink = host.querySelector(`a[href="${ANTHROPIC_LONG_CONTEXT_PRICING_URL}"]`);
+
+    expect(docsLink?.textContent).toContain('Anthropic pricing docs');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('does not warn standard-context Anthropic Sonnet teammates about Extra Usage', () => {
+    const { host, root } = renderMemberDraftRow({
+      member: createMemberDraft({
+        id: 'member-1',
+        name: 'alice',
+        roleSelection: 'developer',
+        providerId: 'anthropic',
+        model: 'sonnet',
+      }),
+      limitContext: false,
+    });
+
+    expect(host.textContent).not.toContain('Anthropic Extra Usage');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('does not duplicate the Sonnet Extra Usage warning for effort-only inherited teammates', () => {
+    const { host, root } = renderMemberDraftRow({
+      member: createMemberDraft({
+        id: 'member-1',
+        name: 'alice',
+        roleSelection: 'developer',
+        providerId: undefined,
+        model: '',
+        effort: 'max',
+      }),
+      inheritedProviderId: 'anthropic',
+      inheritedModel: 'sonnet[1m]',
+      limitContext: false,
+    });
+
+    expect(host.textContent).not.toContain('Anthropic Extra Usage');
 
     act(() => {
       root.unmount();

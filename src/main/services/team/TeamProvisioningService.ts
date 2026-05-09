@@ -1732,6 +1732,9 @@ interface ProvisioningRun {
     leadName: string;
     startedAt: string;
     textParts: string[];
+    replyVisibility?: 'user' | 'internal_activity';
+    hasVisibleSendMessage?: boolean;
+    hasUserVisibleSendMessage?: boolean;
     settled: boolean;
     idleHandle: NodeJS.Timeout | null;
     idleMs: number;
@@ -4542,7 +4545,7 @@ ${AGENT_BLOCK_CLOSE}
   - instructions to run commands in terminal
   - task references without a leading # (for example write #abcd1234, not abcd1234)
   Instead, describe the action in human-friendly language (e.g. "Task #6 is complete." instead of showing a command to mark it complete). If you need to update task status, do it YOURSELF — never ask the user to run a command.
-- CRITICAL: When processing relayed inbox messages, your text output is shown to the user. Do NOT wrap your entire response in an agent-only block. If you need agent-only instructions, put them in a separate block and include a brief human-readable summary outside of it (e.g. "Delegated task to carol." or "Acknowledged, no action needed.").`;
+- CRITICAL: When processing relayed inbox messages, follow the relay prompt's reply visibility. Some relay turns record plain text only as internal lead activity. User-visible replies must be explicit when the relay prompt says the batch is internal. Do NOT wrap your entire response in an agent-only block. If you need agent-only instructions, put them in a separate block and include concise visible text only when the relay prompt allows or requests it.`;
 }
 
 function getSystemLocale(): string {
@@ -10279,6 +10282,29 @@ export class TeamProvisioningService {
     }
   }
 
+  private clearLeadInboxFollowUpRelayTimer(teamName: string): void {
+    const key = `lead-inbox-follow-up:${teamName}`;
+    const timer = this.pendingTimeouts.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.pendingTimeouts.delete(key);
+    }
+  }
+
+  private scheduleLeadInboxFollowUpRelay(teamName: string): void {
+    const key = `lead-inbox-follow-up:${teamName}`;
+    if (this.pendingTimeouts.has(key)) return;
+
+    const timer = setTimeout(() => {
+      this.pendingTimeouts.delete(key);
+      void this.relayLeadInboxMessages(teamName).catch((error: unknown) =>
+        logger.warn(`[${teamName}] lead inbox follow-up relay failed: ${String(error)}`)
+      );
+    }, 50);
+    timer.unref?.();
+    this.pendingTimeouts.set(key, timer);
+  }
+
   private resetTeamScopedTransientStateForNewRun(teamName: string): void {
     peekAutoResumeService()?.cancelPendingAutoResume(teamName);
     this.invalidateRuntimeSnapshotCaches(teamName);
@@ -10290,6 +10316,7 @@ export class TeamProvisioningService {
     this.recentCrossTeamLeadDeliveryMessageIds.delete(teamName);
     this.recentSameTeamNativeFingerprints.delete(teamName);
     this.clearSameTeamRetryTimers(teamName);
+    this.clearLeadInboxFollowUpRelayTimer(teamName);
 
     for (const key of Array.from(this.memberInboxRelayInFlight.keys())) {
       if (key.startsWith(`${teamName}:`)) {
@@ -10674,6 +10701,40 @@ export class TeamProvisioningService {
       const text = typeof inp.text === 'string' ? inp.text : '';
 
       return target.trim().length > 0 && text.trim().length > 0;
+    });
+  }
+
+  private hasCapturedUserVisibleSendMessage(
+    content: Record<string, unknown>[],
+    teamName: string
+  ): boolean {
+    return content.some((part) => {
+      if (!part || typeof part !== 'object') return false;
+      if (part.type !== 'tool_use' || typeof part.name !== 'string') return false;
+
+      const input = part.input;
+      if (!input || typeof input !== 'object') return false;
+      const inp = input as Record<string, unknown>;
+
+      if (part.name === 'SendMessage') {
+        const target = (typeof inp.recipient === 'string' ? inp.recipient : '')
+          .trim()
+          .toLowerCase();
+        const text = (typeof inp.content === 'string' ? inp.content : '').trim();
+        return target === 'user' && text.length > 0;
+      }
+
+      const isTeamMessageSendTool = isAgentTeamsToolUse({
+        rawName: part.name,
+        canonicalName: 'message_send',
+        toolInput: inp,
+        currentTeamName: teamName,
+      });
+      if (!isTeamMessageSendTool) return false;
+
+      const target = typeof inp.to === 'string' ? inp.to.trim().toLowerCase() : '';
+      const text = typeof inp.text === 'string' ? inp.text.trim() : '';
+      return target === 'user' && text.length > 0;
     });
   }
 
@@ -21344,6 +21405,11 @@ export class TeamProvisioningService {
     return typeof message.messageId === 'string' && message.messageId.trim().length > 0;
   }
 
+  private isUserOriginatedLeadRelayMessage(message: InboxMessage): boolean {
+    const from = typeof message.from === 'string' ? message.from.trim().toLowerCase() : '';
+    return from === 'user' || message.source === 'user_sent';
+  }
+
   async relayLeadInboxMessages(teamName: string): Promise<number> {
     const existing = this.leadInboxRelayInFlight.get(teamName);
     if (existing) {
@@ -21612,7 +21678,17 @@ export class TeamProvisioningService {
       if (actionableUnread.length === 0) return 0;
 
       const MAX_RELAY = 10;
-      const batch = actionableUnread.slice(0, MAX_RELAY);
+      const userOriginatedUnread = actionableUnread.filter((message) =>
+        this.isUserOriginatedLeadRelayMessage(message)
+      );
+      const replyVisibility: 'user' | 'internal_activity' =
+        userOriginatedUnread.length > 0 ? 'user' : 'internal_activity';
+      const batchSource = userOriginatedUnread.length > 0 ? userOriginatedUnread : actionableUnread;
+      const batch = batchSource.slice(0, MAX_RELAY);
+      const batchIds = new Set(batch.map((message) => message.messageId));
+      const hasPendingFollowUpRelay = unread.some(
+        (message) => !batchIds.has(message.messageId) && !readOnlyIgnoredIds.has(message.messageId)
+      );
       const teammateRoster = (config.members ?? [])
         .filter((member) => {
           const name = member.name?.trim();
@@ -21634,13 +21710,25 @@ export class TeamProvisioningService {
         if (!sourceTeam || !conversationId) return [];
         return [{ toTeam: sourceTeam, conversationId }];
       });
+      const replyVisibilityInstruction =
+        replyVisibility === 'user'
+          ? [
+              `Plain text reply visibility for this batch: user-visible.`,
+              `These inbox rows originated from the human user, so a concise plain text reply is allowed and will be shown to the user.`,
+              `If a visible reply is needed for a teammate or another team, use the appropriate messaging tool; plain text is only for the human response.`,
+            ]
+          : [
+              `Plain text reply visibility for this batch: internal lead activity only.`,
+              `Do NOT write a user-facing summary for teammate/system/cross-team relay traffic. If the human user must be notified, explicitly call SendMessage with recipient "user".`,
+              `If you take action and no visible message/tool result already records it, you may write one terse internal status line for the team activity log.`,
+              `If a visible reply is needed for a teammate, another team, or the human user, use the appropriate messaging tool instead of relying on plain text.`,
+            ];
 
       const message = [
         `You have new inbox messages addressed to you (team lead "${leadName}").`,
         `Process them in order (oldest first).`,
         `If action is required, delegate via task creation or SendMessage, and keep responses minimal.`,
-        `IMPORTANT: Your text response here is shown to the user.`,
-        `If you actually take action, include a brief human-readable summary (e.g. "Delegated to carol.").`,
+        ...replyVisibilityInstruction,
         `If there is no action to take, produce ZERO text output. Do NOT write "No action needed.", status echoes, or any other no-op summary.`,
         `For pure system notifications, comment notifications, or routine teammate availability updates that require no reply/comment/action, say nothing.`,
         `Do NOT respond with only an agent-only block.`,
@@ -21712,6 +21800,9 @@ export class TeamProvisioningService {
           leadName,
           startedAt: nowIso(),
           textParts: [] as string[],
+          replyVisibility,
+          hasVisibleSendMessage: false,
+          hasUserVisibleSendMessage: false,
           settled: false,
           idleHandle: null as NodeJS.Timeout | null,
           idleMs: captureIdleMs,
@@ -21768,6 +21859,8 @@ export class TeamProvisioningService {
       }
 
       let replyText: string | null = null;
+      let capturedVisibleSendMessage = false;
+      let capturedUserVisibleSendMessage = false;
       try {
         replyText = (await capturePromise).trim() || null;
       } catch {
@@ -21776,6 +21869,8 @@ export class TeamProvisioningService {
         replyText = partial && partial.length > 0 ? partial : null;
       } finally {
         if (run.leadRelayCapture) {
+          capturedVisibleSendMessage = run.leadRelayCapture.hasVisibleSendMessage === true;
+          capturedUserVisibleSendMessage = run.leadRelayCapture.hasUserVisibleSendMessage === true;
           if (run.leadRelayCapture.idleHandle) {
             clearTimeout(run.leadRelayCapture.idleHandle);
             run.leadRelayCapture.idleHandle = null;
@@ -21796,6 +21891,18 @@ export class TeamProvisioningService {
       if (cleanReply) {
         if (isTeamInternalControlMessageText(cleanReply)) {
           logger.debug(`[${teamName}] Suppressed internal lead relay echo`);
+        } else if (
+          (replyVisibility === 'internal_activity' && capturedVisibleSendMessage) ||
+          (replyVisibility === 'user' && capturedUserVisibleSendMessage)
+        ) {
+          logger.debug(`[${teamName}] Suppressed lead relay text duplicated by visible message`);
+        } else if (replyVisibility === 'internal_activity') {
+          this.pushLiveLeadTextMessage(
+            run,
+            cleanReply,
+            `lead-relay-${runId}-${Date.now()}`,
+            nowIso()
+          );
         } else {
           const relayMsg: InboxMessage = {
             from: leadName,
@@ -21816,6 +21923,9 @@ export class TeamProvisioningService {
             detail: 'lead-process-reply',
           });
         }
+      }
+      if (hasPendingFollowUpRelay) {
+        this.scheduleLeadInboxFollowUpRelay(teamName);
       }
 
       return batch.length;
@@ -27158,14 +27268,16 @@ export class TeamProvisioningService {
         continue;
       }
 
-      const recipient = isNativeSendMessage
+      const rawRecipient = isNativeSendMessage
         ? typeof inp.recipient === 'string'
           ? inp.recipient
           : ''
         : typeof inp.to === 'string'
           ? inp.to
           : '';
-      if (!recipient.trim()) continue;
+      const trimmedRecipient = rawRecipient.trim();
+      if (!trimmedRecipient) continue;
+      const recipient = trimmedRecipient.toLowerCase() === 'user' ? 'user' : trimmedRecipient;
 
       const msgContent = isNativeSendMessage
         ? typeof inp.content === 'string'
@@ -28283,6 +28395,14 @@ export class TeamProvisioningService {
         content,
         run.teamName
       );
+      if (run.leadRelayCapture) {
+        if (hasCapturedVisibleSendMessage) {
+          run.leadRelayCapture.hasVisibleSendMessage = true;
+        }
+        if (this.hasCapturedUserVisibleSendMessage(content, run.teamName)) {
+          run.leadRelayCapture.hasUserVisibleSendMessage = true;
+        }
+      }
 
       const textParts = content
         .filter((part) => part.type === 'text' && typeof part.text === 'string')
@@ -30843,6 +30963,7 @@ export class TeamProvisioningService {
       this.recentCrossTeamLeadDeliveryMessageIds.delete(run.teamName);
       this.recentSameTeamNativeFingerprints.delete(run.teamName);
       this.clearSameTeamRetryTimers(run.teamName);
+      this.clearLeadInboxFollowUpRelayTimer(run.teamName);
     }
     for (const memberName of run.memberSpawnStatuses.keys()) {
       const key = this.getMemberLaunchGraceKey(run, memberName);

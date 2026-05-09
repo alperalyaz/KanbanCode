@@ -138,49 +138,44 @@ describe('computeEffectiveTeamModel', () => {
 
   it('falls back to the base Anthropic launch value when runtime catalog does not confirm a 1M variant', () => {
     expect(
-      computeEffectiveTeamModel(
-        'opus',
-        false,
-        'anthropic',
-        {
+      computeEffectiveTeamModel('opus', false, 'anthropic', {
+        providerId: 'anthropic',
+        modelCatalog: {
+          schemaVersion: 1,
           providerId: 'anthropic',
-          modelCatalog: {
-            schemaVersion: 1,
-            providerId: 'anthropic',
-            source: 'anthropic-models-api',
-            status: 'ready',
-            fetchedAt: '2026-04-21T00:00:00.000Z',
-            staleAt: '2026-04-21T00:10:00.000Z',
-            defaultModelId: 'opus',
-            defaultLaunchModel: 'opus',
-            models: [
-              {
-                id: 'opus',
-                launchModel: 'opus',
-                displayName: 'Opus 4.8',
-                hidden: false,
-                supportedReasoningEfforts: ['low', 'medium', 'high'],
-                defaultReasoningEffort: null,
-                inputModalities: ['text', 'image'],
-                supportsPersonality: false,
-                isDefault: true,
-                upgrade: false,
-                source: 'anthropic-models-api',
-              },
-            ],
-            diagnostics: {
-              configReadState: 'ready',
-              appServerState: 'healthy',
+          source: 'anthropic-models-api',
+          status: 'ready',
+          fetchedAt: '2026-04-21T00:00:00.000Z',
+          staleAt: '2026-04-21T00:10:00.000Z',
+          defaultModelId: 'opus',
+          defaultLaunchModel: 'opus',
+          models: [
+            {
+              id: 'opus',
+              launchModel: 'opus',
+              displayName: 'Opus 4.8',
+              hidden: false,
+              supportedReasoningEfforts: ['low', 'medium', 'high'],
+              defaultReasoningEffort: null,
+              inputModalities: ['text', 'image'],
+              supportsPersonality: false,
+              isDefault: true,
+              upgrade: false,
+              source: 'anthropic-models-api',
             },
+          ],
+          diagnostics: {
+            configReadState: 'ready',
+            appServerState: 'healthy',
           },
-        }
-      )
+        },
+      })
     ).toBe('opus');
   });
 
   it('does not double-append [1m] when input already has it', () => {
     expect(computeEffectiveTeamModel('opus[1m]', false, 'anthropic')).toBe('opus[1m]');
-    expect(computeEffectiveTeamModel('sonnet[1m]', false, 'anthropic')).toBe('sonnet');
+    expect(computeEffectiveTeamModel('sonnet[1m]', false, 'anthropic')).toBe('sonnet[1m]');
     expect(computeEffectiveTeamModel('opus[1m][1m]', false, 'anthropic')).toBe('opus[1m]');
   });
 
@@ -243,9 +238,8 @@ describe('computeEffectiveTeamModel', () => {
     expect(computeEffectiveTeamModel('opus[1m]', true, 'anthropic')).toBe('opus');
     expect(computeEffectiveTeamModel('opus[1m][1m]', true, 'anthropic')).toBe('opus');
     expect(computeEffectiveTeamModel('', true, 'anthropic')).toBe('opus');
-    expect(computeEffectiveTeamModel('claude-opus-4-7[1m]', true, 'anthropic')).toBe(
-      'claude-opus-4-7'
-    );
+    expect(computeEffectiveTeamModel('claude-opus-4-7[1m]', true, 'anthropic')).toBe('opus');
+    expect(computeEffectiveTeamModel('claude-sonnet-4-6', true, 'anthropic')).toBe('sonnet');
   });
 
   it('returns haiku as-is', () => {

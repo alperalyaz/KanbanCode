@@ -774,6 +774,9 @@ describe('agent-teams-controller API', () => {
 
     expect(inbox).toHaveLength(1);
     expect(inbox[0].text).toContain('<info_for_agent>');
+    expect(inbox[0].text).toContain('CURRENT review cycle');
+    expect(inbox[0].text).toContain('Before declaring it duplicate, call task_get');
+    expect(inbox[0].text).toContain('reviewState/status');
     expect(inbox[0].text).toContain('review_approve');
     expect(inbox[0].text).not.toContain('<agent-block>');
     expect(inbox[0].leadSessionId).toBe('lead-session-1');

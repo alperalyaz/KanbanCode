@@ -437,7 +437,7 @@ export const MemberCard = memo(function MemberCard({
                 <CurrentTaskIndicator
                   task={reviewTask}
                   borderColor={colors.border}
-                  activityLabel="reviewing"
+                  activityLabel={reviewTaskTimer ? 'reviewing' : 'review requested'}
                   activityTimer={reviewTaskTimer}
                   isTimerRunning={reviewTaskTimerRunning}
                   onOpenTask={onOpenReviewTask}

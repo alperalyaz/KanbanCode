@@ -1,4 +1,5 @@
 import { parseModelString } from '@shared/utils/modelParser';
+import { inferContextWindowTokens } from '@shared/utils/contextMetrics';
 import {
   getOpenCodeQualifiedModelSourceLabel,
   parseOpenCodeQualifiedModelRef,
@@ -247,6 +248,25 @@ export function isAnthropicSonnetTeamModel(model: string | undefined): boolean {
 
   const { baseModel } = splitOneMillionContextSuffix(trimmed);
   return baseModel === 'sonnet' || baseModel.startsWith('claude-sonnet-');
+}
+
+export function isAnthropicOneMillionContextTeamModel(model: string | undefined): boolean {
+  const trimmed = model?.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  return (
+    inferContextWindowTokens({
+      providerId: 'anthropic',
+      modelName: trimmed,
+      limitContext: false,
+    }) === 1_000_000
+  );
+}
+
+export function isAnthropicSonnetOneMillionContextTeamModel(model: string | undefined): boolean {
+  return isAnthropicSonnetTeamModel(model) && isAnthropicOneMillionContextTeamModel(model);
 }
 
 export function getTeamProviderLabel(

@@ -20,6 +20,14 @@ export function stripTranscriptSpeakerPrefix(value: string): string {
   return normalized;
 }
 
+export function isTranscriptSpeakerPlaceholderText(value: unknown): boolean {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const trimmed = value.trim();
+  return /^(?:(?:Human|User):\s*)+$/i.test(trimmed);
+}
+
 export function isNativeAppManagedBootstrapCheckText(value: unknown): boolean {
   return (
     typeof value === 'string' &&
@@ -48,6 +56,7 @@ export function isTeammateProtocolControlText(value: unknown): boolean {
 
 export function isTeamInternalControlMessageText(value: unknown): boolean {
   return (
+    isTranscriptSpeakerPlaceholderText(value) ||
     isNativeAppManagedBootstrapCheckText(value) ||
     isLeadInboxRelayControlPromptText(value) ||
     isTeammateProtocolControlText(value)

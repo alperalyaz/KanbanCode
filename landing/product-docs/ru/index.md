@@ -31,7 +31,7 @@ features:
     link: /ru/guide/code-review
     linkText: Ревью изменений
   - icon: "04"
-    title: Runtime-aware setup
+    title: Настройка рантайма
     details: Используйте Claude, Codex, OpenCode или multimodel-провайдеры через доступ, который у вас уже есть.
     link: /ru/guide/runtime-setup
     linkText: Настроить рантаймы

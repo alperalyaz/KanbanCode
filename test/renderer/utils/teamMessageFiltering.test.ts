@@ -37,6 +37,30 @@ describe('filterTeamMessages', () => {
     expect(result[0].source).toBe('lead_process');
   });
 
+  it('hides bare transcript speaker placeholders from lead output', () => {
+    const messages = [
+      makeMessage({
+        messageId: 'speaker-placeholder',
+        from: 'team-lead',
+        to: 'user',
+        text: 'Human:',
+        source: 'lead_process',
+      }),
+      makeMessage({
+        messageId: 'visible-message',
+        text: 'Visible message',
+      }),
+    ];
+
+    const result = filterTeamMessages(messages, {
+      timeWindow: null,
+      filter: { from: new Set(), to: new Set(), showNoise: true },
+      searchQuery: '',
+    });
+
+    expect(result.map((message) => message.messageId)).toEqual(['visible-message']);
+  });
+
   it('hides native app-managed bootstrap private control messages', () => {
     const messages = [
       makeMessage({

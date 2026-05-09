@@ -631,6 +631,7 @@ export class ProviderConnectionService {
         ...provider,
         authenticated: true,
         authMethod: 'api_key',
+        subscriptionRateLimits: null,
         verificationState:
           provider.verificationState === 'error' ? provider.verificationState : 'verified',
         statusMessage: 'Connected via API key',
@@ -641,6 +642,7 @@ export class ProviderConnectionService {
       ...provider,
       authenticated: false,
       authMethod: null,
+      subscriptionRateLimits: null,
       verificationState: provider.verificationState === 'error' ? 'error' : 'unknown',
       statusMessage: 'API key mode is selected, but no Anthropic API credential is available yet.',
     };

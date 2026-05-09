@@ -10,10 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
-  formatCodexRemainingPercent,
-  formatCodexWindowDuration,
   mergeCodexProviderStatusWithSnapshot,
-  normalizeCodexResetTimestamp,
   useCodexAccountSnapshot,
 } from '@features/codex-account/renderer';
 import { api, isElectronMode } from '@renderer/api';
@@ -68,7 +65,16 @@ import {
   Terminal,
 } from 'lucide-react';
 
-import type { CliProviderId, CliProviderStatus } from '@shared/types';
+import type { CliProviderAuthMode, CliProviderId, CliProviderStatus } from '@shared/types';
+
+import {
+  getAnthropicDashboardRateLimits,
+  getCodexDashboardRateLimits,
+  isDashboardRateLimitSubscriptionMode,
+  shouldShowDashboardRateLimitSkeleton,
+} from './providerDashboardRateLimits';
+
+import type { DashboardRateLimitItem } from './providerDashboardRateLimits';
 
 // =============================================================================
 // Border color by state
@@ -88,12 +94,81 @@ const OPENCODE_DOWNLOAD_URL = 'https://opencode.ai/download';
 
 /** Minimum banner height — prevents layout shift between states (loading → installed → checking). */
 const BANNER_MIN_H = 'min-h-[4.25rem]';
+const ANTHROPIC_LIMIT_REFRESH_INTERVAL_MS = 60 * 1000;
 
-interface CodexDashboardRateLimitItem {
-  label: string;
-  remaining: string;
-  resetsAt: string;
-}
+const DashboardRateLimitChips = ({
+  providerId,
+  items,
+}: {
+  providerId: CliProviderId;
+  items: DashboardRateLimitItem[];
+}): React.JSX.Element => (
+  <div className="flex flex-wrap items-center gap-2">
+    {items.map((item) => (
+      <div
+        key={`${providerId}-${item.label}`}
+        className="w-fit max-w-full rounded-md border px-2 py-1.5"
+        style={{
+          borderColor: 'rgba(74, 222, 128, 0.2)',
+          backgroundColor: 'rgba(74, 222, 128, 0.06)',
+        }}
+      >
+        <div className="flex items-baseline gap-1.5 whitespace-nowrap">
+          <span
+            className="text-[10px] uppercase tracking-[0.06em]"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            {item.label}
+          </span>
+          <span className="text-xs font-medium" style={{ color: '#86efac' }}>
+            {item.remaining}
+          </span>
+          <span
+            className="min-w-0 truncate text-[10px]"
+            style={{ color: 'var(--color-text-secondary)' }}
+            title={item.resetsAt}
+          >
+            • resets {item.resetsAt}
+          </span>
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+const RATE_LIMIT_SKELETON_LABELS = ['5h left', 'Weekly left'] as const;
+
+const DashboardRateLimitSkeletonChips = (): React.JSX.Element => (
+  <div className="flex flex-wrap items-center gap-2" aria-label="Rate limits loading">
+    {RATE_LIMIT_SKELETON_LABELS.map((label, index) => (
+      <div
+        key={label}
+        className="w-fit max-w-full rounded-md border px-2 py-1.5"
+        style={{
+          borderColor: 'rgba(148, 163, 184, 0.16)',
+          backgroundColor: 'rgba(148, 163, 184, 0.04)',
+        }}
+      >
+        <div className="flex items-center gap-1.5 whitespace-nowrap">
+          <span
+            className="text-[10px] uppercase tracking-[0.06em]"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            {label}
+          </span>
+          <span
+            className="skeleton-shimmer h-3 rounded-sm"
+            style={{ width: index === 0 ? '2rem' : '2.25rem' }}
+          />
+          <span
+            className="skeleton-shimmer h-3 rounded-sm"
+            style={{ width: index === 0 ? '5.75rem' : '6.5rem' }}
+          />
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
 function getCodexDashboardHint(provider: CliProviderStatus): string | null {
   if (provider.providerId !== 'codex') {
@@ -272,6 +347,12 @@ interface InstalledBannerProps {
   codexSnapshotPending: boolean;
   cliStatusError: string | null;
   providersCollapsed: boolean;
+  providerConnectionAuthModes: {
+    anthropic: CliProviderAuthMode | null;
+    codex: CliProviderAuthMode | null;
+  };
+  codexRateLimitsLoading: boolean;
+  anthropicRateLimitsRefreshing: boolean;
   isBusy: boolean;
   onInstall: () => void;
   onRefresh: () => void;
@@ -438,71 +519,6 @@ function formatRuntimeLabel(
     : runtimeLabel;
 }
 
-function isCodexSubscriptionActive(
-  connection: CliProviderStatus['connection'] | null | undefined
-): boolean {
-  return (
-    connection?.codex?.effectiveAuthMode === 'chatgpt' &&
-    (connection.codex.managedAccount?.type === 'chatgpt' || connection.codex.launchAllowed)
-  );
-}
-
-function buildCodexRateLimitLabel(
-  fallbackTitle: 'Primary left' | 'Secondary left' | 'Weekly left',
-  windowDurationMins: number | null | undefined
-): string {
-  const duration = formatCodexWindowDuration(windowDurationMins);
-  return duration ? `${duration} left` : fallbackTitle;
-}
-
-function formatCodexDashboardResetTime(timestampSeconds: number | null | undefined): string {
-  const normalized = normalizeCodexResetTimestamp(timestampSeconds);
-  if (!normalized) {
-    return 'reset unknown';
-  }
-
-  return new Date(normalized).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
-function getCodexDashboardRateLimits(
-  provider: CliProviderStatus
-): CodexDashboardRateLimitItem[] | null {
-  if (provider.providerId !== 'codex' || !isCodexSubscriptionActive(provider.connection)) {
-    return null;
-  }
-
-  const rateLimits = provider.connection?.codex?.rateLimits;
-  if (!rateLimits?.primary) {
-    return null;
-  }
-
-  const items: CodexDashboardRateLimitItem[] = [];
-  const primaryRemaining = formatCodexRemainingPercent(rateLimits.primary.usedPercent) ?? 'Unknown';
-  items.push({
-    label: buildCodexRateLimitLabel('Primary left', rateLimits.primary.windowDurationMins),
-    remaining: primaryRemaining,
-    resetsAt: formatCodexDashboardResetTime(rateLimits.primary.resetsAt),
-  });
-
-  if (rateLimits.secondary) {
-    items.push({
-      label: buildCodexRateLimitLabel(
-        rateLimits.secondary.windowDurationMins === 10_080 ? 'Weekly left' : 'Secondary left',
-        rateLimits.secondary.windowDurationMins
-      ),
-      remaining: formatCodexRemainingPercent(rateLimits.secondary.usedPercent) ?? 'Unknown',
-      resetsAt: formatCodexDashboardResetTime(rateLimits.secondary.resetsAt),
-    });
-  }
-
-  return items;
-}
-
 function formatRuntimeAuthSummary(
   cliStatus: NonNullable<ReturnType<typeof useCliInstaller>['cliStatus']>,
   visibleProviders: readonly CliProviderStatus[]
@@ -576,6 +592,9 @@ const InstalledBanner = ({
   codexSnapshotPending,
   cliStatusError,
   providersCollapsed,
+  providerConnectionAuthModes,
+  codexRateLimitsLoading,
+  anthropicRateLimitsRefreshing,
   isBusy,
   onInstall,
   onRefresh,
@@ -717,6 +736,14 @@ const InstalledBanner = ({
             const connectionModeSummary = getProviderConnectionModeSummary(provider);
             const credentialSummary = getProviderCredentialSummary(provider);
             const codexDashboardRateLimits = getCodexDashboardRateLimits(provider);
+            const anthropicDashboardRateLimits = getAnthropicDashboardRateLimits(provider);
+            const dashboardRateLimits = codexDashboardRateLimits ?? anthropicDashboardRateLimits;
+            const hasDashboardRateLimits = Boolean(dashboardRateLimits?.length);
+            const isSubscriptionRateLimitMode = isDashboardRateLimitSubscriptionMode({
+              provider,
+              sourceProvider: sourceProviderMap.get(provider.providerId) ?? null,
+              configuredAuthModes: providerConnectionAuthModes,
+            });
             const codexDashboardHint = getCodexDashboardHint(provider);
             const codexNeedsReconnect =
               provider.providerId === 'codex' &&
@@ -738,11 +765,17 @@ const InstalledBanner = ({
               isProviderCardLoading(provider, providerLoading) ||
               isCodexSnapshotPending(provider, codexSnapshotPending) ||
               maskNegativeBootstrapState;
-            const showInlineCodexAccessoryRow =
-              !showSkeleton &&
-              provider.providerId === 'codex' &&
-              provider.models.length > 0 &&
-              Boolean(codexDashboardRateLimits?.length);
+            const showRateLimitSkeleton =
+              (showSkeleton &&
+                shouldShowDashboardRateLimitSkeleton({
+                  provider,
+                  sourceProvider,
+                  configuredAuthModes: providerConnectionAuthModes,
+                })) ||
+              (isSubscriptionRateLimitMode &&
+                !hasDashboardRateLimits &&
+                ((provider.providerId === 'codex' && codexRateLimitsLoading) ||
+                  (provider.providerId === 'anthropic' && anthropicRateLimitsRefreshing)));
             const statusText = showSkeleton ? 'Checking...' : formatProviderStatusText(provider);
             const hasDetailContent = Boolean(
               (provider.backend?.label && !runtimeSummary) ||
@@ -808,80 +841,7 @@ const InstalledBanner = ({
                         )}
                       </div>
                     ) : null}
-                    {showInlineCodexAccessoryRow ? (
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <ProviderModelBadges
-                          providerId={provider.providerId}
-                          models={provider.models}
-                          modelAvailability={provider.modelAvailability}
-                          providerStatus={provider}
-                          collapseAfter={15}
-                        />
-                        {codexDashboardRateLimits!.map((item) => (
-                          <div
-                            key={`${provider.providerId}-${item.label}`}
-                            className="rounded-md border px-2 py-1.5"
-                            style={{
-                              borderColor: 'rgba(74, 222, 128, 0.2)',
-                              backgroundColor: 'rgba(74, 222, 128, 0.06)',
-                            }}
-                          >
-                            <div className="flex items-baseline gap-1.5 whitespace-nowrap">
-                              <span
-                                className="text-[10px] uppercase tracking-[0.06em]"
-                                style={{ color: 'var(--color-text-muted)' }}
-                              >
-                                {item.label}
-                              </span>
-                              <span className="text-xs font-medium" style={{ color: '#86efac' }}>
-                                {item.remaining}
-                              </span>
-                              <span
-                                className="min-w-0 truncate text-[10px]"
-                                style={{ color: 'var(--color-text-secondary)' }}
-                                title={item.resetsAt}
-                              >
-                                • resets {item.resetsAt}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : !showSkeleton &&
-                      codexDashboardRateLimits &&
-                      codexDashboardRateLimits.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {codexDashboardRateLimits.map((item) => (
-                          <div
-                            key={`${provider.providerId}-${item.label}`}
-                            className="rounded-md border px-2 py-1.5"
-                            style={{
-                              borderColor: 'rgba(74, 222, 128, 0.2)',
-                              backgroundColor: 'rgba(74, 222, 128, 0.06)',
-                            }}
-                          >
-                            <div className="flex items-baseline gap-1.5 whitespace-nowrap">
-                              <span
-                                className="text-[10px] uppercase tracking-[0.06em]"
-                                style={{ color: 'var(--color-text-muted)' }}
-                              >
-                                {item.label}
-                              </span>
-                              <span className="text-xs font-medium" style={{ color: '#86efac' }}>
-                                {item.remaining}
-                              </span>
-                              <span
-                                className="min-w-0 truncate text-[10px]"
-                                style={{ color: 'var(--color-text-secondary)' }}
-                                title={item.resetsAt}
-                              >
-                                • resets {item.resetsAt}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : !showSkeleton && codexDashboardHint ? (
+                    {!showSkeleton && codexDashboardHint ? (
                       <div
                         className="mt-2 rounded-md border px-2.5 py-2 text-[11px]"
                         style={{
@@ -1012,7 +972,7 @@ const InstalledBanner = ({
                     </button>
                   </div>
                 </div>
-                {!showSkeleton && provider.models.length > 0 && !showInlineCodexAccessoryRow && (
+                {!showSkeleton && provider.models.length > 0 && (
                   <div className="col-span-2">
                     <ProviderModelBadges
                       providerId={provider.providerId}
@@ -1021,6 +981,19 @@ const InstalledBanner = ({
                       providerStatus={provider}
                       collapseAfter={15}
                     />
+                  </div>
+                )}
+                {!showSkeleton && dashboardRateLimits && dashboardRateLimits.length > 0 && (
+                  <div className="col-span-2">
+                    <DashboardRateLimitChips
+                      providerId={provider.providerId}
+                      items={dashboardRateLimits}
+                    />
+                  </div>
+                )}
+                {showRateLimitSkeleton && (
+                  <div className="col-span-2">
+                    <DashboardRateLimitSkeletonChips />
                   </div>
                 )}
               </div>
@@ -1076,6 +1049,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
   const [providersCollapsed, setProvidersCollapsed] = useState(() =>
     loadDashboardCliStatusBannerCollapsed()
   );
+  const [anthropicRateLimitsRefreshing, setAnthropicRateLimitsRefreshing] = useState(false);
   const multimodelEnabled = appConfig?.general?.multimodelEnabled ?? true;
   const selectedProjectPath = useMemo(
     () => resolveProjectPathById(selectedProjectId, projects, repositoryGroups)?.path ?? null,
@@ -1087,6 +1061,16 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
         ? createLoadingMultimodelCliStatus()
         : cliStatus,
     [cliStatus, cliStatusLoading, multimodelEnabled]
+  );
+  const providerConnectionAuthModes = useMemo(
+    () => ({
+      anthropic: appConfig?.providerConnections?.anthropic.authMode ?? null,
+      codex: appConfig?.providerConnections?.codex.preferredAuthMode ?? null,
+    }),
+    [
+      appConfig?.providerConnections?.anthropic.authMode,
+      appConfig?.providerConnections?.codex.preferredAuthMode,
+    ]
   );
   const codexAccount = useCodexAccountSnapshot({
     enabled:
@@ -1130,6 +1114,27 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     [loadingCliStatus, visibleCliProviders]
   );
   const renderCliStatus = effectiveCliStatus;
+  const shouldPollAnthropicSubscriptionLimits = useMemo(() => {
+    if (
+      !renderCliStatus?.installed ||
+      renderCliStatus.flavor !== 'agent_teams_orchestrator' ||
+      !multimodelEnabled
+    ) {
+      return false;
+    }
+
+    const provider =
+      renderCliStatus.providers.find((candidate) => candidate.providerId === 'anthropic') ?? null;
+    if (!provider) {
+      return false;
+    }
+
+    return isDashboardRateLimitSubscriptionMode({
+      provider,
+      sourceProvider: loadingCliProviderMap.get('anthropic') ?? null,
+      configuredAuthModes: providerConnectionAuthModes,
+    });
+  }, [loadingCliProviderMap, multimodelEnabled, providerConnectionAuthModes, renderCliStatus]);
   const runtimeDisplayName = getHumanRuntimeDisplayName(renderCliStatus, multimodelEnabled);
 
   useEffect(() => {
@@ -1155,6 +1160,38 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
 
     return () => clearInterval(interval);
   }, [bootstrapCliStatus, cliStatus, fetchCliStatus, isElectron, multimodelEnabled]);
+
+  useEffect(() => {
+    if (!isElectron || !shouldPollAnthropicSubscriptionLimits) {
+      setAnthropicRateLimitsRefreshing(false);
+      return;
+    }
+
+    let active = true;
+    const refreshAnthropicLimits = async (): Promise<void> => {
+      if (!active) {
+        return;
+      }
+
+      setAnthropicRateLimitsRefreshing(true);
+      try {
+        await fetchCliProviderStatus('anthropic', { silent: true });
+      } finally {
+        if (active) {
+          setAnthropicRateLimitsRefreshing(false);
+        }
+      }
+    };
+
+    const interval = setInterval(() => {
+      void refreshAnthropicLimits();
+    }, ANTHROPIC_LIMIT_REFRESH_INTERVAL_MS);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [fetchCliProviderStatus, isElectron, shouldPollAnthropicSubscriptionLimits]);
 
   const handleInstall = useCallback(() => {
     installCli();
@@ -1426,6 +1463,9 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
           codexSnapshotPending={codexSnapshotPending}
           cliStatusError={cliStatusError ?? null}
           providersCollapsed={providersCollapsed}
+          providerConnectionAuthModes={providerConnectionAuthModes}
+          codexRateLimitsLoading={codexAccount.rateLimitsLoading}
+          anthropicRateLimitsRefreshing={anthropicRateLimitsRefreshing}
           isBusy={isBusy}
           onInstall={handleInstall}
           onRefresh={handleRefresh}
@@ -1652,6 +1692,9 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
             codexSnapshotPending={codexSnapshotPending}
             cliStatusError={cliStatusError ?? null}
             providersCollapsed={providersCollapsed}
+            providerConnectionAuthModes={providerConnectionAuthModes}
+            codexRateLimitsLoading={codexAccount.rateLimitsLoading}
+            anthropicRateLimitsRefreshing={anthropicRateLimitsRefreshing}
             isBusy={isBusy}
             onInstall={handleInstall}
             onRefresh={handleRefresh}
@@ -1712,6 +1755,9 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
           codexSnapshotPending={codexSnapshotPending}
           cliStatusError={cliStatusError ?? null}
           providersCollapsed={providersCollapsed}
+          providerConnectionAuthModes={providerConnectionAuthModes}
+          codexRateLimitsLoading={codexAccount.rateLimitsLoading}
+          anthropicRateLimitsRefreshing={anthropicRateLimitsRefreshing}
           isBusy={isBusy}
           onInstall={handleInstall}
           onRefresh={handleRefresh}
@@ -1932,6 +1978,9 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
         codexSnapshotPending={codexSnapshotPending}
         cliStatusError={cliStatusError ?? null}
         providersCollapsed={providersCollapsed}
+        providerConnectionAuthModes={providerConnectionAuthModes}
+        codexRateLimitsLoading={codexAccount.rateLimitsLoading}
+        anthropicRateLimitsRefreshing={anthropicRateLimitsRefreshing}
         isBusy={isBusy}
         onInstall={handleInstall}
         onRefresh={handleRefresh}

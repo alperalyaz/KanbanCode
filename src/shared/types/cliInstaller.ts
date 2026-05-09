@@ -185,6 +185,17 @@ export interface CliProviderRuntimeCapabilities {
   };
 }
 
+export interface CliProviderSubscriptionRateLimitWindow {
+  usedPercent: number;
+  windowDurationMins: number | null;
+  resetsAt: number | null;
+}
+
+export interface CliProviderSubscriptionRateLimitSnapshot {
+  primary: CliProviderSubscriptionRateLimitWindow | null;
+  secondary: CliProviderSubscriptionRateLimitWindow | null;
+}
+
 export interface CliProviderStatus {
   providerId: CliProviderId;
   displayName: string;
@@ -199,6 +210,7 @@ export interface CliProviderStatus {
   modelCatalog?: CliProviderModelCatalog | null;
   modelAvailability?: CliProviderModelAvailability[];
   runtimeCapabilities?: CliProviderRuntimeCapabilities | null;
+  subscriptionRateLimits?: CliProviderSubscriptionRateLimitSnapshot | null;
   canLoginFromUi: boolean;
   capabilities: {
     teamLaunch: boolean;

@@ -6,6 +6,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { RecentProjectsSection } from '@features/recent-projects/renderer';
+import { RunningTeamsSection } from '@features/running-teams/renderer';
 import { useStore } from '@renderer/store';
 import { formatShortcut } from '@renderer/utils/stringUtils';
 import { Command, Search, Users } from 'lucide-react';
@@ -130,6 +131,8 @@ export const DashboardView = (): React.JSX.Element => {
             <CommandSearch value={searchQuery} onChange={setSearchQuery} />
           </div>
         </div>
+
+        <RunningTeamsSection searchQuery={searchQuery} />
 
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xs font-medium uppercase tracking-wider text-text-muted">

@@ -15,6 +15,7 @@ interface LimitContextCheckboxProps {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
+  scopeLabel?: string;
 }
 
 export const LimitContextCheckbox: React.FC<LimitContextCheckboxProps> = ({
@@ -22,21 +23,25 @@ export const LimitContextCheckbox: React.FC<LimitContextCheckboxProps> = ({
   checked,
   onCheckedChange,
   disabled = false,
+  scopeLabel,
 }) => (
-  <div className="mt-4 flex items-center gap-2">
+  <div className="mt-4 flex flex-wrap items-center gap-2">
     <Checkbox
       id={id}
-      checked={checked && !disabled}
+      checked={disabled ? true : checked}
       disabled={disabled}
       onCheckedChange={(value) => onCheckedChange(value === true)}
     />
     <Label
       htmlFor={id}
-      className={`flex cursor-pointer items-center gap-1.5 text-xs font-normal ${
+      className={`flex flex-wrap items-center gap-1.5 text-xs font-normal leading-snug ${
         disabled ? 'cursor-not-allowed text-text-muted opacity-50' : 'text-text-secondary'
       }`}
     >
       Limit context to 200K tokens
+      {scopeLabel ? (
+        <span className="text-[10px] text-[var(--color-text-muted)]">({scopeLabel})</span>
+      ) : null}
       {disabled && <span className="text-[10px] italic">(always 200K for this model)</span>}
     </Label>
     <TooltipProvider delayDuration={200}>
@@ -48,8 +53,8 @@ export const LimitContextCheckbox: React.FC<LimitContextCheckboxProps> = ({
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-[260px]">
           <p>
-            Agents will use 200K context window instead of the default 1M. Useful if you want to
-            save tokens and reduce costs.
+            Enable this to cap Anthropic runtimes at 200K tokens. Leave it off only when you want
+            the selected Anthropic model or runtime to use a longer context window when available.
           </p>
         </TooltipContent>
       </Tooltip>

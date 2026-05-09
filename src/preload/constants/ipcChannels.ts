@@ -529,6 +529,9 @@ export const REVIEW_GET_AGENT_CHANGES = 'review:getAgentChanges';
 /** Получить изменения задачи */
 export const REVIEW_GET_TASK_CHANGES = 'review:getTaskChanges';
 
+/** Получить summary изменений по нескольким задачам команды */
+export const REVIEW_GET_TEAM_TASK_CHANGE_SUMMARIES = 'review:getTeamTaskChangeSummaries';
+
 /** Инвалидировать persisted/in-memory summary cache для задач */
 export const REVIEW_INVALIDATE_TASK_CHANGE_SUMMARIES = 'review:invalidateTaskChangeSummaries';
 

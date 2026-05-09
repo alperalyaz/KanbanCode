@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { isAnthropicHaikuTeamModel } from '@renderer/utils/teamModelCatalog';
+
 import { LeadModelRow } from './LeadModelRow';
 import { MembersEditorSection } from './MembersEditorSection';
 
@@ -98,6 +100,33 @@ export const TeamRosterEditorSection = ({
   worktreeIsolationDisabledReason,
   onTeammateWorktreeDefaultChange,
 }: TeamRosterEditorSectionProps): React.JSX.Element => {
+  const canUseCustomMemberRuntimes =
+    !hideMembersContent && !forceInheritedModelSettings && !syncModelsWithTeammates;
+  const activeRuntimeMembers = canUseCustomMemberRuntimes
+    ? members.filter((member) => !member.removedAt)
+    : [];
+  const hasCustomAnthropicRuntime = activeRuntimeMembers.some(
+    (member) => member.providerId === 'anthropic'
+  );
+  const hasMemberAnthropicRuntimeWithContextChoice = activeRuntimeMembers.some((member) => {
+    if (member.providerId === 'anthropic') {
+      const memberModel = member.model?.trim();
+      return !memberModel || !isAnthropicHaikuTeamModel(memberModel);
+    }
+
+    if (member.providerId == null && providerId === 'anthropic') {
+      const memberModel = member.model?.trim();
+      return Boolean(memberModel && !isAnthropicHaikuTeamModel(memberModel));
+    }
+
+    return false;
+  });
+  const hasAnthropicRuntime = providerId === 'anthropic' || hasCustomAnthropicRuntime;
+  const disableAnthropicContextLimit =
+    providerId === 'anthropic' &&
+    isAnthropicHaikuTeamModel(model) &&
+    !hasMemberAnthropicRuntimeWithContextChoice;
+
   return (
     <MembersEditorSection
       members={members}
@@ -145,6 +174,8 @@ export const TeamRosterEditorSection = ({
             warningText={leadWarningText}
             disableGeminiOption={disableGeminiOption}
             modelIssueText={leadModelIssueText}
+            showAnthropicContextLimit={hasAnthropicRuntime}
+            disableAnthropicContextLimit={disableAnthropicContextLimit}
           />
           {headerBottom}
         </div>

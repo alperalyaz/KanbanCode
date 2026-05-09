@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
+import { ActivePulseIndicator } from '@renderer/components/ui/ActivePulseIndicator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { projectColor } from '@renderer/utils/projectColor';
 import { FolderGit2, FolderOpen, GitBranch, Terminal } from 'lucide-react';
@@ -33,10 +34,7 @@ export const RecentProjectCard = ({
       }}
     >
       {card.activeTeams && card.activeTeams.length > 0 && (
-        <span className="absolute right-3 top-3 inline-flex size-2.5">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-50" />
-          <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
-        </span>
+        <ActivePulseIndicator className="absolute right-3 top-3" />
       )}
 
       <div className="mb-1 flex items-center gap-2.5">

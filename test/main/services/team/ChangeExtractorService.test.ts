@@ -352,6 +352,38 @@ describe('ChangeExtractorService', () => {
     }
   });
 
+  it('loads team task change summaries with capped requests and per-task errors', async () => {
+    const { service } = createService({ logPaths: [] });
+    const getTaskChanges = vi
+      .spyOn(service, 'getTaskChanges')
+      .mockImplementation(async (_teamName, taskId, options) => {
+        expect(options?.summaryOnly).toBe(true);
+        if (taskId === 'task-2') {
+          throw new Error('broken summary');
+        }
+        return makeTaskChangeResult(taskId, { taskId });
+      });
+
+    const response = await service.getTeamTaskChangeSummaries(
+      TEAM_NAME,
+      Array.from({ length: 205 }, (_, index) => ({
+        taskId: `task-${index}`,
+        options: { ...SUMMARY_OPTIONS, summaryOnly: false },
+      }))
+    );
+
+    expect(response.teamName).toBe(TEAM_NAME);
+    expect(response.truncated).toBe(true);
+    expect(response.items).toHaveLength(200);
+    expect(getTaskChanges).toHaveBeenCalledTimes(200);
+    expect(response.items[0].changeSet?.taskId).toBe('task-0');
+    expect(response.items[2]).toMatchObject({
+      taskId: 'task-2',
+      changeSet: null,
+      error: 'broken summary',
+    });
+  });
+
   it('does not reuse detailed task-change cache across different scope inputs', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
     setClaudeBasePathOverride(tmpDir);

@@ -347,7 +347,7 @@ const PassiveIdlePeerSummaryRow = ({
   return (
     <div className="flex items-center gap-2 px-3 py-1.5" style={{ opacity: 0.78 }}>
       <span className="bg-sky-500/12 rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-300">
-        update
+        note
       </span>
       <MemberBadge
         name={senderName}

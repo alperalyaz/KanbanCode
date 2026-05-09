@@ -31,18 +31,7 @@ import { nameColorSet } from '@renderer/utils/projectColor';
 import { buildPendingRuntimeSummaryCopy } from '@renderer/utils/teamLaunchSummaryCopy';
 import { isTeamListStatusRunning, resolveTeamStatus } from '@renderer/utils/teamListStatus';
 import { isLeadMember } from '@shared/utils/leadDetection';
-import {
-  CheckCircle,
-  Clock,
-  Copy,
-  FolderOpen,
-  GitBranch,
-  Play,
-  RotateCcw,
-  Search,
-  Square,
-  Trash2,
-} from 'lucide-react';
+import { Copy, FolderOpen, GitBranch, Play, RotateCcw, Search, Square, Trash2 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { TeamEmptyState } from './TeamEmptyState';
@@ -52,6 +41,7 @@ import {
   resolveTeamProjectSelection,
   teamMatchesProjectSelection,
 } from './teamProjectSelection';
+import { TeamTaskStatusSummary } from './TeamTaskStatusSummary';
 
 import type { ActiveTeamRef, TeamCopyData } from './dialogs/CreateTeamDialog';
 import type { TeamListFilterState } from './TeamListFilterPopover';
@@ -1044,58 +1034,7 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
                     )}
                   </div>
                   <div className="mt-auto">
-                    {(() => {
-                      const tc = taskCountsByTeam.get(team.teamName);
-                      const pending = tc?.pending ?? 0;
-                      const inProgress = tc?.inProgress ?? 0;
-                      const completed = tc?.completed ?? 0;
-                      const totalTasks = pending + inProgress + completed;
-                      const completedRatio = totalTasks > 0 ? completed / totalTasks : 0;
-                      return (
-                        <div className="mt-2 w-full space-y-1.5">
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-raised)]"
-                              role="progressbar"
-                              aria-valuenow={completed}
-                              aria-valuemin={0}
-                              aria-valuemax={totalTasks}
-                              aria-label={`Tasks ${completed}/${totalTasks} completed`}
-                            >
-                              <div
-                                className="h-full rounded-full bg-emerald-500 transition-all duration-200"
-                                style={{ width: `${Math.round(completedRatio * 100)}%` }}
-                              />
-                            </div>
-                            <span className="shrink-0 text-[10px] font-medium tracking-tight text-[var(--color-text-muted)]">
-                              {completed}/{totalTasks}
-                            </span>
-                          </div>
-                          {totalTasks > 0 && (
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-[var(--color-text-muted)]">
-                              {inProgress > 0 && (
-                                <span className="inline-flex items-center gap-1">
-                                  <Play size={10} className="shrink-0 text-blue-400" />
-                                  {inProgress} in_progress
-                                </span>
-                              )}
-                              {pending > 0 && (
-                                <span className="inline-flex items-center gap-1">
-                                  <Clock size={10} className="shrink-0 text-amber-400" />
-                                  {pending} pending
-                                </span>
-                              )}
-                              {completed > 0 && (
-                                <span className="inline-flex items-center gap-1">
-                                  <CheckCircle size={10} className="shrink-0 text-emerald-400" />
-                                  {completed} completed
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    <TeamTaskStatusSummary counts={taskCountsByTeam.get(team.teamName)} />
                     {renderTeamRecentPaths(team, status, matchesCurrentProject, isLight)}
                   </div>
                 </div>

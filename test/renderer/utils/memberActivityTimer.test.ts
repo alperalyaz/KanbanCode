@@ -195,6 +195,134 @@ describe('memberActivityTimer', () => {
     ).toBe('2026-05-07T09:35:00.000Z');
   });
 
+  it('uses the current review_started event when older review intervals are already closed', () => {
+    const task: TeamTaskWithKanban = {
+      ...baseTask,
+      status: 'completed',
+      reviewState: 'review',
+      kanbanColumn: 'review',
+      reviewer: 'alice',
+      reviewIntervals: [
+        {
+          reviewer: 'alice',
+          startedAt: '2026-05-07T09:30:00.000Z',
+          completedAt: '2026-05-07T09:40:00.000Z',
+        },
+      ],
+      historyEvents: [
+        {
+          id: 'evt-1',
+          type: 'review_started',
+          from: 'review',
+          to: 'review',
+          actor: 'alice',
+          timestamp: '2026-05-07T09:30:00.000Z',
+        },
+        {
+          id: 'evt-2',
+          type: 'review_approved',
+          from: 'review',
+          to: 'approved',
+          actor: 'alice',
+          timestamp: '2026-05-07T09:40:00.000Z',
+        },
+        {
+          id: 'evt-3',
+          type: 'status_changed',
+          from: 'completed',
+          to: 'in_progress',
+          timestamp: '2026-05-07T09:50:00.000Z',
+        },
+        {
+          id: 'evt-4',
+          type: 'status_changed',
+          from: 'in_progress',
+          to: 'completed',
+          timestamp: '2026-05-07T09:55:00.000Z',
+        },
+        {
+          id: 'evt-5',
+          type: 'review_started',
+          from: 'review',
+          to: 'review',
+          actor: 'alice',
+          timestamp: '2026-05-07T10:00:00.000Z',
+        },
+      ],
+    };
+
+    expect(
+      deriveReviewActivityTimerAnchor(task, {
+        teamName: 'alpha',
+        memberName: 'alice',
+      })?.startedAt
+    ).toBe('2026-05-07T10:00:00.000Z');
+  });
+
+  it('does not start a review timer from a requested-only review cycle', () => {
+    const task: TeamTaskWithKanban = {
+      ...baseTask,
+      status: 'completed',
+      reviewState: 'review',
+      kanbanColumn: 'review',
+      reviewer: 'alice',
+      reviewIntervals: [
+        {
+          reviewer: 'alice',
+          startedAt: '2026-05-07T09:30:00.000Z',
+          completedAt: '2026-05-07T09:40:00.000Z',
+        },
+      ],
+      historyEvents: [
+        {
+          id: 'evt-1',
+          type: 'review_started',
+          from: 'review',
+          to: 'review',
+          actor: 'alice',
+          timestamp: '2026-05-07T09:30:00.000Z',
+        },
+        {
+          id: 'evt-2',
+          type: 'review_approved',
+          from: 'review',
+          to: 'approved',
+          actor: 'alice',
+          timestamp: '2026-05-07T09:40:00.000Z',
+        },
+        {
+          id: 'evt-3',
+          type: 'status_changed',
+          from: 'completed',
+          to: 'in_progress',
+          timestamp: '2026-05-07T09:50:00.000Z',
+        },
+        {
+          id: 'evt-4',
+          type: 'status_changed',
+          from: 'in_progress',
+          to: 'completed',
+          timestamp: '2026-05-07T09:55:00.000Z',
+        },
+        {
+          id: 'evt-5',
+          type: 'review_requested',
+          from: 'none',
+          to: 'review',
+          reviewer: 'alice',
+          timestamp: '2026-05-07T10:00:00.000Z',
+        },
+      ],
+    };
+
+    expect(
+      deriveReviewActivityTimerAnchor(task, {
+        teamName: 'alpha',
+        memberName: 'alice',
+      })
+    ).toBeNull();
+  });
+
   it('anchors review timers to persisted review intervals and adds paused review time', () => {
     const task: TeamTaskWithKanban = {
       ...baseTask,

@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
+import {
+  AnthropicExtraUsageWarning,
+  ANTHROPIC_LONG_CONTEXT_PRICING_URL,
+  ANTHROPIC_SONNET_EXTRA_USAGE_WARNING,
+} from '@renderer/components/team/dialogs/AnthropicExtraUsageWarning';
 import { EffortLevelSelector } from '@renderer/components/team/dialogs/EffortLevelSelector';
 import { LimitContextCheckbox } from '@renderer/components/team/dialogs/LimitContextCheckbox';
 import {
@@ -16,7 +21,7 @@ import { cn } from '@renderer/lib/utils';
 import { agentAvatarUrl } from '@renderer/utils/memberHelpers';
 import {
   isAnthropicHaikuTeamModel,
-  isAnthropicSonnetTeamModel,
+  isAnthropicSonnetOneMillionContextTeamModel,
 } from '@renderer/utils/teamModelCatalog';
 import { resolveTeamLeadColorName } from '@shared/utils/teamMemberColors';
 import { AlertTriangle, ChevronDown, ChevronRight, Info } from 'lucide-react';
@@ -25,10 +30,7 @@ import { Button } from '../../ui/button';
 
 import type { EffortLevel, TeamProviderId } from '@shared/types';
 
-export const ANTHROPIC_SONNET_EXTRA_USAGE_WARNING =
-  'Sonnet with 1M context can use Anthropic Extra Usage. Requests over 200K input tokens are billed at premium long-context rates; enable Limit context to 200K tokens to avoid that billing path.';
-export const ANTHROPIC_LONG_CONTEXT_PRICING_URL =
-  'https://platform.claude.com/docs/en/about-claude/pricing';
+export { ANTHROPIC_LONG_CONTEXT_PRICING_URL, ANTHROPIC_SONNET_EXTRA_USAGE_WARNING };
 
 interface LeadModelRowProps {
   providerId: TeamProviderId;
@@ -44,6 +46,8 @@ interface LeadModelRowProps {
   warningText?: string | null;
   disableGeminiOption?: boolean;
   modelIssueText?: string | null;
+  showAnthropicContextLimit?: boolean;
+  disableAnthropicContextLimit?: boolean;
 }
 
 export const LeadModelRow = ({
@@ -60,6 +64,8 @@ export const LeadModelRow = ({
   warningText,
   disableGeminiOption = false,
   modelIssueText,
+  showAnthropicContextLimit = providerId === 'anthropic',
+  disableAnthropicContextLimit,
 }: LeadModelRowProps): React.JSX.Element => {
   const { isLight } = useTheme();
   const [modelExpanded, setModelExpanded] = useState(false);
@@ -70,11 +76,16 @@ export const LeadModelRow = ({
   const modelButtonAriaLabel = `${getTeamProviderLabel(providerId)} provider, ${modelButtonLabel}`;
   const hasModelIssue = Boolean(modelIssueText);
   const showSonnetExtraUsageWarning =
-    providerId === 'anthropic' && !limitContext && isAnthropicSonnetTeamModel(model);
+    providerId === 'anthropic' &&
+    !limitContext &&
+    isAnthropicSonnetOneMillionContextTeamModel(model);
   const warningMessages = [warningText?.trim() || null].filter((message): message is string =>
     Boolean(message)
   );
   const hasWarnings = warningMessages.length > 0 || showSonnetExtraUsageWarning;
+  const contextLimitDisabled =
+    disableAnthropicContextLimit ??
+    (providerId === 'anthropic' && isAnthropicHaikuTeamModel(model));
 
   return (
     <div
@@ -154,20 +165,7 @@ export const LeadModelRow = ({
               {warningMessages.map((message) => (
                 <p key={message}>{message}</p>
               ))}
-              {showSonnetExtraUsageWarning ? (
-                <p>
-                  {ANTHROPIC_SONNET_EXTRA_USAGE_WARNING}{' '}
-                  <a
-                    href={ANTHROPIC_LONG_CONTEXT_PRICING_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-medium text-amber-100 underline underline-offset-2 hover:text-white"
-                  >
-                    Read Anthropic pricing docs
-                  </a>
-                  .
-                </p>
-              ) : null}
+              {showSonnetExtraUsageWarning ? <AnthropicExtraUsageWarning /> : null}
             </div>
           </div>
         </div>
@@ -191,19 +189,22 @@ export const LeadModelRow = ({
             model={model}
             limitContext={limitContext}
           />
-          {providerId === 'anthropic' ? (
+          {showAnthropicContextLimit ? (
             <LimitContextCheckbox
               id="lead-limit-context"
               checked={limitContext}
               onCheckedChange={onLimitContextChange}
-              disabled={isAnthropicHaikuTeamModel(model)}
+              disabled={contextLimitDisabled}
+              scopeLabel={providerId === 'anthropic' ? undefined : 'Anthropic team-wide'}
             />
           ) : null}
           <div className="flex items-start gap-2 rounded-md border border-sky-500/20 bg-sky-500/5 px-3 py-2">
             <Info className="mt-0.5 size-3.5 shrink-0 text-sky-400" />
             <p className="text-[11px] leading-relaxed text-sky-300">
-              These settings control the team lead and act as the default runtime for teammates that
-              do not have their own override.
+              Lead runtime applies to teammates unless they set their own provider or model.
+              {showAnthropicContextLimit
+                ? ' The 200K context limit is team-wide for Anthropic runtimes in this launch, including custom Anthropic teammates.'
+                : null}
             </p>
           </div>
         </div>

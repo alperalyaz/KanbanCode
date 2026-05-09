@@ -133,6 +133,7 @@ import { LeadSessionDetailGate } from './LeadSessionDetailGate';
 import { LiveRuntimeStatusBridge } from './LiveRuntimeStatusBridge';
 import { ProcessesSection } from './ProcessesSection';
 import { getLaunchJoinMilestonesFromMembers, getLaunchJoinState } from './provisioningSteps';
+import { TeamChangesSection } from './TeamChangesSection';
 import { TeamProvisioningBanner } from './TeamProvisioningBanner';
 import { loadTeamSessionMetadata } from './teamSessionFetchGuards';
 import { TeamSessionsSection } from './TeamSessionsSection';
@@ -2713,6 +2714,12 @@ export const TeamDetailView = memo(function TeamDetailView({
                   onOpenTrash={() => setTrashOpen(true)}
                 />
               </CollapsibleTeamSection>
+
+              <TeamChangesSection
+                teamName={teamName}
+                tasks={data.tasks}
+                onViewChanges={handleViewChangesForFile}
+              />
 
               <CollapsibleTeamSection
                 sectionId="schedules"

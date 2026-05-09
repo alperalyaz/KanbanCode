@@ -203,6 +203,8 @@ const ToolUsageBars = ({
 };
 
 const TRAILING_PUNCT = ';.,';
+const INVALID_PATH_NAMES = new Set(['null', 'undefined', 'none']);
+const WINDOWS_NULL_DEVICE_RE = /^[a-z]:\/nul$/;
 
 function isInvalidPath(path: string): boolean {
   let trimmed = path.trim();
@@ -211,7 +213,15 @@ function isInvalidPath(path: string): boolean {
     end--;
   }
   trimmed = trimmed.slice(0, end);
-  return !trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === 'None';
+  const normalized = trimmed.replace(/\\/g, '/').toLowerCase();
+  return (
+    !trimmed ||
+    INVALID_PATH_NAMES.has(normalized) ||
+    normalized === '/dev/null' ||
+    normalized === '//./nul' ||
+    normalized === '//?/nul' ||
+    WINDOWS_NULL_DEVICE_RE.test(normalized)
+  );
 }
 
 const FilesTouchedSection = ({

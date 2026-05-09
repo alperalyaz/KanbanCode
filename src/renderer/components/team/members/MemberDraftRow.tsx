@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
+import { AnthropicExtraUsageWarning } from '@renderer/components/team/dialogs/AnthropicExtraUsageWarning';
 import { EffortLevelSelector } from '@renderer/components/team/dialogs/EffortLevelSelector';
 import {
   formatTeamModelSummary,
@@ -21,6 +22,7 @@ import { useFileListCacheWarmer } from '@renderer/hooks/useFileListCacheWarmer';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
 import { reconcileChips, removeChipTokenFromText } from '@renderer/utils/chipUtils';
+import { isAnthropicSonnetOneMillionContextTeamModel } from '@renderer/utils/teamModelCatalog';
 import { getMemberColorByName } from '@shared/constants/memberColors';
 import {
   AlertTriangle,
@@ -225,6 +227,20 @@ export const MemberDraftRow = ({
   const worktreeIsolationDisabled =
     isRemoved || Boolean(worktreeIsolationDisabledReason && member.isolation !== 'worktree');
   const hasModelIssue = Boolean(modelIssueText);
+  const hasCustomProviderOrModel =
+    !forceInheritedModelSettings && Boolean(member.providerId || member.model?.trim());
+  const showSonnetExtraUsageWarning =
+    effectiveProviderId === 'anthropic' &&
+    !limitContext &&
+    hasCustomProviderOrModel &&
+    isAnthropicSonnetOneMillionContextTeamModel(effectiveModel);
+  const warningMessages = [warningText?.trim() || null].filter((message): message is string =>
+    Boolean(message)
+  );
+  const hasWarnings = warningMessages.length > 0 || showSonnetExtraUsageWarning;
+  const anthropicContextModeLabel = limitContext
+    ? '200K limit enabled'
+    : '1M-capable context allowed';
   const runtimeSummary = formatTeamModelSummary(
     effectiveProviderId,
     effectiveModel?.trim() ?? '',
@@ -413,11 +429,16 @@ export const MemberDraftRow = ({
           <div className="pl-1 text-[11px] text-[var(--color-text-muted)]">Removed</div>
         ) : null}
       </div>
-      {!isRemoved && warningText ? (
+      {!isRemoved && hasWarnings ? (
         <div className="md:col-span-3">
           <div className="bg-amber-500/8 ml-3 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
             <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
-            <p>{warningText}</p>
+            <div className="space-y-1">
+              {warningMessages.map((message) => (
+                <p key={message}>{message}</p>
+              ))}
+              {showSonnetExtraUsageWarning ? <AnthropicExtraUsageWarning /> : null}
+            </div>
           </div>
         </div>
       ) : null}
@@ -518,6 +539,15 @@ export const MemberDraftRow = ({
                 model={effectiveModel}
                 limitContext={limitContext}
               />
+              {effectiveProviderId === 'anthropic' ? (
+                <div className="flex items-start gap-2 rounded-md border border-sky-500/20 bg-sky-500/5 px-3 py-2">
+                  <Info className="mt-0.5 size-3.5 shrink-0 text-sky-400" />
+                  <p className="text-[11px] leading-relaxed text-sky-300">
+                    Anthropic context is team-wide for this launch: {anthropicContextModeLabel}. Use
+                    the lead runtime panel&apos;s Limit context checkbox to change it.
+                  </p>
+                </div>
+              ) : null}
               {lockProviderModel && (
                 <p className="text-[11px] text-amber-300">
                   {modelLockReason ??

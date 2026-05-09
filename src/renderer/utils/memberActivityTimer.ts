@@ -374,32 +374,39 @@ export function deriveReviewActivityTimerAnchor(
     };
   }
 
-  if (reviewIntervals.length > 0) return null;
+  const anchorEvent = getCurrentReviewTimerAnchorEvent(task, memberKey);
+  if (!anchorEvent) return null;
 
+  const startedAtMs = parseIsoMs(anchorEvent.timestamp);
+  if (startedAtMs <= 0) return null;
+
+  return {
+    startedAt: anchorEvent.timestamp,
+    startedAtMs,
+    baseElapsedMs: 0,
+    timerId: createMemberActivityTimerId({
+      teamName: params.teamName,
+      memberName: params.memberName,
+      phase: 'review',
+      taskId: task.id,
+      startedAt: anchorEvent.timestamp,
+    }),
+  };
+}
+
+function getCurrentReviewTimerAnchorEvent(
+  task: TeamTaskWithKanban,
+  memberKey: string
+): { timestamp: string } | null {
   const events = Array.isArray(task.historyEvents) ? task.historyEvents : [];
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
     if (event.type === 'review_started') {
-      if (normalizeMemberName(event.actor) !== memberKey) {
-        return null;
-      }
-      const startedAtMs = parseIsoMs(event.timestamp);
-      if (startedAtMs <= 0) return null;
-      return {
-        startedAt: event.timestamp,
-        startedAtMs,
-        baseElapsedMs: 0,
-        timerId: createMemberActivityTimerId({
-          teamName: params.teamName,
-          memberName: params.memberName,
-          phase: 'review',
-          taskId: task.id,
-          startedAt: event.timestamp,
-        }),
-      };
+      return normalizeMemberName(event.actor) === memberKey ? { timestamp: event.timestamp } : null;
     }
 
     if (
+      event.type === 'review_requested' ||
       event.type === 'review_approved' ||
       event.type === 'review_changes_requested' ||
       event.type === 'task_created' ||

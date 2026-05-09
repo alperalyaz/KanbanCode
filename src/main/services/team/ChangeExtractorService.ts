@@ -43,12 +43,21 @@ import type { TaskBoundaryParser } from './TaskBoundaryParser';
 import type { TaskChangeWorkerClient } from './TaskChangeWorkerClient';
 import type { TeamLogSourceTracker } from './TeamLogSourceTracker';
 import type { TeamMemberLogsFinder } from './TeamMemberLogsFinder';
-import type { AgentChangeSet, ChangeStats, TaskChangeSetV2 } from '@shared/types';
+import type {
+  AgentChangeSet,
+  ChangeStats,
+  TaskChangeSetV2,
+  TeamTaskChangeSummariesResponse,
+  TeamTaskChangeSummaryItem,
+  TeamTaskChangeSummaryRequest,
+} from '@shared/types';
 
 const logger = createLogger('Service:ChangeExtractorService');
 const OPEN_CODE_AUTO_BACKFILL_ATTRIBUTION_MODE = 'strict-delivery' as const;
 const OPEN_CODE_AUTO_BACKFILL_EVIDENCE_PIPELINE = 'opencode-session-snapshot-v1' as const;
 const OPEN_CODE_MAX_DISCOVERED_LANES = 500;
+const TEAM_TASK_CHANGE_SUMMARY_BATCH_LIMIT = 200;
+const TEAM_TASK_CHANGE_SUMMARY_BATCH_CONCURRENCY = 3;
 
 /** Кеш-запись: данные + mtime файла + время протухания */
 interface CacheEntry {
@@ -320,6 +329,57 @@ export class ChangeExtractorService {
 
     this.taskChangeSummaryInFlight.set(cacheKey, promise);
     return promise;
+  }
+
+  async getTeamTaskChangeSummaries(
+    teamName: string,
+    requests: TeamTaskChangeSummaryRequest[]
+  ): Promise<TeamTaskChangeSummariesResponse> {
+    const cappedRequests = requests
+      .filter((request) => typeof request.taskId === 'string' && request.taskId.trim().length > 0)
+      .slice(0, TEAM_TASK_CHANGE_SUMMARY_BATCH_LIMIT);
+    const items: TeamTaskChangeSummaryItem[] = cappedRequests.map((request) => ({
+      taskId: request.taskId.trim(),
+      changeSet: null,
+    }));
+    let cursor = 0;
+
+    const runNext = async (): Promise<void> => {
+      while (cursor < cappedRequests.length) {
+        const index = cursor;
+        cursor += 1;
+        const request = cappedRequests[index];
+        const taskId = request.taskId.trim();
+        try {
+          const changeSet = await this.getTaskChanges(teamName, taskId, {
+            ...request.options,
+            summaryOnly: true,
+          });
+          items[index] = { taskId, changeSet };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          items[index] = {
+            taskId,
+            changeSet: null,
+            error: message,
+          };
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from(
+        { length: Math.min(TEAM_TASK_CHANGE_SUMMARY_BATCH_CONCURRENCY, cappedRequests.length) },
+        () => runNext()
+      )
+    );
+
+    return {
+      teamName,
+      items,
+      computedAt: new Date().toISOString(),
+      truncated: requests.length > cappedRequests.length || undefined,
+    };
   }
 
   async invalidateTaskChangeSummaries(

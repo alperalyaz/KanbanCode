@@ -291,6 +291,39 @@ export interface TaskChangeSetV2 extends TaskChangeSet {
   provenance?: TaskChangeProvenance;
 }
 
+export interface TaskChangeRequestOptions {
+  owner?: string;
+  status?: string;
+  /** Persisted work intervals (preferred for reliable owner-log attribution). */
+  intervals?: { startedAt: string; completedAt?: string }[];
+  /** Back-compat: single since timestamp (deprecated). */
+  since?: string;
+  /** Derived task lifecycle bucket used for safe summary caching. */
+  stateBucket?: 'approved' | 'review' | 'completed' | 'active';
+  /** Lightweight response for summary UIs; skips snippets/timeline details. */
+  summaryOnly?: boolean;
+  /** Force a fresh recompute and overwrite any cache snapshot. */
+  forceFresh?: boolean;
+}
+
+export interface TeamTaskChangeSummaryRequest {
+  taskId: string;
+  options?: TaskChangeRequestOptions;
+}
+
+export interface TeamTaskChangeSummaryItem {
+  taskId: string;
+  changeSet: TaskChangeSetV2 | null;
+  error?: string;
+}
+
+export interface TeamTaskChangeSummariesResponse {
+  teamName: string;
+  items: TeamTaskChangeSummaryItem[];
+  computedAt: string;
+  truncated?: boolean;
+}
+
 // ── Phase 4: Enhanced Features types ──
 
 /** Одно событие в timeline файла */

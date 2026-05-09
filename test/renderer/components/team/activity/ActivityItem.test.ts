@@ -455,7 +455,7 @@ describe('ActivityItem legacy system message fallback', () => {
       await Promise.resolve();
     });
 
-    expect(host.textContent).toContain('update');
+    expect(host.textContent).toContain('note');
     expect(host.textContent).toContain('alice');
     expect(host.textContent).toContain('bob');
     expect(host.textContent).toContain('aligned on rollout order');
@@ -470,7 +470,7 @@ describe('ActivityItem legacy system message fallback', () => {
     });
   });
 
-  it('renders user-directed peer-summary rows as passive updates instead of pseudo messages', async () => {
+  it('renders user-directed peer-summary rows as passive notes instead of pseudo messages', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -495,7 +495,7 @@ describe('ActivityItem legacy system message fallback', () => {
       await Promise.resolve();
     });
 
-    expect(host.textContent).toContain('update');
+    expect(host.textContent).toContain('note');
     expect(host.textContent).toContain('alice');
     expect(host.textContent).toContain('user');
     expect(host.textContent).toContain('Я здесь.');

@@ -27,7 +27,10 @@ import type {
   HunkDecision,
   RejectResult,
   SnippetDiff,
+  TaskChangeRequestOptions,
   TaskChangeSetV2,
+  TeamTaskChangeSummariesResponse,
+  TeamTaskChangeSummaryRequest,
 } from './review';
 import type {
   CreateScheduleInput,
@@ -709,21 +712,12 @@ export interface ReviewAPI {
   getTaskChanges: (
     teamName: string,
     taskId: string,
-    options?: {
-      owner?: string;
-      status?: string;
-      /** Persisted work intervals (preferred for reliable owner-log attribution). */
-      intervals?: { startedAt: string; completedAt?: string }[];
-      /** Back-compat: single since timestamp (deprecated). */
-      since?: string;
-      /** Derived task lifecycle bucket used for safe summary caching. */
-      stateBucket?: 'approved' | 'review' | 'completed' | 'active';
-      /** Lightweight response for summary UIs; skips snippets/timeline details. */
-      summaryOnly?: boolean;
-      /** Force a fresh recompute and overwrite any cache snapshot. */
-      forceFresh?: boolean;
-    }
+    options?: TaskChangeRequestOptions
   ) => Promise<TaskChangeSetV2>;
+  getTeamTaskChangeSummaries: (
+    teamName: string,
+    requests: TeamTaskChangeSummaryRequest[]
+  ) => Promise<TeamTaskChangeSummariesResponse>;
   invalidateTaskChangeSummaries: (teamName: string, taskIds: string[]) => Promise<void>;
   getChangeStats: (teamName: string, memberName: string) => Promise<ChangeStats>;
   getFileContent: (

@@ -33,6 +33,15 @@ interface StoreState {
     general: {
       multimodelEnabled: boolean;
     };
+    providerConnections?: {
+      anthropic: {
+        authMode: 'auto' | 'oauth' | 'api_key';
+        fastModeDefault: boolean;
+      };
+      codex: {
+        preferredAuthMode: 'auto' | 'chatgpt' | 'api_key';
+      };
+    };
     runtime?: {
       providerBackends?: Record<string, string>;
     };
@@ -50,6 +59,7 @@ let providerRuntimeSettingsDialogProps: {
 const codexAccountHookState = {
   snapshot: null as CodexAccountSnapshotDto | null,
   loading: false,
+  rateLimitsLoading: false,
   error: null as string | null,
   refresh: vi.fn(() => Promise.resolve(undefined)),
   startChatgptLogin: vi.fn(() => Promise.resolve(true)),
@@ -97,10 +107,9 @@ vi.mock('@renderer/components/runtime/ProviderRuntimeSettingsDialog', () => ({
 }));
 
 vi.mock('@renderer/components/runtime/ProviderRuntimeBackendSelector', async () => {
-  const actual =
-    await vi.importActual<typeof import('@renderer/components/runtime/ProviderRuntimeBackendSelector')>(
-      '@renderer/components/runtime/ProviderRuntimeBackendSelector'
-    );
+  const actual = await vi.importActual<
+    typeof import('@renderer/components/runtime/ProviderRuntimeBackendSelector')
+  >('@renderer/components/runtime/ProviderRuntimeBackendSelector');
   return {
     getProviderRuntimeBackendSummary: actual.getProviderRuntimeBackendSummary,
   };
@@ -196,8 +205,7 @@ function createApiKeyMisconfiguredProvider(
     connection: {
       supportsOAuth: providerId === 'anthropic',
       supportsApiKey: true,
-      configurableAuthModes:
-        providerId === 'anthropic' ? ['auto', 'oauth', 'api_key'] : [],
+      configurableAuthModes: providerId === 'anthropic' ? ['auto', 'oauth', 'api_key'] : [],
       configuredAuthMode: providerId === 'anthropic' ? 'api_key' : null,
       apiKeyConfigured: false,
       apiKeySource: null,
@@ -244,7 +252,8 @@ function createCodexNativeRolloutProvider(
       overrides?.state === 'ready' || overrides?.available === true ? 'verified' : 'unknown',
     statusMessage: overrides?.statusMessage ?? 'Ready',
     detailMessage:
-      overrides?.detailMessage ?? 'Codex native runtime is ready through the local codex exec seam.',
+      overrides?.detailMessage ??
+      'Codex native runtime is ready through the local codex exec seam.',
     selectedBackendId: 'codex-native',
     resolvedBackendId:
       overrides?.state === 'ready' || overrides?.available === true ? 'codex-native' : null,
@@ -266,7 +275,8 @@ function createCodexNativeRolloutProvider(
         audience: overrides?.audience ?? 'general',
         statusMessage: overrides?.statusMessage ?? 'Ready',
         detailMessage:
-          overrides?.detailMessage ?? 'Codex native runtime is ready through the local codex exec seam.',
+          overrides?.detailMessage ??
+          'Codex native runtime is ready through the local codex exec seam.',
       },
     ],
     backend:
@@ -291,6 +301,7 @@ describe('CLI status visibility during completed install state', () => {
     providerRuntimeSettingsDialogProps = null;
     codexAccountHookState.snapshot = null;
     codexAccountHookState.loading = false;
+    codexAccountHookState.rateLimitsLoading = false;
     codexAccountHookState.error = null;
     codexAccountHookState.refresh.mockClear();
     codexAccountHookState.startChatgptLogin.mockClear();
@@ -316,6 +327,15 @@ describe('CLI status visibility during completed install state', () => {
     storeState.appConfig = {
       general: {
         multimodelEnabled: true,
+      },
+      providerConnections: {
+        anthropic: {
+          authMode: 'auto',
+          fastModeDefault: false,
+        },
+        codex: {
+          preferredAuthMode: 'auto',
+        },
       },
       runtime: {
         providerBackends: {},
@@ -569,6 +589,254 @@ describe('CLI status visibility during completed install state', () => {
     });
   });
 
+  it('shows subscription limit placeholders while an Anthropic subscription provider is checking', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.appConfig.providerConnections = {
+      anthropic: {
+        authMode: 'oauth',
+        fastModeDefault: false,
+      },
+      codex: {
+        preferredAuthMode: 'auto',
+      },
+    };
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      authLoggedIn: false,
+      providers: [
+        {
+          providerId: 'anthropic',
+          displayName: 'Anthropic',
+          supported: true,
+          authenticated: false,
+          authMethod: null,
+          verificationState: 'unknown',
+          statusMessage: 'Checking...',
+          models: [],
+          canLoginFromUi: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+          },
+          backend: null,
+        },
+      ],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('5h left');
+    expect(host.textContent).toContain('Weekly left');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('hides subscription limit placeholders while an Anthropic API key provider is checking', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.appConfig.providerConnections = {
+      anthropic: {
+        authMode: 'api_key',
+        fastModeDefault: false,
+      },
+      codex: {
+        preferredAuthMode: 'auto',
+      },
+    };
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      authLoggedIn: false,
+      providers: [
+        {
+          providerId: 'anthropic',
+          displayName: 'Anthropic',
+          supported: true,
+          authenticated: false,
+          authMethod: null,
+          verificationState: 'unknown',
+          statusMessage: 'Checking...',
+          models: [],
+          canLoginFromUi: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+          },
+          backend: null,
+        },
+      ],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).not.toContain('5h left');
+    expect(host.textContent).not.toContain('Weekly left');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('periodically refreshes Anthropic subscription limits while subscription mode is active', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.appConfig.providerConnections = {
+      anthropic: {
+        authMode: 'oauth',
+        fastModeDefault: false,
+      },
+      codex: {
+        preferredAuthMode: 'auto',
+      },
+    };
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      authLoggedIn: true,
+      providers: [
+        {
+          providerId: 'anthropic',
+          displayName: 'Anthropic',
+          supported: true,
+          authenticated: true,
+          authMethod: 'claude.ai',
+          verificationState: 'verified',
+          statusMessage: 'Connected via Anthropic subscription',
+          models: ['claude-sonnet-4-5'],
+          canLoginFromUi: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+          },
+          connection: {
+            supportsOAuth: true,
+            supportsApiKey: true,
+            configurableAuthModes: ['auto', 'oauth', 'api_key'],
+            configuredAuthMode: 'oauth',
+            apiKeyConfigured: false,
+            apiKeySource: null,
+            apiKeySourceLabel: null,
+          },
+        },
+      ],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    try {
+      await act(async () => {
+        root.render(React.createElement(CliStatusBanner));
+        await Promise.resolve();
+      });
+
+      expect(storeState.fetchCliProviderStatus).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+        await Promise.resolve();
+      });
+
+      expect(storeState.fetchCliProviderStatus).toHaveBeenCalledWith('anthropic', {
+        silent: true,
+      });
+    } finally {
+      await act(async () => {
+        root.unmount();
+        await Promise.resolve();
+      });
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not periodically refresh Anthropic limits while API key mode is active', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.appConfig.providerConnections = {
+      anthropic: {
+        authMode: 'api_key',
+        fastModeDefault: false,
+      },
+      codex: {
+        preferredAuthMode: 'auto',
+      },
+    };
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      authLoggedIn: true,
+      providers: [
+        {
+          providerId: 'anthropic',
+          displayName: 'Anthropic',
+          supported: true,
+          authenticated: true,
+          authMethod: 'api_key',
+          verificationState: 'verified',
+          statusMessage: 'Connected via API key',
+          models: ['claude-sonnet-4-5'],
+          canLoginFromUi: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+          },
+          connection: {
+            supportsOAuth: true,
+            supportsApiKey: true,
+            configurableAuthModes: ['auto', 'oauth', 'api_key'],
+            configuredAuthMode: 'api_key',
+            apiKeyConfigured: true,
+            apiKeySource: 'stored',
+            apiKeySourceLabel: 'Stored Anthropic API key',
+          },
+        },
+      ],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    try {
+      await act(async () => {
+        root.render(React.createElement(CliStatusBanner));
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+        await Promise.resolve();
+      });
+
+      expect(storeState.fetchCliProviderStatus).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => {
+        root.unmount();
+        await Promise.resolve();
+      });
+      vi.useRealTimers();
+    }
+  });
+
   it('does not fall back to direct-Claude auth copy when only hidden multimodel providers are available', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliInstallerState = 'idle';
@@ -756,9 +1024,7 @@ describe('CLI status visibility during completed install state', () => {
     expect(host.textContent).toContain('Providers: 1/1 connected');
     expect(host.textContent).not.toContain('Anthropic');
     expect(host.textContent).not.toContain('Manage');
-    expect(
-      host.querySelector('button[aria-label="Expand provider details"]')
-    ).not.toBeNull();
+    expect(host.querySelector('button[aria-label="Expand provider details"]')).not.toBeNull();
 
     await act(async () => {
       root.unmount();
@@ -866,9 +1132,7 @@ describe('CLI status visibility during completed install state', () => {
 
     expect(secondHost.textContent).toContain('Providers: 1/1 connected');
     expect(secondHost.textContent).not.toContain('ChatGPT account ready');
-    expect(
-      secondHost.querySelector('button[aria-label="Expand provider details"]')
-    ).not.toBeNull();
+    expect(secondHost.querySelector('button[aria-label="Expand provider details"]')).not.toBeNull();
 
     await act(async () => {
       secondRoot.unmount();
@@ -1347,12 +1611,86 @@ describe('CLI status visibility during completed install state', () => {
 
     expect(host.textContent).toContain('Providers: 1/1 connected');
     expect(host.textContent).toContain('ChatGPT account ready');
-    expect(host.textContent).not.toContain('Connect a ChatGPT account to use your Codex subscription.');
+    expect(host.textContent).not.toContain(
+      'Connect a ChatGPT account to use your Codex subscription.'
+    );
     expect(host.textContent).toContain('5h left');
     expect(host.textContent).toContain('95%');
     expect(host.textContent).toContain('1w left');
     expect(host.textContent).toContain('59%');
     expect(host.textContent).toContain('resets');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('shows Codex limit placeholders while ChatGPT account limits are loading', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    codexAccountHookState.rateLimitsLoading = true;
+    codexAccountHookState.snapshot = {
+      preferredAuthMode: 'chatgpt',
+      effectiveAuthMode: 'chatgpt',
+      launchAllowed: true,
+      launchIssueMessage: null,
+      launchReadinessState: 'ready_chatgpt',
+      appServerState: 'healthy',
+      appServerStatusMessage: null,
+      managedAccount: {
+        type: 'chatgpt',
+        email: 'user@example.com',
+        planType: 'pro',
+      },
+      apiKey: {
+        available: false,
+        source: null,
+        sourceLabel: null,
+      },
+      requiresOpenaiAuth: false,
+      login: {
+        status: 'idle',
+        error: null,
+        startedAt: null,
+      },
+      rateLimits: null,
+      updatedAt: new Date().toISOString(),
+    };
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      displayName: 'agent_teams_orchestrator',
+      supportsSelfUpdate: false,
+      showVersionDetails: false,
+      showBinaryPath: false,
+      authLoggedIn: true,
+      providers: [
+        createCodexNativeRolloutProvider({
+          connection: {
+            supportsOAuth: false,
+            supportsApiKey: true,
+            configurableAuthModes: ['auto', 'chatgpt', 'api_key'],
+            configuredAuthMode: 'chatgpt',
+            apiKeyConfigured: false,
+            apiKeySource: null,
+            apiKeySourceLabel: null,
+            codex: null,
+          },
+        }),
+      ],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('5h left');
+    expect(host.textContent).toContain('Weekly left');
 
     await act(async () => {
       root.unmount();
@@ -1449,7 +1787,9 @@ describe('CLI status visibility during completed install state', () => {
     });
 
     expect(host.textContent).toContain('ChatGPT account ready');
-    expect(host.textContent).not.toContain('Connect a ChatGPT account to use your Codex subscription.');
+    expect(host.textContent).not.toContain(
+      'Connect a ChatGPT account to use your Codex subscription.'
+    );
 
     await act(async () => {
       root.unmount();
@@ -1749,7 +2089,8 @@ describe('CLI status visibility during completed install state', () => {
               },
               rateLimits: null,
               launchAllowed: false,
-              launchIssueMessage: 'Reconnect ChatGPT to refresh the current Codex subscription session.',
+              launchIssueMessage:
+                'Reconnect ChatGPT to refresh the current Codex subscription session.',
               launchReadinessState: 'missing_auth',
             },
           },
@@ -1985,7 +2326,8 @@ describe('CLI status visibility during completed install state', () => {
           available: false,
           selectable: false,
           statusMessage: 'Codex CLI not found',
-          detailMessage: 'Codex native runtime requires the codex CLI binary to be installed and discoverable.',
+          detailMessage:
+            'Codex native runtime requires the codex CLI binary to be installed and discoverable.',
           backend: null,
           resolvedBackendId: null,
         }),

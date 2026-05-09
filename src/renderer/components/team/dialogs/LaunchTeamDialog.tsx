@@ -516,6 +516,9 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
           ),
     [effectiveMemberDrafts, multimodelEnabled, selectedProviderId]
   );
+  const hasSelectedAnthropicRuntime = isLaunchMode && selectedMemberProviders.includes('anthropic');
+  const effectiveAnthropicRuntimeLimitContext =
+    hasSelectedAnthropicRuntime && !isSchedule ? limitContext : false;
 
   const runtimeBackendSummaryByProvider = useMemo(() => {
     const entries: (readonly [TeamProviderId, string | null])[] = (
@@ -642,10 +645,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       : normalizeOneShotProviderForMode(value, multimodelEnabled);
     setSelectedProviderIdRaw(normalizedValue);
     localStorage.setItem('team:lastSelectedProvider', normalizedValue);
-    if (normalizedValue !== 'anthropic') {
-      setLimitContextRaw(false);
-      localStorage.setItem('team:lastLimitContext', 'false');
-    }
     setSelectedModelRaw(getStoredTeamModel(normalizedValue));
   };
 
@@ -897,17 +896,20 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     return previousProviderId !== selectedProviderId;
   }, [isLaunchMode, previousProviderId, selectedProviderId]);
 
-  const effectiveAnthropicRuntimeLimitContext = isSchedule ? false : limitContext;
-
   const effectiveLeadRuntimeModel = useMemo(
     () =>
       computeEffectiveTeamModel(
         selectedModel,
-        limitContext,
+        effectiveAnthropicRuntimeLimitContext,
         selectedProviderId,
         runtimeProviderStatusById.get(selectedProviderId)
       ) ?? '',
-    [limitContext, runtimeProviderStatusById, selectedModel, selectedProviderId]
+    [
+      effectiveAnthropicRuntimeLimitContext,
+      runtimeProviderStatusById,
+      selectedModel,
+      selectedProviderId,
+    ]
   );
   const selectedProviderBackendId = useMemo(
     () =>
@@ -1401,13 +1403,13 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
         selectedProviderId,
         selectedModel,
         selectedMemberProviders,
-        limitContext,
+        limitContext: effectiveAnthropicRuntimeLimitContext,
         runtimeStatusSignature: prepareRuntimeStatusSignature,
         modelChecksSignature: selectedModelChecksByProviderSignature,
       }),
     [
       effectiveCwd,
-      limitContext,
+      effectiveAnthropicRuntimeLimitContext,
       prepareRuntimeStatusSignature,
       selectedMemberProviders,
       selectedModel,
@@ -1477,7 +1479,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
           cwd: effectiveCwd,
           providerId,
           backendSummary,
-          limitContext,
+          limitContext: effectiveAnthropicRuntimeLimitContext,
           runtimeStatusSignature: prepareRuntimeStatusSignature,
         });
         const cachedModelResultsById = {
@@ -1520,7 +1522,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
               providerId: plan.providerId,
               selectedModelIds: plan.selectedModelChecks,
               prepareProvisioning: api.teams.prepareProvisioning,
-              limitContext,
+              limitContext: effectiveAnthropicRuntimeLimitContext,
               cachedModelResultsById: plan.cachedModelResultsById,
               onModelProgress: ({ status, details }) => {
                 checks = updateProviderCheck(checks, plan.providerId, {
@@ -1599,6 +1601,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     open,
     isLaunchMode,
     effectiveCwd,
+    effectiveAnthropicRuntimeLimitContext,
     prepareRequestSignature,
     selectedProviderId,
     selectedMemberProviders,
@@ -1742,7 +1745,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     if (skipPermissions) args.push('--dangerously-skip-permissions');
     const model = computeEffectiveTeamModel(
       selectedModel,
-      limitContext,
+      effectiveAnthropicRuntimeLimitContext,
       selectedProviderId,
       runtimeProviderStatusById.get(selectedProviderId)
     );
@@ -1769,7 +1772,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     isLaunchMode,
     skipPermissions,
     selectedModel,
-    limitContext,
+    effectiveAnthropicRuntimeLimitContext,
     selectedEffort,
     selectedProviderId,
     clearContext,
@@ -1799,7 +1802,9 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
         summary.push('Fast default');
       }
     }
-    if (selectedProviderId === 'anthropic' && limitContext) summary.push('Limited to 200K context');
+    if (effectiveAnthropicRuntimeLimitContext) {
+      summary.push('Anthropic limited to 200K context');
+    }
     if (skipPermissions) summary.push('Auto-approve tools');
     if (clearContext) summary.push('Fresh session');
     if (worktreeEnabled && worktreeName.trim()) summary.push(`Worktree: ${worktreeName.trim()}`);
@@ -1814,7 +1819,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     selectedEffort,
     selectedFastMode,
     anthropicProviderFastModeDefault,
-    limitContext,
+    effectiveAnthropicRuntimeLimitContext,
     skipPermissions,
     clearContext,
     worktreeEnabled,
@@ -2054,7 +2059,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
               undefined,
             model: computeEffectiveTeamModel(
               selectedModel,
-              limitContext,
+              effectiveAnthropicRuntimeLimitContext,
               selectedProviderId,
               runtimeProviderStatusById.get(selectedProviderId)
             ),
@@ -2063,7 +2068,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
               selectedProviderId === 'anthropic' || selectedProviderId === 'codex'
                 ? selectedFastMode
                 : undefined,
-            limitContext,
+            limitContext: effectiveAnthropicRuntimeLimitContext,
             clearContext: clearContext || undefined,
             skipPermissions,
             worktree: worktreeEnabled && worktreeName.trim() ? worktreeName.trim() : undefined,
@@ -2542,7 +2547,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                   providerId={selectedProviderId}
                   model={selectedModel}
                   effort={(selectedEffort as EffortLevel) || undefined}
-                  limitContext={limitContext}
+                  limitContext={effectiveAnthropicRuntimeLimitContext}
                   onProviderChange={setSelectedProviderId}
                   onModelChange={setSelectedModel}
                   onEffortChange={setSelectedEffort}

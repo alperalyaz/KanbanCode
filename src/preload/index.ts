@@ -76,6 +76,7 @@ import {
   REVIEW_GET_FILE_CONTENT,
   REVIEW_GET_GIT_FILE_LOG,
   REVIEW_GET_TASK_CHANGES,
+  REVIEW_GET_TEAM_TASK_CHANGE_SUMMARIES,
   REVIEW_INVALIDATE_TASK_CHANGE_SUMMARIES,
   REVIEW_LOAD_DECISIONS,
   REVIEW_PREVIEW_REJECT,
@@ -305,6 +306,7 @@ import type {
   SshLastConnection,
   TaskAttachmentMeta,
   TaskChangePresenceState,
+  TaskChangeRequestOptions,
   TaskChangeSetV2,
   TaskComment,
   TeamAgentRuntimeSnapshot,
@@ -325,6 +327,8 @@ import type {
   TeamProvisioningProgress,
   TeamSummary,
   TeamTask,
+  TeamTaskChangeSummariesResponse,
+  TeamTaskChangeSummaryRequest,
   TeamTaskStatus,
   TeamUpdateConfigRequest,
   TeamViewSnapshot,
@@ -1359,21 +1363,23 @@ const electronAPI: ElectronAPI = {
     getTaskChanges: async (
       teamName: string,
       taskId: string,
-      options?: {
-        owner?: string;
-        status?: string;
-        intervals?: { startedAt: string; completedAt?: string }[];
-        since?: string;
-        stateBucket?: 'approved' | 'review' | 'completed' | 'active';
-        summaryOnly?: boolean;
-        forceFresh?: boolean;
-      }
+      options?: TaskChangeRequestOptions
     ) => {
       return invokeIpcWithResult<TaskChangeSetV2>(
         REVIEW_GET_TASK_CHANGES,
         teamName,
         taskId,
         options
+      );
+    },
+    getTeamTaskChangeSummaries: async (
+      teamName: string,
+      requests: TeamTaskChangeSummaryRequest[]
+    ) => {
+      return invokeIpcWithResult<TeamTaskChangeSummariesResponse>(
+        REVIEW_GET_TEAM_TASK_CHANGE_SUMMARIES,
+        teamName,
+        requests
       );
     },
     invalidateTaskChangeSummaries: async (teamName: string, taskIds: string[]) => {

@@ -1,30 +1,56 @@
 # Приватность и локальные данные
 
-Agent Teams local-first, но выбранный provider path всё равно важен.
+Agent Teams local-first, но выбранный runtime/provider path всё равно важен. Эта страница описывает, что desktop app хранит локально и что может покинуть машину, когда agents вызывают provider-backed models.
 
 ## Что остаётся локально
 
-Desktop app работает на вашей машине и читает локальные project/runtime data для UI:
+Desktop app работает на вашей машине и читает local project/runtime data для UI. Обычно локально есть:
 
 - project files
-- task metadata
+- team configuration и member metadata
+- task metadata, task comments и task references
+- inbox messages
 - runtime/session logs
+- launch state и bootstrap diagnostics
 - review state
 - local app settings
 
+Важные local locations:
+
+| Location | Purpose |
+| --- | --- |
+| `~/.claude/teams/<team>/` | Team config, member metadata, inboxes, launch state, bootstrap evidence, runtime diagnostics, sent-message records, kanban state и review-related team files. |
+| `~/.claude/tasks/<team>/` | Durable task JSON files для team board. |
+| `~/.claude/projects/<encoded-project>/` | Claude/Codex-style project session files для session history, context analysis и transcript-backed UI. |
+
+Точные файлы зависят от runtime и версии app. Для launch debugging самые свежие evidence обычно лежат в соответствующей папке `~/.claude/teams/<team>/`.
+
 ## Что может выйти с машины
 
-Когда агент обращается к provider-backed model, prompt context и tool results могут отправляться через выбранный provider/runtime path. Это зависит от runtime и provider.
+Agent Teams сам по себе не является cloud code-sync сервисом для репозитория. Ему не нужно загружать весь project на Agent Teams server, чтобы показывать board, inbox, logs или review UI.
+
+Но когда агент обращается к provider-backed model, prompt context, selected file contents, task text, comments, tool results, command output и другой runtime-provided context могут отправляться через выбранный runtime/provider path. Что именно отправится, зависит от runtime, model, tool calls, prompt и provider configuration.
+
+Provider authentication, provider-side retention, training, logging, regional processing и billing регулируются выбранным provider/runtime. Для sensitive projects проверяйте их policies.
+
+## Чего app не гарантирует
+
+- App не может гарантировать, что provider-backed model calls никогда не получат private code.
+- App не может переопределить provider retention или billing policies.
+- App не может сделать remote provider полностью local model.
+- App не защитит secrets, если агенту поручили вставить их в prompts, task comments, files или commands.
+- App не может заставить все runtimes отдавать одинаковый transcript или audit detail.
 
 ## Практические правила
 
-- Не прикладывайте secrets к tasks.
+- Не прикладывайте secrets к tasks, comments или direct messages.
 - Проверяйте provider policies для sensitive projects.
 - Используйте меньшую autonomy для risky repositories.
 - Держите task scope узким при работе с private code.
 - Для диагностики опирайтесь на local evidence и logs.
+- Проверяйте generated prompts, task descriptions и attached files перед работой с confidential material.
+- Выбирайте provider/model paths, которые соответствуют вашим privacy requirements.
 
 ## Open source
 
-Само приложение open source и бесплатное. В репозитории можно посмотреть, как устроены local orchestration, task tracking и review flows.
-
+Само приложение open source и бесплатное. В репозитории можно посмотреть, как устроены local orchestration, task tracking, inboxes, runtime diagnostics и review flows.

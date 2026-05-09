@@ -589,7 +589,6 @@ export const MessagesPanel = memo(function MessagesPanel({
   const activityTimelineMessages = useMemo(() => {
     return filterTeamMessages(effectiveMessages, {
       includeAutomationEvents: true,
-      includePassiveIdlePeerSummariesWhenNoiseHidden: true,
       leadNames,
       timeWindow,
       filter: messagesFilter,

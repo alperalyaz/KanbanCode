@@ -13,7 +13,12 @@ import { resolveGeminiRuntimeAuth } from './geminiRuntimeAuth';
 import { buildProviderAwareCliEnv } from './providerAwareCliEnv';
 import { providerConnectionService } from './ProviderConnectionService';
 
-import type { CliProviderId, CliProviderReasoningEffort, CliProviderStatus } from '@shared/types';
+import type {
+  CliProviderId,
+  CliProviderReasoningEffort,
+  CliProviderStatus,
+  CliProviderSubscriptionRateLimitSnapshot,
+} from '@shared/types';
 
 const logger = createLogger('ClaudeMultimodelBridgeService');
 
@@ -49,6 +54,17 @@ interface RuntimeProviderCapabilitiesResponse {
     reason?: string | null;
     source?: 'runtime';
   };
+}
+
+interface RuntimeSubscriptionRateLimitWindowResponse {
+  usedPercent?: number;
+  windowDurationMins?: number | null;
+  resetsAt?: number | null;
+}
+
+interface RuntimeSubscriptionRateLimitSnapshotResponse {
+  primary?: RuntimeSubscriptionRateLimitWindowResponse | null;
+  secondary?: RuntimeSubscriptionRateLimitWindowResponse | null;
 }
 
 interface RuntimeProviderModelCatalogItemResponse {
@@ -111,6 +127,7 @@ interface ProviderStatusCommandResponse {
         authMethodDetail?: string | null;
       } | null;
       runtimeCapabilities?: RuntimeProviderCapabilitiesResponse;
+      subscriptionRateLimits?: RuntimeSubscriptionRateLimitSnapshotResponse | null;
     }
   >;
 }
@@ -179,6 +196,7 @@ interface UnifiedRuntimeStatusResponse {
         authMethodDetail?: string | null;
       } | null;
       runtimeCapabilities?: RuntimeProviderCapabilitiesResponse;
+      subscriptionRateLimits?: RuntimeSubscriptionRateLimitSnapshotResponse | null;
     }
   >;
 }
@@ -350,6 +368,7 @@ function createDefaultProviderStatus(providerId: CliProviderId): CliProviderStat
     connection: null,
     modelCatalog: null,
     runtimeCapabilities: null,
+    subscriptionRateLimits: null,
   };
 }
 
@@ -544,6 +563,44 @@ function mapRuntimeProviderModelCatalog(
   };
 }
 
+function mapRuntimeSubscriptionRateLimitWindow(
+  window: RuntimeSubscriptionRateLimitWindowResponse | null | undefined
+): NonNullable<CliProviderSubscriptionRateLimitSnapshot['primary']> | null {
+  if (!window || typeof window.usedPercent !== 'number' || !Number.isFinite(window.usedPercent)) {
+    return null;
+  }
+
+  return {
+    usedPercent: Math.max(0, Math.min(100, window.usedPercent)),
+    windowDurationMins:
+      typeof window.windowDurationMins === 'number' && Number.isFinite(window.windowDurationMins)
+        ? window.windowDurationMins
+        : null,
+    resetsAt:
+      typeof window.resetsAt === 'number' && Number.isFinite(window.resetsAt)
+        ? window.resetsAt
+        : null,
+  };
+}
+
+function mapRuntimeSubscriptionRateLimits(
+  providerId: CliProviderId,
+  authMethod: string | null | undefined,
+  rateLimits: RuntimeSubscriptionRateLimitSnapshotResponse | null | undefined
+): CliProviderSubscriptionRateLimitSnapshot | null {
+  if (
+    providerId !== 'anthropic' ||
+    (authMethod !== 'claude.ai' && authMethod !== 'oauth_token') ||
+    !rateLimits
+  ) {
+    return null;
+  }
+
+  const primary = mapRuntimeSubscriptionRateLimitWindow(rateLimits.primary);
+  const secondary = mapRuntimeSubscriptionRateLimitWindow(rateLimits.secondary);
+  return primary || secondary ? { primary, secondary } : null;
+}
+
 export class ClaudeMultimodelBridgeService {
   private async buildCliEnv(
     binaryPath: string
@@ -621,6 +678,11 @@ export class ClaudeMultimodelBridgeService {
         })) ?? [],
       models: extractModelIds(runtimeStatus.models),
       modelCatalog: mapRuntimeProviderModelCatalog(providerId, runtimeStatus.modelCatalog),
+      subscriptionRateLimits: mapRuntimeSubscriptionRateLimits(
+        providerId,
+        runtimeStatus.authMethod,
+        runtimeStatus.subscriptionRateLimits
+      ),
       backend: runtimeStatus.backend?.kind
         ? {
             kind: runtimeStatus.backend.kind,

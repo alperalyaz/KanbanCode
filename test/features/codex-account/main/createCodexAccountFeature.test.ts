@@ -158,14 +158,16 @@ function createConfigManager(preferredAuthMode: 'auto' | 'chatgpt' | 'api_key' =
   };
 }
 
-function createAccountResponse(overrides?: Partial<{
-  requiresOpenaiAuth: boolean;
-  account: { type: 'chatgpt'; email: string; planType: 'pro' | 'plus' } | null;
-}>) {
+function createAccountResponse(
+  overrides?: Partial<{
+    requiresOpenaiAuth: boolean;
+    account: { type: 'chatgpt'; email: string; planType: 'pro' | 'plus' } | null;
+  }>
+) {
   return {
     account:
       overrides && 'account' in overrides
-        ? overrides.account ?? null
+        ? (overrides.account ?? null)
         : {
             type: 'chatgpt' as const,
             email: 'user@example.com',
@@ -622,7 +624,9 @@ describe('createCodexAccountFeature', () => {
     });
     readRateLimitsMock
       .mockResolvedValueOnce(createRateLimitsResponse())
-      .mockRejectedValueOnce(new Error('codex account authentication required to read rate limits'));
+      .mockRejectedValueOnce(
+        new Error('codex account authentication required to read rate limits')
+      );
     const logger = createLoggerPort();
     const feature = createCodexAccountFeature({
       logger,
@@ -643,6 +647,86 @@ describe('createCodexAccountFeature', () => {
       expect(logger.warn).toHaveBeenCalledWith('codex account rate limits refresh failed', {
         error: 'codex account authentication required to read rate limits',
       });
+    } finally {
+      dateNowSpy.mockRestore();
+      await feature.dispose();
+    }
+  });
+
+  it('keeps rate limits visible when account truth is temporarily reused from last known state', async () => {
+    detectLocalAccountStateMock.mockResolvedValue({
+      hasArtifacts: true,
+      hasActiveChatgptAccount: true,
+    });
+    readAccountMock
+      .mockResolvedValueOnce({
+        account: createAccountResponse(),
+        initialize: {
+          codexHome: '/Users/test/.codex',
+          platformFamily: 'unix',
+          platformOs: 'macos',
+        },
+      })
+      .mockResolvedValueOnce({
+        account: createAccountResponse({ account: null, requiresOpenaiAuth: true }),
+        initialize: {
+          codexHome: '/Users/test/.codex',
+          platformFamily: 'unix',
+          platformOs: 'macos',
+        },
+      });
+    readRateLimitsMock.mockResolvedValue(createRateLimitsResponse());
+    const feature = createCodexAccountFeature({
+      logger: createLoggerPort(),
+      configManager: createConfigManager('chatgpt'),
+    });
+    const dateNowSpy = vi.spyOn(Date, 'now');
+
+    try {
+      dateNowSpy.mockReturnValue(1_776_000_000_000);
+      const firstSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+      dateNowSpy.mockReturnValue(1_776_000_060_000);
+      const secondSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+
+      expect(firstSnapshot.managedAccount?.email).toBe('user@example.com');
+      expect(firstSnapshot.rateLimits?.primary?.usedPercent).toBe(77);
+      expect(secondSnapshot.managedAccount?.email).toBe('user@example.com');
+      expect(secondSnapshot.rateLimits?.primary?.usedPercent).toBe(77);
+      expect(readRateLimitsMock).toHaveBeenCalledTimes(2);
+    } finally {
+      dateNowSpy.mockRestore();
+      await feature.dispose();
+    }
+  });
+
+  it('keeps last known rate limits visible during a transient empty rate limit response', async () => {
+    readAccountMock.mockResolvedValue({
+      account: createAccountResponse(),
+      initialize: {
+        codexHome: '/Users/test/.codex',
+        platformFamily: 'unix',
+        platformOs: 'macos',
+      },
+    });
+    readRateLimitsMock.mockResolvedValueOnce(createRateLimitsResponse()).mockResolvedValueOnce({
+      rateLimits: null,
+      rateLimitsByLimitId: null,
+    });
+    const feature = createCodexAccountFeature({
+      logger: createLoggerPort(),
+      configManager: createConfigManager('chatgpt'),
+    });
+    const dateNowSpy = vi.spyOn(Date, 'now');
+
+    try {
+      dateNowSpy.mockReturnValue(1_776_000_000_000);
+      const firstSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+      dateNowSpy.mockReturnValue(1_776_000_060_000);
+      const secondSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+
+      expect(firstSnapshot.rateLimits?.primary?.usedPercent).toBe(77);
+      expect(secondSnapshot.rateLimits?.primary?.usedPercent).toBe(77);
+      expect(readRateLimitsMock).toHaveBeenCalledTimes(2);
     } finally {
       dateNowSpy.mockRestore();
       await feature.dispose();

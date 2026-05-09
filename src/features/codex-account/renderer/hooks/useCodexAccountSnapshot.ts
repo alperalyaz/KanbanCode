@@ -44,6 +44,7 @@ export function useCodexAccountSnapshot(options: {
 }): {
   snapshot: CodexAccountSnapshotDto | null;
   loading: boolean;
+  rateLimitsLoading: boolean;
   error: string | null;
   refresh: (options?: {
     includeRateLimits?: boolean;
@@ -57,6 +58,7 @@ export function useCodexAccountSnapshot(options: {
   const electronMode = isElectronMode();
   const [snapshot, setSnapshot] = useState<CodexAccountSnapshotDto | null>(null);
   const [loading, setLoading] = useState(false);
+  const [rateLimitsLoading, setRateLimitsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [visible, setVisible] = useState(() => isDocumentVisible());
   const lastUpdatedAtRef = useRef<number | null>(null);
@@ -78,13 +80,17 @@ export function useCodexAccountSnapshot(options: {
       }
 
       const silent = refreshOptions?.silent === true;
+      const includeRateLimits = refreshOptions?.includeRateLimits ?? options.includeRateLimits;
       if (!silent) {
         setLoading(true);
         setError(null);
       }
+      if (includeRateLimits) {
+        setRateLimitsLoading(true);
+      }
       try {
         const nextSnapshot = await api.refreshCodexAccountSnapshot({
-          includeRateLimits: refreshOptions?.includeRateLimits ?? options.includeRateLimits,
+          includeRateLimits,
           forceRefreshToken: refreshOptions?.forceRefreshToken,
         });
         applySnapshot(nextSnapshot);
@@ -98,6 +104,9 @@ export function useCodexAccountSnapshot(options: {
         if (!silent) {
           setLoading(false);
         }
+        if (includeRateLimits) {
+          setRateLimitsLoading(false);
+        }
       }
     },
     [applySnapshot, electronMode, options.enabled, options.includeRateLimits]
@@ -109,6 +118,9 @@ export function useCodexAccountSnapshot(options: {
     }
 
     setLoading(true);
+    if (options.includeRateLimits) {
+      setRateLimitsLoading(true);
+    }
     setError(null);
 
     const initialSnapshotRequest = options.includeRateLimits
@@ -126,6 +138,9 @@ export function useCodexAccountSnapshot(options: {
       })
       .finally(() => {
         setLoading(false);
+        if (options.includeRateLimits) {
+          setRateLimitsLoading(false);
+        }
       });
 
     const unsubscribe = api.onCodexAccountSnapshotChanged((_event, nextSnapshot) => {
@@ -224,12 +239,13 @@ export function useCodexAccountSnapshot(options: {
     () => ({
       snapshot,
       loading,
+      rateLimitsLoading,
       error,
       refresh,
       startChatgptLogin: (mode) => runAction(() => api.startCodexChatgptLogin({ mode })),
       cancelChatgptLogin: () => runAction(() => api.cancelCodexChatgptLogin()),
       logout: () => runAction(() => api.logoutCodexAccount()),
     }),
-    [error, loading, refresh, runAction, snapshot]
+    [error, loading, rateLimitsLoading, refresh, runAction, snapshot]
   );
 }

@@ -67,6 +67,7 @@ import type {
   SshConnectionStatus,
   SshLastConnection,
   SubagentDetail,
+  TaskChangeRequestOptions,
   TeamChangeEvent,
   TeamClaudeLogsQuery,
   TeamClaudeLogsResponse,
@@ -82,6 +83,8 @@ import type {
   TeamsAPI,
   TeamSummary,
   TeamTask,
+  TeamTaskChangeSummariesResponse,
+  TeamTaskChangeSummaryRequest,
   TeamTaskStatus,
   TeamViewSnapshot,
   TeamWorktreeGitStatus,
@@ -1138,16 +1141,14 @@ export class HttpAPIClient implements ElectronAPI {
     getTaskChanges: async (
       _teamName: string,
       _taskId: string,
-      _options?: {
-        owner?: string;
-        status?: string;
-        intervals?: { startedAt: string; completedAt?: string }[];
-        since?: string;
-        stateBucket?: 'approved' | 'review' | 'completed' | 'active';
-        summaryOnly?: boolean;
-        forceFresh?: boolean;
-      }
+      _options?: TaskChangeRequestOptions
     ): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    getTeamTaskChangeSummaries: async (
+      _teamName: string,
+      _requests: TeamTaskChangeSummaryRequest[]
+    ): Promise<TeamTaskChangeSummariesResponse> => {
       throw new Error('Review is not available in browser mode');
     },
     invalidateTaskChangeSummaries: async (): Promise<never> => {
