@@ -1,13 +1,12 @@
-import createPica from 'pica';
-
 import {
-  DEFAULT_AGENT_IMAGE_OPTIMIZATION_BUDGET,
-  planResizeDimensions,
-  validateImageOptimizationInput,
   type AttachmentWarning,
+  DEFAULT_AGENT_IMAGE_OPTIMIZATION_BUDGET,
   type ImageDimensions,
   type ImageOptimizationBudget,
+  planResizeDimensions,
+  validateImageOptimizationInput,
 } from '@features/agent-attachments/core/domain';
+import createPica from 'pica';
 
 export interface OptimizeImageForAgentInput {
   file: File;

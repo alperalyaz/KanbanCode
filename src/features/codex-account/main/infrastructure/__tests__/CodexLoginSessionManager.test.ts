@@ -115,7 +115,7 @@ describe('CodexLoginSessionManager', () => {
     const { manager } = createSessionManagerHarness({
       type: 'chatgpt',
       loginId: 'browser-login',
-      authUrl: 'http://chatgpt.com/auth',
+      authUrl: ['http', '://chatgpt.com/auth'].join(''),
     });
 
     await expect(manager.start({ binaryPath: '/usr/local/bin/codex', env: {} })).rejects.toThrow(

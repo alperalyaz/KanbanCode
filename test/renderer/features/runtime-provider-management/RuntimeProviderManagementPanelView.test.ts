@@ -657,21 +657,29 @@ describe('RuntimeProviderManagementPanelView', () => {
     const connectedBadge = Array.from(host.querySelectorAll('span')).find(
       (span) => span.textContent === 'Connected'
     );
+    expect(connectedBadge).toBeInstanceOf(HTMLSpanElement);
     expect(connectedBadge?.style.color).toBeTruthy();
+    const modelSearch = host.querySelector<HTMLInputElement>(
+      '[data-testid="runtime-provider-model-search"]'
+    );
+    const modelList = host.querySelector<HTMLElement>(
+      '[data-testid="runtime-provider-model-list"]'
+    );
     expect(
-      host.querySelector('[data-testid="runtime-provider-model-search"]')?.style.paddingLeft
+      modelSearch?.style.paddingLeft
     ).toBe('42px');
     expect(
-      host.querySelector('[data-testid="runtime-provider-model-list"]')?.style.maxHeight
+      modelList?.style.maxHeight
     ).toBe('300px');
     expect(host.textContent).not.toContain('OpenRouterfree');
     const firstTestButton = Array.from(host.querySelectorAll('button')).find(
       (button) => button.textContent?.trim() === 'Test'
     );
     expect(firstTestButton?.className).toContain('border');
-    const modelResult = host.querySelector(
+    const modelResult = host.querySelector<HTMLElement>(
       '[data-testid="runtime-provider-model-result-openrouter/openai/gpt-oss-20b:free"]'
     );
+    expect(modelResult).toBeInstanceOf(HTMLElement);
     expect(modelResult?.style.color).toBe('#86efac');
     expect((host.textContent ?? '').indexOf('mistralai/codestral-2508')).toBeLessThan(
       (host.textContent ?? '').indexOf('qwen/qwen3-coder-plus')
@@ -760,7 +768,7 @@ describe('RuntimeProviderManagementPanelView', () => {
       await Promise.resolve();
     });
 
-    const searchInput = host.querySelector(
+    const searchInput = host.querySelector<HTMLInputElement>(
       '[data-testid="runtime-provider-model-search"]'
     );
 

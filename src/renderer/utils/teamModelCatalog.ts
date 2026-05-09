@@ -1,5 +1,5 @@
-import { parseModelString } from '@shared/utils/modelParser';
 import { inferContextWindowTokens } from '@shared/utils/contextMetrics';
+import { parseModelString } from '@shared/utils/modelParser';
 import {
   getOpenCodeQualifiedModelSourceLabel,
   parseOpenCodeQualifiedModelRef,

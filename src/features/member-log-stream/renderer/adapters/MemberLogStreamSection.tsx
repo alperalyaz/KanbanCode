@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { api } from '@renderer/api';
 import { useStore } from '@renderer/store';
 import { selectResolvedMembersForTeamName } from '@renderer/store/slices/teamSlice';
 
@@ -7,7 +8,7 @@ import { useMemberLogStream } from '../hooks/useMemberLogStream';
 import { ExecutionLogStreamView } from '../ui/ExecutionLogStreamView';
 import { MemberRuntimeProcessLogsPanel } from '../ui/MemberRuntimeProcessLogsPanel';
 
-import type { MemberLogStreamSegment } from '../../contracts';
+import type { MemberLogStreamSegment, MemberRuntimeLogKind } from '../../contracts';
 import type { ResolvedTeamMember } from '@shared/types';
 
 interface MemberLogStreamSectionProps {
@@ -45,6 +46,14 @@ export function MemberLogStreamSection({
   const [selectedLogView, setSelectedLogView] = useState<'execution' | 'process'>('execution');
   const teamMembers = useStore((s) => selectResolvedMembersForTeamName(s, teamName));
   const { stream, loading, error } = useMemberLogStream({ teamName, member, enabled });
+  const loadRuntimeLogTail = useCallback(
+    (input: {
+      readonly kind: MemberRuntimeLogKind;
+      readonly maxBytes: number;
+      readonly forceRefresh?: boolean;
+    }) => api.memberLogStream.getMemberRuntimeLogTail(teamName, member.name, input),
+    [member.name, teamName]
+  );
   const hasInitialLoadError = Boolean(error && !stream && !loading);
   const boundedHistoryNote = useMemo(() => {
     if (!stream) return null;
@@ -105,9 +114,8 @@ export function MemberLogStreamSection({
         />
       ) : (
         <MemberRuntimeProcessLogsPanel
-          teamName={teamName}
-          memberName={member.name}
           enabled={enabled && selectedLogView === 'process'}
+          loadRuntimeLogTail={loadRuntimeLogTail}
         />
       )}
     </div>

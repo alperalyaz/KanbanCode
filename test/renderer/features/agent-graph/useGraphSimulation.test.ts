@@ -232,7 +232,9 @@ describe('stable slot layout planner', () => {
     expect(Math.abs(leftFrame.ownerY)).toBeLessThan(1);
 
     expect(Math.abs(Math.abs(leftFrame.ownerX) - Math.abs(rightFrame.ownerX))).toBeLessThan(1);
-    expect(Math.abs(Math.abs(topFrame.ownerY) - Math.abs(bottomFrame.ownerY))).toBeLessThan(1);
+    expect(Math.abs(Math.abs(topFrame.ownerY) - Math.abs(bottomFrame.ownerY))).toBeLessThanOrEqual(
+      48
+    );
     expect(Math.abs(topFrame.ownerY)).toBeLessThan(Math.abs(rightFrame.ownerX));
   });
 

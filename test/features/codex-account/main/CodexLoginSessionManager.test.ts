@@ -31,10 +31,9 @@ function createSession(overrides?: {
   const request =
     overrides?.request ??
     vi.fn().mockResolvedValue({
-      type: 'chatgptDeviceCode',
+      type: 'chatgpt',
       loginId: 'login-1',
-      verificationUrl: 'https://chatgpt.com/auth',
-      userCode: 'ABCD-EFGH',
+      authUrl: 'https://chatgpt.com/auth',
     });
   const close = overrides?.close ?? vi.fn().mockResolvedValue(undefined);
 
@@ -105,7 +104,7 @@ describe('CodexLoginSessionManager', () => {
     expect(openExternalMock).not.toHaveBeenCalled();
     expect(manager.getState().status).toBe('pending');
     expect(manager.getState().authUrl).toBe('https://chatgpt.com/auth');
-    expect(manager.getState().userCode).toBe('ABCD-EFGH');
+    expect(manager.getState().userCode).toBeNull();
   });
 
   it('cancels a login cleanly while the app-server session is still starting', async () => {

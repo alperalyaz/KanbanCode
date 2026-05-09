@@ -1,19 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { api } from '@renderer/api';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Check, Clipboard, Loader2, RefreshCw } from 'lucide-react';
 
 import {
   createEmptyMemberRuntimeLogTailResponse,
-  normalizeMemberRuntimeLogTailResponse,
   type MemberRuntimeLogKind,
   type MemberRuntimeLogTailResponse,
+  normalizeMemberRuntimeLogTailResponse,
 } from '../../contracts';
 
 const PROCESS_LOG_KINDS: MemberRuntimeLogKind[] = ['stdout', 'stderr', 'events'];
 const PROCESS_LOG_AUTO_REFRESH_MS = 4000;
 const PROCESS_LOG_TAIL_BYTES = 128 * 1024;
+
+export interface MemberRuntimeProcessLogsPanelProps {
+  readonly enabled: boolean;
+  readonly loadRuntimeLogTail: (input: {
+    readonly kind: MemberRuntimeLogKind;
+    readonly maxBytes: number;
+    readonly forceRefresh?: boolean;
+  }) => Promise<MemberRuntimeLogTailResponse | null | undefined>;
+}
 
 function formatBytes(bytes: number | undefined): string {
   if (!Number.isFinite(bytes ?? NaN)) return '--';
@@ -36,10 +44,10 @@ function buildStatusText(log: MemberRuntimeLogTailResponse | null): string | nul
 function ProcessLogKindTabs({
   selected,
   onSelect,
-}: {
-  selected: MemberRuntimeLogKind;
-  onSelect: (kind: MemberRuntimeLogKind) => void;
-}): React.JSX.Element {
+}: Readonly<{
+  readonly selected: MemberRuntimeLogKind;
+  readonly onSelect: (kind: MemberRuntimeLogKind) => void;
+}>): React.JSX.Element {
   return (
     <div className="flex rounded-lg bg-[var(--color-surface-subtle)] p-1">
       {PROCESS_LOG_KINDS.map((kind) => (
@@ -63,10 +71,10 @@ function ProcessLogKindTabs({
 function ProcessLogVirtualList({
   content,
   wrapLines,
-}: {
-  content: string;
-  wrapLines: boolean;
-}): React.JSX.Element {
+}: Readonly<{
+  readonly content: string;
+  readonly wrapLines: boolean;
+}>): React.JSX.Element {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const lines = useMemo(() => content.split(/\r?\n/), [content]);
   const rowVirtualizer = useVirtualizer({
@@ -107,14 +115,9 @@ function ProcessLogVirtualList({
 }
 
 export function MemberRuntimeProcessLogsPanel({
-  teamName,
-  memberName,
   enabled,
-}: {
-  teamName: string;
-  memberName: string;
-  enabled: boolean;
-}): React.JSX.Element {
+  loadRuntimeLogTail,
+}: Readonly<MemberRuntimeProcessLogsPanelProps>): React.JSX.Element {
   const [kind, setKind] = useState<MemberRuntimeLogKind>('stdout');
   const [log, setLog] = useState<MemberRuntimeLogTailResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -137,7 +140,7 @@ export function MemberRuntimeProcessLogsPanel({
 
       try {
         const response = normalizeMemberRuntimeLogTailResponse(
-          await api.memberLogStream.getMemberRuntimeLogTail(teamName, memberName, {
+          await loadRuntimeLogTail({
             kind,
             maxBytes: PROCESS_LOG_TAIL_BYTES,
             ...(options?.forceRefresh ? { forceRefresh: true } : {}),
@@ -158,7 +161,7 @@ export function MemberRuntimeProcessLogsPanel({
         }
       }
     },
-    [enabled, kind, memberName, teamName]
+    [enabled, kind, loadRuntimeLogTail]
   );
 
   useEffect(() => {

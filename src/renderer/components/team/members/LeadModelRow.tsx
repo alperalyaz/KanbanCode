@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
 import {
-  AnthropicExtraUsageWarning,
   ANTHROPIC_LONG_CONTEXT_PRICING_URL,
   ANTHROPIC_SONNET_EXTRA_USAGE_WARNING,
+  AnthropicExtraUsageWarning,
 } from '@renderer/components/team/dialogs/AnthropicExtraUsageWarning';
 import { EffortLevelSelector } from '@renderer/components/team/dialogs/EffortLevelSelector';
 import { LimitContextCheckbox } from '@renderer/components/team/dialogs/LimitContextCheckbox';

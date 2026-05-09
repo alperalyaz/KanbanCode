@@ -1,10 +1,7 @@
-/* eslint-disable security/detect-non-literal-fs-filename -- Tests write isolated temp runtime log fixtures. */
-import { mkdtemp, mkdir, rm, writeFile } from 'fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
-
 import { afterEach, describe, expect, it } from 'vitest';
-
 import { MemberRuntimeLogTailReader } from '../MemberRuntimeLogTailReader';
 
 const tempDirs: string[] = [];

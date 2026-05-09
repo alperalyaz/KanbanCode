@@ -726,7 +726,7 @@ const OPENCODE_TEAM_NOT_RECOMMENDED_MODELS = new Map<string, string>([
   ],
   [
     'opencode/nemotron-3-super-free',
-    'Real OpenCode Agent Teams E2E showed empty assistant turns during peer relay.',
+    'Real OpenCode Agent Teams E2E showed unreliable team messaging: a current matrix run failed direct reply, peer relay, and taskRefs, and work-sync was inconsistent or took several minutes.',
   ],
   [
     'openrouter/google/gemini-2.5-pro',

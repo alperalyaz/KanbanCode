@@ -1,5 +1,5 @@
-import { getAppDataPath } from '@main/utils/pathDecoder';
 import { assertSafeAttachmentStorageId } from '@features/agent-attachments/core/domain';
+import { getAppDataPath } from '@main/utils/pathDecoder';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 

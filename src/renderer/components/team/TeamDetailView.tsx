@@ -44,6 +44,7 @@ import {
   hasUnresolvedMemberSpawnStatus,
   MEMBER_SPAWN_STATUS_REFRESH_MS,
 } from '@renderer/utils/memberSpawnStatusPolling';
+import { shouldClearPendingReplyForOpenCodeRuntimeDelivery } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 import { formatProjectPath } from '@renderer/utils/pathDisplay';
 import { buildTaskCountsByOwner, normalizePath } from '@renderer/utils/pathNormalize';
 import { nameColorSet } from '@renderer/utils/projectColor';
@@ -53,7 +54,6 @@ import {
   type TaskChangeRequestOptions,
 } from '@renderer/utils/taskChangeRequest';
 import { buildPendingRuntimeSummaryCopy } from '@renderer/utils/teamLaunchSummaryCopy';
-import { shouldClearPendingReplyForOpenCodeRuntimeDelivery } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { deriveContextMetrics } from '@shared/utils/contextMetrics';
 import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';

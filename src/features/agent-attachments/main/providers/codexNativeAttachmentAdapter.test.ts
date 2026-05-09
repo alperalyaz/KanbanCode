@@ -55,7 +55,7 @@ describe('Codex native attachment adapter', () => {
       mimeType: 'image/png',
       sizeBytes: 3,
     });
-    await expect(fs.readFile(result.imageParts[0]!.path)).resolves.toEqual(Buffer.from([1, 2, 3]));
+    await expect(fs.readFile(result.imageParts[0].path)).resolves.toEqual(Buffer.from([1, 2, 3]));
     expect(result.diagnostics.join('\n')).not.toContain(attachment().data);
   });
 
@@ -99,6 +99,6 @@ describe('Codex native attachment adapter', () => {
       },
     ]);
 
-    expect(redacted[0]!.path).toBe('[managed attachment artifact: red.png]');
+    expect(redacted[0].path).toBe('[managed attachment artifact: red.png]');
   });
 });

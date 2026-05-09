@@ -1,8 +1,6 @@
-/* eslint-disable security/detect-non-literal-fs-filename -- Runtime log paths are derived from validated team/member names under the configured teams base path. */
+import { getTeamsBasePath } from '@main/utils/pathDecoder';
 import { promises as fs } from 'fs';
 import path from 'path';
-
-import { getTeamsBasePath } from '@main/utils/pathDecoder';
 
 import type { MemberRuntimeLogKind, MemberRuntimeLogTailResponse } from '../../contracts';
 
@@ -65,7 +63,7 @@ function clampMaxBytes(maxBytes: number | undefined): number {
   if (!Number.isFinite(maxBytes ?? NaN)) return DEFAULT_RUNTIME_LOG_TAIL_BYTES;
   return Math.max(
     MIN_RUNTIME_LOG_TAIL_BYTES,
-    Math.min(MAX_RUNTIME_LOG_TAIL_BYTES, Math.floor(maxBytes as number))
+    Math.min(MAX_RUNTIME_LOG_TAIL_BYTES, Math.floor(maxBytes!))
   );
 }
 
@@ -78,8 +76,10 @@ function redactRuntimeLogSecrets(content: string): string {
   let redacted = content;
 
   redacted = redacted.replace(/\b(Authorization\s*:\s*Bearer)\s+([^\s"',;]+)/gi, '$1 [redacted]');
+  // eslint-disable-next-line sonarjs/duplicates-in-character-class -- URL-safe token alphabet intentionally includes these literal characters.
   redacted = redacted.replace(/\b(Bearer)\s+([A-Za-z0-9._~+/=-]{20,})/gi, '$1 [redacted]');
   redacted = redacted.replace(
+    // eslint-disable-next-line sonarjs/regex-complexity -- Keep provider env key redaction explicit and localized.
     /\b((?:OPENAI|ANTHROPIC|CODEX|GEMINI|GOOGLE|OPENROUTER|CLAUDE)[A-Z0-9_]*_(?:API_)?KEY)\s*=\s*("[^"]+"|'[^']+'|[^\s"',;]+)/gi,
     '$1=[redacted]'
   );

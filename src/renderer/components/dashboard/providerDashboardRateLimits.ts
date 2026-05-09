@@ -25,7 +25,7 @@ export interface DashboardRateLimitSkeletonModeInput {
   };
 }
 
-function firstKnown<T>(...values: Array<T | null | undefined>): T | null {
+function firstKnown<T>(...values: (T | null | undefined)[]): T | null {
   for (const value of values) {
     if (value !== null && typeof value !== 'undefined') {
       return value;

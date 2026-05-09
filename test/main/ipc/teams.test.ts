@@ -307,6 +307,7 @@ describe('ipc teams handlers', () => {
           }
         | undefined,
     })),
+    buildOpenCodeRuntimeDeliveryUserVisibleImpact: vi.fn(() => ({ state: 'none' })),
     getLiveLeadProcessMessages: vi.fn(() => [] as InboxMessage[]),
     getCurrentLeadSessionId: vi.fn(() => null as string | null),
     getAliveTeams: vi.fn(() => ['my-team']),

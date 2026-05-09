@@ -117,6 +117,7 @@ describe('getOpenCodeTeamModelRecommendation', () => {
       'openrouter/openai/gpt-oss-20b:free',
       'openrouter/openai/gpt-oss-120b:free',
       'openrouter/google/gemini-3-pro-preview',
+      'opencode/nemotron-3-super-free',
       'openrouter/google/gemini-2.5-flash-lite',
       'openrouter/deepseek/deepseek-v3.2',
       'openrouter/x-ai/grok-code-fast-1',

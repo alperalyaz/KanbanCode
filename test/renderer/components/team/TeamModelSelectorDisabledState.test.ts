@@ -285,7 +285,7 @@ describe('TeamModelSelector disabled Codex models', () => {
     expect(host.textContent).toContain('mistralai/codestral-2508');
     expect(host.textContent).toContain('Tested');
     expect(host.textContent).toContain('minimax-m2.5-free');
-    expect(host.textContent).toContain('Tested with limits');
+    expect(host.textContent).toContain('Recommended with limits');
     expect(host.textContent).toContain('openai/gpt-oss-120b:free');
     expect(host.textContent).toContain('big-pickle');
     expect(host.textContent).toContain('qwen/qwen3-coder-plus');
@@ -300,7 +300,7 @@ describe('TeamModelSelector disabled Codex models', () => {
       text.includes('anthropic/claude-sonnet-4.6')
     );
     const testedIndex = buttonTexts.findIndex((text) => text.includes('mistralai/codestral-2508'));
-    const neutralIndex = buttonTexts.findIndex((text) => text.includes('big-pickle'));
+    const recommendedIndex = buttonTexts.findIndex((text) => text.includes('big-pickle'));
     const limitedIndex = buttonTexts.findIndex((text) => text.includes('minimax-m2.5-free'));
     const notRecommendedIndex = buttonTexts.findIndex((text) =>
       text.includes('openai/gpt-oss-20b:free')
@@ -309,13 +309,15 @@ describe('TeamModelSelector disabled Codex models', () => {
       text.includes('qwen/qwen3-coder-plus')
     );
     expect(sonnetIndex).toBeGreaterThanOrEqual(0);
+    expect(recommendedIndex).toBeGreaterThanOrEqual(0);
+    expect(limitedIndex).toBeGreaterThanOrEqual(0);
     expect(testedIndex).toBeGreaterThanOrEqual(0);
-    expect(limitedIndex).toBeGreaterThan(testedIndex);
-    expect(neutralIndex).toBeGreaterThan(limitedIndex);
-    expect(unavailableIndex).toBeGreaterThan(neutralIndex);
+    expect(limitedIndex).toBeGreaterThan(recommendedIndex);
+    expect(testedIndex).toBeGreaterThan(limitedIndex);
+    expect(unavailableIndex).toBeGreaterThan(testedIndex);
     expect(notRecommendedIndex).toBeGreaterThan(unavailableIndex);
 
-    expect(host.textContent).not.toContain('Recommended only');
+    expect(host.textContent).toContain('Recommended only');
 
     await act(async () => {
       root.unmount();

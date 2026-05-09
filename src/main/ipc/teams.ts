@@ -1,3 +1,7 @@
+import {
+  estimateAgentAttachmentSerializedPayloadBytes,
+  MAX_AGENT_ATTACHMENT_SERIALIZED_PAYLOAD_BYTES,
+} from '@features/agent-attachments/contracts';
 import { addMainBreadcrumb } from '@main/sentry';
 import { setCurrentMainOp } from '@main/services/infrastructure/EventLoopLagMonitor';
 import { getTeamDataWorkerClient } from '@main/services/team/TeamDataWorkerClient';
@@ -5,11 +9,6 @@ import { getAppIconPath } from '@main/utils/appIcon';
 import { getAppDataPath, getTeamsBasePath } from '@main/utils/pathDecoder';
 import { safeSendToRenderer } from '@main/utils/safeWebContentsSend';
 import { stripMarkdown } from '@main/utils/textFormatting';
-import { getErrorMessage } from '@shared/utils/errorHandling';
-import {
-  estimateAgentAttachmentSerializedPayloadBytes,
-  MAX_AGENT_ATTACHMENT_SERIALIZED_PAYLOAD_BYTES,
-} from '@features/agent-attachments/core/domain';
 import {
   TEAM_ADD_MEMBER,
   TEAM_ADD_TASK_COMMENT,
@@ -106,6 +105,7 @@ import {
   formatEffortLevelListForProvider,
   isTeamEffortLevelForProvider,
 } from '@shared/utils/effortLevels';
+import { getErrorMessage } from '@shared/utils/errorHandling';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
 import { isTeamProviderBackendId, migrateProviderBackendId } from '@shared/utils/providerBackend';
@@ -2755,7 +2755,7 @@ async function handleSendMessage(
     }
     validatedAttachments = attResult.value;
     const serializedResult = validateAttachmentSerializedPayload({
-      text: payload.text!,
+      text: payload.text,
       attachments: validatedAttachments,
     });
     if (!serializedResult.valid) {

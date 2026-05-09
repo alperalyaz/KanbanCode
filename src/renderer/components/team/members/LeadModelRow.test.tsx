@@ -210,9 +210,9 @@ describe('LeadModelRow', () => {
       showAnthropicContextLimit: true,
     });
 
-    const modelButton = host.querySelector(
+    const modelButton = host.querySelector<HTMLButtonElement>(
       'button[aria-label="codex provider, gpt-5.4"]'
-    ) as HTMLButtonElement;
+    )!;
     act(() => {
       modelButton.click();
     });
@@ -234,9 +234,9 @@ describe('LeadModelRow', () => {
       disableAnthropicContextLimit: true,
     });
 
-    const modelButton = host.querySelector(
+    const modelButton = host.querySelector<HTMLButtonElement>(
       'button[aria-label="anthropic provider, haiku"]'
-    ) as HTMLButtonElement;
+    )!;
     act(() => {
       modelButton.click();
     });

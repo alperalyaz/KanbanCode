@@ -869,11 +869,6 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     (svc as any).restorePrelaunchConfig = vi.fn(async () => {});
     (svc as any).assertConfigLeadOnlyForLaunch = vi.fn(async () => {});
     (svc as any).persistLaunchStateSnapshot = vi.fn(async () => {});
-    (svc as any).resolveLaunchExpectedMembers = vi.fn(async () => ({
-      members: [{ name: 'alice', role: 'developer', providerId: 'codex', isolation: 'worktree' }],
-      source: 'config-fallback',
-      warning: undefined,
-    }));
     (svc as any).validateAgentTeamsMcpRuntime = vi.fn(async () => {});
     (svc as any).pathExists = vi.fn(async () => false);
     (svc as any).startFilesystemMonitor = vi.fn();
@@ -960,7 +955,6 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
       expect.objectContaining({
         name: 'alice',
         provider: 'codex',
-        isolation: 'worktree',
       })
     );
 

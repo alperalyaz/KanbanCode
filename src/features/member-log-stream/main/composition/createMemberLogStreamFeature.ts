@@ -7,7 +7,6 @@ import {
   createEmptyMemberLogStreamResponse,
   createEmptyMemberRuntimeLogTailResponse,
 } from '../../contracts';
-import { MemberRuntimeLogTailReader } from '../application/MemberRuntimeLogTailReader';
 import { GetMemberLogPreviewsUseCase } from '../../core/application/use-cases/GetMemberLogPreviewsUseCase';
 import { GetMemberLogStreamUseCase } from '../../core/application/use-cases/GetMemberLogStreamUseCase';
 import { SetMemberLogStreamTrackingUseCase } from '../../core/application/use-cases/SetMemberLogStreamTrackingUseCase';
@@ -17,6 +16,7 @@ import { CodexNativeMemberTracePreviewSource } from '../adapters/output/sources/
 import { CodexNativeMemberTraceStreamSource } from '../adapters/output/sources/CodexNativeMemberTraceStreamSource';
 import { OpenCodeMemberRuntimePreviewSource } from '../adapters/output/sources/OpenCodeMemberRuntimePreviewSource';
 import { OpenCodeMemberRuntimeStreamSource } from '../adapters/output/sources/OpenCodeMemberRuntimeStreamSource';
+import { MemberRuntimeLogTailReader } from '../application/MemberRuntimeLogTailReader';
 import { isMemberLogStreamReadEnabled } from '../featureGates';
 
 import type {

@@ -100,6 +100,6 @@ describe('OpenCode attachment adapter', () => {
       },
     ]);
 
-    expect(redacted[0]!.url).toBe('[redacted data URL: image/png]');
+    expect(redacted[0].url).toBe('[redacted data URL: image/png]');
   });
 });

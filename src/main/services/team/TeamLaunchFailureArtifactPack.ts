@@ -111,19 +111,23 @@ function truncateTail(text: string, maxChars: number): string {
 }
 
 export function redactLaunchFailureArtifactText(text: string): string {
-  return text
-    .replace(/sk-ant-[A-Za-z0-9_-]{20,}/g, '[REDACTED_ANTHROPIC_API_KEY]')
-    .replace(/sk-proj-[A-Za-z0-9_-]{20,}/g, '[REDACTED_OPENAI_API_KEY]')
-    .replace(/sk-[A-Za-z0-9_-]{20,}/g, '[REDACTED_API_KEY]')
-    .replace(
-      /\b(ANTHROPIC_API_KEY|OPENAI_API_KEY|CODEX_API_KEY|OPENROUTER_API_KEY|GEMINI_API_KEY)=([^\s"'`]+)/gi,
-      '$1=[REDACTED]'
-    )
-    .replace(/\b(authorization:\s*bearer\s+)([A-Za-z0-9._~+/=-]{20,})/gi, '$1[REDACTED]')
-    .replace(
-      /\b(api[_-]?key|token|access[_-]?token|refresh[_-]?token)(["']?\s*[:=]\s*["']?)([A-Za-z0-9._~+/=-]{20,})/gi,
-      '$1$2[REDACTED]'
-    );
+  return (
+    text
+      .replace(/sk-ant-[A-Za-z0-9_-]{20,}/g, '[REDACTED_ANTHROPIC_API_KEY]')
+      .replace(/sk-proj-[A-Za-z0-9_-]{20,}/g, '[REDACTED_OPENAI_API_KEY]')
+      .replace(/sk-[A-Za-z0-9_-]{20,}/g, '[REDACTED_API_KEY]')
+      .replace(
+        /\b(ANTHROPIC_API_KEY|OPENAI_API_KEY|CODEX_API_KEY|OPENROUTER_API_KEY|GEMINI_API_KEY)=([^\s"'`]+)/gi,
+        '$1=[REDACTED]'
+      )
+      // eslint-disable-next-line sonarjs/duplicates-in-character-class -- URL-safe token alphabet intentionally includes these literal characters.
+      .replace(/\b(authorization:\s*bearer\s+)([A-Za-z0-9._~+/=-]{20,})/gi, '$1[REDACTED]')
+      .replace(
+        // eslint-disable-next-line sonarjs/regex-complexity, sonarjs/duplicates-in-character-class -- Secret redaction regex intentionally covers common token field spellings.
+        /\b(api[_-]?key|token|access[_-]?token|refresh[_-]?token)(["']?\s*[:=]\s*["']?)([A-Za-z0-9._~+/=-]{20,})/gi,
+        '$1$2[REDACTED]'
+      )
+  );
 }
 
 function redactJsonLike<T>(value: T): T {

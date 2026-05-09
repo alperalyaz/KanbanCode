@@ -22,6 +22,7 @@ describe('agent attachment artifact store helpers', () => {
   it('rejects unsafe ids before path construction', () => {
     expect(() =>
       resolveAgentAttachmentArtifactPath({
+        // eslint-disable-next-line sonarjs/publicly-writable-directories -- Unit test uses a fixed synthetic root and never writes to it.
         appDataPath: '/tmp/root',
         teamName: 'team_1',
         messageId: '../msg',

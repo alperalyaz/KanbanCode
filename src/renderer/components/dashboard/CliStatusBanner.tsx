@@ -65,8 +65,6 @@ import {
   Terminal,
 } from 'lucide-react';
 
-import type { CliProviderAuthMode, CliProviderId, CliProviderStatus } from '@shared/types';
-
 import {
   getAnthropicDashboardRateLimits,
   getCodexDashboardRateLimits,
@@ -75,6 +73,7 @@ import {
 } from './providerDashboardRateLimits';
 
 import type { DashboardRateLimitItem } from './providerDashboardRateLimits';
+import type { CliProviderAuthMode, CliProviderId, CliProviderStatus } from '@shared/types';
 
 // =============================================================================
 // Border color by state

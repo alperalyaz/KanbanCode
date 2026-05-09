@@ -140,6 +140,15 @@ function seedLeadInbox(teamName: string, messages: unknown[]): void {
 interface RunLike {
   runId: string;
   teamName: string;
+  progress: {
+    runId: string;
+    teamName: string;
+    state: 'spawning' | 'running';
+    message: string;
+    startedAt: string;
+    updatedAt: string;
+    error?: string;
+  };
   provisioningComplete: boolean;
   detectedSessionId?: string | null;
   leadMsgSeq: number;
@@ -173,10 +182,20 @@ function attachRun(
   opts?: { provisioningComplete?: boolean; runId?: string; detectedSessionId?: string | null }
 ): RunLike {
   const runId = opts?.runId ?? 'run-1';
+  const now = new Date().toISOString();
+  const provisioningComplete = opts?.provisioningComplete ?? false;
   const run: RunLike = {
     runId,
     teamName,
-    provisioningComplete: opts?.provisioningComplete ?? false,
+    progress: {
+      runId,
+      teamName,
+      state: provisioningComplete ? 'running' : 'spawning',
+      message: provisioningComplete ? 'Running' : 'Starting',
+      startedAt: now,
+      updatedAt: now,
+    },
+    provisioningComplete,
     detectedSessionId: opts?.detectedSessionId ?? null,
     leadMsgSeq: 0,
     pendingToolCalls: [],

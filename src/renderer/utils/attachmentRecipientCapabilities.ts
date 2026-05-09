@@ -1,6 +1,6 @@
 import {
-  resolveAgentAttachmentCapability,
   type AgentAttachmentCapability,
+  resolveAgentAttachmentCapability,
 } from '@features/agent-attachments/renderer';
 import { categorizeFile, getEffectiveMimeType, isImageMime } from '@shared/constants/attachments';
 import { isLeadMember } from '@shared/utils/leadDetection';

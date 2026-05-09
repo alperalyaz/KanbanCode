@@ -1,9 +1,8 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
 import { ANTHROPIC_LONG_CONTEXT_PRICING_URL } from '@renderer/components/team/dialogs/AnthropicExtraUsageWarning';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@renderer/components/common/ProviderBrandLogo', () => ({
   ProviderBrandLogo: () => React.createElement('span', { 'data-testid': 'provider-logo' }),
@@ -190,9 +189,9 @@ describe('MemberDraftRow', () => {
       limitContext: true,
     });
 
-    const modelButton = host.querySelector(
+    const modelButton = host.querySelector<HTMLButtonElement>(
       'button[aria-label="anthropic provider, opus"]'
-    ) as HTMLButtonElement;
+    )!;
     act(() => {
       modelButton.click();
     });

@@ -1,10 +1,10 @@
 import React from 'react';
 
+import { api } from '@renderer/api';
 import {
   CodexLoginLinkCopyButton,
   CodexLoginUserCodeBadge,
 } from '@renderer/components/runtime/CodexLoginLinkCopyButton';
-import { api } from '@renderer/api';
 import { LogIn } from 'lucide-react';
 
 import type { ProvisioningProviderCheck } from './ProvisioningProviderStatusList';

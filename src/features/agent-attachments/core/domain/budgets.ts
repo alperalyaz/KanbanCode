@@ -15,11 +15,11 @@ const utf8Encoder = new TextEncoder();
 
 export function estimateAgentAttachmentSerializedPayloadBytes(input: {
   text?: string;
-  attachments: Array<{
+  attachments: {
     mimeType: string;
     data: string;
     filename?: string;
-  }>;
+  }[];
 }): number {
   const contentBlocks: unknown[] = [{ type: 'text', text: input.text ?? '' }];
   for (const attachment of input.attachments) {

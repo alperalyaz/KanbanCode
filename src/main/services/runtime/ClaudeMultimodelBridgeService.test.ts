@@ -4,12 +4,12 @@ import { ClaudeMultimodelBridgeService } from './ClaudeMultimodelBridgeService';
 
 import type { CliProviderId, CliProviderStatus } from '@shared/types';
 
-type RuntimeStatusMapper = {
+interface RuntimeStatusMapper {
   mapRuntimeProviderStatus: (
     providerId: CliProviderId,
     runtimeStatus: unknown
   ) => CliProviderStatus;
-};
+}
 
 function mapRuntimeProviderStatus(
   providerId: CliProviderId,

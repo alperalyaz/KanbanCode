@@ -1,8 +1,8 @@
 import { AgentAttachmentError } from '@features/agent-attachments/core/domain';
 import {
+  type AgentAttachmentArtifactFileName,
   resolveAgentAttachmentArtifactPath,
   writeFileAtomic,
-  type AgentAttachmentArtifactFileName,
 } from '@features/agent-attachments/main/infrastructure/attachmentArtifactStore';
 
 import type { AttachmentPayload } from '@shared/types';
@@ -120,7 +120,7 @@ export async function buildCodexNativeAttachmentDeliveryParts(
 
 export function redactCodexNativeAttachmentPartsForDiagnostics(
   parts: CodexNativeImageArgPart[]
-): Array<Omit<CodexNativeImageArgPart, 'path'> & { path: string }> {
+): (Omit<CodexNativeImageArgPart, 'path'> & { path: string })[] {
   return parts.map((part) => ({
     ...part,
     path: `[managed attachment artifact: ${part.filename}]`,
