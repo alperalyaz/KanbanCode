@@ -60,6 +60,8 @@ const OPEN_CODE_MAX_DISCOVERED_LANES = 500;
 const TEAM_TASK_CHANGE_SUMMARY_BATCH_INSPECT_LIMIT = 1_000;
 const TEAM_TASK_CHANGE_SUMMARY_BATCH_LIMIT = 200;
 const TEAM_TASK_CHANGE_SUMMARY_BATCH_CONCURRENCY = 3;
+const TEAM_TASK_CHANGE_SUMMARY_TASK_TIMEOUT_MS = 15_000;
+const TEAM_TASK_CHANGE_SUMMARY_BATCH_TIMEOUT_MS = 30_000;
 
 /** Кеш-запись: данные + mtime файла + время протухания */
 interface CacheEntry {
@@ -86,6 +88,20 @@ interface OpenCodeBackfillCacheEntry {
 interface OpenCodeBackfillAttempt {
   attempted: boolean;
   backfilled: boolean;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+    (timeoutId as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  });
 }
 
 interface OpenCodeDeliveryContextTempFile {
@@ -361,6 +377,8 @@ export class ChangeExtractorService {
       changeSet: null,
     }));
     let cursor = 0;
+    let timedOut = false;
+    const batchDeadline = Date.now() + TEAM_TASK_CHANGE_SUMMARY_BATCH_TIMEOUT_MS;
 
     const runNext = async (): Promise<void> => {
       while (cursor < cappedRequests.length) {
@@ -368,14 +386,27 @@ export class ChangeExtractorService {
         cursor += 1;
         const request = cappedRequests[index];
         const taskId = request.taskId.trim();
+        const remainingBatchMs = batchDeadline - Date.now();
+        if (remainingBatchMs <= 0) {
+          timedOut = true;
+          continue;
+        }
+
         try {
-          const changeSet = await this.getTaskChanges(teamName, taskId, {
-            ...request.options,
-            summaryOnly: true,
-          });
+          const changeSet = await withTimeout(
+            this.getTaskChanges(teamName, taskId, {
+              ...request.options,
+              summaryOnly: true,
+            }),
+            Math.max(1, Math.min(TEAM_TASK_CHANGE_SUMMARY_TASK_TIMEOUT_MS, remainingBatchMs)),
+            'Task change summary timed out; refresh later or open the task logs.'
+          );
           items[index] = { taskId, changeSet };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
+          if (message.toLowerCase().includes('timed out')) {
+            timedOut = true;
+          }
           items[index] = {
             taskId,
             changeSet: null,
@@ -392,12 +423,18 @@ export class ChangeExtractorService {
       )
     );
 
+    const responseItems = timedOut
+      ? items.filter((item) => item.changeSet !== null || Boolean(item.error))
+      : items;
+
     return {
       teamName,
-      items,
+      items: responseItems,
       computedAt: new Date().toISOString(),
       truncated:
-        uniqueRequests.length > cappedRequests.length || inspectedRequests < inputRequests.length
+        timedOut ||
+        uniqueRequests.length > cappedRequests.length ||
+        inspectedRequests < inputRequests.length
           ? true
           : undefined,
     };

@@ -358,6 +358,12 @@ function makeTaskChangeResult(
   };
 }
 
+function pendingTaskChangeResult(): Promise<ReturnType<typeof makeTaskChangeResult>> {
+  return new Promise<ReturnType<typeof makeTaskChangeResult>>(() => {
+    // Keep pending to exercise summary timeout handling.
+  });
+}
+
 function createService(params: {
   logPaths: string[];
   projectPath?: string;
@@ -456,6 +462,65 @@ describe('ChangeExtractorService', () => {
       changeSet: null,
       error: 'broken summary',
     });
+  });
+
+  it('times out slow team task change summaries without blocking faster items', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service } = createService({ logPaths: [] });
+      const getTaskChanges = vi
+        .spyOn(service, 'getTaskChanges')
+        .mockImplementation((_teamName, taskId) => {
+          if (taskId === 'slow-task') {
+            return pendingTaskChangeResult();
+          }
+          return Promise.resolve(makeTaskChangeResult(taskId, { taskId }));
+        });
+
+      const responsePromise = service.getTeamTaskChangeSummaries(TEAM_NAME, [
+        { taskId: 'slow-task', options: SUMMARY_OPTIONS },
+        { taskId: 'fast-task', options: SUMMARY_OPTIONS },
+      ]);
+
+      await vi.advanceTimersByTimeAsync(31_000);
+      const response = await responsePromise;
+
+      expect(getTaskChanges).toHaveBeenCalledTimes(2);
+      expect(response.truncated).toBe(true);
+      expect(response.items[0]).toMatchObject({
+        taskId: 'slow-task',
+        changeSet: null,
+        error: expect.stringContaining('timed out'),
+      });
+      expect(response.items[1].changeSet?.taskId).toBe('fast-task');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('omits unscanned task summary placeholders after the batch deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service } = createService({ logPaths: [] });
+      vi.spyOn(service, 'getTaskChanges').mockImplementation(() => pendingTaskChangeResult());
+
+      const responsePromise = service.getTeamTaskChangeSummaries(
+        TEAM_NAME,
+        Array.from({ length: 8 }, (_, index) => ({
+          taskId: `slow-task-${index}`,
+          options: SUMMARY_OPTIONS,
+        }))
+      );
+
+      await vi.advanceTimersByTimeAsync(31_000);
+      const response = await responsePromise;
+
+      expect(response.truncated).toBe(true);
+      expect(response.items).toHaveLength(6);
+      expect(response.items.every((item) => item.error?.includes('timed out'))).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('deduplicates team task change summary requests before loading', async () => {
