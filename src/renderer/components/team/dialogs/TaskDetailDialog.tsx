@@ -71,8 +71,8 @@ import {
 } from '@shared/utils/teamTaskState';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
-  AlignLeft,
   AlertTriangle,
+  AlignLeft,
   ArrowLeftFromLine,
   ArrowRightFromLine,
   Check,
@@ -94,9 +94,6 @@ import {
   X,
 } from 'lucide-react';
 
-const TASK_CHANGES_AUTO_REFRESH_MS = 20_000;
-const TASK_CHANGES_INITIAL_LOAD_DELAY_MS = 1_500;
-
 import { SourceMessageAttachments } from '../attachments/SourceMessageAttachments';
 
 import { WorkflowTimeline } from './StatusHistoryTimeline';
@@ -113,6 +110,9 @@ import type {
   TaskChangeSetV2,
   TeamTaskWithKanban,
 } from '@shared/types';
+
+const TASK_CHANGES_AUTO_REFRESH_MS = 20_000;
+const TASK_CHANGES_INITIAL_LOAD_DELAY_MS = 1_500;
 
 interface TaskDetailDialogProps {
   open: boolean;
@@ -303,7 +303,7 @@ export const TaskDetailDialog = ({
       unread.add(c.id);
     }
     unreadSnapshotRef.current = unread;
-  }, [open, teamName, currentTask?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, teamName, currentTask?.id]); // eslint-disable-line react-hooks/exhaustive-deps -- Snapshot should reset only when the dialog opens or task identity changes.
 
   // Viewport-based comment read tracking (replaces mark-all-on-mount)
   const { registerComment, flush: flushCommentRead } = useViewportCommentRead({
@@ -1580,9 +1580,11 @@ const CommentImageThumbnail = ({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div
+        <button
+          type="button"
           className="group relative flex size-16 cursor-pointer items-center justify-center overflow-hidden rounded border border-[var(--color-border)] bg-[var(--color-surface)] transition-colors hover:border-[var(--color-border-emphasis)]"
           onClick={() => thumbUrl && onPreview(thumbUrl)}
+          aria-label={`Preview ${item.attachment.filename}`}
         >
           {thumbUrl ? (
             <img src={thumbUrl} alt={item.attachment.filename} className="size-full object-cover" />
@@ -1592,7 +1594,7 @@ const CommentImageThumbnail = ({
           <div className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-0.5 py-px text-center text-[7px] text-white opacity-0 transition-opacity group-hover:opacity-100">
             {item.attachment.filename}
           </div>
-        </div>
+        </button>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-[300px] text-xs">
         {tooltipText}
