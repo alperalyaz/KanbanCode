@@ -685,6 +685,23 @@ describe('TeamProvisioningService', () => {
     });
   });
 
+  describe('OpenCode runtime delivery user-visible impact', () => {
+    it('treats policy none as authoritative over raw failed delivery facts', () => {
+      const svc = new TeamProvisioningService();
+
+      expect(
+        svc.buildOpenCodeRuntimeDeliveryUserVisibleImpact({
+          delivered: false,
+          responsePending: false,
+          ledgerStatus: 'failed_terminal',
+          reason: 'empty_assistant_turn',
+          diagnostics: ['empty_assistant_turn'],
+          policyImpact: { state: 'none' },
+        })
+      ).toEqual({ state: 'none' });
+    });
+  });
+
   describe('team launch notifications', () => {
     it('does not fire incomplete notification for pending-only teammates still joining', async () => {
       const { NotificationManager } =
@@ -6384,9 +6401,7 @@ describe('TeamProvisioningService', () => {
         }),
       } as any;
       const observeMessageDelivery = opencodeAdapter.observeMessageDelivery;
-      svc.setRuntimeAdapterRegistry(
-        new TeamRuntimeAdapterRegistry([opencodeAdapter])
-      );
+      svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([opencodeAdapter]));
 
       (svc as any).getTrackedRunId = vi.fn(() => 'run-1');
       (svc as any).provisioningRunByTeam.set('team-a', 'run-1');
