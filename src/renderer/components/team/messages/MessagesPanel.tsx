@@ -24,7 +24,10 @@ import { filterTeamMessages } from '@renderer/utils/teamMessageFiltering';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import { shouldExcludeInboxTextFromReplyCandidates } from '@shared/utils/idleNotificationSemantics';
 import { isLeadMember } from '@shared/utils/leadDetection';
-import { isTaskStallRemediationMessage } from '@shared/utils/teamAutomationMessages';
+import {
+  isReviewPickupEscalationMessage,
+  isTaskStallRemediationMessage,
+} from '@shared/utils/teamAutomationMessages';
 import {
   CheckCheck,
   ChevronsDownUp,
@@ -603,6 +606,7 @@ export const MessagesPanel = memo(function MessagesPanel({
         (m) =>
           m.messageKind !== 'task_comment_notification' &&
           !isTaskStallRemediationMessage(m) &&
+          !isReviewPickupEscalationMessage(m) &&
           !shouldExcludeInboxTextFromReplyCandidates(typeof m.text === 'string' ? m.text : '')
       ),
     [effectiveMessages]
