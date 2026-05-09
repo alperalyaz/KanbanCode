@@ -67,7 +67,8 @@ const MAX_DIAGNOSTIC_ITEMS = 20;
 const MAX_PERMISSION_REQUEST_IDS = 10;
 const SECRET_FLAG_PATTERN =
   /(--(?:api-key|token|password|secret|authorization|auth-token)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi;
-const SECRET_VALUE_PATTERN = /\b(sk-[A-Za-z0-9_-]{12,}|[A-Za-z0-9_-]{32,})\b/g;
+const SECRET_VALUE_PATTERN =
+  /\b(sk-[A-Za-z0-9._~+/=-]{12,}|[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})\b/g;
 
 type MemberSpawnStatusCollection =
   | Record<string, MemberSpawnStatusEntry>

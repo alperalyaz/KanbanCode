@@ -462,11 +462,14 @@ async function main() {
     const result = await runCommand(command);
     const output = `${result.stdout}\n${result.stderr}`;
     const assistantText = extractAssistantText(output);
-    const textForMatch = assistantText || output;
-    const matched = testCase.expected ? testCase.expected.test(textForMatch) : false;
+    const matched = testCase.expected
+      ? result.ok && assistantText.length > 0 && testCase.expected.test(assistantText)
+      : false;
     const unsupportedMatched = testCase.expectedUnsupported
-      ? /cannot|unable|unsupported|text-only|vision|image|не могу|не поддерживает|изображен/i.test(
-          textForMatch
+      ? result.ok &&
+        assistantText.length > 0 &&
+        /cannot|unable|unsupported|text-only|vision|image|не могу|не поддерживает|изображен/i.test(
+          assistantText
         )
       : false;
     results.push({
