@@ -188,6 +188,8 @@ export interface MemberWorkSyncBusySignalPort {
     teamName: string;
     memberName: string;
     nowIso: string;
+    workSyncIntent?: MemberWorkSyncOutboxItem['payload']['workSyncIntent'];
+    taskRefs?: MemberWorkSyncOutboxItem['payload']['taskRefs'];
   }): Promise<{ busy: boolean; reason?: string; retryAfterIso?: string }>;
 }
 

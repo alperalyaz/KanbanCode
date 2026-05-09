@@ -2,6 +2,7 @@ import { appendOpenCodeTaskChangeDiag } from '@main/utils/openCodeTaskChangeDiag
 import { getTasksBasePath, getTeamsBasePath } from '@main/utils/pathDecoder';
 import { createLogger } from '@shared/utils/logger';
 import { resolveTaskChangePresenceFromResult } from '@shared/utils/taskChangePresence';
+import { classifyTaskChangeReviewability } from '@shared/utils/taskChangeReviewability';
 import {
   getTaskChangeStateBucket,
   isTaskChangeSummaryCacheable,
@@ -1542,8 +1543,12 @@ export class ChangeExtractorService {
       return;
     }
 
+    const reviewability = classifyTaskChangeReviewability(result);
     const resolvedPresence = resolveTaskChangePresenceFromResult(result);
     if (!resolvedPresence) {
+      if (reviewability.reviewability === 'diagnostic_only') {
+        await this.taskChangePresenceRepository.deleteEntry?.(teamName, taskId);
+      }
       return;
     }
 

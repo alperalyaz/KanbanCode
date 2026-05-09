@@ -368,7 +368,10 @@ function createService(params: {
   logPaths: string[];
   projectPath?: string;
   findLogFileRefsForTask?: (teamName: string, taskId: string, options?: unknown) => Promise<unknown[]>;
-  taskChangePresenceRepository?: { upsertEntry: ReturnType<typeof vi.fn> };
+  taskChangePresenceRepository?: {
+    upsertEntry: ReturnType<typeof vi.fn>;
+    deleteEntry?: ReturnType<typeof vi.fn>;
+  };
   teamLogSourceTracker?: {
     ensureTracking: ReturnType<
       typeof vi.fn<() => Promise<{ projectFingerprint: string | null; logSourceGeneration: string | null }>>
@@ -1098,24 +1101,70 @@ describe('ChangeExtractorService', () => {
     );
   });
 
-  it('writes needs_attention presence entries for warning-only task diff results', async () => {
+  it('clears cached presence for diagnostic-only multi-scope task diff results', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
     setClaudeBasePathOverride(tmpDir);
     await writeTaskFile(tmpDir);
 
-    const upsertEntry = vi.fn(async () => undefined);
-    const ensureTracking = vi.fn(async () => ({
-      projectFingerprint: 'project-fingerprint',
-      logSourceGeneration: 'log-generation',
-    }));
+    const upsertEntry = vi.fn(() => Promise.resolve(undefined));
+    const deleteEntry = vi.fn(() => Promise.resolve(undefined));
+    const ensureTracking = vi.fn(() =>
+      Promise.resolve({
+        projectFingerprint: 'project-fingerprint',
+        logSourceGeneration: 'log-generation',
+      })
+    );
     const workerClient = {
       isAvailable: vi.fn(() => true),
-      computeTaskChanges: vi.fn(async () =>
-        makeTaskChangeResult(TASK_ID, {
-          content: '',
-          confidence: 'fallback',
-          warning: 'Ledger skipped attribution because multiple task scopes were active.',
-        })
+      computeTaskChanges: vi.fn(() =>
+        Promise.resolve(
+          makeTaskChangeResult(TASK_ID, {
+            content: '',
+            confidence: 'fallback',
+            warning: 'Ledger skipped attribution because multiple task scopes were active.',
+          })
+        )
+      ),
+    };
+    const { service } = createService({
+      logPaths: [],
+      taskChangePresenceRepository: { upsertEntry, deleteEntry },
+      teamLogSourceTracker: { ensureTracking },
+      taskChangeWorkerClient: workerClient,
+    });
+
+    const result = await service.getTaskChanges(TEAM_NAME, TASK_ID, SUMMARY_OPTIONS);
+
+    expect(result.files).toHaveLength(0);
+    expect(result.warnings).toEqual([
+      'Ledger skipped attribution because multiple task scopes were active.',
+    ]);
+    expect(upsertEntry).not.toHaveBeenCalled();
+    expect(deleteEntry).toHaveBeenCalledWith(TEAM_NAME, TASK_ID);
+  });
+
+  it('writes needs_attention presence entries for unclassified warning-only task diff results', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
+    setClaudeBasePathOverride(tmpDir);
+    await writeTaskFile(tmpDir);
+
+    const upsertEntry = vi.fn(() => Promise.resolve(undefined));
+    const ensureTracking = vi.fn(() =>
+      Promise.resolve({
+        projectFingerprint: 'project-fingerprint',
+        logSourceGeneration: 'log-generation',
+      })
+    );
+    const workerClient = {
+      isAvailable: vi.fn(() => true),
+      computeTaskChanges: vi.fn(() =>
+        Promise.resolve(
+          makeTaskChangeResult(TASK_ID, {
+            content: '',
+            confidence: 'fallback',
+            warning: 'Unexpected ledger warning.',
+          })
+        )
       ),
     };
     const { service } = createService({
@@ -1128,9 +1177,7 @@ describe('ChangeExtractorService', () => {
     const result = await service.getTaskChanges(TEAM_NAME, TASK_ID, SUMMARY_OPTIONS);
 
     expect(result.files).toHaveLength(0);
-    expect(result.warnings).toEqual([
-      'Ledger skipped attribution because multiple task scopes were active.',
-    ]);
+    expect(result.warnings).toEqual(['Unexpected ledger warning.']);
     expect(upsertEntry).toHaveBeenCalledWith(
       TEAM_NAME,
       expect.objectContaining({

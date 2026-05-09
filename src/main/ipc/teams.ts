@@ -3059,7 +3059,9 @@ async function handleSendMessage(
           queuedBehindMessageId: delivery.queuedBehindMessageId,
           reason: delivery.reason,
           diagnostics: delivery.diagnostics,
-          userVisibleImpact: provisioning.buildOpenCodeRuntimeDeliveryUserVisibleImpact(delivery),
+          userVisibleImpact:
+            delivery.userVisibleImpact ??
+            provisioning.buildOpenCodeRuntimeDeliveryUserVisibleImpact(delivery),
         };
         if (
           !delivery.delivered &&

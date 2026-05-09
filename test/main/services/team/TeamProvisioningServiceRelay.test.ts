@@ -2131,7 +2131,7 @@ Messages:
       `/mock/teams/${teamName}/config.json`,
       JSON.stringify({
         name: teamName,
-        projectPath: '/tmp/my-team',
+        projectPath: '/mock/my-team',
         members: [
           { name: 'team-lead', agentType: 'team-lead' },
           { name: 'jack', role: 'developer', providerId: 'opencode', model: 'openrouter/test' },
@@ -3124,6 +3124,86 @@ Messages:
       busy: true,
       reason: 'opencode_foreground_inbox_unread',
       activeMessageId: 'foreground-message-1',
+    });
+  });
+
+  it('does not treat the current unread OpenCode review request as busy for review-pickup checks', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    const laneId = 'secondary:opencode:jack';
+    const teamsBasePath = getTeamsBasePath();
+    hoisted.files.set(
+      `${teamsBasePath}/${teamName}/config.json`,
+      JSON.stringify({
+        name: teamName,
+        projectPath: '/tmp/my-team',
+        members: [
+          { name: 'team-lead', agentType: 'team-lead' },
+          { name: 'jack', role: 'developer', providerId: 'opencode', model: 'openrouter/test' },
+        ],
+      })
+    );
+    hoisted.files.set(
+      `${teamsBasePath}/${teamName}/inboxes/jack.json`,
+      JSON.stringify([
+        {
+          from: 'team-lead',
+          to: 'jack',
+          text: '**Please review** task #task1234\n\nFIRST call review_start.',
+          timestamp: '2026-02-23T17:31:00.000Z',
+          read: false,
+          messageId: 'review-request-1',
+          source: 'system_notification',
+          summary: 'Review request for #task1234',
+        },
+      ])
+    );
+    (service as any).resolveOpenCodeMemberDeliveryIdentity = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        canonicalMemberName: 'jack',
+        laneId,
+      })
+    );
+    vi.spyOn(OpenCodeRuntimeStore, 'readOpenCodeRuntimeLaneIndex').mockReturnValue(
+      Promise.resolve({
+        version: 1,
+        updatedAt: '2026-02-23T17:30:00.000Z',
+        lanes: {
+          [laneId]: {
+            laneId,
+            state: 'active',
+            updatedAt: '2026-02-23T17:30:00.000Z',
+          },
+        },
+      })
+    );
+    vi.spyOn(service as any, 'createOpenCodePromptDeliveryLedger').mockReturnValue({
+      getActiveForMember: vi.fn(() => Promise.resolve(null)),
+    });
+
+    const busy = await service.getOpenCodeMemberDeliveryBusyStatus({
+      teamName,
+      memberName: 'jack',
+      nowIso: '2026-02-23T17:31:10.000Z',
+      workSyncIntent: 'review_pickup',
+      taskRefs: [{ teamName, taskId: 'task-1234', displayId: 'task1234' }],
+    });
+
+    expect(busy).toEqual({ busy: false });
+
+    const mismatchedTaskBusy = await service.getOpenCodeMemberDeliveryBusyStatus({
+      teamName,
+      memberName: 'jack',
+      nowIso: '2026-02-23T17:31:10.000Z',
+      workSyncIntent: 'review_pickup',
+      taskRefs: [{ teamName, taskId: 'other-task', displayId: 'other' }],
+    });
+
+    expect(mismatchedTaskBusy).toMatchObject({
+      busy: true,
+      reason: 'opencode_foreground_inbox_unread',
+      activeMessageId: 'review-request-1',
     });
   });
 

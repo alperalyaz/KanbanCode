@@ -822,6 +822,9 @@ describe('MemberWorkSync use cases', () => {
     const inbox = new InMemoryInboxNudge();
     const deliveryCalls: Array<Parameters<MemberWorkSyncReviewPickupDeliveryPort['deliver']>[0]> =
       [];
+    const busyCalls: Parameters<
+      NonNullable<MemberWorkSyncUseCaseDeps['busySignal']>['isBusy']
+    >[0][] = [];
     const reviewPickupDelivery: MemberWorkSyncReviewPickupDeliveryPort = {
       canDeliver: async () => ({ ok: true }),
       deliver: async (input) => {
@@ -840,6 +843,12 @@ describe('MemberWorkSync use cases', () => {
       outboxStore: outbox,
       inboxNudge: inbox,
       reviewPickupDelivery,
+      busySignal: {
+        isBusy: (input) => {
+          busyCalls.push(input);
+          return Promise.resolve({ busy: false });
+        },
+      },
     });
 
     await new MemberWorkSyncReconciler(deps).execute(
@@ -853,6 +862,15 @@ describe('MemberWorkSync use cases', () => {
 
     expect(summary).toMatchObject({ claimed: 1, delivered: 1, superseded: 0 });
     expect(inbox.inserted).toHaveLength(1);
+    expect(busyCalls).toEqual([
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+        nowIso: '2026-04-29T00:00:00.000Z',
+        workSyncIntent: 'review_pickup',
+        taskRefs: [{ taskId: 'task-review', displayId: '22222222', teamName: 'team-a' }],
+      },
+    ]);
     expect(deliveryCalls).toHaveLength(1);
     expect(deliveryCalls[0]).toMatchObject({
       messageId: 'member-work-sync:team-a:bob:review-pickup:evt-review-request',

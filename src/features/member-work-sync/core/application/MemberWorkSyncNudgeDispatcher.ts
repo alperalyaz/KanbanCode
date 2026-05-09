@@ -484,6 +484,8 @@ export class MemberWorkSyncNudgeDispatcher {
       teamName: item.teamName,
       memberName: item.memberName,
       nowIso,
+      workSyncIntent: item.payload.workSyncIntent,
+      taskRefs: item.payload.taskRefs,
     });
     if (busy?.busy) {
       return {

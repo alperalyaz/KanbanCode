@@ -1,8 +1,9 @@
 import { memo, useMemo, useState } from 'react';
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { classifyTaskChangeReviewability } from '@shared/utils/taskChangeReviewability';
 import { deriveTaskDisplayId } from '@shared/utils/taskIdentity';
-import { AlertTriangle, FileDiff, GitCompareArrows, Loader2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, FileDiff, GitCompareArrows, Info, Loader2, RefreshCw } from 'lucide-react';
 
 import { FileIcon } from './editor/FileIcon';
 import { CollapsibleTeamSection } from './CollapsibleTeamSection';
@@ -59,9 +60,23 @@ function getVisibleFileName(file: FileChangeSummary): string {
 
 function getTaskSummaryBadge(changeSet: TaskChangeSetV2 | null): string | undefined {
   if (!changeSet) return undefined;
+  const reviewability = classifyTaskChangeReviewability(changeSet).reviewability;
   if (changeSet.totalFiles > 0) return `${changeSet.totalFiles} files`;
-  if (changeSet.warnings.length > 0) return 'attention';
+  if (reviewability === 'attention_required') return 'attention';
+  if (reviewability === 'diagnostic_only') return 'no safe diff';
   return undefined;
+}
+
+function getTaskChangeDiagnosticMessages(changeSet: TaskChangeSetV2): string[] {
+  const status = classifyTaskChangeReviewability(changeSet);
+  if (status.reviewability === 'unknown' || status.reviewability === 'none') {
+    return [];
+  }
+  const messages =
+    status.diagnostics.length > 0
+      ? status.diagnostics.map((diagnostic) => diagnostic.message)
+      : changeSet.warnings;
+  return [...new Set(messages.filter((message) => message.trim().length > 0))];
 }
 
 export const TeamChangesSection = memo(function TeamChangesSection({
@@ -82,13 +97,15 @@ export const TeamChangesSection = memo(function TeamChangesSection({
   const visibleSummaries = useMemo(() => {
     return Object.values(summariesByTaskId)
       .map((summary) => ({ summary, task: taskMap.get(summary.taskId) }))
-      .filter(
-        (entry): entry is { summary: TeamChangeSummaryState; task: TeamTaskWithKanban } =>
+      .filter((entry): entry is { summary: TeamChangeSummaryState; task: TeamTaskWithKanban } => {
+        const changeSet = entry.summary.changeSet;
+        return (
           Boolean(entry.task) &&
           (Boolean(entry.summary.error) ||
-            (entry.summary.changeSet?.files.length ?? 0) > 0 ||
-            (entry.summary.changeSet?.warnings.length ?? 0) > 0)
-      )
+            (changeSet?.files.length ?? 0) > 0 ||
+            (changeSet ? getTaskChangeDiagnosticMessages(changeSet).length > 0 : false))
+        );
+      })
       .sort((a, b) => getTeamChangeTaskTimeMs(b.task) - getTeamChangeTaskTimeMs(a.task));
   }, [summariesByTaskId, taskMap]);
 
@@ -163,13 +180,19 @@ export const TeamChangesSection = memo(function TeamChangesSection({
             {renderedSummaries.map(({ summary, task, visibleFiles, fileBudget }) => {
               const changeSet = summary.changeSet;
               const files = changeSet?.files ?? [];
+              const reviewability = changeSet
+                ? classifyTaskChangeReviewability(changeSet).reviewability
+                : 'unknown';
               const contributors = getTaskChangeContributors(task, changeSet);
               const contributorLabel =
                 contributors.length > 0 ? contributors.slice(0, 3).join(', ') : 'Unassigned';
               const extraContributors = Math.max(0, contributors.length - 3);
               const badgeText = getTaskSummaryBadge(changeSet);
+              const diagnosticMessages = changeSet
+                ? getTaskChangeDiagnosticMessages(changeSet)
+                : [];
 
-              if (visibleFiles.length === 0 && !summary.error && !changeSet?.warnings.length) {
+              if (visibleFiles.length === 0 && !summary.error && diagnosticMessages.length === 0) {
                 return null;
               }
 
@@ -210,15 +233,23 @@ export const TeamChangesSection = memo(function TeamChangesSection({
                     </div>
                   ) : null}
 
-                  {changeSet?.warnings.length ? (
+                  {diagnosticMessages.length ? (
                     <div className="space-y-1 border-t border-[var(--color-border)] px-2 py-1.5">
-                      {changeSet.warnings.slice(0, 2).map((warning) => (
+                      {diagnosticMessages.slice(0, 2).map((message) => (
                         <div
-                          key={warning}
-                          className="flex items-center gap-2 text-xs text-[var(--step-warning-text)]"
+                          key={message}
+                          className={`flex items-center gap-2 text-xs ${
+                            reviewability === 'attention_required'
+                              ? 'text-[var(--step-warning-text)]'
+                              : 'text-[var(--color-text-muted)]'
+                          }`}
                         >
-                          <AlertTriangle size={13} className="shrink-0" />
-                          <span className="min-w-0 truncate">{warning}</span>
+                          {reviewability === 'attention_required' ? (
+                            <AlertTriangle size={13} className="shrink-0" />
+                          ) : (
+                            <Info size={13} className="shrink-0" />
+                          )}
+                          <span className="min-w-0 truncate">{message}</span>
                         </div>
                       ))}
                     </div>

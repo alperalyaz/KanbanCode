@@ -20,4 +20,5 @@ export interface TaskChangePresenceRepository {
       logSourceGeneration: string;
     }
   ): Promise<void>;
+  deleteEntry?(teamName: string, taskId: string): Promise<void>;
 }

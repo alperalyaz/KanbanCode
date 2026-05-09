@@ -4,6 +4,7 @@ import { api } from '@renderer/api';
 import { useStore } from '@renderer/store';
 import { resolveTaskChangePresenceFromResult } from '@renderer/utils/taskChangePresence';
 
+import { withTeamChangesLoadTimeout } from './teamChangesLoadTimeout';
 import {
   buildTeamChangeRequestPlan,
   buildTeamChangesTasksFingerprint,
@@ -136,7 +137,9 @@ export function useTeamChangesSummaries({
       activeRequestSeqRef.current = requestSeq;
 
       try {
-        const response = await api.review.getTeamTaskChangeSummaries(teamName, plan.requests);
+        const response = await withTeamChangesLoadTimeout(
+          api.review.getTeamTaskChangeSummaries(teamName, plan.requests)
+        );
         if (!mountedRef.current || requestSeqRef.current !== requestSeq) {
           return;
         }

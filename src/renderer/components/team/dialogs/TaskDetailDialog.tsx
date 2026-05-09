@@ -54,6 +54,7 @@ import {
 } from '@renderer/utils/taskChangeRequest';
 import { linkifyTaskIdsInMarkdown, parseTaskLinkHref } from '@renderer/utils/taskReferenceUtils';
 import { isLeadMember } from '@shared/utils/leadDetection';
+import { classifyTaskChangeReviewability } from '@shared/utils/taskChangeReviewability';
 import {
   deriveTaskDisplayId,
   formatTaskDisplayLabel,
@@ -82,6 +83,7 @@ import {
   HelpCircle,
   History,
   ImageIcon,
+  Info,
   Link2,
   Loader2,
   MessageSquare,
@@ -107,6 +109,7 @@ import type {
   KanbanTaskState,
   ResolvedTeamMember,
   TaskAttachmentMeta,
+  TaskChangeReviewability,
   TaskChangeSetV2,
   TeamTaskWithKanban,
 } from '@shared/types';
@@ -168,6 +171,8 @@ export const TaskDetailDialog = ({
   const [changesSectionOpen, setChangesSectionOpen] = useState(false);
   const [taskChangesFiles, setTaskChangesFiles] = useState<FileChangeSummary[] | null>(null);
   const [taskChangesWarnings, setTaskChangesWarnings] = useState<string[]>([]);
+  const [taskChangesReviewability, setTaskChangesReviewability] =
+    useState<TaskChangeReviewability | null>(null);
   const [taskChangesLoading, setTaskChangesLoading] = useState(false);
   const [taskChangesError, setTaskChangesError] = useState<string | null>(null);
   const loadedTaskChangeSummaryKeyRef = useRef<string | null>(null);
@@ -238,6 +243,7 @@ export const TaskDetailDialog = ({
     setChangesSectionOpen(false);
     setTaskChangesFiles(null);
     setTaskChangesWarnings([]);
+    setTaskChangesReviewability(null);
     setTaskChangesLoading(false);
     setTaskChangesError(null);
     setLogsRefreshing(false);
@@ -395,7 +401,15 @@ export const TaskDetailDialog = ({
   const syncTaskChangeSummaryResult = useCallback(
     (data: TaskChangeSetV2 | null) => {
       setTaskChangesFiles(data?.files ?? null);
-      setTaskChangesWarnings(data?.warnings ?? []);
+      const status = data ? classifyTaskChangeReviewability(data) : null;
+      const diagnosticMessages =
+        status && status.diagnostics.length > 0
+          ? status.diagnostics.map((diagnostic) => diagnostic.message)
+          : (data?.warnings ?? []);
+      setTaskChangesWarnings([
+        ...new Set(diagnosticMessages.filter((message) => message.trim().length > 0)),
+      ]);
+      setTaskChangesReviewability(status?.reviewability ?? null);
       const nextPresence = data ? resolveTaskChangePresenceFromResult(data) : null;
       if (currentTask && taskChangeRequestOptions) {
         recordTaskChangePresence(teamName, currentTask.id, taskChangeRequestOptions, nextPresence);
@@ -446,6 +460,7 @@ export const TaskDetailDialog = ({
         if (!preserveFilesOnError) {
           setTaskChangesFiles(null);
           setTaskChangesWarnings([]);
+          setTaskChangesReviewability(null);
         }
         setTaskChangesError(
           error instanceof Error ? error.message : 'Failed to load task changes summary'
@@ -592,7 +607,11 @@ export const TaskDetailDialog = ({
     ? taskChangesFiles && taskChangesFiles.length > 0
       ? taskChangesFiles.length
       : taskChangesFiles && taskChangesWarnings.length > 0
-        ? 'attention'
+        ? taskChangesReviewability === 'attention_required'
+          ? 'attention'
+          : taskChangesReviewability === 'diagnostic_only'
+            ? 'no safe diff'
+            : undefined
         : undefined
     : undefined;
 
@@ -1245,19 +1264,33 @@ export const TaskDetailDialog = ({
                 ) : taskChangesFiles ? (
                   <div className="space-y-2">
                     {taskChangesWarnings.length > 0 ? (
-                      <div className="space-y-1 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-1.5">
+                      <div
+                        className={`space-y-1 rounded-md border px-2 py-1.5 ${
+                          taskChangesReviewability === 'attention_required'
+                            ? 'border-amber-500/20 bg-amber-500/10'
+                            : 'border-[var(--color-border)] bg-[var(--color-bg-secondary)]'
+                        }`}
+                      >
                         {taskChangesWarnings.slice(0, 2).map((warning) => (
                           <div
                             key={warning}
-                            className="flex items-center gap-2 text-xs text-[var(--step-warning-text)]"
+                            className={`flex items-center gap-2 text-xs ${
+                              taskChangesReviewability === 'attention_required'
+                                ? 'text-[var(--step-warning-text)]'
+                                : 'text-[var(--color-text-muted)]'
+                            }`}
                           >
-                            <AlertTriangle size={13} className="shrink-0" />
+                            {taskChangesReviewability === 'attention_required' ? (
+                              <AlertTriangle size={13} className="shrink-0" />
+                            ) : (
+                              <Info size={13} className="shrink-0" />
+                            )}
                             <span className="min-w-0 truncate">{warning}</span>
                           </div>
                         ))}
                         {taskChangesWarnings.length > 2 ? (
                           <p className="text-[10px] text-[var(--color-text-muted)]">
-                            {taskChangesWarnings.length - 2} more warnings
+                            {taskChangesWarnings.length - 2} more diagnostics
                           </p>
                         ) : null}
                       </div>
@@ -1337,7 +1370,11 @@ export const TaskDetailDialog = ({
                     ) : changesSectionOpen ? (
                       <p className="text-xs text-[var(--color-text-muted)]">
                         {taskChangesWarnings.length > 0
-                          ? 'No reviewable file changes recovered'
+                          ? taskChangesReviewability === 'attention_required'
+                            ? 'No reviewable file changes recovered'
+                            : taskChangesReviewability === 'diagnostic_only'
+                              ? 'No safe diff available'
+                              : 'No file changes recorded yet'
                           : 'No file changes recorded'}
                       </p>
                     ) : null}

@@ -193,4 +193,55 @@ describe('openCodeRuntimeDeliveryDiagnostics', () => {
       'OpenCode runtime delivery failed. Message was saved to inbox, but live delivery did not complete. Reason: OpenCode created a reply without the required taskRefs metadata.'
     );
   });
+
+  it('surfaces unsupported OpenCode attachment models as an actionable failure', () => {
+    const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
+      deliveredToInbox: true,
+      messageId: 'msg-unsupported-attachment-model',
+      runtimeDelivery: {
+        providerId: 'opencode',
+        attempted: true,
+        delivered: false,
+        responsePending: false,
+        reason: 'attachment_model_unsupported',
+        diagnostics: [
+          'opencode_attachment_delivery_prepare_failed: This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.',
+        ],
+        userVisibleImpact: {
+          state: 'error',
+          reasonCode: 'backend_error',
+          message:
+            'This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.',
+        },
+      },
+    });
+
+    expect(diagnostics.warning).toBe(
+      'OpenCode attachment was not sent. Message was saved to inbox, but live delivery cannot include this attachment. Reason: This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.'
+    );
+    expect(diagnostics.debugDetails).toMatchObject({
+      reason: 'attachment_model_unsupported',
+      userVisibleMessage:
+        'This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.',
+    });
+  });
+
+  it('maps legacy unsupported attachment model codes to an actionable failure', () => {
+    const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
+      deliveredToInbox: true,
+      messageId: 'msg-legacy-unsupported-attachment-model',
+      runtimeDelivery: {
+        providerId: 'opencode',
+        attempted: true,
+        delivered: false,
+        responsePending: false,
+        reason: 'attachment_model_unsupported',
+        diagnostics: ['attachment_model_unsupported'],
+      },
+    });
+
+    expect(diagnostics.warning).toBe(
+      'OpenCode attachment was not sent. Message was saved to inbox, but live delivery cannot include this attachment. Reason: This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.'
+    );
+  });
 });

@@ -31,6 +31,17 @@ const PROOF_WARNING =
   'OpenCode reply could not be verified. Message was saved to inbox, but no visible reply or task progress proof was found.';
 const FAILED_WARNING =
   'OpenCode runtime delivery failed. Message was saved to inbox, but live delivery did not complete.';
+const ATTACHMENT_FAILED_WARNING =
+  'OpenCode attachment was not sent. Message was saved to inbox, but live delivery cannot include this attachment.';
+
+function isOpenCodeAttachmentDeliveryFailureReason(reason: string | null | undefined): boolean {
+  const normalized = reason?.trim().toLowerCase();
+  return (
+    normalized === 'opencode_attachment_delivery_prepare_failed' ||
+    normalized?.startsWith('attachment_') === true ||
+    normalized?.startsWith('opencode_attachment_delivery_prepare_failed:') === true
+  );
+}
 
 function formatOpenCodeRuntimeDeliveryFailureReason(reason: string | null | undefined): string {
   const normalized = reason?.trim();
@@ -69,6 +80,33 @@ function formatOpenCodeRuntimeDeliveryFailureReason(reason: string | null | unde
   if (normalizedLower === 'non_visible_tool_without_task_progress') {
     return 'OpenCode used tools, but did not create a visible reply or task progress proof.';
   }
+  if (normalizedLower === 'attachment_model_unsupported') {
+    return 'This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.';
+  }
+  if (normalizedLower === 'attachment_type_unsupported') {
+    return 'This OpenCode model cannot receive this attachment type. Remove the attachment or choose a supported image model.';
+  }
+  if (normalizedLower === 'attachment_too_large') {
+    return 'The attachment is too large for live OpenCode delivery. Reduce the image size or remove the attachment.';
+  }
+  if (
+    normalizedLower === 'attachment_artifact_missing' ||
+    normalizedLower === 'attachment_artifact_path_unsafe'
+  ) {
+    return 'The attachment file is not available for live OpenCode delivery. Reattach the file and try again.';
+  }
+  if (normalizedLower === 'attachment_optimization_failed') {
+    return 'The attachment could not be optimized for live OpenCode delivery. Try a smaller image or remove the attachment.';
+  }
+  if (normalizedLower === 'attachment_provider_rejected') {
+    return 'The OpenCode provider rejected the attachment. Choose a different model or remove the attachment.';
+  }
+  if (normalizedLower === 'attachment_runtime_transport_failed') {
+    return 'OpenCode could not transport the attachment to the runtime. Try again or remove the attachment.';
+  }
+  if (normalizedLower.startsWith('opencode_attachment_delivery_prepare_failed:')) {
+    return normalized.slice('opencode_attachment_delivery_prepare_failed:'.length).trim();
+  }
   return '';
 }
 
@@ -94,12 +132,16 @@ export function buildOpenCodeRuntimeDeliveryDiagnostics(
   }
 
   const userVisibleMessage = runtimeDelivery.userVisibleImpact?.message?.trim();
-  const failureReason =
-    isFailed || isWarning
-      ? formatOpenCodeRuntimeDeliveryFailureReason(
-          userVisibleMessage ?? runtimeDelivery.reason ?? runtimeDelivery.diagnostics?.[0]
-        )
-      : '';
+  const candidateFailureReason =
+    userVisibleMessage ?? runtimeDelivery.reason ?? runtimeDelivery.diagnostics?.[0];
+  const mappedFailureReason =
+    isFailed || isWarning ? formatOpenCodeRuntimeDeliveryFailureReason(candidateFailureReason) : '';
+  const failureReason = mappedFailureReason || (isFailed || isWarning ? userVisibleMessage : '');
+  const isAttachmentFailure =
+    isFailed &&
+    (isOpenCodeAttachmentDeliveryFailureReason(runtimeDelivery.reason) ||
+      isOpenCodeAttachmentDeliveryFailureReason(runtimeDelivery.diagnostics?.[0]) ||
+      isOpenCodeAttachmentDeliveryFailureReason(candidateFailureReason));
   const statusMessageId = runtimeDelivery.queuedBehindMessageId ?? result.messageId;
 
   return {
@@ -108,11 +150,15 @@ export function buildOpenCodeRuntimeDeliveryDiagnostics(
         ? `${PROOF_WARNING} Reason: ${failureReason}`
         : isWarning
           ? PROOF_WARNING
-          : isFailed && failureReason
-            ? `${FAILED_WARNING} Reason: ${failureReason}`
-            : isFailed
-              ? FAILED_WARNING
-              : PENDING_WARNING,
+          : isAttachmentFailure && failureReason
+            ? `${ATTACHMENT_FAILED_WARNING} Reason: ${failureReason}`
+            : isAttachmentFailure
+              ? ATTACHMENT_FAILED_WARNING
+              : isFailed && failureReason
+                ? `${FAILED_WARNING} Reason: ${failureReason}`
+                : isFailed
+                  ? FAILED_WARNING
+                  : PENDING_WARNING,
     debugDetails: {
       messageId: result.messageId,
       statusMessageId,

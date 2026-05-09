@@ -6638,6 +6638,82 @@ describe('TeamProvisioningService', () => {
       );
     });
 
+    it('keeps OpenCode inbox relay unread and surfaces a clear reason when the model is not vision-capable', async () => {
+      const svc = new TeamProvisioningService();
+      const sendMessageToMember = vi.fn();
+      await configureOpenCodeBobDeliveryService({
+        svc,
+        sendMessageToMember,
+        memberModel: 'openrouter/z-ai/glm-5.1',
+      });
+      await (svc as any).attachmentStore.saveAttachments('team-a', 'msg-unsupported-image-model', [
+        {
+          id: 'att-unsupported-model',
+          filename: 'diagram.png',
+          mimeType: 'image/png',
+          size: 5,
+          data: 'aW1nMQ==',
+        },
+      ]);
+      const inboxDir = path.join(tempTeamsBase, 'team-a', 'inboxes');
+      await fsPromises.mkdir(inboxDir, { recursive: true });
+      await fsPromises.writeFile(
+        path.join(inboxDir, 'bob.json'),
+        `${JSON.stringify(
+          [
+            {
+              from: 'team-lead',
+              to: 'bob',
+              text: 'Review this image.',
+              timestamp: '2026-04-25T10:00:00.000Z',
+              read: false,
+              messageId: 'msg-unsupported-image-model',
+              attachments: [
+                {
+                  id: 'att-unsupported-model',
+                  filename: 'diagram.png',
+                  mimeType: 'image/png',
+                  size: 5,
+                },
+              ],
+            },
+          ],
+          null,
+          2
+        )}\n`,
+        'utf8'
+      );
+
+      const relay = await svc.relayOpenCodeMemberInboxMessages('team-a', 'bob', {
+        onlyMessageId: 'msg-unsupported-image-model',
+      });
+
+      expect(relay).toMatchObject({
+        attempted: 1,
+        delivered: 0,
+        failed: 1,
+        relayed: 0,
+        lastDelivery: {
+          delivered: false,
+          reason: 'attachment_model_unsupported',
+          userVisibleImpact: {
+            state: 'error',
+            reasonCode: 'backend_error',
+            message:
+              'This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.',
+          },
+        },
+      });
+      expect(relay.diagnostics?.join('\n')).toContain(
+        'opencode_attachment_delivery_prepare_failed: This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.'
+      );
+      expect(sendMessageToMember).not.toHaveBeenCalled();
+      const rows = JSON.parse(
+        await fsPromises.readFile(path.join(inboxDir, 'bob.json'), 'utf8')
+      ) as Array<{ read?: boolean }>;
+      expect(rows[0]?.read).toBe(false);
+    });
+
     it('keeps OpenCode inbox relay unread when attachment payload data is unavailable', async () => {
       const svc = new TeamProvisioningService();
       const sendMessageToMember = vi.fn();
@@ -12525,7 +12601,7 @@ describe('TeamProvisioningService', () => {
           providerBackendId: 'codex-native',
           model: 'gpt-5.4',
         },
-        () => {}
+        vi.fn()
       );
 
       expect(membersMetaStore.writeMembers).toHaveBeenCalledWith(
@@ -13058,6 +13134,302 @@ describe('TeamProvisioningService', () => {
       });
       expect(publicStatuses.expectedMembers).toEqual(
         expect.arrayContaining(['alice', 'bob', 'tom'])
+      );
+
+      await svc.cancelProvisioning(runId);
+    });
+
+    it('resets stale OpenCode lane manifests before launch and retries exact stale watermark once', async () => {
+      allowConsoleLogs();
+      const teamName = 'safe-mixed-opencode-stale-manifest-recovery';
+      const laneId = 'secondary:opencode:bob';
+      vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
+      vi.mocked(spawnCli).mockReturnValue(createRunningChild() as any);
+      await writeCommittedOpenCodeSessionStore({
+        teamName,
+        laneId,
+        runId: 'old-opencode-run',
+        sessions: [
+          {
+            id: 'old-session-bob',
+            teamName,
+            memberName: 'bob',
+            laneId,
+            runId: 'old-opencode-run',
+            source: 'runtime_bootstrap_checkin',
+          },
+        ],
+      });
+      await setOpenCodeRuntimeActiveRunManifest({
+        teamsBasePath: tempTeamsBase,
+        teamName,
+        laneId,
+        runId: 'old-opencode-run',
+      });
+
+      const adapterLaunch = vi.fn(async (input: Record<string, unknown>) => {
+        const runId = String(input.runId);
+        const manifest = await createRuntimeStoreManifestStore({
+          filePath: getOpenCodeRuntimeManifestPath(tempTeamsBase, teamName, laneId),
+          teamName,
+        }).read();
+        expect(manifest).toMatchObject({
+          activeRunId: runId,
+          highWatermark: 0,
+          entries: [],
+        });
+
+        if (adapterLaunch.mock.calls.length === 1) {
+          throw new Error('OpenCode bridge failed: Bridge server runtime manifest high watermark is stale');
+        }
+
+        await writeCommittedOpenCodeSessionStore({
+          teamName,
+          laneId,
+          runId,
+          sessions: [
+            {
+              id: 'fresh-session-bob',
+              teamName,
+              memberName: 'bob',
+              laneId,
+              runId,
+              source: 'runtime_bootstrap_checkin',
+            },
+          ],
+        });
+        return {
+          runId,
+          teamName,
+          launchPhase: 'finished',
+          teamLaunchState: 'clean_success',
+          members: {
+            bob: {
+              memberName: 'bob',
+              providerId: 'opencode',
+              launchState: 'confirmed_alive',
+              agentToolAccepted: true,
+              runtimeAlive: true,
+              bootstrapConfirmed: true,
+              hardFailure: false,
+              diagnostics: [],
+            },
+          },
+          warnings: [],
+          diagnostics: [],
+        };
+      });
+
+      const { svc } = createSafeLaunchService();
+      svc.setRuntimeAdapterRegistry(
+        new TeamRuntimeAdapterRegistry([
+          {
+            providerId: 'opencode',
+            prepare: vi.fn(),
+            launch: adapterLaunch,
+            reconcile: vi.fn(),
+            stop: vi.fn(),
+          } as any,
+        ])
+      );
+
+      const { runId } = await svc.createTeam(
+        {
+          teamName,
+          cwd: tempClaudeRoot,
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          model: 'gpt-5.4',
+          effort: 'medium',
+          members: [
+            {
+              name: 'alice',
+              role: 'Reviewer',
+              providerId: 'codex',
+              model: 'gpt-5.4-mini',
+            },
+            {
+              name: 'bob',
+              role: 'Developer',
+              providerId: 'opencode',
+              model: 'minimax/m2.5',
+            },
+          ],
+        },
+        () => {}
+      );
+
+      const run = (svc as any).runs.get(runId);
+      await (svc as any).launchMixedSecondaryLaneIfNeeded(run);
+      await vi.waitFor(() => expect(adapterLaunch).toHaveBeenCalledTimes(2), { timeout: 5_000 });
+
+      await vi.waitFor(
+        async () => {
+          const publicStatuses = await svc.getMemberSpawnStatuses(teamName);
+          expect(publicStatuses.statuses.bob).toMatchObject({
+            status: 'online',
+            launchState: 'confirmed_alive',
+          });
+        },
+        { timeout: 5_000 }
+      );
+
+      await svc.cancelProvisioning(runId);
+    });
+
+    it('keeps stale OpenCode lane manifest recovery bounded when the bridge stays stale', async () => {
+      allowConsoleLogs();
+      const teamName = 'safe-mixed-opencode-stale-manifest-terminal';
+      const laneId = 'secondary:opencode:bob';
+      const staleWatermarkError =
+        'OpenCode bridge failed: Bridge server runtime manifest high watermark is stale';
+      vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
+      vi.mocked(spawnCli).mockReturnValue(createRunningChild() as any);
+      await writeCommittedOpenCodeSessionStore({
+        teamName,
+        laneId,
+        runId: 'old-opencode-run',
+        sessions: [
+          {
+            id: 'old-session-bob',
+            teamName,
+            memberName: 'bob',
+            laneId,
+            runId: 'old-opencode-run',
+            source: 'runtime_bootstrap_checkin',
+          },
+        ],
+      });
+      await setOpenCodeRuntimeActiveRunManifest({
+        teamsBasePath: tempTeamsBase,
+        teamName,
+        laneId,
+        runId: 'old-opencode-run',
+      });
+
+      const adapterLaunch = vi.fn(async () => {
+        throw new Error(staleWatermarkError);
+      });
+      const { svc } = createSafeLaunchService();
+      svc.setRuntimeAdapterRegistry(
+        new TeamRuntimeAdapterRegistry([
+          {
+            providerId: 'opencode',
+            prepare: vi.fn(),
+            launch: adapterLaunch,
+            reconcile: vi.fn(),
+            stop: vi.fn(),
+          } as any,
+        ])
+      );
+
+      const { runId } = await svc.createTeam(
+        {
+          teamName,
+          cwd: tempClaudeRoot,
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          model: 'gpt-5.4',
+          effort: 'medium',
+          members: [
+            {
+              name: 'alice',
+              role: 'Reviewer',
+              providerId: 'codex',
+              model: 'gpt-5.4-mini',
+            },
+            {
+              name: 'bob',
+              role: 'Developer',
+              providerId: 'opencode',
+              model: 'minimax/m2.5',
+            },
+          ],
+        },
+        () => {}
+      );
+
+      const run = (svc as any).runs.get(runId);
+      await (svc as any).launchMixedSecondaryLaneIfNeeded(run);
+      await vi.waitFor(() => expect(adapterLaunch).toHaveBeenCalledTimes(2), { timeout: 5_000 });
+      await vi.waitFor(
+        async () => {
+          const publicStatuses = await svc.getMemberSpawnStatuses(teamName);
+          expect(publicStatuses.statuses.bob).toMatchObject({
+            status: 'error',
+            launchState: 'failed_to_start',
+          });
+          expect(JSON.stringify(publicStatuses.statuses.bob)).toContain(staleWatermarkError);
+        },
+        { timeout: 5_000 }
+      );
+
+      await svc.cancelProvisioning(runId);
+    });
+
+    it('does not retry non-stale OpenCode provider launch failures as manifest recovery', async () => {
+      allowConsoleLogs();
+      const teamName = 'safe-mixed-opencode-provider-failure-no-stale-retry';
+      const providerError =
+        'OpenCode quota exhausted. This request requires more credits, or fewer max_tokens.';
+      vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
+      vi.mocked(spawnCli).mockReturnValue(createRunningChild() as any);
+
+      const adapterLaunch = vi.fn(async () => {
+        throw new Error(providerError);
+      });
+      const { svc } = createSafeLaunchService();
+      svc.setRuntimeAdapterRegistry(
+        new TeamRuntimeAdapterRegistry([
+          {
+            providerId: 'opencode',
+            prepare: vi.fn(),
+            launch: adapterLaunch,
+            reconcile: vi.fn(),
+            stop: vi.fn(),
+          } as any,
+        ])
+      );
+
+      const { runId } = await svc.createTeam(
+        {
+          teamName,
+          cwd: tempClaudeRoot,
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          model: 'gpt-5.4',
+          effort: 'medium',
+          members: [
+            {
+              name: 'alice',
+              role: 'Reviewer',
+              providerId: 'codex',
+              model: 'gpt-5.4-mini',
+            },
+            {
+              name: 'bob',
+              role: 'Developer',
+              providerId: 'opencode',
+              model: 'minimax/m2.5',
+            },
+          ],
+        },
+        () => {}
+      );
+
+      const run = (svc as any).runs.get(runId);
+      await (svc as any).launchMixedSecondaryLaneIfNeeded(run);
+      await vi.waitFor(() => expect(adapterLaunch).toHaveBeenCalledTimes(1), { timeout: 5_000 });
+      await vi.waitFor(
+        async () => {
+          const publicStatuses = await svc.getMemberSpawnStatuses(teamName);
+          expect(publicStatuses.statuses.bob).toMatchObject({
+            status: 'error',
+            launchState: 'failed_to_start',
+          });
+          expect(JSON.stringify(publicStatuses.statuses.bob)).toContain(providerError);
+        },
+        { timeout: 5_000 }
       );
 
       await svc.cancelProvisioning(runId);

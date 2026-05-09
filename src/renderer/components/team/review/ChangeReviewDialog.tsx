@@ -21,7 +21,8 @@ import {
   type TaskChangeRequestOptions,
 } from '@renderer/utils/taskChangeRequest';
 import { normalizePathForComparison } from '@shared/utils/platformPath';
-import { AlertTriangle, ChevronDown, Clock, FileSearch, X } from 'lucide-react';
+import { classifyTaskChangeReviewability } from '@shared/utils/taskChangeReviewability';
+import { AlertTriangle, ChevronDown, Clock, FileSearch, Info, X } from 'lucide-react';
 
 import { ChangesLoadingAnimation } from './ChangesLoadingAnimation';
 import { acceptAllChunks, computeChunkIndexAtPos, rejectAllChunks } from './CodeMirrorDiffUtils';
@@ -75,28 +76,51 @@ const TaskChangesEmptyState = ({
 }: {
   changeSet: TaskChangeSetV2 | null;
 }): React.ReactElement => {
-  const warnings = changeSet?.warnings ?? [];
-  const hasWarnings = warnings.length > 0;
-  const Icon = hasWarnings ? AlertTriangle : FileSearch;
+  const status = changeSet ? classifyTaskChangeReviewability(changeSet) : null;
+  const diagnosticMessages =
+    status && status.diagnostics.length > 0
+      ? status.diagnostics.map((diagnostic) => diagnostic.message)
+      : (changeSet?.warnings ?? []);
+  const uniqueMessages = [
+    ...new Set(diagnosticMessages.filter((message) => message.trim().length > 0)),
+  ];
+  const isAttention = status?.reviewability === 'attention_required';
+  const isDiagnosticOnly = status?.reviewability === 'diagnostic_only';
+  const isNoSafeDiff = isAttention || isDiagnosticOnly;
+  const hasDiagnosticContext = uniqueMessages.length > 0;
+  const Icon = isAttention ? AlertTriangle : hasDiagnosticContext ? Info : FileSearch;
+  const title = isDiagnosticOnly
+    ? 'No safe diff available'
+    : isAttention
+      ? 'No reviewable file changes'
+      : 'No file changes recorded';
+  const description = isNoSafeDiff
+    ? isDiagnosticOnly
+      ? 'The task ledger did not expose a safe file diff for this task.'
+      : 'The task ledger did not expose a safe file diff for this task. The diagnostics below explain why.'
+    : hasDiagnosticContext
+      ? 'The task ledger has no file events for this task yet.'
+      : 'The task ledger has no file events for this task.';
 
   return (
     <div className="flex w-full items-center justify-center px-6">
       <div className="max-w-xl rounded-lg border border-border bg-surface-sidebar px-5 py-4 text-center">
         <Icon
-          className={cn('mx-auto mb-2 size-5', hasWarnings ? 'text-amber-300' : 'text-text-muted')}
+          className={cn('mx-auto mb-2 size-5', isAttention ? 'text-amber-300' : 'text-text-muted')}
         />
-        <div className="text-sm font-medium text-text">
-          {hasWarnings ? 'No reviewable file changes' : 'No file changes recorded'}
-        </div>
-        <p className="mt-1 text-xs leading-5 text-text-muted">
-          {hasWarnings
-            ? 'The task ledger did not expose any safe file diff for this task. The diagnostics below explain why.'
-            : 'The task ledger has no file events for this task.'}
-        </p>
-        {warnings.length > 0 && (
-          <div className="mt-3 space-y-1 rounded border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-left text-xs text-amber-200">
-            {warnings.map((warning, index) => (
-              <div key={`${warning}:${index}`}>{warning}</div>
+        <div className="text-sm font-medium text-text">{title}</div>
+        <p className="mt-1 text-xs leading-5 text-text-muted">{description}</p>
+        {uniqueMessages.length > 0 && (
+          <div
+            className={cn(
+              'mt-3 space-y-1 rounded border px-3 py-2 text-left text-xs',
+              isAttention
+                ? 'border-amber-500/20 bg-amber-500/10 text-amber-200'
+                : 'border-border bg-surface-raised text-text-muted'
+            )}
+          >
+            {uniqueMessages.map((message, index) => (
+              <div key={`${message}:${index}`}>{message}</div>
             ))}
           </div>
         )}
@@ -1179,7 +1203,7 @@ export const ChangeReviewDialog = ({
     mode === 'task' &&
     !!taskChangeSet &&
     (taskChangeSet.provenance?.sourceKind !== 'ledger' ||
-      taskChangeSet.warnings.length > 0 ||
+      classifyTaskChangeReviewability(taskChangeSet).reviewability === 'attention_required' ||
       taskChangeSet.scope.confidence.tier > 1);
 
   // Active file for timeline (derived from scroll-spy)

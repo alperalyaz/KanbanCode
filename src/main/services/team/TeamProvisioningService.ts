@@ -233,6 +233,7 @@ import {
   inspectOpenCodeRuntimeLaneStorage,
   migrateLegacyOpenCodeRuntimeState,
   OpenCodeRuntimeManifestEvidenceReader,
+  prepareOpenCodeRuntimeLaneForLaunchGeneration,
   readCommittedOpenCodeBootstrapSessionEvidence,
   readOpenCodeRuntimeLaneIndex,
   recoverStaleOpenCodeRuntimeLaneIndexEntry,
@@ -9042,10 +9043,19 @@ export class TeamProvisioningService {
             ? error.code
             : 'opencode_attachment_delivery_prepare_failed';
         const diagnostic = `opencode_attachment_delivery_prepare_failed: ${getErrorMessage(error)}`;
+        const userVisibleMessage =
+          error instanceof AgentAttachmentError
+            ? error.message
+            : 'OpenCode could not prepare the attachment for live delivery.';
         return {
           delivered: false,
           reason,
           diagnostics: [diagnostic],
+          userVisibleImpact: {
+            state: 'error',
+            reasonCode: 'backend_error',
+            message: userVisibleMessage,
+          },
         };
       }
     }
@@ -12288,6 +12298,8 @@ export class TeamProvisioningService {
     teamName: string;
     memberName: string;
     nowIso: string;
+    workSyncIntent?: 'agenda_sync' | 'review_pickup';
+    taskRefs?: TaskRef[];
   }): Promise<{
     busy: boolean;
     reason?: string;
@@ -12318,7 +12330,10 @@ export class TeamProvisioningService {
     const foregroundMessages = inboxMessages.filter(
       (message) => message.messageKind !== 'member_work_sync_nudge'
     );
-    const unreadForeground = foregroundMessages.find(
+    const blockingForegroundMessages = foregroundMessages.filter(
+      (message) => !this.isCurrentReviewPickupRequestForegroundMessage(message, input)
+    );
+    const unreadForeground = blockingForegroundMessages.find(
       (message) =>
         !message.read &&
         typeof message.text === 'string' &&
@@ -12335,7 +12350,7 @@ export class TeamProvisioningService {
       };
     }
 
-    const recentForeground = foregroundMessages.find((message) => {
+    const recentForeground = blockingForegroundMessages.find((message) => {
       const timestampMs = Date.parse(message.timestamp);
       return Number.isFinite(timestampMs) && Number.isFinite(nowMs) && nowMs - timestampMs < 60_000;
     });
@@ -12441,7 +12456,7 @@ export class TeamProvisioningService {
         reasonCode: input.reason
           ? classifyOpenCodeRuntimeDeliveryReasonCode(input.reason)
           : undefined,
-        message: input.reason,
+        message: this.selectOpenCodeRuntimeDeliveryUserVisibleMessage(input),
       };
     }
     if (input.delivered === false) {
@@ -12453,16 +12468,82 @@ export class TeamProvisioningService {
         return {
           state: 'checking',
           reasonCode: classifyOpenCodeRuntimeDeliveryReasonCode(reason),
-          message: reason,
+          message: this.selectOpenCodeRuntimeDeliveryUserVisibleMessage(input),
         };
       }
       return {
         state: 'error',
         reasonCode: classifyOpenCodeRuntimeDeliveryReasonCode(reason),
-        message: reason,
+        message: this.selectOpenCodeRuntimeDeliveryUserVisibleMessage(input),
       };
     }
     return input.policyImpact ?? { state: 'none' };
+  }
+
+  private selectOpenCodeRuntimeDeliveryUserVisibleMessage(input: {
+    reason?: string;
+    diagnostics?: string[];
+  }): string | undefined {
+    const attachmentMessage = this.selectOpenCodeAttachmentDeliveryUserVisibleMessage(input);
+    if (attachmentMessage) {
+      return attachmentMessage;
+    }
+    return input.reason;
+  }
+
+  private selectOpenCodeAttachmentDeliveryUserVisibleMessage(input: {
+    reason?: string;
+    diagnostics?: string[];
+  }): string | undefined {
+    const reason = input.reason?.trim();
+    const isAttachmentFailure =
+      this.isOpenCodeAttachmentDeliveryFailureReason(reason) ||
+      input.diagnostics?.some((diagnostic) =>
+        diagnostic.trim().startsWith('opencode_attachment_delivery_prepare_failed:')
+      ) === true;
+    if (!isAttachmentFailure) {
+      return undefined;
+    }
+
+    const diagnosticMessage = input.diagnostics
+      ?.map((diagnostic) => diagnostic.trim())
+      .find((diagnostic) => diagnostic.startsWith('opencode_attachment_delivery_prepare_failed:'));
+    const strippedDiagnostic = diagnosticMessage
+      ?.slice('opencode_attachment_delivery_prepare_failed:'.length)
+      .trim();
+    if (strippedDiagnostic) {
+      return strippedDiagnostic;
+    }
+
+    if (reason === 'attachment_model_unsupported') {
+      return 'This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.';
+    }
+    if (reason === 'attachment_type_unsupported') {
+      return 'This OpenCode model cannot receive this attachment type. Remove the attachment or choose a supported image model.';
+    }
+    if (reason === 'attachment_too_large') {
+      return 'The attachment is too large for live OpenCode delivery. Reduce the image size or remove the attachment.';
+    }
+    if (reason === 'attachment_artifact_missing' || reason === 'attachment_artifact_path_unsafe') {
+      return 'The attachment file is not available for live OpenCode delivery. Reattach the file and try again.';
+    }
+    if (reason === 'attachment_optimization_failed') {
+      return 'The attachment could not be optimized for live OpenCode delivery. Try a smaller image or remove the attachment.';
+    }
+    if (reason === 'attachment_provider_rejected') {
+      return 'The OpenCode provider rejected the attachment. Choose a different model or remove the attachment.';
+    }
+    if (reason === 'attachment_runtime_transport_failed') {
+      return 'OpenCode could not transport the attachment to the runtime. Try again or remove the attachment.';
+    }
+    return undefined;
+  }
+
+  private isOpenCodeAttachmentDeliveryFailureReason(reason: string | undefined): boolean {
+    return (
+      reason === 'opencode_attachment_delivery_prepare_failed' ||
+      reason?.startsWith('attachment_') === true
+    );
   }
 
   private toOpenCodeRuntimeDeliveryStatus(
@@ -21395,8 +21476,9 @@ export class TeamProvisioningService {
             ...(delivery.diagnostics ?? [delivery.reason ?? 'opencode_message_delivery_failed']),
           ];
           if (
-            delivery.reason !== 'opencode_runtime_not_active' ||
-            !this.cleanedStoppedTeamOpenCodeRuntimeLanes.has(teamName)
+            !this.isOpenCodeAttachmentDeliveryFailureReason(delivery.reason) &&
+            (delivery.reason !== 'opencode_runtime_not_active' ||
+              !this.cleanedStoppedTeamOpenCodeRuntimeLanes.has(teamName))
           ) {
             logger.warn(
               `[${teamName}] OpenCode inbox relay failed for ${memberName}/${message.messageId}: ${
@@ -21491,6 +21573,57 @@ export class TeamProvisioningService {
     message: InboxMessage
   ): message is InboxMessage & { messageId: string } {
     return typeof message.messageId === 'string' && message.messageId.trim().length > 0;
+  }
+
+  private isCurrentReviewPickupRequestForegroundMessage(
+    message: InboxMessage,
+    input: { workSyncIntent?: 'agenda_sync' | 'review_pickup'; taskRefs?: TaskRef[] }
+  ): boolean {
+    if (input.workSyncIntent !== 'review_pickup') {
+      return false;
+    }
+    if (message.source !== 'system_notification') {
+      return false;
+    }
+
+    const expectedRefs = this.normalizeOpenCodeTaskRefsForComparison(input.taskRefs);
+    if (expectedRefs.length === 0) {
+      return false;
+    }
+
+    const summary = typeof message.summary === 'string' ? message.summary.trim() : '';
+    const text = typeof message.text === 'string' ? message.text : '';
+    const looksLikeReviewRequest =
+      summary.startsWith('Review request for #') ||
+      (text.includes('**Please review**') && text.includes('review_start'));
+    if (!looksLikeReviewRequest) {
+      return false;
+    }
+
+    const messageRefs = this.normalizeOpenCodeTaskRefsForComparison(message.taskRefs);
+    if (messageRefs.length > 0) {
+      const expectedKeys = new Set(expectedRefs.map((taskRef) => this.openCodeTaskRefKey(taskRef)));
+      return messageRefs.some((taskRef) => expectedKeys.has(this.openCodeTaskRefKey(taskRef)));
+    }
+
+    return expectedRefs.some((taskRef) =>
+      this.openCodeReviewPickupRequestTextMentionsTask({ summary, text, taskRef })
+    );
+  }
+
+  private openCodeReviewPickupRequestTextMentionsTask(input: {
+    summary: string;
+    text: string;
+    taskRef: TaskRef;
+  }): boolean {
+    const displayId = input.taskRef.displayId.trim();
+    const taskId = input.taskRef.taskId.trim();
+    const haystack = `${input.summary}\n${input.text}`;
+    return (
+      (displayId.length > 0 &&
+        (haystack.includes(`#${displayId}`) || haystack.includes(`task #${displayId}`))) ||
+      (taskId.length > 0 && haystack.includes(taskId))
+    );
   }
 
   private isUserOriginatedLeadRelayMessage(message: InboxMessage): boolean {
@@ -25303,12 +25436,13 @@ export class TeamProvisioningService {
 
     lane.state = 'launching';
     lane.runId = lane.runId ?? randomUUID();
+    const laneRunId = lane.runId;
     lane.warnings = [];
     lane.diagnostics = [...requestedDiagnostics, ...migration.diagnostics];
     const laneCwd = lane.member.cwd?.trim() || run.request.cwd;
     this.setSecondaryRuntimeRun({
       teamName: run.teamName,
-      runId: lane.runId,
+      runId: laneRunId,
       providerId: 'opencode',
       laneId: lane.laneId,
       memberName: lane.member.name,
@@ -25322,11 +25456,12 @@ export class TeamProvisioningService {
         await finishCancelledLane();
         return;
       }
-      await setOpenCodeRuntimeActiveRunManifest({
+      await prepareOpenCodeRuntimeLaneForLaunchGeneration({
         teamsBasePath: getTeamsBasePath(),
         teamName: run.teamName,
         laneId: lane.laneId,
-        runId: lane.runId,
+        runId: laneRunId,
+        reason: 'mixed_secondary_launch',
       });
       if (shouldAbortLaunch()) {
         await finishCancelledLane();
@@ -25340,31 +25475,66 @@ export class TeamProvisioningService {
         await finishCancelledLane();
         return;
       }
-      const rawResult = await adapter.launch({
-        runId: lane.runId,
-        laneId: lane.laneId,
-        teamName: run.teamName,
-        cwd: laneCwd,
-        prompt: appManagedLaunchPrompt,
-        providerId: 'opencode',
-        model: lane.member.model,
-        effort: lane.member.effort,
-        runtimeOnly: true,
-        skipPermissions: run.request.skipPermissions !== false,
-        expectedMembers: [
-          {
-            name: lane.member.name,
-            role: lane.member.role,
-            workflow: lane.member.workflow,
-            isolation: lane.member.isolation === 'worktree' ? ('worktree' as const) : undefined,
-            providerId: 'opencode',
-            model: lane.member.model,
-            effort: lane.member.effort,
-            cwd: laneCwd,
-          },
-        ],
-        previousLaunchState,
-      });
+      const launchOpenCodeLane = () =>
+        adapter.launch({
+          runId: laneRunId,
+          laneId: lane.laneId,
+          teamName: run.teamName,
+          cwd: laneCwd,
+          prompt: appManagedLaunchPrompt,
+          providerId: 'opencode',
+          model: lane.member.model,
+          effort: lane.member.effort,
+          runtimeOnly: true,
+          skipPermissions: run.request.skipPermissions !== false,
+          expectedMembers: [
+            {
+              name: lane.member.name,
+              role: lane.member.role,
+              workflow: lane.member.workflow,
+              isolation: lane.member.isolation === 'worktree' ? ('worktree' as const) : undefined,
+              providerId: 'opencode',
+              model: lane.member.model,
+              effort: lane.member.effort,
+              cwd: laneCwd,
+            },
+          ],
+          previousLaunchState,
+        });
+      let rawResult: TeamRuntimeLaunchResult;
+      try {
+        rawResult = await launchOpenCodeLane();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const staleManifestMessage = 'Bridge server runtime manifest high watermark is stale';
+        if (
+          message !== staleManifestMessage &&
+          message !== `OpenCode bridge failed: ${staleManifestMessage}`
+        ) {
+          throw error;
+        }
+        if (shouldAbortLaunch()) {
+          await finishCancelledLane();
+          return;
+        }
+        const recovery = await prepareOpenCodeRuntimeLaneForLaunchGeneration({
+          teamsBasePath: getTeamsBasePath(),
+          teamName: run.teamName,
+          laneId: lane.laneId,
+          runId: laneRunId,
+          reason: 'mixed_secondary_launch_stale_manifest_recovery',
+          forceReset: true,
+        });
+        lane.diagnostics = appendDiagnosticOnce(
+          [...lane.diagnostics, ...recovery.diagnostics],
+          'Retried OpenCode secondary launch after resetting stale runtime manifest.'
+        );
+        if (shouldAbortLaunch()) {
+          await finishCancelledLane();
+          return;
+        }
+        rawResult = await launchOpenCodeLane();
+      }
       if (shouldAbortLaunch()) {
         await finishCancelledLane();
         return;
@@ -25467,7 +25637,7 @@ export class TeamProvisioningService {
       lane.launchFinishedAtMs = Date.now();
       const timingDiagnostic = buildOpenCodeSecondaryLaneTimingDiagnostic(lane);
       lane.result = {
-        runId: lane.runId,
+        runId: laneRunId,
         teamName: run.teamName,
         launchPhase: 'finished',
         teamLaunchState: 'partial_failure',

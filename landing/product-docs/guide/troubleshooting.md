@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Most team issues fall into one of five buckets: runtime setup, launch confirmation, task parsing, provider limits, and review state gaps.
+Most team issues fall into one of four buckets: runtime setup, launch confirmation, task parsing, and provider limits.
 
 ## Team does not launch
 
@@ -11,6 +11,10 @@ Check each item in order:
 3. **Model access** — the provider has access to the requested model string (especially for OpenCode, exact provider/model names matter)
 4. **Project path** — the project directory exists and is readable
 5. **Network / VPN** — some providers drop traffic when a VPN is active
+
+::: tip
+Run the runtime binary in a terminal to verify `PATH` and auth. Example: `claude --version` or `opencode --version`.
+:::
 
 ### OpenCode: registered but bootstrap unconfirmed
 
@@ -83,6 +87,12 @@ If the CLI is authenticated in one terminal but the app says it is not, verify t
 - Double-check the provider name in `config.json` matches the provider prefix in the model string
 - Ensure the key is not expired or revoked in the provider dashboard
 
+### Auth diagnostic log
+
+Each call to `CliInstallerService.getStatus()` appends one line to `claude-cli-auth-diag.ndjson` in the Electron log folder (usually `~/Library/Logs/<product-name>/` on macOS). If the file exceeds **512 KiB**, it is truncated to empty before the next write.
+
+Check this file if you see "Not logged in" or auth errors in the packaged app.
+
 ## Lane bootstrap stuck
 
 For OpenCode secondary lanes:
@@ -94,6 +104,41 @@ For OpenCode secondary lanes:
 ### Lane manifest empty entries
 
 If the bridge says bootstrap succeeded but `manifest.json` shows `entries: []`, the issue is **evidence commit**, not model behavior. The member must not be considered deliverable until `opencode-sessions.json` and its manifest entry exist.
+
+## Common member states
+
+| State | Meaning |
+| --- | --- |
+| `confirmed_alive` + `bootstrapConfirmed` | Healthy and ready |
+| `registered` / `runtime_pending_bootstrap` | Process or lane exists, but bootstrap proof has not been committed yet |
+| `failed_to_start` + `runtime_process` | Process exists, but launch gate failed. Check diagnostics |
+| `failed_to_start` + `stale_metadata` | Saved pid/session is stale or dead |
+
+::: warning
+`member_briefing` by itself is NOT runtime evidence. For OpenCode, authoritative proof is committed runtime evidence such as `opencode-sessions.json` and the manifest entry.
+:::
+
+## Runtime debug mode
+
+For local debugging, you can force teammates to run in tmux panes:
+
+```bash
+# Launch from a terminal
+CLAUDE_TEAM_TEAMMATE_MODE=tmux pnpm dev
+
+# Or add to custom CLI args
+--teammate-mode tmux
+```
+
+Use this to inspect interactive CLI behavior. Do not consider this fully equivalent to the process backend.
+
+## Safe cleanup
+
+When cleaning up stale processes:
+
+1. Identify the pid and confirm it belongs to the current team / lane.
+2. Stop only processes explicitly belonging to a smoke test or the launch you are debugging.
+3. **Do not kill** all OpenCode or shared host processes as a shortcut.
 
 ## When to collect evidence
 
@@ -107,3 +152,7 @@ Before asking for help, collect:
 - Exact time window when the issue occurred
 
 This data is usually enough to debug launch and task lifecycle issues.
+
+::: tip
+If the issue persists, open the team's persisted files under `~/.claude/teams/<teamName>/` and correlate UI diagnostics with the live process state before changing code.
+:::

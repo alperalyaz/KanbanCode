@@ -544,6 +544,127 @@ export async function inspectOpenCodeRuntimeLaneStorage(params: {
   };
 }
 
+export interface OpenCodeRuntimeLaneLaunchGenerationPreparation {
+  reset: boolean;
+  reason:
+    | 'fresh_manifest_created'
+    | 'same_generation_reused'
+    | 'forced_reset'
+    | 'manifest_unreadable'
+    | 'lane_index_terminal'
+    | 'active_run_mismatch'
+    | 'stale_manifest_entries';
+  diagnostics: string[];
+}
+
+export async function prepareOpenCodeRuntimeLaneForLaunchGeneration(params: {
+  teamsBasePath: string;
+  teamName: string;
+  laneId: string;
+  runId: string;
+  reason: string;
+  forceReset?: boolean;
+  clock?: () => Date;
+}): Promise<OpenCodeRuntimeLaneLaunchGenerationPreparation> {
+  const clock = params.clock ?? (() => new Date());
+  const manifestPath = getOpenCodeRuntimeManifestPath(
+    params.teamsBasePath,
+    params.teamName,
+    params.laneId
+  );
+  const laneIndex = await readOpenCodeRuntimeLaneIndex(params.teamsBasePath, params.teamName).catch(
+    () => null
+  );
+  const laneIndexEntry = laneIndex?.lanes[params.laneId] ?? null;
+  const terminalLaneIndex =
+    laneIndexEntry?.state === 'degraded' || laneIndexEntry?.state === 'stopped';
+
+  let manifest: Awaited<ReturnType<typeof readRuntimeStoreManifestEvidenceData>> | null = null;
+  let manifestUnreadable = false;
+  if (await fileExists(manifestPath)) {
+    try {
+      manifest = await readRuntimeStoreManifestEvidenceData(manifestPath, params.teamName, clock);
+    } catch {
+      manifestUnreadable = true;
+    }
+  }
+
+  const staleEntryRunIds =
+    manifest?.entries
+      .filter((entry) => entry.runId !== params.runId)
+      .map((entry) => entry.runId ?? 'none') ?? [];
+  const activeRunMismatch = Boolean(manifest && manifest.activeRunId !== params.runId);
+  const shouldReset =
+    params.forceReset ||
+    manifestUnreadable ||
+    terminalLaneIndex ||
+    activeRunMismatch ||
+    staleEntryRunIds.length > 0;
+
+  let reason: OpenCodeRuntimeLaneLaunchGenerationPreparation['reason'];
+  const diagnostics: string[] = [];
+  if (params.forceReset) {
+    reason = 'forced_reset';
+    diagnostics.push(
+      `Reset OpenCode runtime lane ${params.laneId} before ${params.reason}: forced reset requested.`
+    );
+  } else if (manifestUnreadable) {
+    reason = 'manifest_unreadable';
+    diagnostics.push(
+      `Reset OpenCode runtime lane ${params.laneId} before ${params.reason}: runtime manifest could not be read.`
+    );
+  } else if (terminalLaneIndex) {
+    reason = 'lane_index_terminal';
+    diagnostics.push(
+      `Reset OpenCode runtime lane ${params.laneId} before ${params.reason}: previous lane state was ${laneIndexEntry?.state}.`
+    );
+  } else if (activeRunMismatch) {
+    reason = 'active_run_mismatch';
+    diagnostics.push(
+      `Reset OpenCode runtime lane ${params.laneId} before ${params.reason}: active run changed from ${manifest?.activeRunId ?? 'none'} to ${params.runId}.`
+    );
+  } else if (staleEntryRunIds.length > 0) {
+    reason = 'stale_manifest_entries';
+    diagnostics.push(
+      `Reset OpenCode runtime lane ${params.laneId} before ${params.reason}: runtime manifest contained entries from previous run ${Array.from(new Set(staleEntryRunIds)).join(', ')}.`
+    );
+  } else if (!manifest) {
+    reason = 'fresh_manifest_created';
+    diagnostics.push(`Prepared fresh OpenCode runtime lane ${params.laneId} for ${params.reason}.`);
+  } else {
+    reason = 'same_generation_reused';
+  }
+
+  if (shouldReset) {
+    await clearOpenCodeRuntimeLaneStorage({
+      teamsBasePath: params.teamsBasePath,
+      teamName: params.teamName,
+      laneId: params.laneId,
+    });
+  }
+
+  await upsertOpenCodeRuntimeLaneIndexEntry({
+    teamsBasePath: params.teamsBasePath,
+    teamName: params.teamName,
+    laneId: params.laneId,
+    state: 'active',
+    diagnostics: diagnostics.length ? diagnostics : undefined,
+  });
+  await setOpenCodeRuntimeActiveRunManifest({
+    teamsBasePath: params.teamsBasePath,
+    teamName: params.teamName,
+    laneId: params.laneId,
+    runId: params.runId,
+    clock,
+  });
+
+  return {
+    reset: shouldReset,
+    reason,
+    diagnostics,
+  };
+}
+
 export function getOpenCodeLaneScopedRuntimeFilePath(params: {
   teamsBasePath: string;
   teamName: string;

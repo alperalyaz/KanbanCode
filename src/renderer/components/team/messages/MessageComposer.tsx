@@ -17,6 +17,13 @@ import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { isTeamProvisioningActive } from '@renderer/store/slices/teamSlice';
 import { serializeChipsWithText } from '@renderer/types/inlineChip';
+import {
+  canMemberShowAttachmentControl,
+  getAttachmentInputAcceptForMember,
+  getMemberAttachmentUnavailableReason,
+  validateAttachmentFilesForMember,
+  validateAttachmentPayloadsForMember,
+} from '@renderer/utils/attachmentRecipientCapabilities';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { isOpenCodeRuntimeDeliveryHardUxFailureFromDebugDetails } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
@@ -288,6 +295,11 @@ export const MessageComposer = ({
     normalizeOptionalTeamProviderId(selectedMember?.providerId) ??
     inferTeamProviderIdFromModel(selectedMember?.model);
   const isOpenCodeRecipient = selectedProviderId === 'opencode';
+  const showAttachmentControl = canMemberShowAttachmentControl(selectedMember);
+  const memberAttachmentUnavailableReason = showAttachmentControl
+    ? getMemberAttachmentUnavailableReason(selectedMember)
+    : null;
+  const attachmentInputAccept = getAttachmentInputAcceptForMember(selectedMember);
   const hasTeammates = members.length > 1;
   const canDelegate = hasTeammates && (isCrossTeam || isLeadRecipient);
   const shouldAutoDelegate = isLeadRecipient && canDelegate;
@@ -343,24 +355,34 @@ export const MessageComposer = ({
   //   isLeadAgentRecipient ? s.leadContextByTeam[teamName] : undefined
   // );
   const supportsAttachments =
-    !isCrossTeam && !!isTeamAlive && (isLeadRecipient || isOpenCodeRecipient);
+    !isCrossTeam &&
+    !!isTeamAlive &&
+    showAttachmentControl &&
+    memberAttachmentUnavailableReason == null;
   const canAttach = supportsAttachments && draft.canAddMore && !sending;
   const attachmentRestrictionReason = !supportsAttachments
     ? isCrossTeam
       ? 'File attachments are not supported for cross-team messages'
       : !isTeamAlive
         ? 'Team must be online to attach files'
-        : !isLeadRecipient && !isOpenCodeRecipient
+        : !showAttachmentControl
           ? 'Files can be sent to the team lead or OpenCode teammates'
-          : isOpenCodeRecipient
-            ? 'Team must be online to attach files for OpenCode teammates'
-            : 'Team must be online to attach files'
+          : (memberAttachmentUnavailableReason ??
+            (isOpenCodeRecipient
+              ? 'Team must be online to attach files for OpenCode teammates'
+              : 'Team must be online to attach files'))
     : sending
       ? 'Wait for current message to finish sending before adding files'
       : !draft.canAddMore
         ? 'Maximum attachments reached'
         : undefined;
-  const attachmentsBlocked = draft.attachments.length > 0 && !supportsAttachments;
+  const attachmentPayloadRestrictionReason = validateAttachmentPayloadsForMember({
+    member: selectedMember,
+    attachments: draft.attachments,
+  });
+  const attachmentsBlocked =
+    draft.attachments.length > 0 &&
+    (!supportsAttachments || attachmentPayloadRestrictionReason != null);
   const slashCommandRestrictionReason = standaloneSlashCommand
     ? draft.attachments.length > 0
       ? 'Slash commands require a live team lead and cannot be sent with attachments'
@@ -500,13 +522,34 @@ export const MessageComposer = ({
 
   const showFileRestrictionError = useCallback(() => {
     setFileRestrictionError(
-      attachmentRestrictionReason ?? 'Files can only be sent to the team lead'
+      attachmentRestrictionReason ??
+        attachmentPayloadRestrictionReason ??
+        'Files can only be sent to the team lead'
     );
     window.clearTimeout(fileRestrictionTimerRef.current);
     fileRestrictionTimerRef.current = window.setTimeout(() => {
       setFileRestrictionError(null);
     }, 4000);
-  }, [attachmentRestrictionReason]);
+  }, [attachmentPayloadRestrictionReason, attachmentRestrictionReason]);
+
+  const validateSelectedAttachmentFiles = useCallback(
+    (files: FileList | File[]): boolean => {
+      const reason = validateAttachmentFilesForMember({
+        member: selectedMember,
+        files,
+      });
+      if (!reason) {
+        return true;
+      }
+      setFileRestrictionError(reason);
+      window.clearTimeout(fileRestrictionTimerRef.current);
+      fileRestrictionTimerRef.current = window.setTimeout(() => {
+        setFileRestrictionError(null);
+      }, 4000);
+      return false;
+    },
+    [selectedMember]
+  );
 
   const { addFiles: draftAddFiles } = draft;
   const handleFileInputChange = useCallback(
@@ -518,11 +561,15 @@ export const MessageComposer = ({
           input.value = '';
           return;
         }
+        if (!validateSelectedAttachmentFiles(input.files)) {
+          input.value = '';
+          return;
+        }
         void draftAddFiles(input.files);
       }
       input.value = '';
     },
-    [canAttach, draftAddFiles, showFileRestrictionError]
+    [canAttach, draftAddFiles, showFileRestrictionError, validateSelectedAttachmentFiles]
   );
 
   // Cleanup restriction error timer on unmount
@@ -563,9 +610,13 @@ export const MessageComposer = ({
         }
         return;
       }
+      const files = e.dataTransfer?.files;
+      if (files?.length && !validateSelectedAttachmentFiles(files)) {
+        return;
+      }
       draftHandleDrop(e);
     },
-    [canAttach, draftHandleDrop, showFileRestrictionError]
+    [canAttach, draftHandleDrop, showFileRestrictionError, validateSelectedAttachmentFiles]
   );
 
   const { handlePaste: draftHandlePaste } = draft;
@@ -579,9 +630,17 @@ export const MessageComposer = ({
         }
         return;
       }
+      const pastedFiles = Array.from(e.clipboardData.items)
+        .filter((item) => item.kind === 'file')
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => file != null);
+      if (pastedFiles.length > 0 && !validateSelectedAttachmentFiles(pastedFiles)) {
+        e.preventDefault();
+        return;
+      }
       draftHandlePaste(e);
     },
-    [canAttach, draftHandlePaste, showFileRestrictionError]
+    [canAttach, draftHandlePaste, showFileRestrictionError, validateSelectedAttachmentFiles]
   );
 
   const remaining = MAX_TEXT_LENGTH - trimmed.length;
@@ -625,12 +684,12 @@ export const MessageComposer = ({
         )}
       >
         <div className="flex items-center gap-2">
-          {isLeadRecipient ? (
+          {showAttachmentControl ? (
             <>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="*/*"
+                accept={attachmentInputAccept}
                 multiple
                 className="hidden"
                 onChange={handleFileInputChange}
@@ -948,10 +1007,16 @@ export const MessageComposer = ({
           <AttachmentPreviewList
             attachments={draft.attachments}
             onRemove={draft.removeAttachment}
-            error={draft.attachmentError ?? fileRestrictionError}
+            error={
+              draft.attachmentError ?? fileRestrictionError ?? attachmentPayloadRestrictionReason
+            }
             onDismissError={draft.clearAttachmentError}
             disabled={attachmentsBlocked}
-            disabledHint="File attachments are supported for the online team lead and online OpenCode teammates. Remove attachments or switch recipient."
+            disabledHint={
+              attachmentPayloadRestrictionReason ??
+              attachmentRestrictionReason ??
+              'File attachments are supported for the online team lead and online OpenCode teammates. Remove attachments or switch recipient.'
+            }
           />
         ) : null}
       </div>

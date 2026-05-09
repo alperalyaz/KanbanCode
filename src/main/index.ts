@@ -100,6 +100,7 @@ import {
 import { shouldSuppressDesktopNotificationForInboxText } from '@shared/utils/idleNotificationSemantics';
 import { parseInboxJson } from '@shared/utils/inboxNoise';
 import { createLogger } from '@shared/utils/logger';
+import { isReviewPickupEscalationMessage } from '@shared/utils/teamAutomationMessages';
 import { isTeamInternalControlMessageEnvelope } from '@shared/utils/teamInternalControlMessages';
 import { createHash } from 'crypto';
 import { app, BrowserWindow, ipcMain } from 'electron';
@@ -568,6 +569,9 @@ async function notifyNewInboxMessages(teamName: string, detail: string): Promise
       // Skip app-owned private bootstrap/control prompts. They are durable runtime proof inputs,
       // not user-visible conversation messages.
       if (isTeamInternalControlMessageEnvelope(msg)) continue;
+      // Skip internal review-pickup escalations. They are control-plane signals to the lead runtime,
+      // not user-facing inbox messages.
+      if (isReviewPickupEscalationMessage(msg)) continue;
       // Skip internal coordination noise (idle_notification, shutdown_*, etc.)
       if (shouldSuppressDesktopNotificationForInboxText(msg.text)) continue;
 
