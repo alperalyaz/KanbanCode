@@ -14573,10 +14573,16 @@ export class TeamProvisioningService {
   private async restartMemberUnlocked(teamName: string, memberName: string): Promise<void> {
     const runId = this.getAliveRunId(teamName);
     if (!runId) {
+      if (await this.restartPureOpenCodePrimaryMemberWithoutTrackedRun(teamName, memberName)) {
+        return;
+      }
       throw new Error(`Team "${teamName}" is not currently running`);
     }
     const run = this.runs.get(runId);
     if (!run || run.processKilled || run.cancelRequested) {
+      if (await this.restartPureOpenCodePrimaryMemberWithoutTrackedRun(teamName, memberName)) {
+        return;
+      }
       throw new Error(`Team "${teamName}" is not currently running`);
     }
 
@@ -14924,6 +14930,160 @@ export class TeamProvisioningService {
       }
       throw error;
     }
+  }
+
+  private async restartPureOpenCodePrimaryMemberWithoutTrackedRun(
+    teamName: string,
+    memberName: string
+  ): Promise<boolean> {
+    const runtimeRun = this.runtimeAdapterRunByTeam.get(teamName);
+    if (runtimeRun?.providerId !== 'opencode') {
+      return false;
+    }
+
+    const adapter = this.getOpenCodeRuntimeAdapter();
+    if (!adapter) {
+      throw new Error('OpenCode runtime adapter is not available for member restart.');
+    }
+
+    const config = await this.readConfigForStrictDecision(teamName);
+    if (!config) {
+      return false;
+    }
+
+    const [teamMeta, metaMembers] = await Promise.all([
+      this.teamMetaStore.getMeta(teamName).catch(() => null),
+      this.membersMetaStore.getMembers(teamName).catch(() => []),
+    ]);
+    const configuredMember = this.resolveEffectiveConfiguredMember(
+      config.members ?? [],
+      metaMembers,
+      memberName
+    );
+    if (!configuredMember) {
+      throw new Error(`Member "${memberName}" is not configured in team "${teamName}"`);
+    }
+    if (configuredMember.removedAt) {
+      throw new Error(`Member "${memberName}" has been removed`);
+    }
+    if (isLeadMember({ name: configuredMember.name, agentType: configuredMember.agentType })) {
+      throw new Error('Lead restart is not supported from member controls');
+    }
+
+    const leadMember = config.members?.find((member) => isLeadMember(member));
+    const leadProviderId =
+      normalizeOptionalTeamProviderId(teamMeta?.providerId) ??
+      normalizeOptionalTeamProviderId(leadMember?.providerId);
+    if (leadProviderId !== 'opencode') {
+      return false;
+    }
+
+    const configuredNames = new Set<string>();
+    for (const member of config.members ?? []) {
+      const name = member.name?.trim();
+      if (name) {
+        configuredNames.add(name);
+      }
+    }
+    for (const member of metaMembers) {
+      const name = member.name?.trim();
+      if (name) {
+        configuredNames.add(name);
+      }
+    }
+
+    const activeMembers = [...configuredNames]
+      .map((name) => this.resolveEffectiveConfiguredMember(config.members ?? [], metaMembers, name))
+      .filter(
+        (
+          member
+        ): member is NonNullable<
+          ReturnType<TeamProvisioningService['resolveEffectiveConfiguredMember']>
+        > => {
+          if (!member || member.removedAt) {
+            return false;
+          }
+          return !isLeadMember({ name: member.name, agentType: member.agentType });
+        }
+      )
+      .sort((left, right) => left.name.localeCompare(right.name));
+
+    const targetMember = activeMembers.find((member) =>
+      matchesExactTeamMemberName(member.name, configuredMember.name)
+    );
+    if (!targetMember) {
+      throw new Error(`Member "${memberName}" is not configured in team "${teamName}"`);
+    }
+
+    const nonOpenCodeMember = activeMembers.find((member) => {
+      const providerId = normalizeOptionalTeamProviderId(member.providerId) ?? leadProviderId;
+      return providerId !== 'opencode';
+    });
+    if (nonOpenCodeMember) {
+      return false;
+    }
+
+    const projectPath =
+      targetMember.cwd?.trim() ||
+      config.projectPath?.trim() ||
+      teamMeta?.cwd?.trim() ||
+      runtimeRun.cwd?.trim() ||
+      this.readPersistedTeamProjectPath(teamName);
+    if (!projectPath) {
+      throw new Error(`Team "${teamName}" project path is not available for OpenCode restart`);
+    }
+
+    const effectiveMembers = await this.resolveOpenCodeMemberWorkspacesForRuntime({
+      teamName,
+      baseCwd: projectPath,
+      leadProviderId: 'opencode',
+      members: activeMembers.map((member) => this.buildConfiguredProvisioningMember(member)),
+    });
+    const targetRuntimeMember = effectiveMembers.find((member) =>
+      matchesExactTeamMemberName(member.name, targetMember.name)
+    );
+    if (!targetRuntimeMember) {
+      throw new Error(`Member "${memberName}" could not be resolved for OpenCode restart`);
+    }
+
+    this.invalidateRuntimeSnapshotCaches(teamName);
+    this.persistOpenCodeMemberRestartSystemMessage({
+      teamName,
+      leadName: leadMember?.name?.trim() || 'team-lead',
+      leadSessionId: runtimeRun.runId,
+      displayName: config.description?.trim() || config.name,
+      member: targetRuntimeMember,
+      reason: 'manual_restart',
+    });
+
+    await this.runOpenCodeTeamRuntimeAdapterLaunch({
+      request: {
+        teamName,
+        cwd: projectPath,
+        prompt: teamMeta?.prompt?.trim() || '',
+        providerId: 'opencode',
+        providerBackendId: migrateProviderBackendId('opencode', teamMeta?.providerBackendId),
+        model: targetRuntimeMember.model?.trim() || teamMeta?.model,
+        effort:
+          targetRuntimeMember.effort ??
+          (isTeamEffortLevel(teamMeta?.effort) ? teamMeta.effort : undefined),
+        fastMode: teamMeta?.fastMode,
+        limitContext: teamMeta?.limitContext,
+        skipPermissions: teamMeta?.skipPermissions,
+        worktree: teamMeta?.worktree,
+        extraCliArgs: teamMeta?.extraCliArgs,
+      },
+      members: effectiveMembers,
+      prompt: [
+        `Restarting OpenCode teammate "${targetRuntimeMember.name}" by user request.`,
+        'This is an app-managed OpenCode-only runtime refresh. Re-establish the team sessions and continue from persisted team context.',
+      ].join('\n'),
+      sourceWarning:
+        'OpenCode-only member restart refreshes the primary OpenCode runtime lane because pure OpenCode teams do not keep a native lead run.',
+      onProgress: () => undefined,
+    });
+    this.invalidateRuntimeSnapshotCaches(teamName);
+    return true;
   }
 
   async retryFailedOpenCodeSecondaryLanes(

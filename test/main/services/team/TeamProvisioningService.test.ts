@@ -3991,6 +3991,116 @@ describe('TeamProvisioningService', () => {
       );
     });
 
+    it('restarts a pure OpenCode member through the app-owned runtime adapter without a tracked lead run', async () => {
+      const svc = new TeamProvisioningService();
+      const adapterLaunch = vi.fn();
+      svc.setRuntimeAdapterRegistry(
+        new TeamRuntimeAdapterRegistry([
+          {
+            providerId: 'opencode',
+            prepare: vi.fn(),
+            launch: adapterLaunch,
+            reconcile: vi.fn(),
+            stop: vi.fn(),
+          } as any,
+        ])
+      );
+
+      (svc as any).runtimeAdapterRunByTeam.set('pure-opencode-team', {
+        runId: 'opencode-run-1',
+        providerId: 'opencode',
+        cwd: '/repo',
+        members: {},
+      });
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          name: 'Pure OpenCode Team',
+          projectPath: '/repo',
+          members: [
+            { name: 'team-lead', agentType: 'team-lead', providerId: 'opencode' },
+            {
+              name: 'alice',
+              role: 'Reviewer',
+              providerId: 'opencode',
+              model: 'openai/gpt-5.4-mini',
+              agentType: 'general-purpose',
+            },
+            {
+              name: 'bob',
+              role: 'Developer',
+              providerId: 'opencode',
+              model: 'openai/gpt-5.4-mini',
+              agentType: 'general-purpose',
+            },
+          ],
+        })),
+      };
+      (svc as any).teamMetaStore = {
+        getMeta: vi.fn(async () => ({
+          version: 1,
+          cwd: '/repo',
+          providerId: 'opencode',
+          model: 'openai/gpt-5.4-mini',
+          createdAt: Date.now(),
+        })),
+      };
+      (svc as any).membersMetaStore = {
+        getMembers: vi.fn(async () => [
+          {
+            name: 'alice',
+            role: 'Reviewer',
+            providerId: 'opencode',
+            model: 'openai/gpt-5.4-mini',
+            agentType: 'general-purpose',
+          },
+          {
+            name: 'bob',
+            role: 'Developer',
+            providerId: 'opencode',
+            model: 'openai/gpt-5.4-mini',
+            agentType: 'general-purpose',
+          },
+        ]),
+      };
+      vi.spyOn(svc as any, 'resolveOpenCodeMemberWorkspacesForRuntime').mockImplementation(
+        async (input: any) =>
+          (input.members as Array<Record<string, unknown>>).map((member) => ({
+            ...member,
+            cwd: '/repo',
+          }))
+      );
+      const persistRestartMessage = vi
+        .spyOn(svc as any, 'persistOpenCodeMemberRestartSystemMessage')
+        .mockImplementation(() => undefined);
+      const runtimeRelaunch = vi
+        .spyOn(svc as any, 'runOpenCodeTeamRuntimeAdapterLaunch')
+        .mockResolvedValue({ runId: 'opencode-run-2' });
+
+      await svc.restartMember('pure-opencode-team', 'alice');
+
+      expect(runtimeRelaunch).toHaveBeenCalledTimes(1);
+      const relaunchInput = runtimeRelaunch.mock.calls[0]?.[0] as any;
+      expect(relaunchInput.request).toMatchObject({
+        teamName: 'pure-opencode-team',
+        cwd: '/repo',
+        providerId: 'opencode',
+        model: 'openai/gpt-5.4-mini',
+      });
+      expect(relaunchInput.members.map((member: { name: string }) => member.name).sort()).toEqual([
+        'alice',
+        'bob',
+      ]);
+      expect(relaunchInput.sourceWarning).toContain('OpenCode-only member restart refreshes');
+      expect(persistRestartMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          teamName: 'pure-opencode-team',
+          leadName: 'team-lead',
+          member: expect.objectContaining({ name: 'alice' }),
+          reason: 'manual_restart',
+        })
+      );
+    });
+
     it('still allows restarting a primary-lane teammate when another mixed secondary lane exists', async () => {
       const svc = new TeamProvisioningService();
       const run = createMemberSpawnRun({
