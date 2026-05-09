@@ -138,7 +138,7 @@ export const TeamChangesSection = memo(function TeamChangesSection({
       showSpinner = false,
       preserveOnError = true,
     }: TeamChangesLoadOptions = {}): Promise<void> => {
-      if (activeRequestSeqRef.current !== null) {
+      if (activeRequestSeqRef.current !== null || queuedRefreshOptionsRef.current !== null) {
         const previous = queuedRefreshOptionsRef.current;
         queuedRefreshOptionsRef.current = {
           forceFresh: Boolean(previous?.forceFresh || forceFresh),
@@ -148,6 +148,9 @@ export const TeamChangesSection = memo(function TeamChangesSection({
             : preserveOnError,
         };
         requestSeqRef.current += 1;
+        if (activeRequestSeqRef.current === null && sectionOpenRef.current) {
+          setQueuedRefreshTick((value) => value + 1);
+        }
         return;
       }
 
