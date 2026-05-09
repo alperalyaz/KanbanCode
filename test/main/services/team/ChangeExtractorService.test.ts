@@ -1137,9 +1137,7 @@ describe('ChangeExtractorService', () => {
     }));
     const workerClient = {
       isAvailable: vi.fn(() => true),
-      computeTaskChanges: vi.fn(async () =>
-        makeTaskChangeResult(TASK_ID, { content: '', confidence: 'fallback' })
-      ),
+      computeTaskChanges: vi.fn(async () => makeTaskChangeResult(TASK_ID, { content: '', confidence: 'fallback' })),
     };
     const { service } = createService({
       logPaths: [],
