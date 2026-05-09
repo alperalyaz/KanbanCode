@@ -520,24 +520,15 @@ describe('ChangeExtractorService', () => {
 
     const aliceLogPath = path.join(tmpDir, 'alice.jsonl');
     await writeJsonl(aliceLogPath, [
-      buildAssistantWriteEntry(
-        'tool-1',
-        '/repo/src/file.ts',
-        'export const value = 1;\n',
-        '2026-03-01T10:00:00.000Z'
-      ),
+      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
     ]);
 
-    const findLogFileRefsForTask = vi.fn(
-      async (_teamName: string, _taskId: string, options?: any) =>
-        options?.owner === 'alice' ? [{ filePath: aliceLogPath, memberName: 'alice' }] : []
+    const findLogFileRefsForTask = vi.fn(async (_teamName: string, _taskId: string, options?: any) =>
+      options?.owner === 'alice' ? [{ filePath: aliceLogPath, memberName: 'alice' }] : []
     );
     const service = createService({ logPaths: [aliceLogPath], findLogFileRefsForTask }).service;
 
-    const empty = await service.getTaskChanges(TEAM_NAME, TASK_ID, {
-      owner: 'bob',
-      status: 'completed',
-    });
+    const empty = await service.getTaskChanges(TEAM_NAME, TASK_ID, { owner: 'bob', status: 'completed' });
     const populated = await service.getTaskChanges(TEAM_NAME, TASK_ID, {
       owner: 'alice',
       status: 'completed',
@@ -554,12 +545,7 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-summary.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry(
-        'tool-1',
-        '/repo/src/file.ts',
-        'export const value = 1;\n',
-        '2026-03-01T10:00:00.000Z'
-      ),
+      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
     ]);
 
     const { service, findLogFileRefsForTask } = createService({ logPaths: [logPath] });
@@ -587,12 +573,7 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-restart.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry(
-        'tool-1',
-        '/repo/src/file.ts',
-        'export const value = 1;\n',
-        '2026-03-01T10:00:00.000Z'
-      ),
+      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
     ]);
 
     const first = createService({ logPaths: [logPath] });
@@ -615,30 +596,15 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-refresh.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry(
-        'tool-1',
-        '/repo/src/file.ts',
-        'export const value = 1;\n',
-        '2026-03-01T10:00:00.000Z'
-      ),
+      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
     ]);
 
     const { service } = createService({ logPaths: [logPath] });
     await service.getTaskChanges(TEAM_NAME, TASK_ID, SUMMARY_OPTIONS);
 
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry(
-        'tool-1',
-        '/repo/src/file.ts',
-        'export const value = 2;\n',
-        '2026-03-01T10:00:00.000Z'
-      ),
-      buildAssistantWriteEntry(
-        'tool-2',
-        '/repo/src/extra.ts',
-        'export const extra = true;\n',
-        '2026-03-01T10:02:00.000Z'
-      ),
+      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 2;\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry('tool-2', '/repo/src/extra.ts', 'export const extra = true;\n', '2026-03-01T10:02:00.000Z'),
     ]);
 
     const refreshed = await service.getTaskChanges(TEAM_NAME, TASK_ID, {
@@ -662,12 +628,7 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-review.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry(
-        'tool-1',
-        '/repo/src/file.ts',
-        'export const value = 1;\n',
-        '2026-03-01T10:00:00.000Z'
-      ),
+      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
     ]);
 
     const { service } = createService({ logPaths: [logPath] });
@@ -700,12 +661,7 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-project-drift.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry(
-        'tool-1',
-        '/repo/src/file.ts',
-        'export const value = 1;\n',
-        '2026-03-01T10:00:00.000Z'
-      ),
+      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
     ]);
 
     await createService({ logPaths: [logPath], projectPath: '/repo-a' }).service.getTaskChanges(
@@ -714,7 +670,11 @@ describe('ChangeExtractorService', () => {
       SUMMARY_OPTIONS
     );
     const drifted = createService({ logPaths: [logPath], projectPath: '/repo-b' });
-    await drifted.service.getTaskChanges(TEAM_NAME, TASK_ID, SUMMARY_OPTIONS);
+    await drifted.service.getTaskChanges(
+      TEAM_NAME,
+      TASK_ID,
+      SUMMARY_OPTIONS
+    );
 
     expect((drifted.findLogFileRefsForTask as any).mock.calls.length).toBeGreaterThan(1);
   });
