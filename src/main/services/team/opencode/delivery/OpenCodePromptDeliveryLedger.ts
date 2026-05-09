@@ -6,7 +6,7 @@ import type {
   OpenCodeDeliveryResponseState,
   OpenCodeDeliveryVisibleReplyCorrelation,
 } from '../bridge/OpenCodeBridgeCommandContract';
-import type { AgentActionMode, InboxMessageKind, TaskRef } from '@shared/types/team';
+import type { AgentActionMode, InboxMessage, InboxMessageKind, TaskRef } from '@shared/types/team';
 
 export const OPENCODE_PROMPT_DELIVERY_LEDGER_SCHEMA_VERSION = 1;
 export const OPENCODE_PROMPT_DELIVERY_RESPONDED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -31,8 +31,9 @@ export interface OpenCodePromptDeliveryLedgerRecord {
   runtimeSessionId: string | null;
   inboxMessageId: string;
   inboxTimestamp: string;
-  source: 'watcher' | 'ui-send' | 'manual' | 'watchdog';
+  source: 'watcher' | 'ui-send' | 'manual' | 'watchdog' | 'member-work-sync-review-pickup';
   messageKind: InboxMessageKind | null;
+  workSyncIntent?: InboxMessage['workSyncIntent'] | null;
   replyRecipient: string;
   actionMode: AgentActionMode | null;
   taskRefs: TaskRef[];
@@ -99,6 +100,7 @@ const OPENCODE_PROMPT_DELIVERY_SOURCES = new Set<OpenCodePromptDeliveryLedgerRec
   'ui-send',
   'manual',
   'watchdog',
+  'member-work-sync-review-pickup',
 ]);
 
 const OPENCODE_DELIVERY_VISIBLE_REPLY_CORRELATIONS =
@@ -119,6 +121,7 @@ export interface EnsureOpenCodePromptDeliveryInput {
   inboxTimestamp: string;
   source: OpenCodePromptDeliveryLedgerRecord['source'];
   messageKind?: InboxMessageKind | null;
+  workSyncIntent?: InboxMessage['workSyncIntent'] | null;
   replyRecipient: string;
   actionMode?: AgentActionMode | null;
   taskRefs?: TaskRef[];
@@ -181,6 +184,16 @@ export class OpenCodePromptDeliveryLedgerStore {
           const updated: OpenCodePromptDeliveryLedgerRecord = {
             ...existing,
             messageKind: input.messageKind,
+            ...(input.workSyncIntent ? { workSyncIntent: input.workSyncIntent } : {}),
+            updatedAt: input.now,
+          };
+          result = updated;
+          return records.map((record) => (record.id === existing.id ? updated : record));
+        }
+        if (existing.workSyncIntent == null && input.workSyncIntent) {
+          const updated: OpenCodePromptDeliveryLedgerRecord = {
+            ...existing,
+            workSyncIntent: input.workSyncIntent,
             updatedAt: input.now,
           };
           result = updated;
@@ -201,6 +214,7 @@ export class OpenCodePromptDeliveryLedgerStore {
         inboxTimestamp: input.inboxTimestamp,
         source: input.source,
         messageKind: input.messageKind ?? null,
+        workSyncIntent: input.workSyncIntent ?? null,
         replyRecipient: input.replyRecipient,
         actionMode: input.actionMode ?? null,
         taskRefs: input.taskRefs ?? [],

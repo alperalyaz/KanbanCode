@@ -4,7 +4,11 @@ import {
   isTeamTaskTerminalForActionableWork,
 } from '@shared/utils/teamTaskState';
 
-import { normalizeMemberName, resolveCurrentReviewOwner } from '../../../core/domain';
+import {
+  normalizeMemberName,
+  resolveCurrentReviewOwner,
+  sameMemberName,
+} from '../../../core/domain';
 
 import type { TeamKanbanManager } from '@main/services/team/TeamKanbanManager';
 import type { TeamTaskReader } from '@main/services/team/TeamTaskReader';
@@ -144,12 +148,22 @@ export class MemberWorkSyncTaskImpactResolver {
     const reviewOwner =
       taskWorkflowColumn === 'review'
         ? resolveCurrentReviewOwner({
-            reviewState: task.reviewState,
+            reviewState: taskWorkflowColumn,
             kanbanReviewer: kanban.tasks[task.id]?.reviewer ?? null,
             historyEvents: task.historyEvents,
           })
         : null;
-    addMember(reviewOwner?.reviewer);
+    const selfReview =
+      taskWorkflowColumn === 'review' &&
+      Boolean(reviewOwner?.reviewer) &&
+      Boolean(normalizeMemberName(task.owner)) &&
+      sameMemberName(reviewOwner?.reviewer, task.owner);
+    if (selfReview) {
+      addLead();
+      addDiagnostic('self_review_invalid');
+    } else {
+      addMember(reviewOwner?.reviewer);
+    }
 
     if (taskWorkflowColumn === 'review' && !reviewOwner?.reviewer) {
       addLead();

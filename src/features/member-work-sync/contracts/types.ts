@@ -22,6 +22,15 @@ export type MemberWorkSyncActionableWorkPriority =
 
 export type MemberWorkSyncProviderId = 'anthropic' | 'codex' | 'gemini' | 'opencode';
 
+export type MemberWorkSyncReviewObligation = 'review_pickup_required' | 'review_in_progress';
+
+export type MemberWorkSyncNudgeIntent = 'agenda_sync' | 'review_pickup';
+
+export type MemberWorkSyncReviewPickupDeliveryState =
+  | 'inbox_persisted'
+  | 'prompt_accepted'
+  | 'response_proven';
+
 export interface MemberWorkSyncActionableWorkItem {
   taskId: string;
   displayId?: string;
@@ -35,6 +44,15 @@ export interface MemberWorkSyncActionableWorkItem {
     owner?: string;
     reviewer?: string;
     reviewState?: string;
+    reviewCycleId?: string;
+    reviewRequestEventId?: string;
+    reviewRequestedAt?: string;
+    reviewStartedEventId?: string;
+    reviewStartedAt?: string;
+    reviewStartedBy?: string;
+    reviewObligation?: MemberWorkSyncReviewObligation;
+    canBypassPhase2?: boolean;
+    reviewDiagnostics?: string[];
     needsClarification?: 'lead' | 'user';
     blockerTaskIds?: string[];
     blockedByTaskIds?: string[];
@@ -220,6 +238,9 @@ export interface MemberWorkSyncNudgePayload {
   messageKind: 'member_work_sync_nudge';
   source: 'member-work-sync';
   actionMode: 'do';
+  workSyncIntent: MemberWorkSyncNudgeIntent;
+  workSyncIntentKey?: string;
+  workSyncReviewRequestEventIds?: string[];
   text: string;
   taskRefs: {
     taskId: string;
@@ -240,6 +261,8 @@ export interface MemberWorkSyncOutboxItem {
   claimedBy?: string;
   claimedAt?: string;
   deliveredMessageId?: string;
+  deliveryState?: MemberWorkSyncReviewPickupDeliveryState;
+  deliveryDiagnostics?: string[];
   lastError?: string;
   nextAttemptAt?: string;
   createdAt: string;
@@ -279,6 +302,8 @@ export interface MemberWorkSyncOutboxMarkDeliveredInput {
   id: string;
   attemptGeneration: number;
   deliveredMessageId: string;
+  deliveryState?: MemberWorkSyncReviewPickupDeliveryState;
+  deliveryDiagnostics?: string[];
   nowIso: string;
 }
 

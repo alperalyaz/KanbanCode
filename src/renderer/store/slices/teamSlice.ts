@@ -4581,8 +4581,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     );
     if (!status) return;
     if (statusMessageId !== normalizedMessageId) {
+      const blockerUserVisibleState = status.userVisibleImpact?.state;
       const blockerStillChecking =
-        status.userVisibleImpact?.state === 'checking' || status.responsePending === true;
+        blockerUserVisibleState !== undefined
+          ? blockerUserVisibleState === 'checking'
+          : status.responsePending === true;
       if (!blockerStillChecking) {
         const ownStatus = await unwrapIpc('team:getOpenCodeRuntimeDeliveryStatus', () =>
           api.teams.getOpenCodeRuntimeDeliveryStatus(teamName, normalizedMessageId)

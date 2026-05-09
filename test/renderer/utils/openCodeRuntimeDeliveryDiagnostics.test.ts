@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildOpenCodeRuntimeDeliveryDiagnostics } from '../../../src/renderer/utils/openCodeRuntimeDeliveryDiagnostics';
+import {
+  buildOpenCodeRuntimeDeliveryDiagnostics,
+  shouldClearPendingReplyForOpenCodeRuntimeDelivery,
+} from '../../../src/renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 
 describe('openCodeRuntimeDeliveryDiagnostics', () => {
   it('honors user-visible checking impact over raw terminal delivery facts', () => {
@@ -56,6 +59,22 @@ describe('openCodeRuntimeDeliveryDiagnostics', () => {
     });
 
     expect(diagnostics).toEqual({ warning: null, debugDetails: null });
+  });
+
+  it('clears pending reply when user-visible none impact overrides raw pending facts', () => {
+    expect(
+      shouldClearPendingReplyForOpenCodeRuntimeDelivery({
+        providerId: 'opencode',
+        attempted: true,
+        delivered: true,
+        responsePending: true,
+        responseState: 'responded_non_visible_tool',
+        ledgerStatus: 'responded',
+        userVisibleImpact: {
+          state: 'none',
+        },
+      })
+    ).toBe(true);
   });
 
   it('surfaces terminal empty assistant turn in the compact failed warning', () => {

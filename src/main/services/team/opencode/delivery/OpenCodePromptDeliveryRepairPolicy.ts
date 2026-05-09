@@ -1,6 +1,6 @@
 import type { OpenCodeDeliveryResponseState } from '../bridge/OpenCodeBridgeCommandContract';
 import type { OpenCodePromptDeliveryStatus } from './OpenCodePromptDeliveryLedger';
-import type { AgentActionMode, InboxMessageKind, TaskRef } from '@shared/types/team';
+import type { AgentActionMode, InboxMessage, InboxMessageKind, TaskRef } from '@shared/types/team';
 
 export type OpenCodePromptDeliveryRepairKind =
   | 'none'
@@ -26,6 +26,7 @@ export interface OpenCodePromptDeliveryRepairInput {
   inboxMessageId: string;
   replyRecipient: string;
   messageKind: InboxMessageKind | null;
+  workSyncIntent?: InboxMessage['workSyncIntent'] | null;
   actionMode: AgentActionMode | null;
   taskRefs: TaskRef[];
   status: OpenCodePromptDeliveryStatus;
@@ -50,6 +51,12 @@ const SIDE_EFFECT_TOOL_NAMES = new Set([
   'apply_patch',
   'multiedit',
   'multi_edit',
+]);
+
+const REVIEW_WORKFLOW_TOOL_NAMES = new Set([
+  'review_start',
+  'review_approve',
+  'review_request_changes',
 ]);
 
 function none(reason: string): OpenCodePromptDeliveryRepairDecision {
@@ -96,7 +103,11 @@ function hasTool(tools: Set<string>, toolName: string): boolean {
 
 function hasTaskTool(tools: Set<string>): boolean {
   for (const tool of tools) {
-    if (tool.startsWith('task_') || tool === 'runtime_task_event') {
+    if (
+      tool.startsWith('task_') ||
+      REVIEW_WORKFLOW_TOOL_NAMES.has(tool) ||
+      tool === 'runtime_task_event'
+    ) {
       return true;
     }
   }
@@ -137,6 +148,16 @@ function messageSendControlLines(input: OpenCodePromptDeliveryRepairInput): stri
 
 function workSyncControlLines(input: OpenCodePromptDeliveryRepairInput): string[] {
   const taskIds = taskIdList(input.taskRefs);
+  if (input.workSyncIntent === 'review_pickup') {
+    return [
+      'This is a targeted member-work-sync review pickup control message. A plain acknowledgement is not sufficient proof.',
+      'Open the current task, verify reviewState/status, then start or continue the review only if it is still assigned to you.',
+      'Do not mark the review complete from this retry text alone.',
+      `If you cannot pick up the review now, call agent-teams_member_work_sync_status or mcp__agent-teams__member_work_sync_status with teamName="${input.teamName}" and memberName="${input.memberName}", then report state "blocked" or "still_working" only for the real current state.`,
+      taskIds ? `Relevant taskIds: ${taskIds}.` : null,
+      'Do not invent or reuse a raw report token from this retry text.',
+    ].filter((line): line is string => line !== null);
+  }
   return [
     'This is a member-work-sync control message. A plain acknowledgement is not sufficient proof.',
     `Call agent-teams_member_work_sync_status or mcp__agent-teams__member_work_sync_status with teamName="${input.teamName}" and memberName="${input.memberName}".`,
@@ -163,7 +184,9 @@ function noAssistantControlLines(input: OpenCodePromptDeliveryRepairInput): stri
     'The app saw the prompt but did not observe assistant response proof.',
     'You must not end this turn empty.',
     input.messageKind === 'member_work_sync_nudge'
-      ? 'Follow the member-work-sync status/report instructions for this message.'
+      ? input.workSyncIntent === 'review_pickup'
+        ? 'Follow the member-work-sync review pickup instructions for this message.'
+        : 'Follow the member-work-sync status/report instructions for this message.'
       : `Send a concrete reply using message_send with relayOfMessageId="${input.inboxMessageId}", or provide a concrete plain-text answer only if message_send is unavailable.`,
   ];
 }

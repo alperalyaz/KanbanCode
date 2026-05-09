@@ -542,6 +542,89 @@ describe('teamSlice actions', () => {
     });
   });
 
+  it('checks the original message when queued blocker impact is no longer user-visible', async () => {
+    const store = createSliceStore();
+    hoisted.sendMessage.mockResolvedValue({
+      deliveredToInbox: true,
+      messageId: 'm-opencode-queued',
+      runtimeDelivery: {
+        providerId: 'opencode',
+        attempted: true,
+        delivered: true,
+        responsePending: true,
+        responseState: 'pending',
+        ledgerStatus: 'accepted',
+        queuedBehindMessageId: 'm-opencode-blocker',
+        reason: 'opencode_delivery_response_pending',
+        diagnostics: ['opencode_delivery_response_pending'],
+        userVisibleImpact: {
+          state: 'checking',
+        },
+      },
+    });
+    hoisted.getOpenCodeRuntimeDeliveryStatus
+      .mockResolvedValueOnce({
+        messageId: 'm-opencode-blocker',
+        providerId: 'opencode',
+        attempted: true,
+        delivered: true,
+        responsePending: true,
+        responseState: 'responded_non_visible_tool',
+        ledgerStatus: 'responded',
+        acceptanceUnknown: false,
+        reason: 'non_visible_tool_without_task_progress',
+        diagnostics: ['non_visible_tool_without_task_progress'],
+        userVisibleImpact: {
+          state: 'none',
+        },
+      })
+      .mockResolvedValueOnce({
+        messageId: 'm-opencode-queued',
+        providerId: 'opencode',
+        attempted: true,
+        delivered: false,
+        responsePending: false,
+        responseState: 'empty_assistant_turn',
+        ledgerStatus: 'failed_terminal',
+        acceptanceUnknown: false,
+        reason: 'empty_assistant_turn',
+        diagnostics: ['empty_assistant_turn'],
+        userVisibleImpact: {
+          state: 'error',
+          reasonCode: 'backend_error',
+          message: 'empty_assistant_turn',
+        },
+      });
+
+    await store.getState().sendTeamMessage('my-team', {
+      member: 'bob',
+      text: 'hello',
+    });
+    await store.getState().refreshSendMessageRuntimeDeliveryStatus('my-team', {
+      messageId: 'm-opencode-queued',
+      statusMessageId: 'm-opencode-blocker',
+    });
+
+    expect(hoisted.getOpenCodeRuntimeDeliveryStatus).toHaveBeenNthCalledWith(
+      1,
+      'my-team',
+      'm-opencode-blocker'
+    );
+    expect(hoisted.getOpenCodeRuntimeDeliveryStatus).toHaveBeenNthCalledWith(
+      2,
+      'my-team',
+      'm-opencode-queued'
+    );
+    expect(store.getState().sendMessageWarning).toBe(
+      'OpenCode runtime delivery failed. Message was saved to inbox, but live delivery did not complete. Reason: OpenCode returned an empty assistant turn.'
+    );
+    expect(store.getState().sendMessageDebugDetails).toMatchObject({
+      messageId: 'm-opencode-queued',
+      statusMessageId: 'm-opencode-queued',
+      userVisibleState: 'error',
+    });
+  });
+
   it('clears OpenCode runtime diagnostics only for the matching message id', async () => {
     const store = createSliceStore();
     hoisted.sendMessage.mockResolvedValue({

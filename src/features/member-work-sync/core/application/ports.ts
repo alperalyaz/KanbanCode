@@ -86,6 +86,10 @@ export type MemberWorkSyncAuditEventName =
   | 'nudge_skipped'
   | 'nudge_retryable'
   | 'nudge_superseded'
+  | 'review_pickup_delivery_unavailable'
+  | 'review_pickup_member_nudge_delivered'
+  | 'review_pickup_escalated'
+  | 'review_pickup_wake_failed_retryable'
   | 'watchdog_cooldown_active'
   | 'member_busy'
   | 'team_inactive'
@@ -152,6 +156,11 @@ export interface MemberWorkSyncOutboxStorePort {
   markSuperseded(input: MemberWorkSyncOutboxMarkSupersededInput): Promise<void>;
   markFailed(input: MemberWorkSyncOutboxMarkFailedInput): Promise<void>;
   countRecentDelivered(input: MemberWorkSyncOutboxCountRecentDeliveredInput): Promise<number>;
+  findDeliveredReviewPickupRequestEventIds?(input: {
+    teamName: string;
+    memberName: string;
+    reviewRequestEventIds: string[];
+  }): Promise<string[]>;
 }
 
 export interface MemberWorkSyncInboxNudgePort {
@@ -193,6 +202,56 @@ export interface MemberWorkSyncNudgeDeliveryWakePort {
   }): Promise<void> | void;
 }
 
+export type MemberWorkSyncReviewPickupDeliveryOutcome =
+  | {
+      ok: true;
+      state: 'prompt_accepted' | 'response_proven';
+      messageId: string;
+      diagnostics?: string[];
+    }
+  | {
+      ok: false;
+      reason: 'capability_absent' | 'retryable_failure' | 'terminal_failure';
+      message: string;
+      diagnostics?: string[];
+      retryAfterIso?: string;
+    };
+
+export interface MemberWorkSyncReviewPickupDeliveryPort {
+  canDeliver(input: {
+    teamName: string;
+    memberName: string;
+    providerId?: MemberWorkSyncProviderId | null;
+  }):
+    | Promise<{ ok: true } | { ok: false; reason: string; diagnostics?: string[] }>
+    | {
+        ok: true;
+      }
+    | { ok: false; reason: string; diagnostics?: string[] };
+  deliver(input: {
+    teamName: string;
+    memberName: string;
+    messageId: string;
+    providerId?: MemberWorkSyncProviderId | null;
+    payload: MemberWorkSyncOutboxItem['payload'];
+    inserted: boolean;
+    nowIso: string;
+  }): Promise<MemberWorkSyncReviewPickupDeliveryOutcome>;
+}
+
+export interface MemberWorkSyncReviewPickupEscalationPort {
+  escalate(input: {
+    teamName: string;
+    memberName: string;
+    reason: string;
+    nowIso: string;
+    agendaFingerprint?: string;
+    reviewRequestEventIds?: string[];
+    diagnostics?: string[];
+    taskRefs: { taskId: string; displayId?: string; teamName?: string }[];
+  }): Promise<void> | void;
+}
+
 export interface MemberWorkSyncUseCaseDeps {
   clock: MemberWorkSyncClockPort;
   hash: MemberWorkSyncHashPort;
@@ -204,6 +263,8 @@ export interface MemberWorkSyncUseCaseDeps {
   watchdogCooldown?: MemberWorkSyncWatchdogCooldownPort;
   busySignal?: MemberWorkSyncBusySignalPort;
   nudgeDeliveryWake?: MemberWorkSyncNudgeDeliveryWakePort;
+  reviewPickupDelivery?: MemberWorkSyncReviewPickupDeliveryPort;
+  reviewPickupEscalation?: MemberWorkSyncReviewPickupEscalationPort;
   reportToken?: MemberWorkSyncReportTokenPort;
   auditJournal?: MemberWorkSyncAuditJournalPort;
   lifecycle?: MemberWorkSyncLifecyclePort;

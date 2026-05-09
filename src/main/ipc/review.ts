@@ -59,6 +59,7 @@ import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron';
 
 const wrapReviewHandler = createIpcWrapper('IPC:review');
 const logger = createLogger('IPC:review');
+const TEAM_TASK_CHANGE_SUMMARY_IPC_RAW_REQUEST_LIMIT = 1_000;
 const TEAM_TASK_CHANGE_SUMMARY_IPC_UNIQUE_REQUEST_LIMIT = 201;
 
 // --- Module-level state ---
@@ -212,7 +213,7 @@ function sanitizeTeamTaskChangeSummaryRequests(requests: unknown): TeamTaskChang
 
   const sanitizedRequests: TeamTaskChangeSummaryRequest[] = [];
   const seenTaskIds = new Set<string>();
-  for (const request of requests) {
+  for (const request of requests.slice(0, TEAM_TASK_CHANGE_SUMMARY_IPC_RAW_REQUEST_LIMIT)) {
     if (sanitizedRequests.length >= TEAM_TASK_CHANGE_SUMMARY_IPC_UNIQUE_REQUEST_LIMIT) {
       break;
     }

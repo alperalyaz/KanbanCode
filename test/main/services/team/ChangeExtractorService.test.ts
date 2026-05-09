@@ -193,6 +193,80 @@ async function writeOpenCodeLedgerBundle(
   );
 }
 
+async function writeWarningOnlyLedgerNotice(
+  projectDir: string,
+  overrides?: Partial<{
+    taskId: string;
+    memberName: string;
+    message: string;
+  }>
+): Promise<void> {
+  const taskId = overrides?.taskId ?? TASK_ID;
+  const noticeDir = path.join(projectDir, '.board-task-changes', 'notices');
+  await fs.mkdir(noticeDir, { recursive: true });
+  await fs.writeFile(
+    path.join(noticeDir, `${encodeURIComponent(taskId)}.jsonl`),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      noticeId: 'notice-1',
+      taskId,
+      taskRef: taskId,
+      taskRefKind: 'canonical',
+      phase: 'work',
+      executionSeq: 0,
+      sessionId: 'session-1',
+      memberName: overrides?.memberName ?? 'alice',
+      toolUseId: 'tool-1',
+      timestamp: '2026-03-01T10:05:00.000Z',
+      severity: 'warning',
+      code: 'multi-scope-skipped',
+      message:
+        overrides?.message ??
+        'Task change ledger skipped attribution because multiple task scopes were active.',
+    })}\n`,
+    'utf8'
+  );
+}
+
+async function writeOpenCodeLedgerEventJournal(
+  projectDir: string,
+  projectPath: string,
+  taskId: string = TASK_ID
+): Promise<void> {
+  const eventDir = path.join(projectDir, '.board-task-changes', 'events');
+  await fs.mkdir(eventDir, { recursive: true });
+  await fs.writeFile(
+    path.join(eventDir, `${encodeURIComponent(taskId)}.jsonl`),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      eventId: 'event-1',
+      taskId,
+      taskRef: taskId,
+      taskRefKind: 'canonical',
+      phase: 'work',
+      executionSeq: 0,
+      sessionId: 'opencode-session-1',
+      memberName: 'bob',
+      toolUseId: 'part-1',
+      source: 'opencode_toolpart_write',
+      operation: 'create',
+      confidence: 'exact',
+      workspaceRoot: projectPath,
+      filePath: path.join(projectPath, 'src/opencode.ts'),
+      relativePath: 'src/opencode.ts',
+      timestamp: '2026-03-01T10:00:00.000Z',
+      toolStatus: 'succeeded',
+      before: null,
+      after: null,
+      oldString: '',
+      newString: 'export const source = "opencode";\n',
+      linesAdded: 1,
+      linesRemoved: 0,
+    })}\n`,
+    'utf8'
+  );
+}
+
 function persistedEntryPath(baseDir: string): string {
   return path.join(baseDir, 'task-change-summaries', encodeURIComponent(TEAM_NAME), `${TASK_ID}.json`);
 }
@@ -388,7 +462,9 @@ describe('ChangeExtractorService', () => {
     const { service } = createService({ logPaths: [] });
     const getTaskChanges = vi
       .spyOn(service, 'getTaskChanges')
-      .mockImplementation(async (_teamName, taskId) => makeTaskChangeResult(taskId, { taskId }));
+      .mockImplementation((_teamName, taskId) =>
+        Promise.resolve(makeTaskChangeResult(taskId, { taskId }))
+      );
 
     const response = await service.getTeamTaskChangeSummaries(TEAM_NAME, [
       { taskId: 'task-1', options: SUMMARY_OPTIONS },
@@ -405,7 +481,9 @@ describe('ChangeExtractorService', () => {
     const { service } = createService({ logPaths: [] });
     const getTaskChanges = vi
       .spyOn(service, 'getTaskChanges')
-      .mockImplementation(async (_teamName, taskId) => makeTaskChangeResult(taskId, { taskId }));
+      .mockImplementation((_teamName, taskId) =>
+        Promise.resolve(makeTaskChangeResult(taskId, { taskId }))
+      );
 
     const response = await service.getTeamTaskChangeSummaries(TEAM_NAME, [
       null,
@@ -418,21 +496,48 @@ describe('ChangeExtractorService', () => {
     expect(getTaskChanges).toHaveBeenCalledTimes(1);
   });
 
+  it('limits raw team task summary request inspection before loading', async () => {
+    const { service } = createService({ logPaths: [] });
+    const getTaskChanges = vi
+      .spyOn(service, 'getTaskChanges')
+      .mockImplementation((_teamName, taskId) =>
+        Promise.resolve(makeTaskChangeResult(taskId, { taskId }))
+      );
+
+    const response = await service.getTeamTaskChangeSummaries(TEAM_NAME, [
+      ...Array.from({ length: 1000 }, () => null),
+      { taskId: 'beyond-inspect-limit', options: SUMMARY_OPTIONS },
+    ] as unknown as Parameters<typeof service.getTeamTaskChangeSummaries>[1]);
+
+    expect(response.items).toEqual([]);
+    expect(response.truncated).toBe(true);
+    expect(getTaskChanges).not.toHaveBeenCalled();
+  });
+
   it('does not reuse detailed task-change cache across different scope inputs', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
     setClaudeBasePathOverride(tmpDir);
 
     const aliceLogPath = path.join(tmpDir, 'alice.jsonl');
     await writeJsonl(aliceLogPath, [
-      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        '/repo/src/file.ts',
+        'export const value = 1;\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
     ]);
 
-    const findLogFileRefsForTask = vi.fn(async (_teamName: string, _taskId: string, options?: any) =>
-      options?.owner === 'alice' ? [{ filePath: aliceLogPath, memberName: 'alice' }] : []
+    const findLogFileRefsForTask = vi.fn(
+      async (_teamName: string, _taskId: string, options?: any) =>
+        options?.owner === 'alice' ? [{ filePath: aliceLogPath, memberName: 'alice' }] : []
     );
     const service = createService({ logPaths: [aliceLogPath], findLogFileRefsForTask }).service;
 
-    const empty = await service.getTaskChanges(TEAM_NAME, TASK_ID, { owner: 'bob', status: 'completed' });
+    const empty = await service.getTaskChanges(TEAM_NAME, TASK_ID, {
+      owner: 'bob',
+      status: 'completed',
+    });
     const populated = await service.getTaskChanges(TEAM_NAME, TASK_ID, {
       owner: 'alice',
       status: 'completed',
@@ -449,7 +554,12 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-summary.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        '/repo/src/file.ts',
+        'export const value = 1;\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
     ]);
 
     const { service, findLogFileRefsForTask } = createService({ logPaths: [logPath] });
@@ -477,7 +587,12 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-restart.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        '/repo/src/file.ts',
+        'export const value = 1;\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
     ]);
 
     const first = createService({ logPaths: [logPath] });
@@ -500,15 +615,30 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-refresh.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        '/repo/src/file.ts',
+        'export const value = 1;\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
     ]);
 
     const { service } = createService({ logPaths: [logPath] });
     await service.getTaskChanges(TEAM_NAME, TASK_ID, SUMMARY_OPTIONS);
 
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 2;\n', '2026-03-01T10:00:00.000Z'),
-      buildAssistantWriteEntry('tool-2', '/repo/src/extra.ts', 'export const extra = true;\n', '2026-03-01T10:02:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        '/repo/src/file.ts',
+        'export const value = 2;\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
+      buildAssistantWriteEntry(
+        'tool-2',
+        '/repo/src/extra.ts',
+        'export const extra = true;\n',
+        '2026-03-01T10:02:00.000Z'
+      ),
     ]);
 
     const refreshed = await service.getTaskChanges(TEAM_NAME, TASK_ID, {
@@ -532,7 +662,12 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-review.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        '/repo/src/file.ts',
+        'export const value = 1;\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
     ]);
 
     const { service } = createService({ logPaths: [logPath] });
@@ -565,7 +700,12 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-project-drift.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        '/repo/src/file.ts',
+        'export const value = 1;\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
     ]);
 
     await createService({ logPaths: [logPath], projectPath: '/repo-a' }).service.getTaskChanges(
@@ -574,11 +714,7 @@ describe('ChangeExtractorService', () => {
       SUMMARY_OPTIONS
     );
     const drifted = createService({ logPaths: [logPath], projectPath: '/repo-b' });
-    await drifted.service.getTaskChanges(
-      TEAM_NAME,
-      TASK_ID,
-      SUMMARY_OPTIONS
-    );
+    await drifted.service.getTaskChanges(TEAM_NAME, TASK_ID, SUMMARY_OPTIONS);
 
     expect((drifted.findLogFileRefsForTask as any).mock.calls.length).toBeGreaterThan(1);
   });
@@ -590,12 +726,25 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-missing-task.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        '/repo/src/file.ts',
+        'export const value = 1;\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
     ]);
 
-    await createService({ logPaths: [logPath] }).service.getTaskChanges(TEAM_NAME, TASK_ID, SUMMARY_OPTIONS);
+    await createService({ logPaths: [logPath] }).service.getTaskChanges(
+      TEAM_NAME,
+      TASK_ID,
+      SUMMARY_OPTIONS
+    );
     await fs.unlink(taskPath);
-    await createService({ logPaths: [logPath] }).service.getTaskChanges(TEAM_NAME, TASK_ID, SUMMARY_OPTIONS);
+    await createService({ logPaths: [logPath] }).service.getTaskChanges(
+      TEAM_NAME,
+      TASK_ID,
+      SUMMARY_OPTIONS
+    );
 
     await expect(fs.stat(persistedEntryPath(tmpDir))).rejects.toMatchObject({ code: 'ENOENT' });
   });
@@ -607,10 +756,19 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-corrupt.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        '/repo/src/file.ts',
+        'export const value = 1;\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
     ]);
 
-    await createService({ logPaths: [logPath] }).service.getTaskChanges(TEAM_NAME, TASK_ID, SUMMARY_OPTIONS);
+    await createService({ logPaths: [logPath] }).service.getTaskChanges(
+      TEAM_NAME,
+      TASK_ID,
+      SUMMARY_OPTIONS
+    );
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     await fs.writeFile(persistedEntryPath(tmpDir), '{bad-json', 'utf8');
 
@@ -630,7 +788,12 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-fallback.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        '/repo/src/file.ts',
+        'export const value = 1;\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
     ]);
 
     const service = new ChangeExtractorService(
@@ -669,10 +832,20 @@ describe('ChangeExtractorService', () => {
     const firstLogPath = path.join(tmpDir, 'first.jsonl');
     const secondLogPath = path.join(tmpDir, 'second.jsonl');
     await writeJsonl(firstLogPath, [
-      buildAssistantWriteEntry('tool-1', 'C:\\repo\\src\\same.ts', 'first\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        'C:\\repo\\src\\same.ts',
+        'first\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
     ]);
     await writeJsonl(secondLogPath, [
-      buildAssistantWriteEntry('tool-2', 'C:/repo/src/same.ts', 'second\n', '2026-03-01T10:01:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-2',
+        'C:/repo/src/same.ts',
+        'second\n',
+        '2026-03-01T10:01:00.000Z'
+      ),
     ]);
 
     const service = createService({
@@ -722,7 +895,12 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-inline-unavailable.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        '/repo/src/file.ts',
+        'export const value = 1;\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
     ]);
 
     const computeTaskChanges = vi.fn();
@@ -752,7 +930,12 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-inline-worker-error.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        '/repo/src/file.ts',
+        'export const value = 1;\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
     ]);
 
     const computeTaskChanges = vi.fn(async () => {
@@ -783,7 +966,12 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-worker-summary-cache.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        '/repo/src/file.ts',
+        'export const value = 1;\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
     ]);
 
     const computeTaskChanges = vi.fn(async () => makeTaskChangeResult());
@@ -808,7 +996,12 @@ describe('ChangeExtractorService', () => {
 
     const logPath = path.join(tmpDir, 'alice-worker-persisted.jsonl');
     await writeJsonl(logPath, [
-      buildAssistantWriteEntry('tool-1', '/repo/src/file.ts', 'export const value = 1;\n', '2026-03-01T10:00:00.000Z'),
+      buildAssistantWriteEntry(
+        'tool-1',
+        '/repo/src/file.ts',
+        'export const value = 1;\n',
+        '2026-03-01T10:00:00.000Z'
+      ),
     ]);
 
     const firstWorker = {
@@ -1041,7 +1234,9 @@ describe('ChangeExtractorService', () => {
     }));
     const workerClient = {
       isAvailable: vi.fn(() => true),
-      computeTaskChanges: vi.fn(async () => makeTaskChangeResult(TASK_ID, { content: '', confidence: 'fallback' })),
+      computeTaskChanges: vi.fn(async () =>
+        makeTaskChangeResult(TASK_ID, { content: '', confidence: 'fallback' })
+      ),
     };
     const { service } = createService({
       logPaths: [],
@@ -1055,6 +1250,196 @@ describe('ChangeExtractorService', () => {
     expect(result.files).toHaveLength(0);
     expect(result.confidence === 'high' || result.confidence === 'medium').toBe(false);
     expect(upsertEntry).not.toHaveBeenCalled();
+  });
+
+  it('runs OpenCode recovery when a ledger result only contains warning notices', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
+    setClaudeBasePathOverride(tmpDir);
+    await writeTaskFile(tmpDir, { displayId: 'abc12345', owner: 'bob' });
+    const projectDir = path.join(tmpDir, 'project-dir');
+    const projectPath = path.join(tmpDir, 'repo');
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.mkdir(projectPath, { recursive: true });
+    await writeWarningOnlyLedgerNotice(projectDir, { memberName: 'bob' });
+    await writeOpenCodeDeliveryLedger(tmpDir);
+
+    const backfillOpenCodeTaskLedger = vi.fn(async (input: any) => {
+      await writeOpenCodeLedgerEventJournal(input.projectDir, projectPath);
+      return {
+        schemaVersion: 1,
+        providerId: 'opencode',
+        opencodeTaskLedgerEvidenceContractVersion: OPEN_CODE_TASK_LEDGER_EVIDENCE_CONTRACT_VERSION,
+        teamName: input.teamName,
+        taskId: input.taskId,
+        projectDir: input.projectDir,
+        workspaceRoot: input.workspaceRoot,
+        dryRun: false,
+        attributionMode: input.attributionMode,
+        scannedSessions: 1,
+        scannedToolparts: 1,
+        candidateEvents: 1,
+        importedEvents: 1,
+        skippedEvents: 0,
+        outcome: 'imported',
+        notices: [],
+        diagnostics: [],
+      };
+    });
+    const workerClient = {
+      isAvailable: vi.fn(() => true),
+      computeTaskChanges: vi.fn(async () =>
+        makeTaskChangeResult(TASK_ID, { content: '', confidence: 'fallback' })
+      ),
+    };
+    const service = new ChangeExtractorService(
+      {
+        getLogSourceWatchContext: vi.fn(async () => ({
+          projectDir,
+          projectPath,
+          sessionIds: [],
+        })),
+        findLogFileRefsForTask: vi.fn(async () => []),
+        findMemberLogPaths: vi.fn(async () => []),
+      } as any,
+      {
+        parseBoundaries: vi.fn(async () => ({
+          boundaries: [],
+          scopes: [],
+          isSingleTaskSession: true,
+          detectedMechanism: 'none' as const,
+        })),
+      } as any,
+      { getConfig: vi.fn(async () => ({ projectPath })) } as any,
+      undefined,
+      workerClient as any,
+      { backfillOpenCodeTaskLedger } as any,
+      { getMeta: vi.fn(async () => ({ providerId: 'opencode' })) } as any
+    );
+
+    const result = await service.getTaskChanges(TEAM_NAME, TASK_ID, {
+      ...SUMMARY_OPTIONS,
+      owner: 'bob',
+    });
+
+    expect(result.files).toHaveLength(1);
+    expect(result.warnings).toContain(
+      'Task change ledger skipped attribution because multiple task scopes were active.'
+    );
+    expect(backfillOpenCodeTaskLedger).toHaveBeenCalledTimes(1);
+    expect(workerClient.computeTaskChanges).not.toHaveBeenCalled();
+  });
+
+  it('recovers Codex warning-only ledger results through the scoped worker path', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
+    setClaudeBasePathOverride(tmpDir);
+    await writeTaskFile(tmpDir, { owner: 'tom' });
+    const projectDir = path.join(tmpDir, 'project-dir');
+    const projectPath = path.join(tmpDir, 'repo');
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.mkdir(projectPath, { recursive: true });
+    await writeWarningOnlyLedgerNotice(projectDir, { memberName: 'tom' });
+
+    const workerClient = {
+      isAvailable: vi.fn(() => true),
+      computeTaskChanges: vi.fn(async () =>
+        makeTaskChangeResult(TASK_ID, {
+          filePath: path.join(projectPath, 'src/codex.ts'),
+          scope: { memberName: 'tom' },
+        })
+      ),
+    };
+    const service = new ChangeExtractorService(
+      {
+        getLogSourceWatchContext: vi.fn(async () => ({
+          projectDir,
+          projectPath,
+          sessionIds: [],
+        })),
+        findLogFileRefsForTask: vi.fn(async () => []),
+        findMemberLogPaths: vi.fn(async () => []),
+      } as any,
+      {
+        parseBoundaries: vi.fn(async () => ({
+          boundaries: [],
+          scopes: [],
+          isSingleTaskSession: true,
+          detectedMechanism: 'none' as const,
+        })),
+      } as any,
+      {
+        getConfig: vi.fn(async () => ({
+          projectPath,
+          members: [{ name: 'tom', providerId: 'codex' }],
+        })),
+      } as any,
+      undefined,
+      workerClient as any
+    );
+
+    const result = await service.getTaskChanges(TEAM_NAME, TASK_ID, {
+      ...SUMMARY_OPTIONS,
+      owner: 'tom',
+    });
+
+    expect(result.files).toHaveLength(1);
+    expect(result.warnings).toContain(
+      'Task change ledger skipped attribution because multiple task scopes were active.'
+    );
+    expect(workerClient.computeTaskChanges).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps non-Codex warning-only ledger results as diagnostics instead of adding legacy changes', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
+    setClaudeBasePathOverride(tmpDir);
+    await writeTaskFile(tmpDir, { owner: 'atlas' });
+    const projectDir = path.join(tmpDir, 'project-dir');
+    const projectPath = path.join(tmpDir, 'repo');
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.mkdir(projectPath, { recursive: true });
+    await writeWarningOnlyLedgerNotice(projectDir, { memberName: 'atlas' });
+
+    const workerClient = {
+      isAvailable: vi.fn(() => true),
+      computeTaskChanges: vi.fn(async () => makeTaskChangeResult(TASK_ID)),
+    };
+    const service = new ChangeExtractorService(
+      {
+        getLogSourceWatchContext: vi.fn(async () => ({
+          projectDir,
+          projectPath,
+          sessionIds: [],
+        })),
+        findLogFileRefsForTask: vi.fn(async () => []),
+        findMemberLogPaths: vi.fn(async () => []),
+      } as any,
+      {
+        parseBoundaries: vi.fn(async () => ({
+          boundaries: [],
+          scopes: [],
+          isSingleTaskSession: true,
+          detectedMechanism: 'none' as const,
+        })),
+      } as any,
+      {
+        getConfig: vi.fn(async () => ({
+          projectPath,
+          members: [{ name: 'atlas', providerId: 'anthropic' }],
+        })),
+      } as any,
+      undefined,
+      workerClient as any
+    );
+
+    const result = await service.getTaskChanges(TEAM_NAME, TASK_ID, {
+      ...SUMMARY_OPTIONS,
+      owner: 'atlas',
+    });
+
+    expect(result.files).toHaveLength(0);
+    expect(result.warnings).toContain(
+      'Task change ledger skipped attribution because multiple task scopes were active.'
+    );
+    expect(workerClient.computeTaskChanges).not.toHaveBeenCalled();
   });
 
   it('backfills OpenCode ledger artifacts once before falling back to legacy extraction', async () => {
@@ -1697,7 +2082,9 @@ describe('ChangeExtractorService', () => {
     expect(backfillOpenCodeTaskLedger.mock.calls[0]?.[0]?.deliveryContextPath).toEqual(
       expect.stringContaining('delivery-context.json')
     );
-    expect(backfillOpenCodeTaskLedger.mock.calls[0]?.[0]?.deliveryContextHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(backfillOpenCodeTaskLedger.mock.calls[0]?.[0]?.deliveryContextHash).toMatch(
+      /^[a-f0-9]{64}$/
+    );
   });
 
   it('does not cache negative OpenCode backfill while delivery context already exists', async () => {
@@ -1759,9 +2146,10 @@ describe('ChangeExtractorService', () => {
         skippedEvents: 0,
         outcome,
         notices: [],
-        diagnostics: outcome === 'transient-error'
-          ? ['OpenCode SQLite file changed while snapshot was read; using transaction snapshot.']
-          : [],
+        diagnostics:
+          outcome === 'transient-error'
+            ? ['OpenCode SQLite file changed while snapshot was read; using transaction snapshot.']
+            : [],
       };
     });
     const workerClient = {
@@ -1809,11 +2197,15 @@ describe('ChangeExtractorService', () => {
     expect(backfillOpenCodeTaskLedger.mock.calls[0]?.[0]?.deliveryContextPath).toEqual(
       expect.stringContaining('delivery-context.json')
     );
-    expect(backfillOpenCodeTaskLedger.mock.calls[0]?.[0]?.deliveryContextHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(backfillOpenCodeTaskLedger.mock.calls[0]?.[0]?.deliveryContextHash).toMatch(
+      /^[a-f0-9]{64}$/
+    );
     expect(backfillOpenCodeTaskLedger.mock.calls[1]?.[0]?.deliveryContextPath).toEqual(
       expect.stringContaining('delivery-context.json')
     );
-    expect(backfillOpenCodeTaskLedger.mock.calls[1]?.[0]?.deliveryContextHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(backfillOpenCodeTaskLedger.mock.calls[1]?.[0]?.deliveryContextHash).toMatch(
+      /^[a-f0-9]{64}$/
+    );
   });
 
   it('does not cache duplicates-only OpenCode backfill from an old evidence contract', async () => {
@@ -1902,8 +2294,7 @@ describe('ChangeExtractorService', () => {
     const backfillOpenCodeTaskLedger = vi.fn(async (input: any) => ({
       schemaVersion: 1,
       providerId: 'opencode',
-      opencodeTaskLedgerEvidenceContractVersion:
-        OPEN_CODE_TASK_LEDGER_EVIDENCE_CONTRACT_VERSION,
+      opencodeTaskLedgerEvidenceContractVersion: OPEN_CODE_TASK_LEDGER_EVIDENCE_CONTRACT_VERSION,
       teamName: input.teamName,
       taskId: input.taskId,
       projectDir: input.projectDir,

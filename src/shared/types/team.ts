@@ -664,6 +664,12 @@ export interface InboxMessage {
   toolCalls?: ToolCallMeta[];
   /** Renderer-friendly semantic kind. Defaults to "default" when absent. */
   messageKind?: InboxMessageKind;
+  /** Structured member-work-sync intent for runtime delivery and audit. */
+  workSyncIntent?: 'agenda_sync' | 'review_pickup';
+  /** Stable intent key, e.g. one review request event or a small review-request group. */
+  workSyncIntentKey?: string;
+  /** Concrete review_requested event IDs covered by this nudge. */
+  workSyncReviewRequestEventIds?: string[];
   /** Structured slash-command metadata for sent command rows. */
   slashCommand?: SlashCommandMeta;
   /** Structured command-output metadata for session-derived result rows. */
@@ -708,6 +714,9 @@ export interface SendMessageRequest {
   toolSummary?: string;
   toolCalls?: ToolCallMeta[];
   messageKind?: InboxMessageKind;
+  workSyncIntent?: InboxMessage['workSyncIntent'];
+  workSyncIntentKey?: string;
+  workSyncReviewRequestEventIds?: string[];
   slashCommand?: SlashCommandMeta;
   commandOutput?: CommandOutputMeta;
 }

@@ -431,7 +431,11 @@ describe('TaskDetailDialog changes summary loading', () => {
       'task-attention',
       expect.objectContaining({ summaryOnly: true })
     );
-    expect(host.textContent).toContain('No file changes recorded');
+    expect(host.textContent).toContain('No file changes were recorded for this task.');
+    expect(host.textContent).toContain('No reviewable file changes recovered');
+    expect(host.querySelector('[data-testid="section-badge-Changes"]')?.textContent).toBe(
+      'attention'
+    );
 
     await act(async () => {
       root.unmount();

@@ -263,14 +263,22 @@ export const KanbanTaskCard = memo(
 
     const effectiveReviewer = (kanbanTaskState?.reviewer ?? task.reviewer ?? '').trim();
     const isReviewManual = columnId === 'review' && !hasReviewers && effectiveReviewer.length === 0;
+    const canOpenChanges =
+      canDisplay &&
+      (task.changePresence === 'has_changes' || task.changePresence === 'needs_attention');
+    const changesNeedAttention = task.changePresence === 'needs_attention';
     const metaActions = (
       <>
-        {canDisplay && task.changePresence === 'has_changes' ? (
+        {canOpenChanges ? (
           <TaskActionIconButton
-            label="Changes"
+            label={changesNeedAttention ? 'Changes need attention' : 'Changes'}
             icon={<FileCode className="size-2.5" />}
             variant="ghost"
-            className="text-sky-400 hover:bg-sky-500/10 hover:text-sky-300"
+            className={
+              changesNeedAttention
+                ? 'text-amber-400 hover:bg-amber-500/10 hover:text-amber-300'
+                : 'text-sky-400 hover:bg-sky-500/10 hover:text-sky-300'
+            }
             onClick={(e) => {
               e.stopPropagation();
               onViewChanges!(task.id);

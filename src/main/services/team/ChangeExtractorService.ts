@@ -57,6 +57,7 @@ const logger = createLogger('Service:ChangeExtractorService');
 const OPEN_CODE_AUTO_BACKFILL_ATTRIBUTION_MODE = 'strict-delivery' as const;
 const OPEN_CODE_AUTO_BACKFILL_EVIDENCE_PIPELINE = 'opencode-session-snapshot-v1' as const;
 const OPEN_CODE_MAX_DISCOVERED_LANES = 500;
+const TEAM_TASK_CHANGE_SUMMARY_BATCH_INSPECT_LIMIT = 1_000;
 const TEAM_TASK_CHANGE_SUMMARY_BATCH_LIMIT = 200;
 const TEAM_TASK_CHANGE_SUMMARY_BATCH_CONCURRENCY = 3;
 
@@ -228,14 +229,13 @@ export class ChangeExtractorService {
 
     const ledgerResult = await this.readLedgerTaskChanges(resolvedInput);
     if (ledgerResult) {
-      await this.recordTaskChangePresence(
-        teamName,
-        taskId,
-        taskMeta,
-        effectiveOptions,
+      const recoveredLedgerResult = await this.recoverWarningOnlyLedgerResult(
+        resolvedInput,
         ledgerResult
       );
-      return ledgerResult;
+      const result = recoveredLedgerResult ?? ledgerResult;
+      await this.recordTaskChangePresence(teamName, taskId, taskMeta, effectiveOptions, result);
+      return result;
     }
 
     const openCodeBackfill = await this.tryBackfillOpenCodeLedger(resolvedInput);
@@ -339,7 +339,9 @@ export class ChangeExtractorService {
     const inputRequests = Array.isArray(requests) ? requests : [];
     const seenTaskIds = new Set<string>();
     const uniqueRequests: TeamTaskChangeSummaryRequest[] = [];
-    for (const request of inputRequests) {
+    let inspectedRequests = 0;
+    for (const request of inputRequests.slice(0, TEAM_TASK_CHANGE_SUMMARY_BATCH_INSPECT_LIMIT)) {
+      inspectedRequests += 1;
       if (!request || typeof request !== 'object') {
         continue;
       }
@@ -349,6 +351,9 @@ export class ChangeExtractorService {
       }
       seenTaskIds.add(taskId);
       uniqueRequests.push({ ...request, taskId });
+      if (uniqueRequests.length > TEAM_TASK_CHANGE_SUMMARY_BATCH_LIMIT) {
+        break;
+      }
     }
     const cappedRequests = uniqueRequests.slice(0, TEAM_TASK_CHANGE_SUMMARY_BATCH_LIMIT);
     const items: TeamTaskChangeSummaryItem[] = cappedRequests.map((request) => ({
@@ -391,7 +396,10 @@ export class ChangeExtractorService {
       teamName,
       items,
       computedAt: new Date().toISOString(),
-      truncated: uniqueRequests.length > cappedRequests.length || undefined,
+      truncated:
+        uniqueRequests.length > cappedRequests.length || inspectedRequests < inputRequests.length
+          ? true
+          : undefined,
     };
   }
 
@@ -469,6 +477,106 @@ export class ChangeExtractorService {
       );
       return null;
     }
+  }
+
+  private async recoverWarningOnlyLedgerResult(
+    input: ResolvedTaskChangeComputeInput,
+    ledgerResult: TaskChangeSetV2
+  ): Promise<TaskChangeSetV2 | null> {
+    if (!this.shouldRecoverWarningOnlyLedgerResult(input, ledgerResult)) {
+      return null;
+    }
+
+    const openCodeBackfill = await this.tryBackfillOpenCodeLedger(input);
+    if (openCodeBackfill.backfilled || openCodeBackfill.attempted) {
+      const backfilledLedgerResult = await this.readLedgerTaskChanges(input);
+      if (backfilledLedgerResult && backfilledLedgerResult.files.length > 0) {
+        return this.mergeWarningOnlyLedgerRecovery(ledgerResult, backfilledLedgerResult);
+      }
+    }
+
+    if (!(await this.shouldUseLegacyWarningOnlyRecovery(input))) {
+      return null;
+    }
+
+    const fallbackResult = await this.computeTaskChangesPreferred(input);
+    if (fallbackResult.files.length === 0) {
+      return null;
+    }
+
+    return this.mergeWarningOnlyLedgerRecovery(ledgerResult, fallbackResult);
+  }
+
+  private shouldRecoverWarningOnlyLedgerResult(
+    input: ResolvedTaskChangeComputeInput,
+    ledgerResult: TaskChangeSetV2
+  ): boolean {
+    return (
+      ledgerResult.provenance?.sourceKind === 'ledger' &&
+      ledgerResult.files.length === 0 &&
+      ledgerResult.warnings.some((warning) => warning.trim().length > 0) &&
+      this.hasCompletedTaskWorkInterval(input)
+    );
+  }
+
+  private hasCompletedTaskWorkInterval(input: ResolvedTaskChangeComputeInput): boolean {
+    const intervals = input.effectiveOptions.intervals ?? input.taskMeta?.intervals ?? [];
+    return intervals.some(
+      (interval) =>
+        typeof interval.startedAt === 'string' &&
+        interval.startedAt.trim().length > 0 &&
+        typeof interval.completedAt === 'string' &&
+        interval.completedAt.trim().length > 0
+    );
+  }
+
+  private async shouldUseLegacyWarningOnlyRecovery(
+    input: ResolvedTaskChangeComputeInput
+  ): Promise<boolean> {
+    const providerId = await this.resolveTaskOwnerProviderId(input);
+    return providerId === 'codex';
+  }
+
+  private async resolveTaskOwnerProviderId(
+    input: ResolvedTaskChangeComputeInput
+  ): Promise<string | null> {
+    const owner = (input.effectiveOptions.owner ?? input.taskMeta?.owner ?? '')
+      .trim()
+      .toLowerCase();
+    if (!owner) {
+      return null;
+    }
+
+    try {
+      const config = await this.readConfigForObservation(input.teamName);
+      const member = (config?.members ?? []).find(
+        (candidate) => candidate.name.trim().toLowerCase() === owner
+      );
+      return member?.providerId ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private mergeWarningOnlyLedgerRecovery(
+    warningOnlyLedger: TaskChangeSetV2,
+    recovered: TaskChangeSetV2
+  ): TaskChangeSetV2 {
+    return {
+      ...recovered,
+      warnings: this.mergeTaskChangeWarnings(warningOnlyLedger.warnings, recovered.warnings),
+    };
+  }
+
+  private mergeTaskChangeWarnings(...groups: string[][]): string[] {
+    const warnings = new Set<string>();
+    for (const group of groups) {
+      for (const warning of group) {
+        const trimmed = warning.trim();
+        if (trimmed) warnings.add(trimmed);
+      }
+    }
+    return [...warnings];
   }
 
   private async tryBackfillOpenCodeLedger(

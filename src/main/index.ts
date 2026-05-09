@@ -101,6 +101,7 @@ import { shouldSuppressDesktopNotificationForInboxText } from '@shared/utils/idl
 import { parseInboxJson } from '@shared/utils/inboxNoise';
 import { createLogger } from '@shared/utils/logger';
 import { isTeamInternalControlMessageEnvelope } from '@shared/utils/teamInternalControlMessages';
+import { createHash } from 'crypto';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -248,6 +249,7 @@ if (process.platform === 'win32') {
 
 // --- Team message notification tracking ---
 const teamInboxReader = new TeamInboxReader();
+const teamInboxWriter = new TeamInboxWriter();
 const sentMessagesStore = new TeamSentMessagesStore();
 /** Track last-seen message count per inbox file to detect new messages. */
 const inboxMessageCounts = new Map<string, number>();
@@ -256,8 +258,57 @@ const sentMessageCounts = new Map<string, number>();
 /** Debounce per-inbox to avoid flooding during batch writes. */
 const inboxNotifyTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const INBOX_NOTIFY_DEBOUNCE_MS = 500;
-/** Messages sent from our UI (user_sent) — suppress notifications for these. */
+/** Messages sent from our UI (user_sent) - suppress notifications for these. */
 const suppressedSources = new Set(['user_sent']);
+
+function buildMemberWorkSyncReviewPickupEscalationMessageId(input: {
+  teamName: string;
+  memberName: string;
+  reason: string;
+  reviewRequestEventIds?: readonly string[];
+  taskRefs: readonly { taskId: string; displayId?: string }[];
+}): string {
+  const stableKey = JSON.stringify({
+    teamName: input.teamName,
+    memberName: input.memberName.trim().toLowerCase(),
+    reason: input.reason,
+    reviewRequestEventIds: [...new Set(input.reviewRequestEventIds ?? [])].sort(),
+    taskIds: [...new Set(input.taskRefs.map((taskRef) => taskRef.taskId).filter(Boolean))].sort(),
+  });
+  const digest = createHash('sha256').update(stableKey).digest('hex').slice(0, 20);
+  return `member-work-sync-review-pickup-escalation:${digest}`;
+}
+
+function buildMemberWorkSyncReviewPickupEscalationText(input: {
+  memberName: string;
+  reason: string;
+  diagnostics?: readonly string[];
+  taskRefs: readonly { taskId: string; displayId?: string }[];
+}): string {
+  const taskLines = input.taskRefs.length
+    ? input.taskRefs
+        .map(
+          (taskRef) => `- ${taskRef.displayId ?? taskRef.taskId.slice(0, 8)} (${taskRef.taskId})`
+        )
+        .join('\n')
+    : '- No task refs recorded';
+  const diagnostics = [...new Set(input.diagnostics ?? [])].filter(Boolean);
+  return [
+    'Review pickup still pending in member work-sync.',
+    '',
+    `Reviewer: ${input.memberName}`,
+    `Reason: ${input.reason}`,
+    '',
+    'Tasks:',
+    taskLines,
+    '',
+    'No review_start, review_approve, or review_request_changes was recorded for the current review request after the member correction path.',
+    'Consider reassigning the reviewer or sending a direct instruction.',
+    diagnostics.length ? `Diagnostics: ${diagnostics.join(', ')}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
 
 async function createOpenCodeRuntimeAdapterRegistry(
   reportProgress: (phase: string, message: string) => void = () => undefined
@@ -1550,6 +1601,108 @@ async function initializeServices(): Promise<void> {
           memberName: input.memberName,
           messageId: input.messageId,
           delayMs: input.delayMs,
+        });
+      },
+    },
+    reviewPickupDelivery: {
+      canDeliver: (input) =>
+        input.providerId === 'opencode'
+          ? { ok: true }
+          : {
+              ok: false,
+              reason: `provider_not_supported:${input.providerId ?? 'unknown'}`,
+            },
+      deliver: async (input) => {
+        if (input.providerId !== 'opencode') {
+          return {
+            ok: false,
+            reason: 'capability_absent',
+            message: `provider_not_supported:${input.providerId ?? 'unknown'}`,
+          };
+        }
+
+        const relay = await teamProvisioningService.relayOpenCodeMemberInboxMessages(
+          input.teamName,
+          input.memberName,
+          {
+            onlyMessageId: input.messageId,
+            source: 'member-work-sync-review-pickup',
+            deliveryMetadata: {
+              actionMode: input.payload.actionMode,
+              taskRefs: input.payload.taskRefs,
+            },
+          }
+        );
+        const lastDelivery = relay.lastDelivery;
+        const diagnostics = [...(relay.diagnostics ?? []), ...(lastDelivery?.diagnostics ?? [])];
+        if (lastDelivery?.accepted === true && lastDelivery.responsePending === true) {
+          return {
+            ok: true,
+            state: 'prompt_accepted',
+            messageId: input.messageId,
+            diagnostics,
+          };
+        }
+        if (lastDelivery?.delivered && lastDelivery.accepted !== false) {
+          return {
+            ok: true,
+            state: lastDelivery.responsePending ? 'prompt_accepted' : 'response_proven',
+            messageId: input.messageId,
+            diagnostics,
+          };
+        }
+        if (
+          lastDelivery?.reason === 'recipient_is_not_opencode' ||
+          lastDelivery?.reason === 'recipient_removed' ||
+          lastDelivery?.reason === 'opencode_recipient_unavailable'
+        ) {
+          return {
+            ok: false,
+            reason: 'capability_absent',
+            message: lastDelivery.reason,
+            diagnostics,
+          };
+        }
+        if (lastDelivery?.ledgerStatus === 'failed_terminal') {
+          return {
+            ok: false,
+            reason: 'terminal_failure',
+            message: lastDelivery.reason ?? 'opencode_review_pickup_delivery_failed_terminal',
+            diagnostics,
+          };
+        }
+        return {
+          ok: false,
+          reason: 'retryable_failure',
+          message: lastDelivery?.reason ?? 'opencode_review_pickup_delivery_not_confirmed',
+          diagnostics,
+        };
+      },
+    },
+    reviewPickupEscalation: {
+      escalate: async (input) => {
+        const leadName = (await teamDataService.getLeadMemberName(input.teamName)) ?? 'team-lead';
+        const messageId = buildMemberWorkSyncReviewPickupEscalationMessageId(input);
+        const existing = await teamInboxReader.getMessagesFor(input.teamName, leadName);
+        if (existing.some((message) => message.messageId === messageId)) {
+          return;
+        }
+
+        await teamInboxWriter.sendMessage(input.teamName, {
+          member: leadName,
+          from: 'system',
+          to: leadName,
+          messageId,
+          timestamp: input.nowIso,
+          summary: 'Review pickup still pending',
+          text: buildMemberWorkSyncReviewPickupEscalationText(input),
+          taskRefs: input.taskRefs.map((taskRef) => ({
+            taskId: taskRef.taskId,
+            displayId: taskRef.displayId ?? taskRef.taskId.slice(0, 8),
+            teamName: taskRef.teamName ?? input.teamName,
+          })),
+          actionMode: 'do',
+          source: 'system_notification',
         });
       },
     },

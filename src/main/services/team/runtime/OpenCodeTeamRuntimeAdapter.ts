@@ -28,6 +28,7 @@ import type {
 } from './TeamRuntimeAdapter';
 import type {
   AgentActionMode,
+  InboxMessage,
   InboxMessageKind,
   OpenCodeAppManagedBootstrapCandidate,
   TaskRef,
@@ -65,6 +66,8 @@ export interface OpenCodeTeamRuntimeMessageInput {
   replyRecipient?: string;
   actionMode?: AgentActionMode;
   messageKind?: InboxMessageKind;
+  workSyncIntent?: InboxMessage['workSyncIntent'];
+  workSyncReviewRequestEventIds?: string[];
   taskRefs?: TaskRef[];
   bootstrapCheckinRetry?: {
     runtimeSessionId: string;
@@ -900,10 +903,15 @@ function buildOpenCodeRuntimeMessageText(input: OpenCodeTeamRuntimeMessageInput)
           memberName: input.memberName,
           inboundMessageId: input.messageId,
           ...(input.messageKind ? { messageKind: input.messageKind } : {}),
+          ...(input.workSyncIntent ? { workSyncIntent: input.workSyncIntent } : {}),
+          ...(input.workSyncReviewRequestEventIds?.length
+            ? { workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds }
+            : {}),
           taskRefs: input.taskRefs,
         })
       : null;
   const isWorkSyncNudge = input.messageKind === 'member_work_sync_nudge';
+  const isReviewPickupNudge = isWorkSyncNudge && input.workSyncIntent === 'review_pickup';
   const taskIds =
     input.taskRefs
       ?.map((ref) => ref.taskId?.trim())
@@ -912,33 +920,44 @@ function buildOpenCodeRuntimeMessageText(input: OpenCodeTeamRuntimeMessageInput)
   // message_send reply here causes false delivery failures, so accept the
   // dedicated member_work_sync_report proof path while keeping normal user
   // messages on the visible reply contract.
-  const responseInstructions = isWorkSyncNudge
+  const responseInstructions = isReviewPickupNudge
     ? [
-        'This delivered app message is a member-work-sync nudge.',
-        'A visible agent-teams_message_send reply is optional. Concrete task progress or agent-teams_member_work_sync_report (or mcp__agent-teams__member_work_sync_report) is sufficient response proof.',
-        `Call agent-teams_member_work_sync_status (or mcp__agent-teams__member_work_sync_status) with teamName="${input.teamName}" and memberName="${input.memberName}".`,
-        `Then call agent-teams_member_work_sync_report (or mcp__agent-teams__member_work_sync_report) with teamName="${input.teamName}", memberName="${input.memberName}", the returned agendaFingerprint/reportToken, and state "still_working" or "blocked".`,
-        taskIds.length
-          ? `When reporting, include taskIds: ${taskIds.map((id) => `"${id}"`).join(', ')}.`
-          : null,
+        'This delivered app message is a targeted member-work-sync review pickup nudge.',
+        'Process the current review request now if it is still assigned to you. Open the task, verify reviewState/status, then use the review workflow tools to start or continue the review.',
+        'Do not mark the review complete from this prompt alone.',
+        'A visible agent-teams_message_send reply is optional. Concrete review progress, review tool usage, or agent-teams_member_work_sync_report (or mcp__agent-teams__member_work_sync_report) is sufficient response proof.',
+        `If you cannot pick up the review now, call agent-teams_member_work_sync_status (or mcp__agent-teams__member_work_sync_status) with teamName="${input.teamName}" and memberName="${input.memberName}", then report state "blocked" or "still_working" only for the real current state.`,
+        taskIds.length ? `Relevant taskIds: ${taskIds.map((id) => `"${id}"`).join(', ')}.` : null,
         `Do not use provider names, runtime names, or team names as memberName; use exactly "${input.memberName}".`,
         'Do not reply only with acknowledgement.',
       ]
-    : [
-        'To make your reply visible in the app Messages UI, call MCP tool agent-teams_message_send (or mcp__agent-teams__message_send if that is the exposed name).',
-        `Use teamName="${input.teamName}", to="${replyRecipient}", from="${input.memberName}", text, and summary.`,
-        'Include source="runtime_delivery" in that message_send call.',
-        input.messageId
-          ? `Include relayOfMessageId="${input.messageId}" in that message_send call.`
-          : null,
-        input.taskRefs?.length
-          ? `If taskRefs are present in <opencode_delivery_context>, include taskRefs exactly as provided in that message_send call: ${JSON.stringify(input.taskRefs)}.`
-          : null,
-        'If message_send returns an unavailable, not connected, or missing-tool error, write the exact concise reply as plain assistant text once, then stop.',
-        'After the message_send tool call succeeds, stop immediately. Do not send follow-up confirmations or repeat the same answer.',
-        'You must not end this turn empty.',
-        'Do not answer only with plain assistant text when agent-teams_message_send is available.',
-      ];
+    : isWorkSyncNudge
+      ? [
+          'This delivered app message is a member-work-sync nudge.',
+          'A visible agent-teams_message_send reply is optional. Concrete task progress or agent-teams_member_work_sync_report (or mcp__agent-teams__member_work_sync_report) is sufficient response proof.',
+          `Call agent-teams_member_work_sync_status (or mcp__agent-teams__member_work_sync_status) with teamName="${input.teamName}" and memberName="${input.memberName}".`,
+          `Then call agent-teams_member_work_sync_report (or mcp__agent-teams__member_work_sync_report) with teamName="${input.teamName}", memberName="${input.memberName}", the returned agendaFingerprint/reportToken, and state "still_working" or "blocked".`,
+          taskIds.length
+            ? `When reporting, include taskIds: ${taskIds.map((id) => `"${id}"`).join(', ')}.`
+            : null,
+          `Do not use provider names, runtime names, or team names as memberName; use exactly "${input.memberName}".`,
+          'Do not reply only with acknowledgement.',
+        ]
+      : [
+          'To make your reply visible in the app Messages UI, call MCP tool agent-teams_message_send (or mcp__agent-teams__message_send if that is the exposed name).',
+          `Use teamName="${input.teamName}", to="${replyRecipient}", from="${input.memberName}", text, and summary.`,
+          'Include source="runtime_delivery" in that message_send call.',
+          input.messageId
+            ? `Include relayOfMessageId="${input.messageId}" in that message_send call.`
+            : null,
+          input.taskRefs?.length
+            ? `If taskRefs are present in <opencode_delivery_context>, include taskRefs exactly as provided in that message_send call: ${JSON.stringify(input.taskRefs)}.`
+            : null,
+          'If message_send returns an unavailable, not connected, or missing-tool error, write the exact concise reply as plain assistant text once, then stop.',
+          'After the message_send tool call succeeds, stop immediately. Do not send follow-up confirmations or repeat the same answer.',
+          'You must not end this turn empty.',
+          'Do not answer only with plain assistant text when agent-teams_message_send is available.',
+        ];
 
   return [
     '<opencode_app_message_delivery>',

@@ -1130,7 +1130,10 @@ describe('agent-teams-controller API', () => {
       commentId: 'comment-123',
       relayOfMessageId: 'm-original-1',
       source: 'system_notification',
-      messageKind: 'task_comment_notification',
+      messageKind: 'member_work_sync_nudge',
+      workSyncIntent: 'review_pickup',
+      workSyncIntentKey: 'review-pickup:evt-1',
+      workSyncReviewRequestEventIds: ['evt-1'],
       leadSessionId: 'session-42',
       attachments: [{ id: 'a1', filename: 'note.txt', mimeType: 'text/plain', size: 7 }],
     });
@@ -1142,7 +1145,10 @@ describe('agent-teams-controller API', () => {
     const rows = JSON.parse(fs.readFileSync(inboxPath, 'utf8'));
     expect(rows).toHaveLength(1);
     expect(rows[0].source).toBe('system_notification');
-    expect(rows[0].messageKind).toBe('task_comment_notification');
+    expect(rows[0].messageKind).toBe('member_work_sync_nudge');
+    expect(rows[0].workSyncIntent).toBe('review_pickup');
+    expect(rows[0].workSyncIntentKey).toBe('review-pickup:evt-1');
+    expect(rows[0].workSyncReviewRequestEventIds).toEqual(['evt-1']);
     expect(rows[0].commentId).toBe('comment-123');
     expect(rows[0].relayOfMessageId).toBe('m-original-1');
     expect(rows[0].leadSessionId).toBe('session-42');

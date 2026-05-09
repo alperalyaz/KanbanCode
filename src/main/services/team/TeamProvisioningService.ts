@@ -1,11 +1,11 @@
 import {
+  AgentAttachmentError,
   buildClaudeAttachmentDeliveryParts,
   buildCodexNativeAttachmentDeliveryParts,
   buildOpenCodeAttachmentDeliveryParts,
   type CodexNativeImageArgPart,
   type OpenCodeFilePart,
 } from '@features/agent-attachments/main';
-import { AgentAttachmentError } from '@features/agent-attachments/core/domain';
 import {
   resolveAnthropicFastMode,
   resolveAnthropicRuntimeSelection,
@@ -74,9 +74,9 @@ import {
 } from '@shared/constants/crossTeam';
 import { getMemberColorByName } from '@shared/constants/memberColors';
 import {
-  DEFAULT_TOOL_APPROVAL_SETTINGS,
   type AttachmentMeta,
   type AttachmentPayload,
+  DEFAULT_TOOL_APPROVAL_SETTINGS,
 } from '@shared/types/team';
 import { resolveLanguageName } from '@shared/utils/agentLanguage';
 import { resolveAnthropicLaunchModel } from '@shared/utils/anthropicLaunchModel';
@@ -203,8 +203,8 @@ import {
   decideOpenCodeRuntimeDeliveryAdvisory,
   isDeferredGenericOpenCodeRuntimeDeliveryReason,
   isPotentialOpenCodeRuntimeDeliveryError,
-  toOpenCodeRuntimeDeliveryUserVisibleImpact,
   type OpenCodeRuntimeDeliveryAdvisoryDecision,
+  toOpenCodeRuntimeDeliveryUserVisibleImpact,
 } from './opencode/delivery/OpenCodeRuntimeDeliveryAdvisoryPolicy';
 import { selectOpenCodeRuntimeDeliveryReason } from './opencode/delivery/OpenCodeRuntimeDeliveryDiagnostics';
 import {
@@ -285,6 +285,7 @@ import {
   buildDesktopTeammateModeCliArgs,
   resolveDesktopTeammateModeDecision,
 } from './runtimeTeammateMode';
+import { TeamAttachmentStore } from './TeamAttachmentStore';
 import {
   choosePreferredLaunchSnapshot,
   clearBootstrapState,
@@ -293,9 +294,9 @@ import {
   readBootstrapRuntimeState,
 } from './TeamBootstrapStateReader';
 import { TeamConfigReader } from './TeamConfigReader';
-import { TeamAttachmentStore } from './TeamAttachmentStore';
 import { TeamInboxReader } from './TeamInboxReader';
 import { TeamInboxWriter } from './TeamInboxWriter';
+import { writeTeamLaunchFailureArtifactPack } from './TeamLaunchFailureArtifactPack';
 import {
   createPersistedLaunchSnapshot,
   deriveTeamLaunchAggregateState,
@@ -304,7 +305,6 @@ import {
   snapshotFromRuntimeMemberStatuses,
   snapshotToMemberSpawnStatuses,
 } from './TeamLaunchStateEvaluator';
-import { writeTeamLaunchFailureArtifactPack } from './TeamLaunchFailureArtifactPack';
 import { TeamLaunchStateStore } from './TeamLaunchStateStore';
 import { TeamMcpConfigBuilder } from './TeamMcpConfigBuilder';
 import { TeamMemberLogsFinder } from './TeamMemberLogsFinder';
@@ -5406,7 +5406,7 @@ interface LiveInboxRelayResult {
 
 interface OpenCodeMemberInboxRelayOptions {
   onlyMessageId?: string;
-  source?: 'watcher' | 'ui-send' | 'manual' | 'watchdog';
+  source?: 'watcher' | 'ui-send' | 'manual' | 'watchdog' | 'member-work-sync-review-pickup';
   deliveryMetadata?: {
     replyRecipient?: string;
     actionMode?: AgentActionMode;
@@ -6967,7 +6967,10 @@ export class TeamProvisioningService {
       const normalized = this.normalizeOpenCodeObservedToolName(toolName);
       if (
         ledgerRecord?.messageKind === 'member_work_sync_nudge' &&
-        normalized === 'member_work_sync_report'
+        (normalized === 'member_work_sync_report' ||
+          normalized === 'review_start' ||
+          normalized === 'review_approve' ||
+          normalized === 'review_request_changes')
       ) {
         return true;
       }
@@ -7195,6 +7198,7 @@ export class TeamProvisioningService {
       inboxMessageId: record.inboxMessageId,
       replyRecipient: record.replyRecipient,
       messageKind: record.messageKind,
+      workSyncIntent: record.workSyncIntent,
       actionMode: record.actionMode,
       taskRefs: record.taskRefs,
       status: record.status,
@@ -7875,6 +7879,8 @@ export class TeamProvisioningService {
     replyRecipient?: string | null;
     actionMode?: AgentActionMode;
     messageKind?: OpenCodeTeamRuntimeMessageInput['messageKind'];
+    workSyncIntent?: OpenCodeTeamRuntimeMessageInput['workSyncIntent'];
+    workSyncReviewRequestEventIds?: string[];
     taskRefs?: TaskRef[];
     promptAccepted: boolean;
     visibleReply?: OpenCodeVisibleReplyProof | null;
@@ -7922,6 +7928,8 @@ export class TeamProvisioningService {
           replyRecipient: input.replyRecipient ?? undefined,
           actionMode: input.actionMode,
           messageKind: input.messageKind,
+          workSyncIntent: input.workSyncIntent,
+          workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
           taskRefs: input.taskRefs,
           prePromptCursor: ledgerRecord.prePromptCursor,
         });
@@ -8424,34 +8432,43 @@ export class TeamProvisioningService {
   }> {
     const memberKey = record.memberName.trim().toLowerCase();
     let recordsForMember: OpenCodePromptDeliveryLedgerRecord[] = [record];
+    let ledgerReadSucceeded = false;
     try {
       const laneRecords = await this.createOpenCodePromptDeliveryLedger(
         record.teamName,
         record.laneId
       ).list();
+      ledgerReadSucceeded = true;
       recordsForMember = laneRecords.filter(
         (candidate) => candidate.memberName.trim().toLowerCase() === memberKey
       );
     } catch {
       recordsForMember = [record];
     }
-    const latestRecord = recordsForMember.find((candidate) => candidate.id === record.id) ?? record;
+    const latestRecord = recordsForMember.find((candidate) => candidate.id === record.id) ?? null;
+    if (!latestRecord && ledgerReadSucceeded) {
+      return {
+        record,
+        decision: { action: 'suppress' },
+      };
+    }
+    const recordForDecision = latestRecord ?? record;
     const recordsByMember = new Map<string, readonly OpenCodePromptDeliveryLedgerRecord[]>([
-      [memberKey, recordsForMember.length > 0 ? recordsForMember : [latestRecord]],
+      [memberKey, recordsForMember.length > 0 ? recordsForMember : [recordForDecision]],
     ]);
     const activeMemberKeys = new Set([memberKey]);
     const proofIndex = await this.openCodeRuntimeDeliveryProofReader
       .readProofIndex({
-        teamName: latestRecord.teamName,
+        teamName: recordForDecision.teamName,
         activeMemberKeys,
         recordsByMember,
       })
       .catch(() => null);
     return {
-      record: latestRecord,
+      record: recordForDecision,
       decision: decideOpenCodeRuntimeDeliveryAdvisory({
-        record: latestRecord,
-        proof: proofIndex?.getSnapshot(latestRecord.memberName, latestRecord),
+        record: recordForDecision,
+        proof: proofIndex?.getSnapshot(recordForDecision.memberName, recordForDecision),
       }),
     };
   }
@@ -8592,13 +8609,14 @@ export class TeamProvisioningService {
       selectOpenCodeRuntimeDeliveryReason(record) ??
       record.responseState ??
       record.status;
+    const action = decision ? `${decision.action}:${decision.severity ?? 'none'}` : 'record:none';
     const normalized = reason
       .toLowerCase()
       .replace(/https?:\/\/\S+/g, '')
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, 96);
-    return normalized || 'unknown';
+    return `${action}:${normalized || 'unknown'}`;
   }
 
   private scheduleOpenCodeRuntimeDeliveryAdvisoryReview(
@@ -8773,6 +8791,7 @@ export class TeamProvisioningService {
             replyRecipient,
             actionMode: message.actionMode ?? null,
             messageKind: message.messageKind ?? null,
+            workSyncIntent: message.workSyncIntent ?? null,
             taskRefs: message.taskRefs ?? [],
             payloadHash: hashOpenCodePromptDeliveryPayload({
               text: message.text,
@@ -8817,6 +8836,8 @@ export class TeamProvisioningService {
       replyRecipient?: string;
       actionMode?: AgentActionMode;
       messageKind?: InboxMessage['messageKind'];
+      workSyncIntent?: InboxMessage['workSyncIntent'];
+      workSyncReviewRequestEventIds?: string[];
       taskRefs?: TaskRef[];
       attachments?: AttachmentPayload[];
       source?: OpenCodeMemberInboxRelayOptions['source'];
@@ -9042,6 +9063,8 @@ export class TeamProvisioningService {
         replyRecipient: input.replyRecipient,
         actionMode: input.actionMode,
         messageKind: input.messageKind,
+        workSyncIntent: input.workSyncIntent,
+        workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
         taskRefs: input.taskRefs,
       });
       await this.rememberOpenCodeRuntimePidFromBridge({
@@ -9149,6 +9172,7 @@ export class TeamProvisioningService {
           replyRecipient: input.replyRecipient ?? 'user',
           actionMode: input.actionMode ?? null,
           messageKind: input.messageKind ?? null,
+          workSyncIntent: input.workSyncIntent ?? null,
           taskRefs: input.taskRefs ?? [],
           payloadHash: hashOpenCodePromptDeliveryPayload({
             text: input.text,
@@ -9288,6 +9312,8 @@ export class TeamProvisioningService {
           replyRecipient: input.replyRecipient,
           actionMode: input.actionMode,
           messageKind: input.messageKind,
+          workSyncIntent: input.workSyncIntent,
+          workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
           taskRefs: input.taskRefs,
           prePromptCursor: ledgerRecord.prePromptCursor,
         });
@@ -9439,6 +9465,8 @@ export class TeamProvisioningService {
       replyRecipient: input.replyRecipient,
       actionMode: input.actionMode,
       messageKind: input.messageKind,
+      workSyncIntent: input.workSyncIntent,
+      workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
       taskRefs: input.taskRefs,
     });
     await this.rememberOpenCodeRuntimePidFromBridge({
@@ -9497,6 +9525,8 @@ export class TeamProvisioningService {
         replyRecipient: input.replyRecipient,
         actionMode: input.actionMode,
         messageKind: input.messageKind,
+        workSyncIntent: input.workSyncIntent,
+        workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
         taskRefs: input.taskRefs,
         promptAccepted,
         visibleReply: proof.visibleReply,
@@ -11019,6 +11049,9 @@ export class TeamProvisioningService {
         toolSummary: message.toolSummary,
         toolCalls: message.toolCalls,
         messageKind: message.messageKind,
+        workSyncIntent: message.workSyncIntent,
+        workSyncIntentKey: message.workSyncIntentKey,
+        workSyncReviewRequestEventIds: message.workSyncReviewRequestEventIds,
         slashCommand: message.slashCommand,
         commandOutput: message.commandOutput,
       });
@@ -11050,6 +11083,9 @@ export class TeamProvisioningService {
         toolSummary: message.toolSummary,
         toolCalls: message.toolCalls,
         messageKind: message.messageKind,
+        workSyncIntent: message.workSyncIntent,
+        workSyncIntentKey: message.workSyncIntentKey,
+        workSyncReviewRequestEventIds: message.workSyncReviewRequestEventIds,
         slashCommand: message.slashCommand,
         commandOutput: message.commandOutput,
       });
@@ -21278,6 +21314,7 @@ export class TeamProvisioningService {
                 replyRecipient: effectiveReplyRecipient,
                 actionMode: effectiveActionMode ?? null,
                 messageKind: message.messageKind ?? null,
+                workSyncIntent: message.workSyncIntent ?? null,
                 taskRefs: effectiveTaskRefs,
                 payloadHash: hashOpenCodePromptDeliveryPayload({
                   text: message.text,
@@ -21332,6 +21369,8 @@ export class TeamProvisioningService {
           replyRecipient: effectiveReplyRecipient,
           actionMode: effectiveActionMode ?? undefined,
           messageKind: message.messageKind,
+          workSyncIntent: message.workSyncIntent,
+          workSyncReviewRequestEventIds: message.workSyncReviewRequestEventIds,
           taskRefs: effectiveTaskRefs,
           attachments: attachmentPayloads.attachments,
           source: effectiveSource,

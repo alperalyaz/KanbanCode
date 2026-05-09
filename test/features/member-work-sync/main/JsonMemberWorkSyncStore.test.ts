@@ -46,13 +46,16 @@ function makeStatus(overrides: Partial<MemberWorkSyncStatus>): MemberWorkSyncSta
   };
 }
 
-function makeNudgePayload(overrides: Partial<MemberWorkSyncNudgePayload> = {}): MemberWorkSyncNudgePayload {
+function makeNudgePayload(
+  overrides: Partial<MemberWorkSyncNudgePayload> = {}
+): MemberWorkSyncNudgePayload {
   return {
     from: 'system',
     to: 'bob',
     messageKind: 'member_work_sync_nudge',
     source: 'member-work-sync',
     actionMode: 'do',
+    workSyncIntent: 'agenda_sync',
     text: 'Work sync check: continue the current task or report a blocker.',
     taskRefs: [{ teamName: 'team-a', taskId: 'task-1', displayId: '11111111' }],
     ...overrides,
@@ -129,7 +132,9 @@ describe('JsonMemberWorkSyncStore', () => {
   });
 
   it('prefers member-scoped v2 status over legacy v1 status', async () => {
-    await store.write(makeStatus({ state: 'caught_up', agenda: { ...makeStatus({}).agenda, items: [] } }));
+    await store.write(
+      makeStatus({ state: 'caught_up', agenda: { ...makeStatus({}).agenda, items: [] } })
+    );
 
     const legacyStatusPath = join(root, 'team-a', '.member-work-sync', 'status.json');
     await mkdir(join(root, 'team-a', '.member-work-sync'), { recursive: true });
@@ -252,9 +257,9 @@ describe('JsonMemberWorkSyncStore', () => {
         'utf8'
       )
     );
-    expect(Object.values(repaired.items).map((item) => (item as { memberName: string }).memberName)).toEqual([
-      'tom',
-    ]);
+    expect(
+      Object.values(repaired.items).map((item) => (item as { memberName: string }).memberName)
+    ).toEqual(['tom']);
   });
 
   it('repairs a partially missing pending-report index route from member-scoped report files', async () => {
@@ -491,7 +496,10 @@ describe('JsonMemberWorkSyncStore', () => {
       attemptGeneration: 2,
     });
     const index = JSON.parse(
-      await readFile(join(root, 'team-a', '.member-work-sync', 'indexes', 'outbox-index.json'), 'utf8')
+      await readFile(
+        join(root, 'team-a', '.member-work-sync', 'indexes', 'outbox-index.json'),
+        'utf8'
+      )
     );
     expect(index.items[input.id]).toMatchObject({
       memberName: 'bob',
@@ -635,6 +643,107 @@ describe('JsonMemberWorkSyncStore', () => {
     expect(repaired.items[bobInput.id]).toMatchObject({ memberName: 'bob', status: 'delivered' });
   });
 
+  it('finds delivered review pickup request event ids from member-scoped outbox files', async () => {
+    const input = {
+      id: 'member-work-sync:team-a:bob:review-pickup:evt-a+evt-b',
+      teamName: 'team-a',
+      memberName: 'bob',
+      agendaFingerprint: 'agenda:v1:review',
+      payloadHash: 'hash-review',
+      payload: makeNudgePayload({
+        workSyncIntent: 'review_pickup',
+        workSyncIntentKey: 'review-pickup:evt-a+evt-b',
+        workSyncReviewRequestEventIds: ['evt-a', 'evt-b'],
+      }),
+      nowIso: '2026-04-29T00:00:00.000Z',
+    };
+    await store.ensurePending(input);
+    const [claimed] = await store.claimDue({
+      teamName: 'team-a',
+      claimedBy: 'dispatcher-a',
+      nowIso: '2026-04-29T00:01:00.000Z',
+      limit: 1,
+    });
+    await store.markDelivered({
+      teamName: 'team-a',
+      id: input.id,
+      attemptGeneration: claimed.attemptGeneration,
+      deliveredMessageId: 'message-1',
+      deliveryState: 'prompt_accepted',
+      nowIso: '2026-04-29T00:02:00.000Z',
+    });
+
+    await expect(
+      store.findDeliveredReviewPickupRequestEventIds({
+        teamName: 'team-a',
+        memberName: 'bob',
+        reviewRequestEventIds: ['evt-b', 'evt-c'],
+      })
+    ).resolves.toEqual(['evt-b']);
+  });
+
+  it('revives a claimed review pickup outbox item when only the payload text changed', async () => {
+    const input = {
+      id: 'member-work-sync:team-a:bob:review-pickup:evt-a',
+      teamName: 'team-a',
+      memberName: 'bob',
+      agendaFingerprint: 'agenda:v1:review-a',
+      payloadHash: 'hash-review-a',
+      payload: makeNudgePayload({
+        workSyncIntent: 'review_pickup',
+        workSyncIntentKey: 'review-pickup:evt-a',
+        workSyncReviewRequestEventIds: ['evt-a'],
+        text: 'Review pickup required: old subject',
+      }),
+      nowIso: '2026-04-29T00:00:00.000Z',
+    };
+    await store.ensurePending(input);
+    const [claimed] = await store.claimDue({
+      teamName: 'team-a',
+      claimedBy: 'dispatcher-a',
+      nowIso: '2026-04-29T00:01:00.000Z',
+      limit: 1,
+    });
+    expect(claimed.status).toBe('claimed');
+
+    const result = await store.ensurePending({
+      ...input,
+      agendaFingerprint: 'agenda:v1:review-b',
+      payloadHash: 'hash-review-b',
+      payload: {
+        ...input.payload,
+        text: 'Review pickup required: renamed subject',
+      },
+      nowIso: '2026-04-29T00:02:00.000Z',
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      outcome: 'existing',
+      item: {
+        status: 'pending',
+        agendaFingerprint: 'agenda:v1:review-b',
+        payloadHash: 'hash-review-b',
+        payload: {
+          workSyncIntent: 'review_pickup',
+          workSyncIntentKey: 'review-pickup:evt-a',
+          text: 'Review pickup required: renamed subject',
+        },
+      },
+    });
+    const [reclaimed] = await store.claimDue({
+      teamName: 'team-a',
+      claimedBy: 'dispatcher-b',
+      nowIso: '2026-04-29T00:03:00.000Z',
+      limit: 1,
+    });
+    expect(reclaimed).toMatchObject({
+      id: input.id,
+      payloadHash: 'hash-review-b',
+      payload: { text: 'Review pickup required: renamed subject' },
+    });
+  });
+
   it('repairs stale due outbox index routes before persisting claim results', async () => {
     const bobInput = {
       id: 'member-work-sync:team-a:bob:agenda:v1:abc',
@@ -667,11 +776,14 @@ describe('JsonMemberWorkSyncStore', () => {
     });
     expect(claimed.map((item) => item.memberName)).toEqual(['tom']);
     const repaired = JSON.parse(
-      await readFile(join(root, 'team-a', '.member-work-sync', 'indexes', 'outbox-index.json'), 'utf8')
+      await readFile(
+        join(root, 'team-a', '.member-work-sync', 'indexes', 'outbox-index.json'),
+        'utf8'
+      )
     );
-    expect(Object.values(repaired.items).map((item) => (item as { memberName: string }).memberName)).toEqual([
-      'tom',
-    ]);
+    expect(
+      Object.values(repaired.items).map((item) => (item as { memberName: string }).memberName)
+    ).toEqual(['tom']);
   });
 
   it('repairs partially missing due outbox index routes before claiming', async () => {
@@ -755,8 +867,9 @@ describe('JsonMemberWorkSyncStore', () => {
     });
     expect(claimed).toHaveLength(1);
     expect(
-      JSON.parse(await readFile(join(memberWorkSyncDir(root, 'team-a', 'bob'), 'outbox.json'), 'utf8'))
-        .items[input.id]
+      JSON.parse(
+        await readFile(join(memberWorkSyncDir(root, 'team-a', 'bob'), 'outbox.json'), 'utf8')
+      ).items[input.id]
     ).toMatchObject({ status: 'claimed' });
     expect(auditEvents.map((event) => `${event.event}:${event.reason}`)).toEqual(
       expect.arrayContaining([

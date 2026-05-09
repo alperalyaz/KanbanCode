@@ -72,6 +72,11 @@ export class TeamInboxWriter {
       ...(request.toolSummary && { toolSummary: request.toolSummary }),
       ...(request.toolCalls && { toolCalls: request.toolCalls }),
       ...(request.messageKind && { messageKind: request.messageKind }),
+      ...(request.workSyncIntent && { workSyncIntent: request.workSyncIntent }),
+      ...(request.workSyncIntentKey && { workSyncIntentKey: request.workSyncIntentKey }),
+      ...(request.workSyncReviewRequestEventIds?.length
+        ? { workSyncReviewRequestEventIds: request.workSyncReviewRequestEventIds }
+        : {}),
       ...(request.slashCommand && { slashCommand: request.slashCommand }),
       ...(request.commandOutput && { commandOutput: request.commandOutput }),
     };

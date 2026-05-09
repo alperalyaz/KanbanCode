@@ -252,6 +252,30 @@ function canClaimOutboxItem(item: MemberWorkSyncOutboxItem, nowIso: string): boo
   return item.nextAttemptAt <= nowIso;
 }
 
+function getReviewPickupIntentKey(item: Pick<MemberWorkSyncOutboxItem, 'payload'>): string | null {
+  if (item.payload.workSyncIntent !== 'review_pickup') {
+    return null;
+  }
+  const explicit = item.payload.workSyncIntentKey?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  const requestEventIds = [...new Set(item.payload.workSyncReviewRequestEventIds ?? [])]
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .sort();
+  return requestEventIds.length > 0 ? `review-pickup:${requestEventIds.join('+')}` : null;
+}
+
+function isSameReviewPickupIntent(
+  current: MemberWorkSyncOutboxItem,
+  input: MemberWorkSyncOutboxEnsureInput
+): boolean {
+  const currentIntentKey = getReviewPickupIntentKey(current);
+  const inputIntentKey = getReviewPickupIntentKey({ payload: input.payload });
+  return Boolean(currentIntentKey && inputIntentKey && currentIntentKey === inputIntentKey);
+}
+
 function getDueOutboxRoutes(
   index: OutboxIndexFile,
   nowIso: string,
@@ -697,6 +721,30 @@ export class JsonMemberWorkSyncStore
             const current = outbox.items[input.id];
             if (current) {
               if (current.payloadHash !== input.payloadHash) {
+                if (isSameReviewPickupIntent(current, input) && !isOutboxTerminal(current.status)) {
+                  const next: MemberWorkSyncOutboxItem = {
+                    ...current,
+                    agendaFingerprint: input.agendaFingerprint,
+                    payloadHash: input.payloadHash,
+                    payload: input.payload,
+                    status: 'pending',
+                    updatedAt: input.nowIso,
+                  };
+                  const nextAttemptAt = input.nextAttemptAt ?? current.nextAttemptAt;
+                  if (nextAttemptAt) {
+                    next.nextAttemptAt = nextAttemptAt;
+                  } else {
+                    delete next.nextAttemptAt;
+                  }
+                  delete next.claimedBy;
+                  delete next.claimedAt;
+                  delete next.lastError;
+                  outbox.items[input.id] = next;
+                  await this.writeMemberOutboxFile(input.teamName, input.memberName, outbox);
+                  await this.upsertOutboxIndexItem(input.teamName, next, memberKey);
+                  result = { ok: true, outcome: 'existing', item: next };
+                  return;
+                }
                 result = {
                   ok: false,
                   outcome: 'payload_conflict',
@@ -828,6 +876,10 @@ export class JsonMemberWorkSyncStore
         ...current,
         status: 'delivered',
         deliveredMessageId: input.deliveredMessageId,
+        ...(input.deliveryState ? { deliveryState: input.deliveryState } : {}),
+        ...(input.deliveryDiagnostics?.length
+          ? { deliveryDiagnostics: input.deliveryDiagnostics }
+          : {}),
         updatedAt: input.nowIso,
       };
       delete next.lastError;
@@ -900,6 +952,32 @@ export class JsonMemberWorkSyncStore
       });
     }
     return Math.max(indexedCount, memberFileCount);
+  }
+
+  async findDeliveredReviewPickupRequestEventIds(input: {
+    teamName: string;
+    memberName: string;
+    reviewRequestEventIds: string[];
+  }): Promise<string[]> {
+    const requested = new Set(input.reviewRequestEventIds.map((id) => id.trim()).filter(Boolean));
+    if (requested.size === 0) {
+      return [];
+    }
+
+    const memberOutbox = await this.readMemberOutboxFile(input.teamName, input.memberName);
+    const delivered = new Set<string>();
+    for (const item of Object.values(memberOutbox.items)) {
+      if (item.status !== 'delivered' || item.payload.workSyncIntent !== 'review_pickup') {
+        continue;
+      }
+      for (const eventId of item.payload.workSyncReviewRequestEventIds ?? []) {
+        const normalized = eventId.trim();
+        if (requested.has(normalized)) {
+          delivered.add(normalized);
+        }
+      }
+    }
+    return [...delivered].sort();
   }
 
   private async readLegacyStatusFile(teamName: string): Promise<LegacyStatusFile> {

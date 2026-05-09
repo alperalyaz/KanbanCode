@@ -173,6 +173,9 @@ export function shouldClearPendingReplyForOpenCodeRuntimeDelivery(
     return false;
   }
   const userVisibleState = runtimeDelivery.userVisibleImpact?.state;
+  if (userVisibleState === 'none') {
+    return true;
+  }
   if (userVisibleState === 'warning' || userVisibleState === 'error') {
     return true;
   }

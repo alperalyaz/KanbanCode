@@ -148,6 +148,17 @@ export class TeamInboxReader {
             : row.messageKind === 'default'
               ? 'default'
               : undefined,
+        workSyncIntent:
+          row.workSyncIntent === 'agenda_sync' || row.workSyncIntent === 'review_pickup'
+            ? row.workSyncIntent
+            : undefined,
+        workSyncIntentKey:
+          typeof row.workSyncIntentKey === 'string' ? row.workSyncIntentKey : undefined,
+        workSyncReviewRequestEventIds: Array.isArray(row.workSyncReviewRequestEventIds)
+          ? row.workSyncReviewRequestEventIds.filter(
+              (id): id is string => typeof id === 'string' && id.length > 0
+            )
+          : undefined,
         slashCommand:
           row.slashCommand &&
           typeof row.slashCommand === 'object' &&

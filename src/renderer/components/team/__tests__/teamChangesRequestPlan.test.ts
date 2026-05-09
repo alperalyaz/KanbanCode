@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildTeamChangeRequestPlan,
   buildTeamChangesTasksFingerprint,
+  TEAM_CHANGES_MAX_REQUESTS,
   TEAM_CHANGES_UNKNOWN_SCAN_LIMIT,
 } from '../teamChangesRequestPlan';
 
@@ -47,6 +48,41 @@ describe('buildTeamChangeRequestPlan', () => {
 
     expect(plan.requests.map((request) => request.taskId)).toEqual(['known-changed']);
     expect(plan.eligibleTaskIds.has('known-changed')).toBe(true);
+  });
+
+  it('skips deleted and duplicate tasks before counting candidates', () => {
+    const plan = buildTeamChangeRequestPlan(
+      [
+        task({ id: 'changed', status: 'completed', changePresence: 'has_changes' }),
+        task({ id: 'changed', status: 'completed', changePresence: 'has_changes' }),
+        task({ id: 'deleted', status: 'deleted', changePresence: 'has_changes' }),
+      ],
+      0,
+      false
+    );
+
+    expect(plan.requests.map((request) => request.taskId)).toEqual(['changed']);
+    expect(plan.eligibleCount).toBe(1);
+    expect(plan.deferredCount).toBe(0);
+  });
+
+  it('caps selected requests and reports deferred candidates', () => {
+    const plan = buildTeamChangeRequestPlan(
+      Array.from({ length: TEAM_CHANGES_MAX_REQUESTS + 5 }, (_, index) =>
+        task({
+          id: `changed-${index}`,
+          status: 'completed',
+          changePresence: 'has_changes',
+          updatedAt: `2026-05-09T08:${String(index).padStart(2, '0')}:00.000Z`,
+        })
+      ),
+      0,
+      false
+    );
+
+    expect(plan.requests).toHaveLength(TEAM_CHANGES_MAX_REQUESTS);
+    expect(plan.eligibleCount).toBe(TEAM_CHANGES_MAX_REQUESTS + 5);
+    expect(plan.deferredCount).toBe(5);
   });
 
   it('rotates unknown scans and preserves summary-only request options', () => {

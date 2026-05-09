@@ -215,4 +215,39 @@ describe('MemberWorkSyncTaskImpactResolver', () => {
       diagnostics: [],
     });
   });
+
+  it('targets lead oversight when the changed task is a self-review', async () => {
+    const tasks: TeamTask[] = [
+      {
+        id: 'task-self-review',
+        subject: 'Self review',
+        status: 'completed',
+        owner: 'alice',
+        reviewState: 'review',
+        historyEvents: [
+          {
+            id: 'evt-self-review',
+            type: 'review_requested',
+            timestamp: '2026-05-06T19:00:00.000Z',
+            reviewer: 'alice',
+          },
+        ],
+      },
+    ];
+    const resolver = new MemberWorkSyncTaskImpactResolver({
+      taskReader: { getTasks: vi.fn(async () => tasks) },
+      kanbanManager: { getState: vi.fn(async () => ({ tasks: {} })) },
+      activeMemberSource: {
+        loadActiveMemberNames: vi.fn(async () => ['alice', 'team-lead']),
+      },
+    } as never);
+
+    await expect(
+      resolver.resolve({ teamName: 'team-a', taskId: 'task-self-review' })
+    ).resolves.toEqual({
+      memberNames: ['alice', 'team-lead'],
+      fallbackTeamWide: false,
+      diagnostics: ['self_review_invalid'],
+    });
+  });
 });

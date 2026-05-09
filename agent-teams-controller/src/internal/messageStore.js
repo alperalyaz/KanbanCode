@@ -75,9 +75,24 @@ function normalizeMessageKind(messageKind) {
   return messageKind === 'default' ||
     messageKind === 'slash_command' ||
     messageKind === 'slash_command_result' ||
-    messageKind === 'task_comment_notification'
+    messageKind === 'task_comment_notification' ||
+    messageKind === 'member_work_sync_nudge'
     ? messageKind
     : undefined;
+}
+
+function normalizeWorkSyncIntent(workSyncIntent) {
+  return workSyncIntent === 'agenda_sync' || workSyncIntent === 'review_pickup'
+    ? workSyncIntent
+    : undefined;
+}
+
+function normalizeStringList(value) {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const items = [...new Set(value.map((item) => String(item || '').trim()).filter(Boolean))];
+  return items.length > 0 ? items : undefined;
 }
 
 function normalizeSlashCommand(slashCommand) {
@@ -123,6 +138,8 @@ function buildMessage(flags, defaults) {
   const attachments = normalizeAttachments(flags.attachments);
   const taskRefs = normalizeTaskRefs(flags.taskRefs);
   const messageKind = normalizeMessageKind(flags.messageKind);
+  const workSyncIntent = normalizeWorkSyncIntent(flags.workSyncIntent);
+  const workSyncReviewRequestEventIds = normalizeStringList(flags.workSyncReviewRequestEventIds);
   const slashCommand = normalizeSlashCommand(flags.slashCommand);
   const commandOutput = normalizeCommandOutput(flags.commandOutput);
 
@@ -173,6 +190,11 @@ function buildMessage(flags, defaults) {
         }
       : {}),
     ...(messageKind ? { messageKind } : {}),
+    ...(workSyncIntent ? { workSyncIntent } : {}),
+    ...(typeof flags.workSyncIntentKey === 'string' && flags.workSyncIntentKey.trim()
+      ? { workSyncIntentKey: flags.workSyncIntentKey.trim() }
+      : {}),
+    ...(workSyncReviewRequestEventIds ? { workSyncReviewRequestEventIds } : {}),
     ...(slashCommand ? { slashCommand } : {}),
     ...(commandOutput ? { commandOutput } : {}),
     ...(attachments ? { attachments } : {}),

@@ -593,6 +593,47 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     expect(sentText).not.toContain('You must not end this turn empty.');
   });
 
+  it('sends review pickup work sync nudges with review-oriented response instructions', async () => {
+    const sendOpenCodeTeamMessage = vi.fn<
+      NonNullable<OpenCodeTeamRuntimeBridgePort['sendOpenCodeTeamMessage']>
+    >(async () => ({
+      accepted: true,
+      sessionId: 'oc-session-bob',
+      memberName: 'bob',
+      diagnostics: [],
+    }));
+    const adapter = new OpenCodeTeamRuntimeAdapter(
+      bridgePort(readiness({ state: 'ready', launchAllowed: true }), {
+        sendOpenCodeTeamMessage,
+      })
+    );
+
+    await adapter.sendMessageToMember({
+      runId: 'run-1',
+      teamName: 'team-a',
+      laneId: 'secondary:opencode:bob',
+      memberName: 'bob',
+      cwd: '/repo',
+      text: 'Review pickup required',
+      messageId: 'msg-review-pickup',
+      replyRecipient: 'team-lead',
+      actionMode: 'do',
+      messageKind: 'member_work_sync_nudge',
+      workSyncIntent: 'review_pickup',
+      workSyncReviewRequestEventIds: ['evt-review-request'],
+      taskRefs: [{ taskId: 'task-1', displayId: 'abcd1234', teamName: 'team-a' }],
+    });
+
+    const sentText = sendOpenCodeTeamMessage.mock.calls[0]?.[0]?.text ?? '';
+    expect(sentText).toContain('"workSyncIntent":"review_pickup"');
+    expect(sentText).toContain('"workSyncReviewRequestEventIds":["evt-review-request"]');
+    expect(sentText).toContain('targeted member-work-sync review pickup nudge');
+    expect(sentText).toContain('review workflow tools');
+    expect(sentText).toContain('Do not mark the review complete from this prompt alone.');
+    expect(sentText).toContain('agent-teams_member_work_sync_report');
+    expect(sentText).not.toContain('This delivered app message is a member-work-sync nudge.');
+  });
+
   it('does not parse legacy native SendMessage wording to infer OpenCode reply recipient', async () => {
     const sendOpenCodeTeamMessage = vi.fn<
       NonNullable<OpenCodeTeamRuntimeBridgePort['sendOpenCodeTeamMessage']>

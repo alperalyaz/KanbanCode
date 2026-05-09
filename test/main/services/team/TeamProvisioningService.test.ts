@@ -8042,10 +8042,10 @@ describe('TeamProvisioningService', () => {
       }));
       await configureOpenCodeBobDeliveryService({ svc, sendMessageToMember });
 
-      await expect(
-        svc.deliverOpenCodeMemberMessage('team-a', {
-          memberName: 'bob',
-          text: 'Work sync check for #task-1.',
+    await expect(
+      svc.deliverOpenCodeMemberMessage('team-a', {
+        memberName: 'bob',
+        text: 'Work sync check for #task-1.',
           messageId: 'msg-work-sync-report',
           replyRecipient: 'team-lead',
           actionMode: 'do',
@@ -8058,6 +8058,58 @@ describe('TeamProvisioningService', () => {
             },
           ],
           source: 'watcher',
+          inboxTimestamp: '2026-04-25T10:00:00.000Z',
+        })
+      ).resolves.toMatchObject({
+        delivered: true,
+        accepted: true,
+        responsePending: false,
+        responseState: 'responded_non_visible_tool',
+        ledgerStatus: 'responded',
+      });
+    });
+
+    it('accepts review workflow tools as review pickup delivery response proof', async () => {
+      const svc = new TeamProvisioningService();
+      const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+        ok: true,
+        providerId: 'opencode',
+        memberName: String(input.memberName),
+        sessionId: 'oc-session-bob',
+        prePromptCursor: 'cursor-before',
+        responseObservation: {
+          state: 'responded_non_visible_tool' as const,
+          deliveredUserMessageId: 'oc-user-review-pickup',
+          assistantMessageId: 'oc-assistant-review-start',
+          toolCallNames: ['review_start'],
+          visibleMessageToolCallId: null,
+          visibleReplyMessageId: null,
+          visibleReplyCorrelation: null,
+          latestAssistantPreview: null,
+          reason: null,
+        },
+        diagnostics: [],
+      }));
+      await configureOpenCodeBobDeliveryService({ svc, sendMessageToMember });
+
+      await expect(
+        svc.deliverOpenCodeMemberMessage('team-a', {
+          memberName: 'bob',
+          text: 'Review pickup required for #task-1.',
+          messageId: 'msg-review-pickup-start',
+          replyRecipient: 'team-lead',
+          actionMode: 'do',
+          messageKind: 'member_work_sync_nudge',
+          workSyncIntent: 'review_pickup',
+          workSyncReviewRequestEventIds: ['evt-review-request'],
+          taskRefs: [
+            {
+              taskId: 'task-1',
+              displayId: 'task-1',
+              teamName: 'team-a',
+            },
+          ],
+          source: 'member-work-sync-review-pickup',
           inboxTimestamp: '2026-04-25T10:00:00.000Z',
         })
       ).resolves.toMatchObject({
