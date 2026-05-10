@@ -171,6 +171,7 @@ import {
 } from './bootstrap/BootstrapProofValidation';
 import {
   buildNativeAppManagedBootstrapSpecs,
+  buildNativeAppManagedBootstrapSpecsWithDiagnostics,
   type NativeAppManagedBootstrapSpec,
 } from './bootstrap/NativeAppManagedBootstrapContextBuilder';
 import {
@@ -18911,16 +18912,30 @@ export class TeamProvisioningService {
           'Building deterministic create bootstrap spec',
           `expectedMembers=${effectiveMemberSpecs.length}`
         );
-        const nativeAppManagedBootstrapByMember = await buildNativeAppManagedBootstrapSpecs({
+        const nativeBootstrapBuild = await buildNativeAppManagedBootstrapSpecsWithDiagnostics({
           teamName: request.teamName,
           cwd: request.cwd,
           members: effectiveMemberSpecs,
         });
+        if (nativeBootstrapBuild.diagnostics.warning) {
+          run.progress = {
+            ...run.progress,
+            warnings: mergeProvisioningWarnings(
+              run.progress.warnings,
+              nativeBootstrapBuild.diagnostics.warning
+            ),
+          };
+          emitProvisioningCheckpoint(
+            run,
+            'Native bootstrap startup context is large',
+            nativeBootstrapBuild.diagnostics.warning
+          );
+        }
         const bootstrapSpec = buildDeterministicCreateBootstrapSpec(
           runId,
           request,
           effectiveMemberSpecs,
-          nativeAppManagedBootstrapByMember
+          nativeBootstrapBuild.specs
         );
         emitProvisioningCheckpoint(run, 'Writing deterministic bootstrap spec file');
         bootstrapSpecPath = await writeDeterministicBootstrapSpecFile(bootstrapSpec);
@@ -20189,15 +20204,30 @@ export class TeamProvisioningService {
           'Building deterministic launch bootstrap spec',
           `expectedMembers=${effectiveMemberSpecs.length}`
         );
+        const nativeBootstrapBuild = await buildNativeAppManagedBootstrapSpecsWithDiagnostics({
+          teamName: request.teamName,
+          cwd: request.cwd,
+          members: effectiveMemberSpecs,
+        });
+        if (nativeBootstrapBuild.diagnostics.warning) {
+          run.progress = {
+            ...run.progress,
+            warnings: mergeProvisioningWarnings(
+              run.progress.warnings,
+              nativeBootstrapBuild.diagnostics.warning
+            ),
+          };
+          emitProvisioningCheckpoint(
+            run,
+            'Native bootstrap startup context is large',
+            nativeBootstrapBuild.diagnostics.warning
+          );
+        }
         const bootstrapSpec = buildDeterministicLaunchBootstrapSpec(
           runId,
           request,
           effectiveMemberSpecs,
-          await buildNativeAppManagedBootstrapSpecs({
-            teamName: request.teamName,
-            cwd: request.cwd,
-            members: effectiveMemberSpecs,
-          })
+          nativeBootstrapBuild.specs
         );
         emitProvisioningCheckpoint(run, 'Writing deterministic bootstrap spec file');
         bootstrapSpecPath = await writeDeterministicBootstrapSpecFile(bootstrapSpec);

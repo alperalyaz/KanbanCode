@@ -16,9 +16,23 @@ export interface NativeAppManagedBootstrapSpec {
   generatedAt: string;
 }
 
+export interface NativeAppManagedBootstrapBuildDiagnostics {
+  nativeMemberCount: number;
+  totalContextChars: number;
+  totalContextLimitChars: number;
+  warning: string | null;
+}
+
+export interface NativeAppManagedBootstrapBuildResult {
+  specs: Map<string, NativeAppManagedBootstrapSpec>;
+  diagnostics: NativeAppManagedBootstrapBuildDiagnostics;
+}
+
 const MAX_NATIVE_BOOTSTRAP_BRIEFING_CHARS = 18_000;
 const MAX_NATIVE_BOOTSTRAP_CONTEXT_CHARS = 24_000;
-const MAX_NATIVE_BOOTSTRAP_TOTAL_CONTEXT_CHARS = 96_000;
+export const MAX_NATIVE_BOOTSTRAP_TOTAL_CONTEXT_CHARS = 256_000;
+const NATIVE_BOOTSTRAP_LARGE_ROSTER_MEMBER_COUNT = 7;
+const NATIVE_BOOTSTRAP_NEAR_LIMIT_RATIO = 0.85;
 
 export function isNativeAppManagedBootstrapProvider(providerId?: TeamProviderId): boolean {
   return providerId == null || providerId === 'anthropic' || providerId === 'codex';
@@ -80,6 +94,45 @@ function buildContextText(params: {
   );
 }
 
+function formatCompactChars(value: number): string {
+  if (!Number.isFinite(value)) {
+    return 'unknown';
+  }
+  if (value >= 1000) {
+    return `${Math.round(value / 1000)}k chars`;
+  }
+  return `${Math.max(0, Math.round(value))} chars`;
+}
+
+function buildNativeBootstrapWarning(params: {
+  nativeMemberCount: number;
+  totalContextChars: number;
+  totalContextLimitChars: number;
+}): string | null {
+  if (params.nativeMemberCount === 0) {
+    return null;
+  }
+  const ratio =
+    params.totalContextLimitChars > 0
+      ? params.totalContextChars / params.totalContextLimitChars
+      : 0;
+  const isLargeNativeRoster =
+    params.nativeMemberCount >= NATIVE_BOOTSTRAP_LARGE_ROSTER_MEMBER_COUNT;
+  const isNearLimit = ratio >= NATIVE_BOOTSTRAP_NEAR_LIMIT_RATIO;
+  if (!isLargeNativeRoster && !isNearLimit) {
+    return null;
+  }
+
+  const usage = `${formatCompactChars(params.totalContextChars)} / ${formatCompactChars(
+    params.totalContextLimitChars
+  )}`;
+  const percent = `${Math.round(ratio * 100)}%`;
+  const rosterHint = `${params.nativeMemberCount} native app-managed member${
+    params.nativeMemberCount === 1 ? '' : 's'
+  }`;
+  return `Large native team startup context: ${usage} (${percent}) across ${rosterHint}. Launch can continue, but if bootstrap confirmation is slow or fails, reduce native member count or use OpenCode for secondary members.`;
+}
+
 function buildLocalNativeMemberBriefing(params: {
   teamName: string;
   cwd: string;
@@ -114,6 +167,14 @@ export async function buildNativeAppManagedBootstrapSpecs(params: {
   cwd: string;
   members: TeamCreateRequest['members'];
 }): Promise<Map<string, NativeAppManagedBootstrapSpec>> {
+  return (await buildNativeAppManagedBootstrapSpecsWithDiagnostics(params)).specs;
+}
+
+export async function buildNativeAppManagedBootstrapSpecsWithDiagnostics(params: {
+  teamName: string;
+  cwd: string;
+  members: TeamCreateRequest['members'];
+}): Promise<NativeAppManagedBootstrapBuildResult> {
   const controller = createController({
     teamName: params.teamName,
     claudeDir: getClaudeBasePath(),
@@ -121,12 +182,14 @@ export async function buildNativeAppManagedBootstrapSpecs(params: {
   });
   const result = new Map<string, NativeAppManagedBootstrapSpec>();
   let totalContextChars = 0;
+  let nativeMemberCount = 0;
 
   for (const member of params.members) {
     const providerId = normalizeOptionalTeamProviderId(member.providerId) ?? 'anthropic';
     if (!isNativeAppManagedBootstrapProvider(providerId)) {
       continue;
     }
+    nativeMemberCount += 1;
 
     let briefing: string;
     try {
@@ -182,5 +245,16 @@ export async function buildNativeAppManagedBootstrapSpecs(params: {
     });
   }
 
-  return result;
+  const diagnostics: NativeAppManagedBootstrapBuildDiagnostics = {
+    nativeMemberCount,
+    totalContextChars,
+    totalContextLimitChars: MAX_NATIVE_BOOTSTRAP_TOTAL_CONTEXT_CHARS,
+    warning: buildNativeBootstrapWarning({
+      nativeMemberCount,
+      totalContextChars,
+      totalContextLimitChars: MAX_NATIVE_BOOTSTRAP_TOTAL_CONTEXT_CHARS,
+    }),
+  };
+
+  return { specs: result, diagnostics };
 }

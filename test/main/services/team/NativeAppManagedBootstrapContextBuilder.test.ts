@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   buildNativeAppManagedBootstrapSpecs,
+  buildNativeAppManagedBootstrapSpecsWithDiagnostics,
   hashNativeBootstrapText,
+  MAX_NATIVE_BOOTSTRAP_TOTAL_CONTEXT_CHARS,
 } from '../../../../src/main/services/team/bootstrap/NativeAppManagedBootstrapContextBuilder';
 import { TeamMembersMetaStore } from '../../../../src/main/services/team/TeamMembersMetaStore';
 import { TeamMetaStore } from '../../../../src/main/services/team/TeamMetaStore';
@@ -99,6 +101,40 @@ describe('NativeAppManagedBootstrapContextBuilder', () => {
     expect(alice?.contextHash).toBe(hashNativeBootstrapText(alice?.contextText ?? ''));
   });
 
+  it('warns but still builds for large native rosters below the aggregate budget', async () => {
+    await new TeamMetaStore().writeMeta('large-warning-native-team', {
+      cwd: '/tmp/workspace',
+      providerId: 'anthropic',
+      model: 'claude-opus-4-6',
+      createdAt: Date.now(),
+    });
+    await new TeamMembersMetaStore().writeMembers(
+      'large-warning-native-team',
+      Array.from({ length: 7 }, (_, index) => ({
+        name: `member-${index}`,
+        providerId: 'anthropic' as const,
+        role: 'Developer',
+      }))
+    );
+
+    const result = await buildNativeAppManagedBootstrapSpecsWithDiagnostics({
+      teamName: 'large-warning-native-team',
+      cwd: '/tmp/workspace',
+      members: Array.from({ length: 7 }, (_, index) => ({
+        name: `member-${index}`,
+        providerId: 'anthropic' as const,
+        role: 'Developer',
+      })),
+    });
+
+    expect(result.specs.size).toBe(7);
+    expect(result.diagnostics.nativeMemberCount).toBe(7);
+    expect(result.diagnostics.totalContextLimitChars).toBe(
+      MAX_NATIVE_BOOTSTRAP_TOTAL_CONTEXT_CHARS
+    );
+    expect(result.diagnostics.warning).toMatch(/Large native team startup context/);
+  });
+
   it('fails closed when aggregate native context budget is exceeded', async () => {
     const hugeRole = 'x'.repeat(40_000);
     await new TeamMetaStore().writeMeta('large-native-team', {
@@ -109,7 +145,7 @@ describe('NativeAppManagedBootstrapContextBuilder', () => {
     });
     await new TeamMembersMetaStore().writeMembers(
       'large-native-team',
-      Array.from({ length: 8 }, (_, index) => ({
+      Array.from({ length: 16 }, (_, index) => ({
         name: `member-${index}`,
         providerId: 'anthropic' as const,
         role: hugeRole,
@@ -120,7 +156,7 @@ describe('NativeAppManagedBootstrapContextBuilder', () => {
       buildNativeAppManagedBootstrapSpecs({
         teamName: 'large-native-team',
         cwd: '/tmp/workspace',
-        members: Array.from({ length: 8 }, (_, index) => ({
+        members: Array.from({ length: 16 }, (_, index) => ({
           name: `member-${index}`,
           providerId: 'anthropic' as const,
           role: hugeRole,
