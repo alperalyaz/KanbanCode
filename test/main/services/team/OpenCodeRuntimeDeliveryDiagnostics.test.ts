@@ -32,6 +32,25 @@ describe('OpenCodeRuntimeDeliveryDiagnostics', () => {
     expect(selectOpenCodeRuntimeDeliveryReason(record)).toContain('Key limit exceeded');
   });
 
+  it('prioritizes local disk-full diagnostics over secondary aborted assistant errors', () => {
+    const record = {
+      diagnostics: [
+        "OpenCode message bridge failed: ENOSPC: no space left on device, open '/tmp/.auth.json.tmp'",
+        "ENOSPC: no space left on device, open '/tmp/.auth.json.tmp'",
+        'OpenCode app MCP was reattached before message delivery.',
+        'Latest assistant message msg_1 failed with MessageAbortedError - Aborted',
+        'empty_assistant_turn',
+      ],
+      lastReason: 'empty_assistant_turn',
+      responseState: 'empty_assistant_turn',
+      status: 'failed_terminal',
+    } as Parameters<typeof selectOpenCodeRuntimeDeliveryReason>[0];
+
+    expect(selectOpenCodeRuntimeDeliveryReason(record)).toBe(
+      'Local disk is full (ENOSPC). Free disk space and retry OpenCode delivery.'
+    );
+  });
+
   it('formats non-visible tool progress failures without exposing the internal reason code', () => {
     const record = {
       diagnostics: ['non_visible_tool_without_task_progress'],

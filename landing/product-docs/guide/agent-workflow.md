@@ -1,3 +1,8 @@
+---
+title: Agent Workflow – Agent Teams Docs
+description: Understand task lifecycle, kanban board, messages, task logs, parallel work, live processes, and cross-team communication.
+---
+
 # Agent Workflow
 
 Agent Teams makes agent work visible as task state, messages, logs, and reviewable code changes.

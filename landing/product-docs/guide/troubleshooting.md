@@ -1,3 +1,13 @@
+---
+title: Troubleshooting
+description: Fix launch failures, missing agent replies, rate limits, auth issues, and lane bootstrap problems in Agent Teams.
+---
+
+---
+title: Troubleshooting – Agent Teams Docs
+description: Fix team launch issues, missing agent replies, rate limits, CLI auth problems, and lane bootstrap stalls with local diagnostics.
+---
+
 # Troubleshooting
 
 Most team issues fall into one of four buckets: runtime setup, launch confirmation, task parsing, and provider limits.

@@ -1,3 +1,8 @@
+---
+title: Installation – Agent Teams Docs
+description: Download and install Agent Teams for macOS, Windows, or Linux. Covers packaged builds, source setup, auto-updates, and requirements.
+---
+
 # Installation
 
 Agent Teams is distributed as a desktop app for macOS, Windows, and Linux.

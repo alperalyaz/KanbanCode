@@ -1,3 +1,18 @@
+---
+title: Privacy and Local Data
+description: What the Agent Teams desktop app stores locally and what data may leave your machine through provider-backed models.
+---
+
+---
+title: Privacy and Local Data – Agent Teams Docs
+description: What Agent Teams stores locally, what may leave your machine through provider-backed model calls, and practical privacy guidance.
+---
+
+---
+title: Privacy and Local Data – Agent Teams Docs
+description: What the Agent Teams desktop app stores locally and what data may leave your machine through provider-backed model calls.
+---
+
 # Privacy and Local Data
 
 Agent Teams is local-first, but the selected runtime/provider path still matters. This page describes what the desktop app stores locally and what may leave your machine when agents call provider-backed models.
@@ -33,6 +48,15 @@ However, when an agent asks a provider-backed model to work, prompt context, sel
 
 Provider authentication, provider-side retention, training, logging, regional processing, and billing are governed by the provider/runtime you choose. Review those policies for sensitive projects.
 
+Common examples:
+
+| Action | Data that may be sent through the runtime/provider |
+| --- | --- |
+| Asking an agent to edit a file | The task prompt, relevant file contents, tool results, and command output |
+| Attaching a screenshot | The attachment content and surrounding task/comment text |
+| Asking for a code review | Diff context, selected files, comments, and verification logs |
+| Debugging a failing command | Error output, stack traces, and referenced source snippets |
+
 ## What the app does not guarantee
 
 - It cannot guarantee that provider-backed model calls never receive private code.
@@ -50,6 +74,14 @@ Provider authentication, provider-side retention, training, logging, regional pr
 - Prefer local evidence and logs when debugging.
 - Check generated prompts, task descriptions, and attached files before asking agents to work on confidential material.
 - Use provider/model paths that match your privacy requirements.
+
+Before using Agent Teams on a sensitive repository:
+
+1. Remove secrets from the working tree and task attachments
+2. Choose the runtime/provider path you are allowed to use
+3. Start with low autonomy and small tasks
+4. Review task prompts and generated comments before expanding scope
+5. Keep logs local unless you intentionally share them for support
 
 ## Open source model
 

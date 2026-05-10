@@ -105,7 +105,9 @@
   },
   "meta": {
     "homeTitle": "Agent Teams - डेवलपर्स के लिए AI एजेंट ऑर्केस्ट्रेशन",
-    "homeDescription": "AI एजेंट टीमें बनाने के लिए मुफ़्त, ओपन-सोर्स डेस्कटॉप ऐप। कानबन बोर्ड, कोड रिव्यू, क्रॉस-टीम संचार। पूरी तरह लोकल चलता है।"
+    "homeDescription": "AI एजेंट टीमें बनाने के लिए मुफ़्त, ओपन-सोर्स डेस्कटॉप ऐप। कानबन बोर्ड, कोड रिव्यू, क्रॉस-टीम संचार। पूरी तरह लोकल चलता है।",
+    "downloadTitle": "macOS, Windows और Linux के लिए Agent Teams डाउनलोड करें",
+    "downloadDescription": "macOS, Windows और Linux के लिए Agent Teams डाउनलोड करें। Claude, Codex और OpenCode एजेंट टीमों के लिए मुफ़्त ओपन-सोर्स डेस्कटॉप ऐप।"
   },
   "error": {
     "notFoundTitle": "पेज नहीं मिला",

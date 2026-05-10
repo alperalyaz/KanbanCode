@@ -4,8 +4,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '@renderer/store';
 
 vi.mock('@renderer/components/ui/badge', () => ({
-  Badge: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('span', null, children),
+  Badge: ({
+    children,
+    className,
+    style,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+    style?: React.CSSProperties;
+  }) => React.createElement('span', { className, style }, children),
 }));
 
 vi.mock('@renderer/components/ui/button', () => ({
@@ -132,6 +139,47 @@ describe('GraphNodePopover spawn badge labels', () => {
     });
 
     expect(host.textContent).toContain('spawn failed');
+    expect(
+      Array.from(host.querySelectorAll('span')).some(
+        (badge) =>
+          badge.textContent === 'spawn failed' && badge.className.includes('text-red-300')
+      )
+    ).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('renders launch exception status text in red when it is the primary status', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(GraphNodePopover, {
+          node: {
+            ...makeMemberNode('online'),
+            launchStatusLabel: 'OpenCode API error',
+            exceptionTone: 'error',
+            exceptionLabel: 'OpenCode API error',
+          },
+          teamName: 'northstar-core',
+          onClose: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(
+      Array.from(host.querySelectorAll('span')).some(
+        (badge) =>
+          badge.textContent === 'OpenCode API error' && badge.className.includes('text-red-300')
+      )
+    ).toBe(true);
 
     await act(async () => {
       root.unmount();

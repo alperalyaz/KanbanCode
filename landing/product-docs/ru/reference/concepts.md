@@ -1,3 +1,14 @@
+---
+title: Концепции
+description: Основной словарь Agent Teams — команды, lead-агенты, teammates, задачи, канбан, inboxes, рантаймы и review.
+---
+
+---
+title: Концепции – Документация Agent Teams
+description: Основные термины Agent Teams: teams, leads, teammates, tasks, kanban, inboxes, agent blocks, context phases, runtimes, providers.
+lang: ru-RU
+---
+
 # Концепции
 
 Основные термины Agent Teams. Эта страница задаёт общий словарь для приложения, доски задач, сообщений и review flow.
@@ -6,15 +17,19 @@
 
 Team - именованная группа агентов, привязанная к одному project path. У команды есть lead, опциональные teammates, настройки runtime/provider, prompts, inboxes, tasks и локальное состояние запуска.
 
-## Lead
+## Lead {#lead}
 
 Lead - координатор команды. Он превращает цель пользователя в tasks, назначает или перенаправляет teammates, отслеживает blockers, запрашивает review и двигает работу по board.
 
+[Teammate →](#teammate)
+
 Сообщения lead доставляются иначе, чем сообщения teammate: приложение ретранслирует записи inbox в lead runtime, а teammates читают свои inbox-файлы между turns.
 
-## Teammate
+## Teammate {#teammate}
 
 Teammate - не-lead агент в команде. Обычно teammate отвечает за сфокусированную роль: builder, reviewer, researcher или tester. Teammate может получать direct messages, task assignments, task comments и review requests.
+
+[Lead ↑](#lead)
 
 ## Task
 

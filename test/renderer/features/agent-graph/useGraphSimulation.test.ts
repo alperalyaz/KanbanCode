@@ -321,7 +321,7 @@ describe('stable slot layout planner', () => {
     if (!snapshot) {
       throw new Error('Expected stable slot layout snapshot');
     }
-    expect(validateStableSlotLayout(snapshot!)).toEqual({ valid: true });
+    expect(validateStableSlotLayout(snapshot)).toEqual({ valid: true });
 
     for (const frame of snapshot.memberSlotFrames) {
       for (const centralRect of snapshot.centralCollisionRects) {
@@ -334,8 +334,8 @@ describe('stable slot layout planner', () => {
       }
     }
 
-    for (const [index, left] of snapshot!.memberSlotFrames.entries()) {
-      for (const right of snapshot!.memberSlotFrames.slice(index + 1)) {
+    for (const [index, left] of snapshot.memberSlotFrames.entries()) {
+      for (const right of snapshot.memberSlotFrames.slice(index + 1)) {
         if (!rectsOverlapVertically(left.bounds, right.bounds)) {
           continue;
         }
@@ -969,6 +969,46 @@ describe('stable slot layout planner', () => {
     expect(frames[1].ownerX).toBeGreaterThan(0);
     expect(frames[4].ownerX).toBeCloseTo(0, 3);
     expect(frames[0].processBandRect.height).toBe(STABLE_SLOT_GEOMETRY.processBandHeight);
+  });
+
+  it('keeps six grid-under-lead members in two-column rows', () => {
+    const teamName = 'team-grid-six';
+    const lead = createLead(teamName);
+    const members = [
+      createMember(teamName, 'agent-alice', 'alice'),
+      createMember(teamName, 'agent-bob', 'bob'),
+      createMember(teamName, 'agent-tom', 'tom'),
+      createMember(teamName, 'agent-jack', 'jack'),
+      createMember(teamName, 'agent-eve', 'eve'),
+      createMember(teamName, 'agent-sam', 'sam'),
+    ];
+    const layout: GraphLayoutPort = {
+      version: 'stable-slots-v1',
+      mode: 'grid-under-lead',
+      ownerOrder: members.map((member) => member.id),
+      slotAssignments: {},
+    };
+
+    const snapshot = buildStableSlotLayoutSnapshot({
+      teamName,
+      nodes: [lead, ...members],
+      layout,
+    });
+
+    expect(snapshot).not.toBeNull();
+    expect(validateStableSlotLayout(snapshot!)).toEqual({ valid: true });
+
+    const frames = snapshot!.memberSlotFrames;
+    expect(frames).toHaveLength(6);
+    expect(frames[0].ownerY).toBe(frames[1].ownerY);
+    expect(frames[2].ownerY).toBe(frames[3].ownerY);
+    expect(frames[4].ownerY).toBe(frames[5].ownerY);
+    expect(frames[2].ownerY).toBeGreaterThan(frames[0].ownerY);
+    expect(frames[4].ownerY).toBeGreaterThan(frames[2].ownerY);
+    expect(frames[0].ownerX).toBeLessThan(0);
+    expect(frames[1].ownerX).toBeGreaterThan(0);
+    expect(frames[4].ownerX).toBeLessThan(0);
+    expect(frames[5].ownerX).toBeGreaterThan(0);
   });
 
   it('keeps wide grid-under-lead rows from overlapping horizontally', () => {

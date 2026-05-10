@@ -94,6 +94,30 @@ describe('OpenCodeRuntimeDeliveryAdvisoryPolicy', () => {
     });
   });
 
+  it('surfaces disk-full delivery failures immediately', () => {
+    const record = makeRecord({
+      responseState: 'empty_assistant_turn',
+      lastReason: 'empty_assistant_turn',
+      diagnostics: [
+        "OpenCode message bridge failed: ENOSPC: no space left on device, open '/tmp/.auth.json.tmp'",
+        'Latest assistant message msg_1 failed with MessageAbortedError - Aborted',
+        'empty_assistant_turn',
+      ],
+    });
+
+    expect(
+      decideOpenCodeRuntimeDeliveryAdvisory({
+        record,
+        now: Date.parse(record.failedAt!) + 1_000,
+      })
+    ).toMatchObject({
+      action: 'surface',
+      severity: 'error',
+      reasonCode: 'filesystem_error',
+      reason: 'Local disk is full (ENOSPC). Free disk space and retry OpenCode delivery.',
+    });
+  });
+
   it('suppresses generic retryable tool errors before terminal failure', () => {
     const record = makeRecord({
       status: 'failed_retryable',

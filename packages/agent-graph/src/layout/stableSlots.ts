@@ -150,8 +150,6 @@ const STRICT_SMALL_TEAM_MAX_PACKING_ITERATIONS = 96;
 const STRICT_SMALL_TEAM_RADIUS_EPSILON = 0.5;
 const STRICT_SMALL_TEAM_RADIUS_STEP = 24;
 const GRID_UNDER_LEAD_DEFAULT_COLUMN_COUNT = 2;
-const GRID_UNDER_LEAD_WIDE_TEAM_COLUMN_COUNT = 3;
-const GRID_UNDER_LEAD_WIDE_TEAM_OWNER_COUNT = 6;
 const GRID_UNDER_LEAD_LEAD_GAP = 77.7;
 const GRID_UNDER_LEAD_ROW_GAP = 77.7;
 const ROW_ORBIT_MIN_OWNER_COUNT = 6;
@@ -1602,9 +1600,7 @@ function planGridUnderLeadOwnerSlots(
 }
 
 function getGridUnderLeadColumnCount(ownerCount: number): number {
-  return ownerCount === GRID_UNDER_LEAD_WIDE_TEAM_OWNER_COUNT
-    ? GRID_UNDER_LEAD_WIDE_TEAM_COLUMN_COUNT
-    : GRID_UNDER_LEAD_DEFAULT_COLUMN_COUNT;
+  return Math.min(ownerCount, GRID_UNDER_LEAD_DEFAULT_COLUMN_COUNT);
 }
 
 function shouldUseStrictSmallTeamCardinalLayout(

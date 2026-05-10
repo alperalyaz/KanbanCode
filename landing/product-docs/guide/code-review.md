@@ -1,3 +1,8 @@
+---
+title: Code Review – Agent Teams Docs
+description: Inspect task-scoped diffs, accept or reject hunks, leave inline comments, and manage review states from none to approved.
+---
+
 # Code Review
 
 Code review in Agent Teams is task-centered. You inspect what changed for a specific task instead of hunting through a large unstructured diff.
@@ -19,6 +24,15 @@ Accept small correct changes and reject isolated mistakes without throwing away 
 If a diff is mostly correct, accept the good hunks first and request changes only for the parts that need fixing. This keeps the board moving.
 :::
 
+Use hunk-level decisions for:
+
+| Situation | Action |
+| --- | --- |
+| Correct scoped change | Accept the hunk |
+| Correct idea, wrong file or broad refactor | Reject the hunk and request a narrower fix |
+| Unclear behavior change | Comment and ask for verification |
+| Generated formatting noise | Reject unless formatting was part of the task |
+
 ## Initiating review
 
 1. Open a completed task
@@ -26,6 +40,22 @@ If a diff is mostly correct, accept the good hunks first and request changes onl
 3. If the diff looks reasonable, click **Request Review** to move the task into the review column
 
 During review the task is not yet considered done, so other teammates or the lead can still comment on it.
+
+## Review loop
+
+A healthy review loop looks like this:
+
+1. The owner posts a result comment with changed scope and verification
+2. The reviewer opens the task diff and checks hunks against the task description
+3. The reviewer accepts good hunks, rejects bad hunks, or requests changes
+4. The owner fixes only the requested scope and posts a follow-up comment
+5. The reviewer approves when the task result and diff match
+
+Example request-changes comment:
+
+```text
+Please keep the copy improvements, but revert the unrelated runtime wording in the provider table. Add a docs build result before resubmitting.
+```
 
 ## Review states
 
@@ -39,6 +69,8 @@ During review the task is not yet considered done, so other teammates or the lea
 ## Agent review workflow
 
 Teams can review each other's work before you make the final call. This catches obvious regressions and keeps the board honest, but you should still review risky areas yourself.
+
+Agent review is most useful when the reviewer has a clear rubric. For example, tell a reviewer to check only docs clarity, only IPC safety, or only test coverage. Broad "review everything" requests tend to produce weaker feedback.
 
 ## Review participants
 
@@ -57,6 +89,18 @@ Prioritize these areas when reviewing:
 ## Verification
 
 Prefer focused verification commands. Broad formatting or lint-fix commands should not be used unless the task explicitly intends broad formatting churn.
+
+Good verification comments include the command and result:
+
+```text
+Verified with `pnpm --dir landing docs:build`. Build passed.
+```
+
+When verification is skipped, the task comment should say why:
+
+```text
+Docs-only wording change. Build not run because the existing dev server was busy; checked Markdown links manually.
+```
 
 ::: warning Do not auto-format across the whole project
 Unless the task is specifically about formatting, avoid running `pnpm lint:fix` on unrelated files. It creates noise in the review surface.

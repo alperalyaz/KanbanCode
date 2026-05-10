@@ -52,6 +52,7 @@ const { mockTeamDataWorkerClient } = vi.hoisted(() => ({
     findLogsForTask: vi.fn(),
     invalidateTeamConfig: vi.fn(),
     invalidateTeamMessageFeed: vi.fn(),
+    invalidateMemberRuntimeAdvisory: vi.fn(),
   },
 }));
 
@@ -218,9 +219,10 @@ describe('ipc teams handlers', () => {
     getLeadMemberName: vi.fn(async () => 'team-lead'),
     getTeamDisplayName: vi.fn(async () => 'My Team'),
     updateConfig: vi.fn(async () => ({ name: 'My Team' })),
-    sendMessage: vi.fn(
-      async (_teamName: string, _request: unknown) => ({ deliveredToInbox: true, messageId: 'm1' })
-    ) as ReturnType<
+    sendMessage: vi.fn(async (_teamName: string, _request: unknown) => ({
+      deliveredToInbox: true,
+      messageId: 'm1',
+    })) as ReturnType<
       typeof vi.fn<
         (
           teamName: string,
@@ -251,6 +253,7 @@ describe('ipc teams handlers', () => {
     removeTaskRelationship: vi.fn(async () => undefined),
     replaceMembers: vi.fn(async () => undefined),
     invalidateMessageFeed: vi.fn(() => undefined),
+    invalidateTeamRuntimeAdvisories: vi.fn(() => undefined),
     createTeamConfig: vi.fn(async () => undefined),
     getSavedRequest: vi.fn(async (): Promise<TeamCreateRequest | null> => null),
   };
@@ -284,9 +287,7 @@ describe('ipc teams handlers', () => {
       async (_teamName: string, _memberName: string): Promise<TeamProviderId | undefined> =>
         undefined
     ) as ReturnType<
-      typeof vi.fn<
-        (teamName: string, memberName: string) => Promise<TeamProviderId | undefined>
-      >
+      typeof vi.fn<(teamName: string, memberName: string) => Promise<TeamProviderId | undefined>>
     >,
     isOpenCodeRuntimeRecipient: vi.fn(async () => false),
     relayOpenCodeMemberInboxMessages: vi.fn(async () => ({
@@ -369,6 +370,7 @@ describe('ipc teams handlers', () => {
     mockTeamDataWorkerClient.findLogsForTask.mockReset();
     mockTeamDataWorkerClient.invalidateTeamConfig.mockReset();
     mockTeamDataWorkerClient.invalidateTeamMessageFeed.mockReset();
+    mockTeamDataWorkerClient.invalidateMemberRuntimeAdvisory.mockReset();
     provisioningService.resolveRuntimeRecipientProviderId.mockReset();
     provisioningService.resolveRuntimeRecipientProviderId.mockResolvedValue(undefined);
     provisioningService.repairStaleTaskActivityIntervalsBeforeSnapshot.mockReset();
@@ -700,30 +702,29 @@ describe('ipc teams handlers', () => {
     expect(request?.text).not.toContain('Reply using the SendMessage tool');
   });
 
-  it.each([
-    ['anthropic' as const],
-    ['gemini' as const],
-    [undefined],
-  ])('keeps SendMessage reply instructions for %s user direct messages', async (providerId) => {
-    provisioningService.resolveRuntimeRecipientProviderId.mockResolvedValueOnce(providerId);
-    const sendHandler = handlers.get(TEAM_SEND_MESSAGE);
-    expect(sendHandler).toBeDefined();
+  it.each([['anthropic' as const], ['gemini' as const], [undefined]])(
+    'keeps SendMessage reply instructions for %s user direct messages',
+    async (providerId) => {
+      provisioningService.resolveRuntimeRecipientProviderId.mockResolvedValueOnce(providerId);
+      const sendHandler = handlers.get(TEAM_SEND_MESSAGE);
+      expect(sendHandler).toBeDefined();
 
-    const result = (await sendHandler!({} as never, 'my-team', {
-      member: 'alice',
-      text: 'Здесь?',
-    })) as { success: boolean };
+      const result = (await sendHandler!({} as never, 'my-team', {
+        member: 'alice',
+        text: 'Здесь?',
+      })) as { success: boolean };
 
-    expect(result.success).toBe(true);
-    const request = service.sendMessage.mock.calls.at(-1)?.[1] as
-      | { text?: string; messageId?: string }
-      | undefined;
-    expect(request).toBeDefined();
-    expect(request).not.toHaveProperty('messageId');
-    expect(request?.text).toContain('Reply using the SendMessage tool');
-    expect(request?.text).toContain('to="user"');
-    expect(request?.text).not.toContain('agent-teams_message_send');
-  });
+      expect(result.success).toBe(true);
+      const request = service.sendMessage.mock.calls.at(-1)?.[1] as
+        | { text?: string; messageId?: string }
+        | undefined;
+      expect(request).toBeDefined();
+      expect(request).not.toHaveProperty('messageId');
+      expect(request?.text).toContain('Reply using the SendMessage tool');
+      expect(request?.text).toContain('to="user"');
+      expect(request?.text).not.toContain('agent-teams_message_send');
+    }
+  );
 
   it('stores base text and returns runtimeDelivery success for OpenCode teammate sends', async () => {
     provisioningService.resolveRuntimeRecipientProviderId.mockResolvedValueOnce('opencode');
@@ -1278,14 +1279,11 @@ describe('ipc teams handlers', () => {
       .mockResolvedValueOnce([{ teamName: 'background-fresh', displayName: 'Background Fresh' }])
       .mockResolvedValueOnce([{ teamName: 'fresh-team', displayName: 'Fresh' }]);
 
-    const createResult = (await handlers.get(TEAM_CREATE)!(
-      { sender: { send: vi.fn() } } as never,
-      {
-        teamName: 'my-team',
-        members: [{ name: 'alice' }],
-        cwd: os.tmpdir(),
-      }
-    )) as { success: boolean };
+    const createResult = (await handlers.get(TEAM_CREATE)!({ sender: { send: vi.fn() } } as never, {
+      teamName: 'my-team',
+      members: [{ name: 'alice' }],
+      cwd: os.tmpdir(),
+    })) as { success: boolean };
     expect(createResult.success).toBe(false);
     vi.mocked(console.error).mockClear();
 
@@ -2752,6 +2750,78 @@ describe('ipc teams handlers', () => {
       expect(service.permanentlyDeleteTeam).toHaveBeenCalledWith('my-team');
       expect(mockTeamDataWorkerClient.invalidateTeamConfig).toHaveBeenCalledWith('my-team');
     });
+
+    it('invalidates worker config cache after roster metadata mutations', async () => {
+      const addHandler = handlers.get(TEAM_ADD_MEMBER)!;
+      const removeHandler = handlers.get(TEAM_REMOVE_MEMBER)!;
+      const replaceHandler = handlers.get(TEAM_REPLACE_MEMBERS)!;
+      const updateRoleHandler = handlers.get(TEAM_UPDATE_MEMBER_ROLE)!;
+
+      let result = (await addHandler({} as never, 'my-team', {
+        name: 'alice',
+        role: 'developer',
+      })) as { success: boolean };
+      expect(result.success).toBe(true);
+      expect(service.addMember).toHaveBeenCalledWith('my-team', {
+        name: 'alice',
+        role: 'developer',
+      });
+      expect(mockTeamDataWorkerClient.invalidateTeamConfig).toHaveBeenCalledWith('my-team');
+      expect(mockTeamDataWorkerClient.invalidateMemberRuntimeAdvisory).toHaveBeenCalledWith(
+        'my-team'
+      );
+
+      mockTeamDataWorkerClient.invalidateTeamConfig.mockClear();
+      mockTeamDataWorkerClient.invalidateMemberRuntimeAdvisory.mockClear();
+
+      result = (await removeHandler({} as never, 'my-team', 'alice')) as { success: boolean };
+      expect(result.success).toBe(true);
+      expect(service.removeMember).toHaveBeenCalledWith('my-team', 'alice');
+      expect(mockTeamDataWorkerClient.invalidateTeamConfig).toHaveBeenCalledWith('my-team');
+      expect(mockTeamDataWorkerClient.invalidateMemberRuntimeAdvisory).toHaveBeenCalledWith(
+        'my-team'
+      );
+
+      mockTeamDataWorkerClient.invalidateTeamConfig.mockClear();
+      mockTeamDataWorkerClient.invalidateMemberRuntimeAdvisory.mockClear();
+
+      result = (await replaceHandler({} as never, 'my-team', {
+        members: [{ name: 'bob', role: 'developer' }],
+      })) as { success: boolean };
+      expect(result.success).toBe(true);
+      expect(service.replaceMembers).toHaveBeenCalledWith('my-team', {
+        members: [
+          {
+            name: 'bob',
+            role: 'developer',
+            workflow: undefined,
+            isolation: undefined,
+            providerId: undefined,
+            providerBackendId: undefined,
+            model: undefined,
+            effort: undefined,
+            fastMode: undefined,
+          },
+        ],
+      });
+      expect(mockTeamDataWorkerClient.invalidateTeamConfig).toHaveBeenCalledWith('my-team');
+      expect(mockTeamDataWorkerClient.invalidateMemberRuntimeAdvisory).toHaveBeenCalledWith(
+        'my-team'
+      );
+
+      mockTeamDataWorkerClient.invalidateTeamConfig.mockClear();
+      mockTeamDataWorkerClient.invalidateMemberRuntimeAdvisory.mockClear();
+
+      result = (await updateRoleHandler({} as never, 'my-team', 'bob', 'reviewer')) as {
+        success: boolean;
+      };
+      expect(result.success).toBe(true);
+      expect(service.updateMemberRole).toHaveBeenCalledWith('my-team', 'bob', 'reviewer');
+      expect(mockTeamDataWorkerClient.invalidateTeamConfig).toHaveBeenCalledWith('my-team');
+      expect(mockTeamDataWorkerClient.invalidateMemberRuntimeAdvisory).toHaveBeenCalledWith(
+        'my-team'
+      );
+    });
   });
 
   describe('removeMember', () => {
@@ -3671,7 +3741,10 @@ describe('ipc teams handlers', () => {
       try {
         const teamDir = path.join(claudeRoot, 'teams', 'anthropic-team');
         fs.mkdirSync(teamDir, { recursive: true });
-        fs.writeFileSync(path.join(teamDir, 'config.json'), JSON.stringify({ teamName: 'anthropic-team' }));
+        fs.writeFileSync(
+          path.join(teamDir, 'config.json'),
+          JSON.stringify({ teamName: 'anthropic-team' })
+        );
         fs.writeFileSync(
           path.join(teamDir, 'team.meta.json'),
           JSON.stringify({

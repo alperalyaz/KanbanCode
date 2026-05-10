@@ -23,8 +23,8 @@ defineProps<{
 .zoom-image img {
   display: block;
   width: 100%;
-  border: var(--at-glass-border);
   border-radius: var(--at-radius-xl);
+  border: var(--at-glass-border);
   background: var(--at-c-dark-1);
   box-shadow: var(--at-shadow-card);
   cursor: zoom-in;
@@ -34,6 +34,7 @@ defineProps<{
   margin-top: 8px;
   color: var(--at-c-text-muted);
   font-size: 13px;
+  line-height: 1.5;
   text-align: center;
 }
 </style>

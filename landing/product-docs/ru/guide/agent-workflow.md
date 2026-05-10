@@ -1,3 +1,9 @@
+---
+title: Работа агентов – Документация Agent Teams
+description: Жизненный цикл задач, канбан-доска, сообщения, task logs, параллельная работа, live processes и cross-team communication.
+lang: ru-RU
+---
+
 # Работа агентов
 
 Agent Teams делает работу агентов видимой через task state, messages, logs и reviewable code changes.

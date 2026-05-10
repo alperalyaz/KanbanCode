@@ -142,6 +142,7 @@ import {
 } from '../services/team/memberUpdateNotifications';
 import { mergeLiveLeadProcessMessages } from '../services/team/mergeLiveLeadProcessMessages';
 import { TeamAttachmentStore } from '../services/team/TeamAttachmentStore';
+import { TeamConfigReader } from '../services/team/TeamConfigReader';
 import { TeamMembersMetaStore } from '../services/team/TeamMembersMetaStore';
 import { TeamMetaStore } from '../services/team/TeamMetaStore';
 import { buildAddMemberSpawnMessage } from '../services/team/TeamProvisioningService';
@@ -328,6 +329,16 @@ function noteHeavyTeamDataWorkerFallback(operation: string): void {
   logger.error(
     `[${operation}] team-data-worker unavailable in packaged runtime; falling back to main-thread execution for heavy message/activity path`
   );
+}
+
+function invalidateTeamRosterSnapshotCaches(teamName: string): void {
+  TeamConfigReader.invalidateTeam(teamName);
+  const teamDataService = getTeamDataService();
+  teamDataService.invalidateMessageFeed(teamName);
+  teamDataService.invalidateTeamRuntimeAdvisories(teamName);
+  const workerClient = getTeamDataWorkerClient();
+  workerClient.invalidateTeamConfig(teamName);
+  workerClient.invalidateMemberRuntimeAdvisory(teamName);
 }
 
 async function getDurableLeadTeammateRoster(
@@ -1692,6 +1703,9 @@ async function rollbackOpenCodeLiveRosterMutation(options: {
     previousMembers,
     previousMembersMeta,
   });
+  if (metadataRestored) {
+    invalidateTeamRosterSnapshotCaches(teamName);
+  }
 
   const detachNames = Array.from(
     new Set(detachOpenCodeMemberNames.map((memberName) => memberName.trim()).filter(Boolean))
@@ -2002,10 +2016,15 @@ async function handleCreateTeam(
     addMainBreadcrumb('team', 'create', { teamName: validation.value.teamName });
     launchIoGovernor?.noteLaunchIntent(validation.value.teamName, 'create');
     try {
-      return await getTeamProvisioningService().createTeam(validation.value, (progress) => {
-        launchIoGovernor?.noteProvisioningProgress(progress);
-        sendProvisioningProgress(progressTargetWindow, progress);
-      });
+      const response = await getTeamProvisioningService().createTeam(
+        validation.value,
+        (progress) => {
+          launchIoGovernor?.noteProvisioningProgress(progress);
+          sendProvisioningProgress(progressTargetWindow, progress);
+        }
+      );
+      invalidateTeamRosterSnapshotCaches(validation.value.teamName);
+      return response;
     } catch (error) {
       noteLaunchIntentFailed(validation.value.teamName, 'create');
       throw error;
@@ -2145,10 +2164,15 @@ async function handleLaunchTeam(
     return wrapTeamHandler('create', async () => {
       launchIoGovernor?.noteLaunchIntent(tn, 'draft-launch');
       try {
-        return await getTeamProvisioningService().createTeam(createRequest, (progress) => {
-          launchIoGovernor?.noteProvisioningProgress(progress);
-          sendProvisioningProgress(progressTargetWindow, progress);
-        });
+        const response = await getTeamProvisioningService().createTeam(
+          createRequest,
+          (progress) => {
+            launchIoGovernor?.noteProvisioningProgress(progress);
+            sendProvisioningProgress(progressTargetWindow, progress);
+          }
+        );
+        invalidateTeamRosterSnapshotCaches(tn);
+        return response;
       } catch (error) {
         noteLaunchIntentFailed(tn, 'draft-launch');
         throw error;
@@ -2195,7 +2219,7 @@ async function handleLaunchTeam(
     addMainBreadcrumb('team', 'launch', { teamName: validatedTeamName.value! });
     launchIoGovernor?.noteLaunchIntent(validatedTeamName.value!, 'launch');
     try {
-      return await getTeamProvisioningService().launchTeam(
+      const response = await getTeamProvisioningService().launchTeam(
         {
           teamName: validatedTeamName.value!,
           cwd,
@@ -2222,6 +2246,8 @@ async function handleLaunchTeam(
           sendProvisioningProgress(progressTargetWindow, progress);
         }
       );
+      invalidateTeamRosterSnapshotCaches(validatedTeamName.value!);
+      return response;
     } catch (error) {
       noteLaunchIntentFailed(validatedTeamName.value!, 'launch');
       throw error;
@@ -4182,6 +4208,7 @@ async function handleAddMember(
       model: typeof model === 'string' ? model.trim() || undefined : undefined,
       effort: effortValidation.value,
     });
+    invalidateTeamRosterSnapshotCaches(tn);
 
     // If team is alive, notify the lead to spawn the new teammate
     if (isTeamAlive) {
@@ -4401,7 +4428,7 @@ async function handleReplaceMembers(
       : [];
 
     await teamDataService.replaceMembers(tn, { members });
-    teamDataService.invalidateMessageFeed(tn);
+    invalidateTeamRosterSnapshotCaches(tn);
 
     if (!isTeamAlive) {
       return;
@@ -4499,6 +4526,7 @@ async function handleRemoveMember(
       (member) => member.name.trim().toLowerCase() === name.trim().toLowerCase()
     );
     await teamDataService.removeMember(tn, name);
+    invalidateTeamRosterSnapshotCaches(tn);
 
     // Notify the lead about removed member
     if (isTeamAlive) {
@@ -4614,6 +4642,7 @@ async function handleUpdateMemberRole(
     );
 
     if (changed) {
+      invalidateTeamRosterSnapshotCaches(tn);
       const provisioning = getTeamProvisioningService();
       if (provisioning.isTeamAlive(tn)) {
         const oldDesc = oldRole ? `"${oldRole}"` : 'none';

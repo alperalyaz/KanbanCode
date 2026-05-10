@@ -64,7 +64,10 @@ import {
   parseStandaloneSlashCommand,
 } from '@shared/utils/slashCommands';
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
-import { isTaskStallRemediationMessage } from '@shared/utils/teamAutomationMessages';
+import {
+  isMemberWorkSyncNudgeMessage,
+  isTaskStallRemediationMessage,
+} from '@shared/utils/teamAutomationMessages';
 import {
   AlertTriangle,
   Check,
@@ -403,7 +406,10 @@ const TaskStallRemediationRow = ({
 
   return (
     <div className="flex items-center gap-2 px-3 py-1.5" style={{ opacity: 0.82 }}>
-      <span className="bg-amber-500/12 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300">
+      <span
+        className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300"
+        style={{ backgroundColor: 'rgba(245, 158, 11, 0.12)' }}
+      >
         automation
       </span>
       <span className="text-[11px] uppercase tracking-wide" style={{ color: CARD_ICON_MUTED }}>
@@ -432,6 +438,80 @@ const TaskStallRemediationRow = ({
             >
               {taskLabel}
             </button>
+          </>
+        ) : null}
+      </span>
+      <span className="shrink-0 text-[10px]" style={{ color: CARD_ICON_MUTED }}>
+        {timestamp}
+      </span>
+    </div>
+  );
+};
+
+const MemberWorkSyncNudgeRow = ({
+  teamName,
+  recipientName,
+  recipientColor,
+  taskRefs,
+  intent,
+  timestamp,
+  onMemberNameClick,
+  onTaskIdClick,
+}: {
+  teamName: string;
+  recipientName: string;
+  recipientColor?: string;
+  taskRefs?: InboxMessage['taskRefs'];
+  intent?: InboxMessage['workSyncIntent'];
+  timestamp: string;
+  onMemberNameClick?: (memberName: string) => void;
+  onTaskIdClick?: (taskId: string) => void;
+}): React.JSX.Element => {
+  const primaryTaskRef = taskRefs?.[0];
+  const taskLabel = primaryTaskRef
+    ? formatTaskDisplayLabel({ id: primaryTaskRef.taskId, displayId: primaryTaskRef.displayId })
+    : null;
+  const extraTaskCount = Math.max((taskRefs?.length ?? 0) - 1, 0);
+  const body =
+    intent === 'review_pickup'
+      ? 'Asked teammate to pick up review'
+      : 'Asked teammate to sync current work';
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5" style={{ opacity: 0.82 }}>
+      <span
+        className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300"
+        style={{ backgroundColor: 'rgba(245, 158, 11, 0.12)' }}
+      >
+        automation
+      </span>
+      <span className="text-[11px] uppercase tracking-wide" style={{ color: CARD_ICON_MUTED }}>
+        work sync
+      </span>
+      <MoveRight size={10} style={{ color: CARD_ICON_MUTED }} className="shrink-0" />
+      <MemberBadge
+        name={recipientName}
+        color={recipientColor}
+        teamName={teamName}
+        hideAvatar
+        onClick={onMemberNameClick}
+      />
+      <span className="min-w-0 flex-1 truncate text-[11px]" style={{ color: CARD_TEXT_LIGHT }}>
+        {body}
+        {primaryTaskRef && taskLabel ? (
+          <>
+            {' '}
+            <button
+              type="button"
+              className="font-medium text-blue-300 hover:text-blue-200"
+              onClick={(event) => {
+                event.stopPropagation();
+                onTaskIdClick?.(primaryTaskRef.taskId);
+              }}
+            >
+              {taskLabel}
+            </button>
+            {extraTaskCount > 0 ? ` +${extraTaskCount} more` : null}
           </>
         ) : null}
       </span>
@@ -996,6 +1076,21 @@ export const ActivityItem = memo(
           recipientName={message.to ?? 'teammate'}
           recipientColor={recipientColor}
           taskRef={message.taskRefs?.[0]}
+          timestamp={timestamp}
+          onMemberNameClick={onMemberNameClick}
+          onTaskIdClick={onTaskIdClick}
+        />
+      );
+    }
+
+    if (isMemberWorkSyncNudgeMessage(message)) {
+      return (
+        <MemberWorkSyncNudgeRow
+          teamName={teamName}
+          recipientName={message.to ?? 'teammate'}
+          recipientColor={recipientColor}
+          taskRefs={message.taskRefs}
+          intent={message.workSyncIntent}
           timestamp={timestamp}
           onMemberNameClick={onMemberNameClick}
           onTaskIdClick={onTaskIdClick}

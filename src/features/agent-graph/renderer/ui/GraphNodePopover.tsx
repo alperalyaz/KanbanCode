@@ -386,10 +386,24 @@ const MemberPopoverContent = ({
             : node.state === 'error'
               ? 'bg-red-400'
               : 'bg-zinc-600');
+  const hasErrorException = node.exceptionTone === 'error';
+  const statusBadgeClass = hasErrorException
+    ? 'border-red-500/60 bg-red-500/10 text-red-300 shadow-[0_0_12px_rgba(239,68,68,0.22)]'
+    : '';
   const showExceptionBadge = node.exceptionLabel && node.exceptionLabel !== statusLabel;
 
   return (
-    <div className="min-w-[200px] max-w-[280px] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-3 shadow-xl">
+    <div
+      className="min-w-[200px] max-w-[280px] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-3 shadow-xl"
+      style={
+        hasErrorException
+          ? {
+              borderColor: 'rgba(239, 68, 68, 0.42)',
+              boxShadow: '0 18px 38px rgba(0, 0, 0, 0.45), 0 0 26px rgba(239, 68, 68, 0.2)',
+            }
+          : undefined
+      }
+    >
       {/* Header: avatar + name */}
       <div className="flex items-center gap-3">
         <div className="relative shrink-0">
@@ -422,7 +436,7 @@ const MemberPopoverContent = ({
 
       {/* Status badges */}
       <div className="mt-2 flex flex-wrap gap-1">
-        <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+        <Badge variant="outline" className={`px-1.5 py-0 text-[10px] ${statusBadgeClass}`}>
           {statusLabel}
         </Badge>
         {node.kind === 'lead' && (
@@ -447,7 +461,7 @@ const MemberPopoverContent = ({
             variant="outline"
             className={`px-1.5 py-0 text-[10px] ${
               node.exceptionTone === 'error'
-                ? 'border-red-500/30 text-red-400'
+                ? 'border-red-500/60 bg-red-500/10 text-red-300 shadow-[0_0_12px_rgba(239,68,68,0.22)]'
                 : 'border-amber-500/30 text-amber-400'
             }`}
           >

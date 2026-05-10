@@ -105,7 +105,9 @@
   },
   "meta": {
     "homeTitle": "Agent Teams - AI Agent Orchestration for Developers",
-    "homeDescription": "Free, open-source desktop app for assembling AI agent teams. Kanban board, code review, cross-team communication. Runs entirely locally."
+    "homeDescription": "Free, open-source desktop app for assembling AI agent teams. Kanban board, code review, cross-team communication. Runs entirely locally.",
+    "downloadTitle": "Download Agent Teams for macOS, Windows, and Linux",
+    "downloadDescription": "Download Agent Teams for macOS, Windows, and Linux. Free open-source desktop app for Claude, Codex, and OpenCode agent teams."
   },
   "error": {
     "notFoundTitle": "Page not found",

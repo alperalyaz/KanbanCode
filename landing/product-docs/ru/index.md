@@ -1,4 +1,6 @@
 ---
+title: Документация Agent Teams – Запускайте команды AI-агентов из локального desktop-приложения
+description: Документация Agent Teams, бесплатного desktop-приложения для оркестрации AI-агентов. Создавайте команды, наблюдайте за канбан-доской, ревьюйте изменения и координируйте Claude, Codex, OpenCode и multimodel workflows.
 layout: home
 hero:
   name: Документация Agent Teams

@@ -7,7 +7,6 @@ import {
   type OpenCodePromptDeliveryLedgerRecord,
 } from './opencode/delivery/OpenCodePromptDeliveryLedger';
 import {
-  classifyOpenCodeRuntimeDeliveryReasonCode,
   decideOpenCodeRuntimeDeliveryAdvisory,
   getOpenCodeRuntimeDeliveryRecordTimeMs,
   isPotentialOpenCodeRuntimeDeliveryError,
@@ -21,6 +20,7 @@ import {
   getOpenCodeLaneScopedRuntimeFilePath,
   readOpenCodeRuntimeLaneIndex,
 } from './opencode/store/OpenCodeRuntimeManifestEvidenceReader';
+import { classifyRuntimeDiagnostic } from './runtime/RuntimeDiagnosticClassifier';
 import { TeamMemberLogsFinder } from './TeamMemberLogsFinder';
 
 import type { MemberLogSummary, MemberRuntimeAdvisory, ResolvedTeamMember } from '@shared/types';
@@ -701,7 +701,7 @@ export class TeamMemberRuntimeAdvisoryService {
         observedAt: new Date(observedAt).toISOString(),
         retryUntil: new Date(retryUntil).toISOString(),
         retryDelayMs: retryInMs,
-        reasonCode: classifyOpenCodeRuntimeDeliveryReasonCode(message),
+        reasonCode: classifyRuntimeDiagnostic(message).reasonCode,
         ...(message ? { message } : {}),
       };
     } catch {
@@ -753,7 +753,7 @@ export class TeamMemberRuntimeAdvisoryService {
       return {
         kind: 'api_error',
         observedAt: new Date(observedAt).toISOString(),
-        reasonCode: classifyOpenCodeRuntimeDeliveryReasonCode(message || parsed.error),
+        reasonCode: classifyRuntimeDiagnostic(message || parsed.error).reasonCode,
         ...(message ? { message } : {}),
         ...(statusMatch ? { statusCode: Number(statusMatch[1]) } : {}),
       };

@@ -105,7 +105,9 @@
   },
   "meta": {
     "homeTitle": "Agent Teams - Orchestration d'agents IA pour développeurs",
-    "homeDescription": "Application desktop gratuite et open source pour gérer des équipes d'agents IA. Tableau kanban, revue de code, communication inter-équipes. Fonctionne entièrement en local."
+    "homeDescription": "Application desktop gratuite et open source pour gérer des équipes d'agents IA. Tableau kanban, revue de code, communication inter-équipes. Fonctionne entièrement en local.",
+    "downloadTitle": "Télécharger Agent Teams pour macOS, Windows et Linux",
+    "downloadDescription": "Téléchargez Agent Teams pour macOS, Windows et Linux. Application desktop gratuite et open source pour équipes d'agents Claude, Codex et OpenCode."
   },
   "error": {
     "notFoundTitle": "Page introuvable",

@@ -40,11 +40,15 @@ export function drawAgents(
     const color = node.color ?? getStateColor(node.state);
     const isSelected = node.id === selectedId;
     const isHovered = node.id === hoveredId;
+    const hasErrorException = node.exceptionTone === 'error';
 
     ctx.save();
     ctx.globalAlpha = opacity;
 
     if (simplify) {
+      if (hasErrorException) {
+        drawExceptionGlow(ctx, x, y, r, time, true);
+      }
       drawHexagon(ctx, x, y, r);
       ctx.fillStyle = isSelected ? 'rgba(100, 200, 255, 0.15)' : COLORS.nodeInterior;
       ctx.fill();
@@ -63,6 +67,9 @@ export function drawAgents(
 
       // Outer glow
       drawGlow(ctx, x, y, r, color);
+      if (hasErrorException) {
+        drawExceptionGlow(ctx, x, y, r, time);
+      }
 
       // Hexagonal body with interior fill
       drawHexBody(ctx, x, y, r, color, node.state, time, isSelected, isHovered);
@@ -246,6 +253,47 @@ function drawExceptionPip(
   ctx.fill();
   ctx.lineWidth = 1.5;
   ctx.strokeStyle = '#050510';
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawExceptionGlow(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  time: number,
+  simplified = false
+): void {
+  const pulse = 0.5 + 0.5 * Math.sin(time * 4.2);
+  const glowAlpha = simplified ? 0.12 : 0.16 + pulse * 0.08;
+  const strokeAlpha = simplified ? 0.7 : 0.5 + pulse * 0.24;
+  const outerR = r + (simplified ? 13 : 20);
+  const ringR = r + (simplified ? 4 : 7);
+  const arcR = r + (simplified ? 9 : 13);
+  const errorColor = '#ef4444';
+
+  ctx.save();
+  const grad = ctx.createRadialGradient(x, y, r * 0.6, x, y, outerR);
+  grad.addColorStop(0, hexWithAlpha(errorColor, glowAlpha));
+  grad.addColorStop(0.68, hexWithAlpha(errorColor, glowAlpha * 0.55));
+  grad.addColorStop(1, hexWithAlpha(errorColor, 0));
+  ctx.beginPath();
+  ctx.arc(x, y, outerR, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(x, y, ringR, 0, Math.PI * 2);
+  ctx.strokeStyle = hexWithAlpha(errorColor, strokeAlpha);
+  ctx.lineWidth = simplified ? 2 : 2.4;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(x, y, arcR, time * 1.35, time * 1.35 + Math.PI * 1.3);
+  ctx.strokeStyle = hexWithAlpha('#f87171', simplified ? 0.78 : 0.62 + pulse * 0.22);
+  ctx.lineWidth = simplified ? 1.4 : 2;
+  ctx.lineCap = 'round';
   ctx.stroke();
   ctx.restore();
 }
