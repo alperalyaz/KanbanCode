@@ -401,6 +401,8 @@ function formatRuntimeAdvisoryBaseLabel(
         return 'Codex native timeout';
       case 'network_error':
         return 'Network error';
+      case 'filesystem_error':
+        return 'Disk space error';
       case 'provider_overloaded':
         return providerLabel ? `${providerLabel} overload` : 'Provider overload';
       case 'protocol_proof_missing':
@@ -430,6 +432,8 @@ function formatRuntimeAdvisoryBaseLabel(
       return 'Codex native retry';
     case 'network_error':
       return 'Network retry';
+    case 'filesystem_error':
+      return 'Disk space retry';
     case 'provider_overloaded':
       return providerLabel ? `${providerLabel} overload retry` : 'Provider overload retry';
     case 'protocol_proof_missing':
@@ -471,6 +475,11 @@ function formatRuntimeAdvisoryTitle(
         );
       case 'network_error':
         return appendRuntimeAdvisoryRawMessage('Network or connectivity error.', advisory.message);
+      case 'filesystem_error':
+        return appendRuntimeAdvisoryRawMessage(
+          'Local disk is full or unavailable.',
+          advisory.message
+        );
       case 'provider_overloaded':
         return appendRuntimeAdvisoryRawMessage(
           'Provider is temporarily overloaded.',
@@ -527,6 +536,11 @@ function formatRuntimeAdvisoryTitle(
     case 'network_error':
       return appendRuntimeAdvisoryRawMessage(
         'Network or connectivity issue. SDK is retrying automatically.',
+        advisory.message
+      );
+    case 'filesystem_error':
+      return appendRuntimeAdvisoryRawMessage(
+        'Local disk is full or unavailable. SDK is retrying automatically.',
         advisory.message
       );
     case 'provider_overloaded':

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const { content } = useLandingContent();
 
-usePageSeo("meta.homeTitle", "meta.homeDescription");
+usePageSeo("meta.downloadTitle", "meta.downloadDescription");
 </script>
 
 <template>

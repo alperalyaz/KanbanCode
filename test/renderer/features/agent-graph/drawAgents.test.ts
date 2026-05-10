@@ -23,11 +23,21 @@ interface FillTextCall {
   globalAlpha: number;
 }
 
+interface GradientStopCall {
+  offset: number;
+  color: string;
+}
+
 function createMockContext() {
   const fillTextCalls: FillTextCall[] = [];
   const strokeTextCalls: FillTextCall[] = [];
-  const roundRectCalls: Array<{ x: number; y: number; width: number; height: number }> = [];
-  const gradient = { addColorStop: vi.fn() };
+  const roundRectCalls: { x: number; y: number; width: number; height: number }[] = [];
+  const gradientStops: GradientStopCall[] = [];
+  const gradient = {
+    addColorStop: vi.fn((offset: number, color: string) => {
+      gradientStops.push({ offset, color });
+    }),
+  };
   let fillStyle = '';
   let globalAlpha = 1;
 
@@ -84,7 +94,7 @@ function createMockContext() {
     },
   } as unknown as CanvasRenderingContext2D;
 
-  return { ctx, fillTextCalls, strokeTextCalls, roundRectCalls };
+  return { ctx, fillTextCalls, strokeTextCalls, roundRectCalls, gradientStops };
 }
 
 describe('drawAgents', () => {
@@ -214,5 +224,26 @@ describe('drawAgents', () => {
     expect(roundRectCalls.filter((call) => call.height === 12 || call.height === 10)).toHaveLength(
       2
     );
+  });
+
+  it('adds a red glow around members with error exceptions', () => {
+    const { ctx, gradientStops } = createMockContext();
+    const node: GraphNode = {
+      id: 'member:demo:bob',
+      kind: 'member',
+      label: 'bob',
+      state: 'active',
+      color: '#7c3aed',
+      exceptionTone: 'error',
+      exceptionLabel: 'OpenCode API error',
+      domainRef: { kind: 'member', teamName: 'demo', memberName: 'bob' },
+      x: 320,
+      y: 240,
+    };
+
+    drawAgents(ctx, [node], 0, null, null, null, 1);
+
+    expect(ctx.createRadialGradient).toHaveBeenCalledWith(320, 240, 18, 320, 240, 50);
+    expect(gradientStops.some((stop) => stop.color.startsWith('#ef4444'))).toBe(true);
   });
 });

@@ -114,17 +114,45 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
   sitemap: {
-    hostname: docsUrl
+    hostname: docsUrl,
+    lastmodDateOnly: true
   },
   head: [
     ["link", { rel: "icon", type: "image/png", href: `${base}logo-192.png` }],
-    ["meta", { name: "theme-color", content: "#00f0ff" }],
+    ["link", { rel: "canonical", href: docsUrl }],
+    ["meta", { name: "robots", content: "index, follow" }],
+    ["meta", { name: "author", content: "777genius" }],
+    ["meta", { name: "generator", content: "VitePress" }],
+    ["meta", { name: "color-scheme", content: "light dark" }],
+    ["meta", { name: "theme-color", content: "#f8fafc", media: "(prefers-color-scheme: light)" }],
+    ["meta", { name: "theme-color", content: "#0a0a0f", media: "(prefers-color-scheme: dark)" }],
     ["meta", { property: "og:type", content: "website" }],
     ["meta", { property: "og:title", content: SITE_TITLE }],
     ["meta", { property: "og:description", content: SITE_DESCRIPTION }],
     ["meta", { property: "og:url", content: docsUrl }],
     ["meta", { property: "og:image", content: `${publicBaseUrl}og-image.png` }],
-    ["meta", { name: "twitter:card", content: "summary_large_image" }]
+    ["meta", { property: "og:image:width", content: "1200" }],
+    ["meta", { property: "og:image:height", content: "630" }],
+    ["meta", { property: "og:site_name", content: "Agent Teams" }],
+    ["meta", { property: "og:locale", content: "en_US" }],
+    ["meta", { name: "twitter:card", content: "summary_large_image" }],
+    ["meta", { name: "twitter:title", content: SITE_TITLE }],
+    ["meta", { name: "twitter:description", content: SITE_DESCRIPTION }],
+    ["meta", { name: "twitter:image", content: `${publicBaseUrl}og-image.png` }],
+    [
+      "script",
+      { type: "application/ld+json" },
+      JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        name: "Agent Teams",
+        description: SITE_DESCRIPTION,
+        url: publicBaseUrl,
+        applicationCategory: "DeveloperApplication",
+        operatingSystem: "macOS, Windows, Linux",
+        offers: { "@type": "Offer", price: "0", priceCurrency: "USD" }
+      })
+    ]
   ],
   vite: {
     publicDir: landingPublicDir,
@@ -152,7 +180,18 @@ export default defineConfig({
       label: "On this page"
     },
     search: {
-      provider: "local"
+      provider: "local",
+      options: {
+        translations: {
+          button: "Search...",
+          buttonAriaLabel: "Search documentation",
+          noResultsText: "No results found",
+          suggestedQueryText: "Try searching for",
+          reportMissing: "Found a problem? Create an issue",
+          reportMissingText: "Report missing result",
+          reportMissingLink: "https://github.com/777genius/agent-teams-ai/issues/new"
+        }
+      }
     },
     nav: rootNav,
     sidebar: {
@@ -193,6 +232,25 @@ export default defineConfig({
         outline: {
           level: [2, 3],
           label: "На этой странице"
+        },
+        search: {
+          provider: "local",
+          options: {
+            translations: {
+              button: {
+                buttonText: "Поиск по документации",
+                buttonAriaLabel: "поиск по документации"
+              },
+              modal: {
+                noResultsText: "Результаты не найдены",
+                footer: {
+                  selectText: "для выбора",
+                  navigateText: "для навигации",
+                  closeText: "для закрытия"
+                }
+              }
+            }
+          }
         },
         editLink: {
           pattern: `https://github.com/${REPO}/edit/main/landing/product-docs/:path`,

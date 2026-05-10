@@ -105,7 +105,9 @@
   },
   "meta": {
     "homeTitle": "Agent Teams - KI-Agenten-Orchestrierung für Entwickler",
-    "homeDescription": "Kostenlose Open-Source-Desktop-App für KI-Agenten-Teams. Kanban-Board, Code-Review, teamübergreifende Kommunikation. Läuft vollständig lokal."
+    "homeDescription": "Kostenlose Open-Source-Desktop-App für KI-Agenten-Teams. Kanban-Board, Code-Review, teamübergreifende Kommunikation. Läuft vollständig lokal.",
+    "downloadTitle": "Agent Teams für macOS, Windows und Linux herunterladen",
+    "downloadDescription": "Laden Sie Agent Teams für macOS, Windows und Linux herunter. Kostenlose Open-Source-Desktop-App für Claude-, Codex- und OpenCode-Agententeams."
   },
   "error": {
     "notFoundTitle": "Seite nicht gefunden",

@@ -763,6 +763,20 @@ describe('memberHelpers spawn-aware presence', () => {
     ).toContain('Connection timed out while contacting provider.');
   });
 
+  it('renders local filesystem advisories as disk space errors', () => {
+    const advisory = {
+      kind: 'api_error' as const,
+      observedAt: '2026-04-07T09:00:00.000Z',
+      reasonCode: 'filesystem_error' as const,
+      message: 'Local disk is full (ENOSPC). Free disk space and retry OpenCode delivery.',
+    };
+
+    expect(getMemberRuntimeAdvisoryLabel(advisory, 'opencode')).toBe('Disk space error');
+    expect(getMemberRuntimeAdvisoryTitle(advisory, 'opencode')).toContain(
+      'Local disk is full or unavailable.'
+    );
+  });
+
   it('renders terminal API errors as errors instead of retrying status', () => {
     expect(
       getMemberRuntimeAdvisoryLabel(

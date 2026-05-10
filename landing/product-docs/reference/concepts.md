@@ -1,3 +1,8 @@
+---
+title: Concepts
+description: Core vocabulary for Agent Teams — teams, leads, teammates, tasks, kanban, inboxes, runtimes, and review.
+---
+
 # Concepts
 
 This page defines the core terms used across Agent Teams. Use it as the shared vocabulary for the app, task board, messages, and review flow.
@@ -6,15 +11,19 @@ This page defines the core terms used across Agent Teams. Use it as the shared v
 
 A team is a named group of agents attached to one project path. It has a lead, optional teammates, runtime/provider settings, prompts, inboxes, tasks, and local launch state.
 
-## Lead
+## Lead {#lead}
 
 The lead is the coordinator for the team. It turns a user goal into tasks, assigns or redirects teammates, tracks blockers, asks for review, and keeps work moving through the board.
 
+[Teammate →](#teammate)
+
 Lead messages use a different delivery path from teammate messages: the app relays lead inbox entries into the lead runtime, while teammates read their own inbox files between turns.
 
-## Teammate
+## Teammate {#teammate}
 
 A teammate is a non-lead agent in the team. Teammates usually own focused roles such as builder, reviewer, researcher, or tester. A teammate can receive direct messages, task assignments, task comments, and review requests.
+
+[Lead ↑](#lead)
 
 ## Task
 

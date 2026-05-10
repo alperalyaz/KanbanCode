@@ -1,3 +1,14 @@
+---
+title: FAQ
+description: Часто задаваемые вопросы об Agent Teams — цена, доступ к моделям, рантаймы, приватность, ревью и диагностика.
+---
+
+---
+title: FAQ – Документация Agent Teams
+description: Часто задаваемые вопросы о цене, доступе к моделям, настройке рантаймов, приватности данных, worktree isolation и код-ревью.
+lang: ru-RU
+---
+
 # FAQ
 
 ## Agent Teams бесплатный?
@@ -18,6 +29,18 @@
 
 OpenCode setup отделён от Claude Code и Codex setup. Если launch fails, сначала проверьте runtime status и provider auth, а не меняйте team prompt.
 
+## Как проверить, что runtime готов?
+
+Сначала запустите runtime command в терминале:
+
+```bash
+claude --version
+codex --version
+opencode --version
+```
+
+Затем проверьте provider auth для выбранного пути. Если command или auth check не работает вне Agent Teams, исправьте setup до запуска команды.
+
 ## Приложение загружает мой код на серверы Agent Teams?
 
 Нет. Agent Teams не является cloud code-sync сервисом. Но provider-backed model calls могут получать prompt context в зависимости от выбранного runtime.
@@ -34,6 +57,14 @@ Prompt context, selected file contents, tool results, command output, task text,
 
 Да. Агенты могут писать teammates, комментировать tasks, координироваться между teams и использовать task references, чтобы разговор оставался привязанным к работе.
 
+## Что написать в первый team prompt?
+
+Дайте lead конкретный outcome, file или feature boundaries, risk limits и verification expectations. Например:
+
+```text
+Improve the docs quickstart. Keep edits inside landing/product-docs, add practical examples, and run the docs build before marking work done.
+```
+
 ## Можно ревьюить код перед принятием?
 
 Да. Review flow построен вокруг task-scoped diffs и hunk-level decisions.
@@ -45,6 +76,10 @@ Agent Block - скрытый agent-only text в маркерах вроде `<in
 ## Что такое solo mode?
 
 Solo mode - команда из одного агента. Подходит для небольших задач и меньшего coordination overhead.
+
+## Стоит ли включать worktree isolation?
+
+Включайте, когда несколько OpenCode teammates могут параллельно редактировать один Git project. Это снижает file conflicts, но требует Git-tracked project и сейчас применяется к OpenCode members.
 
 ## Могут ли разные teammates использовать разных providers?
 

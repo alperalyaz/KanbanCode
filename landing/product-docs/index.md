@@ -1,4 +1,6 @@
 ---
+title: Agent Teams Docs – Run AI Agent Teams from a Local Desktop App
+description: Documentation for Agent Teams, a free desktop app for AI agent orchestration. Create teams, watch work on a kanban board, review code changes, and coordinate Claude, Codex, OpenCode, and multimodel workflows.
 layout: home
 hero:
   name: Agent Teams Docs

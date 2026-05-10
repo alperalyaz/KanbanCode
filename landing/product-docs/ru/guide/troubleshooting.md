@@ -1,3 +1,14 @@
+---
+title: Диагностика
+description: Исправление ошибок запуска, пропавших ответов агентов, rate limits, проблем auth и lane bootstrap в Agent Teams.
+---
+
+---
+title: Диагностика – Документация Agent Teams
+description: Решение проблем с запуском команд, отсутствующими ответами агентов, rate limits, CLI auth и lane bootstrap stalls через локальные диагностики.
+lang: ru-RU
+---
+
 # Диагностика
 
 Большинство проблем команды попадает в четыре группы: runtime setup, launch confirmation, task parsing и provider limits.

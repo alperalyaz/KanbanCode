@@ -14,9 +14,11 @@ import {
   selectTeamDataForName,
   selectTeamMessages,
 } from '@renderer/store/slices/teamSlice';
+import { DEFAULT_TEAM_GRAPH_LAYOUT_MODE } from '@shared/constants/teamGraphLayoutMode';
 import { buildTeamGraphDefaultLayoutSeed } from '@shared/utils/teamGraphDefaultLayout';
 import { useShallow } from 'zustand/react/shallow';
 
+import { GRAPH_STABLE_SLOT_LAYOUT_VERSION } from '../../core/domain/graphOwnerIdentity';
 import { TeamGraphAdapter } from '../adapters/TeamGraphAdapter';
 
 import type { TeamGraphData } from '../adapters/TeamGraphAdapter';
@@ -42,7 +44,19 @@ function subscribeNoop(): () => void {
 }
 
 function emptyGraphData(teamName: string): GraphDataPort {
-  return { nodes: [], edges: [], particles: [], teamName, isAlive: false };
+  return {
+    nodes: [],
+    edges: [],
+    particles: [],
+    teamName,
+    isAlive: false,
+    layout: {
+      version: GRAPH_STABLE_SLOT_LAYOUT_VERSION,
+      mode: DEFAULT_TEAM_GRAPH_LAYOUT_MODE,
+      ownerOrder: [],
+      slotAssignments: {},
+    },
+  };
 }
 
 export function useTeamGraphAdapter(
@@ -191,7 +205,7 @@ export function useTeamGraphAdapter(
       provisioningProgress,
       memberSpawnSnapshot,
       effectiveSlotAssignments,
-      graphLayoutMode ?? 'radial',
+      graphLayoutMode ?? DEFAULT_TEAM_GRAPH_LAYOUT_MODE,
       gridOwnerOrder,
       activeTaskLogActivity
     );

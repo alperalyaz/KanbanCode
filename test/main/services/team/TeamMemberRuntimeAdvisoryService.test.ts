@@ -169,6 +169,7 @@ describe('TeamMemberRuntimeAdvisoryService', () => {
     ],
     ['codex_native_timeout', 'Codex native exec timed out after 120000ms.'],
     ['network_error', 'Fetch failed because the network connection timed out.'],
+    ['filesystem_error', 'ENOSPC: no space left on device, write'],
     ['provider_overloaded', 'Service unavailable: provider temporarily unavailable (503).'],
     ['protocol_proof_missing', 'OpenCode created a reply without the required taskRefs metadata.'],
     ['backend_error', 'Unexpected backend blew up during request processing.'],

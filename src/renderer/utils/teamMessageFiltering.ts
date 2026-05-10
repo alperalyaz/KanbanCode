@@ -5,6 +5,7 @@ import {
 import { shouldKeepIdleMessageInActivityWhenNoiseHidden } from '@renderer/utils/idleNotificationSemantics';
 import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 import {
+  isMemberWorkSyncNudgeMessage,
   isReviewPickupEscalationMessage,
   isTaskStallRemediationMessage,
 } from '@shared/utils/teamAutomationMessages';
@@ -135,7 +136,8 @@ export function filterTeamMessages(
   let list = messages.filter(
     (m) =>
       m.messageKind !== 'task_comment_notification' &&
-      (includeAutomationEvents || !isTaskStallRemediationMessage(m)) &&
+      (includeAutomationEvents ||
+        (!isTaskStallRemediationMessage(m) && !isMemberWorkSyncNudgeMessage(m))) &&
       !isReviewPickupEscalationMessage(m) &&
       !isTeamInternalControlMessageEnvelope(m)
   );

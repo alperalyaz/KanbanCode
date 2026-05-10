@@ -768,22 +768,22 @@ describe('teamSlice actions', () => {
     });
   });
 
-  it('stores graph layout mode without mutating radial slot assignments', () => {
+  it('stores non-default graph layout mode without mutating radial slot assignments', () => {
     const store = createSliceStore();
     store
       .getState()
       .commitTeamGraphOwnerSlotDrop('my-team', 'agent-alice', { ringIndex: 0, sectorIndex: 2 });
 
-    store.getState().setTeamGraphLayoutMode('my-team', 'grid-under-lead');
+    store.getState().setTeamGraphLayoutMode('my-team', 'radial');
 
-    expect(store.getState().graphLayoutModeByTeam['my-team']).toBe('grid-under-lead');
+    expect(store.getState().graphLayoutModeByTeam['my-team']).toBe('radial');
     expect(store.getState().slotAssignmentsByTeam['my-team']).toEqual({
       'agent-alice': { ringIndex: 0, sectorIndex: 2 },
     });
 
-    store.getState().setTeamGraphLayoutMode('my-team', 'radial');
+    store.getState().setTeamGraphLayoutMode('my-team', 'grid-under-lead');
 
-    expect(store.getState().graphLayoutModeByTeam['my-team']).toBe('radial');
+    expect(store.getState().graphLayoutModeByTeam['my-team']).toBe('grid-under-lead');
     expect(store.getState().slotAssignmentsByTeam['my-team']).toEqual({
       'agent-alice': { ringIndex: 0, sectorIndex: 2 },
     });
@@ -2484,6 +2484,51 @@ describe('teamSlice actions', () => {
 
     expect(selectTeamDataForName(store.getState(), 'my-team')).toBe(freshSelectedData);
     expect(selectResolvedMembersForTeamName(store.getState(), 'my-team')).toHaveLength(1);
+  });
+
+  it('falls back to config roster when snapshot members are temporarily empty', () => {
+    const store = createSliceStore();
+    const partialSnapshot = createTeamSnapshot({
+      config: {
+        name: 'My Team',
+        members: [
+          { name: 'team-lead', agentType: 'team-lead', providerId: 'codex' },
+          { name: 'alice', role: 'reviewer', providerId: 'anthropic', color: 'blue' },
+          { name: 'bob', role: 'developer', providerId: 'opencode' },
+        ],
+      },
+      members: [],
+      tasks: [
+        {
+          id: 'task-1',
+          subject: 'Review current diff',
+          status: 'in_progress',
+          owner: 'alice',
+        },
+      ],
+    });
+
+    store.setState({
+      selectedTeamName: 'my-team',
+      selectedTeamData: partialSnapshot,
+      teamDataCacheByName: {
+        'my-team': partialSnapshot,
+      },
+      memberActivityMetaByTeam: {},
+    });
+
+    const members = selectResolvedMembersForTeamName(store.getState(), 'my-team');
+
+    expect(members.map((member) => member.name)).toEqual(['team-lead', 'alice', 'bob']);
+    expect(members.find((member) => member.name === 'alice')).toMatchObject({
+      role: 'reviewer',
+      currentTaskId: 'task-1',
+      taskCount: 1,
+    });
+    expect(selectResolvedMemberForTeamName(store.getState(), 'my-team', 'bob')).toMatchObject({
+      name: 'bob',
+      role: 'developer',
+    });
   });
 
   it('memoizes team-scoped member messages selectors over the merged message feed', () => {

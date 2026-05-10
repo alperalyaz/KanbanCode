@@ -48,6 +48,7 @@ const cards = computed(() => {
       <span class="docs-card__icon">{{ card.icon }}</span>
       <strong>{{ card.title }}</strong>
       <span>{{ card.desc }}</span>
+      <span class="docs-card__arrow" aria-hidden="true">→</span>
     </a>
   </div>
 </template>
@@ -61,8 +62,10 @@ const cards = computed(() => {
 }
 
 .docs-card {
+  position: relative;
+  overflow: hidden;
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto 1fr auto;
   grid-template-rows: auto auto;
   column-gap: 12px;
   row-gap: 4px;
@@ -72,24 +75,27 @@ const cards = computed(() => {
   background: var(--at-c-surface-soft);
   color: var(--at-c-text);
   text-decoration: none !important;
+  box-shadow: var(--at-shadow-card);
   transition:
     border-color var(--at-transition-base),
     background-color var(--at-transition-base),
-    transform var(--at-transition-base);
+    transform var(--at-transition-base),
+    box-shadow var(--at-transition-base);
 }
 
 .docs-card:hover {
   border-color: var(--at-c-border-strong);
   background: var(--at-glass-bg-hover);
-  transform: translateY(-2px);
+  transform: translateY(-3px);
+  box-shadow: var(--at-shadow-cyan-md);
 }
 
 .docs-card__icon {
   grid-row: 1 / -1;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: var(--at-radius-md);
   background: var(--at-gradient-panel);
   color: var(--at-c-cyan);
@@ -101,17 +107,44 @@ const cards = computed(() => {
 .docs-card strong {
   color: var(--at-c-text);
   font-size: 15px;
+  line-height: 1.3;
 }
 
-.docs-card span:last-child {
+.docs-card > span:nth-of-type(2) {
   color: var(--at-c-text-muted);
   font-size: 13px;
   line-height: 1.45;
 }
 
+.docs-card__arrow {
+  grid-column: 3;
+  align-self: end;
+  color: var(--at-c-cyan);
+  font-family: var(--at-font-mono);
+  font-size: 16px;
+  opacity: 0.55;
+  transform: translateX(-4px);
+  transition:
+    opacity var(--at-transition-base),
+    transform var(--at-transition-base);
+}
+
+.docs-card:hover .docs-card__arrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
 @media (max-width: 640px) {
   .docs-card-grid {
     grid-template-columns: 1fr;
+  }
+
+  .docs-card {
+    grid-template-columns: auto 1fr;
+  }
+
+  .docs-card__arrow {
+    display: none;
   }
 }
 </style>

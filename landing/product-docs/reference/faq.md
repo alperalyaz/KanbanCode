@@ -1,3 +1,18 @@
+---
+title: FAQ
+description: Frequently asked questions about Agent Teams — pricing, model access, runtimes, privacy, review, and troubleshooting.
+---
+
+---
+title: FAQ – Agent Teams Docs
+description: Frequently asked questions about pricing, model access, runtime setup, data privacy, worktree isolation, and code review.
+---
+
+---
+title: FAQ – Agent Teams Docs
+description: Frequently asked questions about Agent Teams — pricing, model access, runtimes, privacy, review, and debugging.
+---
+
 # FAQ
 
 ## Is Agent Teams free?
@@ -18,6 +33,18 @@ Not always. The app guides runtime detection and setup from the UI. Some paths s
 
 OpenCode setup is separate from Claude Code and Codex setup. If a launch fails, check runtime status and provider auth before changing the team prompt.
 
+## How do I check whether a runtime is ready?
+
+Run the runtime command in a terminal first:
+
+```bash
+claude --version
+codex --version
+opencode --version
+```
+
+Then confirm provider auth for the path you selected. If the command or auth check fails outside Agent Teams, fix setup before launching a team.
+
 ## Does it upload my code to Agent Teams servers?
 
 No. Agent Teams is not a cloud code-sync service. Provider-backed model calls may receive prompt context depending on your selected runtime.
@@ -34,6 +61,14 @@ Prompt context, selected file contents, tool results, command output, task text,
 
 Yes. Agents can message teammates, comment on tasks, coordinate across teams, and use task references to keep conversations attached to work.
 
+## What should I put in the first team prompt?
+
+Give the lead a concrete outcome, file or feature boundaries, risk limits, and verification expectations. For example:
+
+```text
+Improve the docs quickstart. Keep edits inside landing/product-docs, add practical examples, and run the docs build before marking work done.
+```
+
 ## Can I review code before accepting it?
 
 Yes. The review flow is built around task-scoped diffs and hunk-level decisions.
@@ -45,6 +80,10 @@ An Agent Block is hidden agent-only text wrapped in markers such as `<info_for_a
 ## What is solo mode?
 
 Solo mode is a one-agent team. It is useful for smaller tasks and lower coordination overhead.
+
+## Should I use worktree isolation?
+
+Use it when multiple OpenCode teammates may edit the same Git project in parallel. It reduces file conflicts, but it requires a Git-tracked project and currently applies to OpenCode members.
 
 ## Can different teammates use different providers?
 

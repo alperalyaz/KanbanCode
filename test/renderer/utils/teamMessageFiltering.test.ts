@@ -585,6 +585,32 @@ Messages:
     expect(result.map((message) => message.messageId)).toEqual(['msg-2']);
   });
 
+  it('hides member work sync nudges from conversational message counts by default', () => {
+    const messages = [
+      makeMessage({
+        messageId: 'member-work-sync:demo:jack:agenda-a',
+        from: 'system',
+        to: 'jack',
+        source: 'system_notification',
+        messageKind: 'member_work_sync_nudge',
+        summary: 'Work sync check',
+        text: 'Work sync check: call member_work_sync_status.',
+      }),
+      makeMessage({
+        messageId: 'msg-2',
+        text: 'Visible message',
+      }),
+    ];
+
+    const result = filterTeamMessages(messages, {
+      timeWindow: null,
+      filter: { from: new Set(), to: new Set(), showNoise: true },
+      searchQuery: '',
+    });
+
+    expect(result.map((message) => message.messageId)).toEqual(['msg-2']);
+  });
+
   it('hides review pickup escalation automation rows from conversational message counts by default', () => {
     const messages = [
       makeMessage({
@@ -631,6 +657,31 @@ Messages:
 
     expect(result.map((message) => message.messageId)).toEqual([
       'task-stall:demo:task-a:legacy-epoch',
+    ]);
+  });
+
+  it('can include member work sync nudges for the activity timeline', () => {
+    const messages = [
+      makeMessage({
+        messageId: 'member-work-sync:demo:jack:agenda-a',
+        from: 'system',
+        to: 'jack',
+        source: 'system_notification',
+        messageKind: 'member_work_sync_nudge',
+        summary: 'Work sync check',
+        text: 'Work sync check: call member_work_sync_status.',
+      }),
+    ];
+
+    const result = filterTeamMessages(messages, {
+      includeAutomationEvents: true,
+      timeWindow: null,
+      filter: { from: new Set(), to: new Set(), showNoise: true },
+      searchQuery: '',
+    });
+
+    expect(result.map((message) => message.messageId)).toEqual([
+      'member-work-sync:demo:jack:agenda-a',
     ]);
   });
 

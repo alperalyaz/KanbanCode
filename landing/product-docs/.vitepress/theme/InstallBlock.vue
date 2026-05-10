@@ -37,40 +37,61 @@ async function copy() {
 .install-block {
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
   max-width: 100%;
-  gap: 12px;
+  width: 100%;
+  gap: 14px;
   margin: 12px 0 4px;
-  padding: 12px 16px;
+  padding: 14px 16px;
   border: var(--at-glass-border);
-  border-radius: var(--at-radius-lg);
+  border-radius: var(--at-radius-xl);
   background: var(--at-c-surface-soft);
   color: var(--at-c-text);
   cursor: pointer;
+  box-shadow: var(--at-shadow-card);
   transition:
     border-color var(--at-transition-base),
     background-color var(--at-transition-base),
-    transform var(--at-transition-base);
+    transform var(--at-transition-base),
+    box-shadow var(--at-transition-base);
 }
 
 .install-block:hover {
   border-color: var(--at-c-border-strong);
   background: var(--at-glass-bg-hover);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: var(--at-shadow-cyan-md);
 }
 
 .install-block code {
-  overflow: hidden;
+  min-width: 0;
   color: var(--at-c-text);
   font-family: var(--at-font-mono);
   font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
 }
 
 .install-block span {
   flex-shrink: 0;
+  padding: 6px 10px;
+  border-radius: var(--at-radius-pill);
+  background: color-mix(in srgb, var(--at-c-cyan) 12%, transparent);
   color: var(--at-c-cyan);
   font-family: var(--at-font-mono);
   font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .install-block {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .install-block span {
+    align-self: flex-start;
+  }
 }
 </style>

@@ -26,6 +26,16 @@ export const sitemapPages = [
   "/download"
 ] as const;
 
+export type SitemapPagePath = (typeof sitemapPages)[number];
+
+export const getLocaleMeta = (localeCode: LocaleCode) =>
+  supportedLocales.find((locale) => locale.code === localeCode) ?? supportedLocales[0];
+
+export const getLocalizedPagePath = (page: SitemapPagePath, localeCode: LocaleCode): string => {
+  if (localeCode === defaultLocale) return page;
+  return page === "/" ? `/${localeCode}` : `/${localeCode}${page}`;
+};
+
 /** Generates i18n routes for a given list of pages */
 const buildI18nRoutes = (source: readonly string[]): string[] => {
   const routes: string[] = [];

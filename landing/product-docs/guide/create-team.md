@@ -1,3 +1,8 @@
+---
+title: Create a Team – Agent Teams Docs
+description: Define roles, assign providers and models, write a team brief, and configure worktree isolation and autonomy levels.
+---
+
 # Create a Team
 
 A team is a named group of agents with roles, a lead, a target project, and a coordination prompt.

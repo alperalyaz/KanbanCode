@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 
 import { useStore } from '@renderer/store';
 import { isTeamGraphSlotPersistenceDisabled } from '@renderer/store/slices/teamSlice';
+import { DEFAULT_TEAM_GRAPH_LAYOUT_MODE } from '@shared/constants/teamGraphLayoutMode';
 
 import { parseGraphMemberNodeId } from '../../core/domain/graphOwnerIdentity';
 
@@ -45,7 +46,7 @@ export function useTeamGraphSurfaceActions(teamName: string): {
         ? parseGraphMemberNodeId(payload.displacedNodeId, teamName)
         : null;
       const store = useStore.getState();
-      if ((store.graphLayoutModeByTeam[teamName] ?? 'radial') !== 'radial') {
+      if ((store.graphLayoutModeByTeam[teamName] ?? DEFAULT_TEAM_GRAPH_LAYOUT_MODE) !== 'radial') {
         return;
       }
       if (displacedStableOwnerId && payload.displacedAssignment) {
@@ -72,7 +73,10 @@ export function useTeamGraphSurfaceActions(teamName: string): {
       }
 
       const store = useStore.getState();
-      if ((store.graphLayoutModeByTeam[teamName] ?? 'radial') !== 'grid-under-lead') {
+      if (
+        (store.graphLayoutModeByTeam[teamName] ?? DEFAULT_TEAM_GRAPH_LAYOUT_MODE) !==
+        'grid-under-lead'
+      ) {
         return;
       }
 

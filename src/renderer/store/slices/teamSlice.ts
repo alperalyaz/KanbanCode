@@ -15,7 +15,10 @@ import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import { extractProviderScopedBaseModel } from '@renderer/utils/teamModelContext';
 import { IpcError, unwrapIpc } from '@renderer/utils/unwrapIpc';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
+import { getMemberColorByName } from '@shared/constants/memberColors';
+import { DEFAULT_TEAM_GRAPH_LAYOUT_MODE } from '@shared/constants/teamGraphLayoutMode';
 import { DEFAULT_TOOL_APPROVAL_SETTINGS } from '@shared/types/team';
+import { isLeadMember } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { buildTeamGraphDefaultLayoutSeed } from '@shared/utils/teamGraphDefaultLayout';
@@ -1866,6 +1869,8 @@ const resolvedMembersSelectorCache = new Map<
   string,
   {
     snapshotRef: TeamViewSnapshot['members'];
+    configMembersRef: TeamViewSnapshot['config']['members'] | undefined;
+    tasksRef: TeamViewSnapshot['tasks'] | undefined;
     metaMembersRef: TeamMemberActivityMeta['members'] | undefined;
     result: ResolvedTeamMember[];
   }
@@ -1923,6 +1928,64 @@ function buildResolvedMembers(
   meta: TeamMemberActivityMeta | undefined
 ): ResolvedTeamMember[] {
   return snapshots.map((member) => buildResolvedMember(member, meta?.members[member.name]));
+}
+
+function isDisplayableFallbackCurrentTask(task: TeamViewSnapshot['tasks'][number]): boolean {
+  return (
+    task.status === 'in_progress' &&
+    getTeamTaskWorkflowColumn(task) !== 'review' &&
+    !isTeamTaskFinalForCompletionNotification(task)
+  );
+}
+
+function buildConfigFallbackMemberSnapshots(snapshot: TeamViewSnapshot): TeamMemberSnapshot[] {
+  const configMembers = snapshot.config.members ?? [];
+  const hasConfiguredTeammate = configMembers.some((member) => {
+    const name = member.name?.trim();
+    return Boolean(name) && !member.removedAt && !isLeadMember(member);
+  });
+  if (!hasConfiguredTeammate) {
+    return [];
+  }
+
+  const seenNames = new Set<string>();
+  const fallbackMembers: TeamMemberSnapshot[] = [];
+  for (const member of configMembers) {
+    const name = member.name?.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seenNames.has(key)) continue;
+    seenNames.add(key);
+
+    const ownedTasks = snapshot.tasks.filter((task) => task.owner === name);
+    const currentTask = ownedTasks.find(isDisplayableFallbackCurrentTask);
+    fallbackMembers.push({
+      name,
+      agentId: member.agentId,
+      currentTaskId: currentTask?.id ?? null,
+      taskCount: ownedTasks.length,
+      color: member.color ?? getMemberColorByName(name),
+      agentType: member.agentType,
+      role: member.role,
+      workflow: member.workflow,
+      isolation: member.isolation,
+      providerId: member.providerId,
+      providerBackendId: member.providerBackendId,
+      model: member.model,
+      effort: member.effort,
+      selectedFastMode: member.fastMode,
+      cwd: member.cwd,
+      removedAt: member.removedAt,
+    });
+  }
+
+  return fallbackMembers;
+}
+
+function getResolvableMemberSnapshots(snapshot: TeamViewSnapshot): readonly TeamMemberSnapshot[] {
+  return snapshot.members.length > 0
+    ? snapshot.members
+    : buildConfigFallbackMemberSnapshots(snapshot);
 }
 
 function buildResolvedMember(
@@ -2038,14 +2101,24 @@ export function selectResolvedMembersForTeamName(
 
   const meta = state.memberActivityMetaByTeam[teamName];
   const metaMembers = meta?.members;
+  const shouldUseConfigFallback = snapshot.members.length === 0;
+  const configMembersRef = shouldUseConfigFallback ? snapshot.config.members : undefined;
+  const tasksRef = shouldUseConfigFallback ? snapshot.tasks : undefined;
   const cached = resolvedMembersSelectorCache.get(teamName);
-  if (cached?.snapshotRef === snapshot.members && cached.metaMembersRef === metaMembers) {
+  if (
+    cached?.snapshotRef === snapshot.members &&
+    cached.configMembersRef === configMembersRef &&
+    cached.tasksRef === tasksRef &&
+    cached.metaMembersRef === metaMembers
+  ) {
     return cached.result;
   }
 
-  const result = buildResolvedMembers(snapshot.members, meta);
+  const result = buildResolvedMembers(getResolvableMemberSnapshots(snapshot), meta);
   resolvedMembersSelectorCache.set(teamName, {
     snapshotRef: snapshot.members,
+    configMembersRef,
+    tasksRef,
     metaMembersRef: metaMembers,
     result,
   });
@@ -2065,7 +2138,9 @@ export function selectResolvedMemberForTeamName(
     return null;
   }
 
-  const snapshotMember = snapshot.members.find((member) => member.name === memberName);
+  const snapshotMember = getResolvableMemberSnapshots(snapshot).find(
+    (member) => member.name === memberName
+  );
   if (!snapshotMember) {
     return null;
   }
@@ -3442,7 +3517,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
   setTeamGraphLayoutMode: (teamName, mode) => {
     set((state) => {
-      if ((state.graphLayoutModeByTeam[teamName] ?? 'radial') === mode) {
+      if ((state.graphLayoutModeByTeam[teamName] ?? DEFAULT_TEAM_GRAPH_LAYOUT_MODE) === mode) {
         return {};
       }
 

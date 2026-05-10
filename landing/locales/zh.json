@@ -105,7 +105,9 @@
   },
   "meta": {
     "homeTitle": "Agent Teams - 面向开发者的 AI 智能体编排",
-    "homeDescription": "免费开源桌面应用，用于组建 AI 智能体团队。看板、代码审查、跨团队通信。完全本地运行。"
+    "homeDescription": "免费开源桌面应用，用于组建 AI 智能体团队。看板、代码审查、跨团队通信。完全本地运行。",
+    "downloadTitle": "下载适用于 macOS、Windows 和 Linux 的 Agent Teams",
+    "downloadDescription": "下载适用于 macOS、Windows 和 Linux 的 Agent Teams。面向 Claude、Codex 和 OpenCode 智能体团队的免费开源桌面应用。"
   },
   "error": {
     "notFoundTitle": "页面未找到",

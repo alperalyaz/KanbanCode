@@ -105,7 +105,9 @@
   },
   "meta": {
     "homeTitle": "Agent Teams - تنسيق وكلاء الذكاء الاصطناعي للمطورين",
-    "homeDescription": "تطبيق سطح مكتب مجاني ومفتوح المصدر لتشكيل فرق وكلاء الذكاء الاصطناعي. لوحة كانبان، مراجعة الكود، تواصل بين الفرق. يعمل محلياً بالكامل."
+    "homeDescription": "تطبيق سطح مكتب مجاني ومفتوح المصدر لتشكيل فرق وكلاء الذكاء الاصطناعي. لوحة كانبان، مراجعة الكود، تواصل بين الفرق. يعمل محلياً بالكامل.",
+    "downloadTitle": "تنزيل Agent Teams لنظام macOS وWindows وLinux",
+    "downloadDescription": "نزّل Agent Teams لنظام macOS وWindows وLinux. تطبيق سطح مكتب مجاني ومفتوح المصدر لفرق وكلاء Claude وCodex وOpenCode."
   },
   "error": {
     "notFoundTitle": "الصفحة غير موجودة",

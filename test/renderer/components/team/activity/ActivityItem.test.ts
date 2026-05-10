@@ -578,4 +578,47 @@ describe('ActivityItem legacy system message fallback', () => {
       await Promise.resolve();
     });
   });
+
+  it('renders member work sync nudges as a compact automation row', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    const message: InboxMessage = {
+      from: 'system',
+      to: 'tom',
+      text: [
+        'Work sync check: you have current actionable work assigned.',
+        'Required sync action: call member_work_sync_status with teamName "launchpad".',
+        'Then call member_work_sync_report with reportToken.',
+      ].join('\n'),
+      summary: 'Work sync check',
+      timestamp: new Date('2026-04-13T13:36:00.000Z').toISOString(),
+      read: true,
+      source: 'system_notification',
+      messageKind: 'member_work_sync_nudge',
+      workSyncIntent: 'agenda_sync',
+      messageId: 'member-work-sync:launchpad:tom:agenda-a',
+      taskRefs: [{ taskId: 'task-a', displayId: '#b63b9065', teamName: 'launchpad' }],
+    };
+
+    await act(async () => {
+      root.render(React.createElement(ActivityItem, { message, teamName: 'launchpad' }));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('automation');
+    expect(host.textContent).toContain('work sync');
+    expect(host.textContent).toContain('tom');
+    expect(host.textContent).toContain('#b63b9065');
+    expect(host.textContent).not.toContain('member_work_sync_status');
+    expect(host.textContent).not.toContain('member_work_sync_report');
+    expect(host.textContent).not.toContain('reportToken');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
 });

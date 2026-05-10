@@ -18,6 +18,10 @@ export function isTaskStallRemediationMessage(message: AutomationMessageLike): b
   );
 }
 
+export function isMemberWorkSyncNudgeMessage(message: AutomationMessageLike): boolean {
+  return message.messageKind === 'member_work_sync_nudge';
+}
+
 export function isReviewPickupEscalationMessage(message: AutomationMessageLike): boolean {
   return (
     message.source === 'system_notification' &&

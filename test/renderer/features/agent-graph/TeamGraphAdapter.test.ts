@@ -172,8 +172,15 @@ describe('TeamGraphAdapter particles', () => {
       undefined,
       undefined,
       undefined,
-      'grid-under-lead'
+      'radial'
     );
+
+    expect(graph.layout?.mode).toBe('radial');
+  });
+
+  it('defaults the graph layout mode to rows', () => {
+    const adapter = TeamGraphAdapter.create();
+    const graph = adapter.adapt(createBaseTeamData(), 'my-team');
 
     expect(graph.layout?.mode).toBe('grid-under-lead');
   });
@@ -487,7 +494,8 @@ describe('TeamGraphAdapter particles', () => {
       undefined,
       {
         'agent-alice': { ringIndex: 0, sectorIndex: 2 },
-      }
+      },
+      'radial'
     );
 
     expect(graph.layout?.ownerOrder).toEqual([
@@ -552,7 +560,8 @@ describe('TeamGraphAdapter particles', () => {
       undefined,
       {
         'agent-alice': { ringIndex: 1, sectorIndex: 4 },
-      }
+      },
+      'radial'
     );
 
     expect(graph.layout?.ownerOrder).toEqual([

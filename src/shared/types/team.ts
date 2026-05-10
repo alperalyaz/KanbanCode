@@ -857,6 +857,7 @@ export interface MemberRuntimeAdvisory {
     | 'auth_error'
     | 'codex_native_timeout'
     | 'network_error'
+    | 'filesystem_error'
     | 'provider_overloaded'
     | 'protocol_proof_missing'
     | 'backend_error'

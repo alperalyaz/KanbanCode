@@ -19,6 +19,7 @@ import {
 import { buildTeamProvisioningPresentation } from '@renderer/utils/teamProvisioningPresentation';
 import { formatTeamRuntimeSummary } from '@renderer/utils/teamRuntimeSummary';
 import { stripCrossTeamPrefix } from '@shared/constants/crossTeam';
+import { DEFAULT_TEAM_GRAPH_LAYOUT_MODE } from '@shared/constants/teamGraphLayoutMode';
 import {
   classifyIdleNotificationText,
   getIdleGraphLabel,
@@ -131,7 +132,7 @@ export class TeamGraphAdapter {
     provisioningProgress?: TeamProvisioningProgress | null,
     memberSpawnSnapshot?: MemberSpawnStatusesSnapshot,
     slotAssignments?: Record<string, GraphOwnerSlotAssignment>,
-    layoutMode: GraphLayoutMode = 'radial',
+    layoutMode: GraphLayoutMode = DEFAULT_TEAM_GRAPH_LAYOUT_MODE,
     gridOwnerOrder?: readonly string[],
     activeTaskLogActivity?: Record<string, true>
   ): GraphDataPort {
@@ -290,7 +291,7 @@ export class TeamGraphAdapter {
     data: TeamGraphData,
     teamName: string,
     slotAssignments?: Record<string, GraphOwnerSlotAssignment>,
-    mode: GraphLayoutMode = 'radial',
+    mode: GraphLayoutMode = DEFAULT_TEAM_GRAPH_LAYOUT_MODE,
     gridOwnerOrder?: readonly string[]
   ): GraphLayoutPort {
     const ownerOrder: string[] = [];

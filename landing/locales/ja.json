@@ -105,7 +105,9 @@
   },
   "meta": {
     "homeTitle": "Agent Teams - 開発者向けAIエージェントオーケストレーション",
-    "homeDescription": "AIエージェントチームを管理する無料のオープンソースデスクトップアプリ。カンバンボード、コードレビュー、チーム間通信。完全にローカルで動作。"
+    "homeDescription": "AIエージェントチームを管理する無料のオープンソースデスクトップアプリ。カンバンボード、コードレビュー、チーム間通信。完全にローカルで動作。",
+    "downloadTitle": "macOS、Windows、Linux向けAgent Teamsをダウンロード",
+    "downloadDescription": "macOS、Windows、Linux向けAgent Teamsをダウンロード。Claude、Codex、OpenCodeエージェントチーム用の無料オープンソースデスクトップアプリ。"
   },
   "error": {
     "notFoundTitle": "ページが見つかりません",

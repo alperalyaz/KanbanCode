@@ -1,8 +1,9 @@
 import vuetify from "vite-plugin-vuetify";
 import { generateI18nRoutes, supportedLocales } from "./data/i18n";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-declare const process: any;
+declare const process: {
+  env: Record<string, string | undefined>;
+};
 
 const siteUrl = process.env.NUXT_PUBLIC_SITE_URL || "https://777genius.github.io/agent-teams-ai";
 const githubRepo = process.env.NUXT_PUBLIC_GITHUB_REPO || "777genius/agent-teams-ai";
@@ -20,6 +21,7 @@ export default defineNuxtConfig({
         { rel: "icon", type: "image/x-icon", href: `${baseURL}favicon.ico` },
         { rel: "icon", type: "image/png", sizes: "32x32", href: `${baseURL}favicon-32.png` },
         { rel: "apple-touch-icon", sizes: "192x192", href: `${baseURL}logo-192.png` },
+        { rel: "alternate", type: "text/plain", title: "llms.txt", href: `${baseURL}llms.txt` },
         { rel: "dns-prefetch", href: "https://api.github.com" },
         { rel: "preconnect", href: "https://fonts.googleapis.com" },
         { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" },
@@ -65,7 +67,8 @@ export default defineNuxtConfig({
       routes: [
         ...generateI18nRoutes(),
         "/sitemap.xml",
-        "/robots.txt"
+        "/robots.txt",
+        "/llms.txt"
       ]
     }
   },
@@ -76,7 +79,7 @@ export default defineNuxtConfig({
   },
   i18n: {
     restructureDir: false,
-    locales: [...supportedLocales] as any,
+    locales: [...supportedLocales],
     defaultLocale: "en",
     strategy: "prefix_except_default",
     lazy: true,
