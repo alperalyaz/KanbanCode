@@ -10,7 +10,7 @@ import {
   canonicalizeAgendaFingerprintPayload,
   formatAgendaFingerprint,
 } from './AgendaFingerprint';
-import { resolveCurrentReviewOwner, type ReviewHistoryEventLike } from './currentReviewCycle';
+import { resolveCurrentReviewCycle, type ReviewHistoryEventLike } from './currentReviewCycle';
 import { isReservedMemberName, normalizeMemberName, sameMemberName } from './memberName';
 
 import type {
@@ -180,15 +180,44 @@ export function buildActionableWorkAgenda(
         continue;
       }
 
-      const reviewOwner = isReviewWorkflow
-        ? resolveCurrentReviewOwner({
+      const reviewCycle = isReviewWorkflow
+        ? resolveCurrentReviewCycle({
             reviewState: workflowColumn,
             kanbanReviewer: input.kanbanReviewersByTaskId?.[task.id] ?? null,
             historyEvents: task.historyEvents,
           })
         : null;
+      const isSelfReview =
+        Boolean(owner) &&
+        Boolean(reviewCycle?.reviewer) &&
+        sameMemberName(owner, reviewCycle?.reviewer);
 
-      if (reviewOwner && sameMemberName(reviewOwner.reviewer, memberName)) {
+      if (isSelfReview && activeLeadName && sameMemberName(activeLeadName, memberName)) {
+        items.push({
+          ...base,
+          kind: 'clarification',
+          priority: 'needs_clarification',
+          reason: 'self_review_invalid',
+          evidence: {
+            status: task.status,
+            owner,
+            reviewer: reviewCycle?.reviewer,
+            reviewState: workflowColumn,
+            ...(reviewCycle?.reviewRequestEventId
+              ? { reviewRequestEventId: reviewCycle.reviewRequestEventId }
+              : {}),
+            ...(reviewCycle?.historyEventIds.length
+              ? { historyEventIds: reviewCycle.historyEventIds }
+              : {}),
+            reviewDiagnostics: [
+              ...new Set([...(reviewCycle?.diagnostics ?? []), 'self_review_invalid']),
+            ].sort(),
+          },
+        });
+        continue;
+      }
+
+      if (reviewCycle && !isSelfReview && sameMemberName(reviewCycle.reviewer, memberName)) {
         items.push({
           ...base,
           kind: 'review',
@@ -198,9 +227,30 @@ export function buildActionableWorkAgenda(
             status: task.status,
             ...(owner ? { owner } : {}),
             reviewer: memberName,
-            ...(task.reviewState ? { reviewState: task.reviewState } : {}),
-            ...(reviewOwner.historyEventIds.length > 0
-              ? { historyEventIds: reviewOwner.historyEventIds }
+            reviewState: workflowColumn,
+            reviewCycleId: reviewCycle.reviewCycleId,
+            reviewObligation: reviewCycle.obligation,
+            canBypassPhase2: reviewCycle.canBypassPhase2,
+            ...(reviewCycle.reviewRequestEventId
+              ? { reviewRequestEventId: reviewCycle.reviewRequestEventId }
+              : {}),
+            ...(reviewCycle.reviewRequestedAt
+              ? { reviewRequestedAt: reviewCycle.reviewRequestedAt }
+              : {}),
+            ...(reviewCycle.reviewStartedEventId
+              ? { reviewStartedEventId: reviewCycle.reviewStartedEventId }
+              : {}),
+            ...(reviewCycle.reviewStartedAt
+              ? { reviewStartedAt: reviewCycle.reviewStartedAt }
+              : {}),
+            ...(reviewCycle.reviewStartedBy
+              ? { reviewStartedBy: reviewCycle.reviewStartedBy }
+              : {}),
+            ...(reviewCycle.historyEventIds.length > 0
+              ? { historyEventIds: reviewCycle.historyEventIds }
+              : {}),
+            ...(reviewCycle.diagnostics.length > 0
+              ? { reviewDiagnostics: [...reviewCycle.diagnostics].sort() }
               : {}),
           },
         });

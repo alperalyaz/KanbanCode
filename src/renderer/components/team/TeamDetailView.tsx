@@ -44,6 +44,7 @@ import {
   hasUnresolvedMemberSpawnStatus,
   MEMBER_SPAWN_STATUS_REFRESH_MS,
 } from '@renderer/utils/memberSpawnStatusPolling';
+import { shouldClearPendingReplyForOpenCodeRuntimeDelivery } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 import { formatProjectPath } from '@renderer/utils/pathDisplay';
 import { buildTaskCountsByOwner, normalizePath } from '@renderer/utils/pathNormalize';
 import { nameColorSet } from '@renderer/utils/projectColor';
@@ -133,6 +134,7 @@ import { LeadSessionDetailGate } from './LeadSessionDetailGate';
 import { LiveRuntimeStatusBridge } from './LiveRuntimeStatusBridge';
 import { ProcessesSection } from './ProcessesSection';
 import { getLaunchJoinMilestonesFromMembers, getLaunchJoinState } from './provisioningSteps';
+import { TeamChangesSection } from './TeamChangesSection';
 import { TeamProvisioningBanner } from './TeamProvisioningBanner';
 import { loadTeamSessionMetadata } from './teamSessionFetchGuards';
 import { TeamSessionsSection } from './TeamSessionsSection';
@@ -809,6 +811,7 @@ const TeamMemberListBridge = memo(function TeamMemberListBridge({
   return (
     <MemberList
       {...props}
+      teamName={teamName}
       leadActivity={leadActivity}
       memberSpawnStatuses={memberSpawnStatusMap}
       memberRuntimeEntries={memberRuntimeMap}
@@ -2713,6 +2716,12 @@ export const TeamDetailView = memo(function TeamDetailView({
                 />
               </CollapsibleTeamSection>
 
+              <TeamChangesSection
+                teamName={teamName}
+                tasks={data.tasks}
+                onViewChanges={handleViewChangesForFile}
+              />
+
               <CollapsibleTeamSection
                 sectionId="schedules"
                 title="Schedules"
@@ -3016,8 +3025,7 @@ export const TeamDetailView = memo(function TeamDetailView({
                           taskRefs,
                         });
                         if (
-                          result?.runtimeDelivery?.attempted === true &&
-                          result.runtimeDelivery.delivered === false
+                          shouldClearPendingReplyForOpenCodeRuntimeDelivery(result?.runtimeDelivery)
                         ) {
                           setPendingRepliesByMember((prev) => {
                             if (prev[member] !== sentAtMs) return prev;

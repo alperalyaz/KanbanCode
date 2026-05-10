@@ -27,9 +27,12 @@ import { structuredPatch } from 'diff';
 const taskChangesCheckInFlight = new Set<string>();
 /** Tracks background presence revalidation for optimistic terminal summary hits */
 const taskChangesPresenceRevalidationInFlight = new Set<string>();
+/** Rate-limits forced refreshes for cached needs_attention hits */
+const taskChangesNeedsAttentionRevalidationTs = new Map<string, number>();
 /** Negative results cached with timestamp — recheck after 30s */
 const taskChangesNegativeCache = new Map<string, number>();
 const NEGATIVE_CACHE_TTL = 30_000;
+const NEEDS_ATTENTION_REVALIDATION_TTL = 30_000;
 const TASK_CHANGE_WARM_CONCURRENCY = 4;
 const CHANGE_REVIEW_SLICE_BOOT_TIME = Date.now();
 let latestAgentChangesRequestToken = 0;
@@ -1539,11 +1542,17 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
       const cacheKey = buildTaskChangePresenceKey(teamName, taskId, options);
       const summaryCacheable = isTaskSummaryCacheableForOptions(options);
       const cachedPresence = get().taskChangePresenceByKey[cacheKey];
-      if (
-        summaryCacheable &&
-        (cachedPresence === 'has_changes' || cachedPresence === 'needs_attention')
-      ) {
+      if (summaryCacheable && cachedPresence === 'has_changes') {
         get().setSelectedTeamTaskChangePresence(teamName, taskId, cachedPresence);
+        return;
+      }
+      if (summaryCacheable && cachedPresence === 'needs_attention') {
+        get().setSelectedTeamTaskChangePresence(teamName, taskId, cachedPresence);
+        const lastRevalidationMs = taskChangesNeedsAttentionRevalidationTs.get(cacheKey) ?? 0;
+        if (Date.now() - lastRevalidationMs >= NEEDS_ATTENTION_REVALIDATION_TTL) {
+          taskChangesNeedsAttentionRevalidationTs.set(cacheKey, Date.now());
+          void revalidateTaskChangePresence(teamName, taskId, options);
+        }
         return;
       }
       if (taskChangesCheckInFlight.has(cacheKey)) return;
@@ -1627,14 +1636,13 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
             summaryOnly: true,
           });
           const nextPresence = resolveTaskChangePresenceFromResult(data);
-          if (nextPresence) {
-            set((s) => ({
-              taskChangePresenceByKey: {
-                ...s.taskChangePresenceByKey,
-                [cacheKey]: nextPresence,
-              },
-            }));
-          }
+          set((s) => ({
+            taskChangePresenceByKey: applyTaskChangePresenceCacheUpdate(
+              s.taskChangePresenceByKey,
+              cacheKey,
+              nextPresence
+            ),
+          }));
           if (nextPresence === 'has_changes' || nextPresence === 'needs_attention') {
             taskChangesNegativeCache.delete(cacheKey);
             if (shouldBackgroundRevalidateTaskPresence(data, CHANGE_REVIEW_SLICE_BOOT_TIME)) {
@@ -1673,6 +1681,7 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
             changed = true;
           }
           taskChangesNegativeCache.delete(key);
+          taskChangesNeedsAttentionRevalidationTs.delete(key);
         }
         return changed ? { taskChangePresenceByKey: nextTaskChangePresenceByKey } : {};
       });

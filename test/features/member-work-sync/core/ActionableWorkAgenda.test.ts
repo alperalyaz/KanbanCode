@@ -245,7 +245,242 @@ describe('buildActionableWorkAgenda', () => {
       taskId: 'task-1',
       kind: 'review',
       assignee: 'alice',
-      evidence: { reviewer: 'alice' },
+      evidence: {
+        reviewer: 'alice',
+        reviewObligation: 'review_pickup_required',
+        reviewRequestEventId: 'evt-1',
+        canBypassPhase2: true,
+      },
+    });
+  });
+
+  it('routes self-review to lead oversight instead of reviewer pickup', () => {
+    const ownerAgenda = buildActionableWorkAgenda({
+      teamName: 'team-a',
+      memberName: 'alice',
+      generatedAt: '2026-04-29T00:00:00.000Z',
+      members: [{ name: 'alice' }, { name: 'team-lead', agentType: 'lead' }],
+      tasks: [
+        {
+          id: 'task-self-review',
+          subject: 'Self review should be reassigned',
+          status: 'completed',
+          owner: 'alice',
+          reviewState: 'review',
+          historyEvents: [
+            {
+              id: 'evt-self-review',
+              type: 'review_requested',
+              timestamp: '2026-04-29T00:00:00.000Z',
+              reviewer: 'alice',
+            },
+          ],
+        },
+      ],
+      hash,
+    });
+    const leadAgenda = buildActionableWorkAgenda({
+      teamName: 'team-a',
+      memberName: 'team-lead',
+      generatedAt: '2026-04-29T00:00:00.000Z',
+      members: [{ name: 'alice' }, { name: 'team-lead', agentType: 'lead' }],
+      tasks: [
+        {
+          id: 'task-self-review',
+          subject: 'Self review should be reassigned',
+          status: 'completed',
+          owner: 'alice',
+          reviewState: 'review',
+          historyEvents: [
+            {
+              id: 'evt-self-review',
+              type: 'review_requested',
+              timestamp: '2026-04-29T00:00:00.000Z',
+              reviewer: 'alice',
+            },
+          ],
+        },
+      ],
+      hash,
+    });
+
+    expect(ownerAgenda.items).toEqual([]);
+    expect(leadAgenda.items).toHaveLength(1);
+    expect(leadAgenda.items[0]).toMatchObject({
+      taskId: 'task-self-review',
+      kind: 'clarification',
+      assignee: 'team-lead',
+      reason: 'self_review_invalid',
+      evidence: {
+        owner: 'alice',
+        reviewer: 'alice',
+        reviewRequestEventId: 'evt-self-review',
+        reviewDiagnostics: ['self_review_invalid'],
+      },
+    });
+  });
+
+  it('does not treat an older review_started event as progress for a newer review request', () => {
+    const agenda = buildActionableWorkAgenda({
+      teamName: 'team-a',
+      memberName: 'alice',
+      generatedAt: '2026-04-29T00:00:00.000Z',
+      members: [{ name: 'alice' }, { name: 'bob' }],
+      tasks: [
+        {
+          id: 'task-1',
+          subject: 'Review current request',
+          status: 'completed',
+          owner: 'bob',
+          reviewState: 'review',
+          historyEvents: [
+            {
+              id: 'evt-old-start',
+              type: 'review_started',
+              timestamp: '2026-04-29T00:00:00.000Z',
+              actor: 'alice',
+            },
+            {
+              id: 'evt-old-approved',
+              type: 'review_approved',
+              timestamp: '2026-04-29T00:01:00.000Z',
+              actor: 'alice',
+            },
+            {
+              id: 'evt-new-request',
+              type: 'review_requested',
+              timestamp: '2026-04-29T00:02:00.000Z',
+              reviewer: 'alice',
+            },
+          ],
+        },
+      ],
+      hash,
+    });
+
+    expect(agenda.items).toHaveLength(1);
+    expect(agenda.items[0]?.evidence).toMatchObject({
+      reviewObligation: 'review_pickup_required',
+      reviewRequestEventId: 'evt-new-request',
+      canBypassPhase2: true,
+      historyEventIds: ['evt-new-request'],
+    });
+    expect(agenda.items[0]?.evidence.reviewStartedEventId).toBeUndefined();
+  });
+
+  it('routes a newer review request to the requested reviewer even when kanban reviewer is stale', () => {
+    const aliceAgenda = buildActionableWorkAgenda({
+      teamName: 'team-a',
+      memberName: 'alice',
+      generatedAt: '2026-04-29T00:00:00.000Z',
+      members: [{ name: 'alice' }, { name: 'bob' }],
+      kanbanReviewersByTaskId: { 'task-1': 'alice' },
+      tasks: [
+        {
+          id: 'task-1',
+          subject: 'Reviewer changed',
+          status: 'completed',
+          owner: 'tom',
+          reviewState: 'review',
+          historyEvents: [
+            {
+              id: 'evt-old-request',
+              type: 'review_requested',
+              timestamp: '2026-04-29T00:00:00.000Z',
+              reviewer: 'alice',
+            },
+            {
+              id: 'evt-new-request',
+              type: 'review_requested',
+              timestamp: '2026-04-29T00:01:00.000Z',
+              reviewer: 'bob',
+            },
+          ],
+        },
+      ],
+      hash,
+    });
+    const bobAgenda = buildActionableWorkAgenda({
+      teamName: 'team-a',
+      memberName: 'bob',
+      generatedAt: '2026-04-29T00:00:00.000Z',
+      members: [{ name: 'alice' }, { name: 'bob' }],
+      kanbanReviewersByTaskId: { 'task-1': 'alice' },
+      tasks: [
+        {
+          id: 'task-1',
+          subject: 'Reviewer changed',
+          status: 'completed',
+          owner: 'tom',
+          reviewState: 'review',
+          historyEvents: [
+            {
+              id: 'evt-old-request',
+              type: 'review_requested',
+              timestamp: '2026-04-29T00:00:00.000Z',
+              reviewer: 'alice',
+            },
+            {
+              id: 'evt-new-request',
+              type: 'review_requested',
+              timestamp: '2026-04-29T00:01:00.000Z',
+              reviewer: 'bob',
+            },
+          ],
+        },
+      ],
+      hash,
+    });
+
+    expect(aliceAgenda.items).toEqual([]);
+    expect(bobAgenda.items).toHaveLength(1);
+    expect(bobAgenda.items[0]?.evidence).toMatchObject({
+      reviewer: 'bob',
+      reviewObligation: 'review_pickup_required',
+      reviewRequestEventId: 'evt-new-request',
+      reviewDiagnostics: ['kanban_reviewer_differs_from_review_request'],
+    });
+  });
+
+  it('marks a started review as in-progress evidence that cannot bypass phase2', () => {
+    const agenda = buildActionableWorkAgenda({
+      teamName: 'team-a',
+      memberName: 'alice',
+      generatedAt: '2026-04-29T00:00:00.000Z',
+      members: [{ name: 'alice' }, { name: 'bob' }],
+      tasks: [
+        {
+          id: 'task-1',
+          subject: 'Review already started',
+          status: 'completed',
+          owner: 'bob',
+          reviewState: 'review',
+          historyEvents: [
+            {
+              id: 'evt-request',
+              type: 'review_requested',
+              timestamp: '2026-04-29T00:00:00.000Z',
+              reviewer: 'alice',
+            },
+            {
+              id: 'evt-start',
+              type: 'review_started',
+              timestamp: '2026-04-29T00:01:00.000Z',
+              actor: 'alice',
+            },
+          ],
+        },
+      ],
+      hash,
+    });
+
+    expect(agenda.items[0]?.evidence).toMatchObject({
+      reviewObligation: 'review_in_progress',
+      reviewRequestEventId: 'evt-request',
+      reviewStartedEventId: 'evt-start',
+      reviewStartedBy: 'alice',
+      canBypassPhase2: false,
+      historyEventIds: ['evt-request', 'evt-start'],
     });
   });
 

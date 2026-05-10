@@ -18,20 +18,45 @@ export type MemberWorkSyncReportTokenValidation =
   | { ok: false; reason: 'missing' | 'expired' | 'invalid' };
 
 const DEFAULT_STILL_WORKING_LEASE_MS = 15 * 60 * 1000;
+const DEFAULT_REVIEW_PICKUP_STILL_WORKING_LEASE_MS = 3 * 60 * 1000;
 const DEFAULT_BLOCKED_LEASE_MS = 30 * 60 * 1000;
 const MIN_LEASE_MS = 60_000;
 const MAX_LEASE_MS = 60 * 60 * 1000;
+const MAX_REVIEW_PICKUP_STILL_WORKING_LEASE_MS = 10 * 60 * 1000;
+
+function agendaIsReviewPickupRequired(agenda: MemberWorkSyncAgenda): boolean {
+  return (
+    agenda.items.length > 0 &&
+    agenda.items.every(
+      (item) =>
+        item.kind === 'review' &&
+        item.evidence.reviewObligation === 'review_pickup_required' &&
+        item.evidence.canBypassPhase2 === true
+    )
+  );
+}
 
 function clampLeaseTtlMs(
   value: number | undefined,
-  state: MemberWorkSyncReportState
+  state: MemberWorkSyncReportState,
+  agenda: MemberWorkSyncAgenda
 ): number | undefined {
   if (state === 'caught_up') {
     return undefined;
   }
-  const fallback = state === 'blocked' ? DEFAULT_BLOCKED_LEASE_MS : DEFAULT_STILL_WORKING_LEASE_MS;
+  const isReviewPickupStillWorking =
+    state === 'still_working' && agendaIsReviewPickupRequired(agenda);
+  const fallback =
+    state === 'blocked'
+      ? DEFAULT_BLOCKED_LEASE_MS
+      : isReviewPickupStillWorking
+        ? DEFAULT_REVIEW_PICKUP_STILL_WORKING_LEASE_MS
+        : DEFAULT_STILL_WORKING_LEASE_MS;
+  const maxLease = isReviewPickupStillWorking
+    ? MAX_REVIEW_PICKUP_STILL_WORKING_LEASE_MS
+    : MAX_LEASE_MS;
   const numeric = Number.isFinite(value) ? Math.floor(Number(value)) : fallback;
-  return Math.min(MAX_LEASE_MS, Math.max(MIN_LEASE_MS, numeric));
+  return Math.min(maxLease, Math.max(MIN_LEASE_MS, numeric));
 }
 
 function agendaHasBlockedEvidence(
@@ -139,7 +164,7 @@ export function validateMemberWorkSyncReport(input: {
     };
   }
 
-  const leaseTtlMs = clampLeaseTtlMs(input.request.leaseTtlMs, input.request.state);
+  const leaseTtlMs = clampLeaseTtlMs(input.request.leaseTtlMs, input.request.state, input.agenda);
   return {
     ok: true,
     code: 'accepted',

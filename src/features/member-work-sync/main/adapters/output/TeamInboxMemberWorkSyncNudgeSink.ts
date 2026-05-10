@@ -27,6 +27,9 @@ export class TeamInboxMemberWorkSyncNudgeSink implements MemberWorkSyncInboxNudg
       summary: 'Work sync check',
       source: 'system_notification',
       messageKind: input.payload.messageKind,
+      workSyncIntent: input.payload.workSyncIntent,
+      workSyncIntentKey: input.payload.workSyncIntentKey,
+      workSyncReviewRequestEventIds: input.payload.workSyncReviewRequestEventIds,
     });
 
     return {

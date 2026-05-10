@@ -10,6 +10,8 @@ import {
   type MemberWorkSyncAuditEvent,
   type MemberWorkSyncInboxNudgePort,
   type MemberWorkSyncOutboxStorePort,
+  type MemberWorkSyncReviewPickupDeliveryPort,
+  type MemberWorkSyncReviewPickupEscalationPort,
   type MemberWorkSyncStatusStorePort,
   type MemberWorkSyncUseCaseDeps,
 } from '@features/member-work-sync/core/application';
@@ -38,6 +40,40 @@ const workItem: MemberWorkSyncActionableWorkItem = {
   evidence: {
     status: 'pending',
     owner: 'bob',
+  },
+};
+
+const reviewPickupItem: MemberWorkSyncActionableWorkItem = {
+  taskId: 'task-review',
+  displayId: '22222222',
+  subject: 'Review docs',
+  kind: 'review',
+  assignee: 'bob',
+  priority: 'review_requested',
+  reason: 'current_cycle_review_assigned',
+  evidence: {
+    status: 'completed',
+    owner: 'alice',
+    reviewer: 'bob',
+    reviewState: 'review',
+    reviewCycleId: 'evt-review-request',
+    reviewRequestEventId: 'evt-review-request',
+    reviewObligation: 'review_pickup_required',
+    canBypassPhase2: true,
+    historyEventIds: ['evt-review-request'],
+  },
+};
+
+const secondReviewPickupItem: MemberWorkSyncActionableWorkItem = {
+  ...reviewPickupItem,
+  taskId: 'task-review-b',
+  displayId: '33333333',
+  subject: 'Review API',
+  evidence: {
+    ...reviewPickupItem.evidence,
+    reviewCycleId: 'evt-review-request-b',
+    reviewRequestEventId: 'evt-review-request-b',
+    historyEventIds: ['evt-review-request-b'],
   },
 };
 
@@ -185,6 +221,8 @@ class InMemoryOutboxStore implements MemberWorkSyncOutboxStorePort {
         ...current,
         status: 'delivered',
         deliveredMessageId: input.deliveredMessageId,
+        ...(input.deliveryState ? { deliveryState: input.deliveryState } : {}),
+        ...(input.deliveryDiagnostics ? { deliveryDiagnostics: input.deliveryDiagnostics } : {}),
         updatedAt: input.nowIso,
       });
     }
@@ -218,6 +256,26 @@ class InMemoryOutboxStore implements MemberWorkSyncOutboxStorePort {
         item.updatedAt >= input.sinceIso
     ).length;
   }
+
+  async findDeliveredReviewPickupRequestEventIds(input: {
+    memberName: string;
+    reviewRequestEventIds: string[];
+  }): Promise<string[]> {
+    const requested = new Set(input.reviewRequestEventIds);
+    return [
+      ...new Set(
+        [...this.items.values()]
+          .filter(
+            (item) =>
+              item.memberName === input.memberName &&
+              item.status === 'delivered' &&
+              item.payload.workSyncIntent === 'review_pickup'
+          )
+          .flatMap((item) => item.payload.workSyncReviewRequestEventIds ?? [])
+          .filter((eventId) => requested.has(eventId))
+      ),
+    ].sort();
+  }
 }
 
 class InMemoryInboxNudge implements MemberWorkSyncInboxNudgePort {
@@ -242,6 +300,8 @@ function createDeps(options?: {
   outboxStore?: MemberWorkSyncOutboxStorePort;
   inboxNudge?: MemberWorkSyncInboxNudgePort;
   busySignal?: MemberWorkSyncUseCaseDeps['busySignal'];
+  reviewPickupDelivery?: MemberWorkSyncReviewPickupDeliveryPort;
+  reviewPickupEscalation?: MemberWorkSyncReviewPickupEscalationPort;
 }) {
   const clock = new MutableClock();
   const store = new InMemoryStatusStore();
@@ -272,6 +332,12 @@ function createDeps(options?: {
     ...(options?.outboxStore ? { outboxStore: options.outboxStore } : {}),
     ...(options?.inboxNudge ? { inboxNudge: options.inboxNudge } : {}),
     ...(options?.busySignal ? { busySignal: options.busySignal } : {}),
+    ...(options?.reviewPickupDelivery
+      ? { reviewPickupDelivery: options.reviewPickupDelivery }
+      : {}),
+    ...(options?.reviewPickupEscalation
+      ? { reviewPickupEscalation: options.reviewPickupEscalation }
+      : {}),
     reportToken: {
       create: async (input) => ({
         token: `token:${input.teamName}:${input.memberName}:${input.agendaFingerprint}`,
@@ -374,6 +440,26 @@ describe('MemberWorkSync use cases', () => {
     expect(result.status.report?.expiresAt).toBe('2026-04-29T00:02:00.000Z');
   });
 
+  it('uses a short still_working lease for review pickup reports', async () => {
+    const { deps } = createDeps({ items: [reviewPickupItem] });
+    const reader = new MemberWorkSyncReconciler(deps);
+    const reporter = new MemberWorkSyncReporter(deps);
+    const current = await reader.execute({ teamName: 'team-a', memberName: 'bob' });
+
+    const result = await reporter.execute({
+      teamName: 'team-a',
+      memberName: 'bob',
+      state: 'still_working',
+      agendaFingerprint: current.agenda.fingerprint,
+      reportToken: current.reportToken,
+      leaseTtlMs: 60 * 60 * 1000,
+      source: 'test',
+    });
+
+    expect(result.accepted).toBe(true);
+    expect(result.status.report?.expiresAt).toBe('2026-04-29T00:10:00.000Z');
+  });
+
   it('rejects stale reports without turning app-side validation failures into pending intents', async () => {
     const { auditEvents, deps, store } = createDeps();
     const result = await new MemberWorkSyncReporter(deps).execute({
@@ -473,6 +559,178 @@ describe('MemberWorkSync use cases', () => {
     expect(outbox.ensures).toEqual([]);
   });
 
+  it('creates review pickup outbox while shadow data is collecting only with delivery capability', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const reviewPickupDelivery: MemberWorkSyncReviewPickupDeliveryPort = {
+      canDeliver: async () => ({ ok: true }),
+      deliver: async () => ({
+        ok: true,
+        state: 'prompt_accepted',
+        messageId: 'unused',
+      }),
+    };
+    const { auditEvents, deps } = createDeps({
+      items: [reviewPickupItem],
+      providerId: 'opencode',
+      outboxStore: outbox,
+      reviewPickupDelivery,
+    });
+
+    const status = await new MemberWorkSyncReconciler(deps).execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+
+    expect(outbox.ensures).toHaveLength(1);
+    expect(outbox.ensures[0]).toMatchObject({
+      id: 'member-work-sync:team-a:bob:review-pickup:evt-review-request',
+      agendaFingerprint: status.agenda.fingerprint,
+      payload: {
+        workSyncIntent: 'review_pickup',
+        workSyncIntentKey: 'review-pickup:evt-review-request',
+        workSyncReviewRequestEventIds: ['evt-review-request'],
+      },
+    });
+  });
+
+  it('creates one review pickup outbox for multiple current review requests', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const reviewPickupDelivery: MemberWorkSyncReviewPickupDeliveryPort = {
+      canDeliver: async () => ({ ok: true }),
+      deliver: async () => ({
+        ok: true,
+        state: 'prompt_accepted',
+        messageId: 'unused',
+      }),
+    };
+    const { deps } = createDeps({
+      items: [reviewPickupItem, secondReviewPickupItem],
+      providerId: 'opencode',
+      outboxStore: outbox,
+      reviewPickupDelivery,
+    });
+
+    await new MemberWorkSyncReconciler(deps).execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+
+    expect(outbox.ensures).toHaveLength(1);
+    expect(outbox.ensures[0]).toMatchObject({
+      id: 'member-work-sync:team-a:bob:review-pickup:evt-review-request+evt-review-request-b',
+      payload: {
+        workSyncIntent: 'review_pickup',
+        workSyncIntentKey: 'review-pickup:evt-review-request+evt-review-request-b',
+        workSyncReviewRequestEventIds: ['evt-review-request', 'evt-review-request-b'],
+        taskRefs: [
+          { taskId: 'task-review', displayId: '22222222', teamName: 'team-a' },
+          { taskId: 'task-review-b', displayId: '33333333', teamName: 'team-a' },
+        ],
+      },
+    });
+  });
+
+  it('filters already delivered review request ids before planning another pickup nudge', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const inbox = new InMemoryInboxNudge();
+    const reviewPickupDelivery: MemberWorkSyncReviewPickupDeliveryPort = {
+      canDeliver: async () => ({ ok: true }),
+      deliver: async (input) => ({
+        ok: true,
+        state: 'prompt_accepted',
+        messageId: input.messageId,
+      }),
+    };
+    const { deps, source } = createDeps({
+      items: [reviewPickupItem],
+      providerId: 'opencode',
+      outboxStore: outbox,
+      inboxNudge: inbox,
+      reviewPickupDelivery,
+    });
+    const reconciler = new MemberWorkSyncReconciler(deps);
+
+    await reconciler.execute(
+      { teamName: 'team-a', memberName: 'bob' },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+    await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    source.agenda.items = [reviewPickupItem, secondReviewPickupItem];
+    await reconciler.execute(
+      { teamName: 'team-a', memberName: 'bob' },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+
+    expect(outbox.ensures.at(-1)).toMatchObject({
+      id: 'member-work-sync:team-a:bob:review-pickup:evt-review-request-b',
+      payload: {
+        workSyncIntent: 'review_pickup',
+        workSyncReviewRequestEventIds: ['evt-review-request-b'],
+        taskRefs: [{ taskId: 'task-review-b', displayId: '33333333', teamName: 'team-a' }],
+      },
+    });
+  });
+
+  it('does not create review pickup outbox when delivery capability is unavailable', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const escalations: Array<Parameters<MemberWorkSyncReviewPickupEscalationPort['escalate']>[0]> =
+      [];
+    const { auditEvents, deps } = createDeps({
+      items: [reviewPickupItem],
+      providerId: 'codex',
+      outboxStore: outbox,
+      reviewPickupEscalation: {
+        escalate: async (input) => {
+          escalations.push(input);
+        },
+      },
+    });
+
+    await new MemberWorkSyncReconciler(deps).execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+
+    expect(outbox.ensures).toEqual([]);
+    expect(auditEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'review_pickup_delivery_unavailable',
+          reason: 'review_pickup_delivery_port_unavailable',
+        }),
+        expect.objectContaining({
+          event: 'review_pickup_escalated',
+          reason: 'review_pickup_delivery_port_unavailable',
+        }),
+        expect.objectContaining({
+          event: 'nudge_skipped',
+          reason: 'review_pickup_delivery_unavailable',
+        }),
+      ])
+    );
+    expect(escalations).toEqual([
+      expect.objectContaining({
+        teamName: 'team-a',
+        memberName: 'bob',
+        reason: 'review_pickup_delivery_port_unavailable',
+        reviewRequestEventIds: ['evt-review-request'],
+      }),
+    ]);
+  });
+
   it('does not create outbox nudges from read-only diagnostics requests', async () => {
     const outbox = new InMemoryOutboxStore();
     const { deps, store } = createDeps({ outboxStore: outbox });
@@ -557,6 +815,208 @@ describe('MemberWorkSync use cases', () => {
       status: 'delivered',
       deliveredMessageId: `member-work-sync:team-a:bob:${status.agenda.fingerprint}`,
     });
+  });
+
+  it('marks review pickup delivered only after the delivery port confirms prompt acceptance', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const inbox = new InMemoryInboxNudge();
+    const deliveryCalls: Array<Parameters<MemberWorkSyncReviewPickupDeliveryPort['deliver']>[0]> =
+      [];
+    const busyCalls: Parameters<
+      NonNullable<MemberWorkSyncUseCaseDeps['busySignal']>['isBusy']
+    >[0][] = [];
+    const reviewPickupDelivery: MemberWorkSyncReviewPickupDeliveryPort = {
+      canDeliver: async () => ({ ok: true }),
+      deliver: async (input) => {
+        deliveryCalls.push(input);
+        return {
+          ok: true,
+          state: 'prompt_accepted',
+          messageId: input.messageId,
+          diagnostics: ['accepted_by_bridge'],
+        };
+      },
+    };
+    const { auditEvents, deps } = createDeps({
+      items: [reviewPickupItem],
+      providerId: 'opencode',
+      outboxStore: outbox,
+      inboxNudge: inbox,
+      reviewPickupDelivery,
+      busySignal: {
+        isBusy: (input) => {
+          busyCalls.push(input);
+          return Promise.resolve({ busy: false });
+        },
+      },
+    });
+
+    await new MemberWorkSyncReconciler(deps).execute(
+      { teamName: 'team-a', memberName: 'bob' },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+    const summary = await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    expect(summary).toMatchObject({ claimed: 1, delivered: 1, superseded: 0 });
+    expect(inbox.inserted).toHaveLength(1);
+    expect(busyCalls).toEqual([
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+        nowIso: '2026-04-29T00:00:00.000Z',
+        workSyncIntent: 'review_pickup',
+        taskRefs: [{ taskId: 'task-review', displayId: '22222222', teamName: 'team-a' }],
+      },
+    ]);
+    expect(deliveryCalls).toHaveLength(1);
+    expect(deliveryCalls[0]).toMatchObject({
+      messageId: 'member-work-sync:team-a:bob:review-pickup:evt-review-request',
+      inserted: true,
+      providerId: 'opencode',
+      payload: {
+        workSyncIntent: 'review_pickup',
+      },
+    });
+    expect(
+      outbox.items.get('member-work-sync:team-a:bob:review-pickup:evt-review-request')
+    ).toMatchObject({
+      status: 'delivered',
+      deliveryState: 'prompt_accepted',
+      deliveryDiagnostics: ['accepted_by_bridge'],
+    });
+  });
+
+  it('marks review pickup terminal when delivery reports terminal failure', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const inbox = new InMemoryInboxNudge();
+    const escalations: Array<Parameters<MemberWorkSyncReviewPickupEscalationPort['escalate']>[0]> =
+      [];
+    const reviewPickupDelivery: MemberWorkSyncReviewPickupDeliveryPort = {
+      canDeliver: async () => ({ ok: true }),
+      deliver: async () => ({
+        ok: false,
+        reason: 'terminal_failure',
+        message: 'empty_assistant_turn',
+        diagnostics: ['empty_assistant_turn'],
+      }),
+    };
+    const { auditEvents, deps } = createDeps({
+      items: [reviewPickupItem],
+      providerId: 'opencode',
+      outboxStore: outbox,
+      inboxNudge: inbox,
+      reviewPickupDelivery,
+      reviewPickupEscalation: {
+        escalate: async (input) => {
+          escalations.push(input);
+        },
+      },
+    });
+
+    await new MemberWorkSyncReconciler(deps).execute(
+      { teamName: 'team-a', memberName: 'bob' },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+    const summary = await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    expect(summary).toMatchObject({ claimed: 1, delivered: 0, terminal: 1 });
+    expect(inbox.inserted).toHaveLength(1);
+    const item = outbox.items.get('member-work-sync:team-a:bob:review-pickup:evt-review-request');
+    expect(item).toMatchObject({
+      status: 'failed_terminal',
+      lastError: 'empty_assistant_turn',
+    });
+    expect(item?.nextAttemptAt).toBeUndefined();
+
+    await new MemberWorkSyncReconciler(deps).execute(
+      { teamName: 'team-a', memberName: 'bob' },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+
+    expect(auditEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'review_pickup_escalated',
+          reason: 'review_pickup_delivery_failed_still_stuck',
+        }),
+      ])
+    );
+    expect(escalations).toEqual([
+      expect.objectContaining({
+        reason: 'review_pickup_delivery_failed_still_stuck',
+        reviewRequestEventIds: ['evt-review-request'],
+      }),
+    ]);
+  });
+
+  it('escalates instead of sending another review pickup nudge when the same request is still stuck after delivery', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const inbox = new InMemoryInboxNudge();
+    const escalations: Array<Parameters<MemberWorkSyncReviewPickupEscalationPort['escalate']>[0]> =
+      [];
+    const reviewPickupDelivery: MemberWorkSyncReviewPickupDeliveryPort = {
+      canDeliver: async () => ({ ok: true }),
+      deliver: async (input) => ({
+        ok: true,
+        state: 'prompt_accepted',
+        messageId: input.messageId,
+      }),
+    };
+    const { auditEvents, deps } = createDeps({
+      items: [reviewPickupItem],
+      providerId: 'opencode',
+      outboxStore: outbox,
+      inboxNudge: inbox,
+      reviewPickupDelivery,
+      reviewPickupEscalation: {
+        escalate: async (input) => {
+          escalations.push(input);
+        },
+      },
+    });
+
+    const reconciler = new MemberWorkSyncReconciler(deps);
+    await reconciler.execute(
+      { teamName: 'team-a', memberName: 'bob' },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+    await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+    await reconciler.execute(
+      { teamName: 'team-a', memberName: 'bob' },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+
+    expect(inbox.inserted).toHaveLength(1);
+    expect(
+      outbox.items.get('member-work-sync:team-a:bob:review-pickup:evt-review-request')
+    ).toMatchObject({ status: 'delivered' });
+    expect(auditEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'review_pickup_escalated',
+          reason: 'review_pickup_already_delivered_still_stuck',
+        }),
+        expect.objectContaining({
+          event: 'nudge_skipped',
+          reason: 'review_pickup_already_delivered_still_stuck',
+        }),
+      ])
+    );
+    expect(escalations).toEqual([
+      expect.objectContaining({
+        reason: 'review_pickup_already_delivered_still_stuck',
+        reviewRequestEventIds: ['evt-review-request'],
+      }),
+    ]);
   });
 
   it('recomputes agenda before dispatch and supersedes stale outbox fingerprints', async () => {

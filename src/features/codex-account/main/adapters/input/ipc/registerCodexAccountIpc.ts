@@ -4,6 +4,7 @@ import {
   CODEX_ACCOUNT_LOGOUT,
   CODEX_ACCOUNT_REFRESH_SNAPSHOT,
   CODEX_ACCOUNT_START_CHATGPT_LOGIN,
+  type CodexStartChatgptLoginOptions,
 } from '@features/codex-account/contracts';
 
 import type { CodexAccountFeatureFacade } from '../../../composition/createCodexAccountFeature';
@@ -19,7 +20,10 @@ export function registerCodexAccountIpc(
     (_event, options?: { includeRateLimits?: boolean; forceRefreshToken?: boolean }) =>
       feature.refreshSnapshot(options)
   );
-  ipcMain.handle(CODEX_ACCOUNT_START_CHATGPT_LOGIN, () => feature.startChatgptLogin());
+  ipcMain.handle(
+    CODEX_ACCOUNT_START_CHATGPT_LOGIN,
+    (_event, options?: CodexStartChatgptLoginOptions) => feature.startChatgptLogin(options)
+  );
   ipcMain.handle(CODEX_ACCOUNT_CANCEL_CHATGPT_LOGIN, () => feature.cancelLogin());
   ipcMain.handle(CODEX_ACCOUNT_LOGOUT, () => feature.logout());
 }

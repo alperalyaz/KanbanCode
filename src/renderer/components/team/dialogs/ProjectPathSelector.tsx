@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { api } from '@renderer/api';
+import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
 import { Button } from '@renderer/components/ui/button';
 import { Combobox } from '@renderer/components/ui/combobox';
 import { Input } from '@renderer/components/ui/input';
@@ -8,9 +9,14 @@ import { Label } from '@renderer/components/ui/label';
 import { cn } from '@renderer/lib/utils';
 import { Check, FolderOpen } from 'lucide-react';
 
-import { buildProjectPathOptions } from './projectPathOptions';
+import {
+  buildProjectPathOptions,
+  type ProjectPathOptionMeta,
+  type ProjectPathProject,
+} from './projectPathOptions';
 
-import type { Project } from '@shared/types';
+import type { DashboardRecentProjectSource } from '@features/recent-projects/contracts';
+import type { ComboboxOption } from '@renderer/components/ui/combobox';
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -32,18 +38,64 @@ function renderHighlightedText(text: string, query: string): React.JSX.Element {
           return <span key={`${part}-${index}`}>{part}</span>;
         }
         return (
-          <mark
+          <span
             key={`${part}-${index}`}
-            // eslint-disable-next-line tailwindcss/no-custom-classname -- Tailwind arbitrary value with CSS variable
-            className="bg-[var(--color-accent)]/25 rounded px-0.5 text-[var(--color-text)]"
+            className="rounded px-0.5 font-semibold text-[var(--color-text)]"
+            style={{
+              backgroundColor: 'color-mix(in srgb, var(--color-accent) 35%, transparent)',
+              boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent)',
+            }}
           >
             {part}
-          </mark>
+          </span>
         );
       })}
     </span>
   );
 }
+
+function getOptionSource(option: ComboboxOption): DashboardRecentProjectSource | undefined {
+  return (option.meta as ProjectPathOptionMeta | undefined)?.discoverySource;
+}
+
+function getSourceLabel(source: DashboardRecentProjectSource): string {
+  switch (source) {
+    case 'claude':
+      return 'Found by Claude';
+    case 'codex':
+      return 'Found by Codex';
+    case 'mixed':
+      return 'Found by Claude and Codex';
+  }
+}
+
+const ProjectSourceBadge = ({
+  source,
+}: {
+  source?: DashboardRecentProjectSource;
+}): React.JSX.Element | null => {
+  if (!source) {
+    return null;
+  }
+
+  const logos =
+    source === 'mixed'
+      ? (['anthropic', 'codex'] as const)
+      : source === 'codex'
+        ? (['codex'] as const)
+        : (['anthropic'] as const);
+
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-1 py-0.5"
+      title={getSourceLabel(source)}
+    >
+      {logos.map((providerId) => (
+        <ProviderBrandLogo key={providerId} providerId={providerId} className="size-3" />
+      ))}
+    </span>
+  );
+};
 
 export type CwdMode = 'project' | 'custom';
 
@@ -54,7 +106,7 @@ interface ProjectPathSelectorProps {
   onSelectedProjectPathChange: (path: string) => void;
   customCwd: string;
   onCustomCwdChange: (cwd: string) => void;
-  projects: Project[];
+  projects: ProjectPathProject[];
   projectsLoading: boolean;
   projectsError: string | null;
   fieldError?: string | null;
@@ -123,6 +175,12 @@ export const ProjectPathSelector = ({
                       searchPlaceholder="Search project by name or path"
                       emptyMessage="Nothing found"
                       disabled={projectsLoading || projectOptions.length === 0}
+                      renderTriggerLabel={(option) => (
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <ProjectSourceBadge source={getOptionSource(option)} />
+                          <span className="min-w-0 truncate">{option.label}</span>
+                        </span>
+                      )}
                       renderOption={(option, isSelected, query) => (
                         <>
                           <Check
@@ -131,6 +189,7 @@ export const ProjectPathSelector = ({
                               isSelected ? 'opacity-100' : 'opacity-0'
                             )}
                           />
+                          <ProjectSourceBadge source={getOptionSource(option)} />
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-medium text-[var(--color-text)]">
                               {renderHighlightedText(option.label, query)}

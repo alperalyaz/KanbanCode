@@ -24,7 +24,7 @@ const PASSED_GAUNTLET_REAL_AGENT_TEAMS_E2E_REASON =
 const PASSED_GAUNTLET_WITH_LIMITS_REASON =
   'This exact model route passed the deeper OpenCode Agent Teams gauntlet, but has a production caveat such as free-route capacity, preview availability, cost, or latency variance.';
 
-const OPENCODE_TEAM_RECOMMENDED_MODELS = new Set<string>([]);
+const OPENCODE_TEAM_RECOMMENDED_MODELS = new Set<string>(['opencode/big-pickle']);
 
 const OPENCODE_TEAM_RECOMMENDED_WITH_LIMITS_MODELS = new Set<string>([]);
 
@@ -53,6 +53,13 @@ const OPENCODE_TEAM_TESTED_MODELS = new Set<string>([
 ]);
 
 const OPENCODE_TEAM_TESTED_WITH_LIMITS_MODELS = new Set<string>(['opencode/minimax-m2.5-free']);
+
+const OPENCODE_TEAM_TESTED_WITH_LIMITS_REASONS = new Map<string, string>([
+  [
+    'opencode/minimax-m2.5-free',
+    'This exact free model route passed simple OpenCode Agent Teams provider stress, but a deeper repeated gauntlet hit duplicate or missing reply tokens. Keep it below Recommended until a clean repeated gauntlet passes.',
+  ],
+]);
 
 const OPENCODE_TEAM_UNAVAILABLE_MODELS = new Map<string, string>([
   [
@@ -724,7 +731,7 @@ const OPENCODE_TEAM_NOT_RECOMMENDED_MODELS = new Map<string, string>([
   ],
   [
     'opencode/nemotron-3-super-free',
-    'Real OpenCode Agent Teams E2E showed empty assistant turns during peer relay.',
+    'Real OpenCode Agent Teams E2E showed unreliable team messaging: a current matrix run failed direct reply, peer relay, and taskRefs, and work-sync was inconsistent or took several minutes.',
   ],
   [
     'openrouter/google/gemini-2.5-pro',
@@ -1252,7 +1259,9 @@ export function getOpenCodeTeamModelRecommendation(
     return {
       level: 'tested-with-limits',
       label: 'Tested with limits',
-      reason: PASSED_FREE_ROUTE_REAL_AGENT_TEAMS_E2E_REASON,
+      reason:
+        OPENCODE_TEAM_TESTED_WITH_LIMITS_REASONS.get(normalizedModelId) ??
+        PASSED_FREE_ROUTE_REAL_AGENT_TEAMS_E2E_REASON,
     };
   }
 

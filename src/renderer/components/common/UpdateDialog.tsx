@@ -100,7 +100,7 @@ export const UpdateDialog = (): React.JSX.Element | null => {
     : releaseNotes;
 
   const releaseUrl = availableVersion
-    ? `https://github.com/777genius/claude_agent_teams_ui/releases/tag/v${availableVersion}`
+    ? `https://github.com/777genius/agent-teams-ai/releases/tag/v${availableVersion}`
     : null;
 
   const openReleaseOnGitHub = (): void => {

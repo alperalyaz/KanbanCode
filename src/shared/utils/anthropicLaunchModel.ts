@@ -5,9 +5,37 @@ function stripOneMillionSuffix(model: string): string {
   return model.replace(/(?:\[1m\])+$/i, '');
 }
 
+function hasOneMillionSuffix(model: string): boolean {
+  return /\[1m\]$/i.test(model);
+}
+
 function isAnthropicHaikuModel(model: string): boolean {
   const baseModel = stripOneMillionSuffix(model);
   return baseModel === 'haiku' || baseModel.startsWith('claude-haiku-');
+}
+
+function isAnthropicSonnetModel(model: string): boolean {
+  const baseModel = stripOneMillionSuffix(model);
+  return baseModel === 'sonnet' || baseModel.startsWith('claude-sonnet-');
+}
+
+function getStandardContextAlias(model: string): string | null {
+  const baseModel = stripOneMillionSuffix(model);
+  if (baseModel === 'opus' || baseModel.startsWith('claude-opus-')) {
+    return 'opus';
+  }
+  if (baseModel === 'sonnet' || baseModel.startsWith('claude-sonnet-')) {
+    return 'sonnet';
+  }
+  if (baseModel === 'haiku' || baseModel.startsWith('claude-haiku-')) {
+    return 'haiku';
+  }
+  return null;
+}
+
+function normalizeStandardOnlyAnthropicModel(model: string): string {
+  const baseModel = stripOneMillionSuffix(model);
+  return isAnthropicHaikuModel(baseModel) || isAnthropicSonnetModel(baseModel) ? baseModel : model;
 }
 
 function normalizeAvailableLaunchModels(
@@ -52,9 +80,12 @@ export function resolveAnthropicLaunchModel(params: {
   if (!selectedModel || isDefaultProviderModelSelection(selectedModel)) {
     const staticDefault = getAnthropicDefaultTeamModel(params.limitContext);
     const runtimeDefault = params.defaultLaunchModel?.trim() || null;
+    const rawPreferredDefault = runtimeDefault || staticDefault;
     const preferredDefault = params.limitContext
-      ? stripOneMillionSuffix(runtimeDefault || staticDefault) || staticDefault
-      : runtimeDefault || staticDefault;
+      ? (getStandardContextAlias(rawPreferredDefault) ??
+          stripOneMillionSuffix(rawPreferredDefault)) ||
+        staticDefault
+      : normalizeStandardOnlyAnthropicModel(rawPreferredDefault) || staticDefault;
     if (availableModels.size === 0) {
       return preferredDefault;
     }
@@ -69,12 +100,28 @@ export function resolveAnthropicLaunchModel(params: {
     );
   }
 
+  const selectedOneMillionContext = hasOneMillionSuffix(selectedModel);
   const baseModel = stripOneMillionSuffix(selectedModel);
   if (!baseModel) {
     return null;
   }
 
-  if (params.limitContext || isAnthropicHaikuModel(baseModel)) {
+  if (params.limitContext) {
+    const standardAlias = getStandardContextAlias(baseModel);
+    if (!standardAlias) {
+      return baseModel;
+    }
+    if (availableModels.size === 0) {
+      return standardAlias;
+    }
+    return chooseAvailableModel(availableModels, [standardAlias, baseModel]) ?? baseModel;
+  }
+
+  if (isAnthropicHaikuModel(baseModel)) {
+    return baseModel;
+  }
+
+  if (isAnthropicSonnetModel(baseModel) && !selectedOneMillionContext) {
     return baseModel;
   }
 

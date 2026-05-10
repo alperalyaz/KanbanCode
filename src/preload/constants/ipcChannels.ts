@@ -17,6 +17,12 @@ export const RENDERER_BOOT = 'renderer:boot';
 /** Renderer -> main heartbeat (detect renderer stalls) */
 export const RENDERER_HEARTBEAT = 'renderer:heartbeat';
 
+/** Renderer -> main startup status request */
+export const APP_STARTUP_GET_STATUS = 'appStartup:getStatus';
+
+/** Main -> renderer startup progress update */
+export const APP_STARTUP_PROGRESS = 'appStartup:progress';
+
 // =============================================================================
 // Config API Channels
 // =============================================================================
@@ -522,6 +528,9 @@ export const REVIEW_GET_AGENT_CHANGES = 'review:getAgentChanges';
 
 /** Получить изменения задачи */
 export const REVIEW_GET_TASK_CHANGES = 'review:getTaskChanges';
+
+/** Получить summary изменений по нескольким задачам команды */
+export const REVIEW_GET_TEAM_TASK_CHANGE_SUMMARIES = 'review:getTeamTaskChangeSummaries';
 
 /** Инвалидировать persisted/in-memory summary cache для задач */
 export const REVIEW_INVALIDATE_TASK_CHANGE_SUMMARIES = 'review:invalidateTaskChangeSummaries';

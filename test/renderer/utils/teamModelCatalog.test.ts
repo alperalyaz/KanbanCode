@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { getVisibleTeamProviderModels } from '@renderer/utils/teamModelCatalog';
+import {
+  getVisibleTeamProviderModels,
+  isAnthropicOneMillionContextTeamModel,
+  isAnthropicSonnetOneMillionContextTeamModel,
+  isAnthropicSonnetTeamModel,
+} from '@renderer/utils/teamModelCatalog';
 
 describe('teamModelCatalog', () => {
   it('filters UI-disabled Codex models from provider badge lists', () => {
@@ -15,13 +20,7 @@ describe('teamModelCatalog', () => {
         'gpt-5.1-codex-mini',
         'gpt-5.1-codex-max',
       ])
-    ).toEqual([
-      'gpt-5.4',
-      'gpt-5.4-mini',
-      'gpt-5.3-codex',
-      'gpt-5.2',
-      'gpt-5.1-codex-max',
-    ]);
+    ).toEqual(['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex', 'gpt-5.2', 'gpt-5.1-codex-max']);
   });
 
   it('adds curated Anthropic Opus 4.7 badges when the runtime list only reports legacy Opus variants', () => {
@@ -42,5 +41,27 @@ describe('teamModelCatalog', () => {
       'claude-sonnet-4-6',
       'claude-sonnet-4-6[1m]',
     ]);
+  });
+
+  it('detects Sonnet aliases with or without 1M suffix', () => {
+    expect(isAnthropicSonnetTeamModel('sonnet')).toBe(true);
+    expect(isAnthropicSonnetTeamModel('sonnet[1m]')).toBe(true);
+    expect(isAnthropicSonnetTeamModel('claude-sonnet-4-6')).toBe(true);
+    expect(isAnthropicSonnetTeamModel('claude-sonnet-4-6[1m]')).toBe(true);
+    expect(isAnthropicSonnetTeamModel('opus')).toBe(false);
+    expect(isAnthropicSonnetTeamModel('haiku')).toBe(false);
+  });
+
+  it('detects 1M Anthropic selections and native 1M launch ids', () => {
+    expect(isAnthropicOneMillionContextTeamModel('sonnet')).toBe(false);
+    expect(isAnthropicOneMillionContextTeamModel('sonnet[1m]')).toBe(true);
+    expect(isAnthropicOneMillionContextTeamModel('claude-opus-4-7')).toBe(true);
+    expect(isAnthropicOneMillionContextTeamModel('claude-opus-4-7[1m]')).toBe(true);
+    expect(isAnthropicOneMillionContextTeamModel('claude-sonnet-4-6')).toBe(true);
+    expect(isAnthropicSonnetOneMillionContextTeamModel('sonnet')).toBe(false);
+    expect(isAnthropicSonnetOneMillionContextTeamModel('sonnet[1m]')).toBe(true);
+    expect(isAnthropicSonnetOneMillionContextTeamModel('claude-sonnet-4-6')).toBe(true);
+    expect(isAnthropicSonnetOneMillionContextTeamModel('claude-sonnet-4-6[1m]')).toBe(true);
+    expect(isAnthropicSonnetOneMillionContextTeamModel('opus[1m]')).toBe(false);
   });
 });

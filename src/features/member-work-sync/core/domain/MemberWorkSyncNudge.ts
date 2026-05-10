@@ -29,18 +29,100 @@ export function buildMemberWorkSyncNudgeId(input: {
   teamName: string;
   memberName: string;
   agendaFingerprint: string;
+  intentKey?: string;
 }): string {
   return [
     MEMBER_WORK_SYNC_NUDGE_ID_PREFIX,
     input.teamName,
     input.memberName.trim().toLowerCase(),
-    input.agendaFingerprint,
+    input.intentKey ?? input.agendaFingerprint,
   ].join(':');
+}
+
+function getReviewPickupRequestEventIds(status: MemberWorkSyncStatus): string[] {
+  return [
+    ...new Set(
+      status.agenda.items
+        .map((item) => item.evidence.reviewRequestEventId?.trim())
+        .filter((id): id is string => Boolean(id))
+    ),
+  ].sort();
+}
+
+function isReviewPickupNudgeStatus(status: MemberWorkSyncStatus): boolean {
+  return (
+    status.agenda.items.length > 0 &&
+    status.agenda.items.every(
+      (item) =>
+        item.kind === 'review' &&
+        item.evidence.reviewObligation === 'review_pickup_required' &&
+        item.evidence.canBypassPhase2 === true &&
+        typeof item.evidence.reviewRequestEventId === 'string' &&
+        item.evidence.reviewRequestEventId.length > 0 &&
+        (item.evidence.reviewDiagnostics?.length ?? 0) === 0
+    )
+  );
+}
+
+export function buildMemberWorkSyncReviewPickupIntentKey(
+  status: MemberWorkSyncStatus
+): string | null {
+  const reviewRequestEventIds = getReviewPickupRequestEventIds(status);
+  return reviewRequestEventIds.length > 0
+    ? `review-pickup:${reviewRequestEventIds.join('+')}`
+    : null;
+}
+
+function buildTaskRefs(status: MemberWorkSyncStatus): MemberWorkSyncNudgePayload['taskRefs'] {
+  return status.agenda.items.map((item) => ({
+    teamName: status.teamName,
+    taskId: item.taskId,
+    displayId: item.displayId ?? item.taskId.slice(0, 8),
+  }));
+}
+
+function buildAgendaPreview(status: MemberWorkSyncStatus): string {
+  return status.agenda.items
+    .slice(0, 3)
+    .map((item) => `${item.displayId ?? item.taskId.slice(0, 8)} ${item.subject}`)
+    .join('; ');
+}
+
+function buildReviewPickupNudgePayload(status: MemberWorkSyncStatus): MemberWorkSyncNudgePayload {
+  const taskRefs = buildTaskRefs(status);
+  const preview = buildAgendaPreview(status);
+  const reviewRequestEventIds = getReviewPickupRequestEventIds(status);
+  const intentKey = buildMemberWorkSyncReviewPickupIntentKey(status);
+
+  return {
+    from: 'system',
+    to: status.memberName,
+    messageKind: 'member_work_sync_nudge',
+    source: 'member-work-sync',
+    actionMode: 'do',
+    workSyncIntent: 'review_pickup',
+    ...(intentKey ? { workSyncIntentKey: intentKey } : {}),
+    workSyncReviewRequestEventIds: reviewRequestEventIds,
+    taskRefs,
+    text: [
+      'Review pickup required: a current review request is waiting for you.',
+      preview ? `Review agenda: ${preview}.` : '',
+      'Open the task, verify the current reviewState/status, then start or continue the review only if it is still assigned to you.',
+      `If you cannot pick it up now, call member_work_sync_status with teamName "${status.teamName}" and memberName "${status.memberName}", then report "blocked" or "still_working" only for the real current state.`,
+      'Do not mark the review complete from this prompt alone, and do not reply only with acknowledgement.',
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  };
 }
 
 export function buildMemberWorkSyncNudgePayload(
   status: MemberWorkSyncStatus
 ): MemberWorkSyncNudgePayload {
+  if (isReviewPickupNudgeStatus(status)) {
+    return buildReviewPickupNudgePayload(status);
+  }
+
   const taskRefs = status.agenda.items.map((item) => ({
     teamName: status.teamName,
     taskId: item.taskId,
@@ -58,6 +140,7 @@ export function buildMemberWorkSyncNudgePayload(
     messageKind: 'member_work_sync_nudge',
     source: 'member-work-sync',
     actionMode: 'do',
+    workSyncIntent: 'agenda_sync',
     taskRefs,
     text: [
       'Work sync check: you have current actionable work assigned.',
@@ -98,11 +181,14 @@ export function buildMemberWorkSyncOutboxEnsureInput(input: {
   }
 
   const payload = buildMemberWorkSyncNudgePayload(status);
+  const intentKey =
+    payload.workSyncIntent === 'review_pickup' ? payload.workSyncIntentKey : undefined;
   return {
     id: buildMemberWorkSyncNudgeId({
       teamName: status.teamName,
       memberName: status.memberName,
       agendaFingerprint: status.agenda.fingerprint,
+      intentKey,
     }),
     teamName: status.teamName,
     memberName: status.memberName,

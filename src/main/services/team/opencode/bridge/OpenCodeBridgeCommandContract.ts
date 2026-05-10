@@ -170,6 +170,12 @@ export interface OpenCodeSendMessageCommandBody {
   memberName: string;
   text: string;
   messageId?: string;
+  fileParts?: {
+    type: 'file';
+    mime: 'image/png' | 'image/jpeg' | 'image/webp';
+    url: string;
+    filename: string;
+  }[];
   actionMode?: 'do' | 'ask' | 'delegate';
   messageKind?:
     | 'default'

@@ -344,7 +344,37 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     expect(hoisted.files.get(`/mock/teams/${teamName}/sentMessages.json`)).toBeUndefined();
   });
 
-  it('preserves visible summary text after stripping an echoed lead relay prompt', async () => {
+  it('does not persist bare transcript speaker placeholders as lead replies', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    seedConfig(teamName);
+    seedLeadInbox(teamName, [
+      {
+        from: 'tom',
+        text: '#f8d7235a done.',
+        timestamp: '2026-02-23T10:00:00.000Z',
+        read: false,
+        summary: '#f8d7235a done',
+        messageId: 'm-1',
+      },
+    ]);
+
+    attachAliveRun(service, teamName);
+    const relayPromise = service.relayLeadInboxMessages(teamName);
+    const run = await waitForCapture(service);
+
+    (service as any).handleStreamJsonMessage(run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Human: ' }],
+    });
+    (service as any).handleStreamJsonMessage(run, { type: 'result', subtype: 'success' });
+
+    await expect(relayPromise).resolves.toBe(1);
+    expect(service.getLiveLeadProcessMessages(teamName)).toHaveLength(0);
+    expect(hoisted.files.get(`/mock/teams/${teamName}/sentMessages.json`)).toBeUndefined();
+  });
+
+  it('records non-user lead relay summary text as internal lead activity', async () => {
     const service = new TeamProvisioningService();
     const teamName = 'my-team';
     seedConfig(teamName);
@@ -374,15 +404,256 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     (service as any).handleStreamJsonMessage(run, { type: 'result', subtype: 'success' });
 
     await expect(relayPromise).resolves.toBe(1);
-    expect(service.getLiveLeadProcessMessages(teamName).map((message) => message.text)).toEqual([
-      'Delegated to bob.',
+    const live = service.getLiveLeadProcessMessages(teamName);
+    expect(live.map((message) => message.text)).toEqual(['Delegated to bob.']);
+    expect(live[0]?.to).toBeUndefined();
+    expect(hoisted.files.get(`/mock/teams/${teamName}/sentMessages.json`)).toBeUndefined();
+  });
+
+  it('keeps user-originated lead relay replies user-visible', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    seedConfig(teamName);
+    seedLeadInbox(teamName, [
+      {
+        from: 'user',
+        text: 'Create the docs task.',
+        timestamp: '2026-02-23T10:00:00.000Z',
+        read: false,
+        summary: 'Docs task',
+        messageId: 'user-msg-1',
+        source: 'user_sent',
+      },
     ]);
+
+    attachAliveRun(service, teamName);
+    const relayPromise = service.relayLeadInboxMessages(teamName);
+    const run = await waitForCapture(service);
+
+    (service as any).handleStreamJsonMessage(run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Creating the task now.' }],
+    });
+    (service as any).handleStreamJsonMessage(run, { type: 'result', subtype: 'success' });
+
+    await expect(relayPromise).resolves.toBe(1);
+    const live = service.getLiveLeadProcessMessages(teamName);
+    expect(live.map((message) => message.text)).toEqual(['Creating the task now.']);
+    expect(live[0]?.to).toBe('user');
     const sentRows = JSON.parse(
       hoisted.files.get(`/mock/teams/${teamName}/sentMessages.json`) ?? '[]'
     ) as Array<{
       text?: string;
+      to?: string;
     }>;
-    expect(sentRows.map((message) => message.text)).toEqual(['Delegated to bob.']);
+    expect(sentRows).toMatchObject([{ text: 'Creating the task now.', to: 'user' }]);
+  });
+
+  it('does not mix internal lead relay rows into a user-visible relay batch', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    seedConfig(teamName);
+    seedLeadInbox(teamName, [
+      {
+        from: 'bob',
+        text: 'Internal status for the lead.',
+        timestamp: '2026-02-23T09:59:00.000Z',
+        read: false,
+        summary: 'Internal status',
+        messageId: 'internal-msg-1',
+      },
+      {
+        from: 'user',
+        text: 'Please create the release task.',
+        timestamp: '2026-02-23T10:00:00.000Z',
+        read: false,
+        summary: 'Release task',
+        messageId: 'user-msg-2',
+        source: 'user_sent',
+      },
+    ]);
+
+    const { writeSpy } = attachAliveRun(service, teamName);
+    const relayPromise = service.relayLeadInboxMessages(teamName);
+    const run = await waitForCapture(service);
+
+    (service as any).handleStreamJsonMessage(run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Creating the release task.' }],
+    });
+    (service as any).handleStreamJsonMessage(run, { type: 'result', subtype: 'success' });
+
+    await expect(relayPromise).resolves.toBe(1);
+    const payload = String(writeSpy.mock.calls[0]?.[0] ?? '');
+    expect(payload).toContain('Please create the release task.');
+    expect(payload).not.toContain('Internal status for the lead.');
+
+    await vi.waitFor(() => expect(writeSpy.mock.calls.length).toBe(2), { timeout: 1000 });
+    const followUpRun = await waitForCapture(service);
+    (service as any).handleStreamJsonMessage(followUpRun, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Noted internal status.' }],
+    });
+    (service as any).handleStreamJsonMessage(followUpRun, { type: 'result', subtype: 'success' });
+  });
+
+  it('relays deferred internal rows on the next pass after a user-visible batch', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    seedConfig(teamName);
+    seedLeadInbox(teamName, [
+      {
+        from: 'bob',
+        text: 'Internal status for the lead.',
+        timestamp: '2026-02-23T09:59:00.000Z',
+        read: false,
+        summary: 'Internal status',
+        messageId: 'internal-msg-next-pass',
+        source: 'system_notification',
+      },
+      {
+        from: 'user',
+        text: 'Please create the release task.',
+        timestamp: '2026-02-23T10:00:00.000Z',
+        read: false,
+        summary: 'Release task',
+        messageId: 'user-msg-next-pass',
+        source: 'user_sent',
+      },
+    ]);
+
+    const { writeSpy } = attachAliveRun(service, teamName);
+    const firstPromise = service.relayLeadInboxMessages(teamName);
+    let run = await waitForCapture(service);
+    (service as any).handleStreamJsonMessage(run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Creating the release task.' }],
+    });
+    (service as any).handleStreamJsonMessage(run, { type: 'result', subtype: 'success' });
+    await expect(firstPromise).resolves.toBe(1);
+
+    await vi.waitFor(() => expect(writeSpy.mock.calls.length).toBe(2), { timeout: 1000 });
+    run = await waitForCapture(service);
+    expect(run?.leadRelayCapture).toBeTruthy();
+    (service as any).handleStreamJsonMessage(run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Noted internal status.' }],
+    });
+    (service as any).handleStreamJsonMessage(run, { type: 'result', subtype: 'success' });
+    for (let i = 0; i < 20 && service.getLiveLeadProcessMessages(teamName).length < 2; i++) {
+      await Promise.resolve();
+    }
+
+    const firstPayload = String(writeSpy.mock.calls[0]?.[0] ?? '');
+    const secondPayload = String(writeSpy.mock.calls[1]?.[0] ?? '');
+    expect(firstPayload).toContain('Please create the release task.');
+    expect(firstPayload).not.toContain('Internal status for the lead.');
+    expect(secondPayload).toContain('Internal status for the lead.');
+    const live = service.getLiveLeadProcessMessages(teamName);
+    expect(live.map((message) => ({ to: message.to, text: message.text }))).toEqual([
+      { to: 'user', text: 'Creating the release task.' },
+      { to: undefined, text: 'Noted internal status.' },
+    ]);
+  });
+
+  it('does not duplicate relay narration when the lead sends an explicit visible message', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    seedConfig(teamName);
+    seedLeadInbox(teamName, [
+      {
+        from: 'bob',
+        text: 'This needs the user to know.',
+        timestamp: '2026-02-23T10:00:00.000Z',
+        read: false,
+        summary: 'Notify user',
+        messageId: 'internal-msg-2',
+      },
+    ]);
+
+    attachAliveRun(service, teamName);
+    const relayPromise = service.relayLeadInboxMessages(teamName);
+    const run = await waitForCapture(service);
+
+    (service as any).handleStreamJsonMessage(run, {
+      type: 'assistant',
+      content: [
+        { type: 'text', text: 'Sending the user update now.' },
+        {
+          type: 'tool_use',
+          name: 'SendMessage',
+          input: {
+            recipient: 'user',
+            content: 'Bob found an issue that needs your attention.',
+            summary: 'Needs attention',
+          },
+        },
+      ],
+    });
+    (service as any).handleStreamJsonMessage(run, { type: 'result', subtype: 'success' });
+
+    await expect(relayPromise).resolves.toBe(1);
+    const live = service.getLiveLeadProcessMessages(teamName);
+    expect(live.map((message) => message.text)).toEqual([
+      'Bob found an issue that needs your attention.',
+    ]);
+    const sentRows = JSON.parse(
+      hoisted.files.get(`/mock/teams/${teamName}/sentMessages.json`) ?? '[]'
+    ) as Array<{ text?: string }>;
+    expect(sentRows.map((message) => message.text)).toEqual([
+      'Bob found an issue that needs your attention.',
+    ]);
+  });
+
+  it('keeps user-originated plain reply when the lead also messages a teammate', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    seedConfig(teamName);
+    seedLeadInbox(teamName, [
+      {
+        from: 'user',
+        text: 'Please ask Alice to review the release notes.',
+        timestamp: '2026-02-23T10:00:00.000Z',
+        read: false,
+        summary: 'Review release notes',
+        messageId: 'user-msg-3',
+        source: 'user_sent',
+      },
+    ]);
+
+    attachAliveRun(service, teamName);
+    const relayPromise = service.relayLeadInboxMessages(teamName);
+    const run = await waitForCapture(service);
+
+    (service as any).handleStreamJsonMessage(run, {
+      type: 'assistant',
+      content: [
+        { type: 'text', text: 'Asked Alice to review the release notes.' },
+        {
+          type: 'tool_use',
+          name: 'SendMessage',
+          input: {
+            recipient: 'alice',
+            content: 'Please review the release notes.',
+            summary: 'Review release notes',
+          },
+        },
+      ],
+    });
+    (service as any).handleStreamJsonMessage(run, { type: 'result', subtype: 'success' });
+
+    await expect(relayPromise).resolves.toBe(1);
+    const live = service.getLiveLeadProcessMessages(teamName);
+    expect(live.map((message) => ({ to: message.to, text: message.text }))).toEqual([
+      { to: 'alice', text: 'Please review the release notes.' },
+      { to: 'user', text: 'Asked Alice to review the release notes.' },
+    ]);
+    const sentRows = JSON.parse(
+      hoisted.files.get(`/mock/teams/${teamName}/sentMessages.json`) ?? '[]'
+    ) as Array<{ text?: string; to?: string }>;
+    expect(sentRows).toMatchObject([
+      { to: 'user', text: 'Asked Alice to review the release notes.' },
+    ]);
   });
 
   it('treats member work sync nudges as actionable in lead relay prompt', async () => {
@@ -616,7 +887,10 @@ Messages:
     expect(first).toBe(1);
     expect(second).toBe(0);
     expect(writeSpy).toHaveBeenCalledTimes(1);
-    expect(hoisted.appendSentMessage).toHaveBeenCalledTimes(1);
+    expect(hoisted.appendSentMessage).not.toHaveBeenCalled();
+    expect(service.getLiveLeadProcessMessages(teamName).map((message) => message.text)).toEqual([
+      'Acknowledged.',
+    ]);
   });
 
   it('does not mark as relayed when stdin is not writable', async () => {
@@ -1857,7 +2131,7 @@ Messages:
       `/mock/teams/${teamName}/config.json`,
       JSON.stringify({
         name: teamName,
-        projectPath: '/tmp/my-team',
+        projectPath: '/mock/my-team',
         members: [
           { name: 'team-lead', agentType: 'team-lead' },
           { name: 'jack', role: 'developer', providerId: 'opencode', model: 'openrouter/test' },
@@ -2249,7 +2523,7 @@ Messages:
     expect(rows.map((row: { read?: boolean }) => row.read)).toEqual([false, true]);
   });
 
-  it('fails OpenCode secondary rows with attachments terminally without text-only delivery', async () => {
+  it('fails OpenCode secondary rows with missing attachment payloads terminally without text-only delivery', async () => {
     const service = new TeamProvisioningService();
     const teamName = 'my-team';
     hoisted.files.set(
@@ -2313,6 +2587,7 @@ Messages:
     const deliverSpy = vi.spyOn(service, 'deliverOpenCodeMemberMessage');
 
     const relay = await service.relayOpenCodeMemberInboxMessages(teamName, 'jack');
+    const expectedReason = 'opencode_inbox_attachment_payload_unavailable: att-1';
 
     expect(relay).toMatchObject({
       relayed: 0,
@@ -2321,20 +2596,18 @@ Messages:
       failed: 1,
       lastDelivery: {
         delivered: false,
-        reason: 'opencode_attachments_not_supported_for_secondary_runtime',
+        reason: expectedReason,
       },
     });
     expect(deliverSpy).not.toHaveBeenCalled();
-    expect(vi.mocked(console.warn).mock.calls[0]?.join(' ')).toContain(
-      'opencode_attachments_not_supported_for_secondary_runtime'
-    );
+    expect(relay.diagnostics?.join('\n')).toContain(expectedReason);
     vi.mocked(console.warn).mockClear();
     const rows = JSON.parse(hoisted.files.get(`/mock/teams/${teamName}/inboxes/jack.json`) ?? '[]');
     expect(rows[0].read).toBe(false);
     expect(records[0]).toMatchObject({
       inboxMessageId: 'opencode-attachment-1',
       status: 'failed_terminal',
-      lastReason: 'opencode_attachments_not_supported_for_secondary_runtime',
+      lastReason: expectedReason,
     });
   });
 
@@ -2851,6 +3124,86 @@ Messages:
       busy: true,
       reason: 'opencode_foreground_inbox_unread',
       activeMessageId: 'foreground-message-1',
+    });
+  });
+
+  it('does not treat the current unread OpenCode review request as busy for review-pickup checks', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    const laneId = 'secondary:opencode:jack';
+    const teamsBasePath = getTeamsBasePath();
+    hoisted.files.set(
+      `${teamsBasePath}/${teamName}/config.json`,
+      JSON.stringify({
+        name: teamName,
+        projectPath: '/tmp/my-team',
+        members: [
+          { name: 'team-lead', agentType: 'team-lead' },
+          { name: 'jack', role: 'developer', providerId: 'opencode', model: 'openrouter/test' },
+        ],
+      })
+    );
+    hoisted.files.set(
+      `${teamsBasePath}/${teamName}/inboxes/jack.json`,
+      JSON.stringify([
+        {
+          from: 'team-lead',
+          to: 'jack',
+          text: '**Please review** task #task1234\n\nFIRST call review_start.',
+          timestamp: '2026-02-23T17:31:00.000Z',
+          read: false,
+          messageId: 'review-request-1',
+          source: 'system_notification',
+          summary: 'Review request for #task1234',
+        },
+      ])
+    );
+    (service as any).resolveOpenCodeMemberDeliveryIdentity = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        canonicalMemberName: 'jack',
+        laneId,
+      })
+    );
+    vi.spyOn(OpenCodeRuntimeStore, 'readOpenCodeRuntimeLaneIndex').mockReturnValue(
+      Promise.resolve({
+        version: 1,
+        updatedAt: '2026-02-23T17:30:00.000Z',
+        lanes: {
+          [laneId]: {
+            laneId,
+            state: 'active',
+            updatedAt: '2026-02-23T17:30:00.000Z',
+          },
+        },
+      })
+    );
+    vi.spyOn(service as any, 'createOpenCodePromptDeliveryLedger').mockReturnValue({
+      getActiveForMember: vi.fn(() => Promise.resolve(null)),
+    });
+
+    const busy = await service.getOpenCodeMemberDeliveryBusyStatus({
+      teamName,
+      memberName: 'jack',
+      nowIso: '2026-02-23T17:31:10.000Z',
+      workSyncIntent: 'review_pickup',
+      taskRefs: [{ teamName, taskId: 'task-1234', displayId: 'task1234' }],
+    });
+
+    expect(busy).toEqual({ busy: false });
+
+    const mismatchedTaskBusy = await service.getOpenCodeMemberDeliveryBusyStatus({
+      teamName,
+      memberName: 'jack',
+      nowIso: '2026-02-23T17:31:10.000Z',
+      workSyncIntent: 'review_pickup',
+      taskRefs: [{ teamName, taskId: 'other-task', displayId: 'other' }],
+    });
+
+    expect(mismatchedTaskBusy).toMatchObject({
+      busy: true,
+      reason: 'opencode_foreground_inbox_unread',
+      activeMessageId: 'review-request-1',
     });
   });
 

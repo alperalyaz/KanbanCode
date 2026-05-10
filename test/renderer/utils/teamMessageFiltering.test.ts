@@ -37,6 +37,30 @@ describe('filterTeamMessages', () => {
     expect(result[0].source).toBe('lead_process');
   });
 
+  it('hides bare transcript speaker placeholders from lead output', () => {
+    const messages = [
+      makeMessage({
+        messageId: 'speaker-placeholder',
+        from: 'team-lead',
+        to: 'user',
+        text: 'Human:',
+        source: 'lead_process',
+      }),
+      makeMessage({
+        messageId: 'visible-message',
+        text: 'Visible message',
+      }),
+    ];
+
+    const result = filterTeamMessages(messages, {
+      timeWindow: null,
+      filter: { from: new Set(), to: new Set(), showNoise: true },
+      searchQuery: '',
+    });
+
+    expect(result.map((message) => message.messageId)).toEqual(['visible-message']);
+  });
+
   it('hides native app-managed bootstrap private control messages', () => {
     const messages = [
       makeMessage({
@@ -561,6 +585,31 @@ Messages:
     expect(result.map((message) => message.messageId)).toEqual(['msg-2']);
   });
 
+  it('hides review pickup escalation automation rows from conversational message counts by default', () => {
+    const messages = [
+      makeMessage({
+        messageId: 'member-work-sync-review-pickup-escalation:abc123',
+        from: 'system',
+        to: 'lead',
+        source: 'system_notification',
+        summary: 'Review pickup still pending',
+        text: 'Review pickup needs lead attention.\n\nReviewer: tom',
+      }),
+      makeMessage({
+        messageId: 'msg-2',
+        text: 'Visible message',
+      }),
+    ];
+
+    const result = filterTeamMessages(messages, {
+      timeWindow: null,
+      filter: { from: new Set(), to: new Set(), showNoise: true },
+      searchQuery: '',
+    });
+
+    expect(result.map((message) => message.messageId)).toEqual(['msg-2']);
+  });
+
   it('can include task stall remediation automation rows for the activity timeline', () => {
     const messages = [
       makeMessage({
@@ -584,4 +633,27 @@ Messages:
       'task-stall:demo:task-a:legacy-epoch',
     ]);
   });
+
+  it('keeps review pickup escalation hidden even when regular automation rows are included', () => {
+    const messages = [
+      makeMessage({
+        messageId: 'member-work-sync-review-pickup-escalation:abc123',
+        from: 'system',
+        to: 'lead',
+        source: 'system_notification',
+        summary: 'Review pickup still pending',
+        text: 'Review pickup needs lead attention.\n\nReviewer: tom',
+      }),
+    ];
+
+    const result = filterTeamMessages(messages, {
+      includeAutomationEvents: true,
+      timeWindow: null,
+      filter: { from: new Set(), to: new Set(), showNoise: true },
+      searchQuery: '',
+    });
+
+    expect(result).toEqual([]);
+  });
+
 });

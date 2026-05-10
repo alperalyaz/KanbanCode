@@ -1,18 +1,27 @@
-import { createLogger } from '@shared/utils/logger';
 import { getTeamsBasePath } from '@main/utils/pathDecoder';
+import { createLogger } from '@shared/utils/logger';
 import * as fs from 'fs/promises';
 
-import { TeamInboxReader } from './TeamInboxReader';
-import { TeamMemberLogsFinder } from './TeamMemberLogsFinder';
 import {
   createOpenCodePromptDeliveryLedgerStore,
   type OpenCodePromptDeliveryLedgerRecord,
 } from './opencode/delivery/OpenCodePromptDeliveryLedger';
-import { selectOpenCodeRuntimeDeliveryReason } from './opencode/delivery/OpenCodeRuntimeDeliveryDiagnostics';
+import {
+  classifyOpenCodeRuntimeDeliveryReasonCode,
+  decideOpenCodeRuntimeDeliveryAdvisory,
+  getOpenCodeRuntimeDeliveryRecordTimeMs,
+  isPotentialOpenCodeRuntimeDeliveryError,
+  isTerminalSuccessfulOpenCodeDeliveryRecord,
+} from './opencode/delivery/OpenCodeRuntimeDeliveryAdvisoryPolicy';
+import {
+  type OpenCodeRuntimeDeliveryProofIndex,
+  OpenCodeRuntimeDeliveryProofReader,
+} from './opencode/delivery/OpenCodeRuntimeDeliveryProofReader';
 import {
   getOpenCodeLaneScopedRuntimeFilePath,
   readOpenCodeRuntimeLaneIndex,
 } from './opencode/store/OpenCodeRuntimeManifestEvidenceReader';
+import { TeamMemberLogsFinder } from './TeamMemberLogsFinder';
 
 import type { MemberLogSummary, MemberRuntimeAdvisory, ResolvedTeamMember } from '@shared/types';
 
@@ -41,62 +50,6 @@ const TAIL_BYTES = 64 * 1024;
 const BATCH_WARN_MS = 1_000;
 const ADVISORY_FETCH_CONCURRENCY = 2;
 const OPENCODE_DELIVERY_ERROR_LOOKBACK_MS = 30 * 60 * 1000;
-const QUOTA_EXHAUSTED_TOKENS = [
-  'exhausted your capacity',
-  'capacity exceeded',
-  'quota exceeded',
-  'quota exhausted',
-  'insufficient credits',
-  'key limit exceeded',
-  'total limit',
-];
-const RATE_LIMITED_TOKENS = [
-  'rate limit',
-  'too many requests',
-  '429',
-  'model cooldown',
-  'cooling down',
-];
-const AUTH_ERROR_TOKENS = [
-  'auth_unavailable',
-  'no auth available',
-  'authentication_failed',
-  'unauthorized',
-  'forbidden',
-  'invalid api key',
-  'authentication',
-  'api key',
-  'does not have access',
-  'please run /login',
-];
-const CODEX_NATIVE_TIMEOUT_TOKENS = ['codex native exec timed out'];
-const NETWORK_ERROR_TOKENS = [
-  'timeout',
-  'timed out',
-  'network',
-  'connection',
-  'econn',
-  'enotfound',
-  'fetch failed',
-];
-const PROVIDER_OVERLOADED_TOKENS = [
-  'overloaded',
-  'temporarily unavailable',
-  'service unavailable',
-  '503',
-];
-const PROTOCOL_PROOF_MISSING_TOKENS = [
-  'non_visible_tool_without_task_progress',
-  'visible_reply_still_required',
-  'visible_reply_ack_only_still_requires_answer',
-  'plain_text_ack_only_still_requires_answer',
-  'visible_reply_destination_not_found_yet',
-  'visible_reply_missing_relayofmessageid',
-  'did not create a visible reply',
-  'did not create a visible message_send reply',
-  'did not create a visible reply or task progress proof',
-  'without the required relayofmessageid correlation',
-];
 const logger = createLogger('Service:TeamMemberRuntimeAdvisory');
 
 interface CachedRuntimeAdvisory {
@@ -108,76 +61,6 @@ interface CachedTeamBatchAdvisories {
   membersSignature: string;
   value: Map<string, MemberRuntimeAdvisory>;
   expiresAt: number;
-}
-
-function includesAnyToken(value: string, tokens: readonly string[]): boolean {
-  return tokens.some((token) => value.includes(token));
-}
-
-function classifyRetryReason(message: string | undefined): MemberRuntimeAdvisory['reasonCode'] {
-  const normalized = message?.trim().toLowerCase();
-  if (!normalized) {
-    return 'unknown';
-  }
-  if (includesAnyToken(normalized, QUOTA_EXHAUSTED_TOKENS)) {
-    return 'quota_exhausted';
-  }
-  if (includesAnyToken(normalized, RATE_LIMITED_TOKENS)) {
-    return 'rate_limited';
-  }
-  if (includesAnyToken(normalized, AUTH_ERROR_TOKENS)) {
-    return 'auth_error';
-  }
-  if (includesAnyToken(normalized, CODEX_NATIVE_TIMEOUT_TOKENS)) {
-    return 'codex_native_timeout';
-  }
-  if (includesAnyToken(normalized, NETWORK_ERROR_TOKENS)) {
-    return 'network_error';
-  }
-  if (includesAnyToken(normalized, PROVIDER_OVERLOADED_TOKENS)) {
-    return 'provider_overloaded';
-  }
-  if (includesAnyToken(normalized, PROTOCOL_PROOF_MISSING_TOKENS)) {
-    return 'protocol_proof_missing';
-  }
-  return 'backend_error';
-}
-
-function getRecordTimeMs(record: OpenCodePromptDeliveryLedgerRecord): number {
-  const candidates = [
-    record.failedAt,
-    record.respondedAt,
-    record.lastObservedAt,
-    record.updatedAt,
-    record.createdAt,
-  ];
-  for (const candidate of candidates) {
-    const time = Date.parse(candidate ?? '');
-    if (Number.isFinite(time)) {
-      return time;
-    }
-  }
-  return 0;
-}
-
-function isTerminalSuccessfulRecord(record: OpenCodePromptDeliveryLedgerRecord): boolean {
-  return (
-    record.status === 'responded' &&
-    Boolean(record.inboxReadCommittedAt || record.visibleReplyMessageId)
-  );
-}
-
-function isPotentialRuntimeDeliveryError(record: OpenCodePromptDeliveryLedgerRecord): boolean {
-  if (record.status === 'failed_terminal') {
-    return true;
-  }
-  return (
-    record.status !== 'responded' &&
-    (record.responseState === 'session_error' ||
-      record.responseState === 'tool_error' ||
-      record.responseState === 'permission_blocked' ||
-      record.responseState === 'reconcile_failed')
-  );
 }
 
 async function mapLimit<T, R>(
@@ -203,7 +86,6 @@ async function mapLimit<T, R>(
 }
 
 export class TeamMemberRuntimeAdvisoryService {
-  private readonly inboxReader = new TeamInboxReader();
   private readonly memberCache = new Map<string, CachedRuntimeAdvisory>();
   private readonly teamBatchCacheByTeam = new Map<string, CachedTeamBatchAdvisories>();
   private readonly cacheGenerationByTeam = new Map<string, number>();
@@ -213,7 +95,8 @@ export class TeamMemberRuntimeAdvisoryService {
   >();
 
   constructor(
-    private readonly logsFinder: RuntimeAdvisoryLogsFinder = new TeamMemberLogsFinder()
+    private readonly logsFinder: RuntimeAdvisoryLogsFinder = new TeamMemberLogsFinder(),
+    private readonly proofReader = new OpenCodeRuntimeDeliveryProofReader()
   ) {}
 
   invalidateMemberAdvisory(teamName: string, memberName: string): void {
@@ -226,6 +109,26 @@ export class TeamMemberRuntimeAdvisoryService {
     this.cacheGenerationByTeam.set(teamKey, (this.cacheGenerationByTeam.get(teamKey) ?? 0) + 1);
     this.memberCache.delete(`${teamKey}::${memberKey}`);
     this.teamBatchCacheByTeam.delete(teamKey);
+    for (const key of this.inFlightBatchRequests.keys()) {
+      if (key.startsWith(`${teamKey}::`)) {
+        this.inFlightBatchRequests.delete(key);
+      }
+    }
+  }
+
+  invalidateTeamAdvisories(teamName: string): void {
+    const teamKey = this.normalizeToken(teamName);
+    if (!teamKey) {
+      return;
+    }
+
+    this.cacheGenerationByTeam.set(teamKey, (this.cacheGenerationByTeam.get(teamKey) ?? 0) + 1);
+    this.teamBatchCacheByTeam.delete(teamKey);
+    for (const key of this.memberCache.keys()) {
+      if (key.startsWith(`${teamKey}::`)) {
+        this.memberCache.delete(key);
+      }
+    }
     for (const key of this.inFlightBatchRequests.keys()) {
       if (key.startsWith(`${teamKey}::`)) {
         this.inFlightBatchRequests.delete(key);
@@ -537,9 +440,9 @@ export class TeamMemberRuntimeAdvisoryService {
     for (const [memberKey, records] of recordsByMember) {
       if (
         records.some((record) => {
-          const observedAt = getRecordTimeMs(record);
+          const observedAt = getOpenCodeRuntimeDeliveryRecordTimeMs(record);
           return (
-            isPotentialRuntimeDeliveryError(record) &&
+            isPotentialOpenCodeRuntimeDeliveryError(record) &&
             Number.isFinite(observedAt) &&
             now - observedAt <= OPENCODE_DELIVERY_ERROR_LOOKBACK_MS
           );
@@ -552,10 +455,21 @@ export class TeamMemberRuntimeAdvisoryService {
       return new Map();
     }
 
-    const visibleRuntimeReplyTimes = await this.readVisibleOpenCodeRuntimeDeliveryReplyTimes(
-      teamName,
-      memberKeysWithRecentErrors
-    );
+    const proofIndex = await this.proofReader
+      .readProofIndex({
+        teamName,
+        activeMemberKeys: memberKeysWithRecentErrors,
+        recordsByMember,
+      })
+      .catch((error) => {
+        logger.warn('OpenCode runtime delivery proof lookup failed; using empty proof index', {
+          teamName,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return {
+          getSnapshot: () => ({}),
+        } satisfies OpenCodeRuntimeDeliveryProofIndex;
+      });
     const result = new Map<string, MemberRuntimeAdvisory>();
     for (const [memberKey, records] of recordsByMember) {
       if (!memberKeysWithRecentErrors.has(memberKey)) {
@@ -563,12 +477,7 @@ export class TeamMemberRuntimeAdvisoryService {
       }
       const originalName = activeMembersByKey.get(memberKey);
       const advisory = originalName
-        ? this.buildOpenCodeDeliveryAdvisoryFromRecords(
-            originalName,
-            records,
-            now,
-            visibleRuntimeReplyTimes
-          )
+        ? this.buildOpenCodeDeliveryAdvisoryFromRecords(originalName, records, now, proofIndex)
         : null;
       if (advisory && originalName) {
         result.set(originalName, advisory);
@@ -589,16 +498,20 @@ export class TeamMemberRuntimeAdvisoryService {
     memberName: string,
     records: readonly OpenCodePromptDeliveryLedgerRecord[],
     now: number,
-    visibleRuntimeReplyTimes: ReadonlyMap<string, number>
+    proofIndex: OpenCodeRuntimeDeliveryProofIndex
   ): MemberRuntimeAdvisory | null {
     const ordered = records
       .slice()
-      .sort((left, right) => getRecordTimeMs(right) - getRecordTimeMs(left));
-    const latestSuccess = ordered.find(isTerminalSuccessfulRecord);
+      .sort(
+        (left, right) =>
+          getOpenCodeRuntimeDeliveryRecordTimeMs(right) -
+          getOpenCodeRuntimeDeliveryRecordTimeMs(left)
+      );
+    const latestSuccess = ordered.find(isTerminalSuccessfulOpenCodeDeliveryRecord);
     const latestError = ordered.find((record) => {
-      const observedAt = getRecordTimeMs(record);
+      const observedAt = getOpenCodeRuntimeDeliveryRecordTimeMs(record);
       return (
-        isPotentialRuntimeDeliveryError(record) &&
+        isPotentialOpenCodeRuntimeDeliveryError(record) &&
         Number.isFinite(observedAt) &&
         now - observedAt <= OPENCODE_DELIVERY_ERROR_LOOKBACK_MS
       );
@@ -606,75 +519,33 @@ export class TeamMemberRuntimeAdvisoryService {
     if (!latestError) {
       return null;
     }
-    if (latestSuccess && getRecordTimeMs(latestSuccess) > getRecordTimeMs(latestError)) {
-      return null;
-    }
     if (
-      this.hasVisibleRuntimeReplyForOpenCodeDeliveryRecord(
-        memberName,
-        latestError,
-        visibleRuntimeReplyTimes
-      )
+      latestSuccess &&
+      getOpenCodeRuntimeDeliveryRecordTimeMs(latestSuccess) >
+        getOpenCodeRuntimeDeliveryRecordTimeMs(latestError)
     ) {
       return null;
     }
 
-    const message = selectOpenCodeRuntimeDeliveryReason(latestError);
-    if (!message) {
+    const decision = decideOpenCodeRuntimeDeliveryAdvisory({
+      record: latestError,
+      proof: proofIndex.getSnapshot(memberName, latestError),
+      now,
+    });
+    if (decision.action !== 'surface') {
       return null;
     }
-    const observedAt = getRecordTimeMs(latestError);
+
+    const message = decision.reason;
+    if (!message || !decision.observedAt) {
+      return null;
+    }
     return {
       kind: 'api_error',
-      observedAt: new Date(Number.isFinite(observedAt) ? observedAt : now).toISOString(),
-      reasonCode: classifyRetryReason(message),
+      observedAt: decision.observedAt,
+      reasonCode: decision.reasonCode,
       message,
     };
-  }
-
-  private async readVisibleOpenCodeRuntimeDeliveryReplyTimes(
-    teamName: string,
-    activeMemberKeys: ReadonlySet<string>
-  ): Promise<Map<string, number>> {
-    const result = new Map<string, number>();
-    const inboxNames = await this.inboxReader.listInboxNames(teamName).catch(() => []);
-    await mapLimit(inboxNames, ADVISORY_FETCH_CONCURRENCY, async (inboxName) => {
-      const messages = await this.inboxReader.getMessagesFor(teamName, inboxName).catch(() => []);
-      for (const message of messages) {
-        if (message.source !== 'runtime_delivery' || !message.relayOfMessageId) {
-          continue;
-        }
-        const memberKey = this.normalizeToken(message.from);
-        if (activeMemberKeys.has(memberKey)) {
-          const observedAt = Date.parse(message.timestamp);
-          if (!Number.isFinite(observedAt)) {
-            continue;
-          }
-          const key = this.getOpenCodeRuntimeReplyKey(memberKey, message.relayOfMessageId);
-          result.set(key, Math.max(result.get(key) ?? 0, observedAt));
-        }
-      }
-    });
-    return result;
-  }
-
-  private hasVisibleRuntimeReplyForOpenCodeDeliveryRecord(
-    memberName: string,
-    record: OpenCodePromptDeliveryLedgerRecord,
-    visibleRuntimeReplyTimes: ReadonlyMap<string, number>
-  ): boolean {
-    const relayOfMessageId = record.inboxMessageId?.trim();
-    if (!relayOfMessageId) {
-      return false;
-    }
-    const replyObservedAt = visibleRuntimeReplyTimes.get(
-      this.getOpenCodeRuntimeReplyKey(this.normalizeToken(memberName), relayOfMessageId)
-    );
-    return typeof replyObservedAt === 'number' && replyObservedAt > getRecordTimeMs(record);
-  }
-
-  private getOpenCodeRuntimeReplyKey(memberKey: string, relayOfMessageId: string): string {
-    return `${memberKey}::${relayOfMessageId.trim()}`;
   }
 
   private async findRecentMemberAdvisoriesFromBatchRefs(
@@ -830,7 +701,7 @@ export class TeamMemberRuntimeAdvisoryService {
         observedAt: new Date(observedAt).toISOString(),
         retryUntil: new Date(retryUntil).toISOString(),
         retryDelayMs: retryInMs,
-        reasonCode: classifyRetryReason(message),
+        reasonCode: classifyOpenCodeRuntimeDeliveryReasonCode(message),
         ...(message ? { message } : {}),
       };
     } catch {
@@ -882,7 +753,7 @@ export class TeamMemberRuntimeAdvisoryService {
       return {
         kind: 'api_error',
         observedAt: new Date(observedAt).toISOString(),
-        reasonCode: classifyRetryReason(message || parsed.error),
+        reasonCode: classifyOpenCodeRuntimeDeliveryReasonCode(message || parsed.error),
         ...(message ? { message } : {}),
         ...(statusMatch ? { statusCode: Number(statusMatch[1]) } : {}),
       };

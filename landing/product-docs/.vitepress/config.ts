@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, type DefaultTheme } from "vitepress";
 import llmstxt, { copyOrDownloadAsMarkdownButtons } from "vitepress-plugin-llms";
 
-const REPO = "777genius/claude_agent_teams_ui";
+const REPO = "777genius/agent-teams-ai";
 const SITE_TITLE = "Agent Teams Docs";
 const SITE_DESCRIPTION = "Documentation for Agent Teams, a local desktop app for AI agent orchestration.";
 
@@ -23,7 +23,7 @@ const withTrailingSlash = (value: string) => `${trimTrailingSlash(value)}/`;
 const appBase = normalizeBase(process.env.NUXT_APP_BASE_URL || "/");
 const base = appBase === "/" ? "/docs/" : `${appBase}docs/`;
 const siteUrl = trimTrailingSlash(
-  process.env.NUXT_PUBLIC_SITE_URL || "https://777genius.github.io/claude_agent_teams_ui"
+  process.env.NUXT_PUBLIC_SITE_URL || "https://777genius.github.io/agent-teams-ai"
 );
 const publicBaseUrl =
   appBase === "/" || siteUrl.endsWith(trimTrailingSlash(appBase))

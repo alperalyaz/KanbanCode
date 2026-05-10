@@ -22,6 +22,10 @@ const GENERIC_DELIVERY_DIAGNOSTIC_TOKENS = [
   'visible_reply_ack_only_still_requires_answer',
   'visible_reply_destination_not_found_yet',
   'visible_reply_missing_relayofmessageid',
+  'visible_reply_missing_task_refs',
+  'visible_reply_missing_task_refs_after_merge',
+  'visible_reply_task_refs_merge_failed',
+  'opencode_runtime_delivery_task_refs_inherited_from_relay',
   'non_visible_tool_without_task_progress',
 ] as const;
 
@@ -101,29 +105,41 @@ function getOpenCodeRuntimeDeliveryStateFallback(
 ): string | null {
   const state = record.responseState?.trim();
   const reason = record.lastReason?.trim();
-  if (state === 'empty_assistant_turn' || reason === 'empty_assistant_turn') {
+  const normalizedReason = reason?.toLowerCase();
+  const diagnostics = record.diagnostics.map((diagnostic) => diagnostic.trim().toLowerCase());
+  if (state === 'empty_assistant_turn' || normalizedReason === 'empty_assistant_turn') {
     return 'OpenCode returned an empty assistant turn.';
   }
   if (
-    reason === 'visible_reply_still_required' ||
-    reason === 'visible_reply_ack_only_still_requires_answer' ||
-    reason === 'plain_text_ack_only_still_requires_answer'
+    normalizedReason === 'visible_reply_missing_task_refs' ||
+    diagnostics.includes('visible_reply_missing_task_refs') ||
+    diagnostics.includes('visible_reply_missing_task_refs_after_merge')
+  ) {
+    return 'OpenCode created a reply without the required taskRefs metadata.';
+  }
+  if (diagnostics.includes('visible_reply_task_refs_merge_failed')) {
+    return 'OpenCode created a reply without the required taskRefs metadata, and the app could not attach it automatically.';
+  }
+  if (
+    normalizedReason === 'visible_reply_still_required' ||
+    normalizedReason === 'visible_reply_ack_only_still_requires_answer' ||
+    normalizedReason === 'plain_text_ack_only_still_requires_answer'
   ) {
     return 'OpenCode responded, but did not create a visible message_send reply.';
   }
   if (
     state === 'prompt_delivered_no_assistant_message' ||
-    reason === 'prompt_delivered_no_assistant_message'
+    normalizedReason === 'prompt_delivered_no_assistant_message'
   ) {
     return 'OpenCode accepted the prompt, but no assistant turn was recorded.';
   }
   if (
-    reason === 'visible_reply_destination_not_found_yet' ||
-    reason === 'visible_reply_missing_relayOfMessageId'
+    normalizedReason === 'visible_reply_destination_not_found_yet' ||
+    normalizedReason === 'visible_reply_missing_relayofmessageid'
   ) {
     return 'OpenCode created a reply without the required relayOfMessageId correlation.';
   }
-  if (reason === 'non_visible_tool_without_task_progress') {
+  if (normalizedReason === 'non_visible_tool_without_task_progress') {
     return 'OpenCode used tools, but did not create a visible reply or task progress proof.';
   }
   return null;

@@ -12,6 +12,7 @@ import {
   getOpenCodeTeamRuntimeDirectory,
   inspectOpenCodeRuntimeLaneStorage,
   migrateLegacyOpenCodeRuntimeState,
+  prepareOpenCodeRuntimeLaneForLaunchGeneration,
   readCommittedOpenCodeBootstrapSessionEvidence,
   readOpenCodeRuntimeLaneIndex,
   recoverStaleOpenCodeRuntimeLaneIndexEntry,
@@ -688,5 +689,332 @@ describe('OpenCodeRuntimeManifestEvidenceReader migration', () => {
       activeRunId: 'run-new',
       highWatermark: 5,
     });
+  });
+});
+
+describe('prepareOpenCodeRuntimeLaneForLaunchGeneration', () => {
+  let tempDir: string;
+  const teamName = 'team-launch-generation';
+  const laneId = 'secondary:opencode:bob';
+  const now = new Date('2026-05-09T10:00:00.000Z');
+
+  beforeEach(async () => {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'opencode-runtime-generation-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  async function writeSessionStoreForRun(runId: string): Promise<void> {
+    const descriptor = OPENCODE_RUNTIME_STORE_DESCRIPTORS.find(
+      (candidate) => candidate.schemaName === 'opencode.sessionStore'
+    );
+    if (!descriptor) throw new Error('session descriptor missing');
+    const manifestPath = getOpenCodeRuntimeManifestPath(tempDir, teamName, laneId);
+    const runtimeDirectory = path.dirname(manifestPath);
+    await fs.mkdir(runtimeDirectory, { recursive: true });
+    const writer = new RuntimeStoreBatchWriter(
+      runtimeDirectory,
+      createRuntimeStoreManifestStore({
+        filePath: manifestPath,
+        teamName,
+        clock: () => now,
+      }),
+      createRuntimeStoreReceiptStore({
+        filePath: path.join(runtimeDirectory, 'opencode-runtime-receipts.json'),
+      }),
+      {
+        clock: () => now,
+        batchIdFactory: () => `batch-${runId}`,
+        receiptIdFactory: () => `receipt-${runId}`,
+      }
+    );
+    await writer.writeBatch({
+      teamName,
+      runId,
+      capabilitySnapshotId: null,
+      behaviorFingerprint: null,
+      reason: 'launch_checkpoint',
+      writes: [
+        {
+          descriptor,
+          data: {
+            sessions: [
+              {
+                id: `session-${runId}`,
+                teamName,
+                memberName: 'bob',
+                runId,
+                laneId,
+                providerId: 'opencode',
+                source: 'runtime_bootstrap_checkin',
+                observedAt: now.toISOString(),
+              },
+            ],
+          },
+        },
+      ],
+    });
+  }
+
+  async function readManifest() {
+    return createRuntimeStoreManifestStore({
+      filePath: getOpenCodeRuntimeManifestPath(tempDir, teamName, laneId),
+      teamName,
+    }).read();
+  }
+
+  it('creates a fresh active manifest when the lane has no manifest', async () => {
+    const result = await prepareOpenCodeRuntimeLaneForLaunchGeneration({
+      teamsBasePath: tempDir,
+      teamName,
+      laneId,
+      runId: 'run-new',
+      reason: 'test_launch',
+      clock: () => now,
+    });
+
+    await expect(readManifest()).resolves.toMatchObject({
+      activeRunId: 'run-new',
+      highWatermark: 0,
+      entries: [],
+    });
+    await expect(readOpenCodeRuntimeLaneIndex(tempDir, teamName)).resolves.toMatchObject({
+      lanes: {
+        [laneId]: {
+          laneId,
+          state: 'active',
+        },
+      },
+    });
+    expect(result).toMatchObject({ reset: false, reason: 'fresh_manifest_created' });
+  });
+
+  it('reuses a same-generation manifest without clearing runtime evidence', async () => {
+    await writeSessionStoreForRun('run-current');
+    await setOpenCodeRuntimeActiveRunManifest({
+      teamsBasePath: tempDir,
+      teamName,
+      laneId,
+      runId: 'run-current',
+      clock: () => now,
+    });
+
+    const result = await prepareOpenCodeRuntimeLaneForLaunchGeneration({
+      teamsBasePath: tempDir,
+      teamName,
+      laneId,
+      runId: 'run-current',
+      reason: 'test_launch',
+      clock: () => now,
+    });
+
+    await expect(readManifest()).resolves.toMatchObject({
+      activeRunId: 'run-current',
+      highWatermark: 1,
+      entries: [expect.objectContaining({ runId: 'run-current' })],
+    });
+    await expect(
+      fs.readFile(
+        getOpenCodeLaneScopedRuntimeFilePath({
+          teamsBasePath: tempDir,
+          teamName,
+          laneId,
+          fileName: 'opencode-sessions.json',
+        }),
+        'utf8'
+      )
+    ).resolves.toContain('session-run-current');
+    expect(result).toMatchObject({ reset: false, reason: 'same_generation_reused' });
+  });
+
+  it('resets runtime evidence when activeRunId belongs to an older run', async () => {
+    await writeSessionStoreForRun('run-old');
+    await setOpenCodeRuntimeActiveRunManifest({
+      teamsBasePath: tempDir,
+      teamName,
+      laneId,
+      runId: 'run-old',
+      clock: () => now,
+    });
+
+    const result = await prepareOpenCodeRuntimeLaneForLaunchGeneration({
+      teamsBasePath: tempDir,
+      teamName,
+      laneId,
+      runId: 'run-new',
+      reason: 'test_launch',
+      clock: () => now,
+    });
+
+    await expect(readManifest()).resolves.toMatchObject({
+      activeRunId: 'run-new',
+      highWatermark: 0,
+      entries: [],
+    });
+    await expect(
+      fs.readFile(
+        getOpenCodeLaneScopedRuntimeFilePath({
+          teamsBasePath: tempDir,
+          teamName,
+          laneId,
+          fileName: 'opencode-sessions.json',
+        }),
+        'utf8'
+      )
+    ).rejects.toThrow();
+    expect(result).toMatchObject({ reset: true, reason: 'active_run_mismatch' });
+  });
+
+  it('resets when manifest entries belong to an older run even if activeRunId was advanced', async () => {
+    await writeSessionStoreForRun('run-old');
+    await setOpenCodeRuntimeActiveRunManifest({
+      teamsBasePath: tempDir,
+      teamName,
+      laneId,
+      runId: 'run-new',
+      clock: () => now,
+    });
+
+    const result = await prepareOpenCodeRuntimeLaneForLaunchGeneration({
+      teamsBasePath: tempDir,
+      teamName,
+      laneId,
+      runId: 'run-new',
+      reason: 'test_launch',
+      clock: () => now,
+    });
+
+    await expect(readManifest()).resolves.toMatchObject({
+      activeRunId: 'run-new',
+      highWatermark: 0,
+      entries: [],
+    });
+    expect(result).toMatchObject({ reset: true, reason: 'stale_manifest_entries' });
+  });
+
+  it('resets entries without a run id because they cannot prove the current generation', async () => {
+    const manifestPath = getOpenCodeRuntimeManifestPath(tempDir, teamName, laneId);
+    await fs.mkdir(path.dirname(manifestPath), { recursive: true });
+    await fs.writeFile(
+      manifestPath,
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          updatedAt: now.toISOString(),
+          data: {
+            schemaVersion: 1,
+            teamName,
+            activeRunId: 'run-new',
+            activeCapabilitySnapshotId: null,
+            activeBehaviorFingerprint: null,
+            highWatermark: 1,
+            lastCommittedBatchId: null,
+            lastPreparingBatchId: null,
+            entries: [
+              {
+                schemaName: 'opencode.runtimeDiagnostics',
+                schemaVersion: 1,
+                relativePath: 'opencode-diagnostics.json',
+                contentHash: null,
+                fileSize: null,
+                mtimeMs: null,
+                runId: null,
+                capabilitySnapshotId: null,
+                behaviorFingerprint: null,
+                lastWriteReceiptId: null,
+                state: 'healthy',
+              },
+            ],
+            lastRecoveryPlanId: null,
+            updatedAt: now.toISOString(),
+          },
+        },
+        null,
+        2
+      )}\n`,
+      'utf8'
+    );
+
+    const result = await prepareOpenCodeRuntimeLaneForLaunchGeneration({
+      teamsBasePath: tempDir,
+      teamName,
+      laneId,
+      runId: 'run-new',
+      reason: 'test_launch',
+      clock: () => now,
+    });
+
+    await expect(readManifest()).resolves.toMatchObject({
+      activeRunId: 'run-new',
+      highWatermark: 0,
+      entries: [],
+    });
+    expect(result).toMatchObject({ reset: true, reason: 'stale_manifest_entries' });
+  });
+
+  it('resets unreadable manifests safely', async () => {
+    const manifestPath = getOpenCodeRuntimeManifestPath(tempDir, teamName, laneId);
+    await fs.mkdir(path.dirname(manifestPath), { recursive: true });
+    await fs.writeFile(manifestPath, '{not-json', 'utf8');
+
+    const result = await prepareOpenCodeRuntimeLaneForLaunchGeneration({
+      teamsBasePath: tempDir,
+      teamName,
+      laneId,
+      runId: 'run-new',
+      reason: 'test_launch',
+      clock: () => now,
+    });
+
+    await expect(readManifest()).resolves.toMatchObject({
+      activeRunId: 'run-new',
+      highWatermark: 0,
+      entries: [],
+    });
+    expect(result).toMatchObject({ reset: true, reason: 'manifest_unreadable' });
+  });
+
+  it('resets degraded or stopped lane index state before launch', async () => {
+    await writeSessionStoreForRun('run-current');
+    await setOpenCodeRuntimeActiveRunManifest({
+      teamsBasePath: tempDir,
+      teamName,
+      laneId,
+      runId: 'run-current',
+      clock: () => now,
+    });
+    await upsertOpenCodeRuntimeLaneIndexEntry({
+      teamsBasePath: tempDir,
+      teamName,
+      laneId,
+      state: 'degraded',
+      diagnostics: ['previous launch failed'],
+    });
+
+    const result = await prepareOpenCodeRuntimeLaneForLaunchGeneration({
+      teamsBasePath: tempDir,
+      teamName,
+      laneId,
+      runId: 'run-current',
+      reason: 'test_launch',
+      clock: () => now,
+    });
+
+    await expect(readManifest()).resolves.toMatchObject({
+      activeRunId: 'run-current',
+      highWatermark: 0,
+      entries: [],
+    });
+    await expect(readOpenCodeRuntimeLaneIndex(tempDir, teamName)).resolves.toMatchObject({
+      lanes: {
+        [laneId]: {
+          laneId,
+          state: 'active',
+        },
+      },
+    });
+    expect(result).toMatchObject({ reset: true, reason: 'lane_index_terminal' });
   });
 });

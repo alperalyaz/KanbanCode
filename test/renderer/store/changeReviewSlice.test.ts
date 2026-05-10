@@ -294,7 +294,7 @@ describe('changeReviewSlice task changes', () => {
     );
   });
 
-  it('treats warning-only summaries as needs_attention and rechecks after invalidation', async () => {
+  it('treats diagnostic-only multi-scope summaries as unknown and rechecks after invalidation', async () => {
     const store = createSliceStore();
     const teamName = 'team-a';
     const taskId = 'presence-warning';
@@ -328,17 +328,115 @@ describe('changeReviewSlice task changes', () => {
 
     await store.getState().checkTaskHasChanges(teamName, taskId, OPTIONS_A);
 
+    expect(store.getState().setSelectedTeamTaskChangePresence).not.toHaveBeenCalledWith(
+      teamName,
+      taskId,
+      'needs_attention'
+    );
+    expect(store.getState().taskChangePresenceByKey[cacheKey]).toBeUndefined();
+
+    store.getState().invalidateTaskChangePresence([cacheKey]);
+    await store.getState().checkTaskHasChanges(teamName, taskId, OPTIONS_A);
+
+    expect(hoisted.getTaskChanges).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats unclassified warning-only summaries as needs_attention', async () => {
+    const store = createSliceStore();
+    const teamName = 'team-a';
+    const taskId = 'presence-unclassified-warning';
+    const cacheKey = buildTaskChangePresenceKey(teamName, taskId, OPTIONS_A);
+    hoisted.getTaskChanges.mockResolvedValue({
+      files: [],
+      totalFiles: 0,
+      totalLinesAdded: 0,
+      totalLinesRemoved: 0,
+      teamName,
+      taskId,
+      confidence: 'fallback',
+      computedAt: '2026-03-01T12:00:00.000Z',
+      scope: {
+        taskId,
+        memberName: '',
+        startLine: 0,
+        endLine: 0,
+        startTimestamp: '',
+        endTimestamp: '',
+        toolUseIds: [],
+        filePaths: [],
+        confidence: { tier: 4, label: 'fallback', reason: 'Unknown warning' },
+      },
+      warnings: ['Unexpected ledger warning.'],
+      provenance: {
+        sourceKind: 'ledger',
+        sourceFingerprint: 'ledger-warning-only',
+      },
+    });
+
+    await store.getState().checkTaskHasChanges(teamName, taskId, OPTIONS_A);
+
     expect(store.getState().setSelectedTeamTaskChangePresence).toHaveBeenCalledWith(
       teamName,
       taskId,
       'needs_attention'
     );
     expect(store.getState().taskChangePresenceByKey[cacheKey]).toBe('needs_attention');
+  });
 
-    store.getState().invalidateTaskChangePresence([cacheKey]);
+  it('background revalidates cached needs_attention presence', async () => {
+    const store = createSliceStore();
+    const teamName = 'team-a';
+    const taskId = 'cached-needs-attention';
+    const cacheKey = buildTaskChangePresenceKey(teamName, taskId, OPTIONS_A);
+    store.setState({
+      selectedTeamName: teamName,
+      selectedTeamData: {
+        tasks: [{ id: taskId, changePresence: 'needs_attention' }],
+      },
+      taskChangePresenceByKey: { [cacheKey]: 'needs_attention' },
+    });
+    hoisted.getTaskChanges.mockResolvedValue({
+      teamName,
+      taskId,
+      files: [],
+      totalFiles: 0,
+      totalLinesAdded: 0,
+      totalLinesRemoved: 0,
+      confidence: 'fallback',
+      computedAt: '2026-03-01T12:00:00.000Z',
+      scope: {
+        taskId,
+        memberName: '',
+        startLine: 0,
+        endLine: 0,
+        startTimestamp: '',
+        endTimestamp: '',
+        toolUseIds: [],
+        filePaths: [],
+        confidence: { tier: 4, label: 'fallback', reason: 'Multi-scope notice only' },
+      },
+      warnings: ['Task change ledger skipped attribution because multiple task scopes were active.'],
+    });
+
     await store.getState().checkTaskHasChanges(teamName, taskId, OPTIONS_A);
+    await flushAsyncWork();
 
-    expect(hoisted.getTaskChanges).toHaveBeenCalledTimes(2);
+    expect(hoisted.getTaskChanges).toHaveBeenCalledWith(teamName, taskId, {
+      ...OPTIONS_A,
+      summaryOnly: true,
+      forceFresh: true,
+    });
+    expect(store.getState().taskChangePresenceByKey[cacheKey]).toBeUndefined();
+    expect(store.getState().setSelectedTeamTaskChangePresence).toHaveBeenCalledWith(
+      teamName,
+      taskId,
+      'needs_attention'
+    );
+    expect(store.getState().setSelectedTeamTaskChangePresence).toHaveBeenCalledWith(
+      teamName,
+      taskId,
+      'unknown'
+    );
   });
 
   it('does not raise needs_attention for active interval summaries with no observed file edits yet', async () => {
@@ -735,6 +833,40 @@ describe('changeReviewSlice task changes', () => {
     }
 
     await warmPromise;
+  });
+
+  it('clears stale no_changes warm cache entries for diagnostic-only summaries', async () => {
+    const store = createSliceStore();
+    const teamName = 'team-a';
+    const taskId = 'warm-diagnostic-only';
+    const cacheKey = buildTaskChangePresenceKey(teamName, taskId, OPTIONS_A);
+    store.setState({ taskChangePresenceByKey: { [cacheKey]: 'no_changes' } });
+    hoisted.getTaskChanges.mockResolvedValue({
+      teamName,
+      taskId,
+      files: [],
+      totalFiles: 0,
+      totalLinesAdded: 0,
+      totalLinesRemoved: 0,
+      confidence: 'fallback',
+      computedAt: '2026-03-01T12:00:00.000Z',
+      scope: {
+        taskId,
+        memberName: '',
+        startLine: 0,
+        endLine: 0,
+        startTimestamp: '',
+        endTimestamp: '',
+        toolUseIds: [],
+        filePaths: [],
+        confidence: { tier: 4, label: 'fallback', reason: 'Multi-scope notice only' },
+      },
+      warnings: ['Task change ledger skipped attribution because multiple task scopes were active.'],
+    });
+
+    await store.getState().warmTaskChangeSummaries([{ teamName, taskId, options: OPTIONS_A }]);
+
+    expect(store.getState().taskChangePresenceByKey[cacheKey]).toBeUndefined();
   });
 
   it('clears optimistic terminal presence after background forceFresh revalidation', async () => {

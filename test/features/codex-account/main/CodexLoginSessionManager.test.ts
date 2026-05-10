@@ -101,8 +101,10 @@ describe('CodexLoginSessionManager', () => {
     await Promise.all([firstStart, secondStart]);
 
     expect(fakeSession.request).toHaveBeenCalledTimes(1);
-    expect(openExternalMock).toHaveBeenCalledTimes(1);
+    expect(openExternalMock).not.toHaveBeenCalled();
     expect(manager.getState().status).toBe('pending');
+    expect(manager.getState().authUrl).toBe('https://chatgpt.com/auth');
+    expect(manager.getState().userCode).toBeNull();
   });
 
   it('cancels a login cleanly while the app-server session is still starting', async () => {
@@ -135,6 +137,8 @@ describe('CodexLoginSessionManager', () => {
       status: 'cancelled',
       error: null,
       startedAt: null,
+      authUrl: null,
+      userCode: null,
     });
   });
 
@@ -170,6 +174,8 @@ describe('CodexLoginSessionManager', () => {
       status: 'idle',
       error: null,
       startedAt: null,
+      authUrl: null,
+      userCode: null,
     });
   });
 

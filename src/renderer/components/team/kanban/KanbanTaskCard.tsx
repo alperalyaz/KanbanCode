@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 import { OngoingIndicator } from '@renderer/components/common/OngoingIndicator';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
@@ -13,11 +13,11 @@ import {
   buildTaskChangeRequestOptions,
   canDisplayTaskChangesForOptions,
 } from '@renderer/utils/taskChangeRequest';
+import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import {
   isTeamTaskFinishedForDependency,
   isTeamTaskNeedsFixActionable,
 } from '@shared/utils/teamTaskState';
-import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import {
   ArrowLeftFromLine,
   ArrowRightFromLine,
@@ -32,7 +32,13 @@ import {
   XCircle,
 } from 'lucide-react';
 
-import type { KanbanColumnId, KanbanTaskState, TeamTask, TeamTaskWithKanban } from '@shared/types';
+import type {
+  KanbanColumnId,
+  KanbanTaskState,
+  TaskComment,
+  TeamTask,
+  TeamTaskWithKanban,
+} from '@shared/types';
 
 interface KanbanTaskCardProps {
   task: TeamTaskWithKanban;
@@ -61,6 +67,65 @@ interface DependencyBadgeProps {
   taskId: string;
   taskMap: Map<string, TeamTask>;
   onScrollToTask?: (taskId: string) => void;
+}
+
+interface CommentPulseState {
+  taskKey: string;
+  commentCount: number;
+  commentIds: Set<string>;
+  pulseKey: number;
+}
+
+interface CommentPulseSyncAction {
+  taskKey: string;
+  comments: readonly TaskComment[];
+}
+
+const EMPTY_TASK_COMMENTS: readonly TaskComment[] = [];
+
+function createCommentPulseState(
+  taskKey: string,
+  comments: readonly TaskComment[],
+  pulseKey = 0
+): CommentPulseState {
+  return {
+    taskKey,
+    commentCount: comments.length,
+    commentIds: new Set(comments.map((comment) => comment.id)),
+    pulseKey,
+  };
+}
+
+function hasSameCommentIds(state: CommentPulseState, comments: readonly TaskComment[]): boolean {
+  return (
+    comments.length === state.commentCount &&
+    comments.every((comment) => state.commentIds.has(comment.id))
+  );
+}
+
+function syncCommentPulseState(
+  state: CommentPulseState,
+  action: CommentPulseSyncAction
+): CommentPulseState {
+  if (state.taskKey !== action.taskKey) {
+    return createCommentPulseState(action.taskKey, action.comments);
+  }
+
+  const hasNewIncomingComment =
+    action.comments.length > state.commentCount &&
+    action.comments.some(
+      (comment) => !state.commentIds.has(comment.id) && comment.author !== 'user'
+    );
+
+  if (!hasNewIncomingComment && hasSameCommentIds(state, action.comments)) {
+    return state;
+  }
+
+  return createCommentPulseState(
+    action.taskKey,
+    action.comments,
+    hasNewIncomingComment ? state.pulseKey + 1 : state.pulseKey
+  );
 }
 
 const DependencyBadge = ({
@@ -248,6 +313,16 @@ export const KanbanTaskCard = memo(
   }: KanbanTaskCardProps): React.JSX.Element {
     const { isLight } = useTheme();
     const unreadCount = useUnreadCommentCount(teamName, task.id, task.comments);
+    const commentPulseTaskKey = `${teamName}/${task.id}`;
+    const comments = task.comments ?? EMPTY_TASK_COMMENTS;
+    const commentCount = comments.length;
+    const [commentPulse, syncCommentPulse] = useReducer(
+      syncCommentPulseState,
+      { taskKey: commentPulseTaskKey, comments },
+      ({ taskKey, comments: initialComments }) => createCommentPulseState(taskKey, initialComments)
+    );
+    const visibleCommentPulseKey =
+      commentPulse.taskKey === commentPulseTaskKey ? commentPulse.pulseKey : 0;
     const blockedByIds = task.blockedBy?.filter((id) => id.length > 0) ?? [];
     const blocksIds = task.blocks?.filter((id) => id.length > 0) ?? [];
     const hasBlockedBy = blockedByIds.length > 0;
@@ -263,21 +338,38 @@ export const KanbanTaskCard = memo(
 
     const effectiveReviewer = (kanbanTaskState?.reviewer ?? task.reviewer ?? '').trim();
     const isReviewManual = columnId === 'review' && !hasReviewers && effectiveReviewer.length === 0;
+    const canOpenChanges =
+      canDisplay &&
+      (task.changePresence === 'has_changes' || task.changePresence === 'needs_attention');
+    const changesNeedAttention = task.changePresence === 'needs_attention';
+
+    useEffect(() => {
+      syncCommentPulse({ taskKey: commentPulseTaskKey, comments });
+    }, [commentCount, commentPulseTaskKey, comments]);
+
     const metaActions = (
       <>
-        {canDisplay && task.changePresence === 'has_changes' ? (
+        {canOpenChanges ? (
           <TaskActionIconButton
-            label="Changes"
+            label={changesNeedAttention ? 'Changes need attention' : 'Changes'}
             icon={<FileCode className="size-2.5" />}
             variant="ghost"
-            className="text-sky-400 hover:bg-sky-500/10 hover:text-sky-300"
+            className={
+              changesNeedAttention
+                ? 'text-amber-400 hover:bg-amber-500/10 hover:text-amber-300'
+                : 'text-sky-400 hover:bg-sky-500/10 hover:text-sky-300'
+            }
             onClick={(e) => {
               e.stopPropagation();
               onViewChanges!(task.id);
             }}
           />
         ) : null}
-        <UnreadCommentsBadge unreadCount={unreadCount} totalCount={task.comments?.length ?? 0} />
+        <UnreadCommentsBadge
+          unreadCount={unreadCount}
+          totalCount={commentCount}
+          pulseKey={visibleCommentPulseKey}
+        />
         {onDeleteTask ? (
           <TaskActionIconButton
             label="Delete task"

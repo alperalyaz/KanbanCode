@@ -193,6 +193,80 @@ async function writeOpenCodeLedgerBundle(
   );
 }
 
+async function writeWarningOnlyLedgerNotice(
+  projectDir: string,
+  overrides?: Partial<{
+    taskId: string;
+    memberName: string;
+    message: string;
+  }>
+): Promise<void> {
+  const taskId = overrides?.taskId ?? TASK_ID;
+  const noticeDir = path.join(projectDir, '.board-task-changes', 'notices');
+  await fs.mkdir(noticeDir, { recursive: true });
+  await fs.writeFile(
+    path.join(noticeDir, `${encodeURIComponent(taskId)}.jsonl`),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      noticeId: 'notice-1',
+      taskId,
+      taskRef: taskId,
+      taskRefKind: 'canonical',
+      phase: 'work',
+      executionSeq: 0,
+      sessionId: 'session-1',
+      memberName: overrides?.memberName ?? 'alice',
+      toolUseId: 'tool-1',
+      timestamp: '2026-03-01T10:05:00.000Z',
+      severity: 'warning',
+      code: 'multi-scope-skipped',
+      message:
+        overrides?.message ??
+        'Task change ledger skipped attribution because multiple task scopes were active.',
+    })}\n`,
+    'utf8'
+  );
+}
+
+async function writeOpenCodeLedgerEventJournal(
+  projectDir: string,
+  projectPath: string,
+  taskId: string = TASK_ID
+): Promise<void> {
+  const eventDir = path.join(projectDir, '.board-task-changes', 'events');
+  await fs.mkdir(eventDir, { recursive: true });
+  await fs.writeFile(
+    path.join(eventDir, `${encodeURIComponent(taskId)}.jsonl`),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      eventId: 'event-1',
+      taskId,
+      taskRef: taskId,
+      taskRefKind: 'canonical',
+      phase: 'work',
+      executionSeq: 0,
+      sessionId: 'opencode-session-1',
+      memberName: 'bob',
+      toolUseId: 'part-1',
+      source: 'opencode_toolpart_write',
+      operation: 'create',
+      confidence: 'exact',
+      workspaceRoot: projectPath,
+      filePath: path.join(projectPath, 'src/opencode.ts'),
+      relativePath: 'src/opencode.ts',
+      timestamp: '2026-03-01T10:00:00.000Z',
+      toolStatus: 'succeeded',
+      before: null,
+      after: null,
+      oldString: '',
+      newString: 'export const source = "opencode";\n',
+      linesAdded: 1,
+      linesRemoved: 0,
+    })}\n`,
+    'utf8'
+  );
+}
+
 function persistedEntryPath(baseDir: string): string {
   return path.join(baseDir, 'task-change-summaries', encodeURIComponent(TEAM_NAME), `${TASK_ID}.json`);
 }
@@ -284,11 +358,20 @@ function makeTaskChangeResult(
   };
 }
 
+function pendingTaskChangeResult(): Promise<ReturnType<typeof makeTaskChangeResult>> {
+  return new Promise<ReturnType<typeof makeTaskChangeResult>>(() => {
+    // Keep pending to exercise summary timeout handling.
+  });
+}
+
 function createService(params: {
   logPaths: string[];
   projectPath?: string;
   findLogFileRefsForTask?: (teamName: string, taskId: string, options?: unknown) => Promise<unknown[]>;
-  taskChangePresenceRepository?: { upsertEntry: ReturnType<typeof vi.fn> };
+  taskChangePresenceRepository?: {
+    upsertEntry: ReturnType<typeof vi.fn>;
+    deleteEntry?: ReturnType<typeof vi.fn>;
+  };
   teamLogSourceTracker?: {
     ensureTracking: ReturnType<
       typeof vi.fn<() => Promise<{ projectFingerprint: string | null; logSourceGeneration: string | null }>>
@@ -350,6 +433,153 @@ describe('ChangeExtractorService', () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
       tmpDir = null;
     }
+  });
+
+  it('loads team task change summaries with capped requests and per-task errors', async () => {
+    const { service } = createService({ logPaths: [] });
+    const getTaskChanges = vi
+      .spyOn(service, 'getTaskChanges')
+      .mockImplementation(async (_teamName, taskId, options) => {
+        expect(options?.summaryOnly).toBe(true);
+        if (taskId === 'task-2') {
+          throw new Error('broken summary');
+        }
+        return makeTaskChangeResult(taskId, { taskId });
+      });
+
+    const response = await service.getTeamTaskChangeSummaries(
+      TEAM_NAME,
+      Array.from({ length: 205 }, (_, index) => ({
+        taskId: `task-${index}`,
+        options: { ...SUMMARY_OPTIONS, summaryOnly: false },
+      }))
+    );
+
+    expect(response.teamName).toBe(TEAM_NAME);
+    expect(response.truncated).toBe(true);
+    expect(response.items).toHaveLength(200);
+    expect(getTaskChanges).toHaveBeenCalledTimes(200);
+    expect(response.items[0].changeSet?.taskId).toBe('task-0');
+    expect(response.items[2]).toMatchObject({
+      taskId: 'task-2',
+      changeSet: null,
+      error: 'broken summary',
+    });
+  });
+
+  it('times out slow team task change summaries without blocking faster items', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service } = createService({ logPaths: [] });
+      const getTaskChanges = vi
+        .spyOn(service, 'getTaskChanges')
+        .mockImplementation((_teamName, taskId) => {
+          if (taskId === 'slow-task') {
+            return pendingTaskChangeResult();
+          }
+          return Promise.resolve(makeTaskChangeResult(taskId, { taskId }));
+        });
+
+      const responsePromise = service.getTeamTaskChangeSummaries(TEAM_NAME, [
+        { taskId: 'slow-task', options: SUMMARY_OPTIONS },
+        { taskId: 'fast-task', options: SUMMARY_OPTIONS },
+      ]);
+
+      await vi.advanceTimersByTimeAsync(31_000);
+      const response = await responsePromise;
+
+      expect(getTaskChanges).toHaveBeenCalledTimes(2);
+      expect(response.truncated).toBe(true);
+      expect(response.items[0]).toMatchObject({
+        taskId: 'slow-task',
+        changeSet: null,
+        error: expect.stringContaining('timed out'),
+      });
+      expect(response.items[1].changeSet?.taskId).toBe('fast-task');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('omits unscanned task summary placeholders after the batch deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service } = createService({ logPaths: [] });
+      vi.spyOn(service, 'getTaskChanges').mockImplementation(() => pendingTaskChangeResult());
+
+      const responsePromise = service.getTeamTaskChangeSummaries(
+        TEAM_NAME,
+        Array.from({ length: 8 }, (_, index) => ({
+          taskId: `slow-task-${index}`,
+          options: SUMMARY_OPTIONS,
+        }))
+      );
+
+      await vi.advanceTimersByTimeAsync(31_000);
+      const response = await responsePromise;
+
+      expect(response.truncated).toBe(true);
+      expect(response.items).toHaveLength(6);
+      expect(response.items.every((item) => item.error?.includes('timed out'))).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('deduplicates team task change summary requests before loading', async () => {
+    const { service } = createService({ logPaths: [] });
+    const getTaskChanges = vi
+      .spyOn(service, 'getTaskChanges')
+      .mockImplementation((_teamName, taskId) =>
+        Promise.resolve(makeTaskChangeResult(taskId, { taskId }))
+      );
+
+    const response = await service.getTeamTaskChangeSummaries(TEAM_NAME, [
+      { taskId: 'task-1', options: SUMMARY_OPTIONS },
+      { taskId: 'task-1', options: SUMMARY_OPTIONS },
+      { taskId: ' task-2 ', options: SUMMARY_OPTIONS },
+    ]);
+
+    expect(response.items.map((item) => item.taskId)).toEqual(['task-1', 'task-2']);
+    expect(response.truncated).toBeUndefined();
+    expect(getTaskChanges).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores malformed team task change summary requests', async () => {
+    const { service } = createService({ logPaths: [] });
+    const getTaskChanges = vi
+      .spyOn(service, 'getTaskChanges')
+      .mockImplementation((_teamName, taskId) =>
+        Promise.resolve(makeTaskChangeResult(taskId, { taskId }))
+      );
+
+    const response = await service.getTeamTaskChangeSummaries(TEAM_NAME, [
+      null,
+      { taskId: '' },
+      { taskId: 'task-1', options: SUMMARY_OPTIONS },
+      { taskId: 42 },
+    ] as unknown as Parameters<typeof service.getTeamTaskChangeSummaries>[1]);
+
+    expect(response.items.map((item) => item.taskId)).toEqual(['task-1']);
+    expect(getTaskChanges).toHaveBeenCalledTimes(1);
+  });
+
+  it('limits raw team task summary request inspection before loading', async () => {
+    const { service } = createService({ logPaths: [] });
+    const getTaskChanges = vi
+      .spyOn(service, 'getTaskChanges')
+      .mockImplementation((_teamName, taskId) =>
+        Promise.resolve(makeTaskChangeResult(taskId, { taskId }))
+      );
+
+    const response = await service.getTeamTaskChangeSummaries(TEAM_NAME, [
+      ...Array.from({ length: 1000 }, () => null),
+      { taskId: 'beyond-inspect-limit', options: SUMMARY_OPTIONS },
+    ] as unknown as Parameters<typeof service.getTeamTaskChangeSummaries>[1]);
+
+    expect(response.items).toEqual([]);
+    expect(response.truncated).toBe(true);
+    expect(getTaskChanges).not.toHaveBeenCalled();
   });
 
   it('does not reuse detailed task-change cache across different scope inputs', async () => {
@@ -871,24 +1101,70 @@ describe('ChangeExtractorService', () => {
     );
   });
 
-  it('writes needs_attention presence entries for warning-only task diff results', async () => {
+  it('clears cached presence for diagnostic-only multi-scope task diff results', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
     setClaudeBasePathOverride(tmpDir);
     await writeTaskFile(tmpDir);
 
-    const upsertEntry = vi.fn(async () => undefined);
-    const ensureTracking = vi.fn(async () => ({
-      projectFingerprint: 'project-fingerprint',
-      logSourceGeneration: 'log-generation',
-    }));
+    const upsertEntry = vi.fn(() => Promise.resolve(undefined));
+    const deleteEntry = vi.fn(() => Promise.resolve(undefined));
+    const ensureTracking = vi.fn(() =>
+      Promise.resolve({
+        projectFingerprint: 'project-fingerprint',
+        logSourceGeneration: 'log-generation',
+      })
+    );
     const workerClient = {
       isAvailable: vi.fn(() => true),
-      computeTaskChanges: vi.fn(async () =>
-        makeTaskChangeResult(TASK_ID, {
-          content: '',
-          confidence: 'fallback',
-          warning: 'Ledger skipped attribution because multiple task scopes were active.',
-        })
+      computeTaskChanges: vi.fn(() =>
+        Promise.resolve(
+          makeTaskChangeResult(TASK_ID, {
+            content: '',
+            confidence: 'fallback',
+            warning: 'Ledger skipped attribution because multiple task scopes were active.',
+          })
+        )
+      ),
+    };
+    const { service } = createService({
+      logPaths: [],
+      taskChangePresenceRepository: { upsertEntry, deleteEntry },
+      teamLogSourceTracker: { ensureTracking },
+      taskChangeWorkerClient: workerClient,
+    });
+
+    const result = await service.getTaskChanges(TEAM_NAME, TASK_ID, SUMMARY_OPTIONS);
+
+    expect(result.files).toHaveLength(0);
+    expect(result.warnings).toEqual([
+      'Ledger skipped attribution because multiple task scopes were active.',
+    ]);
+    expect(upsertEntry).not.toHaveBeenCalled();
+    expect(deleteEntry).toHaveBeenCalledWith(TEAM_NAME, TASK_ID);
+  });
+
+  it('writes needs_attention presence entries for unclassified warning-only task diff results', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
+    setClaudeBasePathOverride(tmpDir);
+    await writeTaskFile(tmpDir);
+
+    const upsertEntry = vi.fn(() => Promise.resolve(undefined));
+    const ensureTracking = vi.fn(() =>
+      Promise.resolve({
+        projectFingerprint: 'project-fingerprint',
+        logSourceGeneration: 'log-generation',
+      })
+    );
+    const workerClient = {
+      isAvailable: vi.fn(() => true),
+      computeTaskChanges: vi.fn(() =>
+        Promise.resolve(
+          makeTaskChangeResult(TASK_ID, {
+            content: '',
+            confidence: 'fallback',
+            warning: 'Unexpected ledger warning.',
+          })
+        )
       ),
     };
     const { service } = createService({
@@ -901,9 +1177,7 @@ describe('ChangeExtractorService', () => {
     const result = await service.getTaskChanges(TEAM_NAME, TASK_ID, SUMMARY_OPTIONS);
 
     expect(result.files).toHaveLength(0);
-    expect(result.warnings).toEqual([
-      'Ledger skipped attribution because multiple task scopes were active.',
-    ]);
+    expect(result.warnings).toEqual(['Unexpected ledger warning.']);
     expect(upsertEntry).toHaveBeenCalledWith(
       TEAM_NAME,
       expect.objectContaining({
@@ -989,6 +1263,196 @@ describe('ChangeExtractorService', () => {
     expect(result.files).toHaveLength(0);
     expect(result.confidence === 'high' || result.confidence === 'medium').toBe(false);
     expect(upsertEntry).not.toHaveBeenCalled();
+  });
+
+  it('runs OpenCode recovery when a ledger result only contains warning notices', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
+    setClaudeBasePathOverride(tmpDir);
+    await writeTaskFile(tmpDir, { displayId: 'abc12345', owner: 'bob' });
+    const projectDir = path.join(tmpDir, 'project-dir');
+    const projectPath = path.join(tmpDir, 'repo');
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.mkdir(projectPath, { recursive: true });
+    await writeWarningOnlyLedgerNotice(projectDir, { memberName: 'bob' });
+    await writeOpenCodeDeliveryLedger(tmpDir);
+
+    const backfillOpenCodeTaskLedger = vi.fn(async (input: any) => {
+      await writeOpenCodeLedgerEventJournal(input.projectDir, projectPath);
+      return {
+        schemaVersion: 1,
+        providerId: 'opencode',
+        opencodeTaskLedgerEvidenceContractVersion: OPEN_CODE_TASK_LEDGER_EVIDENCE_CONTRACT_VERSION,
+        teamName: input.teamName,
+        taskId: input.taskId,
+        projectDir: input.projectDir,
+        workspaceRoot: input.workspaceRoot,
+        dryRun: false,
+        attributionMode: input.attributionMode,
+        scannedSessions: 1,
+        scannedToolparts: 1,
+        candidateEvents: 1,
+        importedEvents: 1,
+        skippedEvents: 0,
+        outcome: 'imported',
+        notices: [],
+        diagnostics: [],
+      };
+    });
+    const workerClient = {
+      isAvailable: vi.fn(() => true),
+      computeTaskChanges: vi.fn(async () =>
+        makeTaskChangeResult(TASK_ID, { content: '', confidence: 'fallback' })
+      ),
+    };
+    const service = new ChangeExtractorService(
+      {
+        getLogSourceWatchContext: vi.fn(async () => ({
+          projectDir,
+          projectPath,
+          sessionIds: [],
+        })),
+        findLogFileRefsForTask: vi.fn(async () => []),
+        findMemberLogPaths: vi.fn(async () => []),
+      } as any,
+      {
+        parseBoundaries: vi.fn(async () => ({
+          boundaries: [],
+          scopes: [],
+          isSingleTaskSession: true,
+          detectedMechanism: 'none' as const,
+        })),
+      } as any,
+      { getConfig: vi.fn(async () => ({ projectPath })) } as any,
+      undefined,
+      workerClient as any,
+      { backfillOpenCodeTaskLedger } as any,
+      { getMeta: vi.fn(async () => ({ providerId: 'opencode' })) } as any
+    );
+
+    const result = await service.getTaskChanges(TEAM_NAME, TASK_ID, {
+      ...SUMMARY_OPTIONS,
+      owner: 'bob',
+    });
+
+    expect(result.files).toHaveLength(1);
+    expect(result.warnings).toContain(
+      'Task change ledger skipped attribution because multiple task scopes were active.'
+    );
+    expect(backfillOpenCodeTaskLedger).toHaveBeenCalledTimes(1);
+    expect(workerClient.computeTaskChanges).not.toHaveBeenCalled();
+  });
+
+  it('recovers Codex warning-only ledger results through the scoped worker path', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
+    setClaudeBasePathOverride(tmpDir);
+    await writeTaskFile(tmpDir, { owner: 'tom' });
+    const projectDir = path.join(tmpDir, 'project-dir');
+    const projectPath = path.join(tmpDir, 'repo');
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.mkdir(projectPath, { recursive: true });
+    await writeWarningOnlyLedgerNotice(projectDir, { memberName: 'tom' });
+
+    const workerClient = {
+      isAvailable: vi.fn(() => true),
+      computeTaskChanges: vi.fn(async () =>
+        makeTaskChangeResult(TASK_ID, {
+          filePath: path.join(projectPath, 'src/codex.ts'),
+          scope: { memberName: 'tom' },
+        })
+      ),
+    };
+    const service = new ChangeExtractorService(
+      {
+        getLogSourceWatchContext: vi.fn(async () => ({
+          projectDir,
+          projectPath,
+          sessionIds: [],
+        })),
+        findLogFileRefsForTask: vi.fn(async () => []),
+        findMemberLogPaths: vi.fn(async () => []),
+      } as any,
+      {
+        parseBoundaries: vi.fn(async () => ({
+          boundaries: [],
+          scopes: [],
+          isSingleTaskSession: true,
+          detectedMechanism: 'none' as const,
+        })),
+      } as any,
+      {
+        getConfig: vi.fn(async () => ({
+          projectPath,
+          members: [{ name: 'tom', providerId: 'codex' }],
+        })),
+      } as any,
+      undefined,
+      workerClient as any
+    );
+
+    const result = await service.getTaskChanges(TEAM_NAME, TASK_ID, {
+      ...SUMMARY_OPTIONS,
+      owner: 'tom',
+    });
+
+    expect(result.files).toHaveLength(1);
+    expect(result.warnings).toContain(
+      'Task change ledger skipped attribution because multiple task scopes were active.'
+    );
+    expect(workerClient.computeTaskChanges).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps non-Codex warning-only ledger results as diagnostics instead of adding legacy changes', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
+    setClaudeBasePathOverride(tmpDir);
+    await writeTaskFile(tmpDir, { owner: 'atlas' });
+    const projectDir = path.join(tmpDir, 'project-dir');
+    const projectPath = path.join(tmpDir, 'repo');
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.mkdir(projectPath, { recursive: true });
+    await writeWarningOnlyLedgerNotice(projectDir, { memberName: 'atlas' });
+
+    const workerClient = {
+      isAvailable: vi.fn(() => true),
+      computeTaskChanges: vi.fn(async () => makeTaskChangeResult(TASK_ID)),
+    };
+    const service = new ChangeExtractorService(
+      {
+        getLogSourceWatchContext: vi.fn(async () => ({
+          projectDir,
+          projectPath,
+          sessionIds: [],
+        })),
+        findLogFileRefsForTask: vi.fn(async () => []),
+        findMemberLogPaths: vi.fn(async () => []),
+      } as any,
+      {
+        parseBoundaries: vi.fn(async () => ({
+          boundaries: [],
+          scopes: [],
+          isSingleTaskSession: true,
+          detectedMechanism: 'none' as const,
+        })),
+      } as any,
+      {
+        getConfig: vi.fn(async () => ({
+          projectPath,
+          members: [{ name: 'atlas', providerId: 'anthropic' }],
+        })),
+      } as any,
+      undefined,
+      workerClient as any
+    );
+
+    const result = await service.getTaskChanges(TEAM_NAME, TASK_ID, {
+      ...SUMMARY_OPTIONS,
+      owner: 'atlas',
+    });
+
+    expect(result.files).toHaveLength(0);
+    expect(result.warnings).toContain(
+      'Task change ledger skipped attribution because multiple task scopes were active.'
+    );
+    expect(workerClient.computeTaskChanges).not.toHaveBeenCalled();
   });
 
   it('backfills OpenCode ledger artifacts once before falling back to legacy extraction', async () => {
@@ -1631,7 +2095,9 @@ describe('ChangeExtractorService', () => {
     expect(backfillOpenCodeTaskLedger.mock.calls[0]?.[0]?.deliveryContextPath).toEqual(
       expect.stringContaining('delivery-context.json')
     );
-    expect(backfillOpenCodeTaskLedger.mock.calls[0]?.[0]?.deliveryContextHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(backfillOpenCodeTaskLedger.mock.calls[0]?.[0]?.deliveryContextHash).toMatch(
+      /^[a-f0-9]{64}$/
+    );
   });
 
   it('does not cache negative OpenCode backfill while delivery context already exists', async () => {
@@ -1693,9 +2159,10 @@ describe('ChangeExtractorService', () => {
         skippedEvents: 0,
         outcome,
         notices: [],
-        diagnostics: outcome === 'transient-error'
-          ? ['OpenCode SQLite file changed while snapshot was read; using transaction snapshot.']
-          : [],
+        diagnostics:
+          outcome === 'transient-error'
+            ? ['OpenCode SQLite file changed while snapshot was read; using transaction snapshot.']
+            : [],
       };
     });
     const workerClient = {
@@ -1743,11 +2210,15 @@ describe('ChangeExtractorService', () => {
     expect(backfillOpenCodeTaskLedger.mock.calls[0]?.[0]?.deliveryContextPath).toEqual(
       expect.stringContaining('delivery-context.json')
     );
-    expect(backfillOpenCodeTaskLedger.mock.calls[0]?.[0]?.deliveryContextHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(backfillOpenCodeTaskLedger.mock.calls[0]?.[0]?.deliveryContextHash).toMatch(
+      /^[a-f0-9]{64}$/
+    );
     expect(backfillOpenCodeTaskLedger.mock.calls[1]?.[0]?.deliveryContextPath).toEqual(
       expect.stringContaining('delivery-context.json')
     );
-    expect(backfillOpenCodeTaskLedger.mock.calls[1]?.[0]?.deliveryContextHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(backfillOpenCodeTaskLedger.mock.calls[1]?.[0]?.deliveryContextHash).toMatch(
+      /^[a-f0-9]{64}$/
+    );
   });
 
   it('does not cache duplicates-only OpenCode backfill from an old evidence contract', async () => {
@@ -1836,8 +2307,7 @@ describe('ChangeExtractorService', () => {
     const backfillOpenCodeTaskLedger = vi.fn(async (input: any) => ({
       schemaVersion: 1,
       providerId: 'opencode',
-      opencodeTaskLedgerEvidenceContractVersion:
-        OPEN_CODE_TASK_LEDGER_EVIDENCE_CONTRACT_VERSION,
+      opencodeTaskLedgerEvidenceContractVersion: OPEN_CODE_TASK_LEDGER_EVIDENCE_CONTRACT_VERSION,
       teamName: input.teamName,
       taskId: input.taskId,
       projectDir: input.projectDir,

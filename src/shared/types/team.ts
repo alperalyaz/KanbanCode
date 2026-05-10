@@ -105,6 +105,15 @@ export interface TaskWorkInterval {
   completedAt?: string;
 }
 
+export interface TaskReviewInterval {
+  /** Reviewer actively reviewing during this interval. */
+  reviewer: string;
+  /** ISO timestamp when reviewer started or resumed review. */
+  startedAt: string;
+  /** ISO timestamp when reviewer stopped, paused, approved, or requested changes. */
+  completedAt?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Task History Events — unified workflow event log
 // ---------------------------------------------------------------------------
@@ -471,6 +480,10 @@ export interface TeamTask {
    */
   workIntervals?: TaskWorkInterval[];
   /**
+   * Review work periods, split across runtime pauses/restarts just like workIntervals.
+   */
+  reviewIntervals?: TaskReviewInterval[];
+  /**
    * Unified workflow event log.
    * Append-only — records task creation, status changes, and review transitions.
    */
@@ -651,6 +664,12 @@ export interface InboxMessage {
   toolCalls?: ToolCallMeta[];
   /** Renderer-friendly semantic kind. Defaults to "default" when absent. */
   messageKind?: InboxMessageKind;
+  /** Structured member-work-sync intent for runtime delivery and audit. */
+  workSyncIntent?: 'agenda_sync' | 'review_pickup';
+  /** Stable intent key, e.g. one review request event or a small review-request group. */
+  workSyncIntentKey?: string;
+  /** Concrete review_requested event IDs covered by this nudge. */
+  workSyncReviewRequestEventIds?: string[];
   /** Structured slash-command metadata for sent command rows. */
   slashCommand?: SlashCommandMeta;
   /** Structured command-output metadata for session-derived result rows. */
@@ -695,6 +714,9 @@ export interface SendMessageRequest {
   toolSummary?: string;
   toolCalls?: ToolCallMeta[];
   messageKind?: InboxMessageKind;
+  workSyncIntent?: InboxMessage['workSyncIntent'];
+  workSyncIntentKey?: string;
+  workSyncReviewRequestEventIds?: string[];
   slashCommand?: SlashCommandMeta;
   commandOutput?: CommandOutputMeta;
 }
@@ -742,6 +764,7 @@ export interface SendMessageResult {
     queuedBehindMessageId?: string;
     reason?: string;
     diagnostics?: string[];
+    userVisibleImpact?: OpenCodeRuntimeDeliveryUserVisibleImpact;
   };
 }
 
@@ -808,8 +831,14 @@ export interface ResolvedTeamMember {
   workflow?: string;
   isolation?: 'worktree';
   providerId?: TeamProviderId;
+  providerBackendId?: TeamProviderBackendId;
   model?: string;
   effort?: EffortLevel;
+  selectedFastMode?: TeamFastMode;
+  resolvedFastMode?: boolean;
+  laneId?: string;
+  laneKind?: 'primary' | 'secondary';
+  laneOwnerProviderId?: TeamProviderId;
   cwd?: string;
   /** Set only when member's git branch differs from the lead's branch. */
   gitBranch?: string;
@@ -834,6 +863,16 @@ export interface MemberRuntimeAdvisory {
     | 'unknown';
   message?: string;
   statusCode?: number;
+}
+
+export type OpenCodeRuntimeDeliveryUserVisibleState = 'none' | 'checking' | 'warning' | 'error';
+
+export interface OpenCodeRuntimeDeliveryUserVisibleImpact {
+  state: OpenCodeRuntimeDeliveryUserVisibleState;
+  reasonCode?: MemberRuntimeAdvisory['reasonCode'];
+  message?: string;
+  observedAt?: string;
+  nextReviewAt?: string;
 }
 
 export interface TeamProcess {
@@ -910,7 +949,13 @@ export interface TeamViewSnapshot {
 
 export type EffortLevel = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type TeamProviderId = 'anthropic' | 'codex' | 'gemini' | 'opencode';
-export type TeamProviderBackendId = 'auto' | 'adapter' | 'api' | 'cli-sdk' | 'codex-native';
+export type TeamProviderBackendId =
+  | 'auto'
+  | 'adapter'
+  | 'api'
+  | 'cli-sdk'
+  | 'codex-native'
+  | 'opencode-cli';
 export type TeamFastMode = 'inherit' | 'on' | 'off';
 
 export interface ProviderModelLaunchIdentity {
@@ -1121,8 +1166,8 @@ export interface RetryFailedOpenCodeSecondaryLanesResult {
   attempted: string[];
   confirmed: string[];
   pending: string[];
-  failed: Array<{ memberName: string; error: string }>;
-  skipped: Array<{ memberName: string; reason: string }>;
+  failed: { memberName: string; error: string }[];
+  skipped: { memberName: string; reason: string }[];
 }
 
 export type MemberSpawnLivenessSource = 'heartbeat' | 'process';

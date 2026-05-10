@@ -80,7 +80,9 @@ vi.mock('@renderer/components/team/CollapsibleTeamSection', () => ({
           ? React.createElement('span', { 'data-testid': `section-extra-${title}` }, headerExtra)
           : null
       ),
-      title === 'Changes' && open ? React.createElement('div', null, children) : null
+      (title === 'Changes' || title === 'Workflow History') && open
+        ? React.createElement('div', null, children)
+        : null
     );
   },
 }));
@@ -108,7 +110,8 @@ vi.mock('@renderer/components/ui/tooltip', () => ({
 }));
 
 vi.mock('@renderer/components/ui/badge', () => ({
-  Badge: ({ children }: { children: React.ReactNode }) => React.createElement('span', null, children),
+  Badge: ({ children }: { children: React.ReactNode }) =>
+    React.createElement('span', null, children),
 }));
 
 vi.mock('@renderer/components/ui/button', () => ({
@@ -263,6 +266,36 @@ describe('TaskDetailDialog changes summary loading', () => {
     vi.useRealTimers();
   });
 
+  it('shows a zero attachments count in the attachments section header', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(TaskDetailDialog, {
+          open: true,
+          variant: 'team',
+          teamName: 'team-a',
+          task: { ...makeTask('task-empty-attachments'), workIntervals: [] },
+          taskMap: new Map<string, TeamTaskWithKanban>(),
+          members: [],
+          onClose: vi.fn(),
+          onViewChanges: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[data-testid="section-badge-Attachments"]')?.textContent).toBe('0');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('does not drop a new task changes request while another task summary is still in flight', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const first = deferred<TaskChangeSetV2>();
@@ -398,7 +431,11 @@ describe('TaskDetailDialog changes summary loading', () => {
       'task-attention',
       expect.objectContaining({ summaryOnly: true })
     );
-    expect(host.textContent).toContain('No file changes recorded');
+    expect(host.textContent).toContain('No file changes were recorded for this task.');
+    expect(host.textContent).toContain('No reviewable file changes recovered');
+    expect(host.querySelector('[data-testid="section-badge-Changes"]')?.textContent).toBe(
+      'attention'
+    );
 
     await act(async () => {
       root.unmount();
@@ -523,6 +560,97 @@ describe('TaskDetailDialog changes summary loading', () => {
       expect.objectContaining({ summaryOnly: true })
     );
     expect(host.textContent).toContain('src/task-pending.ts');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('shows total and per-transition implementation time in workflow history', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-20T10:07:30.000Z'));
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+
+    const task: TeamTaskWithKanban = {
+      ...makeTask('task-duration'),
+      workIntervals: [
+        {
+          startedAt: '2026-04-20T10:00:00.000Z',
+          completedAt: '2026-04-20T10:02:30.000Z',
+        },
+        { startedAt: '2026-04-20T10:05:00.000Z' },
+      ],
+      historyEvents: [
+        {
+          id: 'event-created',
+          timestamp: '2026-04-20T09:59:00.000Z',
+          type: 'task_created',
+          status: 'pending',
+          actor: 'lead',
+        },
+        {
+          id: 'event-started',
+          timestamp: '2026-04-20T10:00:00.000Z',
+          type: 'status_changed',
+          from: 'pending',
+          to: 'in_progress',
+          actor: 'lead',
+        },
+        {
+          id: 'event-completed',
+          timestamp: '2026-04-20T10:02:31.000Z',
+          type: 'status_changed',
+          from: 'in_progress',
+          to: 'completed',
+          actor: 'alice',
+        },
+        {
+          id: 'event-restarted',
+          timestamp: '2026-04-20T10:05:00.000Z',
+          type: 'status_changed',
+          from: 'completed',
+          to: 'in_progress',
+          actor: 'lead',
+        },
+      ],
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(TaskDetailDialog, {
+          open: true,
+          variant: 'team',
+          teamName: 'team-a',
+          task,
+          taskMap: new Map<string, TeamTaskWithKanban>(),
+          members: [],
+          onClose: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Workflow History');
+    expect(host.textContent).toContain('Work time 5m 00s');
+
+    const workflowButton = [...host.querySelectorAll('button')].find(
+      (button) => button.textContent?.startsWith('Workflow History') === true
+    );
+    if (!workflowButton) {
+      throw new Error('Workflow History section button not found');
+    }
+
+    await act(async () => {
+      workflowButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('2m 30s');
+    expect(host.textContent).toContain('running 2m 30s');
 
     await act(async () => {
       root.unmount();

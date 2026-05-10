@@ -54,18 +54,25 @@ import {
 } from '@renderer/utils/taskChangeRequest';
 import { linkifyTaskIdsInMarkdown, parseTaskLinkHref } from '@renderer/utils/taskReferenceUtils';
 import { isLeadMember } from '@shared/utils/leadDetection';
-import {
-  getTeamTaskWorkflowColumn,
-  isTeamTaskFinishedForDependency,
-  isTeamTaskNeedsFixActionable,
-} from '@shared/utils/teamTaskState';
+import { classifyTaskChangeReviewability } from '@shared/utils/taskChangeReviewability';
 import {
   deriveTaskDisplayId,
   formatTaskDisplayLabel,
   taskMatchesRef,
 } from '@shared/utils/taskIdentity';
+import {
+  calculateTaskImplementationDuration,
+  formatTaskImplementationDuration,
+  shouldShowTaskImplementationDuration,
+} from '@shared/utils/taskWorkDuration';
+import {
+  getTeamTaskWorkflowColumn,
+  isTeamTaskFinishedForDependency,
+  isTeamTaskNeedsFixActionable,
+} from '@shared/utils/teamTaskState';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
+  AlertTriangle,
   AlignLeft,
   ArrowLeftFromLine,
   ArrowRightFromLine,
@@ -76,6 +83,7 @@ import {
   HelpCircle,
   History,
   ImageIcon,
+  Info,
   Link2,
   Loader2,
   MessageSquare,
@@ -87,9 +95,6 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-
-const TASK_CHANGES_AUTO_REFRESH_MS = 20_000;
-const TASK_CHANGES_INITIAL_LOAD_DELAY_MS = 1_500;
 
 import { SourceMessageAttachments } from '../attachments/SourceMessageAttachments';
 
@@ -104,9 +109,13 @@ import type {
   KanbanTaskState,
   ResolvedTeamMember,
   TaskAttachmentMeta,
+  TaskChangeReviewability,
   TaskChangeSetV2,
   TeamTaskWithKanban,
 } from '@shared/types';
+
+const TASK_CHANGES_AUTO_REFRESH_MS = 20_000;
+const TASK_CHANGES_INITIAL_LOAD_DELAY_MS = 1_500;
 
 interface TaskDetailDialogProps {
   open: boolean;
@@ -161,6 +170,9 @@ export const TaskDetailDialog = ({
   const [taskLogStreamCount, setTaskLogStreamCount] = useState<number | undefined>(undefined);
   const [changesSectionOpen, setChangesSectionOpen] = useState(false);
   const [taskChangesFiles, setTaskChangesFiles] = useState<FileChangeSummary[] | null>(null);
+  const [taskChangesWarnings, setTaskChangesWarnings] = useState<string[]>([]);
+  const [taskChangesReviewability, setTaskChangesReviewability] =
+    useState<TaskChangeReviewability | null>(null);
   const [taskChangesLoading, setTaskChangesLoading] = useState(false);
   const [taskChangesError, setTaskChangesError] = useState<string | null>(null);
   const loadedTaskChangeSummaryKeyRef = useRef<string | null>(null);
@@ -230,6 +242,8 @@ export const TaskDetailDialog = ({
   useEffect(() => {
     setChangesSectionOpen(false);
     setTaskChangesFiles(null);
+    setTaskChangesWarnings([]);
+    setTaskChangesReviewability(null);
     setTaskChangesLoading(false);
     setTaskChangesError(null);
     setLogsRefreshing(false);
@@ -295,7 +309,7 @@ export const TaskDetailDialog = ({
       unread.add(c.id);
     }
     unreadSnapshotRef.current = unread;
-  }, [open, teamName, currentTask?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, teamName, currentTask?.id]); // eslint-disable-line react-hooks/exhaustive-deps -- Snapshot should reset only when the dialog opens or task identity changes.
 
   // Viewport-based comment read tracking (replaces mark-all-on-mount)
   const { registerComment, flush: flushCommentRead } = useViewportCommentRead({
@@ -330,6 +344,10 @@ export const TaskDetailDialog = ({
     currentTask?.sourceMessageId && currentTask?.sourceMessage?.attachments?.length
       ? currentTask.sourceMessage.attachments.length
       : 0;
+  const attachmentCount =
+    (currentTask?.attachments?.length ?? 0) +
+    commentImageAttachments.length +
+    sourceAttachmentCount;
 
   // Changes is the explicit lazy-load entry point. Keep it visible for all team tasks,
   // including old/pending tasks that may resolve to an empty result.
@@ -383,6 +401,15 @@ export const TaskDetailDialog = ({
   const syncTaskChangeSummaryResult = useCallback(
     (data: TaskChangeSetV2 | null) => {
       setTaskChangesFiles(data?.files ?? null);
+      const status = data ? classifyTaskChangeReviewability(data) : null;
+      const diagnosticMessages =
+        status && status.diagnostics.length > 0
+          ? status.diagnostics.map((diagnostic) => diagnostic.message)
+          : (data?.warnings ?? []);
+      setTaskChangesWarnings([
+        ...new Set(diagnosticMessages.filter((message) => message.trim().length > 0)),
+      ]);
+      setTaskChangesReviewability(status?.reviewability ?? null);
       const nextPresence = data ? resolveTaskChangePresenceFromResult(data) : null;
       if (currentTask && taskChangeRequestOptions) {
         recordTaskChangePresence(teamName, currentTask.id, taskChangeRequestOptions, nextPresence);
@@ -432,6 +459,8 @@ export const TaskDetailDialog = ({
         }
         if (!preserveFilesOnError) {
           setTaskChangesFiles(null);
+          setTaskChangesWarnings([]);
+          setTaskChangesReviewability(null);
         }
         setTaskChangesError(
           error instanceof Error ? error.message : 'Failed to load task changes summary'
@@ -573,6 +602,41 @@ export const TaskDetailDialog = ({
   const handleChangesSectionOpenChange = useCallback((isOpen: boolean): void => {
     setChangesSectionOpen(isOpen);
   }, []);
+
+  const taskChangesBadge = !taskChangesLoading
+    ? taskChangesFiles && taskChangesFiles.length > 0
+      ? taskChangesFiles.length
+      : taskChangesFiles && taskChangesWarnings.length > 0
+        ? taskChangesReviewability === 'attention_required'
+          ? 'attention'
+          : taskChangesReviewability === 'diagnostic_only'
+            ? 'no safe diff'
+            : undefined
+        : undefined
+    : undefined;
+
+  const [taskDurationNowMs, setTaskDurationNowMs] = useState(() => Date.now());
+  const taskImplementationDuration = useMemo(
+    () => calculateTaskImplementationDuration(currentTask, taskDurationNowMs),
+    [currentTask, taskDurationNowMs]
+  );
+  const showTaskImplementationDuration = shouldShowTaskImplementationDuration(
+    taskImplementationDuration
+  );
+  const taskImplementationDurationLabel = formatTaskImplementationDuration(
+    taskImplementationDuration.elapsedMs
+  );
+
+  useEffect(() => {
+    if (!open || !taskImplementationDuration.hasRunningInterval) return;
+
+    setTaskDurationNowMs(Date.now());
+    const intervalId = window.setInterval(() => {
+      setTaskDurationNowMs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [open, taskImplementationDuration.hasRunningInterval, currentTask?.id]);
 
   if (loading) {
     return (
@@ -1121,24 +1185,11 @@ export const TaskDetailDialog = ({
             <CollapsibleTeamSection
               title="Attachments"
               icon={<ImageIcon size={14} />}
-              badge={
-                (currentTask.attachments?.length ?? 0) +
-                  commentImageAttachments.length +
-                  sourceAttachmentCount >
-                0
-                  ? (currentTask.attachments?.length ?? 0) +
-                    commentImageAttachments.length +
-                    sourceAttachmentCount
-                  : undefined
-              }
+              badge={attachmentCount}
               contentClassName="pl-2.5"
               headerClassName="-mx-6 w-[calc(100%+3rem)]"
               headerContentClassName="pl-6"
-              defaultOpen={
-                (currentTask.attachments?.length ?? 0) > 0 ||
-                commentImageAttachments.length > 0 ||
-                sourceAttachmentCount > 0
-              }
+              defaultOpen={attachmentCount > 0}
             >
               {currentTask.sourceMessageId && currentTask.sourceMessage ? (
                 <SourceMessageAttachments
@@ -1167,9 +1218,7 @@ export const TaskDetailDialog = ({
                 key={`task-changes:${currentTask.id}`}
                 title="Changes"
                 icon={<FileDiff size={14} />}
-                badge={
-                  !taskChangesLoading && taskChangesFiles ? taskChangesFiles.length : undefined
-                }
+                badge={taskChangesBadge}
                 headerExtra={
                   taskChangesLoading && !changesSectionOpen ? (
                     <Loader2
@@ -1212,76 +1261,123 @@ export const TaskDetailDialog = ({
                   </div>
                 ) : taskChangesError ? (
                   <p className="text-xs text-red-400">{taskChangesError}</p>
-                ) : taskChangesFiles && taskChangesFiles.length > 0 ? (
-                  <div className="max-h-[200px] space-y-0.5 overflow-y-auto">
-                    {taskChangesFiles.map((file) => (
+                ) : taskChangesFiles ? (
+                  <div className="space-y-2">
+                    {taskChangesWarnings.length > 0 ? (
                       <div
-                        key={file.filePath}
-                        className="group flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--color-surface-raised)]"
+                        className={`space-y-1 rounded-md border px-2 py-1.5 ${
+                          taskChangesReviewability === 'attention_required'
+                            ? 'border-amber-500/20 bg-amber-500/10'
+                            : 'border-[var(--color-border)] bg-[var(--color-bg-secondary)]'
+                        }`}
                       >
-                        <FileIcon
-                          fileName={file.relativePath.split('/').pop() ?? file.relativePath}
-                          className="size-3.5"
-                        />
-                        {onViewChanges ? (
-                          <button
-                            type="button"
-                            className="min-w-0 flex-1 truncate text-left font-mono text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text)]"
-                            onClick={() => {
-                              handleClose();
-                              onViewChanges(currentTask.id, file.filePath);
-                            }}
+                        {taskChangesWarnings.slice(0, 2).map((warning) => (
+                          <div
+                            key={warning}
+                            className={`flex items-center gap-2 text-xs ${
+                              taskChangesReviewability === 'attention_required'
+                                ? 'text-[var(--step-warning-text)]'
+                                : 'text-[var(--color-text-muted)]'
+                            }`}
                           >
-                            {file.relativePath}
-                          </button>
-                        ) : (
-                          <span className="min-w-0 flex-1 truncate text-left font-mono text-[var(--color-text-secondary)]">
-                            {file.relativePath}
-                          </span>
-                        )}
-                        <span className="flex shrink-0 items-center gap-1.5">
-                          {file.linesAdded > 0 ? (
-                            <span className="text-emerald-400">+{file.linesAdded}</span>
-                          ) : null}
-                          {file.linesRemoved > 0 ? (
-                            <span className="text-red-400">-{file.linesRemoved}</span>
-                          ) : null}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                          {onViewChanges ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  className="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
-                                  onClick={() => {
-                                    handleClose();
-                                    onViewChanges(currentTask.id, file.filePath);
-                                  }}
-                                >
-                                  <GitCompareArrows size={13} />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent side="top">Review diff</TooltipContent>
-                            </Tooltip>
-                          ) : null}
-                          {onOpenInEditor ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  className="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
-                                  onClick={() => onOpenInEditor(file.filePath)}
-                                >
-                                  <SquarePen size={13} />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent side="top">Open in editor</TooltipContent>
-                            </Tooltip>
-                          ) : null}
-                        </span>
+                            {taskChangesReviewability === 'attention_required' ? (
+                              <AlertTriangle size={13} className="shrink-0" />
+                            ) : (
+                              <Info size={13} className="shrink-0" />
+                            )}
+                            <span className="min-w-0 truncate">{warning}</span>
+                          </div>
+                        ))}
+                        {taskChangesWarnings.length > 2 ? (
+                          <p className="text-[10px] text-[var(--color-text-muted)]">
+                            {taskChangesWarnings.length - 2} more diagnostics
+                          </p>
+                        ) : null}
                       </div>
-                    ))}
+                    ) : null}
+
+                    {taskChangesFiles.length > 0 ? (
+                      <div className="max-h-[200px] space-y-0.5 overflow-y-auto">
+                        {taskChangesFiles.map((file) => (
+                          <div
+                            key={file.filePath}
+                            className="group flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--color-surface-raised)]"
+                          >
+                            <FileIcon
+                              fileName={file.relativePath.split(/[\\/]/).pop() ?? file.relativePath}
+                              className="size-3.5"
+                            />
+                            {onViewChanges ? (
+                              <button
+                                type="button"
+                                className="min-w-0 flex-1 truncate text-left font-mono text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text)]"
+                                onClick={() => {
+                                  handleClose();
+                                  onViewChanges(currentTask.id, file.filePath);
+                                }}
+                              >
+                                {file.relativePath}
+                              </button>
+                            ) : (
+                              <span className="min-w-0 flex-1 truncate text-left font-mono text-[var(--color-text-secondary)]">
+                                {file.relativePath}
+                              </span>
+                            )}
+                            <span className="flex shrink-0 items-center gap-1.5">
+                              {file.linesAdded > 0 ? (
+                                <span className="text-emerald-400">+{file.linesAdded}</span>
+                              ) : null}
+                              {file.linesRemoved > 0 ? (
+                                <span className="text-red-400">-{file.linesRemoved}</span>
+                              ) : null}
+                            </span>
+                            <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                              {onViewChanges ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
+                                      onClick={() => {
+                                        handleClose();
+                                        onViewChanges(currentTask.id, file.filePath);
+                                      }}
+                                    >
+                                      <GitCompareArrows size={13} />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">Review diff</TooltipContent>
+                                </Tooltip>
+                              ) : null}
+                              {onOpenInEditor ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
+                                      onClick={() => onOpenInEditor(file.filePath)}
+                                    >
+                                      <SquarePen size={13} />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">Open in editor</TooltipContent>
+                                </Tooltip>
+                              ) : null}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : changesSectionOpen ? (
+                      <p className="text-xs text-[var(--color-text-muted)]">
+                        {taskChangesWarnings.length > 0
+                          ? taskChangesReviewability === 'attention_required'
+                            ? 'No reviewable file changes recovered'
+                            : taskChangesReviewability === 'diagnostic_only'
+                              ? 'No safe diff available'
+                              : 'No file changes recorded yet'
+                          : 'No file changes recorded'}
+                      </p>
+                    ) : null}
                   </div>
                 ) : changesSectionOpen ? (
                   <p className="text-xs text-[var(--color-text-muted)]">No file changes recorded</p>
@@ -1352,9 +1448,25 @@ export const TaskDetailDialog = ({
                 contentClassName="pl-2.5"
                 headerClassName="-mx-6 w-[calc(100%+3rem)]"
                 headerContentClassName="pl-6"
+                headerExtra={
+                  showTaskImplementationDuration ? (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-md bg-[var(--color-bg-secondary)] px-1.5 py-0.5 text-[10px] font-normal leading-none text-[var(--color-text-muted)]"
+                      title="Implementation time from persisted work intervals"
+                    >
+                      <Clock size={10} />
+                      <span>Work time {taskImplementationDurationLabel}</span>
+                    </span>
+                  ) : undefined
+                }
                 defaultOpen={false}
               >
-                <WorkflowTimeline events={currentTask.historyEvents} memberColorMap={colorMap} />
+                <WorkflowTimeline
+                  events={currentTask.historyEvents}
+                  memberColorMap={colorMap}
+                  implementationDurationTask={currentTask}
+                  nowMs={taskDurationNowMs}
+                />
               </CollapsibleTeamSection>
             ) : null}
 
@@ -1505,9 +1617,11 @@ const CommentImageThumbnail = ({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div
+        <button
+          type="button"
           className="group relative flex size-16 cursor-pointer items-center justify-center overflow-hidden rounded border border-[var(--color-border)] bg-[var(--color-surface)] transition-colors hover:border-[var(--color-border-emphasis)]"
           onClick={() => thumbUrl && onPreview(thumbUrl)}
+          aria-label={`Preview ${item.attachment.filename}`}
         >
           {thumbUrl ? (
             <img src={thumbUrl} alt={item.attachment.filename} className="size-full object-cover" />
@@ -1517,7 +1631,7 @@ const CommentImageThumbnail = ({
           <div className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-0.5 py-px text-center text-[7px] text-white opacity-0 transition-opacity group-hover:opacity-100">
             {item.attachment.filename}
           </div>
-        </div>
+        </button>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-[300px] text-xs">
         {tooltipText}

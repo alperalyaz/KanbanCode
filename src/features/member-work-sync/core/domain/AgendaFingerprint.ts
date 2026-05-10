@@ -66,6 +66,9 @@ export function buildAgendaFingerprintPayload(input: {
           ...(item.evidence.historyEventIds
             ? { historyEventIds: [...item.evidence.historyEventIds].sort() }
             : {}),
+          ...(item.evidence.reviewDiagnostics
+            ? { reviewDiagnostics: [...item.evidence.reviewDiagnostics].sort() }
+            : {}),
         },
       })),
   };

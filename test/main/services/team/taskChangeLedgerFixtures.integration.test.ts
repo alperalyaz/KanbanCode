@@ -47,7 +47,10 @@ async function writeTaskFile(baseDir: string, taskId: string, projectPath: strin
 
 function createLedgerBackedChangeExtractorService(params: {
   projectDir: string;
-  taskChangePresenceRepository?: { upsertEntry: ReturnType<typeof vi.fn> };
+  taskChangePresenceRepository?: {
+    upsertEntry: ReturnType<typeof vi.fn>;
+    deleteEntry?: ReturnType<typeof vi.fn>;
+  };
   teamLogSourceTracker?: {
     ensureTracking: ReturnType<
       typeof vi.fn<
@@ -752,7 +755,7 @@ describe('task change ledger golden fixtures', () => {
     expect(computeTaskChanges).not.toHaveBeenCalled();
   });
 
-  it('records needs_attention presence from warning-only ledger fixtures', async () => {
+  it('clears cached presence from diagnostic-only warning ledger fixtures', async () => {
     const fixture = await materializeTaskChangeLedgerFixture('notices-only');
     cleanups.push(fixture.cleanup);
     const claudeBaseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-presence-'));
@@ -762,14 +765,17 @@ describe('task change ledger golden fixtures', () => {
     setClaudeBasePathOverride(claudeBaseDir);
     await writeTaskFile(claudeBaseDir, fixture.manifest.taskId, fixture.projectDir);
 
-    const upsertEntry = vi.fn(async () => undefined);
-    const ensureTracking = vi.fn(async () => ({
-      projectFingerprint: 'fixture-project-fingerprint',
-      logSourceGeneration: 'fixture-log-generation',
-    }));
+    const upsertEntry = vi.fn(() => Promise.resolve(undefined));
+    const deleteEntry = vi.fn(() => Promise.resolve(undefined));
+    const ensureTracking = vi.fn(() =>
+      Promise.resolve({
+        projectFingerprint: 'fixture-project-fingerprint',
+        logSourceGeneration: 'fixture-log-generation',
+      })
+    );
     const { service, findLogFileRefsForTask } = createLedgerBackedChangeExtractorService({
       projectDir: fixture.projectDir,
-      taskChangePresenceRepository: { upsertEntry },
+      taskChangePresenceRepository: { upsertEntry, deleteEntry },
       teamLogSourceTracker: { ensureTracking },
     });
 
@@ -784,16 +790,7 @@ describe('task change ledger golden fixtures', () => {
       'Task change ledger skipped attribution because multiple task scopes were active.'
     );
     expect(findLogFileRefsForTask).not.toHaveBeenCalled();
-    expect(upsertEntry).toHaveBeenCalledWith(
-      TEAM_NAME,
-      expect.objectContaining({
-        projectFingerprint: 'fixture-project-fingerprint',
-        logSourceGeneration: 'fixture-log-generation',
-      }),
-      expect.objectContaining({
-        taskId: fixture.manifest.taskId,
-        presence: 'needs_attention',
-      })
-    );
+    expect(upsertEntry).not.toHaveBeenCalled();
+    expect(deleteEntry).toHaveBeenCalledWith(TEAM_NAME, fixture.manifest.taskId);
   });
 });

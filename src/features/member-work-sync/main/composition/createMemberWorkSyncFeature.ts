@@ -12,8 +12,8 @@ import {
   RuntimeTurnSettledIngestor,
   type RuntimeTurnSettledTargetResolverPort,
 } from '../../core/application';
-import { MemberWorkSyncTeamChangeRouter } from '../adapters/input/MemberWorkSyncTeamChangeRouter';
 import { MemberWorkSyncTaskImpactResolver } from '../adapters/input/MemberWorkSyncTaskImpactResolver';
+import { MemberWorkSyncTeamChangeRouter } from '../adapters/input/MemberWorkSyncTeamChangeRouter';
 import { TeamInboxMemberWorkSyncNudgeSink } from '../adapters/output/TeamInboxMemberWorkSyncNudgeSink';
 import { TeamRuntimeTurnSettledTargetResolver } from '../adapters/output/TeamRuntimeTurnSettledTargetResolver';
 import { TeamTaskAgendaSource } from '../adapters/output/TeamTaskAgendaSource';
@@ -51,6 +51,8 @@ import type {
   MemberWorkSyncBusySignalPort,
   MemberWorkSyncLoggerPort,
   MemberWorkSyncNudgeDeliveryWakePort,
+  MemberWorkSyncReviewPickupDeliveryPort,
+  MemberWorkSyncReviewPickupEscalationPort,
 } from '../../core/application';
 import type { RuntimeTurnSettledProvider } from '../../core/domain';
 import type { TeamConfigReader } from '@main/services/team/TeamConfigReader';
@@ -58,6 +60,34 @@ import type { TeamKanbanManager } from '@main/services/team/TeamKanbanManager';
 import type { TeamMembersMetaStore } from '@main/services/team/TeamMembersMetaStore';
 import type { TeamTaskReader } from '@main/services/team/TeamTaskReader';
 import type { TeamChangeEvent } from '@shared/types';
+
+const STALE_STATUS_MAX_AGE_MS = 2 * 60_000;
+
+function getStatusStalenessDiagnostics(status: MemberWorkSyncStatus, nowMs: number): string[] {
+  const diagnostics: string[] = [];
+  const evaluatedAtMs = Date.parse(status.evaluatedAt);
+  if (!Number.isFinite(evaluatedAtMs)) {
+    diagnostics.push('status_evaluated_at_invalid');
+  } else if (
+    status.agenda.items.length > 0 &&
+    ['needs_sync', 'still_working', 'blocked'].includes(status.state) &&
+    nowMs - evaluatedAtMs > STALE_STATUS_MAX_AGE_MS
+  ) {
+    diagnostics.push('status_stale_refresh_enqueued');
+  }
+
+  const reportExpiresAtMs = Date.parse(status.report?.expiresAt ?? '');
+  if (
+    status.report?.accepted &&
+    Number.isFinite(reportExpiresAtMs) &&
+    reportExpiresAtMs <= nowMs &&
+    (status.state === 'still_working' || status.state === 'blocked')
+  ) {
+    diagnostics.push('accepted_report_lease_expired_refresh_enqueued');
+  }
+
+  return [...new Set(diagnostics)];
+}
 
 export function buildMemberWorkSyncRuntimeTurnSettledEnvironment(input: {
   teamsBasePath: string;
@@ -100,6 +130,8 @@ export function createMemberWorkSyncFeature(deps: {
   runtimeTurnSettledTargetResolver?: RuntimeTurnSettledTargetResolverPort;
   extraBusySignals?: MemberWorkSyncBusySignalPort[];
   nudgeDeliveryWake?: MemberWorkSyncNudgeDeliveryWakePort;
+  reviewPickupDelivery?: MemberWorkSyncReviewPickupDeliveryPort;
+  reviewPickupEscalation?: MemberWorkSyncReviewPickupEscalationPort;
   logger?: MemberWorkSyncLoggerPort;
 }): MemberWorkSyncFeatureFacade {
   const clock = new SystemClockAdapter();
@@ -163,6 +195,8 @@ export function createMemberWorkSyncFeature(deps: {
     watchdogCooldown,
     busySignal,
     ...(deps.nudgeDeliveryWake ? { nudgeDeliveryWake: deps.nudgeDeliveryWake } : {}),
+    ...(deps.reviewPickupDelivery ? { reviewPickupDelivery: deps.reviewPickupDelivery } : {}),
+    ...(deps.reviewPickupEscalation ? { reviewPickupEscalation: deps.reviewPickupEscalation } : {}),
     reportToken,
     auditJournal,
     ...(deps.isTeamActive ? { lifecycle: { isTeamActive: deps.isTeamActive } } : {}),
@@ -240,8 +274,27 @@ export function createMemberWorkSyncFeature(deps: {
   runtimeTurnSettledDrainScheduler.start();
   nudgeDispatchScheduler?.start();
 
+  const readStatusWithStaleRefresh = async (
+    request: MemberWorkSyncStatusRequest
+  ): Promise<MemberWorkSyncStatus> => {
+    const status = await diagnosticsReader.execute(request);
+    const stalenessDiagnostics = getStatusStalenessDiagnostics(status, clock.now().getTime());
+    if (stalenessDiagnostics.length === 0) {
+      return status;
+    }
+    queue.enqueue({
+      teamName: status.teamName,
+      memberName: status.memberName,
+      triggerReason: 'manual_refresh',
+    });
+    return {
+      ...status,
+      diagnostics: [...new Set([...status.diagnostics, ...stalenessDiagnostics])],
+    };
+  };
+
   return {
-    getStatus: (request) => diagnosticsReader.execute(request),
+    getStatus: readStatusWithStaleRefresh,
     refreshStatus: (request) => reconciler.execute(request, { reconciledBy: 'request' }),
     getMetrics: (request) => metricsReader.execute(request),
     report: (request) => reporter.execute(request),

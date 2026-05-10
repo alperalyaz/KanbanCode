@@ -16,6 +16,7 @@ export type CodexAccountAppServerState =
   | 'runtime-missing'
   | 'incompatible';
 export type CodexAccountLoginStatus = 'idle' | 'starting' | 'pending' | 'failed' | 'cancelled';
+export type CodexChatgptLoginMode = 'browser' | 'device_code';
 export type CodexLaunchReadinessState =
   | 'ready_chatgpt'
   | 'ready_api_key'
@@ -62,6 +63,8 @@ export interface CodexLoginStateDto {
   status: CodexAccountLoginStatus;
   error: string | null;
   startedAt: string | null;
+  authUrl?: string | null;
+  userCode?: string | null;
 }
 
 export interface CodexRuntimeContextDto {

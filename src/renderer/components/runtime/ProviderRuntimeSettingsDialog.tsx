@@ -20,7 +20,12 @@ import {
   resolveCodexRuntimeSelection,
 } from '@features/codex-runtime-profile/renderer';
 import { RuntimeProviderManagementPanel } from '@features/runtime-provider-management/renderer';
+import { api } from '@renderer/api';
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
+import {
+  CodexLoginLinkCopyButton,
+  CodexLoginUserCodeBadge,
+} from '@renderer/components/runtime/CodexLoginLinkCopyButton';
 import { Button } from '@renderer/components/ui/button';
 import {
   Dialog,
@@ -715,6 +720,8 @@ export const ProviderRuntimeSettingsDialog = ({
     Boolean(codexConnection?.localActiveChatgptAccountPresent) && !codexHasActiveChatgptSession;
   const codexLoginPending =
     codexConnection?.login.status === 'starting' || codexConnection?.login.status === 'pending';
+  const codexLoginAuthUrl = codexConnection?.login.authUrl ?? null;
+  const codexLoginUserCode = codexConnection?.login.userCode ?? null;
   const configurableAuthModes = selectedProvider?.connection?.configurableAuthModes ?? [];
   const configuredAuthMode: CliProviderAuthMode | undefined =
     selectedProvider?.connection?.configuredAuthMode ?? configurableAuthModes[0] ?? undefined;
@@ -1012,9 +1019,11 @@ export const ProviderRuntimeSettingsDialog = ({
     }
   };
 
-  const handleCodexStartLogin = async (): Promise<void> => {
+  const handleCodexStartLogin = async (
+    mode: 'browser' | 'device_code' = 'browser'
+  ): Promise<void> => {
     setConnectionError(null);
-    const success = await codexAccount.startChatgptLogin();
+    const success = await codexAccount.startChatgptLogin(mode);
     if (!success && codexAccount.error) {
       setConnectionError(codexAccount.error);
     }
@@ -1389,14 +1398,33 @@ export const ProviderRuntimeSettingsDialog = ({
                           Refresh
                         </Button>
                         {codexLoginPending ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={codexActionBusy}
-                            onClick={() => void handleCodexCancelLogin()}
-                          >
-                            Cancel login
-                          </Button>
+                          <>
+                            <CodexLoginLinkCopyButton
+                              authUrl={codexLoginAuthUrl}
+                              userCode={codexLoginUserCode}
+                              disabled={codexActionBusy}
+                            />
+                            <CodexLoginUserCodeBadge userCode={codexLoginUserCode} />
+                            {codexLoginAuthUrl ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={codexActionBusy}
+                                onClick={() => void api.openExternal(codexLoginAuthUrl)}
+                              >
+                                <Link2 className="mr-1 size-3.5" />
+                                Open login
+                              </Button>
+                            ) : null}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={codexActionBusy}
+                              onClick={() => void handleCodexCancelLogin()}
+                            >
+                              Cancel login
+                            </Button>
+                          </>
                         ) : codexHasActiveChatgptSession ? (
                           <Button
                             size="sm"
@@ -1407,15 +1435,32 @@ export const ProviderRuntimeSettingsDialog = ({
                             Disconnect account
                           </Button>
                         ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={codexActionBusy}
-                            onClick={() => void handleCodexStartLogin()}
-                          >
-                            <Link2 className="mr-1 size-3.5" />
-                            {codexNeedsReconnect ? 'Reconnect ChatGPT' : 'Connect ChatGPT'}
-                          </Button>
+                          <>
+                            <CodexLoginLinkCopyButton
+                              authUrl={codexLoginAuthUrl}
+                              userCode={codexLoginUserCode}
+                              disabled={codexActionBusy}
+                            />
+                            <CodexLoginUserCodeBadge userCode={codexLoginUserCode} />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={codexActionBusy}
+                              onClick={() => void handleCodexStartLogin('device_code')}
+                            >
+                              <Link2 className="mr-1 size-3.5" />
+                              Use code
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={codexActionBusy}
+                              onClick={() => void handleCodexStartLogin('browser')}
+                            >
+                              <Link2 className="mr-1 size-3.5" />
+                              {codexNeedsReconnect ? 'Generate link' : 'Connect ChatGPT'}
+                            </Button>
+                          </>
                         )}
                       </div>
                     </div>

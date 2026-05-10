@@ -128,50 +128,48 @@ describe('formatTeamModelSummary', () => {
 });
 
 describe('computeEffectiveTeamModel', () => {
-  it('appends [1m] for anthropic models', () => {
+  it('appends [1m] for Opus but keeps Sonnet on standard context', () => {
     expect(computeEffectiveTeamModel('opus', false, 'anthropic')).toBe('opus[1m]');
-    expect(computeEffectiveTeamModel('sonnet', false, 'anthropic')).toBe('sonnet[1m]');
+    expect(computeEffectiveTeamModel('sonnet', false, 'anthropic')).toBe('sonnet');
+    expect(computeEffectiveTeamModel('claude-sonnet-4-6', false, 'anthropic')).toBe(
+      'claude-sonnet-4-6'
+    );
   });
 
   it('falls back to the base Anthropic launch value when runtime catalog does not confirm a 1M variant', () => {
     expect(
-      computeEffectiveTeamModel(
-        'opus',
-        false,
-        'anthropic',
-        {
+      computeEffectiveTeamModel('opus', false, 'anthropic', {
+        providerId: 'anthropic',
+        modelCatalog: {
+          schemaVersion: 1,
           providerId: 'anthropic',
-          modelCatalog: {
-            schemaVersion: 1,
-            providerId: 'anthropic',
-            source: 'anthropic-models-api',
-            status: 'ready',
-            fetchedAt: '2026-04-21T00:00:00.000Z',
-            staleAt: '2026-04-21T00:10:00.000Z',
-            defaultModelId: 'opus',
-            defaultLaunchModel: 'opus',
-            models: [
-              {
-                id: 'opus',
-                launchModel: 'opus',
-                displayName: 'Opus 4.8',
-                hidden: false,
-                supportedReasoningEfforts: ['low', 'medium', 'high'],
-                defaultReasoningEffort: null,
-                inputModalities: ['text', 'image'],
-                supportsPersonality: false,
-                isDefault: true,
-                upgrade: false,
-                source: 'anthropic-models-api',
-              },
-            ],
-            diagnostics: {
-              configReadState: 'ready',
-              appServerState: 'healthy',
+          source: 'anthropic-models-api',
+          status: 'ready',
+          fetchedAt: '2026-04-21T00:00:00.000Z',
+          staleAt: '2026-04-21T00:10:00.000Z',
+          defaultModelId: 'opus',
+          defaultLaunchModel: 'opus',
+          models: [
+            {
+              id: 'opus',
+              launchModel: 'opus',
+              displayName: 'Opus 4.8',
+              hidden: false,
+              supportedReasoningEfforts: ['low', 'medium', 'high'],
+              defaultReasoningEffort: null,
+              inputModalities: ['text', 'image'],
+              supportsPersonality: false,
+              isDefault: true,
+              upgrade: false,
+              source: 'anthropic-models-api',
             },
+          ],
+          diagnostics: {
+            configReadState: 'ready',
+            appServerState: 'healthy',
           },
-        }
-      )
+        },
+      })
     ).toBe('opus');
   });
 
@@ -185,14 +183,63 @@ describe('computeEffectiveTeamModel', () => {
     expect(computeEffectiveTeamModel('', false, 'anthropic')).toBe('opus[1m]');
   });
 
+  it('keeps a Sonnet runtime default on standard context', () => {
+    expect(
+      computeEffectiveTeamModel('', false, 'anthropic', {
+        providerId: 'anthropic',
+        modelCatalog: {
+          schemaVersion: 1,
+          providerId: 'anthropic',
+          source: 'anthropic-models-api',
+          status: 'ready',
+          fetchedAt: '2026-04-21T00:00:00.000Z',
+          staleAt: '2026-04-21T00:10:00.000Z',
+          defaultModelId: 'sonnet[1m]',
+          defaultLaunchModel: 'sonnet[1m]',
+          models: [
+            {
+              id: 'sonnet',
+              launchModel: 'sonnet',
+              displayName: 'Sonnet 4.6',
+              hidden: false,
+              supportedReasoningEfforts: ['low', 'medium', 'high'],
+              defaultReasoningEffort: null,
+              inputModalities: ['text', 'image'],
+              supportsPersonality: false,
+              isDefault: true,
+              upgrade: false,
+              source: 'anthropic-models-api',
+            },
+            {
+              id: 'sonnet[1m]',
+              launchModel: 'sonnet[1m]',
+              displayName: 'Sonnet 4.6 (1M)',
+              hidden: false,
+              supportedReasoningEfforts: ['low', 'medium', 'high'],
+              defaultReasoningEffort: null,
+              inputModalities: ['text', 'image'],
+              supportsPersonality: false,
+              isDefault: false,
+              upgrade: false,
+              source: 'anthropic-models-api',
+            },
+          ],
+          diagnostics: {
+            configReadState: 'ready',
+            appServerState: 'healthy',
+          },
+        },
+      })
+    ).toBe('sonnet');
+  });
+
   it('returns base model without [1m] when limitContext is true', () => {
     expect(computeEffectiveTeamModel('opus', true, 'anthropic')).toBe('opus');
     expect(computeEffectiveTeamModel('opus[1m]', true, 'anthropic')).toBe('opus');
     expect(computeEffectiveTeamModel('opus[1m][1m]', true, 'anthropic')).toBe('opus');
     expect(computeEffectiveTeamModel('', true, 'anthropic')).toBe('opus');
-    expect(computeEffectiveTeamModel('claude-opus-4-7[1m]', true, 'anthropic')).toBe(
-      'claude-opus-4-7'
-    );
+    expect(computeEffectiveTeamModel('claude-opus-4-7[1m]', true, 'anthropic')).toBe('opus');
+    expect(computeEffectiveTeamModel('claude-sonnet-4-6', true, 'anthropic')).toBe('sonnet');
   });
 
   it('returns haiku as-is', () => {

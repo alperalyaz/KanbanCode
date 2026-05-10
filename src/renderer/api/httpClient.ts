@@ -6,7 +6,17 @@
  * to run in a regular browser connected to an HTTP server.
  */
 
-import type { CodexAccountSnapshotDto } from '@features/codex-account/contracts';
+import {
+  createEmptyMemberLogPreviewResponse,
+  createEmptyMemberLogStreamResponse,
+  createEmptyMemberRuntimeLogTailResponse,
+} from '@features/member-log-stream/contracts';
+
+import type {
+  CodexAccountSnapshotDto,
+  CodexStartChatgptLoginOptions,
+} from '@features/codex-account/contracts';
+import type { MemberLogStreamApi } from '@features/member-log-stream/contracts';
 import type { DashboardRecentProjectsPayload } from '@features/recent-projects/contracts';
 import type { RuntimeProviderManagementApi } from '@features/runtime-provider-management/contracts';
 import type {
@@ -57,6 +67,7 @@ import type {
   SshConnectionStatus,
   SshLastConnection,
   SubagentDetail,
+  TaskChangeRequestOptions,
   TeamChangeEvent,
   TeamClaudeLogsQuery,
   TeamClaudeLogsResponse,
@@ -72,6 +83,8 @@ import type {
   TeamsAPI,
   TeamSummary,
   TeamTask,
+  TeamTaskChangeSummariesResponse,
+  TeamTaskChangeSummaryRequest,
   TeamTaskStatus,
   TeamViewSnapshot,
   TeamWorktreeGitStatus,
@@ -234,7 +247,9 @@ export class HttpAPIClient implements ElectronAPI {
   }): Promise<CodexAccountSnapshotDto> =>
     Promise.reject(new Error('Codex account bridge is unavailable in browser mode'));
 
-  startCodexChatgptLogin = (): Promise<CodexAccountSnapshotDto> =>
+  startCodexChatgptLogin = (
+    _options?: CodexStartChatgptLoginOptions
+  ): Promise<CodexAccountSnapshotDto> =>
     Promise.reject(new Error('Codex account bridge is unavailable in browser mode'));
 
   cancelCodexChatgptLogin = (): Promise<CodexAccountSnapshotDto> =>
@@ -250,6 +265,24 @@ export class HttpAPIClient implements ElectronAPI {
 
   getDashboardRecentProjects = (): Promise<DashboardRecentProjectsPayload> =>
     this.get<DashboardRecentProjectsPayload>('/api/dashboard/recent-projects');
+
+  memberLogStream: MemberLogStreamApi = {
+    getMemberLogStream: async () => {
+      console.warn('[HttpAPIClient] getMemberLogStream is not available in browser mode');
+      return createEmptyMemberLogStreamResponse();
+    },
+    getMemberLogPreviews: async () => {
+      console.warn('[HttpAPIClient] getMemberLogPreviews is not available in browser mode');
+      return createEmptyMemberLogPreviewResponse();
+    },
+    getMemberRuntimeLogTail: async (_teamName, _memberName, options) => {
+      console.warn('[HttpAPIClient] getMemberRuntimeLogTail is not available in browser mode');
+      return createEmptyMemberRuntimeLogTailResponse(options.kind);
+    },
+    setMemberLogStreamTracking: async () => {
+      // Not available in browser mode - no-op.
+    },
+  };
 
   getProjects = (): Promise<Project[]> => this.get<Project[]>('/api/projects');
 
@@ -1108,16 +1141,14 @@ export class HttpAPIClient implements ElectronAPI {
     getTaskChanges: async (
       _teamName: string,
       _taskId: string,
-      _options?: {
-        owner?: string;
-        status?: string;
-        intervals?: { startedAt: string; completedAt?: string }[];
-        since?: string;
-        stateBucket?: 'approved' | 'review' | 'completed' | 'active';
-        summaryOnly?: boolean;
-        forceFresh?: boolean;
-      }
+      _options?: TaskChangeRequestOptions
     ): Promise<never> => {
+      throw new Error('Review is not available in browser mode');
+    },
+    getTeamTaskChangeSummaries: async (
+      _teamName: string,
+      _requests: TeamTaskChangeSummaryRequest[]
+    ): Promise<TeamTaskChangeSummariesResponse> => {
       throw new Error('Review is not available in browser mode');
     },
     invalidateTaskChangeSummaries: async (): Promise<never> => {

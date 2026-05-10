@@ -89,11 +89,13 @@ import { AlertTriangle, CheckCircle2, Info, Loader2, X } from 'lucide-react';
 import { AdvancedCliSection } from './AdvancedCliSection';
 import { AnthropicFastModeSelector } from './AnthropicFastModeSelector';
 import { CodexFastModeSelector } from './CodexFastModeSelector';
+import { CodexReconnectPrompt, shouldShowCodexReconnectPrompt } from './CodexReconnectPrompt';
 import {
   clearInheritedMemberModelsUnavailableForProvider,
   resolveProviderScopedMemberModel,
 } from './memberModelScope';
 import { OptionalSettingsSection } from './OptionalSettingsSection';
+import { loadProjectPathProjects, type ProjectPathProject } from './projectPathProjects';
 import { ProjectPathSelector } from './ProjectPathSelector';
 import { buildProviderPrepareModelCacheKey } from './providerPrepareCacheKey';
 import {
@@ -108,6 +110,7 @@ import {
   buildProviderPrepareRuntimeStatusSignature,
 } from './providerPrepareRequestSignature';
 import {
+  getShortLivedProviderPrepareModelIssueReasons,
   getShortLivedProviderPrepareModelResults,
   storeShortLivedProviderPrepareModelResults,
 } from './providerPrepareShortLivedCache';
@@ -155,7 +158,6 @@ const APP_TEAM_RUNTIME_DISALLOWED_TOOLS = 'TeamDelete,TodoWrite,TaskCreate,TaskU
 
 import type {
   EffortLevel,
-  Project,
   TeamCreateRequest,
   TeamFastMode,
   TeamProviderId,
@@ -402,7 +404,7 @@ export const CreateTeamDialog = ({
   const promptChipDraft = useChipDraftPersistence('createTeam:prompt:chips');
 
   // ── Transient UI state (NOT persisted) ───────────────────────────────
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<ProjectPathProject[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -411,6 +413,7 @@ export const CreateTeamDialog = ({
   const [prepareWarnings, setPrepareWarnings] = useState<string[]>([]);
   const [prepareChecks, setPrepareChecks] = useState<ProvisioningProviderCheck[]>([]);
   const prepareRequestSeqRef = useRef(0);
+  const appliedDefaultProjectPathRef = useRef<string | null>(null);
   const lastAutoDescriptionRef = useRef<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
     teamName?: string;
@@ -461,10 +464,6 @@ export const CreateTeamDialog = ({
     const normalizedValue = normalizeLeadProviderForMode(value, multimodelEnabled);
     setSelectedProviderIdRaw(normalizedValue);
     setStoredCreateTeamProvider(normalizedValue);
-    if (normalizedValue !== 'anthropic') {
-      setLimitContextRaw(false);
-      setStoredCreateTeamLimitContext(false);
-    }
     setSelectedModelRaw(getStoredTeamModel(normalizedValue));
   };
 
@@ -587,6 +586,8 @@ export const CreateTeamDialog = ({
       ])
     );
   }, [members, multimodelEnabled, selectedProviderId, soloTeam, syncModelsWithLead]);
+  const hasSelectedAnthropicRuntime = selectedMemberProviders.includes('anthropic');
+  const effectiveAnthropicRuntimeLimitContext = hasSelectedAnthropicRuntime ? limitContext : false;
 
   const runtimeBackendSummaryByProvider = useMemo(() => {
     const entries: (readonly [TeamProviderId, string | null])[] = (
@@ -668,13 +669,13 @@ export const CreateTeamDialog = ({
         selectedProviderId,
         selectedModel,
         selectedMemberProviders,
-        limitContext,
+        limitContext: effectiveAnthropicRuntimeLimitContext,
         runtimeStatusSignature: prepareRuntimeStatusSignature,
         membersSignature: prepareMembersSignature,
       }),
     [
       effectiveCwd,
-      limitContext,
+      effectiveAnthropicRuntimeLimitContext,
       prepareMembersSignature,
       prepareRuntimeStatusSignature,
       selectedMemberProviders,
@@ -682,6 +683,45 @@ export const CreateTeamDialog = ({
       selectedProviderId,
     ]
   );
+  const shortLivedModelIssueReasons = useMemo(() => {
+    const modelIssueReasonByProvider: Partial<Record<TeamProviderId, Record<string, string>>> = {};
+    const modelUnavailableReasonByProvider: Partial<
+      Record<TeamProviderId, Record<string, string>>
+    > = {};
+
+    for (const providerId of selectedMemberProviders) {
+      const backendSummary = runtimeBackendSummaryByProvider.get(providerId) ?? null;
+      const cacheKey = buildProviderPrepareModelCacheKey({
+        cwd: effectiveCwd,
+        providerId,
+        backendSummary,
+        limitContext: effectiveAnthropicRuntimeLimitContext,
+        runtimeStatusSignature: prepareRuntimeStatusSignature,
+      });
+      const issueReasons = getShortLivedProviderPrepareModelIssueReasons({
+        providerId,
+        cacheKey,
+      });
+      if (Object.keys(issueReasons.modelIssueReasonByValue).length > 0) {
+        modelIssueReasonByProvider[providerId] = issueReasons.modelIssueReasonByValue;
+      }
+      if (Object.keys(issueReasons.modelUnavailableReasonByValue).length > 0) {
+        modelUnavailableReasonByProvider[providerId] = issueReasons.modelUnavailableReasonByValue;
+      }
+    }
+
+    return {
+      modelIssueReasonByProvider,
+      modelUnavailableReasonByProvider,
+    };
+  }, [
+    effectiveAnthropicRuntimeLimitContext,
+    effectiveCwd,
+    prepareChecks,
+    prepareRuntimeStatusSignature,
+    runtimeBackendSummaryByProvider,
+    selectedMemberProviders,
+  ]);
 
   useEffect(() => {
     if (multimodelEnabled) {
@@ -708,6 +748,15 @@ export const CreateTeamDialog = ({
       fetchCliStatus,
     });
   }, [bootstrapCliStatus, cliStatus, cliStatusLoading, fetchCliStatus, multimodelEnabled, open]);
+
+  const handleCodexReconnect = useCallback(
+    (mode: 'browser' | 'device_code' = 'browser') => {
+      void (async () => {
+        await codexAccount.startChatgptLogin(mode);
+      })();
+    },
+    [codexAccount]
+  );
 
   useEffect(() => {
     if (!open || !canCreate || !launchTeam) {
@@ -766,7 +815,7 @@ export const CreateTeamDialog = ({
             (providerId === 'anthropic' && selectedProviderId === 'anthropic');
           const leadModel = computeEffectiveTeamModel(
             selectedModel,
-            limitContext,
+            effectiveAnthropicRuntimeLimitContext,
             selectedProviderId
           );
           if (selectedProviderId === providerId && selectedModel.trim()) {
@@ -805,7 +854,7 @@ export const CreateTeamDialog = ({
           cwd: effectiveCwd,
           providerId,
           backendSummary,
-          limitContext,
+          limitContext: effectiveAnthropicRuntimeLimitContext,
           runtimeStatusSignature: prepareRuntimeStatusSignature,
         });
         const cachedModelResultsById = {
@@ -848,7 +897,7 @@ export const CreateTeamDialog = ({
               providerId: plan.providerId,
               selectedModelIds: plan.selectedModelChecks,
               prepareProvisioning: api.teams.prepareProvisioning,
-              limitContext,
+              limitContext: effectiveAnthropicRuntimeLimitContext,
               cachedModelResultsById: plan.cachedModelResultsById,
               onModelProgress: ({ status, details }) => {
                 checks = updateProviderCheck(checks, plan.providerId, {
@@ -929,7 +978,7 @@ export const CreateTeamDialog = ({
     launchTeam,
     effectiveCwd,
     effectiveMemberDrafts,
-    limitContext,
+    effectiveAnthropicRuntimeLimitContext,
     prepareRequestSignature,
     runtimeProviderStatusById,
     selectedModel,
@@ -948,34 +997,9 @@ export const CreateTeamDialog = ({
     let cancelled = false;
     void (async () => {
       try {
-        const nextProjects = (await api.getProjects()).filter(
-          (project) => !isEphemeralProjectPath(project.path)
-        );
+        const nextProjects = await loadProjectPathProjects({ defaultProjectPath });
         if (cancelled) {
           return;
-        }
-
-        // If defaultProjectPath is set but not in the fetched list (e.g. new project
-        // without Claude sessions), add it as a synthetic entry so the Combobox can
-        // display and select it.
-        const normalizedDefaultProjectPath = defaultProjectPath
-          ? normalizePath(defaultProjectPath)
-          : null;
-        if (
-          defaultProjectPath &&
-          normalizedDefaultProjectPath &&
-          !isEphemeralProjectPath(defaultProjectPath) &&
-          !nextProjects.some((p) => normalizePath(p.path) === normalizedDefaultProjectPath)
-        ) {
-          const folderName =
-            defaultProjectPath.split(/[/\\]/).filter(Boolean).pop() ?? defaultProjectPath;
-          nextProjects.unshift({
-            id: defaultProjectPath.replace(/[/\\]/g, '-'),
-            path: defaultProjectPath,
-            name: folderName,
-            sessions: [],
-            createdAt: Date.now(),
-          });
         }
 
         setProjects(nextProjects);
@@ -1103,15 +1127,33 @@ export const CreateTeamDialog = ({
 
   // Pre-select defaultProjectPath when projects loaded (only while dialog is open)
   useEffect(() => {
-    if (!open) return;
-    if (cwdMode !== 'project') {
+    if (!open) {
+      appliedDefaultProjectPathRef.current = null;
       return;
     }
-    if (selectedProjectPath) {
+    if (cwdMode !== 'project') {
       return;
     }
     const selectableProjects = projects.filter((project) => !isEphemeralProjectPath(project.path));
     if (selectableProjects.length === 0) {
+      return;
+    }
+    if (defaultProjectPath && !isEphemeralProjectPath(defaultProjectPath)) {
+      const normalizedDefaultProjectPath = normalizePath(defaultProjectPath);
+      const defaultAlreadyApplied =
+        appliedDefaultProjectPathRef.current === normalizedDefaultProjectPath;
+      const match = selectableProjects.find(
+        (p) => normalizePath(p.path) === normalizedDefaultProjectPath
+      );
+      if (match && !defaultAlreadyApplied) {
+        appliedDefaultProjectPathRef.current = normalizedDefaultProjectPath;
+        if (normalizePath(selectedProjectPath) !== normalizedDefaultProjectPath) {
+          setSelectedProjectPath(match.path);
+        }
+        return;
+      }
+    }
+    if (selectedProjectPath) {
       return;
     }
     if (defaultProjectPath && !isEphemeralProjectPath(defaultProjectPath)) {
@@ -1165,11 +1207,16 @@ export const CreateTeamDialog = ({
     () =>
       computeEffectiveTeamModel(
         selectedModel,
-        limitContext,
+        effectiveAnthropicRuntimeLimitContext,
         selectedProviderId,
         runtimeProviderStatusById.get(selectedProviderId)
       ),
-    [limitContext, runtimeProviderStatusById, selectedModel, selectedProviderId]
+    [
+      effectiveAnthropicRuntimeLimitContext,
+      runtimeProviderStatusById,
+      selectedModel,
+      selectedProviderId,
+    ]
   );
   const teammateRuntimeCompatibility = useMemo(
     () =>
@@ -1205,10 +1252,15 @@ export const CreateTeamDialog = ({
               runtimeCapabilities: runtimeProviderStatusById.get('anthropic')?.runtimeCapabilities,
             },
             selectedModel,
-            limitContext,
+            limitContext: effectiveAnthropicRuntimeLimitContext,
           })
         : null,
-    [limitContext, runtimeProviderStatusById, selectedModel, selectedProviderId]
+    [
+      effectiveAnthropicRuntimeLimitContext,
+      runtimeProviderStatusById,
+      selectedModel,
+      selectedProviderId,
+    ]
   );
   const anthropicFastModeResolution = useMemo(
     () =>
@@ -1270,7 +1322,7 @@ export const CreateTeamDialog = ({
                   runtimeCapabilities: null,
                 },
                 selectedModel,
-                limitContext,
+                limitContext: effectiveAnthropicRuntimeLimitContext,
               }),
             selectedEffort,
             selectedFastMode,
@@ -1316,7 +1368,7 @@ export const CreateTeamDialog = ({
     anthropicProviderFastModeDefault,
     anthropicRuntimeSelection,
     codexRuntimeSelection,
-    limitContext,
+    effectiveAnthropicRuntimeLimitContext,
     runtimeProviderStatusById,
     selectedEffort,
     selectedFastMode,
@@ -1346,7 +1398,7 @@ export const CreateTeamDialog = ({
         selectedProviderId === 'anthropic' || selectedProviderId === 'codex'
           ? selectedFastMode
           : undefined,
-      limitContext,
+      limitContext: effectiveAnthropicRuntimeLimitContext,
       skipPermissions,
       worktree: worktreeEnabled && worktreeName.trim() ? worktreeName.trim() : undefined,
       extraCliArgs: customArgs.trim() || undefined,
@@ -1364,7 +1416,7 @@ export const CreateTeamDialog = ({
       effectiveModel,
       selectedEffort,
       selectedFastMode,
-      limitContext,
+      effectiveAnthropicRuntimeLimitContext,
       skipPermissions,
       worktreeEnabled,
       worktreeName,
@@ -1376,6 +1428,18 @@ export const CreateTeamDialog = ({
     [request, launchTeam]
   );
   const modelValidationError = useMemo(() => {
+    if (selectedProviderId === 'opencode') {
+      if (!selectedModel.trim()) {
+        return 'OpenCode lead requires a selected model.';
+      }
+      const activeMemberCount = soloTeam
+        ? 0
+        : effectiveMemberDrafts.filter((member) => !member.removedAt && member.name.trim()).length;
+      if (activeMemberCount === 0) {
+        return 'OpenCode lead requires at least one OpenCode teammate.';
+      }
+    }
+
     const leadError = getTeamModelSelectionError(
       selectedProviderId,
       selectedModel,
@@ -1405,7 +1469,13 @@ export const CreateTeamDialog = ({
     }
 
     return null;
-  }, [effectiveMemberDrafts, runtimeProviderStatusById, selectedModel, selectedProviderId]);
+  }, [
+    effectiveMemberDrafts,
+    runtimeProviderStatusById,
+    selectedModel,
+    selectedProviderId,
+    soloTeam,
+  ]);
   const leadModelIssueText = useMemo(() => {
     const issue = getProvisioningModelIssue(
       prepareChecks,
@@ -1490,12 +1560,16 @@ export const CreateTeamDialog = ({
         summary.push('Fast default');
       }
     }
+    if (effectiveAnthropicRuntimeLimitContext) {
+      summary.push('Anthropic limited to 200K context');
+    }
     if (worktreeEnabled && worktreeName.trim()) summary.push(`Worktree: ${worktreeName.trim()}`);
     if (customArgs.trim()) summary.push('Custom CLI args');
     return summary;
   }, [
     anthropicProviderFastModeDefault,
     customArgs,
+    effectiveAnthropicRuntimeLimitContext,
     prompt,
     selectedFastMode,
     selectedProviderId,
@@ -1552,6 +1626,12 @@ export const CreateTeamDialog = ({
       }),
     [prepareChecks, prepareMessage, prepareState, prepareWarnings]
   );
+  const showCodexReconnectPrompt = shouldShowCodexReconnectPrompt({
+    effectiveCliStatus,
+    selectedProviderIds: selectedMemberProviders,
+    prepareMessage: effectivePrepare.message,
+    prepareChecks,
+  });
   const canOpenExistingTeam =
     activeError?.includes('Team already exists') === true && request.teamName.length > 0;
 
@@ -1683,7 +1763,7 @@ export const CreateTeamDialog = ({
           <DialogDescription className="text-xs">
             {initialData
               ? 'Create a new team based on an existing one.'
-              : 'Team provisioning via local Claude CLI.'}
+              : 'Set up your team and choose how it starts.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -1805,7 +1885,7 @@ export const CreateTeamDialog = ({
               providerId={selectedProviderId}
               model={selectedModel}
               effort={(selectedEffort as EffortLevel) || undefined}
-              limitContext={limitContext}
+              limitContext={effectiveAnthropicRuntimeLimitContext}
               onProviderChange={setSelectedProviderId}
               onModelChange={setSelectedModel}
               onEffortChange={setSelectedEffort}
@@ -1820,6 +1900,10 @@ export const CreateTeamDialog = ({
               leadModelIssueText={leadModelIssueText}
               memberWarningById={teammateRuntimeCompatibility.memberWarningById}
               memberModelIssueById={memberModelIssueById}
+              modelIssueReasonByProvider={shortLivedModelIssueReasons.modelIssueReasonByProvider}
+              modelUnavailableReasonByProvider={
+                shortLivedModelIssueReasons.modelUnavailableReasonByProvider
+              }
               headerTop={
                 <div className="flex items-center gap-2">
                   <Checkbox
@@ -1916,7 +2000,7 @@ export const CreateTeamDialog = ({
                           onValueChange={setSelectedFastMode}
                           providerFastModeDefault={anthropicProviderFastModeDefault}
                           model={selectedModel}
-                          limitContext={limitContext}
+                          limitContext={effectiveAnthropicRuntimeLimitContext}
                           id="create-fast-mode"
                         />
                         {anthropicRuntimeNotice ? (
@@ -2117,8 +2201,8 @@ export const CreateTeamDialog = ({
                 <ProvisioningProviderStatusList checks={prepareChecks} className="mt-1" />
                 {prepareWarnings.length > 0 && prepareChecks.length === 0 ? (
                   <div className="mt-0.5 space-y-0.5 pl-5">
-                    {prepareWarnings.map((warning) => (
-                      <p key={warning} className="text-[11px] text-sky-300">
+                    {prepareWarnings.map((warning, index) => (
+                      <p key={`${index}:${warning}`} className="text-[11px] text-sky-300">
                         {warning}
                       </p>
                     ))}
@@ -2152,9 +2236,9 @@ export const CreateTeamDialog = ({
                 ) : null}
                 {prepareWarnings.length > 0 && prepareChecks.length === 0 ? (
                   <div className="mt-1 space-y-0.5 pl-6">
-                    {prepareWarnings.map((warning) => (
+                    {prepareWarnings.map((warning, index) => (
                       <p
-                        key={warning}
+                        key={`${index}:${warning}`}
                         className="text-[11px]"
                         style={{ color: 'var(--warning-text)' }}
                       >
@@ -2166,6 +2250,17 @@ export const CreateTeamDialog = ({
                 <p className="mt-1 pl-6 text-[11px] text-[var(--color-text-muted)]">
                   {getProvisioningFailureHint(effectivePrepare.message, prepareChecks)}
                 </p>
+                {showCodexReconnectPrompt ? (
+                  <div className="pl-6">
+                    <CodexReconnectPrompt
+                      authUrl={codexAccount.snapshot?.login.authUrl ?? null}
+                      userCode={codexAccount.snapshot?.login.userCode ?? null}
+                      reconnectBusy={codexAccount.loading}
+                      onReconnect={() => handleCodexReconnect('browser')}
+                      onDeviceCodeReconnect={() => handleCodexReconnect('device_code')}
+                    />
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -2184,7 +2279,8 @@ export const CreateTeamDialog = ({
               </Button>
             ) : null}
             <Button
-              size="sm"
+              size="lg"
+              className="min-w-32 text-sm"
               disabled={!canCreate || !draftLoaded || isSubmitting || hasCreateFormErrors}
               onClick={handleSubmit}
             >

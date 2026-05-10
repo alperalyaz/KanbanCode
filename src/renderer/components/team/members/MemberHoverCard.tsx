@@ -23,14 +23,15 @@ import {
   buildMemberAvatarMap,
   buildMemberLaunchPresentation,
   displayMemberName,
+  shouldDisplayMemberCurrentTask,
 } from '@renderer/utils/memberHelpers';
-import { isDisplayableCurrentTask } from '@renderer/utils/teamTaskDisplayState';
 import {
   buildMemberLaunchDiagnosticsPayload,
   getMemberLaunchDiagnosticsErrorMessage,
   hasMemberLaunchDiagnosticsDetails,
   hasMemberLaunchDiagnosticsError,
 } from '@renderer/utils/memberLaunchDiagnostics';
+import { isDisplayableCurrentTask } from '@renderer/utils/teamTaskDisplayState';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { getTeamTaskWorkflowColumn } from '@shared/utils/teamTaskState';
 import { ExternalLink } from 'lucide-react';
@@ -42,7 +43,7 @@ import { CurrentTaskIndicator } from './CurrentTaskIndicator';
 import { MemberLaunchDiagnosticsButton } from './MemberLaunchDiagnosticsButton';
 import { MemberPresenceDot } from './MemberPresenceDot';
 
-import type { LeadActivityState, TeamTaskWithKanban } from '@shared/types';
+import type { TeamTaskWithKanban } from '@shared/types';
 
 interface MemberHoverCardProps {
   /** The member name to look up */
@@ -131,7 +132,18 @@ export const MemberHoverCard = memo(function MemberHoverCard({
   const currentTaskCandidate: TeamTaskWithKanban | null = member.currentTaskId
     ? (tasks.find((t) => t.id === member.currentTaskId) ?? null)
     : null;
-  const currentTask = isDisplayableCurrentTask(currentTaskCandidate) ? currentTaskCandidate : null;
+  const currentTask =
+    isDisplayableCurrentTask(currentTaskCandidate) &&
+    shouldDisplayMemberCurrentTask({
+      member,
+      isTeamAlive,
+      spawnStatus: spawnEntry?.status,
+      spawnLaunchState: spawnEntry?.launchState,
+      spawnRuntimeAlive: spawnEntry?.runtimeAlive,
+      runtimeEntry,
+    })
+      ? currentTaskCandidate
+      : null;
   const presentationMember =
     member.currentTaskId && !currentTask
       ? {
@@ -147,6 +159,8 @@ export const MemberHoverCard = memo(function MemberHoverCard({
     spawnRuntimeAlive: spawnEntry?.runtimeAlive,
     spawnBootstrapConfirmed: spawnEntry?.bootstrapConfirmed,
     spawnBootstrapStalled: spawnEntry?.bootstrapStalled,
+    spawnFirstSpawnAcceptedAt: spawnEntry?.firstSpawnAcceptedAt,
+    spawnUpdatedAt: spawnEntry?.updatedAt,
     runtimeEntry,
     runtimeAdvisory: member.runtimeAdvisory,
     isLaunchSettling,
@@ -164,7 +178,8 @@ export const MemberHoverCard = memo(function MemberHoverCard({
   const badgeLabel =
     runtimeAdvisoryTone === 'error' && runtimeAdvisoryLabel
       ? runtimeAdvisoryLabel
-      : launchVisualState === 'bootstrap_stalled' ||
+      : launchVisualState === 'starting_stale' ||
+          launchVisualState === 'bootstrap_stalled' ||
           launchVisualState === 'runtime_pending' ||
           launchVisualState === 'permission_pending' ||
           launchVisualState === 'shell_only' ||

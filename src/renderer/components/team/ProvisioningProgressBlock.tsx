@@ -22,6 +22,7 @@ import { DISPLAY_STEPS } from './provisioningSteps';
 import { StepProgressBar } from './StepProgressBar';
 
 import type { StepProgressBarStep } from './StepProgressBar';
+import type { MemberLaunchDiagnosticsPayload } from '@renderer/utils/memberLaunchDiagnostics';
 import type { TeamLaunchDiagnosticItem } from '@shared/types';
 
 /** Pre-built step definitions for the provisioning stepper. */
@@ -36,6 +37,8 @@ const SECRET_FLAG_PATTERN =
 const SECRET_ENV_ASSIGNMENT_PATTERN =
   /\b([A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION)[A-Z0-9_]*\s*=\s*)("[^"]*"|'[^']*'|\S+)/gi;
 const AUTH_HEADER_PATTERN = /\b(Authorization\s*:\s*)(Bearer\s+)?("[^"]*"|'[^']*'|\S+)/gi;
+const SECRET_VALUE_PATTERN =
+  /\b(sk-[A-Za-z0-9._~+/=-]{12,}|[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})\b/g;
 
 export interface ProvisioningProgressBlockProps {
   /** Title above the steps, e.g. "Launching team" */
@@ -74,6 +77,8 @@ export interface ProvisioningProgressBlockProps {
   assistantOutput?: string;
   /** Bounded structured launch diagnostics */
   launchDiagnostics?: TeamLaunchDiagnosticItem[];
+  /** Bounded per-member launch/runtime diagnostics for copy payloads. */
+  memberDiagnostics?: MemberLaunchDiagnosticsPayload[];
   /** Visual surface chrome for the outer block */
   surface?: 'raised' | 'flat';
   className?: string;
@@ -153,7 +158,8 @@ function redactProvisioningDiagnosticsCopy(text: string): string {
     .replace(PROVIDER_API_KEY_FLAG_PATTERN, '$1[redacted]')
     .replace(SECRET_FLAG_PATTERN, '$1[redacted]')
     .replace(SECRET_ENV_ASSIGNMENT_PATTERN, '$1[redacted]')
-    .replace(AUTH_HEADER_PATTERN, '$1$2[redacted]');
+    .replace(AUTH_HEADER_PATTERN, '$1$2[redacted]')
+    .replace(SECRET_VALUE_PATTERN, '[redacted]');
 }
 
 function formatOptionalValue(value: string | number | null | undefined): string {
@@ -187,6 +193,15 @@ function formatLaunchDiagnosticsCopy(
     .join('\n');
 }
 
+function formatMemberDiagnosticsCopy(
+  items: readonly MemberLaunchDiagnosticsPayload[] | undefined
+): string {
+  if (!items || items.length === 0) {
+    return '(none)';
+  }
+  return JSON.stringify(items, null, 2);
+}
+
 function buildProvisioningDiagnosticsCopy(input: {
   title: string;
   message?: string | null;
@@ -200,6 +215,7 @@ function buildProvisioningDiagnosticsCopy(input: {
   liveOutput?: string | null;
   cliLogsTail?: string;
   launchDiagnostics?: TeamLaunchDiagnosticItem[];
+  memberDiagnostics?: MemberLaunchDiagnosticsPayload[];
 }): string {
   const payload = [
     '# Team provisioning diagnostics',
@@ -217,6 +233,9 @@ function buildProvisioningDiagnosticsCopy(input: {
     '',
     '## Launch diagnostics',
     formatLaunchDiagnosticsCopy(input.launchDiagnostics),
+    '',
+    '## Member launch snapshots',
+    formatMemberDiagnosticsCopy(input.memberDiagnostics),
     '',
     '## Live output',
     input.liveOutput?.trim() || '(empty)',
@@ -247,6 +266,7 @@ export const ProvisioningProgressBlock = ({
   cliLogsTail,
   assistantOutput,
   launchDiagnostics,
+  memberDiagnostics,
   surface = 'raised',
   className,
 }: ProvisioningProgressBlockProps): React.JSX.Element => {
@@ -274,6 +294,7 @@ export const ProvisioningProgressBlock = ({
         liveOutput: displayAssistantOutput,
         cliLogsTail,
         launchDiagnostics,
+        memberDiagnostics,
       }),
     [
       title,
@@ -288,6 +309,7 @@ export const ProvisioningProgressBlock = ({
       displayAssistantOutput,
       cliLogsTail,
       launchDiagnostics,
+      memberDiagnostics,
     ]
   );
   const visibleLaunchDiagnostics =

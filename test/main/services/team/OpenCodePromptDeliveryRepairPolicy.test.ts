@@ -58,6 +58,44 @@ describe('OpenCodePromptDeliveryRepairPolicy', () => {
     expect(decision.controlText).not.toContain('reportToken=');
   });
 
+  it('uses review pickup repair wording for review pickup work-sync nudges', () => {
+    const decision = decideOpenCodePromptDeliveryRepair(
+      base({
+        messageKind: 'member_work_sync_nudge',
+        workSyncIntent: 'review_pickup',
+        actionMode: 'do',
+        taskRefs: [{ taskId: 'task-1', displayId: '#1', teamName: 'team-a' }],
+        responseState: 'responded_plain_text',
+        pendingReason: 'plain_text_ack_only_still_requires_answer',
+      })
+    );
+
+    expect(decision.kind).toBe('work_sync_report_required');
+    expect(decision.controlText).toContain('review pickup control message');
+    expect(decision.controlText).toContain('start or continue the review');
+    expect(decision.controlText).toContain('"task-1"');
+    expect(decision.controlText).not.toContain('Then call agent-teams_member_work_sync_report');
+  });
+
+  it('repairs visible replies that missed required taskRefs with exact metadata', () => {
+    const taskRef = { taskId: 'task-refs-1', displayId: 'refs-1', teamName: 'team-a' };
+    const decision = decideOpenCodePromptDeliveryRepair(
+      base({
+        taskRefs: [taskRef],
+        responseState: 'responded_visible_message',
+        pendingReason: 'visible_reply_missing_task_refs',
+        visibleReplyFound: true,
+      })
+    );
+
+    expect(decision.kind).toBe('missing_visible_reply_correlation');
+    expect(decision.retryable).toBe(true);
+    expect(decision.controlText).toContain('relayOfMessageId="msg-1"');
+    expect(decision.controlText).toContain(
+      `Include taskRefs exactly as this JSON array: ${JSON.stringify([taskRef])}.`
+    );
+  });
+
   it('does not repair terminal, permission, or session failures', () => {
     expect(
       decideOpenCodePromptDeliveryRepair(

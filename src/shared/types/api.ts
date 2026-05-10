@@ -27,7 +27,10 @@ import type {
   HunkDecision,
   RejectResult,
   SnippetDiff,
+  TaskChangeRequestOptions,
   TaskChangeSetV2,
+  TeamTaskChangeSummariesResponse,
+  TeamTaskChangeSummaryRequest,
 } from './review';
 import type {
   CreateScheduleInput,
@@ -98,6 +101,7 @@ import type { TerminalAPI } from './terminal';
 import type { TmuxAPI } from './tmux';
 import type { WaterfallData } from './visualization';
 import type { CodexAccountElectronApi } from '@features/codex-account/contracts';
+import type { MemberLogStreamApi } from '@features/member-log-stream/contracts';
 import type {
   MemberWorkSyncMetricsRequest,
   MemberWorkSyncReportRequest,
@@ -316,6 +320,34 @@ export interface UpdaterAPI {
   download: () => Promise<void>;
   install: () => Promise<void>;
   onStatus: (callback: (event: unknown, status: unknown) => void) => () => void;
+}
+
+// =============================================================================
+// Startup API
+// =============================================================================
+
+export interface AppStartupStatus {
+  phase: string;
+  message: string;
+  ready: boolean;
+  error?: string | null;
+  startedAt: number;
+  updatedAt: number;
+  steps?: AppStartupStep[];
+}
+
+export interface AppStartupStep {
+  phase: string;
+  message: string;
+  startedAt: number;
+  updatedAt: number;
+  finishedAt?: number;
+  durationMs?: number;
+}
+
+export interface AppStartupAPI {
+  getStatus: () => Promise<AppStartupStatus>;
+  onProgress: (callback: (status: AppStartupStatus) => void) => () => void;
 }
 
 // =============================================================================
@@ -680,21 +712,12 @@ export interface ReviewAPI {
   getTaskChanges: (
     teamName: string,
     taskId: string,
-    options?: {
-      owner?: string;
-      status?: string;
-      /** Persisted work intervals (preferred for reliable owner-log attribution). */
-      intervals?: { startedAt: string; completedAt?: string }[];
-      /** Back-compat: single since timestamp (deprecated). */
-      since?: string;
-      /** Derived task lifecycle bucket used for safe summary caching. */
-      stateBucket?: 'approved' | 'review' | 'completed' | 'active';
-      /** Lightweight response for summary UIs; skips snippets/timeline details. */
-      summaryOnly?: boolean;
-      /** Force a fresh recompute and overwrite any cache snapshot. */
-      forceFresh?: boolean;
-    }
+    options?: TaskChangeRequestOptions
   ) => Promise<TaskChangeSetV2>;
+  getTeamTaskChangeSummaries: (
+    teamName: string,
+    requests: TeamTaskChangeSummaryRequest[]
+  ) => Promise<TeamTaskChangeSummariesResponse>;
   invalidateTaskChangeSummaries: (teamName: string, taskIds: string[]) => Promise<void>;
   getChangeStats: (teamName: string, memberName: string) => Promise<ChangeStats>;
   getFileContent: (
@@ -769,6 +792,7 @@ export interface ReviewAPI {
  * Complete Electron API exposed to the renderer process via preload script.
  */
 export interface ElectronAPI extends RecentProjectsElectronApi, CodexAccountElectronApi {
+  startup?: AppStartupAPI;
   getAppVersion: () => Promise<string>;
   getProjects: () => Promise<Project[]>;
   getSessions: (projectId: string) => Promise<Session[]>;
@@ -903,6 +927,9 @@ export interface ElectronAPI extends RecentProjectsElectronApi, CodexAccountElec
 
   // Member actionable-work sync diagnostics API
   memberWorkSync: MemberWorkSyncElectronApi;
+
+  // Member log stream API
+  memberLogStream: MemberLogStreamApi;
 
   // tmux runtime diagnostics API
   tmux: TmuxAPI;

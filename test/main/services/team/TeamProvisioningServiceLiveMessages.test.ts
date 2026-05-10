@@ -140,6 +140,15 @@ function seedLeadInbox(teamName: string, messages: unknown[]): void {
 interface RunLike {
   runId: string;
   teamName: string;
+  progress: {
+    runId: string;
+    teamName: string;
+    state: 'spawning' | 'running';
+    message: string;
+    startedAt: string;
+    updatedAt: string;
+    error?: string;
+  };
   provisioningComplete: boolean;
   detectedSessionId?: string | null;
   leadMsgSeq: number;
@@ -173,10 +182,20 @@ function attachRun(
   opts?: { provisioningComplete?: boolean; runId?: string; detectedSessionId?: string | null }
 ): RunLike {
   const runId = opts?.runId ?? 'run-1';
+  const now = new Date().toISOString();
+  const provisioningComplete = opts?.provisioningComplete ?? false;
   const run: RunLike = {
     runId,
     teamName,
-    provisioningComplete: opts?.provisioningComplete ?? false,
+    progress: {
+      runId,
+      teamName,
+      state: provisioningComplete ? 'running' : 'spawning',
+      message: provisioningComplete ? 'Running' : 'Starting',
+      startedAt: now,
+      updatedAt: now,
+    },
+    provisioningComplete,
     detectedSessionId: opts?.detectedSessionId ?? null,
     leadMsgSeq: 0,
     pendingToolCalls: [],
@@ -546,6 +565,22 @@ describe('TeamProvisioningService pre-ready live messages', () => {
     );
   });
 
+  it('suppresses bare transcript speaker placeholders from lead thought output', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const emitter = vi.fn<(event: TeamChangeEvent) => void>();
+    service.setTeamChangeEmitter(emitter);
+    const run = attachRun(service, 'my-team', { provisioningComplete: true });
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Human: ' }],
+    });
+
+    expect(service.getLiveLeadProcessMessages('my-team')).toHaveLength(0);
+    expect(emitter).not.toHaveBeenCalled();
+  });
+
   it('SendMessage(to:teammate) creates inbox row and emits inbox detail for recipient', () => {
     const service = new TeamProvisioningService();
     seedConfig('my-team');
@@ -620,6 +655,34 @@ describe('TeamProvisioningService pre-ready live messages', () => {
         detail: 'sentMessages.json',
       })
     );
+  });
+
+  it('canonicalizes capitalized SendMessage user recipients before persistence', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const run = attachRun(service, 'my-team', { provisioningComplete: true });
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [
+        {
+          type: 'tool_use',
+          name: 'SendMessage',
+          input: {
+            type: 'message',
+            recipient: 'User',
+            content: 'Task completed!',
+            summary: 'Done',
+          },
+        },
+      ],
+    });
+
+    expect(hoisted.appendSentMessage).toHaveBeenCalledWith(
+      'my-team',
+      expect.objectContaining({ to: 'user' })
+    );
+    expect(hoisted.sendInboxMessage).not.toHaveBeenCalled();
   });
 
   it('upgrades qualified SendMessage recipients into cross-team sends', async () => {

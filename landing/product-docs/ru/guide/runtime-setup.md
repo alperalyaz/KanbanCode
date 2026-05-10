@@ -1,33 +1,98 @@
 # Настройка рантайма
 
-Agent Teams - coordination layer. Model work выполняется через локальные runtimes и providers.
+Agent Teams — coordination layer. Model work выполняется через локальные runtimes и providers.
+
+## Предварительные требования
+
+Перед запуском команды убедитесь, что:
+
+- Runtime binary установлен и находится в `PATH`.
+- Ваш аккаунт провайдера имеет доступ к выбранной модели.
+- Путь к проекту существует и доступен для чтения.
+
+::: tip
+Начните с одного teammate и одного провайдера. Подтвердите запуск одной команды, прежде чем добавлять multimodel lanes.
+:::
 
 ## Поддерживаемые пути
 
-| Путь | Когда использовать |
-| --- | --- |
-| Claude | Если вы уже используете Claude Code или Anthropic access |
-| Codex | Для Codex-native workflows и OpenAI access |
-| OpenCode | Для multimodel routing и широкой provider coverage |
+| Путь | CLI по умолчанию | Типичные провайдеры | Когда использовать |
+|------|-------------------|---------------------|-------------------|
+| Claude | `claude` | Anthropic | Если вы уже используете Claude Code или Anthropic access |
+| Codex | `codex` | OpenAI | Для Codex-native workflows и OpenAI access |
+| OpenCode | `opencode` | OpenRouter и многие другие | Для multimodel routing и широкой provider coverage |
 
 Приложение по возможности определяет доступные runtimes и ведёт настройку через UI.
 
-## Provider access
+## Доступ к провайдеру
 
-У Agent Teams нет своего платного тарифа. Вы используете доступ к провайдеру, который у вас уже есть: subscription, local runtime auth или API keys в зависимости от выбранного пути.
+У Agent Teams нет своего платного тарифа. Вы используете доступ к провайдеру, который у вас уже есть: подписка, локальная авторизация рантайма или API-ключи в зависимости от выбранного пути.
 
-## Multimodel mode
+- Для **Claude** и **Codex** используется auth соответствующего CLI.
+- Для **OpenCode** требуются provider-specific API keys в файле конфигурации (например, `openrouter`, `openai`, `anthropic`).
 
-Multimodel mode может направлять работу через разные provider backends в OpenCode-compatible конфигурации. Используйте его, когда нужна гибкость провайдеров или разные model lanes для teammates.
+## Настройка авторизации
 
-## Практические советы
+### Claude Code
 
-- Первый runtime setup держите простым.
-- Подтвердите запуск одной команды до добавления многих providers.
-- Auth, model names и PATH issues считайте setup-проблемами, а не проблемами team prompt.
-- Если запуск завис, сначала откройте диагностику.
+Запустите стандартный auth flow в терминале:
+
+```bash
+claude login
+```
+
+Затем проверьте, что CLI доступен:
+
+```bash
+claude --version
+```
+
+### Codex
+
+Установите и авторизуйтесь через CLI OpenAI:
+
+```bash
+codex login
+```
+
+### OpenCode
+
+Создайте или отредактируйте `~/.opencode/config.json` (или эквивалентный путь на вашей платформе):
+
+```json
+{
+  "providers": {
+    "openrouter": {
+      "apiKey": "sk-or-..."
+    }
+  }
+}
+```
+
+Используйте точное имя провайдера, которое ожидает OpenCode. Если вы используете кастомное имя, убедитесь, что оно совпадает с provider ID в строке модели (например, `openrouter/moonshotai/kimi-k2.6` использует блок `openrouter`).
+
+## Multimodel-режим
+
+Multimodel-режим может направлять работу через разные provider backends в OpenCode-совместимой конфигурации. Используйте его, когда нужна гибкость провайдеров или разные model lanes для teammates.
+
+::: info Model lanes
+Каждый teammate может использовать свою пару `providerId` + `model`. В UI редактирования команды разверните опции member, чтобы переопределить глобальные значения.
+:::
+
+## Чеклист перед запуском
+
+Перед запуском команды:
+
+1. Выбранный runtime установлен
+2. Binary runtime находится в environment `PATH`
+3. Auth провайдера настроен для выбранного backend
+4. Провайдер имеет доступ к точной строке модели
+5. Путь к проекту существует и доступен для чтения
 
 ## Когда менять runtime path
 
 Меняйте путь, когда текущий упирается в availability модели, rate limits, provider capabilities или роли команды. После смены проверьте одну маленькую задачу.
 
+::: warning Считайте ошибки setup setup-проблемами
+Если auth падает, имя модели отклонено или binary runtime не найден — сначала исправьте настройку. Не меняйте team prompts или код проекта, чтобы обойти проблему конфигурации рантайма.
+:::

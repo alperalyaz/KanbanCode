@@ -469,6 +469,45 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     expect(spawnCli).not.toHaveBeenCalled();
   });
 
+  it('allows explicit Codex models when launch model list parsing is degraded', async () => {
+    vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/fake/codex');
+    const { child } = createFakeChild();
+    vi.mocked(spawnCli).mockReturnValue(child as any);
+
+    const svc = new TeamProvisioningService();
+    (svc as any).buildProvisioningEnv = vi.fn(async () => ({
+      env: {},
+      authSource: 'codex_runtime',
+      providerArgs: [],
+    }));
+    (svc as any).readRuntimeProviderLaunchFacts = vi.fn(async () => ({
+      defaultModel: null,
+      modelIds: new Set(),
+      modelListParsed: false,
+      modelCatalog: null,
+      runtimeCapabilities: { modelCatalog: { dynamic: false, source: 'runtime' } },
+      providerStatus: null,
+    }));
+    (svc as any).validateAgentTeamsMcpRuntime = vi.fn(async () => {});
+    (svc as any).startFilesystemMonitor = vi.fn();
+    (svc as any).pathExists = vi.fn(async () => false);
+
+    const { runId } = await svc.createTeam(
+      {
+        teamName: 'codex-future-model-launchable',
+        cwd: process.cwd(),
+        members: [],
+        providerId: 'codex',
+        model: 'gpt-5.5',
+        effort: 'medium',
+      },
+      () => {}
+    );
+
+    expect(spawnCli).toHaveBeenCalled();
+    await svc.cancelProvisioning(runId);
+  });
+
   it('restart teammate message keeps the exact teammate identity and avoids duplicate semantics', () => {
     const message = buildRestartMemberSpawnMessage('forge-labs', 'Forge Labs', 'lead', {
       name: 'alice',
@@ -830,11 +869,6 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     (svc as any).restorePrelaunchConfig = vi.fn(async () => {});
     (svc as any).assertConfigLeadOnlyForLaunch = vi.fn(async () => {});
     (svc as any).persistLaunchStateSnapshot = vi.fn(async () => {});
-    (svc as any).resolveLaunchExpectedMembers = vi.fn(async () => ({
-      members: [{ name: 'alice', role: 'developer', providerId: 'codex', isolation: 'worktree' }],
-      source: 'config-fallback',
-      warning: undefined,
-    }));
     (svc as any).validateAgentTeamsMcpRuntime = vi.fn(async () => {});
     (svc as any).pathExists = vi.fn(async () => false);
     (svc as any).startFilesystemMonitor = vi.fn();
@@ -921,7 +955,6 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
       expect.objectContaining({
         name: 'alice',
         provider: 'codex',
-        isolation: 'worktree',
       })
     );
 

@@ -132,6 +132,65 @@ export interface TaskChangeSet {
   computedAt: string;
 }
 
+export const TASK_CHANGE_DIAGNOSTIC_CODES = [
+  'multi_scope_no_safe_diff',
+  'active_task_no_edits_yet',
+  'summary_timeout',
+  'summary_reconstructed',
+  'journal_unavailable',
+  'ledger_integrity_recovered',
+  'ledger_integrity_partial',
+  'ledger_freshness_mismatch',
+  'diff_stat_partial',
+  'tool_failed_after_edit',
+  'tool_killed_after_edit',
+  'unsafe_or_untrusted_evidence',
+  'legacy_warning',
+] as const;
+
+export type TaskChangeDiagnosticCode = (typeof TASK_CHANGE_DIAGNOSTIC_CODES)[number];
+
+export type TaskChangeDiagnosticSeverity = 'info' | 'warning' | 'error';
+
+export interface TaskChangeReviewDiagnostic {
+  code: TaskChangeDiagnosticCode;
+  severity: TaskChangeDiagnosticSeverity;
+  reviewBlocking: boolean;
+  message: string;
+  source?: 'ledger' | 'legacy' | 'summary' | 'runtime';
+}
+
+export type TaskChangeReviewability =
+  | 'reviewable'
+  | 'attention_required'
+  | 'diagnostic_only'
+  | 'none'
+  | 'unknown';
+
+export type TaskChangeReviewAction =
+  | 'review_diff'
+  | 'inspect_diagnostics'
+  | 'wait_or_refresh'
+  | 'nothing';
+
+export type TaskChangeReviewReasonCode =
+  | 'files_changed'
+  | 'files_changed_with_non_blocking_diagnostics'
+  | 'diagnostic_only'
+  | 'confirmed_no_changes'
+  | 'pending_no_edits_yet'
+  | 'blocking_diagnostics'
+  | 'low_confidence';
+
+export interface TaskChangeReviewabilityStatus {
+  reviewability: TaskChangeReviewability;
+  reasonCode: TaskChangeReviewReasonCode;
+  userAction: TaskChangeReviewAction;
+  severity: 'success' | 'warning' | 'info' | 'none';
+  message: string;
+  diagnostics: TaskChangeReviewDiagnostic[];
+}
+
 /** Краткая статистика для badge */
 export interface ChangeStats {
   linesAdded: number;
@@ -287,8 +346,42 @@ export interface TaskBoundariesResult {
 export interface TaskChangeSetV2 extends TaskChangeSet {
   scope: TaskChangeScope;
   warnings: string[];
+  reviewDiagnostics?: TaskChangeReviewDiagnostic[];
   diffStatCompleteness?: 'complete' | 'partial';
   provenance?: TaskChangeProvenance;
+}
+
+export interface TaskChangeRequestOptions {
+  owner?: string;
+  status?: string;
+  /** Persisted work intervals (preferred for reliable owner-log attribution). */
+  intervals?: { startedAt: string; completedAt?: string }[];
+  /** Back-compat: single since timestamp (deprecated). */
+  since?: string;
+  /** Derived task lifecycle bucket used for safe summary caching. */
+  stateBucket?: 'approved' | 'review' | 'completed' | 'active';
+  /** Lightweight response for summary UIs; skips snippets/timeline details. */
+  summaryOnly?: boolean;
+  /** Force a fresh recompute and overwrite any cache snapshot. */
+  forceFresh?: boolean;
+}
+
+export interface TeamTaskChangeSummaryRequest {
+  taskId: string;
+  options?: TaskChangeRequestOptions;
+}
+
+export interface TeamTaskChangeSummaryItem {
+  taskId: string;
+  changeSet: TaskChangeSetV2 | null;
+  error?: string;
+}
+
+export interface TeamTaskChangeSummariesResponse {
+  teamName: string;
+  items: TeamTaskChangeSummaryItem[];
+  computedAt: string;
+  truncated?: boolean;
 }
 
 // ── Phase 4: Enhanced Features types ──

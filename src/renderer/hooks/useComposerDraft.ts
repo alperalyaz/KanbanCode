@@ -18,10 +18,11 @@ import {
   composerDraftStorage,
 } from '@renderer/services/composerDraftStorage';
 import {
-  fileToAttachmentPayload,
+  fileToAgentAttachmentPayload,
   MAX_FILES,
   MAX_TOTAL_SIZE,
   validateAttachment,
+  validateOptimizedImageTotal,
 } from '@renderer/utils/attachmentUtils';
 import { categorizeFile } from '@shared/constants/attachments';
 
@@ -403,23 +404,23 @@ export function useComposerDraft(teamName: string): UseComposerDraftResult {
 
       if (supported.length === 0) return;
 
-      let batchSize = 0;
       for (const file of supported) {
         const validation = validateAttachment(file);
         if (!validation.valid) {
           setAttachmentError(validation.error);
           return;
         }
-        batchSize += file.size;
       }
 
       const newPayloads: AttachmentPayload[] = [];
       for (const file of supported) {
         try {
-          const payload = await fileToAttachmentPayload(file);
+          const payload = await fileToAgentAttachmentPayload(file);
           newPayloads.push(payload);
-        } catch {
-          setAttachmentError(`Failed to read file: ${file.name}`);
+        } catch (error) {
+          const reason =
+            error instanceof Error ? error.message : `Failed to read file: ${file.name}`;
+          setAttachmentError(reason);
           return;
         }
       }
@@ -430,8 +431,14 @@ export function useComposerDraft(teamName: string): UseComposerDraftResult {
         return;
       }
       const currentTotal = prev.reduce((sum, a) => sum + a.size, 0);
+      const batchSize = newPayloads.reduce((sum, a) => sum + a.size, 0);
       if (currentTotal + batchSize > MAX_TOTAL_SIZE) {
         setAttachmentError('Total attachment size exceeds 20MB limit');
+        return;
+      }
+      const optimizedImageTotal = validateOptimizedImageTotal([...prev, ...newPayloads]);
+      if (!optimizedImageTotal.valid) {
+        setAttachmentError(optimizedImageTotal.error);
         return;
       }
 

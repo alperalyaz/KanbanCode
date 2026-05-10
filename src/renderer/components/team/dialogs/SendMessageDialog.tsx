@@ -24,15 +24,27 @@ import { useTeamSuggestions } from '@renderer/hooks/useTeamSuggestions';
 import { useStore } from '@renderer/store';
 import { chipToken, serializeChipsWithText } from '@renderer/types/inlineChip';
 import { buildReplyBlock } from '@renderer/utils/agentMessageFormatting';
+import {
+  canMemberShowAttachmentControl,
+  getAttachmentInputAcceptForMember,
+  getMemberAttachmentUnavailableReason,
+  validateAttachmentFilesForMember,
+  validateAttachmentPayloadsForMember,
+} from '@renderer/utils/attachmentRecipientCapabilities';
 import { removeChipTokenFromText } from '@renderer/utils/chipUtils';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { isOpenCodeRuntimeDeliveryHardUxFailure } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 import {
   extractTaskRefsFromText,
   stripEncodedTaskReferenceMetadata,
 } from '@renderer/utils/taskReferenceUtils';
 import { MAX_TEXT_LENGTH } from '@shared/constants';
 import { isLeadMember } from '@shared/utils/leadDetection';
+import {
+  inferTeamProviderIdFromModel,
+  normalizeOptionalTeamProviderId,
+} from '@shared/utils/teamProvider';
 import { AlertCircle, Paperclip, Send, X } from 'lucide-react';
 
 import { MemberBadge } from '../MemberBadge';
@@ -138,15 +150,30 @@ export const SendMessageDialog = ({
 
   const selectedMember = members.find((m) => m.name === member);
   const isLeadRecipient = selectedMember ? isLeadMember(selectedMember) : false;
+  const selectedProviderId =
+    normalizeOptionalTeamProviderId(selectedMember?.providerId) ??
+    inferTeamProviderIdFromModel(selectedMember?.model);
+  const isOpenCodeRecipient = selectedProviderId === 'opencode';
+  const showAttachmentControl = canMemberShowAttachmentControl(selectedMember);
+  const memberAttachmentUnavailableReason = showAttachmentControl
+    ? getMemberAttachmentUnavailableReason(selectedMember)
+    : null;
+  const attachmentInputAccept = getAttachmentInputAcceptForMember(selectedMember);
   const hasTeammates = members.length > 1;
   const canDelegate = hasTeammates && isLeadRecipient;
   const shouldAutoDelegate = canDelegate;
-  const supportsAttachments = isLeadRecipient && !!isTeamAlive;
+  const supportsAttachments =
+    !!isTeamAlive && showAttachmentControl && memberAttachmentUnavailableReason == null;
   const canAttach = supportsAttachments && canAddMore;
   const attachmentRestrictionReason = !supportsAttachments
-    ? !isLeadRecipient
-      ? 'Files can only be sent to the team lead'
-      : 'Team must be online to attach files'
+    ? !isTeamAlive
+      ? 'Team must be online to attach files'
+      : !showAttachmentControl
+        ? 'Files can be sent to the team lead or OpenCode teammates'
+        : (memberAttachmentUnavailableReason ??
+          (isOpenCodeRecipient
+            ? 'Team must be online to attach files for OpenCode teammates'
+            : 'Team must be online to attach files'))
     : undefined;
 
   // Auto-switch to delegate when lead recipient is selected, but don't
@@ -244,7 +271,12 @@ export const SendMessageDialog = ({
   const { suggestions: teamMentionSuggestions } = useTeamSuggestions(teamName);
   const { suggestions: taskSuggestions } = useTaskSuggestions(teamName);
 
-  const attachmentsBlocked = attachments.length > 0 && !supportsAttachments;
+  const attachmentPayloadRestrictionReason = validateAttachmentPayloadsForMember({
+    member: selectedMember,
+    attachments,
+  });
+  const attachmentsBlocked =
+    attachments.length > 0 && (!supportsAttachments || attachmentPayloadRestrictionReason != null);
 
   const trimmedText = stripEncodedTaskReferenceMetadata(textDraft.value).trim();
   const serialized = serializeChipsWithText(trimmedText, chipDraft.chips);
@@ -280,10 +312,7 @@ export const SendMessageDialog = ({
       )
     )
       .then((result) => {
-        if (
-          result?.runtimeDelivery?.attempted === true &&
-          result.runtimeDelivery.delivered === false
-        ) {
+        if (isOpenCodeRuntimeDeliveryHardUxFailure(result?.runtimeDelivery)) {
           return;
         }
         textDraft.clearDraft();
@@ -301,26 +330,56 @@ export const SendMessageDialog = ({
     }
   };
 
-  const handleFileInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const input = e.target;
-      if (input.files?.length) {
-        void addFiles(input.files);
-      }
-      input.value = '';
-    },
-    [addFiles]
-  );
-
   const showFileRestrictionError = useCallback(() => {
     setFileRestrictionError(
-      attachmentRestrictionReason ?? 'Files can only be sent to the team lead'
+      attachmentRestrictionReason ??
+        attachmentPayloadRestrictionReason ??
+        'Files can be sent to the team lead or OpenCode teammates'
     );
     window.clearTimeout(fileRestrictionTimerRef.current);
     fileRestrictionTimerRef.current = window.setTimeout(() => {
       setFileRestrictionError(null);
     }, 4000);
-  }, [attachmentRestrictionReason]);
+  }, [attachmentPayloadRestrictionReason, attachmentRestrictionReason]);
+
+  const validateSelectedAttachmentFiles = useCallback(
+    (files: FileList | File[]): boolean => {
+      const reason = validateAttachmentFilesForMember({
+        member: selectedMember,
+        files,
+      });
+      if (!reason) {
+        return true;
+      }
+      setFileRestrictionError(reason);
+      window.clearTimeout(fileRestrictionTimerRef.current);
+      fileRestrictionTimerRef.current = window.setTimeout(() => {
+        setFileRestrictionError(null);
+      }, 4000);
+      return false;
+    },
+    [selectedMember]
+  );
+
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const input = e.target;
+      if (input.files?.length) {
+        if (!canAttach) {
+          showFileRestrictionError();
+          input.value = '';
+          return;
+        }
+        if (!validateSelectedAttachmentFiles(input.files)) {
+          input.value = '';
+          return;
+        }
+        void addFiles(input.files);
+      }
+      input.value = '';
+    },
+    [addFiles, canAttach, showFileRestrictionError, validateSelectedAttachmentFiles]
+  );
 
   // Cleanup restriction error timer on unmount
   useEffect(() => {
@@ -359,9 +418,13 @@ export const SendMessageDialog = ({
         }
         return;
       }
+      const files = e.dataTransfer?.files;
+      if (files?.length && !validateSelectedAttachmentFiles(files)) {
+        return;
+      }
       handleDrop(e);
     },
-    [supportsAttachments, handleDrop, showFileRestrictionError]
+    [supportsAttachments, handleDrop, showFileRestrictionError, validateSelectedAttachmentFiles]
   );
 
   const handlePasteWrapper = useCallback(
@@ -374,9 +437,17 @@ export const SendMessageDialog = ({
         }
         return;
       }
+      const pastedFiles = Array.from(e.clipboardData.items)
+        .filter((item) => item.kind === 'file')
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => file != null);
+      if (pastedFiles.length > 0 && !validateSelectedAttachmentFiles(pastedFiles)) {
+        e.preventDefault();
+        return;
+      }
       handlePaste(e);
     },
-    [supportsAttachments, handlePaste, showFileRestrictionError]
+    [supportsAttachments, handlePaste, showFileRestrictionError, validateSelectedAttachmentFiles]
   );
 
   return (
@@ -415,12 +486,12 @@ export const SendMessageDialog = ({
           <div className="grid gap-2">
             <div className="flex items-center gap-2">
               <Label htmlFor="smd-message">Message</Label>
-              {isLeadRecipient ? (
+              {showAttachmentControl ? (
                 <>
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="*/*"
+                    accept={attachmentInputAccept}
                     multiple
                     className="hidden"
                     onChange={handleFileInputChange}
@@ -441,11 +512,9 @@ export const SendMessageDialog = ({
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="top">
-                      {!isTeamAlive
-                        ? 'Team must be online to attach files'
-                        : !canAddMore
-                          ? 'Maximum attachments reached'
-                          : 'Attach files (paste or drag & drop)'}
+                      {canAttach
+                        ? 'Attach files (paste or drag & drop)'
+                        : (attachmentRestrictionReason ?? 'Attachments are unavailable')}
                     </TooltipContent>
                   </Tooltip>
                 </>
@@ -455,10 +524,14 @@ export const SendMessageDialog = ({
             <AttachmentPreviewList
               attachments={attachments}
               onRemove={removeAttachment}
-              error={attachmentError ?? fileRestrictionError}
+              error={attachmentError ?? fileRestrictionError ?? attachmentPayloadRestrictionReason}
               onDismissError={clearAttachmentError}
               disabled={attachmentsBlocked}
-              disabledHint="File attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
+              disabledHint={
+                attachmentPayloadRestrictionReason ??
+                attachmentRestrictionReason ??
+                'File attachments are supported for the online team lead and online OpenCode teammates. Remove attachments or switch recipient.'
+              }
             />
 
             <div className={quote ? 'flex flex-col' : 'contents'}>

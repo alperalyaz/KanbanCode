@@ -25,11 +25,11 @@ import {
 } from '@shared/utils/idleNotificationSemantics';
 import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 import { isLeadMember } from '@shared/utils/leadDetection';
+import { buildOrderedVisibleTeamGraphOwnerIds } from '@shared/utils/teamGraphDefaultLayout';
 import {
   isTeamTaskActivelyWorked,
   isTeamTaskNeedsFixActionable,
 } from '@shared/utils/teamTaskState';
-import { buildOrderedVisibleTeamGraphOwnerIds } from '@shared/utils/teamGraphDefaultLayout';
 
 import {
   buildInlineActivityEntries,
@@ -80,7 +80,16 @@ export interface TeamGraphData extends TeamViewSnapshot {
 function toGraphLaunchVisualState(
   visualState: ReturnType<typeof buildMemberLaunchPresentation>['launchVisualState'] | undefined
 ): GraphNode['launchVisualState'] {
-  return visualState === 'bootstrap_stalled' ? 'runtime_pending' : (visualState ?? undefined);
+  if (!visualState) {
+    return undefined;
+  }
+  if (visualState === 'bootstrap_stalled') {
+    return 'runtime_pending';
+  }
+  if (visualState === 'starting_stale') {
+    return 'spawning';
+  }
+  return visualState;
 }
 
 export class TeamGraphAdapter {

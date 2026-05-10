@@ -66,6 +66,54 @@ function normalizeActorKey(value) {
   return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : '';
 }
 
+function closeTimestampForInterval(interval, timestamp) {
+  const startedAtMs = Date.parse(interval.startedAt);
+  const timestampMs = Date.parse(timestamp);
+  if (Number.isFinite(startedAtMs) && Number.isFinite(timestampMs) && timestampMs < startedAtMs) {
+    return interval.startedAt;
+  }
+  return timestamp;
+}
+
+function isOpenReviewInterval(interval) {
+  return interval && interval.completedAt === undefined;
+}
+
+function openReviewInterval(task, reviewer, timestamp = new Date().toISOString()) {
+  const reviewerName = typeof reviewer === 'string' && reviewer.trim() ? reviewer.trim() : '';
+  if (!reviewerName) return false;
+  const reviewerKey = normalizeActorKey(reviewerName);
+  const intervals = Array.isArray(task.reviewIntervals) ? [...task.reviewIntervals] : [];
+  let changed = false;
+  let hasOpenForReviewer = false;
+  const nextIntervals = intervals.map((interval) => {
+    if (!isOpenReviewInterval(interval)) return interval;
+    if (normalizeActorKey(interval.reviewer) === reviewerKey) {
+      hasOpenForReviewer = true;
+      return interval;
+    }
+    changed = true;
+    return { ...interval, completedAt: closeTimestampForInterval(interval, timestamp) };
+  });
+  if (hasOpenForReviewer) {
+    task.reviewIntervals = nextIntervals;
+    return changed;
+  }
+  task.reviewIntervals = [...nextIntervals, { reviewer: reviewerName, startedAt: timestamp }];
+  return true;
+}
+
+function closeReviewIntervals(task, timestamp = new Date().toISOString()) {
+  if (!Array.isArray(task.reviewIntervals)) return false;
+  let changed = false;
+  task.reviewIntervals = task.reviewIntervals.map((interval) => {
+    if (!isOpenReviewInterval(interval)) return interval;
+    changed = true;
+    return { ...interval, completedAt: closeTimestampForInterval(interval, timestamp) };
+  });
+  return changed;
+}
+
 function resolveKnownActorName(context, value, label) {
   const actor = typeof value === 'string' && value.trim() ? value.trim() : '';
   if (!actor) return null;
@@ -130,7 +178,9 @@ function getReviewStartActor(context, task, flags) {
     return resolveKnownActorName(context, kanbanEntry.reviewer, 'reviewer');
   }
 
-  throw new Error(`review_start requires from when task #${task.displayId || task.id} has no assigned reviewer`);
+  throw new Error(
+    `review_start requires from when task #${task.displayId || task.id} has no assigned reviewer`
+  );
 }
 
 function getLatestReviewStartedActor(task) {
@@ -155,18 +205,25 @@ function getLatestReviewStartedActor(task) {
 
 function getReviewDecisionActor(context, task, flags, actionName) {
   const explicit = resolveKnownActorName(context, flags.from, 'review actor');
-  const startedActor = tryResolveKnownActorName(context, getLatestReviewStartedActor(task), 'review actor');
-  const assignedReviewer = tryResolveKnownActorName(context, getLatestReviewRequestedReviewer(task), 'reviewer');
+  const startedActor = tryResolveKnownActorName(
+    context,
+    getLatestReviewStartedActor(task),
+    'review actor'
+  );
+  const assignedReviewer = tryResolveKnownActorName(
+    context,
+    getLatestReviewRequestedReviewer(task),
+    'reviewer'
+  );
   const inferredActor =
     startedActor &&
     (!assignedReviewer ||
-      resolveActorIdentityKey(context, startedActor) === resolveActorIdentityKey(context, assignedReviewer))
+      resolveActorIdentityKey(context, startedActor) ===
+        resolveActorIdentityKey(context, assignedReviewer))
       ? startedActor
       : assignedReviewer;
   const actor =
-    explicit ||
-    inferredActor ||
-    resolveKnownActorName(context, 'team-lead', 'review actor');
+    explicit || inferredActor || resolveKnownActorName(context, 'team-lead', 'review actor');
   assertMatchesAssignedReviewer(context, task, actor, actionName);
   return actor;
 }
@@ -176,12 +233,16 @@ function assertReviewTransitionAllowed(context, task, transitionName) {
     throw new Error(`Task #${task.displayId || task.id} is deleted`);
   }
   if (task.status !== 'completed') {
-    throw new Error(`Task #${task.displayId || task.id} must be completed before ${transitionName}`);
+    throw new Error(
+      `Task #${task.displayId || task.id} must be completed before ${transitionName}`
+    );
   }
 
   const reviewState = getEffectiveReviewState(context, task);
   if (reviewState !== 'review') {
-    throw new Error(`Task #${task.displayId || task.id} must be in review before ${transitionName}`);
+    throw new Error(
+      `Task #${task.displayId || task.id} must be in review before ${transitionName}`
+    );
   }
   return reviewState;
 }
@@ -223,9 +284,14 @@ function startReview(context, taskId, flags = {}) {
 
     if (latestReviewEvent && latestReviewEvent.type === 'review_started') {
       assertReviewTransitionAllowed(context, task, 'starting review');
-      const existingActor = typeof latestReviewEvent.actor === 'string' ? latestReviewEvent.actor.trim() : '';
+      const existingActor =
+        typeof latestReviewEvent.actor === 'string' ? latestReviewEvent.actor.trim() : '';
       const existingActorValid = existingActor
-        ? Boolean(runtimeHelpers.resolveExplicitTeamMemberName(context.paths, existingActor, { allowLeadAliases: true }))
+        ? Boolean(
+            runtimeHelpers.resolveExplicitTeamMemberName(context.paths, existingActor, {
+              allowLeadAliases: true,
+            })
+          )
         : false;
       const assignedReviewer = tryResolveKnownActorName(
         context,
@@ -235,7 +301,8 @@ function startReview(context, taskId, flags = {}) {
       const existingMatchesAssigned =
         !assignedReviewer ||
         (existingActorValid &&
-          resolveActorIdentityKey(context, existingActor) === resolveActorIdentityKey(context, assignedReviewer));
+          resolveActorIdentityKey(context, existingActor) ===
+            resolveActorIdentityKey(context, assignedReviewer));
       const requestedActor =
         typeof flags.from === 'string' && flags.from.trim()
           ? getReviewStartActor(context, task, flags)
@@ -244,21 +311,32 @@ function startReview(context, taskId, flags = {}) {
         existingActorValid &&
         existingMatchesAssigned &&
         requestedActor &&
-        resolveActorIdentityKey(context, existingActor) !== resolveActorIdentityKey(context, requestedActor)
+        resolveActorIdentityKey(context, existingActor) !==
+          resolveActorIdentityKey(context, requestedActor)
       ) {
-        throw new Error(`Task #${task.displayId || task.id} review is already started by ${existingActor}`);
+        throw new Error(
+          `Task #${task.displayId || task.id} review is already started by ${existingActor}`
+        );
       }
       kanban.setKanbanColumn(context, task.id, 'review', { transition: 'start_review' });
       if (!existingActorValid || !existingMatchesAssigned) {
         const repairedActor = requestedActor || getReviewStartActor(context, task, flags);
+        const timestamp = new Date().toISOString();
         tasks.updateTask(context, task.id, (t) => {
+          openReviewInterval(t, repairedActor, timestamp);
           t.historyEvents = tasks.appendHistoryEvent(t.historyEvents, {
             type: 'review_started',
             from: prevReviewState,
             to: 'review',
             actor: repairedActor,
+            timestamp,
           });
           t.reviewState = 'review';
+          return t;
+        });
+      } else {
+        tasks.updateTask(context, task.id, (t) => {
+          openReviewInterval(t, existingActor, latestReviewEvent.timestamp);
           return t;
         });
       }
@@ -267,15 +345,18 @@ function startReview(context, taskId, flags = {}) {
 
     assertReviewTransitionAllowed(context, task, 'starting review');
     const from = getReviewStartActor(context, task, flags);
+    const timestamp = new Date().toISOString();
 
     try {
       kanban.setKanbanColumn(context, task.id, 'review', { transition: 'start_review' });
       tasks.updateTask(context, task.id, (t) => {
+        openReviewInterval(t, from, timestamp);
         t.historyEvents = tasks.appendHistoryEvent(t.historyEvents, {
           type: 'review_started',
           from: prevReviewState,
           to: 'review',
           actor: from,
+          timestamp,
         });
         t.reviewState = 'review';
         return t;
@@ -285,7 +366,10 @@ function startReview(context, taskId, flags = {}) {
       try {
         kanban.clearKanban(context, task.id, { transition: 'rollback' });
       } catch (rollbackError) {
-        warnNonCritical(`[review] rollback failed while starting review for ${task.id}`, rollbackError);
+        warnNonCritical(
+          `[review] rollback failed while starting review for ${task.id}`,
+          rollbackError
+        );
       }
       throw error;
     }
@@ -296,17 +380,23 @@ function requestReview(context, taskId, flags = {}) {
   const { task, reviewer, from, leadSessionId } = withTeamBoardLock(context.paths, () => {
     const currentTask = tasks.getTask(context, taskId);
     if (currentTask.status !== 'completed') {
-      throw new Error(`Task #${currentTask.displayId || currentTask.id} must be completed before review`);
+      throw new Error(
+        `Task #${currentTask.displayId || currentTask.id} must be completed before review`
+      );
     }
 
     const nextFrom =
       resolveKnownActorName(context, flags.from, 'review requester') ||
       resolveKnownActorName(context, 'team-lead', 'review requester');
     const rawReviewer = getReviewer(context, flags);
-    const nextReviewer = rawReviewer ? resolveKnownActorName(context, rawReviewer, 'reviewer') : null;
+    const nextReviewer = rawReviewer
+      ? resolveKnownActorName(context, rawReviewer, 'reviewer')
+      : null;
     const prevReviewState = getEffectiveReviewState(context, currentTask);
     if (prevReviewState === 'approved') {
-      throw new Error(`Task #${currentTask.displayId || currentTask.id} is already approved; reopen work before requesting another review`);
+      throw new Error(
+        `Task #${currentTask.displayId || currentTask.id} is already approved; reopen work before requesting another review`
+      );
     }
 
     try {
@@ -326,7 +416,10 @@ function requestReview(context, taskId, flags = {}) {
       try {
         kanban.clearKanban(context, currentTask.id, { transition: 'rollback' });
       } catch (rollbackError) {
-        warnNonCritical(`[review] rollback failed while requesting review for ${currentTask.id}`, rollbackError);
+        warnNonCritical(
+          `[review] rollback failed while requesting review for ${currentTask.id}`,
+          rollbackError
+        );
       }
       throw error;
     }
@@ -350,7 +443,9 @@ function requestReview(context, taskId, flags = {}) {
       text:
         `**Please review** task #${task.displayId || task.id}\n\n` +
         wrapAgentBlock(
-          `FIRST call review_start to signal you are beginning the review:\n` +
+          `This request is for the CURRENT review cycle. If you reviewed this task earlier, do not treat this message as a duplicate while the task is still in review; prior approvals become stale after later work.\n\n` +
+            `Before declaring it duplicate, call task_get and check the current reviewState/status. If it is still in review for you, continue with the review tools below.\n\n` +
+            `FIRST call review_start to signal you are beginning the review:\n` +
             `{ teamName: "${context.teamName}", taskId: "${task.id}", from: "<your-name>" }\n\n` +
             `When approved, use MCP tool review_approve:\n` +
             `{ teamName: "${context.teamName}", taskId: "${task.id}", from: "<your-name>", note?: "<optional note>", notifyOwner: true }\n\n` +
@@ -383,7 +478,9 @@ function approveReview(context, taskId, flags = {}) {
 
     if (prevReviewState === 'approved') {
       if (currentTask.status !== 'completed') {
-        throw new Error(`Task #${currentTask.displayId || currentTask.id} must be completed before approval`);
+        throw new Error(
+          `Task #${currentTask.displayId || currentTask.id} must be completed before approval`
+        );
       }
       kanban.setKanbanColumn(context, currentTask.id, 'approved', { transition: 'approve_review' });
       return {
@@ -399,15 +496,18 @@ function approveReview(context, taskId, flags = {}) {
     }
 
     assertReviewTransitionAllowed(context, currentTask, 'approval');
+    const timestamp = new Date().toISOString();
 
     kanban.setKanbanColumn(context, currentTask.id, 'approved', { transition: 'approve_review' });
     tasks.updateTask(context, currentTask.id, (t) => {
+      closeReviewIntervals(t, timestamp);
       t.historyEvents = tasks.appendHistoryEvent(t.historyEvents, {
         type: 'review_approved',
         from: prevReviewState,
         to: 'approved',
         ...(nextNote ? { note: nextNote } : {}),
         actor: nextFrom,
+        timestamp,
       });
       t.reviewState = 'approved';
       return t;
@@ -472,15 +572,22 @@ function requestChanges(context, taskId, flags = {}) {
       typeof flags.comment === 'string' && flags.comment.trim()
         ? flags.comment.trim()
         : 'Reviewer requested changes.';
-    const prevReviewState = assertReviewTransitionAllowed(context, currentTask, 'requesting changes');
+    const prevReviewState = assertReviewTransitionAllowed(
+      context,
+      currentTask,
+      'requesting changes'
+    );
+    const timestamp = new Date().toISOString();
 
     tasks.updateTask(context, currentTask.id, (t) => {
+      closeReviewIntervals(t, timestamp);
       t.historyEvents = tasks.appendHistoryEvent(t.historyEvents, {
         type: 'review_changes_requested',
         from: prevReviewState,
         to: 'needsFix',
         ...(nextComment ? { note: nextComment } : {}),
         actor: nextFrom,
+        timestamp,
       });
       t.reviewState = 'needsFix';
       return t;

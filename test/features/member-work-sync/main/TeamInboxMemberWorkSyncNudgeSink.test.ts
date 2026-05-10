@@ -19,6 +19,7 @@ function makeInput(overrides: Partial<NudgeInput> = {}): NudgeInput {
       messageKind: 'member_work_sync_nudge',
       source: 'member-work-sync',
       actionMode: 'do',
+      workSyncIntent: 'agenda_sync',
       text: 'Please reconcile your current work state.',
       taskRefs: [{ teamName: 'team-a', taskId: 'task-1', displayId: '11111111' }],
     },
@@ -73,6 +74,9 @@ describe('TeamInboxMemberWorkSyncNudgeSink', () => {
       summary: 'Work sync check',
       source: 'system_notification',
       messageKind: 'member_work_sync_nudge',
+      workSyncIntent: 'agenda_sync',
+      workSyncIntentKey: undefined,
+      workSyncReviewRequestEventIds: undefined,
     });
   });
 

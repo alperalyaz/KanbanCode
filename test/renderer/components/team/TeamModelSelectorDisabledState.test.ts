@@ -300,7 +300,7 @@ describe('TeamModelSelector disabled Codex models', () => {
       text.includes('anthropic/claude-sonnet-4.6')
     );
     const testedIndex = buttonTexts.findIndex((text) => text.includes('mistralai/codestral-2508'));
-    const neutralIndex = buttonTexts.findIndex((text) => text.includes('big-pickle'));
+    const recommendedIndex = buttonTexts.findIndex((text) => text.includes('big-pickle'));
     const limitedIndex = buttonTexts.findIndex((text) => text.includes('minimax-m2.5-free'));
     const notRecommendedIndex = buttonTexts.findIndex((text) =>
       text.includes('openai/gpt-oss-20b:free')
@@ -309,13 +309,232 @@ describe('TeamModelSelector disabled Codex models', () => {
       text.includes('qwen/qwen3-coder-plus')
     );
     expect(sonnetIndex).toBeGreaterThanOrEqual(0);
+    expect(recommendedIndex).toBeGreaterThanOrEqual(0);
+    expect(limitedIndex).toBeGreaterThanOrEqual(0);
     expect(testedIndex).toBeGreaterThanOrEqual(0);
-    expect(limitedIndex).toBeGreaterThan(testedIndex);
-    expect(neutralIndex).toBeGreaterThan(limitedIndex);
-    expect(unavailableIndex).toBeGreaterThan(neutralIndex);
+    expect(limitedIndex).toBeGreaterThan(recommendedIndex);
+    expect(testedIndex).toBeGreaterThan(recommendedIndex);
+    expect(unavailableIndex).toBeGreaterThan(limitedIndex);
     expect(notRecommendedIndex).toBeGreaterThan(unavailableIndex);
 
-    expect(host.textContent).not.toContain('Recommended only');
+    expect(host.textContent).toContain('Recommended only');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('shows short-lived OpenCode preflight failures as unavailable model tiles', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = {
+      flavor: 'agent_teams_orchestrator',
+      providers: [
+        {
+          providerId: 'opencode',
+          authMethod: 'opencode_managed',
+          backend: {
+            kind: 'opencode-cli',
+            label: 'OpenCode CLI',
+            endpointLabel: 'opencode',
+          },
+          authenticated: true,
+          supported: true,
+          capabilities: {
+            teamLaunch: true,
+          },
+          models: ['openai/gpt-5.4', 'opencode/big-pickle'],
+          modelVerificationState: 'idle',
+          modelAvailability: [],
+        },
+      ],
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onValueChange = vi.fn();
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'opencode',
+          onProviderChange: () => undefined,
+          value: '',
+          onValueChange,
+          modelUnavailableReasonByValue: {
+            'openai/gpt-5.4': 'OpenCode provider authentication failed',
+          },
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const unavailableButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('GPT-5.4')
+    );
+    expect(unavailableButton).not.toBeNull();
+    expect(unavailableButton?.getAttribute('aria-disabled')).toBe('true');
+    expect(unavailableButton?.textContent).toContain('Unavailable');
+    expect(unavailableButton?.getAttribute('title')).toContain(
+      'OpenCode provider authentication failed'
+    );
+
+    await act(async () => {
+      unavailableButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(onValueChange).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('shows short-lived OpenCode preflight notes as selectable issue tiles', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = {
+      flavor: 'agent_teams_orchestrator',
+      providers: [
+        {
+          providerId: 'opencode',
+          authMethod: 'opencode_managed',
+          backend: {
+            kind: 'opencode-cli',
+            label: 'OpenCode CLI',
+            endpointLabel: 'opencode',
+          },
+          authenticated: true,
+          supported: true,
+          capabilities: {
+            teamLaunch: true,
+          },
+          models: ['openai/gpt-5.4', 'opencode/big-pickle'],
+          modelVerificationState: 'idle',
+          modelAvailability: [],
+        },
+      ],
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onValueChange = vi.fn();
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'opencode',
+          onProviderChange: () => undefined,
+          value: '',
+          onValueChange,
+          modelIssueReasonByValue: {
+            'openai/gpt-5.4': 'Model verification timed out',
+          },
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const issueButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('GPT-5.4')
+    );
+    expect(issueButton).not.toBeNull();
+    expect(issueButton?.getAttribute('aria-disabled')).toBe('false');
+    expect(issueButton?.textContent).toContain('Issue');
+    expect(issueButton?.getAttribute('title')).toContain('Model verification timed out');
+
+    await act(async () => {
+      issueButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(onValueChange).toHaveBeenCalledWith('openai/gpt-5.4');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('dynamically disables OpenCode openai routes when OpenAI auth is invalid', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = {
+      flavor: 'agent_teams_orchestrator',
+      providers: [
+        {
+          providerId: 'opencode',
+          authMethod: 'opencode_managed',
+          backend: {
+            kind: 'opencode-cli',
+            label: 'OpenCode CLI',
+            endpointLabel: 'opencode',
+          },
+          authenticated: true,
+          supported: true,
+          capabilities: {
+            teamLaunch: true,
+          },
+          statusMessage: 'OpenAI token invalid',
+          detailMessage: 'OpenAI token refresh failed: 401',
+          models: ['openai/gpt-5.4', 'opencode/big-pickle'],
+          availableBackends: [
+            {
+              id: 'openai',
+              label: 'OpenAI',
+              description: 'OpenAI route',
+              selectable: false,
+              recommended: false,
+              available: false,
+              state: 'authentication-required',
+              statusMessage: 'Authentication required',
+              detailMessage: 'Token refresh failed: 401',
+            },
+          ],
+          modelVerificationState: 'idle',
+          modelAvailability: [],
+        },
+      ],
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onValueChange = vi.fn();
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'opencode',
+          onProviderChange: () => undefined,
+          value: '',
+          onValueChange,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const openAiButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('GPT-5.4')
+    );
+    const bigPickleButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('big-pickle')
+    );
+
+    expect(openAiButton).not.toBeNull();
+    expect(openAiButton?.getAttribute('aria-disabled')).toBe('true');
+    expect(openAiButton?.textContent).toContain('Unavailable');
+    expect(bigPickleButton).not.toBeNull();
+    expect(bigPickleButton?.getAttribute('aria-disabled')).toBe('false');
+
+    await act(async () => {
+      openAiButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(onValueChange).not.toHaveBeenCalled();
 
     await act(async () => {
       root.unmount();
@@ -840,13 +1059,15 @@ describe('TeamModelSelector disabled Codex models', () => {
     const modelButtons = Array.from(host.querySelectorAll('button')).map(
       (button) => button.textContent?.trim() ?? ''
     );
+    const hasModelButtonStartingWith = (label: string): boolean =>
+      modelButtons.some((text) => text.startsWith(label));
 
-    expect(modelButtons.some((text) => text.startsWith('Default'))).toBe(true);
-    expect(modelButtons).toContain('Opus 4.8');
-    expect(modelButtons).toContain('Opus 4.6');
-    expect(modelButtons).toContain('Sonnet 4.7');
-    expect(modelButtons).toContain('Haiku 4.6');
-    expect(modelButtons).not.toContain('Opus 4.8 (1M)');
+    expect(hasModelButtonStartingWith('Default')).toBe(true);
+    expect(hasModelButtonStartingWith('Opus 4.8')).toBe(true);
+    expect(hasModelButtonStartingWith('Opus 4.6')).toBe(true);
+    expect(hasModelButtonStartingWith('Sonnet 4.7')).toBe(true);
+    expect(hasModelButtonStartingWith('Haiku 4.6')).toBe(true);
+    expect(hasModelButtonStartingWith('Opus 4.8 (1M)')).toBe(false);
 
     await act(async () => {
       root.unmount();
@@ -975,10 +1196,10 @@ describe('TeamModelSelector disabled Codex models', () => {
           onValueChange: () => undefined,
           providerDisabledReasonById: {
             opencode:
-              'OpenCode is teammate-only in this phase. Use Anthropic, Codex, or Gemini as the team lead, then add OpenCode as a teammate.',
+              'OpenCode team launch is available for normal teams, but scheduled one-shot prompts still run through claude -p. Choose Anthropic, Codex, or Gemini for one-shot schedules.',
           },
           providerDisabledBadgeLabelById: {
-            opencode: 'side lane',
+            opencode: 'team only',
           },
         })
       );
@@ -990,9 +1211,9 @@ describe('TeamModelSelector disabled Codex models', () => {
     );
     expect(openCodeButton?.hasAttribute('disabled')).toBe(true);
     expect(openCodeButton?.getAttribute('title')).toBe(
-      'OpenCode is teammate-only in this phase. Use Anthropic, Codex, or Gemini as the team lead, then add OpenCode as a teammate.'
+      'OpenCode team launch is available for normal teams, but scheduled one-shot prompts still run through claude -p. Choose Anthropic, Codex, or Gemini for one-shot schedules.'
     );
-    expect(openCodeButton?.textContent).toContain('side lane');
+    expect(openCodeButton?.textContent).toContain('team only');
 
     await act(async () => {
       openCodeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));

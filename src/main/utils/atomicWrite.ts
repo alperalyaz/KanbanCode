@@ -34,13 +34,13 @@ async function renameWithRetry(src: string, dest: string): Promise<void> {
  * Async atomic write: write tmp file then rename over target.
  * Uses best-effort fsync and EXDEV/EPERM fallback for safety.
  */
-export async function atomicWriteAsync(targetPath: string, data: string): Promise<void> {
+export async function atomicWriteAsync(targetPath: string, data: string | Buffer): Promise<void> {
   const dir = path.dirname(targetPath);
   const tmpPath = path.join(dir, `.tmp.${randomUUID()}`);
 
   try {
     await fs.promises.mkdir(dir, { recursive: true });
-    await fs.promises.writeFile(tmpPath, data, 'utf8');
+    await fs.promises.writeFile(tmpPath, data, typeof data === 'string' ? 'utf8' : undefined);
 
     let fd: fs.promises.FileHandle | null = null;
     try {

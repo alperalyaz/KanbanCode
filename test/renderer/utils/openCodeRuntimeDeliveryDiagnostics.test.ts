@@ -1,8 +1,82 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildOpenCodeRuntimeDeliveryDiagnostics } from '../../../src/renderer/utils/openCodeRuntimeDeliveryDiagnostics';
+import {
+  buildOpenCodeRuntimeDeliveryDiagnostics,
+  shouldClearPendingReplyForOpenCodeRuntimeDelivery,
+} from '../../../src/renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 
 describe('openCodeRuntimeDeliveryDiagnostics', () => {
+  it('honors user-visible checking impact over raw terminal delivery facts', () => {
+    const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
+      deliveredToInbox: true,
+      messageId: 'msg-empty',
+      runtimeDelivery: {
+        providerId: 'opencode',
+        attempted: true,
+        delivered: false,
+        responsePending: false,
+        responseState: 'empty_assistant_turn',
+        ledgerStatus: 'failed_terminal',
+        reason: 'empty_assistant_turn',
+        diagnostics: ['empty_assistant_turn'],
+        userVisibleImpact: {
+          state: 'checking',
+          reasonCode: 'backend_error',
+          message: 'empty_assistant_turn',
+          nextReviewAt: '2026-05-09T12:00:00.000Z',
+        },
+      },
+    });
+
+    expect(diagnostics.warning).toBe(
+      'OpenCode delivery is still being checked. Message was saved and will be observed before retry if needed.'
+    );
+    expect(diagnostics.debugDetails).toMatchObject({
+      messageId: 'msg-empty',
+      statusMessageId: 'msg-empty',
+      userVisibleState: 'checking',
+      userVisibleNextReviewAt: '2026-05-09T12:00:00.000Z',
+    });
+  });
+
+  it('honors user-visible none impact over raw terminal delivery facts', () => {
+    const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
+      deliveredToInbox: true,
+      messageId: 'msg-proven',
+      runtimeDelivery: {
+        providerId: 'opencode',
+        attempted: true,
+        delivered: false,
+        responsePending: false,
+        responseState: 'empty_assistant_turn',
+        ledgerStatus: 'failed_terminal',
+        reason: 'empty_assistant_turn',
+        diagnostics: ['empty_assistant_turn'],
+        userVisibleImpact: {
+          state: 'none',
+        },
+      },
+    });
+
+    expect(diagnostics).toEqual({ warning: null, debugDetails: null });
+  });
+
+  it('clears pending reply when user-visible none impact overrides raw pending facts', () => {
+    expect(
+      shouldClearPendingReplyForOpenCodeRuntimeDelivery({
+        providerId: 'opencode',
+        attempted: true,
+        delivered: true,
+        responsePending: true,
+        responseState: 'responded_non_visible_tool',
+        ledgerStatus: 'responded',
+        userVisibleImpact: {
+          state: 'none',
+        },
+      })
+    ).toBe(true);
+  });
+
   it('surfaces terminal empty assistant turn in the compact failed warning', () => {
     const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
       deliveredToInbox: true,
@@ -96,6 +170,78 @@ describe('openCodeRuntimeDeliveryDiagnostics', () => {
 
     expect(diagnostics.warning).toBe(
       'OpenCode runtime delivery failed. Message was saved to inbox, but live delivery did not complete. Reason: OpenCode used tools, but did not create a visible reply or task progress proof.'
+    );
+  });
+
+  it('surfaces missing taskRefs proof as a readable failure', () => {
+    const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
+      deliveredToInbox: true,
+      messageId: 'msg-taskrefs-required',
+      runtimeDelivery: {
+        providerId: 'opencode',
+        attempted: true,
+        delivered: false,
+        responsePending: false,
+        responseState: 'responded_visible_message',
+        ledgerStatus: 'failed_terminal',
+        reason: 'visible_reply_missing_task_refs',
+        diagnostics: ['visible_reply_missing_task_refs'],
+      },
+    });
+
+    expect(diagnostics.warning).toBe(
+      'OpenCode runtime delivery failed. Message was saved to inbox, but live delivery did not complete. Reason: OpenCode created a reply without the required taskRefs metadata.'
+    );
+  });
+
+  it('surfaces unsupported OpenCode attachment models as an actionable failure', () => {
+    const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
+      deliveredToInbox: true,
+      messageId: 'msg-unsupported-attachment-model',
+      runtimeDelivery: {
+        providerId: 'opencode',
+        attempted: true,
+        delivered: false,
+        responsePending: false,
+        reason: 'attachment_model_unsupported',
+        diagnostics: [
+          'opencode_attachment_delivery_prepare_failed: This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.',
+        ],
+        userVisibleImpact: {
+          state: 'error',
+          reasonCode: 'backend_error',
+          message:
+            'This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.',
+        },
+      },
+    });
+
+    expect(diagnostics.warning).toBe(
+      'OpenCode attachment was not sent. Message was saved to inbox, but live delivery cannot include this attachment. Reason: This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.'
+    );
+    expect(diagnostics.debugDetails).toMatchObject({
+      reason: 'attachment_model_unsupported',
+      userVisibleMessage:
+        'This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.',
+    });
+  });
+
+  it('maps legacy unsupported attachment model codes to an actionable failure', () => {
+    const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
+      deliveredToInbox: true,
+      messageId: 'msg-legacy-unsupported-attachment-model',
+      runtimeDelivery: {
+        providerId: 'opencode',
+        attempted: true,
+        delivered: false,
+        responsePending: false,
+        reason: 'attachment_model_unsupported',
+        diagnostics: ['attachment_model_unsupported'],
+      },
+    });
+
+    expect(diagnostics.warning).toBe(
+      'OpenCode attachment was not sent. Message was saved to inbox, but live delivery cannot include this attachment. Reason: This OpenCode model is not verified for image attachments. Choose a vision-capable model or remove the image.'
     );
   });
 });

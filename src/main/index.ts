@@ -18,6 +18,8 @@ process.env.UV_THREADPOOL_SIZE ??= '16';
 
 // Keep userData stable before any integration can initialize Electron storage.
 // Sentry must stay near the top to capture early errors after storage migration.
+// eslint-disable-next-line simple-import-sort/imports -- userData migration must run before Sentry initializes Electron storage.
+import { earlyElectronUserDataMigrationResult } from './bootstrapUserDataMigration';
 import './sentry';
 
 import {
@@ -30,6 +32,11 @@ import {
   type CodexModelCatalogFeatureFacade,
   createCodexModelCatalogFeature,
 } from '@features/codex-model-catalog/main';
+import {
+  createMemberLogStreamFeature,
+  registerMemberLogStreamIpc,
+  removeMemberLogStreamIpc,
+} from '@features/member-log-stream/main';
 import {
   buildMemberWorkSyncRuntimeTurnSettledEnvironment,
   createMemberWorkSyncFeature,
@@ -49,6 +56,7 @@ import {
   removeRuntimeProviderManagementIpc,
   type RuntimeProviderManagementFeatureFacade,
 } from '@features/runtime-provider-management/main';
+import { ClaudeMultimodelBridgeService } from '@main/services/runtime/ClaudeMultimodelBridgeService';
 import { applyOpenCodeAutoUpdatePolicy } from '@main/services/runtime/openCodeAutoUpdatePolicy';
 import { providerConnectionService } from '@main/services/runtime/ProviderConnectionService';
 import { JsonScheduleRepository } from '@main/services/schedule/JsonScheduleRepository';
@@ -69,8 +77,9 @@ import {
 } from '@main/services/team/TeamMcpConfigBuilder';
 import { TeamTranscriptProjectResolver } from '@main/services/team/TeamTranscriptProjectResolver';
 import { killTrackedCliProcesses } from '@main/utils/childProcess';
-import { resolveInteractiveShellEnv } from '@main/utils/shellEnv';
 import {
+  APP_STARTUP_GET_STATUS,
+  APP_STARTUP_PROGRESS,
   CONTEXT_CHANGED,
   SCHEDULE_CHANGE,
   SKILLS_CHANGED,
@@ -91,13 +100,16 @@ import {
 import { shouldSuppressDesktopNotificationForInboxText } from '@shared/utils/idleNotificationSemantics';
 import { parseInboxJson } from '@shared/utils/inboxNoise';
 import { createLogger } from '@shared/utils/logger';
+import { isReviewPickupEscalationMessage } from '@shared/utils/teamAutomationMessages';
 import { isTeamInternalControlMessageEnvelope } from '@shared/utils/teamInternalControlMessages';
+import { createHash } from 'crypto';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
 import { cleanupEditorState, setEditorMainWindow } from './ipc/editor';
 import { initializeIpcHandlers, removeIpcHandlers } from './ipc/handlers';
+import { registerRendererLogHandlers } from './ipc/rendererLogs';
 import { setReviewMainWindow } from './ipc/review';
 import { setTmuxMainWindow } from './ipc/tmux';
 import {
@@ -160,7 +172,6 @@ import {
   markRendererUnavailable,
   safeSendToRenderer,
 } from './utils/safeWebContentsSend';
-import { earlyElectronUserDataMigrationResult } from './bootstrapUserDataMigration';
 import { syncTelemetryFlag } from './sentry';
 import {
   ActiveTeamRegistry,
@@ -203,7 +214,7 @@ import {
 } from './services';
 
 import type { FileChangeEvent } from '@main/types';
-import type { TeamChangeEvent } from '@shared/types';
+import type { AppStartupStatus, AppStartupStep, TeamChangeEvent } from '@shared/types';
 
 const logger = createLogger('App');
 let openCodeLifecycleBridge: OpenCodeReadinessBridge | null = null;
@@ -214,6 +225,13 @@ if (
 ) {
   logger.info(
     `Migrated Electron userData from ${earlyElectronUserDataMigrationResult.legacyPath} to ${earlyElectronUserDataMigrationResult.currentPath}`
+  );
+} else if (
+  earlyElectronUserDataMigrationResult.reason === 'legacy-reused' &&
+  earlyElectronUserDataMigrationResult.legacyPath
+) {
+  logger.info(
+    `Reusing legacy Electron userData at ${earlyElectronUserDataMigrationResult.legacyPath}`
   );
 } else if (
   earlyElectronUserDataMigrationResult.fallbackToLegacy &&
@@ -232,6 +250,7 @@ if (process.platform === 'win32') {
 
 // --- Team message notification tracking ---
 const teamInboxReader = new TeamInboxReader();
+const teamInboxWriter = new TeamInboxWriter();
 const sentMessagesStore = new TeamSentMessagesStore();
 /** Track last-seen message count per inbox file to detect new messages. */
 const inboxMessageCounts = new Map<string, number>();
@@ -240,20 +259,92 @@ const sentMessageCounts = new Map<string, number>();
 /** Debounce per-inbox to avoid flooding during batch writes. */
 const inboxNotifyTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const INBOX_NOTIFY_DEBOUNCE_MS = 500;
-/** Messages sent from our UI (user_sent) — suppress notifications for these. */
+/** Messages sent from our UI (user_sent) - suppress notifications for these. */
 const suppressedSources = new Set(['user_sent']);
 
-async function createOpenCodeRuntimeAdapterRegistry(): Promise<TeamRuntimeAdapterRegistry> {
-  const binaryPath = await ClaudeBinaryResolver.resolve();
+function buildMemberWorkSyncReviewPickupEscalationMessageId(input: {
+  teamName: string;
+  memberName: string;
+  reason: string;
+  reviewRequestEventIds?: readonly string[];
+  taskRefs: readonly { taskId: string; displayId?: string }[];
+}): string {
+  const stableKey = JSON.stringify({
+    teamName: input.teamName,
+    memberName: input.memberName.trim().toLowerCase(),
+    reason: input.reason,
+    reviewRequestEventIds: [...new Set(input.reviewRequestEventIds ?? [])].sort(),
+    taskIds: [...new Set(input.taskRefs.map((taskRef) => taskRef.taskId).filter(Boolean))].sort(),
+  });
+  const digest = createHash('sha256').update(stableKey).digest('hex').slice(0, 20);
+  return `member-work-sync-review-pickup-escalation:${digest}`;
+}
+
+function buildMemberWorkSyncReviewPickupEscalationText(input: {
+  memberName: string;
+  reason: string;
+  diagnostics?: readonly string[];
+  taskRefs: readonly { taskId: string; displayId?: string }[];
+}): string {
+  const taskLines = input.taskRefs.length
+    ? input.taskRefs
+        .map((taskRef) => `- ${taskRef.displayId ?? taskRef.taskId.slice(0, 8)}`)
+        .join('\n')
+    : '- No task refs recorded';
+  const reasonText = describeMemberWorkSyncReviewPickupEscalationReason(input.reason);
+  return [
+    'Review pickup needs lead attention.',
+    '',
+    `Reviewer: ${input.memberName}`,
+    reasonText,
+    '',
+    'Tasks:',
+    taskLines,
+    '',
+    'No review_start, review_approve, or review_request_changes was recorded for the current review request.',
+    'Consider reassigning the reviewer or sending a direct instruction.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function describeMemberWorkSyncReviewPickupEscalationReason(reason: string): string {
+  if (reason.startsWith('provider_not_supported:')) {
+    return 'Direct review-pickup wake is not available for this member runtime, so the lead needs to handle the stuck review.';
+  }
+  if (reason === 'review_pickup_already_delivered_still_stuck') {
+    return 'A review-pickup reminder was delivered, but the review is still waiting for a review tool action.';
+  }
+  if (reason === 'review_pickup_delivery_failed_still_stuck') {
+    return 'The review-pickup reminder could not be delivered reliably, and the review is still waiting.';
+  }
+  if (reason.includes('delivery_port_unavailable')) {
+    return 'No reliable review-pickup delivery path is available for this member runtime.';
+  }
+  return 'The current review request is still waiting for explicit review pickup.';
+}
+
+async function createOpenCodeRuntimeAdapterRegistry(
+  reportProgress: (phase: string, message: string) => void = () => undefined
+): Promise<TeamRuntimeAdapterRegistry> {
+  const binaryPath = await ClaudeBinaryResolver.resolve({
+    onProgress: ({ phase, message }) => reportProgress(`runtime-${phase}`, message),
+  });
   if (!binaryPath) {
     logger.warn('[OpenCode] Runtime adapter bridge disabled: orchestrator CLI binary not resolved');
+    reportProgress(
+      'runtime-unavailable',
+      'Runtime not found. Continuing with limited launch support...'
+    );
     openCodeLifecycleBridge = null;
     return new TeamRuntimeAdapterRegistry();
   }
 
+  reportProgress('runtime-environment', 'Preparing runtime environment...');
   const bridgeEnv = applyOpenCodeAutoUpdatePolicy({ ...process.env });
   bridgeEnv.AGENT_TEAMS_MCP_CLAUDE_DIR = getClaudeBasePath();
   try {
+    reportProgress('runtime-work-sync', 'Preparing runtime work sync hooks...');
     const turnSettledEnv = await buildMemberWorkSyncRuntimeTurnSettledEnvironment({
       teamsBasePath: getTeamsBasePath(),
       provider: 'opencode',
@@ -269,7 +360,10 @@ async function createOpenCodeRuntimeAdapterRegistry(): Promise<TeamRuntimeAdapte
     );
   }
   try {
-    const mcpLaunchSpec = await resolveAgentTeamsMcpLaunchSpec();
+    reportProgress('runtime-mcp', 'Resolving Agent Teams MCP server...');
+    const mcpLaunchSpec = await resolveAgentTeamsMcpLaunchSpec({
+      onProgress: ({ phase, message }) => reportProgress(`mcp-${phase}`, message),
+    });
     const mcpEntry = mcpLaunchSpec.args[0];
     if (mcpEntry) {
       bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND = mcpLaunchSpec.command;
@@ -284,6 +378,7 @@ async function createOpenCodeRuntimeAdapterRegistry(): Promise<TeamRuntimeAdapte
     );
   }
 
+  reportProgress('runtime-bridge', 'Preparing OpenCode bridge...');
   const bridgeClient = new OpenCodeBridgeCommandClient({
     binaryPath,
     tempDirectory: join(app.getPath('temp'), 'claude-team-opencode-bridge'),
@@ -474,6 +569,9 @@ async function notifyNewInboxMessages(teamName: string, detail: string): Promise
       // Skip app-owned private bootstrap/control prompts. They are durable runtime proof inputs,
       // not user-visible conversation messages.
       if (isTeamInternalControlMessageEnvelope(msg)) continue;
+      // Skip internal review-pickup escalations. They are control-plane signals to the lead runtime,
+      // not user-facing inbox messages.
+      if (isReviewPickupEscalationMessage(msg)) continue;
       // Skip internal coordination noise (idle_notification, shutdown_*, etc.)
       if (shouldSuppressDesktopNotificationForInboxText(msg.text)) continue;
 
@@ -611,6 +709,11 @@ let teamBackupService: TeamBackupService | null = null;
 let branchStatusService: BranchStatusService | null = null;
 let rendererRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 let rendererRecoveryAttempts = 0;
+let servicesReady = false;
+let rendererDidFinishLoad = false;
+let fileWatcherStartupStarted = false;
+let backgroundStartupTasksStarted = false;
+let appStartupHandlersRegistered = false;
 
 // File watcher event cleanup functions
 let fileChangeCleanup: (() => void) | null = null;
@@ -623,6 +726,24 @@ const startupTimers = new Set<ReturnType<typeof setTimeout>>();
 const SHUTDOWN_STEP_TIMEOUT_MS = 5_000;
 const STARTUP_RECOVERY_DELAY_MS = 10_000;
 const STARTUP_RECOVERY_CONCURRENCY = 1;
+const appStartupStartedAt = Date.now();
+let appStartupSteps: AppStartupStep[] = [
+  {
+    phase: 'boot',
+    message: 'Starting Agent Teams AI...',
+    startedAt: appStartupStartedAt,
+    updatedAt: appStartupStartedAt,
+  },
+];
+let appStartupStatus: AppStartupStatus = {
+  phase: 'boot',
+  message: 'Starting Agent Teams AI...',
+  ready: false,
+  error: null,
+  startedAt: appStartupStartedAt,
+  updatedAt: appStartupStartedAt,
+  steps: appStartupSteps,
+};
 
 function isShutdownStarted(): boolean {
   return shutdownComplete || shutdownPromise !== null;
@@ -638,6 +759,74 @@ function scheduleStartupTask(action: () => void, delayMs: number): void {
   }, delayMs);
   timer.unref?.();
   startupTimers.add(timer);
+}
+
+function registerAppStartupHandlers(): void {
+  if (appStartupHandlersRegistered) {
+    return;
+  }
+  appStartupHandlersRegistered = true;
+  registerRendererLogHandlers(ipcMain);
+  ipcMain.handle(APP_STARTUP_GET_STATUS, () => appStartupStatus);
+}
+
+function cloneStartupSteps(): AppStartupStep[] {
+  return appStartupSteps.map((step) => ({ ...step }));
+}
+
+function updateStartupTimeline(update: Partial<AppStartupStatus>, now: number): void {
+  if (!update.phase && !update.message) {
+    return;
+  }
+
+  const phase = update.phase ?? appStartupStatus.phase;
+  const message = update.message ?? appStartupStatus.message;
+  const current = appStartupSteps[appStartupSteps.length - 1];
+
+  if (current?.phase !== phase) {
+    if (current && !current.finishedAt) {
+      current.finishedAt = now;
+      current.durationMs = now - current.startedAt;
+      current.updatedAt = now;
+    }
+    appStartupSteps.push({
+      phase,
+      message,
+      startedAt: now,
+      updatedAt: now,
+    });
+    if (appStartupSteps.length > 32) {
+      appStartupSteps = appStartupSteps.slice(-32);
+    }
+  } else {
+    current.message = message;
+    current.updatedAt = now;
+  }
+}
+
+function finishCurrentStartupStep(now: number): void {
+  const current = appStartupSteps[appStartupSteps.length - 1];
+  if (!current || current.finishedAt) {
+    return;
+  }
+  current.finishedAt = now;
+  current.durationMs = now - current.startedAt;
+  current.updatedAt = now;
+}
+
+function publishStartupStatus(update: Partial<AppStartupStatus>): void {
+  const now = Date.now();
+  updateStartupTimeline(update, now);
+  if (update.ready === true || update.error) {
+    finishCurrentStartupStep(now);
+  }
+  appStartupStatus = {
+    ...appStartupStatus,
+    ...update,
+    updatedAt: now,
+    steps: cloneStartupSteps(),
+  };
+  safeSendToRenderer(mainWindow, APP_STARTUP_PROGRESS, appStartupStatus);
 }
 
 async function runStartupJobsBounded<T>(
@@ -843,14 +1032,25 @@ function wireFileWatcherEvents(context: ServiceContext): void {
         if (detail === 'config.json') {
           TeamConfigReader.invalidateTeam(teamName);
           getTeamDataWorkerClient().invalidateTeamConfig(teamName);
+          teamDataService?.invalidateTeamRuntimeAdvisories(teamName);
+          getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(teamName);
         } else if (detail === 'team.meta.json' || detail === 'members.meta.json') {
           TeamConfigReader.invalidateListTeamsCache();
           getTeamDataWorkerClient().invalidateTeamConfig(teamName);
+          teamDataService?.invalidateTeamRuntimeAdvisories(teamName);
+          getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(teamName);
         }
       }
 
       if (row.type === 'task') {
         TeamTaskReader.invalidateAllTasksCache();
+        teamDataService?.invalidateTeamRuntimeAdvisories(teamName);
+        getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(teamName);
+      }
+
+      if (row.type === 'member-advisory') {
+        teamDataService?.invalidateTeamRuntimeAdvisories(teamName);
+        getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(teamName);
       }
 
       memberWorkSyncFeature?.noteTeamChange(row as TeamChangeEvent);
@@ -1050,6 +1250,12 @@ function reconfigureLocalContextForClaudeRoot(): void {
  */
 async function initializeServices(): Promise<void> {
   logger.info('Initializing services...');
+  publishStartupStatus({
+    phase: 'services',
+    message: 'Preparing app services...',
+    ready: false,
+    error: null,
+  });
 
   // Initialize SSH connection manager
   sshConnectionManager = new SshConnectionManager();
@@ -1138,6 +1344,13 @@ async function initializeServices(): Promise<void> {
     undefined,
     teamTranscriptSourceLocator
   );
+  const memberLogStreamFeature = createMemberLogStreamFeature({
+    logsFinder: teamMemberLogsFinder,
+    logSourceTracker: teamLogSourceTracker,
+    runtimeBridge: new ClaudeMultimodelBridgeService(),
+    configReader: taskLogConfigReader,
+    logger: createLogger('Feature:MemberLogStream'),
+  });
   const teamMemberRuntimeAdvisoryService = new TeamMemberRuntimeAdvisoryService(
     teamMemberLogsFinder
   );
@@ -1145,12 +1358,23 @@ async function initializeServices(): Promise<void> {
   teamDataService.setMemberRuntimeAdvisoryService(teamMemberRuntimeAdvisoryService);
   teamProvisioningService = new TeamProvisioningService();
   teamProvisioningService.setMemberRuntimeAdvisoryInvalidator((teamName, memberName) => {
-    teamMemberRuntimeAdvisoryService.invalidateMemberAdvisory(teamName, memberName);
+    teamDataService?.invalidateMemberRuntimeAdvisory(teamName, memberName);
+    getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(teamName, memberName);
   });
-  teamProvisioningService.setRuntimeAdapterRegistry(await createOpenCodeRuntimeAdapterRegistry());
-  await cleanupOpenCodeHostsForLifecycle('startup').catch((error: unknown) =>
-    logger.warn(`[OpenCode] Startup host cleanup failed: ${String(error)}`)
+  publishStartupStatus({
+    phase: 'runtime',
+    message: 'Resolving local runtime...',
+  });
+  teamProvisioningService.setRuntimeAdapterRegistry(
+    await createOpenCodeRuntimeAdapterRegistry((phase, message) =>
+      publishStartupStatus({ phase, message })
+    )
   );
+  scheduleStartupTask(() => {
+    void cleanupOpenCodeHostsForLifecycle('startup').catch((error: unknown) =>
+      logger.warn(`[OpenCode] Startup host cleanup failed: ${String(error)}`)
+    );
+  }, STARTUP_RECOVERY_DELAY_MS);
   // Startup GC: remove stale MCP config files from previous sessions (best-effort)
   void new TeamMcpConfigBuilder().gcStaleConfigs();
   void teamDataService
@@ -1247,6 +1471,10 @@ async function initializeServices(): Promise<void> {
   const mcpInstallService = new McpInstallService(mcpAggregator, extensionsRuntimeAdapter);
   const apiKeyService = new ApiKeyService();
   providerConnectionService.setApiKeyService(apiKeyService);
+  publishStartupStatus({
+    phase: 'settings',
+    message: 'Loading secure settings...',
+  });
   await apiKeyService.syncProcessEnv(RUNTIME_MANAGED_API_KEY_ENV_VARS);
   // warmup() and ensureInstalled() are deferred to after window creation
   // (did-finish-load handler) to avoid thread pool contention at startup.
@@ -1265,13 +1493,23 @@ async function initializeServices(): Promise<void> {
       if (event.detail === 'config.json') {
         TeamConfigReader.invalidateTeam(event.teamName);
         getTeamDataWorkerClient().invalidateTeamConfig(event.teamName);
+        teamDataService?.invalidateTeamRuntimeAdvisories(event.teamName);
+        getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(event.teamName);
       } else if (event.detail === 'team.meta.json' || event.detail === 'members.meta.json') {
         TeamConfigReader.invalidateListTeamsCache();
         getTeamDataWorkerClient().invalidateTeamConfig(event.teamName);
+        teamDataService?.invalidateTeamRuntimeAdvisories(event.teamName);
+        getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(event.teamName);
       }
     }
     if (event.type === 'task') {
       TeamTaskReader.invalidateAllTasksCache();
+      teamDataService?.invalidateTeamRuntimeAdvisories(event.teamName);
+      getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(event.teamName);
+    }
+    if (event.type === 'member-advisory') {
+      teamDataService?.invalidateTeamRuntimeAdvisories(event.teamName);
+      getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(event.teamName);
     }
     if (
       teamDataService &&
@@ -1383,6 +1621,108 @@ async function initializeServices(): Promise<void> {
         });
       },
     },
+    reviewPickupDelivery: {
+      canDeliver: (input) =>
+        input.providerId === 'opencode'
+          ? { ok: true }
+          : {
+              ok: false,
+              reason: `provider_not_supported:${input.providerId ?? 'unknown'}`,
+            },
+      deliver: async (input) => {
+        if (input.providerId !== 'opencode') {
+          return {
+            ok: false,
+            reason: 'capability_absent',
+            message: `provider_not_supported:${input.providerId ?? 'unknown'}`,
+          };
+        }
+
+        const relay = await teamProvisioningService.relayOpenCodeMemberInboxMessages(
+          input.teamName,
+          input.memberName,
+          {
+            onlyMessageId: input.messageId,
+            source: 'member-work-sync-review-pickup',
+            deliveryMetadata: {
+              actionMode: input.payload.actionMode,
+              taskRefs: input.payload.taskRefs,
+            },
+          }
+        );
+        const lastDelivery = relay.lastDelivery;
+        const diagnostics = [...(relay.diagnostics ?? []), ...(lastDelivery?.diagnostics ?? [])];
+        if (lastDelivery?.accepted === true && lastDelivery.responsePending === true) {
+          return {
+            ok: true,
+            state: 'prompt_accepted',
+            messageId: input.messageId,
+            diagnostics,
+          };
+        }
+        if (lastDelivery?.delivered && lastDelivery.accepted !== false) {
+          return {
+            ok: true,
+            state: lastDelivery.responsePending ? 'prompt_accepted' : 'response_proven',
+            messageId: input.messageId,
+            diagnostics,
+          };
+        }
+        if (
+          lastDelivery?.reason === 'recipient_is_not_opencode' ||
+          lastDelivery?.reason === 'recipient_removed' ||
+          lastDelivery?.reason === 'opencode_recipient_unavailable'
+        ) {
+          return {
+            ok: false,
+            reason: 'capability_absent',
+            message: lastDelivery.reason,
+            diagnostics,
+          };
+        }
+        if (lastDelivery?.ledgerStatus === 'failed_terminal') {
+          return {
+            ok: false,
+            reason: 'terminal_failure',
+            message: lastDelivery.reason ?? 'opencode_review_pickup_delivery_failed_terminal',
+            diagnostics,
+          };
+        }
+        return {
+          ok: false,
+          reason: 'retryable_failure',
+          message: lastDelivery?.reason ?? 'opencode_review_pickup_delivery_not_confirmed',
+          diagnostics,
+        };
+      },
+    },
+    reviewPickupEscalation: {
+      escalate: async (input) => {
+        const leadName = (await teamDataService.getLeadMemberName(input.teamName)) ?? 'team-lead';
+        const messageId = buildMemberWorkSyncReviewPickupEscalationMessageId(input);
+        const existing = await teamInboxReader.getMessagesFor(input.teamName, leadName);
+        if (existing.some((message) => message.messageId === messageId)) {
+          return;
+        }
+
+        await teamInboxWriter.sendMessage(input.teamName, {
+          member: leadName,
+          from: 'system',
+          to: leadName,
+          messageId,
+          timestamp: input.nowIso,
+          summary: 'Review pickup still pending',
+          text: buildMemberWorkSyncReviewPickupEscalationText(input),
+          taskRefs: input.taskRefs.map((taskRef) => ({
+            taskId: taskRef.taskId,
+            displayId: taskRef.displayId ?? taskRef.taskId.slice(0, 8),
+            teamName: taskRef.teamName ?? input.teamName,
+          })),
+          actionMode: 'do',
+          source: 'system_notification',
+        });
+      },
+    },
     logger: createLogger('Feature:MemberWorkSync'),
   });
   teamProvisioningService.setRuntimeTurnSettledHookSettingsProvider((input) =>
@@ -1427,6 +1767,11 @@ async function initializeServices(): Promise<void> {
 
   // startProcessHealthPolling() is deferred to after window creation
   // (did-finish-load handler) to avoid thread pool contention at startup.
+
+  publishStartupStatus({
+    phase: 'ipc',
+    message: 'Wiring app actions...',
+  });
 
   // Initialize IPC handlers with registry
   initializeIpcHandlers(
@@ -1483,6 +1828,7 @@ async function initializeServices(): Promise<void> {
   registerRecentProjectsIpc(ipcMain, recentProjectsFeature);
   registerRuntimeProviderManagementIpc(ipcMain, runtimeProviderManagementFeature);
   registerMemberWorkSyncIpc(ipcMain, memberWorkSyncFeature);
+  registerMemberLogStreamIpc(ipcMain, memberLogStreamFeature);
 
   // Forward SSH state changes to renderer and HTTP SSE clients
   sshConnectionManager.on('state-change', (status: unknown) => {
@@ -1508,6 +1854,10 @@ async function initializeServices(): Promise<void> {
   }
 
   logger.info('Services initialized successfully');
+  publishStartupStatus({
+    phase: 'readying',
+    message: 'Finishing startup...',
+  });
 }
 
 /**
@@ -1672,6 +2022,7 @@ async function shutdownServices(): Promise<void> {
       removeRecentProjectsIpc(ipcMain);
       removeRuntimeProviderManagementIpc(ipcMain);
       removeMemberWorkSyncIpc(ipcMain);
+      removeMemberLogStreamIpc(ipcMain);
     });
 
     await runShutdownStep('team backup dispose', () => teamBackupService?.dispose());
@@ -1693,6 +2044,85 @@ function syncTrafficLightPosition(win: BrowserWindow): void {
     win.setWindowButtonPosition(position);
   }
   safeSendToRenderer(win, WINDOW_ZOOM_FACTOR_CHANGED_CHANNEL, zoomFactor);
+}
+
+function attachMainWindowToServices(): void {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) {
+    return;
+  }
+
+  notificationManager?.setMainWindow(win);
+  updaterService?.setMainWindow(win);
+  cliInstallerService?.setMainWindow(win);
+  setTmuxMainWindow(win);
+  ptyTerminalService?.setMainWindow(win);
+  teamProvisioningService?.setMainWindow(win);
+  codexAccountFeature?.setMainWindow(win);
+  setEditorMainWindow(win);
+  setReviewMainWindow(win);
+}
+
+function runPostRendererStartupTasks(): void {
+  if (!servicesReady || !rendererDidFinishLoad || !mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  if (!fileWatcherStartupStarted) {
+    fileWatcherStartupStarted = true;
+    // Start file watchers after both the visible window and main services are ready.
+    const activeContext = contextRegistry.getActive();
+    if (process.platform === 'win32') {
+      scheduleStartupTask(() => {
+        if (!fileWatcherStartupStarted || !servicesReady || !rendererDidFinishLoad) {
+          return;
+        }
+        activeContext.startFileWatcher();
+      }, 1500);
+    } else if (!isShutdownStarted()) {
+      activeContext.startFileWatcher();
+    }
+  }
+
+  if (backgroundStartupTasksStarted) {
+    return;
+  }
+  backgroundStartupTasksStarted = true;
+
+  if (!isShutdownStarted()) {
+    scheduleStartupTask(() => void updaterService.checkForUpdates(), 3000);
+    updaterService.startPeriodicCheck(60 * 60 * 1000);
+  }
+
+  scheduleStartupTask(
+    () => {
+      void getTeamFsWorkerClient()
+        .prewarm()
+        .catch((error: unknown) =>
+          logger.debug(
+            `[startup] team-fs-worker prewarm skipped: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          )
+        );
+      void getTeamDataWorkerClient()
+        .prewarm()
+        .catch((error: unknown) =>
+          logger.debug(
+            `[startup] team-data-worker prewarm skipped: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          )
+        );
+    },
+    process.platform === 'win32' ? 2500 : 1000
+  );
+
+  scheduleStartupTask(() => {
+    void teamProvisioningService.warmup();
+    teamDataService.startProcessHealthPolling();
+    void schedulerService?.start();
+  }, 5000);
 }
 
 function scheduleRendererRecovery(win: BrowserWindow): void {
@@ -1737,6 +2167,7 @@ function createWindow(): void {
   if (isShutdownStarted()) {
     return;
   }
+  rendererDidFinishLoad = false;
 
   const isMac = process.platform === 'darwin';
   const isDev = process.env.NODE_ENV === 'development';
@@ -1758,7 +2189,7 @@ function createWindow(): void {
     backgroundColor: '#1a1a1a',
     ...(useNativeTitleBar ? {} : { titleBarStyle: 'hidden' as const }),
     ...(isMac && { trafficLightPosition: getTrafficLightPositionForZoom(1) }),
-    title: 'Agent Teams UI',
+    title: 'Agent Teams AI',
   });
   markRendererUnavailable(mainWindow);
 
@@ -1828,6 +2259,7 @@ function createWindow(): void {
     if (isShutdownStarted()) {
       return;
     }
+    rendererDidFinishLoad = false;
     markRendererUnavailable(mainWindow);
     branchStatusService?.resetAllTracking();
   });
@@ -1852,57 +2284,8 @@ function createWindow(): void {
         }
       }, 0);
       fullscreenSyncTimer.unref?.();
-      // Start file watchers now that the window is visible and responsive.
-      // Deferred from initializeServices() to avoid blocking window creation
-      // with fs.watch() setup (especially slow on Windows with recursive watchers).
-      const activeContext = contextRegistry.getActive();
-      if (process.platform === 'win32') {
-        // On Windows, delay FileWatcher startup to let the renderer complete
-        // its initial IPC calls without UV thread pool contention. Recursive
-        // fs.watch() on NTFS saturates all 4 default UV threads.
-        scheduleStartupTask(() => activeContext.startFileWatcher(), 1500);
-      } else {
-        if (!isShutdownStarted()) {
-          activeContext.startFileWatcher();
-        }
-      }
-
-      if (!isShutdownStarted()) {
-        scheduleStartupTask(() => void updaterService.checkForUpdates(), 3000);
-        updaterService.startPeriodicCheck(60 * 60 * 1000);
-      }
-
-      scheduleStartupTask(
-        () => {
-          void getTeamFsWorkerClient()
-            .prewarm()
-            .catch((error: unknown) =>
-              logger.debug(
-                `[startup] team-fs-worker prewarm skipped: ${
-                  error instanceof Error ? error.message : String(error)
-                }`
-              )
-            );
-          void getTeamDataWorkerClient()
-            .prewarm()
-            .catch((error: unknown) =>
-              logger.debug(
-                `[startup] team-data-worker prewarm skipped: ${
-                  error instanceof Error ? error.message : String(error)
-                }`
-              )
-            );
-        },
-        process.platform === 'win32' ? 2500 : 1000
-      );
-
-      // Defer non-critical startup work to avoid thread pool contention.
-      // The window is now visible and responsive; these run in the background.
-      scheduleStartupTask(() => {
-        void teamProvisioningService.warmup();
-        teamDataService.startProcessHealthPolling();
-        void schedulerService?.start();
-      }, 5000);
+      rendererDidFinishLoad = true;
+      runPostRendererStartupTasks();
     }
   });
 
@@ -2015,34 +2398,16 @@ function createWindow(): void {
       return;
     }
     markRendererUnavailable(mainWindow);
+    rendererDidFinishLoad = false;
+    fileWatcherStartupStarted = false;
     branchStatusService?.resetAllTracking();
-    const activeContext = contextRegistry.getActive();
-    activeContext?.stopFileWatcher();
+    contextRegistry?.getActive()?.stopFileWatcher();
     if (mainWindow) {
       scheduleRendererRecovery(mainWindow);
     }
   });
 
-  // Set main window reference for notification manager and updater
-  if (notificationManager) {
-    notificationManager.setMainWindow(mainWindow);
-  }
-  if (updaterService) {
-    updaterService.setMainWindow(mainWindow);
-  }
-  if (cliInstallerService) {
-    cliInstallerService.setMainWindow(mainWindow);
-  }
-  setTmuxMainWindow(mainWindow);
-  if (ptyTerminalService) {
-    ptyTerminalService.setMainWindow(mainWindow);
-  }
-  if (teamProvisioningService) {
-    teamProvisioningService.setMainWindow(mainWindow);
-  }
-  codexAccountFeature?.setMainWindow(mainWindow);
-  setEditorMainWindow(mainWindow);
-  setReviewMainWindow(mainWindow);
+  attachMainWindowToServices();
 
   logger.info('Main window created');
 }
@@ -2052,18 +2417,14 @@ function createWindow(): void {
  */
 void app.whenReady().then(async () => {
   logger.info('App ready, initializing...');
-
-  // Pre-warm interactive shell env cache (non-blocking).
-  // On macOS, Finder-launched apps get a minimal PATH. This resolves the user's
-  // full shell PATH (nvm, homebrew, .local/bin, etc.) in the background so that
-  // CliInstallerService.getStatus() and other services get cached results instantly.
-  void resolveInteractiveShellEnv();
+  registerAppStartupHandlers();
 
   try {
-    // Initialize services first
-    await initializeServices();
+    publishStartupStatus({
+      phase: 'electron-ready',
+      message: 'Opening window...',
+    });
 
-    // Apply configuration settings
     const config = configManager.getConfig();
 
     // Sync Sentry telemetry opt-in flag from persisted config
@@ -2087,8 +2448,18 @@ void app.whenReady().then(async () => {
       // so we avoid runtime setIcon calls that can fail and block startup.
     }
 
-    // Then create window
     createWindow();
+
+    await initializeServices();
+    servicesReady = true;
+    attachMainWindowToServices();
+    publishStartupStatus({
+      phase: 'ready',
+      message: 'Ready',
+      ready: true,
+      error: null,
+    });
+    runPostRendererStartupTasks();
 
     // Listen for notification click events
     notificationManager.on('notification-clicked', (_error) => {
@@ -2102,6 +2473,12 @@ void app.whenReady().then(async () => {
     });
   } catch (error) {
     logger.error('Startup initialization failed:', error);
+    publishStartupStatus({
+      phase: 'failed',
+      message: 'Startup failed',
+      ready: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
     if (!mainWindow) {
       createWindow();
     }

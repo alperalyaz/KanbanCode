@@ -1,9 +1,14 @@
+import { decideMemberWorkSyncStatus } from '../domain';
+
 import { appendMemberWorkSyncAudit, reasonToAuditEvent } from './MemberWorkSyncAudit';
 import { decideMemberWorkSyncNudgeActivation } from './MemberWorkSyncNudgeActivationPolicy';
 import { finalizeMemberWorkSyncAgenda } from './MemberWorkSyncReconciler';
-import { decideMemberWorkSyncStatus } from '../domain';
 
-import type { MemberWorkSyncOutboxItem, MemberWorkSyncStatus } from '../../contracts';
+import type {
+  MemberWorkSyncAgenda,
+  MemberWorkSyncOutboxItem,
+  MemberWorkSyncStatus,
+} from '../../contracts';
 import type { MemberWorkSyncAuditEventName, MemberWorkSyncUseCaseDeps } from './ports';
 
 const MEMBER_WORK_SYNC_MAX_NUDGES_PER_MEMBER_PER_HOUR = 2;
@@ -50,6 +55,42 @@ function nextRetryAt(item: MemberWorkSyncOutboxItem, nowIso: string): string {
     MEMBER_WORK_SYNC_RETRY_BASE_MINUTES * 2 ** Math.max(0, item.attemptGeneration - 1);
   const cappedMinutes = Math.min(MEMBER_WORK_SYNC_RETRY_MAX_MINUTES, exponentialMinutes);
   return addMinutes(nowIso, cappedMinutes + stableJitterMinutes(item.id, item.attemptGeneration));
+}
+
+function isReviewPickupOutboxItem(item: MemberWorkSyncOutboxItem): boolean {
+  return item.payload.workSyncIntent === 'review_pickup';
+}
+
+function getPayloadReviewRequestEventIds(item: MemberWorkSyncOutboxItem): string[] {
+  return [...new Set(item.payload.workSyncReviewRequestEventIds ?? [])]
+    .filter((id) => id.length > 0)
+    .sort();
+}
+
+function getAgendaReviewPickupRequestEventIds(agenda: MemberWorkSyncAgenda): string[] {
+  return [
+    ...new Set(
+      agenda.items
+        .filter(
+          (item) =>
+            item.kind === 'review' &&
+            item.evidence.reviewObligation === 'review_pickup_required' &&
+            item.evidence.canBypassPhase2 === true &&
+            (item.evidence.reviewDiagnostics?.length ?? 0) === 0
+        )
+        .map((item) => item.evidence.reviewRequestEventId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    ),
+  ].sort();
+}
+
+function reviewPickupRequestIdsStillMatch(
+  item: MemberWorkSyncOutboxItem,
+  agenda: MemberWorkSyncAgenda
+): boolean {
+  const payloadIds = getPayloadReviewRequestEventIds(item);
+  const agendaIds = getAgendaReviewPickupRequestEventIds(agenda);
+  return payloadIds.length > 0 && payloadIds.every((id) => agendaIds.includes(id));
 }
 
 export class MemberWorkSyncNudgeDispatcher {
@@ -113,6 +154,10 @@ export class MemberWorkSyncNudgeDispatcher {
         );
         return 'retryable';
       }
+      if (revalidation.reason.startsWith('review_pickup_delivery_unavailable:')) {
+        await this.markReviewPickupDeliveryUnavailable(item, nowIso, revalidation.reason);
+        return 'superseded';
+      }
       await outbox.markSuperseded({
         teamName: item.teamName,
         id: item.id,
@@ -144,6 +189,15 @@ export class MemberWorkSyncNudgeDispatcher {
         await this.appendDispatchAudit(item, 'nudge_skipped', 'inbox_payload_conflict');
         return 'terminal';
       }
+      if (isReviewPickupOutboxItem(item)) {
+        return await this.deliverReviewPickupNudge(
+          item,
+          inserted.messageId,
+          inserted.inserted,
+          revalidation.providerId,
+          nowIso
+        );
+      }
       await outbox.markDelivered({
         teamName: item.teamName,
         id: item.id,
@@ -171,6 +225,126 @@ export class MemberWorkSyncNudgeDispatcher {
       });
       await this.appendDispatchAudit(item, 'nudge_retryable', String(error));
       return 'retryable';
+    }
+  }
+
+  private async deliverReviewPickupNudge(
+    item: MemberWorkSyncOutboxItem,
+    messageId: string,
+    inserted: boolean,
+    providerId: MemberWorkSyncStatus['providerId'] | undefined,
+    nowIso: string
+  ): Promise<keyof Omit<MemberWorkSyncNudgeDispatchSummary, 'claimed'>> {
+    const outbox = this.deps.outboxStore;
+    const delivery = this.deps.reviewPickupDelivery;
+    if (!outbox || !delivery) {
+      await this.markReviewPickupDeliveryUnavailable(
+        item,
+        nowIso,
+        'review_pickup_delivery_port_unavailable'
+      );
+      return 'superseded';
+    }
+
+    const outcome = await delivery.deliver({
+      teamName: item.teamName,
+      memberName: item.memberName,
+      messageId,
+      ...(providerId ? { providerId } : {}),
+      payload: item.payload,
+      inserted,
+      nowIso,
+    });
+
+    if (outcome.ok) {
+      await outbox.markDelivered({
+        teamName: item.teamName,
+        id: item.id,
+        attemptGeneration: item.attemptGeneration,
+        deliveredMessageId: outcome.messageId,
+        deliveryState: outcome.state,
+        deliveryDiagnostics: outcome.diagnostics,
+        nowIso,
+      });
+      await this.appendDispatchAudit(item, 'review_pickup_member_nudge_delivered', outcome.state);
+      await this.appendDispatchAudit(item, 'nudge_delivered', `review_pickup:${outcome.state}`);
+      return 'delivered';
+    }
+
+    if (outcome.reason === 'retryable_failure') {
+      await outbox.markFailed({
+        teamName: item.teamName,
+        id: item.id,
+        attemptGeneration: item.attemptGeneration,
+        error: outcome.message,
+        retryable: true,
+        nowIso,
+        nextAttemptAt: outcome.retryAfterIso ?? nextRetryAt(item, nowIso),
+      });
+      await this.appendDispatchAudit(item, 'review_pickup_wake_failed_retryable', outcome.message);
+      return 'retryable';
+    }
+
+    if (outcome.reason === 'capability_absent') {
+      await this.markReviewPickupDeliveryUnavailable(item, nowIso, outcome.message);
+      return 'superseded';
+    }
+
+    await outbox.markFailed({
+      teamName: item.teamName,
+      id: item.id,
+      attemptGeneration: item.attemptGeneration,
+      error: outcome.message,
+      retryable: false,
+      nowIso,
+    });
+    await this.appendDispatchAudit(item, 'nudge_skipped', outcome.message);
+    return 'terminal';
+  }
+
+  private async markReviewPickupDeliveryUnavailable(
+    item: MemberWorkSyncOutboxItem,
+    nowIso: string,
+    reason: string
+  ): Promise<void> {
+    await this.deps.outboxStore?.markSuperseded({
+      teamName: item.teamName,
+      id: item.id,
+      reason,
+      nowIso,
+    });
+    await this.appendDispatchAudit(item, 'review_pickup_delivery_unavailable', reason);
+    await this.appendDispatchAudit(item, 'review_pickup_escalated', reason);
+    await this.notifyReviewPickupEscalation(item, nowIso, reason);
+  }
+
+  private async notifyReviewPickupEscalation(
+    item: MemberWorkSyncOutboxItem,
+    nowIso: string,
+    reason: string
+  ): Promise<void> {
+    const escalation = this.deps.reviewPickupEscalation;
+    if (!escalation) {
+      return;
+    }
+
+    try {
+      await escalation.escalate({
+        teamName: item.teamName,
+        memberName: item.memberName,
+        reason,
+        nowIso,
+        agendaFingerprint: item.agendaFingerprint,
+        reviewRequestEventIds: getPayloadReviewRequestEventIds(item),
+        taskRefs: item.payload.taskRefs,
+      });
+    } catch (error) {
+      this.deps.logger?.warn('member work sync review pickup escalation failed', {
+        teamName: item.teamName,
+        memberName: item.memberName,
+        reason,
+        error: String(error),
+      });
     }
   }
 
@@ -247,11 +421,10 @@ export class MemberWorkSyncNudgeDispatcher {
       diagnostics: [...agenda.diagnostics, ...decision.diagnostics],
       ...(providerId ? { providerId } : {}),
     };
-    if (
-      decision.state !== 'needs_sync' ||
-      agenda.items.length === 0 ||
-      agenda.fingerprint !== item.agendaFingerprint
-    ) {
+    const agendaStillMatches =
+      agenda.fingerprint === item.agendaFingerprint ||
+      (isReviewPickupOutboxItem(item) && reviewPickupRequestIdsStillMatch(item, agenda));
+    if (decision.state !== 'needs_sync' || agenda.items.length === 0 || !agendaStillMatches) {
       return { ok: false, reason: 'status_no_longer_matches_outbox', retryable: false };
     }
 
@@ -264,7 +437,30 @@ export class MemberWorkSyncNudgeDispatcher {
       metrics,
     });
     if (!activation.active) {
-      return { ok: false, reason: 'phase2_not_ready', retryable: true };
+      const reason =
+        activation.reason === 'blocking_metrics'
+          ? 'blocking_metrics'
+          : activation.reason === 'status_not_nudgeable'
+            ? 'status_not_nudgeable'
+            : 'phase2_not_ready';
+      return { ok: false, reason, retryable: true };
+    }
+
+    if (isReviewPickupOutboxItem(item)) {
+      const capability = await this.deps.reviewPickupDelivery?.canDeliver({
+        teamName: item.teamName,
+        memberName: item.memberName,
+        providerId,
+      });
+      if (!capability?.ok) {
+        return {
+          ok: false,
+          reason: `review_pickup_delivery_unavailable:${
+            capability?.reason ?? 'delivery_port_unavailable'
+          }`,
+          retryable: false,
+        };
+      }
     }
 
     const recentDelivered = await this.deps.outboxStore?.countRecentDelivered({
@@ -288,6 +484,8 @@ export class MemberWorkSyncNudgeDispatcher {
       teamName: item.teamName,
       memberName: item.memberName,
       nowIso,
+      workSyncIntent: item.payload.workSyncIntent,
+      taskRefs: item.payload.taskRefs,
     });
     if (busy?.busy) {
       return {

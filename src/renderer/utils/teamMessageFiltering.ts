@@ -4,7 +4,10 @@ import {
 } from '@renderer/utils/bootstrapPromptSanitizer';
 import { shouldKeepIdleMessageInActivityWhenNoiseHidden } from '@renderer/utils/idleNotificationSemantics';
 import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
-import { isTaskStallRemediationMessage } from '@shared/utils/teamAutomationMessages';
+import {
+  isReviewPickupEscalationMessage,
+  isTaskStallRemediationMessage,
+} from '@shared/utils/teamAutomationMessages';
 import { isTeamInternalControlMessageEnvelope } from '@shared/utils/teamInternalControlMessages';
 
 import type { InboxMessage } from '@shared/types';
@@ -133,6 +136,7 @@ export function filterTeamMessages(
     (m) =>
       m.messageKind !== 'task_comment_notification' &&
       (includeAutomationEvents || !isTaskStallRemediationMessage(m)) &&
+      !isReviewPickupEscalationMessage(m) &&
       !isTeamInternalControlMessageEnvelope(m)
   );
   if (timeWindow) {

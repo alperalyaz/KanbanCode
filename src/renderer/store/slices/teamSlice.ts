@@ -1,6 +1,9 @@
 import { api } from '@renderer/api';
 import { mergeTeamMessages } from '@renderer/utils/mergeTeamMessages';
-import { buildOpenCodeRuntimeDeliveryDiagnostics } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
+import {
+  buildOpenCodeRuntimeDeliveryDiagnostics,
+  isOpenCodeRuntimeDeliveryHardUxFailure,
+} from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import {
   buildTaskChangePresenceKey,
@@ -2239,7 +2242,57 @@ function normalizeTeamGraphSlotAssignmentsForVisibleOwners(
     }
     normalizedAssignments[stableOwnerId] = assignment;
   }
-  return normalizedAssignments;
+  return normalizeLegacySixRowOrbitAssignments(normalizedAssignments, visibleOwnerIds);
+}
+
+function normalizeLegacySixRowOrbitAssignments(
+  assignments: TeamGraphSlotAssignments,
+  visibleOwnerIds: readonly string[]
+): TeamGraphSlotAssignments {
+  if (visibleOwnerIds.length !== 6) {
+    return assignments;
+  }
+
+  const visibleAssignments = visibleOwnerIds.flatMap((stableOwnerId) => {
+    const assignment = assignments[stableOwnerId];
+    return assignment ? [assignment] : [];
+  });
+  const hasLegacyTwoRowBottomMarker = visibleAssignments.some(
+    (assignment) => assignment.ringIndex === 1 && assignment.sectorIndex === 2
+  );
+  let changed = false;
+  const normalizedAssignments: TeamGraphSlotAssignments = { ...assignments };
+
+  for (const stableOwnerId of visibleOwnerIds) {
+    const assignment = normalizedAssignments[stableOwnerId];
+    if (!assignment) {
+      continue;
+    }
+
+    if (
+      hasLegacyTwoRowBottomMarker &&
+      assignment.ringIndex === 1 &&
+      assignment.sectorIndex >= 0 &&
+      assignment.sectorIndex < 3
+    ) {
+      normalizedAssignments[stableOwnerId] = {
+        ringIndex: 2,
+        sectorIndex: assignment.sectorIndex,
+      };
+      changed = true;
+      continue;
+    }
+
+    if (assignment.ringIndex === 0 && assignment.sectorIndex >= 3 && assignment.sectorIndex < 6) {
+      normalizedAssignments[stableOwnerId] = {
+        ringIndex: 2,
+        sectorIndex: assignment.sectorIndex - 3,
+      };
+      changed = true;
+    }
+  }
+
+  return changed ? normalizedAssignments : assignments;
 }
 
 function pruneTeamGraphSlotAssignmentsForVisibleOwners(
@@ -2375,7 +2428,10 @@ export interface TeamSlice {
   sendMessageDebugDetails: OpenCodeRuntimeDeliveryDebugDetails | null;
   lastSendMessageResult: SendMessageResult | null;
   clearSendMessageRuntimeDiagnostics: (messageId?: string | null) => void;
-  refreshSendMessageRuntimeDeliveryStatus: (teamName: string, messageId: string) => Promise<void>;
+  refreshSendMessageRuntimeDeliveryStatus: (
+    teamName: string,
+    input: string | { messageId: string; statusMessageId?: string | null }
+  ) => Promise<void>;
   reviewActionError: string | null;
   provisioningRuns: Record<string, TeamProvisioningProgress>;
   /** Synthetic TeamSummary snapshots for teams currently being provisioned (before config.json exists). */
@@ -4444,8 +4500,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       const result = await unwrapIpc('team:sendMessage', () =>
         api.teams.sendMessage(teamName, request)
       );
-      const runtimeDeliveryFailed =
-        result.runtimeDelivery?.attempted === true && result.runtimeDelivery.delivered === false;
+      const runtimeDeliveryFailed = isOpenCodeRuntimeDeliveryHardUxFailure(result.runtimeDelivery);
       const runtimeDeliveryDiagnostics = buildOpenCodeRuntimeDeliveryDiagnostics(result);
       const optimisticMessage: InboxMessage = {
         from: request.from ?? 'user',
@@ -4513,14 +4568,32 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     });
   },
 
-  refreshSendMessageRuntimeDeliveryStatus: async (teamName: string, messageId: string) => {
-    const normalizedMessageId = messageId.trim();
+  refreshSendMessageRuntimeDeliveryStatus: async (teamName, input) => {
+    const normalizedMessageId = typeof input === 'string' ? input.trim() : input.messageId.trim();
+    const statusMessageId =
+      typeof input === 'string'
+        ? normalizedMessageId
+        : input.statusMessageId?.trim() || normalizedMessageId;
     if (!normalizedMessageId) return;
     if (get().sendMessageDebugDetails?.messageId !== normalizedMessageId) return;
-    const status = await unwrapIpc('team:getOpenCodeRuntimeDeliveryStatus', () =>
-      api.teams.getOpenCodeRuntimeDeliveryStatus(teamName, normalizedMessageId)
+    let status = await unwrapIpc('team:getOpenCodeRuntimeDeliveryStatus', () =>
+      api.teams.getOpenCodeRuntimeDeliveryStatus(teamName, statusMessageId)
     );
     if (!status) return;
+    if (statusMessageId !== normalizedMessageId) {
+      const blockerUserVisibleState = status.userVisibleImpact?.state;
+      const blockerStillChecking =
+        blockerUserVisibleState !== undefined
+          ? blockerUserVisibleState === 'checking'
+          : status.responsePending === true;
+      if (!blockerStillChecking) {
+        const ownStatus = await unwrapIpc('team:getOpenCodeRuntimeDeliveryStatus', () =>
+          api.teams.getOpenCodeRuntimeDeliveryStatus(teamName, normalizedMessageId)
+        );
+        if (!ownStatus) return;
+        status = ownStatus;
+      }
+    }
     const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
       deliveredToInbox: true,
       messageId: normalizedMessageId,

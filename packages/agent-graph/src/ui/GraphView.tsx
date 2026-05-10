@@ -82,6 +82,7 @@ export interface GraphViewProps {
       leadNodeId: string
     ) => { x: number; y: number; scale: number; visible: boolean } | null;
     getActivityWorldRect: (ownerNodeId: string) => StableRect | null;
+    getLogWorldRect: (ownerNodeId: string) => StableRect | null;
     getTransientHandoffSnapshot: (options?: {
       focusNodeIds?: ReadonlySet<string> | null;
       focusEdgeIds?: ReadonlySet<string> | null;
@@ -123,6 +124,7 @@ export function GraphView({
   const [interactionLocked, setInteractionLocked] = useState(false);
   const [filters, setFilters] = useState<GraphFilterState>({
     showActivity: config?.showActivity ?? true,
+    showLogs: config?.showLogs ?? config?.showActivity ?? true,
     showTasks: config?.showTasks ?? true,
     showProcesses: config?.showProcesses ?? true,
     showEdges: true,
@@ -137,9 +139,10 @@ export function GraphView({
         ? {
             ...data.layout,
             showActivity: filters.showActivity,
+            showLogs: filters.showLogs,
           }
         : data.layout,
-    [data.layout, filters.showActivity]
+    [data.layout, filters.showActivity, filters.showLogs]
   );
 
   // Ref mirror of selectedNodeId — read by RAF loop to avoid recreating animate on selection change
@@ -293,6 +296,10 @@ export function GraphView({
   const getCameraZoom = useCallback(() => cameraRef.current.transformRef.current.zoom, []);
   const getActivityWorldRect = useCallback(
     (ownerNodeId: string) => simulationRef.current.getActivityWorldRect(ownerNodeId),
+    []
+  );
+  const getLogWorldRect = useCallback(
+    (ownerNodeId: string) => simulationRef.current.getLogWorldRect(ownerNodeId),
     []
   );
   const getTransientHandoffSnapshot = useCallback(
@@ -1092,6 +1099,7 @@ export function GraphView({
             filters,
             getLaunchAnchorScreenPlacement,
             getActivityWorldRect,
+            getLogWorldRect,
             getTransientHandoffSnapshot,
             getCameraZoom,
             worldToScreen: camera.worldToScreen,

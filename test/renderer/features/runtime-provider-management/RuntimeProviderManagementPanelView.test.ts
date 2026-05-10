@@ -644,7 +644,7 @@ describe('RuntimeProviderManagementPanelView', () => {
     expect(host.textContent).toContain('Unavailable in OpenCode');
     expect(host.textContent).toContain('Tested');
     expect(host.textContent).toContain('Tested with limits');
-    expect(host.textContent).not.toContain('Recommended only');
+    expect(host.textContent).toContain('Recommended only');
     expect(host.textContent).not.toContain('Set OpenCode default');
     expect(
       Array.from(host.querySelectorAll('button')).some(
@@ -656,35 +656,41 @@ describe('RuntimeProviderManagementPanelView', () => {
     ).not.toBeNull();
     const connectedBadge = Array.from(host.querySelectorAll('span')).find(
       (span) => span.textContent === 'Connected'
-    ) as HTMLElement | undefined;
+    );
+    expect(connectedBadge).toBeInstanceOf(HTMLSpanElement);
     expect(connectedBadge?.style.color).toBeTruthy();
+    const modelSearch = host.querySelector<HTMLInputElement>(
+      '[data-testid="runtime-provider-model-search"]'
+    );
+    const modelList = host.querySelector<HTMLElement>(
+      '[data-testid="runtime-provider-model-list"]'
+    );
     expect(
-      (host.querySelector('[data-testid="runtime-provider-model-search"]') as HTMLElement | null)
-        ?.style.paddingLeft
+      modelSearch?.style.paddingLeft
     ).toBe('42px');
     expect(
-      (host.querySelector('[data-testid="runtime-provider-model-list"]') as HTMLElement | null)
-        ?.style.maxHeight
+      modelList?.style.maxHeight
     ).toBe('300px');
     expect(host.textContent).not.toContain('OpenRouterfree');
     const firstTestButton = Array.from(host.querySelectorAll('button')).find(
       (button) => button.textContent?.trim() === 'Test'
     );
     expect(firstTestButton?.className).toContain('border');
-    const modelResult = host.querySelector(
+    const modelResult = host.querySelector<HTMLElement>(
       '[data-testid="runtime-provider-model-result-openrouter/openai/gpt-oss-20b:free"]'
-    ) as HTMLElement | null;
+    );
+    expect(modelResult).toBeInstanceOf(HTMLElement);
     expect(modelResult?.style.color).toBe('#86efac');
     expect((host.textContent ?? '').indexOf('mistralai/codestral-2508')).toBeLessThan(
-      (host.textContent ?? '').indexOf('anthropic/claude-sonnet-4.6')
+      (host.textContent ?? '').indexOf('qwen/qwen3-coder-plus')
     );
-    expect((host.textContent ?? '').indexOf('anthropic/claude-sonnet-4.6')).toBeLessThan(
+    expect((host.textContent ?? '').indexOf('opencode/big-pickle')).toBeLessThan(
+      (host.textContent ?? '').indexOf('minimax-m2.5-free')
+    );
+    expect((host.textContent ?? '').indexOf('mistralai/codestral-2508')).toBeLessThan(
       (host.textContent ?? '').indexOf('minimax-m2.5-free')
     );
     expect((host.textContent ?? '').indexOf('minimax-m2.5-free')).toBeLessThan(
-      (host.textContent ?? '').indexOf('opencode/big-pickle')
-    );
-    expect((host.textContent ?? '').indexOf('opencode/big-pickle')).toBeLessThan(
       (host.textContent ?? '').indexOf('qwen/qwen3-coder-plus')
     );
     expect((host.textContent ?? '').indexOf('qwen/qwen3-coder-plus')).toBeLessThan(
@@ -719,6 +725,62 @@ describe('RuntimeProviderManagementPanelView', () => {
       'openrouter/openai/gpt-oss-20b:free'
     );
     expect(actions.useModelForNewTeams).not.toHaveBeenCalled();
+  });
+
+  it('keeps the model search input enabled while model results are loading', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const actions = createActions();
+    const connectedProvider = {
+      ...createState().view!.providers[0],
+      state: 'connected' as const,
+      ownership: ['managed'] as const,
+      modelCount: 174,
+      actions: [
+        {
+          id: 'use' as const,
+          label: 'Use',
+          enabled: true,
+          disabledReason: null,
+          requiresSecret: false,
+          ownershipScope: 'runtime' as const,
+        },
+      ],
+    };
+
+    await act(async () => {
+      root.render(
+        React.createElement(RuntimeProviderManagementPanelView, {
+          state: createState({
+            view: {
+              ...createState().view!,
+              providers: [connectedProvider],
+            },
+            providers: [connectedProvider],
+            selectedProviderId: 'openrouter',
+            modelPickerProviderId: 'openrouter',
+            modelPickerMode: 'use',
+            modelQuery: 'claude',
+            modelsLoading: true,
+          }),
+          actions,
+          disabled: false,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const searchInput = host.querySelector<HTMLInputElement>(
+      '[data-testid="runtime-provider-model-search"]'
+    );
+
+    expect(searchInput).not.toBeNull();
+    expect(searchInput?.disabled).toBe(false);
+    expect(searchInput?.value).toBe('claude');
+    expect(host.querySelector('[data-testid="runtime-provider-model-loading-skeleton"]')).not.toBe(
+      null
+    );
   });
 
   it('keeps directory provider models visible when a model row is selected', async () => {
@@ -846,7 +908,7 @@ describe('RuntimeProviderManagementPanelView', () => {
     for (const provider of providers) {
       const logo = host.querySelector(
         `[data-testid="runtime-provider-logo-${provider.providerId}"]`
-      ) as HTMLElement | null;
+      );
       expect(logo).not.toBeNull();
       expect(logo?.className).toContain('runtime-provider-brand-icon');
       expect(logo?.querySelector('svg,img')).not.toBeNull();

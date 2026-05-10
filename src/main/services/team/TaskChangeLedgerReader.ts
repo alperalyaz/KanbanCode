@@ -1,5 +1,9 @@
 import { createLogger } from '@shared/utils/logger';
 import { isWindowsishPath, normalizePathForComparison } from '@shared/utils/platformPath';
+import {
+  createTaskChangeDiagnosticFromWarning,
+  mergeTaskChangeReviewDiagnostics,
+} from '@shared/utils/taskChangeReviewability';
 import { createHash } from 'crypto';
 import { diffLines } from 'diff';
 import { open, readFile } from 'fs/promises';
@@ -14,6 +18,7 @@ import type {
   SnippetDiff,
   TaskChangeJournalStamp,
   TaskChangeProvenance,
+  TaskChangeReviewDiagnostic,
   TaskChangeScope,
   TaskChangeSetV2,
 } from '@shared/types';
@@ -847,6 +852,7 @@ export class TaskChangeLedgerReader {
     provenance: TaskChangeProvenance;
     extraWarnings?: string[];
   }): TaskChangeSetV2 {
+    const warnings = [...params.bundle.warnings, ...(params.extraWarnings ?? [])];
     return {
       teamName: params.teamName,
       taskId: params.taskId,
@@ -857,7 +863,14 @@ export class TaskChangeLedgerReader {
       confidence: params.bundle.confidence,
       computedAt: params.bundle.generatedAt,
       scope: this.mapV2Scope(params.taskId, params.bundle.scope, params.bundle.files),
-      warnings: [...params.bundle.warnings, ...(params.extraWarnings ?? [])],
+      warnings,
+      reviewDiagnostics: this.withSummaryStateDiagnostics(
+        this.buildReviewDiagnosticsFromWarnings(warnings, 'ledger'),
+        {
+          integrity: params.bundle.integrity,
+          diffStatCompleteness: params.bundle.diffStatCompleteness,
+        }
+      ),
       diffStatCompleteness: params.bundle.diffStatCompleteness,
       provenance: params.provenance,
     };
@@ -878,6 +891,13 @@ export class TaskChangeLedgerReader {
     const warnings = this.collectWarnings(projectedEvents, params.journal.notices, {
       recovered: params.journal.recovered,
     });
+    const reviewDiagnostics = this.collectReviewDiagnostics(
+      projectedEvents,
+      params.journal.notices,
+      {
+        recovered: params.journal.recovered,
+      }
+    );
 
     let files: FileChangeSummary[];
     let totalLinesAdded: number;
@@ -930,8 +950,12 @@ export class TaskChangeLedgerReader {
       diffStatCompleteness = fallback.files.every((file) => file.diffStatKnown !== false)
         ? 'complete'
         : 'partial';
-      warnings.push(
-        'Ledger detail view fell back to journal reconstruction because summary bundle v2 was unavailable.'
+      const fallbackWarning =
+        'Ledger detail view fell back to journal reconstruction because summary bundle v2 was unavailable.';
+      warnings.push(fallbackWarning);
+      this.addReviewDiagnostic(
+        reviewDiagnostics,
+        createTaskChangeDiagnosticFromWarning(fallbackWarning, 'summary')
       );
     }
 
@@ -946,6 +970,10 @@ export class TaskChangeLedgerReader {
       computedAt: params.bundle?.generatedAt ?? new Date().toISOString(),
       scope,
       warnings,
+      reviewDiagnostics: this.withSummaryStateDiagnostics(reviewDiagnostics, {
+        integrity: params.bundle?.integrity ?? params.provenance.integrity,
+        diffStatCompleteness,
+      }),
       ...(diffStatCompleteness ? { diffStatCompleteness } : {}),
       provenance: params.provenance,
     };
@@ -967,6 +995,27 @@ export class TaskChangeLedgerReader {
     const snippets = projectedEvents.map((event) => this.eventToSnippet(event, null, null));
     const grouped = this.groupSnippets(snippets);
     const fallback = this.buildFallbackFilesFromGroupedSnippets(grouped, params.projectPath);
+    const fallbackWarning = 'Task change summary fell back to journal reconstruction.';
+    const warnings = [
+      ...this.collectWarnings(projectedEvents, params.journal.notices, {
+        recovered: params.journal.recovered,
+      }),
+      fallbackWarning,
+    ];
+    const reviewDiagnostics = this.collectReviewDiagnostics(
+      projectedEvents,
+      params.journal.notices,
+      {
+        recovered: params.journal.recovered,
+      }
+    );
+    this.addReviewDiagnostic(
+      reviewDiagnostics,
+      createTaskChangeDiagnosticFromWarning(fallbackWarning, 'summary')
+    );
+    const diffStatCompleteness = fallback.files.every((file) => file.diffStatKnown !== false)
+      ? 'complete'
+      : 'partial';
     return {
       teamName: params.teamName,
       taskId: params.taskId,
@@ -986,15 +1035,12 @@ export class TaskChangeLedgerReader {
         projectedEvents,
         params.journal.notices
       ),
-      warnings: [
-        ...this.collectWarnings(projectedEvents, params.journal.notices, {
-          recovered: params.journal.recovered,
-        }),
-        'Task change summary fell back to journal reconstruction.',
-      ],
-      diffStatCompleteness: fallback.files.every((file) => file.diffStatKnown !== false)
-        ? 'complete'
-        : 'partial',
+      warnings,
+      reviewDiagnostics: this.withSummaryStateDiagnostics(reviewDiagnostics, {
+        integrity: provenance.integrity,
+        diffStatCompleteness,
+      }),
+      diffStatCompleteness,
       provenance,
     };
   }
@@ -1017,6 +1063,10 @@ export class TaskChangeLedgerReader {
       'Task change ledger used legacy bundle v1 compatibility mode; summary was derived from legacy events.'
     );
     for (const notice of params.bundle.notices ?? []) warnings.add(notice.message);
+    const warningList = [...warnings];
+    const diffStatCompleteness = fallback.files.every((file) => file.diffStatKnown !== false)
+      ? 'complete'
+      : 'partial';
 
     return {
       teamName: params.teamName,
@@ -1035,10 +1085,12 @@ export class TaskChangeLedgerReader {
         params.bundle.events,
         params.bundle.notices ?? []
       ),
-      warnings: [...warnings],
-      diffStatCompleteness: fallback.files.every((file) => file.diffStatKnown !== false)
-        ? 'complete'
-        : 'partial',
+      warnings: warningList,
+      reviewDiagnostics: this.withSummaryStateDiagnostics(
+        this.buildReviewDiagnosticsFromWarnings(warningList, 'ledger'),
+        { diffStatCompleteness }
+      ),
+      diffStatCompleteness,
       provenance: {
         sourceKind: 'ledger',
         sourceFingerprint: this.hashFingerprintPayload({
@@ -1476,6 +1528,150 @@ export class TaskChangeLedgerReader {
       ...(baseWorkspaceRoots.length > 0 ? { baseWorkspaceRoots } : {}),
       ...(dirtyLeaderWarnings.length > 0 ? { dirtyLeaderWarnings } : {}),
     };
+  }
+
+  private addReviewDiagnostic(
+    diagnostics: TaskChangeReviewDiagnostic[],
+    diagnostic: TaskChangeReviewDiagnostic
+  ): void {
+    const existingIndex = diagnostics.findIndex(
+      (existing) => existing.code === diagnostic.code && existing.message === diagnostic.message
+    );
+    if (existingIndex >= 0) {
+      const existing = diagnostics[existingIndex];
+      if (existing) {
+        diagnostics[existingIndex] = mergeTaskChangeReviewDiagnostics(existing, diagnostic);
+      }
+      return;
+    }
+    diagnostics.push(diagnostic);
+  }
+
+  private buildReviewDiagnosticsFromWarnings(
+    warnings: string[],
+    source: TaskChangeReviewDiagnostic['source']
+  ): TaskChangeReviewDiagnostic[] {
+    const diagnostics: TaskChangeReviewDiagnostic[] = [];
+    for (const warning of warnings) {
+      this.addReviewDiagnostic(diagnostics, createTaskChangeDiagnosticFromWarning(warning, source));
+    }
+    return diagnostics;
+  }
+
+  private diagnosticFromNotice(notice: LedgerNotice): TaskChangeReviewDiagnostic {
+    if (notice.code === 'multi-scope-skipped') {
+      return {
+        code: 'multi_scope_no_safe_diff',
+        severity: 'info',
+        reviewBlocking: false,
+        message:
+          'Activity was observed while multiple task scopes were active, so file edits were not safely assigned to this task.',
+        source: 'ledger',
+      };
+    }
+    if (notice.code === 'journal-recovered') {
+      return {
+        code: 'ledger_integrity_recovered',
+        severity: 'warning',
+        reviewBlocking: true,
+        message: 'The task-change ledger was recovered from malformed journal lines.',
+        source: 'ledger',
+      };
+    }
+    if (notice.code === 'writer-lock-stolen') {
+      return {
+        code: 'unsafe_or_untrusted_evidence',
+        severity: 'warning',
+        reviewBlocking: true,
+        message: 'The task-change ledger writer lock changed while evidence was being recorded.',
+        source: 'ledger',
+      };
+    }
+    return createTaskChangeDiagnosticFromWarning(notice.message, 'ledger');
+  }
+
+  private collectReviewDiagnostics(
+    events: LedgerEvent[],
+    notices: LedgerNotice[],
+    options: { recovered: boolean }
+  ): TaskChangeReviewDiagnostic[] {
+    const diagnostics: TaskChangeReviewDiagnostic[] = [];
+    for (const notice of notices) {
+      this.addReviewDiagnostic(diagnostics, this.diagnosticFromNotice(notice));
+    }
+    for (const event of events) {
+      for (const warning of event.warnings ?? []) {
+        this.addReviewDiagnostic(
+          diagnostics,
+          createTaskChangeDiagnosticFromWarning(warning, 'ledger')
+        );
+      }
+      if (event.toolStatus === 'failed') {
+        this.addReviewDiagnostic(diagnostics, {
+          code: 'tool_failed_after_edit',
+          severity: 'warning',
+          reviewBlocking: true,
+          message: `Tool ${event.toolUseId} failed after changing files.`,
+          source: 'ledger',
+        });
+      }
+      if (event.toolStatus === 'killed') {
+        this.addReviewDiagnostic(diagnostics, {
+          code: 'tool_killed_after_edit',
+          severity: 'warning',
+          reviewBlocking: true,
+          message: `Background tool ${event.toolUseId} was killed after changing files.`,
+          source: 'ledger',
+        });
+      }
+    }
+    if (options.recovered) {
+      this.addReviewDiagnostic(diagnostics, {
+        code: 'ledger_integrity_recovered',
+        severity: 'warning',
+        reviewBlocking: true,
+        message: 'The task-change ledger was recovered from malformed journal lines.',
+        source: 'ledger',
+      });
+    }
+    return diagnostics;
+  }
+
+  private withSummaryStateDiagnostics(
+    diagnostics: TaskChangeReviewDiagnostic[],
+    state: {
+      integrity?: 'ok' | 'recovered' | 'partial';
+      diffStatCompleteness?: 'complete' | 'partial';
+    }
+  ): TaskChangeReviewDiagnostic[] {
+    const next = [...diagnostics];
+    if (state.diffStatCompleteness === 'partial') {
+      this.addReviewDiagnostic(next, {
+        code: 'diff_stat_partial',
+        severity: 'warning',
+        reviewBlocking: true,
+        message: 'Some file change statistics are incomplete.',
+        source: 'summary',
+      });
+    }
+    if (state.integrity === 'partial') {
+      this.addReviewDiagnostic(next, {
+        code: 'ledger_integrity_partial',
+        severity: 'warning',
+        reviewBlocking: true,
+        message: 'The task-change ledger is partially available.',
+        source: 'ledger',
+      });
+    } else if (state.integrity === 'recovered') {
+      this.addReviewDiagnostic(next, {
+        code: 'ledger_integrity_recovered',
+        severity: 'warning',
+        reviewBlocking: true,
+        message: 'The task-change ledger was recovered from malformed journal lines.',
+        source: 'ledger',
+      });
+    }
+    return next;
   }
 
   private collectWarnings(

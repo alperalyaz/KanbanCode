@@ -7,6 +7,14 @@ import {
 } from '@renderer/utils/openCodeModelRecommendations';
 
 describe('getOpenCodeTeamModelRecommendation', () => {
+  it('marks deeply gauntlet-qualified OpenCode-hosted routes as recommended', () => {
+    expect(getOpenCodeTeamModelRecommendation('opencode/big-pickle')).toMatchObject({
+      level: 'recommended',
+      label: 'Recommended',
+    });
+    expect(isOpenCodeTeamModelRecommended('opencode/big-pickle')).toBe(true);
+  });
+
   it('keeps Claude Sonnet 4.6 as tested while recommendations are disabled', () => {
     expect(
       getOpenCodeTeamModelRecommendation('openrouter/anthropic/claude-sonnet-4.6')
@@ -18,10 +26,12 @@ describe('getOpenCodeTeamModelRecommendation', () => {
   });
 
   it('marks models that passed real OpenCode Agent Teams smoke E2E as tested', () => {
-    expect(getOpenCodeTeamModelRecommendation('openrouter/mistralai/codestral-2508')).toMatchObject({
-      level: 'tested',
-      label: 'Tested',
-    });
+    expect(getOpenCodeTeamModelRecommendation('openrouter/mistralai/codestral-2508')).toMatchObject(
+      {
+        level: 'tested',
+        label: 'Tested',
+      }
+    );
     expect(
       getOpenCodeTeamModelRecommendation(' OPENROUTER/GOOGLE/GEMINI-3-FLASH-PREVIEW ')
     ).toMatchObject({
@@ -95,7 +105,9 @@ describe('getOpenCodeTeamModelRecommendation', () => {
     expect(getOpenCodeTeamModelRecommendation('opencode/minimax-m2.5-free')).toMatchObject({
       level: 'tested-with-limits',
       label: 'Tested with limits',
+      reason: expect.stringContaining('duplicate or missing reply tokens'),
     });
+    expect(isOpenCodeTeamModelRecommended('opencode/minimax-m2.5-free')).toBe(false);
     expect(
       getOpenCodeTeamModelRecommendation('openrouter/minimax/minimax-m2.5:free')
     ).toMatchObject({
@@ -108,6 +120,7 @@ describe('getOpenCodeTeamModelRecommendation', () => {
       'openrouter/openai/gpt-oss-20b:free',
       'openrouter/openai/gpt-oss-120b:free',
       'openrouter/google/gemini-3-pro-preview',
+      'opencode/nemotron-3-super-free',
       'openrouter/google/gemini-2.5-flash-lite',
       'openrouter/deepseek/deepseek-v3.2',
       'openrouter/x-ai/grok-code-fast-1',
@@ -787,7 +800,6 @@ describe('getOpenCodeTeamModelRecommendation', () => {
   });
 
   it('does not label noisy or unproven models as good or bad', () => {
-    expect(getOpenCodeTeamModelRecommendation('opencode/big-pickle')).toBeNull();
     expect(getOpenCodeTeamModelRecommendation('openrouter/x-ai/grok-4.20-unknown')).toBeNull();
     expect(getOpenCodeTeamModelRecommendation('')).toBeNull();
   });
@@ -805,10 +817,10 @@ describe('getOpenCodeTeamModelRecommendation', () => {
     expect(
       [...models].sort((left, right) => compareOpenCodeTeamModelRecommendations(left, right))
     ).toEqual([
+      'opencode/big-pickle',
       'openrouter/mistralai/codestral-2508',
       'openrouter/anthropic/claude-sonnet-4.6',
       'opencode/minimax-m2.5-free',
-      'opencode/big-pickle',
       'openrouter/qwen/qwen3-coder-plus',
       'openrouter/openai/gpt-oss-20b:free',
     ]);

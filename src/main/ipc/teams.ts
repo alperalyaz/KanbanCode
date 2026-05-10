@@ -1,3 +1,7 @@
+import {
+  estimateAgentAttachmentSerializedPayloadBytes,
+  MAX_AGENT_ATTACHMENT_SERIALIZED_PAYLOAD_BYTES,
+} from '@features/agent-attachments/contracts';
 import { addMainBreadcrumb } from '@main/sentry';
 import { setCurrentMainOp } from '@main/services/infrastructure/EventLoopLagMonitor';
 import { getTeamDataWorkerClient } from '@main/services/team/TeamDataWorkerClient';
@@ -101,6 +105,7 @@ import {
   formatEffortLevelListForProvider,
   isTeamEffortLevelForProvider,
 } from '@shared/utils/effortLevels';
+import { getErrorMessage } from '@shared/utils/errorHandling';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
 import { isTeamProviderBackendId, migrateProviderBackendId } from '@shared/utils/providerBackend';
@@ -1043,6 +1048,8 @@ async function handleGetData(
     if (missingState === 'draft') {
       return { success: false, error: 'TEAM_DRAFT' };
     }
+
+    await getTeamProvisioningService().repairStaleTaskActivityIntervalsBeforeSnapshot?.(tn);
 
     if (workerAvailable) {
       try {
@@ -2490,6 +2497,30 @@ function validateAttachments(
   return { valid: true, value: result };
 }
 
+function formatAttachmentBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function validateAttachmentSerializedPayload(input: {
+  text: string;
+  attachments: AttachmentPayload[];
+}): { valid: true } | { valid: false; error: string } {
+  const estimatedBytes = estimateAgentAttachmentSerializedPayloadBytes(input);
+  if (estimatedBytes <= MAX_AGENT_ATTACHMENT_SERIALIZED_PAYLOAD_BYTES) {
+    return { valid: true };
+  }
+  return {
+    valid: false,
+    error: `Attachment payload is too large after optimization: ${formatAttachmentBytes(
+      estimatedBytes
+    )} serialized. Limit is ${formatAttachmentBytes(
+      MAX_AGENT_ATTACHMENT_SERIALIZED_PAYLOAD_BYTES
+    )}. Remove an image or use a smaller screenshot.`,
+  };
+}
+
 function buildMessageDeliveryText(
   baseText: string,
   opts: {
@@ -2723,6 +2754,13 @@ async function handleSendMessage(
       return { success: false, error: attResult.error };
     }
     validatedAttachments = attResult.value;
+    const serializedResult = validateAttachmentSerializedPayload({
+      text: payload.text,
+      attachments: validatedAttachments,
+    });
+    if (!serializedResult.valid) {
+      return { success: false, error: serializedResult.error };
+    }
   }
 
   const tn = validatedTeamName.value!;
@@ -2761,11 +2799,26 @@ async function handleSendMessage(
         : leadName !== null && memberName === leadName;
     const actionMode = payload.actionMode;
 
-    // Attachments only supported for live lead (stdin content blocks)
-    if (validatedAttachments?.length && (!isLeadRecipient || !isAlive)) {
-      throw new Error(
-        'Attachments are only supported when sending to the team lead while the team is online'
-      );
+    const recipientProviderId = !isLeadRecipient
+      ? await provisioning.resolveRuntimeRecipientProviderId(tn, memberName)
+      : undefined;
+    const isOpenCodeRecipient = recipientProviderId === 'opencode';
+
+    // Attachments are routed through explicit provider transports only.
+    // Native Claude/Codex teammates still read inbox files directly, so storing
+    // attachment metadata there would look successful while silently dropping
+    // the image at runtime. Keep those paths fail-closed until they have a
+    // real runtime attachment transport.
+    if (validatedAttachments?.length) {
+      const supportedLiveLead = isLeadRecipient && isAlive;
+      const supportedLiveOpenCodeRecipient = !isLeadRecipient && isOpenCodeRecipient && isAlive;
+      if (!supportedLiveLead && !supportedLiveOpenCodeRecipient) {
+        throw new Error(
+          isOpenCodeRecipient
+            ? 'Attachments for OpenCode teammates require the team to be online'
+            : 'Attachments are supported for the online team lead and online OpenCode teammates only'
+        );
+      }
     }
 
     // Smart routing: lead + alive → stdin direct, else → inbox
@@ -2895,24 +2948,22 @@ async function handleSendMessage(
       }
     }
 
-    // Inbox path: offline lead or regular members (no attachment support)
+    // Inbox path: offline lead or regular members.
     const baseText = payload.text!.trim();
     const replyRecipient =
       typeof payload.from === 'string' && payload.from.trim().length > 0
         ? payload.from.trim()
         : 'user';
     const storedFrom = replyRecipient.toLowerCase() === 'user' ? 'user' : replyRecipient;
-    const recipientProviderId = !isLeadRecipient
-      ? await provisioning.resolveRuntimeRecipientProviderId(tn, memberName)
-      : undefined;
-    const isOpenCodeRecipient = recipientProviderId === 'opencode';
     const directReplyProtocol = resolveVisibleDirectReplyProtocol({
       isLeadRecipient,
       replyRecipient,
       ...(recipientProviderId ? { providerId: recipientProviderId } : {}),
     });
     const inboxMessageId =
-      directReplyProtocol === 'agent_teams_message_send' ? crypto.randomUUID() : undefined;
+      directReplyProtocol === 'agent_teams_message_send' || validatedAttachments?.length
+        ? crypto.randomUUID()
+        : undefined;
     const memberDeliveryText = buildMessageDeliveryText(baseText, {
       actionMode,
       isLeadRecipient,
@@ -2923,6 +2974,14 @@ async function handleSendMessage(
       ...(inboxMessageId ? { messageId: inboxMessageId } : {}),
     });
     const inboxText = isOpenCodeRecipient ? baseText : memberDeliveryText;
+    if (validatedAttachments?.length && inboxMessageId) {
+      try {
+        await attachmentStore.saveAttachments(tn, inboxMessageId, validatedAttachments);
+      } catch (error) {
+        throw new Error(`Failed to save message attachments: ${getErrorMessage(error)}`);
+      }
+    }
+
     const result = await getTeamDataService().sendMessage(tn, {
       member: memberName,
       text: inboxText,
@@ -2932,6 +2991,7 @@ async function handleSendMessage(
       source: 'user_sent',
       taskRefs: validatedTaskRefs.value,
       ...(inboxMessageId ? { messageId: inboxMessageId } : {}),
+      ...(validatedAttachments?.length ? { attachments: validatedAttachments } : {}),
     });
 
     // Teammate inbox relay DISABLED (2026-03-23).
@@ -2996,8 +3056,12 @@ async function handleSendMessage(
           ledgerStatus: delivery.ledgerStatus,
           visibleReplyMessageId: delivery.visibleReplyMessageId,
           visibleReplyCorrelation: delivery.visibleReplyCorrelation,
+          queuedBehindMessageId: delivery.queuedBehindMessageId,
           reason: delivery.reason,
           diagnostics: delivery.diagnostics,
+          userVisibleImpact:
+            delivery.userVisibleImpact ??
+            provisioning.buildOpenCodeRuntimeDeliveryUserVisibleImpact(delivery),
         };
         if (
           !delivery.delivered &&
@@ -3018,6 +3082,11 @@ async function handleSendMessage(
           delivered: false,
           reason,
           diagnostics: [reason],
+          userVisibleImpact: provisioning.buildOpenCodeRuntimeDeliveryUserVisibleImpact({
+            delivered: false,
+            reason,
+            diagnostics: [reason],
+          }),
         };
         logger.warn(
           `OpenCode runtime delivery after sendMessage crashed for teammate "${memberName}": ${reason}`

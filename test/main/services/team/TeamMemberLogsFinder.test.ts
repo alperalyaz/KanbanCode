@@ -37,39 +37,43 @@ describe('TeamMemberLogsFinder', () => {
     await fs.mkdir(projectRoot, { recursive: true });
 
     const projectResolver = {
-      getLiveBaseContext: vi.fn(async () => ({
-        projectDir: projectRoot,
-        projectId: '-Users-test-live-context',
-        config,
-      })),
-      getContext: vi.fn(async () => {
-        throw new Error('broad context must not be used for live tracking');
-      }),
+      getLiveBaseContext: vi.fn(() =>
+        Promise.resolve({
+          projectDir: projectRoot,
+          projectId: '-Users-test-live-context',
+          config,
+        })
+      ),
+      getContext: vi.fn(() =>
+        Promise.reject(new Error('broad context must not be used for live tracking'))
+      ),
     };
     const launchStateStore = {
-      read: vi.fn(async () => ({
-        version: 2,
-        teamName,
-        updatedAt: '2026-05-03T12:00:00.000Z',
-        leadSessionId: 'lead-session',
-        launchPhase: 'active',
-        expectedMembers: ['bob'],
-        members: {
-          bob: {
-            name: 'bob',
-            launchState: 'runtime_pending_bootstrap',
-            agentToolAccepted: true,
-            runtimeAlive: false,
-            bootstrapConfirmed: false,
-            hardFailure: false,
-            runtimeSessionId: 'runtime-bob',
-            cwd: runtimeProjectPath,
-            updatedAt: '2026-05-03T12:00:00.000Z',
+      read: vi.fn(() =>
+        Promise.resolve({
+          version: 2,
+          teamName,
+          updatedAt: '2026-05-03T12:00:00.000Z',
+          leadSessionId: 'lead-session',
+          launchPhase: 'active',
+          expectedMembers: ['bob'],
+          members: {
+            bob: {
+              name: 'bob',
+              launchState: 'runtime_pending_bootstrap',
+              agentToolAccepted: true,
+              runtimeAlive: false,
+              bootstrapConfirmed: false,
+              hardFailure: false,
+              runtimeSessionId: 'runtime-bob',
+              cwd: runtimeProjectPath,
+              updatedAt: '2026-05-03T12:00:00.000Z',
+            },
           },
-        },
-        summary: {},
-        teamLaunchState: 'partial_pending',
-      })),
+          summary: {},
+          teamLaunchState: 'partial_pending',
+        })
+      ),
     };
 
     const finder = new TeamMemberLogsFinder(
@@ -429,6 +433,97 @@ describe('TeamMemberLogsFinder', () => {
     expect(refs.some((ref) => ref.memberName === 'Tom')).toBe(false);
   });
 
+  it('applies recent-ref object options to discovery, lead refs, metadata, and requested-member attribution', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-logs-'));
+    setClaudeBasePathOverride(tmpDir);
+
+    const teamName = 'member-stream-ref-options';
+    const projectPath = '/Users/test/member-stream-ref-options';
+    const projectId = '-Users-test-member-stream-ref-options';
+    const leadSessionId = 'lead-session';
+    const recentSince = Date.now() - 10 * 60_000;
+    const old = new Date(Date.now() - 30 * 60_000);
+    const now = new Date();
+    const projectRoot = path.join(tmpDir, 'projects', projectId);
+    const subagentsDir = path.join(projectRoot, leadSessionId, 'subagents');
+    await fs.mkdir(subagentsDir, { recursive: true });
+
+    const leadPath = path.join(projectRoot, `${leadSessionId}.jsonl`);
+    await fs.writeFile(
+      leadPath,
+      JSON.stringify({
+        timestamp: old.toISOString(),
+        type: 'user',
+        message: { role: 'user', content: `Lead for team "${teamName}" (${teamName})` },
+      }) + '\n',
+      'utf8'
+    );
+    await fs.utimes(leadPath, old, old);
+
+    const zoePath = path.join(subagentsDir, 'agent-zoe.jsonl');
+    await fs.writeFile(
+      zoePath,
+      [
+        JSON.stringify({
+          timestamp: now.toISOString(),
+          type: 'user',
+          message: {
+            role: 'user',
+            content: `You are Zoe, a developer on team "${teamName}" (${teamName}).`,
+          },
+        }),
+        JSON.stringify({
+          timestamp: now.toISOString(),
+          type: 'assistant',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'Ready' }] },
+        }),
+      ].join('\n') + '\n',
+      'utf8'
+    );
+    await fs.utimes(zoePath, now, now);
+
+    const projectResolver = {
+      getContext: vi.fn(() =>
+        Promise.resolve({
+          projectDir: projectRoot,
+          projectId,
+          sessionIds: [leadSessionId],
+          config: {
+            name: teamName,
+            projectPath,
+            leadSessionId,
+            members: [{ name: 'team-lead', agentType: 'team-lead' }],
+          },
+        })
+      ),
+    };
+    const finder = new TeamMemberLogsFinder(
+      undefined,
+      undefined,
+      undefined,
+      projectResolver as never
+    );
+
+    const refs = await finder.findRecentMemberLogFileRefsByMember(teamName, ['team-lead', 'Zoe'], {
+      mtimeSinceMs: recentSince,
+      forceRefresh: true,
+    });
+
+    expect(projectResolver.getContext).toHaveBeenCalledWith(
+      teamName,
+      expect.objectContaining({ forceRefresh: true })
+    );
+    expect(refs).toEqual([
+      expect.objectContaining({
+        memberName: 'Zoe',
+        filePath: zoePath,
+        kind: 'subagent',
+        sizeBytes: expect.any(Number),
+      }),
+    ]);
+    expect(refs.some((ref) => ref.filePath === leadPath)).toBe(false);
+  });
+
   it('listAttributedSubagentFiles only returns files from the current lead session for live tracking', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-logs-'));
     setClaudeBasePathOverride(tmpDir);
@@ -463,18 +558,22 @@ describe('TeamMemberLogsFinder', () => {
     await fs.mkdir(path.join(projectRoot, currentSessionId, 'subagents'), { recursive: true });
     await fs.mkdir(path.join(projectRoot, oldSessionId, 'subagents'), { recursive: true });
 
-    const attributedLog = [
-      JSON.stringify({
-        timestamp: '2026-01-01T00:00:01.000Z',
-        type: 'user',
-        message: { role: 'user', content: `You are alice, a developer on team "${teamName}" (${teamName}).` },
-      }),
-      JSON.stringify({
-        timestamp: '2026-01-01T00:00:02.000Z',
-        type: 'assistant',
-        message: { role: 'assistant', content: [{ type: 'text', text: 'OK' }] },
-      }),
-    ].join('\n') + '\n';
+    const attributedLog =
+      [
+        JSON.stringify({
+          timestamp: '2026-01-01T00:00:01.000Z',
+          type: 'user',
+          message: {
+            role: 'user',
+            content: `You are alice, a developer on team "${teamName}" (${teamName}).`,
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-01-01T00:00:02.000Z',
+          type: 'assistant',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'OK' }] },
+        }),
+      ].join('\n') + '\n';
 
     await fs.writeFile(
       path.join(projectRoot, currentSessionId, 'subagents', 'agent-current.jsonl'),
@@ -981,6 +1080,152 @@ describe('TeamMemberLogsFinder', () => {
     );
   });
 
+  it('findLogsForTask does not treat malformed empty completedAt intervals as open', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-task-owner-malformed-'));
+    setClaudeBasePathOverride(tmpDir);
+
+    const teamName = 't5-malformed';
+    const projectPath = '/Users/test/proj5-malformed';
+    const projectId = '-Users-test-proj5-malformed';
+    const leadSessionId = 's5-malformed';
+
+    await fs.mkdir(path.join(tmpDir, 'teams', teamName), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'teams', teamName, 'config.json'),
+      JSON.stringify({
+        name: teamName,
+        projectPath,
+        leadSessionId,
+        members: [
+          { name: 'team-lead', agentType: 'team-lead' },
+          { name: 'bob', agentType: 'general-purpose' },
+          { name: 'alice', agentType: 'general-purpose' },
+        ],
+      }),
+      'utf8'
+    );
+
+    const projectRoot = path.join(tmpDir, 'projects', projectId);
+    await fs.mkdir(path.join(projectRoot, leadSessionId, 'subagents'), { recursive: true });
+
+    await fs.writeFile(
+      path.join(projectRoot, leadSessionId, 'subagents', 'agent-alice10.jsonl'),
+      [
+        JSON.stringify({
+          timestamp: '2026-01-01T00:00:01.000Z',
+          type: 'user',
+          message: {
+            role: 'user',
+            content: `You are alice, a developer on team "${teamName}" (${teamName}).`,
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-01-01T00:00:02.000Z',
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                name: 'TaskUpdate',
+                input: { team_name: teamName, taskId: '10', status: 'pending' },
+              },
+            ],
+          },
+        }),
+      ].join('\n') + '\n',
+      'utf8'
+    );
+
+    await fs.writeFile(
+      path.join(projectRoot, leadSessionId, 'subagents', 'agent-bob-near.jsonl'),
+      [
+        JSON.stringify({
+          timestamp: '2026-01-01T10:00:01.000Z',
+          type: 'user',
+          message: {
+            role: 'user',
+            content: `You are bob, a developer on team "${teamName}" (${teamName}).`,
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-01-01T10:00:02.000Z',
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Near malformed interval' }],
+          },
+        }),
+      ].join('\n') + '\n',
+      'utf8'
+    );
+
+    await fs.writeFile(
+      path.join(projectRoot, leadSessionId, 'subagents', 'agent-bob-late.jsonl'),
+      [
+        JSON.stringify({
+          timestamp: '2026-01-01T12:00:00.000Z',
+          type: 'user',
+          message: {
+            role: 'user',
+            content: `You are bob, a developer on team "${teamName}" (${teamName}).`,
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-01-01T12:00:01.000Z',
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Late malformed interval' }],
+          },
+        }),
+      ].join('\n') + '\n',
+      'utf8'
+    );
+
+    const finder = new TeamMemberLogsFinder();
+    const options = {
+      owner: 'bob',
+      status: 'in_progress',
+      intervals: [{ startedAt: '2026-01-01T10:00:00.000Z', completedAt: '' }],
+    };
+    const logs = await finder.findLogsForTask(teamName, '10', options);
+
+    const bobFilePaths = logs
+      .filter((l) => l.kind === 'subagent' && l.memberName?.toLowerCase() === 'bob')
+      .map((l) => l.filePath ?? '');
+
+    expect(bobFilePaths.some((filePath) => filePath.endsWith('agent-bob-near.jsonl'))).toBe(true);
+    expect(bobFilePaths.some((filePath) => filePath.endsWith('agent-bob-late.jsonl'))).toBe(false);
+
+    const reversedIntervalLogs = await finder.findLogsForTask(teamName, '10', {
+      ...options,
+      intervals: [
+        {
+          startedAt: '2026-01-01T10:00:00.000Z',
+          completedAt: '2026-01-01T09:59:00.000Z',
+        },
+      ],
+    });
+    const reversedBobFilePaths = reversedIntervalLogs
+      .filter((l) => l.kind === 'subagent' && l.memberName?.toLowerCase() === 'bob')
+      .map((l) => l.filePath ?? '');
+
+    expect(reversedBobFilePaths.some((filePath) => filePath.endsWith('agent-bob-near.jsonl'))).toBe(
+      true
+    );
+    expect(reversedBobFilePaths.some((filePath) => filePath.endsWith('agent-bob-late.jsonl'))).toBe(
+      false
+    );
+
+    const refs = await finder.findLogFileRefsForTask(teamName, '10', options);
+    const bobRefPaths = refs
+      .filter((ref) => ref.memberName.toLowerCase() === 'bob')
+      .map((ref) => ref.filePath);
+
+    expect(bobRefPaths.some((filePath) => filePath.endsWith('agent-bob-late.jsonl'))).toBe(false);
+  });
+
   it('findLogsForTask does not auto-include owner sessions when owner is team-lead', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-task-lead-owner-'));
     setClaudeBasePathOverride(tmpDir);
@@ -1270,7 +1515,11 @@ describe('TeamMemberLogsFinder', () => {
           message: {
             role: 'assistant',
             content: [
-              { type: 'tool_use', name: 'TaskUpdate', input: { taskId: '5', status: 'in_progress' } },
+              {
+                type: 'tool_use',
+                name: 'TaskUpdate',
+                input: { taskId: '5', status: 'in_progress' },
+              },
             ],
           },
         }),
@@ -1424,7 +1673,11 @@ describe('TeamMemberLogsFinder', () => {
           message: {
             role: 'assistant',
             content: [
-              { type: 'tool_use', name: 'TaskUpdate', input: { taskId: '3', status: 'in_progress' } },
+              {
+                type: 'tool_use',
+                name: 'TaskUpdate',
+                input: { taskId: '3', status: 'in_progress' },
+              },
             ],
           },
         }),

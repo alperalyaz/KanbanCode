@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
+import {
+  ANTHROPIC_LONG_CONTEXT_PRICING_URL,
+  ANTHROPIC_SONNET_EXTRA_USAGE_WARNING,
+  AnthropicExtraUsageWarning,
+} from '@renderer/components/team/dialogs/AnthropicExtraUsageWarning';
 import { EffortLevelSelector } from '@renderer/components/team/dialogs/EffortLevelSelector';
 import { LimitContextCheckbox } from '@renderer/components/team/dialogs/LimitContextCheckbox';
 import {
   getProviderScopedTeamModelLabel,
   getTeamProviderLabel,
-  OPENCODE_TEAM_LEAD_DISABLED_BADGE_LABEL,
-  OPENCODE_TEAM_LEAD_DISABLED_REASON,
   TeamModelSelector,
 } from '@renderer/components/team/dialogs/TeamModelSelector';
 import { Checkbox } from '@renderer/components/ui/checkbox';
@@ -16,13 +19,18 @@ import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
 import { agentAvatarUrl } from '@renderer/utils/memberHelpers';
-import { isAnthropicHaikuTeamModel } from '@renderer/utils/teamModelCatalog';
+import {
+  isAnthropicHaikuTeamModel,
+  isAnthropicSonnetOneMillionContextTeamModel,
+} from '@renderer/utils/teamModelCatalog';
 import { resolveTeamLeadColorName } from '@shared/utils/teamMemberColors';
 import { AlertTriangle, ChevronDown, ChevronRight, Info } from 'lucide-react';
 
 import { Button } from '../../ui/button';
 
 import type { EffortLevel, TeamProviderId } from '@shared/types';
+
+export { ANTHROPIC_LONG_CONTEXT_PRICING_URL, ANTHROPIC_SONNET_EXTRA_USAGE_WARNING };
 
 interface LeadModelRowProps {
   providerId: TeamProviderId;
@@ -38,6 +46,10 @@ interface LeadModelRowProps {
   warningText?: string | null;
   disableGeminiOption?: boolean;
   modelIssueText?: string | null;
+  modelIssueReasonByValue?: Partial<Record<string, string | null | undefined>>;
+  modelUnavailableReasonByValue?: Partial<Record<string, string | null | undefined>>;
+  showAnthropicContextLimit?: boolean;
+  disableAnthropicContextLimit?: boolean;
 }
 
 export const LeadModelRow = ({
@@ -54,6 +66,10 @@ export const LeadModelRow = ({
   warningText,
   disableGeminiOption = false,
   modelIssueText,
+  modelIssueReasonByValue,
+  modelUnavailableReasonByValue,
+  showAnthropicContextLimit = providerId === 'anthropic',
+  disableAnthropicContextLimit,
 }: LeadModelRowProps): React.JSX.Element => {
   const { isLight } = useTheme();
   const [modelExpanded, setModelExpanded] = useState(false);
@@ -62,7 +78,28 @@ export const LeadModelRow = ({
     ? getProviderScopedTeamModelLabel(providerId, model.trim())
     : 'Default';
   const modelButtonAriaLabel = `${getTeamProviderLabel(providerId)} provider, ${modelButtonLabel}`;
-  const hasModelIssue = Boolean(modelIssueText);
+  const selectedModelIssueText =
+    model.trim() && modelIssueReasonByValue?.[model.trim()]
+      ? modelIssueReasonByValue[model.trim()]
+      : null;
+  const selectedModelUnavailableText =
+    model.trim() && modelUnavailableReasonByValue?.[model.trim()]
+      ? modelUnavailableReasonByValue[model.trim()]
+      : null;
+  const currentModelIssueText =
+    modelIssueText ?? selectedModelUnavailableText ?? selectedModelIssueText ?? null;
+  const hasModelIssue = Boolean(currentModelIssueText);
+  const showSonnetExtraUsageWarning =
+    providerId === 'anthropic' &&
+    !limitContext &&
+    isAnthropicSonnetOneMillionContextTeamModel(model);
+  const warningMessages = [warningText?.trim() || null].filter((message): message is string =>
+    Boolean(message)
+  );
+  const hasWarnings = warningMessages.length > 0 || showSonnetExtraUsageWarning;
+  const contextLimitDisabled =
+    disableAnthropicContextLimit ??
+    (providerId === 'anthropic' && isAnthropicHaikuTeamModel(model));
 
   return (
     <div
@@ -134,11 +171,16 @@ export const LeadModelRow = ({
           </Button>
         </div>
       </div>
-      {warningText ? (
+      {hasWarnings ? (
         <div className="md:col-span-3">
           <div className="bg-amber-500/8 ml-3 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
             <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
-            <p>{warningText}</p>
+            <div className="space-y-1">
+              {warningMessages.map((message) => (
+                <p key={message}>{message}</p>
+              ))}
+              {showSonnetExtraUsageWarning ? <AnthropicExtraUsageWarning /> : null}
+            </div>
           </div>
         </div>
       ) : null}
@@ -151,9 +193,11 @@ export const LeadModelRow = ({
             onValueChange={onModelChange}
             id="lead-model"
             disableGeminiOption={disableGeminiOption}
-            providerDisabledReasonById={{ opencode: OPENCODE_TEAM_LEAD_DISABLED_REASON }}
-            providerDisabledBadgeLabelById={{ opencode: OPENCODE_TEAM_LEAD_DISABLED_BADGE_LABEL }}
-            modelIssueReasonByValue={model.trim() ? { [model.trim()]: modelIssueText } : undefined}
+            modelIssueReasonByValue={{
+              ...(modelIssueReasonByValue ?? {}),
+              ...(model.trim() && modelIssueText ? { [model.trim()]: modelIssueText } : {}),
+            }}
+            modelUnavailableReasonByValue={modelUnavailableReasonByValue}
           />
           <EffortLevelSelector
             value={effort ?? ''}
@@ -163,19 +207,22 @@ export const LeadModelRow = ({
             model={model}
             limitContext={limitContext}
           />
-          {providerId === 'anthropic' ? (
+          {showAnthropicContextLimit ? (
             <LimitContextCheckbox
               id="lead-limit-context"
               checked={limitContext}
               onCheckedChange={onLimitContextChange}
-              disabled={isAnthropicHaikuTeamModel(model)}
+              disabled={contextLimitDisabled}
+              scopeLabel={providerId === 'anthropic' ? undefined : 'Anthropic team-wide'}
             />
           ) : null}
           <div className="flex items-start gap-2 rounded-md border border-sky-500/20 bg-sky-500/5 px-3 py-2">
             <Info className="mt-0.5 size-3.5 shrink-0 text-sky-400" />
             <p className="text-[11px] leading-relaxed text-sky-300">
-              These settings control the team lead and act as the default runtime for teammates that
-              do not have their own override.
+              Lead runtime applies to teammates unless they set their own provider or model.
+              {showAnthropicContextLimit
+                ? ' The 200K context limit is team-wide for Anthropic runtimes in this launch, including custom Anthropic teammates.'
+                : null}
             </p>
           </div>
         </div>

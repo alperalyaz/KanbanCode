@@ -32,9 +32,9 @@ jobs:
       - name: Generate static site
         working-directory: landing
         env:
-          NUXT_APP_BASE_URL: /claude_agent_teams_ui/
-          NUXT_PUBLIC_SITE_URL: https://777genius.github.io/claude_agent_teams_ui
-          NUXT_PUBLIC_GITHUB_REPO: 777genius/claude_agent_teams_ui
+          NUXT_APP_BASE_URL: /agent-teams-ai/
+          NUXT_PUBLIC_SITE_URL: https://777genius.github.io/agent-teams-ai
+          NUXT_PUBLIC_GITHUB_REPO: 777genius/agent-teams-ai
         run: npm run generate:all
 
       - uses: actions/configure-pages@v5

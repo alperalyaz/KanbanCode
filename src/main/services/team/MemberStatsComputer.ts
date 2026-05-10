@@ -10,7 +10,8 @@ import type { FileLineStats, MemberFullStats } from '@shared/types';
 const logger = createLogger('Service:MemberStatsComputer');
 
 const TRAILING_PUNCT_CHARS = new Set([';', '.', ',']);
-const INVALID_NAMES = new Set(['null', 'undefined', 'None', 'false', 'true', '']);
+const INVALID_NAMES = new Set(['null', 'undefined', 'none', 'false', 'true', '']);
+const WINDOWS_NULL_DEVICE_RE = /^[a-z]:\/nul$/;
 
 function stripTrailingPunct(s: string): string {
   let end = s.length;
@@ -18,9 +19,26 @@ function stripTrailingPunct(s: string): string {
   return end === s.length ? s : s.slice(0, end);
 }
 
+function isNullDevicePath(value: string): boolean {
+  const normalized = value.replace(/\\/g, '/').toLowerCase();
+  return (
+    normalized === '/dev/null' ||
+    normalized === '//./nul' ||
+    normalized === '//?/nul' ||
+    WINDOWS_NULL_DEVICE_RE.test(normalized)
+  );
+}
+
 export function isValidFilePath(value: string): boolean {
   const cleaned = stripTrailingPunct(value.trim());
-  return cleaned.length > 1 && !INVALID_NAMES.has(cleaned) && cleaned.includes('/');
+  const normalizedName = cleaned.toLowerCase();
+  const hasPathSeparator = cleaned.includes('/') || cleaned.includes('\\');
+  return (
+    cleaned.length > 1 &&
+    !INVALID_NAMES.has(normalizedName) &&
+    hasPathSeparator &&
+    !isNullDevicePath(cleaned)
+  );
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes

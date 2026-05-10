@@ -1,15 +1,32 @@
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import { isEphemeralProjectPath } from '@shared/utils/ephemeralProjectPath';
 
+import type { DashboardRecentProjectSource } from '@features/recent-projects/contracts';
 import type { ComboboxOption } from '@renderer/components/ui/combobox';
 import type { Project } from '@shared/types';
 
-function toProjectOption(project: Project): ComboboxOption {
-  return {
+export interface ProjectPathProject extends Project {
+  discoverySource?: DashboardRecentProjectSource;
+}
+
+export interface ProjectPathOptionMeta {
+  discoverySource?: DashboardRecentProjectSource;
+}
+
+function toProjectOption(project: ProjectPathProject): ComboboxOption {
+  const option: ComboboxOption = {
     value: project.path,
     label: project.name,
     description: project.path,
   };
+
+  if (project.discoverySource !== undefined) {
+    option.meta = {
+      discoverySource: project.discoverySource,
+    } satisfies ProjectPathOptionMeta;
+  }
+
+  return option;
 }
 
 /**
@@ -17,7 +34,7 @@ function toProjectOption(project: Project): ComboboxOption {
  * This keeps combobox item values unique even when scanner sources overlap.
  */
 export function buildProjectPathOptions(
-  projects: Project[],
+  projects: ProjectPathProject[],
   preferredPath?: string
 ): ComboboxOption[] {
   const options: ComboboxOption[] = [];

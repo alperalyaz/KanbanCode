@@ -31,6 +31,13 @@ import type { BrowserWindow } from 'electron';
 
 const logger = createLogger('UpdaterService');
 
+function shouldSkipDevUpdateCheck(): boolean {
+  return (
+    !app.isPackaged &&
+    (autoUpdater as { forceDevUpdateConfig?: boolean }).forceDevUpdateConfig !== true
+  );
+}
+
 /**
  * Check if a remote URL exists using a HEAD request.
  * Follows redirects (GitHub releases use 302 → S3).
@@ -93,6 +100,10 @@ export class UpdaterService {
    * Check for available updates.
    */
   async checkForUpdates(): Promise<void> {
+    if (shouldSkipDevUpdateCheck()) {
+      return;
+    }
+
     try {
       await autoUpdater.checkForUpdates();
     } catch (error) {

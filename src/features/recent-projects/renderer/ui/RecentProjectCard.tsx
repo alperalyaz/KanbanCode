@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
+import { ActivePulseIndicator } from '@renderer/components/ui/ActivePulseIndicator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { projectColor } from '@renderer/utils/projectColor';
 import { FolderGit2, FolderOpen, GitBranch, Terminal } from 'lucide-react';
@@ -26,17 +27,14 @@ export const RecentProjectCard = ({
       onClick={onClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className="bg-surface/50 group relative flex min-h-[120px] flex-col overflow-hidden rounded-lg border border-l-[3px] border-border p-4 text-left transition-all duration-300 hover:border-border-emphasis hover:bg-surface-raised"
+      className="bg-surface/50 group relative flex min-h-[120px] flex-col overflow-hidden rounded-lg border border-border p-4 text-left transition-all duration-300 hover:border-border-emphasis hover:bg-surface-raised"
       style={{
         borderLeftColor: color.border,
         boxShadow: isHovered ? `inset 3px 0 12px -4px ${color.glow}` : undefined,
       }}
     >
       {card.activeTeams && card.activeTeams.length > 0 && (
-        <span className="absolute right-3 top-3 inline-flex size-2.5">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-50" />
-          <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
-        </span>
+        <ActivePulseIndicator className="absolute right-3 top-3" />
       )}
 
       <div className="mb-1 flex items-center gap-2.5">

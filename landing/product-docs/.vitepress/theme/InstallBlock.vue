@@ -8,7 +8,7 @@ const props = withDefaults(
     copiedLabel?: string;
   }>(),
   {
-    command: "git clone https://github.com/777genius/claude_agent_teams_ui.git",
+    command: "git clone https://github.com/777genius/agent-teams-ai.git",
     label: "Click to copy",
     copiedLabel: "Copied"
   }

@@ -40,7 +40,8 @@ const {
       status: 'idle' as CodexAccountLoginStatus,
       error: null as string | null,
       startedAt: null as string | null,
-    },
+      authUrl: null as string | null,
+    } as CodexLoginStateDto,
   },
   loginStateListeners: new Set<() => void>(),
   loginSettledListeners: new Set<() => void>(),
@@ -84,6 +85,7 @@ vi.mock(
     detectCodexLocalAccountState: detectLocalAccountStateMock,
     detectCodexLocalAccountArtifacts: async () =>
       (await detectLocalAccountStateMock()).hasArtifacts,
+    ensureCodexLegacyAuthFromActiveAccount: vi.fn().mockResolvedValue(null),
   })
 );
 
@@ -156,14 +158,16 @@ function createConfigManager(preferredAuthMode: 'auto' | 'chatgpt' | 'api_key' =
   };
 }
 
-function createAccountResponse(overrides?: Partial<{
-  requiresOpenaiAuth: boolean;
-  account: { type: 'chatgpt'; email: string; planType: 'pro' | 'plus' } | null;
-}>) {
+function createAccountResponse(
+  overrides?: Partial<{
+    requiresOpenaiAuth: boolean;
+    account: { type: 'chatgpt'; email: string; planType: 'pro' | 'plus' } | null;
+  }>
+) {
   return {
     account:
       overrides && 'account' in overrides
-        ? overrides.account ?? null
+        ? (overrides.account ?? null)
         : {
             type: 'chatgpt' as const,
             email: 'user@example.com',
@@ -241,6 +245,7 @@ describe('createCodexAccountFeature', () => {
       status: 'idle',
       error: null,
       startedAt: null,
+      authUrl: null,
     };
     loginStateListeners.clear();
     loginSettledListeners.clear();
@@ -608,6 +613,181 @@ describe('createCodexAccountFeature', () => {
     }
   });
 
+  it('keeps last known rate limits visible during a transient optional rate limit refresh failure', async () => {
+    readAccountMock.mockResolvedValue({
+      account: createAccountResponse(),
+      initialize: {
+        codexHome: '/Users/test/.codex',
+        platformFamily: 'unix',
+        platformOs: 'macos',
+      },
+    });
+    readRateLimitsMock
+      .mockResolvedValueOnce(createRateLimitsResponse())
+      .mockRejectedValueOnce(
+        new Error('codex account authentication required to read rate limits')
+      );
+    const logger = createLoggerPort();
+    const feature = createCodexAccountFeature({
+      logger,
+      configManager: createConfigManager('chatgpt'),
+    });
+    const dateNowSpy = vi.spyOn(Date, 'now');
+
+    try {
+      dateNowSpy.mockReturnValue(1_776_000_000_000);
+      const firstSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+      dateNowSpy.mockReturnValue(1_776_000_060_000);
+      const secondSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+
+      expect(firstSnapshot.rateLimits?.primary?.usedPercent).toBe(77);
+      expect(secondSnapshot.appServerState).toBe('healthy');
+      expect(secondSnapshot.managedAccount?.email).toBe('user@example.com');
+      expect(secondSnapshot.rateLimits?.primary?.usedPercent).toBe(77);
+      expect(logger.warn).toHaveBeenCalledWith('codex account rate limits refresh failed', {
+        error: 'codex account authentication required to read rate limits',
+      });
+    } finally {
+      dateNowSpy.mockRestore();
+      await feature.dispose();
+    }
+  });
+
+  it('keeps rate limits visible when account truth is temporarily reused from last known state', async () => {
+    detectLocalAccountStateMock.mockResolvedValue({
+      hasArtifacts: true,
+      hasActiveChatgptAccount: true,
+    });
+    readAccountMock
+      .mockResolvedValueOnce({
+        account: createAccountResponse(),
+        initialize: {
+          codexHome: '/Users/test/.codex',
+          platformFamily: 'unix',
+          platformOs: 'macos',
+        },
+      })
+      .mockResolvedValueOnce({
+        account: createAccountResponse({ account: null, requiresOpenaiAuth: true }),
+        initialize: {
+          codexHome: '/Users/test/.codex',
+          platformFamily: 'unix',
+          platformOs: 'macos',
+        },
+      });
+    readRateLimitsMock.mockResolvedValue(createRateLimitsResponse());
+    const feature = createCodexAccountFeature({
+      logger: createLoggerPort(),
+      configManager: createConfigManager('chatgpt'),
+    });
+    const dateNowSpy = vi.spyOn(Date, 'now');
+
+    try {
+      dateNowSpy.mockReturnValue(1_776_000_000_000);
+      const firstSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+      dateNowSpy.mockReturnValue(1_776_000_060_000);
+      const secondSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+
+      expect(firstSnapshot.managedAccount?.email).toBe('user@example.com');
+      expect(firstSnapshot.rateLimits?.primary?.usedPercent).toBe(77);
+      expect(secondSnapshot.managedAccount?.email).toBe('user@example.com');
+      expect(secondSnapshot.rateLimits?.primary?.usedPercent).toBe(77);
+      expect(readRateLimitsMock).toHaveBeenCalledTimes(2);
+    } finally {
+      dateNowSpy.mockRestore();
+      await feature.dispose();
+    }
+  });
+
+  it('keeps last known rate limits visible during a transient empty rate limit response', async () => {
+    readAccountMock.mockResolvedValue({
+      account: createAccountResponse(),
+      initialize: {
+        codexHome: '/Users/test/.codex',
+        platformFamily: 'unix',
+        platformOs: 'macos',
+      },
+    });
+    readRateLimitsMock.mockResolvedValueOnce(createRateLimitsResponse()).mockResolvedValueOnce({
+      rateLimits: null,
+      rateLimitsByLimitId: null,
+    });
+    const feature = createCodexAccountFeature({
+      logger: createLoggerPort(),
+      configManager: createConfigManager('chatgpt'),
+    });
+    const dateNowSpy = vi.spyOn(Date, 'now');
+
+    try {
+      dateNowSpy.mockReturnValue(1_776_000_000_000);
+      const firstSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+      dateNowSpy.mockReturnValue(1_776_000_060_000);
+      const secondSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+
+      expect(firstSnapshot.rateLimits?.primary?.usedPercent).toBe(77);
+      expect(secondSnapshot.rateLimits?.primary?.usedPercent).toBe(77);
+      expect(readRateLimitsMock).toHaveBeenCalledTimes(2);
+    } finally {
+      dateNowSpy.mockRestore();
+      await feature.dispose();
+    }
+  });
+
+  it('does not reuse stale rate limits after the active ChatGPT account changes', async () => {
+    readAccountMock
+      .mockResolvedValueOnce({
+        account: createAccountResponse({
+          account: {
+            type: 'chatgpt',
+            email: 'first@example.com',
+            planType: 'pro',
+          },
+        }),
+        initialize: {
+          codexHome: '/Users/test/.codex',
+          platformFamily: 'unix',
+          platformOs: 'macos',
+        },
+      })
+      .mockResolvedValueOnce({
+        account: createAccountResponse({
+          account: {
+            type: 'chatgpt',
+            email: 'second@example.com',
+            planType: 'pro',
+          },
+        }),
+        initialize: {
+          codexHome: '/Users/test/.codex',
+          platformFamily: 'unix',
+          platformOs: 'macos',
+        },
+      });
+    readRateLimitsMock
+      .mockResolvedValueOnce(createRateLimitsResponse())
+      .mockRejectedValueOnce(new Error('rate limit service unavailable'));
+    const feature = createCodexAccountFeature({
+      logger: createLoggerPort(),
+      configManager: createConfigManager('chatgpt'),
+    });
+    const dateNowSpy = vi.spyOn(Date, 'now');
+
+    try {
+      dateNowSpy.mockReturnValue(1_776_000_000_000);
+      const firstSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+      dateNowSpy.mockReturnValue(1_776_000_060_000);
+      const secondSnapshot = await feature.refreshSnapshot({ includeRateLimits: true });
+
+      expect(firstSnapshot.managedAccount?.email).toBe('first@example.com');
+      expect(firstSnapshot.rateLimits?.primary?.usedPercent).toBe(77);
+      expect(secondSnapshot.managedAccount?.email).toBe('second@example.com');
+      expect(secondSnapshot.rateLimits).toBeNull();
+    } finally {
+      dateNowSpy.mockRestore();
+      await feature.dispose();
+    }
+  });
+
   it('keeps the last known managed account during a transient degraded read', async () => {
     readAccountMock
       .mockResolvedValueOnce({
@@ -684,7 +864,7 @@ describe('createCodexAccountFeature', () => {
       dateNowSpy.mockReturnValue(1_776_000_000_000);
       const firstSnapshot = await feature.refreshSnapshot();
       dateNowSpy.mockReturnValue(1_776_000_006_000);
-      const secondSnapshot = await feature.refreshSnapshot();
+      const secondSnapshot = await feature.refreshSnapshot({ forceRefreshToken: true });
 
       expect(firstSnapshot.managedAccount?.email).toBe('user@example.com');
       expect(secondSnapshot.managedAccount).toMatchObject({
@@ -857,6 +1037,7 @@ describe('createCodexAccountFeature', () => {
         status: 'pending',
         error: null,
         startedAt: '2026-04-20T12:00:00.000Z',
+        authUrl: 'https://chatgpt.com/auth',
       });
     });
 
@@ -872,6 +1053,7 @@ describe('createCodexAccountFeature', () => {
       expect(pendingSnapshot.login).toMatchObject({
         status: 'pending',
         startedAt: '2026-04-20T12:00:00.000Z',
+        authUrl: 'https://chatgpt.com/auth',
       });
       expect(loginStartMock).toHaveBeenCalledTimes(1);
     } finally {
@@ -893,12 +1075,14 @@ describe('createCodexAccountFeature', () => {
       status: 'pending',
       error: null,
       startedAt: '2026-04-20T12:00:00.000Z',
+      authUrl: 'https://chatgpt.com/auth',
     });
     loginCancelMock.mockImplementation(() => {
       emitLoginState({
         status: 'cancelled',
         error: null,
         startedAt: null,
+        authUrl: null,
       });
       for (const listener of loginSettledListeners) {
         listener();

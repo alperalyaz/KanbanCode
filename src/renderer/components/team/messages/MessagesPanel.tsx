@@ -19,11 +19,15 @@ import { useTeamMessagesExpanded } from '@renderer/hooks/useTeamMessagesExpanded
 import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { useStore } from '@renderer/store';
 import { selectTeamMessages } from '@renderer/store/slices/teamSlice';
+import { shouldClearPendingReplyForOpenCodeRuntimeDelivery } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 import { filterTeamMessages } from '@renderer/utils/teamMessageFiltering';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import { shouldExcludeInboxTextFromReplyCandidates } from '@shared/utils/idleNotificationSemantics';
 import { isLeadMember } from '@shared/utils/leadDetection';
-import { isTaskStallRemediationMessage } from '@shared/utils/teamAutomationMessages';
+import {
+  isReviewPickupEscalationMessage,
+  isTaskStallRemediationMessage,
+} from '@shared/utils/teamAutomationMessages';
 import {
   CheckCheck,
   ChevronsDownUp,
@@ -589,7 +593,6 @@ export const MessagesPanel = memo(function MessagesPanel({
   const activityTimelineMessages = useMemo(() => {
     return filterTeamMessages(effectiveMessages, {
       includeAutomationEvents: true,
-      includePassiveIdlePeerSummariesWhenNoiseHidden: true,
       leadNames,
       timeWindow,
       filter: messagesFilter,
@@ -603,6 +606,7 @@ export const MessagesPanel = memo(function MessagesPanel({
         (m) =>
           m.messageKind !== 'task_comment_notification' &&
           !isTaskStallRemediationMessage(m) &&
+          !isReviewPickupEscalationMessage(m) &&
           !shouldExcludeInboxTextFromReplyCandidates(typeof m.text === 'string' ? m.text : '')
       ),
     [effectiveMessages]
@@ -692,12 +696,19 @@ export const MessagesPanel = memo(function MessagesPanel({
   useEffect(() => {
     const debugDetails = sendMessageDebugDetails;
     const messageId = debugDetails?.messageId;
-    if (!messageId || sendMessageRuntimeReplyVisible || debugDetails?.responsePending !== true) {
+    const shouldPoll =
+      debugDetails?.userVisibleState === 'checking' ||
+      (!debugDetails?.userVisibleState && debugDetails?.responsePending === true);
+    if (!messageId || sendMessageRuntimeReplyVisible || !shouldPoll) {
       return;
     }
+    const statusMessageId = debugDetails.statusMessageId || messageId;
     const timers = OPENCODE_RUNTIME_DELIVERY_STATUS_REFRESH_DELAYS_MS.map((delayMs) =>
       window.setTimeout(() => {
-        void refreshSendMessageRuntimeDeliveryStatus(teamName, messageId);
+        void refreshSendMessageRuntimeDeliveryStatus(teamName, {
+          messageId,
+          statusMessageId,
+        });
       }, delayMs)
     );
     return () => {
@@ -706,7 +717,9 @@ export const MessagesPanel = memo(function MessagesPanel({
   }, [
     refreshSendMessageRuntimeDeliveryStatus,
     sendMessageDebugDetails?.messageId,
+    sendMessageDebugDetails?.statusMessageId,
     sendMessageDebugDetails?.responsePending,
+    sendMessageDebugDetails?.userVisibleState,
     sendMessageRuntimeReplyVisible,
     teamName,
   ]);
@@ -733,10 +746,7 @@ export const MessagesPanel = memo(function MessagesPanel({
         taskRefs,
       })
         .then((result) => {
-          if (
-            result?.runtimeDelivery?.attempted === true &&
-            result.runtimeDelivery.delivered === false
-          ) {
+          if (shouldClearPendingReplyForOpenCodeRuntimeDelivery(result?.runtimeDelivery)) {
             onPendingReplyChange((prev) => {
               if (prev[member] !== sentAtMs) return prev;
               const next = { ...prev };

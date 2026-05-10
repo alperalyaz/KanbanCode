@@ -228,7 +228,9 @@ function restoreWindowAnimationFrame(): void {
     originalWindowAnimationFrame.hasRequest
       ? originalWindowAnimationFrame.requestAnimationFrame
       : undefined,
-    originalWindowAnimationFrame.hasCancel ? originalWindowAnimationFrame.cancelAnimationFrame : undefined
+    originalWindowAnimationFrame.hasCancel
+      ? originalWindowAnimationFrame.cancelAnimationFrame
+      : undefined
   );
 }
 
@@ -475,7 +477,7 @@ describe('teamSlice actions', () => {
 
     expect(store.getState().lastSendMessageResult).toBe(result);
     expect(store.getState().sendMessageWarning).toBe(
-      'OpenCode runtime delivery is still being checked. Message was saved and will be retried if needed.'
+      'OpenCode delivery is still being checked. Message was saved and will be observed before retry if needed.'
     );
     expect(store.getState().sendMessageDebugDetails).toMatchObject({
       messageId: 'm-opencode-pending',
@@ -524,9 +526,7 @@ describe('teamSlice actions', () => {
       member: 'bob',
       text: 'hello',
     });
-    await store
-      .getState()
-      .refreshSendMessageRuntimeDeliveryStatus('my-team', 'm-opencode-pending');
+    await store.getState().refreshSendMessageRuntimeDeliveryStatus('my-team', 'm-opencode-pending');
 
     expect(store.getState().sendMessageWarning).toBe(
       'OpenCode runtime delivery failed. Message was saved to inbox, but live delivery did not complete. Reason: OpenCode returned an empty assistant turn.'
@@ -539,6 +539,89 @@ describe('teamSlice actions', () => {
       ledgerStatus: 'failed_terminal',
       reason: 'empty_assistant_turn',
       diagnostics: ['empty_assistant_turn'],
+    });
+  });
+
+  it('checks the original message when queued blocker impact is no longer user-visible', async () => {
+    const store = createSliceStore();
+    hoisted.sendMessage.mockResolvedValue({
+      deliveredToInbox: true,
+      messageId: 'm-opencode-queued',
+      runtimeDelivery: {
+        providerId: 'opencode',
+        attempted: true,
+        delivered: true,
+        responsePending: true,
+        responseState: 'pending',
+        ledgerStatus: 'accepted',
+        queuedBehindMessageId: 'm-opencode-blocker',
+        reason: 'opencode_delivery_response_pending',
+        diagnostics: ['opencode_delivery_response_pending'],
+        userVisibleImpact: {
+          state: 'checking',
+        },
+      },
+    });
+    hoisted.getOpenCodeRuntimeDeliveryStatus
+      .mockResolvedValueOnce({
+        messageId: 'm-opencode-blocker',
+        providerId: 'opencode',
+        attempted: true,
+        delivered: true,
+        responsePending: true,
+        responseState: 'responded_non_visible_tool',
+        ledgerStatus: 'responded',
+        acceptanceUnknown: false,
+        reason: 'non_visible_tool_without_task_progress',
+        diagnostics: ['non_visible_tool_without_task_progress'],
+        userVisibleImpact: {
+          state: 'none',
+        },
+      })
+      .mockResolvedValueOnce({
+        messageId: 'm-opencode-queued',
+        providerId: 'opencode',
+        attempted: true,
+        delivered: false,
+        responsePending: false,
+        responseState: 'empty_assistant_turn',
+        ledgerStatus: 'failed_terminal',
+        acceptanceUnknown: false,
+        reason: 'empty_assistant_turn',
+        diagnostics: ['empty_assistant_turn'],
+        userVisibleImpact: {
+          state: 'error',
+          reasonCode: 'backend_error',
+          message: 'empty_assistant_turn',
+        },
+      });
+
+    await store.getState().sendTeamMessage('my-team', {
+      member: 'bob',
+      text: 'hello',
+    });
+    await store.getState().refreshSendMessageRuntimeDeliveryStatus('my-team', {
+      messageId: 'm-opencode-queued',
+      statusMessageId: 'm-opencode-blocker',
+    });
+
+    expect(hoisted.getOpenCodeRuntimeDeliveryStatus).toHaveBeenNthCalledWith(
+      1,
+      'my-team',
+      'm-opencode-blocker'
+    );
+    expect(hoisted.getOpenCodeRuntimeDeliveryStatus).toHaveBeenNthCalledWith(
+      2,
+      'my-team',
+      'm-opencode-queued'
+    );
+    expect(store.getState().sendMessageWarning).toBe(
+      'OpenCode runtime delivery failed. Message was saved to inbox, but live delivery did not complete. Reason: OpenCode returned an empty assistant turn.'
+    );
+    expect(store.getState().sendMessageDebugDetails).toMatchObject({
+      messageId: 'm-opencode-queued',
+      statusMessageId: 'm-opencode-queued',
+      userVisibleState: 'error',
     });
   });
 
@@ -567,7 +650,7 @@ describe('teamSlice actions', () => {
 
     store.getState().clearSendMessageRuntimeDiagnostics('other-message');
     expect(store.getState().sendMessageWarning).toBe(
-      'OpenCode runtime delivery is still being checked. Message was saved and will be retried if needed.'
+      'OpenCode delivery is still being checked. Message was saved and will be observed before retry if needed.'
     );
     expect(store.getState().sendMessageDebugDetails?.messageId).toBe('m-opencode-pending');
 
@@ -975,6 +1058,51 @@ describe('teamSlice actions', () => {
     });
   });
 
+  it('normalizes legacy six-owner row-orbit slots before preserving manual layout', () => {
+    const store = createSliceStore();
+    const members = [
+      { name: 'alice', agentId: 'agent-alice' },
+      { name: 'bob', agentId: 'agent-bob' },
+      { name: 'tom', agentId: 'agent-tom' },
+      { name: 'jack', agentId: 'agent-jack' },
+      { name: 'nova', agentId: 'agent-nova' },
+      { name: 'atlas', agentId: 'agent-atlas' },
+    ];
+    store.setState({
+      slotAssignmentsByTeam: {
+        'my-team': {
+          'agent-alice': { ringIndex: 0, sectorIndex: 0 },
+          'agent-atlas': { ringIndex: 0, sectorIndex: 1 },
+          'agent-bob': { ringIndex: 0, sectorIndex: 2 },
+          'agent-jack': { ringIndex: 1, sectorIndex: 0 },
+          'agent-nova': { ringIndex: 1, sectorIndex: 1 },
+          'agent-tom': { ringIndex: 1, sectorIndex: 2 },
+        },
+      },
+      graphLayoutSessionByTeam: {
+        'my-team': {
+          mode: 'manual',
+          signature: null,
+        },
+      },
+    });
+
+    store.getState().ensureTeamGraphSlotAssignments('my-team', members);
+
+    expect(store.getState().slotAssignmentsByTeam['my-team']).toEqual({
+      'agent-alice': { ringIndex: 0, sectorIndex: 0 },
+      'agent-atlas': { ringIndex: 0, sectorIndex: 1 },
+      'agent-bob': { ringIndex: 0, sectorIndex: 2 },
+      'agent-jack': { ringIndex: 2, sectorIndex: 0 },
+      'agent-nova': { ringIndex: 2, sectorIndex: 1 },
+      'agent-tom': { ringIndex: 2, sectorIndex: 2 },
+    });
+    expect(store.getState().graphLayoutSessionByTeam['my-team']).toEqual({
+      mode: 'manual',
+      signature: null,
+    });
+  });
+
   it('resets graph slot assignments back to defaults when reopening the graph surface', () => {
     const store = createSliceStore();
     store.setState({
@@ -1352,10 +1480,7 @@ describe('teamSlice actions', () => {
     const fullPromise = store.getState().refreshTeamData('my-team', { withDedup: false });
 
     expect(hoisted.getData).toHaveBeenCalledTimes(2);
-    expect(hoisted.getData.mock.calls[0]).toEqual([
-      'my-team',
-      { includeMemberBranches: false },
-    ]);
+    expect(hoisted.getData.mock.calls[0]).toEqual(['my-team', { includeMemberBranches: false }]);
     expect(hoisted.getData.mock.calls[1]).toEqual(['my-team']);
 
     thinRequest.resolve(thinSnapshot);
@@ -1414,7 +1539,9 @@ describe('teamSlice actions', () => {
 
     hoisted.getData
       .mockImplementationOnce(() => alphaThin.promise)
-      .mockResolvedValueOnce(createTeamSnapshot({ teamName: 'beta-team', config: { name: 'Beta' } }))
+      .mockResolvedValueOnce(
+        createTeamSnapshot({ teamName: 'beta-team', config: { name: 'Beta' } })
+      )
       .mockResolvedValueOnce(alphaFull);
 
     const alphaSelect = store.getState().selectTeam('alpha-team');
@@ -1427,7 +1554,9 @@ describe('teamSlice actions', () => {
 
     await store.getState().selectTeam('beta-team');
 
-    alphaThin.resolve(createTeamSnapshot({ teamName: 'alpha-team', config: { name: 'Alpha Thin' } }));
+    alphaThin.resolve(
+      createTeamSnapshot({ teamName: 'alpha-team', config: { name: 'Alpha Thin' } })
+    );
     await alphaSelect;
     await flushAsyncWork();
 
@@ -1509,8 +1638,12 @@ describe('teamSlice actions', () => {
     const store = createSliceStore();
 
     hoisted.getData
-      .mockResolvedValueOnce(createTeamSnapshot({ teamName: 'alpha-team', config: { name: 'Alpha' } }))
-      .mockResolvedValueOnce(createTeamSnapshot({ teamName: 'beta-team', config: { name: 'Beta' } }));
+      .mockResolvedValueOnce(
+        createTeamSnapshot({ teamName: 'alpha-team', config: { name: 'Alpha' } })
+      )
+      .mockResolvedValueOnce(
+        createTeamSnapshot({ teamName: 'beta-team', config: { name: 'Beta' } })
+      );
 
     await store.getState().selectTeam('alpha-team');
     expect(__getTeamScopedTransientStateForTests('alpha-team')).toMatchObject({
@@ -3480,9 +3613,7 @@ describe('teamSlice actions', () => {
 
     const result = await store.getState().retryFailedOpenCodeSecondaryLanes('my-team');
 
-    expect(result.failed).toEqual([
-      { memberName: 'alice', error: 'OpenRouter credits exhausted' },
-    ]);
+    expect(result.failed).toEqual([{ memberName: 'alice', error: 'OpenRouter credits exhausted' }]);
     expect(hoisted.retryFailedOpenCodeSecondaryLanes).toHaveBeenCalledWith('my-team');
     expect(refreshSpawnStatuses).toHaveBeenCalledWith('my-team');
     expect(refreshRuntimeSnapshot).toHaveBeenCalledWith('my-team');

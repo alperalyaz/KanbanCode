@@ -17,8 +17,16 @@ import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { isTeamProvisioningActive } from '@renderer/store/slices/teamSlice';
 import { serializeChipsWithText } from '@renderer/types/inlineChip';
+import {
+  canMemberShowAttachmentControl,
+  getAttachmentInputAcceptForMember,
+  getMemberAttachmentUnavailableReason,
+  validateAttachmentFilesForMember,
+  validateAttachmentPayloadsForMember,
+} from '@renderer/utils/attachmentRecipientCapabilities';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { isOpenCodeRuntimeDeliveryHardUxFailureFromDebugDetails } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 import { nameColorSet } from '@renderer/utils/projectColor';
 import { getSuggestedSlashCommandsForProvider } from '@renderer/utils/providerSlashCommands';
 import { buildSlashCommandSuggestions } from '@renderer/utils/skillCommandSuggestions';
@@ -120,6 +128,14 @@ export const MessageComposer = ({
       }
     };
   }, [externalTextareaRef]);
+  const focusComposerTextarea = useCallback(() => {
+    const focus = (): void => {
+      internalTextareaRef.current?.focus();
+    };
+    focus();
+    queueMicrotask(focus);
+    window.requestAnimationFrame(focus);
+  }, []);
   const [recipient, setRecipient] = useState<string>(() => {
     const lead = members.find((m) => isLeadMember(m));
     return lead?.name ?? members[0]?.name ?? '';
@@ -251,6 +267,7 @@ export const MessageComposer = ({
   );
   const userSkills = useStore(useShallow((s) => s.skillsUserCatalog));
   const fetchSkillsCatalog = useStore((s) => s.fetchSkillsCatalog);
+  const isLaunchBlocking = isProvisioning && !isTeamAlive;
 
   // Fetch skills catalog for the team's project on mount / project change
   useEffect(() => {
@@ -274,6 +291,15 @@ export const MessageComposer = ({
   const selectedMember = members.find((m) => m.name === recipient);
   const selectedResolvedColor = selectedMember ? colorMap.get(selectedMember.name) : undefined;
   const isLeadRecipient = selectedMember ? isLeadMember(selectedMember) : false;
+  const selectedProviderId =
+    normalizeOptionalTeamProviderId(selectedMember?.providerId) ??
+    inferTeamProviderIdFromModel(selectedMember?.model);
+  const isOpenCodeRecipient = selectedProviderId === 'opencode';
+  const showAttachmentControl = canMemberShowAttachmentControl(selectedMember);
+  const memberAttachmentUnavailableReason = showAttachmentControl
+    ? getMemberAttachmentUnavailableReason(selectedMember)
+    : null;
+  const attachmentInputAccept = getAttachmentInputAcceptForMember(selectedMember);
   const hasTeammates = members.length > 1;
   const canDelegate = hasTeammates && (isCrossTeam || isLeadRecipient);
   const shouldAutoDelegate = isLeadRecipient && canDelegate;
@@ -285,9 +311,9 @@ export const MessageComposer = ({
   useEffect(() => {
     if (prevActionModeRef.current !== actionMode) {
       prevActionModeRef.current = actionMode;
-      internalTextareaRef.current?.focus();
+      focusComposerTextarea();
     }
-  }, [actionMode]);
+  }, [actionMode, focusComposerTextarea]);
 
   // Auto-select delegate when lead recipient is chosen by the user.
   // Wait until draft is restored from IndexedDB (draftLoaded) before running,
@@ -328,20 +354,35 @@ export const MessageComposer = ({
   // const leadContext = useStore((s) =>
   //   isLeadAgentRecipient ? s.leadContextByTeam[teamName] : undefined
   // );
-  const supportsAttachments = isLeadRecipient && !isCrossTeam && !!isTeamAlive;
+  const supportsAttachments =
+    !isCrossTeam &&
+    !!isTeamAlive &&
+    showAttachmentControl &&
+    memberAttachmentUnavailableReason == null;
   const canAttach = supportsAttachments && draft.canAddMore && !sending;
   const attachmentRestrictionReason = !supportsAttachments
     ? isCrossTeam
       ? 'File attachments are not supported for cross-team messages'
-      : !isLeadRecipient
-        ? 'Files can only be sent to the team lead'
-        : 'Team must be online to attach files'
+      : !isTeamAlive
+        ? 'Team must be online to attach files'
+        : !showAttachmentControl
+          ? 'Files can be sent to the team lead or OpenCode teammates'
+          : (memberAttachmentUnavailableReason ??
+            (isOpenCodeRecipient
+              ? 'Team must be online to attach files for OpenCode teammates'
+              : 'Team must be online to attach files'))
     : sending
       ? 'Wait for current message to finish sending before adding files'
       : !draft.canAddMore
         ? 'Maximum attachments reached'
         : undefined;
-  const attachmentsBlocked = draft.attachments.length > 0 && !supportsAttachments;
+  const attachmentPayloadRestrictionReason = validateAttachmentPayloadsForMember({
+    member: selectedMember,
+    attachments: draft.attachments,
+  });
+  const attachmentsBlocked =
+    draft.attachments.length > 0 &&
+    (!supportsAttachments || attachmentPayloadRestrictionReason != null);
   const slashCommandRestrictionReason = standaloneSlashCommand
     ? draft.attachments.length > 0
       ? 'Slash commands require a live team lead and cannot be sent with attachments'
@@ -358,7 +399,7 @@ export const MessageComposer = ({
     trimmed.length > 0 &&
     trimmed.length <= MAX_TEXT_LENGTH &&
     !sending &&
-    !isProvisioning &&
+    !isLaunchBlocking &&
     !attachmentsBlocked &&
     !slashCommandRestrictionReason &&
     (!isCrossTeam || onCrossTeamSend !== undefined);
@@ -404,6 +445,7 @@ export const MessageComposer = ({
         taskRefs
       );
     }
+    focusComposerTextarea();
   }, [
     actionMode,
     canSend,
@@ -418,6 +460,7 @@ export const MessageComposer = ({
     draft.chips,
     draft.text,
     lastResult,
+    focusComposerTextarea,
     taskSuggestions,
     teamName,
   ]);
@@ -449,7 +492,9 @@ export const MessageComposer = ({
     if (!hasCompletionSignal) return;
 
     pendingSendRef.current = null;
-    const failed = sendError !== null || sendDebugDetails?.delivered === false;
+    const failed =
+      sendError !== null ||
+      isOpenCodeRuntimeDeliveryHardUxFailureFromDebugDetails(sendDebugDetails);
     if (failed) {
       if (!isPendingCurrentTeam) return;
       const currentDraftIsEmpty =
@@ -477,13 +522,34 @@ export const MessageComposer = ({
 
   const showFileRestrictionError = useCallback(() => {
     setFileRestrictionError(
-      attachmentRestrictionReason ?? 'Files can only be sent to the team lead'
+      attachmentRestrictionReason ??
+        attachmentPayloadRestrictionReason ??
+        'Files can only be sent to the team lead'
     );
     window.clearTimeout(fileRestrictionTimerRef.current);
     fileRestrictionTimerRef.current = window.setTimeout(() => {
       setFileRestrictionError(null);
     }, 4000);
-  }, [attachmentRestrictionReason]);
+  }, [attachmentPayloadRestrictionReason, attachmentRestrictionReason]);
+
+  const validateSelectedAttachmentFiles = useCallback(
+    (files: FileList | File[]): boolean => {
+      const reason = validateAttachmentFilesForMember({
+        member: selectedMember,
+        files,
+      });
+      if (!reason) {
+        return true;
+      }
+      setFileRestrictionError(reason);
+      window.clearTimeout(fileRestrictionTimerRef.current);
+      fileRestrictionTimerRef.current = window.setTimeout(() => {
+        setFileRestrictionError(null);
+      }, 4000);
+      return false;
+    },
+    [selectedMember]
+  );
 
   const { addFiles: draftAddFiles } = draft;
   const handleFileInputChange = useCallback(
@@ -495,11 +561,15 @@ export const MessageComposer = ({
           input.value = '';
           return;
         }
+        if (!validateSelectedAttachmentFiles(input.files)) {
+          input.value = '';
+          return;
+        }
         void draftAddFiles(input.files);
       }
       input.value = '';
     },
-    [canAttach, draftAddFiles, showFileRestrictionError]
+    [canAttach, draftAddFiles, showFileRestrictionError, validateSelectedAttachmentFiles]
   );
 
   // Cleanup restriction error timer on unmount
@@ -540,9 +610,13 @@ export const MessageComposer = ({
         }
         return;
       }
+      const files = e.dataTransfer?.files;
+      if (files?.length && !validateSelectedAttachmentFiles(files)) {
+        return;
+      }
       draftHandleDrop(e);
     },
-    [canAttach, draftHandleDrop, showFileRestrictionError]
+    [canAttach, draftHandleDrop, showFileRestrictionError, validateSelectedAttachmentFiles]
   );
 
   const { handlePaste: draftHandlePaste } = draft;
@@ -556,9 +630,17 @@ export const MessageComposer = ({
         }
         return;
       }
+      const pastedFiles = Array.from(e.clipboardData.items)
+        .filter((item) => item.kind === 'file')
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => file != null);
+      if (pastedFiles.length > 0 && !validateSelectedAttachmentFiles(pastedFiles)) {
+        e.preventDefault();
+        return;
+      }
       draftHandlePaste(e);
     },
-    [canAttach, draftHandlePaste, showFileRestrictionError]
+    [canAttach, draftHandlePaste, showFileRestrictionError, validateSelectedAttachmentFiles]
   );
 
   const remaining = MAX_TEXT_LENGTH - trimmed.length;
@@ -602,12 +684,12 @@ export const MessageComposer = ({
         )}
       >
         <div className="flex items-center gap-2">
-          {isLeadRecipient ? (
+          {showAttachmentControl ? (
             <>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="*/*"
+                accept={attachmentInputAccept}
                 multiple
                 className="hidden"
                 onChange={handleFileInputChange}
@@ -629,20 +711,16 @@ export const MessageComposer = ({
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="top">
-                  {!isTeamAlive
-                    ? 'Team must be online to attach files'
-                    : sending
-                      ? 'Wait for current message to finish sending'
-                      : !draft.canAddMore
-                        ? 'Maximum attachments reached'
-                        : 'Attach files (paste or drag & drop)'}
+                  {canAttach
+                    ? 'Attach files (paste or drag & drop)'
+                    : (attachmentRestrictionReason ?? 'Attachments are unavailable')}
                 </TooltipContent>
               </Tooltip>
             </>
           ) : null}
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            {!isTeamAlive && !isProvisioning && (
+            {!isTeamAlive && !isLaunchBlocking && (
               <span className="text-[10px]" style={{ color: 'var(--warning-text)' }}>
                 Team offline
               </span>
@@ -653,7 +731,7 @@ export const MessageComposer = ({
               className={cn(
                 'mr-[15px] inline-flex items-center border text-xs transition-colors',
                 shouldDockRecipientSelector
-                  ? 'relative z-10 -mb-px overflow-hidden rounded-b-none rounded-t-[1.35rem] border-b-0 bg-[var(--color-surface-raised)]'
+                  ? 'relative z-[1] -mb-px overflow-hidden rounded-b-none rounded-t-[1.35rem] border-b-0 bg-[var(--color-surface-raised)]'
                   : 'rounded-full',
                 isCrossTeam ? 'border-[var(--cross-team-border)]' : 'border-[var(--color-border)]'
               )}
@@ -717,6 +795,7 @@ export const MessageComposer = ({
                       onClick={() => {
                         setSelectedTeam(null);
                         setTeamSelectorOpen(false);
+                        focusComposerTextarea();
                       }}
                     >
                       {currentTeamColor ? (
@@ -752,6 +831,7 @@ export const MessageComposer = ({
                                 setSelectedTeam(target.teamName);
                                 setRecipient('team-lead');
                                 setTeamSelectorOpen(false);
+                                focusComposerTextarea();
                               }}
                             >
                               <span
@@ -894,6 +974,7 @@ export const MessageComposer = ({
                               setRecipient(m.name);
                               setRecipientOpen(false);
                               setRecipientSearch('');
+                              focusComposerTextarea();
                             }}
                           >
                             <MemberBadge
@@ -926,15 +1007,21 @@ export const MessageComposer = ({
           <AttachmentPreviewList
             attachments={draft.attachments}
             onRemove={draft.removeAttachment}
-            error={draft.attachmentError ?? fileRestrictionError}
+            error={
+              draft.attachmentError ?? fileRestrictionError ?? attachmentPayloadRestrictionReason
+            }
             onDismissError={draft.clearAttachmentError}
             disabled={attachmentsBlocked}
-            disabledHint="File attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
+            disabledHint={
+              attachmentPayloadRestrictionReason ??
+              attachmentRestrictionReason ??
+              'File attachments are supported for the online team lead and online OpenCode teammates. Remove attachments or switch recipient.'
+            }
           />
         ) : null}
       </div>
 
-      <div className="relative">
+      <div className={cn('relative', shouldDockRecipientSelector && 'z-[2]')}>
         <DropZoneOverlay
           active={isDragOver}
           rejected={!canAttach}
@@ -944,7 +1031,7 @@ export const MessageComposer = ({
           ref={textareaRef}
           id={`compose-${teamName}`}
           placeholder={
-            isProvisioning
+            isLaunchBlocking
               ? 'Team is launching... message will be queued for inbox delivery.'
               : isCrossTeam
                 ? `Cross-team message to ${targetDisplayName ?? 'team'}...`
@@ -1013,7 +1100,7 @@ export const MessageComposer = ({
                 </TooltipTrigger>
                 {slashCommandRestrictionReason ? (
                   <TooltipContent side="top">{slashCommandRestrictionReason}</TooltipContent>
-                ) : isProvisioning && !sending ? (
+                ) : isLaunchBlocking && !sending ? (
                   <TooltipContent side="top">
                     Sending unavailable while team is launching
                   </TooltipContent>

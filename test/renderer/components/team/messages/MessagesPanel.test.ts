@@ -225,7 +225,7 @@ describe('MessagesPanel idle summary invariants', () => {
     sidebarUiState.bottomSheetSnapIndex = 2;
   });
 
-  it('keeps read passive peer summaries in the activity timeline while unread badge only counts filtered unread messages', async () => {
+  it('hides passive peer summaries by default while unread badge only counts filtered unread messages', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -278,7 +278,7 @@ describe('MessagesPanel idle summary invariants', () => {
       await Promise.resolve();
     });
 
-    expect(host.textContent).toContain('passive-idle');
+    expect(host.textContent).not.toContain('passive-idle');
     expect(host.textContent).toContain('human-reply');
     expect(host.textContent).toContain('1 new');
     expect(host.textContent).not.toContain('2 new');
@@ -671,10 +671,10 @@ describe('MessagesPanel idle summary invariants', () => {
       await Promise.resolve();
     });
 
-    expect(storeState.refreshSendMessageRuntimeDeliveryStatus).toHaveBeenCalledWith(
-      'atlas-hq',
-      'user-send'
-    );
+    expect(storeState.refreshSendMessageRuntimeDeliveryStatus).toHaveBeenCalledWith('atlas-hq', {
+      messageId: 'user-send',
+      statusMessageId: 'user-send',
+    });
 
     await act(async () => {
       root.unmount();

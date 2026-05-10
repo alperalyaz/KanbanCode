@@ -376,6 +376,66 @@ describe('OpenCode semantic model gauntlet report helpers', () => {
     expect(markdown).toContain('Protocol totals: badMessages=1');
   });
 
+  it('does not count token prefixes as duplicate user replies', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'opencode-gauntlet-hygiene-'));
+    const tempClaudeRoot = path.join(tempDir, '.claude');
+    const teamName = 'prefix-token-team';
+    try {
+      setClaudeBasePathOverride(tempClaudeRoot);
+      const inboxDir = path.join(getTeamsBasePath(), teamName, 'inboxes');
+      await fs.mkdir(inboxDir, { recursive: true });
+      await fs.writeFile(
+        path.join(inboxDir, 'user.json'),
+        `${JSON.stringify(
+          [
+            {
+              from: 'bob',
+              to: 'user',
+              text: 'GAUNTLET_DIRECT_BOB_OK_1',
+              timestamp: '2026-04-26T00:00:01.000Z',
+              read: false,
+            },
+            {
+              from: 'bob',
+              to: 'user',
+              text: 'GAUNTLET_DIRECT_BOB_OK_11',
+              timestamp: '2026-04-26T00:00:02.000Z',
+              read: false,
+            },
+            {
+              from: 'bob',
+              to: 'user',
+              text: 'GAUNTLET_DIRECT_BOB_OK_12',
+              timestamp: '2026-04-26T00:00:03.000Z',
+              read: false,
+            },
+          ],
+          null,
+          2
+        )}\n`,
+        'utf8'
+      );
+
+      await expect(
+        inspectMessageHygiene({
+          teamName,
+          members: ['bob'],
+          expectedUserReplyTokens: [
+            'GAUNTLET_DIRECT_BOB_OK_1',
+            'GAUNTLET_DIRECT_BOB_OK_11',
+            'GAUNTLET_DIRECT_BOB_OK_12',
+          ],
+        })
+      ).resolves.toMatchObject({
+        noDuplicateTokens: true,
+        duplicateOrMissingTokens: [],
+      });
+    } finally {
+      setClaudeBasePathOverride(null);
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  });
+
   it('ranks failure impact by lost weighted score instead of raw failure count only', () => {
     const model = createTestGauntletModel({
       runs: [
@@ -911,6 +971,10 @@ async function runGauntletOnce(input: {
       score >= 90 && !isHardProtocolFailure(stages)
         ? 'none'
         : classifyGauntletFailure({ diagnostics, stages });
+    if (failureCategory !== 'none' && process.env.OPENCODE_E2E_KEEP_FAILED === '1') {
+      keepTempDir = true;
+      diagnostics.push(`tempDir=${tempDir}`);
+    }
     return {
       runIndex: input.runIndex,
       passed: failureCategory === 'none',
@@ -1127,6 +1191,15 @@ function hasTaskRef(message: InboxMessage, expected: TaskRef): boolean {
   );
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function textContainsExactToken(text: string | undefined, token: string): boolean {
+  const pattern = new RegExp(`(^|[^A-Za-z0-9_])${escapeRegExp(token)}($|[^A-Za-z0-9_])`);
+  return pattern.test(text ?? '');
+}
+
 async function inspectMessageHygiene(input: {
   teamName: string;
   members: string[];
@@ -1163,7 +1236,8 @@ async function inspectMessageHygiene(input: {
     diagnostics.push(`badMessages=${JSON.stringify(badMessages.slice(0, 5))}`);
   }
   const duplicateTokens = input.expectedUserReplyTokens.filter((token) => {
-    const count = userMessages.filter((message) => message.text?.includes(token)).length;
+    const count = userMessages.filter((message) => textContainsExactToken(message.text, token))
+      .length;
     return count !== 1;
   });
   if (duplicateTokens.length > 0) {

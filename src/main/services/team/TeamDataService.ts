@@ -58,11 +58,11 @@ import { TeamMembersMetaStore } from './TeamMembersMetaStore';
 import { TeamMessageFeedService } from './TeamMessageFeedService';
 import { TeamMetaStore } from './TeamMetaStore';
 import { TeamSentMessagesStore } from './TeamSentMessagesStore';
+import { getTeamTaskWorkflowColumn, selectCurrentActiveTeamTask } from './teamTaskActiveState';
 import { TeamTaskCommentNotificationJournal } from './TeamTaskCommentNotificationJournal';
 import { TeamTaskReader } from './TeamTaskReader';
 import { TeamTaskWriter } from './TeamTaskWriter';
 import { TeamTranscriptProjectResolver } from './TeamTranscriptProjectResolver';
-import { getTeamTaskWorkflowColumn, selectCurrentActiveTeamTask } from './teamTaskActiveState';
 
 import type { PersistedTaskChangePresenceIndex } from './cache/taskChangePresenceCacheTypes';
 import type { TaskChangePresenceRepository } from './cache/TaskChangePresenceRepository';
@@ -495,6 +495,14 @@ export class TeamDataService {
 
   setMemberRuntimeAdvisoryService(service: TeamMemberRuntimeAdvisoryService): void {
     this.memberRuntimeAdvisoryService = service;
+  }
+
+  invalidateMemberRuntimeAdvisory(teamName: string, memberName: string): void {
+    this.memberRuntimeAdvisoryService.invalidateMemberAdvisory(teamName, memberName);
+  }
+
+  invalidateTeamRuntimeAdvisories(teamName: string): void {
+    this.memberRuntimeAdvisoryService.invalidateTeamAdvisories(teamName);
   }
 
   private async getMemberRuntimeAdvisoriesForSnapshot(
@@ -2304,6 +2312,9 @@ export class TeamDataService {
       toolSummary: enrichedRequest.toolSummary,
       toolCalls: enrichedRequest.toolCalls,
       messageKind: enrichedRequest.messageKind,
+      workSyncIntent: enrichedRequest.workSyncIntent,
+      workSyncIntentKey: enrichedRequest.workSyncIntentKey,
+      workSyncReviewRequestEventIds: enrichedRequest.workSyncReviewRequestEventIds,
       slashCommand: enrichedRequest.slashCommand,
       commandOutput: enrichedRequest.commandOutput,
       taskRefs: enrichedRequest.taskRefs,

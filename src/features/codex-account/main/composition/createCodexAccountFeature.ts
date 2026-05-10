@@ -2,6 +2,7 @@ import {
   type CodexAccountAuthMode,
   type CodexAccountSnapshotDto,
   type CodexApiKeyAvailabilityDto,
+  type CodexChatgptLoginMode,
   type CodexCreditsSnapshotDto,
   type CodexLoginStateDto,
   type CodexManagedAccountDto,
@@ -27,7 +28,10 @@ import { CodexAccountSnapshotPresenter } from '../adapters/output/presenters/Cod
 import { CodexAccountAppServerClient } from '../infrastructure/CodexAccountAppServerClient';
 import { CodexAccountEnvBuilder } from '../infrastructure/CodexAccountEnvBuilder';
 import { CodexLoginSessionManager } from '../infrastructure/CodexLoginSessionManager';
-import { detectCodexLocalAccountState } from '../infrastructure/detectCodexLocalAccountArtifacts';
+import {
+  detectCodexLocalAccountState,
+  ensureCodexLegacyAuthFromActiveAccount,
+} from '../infrastructure/detectCodexLocalAccountArtifacts';
 
 import type { Logger } from '@shared/utils/logger';
 import type { BrowserWindow } from 'electron';
@@ -46,6 +50,7 @@ interface CodexLastKnownAccount {
 interface CodexLastKnownRateLimits {
   payload: CodexAppServerGetAccountRateLimitsResponse;
   observedAt: number;
+  accountSignature: string | null;
 }
 
 interface CodexRuntimeContext {
@@ -95,6 +100,20 @@ function asCodexManagedAccount(
   };
 }
 
+function getCodexAccountSignature(
+  account: CodexAppServerGetAccountResponse['account']
+): string | null {
+  if (!account) {
+    return null;
+  }
+
+  if (account.type === 'apiKey') {
+    return 'api_key';
+  }
+
+  return `chatgpt:${account.email ?? 'unknown'}:${account.planType ?? 'unknown'}`;
+}
+
 function asRateLimitWindow(
   window: CodexAppServerRateLimitSnapshot['primary']
 ): CodexRateLimitWindowDto | null {
@@ -138,6 +157,10 @@ function asRateLimits(
     credits: asCreditsSnapshot(snapshot.credits),
     planType: snapshot.planType,
   };
+}
+
+function hasVisibleRateLimitData(snapshot: CodexRateLimitSnapshotDto | null): boolean {
+  return Boolean(snapshot?.primary || snapshot?.secondary || snapshot?.credits);
 }
 
 function createRuntimeContext(
@@ -234,7 +257,7 @@ export interface CodexAccountFeatureFacade {
     includeRateLimits?: boolean;
     forceRefreshToken?: boolean;
   }): Promise<CodexAccountSnapshotDto>;
-  startChatgptLogin(): Promise<CodexAccountSnapshotDto>;
+  startChatgptLogin(options?: { mode?: CodexChatgptLoginMode }): Promise<CodexAccountSnapshotDto>;
   cancelLogin(): Promise<CodexAccountSnapshotDto>;
   logout(): Promise<CodexAccountSnapshotDto>;
   subscribe(listener: (snapshot: CodexAccountSnapshotDto) => void): () => void;
@@ -323,7 +346,9 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
     return this.refreshPromise;
   }
 
-  async startChatgptLogin(): Promise<CodexAccountSnapshotDto> {
+  async startChatgptLogin(options?: {
+    mode?: CodexChatgptLoginMode;
+  }): Promise<CodexAccountSnapshotDto> {
     let binaryMissing = false;
     await this.runSerializedMutation(async () => {
       const binaryPath = await CodexBinaryResolver.resolve();
@@ -333,7 +358,7 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
       }
 
       const env = this.envBuilder.buildControlPlaneEnv({ binaryPath });
-      await this.loginSessionManager.start({ binaryPath, env });
+      await this.loginSessionManager.start({ binaryPath, env, mode: options?.mode });
     });
 
     if (binaryMissing) {
@@ -468,6 +493,14 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
       return snapshot;
     }
 
+    if (localActiveChatgptAccountPresent) {
+      await ensureCodexLegacyAuthFromActiveAccount().catch((error) => {
+        this.logger.warn('codex account legacy auth compatibility sync failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
+
     const env = this.envBuilder.buildControlPlaneEnv({ binaryPath });
     let appServerState: CodexAccountSnapshotDto['appServerState'] = 'healthy';
     let appServerStatusMessage: string | null = null;
@@ -478,6 +511,7 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
     const shouldRequestRateLimits =
       options?.includeRateLimits === true && !cachedRateLimitsAreFresh;
     let rateLimitsReadFailure: unknown | null = null;
+    let rateLimitsReadReturnedEmpty = false;
 
     try {
       const accountResult = await this.appServerClient.readAccountSnapshot({
@@ -494,7 +528,6 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
         };
       }
       const canReuseLastKnownManagedAccount =
-        options?.forceRefreshToken !== true &&
         localActiveChatgptAccountPresent &&
         accountResult.account.account == null &&
         accountResult.account.requiresOpenaiAuth === true &&
@@ -514,10 +547,18 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
         };
       }
       if (accountResult.rateLimits?.ok) {
-        this.lastKnownRateLimits = {
-          payload: accountResult.rateLimits.payload,
-          observedAt: now,
-        };
+        const nextRateLimits = asRateLimits(accountResult.rateLimits.payload.rateLimits);
+        if (hasVisibleRateLimitData(nextRateLimits)) {
+          this.lastKnownRateLimits = {
+            payload: accountResult.rateLimits.payload,
+            observedAt: now,
+            accountSignature:
+              getCodexAccountSignature(accountResult.account.account) ??
+              getCodexAccountSignature(accountPayload?.account ?? null),
+          };
+        } else {
+          rateLimitsReadReturnedEmpty = true;
+        }
       } else if (accountResult.rateLimits) {
         rateLimitsReadFailure = accountResult.rateLimits.error;
       }
@@ -549,17 +590,27 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
     let rateLimits: CodexRateLimitSnapshotDto | null = null;
     const shouldLoadRateLimits =
       options?.includeRateLimits === true || this.hasFreshRateLimits(now);
+    const currentAccountSignature = getCodexAccountSignature(accountPayload?.account ?? null);
+    const reusableLastKnownRateLimits =
+      this.lastKnownRateLimits?.accountSignature === currentAccountSignature
+        ? this.lastKnownRateLimits
+        : null;
 
     if (shouldLoadRateLimits) {
-      if (this.hasFreshRateLimits(now) && this.lastKnownRateLimits) {
-        rateLimits = asRateLimits(this.lastKnownRateLimits.payload.rateLimits);
-      } else if (rateLimitsReadFailure) {
-        this.logger.warn('codex account rate limits refresh failed', {
-          error:
-            rateLimitsReadFailure instanceof Error
-              ? rateLimitsReadFailure.message
-              : String(rateLimitsReadFailure),
-        });
+      if (this.hasFreshRateLimits(now) && reusableLastKnownRateLimits) {
+        rateLimits = asRateLimits(reusableLastKnownRateLimits.payload.rateLimits);
+      } else if (rateLimitsReadFailure || rateLimitsReadReturnedEmpty) {
+        if (rateLimitsReadFailure) {
+          this.logger.warn('codex account rate limits refresh failed', {
+            error:
+              rateLimitsReadFailure instanceof Error
+                ? rateLimitsReadFailure.message
+                : String(rateLimitsReadFailure),
+          });
+        }
+        if (reusableLastKnownRateLimits) {
+          rateLimits = asRateLimits(reusableLastKnownRateLimits.payload.rateLimits);
+        }
       }
     }
 
@@ -692,6 +743,8 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
       status: 'idle',
       error: loginState.status === 'failed' ? loginState.error : null,
       startedAt: null,
+      authUrl: null,
+      userCode: null,
     };
   }
 

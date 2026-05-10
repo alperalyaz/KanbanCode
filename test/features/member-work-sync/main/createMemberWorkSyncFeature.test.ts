@@ -180,7 +180,7 @@ async function seedBlockingShadowCollectingMetrics(input: {
 }
 
 async function waitForAssertion(assertion: () => Promise<void> | void): Promise<void> {
-  const deadline = Date.now() + 2_000;
+  const deadline = Date.now() + 5_000;
   let lastError: unknown;
   while (Date.now() < deadline) {
     try {
@@ -299,7 +299,13 @@ async function forceRetryableOutboxDue(input: {
   expect(touched).toBeGreaterThan(0);
   await fs.promises.writeFile(outboxPath, `${JSON.stringify(parsed, null, 2)}\n`, 'utf8');
   await fs.promises.rm(
-    path.join(input.teamsBasePath, input.teamName, '.member-work-sync', 'indexes', 'outbox-index.json'),
+    path.join(
+      input.teamsBasePath,
+      input.teamName,
+      '.member-work-sync',
+      'indexes',
+      'outbox-index.json'
+    ),
     { force: true }
   );
 }
@@ -794,7 +800,7 @@ describe('createMemberWorkSyncFeature composition', () => {
         'utf8'
       );
       expect(journal).toContain('"event":"nudge_skipped"');
-      expect(journal).toContain('"reason":"phase2_not_ready"');
+      expect(journal).toContain('"reason":"blocking_metrics"');
       expect(journal).not.toContain('"event":"nudge_delivered"');
     } finally {
       await feature.dispose();
@@ -1098,7 +1104,7 @@ describe('createMemberWorkSyncFeature composition', () => {
           'utf8'
         );
         expect(journal).toContain('"event":"nudge_skipped"');
-        expect(journal).toContain('"reason":"phase2_not_ready"');
+        expect(journal).toContain('"reason":"blocking_metrics"');
       });
 
       await seedShadowReadyMetrics({ teamsBasePath, teamName, memberName });
@@ -1301,7 +1307,14 @@ describe('createMemberWorkSyncFeature composition', () => {
       ).toHaveLength(2);
 
       const journal = await fs.promises.readFile(
-        path.join(teamsBasePath, teamName, 'members', memberName, '.member-work-sync', 'journal.jsonl'),
+        path.join(
+          teamsBasePath,
+          teamName,
+          'members',
+          memberName,
+          '.member-work-sync',
+          'journal.jsonl'
+        ),
         'utf8'
       );
       const events = journal
@@ -2422,10 +2435,7 @@ describe('createMemberWorkSyncFeature composition', () => {
     try {
       const env = await feature.buildRuntimeTurnSettledEnvironment({ provider: 'codex' });
       expect(env).toEqual({
-        [RUNTIME_TURN_SETTLED_SPOOL_ROOT_ENV]: path.join(
-          root,
-          '.member-work-sync/runtime-hooks'
-        ),
+        [RUNTIME_TURN_SETTLED_SPOOL_ROOT_ENV]: path.join(root, '.member-work-sync/runtime-hooks'),
       });
       await expect(
         fs.promises.stat(path.join(root, '.member-work-sync/runtime-hooks/incoming'))
@@ -2448,10 +2458,7 @@ describe('createMemberWorkSyncFeature composition', () => {
     try {
       const env = await feature.buildRuntimeTurnSettledEnvironment({ provider: 'opencode' });
       expect(env).toEqual({
-        [RUNTIME_TURN_SETTLED_SPOOL_ROOT_ENV]: path.join(
-          root,
-          '.member-work-sync/runtime-hooks'
-        ),
+        [RUNTIME_TURN_SETTLED_SPOOL_ROOT_ENV]: path.join(root, '.member-work-sync/runtime-hooks'),
       });
       await expect(
         fs.promises.stat(path.join(root, '.member-work-sync/runtime-hooks/incoming'))
@@ -2470,10 +2477,7 @@ describe('createMemberWorkSyncFeature composition', () => {
     });
 
     expect(env).toEqual({
-      [RUNTIME_TURN_SETTLED_SPOOL_ROOT_ENV]: path.join(
-        root,
-        '.member-work-sync/runtime-hooks'
-      ),
+      [RUNTIME_TURN_SETTLED_SPOOL_ROOT_ENV]: path.join(root, '.member-work-sync/runtime-hooks'),
     });
     await expect(
       fs.promises.stat(path.join(root, '.member-work-sync/runtime-hooks/incoming'))

@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { isAnthropicHaikuTeamModel } from '@renderer/utils/teamModelCatalog';
+
 import { LeadModelRow } from './LeadModelRow';
 import { MembersEditorSection } from './MembersEditorSection';
 
@@ -47,6 +49,12 @@ interface TeamRosterEditorSectionProps {
   disableGeminiOption?: boolean;
   leadModelIssueText?: string | null;
   memberModelIssueById?: Record<string, string | null | undefined>;
+  modelIssueReasonByProvider?: Partial<
+    Record<TeamProviderId, Partial<Record<string, string | null | undefined>>>
+  >;
+  modelUnavailableReasonByProvider?: Partial<
+    Record<TeamProviderId, Partial<Record<string, string | null | undefined>>>
+  >;
   showWorktreeIsolationControls?: boolean;
   teammateWorktreeDefault?: boolean;
   worktreeIsolationDisabledReason?: string | null;
@@ -93,11 +101,40 @@ export const TeamRosterEditorSection = ({
   disableGeminiOption = false,
   leadModelIssueText,
   memberModelIssueById,
+  modelIssueReasonByProvider,
+  modelUnavailableReasonByProvider,
   showWorktreeIsolationControls = false,
   teammateWorktreeDefault = false,
   worktreeIsolationDisabledReason,
   onTeammateWorktreeDefaultChange,
 }: TeamRosterEditorSectionProps): React.JSX.Element => {
+  const canUseCustomMemberRuntimes =
+    !hideMembersContent && !forceInheritedModelSettings && !syncModelsWithTeammates;
+  const activeRuntimeMembers = canUseCustomMemberRuntimes
+    ? members.filter((member) => !member.removedAt)
+    : [];
+  const hasCustomAnthropicRuntime = activeRuntimeMembers.some(
+    (member) => member.providerId === 'anthropic'
+  );
+  const hasMemberAnthropicRuntimeWithContextChoice = activeRuntimeMembers.some((member) => {
+    if (member.providerId === 'anthropic') {
+      const memberModel = member.model?.trim();
+      return !memberModel || !isAnthropicHaikuTeamModel(memberModel);
+    }
+
+    if (member.providerId == null && providerId === 'anthropic') {
+      const memberModel = member.model?.trim();
+      return Boolean(memberModel && !isAnthropicHaikuTeamModel(memberModel));
+    }
+
+    return false;
+  });
+  const hasAnthropicRuntime = providerId === 'anthropic' || hasCustomAnthropicRuntime;
+  const disableAnthropicContextLimit =
+    providerId === 'anthropic' &&
+    isAnthropicHaikuTeamModel(model) &&
+    !hasMemberAnthropicRuntimeWithContextChoice;
+
   return (
     <MembersEditorSection
       members={members}
@@ -124,6 +161,8 @@ export const TeamRosterEditorSection = ({
       softDeleteMembers={softDeleteMembers}
       disableGeminiOption={disableGeminiOption}
       memberModelIssueById={memberModelIssueById}
+      modelIssueReasonByProvider={modelIssueReasonByProvider}
+      modelUnavailableReasonByProvider={modelUnavailableReasonByProvider}
       showWorktreeIsolationControls={showWorktreeIsolationControls}
       teammateWorktreeDefault={teammateWorktreeDefault}
       worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
@@ -145,6 +184,10 @@ export const TeamRosterEditorSection = ({
             warningText={leadWarningText}
             disableGeminiOption={disableGeminiOption}
             modelIssueText={leadModelIssueText}
+            modelIssueReasonByValue={modelIssueReasonByProvider?.[providerId]}
+            modelUnavailableReasonByValue={modelUnavailableReasonByProvider?.[providerId]}
+            showAnthropicContextLimit={hasAnthropicRuntime}
+            disableAnthropicContextLimit={disableAnthropicContextLimit}
           />
           {headerBottom}
         </div>

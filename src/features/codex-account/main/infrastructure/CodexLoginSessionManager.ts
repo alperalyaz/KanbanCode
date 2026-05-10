@@ -4,9 +4,8 @@ import {
   type CodexAppServerLoginAccountResponse,
   type CodexAppServerSession,
 } from '@main/services/infrastructure/codexAppServer';
-import { shell } from 'electron';
 
-import type { CodexLoginStateDto } from '@features/codex-account/contracts';
+import type { CodexChatgptLoginMode, CodexLoginStateDto } from '@features/codex-account/contracts';
 import type { CodexAppServerSessionFactory } from '@main/services/infrastructure/codexAppServer';
 
 const LOGIN_REQUEST_TIMEOUT_MS = 5_000;
@@ -26,6 +25,8 @@ export class CodexLoginSessionManager {
     status: 'idle',
     error: null,
     startedAt: null,
+    authUrl: null,
+    userCode: null,
   };
   private pendingStartToken: symbol | null = null;
   private activeSession: {
@@ -58,7 +59,11 @@ export class CodexLoginSessionManager {
     return structuredClone(this.state);
   }
 
-  async start(options: { binaryPath: string; env: NodeJS.ProcessEnv }): Promise<void> {
+  async start(options: {
+    binaryPath: string;
+    env: NodeJS.ProcessEnv;
+    mode?: CodexChatgptLoginMode;
+  }): Promise<void> {
     if (this.activeSession || this.pendingStartToken) {
       return;
     }
@@ -71,6 +76,8 @@ export class CodexLoginSessionManager {
       status: 'starting',
       error: null,
       startedAt: new Date().toISOString(),
+      authUrl: null,
+      userCode: null,
     });
 
     try {
@@ -86,9 +93,11 @@ export class CodexLoginSessionManager {
         return;
       }
 
+      const requestedResponseType =
+        options.mode === 'device_code' ? 'chatgptDeviceCode' : 'chatgpt';
       const response = await session.request<CodexAppServerLoginAccountResponse>(
         'account/login/start',
-        { type: 'chatgpt' },
+        { type: requestedResponseType },
         LOGIN_REQUEST_TIMEOUT_MS
       );
 
@@ -97,13 +106,20 @@ export class CodexLoginSessionManager {
         return;
       }
 
-      if (response.type !== 'chatgpt') {
+      if (response.type !== requestedResponseType) {
         throw new Error('Codex app-server returned an unexpected login response type');
       }
 
-      const authUrl = new URL(response.authUrl);
+      const authUrl = new URL(
+        response.type === 'chatgptDeviceCode' ? response.verificationUrl : response.authUrl
+      );
       if (authUrl.protocol !== 'https:') {
         throw new Error('Codex app-server returned a non-https auth URL');
+      }
+
+      const userCode = response.type === 'chatgptDeviceCode' ? response.userCode.trim() : null;
+      if (response.type === 'chatgptDeviceCode' && !userCode) {
+        throw new Error('Codex app-server returned an empty ChatGPT login code');
       }
 
       const disposeNotificationListener = session.onNotification((method, params) => {
@@ -135,9 +151,9 @@ export class CodexLoginSessionManager {
         status: 'pending',
         error: null,
         startedAt: this.state.startedAt,
+        authUrl: authUrl.toString(),
+        userCode,
       });
-
-      await shell.openExternal(authUrl.toString());
     } catch (error) {
       const wasAbandonedDuringStart =
         this.pendingStartToken !== startToken &&
@@ -158,6 +174,8 @@ export class CodexLoginSessionManager {
         status: 'failed',
         error: error instanceof Error ? error.message : String(error),
         startedAt: this.state.startedAt,
+        authUrl: this.state.authUrl,
+        userCode: this.state.userCode,
       });
       throw error;
     }
@@ -170,6 +188,8 @@ export class CodexLoginSessionManager {
         status: 'cancelled',
         error: null,
         startedAt: null,
+        authUrl: null,
+        userCode: null,
       });
       this.emitSettled();
       return;
@@ -180,6 +200,8 @@ export class CodexLoginSessionManager {
         status: 'cancelled',
         error: null,
         startedAt: null,
+        authUrl: null,
+        userCode: null,
       });
       return;
     }
@@ -207,6 +229,8 @@ export class CodexLoginSessionManager {
       status: 'cancelled',
       error: null,
       startedAt: null,
+      authUrl: null,
+      userCode: null,
     });
     this.emitSettled();
   }
@@ -221,6 +245,8 @@ export class CodexLoginSessionManager {
         status: 'idle',
         error: null,
         startedAt: null,
+        authUrl: null,
+        userCode: null,
       });
       return;
     }
@@ -234,6 +260,8 @@ export class CodexLoginSessionManager {
       status: 'idle',
       error: null,
       startedAt: null,
+      authUrl: null,
+      userCode: null,
     });
   }
 
@@ -255,12 +283,16 @@ export class CodexLoginSessionManager {
         status: 'idle',
         error: null,
         startedAt: null,
+        authUrl: null,
+        userCode: null,
       });
     } else {
       this.setState({
         status: 'failed',
         error: notification.error ?? 'ChatGPT login failed.',
         startedAt: this.state.startedAt,
+        authUrl: this.state.authUrl,
+        userCode: this.state.userCode,
       });
     }
 
@@ -281,6 +313,8 @@ export class CodexLoginSessionManager {
       status: 'failed',
       error: errorMessage,
       startedAt: this.state.startedAt,
+      authUrl: this.state.authUrl,
+      userCode: this.state.userCode,
     });
     this.emitSettled();
   }

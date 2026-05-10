@@ -140,4 +140,36 @@ export class JsonTaskChangePresenceRepository implements TaskChangePresenceRepos
     this.writeChains.set(teamName, next);
     await next;
   }
+
+  async deleteEntry(teamName: string, taskId: string): Promise<void> {
+    const write = async (): Promise<void> => {
+      const current = await this.readIndex(teamName);
+      if (!current?.entries[taskId]) {
+        return;
+      }
+
+      const entries = { ...current.entries };
+      delete entries[taskId];
+      const next = toPersistedTaskChangePresenceIndex({
+        ...current,
+        writtenAt: new Date().toISOString(),
+        entries,
+      });
+
+      await atomicWriteAsync(this.filePath(teamName), JSON.stringify(next, null, 2));
+    };
+
+    const previous = this.writeChains.get(teamName) ?? Promise.resolve();
+    const next = previous
+      .catch(() => undefined)
+      .then(write)
+      .finally(() => {
+        if (this.writeChains.get(teamName) === next) {
+          this.writeChains.delete(teamName);
+        }
+      });
+
+    this.writeChains.set(teamName, next);
+    await next;
+  }
 }

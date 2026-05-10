@@ -5,7 +5,10 @@ import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TeamConfigReader } from '../../../../src/main/services/team/TeamConfigReader';
-import { TeamProvisioningService } from '../../../../src/main/services/team/TeamProvisioningService';
+import {
+  getMixedLaunchFallbackRecoveryError,
+  TeamProvisioningService,
+} from '../../../../src/main/services/team/TeamProvisioningService';
 import type {
   OpenCodeTeamRuntimeMessageInput,
   OpenCodeTeamRuntimeMessageResult,
@@ -45,7 +48,7 @@ import {
   RuntimeStoreBatchWriter,
 } from '../../../../src/main/services/team/opencode/store/RuntimeStoreManifest';
 
-import type { TeamProvisioningProgress } from '../../../../src/shared/types';
+import type { InboxMessage, TaskRef, TeamProvisioningProgress } from '../../../../src/shared/types';
 
 const LAUNCH_MATRIX_SAFE_E2E_TIMEOUT_MS = 60_000;
 
@@ -231,6 +234,71 @@ describe('Team agent launch matrix safe e2e', () => {
       status: 'online',
       launchState: 'confirmed_alive',
     });
+  });
+
+  it('materializes members metadata before relaunching a legacy pure team config', async () => {
+    const teamName = 'legacy-pure-config-repair-safe-e2e';
+    await writePureAnthropicTeamConfigWithMembers({
+      teamName,
+      projectPath,
+      members: ['alice', 'bob'],
+    });
+    const svc = new TeamProvisioningService();
+    vi.spyOn(svc as any, 'normalizeTeamConfigForLaunch').mockImplementation(async () => {
+      throw new Error('stop after compatibility repair');
+    });
+
+    await expect(
+      svc.launchTeam(
+        {
+          teamName,
+          cwd: projectPath,
+          providerId: 'anthropic',
+          model: 'sonnet',
+          skipPermissions: true,
+        },
+        () => undefined
+      )
+    ).rejects.toThrow('stop after compatibility repair');
+
+    const membersMeta = JSON.parse(
+      await fs.readFile(path.join(getTeamsBasePath(), teamName, 'members.meta.json'), 'utf8')
+    ) as { members: Array<{ name: string; providerId?: string; model?: string }> };
+    expect(membersMeta.members).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'alice', providerId: 'anthropic', model: 'haiku' }),
+        expect.objectContaining({ name: 'bob', providerId: 'anthropic', model: 'sonnet' }),
+      ])
+    );
+  });
+
+  it('fails unsafe old mixed OpenCode config without launch-state or members metadata mutation', async () => {
+    const teamName = 'legacy-mixed-config-unsafe-safe-e2e';
+    await writeMixedTeamConfigWithoutOpenCodeProviderMetadata({ teamName, projectPath });
+    const svc = new TeamProvisioningService();
+    const normalizeSpy = vi.spyOn(svc as any, 'normalizeTeamConfigForLaunch');
+
+    await expect(
+      svc.launchTeam(
+        {
+          teamName,
+          cwd: projectPath,
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          model: 'gpt-5.4',
+          skipPermissions: true,
+        },
+        () => undefined
+      )
+    ).rejects.toThrow(getMixedLaunchFallbackRecoveryError());
+
+    expect(normalizeSpy).not.toHaveBeenCalled();
+    await expect(
+      fs.readFile(path.join(getTeamsBasePath(), teamName, 'members.meta.json'), 'utf8')
+    ).rejects.toThrow();
+    await expect(
+      fs.readFile(path.join(getTeamsBasePath(), teamName, 'launch-state.json'), 'utf8')
+    ).rejects.toThrow();
   });
 
   it('keeps permission-pending OpenCode members pending instead of reading the team as fully ready', async () => {
@@ -10471,6 +10539,126 @@ describe('Team agent launch matrix safe e2e', () => {
     });
   });
 
+  it('inherits OpenCode runtime delivery taskRefs end-to-end when the visible reply omits them', async () => {
+    const teamName = 'pure-opencode-runtime-delivery-taskrefs-inherit-safe-e2e';
+    const taskRef: TaskRef = {
+      teamName,
+      taskId: 'task-runtime-delivery-1',
+      displayId: 'abcd1234',
+    };
+    const adapter = new VisibleReplyOpenCodeRuntimeAdapter({
+      replySource: 'runtime_delivery',
+    });
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([adapter]));
+    const launch = await svc.createTeam(
+      {
+        teamName,
+        cwd: projectPath,
+        providerId: 'opencode',
+        model: 'opencode/big-pickle',
+        skipPermissions: true,
+        members: [{ name: 'alice', role: 'Developer', providerId: 'opencode' }],
+      },
+      () => undefined
+    );
+
+    await expect(
+      svc.deliverOpenCodeMemberMessage(teamName, {
+        memberName: 'alice',
+        text: 'reply about #abcd1234 without manually carrying metadata',
+        messageId: 'msg-taskrefs-inherit-e2e',
+        replyRecipient: 'user',
+        actionMode: 'ask',
+        source: 'manual',
+        taskRefs: [taskRef],
+      })
+    ).resolves.toMatchObject({
+      delivered: true,
+      accepted: true,
+      responsePending: false,
+      responseState: 'responded_visible_message',
+      ledgerStatus: 'responded',
+      visibleReplyMessageId: 'reply-msg-taskrefs-inherit-e2e',
+      visibleReplyCorrelation: 'relayOfMessageId',
+    });
+
+    expect(adapter.messageInputs).toHaveLength(1);
+    expect(adapter.messageInputs[0]).toMatchObject({
+      runId: launch.runId,
+      teamName,
+      laneId: 'primary',
+      memberName: 'alice',
+      messageId: 'msg-taskrefs-inherit-e2e',
+      taskRefs: [taskRef],
+    });
+
+    const userInbox = await readInboxRows(teamName, 'user');
+    expect(userInbox).toHaveLength(1);
+    expect(userInbox[0]).toMatchObject({
+      from: 'alice',
+      to: 'user',
+      source: 'runtime_delivery',
+      messageId: 'reply-msg-taskrefs-inherit-e2e',
+      relayOfMessageId: 'msg-taskrefs-inherit-e2e',
+      taskRefs: [taskRef],
+    });
+  });
+
+  it('does not attach taskRefs end-to-end to explicit non-runtime visible replies', async () => {
+    const teamName = 'pure-opencode-runtime-delivery-taskrefs-non-runtime-safe-e2e';
+    const taskRef: TaskRef = {
+      teamName,
+      taskId: 'task-runtime-delivery-2',
+      displayId: 'dcba4321',
+    };
+    const adapter = new VisibleReplyOpenCodeRuntimeAdapter({
+      replySource: 'lead_process',
+    });
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([adapter]));
+    await svc.createTeam(
+      {
+        teamName,
+        cwd: projectPath,
+        providerId: 'opencode',
+        model: 'opencode/big-pickle',
+        skipPermissions: true,
+        members: [{ name: 'alice', role: 'Developer', providerId: 'opencode' }],
+      },
+      () => undefined
+    );
+
+    await expect(
+      svc.deliverOpenCodeMemberMessage(teamName, {
+        memberName: 'alice',
+        text: 'this reply has a misleading non-runtime source',
+        messageId: 'msg-taskrefs-non-runtime-e2e',
+        replyRecipient: 'user',
+        actionMode: 'ask',
+        source: 'manual',
+        taskRefs: [taskRef],
+      })
+    ).resolves.toMatchObject({
+      delivered: true,
+      accepted: true,
+      responsePending: true,
+      responseState: 'responded_visible_message',
+      reason: 'visible_reply_missing_task_refs',
+    });
+
+    const userInbox = await readInboxRows(teamName, 'user');
+    expect(userInbox).toHaveLength(1);
+    expect(userInbox[0]).toMatchObject({
+      from: 'alice',
+      to: 'user',
+      source: 'lead_process',
+      messageId: 'reply-msg-taskrefs-non-runtime-e2e',
+      relayOfMessageId: 'msg-taskrefs-non-runtime-e2e',
+    });
+    expect(userInbox[0]?.taskRefs).toBeUndefined();
+  });
+
   it('delivers direct OpenCode member messages to recovered pure OpenCode lanes after service restart', async () => {
     const teamName = 'pure-opencode-direct-message-recovered-lane-safe-e2e';
     const launchAdapter = new FakeOpenCodeRuntimeAdapter();
@@ -17043,6 +17231,58 @@ class FakeOpenCodeRuntimeAdapter implements TeamLaunchRuntimeAdapter {
   }
 }
 
+class VisibleReplyOpenCodeRuntimeAdapter extends FakeOpenCodeRuntimeAdapter {
+  constructor(private readonly options: { replySource: InboxMessage['source'] }) {
+    super();
+  }
+
+  override async sendMessageToMember(
+    input: OpenCodeTeamRuntimeMessageInput
+  ): Promise<OpenCodeTeamRuntimeMessageResult> {
+    const result = await super.sendMessageToMember(input);
+    const relayOfMessageId = input.messageId?.trim() || `message-${this.messageInputs.length}`;
+    const replyRecipient = input.replyRecipient?.trim() || 'user';
+    const replyMessageId = `reply-${relayOfMessageId}`;
+    const inboxPath = path.join(
+      getTeamsBasePath(),
+      input.teamName,
+      'inboxes',
+      `${replyRecipient}.json`
+    );
+    const rows: InboxMessage[] = await readInboxRows(input.teamName, replyRecipient).catch(
+      () => []
+    );
+    rows.push({
+      from: input.memberName,
+      to: replyRecipient,
+      text: `Visible reply for ${relayOfMessageId}`,
+      summary: 'visible reply',
+      timestamp: '2026-05-08T10:00:00.000Z',
+      read: false,
+      messageId: replyMessageId,
+      relayOfMessageId,
+      source: this.options.replySource,
+    });
+    await fs.mkdir(path.dirname(inboxPath), { recursive: true });
+    await fs.writeFile(inboxPath, `${JSON.stringify(rows, null, 2)}\n`, 'utf8');
+
+    return {
+      ...result,
+      responseObservation: {
+        state: 'responded_visible_message',
+        deliveredUserMessageId: `delivered-${relayOfMessageId}`,
+        assistantMessageId: `assistant-${relayOfMessageId}`,
+        toolCallNames: ['message_send'],
+        visibleMessageToolCallId: `call-${relayOfMessageId}`,
+        visibleReplyMessageId: replyMessageId,
+        visibleReplyCorrelation: 'relayOfMessageId',
+        latestAssistantPreview: null,
+        reason: 'visible_message_sent',
+      },
+    };
+  }
+}
+
 class BootstrapCheckingOpenCodeRuntimeAdapter extends FakeOpenCodeRuntimeAdapter {
   readonly bootstrapCheckins: { memberName: string; runId: string; state: string }[] = [];
 
@@ -18310,6 +18550,13 @@ function getMixedPrimaryFixture(providerId: MixedPrimaryProviderId = 'codex'): {
     leadModel: 'gpt-5.4',
     memberModel: 'gpt-5.4-mini',
   };
+}
+
+async function readInboxRows(teamName: string, inboxName: string): Promise<InboxMessage[]> {
+  const inboxPath = path.join(getTeamsBasePath(), teamName, 'inboxes', `${inboxName}.json`);
+  const raw = await fs.readFile(inboxPath, 'utf8');
+  const parsed = JSON.parse(raw) as unknown;
+  return Array.isArray(parsed) ? (parsed as InboxMessage[]) : [];
 }
 
 async function writeTeamMeta(

@@ -126,6 +126,34 @@ describe('teamModelAvailability', () => {
     ]);
   });
 
+  it('treats runtime-reported unavailable models as non-selectable', () => {
+    const providerStatus = createCodexProviderStatus(['gpt-5.4'], {
+      modelAvailability: [
+        {
+          modelId: 'gpt-5.4',
+          status: 'unavailable',
+          reason: 'No access for this account',
+          checkedAt: null,
+        },
+      ],
+    });
+
+    expect(getAvailableTeamProviderModels('codex', providerStatus)).toEqual([]);
+    expect(normalizeTeamModelForUi('codex', 'gpt-5.4', providerStatus)).toBe('');
+    expect(getTeamModelSelectionError('codex', 'gpt-5.4', providerStatus)).toContain(
+      'No access for this account'
+    );
+    expect(getAvailableTeamProviderModelOptions('codex', providerStatus)).toEqual([
+      { value: '', label: 'Default', badgeLabel: 'Default' },
+      {
+        value: 'gpt-5.4',
+        label: '5.4',
+        availabilityStatus: 'unavailable',
+        availabilityReason: 'No access for this account',
+      },
+    ]);
+  });
+
   it('keeps OpenCode raw ids intact while exposing readable labels and source badges', () => {
     const providerStatus = createOpenCodeProviderStatus([
       'openai/gpt-5.4',
@@ -168,6 +196,33 @@ describe('teamModelAvailability', () => {
     ).toBe('openrouter/moonshotai/kimi-k2');
   });
 
+  it('reports OpenCode openai routes unavailable when OpenAI auth is invalid', () => {
+    const providerStatus = createOpenCodeProviderStatus(['openai/gpt-5.4', 'opencode/big-pickle'], {
+      statusMessage: 'OpenAI token invalid',
+      detailMessage: 'OpenAI token refresh failed: 401',
+      availableBackends: [
+        {
+          id: 'openai',
+          label: 'OpenAI',
+          description: 'OpenAI route',
+          selectable: false,
+          recommended: false,
+          available: false,
+          state: 'authentication-required',
+          statusMessage: 'Authentication required',
+          detailMessage: 'Token refresh failed: 401',
+        },
+      ],
+    });
+
+    expect(getTeamModelSelectionError('opencode', 'openai/gpt-5.4', providerStatus)).toContain(
+      'OpenCode OpenAI provider authentication failed'
+    );
+    expect(
+      getTeamModelSelectionError('opencode', 'opencode/big-pickle', providerStatus)
+    ).toBeNull();
+  });
+
   it('clears stale Codex selections when runtime no longer reports that model', () => {
     const providerStatus = createCodexProviderStatus(['gpt-5.4', 'gpt-5.3-codex']);
 
@@ -204,6 +259,7 @@ describe('teamModelAvailability', () => {
     expect(getTeamModelSelectionError('codex', 'gpt-5.4', providerStatus)).toBeNull();
     expect(getAvailableTeamProviderModelOptions('codex', providerStatus)).toEqual([
       { value: '', label: 'Default', badgeLabel: 'Default' },
+      { value: 'gpt-5.5', label: '5.5', badgeLabel: '5.5' },
       { value: 'gpt-5.4', label: '5.4', badgeLabel: '5.4' },
       { value: 'gpt-5.4-mini', label: '5.4 Mini', badgeLabel: '5.4-mini' },
       { value: 'gpt-5.3-codex', label: '5.3 Codex', badgeLabel: '5.3-codex' },
@@ -303,9 +359,7 @@ describe('teamModelAvailability', () => {
 
   it('keeps known Anthropic full model ids selectable without runtime verification', () => {
     expect(normalizeTeamModelForUi('anthropic', 'claude-opus-4-7')).toBe('claude-opus-4-7');
-    expect(normalizeTeamModelForUi('anthropic', 'claude-opus-4-7[1m]')).toBe(
-      'claude-opus-4-7[1m]'
-    );
+    expect(normalizeTeamModelForUi('anthropic', 'claude-opus-4-7[1m]')).toBe('claude-opus-4-7[1m]');
     expect(normalizeTeamModelForUi('anthropic', 'claude-haiku-4-5-20251001')).toBe(
       'claude-haiku-4-5-20251001'
     );

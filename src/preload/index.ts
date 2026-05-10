@@ -1,4 +1,5 @@
 import { createCodexAccountBridge } from '@features/codex-account/preload';
+import { createMemberLogStreamBridge } from '@features/member-log-stream/preload';
 import { createMemberWorkSyncBridge } from '@features/member-work-sync/preload';
 import { createRecentProjectsBridge } from '@features/recent-projects/preload';
 import { createRuntimeProviderManagementBridge } from '@features/runtime-provider-management/preload';
@@ -13,6 +14,8 @@ import {
   API_KEYS_SAVE,
   API_KEYS_STORAGE_STATUS,
   APP_RELAUNCH,
+  APP_STARTUP_GET_STATUS,
+  APP_STARTUP_PROGRESS,
   CLI_INSTALLER_GET_PROVIDER_STATUS,
   CLI_INSTALLER_GET_STATUS,
   CLI_INSTALLER_INSTALL,
@@ -73,6 +76,7 @@ import {
   REVIEW_GET_FILE_CONTENT,
   REVIEW_GET_GIT_FILE_LOG,
   REVIEW_GET_TASK_CHANGES,
+  REVIEW_GET_TEAM_TASK_CHANGE_SUMMARIES,
   REVIEW_INVALIDATE_TASK_CHANGE_SUMMARIES,
   REVIEW_LOAD_DECISIONS,
   REVIEW_PREVIEW_REJECT,
@@ -248,6 +252,7 @@ import type {
   AppConfig,
   ApplyReviewRequest,
   ApplyReviewResult,
+  AppStartupStatus,
   AttachmentFileData,
   BoardTaskActivityDetailResult,
   BoardTaskActivityEntry,
@@ -301,6 +306,7 @@ import type {
   SshLastConnection,
   TaskAttachmentMeta,
   TaskChangePresenceState,
+  TaskChangeRequestOptions,
   TaskChangeSetV2,
   TaskComment,
   TeamAgentRuntimeSnapshot,
@@ -321,6 +327,8 @@ import type {
   TeamProvisioningProgress,
   TeamSummary,
   TeamTask,
+  TeamTaskChangeSummariesResponse,
+  TeamTaskChangeSummaryRequest,
   TeamTaskStatus,
   TeamUpdateConfigRequest,
   TeamViewSnapshot,
@@ -478,6 +486,19 @@ const electronAPI: ElectronAPI = {
   ...createRecentProjectsBridge(),
   runtimeProviderManagement: createRuntimeProviderManagementBridge(ipcRenderer),
   memberWorkSync: createMemberWorkSyncBridge(ipcRenderer),
+  memberLogStream: createMemberLogStreamBridge(),
+  startup: {
+    getStatus: () => ipcRenderer.invoke(APP_STARTUP_GET_STATUS) as Promise<AppStartupStatus>,
+    onProgress: (callback: (status: AppStartupStatus) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: AppStartupStatus): void => {
+        callback(status);
+      };
+      ipcRenderer.on(APP_STARTUP_PROGRESS, listener);
+      return (): void => {
+        ipcRenderer.removeListener(APP_STARTUP_PROGRESS, listener);
+      };
+    },
+  },
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   getProjects: () => ipcRenderer.invoke('get-projects'),
   getSessions: (projectId: string) => ipcRenderer.invoke('get-sessions', projectId),
@@ -1342,21 +1363,23 @@ const electronAPI: ElectronAPI = {
     getTaskChanges: async (
       teamName: string,
       taskId: string,
-      options?: {
-        owner?: string;
-        status?: string;
-        intervals?: { startedAt: string; completedAt?: string }[];
-        since?: string;
-        stateBucket?: 'approved' | 'review' | 'completed' | 'active';
-        summaryOnly?: boolean;
-        forceFresh?: boolean;
-      }
+      options?: TaskChangeRequestOptions
     ) => {
       return invokeIpcWithResult<TaskChangeSetV2>(
         REVIEW_GET_TASK_CHANGES,
         teamName,
         taskId,
         options
+      );
+    },
+    getTeamTaskChangeSummaries: async (
+      teamName: string,
+      requests: TeamTaskChangeSummaryRequest[]
+    ) => {
+      return invokeIpcWithResult<TeamTaskChangeSummariesResponse>(
+        REVIEW_GET_TEAM_TASK_CHANGE_SUMMARIES,
+        teamName,
+        requests
       );
     },
     invalidateTaskChangeSummaries: async (teamName: string, taskIds: string[]) => {
