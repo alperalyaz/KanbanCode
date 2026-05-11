@@ -991,7 +991,7 @@ export interface TeamLaunchRequest {
   fastMode?: TeamFastMode;
   /** When true, context window is limited to 200K tokens instead of the default. */
   limitContext?: boolean;
-  /** When true, skip --resume and start a fresh session (clears context memory). */
+  /** Legacy flag retained for compatibility. Deterministic bootstrap launches fresh today. */
   clearContext?: boolean;
   /** When false, run WITHOUT --dangerously-skip-permissions (manual tool approval). Default: true. */
   skipPermissions?: boolean;
@@ -1477,6 +1477,35 @@ export interface TeamLaunchDiagnosticItem {
   label: string;
   detail?: string;
   observedAt: string;
+}
+
+export interface TeamLaunchFailureDiagnosticsFile {
+  label: string;
+  path: string;
+  content?: string;
+  issue?: string;
+}
+
+export interface TeamLaunchFailureDiagnosticsBundle {
+  teamName: string;
+  runId?: string;
+  latestPath: string;
+  artifactDirectory?: string;
+  manifestPath?: string;
+  classification?: {
+    code?: string;
+    confidence?: number;
+    evidence?: string[];
+  } | null;
+  bootstrapTransportBreadcrumb?: {
+    lastTransportStage?: string | null;
+    submitRejected?: boolean;
+    retryable?: boolean | null;
+    noStdinWarning?: boolean;
+    bootstrapSubmitted?: boolean;
+    evidence?: string[];
+  } | null;
+  files: TeamLaunchFailureDiagnosticsFile[];
 }
 
 export interface TeamRuntimeState {

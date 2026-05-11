@@ -276,6 +276,9 @@ export const TEAM_CREATE_INITIAL_GIT_COMMIT = 'team:createInitialGitCommit';
 /** Get provisioning status by runId */
 export const TEAM_PROVISIONING_STATUS = 'team:provisioningStatus';
 
+/** Read bounded redacted launch failure diagnostics for support copy */
+export const TEAM_LAUNCH_FAILURE_DIAGNOSTICS = 'team:launchFailureDiagnostics';
+
 /** Cancel running provisioning by runId */
 export const TEAM_CANCEL_PROVISIONING = 'team:cancelProvisioning';
 

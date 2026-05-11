@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   classifyLaunchFailureArtifact,
   extractLaunchBootstrapTransportBreadcrumb,
+  readTeamLaunchFailureDiagnosticsBundle,
   redactLaunchFailureArtifactText,
   writeTeamLaunchFailureArtifactPack,
 } from '../../../../src/main/services/team/TeamLaunchFailureArtifactPack';
@@ -103,7 +104,10 @@ describe('TeamLaunchFailureArtifactPack', () => {
     expect(manifest.artifactFiles).toContain('launch-state.json');
     expect(manifest.progress.error).toContain('[REDACTED]');
 
-    const copiedLaunchState = await fs.readFile(path.join(result.directory, 'launch-state.json'), 'utf8');
+    const copiedLaunchState = await fs.readFile(
+      path.join(result.directory, 'launch-state.json'),
+      'utf8'
+    );
     expect(copiedLaunchState).toContain('[REDACTED_ANTHROPIC_API_KEY]');
     expect(() => JSON.parse(copiedLaunchState)).not.toThrow();
     expect(copiedLaunchState).toContain('"token":"[REDACTED]"');
@@ -117,6 +121,29 @@ describe('TeamLaunchFailureArtifactPack', () => {
       await fs.readFile(path.join(teamDir, 'launch-failure-artifacts', 'latest.json'), 'utf8')
     ) as { manifestPath: string };
     expect(latest.manifestPath).toBe(result.manifestPath);
+
+    const bundle = await readTeamLaunchFailureDiagnosticsBundle(teamName, runId);
+    expect(bundle).toMatchObject({
+      teamName,
+      runId,
+      manifestPath: result.manifestPath,
+      classification: { code: 'provider_auth' },
+      bootstrapTransportBreadcrumb: { submitRejected: false },
+    });
+    expect(bundle.files.map((file) => file.label)).toEqual([
+      'launch-failure-artifacts/latest.json',
+      'launch-failure-artifacts/manifest.json',
+      'bootstrap-journal.jsonl',
+      'launch-state.json',
+    ]);
+    expect(
+      bundle.files.find((file) => file.label === 'bootstrap-journal.jsonl')?.content
+    ).toContain('"event":"started"');
+    const launchStateContent = bundle.files.find(
+      (file) => file.label === 'launch-state.json'
+    )?.content;
+    expect(launchStateContent).toContain('[REDACTED_ANTHROPIC_API_KEY]');
+    expect(launchStateContent).not.toContain('sk-ant-');
   });
 
   it('redacts common bearer and token-shaped secrets', () => {
@@ -140,7 +167,8 @@ describe('TeamLaunchFailureArtifactPack', () => {
 
     expect(classifyLaunchFailureArtifact(input).code).toBe('transport_rejected');
     expect(extractLaunchBootstrapTransportBreadcrumb(input)).toMatchObject({
-      lastTransportStage: 'bootstrap_submit_rejected: submit rejected by local prompt handler retryable=true',
+      lastTransportStage:
+        'bootstrap_submit_rejected: submit rejected by local prompt handler retryable=true',
       submitRejected: true,
       retryable: true,
       noStdinWarning: true,

@@ -48,6 +48,7 @@ import {
   TEAM_INITIALIZE_GIT_REPOSITORY,
   TEAM_KILL_PROCESS,
   TEAM_LAUNCH,
+  TEAM_LAUNCH_FAILURE_DIAGNOSTICS,
   TEAM_LEAD_ACTIVITY,
   TEAM_LEAD_CONTEXT,
   TEAM_LIST,
@@ -143,6 +144,7 @@ import {
 import { mergeLiveLeadProcessMessages } from '../services/team/mergeLiveLeadProcessMessages';
 import { TeamAttachmentStore } from '../services/team/TeamAttachmentStore';
 import { TeamConfigReader } from '../services/team/TeamConfigReader';
+import { readTeamLaunchFailureDiagnosticsBundle } from '../services/team/TeamLaunchFailureArtifactPack';
 import { TeamMembersMetaStore } from '../services/team/TeamMembersMetaStore';
 import { TeamMetaStore } from '../services/team/TeamMetaStore';
 import { buildAddMemberSpawnMessage } from '../services/team/TeamProvisioningService';
@@ -215,6 +217,7 @@ import type {
   TeamGetDataOptions,
   TeamLaunchRequest,
   TeamLaunchResponse,
+  TeamLaunchFailureDiagnosticsBundle,
   TeamMemberActivityMeta,
   TeamMessageNotificationData,
   TeamProviderBackendId,
@@ -702,6 +705,7 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_CREATE, handleCreateTeam);
   ipcMain.handle(TEAM_LAUNCH, handleLaunchTeam);
   ipcMain.handle(TEAM_PROVISIONING_STATUS, handleProvisioningStatus);
+  ipcMain.handle(TEAM_LAUNCH_FAILURE_DIAGNOSTICS, handleLaunchFailureDiagnostics);
   ipcMain.handle(TEAM_CANCEL_PROVISIONING, handleCancelProvisioning);
   ipcMain.handle(TEAM_SEND_MESSAGE, handleSendMessage);
   ipcMain.handle(TEAM_GET_OPENCODE_RUNTIME_DELIVERY_STATUS, handleGetOpenCodeRuntimeDeliveryStatus);
@@ -788,6 +792,7 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_CREATE);
   ipcMain.removeHandler(TEAM_LAUNCH);
   ipcMain.removeHandler(TEAM_PROVISIONING_STATUS);
+  ipcMain.removeHandler(TEAM_LAUNCH_FAILURE_DIAGNOSTICS);
   ipcMain.removeHandler(TEAM_CANCEL_PROVISIONING);
   ipcMain.removeHandler(TEAM_SEND_MESSAGE);
   ipcMain.removeHandler(TEAM_GET_OPENCODE_RUNTIME_DELIVERY_STATUS);
@@ -2378,6 +2383,21 @@ async function handleProvisioningStatus(
   }
   return wrapTeamHandler('provisioningStatus', () =>
     getTeamProvisioningService().getProvisioningStatus(runId.trim())
+  );
+}
+
+async function handleLaunchFailureDiagnostics(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  runId: unknown
+): Promise<IpcResult<TeamLaunchFailureDiagnosticsBundle>> {
+  const validatedTeamName = validateTeamName(teamName);
+  if (!validatedTeamName.valid) {
+    return { success: false, error: validatedTeamName.error ?? 'Invalid teamName' };
+  }
+  const validatedRunId = typeof runId === 'string' && runId.trim() ? runId.trim() : undefined;
+  return wrapTeamHandler('launchFailureDiagnostics', () =>
+    readTeamLaunchFailureDiagnosticsBundle(validatedTeamName.value!, validatedRunId)
   );
 }
 

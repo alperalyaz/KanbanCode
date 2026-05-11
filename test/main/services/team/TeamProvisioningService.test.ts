@@ -14062,7 +14062,7 @@ describe('TeamProvisioningService', () => {
     ).toBe('Questions (2): First question with extra spacing.');
   });
 
-  it('skips --resume when the persisted launch state shows no teammate ever spawned', async () => {
+  it('skips --resume for deterministic bootstrap when previous launch state has no spawned teammates', async () => {
     allowConsoleLogs();
     const teamName = 'resume-skip-team';
     const leadSessionId = 'lead-session-skip';
@@ -14114,7 +14114,7 @@ describe('TeamProvisioningService', () => {
     expect(launchArgs).not.toContain(leadSessionId);
   });
 
-  it('skips --resume when a stale active launch state shows no teammate ever spawned', async () => {
+  it('skips --resume for deterministic bootstrap when previous active launch is stale', async () => {
     allowConsoleLogs();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-03T12:03:00.000Z'));
@@ -14178,7 +14178,7 @@ describe('TeamProvisioningService', () => {
     expect(launchArgs).not.toContain(leadSessionId);
   });
 
-  it('skips --resume when a stale active launch has accepted but no live teammates', async () => {
+  it('skips --resume for deterministic bootstrap when stale active launch has no live teammates', async () => {
     allowConsoleLogs();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-03T12:03:00.000Z'));
@@ -14244,7 +14244,7 @@ describe('TeamProvisioningService', () => {
     expect(launchArgs).not.toContain(leadSessionId);
   });
 
-  it('keeps --resume when a teammate had an accepted spawn before failing bootstrap', async () => {
+  it('skips --resume with deterministic bootstrap even after an accepted failed spawn', async () => {
     allowConsoleLogs();
     const teamName = 'resume-keep-team';
     const leadSessionId = 'lead-session-keep';
@@ -14291,11 +14291,11 @@ describe('TeamProvisioningService', () => {
     );
 
     const launchArgs = vi.mocked(spawnCli).mock.calls[0]?.[1] as string[];
-    expect(launchArgs).toContain('--resume');
-    expect(launchArgs).toContain(leadSessionId);
+    expect(launchArgs).not.toContain('--resume');
+    expect(launchArgs).not.toContain(leadSessionId);
   });
 
-  it('keeps --resume when a persisted legacy Codex backend normalizes to codex-native', async () => {
+  it('skips --resume with deterministic bootstrap after Codex backend normalization', async () => {
     allowConsoleLogs();
     const teamName = 'resume-backend-change-team';
     const leadSessionId = 'lead-session-backend-change';
@@ -14348,11 +14348,11 @@ describe('TeamProvisioningService', () => {
 
     const launchArgs = vi.mocked(spawnCli).mock.calls.at(-1)?.[1] as string[];
     expect(launchArgs).toBeTruthy();
-    expect(launchArgs).toContain('--resume');
-    expect(launchArgs).toContain(leadSessionId);
+    expect(launchArgs).not.toContain('--resume');
+    expect(launchArgs).not.toContain(leadSessionId);
   });
 
-  it('seeds the current lead session id immediately when launch resumes an existing session', async () => {
+  it('does not seed the previous lead session id when deterministic bootstrap skips resume', async () => {
     allowConsoleLogs();
     const teamName = 'resume-seed-session-team';
     const leadSessionId = 'lead-session-seeded';
@@ -14388,7 +14388,10 @@ describe('TeamProvisioningService', () => {
 
     const { runId } = await svc.launchTeam({ teamName, cwd: tempClaudeRoot }, () => {});
 
-    expect(svc.getCurrentLeadSessionId(teamName)).toBe(leadSessionId);
+    const launchArgs = vi.mocked(spawnCli).mock.calls.at(-1)?.[1] as string[];
+    expect(launchArgs).not.toContain('--resume');
+    expect((svc as any).pathExists).not.toHaveBeenCalled();
+    expect(svc.getCurrentLeadSessionId(teamName)).toBeNull();
 
     await svc.cancelProvisioning(runId);
   });

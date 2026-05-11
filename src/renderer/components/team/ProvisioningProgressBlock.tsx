@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
+import { api } from '@renderer/api';
 import { Button } from '@renderer/components/ui/button';
 import { cn } from '@renderer/lib/utils';
 import { renderLinkifiedText } from '@renderer/utils/linkifiedText';
@@ -23,7 +24,7 @@ import { StepProgressBar } from './StepProgressBar';
 
 import type { StepProgressBarStep } from './StepProgressBar';
 import type { MemberLaunchDiagnosticsPayload } from '@renderer/utils/memberLaunchDiagnostics';
-import type { TeamLaunchDiagnosticItem } from '@shared/types';
+import type { TeamLaunchDiagnosticItem, TeamLaunchFailureDiagnosticsBundle } from '@shared/types';
 
 /** Pre-built step definitions for the provisioning stepper. */
 const PROVISIONING_STEPS: StepProgressBarStep[] = DISPLAY_STEPS.map((s) => ({
@@ -69,6 +70,9 @@ export interface ProvisioningProgressBlockProps {
   onDismiss?: (() => void) | null;
   /** ISO timestamp when provisioning started */
   startedAt?: string;
+  /** Team/run identity used to enrich copied launch diagnostics with artifact pack data. */
+  teamName?: string;
+  runId?: string;
   /** PID of the CLI process */
   pid?: number;
   /** CLI logs captured during launch */
@@ -202,6 +206,49 @@ function formatMemberDiagnosticsCopy(
   return JSON.stringify(items, null, 2);
 }
 
+function formatLaunchFailureArtifactCopy(
+  bundle: TeamLaunchFailureDiagnosticsBundle | null | undefined,
+  error?: string | null
+): string {
+  if (error) {
+    return `Failed to read launch failure artifact bundle: ${error}`;
+  }
+  if (!bundle) {
+    return '(none)';
+  }
+
+  const parts = [
+    `teamName: ${bundle.teamName}`,
+    `runId: ${formatOptionalValue(bundle.runId)}`,
+    `latestPath: ${bundle.latestPath}`,
+    `artifactDirectory: ${formatOptionalValue(bundle.artifactDirectory)}`,
+    `manifestPath: ${formatOptionalValue(bundle.manifestPath)}`,
+    '',
+    'classification:',
+    bundle.classification ? JSON.stringify(bundle.classification, null, 2) : '(none)',
+    '',
+    'bootstrapTransportBreadcrumb:',
+    bundle.bootstrapTransportBreadcrumb
+      ? JSON.stringify(bundle.bootstrapTransportBreadcrumb, null, 2)
+      : '(none)',
+    '',
+    'files:',
+  ];
+
+  for (const file of bundle.files) {
+    parts.push(
+      '',
+      `--- ${file.label}`,
+      `path: ${file.path}`,
+      file.issue ? `issue: ${file.issue}` : 'issue: (none)',
+      'content:',
+      file.content?.trim() || '(empty)'
+    );
+  }
+
+  return parts.join('\n');
+}
+
 function buildProvisioningDiagnosticsCopy(input: {
   title: string;
   message?: string | null;
@@ -216,6 +263,8 @@ function buildProvisioningDiagnosticsCopy(input: {
   cliLogsTail?: string;
   launchDiagnostics?: TeamLaunchDiagnosticItem[];
   memberDiagnostics?: MemberLaunchDiagnosticsPayload[];
+  launchFailureArtifact?: TeamLaunchFailureDiagnosticsBundle | null;
+  launchFailureArtifactError?: string | null;
 }): string {
   const payload = [
     '# Team provisioning diagnostics',
@@ -236,6 +285,9 @@ function buildProvisioningDiagnosticsCopy(input: {
     '',
     '## Member launch snapshots',
     formatMemberDiagnosticsCopy(input.memberDiagnostics),
+    '',
+    '## Launch failure artifact bundle',
+    formatLaunchFailureArtifactCopy(input.launchFailureArtifact, input.launchFailureArtifactError),
     '',
     '## Live output',
     input.liveOutput?.trim() || '(empty)',
@@ -262,6 +314,8 @@ export const ProvisioningProgressBlock = ({
   successMessageSeverity = 'success',
   onDismiss,
   startedAt,
+  teamName,
+  runId,
   pid,
   cliLogsTail,
   assistantOutput,
@@ -279,39 +333,6 @@ export const ProvisioningProgressBlock = ({
   const copyResetTimerRef = useRef<number | null>(null);
   const isError = tone === 'error';
   const displayAssistantOutput = sanitizeAssistantOutput(assistantOutput, isError);
-  const diagnosticsCopyText = useMemo(
-    () =>
-      buildProvisioningDiagnosticsCopy({
-        title,
-        message,
-        messageSeverity,
-        tone,
-        startedAt,
-        elapsed,
-        pid,
-        currentStepIndex,
-        errorStepIndex,
-        liveOutput: displayAssistantOutput,
-        cliLogsTail,
-        launchDiagnostics,
-        memberDiagnostics,
-      }),
-    [
-      title,
-      message,
-      messageSeverity,
-      tone,
-      startedAt,
-      elapsed,
-      pid,
-      currentStepIndex,
-      errorStepIndex,
-      displayAssistantOutput,
-      cliLogsTail,
-      launchDiagnostics,
-      memberDiagnostics,
-    ]
-  );
   const visibleLaunchDiagnostics =
     launchDiagnostics?.filter((item) => item.severity === 'warning' || item.severity === 'error') ??
     [];
@@ -357,6 +378,32 @@ export const ProvisioningProgressBlock = ({
       setDiagnosticsCopied(false);
       return;
     }
+    let launchFailureArtifact: TeamLaunchFailureDiagnosticsBundle | null = null;
+    let launchFailureArtifactError: string | null = null;
+    if (teamName) {
+      try {
+        launchFailureArtifact = await api.teams.getLaunchFailureDiagnostics(teamName, runId);
+      } catch (error) {
+        launchFailureArtifactError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    const diagnosticsCopyText = buildProvisioningDiagnosticsCopy({
+      title,
+      message,
+      messageSeverity,
+      tone,
+      startedAt,
+      elapsed,
+      pid,
+      currentStepIndex,
+      errorStepIndex,
+      liveOutput: displayAssistantOutput,
+      cliLogsTail,
+      launchDiagnostics,
+      memberDiagnostics,
+      launchFailureArtifact,
+      launchFailureArtifactError,
+    });
     try {
       await navigator.clipboard.writeText(diagnosticsCopyText);
     } catch {

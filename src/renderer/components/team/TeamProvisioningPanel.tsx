@@ -135,6 +135,8 @@ export const TeamProvisioningPanel = memo(function TeamProvisioningPanel({
       }
       loading={showRunningState}
       startedAt={presentation.progress.startedAt}
+      teamName={teamName}
+      runId={presentation.progress.runId}
       pid={presentation.progress.pid}
       cliLogsTail={presentation.progress.cliLogsTail}
       assistantOutput={presentation.progress.assistantOutput}

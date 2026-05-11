@@ -74,6 +74,7 @@ import type {
   TeamCreateRequest,
   TeamCreateResponse,
   TeamGetDataOptions,
+  TeamLaunchFailureDiagnosticsBundle,
   TeamLaunchRequest,
   TeamLaunchResponse,
   TeamMemberActivityMeta,
@@ -818,6 +819,12 @@ export class HttpAPIClient implements ElectronAPI {
     },
     getProvisioningStatus: async (_runId: string): Promise<TeamProvisioningProgress> => {
       throw new Error('Team provisioning is not available in browser mode');
+    },
+    getLaunchFailureDiagnostics: async (
+      _teamName: string,
+      _runId?: string
+    ): Promise<TeamLaunchFailureDiagnosticsBundle> => {
+      throw new Error('Launch failure diagnostics are not available in browser mode');
     },
     cancelProvisioning: async (_runId: string): Promise<void> => {
       throw new Error('Team provisioning is not available in browser mode');

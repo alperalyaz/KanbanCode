@@ -3488,68 +3488,6 @@ function buildEffectiveTeamMemberSpecs(
   return members.map((member) => buildEffectiveTeamMemberSpec(member, defaults));
 }
 
-function shouldSkipResumeForProviderRuntimeChange(
-  request: Pick<TeamLaunchRequest, 'providerId' | 'providerBackendId' | 'model'>,
-  config: Record<string, unknown>,
-  persistedProviderBackendId?: string | null
-): { skip: boolean; reason?: string } {
-  const providerId = normalizeTeamMemberProviderId(request.providerId);
-  if (providerId !== 'gemini' && providerId !== 'codex') {
-    return { skip: false };
-  }
-
-  const requestedBackendId =
-    migrateProviderBackendId(providerId, request.providerBackendId?.trim()) || null;
-  const previousBackendId =
-    migrateProviderBackendId(providerId, persistedProviderBackendId?.trim()) || null;
-  if (requestedBackendId && previousBackendId && requestedBackendId !== previousBackendId) {
-    return {
-      skip: true,
-      reason: `runtime backend changed (${previousBackendId} -> ${requestedBackendId})`,
-    };
-  }
-
-  const members = Array.isArray(config.members)
-    ? (config.members as Record<string, unknown>[])
-    : [];
-  const lead =
-    members.find((member) => isLeadMember(member)) ??
-    members.find((member) => {
-      const name = typeof member?.name === 'string' ? member.name.trim().toLowerCase() : '';
-      return name === 'team-lead';
-    });
-  if (!lead) {
-    return { skip: false };
-  }
-
-  const currentLeadProviderId =
-    normalizeTeamMemberProviderId(
-      typeof lead.providerId === 'string'
-        ? lead.providerId
-        : typeof lead.provider === 'string'
-          ? lead.provider
-          : providerId
-    ) ?? providerId;
-  const requestedModel = request.model?.trim() || '';
-  const currentLeadModel = typeof lead.model === 'string' ? lead.model.trim() : '';
-
-  if (currentLeadProviderId !== providerId) {
-    return {
-      skip: true,
-      reason: `provider changed (${currentLeadProviderId} -> ${providerId})`,
-    };
-  }
-
-  if (requestedModel && currentLeadModel && requestedModel !== currentLeadModel) {
-    return {
-      skip: true,
-      reason: `model changed (${currentLeadModel} -> ${requestedModel})`,
-    };
-  }
-
-  return { skip: false };
-}
-
 function buildMembersPrompt(members: TeamCreateRequest['members']): string {
   return members
     .map((member) => {
@@ -4637,8 +4575,10 @@ function buildDeterministicLaunchHydrationPrompt(
   const isSolo = members.length === 0;
   const projectName = path.basename(request.cwd);
   const startLabel = isResume ? 'Team Start (resume)' : 'Team Start';
+  const startupLabel = isResume ? 'resume/bootstrap' : 'launch/bootstrap';
+  const headerModeLabel = isResume ? 'Deterministic resume' : 'Deterministic launch';
   const userPromptBlock = request.prompt?.trim()
-    ? `\nOriginal user instructions to apply after reconnect is stable:\n${request.prompt.trim()}\n`
+    ? `\nOriginal user instructions to apply after ${isResume ? 'resume' : 'startup'} is stable:\n${request.prompt.trim()}\n`
     : '';
   const hasOriginalUserPrompt = Boolean(request.prompt?.trim());
   const taskBoardSnapshot = buildTaskBoardSnapshot(tasks);
@@ -4649,7 +4589,7 @@ function buildDeterministicLaunchHydrationPrompt(
     members,
   });
   const nextSteps = isSolo
-    ? `This reconnect/bootstrap step has already been completed deterministically by the runtime.
+    ? `This ${startupLabel} step has already been completed deterministically by the runtime.
 Do NOT call TeamCreate.
 Do NOT use Agent to spawn or restore teammates.
 Do NOT start implementation in this turn.
@@ -4659,7 +4599,7 @@ ${
     ? 'Do NOT create or update any new task in this turn - wait for the next normal operating turn before translating those instructions into board work.'
     : 'Do NOT create, assign, or delegate any new task in this turn. If the board is empty, stay silent and wait for a fresh user instruction.'
 }`
-    : `This reconnect/bootstrap step has already been completed deterministically by the runtime.
+    : `This ${startupLabel} step has already been completed deterministically by the runtime.
 Do NOT call TeamCreate.
 Do NOT use Agent to spawn or restore teammates.
 Do NOT repeat the launch summary.
@@ -4671,7 +4611,7 @@ ${
 }
 Treat teammates whose bootstrap is still pending as not-yet-available for blocking assignments.`;
 
-  return `${startLabel} [Deterministic reconnect | Team: "${request.teamName}" | Project: "${projectName}" | Lead: "${leadName}"]
+  return `${startLabel} [${headerModeLabel} | Team: "${request.teamName}" | Project: "${projectName}" | Lead: "${leadName}"]
 
 You are running headless in a non-interactive CLI session. Do not ask questions.
 You are "${leadName}", the team lead.
@@ -18419,8 +18359,8 @@ export class TeamProvisioningService {
         run,
         'configuring',
         run.deterministicBootstrap
-          ? 'CLI running — deterministic reconnect in progress'
-          : 'CLI running — reconnecting with teammates'
+          ? 'CLI running - deterministic launch in progress'
+          : 'CLI running - reconnecting with teammates'
       );
       run.onProgress(run.progress);
     }
@@ -19789,135 +19729,19 @@ export class TeamProvisioningService {
         providerId: request.providerId,
         members: expectedMemberSpecs,
       });
-      // Extract leadSessionId for session resume on reconnect.
-      // If a valid JSONL file exists for the previous session, we can resume it
-      // so the lead retains full context of prior work.
-      // When clearContext is true, skip resume entirely to start a fresh session.
-      let previousSessionId: string | undefined;
-      let skipResume = false;
+      // Deterministic launch always sends --team-bootstrap-spec. The orchestrator
+      // rejects combining that startup mode with --resume, so relaunch starts a
+      // fresh lead runtime session and restores operational context from durable
+      // team state instead of the previous transcript.
       if (request.clearContext) {
-        skipResume = true;
         logger.info(
-          `[${request.teamName}] clearContext requested — skipping session resume, starting fresh`
+          `[${request.teamName}] clearContext requested - starting fresh deterministic bootstrap session`
         );
       } else {
-        // Check persisted launch state: if the previous launch ended with no teammates
-        // ever spawned (all in 'starting' state), resuming would reconnect the lead but
-        // the CLI's deterministic bootstrap won't re-spawn dead teammates in reconnect
-        // mode. Skip resume so the CLI creates a fresh session that fully bootstraps.
-        const persistedLaunchState = await this.launchStateStore.read(request.teamName);
-        if (persistedLaunchState) {
-          const {
-            expectedMembers: prevExpected,
-            members: prevMembers,
-            launchPhase,
-          } = persistedLaunchState;
-          const teammateWasNeverSpawned = (
-            member:
-              | {
-                  agentToolAccepted?: boolean;
-                  firstSpawnAcceptedAt?: string;
-                  runtimeAlive?: boolean;
-                  bootstrapConfirmed?: boolean;
-                }
-              | undefined
-          ): boolean => {
-            if (!member) return true;
-            const hasAcceptedSpawn =
-              member.agentToolAccepted === true ||
-              (typeof member.firstSpawnAcceptedAt === 'string' &&
-                member.firstSpawnAcceptedAt.trim().length > 0);
-            return (
-              !hasAcceptedSpawn &&
-              member.runtimeAlive !== true &&
-              member.bootstrapConfirmed !== true
-            );
-          };
-          const updatedAtMs = Date.parse(persistedLaunchState.updatedAt);
-          const activeLaunchLooksStale =
-            launchPhase === 'active' &&
-            (!Number.isFinite(updatedAtMs) || Date.now() - updatedAtMs >= MEMBER_LAUNCH_GRACE_MS);
-          const launchOutcomeIsSettledOrStale = launchPhase !== 'active' || activeLaunchLooksStale;
-          const hasPreviousExpectedTeammates = prevExpected.length > 0;
-          const previousTeammates = prevExpected.map((name) => prevMembers[name]);
-          const staleActiveLaunchHasNoLiveTeammates =
-            activeLaunchLooksStale &&
-            hasPreviousExpectedTeammates &&
-            !previousTeammates.some(
-              (member) => member?.runtimeAlive === true || member?.bootstrapConfirmed === true
-            );
-          const allTeammatesNeverSpawned =
-            launchOutcomeIsSettledOrStale &&
-            hasPreviousExpectedTeammates &&
-            previousTeammates.every(teammateWasNeverSpawned);
-          if (allTeammatesNeverSpawned || staleActiveLaunchHasNoLiveTeammates) {
-            skipResume = true;
-            logger.info(
-              `[${request.teamName}] Previous launch cannot be resumed safely - ` +
-                `skipping session resume to allow full bootstrap`
-            );
-          }
-        }
-      }
-      if (!skipResume) {
-        try {
-          const configParsed = JSON.parse(configRaw) as Record<string, unknown>;
-          const persistedTeamMeta = await this.teamMetaStore
-            .getMeta(request.teamName)
-            .catch(() => null);
-          const resumeGuard = shouldSkipResumeForProviderRuntimeChange(
-            request,
-            configParsed,
-            persistedTeamMeta?.providerBackendId ?? null
-          );
-          if (resumeGuard.skip) {
-            logger.info(
-              `[${request.teamName}] Skipping session resume — ${resumeGuard.reason ?? 'runtime changed'}`
-            );
-          } else if (
-            typeof configParsed.leadSessionId === 'string' &&
-            configParsed.leadSessionId.trim().length > 0
-          ) {
-            const candidateId = configParsed.leadSessionId.trim();
-            const storedProjectPath =
-              typeof configParsed.projectPath === 'string' &&
-              configParsed.projectPath.trim().length > 0
-                ? configParsed.projectPath.trim()
-                : null;
-
-            // Sessions are stored per-project (~/.claude/projects/{encodePath(cwd)}/).
-            // If the project path changed, the old session JSONL won't be found by the CLI
-            // at the new project directory. Skip resume to avoid passing an invalid --resume arg.
-            if (
-              storedProjectPath &&
-              path.resolve(storedProjectPath) !== path.resolve(request.cwd)
-            ) {
-              logger.info(
-                `[${request.teamName}] Project path changed: ${storedProjectPath} → ${request.cwd}. ` +
-                  `Skipping session resume — sessions are per-project.`
-              );
-            } else {
-              const resumeProjectPath = storedProjectPath ?? request.cwd;
-              const projectId = encodePath(resumeProjectPath);
-              const baseDir = extractBaseDir(projectId);
-              const jsonlPath = path.join(getProjectsBasePath(), baseDir, `${candidateId}.jsonl`);
-              if (await this.pathExists(jsonlPath)) {
-                previousSessionId = candidateId;
-                logger.info(
-                  `[${request.teamName}] Found previous session JSONL for resume: ${candidateId}`
-                );
-              } else {
-                logger.info(
-                  `[${request.teamName}] Previous session JSONL not found at ${jsonlPath}, starting fresh`
-                );
-              }
-            }
-          }
-        } catch {
-          logger.debug(
-            `[${request.teamName}] Failed to extract leadSessionId from config for resume`
-          );
-        }
+        logger.info(
+          `[${request.teamName}] Starting fresh deterministic bootstrap session because ` +
+            `--team-bootstrap-spec cannot be combined with --resume`
+        );
       }
 
       // IMPORTANT: The CLI auto-suffixes teammate names when they already exist in config.json.
@@ -20117,7 +19941,7 @@ export class TeamProvisioningService {
         provisioningTraceLines: [],
         lastProvisioningTraceKey: null,
         provisioningOutputIndexByMessageId: new Map(),
-        detectedSessionId: previousSessionId ?? null,
+        detectedSessionId: null,
         leadActivityState: 'active',
         leadContextUsage: null,
         authFailureRetried: false,
@@ -20188,7 +20012,7 @@ export class TeamProvisioningService {
         request,
         effectiveMemberSpecs,
         existingTasks,
-        Boolean(previousSessionId)
+        false
       );
       const promptSize = getPromptSizeSummary(prompt);
       let child: ReturnType<typeof spawn>;
@@ -20289,12 +20113,6 @@ export class TeamProvisioningService {
           ? ['--dangerously-skip-permissions', '--permission-mode', 'bypassPermissions']
           : ['--permission-prompt-tool', 'stdio', '--permission-mode', 'default']),
       ];
-      if (previousSessionId) {
-        launchArgs.push('--resume', previousSessionId);
-        logger.info(
-          `[${request.teamName}] Launching with --resume ${previousSessionId} for session continuity`
-        );
-      }
       const launchModelArg = getLaunchModelArg(
         resolveTeamProviderId(request.providerId),
         request.model,
@@ -20344,8 +20162,8 @@ export class TeamProvisioningService {
         expectedMembersCount: effectiveMemberSpecs.length,
         launchIdentity,
       });
-      // --resume is added above when a valid previous session JSONL exists.
-      // Without it, CLI creates a fresh session ID automatically.
+      // Deterministic bootstrap launches fresh because --team-bootstrap-spec and
+      // --resume are not a supported orchestrator combination.
       emitProvisioningCheckpoint(run, 'Persisting team metadata before spawn');
       await this.teamMetaStore.writeMeta(request.teamName, {
         displayName: syntheticRequest.displayName,
@@ -20417,8 +20235,7 @@ export class TeamProvisioningService {
         throw error;
       }
 
-      const resumeHint = previousSessionId ? ' (resuming previous session)' : '';
-      updateProgress(run, 'spawning', `Starting Claude CLI process for team launch${resumeHint}`, {
+      updateProgress(run, 'spawning', 'Starting Claude CLI process for team launch', {
         pid: child.pid ?? undefined,
         warnings: mergeProvisioningWarnings(run.progress.warnings, runtimeWarning),
       });
@@ -20444,7 +20261,7 @@ export class TeamProvisioningService {
       // For launch, skip the filesystem monitor — files (config, inboxes, tasks)
       // already exist from the previous run and would trigger immediate false
       // completion on the first poll. Rely on stream-json result.success instead.
-      updateProgress(run, 'configuring', 'CLI running — deterministic reconnect in progress');
+      updateProgress(run, 'configuring', 'CLI running - deterministic launch in progress');
       run.onProgress(run.progress);
 
       run.timeoutHandle = setTimeout(() => {

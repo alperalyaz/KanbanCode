@@ -155,6 +155,7 @@ import {
   TEAM_INITIALIZE_GIT_REPOSITORY,
   TEAM_KILL_PROCESS,
   TEAM_LAUNCH,
+  TEAM_LAUNCH_FAILURE_DIAGNOSTICS,
   TEAM_LEAD_ACTIVITY,
   TEAM_LEAD_CONTEXT,
   TEAM_LIST,
@@ -320,6 +321,7 @@ import type {
   TeamGetDataOptions,
   TeamLaunchRequest,
   TeamLaunchResponse,
+  TeamLaunchFailureDiagnosticsBundle,
   TeamMemberActivityMeta,
   TeamMessageNotificationData,
   TeamProvisioningModelVerificationMode,
@@ -950,6 +952,13 @@ const electronAPI: ElectronAPI = {
     },
     getProvisioningStatus: async (runId: string) => {
       return invokeIpcWithResult<TeamProvisioningProgress>(TEAM_PROVISIONING_STATUS, runId);
+    },
+    getLaunchFailureDiagnostics: async (teamName: string, runId?: string) => {
+      return invokeIpcWithResult<TeamLaunchFailureDiagnosticsBundle>(
+        TEAM_LAUNCH_FAILURE_DIAGNOSTICS,
+        teamName,
+        runId
+      );
     },
     cancelProvisioning: async (runId: string) => {
       return invokeIpcWithResult<void>(TEAM_CANCEL_PROVISIONING, runId);

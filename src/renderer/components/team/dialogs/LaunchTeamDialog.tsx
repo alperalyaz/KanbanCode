@@ -31,7 +31,6 @@ import {
 } from '@renderer/components/team/members/MembersEditorSection';
 import { TeamRosterEditorSection } from '@renderer/components/team/members/TeamRosterEditorSection';
 import { Button } from '@renderer/components/ui/button';
-import { Checkbox } from '@renderer/components/ui/checkbox';
 import { Combobox } from '@renderer/components/ui/combobox';
 import {
   Dialog,
@@ -82,7 +81,6 @@ import {
   ChevronRight,
   Info,
   Loader2,
-  RotateCcw,
   X,
 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
@@ -452,7 +450,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   const [limitContext, setLimitContextRaw] = useState(
     () => localStorage.getItem('team:lastLimitContext') === 'true'
   );
-  const [clearContext, setClearContext] = useState(false);
   const [conflictDismissed, setConflictDismissed] = useState(false);
   const [prepareState, setPrepareState] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
   const [prepareMessage, setPrepareMessage] = useState<string | null>(null);
@@ -715,7 +712,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     setCwdMode('project');
     setSelectedProjectPath('');
     setCustomCwd('');
-    setClearContext(false);
     setConflictDismissed(false);
     setMembersDrafts([]);
     setSyncModelsWithLead(false);
@@ -1811,7 +1807,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     } else if (selectedProviderId === 'codex') {
       args.push(...buildCodexFastModeArgs(codexFastModeResolution?.resolvedFastMode));
     }
-    if (!clearContext) args.push('--resume', '<previous>');
     return args;
   }, [
     anthropicFastModeResolution?.resolvedFastMode,
@@ -1823,7 +1818,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     effectiveAnthropicRuntimeLimitContext,
     selectedEffort,
     selectedProviderId,
-    clearContext,
     runtimeProviderStatusById,
   ]);
 
@@ -1854,7 +1848,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       summary.push('Anthropic limited to 200K context');
     }
     if (skipPermissions) summary.push('Auto-approve tools');
-    if (clearContext) summary.push('Fresh session');
+    summary.push('Fresh lead session');
     if (worktreeEnabled && worktreeName.trim()) summary.push(`Worktree: ${worktreeName.trim()}`);
     if (customArgs.trim()) summary.push('Custom CLI args');
     return summary;
@@ -1869,7 +1863,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     anthropicProviderFastModeDefault,
     effectiveAnthropicRuntimeLimitContext,
     skipPermissions,
-    clearContext,
     worktreeEnabled,
     worktreeName,
     customArgs,
@@ -2117,7 +2110,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                 ? selectedFastMode
                 : undefined,
             limitContext: effectiveAnthropicRuntimeLimitContext,
-            clearContext: clearContext || undefined,
             skipPermissions,
             worktree: worktreeEnabled && worktreeName.trim() ? worktreeName.trim() : undefined,
             extraCliArgs: customArgs.trim() || undefined,
@@ -2680,39 +2672,22 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                       </div>
                     </div>
                   ) : null}
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="clear-context"
-                      checked={clearContext}
-                      onCheckedChange={(checked) => setClearContext(checked === true)}
-                    />
-                    <Label
-                      htmlFor="clear-context"
-                      className="flex cursor-pointer items-center gap-1.5 text-xs font-normal text-text-secondary"
-                    >
-                      <RotateCcw className="size-3 shrink-0" />
-                      Clear context (fresh session)
-                    </Label>
-                  </div>
-                  {clearContext && (
-                    <div
-                      className="rounded-md border px-3 py-2 text-xs"
-                      style={{
-                        backgroundColor: 'var(--warning-bg)',
-                        borderColor: 'var(--warning-border)',
-                        color: 'var(--warning-text)',
-                      }}
-                    >
-                      <div className="flex items-start gap-2">
-                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                        <p>
-                          The team lead will start a new session without resuming previous context.
-                          All accumulated session memory and conversation history will not be
-                          available.
-                        </p>
-                      </div>
+                  <div
+                    className="rounded-md border px-3 py-2 text-xs"
+                    style={{
+                      backgroundColor: 'var(--warning-bg)',
+                      borderColor: 'var(--warning-border)',
+                      color: 'var(--warning-text)',
+                    }}
+                  >
+                    <div className="flex items-start gap-2">
+                      <Info className="mt-0.5 size-3.5 shrink-0" />
+                      <p>
+                        Team relaunch starts a fresh lead session. Durable team state, task board,
+                        and member configuration are rehydrated into the launch prompt.
+                      </p>
                     </div>
-                  )}
+                  </div>
                 </div>
 
                 <AdvancedCliSection

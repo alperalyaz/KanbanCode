@@ -81,6 +81,7 @@ import type {
   TeamGetDataOptions,
   TeamLaunchRequest,
   TeamLaunchResponse,
+  TeamLaunchFailureDiagnosticsBundle,
   TeamMemberActivityMeta,
   TeamMessageNotificationData,
   TeamProvisioningModelVerificationMode,
@@ -499,6 +500,10 @@ export interface TeamsAPI {
   createInitialGitCommit: (projectPath: string) => Promise<TeamWorktreeGitStatus>;
   createTeam: (request: TeamCreateRequest) => Promise<TeamCreateResponse>;
   getProvisioningStatus: (runId: string) => Promise<TeamProvisioningProgress>;
+  getLaunchFailureDiagnostics: (
+    teamName: string,
+    runId?: string
+  ) => Promise<TeamLaunchFailureDiagnosticsBundle>;
   cancelProvisioning: (runId: string) => Promise<void>;
   sendMessage: (teamName: string, request: SendMessageRequest) => Promise<SendMessageResult>;
   getOpenCodeRuntimeDeliveryStatus: (

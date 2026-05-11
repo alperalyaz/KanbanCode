@@ -11,6 +11,7 @@ import type {
   MemberSpawnStatusEntry,
   PersistedTeamLaunchSnapshot,
   TeamLaunchDiagnosticItem,
+  TeamLaunchFailureDiagnosticsBundle,
   TeamMember,
   TeamProviderBackendId,
   TeamProviderId,
@@ -24,6 +25,7 @@ const LATEST_ARTIFACT_FILE = 'latest.json';
 const MAX_CLI_LOG_CHARS = 256_000;
 const MAX_TRACE_CHARS = 128_000;
 const MAX_COPIED_FILE_BYTES = 256 * 1024;
+const MAX_DIAGNOSTICS_COPY_FILE_BYTES = 128 * 1024;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -330,6 +332,181 @@ async function readBoundedTextFile(sourcePath: string): Promise<{ text?: string;
     const code = (error as NodeJS.ErrnoException).code;
     return { issue: code === 'ENOENT' ? 'missing' : 'unreadable' };
   }
+}
+
+async function readDiagnosticsCopyFile(
+  label: string,
+  sourcePath: string
+): Promise<TeamLaunchFailureDiagnosticsBundle['files'][number]> {
+  const read = await readBoundedTextFile(sourcePath);
+  if (read.text === undefined) {
+    return {
+      label,
+      path: sourcePath,
+      issue: read.issue ?? 'unreadable',
+    };
+  }
+
+  const text =
+    read.text.length > MAX_DIAGNOSTICS_COPY_FILE_BYTES
+      ? `[truncated to last ${MAX_DIAGNOSTICS_COPY_FILE_BYTES} chars]\n${read.text.slice(
+          read.text.length - MAX_DIAGNOSTICS_COPY_FILE_BYTES
+        )}`
+      : read.text;
+
+  return {
+    label,
+    path: sourcePath,
+    content: redactLaunchFailureArtifactText(text).trimEnd(),
+  };
+}
+
+function parseJsonObject(text: string | undefined): JsonRecord | null {
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as JsonRecord)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function getString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function getRecord(value: unknown): JsonRecord | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as JsonRecord) : null;
+}
+
+function resolveArtifactManifestPath(
+  teamDir: string,
+  latestJson: JsonRecord | null,
+  runId?: string
+): { path?: string; issue?: string } {
+  if (!latestJson) {
+    return { issue: 'latest_json_unavailable' };
+  }
+  const latestRunId = getString(latestJson.runId);
+  if (runId && latestRunId && latestRunId !== runId) {
+    return { issue: `latest_run_mismatch:${latestRunId}` };
+  }
+
+  const manifestPath = getString(latestJson.manifestPath);
+  if (!manifestPath) {
+    return { issue: 'manifest_path_missing' };
+  }
+
+  try {
+    assertPathWithin(path.join(teamDir, ARTIFACTS_DIR_NAME), manifestPath);
+  } catch {
+    return { issue: 'manifest_path_outside_artifacts_dir' };
+  }
+  return { path: manifestPath };
+}
+
+export async function readTeamLaunchFailureDiagnosticsBundle(
+  teamName: string,
+  runId?: string
+): Promise<TeamLaunchFailureDiagnosticsBundle> {
+  const teamDir = path.join(getTeamsBasePath(), teamName);
+  const latestPath = path.join(teamDir, ARTIFACTS_DIR_NAME, LATEST_ARTIFACT_FILE);
+  const latestFile = await readDiagnosticsCopyFile(
+    'launch-failure-artifacts/latest.json',
+    latestPath
+  );
+  const latestJson = parseJsonObject(latestFile.content);
+  const resolvedManifest = resolveArtifactManifestPath(teamDir, latestJson, runId);
+  const files: TeamLaunchFailureDiagnosticsBundle['files'] = [latestFile];
+
+  let manifestJson: JsonRecord | null = null;
+  if (resolvedManifest.path) {
+    const manifestFile = await readDiagnosticsCopyFile(
+      'launch-failure-artifacts/manifest.json',
+      resolvedManifest.path
+    );
+    files.push(manifestFile);
+    manifestJson = parseJsonObject(manifestFile.content);
+  } else {
+    files.push({
+      label: 'launch-failure-artifacts/manifest.json',
+      path:
+        getString(latestJson?.manifestPath) ??
+        path.join(teamDir, ARTIFACTS_DIR_NAME, 'manifest.json'),
+      issue: resolvedManifest.issue ?? 'manifest_unavailable',
+    });
+  }
+
+  files.push(
+    await readDiagnosticsCopyFile(
+      'bootstrap-journal.jsonl',
+      path.join(teamDir, 'bootstrap-journal.jsonl')
+    ),
+    await readDiagnosticsCopyFile('launch-state.json', getTeamLaunchStatePath(teamName))
+  );
+
+  const classification = getRecord(manifestJson?.classification);
+  const bootstrapTransportBreadcrumb = getRecord(manifestJson?.bootstrapTransportBreadcrumb);
+
+  return {
+    teamName,
+    ...(runId
+      ? { runId }
+      : getString(latestJson?.runId)
+        ? { runId: getString(latestJson?.runId) }
+        : {}),
+    latestPath,
+    ...(getString(latestJson?.directory)
+      ? { artifactDirectory: getString(latestJson?.directory) }
+      : {}),
+    ...(resolvedManifest.path ? { manifestPath: resolvedManifest.path } : {}),
+    classification: classification
+      ? {
+          code: getString(classification.code),
+          confidence:
+            typeof classification.confidence === 'number' ? classification.confidence : undefined,
+          evidence: Array.isArray(classification.evidence)
+            ? classification.evidence.filter((item): item is string => typeof item === 'string')
+            : undefined,
+        }
+      : null,
+    bootstrapTransportBreadcrumb: bootstrapTransportBreadcrumb
+      ? {
+          lastTransportStage:
+            typeof bootstrapTransportBreadcrumb.lastTransportStage === 'string'
+              ? bootstrapTransportBreadcrumb.lastTransportStage
+              : bootstrapTransportBreadcrumb.lastTransportStage === null
+                ? null
+                : undefined,
+          submitRejected:
+            typeof bootstrapTransportBreadcrumb.submitRejected === 'boolean'
+              ? bootstrapTransportBreadcrumb.submitRejected
+              : undefined,
+          retryable:
+            typeof bootstrapTransportBreadcrumb.retryable === 'boolean'
+              ? bootstrapTransportBreadcrumb.retryable
+              : bootstrapTransportBreadcrumb.retryable === null
+                ? null
+                : undefined,
+          noStdinWarning:
+            typeof bootstrapTransportBreadcrumb.noStdinWarning === 'boolean'
+              ? bootstrapTransportBreadcrumb.noStdinWarning
+              : undefined,
+          bootstrapSubmitted:
+            typeof bootstrapTransportBreadcrumb.bootstrapSubmitted === 'boolean'
+              ? bootstrapTransportBreadcrumb.bootstrapSubmitted
+              : undefined,
+          evidence: Array.isArray(bootstrapTransportBreadcrumb.evidence)
+            ? bootstrapTransportBreadcrumb.evidence.filter(
+                (item): item is string => typeof item === 'string'
+              )
+            : undefined,
+        }
+      : null,
+    files,
+  };
 }
 
 function getKnownLaunchArtifactSourceFiles(teamName: string): CopiedArtifactFile[] {
