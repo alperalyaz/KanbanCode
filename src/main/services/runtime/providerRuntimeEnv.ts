@@ -4,6 +4,8 @@ import type { CliProviderId, TeamProviderId } from '@shared/types';
 
 type RuntimeEnvProviderId = CliProviderId | TeamProviderId;
 
+type AnthropicRuntimeBackendProviderId = 'anthropic' | 'bedrock' | 'vertex' | 'foundry';
+
 const PROVIDER_ROUTING_ENV_KEYS = [
   'CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST',
   'CLAUDE_CODE_ENTRY_PROVIDER',
@@ -32,11 +34,46 @@ export function applyConfiguredRuntimeBackendsEnv(
   return env;
 }
 
+function isTruthyEnvValue(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return Boolean(normalized && normalized !== '0' && normalized !== 'false' && normalized !== 'no');
+}
+
+function resolveAnthropicRuntimeBackendFromEnv(
+  env: NodeJS.ProcessEnv
+): AnthropicRuntimeBackendProviderId {
+  if (isTruthyEnvValue(env.CLAUDE_CODE_USE_BEDROCK)) {
+    return 'bedrock';
+  }
+  if (isTruthyEnvValue(env.CLAUDE_CODE_USE_VERTEX)) {
+    return 'vertex';
+  }
+  if (isTruthyEnvValue(env.CLAUDE_CODE_USE_FOUNDRY)) {
+    return 'foundry';
+  }
+  return 'anthropic';
+}
+
+function applyAnthropicRuntimeBackendEnv(
+  env: NodeJS.ProcessEnv,
+  backend: AnthropicRuntimeBackendProviderId
+): void {
+  if (backend === 'bedrock') {
+    env.CLAUDE_CODE_USE_BEDROCK = '1';
+  } else if (backend === 'vertex') {
+    env.CLAUDE_CODE_USE_VERTEX = '1';
+  } else if (backend === 'foundry') {
+    env.CLAUDE_CODE_USE_FOUNDRY = '1';
+  }
+}
+
 export function applyProviderRuntimeEnv(
   env: NodeJS.ProcessEnv,
   providerId: RuntimeEnvProviderId | undefined
 ): NodeJS.ProcessEnv {
   const resolvedProvider = resolveRuntimeProviderId(providerId);
+  const anthropicBackend =
+    resolvedProvider === 'anthropic' ? resolveAnthropicRuntimeBackendFromEnv(env) : 'anthropic';
 
   for (const key of PROVIDER_ROUTING_ENV_KEYS) {
     env[key] = undefined;
@@ -48,7 +85,9 @@ export function applyProviderRuntimeEnv(
   // host-managed and set the exact entry provider so anthropic teammates do not
   // silently fall back into the host's current routing world.
   env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = '1';
-  env.CLAUDE_CODE_ENTRY_PROVIDER = resolvedProvider;
+  env.CLAUDE_CODE_ENTRY_PROVIDER =
+    resolvedProvider === 'anthropic' ? anthropicBackend : resolvedProvider;
+  applyAnthropicRuntimeBackendEnv(env, anthropicBackend);
 
   return env;
 }
