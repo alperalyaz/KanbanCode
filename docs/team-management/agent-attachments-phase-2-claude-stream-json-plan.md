@@ -1,4 +1,5 @@
 # Phase 2 - Claude stream-json attachment delivery adapter
+⚠️ **Историческая документация**: Этот файл содержит дизайн-документацию. Фактическая реализация в `src/features/agent-attachments/` может отличаться от описанной архитектуры.
 
 ## Summary
 

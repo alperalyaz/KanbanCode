@@ -8,7 +8,7 @@ Agent Graph, per-team tool approval, interactive AskUserQuestion, task comment n
 
 Minor release: React 19 + Electron 40 migration, start-task-by-user, auth troubleshooting guide, syntax highlighting for R/Ruby/PHP/SQL, search performance improvements, cost tracking accuracy, WSL/Windows path fixes. Full list: [CHANGELOG.md](./CHANGELOG.md).
 
-## Published: v1.0.0 (2026-03-19)
+## Published: v1.0.0 (2026-03-23)
 
 Initial release: Agent Teams with reliable CLI detection in packaged builds (shell PATH/HOME, `CLAUDE_CONFIG_DIR`, auth output parsing), IPC status cache handling, concurrent binary resolution, capped NDJSON diagnostics. Full list: [CHANGELOG.md](./CHANGELOG.md).
 
@@ -37,23 +37,23 @@ First stable build: CLI/auth reliability in packaged apps, IPC hardening, and pl
 <table>
 <tr>
 <td align="center">
-  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/Claude.Agent.Teams.UI-1.0.0-arm64.dmg">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/Agent.Teams.AI-1.0.0-arm64.dmg">
     <img src="https://img.shields.io/badge/macOS_Apple_Silicon-.dmg-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Apple Silicon" />
   </a>
   <br />
-  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/Claude.Agent.Teams.UI-1.0.0.dmg">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/Agent.Teams.AI-1.0.0.dmg">
     <img src="https://img.shields.io/badge/macOS_Intel-.dmg-434343?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Intel" />
   </a>
 </td>
 <td align="center">
-  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/Claude.Agent.Teams.UI.Setup.1.0.0.exe">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/Agent.Teams.AI.Setup.1.0.0.exe">
     <img src="https://img.shields.io/badge/Windows-Download_.exe-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
   </a>
   <br />
   <sub>May trigger SmartScreen — click "More info" → "Run anyway"</sub>
 </td>
 <td align="center">
-  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/Claude.Agent.Teams.UI-1.0.0.AppImage">
+  <a href="https://github.com/777genius/agent-teams-ai/releases/download/v1.0.0/Agent.Teams.AI-1.0.0.AppImage">
     <img src="https://img.shields.io/badge/Linux-Download_.AppImage-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux AppImage" />
   </a>
   <br />

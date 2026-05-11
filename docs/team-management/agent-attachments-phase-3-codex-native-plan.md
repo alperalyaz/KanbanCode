@@ -1,4 +1,5 @@
 # Phase 3 - Codex native image attachment delivery
+⚠️ **Историческая документация**: Этот файл содержит дизайн-документацию. Фактическая реализация в `src/features/agent-attachments/` может отличаться от описанной архитектуры.
 
 ## Summary
 

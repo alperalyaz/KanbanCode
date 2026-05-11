@@ -1,5 +1,7 @@
 # Phase 1 - Attachment normalization, image optimization, budgets, and UI warnings
 
+⚠️ **Историческая документация**: Этот файл содержит дизайн-документацию для Phase 1. Фактическая реализация в `src/features/agent-attachments/` может отличаться от описанной архитектуры. Для актуального состояния см. код в `src/features/agent-attachments/core/domain/` (budgets.ts, errors.ts, capabilities.ts, types.ts и т.д.).
+
 ## Summary
 
 Goal: make attachment intake safe before changing provider delivery paths.

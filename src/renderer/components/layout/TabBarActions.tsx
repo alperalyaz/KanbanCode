@@ -174,7 +174,7 @@ export const TabBarActions = (): React.JSX.Element => {
         <TooltipContent side="bottom">Discord</TooltipContent>
       </Tooltip>
 
-      {/* More menu (Teams, Settings, Extensions, Search, Export, Analyze, Schedules) */}
+      {/* More menu (Teams, Settings, Extensions, Search, Schedules, Docs, Export, Analyze) */}
       <MoreMenu
         activeTab={activeTab}
         activeTabSessionDetail={activeTabSessionDetail}

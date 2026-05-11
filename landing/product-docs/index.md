@@ -24,7 +24,7 @@ features:
     linkText: Create a team
   - icon: "02"
     title: Live kanban board
-    details: Watch tasks move through todo, progress, review, blocked, and done as agents work.
+    details: Watch tasks move through todo, in progress, review, done, and approved as agents work.
     link: /guide/agent-workflow
     linkText: Understand workflow
   - icon: "03"

@@ -1,5 +1,7 @@
 # Agent attachments architecture plan
 
+⚠️ **Историческая документация**: Этот файл содержит дизайн-документацию и план реализации. Фактическая реализация в `src/features/agent-attachments/` может отличаться от описанной архитектуры. Для актуального состояния см. код в `src/features/agent-attachments/core/domain/` (budgets.ts, errors.ts, capabilities.ts, types.ts и т.д.).
+
 ## Summary
 
 Goal: support screenshots/images and later documents across Claude, Codex, and OpenCode teammates without treating base64 as a universal transport and without destabilizing team launch/runtime delivery.

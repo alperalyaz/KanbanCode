@@ -1,4 +1,5 @@
 # Phase 5 - Cross-runtime attachment E2E, diagnostics, docs, and polish
+⚠️ **Историческая документация**: Этот файл содержит дизайн-документацию. Фактическая реализация в `src/features/agent-attachments/` может отличаться от описанной архитектуры.
 
 ## Summary
 

@@ -1,4 +1,5 @@
 # Agent attachments
+⚠️ **Историческая документация**: Этот файл содержит дизайн-документацию. Фактическая реализация в `src/features/agent-attachments/` может отличаться от описанной архитектуры.
 
 This document describes the v1 attachment path for Agent Teams.
 

@@ -24,7 +24,7 @@ features:
     linkText: Создать команду
   - icon: "02"
     title: Живая канбан-доска
-    details: Видно, как задачи проходят todo, progress, review, blocked и done во время работы агентов.
+    details: Видно, как задачи проходят todo, in progress, review, done и approved во время работы агентов.
     link: /ru/guide/agent-workflow
     linkText: Разобрать workflow
   - icon: "03"

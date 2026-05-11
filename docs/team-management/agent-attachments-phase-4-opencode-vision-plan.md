@@ -1,4 +1,5 @@
 # Phase 4 - OpenCode file parts and model vision capability gate
+⚠️ **Историческая документация**: Этот файл содержит дизайн-документацию. Фактическая реализация в `src/features/agent-attachments/` может отличаться от описанной архитектуры.
 
 ## Summary
 

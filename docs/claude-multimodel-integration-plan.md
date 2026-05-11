@@ -384,38 +384,29 @@ Each row may show:
 ## Launch Flow Changes
 
 Current launch flow already supports a team-level `model`.
-Current UI also already has a provider affordance in [TeamModelSelector.tsx](../../src/renderer/components/team/dialogs/TeamModelSelector.tsx), but its logic is still placeholder/coming-soon. That placeholder currently uses `openai`; it should be normalized or mapped to the app-level provider id `codex` during implementation.
+Current UI already has a provider affordance in [TeamModelSelector.tsx](../src/renderer/components/team/dialogs/TeamModelSelector.tsx). The remaining work is to keep provider/model normalization consistent across all launch surfaces.
 
 Current code paths that must be kept in sync:
 
-- shared types in [team.ts](../../src/shared/types/team.ts)
-- HTTP launch parsing in [teams.ts](../../src/main/http/teams.ts)
-- IPC launch/create validation in [teams.ts](../../src/main/ipc/teams.ts)
-- persisted draft metadata in [TeamMetaStore.ts](../../src/main/services/team/TeamMetaStore.ts)
-- scheduled one-shot config in [schedule.ts](../../src/shared/types/schedule.ts)
-- scheduled execution in [ScheduledTaskExecutor.ts](../../src/main/services/schedule/ScheduledTaskExecutor.ts)
-- provider/model UI helpers in [TeamModelSelector.tsx](../../src/renderer/components/team/dialogs/TeamModelSelector.tsx)
-- model display parsing in [modelParser.ts](../../src/shared/utils/modelParser.ts)
-- launch dialog state persistence in [LaunchTeamDialog.tsx](../../src/renderer/components/team/dialogs/LaunchTeamDialog.tsx)
-- create dialog state persistence in [CreateTeamDialog.tsx](../../src/renderer/components/team/dialogs/CreateTeamDialog.tsx)
-- saved draft restore in [teams.ts](../../src/main/ipc/teams.ts)
+- shared types in [team.ts](../src/shared/types/team.ts)
+- HTTP launch parsing in [teams.ts](../src/main/http/teams.ts)
+- IPC launch/create validation in [teams.ts](../src/main/ipc/teams.ts)
+- persisted draft metadata in [TeamMetaStore.ts](../src/main/services/team/TeamMetaStore.ts)
+- scheduled one-shot config in [schedule.ts](../src/shared/types/schedule.ts)
+- scheduled execution in [ScheduledTaskExecutor.ts](../src/main/services/schedule/ScheduledTaskExecutor.ts)
+- provider/model UI helpers in [TeamModelSelector.tsx](../src/renderer/components/team/dialogs/TeamModelSelector.tsx)
+- model display parsing in [modelParser.ts](../src/shared/utils/modelParser.ts)
+- launch dialog state persistence in [LaunchTeamDialog.tsx](../src/renderer/components/team/dialogs/LaunchTeamDialog.tsx)
+- create dialog state persistence in [CreateTeamDialog.tsx](../src/renderer/components/team/dialogs/CreateTeamDialog.tsx)
+- saved draft restore in [teams.ts](../src/main/ipc/teams.ts)
 - launch param persistence in the renderer store
-- slash-command metadata in [slashCommands.ts](../../src/shared/utils/slashCommands.ts)
+- slash-command metadata in [slashCommands.ts](../src/shared/utils/slashCommands.ts)
 
-Next step is to extend launch requests to include provider selection:
-
-```ts
-interface TeamLaunchRequest {
-  providerId?: 'anthropic' | 'codex';
-  model?: string;
-}
-```
-
-Future-compatible extension for providers with internal backend preference:
+Launch requests already carry provider selection. The remaining work is to keep request parsing, persistence, and runtime selection consistent. Future-compatible provider options can look like this:
 
 ```ts
 interface TeamLaunchRequest {
-  providerId?: 'anthropic' | 'codex' | 'gemini';
+  providerId?: TeamProviderId;
   model?: string;
   providerOptions?: {
     geminiBackendPreference?: 'auto' | 'api' | 'cli';
@@ -444,9 +435,9 @@ Future-compatible shape:
 
 ```ts
 interface TeamLaunchRequest {
-  providerId?: 'anthropic' | 'codex';
+  providerId?: TeamProviderId;
   model?: string;
-  memberProviders?: Record<string, 'anthropic' | 'codex'>;
+  memberProviders?: Record<string, TeamProviderId>;
   memberModels?: Record<string, string>;
 }
 ```
@@ -793,7 +784,7 @@ This phase must explicitly define the child-process env mapping for provider sel
 It must also persist launch-time `providerId` alongside `model` in team/run metadata so existing runs remain inspectable after refresh.
 It must update both the interactive team runtime path and the scheduler one-shot path.
 
-Phase 4 should also explicitly hide or keep disabled unsupported placeholder providers in `TeamModelSelector` until their runtime support actually exists. In Phase 1/2/3, only `Anthropic` and `Codex` should move out of placeholder behavior.
+Phase 4 should also explicitly hide or keep disabled unsupported providers in `TeamModelSelector` until their runtime support actually exists. In Phase 1/2/3, only `Anthropic` and `Codex` should move out of disabled state.
 
 ### Phase 5. Future teammate-level routing
 

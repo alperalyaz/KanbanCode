@@ -180,25 +180,11 @@ body {
   z-index: 2;
   max-width: 780px !important;
   padding: 30px 32px 32px;
-  border: 1px solid color-mix(in srgb, var(--vp-c-border) 72%, transparent);
-  border-radius: 28px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--vp-c-bg-elv) 74%, transparent), color-mix(in srgb, var(--vp-c-bg-soft) 56%, transparent)),
-    color-mix(in srgb, var(--vp-c-bg-elv) 70%, transparent);
-  box-shadow: var(--at-shadow-cyan-lg);
-  backdrop-filter: blur(var(--at-blur-lg));
+  text-shadow: 0 2px 22px color-mix(in srgb, var(--vp-c-bg) 82%, transparent);
 }
 
 .VPHero.has-image .main::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 20% 0%, rgba(0, 240, 255, 0.14), transparent 42%),
-    radial-gradient(circle at 82% 12%, rgba(255, 0, 255, 0.08), transparent 30%);
-  opacity: 0.9;
+  display: none;
 }
 
 .VPHero.has-image .main > * {

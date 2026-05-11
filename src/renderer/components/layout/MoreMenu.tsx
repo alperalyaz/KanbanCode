@@ -1,18 +1,20 @@
 /**
  * MoreMenu - Dropdown menu behind a "..." icon for less-frequent toolbar actions.
  *
- * Groups: Teams, Settings, Extensions, Search, Schedules, Export (session-only), Analyze (session-only).
+ * Groups: Teams, Settings, Extensions, Search, Schedules, Docs, Export (session-only), Analyze (session-only).
  * Closes on outside click or Escape.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
+import { isElectronMode } from '@renderer/api';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
 import { triggerDownload } from '@renderer/utils/sessionExporter';
 import { formatShortcut } from '@renderer/utils/stringUtils';
 import {
   Activity,
+  BookOpen,
   Braces,
   Calendar,
   FileText,
@@ -28,6 +30,8 @@ import { useShallow } from 'zustand/react/shallow';
 import type { SessionDetail } from '@renderer/types/data';
 import type { Tab } from '@renderer/types/tabs';
 import type { ExportFormat } from '@renderer/utils/sessionExporter';
+
+const DOCS_URL = 'https://777genius.github.io/agent-teams-ai/docs/';
 
 interface MoreMenuProps {
   activeTab: Tab | undefined;
@@ -109,6 +113,15 @@ export const MoreMenu = ({
     [activeTabSessionDetail]
   );
 
+  const handleOpenDocs = useCallback(async () => {
+    if (isElectronMode()) {
+      await window.electronAPI.openExternal(DOCS_URL);
+    } else {
+      window.open(DOCS_URL, '_blank', 'noopener,noreferrer');
+    }
+    setIsOpen(false);
+  }, []);
+
   const isSessionWithData = activeTab?.type === 'session' && activeTabSessionDetail != null;
 
   // Build menu sections
@@ -157,6 +170,14 @@ export const MoreMenu = ({
       onClick: () => {
         openSchedulesTab();
         setIsOpen(false);
+      },
+    },
+    {
+      id: 'docs',
+      label: 'Docs',
+      icon: BookOpen,
+      onClick: () => {
+        void handleOpenDocs();
       },
     },
   ];
