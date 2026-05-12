@@ -7,7 +7,12 @@ import { createLogger } from '@shared/utils/logger';
 import { createDefaultCliExtensionCapabilities } from '@shared/utils/providerExtensionCapabilities';
 
 import type { AppState } from '../types';
-import type { CliInstallationStatus, CliProviderId, CliProviderStatus } from '@shared/types';
+import type {
+  CliInstallationStatus,
+  CliProviderId,
+  CliProviderStatus,
+  OpenCodeRuntimeStatus,
+} from '@shared/types';
 import type { StateCreator } from 'zustand';
 
 const logger = createLogger('Store:cliInstaller');
@@ -283,6 +288,9 @@ export interface CliInstallerSlice {
   cliInstallerLogs: string[];
   cliInstallerRawChunks: string[];
   cliCompletedVersion: string | null;
+  openCodeRuntimeStatus: OpenCodeRuntimeStatus | null;
+  openCodeRuntimeStatusLoading: boolean;
+  openCodeRuntimeError: string | null;
 
   // Actions
   bootstrapCliStatus: (options?: { multimodelEnabled?: boolean }) => Promise<void>;
@@ -293,12 +301,16 @@ export interface CliInstallerSlice {
   ) => Promise<void>;
   invalidateCliStatus: () => Promise<void>;
   installCli: () => void;
+  fetchOpenCodeRuntimeStatus: () => Promise<void>;
+  installOpenCodeRuntime: () => Promise<void>;
+  invalidateOpenCodeRuntimeStatus: () => Promise<void>;
 }
 
 let cliStatusInFlight: Promise<void> | null = null;
 const cliProviderStatusInFlight = new Map<string, Promise<void>>();
 let cliStatusEpoch = 0;
 const cliProviderStatusSeq = new Map<CliProviderId, number>();
+let openCodeRuntimeStatusInFlight: Promise<void> | null = null;
 
 // =============================================================================
 // Slice Creator
@@ -322,6 +334,9 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
   cliInstallerLogs: [],
   cliInstallerRawChunks: [],
   cliCompletedVersion: null,
+  openCodeRuntimeStatus: null,
+  openCodeRuntimeStatusLoading: false,
+  openCodeRuntimeError: null,
 
   bootstrapCliStatus: async (options) => {
     if (!api.cliInstaller) return;
@@ -689,5 +704,66 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
     api.cliInstaller.install().catch((error) => {
       logger.error('Failed to install CLI:', error);
     });
+  },
+
+  fetchOpenCodeRuntimeStatus: async () => {
+    if (!api.openCodeRuntime) return;
+    if (openCodeRuntimeStatusInFlight) return openCodeRuntimeStatusInFlight;
+
+    openCodeRuntimeStatusInFlight = (async () => {
+      set({ openCodeRuntimeStatusLoading: true, openCodeRuntimeError: null });
+      try {
+        const status = await api.openCodeRuntime.getStatus();
+        set({ openCodeRuntimeStatus: status, openCodeRuntimeError: status.error ?? null });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to check OpenCode runtime status';
+        logger.error('Failed to fetch OpenCode runtime status:', error);
+        set({ openCodeRuntimeError: message });
+      } finally {
+        set({ openCodeRuntimeStatusLoading: false });
+        openCodeRuntimeStatusInFlight = null;
+      }
+    })();
+
+    return openCodeRuntimeStatusInFlight;
+  },
+
+  installOpenCodeRuntime: async () => {
+    if (!api.openCodeRuntime) return;
+    set({
+      openCodeRuntimeStatusLoading: true,
+      openCodeRuntimeError: null,
+      openCodeRuntimeStatus: {
+        installed: false,
+        source: 'missing',
+        state: 'checking',
+        progress: {
+          phase: 'checking',
+          detail: 'Resolving latest OpenCode package...',
+        },
+      },
+    });
+    try {
+      const status = await api.openCodeRuntime.install();
+      set({ openCodeRuntimeStatus: status, openCodeRuntimeError: status.error ?? null });
+      if (status.installed) {
+        await api.openCodeRuntime.invalidateStatus();
+        await api.cliInstaller?.invalidateStatus();
+        const epoch = ++cliStatusEpoch;
+        await get().fetchCliProviderStatus('opencode', { silent: false, epoch });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to install OpenCode runtime';
+      logger.error('Failed to install OpenCode runtime:', error);
+      set({ openCodeRuntimeError: message });
+    } finally {
+      set({ openCodeRuntimeStatusLoading: false });
+    }
+  },
+
+  invalidateOpenCodeRuntimeStatus: async () => {
+    await api.openCodeRuntime?.invalidateStatus();
+    set({ openCodeRuntimeStatus: null });
   },
 });

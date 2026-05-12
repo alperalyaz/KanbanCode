@@ -1,16 +1,6 @@
 ---
-title: Privacy and Local Data
-description: What the Agent Teams desktop app stores locally and what data may leave your machine through provider-backed models.
----
-
----
 title: Privacy and Local Data – Agent Teams Docs
 description: What Agent Teams stores locally, what may leave your machine through provider-backed model calls, and practical privacy guidance.
----
-
----
-title: Privacy and Local Data – Agent Teams Docs
-description: What the Agent Teams desktop app stores locally and what data may leave your machine through provider-backed model calls.
 ---
 
 # Privacy and Local Data

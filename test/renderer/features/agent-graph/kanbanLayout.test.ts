@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import {
+  KANBAN_ZONE,
+  TASK_PILL,
+} from '../../../../packages/agent-graph/src/constants/canvas-constants';
 import { KanbanLayoutEngine } from '../../../../packages/agent-graph/src/layout/kanbanLayout';
 
 import type { GraphNode } from '@claude-teams/agent-graph';
@@ -37,17 +41,17 @@ describe('KanbanLayoutEngine', () => {
 
     KanbanLayoutEngine.layout([lead, orphanTask], {
       unassignedTaskRect: {
-        left: -80,
+        left: -TASK_PILL.width / 2,
         top: 120,
-        right: 80,
+        right: TASK_PILL.width / 2,
         bottom: 540,
-        width: 160,
+        width: TASK_PILL.width,
         height: 420,
       },
     });
 
     expect(orphanTask.x).toBe(0);
-    expect(orphanTask.y).toBe(120);
+    expect(orphanTask.y).toBe(120 + KANBAN_ZONE.headerHeight);
     expect(KanbanLayoutEngine.zones.some((zone) => zone.ownerId === '__unassigned__')).toBe(true);
   });
 });

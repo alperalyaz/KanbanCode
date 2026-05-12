@@ -11,6 +11,12 @@ vi.mock('@renderer/api', () => ({
       install: vi.fn(),
       onProgress: vi.fn(() => vi.fn()),
     },
+    openCodeRuntime: {
+      getStatus: vi.fn(),
+      install: vi.fn(),
+      invalidateStatus: vi.fn(),
+      onProgress: vi.fn(() => vi.fn()),
+    },
     // Minimal stubs for other api methods referenced by store slices
     getProjects: vi.fn(() => Promise.resolve([])),
     getSessions: vi.fn(() => Promise.resolve([])),
@@ -137,6 +143,9 @@ describe('cliInstallerSlice', () => {
       cliDownloadTotal: 0,
       cliInstallerError: null,
       cliCompletedVersion: null,
+      openCodeRuntimeStatus: null,
+      openCodeRuntimeStatusLoading: false,
+      openCodeRuntimeError: null,
     });
   });
 
@@ -688,20 +697,22 @@ describe('cliInstallerSlice', () => {
         ],
       };
       vi.mocked(api.cliInstaller.getStatus).mockResolvedValue(mockStatus);
-      vi.mocked(api.cliInstaller.getProviderStatus).mockImplementation(async (providerId) => {
+      vi.mocked(api.cliInstaller.getProviderStatus).mockImplementation((providerId) => {
         if (providerId === 'opencode') {
-          return createMultimodelProvider({
-            providerId: 'opencode',
-            displayName: 'OpenCode',
-            authenticated: true,
-            authMethod: 'opencode_managed',
-            statusMessage: null,
-            models: ['opencode/minimax-m2.5-free'],
-            canLoginFromUi: false,
-            backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
-          });
+          return Promise.resolve(
+            createMultimodelProvider({
+              providerId: 'opencode',
+              displayName: 'OpenCode',
+              authenticated: true,
+              authMethod: 'opencode_managed',
+              statusMessage: null,
+              models: ['opencode/minimax-m2.5-free'],
+              canLoginFromUi: false,
+              backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
+            })
+          );
         }
-        throw new Error(`Unexpected provider status request for ${providerId}`);
+        return Promise.reject(new Error(`Unexpected provider status request for ${providerId}`));
       });
 
       await useStore.getState().bootstrapCliStatus({ multimodelEnabled: true });

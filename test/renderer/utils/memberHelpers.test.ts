@@ -842,6 +842,28 @@ describe('memberHelpers spawn-aware presence', () => {
     expect(title).not.toContain('runtime_bootstrap_checkin');
   });
 
+  it('formats unknown OpenCode bridge outcome timeouts as delivery advisory text', () => {
+    const advisory = {
+      kind: 'api_error' as const,
+      observedAt: '2026-04-07T09:00:00.000Z',
+      reasonCode: 'backend_error' as const,
+      message: 'opencode_prompt_acceptance_unknown_after_bridge_timeout',
+    };
+
+    expect(getMemberRuntimeAdvisoryLabel(advisory, 'opencode')).toBe(
+      'OpenCode delivery error'
+    );
+
+    const title = getMemberRuntimeAdvisoryTitle(advisory, 'opencode');
+
+    expect(title).toContain('OpenCode runtime delivery error.');
+    expect(title).toContain(
+      'OpenCode bridge outcome unknown after timeout, retrying/observing.'
+    );
+    expect(title).not.toContain('Network or connectivity error');
+    expect(title).not.toContain('opencode_prompt_acceptance_unknown_after_bridge_timeout');
+  });
+
   it('formats non-visible tool progress advisory reasons before showing them in titles', () => {
     const title = getMemberRuntimeAdvisoryTitle(
       {

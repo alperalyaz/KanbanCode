@@ -70,19 +70,19 @@ export const NODE = {
 // ─── Task pill dimensions ───────────────────────────────────────────────────
 
 export const TASK_PILL = {
-  width: 160,
-  height: 36,
-  borderRadius: 6,
+  width: 260,
+  height: 72,
+  borderRadius: 8,
   statusDotRadius: 4,
   statusDotX: 12,
-  /** Font size for display ID */
-  idFontSize: 9,
-  /** Font size for subject text */
-  subjectFontSize: 7,
+  /** Font size for the task title */
+  idFontSize: 16.5,
+  /** Font size for the display ID */
+  subjectFontSize: 10,
   /** Max chars for subject before truncation */
-  subjectMaxChars: 18,
+  subjectMaxChars: 32,
   /** X offset for text content */
-  textOffsetX: 20,
+  textOffsetX: 18,
 } as const;
 
 // ─── Agent drawing constants ────────────────────────────────────────────────
@@ -259,12 +259,12 @@ export const BACKGROUND = {
 // ─── Kanban zone layout ─────────────────────────────────────────────────────
 
 export const KANBAN_ZONE = {
-  /** Column width: pill (160) + gap (20) */
-  columnWidth: 180,
-  /** Row height: pill (36) + gap (10) */
-  rowHeight: 46,
-  /** Space reserved for column header label */
-  headerHeight: 20,
+  /** Column width: task card (260) + gap (20) */
+  columnWidth: 280,
+  /** Row height: task card (72) + gap (8) */
+  rowHeight: 80,
+  /** Task center offset from band top: header (20) + gap (4) + half card */
+  headerHeight: 60,
   /** Zone starts this far below member node center */
   offsetY: 70,
   /** Column sequence: pending → wip → done → review → approved */

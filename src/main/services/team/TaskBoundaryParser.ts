@@ -59,6 +59,7 @@ function pickDetectedMechanism(
 
 export class TaskBoundaryParser {
   private cache = new Map<string, BoundaryCacheEntry>();
+  private inFlight = new Map<string, Promise<TaskBoundariesResult>>();
   private readonly cacheTtl = 60 * 1000; // 60s
 
   /** Парсинг JSONL файла для обнаружения границ задач */
@@ -77,6 +78,23 @@ export class TaskBoundaryParser {
       return cached.data;
     }
 
+    const inFlightKey = `${filePath}:${fileStat.mtimeMs}`;
+    const inFlight = this.inFlight.get(inFlightKey);
+    if (inFlight) return inFlight;
+
+    const promise = this.parseBoundariesUncached(filePath, fileStat.mtimeMs).finally(() => {
+      if (this.inFlight.get(inFlightKey) === promise) {
+        this.inFlight.delete(inFlightKey);
+      }
+    });
+    this.inFlight.set(inFlightKey, promise);
+    return promise;
+  }
+
+  private async parseBoundariesUncached(
+    filePath: string,
+    fileMtimeMs: number
+  ): Promise<TaskBoundariesResult> {
     // 2. Стриминг JSONL
     const boundaries: TaskBoundary[] = [];
     const allToolUsesByLine = new Map<number, ToolUseInfo[]>();
@@ -151,7 +169,7 @@ export class TaskBoundaryParser {
     };
     this.cache.set(filePath, {
       data: result,
-      mtime: fileStat.mtimeMs,
+      mtime: fileMtimeMs,
       expiresAt: Date.now() + this.cacheTtl,
     });
     return result;
@@ -166,6 +184,7 @@ export class TaskBoundaryParser {
   /** Очистить кеш (для тестов) */
   clearCache(): void {
     this.cache.clear();
+    this.inFlight.clear();
   }
 
   // ── Приватные методы ──

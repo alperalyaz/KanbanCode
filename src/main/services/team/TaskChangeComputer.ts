@@ -27,6 +27,11 @@ interface ParsedSnippetsCacheEntry {
   expiresAt: number;
 }
 
+interface ParsedSnippetsResult {
+  snippets: SnippetDiff[];
+  mtime: number;
+}
+
 interface LogFileRef {
   filePath: string;
   memberName: string;
@@ -34,7 +39,9 @@ interface LogFileRef {
 
 export class TaskChangeComputer {
   private parsedSnippetsCache = new Map<string, ParsedSnippetsCacheEntry>();
+  private parsedSnippetsInFlight = new Map<string, Promise<ParsedSnippetsResult>>();
   private readonly parsedSnippetsCacheTtl = 20 * 1000;
+  private readonly maxParsedSnippetsCacheEntries = 1_000;
   private static readonly JSONL_PARSE_CONCURRENCY = 6;
 
   constructor(
@@ -367,9 +374,7 @@ export class TaskChangeComputer {
     return results;
   }
 
-  private async parseJSONLFile(
-    filePath: string
-  ): Promise<{ snippets: SnippetDiff[]; mtime: number }> {
+  private async parseJSONLFile(filePath: string): Promise<ParsedSnippetsResult> {
     let fileMtime = 0;
     try {
       const fileStat = await stat(filePath);
@@ -383,6 +388,23 @@ export class TaskChangeComputer {
       return { snippets: [], mtime: 0 };
     }
 
+    const inFlightKey = `${filePath}:${fileMtime}`;
+    const inFlight = this.parsedSnippetsInFlight.get(inFlightKey);
+    if (inFlight) return inFlight;
+
+    const promise = this.parseJSONLFileUncached(filePath, fileMtime).finally(() => {
+      if (this.parsedSnippetsInFlight.get(inFlightKey) === promise) {
+        this.parsedSnippetsInFlight.delete(inFlightKey);
+      }
+    });
+    this.parsedSnippetsInFlight.set(inFlightKey, promise);
+    return promise;
+  }
+
+  private async parseJSONLFileUncached(
+    filePath: string,
+    fileMtime: number
+  ): Promise<ParsedSnippetsResult> {
     const entries: Record<string, unknown>[] = [];
 
     try {
@@ -514,6 +536,11 @@ export class TaskChangeComputer {
       mtime: fileMtime,
       expiresAt: Date.now() + this.parsedSnippetsCacheTtl,
     });
+    while (this.parsedSnippetsCache.size > this.maxParsedSnippetsCacheEntries) {
+      const oldestKey = this.parsedSnippetsCache.keys().next().value;
+      if (!oldestKey) break;
+      this.parsedSnippetsCache.delete(oldestKey);
+    }
 
     return { snippets, mtime: fileMtime };
   }

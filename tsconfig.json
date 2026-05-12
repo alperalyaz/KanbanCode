@@ -22,6 +22,6 @@
     },
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src/**/*", "test/**/*"],
+  "include": ["src/**/*", "test/**/*", "scripts/team-changes-real-data-smoke.ts"],
   "exclude": ["node_modules", "dist", "dist-electron"]
 }

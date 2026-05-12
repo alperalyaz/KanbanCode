@@ -1,9 +1,4 @@
 ---
-title: Runtime Setup
-description: Configure Claude Code, Codex, or OpenCode runtimes and provider authentication for agent teams.
----
-
----
 title: Runtime Setup – Agent Teams Docs
 description: Configure Claude Code, Codex, or OpenCode runtimes. Covers auth, provider access, multimodel mode, and prelaunch checks.
 ---

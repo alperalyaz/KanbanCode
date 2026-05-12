@@ -327,3 +327,42 @@ export interface CliInstallerAPI {
   /** Subscribe to progress events. Returns cleanup function. */
   onProgress: (cb: (event: unknown, data: CliInstallerProgress) => void) => () => void;
 }
+
+// =============================================================================
+// OpenCode Runtime Installer
+// =============================================================================
+
+export type OpenCodeRuntimeSource = 'app-managed' | 'path' | 'missing';
+
+export type OpenCodeRuntimeInstallerState =
+  | 'idle'
+  | 'checking'
+  | 'downloading'
+  | 'installing'
+  | 'ready'
+  | 'failed';
+
+export interface OpenCodeRuntimeInstallProgress {
+  phase: OpenCodeRuntimeInstallerState;
+  downloadedBytes?: number;
+  totalBytes?: number;
+  percent?: number;
+  detail?: string | null;
+}
+
+export interface OpenCodeRuntimeStatus {
+  installed: boolean;
+  binaryPath?: string;
+  version?: string;
+  source: OpenCodeRuntimeSource;
+  state: OpenCodeRuntimeInstallerState;
+  progress?: OpenCodeRuntimeInstallProgress;
+  error?: string;
+}
+
+export interface OpenCodeRuntimeAPI {
+  getStatus: () => Promise<OpenCodeRuntimeStatus>;
+  install: () => Promise<OpenCodeRuntimeStatus>;
+  invalidateStatus: () => Promise<void>;
+  onProgress: (cb: (event: unknown, data: OpenCodeRuntimeStatus) => void) => () => void;
+}

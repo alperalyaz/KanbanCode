@@ -16,9 +16,13 @@ import { spawn } from 'child_process';
 const logger = createLogger('Utils:shellEnv');
 
 const SHELL_ENV_TIMEOUT_MS = 12_000;
+const SHELL_ENV_BEST_EFFORT_TIMEOUT_MS = 5_000;
+const SHELL_ENV_FAILURE_COOLDOWN_MS = 60_000;
 
 let cachedInteractiveShellEnv: NodeJS.ProcessEnv | null = null;
 let shellEnvResolvePromise: Promise<NodeJS.ProcessEnv> | null = null;
+let shellEnvFailureCooldownUntil = 0;
+let lastShellEnvFailureMessage: string | null = null;
 
 export interface ShellEnvResolveProgress {
   phase: string;
@@ -29,12 +33,35 @@ export interface ShellEnvResolveOptions {
   onProgress?: (progress: ShellEnvResolveProgress) => void;
 }
 
+export interface ShellEnvBestEffortResolveOptions extends ShellEnvResolveOptions {
+  /**
+   * Max time to wait on the critical path before returning fallbackEnv.
+   * The full shell resolve continues in the background and caches on success.
+   */
+  timeoutMs?: number;
+  /**
+   * Returned when shell env is not ready quickly enough. This is intentionally
+   * not cached as a real shell env.
+   */
+  fallbackEnv?: NodeJS.ProcessEnv;
+}
+
 function emitProgress(
   options: ShellEnvResolveOptions | undefined,
   phase: string,
   message: string
 ): void {
   options?.onProgress?.({ phase, message });
+}
+
+function rememberShellEnvFailure(message: string): void {
+  lastShellEnvFailureMessage = message;
+  shellEnvFailureCooldownUntil = Date.now() + SHELL_ENV_FAILURE_COOLDOWN_MS;
+}
+
+function clearShellEnvFailure(): void {
+  lastShellEnvFailureMessage = null;
+  shellEnvFailureCooldownUntil = 0;
 }
 
 function parseNullSeparatedEnv(content: string): NodeJS.ProcessEnv {
@@ -93,12 +120,22 @@ async function readShellEnv(shellPath: string, args: string[]): Promise<NodeJS.P
         reject(error);
       }
     });
-    child.once('close', () => {
+    child.once('close', (code: number | null, signal: NodeJS.Signals | null) => {
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
       }
       if (!settled) {
         settled = true;
+        if (chunks.length === 0 && (code !== 0 || signal)) {
+          reject(
+            new Error(
+              signal
+                ? `shell env command exited with signal ${signal}`
+                : `shell env command exited with code ${code}`
+            )
+          );
+          return;
+        }
         resolve(Buffer.concat(chunks).toString('utf8'));
       }
     });
@@ -135,6 +172,7 @@ export async function resolveInteractiveShellEnv(
       emitProgress(options, 'shell-env-login', 'Reading login shell environment...');
       const loginEnv = await readShellEnv(shellPath, ['-lic', 'env -0']);
       cachedInteractiveShellEnv = loginEnv;
+      clearShellEnvFailure();
       return loginEnv;
     } catch (loginError) {
       const loginMessage = loginError instanceof Error ? loginError.message : String(loginError);
@@ -143,11 +181,13 @@ export async function resolveInteractiveShellEnv(
         emitProgress(options, 'shell-env-interactive', 'Trying interactive shell environment...');
         const interactiveEnv = await readShellEnv(shellPath, ['-ic', 'env -0']);
         cachedInteractiveShellEnv = interactiveEnv;
+        clearShellEnvFailure();
         return interactiveEnv;
       } catch (interactiveError) {
         const interactiveMessage =
           interactiveError instanceof Error ? interactiveError.message : String(interactiveError);
         logger.warn(`Failed to resolve interactive shell env: ${interactiveMessage}`);
+        rememberShellEnvFailure(interactiveMessage);
         emitProgress(options, 'shell-env-fallback', 'Using current process environment...');
         return {};
       }
@@ -160,11 +200,79 @@ export async function resolveInteractiveShellEnv(
 }
 
 /**
+ * Resolve shell env without making the caller wait for slow prompt/plugin init.
+ *
+ * This is deliberately additive: fallbackEnv is returned only to the current
+ * caller, never cached. A successful background resolve still populates the
+ * normal interactive-shell cache used by buildMergedCliPath/buildEnrichedEnv.
+ */
+export async function resolveInteractiveShellEnvBestEffort(
+  options: ShellEnvBestEffortResolveOptions = {}
+): Promise<NodeJS.ProcessEnv> {
+  if (cachedInteractiveShellEnv) {
+    emitProgress(options, 'shell-env-cached', 'Using cached shell environment...');
+    return cachedInteractiveShellEnv;
+  }
+
+  if (process.platform === 'win32') {
+    return resolveInteractiveShellEnv(options);
+  }
+
+  const fallbackEnv = options.fallbackEnv ?? {};
+  const timeoutMs = Math.max(0, options.timeoutMs ?? SHELL_ENV_BEST_EFFORT_TIMEOUT_MS);
+  const startedAt = Date.now();
+  if (!shellEnvResolvePromise && startedAt < shellEnvFailureCooldownUntil) {
+    const retryInMs = Math.max(0, shellEnvFailureCooldownUntil - startedAt);
+    emitProgress(
+      options,
+      'shell-env-failure-cooldown',
+      lastShellEnvFailureMessage
+        ? `Using fallback shell environment after recent failure: ${lastShellEnvFailureMessage}`
+        : `Using fallback shell environment for ${retryInMs}ms after recent failure...`
+    );
+    return fallbackEnv;
+  }
+
+  const resolvePromise = resolveInteractiveShellEnv(options);
+  if (timeoutMs === 0) {
+    emitProgress(options, 'shell-env-best-effort-fallback', 'Using fallback shell environment...');
+    return fallbackEnv;
+  }
+
+  let timeoutHandle: NodeJS.Timeout | null = null;
+  const fallbackPromise = new Promise<NodeJS.ProcessEnv>((resolve) => {
+    timeoutHandle = setTimeout(() => {
+      timeoutHandle = null;
+      emitProgress(
+        options,
+        'shell-env-best-effort-timeout',
+        'Shell environment is still resolving; using fallback for now...'
+      );
+      resolve(fallbackEnv);
+    }, timeoutMs);
+    timeoutHandle.unref?.();
+  });
+
+  try {
+    const resolvedEnv = await Promise.race([resolvePromise, fallbackPromise]);
+    if (!cachedInteractiveShellEnv && shellEnvFailureCooldownUntil > startedAt) {
+      return fallbackEnv;
+    }
+    return resolvedEnv;
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
+
+/**
  * Clear the cached shell environment. Useful for testing.
  */
 export function clearShellEnvCache(): void {
   cachedInteractiveShellEnv = null;
   shellEnvResolvePromise = null;
+  clearShellEnvFailure();
 }
 
 /**

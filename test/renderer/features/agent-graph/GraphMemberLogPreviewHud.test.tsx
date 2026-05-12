@@ -649,7 +649,7 @@ describe('GraphMemberLogPreviewHud', () => {
     });
   });
 
-  it('shows loading for empty previews while preserving unsupported provider text', async () => {
+  it('keeps loaded empty previews honest during background loading', async () => {
     const codexNode: GraphNode = {
       id: 'member:alpha-team:codex-dev',
       kind: 'member',
@@ -724,8 +724,56 @@ describe('GraphMemberLogPreviewHud', () => {
     });
 
     expect(host.textContent).toContain('Unsupported provider');
+    expect(host.textContent).toContain('No recent logs');
+    expect(host.textContent).not.toContain('Loading logs');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('shows loading only before a member preview has been loaded', async () => {
+    const quietNode: GraphNode = {
+      id: 'member:alpha-team:quiet-dev',
+      kind: 'member',
+      label: 'quiet-dev',
+      state: 'idle',
+      domainRef: { kind: 'member', teamName: 'alpha-team', memberName: 'quiet-dev' },
+    };
+    mockedLoading = true;
+    mockedPreviewsByMember = new Map<string, MemberLogPreviewMember>();
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <GraphMemberLogPreviewHud
+          teamName="alpha-team"
+          nodes={[quietNode]}
+          getLogWorldRect={() => ({
+            left: 40,
+            top: 80,
+            right: 300,
+            bottom: 372,
+            width: 260,
+            height: 292,
+          })}
+          getCameraZoom={() => 1}
+          worldToScreen={(x, y) => ({ x, y })}
+          getViewportSize={() => ({ width: 1200, height: 800 })}
+          focusNodeIds={null}
+        />
+      );
+      await Promise.resolve();
+    });
+
     expect(host.textContent).toContain('Loading logs');
     expect(host.textContent).not.toContain('No recent logs');
+    const loadingButton = host.querySelector('button[aria-busy="true"]');
+    expect(loadingButton?.className).toContain('flex-1');
+    expect(loadingButton?.querySelectorAll('.animate-pulse')).toHaveLength(3);
 
     act(() => {
       root.unmount();

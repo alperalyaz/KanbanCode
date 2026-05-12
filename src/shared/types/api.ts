@@ -8,7 +8,7 @@
  */
 
 import type { CliArgsValidationResult } from '../utils/cliArgsParser';
-import type { CliInstallerAPI } from './cliInstaller';
+import type { CliInstallerAPI, OpenCodeRuntimeAPI } from './cliInstaller';
 import type { EditorAPI, EditorFileChangeEvent, ProjectAPI } from './editor';
 import type { ApiKeysAPI, McpCatalogAPI, PluginCatalogAPI, SkillsCatalogAPI } from './extensions';
 import type {
@@ -79,9 +79,9 @@ import type {
   TeamCreateRequest,
   TeamCreateResponse,
   TeamGetDataOptions,
+  TeamLaunchFailureDiagnosticsBundle,
   TeamLaunchRequest,
   TeamLaunchResponse,
-  TeamLaunchFailureDiagnosticsBundle,
   TeamMemberActivityMeta,
   TeamMessageNotificationData,
   TeamProvisioningModelVerificationMode,
@@ -926,6 +926,9 @@ export interface ElectronAPI extends RecentProjectsElectronApi, CodexAccountElec
 
   // CLI Installer API
   cliInstaller: CliInstallerAPI;
+
+  // OpenCode app-managed runtime installer API
+  openCodeRuntime: OpenCodeRuntimeAPI;
 
   // Runtime nested provider management API
   runtimeProviderManagement: RuntimeProviderManagementApi;

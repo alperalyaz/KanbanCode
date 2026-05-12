@@ -1870,6 +1870,7 @@ const resolvedMembersSelectorCache = new Map<
   {
     snapshotRef: TeamViewSnapshot['members'];
     configMembersRef: TeamViewSnapshot['config']['members'] | undefined;
+    summaryRef: TeamSummary | undefined;
     tasksRef: TeamViewSnapshot['tasks'] | undefined;
     metaMembersRef: TeamMemberActivityMeta['members'] | undefined;
     result: ResolvedTeamMember[];
@@ -1982,10 +1983,196 @@ function buildConfigFallbackMemberSnapshots(snapshot: TeamViewSnapshot): TeamMem
   return fallbackMembers;
 }
 
-function getResolvableMemberSnapshots(snapshot: TeamViewSnapshot): readonly TeamMemberSnapshot[] {
-  return snapshot.members.length > 0
-    ? snapshot.members
-    : buildConfigFallbackMemberSnapshots(snapshot);
+function buildSummaryFallbackMemberSnapshots(
+  snapshot: TeamViewSnapshot,
+  summary: TeamSummary | undefined
+): TeamMemberSnapshot[] {
+  if (!summary) {
+    return [];
+  }
+  const summaryMembers = summary.members ?? [];
+  if (summaryMembers.length === 0 || summary.memberCount <= 0) {
+    return [];
+  }
+
+  const seenNames = new Set<string>();
+  const buildSnapshot = (
+    name: string,
+    source?: { agentId?: string; role?: string; color?: string },
+    lead = false
+  ): TeamMemberSnapshot | null => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const key = trimmed.toLowerCase();
+    if (seenNames.has(key)) return null;
+    seenNames.add(key);
+
+    const ownedTasks = snapshot.tasks.filter((task) => task.owner === trimmed);
+    const currentTask = ownedTasks.find(isDisplayableFallbackCurrentTask);
+    return {
+      name: trimmed,
+      agentId: source?.agentId,
+      currentTaskId: currentTask?.id ?? null,
+      taskCount: ownedTasks.length,
+      color: source?.color ?? getMemberColorByName(trimmed),
+      agentType: lead ? 'team-lead' : undefined,
+      role: source?.role ?? (lead ? 'Team Lead' : undefined),
+    };
+  };
+
+  const teammates = summaryMembers.flatMap((member) => {
+    const name = member.name?.trim();
+    if (!name || name === 'user' || isLeadMember(member)) {
+      return [];
+    }
+    const item = buildSnapshot(name, member);
+    return item ? [item] : [];
+  });
+  if (teammates.length === 0) {
+    return [];
+  }
+
+  const existingLead = snapshot.members.find((member) => !member.removedAt && isLeadMember(member));
+  if (existingLead) {
+    return [existingLead, ...teammates];
+  }
+
+  const configuredLead = snapshot.config.members?.find(
+    (member) => !member.removedAt && isLeadMember(member)
+  );
+  const leadName = configuredLead?.name?.trim() || summary.leadName?.trim();
+  const lead = leadName
+    ? buildSnapshot(
+        leadName,
+        {
+          agentId: configuredLead?.agentId,
+          role: configuredLead?.role,
+          color: configuredLead?.color ?? summary.leadColor,
+        },
+        true
+      )
+    : null;
+
+  return lead ? [lead, ...teammates] : teammates;
+}
+
+function getResolvableMemberSnapshots(
+  snapshot: TeamViewSnapshot,
+  summary?: TeamSummary
+): readonly TeamMemberSnapshot[] {
+  if (
+    snapshot.members.length > 0 &&
+    (hasActiveRawTeammateRoster(snapshot) || hasRemovedRawMemberRoster(snapshot))
+  ) {
+    return snapshot.members;
+  }
+
+  const configFallbackMembers = buildConfigFallbackMemberSnapshots(snapshot);
+  if (configFallbackMembers.length > 0) {
+    return configFallbackMembers;
+  }
+
+  const summaryFallbackMembers = buildSummaryFallbackMemberSnapshots(snapshot, summary);
+  if (summaryFallbackMembers.length > 0) {
+    return summaryFallbackMembers;
+  }
+
+  return snapshot.members;
+}
+
+function getActiveRawTeammateNameKeys(snapshot: TeamViewSnapshot | null | undefined): string[] {
+  if (!snapshot) {
+    return [];
+  }
+  const names = new Set<string>();
+  for (const member of snapshot.members) {
+    const name = member.name.trim();
+    if (!name || name === 'user' || member.removedAt || isLeadMember(member)) {
+      continue;
+    }
+    names.add(name.toLowerCase());
+  }
+  return Array.from(names).sort((left, right) => left.localeCompare(right));
+}
+
+function hasActiveRawTeammateRoster(snapshot: TeamViewSnapshot | null | undefined): boolean {
+  return getActiveRawTeammateNameKeys(snapshot).length > 0;
+}
+
+function hasRemovedRawMemberRoster(snapshot: TeamViewSnapshot | null | undefined): boolean {
+  return Boolean(snapshot?.members.some((member) => member.removedAt));
+}
+
+function hasConfigTeammateRoster(snapshot: TeamViewSnapshot | null | undefined): boolean {
+  return Boolean(
+    snapshot?.config.members?.some((member) => {
+      const name = member.name?.trim();
+      return Boolean(name) && !member.removedAt && !isLeadMember(member);
+    })
+  );
+}
+
+function getSummaryTeammateNameKeys(summary: TeamSummary): string[] {
+  const names = new Set<string>();
+  for (const member of summary.members ?? []) {
+    const name = member.name?.trim();
+    if (!name || name === 'user' || isLeadMember(member)) {
+      continue;
+    }
+    names.add(name.toLowerCase());
+  }
+  return Array.from(names).sort((left, right) => left.localeCompare(right));
+}
+
+function areNameKeyListsEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((name, index) => name === right[index]);
+}
+
+function summaryConfirmsActiveTeammateRoster(
+  current: TeamViewSnapshot,
+  summary: TeamSummary
+): boolean {
+  if (summary.memberCount <= 0) {
+    return false;
+  }
+
+  const currentNames = getActiveRawTeammateNameKeys(current);
+  const summaryNames = getSummaryTeammateNameKeys(summary);
+  if (summaryNames.length === 0 || summaryNames.length !== currentNames.length) {
+    return false;
+  }
+
+  return areNameKeyListsEqual(summaryNames, currentNames);
+}
+
+function shouldPreserveSelectedTeamSnapshot(
+  current: TeamViewSnapshot | null,
+  baseline: TeamViewSnapshot | null | undefined,
+  incoming: TeamViewSnapshot,
+  summary: TeamSummary | undefined
+): boolean {
+  if (!current || !hasActiveRawTeammateRoster(current)) {
+    return false;
+  }
+  if (
+    hasActiveRawTeammateRoster(incoming) ||
+    hasRemovedRawMemberRoster(incoming) ||
+    hasConfigTeammateRoster(incoming)
+  ) {
+    return false;
+  }
+  const currentNames = getActiveRawTeammateNameKeys(current);
+  if (
+    current !== baseline &&
+    !areNameKeyListsEqual(currentNames, getActiveRawTeammateNameKeys(baseline))
+  ) {
+    return true;
+  }
+  if (summary) {
+    return summaryConfirmsActiveTeammateRoster(current, summary);
+  }
+
+  return false;
 }
 
 function buildResolvedMember(
@@ -2042,8 +2229,13 @@ function structurallyShareMemberActivityFacts(
   return changed ? shared : previous;
 }
 
+type TeamDataSelectorState = Pick<
+  TeamSlice,
+  'teamDataCacheByName' | 'selectedTeamName' | 'selectedTeamData'
+>;
+
 export function selectTeamDataForName(
-  state: Pick<TeamSlice, 'teamDataCacheByName' | 'selectedTeamName' | 'selectedTeamData'>,
+  state: TeamDataSelectorState,
   teamName: string | null | undefined
 ): TeamViewSnapshot | null {
   if (!teamName) {
@@ -2057,6 +2249,12 @@ export function selectTeamDataForName(
     (state.selectedTeamName === teamName ? state.selectedTeamData : null)
   );
 }
+
+type ResolvedMemberSelectorState = Pick<
+  TeamSlice,
+  'teamDataCacheByName' | 'selectedTeamName' | 'selectedTeamData' | 'memberActivityMetaByTeam'
+> &
+  Partial<Pick<TeamSlice, 'teamByName'>>;
 
 function migrateStableSlotAssignmentsForMembers(
   assignments: TeamGraphSlotAssignments | undefined,
@@ -2088,10 +2286,7 @@ function migrateStableSlotAssignmentsForMembers(
 }
 
 export function selectResolvedMembersForTeamName(
-  state: Pick<
-    TeamSlice,
-    'teamDataCacheByName' | 'selectedTeamName' | 'selectedTeamData' | 'memberActivityMetaByTeam'
-  >,
+  state: ResolvedMemberSelectorState,
   teamName: string | null | undefined
 ): ResolvedTeamMember[] {
   const snapshot = selectTeamDataForName(state, teamName);
@@ -2101,23 +2296,28 @@ export function selectResolvedMembersForTeamName(
 
   const meta = state.memberActivityMetaByTeam[teamName];
   const metaMembers = meta?.members;
-  const shouldUseConfigFallback = snapshot.members.length === 0;
-  const configMembersRef = shouldUseConfigFallback ? snapshot.config.members : undefined;
-  const tasksRef = shouldUseConfigFallback ? snapshot.tasks : undefined;
+  const shouldUseMemberFallback =
+    snapshot.members.length === 0 ||
+    (!hasActiveRawTeammateRoster(snapshot) && !hasRemovedRawMemberRoster(snapshot));
+  const configMembersRef = shouldUseMemberFallback ? snapshot.config.members : undefined;
+  const summaryRef = shouldUseMemberFallback ? state.teamByName?.[teamName] : undefined;
+  const tasksRef = shouldUseMemberFallback ? snapshot.tasks : undefined;
   const cached = resolvedMembersSelectorCache.get(teamName);
   if (
     cached?.snapshotRef === snapshot.members &&
     cached.configMembersRef === configMembersRef &&
+    cached.summaryRef === summaryRef &&
     cached.tasksRef === tasksRef &&
     cached.metaMembersRef === metaMembers
   ) {
     return cached.result;
   }
 
-  const result = buildResolvedMembers(getResolvableMemberSnapshots(snapshot), meta);
+  const result = buildResolvedMembers(getResolvableMemberSnapshots(snapshot, summaryRef), meta);
   resolvedMembersSelectorCache.set(teamName, {
     snapshotRef: snapshot.members,
     configMembersRef,
+    summaryRef,
     tasksRef,
     metaMembersRef: metaMembers,
     result,
@@ -2126,10 +2326,7 @@ export function selectResolvedMembersForTeamName(
 }
 
 export function selectResolvedMemberForTeamName(
-  state: Pick<
-    TeamSlice,
-    'teamDataCacheByName' | 'selectedTeamName' | 'selectedTeamData' | 'memberActivityMetaByTeam'
-  >,
+  state: ResolvedMemberSelectorState,
   teamName: string | null | undefined,
   memberName: string | null | undefined
 ): ResolvedTeamMember | null {
@@ -2138,7 +2335,7 @@ export function selectResolvedMemberForTeamName(
     return null;
   }
 
-  const snapshotMember = getResolvableMemberSnapshots(snapshot).find(
+  const snapshotMember = getResolvableMemberSnapshots(snapshot, state.teamByName?.[teamName]).find(
     (member) => member.name === memberName
   );
   if (!snapshotMember) {
@@ -2162,21 +2359,21 @@ export function selectResolvedMemberForTeamName(
 }
 
 export function selectTeamMemberSnapshotsForName(
-  state: Pick<TeamSlice, 'teamDataCacheByName' | 'selectedTeamName' | 'selectedTeamData'>,
+  state: TeamDataSelectorState,
   teamName: string | null | undefined
 ): TeamViewSnapshot['members'] {
   return selectTeamDataForName(state, teamName)?.members ?? EMPTY_TEAM_MEMBER_SNAPSHOTS;
 }
 
 export function selectTeamTasksForName(
-  state: Pick<TeamSlice, 'teamDataCacheByName' | 'selectedTeamName' | 'selectedTeamData'>,
+  state: TeamDataSelectorState,
   teamName: string | null | undefined
 ): TeamViewSnapshot['tasks'] {
   return selectTeamDataForName(state, teamName)?.tasks ?? EMPTY_TEAM_TASKS;
 }
 
 export function selectTeamIsAliveForName(
-  state: Pick<TeamSlice, 'teamDataCacheByName' | 'selectedTeamName' | 'selectedTeamData'>,
+  state: TeamDataSelectorState,
   teamName: string | null | undefined
 ): boolean | undefined {
   return selectTeamDataForName(state, teamName)?.isAlive;
@@ -3856,14 +4053,52 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         set({ teamByName: { ...prevByName, [teamName]: patched } });
       }
 
-      const projectedTeamData = previousData
-        ? {
-            ...data,
-            tasks: preserveKnownTaskChangePresence(teamName, previousData.tasks, data.tasks),
-          }
-        : data;
-      const nextTeamData = structurallyShareTeamSnapshot(previousData, projectedTeamData);
+      let committedTeamData: TeamViewSnapshot = data;
       set((state) => {
+        if (
+          state.selectedTeamName === teamName &&
+          shouldPreserveSelectedTeamSnapshot(
+            state.selectedTeamData,
+            previousData,
+            data,
+            state.teamByName[teamName]
+          )
+        ) {
+          const preservedTeamData = state.selectedTeamData;
+          committedTeamData = preservedTeamData ?? data;
+          const nextCache =
+            preservedTeamData && state.teamDataCacheByName[teamName] !== preservedTeamData
+              ? {
+                  ...state.teamDataCacheByName,
+                  [teamName]: preservedTeamData,
+                }
+              : state.teamDataCacheByName;
+
+          return {
+            selectedTeamName: teamName,
+            selectedTeamData: preservedTeamData,
+            teamDataCacheByName: nextCache,
+            selectedTeamLoading: false,
+            selectedTeamError: null,
+          };
+        }
+
+        const previousForProjection = selectTeamDataForName(state, teamName) ?? previousData;
+        const projectedTeamData = previousForProjection
+          ? {
+              ...data,
+              tasks: preserveKnownTaskChangePresence(
+                teamName,
+                previousForProjection.tasks,
+                data.tasks
+              ),
+            }
+          : data;
+        const nextTeamData = structurallyShareTeamSnapshot(
+          previousForProjection,
+          projectedTeamData
+        );
+        committedTeamData = nextTeamData;
         const nextCache =
           state.teamDataCacheByName[teamName] === nextTeamData
             ? state.teamDataCacheByName
@@ -3884,7 +4119,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
       try {
         const invalidationState = previousData
-          ? collectTaskChangeInvalidationState(teamName, previousData.tasks, data.tasks)
+          ? collectTaskChangeInvalidationState(
+              teamName,
+              previousData.tasks,
+              committedTeamData.tasks
+            )
           : { cacheKeys: [], taskIds: [] };
         if (invalidationState.cacheKeys.length > 0) {
           get().invalidateTaskChangePresence(invalidationState.cacheKeys);
@@ -3896,7 +4135,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         }
 
         // Sync tab label with the team's display name from config.
-        const displayName = data.config.name || teamName;
+        const displayName = committedTeamData.config.name || teamName;
         const allTabs = get().getAllPaneTabs();
         const relatedTabs = allTabs.filter(
           (tab) => (tab.type === 'team' || tab.type === 'graph') && tab.teamName === teamName
@@ -3911,7 +4150,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         // Auto-select the project associated with this team's cwd/projectPath.
         // Must search both flat projects and grouped repositoryGroups/worktrees
         // because the default viewMode is 'grouped' and flat projects may be empty.
-        const projectPath = data.config.projectPath;
+        const projectPath = committedTeamData.config.projectPath;
         if (
           !opts?.skipProjectAutoSelect &&
           projectPath &&

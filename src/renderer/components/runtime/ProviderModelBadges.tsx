@@ -46,6 +46,16 @@ function getAvailabilityChip(status: CliProviderModelAvailabilityStatus | null):
   }
 }
 
+function getCatalogBadgeLabel(
+  model: string,
+  providerStatus: Pick<CliProviderStatus, 'modelCatalog'> | null | undefined
+): string | null {
+  const catalogItem = providerStatus?.modelCatalog?.models.find(
+    (item) => item.launchModel === model || item.id === model
+  );
+  return catalogItem?.badgeLabel?.trim() || null;
+}
+
 export const ProviderModelBadges = ({
   providerId,
   models,
@@ -57,7 +67,10 @@ export const ProviderModelBadges = ({
   readonly providerId: CliProviderId;
   readonly models: string[];
   readonly modelAvailability?: CliProviderModelAvailability[];
-  readonly providerStatus?: Pick<CliProviderStatus, 'providerId' | 'authMethod' | 'backend'> | null;
+  readonly providerStatus?: Pick<
+    CliProviderStatus,
+    'providerId' | 'authMethod' | 'backend' | 'modelCatalog'
+  > | null;
   readonly collapseAfter?: number;
   readonly expandedMaxHeightPx?: number;
 }): React.JSX.Element => {
@@ -89,15 +102,29 @@ export const ProviderModelBadges = ({
     const availabilityStatus = getAvailabilityStatus(model, displayModelAvailability);
     const availabilityReason = getAvailabilityReason(model, displayModelAvailability);
     const availabilityChip = getAvailabilityChip(availabilityStatus);
+    const catalogBadgeLabel = getCatalogBadgeLabel(model, providerStatus);
+    const title = [
+      availabilityReason ?? availabilityChip,
+      catalogBadgeLabel === 'Free'
+        ? 'Reported by OpenCode metadata. Availability and limits may change.'
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' - ');
 
     return (
       <span
         key={`${model}-${index}`}
         className={badgeClassName}
         style={badgeStyle}
-        title={availabilityReason ?? availabilityChip ?? undefined}
+        title={title || undefined}
       >
         <span>{formatModelBadgeLabel(providerId, model)}</span>
+        {catalogBadgeLabel ? (
+          <span className="rounded bg-[rgba(34,197,94,0.14)] px-1 py-0 text-[9px] font-medium uppercase tracking-[0.06em] text-[rgb(74,222,128)]">
+            {catalogBadgeLabel}
+          </span>
+        ) : null}
         {availabilityChip ? (
           <span
             className={cn(

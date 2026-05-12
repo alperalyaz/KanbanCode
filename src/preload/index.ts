@@ -59,6 +59,10 @@ import {
   MCP_REGISTRY_INSTALL_CUSTOM,
   MCP_REGISTRY_SEARCH,
   MCP_REGISTRY_UNINSTALL,
+  OPENCODE_RUNTIME_GET_STATUS,
+  OPENCODE_RUNTIME_INSTALL,
+  OPENCODE_RUNTIME_INVALIDATE_STATUS,
+  OPENCODE_RUNTIME_PROGRESS,
   PLUGIN_GET_ALL,
   PLUGIN_GET_README,
   PLUGIN_INSTALL,
@@ -289,6 +293,7 @@ import type {
   MessagesPage,
   NotificationTrigger,
   OpenCodeRuntimeDeliveryStatus,
+  OpenCodeRuntimeStatus,
   ProjectBranchChangeEvent,
   RejectResult,
   ReplaceMembersRequest,
@@ -319,9 +324,9 @@ import type {
   TeamCreateRequest,
   TeamCreateResponse,
   TeamGetDataOptions,
+  TeamLaunchFailureDiagnosticsBundle,
   TeamLaunchRequest,
   TeamLaunchResponse,
-  TeamLaunchFailureDiagnosticsBundle,
   TeamMemberActivityMeta,
   TeamMessageNotificationData,
   TeamProvisioningModelVerificationMode,
@@ -1556,6 +1561,31 @@ const electronAPI: ElectronAPI = {
       return (): void => {
         ipcRenderer.removeListener(
           CLI_INSTALLER_PROGRESS,
+          callback as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
+        );
+      };
+    },
+  },
+
+  // ===== OpenCode Runtime Installer API =====
+  openCodeRuntime: {
+    getStatus: async (): Promise<OpenCodeRuntimeStatus> => {
+      return invokeIpcWithResult<OpenCodeRuntimeStatus>(OPENCODE_RUNTIME_GET_STATUS);
+    },
+    install: async (): Promise<OpenCodeRuntimeStatus> => {
+      return invokeIpcWithResult<OpenCodeRuntimeStatus>(OPENCODE_RUNTIME_INSTALL);
+    },
+    invalidateStatus: async (): Promise<void> => {
+      return invokeIpcWithResult<void>(OPENCODE_RUNTIME_INVALIDATE_STATUS);
+    },
+    onProgress: (callback: (event: unknown, data: OpenCodeRuntimeStatus) => void): (() => void) => {
+      ipcRenderer.on(
+        OPENCODE_RUNTIME_PROGRESS,
+        callback as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
+      );
+      return (): void => {
+        ipcRenderer.removeListener(
+          OPENCODE_RUNTIME_PROGRESS,
           callback as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
         );
       };

@@ -1491,6 +1491,446 @@ describe('teamSlice actions', () => {
     expect(store.getState().selectedTeamData).toEqual(fullSnapshot);
   });
 
+  it('does not let a late thin selectTeam snapshot clear members loaded by an earlier full refresh', async () => {
+    const store = createSliceStore();
+    const thinRequest = createDeferredPromise<ReturnType<typeof createTeamSnapshot>>();
+    const fullRequest = createDeferredPromise<ReturnType<typeof createTeamSnapshot>>();
+    const thinSnapshot = createTeamSnapshot({
+      config: { name: 'Thin Team' },
+      members: [],
+    });
+    const fullSnapshot = createTeamSnapshot({
+      config: { name: 'Full Team' },
+      members: [{ name: 'alice', role: 'developer', currentTaskId: null, gitBranch: 'feature/a' }],
+    });
+
+    store.setState({
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          description: '',
+          memberCount: 1,
+          members: [{ name: 'alice', role: 'developer' }],
+          taskCount: 0,
+          lastActivity: null,
+        },
+      },
+    });
+    hoisted.getData
+      .mockImplementationOnce(() => thinRequest.promise)
+      .mockImplementationOnce(() => fullRequest.promise);
+
+    const selectPromise = store.getState().selectTeam('my-team');
+    await flushMicrotasks();
+    const fullPromise = store.getState().refreshTeamData('my-team', { withDedup: false });
+
+    fullRequest.resolve(fullSnapshot);
+    await fullPromise;
+    expect(store.getState().selectedTeamData).toEqual(fullSnapshot);
+
+    thinRequest.resolve(thinSnapshot);
+    await selectPromise;
+
+    expect(store.getState().selectedTeamData).toEqual(fullSnapshot);
+    expect(store.getState().teamDataCacheByName['my-team']).toEqual(fullSnapshot);
+    expect(selectResolvedMembersForTeamName(store.getState(), 'my-team')).toHaveLength(1);
+  });
+
+  it('preserves an earlier full refresh even when the cached baseline had the same member names', async () => {
+    const store = createSliceStore();
+    const thinRequest = createDeferredPromise<ReturnType<typeof createTeamSnapshot>>();
+    const fullRequest = createDeferredPromise<ReturnType<typeof createTeamSnapshot>>();
+    const cachedSnapshot = createTeamSnapshot({
+      config: { name: 'Cached Team' },
+      members: [{ name: 'alice', role: 'developer', currentTaskId: null }],
+    });
+    const thinSnapshot = createTeamSnapshot({
+      config: { name: 'Thin Team' },
+      members: [],
+    });
+    const fullSnapshot = createTeamSnapshot({
+      config: { name: 'Full Team' },
+      members: [{ name: 'alice', role: 'developer', currentTaskId: null, gitBranch: 'feature/a' }],
+    });
+
+    store.setState({
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          description: '',
+          memberCount: 1,
+          members: [{ name: 'alice', role: 'developer' }],
+          taskCount: 0,
+          lastActivity: null,
+        },
+      },
+      teamDataCacheByName: {
+        'my-team': cachedSnapshot,
+      },
+    });
+    hoisted.getData
+      .mockImplementationOnce(() => thinRequest.promise)
+      .mockImplementationOnce(() => fullRequest.promise);
+
+    const selectPromise = store.getState().selectTeam('my-team');
+    await flushMicrotasks();
+    const fullPromise = store.getState().refreshTeamData('my-team', { withDedup: false });
+
+    fullRequest.resolve(fullSnapshot);
+    await fullPromise;
+    expect(store.getState().selectedTeamData).toEqual(fullSnapshot);
+
+    thinRequest.resolve(thinSnapshot);
+    await selectPromise;
+
+    expect(store.getState().selectedTeamData).toEqual(fullSnapshot);
+    expect(store.getState().teamDataCacheByName['my-team']).toEqual(fullSnapshot);
+  });
+
+  it('does not let an empty selectTeam snapshot clear an already cached member roster', async () => {
+    const store = createSliceStore();
+    const cachedSnapshot = createTeamSnapshot({
+      config: { name: 'Cached Team' },
+      members: [{ name: 'alice', role: 'developer', currentTaskId: null, gitBranch: 'feature/a' }],
+    });
+    const thinSnapshot = createTeamSnapshot({
+      config: { name: 'Thin Team' },
+      members: [],
+    });
+
+    store.setState({
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          description: '',
+          memberCount: 1,
+          members: [{ name: 'alice', role: 'developer' }],
+          taskCount: 0,
+          lastActivity: null,
+        },
+      },
+      teamDataCacheByName: {
+        'my-team': cachedSnapshot,
+      },
+    });
+    hoisted.getData.mockResolvedValueOnce(thinSnapshot);
+
+    await store.getState().selectTeam('my-team');
+
+    expect(store.getState().selectedTeamData).toEqual(cachedSnapshot);
+    expect(store.getState().teamDataCacheByName['my-team']).toEqual(cachedSnapshot);
+    expect(selectResolvedMembersForTeamName(store.getState(), 'my-team')).toHaveLength(1);
+  });
+
+  it('does not treat a lead-only selectTeam snapshot as a confirmed teammate roster', async () => {
+    const store = createSliceStore();
+    const cachedSnapshot = createTeamSnapshot({
+      config: { name: 'Cached Team' },
+      members: [
+        { name: 'team-lead', agentType: 'team-lead', currentTaskId: null },
+        { name: 'alice', role: 'developer', currentTaskId: null },
+      ],
+    });
+    const leadOnlySnapshot = createTeamSnapshot({
+      config: { name: 'Lead Only Thin Team' },
+      members: [{ name: 'team-lead', agentType: 'team-lead', currentTaskId: null }],
+    });
+
+    store.setState({
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          description: '',
+          memberCount: 1,
+          members: [{ name: 'alice', role: 'developer' }],
+          taskCount: 0,
+          lastActivity: null,
+        },
+      },
+      teamDataCacheByName: {
+        'my-team': cachedSnapshot,
+      },
+    });
+    hoisted.getData.mockResolvedValueOnce(leadOnlySnapshot);
+
+    await store.getState().selectTeam('my-team');
+
+    expect(store.getState().selectedTeamData).toEqual(cachedSnapshot);
+    expect(
+      selectResolvedMembersForTeamName(store.getState(), 'my-team').map((m) => m.name)
+    ).toEqual(['team-lead', 'alice']);
+  });
+
+  it('uses summary fallback instead of a stale cached roster when names no longer match', async () => {
+    const store = createSliceStore();
+    const cachedSnapshot = createTeamSnapshot({
+      config: { name: 'Cached Team' },
+      members: [{ name: 'alice', role: 'developer', currentTaskId: null }],
+    });
+    const emptySnapshot = createTeamSnapshot({
+      config: { name: 'Thin Team' },
+      members: [],
+    });
+
+    store.setState({
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          description: '',
+          memberCount: 1,
+          members: [{ name: 'bob', role: 'reviewer' }],
+          taskCount: 0,
+          lastActivity: null,
+        },
+      },
+      teamDataCacheByName: {
+        'my-team': cachedSnapshot,
+      },
+    });
+    hoisted.getData.mockResolvedValueOnce(emptySnapshot);
+
+    await store.getState().selectTeam('my-team');
+
+    expect(store.getState().selectedTeamData).toEqual(emptySnapshot);
+    expect(selectResolvedMembersForTeamName(store.getState(), 'my-team')).toMatchObject([
+      { name: 'bob', role: 'reviewer' },
+    ]);
+  });
+
+  it('commits an empty selectTeam snapshot when the team summary is already solo', async () => {
+    const store = createSliceStore();
+    const cachedSnapshot = createTeamSnapshot({
+      config: { name: 'Cached Team' },
+      members: [{ name: 'alice', role: 'developer', currentTaskId: null }],
+    });
+    const soloSnapshot = createTeamSnapshot({
+      config: { name: 'Solo Team' },
+      members: [],
+    });
+
+    store.setState({
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'Solo Team',
+          description: '',
+          memberCount: 0,
+          taskCount: 0,
+          lastActivity: null,
+        },
+      },
+      teamDataCacheByName: {
+        'my-team': cachedSnapshot,
+      },
+    });
+    hoisted.getData.mockResolvedValueOnce(soloSnapshot);
+
+    await store.getState().selectTeam('my-team');
+
+    expect(store.getState().selectedTeamData).toEqual(soloSnapshot);
+    expect(store.getState().teamDataCacheByName['my-team']).toEqual(soloSnapshot);
+    expect(selectResolvedMembersForTeamName(store.getState(), 'my-team')).toHaveLength(0);
+  });
+
+  it('commits an empty cached-team selectTeam snapshot when no summary confirms teammates', async () => {
+    const store = createSliceStore();
+    const cachedSnapshot = createTeamSnapshot({
+      config: { name: 'Cached Team' },
+      members: [{ name: 'alice', role: 'developer', currentTaskId: null }],
+    });
+    const emptySnapshot = createTeamSnapshot({
+      config: { name: 'Empty Team' },
+      members: [],
+    });
+
+    store.setState({
+      teamDataCacheByName: {
+        'my-team': cachedSnapshot,
+      },
+      teamByName: {},
+    });
+    hoisted.getData.mockResolvedValueOnce(emptySnapshot);
+
+    await store.getState().selectTeam('my-team');
+
+    expect(store.getState().selectedTeamData).toEqual(emptySnapshot);
+    expect(store.getState().teamDataCacheByName['my-team']).toEqual(emptySnapshot);
+  });
+
+  it('does not preserve a cached roster from a summary count without member names', async () => {
+    const store = createSliceStore();
+    const cachedSnapshot = createTeamSnapshot({
+      config: { name: 'Cached Team' },
+      members: [{ name: 'alice', role: 'developer', currentTaskId: null }],
+    });
+    const emptySnapshot = createTeamSnapshot({
+      config: { name: 'Empty Team' },
+      members: [],
+    });
+
+    store.setState({
+      teamDataCacheByName: {
+        'my-team': cachedSnapshot,
+      },
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          description: '',
+          memberCount: 1,
+          taskCount: 0,
+          lastActivity: null,
+        },
+      },
+    });
+    hoisted.getData.mockResolvedValueOnce(emptySnapshot);
+
+    await store.getState().selectTeam('my-team');
+
+    expect(store.getState().selectedTeamData).toEqual(emptySnapshot);
+    expect(selectResolvedMembersForTeamName(store.getState(), 'my-team')).toHaveLength(0);
+  });
+
+  it('commits a late selectTeam snapshot that explicitly marks members as removed', async () => {
+    const store = createSliceStore();
+    const selectRequest = createDeferredPromise<ReturnType<typeof createTeamSnapshot>>();
+    const activeSnapshot = createTeamSnapshot({
+      members: [{ name: 'alice', role: 'developer', currentTaskId: null }],
+    });
+    const removedSnapshot = createTeamSnapshot({
+      members: [
+        { name: 'alice', role: 'developer', currentTaskId: null, removedAt: 1710000000000 },
+      ],
+    });
+
+    hoisted.getData.mockImplementationOnce(() => selectRequest.promise);
+
+    const selectPromise = store.getState().selectTeam('my-team');
+    await flushMicrotasks();
+
+    store.setState({
+      selectedTeamName: 'my-team',
+      selectedTeamData: activeSnapshot,
+      teamDataCacheByName: {
+        'my-team': activeSnapshot,
+      },
+    });
+
+    selectRequest.resolve(removedSnapshot);
+    await selectPromise;
+
+    expect(store.getState().selectedTeamData).toEqual(removedSnapshot);
+    expect(store.getState().teamDataCacheByName['my-team']).toEqual(removedSnapshot);
+  });
+
+  it('still commits a late selectTeam snapshot when concurrent local state only changed tasks', async () => {
+    const store = createSliceStore();
+    const selectRequest = createDeferredPromise<ReturnType<typeof createTeamSnapshot>>();
+    const previousSnapshot = createTeamSnapshot({
+      members: [{ name: 'alice', role: 'developer', currentTaskId: null }],
+      tasks: [{ id: 'task-1', subject: 'Old task', status: 'pending', owner: 'alice' }],
+    });
+    const locallyPatchedSnapshot = createTeamSnapshot({
+      members: [{ name: 'alice', role: 'developer', currentTaskId: null }],
+      tasks: [{ id: 'task-1', subject: 'Old task', status: 'pending', owner: 'alice' }],
+    });
+    const incomingSnapshot = createTeamSnapshot({
+      config: { name: 'Server Team' },
+      members: [
+        { name: 'alice', role: 'developer', currentTaskId: null },
+        { name: 'bob', role: 'reviewer', currentTaskId: null },
+      ],
+      tasks: [{ id: 'task-2', subject: 'Server task', status: 'pending', owner: 'bob' }],
+    });
+
+    store.setState({
+      selectedTeamName: 'my-team',
+      selectedTeamData: previousSnapshot,
+      teamDataCacheByName: {
+        'my-team': previousSnapshot,
+      },
+    });
+    hoisted.getData.mockImplementationOnce(() => selectRequest.promise);
+
+    const selectPromise = store.getState().selectTeam('my-team');
+    await flushMicrotasks();
+
+    store.setState({
+      selectedTeamData: locallyPatchedSnapshot,
+      teamDataCacheByName: {
+        'my-team': locallyPatchedSnapshot,
+      },
+    });
+
+    selectRequest.resolve(incomingSnapshot);
+    await selectPromise;
+
+    expect(store.getState().selectedTeamData).toMatchObject({
+      config: { name: 'Server Team' },
+      members: [{ name: 'alice' }, { name: 'bob' }],
+    });
+  });
+
+  it('does not preserve a stale roster when concurrent local state only changed tasks', async () => {
+    const store = createSliceStore();
+    const selectRequest = createDeferredPromise<ReturnType<typeof createTeamSnapshot>>();
+    const previousSnapshot = createTeamSnapshot({
+      members: [{ name: 'alice', role: 'developer', currentTaskId: null }],
+      tasks: [{ id: 'task-1', subject: 'Old task', status: 'pending', owner: 'alice' }],
+    });
+    const locallyPatchedSnapshot = createTeamSnapshot({
+      members: [{ name: 'alice', role: 'developer', currentTaskId: null }],
+      tasks: [{ id: 'task-1', subject: 'Locally changed task', status: 'pending', owner: 'alice' }],
+    });
+    const leadOnlySnapshot = createTeamSnapshot({
+      config: { name: 'Solo Team' },
+      members: [{ name: 'team-lead', agentType: 'team-lead', currentTaskId: null }],
+      tasks: [],
+    });
+
+    store.setState({
+      selectedTeamName: 'my-team',
+      selectedTeamData: previousSnapshot,
+      teamDataCacheByName: {
+        'my-team': previousSnapshot,
+      },
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'Solo Team',
+          description: '',
+          memberCount: 0,
+          taskCount: 0,
+          lastActivity: null,
+        },
+      },
+    });
+    hoisted.getData.mockImplementationOnce(() => selectRequest.promise);
+
+    const selectPromise = store.getState().selectTeam('my-team');
+    await flushMicrotasks();
+
+    store.setState({
+      selectedTeamData: locallyPatchedSnapshot,
+      teamDataCacheByName: {
+        'my-team': locallyPatchedSnapshot,
+      },
+    });
+
+    selectRequest.resolve(leadOnlySnapshot);
+    await selectPromise;
+
+    expect(store.getState().selectedTeamData).toEqual(leadOnlySnapshot);
+    expect(
+      selectResolvedMembersForTeamName(store.getState(), 'my-team').map((m) => m.name)
+    ).toEqual(['team-lead']);
+  });
+
   it('keeps one queued full refresh for repeated fanout while thin selectTeam is pending', async () => {
     vi.useFakeTimers();
     stubAnimationFrameWithTimer();
@@ -2528,6 +2968,112 @@ describe('teamSlice actions', () => {
     expect(selectResolvedMemberForTeamName(store.getState(), 'my-team', 'bob')).toMatchObject({
       name: 'bob',
       role: 'developer',
+    });
+  });
+
+  it('falls back to team summary roster when detail snapshot temporarily has no members', () => {
+    const store = createSliceStore();
+    const partialSnapshot = createTeamSnapshot({
+      config: {
+        name: 'My Team',
+        projectPath: '/repo',
+      },
+      members: [],
+      tasks: [
+        {
+          id: 'task-1',
+          subject: 'Build',
+          status: 'in_progress',
+          owner: 'alice',
+        },
+      ],
+    });
+
+    store.setState({
+      selectedTeamName: 'my-team',
+      selectedTeamData: partialSnapshot,
+      teamDataCacheByName: {
+        'my-team': partialSnapshot,
+      },
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          description: '',
+          memberCount: 2,
+          taskCount: 1,
+          lastActivity: null,
+          leadName: 'team-lead',
+          leadColor: 'purple',
+          members: [
+            { name: 'alice', role: 'developer', color: 'blue' },
+            { name: 'bob', role: 'reviewer', color: 'green' },
+          ],
+        },
+      },
+      memberActivityMetaByTeam: {},
+    });
+
+    const members = selectResolvedMembersForTeamName(store.getState(), 'my-team');
+
+    expect(members.map((member) => member.name)).toEqual(['team-lead', 'alice', 'bob']);
+    expect(members.find((member) => member.name === 'alice')).toMatchObject({
+      role: 'developer',
+      currentTaskId: 'task-1',
+      taskCount: 1,
+    });
+    expect(selectResolvedMemberForTeamName(store.getState(), 'my-team', 'bob')).toMatchObject({
+      name: 'bob',
+      role: 'reviewer',
+    });
+  });
+
+  it('falls back to team summary roster when detail snapshot only has the synthetic lead', () => {
+    const store = createSliceStore();
+    const leadOnlySnapshot = createTeamSnapshot({
+      config: {
+        name: 'My Team',
+        projectPath: '/repo',
+      },
+      members: [
+        {
+          name: 'team-lead',
+          agentType: 'team-lead',
+          currentTaskId: null,
+          role: 'Lead from detail',
+          color: 'purple',
+        },
+      ],
+      tasks: [],
+    });
+
+    store.setState({
+      selectedTeamName: 'my-team',
+      selectedTeamData: leadOnlySnapshot,
+      teamDataCacheByName: {
+        'my-team': leadOnlySnapshot,
+      },
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          description: '',
+          memberCount: 1,
+          taskCount: 0,
+          lastActivity: null,
+          members: [{ name: 'alice', role: 'developer', color: 'blue' }],
+        },
+      },
+      memberActivityMetaByTeam: {},
+    });
+
+    const members = selectResolvedMembersForTeamName(store.getState(), 'my-team');
+
+    expect(members.map((m) => m.name)).toEqual(['team-lead', 'alice']);
+    expect(members[0]).toMatchObject({
+      name: 'team-lead',
+      role: 'Lead from detail',
+      color: 'purple',
     });
   });
 

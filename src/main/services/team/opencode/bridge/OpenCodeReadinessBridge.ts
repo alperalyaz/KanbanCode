@@ -1,4 +1,7 @@
+import { randomUUID } from 'crypto';
+
 import type { OpenCodeTeamRuntimeBridgePort } from '../../runtime/OpenCodeTeamRuntimeAdapter';
+import { stableHash } from './OpenCodeBridgeCommandContract';
 import type {
   OpenCodeTeamLaunchReadiness,
   OpenCodeTeamLaunchReadinessState,
@@ -11,6 +14,8 @@ import type {
   OpenCodeBridgeFailureKind,
   OpenCodeBridgeResult,
   OpenCodeBridgeRuntimeSnapshot,
+  OpenCodeCommandStatusCommandBody,
+  OpenCodeCommandStatusCommandData,
   OpenCodeCleanupHostsCommandBody,
   OpenCodeCleanupHostsCommandData,
   OpenCodeLaunchTeamCommandBody,
@@ -72,6 +77,16 @@ const DEFAULT_OBSERVE_TIMEOUT_MS = 20_000;
 const DEFAULT_STOP_TIMEOUT_MS = 30_000;
 const DEFAULT_CLEANUP_TIMEOUT_MS = 10_000;
 const DEFAULT_BACKFILL_TIMEOUT_MS = 45_000;
+const DEFAULT_COMMAND_STATUS_TIMEOUT_MS = 5_000;
+
+function isCommandStatusRecoveryEnabled(): boolean {
+  return process.env.CLAUDE_TEAM_OPENCODE_COMMAND_STATUS_RECOVERY === '1';
+}
+
+function buildSendPayloadHash(input: OpenCodeSendMessageCommandBody): string {
+  const { payloadHash: _payloadHash, ...hashable } = input;
+  return stableHash(hashable);
+}
 
 export class OpenCodeReadinessBridge implements OpenCodeTeamRuntimeBridgePort {
   private readonly lastRuntimeSnapshotsByProjectPath = new Map<
@@ -215,19 +230,34 @@ export class OpenCodeReadinessBridge implements OpenCodeTeamRuntimeBridgePort {
   async sendOpenCodeTeamMessage(
     input: OpenCodeSendMessageCommandBody
   ): Promise<OpenCodeSendMessageCommandData> {
+    const commandRequestId = `opencode-send-${randomUUID()}`;
+    const body: OpenCodeSendMessageCommandBody = {
+      ...input,
+      payloadHash: input.payloadHash ?? buildSendPayloadHash(input),
+    };
     const result = await this.bridge.execute<
       OpenCodeSendMessageCommandBody,
       OpenCodeSendMessageCommandData
-    >('opencode.sendMessage', input, {
-      cwd: input.projectPath,
+    >('opencode.sendMessage', body, {
+      cwd: body.projectPath,
       timeoutMs: this.options.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS,
+      requestId: commandRequestId,
     });
     if (result.ok) {
       return result.data;
     }
+    if (result.error.kind === 'timeout' && isCommandStatusRecoveryEnabled()) {
+      const recovered = await this.recoverTimedOutSendMessage({
+        originalRequestId: commandRequestId,
+        body,
+      });
+      if (recovered) {
+        return recovered;
+      }
+    }
     return {
       accepted: false,
-      memberName: input.memberName,
+      memberName: body.memberName,
       diagnostics: [
         {
           code: result.error.kind,
@@ -240,6 +270,75 @@ export class OpenCodeReadinessBridge implements OpenCodeTeamRuntimeBridgePort {
           message: event.message,
         })),
       ],
+    };
+  }
+
+  private async recoverTimedOutSendMessage(input: {
+    originalRequestId: string;
+    body: OpenCodeSendMessageCommandBody;
+  }): Promise<OpenCodeSendMessageCommandData | null> {
+    const statusBody: OpenCodeCommandStatusCommandBody = {
+      originalCommand: 'opencode.sendMessage',
+      originalRequestId: input.originalRequestId,
+      deliveryAttemptId: input.body.deliveryAttemptId,
+      teamId: input.body.teamId,
+      teamName: input.body.teamName,
+      laneId: input.body.laneId,
+      memberName: input.body.memberName,
+      messageId: input.body.messageId,
+      payloadHash: input.body.payloadHash,
+      projectPath: input.body.projectPath,
+      runId: input.body.runId,
+    };
+    const statusResult = await this.bridge.execute<
+      OpenCodeCommandStatusCommandBody,
+      OpenCodeCommandStatusCommandData
+    >('opencode.commandStatus', statusBody, {
+      cwd: input.body.projectPath,
+      timeoutMs: DEFAULT_COMMAND_STATUS_TIMEOUT_MS,
+    });
+    if (!statusResult.ok) {
+      return null;
+    }
+    const status = statusResult.data;
+    if (status.originalRequestId && status.originalRequestId !== input.originalRequestId) {
+      return null;
+    }
+    if (
+      input.body.deliveryAttemptId &&
+      status.deliveryAttemptId &&
+      status.deliveryAttemptId !== input.body.deliveryAttemptId
+    ) {
+      return null;
+    }
+    if (status.status === 'precondition_mismatch' || status.accepted !== true) {
+      return null;
+    }
+    const diagnostics = [
+      {
+        code: 'opencode_send_recovered_after_bridge_timeout',
+        severity: 'warning' as const,
+        message: 'OpenCode bridge outcome recovered after timeout.',
+      },
+      ...status.diagnostics.map((message) => ({
+        code: 'opencode_command_status',
+        severity: 'info' as const,
+        message,
+      })),
+    ];
+    if (status.sendMessageData?.accepted === true) {
+      return {
+        ...status.sendMessageData,
+        diagnostics: [...diagnostics, ...status.sendMessageData.diagnostics],
+      };
+    }
+    return {
+      accepted: true,
+      memberName: input.body.memberName,
+      sessionId: status.sessionId,
+      runtimePid: status.runtimePid,
+      prePromptCursor: status.prePromptCursor,
+      diagnostics,
     };
   }
 

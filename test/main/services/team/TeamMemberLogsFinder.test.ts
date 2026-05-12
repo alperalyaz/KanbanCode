@@ -109,6 +109,104 @@ describe('TeamMemberLogsFinder', () => {
     ]);
   });
 
+  it('dedupes concurrent log source discovery for the same team', async () => {
+    const teamName = 'dedupe-context-team';
+    let resolveContext!: (value: unknown) => void;
+    const contextPromise = new Promise((resolve) => {
+      resolveContext = resolve;
+    });
+    const projectResolver = {
+      getContext: vi.fn(() => contextPromise),
+      getLiveBaseContext: vi.fn(),
+    };
+    const inboxReader = { listInboxNames: vi.fn(async () => []) };
+    const membersMetaStore = { getMembers: vi.fn(async () => []) };
+    const finder = new TeamMemberLogsFinder(
+      undefined,
+      inboxReader as never,
+      membersMetaStore as never,
+      projectResolver as never
+    );
+
+    const first = finder.getLogSourceWatchContext(teamName);
+    const second = finder.getLogSourceWatchContext(teamName);
+    await Promise.resolve();
+
+    expect(projectResolver.getContext).toHaveBeenCalledTimes(1);
+    resolveContext({
+      projectDir: '/tmp/project',
+      projectId: 'project',
+      sessionIds: ['session-1'],
+      config: { name: teamName, projectPath: '/repo', members: [] },
+    });
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      {
+        projectDir: '/tmp/project',
+        projectPath: '/repo',
+        leadSessionId: undefined,
+        sessionIds: ['session-1'],
+      },
+      {
+        projectDir: '/tmp/project',
+        projectPath: '/repo',
+        leadSessionId: undefined,
+        sessionIds: ['session-1'],
+      },
+    ]);
+
+    await finder.getLogSourceWatchContext(teamName);
+    expect(projectResolver.getContext).toHaveBeenCalledTimes(1);
+  });
+
+  it('honors forceRefresh after cached log source discovery', async () => {
+    const teamName = 'force-refresh-context-team';
+    const contexts = [
+      {
+        projectDir: '/tmp/project-old',
+        projectId: 'project-old',
+        sessionIds: ['old-session'],
+        config: { name: teamName, projectPath: '/repo-old', members: [] },
+      },
+      {
+        projectDir: '/tmp/project-new',
+        projectId: 'project-new',
+        sessionIds: ['new-session'],
+        config: { name: teamName, projectPath: '/repo-new', members: [] },
+      },
+    ];
+    const projectResolver = {
+      getContext: vi.fn(async () => contexts.shift() ?? contexts[0]),
+      getLiveBaseContext: vi.fn(),
+    };
+    const inboxReader = { listInboxNames: vi.fn(async () => []) };
+    const membersMetaStore = { getMembers: vi.fn(async () => []) };
+    const finder = new TeamMemberLogsFinder(
+      undefined,
+      inboxReader as never,
+      membersMetaStore as never,
+      projectResolver as never
+    );
+
+    await expect(finder.getLogSourceWatchContext(teamName)).resolves.toMatchObject({
+      projectDir: '/tmp/project-old',
+      sessionIds: ['old-session'],
+    });
+    await finder.getLogSourceWatchContext(teamName);
+    expect(projectResolver.getContext).toHaveBeenCalledTimes(1);
+
+    await expect(
+      finder.getLogSourceWatchContext(teamName, { forceRefresh: true })
+    ).resolves.toMatchObject({
+      projectDir: '/tmp/project-new',
+      sessionIds: ['new-session'],
+    });
+    expect(projectResolver.getContext).toHaveBeenCalledTimes(2);
+
+    await finder.getLogSourceWatchContext(teamName);
+    expect(projectResolver.getContext).toHaveBeenCalledTimes(2);
+  });
+
   it('returns subagent logs for a member and lead session for team-lead', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-logs-'));
     setClaudeBasePathOverride(tmpDir);
@@ -1533,6 +1631,97 @@ describe('TeamMemberLogsFinder', () => {
     expect(refs).toHaveLength(1);
     expect(refs[0].memberName.toLowerCase()).toBe('dev');
     expect(refs[0].filePath).toContain('agent-ref1.jsonl');
+  });
+
+  it('indexes task mentions without changing matching semantics', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-refs-index-'));
+    setClaudeBasePathOverride(tmpDir);
+
+    const teamName = 'mention-index-team';
+    const projectPath = '/Users/test/mention-index-proj';
+    const projectId = '-Users-test-mention-index-proj';
+    const sessionId = 'six';
+    const fullTaskId = 'abcdef12-1111-4222-8333-444444444444';
+
+    await fs.mkdir(path.join(tmpDir, 'teams', teamName), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'teams', teamName, 'config.json'),
+      JSON.stringify({
+        name: teamName,
+        projectPath,
+        members: [
+          { name: 'team-lead', agentType: 'team-lead' },
+          { name: 'dev', agentType: 'general-purpose' },
+        ],
+      }),
+      'utf8'
+    );
+
+    const projectRoot = path.join(tmpDir, 'projects', projectId);
+    await fs.mkdir(path.join(projectRoot, sessionId, 'subagents'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, sessionId, 'subagents', 'agent-indexed.jsonl'),
+      [
+        JSON.stringify({
+          timestamp: '2026-01-01T00:00:01.000Z',
+          type: 'user',
+          message: {
+            role: 'user',
+            content: `You are dev, a developer on team "${teamName}" (${teamName}).`,
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-01-01T00:00:02.000Z',
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [
+              { type: 'tool_use', name: 'TaskGet', input: { taskId: 'ignored-task' } },
+              {
+                type: 'tool_use',
+                name: 'TaskUpdate',
+                input: { taskId: fullTaskId.slice(0, 8), status: 'completed' },
+              },
+              {
+                type: 'tool_use',
+                name: 'TaskUpdate',
+                input: { taskId: 'wrong-team-task', teamName: 'other-team', status: 'completed' },
+              },
+            ],
+          },
+        }),
+      ].join('\n') + '\n',
+      'utf8'
+    );
+    await fs.writeFile(
+      path.join(projectRoot, sessionId, 'subagents', 'agent-no-team.jsonl'),
+      [
+        JSON.stringify({
+          timestamp: '2026-01-01T00:00:03.000Z',
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                name: 'TaskUpdate',
+                input: { taskId: 'no-team-task', status: 'completed' },
+              },
+            ],
+          },
+        }),
+      ].join('\n') + '\n',
+      'utf8'
+    );
+
+    const finder = new TeamMemberLogsFinder();
+
+    await expect(finder.findLogFileRefsForTask(teamName, fullTaskId)).resolves.toHaveLength(1);
+    await expect(finder.findLogFileRefsForTask(teamName, 'ignored-task')).resolves.toHaveLength(0);
+    await expect(finder.findLogFileRefsForTask(teamName, 'wrong-team-task')).resolves.toHaveLength(
+      0
+    );
+    await expect(finder.findLogFileRefsForTask(teamName, 'no-team-task')).resolves.toHaveLength(0);
   });
 
   it('findLogFileRefsForTask does not mix tasks across teams sharing a projectPath', async () => {

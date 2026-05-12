@@ -116,8 +116,8 @@ function resolveEmptyText(
   if (preview?.warnings.some((warning) => warning.code === 'codex_member_wide_not_supported')) {
     return 'Unsupported provider';
   }
-  if (loading && (!preview || preview.items.length === 0)) return 'Loading logs';
-  if (error && (!preview || preview.items.length === 0)) return 'Logs unavailable';
+  if (loading && !preview) return 'Loading logs';
+  if (error && !preview) return 'Logs unavailable';
   return 'No recent logs';
 }
 
@@ -213,6 +213,26 @@ function compactRowLabel(parts: readonly (string | null | undefined)[]): string 
 function setShellHidden(shell: HTMLDivElement): void {
   shell.style.opacity = '0';
   shell.style.pointerEvents = 'none';
+}
+
+function renderLoadingSkeleton(): React.JSX.Element {
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col gap-2 overflow-hidden" aria-hidden="true">
+      {[0, 1, 2].map((index) => (
+        <span
+          key={index}
+          className="flex h-[72px] min-h-[72px] w-full min-w-0 animate-pulse rounded-md border border-white/10 bg-[rgba(8,14,28,0.42)] px-2.5 py-1.5"
+        >
+          <span className="mr-2 mt-0.5 inline-flex size-5 shrink-0 rounded bg-white/10" />
+          <span className="flex min-w-0 flex-1 flex-col gap-2 pt-0.5">
+            <span className="h-3 w-2/5 rounded bg-slate-400/20" />
+            <span className="h-2.5 w-full rounded bg-slate-400/15" />
+            <span className="h-2.5 w-2/3 rounded bg-slate-400/10" />
+          </span>
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export const GraphMemberLogPreviewHud = ({
@@ -532,6 +552,7 @@ export const GraphMemberLogPreviewHud = ({
             : node.label;
         const preview = previewsByMember.get(normalizeMemberName(memberName));
         const items = preview?.items ?? [];
+        const isInitialLoading = loading && !preview;
 
         return (
           <div
@@ -557,6 +578,17 @@ export const GraphMemberLogPreviewHud = ({
               <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
                 {items.length > 0 ? (
                   items.slice(0, 3).map((item) => renderItem(memberName, item))
+                ) : isInitialLoading ? (
+                  <button
+                    type="button"
+                    className="flex min-h-0 flex-1 rounded-md text-left text-[11px] text-slate-400/60"
+                    aria-busy="true"
+                    aria-label="Loading logs"
+                    onClick={() => openLogs(memberName)}
+                  >
+                    <span className="sr-only">Loading logs</span>
+                    {renderLoadingSkeleton()}
+                  </button>
                 ) : (
                   <button
                     type="button"

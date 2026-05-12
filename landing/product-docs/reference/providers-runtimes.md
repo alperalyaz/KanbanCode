@@ -1,16 +1,6 @@
 ---
-title: Providers and Runtimes
-description: Supported runtime paths, provider ids, model ids, multi-provider strategy, and capability checks in Agent Teams.
----
-
----
 title: Providers and Runtimes – Agent Teams Docs
 description: Supported runtime paths (Claude Code, Codex, OpenCode), provider IDs, model naming, multi-provider strategies, and capability checks.
----
-
----
-title: Providers and Runtimes – Agent Teams Docs
-description: Supported runtime paths, provider ids, model ids, multi-provider strategy, and capability checks in Agent Teams.
 ---
 
 # Providers and Runtimes
@@ -43,7 +33,7 @@ The runtime provides:
 ## Supported runtime paths
 
 | Runtime path | Provider/model path | Best fit | Notes |
-| --- | --- |
+| --- | --- | --- | --- |
 | Claude Code | Anthropic / Claude models | Claude Code users and Anthropic-backed workflows | Default local-first path for Claude teams. Requires the runtime and account access to be available locally. |
 | Codex | Codex / OpenAI-backed models | Codex-native workflows | Uses Codex runtime integration and Codex auth/account state where available. Some diagnostics are different from Claude transcripts. |
 | OpenCode | OpenCode-managed model routing | Multi-provider teams and broad model coverage | OpenCode can route through many model providers. Agent Teams treats OpenCode lanes as runtime-specific evidence and avoids guessing when lane identity is ambiguous. |

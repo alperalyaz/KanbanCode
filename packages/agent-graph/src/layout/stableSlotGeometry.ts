@@ -14,7 +14,7 @@ export const STABLE_SLOT_GEOMETRY = {
   ownerMinWidth: 200,
   processBandHeight: 32,
   processRailWidth: 220,
-  taskMaxVisibleRows: 5,
+  taskMaxVisibleRows: 3,
 } as const;
 
 export const STABLE_SLOT_SECTOR_VECTORS = [

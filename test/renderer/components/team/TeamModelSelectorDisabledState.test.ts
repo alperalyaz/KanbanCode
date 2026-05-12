@@ -292,6 +292,11 @@ describe('TeamModelSelector disabled Codex models', () => {
     expect(host.textContent).toContain('Unavailable in OpenCode');
     expect(host.textContent).toContain('openai/gpt-oss-20b:free');
     expect(host.textContent).toContain('Not recommended');
+    const groupLabels = Array.from(
+      host.querySelectorAll('[data-testid="team-model-selector-opencode-group"] h4')
+    ).map((heading) => heading.textContent ?? '');
+    expect(groupLabels).toContain('OpenCode');
+    expect(groupLabels).toContain('OpenRouter');
 
     const buttonTexts = Array.from(host.querySelectorAll('button')).map(
       (button) => button.textContent ?? ''
@@ -579,16 +584,16 @@ describe('TeamModelSelector disabled Codex models', () => {
       await Promise.resolve();
     });
 
-    const modelGrid = host.querySelector(
+    const modelGrid = host.querySelector<HTMLElement>(
       '[data-testid="team-model-selector-model-grid"]'
-    ) as HTMLElement | null;
+    );
 
     expect(modelGrid).toBeTruthy();
     expect(modelGrid?.style.maxHeight).toBe('400px');
     expect(modelGrid?.className).toContain('overflow-y-auto');
-    const searchInput = host.querySelector(
+    const searchInput = host.querySelector<HTMLInputElement>(
       '[data-testid="team-model-selector-model-search"]'
-    ) as HTMLInputElement | null;
+    );
     expect(searchInput).toBeTruthy();
 
     await act(async () => {
@@ -1318,7 +1323,7 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
   });
 
-  it('renders OpenCode source badges and keeps raw model ids on selection', async () => {
+  it('renders OpenCode source groups and keeps raw model ids on selection', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliStatus = {
       providers: [
@@ -1359,7 +1364,7 @@ describe('TeamModelSelector disabled Codex models', () => {
     expect(host.textContent).toContain('OpenRouter');
 
     const openRouterButton = Array.from(host.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('OpenRouter')
+      button.textContent?.includes('moonshotai/kimi-k2')
     );
 
     expect(openRouterButton).toBeTruthy();
@@ -1370,6 +1375,72 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
 
     expect(onValueChange).toHaveBeenCalledWith('openrouter/moonshotai/kimi-k2');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('filters OpenCode model groups by selected source providers', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = {
+      providers: [
+        {
+          providerId: 'opencode',
+          supported: true,
+          authenticated: true,
+          detailMessage: null,
+          statusMessage: null,
+          capabilities: {
+            teamLaunch: true,
+          },
+          models: ['openai/gpt-5.4', 'openrouter/moonshotai/kimi-k2', 'opencode/big-pickle'],
+        },
+      ],
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'opencode',
+          onProviderChange: () => undefined,
+          value: '',
+          onValueChange: () => undefined,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const filterButton = host.querySelector(
+      '[data-testid="team-model-selector-opencode-provider-filter"]'
+    );
+    expect(filterButton).toBeTruthy();
+
+    await act(async () => {
+      filterButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const openRouterCheckbox = document.body.querySelector<HTMLElement>(
+      '[aria-label="Filter OpenRouter"]'
+    );
+    expect(openRouterCheckbox).toBeTruthy();
+
+    await act(async () => {
+      openRouterCheckbox?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('moonshotai/kimi-k2');
+    expect(host.textContent).toContain('OpenRouter');
+    expect(host.textContent).not.toContain('GPT-5.4');
+    expect(host.textContent).not.toContain('OpenAI');
+    expect(host.textContent).not.toContain('big-pickle');
 
     await act(async () => {
       root.unmount();

@@ -62,6 +62,53 @@ describe('ProviderModelBadges', () => {
     expect(host.textContent).toContain('Check failed');
   });
 
+  it('renders catalog badges from verbose provider metadata', () => {
+    const host = render(
+      <ProviderModelBadges
+        providerId="opencode"
+        models={['opencode/big-pickle']}
+        providerStatus={{
+          providerId: 'opencode',
+          authMethod: 'opencode_managed',
+          backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
+          modelCatalog: {
+            schemaVersion: 1,
+            providerId: 'opencode',
+            source: 'app-server',
+            status: 'ready',
+            fetchedAt: '2026-05-12T00:00:00.000Z',
+            staleAt: '2026-05-12T00:10:00.000Z',
+            defaultModelId: 'opencode/big-pickle',
+            defaultLaunchModel: 'opencode/big-pickle',
+            models: [
+              {
+                id: 'opencode/big-pickle',
+                launchModel: 'opencode/big-pickle',
+                displayName: 'opencode/big-pickle',
+                hidden: false,
+                supportedReasoningEfforts: [],
+                defaultReasoningEffort: null,
+                inputModalities: ['text'],
+                supportsPersonality: true,
+                isDefault: true,
+                upgrade: false,
+                source: 'app-server',
+                badgeLabel: 'Free',
+              },
+            ],
+            diagnostics: {
+              configReadState: 'ready',
+              appServerState: 'healthy',
+            },
+          },
+        }}
+      />
+    );
+
+    expect(host.textContent).toContain('big-pickle');
+    expect(host.textContent).toContain('Free');
+  });
+
   it('collapses long model lists and expands them into a bounded scroll area', () => {
     const models = Array.from(
       { length: 18 },

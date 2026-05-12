@@ -64,6 +64,65 @@ describe('TaskBoundaryParser', () => {
     expect(result.boundaries.every((entry) => entry.mechanism === 'mcp')).toBe(true);
   });
 
+  it('dedupes concurrent boundary parsing and invalidates when the file changes', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'task-boundary-parser-'));
+    const jsonlPath = path.join(tmpDir, 'concurrent.jsonl');
+    await fs.writeFile(
+      jsonlPath,
+      JSON.stringify({
+        timestamp: '2026-03-01T10:00:00.000Z',
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-1',
+              name: 'task_start',
+              input: { taskId: 'task-123' },
+            },
+          ],
+        },
+      }) + '\n',
+      'utf8'
+    );
+
+    const parser = new TaskBoundaryParser();
+    const [first, second, third] = await Promise.all([
+      parser.parseBoundaries(jsonlPath),
+      parser.parseBoundaries(jsonlPath),
+      parser.parseBoundaries(jsonlPath),
+    ]);
+
+    expect(first.boundaries).toHaveLength(1);
+    expect(second).toEqual(first);
+    expect(third).toEqual(first);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await fs.appendFile(
+      jsonlPath,
+      JSON.stringify({
+        timestamp: '2026-03-01T10:10:00.000Z',
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-2',
+              name: 'task_complete',
+              input: { taskId: 'task-123' },
+            },
+          ],
+        },
+      }) + '\n',
+      'utf8'
+    );
+
+    const afterChange = await parser.parseBoundaries(jsonlPath);
+    expect(afterChange.boundaries).toHaveLength(2);
+  });
+
   it('detects fully-qualified agent-teams MCP task boundaries', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'task-boundary-parser-'));
     const jsonlPath = path.join(tmpDir, 'mcp-qualified.jsonl');

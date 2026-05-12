@@ -73,7 +73,12 @@ import {
 } from './providerDashboardRateLimits';
 
 import type { DashboardRateLimitItem } from './providerDashboardRateLimits';
-import type { CliProviderAuthMode, CliProviderId, CliProviderStatus } from '@shared/types';
+import type {
+  CliProviderAuthMode,
+  CliProviderId,
+  CliProviderStatus,
+  OpenCodeRuntimeStatus,
+} from '@shared/types';
 
 // =============================================================================
 // Border color by state
@@ -88,8 +93,6 @@ const VARIANT_STYLES: Record<BannerVariant, { border: string; bg: string }> = {
   info: { border: 'var(--info-border)', bg: 'var(--info-bg)' },
   warning: { border: '#f59e0b', bg: 'rgba(245, 158, 11, 0.06)' },
 };
-
-const OPENCODE_DOWNLOAD_URL = 'https://opencode.ai/download';
 
 /** Minimum banner height — prevents layout shift between states (loading → installed → checking). */
 const BANNER_MIN_H = 'min-h-[4.25rem]';
@@ -352,8 +355,11 @@ interface InstalledBannerProps {
   };
   codexRateLimitsLoading: boolean;
   anthropicRateLimitsRefreshing: boolean;
+  openCodeRuntimeStatus: OpenCodeRuntimeStatus | null;
+  openCodeRuntimeStatusLoading: boolean;
   isBusy: boolean;
   onInstall: () => void;
+  onOpenCodeInstall: () => void;
   onRefresh: () => void;
   onToggleProvidersCollapsed: () => void;
   onProviderLogin: (providerId: CliProviderId) => void;
@@ -570,17 +576,49 @@ function hasVisibleAuthenticatedMultimodelProvider(
   return visibleProviders.some((provider) => provider.authenticated);
 }
 
-function shouldShowOpenCodeDownloadAction(
+function shouldShowOpenCodeInstallAction(
   provider: CliProviderStatus,
-  showSkeleton: boolean
+  showSkeleton: boolean,
+  openCodeRuntimeStatus: OpenCodeRuntimeStatus | null
 ): boolean {
   return (
     provider.providerId === 'opencode' &&
     !showSkeleton &&
     !provider.supported &&
     !provider.authenticated &&
-    provider.backend == null
+    provider.backend == null &&
+    openCodeRuntimeStatus?.source !== 'path' &&
+    !(openCodeRuntimeStatus?.source === 'app-managed' && openCodeRuntimeStatus.state !== 'failed')
   );
+}
+
+function isOpenCodeRuntimeInstalling(
+  status: OpenCodeRuntimeStatus | null,
+  loading: boolean
+): boolean {
+  return (
+    loading ||
+    status?.state === 'checking' ||
+    status?.state === 'downloading' ||
+    status?.state === 'installing'
+  );
+}
+
+function getOpenCodeInstallLabel(status: OpenCodeRuntimeStatus | null): string {
+  if (status?.state === 'downloading') {
+    const percent = status.progress?.percent;
+    return typeof percent === 'number' ? `Downloading ${percent}%` : 'Downloading';
+  }
+  if (status?.state === 'installing') {
+    return 'Installing';
+  }
+  if (status?.state === 'checking') {
+    return 'Checking';
+  }
+  if (status?.state === 'failed') {
+    return 'Retry install';
+  }
+  return 'Install';
 }
 
 const InstalledBanner = ({
@@ -594,8 +632,11 @@ const InstalledBanner = ({
   providerConnectionAuthModes,
   codexRateLimitsLoading,
   anthropicRateLimitsRefreshing,
+  openCodeRuntimeStatus,
+  openCodeRuntimeStatusLoading,
   isBusy,
   onInstall,
+  onOpenCodeInstall,
   onRefresh,
   onToggleProvidersCollapsed,
   onProviderLogin,
@@ -901,19 +942,38 @@ const InstalledBanner = ({
                     ) : null}
                   </div>
                   <div className="flex shrink-0 items-start gap-2">
-                    {shouldShowOpenCodeDownloadAction(provider, showSkeleton) ? (
+                    {shouldShowOpenCodeInstallAction(
+                      provider,
+                      showSkeleton,
+                      openCodeRuntimeStatus
+                    ) ? (
                       <button
                         type="button"
-                        onClick={() => void api.openExternal(OPENCODE_DOWNLOAD_URL)}
-                        className="flex items-center gap-1 rounded-md border px-2 py-[3px] text-[10px] font-medium transition-colors hover:bg-white/5"
+                        onClick={onOpenCodeInstall}
+                        disabled={isOpenCodeRuntimeInstalling(
+                          openCodeRuntimeStatus,
+                          openCodeRuntimeStatusLoading
+                        )}
+                        className="flex items-center gap-1 rounded-md border px-2 py-[3px] text-[10px] font-medium transition-colors hover:bg-white/5 disabled:opacity-50"
                         style={{
                           borderColor: 'rgba(14, 165, 233, 0.36)',
                           color: '#7dd3fc',
                         }}
-                        title="Download OpenCode CLI"
+                        title={
+                          openCodeRuntimeStatus?.error ??
+                          openCodeRuntimeStatus?.progress?.detail ??
+                          'Install OpenCode CLI into app data'
+                        }
                       >
-                        <Download className="size-3" />
-                        Download
+                        {isOpenCodeRuntimeInstalling(
+                          openCodeRuntimeStatus,
+                          openCodeRuntimeStatusLoading
+                        ) ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <Download className="size-3" />
+                        )}
+                        {getOpenCodeInstallLabel(openCodeRuntimeStatus)}
                       </button>
                     ) : null}
                     <button
@@ -1028,11 +1088,14 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     installerDetail,
     installerRawChunks,
     completedVersion,
+    openCodeRuntimeStatus,
+    openCodeRuntimeStatusLoading,
     bootstrapCliStatus,
     fetchCliStatus,
     fetchCliProviderStatus,
     invalidateCliStatus,
     installCli,
+    installOpenCodeRuntime,
     isBusy,
   } = useCliInstaller();
 
@@ -1465,8 +1528,11 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
           providerConnectionAuthModes={providerConnectionAuthModes}
           codexRateLimitsLoading={codexAccount.rateLimitsLoading}
           anthropicRateLimitsRefreshing={anthropicRateLimitsRefreshing}
+          openCodeRuntimeStatus={openCodeRuntimeStatus}
+          openCodeRuntimeStatusLoading={openCodeRuntimeStatusLoading}
           isBusy={isBusy}
           onInstall={handleInstall}
+          onOpenCodeInstall={() => void installOpenCodeRuntime()}
           onRefresh={handleRefresh}
           onToggleProvidersCollapsed={handleToggleProvidersCollapsed}
           onProviderLogin={handleProviderLogin}
@@ -1694,8 +1760,11 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
             providerConnectionAuthModes={providerConnectionAuthModes}
             codexRateLimitsLoading={codexAccount.rateLimitsLoading}
             anthropicRateLimitsRefreshing={anthropicRateLimitsRefreshing}
+            openCodeRuntimeStatus={openCodeRuntimeStatus}
+            openCodeRuntimeStatusLoading={openCodeRuntimeStatusLoading}
             isBusy={isBusy}
             onInstall={handleInstall}
+            onOpenCodeInstall={() => void installOpenCodeRuntime()}
             onRefresh={handleRefresh}
             onToggleProvidersCollapsed={handleToggleProvidersCollapsed}
             onProviderLogin={handleProviderLogin}
@@ -1757,8 +1826,11 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
           providerConnectionAuthModes={providerConnectionAuthModes}
           codexRateLimitsLoading={codexAccount.rateLimitsLoading}
           anthropicRateLimitsRefreshing={anthropicRateLimitsRefreshing}
+          openCodeRuntimeStatus={openCodeRuntimeStatus}
+          openCodeRuntimeStatusLoading={openCodeRuntimeStatusLoading}
           isBusy={isBusy}
           onInstall={handleInstall}
+          onOpenCodeInstall={() => void installOpenCodeRuntime()}
           onRefresh={handleRefresh}
           onToggleProvidersCollapsed={handleToggleProvidersCollapsed}
           onProviderLogin={handleProviderLogin}
@@ -1980,8 +2052,11 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
         providerConnectionAuthModes={providerConnectionAuthModes}
         codexRateLimitsLoading={codexAccount.rateLimitsLoading}
         anthropicRateLimitsRefreshing={anthropicRateLimitsRefreshing}
+        openCodeRuntimeStatus={openCodeRuntimeStatus}
+        openCodeRuntimeStatusLoading={openCodeRuntimeStatusLoading}
         isBusy={isBusy}
         onInstall={handleInstall}
+        onOpenCodeInstall={() => void installOpenCodeRuntime()}
         onRefresh={handleRefresh}
         onToggleProvidersCollapsed={handleToggleProvidersCollapsed}
         onProviderLogin={handleProviderLogin}

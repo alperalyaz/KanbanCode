@@ -62,6 +62,7 @@ export interface OpenCodeTeamRuntimeMessageInput {
   cwd: string;
   text: string;
   messageId?: string;
+  deliveryAttemptId?: string;
   fileParts?: OpenCodeSendMessageCommandBody['fileParts'];
   replyRecipient?: string;
   actionMode?: AgentActionMode;
@@ -331,6 +332,7 @@ export class OpenCodeTeamRuntimeAdapter implements TeamLaunchRuntimeAdapter {
       memberName: input.memberName,
       text: buildOpenCodeRuntimeMessageText(input),
       messageId: input.messageId,
+      ...(input.deliveryAttemptId ? { deliveryAttemptId: input.deliveryAttemptId } : {}),
       fileParts: input.fileParts,
       actionMode: input.actionMode,
       messageKind: input.messageKind,

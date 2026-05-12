@@ -48,6 +48,17 @@ describe('RuntimeDiagnosticClassifier', () => {
     });
   });
 
+  it('classifies OpenCode bridge outcome timeouts as backend delivery state', () => {
+    expect(
+      classifyRuntimeDiagnostic('opencode_prompt_acceptance_unknown_after_bridge_timeout')
+    ).toMatchObject({
+      reasonCode: 'backend_error',
+      normalizedMessage: 'OpenCode bridge outcome unknown after timeout, retrying/observing.',
+      generic: true,
+      actionRequired: false,
+    });
+  });
+
   it('keeps pure empty assistant turns as generic backend fallback', () => {
     expect(classifyRuntimeDiagnostic('empty_assistant_turn')).toMatchObject({
       reasonCode: 'backend_error',

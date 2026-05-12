@@ -1,9 +1,4 @@
 ---
-title: Troubleshooting
-description: Fix launch failures, missing agent replies, rate limits, auth issues, and lane bootstrap problems in Agent Teams.
----
-
----
 title: Troubleshooting – Agent Teams Docs
 description: Fix team launch issues, missing agent replies, rate limits, CLI auth problems, and lane bootstrap stalls with local diagnostics.
 ---
@@ -88,7 +83,7 @@ If a provider reports a known reset time, Agent Teams can nudge the lead to cont
 
 ## CLI auth issues
 
-### `claude login` not persist
+### `claude login` does not persist
 
 If the CLI is authenticated in one terminal but the app says it is not, verify the auth is saved to the expected config path and that the app process sees the same `$HOME`.
 

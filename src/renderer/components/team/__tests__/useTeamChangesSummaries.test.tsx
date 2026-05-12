@@ -11,6 +11,7 @@ import { type TeamChangeSummaryState, useTeamChangesSummaries } from '../useTeam
 import type {
   TaskChangeSetV2,
   TeamTaskChangeSummariesResponse,
+  TeamTaskChangeSummaryRequest,
   TeamTaskWithKanban,
 } from '@shared/types';
 
@@ -73,6 +74,17 @@ function task(overrides: Partial<TeamTaskWithKanban> = {}): TeamTaskWithKanban {
   };
 }
 
+function changedTasks(count: number): TeamTaskWithKanban[] {
+  return Array.from({ length: count }, (_, index) =>
+    task({
+      id: `changed-${index}`,
+      subject: `Changed ${index}`,
+      changePresence: 'has_changes',
+      updatedAt: `2026-05-10T10:${String(index).padStart(2, '0')}:00.000Z`,
+    })
+  );
+}
+
 function changeSet(taskId = 'task-1'): TaskChangeSetV2 {
   return {
     teamName: 'team-a',
@@ -117,6 +129,19 @@ function response(summary: TaskChangeSetV2 = changeSet()): TeamTaskChangeSummari
     teamName: 'team-a',
     computedAt: '2026-05-10T10:00:01.000Z',
     items: [{ taskId: 'task-1', changeSet: summary }],
+  };
+}
+
+function responseForRequests(
+  requests: TeamTaskChangeSummaryRequest[]
+): TeamTaskChangeSummariesResponse {
+  return {
+    teamName: 'team-a',
+    computedAt: '2026-05-10T10:00:01.000Z',
+    items: requests.map((request) => ({
+      taskId: request.taskId,
+      changeSet: changeSet(request.taskId),
+    })),
   };
 }
 
@@ -197,19 +222,22 @@ interface HookSnapshot {
   error: string | null;
   badgeCount: number | null;
   summariesByTaskId: Record<string, TeamChangeSummaryState>;
+  refresh: () => void;
 }
 
 const HookHarness = ({
   tasks,
+  sectionOpen = true,
   onSnapshot,
 }: {
   tasks: TeamTaskWithKanban[];
+  sectionOpen?: boolean;
   onSnapshot: (snapshot: HookSnapshot) => void;
 }): null => {
   const state = useTeamChangesSummaries({
     teamName: 'team-a',
     tasks,
-    sectionOpen: true,
+    sectionOpen,
   });
   React.useEffect(() => {
     onSnapshot({
@@ -218,12 +246,14 @@ const HookHarness = ({
       error: state.error,
       badgeCount: state.badgeCount,
       summariesByTaskId: state.summariesByTaskId,
+      refresh: state.refresh,
     });
   }, [
     onSnapshot,
     state.badgeCount,
     state.error,
     state.loading,
+    state.refresh,
     state.refreshing,
     state.summariesByTaskId,
   ]);
@@ -699,6 +729,296 @@ describe('useTeamChangesSummaries', () => {
     expect(container.textContent).not.toContain('src/app.ts');
   });
 
+  it('loads staged open batches without repeating successful tasks', async () => {
+    const first = createDeferred<TeamTaskChangeSummariesResponse>();
+    const second = createDeferred<TeamTaskChangeSummariesResponse>();
+    const third = createDeferred<TeamTaskChangeSummariesResponse>();
+    hoisted.getTeamTaskChangeSummaries
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+      .mockReturnValueOnce(third.promise);
+
+    const tasks = changedTasks(30);
+    const snapshots: HookSnapshot[] = [];
+    const onSnapshot = (snapshot: HookSnapshot): void => {
+      snapshots.push(snapshot);
+    };
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(React.createElement(HookHarness, { tasks, onSnapshot }));
+    });
+
+    expect(hoisted.getTeamTaskChangeSummaries).toHaveBeenCalledTimes(1);
+    const firstRequests = hoisted.getTeamTaskChangeSummaries.mock
+      .calls[0][1] as TeamTaskChangeSummaryRequest[];
+    expect(firstRequests).toHaveLength(3);
+    expect(firstRequests[0]?.taskId).toBe('changed-29');
+
+    await act(async () => {
+      first.resolve(responseForRequests(firstRequests));
+      await first.promise;
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.getTeamTaskChangeSummaries).toHaveBeenCalledTimes(2);
+    const secondRequests = hoisted.getTeamTaskChangeSummaries.mock
+      .calls[1][1] as TeamTaskChangeSummaryRequest[];
+    expect(secondRequests).toHaveLength(9);
+    expect(Object.keys(snapshots.at(-1)?.summariesByTaskId ?? {})).toHaveLength(3);
+    expect(snapshots.at(-1)?.loading).toBe(false);
+    expect(snapshots.at(-1)?.refreshing).toBe(true);
+    expect(
+      secondRequests.some((request) =>
+        firstRequests.some((firstRequest) => firstRequest.taskId === request.taskId)
+      )
+    ).toBe(false);
+
+    await act(async () => {
+      second.resolve(responseForRequests(secondRequests));
+      await second.promise;
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.getTeamTaskChangeSummaries).toHaveBeenCalledTimes(3);
+    const thirdRequests = hoisted.getTeamTaskChangeSummaries.mock
+      .calls[2][1] as TeamTaskChangeSummaryRequest[];
+    expect(thirdRequests).toHaveLength(18);
+    expect(
+      thirdRequests.some((request) =>
+        [...firstRequests, ...secondRequests].some(
+          (previousRequest) => previousRequest.taskId === request.taskId
+        )
+      )
+    ).toBe(false);
+
+    await act(async () => {
+      third.resolve(responseForRequests(thirdRequests));
+      await third.promise;
+      await Promise.resolve();
+    });
+
+    expect(Object.keys(snapshots.at(-1)?.summariesByTaskId ?? {})).toHaveLength(30);
+    expect(snapshots.at(-1)?.loading).toBe(false);
+  });
+
+  it('does not skip failed first-pass tasks from the queued full refresh', async () => {
+    const first = createDeferred<TeamTaskChangeSummariesResponse>();
+    const second = createDeferred<TeamTaskChangeSummariesResponse>();
+    const third = createDeferred<TeamTaskChangeSummariesResponse>();
+    hoisted.getTeamTaskChangeSummaries
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+      .mockReturnValueOnce(third.promise);
+
+    const tasks = changedTasks(30);
+    const snapshots: HookSnapshot[] = [];
+    const onSnapshot = (snapshot: HookSnapshot): void => {
+      snapshots.push(snapshot);
+    };
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(React.createElement(HookHarness, { tasks, onSnapshot }));
+    });
+
+    const firstRequests = hoisted.getTeamTaskChangeSummaries.mock
+      .calls[0][1] as TeamTaskChangeSummaryRequest[];
+    expect(firstRequests).toHaveLength(3);
+    const failedTaskId = firstRequests[0]?.taskId ?? '';
+
+    await act(async () => {
+      first.resolve({
+        teamName: 'team-a',
+        computedAt: '2026-05-10T10:00:01.000Z',
+        items: firstRequests.map((request, index) =>
+          index === 0
+            ? { taskId: request.taskId, changeSet: null, error: 'first pass failed' }
+            : { taskId: request.taskId, changeSet: changeSet(request.taskId) }
+        ),
+      });
+      await first.promise;
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.getTeamTaskChangeSummaries).toHaveBeenCalledTimes(2);
+    const secondRequests = hoisted.getTeamTaskChangeSummaries.mock
+      .calls[1][1] as TeamTaskChangeSummaryRequest[];
+    expect(secondRequests).toHaveLength(9);
+    expect(secondRequests.some((request) => request.taskId === failedTaskId)).toBe(true);
+    expect(secondRequests.some((request) => request.taskId === firstRequests[1]?.taskId)).toBe(
+      false
+    );
+
+    await act(async () => {
+      second.resolve(responseForRequests(secondRequests));
+      await second.promise;
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.getTeamTaskChangeSummaries).toHaveBeenCalledTimes(3);
+    const thirdRequests = hoisted.getTeamTaskChangeSummaries.mock
+      .calls[2][1] as TeamTaskChangeSummaryRequest[];
+    expect(thirdRequests).toHaveLength(19);
+
+    await act(async () => {
+      third.resolve(responseForRequests(thirdRequests));
+      await third.promise;
+      await Promise.resolve();
+    });
+
+    expect(Object.keys(snapshots.at(-1)?.summariesByTaskId ?? {})).toHaveLength(30);
+  });
+
+  it('does not apply staged in-flight results after the section closes', async () => {
+    const first = createDeferred<TeamTaskChangeSummariesResponse>();
+    const second = createDeferred<TeamTaskChangeSummariesResponse>();
+    hoisted.getTeamTaskChangeSummaries
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+
+    const tasks = changedTasks(30);
+    const snapshots: HookSnapshot[] = [];
+    const onSnapshot = (snapshot: HookSnapshot): void => {
+      snapshots.push(snapshot);
+    };
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(React.createElement(HookHarness, { tasks, onSnapshot }));
+    });
+    const firstRequests = hoisted.getTeamTaskChangeSummaries.mock
+      .calls[0][1] as TeamTaskChangeSummaryRequest[];
+
+    await act(async () => {
+      first.resolve(responseForRequests(firstRequests));
+      await first.promise;
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.getTeamTaskChangeSummaries).toHaveBeenCalledTimes(2);
+    expect(Object.keys(snapshots.at(-1)?.summariesByTaskId ?? {})).toHaveLength(3);
+    const secondRequests = hoisted.getTeamTaskChangeSummaries.mock
+      .calls[1][1] as TeamTaskChangeSummaryRequest[];
+
+    await act(async () => {
+      root?.render(
+        React.createElement(HookHarness, {
+          tasks: [],
+          sectionOpen: false,
+          onSnapshot,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      second.resolve(responseForRequests(secondRequests));
+      await second.promise;
+      await Promise.resolve();
+    });
+
+    expect(snapshots.at(-1)?.loading).toBe(false);
+    expect(snapshots.at(-1)?.refreshing).toBe(false);
+    expect(snapshots.at(-1)?.summariesByTaskId).toEqual({});
+  });
+
+  it('starts force refresh from the first staged batch after a completed staged load', async () => {
+    const first = createDeferred<TeamTaskChangeSummariesResponse>();
+    const second = createDeferred<TeamTaskChangeSummariesResponse>();
+    const third = createDeferred<TeamTaskChangeSummariesResponse>();
+    const fourth = createDeferred<TeamTaskChangeSummariesResponse>();
+    hoisted.getTeamTaskChangeSummaries
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+      .mockReturnValueOnce(third.promise)
+      .mockReturnValueOnce(fourth.promise);
+
+    const tasks = changedTasks(30);
+    const snapshots: HookSnapshot[] = [];
+    const onSnapshot = (snapshot: HookSnapshot): void => {
+      snapshots.push(snapshot);
+    };
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(React.createElement(HookHarness, { tasks, onSnapshot }));
+    });
+    const firstRequests = hoisted.getTeamTaskChangeSummaries.mock
+      .calls[0][1] as TeamTaskChangeSummaryRequest[];
+
+    await act(async () => {
+      first.resolve(responseForRequests(firstRequests));
+      await first.promise;
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const secondRequests = hoisted.getTeamTaskChangeSummaries.mock
+      .calls[1][1] as TeamTaskChangeSummaryRequest[];
+    await act(async () => {
+      second.resolve(responseForRequests(secondRequests));
+      await second.promise;
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const thirdRequests = hoisted.getTeamTaskChangeSummaries.mock
+      .calls[2][1] as TeamTaskChangeSummaryRequest[];
+    await act(async () => {
+      third.resolve(responseForRequests(thirdRequests));
+      await third.promise;
+      await Promise.resolve();
+    });
+
+    expect(Object.keys(snapshots.at(-1)?.summariesByTaskId ?? {})).toHaveLength(30);
+
+    await act(async () => {
+      snapshots.at(-1)?.refresh();
+      await Promise.resolve();
+    });
+
+    expect(hoisted.getTeamTaskChangeSummaries).toHaveBeenCalledTimes(4);
+    const refreshRequests = hoisted.getTeamTaskChangeSummaries.mock
+      .calls[3][1] as TeamTaskChangeSummaryRequest[];
+    expect(refreshRequests).toHaveLength(3);
+    expect(refreshRequests.map((request) => request.taskId)).toEqual(
+      firstRequests.map((request) => request.taskId)
+    );
+    expect(refreshRequests.every((request) => request.options?.forceFresh === true)).toBe(true);
+
+    await act(async () => {
+      fourth.resolve(responseForRequests(refreshRequests));
+      await fourth.promise;
+      await Promise.resolve();
+    });
+  });
+
   it('runs a queued closed counter refresh when tasks change during an active count load', async () => {
     const first = createDeferred<TeamTaskChangeSummariesResponse>();
     const second = createDeferred<TeamTaskChangeSummariesResponse>();
@@ -759,7 +1079,7 @@ describe('useTeamChangesSummaries', () => {
     expect(container.textContent).toContain('0');
   });
 
-  it('does not lose the full load queued by opening the section during a failed count load', async () => {
+  it('starts the full load immediately when opening during an active count load', async () => {
     const first = createDeferred<TeamTaskChangeSummariesResponse>();
     const second = createDeferred<TeamTaskChangeSummariesResponse>();
     hoisted.getTeamTaskChangeSummaries
@@ -804,13 +1124,16 @@ describe('useTeamChangesSummaries', () => {
       });
 
       expect(container.textContent).toContain('Loading changes...');
+      expect(hoisted.getTeamTaskChangeSummaries).toHaveBeenCalledTimes(2);
 
       await act(async () => {
-        first.reject(new Error('silent count failed'));
-        await first.promise.catch(() => undefined);
+        first.resolve(lowConfidenceFileResponse());
+        await first.promise;
         await Promise.resolve();
       });
 
+      expect(container.textContent).toContain('Loading changes...');
+      expect(container.textContent).not.toContain('src/app.ts');
       expect(hoisted.getTeamTaskChangeSummaries).toHaveBeenCalledTimes(2);
 
       await act(async () => {
@@ -820,7 +1143,6 @@ describe('useTeamChangesSummaries', () => {
       });
 
       expect(container.textContent).toContain('src/app.ts');
-      expect(container.textContent).not.toContain('silent count failed');
     } finally {
       if (scrollIntoViewDescriptor) {
         Object.defineProperty(Element.prototype, 'scrollIntoView', scrollIntoViewDescriptor);

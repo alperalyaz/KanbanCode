@@ -16,10 +16,7 @@ const teamState = {
     ],
     tasks: [],
   },
-  teamDataCacheByName: new Map<
-    string,
-    { members: Record<string, unknown>[]; tasks: unknown[] }
-  >([
+  teamDataCacheByName: new Map<string, { members: Record<string, unknown>[]; tasks: unknown[] }>([
     [
       'demo-team',
       {
@@ -106,7 +103,10 @@ describe('GraphActivityHud', () => {
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     buildInlineActivityEntries.mockReset();
-    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 1)
+    );
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
       configurable: true,
@@ -124,6 +124,7 @@ describe('GraphActivityHud', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     if (originalOffsetWidthDescriptor) {
       Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalOffsetWidthDescriptor);
@@ -355,5 +356,139 @@ describe('GraphActivityHud', () => {
       root.unmount();
       await Promise.resolve();
     });
+  });
+
+  it('briefly highlights newly appeared activity cards', async () => {
+    vi.useFakeTimers();
+
+    const firstMessage: InboxMessage = {
+      from: 'team-lead',
+      to: 'jack',
+      text: 'Initial activity',
+      summary: 'Initial activity',
+      timestamp: '2026-04-13T13:36:00.000Z',
+      read: false,
+      messageId: 'msg-initial',
+    };
+    const newMessage: InboxMessage = {
+      from: 'team-lead',
+      to: 'jack',
+      text: 'New activity',
+      summary: 'New activity',
+      timestamp: '2026-04-13T13:37:00.000Z',
+      read: false,
+      messageId: 'msg-new',
+    };
+    const buildEntries = (items: { id: string; message: InboxMessage }[]): Map<string, unknown[]> =>
+      new Map([
+        [
+          'member:demo-team:jack',
+          items.map(({ id, message }) => ({
+            ownerNodeId: 'member:demo-team:jack',
+            graphItem: {
+              id,
+              kind: 'inbox_message',
+              timestamp: message.timestamp,
+              title: message.summary ?? '',
+            },
+            message,
+          })),
+        ],
+      ]);
+
+    buildInlineActivityEntries.mockReturnValue(
+      buildEntries([{ id: 'item-initial', message: firstMessage }])
+    );
+
+    const baseNode: GraphNode = {
+      id: 'member:demo-team:jack',
+      kind: 'member',
+      label: 'jack',
+      state: 'active',
+      domainRef: { kind: 'member', teamName: 'demo-team', memberName: 'jack' },
+      activityItems: [
+        {
+          id: 'item-initial',
+          kind: 'inbox_message',
+          timestamp: firstMessage.timestamp,
+          title: 'Initial activity',
+        },
+      ],
+      activityOverflowCount: 0,
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const renderHud = (node: GraphNode): void => {
+      root.render(
+        React.createElement(GraphActivityHud, {
+          teamName: 'demo-team',
+          nodes: [node],
+          getActivityWorldRect: () => ({
+            left: 40,
+            top: 80,
+            right: 336,
+            bottom: 372,
+            width: 296,
+            height: 292,
+          }),
+          getCameraZoom: () => 1,
+          worldToScreen: (x: number, y: number) => ({ x, y }),
+          getNodeWorldPosition: () => ({ x: 120, y: 40 }),
+          getViewportSize: () => ({ width: 1200, height: 800 }),
+          focusNodeIds: null,
+        })
+      );
+    };
+
+    await act(async () => {
+      renderHud(baseNode);
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[data-activity-entry-id="item-initial"]')?.className).not.toContain(
+      'border-sky-300/70'
+    );
+
+    buildInlineActivityEntries.mockReturnValue(
+      buildEntries([
+        { id: 'item-new', message: newMessage },
+        { id: 'item-initial', message: firstMessage },
+      ])
+    );
+    const updatedNode: GraphNode = {
+      ...baseNode,
+      activityItems: [
+        {
+          id: 'item-new',
+          kind: 'inbox_message',
+          timestamp: newMessage.timestamp,
+          title: 'New activity',
+        },
+        ...baseNode.activityItems!,
+      ],
+    };
+
+    await act(async () => {
+      renderHud(updatedNode);
+      await Promise.resolve();
+    });
+
+    const newRow = host.querySelector('[data-activity-entry-id="item-new"]');
+    expect(newRow?.className).toContain('border-sky-300/70');
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+      await Promise.resolve();
+    });
+
+    expect(newRow?.className).not.toContain('border-sky-300/70');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+    vi.useRealTimers();
   });
 });

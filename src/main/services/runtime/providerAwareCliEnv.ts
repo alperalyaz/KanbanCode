@@ -1,5 +1,7 @@
 import { getCachedShellEnv } from '@main/utils/shellEnv';
 
+import { resolveAppManagedOpenCodeRuntimeBinaryPath } from '../infrastructure/OpenCodeRuntimeInstallerService';
+
 import { buildRuntimeBaseEnv } from './buildRuntimeBaseEnv';
 import { providerConnectionService } from './ProviderConnectionService';
 
@@ -34,6 +36,14 @@ export async function buildProviderAwareCliEnv(
     shellEnv,
     env: options.env,
   });
+  const appManagedOpenCodeBinary = resolveAppManagedOpenCodeRuntimeBinaryPath();
+  if (
+    appManagedOpenCodeBinary &&
+    !env.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH &&
+    (!resolvedProviderId || resolvedProviderId === 'opencode')
+  ) {
+    env.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH = appManagedOpenCodeBinary;
+  }
 
   if (options.providerId) {
     if (!resolvedProviderId) {

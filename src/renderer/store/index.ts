@@ -70,6 +70,7 @@ import type {
   CliInstallerProgress,
   CliProviderId,
   LeadContextUsage,
+  OpenCodeRuntimeStatus,
   ScheduleChangeEvent,
   TeamChangeEvent,
   TeamProvisioningProgress,
@@ -243,6 +244,9 @@ export function initializeNotificationListeners(): () => void {
         }
         cliStatusTimer = null;
       }, delayMs);
+    }
+    if (api.openCodeRuntime) {
+      void useStore.getState().fetchOpenCodeRuntimeStatus();
     }
 
     // Remaining fetches have no data dependency on each other — run in parallel
@@ -2297,6 +2301,31 @@ export function initializeNotificationListeners(): () => void {
           cliCompletedRevertTimer = null;
         }
       });
+    }
+  }
+
+  if (api.openCodeRuntime?.onProgress) {
+    const cleanup = api.openCodeRuntime.onProgress((_event: unknown, data: unknown) => {
+      const status = data as OpenCodeRuntimeStatus;
+      useStore.setState({
+        openCodeRuntimeStatus: status,
+        openCodeRuntimeError: status.error ?? null,
+        openCodeRuntimeStatusLoading:
+          status.state === 'checking' ||
+          status.state === 'downloading' ||
+          status.state === 'installing',
+      });
+      if (status.installed && status.state === 'ready') {
+        void (async () => {
+          await api.cliInstaller?.invalidateStatus();
+          await useStore.getState().fetchCliProviderStatus('opencode', {
+            silent: false,
+          });
+        })();
+      }
+    });
+    if (typeof cleanup === 'function') {
+      cleanupFns.push(cleanup);
     }
   }
 

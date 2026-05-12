@@ -9,7 +9,7 @@ Agent Teams is distributed as a desktop app for macOS, Windows, and Linux.
 
 ## Download builds
 
-Use the <a href="/download/" target="_self">download page</a> or the latest [GitHub release](https://github.com/777genius/agent-teams-ai/releases) when you want the packaged app:
+Use the <a href="https://github.com/777genius/agent-teams-ai/releases" target="_self">download page</a> or the latest [GitHub release](https://github.com/777genius/agent-teams-ai/releases) when you want the packaged app:
 
 - macOS Apple Silicon: `.dmg`
 - macOS Intel: `.dmg`

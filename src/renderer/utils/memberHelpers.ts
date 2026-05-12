@@ -134,6 +134,8 @@ export const SPAWN_PRESENCE_LABELS: Record<MemberSpawnStatus, string> = {
 
 const OPENCODE_RUNTIME_CANDIDATE_RELAUNCH_GRACE_MS = 5 * 60 * 1000;
 export const MEMBER_STARTING_STALE_AFTER_MS = 2 * 60 * 1000;
+const OPENCODE_BRIDGE_OUTCOME_UNKNOWN_AFTER_TIMEOUT_MESSAGE =
+  'OpenCode bridge outcome unknown after timeout, retrying/observing.';
 
 function isLaunchStillStarting(
   spawnStatus: MemberSpawnStatus | undefined,
@@ -332,6 +334,7 @@ function isOpenCodeRuntimeDeliveryAdvisoryMessage(message: string | undefined): 
     displayMessage.startsWith('OpenCode runtime delivery') ||
     displayMessage.startsWith('OpenCode returned an empty assistant turn') ||
     displayMessage.startsWith('OpenCode accepted the prompt') ||
+    displayMessage.startsWith('OpenCode bridge outcome unknown after timeout') ||
     displayMessage.startsWith('OpenCode responded, but did not create') ||
     displayMessage.startsWith('OpenCode created a reply without') ||
     displayMessage.startsWith('OpenCode used tools, but did not create')
@@ -348,6 +351,9 @@ function formatRuntimeAdvisoryDisplayMessage(message: string | undefined): strin
   }
   if (trimmed === 'prompt_delivered_no_assistant_message') {
     return 'OpenCode accepted the prompt, but no assistant turn was recorded.';
+  }
+  if (trimmed === 'opencode_prompt_acceptance_unknown_after_bridge_timeout') {
+    return OPENCODE_BRIDGE_OUTCOME_UNKNOWN_AFTER_TIMEOUT_MESSAGE;
   }
   if (
     trimmed === 'visible_reply_still_required' ||

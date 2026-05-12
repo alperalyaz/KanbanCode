@@ -9,7 +9,7 @@ This guide gets you from a fresh install to a running team in a few minutes.
 
 ## 1. Install Agent Teams
 
-Download the latest release for your platform from the <a href="/download/" target="_self">download page</a> or [GitHub releases](https://github.com/777genius/agent-teams-ai/releases).
+Download the latest release for your platform from the <a href="https://github.com/777genius/agent-teams-ai/releases" target="_self">download page</a> or [GitHub releases](https://github.com/777genius/agent-teams-ai/releases).
 
 ::: tip
 The app is free and open source. The agent runtime you choose may still require provider access — see [Installation](/guide/installation) for details.
@@ -47,7 +47,7 @@ Gemini support is in development and will appear in the runtime list when availa
 
 See [Runtime setup](/guide/runtime-setup) for detailed configuration per provider.
 
-To verify the selected runtime outside the app, run the matching version command:
+To verify the selected runtime outside the app, run its version command:
 
 ```bash
 claude --version

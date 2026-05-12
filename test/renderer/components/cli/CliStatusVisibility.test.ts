@@ -24,11 +24,17 @@ interface StoreState {
   cliInstallerDetail: string | null;
   cliInstallerRawChunks: string[];
   cliCompletedVersion: string | null;
+  openCodeRuntimeStatus: Record<string, unknown> | null;
+  openCodeRuntimeStatusLoading: boolean;
+  openCodeRuntimeError: string | null;
   bootstrapCliStatus: ReturnType<typeof vi.fn>;
   fetchCliStatus: ReturnType<typeof vi.fn>;
   fetchCliProviderStatus: ReturnType<typeof vi.fn>;
   invalidateCliStatus: ReturnType<typeof vi.fn>;
   installCli: ReturnType<typeof vi.fn>;
+  fetchOpenCodeRuntimeStatus: ReturnType<typeof vi.fn>;
+  installOpenCodeRuntime: ReturnType<typeof vi.fn>;
+  invalidateOpenCodeRuntimeStatus: ReturnType<typeof vi.fn>;
   appConfig: {
     general: {
       multimodelEnabled: boolean;
@@ -319,11 +325,17 @@ describe('CLI status visibility during completed install state', () => {
     storeState.cliInstallerDetail = null;
     storeState.cliInstallerRawChunks = [];
     storeState.cliCompletedVersion = '2.1.100';
+    storeState.openCodeRuntimeStatus = null;
+    storeState.openCodeRuntimeStatusLoading = false;
+    storeState.openCodeRuntimeError = null;
     storeState.bootstrapCliStatus = vi.fn().mockResolvedValue(undefined);
     storeState.fetchCliStatus = vi.fn().mockResolvedValue(undefined);
     storeState.fetchCliProviderStatus = vi.fn().mockResolvedValue(undefined);
     storeState.invalidateCliStatus = vi.fn().mockResolvedValue(undefined);
     storeState.installCli = vi.fn();
+    storeState.fetchOpenCodeRuntimeStatus = vi.fn().mockResolvedValue(undefined);
+    storeState.installOpenCodeRuntime = vi.fn().mockResolvedValue(undefined);
+    storeState.invalidateOpenCodeRuntimeStatus = vi.fn().mockResolvedValue(undefined);
     storeState.appConfig = {
       general: {
         multimodelEnabled: true,
@@ -1011,9 +1023,9 @@ describe('CLI status visibility during completed install state', () => {
     expect(host.textContent).toContain('Providers: 1/1 connected');
     expect(host.textContent).toContain('Anthropic');
 
-    const collapseButton = host.querySelector(
+    const collapseButton = host.querySelector<HTMLButtonElement>(
       'button[aria-label="Collapse provider details"]'
-    ) as HTMLButtonElement | null;
+    );
     expect(collapseButton).not.toBeNull();
 
     await act(async () => {
@@ -1106,9 +1118,9 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
-    const collapseButton = firstHost.querySelector(
+    const collapseButton = firstHost.querySelector<HTMLButtonElement>(
       'button[aria-label="Collapse provider details"]'
-    ) as HTMLButtonElement | null;
+    );
     expect(collapseButton).not.toBeNull();
 
     await act(async () => {

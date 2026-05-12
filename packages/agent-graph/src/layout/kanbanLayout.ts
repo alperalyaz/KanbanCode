@@ -217,8 +217,16 @@ export class KanbanLayoutEngine {
       for (const [rowIdx, task] of col.tasks.entries()) {
         const targetX = colX;
         const targetY = baseY + headerHeight + rowIdx * rowHeight;
-        task.x = slotFrame ? targetX : task.x != null ? task.x + (targetX - task.x) * 0.15 : targetX;
-        task.y = slotFrame ? targetY : task.y != null ? task.y + (targetY - task.y) * 0.15 : targetY;
+        task.x = slotFrame
+          ? targetX
+          : task.x != null
+            ? task.x + (targetX - task.x) * 0.15
+            : targetX;
+        task.y = slotFrame
+          ? targetY
+          : task.y != null
+            ? task.y + (targetY - task.y) * 0.15
+            : targetY;
         task.fx = task.x;
         task.fy = task.y;
         task.vx = 0;
@@ -254,18 +262,19 @@ export class KanbanLayoutEngine {
     if (unassignedTaskRect) {
       const cols = Math.min(Math.max(tasks.length, 1), 5);
       const baseX = unassignedTaskRect.left + TASK_PILL.width / 2;
-      const baseY = unassignedTaskRect.top;
+      const headerY = unassignedTaskRect.top;
+      const baseY = headerY + KANBAN_ZONE.headerHeight;
       const overflowCount = tasks.reduce((sum, task) => sum + (task.overflowCount ?? 0), 0);
 
       this.zones.push({
         ownerId: '__unassigned__',
         ownerX: 0,
-        ownerY: baseY - 48,
+        ownerY: headerY - 48,
         headers: [
           {
             label: 'Unassigned',
             x: 0,
-            y: baseY,
+            y: headerY,
             color: COLORS.taskPending,
             overflowCount,
             overflowY: baseY + KANBAN_ZONE.maxVisibleRows * rowHeight,
@@ -305,7 +314,8 @@ export class KanbanLayoutEngine {
 
     const centerX = memberCount > 0 ? sumX / memberCount : 0;
     // Place unassigned tasks well below the lowest element
-    const baseY = (maxY > -Infinity ? maxY : 0) + 150;
+    const headerY = (maxY > -Infinity ? maxY : 0) + 150;
+    const baseY = headerY + KANBAN_ZONE.headerHeight;
     const cols = Math.min(tasks.length, 4);
     const totalWidth = cols * columnWidth;
     const baseX = centerX - totalWidth / 2;
@@ -316,15 +326,17 @@ export class KanbanLayoutEngine {
       this.zones.push({
         ownerId: '__unassigned__',
         ownerX: centerX,
-        ownerY: baseY - 70,
-        headers: [{
-          label: 'Unassigned',
-          x: centerX,
-          y: baseY - 10,
-          color: COLORS.taskPending,
-          overflowCount,
-          overflowY: baseY + KANBAN_ZONE.maxVisibleRows * rowHeight,
-        }],
+        ownerY: headerY - 70,
+        headers: [
+          {
+            label: 'Unassigned',
+            x: centerX,
+            y: headerY,
+            color: COLORS.taskPending,
+            overflowCount,
+            overflowY: baseY + KANBAN_ZONE.maxVisibleRows * rowHeight,
+          },
+        ],
       });
     }
 

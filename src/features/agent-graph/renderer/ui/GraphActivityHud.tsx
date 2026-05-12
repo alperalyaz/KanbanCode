@@ -28,6 +28,7 @@ const ACTIVITY_SHELL_HEIGHT =
   ACTIVITY_LANE.headerHeight +
   ACTIVITY_LANE.maxVisibleItems * ACTIVITY_LANE.rowHeight +
   ACTIVITY_LANE.overflowHeight;
+const NEW_ACTIVITY_HIGHLIGHT_MS = 1_000;
 
 interface GraphActivityHudProps {
   teamName: string;
@@ -56,6 +57,10 @@ interface GraphActivityHudProps {
   ) => void;
 }
 
+function buildRenderedActivityItemKey(ownerNodeId: string, itemId: string): string {
+  return JSON.stringify([ownerNodeId, itemId]);
+}
+
 export const GraphActivityHud = ({
   teamName,
   nodes,
@@ -73,7 +78,12 @@ export const GraphActivityHud = ({
   const shellRefs = useRef(new Map<string, HTMLDivElement | null>());
   const connectorRefs = useRef(new Map<string, SVGSVGElement | null>());
   const connectorPathRefs = useRef(new Map<string, SVGPathElement | null>());
+  const knownActivityItemIdsByOwnerRef = useRef(new Map<string, Set<string>>());
+  const highlightTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const [expandedItem, setExpandedItem] = useState<TimelineItem | null>(null);
+  const [highlightedActivityItemIds, setHighlightedActivityItemIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
   const { teamData, teams } = useGraphActivityContext(teamName);
   const teamSnapshot = teamData;
   const members = teamData?.members ?? [];
@@ -114,7 +124,22 @@ export const GraphActivityHud = ({
 
   useEffect(() => {
     setExpandedItem(null);
+    knownActivityItemIdsByOwnerRef.current.clear();
+    setHighlightedActivityItemIds(new Set());
+    for (const timer of highlightTimersRef.current.values()) {
+      clearTimeout(timer);
+    }
+    highlightTimersRef.current.clear();
   }, [teamName]);
+
+  useEffect(() => {
+    return () => {
+      for (const timer of highlightTimersRef.current.values()) {
+        clearTimeout(timer);
+      }
+      highlightTimersRef.current.clear();
+    };
+  }, []);
 
   const visibleLanes = useMemo(() => {
     return ownerNodes
@@ -142,6 +167,51 @@ export const GraphActivityHud = ({
         (lane) => lane.node.kind === 'member' || lane.entries.length > 0 || lane.overflowCount > 0
       );
   }, [entryMapByOwnerNodeId, ownerNodes]);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const newItemKeys: string[] = [];
+    for (const lane of visibleLanes) {
+      const currentIds = new Set(lane.entries.map((entry) => entry.graphItem.id));
+      const knownIds = knownActivityItemIdsByOwnerRef.current.get(lane.node.id);
+      if (knownIds) {
+        for (const itemId of currentIds) {
+          if (!knownIds.has(itemId)) {
+            newItemKeys.push(buildRenderedActivityItemKey(lane.node.id, itemId));
+          }
+        }
+      }
+      knownActivityItemIdsByOwnerRef.current.set(lane.node.id, currentIds);
+    }
+
+    if (newItemKeys.length === 0) return;
+
+    setHighlightedActivityItemIds((current) => {
+      const next = new Set(current);
+      for (const itemKey of newItemKeys) {
+        next.add(itemKey);
+      }
+      return next;
+    });
+
+    for (const itemKey of newItemKeys) {
+      const existingTimer = highlightTimersRef.current.get(itemKey);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      const timer = setTimeout(() => {
+        highlightTimersRef.current.delete(itemKey);
+        setHighlightedActivityItemIds((current) => {
+          if (!current.has(itemKey)) return current;
+          const next = new Set(current);
+          next.delete(itemKey);
+          return next;
+        });
+      }, NEW_ACTIVITY_HIGHLIGHT_MS);
+      highlightTimersRef.current.set(itemKey, timer);
+    }
+  }, [enabled, visibleLanes]);
 
   useLayoutEffect(() => {
     if (!enabled || visibleLanes.length === 0) {
@@ -377,11 +447,20 @@ export const GraphActivityHud = ({
         message: entry.message,
       };
       const isUnread = !entry.message.read && !readSet.has(messageKey);
+      const isHighlighted = highlightedActivityItemIds.has(
+        buildRenderedActivityItemKey(entry.ownerNodeId, entry.graphItem.id)
+      );
 
       return (
         <div
           key={entry.graphItem.id}
-          className="h-[72px] min-h-[72px] min-w-0 max-w-full cursor-pointer overflow-hidden"
+          data-activity-entry-id={entry.graphItem.id}
+          className={[
+            'h-[72px] min-h-[72px] min-w-0 max-w-full cursor-pointer overflow-hidden rounded-md border transition-[border-color,background-color,box-shadow] duration-500',
+            isHighlighted
+              ? 'border-sky-300/70 bg-[rgba(14,34,62,0.56)] shadow-[0_0_0_1px_rgba(125,211,252,0.30),0_0_18px_rgba(56,189,248,0.22)]'
+              : 'border-transparent',
+          ].join(' ')}
           role="button"
           tabIndex={0}
           onClick={() => handleMessageClick(timelineItem)}
@@ -405,6 +484,7 @@ export const GraphActivityHud = ({
     [
       handleMessageClick,
       handleMessageKeyDown,
+      highlightedActivityItemIds,
       messageContext,
       onOpenMemberProfile,
       onOpenTaskDetail,

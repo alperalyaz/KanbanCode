@@ -1,16 +1,6 @@
 ---
-title: FAQ
+title: FAQ – Agent Teams Docs
 description: Frequently asked questions about Agent Teams — pricing, model access, runtimes, privacy, review, and troubleshooting.
----
-
----
-title: FAQ – Agent Teams Docs
-description: Frequently asked questions about pricing, model access, runtime setup, data privacy, worktree isolation, and code review.
----
-
----
-title: FAQ – Agent Teams Docs
-description: Frequently asked questions about Agent Teams — pricing, model access, runtimes, privacy, review, and debugging.
 ---
 
 # FAQ

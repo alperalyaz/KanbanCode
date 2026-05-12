@@ -16,6 +16,9 @@ vi.mock('@main/utils/pathDecoder', () => ({
 describe('buildMergedCliPath', () => {
   let buildMergedCliPath: typeof import('@main/utils/cliPathMerge').buildMergedCliPath;
   const originalPlatform = process.platform;
+  const originalLocalAppData = process.env.LOCALAPPDATA;
+  const originalProgramFiles = process.env.ProgramFiles;
+  const originalPath = process.env.PATH;
 
   beforeEach(async () => {
     vi.resetModules();
@@ -28,6 +31,21 @@ describe('buildMergedCliPath', () => {
 
   afterEach(() => {
     Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    if (originalLocalAppData === undefined) {
+      delete process.env.LOCALAPPDATA;
+    } else {
+      process.env.LOCALAPPDATA = originalLocalAppData;
+    }
+    if (originalProgramFiles === undefined) {
+      delete process.env.ProgramFiles;
+    } else {
+      process.env.ProgramFiles = originalProgramFiles;
+    }
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
   });
 
   it('on darwin/linux with cold shell cache prepends standard user bin dirs before process PATH', () => {
@@ -40,12 +58,24 @@ describe('buildMergedCliPath', () => {
         '/home/testuser/.local/bin',
         '/home/testuser/.npm-global/bin',
         '/home/testuser/.npm/bin',
+        '/home/testuser/.asdf/shims',
+        '/home/testuser/.local/share/mise/shims',
+        '/home/testuser/.volta/bin',
+        '/home/testuser/Library/pnpm',
+        '/home/testuser/.local/share/pnpm',
+        '/home/testuser/.cargo/bin',
+        '/home/testuser/.nix-profile/bin',
         '/usr/local/bin',
         '/opt/homebrew/bin',
+        '/opt/local/bin',
         '/usr/bin',
+        '/bin',
+        '/usr/sbin',
+        '/sbin',
       ])
     );
     expect(p.startsWith('/home/testuser/.claude/local/node_modules/.bin')).toBe(true);
+    expect(p.split(':').filter((part) => part === '/usr/bin')).toHaveLength(1);
   });
 
   it('on win32 with cold shell cache uses semicolon and npm-style dirs', () => {
@@ -57,6 +87,9 @@ describe('buildMergedCliPath', () => {
     const parts = p.split(';');
     expect(parts.some((x) => /Roaming[/\\]npm/i.test(x))).toBe(true);
     expect(parts.some((x) => /Programs[/\\]claude/i.test(x))).toBe(true);
+    expect(parts.some((x) => /AppData[/\\]Local[/\\]pnpm/i.test(x))).toBe(true);
+    expect(parts.some((x) => /[.]volta[/\\]bin/i.test(x))).toBe(true);
+    expect(parts.some((x) => /Program Files[/\\]nodejs/i.test(x))).toBe(true);
     expect(parts[parts.length - 1]).toBe('/usr/bin');
   });
 

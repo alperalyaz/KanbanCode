@@ -9139,6 +9139,11 @@ export class TeamProvisioningService {
     if (ledgerRecord?.createdAt === now) {
       this.logOpenCodePromptDeliveryEvent('opencode_prompt_delivery_ledger_created', ledgerRecord);
     }
+    const deliveryAttemptId = ledgerRecord
+      ? [ledgerRecord.id, ledgerRecord.attempts + 1, ledgerRecord.payloadHash.slice(0, 12)].join(
+          ':'
+        )
+      : undefined;
 
     if (ledgerRecord && ledger && messageId) {
       let proof = await this.applyOpenCodeVisibleDestinationProof({
@@ -9412,6 +9417,7 @@ export class TeamProvisioningService {
       cwd,
       text: deliveryText,
       messageId: input.messageId,
+      deliveryAttemptId,
       fileParts: openCodeFileParts,
       replyRecipient: input.replyRecipient,
       actionMode: input.actionMode,

@@ -183,13 +183,18 @@ export default defineConfig({
       provider: "local",
       options: {
         translations: {
-          button: "Search...",
-          buttonAriaLabel: "Search documentation",
-          noResultsText: "No results found",
-          suggestedQueryText: "Try searching for",
-          reportMissing: "Found a problem? Create an issue",
-          reportMissingText: "Report missing result",
-          reportMissingLink: "https://github.com/777genius/agent-teams-ai/issues/new"
+          button: {
+            buttonText: "Search...",
+            buttonAriaLabel: "Search documentation"
+          },
+          modal: {
+            noResultsText: "No results found",
+            footer: {
+              selectText: "to select",
+              navigateText: "to navigate",
+              closeText: "to close"
+            }
+          }
         }
       }
     },
@@ -214,7 +219,6 @@ export default defineConfig({
       lang: "en-US",
       themeConfig: {
         nav: rootNav,
-        sidebar: rootGuide,
         docFooter: {
           prev: "Previous",
           next: "Next"
@@ -228,7 +232,6 @@ export default defineConfig({
       description: "Документация Agent Teams, локального desktop-приложения для оркестрации AI-агентов.",
       themeConfig: {
         nav: ruNav,
-        sidebar: ruGuide,
         outline: {
           level: [2, 3],
           label: "На этой странице"

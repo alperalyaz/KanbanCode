@@ -11,6 +11,10 @@ import { drawPillShell, drawPillStackLayer } from './draw-pill-shell';
 import { hexWithAlpha } from './render-cache';
 import type { KanbanZoneInfo } from '../layout/kanbanLayout';
 
+const KANBAN_HEADER_FONT = '600 10px monospace';
+const KANBAN_HEADER_ALPHA = 0.92;
+const KANBAN_HEADER_LETTER_SPACING = 2;
+
 /**
  * Draw all task nodes as pill-shaped cards.
  */
@@ -159,9 +163,9 @@ function drawTaskPill(
     const hasReviewChip =
       node.reviewState !== 'approved' &&
       (node.reviewMode === 'manual' || (node.reviewMode === 'assigned' && !!node.reviewerName));
-    const maxW = hasReviewChip ? w - 64 : w - 18;
+    const maxW = hasReviewChip ? w - 88 : w - 24;
     const subject = truncateText(ctx, node.sublabel, maxW, ctx.font);
-    ctx.fillText(subject, textX, -4);
+    ctx.fillText(subject, textX, -12);
   }
 
   // Display ID (secondary — small)
@@ -170,11 +174,11 @@ function drawTaskPill(
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = COLORS.textDim;
-  ctx.fillText(displayId, -halfW + 10, 8);
+  ctx.fillText(displayId, -halfW + 10, 12);
 
   // Approved badge: checkmark at right side
   if (node.reviewState === 'approved') {
-    ctx.font = 'bold 11px sans-serif';
+    ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = COLORS.reviewApproved;
@@ -367,11 +371,11 @@ function drawOverflowStack(
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = COLORS.textPrimary;
-  ctx.fillText(node.label, -halfW + 12, -2);
+  ctx.fillText(node.label, -halfW + 14, -8);
 
-  ctx.font = '7px monospace';
+  ctx.font = '10px monospace';
   ctx.fillStyle = COLORS.textDim;
-  ctx.fillText('more tasks', -halfW + 12, 10);
+  ctx.fillText('more tasks', -halfW + 14, 12);
 }
 
 function drawReviewChip(
@@ -413,6 +417,34 @@ function drawReviewChip(
   }
 }
 
+function measureSpacedText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  letterSpacing: number
+): number {
+  const chars = Array.from(text);
+  const glyphWidth = chars.reduce((width, char) => width + ctx.measureText(char).width, 0);
+  return glyphWidth + Math.max(0, chars.length - 1) * letterSpacing;
+}
+
+function drawCenteredSpacedText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  letterSpacing: number
+): void {
+  const chars = Array.from(text);
+  const previousAlign = ctx.textAlign;
+  ctx.textAlign = 'left';
+  let cursorX = x - measureSpacedText(ctx, text, letterSpacing) / 2;
+  for (const char of chars) {
+    ctx.fillText(char, cursorX, y);
+    cursorX += ctx.measureText(char).width + letterSpacing;
+  }
+  ctx.textAlign = previousAlign;
+}
+
 /**
  * Draw kanban column headers above task columns.
  */
@@ -425,12 +457,12 @@ export function drawColumnHeaders(
   for (const zone of zones) {
     // Section header for unassigned tasks — larger, centered above all columns
     if (zone.ownerId === '__unassigned__') {
-      ctx.font = 'bold 10px monospace';
+      ctx.font = KANBAN_HEADER_FONT;
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillStyle = hexWithAlpha(COLORS.taskPending, 0.5);
-      const labelY = (zone.headers[0]?.y ?? zone.ownerY + 60) - 16;
-      ctx.fillText('Unassigned', zone.ownerX, labelY);
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = hexWithAlpha(COLORS.taskPending, KANBAN_HEADER_ALPHA);
+      const labelY = (zone.headers[0]?.y ?? zone.ownerY + 60) + 10;
+      drawCenteredSpacedText(ctx, 'Unassigned', zone.ownerX, labelY, KANBAN_HEADER_LETTER_SPACING);
 
       // Overflow badge
       for (const header of zone.headers) {
@@ -446,16 +478,22 @@ export function drawColumnHeaders(
     }
 
     for (const header of zone.headers) {
-      ctx.font = 'bold 8px monospace';
+      ctx.font = KANBAN_HEADER_FONT;
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillStyle = hexWithAlpha(header.color, 0.6);
-      ctx.fillText(header.label, header.x, header.y - 2);
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = hexWithAlpha(header.color, KANBAN_HEADER_ALPHA);
+      drawCenteredSpacedText(
+        ctx,
+        header.label,
+        header.x,
+        header.y + 10,
+        KANBAN_HEADER_LETTER_SPACING
+      );
 
       // Overflow badge: "+N more"
       if (header.overflowCount > 0) {
         const badgeText = `+${header.overflowCount} more`;
-        ctx.font = '7px monospace';
+        ctx.font = '10px monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.fillStyle = hexWithAlpha(header.color, 0.45);

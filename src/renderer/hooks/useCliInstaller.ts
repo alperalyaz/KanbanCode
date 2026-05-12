@@ -8,7 +8,7 @@
 import { useStore } from '@renderer/store';
 import { useShallow } from 'zustand/react/shallow';
 
-import type { CliInstallationStatus, CliProviderId } from '@shared/types';
+import type { CliInstallationStatus, CliProviderId, OpenCodeRuntimeStatus } from '@shared/types';
 
 export function useCliInstaller(): {
   cliStatus: CliInstallationStatus | null;
@@ -30,6 +30,9 @@ export function useCliInstaller(): {
   installerDetail: string | null;
   installerRawChunks: string[];
   completedVersion: string | null;
+  openCodeRuntimeStatus: OpenCodeRuntimeStatus | null;
+  openCodeRuntimeStatusLoading: boolean;
+  openCodeRuntimeError: string | null;
   bootstrapCliStatus: (options?: { multimodelEnabled?: boolean }) => Promise<void>;
   fetchCliStatus: () => Promise<void>;
   fetchCliProviderStatus: (
@@ -38,6 +41,9 @@ export function useCliInstaller(): {
   ) => Promise<void>;
   invalidateCliStatus: () => Promise<void>;
   installCli: () => void;
+  fetchOpenCodeRuntimeStatus: () => Promise<void>;
+  installOpenCodeRuntime: () => Promise<void>;
+  invalidateOpenCodeRuntimeStatus: () => Promise<void>;
   isBusy: boolean;
 } {
   const {
@@ -53,11 +59,17 @@ export function useCliInstaller(): {
     installerDetail,
     installerRawChunks,
     completedVersion,
+    openCodeRuntimeStatus,
+    openCodeRuntimeStatusLoading,
+    openCodeRuntimeError,
     bootstrapCliStatus,
     fetchCliStatus,
     fetchCliProviderStatus,
     invalidateCliStatus,
     installCli,
+    fetchOpenCodeRuntimeStatus,
+    installOpenCodeRuntime,
+    invalidateOpenCodeRuntimeStatus,
   } = useStore(
     useShallow((s) => ({
       cliStatus: s.cliStatus,
@@ -72,11 +84,17 @@ export function useCliInstaller(): {
       installerDetail: s.cliInstallerDetail,
       installerRawChunks: s.cliInstallerRawChunks,
       completedVersion: s.cliCompletedVersion,
+      openCodeRuntimeStatus: s.openCodeRuntimeStatus,
+      openCodeRuntimeStatusLoading: s.openCodeRuntimeStatusLoading,
+      openCodeRuntimeError: s.openCodeRuntimeError,
       bootstrapCliStatus: s.bootstrapCliStatus,
       fetchCliStatus: s.fetchCliStatus,
       fetchCliProviderStatus: s.fetchCliProviderStatus,
       invalidateCliStatus: s.invalidateCliStatus,
       installCli: s.installCli,
+      fetchOpenCodeRuntimeStatus: s.fetchOpenCodeRuntimeStatus,
+      installOpenCodeRuntime: s.installOpenCodeRuntime,
+      invalidateOpenCodeRuntimeStatus: s.invalidateOpenCodeRuntimeStatus,
     }))
   );
 
@@ -96,11 +114,17 @@ export function useCliInstaller(): {
     installerDetail,
     installerRawChunks,
     completedVersion,
+    openCodeRuntimeStatus,
+    openCodeRuntimeStatusLoading,
+    openCodeRuntimeError,
     bootstrapCliStatus,
     fetchCliStatus,
     fetchCliProviderStatus,
     invalidateCliStatus,
     installCli,
+    fetchOpenCodeRuntimeStatus,
+    installOpenCodeRuntime,
+    invalidateOpenCodeRuntimeStatus,
     isBusy,
   };
 }

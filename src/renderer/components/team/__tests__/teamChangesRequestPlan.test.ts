@@ -19,6 +19,17 @@ function task(overrides: Partial<TeamTaskWithKanban> & { id: string }): TeamTask
   };
 }
 
+function changedTasks(count: number): TeamTaskWithKanban[] {
+  return Array.from({ length: count }, (_, index) =>
+    task({
+      id: `changed-${index}`,
+      status: 'completed',
+      changePresence: 'has_changes',
+      updatedAt: `2026-05-09T08:${String(index).padStart(2, '0')}:00.000Z`,
+    })
+  );
+}
+
 describe('buildTeamChangeRequestPlan', () => {
   it('scans unknown pending tasks only when they have work evidence', () => {
     const plan = buildTeamChangeRequestPlan(
@@ -67,22 +78,51 @@ describe('buildTeamChangeRequestPlan', () => {
   });
 
   it('caps selected requests and reports deferred candidates', () => {
-    const plan = buildTeamChangeRequestPlan(
-      Array.from({ length: TEAM_CHANGES_MAX_REQUESTS + 5 }, (_, index) =>
-        task({
-          id: `changed-${index}`,
-          status: 'completed',
-          changePresence: 'has_changes',
-          updatedAt: `2026-05-09T08:${String(index).padStart(2, '0')}:00.000Z`,
-        })
-      ),
-      0,
-      false
-    );
+    const plan = buildTeamChangeRequestPlan(changedTasks(TEAM_CHANGES_MAX_REQUESTS + 5), 0, false);
 
     expect(plan.requests).toHaveLength(TEAM_CHANGES_MAX_REQUESTS);
     expect(plan.eligibleCount).toBe(TEAM_CHANGES_MAX_REQUESTS + 5);
     expect(plan.deferredCount).toBe(5);
+  });
+
+  it('supports smaller first-pass caps without changing eligible counts', () => {
+    const plan = buildTeamChangeRequestPlan(changedTasks(30), 0, false, {
+      maxRequests: 12,
+      unknownScanLimit: 6,
+    });
+
+    expect(plan.requests).toHaveLength(12);
+    expect(plan.eligibleCount).toBe(30);
+    expect(plan.deferredCount).toBe(18);
+  });
+
+  it('skips satisfied candidates without counting them as deferred', () => {
+    const tasks = changedTasks(30);
+    const satisfiedTaskIds = new Set(
+      Array.from({ length: 12 }, (_, index) => `changed-${29 - index}`)
+    );
+
+    const plan = buildTeamChangeRequestPlan(tasks, 0, false, { satisfiedTaskIds });
+
+    expect(plan.requests).toHaveLength(18);
+    expect(plan.requests.some((request) => satisfiedTaskIds.has(request.taskId))).toBe(false);
+    expect(plan.eligibleCount).toBe(30);
+    expect(plan.deferredCount).toBe(0);
+    expect([...satisfiedTaskIds].every((taskId) => plan.eligibleTaskIds.has(taskId))).toBe(true);
+  });
+
+  it('keeps forceFresh request options while skipping same-chain satisfied candidates', () => {
+    const tasks = changedTasks(30);
+    const satisfiedTaskIds = new Set(['changed-29', 'changed-28', 'changed-27']);
+
+    const plan = buildTeamChangeRequestPlan(tasks, 0, true, {
+      maxRequests: 9,
+      satisfiedTaskIds,
+    });
+
+    expect(plan.requests).toHaveLength(9);
+    expect(plan.requests.some((request) => satisfiedTaskIds.has(request.taskId))).toBe(false);
+    expect(plan.requests.every((request) => request.options?.forceFresh === true)).toBe(true);
   });
 
   it('rotates unknown scans and preserves summary-only request options', () => {

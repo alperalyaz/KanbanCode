@@ -9,6 +9,7 @@ import { withTeamChangesLoadTimeout } from './teamChangesLoadTimeout';
 import {
   buildTeamChangeRequestPlan,
   buildTeamChangesTasksFingerprint,
+  TEAM_CHANGES_MAX_REQUESTS,
 } from './teamChangesRequestPlan';
 
 import type {
@@ -20,6 +21,14 @@ import type {
 
 const TEAM_CHANGES_AUTO_REFRESH_MS = 30_000;
 const TEAM_CHANGES_COUNTER_AUTO_REFRESH_MS = 60_000;
+const TEAM_CHANGES_FIRST_PAINT_REQUESTS = 3;
+const TEAM_CHANGES_SECOND_PAINT_REQUESTS = 9;
+const TEAM_CHANGES_FIRST_UNKNOWN_SCAN_LIMIT = 3;
+const TEAM_CHANGES_SECOND_UNKNOWN_SCAN_LIMIT = 6;
+const TEAM_CHANGES_INITIAL_STAGED_REFRESH_PLAN = [
+  TEAM_CHANGES_SECOND_PAINT_REQUESTS,
+  TEAM_CHANGES_MAX_REQUESTS,
+] as const;
 const TEAM_CHANGES_ERROR_AUTO_RETRY_COOLDOWN_MS = 120_000;
 
 export interface TeamChangeSummaryState {
@@ -41,6 +50,11 @@ interface TeamChangesLoadOptions {
   storeSummaries?: boolean;
   reportError?: boolean;
   blockAutoRetryOnError?: boolean;
+  maxRequests?: number;
+  unknownScanLimit?: number;
+  queueDeferredRefresh?: boolean;
+  satisfiedTaskIds?: ReadonlySet<string>;
+  stagedRefreshPlan?: readonly number[];
 }
 
 interface UseTeamChangesSummariesInput {
@@ -180,6 +194,40 @@ function isDocumentHidden(): boolean {
   return typeof document !== 'undefined' && document.visibilityState === 'hidden';
 }
 
+function isSilentCounterLoad(options: TeamChangesLoadOptions | null): boolean {
+  return Boolean(
+    options &&
+    options.storeSummaries === false &&
+    options.reportError === false &&
+    options.showSpinner !== true
+  );
+}
+
+function getUnknownScanLimitForStage(maxRequests: number | undefined): number | undefined {
+  if (maxRequests === TEAM_CHANGES_FIRST_PAINT_REQUESTS) {
+    return TEAM_CHANGES_FIRST_UNKNOWN_SCAN_LIMIT;
+  }
+  if (maxRequests === TEAM_CHANGES_SECOND_PAINT_REQUESTS) {
+    return TEAM_CHANGES_SECOND_UNKNOWN_SCAN_LIMIT;
+  }
+  return undefined;
+}
+
+function mergeSuccessfulTaskIds(
+  existingTaskIds: ReadonlySet<string> | undefined,
+  responseItems: TeamTaskChangeSummaryItem[],
+  requestOptionsByTaskId: ReadonlyMap<string, unknown>
+): ReadonlySet<string> | undefined {
+  const next = new Set(existingTaskIds);
+  for (const item of responseItems) {
+    if (item.error || item.changeSet === null || !requestOptionsByTaskId.has(item.taskId)) {
+      continue;
+    }
+    next.add(item.taskId);
+  }
+  return next.size > 0 ? next : undefined;
+}
+
 export function useTeamChangesSummaries({
   teamName,
   tasks,
@@ -205,6 +253,7 @@ export function useTeamChangesSummaries({
   const mountedRef = useRef(true);
   const requestSeqRef = useRef(0);
   const activeRequestSeqRef = useRef<number | null>(null);
+  const activeRequestOptionsRef = useRef<TeamChangesLoadOptions | null>(null);
   const queuedRefreshOptionsRef = useRef<TeamChangesLoadOptions | null>(null);
   const autoRefreshBlockedUntilRef = useRef(0);
   const unknownScanCursorRef = useRef(0);
@@ -218,6 +267,7 @@ export function useTeamChangesSummaries({
       mountedRef.current = false;
       requestSeqRef.current += 1;
       activeRequestSeqRef.current = null;
+      activeRequestOptionsRef.current = null;
       queuedRefreshOptionsRef.current = null;
       autoRefreshBlockedUntilRef.current = 0;
       hasLoadedRef.current = false;
@@ -235,11 +285,27 @@ export function useTeamChangesSummaries({
       storeSummaries = true,
       reportError = true,
       blockAutoRetryOnError = true,
+      maxRequests,
+      unknownScanLimit,
+      queueDeferredRefresh = false,
+      satisfiedTaskIds,
+      stagedRefreshPlan,
     }: TeamChangesLoadOptions = {}): Promise<void> => {
       if (forceFresh) {
         autoRefreshBlockedUntilRef.current = 0;
       } else if (autoRefreshBlockedUntilRef.current > Date.now()) {
         return;
+      }
+
+      const shouldPreemptSilentCounterLoad =
+        activeRequestSeqRef.current !== null &&
+        storeSummaries &&
+        isSilentCounterLoad(activeRequestOptionsRef.current);
+      if (shouldPreemptSilentCounterLoad) {
+        requestSeqRef.current += 1;
+        activeRequestSeqRef.current = null;
+        activeRequestOptionsRef.current = null;
+        queuedRefreshOptionsRef.current = null;
       }
 
       if (activeRequestSeqRef.current !== null || queuedRefreshOptionsRef.current !== null) {
@@ -255,6 +321,31 @@ export function useTeamChangesSummaries({
           blockAutoRetryOnError: previous
             ? Boolean(previous.blockAutoRetryOnError || blockAutoRetryOnError)
             : blockAutoRetryOnError,
+          maxRequests:
+            maxRequests === undefined
+              ? undefined
+              : previous?.maxRequests === undefined
+                ? maxRequests
+                : Math.max(previous.maxRequests, maxRequests),
+          unknownScanLimit:
+            unknownScanLimit === undefined
+              ? undefined
+              : previous?.unknownScanLimit === undefined
+                ? unknownScanLimit
+                : Math.max(previous.unknownScanLimit, unknownScanLimit),
+          queueDeferredRefresh: Boolean(previous?.queueDeferredRefresh || queueDeferredRefresh),
+          satisfiedTaskIds:
+            previous?.satisfiedTaskIds && satisfiedTaskIds
+              ? new Set(
+                  [...previous.satisfiedTaskIds].filter((taskId) => satisfiedTaskIds.has(taskId))
+                )
+              : undefined,
+          stagedRefreshPlan:
+            stagedRefreshPlan !== undefined
+              ? stagedRefreshPlan
+              : maxRequests === undefined && unknownScanLimit === undefined
+                ? undefined
+                : previous?.stagedRefreshPlan,
         };
         if (showSpinner) {
           setLoading(true);
@@ -267,7 +358,11 @@ export function useTeamChangesSummaries({
         return;
       }
 
-      const plan = buildTeamChangeRequestPlan(tasks, unknownScanCursorRef.current, forceFresh);
+      const plan = buildTeamChangeRequestPlan(tasks, unknownScanCursorRef.current, forceFresh, {
+        maxRequests,
+        unknownScanLimit,
+        satisfiedTaskIds,
+      });
       unknownScanCursorRef.current = plan.nextUnknownScanCursor;
       const requestSeq = requestSeqRef.current + 1;
       requestSeqRef.current = requestSeq;
@@ -296,6 +391,19 @@ export function useTeamChangesSummaries({
         setRefreshing(true);
       }
       activeRequestSeqRef.current = requestSeq;
+      activeRequestOptionsRef.current = {
+        forceFresh,
+        showSpinner,
+        preserveOnError,
+        storeSummaries,
+        reportError,
+        blockAutoRetryOnError,
+        maxRequests,
+        unknownScanLimit,
+        queueDeferredRefresh,
+        satisfiedTaskIds,
+        stagedRefreshPlan,
+      };
 
       try {
         const response = await withTeamChangesLoadTimeout(
@@ -358,11 +466,32 @@ export function useTeamChangesSummaries({
             return next;
           });
         }
+        if (storeSummaries && queueDeferredRefresh && plan.deferredCount > 0) {
+          const [nextStageMaxRequests, ...remainingStages] = stagedRefreshPlan ?? [];
+          const successfulTaskIds = mergeSuccessfulTaskIds(
+            satisfiedTaskIds,
+            responseItems,
+            plan.requestOptionsByTaskId
+          );
+          queuedRefreshOptionsRef.current = {
+            forceFresh,
+            showSpinner: false,
+            preserveOnError: true,
+            storeSummaries: true,
+            reportError: true,
+            blockAutoRetryOnError: true,
+            maxRequests: nextStageMaxRequests,
+            unknownScanLimit: getUnknownScanLimitForStage(nextStageMaxRequests),
+            queueDeferredRefresh: remainingStages.length > 0,
+            stagedRefreshPlan: remainingStages.length > 0 ? remainingStages : undefined,
+            satisfiedTaskIds: successfulTaskIds,
+          };
+        }
       } catch (err) {
         if (!mountedRef.current || requestSeqRef.current !== requestSeq) {
           return;
         }
-        const queuedOptions = queuedRefreshOptionsRef.current as TeamChangesLoadOptions | null;
+        const queuedOptions = queuedRefreshOptionsRef.current;
         const shouldRunVisibleQueuedRefreshAfterSilentFailure =
           !storeSummaries &&
           !reportError &&
@@ -385,6 +514,7 @@ export function useTeamChangesSummaries({
           const hasQueuedRefresh = queuedRefreshOptionsRef.current !== null;
           if (activeRequestSeqRef.current === requestSeq) {
             activeRequestSeqRef.current = null;
+            activeRequestOptionsRef.current = null;
           }
           if (hasQueuedRefresh && activeRequestSeqRef.current === null) {
             setQueuedRefreshTick((value) => value + 1);
@@ -406,6 +536,7 @@ export function useTeamChangesSummaries({
     hasLoadedRef.current = false;
     requestSeqRef.current += 1;
     activeRequestSeqRef.current = null;
+    activeRequestOptionsRef.current = null;
     queuedRefreshOptionsRef.current = null;
     autoRefreshBlockedUntilRef.current = 0;
     unknownScanCursorRef.current = 0;
@@ -422,6 +553,7 @@ export function useTeamChangesSummaries({
     if (!sectionOpen) {
       requestSeqRef.current += 1;
       activeRequestSeqRef.current = null;
+      activeRequestOptionsRef.current = null;
       queuedRefreshOptionsRef.current = null;
       autoRefreshBlockedUntilRef.current = 0;
       hasLoadedRef.current = false;
@@ -457,7 +589,14 @@ export function useTeamChangesSummaries({
     }
     hasLoadedRef.current = true;
     lastRequestedTasksFingerprintRef.current = tasksFingerprint;
-    void loadSummaries({ showSpinner: true, preserveOnError: false });
+    void loadSummaries({
+      showSpinner: true,
+      preserveOnError: false,
+      maxRequests: TEAM_CHANGES_FIRST_PAINT_REQUESTS,
+      unknownScanLimit: TEAM_CHANGES_FIRST_UNKNOWN_SCAN_LIMIT,
+      queueDeferredRefresh: true,
+      stagedRefreshPlan: TEAM_CHANGES_INITIAL_STAGED_REFRESH_PLAN,
+    });
   }, [loadSummaries, sectionOpen, tasksFingerprint]);
 
   useEffect(() => {
@@ -527,7 +666,15 @@ export function useTeamChangesSummaries({
   }, [loadSummaries, sectionOpen]);
 
   const refresh = useCallback(() => {
-    void loadSummaries({ forceFresh: true, showSpinner: true, preserveOnError: false });
+    void loadSummaries({
+      forceFresh: true,
+      showSpinner: true,
+      preserveOnError: false,
+      maxRequests: TEAM_CHANGES_FIRST_PAINT_REQUESTS,
+      unknownScanLimit: TEAM_CHANGES_FIRST_UNKNOWN_SCAN_LIMIT,
+      queueDeferredRefresh: true,
+      stagedRefreshPlan: TEAM_CHANGES_INITIAL_STAGED_REFRESH_PLAN,
+    });
   }, [loadSummaries]);
 
   return {

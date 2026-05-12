@@ -52,3 +52,6 @@ remotion/*
 .board-task-log-freshness/
 
 .serena/
+
+# Local release operator notes
+/ORCHESTRATOR_RELEASE_RUNBOOK.local.md

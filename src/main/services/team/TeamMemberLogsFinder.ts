@@ -38,7 +38,7 @@ const ATTRIBUTION_SCAN_LINES = 50;
 
 /** Grace before task creation — logs cannot reference a task before it exists. */
 const TASK_SINCE_GRACE_MS = 2 * 60 * 1000;
-const FILE_MENTIONS_CACHE_MAX = 10_000;
+const TASK_MENTION_INDEX_CACHE_MAX = 1_000;
 const ATTRIBUTION_CACHE_MAX = 5_000;
 
 /** Max concurrent file reads during parallel scan phases. */
@@ -91,6 +91,19 @@ interface RootSessionAttribution {
   detectedMember: string;
   description: string;
   firstTimestamp: string | null;
+}
+
+interface ProjectSessionDiscovery {
+  projectDir: string;
+  projectId: string;
+  config: NonNullable<Awaited<ReturnType<TeamConfigReader['getConfig']>>>;
+  sessionIds: string[];
+  knownMembers: Set<string>;
+}
+
+interface TaskMentionIndex {
+  exactTaskIds: Set<string>;
+  lowerTaskIds: Set<string>;
 }
 
 type LogCandidate =
@@ -181,7 +194,8 @@ function collectTaskFreshnessRootDirs(candidates: readonly unknown[]): string[] 
 }
 
 export class TeamMemberLogsFinder {
-  private readonly fileMentionsCache = new Map<string, boolean>();
+  private readonly taskMentionIndexCache = new Map<string, TaskMentionIndex>();
+  private readonly taskMentionIndexInFlight = new Map<string, Promise<TaskMentionIndex>>();
   private readonly attributionCache = new Map<
     string,
     SubagentAttribution | RootSessionAttribution | null
@@ -193,6 +207,11 @@ export class TeamMemberLogsFinder {
       expiresAt: number;
     }
   >();
+  private readonly discoveryInFlight = new Map<
+    string,
+    { generation: number; promise: Promise<ProjectSessionDiscovery | null> }
+  >();
+  private readonly discoveryGenerationByTeam = new Map<string, number>();
 
   constructor(
     private readonly configReader: TeamConfigReader = new TeamConfigReader(),
@@ -234,7 +253,7 @@ export class TeamMemberLogsFinder {
 
     // ── Collect and parallel-scan subagent files ──
     const candidates = await this.collectLogCandidates(projectDir, sessionIds, config);
-    const settled: (MemberLogSummary | null)[] = new Array(candidates.length).fill(null);
+    const settled = Array<MemberLogSummary | null>(candidates.length).fill(null);
     let nextIdx = 0;
 
     const scanWorker = async (): Promise<void> => {
@@ -406,13 +425,11 @@ export class TeamMemberLogsFinder {
         // file missing or unreadable
       }
     }
-    const tLead = performance.now();
-
     // ── Collect all subagent file candidates ──
     const candidates = await this.collectLogCandidates(projectDir, sessionIds, config);
 
     // ── Parallel scan with concurrency limit ──
-    const settled: (MemberLogSummary | null)[] = new Array(candidates.length).fill(null);
+    const settled = Array<MemberLogSummary | null>(candidates.length).fill(null);
     let nextIdx = 0;
     let mentionHits = 0;
 
@@ -471,8 +488,6 @@ export class TeamMemberLogsFinder {
     }
     const totalFiles = candidates.length;
     const step2Count = results.length; // count before step 3 (owner fallback)
-    const tScan = performance.now();
-
     const normalizedOwner =
       typeof options?.owner === 'string' ? options.owner.trim() : options?.owner;
     const isLeadOwner =
@@ -564,8 +579,6 @@ export class TeamMemberLogsFinder {
         }
       }
     }
-    const tOwner = performance.now();
-
     // Dedup cumulative subagent snapshots: keep 1 file per sessionId+memberName (largest).
     // In-process teammates produce cumulative JSONL files where each successive file
     // contains ALL lines from the previous + a new delta. The largest file is a superset.
@@ -592,7 +605,7 @@ export class TeamMemberLogsFinder {
     // Safety net: filterChunksByWorkIntervals on frontend still filters content by time,
     // so even if the wrong file is picked, only task-relevant chunks are shown.
 
-    const sorted = results.sort(
+    const sorted = [...results].sort(
       (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
     );
     const tTotal = performance.now();
@@ -623,15 +636,9 @@ export class TeamMemberLogsFinder {
       since?: string;
     }
   ): Promise<{ filePath: string; memberName: string }[]> {
-    const t0 = performance.now();
-
     const discovery = await this.discoverProjectSessions(teamName);
-    const tDiscovery = performance.now();
 
     if (!discovery) {
-      // console.log(
-      //   `[perf] findLogFileRefsForTask(${taskId}) discovery=null ${(tDiscovery - t0).toFixed(0)}ms`
-      // );
       return [];
     }
 
@@ -679,14 +686,11 @@ export class TeamMemberLogsFinder {
         // file missing or unreadable
       }
     }
-    const tLead = performance.now();
-
     // ── Collect all subagent file candidates ──
     const candidates = await this.collectLogCandidates(projectDir, sessionIds, config);
 
     // ── Parallel scan with concurrency limit ──
     let nextIdx = 0;
-    let mentionHits = 0;
 
     const scanWorker = async (): Promise<void> => {
       while (nextIdx < candidates.length) {
@@ -695,7 +699,6 @@ export class TeamMemberLogsFinder {
         try {
           if (!(await this.fileMentionsTaskIdCached(c.filePath, teamName, taskId, false, sinceMs)))
             continue;
-          mentionHits++;
           const attribution =
             c.kind === 'subagent'
               ? await this.attributeSubagent(c.filePath, knownMembers)
@@ -717,8 +720,6 @@ export class TeamMemberLogsFinder {
     await Promise.all(
       Array.from({ length: Math.min(SCAN_CONCURRENCY, candidates.length) }, () => scanWorker())
     );
-    const totalFiles = candidates.length;
-    const tScan = performance.now();
 
     const normalizedOwner =
       typeof options?.owner === 'string' ? options.owner.trim() : options?.owner;
@@ -802,8 +803,6 @@ export class TeamMemberLogsFinder {
         );
       }
     }
-    const tOwner = performance.now();
-
     // Dedup cumulative subagent snapshots (same logic as findLogsForTask).
     {
       const refsByKey = new Map<string, (typeof refs)[0]>();
@@ -833,17 +832,6 @@ export class TeamMemberLogsFinder {
     }
 
     const sortedRefs = [...refs].sort((a, b) => b.sortTime - a.sortTime);
-    const tTotal = performance.now();
-
-    // console.log(
-    //   `[perf] findLogFileRefsForTask(${taskId}@${teamName}) ` +
-    //     `total=${(tTotal - t0).toFixed(0)}ms | ` +
-    //     `discovery=${(tDiscovery - t0).toFixed(0)}ms | ` +
-    //     `lead=${(tLead - tDiscovery).toFixed(0)}ms | ` +
-    //     `scan=${(tScan - tLead).toFixed(0)}ms (${totalFiles} files, ${mentionHits} hits) | ` +
-    //     `owner=${(tOwner - tScan).toFixed(0)}ms | ` +
-    //     `sessions=${sessionIds.length} | results=${sortedRefs.length}`
-    // );
 
     return sortedRefs.map(({ filePath, memberName }) => ({ filePath, memberName }));
   }
@@ -1160,23 +1148,40 @@ export class TeamMemberLogsFinder {
   private async discoverProjectSessions(
     teamName: string,
     options?: { forceRefresh?: boolean }
-  ): Promise<{
-    projectDir: string;
-    projectId: string;
-    config: NonNullable<Awaited<ReturnType<TeamConfigReader['getConfig']>>>;
-    sessionIds: string[];
-    knownMembers: Set<string>;
-  } | null> {
+  ): Promise<ProjectSessionDiscovery | null> {
+    let generation = this.discoveryGenerationByTeam.get(teamName) ?? 0;
     if (options?.forceRefresh) {
+      generation += 1;
+      this.discoveryGenerationByTeam.set(teamName, generation);
       this.discoveryCache.delete(teamName);
+      this.discoveryInFlight.delete(teamName);
     } else {
       // Check discovery cache — avoids re-reading config/dirs within rapid successive calls
       const cached = this.discoveryCache.get(teamName);
       if (cached && cached.expiresAt > Date.now()) {
         return cached.result;
       }
+      const inFlight = this.discoveryInFlight.get(teamName);
+      if (inFlight) {
+        return inFlight.promise;
+      }
     }
 
+    const promise = this.loadProjectSessionDiscovery(teamName, options, generation).finally(() => {
+      const current = this.discoveryInFlight.get(teamName);
+      if (current?.promise === promise) {
+        this.discoveryInFlight.delete(teamName);
+      }
+    });
+    this.discoveryInFlight.set(teamName, { generation, promise });
+    return promise;
+  }
+
+  private async loadProjectSessionDiscovery(
+    teamName: string,
+    options: { forceRefresh?: boolean } | undefined,
+    generation: number
+  ): Promise<ProjectSessionDiscovery | null> {
     const context = await this.projectResolver.getContext(teamName, options);
     if (!context) {
       logger.debug(`No transcript context for team "${teamName}"`);
@@ -1209,10 +1214,12 @@ export class TeamMemberLogsFinder {
     }
 
     const discovery = { projectDir, projectId, config, sessionIds, knownMembers };
-    this.discoveryCache.set(teamName, {
-      result: discovery,
-      expiresAt: Date.now() + DISCOVERY_CACHE_TTL,
-    });
+    if ((this.discoveryGenerationByTeam.get(teamName) ?? 0) === generation) {
+      this.discoveryCache.set(teamName, {
+        result: discovery,
+        expiresAt: Date.now() + DISCOVERY_CACHE_TTL,
+      });
+    }
     return discovery;
   }
 
@@ -1347,39 +1354,71 @@ export class TeamMemberLogsFinder {
     if (sinceMs != null && mtimeMs < sinceMs - TASK_SINCE_GRACE_MS) {
       return false;
     }
-    const cacheKey = `${filePath}:${mtimeMs}:${taskId}:${teamName}:${assumeTeam}`;
-    const cached = this.fileMentionsCache.get(cacheKey);
-    if (cached !== undefined) return cached;
-    const result = await this.fileMentionsTaskId(filePath, teamName, taskId, assumeTeam);
-    this.fileMentionsCache.set(cacheKey, result);
-    if (this.fileMentionsCache.size > FILE_MENTIONS_CACHE_MAX) {
-      const keys = [...this.fileMentionsCache.keys()];
-      for (let i = 0; i < Math.min(keys.length / 2, 50); i++) {
-        this.fileMentionsCache.delete(keys[i]);
-      }
-    }
-    return result;
+    const cacheKey = `${filePath}:${mtimeMs}:${teamName}:${assumeTeam}`;
+    const index = await this.getTaskMentionIndex(cacheKey, filePath, teamName, assumeTeam);
+    return this.taskMentionIndexHasTaskId(index, taskId);
   }
 
-  private async fileMentionsTaskId(
+  private async getTaskMentionIndex(
+    cacheKey: string,
     filePath: string,
     teamName: string,
-    taskId: string,
-    assumeTeam: boolean = false
-  ): Promise<boolean> {
-    const teamLower = teamName.trim().toLowerCase();
-    const taskIdStr = taskId.trim();
+    assumeTeam: boolean
+  ): Promise<TaskMentionIndex> {
+    const cached = this.taskMentionIndexCache.get(cacheKey);
+    if (cached) return cached;
 
-    // CLI agents often use the short displayId (first 8 chars of UUID) in tool inputs,
-    // while the UI passes the full UUID. Match both forms to bridge this gap.
+    const inFlight = this.taskMentionIndexInFlight.get(cacheKey);
+    if (inFlight) return inFlight;
+
+    const promise = this.buildTaskMentionIndex(filePath, teamName, assumeTeam)
+      .then((index) => {
+        this.taskMentionIndexCache.set(cacheKey, index);
+        while (this.taskMentionIndexCache.size > TASK_MENTION_INDEX_CACHE_MAX) {
+          const oldestKey = this.taskMentionIndexCache.keys().next().value;
+          if (!oldestKey) break;
+          this.taskMentionIndexCache.delete(oldestKey);
+        }
+        return index;
+      })
+      .finally(() => {
+        if (this.taskMentionIndexInFlight.get(cacheKey) === promise) {
+          this.taskMentionIndexInFlight.delete(cacheKey);
+        }
+      });
+    this.taskMentionIndexInFlight.set(cacheKey, promise);
+    return promise;
+  }
+
+  private taskMentionIndexHasTaskId(index: TaskMentionIndex, taskId: string): boolean {
+    const taskIdStr = taskId.trim();
+    if (!taskIdStr) return false;
+    if (index.exactTaskIds.has(taskIdStr)) return true;
     const taskIdDisplayForm =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(taskIdStr)
         ? taskIdStr.slice(0, 8).toLowerCase()
         : null;
+    return taskIdDisplayForm !== null && index.lowerTaskIds.has(taskIdDisplayForm);
+  }
 
-    const matchesTaskId = (candidate: string): boolean =>
-      candidate === taskIdStr ||
-      (taskIdDisplayForm !== null && candidate.toLowerCase() === taskIdDisplayForm);
+  private addTaskMention(index: TaskMentionIndex, rawTaskId: string): void {
+    const taskId = rawTaskId.trim();
+    if (!taskId) return;
+    index.exactTaskIds.add(taskId);
+    index.lowerTaskIds.add(taskId.toLowerCase());
+  }
+
+  private async buildTaskMentionIndex(
+    filePath: string,
+    teamName: string,
+    assumeTeam: boolean
+  ): Promise<TaskMentionIndex> {
+    const teamLower = teamName.trim().toLowerCase();
+    const index: TaskMentionIndex = {
+      exactTaskIds: new Set<string>(),
+      lowerTaskIds: new Set<string>(),
+    };
+    const pendingTaskIdsWithoutTeam = new Set<string>();
 
     const extractTaskIdFromUnknown = (raw: unknown): string | null => {
       if (typeof raw === 'string') return raw.trim();
@@ -1430,7 +1469,13 @@ export class TeamMemberLogsFinder {
       const stream = createReadStream(filePath, { encoding: 'utf8' });
       const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
       let teamSeen = assumeTeam;
-      let taskSeenWithoutTeam = false;
+      const acceptPendingTaskIds = (): void => {
+        if (!teamSeen || pendingTaskIdsWithoutTeam.size === 0) return;
+        for (const pendingTaskId of pendingTaskIdsWithoutTeam) {
+          this.addTaskMention(index, pendingTaskId);
+        }
+        pendingTaskIdsWithoutTeam.clear();
+      };
       for await (const line of rl) {
         const trimmed = line.trim();
         if (!trimmed) continue;
@@ -1466,16 +1511,13 @@ export class TeamMemberLogsFinder {
                 matchesTeamMentionText(b.text)
               ) {
                 teamSeen = true;
+                acceptPendingTaskIds();
                 break;
               }
             }
           }
 
-          if (teamSeen && taskSeenWithoutTeam) {
-            rl.close();
-            stream.destroy();
-            return true;
-          }
+          acceptPendingTaskIds();
 
           for (const block of content) {
             if (!block || typeof block !== 'object') continue;
@@ -1496,32 +1538,25 @@ export class TeamMemberLogsFinder {
             const inputTeam = extractTeamFromInput(input);
             const rawTaskId = input.taskId ?? input.task_id;
             const inputTaskId = extractTaskIdFromUnknown(rawTaskId);
-            if (inputTaskId && matchesTaskId(inputTaskId)) {
+            if (inputTaskId) {
               // If team is present in the input, require exact match.
               if (inputTeam) {
                 if (inputTeam.toLowerCase() === teamLower) {
-                  rl.close();
-                  stream.destroy();
-                  return true;
+                  this.addTaskMention(index, inputTaskId);
                 }
               } else {
                 // Some agents use TaskUpdate without team_name (common in Solo).
                 // Only accept when we have a separate team marker for this file.
                 if (teamSeen) {
-                  rl.close();
-                  stream.destroy();
-                  return true;
+                  this.addTaskMention(index, inputTaskId);
+                } else {
+                  pendingTaskIdsWithoutTeam.add(inputTaskId);
                 }
-                taskSeenWithoutTeam = true;
               }
             }
           }
 
-          if (teamSeen && taskSeenWithoutTeam) {
-            rl.close();
-            stream.destroy();
-            return true;
-          }
+          acceptPendingTaskIds();
         } catch {
           // ignore parse errors
         }
@@ -1531,7 +1566,7 @@ export class TeamMemberLogsFinder {
     } catch {
       // ignore
     }
-    return false;
+    return index;
   }
 
   private extractEntryContent(entry: Record<string, unknown>): unknown[] | null {
@@ -1899,11 +1934,12 @@ export class TeamMemberLogsFinder {
 
         const role = this.extractRole(entry);
         const textContent = this.extractTextContent(entry);
-        if (!teamMatched && textContent && textContent.toLowerCase().includes(normalizedTeam)) {
+        const lowerTextContent = textContent?.toLowerCase();
+        if (!teamMatched && lowerTextContent?.includes(normalizedTeam)) {
           if (
-            textContent.toLowerCase().includes(`on team "${normalizedTeam}"`) ||
-            textContent.toLowerCase().includes(`on team '${normalizedTeam}'`) ||
-            textContent.toLowerCase().includes(`(${normalizedTeam})`)
+            lowerTextContent.includes(`on team "${normalizedTeam}"`) ||
+            lowerTextContent.includes(`on team '${normalizedTeam}'`) ||
+            lowerTextContent.includes(`(${normalizedTeam})`)
           ) {
             teamMatched = true;
           }

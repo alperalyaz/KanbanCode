@@ -170,6 +170,8 @@ export interface OpenCodeSendMessageCommandBody {
   memberName: string;
   text: string;
   messageId?: string;
+  deliveryAttemptId?: string;
+  payloadHash?: string;
   fileParts?: {
     type: 'file';
     mime: 'image/png' | 'image/jpeg' | 'image/webp';
@@ -233,6 +235,45 @@ export interface OpenCodeSendMessageCommandData {
   prePromptCursor?: string | null;
   responseObservation?: OpenCodeDeliveryResponseObservation;
   diagnostics: OpenCodeTeamBridgeDiagnostic[];
+}
+
+export interface OpenCodeCommandStatusCommandBody {
+  originalCommand: 'opencode.sendMessage';
+  originalRequestId?: string;
+  deliveryAttemptId?: string;
+  teamId?: string;
+  teamName?: string;
+  laneId?: string;
+  memberName?: string;
+  messageId?: string;
+  payloadHash?: string;
+  projectPath?: string;
+  runId?: string;
+}
+
+export type OpenCodeCommandStatusState =
+  | 'unknown'
+  | 'received'
+  | 'prompt_submitting'
+  | 'prompt_accepted'
+  | 'turn_observed'
+  | 'reconciled'
+  | 'failed_before_accept'
+  | 'failed_after_accept'
+  | 'precondition_mismatch';
+
+export interface OpenCodeCommandStatusCommandData {
+  status: OpenCodeCommandStatusState;
+  safeToRetry: boolean;
+  accepted: boolean;
+  originalRequestId?: string;
+  deliveryAttemptId?: string;
+  sessionId?: string;
+  runtimePid?: number;
+  runtimePromptMessageId?: string;
+  prePromptCursor?: string | null;
+  sendMessageData?: OpenCodeSendMessageCommandData;
+  diagnostics: string[];
 }
 
 export interface OpenCodeObserveMessageDeliveryCommandBody {

@@ -25,6 +25,8 @@ const SECRET_VALUE_PATTERNS = [
 
 const DISK_FULL_MESSAGE =
   'Local disk is full (ENOSPC). Free disk space and retry OpenCode delivery.';
+const OPENCODE_BRIDGE_OUTCOME_UNKNOWN_AFTER_TIMEOUT_MESSAGE =
+  'OpenCode bridge outcome unknown after timeout, retrying/observing.';
 
 const RUNTIME_DIAGNOSTIC_RULES: readonly RuntimeDiagnosticRule[] = [
   {
@@ -74,6 +76,16 @@ const RUNTIME_DIAGNOSTIC_RULES: readonly RuntimeDiagnosticRule[] = [
     reasonCode: 'codex_native_timeout',
     tokens: ['codex native exec timed out'],
     priority: 80,
+  },
+  {
+    reasonCode: 'backend_error',
+    tokens: [
+      'opencode_prompt_acceptance_unknown_after_bridge_timeout',
+      'opencode bridge outcome unknown after timeout',
+    ],
+    priority: 20,
+    generic: true,
+    normalizeMessage: () => OPENCODE_BRIDGE_OUTCOME_UNKNOWN_AFTER_TIMEOUT_MESSAGE,
   },
   {
     reasonCode: 'backend_error',

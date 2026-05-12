@@ -127,6 +127,30 @@ describe('openCodeRuntimeDeliveryDiagnostics', () => {
     });
   });
 
+  it('surfaces unknown OpenCode bridge outcome as observe/retry state', () => {
+    const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
+      deliveredToInbox: true,
+      messageId: 'msg-bridge-unknown',
+      runtimeDelivery: {
+        providerId: 'opencode',
+        attempted: true,
+        delivered: false,
+        responsePending: false,
+        responseState: 'responded_non_visible_tool',
+        ledgerStatus: 'failed_terminal',
+        reason: 'opencode_prompt_acceptance_unknown_after_bridge_timeout',
+        diagnostics: ['opencode_prompt_acceptance_unknown_after_bridge_timeout'],
+      },
+    });
+
+    expect(diagnostics.warning).toBe(
+      'OpenCode runtime delivery failed. Message was saved to inbox, but live delivery did not complete. Reason: OpenCode bridge outcome unknown after timeout, retrying/observing.'
+    );
+    expect(diagnostics.debugDetails).toMatchObject({
+      reason: 'opencode_prompt_acceptance_unknown_after_bridge_timeout',
+    });
+  });
+
   it('surfaces missing visible reply proof as a readable failure', () => {
     const diagnostics = buildOpenCodeRuntimeDeliveryDiagnostics({
       deliveredToInbox: true,

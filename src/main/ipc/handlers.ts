@@ -44,6 +44,11 @@ import {
   registerHttpServerHandlers,
   removeHttpServerHandlers,
 } from './httpServer';
+import {
+  initializeOpenCodeRuntimeHandlers,
+  registerOpenCodeRuntimeHandlers,
+  removeOpenCodeRuntimeHandlers,
+} from './openCodeRuntime';
 
 const logger = createLogger('IPC:handlers');
 import { registerNotificationHandlers, removeNotificationHandlers } from './notifications';
@@ -100,6 +105,7 @@ import type {
   FileContentResolver,
   GitDiffFallback,
   MemberStatsComputer,
+  OpenCodeRuntimeInstallerService,
   PtyTerminalService,
   ReviewApplierService,
   ServiceContext,
@@ -159,6 +165,7 @@ export function initializeIpcHandlers(
   reviewApplier?: ReviewApplierService,
   gitDiffFallback?: GitDiffFallback,
   cliInstaller?: CliInstallerService,
+  openCodeRuntimeInstaller?: OpenCodeRuntimeInstallerService,
   ptyTerminal?: PtyTerminalService,
   schedulerService?: SchedulerService,
   extensionFacade?: ExtensionFacadeService,
@@ -208,6 +215,9 @@ export function initializeIpcHandlers(
   }
   if (cliInstaller) {
     initializeCliInstallerHandlers(cliInstaller);
+  }
+  if (openCodeRuntimeInstaller) {
+    initializeOpenCodeRuntimeHandlers(openCodeRuntimeInstaller);
   }
   if (ptyTerminal) {
     initializeTerminalHandlers(ptyTerminal);
@@ -260,6 +270,9 @@ export function initializeIpcHandlers(
   if (cliInstaller) {
     registerCliInstallerHandlers(ipcMain);
   }
+  if (openCodeRuntimeInstaller) {
+    registerOpenCodeRuntimeHandlers(ipcMain);
+  }
   if (ptyTerminal) {
     registerTerminalHandlers(ipcMain);
   }
@@ -301,6 +314,7 @@ export function removeIpcHandlers(): void {
   removeRendererLogHandlers(ipcMain);
   removeScheduleHandlers(ipcMain);
   removeCliInstallerHandlers(ipcMain);
+  removeOpenCodeRuntimeHandlers(ipcMain);
   removeTerminalHandlers(ipcMain);
   removeTmuxHandlers(ipcMain);
   removeHttpServerHandlers(ipcMain);

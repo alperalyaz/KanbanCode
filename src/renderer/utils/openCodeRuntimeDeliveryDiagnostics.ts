@@ -33,6 +33,8 @@ const FAILED_WARNING =
   'OpenCode runtime delivery failed. Message was saved to inbox, but live delivery did not complete.';
 const ATTACHMENT_FAILED_WARNING =
   'OpenCode attachment was not sent. Message was saved to inbox, but live delivery cannot include this attachment.';
+const OPENCODE_BRIDGE_OUTCOME_UNKNOWN_AFTER_TIMEOUT_MESSAGE =
+  'OpenCode bridge outcome unknown after timeout, retrying/observing.';
 
 function isOpenCodeAttachmentDeliveryFailureReason(reason: string | null | undefined): boolean {
   const normalized = reason?.trim().toLowerCase();
@@ -54,6 +56,9 @@ function formatOpenCodeRuntimeDeliveryFailureReason(reason: string | null | unde
   }
   if (normalizedLower === 'prompt_delivered_no_assistant_message') {
     return 'OpenCode accepted the prompt, but no assistant turn was recorded.';
+  }
+  if (normalizedLower === 'opencode_prompt_acceptance_unknown_after_bridge_timeout') {
+    return OPENCODE_BRIDGE_OUTCOME_UNKNOWN_AFTER_TIMEOUT_MESSAGE;
   }
   if (
     normalizedLower === 'visible_reply_still_required' ||

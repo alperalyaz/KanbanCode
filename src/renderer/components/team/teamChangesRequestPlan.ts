@@ -13,6 +13,12 @@ export const TEAM_CHANGES_MAX_REQUESTS = 120;
 export const TEAM_CHANGES_UNKNOWN_SCAN_LIMIT = 32;
 export const TEAM_CHANGES_MAX_RENDERED_FILE_ROWS = 300;
 
+interface TeamChangeRequestPlanOptions {
+  maxRequests?: number;
+  unknownScanLimit?: number;
+  satisfiedTaskIds?: ReadonlySet<string>;
+}
+
 interface TeamChangeCandidate {
   task: TeamTaskWithKanban;
   options: TaskChangeRequestOptions;
@@ -49,6 +55,13 @@ function rotateCandidates<T>(items: T[], cursor: number): T[] {
   return [...items.slice(start), ...items.slice(0, start)];
 }
 
+function normalizePositiveLimit(value: number | undefined, fallback: number): number {
+  if (!Number.isFinite(value) || !value || value <= 0) {
+    return fallback;
+  }
+  return Math.max(1, Math.floor(value));
+}
+
 function hasTaskChangeScanEvidence(task: TeamTaskWithKanban): boolean {
   if ((task.workIntervals?.length ?? 0) > 0 || (task.reviewIntervals?.length ?? 0) > 0) {
     return true;
@@ -77,8 +90,15 @@ function getRelevantHistoryEvents(task: TeamTaskWithKanban): { type: string; tim
 export function buildTeamChangeRequestPlan(
   tasks: TeamTaskWithKanban[],
   unknownScanCursor: number,
-  forceFresh: boolean
+  forceFresh: boolean,
+  options: TeamChangeRequestPlanOptions = {}
 ): TeamChangeRequestPlan {
+  const maxRequests = normalizePositiveLimit(options.maxRequests, TEAM_CHANGES_MAX_REQUESTS);
+  const unknownScanLimit = Math.min(
+    normalizePositiveLimit(options.unknownScanLimit, TEAM_CHANGES_UNKNOWN_SCAN_LIMIT),
+    maxRequests
+  );
+  const satisfiedTaskIds = options.satisfiedTaskIds;
   const primary: TeamChangeCandidate[] = [];
   const active: TeamChangeCandidate[] = [];
   const unknown: TeamChangeCandidate[] = [];
@@ -128,11 +148,22 @@ export function buildTeamChangeRequestPlan(
   const eligibleTaskIds = new Set(
     [...primary, ...active, ...unknown].map((candidate) => candidate.task.id)
   );
-  const unknownWindow = rotateCandidates(unknown, unknownScanCursor).slice(
+  const satisfiedEligibleTaskIds = new Set<string>();
+  const filterUnsatisfied = (candidate: TeamChangeCandidate): boolean => {
+    if (!satisfiedTaskIds?.has(candidate.task.id)) {
+      return true;
+    }
+    satisfiedEligibleTaskIds.add(candidate.task.id);
+    return false;
+  };
+  const requestPrimary = primary.filter(filterUnsatisfied);
+  const requestActive = active.filter(filterUnsatisfied);
+  const requestUnknown = unknown.filter(filterUnsatisfied);
+  const unknownWindow = rotateCandidates(requestUnknown, unknownScanCursor).slice(
     0,
-    TEAM_CHANGES_UNKNOWN_SCAN_LIMIT
+    unknownScanLimit
   );
-  const selected = [...primary, ...active, ...unknownWindow].slice(0, TEAM_CHANGES_MAX_REQUESTS);
+  const selected = [...requestPrimary, ...requestActive, ...unknownWindow].slice(0, maxRequests);
   const requestOptionsByTaskId = new Map<string, TaskChangeRequestOptions>();
   const requests = selected.map((candidate) => {
     const options = {
@@ -148,9 +179,9 @@ export function buildTeamChangeRequestPlan(
   });
   const eligibleCount = primary.length + active.length + unknown.length;
   const nextUnknownScanCursor =
-    unknown.length > 0
-      ? (unknownScanCursor + Math.min(TEAM_CHANGES_UNKNOWN_SCAN_LIMIT, unknown.length)) %
-        unknown.length
+    requestUnknown.length > 0
+      ? (unknownScanCursor + Math.min(unknownScanLimit, requestUnknown.length)) %
+        requestUnknown.length
       : 0;
 
   return {
@@ -159,7 +190,7 @@ export function buildTeamChangeRequestPlan(
     eligibleTaskIds,
     eligibleCount,
     requestedCount: requests.length,
-    deferredCount: Math.max(0, eligibleCount - requests.length),
+    deferredCount: Math.max(0, eligibleCount - satisfiedEligibleTaskIds.size - requests.length),
     nextUnknownScanCursor,
   };
 }

@@ -6,7 +6,7 @@
 import { getClaudeBasePath } from '@main/utils/pathDecoder';
 import { getCachedShellEnv, getShellPreferredHome } from '@main/utils/shellEnv';
 import { realpathSync } from 'fs';
-import { join as pathJoin, posix as pathPosix, win32 as pathWin32 } from 'path';
+import { posix as pathPosix, win32 as pathWin32 } from 'path';
 
 /**
  * Build a PATH string that prefers the CLI binary directory, then the user's
@@ -44,14 +44,23 @@ export function buildMergedCliPath(binaryPath?: string | null): string {
   } else if (process.platform === 'win32') {
     extraDirs.push(
       vendorBinDir,
-      pathJoin(home, 'AppData', 'Roaming', 'npm'),
-      pathJoin(home, 'scoop', 'shims')
+      pathWin32.join(home, 'AppData', 'Roaming', 'npm'),
+      pathWin32.join(home, 'scoop', 'shims'),
+      pathWin32.join(home, '.bun', 'bin'),
+      pathWin32.join(home, '.cargo', 'bin'),
+      pathWin32.join(home, '.volta', 'bin')
     );
     if (process.env.LOCALAPPDATA) {
-      extraDirs.push(pathJoin(process.env.LOCALAPPDATA, 'Programs', 'claude'));
+      extraDirs.push(
+        pathWin32.join(process.env.LOCALAPPDATA, 'Programs', 'claude'),
+        pathWin32.join(process.env.LOCALAPPDATA, 'pnpm')
+      );
     }
     if (process.env.ProgramFiles) {
-      extraDirs.push(pathJoin(process.env.ProgramFiles, 'claude'));
+      extraDirs.push(
+        pathWin32.join(process.env.ProgramFiles, 'claude'),
+        pathWin32.join(process.env.ProgramFiles, 'nodejs')
+      );
     }
   } else {
     extraDirs.push(
@@ -60,8 +69,20 @@ export function buildMergedCliPath(binaryPath?: string | null): string {
       pathPosix.join(home, '.local', 'bin'),
       pathPosix.join(home, '.npm-global', 'bin'),
       pathPosix.join(home, '.npm', 'bin'),
+      pathPosix.join(home, '.asdf', 'shims'),
+      pathPosix.join(home, '.local', 'share', 'mise', 'shims'),
+      pathPosix.join(home, '.volta', 'bin'),
+      pathPosix.join(home, 'Library', 'pnpm'),
+      pathPosix.join(home, '.local', 'share', 'pnpm'),
+      pathPosix.join(home, '.cargo', 'bin'),
+      pathPosix.join(home, '.nix-profile', 'bin'),
       '/usr/local/bin',
-      '/opt/homebrew/bin'
+      '/opt/homebrew/bin',
+      '/opt/local/bin',
+      '/usr/bin',
+      '/bin',
+      '/usr/sbin',
+      '/sbin'
     );
   }
 

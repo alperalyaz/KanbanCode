@@ -45,6 +45,7 @@ import type {
   KanbanColumnId,
   NotificationsAPI,
   NotificationTrigger,
+  OpenCodeRuntimeAPI,
   OpenCodeRuntimeDeliveryStatus,
   PaginatedSessionsResult,
   Project,
@@ -1251,6 +1252,24 @@ export class HttpAPIClient implements ElectronAPI {
     install: async (): Promise<void> => {
       console.warn('[HttpAPIClient] CLI installer not available in browser mode');
     },
+    invalidateStatus: async (): Promise<void> => {},
+    onProgress: (): (() => void) => {
+      return () => {};
+    },
+  };
+
+  openCodeRuntime: OpenCodeRuntimeAPI = {
+    getStatus: async () => ({
+      installed: false,
+      source: 'missing',
+      state: 'idle',
+    }),
+    install: async () => ({
+      installed: false,
+      source: 'missing',
+      state: 'failed',
+      error: 'OpenCode runtime installer is not available in browser mode',
+    }),
     invalidateStatus: async (): Promise<void> => {},
     onProgress: (): (() => void) => {
       return () => {};

@@ -188,6 +188,7 @@ import {
   LocalFileSystemProvider,
   MemberStatsComputer,
   NotificationManager,
+  OpenCodeRuntimeInstallerService,
   OpenCodeReadinessBridge,
   OpenCodeTeamRuntimeAdapter,
   PtyTerminalService,
@@ -700,6 +701,7 @@ let teamDataService: TeamDataService;
 let teamProvisioningService: TeamProvisioningService;
 let launchIoGovernor: LaunchIoGovernor | null = null;
 let cliInstallerService: CliInstallerService;
+let openCodeRuntimeInstallerService: OpenCodeRuntimeInstallerService;
 let ptyTerminalService: PtyTerminalService;
 let httpServer: HttpServer;
 let schedulerService: SchedulerService;
@@ -1312,6 +1314,7 @@ async function initializeServices(): Promise<void> {
     }
   });
   cliInstallerService = new CliInstallerService();
+  openCodeRuntimeInstallerService = new OpenCodeRuntimeInstallerService();
   ptyTerminalService = new PtyTerminalService();
   const teamMemberLogsFinder = new TeamMemberLogsFinder();
   const teamLogSourceTracker = new TeamLogSourceTracker(teamMemberLogsFinder);
@@ -1810,6 +1813,7 @@ async function initializeServices(): Promise<void> {
     reviewApplier,
     gitDiffFallback,
     cliInstallerService,
+    openCodeRuntimeInstallerService,
     ptyTerminalService,
     schedulerService,
     extensionFacadeService,
@@ -2055,6 +2059,7 @@ function attachMainWindowToServices(): void {
   notificationManager?.setMainWindow(win);
   updaterService?.setMainWindow(win);
   cliInstallerService?.setMainWindow(win);
+  openCodeRuntimeInstallerService?.setMainWindow(win);
   setTmuxMainWindow(win);
   ptyTerminalService?.setMainWindow(win);
   teamProvisioningService?.setMainWindow(win);
@@ -2377,6 +2382,9 @@ function createWindow(): void {
     }
     if (cliInstallerService) {
       cliInstallerService.setMainWindow(null);
+    }
+    if (openCodeRuntimeInstallerService) {
+      openCodeRuntimeInstallerService.setMainWindow(null);
     }
     setTmuxMainWindow(null);
     if (ptyTerminalService) {
