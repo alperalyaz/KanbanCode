@@ -1,5 +1,5 @@
-import { createLogger } from '@shared/utils/logger';
 import { getTeamsBasePath } from '@main/utils/pathDecoder';
+import { createLogger } from '@shared/utils/logger';
 import { watch } from 'chokidar';
 import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
@@ -14,7 +14,6 @@ import {
   BOARD_TASK_CHANGES_DIRNAME,
   BOARD_TASK_LOG_FRESHNESS_DIRNAME,
   BOARD_TASK_LOG_FRESHNESS_FILE_SUFFIX,
-  TEAM_TASK_LOG_FRESHNESS_DIRNAME,
   classifyLogSourceWatcherEvent,
   getRelativeLogSourceParts,
   isAgentTranscriptFileName,
@@ -22,6 +21,7 @@ import {
   MAX_PENDING_UNKNOWN_ROOT_SESSIONS,
   normalizeLogSourceSessionId,
   PENDING_UNKNOWN_ROOT_SESSION_TTL_MS,
+  TEAM_TASK_LOG_FRESHNESS_DIRNAME,
 } from './teamLogSourceWatchScope';
 
 import type { TeamLogSourceLiveContext, TeamMemberLogsFinder } from './TeamMemberLogsFinder';

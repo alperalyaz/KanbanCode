@@ -348,6 +348,7 @@ describe('ExtensionStoreView provider loading placeholders', () => {
 
     expect(storeState.bootstrapCliStatus).toHaveBeenCalledWith({ multimodelEnabled: true });
     expect(storeState.fetchCliStatus).not.toHaveBeenCalled();
+    expect(storeState.fetchApiKeys).not.toHaveBeenCalled();
 
     expect(host.textContent).toContain('Multimodel runtime capabilities');
     expect(host.textContent).toContain('Anthropic');

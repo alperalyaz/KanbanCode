@@ -101,6 +101,11 @@ interface ProjectSessionDiscovery {
   knownMembers: Set<string>;
 }
 
+interface ProjectSessionDiscoveryOptions {
+  forceRefresh?: boolean;
+  includeTeamSubagentSessionDiscovery?: boolean;
+}
+
 interface TaskMentionIndex {
   exactTaskIds: Set<string>;
   lowerTaskIds: Set<string>;
@@ -136,6 +141,7 @@ type FindRecentMemberLogFileRefsOptions =
   | {
       mtimeSinceMs?: number | null;
       forceRefresh?: boolean;
+      includeTeamSubagentSessionDiscovery?: boolean;
     };
 
 export interface TeamLogSourceLiveContext {
@@ -193,12 +199,24 @@ function collectTaskFreshnessRootDirs(candidates: readonly unknown[]): string[] 
   return roots;
 }
 
+function buildProjectSessionDiscoveryCacheKey(
+  teamName: string,
+  options?: ProjectSessionDiscoveryOptions
+): string {
+  const subagentMode = options?.includeTeamSubagentSessionDiscovery === false ? 'known' : 'full';
+  return `${teamName}\0${subagentMode}`;
+}
+
 export class TeamMemberLogsFinder {
   private readonly taskMentionIndexCache = new Map<string, TaskMentionIndex>();
   private readonly taskMentionIndexInFlight = new Map<string, Promise<TaskMentionIndex>>();
   private readonly attributionCache = new Map<
     string,
     SubagentAttribution | RootSessionAttribution | null
+  >();
+  private readonly attributionInFlight = new Map<
+    string,
+    Promise<SubagentAttribution | RootSessionAttribution | null>
   >();
   private readonly discoveryCache = new Map<
     string,
@@ -209,7 +227,11 @@ export class TeamMemberLogsFinder {
   >();
   private readonly discoveryInFlight = new Map<
     string,
-    { generation: number; promise: Promise<ProjectSessionDiscovery | null> }
+    {
+      generation: number;
+      promise: Promise<ProjectSessionDiscovery | null>;
+      forceRefresh: boolean;
+    }
   >();
   private readonly discoveryGenerationByTeam = new Map<string, number>();
 
@@ -979,10 +1001,16 @@ export class TeamMemberLogsFinder {
   ): Promise<MemberLogFileRef[]> {
     const parsedOptions =
       typeof options === 'number' || options === null
-        ? { mtimeSinceMs: options ?? null, forceRefresh: false }
+        ? {
+            mtimeSinceMs: options ?? null,
+            forceRefresh: false,
+            includeTeamSubagentSessionDiscovery: true,
+          }
         : {
             mtimeSinceMs: options?.mtimeSinceMs ?? null,
             forceRefresh: options?.forceRefresh === true,
+            includeTeamSubagentSessionDiscovery:
+              options?.includeTeamSubagentSessionDiscovery !== false,
           };
     const requestedMembersByKey = new Map<string, string>();
     for (const memberName of memberNames) {
@@ -1001,6 +1029,7 @@ export class TeamMemberLogsFinder {
 
     const discovery = await this.discoverProjectSessions(teamName, {
       forceRefresh: parsedOptions.forceRefresh,
+      includeTeamSubagentSessionDiscovery: parsedOptions.includeTeamSubagentSessionDiscovery,
     });
     if (!discovery) {
       return [];
@@ -1147,41 +1176,50 @@ export class TeamMemberLogsFinder {
 
   private async discoverProjectSessions(
     teamName: string,
-    options?: { forceRefresh?: boolean }
+    options?: ProjectSessionDiscoveryOptions
   ): Promise<ProjectSessionDiscovery | null> {
-    let generation = this.discoveryGenerationByTeam.get(teamName) ?? 0;
+    const cacheKey = buildProjectSessionDiscoveryCacheKey(teamName, options);
+    let generation = this.discoveryGenerationByTeam.get(cacheKey) ?? 0;
     if (options?.forceRefresh) {
+      const inFlight = this.discoveryInFlight.get(cacheKey);
+      if (inFlight?.forceRefresh === true) {
+        return inFlight.promise;
+      }
       generation += 1;
-      this.discoveryGenerationByTeam.set(teamName, generation);
-      this.discoveryCache.delete(teamName);
-      this.discoveryInFlight.delete(teamName);
+      this.discoveryGenerationByTeam.set(cacheKey, generation);
+      this.discoveryCache.delete(cacheKey);
     } else {
       // Check discovery cache — avoids re-reading config/dirs within rapid successive calls
-      const cached = this.discoveryCache.get(teamName);
+      const cached = this.discoveryCache.get(cacheKey);
       if (cached && cached.expiresAt > Date.now()) {
         return cached.result;
       }
-      const inFlight = this.discoveryInFlight.get(teamName);
+      const inFlight = this.discoveryInFlight.get(cacheKey);
       if (inFlight) {
         return inFlight.promise;
       }
     }
 
     const promise = this.loadProjectSessionDiscovery(teamName, options, generation).finally(() => {
-      const current = this.discoveryInFlight.get(teamName);
+      const current = this.discoveryInFlight.get(cacheKey);
       if (current?.promise === promise) {
-        this.discoveryInFlight.delete(teamName);
+        this.discoveryInFlight.delete(cacheKey);
       }
     });
-    this.discoveryInFlight.set(teamName, { generation, promise });
+    this.discoveryInFlight.set(cacheKey, {
+      generation,
+      promise,
+      forceRefresh: options?.forceRefresh === true,
+    });
     return promise;
   }
 
   private async loadProjectSessionDiscovery(
     teamName: string,
-    options: { forceRefresh?: boolean } | undefined,
+    options: ProjectSessionDiscoveryOptions | undefined,
     generation: number
   ): Promise<ProjectSessionDiscovery | null> {
+    const cacheKey = buildProjectSessionDiscoveryCacheKey(teamName, options);
     const context = await this.projectResolver.getContext(teamName, options);
     if (!context) {
       logger.debug(`No transcript context for team "${teamName}"`);
@@ -1214,8 +1252,8 @@ export class TeamMemberLogsFinder {
     }
 
     const discovery = { projectDir, projectId, config, sessionIds, knownMembers };
-    if ((this.discoveryGenerationByTeam.get(teamName) ?? 0) === generation) {
-      this.discoveryCache.set(teamName, {
+    if ((this.discoveryGenerationByTeam.get(cacheKey) ?? 0) === generation) {
+      this.discoveryCache.set(cacheKey, {
         result: discovery,
         expiresAt: Date.now() + DISCOVERY_CACHE_TTL,
       });
@@ -1585,7 +1623,15 @@ export class TeamMemberLogsFinder {
     if (this.attributionCache.has(cacheKey)) {
       return this.attributionCache.get(cacheKey) ?? null;
     }
-    const attribution = await this.attributeSubagent(filePath, knownMembers);
+    const existing = this.attributionInFlight.get(cacheKey);
+    if (existing) {
+      return (await existing) as SubagentAttribution | null;
+    }
+    const promise = this.attributeSubagent(filePath, knownMembers).finally(() => {
+      this.attributionInFlight.delete(cacheKey);
+    });
+    this.attributionInFlight.set(cacheKey, promise);
+    const attribution = await promise;
     this.attributionCache.set(cacheKey, attribution);
     if (this.attributionCache.size > ATTRIBUTION_CACHE_MAX) {
       const oldestKey = this.attributionCache.keys().next().value;
@@ -1604,7 +1650,15 @@ export class TeamMemberLogsFinder {
     if (this.attributionCache.has(cacheKey)) {
       return (this.attributionCache.get(cacheKey) as RootSessionAttribution | null) ?? null;
     }
-    const attribution = await this.attributeMemberSession(filePath, teamName, knownMembers);
+    const existing = this.attributionInFlight.get(cacheKey);
+    if (existing) {
+      return (await existing) as RootSessionAttribution | null;
+    }
+    const promise = this.attributeMemberSession(filePath, teamName, knownMembers).finally(() => {
+      this.attributionInFlight.delete(cacheKey);
+    });
+    this.attributionInFlight.set(cacheKey, promise);
+    const attribution = await promise;
     this.attributionCache.set(cacheKey, attribution);
     if (this.attributionCache.size > ATTRIBUTION_CACHE_MAX) {
       const oldestKey = this.attributionCache.keys().next().value;

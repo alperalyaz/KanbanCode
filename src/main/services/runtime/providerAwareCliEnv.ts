@@ -1,6 +1,6 @@
 import { getCachedShellEnv } from '@main/utils/shellEnv';
 
-import { resolveAppManagedOpenCodeRuntimeBinaryPath } from '../infrastructure/OpenCodeRuntimeInstallerService';
+import { resolveVerifiedAppManagedOpenCodeRuntimeBinaryPath } from '../infrastructure/OpenCodeRuntimeInstallerService';
 
 import { buildRuntimeBaseEnv } from './buildRuntimeBaseEnv';
 import { providerConnectionService } from './ProviderConnectionService';
@@ -16,6 +16,7 @@ export interface ProviderAwareCliEnvOptions {
   shellEnv?: NodeJS.ProcessEnv | null;
   env?: NodeJS.ProcessEnv;
   connectionMode?: 'strict' | 'augment';
+  allowStoredApiKeyDecryption?: boolean;
 }
 
 export interface ProviderAwareCliEnvResult {
@@ -28,6 +29,10 @@ export async function buildProviderAwareCliEnv(
   options: ProviderAwareCliEnvOptions = {}
 ): Promise<ProviderAwareCliEnvResult> {
   const connectionMode = options.connectionMode ?? 'strict';
+  const storedApiKeyAccessArgs =
+    options.allowStoredApiKeyDecryption === undefined
+      ? []
+      : [{ allowStoredApiKeyDecryption: options.allowStoredApiKeyDecryption }];
   const shellEnv = options.shellEnv ?? getCachedShellEnv() ?? {};
   const { env, resolvedProviderId } = buildRuntimeBaseEnv({
     binaryPath: options.binaryPath,
@@ -36,7 +41,7 @@ export async function buildProviderAwareCliEnv(
     shellEnv,
     env: options.env,
   });
-  const appManagedOpenCodeBinary = resolveAppManagedOpenCodeRuntimeBinaryPath();
+  const appManagedOpenCodeBinary = await resolveVerifiedAppManagedOpenCodeRuntimeBinaryPath();
   if (
     appManagedOpenCodeBinary &&
     !env.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH &&
@@ -53,7 +58,8 @@ export async function buildProviderAwareCliEnv(
       await providerConnectionService.augmentConfiguredConnectionEnv(
         env,
         resolvedProviderId,
-        options.providerBackendId
+        options.providerBackendId,
+        ...storedApiKeyAccessArgs
       );
       return {
         env,
@@ -65,7 +71,8 @@ export async function buildProviderAwareCliEnv(
     await providerConnectionService.applyConfiguredConnectionEnv(
       env,
       resolvedProviderId,
-      options.providerBackendId
+      options.providerBackendId,
+      ...storedApiKeyAccessArgs
     );
 
     return {
@@ -87,7 +94,10 @@ export async function buildProviderAwareCliEnv(
   }
 
   if (connectionMode === 'augment') {
-    await providerConnectionService.augmentAllConfiguredConnectionEnv(env);
+    await providerConnectionService.augmentAllConfiguredConnectionEnv(
+      env,
+      ...storedApiKeyAccessArgs
+    );
     return {
       env,
       connectionIssues: {},
@@ -95,7 +105,7 @@ export async function buildProviderAwareCliEnv(
     };
   }
 
-  await providerConnectionService.applyAllConfiguredConnectionEnv(env);
+  await providerConnectionService.applyAllConfiguredConnectionEnv(env, ...storedApiKeyAccessArgs);
   return {
     env,
     connectionIssues: await providerConnectionService.getConfiguredConnectionIssues(env),

@@ -34,6 +34,10 @@ type ExternalCredential = {
   value: string;
 } | null;
 
+interface StoredApiKeyAccessOptions {
+  allowStoredApiKeyDecryption?: boolean;
+}
+
 const PROVIDER_CAPABILITIES: Record<
   CliProviderId,
   Pick<CliProviderConnectionInfo, 'supportsOAuth' | 'supportsApiKey' | 'configurableAuthModes'>
@@ -258,7 +262,8 @@ export class ProviderConnectionService {
   async applyConfiguredConnectionEnv(
     env: NodeJS.ProcessEnv,
     providerId: CliProviderId,
-    runtimeBackendOverride?: string | null
+    runtimeBackendOverride?: string | null,
+    options?: StoredApiKeyAccessOptions
   ): Promise<NodeJS.ProcessEnv> {
     if (providerId === 'anthropic') {
       const authMode = this.getConfiguredAuthMode(providerId);
@@ -272,7 +277,7 @@ export class ProviderConnectionService {
         return env;
       }
 
-      const storedKey = await this.apiKeyService.lookupPreferred('ANTHROPIC_API_KEY');
+      const storedKey = await this.lookupStoredApiKeyValue('ANTHROPIC_API_KEY', options);
       if (storedKey?.value.trim()) {
         env.ANTHROPIC_API_KEY = storedKey.value;
         delete env.ANTHROPIC_AUTH_TOKEN;
@@ -285,6 +290,14 @@ export class ProviderConnectionService {
         delete env.ANTHROPIC_API_KEY;
       }
 
+      return env;
+    }
+
+    if (providerId === 'gemini') {
+      const storedKey = await this.lookupStoredApiKeyValue('GEMINI_API_KEY', options);
+      if (storedKey?.value.trim()) {
+        env.GEMINI_API_KEY = storedKey.value;
+      }
       return env;
     }
 
@@ -310,7 +323,7 @@ export class ProviderConnectionService {
       return env;
     }
 
-    const resolvedApiKey = await this.resolveCodexApiKeyValue(env, runtimeBackendOverride);
+    const resolvedApiKey = await this.resolveCodexApiKeyValue(env, runtimeBackendOverride, options);
     if (readiness.effectiveAuthMode === 'api_key' && resolvedApiKey) {
       env.OPENAI_API_KEY = resolvedApiKey;
       env[CODEX_NATIVE_API_KEY_ENV_VAR] = resolvedApiKey;
@@ -327,10 +340,13 @@ export class ProviderConnectionService {
     return env;
   }
 
-  async applyAllConfiguredConnectionEnv(env: NodeJS.ProcessEnv): Promise<NodeJS.ProcessEnv> {
+  async applyAllConfiguredConnectionEnv(
+    env: NodeJS.ProcessEnv,
+    options?: StoredApiKeyAccessOptions
+  ): Promise<NodeJS.ProcessEnv> {
     let nextEnv = env;
     for (const providerId of ['anthropic', 'codex', 'gemini', 'opencode'] as const) {
-      nextEnv = await this.applyConfiguredConnectionEnv(nextEnv, providerId);
+      nextEnv = await this.applyConfiguredConnectionEnv(nextEnv, providerId, undefined, options);
     }
     return nextEnv;
   }
@@ -338,16 +354,25 @@ export class ProviderConnectionService {
   async augmentConfiguredConnectionEnv(
     env: NodeJS.ProcessEnv,
     providerId: CliProviderId,
-    runtimeBackendOverride?: string | null
+    runtimeBackendOverride?: string | null,
+    options?: StoredApiKeyAccessOptions
   ): Promise<NodeJS.ProcessEnv> {
     if (providerId === 'anthropic') {
       if (this.getConfiguredAuthMode(providerId) !== 'api_key') {
         return env;
       }
 
-      const storedKey = await this.apiKeyService.lookupPreferred('ANTHROPIC_API_KEY');
+      const storedKey = await this.lookupStoredApiKeyValue('ANTHROPIC_API_KEY', options);
       if (storedKey?.value.trim()) {
         env.ANTHROPIC_API_KEY = storedKey.value;
+      }
+      return env;
+    }
+
+    if (providerId === 'gemini') {
+      const storedKey = await this.lookupStoredApiKeyValue('GEMINI_API_KEY', options);
+      if (storedKey?.value.trim()) {
+        env.GEMINI_API_KEY = storedKey.value;
       }
       return env;
     }
@@ -374,7 +399,7 @@ export class ProviderConnectionService {
       return env;
     }
 
-    const resolvedApiKey = await this.resolveCodexApiKeyValue(env, runtimeBackendOverride);
+    const resolvedApiKey = await this.resolveCodexApiKeyValue(env, runtimeBackendOverride, options);
     if (readiness.effectiveAuthMode === 'api_key' && resolvedApiKey) {
       env.OPENAI_API_KEY = resolvedApiKey;
       env[CODEX_NATIVE_API_KEY_ENV_VAR] = resolvedApiKey;
@@ -386,10 +411,13 @@ export class ProviderConnectionService {
     return env;
   }
 
-  async augmentAllConfiguredConnectionEnv(env: NodeJS.ProcessEnv): Promise<NodeJS.ProcessEnv> {
+  async augmentAllConfiguredConnectionEnv(
+    env: NodeJS.ProcessEnv,
+    options?: StoredApiKeyAccessOptions
+  ): Promise<NodeJS.ProcessEnv> {
     let nextEnv = env;
     for (const providerId of ['anthropic', 'codex', 'gemini', 'opencode'] as const) {
-      nextEnv = await this.augmentConfiguredConnectionEnv(nextEnv, providerId);
+      nextEnv = await this.augmentConfiguredConnectionEnv(nextEnv, providerId, undefined, options);
     }
     return nextEnv;
   }
@@ -408,8 +436,7 @@ export class ProviderConnectionService {
         return null;
       }
 
-      const storedKey = await this.apiKeyService.lookupPreferred('ANTHROPIC_API_KEY');
-      if (storedKey?.value.trim()) {
+      if (await this.hasStoredApiKey('ANTHROPIC_API_KEY')) {
         return null;
       }
 
@@ -654,7 +681,7 @@ export class ProviderConnectionService {
 
   async getConnectionInfo(providerId: CliProviderId): Promise<CliProviderConnectionInfo> {
     const capabilities = PROVIDER_CAPABILITIES[providerId];
-    const storedApiKey = await this.getStoredApiKey(providerId);
+    const hasStoredApiKey = await this.hasStoredProviderApiKey(providerId);
     const externalCredential = this.getExternalCredential(providerId);
     const codexSnapshot = providerId === 'codex' ? await this.getCodexAccountSnapshot() : null;
     const configurableAuthModes = capabilities.configurableAuthModes;
@@ -665,11 +692,11 @@ export class ProviderConnectionService {
     const apiKeyConfigured =
       providerId === 'codex'
         ? (codexSnapshot?.apiKey.available ?? false)
-        : Boolean(storedApiKey?.value.trim() || externalCredential?.value.trim());
+        : Boolean(hasStoredApiKey || externalCredential?.value.trim());
     const apiKeySource =
       providerId === 'codex'
         ? (codexSnapshot?.apiKey.source ?? null)
-        : storedApiKey?.value.trim()
+        : hasStoredApiKey
           ? 'stored'
           : externalCredential?.value.trim()
             ? 'environment'
@@ -677,7 +704,7 @@ export class ProviderConnectionService {
     const apiKeySourceLabel =
       providerId === 'codex'
         ? (codexSnapshot?.apiKey.sourceLabel ?? null)
-        : storedApiKey?.value.trim()
+        : hasStoredApiKey
           ? 'Stored in app'
           : (externalCredential?.label ?? null);
 
@@ -709,11 +736,33 @@ export class ProviderConnectionService {
     };
   }
 
-  private async getStoredApiKey(
-    providerId: CliProviderId
-  ): Promise<{ envVarName: string; value: string } | null> {
+  private async hasStoredProviderApiKey(providerId: CliProviderId): Promise<boolean> {
     const envVarName = PROVIDER_API_KEY_ENV_VARS[providerId];
     if (!envVarName) {
+      return false;
+    }
+
+    return this.hasStoredApiKey(envVarName);
+  }
+
+  private async hasStoredApiKey(envVarName: string): Promise<boolean> {
+    const service = this.apiKeyService as ApiKeyService & {
+      hasPreferred?: (envVarName: string) => Promise<boolean>;
+    };
+
+    if (typeof service.hasPreferred === 'function') {
+      return service.hasPreferred(envVarName);
+    }
+
+    const storedKey = await service.lookupPreferred(envVarName);
+    return Boolean(storedKey?.value.trim());
+  }
+
+  private async lookupStoredApiKeyValue(
+    envVarName: string,
+    options?: StoredApiKeyAccessOptions
+  ): Promise<{ envVarName: string; value: string } | null> {
+    if (options?.allowStoredApiKeyDecryption === false) {
       return null;
     }
 
@@ -736,17 +785,17 @@ export class ProviderConnectionService {
       (this.configManager.getConfig().providerConnections.codex.preferredAuthMode as
         | CodexAccountAuthMode
         | undefined) ?? 'auto';
-    const storedKey = await this.apiKeyService.lookupPreferred('OPENAI_API_KEY');
+    const hasStoredOpenAiKey = await this.hasStoredApiKey('OPENAI_API_KEY');
     const externalCredential = this.getExternalCredential('codex');
-    const apiKeyAvailable = Boolean(storedKey?.value.trim() || externalCredential?.value.trim());
+    const apiKeyAvailable = Boolean(hasStoredOpenAiKey || externalCredential?.value.trim());
     const apiKey = {
       available: apiKeyAvailable,
-      source: storedKey?.value.trim()
+      source: hasStoredOpenAiKey
         ? 'stored'
         : externalCredential?.value.trim()
           ? 'environment'
           : null,
-      sourceLabel: storedKey?.value.trim() ? 'Stored in app' : (externalCredential?.label ?? null),
+      sourceLabel: hasStoredOpenAiKey ? 'Stored in app' : (externalCredential?.label ?? null),
     } satisfies CodexAccountSnapshotDto['apiKey'];
     const readiness = evaluateCodexLaunchReadiness({
       preferredAuthMode,
@@ -786,10 +835,11 @@ export class ProviderConnectionService {
 
   private async resolveCodexApiKeyValue(
     env: NodeJS.ProcessEnv,
-    runtimeBackendOverride?: string | null
+    runtimeBackendOverride?: string | null,
+    options?: StoredApiKeyAccessOptions
   ): Promise<string | null> {
     const codexRuntimeBackend = this.getConfiguredCodexRuntimeBackend(runtimeBackendOverride);
-    const storedKey = await this.apiKeyService.lookupPreferred('OPENAI_API_KEY');
+    const storedKey = await this.lookupStoredApiKeyValue('OPENAI_API_KEY', options);
     const existingOpenAiKey =
       typeof env.OPENAI_API_KEY === 'string' && env.OPENAI_API_KEY.trim()
         ? env.OPENAI_API_KEY

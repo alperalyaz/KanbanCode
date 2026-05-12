@@ -294,7 +294,7 @@ function getRuntimeSelectorModels(
     return getVisibleTeamProviderModels(providerId, catalogModels, providerStatus);
   }
 
-  return sortTeamProviderModels(providerId, providerStatus.models);
+  return sortTeamProviderModels(providerId, providerStatus.models, providerStatus);
 }
 
 function getVisibleRuntimeModels(

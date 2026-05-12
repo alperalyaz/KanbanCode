@@ -196,8 +196,7 @@ function isDocumentHidden(): boolean {
 
 function isSilentCounterLoad(options: TeamChangesLoadOptions | null): boolean {
   return Boolean(
-    options &&
-    options.storeSummaries === false &&
+    options?.storeSummaries === false &&
     options.reportError === false &&
     options.showSpinner !== true
   );

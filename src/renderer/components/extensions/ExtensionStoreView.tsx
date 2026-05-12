@@ -270,11 +270,6 @@ export const ExtensionStoreView = (): React.JSX.Element => {
     void mcpFetchInstalled(projectPath ?? undefined);
   }, [mcpFetchInstalled, projectPath]);
 
-  // Fetch API keys on mount
-  useEffect(() => {
-    void fetchApiKeys();
-  }, [fetchApiKeys]);
-
   // Fetch Skills catalog on mount / project change
   useEffect(() => {
     void fetchSkillsCatalog(projectPath ?? undefined);
@@ -287,7 +282,9 @@ export const ExtensionStoreView = (): React.JSX.Element => {
       bootstrapCliStatus,
       fetchCliStatus,
     });
-    void fetchApiKeys();
+    if (tabState.activeSubTab === 'api-keys') {
+      void fetchApiKeys();
+    }
     void fetchPluginCatalog(projectPath ?? undefined, true);
     void mcpBrowse(); // re-fetch first page
     void mcpFetchInstalled(projectPath ?? undefined);
@@ -302,6 +299,7 @@ export const ExtensionStoreView = (): React.JSX.Element => {
     mcpBrowse,
     mcpFetchInstalled,
     projectPath,
+    tabState.activeSubTab,
   ]);
 
   const isRefreshing =

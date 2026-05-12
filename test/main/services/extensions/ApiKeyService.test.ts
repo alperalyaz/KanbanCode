@@ -36,21 +36,22 @@ describe('ApiKeyService', () => {
   });
 
   it('persists projectPath for project-scoped API keys', async () => {
+    const projectPath = path.join(tempDir, 'project-a');
     const saved = await service.save({
       name: 'Project Tavily',
       envVarName: 'TAVILY_API_KEY',
       value: 'secret',
       scope: 'project',
-      projectPath: '/tmp/project-a',
+      projectPath,
     });
 
     expect(saved.scope).toBe('project');
-    expect(saved.projectPath).toBe('/tmp/project-a');
+    expect(saved.projectPath).toBe(projectPath);
 
     await expect(service.list()).resolves.toEqual([
       expect.objectContaining({
         scope: 'project',
-        projectPath: '/tmp/project-a',
+        projectPath,
       }),
     ]);
   });
@@ -67,6 +68,7 @@ describe('ApiKeyService', () => {
   });
 
   it('prefers exact project matches over user keys during lookup', async () => {
+    const projectPath = path.join(tempDir, 'project-a');
     await service.save({
       name: 'Shared Tavily',
       envVarName: 'TAVILY_API_KEY',
@@ -78,10 +80,10 @@ describe('ApiKeyService', () => {
       envVarName: 'TAVILY_API_KEY',
       value: 'project-secret',
       scope: 'project',
-      projectPath: '/tmp/project-a',
+      projectPath,
     });
 
-    await expect(service.lookup(['TAVILY_API_KEY'], '/tmp/project-a')).resolves.toEqual([
+    await expect(service.lookup(['TAVILY_API_KEY'], projectPath)).resolves.toEqual([
       {
         envVarName: 'TAVILY_API_KEY',
         value: 'project-secret',
@@ -90,6 +92,8 @@ describe('ApiKeyService', () => {
   });
 
   it('falls back to user keys when project-specific matches do not exist', async () => {
+    const projectPath = path.join(tempDir, 'project-a');
+    const otherProjectPath = path.join(tempDir, 'project-b');
     await service.save({
       name: 'Shared Tavily',
       envVarName: 'TAVILY_API_KEY',
@@ -101,10 +105,10 @@ describe('ApiKeyService', () => {
       envVarName: 'TAVILY_API_KEY',
       value: 'project-secret',
       scope: 'project',
-      projectPath: '/tmp/project-b',
+      projectPath: otherProjectPath,
     });
 
-    await expect(service.lookup(['TAVILY_API_KEY'], '/tmp/project-a')).resolves.toEqual([
+    await expect(service.lookup(['TAVILY_API_KEY'], projectPath)).resolves.toEqual([
       {
         envVarName: 'TAVILY_API_KEY',
         value: 'user-secret',
@@ -113,16 +117,36 @@ describe('ApiKeyService', () => {
   });
 
   it('does not leak project-scoped keys without project context', async () => {
+    const projectPath = path.join(tempDir, 'project-a');
     await service.save({
       name: 'Project only key',
       envVarName: 'TAVILY_API_KEY',
       value: 'project-secret',
       scope: 'project',
-      projectPath: '/tmp/project-a',
+      projectPath,
     });
 
     await expect(service.lookup(['TAVILY_API_KEY'])).resolves.toEqual([]);
     await expect(service.lookupPreferred('TAVILY_API_KEY')).resolves.toBeNull();
+  });
+
+  it('checks preferred key presence without decrypting the stored value', async () => {
+    vi.mocked(safeStorage.isEncryptionAvailable).mockReturnValue(true);
+    vi.mocked(safeStorage.getSelectedStorageBackend).mockReturnValue('gnome_libsecret');
+    vi.mocked(safeStorage.encryptString).mockReturnValue(Buffer.from('encrypted-value'));
+
+    await service.save({
+      name: 'Anthropic API Key',
+      envVarName: 'ANTHROPIC_API_KEY',
+      value: 'secret',
+      scope: 'user',
+    });
+    vi.mocked(safeStorage.decryptString).mockImplementation(() => {
+      throw new Error('decrypt should not be called');
+    });
+
+    await expect(service.hasPreferred('ANTHROPIC_API_KEY')).resolves.toBe(true);
+    expect(safeStorage.decryptString).not.toHaveBeenCalled();
   });
 
   it('does not print decrypt failures to the normal console', async () => {

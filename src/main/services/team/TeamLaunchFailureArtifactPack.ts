@@ -58,6 +58,7 @@ export interface TeamLaunchFailureArtifactPackResult {
 }
 
 export type LaunchFailureArtifactClassificationCode =
+  | 'workspace_trust_required'
   | 'transport_rejected'
   | 'stdin_missing'
   | 'provider_quota'
@@ -215,6 +216,13 @@ function firstEvidence(parts: readonly string[], pattern: RegExp): string[] {
   return evidence;
 }
 
+const WORKSPACE_TRUST_FAILURE_PATTERN =
+  /workspace trust is not accepted|cannot start in headless process runtime because workspace trust|open that workspace once interactively and accept trust/i;
+
+export function isWorkspaceTrustLaunchFailureText(value: string): boolean {
+  return WORKSPACE_TRUST_FAILURE_PATTERN.test(value);
+}
+
 export function classifyLaunchFailureArtifact(
   input: TeamLaunchFailureArtifactPackInput
 ): LaunchFailureArtifactClassification {
@@ -225,6 +233,11 @@ export function classifyLaunchFailureArtifact(
     confidence: number;
     pattern: RegExp;
   }[] = [
+    {
+      code: 'workspace_trust_required',
+      confidence: 0.96,
+      pattern: WORKSPACE_TRUST_FAILURE_PATTERN,
+    },
     {
       code: 'transport_rejected',
       confidence: 0.95,

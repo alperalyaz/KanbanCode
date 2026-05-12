@@ -110,9 +110,9 @@ export function buildTeamChangeRequestPlan(
     }
     seenTaskIds.add(task.id);
 
-    const options = buildTaskChangeRequestOptions(task, { summaryOnly: true });
+    const requestOptions = buildTaskChangeRequestOptions(task, { summaryOnly: true });
     const presence = task.changePresence ?? 'unknown';
-    const canDisplay = canDisplayTaskChangesForOptions(options);
+    const canDisplay = canDisplayTaskChangesForOptions(requestOptions);
     const shouldScanUnknown =
       presence === 'unknown' && (canDisplay || hasTaskChangeScanEvidence(task));
     if (
@@ -125,19 +125,19 @@ export function buildTeamChangeRequestPlan(
     }
 
     if (presence === 'has_changes') {
-      primary.push({ task, options, priority: 0 });
+      primary.push({ task, options: requestOptions, priority: 0 });
       continue;
     }
     if (presence === 'needs_attention') {
-      primary.push({ task, options, priority: 1 });
+      primary.push({ task, options: requestOptions, priority: 1 });
       continue;
     }
-    if (options.stateBucket === 'active' && options.status === 'in_progress') {
-      active.push({ task, options, priority: 2 });
+    if (requestOptions.stateBucket === 'active' && requestOptions.status === 'in_progress') {
+      active.push({ task, options: requestOptions, priority: 2 });
       continue;
     }
     if (shouldScanUnknown) {
-      unknown.push({ task, options, priority: 3 });
+      unknown.push({ task, options: requestOptions, priority: 3 });
     }
   }
 
@@ -166,15 +166,15 @@ export function buildTeamChangeRequestPlan(
   const selected = [...requestPrimary, ...requestActive, ...unknownWindow].slice(0, maxRequests);
   const requestOptionsByTaskId = new Map<string, TaskChangeRequestOptions>();
   const requests = selected.map((candidate) => {
-    const options = {
+    const requestOptions = {
       ...candidate.options,
       summaryOnly: true,
       forceFresh: forceFresh ? true : candidate.options.forceFresh,
     };
-    requestOptionsByTaskId.set(candidate.task.id, options);
+    requestOptionsByTaskId.set(candidate.task.id, requestOptions);
     return {
       taskId: candidate.task.id,
-      options,
+      options: requestOptions,
     };
   });
   const eligibleCount = primary.length + active.length + unknown.length;

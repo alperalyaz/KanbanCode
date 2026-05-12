@@ -58,6 +58,7 @@ export class PtyTerminalService {
     const { env } = await buildProviderAwareCliEnv({
       env: options?.env,
       connectionMode: 'augment',
+      allowStoredApiKeyDecryption: false,
     });
     const shell =
       options?.command ??

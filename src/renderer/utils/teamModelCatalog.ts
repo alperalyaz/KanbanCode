@@ -400,9 +400,38 @@ export function getRuntimeAwareTeamModelBadgeLabel(
   return getTeamModelBadgeLabel(providerId, model);
 }
 
+function hasExplicitFreeOpenCodeModelMarker(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  return (
+    normalized === 'opencode/big-pickle' ||
+    normalized.includes(':free') ||
+    normalized.endsWith('-free') ||
+    normalized.endsWith('/free')
+  );
+}
+
+function isFreeOpenCodeModelForOrdering(
+  providerId: SupportedProviderId,
+  model: string,
+  providerStatus?: RuntimeAwareProviderStatus | null
+): boolean {
+  if (providerId !== 'opencode') {
+    return false;
+  }
+
+  const runtimeModel = getRuntimeCatalogModel(providerId, model, providerStatus);
+  const badgeLabel = runtimeModel?.badgeLabel?.trim().toLowerCase();
+  if (badgeLabel) {
+    return badgeLabel === 'free';
+  }
+
+  return hasExplicitFreeOpenCodeModelMarker(model);
+}
+
 export function sortTeamProviderModels(
   providerId: SupportedProviderId,
-  models: readonly string[]
+  models: readonly string[],
+  providerStatus?: RuntimeAwareProviderStatus | null
 ): string[] {
   const seen = new Set<string>();
   const deduped = models.filter((model) => {
@@ -415,7 +444,7 @@ export function sortTeamProviderModels(
   });
   const order = TEAM_PROVIDER_MODEL_ORDER[providerId];
 
-  return [...deduped].sort((left, right) => {
+  const sorted = [...deduped].sort((left, right) => {
     const leftRank = order.get(left) ?? Number.MAX_SAFE_INTEGER;
     const rightRank = order.get(right) ?? Number.MAX_SAFE_INTEGER;
     if (leftRank !== rightRank) {
@@ -423,6 +452,22 @@ export function sortTeamProviderModels(
     }
     return left.localeCompare(right);
   });
+
+  if (providerId !== 'opencode') {
+    return sorted;
+  }
+
+  return sorted
+    .map((model, index) => ({ model, index }))
+    .sort((left, right) => {
+      const leftFree = isFreeOpenCodeModelForOrdering(providerId, left.model, providerStatus);
+      const rightFree = isFreeOpenCodeModelForOrdering(providerId, right.model, providerStatus);
+      if (leftFree !== rightFree) {
+        return leftFree ? -1 : 1;
+      }
+      return left.index - right.index;
+    })
+    .map((entry) => entry.model);
 }
 
 export function isCodexChatGptSubscriptionProviderStatus(
@@ -468,7 +513,11 @@ export function getVisibleTeamProviderModels(
 ): string[] {
   return sortTeamProviderModels(
     providerId,
-    filterVisibleProviderRuntimeModels(providerId, getSupplementalVisibleModels(providerId, models))
+    filterVisibleProviderRuntimeModels(
+      providerId,
+      getSupplementalVisibleModels(providerId, models)
+    ),
+    providerStatus
   ).filter((model) => !isRuntimeHiddenTeamModel(providerId, model, providerStatus));
 }
 

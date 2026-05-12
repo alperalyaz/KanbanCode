@@ -308,9 +308,7 @@ describe('OpenCodeReadinessBridge', () => {
     );
   });
 
-  it('recovers accepted OpenCode sendMessage after bridge timeout through commandStatus when enabled', async () => {
-    const previous = process.env.CLAUDE_TEAM_OPENCODE_COMMAND_STATUS_RECOVERY;
-    process.env.CLAUDE_TEAM_OPENCODE_COMMAND_STATUS_RECOVERY = '1';
+  it('recovers accepted OpenCode sendMessage after bridge timeout through commandStatus by default', async () => {
     const executor = fakeSequenceExecutor([
       bridgeFailure('timeout', 'OpenCode bridge command timed out', []),
       bridgeCommandSuccess({
@@ -328,34 +326,26 @@ describe('OpenCodeReadinessBridge', () => {
     ]);
     const bridge = new OpenCodeReadinessBridge(executor);
 
-    try {
-      await expect(
-        bridge.sendOpenCodeTeamMessage({
-          teamId: 'team-a',
-          teamName: 'team-a',
-          laneId: 'secondary:opencode:bob',
-          projectPath: '/repo',
-          memberName: 'bob',
-          text: 'hello',
-          messageId: 'message-1',
-          deliveryAttemptId: 'ledger-1:1:payload',
-        })
-      ).resolves.toMatchObject({
-        accepted: true,
-        sessionId: 'session-bob',
-        diagnostics: expect.arrayContaining([
-          expect.objectContaining({
-            code: 'opencode_send_recovered_after_bridge_timeout',
-          }),
-        ]),
-      });
-    } finally {
-      if (previous === undefined) {
-        delete process.env.CLAUDE_TEAM_OPENCODE_COMMAND_STATUS_RECOVERY;
-      } else {
-        process.env.CLAUDE_TEAM_OPENCODE_COMMAND_STATUS_RECOVERY = previous;
-      }
-    }
+    await expect(
+      bridge.sendOpenCodeTeamMessage({
+        teamId: 'team-a',
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:bob',
+        projectPath: '/repo',
+        memberName: 'bob',
+        text: 'hello',
+        messageId: 'message-1',
+        deliveryAttemptId: 'ledger-1:1:payload',
+      })
+    ).resolves.toMatchObject({
+      accepted: true,
+      sessionId: 'session-bob',
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: 'opencode_send_recovered_after_bridge_timeout',
+        }),
+      ]),
+    });
 
     expect(executor.execute).toHaveBeenCalledTimes(2);
     const sendOptions = executor.execute.mock.calls[0]?.[2] as { requestId?: string } | undefined;
@@ -375,152 +365,142 @@ describe('OpenCodeReadinessBridge', () => {
   });
 
   it('does not query commandStatus for non-timeout OpenCode sendMessage failures', async () => {
-    await withCommandStatusRecoveryEnabled(async () => {
-      const executor = fakeExecutor(
-        bridgeFailure('provider_error', 'OpenCode send failed', [])
-      );
-      const bridge = new OpenCodeReadinessBridge(executor);
+    const executor = fakeExecutor(bridgeFailure('provider_error', 'OpenCode send failed', []));
+    const bridge = new OpenCodeReadinessBridge(executor);
 
-      await expect(
-        bridge.sendOpenCodeTeamMessage({
-          teamId: 'team-a',
-          teamName: 'team-a',
-          laneId: 'secondary:opencode:bob',
-          projectPath: '/repo',
-          memberName: 'bob',
-          text: 'hello',
-          messageId: 'message-1',
-          deliveryAttemptId: 'ledger-1:1:payload',
-        })
-      ).resolves.toMatchObject({
-        accepted: false,
+    await expect(
+      bridge.sendOpenCodeTeamMessage({
+        teamId: 'team-a',
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:bob',
+        projectPath: '/repo',
         memberName: 'bob',
-        diagnostics: [
-          expect.objectContaining({
-            code: 'provider_error',
-          }),
-        ],
-      });
-
-      expect(executor.execute).toHaveBeenCalledOnce();
-    });
-  });
-
-  it('keeps the old send failure path when timeout commandStatus is unknown', async () => {
-    await withCommandStatusRecoveryEnabled(async () => {
-      const executor = fakeSequenceExecutor([
-        bridgeFailure('timeout', 'OpenCode bridge command timed out', []),
-        bridgeCommandSuccess({
-          command: 'opencode.commandStatus',
-          requestId: 'status-req-1',
-          data: {
-            status: 'unknown',
-            safeToRetry: false,
-            accepted: false,
-            diagnostics: ['No orchestrator-side command outcome record matched the requested OpenCode command.'],
-          },
+        text: 'hello',
+        messageId: 'message-1',
+        deliveryAttemptId: 'ledger-1:1:payload',
+      })
+    ).resolves.toMatchObject({
+      accepted: false,
+      memberName: 'bob',
+      diagnostics: [
+        expect.objectContaining({
+          code: 'provider_error',
         }),
-      ]);
-      const bridge = new OpenCodeReadinessBridge(executor);
-
-      await expect(
-        bridge.sendOpenCodeTeamMessage({
-          teamId: 'team-a',
-          teamName: 'team-a',
-          laneId: 'secondary:opencode:bob',
-          projectPath: '/repo',
-          memberName: 'bob',
-          text: 'hello',
-          messageId: 'message-1',
-          deliveryAttemptId: 'ledger-1:1:payload',
-        })
-      ).resolves.toMatchObject({
-        accepted: false,
-        memberName: 'bob',
-        diagnostics: [
-          expect.objectContaining({
-            code: 'timeout',
-          }),
-        ],
-      });
-
-      expect(executor.execute).toHaveBeenCalledTimes(2);
+      ],
     });
+
+    expect(executor.execute).toHaveBeenCalledOnce();
   });
 
-  it('keeps the old send failure path when timeout commandStatus is unavailable', async () => {
-    await withCommandStatusRecoveryEnabled(async () => {
-      const executor = fakeSequenceExecutor([
-        bridgeFailure('timeout', 'OpenCode bridge command timed out', []),
-        bridgeFailure('timeout', 'OpenCode commandStatus timed out', []),
-      ]);
-      const bridge = new OpenCodeReadinessBridge(executor);
+  it('keeps the timeout failure path when timeout commandStatus is unknown', async () => {
+    const executor = fakeSequenceExecutor([
+      bridgeFailure('timeout', 'OpenCode bridge command timed out', []),
+      bridgeCommandSuccess({
+        command: 'opencode.commandStatus',
+        requestId: 'status-req-1',
+        data: {
+          status: 'unknown',
+          safeToRetry: false,
+          accepted: false,
+          diagnostics: ['No orchestrator-side command outcome record matched the requested OpenCode command.'],
+        },
+      }),
+    ]);
+    const bridge = new OpenCodeReadinessBridge(executor);
 
-      await expect(
-        bridge.sendOpenCodeTeamMessage({
-          teamId: 'team-a',
-          teamName: 'team-a',
-          laneId: 'secondary:opencode:bob',
-          projectPath: '/repo',
-          memberName: 'bob',
-          text: 'hello',
-          messageId: 'message-1',
-          deliveryAttemptId: 'ledger-1:1:payload',
-        })
-      ).resolves.toMatchObject({
-        accepted: false,
+    await expect(
+      bridge.sendOpenCodeTeamMessage({
+        teamId: 'team-a',
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:bob',
+        projectPath: '/repo',
         memberName: 'bob',
-        diagnostics: [
-          expect.objectContaining({
-            code: 'timeout',
-          }),
-        ],
-      });
-
-      expect(executor.execute).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  it('keeps the old send failure path when timeout commandStatus reports precondition mismatch', async () => {
-    await withCommandStatusRecoveryEnabled(async () => {
-      const executor = fakeSequenceExecutor([
-        bridgeFailure('timeout', 'OpenCode bridge command timed out', []),
-        bridgeCommandSuccess({
-          command: 'opencode.commandStatus',
-          requestId: 'status-req-1',
-          data: {
-            status: 'precondition_mismatch',
-            safeToRetry: false,
-            accepted: false,
-            diagnostics: ['OpenCode command status payloadHash mismatch.'],
-          },
+        text: 'hello',
+        messageId: 'message-1',
+        deliveryAttemptId: 'ledger-1:1:payload',
+      })
+    ).resolves.toMatchObject({
+      accepted: false,
+      memberName: 'bob',
+      diagnostics: [
+        expect.objectContaining({
+          code: 'timeout',
         }),
-      ]);
-      const bridge = new OpenCodeReadinessBridge(executor);
-
-      await expect(
-        bridge.sendOpenCodeTeamMessage({
-          teamId: 'team-a',
-          teamName: 'team-a',
-          laneId: 'secondary:opencode:bob',
-          projectPath: '/repo',
-          memberName: 'bob',
-          text: 'hello',
-          messageId: 'message-1',
-          deliveryAttemptId: 'ledger-1:1:payload',
-        })
-      ).resolves.toMatchObject({
-        accepted: false,
-        memberName: 'bob',
-        diagnostics: [
-          expect.objectContaining({
-            code: 'timeout',
-          }),
-        ],
-      });
-
-      expect(executor.execute).toHaveBeenCalledTimes(2);
+      ],
     });
+
+    expect(executor.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the timeout failure path when timeout commandStatus is unavailable', async () => {
+    const executor = fakeSequenceExecutor([
+      bridgeFailure('timeout', 'OpenCode bridge command timed out', []),
+      bridgeFailure('timeout', 'OpenCode commandStatus timed out', []),
+    ]);
+    const bridge = new OpenCodeReadinessBridge(executor);
+
+    await expect(
+      bridge.sendOpenCodeTeamMessage({
+        teamId: 'team-a',
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:bob',
+        projectPath: '/repo',
+        memberName: 'bob',
+        text: 'hello',
+        messageId: 'message-1',
+        deliveryAttemptId: 'ledger-1:1:payload',
+      })
+    ).resolves.toMatchObject({
+      accepted: false,
+      memberName: 'bob',
+      diagnostics: [
+        expect.objectContaining({
+          code: 'timeout',
+        }),
+      ],
+    });
+
+    expect(executor.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the timeout failure path when timeout commandStatus reports precondition mismatch', async () => {
+    const executor = fakeSequenceExecutor([
+      bridgeFailure('timeout', 'OpenCode bridge command timed out', []),
+      bridgeCommandSuccess({
+        command: 'opencode.commandStatus',
+        requestId: 'status-req-1',
+        data: {
+          status: 'precondition_mismatch',
+          safeToRetry: false,
+          accepted: false,
+          diagnostics: ['OpenCode command status payloadHash mismatch.'],
+        },
+      }),
+    ]);
+    const bridge = new OpenCodeReadinessBridge(executor);
+
+    await expect(
+      bridge.sendOpenCodeTeamMessage({
+        teamId: 'team-a',
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:bob',
+        projectPath: '/repo',
+        memberName: 'bob',
+        text: 'hello',
+        messageId: 'message-1',
+        deliveryAttemptId: 'ledger-1:1:payload',
+      })
+    ).resolves.toMatchObject({
+      accepted: false,
+      memberName: 'bob',
+      diagnostics: [
+        expect.objectContaining({
+          code: 'timeout',
+        }),
+      ],
+    });
+
+    expect(executor.execute).toHaveBeenCalledTimes(2);
   });
 
   it('routes state-changing launch commands through the guarded command service when configured', async () => {
@@ -608,20 +588,6 @@ function fakeSequenceExecutor(
     execute: execute as unknown as OpenCodeReadinessBridgeCommandExecutor['execute'] &
       ReturnType<typeof vi.fn>,
   };
-}
-
-async function withCommandStatusRecoveryEnabled<T>(callback: () => Promise<T>): Promise<T> {
-  const previous = process.env.CLAUDE_TEAM_OPENCODE_COMMAND_STATUS_RECOVERY;
-  process.env.CLAUDE_TEAM_OPENCODE_COMMAND_STATUS_RECOVERY = '1';
-  try {
-    return await callback();
-  } finally {
-    if (previous === undefined) {
-      delete process.env.CLAUDE_TEAM_OPENCODE_COMMAND_STATUS_RECOVERY;
-    } else {
-      process.env.CLAUDE_TEAM_OPENCODE_COMMAND_STATUS_RECOVERY = previous;
-    }
-  }
 }
 
 function bridgeSuccess(

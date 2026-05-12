@@ -125,7 +125,6 @@ import {
   PluginCatalogService,
   PluginInstallationStateService,
   PluginInstallService,
-  RUNTIME_MANAGED_API_KEY_ENV_VARS,
   SkillsCatalogService,
   SkillsMutationService,
   SkillsWatcherService,
@@ -1478,7 +1477,6 @@ async function initializeServices(): Promise<void> {
     phase: 'settings',
     message: 'Loading secure settings...',
   });
-  await apiKeyService.syncProcessEnv(RUNTIME_MANAGED_API_KEY_ENV_VARS);
   // warmup() and ensureInstalled() are deferred to after window creation
   // (did-finish-load handler) to avoid thread pool contention at startup.
   httpServer = new HttpServer();

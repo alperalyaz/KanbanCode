@@ -7,7 +7,7 @@ import type { CliInstallationStatus } from '@shared/types';
 import { createDefaultCliExtensionCapabilities } from '@shared/utils/providerExtensionCapabilities';
 
 interface StoreState {
-  apiKeys: Array<{
+  apiKeys: {
     id: string;
     providerId: string;
     displayName: string;
@@ -15,13 +15,14 @@ interface StoreState {
     scope: 'user';
     createdAt: number;
     updatedAt: number;
-  }>;
+  }[];
   apiKeysLoading: boolean;
   apiKeysError: string | null;
   apiKeyStorageStatus: {
     encryptionMethod: 'os-keychain' | 'local-aes';
     backend: string;
   } | null;
+  fetchApiKeys: ReturnType<typeof vi.fn>;
   fetchApiKeyStorageStatus: ReturnType<typeof vi.fn>;
   cliStatus: CliInstallationStatus | null;
   cliStatusLoading: boolean;
@@ -187,6 +188,7 @@ describe('ApiKeysPanel', () => {
       encryptionMethod: 'os-keychain',
       backend: 'Keychain Access',
     };
+    storeState.fetchApiKeys = vi.fn().mockResolvedValue(undefined);
     storeState.fetchApiKeyStorageStatus = vi.fn().mockResolvedValue(undefined);
     storeState.cliStatus = createCliStatus();
     storeState.cliStatusLoading = false;
@@ -253,6 +255,8 @@ describe('ApiKeysPanel', () => {
     expect(host.textContent).toContain('Connected');
     expect(host.textContent).toContain('Current source: Detected from OPENAI_API_KEY.');
     expect(host.textContent).toContain('ChatGPT account ready');
+    expect(storeState.fetchApiKeys).toHaveBeenCalledTimes(1);
+    expect(storeState.fetchApiKeyStorageStatus).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       root.unmount();

@@ -1796,6 +1796,90 @@ describe('teamSlice actions', () => {
     expect(selectResolvedMembersForTeamName(store.getState(), 'my-team')).toHaveLength(0);
   });
 
+  it('preserves a cached roster when full launch failure metadata confirms the member names', async () => {
+    const store = createSliceStore();
+    const cachedSnapshot = createTeamSnapshot({
+      config: { name: 'Cached Team' },
+      members: [
+        { name: 'alice', role: 'developer', currentTaskId: null },
+        { name: 'bob', role: 'reviewer', currentTaskId: null },
+      ],
+    });
+    const leadOnlySnapshot = createTeamSnapshot({
+      config: { name: 'Lead Only Team' },
+      members: [{ name: 'team-lead', agentType: 'team-lead', currentTaskId: null }],
+    });
+
+    store.setState({
+      teamDataCacheByName: {
+        'my-team': cachedSnapshot,
+      },
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          description: '',
+          memberCount: 0,
+          expectedMemberCount: 2,
+          partialLaunchFailure: true,
+          missingMembers: ['alice', 'bob'],
+          taskCount: 0,
+          lastActivity: null,
+        },
+      },
+    });
+    hoisted.getData.mockResolvedValueOnce(leadOnlySnapshot);
+
+    await store.getState().selectTeam('my-team');
+
+    expect(store.getState().selectedTeamData).toEqual(cachedSnapshot);
+    expect(
+      selectResolvedMembersForTeamName(store.getState(), 'my-team').map((member) => member.name)
+    ).toEqual(['alice', 'bob']);
+  });
+
+  it('does not preserve a cached roster when launch failure metadata only names part of the team', async () => {
+    const store = createSliceStore();
+    const cachedSnapshot = createTeamSnapshot({
+      config: { name: 'Cached Team' },
+      members: [
+        { name: 'alice', role: 'developer', currentTaskId: null },
+        { name: 'bob', role: 'reviewer', currentTaskId: null },
+      ],
+    });
+    const leadOnlySnapshot = createTeamSnapshot({
+      config: { name: 'Lead Only Team' },
+      members: [{ name: 'team-lead', agentType: 'team-lead', currentTaskId: null }],
+    });
+
+    store.setState({
+      teamDataCacheByName: {
+        'my-team': cachedSnapshot,
+      },
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          description: '',
+          memberCount: 0,
+          expectedMemberCount: 2,
+          partialLaunchFailure: true,
+          missingMembers: ['bob'],
+          taskCount: 0,
+          lastActivity: null,
+        },
+      },
+    });
+    hoisted.getData.mockResolvedValueOnce(leadOnlySnapshot);
+
+    await store.getState().selectTeam('my-team');
+
+    expect(store.getState().selectedTeamData).toEqual(leadOnlySnapshot);
+    expect(
+      selectResolvedMembersForTeamName(store.getState(), 'my-team').map((member) => member.name)
+    ).toEqual(['team-lead']);
+  });
+
   it('commits a late selectTeam snapshot that explicitly marks members as removed', async () => {
     const store = createSliceStore();
     const selectRequest = createDeferredPromise<ReturnType<typeof createTeamSnapshot>>();
@@ -3075,6 +3159,61 @@ describe('teamSlice actions', () => {
       role: 'Lead from detail',
       color: 'purple',
     });
+  });
+
+  it('does not synthesize member cards from launch failure names when summary roster is missing', () => {
+    const store = createSliceStore();
+    const leadOnlySnapshot = createTeamSnapshot({
+      config: {
+        name: 'My Team',
+        projectPath: '/repo',
+      },
+      members: [
+        {
+          name: 'team-lead',
+          agentType: 'team-lead',
+          currentTaskId: null,
+          role: 'Lead from detail',
+          color: 'purple',
+        },
+      ],
+      tasks: [
+        {
+          id: 'task-1',
+          subject: 'Build',
+          status: 'in_progress',
+          owner: 'Alice',
+        },
+      ],
+    });
+
+    store.setState({
+      selectedTeamName: 'my-team',
+      selectedTeamData: leadOnlySnapshot,
+      teamDataCacheByName: {
+        'my-team': leadOnlySnapshot,
+      },
+      teamByName: {
+        'my-team': {
+          teamName: 'my-team',
+          displayName: 'My Team',
+          description: '',
+          memberCount: 0,
+          expectedMemberCount: 2,
+          leadName: 'Lead',
+          partialLaunchFailure: true,
+          missingMembers: ['Lead', 'Alice', 'bob'],
+          taskCount: 1,
+          lastActivity: null,
+        },
+      },
+      memberActivityMetaByTeam: {},
+    });
+
+    const members = selectResolvedMembersForTeamName(store.getState(), 'my-team');
+
+    expect(members.map((m) => m.name)).toEqual(['team-lead']);
+    expect(selectResolvedMemberForTeamName(store.getState(), 'my-team', 'Alice')).toBeNull();
   });
 
   it('memoizes team-scoped member messages selectors over the merged message feed', () => {

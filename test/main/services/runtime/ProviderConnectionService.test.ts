@@ -107,6 +107,54 @@ describe('ProviderConnectionService', () => {
     expect(result.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
   });
 
+  it('does not decrypt stored Anthropic keys when metadata-only env building is requested', async () => {
+    const lookupPreferred = vi.fn().mockResolvedValue({
+      envVarName: 'ANTHROPIC_API_KEY',
+      value: 'stored-key',
+    });
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred,
+      } as never,
+      {
+        getConfig: () => createConfig('api_key'),
+      } as never
+    );
+
+    const result = await service.applyConfiguredConnectionEnv({}, 'anthropic', undefined, {
+      allowStoredApiKeyDecryption: false,
+    });
+
+    expect(lookupPreferred).not.toHaveBeenCalled();
+    expect(result.ANTHROPIC_API_KEY).toBeUndefined();
+  });
+
+  it('injects stored Gemini API keys for runtime launches', async () => {
+    const lookupPreferred = vi.fn().mockResolvedValue({
+      envVarName: 'GEMINI_API_KEY',
+      value: 'gemini-stored-key',
+    });
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred,
+      } as never,
+      {
+        getConfig: () => createConfig('auto'),
+      } as never
+    );
+
+    const result = await service.applyConfiguredConnectionEnv({}, 'gemini');
+
+    expect(lookupPreferred).toHaveBeenCalledWith('GEMINI_API_KEY');
+    expect(result.GEMINI_API_KEY).toBe('gemini-stored-key');
+  });
+
   it('reports a missing Anthropic API key when api_key mode is selected', async () => {
     const { ProviderConnectionService } =
       await import('@main/services/runtime/ProviderConnectionService');

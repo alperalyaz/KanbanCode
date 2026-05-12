@@ -30,6 +30,7 @@ import type {
 interface MemberListProps {
   teamName?: string;
   members: ResolvedTeamMember[];
+  expectedTeammateCount?: number;
   memberTaskCounts?: Map<string, TaskStatusCounts>;
   taskMap?: Map<string, TeamTaskWithKanban>;
   pendingRepliesByMember?: Record<string, number>;
@@ -312,6 +313,7 @@ function areMemberListPropsEqual(
   return (
     prev.teamName === next.teamName &&
     areResolvedMembersEquivalent(prev.members, next.members) &&
+    prev.expectedTeammateCount === next.expectedTeammateCount &&
     areTaskStatusCountsMapsEquivalent(prev.memberTaskCounts, next.memberTaskCounts) &&
     areMemberTaskMapsEquivalent(prev.taskMap, next.taskMap) &&
     arePendingRepliesEquivalent(prev.pendingRepliesByMember, next.pendingRepliesByMember) &&
@@ -452,6 +454,7 @@ const MemberCardRow = memo(function MemberCardRow({
 export const MemberList = memo(function MemberList({
   teamName = '__unknown_team__',
   members,
+  expectedTeammateCount,
   memberTaskCounts,
   taskMap,
   pendingRepliesByMember,
@@ -502,6 +505,10 @@ export const MemberList = memo(function MemberList({
     [members]
   );
   const removedMembers = useMemo(() => members.filter((m) => m.removedAt), [members]);
+  const activeTeammateCount = useMemo(
+    () => activeMembers.filter((member) => !isLeadMember(member)).length,
+    [activeMembers]
+  );
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
   // Pre-compute reviewer->task map to avoid O(n*n) scan per member.
   const reviewTaskByMember = useMemo(() => {
@@ -644,10 +651,22 @@ export const MemberList = memo(function MemberList({
     [launchParams]
   );
 
-  if (members.length === 0) {
+  const expectsTeammates = (expectedTeammateCount ?? 0) > 0;
+  const hasOnlyLeadWhileTeammatesLoad =
+    expectsTeammates && activeTeammateCount === 0 && removedMembers.length === 0;
+
+  if (members.length === 0 || hasOnlyLeadWhileTeammatesLoad) {
+    if (expectsTeammates) {
+      return (
+        <div className="rounded-md border border-[var(--color-border)] p-4 text-sm text-[var(--color-text-muted)]">
+          Team members are loading
+        </div>
+      );
+    }
+
     return (
       <div className="rounded-md border border-[var(--color-border)] p-4 text-sm text-[var(--color-text-muted)]">
-        Solo team — lead only
+        Solo team - lead only
       </div>
     );
   }

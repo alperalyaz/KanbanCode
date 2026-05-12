@@ -152,6 +152,7 @@ import type {
   TeamCreateRequest,
   TeamLaunchRequest,
   TeamProviderId,
+  TeamSummary,
   TeamTaskWithKanban,
 } from '@shared/types';
 import type { EditorSelectionAction } from '@shared/types/editor';
@@ -173,6 +174,61 @@ interface CreateTaskDialogState {
 }
 
 const TEAM_PENDING_REPLY_REFRESH_DELAY_MS = 10_000;
+
+function getSummaryKnownTeammateCount(summary: TeamSummary | undefined): number {
+  if (!summary) {
+    return 0;
+  }
+
+  const normalizedLeadName = summary.leadName?.trim().toLowerCase();
+  const rosterNames = new Set<string>();
+  for (const member of summary.members ?? []) {
+    const name = member.name?.trim();
+    if (!name) {
+      continue;
+    }
+    const normalizedName = name.toLowerCase();
+    if (
+      normalizedName === 'user' ||
+      isLeadMember({ name }) ||
+      (normalizedLeadName && normalizedName === normalizedLeadName)
+    ) {
+      continue;
+    }
+    rosterNames.add(normalizedName);
+  }
+
+  const launchNames = new Set<string>();
+  for (const rawName of [...(summary.missingMembers ?? []), ...(summary.skippedMembers ?? [])]) {
+    const name = rawName.trim();
+    if (!name) {
+      continue;
+    }
+    const normalizedName = name.toLowerCase();
+    if (
+      normalizedName === 'user' ||
+      isLeadMember({ name }) ||
+      (normalizedLeadName && normalizedName === normalizedLeadName)
+    ) {
+      continue;
+    }
+    launchNames.add(normalizedName);
+  }
+
+  const activeRosterCount = Math.max(summary.memberCount, rosterNames.size);
+  if (activeRosterCount > 0) {
+    return activeRosterCount;
+  }
+
+  return Math.max(
+    summary.expectedMemberCount ?? 0,
+    launchNames.size,
+    (summary.confirmedCount ?? 0) +
+      (summary.pendingCount ?? 0) +
+      (summary.failedCount ?? 0) +
+      (summary.skippedCount ?? 0)
+  );
+}
 
 function areResolvedMembersEqual(
   prev: readonly ResolvedTeamMember[],
@@ -1578,6 +1634,7 @@ export const TeamDetailView = memo(function TeamDetailView({
     selectReviewFile,
     pendingReviewRequest,
     setPendingReviewRequest,
+    summaryKnownTeammateCount,
   } = useStore(
     useShallow((s) => ({
       projects: s.projects,
@@ -1612,6 +1669,9 @@ export const TeamDetailView = memo(function TeamDetailView({
       isTeamProvisioning: teamName ? isTeamProvisioningActive(s, teamName) : false,
       data: s.selectedTeamName === teamName ? s.selectedTeamData : null,
       members: selectResolvedMembersForTeamName(s, teamName),
+      summaryKnownTeammateCount: teamName
+        ? getSummaryKnownTeammateCount(s.teamByName[teamName])
+        : 0,
       loading: s.selectedTeamName === teamName ? s.selectedTeamLoading : false,
       error: s.selectedTeamName === teamName ? s.selectedTeamError : null,
       refreshTeamData: s.refreshTeamData,
@@ -1995,10 +2055,13 @@ export const TeamDetailView = memo(function TeamDetailView({
     return filterKanbanTasks(filteredTasks, kanbanSearchQuery);
   }, [filteredTasks, kanbanSearchQuery]);
 
-  const activeTeammateCount = useMemo(
-    () => activeMembers.filter((m) => !isLeadMember(m)).length,
-    [activeMembers]
-  );
+  const activeTeammateCount = useMemo(() => {
+    const resolvedCount = activeMembers.filter((m) => !isLeadMember(m)).length;
+    if (membersWithLiveBranches.some((m) => m.removedAt)) {
+      return resolvedCount;
+    }
+    return resolvedCount > 0 ? resolvedCount : summaryKnownTeammateCount;
+  }, [activeMembers, membersWithLiveBranches, summaryKnownTeammateCount]);
   const leadProviderId = useMemo<TeamProviderId | undefined>(() => {
     const activeLeadProviderId = activeMembers.find(isLeadMember)?.providerId;
     if (activeLeadProviderId) return activeLeadProviderId;
@@ -2814,6 +2877,7 @@ export const TeamDetailView = memo(function TeamDetailView({
                 <TeamMemberListBridge
                   teamName={teamName}
                   members={membersWithLiveBranches}
+                  expectedTeammateCount={activeTeammateCount}
                   memberTaskCounts={memberTaskCounts}
                   taskMap={taskMap}
                   pendingRepliesByMember={pendingRepliesByMember}

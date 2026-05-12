@@ -320,6 +320,11 @@ describe('ClaudeMultimodelBridgeService', () => {
         'runtime status --json --provider opencode',
       ])
     );
+    expect(
+      execCliMock.mock.calls
+        .filter((call) => call[1].join(' ').startsWith('runtime status --json --provider '))
+        .map((call) => call[2]?.maxBuffer)
+    ).toEqual([8 * 1024 * 1024, 8 * 1024 * 1024, 8 * 1024 * 1024, 8 * 1024 * 1024]);
     expect(providers.map((provider) => provider.providerId)).toEqual([
       'anthropic',
       'codex',
@@ -448,6 +453,12 @@ describe('ClaudeMultimodelBridgeService', () => {
                   upgrade: false,
                   source: 'anthropic-models-api',
                   badgeLabel: 'Opus 4.8',
+                  metadata: {
+                    cost: { input: 0, output: 0 },
+                    context: 200000,
+                    limits: { context: 200000, output: 32000 },
+                    free: true,
+                  },
                 },
                 {
                   id: 'opus[1m]',
@@ -539,6 +550,12 @@ describe('ClaudeMultimodelBridgeService', () => {
           hidden: false,
           source: 'anthropic-models-api',
           badgeLabel: 'Opus 4.8',
+          metadata: {
+            cost: { input: 0, output: 0 },
+            context: 200000,
+            limits: { context: 200000, output: 32000 },
+            free: true,
+          },
         }),
         expect.objectContaining({
           launchModel: 'opus[1m]',

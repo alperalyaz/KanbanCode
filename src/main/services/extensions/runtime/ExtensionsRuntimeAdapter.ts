@@ -18,6 +18,7 @@ async function buildManagementCliEnvForBinary(binaryPath: string): Promise<NodeJ
   const { env } = await buildProviderAwareCliEnv({
     binaryPath,
     connectionMode: 'augment',
+    allowStoredApiKeyDecryption: false,
   });
   return env;
 }

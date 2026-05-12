@@ -344,6 +344,70 @@ describe('cliInstallerSlice', () => {
     });
   });
 
+  describe('OpenCode runtime installer actions', () => {
+    it('refreshes OpenCode provider status after a successful app-managed install', async () => {
+      const placeholder = createMultimodelProvider({
+        providerId: 'opencode',
+        displayName: 'OpenCode',
+        supported: false,
+        authenticated: false,
+        authMethod: null,
+        verificationState: 'error',
+        statusMessage: 'OpenCode CLI is not installed.',
+        models: [],
+        canLoginFromUi: false,
+        capabilities: {
+          teamLaunch: false,
+          oneShot: false,
+          extensions: createDefaultCliExtensionCapabilities(),
+        },
+        backend: null,
+      });
+      const refreshed = createMultimodelProvider({
+        providerId: 'opencode',
+        displayName: 'OpenCode',
+        supported: true,
+        authenticated: true,
+        authMethod: 'opencode_managed',
+        models: ['opencode/big-pickle'],
+        canLoginFromUi: false,
+        backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
+      });
+
+      useStore.setState({
+        cliStatus: createMultimodelStatus([placeholder]),
+      });
+      vi.mocked(api.openCodeRuntime.install).mockResolvedValue({
+        installed: true,
+        binaryPath: '/Users/tester/App Support/runtimes/opencode/current/opencode',
+        version: '1.14.48',
+        source: 'app-managed',
+        state: 'ready',
+      });
+      vi.mocked(api.cliInstaller.getProviderStatus).mockResolvedValue(refreshed);
+
+      await useStore.getState().installOpenCodeRuntime();
+
+      expect(api.openCodeRuntime.invalidateStatus).toHaveBeenCalledTimes(1);
+      expect(api.cliInstaller.invalidateStatus).toHaveBeenCalledTimes(1);
+      expect(api.cliInstaller.getProviderStatus).toHaveBeenCalledWith('opencode');
+      expect(useStore.getState().openCodeRuntimeStatus).toMatchObject({
+        installed: true,
+        source: 'app-managed',
+        state: 'ready',
+      });
+      expect(
+        useStore
+          .getState()
+          .cliStatus?.providers.find((provider) => provider.providerId === 'opencode')
+      ).toMatchObject({
+        supported: true,
+        authenticated: true,
+        models: ['opencode/big-pickle'],
+      });
+    });
+  });
+
   describe('fetchCliStatus', () => {
     it('updates cliStatus from API', async () => {
       const mockStatus: CliInstallationStatus = {

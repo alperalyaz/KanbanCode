@@ -178,8 +178,8 @@ describe('GraphView pan interactions', () => {
       kind: 'task',
       label: 'Task 1',
       state: 'idle',
-      x: 160,
-      y: 90,
+      x: 300,
+      y: 180,
       domainRef: { kind: 'task', teamName: 'demo-team', taskId: 'task:1' },
     };
     const edge: GraphEdge = {

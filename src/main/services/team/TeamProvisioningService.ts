@@ -298,7 +298,10 @@ import {
 import { TeamConfigReader } from './TeamConfigReader';
 import { TeamInboxReader } from './TeamInboxReader';
 import { TeamInboxWriter } from './TeamInboxWriter';
-import { writeTeamLaunchFailureArtifactPack } from './TeamLaunchFailureArtifactPack';
+import {
+  isWorkspaceTrustLaunchFailureText,
+  writeTeamLaunchFailureArtifactPack,
+} from './TeamLaunchFailureArtifactPack';
 import {
   createPersistedLaunchSnapshot,
   deriveTeamLaunchAggregateState,
@@ -924,6 +927,12 @@ function classifyDeterministicBootstrapFailure(reason: string): {
 } {
   const normalizedReason = reason.trim();
   const lower = normalizedReason.toLowerCase();
+  if (isWorkspaceTrustLaunchFailureText(normalizedReason)) {
+    return {
+      title: 'Workspace trust required',
+      normalizedReason,
+    };
+  }
   if (lower.includes('disabled by kill switch')) {
     return {
       title: 'Deterministic bootstrap disabled',
@@ -1860,6 +1869,8 @@ interface ProvisioningRun {
   lastMemberSpawnAuditConfigReadWarningAt: number;
   /** Per-member warning throttle for repeated "missing from config" logs. */
   lastMemberSpawnAuditMissingWarningAt: Map<string, number>;
+  /** Prevents duplicate Team Launched notifications for the same live run. */
+  teamLaunchedNotificationFired?: boolean;
 }
 
 const PROVISIONING_TRACE_STORAGE_LIMIT = 500;
@@ -11825,12 +11836,7 @@ export class TeamProvisioningService {
       );
       this.invalidateRuntimeSnapshotCaches(input.teamName);
       if (trackedUpdate.changed) {
-        this.teamChangeEmitter?.({
-          type: 'member-spawn',
-          teamName: input.teamName,
-          runId: input.runId,
-          detail: input.memberName,
-        });
+        this.emitMemberSpawnChange(trackedUpdate.run, input.memberName);
       }
       return;
     }
@@ -24788,13 +24794,46 @@ export class TeamProvisioningService {
   private emitMemberSpawnChange(
     run: Pick<ProvisioningRun, 'teamName' | 'runId'>,
     memberName: string
-  ) {
+  ): void {
     this.invalidateMemberSpawnStatusesCache(run.teamName);
     this.teamChangeEmitter?.({
       type: 'member-spawn',
       teamName: run.teamName,
       runId: run.runId,
       detail: memberName,
+    });
+    const trackedRun = this.runs.get(run.runId);
+    if (trackedRun?.teamName === run.teamName) {
+      void this.maybeFireTeamLaunchedNotificationWhenAllMembersJoined(trackedRun);
+    }
+  }
+
+  private async maybeFireTeamLaunchedNotificationWhenAllMembersJoined(
+    run: ProvisioningRun
+  ): Promise<void> {
+    if (
+      !run.isLaunch ||
+      run.teamLaunchedNotificationFired ||
+      run.processKilled ||
+      run.cancelRequested ||
+      !this.isProvisioningRunPromotedToAlive(run) ||
+      !this.areAllExpectedLaunchMembersConfirmed(run)
+    ) {
+      return;
+    }
+
+    await this.fireTeamLaunchedNotification(run);
+  }
+
+  private areAllExpectedLaunchMembersConfirmed(run: ProvisioningRun): boolean {
+    const expectedMembers = run.expectedMembers ?? [];
+    if (expectedMembers.length === 0) {
+      return false;
+    }
+
+    return expectedMembers.every((memberName) => {
+      const member = run.memberSpawnStatuses.get(memberName);
+      return member?.launchState === 'confirmed_alive' || member?.bootstrapConfirmed === true;
     });
   }
 
@@ -30499,12 +30538,21 @@ export class TeamProvisioningService {
    * Uses the existing addTeamNotification() pipeline.
    */
   private async fireTeamLaunchedNotification(run: ProvisioningRun): Promise<void> {
+    if (run.teamLaunchedNotificationFired) {
+      return;
+    }
+    run.teamLaunchedNotificationFired = true;
+
     try {
       const config = ConfigManager.getInstance().getConfig();
       const suppressToast = !config.notifications.notifyOnTeamLaunched;
       const displayName = run.request.displayName || run.teamName;
+      const joinedCount = run.expectedMembers?.length ?? 0;
+      const allJoined = joinedCount > 0 && this.areAllExpectedLaunchMembersConfirmed(run);
       const body = run.isLaunch
-        ? `Team "${displayName}" has been launched and is ready for tasks.`
+        ? allJoined
+          ? `Team "${displayName}" has been launched - all ${joinedCount} teammates joined and are ready for tasks.`
+          : `Team "${displayName}" has been launched and is ready for tasks.`
         : `Team "${displayName}" has been provisioned and is ready for tasks.`;
 
       await NotificationManager.getInstance().addTeamNotification({
@@ -30520,6 +30568,7 @@ export class TeamProvisioningService {
         suppressToast,
       });
     } catch (error) {
+      run.teamLaunchedNotificationFired = false;
       logger.warn(
         `[${run.teamName}] Failed to fire team_launched notification: ${
           error instanceof Error ? error.message : String(error)

@@ -1,8 +1,9 @@
+import { classifyRuntimeDiagnostic } from '../../runtime/RuntimeDiagnosticClassifier';
+
 import {
   isActionRequiredOpenCodeRuntimeDeliveryReason,
   selectOpenCodeRuntimeDeliveryReason,
 } from './OpenCodeRuntimeDeliveryDiagnostics';
-import { classifyRuntimeDiagnostic } from '../../runtime/RuntimeDiagnosticClassifier';
 
 import type { OpenCodePromptDeliveryLedgerRecord } from './OpenCodePromptDeliveryLedger';
 import type {

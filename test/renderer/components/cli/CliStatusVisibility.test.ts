@@ -437,9 +437,8 @@ describe('CLI status visibility during completed install state', () => {
     });
   });
 
-  it('shows an OpenCode download action on the dashboard when the OpenCode CLI is missing', async () => {
+  it('shows an OpenCode install action on the dashboard when the OpenCode CLI is missing', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-    const { api } = await import('@renderer/api');
     storeState.cliInstallerState = 'idle';
     storeState.cliStatus = createInstalledCliStatus({
       flavor: 'agent_teams_orchestrator',
@@ -478,19 +477,137 @@ describe('CLI status visibility during completed install state', () => {
     });
 
     expect(host.textContent).toContain('OpenCode (75+ LLM providers)');
-    expect(host.textContent).toContain('Download');
+    expect(host.textContent).toContain('Install');
 
-    const downloadButton = Array.from(host.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === 'Download'
+    const installButton = Array.from(host.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Install'
     );
-    expect(downloadButton).not.toBeUndefined();
+    expect(installButton).not.toBeUndefined();
 
     await act(async () => {
-      downloadButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      installButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
     });
 
-    expect(api.openExternal).toHaveBeenCalledWith('https://opencode.ai/download');
+    expect(storeState.installOpenCodeRuntime).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('shows OpenCode app-managed install progress on the dashboard provider card', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.openCodeRuntimeStatus = {
+      installed: false,
+      source: 'missing',
+      state: 'downloading',
+      progress: {
+        phase: 'downloading',
+        downloadedBytes: 42,
+        totalBytes: 100,
+        percent: 42,
+        detail: 'Downloading OpenCode 42%',
+      },
+    };
+    storeState.openCodeRuntimeStatusLoading = true;
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      displayName: 'Multimodel runtime',
+      supportsSelfUpdate: false,
+      showVersionDetails: false,
+      showBinaryPath: false,
+      authLoggedIn: false,
+      providers: [
+        {
+          providerId: 'opencode',
+          displayName: 'OpenCode (75+ LLM providers)',
+          supported: false,
+          authenticated: false,
+          authMethod: null,
+          verificationState: 'error',
+          statusMessage: 'OpenCode CLI is not installed.',
+          models: [],
+          canLoginFromUi: false,
+          capabilities: {
+            teamLaunch: false,
+            oneShot: false,
+          },
+          backend: null,
+        },
+      ],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Downloading 42%');
+    const progressButton = Array.from(host.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Downloading 42%'
+    );
+    expect(progressButton).not.toBeUndefined();
+    expect(progressButton).toHaveProperty('disabled', true);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('always shows a provider-level Free models badge on the OpenCode dashboard card', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      displayName: 'Multimodel runtime',
+      supportsSelfUpdate: false,
+      showVersionDetails: false,
+      showBinaryPath: false,
+      authLoggedIn: true,
+      providers: [
+        {
+          providerId: 'opencode',
+          displayName: 'OpenCode (75+ LLM providers)',
+          supported: true,
+          authenticated: true,
+          authMethod: 'opencode_managed',
+          verificationState: 'verified',
+          statusMessage: 'Ready',
+          models: [],
+          canLoginFromUi: false,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: false,
+          },
+          backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
+          modelCatalog: null,
+        },
+      ],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    const providerFreeBadge = host.querySelector('[title*="Big Pickle"]');
+    expect(providerFreeBadge?.textContent).toBe('Free models');
+    expect(providerFreeBadge?.getAttribute('title')).toContain('OpenRouter');
+    expect(providerFreeBadge?.getAttribute('title')).toContain(
+      'not every OpenCode/OpenRouter model is free'
+    );
 
     await act(async () => {
       root.unmount();

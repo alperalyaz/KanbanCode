@@ -36,6 +36,7 @@ export const ApiKeysPanel = ({
     apiKeysLoading,
     apiKeysError,
     storageStatus,
+    fetchApiKeys,
     fetchStorageStatus,
     cliStatus,
     cliStatusLoading,
@@ -46,6 +47,7 @@ export const ApiKeysPanel = ({
       apiKeysLoading: s.apiKeysLoading,
       apiKeysError: s.apiKeysError,
       storageStatus: s.apiKeyStorageStatus,
+      fetchApiKeys: s.fetchApiKeys,
       fetchStorageStatus: s.fetchApiKeyStorageStatus,
       cliStatus: s.cliStatus,
       cliStatusLoading: s.cliStatusLoading,
@@ -85,8 +87,9 @@ export const ApiKeysPanel = ({
   const [editingKey, setEditingKey] = useState<ApiKeyEntry | null>(null);
 
   useEffect(() => {
+    void fetchApiKeys();
     void fetchStorageStatus();
-  }, [fetchStorageStatus]);
+  }, [fetchApiKeys, fetchStorageStatus]);
 
   const handleAdd = () => {
     setEditingKey(null);

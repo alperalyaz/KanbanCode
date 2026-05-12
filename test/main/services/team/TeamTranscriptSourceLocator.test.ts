@@ -107,6 +107,25 @@ describe('TeamTranscriptSourceLocator', () => {
       }) + '\n',
       'utf8'
     );
+    const unrelatedSubagentPath = path.join(
+      projectRoot,
+      'unrelated-session-dir',
+      'subagents',
+      'agent-bob.jsonl'
+    );
+    await fs.mkdir(path.dirname(unrelatedSubagentPath), { recursive: true });
+    await fs.writeFile(
+      unrelatedSubagentPath,
+      JSON.stringify({
+        timestamp: '2026-04-15T14:02:02.000Z',
+        type: 'user',
+        message: {
+          role: 'user',
+          content: 'You are bob, a developer on team "other-team" (other-team).',
+        },
+      }) + '\n',
+      'utf8'
+    );
     await fs.writeFile(
       path.join(projectRoot, leadSessionId, 'subagents', 'agent-worker.jsonl'),
       JSON.stringify({
@@ -126,6 +145,7 @@ describe('TeamTranscriptSourceLocator', () => {
     expect(context?.config.projectPath).toBe(projectPath);
     expect(context?.sessionIds).toEqual(expect.arrayContaining([leadSessionId, memberSessionId]));
     expect(context?.sessionIds).not.toContain('unrelated-session');
+    expect(context?.sessionIds).not.toContain('unrelated-session-dir');
     expect(transcriptFiles).toEqual(
       expect.arrayContaining([
         path.join(projectRoot, `${leadSessionId}.jsonl`),
@@ -134,6 +154,7 @@ describe('TeamTranscriptSourceLocator', () => {
       ])
     );
     expect(transcriptFiles).not.toContain(path.join(projectRoot, 'unrelated-session.jsonl'));
+    expect(transcriptFiles).not.toContain(unrelatedSubagentPath);
   });
 
   it('returns the same sorted transcript set across multiple session directories', async () => {
@@ -193,11 +214,7 @@ describe('TeamTranscriptSourceLocator', () => {
         }) + '\n',
         'utf8'
       );
-      await fs.writeFile(
-        path.join(subagentsDir, 'agent-acompact-ignore.jsonl'),
-        '{}\n',
-        'utf8'
-      );
+      await fs.writeFile(path.join(subagentsDir, 'agent-acompact-ignore.jsonl'), '{}\n', 'utf8');
 
       expectedFiles.push(rootTranscript, subagentTranscript);
     }

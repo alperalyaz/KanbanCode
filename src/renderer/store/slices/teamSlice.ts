@@ -1983,6 +1983,165 @@ function buildConfigFallbackMemberSnapshots(snapshot: TeamViewSnapshot): TeamMem
   return fallbackMembers;
 }
 
+function getActiveRawTeammateNameKeys(snapshot: TeamViewSnapshot | null | undefined): string[] {
+  if (!snapshot) {
+    return [];
+  }
+  const names = new Set<string>();
+  for (const member of snapshot.members) {
+    const name = member.name.trim();
+    const key = name.toLowerCase();
+    if (!name || key === 'user' || member.removedAt || isLeadMember(member)) {
+      continue;
+    }
+    names.add(key);
+  }
+  return Array.from(names).sort((left, right) => left.localeCompare(right));
+}
+
+function hasActiveRawTeammateRoster(snapshot: TeamViewSnapshot | null | undefined): boolean {
+  return getActiveRawTeammateNameKeys(snapshot).length > 0;
+}
+
+function hasRemovedRawMemberRoster(snapshot: TeamViewSnapshot | null | undefined): boolean {
+  return Boolean(snapshot?.members.some((member) => member.removedAt));
+}
+
+function hasConfigTeammateRoster(snapshot: TeamViewSnapshot | null | undefined): boolean {
+  return Boolean(
+    snapshot?.config.members?.some((member) => {
+      const name = member.name?.trim();
+      return Boolean(name) && !member.removedAt && !isLeadMember(member);
+    })
+  );
+}
+
+interface SummaryFallbackMemberSource {
+  name: string;
+  agentId?: string;
+  role?: string;
+  color?: string;
+}
+
+function normalizeSummaryTeammateName(
+  name: string | undefined | null,
+  leadName?: string
+): string | null {
+  const trimmed = name?.trim();
+  const normalizedName = trimmed?.toLowerCase();
+  const normalizedLeadName = leadName?.trim().toLowerCase();
+  if (
+    !trimmed ||
+    normalizedName === 'user' ||
+    isLeadMember({ name: trimmed }) ||
+    (normalizedLeadName && normalizedName === normalizedLeadName)
+  ) {
+    return null;
+  }
+  return trimmed;
+}
+
+function getSummaryRosterTeammateSources(summary: TeamSummary): SummaryFallbackMemberSource[] {
+  const seenNames = new Set<string>();
+  const sources: SummaryFallbackMemberSource[] = [];
+  for (const member of summary.members ?? []) {
+    const name = normalizeSummaryTeammateName(member.name, summary.leadName);
+    if (!name) {
+      continue;
+    }
+    const key = name.toLowerCase();
+    if (seenNames.has(key)) {
+      continue;
+    }
+    seenNames.add(key);
+    sources.push({
+      name,
+      agentId: member.agentId,
+      role: member.role,
+      color: member.color,
+    });
+  }
+  return sources;
+}
+
+function shouldUseSummaryLaunchTeammateSources(summary: TeamSummary): boolean {
+  return (
+    summary.partialLaunchFailure === true ||
+    summary.teamLaunchState === 'partial_failure' ||
+    summary.teamLaunchState === 'partial_pending' ||
+    summary.teamLaunchState === 'partial_skipped'
+  );
+}
+
+function getSummaryLaunchTeammateSources(summary: TeamSummary): SummaryFallbackMemberSource[] {
+  if (!shouldUseSummaryLaunchTeammateSources(summary)) {
+    return [];
+  }
+
+  const seenNames = new Set<string>();
+  const sources: SummaryFallbackMemberSource[] = [];
+  for (const rawName of [...(summary.missingMembers ?? []), ...(summary.skippedMembers ?? [])]) {
+    const name = normalizeSummaryTeammateName(rawName, summary.leadName);
+    if (!name) {
+      continue;
+    }
+    const key = name.toLowerCase();
+    if (seenNames.has(key)) {
+      continue;
+    }
+    seenNames.add(key);
+    sources.push({ name });
+  }
+  return sources;
+}
+
+function getSummaryLaunchTeammateNameKeys(summary: TeamSummary): string[] {
+  return getSummaryLaunchTeammateSources(summary)
+    .map((member) => member.name.toLowerCase())
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function getSummaryTeammateNameKeys(summary: TeamSummary): string[] {
+  const rosterNames = getSummaryRosterTeammateSources(summary)
+    .map((member) => member.name.toLowerCase())
+    .sort((left, right) => left.localeCompare(right));
+  if (rosterNames.length > 0) {
+    return rosterNames;
+  }
+
+  const launchNames = getSummaryLaunchTeammateNameKeys(summary);
+  const expectedCount = summary.expectedMemberCount ?? summary.memberCount;
+  if (expectedCount > 0 && launchNames.length === expectedCount) {
+    return launchNames;
+  }
+  return [];
+}
+
+function getSummaryFallbackTeammateSources(summary: TeamSummary): SummaryFallbackMemberSource[] {
+  return getSummaryRosterTeammateSources(summary);
+}
+
+function areNameKeyListsEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((name, index) => name === right[index]);
+}
+
+function summaryConfirmsActiveTeammateRoster(
+  current: TeamViewSnapshot,
+  summary: TeamSummary
+): boolean {
+  if ((summary.expectedMemberCount ?? summary.memberCount) <= 0) {
+    return false;
+  }
+
+  const currentNames = getActiveRawTeammateNameKeys(current);
+  const summaryNames = getSummaryTeammateNameKeys(summary);
+  if (summaryNames.length === 0 || summaryNames.length !== currentNames.length) {
+    return false;
+  }
+
+  return areNameKeyListsEqual(summaryNames, currentNames);
+}
+
 function buildSummaryFallbackMemberSnapshots(
   snapshot: TeamViewSnapshot,
   summary: TeamSummary | undefined
@@ -1990,8 +2149,8 @@ function buildSummaryFallbackMemberSnapshots(
   if (!summary) {
     return [];
   }
-  const summaryMembers = summary.members ?? [];
-  if (summaryMembers.length === 0 || summary.memberCount <= 0) {
+  const summaryMembers = getSummaryFallbackTeammateSources(summary);
+  if (summaryMembers.length === 0) {
     return [];
   }
 
@@ -2021,11 +2180,7 @@ function buildSummaryFallbackMemberSnapshots(
   };
 
   const teammates = summaryMembers.flatMap((member) => {
-    const name = member.name?.trim();
-    if (!name || name === 'user' || isLeadMember(member)) {
-      return [];
-    }
-    const item = buildSnapshot(name, member);
+    const item = buildSnapshot(member.name, member);
     return item ? [item] : [];
   });
   if (teammates.length === 0) {
@@ -2078,71 +2233,6 @@ function getResolvableMemberSnapshots(
   }
 
   return snapshot.members;
-}
-
-function getActiveRawTeammateNameKeys(snapshot: TeamViewSnapshot | null | undefined): string[] {
-  if (!snapshot) {
-    return [];
-  }
-  const names = new Set<string>();
-  for (const member of snapshot.members) {
-    const name = member.name.trim();
-    if (!name || name === 'user' || member.removedAt || isLeadMember(member)) {
-      continue;
-    }
-    names.add(name.toLowerCase());
-  }
-  return Array.from(names).sort((left, right) => left.localeCompare(right));
-}
-
-function hasActiveRawTeammateRoster(snapshot: TeamViewSnapshot | null | undefined): boolean {
-  return getActiveRawTeammateNameKeys(snapshot).length > 0;
-}
-
-function hasRemovedRawMemberRoster(snapshot: TeamViewSnapshot | null | undefined): boolean {
-  return Boolean(snapshot?.members.some((member) => member.removedAt));
-}
-
-function hasConfigTeammateRoster(snapshot: TeamViewSnapshot | null | undefined): boolean {
-  return Boolean(
-    snapshot?.config.members?.some((member) => {
-      const name = member.name?.trim();
-      return Boolean(name) && !member.removedAt && !isLeadMember(member);
-    })
-  );
-}
-
-function getSummaryTeammateNameKeys(summary: TeamSummary): string[] {
-  const names = new Set<string>();
-  for (const member of summary.members ?? []) {
-    const name = member.name?.trim();
-    if (!name || name === 'user' || isLeadMember(member)) {
-      continue;
-    }
-    names.add(name.toLowerCase());
-  }
-  return Array.from(names).sort((left, right) => left.localeCompare(right));
-}
-
-function areNameKeyListsEqual(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((name, index) => name === right[index]);
-}
-
-function summaryConfirmsActiveTeammateRoster(
-  current: TeamViewSnapshot,
-  summary: TeamSummary
-): boolean {
-  if (summary.memberCount <= 0) {
-    return false;
-  }
-
-  const currentNames = getActiveRawTeammateNameKeys(current);
-  const summaryNames = getSummaryTeammateNameKeys(summary);
-  if (summaryNames.length === 0 || summaryNames.length !== currentNames.length) {
-    return false;
-  }
-
-  return areNameKeyListsEqual(summaryNames, currentNames);
 }
 
 function shouldPreserveSelectedTeamSnapshot(

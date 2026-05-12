@@ -147,6 +147,12 @@ export interface CliProviderModelCatalogItem {
   source: CliProviderModelCatalogSource;
   badgeLabel?: string | null;
   statusMessage?: string | null;
+  metadata?: {
+    cost?: unknown;
+    context?: number | null;
+    limits?: unknown;
+    free?: boolean;
+  } | null;
 }
 
 export interface CliProviderModelCatalog {

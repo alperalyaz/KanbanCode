@@ -24,6 +24,8 @@ const logger = createLogger('ClaudeMultimodelBridgeService');
 
 const PROVIDER_STATUS_TIMEOUT_MS = 10_000;
 const PROVIDER_MODELS_TIMEOUT_MS = 10_000;
+const PROVIDER_STATUS_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
+const PROVIDER_MODELS_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 
 interface RuntimeExtensionCapabilityResponse {
   status?: 'supported' | 'read-only' | 'unsupported';
@@ -82,6 +84,7 @@ interface RuntimeProviderModelCatalogItemResponse {
   source?: 'anthropic-models-api' | 'app-server' | 'static-fallback';
   badgeLabel?: string | null;
   statusMessage?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 interface RuntimeProviderModelCatalogResponse {
@@ -478,6 +481,21 @@ function collectRuntimeReasoningEfforts(values?: string[]): CliProviderReasoning
   );
 }
 
+function mapRuntimeProviderModelMetadata(
+  metadata?: Record<string, unknown> | null
+): NonNullable<CliProviderStatus['modelCatalog']>['models'][number]['metadata'] {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return null;
+  }
+  const context = metadata.context;
+  return {
+    cost: metadata.cost ?? null,
+    context: typeof context === 'number' && Number.isFinite(context) ? context : null,
+    limits: metadata.limits ?? null,
+    free: metadata.free === true,
+  };
+}
+
 function mapRuntimeProviderModelCatalog(
   providerId: CliProviderId,
   modelCatalog?: RuntimeProviderModelCatalogResponse | null
@@ -540,6 +558,7 @@ function mapRuntimeProviderModelCatalog(
           source: itemSource,
           badgeLabel: model.badgeLabel ?? null,
           statusMessage: model.statusMessage ?? null,
+          metadata: mapRuntimeProviderModelMetadata(model.metadata),
         },
       ];
     }) ?? [];
@@ -605,14 +624,18 @@ export class ClaudeMultimodelBridgeService {
   private async buildCliEnv(
     binaryPath: string
   ): Promise<Awaited<ReturnType<typeof buildProviderAwareCliEnv>>> {
-    return buildProviderAwareCliEnv({ binaryPath });
+    return buildProviderAwareCliEnv({ binaryPath, allowStoredApiKeyDecryption: false });
   }
 
   private async buildProviderCliEnv(
     binaryPath: string,
     providerId: CliProviderId
   ): Promise<Awaited<ReturnType<typeof buildProviderAwareCliEnv>>> {
-    return buildProviderAwareCliEnv({ binaryPath, providerId });
+    return buildProviderAwareCliEnv({
+      binaryPath,
+      providerId,
+      allowStoredApiKeyDecryption: false,
+    });
   }
 
   private isUnifiedRuntimeUnsupported(error: unknown): boolean {
@@ -769,6 +792,7 @@ export class ClaudeMultimodelBridgeService {
       ['runtime', 'status', '--json', '--provider', providerId],
       {
         timeout: PROVIDER_STATUS_TIMEOUT_MS,
+        maxBuffer: PROVIDER_STATUS_MAX_BUFFER_BYTES,
         env,
       }
     );
@@ -850,6 +874,7 @@ export class ClaudeMultimodelBridgeService {
       ['runtime', 'verify', '--json', '--provider', 'opencode'],
       {
         timeout: PROVIDER_STATUS_TIMEOUT_MS,
+        maxBuffer: PROVIDER_STATUS_MAX_BUFFER_BYTES,
         env,
       }
     );
@@ -1048,6 +1073,7 @@ export class ClaudeMultimodelBridgeService {
         ['model', 'list', '--json', '--provider', 'all'],
         {
           timeout: PROVIDER_MODELS_TIMEOUT_MS,
+          maxBuffer: PROVIDER_MODELS_MAX_BUFFER_BYTES,
           env,
         }
       );
@@ -1119,6 +1145,7 @@ export class ClaudeMultimodelBridgeService {
     try {
       const { stdout } = await execCli(binaryPath, ['runtime', 'status', '--json'], {
         timeout: PROVIDER_STATUS_TIMEOUT_MS,
+        maxBuffer: PROVIDER_STATUS_MAX_BUFFER_BYTES,
         env,
       });
       const parsed = extractJsonObject<UnifiedRuntimeStatusResponse>(stdout);
@@ -1145,10 +1172,12 @@ export class ClaudeMultimodelBridgeService {
     const [statusResult, modelsResult] = await Promise.allSettled([
       execCli(binaryPath, ['auth', 'status', '--json', '--provider', 'all'], {
         timeout: PROVIDER_STATUS_TIMEOUT_MS,
+        maxBuffer: PROVIDER_STATUS_MAX_BUFFER_BYTES,
         env,
       }),
       execCli(binaryPath, ['model', 'list', '--json', '--provider', 'all'], {
         timeout: PROVIDER_MODELS_TIMEOUT_MS,
+        maxBuffer: PROVIDER_MODELS_MAX_BUFFER_BYTES,
         env,
       }),
     ]);

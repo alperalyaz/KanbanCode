@@ -162,24 +162,24 @@ describe('teamModelAvailability', () => {
     ]);
 
     expect(getAvailableTeamProviderModels('opencode', providerStatus)).toEqual([
-      'openai/gpt-5.4',
       'opencode/big-pickle',
+      'openai/gpt-5.4',
       'openrouter/moonshotai/kimi-k2',
     ]);
 
     expect(getAvailableTeamProviderModelOptions('opencode', providerStatus)).toEqual([
       { value: '', label: 'Default', badgeLabel: 'Default' },
       {
-        value: 'openai/gpt-5.4',
-        label: 'GPT-5.4',
-        badgeLabel: 'OpenAI',
+        value: 'opencode/big-pickle',
+        label: 'big-pickle',
+        badgeLabel: 'OpenCode',
         availabilityStatus: 'available',
         availabilityReason: null,
       },
       {
-        value: 'opencode/big-pickle',
-        label: 'big-pickle',
-        badgeLabel: 'OpenCode',
+        value: 'openai/gpt-5.4',
+        label: 'GPT-5.4',
+        badgeLabel: 'OpenAI',
         availabilityStatus: 'available',
         availabilityReason: null,
       },

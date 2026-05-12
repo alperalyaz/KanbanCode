@@ -136,7 +136,11 @@ describe('TeamTranscriptProjectResolver', () => {
             },
           ];
 
-    await fs.writeFile(jsonlPath, `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`, 'utf8');
+    await fs.writeFile(
+      jsonlPath,
+      `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`,
+      'utf8'
+    );
     return { projectDir, jsonlPath };
   }
 
@@ -257,7 +261,9 @@ describe('TeamTranscriptProjectResolver', () => {
     const staleProjectPath = '/Users/test/hookplex';
     const repairedProjectPath = '/Users/test/plugin-kit-ai';
     const historicalSessionId = 'lead-old';
-    await fs.mkdir(path.join(tmpDir!, 'projects', encodePath(staleProjectPath)), { recursive: true });
+    await fs.mkdir(path.join(tmpDir!, 'projects', encodePath(staleProjectPath)), {
+      recursive: true,
+    });
     const repaired = await createSessionFile(repairedProjectPath, historicalSessionId);
 
     await writeTeamConfig(teamName, {
@@ -391,7 +397,9 @@ describe('TeamTranscriptProjectResolver', () => {
     expect(warnSpy.mock.calls).toEqual(
       expect.arrayContaining([
         expect.arrayContaining([
-          expect.stringContaining('Transcript project resolution ambiguous across exact-session candidates'),
+          expect.stringContaining(
+            'Transcript project resolution ambiguous across exact-session candidates'
+          ),
         ]),
       ])
     );
@@ -427,7 +435,9 @@ describe('TeamTranscriptProjectResolver', () => {
     expect(warnSpy.mock.calls).toEqual(
       expect.arrayContaining([
         expect.arrayContaining([
-          expect.stringContaining('Transcript project resolution ambiguous across exact-session candidates'),
+          expect.stringContaining(
+            'Transcript project resolution ambiguous across exact-session candidates'
+          ),
         ]),
       ])
     );
@@ -509,5 +519,62 @@ describe('TeamTranscriptProjectResolver', () => {
 
     expect(context?.projectDir).toBe(repaired.projectDir);
     expect(context?.config.projectPath).toBe(repairedProjectPath);
+  });
+
+  it('bounds root session discovery by team lifecycle in fast preview context', async () => {
+    await setupClaudeRoot();
+
+    const teamName = 'fast-preview-team';
+    const projectPath = '/Users/test/fast-preview';
+    const createdAt = Date.parse('2026-04-18T12:00:00.000Z');
+    const leadSessionId = 'lead-fast';
+    const lead = await createTeamAwareSessionFile(projectPath, leadSessionId, teamName, 'text');
+    const recent = await createTeamAwareSessionFile(
+      projectPath,
+      'recent-member-session',
+      teamName,
+      'text'
+    );
+    const old = await createTeamAwareSessionFile(
+      projectPath,
+      'old-member-session',
+      teamName,
+      'text'
+    );
+    await fs.utimes(lead.jsonlPath, new Date(createdAt + 60_000), new Date(createdAt + 60_000));
+    await fs.utimes(
+      recent.jsonlPath,
+      new Date(createdAt + 5 * 60_000),
+      new Date(createdAt + 5 * 60_000)
+    );
+    await fs.utimes(
+      old.jsonlPath,
+      new Date(createdAt - 25 * 60 * 60_000),
+      new Date(createdAt - 25 * 60 * 60_000)
+    );
+
+    await writeTeamConfig(teamName, {
+      name: 'Fast Preview Team',
+      createdAt,
+      projectPath,
+      leadSessionId,
+      members: [
+        { name: 'team-lead', agentType: 'team-lead', joinedAt: createdAt, cwd: projectPath },
+        { name: 'alice', agentType: 'general-purpose', joinedAt: createdAt + 5 * 60_000 },
+      ],
+    } as TeamConfig);
+
+    const resolver = new TeamTranscriptProjectResolver();
+    const fastContext = await resolver.getContext(teamName, {
+      forceRefresh: true,
+      includeTeamSubagentSessionDiscovery: false,
+    });
+    const fullContext = await resolver.getContext(teamName, { forceRefresh: true });
+
+    expect(fastContext?.projectDir).toBe(lead.projectDir);
+    expect(fastContext?.sessionIds).toEqual(expect.arrayContaining([leadSessionId]));
+    expect(fastContext?.sessionIds).toContain('recent-member-session');
+    expect(fastContext?.sessionIds).not.toContain('old-member-session');
+    expect(fullContext?.sessionIds).toContain('old-member-session');
   });
 });

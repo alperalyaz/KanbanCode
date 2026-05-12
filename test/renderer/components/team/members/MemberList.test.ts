@@ -123,6 +123,66 @@ describe('MemberList spawn-status memoization', () => {
     document.body.innerHTML = '';
   });
 
+  it('does not label an empty roster as solo when the team summary still expects teammates', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberList, {
+          members: [],
+          expectedTeammateCount: 2,
+          isTeamAlive: false,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Team members are loading');
+    expect(host.textContent).not.toContain('Solo team');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('does not render a lead-only roster while expected teammates are still loading', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberList, {
+          members: [
+            {
+              ...member,
+              name: 'team-lead',
+              agentType: 'team-lead',
+              role: 'Team Lead',
+            },
+          ],
+          expectedTeammateCount: 2,
+          isTeamAlive: false,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Team members are loading');
+    expect(host.querySelector('[data-testid="member-team-lead"]')).toBeNull();
+    expect(host.textContent).not.toContain('Solo team');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('rerenders cards when only the hard failure reason changes', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');

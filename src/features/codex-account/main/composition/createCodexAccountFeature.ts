@@ -770,8 +770,7 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
   }
 
   private async loadApiKeyAvailability(): Promise<CodexApiKeyAvailabilityDto> {
-    const storedKey = await this.apiKeyService.lookupPreferred('OPENAI_API_KEY');
-    if (storedKey?.value.trim()) {
+    if (await this.apiKeyService.hasPreferred('OPENAI_API_KEY')) {
       return {
         available: true,
         source: 'stored',

@@ -109,7 +109,115 @@ describe('ProviderModelBadges', () => {
     expect(host.textContent).toContain('Free');
   });
 
-  it('collapses long model lists and expands them into a bounded scroll area', () => {
+  it('renders paid and free OpenCode models together without marking every model free', () => {
+    const host = render(
+      <ProviderModelBadges
+        providerId="opencode"
+        models={['opencode/big-pickle', 'openai/gpt-5.4']}
+        providerStatus={{
+          providerId: 'opencode',
+          authMethod: 'opencode_managed',
+          backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
+          modelCatalog: {
+            schemaVersion: 1,
+            providerId: 'opencode',
+            source: 'app-server',
+            status: 'ready',
+            fetchedAt: '2026-05-12T00:00:00.000Z',
+            staleAt: '2026-05-12T00:10:00.000Z',
+            defaultModelId: 'opencode/big-pickle',
+            defaultLaunchModel: 'opencode/big-pickle',
+            models: [
+              {
+                id: 'opencode/big-pickle',
+                launchModel: 'opencode/big-pickle',
+                displayName: 'opencode/big-pickle',
+                hidden: false,
+                supportedReasoningEfforts: [],
+                defaultReasoningEffort: null,
+                inputModalities: ['text'],
+                supportsPersonality: true,
+                isDefault: true,
+                upgrade: false,
+                source: 'app-server',
+                badgeLabel: 'Free',
+              },
+              {
+                id: 'openai/gpt-5.4',
+                launchModel: 'openai/gpt-5.4',
+                displayName: 'openai/gpt-5.4',
+                hidden: false,
+                supportedReasoningEfforts: [],
+                defaultReasoningEffort: null,
+                inputModalities: ['text'],
+                supportsPersonality: true,
+                isDefault: false,
+                upgrade: false,
+                source: 'app-server',
+                badgeLabel: null,
+              },
+            ],
+            diagnostics: {
+              configReadState: 'ready',
+              appServerState: 'healthy',
+            },
+          },
+        }}
+      />
+    );
+
+    expect(host.textContent).toContain('big-pickle');
+    expect(host.textContent).toContain('GPT-5.4');
+    expect(host.textContent?.match(/Free/g)).toHaveLength(1);
+  });
+
+  it('does not duplicate a catalog badge that matches the displayed model label', () => {
+    const host = render(
+      <ProviderModelBadges
+        providerId="anthropic"
+        models={['claude-opus-4-6']}
+        providerStatus={{
+          providerId: 'anthropic',
+          authMethod: 'oauth_token',
+          backend: { kind: 'anthropic', label: 'Anthropic' },
+          modelCatalog: {
+            schemaVersion: 1,
+            providerId: 'anthropic',
+            source: 'anthropic-models-api',
+            status: 'ready',
+            fetchedAt: '2026-05-12T00:00:00.000Z',
+            staleAt: '2026-05-12T00:10:00.000Z',
+            defaultModelId: 'claude-opus-4-6',
+            defaultLaunchModel: 'claude-opus-4-6',
+            models: [
+              {
+                id: 'claude-opus-4-6',
+                launchModel: 'claude-opus-4-6',
+                displayName: 'Opus 4.6',
+                hidden: false,
+                supportedReasoningEfforts: [],
+                defaultReasoningEffort: null,
+                inputModalities: ['text'],
+                supportsPersonality: true,
+                isDefault: true,
+                upgrade: false,
+                source: 'anthropic-models-api',
+                badgeLabel: 'Opus 4.6',
+              },
+            ],
+            diagnostics: {
+              configReadState: 'ready',
+              appServerState: 'healthy',
+            },
+          },
+        }}
+      />
+    );
+
+    expect(host.textContent?.match(/Opus 4\.6/g)).toHaveLength(1);
+  });
+
+  it('collapses long model lists and expands them inline without an internal scroll area', () => {
     const models = Array.from(
       { length: 18 },
       (_, index) => `model-${String(index + 1).padStart(2, '0')}`
@@ -134,8 +242,8 @@ describe('ProviderModelBadges', () => {
     expect(host.textContent).toContain('model-18');
     expect(host.textContent).toContain('Hide');
     const list = host.firstElementChild?.firstElementChild as HTMLElement | null;
-    expect(list?.style.maxHeight).toBe('200px');
-    expect(list?.style.overflowY).toBe('auto');
+    expect(list?.style.maxHeight).toBe('');
+    expect(list?.style.overflowY).toBe('');
 
     const hideButton = Array.from(host.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('Hide')
@@ -148,5 +256,42 @@ describe('ProviderModelBadges', () => {
 
     expect(host.textContent).not.toContain('model-16');
     expect(host.textContent).toContain('+3 more');
+  });
+
+  it('limits collapsed model badges by rendered rows when requested', () => {
+    const originalOffsetTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetTop');
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
+      configurable: true,
+      get() {
+        const siblings = Array.from(this.parentElement?.children ?? []);
+        const index = Math.max(0, siblings.indexOf(this));
+        return Math.floor(index / 3) * 20;
+      },
+    });
+
+    try {
+      const models = Array.from(
+        { length: 18 },
+        (_, index) => `model-${String(index + 1).padStart(2, '0')}`
+      );
+      const host = render(
+        <ProviderModelBadges
+          providerId="codex"
+          models={models}
+          collapseAfter={15}
+          maxCollapsedRows={2}
+        />
+      );
+
+      expect(host.textContent).toContain('model-05');
+      expect(host.textContent).not.toContain('model-06');
+      expect(host.textContent).toContain('+13 more');
+    } finally {
+      if (originalOffsetTop) {
+        Object.defineProperty(HTMLElement.prototype, 'offsetTop', originalOffsetTop);
+      } else {
+        delete (HTMLElement.prototype as { offsetTop?: number }).offsetTop;
+      }
+    }
   });
 });

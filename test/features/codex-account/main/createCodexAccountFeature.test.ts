@@ -9,6 +9,7 @@ import type {
 } from '@features/codex-account/contracts';
 
 const {
+  apiKeyHasPreferredMock,
   apiKeyLookupMock,
   binaryResolveMock,
   detectLocalAccountStateMock,
@@ -25,6 +26,7 @@ const {
   readRateLimitsMock,
 } = vi.hoisted(() => ({
   binaryResolveMock: vi.fn(),
+  apiKeyHasPreferredMock: vi.fn(),
   apiKeyLookupMock: vi.fn(),
   detectLocalAccountStateMock: vi.fn(),
   getCachedShellEnvMock: vi.fn(),
@@ -59,6 +61,7 @@ function emitLoginState(nextState: CodexLoginStateDto): void {
 
 vi.mock('../../../../src/main/services/extensions', () => ({
   ApiKeyService: class MockApiKeyService {
+    hasPreferred = apiKeyHasPreferredMock;
     lookupPreferred = apiKeyLookupMock;
   },
 }));
@@ -228,6 +231,7 @@ describe('createCodexAccountFeature', () => {
     delete process.env.OPENAI_API_KEY;
     delete process.env.CODEX_API_KEY;
     binaryResolveMock.mockResolvedValue('/usr/local/bin/codex');
+    apiKeyHasPreferredMock.mockResolvedValue(false);
     apiKeyLookupMock.mockResolvedValue(null);
     detectLocalAccountStateMock.mockResolvedValue({
       hasArtifacts: false,

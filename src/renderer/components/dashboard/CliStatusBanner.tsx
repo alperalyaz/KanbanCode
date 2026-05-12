@@ -621,6 +621,13 @@ function getOpenCodeInstallLabel(status: OpenCodeRuntimeStatus | null): string {
   return 'Install';
 }
 
+const OPENCODE_PROVIDER_FREE_BADGE_TITLE =
+  'OpenCode includes free model options such as Big Pickle when available in your setup. OpenRouter through OpenCode can also expose free models, but not every OpenCode/OpenRouter model is free. Availability and limits may change.';
+
+function shouldShowOpenCodeProviderFreeBadge(provider: CliProviderStatus): boolean {
+  return provider.providerId === 'opencode';
+}
+
 const InstalledBanner = ({
   cliStatus,
   sourceProviderMap,
@@ -847,6 +854,14 @@ const InstalledBanner = ({
                             ? getProviderLabel(provider.providerId)
                             : provider.displayName}
                         </span>
+                        {shouldShowOpenCodeProviderFreeBadge(provider) ? (
+                          <span
+                            className="rounded bg-[rgba(34,197,94,0.14)] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.06em] text-[rgb(74,222,128)]"
+                            title={OPENCODE_PROVIDER_FREE_BADGE_TITLE}
+                          >
+                            Free models
+                          </span>
+                        ) : null}
                       </span>
                       <span
                         className="text-xs"
@@ -1039,6 +1054,7 @@ const InstalledBanner = ({
                       modelAvailability={provider.modelAvailability}
                       providerStatus={provider}
                       collapseAfter={15}
+                      maxCollapsedRows={provider.providerId === 'opencode' ? 2 : undefined}
                     />
                   </div>
                 )}

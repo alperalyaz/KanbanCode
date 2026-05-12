@@ -703,6 +703,87 @@ describe('TeamProvisioningService', () => {
   });
 
   describe('team launch notifications', () => {
+    it('fires team launched when the last pending teammate joins after ready', async () => {
+      const { NotificationManager } =
+        await import('@main/services/infrastructure/NotificationManager');
+      const addTeamNotification = vi.fn(async (_payload: unknown) => undefined);
+      NotificationManager.setInstance({ addTeamNotification } as never);
+
+      try {
+        const svc = new TeamProvisioningService();
+        const run = {
+          runId: 'run-late-all-joined',
+          teamName: 'late-all-joined-team',
+          isLaunch: true,
+          provisioningComplete: true,
+          processKilled: false,
+          cancelRequested: false,
+          progress: { state: 'ready' },
+          request: {
+            cwd: tempClaudeRoot,
+            displayName: 'late-all-joined-team',
+          },
+          expectedMembers: ['alice', 'bob'],
+          allEffectiveMembers: [{ name: 'alice' }, { name: 'bob' }],
+          memberSpawnStatuses: new Map([
+            [
+              'alice',
+              createMemberSpawnStatusEntry({
+                status: 'online',
+                launchState: 'confirmed_alive',
+                runtimeAlive: true,
+                bootstrapConfirmed: true,
+              }),
+            ],
+            [
+              'bob',
+              createMemberSpawnStatusEntry({
+                status: 'waiting',
+                launchState: 'runtime_pending_bootstrap',
+                runtimeAlive: true,
+                bootstrapConfirmed: false,
+              }),
+            ],
+          ]),
+        };
+        (svc as any).runs.set(run.runId, run);
+        (svc as any).aliveRunByTeam.set(run.teamName, run.runId);
+
+        (svc as any).emitMemberSpawnChange(run, 'bob');
+        expect(addTeamNotification).not.toHaveBeenCalled();
+
+        run.memberSpawnStatuses.set(
+          'bob',
+          createMemberSpawnStatusEntry({
+            status: 'online',
+            launchState: 'confirmed_alive',
+            runtimeAlive: true,
+            bootstrapConfirmed: true,
+          })
+        );
+
+        (svc as any).emitMemberSpawnChange(run, 'bob');
+        await Promise.resolve();
+
+        expect(addTeamNotification).toHaveBeenCalledTimes(1);
+        expect(addTeamNotification).toHaveBeenCalledWith(
+          expect.objectContaining({
+            teamEventType: 'team_launched',
+            teamName: 'late-all-joined-team',
+            dedupeKey: 'team_launched:late-all-joined-team:run-late-all-joined',
+            body:
+              'Team "late-all-joined-team" has been launched - all 2 teammates joined and are ready for tasks.',
+          })
+        );
+
+        (svc as any).emitMemberSpawnChange(run, 'bob');
+        await Promise.resolve();
+        expect(addTeamNotification).toHaveBeenCalledTimes(1);
+      } finally {
+        NotificationManager.resetInstance();
+      }
+    });
+
     it('does not fire incomplete notification for pending-only teammates still joining', async () => {
       const { NotificationManager } =
         await import('@main/services/infrastructure/NotificationManager');
@@ -17473,6 +17554,58 @@ describe('TeamProvisioningService', () => {
       launchState: 'failed_to_start',
       hardFailure: true,
       hardFailureReason: 'spawn failed hard',
+    });
+  });
+
+  it('reports workspace trust failures with a specific deterministic bootstrap title', () => {
+    const reason =
+      'Teammate "Gayani" cannot start in headless process runtime because workspace trust is not accepted for "C:\\Users\\vilok\\OneDrive\\Desktop\\Safar 0.1". Open that workspace once interactively and accept trust, then launch the team again.';
+    const progressUpdates: any[] = [];
+    const run = createMemberSpawnRun({
+      runId: 'run-workspace-trust-bootstrap',
+      teamName: 'workspace-trust-bootstrap-team',
+      expectedMembers: ['Gayani'],
+    });
+    Object.assign(run, {
+      cancelRequested: false,
+      isLaunch: false,
+      lastDeterministicBootstrapSeq: 0,
+      progress: {
+        runId: run.runId,
+        teamName: run.teamName,
+        state: 'assembling',
+        message: 'Spawning teammate runtimes',
+        startedAt: '2026-05-12T10:00:00.000Z',
+        updatedAt: '2026-05-12T10:00:00.000Z',
+      },
+      onProgress: (progress: any) => {
+        progressUpdates.push(progress);
+      },
+    });
+    const svc = new TeamProvisioningService();
+    vi.spyOn(svc as any, 'persistLaunchStateSnapshot').mockResolvedValue(null);
+    vi.spyOn(svc as any, 'cleanupRun').mockImplementation(() => {});
+
+    const handled = (svc as any).handleDeterministicBootstrapEvent(run, {
+      type: 'system',
+      subtype: 'team_bootstrap',
+      event: 'failed',
+      reason,
+      run_id: run.runId,
+      team_name: run.teamName,
+      seq: 1,
+    });
+
+    expect(handled).toBe(true);
+    expect(progressUpdates.at(-1)).toMatchObject({
+      state: 'failed',
+      message: 'Workspace trust required',
+      error: reason,
+    });
+    expect(run.memberSpawnStatuses.get('Gayani')).toMatchObject({
+      status: 'error',
+      launchState: 'failed_to_start',
+      hardFailureReason: reason,
     });
   });
 

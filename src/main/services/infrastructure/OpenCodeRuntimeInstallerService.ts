@@ -42,7 +42,7 @@ interface OpenCodeRuntimeManifest {
   installedAt: string;
 }
 
-interface PlatformCandidate {
+export interface PlatformCandidate {
   packageName: string;
   reason: string;
 }
@@ -98,6 +98,22 @@ export function resolveAppManagedOpenCodeRuntimeBinaryPath(): string | null {
   return isAbsoluteExistingFile(manifest?.binaryPath) ? manifest.binaryPath : null;
 }
 
+export async function resolveVerifiedAppManagedOpenCodeRuntimeBinaryPath(): Promise<string | null> {
+  const binaryPath = resolveAppManagedOpenCodeRuntimeBinaryPath();
+  if (!binaryPath) {
+    return null;
+  }
+  try {
+    await execCli(binaryPath, ['--version'], {
+      timeout: VERSION_TIMEOUT_MS,
+      windowsHide: true,
+    });
+    return binaryPath;
+  } catch {
+    return null;
+  }
+}
+
 function getExecutableName(): string {
   return process.platform === 'win32' ? 'opencode.exe' : 'opencode';
 }
@@ -150,10 +166,12 @@ function isLinuxMuslRuntime(): boolean {
   return !header?.glibcVersionRuntime;
 }
 
-function getPlatformCandidates(): PlatformCandidate[] {
-  const arch = process.arch;
-  const musl = isLinuxMuslRuntime();
-  if (process.platform === 'darwin') {
+export function getOpenCodeRuntimePlatformCandidates(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+  musl: boolean = isLinuxMuslRuntime()
+): PlatformCandidate[] {
+  if (platform === 'darwin') {
     if (arch === 'arm64') return [{ packageName: 'opencode-darwin-arm64', reason: 'macOS arm64' }];
     if (arch === 'x64') {
       return [
@@ -162,7 +180,7 @@ function getPlatformCandidates(): PlatformCandidate[] {
       ];
     }
   }
-  if (process.platform === 'linux') {
+  if (platform === 'linux') {
     if (arch === 'arm64') {
       return musl
         ? [
@@ -191,7 +209,7 @@ function getPlatformCandidates(): PlatformCandidate[] {
           ];
     }
   }
-  if (process.platform === 'win32') {
+  if (platform === 'win32') {
     if (arch === 'arm64')
       return [{ packageName: 'opencode-windows-arm64', reason: 'Windows arm64' }];
     if (arch === 'x64') {
@@ -201,7 +219,7 @@ function getPlatformCandidates(): PlatformCandidate[] {
       ];
     }
   }
-  throw new Error(`OpenCode app install is not supported on ${process.platform}/${arch}`);
+  throw new Error(`OpenCode app install is not supported on ${platform}/${arch}`);
 }
 
 async function fetchText(url: string): Promise<string> {
@@ -231,7 +249,7 @@ async function fetchPackageMetadata(
   return parsed;
 }
 
-function verifyIntegrity(buffer: Buffer, integrity: string): void {
+export function verifyOpenCodeRuntimePackageIntegrity(buffer: Buffer, integrity: string): void {
   const match = /^sha512-([A-Za-z0-9+/=]+)$/.exec(integrity.trim());
   if (!match) {
     throw new Error('OpenCode package integrity is missing sha512 metadata');
@@ -320,7 +338,7 @@ function assertSafeTarPath(name: string): void {
   }
 }
 
-function extractBinaryFromTarball(tarball: Buffer): Buffer {
+export function extractOpenCodeRuntimeBinaryFromTarball(tarball: Buffer): Buffer {
   const tar = gunzipSync(tarball, { maxOutputLength: MAX_BINARY_BYTES + 1024 * 1024 });
   const targetName = `package/bin/${getExecutableName()}`;
   let offset = 0;
@@ -479,7 +497,7 @@ export class OpenCodeRuntimeInstallerService {
     try {
       this.publishProgress({ phase: 'checking', detail: 'Resolving latest OpenCode package...' });
       const rootMetadata = await fetchPackageMetadata(ROOT_PACKAGE_NAME);
-      const candidates = getPlatformCandidates();
+      const candidates = getOpenCodeRuntimePlatformCandidates();
       const optionalDependencies = rootMetadata.optionalDependencies ?? {};
       const selected = candidates.find((candidate) => optionalDependencies[candidate.packageName]);
       if (!selected) {
@@ -498,10 +516,10 @@ export class OpenCodeRuntimeInstallerService {
       const tarball = await downloadTarball(platformMetadata.dist!.tarball!, (progress) => {
         this.publishProgress(progress);
       });
-      verifyIntegrity(tarball, platformMetadata.dist!.integrity!);
+      verifyOpenCodeRuntimePackageIntegrity(tarball, platformMetadata.dist!.integrity!);
 
       this.publishProgress({ phase: 'installing', detail: 'Extracting OpenCode binary...' });
-      const binary = extractBinaryFromTarball(tarball);
+      const binary = extractOpenCodeRuntimeBinaryFromTarball(tarball);
       const runtimeRoot = getRuntimeRootPath();
       const tempDir = path.join(runtimeRoot, `installing-${process.pid}-${randomUUID()}`);
       const versionDir = path.join(

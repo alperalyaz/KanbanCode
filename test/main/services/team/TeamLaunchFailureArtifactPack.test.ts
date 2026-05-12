@@ -187,6 +187,29 @@ describe('TeamLaunchFailureArtifactPack', () => {
     ).toBe('provider_quota');
   });
 
+  it('classifies Claude Code workspace trust failures separately', () => {
+    const reason =
+      'Teammate "Gayani" cannot start in headless process runtime because workspace trust is not accepted for "C:\\Users\\vilok\\OneDrive\\Desktop\\Safar 0.1". Open that workspace once interactively and accept trust, then launch the team again.';
+
+    const classification = classifyLaunchFailureArtifact({
+      teamName: 'artifact-team',
+      runId: 'run-workspace-trust',
+      reason: 'Deterministic bootstrap failed',
+      memberSpawnStatuses: {
+        Gayani: {
+          status: 'error',
+          launchState: 'failed_to_start',
+          hardFailureReason: reason,
+          updatedAt: '2026-05-12T00:00:00.000Z',
+        },
+      },
+      progressTraceLines: [reason],
+    });
+
+    expect(classification.code).toBe('workspace_trust_required');
+    expect(classification.evidence.join('\n')).toContain('workspace trust is not accepted');
+  });
+
   it.each([
     {
       name: 'stdin warning',

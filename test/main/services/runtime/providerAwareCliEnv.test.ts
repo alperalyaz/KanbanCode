@@ -10,9 +10,11 @@ const applyConfiguredConnectionEnvMock = vi.fn();
 const applyAllConfiguredConnectionEnvMock = vi.fn();
 const getConfiguredConnectionIssuesMock = vi.fn();
 const getConfiguredConnectionLaunchArgsMock = vi.fn();
+const resolveVerifiedAppManagedOpenCodeRuntimeBinaryPathMock = vi.fn();
 
 vi.mock('@main/utils/cliEnv', () => ({
-  buildEnrichedEnv: (...args: Parameters<typeof buildEnrichedEnvMock>) => buildEnrichedEnvMock(...args),
+  buildEnrichedEnv: (...args: Parameters<typeof buildEnrichedEnvMock>) =>
+    buildEnrichedEnvMock(...args),
 }));
 
 vi.mock('@main/utils/shellEnv', () => ({
@@ -35,20 +37,29 @@ vi.mock('../../../../src/main/services/infrastructure/ConfigManager', () => ({
 
 vi.mock('../../../../src/main/services/runtime/ProviderConnectionService', () => ({
   providerConnectionService: {
-    augmentConfiguredConnectionEnv: (...args: Parameters<typeof augmentConfiguredConnectionEnvMock>) =>
-      augmentConfiguredConnectionEnvMock(...args),
-    augmentAllConfiguredConnectionEnv: (...args: Parameters<typeof augmentAllConfiguredConnectionEnvMock>) =>
-      augmentAllConfiguredConnectionEnvMock(...args),
+    augmentConfiguredConnectionEnv: (
+      ...args: Parameters<typeof augmentConfiguredConnectionEnvMock>
+    ) => augmentConfiguredConnectionEnvMock(...args),
+    augmentAllConfiguredConnectionEnv: (
+      ...args: Parameters<typeof augmentAllConfiguredConnectionEnvMock>
+    ) => augmentAllConfiguredConnectionEnvMock(...args),
     applyConfiguredConnectionEnv: (...args: Parameters<typeof applyConfiguredConnectionEnvMock>) =>
       applyConfiguredConnectionEnvMock(...args),
-    applyAllConfiguredConnectionEnv: (...args: Parameters<typeof applyAllConfiguredConnectionEnvMock>) =>
-      applyAllConfiguredConnectionEnvMock(...args),
+    applyAllConfiguredConnectionEnv: (
+      ...args: Parameters<typeof applyAllConfiguredConnectionEnvMock>
+    ) => applyAllConfiguredConnectionEnvMock(...args),
     getConfiguredConnectionLaunchArgs: (
       ...args: Parameters<typeof getConfiguredConnectionLaunchArgsMock>
     ) => getConfiguredConnectionLaunchArgsMock(...args),
-    getConfiguredConnectionIssues: (...args: Parameters<typeof getConfiguredConnectionIssuesMock>) =>
-      getConfiguredConnectionIssuesMock(...args),
+    getConfiguredConnectionIssues: (
+      ...args: Parameters<typeof getConfiguredConnectionIssuesMock>
+    ) => getConfiguredConnectionIssuesMock(...args),
   },
+}));
+
+vi.mock('../../../../src/main/services/infrastructure/OpenCodeRuntimeInstallerService', () => ({
+  resolveVerifiedAppManagedOpenCodeRuntimeBinaryPath: () =>
+    resolveVerifiedAppManagedOpenCodeRuntimeBinaryPathMock(),
 }));
 
 describe('buildProviderAwareCliEnv', () => {
@@ -76,6 +87,7 @@ describe('buildProviderAwareCliEnv', () => {
     );
     getConfiguredConnectionLaunchArgsMock.mockResolvedValue([]);
     getConfiguredConnectionIssuesMock.mockResolvedValue({});
+    resolveVerifiedAppManagedOpenCodeRuntimeBinaryPathMock.mockResolvedValue(null);
   });
 
   it('builds provider-pinned CLI env and returns provider-specific issues', async () => {
@@ -83,9 +95,8 @@ describe('buildProviderAwareCliEnv', () => {
       anthropic: 'missing key',
     });
 
-    const { buildProviderAwareCliEnv } = await import(
-      '../../../../src/main/services/runtime/providerAwareCliEnv'
-    );
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
     const result = await buildProviderAwareCliEnv({
       binaryPath: '/mock/claude',
       providerId: 'anthropic',
@@ -112,10 +123,27 @@ describe('buildProviderAwareCliEnv', () => {
     expect(result.providerArgs).toEqual([]);
   });
 
-  it('builds shared env for generic CLI launches when no provider is specified', async () => {
-    const { buildProviderAwareCliEnv } = await import(
-      '../../../../src/main/services/runtime/providerAwareCliEnv'
+  it('passes metadata-only stored API key access through provider env building', async () => {
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
+    await buildProviderAwareCliEnv({
+      providerId: 'anthropic',
+      allowStoredApiKeyDecryption: false,
+    });
+
+    expect(applyConfiguredConnectionEnvMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        CLAUDE_CODE_ENTRY_PROVIDER: 'anthropic',
+      }),
+      'anthropic',
+      undefined,
+      { allowStoredApiKeyDecryption: false }
     );
+  });
+
+  it('builds shared env for generic CLI launches when no provider is specified', async () => {
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
     const result = await buildProviderAwareCliEnv();
 
     expect(applyAllConfiguredConnectionEnvMock).toHaveBeenCalledWith(
@@ -140,9 +168,8 @@ describe('buildProviderAwareCliEnv', () => {
       PATH: '/usr/bin',
       OPENCODE_DISABLE_AUTOUPDATE: '1',
     });
-    const { buildProviderAwareCliEnv } = await import(
-      '../../../../src/main/services/runtime/providerAwareCliEnv'
-    );
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
 
     const result = await buildProviderAwareCliEnv({
       env: {
@@ -155,9 +182,8 @@ describe('buildProviderAwareCliEnv', () => {
   });
 
   it('uses non-destructive credential augmentation for PTY-style envs', async () => {
-    const { buildProviderAwareCliEnv } = await import(
-      '../../../../src/main/services/runtime/providerAwareCliEnv'
-    );
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
     const result = await buildProviderAwareCliEnv({
       connectionMode: 'augment',
       env: {
@@ -176,9 +202,8 @@ describe('buildProviderAwareCliEnv', () => {
   });
 
   it('preserves caller-provided HOME and USERPROFILE overrides', async () => {
-    const { buildProviderAwareCliEnv } = await import(
-      '../../../../src/main/services/runtime/providerAwareCliEnv'
-    );
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
     const result = await buildProviderAwareCliEnv({
       providerId: 'anthropic',
       env: {
@@ -201,9 +226,8 @@ describe('buildProviderAwareCliEnv', () => {
   });
 
   it('preserves explicit backend overrides passed by the caller', async () => {
-    const { buildProviderAwareCliEnv } = await import(
-      '../../../../src/main/services/runtime/providerAwareCliEnv'
-    );
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
     const result = await buildProviderAwareCliEnv({
       connectionMode: 'augment',
       env: {
@@ -227,9 +251,8 @@ describe('buildProviderAwareCliEnv', () => {
       PATH: '/usr/bin',
     });
 
-    const { buildProviderAwareCliEnv } = await import(
-      '../../../../src/main/services/runtime/providerAwareCliEnv'
-    );
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
     const result = await buildProviderAwareCliEnv({
       providerId: 'codex',
     });
@@ -251,9 +274,8 @@ describe('buildProviderAwareCliEnv', () => {
       '{"codex":{"forced_login_method":"chatgpt"}}',
     ]);
 
-    const { buildProviderAwareCliEnv } = await import(
-      '../../../../src/main/services/runtime/providerAwareCliEnv'
-    );
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
     const result = await buildProviderAwareCliEnv({
       binaryPath: '/mock/claude-multimodel',
       providerId: 'codex',
@@ -271,5 +293,43 @@ describe('buildProviderAwareCliEnv', () => {
       '--settings',
       '{"codex":{"forced_login_method":"chatgpt"}}',
     ]);
+  });
+
+  it('injects the verified app-managed OpenCode binary for OpenCode launches', async () => {
+    resolveVerifiedAppManagedOpenCodeRuntimeBinaryPathMock.mockResolvedValue(
+      '/Users/tester/App Support/runtimes/opencode/current/opencode'
+    );
+
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
+    const result = await buildProviderAwareCliEnv({
+      providerId: 'opencode',
+    });
+
+    expect(applyConfiguredConnectionEnvMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH:
+          '/Users/tester/App Support/runtimes/opencode/current/opencode',
+      }),
+      'opencode',
+      undefined
+    );
+    expect(result.env.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH).toBe(
+      '/Users/tester/App Support/runtimes/opencode/current/opencode'
+    );
+  });
+
+  it('does not inject the app-managed OpenCode binary into non-OpenCode provider launches', async () => {
+    resolveVerifiedAppManagedOpenCodeRuntimeBinaryPathMock.mockResolvedValue(
+      '/Users/tester/App Support/runtimes/opencode/current/opencode'
+    );
+
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
+    const result = await buildProviderAwareCliEnv({
+      providerId: 'anthropic',
+    });
+
+    expect(result.env.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH).toBeUndefined();
   });
 });

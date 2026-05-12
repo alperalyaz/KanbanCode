@@ -193,6 +193,7 @@ export class CliProviderModelAvailabilityService {
       cliEnvPromise: buildProviderAwareCliEnv({
         binaryPath: context.binaryPath,
         providerId: context.provider.providerId,
+        allowStoredApiKeyDecryption: false,
       }).then((result) => ({
         env: result.env,
         providerArgs: result.providerArgs ?? [],

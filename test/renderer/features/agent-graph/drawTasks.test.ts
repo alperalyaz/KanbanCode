@@ -6,6 +6,7 @@ import type { GraphNode } from '@claude-teams/agent-graph';
 
 function createMockContext() {
   const arcCalls: Array<{ x: number; y: number; radius: number }> = [];
+  const fillTextCalls: Array<{ text: string; x: number; y: number }> = [];
   const gradient = { addColorStop: vi.fn() };
   let fillStyle: string | CanvasGradient | CanvasPattern = '';
   let globalAlpha = 1;
@@ -34,7 +35,9 @@ function createMockContext() {
     createRadialGradient: vi.fn(() => gradient),
     createLinearGradient: vi.fn(() => gradient),
     measureText: vi.fn((text: string) => ({ width: text.length * 4.5 })),
-    fillText: vi.fn(),
+    fillText: vi.fn((text: string, x: number, y: number) => {
+      fillTextCalls.push({ text: String(text), x, y });
+    }),
     strokeText: vi.fn(),
     shadowColor: '',
     shadowBlur: 0,
@@ -59,7 +62,7 @@ function createMockContext() {
     },
   } as unknown as CanvasRenderingContext2D;
 
-  return { ctx, arcCalls };
+  return { ctx, arcCalls, fillTextCalls };
 }
 
 function createTaskNode(hasLiveTaskLogs: boolean): GraphNode {
@@ -89,5 +92,38 @@ describe('drawTasks', () => {
 
     expect(active.arcCalls.length).toBeGreaterThanOrEqual(3);
     expect(inactive.arcCalls).toHaveLength(0);
+  });
+
+  it('wraps long task subjects into two canvas lines', () => {
+    const { ctx, fillTextCalls } = createMockContext();
+    const node = {
+      ...createTaskNode(false),
+      displayId: '0f505654',
+      sublabel:
+        'Review VitePress docs: Get missing developer page ready for publishing search analytics routing navigation validation checklist and docs',
+    };
+
+    drawTasks(ctx, [node], 1, null, null, null, 1);
+
+    const firstTitleLine = fillTextCalls.find((call) => call.y === -16);
+    const secondTitleLine = fillTextCalls.find((call) => call.y === 2);
+    const displayId = fillTextCalls.find((call) => call.text === '0f505654');
+
+    expect(firstTitleLine?.text).toContain('Review VitePress docs');
+    expect(secondTitleLine?.text).toContain('...');
+    expect(displayId?.y).toBe(23);
+  });
+
+  it('keeps the compact single-line subject layout for short titles', () => {
+    const { ctx, fillTextCalls } = createMockContext();
+    drawTasks(ctx, [createTaskNode(false)], 1, null, null, null, 1);
+
+    const titleLine = fillTextCalls.find((call) => call.text === 'Live log task');
+    const secondTitleLine = fillTextCalls.find((call) => call.y === 2);
+    const displayId = fillTextCalls.find((call) => call.text === '#1');
+
+    expect(titleLine?.y).toBe(-12);
+    expect(secondTitleLine).toBeUndefined();
+    expect(displayId?.y).toBe(12);
   });
 });

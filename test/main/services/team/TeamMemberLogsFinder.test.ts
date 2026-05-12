@@ -207,6 +207,53 @@ describe('TeamMemberLogsFinder', () => {
     expect(projectResolver.getContext).toHaveBeenCalledTimes(2);
   });
 
+  it('dedupes concurrent forceRefresh log source discovery for the same team', async () => {
+    const teamName = 'dedupe-force-refresh-context-team';
+    let resolveContext!: (value: unknown) => void;
+    const contextPromise = new Promise((resolve) => {
+      resolveContext = resolve;
+    });
+    const projectResolver = {
+      getContext: vi.fn(() => contextPromise),
+      getLiveBaseContext: vi.fn(),
+    };
+    const inboxReader = { listInboxNames: vi.fn(async () => []) };
+    const membersMetaStore = { getMembers: vi.fn(async () => []) };
+    const finder = new TeamMemberLogsFinder(
+      undefined,
+      inboxReader as never,
+      membersMetaStore as never,
+      projectResolver as never
+    );
+
+    const first = finder.getLogSourceWatchContext(teamName, { forceRefresh: true });
+    const second = finder.getLogSourceWatchContext(teamName, { forceRefresh: true });
+    await Promise.resolve();
+
+    expect(projectResolver.getContext).toHaveBeenCalledTimes(1);
+    resolveContext({
+      projectDir: '/tmp/project',
+      projectId: 'project',
+      sessionIds: ['session-1'],
+      config: { name: teamName, projectPath: '/repo', members: [] },
+    });
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      {
+        projectDir: '/tmp/project',
+        projectPath: '/repo',
+        leadSessionId: undefined,
+        sessionIds: ['session-1'],
+      },
+      {
+        projectDir: '/tmp/project',
+        projectPath: '/repo',
+        leadSessionId: undefined,
+        sessionIds: ['session-1'],
+      },
+    ]);
+  });
+
   it('returns subagent logs for a member and lead session for team-lead', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-logs-'));
     setClaudeBasePathOverride(tmpDir);
@@ -529,6 +576,186 @@ describe('TeamMemberLogsFinder', () => {
       ])
     );
     expect(refs.some((ref) => ref.memberName === 'Tom')).toBe(false);
+  });
+
+  it('does not leak old same-workspace subagent logs into a newly created team', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-logs-scope-'));
+    setClaudeBasePathOverride(tmpDir);
+
+    const teamName = 'aurora-room-scope';
+    const projectPath = '/Users/test/shared-workspace';
+    const projectId = '-Users-test-shared-workspace';
+    const leadSessionId = 'fresh-lead-session';
+    const unrelatedSessionId = 'old-other-team-session';
+    const now = new Date();
+
+    await fs.mkdir(path.join(tmpDir, 'teams', teamName), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'teams', teamName, 'config.json'),
+      JSON.stringify(
+        {
+          name: teamName,
+          projectPath,
+          leadSessionId,
+          members: [
+            { name: 'team-lead', agentType: 'team-lead' },
+            { name: 'Alice', agentType: 'general-purpose' },
+          ],
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+
+    const projectRoot = path.join(tmpDir, 'projects', projectId);
+    const currentSubagentsDir = path.join(projectRoot, leadSessionId, 'subagents');
+    const unrelatedSubagentsDir = path.join(projectRoot, unrelatedSessionId, 'subagents');
+    await fs.mkdir(currentSubagentsDir, { recursive: true });
+    await fs.mkdir(unrelatedSubagentsDir, { recursive: true });
+
+    const leadPath = path.join(projectRoot, `${leadSessionId}.jsonl`);
+    await fs.writeFile(
+      leadPath,
+      JSON.stringify({
+        timestamp: now.toISOString(),
+        type: 'user',
+        message: { role: 'user', content: `Lead for team "${teamName}" (${teamName})` },
+      }) + '\n',
+      'utf8'
+    );
+
+    const currentAlicePath = path.join(currentSubagentsDir, 'agent-alice.jsonl');
+    await fs.writeFile(
+      currentAlicePath,
+      JSON.stringify({
+        timestamp: now.toISOString(),
+        type: 'user',
+        message: {
+          role: 'user',
+          content: `You are Alice, a developer on team "${teamName}" (${teamName}).`,
+        },
+      }) + '\n',
+      'utf8'
+    );
+
+    const unrelatedAlicePath = path.join(unrelatedSubagentsDir, 'agent-alice.jsonl');
+    await fs.writeFile(
+      unrelatedAlicePath,
+      JSON.stringify({
+        timestamp: now.toISOString(),
+        type: 'user',
+        message: {
+          role: 'user',
+          content: 'You are Alice, a developer on team "old-team" (old-team).',
+        },
+      }) + '\n',
+      'utf8'
+    );
+
+    const refs = await new TeamMemberLogsFinder().findRecentMemberLogFileRefsByMember(
+      teamName,
+      ['team-lead', 'Alice'],
+      { forceRefresh: true }
+    );
+
+    expect(refs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ memberName: 'team-lead', filePath: leadPath }),
+        expect.objectContaining({ memberName: 'Alice', filePath: currentAlicePath }),
+      ])
+    );
+    expect(refs.some((ref) => ref.filePath === unrelatedAlicePath)).toBe(false);
+  });
+
+  it('can skip untracked team subagent session discovery for graph previews', async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-logs-preview-scope-'));
+    setClaudeBasePathOverride(tmpDir);
+
+    const teamName = 'preview-known-session-scope';
+    const projectPath = '/Users/test/preview-known-session-scope';
+    const projectId = '-Users-test-preview-known-session-scope';
+    const leadSessionId = 'known-lead-session';
+    const untrackedSessionId = 'team-subagent-only-session';
+    const now = new Date();
+
+    await fs.mkdir(path.join(tmpDir, 'teams', teamName), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'teams', teamName, 'config.json'),
+      JSON.stringify(
+        {
+          name: teamName,
+          projectPath,
+          leadSessionId,
+          members: [
+            { name: 'team-lead', agentType: 'team-lead' },
+            { name: 'Alice', agentType: 'general-purpose' },
+            { name: 'Bob', agentType: 'general-purpose' },
+          ],
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+
+    const projectRoot = path.join(tmpDir, 'projects', projectId);
+    const knownSubagentsDir = path.join(projectRoot, leadSessionId, 'subagents');
+    const untrackedSubagentsDir = path.join(projectRoot, untrackedSessionId, 'subagents');
+    await fs.mkdir(knownSubagentsDir, { recursive: true });
+    await fs.mkdir(untrackedSubagentsDir, { recursive: true });
+
+    await fs.writeFile(
+      path.join(projectRoot, `${leadSessionId}.jsonl`),
+      JSON.stringify({
+        timestamp: now.toISOString(),
+        type: 'user',
+        message: { role: 'user', content: `Lead for team "${teamName}" (${teamName})` },
+      }) + '\n',
+      'utf8'
+    );
+
+    const knownAlicePath = path.join(knownSubagentsDir, 'agent-alice.jsonl');
+    await fs.writeFile(
+      knownAlicePath,
+      JSON.stringify({
+        timestamp: now.toISOString(),
+        type: 'user',
+        message: {
+          role: 'user',
+          content: `You are Alice, a developer on team "${teamName}" (${teamName}).`,
+        },
+      }) + '\n',
+      'utf8'
+    );
+
+    const untrackedBobPath = path.join(untrackedSubagentsDir, 'agent-bob.jsonl');
+    await fs.writeFile(
+      untrackedBobPath,
+      JSON.stringify({
+        timestamp: now.toISOString(),
+        type: 'user',
+        message: {
+          role: 'user',
+          content: `You are Bob, a developer on team "${teamName}" (${teamName}).`,
+        },
+      }) + '\n',
+      'utf8'
+    );
+
+    const finder = new TeamMemberLogsFinder();
+    const fastRefs = await finder.findRecentMemberLogFileRefsByMember(teamName, ['Alice', 'Bob'], {
+      forceRefresh: true,
+      includeTeamSubagentSessionDiscovery: false,
+    });
+    expect(fastRefs.some((ref) => ref.filePath === knownAlicePath)).toBe(true);
+    expect(fastRefs.some((ref) => ref.filePath === untrackedBobPath)).toBe(false);
+
+    const fullRefs = await finder.findRecentMemberLogFileRefsByMember(teamName, ['Alice', 'Bob'], {
+      forceRefresh: true,
+    });
+    expect(fullRefs.some((ref) => ref.filePath === knownAlicePath)).toBe(true);
+    expect(fullRefs.some((ref) => ref.filePath === untrackedBobPath)).toBe(true);
   });
 
   it('applies recent-ref object options to discovery, lead refs, metadata, and requested-member attribution', async () => {

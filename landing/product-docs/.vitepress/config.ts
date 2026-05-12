@@ -93,17 +93,29 @@ const ruGuide: DefaultTheme.SidebarItem[] = [
 ];
 
 const rootNav: DefaultTheme.NavItem[] = [
-  { text: "Guide", link: "/guide/quickstart" },
-  { text: "Reference", link: "/reference/concepts" },
-  { text: "Troubleshooting", link: "/guide/troubleshooting" },
-  { text: "Download", link: downloadUrl, target: "_self" }
+  { text: "Guide", link: "/guide/quickstart", activeMatch: "^/guide/(?!troubleshooting(?:/|$))" },
+  { text: "Reference", link: "/reference/concepts", activeMatch: "^/reference/" },
+  {
+    text: "Troubleshooting",
+    link: "/guide/troubleshooting",
+    activeMatch: "^/guide/troubleshooting(?:/|$)"
+  },
+  { text: "Download", link: downloadUrl, target: "_self", noIcon: true }
 ];
 
 const ruNav: DefaultTheme.NavItem[] = [
-  { text: "Руководство", link: "/ru/guide/quickstart" },
-  { text: "Справочник", link: "/ru/reference/concepts" },
-  { text: "Диагностика", link: "/ru/guide/troubleshooting" },
-  { text: "Скачать", link: ruDownloadUrl, target: "_self" }
+  {
+    text: "Руководство",
+    link: "/ru/guide/quickstart",
+    activeMatch: "^/ru/guide/(?!troubleshooting(?:/|$))"
+  },
+  { text: "Справочник", link: "/ru/reference/concepts", activeMatch: "^/ru/reference/" },
+  {
+    text: "Диагностика",
+    link: "/ru/guide/troubleshooting",
+    activeMatch: "^/ru/guide/troubleshooting(?:/|$)"
+  },
+  { text: "Скачать", link: ruDownloadUrl, target: "_self", noIcon: true }
 ];
 
 export default defineConfig({
@@ -173,12 +185,20 @@ export default defineConfig({
     }
   },
   themeConfig: {
-    logo: "/logo-192.png",
+    logo: {
+      light: "/logo-192.png",
+      dark: "/logo-192.png",
+      alt: "Agent Teams"
+    },
     siteTitle: "Agent Teams",
     outline: {
       level: [2, 3],
       label: "On this page"
     },
+    externalLinkIcon: true,
+    darkModeSwitchLabel: "Appearance",
+    lightModeSwitchTitle: "Switch to light theme",
+    darkModeSwitchTitle: "Switch to dark theme",
     search: {
       provider: "local",
       options: {
@@ -196,6 +216,14 @@ export default defineConfig({
             }
           }
         }
+      }
+    },
+    lastUpdated: {
+      text: "Last updated",
+      formatOptions: {
+        dateStyle: "medium",
+        timeStyle: "short",
+        forceLocale: true
       }
     },
     nav: rootNav,
@@ -236,6 +264,9 @@ export default defineConfig({
           level: [2, 3],
           label: "На этой странице"
         },
+        darkModeSwitchLabel: "Оформление",
+        lightModeSwitchTitle: "Переключить на светлую тему",
+        darkModeSwitchTitle: "Переключить на тёмную тему",
         search: {
           provider: "local",
           options: {
@@ -253,6 +284,14 @@ export default defineConfig({
                 }
               }
             }
+          }
+        },
+        lastUpdated: {
+          text: "Обновлено",
+          formatOptions: {
+            dateStyle: "medium",
+            timeStyle: "short",
+            forceLocale: true
           }
         },
         editLink: {

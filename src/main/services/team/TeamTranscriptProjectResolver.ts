@@ -22,6 +22,7 @@ const logger = createLogger('Service:TeamTranscriptProjectResolver');
 const SESSION_DISCOVERY_CACHE_TTL = 30_000;
 const TEAM_AFFINITY_SCAN_LINES = 40;
 const ROOT_DISCOVERY_CONCURRENCY = 12;
+const FAST_CONTEXT_ROOT_DISCOVERY_MTIME_GRACE_MS = 24 * 60 * 60_000;
 
 type ProjectEvidenceSource =
   | 'projectPath'
@@ -51,6 +52,11 @@ interface TeamTranscriptProjectConfigReader {
   getConfigSnapshot?: (teamName: string) => Promise<TeamConfig | null>;
 }
 
+interface TeamTranscriptProjectContextOptions {
+  forceRefresh?: boolean;
+  includeTeamSubagentSessionDiscovery?: boolean;
+}
+
 type ScannedSessionProjectMatch = Omit<SessionProjectMatch, 'projectPath'> & {
   projectPath?: string;
 };
@@ -70,6 +76,45 @@ function trimTrailingSlashes(value: string): string {
 
 function isSessionDirectoryName(name: string): boolean {
   return name !== 'memory' && !name.startsWith('.');
+}
+
+function buildContextCacheKey(
+  teamName: string,
+  options?: TeamTranscriptProjectContextOptions
+): string {
+  const subagentMode = options?.includeTeamSubagentSessionDiscovery === false ? 'known' : 'full';
+  return `${teamName}\0${subagentMode}`;
+}
+
+function parseTimestampMs(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function teamLifecycleMtimeCutoffMs(config: TeamConfig): number | null {
+  const timestamps: number[] = [];
+  const createdAt = parseTimestampMs((config as { createdAt?: unknown }).createdAt);
+  if (createdAt !== null) {
+    timestamps.push(createdAt);
+  }
+
+  for (const member of config.members ?? []) {
+    const joinedAt = parseTimestampMs((member as { joinedAt?: unknown }).joinedAt);
+    if (joinedAt !== null) {
+      timestamps.push(joinedAt);
+    }
+  }
+
+  if (timestamps.length === 0) {
+    return null;
+  }
+  return Math.max(0, Math.min(...timestamps) - FAST_CONTEXT_ROOT_DISCOVERY_MTIME_GRACE_MS);
 }
 
 function normalizeProjectPathCandidate(value: unknown): string | null {
@@ -207,12 +252,21 @@ export class TeamTranscriptProjectResolver {
       : this.configReader.getConfig(teamName);
   }
 
+  private deleteContextCacheForTeam(teamName: string): void {
+    this.contextCache.delete(teamName);
+    for (const key of this.contextCache.keys()) {
+      if (key === teamName || key.startsWith(`${teamName}\0`)) {
+        this.contextCache.delete(key);
+      }
+    }
+  }
+
   async getLiveBaseContext(
     teamName: string,
     options?: { forceRefresh?: boolean; extraProjectPathCandidates?: readonly unknown[] }
   ): Promise<TeamTranscriptProjectLiveBaseContext | null> {
     if (options?.forceRefresh) {
-      this.contextCache.delete(teamName);
+      this.deleteContextCacheForTeam(teamName);
     }
 
     const config = await this.readConfigForObservation(teamName);
@@ -244,13 +298,14 @@ export class TeamTranscriptProjectResolver {
 
   async getContext(
     teamName: string,
-    options?: { forceRefresh?: boolean }
+    options?: TeamTranscriptProjectContextOptions
   ): Promise<TeamTranscriptProjectContext | null> {
+    const cacheKey = buildContextCacheKey(teamName, options);
     if (options?.forceRefresh) {
-      this.contextCache.delete(teamName);
+      this.deleteContextCacheForTeam(teamName);
     }
 
-    const cached = this.contextCache.get(teamName);
+    const cached = this.contextCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.value;
     }
@@ -282,7 +337,8 @@ export class TeamTranscriptProjectResolver {
     const sessionIds = await this.discoverSessionIds(
       teamName,
       resolution.projectDir,
-      resolvedConfig
+      resolvedConfig,
+      options
     );
     const value = {
       projectDir: resolution.projectDir,
@@ -290,7 +346,7 @@ export class TeamTranscriptProjectResolver {
       config: resolvedConfig,
       sessionIds,
     };
-    this.contextCache.set(teamName, {
+    this.contextCache.set(cacheKey, {
       value,
       expiresAt: Date.now() + SESSION_DISCOVERY_CACHE_TTL,
     });
@@ -741,12 +797,20 @@ export class TeamTranscriptProjectResolver {
   private async discoverSessionIds(
     teamName: string,
     projectDir: string,
-    config: TeamConfig
+    config: TeamConfig,
+    options?: TeamTranscriptProjectContextOptions
   ): Promise<string[]> {
     const knownSessionIds = collectKnownSessionIds(config);
-    const [teamRootSessionIds, sessionDirIds] = await Promise.all([
-      this.listTeamRootSessionIds(projectDir, teamName),
-      this.listSessionDirIds(projectDir),
+    const includeTeamSubagentSessionDiscovery =
+      options?.includeTeamSubagentSessionDiscovery !== false;
+    const rootMtimeSinceMs = includeTeamSubagentSessionDiscovery
+      ? null
+      : teamLifecycleMtimeCutoffMs(config);
+    const [teamRootSessionIds, teamSubagentSessionIds] = await Promise.all([
+      this.listTeamRootSessionIds(projectDir, teamName, rootMtimeSinceMs),
+      includeTeamSubagentSessionDiscovery
+        ? this.listTeamSubagentSessionIds(projectDir, teamName)
+        : Promise.resolve([]),
     ]);
 
     const orderedSessionIds: string[] = [];
@@ -762,7 +826,7 @@ export class TeamTranscriptProjectResolver {
     for (const sessionId of knownSessionIds) {
       push(sessionId);
     }
-    for (const sessionId of [...teamRootSessionIds, ...sessionDirIds].sort((left, right) =>
+    for (const sessionId of [...teamRootSessionIds, ...teamSubagentSessionIds].sort((left, right) =>
       left.localeCompare(right)
     )) {
       push(sessionId);
@@ -816,21 +880,69 @@ export class TeamTranscriptProjectResolver {
     }
   }
 
-  private async listSessionDirIds(projectDir: string): Promise<string[]> {
+  private async listTeamSubagentSessionIds(
+    projectDir: string,
+    teamName: string
+  ): Promise<string[]> {
     const dirEntries = await this.readProjectDirEntries(projectDir);
     if (!dirEntries) {
       return [];
     }
 
-    return dirEntries
-      .filter((entry) => entry.isDirectory() && isSessionDirectoryName(entry.name))
-      .map((entry) => entry.name);
+    const sessionDirEntries = dirEntries.filter(
+      (entry) => entry.isDirectory() && isSessionDirectoryName(entry.name)
+    );
+    const discovered = new Set<string>();
+    let nextIndex = 0;
+
+    const scanNextSessionDir = async (): Promise<void> => {
+      while (nextIndex < sessionDirEntries.length) {
+        const entry = sessionDirEntries[nextIndex++];
+        const subagentsDir = path.join(projectDir, entry.name, 'subagents');
+        let subagentEntries: Dirent[];
+        try {
+          subagentEntries = await fs.readdir(subagentsDir, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+
+        for (const subagentEntry of subagentEntries) {
+          if (!subagentEntry.isFile()) {
+            continue;
+          }
+          if (!subagentEntry.name.endsWith('.jsonl')) {
+            continue;
+          }
+          if (!subagentEntry.name.startsWith('agent-')) {
+            continue;
+          }
+          if (subagentEntry.name.startsWith('agent-acompact')) {
+            continue;
+          }
+
+          const filePath = path.join(subagentsDir, subagentEntry.name);
+          if (await this.fileBelongsToTeam(filePath, teamName)) {
+            discovered.add(entry.name);
+            break;
+          }
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(ROOT_DISCOVERY_CONCURRENCY, sessionDirEntries.length) }, () =>
+        scanNextSessionDir()
+      )
+    );
+
+    return [...discovered];
   }
 
   private async collectRootJsonlSessionIds(
     rootJsonlEntries: Dirent[],
     projectDir: string,
-    teamName: string
+    teamName: string,
+    mtimeSinceMs?: number | null
   ): Promise<string[]> {
     const discovered = new Set<string>();
     let nextIndex = 0;
@@ -839,6 +951,16 @@ export class TeamTranscriptProjectResolver {
       while (nextIndex < rootJsonlEntries.length) {
         const entry = rootJsonlEntries[nextIndex++];
         const filePath = path.join(projectDir, entry.name);
+        if (mtimeSinceMs != null) {
+          try {
+            const stat = await fs.stat(filePath);
+            if (!stat.isFile() || stat.mtimeMs < mtimeSinceMs) {
+              continue;
+            }
+          } catch {
+            continue;
+          }
+        }
         if (!(await this.fileBelongsToTeam(filePath, teamName))) {
           continue;
         }
@@ -855,7 +977,11 @@ export class TeamTranscriptProjectResolver {
     return [...discovered];
   }
 
-  private async listTeamRootSessionIds(projectDir: string, teamName: string): Promise<string[]> {
+  private async listTeamRootSessionIds(
+    projectDir: string,
+    teamName: string,
+    mtimeSinceMs?: number | null
+  ): Promise<string[]> {
     const dirEntries = await this.readProjectDirEntries(projectDir);
     if (!dirEntries) {
       return [];
@@ -864,7 +990,7 @@ export class TeamTranscriptProjectResolver {
     const rootJsonlEntries = dirEntries.filter(
       (entry) => entry.isFile() && entry.name.endsWith('.jsonl')
     );
-    return this.collectRootJsonlSessionIds(rootJsonlEntries, projectDir, teamName);
+    return this.collectRootJsonlSessionIds(rootJsonlEntries, projectDir, teamName, mtimeSinceMs);
   }
 
   private async fileBelongsToTeam(filePath: string, teamName: string): Promise<boolean> {

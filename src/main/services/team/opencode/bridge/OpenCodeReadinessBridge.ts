@@ -1,7 +1,8 @@
 import { randomUUID } from 'crypto';
 
-import type { OpenCodeTeamRuntimeBridgePort } from '../../runtime/OpenCodeTeamRuntimeAdapter';
 import { stableHash } from './OpenCodeBridgeCommandContract';
+
+import type { OpenCodeTeamRuntimeBridgePort } from '../../runtime/OpenCodeTeamRuntimeAdapter';
 import type {
   OpenCodeTeamLaunchReadiness,
   OpenCodeTeamLaunchReadinessState,
@@ -14,10 +15,10 @@ import type {
   OpenCodeBridgeFailureKind,
   OpenCodeBridgeResult,
   OpenCodeBridgeRuntimeSnapshot,
-  OpenCodeCommandStatusCommandBody,
-  OpenCodeCommandStatusCommandData,
   OpenCodeCleanupHostsCommandBody,
   OpenCodeCleanupHostsCommandData,
+  OpenCodeCommandStatusCommandBody,
+  OpenCodeCommandStatusCommandData,
   OpenCodeLaunchTeamCommandBody,
   OpenCodeLaunchTeamCommandData,
   OpenCodeObserveMessageDeliveryCommandBody,
@@ -78,10 +79,6 @@ const DEFAULT_STOP_TIMEOUT_MS = 30_000;
 const DEFAULT_CLEANUP_TIMEOUT_MS = 10_000;
 const DEFAULT_BACKFILL_TIMEOUT_MS = 45_000;
 const DEFAULT_COMMAND_STATUS_TIMEOUT_MS = 5_000;
-
-function isCommandStatusRecoveryEnabled(): boolean {
-  return process.env.CLAUDE_TEAM_OPENCODE_COMMAND_STATUS_RECOVERY === '1';
-}
 
 function buildSendPayloadHash(input: OpenCodeSendMessageCommandBody): string {
   const { payloadHash: _payloadHash, ...hashable } = input;
@@ -246,7 +243,7 @@ export class OpenCodeReadinessBridge implements OpenCodeTeamRuntimeBridgePort {
     if (result.ok) {
       return result.data;
     }
-    if (result.error.kind === 'timeout' && isCommandStatusRecoveryEnabled()) {
+    if (result.error.kind === 'timeout') {
       const recovered = await this.recoverTimedOutSendMessage({
         originalRequestId: commandRequestId,
         body,

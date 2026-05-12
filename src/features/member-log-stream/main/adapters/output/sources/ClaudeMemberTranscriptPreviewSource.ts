@@ -42,6 +42,7 @@ export class ClaudeMemberTranscriptPreviewSource implements MemberLogPreviewSour
       [input.memberName],
       {
         forceRefresh: input.forceRefresh === true,
+        includeTeamSubagentSessionDiscovery: false,
       }
     );
     const dedupedRefs = dedupeMemberLogRefs(refs);

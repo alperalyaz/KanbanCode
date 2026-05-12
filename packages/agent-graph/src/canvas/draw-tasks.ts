@@ -6,7 +6,7 @@
 import type { GraphNode } from '../ports/types';
 import { COLORS, getTaskStatusColor, getReviewStateColor } from '../constants/colors';
 import { TASK_PILL, MIN_VISIBLE_OPACITY, ANIM } from '../constants/canvas-constants';
-import { truncateText } from './draw-misc';
+import { truncateText, wrapTextLines } from './draw-misc';
 import { drawPillShell, drawPillStackLayer } from './draw-pill-shell';
 import { hexWithAlpha } from './render-cache';
 import type { KanbanZoneInfo } from '../layout/kanbanLayout';
@@ -153,7 +153,8 @@ function drawTaskPill(
     drawLiveTaskLogIndicator(ctx, -halfW + 8, -halfH + 8, time);
   }
 
-  // Subject (main title — large)
+  // Subject (main title - up to two lines)
+  let subjectLineCount = 0;
   if (node.sublabel) {
     ctx.font = `bold ${TASK_PILL.idFontSize}px sans-serif`;
     ctx.textAlign = 'left';
@@ -164,8 +165,13 @@ function drawTaskPill(
       node.reviewState !== 'approved' &&
       (node.reviewMode === 'manual' || (node.reviewMode === 'assigned' && !!node.reviewerName));
     const maxW = hasReviewChip ? w - 88 : w - 24;
-    const subject = truncateText(ctx, node.sublabel, maxW, ctx.font);
-    ctx.fillText(subject, textX, -12);
+    const subjectLines = wrapTextLines(ctx, node.sublabel, maxW, ctx.font, 2);
+    subjectLineCount = subjectLines.length;
+    const titleStartY = subjectLines.length > 1 ? -16 : -12;
+    const titleLineHeight = TASK_PILL.idFontSize + 1.5;
+    subjectLines.forEach((line, index) => {
+      ctx.fillText(line, textX, titleStartY + index * titleLineHeight);
+    });
   }
 
   // Display ID (secondary — small)
@@ -174,7 +180,7 @@ function drawTaskPill(
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = COLORS.textDim;
-  ctx.fillText(displayId, -halfW + 10, 12);
+  ctx.fillText(displayId, -halfW + 10, subjectLineCount > 1 ? 23 : 12);
 
   // Approved badge: checkmark at right side
   if (node.reviewState === 'approved') {

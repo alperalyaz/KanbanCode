@@ -30,6 +30,69 @@ export function truncateText(
   return lo > 0 ? text.slice(0, lo) + '...' : '...';
 }
 
+function fitTextPrefix(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  font: string,
+): string {
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (measureTextCached(ctx, font, text.slice(0, mid)) <= maxWidth) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return text.slice(0, lo);
+}
+
+/**
+ * Wrap text into a small fixed number of canvas lines.
+ * The final line is truncated with "..." when the remaining text still overflows.
+ */
+export function wrapTextLines(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  font: string,
+  maxLines: number,
+): string[] {
+  const normalized = text.trim().replace(/\s+/g, ' ');
+  if (!normalized || maxLines <= 0) return [];
+  if (maxLines === 1) return [truncateText(ctx, normalized, maxWidth, font)];
+
+  const lines: string[] = [];
+  let remaining = normalized;
+
+  while (remaining && lines.length < maxLines) {
+    if (measureTextCached(ctx, font, remaining) <= maxWidth) {
+      lines.push(remaining);
+      break;
+    }
+
+    if (lines.length === maxLines - 1) {
+      lines.push(truncateText(ctx, remaining, maxWidth, font));
+      break;
+    }
+
+    const prefix = fitTextPrefix(ctx, remaining, maxWidth, font).trimEnd();
+    if (!prefix) {
+      lines.push(truncateText(ctx, remaining, maxWidth, font));
+      break;
+    }
+
+    const breakIndex = prefix.lastIndexOf(' ');
+    const line = breakIndex > 0 ? prefix.slice(0, breakIndex) : prefix;
+    lines.push(line);
+    remaining = remaining.slice(line.length).trimStart();
+  }
+
+  return lines;
+}
+
 // Pre-computed hex vertex unit offsets (avoids cos/sin per call)
 const HEX_COS: number[] = [];
 const HEX_SIN: number[] = [];

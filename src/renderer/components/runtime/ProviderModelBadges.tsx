@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 import { cn } from '@renderer/lib/utils';
 import {
@@ -56,13 +56,43 @@ function getCatalogBadgeLabel(
   return catalogItem?.badgeLabel?.trim() || null;
 }
 
+function normalizeBadgeText(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function shouldRenderCatalogBadge(modelLabel: string, catalogBadgeLabel: string | null): boolean {
+  if (!catalogBadgeLabel) {
+    return false;
+  }
+  return normalizeBadgeText(modelLabel) !== normalizeBadgeText(catalogBadgeLabel);
+}
+
+function hasChildAfterRowLimit(container: HTMLElement, rowLimit: number): boolean {
+  const rowTops: number[] = [];
+  const children = Array.from(container.children) as HTMLElement[];
+
+  for (const child of children) {
+    const top = child.offsetTop;
+    let rowIndex = rowTops.findIndex((rowTop) => Math.abs(rowTop - top) <= 1);
+    if (rowIndex < 0) {
+      rowTops.push(top);
+      rowIndex = rowTops.length - 1;
+    }
+    if (rowIndex >= rowLimit) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export const ProviderModelBadges = ({
   providerId,
   models,
   modelAvailability,
   providerStatus,
   collapseAfter,
-  expandedMaxHeightPx = 200,
+  maxCollapsedRows,
 }: {
   readonly providerId: CliProviderId;
   readonly models: string[];
@@ -72,16 +102,73 @@ export const ProviderModelBadges = ({
     'providerId' | 'authMethod' | 'backend' | 'modelCatalog'
   > | null;
   readonly collapseAfter?: number;
-  readonly expandedMaxHeightPx?: number;
+  readonly maxCollapsedRows?: number;
 }): React.JSX.Element => {
   const [expanded, setExpanded] = useState(false);
+  const [collapsedModelLimit, setCollapsedModelLimit] = useState<number | null>(null);
+  const [measureTick, setMeasureTick] = useState(0);
+  const listRef = useRef<HTMLDivElement | null>(null);
   const visibleModels = getVisibleTeamProviderModels(providerId, models, providerStatus);
   const displayModelAvailability = providerId === 'opencode' ? undefined : modelAvailability;
   const shouldCollapse =
     typeof collapseAfter === 'number' && collapseAfter > 0 && visibleModels.length > collapseAfter;
+  const collapsedBaseLimit = shouldCollapse ? collapseAfter : visibleModels.length;
+  const collapsedLimit =
+    shouldCollapse && !expanded
+      ? Math.max(0, Math.min(collapsedModelLimit ?? collapsedBaseLimit, collapsedBaseLimit))
+      : visibleModels.length;
   const displayedModels =
-    shouldCollapse && !expanded ? visibleModels.slice(0, collapseAfter) : visibleModels;
-  const hiddenCount = shouldCollapse ? visibleModels.length - collapseAfter : 0;
+    shouldCollapse && !expanded ? visibleModels.slice(0, collapsedLimit) : visibleModels;
+  const hiddenCount = shouldCollapse ? visibleModels.length - displayedModels.length : 0;
+
+  useLayoutEffect(() => {
+    setCollapsedModelLimit(null);
+  }, [collapseAfter, maxCollapsedRows, models, providerStatus]);
+
+  useLayoutEffect(() => {
+    if (!shouldCollapse || expanded || !maxCollapsedRows || maxCollapsedRows < 1) {
+      return;
+    }
+
+    const container = listRef.current;
+    if (!container) {
+      return;
+    }
+
+    if (!hasChildAfterRowLimit(container, maxCollapsedRows)) {
+      return;
+    }
+
+    const nextLimit = Math.max(0, collapsedLimit - 1);
+    if (nextLimit !== collapsedLimit) {
+      setCollapsedModelLimit(nextLimit);
+    }
+  }, [collapsedLimit, expanded, maxCollapsedRows, measureTick, shouldCollapse]);
+
+  useLayoutEffect(() => {
+    if (!shouldCollapse || expanded || !maxCollapsedRows || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const container = listRef.current;
+    if (!container) {
+      return;
+    }
+
+    let lastWidth = container.clientWidth;
+    const observer = new ResizeObserver((entries) => {
+      const width = Math.round(entries[0]?.contentRect.width ?? container.clientWidth);
+      if (width === lastWidth) {
+        return;
+      }
+      lastWidth = width;
+      setCollapsedModelLimit(null);
+      setMeasureTick((value) => value + 1);
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [expanded, maxCollapsedRows, shouldCollapse]);
 
   const badgeClassName =
     'inline-flex items-center gap-1 rounded-md border px-1.5 py-px font-mono text-[10px] leading-4';
@@ -92,20 +179,18 @@ export const ProviderModelBadges = ({
   };
   const buttonClassName =
     'inline-flex items-center gap-1 rounded-full border border-[rgba(59,130,246,0.35)] bg-[rgba(59,130,246,0.12)] px-2 py-px text-[10px] font-medium leading-4 text-[rgb(147,197,253)] transition-colors hover:border-[rgba(59,130,246,0.55)] hover:bg-[rgba(59,130,246,0.18)] hover:text-[rgb(191,219,254)]';
-  const listClassName = cn('flex flex-wrap gap-1.5', expanded && shouldCollapse ? 'pr-1' : null);
-  const listStyle =
-    expanded && shouldCollapse
-      ? ({ maxHeight: expandedMaxHeightPx, overflowY: 'auto' } as const)
-      : undefined;
+  const listClassName = cn('flex flex-wrap gap-1.5');
 
   const renderModelBadge = (model: string, index: number): React.JSX.Element => {
     const availabilityStatus = getAvailabilityStatus(model, displayModelAvailability);
     const availabilityReason = getAvailabilityReason(model, displayModelAvailability);
     const availabilityChip = getAvailabilityChip(availabilityStatus);
+    const modelLabel = formatModelBadgeLabel(providerId, model);
     const catalogBadgeLabel = getCatalogBadgeLabel(model, providerStatus);
+    const showCatalogBadge = shouldRenderCatalogBadge(modelLabel, catalogBadgeLabel);
     const title = [
       availabilityReason ?? availabilityChip,
-      catalogBadgeLabel === 'Free'
+      showCatalogBadge && catalogBadgeLabel === 'Free'
         ? 'Reported by OpenCode metadata. Availability and limits may change.'
         : null,
     ]
@@ -119,8 +204,8 @@ export const ProviderModelBadges = ({
         style={badgeStyle}
         title={title || undefined}
       >
-        <span>{formatModelBadgeLabel(providerId, model)}</span>
-        {catalogBadgeLabel ? (
+        <span>{modelLabel}</span>
+        {showCatalogBadge ? (
           <span className="rounded bg-[rgba(34,197,94,0.14)] px-1 py-0 text-[9px] font-medium uppercase tracking-[0.06em] text-[rgb(74,222,128)]">
             {catalogBadgeLabel}
           </span>
@@ -149,7 +234,7 @@ export const ProviderModelBadges = ({
 
   return (
     <div className="flex flex-col items-start gap-1.5">
-      <div className={listClassName} style={listStyle}>
+      <div ref={listRef} className={listClassName}>
         {displayedModels.map(renderModelBadge)}
         {shouldCollapse && !expanded ? (
           <button type="button" className={buttonClassName} onClick={() => setExpanded(true)}>
