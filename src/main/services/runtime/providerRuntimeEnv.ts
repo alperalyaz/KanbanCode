@@ -4,7 +4,12 @@ import type { CliProviderId, TeamProviderId } from '@shared/types';
 
 type RuntimeEnvProviderId = CliProviderId | TeamProviderId;
 
-type AnthropicRuntimeBackendProviderId = 'anthropic' | 'bedrock' | 'vertex' | 'foundry';
+type AnthropicRuntimeBackendProviderId =
+  | 'anthropic'
+  | 'bedrock'
+  | 'vertex'
+  | 'foundry'
+  | 'claude-platform-aws';
 
 const PROVIDER_ROUTING_ENV_KEYS = [
   'CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST',
@@ -50,6 +55,9 @@ function resolveAnthropicRuntimeBackendFromEnv(
   }
   if (isTruthyEnvValue(env.CLAUDE_CODE_USE_FOUNDRY)) {
     return 'foundry';
+  }
+  if (env.ANTHROPIC_AWS_WORKSPACE_ID?.trim()) {
+    return 'claude-platform-aws';
   }
   return 'anthropic';
 }

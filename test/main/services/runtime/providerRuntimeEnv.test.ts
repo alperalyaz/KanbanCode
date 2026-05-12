@@ -35,6 +35,25 @@ describe('providerRuntimeEnv', () => {
     expect(result.CLAUDE_CODE_USE_OPENAI).toBeUndefined();
   });
 
+  it('pins Claude Platform on AWS only when the workspace id is explicit', () => {
+    const awsOnlyEnv: NodeJS.ProcessEnv = {
+      AWS_PROFILE: 'cc',
+      AWS_REGION: 'us-west-2',
+    };
+    expect(applyProviderRuntimeEnv(awsOnlyEnv, 'anthropic').CLAUDE_CODE_ENTRY_PROVIDER).toBe(
+      'anthropic'
+    );
+
+    const platformEnv: NodeJS.ProcessEnv = {
+      ANTHROPIC_AWS_WORKSPACE_ID: 'wrkspc_123',
+      AWS_PROFILE: 'cc',
+      AWS_REGION: 'us-west-2',
+    };
+    expect(applyProviderRuntimeEnv(platformEnv, 'anthropic').CLAUDE_CODE_ENTRY_PROVIDER).toBe(
+      'claude-platform-aws'
+    );
+  });
+
   it('preserves gemini as a valid team provider id', () => {
     expect(resolveTeamProviderId('gemini')).toBe('gemini');
     expect(resolveTeamProviderId('codex')).toBe('codex');

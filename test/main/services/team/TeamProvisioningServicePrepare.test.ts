@@ -392,6 +392,20 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     expect(assignments).toContain("CODEX_HOME='/tmp/codex-connected-home'");
   });
 
+  it('preserves Claude Platform on AWS settings for direct tmux restart', () => {
+    const assignments = buildDirectTmuxRestartEnvAssignments(
+      {
+        ANTHROPIC_AWS_WORKSPACE_ID: 'wrkspc_123',
+        ANTHROPIC_AWS_API_KEY: 'aws-platform-key',
+      },
+      'anthropic'
+    );
+
+    expect(assignments).toContain("ANTHROPIC_AWS_WORKSPACE_ID='wrkspc_123'");
+    expect(assignments).toContain("ANTHROPIC_AWS_API_KEY='aws-platform-key'");
+    expect(assignments).toContain("CLAUDE_CODE_ENTRY_PROVIDER='anthropic'");
+  });
+
   it('does not flatten Anthropic helper settings into non-Anthropic lead cross-provider args', async () => {
     const svc = new TeamProvisioningService();
     const helperSettingsPath = path.join(tempRoot, 'team-runtime-auth', 'helper-settings.json');
