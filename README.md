@@ -5,7 +5,7 @@
   <a href="docs/screenshots/8.png"><img src="docs/screenshots/8.png" width="75" alt="Task Detail" /></a>&nbsp;
   <img src="resources/icons/png/1024x1024.png" alt="Agent Teams" width="80" />&nbsp;
   <a href="docs/screenshots/9.png"><img src="docs/screenshots/9.png" width="75" alt="Execution Logs" /></a>&nbsp;
-  <a href="docs/screenshots/3.jpg"><img src="docs/screenshots/3.png" width="75" alt="Agent Comments" /></a>&nbsp;
+  <a href="docs/screenshots/3.png"><img src="docs/screenshots/3.png" width="75" alt="Agent Comments" /></a>&nbsp;
   <a href="docs/screenshots/4.png"><img src="docs/screenshots/4.png" width="75" alt="Create Team" /></a>&nbsp;
   <a href="docs/screenshots/6.png"><img src="docs/screenshots/6.png" width="65" alt="Settings" /></a>
 </p>

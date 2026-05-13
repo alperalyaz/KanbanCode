@@ -5,6 +5,7 @@ This file is a navigation layer for architecture and implementation guidance.
 Start here:
 - Repo overview and commands: [README.md](README.md)
 - Working instructions and project conventions: [CLAUDE.md](CLAUDE.md)
+- Hard guardrails: [AGENT_CRITICAL_GUARDRAILS.md](AGENT_CRITICAL_GUARDRAILS.md)
 - Canonical feature architecture standard: [docs/FEATURE_ARCHITECTURE_STANDARD.md](docs/FEATURE_ARCHITECTURE_STANDARD.md)
 - Agent team launch/runtime debugging runbook: [docs/team-management/debugging-agent-teams.md](docs/team-management/debugging-agent-teams.md)
 

@@ -1492,6 +1492,8 @@ Rules:
 
 - accept-fast must be enabled only when the orchestrator explicitly supports the needed OpenCode bridge capability;
 - required capability should cover at least `promptAsyncWithTurnSettled`, exact `runtimePromptMessageId`, exact `runtimeSessionId`, command outcome recovery, and no-reply protection;
+- add an explicit bridge protocol field, for example `opencodeDeliveryAcceptanceContractVersion`, instead of overloading generic `supportedCommands`;
+- validate that contract version in the same handshake path that already validates app-managed bootstrap contracts;
 - prefer an explicit capability probe or bridge status field over version-string parsing;
 - if capability is missing, fall back to current observed behavior and emit a developer diagnostic like `opencode_accept_fast_capability_missing`;
 - do not send required-only new fields to older commands unless the command schema is additive and old runtimes ignore them safely;
@@ -1588,6 +1590,1226 @@ Tests:
 - deduped row returns existing messageId and ledger proof uses it;
 - member-work-sync nudge with the same text is not deduped as runtime delivery;
 - text-only plain assistant fallback cannot satisfy runtime-delivery dedupe without relay/source proof.
+
+### 4.37 Bridge Command Idempotency Must Survive Accept-Fast Tuning
+
+Current files:
+
+```text
+src/main/services/team/opencode/bridge/OpenCodeStateChangingBridgeCommandService.ts
+src/main/services/team/opencode/bridge/OpenCodeBridgeCommandContract.ts
+src/main/services/team/opencode/bridge/OpenCodeBridgeCommandLedgerStore.ts
+src/main/services/team/opencode/bridge/OpenCodeReadinessBridge.ts
+```
+
+Source-audit finding:
+
+```text
+createOpenCodeBridgeIdempotencyKey()
+  hashes command, team, lane, run, and body
+
+OpenCodeBridgeCommandLedger.begin()
+  rejects same idempotencyKey with different requestHash
+  rejects retry while status is unknown_after_timeout
+
+OpenCodeReadinessBridge.recoverTimedOutSendMessage()
+  recovers by originalRequestId, deliveryAttemptId, messageId, payloadHash, team/lane/member/run
+```
+
+Accept-fast adds transport behavior to the same send command. If `settlementMode`, observe timeout, or retry-control fields drift between retries, the bridge ledger can treat the same logical delivery as a different command or fail recovery after a timeout.
+
+Rules:
+
+- choose `settlementMode` before the first bridge send attempt and persist it on the app delivery ledger record;
+- do not switch a pending delivery from observed to acceptance mode during retry unless a new delivery attempt ID is created and duplicate prompt risk is explicitly accepted;
+- fields that are purely local observation options should not enter the bridge command body if they do not need to affect orchestrator idempotency;
+- fields that the orchestrator must honor, such as acceptance mode and exact observation contract, should enter the bridge body and be part of bridge idempotency;
+- `originalRequestId` must be stored before command execution so commandStatus recovery can query the exact attempt after timeout;
+- orchestrator success data must echo `idempotencyKey`; otherwise `assertBridgeEvidenceCanCommitToRuntimeStores()` will reject state mutation;
+- timeout recovery must preserve returned `runtimePromptMessageId` and `runtimeSessionId`, not synthesize accepted without identity;
+- app ledger payload hash and bridge command request hash must be documented as different contracts and tested separately.
+
+Tests:
+
+- retrying the same delivery with the same persisted settlement mode reuses the same bridge idempotency semantics;
+- changing settlement mode for the same delivery attempt is rejected or forces a new attempt ID;
+- commandStatus timeout recovery with matching originalRequestId returns exact runtime prompt identity;
+- commandStatus recovery with mismatched payloadHash or messageId does not accept;
+- result without echoed idempotencyKey is rejected before ledger/advisory mutation.
+
+### 4.38 Runtime Delivery Journal Is Separate From Prompt Delivery Ledger
+
+Current files:
+
+```text
+src/main/services/team/opencode/delivery/RuntimeDeliveryService.ts
+src/main/services/team/opencode/delivery/RuntimeDeliveryJournal.ts
+src/main/services/team/TeamProvisioningService.ts
+```
+
+Source-audit finding:
+
+```text
+deliverOpenCodeRuntimeMessage()
+  resolves lane and verifies runtime evidence
+  calls RuntimeDeliveryService.deliver()
+
+RuntimeDeliveryService.deliver()
+  normalizes RuntimeDeliveryEnvelope
+  computes payloadHash from provider/run/team/member/session/to/text/summary/taskRefs/createdAt
+  builds destinationMessageId from idempotencyKey/run/team
+  verifies destination before and after write
+  emits team change only after verified write
+
+RuntimeDeliveryJournalStore.begin()
+  treats same idempotencyKey with different payloadHash as conflict
+```
+
+This is the OpenCode agent-to-app path used by `agent-teams_message_send`. It is not the same as the app-to-OpenCode prompt delivery ledger.
+
+Rules:
+
+- prompt acceptance can never be treated as runtime delivery commit;
+- runtime delivery commit can be used as visible reply proof only after the destination write is verified;
+- if `message_send` returns `idempotency_conflict`, do not classify it as MCP disconnected or missing tool;
+- same `idempotencyKey` with changed text/taskRefs/createdAt must be rejected or explicitly re-keyed, not silently overwritten;
+- if the runtime generates a retry after tool error, either preserve the same payload exactly or use a new idempotency key;
+- `createdAt` is part of the current payload hash, so retry instructions and tests must not assume it is ignored;
+- destination change events should stay destination-specific: `lead-message` for user messages, `inbox` for member/cross-team rows;
+- runtime delivery journal reconciliation can prove a missing destination write, but it must not re-prompt OpenCode;
+- do not store runtime delivery journal state in member-work-sync or prompt delivery ledger records.
+
+Tests:
+
+- repeated identical runtime delivery idempotencyKey returns duplicate/committed without duplicate visible row;
+- same idempotencyKey with different `createdAt` or text returns conflict and no visible overwrite;
+- runtime delivery commit emits the expected destination change event after verification;
+- committed runtime delivery can clear a prompt delivery advisory only through the visible proof correlation path;
+- runtime delivery reconciliation reports recovery needed without sending another OpenCode prompt.
+
+### 4.39 Visible Proof Reader Must Read The Same Stores Runtime Delivery Writes
+
+Current files:
+
+```text
+src/main/services/team/opencode/delivery/OpenCodeRuntimeDeliveryProofReader.ts
+src/main/services/team/opencode/delivery/OpenCodeRuntimeDeliveryProofMatching.ts
+src/main/services/team/opencode/delivery/RuntimeDeliveryService.ts
+src/main/services/team/TeamSentMessagesStore.ts
+src/main/services/team/TeamInboxReader.ts
+src/main/services/team/TeamProvisioningService.ts
+```
+
+Source-audit finding:
+
+```text
+RuntimeDeliveryService user_sent_messages port
+  writes visible user replies to sentMessages.json
+
+OpenCodeRuntimeDeliveryProofReader
+  reads inbox candidates through TeamInboxReader
+  skips candidate rows whose source is not runtime_delivery
+```
+
+If direct replies to the user are stored in `sentMessages.json`, proof logic that only scans inbox rows can miss a real visible reply. That leaves advisory/watchdog state pending even though the user saw the answer.
+
+Rules:
+
+- visible proof reader must cover every destination kind that `RuntimeDeliveryService` can commit;
+- direct user replies should be recovered from `sentMessages.json` or from committed runtime delivery journal location, not only from a synthetic user inbox;
+- if runtime-delivery user messages are meant to satisfy proof by source, either write `source="runtime_delivery"` or make proof use committed journal location instead of source string;
+- do not weaken proof by accepting arbitrary `lead_process` sent messages;
+- `replyRecipient="user"` and lead-recipient fallback must have separate tests;
+- member inbox proof remains inbox-based and must not scan sentMessages;
+- cross-team proof should use its own committed location semantics, not user inbox fallback;
+- advisory clearing must happen after proof reader sees the actual committed destination, not just after `RuntimeDeliveryService.deliver()` returns.
+
+Tests:
+
+- OpenCode direct reply to user written to `sentMessages.json` is visible to proof reader;
+- unrelated `lead_process` user message does not satisfy OpenCode runtime proof;
+- member-to-member runtime delivery remains inbox-only proof;
+- committed runtime delivery journal location can recover proof after a missed change event;
+- user proof and lead-recipient fallback do not double-count the same visible message.
+
+### 4.40 Sent Messages Writes Need Inbox-Level Safety For Runtime Delivery
+
+Current files:
+
+```text
+src/main/services/team/TeamSentMessagesStore.ts
+src/main/services/team/TeamInboxWriter.ts
+src/main/services/team/opencode/delivery/RuntimeDeliveryService.ts
+src/main/services/team/TeamProvisioningService.ts
+```
+
+Source-audit finding:
+
+```text
+TeamInboxWriter.sendMessage()
+  uses withFileLock and withInboxLock
+  verifies writes and runtime_delivery dedupe
+
+TeamSentMessagesStore.appendMessage()
+  reads sentMessages.json
+  appends in memory
+  writes atomically
+  does not use a file lock
+  trims to MAX_MESSAGES
+
+RuntimeDeliveryService user_sent_messages port
+  writes direct OpenCode replies through TeamSentMessagesStore.appendMessage()
+```
+
+That is safe enough for low-volume lead output, but it is fragile for concurrent OpenCode runtime deliveries to the user. Two members can reply at the same time, both read the old file, and the later write can drop the earlier visible proof.
+
+Rules:
+
+- direct user runtime delivery should use a locked append path equivalent to inbox writes;
+- destinationMessageId should be checked under the same lock before appending;
+- append result should tell whether the row was inserted, already existed, or could not be verified;
+- trim-to-`MAX_MESSAGES` must keep the just-written row and must not silently evict a just-committed proof row;
+- proof/advisory clearing should not rely only on an unlocked write result;
+- do not make `TeamSentMessagesStore` own OpenCode proof semantics; expose safe append/read primitives and keep proof policy in delivery services;
+- if a locked sent-message writer is added, update normal lead writes carefully so live lead overlay behavior does not duplicate sent rows;
+- tests should include concurrent appends, duplicate destinationMessageId, and trim boundary.
+
+Tests:
+
+- two concurrent `appendMessage()` calls with different message IDs preserve both rows;
+- duplicate destinationMessageId does not create duplicate sent rows;
+- runtime user delivery verifies the row after locked append;
+- trim at `MAX_MESSAGES` preserves the newest committed row;
+- ordinary lead_process sent message behavior remains unchanged.
+
+### 4.41 Runtime Delivery TaskRefs Shape Must Be Strict
+
+Current files:
+
+```text
+src/main/services/team/opencode/delivery/RuntimeDeliveryJournal.ts
+src/main/services/team/TeamProvisioningService.ts
+src/main/services/team/runtime/OpenCodeTeamRuntimeAdapter.ts
+```
+
+Source-audit finding:
+
+```text
+normalizeRuntimeDeliveryEnvelope()
+  accepts taskRefs only when each item is a string
+  silently filters non-string taskRefs
+
+runtimeTaskRefs()
+  maps each string to { teamName, taskId: ref, displayId: ref }
+
+teamToolTaskRefs()
+  supports structured taskRefs elsewhere, but runtime delivery does not use it
+```
+
+This is a contract boundary with the OpenCode MCP tool. If the tool prompt or future schema sends structured task refs, runtime delivery can silently drop them. That weakens visible proof matching, task links in Messages, and task-log attribution.
+
+Rules:
+
+- runtime `message_send` taskRefs schema must be explicit: either string IDs only or structured `TaskRef[]`, not ambiguous;
+- invalid taskRefs must be rejected with a structured tool error or preserved through a normalizer, not silently filtered;
+- if string refs are accepted, define whether they are real task IDs or display IDs and resolve consistently;
+- prompt text and MCP schema must match the app normalizer;
+- proof matching should not depend on displayId when taskId is available;
+- tests must include string taskRefs, structured taskRefs, invalid mixed taskRefs, and missing taskRefs;
+- if structured taskRefs are adopted, update `hashRuntimeDeliveryEnvelope()` so equivalent refs hash deterministically.
+
+Tests:
+
+- string taskRefs preserve task links in user and member destinations;
+- structured taskRefs are either accepted and preserved or rejected with a clear error;
+- mixed invalid taskRefs do not silently produce an empty taskRefs array;
+- taskRefs normalization is stable across runtime delivery hash and visible proof matching;
+- OpenCode prompt artifact test matches the accepted taskRefs schema.
+
+### 4.42 Runtime Control Calls Must Not Default Unknown Secondary Member To Primary
+
+Current file:
+
+```text
+src/main/services/team/TeamProvisioningService.ts
+```
+
+Source-audit finding:
+
+```text
+deliverOpenCodeRuntimeMessage()
+recordOpenCodeRuntimeTaskEvent()
+recordOpenCodeRuntimeHeartbeat()
+  resolve lane through resolveOpenCodeRuntimeLaneId(teamName, runId, memberName)
+
+resolveOpenCodeRuntimeLaneId()
+  checks primary runtime run
+  checks in-memory secondary runtime runs
+  checks tracked mixed lanes
+  checks persisted launch-state member laneId
+  falls back to "primary"
+```
+
+Fallback to `primary` is acceptable for true primary OpenCode teams, but risky for mixed secondary teammates when lane metadata is missing or stale. A secondary member control call should not write delivery, task-log evidence, or heartbeat under the wrong lane.
+
+Rules:
+
+- runtime control calls with a non-lead `memberName` should require a resolved lane that is known to belong to that member, or reject with structured stale-evidence diagnostic;
+- fallback to `primary` is allowed only when the run is the primary OpenCode runtime run or the member is the configured OpenCode lead;
+- if persisted lane registry is missing but committed session evidence contains the exact `runtimeSessionId/memberName/runId`, use that exact evidence rather than blind primary fallback;
+- if neither lane nor exact session evidence exists, fail closed and do not write runtime delivery journal, task-log attribution, or heartbeat;
+- rejection reason must distinguish `lane_unresolved`, `run_tombstoned`, and `member_not_configured`;
+- recovery/debug artifacts should include the attempted memberName/runId/runtimeSessionId/lane resolution source.
+
+Tests:
+
+- secondary member runtime delivery with missing lane metadata rejects instead of writing under `primary`;
+- primary OpenCode lead runtime delivery can still use primary lane;
+- exact committed session evidence can recover lane for a secondary member when launch-state is stale;
+- tombstoned run rejects runtime delivery before destination write;
+- task event and heartbeat follow the same lane resolution rules as message delivery.
+
+### 4.43 OpenCode Inbox Relay Priority Must Keep Foreground Work First
+
+Current file:
+
+```text
+src/main/services/team/TeamProvisioningService.ts
+```
+
+Source-audit finding:
+
+```text
+getOpenCodeInboxRelayPriority()
+  member_work_sync_nudge -> 30
+  system_notification -> 20
+  normal foreground -> 0
+
+relayOpenCodeMemberInboxMessages()
+  sorts ascending by priority, then timestamp
+  delivers at most one message before breaking
+  stops the loop when delivery is accepted but response proof is pending
+
+getOpenCodeMemberDeliveryBusyStatus()
+  excludes member_work_sync_nudge from foreground blockers
+  blocks work-sync when unread/recent foreground messages exist
+```
+
+This is the main anti-delay invariant for OpenCode teammates. Work-sync can help after a turn settles, but it must not jump ahead of task assignment, review request, direct user message, or normal foreground teammate message.
+
+Rules:
+
+- keep the relay sort order explicit and covered by tests: lower priority number means earlier delivery;
+- foreground messages should beat work-sync nudges unless `onlyMessageId` intentionally targets one exact automation row;
+- `onlyMessageId` must be used only by controlled paths that already know the target message, not as a broad "wake this member" shortcut;
+- when a foreground delivery becomes accepted-pending, the relay loop must stop and keep later work-sync messages unread;
+- busy-status checks should still ignore work-sync as foreground noise, but only for deciding whether to schedule more work-sync;
+- if a future work-sync path needs urgent review pickup, it must use a distinct intent and tests, not invert the global priority order;
+- diagnostics should include `activeMessageKind` so skipped work-sync can be explained without showing automation rows in Messages.
+
+Tests:
+
+- normal unread task assignment is delivered before older `member_work_sync_nudge`;
+- accepted-pending foreground delivery stops the loop and leaves later work-sync unread;
+- `onlyMessageId` can deliver the targeted work-sync row without reordering the whole inbox;
+- busy status reports `opencode_foreground_inbox_unread` when foreground exists and a work-sync nudge is also pending;
+- review-pickup exception stays narrow and does not make all system notifications foreground blockers.
+
+### 4.44 Automation/Work-Sync Hiding Must Stay Presentation-Only
+
+Current files:
+
+```text
+src/main/services/team/TeamMessageFeedService.ts
+src/renderer/utils/teamMessageFiltering.ts
+src/shared/utils/teamAutomationMessages.ts
+src/shared/utils/teamInternalControlMessages.ts
+src/main/services/team/TeamInboxReader.ts
+```
+
+Source-audit finding:
+
+```text
+TeamMessageFeedService
+  builds a normalized feed from inbox, lead session, sent messages, and synthetic bootstrap
+  filters only internal protocol envelopes with isTeamInternalControlMessageEnvelope()
+
+teamMessageFiltering
+  hides task_stall_remediation and member_work_sync_nudge from normal UI by default
+  can include automation rows for diagnostics/activity when explicitly requested
+
+teamAutomationMessages
+  identifies task_stall_remediation by kind or legacy task-stall: id prefix
+  identifies member_work_sync_nudge by messageKind
+```
+
+Hiding automation from the normal Messages feed is correct, but it must not mutate durable inbox state or starve delivery/watchdog paths. UI filtering and durable delivery are different responsibilities.
+
+Rules:
+
+- hide `member_work_sync_nudge` and task-stall automation in renderer/feed presentation, not by deleting or marking inbox rows read;
+- `TeamInboxReader` must preserve automation `messageKind` values so renderer filtering, work-sync, watchdog, and diagnostics see the same metadata;
+- if main-process feed filters additional automation in the future, it must expose a debug/audit path that can still show the hidden rows;
+- feed `feedRevision` may ignore hidden rows for conversational UI, but work-sync diagnostics must not depend on that revision;
+- delivery relays, prompt ledgers, watchdog, and member-work-sync must read durable inbox stores directly, not the UI-filtered message feed;
+- legacy ID-prefix classification is compatibility only; new rows should rely on explicit `messageKind`;
+- hiding automation must not change unread counts used by the delivery queue.
+
+Tests:
+
+- `member_work_sync_nudge` is hidden in normal Messages but still present in raw inbox diagnostics;
+- `task_stall_remediation` round-trips through `TeamInboxReader` with its `messageKind`;
+- renderer diagnostic mode can include member-work-sync rows only when explicitly requested;
+- hiding a work-sync row does not mark it read and does not stop OpenCode relay from delivering it when selected;
+- feed cache invalidation does not become the only way to observe hidden automation writes.
+
+### 4.45 OpenCode File-Change Backfill Is A Separate Evidence Pipeline
+
+Current files:
+
+```text
+src/main/services/team/ChangeExtractorService.ts
+src/main/services/team/TaskChangeLedgerReader.ts
+src/main/services/team/opencode/bridge/OpenCodeBridgeCommandContract.ts
+test/main/services/team/ChangeExtractorService.test.ts
+test/main/services/team/TaskChangeLedgerReader.test.ts
+```
+
+Source-audit finding:
+
+```text
+ChangeExtractorService.runOpenCodeBackfill()
+  writes a temporary delivery context file plus deliveryContextHash
+  calls backfillOpenCodeTaskLedger()
+  accepts imported events or current-contract duplicates-only evidence
+  invalidates task change summaries only when importedEvents > 0
+
+TaskChangeLedgerReader
+  maps opencode_toolpart_write/edit/apply_patch to UI snippets
+  ranks evidence by sourceImportKey and full-text availability
+  can surface metadata-only fallback as manual review / unavailable content
+```
+
+Task Log Stream rows and file-change ledger evidence are related but not interchangeable. A visible `write` row in Task Log Stream does not prove a reviewable diff, and `No file changes recorded` does not prove the model did nothing if OpenCode backfill failed or only metadata-only evidence exists.
+
+Rules:
+
+- accept-fast changes must preserve the delivery context fields consumed by `ChangeExtractorService`: team, task, member, lane, session, taskRefs, payload hash, and evidence contract;
+- OpenCode file-change recovery should remain driven by task change ledger/backfill, not by Task Log Stream native tool rows;
+- metadata-only or empty toolpart rows should render as unavailable/manual-review evidence, not as successful text diffs;
+- `deliveryContextHash` must be stable for the exact delivery context and must not include transient retry-control text;
+- negative backfill cache entries must be invalidated when a new OpenCode delivery context appears;
+- duplicates-only results are cacheable only when `opencodeTaskLedgerEvidenceContractVersion` is current;
+- summary-only change extraction should await OpenCode backfill when delivery context exists, but should not hang the UI indefinitely;
+- a failed backfill should add diagnostics and preserve fallback behavior, not hide existing non-OpenCode changes.
+
+Tests:
+
+- summary-only change extraction triggers OpenCode backfill when exact delivery context exists;
+- negative OpenCode backfill cache is not reused after delivery context appears;
+- current-contract duplicates-only evidence is cacheable, old-contract duplicates-only evidence is not;
+- metadata-only OpenCode evidence shows manual-review/unavailable state without claiming no changes;
+- delivery context hash does not change when retry-control text changes but the logical task delivery does not.
+
+### 4.46 Runtime Store Manifest Recovery Must Not Downgrade Canonical Evidence
+
+Current files:
+
+```text
+src/main/services/team/opencode/store/RuntimeStoreManifest.ts
+src/main/services/team/opencode/store/OpenCodeRuntimeManifestEvidenceReader.ts
+src/main/services/team/opencode/delivery/RuntimeDeliveryJournal.ts
+src/main/services/team/opencode/delivery/OpenCodePromptDeliveryLedger.ts
+```
+
+Source-audit finding:
+
+```text
+RuntimeStoreManifest descriptors
+  opencode.deliveryJournal -> rebuildable_from_canonical_destination
+  opencode.promptDeliveryLedger -> rebuildable_from_canonical_destination
+  opencode.sessionStore -> rebuildable_from_provider
+  opencode.launchState / launchTransaction -> readiness_blocking
+  opencode.runtimeDiagnostics -> diagnostic_only, drop_after_quarantine
+```
+
+This is the recovery boundary after partial writes, lock timeouts, corrupted JSON, or stale lane registry. Prompt delivery ledgers and runtime delivery journals are canonical delivery evidence. They must not be treated like disposable diagnostics.
+
+Rules:
+
+- corrupted diagnostic stores can be dropped, but prompt/runtime delivery ledgers must be recovered from canonical destinations or quarantined with clear delivery state;
+- readiness-blocking launch stores can block new delivery, but cannot delete already committed prompt/runtime delivery evidence;
+- rebuilding from provider must not overwrite canonical destination evidence with older session-store data;
+- manifest rebuild should preserve lane-scoped file paths and not merge secondary lane evidence into primary;
+- accepted prompt identity and committed runtime delivery location should be read before lane registry fallback;
+- if canonical destination verification is incomplete, keep the delivery as `acceptanceUnknown` or `pending`, not `responded`;
+- artifact packs should include manifest recovery actions, quarantine paths, and rebuild source so production failures are debuggable.
+
+Tests:
+
+- corrupted diagnostics store is dropped without changing prompt delivery ledger;
+- corrupted prompt delivery ledger is not silently dropped and reports rebuild_required or quarantine;
+- rebuild from provider cannot downgrade a committed runtime delivery journal row;
+- stale session store does not overwrite exact accepted prompt identity;
+- secondary lane manifest recovery preserves lane-specific evidence and never rewrites it as primary.
+
+### 4.47 Stopped Teams And Tombstoned Runs Must Fence Runtime Evidence
+
+Current files:
+
+```text
+src/main/services/team/TeamProvisioningService.ts
+src/main/services/team/opencode/store/RuntimeRunTombstoneStore.ts
+test/main/services/team/RuntimeRunTombstoneStore.test.ts
+test/main/services/team/TeamAgentLaunchMatrix.safe-e2e.test.ts
+```
+
+Source-audit finding:
+
+```text
+deliverOpenCodeRuntimeMessage()
+recordOpenCodeRuntimeTaskEvent()
+recordOpenCodeRuntimeHeartbeat()
+  all resolve laneId
+  all call assertOpenCodeRuntimeEvidenceAccepted()
+  then write destination/task-log/liveness evidence
+
+RuntimeRunTombstoneStore.assertEvidenceAccepted()
+  rejects missing run id
+  rejects current run missing
+  rejects run mismatch
+  rejects tombstoned run/evidence kind
+
+stopTeam()
+  clears tracked run state
+  stops secondary OpenCode lanes
+  clears lane storage
+  emits process stop events
+```
+
+This is the protection against "team is stopped, but OpenCode still writes messages". It must be treated as a write-boundary invariant, not just a runtime cleanup detail.
+
+Rules:
+
+- every OpenCode runtime-originated write must validate team/run/lane evidence immediately before the destination write;
+- destination write means sent messages, member inbox, task attribution, task activity, heartbeat/liveness, prompt delivery ledger updates, advisory clearing, and task-log refresh events;
+- stopped parent team must make mixed secondary lanes non-deliverable even if a stale OpenCode process still has a live HTTP host;
+- tombstoned run evidence must be rejected before any user-visible message is appended;
+- old run IDs after relaunch must be diagnostic-only and must not clear current warnings or unread rows;
+- clearing lane storage during stop must not delete prompt/runtime delivery ledger evidence before it can be quarantined or used for debugging;
+- `RuntimeStaleEvidenceError` should surface machine-readable diagnostics (`missing_run_id`, `current_run_missing`, `run_mismatch`, `run_tombstoned`) without falling back to "provider unavailable";
+- any post-stop cleanup that kills orphaned OpenCode processes must be narrow: team/run/lane matched, not global `opencode serve` cleanup.
+
+Tests:
+
+- stopped pure OpenCode team rejects runtime `message_send` before sent-message/inbox write;
+- stopped mixed OpenCode secondary lane rejects task event and heartbeat before attribution/liveness write;
+- stale old run after relaunch cannot clear current member advisory or prompt delivery ledger row;
+- tombstoned run with matching evidence kind rejects delivery, heartbeat, and bridge result separately;
+- missing current run produces `current_run_missing` diagnostic and no user-visible message;
+- cleanup of stopped team leaves delivery ledger artifacts available for artifact pack/debug;
+- stale runtime process from stopped team is not recovered from persisted lane evidence after app restart.
+
+### 4.48 Destination Writes Must Drive Cache And Advisory Invalidation
+
+Current files:
+
+```text
+src/main/services/team/TeamProvisioningService.ts
+src/main/services/team/TeamDataService.ts
+src/main/services/team/TeamDataWorkerClient.ts
+src/main/workers/team-data-worker.ts
+src/renderer/store/index.ts
+test/renderer/store/teamChangeThrottle.test.ts
+test/main/ipc/teams.test.ts
+```
+
+Source-audit finding:
+
+```text
+renderer store
+  lead-message -> refresh tracked message feed only
+  inbox -> refresh message feed plus structural-safety team data refresh
+  member-advisory -> refresh advisory/team detail surface
+
+team-data-worker
+  invalidateTeamMessageFeed(team)
+  invalidateMemberRuntimeAdvisory(team, member?)
+  invalidateTeamConfig(team)
+```
+
+Several bugs in this area look like delivery bugs but are actually stale UI/cache state: the reply exists, but warning/advisory is still visible; hidden automation row exists, but diagnostics are stale; task log row exists, but badge count was cached.
+
+Rules:
+
+- after a successful runtime destination write, emit the same change signal that the destination's normal writer emits;
+- direct user reply in sent messages should cause `lead-message` feed refresh and member-advisory invalidation;
+- member inbox write should cause `inbox` refresh and member-advisory invalidation when it can satisfy proof;
+- task attribution/task event write should cause narrow `task-log-change` with taskId and runId;
+- advisory invalidation must be keyed by canonical member name, and unsafe/unknown names should fall back to team-scoped invalidation;
+- hiding work-sync/task-stall rows from normal Messages must not suppress diagnostic cache invalidation;
+- worker cache invalidation is best-effort, but failure must not block the durable destination write;
+- accept-fast should return "accepted" based on prompt acceptance, not on whether renderer cache has already refreshed.
+
+Tests:
+
+- direct OpenCode reply to user clears runtime advisory after feed/proof refresh;
+- member inbox runtime reply emits `inbox` and invalidates the correct member advisory;
+- hidden work-sync row does not appear in normal Messages, but diagnostics and advisory state refresh;
+- task event emits `task-log-change` and reloads stream/count without full team refresh;
+- unsafe member name in invalidation falls back to team advisory invalidation;
+- worker unavailable path still writes destination and logs diagnostic only.
+
+### 4.49 Ledger Rebuild From Durable Destinations Must Stay Conservative
+
+Current files:
+
+```text
+src/main/services/team/opencode/delivery/OpenCodePromptDeliveryLedger.ts
+src/main/services/team/opencode/delivery/RuntimeDeliveryJournal.ts
+src/main/services/team/opencode/delivery/OpenCodeRuntimeDeliveryProofReader.ts
+src/main/services/team/TeamInboxReader.ts
+src/main/services/team/TeamSentMessagesStore.ts
+```
+
+Source-audit finding:
+
+```text
+OpenCodeRuntimeDeliveryProofReader
+  accepts strict relay/source proof
+  must read every destination store that RuntimeDeliveryService can write
+
+TeamInboxReader
+  normalizes messageKind values
+  currently must preserve automation and runtime-delivery metadata
+```
+
+If a ledger is rebuilt after corruption or version migration, it must not invent success. Rebuild from durable destination writes can prove a visible reply exists, but it cannot prove the prompt transport was accepted unless exact prompt identity also survived.
+
+Rules:
+
+- rebuild can mark visible proof as found only when destination row has strict relay/source/idempotency evidence;
+- rebuild cannot upgrade transport state to accepted without exact runtime prompt identity or command outcome proof;
+- rebuilt rows without prompt acceptance proof should be `acceptanceUnknown`, `pending`, or `responded_with_unknown_acceptance`, not normal accepted;
+- read/hidden automation state must not be changed during rebuild;
+- rebuilt proof must preserve `messageKind`, `source`, `relayOfMessageId`, `taskRefs`, destination kind, and destination message ID;
+- rejected/stale/tombstoned run evidence must not be used as rebuild input;
+- multiple plausible destination rows should keep the ledger ambiguous and advisory visible instead of guessing.
+
+Tests:
+
+- rebuild from strict sent-message proof clears advisory but keeps acceptance unknown when prompt identity is missing;
+- rebuild ignores UI-hidden work-sync rows for normal user reply proof unless message kind matches the delivery intent;
+- duplicate plausible reply candidates do not commit a single responded ledger row;
+- stale run destination row cannot rebuild current run delivery state;
+- taskRefs and messageKind survive rebuild and remain available to task-log/proof readers.
+
+### 4.50 Member-Work-Sync Scheduling Must Stay Causality-Safe
+
+Current files:
+
+```text
+src/features/member-work-sync/main/infrastructure/MemberWorkSyncEventQueue.ts
+src/features/member-work-sync/main/infrastructure/MemberWorkSyncNudgeDispatchScheduler.ts
+src/features/member-work-sync/main/composition/createMemberWorkSyncFeature.ts
+src/features/member-work-sync/core/application/MemberWorkSyncNudgeDispatcher.ts
+src/features/member-work-sync/core/application/MemberWorkSyncNudgeOutboxPlanner.ts
+```
+
+Source-audit finding:
+
+```text
+MemberWorkSyncEventQueue
+  default turn_settled/tool_finished delay -> 5s
+  default task_changed/inbox_changed/runtime_activity delay -> 15s
+  default startup/config/member_spawned delay -> 30s
+  optional queueQuietWindowMs overrides most non-manual triggers
+
+createMemberWorkSyncFeature
+  reconcile(queue) writes status
+  then dispatches due nudges for ready teams
+  scheduled dispatcher runs every 60s
+  canDispatchNudges can filter teams before delivery
+
+MemberWorkSyncNudgeDispatcher
+  revalidates agenda/status/fingerprint before insertion
+  checks phase2 activation, busy signal, watchdog cooldown, rate limit
+  schedules delivery wake 500ms after inbox insertion
+```
+
+This is the area most likely to create the "logs appeared after 6 minutes" class of confusion. The queue can be correct but too slow, or fast but causally wrong. The plan must protect both.
+
+Rules:
+
+- do not set a broad production `queueQuietWindowMs` unless every trigger timing is explicitly revalidated;
+- `turn_settled` and `tool_finished` are fast consistency checks, not normal delayed watchdog nudges;
+- `startup_scan`, `config_changed`, and `member_spawned` should not deliver nudges until launch/bootstrap readiness says the team can dispatch nudges;
+- nudge delivery must pass `canDispatchNudges`, agenda fingerprint revalidation, busy signal, watchdog cooldown, and rate-limit checks immediately before inbox insertion;
+- foreground unread work must suppress generic work-sync nudge delivery, not just hide it from UI;
+- accepted-pending OpenCode delivery must keep work-sync queued behind it, not trigger a second simultaneous prompt;
+- event queue diagnostics must expose queued age, trigger reasons, runAt, maxRunAt, running age, and rerunRequested;
+- scheduled dispatcher should be recovery-only for due outbox rows, not the primary latency path for fresh task assignment.
+
+Tests:
+
+- `turn_settled` reconcile runs on the fast policy and is not delayed by broad quiet window defaults;
+- `startup_scan` during launch materializes status but does not deliver a nudge before `canDispatchNudges` is true;
+- foreground unread task assignment suppresses generic work-sync nudge even when work-sync outbox row exists;
+- accepted-pending OpenCode delivery causes work-sync dispatch to retry later without another prompt;
+- scheduled dispatcher can recover an already due outbox row after app restart;
+- queue diagnostics show the reason a member was delayed instead of leaving only "Waiting for response".
+
+### 4.51 Delivery Latency Breadcrumbs Must Be End-To-End And Correlatable
+
+Current files:
+
+```text
+src/main/services/team/TeamProvisioningService.ts
+src/main/services/team/OpenCodeReadinessBridge.ts
+src/main/services/team/opencode/delivery/OpenCodePromptDeliveryLedger.ts
+src/features/member-work-sync/core/application/MemberWorkSyncAudit.ts
+src/features/member-work-sync/main/infrastructure/FileMemberWorkSyncAuditJournal.ts
+test/main/services/team/openCodeLiveTestHarness.ts
+```
+
+Source-audit finding:
+
+```text
+OpenCode delivery, runtime proof, task logs, task activity, and member-work-sync
+currently have separate journals/diagnostics.
+That is correct architecturally, but hard to debug unless IDs are correlated.
+```
+
+If a task starts 6 minutes after assignment, we need to know which segment was slow: inbox write, relay selection, MCP repair, prompt acceptance, model turn, runtime tool failure, task log projection, or work-sync nudge dispatch.
+
+Rules:
+
+- keep journals separate by responsibility, but include a common correlation set: `teamName`, `memberName`, `taskId`, `messageId`, `relayOfMessageId`, `deliveryAttemptId`, `runtimeSessionId`, `runtimePromptMessageId`, `laneId`, `runId`;
+- capture timestamps for key phases: task created, inbox written, relay selected, MCP-ready check, prompt accepted, turn settled, first task tool, first native tool, visible proof, task completed, work-sync queued/planned/delivered/skipped;
+- diagnostics must be developer/audit metadata, not normal chat rows;
+- latency report should be read-only and derived from existing ledgers where possible;
+- do not add a single mega-log writer to multiple layers; each layer records its own event with shared correlation fields;
+- live E2E should print a compact phase table for failures and slow passes.
+
+Tests:
+
+- dry fixture can build a complete timeline from ledgers without reading UI state;
+- missing phase is reported as `missing:<phase>` with the previous known phase;
+- slow phase detection identifies relay wait vs prompt wait vs model/tool wait;
+- hidden work-sync rows do not disappear from the latency timeline;
+- stale-run evidence is shown as rejected phase, not as a gap.
+
+### 4.52 Member Status Presentation Must Not Hide Runtime Failures Behind Task Labels
+
+Current files:
+
+```text
+src/renderer/utils/memberLaunchDiagnostics.ts
+src/renderer/utils/teamProvisioningPresentation.ts
+src/renderer/components/team/members/MemberHoverCard.tsx
+src/renderer/components/team/TeamProvisioningBanner.test.ts
+test/renderer/utils/memberLaunchDiagnostics.test.ts
+test/renderer/utils/teamProvisioningPresentation.test.ts
+```
+
+Source-audit finding:
+
+```text
+member cards can show task-centric state such as "working on"
+runtime launch/spawn/advisory state is computed separately
+OpenCode secondary lanes can be failed_to_start, registered_only, runtime_pending_bootstrap, or confirmed_alive
+```
+
+The UI must not let a task label imply that a failed or unbootstrapped OpenCode member is actually working. This is a presentation invariant, but it protects debugging and user decisions.
+
+Rules:
+
+- runtime failure/bootstrap-pending/advisory state has higher visual priority than "working on";
+- task label can remain visible as assigned work context, but must not replace failed/registered/bootstrap status;
+- `registered_only` and `runtime_process without bootstrap` should be surfaced as runtime state, not inferred as online;
+- Worktree badge remains independent from runtime health;
+- member detail/hover card should expose laneId/sessionId/path diagnostics when available;
+- renderer selectors should prefer canonical spawn status snapshot over stale cached roster/task data;
+- stale spawn-status fetch after offline/stopped must not resurrect a member as working.
+
+Tests:
+
+- member with assigned task plus `failed_to_start` shows failure state and task context;
+- `registered_only` OpenCode member shows registered/bootstrap warning, not working;
+- current task assignment does not suppress runtime advisory;
+- stale spawn-status fetch after stopped team is ignored;
+- hover card shows runtime diagnostic and task label separately.
+
+### 4.53 OpenCode Tool-Error Plain Text Fallback Must Not Become A Dead End
+
+Current files:
+
+```text
+src/main/services/team/OpenCodePromptDeliveryRepairPolicy.ts
+src/main/services/team/OpenCodeRuntimeDeliveryDiagnostics.ts
+src/main/services/team/TeamMemberRuntimeAdvisoryService.ts
+src/main/services/team/opencode/delivery/OpenCodeRuntimeDeliveryProofReader.ts
+test/main/services/team/OpenCodePromptDeliveryRepairPolicy.test.ts
+test/main/services/team/OpenCodeRuntimeDeliveryDiagnostics.test.ts
+```
+
+Source-audit finding:
+
+```text
+OpenCode can produce a transcript-only assistant answer after message_send returns Not connected.
+The user may see the text in task logs, but the app has no durable visible reply unless runtime delivery wrote the destination.
+```
+
+This is the exact "model says it will provide summary as plain text" class of bug. It should trigger repair/retry semantics, not be accepted as a completed app delivery.
+
+Rules:
+
+- transcript-only plain text after `message_send` tool error is not visible proof;
+- `mcp_not_connected`, `tool_missing`, `destination_write_failed`, and idempotency conflict remain separate diagnostics;
+- repair prompt can reference the plain-text content, but must still require a real destination write or task progress proof;
+- work-sync/task-stall may consider substantive task board changes as progress, but not a transcript-only "I will send";
+- if the model completed task files but failed to notify, Changes/task ledger can show work while delivery advisory remains actionable;
+- no automatic duplicate user-visible reply should be synthesized by the app from transcript text.
+
+Tests:
+
+- `message_send Not connected` plus assistant plain text remains pending/proof-missing;
+- MCP readiness repair runs before the next retry prompt;
+- existing task changes remain visible in Changes/Task Log even while reply advisory stays pending;
+- idempotency conflict does not trigger MCP reattach;
+- a later real `runtime_delivery` destination write clears the advisory.
+
+### 4.54 Agenda Fingerprint Must Not Churn On Presentation-Only Changes
+
+Current files:
+
+```text
+src/features/member-work-sync/core/domain/ActionableWorkAgenda.ts
+src/features/member-work-sync/core/domain/AgendaFingerprint.ts
+src/features/member-work-sync/main/adapters/output/TeamTaskAgendaSource.ts
+test/features/member-work-sync/core/ActionableWorkAgenda.test.ts
+```
+
+Source-audit finding:
+
+```text
+buildActionableWorkAgenda already hashes canonical actionable items and generatedAt is not part of the fingerprint.
+TeamTaskAgendaSource currently does not pass sourceRevision, so future sourceRevision use must be explicit and tested.
+```
+
+This is good for stability, but it is fragile because adding a volatile field to `items`, `evidence`, or `sourceRevision` can turn every harmless board refresh into a new fingerprint and a new possible nudge.
+
+Rules:
+
+- fingerprint includes only actionable work semantics, not timestamps, UI order, unread counters, activity row IDs, or display-only cache revisions;
+- `generatedAt`, raw comment text, feed count, message count, work interval duration, and member-card presentation state never enter the fingerprint;
+- item ordering remains stable by semantic key, not task array order;
+- `blockedByTaskIds`, `blockerTaskIds`, review diagnostics, and history event IDs remain sorted before hashing;
+- if `sourceRevision` is introduced later, it must be a semantic revision, not a general team-data or renderer revision;
+- subject/displayId changes can be included only if the product wants them to invalidate report tokens and trigger sync;
+- tests must explicitly prove no churn on task array reorder and cosmetic/presentation-only changes.
+
+Tests:
+
+- same tasks in different array order produce the same fingerprint;
+- `generatedAt` and work-duration/presentation fields do not change fingerprint;
+- changing owner/status/dependency/review obligation changes fingerprint;
+- changing unrelated task for another member does not change this member fingerprint unless it affects dependency/review/lead clarification;
+- future `sourceRevision` use has a dedicated test that documents exactly why it changes the fingerprint.
+
+### 4.55 Member-Work-Sync Reports And Tokens Must Be Fingerprint-Scoped
+
+Current files:
+
+```text
+src/features/member-work-sync/core/domain/MemberWorkSyncReportValidator.ts
+src/features/member-work-sync/core/application/MemberWorkSyncReporter.ts
+src/features/member-work-sync/core/application/MemberWorkSyncPendingReportIntentReplayer.ts
+src/features/member-work-sync/main/infrastructure/HmacMemberWorkSyncReportTokenAdapter.ts
+src/features/member-work-sync/main/infrastructure/JsonMemberWorkSyncStore.ts
+test/features/member-work-sync/core/MemberWorkSyncReportValidator.test.ts
+test/features/member-work-sync/main/HmacMemberWorkSyncReportTokenAdapter.test.ts
+test/features/member-work-sync/main/JsonMemberWorkSyncStore.test.ts
+```
+
+Source-audit finding:
+
+```text
+The HMAC token binds teamName, memberName, agendaFingerprint, and expiresAt.
+Reporter re-loads current agenda before accepting a report.
+Pending report replay calls the same reporter, so stale intents should be rejected by the same validator.
+```
+
+This is the correct shape. The fragile part is replay and offline intents: a stale report must never suppress a newer actionable agenda just because it was stored earlier.
+
+Rules:
+
+- `caught_up` is accepted only when the current server agenda is empty;
+- `still_working` and `blocked` are accepted only for the current fingerprint;
+- `blocked` requires current board-backed blocker evidence;
+- pending report replay must mark stale fingerprint/token intents rejected or superseded, not accepted;
+- pending report intent ID may include token/report payload, but acceptance still depends on current agenda validation;
+- rejected reports can update diagnostics/status, but cannot extend leases or clear `needs_sync`;
+- token secret regeneration invalidates old tokens safely and should be diagnostic-only.
+
+Tests:
+
+- stale fingerprint report is rejected even if taskIds still look plausible;
+- expired token report is rejected and does not extend the previous lease;
+- pending replay of an old `caught_up` intent after a new task appears remains rejected;
+- pending replay after member removal is superseded and does not materialize a nudge;
+- `blocked` without current blocked agenda evidence is rejected;
+- corrupt/regenerated token secret does not crash the reporter and forces a fresh status read.
+
+### 4.56 Runtime Turn-Settled Spool Must Be Durable, Idempotent, And Targeted
+
+Current files:
+
+```text
+src/features/member-work-sync/core/application/RuntimeTurnSettledIngestor.ts
+src/features/member-work-sync/main/infrastructure/FileRuntimeTurnSettledEventStore.ts
+src/features/member-work-sync/main/infrastructure/RuntimeTurnSettledSpoolInitializer.ts
+src/features/member-work-sync/main/adapters/output/TeamRuntimeTurnSettledTargetResolver.ts
+test/features/member-work-sync/main/RuntimeTurnSettledIngestor.test.ts
+test/features/member-work-sync/main/FileRuntimeTurnSettledEventStore.test.ts
+test/features/member-work-sync/main/TeamRuntimeTurnSettledTargetResolver.test.ts
+```
+
+Source-audit finding:
+
+```text
+FileRuntimeTurnSettledEventStore moves incoming -> processing -> processed/invalid and recovers stale processing files.
+RuntimeTurnSettledIngestor ignores non-terminal OpenCode outcomes and resolves provider-owned events through configured active members.
+Claude events are resolved by transcript/session lookup.
+```
+
+The spool is the bridge between runtime-level "turn settled" and member-work-sync. If it loses events, routes to the wrong member, or retries forever, the app will either miss sync opportunities or spam the wrong agent.
+
+Rules:
+
+- incoming payload write must be atomic or temporary-file based before it becomes claimable;
+- processing recovery must be bounded and must not process `.meta.json` files as events;
+- provider-owned `codex` and `opencode` events require explicit teamName/memberName and matching configured provider;
+- Claude transcript/session lookup must reject provider mismatch, removed member, reserved member, and deleted team;
+- non-terminal OpenCode outcomes remain ignored for work-sync, but still leave processed diagnostics;
+- malformed/oversized/unsupported-provider payloads are quarantined, not retried forever;
+- duplicate sourceId/event files must be idempotent at queue/outbox level, even if the file store sees both;
+- draining stays bounded and never blocks app startup on a huge spool.
+
+Tests:
+
+- stale processing file is recovered once and then processed;
+- invalid provider and oversized payload go to invalid with reason;
+- OpenCode `timeout`/`stream_unavailable` outcomes are ignored and do not enqueue reconcile;
+- OpenCode successful terminal event enqueues only the matching active OpenCode member;
+- provider mismatch rejects event for the wrong configured provider;
+- duplicate runtime sourceId does not produce duplicate user-visible nudges after reconcile/outbox planning.
+
+### 4.57 Task Impact Routing Must Stay Narrow But Safe
+
+Current files:
+
+```text
+src/features/member-work-sync/main/adapters/input/MemberWorkSyncTeamChangeRouter.ts
+src/features/member-work-sync/main/adapters/input/MemberWorkSyncTaskImpactResolver.ts
+test/features/member-work-sync/main/MemberWorkSyncTeamChangeRouter.test.ts
+test/features/member-work-sync/main/MemberWorkSyncTaskImpactResolver.test.ts
+```
+
+Source-audit finding:
+
+```text
+Task/team-change routing uses taskId/detail parsing, then resolves owner, reviewer, lead clarification, broken dependencies, and dependent task owners.
+If taskId is missing or resolver says fallbackTeamWide, it enqueues all active members.
+```
+
+This keeps most task changes narrow, but fallback behavior is a sharp edge: too narrow misses the agent that should wake; too broad creates unnecessary work-sync scans and possible nudge pressure.
+
+Rules:
+
+- task owner, current reviewer, lead for lead clarification, lead for broken dependencies, and owners of affected dependent tasks are the only normal impacted members;
+- unknown task ID can fall back team-wide for status materialization, but dispatch still revalidates foreground/readiness/cooldown before sending a nudge;
+- removed/inactive members are filtered before materialization;
+- self-review routes to lead, not to the same owner as reviewer;
+- task-log-change with a file path detail must only extract safe task JSON names, never arbitrary paths;
+- team-wide fallback must be visible in diagnostics so slow/spam cases are explainable;
+- resolver errors should fall back to team-wide scan, not drop the change silently.
+
+Tests:
+
+- owner-only task change enqueues only owner;
+- review task enqueues current reviewer and not stale reviewers;
+- self-review enqueues lead only;
+- broken dependency enqueues lead and dependent owners;
+- missing/unknown task ID uses team-wide fallback but downstream nudge planning still suppresses unsafe sends;
+- removed member is not materialized or queued.
+
+### 4.58 Busy Signal Must Be Advisory And Time-Bounded
+
+Current files:
+
+```text
+src/features/member-work-sync/main/infrastructure/MemberWorkSyncToolActivityBusySignal.ts
+src/features/member-work-sync/main/infrastructure/CompositeMemberWorkSyncBusySignal.ts
+test/features/member-work-sync/main/MemberWorkSyncToolActivityBusySignal.test.ts
+```
+
+Source-audit finding:
+
+```text
+Tool activity busy signal tracks active tool IDs and recent finish grace in memory.
+Composite busy signal returns busy on provider errors for 60 seconds.
+```
+
+Busy is a useful anti-spam signal, but it must never become a hidden correctness gate. If a finish/reset event is missed, busy can suppress nudges longer than intended unless every path is time-bounded and diagnostic.
+
+Rules:
+
+- busy signal is advisory only and cannot block normal foreground delivery;
+- active tool IDs should have a maximum stale lifetime or reset path in addition to finish events;
+- recent-finish grace stays short and tested;
+- `lead-activity: offline` drops team busy state;
+- busy signal errors can delay briefly, but must not suppress nudges indefinitely;
+- busy diagnostics include reason and retryAfterIso;
+- future persisted busy state must include TTL and team/run/member scope.
+
+Tests:
+
+- finish creates recent busy only until grace expires;
+- reset clears one member or whole team;
+- offline drops all team activity;
+- busy signal error returns a bounded retryAfter and later allows dispatch;
+- normal foreground delivery ignores generic busy state.
+
+### 4.59 Nudge Outbox Must Keep Plan-Time And Claim-Time Revalidation Separate
+
+Current files:
+
+```text
+src/features/member-work-sync/core/application/MemberWorkSyncNudgeOutboxPlanner.ts
+src/features/member-work-sync/core/application/MemberWorkSyncNudgeDispatcher.ts
+src/features/member-work-sync/main/infrastructure/JsonMemberWorkSyncStore.ts
+test/features/member-work-sync/core/MemberWorkSyncUseCases.test.ts
+```
+
+Source-audit finding:
+
+```text
+Planner creates an outbox row only after current status, metrics, activation, and review-pickup capability checks.
+Dispatcher re-loads current agenda before delivery and supersedes stale fingerprints.
+Dispatcher also re-checks lifecycle, phase2 activation, rate limit, busy signal, and watchdog cooldown.
+```
+
+This two-step design is important. Planning an outbox item is not permission to send forever. Dispatch is the safety boundary because the board can change between planning and delivery.
+
+Rules:
+
+- outbox rows are durable intent, not final authorization;
+- dispatch must revalidate current agenda fingerprint before writing inbox;
+- dispatch must re-check team lifecycle and nudge dispatch readiness;
+- dispatch must re-check phase2/targeted recovery activation;
+- dispatch must re-check rate limit, busy signal, and watchdog cooldown;
+- stale outbox rows are superseded, not delivered;
+- retryable failures must get bounded `nextAttemptAt`;
+- terminal failures must not be revived unless a new fingerprint or explicitly supported intent key appears;
+- review-pickup partial delivery filtering remains request-event based, not broad agenda based.
+
+Tests:
+
+- planned nudge is superseded when agenda becomes empty before dispatch;
+- planned nudge is superseded when member reports `still_working` before dispatch;
+- planned nudge is retryable when busy/cooldown/rate-limit blocks dispatch;
+- planned nudge is terminal on inbox payload conflict;
+- delivered review-pickup request is not sent again for the same reviewRequestEventId;
+- new reviewRequestEventId after prior delivery creates only the missing event nudge.
+
+### 4.60 Inbox Nudge Sink Must Not Mask Payload Drift
+
+Current files:
+
+```text
+src/features/member-work-sync/main/adapters/output/TeamInboxMemberWorkSyncNudgeSink.ts
+src/features/member-work-sync/core/application/MemberWorkSyncNudgeDispatcher.ts
+src/features/member-work-sync/main/infrastructure/JsonMemberWorkSyncStore.ts
+test/features/member-work-sync/main/TeamInboxMemberWorkSyncNudgeSink.test.ts
+```
+
+Source-audit finding:
+
+```text
+TeamInboxMemberWorkSyncNudgeSink returns inserted=false when inbox already contains the stable messageId.
+It currently does not compare payloadHash itself.
+Outbox store checks payloadHash before dispatch, so the sink must stay behind that outbox boundary.
+```
+
+The sink is intentionally thin, but that makes the dependency important. If a future caller bypasses outbox and calls the sink directly, same messageId with different text/taskRefs can be treated as success.
+
+Rules:
+
+- only the outbox dispatcher should call the sink in production;
+- sink idempotency by messageId is acceptable only after outbox payloadHash validation;
+- if the sink becomes public or reused, it must store/compare payloadHash or reject existing-message ambiguity;
+- writer result messageId must be used for outbox deliveredMessageId;
+- existing messageId with incompatible messageKind/source/taskRefs is a conflict, not a delivered nudge;
+- hidden automation filtering must not hide this row from the dispatcher/proof/debug stores.
+
+Tests:
+
+- outbox payload conflict prevents sink call;
+- sink existing messageId path is covered only for identical outbox payload;
+- existing inbox row with wrong messageKind/source is conflict if sink-level validation is added;
+- writer returning a different messageId is either accepted intentionally and recorded, or rejected with a test;
+- hidden automation row remains readable by raw inbox diagnostics after insertion.
+
+### 4.61 Targeted Recovery Must Stay Narrow And Provider-Specific
+
+Current files:
+
+```text
+src/features/member-work-sync/core/application/MemberWorkSyncNudgeActivationPolicy.ts
+src/features/member-work-sync/core/application/MemberWorkSyncTargetedRecoveryPolicy.ts
+src/features/member-work-sync/core/application/MemberWorkSyncNudgeDispatcher.ts
+test/features/member-work-sync/core/application/MemberWorkSyncNudgeActivationPolicy.test.ts
+test/features/member-work-sync/core/application/MemberWorkSyncTargetedRecoveryPolicy.test.ts
+```
+
+Source-audit finding:
+
+```text
+Targeted recovery bypasses full shadow readiness only for OpenCode runtime delivery and lead inbox relay.
+Strict review pickup has its own bypass path.
+Non-OpenCode secondary providers stay behind phase2 readiness unless the agenda is strict review pickup.
+```
+
+This protects the system from enabling broad nudges before shadow metrics are healthy. The risk is accidentally expanding OpenCode-targeted recovery into "all providers can be nudged while collecting".
+
+Rules:
+
+- OpenCode targeted recovery applies only to providerId `opencode`;
+- lead targeted recovery applies only to canonical lead-like member names;
+- Codex/Anthropic/Gemini secondary members do not use OpenCode targeted recovery;
+- strict review pickup is the only cross-provider early-delivery exception;
+- ambiguous review pickup evidence does not use the review-pickup bypass;
+- targeted recovery still goes through dispatch-time lifecycle, busy, cooldown, rate limit, and inbox write checks.
+
+Tests:
+
+- OpenCode needs_sync can activate during shadow collection;
+- Codex/Anthropic/Gemini needs_sync stay inactive during shadow collection unless strict review pickup;
+- lead-like member activates through lead targeted recovery;
+- non-lead member named like provider does not activate targeted recovery;
+- ambiguous review pickup stays out of strict review-pickup path;
+- targeted recovery dispatch still respects busy/watchdog/rate limit.
+
+### 4.62 Queue Coalescing Must Preserve Fast Triggers
+
+Current files:
+
+```text
+src/features/member-work-sync/main/infrastructure/MemberWorkSyncEventQueue.ts
+src/features/member-work-sync/main/composition/createMemberWorkSyncFeature.ts
+test/features/member-work-sync/main/MemberWorkSyncEventQueue.test.ts
+```
+
+Source-audit finding:
+
+```text
+Default trigger timing is fast for turn_settled/tool_finished and moderate for task_changed/inbox_changed.
+Passing queueQuietWindowMs currently becomes a broad fallback for every trigger except manual_refresh.
+If queueQuietWindowMs is large, it can delay turn_settled/tool_finished far beyond their default 5 seconds.
+```
+
+This is the likely class of "logs appeared after 6 minutes" bug: a broad quiet window or coalescing max wait can make a real wakeup wait behind a generic startup/quiet policy.
+
+Rules:
+
+- production should prefer per-trigger `triggerTiming` over broad `queueQuietWindowMs`;
+- `turn_settled` and `tool_finished` must keep low runAfter and bounded max wait;
+- `manual_refresh` must remain immediate;
+- startup/config/member-spawn scans can be slower and readiness-gated;
+- coalescing can delay duplicate work, but cannot push fast triggers beyond their documented max;
+- running-item follow-up keeps urgent reasons and schedules within 5 seconds as the current code does;
+- diagnostics must show firstQueuedAt, runAt, maxRunAt, trigger reasons, and reason counts.
+
+Tests:
+
+- default `turn_settled` and `tool_finished` run after about 5 seconds;
+- broad quietWindow override cannot accidentally delay fast triggers if production uses explicit triggerTiming;
+- coalesced task_changed plus turn_settled runs at the earlier fast time;
+- running reconcile followed by turn_settled schedules a fast follow-up;
+- queue diagnostics expose enough timing data to explain a delayed start.
+
+### 4.63 Status Read Staleness Refresh Must Not Become A UI Polling Loop
+
+Current files:
+
+```text
+src/features/member-work-sync/main/composition/createMemberWorkSyncFeature.ts
+src/features/member-work-sync/core/application/MemberWorkSyncDiagnosticsReader.ts
+src/features/member-work-sync/renderer/hooks/useMemberWorkSyncStatus.ts
+```
+
+Source-audit finding:
+
+```text
+getStatus() reads diagnostics and enqueues manual_refresh when status is stale or an accepted lease expired.
+manual_refresh is immediate in the event queue.
+```
+
+This helps self-heal stale state, but if renderer polling repeatedly reads the same stale status faster than the queue can reconcile, it can create noisy coalescing and confusing audit logs.
+
+Rules:
+
+- stale-status read can enqueue refresh, but must rely on queue coalescing and not dispatch directly;
+- repeated reads for the same team/member should collapse into one queued/running refresh;
+- stale refresh cannot bypass lifecycle inactive checks;
+- status read must remain side-effect-light: no inbox write, no prompt delivery, no direct nudge dispatch;
+- renderer polling intervals should not be used as correctness timing;
+- diagnostics should distinguish `status_stale_refresh_enqueued` from actual nudge delivery.
+
+Tests:
+
+- repeated stale `getStatus()` calls coalesce into one manual refresh;
+- inactive team stale status does not dispatch a nudge;
+- expired accepted lease triggers refresh but not immediate inbox write;
+- renderer status hook does not display hidden work-sync rows as normal messages.
+
+### 4.64 Scheduled Dispatcher Is Recovery, Not Fresh Assignment Delivery
+
+Current files:
+
+```text
+src/features/member-work-sync/main/infrastructure/MemberWorkSyncNudgeDispatchScheduler.ts
+src/features/member-work-sync/main/composition/createMemberWorkSyncFeature.ts
+test/features/member-work-sync/main/MemberWorkSyncNudgeDispatchScheduler.test.ts
+```
+
+Source-audit finding:
+
+```text
+The event queue dispatches due nudges for the reconciled team immediately after queue reconciliation.
+The scheduler runs periodically over lifecycle-active teams and dispatches due outbox rows after restart or missed wakeups.
+```
+
+This split is healthy. The scheduler should not become the primary path for fresh task assignment, because its default interval is one minute and can hide actual delivery bugs.
+
+Rules:
+
+- normal task assignment delivery stays in the foreground delivery path;
+- work-sync event queue can plan and dispatch after reconcile for the affected team;
+- scheduled dispatcher only recovers due outbox rows after restart, missed timer, or transient failure;
+- scheduler must list lifecycle-active teams, not all team directories;
+- scheduler run is non-overlapping and bounded;
+- scheduler failures are warning diagnostics and do not block the app;
+- live slow-start diagnostics should say whether the nudge came from queue or scheduler.
+
+Tests:
+
+- fresh task assignment does not wait for scheduler tick when queue path is healthy;
+- due outbox row after app restart is dispatched by scheduler;
+- scheduler does not overlap runs;
+- scheduler skips inactive/no-team cases;
+- scheduler failure logs and recovers on next run.
 
 ---
 
@@ -3586,6 +4808,440 @@ Risk:
 
 `🎯 8   🛡️ 8   🧠 4`, roughly `50-130 LOC`.
 
+### 7.30 Bridge Idempotency Can Drift From App Delivery Idempotency
+
+The app delivery ledger hash and the bridge command idempotency key solve different problems. Accept-fast transport fields can accidentally change the bridge command body while the logical user message is still the same.
+
+Rules:
+
+- persist settlement mode on the delivery record;
+- keep app logical payload hash independent from retry-control text and observation tuning;
+- keep bridge requestHash stable for a single delivery attempt;
+- store original bridge requestId for timeout recovery;
+- require commandStatus recovery to echo exact prompt identity before upgrading to accepted.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 5`, roughly `80-180 LOC`.
+
+### 7.31 Runtime `message_send` Conflicts Can Be Misread As MCP Failure
+
+Runtime delivery conflicts are agent-to-app idempotency conflicts. They are not OpenCode MCP readiness failures. Misclassifying them can make the watchdog repair the wrong layer.
+
+Rules:
+
+- keep `idempotency_conflict`, `destination_write_failed`, and `mcp_not_connected` as separate failure reasons;
+- runtime delivery journal conflicts do not trigger OpenCode MCP reattach by themselves;
+- prompt delivery repair can mention a previous message_send conflict only as payload guidance;
+- visible proof requires verified destination write, not transcript-only message_send attempt;
+- if retry asks the model to resend, specify whether to reuse exact payload or create a new idempotency key.
+
+Risk:
+
+`🎯 8   🛡️ 8   🧠 5`, roughly `70-160 LOC`.
+
+### 7.32 User-Visible Reply Can Be Stored Where Proof Reader Does Not Look
+
+If `RuntimeDeliveryService` writes a direct user reply to `sentMessages.json` but `OpenCodeRuntimeDeliveryProofReader` only scans inbox rows, the UI can show a valid reply while advisory/watchdog still thinks proof is missing.
+
+Rules:
+
+- proof reader must cover `user_sent_messages`, `member_inbox`, and cross-team destinations according to the runtime delivery destination kind;
+- source-string compatibility is not enough without matching destination location or relay metadata;
+- do not accept arbitrary sent messages from the lead as OpenCode member proof;
+- tests must cover direct user reply and lead-recipient fallback separately.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 5`, roughly `100-220 LOC`.
+
+### 7.33 Concurrent Sent Message Writes Can Drop Runtime Proof
+
+`sentMessages.json` currently has a simpler append path than inbox files. Concurrent OpenCode members can both write direct user replies and race.
+
+Rules:
+
+- add a locked append/verify path for sent messages before relying on it for proof;
+- dedupe by destination message ID under lock;
+- keep MAX_MESSAGES trimming deterministic and proof-safe;
+- do not change normal lead-process rendering semantics while adding the lock;
+- test concurrent direct user runtime replies.
+
+Risk:
+
+`🎯 9   🛡️ 8   🧠 4`, roughly `70-160 LOC`.
+
+### 7.34 Runtime TaskRefs Can Be Silently Dropped
+
+The runtime delivery normalizer currently filters taskRefs to strings. If OpenCode sends structured taskRefs, task context can disappear without an error.
+
+Rules:
+
+- make taskRefs input schema explicit in MCP prompt and app normalizer;
+- reject or preserve invalid shapes, never silently drop all context;
+- keep hash/proof/task-log matching aligned with the selected shape;
+- test prompt artifacts and runtime delivery normalizer together.
+
+Risk:
+
+`🎯 8   🛡️ 8   🧠 4`, roughly `50-120 LOC`.
+
+### 7.35 Unknown Secondary Runtime Can Fall Back To Primary Lane
+
+If lane metadata is missing, a secondary OpenCode member control call can accidentally resolve as `primary`. That is a correctness risk for delivery journals, task-log evidence, and heartbeats.
+
+Rules:
+
+- fail closed for unresolved non-lead secondary members;
+- allow primary fallback only for true primary OpenCode runtime;
+- use exact committed session evidence when available;
+- keep message delivery, task event, and heartbeat lane resolution identical.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 5`, roughly `90-220 LOC`.
+
+### 7.36 Work-Sync Can Jump Ahead If Relay Priority Is Misread
+
+The code sorts OpenCode inbox relay candidates ascending by numeric priority. Work-sync currently has a larger number because it should run later, not sooner.
+
+Rules:
+
+- document sort direction next to `getOpenCodeInboxRelayPriority()`;
+- test foreground task assignment before work-sync, including older work-sync messages;
+- keep `onlyMessageId` as an explicit override only;
+- preserve accepted-pending queue stop behavior;
+- keep busy-status diagnostics separate from UI hidden-row filtering.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 3`, roughly `30-90 LOC`.
+
+### 7.37 Hidden Automation Rows Can Become Undebuggable
+
+Hiding work-sync and task-stall rows from Messages is good UX, but hiding them too early can remove the only visible clue that an automation path fired.
+
+Rules:
+
+- keep durable inbox rows intact and unread until the delivery/proof path consumes them;
+- keep diagnostic/audit views able to opt into automation rows;
+- ensure `TeamInboxReader` preserves automation messageKind values;
+- do not use UI-filtered feeds for delivery, watchdog, or prompt ledger rebuild;
+- add tests where hidden work-sync is delivered to OpenCode even though Messages does not show it.
+
+Risk:
+
+`🎯 9   🛡️ 8   🧠 4`, roughly `60-140 LOC`.
+
+### 7.38 File-Change Backfill Can Be Broken By Delivery Context Drift
+
+OpenCode Changes review depends on `ChangeExtractorService` and task ledger backfill, not on task-log native tool rows. Accept-fast and retry changes can accidentally alter or remove the delivery context that backfill needs.
+
+Rules:
+
+- keep delivery context hash stable for logical delivery identity;
+- pass exact session/member/lane/task evidence into backfill;
+- do not cache negative backfill when a delivery context exists or appears later;
+- keep metadata-only evidence as manual-review, not as "no changes";
+- verify current evidence contract before caching duplicates-only results.
+
+Risk:
+
+`🎯 8   🛡️ 8   🧠 5`, roughly `120-260 LOC`.
+
+### 7.39 Runtime Store Recovery Can Lose Canonical Evidence
+
+Manifest recovery is useful, but prompt/runtime delivery evidence is not disposable. A broad cleanup after corruption can make a real visible reply look unproven.
+
+Rules:
+
+- distinguish diagnostic-only stores from delivery ledgers;
+- never drop prompt/runtime delivery ledgers without quarantine and rebuild status;
+- rebuild delivery stores from canonical destination writes, not provider session guesses alone;
+- do not let provider rebuild overwrite newer canonical destination evidence;
+- include recovery action and source in artifacts.
+
+Risk:
+
+`🎯 8   🛡️ 9   🧠 5`, roughly `100-240 LOC`.
+
+### 7.40 Stale OpenCode Runtime Can Write After Team Stop Or Relaunch
+
+A stopped team can still have a stale `opencode serve` process briefly alive. A restarted team can also have old session callbacks arriving after a new run is current.
+
+Rules:
+
+- validate current run/lane/tombstone immediately before every runtime-originated durable write;
+- reject stale evidence as stale runtime evidence, not as generic provider failure;
+- do not let stale delivery clear advisory, mark inbox read, update liveness, or emit task-log refresh;
+- stop/relaunch cleanup must not delete delivery ledgers before they are captured in artifacts;
+- tests must cover app restart with orphaned lane evidence and stale runtime process.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 5`, roughly `120-280 LOC`.
+
+### 7.41 Destination Write Succeeds But UI Warning Stays Stale
+
+Runtime delivery can correctly write a visible reply while renderer cache or member advisory still shows "delivery is being checked".
+
+Rules:
+
+- destination write emits the same event family as normal user-facing writes;
+- advisory invalidation follows proof-capable writes;
+- hidden automation rows still invalidate diagnostic/advisory caches;
+- worker-cache invalidation failure is diagnostic-only and does not block the durable write;
+- tests must assert both durable store state and renderer/event fanout.
+
+Risk:
+
+`🎯 8   🛡️ 8   🧠 4`, roughly `70-180 LOC`.
+
+### 7.42 Rebuild Can Turn Ambiguous Destination Rows Into False Success
+
+After corruption recovery, it is tempting to rebuild prompt ledger state from any matching visible row. That can hide a real transport failure or clear the wrong delivery.
+
+Rules:
+
+- strict relay/source/destination proof is required for visible proof;
+- exact runtime prompt identity is required for transport accepted state;
+- ambiguous destination matches remain ambiguous;
+- hidden automation rows only rebuild automation-intent deliveries;
+- stale run rows are ignored for current run rebuild.
+
+Risk:
+
+`🎯 8   🛡️ 9   🧠 5`, roughly `90-220 LOC`.
+
+### 7.43 Work-Sync Timing Can Create Either Long Delays Or Spam
+
+The member-work-sync queue has fast trigger defaults, but a broad quiet-window override or scheduled-only dispatch path can turn normal assignment wakeup into a minute-scale delay. The opposite mistake is sending work-sync while foreground delivery is still pending.
+
+Rules:
+
+- keep trigger-specific timing explicit;
+- do not let startup/member-spawn scans dispatch nudges before launch readiness;
+- foreground unread or accepted-pending delivery suppresses generic work-sync;
+- scheduled dispatcher recovers due outbox rows but does not replace direct delivery wake;
+- diagnostics must show why a nudge is queued, delayed, skipped, or rate-limited.
+
+Risk:
+
+`🎯 9   🛡️ 8   🧠 5`, roughly `120-260 LOC`.
+
+### 7.44 Slow Delivery Has No Single Correlation Timeline
+
+Without a correlated phase timeline, every slow run looks like "OpenCode is slow" even when the delay is actually queue timing, relay busy state, MCP repair, provider latency, or task-log projection.
+
+Rules:
+
+- add shared correlation fields to existing ledgers, not a cross-layer mega-log;
+- include phase timestamps from task assignment to first tool/proof;
+- keep timeline developer-only;
+- live tests should print the timeline on slow pass and failure.
+
+Risk:
+
+`🎯 8   🛡️ 9   🧠 4`, roughly `80-200 LOC`.
+
+### 7.45 UI Can Show "Working On" While Runtime Is Failed
+
+Task ownership and runtime liveness are different facts. If the card prioritizes task label over launch failure, users believe the agent is working while it cannot receive prompts.
+
+Rules:
+
+- runtime health/advisory status outranks task labels visually;
+- task label remains context, not liveness proof;
+- stale spawn snapshot after stop/offline must not resurrect working status;
+- hover/detail surfaces should separate assignment, runtime, lane/session, and worktree facts.
+
+Risk:
+
+`🎯 9   🛡️ 8   🧠 3`, roughly `50-130 LOC`.
+
+### 7.46 Transcript-Only Plain Text After Tool Error Can Look Like Success
+
+OpenCode may write useful text in its transcript after `message_send` fails. That text is not a delivered app message unless it lands in the durable destination store.
+
+Rules:
+
+- never clear delivery advisory from transcript-only fallback text;
+- retry/repair should preserve the user's logical message id;
+- task changes can be visible while reply proof remains missing;
+- do not synthesize app-visible replies from transcript text.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 4`, roughly `80-180 LOC`.
+
+### 7.47 Agenda Fingerprint Churn Can Cause Nudge Storms
+
+If volatile presentation data enters the agenda fingerprint, the system can invalidate valid reports on every refresh and repeatedly schedule sync nudges.
+
+Rules:
+
+- keep fingerprint payload semantic and minimal;
+- add regression tests before adding any new field to `AgendaFingerprintPayload`;
+- treat `sourceRevision` as dangerous until its semantics are documented and tested;
+- report token invalidation must happen because actionable work changed, not because UI state changed.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 4`, roughly `70-160 LOC`.
+
+### 7.48 Stale Report Token Can Suppress Real Work
+
+Offline/pending report replay can be useful, but accepting stale `caught_up` or `still_working` after the board changed would hide real work from the reconciler.
+
+Rules:
+
+- re-read current agenda on every report and replay;
+- reject stale fingerprint/token before applying leases;
+- rejected reports can be stored as diagnostics only;
+- pending replay never marks a member caught up unless current agenda is empty.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 5`, roughly `90-220 LOC`.
+
+### 7.49 Turn-Settled Event Can Be Lost Or Routed To Wrong Member
+
+Runtime hooks and observers are external edges. A crash between write and drain, duplicate file, stale provider payload, or wrong transcript match can silently break work-sync.
+
+Rules:
+
+- file state transitions are incoming -> processing -> processed/invalid;
+- stale processing recovery is tested;
+- provider mismatch and removed members are rejected;
+- duplicate events are harmless at queue/outbox level;
+- malformed files are quarantined, not retried forever.
+
+Risk:
+
+`🎯 8   🛡️ 9   🧠 5`, roughly `120-280 LOC`.
+
+### 7.50 Task Impact Routing Can Miss The Real Owner Or Ping Everyone
+
+Task-change routing is a tradeoff between narrow correctness and safe fallback. A bad resolver can either miss a member who needs a wakeup or enqueue the entire team too often.
+
+Rules:
+
+- owner/reviewer/lead/dependency resolution has direct unit coverage;
+- unknown task ID fallback is diagnostic and rate-limited downstream;
+- removed members are filtered;
+- resolver exceptions fall back to scan, not silent drop;
+- team-wide fallback must not bypass nudge readiness/cooldown gates.
+
+Risk:
+
+`🎯 8   🛡️ 8   🧠 5`, roughly `90-220 LOC`.
+
+### 7.51 Busy Signal Can Suppress Nudges Forever
+
+If a tool finish/reset event is missed, an in-memory active-tool busy flag can suppress sync nudges longer than intended.
+
+Rules:
+
+- busy is advisory, not authoritative;
+- every busy reason has a bounded retryAfter;
+- active tool state has a reset/drop path;
+- foreground delivery ignores generic work-sync busy;
+- busy-signal failure delays briefly and logs diagnostics.
+
+Risk:
+
+`🎯 8   🛡️ 8   🧠 4`, roughly `60-160 LOC`.
+
+### 7.52 Outbox Dispatch Without Revalidation Can Deliver Stale Nudges
+
+Planning and dispatch happen at different times. If dispatch trusts the planned row without reloading agenda and metrics, stale work-sync messages can wake agents after they already reported or completed work.
+
+Rules:
+
+- dispatch revalidates agenda, lifecycle, phase2 activation, busy, rate limit, and watchdog cooldown;
+- stale outbox items are superseded;
+- retryable blockers receive bounded nextAttemptAt;
+- delivered review-pickup event IDs prevent repeat delivery for the same request.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 5`, roughly `120-260 LOC`.
+
+### 7.53 Existing Inbox MessageId Can Hide Payload Drift
+
+Message ID idempotency is useful, but returning success for an existing row without checking payload shape can hide a stale or corrupted hidden automation message.
+
+Rules:
+
+- sink stays behind outbox payloadHash validation;
+- future sink reuse must compare payloadHash or messageKind/source/taskRefs;
+- existing row ambiguity is conflict, not delivered;
+- hidden automation rows remain debug-readable.
+
+Risk:
+
+`🎯 8   🛡️ 8   🧠 4`, roughly `70-160 LOC`.
+
+### 7.54 Broad Queue Quiet Window Can Reintroduce Minute-Scale Starts
+
+The event queue supports fast trigger defaults, but a broad `queueQuietWindowMs` override can delay `turn_settled` and `tool_finished` unless per-trigger timing is explicit.
+
+Rules:
+
+- do not use broad quietWindow as production tuning for all triggers;
+- preserve fast trigger defaults or explicit triggerTiming;
+- maxCoalesceWait is tested for each trigger family;
+- diagnostics expose the timing decision.
+
+Risk:
+
+`🎯 9   🛡️ 8   🧠 4`, roughly `60-150 LOC`.
+
+### 7.55 Targeted Recovery Can Accidentally Become Global Early Nudging
+
+OpenCode targeted recovery exists because OpenCode has a provider-specific runtime delivery path. Expanding that bypass to all providers would skip shadow-readiness safety.
+
+Rules:
+
+- targeted recovery stays provider-specific;
+- strict review pickup is the only cross-provider early exception;
+- non-OpenCode secondary members wait for phase2 readiness unless explicitly covered by a new provider adapter and tests;
+- dispatch-time safety checks still apply.
+
+Risk:
+
+`🎯 8   🛡️ 9   🧠 5`, roughly `80-200 LOC`.
+
+### 7.56 Status Read Refresh Can Become Hidden Work
+
+Refreshing stale work-sync status on read is useful, but a renderer poll should not become a hidden delivery loop.
+
+Rules:
+
+- stale read enqueues reconcile only;
+- queue coalesces repeated reads;
+- stale read never writes inbox or sends prompts directly;
+- inactive team checks remain authoritative.
+
+Risk:
+
+`🎯 8   🛡️ 8   🧠 4`, roughly `60-140 LOC`.
+
+### 7.57 Scheduled Dispatcher Can Mask Fresh Delivery Bugs
+
+If fresh assignment wakeups rely on the periodic dispatcher, users can see minute-scale delays and the root foreground delivery bug stays hidden.
+
+Rules:
+
+- scheduler is recovery-only;
+- fresh assignment uses foreground delivery and event queue;
+- slow-start diagnostics identify queue vs scheduler path;
+- scheduler only scans lifecycle-active teams.
+
+Risk:
+
+`🎯 9   🛡️ 8   🧠 4`, roughly `50-130 LOC`.
+
 ---
 
 ## 8. Implementation Sequence
@@ -3677,6 +5333,55 @@ Tasks:
 28. Add lane-registry lock failure tests proving accepted exact evidence survives `lanes.json` timeout.
 29. Add task-log tests proving exact session evidence does not depend on current lane registry success.
 30. Add runtime-delivery inbox dedupe tests proving returned existing messageId is used for proof/advisory clearing.
+31. Add `opencodeDeliveryAcceptanceContractVersion` or equivalent explicit bridge contract marker.
+32. Persist settlement mode/original bridge request ID on the app delivery ledger before command execution.
+33. Add bridge idempotency tests for same logical delivery, changed settlement mode, timeout recovery, and missing echoed idempotencyKey.
+34. Add runtime delivery journal tests separating idempotency conflict, destination write failure, and MCP-not-connected failure reasons.
+35. Add proof tests showing committed runtime delivery clears prompt advisory only through verified visible correlation.
+36. Add proof reader tests for direct user replies stored in `sentMessages.json`, member inbox replies, and cross-team runtime locations.
+37. Add regression proving unrelated `lead_process` sent message cannot satisfy OpenCode member proof.
+38. Add locked sent-message append/verify tests for concurrent direct OpenCode replies to user.
+39. Add trim-boundary tests proving the just-committed runtime delivery proof row is preserved.
+40. Add runtime delivery taskRefs schema tests and prompt artifact checks so refs are never silently dropped.
+41. Add runtime control lane-resolution tests so secondary member calls never fall back blindly to primary.
+42. Add OpenCode inbox relay priority tests so foreground messages beat work-sync nudges and accepted-pending foreground delivery stops the loop.
+43. Add busy-status tests proving work-sync scheduling is suppressed by unread/recent foreground messages without changing UI filtering.
+44. Add durable automation visibility tests so hidden work-sync/task-stall rows remain readable in diagnostics and delivery paths.
+45. Preserve `task_stall_remediation` and future automation message kinds through `TeamInboxReader` or reject unsupported kinds before write.
+46. Add OpenCode Changes backfill tests for delivery context hash stability, negative-cache invalidation, and current-contract duplicates-only caching.
+47. Add tests proving Task Log Stream native tool rows do not by themselves create reviewable file-change ledger entries.
+48. Add manifest recovery tests distinguishing diagnostic-only stores from prompt/runtime delivery ledgers.
+49. Add corruption/quarantine tests proving prompt delivery ledger evidence is not silently dropped or rewritten as primary lane.
+50. Update artifact/debug checklist so failures include relay priority, hidden automation rows, backfill context hash, and manifest recovery action.
+51. Add stopped/tombstoned runtime evidence tests for delivery, task event, heartbeat, bridge result, and relaunch-old-run callbacks.
+52. Add stale-runtime post-stop tests proving no sent message, inbox row, task attribution, advisory clear, or task-log refresh is written.
+53. Add cache/advisory invalidation tests for direct user reply, member inbox reply, hidden automation row, and task event.
+54. Add renderer event fanout tests proving `lead-message`, `inbox`, `member-advisory`, and `task-log-change` refresh the intended surfaces only.
+55. Add conservative rebuild tests proving strict destination proof can clear advisory but cannot invent accepted prompt transport state.
+56. Add ambiguous destination rebuild tests so multiple plausible replies remain pending/diagnostic instead of guessed.
+57. Add stale-run rebuild tests so destination rows from old runs cannot satisfy current run proof.
+58. Add artifact/debug checklist so stale evidence includes team/run/lane/evidenceKind/tombstone reason and cache invalidation result.
+59. Add member-work-sync trigger timing tests proving `turn_settled`/`tool_finished` stay fast and startup/member-spawn scans stay readiness-gated.
+60. Add work-sync foreground suppression tests proving unread/accepted-pending OpenCode delivery delays generic sync nudges without dropping them.
+61. Add scheduled nudge dispatcher recovery tests for due outbox rows after app restart.
+62. Add delivery latency timeline builder and tests using existing ledgers/audit journals as sources.
+63. Add live/safe E2E diagnostics that print phase timings on slow OpenCode assignment runs.
+64. Add member card/status tests where runtime failure/advisory outranks task "working on" while preserving task context.
+65. Add transcript-only plain-text fallback tests so `message_send Not connected` does not clear proof or synthesize a reply.
+66. Add repair-policy tests that MCP readiness repair precedes retry after tool-error fallback.
+67. Add agenda fingerprint stability tests for reorder, generatedAt, presentation-only changes, dependency/review semantics, and future `sourceRevision` behavior.
+68. Add report token and pending replay tests proving stale fingerprints/tokens cannot suppress current actionable work.
+69. Add runtime turn-settled spool crash-recovery, invalid/quarantine, provider-mismatch, and duplicate-source tests.
+70. Add task impact resolver tests for owner, reviewer, lead clarification, broken dependencies, dependent owners, unknown task fallback, and removed members.
+71. Add busy signal tests proving active/recent tool activity is time-bounded, resettable, diagnostic, and advisory-only.
+72. Add implementation diagnostics so queue fallback, report rejection, busy suppression, and turn-settled resolution are visible in audit/debug artifacts.
+73. Add outbox planner/dispatcher tests proving plan-time rows are always revalidated at claim-time before inbox writes.
+74. Add sink/outbox payload drift tests so existing messageId cannot mask changed text/taskRefs/messageKind/source.
+75. Add targeted recovery tests proving OpenCode and lead bypasses do not become broad non-OpenCode early nudges.
+76. Add queue timing tests for default fast triggers, broad quietWindow hazards, follow-up rerun timing, and diagnostics.
+77. Add stale status read-refresh tests proving renderer polling coalesces and never writes inbox or prompts directly.
+78. Add scheduled dispatcher recovery tests separating fresh assignment wake from periodic due-row recovery.
+79. Add slow-start artifact fields for nudge origin: `foreground_delivery`, `event_queue`, `scheduled_dispatcher`, or `manual_refresh`.
 
 Commit:
 
@@ -4069,8 +5774,17 @@ pnpm vitest run \
   test/main/services/team/OpenCodeTaskLogStreamSource.test.ts \
   test/main/services/team/TaskLogOpenCodeSessionEvidenceSource.test.ts \
   test/main/services/team/OpenCodePromptDeliveryLedger.test.ts \
+  test/main/services/team/RuntimeDeliveryService.test.ts \
   test/main/services/team/OpenCodeRuntimeDeliveryAdvisoryPolicy.test.ts \
-  test/main/services/team/TeamMemberRuntimeAdvisoryService.test.ts
+  test/main/services/team/TeamMemberRuntimeAdvisoryService.test.ts \
+  test/main/services/team/ChangeExtractorService.test.ts \
+  test/main/services/team/TaskChangeLedgerReader.test.ts \
+  test/main/services/team/RuntimeStoreManifest.test.ts \
+  test/main/services/team/OpenCodeRuntimeManifestEvidenceReader.test.ts \
+  test/main/services/team/RuntimeRunTombstoneStore.test.ts \
+  test/main/services/team/OpenCodeRuntimeDeliveryProofReader.test.ts \
+  test/main/services/team/TeamMessageFeedService.test.ts \
+  test/main/services/team/TeamInboxReader.test.ts
 ```
 
 Add or extend tests for:
@@ -4094,9 +5808,70 @@ Add or extend tests for:
 - `lanes.json` lock timeout after prompt acceptance does not delete or downgrade exact delivery evidence.
 - exact session task-log lookup works when current lane registry points at a newer session.
 - runtime-delivery inbox dedupe returns existing messageId and downstream proof/advisory code uses that ID.
+- bridge idempotency remains stable for one delivery attempt and timeout recovery requires exact echoed identity.
+- runtime delivery journal conflicts are tested separately from MCP readiness failures.
+- visible proof reader covers the actual runtime delivery destination stores, including direct user replies in sent messages.
+- concurrent direct user reply writes to `sentMessages.json` preserve all committed proof rows.
+- runtime delivery taskRefs schema is explicit and invalid shapes cannot be silently dropped.
+- unresolved secondary OpenCode runtime control calls fail closed instead of falling back to primary lane.
+- OpenCode relay priority keeps foreground inbox messages ahead of `member_work_sync_nudge`.
+- hidden automation rows remain durable and available through diagnostics while normal Messages stays clean.
+- `task_stall_remediation` and `member_work_sync_nudge` survive inbox reader normalization.
+- OpenCode file-change backfill preserves delivery context hash and does not reuse stale negative cache.
+- OpenCode metadata-only evidence is rendered as manual review/unavailable, not as no changes.
+- runtime store manifest recovery does not drop or downgrade prompt/runtime delivery ledgers.
+- stopped/tombstoned OpenCode runtime evidence cannot write sent messages, inbox rows, task attribution, liveness, or advisory-clearing proof.
+- stale old-run callbacks after relaunch are diagnostic-only and cannot affect current run UI state.
+- direct user reply destination write emits feed refresh and member-advisory invalidation.
+- member inbox runtime reply emits inbox refresh and invalidates the owner advisory.
+- hidden automation writes remain hidden in normal Messages but still invalidate diagnostic/advisory state.
+- conservative ledger rebuild can use strict visible proof but cannot invent prompt acceptance.
+- ambiguous or stale-run rebuild candidates remain pending/diagnostic instead of guessed.
+- member-work-sync fast triggers remain fast and readiness-gated triggers cannot dispatch during launch bootstrap.
+- foreground unread and accepted-pending OpenCode deliveries suppress generic work-sync without dropping outbox recovery.
+- latency timeline can identify whether delay came from queue, relay, MCP repair, prompt acceptance, model/tool execution, proof, or task-log projection.
+- runtime failure/advisory status outranks task "working on" in member card and hover surfaces.
+- transcript-only plain text after `message_send Not connected` remains proof-missing until a real destination write or task progress proof appears.
+- agenda fingerprint remains stable across generatedAt, task array order, and presentation-only changes.
+- report token and pending replay reject stale fingerprint/token reports without extending old leases.
+- runtime turn-settled spool recovers stale processing files and quarantines invalid payloads.
+- target resolver rejects provider mismatch, removed member, reserved member, and deleted team.
+- task impact resolver keeps owner/reviewer/lead/dependency routing narrow and uses diagnostic team-wide fallback only when uncertain.
+- busy signal is bounded, resettable, and cannot block normal foreground delivery.
+- outbox dispatch revalidates agenda, lifecycle, activation, busy, rate limit, and watchdog cooldown at claim-time.
+- inbox nudge sink is tested behind outbox payloadHash validation and cannot hide payload drift.
+- targeted recovery remains OpenCode/lead-specific and does not bypass phase2 for arbitrary providers.
+- event queue fast triggers stay fast even when coalescing and scheduler recovery are present.
+- stale status reads enqueue coalesced refresh only and never become direct delivery.
+- scheduled dispatcher is tested as recovery for due rows, not the fresh assignment wake path.
 
 ```bash
 pnpm vitest run \
+  test/features/member-work-sync/core/ActionableWorkAgenda.test.ts \
+  test/features/member-work-sync/core/MemberWorkSyncReportValidator.test.ts \
+  test/features/member-work-sync/main/HmacMemberWorkSyncReportTokenAdapter.test.ts \
+  test/features/member-work-sync/main/JsonMemberWorkSyncStore.test.ts \
+  test/features/member-work-sync/main/RuntimeTurnSettledIngestor.test.ts \
+  test/features/member-work-sync/main/FileRuntimeTurnSettledEventStore.test.ts \
+  test/features/member-work-sync/main/TeamRuntimeTurnSettledTargetResolver.test.ts \
+  test/features/member-work-sync/main/MemberWorkSyncTaskImpactResolver.test.ts \
+  test/features/member-work-sync/main/MemberWorkSyncTeamChangeRouter.test.ts \
+  test/features/member-work-sync/main/MemberWorkSyncToolActivityBusySignal.test.ts \
+  test/features/member-work-sync/main/TeamInboxMemberWorkSyncNudgeSink.test.ts \
+  test/features/member-work-sync/main/MemberWorkSyncNudgeDispatchScheduler.test.ts \
+  test/features/member-work-sync/main/MemberWorkSyncEventQueue.test.ts \
+  test/features/member-work-sync/core/application/MemberWorkSyncNudgeActivationPolicy.test.ts \
+  test/features/member-work-sync/core/application/MemberWorkSyncTargetedRecoveryPolicy.test.ts \
+  test/features/member-work-sync/core/MemberWorkSyncUseCases.test.ts
+```
+
+```bash
+pnpm vitest run \
+  test/features/member-work-sync/main/MemberWorkSyncEventQueue.test.ts \
+  test/features/member-work-sync/main/MemberWorkSyncNudgeDispatchScheduler.test.ts \
+  test/features/member-work-sync/main/MemberWorkSyncNudgeDispatcher.test.ts \
+  test/features/member-work-sync/main/MemberWorkSyncNudgeOutboxPlanner.test.ts \
+  test/shared/utils/teamInternalControlMessages.test.ts \
   test/renderer/utils/teamMessageFiltering.test.ts \
   test/features/member-work-sync/main/createMemberWorkSyncFeature.test.ts
 ```
@@ -4118,8 +5893,10 @@ bun test \
 ```bash
 pnpm vitest run \
   test/main/services/team/BoardTaskLogStreamIntegration.test.ts \
+  test/main/services/team/TeamAgentLaunchMatrix.safe-e2e.test.ts \
   test/renderer/components/team/taskLogs/TaskLogStreamSection.opencode-fixture-e2e.test.tsx \
-  test/renderer/components/team/dialogs/TaskDetailDialog.test.tsx
+  test/renderer/components/team/dialogs/TaskDetailDialog.test.tsx \
+  test/renderer/store/teamChangeThrottle.test.ts
 ```
 
 ### Typecheck And Build
@@ -4157,6 +5934,12 @@ Expected live assertions:
 - a new OpenCode task assignment is delivered through normal delivery without waiting for member-work-sync phase2 activation.
 - live report includes the detected OpenCode bridge capability snapshot.
 - if a lane registry diagnostic write fails after acceptance in a fault-injected run, accepted prompt identity remains observable.
+- direct OpenCode reply to user appears in Messages and clears advisory through the same proof reader.
+- stopping a team before a stale OpenCode callback arrives produces no visible reply and no advisory clear.
+- relaunching a team then receiving an old-run callback leaves the new run unaffected.
+- advisory/banner disappears after a valid visible reply without requiring a manual full refresh.
+- slow-pass report includes phase timings for assignment, inbox, relay, MCP readiness, prompt accepted, first tool, task_start, visible proof, and work-sync decision.
+- `message_send Not connected` live/fault-injected run is retried through MCP repair and never marked successful from transcript-only text.
 
 ---
 
@@ -4197,6 +5980,10 @@ Expected live assertions:
 - payload hashes are stable across transport-only accept-fast fields and change for real payload changes;
 - old ledger schema-1 records missing new prompt identity fields still parse and update safely;
 - acceptanceUnknown is not upgraded to accepted without strict acceptance evidence;
+- settlement mode is persisted before first send and not recomputed differently during retry;
+- original bridge request ID is stored for commandStatus recovery;
+- bridge command result echo of `idempotencyKey` is required before state mutation;
+- timeout recovery that lacks exact prompt/session identity remains unknown, not accepted;
 - observation timeout after acceptance does not immediately duplicate prompt;
 - relay loop stops after accepted pending delivery and keeps the same member serialized;
 - watchdog proof logic remains authoritative;
@@ -4228,6 +6015,7 @@ Expected live assertions:
 ### 12.6 Cross-Repo And Lane Registry Checklist
 
 - OpenCode bridge capability is detected before acceptance mode is used;
+- delivery acceptance support is represented by explicit contract version, not generic command presence alone;
 - missing capability falls back to observed mode with diagnostic, not guessed accept-fast;
 - acceptance-mode response without exact runtime prompt identity remains `acceptanceUnknown`;
 - old orchestrator response fixtures are covered by tests;
@@ -4246,6 +6034,260 @@ Expected live assertions:
 - dedupe never applies to work-sync, task-stall, or system notification rows;
 - identical text without `source="runtime_delivery"` and exact relay proof is not enough;
 - taskRef merge after dedupe is tested and does not widen proof semantics.
+
+### 12.8 Runtime Delivery Journal Checklist
+
+- `RuntimeDeliveryService` remains the only path that writes OpenCode runtime `message_send` destinations;
+- destination write is verified before journal commit;
+- duplicate identical idempotency key returns existing committed location;
+- same idempotency key with different payload hash returns conflict;
+- conflict is not mapped to MCP not connected;
+- committed runtime delivery can feed visible proof correlation but cannot directly mark arbitrary prompt deliveries responded;
+- runtime delivery journal reconciliation emits diagnostics only and never re-prompts OpenCode;
+- destination change events stay scoped to the actual destination.
+
+### 12.9 Visible Proof Store Parity Checklist
+
+- proof reader scans or resolves every destination kind written by runtime delivery ports;
+- direct user replies stored in sent messages can clear advisory through strict proof;
+- member inbox replies remain inbox-scoped;
+- cross-team replies remain cross-team scoped;
+- source string mismatch is diagnostic unless committed runtime delivery location proves the same message;
+- unrelated lead/process messages cannot satisfy OpenCode member delivery proof.
+
+### 12.10 Sent Messages Store Checklist
+
+- sent-message append path is locked or otherwise concurrency-safe;
+- duplicate destination message ID is detected under lock;
+- append verifies the row after write;
+- trim keeps the just-written row;
+- read normalizer preserves fields needed by runtime proof;
+- normal live lead message overlay tests stay green.
+
+### 12.11 Runtime TaskRefs Contract Checklist
+
+- MCP prompt/tool schema and app normalizer agree on taskRefs shape;
+- invalid taskRefs fail loudly or are preserved through a documented normalizer;
+- string refs have defined taskId/displayId semantics;
+- structured refs hash deterministically if supported;
+- proof reader and task-log evidence use the same normalized refs;
+- prompt artifact tests assert the documented schema.
+
+### 12.12 Runtime Control Lane Resolution Checklist
+
+- non-lead secondary member control calls require member-owned lane or exact session evidence;
+- true primary OpenCode runtime remains supported;
+- message delivery, task event, and heartbeat share the same fail-closed resolver;
+- stale launch-state and missing lane registry are covered by tests;
+- rejection diagnostics include enough member/run/session context for artifact debugging;
+- no destination write happens before lane/evidence validation.
+
+### 12.13 OpenCode Inbox Relay Priority Checklist
+
+- priority sort direction is documented in code and tests;
+- normal foreground unread rows sort before `member_work_sync_nudge`;
+- system notifications do not accidentally outrank user/task foreground rows;
+- accepted-pending foreground delivery leaves later rows unread and queued;
+- `onlyMessageId` is treated as a controlled exact override, not broad scheduling;
+- busy-status diagnostics include active message kind and message id;
+- work-sync scheduler tests assert it backs off when foreground work is unread or recent.
+
+### 12.14 Automation Hiding Checklist
+
+- hidden automation rows are not deleted or marked read by UI filtering;
+- raw inbox diagnostics can show hidden automation rows;
+- `TeamInboxReader` preserves all supported `InboxMessageKind` values;
+- `TeamMessageFeedService` and renderer filtering have separate tests;
+- delivery, watchdog, prompt ledger rebuild, and work-sync never use UI-filtered messages as source of truth;
+- normal Messages and counts hide work-sync by default;
+- debug/audit views can opt into automation rows without changing durable state.
+
+### 12.15 OpenCode File-Change Backfill Checklist
+
+- delivery context file/hash contains the exact fields backfill needs;
+- retry-control text does not change delivery context hash;
+- negative backfill cache is invalidated when delivery context appears;
+- current-contract duplicates-only evidence is cacheable and old-contract duplicates-only evidence is not;
+- metadata-only OpenCode evidence remains manual-review/unavailable;
+- task-log native tool projection cannot synthesize reviewable file-change ledger entries;
+- summary-only requests wait for bounded backfill when delivery context exists;
+- backfill diagnostics include task/member/session/lane/context hash.
+
+### 12.16 Runtime Store Recovery Checklist
+
+- runtime diagnostics store can be dropped without touching delivery evidence;
+- prompt delivery ledger and runtime delivery journal are quarantined/rebuilt, not silently deleted;
+- canonical destination writes win over provider session rebuild data;
+- readiness-blocking launch store corruption blocks new delivery but keeps existing evidence available for proof/debug;
+- secondary lane recovery never writes evidence into primary lane;
+- artifact packs include manifest recovery action, source, and quarantine path;
+- recovery tests cover corrupted ledger, stale provider session, and existing committed destination row.
+
+### 12.17 Stopped Runtime Evidence Checklist
+
+- every OpenCode runtime write path calls the same fail-closed evidence gate before writing;
+- evidence gate receives teamName, runId, laneId, and evidenceKind;
+- stopped pure team rejects runtime delivery before sent-message/inbox write;
+- stopped mixed secondary lane rejects task event and heartbeat before attribution/liveness write;
+- stale old-run callback after relaunch cannot clear current warning or mark current delivery responded;
+- tombstone rejection is recorded as stale evidence with reason, not provider error;
+- stop/relaunch cleanup preserves ledgers/artifacts needed for debugging;
+- orphaned stale OpenCode process cleanup remains team/run/lane scoped.
+
+### 12.18 Cache And Advisory Invalidation Checklist
+
+- direct user reply emits `lead-message` refresh and member-advisory invalidation;
+- member inbox reply emits `inbox` refresh and member-advisory invalidation;
+- task event/attribution emits narrow `task-log-change`;
+- hidden automation write invalidates diagnostics/advisory where needed without showing normal Messages rows;
+- unsafe member name falls back to team-scoped advisory invalidation;
+- worker unavailable/invalidation failure is diagnostic-only after durable write;
+- tests assert both durable store state and renderer refresh behavior.
+
+### 12.19 Conservative Ledger Rebuild Checklist
+
+- visible proof rebuild requires strict relay/source/destination evidence;
+- prompt transport acceptance rebuild requires exact runtime prompt identity or command outcome proof;
+- ambiguous candidates remain pending/diagnostic;
+- hidden automation rows only rebuild automation-intent deliveries;
+- stale run rows cannot rebuild current run state;
+- rebuild preserves messageKind, source, relayOfMessageId, taskRefs, destination kind, and destination message ID;
+- rebuild never marks inbox read or mutates user-visible rows.
+
+### 12.20 Member-Work-Sync Timing Checklist
+
+- trigger-specific defaults are documented in tests;
+- broad `queueQuietWindowMs` cannot silently delay `turn_settled` and `tool_finished` production paths;
+- startup/member-spawn scans can materialize status without dispatching nudges before launch readiness;
+- `canDispatchNudges` is checked before dispatch and again effectively through revalidation;
+- foreground unread delivery and accepted-pending OpenCode delivery suppress generic work-sync;
+- scheduled dispatcher recovers due outbox rows after restart but is not the primary fresh-assignment path;
+- queue diagnostics expose trigger reasons, runAt, maxRunAt, queued age, running age, and rerunRequested.
+
+### 12.21 Delivery Latency Timeline Checklist
+
+- timeline is derived from existing ledgers/audit journals where possible;
+- every phase uses shared correlation IDs instead of text matching;
+- missing phases are explicit diagnostics, not silent gaps;
+- slow pass report distinguishes queue delay, relay busy wait, MCP repair, prompt acceptance, model/tool execution, proof wait, task-log projection, and work-sync decision;
+- timeline rows are developer/audit diagnostics, not normal Messages rows;
+- live E2E prints timeline on failure or threshold breach.
+
+### 12.22 Member Status Presentation Checklist
+
+- runtime failure/advisory/bootstrap state has higher priority than task labels;
+- task assignment remains visible as context, not liveness proof;
+- `registered_only` and runtime-process-without-bootstrap are not shown as online/working;
+- stale spawn-status fetch after stopped/offline is ignored;
+- hover/detail separates task, runtime diagnostic, lane/session, and worktree facts;
+- tests cover failed OpenCode secondary with assigned task.
+
+### 12.23 Tool-Error Plain Text Fallback Checklist
+
+- transcript-only assistant text after `message_send` failure is not visible proof;
+- MCP/session readiness repair runs before retry prompt;
+- task/file progress can be shown separately from reply delivery proof;
+- app never synthesizes user-visible reply from transcript-only text;
+- idempotency conflict, destination write failure, MCP not connected, and missing tool stay distinct;
+- later real runtime destination write clears advisory through normal proof reader.
+
+### 12.24 Agenda Fingerprint Stability Checklist
+
+- fingerprint payload contains only actionable work semantics;
+- `generatedAt`, UI row order, unread counts, duration labels, and cache revisions are excluded;
+- item order is canonical and independent from task array order;
+- evidence arrays are sorted before hashing;
+- dependency/review/owner/status changes intentionally change fingerprint;
+- unrelated task changes for other members do not change this member fingerprint unless they affect dependencies, review, or lead clarification;
+- any future `sourceRevision` addition includes a written semantic contract and regression tests.
+
+### 12.25 Report Token And Replay Checklist
+
+- token binds teamName, memberName, agendaFingerprint, and expiry;
+- reporter always reloads current agenda before validation;
+- `caught_up` requires current empty agenda;
+- `still_working` and `blocked` require current fingerprint;
+- `blocked` requires current blocker evidence;
+- pending replay goes through the same reporter/validator as live reports;
+- stale/expired/foreign reports are diagnostic-only and cannot extend leases or clear `needs_sync`;
+- member inactive/team inactive replay is marked superseded rather than accepted.
+
+### 12.26 Runtime Turn-Settled Spool Checklist
+
+- incoming event files are not claimable until fully written;
+- claim path moves incoming files to processing before reading;
+- stale processing recovery is bounded and ignores `.meta.json`;
+- invalid/oversized/unsupported-provider files go to invalid with reason;
+- non-terminal OpenCode outcomes are processed as ignored and do not enqueue reconcile;
+- provider-owned events require explicit team/member and configured provider match;
+- Claude transcript/session matching rejects wrong provider, deleted team, removed member, and reserved member;
+- duplicate source events are harmless at queue/outbox level.
+
+### 12.27 Task Impact Routing Checklist
+
+- owner changes enqueue only active owner unless fallback is required;
+- review changes enqueue current-cycle reviewer and lead for self-review/missing reviewer;
+- lead clarification and broken dependencies enqueue lead;
+- dependent task owners are enqueued when their blocker changes;
+- unknown/missing task ID fallback is diagnostic and still passes through readiness/cooldown;
+- file-path detail parsing accepts only task JSON names, not arbitrary paths;
+- resolver failure falls back to team scan instead of dropping the event.
+
+### 12.28 Busy Signal Checklist
+
+- busy signal is advisory-only and cannot block normal foreground delivery;
+- active tool state can be cleared by finish, reset, offline, or bounded stale cleanup;
+- recent-finish grace is short and tested;
+- busy-signal errors return bounded retryAfter and diagnostics;
+- reset can clear one member or whole team;
+- future persisted busy state must be team/run/member scoped and TTL-bound.
+
+### 12.29 Nudge Outbox Revalidation Checklist
+
+- planner writes durable intent only after current status and activation checks;
+- dispatcher reloads current agenda before inbox write;
+- dispatcher supersedes stale fingerprint or empty agenda;
+- dispatcher re-checks lifecycle, phase2 activation, rate limit, busy signal, and watchdog cooldown;
+- retryable failures include bounded `nextAttemptAt`;
+- terminal failures are not revived without new fingerprint or supported intent key;
+- review-pickup delivery is tracked by reviewRequestEventId, not only agenda fingerprint.
+
+### 12.30 Inbox Nudge Sink Checklist
+
+- production calls sink only through outbox dispatcher;
+- outbox payloadHash conflict blocks sink call;
+- existing messageId path is safe only for already validated payload equivalence;
+- writer-returned messageId is recorded consistently;
+- hidden automation row stays durable and debug-readable;
+- future direct sink reuse must add payloadHash or messageKind/source/taskRefs validation.
+
+### 12.31 Targeted Recovery Checklist
+
+- OpenCode targeted recovery requires providerId `opencode`;
+- lead targeted recovery requires canonical lead-like member identity;
+- Codex/Anthropic/Gemini secondary agents stay behind phase2 readiness unless strict review pickup;
+- strict review pickup requires reviewRequestEventId and non-ambiguous evidence;
+- targeted recovery still goes through dispatch-time lifecycle, busy, cooldown, rate limit, and inbox checks;
+- tests cover both activation policy and dispatcher behavior.
+
+### 12.32 Queue And Scheduler Timing Checklist
+
+- default trigger timings remain documented by tests;
+- `turn_settled` and `tool_finished` remain fast;
+- broad `queueQuietWindowMs` is not used to tune production fast triggers without explicit triggerTiming;
+- coalescing preserves earlier/urgent runAt;
+- running-item follow-up keeps urgent reasons and schedules quickly;
+- scheduled dispatcher recovers due outbox rows and does not replace fresh assignment delivery;
+- diagnostics expose nudge origin and queue timing.
+
+### 12.33 Stale Status Read Refresh Checklist
+
+- stale read enqueues reconcile only;
+- repeated reads coalesce while queued or running;
+- stale read cannot write inbox, call OpenCode, or dispatch a nudge directly;
+- inactive/stopped team remains inactive after refresh;
+- diagnostics separate stale refresh enqueue from actual nudge delivery;
+- renderer polling is not required for correctness.
 
 ---
 
@@ -4289,6 +6331,30 @@ This hardening is complete when:
 - Accept-fast is gated by explicit orchestrator capability.
 - Lane registry failures do not erase accepted exact prompt/session evidence.
 - Runtime-delivery dedupe returns existing message IDs without weakening proof rules.
+- Runtime `message_send` idempotency conflicts remain separate from MCP readiness repair.
+- Proof reader sees the same destination stores that runtime delivery writes.
+- Direct user sent-message writes are concurrency-safe before they are used as proof.
+- Runtime delivery taskRefs are preserved or rejected explicitly.
+- Secondary OpenCode runtime control calls cannot write under the wrong lane.
+- Foreground OpenCode inbox rows cannot be delayed behind hidden work-sync automation.
+- Work-sync/task-stall automation is hidden from normal Messages without losing durable diagnostics or delivery state.
+- OpenCode Changes backfill remains driven by task-change ledger evidence, not task-log native rows.
+- Runtime store recovery cannot silently drop or downgrade prompt/runtime delivery ledgers.
+- Stopped/tombstoned OpenCode runtime callbacks cannot write visible state or clear current-run advisories.
+- Destination writes reliably invalidate message feed, task-log, and member-advisory caches without making cache refresh a correctness dependency.
+- Ledger rebuild is conservative: strict proof can clear warnings, but missing prompt identity cannot be upgraded to accepted transport.
+- Member-work-sync fast triggers remain low-latency while launch/startup scans stay readiness-gated.
+- A delivery latency timeline can explain slow OpenCode starts without conflating queue, relay, MCP, model, proof, and UI cache delays.
+- Member status surfaces cannot show a failed/unbootstrapped OpenCode teammate as simply "working on".
+- Transcript-only plain text after OpenCode tool error cannot clear delivery proof or synthesize a user-visible reply.
+- Agenda fingerprints do not churn on presentation-only changes, and reports/tokens are accepted only for the current fingerprint.
+- Runtime turn-settled events survive app restarts, route only to the configured active member/provider, and duplicate safely.
+- Task impact routing is narrow for known task changes and diagnostic/rate-limited for team-wide fallback.
+- Busy signal remains bounded advisory state and cannot suppress foreground delivery or nudges indefinitely.
+- Nudge outbox dispatch revalidates current agenda and safety gates immediately before inbox write.
+- Inbox nudge idempotency cannot hide changed payload, message kind, source, or task refs.
+- Targeted recovery remains provider-specific and does not become a global phase2 bypass.
+- Queue fast triggers, stale-read refresh, and scheduler recovery are separated and explainable in diagnostics.
 - Live smoke proves a task assignment reaches OpenCode, starts work, produces task logs, and settles member-work-sync without duplicate nudges.
 
 ---
