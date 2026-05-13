@@ -4,16 +4,19 @@ import { ClaudeMultimodelBridgeService } from '../../../runtime/ClaudeMultimodel
 import { canonicalizeAgentTeamsToolName } from '../../agentTeamsToolNames';
 import { ClaudeBinaryResolver } from '../../ClaudeBinaryResolver';
 import { TeamTaskReader } from '../../TeamTaskReader';
+import { getTeamsBasePath } from '@main/utils/pathDecoder';
 import { BoardTaskExactLogChunkBuilder } from '../exact/BoardTaskExactLogChunkBuilder';
 
 import { mapOpenCodeRuntimeTranscriptLogMessageToParsedMessage } from './OpenCodeRuntimeProjectionMapper';
 import { OpenCodeTaskLogAttributionStore } from './OpenCodeTaskLogAttributionStore';
+import { TaskLogOpenCodeSessionEvidenceSource } from './TaskLogOpenCodeSessionEvidenceSource';
 
 import type { OpenCodeRuntimeTranscriptLogMessage } from '../../../runtime/ClaudeMultimodelBridgeService';
 import type {
   OpenCodeTaskLogAttributionReader,
   OpenCodeTaskLogAttributionRecord,
 } from './OpenCodeTaskLogAttributionStore';
+import type { OpenCodeTaskLogSessionEvidenceReader } from './TaskLogOpenCodeSessionEvidenceSource';
 import type { ParsedMessage } from '@main/types';
 import type {
   BoardTaskLogActor,
@@ -191,6 +194,7 @@ function stableAttributionKey(records: OpenCodeTaskLogAttributionRecord[]): stri
       JSON.stringify([
         normalizeMemberName(record.memberName),
         record.scope,
+        record.laneId ?? '',
         record.sessionId ?? '',
         record.since ?? '',
         record.until ?? '',
@@ -200,6 +204,34 @@ function stableAttributionKey(records: OpenCodeTaskLogAttributionRecord[]): stri
     )
     .sort()
     .join('|');
+}
+
+function mergeTaskLogAttributionRecords(
+  attributionRecords: OpenCodeTaskLogAttributionRecord[],
+  sessionEvidenceRecords: OpenCodeTaskLogAttributionRecord[]
+): OpenCodeTaskLogAttributionRecord[] {
+  const merged: OpenCodeTaskLogAttributionRecord[] = [];
+  const seen = new Set<string>();
+  for (const record of [...attributionRecords, ...sessionEvidenceRecords]) {
+    const key = JSON.stringify([
+      record.taskId,
+      normalizeMemberName(record.memberName),
+      record.scope,
+      record.laneId ?? '',
+      record.sessionId ?? '',
+      record.since ?? '',
+      record.until ?? '',
+      record.startMessageUuid ?? '',
+      record.endMessageUuid ?? '',
+      record.source ?? '',
+    ]);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(record);
+  }
+  return merged;
 }
 
 function normalizeTaskRef(value: unknown): string | null {
@@ -959,7 +991,12 @@ export class OpenCodeTaskLogStreamSource {
     private readonly binaryResolver: BinaryResolverLike = ClaudeBinaryResolver,
     private readonly taskReader: TeamTaskReader = new TeamTaskReader(),
     private readonly chunkBuilder: BoardTaskExactLogChunkBuilder = new BoardTaskExactLogChunkBuilder(),
-    private readonly attributionStore: OpenCodeTaskLogAttributionReader = new OpenCodeTaskLogAttributionStore()
+    private readonly attributionStore: OpenCodeTaskLogAttributionReader = new OpenCodeTaskLogAttributionStore(),
+    private readonly sessionEvidenceSource: OpenCodeTaskLogSessionEvidenceReader = new TaskLogOpenCodeSessionEvidenceSource(
+      {
+        teamsBasePath: getTeamsBasePath(),
+      }
+    )
   ) {}
 
   private async resolveTask(teamName: string, taskId: string): Promise<TeamTask | null> {
@@ -979,12 +1016,26 @@ export class OpenCodeTaskLogStreamSource {
       return null;
     }
 
-    const attributionRecords = await this.attributionStore.readTaskRecords(teamName, taskId);
-    if (!task.owner?.trim() && attributionRecords.length === 0) {
+    const [attributionRecords, sessionEvidenceRecords] = await Promise.all([
+      this.attributionStore.readTaskRecords(teamName, taskId),
+      this.sessionEvidenceSource.readTaskRecords(teamName, task).catch((error) => {
+        logger.warn(
+          `[${teamName}/${task.id}] OpenCode task-log session evidence lookup failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+        return [];
+      }),
+    ]);
+    const taskLogRecords = mergeTaskLogAttributionRecords(
+      attributionRecords,
+      sessionEvidenceRecords
+    );
+    if (!task.owner?.trim() && taskLogRecords.length === 0) {
       return null;
     }
 
-    const cacheKey = `${teamName}::${stableTaskWindowKey(task)}::${stableAttributionKey(attributionRecords)}`;
+    const cacheKey = `${teamName}::${stableTaskWindowKey(task)}::${stableAttributionKey(taskLogRecords)}`;
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.response;
@@ -995,7 +1046,7 @@ export class OpenCodeTaskLogStreamSource {
       return await existingPromise;
     }
 
-    const promise = this.buildTaskLogStream(teamName, task, attributionRecords)
+    const promise = this.buildTaskLogStream(teamName, task, taskLogRecords)
       .catch((error) => {
         logger.warn(
           `[${teamName}/${task.id}] OpenCode task-log fallback failed: ${
@@ -1169,8 +1220,11 @@ export class OpenCodeTaskLogStreamSource {
       }
 
       const memberKey = normalizeMemberName(memberName);
+      const laneId = record.laneId?.trim();
       const sessionId = record.sessionId?.trim();
-      const transcriptCacheKey = `${memberKey}::${sessionId ?? 'current'}`;
+      const transcriptCacheKey = `${memberKey}::${laneId ?? 'current-lane'}::${
+        sessionId ?? 'current'
+      }`;
       if (!transcriptCache.has(transcriptCacheKey)) {
         transcriptCache.set(
           transcriptCacheKey,
@@ -1178,6 +1232,7 @@ export class OpenCodeTaskLogStreamSource {
             teamId: teamName,
             memberName,
             limit: ATTRIBUTED_TRANSCRIPT_LIMIT,
+            ...(laneId ? { laneId } : {}),
             ...(sessionId ? { sessionId } : {}),
           })
         );
@@ -1191,10 +1246,13 @@ export class OpenCodeTaskLogStreamSource {
         continue;
       }
 
-      const filteredMessages = filterMessagesForAttribution(
-        transcript.logProjection?.messages ?? [],
-        record
-      );
+      const projectedMessages = transcript.logProjection?.messages ?? [];
+      const markerProjection =
+        record.source === 'delivery_ledger'
+          ? buildTaskMarkerProjection(projectedMessages, teamName, task)
+          : null;
+      const filteredMessages =
+        markerProjection?.messages ?? filterMessagesForAttribution(projectedMessages, record);
       if (filteredMessages.length === 0) {
         continue;
       }

@@ -264,6 +264,95 @@ describe('OpenCodeTaskLogStreamSource', () => {
     expect(second).toEqual(first);
   });
 
+  it('uses exact OpenCode session evidence from delivery ledgers before current-lane fallback', async () => {
+    const bridge = {
+      getOpenCodeTranscript: vi.fn(async (_binaryPath, request: { sessionId?: string }) => ({
+        sessionId: request.sessionId ?? 'current-session',
+        logProjection: {
+          messages: [
+            textLogMessage({
+              uuid: 'runtime-user-evidence',
+              type: 'user',
+              role: 'user',
+              timestamp: '2026-04-21T10:01:00.000Z',
+              sessionId: 'session-from-ledger',
+              content: [{ type: 'text', text: 'Start task-a now' }],
+            }),
+            taskMarkerLogMessage({
+              uuid: 'assistant-start-evidence',
+              parentUuid: 'runtime-user-evidence',
+              timestamp: '2026-04-21T10:02:00.000Z',
+              toolName: 'mcp__agent-teams__task_start',
+              input: { teamName: 'team-a', taskId: 'task-a' },
+            }),
+            taskMarkerLogMessage({
+              uuid: 'assistant-native-evidence',
+              parentUuid: 'assistant-start-evidence',
+              timestamp: '2026-04-21T10:03:00.000Z',
+              toolName: 'bash',
+              input: { command: 'pnpm test' },
+            }),
+          ].map((message) => ({
+            ...message,
+            sessionId: request.sessionId ?? message.sessionId,
+          })),
+        },
+      })),
+    };
+    const chunkBuilder = {
+      buildBundleChunks: vi.fn((messages) => [
+        {
+          id: 'chunk-ledger-session',
+          kind: 'assistant',
+          messages,
+        },
+      ]),
+    };
+    const sessionEvidenceSource = {
+      readTaskRecords: vi.fn(async () => [
+        {
+          taskId: 'task-a',
+          memberName: 'bob',
+          scope: 'member_session_window',
+          laneId: 'lane-from-ledger',
+          sessionId: 'session-from-ledger',
+          since: '2026-04-21T10:00:00.000Z',
+          source: 'delivery_ledger',
+          startMessageUuid: 'runtime-user-evidence',
+        } satisfies OpenCodeTaskLogAttributionRecord,
+      ]),
+    };
+    const source = new OpenCodeTaskLogStreamSource(
+      bridge as never,
+      { resolve: async () => '/tmp/claude' },
+      {
+        getTasks: async () => [createTask({ owner: undefined })],
+        getDeletedTasks: async () => [],
+      } as never,
+      chunkBuilder as never,
+      { readTaskRecords: vi.fn(async () => []) },
+      sessionEvidenceSource
+    );
+
+    const response = await source.getTaskLogStream('team-a', 'task-a');
+
+    expect(response?.source).toBe('opencode_runtime_attribution');
+    expect(response?.segments[0]?.actor.sessionId).toBe('session-from-ledger');
+    expect(response?.segments[0]?.id).toContain('session-from-ledger');
+    expect(bridge.getOpenCodeTranscript).toHaveBeenCalledWith('/tmp/claude', {
+      teamId: 'team-a',
+      memberName: 'bob',
+      limit: 500,
+      laneId: 'lane-from-ledger',
+      sessionId: 'session-from-ledger',
+    });
+    expect(
+      chunkBuilder.buildBundleChunks.mock.calls[0]?.[0].map(
+        (message: { uuid: string }) => message.uuid
+      )
+    ).toEqual(['runtime-user-evidence', 'assistant-start-evidence', 'assistant-native-evidence']);
+  });
+
   it('sanitizes OpenCode delivery retry envelopes from projected task log text', async () => {
     const bridge = {
       getOpenCodeTranscript: vi.fn(async () => ({
