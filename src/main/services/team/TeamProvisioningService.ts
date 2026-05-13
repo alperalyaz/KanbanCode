@@ -21748,10 +21748,9 @@ export class TeamProvisioningService {
     const relayKey = this.getOpenCodeMemberRelayKey(teamName, memberName);
     const existing = this.openCodeMemberInboxRelayInFlight.get(relayKey);
     if (existing) {
-      const existingResult = await existing;
       const onlyMessageId = options.onlyMessageId?.trim();
       if (!onlyMessageId) {
-        return existingResult;
+        return existing;
       }
       const inboxMessages = await this.inboxReader
         .getMessagesFor(teamName, memberName)
@@ -21764,7 +21763,6 @@ export class TeamProvisioningService {
           delivered: 1,
           failed: 0,
           lastDelivery: { delivered: true },
-          diagnostics: existingResult.diagnostics,
         };
       }
       if (!targetMessage) {
@@ -21782,6 +21780,29 @@ export class TeamProvisioningService {
           diagnostics: [diagnostic],
         };
       }
+
+      const diagnostic = `opencode_inbox_relay_queued_behind_active_relay: ${relayKey}/${onlyMessageId}`;
+      this.scheduleOpenCodeMemberInboxDeliveryWake({
+        teamName,
+        memberName,
+        messageId: onlyMessageId,
+        delayMs: 500,
+      });
+      return {
+        relayed: 0,
+        attempted: 1,
+        delivered: 0,
+        failed: 0,
+        lastDelivery: {
+          delivered: true,
+          accepted: false,
+          responsePending: true,
+          queuedBehindMessageId: onlyMessageId,
+          reason: 'opencode_inbox_relay_queued_behind_active_relay',
+          diagnostics: [diagnostic],
+        },
+        diagnostics: [diagnostic],
+      };
     }
 
     const work = (async (): Promise<OpenCodeMemberInboxRelayResult> => {

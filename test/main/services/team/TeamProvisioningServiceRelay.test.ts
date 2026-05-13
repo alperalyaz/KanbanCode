@@ -2706,90 +2706,102 @@ Messages:
     }
   });
 
-  it('does not let an older in-flight OpenCode relay mask a specific UI-send message', async () => {
+  it('queues a specific OpenCode relay behind an active member relay without duplicate prompts', async () => {
+    vi.useFakeTimers();
     const service = new TeamProvisioningService();
     const teamName = 'my-team';
-    hoisted.files.set(
-      `/mock/teams/${teamName}/config.json`,
-      JSON.stringify({
-        name: teamName,
-        projectPath: '/tmp/my-team',
-        members: [
-          { name: 'team-lead', agentType: 'team-lead' },
-          { name: 'jack', role: 'developer', providerId: 'opencode', model: 'openrouter/test' },
-        ],
-      })
-    );
-    seedMemberInbox(teamName, 'jack', [
-      {
-        from: 'bob',
-        to: 'jack',
-        text: 'Older watcher message.',
-        timestamp: '2026-02-23T17:00:00.000Z',
-        read: false,
-        messageId: 'opencode-inflight-old',
-      },
-    ]);
+    try {
+      hoisted.files.set(
+        `/mock/teams/${teamName}/config.json`,
+        JSON.stringify({
+          name: teamName,
+          projectPath: '/tmp/my-team',
+          members: [
+            { name: 'team-lead', agentType: 'team-lead' },
+            { name: 'jack', role: 'developer', providerId: 'opencode', model: 'openrouter/test' },
+          ],
+        })
+      );
+      seedMemberInbox(teamName, 'jack', [
+        {
+          from: 'bob',
+          to: 'jack',
+          text: 'Older watcher message.',
+          timestamp: '2026-02-23T17:00:00.000Z',
+          read: false,
+          messageId: 'opencode-inflight-old',
+        },
+      ]);
 
-    const oldDeliveryStarted = createDeferred<void>();
-    const releaseOldDelivery = createDeferred<void>();
-    const deliverSpy = vi
-      .spyOn(service, 'deliverOpenCodeMemberMessage')
-      .mockImplementation(async (_teamName, input) => {
-        if (input.messageId === 'opencode-inflight-old') {
-          oldDeliveryStarted.resolve(undefined);
-          await releaseOldDelivery.promise;
-        }
-        return { delivered: true, diagnostics: [] };
+      const oldDeliveryStarted = createDeferred<void>();
+      const releaseOldDelivery = createDeferred<void>();
+      const deliverSpy = vi
+        .spyOn(service, 'deliverOpenCodeMemberMessage')
+        .mockImplementation(async (_teamName, input) => {
+          if (input.messageId === 'opencode-inflight-old') {
+            oldDeliveryStarted.resolve(undefined);
+            await releaseOldDelivery.promise;
+          }
+          return { delivered: true, diagnostics: [] };
+        });
+
+      const watcherRelay = service.relayOpenCodeMemberInboxMessages(teamName, 'jack');
+      await oldDeliveryStarted.promise;
+      seedMemberInbox(teamName, 'jack', [
+        {
+          from: 'bob',
+          to: 'jack',
+          text: 'Older watcher message.',
+          timestamp: '2026-02-23T17:00:00.000Z',
+          read: false,
+          messageId: 'opencode-inflight-old',
+        },
+        {
+          from: 'user',
+          to: 'jack',
+          text: 'New UI message.',
+          timestamp: '2026-02-23T17:00:01.000Z',
+          read: false,
+          messageId: 'opencode-inflight-new',
+        },
+      ]);
+
+      await expect(
+        service.relayOpenCodeMemberInboxMessages(teamName, 'jack', {
+          onlyMessageId: 'opencode-inflight-new',
+          source: 'ui-send',
+          deliveryMetadata: { replyRecipient: 'user' },
+        })
+      ).resolves.toMatchObject({
+        attempted: 1,
+        delivered: 0,
+        failed: 0,
+        lastDelivery: {
+          delivered: true,
+          accepted: false,
+          responsePending: true,
+          queuedBehindMessageId: 'opencode-inflight-new',
+          reason: 'opencode_inbox_relay_queued_behind_active_relay',
+        },
       });
+      releaseOldDelivery.resolve(undefined);
 
-    const watcherRelay = service.relayOpenCodeMemberInboxMessages(teamName, 'jack');
-    await oldDeliveryStarted.promise;
-    seedMemberInbox(teamName, 'jack', [
-      {
-        from: 'bob',
-        to: 'jack',
-        text: 'Older watcher message.',
-        timestamp: '2026-02-23T17:00:00.000Z',
-        read: false,
-        messageId: 'opencode-inflight-old',
-      },
-      {
-        from: 'user',
-        to: 'jack',
-        text: 'New UI message.',
-        timestamp: '2026-02-23T17:00:01.000Z',
-        read: false,
-        messageId: 'opencode-inflight-new',
-      },
-    ]);
-
-    const uiRelay = service.relayOpenCodeMemberInboxMessages(teamName, 'jack', {
-      onlyMessageId: 'opencode-inflight-new',
-      source: 'ui-send',
-      deliveryMetadata: { replyRecipient: 'user' },
-    });
-    releaseOldDelivery.resolve(undefined);
-
-    await expect(watcherRelay).resolves.toMatchObject({
-      attempted: 1,
-      delivered: 1,
-    });
-    await expect(uiRelay).resolves.toMatchObject({
-      attempted: 1,
-      delivered: 1,
-      failed: 0,
-    });
-    expect(deliverSpy).toHaveBeenCalledWith(
-      teamName,
-      expect.objectContaining({ messageId: 'opencode-inflight-old' })
-    );
-    expect(deliverSpy).toHaveBeenCalledWith(
-      teamName,
-      expect.objectContaining({ messageId: 'opencode-inflight-new' })
-    );
-    const rows = JSON.parse(hoisted.files.get(`/mock/teams/${teamName}/inboxes/jack.json`) ?? '[]');
-    expect(rows.map((row: { read?: boolean }) => row.read)).toEqual([true, true]);
+      await expect(watcherRelay).resolves.toMatchObject({
+        attempted: 1,
+        delivered: 1,
+      });
+      expect(deliverSpy).toHaveBeenCalledTimes(1);
+      expect(deliverSpy).toHaveBeenCalledWith(
+        teamName,
+        expect.objectContaining({ messageId: 'opencode-inflight-old' })
+      );
+      const rows = JSON.parse(
+        hoisted.files.get(`/mock/teams/${teamName}/inboxes/jack.json`) ?? '[]'
+      );
+      expect(rows.map((row: { read?: boolean }) => row.read)).toEqual([true, false]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('treats an already-read specific OpenCode inbox row as delivered for UI-send relay', async () => {
