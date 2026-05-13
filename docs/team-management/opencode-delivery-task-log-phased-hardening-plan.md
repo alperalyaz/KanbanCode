@@ -2345,8 +2345,8 @@ Tests:
 Current files:
 
 ```text
-src/main/services/team/OpenCodePromptDeliveryRepairPolicy.ts
-src/main/services/team/OpenCodeRuntimeDeliveryDiagnostics.ts
+src/main/services/team/opencode/delivery/OpenCodePromptDeliveryRepairPolicy.ts
+src/main/services/team/opencode/delivery/OpenCodeRuntimeDeliveryDiagnostics.ts
 src/main/services/team/TeamMemberRuntimeAdvisoryService.ts
 src/main/services/team/opencode/delivery/OpenCodeRuntimeDeliveryProofReader.ts
 test/main/services/team/OpenCodePromptDeliveryRepairPolicy.test.ts
@@ -2642,13 +2642,13 @@ It currently does not compare payloadHash itself.
 Outbox store checks payloadHash before dispatch, so the sink must stay behind that outbox boundary.
 ```
 
-The sink is intentionally thin, but that makes the dependency important. If a future caller bypasses outbox and calls the sink directly, same messageId with different text/taskRefs can be treated as success.
+The sink is intentionally thin today, but that makes the dependency important. Section 4.89 upgrades this into a write-boundary invariant: existing inbox rows must be payload-compatible before they are treated as delivered.
 
 Rules:
 
 - only the outbox dispatcher should call the sink in production;
-- sink idempotency by messageId is acceptable only after outbox payloadHash validation;
-- if the sink becomes public or reused, it must store/compare payloadHash or reject existing-message ambiguity;
+- sink idempotency by messageId is acceptable only if payload equivalence is validated;
+- because the sink already receives `payloadHash`, prefer validating at the sink instead of relying only on callers;
 - writer result messageId must be used for outbox deliveredMessageId;
 - existing messageId with incompatible messageKind/source/taskRefs is a conflict, not a delivered nudge;
 - hidden automation filtering must not hide this row from the dispatcher/proof/debug stores.
@@ -3595,6 +3595,742 @@ Tests:
 - status view model maps inactive/unknown/needs_sync without scary false-error copy;
 - hidden automation row still appears in diagnostics/raw inbox;
 - status panel never triggers dispatch by rendering.
+
+### 4.85 Protocol Proof Missing Is A Recovery Signal, Not A Success Proof
+
+Current files:
+
+```text
+src/main/services/team/TeamProvisioningService.ts
+src/main/services/team/runtime/RuntimeDiagnosticClassifier.ts
+src/main/services/team/opencode/delivery/OpenCodeRuntimeDeliveryDiagnostics.ts
+src/main/services/team/opencode/delivery/OpenCodeRuntimeDeliveryAdvisoryPolicy.ts
+src/main/services/team/opencode/delivery/OpenCodePromptDeliveryRepairPolicy.ts
+src/features/member-work-sync/main/adapters/input/MemberWorkSyncTeamChangeRouter.ts
+src/features/member-work-sync/main/infrastructure/MemberWorkSyncEventQueue.ts
+test/main/services/team/OpenCodeRuntimeDeliveryAdvisoryPolicy.test.ts
+test/main/services/team/OpenCodeRuntimeDeliveryDiagnostics.test.ts
+test/main/services/team/TeamProvisioningService.test.ts
+```
+
+Source-audit finding:
+
+```text
+getOpenCodeDeliveryPendingReason() can produce non_visible_tool_without_task_progress.
+RuntimeDiagnosticClassifier maps this class to protocol_proof_missing.
+OpenCodeRuntimeDeliveryAdvisoryPolicy delays generic proof-missing warnings and suppresses them after superseding proof.
+OpenCodePromptDeliveryRepairPolicy uses progress_proof_required for non-visible tool responses without known progress proof.
+```
+
+The screenshot class `OpenCode proof missing` is therefore not a completed delivery. It is a recovery condition.
+
+Rules:
+
+- `protocol_proof_missing` must never mark an inbox row as read;
+- `protocol_proof_missing` must never mark a delivery ledger record as accepted proof;
+- `protocol_proof_missing` must never satisfy `member_work_sync_report`;
+- `protocol_proof_missing` may enqueue a recovery signal only after the existing proof grace window and only with exact message identity;
+- proof-missing recovery must stay level-triggered and idempotent.
+
+Required identity:
+
+```ts
+type OpenCodeProofMissingRecoveryIdentity = {
+  teamName: string
+  memberName: string
+  originalMessageId: string
+  relayOfMessageId?: string
+  taskRefs: readonly string[]
+  reasonCode: 'protocol_proof_missing'
+  reasonToken:
+    | 'non_visible_tool_without_task_progress'
+    | 'visible_reply_still_required'
+    | 'responded_non_visible_tool'
+    | 'progress_proof_required'
+  runId?: string
+  attempt?: number
+}
+```
+
+Implementation guidance:
+
+- Add a narrow application-service adapter from runtime advisory state to member-work-sync event input. Do not place recovery logic in renderer code.
+- Use the original delivery `messageId` and `relayOfMessageId`. Do not create a new logical delivery.
+- Include `taskRefs` when available. If task refs are missing, do not broad-ping the whole team.
+- Use a deterministic coalescing key:
+
+```ts
+const key = [
+  'opencode-proof-missing',
+  identity.teamName,
+  identity.memberName,
+  identity.originalMessageId,
+  identity.reasonToken,
+  identity.taskRefs.join(','),
+].join(':')
+```
+
+- If a later `task_add_comment`, `task_complete`, `task_set_status`, `write`, `edit`, or visible `message_send` proof supersedes the diagnostic, cancel or suppress any queued recovery for the same key.
+- Keep progress proof strict. Do not count `read`, `bash`, `Thinking`, failed `message_send`, plain assistant fallback text, or MCP error output as proof.
+- Do not call OpenCode delivery directly from the advisory policy. The advisory policy stays pure and returns derived state only.
+
+Tests:
+
+- proof-missing advisory enqueues one recovery event but leaves ledger pending and inbox unread;
+- repeated advisory evaluation with the same message id does not duplicate recovery events;
+- a later visible reply suppresses advisory and prevents queued recovery from sending;
+- a later task progress proof suppresses advisory and prevents queued recovery from sending;
+- proof-missing without exact `messageId` or `memberName` logs a diagnostic and does not enqueue a broad nudge;
+- `read` plus `bash` plus failed `message_send` remains proof-missing.
+
+### 4.86 Advisory Cache And Recovery Signals Must Clear Together
+
+Current files:
+
+```text
+src/main/services/team/TeamProvisioningService.ts
+src/main/services/team/TeamMemberRuntimeAdvisoryService.ts
+src/main/services/team/TeamDataService.ts
+src/main/index.ts
+test/main/services/team/TeamMemberRuntimeAdvisoryService.test.ts
+test/main/services/team/TeamProvisioningService.test.ts
+```
+
+Source-audit finding:
+
+```text
+TeamMemberRuntimeAdvisoryService has batch caching.
+Runtime proof writes and member advisory changes invalidate derived service state.
+OpenCodeRuntimeDeliveryAdvisoryPolicy already has superseding-proof semantics.
+```
+
+The fragile part is stale cache: a valid proof can be recorded while the UI still shows `OpenCode proof missing`.
+
+Rules:
+
+- user-visible advisory state is derived state, not a second source of truth;
+- recovery queue state must not keep an advisory alive after the delivery ledger or task board contains valid proof;
+- cache invalidation failures must be diagnostics, not state transitions.
+
+Implementation guidance:
+
+- Treat `member-advisory` invalidation as part of the write boundary for visible reply and task progress proof.
+- When a recovery event is coalesced or canceled, emit a narrow advisory invalidation for the affected team/member.
+- If invalidation fails, log a developer diagnostic with the recovery key and continue. Do not retry by sending another agent message.
+- Keep cache values immutable from callers. Return cloned arrays/maps if the current service shares collections.
+- Keep `OpenCode proof missing` badge derived from current advisory evaluation. Do not persist the badge as durable recovery state.
+
+Tests:
+
+- advisory badge disappears after task progress proof is recorded;
+- advisory badge disappears after visible reply proof is recorded;
+- stale batch cache is invalidated for the affected member without refreshing unrelated teams;
+- failed invalidation logs diagnostics and does not create an extra work-sync nudge.
+
+### 4.87 Proof-Missing Recovery Must Not Fight Prompt Repair
+
+Current files:
+
+```text
+src/main/services/team/opencode/delivery/OpenCodePromptDeliveryRepairPolicy.ts
+src/main/services/team/TeamProvisioningService.ts
+src/features/member-work-sync/core/application/MemberWorkSyncNudgeDispatcher.ts
+src/features/member-work-sync/core/application/MemberWorkSyncNudgeOutboxPlanner.ts
+```
+
+Source-audit finding:
+
+```text
+Prompt repair already has a control-message path for progress_proof_required.
+Member-work-sync already has queue, cooldown, foreground unread checks, busy checks, and outbox dedupe.
+Both can observe the same proof-missing condition.
+```
+
+Rules:
+
+- delivery repair owns original delivery proof;
+- member-work-sync owns board/actionable-state reconciliation;
+- they may observe the same failure, but only one may send a nudge for a given logical message inside the cooldown window.
+
+Implementation guidance:
+
+- Before sending a work-sync proof-missing recovery, check whether the delivery ledger has an immediate retry scheduled or recently sent for the same `messageId`.
+- Before sending a delivery retry, check whether the work-sync outbox has a proof-missing recovery recently sent for the same `messageId`.
+- Prefer delivery repair for direct user-to-member messages where visible reply is required.
+- Prefer member-work-sync for task-scoped cases where the missing proof is task progress and the member has actionable board work.
+- If both are eligible, choose delivery repair first and let work-sync re-evaluate after cooldown.
+
+Example arbitration result:
+
+```ts
+type ProofMissingRecoveryDecision =
+  | { kind: 'send_delivery_repair'; messageId: string }
+  | { kind: 'send_work_sync_recovery'; messageId: string; taskRefs: readonly string[] }
+  | { kind: 'suppress_recent_recovery'; messageId: string; recoveryKey: string }
+  | { kind: 'wait_for_grace'; messageId: string; until: string }
+```
+
+Tests:
+
+- existing delivery retry suppresses work-sync recovery for the same message;
+- existing work-sync recovery suppresses duplicate delivery repair for the same message until cooldown expires;
+- task-scoped proof missing with actionable board work routes to work-sync when no delivery retry is active;
+- direct visible-reply proof missing routes to delivery repair when no board work is involved.
+
+### 4.88 Diagnostic Classifier Must Not Overmatch Protocol Proof Missing
+
+Current files:
+
+```text
+src/main/services/team/runtime/RuntimeDiagnosticClassifier.ts
+src/main/services/team/opencode/delivery/OpenCodeRuntimeDeliveryDiagnostics.ts
+test/main/services/team/RuntimeDiagnosticClassifier.test.ts
+test/main/services/team/OpenCodeRuntimeDeliveryDiagnostics.test.ts
+```
+
+Source-audit finding:
+
+```text
+RuntimeDiagnosticClassifier maps raw diagnostics into normalized reason codes.
+The same renderer surfaces quota/auth/provider errors and protocol proof errors.
+```
+
+Rules:
+
+- `protocol_proof_missing` is a behavior/protocol state, not provider auth, quota, network, or process health;
+- auth/quota/network errors keep higher-priority classifications;
+- classifier output must be safe to show in diagnostics and must not include secrets.
+
+Implementation guidance:
+
+```ts
+const precedence = [
+  'quota_exhausted',
+  'auth_error',
+  'filesystem_error',
+  'network_error',
+  'provider_overloaded',
+  'protocol_proof_missing',
+  'backend_error',
+  'unknown'
+] as const
+```
+
+- Keep proof-missing tokens narrow:
+  - `non_visible_tool_without_task_progress`;
+  - `visible_reply_still_required`;
+  - `responded_non_visible_tool`;
+  - `progress_proof_required`.
+- Do not classify arbitrary `not connected` strings as proof missing. With the current shared `MemberRuntimeAdvisory.reasonCode` union, keep those as `backend_error` or `network_error` unless a dedicated MCP reason code is added end-to-end in shared types, renderer copy, tests, and migrations.
+- `classifyRuntimeDiagnostic()` currently has rule priorities, but single-message classification depends on first matching rule order. If proof-missing rules are touched, either select the highest priority match for a single message or add explicit precedence tests proving the array order is intentional.
+- Redact API keys, bearer tokens, and full raw MCP payloads before creating user-facing advisory copy.
+
+Tests:
+
+- `message_send Not connected` does not classify as proof missing;
+- `OpenCode used tools, but did not create visible reply or task progress proof` classifies as proof missing;
+- quota and auth strings win over proof-missing substrings if both appear;
+- `opencode bridge command timed out` keeps the intended bridge/backend classification even though it contains `timed out`;
+- redaction removes token-like substrings from advisory diagnostics.
+
+### 4.89 Inbox Nudge Sink Must Validate Existing Rows, Not Just Message IDs
+
+Current files:
+
+```text
+src/features/member-work-sync/main/adapters/output/TeamInboxMemberWorkSyncNudgeSink.ts
+src/features/member-work-sync/core/domain/MemberWorkSyncNudge.ts
+src/features/member-work-sync/main/infrastructure/JsonMemberWorkSyncStore.ts
+test/features/member-work-sync/main/TeamInboxMemberWorkSyncNudgeSink.test.ts
+test/features/member-work-sync/main/JsonMemberWorkSyncStore.test.ts
+```
+
+Source-audit finding:
+
+```text
+TeamInboxMemberWorkSyncNudgeSink.insertIfAbsent receives payloadHash.
+If an inbox row with the same messageId already exists, the sink returns inserted=false without validating that the existing row matches the requested payload.
+JsonMemberWorkSyncStore.ensurePending detects outbox payload conflicts, but the inbox sink is still the final durable write boundary.
+```
+
+Rules:
+
+- same `messageId` plus different payload must be a conflict, not a silent existing nudge;
+- outbox `delivered` must not be marked for an inbox row with mismatched payload;
+- payload verification must be deterministic and independent from presentation-only fields;
+- this check belongs in the main adapter/write boundary, not renderer code.
+
+Implementation options:
+
+1. Store a durable `workSyncPayloadHash` field on the inbox row.
+   `🎯 9   🛡️ 9   🧠 4`, roughly `70-150 LOC`.
+2. Recompute hash from the existing inbox row shape and compare to requested payload hash.
+   `🎯 7   🛡️ 7   🧠 5`, roughly `90-190 LOC`, more brittle because row normalization can drift.
+3. Rely only on outbox conflict detection.
+   `🎯 5   🛡️ 5   🧠 2`, roughly `0-20 LOC`, not enough because manual/legacy rows can bypass outbox history.
+
+Recommended:
+
+Use option 1. It is the clean write-boundary invariant.
+
+Tests:
+
+- existing inbox row with same messageId and same payload hash returns existing;
+- existing inbox row with same messageId and different payload hash returns conflict;
+- conflict leaves outbox retry/terminal state explicit and does not mark delivered;
+- legacy row without hash is either validated by recompute or fails closed with diagnostic, but never silently delivered.
+
+### 4.90 OpenCode Inbox Relay In-Flight Coalescing Must Be Per Target Message
+
+Current files:
+
+```text
+src/main/services/team/TeamProvisioningService.ts
+test/main/services/team/TeamProvisioningServiceRelay.test.ts
+```
+
+Source-audit finding:
+
+```text
+relayOpenCodeMemberInboxMessages() uses one in-flight map key per team/member.
+When an existing relay is running and a later wake asks for onlyMessageId, the code only returns early if that target row is already read or missing.
+If the target exists and is still unread, a second relay work item can be started for the same team/member.
+```
+
+Rules:
+
+- one OpenCode member must not receive two overlapping inbox relay loops;
+- `onlyMessageId` wake should either attach to the running relay, queue behind it, or return a retryable queued-behind result;
+- never overwrite the in-flight map with a newer promise while the older promise is still running;
+- relay result must distinguish `already_read`, `queued_behind_active_relay`, `missing`, `accepted_pending`, and `failed_terminal`.
+
+Implementation options:
+
+1. Replace the per-member in-flight promise with a tiny per-member relay queue.
+   `🎯 9   🛡️ 9   🧠 5`, roughly `120-260 LOC`.
+2. Keep the promise map, but if `onlyMessageId` is unread while another relay is active, return `queuedBehindMessageId` and schedule a short wake.
+   `🎯 8   🛡️ 8   🧠 3`, roughly `60-140 LOC`.
+3. Allow overlapping relays and rely on prompt ledger idempotency.
+   `🎯 4   🛡️ 4   🧠 1`, roughly `0 LOC`, too risky for duplicate OpenCode prompts.
+
+Recommended:
+
+Use option 2 for this hardening pass, unless duplicate-relay tests expose a real need for option 1.
+
+Tests:
+
+- two `onlyMessageId` wakes during an active relay do not create two prompt deliveries;
+- unread target behind an active relay returns queued/retryable state and is delivered by a later wake;
+- target already read returns delivered without scheduling a new prompt;
+- missing target returns terminal missing diagnostics;
+- result diagnostics include the active relay key and target message id.
+
+### 4.91 Work-Sync Outbox Delivery Is Inbox Delivery, Not Runtime Acceptance
+
+Current files:
+
+```text
+src/features/member-work-sync/core/application/MemberWorkSyncNudgeDispatcher.ts
+src/features/member-work-sync/main/adapters/output/TeamInboxMemberWorkSyncNudgeSink.ts
+src/main/index.ts
+src/main/services/team/TeamProvisioningService.ts
+```
+
+Source-audit finding:
+
+```text
+Regular agenda-sync nudges are marked delivered after inbox insertion.
+OpenCode wake is scheduled after that through nudgeDeliveryWake.
+Review-pickup nudges have a provider-specific delivery outcome, but generic agenda-sync nudges do not.
+```
+
+Rules:
+
+- outbox `delivered` means durable inbox row inserted, not necessarily runtime prompt accepted;
+- runtime acceptance/proof stays in OpenCode prompt delivery ledger and advisory state;
+- latency diagnostics must show `inbox_inserted_at`, `wake_scheduled_at`, `relay_started_at`, `prompt_accepted_at`, and `proof_at` when available;
+- UI copy must not imply an OpenCode agent saw the nudge just because outbox status is delivered.
+
+Implementation guidance:
+
+- Keep current durable inbox boundary. Do not block generic outbox completion on model runtime response.
+- Add diagnostics fields rather than changing semantics:
+
+```ts
+type WorkSyncNudgeDeliveryTimeline = {
+  inboxInsertedAt?: string
+  wakeScheduledAt?: string
+  relayStartedAt?: string
+  promptAcceptedAt?: string
+  proofObservedAt?: string
+  terminalReason?: string
+}
+```
+
+- If wake scheduling fails, keep inbox row durable and log `nudge_wake_failed`; do not flip outbox back to pending unless a deliberate re-wake path owns that retry.
+
+Tests:
+
+- generic agenda-sync outbox delivered does not mark OpenCode prompt ledger as accepted;
+- wake failure keeps inbox row and records diagnostic;
+- delivery latency timeline shows which stage caused a slow start;
+- review-pickup provider delivery outcome remains separate from generic agenda-sync inbox delivery.
+
+### 4.92 Busy Signal Must Not Suppress The Same Recovery Forever
+
+Current files:
+
+```text
+src/main/services/team/TeamProvisioningService.ts
+src/features/member-work-sync/core/application/MemberWorkSyncNudgeDispatcher.ts
+test/features/member-work-sync/main/createMemberWorkSyncFeature.test.ts
+test/main/services/team/TeamProvisioningServiceRelay.test.ts
+```
+
+Source-audit finding:
+
+```text
+getOpenCodeMemberDeliveryBusyStatus() suppresses work-sync when the member has unread foreground inbox messages, recent foreground messages, inactive lane, or active prompt ledger.
+This is correct for broad sync nudges, but proof-missing recovery for the same logical message can be accidentally suppressed by the very unread row it is trying to repair.
+```
+
+Rules:
+
+- generic member-work-sync nudges must stay suppressed by unread foreground messages;
+- same-message delivery repair should not go through generic work-sync busy suppression;
+- a proof-missing task recovery may bypass foreground suppression only when it targets the exact same `messageId` and only through the delivery-repair path;
+- active prompt ledger still blocks duplicate prompt sends.
+
+Implementation guidance:
+
+- Add an explicit recovery context to busy checks only if needed:
+
+```ts
+type BusyRecoveryContext =
+  | { kind: 'generic_work_sync' }
+  | { kind: 'delivery_repair'; originalMessageId: string }
+  | { kind: 'proof_missing_task_recovery'; originalMessageId: string; taskIds: string[] }
+```
+
+- Default remains `generic_work_sync`.
+- Do not use a broad boolean like `ignoreForeground`.
+- Tests must prove unrelated unread foreground messages still suppress recovery.
+
+Tests:
+
+- generic work-sync nudge is suppressed by unread user/task foreground message;
+- same-message delivery repair is not suppressed by its own unread row;
+- unrelated unread foreground row still suppresses work-sync and proof-missing task recovery;
+- active OpenCode prompt ledger suppresses all duplicate prompt delivery.
+
+### 4.93 Runtime Advisory Reads Must Stay Side-Effect Free
+
+Current files:
+
+```text
+src/main/services/team/TeamMemberRuntimeAdvisoryService.ts
+src/main/services/team/TeamProvisioningService.ts
+src/main/services/team/TeamDataService.ts
+src/main/services/team/TeamDataWorkerClient.ts
+src/main/index.ts
+```
+
+Source-audit finding:
+
+```text
+TeamMemberRuntimeAdvisoryService is currently a query/cache service.
+It reads logs, prompt ledgers, and proof indexes, then returns a MemberRuntimeAdvisory.
+TeamProvisioningService owns advisory side effects today: invalidation, team-change events, notifications, and deferred advisory review timers.
+```
+
+This boundary is important.
+
+Rules:
+
+- polling member cards, task panels, or worker snapshots must never enqueue work-sync nudges;
+- `getMemberAdvisory()` and `getMemberAdvisories()` remain pure read/query operations;
+- proof-missing recovery enqueue belongs to a write-side lifecycle point, for example prompt delivery watchdog, delivery ledger transition, or an explicit member-work-sync command handler;
+- cache invalidation can happen from side-effect code, but cache refresh itself must not trigger delivery;
+- tests must prove repeated UI/advisory reads do not write inbox rows, outbox rows, prompt ledgers, or notifications.
+
+Bad implementation:
+
+```ts
+// Bad: a status panel read can send a nudge.
+const advisory = await advisoryService.getMemberAdvisory(teamName, memberName)
+if (advisory?.reasonCode === 'protocol_proof_missing') {
+  await memberWorkSync.enqueue(...)
+}
+```
+
+Recommended implementation:
+
+```ts
+// Good: command/write-side transition emits a recovery signal once.
+await promptDeliveryLedger.markResponseObserved(...)
+await proofMissingRecoveryScheduler.scheduleIfNeeded({
+  teamName,
+  memberName,
+  inboxMessageId,
+  reasonCode: 'protocol_proof_missing',
+})
+advisoryInvalidator.invalidateMember(teamName, memberName)
+```
+
+Implementation options:
+
+1. Keep recovery scheduling in `TeamProvisioningService` delivery lifecycle and call a member-work-sync application port.
+   `🎯 9   🛡️ 9   🧠 4`, roughly `90-180 LOC`.
+2. Add side effects to `TeamMemberRuntimeAdvisoryService`.
+   `🎯 3   🛡️ 3   🧠 2`, roughly `40-100 LOC`, violates query/write separation and can spam from UI polling.
+3. Let renderer detect advisory warnings and call a recovery endpoint.
+   `🎯 2   🛡️ 2   🧠 3`, roughly `120-240 LOC`, wrong process boundary and easy to duplicate across windows.
+
+Recommended:
+
+Use option 1. It preserves SRP: advisory service derives state, delivery lifecycle owns recovery scheduling.
+
+Tests:
+
+- repeated `TeamDataService` snapshot reads do not enqueue recovery;
+- repeated worker `invalidateMemberRuntimeAdvisory` refreshes do not enqueue recovery;
+- delivery watchdog transition enqueues at most one recovery signal;
+- proof observed after scheduling cancels/suppresses the queued recovery without relying on a renderer refresh.
+
+### 4.94 Proof-Missing Recovery Needs An Explicit Trigger Contract
+
+Current files:
+
+```text
+src/features/member-work-sync/main/infrastructure/MemberWorkSyncEventQueue.ts
+src/features/member-work-sync/main/composition/createMemberWorkSyncFeature.ts
+src/features/member-work-sync/main/adapters/input/MemberWorkSyncTeamChangeRouter.ts
+src/features/member-work-sync/core/application/MemberWorkSyncNudgeActivationPolicy.ts
+src/features/member-work-sync/core/application/MemberWorkSyncTargetedRecoveryPolicy.ts
+```
+
+Source-audit finding:
+
+```text
+MemberWorkSyncTriggerReason currently includes startup_scan, config_changed, task_changed, inbox_changed, member_spawned, tool_finished, runtime_activity, turn_settled, manual_refresh.
+No trigger explicitly means "repair this exact proof-missing delivery".
+Targeted recovery exists, but it is currently status-derived and broad: OpenCode or lead in needs_sync with shadow wouldNudge.
+```
+
+Rules:
+
+- proof-missing recovery must be targeted, not a broad status refresh;
+- trigger diagnostics must show why a nudge exists: task change, turn settled, proof missing, manual refresh, etc;
+- broad `runtime_activity` should not hide proof-missing behavior because it has different timing and coalescing semantics;
+- if a new trigger reason is added, update the union, default run-after, max coalesce, audit metadata, composition wiring, and tests in one cut.
+
+Implementation options:
+
+1. Add explicit trigger reason `proof_missing_recovery` with short run-after and normal coalescing.
+   `🎯 9   🛡️ 9   🧠 4`, roughly `70-160 LOC`.
+2. Reuse `runtime_activity` and pass proof-missing details in metadata.
+   `🎯 6   🛡️ 6   🧠 2`, roughly `25-80 LOC`, cheaper but diagnostics and timing become ambiguous.
+3. Bypass the queue and write outbox rows directly from delivery code.
+   `🎯 4   🛡️ 4   🧠 3`, roughly `60-130 LOC`, violates clean architecture and skips coalescing/rate-limit policy.
+
+Recommended:
+
+Use option 1 if proof-missing recovery is implemented in this phase. If implementation scope must stay smaller, do not add recovery yet. Do not ship option 2 as a silent shortcut.
+
+Code shape:
+
+```ts
+export type MemberWorkSyncTriggerReason =
+  | 'startup_scan'
+  | 'config_changed'
+  | 'task_changed'
+  | 'inbox_changed'
+  | 'member_spawned'
+  | 'tool_finished'
+  | 'runtime_activity'
+  | 'turn_settled'
+  | 'proof_missing_recovery'
+  | 'manual_refresh'
+
+function defaultRunAfterMs(reason: MemberWorkSyncTriggerReason): number {
+  switch (reason) {
+    case 'proof_missing_recovery':
+      return 5_000
+    // existing cases unchanged
+  }
+}
+```
+
+Tests:
+
+- `proof_missing_recovery` has explicit run-after and max-coalesce values;
+- multiple proof-missing events for the same team/member/message coalesce;
+- broad startup/member-spawn scans keep readiness-gated timing;
+- audit rows include `proof_missing_recovery`, original message id, and task refs when known.
+
+### 4.95 Outbox Store Needs A Logical Recovery Lookup
+
+Current files:
+
+```text
+src/features/member-work-sync/core/application/ports.ts
+src/features/member-work-sync/main/infrastructure/JsonMemberWorkSyncStore.ts
+src/features/member-work-sync/core/application/MemberWorkSyncNudgeDispatcher.ts
+src/features/member-work-sync/core/application/MemberWorkSyncNudgeOutboxPlanner.ts
+```
+
+Source-audit finding:
+
+```text
+MemberWorkSyncOutboxStorePort can count recent delivered rows and find delivered review-pickup request ids.
+It cannot currently answer "did we already schedule recovery for this exact original delivery message?".
+```
+
+Rules:
+
+- delivery repair and work-sync arbitration should query the outbox through a port, not scan JSON files inside `TeamProvisioningService`;
+- lookup key must be logical and stable, not a display string;
+- lookup must distinguish delivered inbox rows from accepted OpenCode runtime prompts;
+- the query must include team, member, intent, original inbox message id, and optional task ids.
+
+Recommended port extension:
+
+```ts
+export interface MemberWorkSyncOutboxStorePort {
+  // existing methods...
+  findRecentRecoveryByIntent?(input: {
+    teamName: string
+    memberName: string
+    intentKey: string
+    sinceIso: string
+  }): Promise<{
+    id: string
+    status: MemberWorkSyncOutboxStatus
+    deliveredMessageId?: string
+    payloadHash: string
+    updatedAt: string
+  } | null>
+}
+```
+
+Implementation options:
+
+1. Add optional outbox lookup port and implement it in `JsonMemberWorkSyncStore`.
+   `🎯 9   🛡️ 9   🧠 4`, roughly `90-190 LOC`.
+2. Reuse `countRecentDelivered()` with a special `workSyncIntentKey`.
+   `🎯 6   🛡️ 6   🧠 2`, roughly `20-70 LOC`, cannot inspect pending/claimed rows and can miss active recovery.
+3. Let `TeamProvisioningService` inspect store files directly.
+   `🎯 2   🛡️ 2   🧠 3`, roughly `50-120 LOC`, breaks port boundaries.
+
+Recommended:
+
+Use option 1. Keep the port optional during migration if needed, but tests should exercise the real JSON store implementation.
+
+Tests:
+
+- pending, claimed, delivered, retryable, and superseded recovery rows are found by logical key;
+- unrelated task ids or original message ids do not match;
+- stale rows outside cooldown do not suppress new recovery;
+- corrupt store rows are ignored with diagnostics, not treated as delivered.
+
+### 4.96 Inbox Payload Hash Is A Backward-Compatible Schema Change
+
+Current files:
+
+```text
+src/shared/types/team.ts
+src/main/services/team/TeamInboxWriter.ts
+src/main/services/team/TeamInboxReader.ts
+src/features/member-work-sync/main/adapters/output/TeamInboxMemberWorkSyncNudgeSink.ts
+src/renderer
+```
+
+Source-audit finding:
+
+```text
+MemberWorkSyncInboxNudgePort receives payloadHash, but TeamInboxWriter does not persist it and TeamInboxReader does not materialize it.
+The sink can only compare messageId today.
+```
+
+Rules:
+
+- add a field scoped to work-sync automation, for example `workSyncPayloadHash?: string`;
+- do not overload `messageId`;
+- do not require the field on old inbox rows;
+- do not expose hash noise in normal Messages UI;
+- renderer must tolerate the optional field without treating rows as changed visible content.
+
+Recommended schema shape:
+
+```ts
+export interface InboxMessage {
+  // existing fields...
+  workSyncIntent?: 'agenda_sync' | 'review_pickup'
+  workSyncIntentKey?: string
+  workSyncReviewRequestEventIds?: string[]
+  workSyncPayloadHash?: string
+}
+```
+
+Compatibility rule:
+
+```text
+existing row has hash equal requested hash -> existing ok
+existing row has hash different requested hash -> conflict
+existing row lacks hash and has messageKind=member_work_sync_nudge -> recompute from canonical row if possible, else conflict
+existing row lacks hash and is not work-sync -> conflict for this sink
+```
+
+Tests:
+
+- writer persists `workSyncPayloadHash`;
+- reader returns `workSyncPayloadHash`;
+- old rows without the field still render and sort;
+- sink detects same-id/different-payload conflict;
+- normal Messages filtering still hides work-sync automation.
+
+### 4.97 Audit Events Must Be Extended Atomically
+
+Current files:
+
+```text
+src/features/member-work-sync/core/application/ports.ts
+src/features/member-work-sync/core/application/MemberWorkSyncAudit.ts
+src/features/member-work-sync/main/infrastructure/FileMemberWorkSyncAuditJournal.ts
+test/features/member-work-sync
+```
+
+Source-audit finding:
+
+```text
+MemberWorkSyncAuditEventName is a string union, not free-form.
+Adding proof-missing or recovery events requires updating the union and any mapper that produces audit event names.
+```
+
+Rules:
+
+- no string casts to bypass `MemberWorkSyncAuditEventName`;
+- every new recovery/audit event gets one canonical event name;
+- audit append failure remains non-blocking;
+- audit rows must contain enough metadata for debugging without secrets: original message id, intent key, trigger reason, provider id, and task refs.
+
+Suggested event names:
+
+```ts
+type MemberWorkSyncAuditEventName =
+  | 'proof_missing_recovery_scheduled'
+  | 'proof_missing_recovery_coalesced'
+  | 'proof_missing_recovery_suppressed'
+  | 'proof_missing_recovery_conflict'
+  // existing names
+```
+
+Tests:
+
+- each new event name can be appended by the file journal;
+- `reasonToAuditEvent()` maps new skip/retry reasons without falling back to unrelated events;
+- audit append failure does not mark outbox delivered or failed;
+- diagnostics include identity but redact prompt text and secrets.
 
 ---
 
@@ -6308,6 +7044,192 @@ Risk:
 
 `🎯 9   🛡️ 8   🧠 3`, roughly `40-120 LOC`.
 
+### 7.78 Proof-Missing Can Become False Success Or Duplicate Prompt
+
+`OpenCode proof missing` means the runtime did something, but the app still lacks required visible/progress proof. Treating it as success hides broken delivery. Treating it as a fresh message creates duplicate prompts.
+
+Rules:
+
+- proof-missing is a recovery signal only;
+- original message identity is preserved;
+- recovery uses queue/outbox dedupe;
+- ledger remains pending until real proof exists.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 5`, roughly `120-280 LOC`.
+
+### 7.79 Advisory Cache Can Keep Warning After Proof
+
+A valid task comment or visible reply can arrive while a cached advisory still says proof is missing.
+
+Rules:
+
+- advisory cache is invalidated on proof writes;
+- advisory badge is derived, not persisted;
+- invalidation failure logs diagnostics and does not send another nudge.
+
+Risk:
+
+`🎯 8   🛡️ 8   🧠 4`, roughly `70-170 LOC`.
+
+### 7.80 Prompt Repair And Work-Sync Can Double-Nudge
+
+The delivery repair path and member-work-sync path can both see `progress_proof_required`.
+
+Rules:
+
+- one recovery channel wins per logical message and cooldown window;
+- delivery repair is preferred for direct visible replies;
+- work-sync is preferred for task-scoped board progress;
+- both paths consult shared recent-recovery state or deterministic keys.
+
+Risk:
+
+`🎯 8   🛡️ 9   🧠 5`, roughly `120-260 LOC`.
+
+### 7.81 Diagnostic Classifier Can Overmatch Protocol Proof
+
+Broad text matching can classify `message_send Not connected` as proof missing instead of backend/runtime connectivity, or classify quota/auth failures as model behavior issues.
+
+Rules:
+
+- classifier precedence is explicit;
+- proof-missing tokens are narrow;
+- auth/quota/runtime errors win over proof-missing;
+- user-facing diagnostics are redacted.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 4`, roughly `60-150 LOC`.
+
+### 7.82 Inbox MessageId Collision Can Hide Payload Drift
+
+The member-work-sync inbox sink currently receives `payloadHash`, but an existing inbox row with the same `messageId` can be treated as existing without proving payload equality.
+
+Rules:
+
+- same id with different payload is a conflict;
+- conflict does not mark outbox delivered;
+- legacy rows without hash fail closed or are recomputed explicitly.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 4`, roughly `70-150 LOC`.
+
+### 7.83 Overlapping OpenCode Inbox Relays Can Duplicate Prompts
+
+A second `onlyMessageId` wake can arrive while a member relay is already running. If it starts a second relay loop, prompt ledger idempotency becomes the last line of defense.
+
+Rules:
+
+- one member has one active relay loop;
+- target-message wakes coalesce or queue behind active relay;
+- diagnostics explain queued-behind vs missing vs already-read.
+
+Risk:
+
+`🎯 8   🛡️ 9   🧠 4`, roughly `60-180 LOC`.
+
+### 7.84 Outbox Delivered Can Be Mistaken For Runtime Accepted
+
+For generic agenda-sync nudges, outbox delivery means inbox row insertion. It does not prove OpenCode accepted the prompt.
+
+Rules:
+
+- keep durable inbox delivery and runtime acceptance separate;
+- latency timeline exposes every stage;
+- UI copy does not imply the agent saw the message until runtime proof exists.
+
+Risk:
+
+`🎯 9   🛡️ 8   🧠 3`, roughly `50-130 LOC`.
+
+### 7.85 Busy Suppression Can Block Its Own Repair
+
+Unread foreground messages correctly suppress generic work-sync nudges, but the same unread message can also be the delivery that needs proof repair.
+
+Rules:
+
+- generic work-sync remains suppressed by unread foreground;
+- same-message delivery repair uses delivery path, not generic sync bypass;
+- unrelated unread messages still suppress proof-missing task recovery.
+
+Risk:
+
+`🎯 8   🛡️ 9   🧠 5`, roughly `90-220 LOC`.
+
+### 7.86 Read-Path Recovery Can Spam Agents
+
+If advisory reads enqueue recovery, every member card refresh, worker snapshot, and renderer poll can become a write.
+
+Rules:
+
+- read/query services stay side-effect free;
+- only delivery lifecycle, event queue, or explicit command handlers schedule recovery;
+- tests assert no inbox/outbox writes during repeated advisory reads.
+
+Risk:
+
+`🎯 10   🛡️ 10   🧠 4`, roughly `80-180 LOC`.
+
+### 7.87 Ambiguous Trigger Reason Can Hide Recovery Bugs
+
+Reusing `runtime_activity` for proof-missing recovery makes timing, coalescing, and audit diagnostics ambiguous.
+
+Rules:
+
+- add a dedicated trigger reason if proof-missing recovery is in scope;
+- update default timing, coalescing, audit, and composition together;
+- keep broad runtime activity behavior unchanged.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 4`, roughly `70-160 LOC`.
+
+### 7.88 Outbox Arbitration Can Bypass Ports
+
+It is tempting to inspect member-work-sync JSON files from `TeamProvisioningService` to find recent recovery. That creates tight coupling and hidden storage assumptions.
+
+Rules:
+
+- recovery lookup goes through `MemberWorkSyncOutboxStorePort`;
+- storage-specific scans stay inside `JsonMemberWorkSyncStore`;
+- port query returns logical state, not raw JSON rows.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 4`, roughly `90-190 LOC`.
+
+### 7.89 Optional Inbox Hash Can Break Old Rows
+
+Persisting `workSyncPayloadHash` is necessary for idempotency, but old inbox rows will not have it.
+
+Rules:
+
+- optional field only;
+- reader and renderer tolerate missing hash;
+- sink compatibility is explicit and tested;
+- missing hash never silently confirms a changed work-sync payload.
+
+Risk:
+
+`🎯 9   🛡️ 9   🧠 4`, roughly `90-180 LOC`.
+
+### 7.90 Audit Union Drift Can Hide Recovery Diagnostics
+
+Adding recovery code without extending `MemberWorkSyncAuditEventName` correctly can lead to casts, generic skip events, or missing diagnostics.
+
+Rules:
+
+- event union, reason mapper, journal tests, and diagnostics update in the same cut;
+- no `as MemberWorkSyncAuditEventName` for new event names;
+- audit failure remains non-blocking.
+
+Risk:
+
+`🎯 8   🛡️ 9   🧠 3`, roughly `40-100 LOC`.
+
 ---
 
 ## 8. Implementation Sequence
@@ -6470,6 +7392,20 @@ Tasks:
 99. Add main-process fanout/coalescing tests proving duplicate task/inbox/runtime events converge to one outbox row.
 100. Add store repair diagnostics tests proving corrupt member metadata does not delete hidden sync data and valid members still repair.
 101. Add user-surface tests proving work-sync automation stays hidden in normal Messages but visible in audit/debug surfaces.
+102. Add proof-missing recovery adapter tests proving `protocol_proof_missing` enqueues one coalesced recovery signal without marking inbox read or ledger proven.
+103. Add advisory cache invalidation tests proving later visible/task proof clears `OpenCode proof missing` and suppresses queued recovery.
+104. Add delivery-repair vs work-sync arbitration tests proving one recovery nudge wins per message/cooldown window.
+105. Add diagnostic classifier precedence tests proving `message_send Not connected` stays backend/runtime connectivity and quota/auth errors outrank proof-missing tokens.
+106. Add inbox nudge sink payload-hash tests so same messageId cannot hide changed work-sync payload.
+107. Add OpenCode relay in-flight tests proving concurrent `onlyMessageId` wakes serialize or return queued-behind without duplicate prompts.
+108. Add work-sync delivery timeline tests separating durable inbox insertion from OpenCode runtime prompt acceptance.
+109. Add busy-signal recovery-context tests proving same-message delivery repair is not suppressed by its own unread row, while unrelated unread foreground still suppresses generic nudges.
+110. Add classifier implementation tests proving single-message classification uses explicit precedence or intentionally tested rule order.
+111. Add advisory read-path purity tests proving `TeamMemberRuntimeAdvisoryService`, `TeamDataService`, and worker snapshot reads never enqueue inbox/outbox recovery.
+112. Add explicit `proof_missing_recovery` trigger tests if that trigger is introduced, including timing, coalescing, audit metadata, and composition wiring.
+113. Add outbox logical recovery lookup tests through `MemberWorkSyncOutboxStorePort`, not file-path scans from provisioning code.
+114. Add backward-compatible inbox schema tests for optional `workSyncPayloadHash` across writer, reader, sink, renderer filtering, and legacy rows.
+115. Add member-work-sync audit event tests for proof-missing recovery schedule/coalesce/suppress/conflict events without type casts.
 
 Commit:
 
@@ -6892,6 +7828,8 @@ pnpm vitest run \
   test/main/services/team/OpenCodePromptDeliveryLedger.test.ts \
   test/main/services/team/RuntimeDeliveryService.test.ts \
   test/main/services/team/OpenCodeRuntimeDeliveryAdvisoryPolicy.test.ts \
+  test/main/services/team/OpenCodeRuntimeDeliveryDiagnostics.test.ts \
+  test/main/services/team/RuntimeDiagnosticClassifier.test.ts \
   test/main/services/team/TeamMemberRuntimeAdvisoryService.test.ts \
   test/main/services/team/ChangeExtractorService.test.ts \
   test/main/services/team/TaskChangeLedgerReader.test.ts \
@@ -6927,6 +7865,16 @@ Add or extend tests for:
 - bridge idempotency remains stable for one delivery attempt and timeout recovery requires exact echoed identity.
 - runtime delivery journal conflicts are tested separately from MCP readiness failures.
 - visible proof reader covers the actual runtime delivery destination stores, including direct user replies in sent messages.
+- `protocol_proof_missing` is recovery-only and never marks inbox read, ledger proven, or member-work-sync reported.
+- proof-missing advisory refreshes coalesce to one recovery key and are canceled by later visible/task proof.
+- delivery repair and member-work-sync arbitration sends at most one nudge for the same logical message per cooldown window.
+- `message_send Not connected` does not classify as proof missing and keeps the current backend/network taxonomy unless a dedicated MCP reason code is added end-to-end.
+- auth/quota/provider diagnostics outrank protocol proof-missing diagnostics.
+- single-message runtime diagnostic classification uses explicit priority or tests the intended rule order.
+- existing inbox nudge rows with same messageId and different payloadHash are conflicts, not delivered existing nudges.
+- concurrent `onlyMessageId` OpenCode wake calls serialize, coalesce, or return queued-behind without duplicate prompt attempts.
+- generic work-sync outbox delivered is verified as inbox-inserted only, not runtime-accepted.
+- same-message delivery repair is not suppressed by its own unread row, while unrelated foreground unread messages still suppress generic work-sync.
 - concurrent direct user reply writes to `sentMessages.json` preserve all committed proof rows.
 - runtime delivery taskRefs schema is explicit and invalid shapes cannot be silently dropped.
 - unresolved secondary OpenCode runtime control calls fail closed instead of falling back to primary lane.
@@ -7414,10 +8362,10 @@ Expected live assertions:
 
 - production calls sink only through outbox dispatcher;
 - outbox payloadHash conflict blocks sink call;
-- existing messageId path is safe only for already validated payload equivalence;
+- existing messageId path validates payload equivalence at the sink or fails closed;
 - writer-returned messageId is recorded consistently;
 - hidden automation row stays durable and debug-readable;
-- future direct sink reuse must add payloadHash or messageKind/source/taskRefs validation.
+- direct sink reuse cannot bypass payloadHash or messageKind/source/taskRefs validation.
 
 ### 12.31 Targeted Recovery Checklist
 
@@ -7619,6 +8567,111 @@ Expected live assertions:
 - diagnostics expose fingerprint/token/outbox state without secrets;
 - rendering a status panel cannot trigger dispatch.
 
+### 12.54 Protocol Proof Missing Checklist
+
+- proof-missing never marks inbox read;
+- proof-missing never marks delivery ledger proven;
+- proof-missing never satisfies `member_work_sync_report`;
+- recovery identity includes exact team, member, original message id, and task refs when available;
+- missing identity fails closed with diagnostics;
+- repeated advisory evaluation coalesces to one recovery key.
+
+### 12.55 Advisory Cache Clearing Checklist
+
+- visible reply proof invalidates member advisory cache;
+- task progress proof invalidates member advisory cache;
+- canceled recovery invalidates affected member advisory cache;
+- stale cache cannot keep `OpenCode proof missing` visible after current proof exists;
+- invalidation failure is logged and does not send another nudge.
+
+### 12.56 Delivery Repair And Work-Sync Arbitration Checklist
+
+- delivery repair and work-sync share a recent-recovery guard or compatible deterministic keys;
+- direct visible-reply failures prefer delivery repair;
+- task-scoped progress-proof failures prefer work-sync when no delivery retry is active;
+- only one nudge is sent per message/cooldown window;
+- both paths preserve original `messageId`, `relayOfMessageId`, and `taskRefs`.
+
+### 12.57 Diagnostic Classifier Checklist
+
+- classifier precedence is explicit and tested;
+- `Not connected` is not proof missing;
+- auth/quota/runtime failures outrank proof missing;
+- proof-missing tokens are narrow;
+- user-facing advisory diagnostics redact secrets and large raw payloads.
+
+### 12.58 Inbox Nudge Payload Integrity Checklist
+
+- inbox nudge sink validates existing row payload hash;
+- same messageId with different payload fails closed;
+- legacy rows without hash are handled by explicit compatibility rule;
+- conflict does not mark outbox delivered;
+- hash excludes presentation-only fields that should not change delivery semantics.
+
+### 12.59 OpenCode Relay In-Flight Checklist
+
+- one team/member has one active relay loop;
+- `onlyMessageId` wake during active relay cannot start overlapping prompt delivery;
+- queued-behind result is retryable and diagnostic;
+- already-read and missing target rows are distinct outcomes;
+- active relay map is not overwritten by a newer promise.
+
+### 12.60 Work-Sync Delivery Timeline Checklist
+
+- outbox delivered means inbox inserted;
+- runtime prompt acceptance is tracked separately through OpenCode ledger;
+- timeline captures inbox insert, wake schedule, relay start, prompt accept, response proof, and terminal reason;
+- wake failure does not duplicate inbox row;
+- user-facing copy does not imply runtime acceptance from outbox delivery alone.
+
+### 12.61 Busy Recovery Context Checklist
+
+- default busy context remains generic work-sync;
+- same-message delivery repair does not use broad foreground bypass;
+- unrelated unread foreground messages still suppress generic and task recovery nudges;
+- active prompt ledger suppresses duplicate sends;
+- tests cover foreground unread, foreground recent, active ledger, lane missing, and same-message repair.
+
+### 12.62 Advisory Read-Path Purity Checklist
+
+- `TeamMemberRuntimeAdvisoryService` remains query/cache only;
+- `TeamDataService` snapshot reads never enqueue recovery;
+- renderer polling cannot write inbox/outbox rows;
+- worker advisory refresh cannot send notifications or prompts;
+- recovery scheduling happens only from delivery lifecycle or explicit member-work-sync command paths.
+
+### 12.63 Proof-Missing Trigger Contract Checklist
+
+- trigger reason is explicit if proof-missing recovery is implemented;
+- default run-after and max coalesce are defined;
+- composition passes trigger timing when customized;
+- audit metadata includes original message id and task refs;
+- broad `runtime_activity` behavior remains unchanged.
+
+### 12.64 Outbox Recovery Lookup Checklist
+
+- arbitration uses `MemberWorkSyncOutboxStorePort`;
+- JSON store owns storage scans;
+- lookup distinguishes pending, claimed, delivered, retryable, superseded, and stale rows;
+- logical key includes team, member, intent key, original message id, and task ids when available;
+- no provisioning code reads member-work-sync store files directly.
+
+### 12.65 Work-Sync Inbox Schema Checklist
+
+- `workSyncPayloadHash` is optional and backward-compatible;
+- writer persists it only for work-sync automation;
+- reader materializes it without changing normal message identity;
+- renderer hides it from normal Messages UI;
+- sink treats same messageId with different hash as conflict.
+
+### 12.66 Audit Event Extension Checklist
+
+- new event names are added to `MemberWorkSyncAuditEventName`;
+- `reasonToAuditEvent()` has explicit mappings for new recovery reasons;
+- no string casts are used to bypass the event union;
+- audit rows include diagnostic identity without secrets;
+- audit failure does not change dispatch correctness.
+
 ---
 
 ## 13. Rollback Strategy
@@ -7642,6 +8695,13 @@ Phase 3 rollback:
 Phase 4 rollback:
 
 - restore previous retry delays/reason mapping.
+
+Proof-missing recovery rollback:
+
+- disable new scheduling entrypoint first, not advisory reads;
+- keep optional inbox `workSyncPayloadHash` as ignored compatible data;
+- keep audit rows and outbox rows as diagnostics;
+- do not delete inbox rows or ledgers.
 
 Never rollback by deleting ledgers, outcome stores, runtime session stores, or task JSON.
 
@@ -7705,6 +8765,20 @@ This hardening is complete when:
 - Duplicate main-process events coalesce before dispatch.
 - Store repair never deletes hidden sync data because member metadata is malformed.
 - User status surfaces separate control-plane sync from agent/message failure.
+- `OpenCode proof missing` remains a warning/recovery condition and never becomes success proof.
+- Proof-missing recovery preserves original message identity and coalesces duplicate advisory evaluations.
+- Later visible reply or task progress proof clears proof-missing advisory and suppresses queued recovery.
+- Delivery repair and work-sync cannot both nudge the same logical message inside the cooldown window.
+- Diagnostic classification distinguishes runtime connectivity, auth/quota/provider failures, and protocol proof missing using explicit precedence.
+- Inbox nudge sink detects messageId/payloadHash drift before marking outbox delivered.
+- OpenCode inbox relay cannot run overlapping prompt loops for the same team/member.
+- Generic work-sync outbox delivered remains an inbox durability state and is not confused with OpenCode prompt acceptance.
+- Busy suppression cannot block same-message delivery repair forever while still protecting unrelated foreground messages.
+- Runtime advisory reads are side-effect free and cannot schedule recovery from UI polling.
+- Proof-missing recovery uses an explicit trigger and port contract, or remains deliberately out of scope.
+- Recovery arbitration uses member-work-sync ports instead of provisioning-code storage scans.
+- Work-sync payload hashes are persisted backward-compatibly and hidden from normal user-facing message content.
+- Recovery audit events are typed, tested, and non-blocking.
 - Live smoke proves a task assignment reaches OpenCode, starts work, produces task logs, and settles member-work-sync without duplicate nudges.
 
 ---
