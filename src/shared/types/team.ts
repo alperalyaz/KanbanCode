@@ -670,6 +670,8 @@ export interface InboxMessage {
   workSyncIntentKey?: string;
   /** Concrete review_requested event IDs covered by this nudge. */
   workSyncReviewRequestEventIds?: string[];
+  /** Durable hash for idempotent hidden member-work-sync automation rows. */
+  workSyncPayloadHash?: string;
   /** Structured slash-command metadata for sent command rows. */
   slashCommand?: SlashCommandMeta;
   /** Structured command-output metadata for session-derived result rows. */
@@ -717,6 +719,7 @@ export interface SendMessageRequest {
   workSyncIntent?: InboxMessage['workSyncIntent'];
   workSyncIntentKey?: string;
   workSyncReviewRequestEventIds?: string[];
+  workSyncPayloadHash?: string;
   slashCommand?: SlashCommandMeta;
   commandOutput?: CommandOutputMeta;
 }

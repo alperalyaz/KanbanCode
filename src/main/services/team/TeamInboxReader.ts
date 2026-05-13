@@ -159,6 +159,8 @@ export class TeamInboxReader {
               (id): id is string => typeof id === 'string' && id.length > 0
             )
           : undefined,
+        workSyncPayloadHash:
+          typeof row.workSyncPayloadHash === 'string' ? row.workSyncPayloadHash : undefined,
         slashCommand:
           row.slashCommand &&
           typeof row.slashCommand === 'object' &&
