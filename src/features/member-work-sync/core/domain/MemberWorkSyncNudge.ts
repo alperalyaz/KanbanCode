@@ -94,6 +94,18 @@ function hasLeadClarificationItem(status: MemberWorkSyncStatus): boolean {
   );
 }
 
+function buildProofMissingRecoveryText(status: MemberWorkSyncStatus): string[] {
+  const recovery = status.shadow?.recovery;
+  if (recovery?.kind !== 'proof_missing') {
+    return [];
+  }
+
+  return [
+    `This also repairs OpenCode delivery proof for original messageId "${recovery.originalMessageId}".`,
+    'If you already completed the work, do not duplicate it; instead create the missing visible reply or task progress proof for the current agenda.',
+  ];
+}
+
 function buildReviewPickupNudgePayload(status: MemberWorkSyncStatus): MemberWorkSyncNudgePayload {
   const taskRefs = buildTaskRefs(status);
   const preview = buildAgendaPreview(status);
@@ -148,9 +160,13 @@ export function buildMemberWorkSyncNudgePayload(
     source: 'member-work-sync',
     actionMode: 'do',
     workSyncIntent: 'agenda_sync',
+    ...(status.shadow?.recovery?.intentKey
+      ? { workSyncIntentKey: status.shadow.recovery.intentKey }
+      : {}),
     taskRefs,
     text: [
       'Work sync check: you have current actionable work assigned.',
+      ...buildProofMissingRecoveryText(status),
       preview ? `Current agenda: ${preview}.` : '',
       `Required sync action: call member_work_sync_status with teamName "${status.teamName}" and memberName "${status.memberName}", then call member_work_sync_report with the same teamName/memberName and the returned agendaFingerprint and reportToken.`,
       taskIds.length
@@ -191,8 +207,7 @@ export function buildMemberWorkSyncOutboxEnsureInput(input: {
   }
 
   const payload = buildMemberWorkSyncNudgePayload(status);
-  const intentKey =
-    payload.workSyncIntent === 'review_pickup' ? payload.workSyncIntentKey : undefined;
+  const intentKey = payload.workSyncIntentKey;
   return {
     id: buildMemberWorkSyncNudgeId({
       teamName: status.teamName,

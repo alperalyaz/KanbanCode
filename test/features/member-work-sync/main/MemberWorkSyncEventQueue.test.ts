@@ -150,6 +150,47 @@ describe('MemberWorkSyncEventQueue', () => {
     await queue.stop();
   });
 
+  it('passes proof-missing recovery context into queued reconcile', async () => {
+    const reconciles: unknown[] = [];
+    const queue = new MemberWorkSyncEventQueue({
+      reconcile: async (request, context) => {
+        reconciles.push({ request, context });
+      },
+      isTeamActive: () => true,
+    });
+
+    queue.enqueue({
+      teamName: 'team-a',
+      memberName: 'bob',
+      triggerReason: 'proof_missing_recovery',
+      runAfterMs: 0,
+      recovery: {
+        kind: 'proof_missing',
+        intentKey: 'proof-missing:message-1',
+        originalMessageId: 'message-1',
+        taskIds: ['task-a'],
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(reconciles).toHaveLength(1);
+    expect(reconciles[0]).toMatchObject({
+      request: { teamName: 'team-a', memberName: 'bob' },
+      context: {
+        reconciledBy: 'queue',
+        triggerReasons: ['proof_missing_recovery'],
+        recovery: {
+          kind: 'proof_missing',
+          intentKey: 'proof-missing:message-1',
+          originalMessageId: 'message-1',
+          taskIds: ['task-a'],
+        },
+      },
+    });
+    await queue.stop();
+  });
+
   it('does not let a later quiet-window event delay a queued manual refresh', async () => {
     const reconciles: unknown[] = [];
     const queue = new MemberWorkSyncEventQueue({

@@ -1830,6 +1830,11 @@ async function initializeServices(): Promise<void> {
       ? memberWorkSyncFeature.buildRuntimeTurnSettledEnvironment(input)
       : Promise.resolve(null)
   );
+  teamProvisioningService.setMemberWorkSyncProofMissingRecoveryScheduler((input) =>
+    memberWorkSyncFeature
+      ? memberWorkSyncFeature.scheduleProofMissingRecovery(input)
+      : Promise.resolve({ scheduled: false, reason: 'invalid' })
+  );
   scheduleStartupTask(() => {
     void teamDataService
       .listTeams()

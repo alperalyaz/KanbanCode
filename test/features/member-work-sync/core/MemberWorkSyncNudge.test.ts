@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildMemberWorkSyncNudgePayload } from '@features/member-work-sync/core/domain';
+import {
+  buildMemberWorkSyncNudgePayload,
+  buildMemberWorkSyncOutboxEnsureInput,
+} from '@features/member-work-sync/core/domain';
 import type { MemberWorkSyncStatus } from '@features/member-work-sync/contracts';
 
 function makeStatus(
@@ -85,5 +88,62 @@ describe('MemberWorkSyncNudge', () => {
     );
 
     expect(payload.text).not.toContain('task_set_clarification value "user"');
+  });
+
+  it('adds proof-missing recovery context to agenda sync nudges', () => {
+    const status = makeStatus({
+      memberName: 'bob',
+      agenda: {
+        teamName: 'sable-ops',
+        memberName: 'bob',
+        generatedAt: '2026-05-13T13:02:44.263Z',
+        fingerprint: 'agenda:v1:work',
+        diagnostics: [],
+        items: [
+          {
+            taskId: 'task-work',
+            displayId: 'c76d04cc',
+            subject: 'Создать каркас калькулятора',
+            assignee: 'bob',
+            kind: 'work',
+            priority: 'normal',
+            reason: 'owned_pending_task',
+            evidence: {
+              status: 'pending',
+              owner: 'bob',
+            },
+          },
+        ],
+      },
+      shadow: {
+        reconciledBy: 'queue',
+        wouldNudge: true,
+        fingerprintChanged: false,
+        recovery: {
+          kind: 'proof_missing',
+          intentKey: 'proof-missing:message-1',
+          originalMessageId: 'message-1',
+          taskIds: ['task-work'],
+        },
+      },
+    });
+    const payload = buildMemberWorkSyncNudgePayload(status);
+    const outboxInput = buildMemberWorkSyncOutboxEnsureInput({
+      status,
+      nowIso: status.evaluatedAt,
+      hash: {
+        sha256Hex: (value) => `hash:${value.length}`,
+      },
+    });
+
+    expect(payload.workSyncIntent).toBe('agenda_sync');
+    expect(payload.workSyncIntentKey).toBe('proof-missing:message-1');
+    expect(payload.text).toContain(
+      'repairs OpenCode delivery proof for original messageId "message-1"'
+    );
+    expect(payload.text).toContain('do not duplicate it');
+    expect(outboxInput?.id).toBe(
+      'member-work-sync:sable-ops:bob:proof-missing:message-1'
+    );
   });
 });

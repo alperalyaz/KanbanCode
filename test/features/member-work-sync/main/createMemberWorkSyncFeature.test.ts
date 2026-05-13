@@ -311,6 +311,120 @@ async function forceRetryableOutboxDue(input: {
 }
 
 describe('createMemberWorkSyncFeature composition', () => {
+  it('schedules proof-missing recovery through the work-sync queue', async () => {
+    const claudeRoot = makeTempRoot();
+    setClaudeBasePathOverride(claudeRoot);
+    const teamsBasePath = getTeamsBasePath();
+    const teamName = 'team-a';
+    const memberName = 'bob';
+    const feature = createMemberWorkSyncFeature({
+      teamsBasePath,
+      configReader: {
+        getConfig: vi.fn(async () => ({
+          name: teamName,
+          members: [{ name: memberName }],
+        })),
+      } as never,
+      taskReader: { getTasks: vi.fn(async () => []) } as never,
+      kanbanManager: {
+        getState: vi.fn(async () => ({ teamName, reviewers: [], tasks: {} })),
+      } as never,
+      membersMetaStore: { getMembers: vi.fn(async () => []) } as never,
+    });
+
+    try {
+      await expect(
+        feature.scheduleProofMissingRecovery({
+          teamName,
+          memberName,
+          originalMessageId: 'message-1',
+          taskRefs: [{ taskId: 'task-1', displayId: '11111111', teamName }],
+          reason: 'OpenCode proof missing',
+        })
+      ).resolves.toMatchObject({
+        scheduled: true,
+        reason: 'scheduled',
+        intentKey: 'proof-missing:message-1',
+      });
+
+      expect(feature.getQueueDiagnostics()).toMatchObject({
+        queued: 1,
+        queuedItems: [
+          {
+            teamName,
+            memberName,
+            triggerReasons: ['proof_missing_recovery'],
+          },
+        ],
+      });
+      await expect(readInboxMessages({ teamsBasePath, teamName, memberName })).resolves.toEqual(
+        []
+      );
+    } finally {
+      await feature.dispose();
+    }
+  });
+
+  it('coalesces proof-missing recovery when a recent matching outbox item exists', async () => {
+    const claudeRoot = makeTempRoot();
+    setClaudeBasePathOverride(claudeRoot);
+    const teamsBasePath = getTeamsBasePath();
+    const teamName = 'team-a';
+    const memberName = 'bob';
+    const feature = createMemberWorkSyncFeature({
+      teamsBasePath,
+      configReader: {
+        getConfig: vi.fn(async () => ({
+          name: teamName,
+          members: [{ name: memberName }],
+        })),
+      } as never,
+      taskReader: { getTasks: vi.fn(async () => []) } as never,
+      kanbanManager: {
+        getState: vi.fn(async () => ({ teamName, reviewers: [], tasks: {} })),
+      } as never,
+      membersMetaStore: { getMembers: vi.fn(async () => []) } as never,
+    });
+
+    try {
+      const store = new JsonMemberWorkSyncStore(new MemberWorkSyncStorePaths(teamsBasePath));
+      await store.ensurePending({
+        id: 'member-work-sync:team-a:bob:proof-missing:message-1',
+        teamName,
+        memberName,
+        agendaFingerprint: 'agenda:v1:test',
+        payloadHash: 'payload-hash',
+        payload: {
+          from: 'system',
+          to: memberName,
+          messageKind: 'member_work_sync_nudge',
+          source: 'member-work-sync',
+          actionMode: 'do',
+          workSyncIntent: 'agenda_sync',
+          workSyncIntentKey: 'proof-missing:message-1',
+          text: 'Recover proof',
+          taskRefs: [{ taskId: 'task-1', displayId: '11111111', teamName }],
+        },
+        nowIso: new Date().toISOString(),
+      });
+
+      await expect(
+        feature.scheduleProofMissingRecovery({
+          teamName,
+          memberName,
+          originalMessageId: 'message-1',
+        })
+      ).resolves.toMatchObject({
+        scheduled: false,
+        reason: 'coalesced_recent',
+        existingOutboxId: 'member-work-sync:team-a:bob:proof-missing:message-1',
+      });
+      expect(feature.getQueueDiagnostics()).toMatchObject({ queued: 0 });
+    } finally {
+      await feature.dispose();
+    }
+  });
+
   it('dispatches a due nudge through the real outbox and inbox by default', async () => {
     const claudeRoot = makeTempRoot();
     setClaudeBasePathOverride(claudeRoot);

@@ -61,6 +61,7 @@ interface QueueItem {
   maxRunAt: number;
   triggerReasons: Set<MemberWorkSyncTriggerReason>;
   triggerReasonCounts: Map<MemberWorkSyncTriggerReason, number>;
+  recovery?: MemberWorkSyncReconcileContext['recovery'];
 }
 
 interface RunningItem {
@@ -69,6 +70,7 @@ interface RunningItem {
   startedAt: number;
   rerunRequested: boolean;
   triggerReasons: Set<MemberWorkSyncTriggerReason>;
+  recovery?: MemberWorkSyncReconcileContext['recovery'];
 }
 
 interface TriggerTimingPolicy {
@@ -152,6 +154,7 @@ export class MemberWorkSyncEventQueue {
     memberName: string;
     triggerReason: MemberWorkSyncTriggerReason;
     runAfterMs?: number;
+    recovery?: MemberWorkSyncReconcileContext['recovery'];
   }): void {
     if (this.stopped) {
       return;
@@ -172,6 +175,9 @@ export class MemberWorkSyncEventQueue {
     if (running) {
       running.rerunRequested = true;
       running.triggerReasons.add(input.triggerReason);
+      if (input.recovery) {
+        running.recovery = input.recovery;
+      }
       this.counters.coalesced += 1;
       this.appendAudit({
         teamName,
@@ -186,6 +192,9 @@ export class MemberWorkSyncEventQueue {
     const existing = this.items.get(key);
     if (existing) {
       existing.triggerReasons.add(input.triggerReason);
+      if (input.recovery) {
+        existing.recovery = input.recovery;
+      }
       existing.lastQueuedAt = now;
       existing.maxRunAt = Math.max(
         existing.maxRunAt,
@@ -221,6 +230,7 @@ export class MemberWorkSyncEventQueue {
       maxRunAt: now + timing.maxCoalesceWaitMs,
       triggerReasons: new Set([input.triggerReason]),
       triggerReasonCounts: new Map([[input.triggerReason, 1]]),
+      ...(input.recovery ? { recovery: input.recovery } : {}),
     });
     this.counters.enqueued += 1;
     this.appendAudit({
@@ -352,6 +362,7 @@ export class MemberWorkSyncEventQueue {
       startedAt: this.now(),
       rerunRequested: false,
       triggerReasons: new Set(item.triggerReasons),
+      ...(item.recovery ? { recovery: item.recovery } : {}),
     };
     this.running.set(key, running);
 
@@ -378,6 +389,7 @@ export class MemberWorkSyncEventQueue {
 
   private enqueueFollowUp(item: QueueItem, running: RunningItem): void {
     const reasons = [...running.triggerReasons].sort();
+    const recovery = running.recovery ?? item.recovery;
     const primaryReason =
       reasons.find((reason) => reason === 'manual_refresh') ??
       reasons.find((reason) => reason === 'turn_settled' || reason === 'tool_finished') ??
@@ -388,6 +400,7 @@ export class MemberWorkSyncEventQueue {
       memberName: item.memberName,
       triggerReason: primaryReason,
       runAfterMs: Math.min(this.resolveTimingPolicy(primaryReason).runAfterMs, 5_000),
+      ...(recovery ? { recovery } : {}),
     });
     const queued = this.items.get(keyOf(item.teamName, item.memberName));
     if (!queued) {
@@ -414,11 +427,13 @@ export class MemberWorkSyncEventQueue {
       return;
     }
 
+    const recovery = running.recovery ?? item.recovery;
     await this.deps.reconcile(
       { teamName: item.teamName, memberName: item.memberName },
       {
         reconciledBy: 'queue',
         triggerReasons: [...running.triggerReasons].sort(),
+        ...(recovery ? { recovery } : {}),
       }
     );
     this.counters.reconciled += 1;

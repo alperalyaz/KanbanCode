@@ -5484,6 +5484,14 @@ interface OpenCodeMemberInboxRelayOptions {
   };
 }
 
+type MemberWorkSyncProofMissingRecoveryScheduler = (input: {
+  teamName: string;
+  memberName: string;
+  originalMessageId: string;
+  taskRefs?: TaskRef[];
+  reason?: string;
+}) => Promise<unknown> | unknown;
+
 function normalizeSameTeamText(text: string): string {
   return text.trim().replace(/\r\n/g, '\n');
 }
@@ -5643,6 +5651,8 @@ export class TeamProvisioningService {
   private memberRuntimeAdvisoryInvalidator:
     | ((teamName: string, memberName: string) => void)
     | null = null;
+  private memberWorkSyncProofMissingRecoveryScheduler: MemberWorkSyncProofMissingRecoveryScheduler | null =
+    null;
   private readonly memberLogsFinder: TeamMemberLogsFinder;
   private readonly transcriptProjectResolver: TeamTranscriptProjectResolver;
   private readonly taskActivityIntervalService = new TeamTaskActivityIntervalService();
@@ -6000,6 +6010,12 @@ export class TeamProvisioningService {
     invalidator: ((teamName: string, memberName: string) => void) | null
   ): void {
     this.memberRuntimeAdvisoryInvalidator = invalidator;
+  }
+
+  setMemberWorkSyncProofMissingRecoveryScheduler(
+    scheduler: MemberWorkSyncProofMissingRecoveryScheduler | null
+  ): void {
+    this.memberWorkSyncProofMissingRecoveryScheduler = scheduler;
   }
 
   setCrossTeamSender(
@@ -8827,6 +8843,7 @@ export class TeamProvisioningService {
     }
 
     this.emitOpenCodeRuntimeDeliveryAdvisoryEvent(latestRecord, decision);
+    await this.scheduleOpenCodeProofMissingWorkSyncRecovery(latestRecord, decision);
     if (decision.severity !== 'error') {
       return;
     }
@@ -8930,6 +8947,33 @@ export class TeamProvisioningService {
       reason,
       taskLabel,
     });
+  }
+
+  private async scheduleOpenCodeProofMissingWorkSyncRecovery(
+    record: OpenCodePromptDeliveryLedgerRecord,
+    decision: OpenCodeRuntimeDeliveryAdvisoryDecision
+  ): Promise<void> {
+    if (decision.reasonCode !== 'protocol_proof_missing') {
+      return;
+    }
+    const scheduler = this.memberWorkSyncProofMissingRecoveryScheduler;
+    if (!scheduler) {
+      return;
+    }
+
+    try {
+      await scheduler({
+        teamName: record.teamName,
+        memberName: record.memberName,
+        originalMessageId: record.inboxMessageId,
+        taskRefs: record.taskRefs,
+        ...(decision.reason ? { reason: decision.reason } : {}),
+      });
+    } catch (error) {
+      logger.warn(
+        `[${record.teamName}] Failed to schedule OpenCode proof-missing work sync recovery for ${record.memberName}: ${getErrorMessage(error)}`
+      );
+    }
   }
 
   private emitOpenCodeRuntimeDeliveryAdvisoryEvent(
