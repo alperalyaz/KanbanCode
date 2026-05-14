@@ -56,6 +56,7 @@ import {
   removeRuntimeProviderManagementIpc,
   type RuntimeProviderManagementFeatureFacade,
 } from '@features/runtime-provider-management/main';
+import { createWorkspaceTrustCoordinator } from '@features/workspace-trust/main';
 import { ClaudeMultimodelBridgeService } from '@main/services/runtime/ClaudeMultimodelBridgeService';
 import { applyOpenCodeAutoUpdatePolicy } from '@main/services/runtime/openCodeAutoUpdatePolicy';
 import { providerConnectionService } from '@main/services/runtime/ProviderConnectionService';
@@ -142,6 +143,7 @@ import {
   createOpenCodeBridgeClientIdentity,
   OpenCodeBridgeCommandHandshakePort,
 } from './services/team/opencode/bridge/OpenCodeBridgeHandshakeClient';
+import { cleanupManagedOpenCodeServeProcesses } from './services/team/opencode/bridge/OpenCodeManagedHostProcessCleanup';
 import { OpenCodeStateChangingBridgeCommandService } from './services/team/opencode/bridge/OpenCodeStateChangingBridgeCommandService';
 import { OpenCodeRuntimeManifestEvidenceReader } from './services/team/opencode/store/OpenCodeRuntimeManifestEvidenceReader';
 import {
@@ -160,7 +162,9 @@ import {
 import { TeamSentMessagesStore } from './services/team/TeamSentMessagesStore';
 import { getAppIconPath } from './utils/appIcon';
 import {
+  getAutoDetectedClaudeBasePath,
   getClaudeBasePath,
+  getHomeDir,
   getProjectsBasePath,
   getTeamsBasePath,
   getTodosBasePath,
@@ -172,6 +176,7 @@ import {
   safeSendToRenderer,
 } from './utils/safeWebContentsSend';
 import { syncTelemetryFlag } from './sentry';
+import { setCodexRuntimeMainWindow } from './ipc/codexRuntime';
 import {
   ActiveTeamRegistry,
   BoardTaskActivityDetailService,
@@ -211,12 +216,15 @@ import {
   TeamTaskStallSnapshotSource,
   TeamTranscriptSourceLocator,
   UpdaterService,
+  resolveVerifiedAppManagedOpenCodeRuntimeBinaryPath,
 } from './services';
 
 import type { FileChangeEvent } from '@main/types';
 import type { AppStartupStatus, AppStartupStep, TeamChangeEvent } from '@shared/types';
 
 const logger = createLogger('App');
+const appStartedAtMs = Date.now();
+const openCodeManagedHostInstanceId = `${process.pid}-${appStartedAtMs}`;
 let openCodeLifecycleBridge: OpenCodeReadinessBridge | null = null;
 if (
   earlyElectronUserDataMigrationResult.migrated &&
@@ -342,7 +350,20 @@ async function createOpenCodeRuntimeAdapterRegistry(
 
   reportProgress('runtime-environment', 'Preparing runtime environment...');
   const bridgeEnv = applyOpenCodeAutoUpdatePolicy({ ...process.env });
+  bridgeEnv.CLAUDE_TEAM_APP_INSTANCE_ID = openCodeManagedHostInstanceId;
   bridgeEnv.AGENT_TEAMS_MCP_CLAUDE_DIR = getClaudeBasePath();
+  try {
+    const appManagedOpenCodeBinary = await resolveVerifiedAppManagedOpenCodeRuntimeBinaryPath();
+    if (appManagedOpenCodeBinary && !bridgeEnv.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH) {
+      bridgeEnv.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH = appManagedOpenCodeBinary;
+    }
+  } catch (error) {
+    logger.warn(
+      `[OpenCode] Runtime adapter bundled OpenCode binary unresolved: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
   try {
     reportProgress('runtime-work-sync', 'Preparing runtime work sync hooks...');
     const turnSettledEnv = await buildMemberWorkSyncRuntimeTurnSettledEnvironment({
@@ -415,23 +436,63 @@ async function createOpenCodeRuntimeAdapterRegistry(
 }
 
 async function cleanupOpenCodeHostsForLifecycle(reason: 'startup' | 'shutdown'): Promise<void> {
-  if (!openCodeLifecycleBridge) {
-    return;
-  }
-  const result = await openCodeLifecycleBridge.cleanupOpenCodeHosts({
-    reason,
-    mode: reason === 'shutdown' ? 'force' : 'stale',
-    staleAgeMs: reason === 'startup' ? 5 * 60_000 : null,
-    leaseStaleAgeMs: reason === 'startup' ? 24 * 60 * 60_000 : null,
-    preflightLeaseStaleAgeMs: reason === 'startup' ? 2 * 60_000 : null,
-  });
-  if (result.cleaned > 0) {
-    logger.info(
-      `[OpenCode] ${reason} host cleanup removed ${result.cleaned} registry host(s), ${result.remaining} remaining`
+  let registryHostPids = new Set<number>();
+  let registryCleanupAvailable = false;
+  if (openCodeLifecycleBridge) {
+    const result = await openCodeLifecycleBridge.cleanupOpenCodeHosts({
+      reason,
+      mode: reason === 'shutdown' ? 'force' : 'stale',
+      staleAgeMs: reason === 'startup' ? 5 * 60_000 : null,
+      leaseStaleAgeMs: reason === 'startup' ? 24 * 60 * 60_000 : null,
+      preflightLeaseStaleAgeMs: reason === 'startup' ? 2 * 60_000 : null,
+    });
+    registryHostPids = new Set(
+      result.hosts
+        .filter((host) => host.action.startsWith('kept_'))
+        .map((host) => host.pid)
+        .filter((pid) => Number.isFinite(pid) && pid > 0)
+    );
+    if (result.cleaned > 0) {
+      logger.info(
+        `[OpenCode] ${reason} host cleanup removed ${result.cleaned} registry host(s), ${result.remaining} remaining`
+      );
+    }
+    for (const diagnostic of result.diagnostics) {
+      logger.warn(`[OpenCode] ${reason} host cleanup: ${diagnostic}`);
+    }
+    registryCleanupAvailable = !result.diagnostics.some((diagnostic) =>
+      diagnostic.startsWith('OpenCode host cleanup bridge failed:')
     );
   }
-  for (const diagnostic of result.diagnostics) {
-    logger.warn(`[OpenCode] ${reason} host cleanup: ${diagnostic}`);
+
+  if (reason === 'startup' && !registryCleanupAvailable) {
+    logger.warn(
+      '[OpenCode] Startup fallback cleanup skipped because host registry cleanup is unavailable'
+    );
+    return;
+  }
+
+  await cleanupOpenCodeHostProcessFallback(`${reason} fallback`, {
+    mode: reason === 'shutdown' ? 'force' : 'orphaned',
+    excludePids: reason === 'startup' ? registryHostPids : undefined,
+    requiredDetailsMarkers:
+      reason === 'shutdown'
+        ? [`CLAUDE_TEAM_APP_INSTANCE_ID=${openCodeManagedHostInstanceId}`]
+        : undefined,
+    startedBeforeMs: reason === 'startup' ? appStartedAtMs : null,
+  });
+}
+
+async function cleanupOpenCodeHostProcessFallback(
+  label: string,
+  options: Parameters<typeof cleanupManagedOpenCodeServeProcesses>[0]
+): Promise<void> {
+  const fallback = await cleanupManagedOpenCodeServeProcesses(options);
+  if (fallback.killed > 0) {
+    logger.info(`[OpenCode] ${label} cleanup killed ${fallback.killed} managed host(s)`);
+  }
+  for (const diagnostic of fallback.diagnostics) {
+    logger.warn(`[OpenCode] ${label} cleanup: ${diagnostic}`);
   }
 }
 
@@ -1359,6 +1420,17 @@ async function initializeServices(): Promise<void> {
   teamDataService = new TeamDataService();
   teamDataService.setMemberRuntimeAdvisoryService(teamMemberRuntimeAdvisoryService);
   teamProvisioningService = new TeamProvisioningService();
+  teamProvisioningService.setWorkspaceTrustCoordinator(
+    createWorkspaceTrustCoordinator({
+      claudeConfigDir: () => getClaudeBasePath(),
+      globalConfigFilePath: () => {
+        const claudeBasePath = getClaudeBasePath();
+        return claudeBasePath !== getAutoDetectedClaudeBasePath()
+          ? join(claudeBasePath, '.claude.json')
+          : join(getHomeDir(), '.claude.json');
+      },
+    })
+  );
   teamProvisioningService.setMemberRuntimeAdvisoryInvalidator((teamName, memberName) => {
     teamDataService?.invalidateMemberRuntimeAdvisory(teamName, memberName);
     getTeamDataWorkerClient().invalidateMemberRuntimeAdvisory(teamName, memberName);
@@ -1593,6 +1665,7 @@ async function initializeServices(): Promise<void> {
     isTeamActive: (teamName) =>
       teamProvisioningService.isTeamAlive(teamName) ||
       teamProvisioningService.hasProvisioningRun(teamName),
+    canDispatchNudges: (teamName) => teamProvisioningService.isTeamAlive(teamName),
     listLifecycleActiveTeamNames: async () => {
       const teams = await teamDataService.listTeams();
       return teams
@@ -1609,17 +1682,80 @@ async function initializeServices(): Promise<void> {
         isBusy: (input) => teamProvisioningService.getOpenCodeMemberDeliveryBusyStatus(input),
       },
     ],
+    proofMissingRecoveryGuard: {
+      shouldDispatch: async (input) => {
+        const status = await teamProvisioningService.getOpenCodeRuntimeDeliveryStatus(
+          input.teamName,
+          input.originalMessageId
+        );
+        if (!status) {
+          return {
+            ok: false,
+            reason: 'proof_missing_recovery_record_missing',
+            retryable: false,
+          };
+        }
+
+        const impact = status.userVisibleImpact;
+        if (impact?.reasonCode === 'protocol_proof_missing') {
+          if (impact.state === 'checking') {
+            return {
+              ok: false,
+              reason: 'proof_missing_recovery_still_in_grace',
+              retryable: true,
+              ...(impact.nextReviewAt ? { nextAttemptAt: impact.nextReviewAt } : {}),
+            };
+          }
+          return { ok: true };
+        }
+
+        if (status.responsePending) {
+          return {
+            ok: false,
+            reason: 'proof_missing_recovery_delivery_still_pending',
+            retryable: true,
+          };
+        }
+
+        return {
+          ok: false,
+          reason: 'proof_missing_recovery_suppressed',
+          retryable: false,
+        };
+      },
+    },
     nudgeDeliveryWake: {
-      schedule: (input) => {
-        if (input.providerId !== 'opencode') {
+      schedule: async (input) => {
+        if (input.providerId === 'opencode') {
+          teamProvisioningService.scheduleOpenCodeMemberInboxDeliveryWake({
+            teamName: input.teamName,
+            memberName: input.memberName,
+            messageId: input.messageId,
+            delayMs: input.delayMs,
+          });
           return;
         }
-        teamProvisioningService.scheduleOpenCodeMemberInboxDeliveryWake({
-          teamName: input.teamName,
-          memberName: input.memberName,
-          messageId: input.messageId,
-          delayMs: input.delayMs,
-        });
+
+        const leadName = await teamDataService.getLeadMemberName(input.teamName).catch(() => null);
+        if (leadName?.trim().toLowerCase() !== input.memberName.trim().toLowerCase()) {
+          return;
+        }
+
+        const timer = setTimeout(
+          () => {
+            void teamProvisioningService
+              .relayLeadInboxMessages(input.teamName)
+              .catch((error: unknown) =>
+                logger.warn(
+                  `[${input.teamName}] member-work-sync lead nudge relay wake failed: ${String(
+                    error
+                  )}`
+                )
+              );
+          },
+          Math.max(0, input.delayMs ?? 0)
+        );
+        timer.unref?.();
       },
     },
     reviewPickupDelivery: {
@@ -1735,6 +1871,11 @@ async function initializeServices(): Promise<void> {
     memberWorkSyncFeature
       ? memberWorkSyncFeature.buildRuntimeTurnSettledEnvironment(input)
       : Promise.resolve(null)
+  );
+  teamProvisioningService.setMemberWorkSyncProofMissingRecoveryScheduler((input) =>
+    memberWorkSyncFeature
+      ? memberWorkSyncFeature.scheduleProofMissingRecovery(input)
+      : Promise.resolve({ scheduled: false, reason: 'invalid' })
   );
   scheduleStartupTask(() => {
     void teamDataService
@@ -1943,6 +2084,15 @@ async function shutdownServices(): Promise<void> {
     await runShutdownStep('tracked CLI subprocess cleanup', () =>
       killTrackedCliProcesses('SIGKILL')
     );
+    await runShutdownStep(
+      'OpenCode post-subprocess fallback cleanup',
+      () =>
+        cleanupOpenCodeHostProcessFallback('post-subprocess shutdown fallback', {
+          mode: 'force',
+          requiredDetailsMarkers: [`CLAUDE_TEAM_APP_INSTANCE_ID=${openCodeManagedHostInstanceId}`],
+        }),
+      5_000
+    );
 
     await runShutdownStep('MCP config GC', () => new TeamMcpConfigBuilder().gcOwnConfigs());
 
@@ -2058,6 +2208,7 @@ function attachMainWindowToServices(): void {
   updaterService?.setMainWindow(win);
   cliInstallerService?.setMainWindow(win);
   openCodeRuntimeInstallerService?.setMainWindow(win);
+  setCodexRuntimeMainWindow(win);
   setTmuxMainWindow(win);
   ptyTerminalService?.setMainWindow(win);
   teamProvisioningService?.setMainWindow(win);
@@ -2384,6 +2535,7 @@ function createWindow(): void {
     if (openCodeRuntimeInstallerService) {
       openCodeRuntimeInstallerService.setMainWindow(null);
     }
+    setCodexRuntimeMainWindow(null);
     setTmuxMainWindow(null);
     if (ptyTerminalService) {
       ptyTerminalService.setMainWindow(null);
@@ -2436,10 +2588,13 @@ void app.whenReady().then(async () => {
     // Sync Sentry telemetry opt-in flag from persisted config
     syncTelemetryFlag(config.general.telemetryEnabled);
 
-    // Apply launch-at-login setting only in packaged builds.
-    // In dev, macOS may deny this (and Electron logs a noisy error to stderr).
-    // Also guard by platform: Electron only supports this on macOS/Windows.
-    if (app.isPackaged && (process.platform === 'darwin' || process.platform === 'win32')) {
+    // Apply launch-at-login only where Electron can persist it without noisy OS errors.
+    // Local packaged macOS smoke builds run outside /Applications and cannot set login items.
+    const canSyncLaunchAtLogin =
+      app.isPackaged &&
+      (process.platform === 'win32' ||
+        (process.platform === 'darwin' && app.isInApplicationsFolder()));
+    if (canSyncLaunchAtLogin) {
       app.setLoginItemSettings({
         openAtLogin: config.general.launchAtLogin,
       });

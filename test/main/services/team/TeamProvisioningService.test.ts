@@ -6,6 +6,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildWorkspaceTrustPathCandidates } from '@features/workspace-trust/main';
 
 const hoisted = vi.hoisted(() => ({
   paths: {
@@ -771,8 +772,7 @@ describe('TeamProvisioningService', () => {
             teamEventType: 'team_launched',
             teamName: 'late-all-joined-team',
             dedupeKey: 'team_launched:late-all-joined-team:run-late-all-joined',
-            body:
-              'Team "late-all-joined-team" has been launched - all 2 teammates joined and are ready for tasks.',
+            body: 'Team "late-all-joined-team" has been launched - all 2 teammates joined and are ready for tasks.',
           })
         );
 
@@ -2004,6 +2004,17 @@ describe('TeamProvisioningService', () => {
   });
 
   describe('launch-state no-op persistence guard', () => {
+    it('does not clear persisted launch state for an expected run after tracking is gone', () => {
+      const svc = new TeamProvisioningService();
+
+      expect(
+        (svc as any).canClearPersistedLaunchStateForRun(
+          'workspace-trust-stale-clear-team',
+          'run-stale'
+        )
+      ).toBe(false);
+    });
+
     it('does not rewrite launch-state or invalidate runtime cache for a recent semantic no-op', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-05-02T10:00:05.000Z'));
@@ -5415,6 +5426,7 @@ describe('TeamProvisioningService', () => {
         providerId: 'opencode',
         memberName: String(input.memberName),
         sessionId: 'oc-session-bob',
+        runtimePromptMessageId: 'msg_prompt_direct_lane',
         runtimePid: 456,
         diagnostics: [],
       }));
@@ -5489,6 +5501,39 @@ describe('TeamProvisioningService', () => {
       );
     });
 
+    it('does not deliver direct OpenCode messages when recovery leaves the lane inactive', async () => {
+      const svc = new TeamProvisioningService();
+      const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+        ok: true,
+        providerId: 'opencode',
+        memberName: String(input.memberName),
+        sessionId: 'oc-session-bob',
+        runtimePromptMessageId: 'msg_prompt_direct_lane',
+        runtimePid: 456,
+        diagnostics: [],
+      }));
+      await configureOpenCodeBobDeliveryService({ svc, sendMessageToMember });
+      (svc as any).deleteSecondaryRuntimeRun('team-a', 'secondary:opencode:bob');
+      vi.spyOn(svc as any, 'tryRecoverOpenCodeRuntimeLaneBeforeDelivery').mockResolvedValue(false);
+      const committedRecoverySpy = vi
+        .spyOn(svc as any, 'tryRecoverOpenCodeRuntimeLaneFromCommittedSessionBeforeDelivery')
+        .mockResolvedValue(true);
+
+      await expect(
+        svc.deliverOpenCodeMemberMessage('team-a', {
+          memberName: 'bob',
+          text: 'hello bob',
+          messageId: 'msg-1',
+        })
+      ).resolves.toMatchObject({
+        delivered: false,
+        reason: 'opencode_runtime_not_active',
+      });
+
+      expect(committedRecoverySpy).toHaveBeenCalled();
+      expect(sendMessageToMember).not.toHaveBeenCalled();
+    });
+
     it('persists verified OpenCode bridge runtime pids so member cards can show memory', async () => {
       const svc = new TeamProvisioningService();
       const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
@@ -5496,6 +5541,7 @@ describe('TeamProvisioningService', () => {
         providerId: 'opencode',
         memberName: String(input.memberName),
         sessionId: 'oc-session-bob',
+        runtimePromptMessageId: 'msg_prompt_verified_pid',
         runtimePid: 456,
         diagnostics: [],
       }));
@@ -5621,6 +5667,7 @@ describe('TeamProvisioningService', () => {
         providerId: 'opencode',
         memberName: String(input.memberName),
         sessionId: 'oc-session-bob',
+        runtimePromptMessageId: 'msg_prompt_unverified_pid',
         runtimePid: 456,
         diagnostics: [],
       }));
@@ -5723,6 +5770,7 @@ describe('TeamProvisioningService', () => {
         providerId: 'opencode',
         memberName: String(input.memberName),
         sessionId: 'oc-session-bob',
+        runtimePromptMessageId: 'msg_prompt_snapshot_config',
         diagnostics: [],
       }));
       svc.setRuntimeAdapterRegistry(
@@ -5813,6 +5861,7 @@ describe('TeamProvisioningService', () => {
         providerId: 'opencode',
         memberName: String(input.memberName),
         sessionId: 'oc-session-bob',
+        runtimePromptMessageId: 'msg_prompt_worktree_cwd',
         diagnostics: [],
       }));
       svc.setRuntimeAdapterRegistry(
@@ -6039,6 +6088,110 @@ describe('TeamProvisioningService', () => {
       );
     });
 
+    it('emits a narrow task-log signal when OpenCode prompt delivery records exact session evidence', async () => {
+      const svc = new TeamProvisioningService();
+      const emitter = vi.fn();
+      svc.setTeamChangeEmitter(emitter);
+      const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+        ok: true,
+        providerId: 'opencode',
+        memberName: String(input.memberName),
+        sessionId: 'oc-session-bob',
+        prePromptCursor: 'cursor-before',
+        responseObservation: {
+          state: 'pending',
+          deliveredUserMessageId: 'oc-user-1',
+          assistantMessageId: null,
+          toolCallNames: [],
+          visibleMessageToolCallId: null,
+          visibleReplyMessageId: null,
+          visibleReplyCorrelation: null,
+          latestAssistantPreview: null,
+          reason: 'assistant_response_pending',
+        },
+        diagnostics: [],
+      }));
+      const registry = new TeamRuntimeAdapterRegistry([
+        {
+          providerId: 'opencode',
+          prepare: vi.fn(),
+          launch: vi.fn(),
+          reconcile: vi.fn(),
+          stop: vi.fn(),
+          sendMessageToMember,
+        } as any,
+      ]);
+      svc.setRuntimeAdapterRegistry(registry);
+
+      (svc as any).getTrackedRunId = vi.fn(() => 'run-1');
+      (svc as any).provisioningRunByTeam.set('team-a', 'run-1');
+      (svc as any).setSecondaryRuntimeRun({
+        teamName: 'team-a',
+        runId: 'opencode-run-bob',
+        providerId: 'opencode',
+        laneId: 'secondary:opencode:bob',
+        memberName: 'bob',
+        cwd: '/repo',
+      });
+      await writeDefaultBobOpenCodeBootstrapEvidence();
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          projectPath: '/repo',
+          members: [
+            { name: 'team-lead', providerId: 'codex', model: 'gpt-5.4' },
+            { name: 'bob', providerId: 'opencode', model: 'minimax-m2.5-free' },
+          ],
+        })),
+      };
+      (svc as any).teamMetaStore = {
+        getMeta: vi.fn(async () => ({
+          launchIdentity: { providerId: 'codex' },
+          providerId: 'codex',
+        })),
+      };
+      (svc as any).membersMetaStore = {
+        getMembers: vi.fn(async () => [
+          {
+            name: 'bob',
+            providerId: 'opencode',
+            model: 'opencode/minimax-m2.5-free',
+          },
+        ]),
+      };
+
+      await expect(
+        svc.deliverOpenCodeMemberMessage('team-a', {
+          memberName: 'bob',
+          text: 'hello bob',
+          messageId: 'msg-ledger-session',
+          source: 'watcher',
+          inboxTimestamp: '2026-04-25T10:00:00.000Z',
+          taskRefs: [
+            {
+              taskId: 'task-a',
+              displayId: 'task-a',
+              teamName: 'team-a',
+            },
+          ],
+        })
+      ).resolves.toMatchObject({
+        delivered: true,
+        responsePending: true,
+        responseState: 'pending',
+      });
+
+      expect(emitter).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'task-log-change',
+          teamName: 'team-a',
+          runId: 'opencode-run-bob',
+          taskId: 'task-a',
+          detail: 'opencode-prompt-delivery-session-evidence',
+          taskSignalKind: 'log',
+        })
+      );
+    });
+
     it('retries due stale OpenCode sessions instead of observing forever', async () => {
       const svc = new TeamProvisioningService();
       const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
@@ -6046,6 +6199,7 @@ describe('TeamProvisioningService', () => {
         providerId: 'opencode',
         memberName: String(input.memberName),
         sessionId: 'oc-session-bob',
+        runtimePromptMessageId: `msg_prompt_${sendMessageToMember.mock.calls.length}`,
         prePromptCursor: `cursor-${sendMessageToMember.mock.calls.length}`,
         responseObservation: {
           state: 'pending',
@@ -6178,6 +6332,13 @@ describe('TeamProvisioningService', () => {
       });
 
       expect(observeMessageDelivery).toHaveBeenCalledTimes(1);
+      expect(observeMessageDelivery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'oc-session-bob',
+          runtimePromptMessageId: 'msg_prompt_1',
+          prePromptCursor: 'cursor-1',
+        })
+      );
       expect(sendMessageToMember).toHaveBeenCalledTimes(2);
       expect(sendMessageToMember.mock.calls[1]?.[0]).toMatchObject({
         runId: 'opencode-run-bob',
@@ -6946,6 +7107,109 @@ describe('TeamProvisioningService', () => {
         lastReason: 'opencode_prompt_acceptance_unknown_after_bridge_timeout',
       });
       expect(ledgerEnvelope.data[0].nextAttemptAt).toBeTruthy();
+    });
+
+    it('keeps accepted OpenCode responses without exact prompt identity acceptance-unknown', async () => {
+      const svc = new TeamProvisioningService();
+      const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+        ok: true,
+        providerId: 'opencode',
+        memberName: String(input.memberName),
+        sessionId: 'oc-session-bob',
+        prePromptCursor: 'cursor-before',
+        diagnostics: [],
+      }));
+      const registry = new TeamRuntimeAdapterRegistry([
+        {
+          providerId: 'opencode',
+          prepare: vi.fn(),
+          launch: vi.fn(),
+          reconcile: vi.fn(),
+          stop: vi.fn(),
+          sendMessageToMember,
+          observeMessageDelivery: vi.fn(),
+        } as any,
+      ]);
+      svc.setRuntimeAdapterRegistry(registry);
+
+      (svc as any).getTrackedRunId = vi.fn(() => 'run-1');
+      (svc as any).provisioningRunByTeam.set('team-a', 'run-1');
+      (svc as any).setSecondaryRuntimeRun({
+        teamName: 'team-a',
+        runId: 'opencode-run-bob',
+        providerId: 'opencode',
+        laneId: 'secondary:opencode:bob',
+        memberName: 'bob',
+        cwd: '/repo',
+      });
+      await writeDefaultBobOpenCodeBootstrapEvidence();
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          projectPath: '/repo',
+          members: [
+            { name: 'team-lead', providerId: 'codex', model: 'gpt-5.4' },
+            { name: 'bob', providerId: 'opencode', model: 'minimax-m2.5-free' },
+          ],
+        })),
+      };
+      (svc as any).teamMetaStore = {
+        getMeta: vi.fn(async () => ({
+          launchIdentity: { providerId: 'codex' },
+          providerId: 'codex',
+        })),
+      };
+      (svc as any).membersMetaStore = {
+        getMembers: vi.fn(async () => [
+          {
+            name: 'bob',
+            providerId: 'opencode',
+            model: 'opencode/minimax-m2.5-free',
+          },
+        ]),
+      };
+
+      await expect(
+        svc.deliverOpenCodeMemberMessage('team-a', {
+          memberName: 'bob',
+          text: 'Please handle this.',
+          messageId: 'msg-accepted-missing-prompt-id',
+          replyRecipient: 'user',
+          actionMode: 'ask',
+          source: 'watcher',
+          inboxTimestamp: '2026-04-25T10:00:00.000Z',
+        })
+      ).resolves.toMatchObject({
+        delivered: true,
+        accepted: false,
+        responsePending: true,
+        acceptanceUnknown: true,
+        reason: 'opencode_prompt_acceptance_unknown_missing_runtime_prompt_id',
+      });
+
+      const ledgerPath = getOpenCodeLaneScopedRuntimeFilePath({
+        teamsBasePath: tempTeamsBase,
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:bob',
+        fileName: 'opencode-prompt-delivery-ledger.json',
+      });
+      const ledgerEnvelope = JSON.parse(await fsPromises.readFile(ledgerPath, 'utf8')) as {
+        data: Array<{
+          acceptanceUnknown: boolean;
+          status: string;
+          runtimePromptMessageId: string | null;
+          lastReason: string | null;
+          diagnostics: string[];
+        }>;
+      };
+      expect(ledgerEnvelope.data[0]).toMatchObject({
+        acceptanceUnknown: true,
+        status: 'failed_retryable',
+        runtimePromptMessageId: null,
+        lastReason: 'opencode_prompt_acceptance_unknown_missing_runtime_prompt_id',
+      });
+      expect(ledgerEnvelope.data[0].diagnostics).toContain(
+        'opencode_prompt_acceptance_missing_runtime_prompt_id'
+      );
     });
 
     it('marks OpenCode payload hash mismatch terminal without sending a duplicate prompt', async () => {
@@ -8198,11 +8462,12 @@ describe('TeamProvisioningService', () => {
         diagnostics: [],
       }));
       await configureOpenCodeBobDeliveryService({ svc, sendMessageToMember });
+      svc.setControlApiBaseUrlResolver(async () => 'http://127.0.0.1:43123');
 
-    await expect(
-      svc.deliverOpenCodeMemberMessage('team-a', {
-        memberName: 'bob',
-        text: 'Work sync check for #task-1.',
+      await expect(
+        svc.deliverOpenCodeMemberMessage('team-a', {
+          memberName: 'bob',
+          text: 'Work sync check for #task-1.',
           messageId: 'msg-work-sync-report',
           replyRecipient: 'team-lead',
           actionMode: 'do',
@@ -8224,6 +8489,11 @@ describe('TeamProvisioningService', () => {
         responseState: 'responded_non_visible_tool',
         ledgerStatus: 'responded',
       });
+      expect(sendMessageToMember).toHaveBeenCalledWith(
+        expect.objectContaining({
+          controlUrl: 'http://127.0.0.1:43123',
+        })
+      );
     });
 
     it('accepts review workflow tools as review pickup delivery response proof', async () => {
@@ -8800,6 +9070,7 @@ describe('TeamProvisioningService', () => {
         providerId: 'opencode',
         memberName: String(input.memberName),
         sessionId: 'oc-session-bob',
+        runtimePromptMessageId: 'msg_prompt_after_restart',
         diagnostics: [],
       }));
       const registry = new TeamRuntimeAdapterRegistry([
@@ -8892,6 +9163,7 @@ describe('TeamProvisioningService', () => {
         providerId: 'opencode',
         memberName: String(input.memberName),
         sessionId: 'oc-session-bob',
+        runtimePromptMessageId: 'msg_prompt_live_lane',
         diagnostics: [],
       }));
       svc.setRuntimeAdapterRegistry(
@@ -9255,6 +9527,7 @@ describe('TeamProvisioningService', () => {
         providerId: 'opencode',
         memberName: String(input.memberName),
         sessionId: 'oc-session-bob',
+        runtimePromptMessageId: 'msg_prompt_manifest_fallback',
         diagnostics: [],
       }));
       const registry = new TeamRuntimeAdapterRegistry([
@@ -13261,7 +13534,9 @@ describe('TeamProvisioningService', () => {
         });
 
         if (adapterLaunch.mock.calls.length === 1) {
-          throw new Error('OpenCode bridge failed: Bridge server runtime manifest high watermark is stale');
+          throw new Error(
+            'OpenCode bridge failed: Bridge server runtime manifest high watermark is stale'
+          );
         }
 
         await writeCommittedOpenCodeSessionStore({
@@ -17606,6 +17881,479 @@ describe('TeamProvisioningService', () => {
       status: 'error',
       launchState: 'failed_to_start',
       hardFailureReason: reason,
+    });
+  });
+
+  it('includes legacy member provider fields when planning workspace trust providers', () => {
+    const svc = new TeamProvisioningService();
+
+    expect(
+      (svc as any).collectWorkspaceTrustProviders({
+        leadProviderId: 'anthropic',
+        members: [{ name: 'alice', provider: 'codex' }],
+      })
+    ).toEqual(['claude', 'codex']);
+  });
+
+  it('dedupes workspace trust providers across lead, member providerId, and legacy provider fields', () => {
+    const svc = new TeamProvisioningService();
+
+    expect(
+      (svc as any).collectWorkspaceTrustProviders({
+        leadProviderId: 'codex',
+        members: [
+          { name: 'alice', providerId: 'anthropic' },
+          { name: 'bob', providerId: 'codex' },
+          { name: 'cara', provider: 'gemini' },
+          { name: 'drew', providerId: 'opencode' },
+        ],
+      })
+    ).toEqual(['claude', 'codex', 'gemini', 'opencode']);
+  });
+
+  it('degrades workspace trust planning failures without blocking launch preparation', async () => {
+    const svc = new TeamProvisioningService();
+    const workspaces = buildWorkspaceTrustPathCandidates({
+      cwd: '/tmp/workspace-trust-planning-fallback',
+      platform: 'posix',
+    });
+    svc.setWorkspaceTrustCoordinator({
+      planArgsOnly: vi.fn(async () => {
+        throw new Error('args planning crashed');
+      }),
+      planFull: vi.fn(async () => {
+        throw new Error('full planning crashed');
+      }),
+      execute: vi.fn(),
+    } as any);
+
+    await expect(
+      (svc as any).planWorkspaceTrustArgsOnlySafely({
+        providers: ['claude', 'codex'],
+        workspaces,
+        featureFlags: {
+          enabled: true,
+          claudePty: true,
+          codexArgs: true,
+          retry: false,
+          fileLock: false,
+        },
+      })
+    ).resolves.toEqual({ launchArgPatches: [] });
+
+    await expect(
+      (svc as any).planWorkspaceTrustFullSafely({
+        providers: ['claude', 'codex'],
+        workspaces,
+        featureFlags: {
+          enabled: true,
+          claudePty: true,
+          codexArgs: true,
+          retry: false,
+          fileLock: false,
+        },
+      })
+    ).resolves.toEqual({ workspaces, launchArgPatches: [] });
+    expect(vi.mocked(console.warn).mock.calls.map((call) => call.join(' '))).toEqual([
+      expect.stringContaining(
+        'Workspace trust args-only planning failed; continuing without trust arg patches'
+      ),
+      expect.stringContaining(
+        'Workspace trust full planning failed; continuing without trust arg patches'
+      ),
+    ]);
+    vi.mocked(console.warn).mockClear();
+  });
+
+  it('keeps launch moving with info diagnostics when workspace trust preflight succeeds', async () => {
+    const progressUpdates: any[] = [];
+    const run = createMemberSpawnRun({
+      runId: 'run-workspace-trust-preflight-ok',
+      teamName: 'workspace-trust-preflight-ok-team',
+      expectedMembers: ['alice'],
+    });
+    Object.assign(run, {
+      cancelRequested: false,
+      processKilled: false,
+      progress: {
+        runId: run.runId,
+        teamName: run.teamName,
+        state: 'validating',
+        message: 'Validating launch',
+        warnings: [],
+        startedAt: '2026-05-12T10:00:00.000Z',
+        updatedAt: '2026-05-12T10:00:00.000Z',
+      },
+      onProgress: (progress: any) => {
+        progressUpdates.push(progress);
+      },
+    });
+    const execute = vi.fn(async () => ({
+      id: 'claude-pty-workspace-trust',
+      provider: 'claude',
+      status: 'ok',
+      workspaceIds: ['workspace-trust-1'],
+      evidence: ['trusted project key'],
+    }));
+    const svc = new TeamProvisioningService();
+    svc.setWorkspaceTrustCoordinator({
+      planArgsOnly: vi.fn(),
+      planFull: vi.fn(),
+      execute,
+    } as any);
+    (svc as any).runs.set(run.runId, run);
+    (svc as any).provisioningRunByTeam.set(run.teamName, run.runId);
+
+    await (svc as any).prepareWorkspaceTrustForDeterministicRun({
+      mode: 'create',
+      run,
+      claudePath: '/usr/local/bin/claude',
+      shellEnv: {},
+      stopAllGenerationAtStart: (svc as any).stopAllTeamsGeneration,
+      workspaceTrustPlan: {
+        launchArgPatches: [],
+        workspaces: buildWorkspaceTrustPathCandidates({
+          cwd: '/tmp/workspace-trust-preflight-ok-team',
+          platform: 'posix',
+        }),
+      },
+      featureFlags: {
+        enabled: true,
+        claudePty: true,
+        codexArgs: true,
+        retry: false,
+        fileLock: false,
+      },
+      provisioningEnv: {
+        anthropicApiKeyHelper: null,
+      },
+    });
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(run.workspaceTrustExecution).toMatchObject({ status: 'ok' });
+    expect(run.progress.warnings).toEqual([]);
+    expect(progressUpdates.at(-1).launchDiagnostics).toEqual([
+      expect.objectContaining({
+        severity: 'info',
+        code: 'workspace_trust_preflight',
+        label: 'Workspace trust preflight completed',
+        detail: 'trusted project key',
+      }),
+    ]);
+  });
+
+  it('keeps launch alive with diagnostics when workspace trust preflight throws', async () => {
+    const progressUpdates: any[] = [];
+    const run = createMemberSpawnRun({
+      runId: 'run-workspace-trust-preflight-throw',
+      teamName: 'workspace-trust-preflight-team',
+      expectedMembers: ['alice'],
+    });
+    Object.assign(run, {
+      cancelRequested: false,
+      processKilled: false,
+      progress: {
+        runId: run.runId,
+        teamName: run.teamName,
+        state: 'validating',
+        message: 'Validating launch',
+        warnings: [],
+        startedAt: '2026-05-12T10:00:00.000Z',
+        updatedAt: '2026-05-12T10:00:00.000Z',
+      },
+      onProgress: (progress: any) => {
+        progressUpdates.push(progress);
+      },
+    });
+    const svc = new TeamProvisioningService();
+    svc.setWorkspaceTrustCoordinator({
+      planArgsOnly: vi.fn(),
+      planFull: vi.fn(),
+      execute: vi.fn(async () => {
+        throw new Error('preflight adapter crashed');
+      }),
+    } as any);
+    (svc as any).runs.set(run.runId, run);
+    (svc as any).provisioningRunByTeam.set(run.teamName, run.runId);
+
+    await (svc as any).prepareWorkspaceTrustForDeterministicRun({
+      mode: 'create',
+      run,
+      claudePath: '/usr/local/bin/claude',
+      shellEnv: {
+        CLAUDE_ENABLE_DETERMINISTIC_TEAM_BOOTSTRAP: '1',
+        CLAUDE_TEAM_ANTHROPIC_API_KEY_HELPER_SETTINGS_PATH: '/tmp/helper.json',
+      },
+      stopAllGenerationAtStart: (svc as any).stopAllTeamsGeneration,
+      workspaceTrustPlan: {
+        launchArgPatches: [],
+        workspaces: buildWorkspaceTrustPathCandidates({
+          cwd: '/tmp/workspace-trust-preflight-team',
+          platform: 'posix',
+        }),
+      },
+      featureFlags: {
+        enabled: true,
+        claudePty: true,
+        codexArgs: true,
+        retry: false,
+        fileLock: false,
+      },
+      provisioningEnv: {
+        anthropicApiKeyHelper: null,
+      },
+    });
+
+    expect(run.workspaceTrustExecution).toMatchObject({
+      status: 'soft_failed',
+      errorCode: 'workspace_trust_preflight_error',
+      errorMessage: 'preflight adapter crashed',
+    });
+    expect(run.workspaceTrustDiagnostics).toMatchObject({
+      attempt: 1,
+      strategyResults: [
+        expect.objectContaining({
+          status: 'soft_failed',
+          errorMessage: 'preflight adapter crashed',
+        }),
+      ],
+    });
+    expect(run.progress.warnings).toContain('preflight adapter crashed');
+    expect(progressUpdates.at(0)).toMatchObject({
+      state: 'spawning',
+      message: 'Preparing workspace trust',
+    });
+    expect(progressUpdates.at(-1).warnings).toContain('preflight adapter crashed');
+    expect(progressUpdates.at(-1).launchDiagnostics).toEqual([
+      expect.objectContaining({
+        severity: 'warning',
+        code: 'workspace_trust_preflight',
+        label: 'Workspace trust preflight could not verify trust',
+        detail: 'preflight adapter crashed',
+      }),
+    ]);
+  });
+
+  it('blocks launch with structured workspace trust diagnostics when preflight is blocked', async () => {
+    const progressUpdates: any[] = [];
+    const run = createMemberSpawnRun({
+      runId: 'run-workspace-trust-preflight-blocked',
+      teamName: 'workspace-trust-preflight-blocked-team',
+      expectedMembers: ['alice'],
+    });
+    Object.assign(run, {
+      cancelRequested: false,
+      processKilled: false,
+      progress: {
+        runId: run.runId,
+        teamName: run.teamName,
+        state: 'validating',
+        message: 'Validating launch',
+        warnings: [],
+        startedAt: '2026-05-12T10:00:00.000Z',
+        updatedAt: '2026-05-12T10:00:00.000Z',
+      },
+      onProgress: (progress: any) => {
+        progressUpdates.push(progress);
+      },
+    });
+    const svc = new TeamProvisioningService();
+    svc.setWorkspaceTrustCoordinator({
+      planArgsOnly: vi.fn(),
+      planFull: vi.fn(),
+      execute: vi.fn(async () => ({
+        id: 'claude-pty-workspace-trust',
+        provider: 'claude',
+        status: 'blocked',
+        workspaceIds: ['workspace-trust-1'],
+        errorCode: 'workspace_trust_preflight_not_confirmed',
+        errorMessage: 'Claude workspace trust was not confirmed for /tmp/project',
+        evidence: ['claude workspace trust prompt'],
+      })),
+    } as any);
+    vi.spyOn(svc as any, 'cleanupRun').mockImplementation(() => {});
+    (svc as any).runs.set(run.runId, run);
+    (svc as any).provisioningRunByTeam.set(run.teamName, run.runId);
+
+    await expect(
+      (svc as any).prepareWorkspaceTrustForDeterministicRun({
+        mode: 'create',
+        run,
+        claudePath: '/usr/local/bin/claude',
+        shellEnv: {},
+        stopAllGenerationAtStart: (svc as any).stopAllTeamsGeneration,
+        workspaceTrustPlan: {
+          launchArgPatches: [],
+          workspaces: buildWorkspaceTrustPathCandidates({
+            cwd: '/tmp/project',
+            platform: 'posix',
+          }),
+        },
+        featureFlags: {
+          enabled: true,
+          claudePty: true,
+          codexArgs: true,
+          retry: false,
+          fileLock: false,
+        },
+        provisioningEnv: {
+          anthropicApiKeyHelper: null,
+        },
+      })
+    ).rejects.toThrow('Claude workspace trust was not confirmed for /tmp/project');
+
+    expect(progressUpdates.at(-1)).toMatchObject({
+      state: 'failed',
+      message: 'Workspace trust required',
+      error: 'Claude workspace trust was not confirmed for /tmp/project',
+    });
+    expect(progressUpdates.at(-1).launchDiagnostics).toEqual([
+      expect.objectContaining({
+        severity: 'error',
+        code: 'workspace_trust_preflight',
+        label: 'Workspace trust preflight blocked launch',
+        detail: 'Claude workspace trust was not confirmed for /tmp/project',
+      }),
+    ]);
+  });
+
+  it('cancels launch before spawn when workspace trust preflight is cancelled', async () => {
+    const progressUpdates: any[] = [];
+    const run = createMemberSpawnRun({
+      runId: 'run-workspace-trust-preflight-cancelled',
+      teamName: 'workspace-trust-preflight-cancelled-team',
+      expectedMembers: ['alice'],
+    });
+    Object.assign(run, {
+      cancelRequested: false,
+      processKilled: false,
+      progress: {
+        runId: run.runId,
+        teamName: run.teamName,
+        state: 'validating',
+        message: 'Validating launch',
+        warnings: [],
+        startedAt: '2026-05-12T10:00:00.000Z',
+        updatedAt: '2026-05-12T10:00:00.000Z',
+      },
+      onProgress: (progress: any) => {
+        progressUpdates.push(progress);
+      },
+    });
+    const svc = new TeamProvisioningService();
+    svc.setWorkspaceTrustCoordinator({
+      planArgsOnly: vi.fn(),
+      planFull: vi.fn(),
+      execute: vi.fn(async () => ({
+        id: 'claude-pty-workspace-trust',
+        provider: 'claude',
+        status: 'cancelled',
+        workspaceIds: ['workspace-trust-1'],
+        errorCode: 'workspace_trust_lock_cancelled',
+      })),
+    } as any);
+    vi.spyOn(svc as any, 'cleanupRun').mockImplementation(() => {});
+    (svc as any).runs.set(run.runId, run);
+    (svc as any).provisioningRunByTeam.set(run.teamName, run.runId);
+
+    await expect(
+      (svc as any).prepareWorkspaceTrustForDeterministicRun({
+        mode: 'create',
+        run,
+        claudePath: '/usr/local/bin/claude',
+        shellEnv: {},
+        stopAllGenerationAtStart: (svc as any).stopAllTeamsGeneration,
+        workspaceTrustPlan: {
+          launchArgPatches: [],
+          workspaces: buildWorkspaceTrustPathCandidates({
+            cwd: '/tmp/workspace-trust-preflight-cancelled-team',
+            platform: 'posix',
+          }),
+        },
+        featureFlags: {
+          enabled: true,
+          claudePty: true,
+          codexArgs: true,
+          retry: false,
+          fileLock: false,
+        },
+        provisioningEnv: {
+          anthropicApiKeyHelper: null,
+        },
+      })
+    ).rejects.toThrow('Team launch cancelled');
+
+    expect(run.cancelRequested).toBe(true);
+    expect(progressUpdates.at(-1)).toMatchObject({
+      state: 'cancelled',
+      message: 'Team launch cancelled',
+    });
+    expect(progressUpdates.at(-1).launchDiagnostics).toBeUndefined();
+  });
+
+  it('does not execute workspace trust preflight when the feature is disabled', async () => {
+    const progressUpdates: any[] = [];
+    const run = createMemberSpawnRun({
+      runId: 'run-workspace-trust-disabled',
+      teamName: 'workspace-trust-disabled-team',
+      expectedMembers: ['alice'],
+    });
+    Object.assign(run, {
+      cancelRequested: false,
+      processKilled: false,
+      progress: {
+        runId: run.runId,
+        teamName: run.teamName,
+        state: 'validating',
+        message: 'Validating launch',
+        warnings: [],
+        startedAt: '2026-05-12T10:00:00.000Z',
+        updatedAt: '2026-05-12T10:00:00.000Z',
+      },
+      onProgress: (progress: any) => {
+        progressUpdates.push(progress);
+      },
+    });
+    const execute = vi.fn();
+    const svc = new TeamProvisioningService();
+    svc.setWorkspaceTrustCoordinator({
+      planArgsOnly: vi.fn(),
+      planFull: vi.fn(),
+      execute,
+    } as any);
+
+    await (svc as any).prepareWorkspaceTrustForDeterministicRun({
+      mode: 'create',
+      run,
+      claudePath: '/usr/local/bin/claude',
+      shellEnv: {},
+      stopAllGenerationAtStart: (svc as any).stopAllTeamsGeneration,
+      workspaceTrustPlan: {
+        launchArgPatches: [],
+        workspaces: buildWorkspaceTrustPathCandidates({
+          cwd: '/tmp/workspace-trust-disabled-team',
+          platform: 'posix',
+        }),
+      },
+      featureFlags: {
+        enabled: false,
+        claudePty: false,
+        codexArgs: false,
+        retry: false,
+        fileLock: false,
+      },
+      provisioningEnv: {
+        anthropicApiKeyHelper: null,
+      },
+    });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(progressUpdates).toEqual([]);
+    expect(run.workspaceTrustExecution).toBeUndefined();
+    expect(run.workspaceTrustDiagnostics).toBeUndefined();
+    expect(run.progress).toMatchObject({
+      state: 'validating',
+      message: 'Validating launch',
     });
   });
 

@@ -449,6 +449,34 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     ]);
   });
 
+  it('passes direct Anthropic API-key env to non-Anthropic leads for cross-provider teammates', async () => {
+    const svc = new TeamProvisioningService();
+    vi.spyOn(svc as any, 'buildProvisioningEnv').mockResolvedValue({
+      env: {
+        ANTHROPIC_API_KEY: 'sk-ant-cross-provider',
+        ANTHROPIC_BASE_URL: 'https://api.anthropic.com',
+        ANTHROPIC_AUTH_TOKEN: 'stale-token',
+        CLAUDE_CODE_OAUTH_TOKEN: 'stale-oauth-token',
+      },
+      authSource: 'anthropic_api_key',
+      geminiRuntimeAuth: null,
+      providerArgs: ['--anthropic-safe-passthrough'],
+    });
+
+    const result = await (svc as any).buildCrossProviderMemberArgs(
+      'codex',
+      [{ name: 'bob', providerId: 'anthropic', model: 'haiku' }],
+      { teamRuntimeAuth: { teamName: 'mixed-team', authMaterialId: 'run-1' } }
+    );
+
+    expect(result.usesAnthropicApiKeyHelper).toBe(false);
+    expect(result.envPatch.ANTHROPIC_API_KEY).toBe('sk-ant-cross-provider');
+    expect(result.envPatch.ANTHROPIC_BASE_URL).toBe('https://api.anthropic.com');
+    expect(result.envPatch.ANTHROPIC_AUTH_TOKEN).toBe('');
+    expect(result.envPatch.CLAUDE_CODE_OAUTH_TOKEN).toBe('');
+    expect(result.args).toContain('--anthropic-safe-passthrough');
+  });
+
   afterEach(async () => {
     await removeTempRoot(tempRoot);
   });
@@ -1024,7 +1052,52 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     expect(prepare).toHaveBeenCalledTimes(1);
   });
 
-  it('treats retryable OpenCode compatibility failures as blocking selected-model diagnostics', async () => {
+  it('keeps deep OpenCode runtime failures provider-scoped instead of model-scoped', async () => {
+    const runtimeFailure =
+      'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?';
+    const prepare = vi.fn(async () => ({
+      ok: false as const,
+      providerId: 'opencode' as const,
+      reason: 'mcp_unavailable',
+      retryable: true,
+      diagnostics: [runtimeFailure],
+      warnings: [],
+    }));
+    const registry = new TeamRuntimeAdapterRegistry([
+      {
+        providerId: 'opencode',
+        prepare,
+        launch: vi.fn(),
+        reconcile: vi.fn(),
+        stop: vi.fn(),
+      } as any,
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(registry);
+
+    const result = await svc.prepareForProvisioning(tempRoot, {
+      providerId: 'opencode',
+      forceFresh: true,
+      modelIds: ['opencode/big-pickle'],
+      modelVerificationMode: 'deep',
+    });
+
+    expect(result.ready).toBe(false);
+    expect(result.message).toBe(runtimeFailure);
+    expect(result.details).toEqual([runtimeFailure]);
+    expect(result.warnings).toEqual([runtimeFailure]);
+    expect(result.issues).toEqual([
+      {
+        providerId: 'opencode',
+        scope: 'provider',
+        severity: 'blocking',
+        code: 'mcp_unavailable',
+        message: runtimeFailure,
+      },
+    ]);
+  });
+
+  it('keeps shared OpenCode auth compatibility failures provider-scoped', async () => {
     const prepare = vi.fn(async () => ({
       ok: false as const,
       providerId: 'opencode' as const,
@@ -1053,11 +1126,69 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     });
 
     expect(result.ready).toBe(false);
+    expect(result.message).toBe('OpenCode provider authentication failed');
+    expect(result.details).toEqual(['OpenCode provider authentication failed']);
+    expect(result.warnings).toEqual(['OpenCode provider authentication failed']);
+    expect(result.issues).toEqual([
+      {
+        providerId: 'opencode',
+        scope: 'provider',
+        severity: 'blocking',
+        code: 'not_authenticated',
+        message: 'OpenCode provider authentication failed',
+      },
+    ]);
+  });
+
+  it('keeps shared OpenCode MCP compatibility failures provider-scoped', async () => {
+    const prepare = vi.fn(async () => ({
+      ok: false as const,
+      providerId: 'opencode' as const,
+      reason: 'mcp_unavailable',
+      retryable: true,
+      diagnostics: [
+        'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?',
+      ],
+      warnings: [],
+    }));
+    const registry = new TeamRuntimeAdapterRegistry([
+      {
+        providerId: 'opencode',
+        prepare,
+        launch: vi.fn(),
+        reconcile: vi.fn(),
+        stop: vi.fn(),
+      } as any,
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(registry);
+
+    const result = await svc.prepareForProvisioning(tempRoot, {
+      providerId: 'opencode',
+      forceFresh: true,
+      modelIds: ['opencode/big-pickle'],
+      modelVerificationMode: 'compatibility',
+    });
+
+    expect(result.ready).toBe(false);
     expect(result.message).toBe(
-      'Selected model opencode/minimax-m2.5-free could not be verified. OpenCode provider authentication failed'
+      'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?'
     );
+    expect(result.details).toEqual([
+      'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?',
+    ]);
     expect(result.warnings).toEqual([
-      'Selected model opencode/minimax-m2.5-free could not be verified. OpenCode provider authentication failed',
+      'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?',
+    ]);
+    expect(result.issues).toEqual([
+      {
+        providerId: 'opencode',
+        scope: 'provider',
+        severity: 'blocking',
+        code: 'mcp_unavailable',
+        message:
+          'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?',
+      },
     ]);
   });
 
@@ -1291,6 +1422,79 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       })
     );
     expect(runProviderOneShotDiagnostic).not.toHaveBeenCalled();
+  });
+
+  it('runs Anthropic one-shot when launch env uses API key despite cached runtime auth', async () => {
+    const svc = new TeamProvisioningService();
+    vi.spyOn(svc as any, 'getCachedOrProbeResult').mockResolvedValue({
+      claudePath: '/fake/claude',
+      authSource: 'none',
+    });
+    vi.spyOn(svc as any, 'verifySelectedProviderModels').mockResolvedValue({
+      details: ['Selected model haiku verified for launch.'],
+      warnings: [],
+      blockingMessages: [],
+    });
+    vi.spyOn(svc as any, 'buildProvisioningEnv').mockResolvedValue({
+      env: {
+        PATH: '/usr/bin',
+        SHELL: '/bin/zsh',
+        ANTHROPIC_API_KEY: 'test-key',
+      },
+      authSource: 'anthropic_api_key',
+      geminiRuntimeAuth: null,
+      providerArgs: ['--settings', '{"anthropic":{"auth":"api_key"}}'],
+    });
+    const runProviderOneShotDiagnostic = vi
+      .spyOn(svc as any, 'runProviderOneShotDiagnostic')
+      .mockResolvedValue({});
+
+    const result = await svc.prepareForProvisioning(tempRoot, {
+      forceFresh: true,
+      providerId: 'anthropic',
+      modelIds: ['haiku'],
+      modelVerificationMode: 'compatibility',
+    });
+
+    expect(result.ready).toBe(true);
+    expect(runProviderOneShotDiagnostic).toHaveBeenCalledWith(
+      '/fake/claude',
+      tempRoot,
+      expect.objectContaining({ ANTHROPIC_API_KEY: 'test-key' }),
+      'anthropic',
+      ['--settings', '{"anthropic":{"auth":"api_key"}}']
+    );
+  });
+
+  it('blocks Anthropic API-key prepare when one-shot reports invalid credentials', async () => {
+    const svc = new TeamProvisioningService();
+    vi.spyOn(svc as any, 'getCachedOrProbeResult').mockResolvedValue({
+      claudePath: '/fake/claude',
+      authSource: 'none',
+    });
+    vi.spyOn(svc as any, 'buildProvisioningEnv').mockResolvedValue({
+      env: {
+        PATH: '/usr/bin',
+        SHELL: '/bin/zsh',
+        ANTHROPIC_API_KEY: 'test-key',
+      },
+      authSource: 'anthropic_api_key',
+      geminiRuntimeAuth: null,
+      providerArgs: [],
+    });
+    vi.spyOn(svc as any, 'runProviderOneShotDiagnostic').mockResolvedValue({
+      warning:
+        'One-shot diagnostic failed after runtime readiness passed. Details: API Error: 401 {"type":"error","error":{"type":"authentication_error","message":"Invalid authentication credentials"}}',
+    });
+
+    const result = await svc.prepareForProvisioning(tempRoot, {
+      forceFresh: true,
+      providerId: 'anthropic',
+      modelVerificationMode: 'compatibility',
+    });
+
+    expect(result.ready).toBe(false);
+    expect(result.message).toContain('Invalid authentication credentials');
   });
 
   it('falls back from an unavailable Anthropic 1M launch id to the base model during prepare', async () => {
