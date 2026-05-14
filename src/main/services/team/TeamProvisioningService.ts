@@ -556,6 +556,7 @@ import type {
   TeamMember,
   TeamProviderBackendId,
   TeamProviderId,
+  TeamProvisioningPrepareIssue,
   TeamProvisioningModelVerificationMode,
   TeamProvisioningPrepareResult,
   TeamProvisioningProgress,
@@ -17306,6 +17307,7 @@ export class TeamProvisioningService {
     const warnings: string[] = [];
     const details: string[] = [];
     const blockingMessages: string[] = [];
+    const issues: TeamProvisioningPrepareIssue[] = [];
     const selectedModelIds = Array.from(
       new Set((opts?.modelIds ?? []).map((modelId) => modelId.trim()).filter(Boolean))
     );
@@ -17349,6 +17351,7 @@ export class TeamProvisioningService {
         details.push(...openCodeModelPrepare.details);
         warnings.push(...openCodeModelPrepare.warnings);
         blockingMessages.push(...openCodeModelPrepare.blockingMessages);
+        issues.push(...openCodeModelPrepare.issues);
         continue;
       }
 
@@ -17512,6 +17515,7 @@ export class TeamProvisioningService {
             ? blockingMessages[0]
             : 'Some provider runtimes are not ready',
         warnings: failureWarnings.length > 0 ? failureWarnings : undefined,
+        issues: issues.length > 0 ? issues : undefined,
       };
     }
 
@@ -17527,6 +17531,7 @@ export class TeamProvisioningService {
             ? 'CLI is ready to launch (see notes)'
             : 'CLI is warmed up and ready to launch',
       warnings: warnings.length > 0 ? warnings : undefined,
+      issues: issues.length > 0 ? issues : undefined,
     };
   }
 
@@ -17544,14 +17549,16 @@ export class TeamProvisioningService {
     details: string[];
     warnings: string[];
     blockingMessages: string[];
+    issues: TeamProvisioningPrepareIssue[];
   }> {
     const details: string[] = [];
     const warnings: string[] = [];
     const blockingMessages: string[] = [];
+    const issues: TeamProvisioningPrepareIssue[] = [];
     const startedAt = Date.now();
 
     if (modelIds.length === 0) {
-      return { details, warnings, blockingMessages };
+      return { details, warnings, blockingMessages, issues };
     }
 
     if (verificationMode === 'compatibility') {
@@ -17662,6 +17669,16 @@ export class TeamProvisioningService {
         prepare.diagnostics.find((entry) => entry.trim().length > 0) ?? prepare.reason;
       const unavailableLine = `Selected model ${modelId} is unavailable. ${primaryReason}`;
       const verificationWarningLine = `Selected model ${modelId} could not be verified. ${primaryReason}`;
+      const issueSeverity =
+        prepare.retryable && verificationMode !== 'compatibility' ? 'warning' : 'blocking';
+      issues.push({
+        providerId: 'opencode',
+        modelId,
+        scope: 'model',
+        severity: issueSeverity,
+        code: prepare.reason,
+        message: primaryReason,
+      });
       if (prepare.retryable) {
         warnings.push(verificationWarningLine);
         if (verificationMode === 'compatibility') {
@@ -17685,7 +17702,7 @@ export class TeamProvisioningService {
       blockingMessages,
     });
 
-    return { details, warnings, blockingMessages };
+    return { details, warnings, blockingMessages, issues };
   }
 
   private async prepareSelectedOpenCodeModelsCompatibilityBatch({
@@ -17700,10 +17717,12 @@ export class TeamProvisioningService {
     details: string[];
     warnings: string[];
     blockingMessages: string[];
+    issues: TeamProvisioningPrepareIssue[];
   } | null> {
     const details: string[] = [];
     const warnings: string[] = [];
     const blockingMessages: string[] = [];
+    const issues: TeamProvisioningPrepareIssue[] = [];
     const startedAt = Date.now();
 
     appendPreflightDebugLog('opencode_compatibility_batch_start', {
@@ -17749,18 +17768,20 @@ export class TeamProvisioningService {
     if (!sharedPrepare.ok) {
       const primaryReason =
         sharedPrepare.diagnostics.find((entry) => entry.trim().length > 0) ?? sharedPrepare.reason;
-      for (const modelId of modelIds) {
-        const unavailableLine = `Selected model ${modelId} is unavailable. ${primaryReason}`;
-        const verificationWarningLine = `Selected model ${modelId} could not be verified. ${primaryReason}`;
-        if (sharedPrepare.retryable) {
-          warnings.push(verificationWarningLine);
-          blockingMessages.push(verificationWarningLine);
-        } else {
-          details.push(unavailableLine);
-          blockingMessages.push(unavailableLine);
-        }
+      if (primaryReason.trim().length > 0) {
+        details.push(primaryReason);
+        blockingMessages.push(primaryReason);
+      } else {
+        blockingMessages.push(`OpenCode: ${sharedPrepare.reason}`);
       }
-      return { details, warnings, blockingMessages };
+      issues.push({
+        providerId: 'opencode',
+        scope: 'provider',
+        severity: 'blocking',
+        code: sharedPrepare.reason,
+        message: primaryReason.trim() || `OpenCode: ${sharedPrepare.reason}`,
+      });
+      return { details, warnings, blockingMessages, issues };
     }
 
     const latestReadiness =
@@ -17798,6 +17819,14 @@ export class TeamProvisioningService {
       const unavailableLine = `Selected model ${modelId} is unavailable. ${resolvedModel.reason}`;
       details.push(unavailableLine);
       blockingMessages.push(unavailableLine);
+      issues.push({
+        providerId: 'opencode',
+        modelId,
+        scope: 'model',
+        severity: 'blocking',
+        code: 'model_unavailable',
+        message: resolvedModel.reason,
+      });
     }
 
     appendPreflightDebugLog('opencode_compatibility_batch_complete', {
@@ -17808,7 +17837,7 @@ export class TeamProvisioningService {
       details,
     });
 
-    return { details, warnings, blockingMessages };
+    return { details, warnings, blockingMessages, issues };
   }
 
   private resolveOpenCodeCompatibilityModel(

@@ -1433,11 +1433,24 @@ export interface TeamCreateResponse {
 
 export type TeamProvisioningModelVerificationMode = 'compatibility' | 'deep';
 
+export type TeamProvisioningPrepareIssueScope = 'provider' | 'model';
+export type TeamProvisioningPrepareIssueSeverity = 'blocking' | 'warning';
+
+export interface TeamProvisioningPrepareIssue {
+  providerId?: TeamProviderId;
+  modelId?: string;
+  scope: TeamProvisioningPrepareIssueScope;
+  severity: TeamProvisioningPrepareIssueSeverity;
+  code: string;
+  message: string;
+}
+
 export interface TeamProvisioningPrepareResult {
   ready: boolean;
   message: string;
   details?: string[];
   warnings?: string[];
+  issues?: TeamProvisioningPrepareIssue[];
 }
 
 export interface TeamProvisioningProgress {

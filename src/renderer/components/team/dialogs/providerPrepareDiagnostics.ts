@@ -57,6 +57,20 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function uniquePrepareLines(lines: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const uniqueLines: string[] = [];
+  for (const line of lines) {
+    const trimmed = line?.trim() ?? '';
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    uniqueLines.push(trimmed);
+  }
+  return uniqueLines;
+}
+
 function getModelLabel(providerId: TeamProviderId, modelId: string): string {
   if (isDefaultProviderModelSelection(modelId)) {
     return 'Default';
@@ -205,6 +219,36 @@ function normalizeModelReason(rawReason: string | null | undefined): string | nu
   return trimmed;
 }
 
+function looksLikeOpenCodeRuntimeFailureReason(reason: string | null | undefined): boolean {
+  const lower = reason?.trim().toLowerCase() ?? '';
+  if (!lower) {
+    return false;
+  }
+
+  return (
+    lower.includes('opencode /experimental/tool') ||
+    lower.includes('/experimental/tool') ||
+    lower.includes('mcp_unavailable') ||
+    lower.includes('unable to connect') ||
+    lower.includes('runtime store') ||
+    lower.includes('opencode cli')
+  );
+}
+
+function getBlockingProviderIssueMessage(
+  providerId: TeamProviderId,
+  result: TeamProvisioningPrepareResult
+): string | null {
+  const issue = result.issues?.find(
+    (entry) =>
+      entry.scope === 'provider' &&
+      entry.severity === 'blocking' &&
+      (!entry.providerId || entry.providerId === providerId) &&
+      entry.message.trim().length > 0
+  );
+  return issue?.message.trim() ?? null;
+}
+
 function getResultReason(modelId: string, result: TeamProvisioningPrepareResult): string | null {
   const candidates = [...(result.details ?? []), ...(result.warnings ?? []), result.message]
     .map((entry) => entry?.trim() ?? '')
@@ -286,7 +330,18 @@ function buildModelFailureLine(
 }
 
 function createRuntimeDetailLines(result: TeamProvisioningPrepareResult): string[] {
-  return [...(result.details ?? []), ...(result.warnings ?? [])];
+  return uniquePrepareLines([...(result.details ?? []), ...(result.warnings ?? [])]);
+}
+
+function createRuntimeWarningLines(result: TeamProvisioningPrepareResult): string[] {
+  return uniquePrepareLines(result.warnings ?? []);
+}
+
+function createRuntimeFailureDetailLines(
+  runtimeDetailLines: readonly string[],
+  message: string | null | undefined
+): string[] {
+  return uniquePrepareLines([...runtimeDetailLines, message]);
 }
 
 function extractTimedOutPreflightProbeModelId(detail: string): string | null {
@@ -545,7 +600,10 @@ function resolveModelResultFromCompatibilityBatch(
   const hasUnavailableLine = modelScopedEntries.some((entry) =>
     /selected model .* is unavailable\./i.test(entry)
   );
-  if (hasUnavailableLine || (!result.ready && isOnlyModel)) {
+  const hasVerificationWarningLine = modelScopedEntries.some((entry) =>
+    /selected model .* could not be verified\./i.test(entry)
+  );
+  if (hasUnavailableLine || (!result.ready && isOnlyModel && !hasVerificationWarningLine)) {
     return {
       kind: 'terminal',
       result: {
@@ -561,9 +619,6 @@ function resolveModelResultFromCompatibilityBatch(
     };
   }
 
-  const hasVerificationWarningLine = modelScopedEntries.some((entry) =>
-    /selected model .* could not be verified\./i.test(entry)
-  );
   if (hasVerificationWarningLine) {
     const line = buildModelFailureLine(
       providerId,
@@ -574,9 +629,9 @@ function resolveModelResultFromCompatibilityBatch(
     return {
       kind: 'terminal',
       result: {
-        status: 'notes',
+        status: result.ready ? 'notes' : 'failed',
         line,
-        warningLine: line,
+        warningLine: result.ready ? line : null,
       },
     };
   }
@@ -599,6 +654,84 @@ function resolveModelResultFromCompatibilityBatch(
       ),
     },
   };
+}
+
+function looksLikeSingleModelCredentialFailure(result: TeamProvisioningPrepareResult): boolean {
+  const combined = [...(result.details ?? []), ...(result.warnings ?? []), result.message]
+    .map((entry) => entry?.trim() ?? '')
+    .filter(Boolean)
+    .join('\n')
+    .toLowerCase();
+
+  const hasCredentialContext =
+    combined.includes('token') ||
+    combined.includes('authenticat') ||
+    combined.includes('credential') ||
+    combined.includes('api key') ||
+    combined.includes('apikey') ||
+    combined.includes('not_authenticated');
+  const hasAuthStatus =
+    combined.includes('unauthorized') ||
+    combined.includes('forbidden') ||
+    /\b401\b/.test(combined) ||
+    /\b403\b/.test(combined);
+
+  return (
+    combined.includes('token refresh failed') ||
+    combined.includes('authentication failed') ||
+    combined.includes('not_authenticated') ||
+    (hasCredentialContext && hasAuthStatus)
+  );
+}
+
+function getOpenCodeProviderScopedFailureFromModelScopedEntries(
+  modelIds: readonly string[],
+  result: TeamProvisioningPrepareResult
+): string | null {
+  if (result.ready) {
+    return null;
+  }
+
+  for (const modelId of modelIds) {
+    const scopedEntries = getModelScopedEntries(modelId, result);
+    for (const entry of scopedEntries) {
+      const stripped = stripSelectedModelPrefix(modelId, entry);
+      if (looksLikeOpenCodeRuntimeFailureReason(stripped)) {
+        return stripped;
+      }
+    }
+  }
+
+  return null;
+}
+
+function shouldSurfaceProviderRuntimeFailureInsteadOfModelFailure(params: {
+  result: TeamProvisioningPrepareResult;
+  modelIds: readonly string[];
+  modelScopedEntriesPresent: boolean;
+  runtimeDetailLines: readonly string[];
+  runtimeWarnings: readonly string[];
+}): boolean {
+  if (params.result.ready || params.modelScopedEntriesPresent) {
+    return false;
+  }
+
+  const hasRuntimeScopedDiagnostics =
+    params.runtimeDetailLines.length > 0 ||
+    params.runtimeWarnings.length > 0 ||
+    Boolean(params.result.message?.trim());
+
+  if (!hasRuntimeScopedDiagnostics) {
+    return false;
+  }
+
+  const canTreatAsLegacySingleModelFailure =
+    params.modelIds.length === 1 &&
+    (looksLikeSingleModelBatchFailure(params.modelIds[0], params.result) ||
+      looksLikeSingleModelCredentialFailure(params.result)) &&
+    params.runtimeWarnings.length === 0;
+
+  return !canTreatAsLegacySingleModelFailure;
 }
 
 export async function runProviderPrepareDiagnostics({
@@ -627,12 +760,12 @@ export async function runProviderPrepareDiagnostics({
       limitContext
     );
     const runtimeDetailLines = createRuntimeDetailLines(runtimeResult);
-    const runtimeWarnings = [...(runtimeResult.warnings ?? [])];
+    const runtimeWarnings = createRuntimeWarningLines(runtimeResult);
 
     if (!runtimeResult.ready) {
       return {
         status: 'failed',
-        details: [...runtimeDetailLines, ...(runtimeResult.message ? [runtimeResult.message] : [])],
+        details: createRuntimeFailureDetailLines(runtimeDetailLines, runtimeResult.message),
         warnings: runtimeWarnings,
         modelResultsById: {},
       };
@@ -712,12 +845,12 @@ export async function runProviderPrepareDiagnostics({
       limitContext
     );
     runtimeDetailLines = createRuntimeDetailLines(runtimeResult);
-    runtimeWarnings = [...(runtimeResult.warnings ?? [])];
+    runtimeWarnings = createRuntimeWarningLines(runtimeResult);
 
     if (!runtimeResult.ready) {
       return {
         status: 'failed',
-        details: [...runtimeDetailLines, ...(runtimeResult.message ? [runtimeResult.message] : [])],
+        details: createRuntimeFailureDetailLines(runtimeDetailLines, runtimeResult.message),
         warnings: runtimeWarnings,
         modelResultsById: {},
       };
@@ -754,7 +887,7 @@ export async function runProviderPrepareDiagnostics({
         runtimeDetailLines = createRuntimeDetailLines(compatibilityResult).filter(
           (entry) => !isModelScopedEntryForAnyModel(uncachedModelIds, entry)
         );
-        runtimeWarnings = [...(compatibilityResult.warnings ?? [])].filter(
+        runtimeWarnings = createRuntimeWarningLines(compatibilityResult).filter(
           (entry) => !isModelScopedEntryForAnyModel(uncachedModelIds, entry)
         );
 
@@ -766,18 +899,43 @@ export async function runProviderPrepareDiagnostics({
         const hasSingleModelFallbackReason =
           uncachedModelIds.length === 1 &&
           looksLikeSingleModelBatchFailure(uncachedModelIds[0], compatibilityResult);
-        if (
-          !compatibilityResult.ready &&
-          !hasModelScopedEntries &&
-          (uncachedModelIds.length > 1 ||
-            (!hasNonModelScopedDiagnostics && !hasSingleModelFallbackReason))
-        ) {
+        const providerScopedFailure = getOpenCodeProviderScopedFailureFromModelScopedEntries(
+          uncachedModelIds,
+          compatibilityResult
+        );
+        const structuredProviderScopedFailure = getBlockingProviderIssueMessage(
+          providerId,
+          compatibilityResult
+        );
+        if (structuredProviderScopedFailure || providerScopedFailure) {
           return {
             status: 'failed',
             details: [
-              ...runtimeDetailLines,
-              ...(compatibilityResult.message ? [compatibilityResult.message] : []),
+              structuredProviderScopedFailure ?? providerScopedFailure ?? 'OpenCode failed',
             ],
+            warnings: [],
+            modelResultsById: {},
+          };
+        }
+        if (
+          shouldSurfaceProviderRuntimeFailureInsteadOfModelFailure({
+            result: compatibilityResult,
+            modelIds: uncachedModelIds,
+            modelScopedEntriesPresent: hasModelScopedEntries,
+            runtimeDetailLines,
+            runtimeWarnings,
+          }) ||
+          (!compatibilityResult.ready &&
+            !hasModelScopedEntries &&
+            (uncachedModelIds.length > 1 ||
+              (!hasNonModelScopedDiagnostics && !hasSingleModelFallbackReason)))
+        ) {
+          return {
+            status: 'failed',
+            details: createRuntimeFailureDetailLines(
+              runtimeDetailLines,
+              compatibilityResult.message
+            ),
             warnings: runtimeWarnings,
             modelResultsById: {},
           };
@@ -862,7 +1020,7 @@ export async function runProviderPrepareDiagnostics({
         runtimeDetailLines = createRuntimeDetailLines(batchedModelResult).filter(
           (entry) => !isModelScopedEntryForAnyModel(compatibilityPassedModelIds, entry)
         );
-        runtimeWarnings = [...(batchedModelResult.warnings ?? [])].filter(
+        runtimeWarnings = createRuntimeWarningLines(batchedModelResult).filter(
           (entry) => !isModelScopedEntryForAnyModel(compatibilityPassedModelIds, entry)
         );
 
@@ -874,18 +1032,43 @@ export async function runProviderPrepareDiagnostics({
         const hasSingleModelFallbackReason =
           compatibilityPassedModelIds.length === 1 &&
           looksLikeSingleModelBatchFailure(compatibilityPassedModelIds[0], batchedModelResult);
-        if (
-          !batchedModelResult.ready &&
-          !hasModelScopedEntries &&
-          (compatibilityPassedModelIds.length > 1 ||
-            (!hasNonModelScopedDiagnostics && !hasSingleModelFallbackReason))
-        ) {
+        const providerScopedFailure = getOpenCodeProviderScopedFailureFromModelScopedEntries(
+          compatibilityPassedModelIds,
+          batchedModelResult
+        );
+        const structuredProviderScopedFailure = getBlockingProviderIssueMessage(
+          providerId,
+          batchedModelResult
+        );
+        if (structuredProviderScopedFailure || providerScopedFailure) {
           return {
             status: 'failed',
             details: [
-              ...runtimeDetailLines,
-              ...(batchedModelResult.message ? [batchedModelResult.message] : []),
+              structuredProviderScopedFailure ?? providerScopedFailure ?? 'OpenCode failed',
             ],
+            warnings: [],
+            modelResultsById: {},
+          };
+        }
+        if (
+          shouldSurfaceProviderRuntimeFailureInsteadOfModelFailure({
+            result: batchedModelResult,
+            modelIds: compatibilityPassedModelIds,
+            modelScopedEntriesPresent: hasModelScopedEntries,
+            runtimeDetailLines,
+            runtimeWarnings,
+          }) ||
+          (!batchedModelResult.ready &&
+            !hasModelScopedEntries &&
+            (compatibilityPassedModelIds.length > 1 ||
+              (!hasNonModelScopedDiagnostics && !hasSingleModelFallbackReason)))
+        ) {
+          return {
+            status: 'failed',
+            details: createRuntimeFailureDetailLines(
+              runtimeDetailLines,
+              batchedModelResult.message
+            ),
             warnings: runtimeWarnings,
             modelResultsById: {},
           };
@@ -935,7 +1118,7 @@ export async function runProviderPrepareDiagnostics({
         runtimeDetailLines = createRuntimeDetailLines(compatibilityResult).filter(
           (entry) => !isModelScopedEntryForAnyModel(uncachedModelIds, entry)
         );
-        runtimeWarnings = [...(compatibilityResult.warnings ?? [])].filter(
+        runtimeWarnings = createRuntimeWarningLines(compatibilityResult).filter(
           (entry) => !isModelScopedEntryForAnyModel(uncachedModelIds, entry)
         );
 
@@ -955,10 +1138,10 @@ export async function runProviderPrepareDiagnostics({
         ) {
           return {
             status: 'failed',
-            details: [
-              ...runtimeDetailLines,
-              ...(compatibilityResult.message ? [compatibilityResult.message] : []),
-            ],
+            details: createRuntimeFailureDetailLines(
+              runtimeDetailLines,
+              compatibilityResult.message
+            ),
             warnings: runtimeWarnings,
             modelResultsById: {},
           };
@@ -995,7 +1178,7 @@ export async function runProviderPrepareDiagnostics({
             runtimeDetailLines = createRuntimeDetailLines(deepResult).filter(
               (entry) => !isModelScopedEntryForAnyModel(uncachedModelIds, entry)
             );
-            runtimeWarnings = [...(deepResult.warnings ?? [])].filter(
+            runtimeWarnings = createRuntimeWarningLines(deepResult).filter(
               (entry) => !isModelScopedEntryForAnyModel(uncachedModelIds, entry)
             );
             if (
@@ -1003,15 +1186,15 @@ export async function runProviderPrepareDiagnostics({
               runtimeDetailLines.length === 0 &&
               runtimeWarnings.length === 0
             ) {
-              runtimeWarnings = deepResult.message ? [deepResult.message] : [];
+              runtimeWarnings = uniquePrepareLines([deepResult.message]);
             }
           } catch (deepError) {
             hasNotes = true;
-            runtimeWarnings = [
+            runtimeWarnings = uniquePrepareLines([
               normalizeModelReason(
                 deepError instanceof Error ? deepError.message.trim() : String(deepError).trim()
               ) ?? 'One-shot diagnostic failed',
-            ];
+            ]);
           }
         }
       } catch (error) {

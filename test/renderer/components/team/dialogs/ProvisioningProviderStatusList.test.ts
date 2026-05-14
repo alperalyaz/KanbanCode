@@ -82,6 +82,40 @@ describe('ProvisioningProviderStatusList', () => {
     });
   });
 
+  it('keeps OpenCode runtime connectivity failures out of selected-model summaries', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(ProvisioningProviderStatusList, {
+          checks: [
+            {
+              providerId: 'opencode',
+              status: 'failed',
+              backendSummary: 'OpenCode CLI',
+              details: [
+                'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?',
+              ],
+            },
+          ],
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('OpenCode (OpenCode CLI): Needs attention');
+    expect(host.textContent).not.toContain('Selected model checks');
+    expect(host.textContent).not.toContain('model unavailable');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('picks the first real failure detail instead of a verified line', () => {
     expect(
       getPrimaryProvisioningFailureDetail([

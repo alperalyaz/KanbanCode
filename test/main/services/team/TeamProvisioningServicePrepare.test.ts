@@ -1052,7 +1052,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     expect(prepare).toHaveBeenCalledTimes(1);
   });
 
-  it('treats retryable OpenCode compatibility failures as blocking selected-model diagnostics', async () => {
+  it('keeps shared OpenCode auth compatibility failures provider-scoped', async () => {
     const prepare = vi.fn(async () => ({
       ok: false as const,
       providerId: 'opencode' as const,
@@ -1081,11 +1081,69 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     });
 
     expect(result.ready).toBe(false);
+    expect(result.message).toBe('OpenCode provider authentication failed');
+    expect(result.details).toEqual(['OpenCode provider authentication failed']);
+    expect(result.warnings).toEqual(['OpenCode provider authentication failed']);
+    expect(result.issues).toEqual([
+      {
+        providerId: 'opencode',
+        scope: 'provider',
+        severity: 'blocking',
+        code: 'not_authenticated',
+        message: 'OpenCode provider authentication failed',
+      },
+    ]);
+  });
+
+  it('keeps shared OpenCode MCP compatibility failures provider-scoped', async () => {
+    const prepare = vi.fn(async () => ({
+      ok: false as const,
+      providerId: 'opencode' as const,
+      reason: 'mcp_unavailable',
+      retryable: true,
+      diagnostics: [
+        'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?',
+      ],
+      warnings: [],
+    }));
+    const registry = new TeamRuntimeAdapterRegistry([
+      {
+        providerId: 'opencode',
+        prepare,
+        launch: vi.fn(),
+        reconcile: vi.fn(),
+        stop: vi.fn(),
+      } as any,
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(registry);
+
+    const result = await svc.prepareForProvisioning(tempRoot, {
+      providerId: 'opencode',
+      forceFresh: true,
+      modelIds: ['opencode/big-pickle'],
+      modelVerificationMode: 'compatibility',
+    });
+
+    expect(result.ready).toBe(false);
     expect(result.message).toBe(
-      'Selected model opencode/minimax-m2.5-free could not be verified. OpenCode provider authentication failed'
+      'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?'
     );
+    expect(result.details).toEqual([
+      'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?',
+    ]);
     expect(result.warnings).toEqual([
-      'Selected model opencode/minimax-m2.5-free could not be verified. OpenCode provider authentication failed',
+      'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?',
+    ]);
+    expect(result.issues).toEqual([
+      {
+        providerId: 'opencode',
+        scope: 'provider',
+        severity: 'blocking',
+        code: 'mcp_unavailable',
+        message:
+          'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?',
+      },
     ]);
   });
 
