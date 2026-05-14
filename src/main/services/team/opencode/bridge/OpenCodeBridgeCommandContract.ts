@@ -231,6 +231,7 @@ export interface OpenCodeDeliveryResponseObservation {
 
 export interface OpenCodeSendMessageCommandData {
   accepted: boolean;
+  runId?: string;
   sessionId?: string;
   memberName: string;
   runtimePid?: number;
@@ -238,6 +239,9 @@ export interface OpenCodeSendMessageCommandData {
   runtimePromptMessageId?: string;
   responseObservation?: OpenCodeDeliveryResponseObservation;
   diagnostics: OpenCodeTeamBridgeDiagnostic[];
+  idempotencyKey?: string;
+  manifestHighWatermark?: number | null;
+  runtimeStoreManifestHighWatermark?: number | null;
 }
 
 export interface OpenCodeCommandStatusCommandBody {

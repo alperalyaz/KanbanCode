@@ -15,6 +15,7 @@ import type {
   OpenCodeBridgeResult,
   OpenCodeBridgeSuccess,
   OpenCodeLaunchTeamCommandData,
+  OpenCodeSendMessageCommandData,
 } from '../../../../src/main/services/team/opencode/bridge/OpenCodeBridgeCommandContract';
 
 describe('OpenCodeReadinessBridge', () => {
@@ -405,12 +406,11 @@ describe('OpenCodeReadinessBridge', () => {
     });
 
     expect(executor.execute).toHaveBeenCalledTimes(2);
-    const sendOptions = executor.execute.mock.calls[0]?.[2] as { requestId?: string } | undefined;
     expect(executor.execute.mock.calls[1]).toEqual([
       'opencode.commandStatus',
       expect.objectContaining({
         originalCommand: 'opencode.sendMessage',
-        originalRequestId: sendOptions?.requestId,
+        originalRequestId: 'req-1',
         deliveryAttemptId: 'ledger-1:1:payload',
         payloadHash: expect.any(String),
       }),
@@ -560,6 +560,136 @@ describe('OpenCodeReadinessBridge', () => {
     expect(executor.execute).toHaveBeenCalledTimes(2);
   });
 
+  it('routes send-message commands through the guarded command service when configured', async () => {
+    const executor = fakeExecutor(
+      bridgeFailure('internal_error', 'direct bridge must not run', [])
+    );
+    const stateChangingExecute = vi.fn();
+    const stateChangingCommands = {
+      async execute<TBody, TData>(input: {
+        command: OpenCodeBridgeCommandName;
+        body: TBody;
+        teamName: string;
+        laneId?: string | null;
+        runId: string | null;
+      }): Promise<OpenCodeBridgeResult<TData>> {
+        stateChangingExecute(input);
+        return bridgeCommandSuccess<OpenCodeSendMessageCommandData>({
+          command: input.command,
+          requestId: 'guarded-send-req-1',
+          data: {
+            accepted: true,
+            memberName: 'bob',
+            sessionId: 'session-bob',
+            runtimePromptMessageId: 'msg_prompt_1',
+            diagnostics: [],
+          },
+        }) as unknown as OpenCodeBridgeResult<TData>;
+      },
+    };
+    const bridge = new OpenCodeReadinessBridge(executor, { stateChangingCommands });
+
+    await expect(
+      bridge.sendOpenCodeTeamMessage({
+        runId: 'run-1',
+        teamId: 'team-a',
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:bob',
+        projectPath: '/repo',
+        memberName: 'bob',
+        text: 'hello',
+        messageId: 'message-1',
+        deliveryAttemptId: 'ledger-1:1:payload',
+        settlementMode: 'acceptance',
+      })
+    ).resolves.toMatchObject({
+      accepted: true,
+      memberName: 'bob',
+      sessionId: 'session-bob',
+      runtimePromptMessageId: 'msg_prompt_1',
+    });
+
+    expect(stateChangingExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: 'opencode.sendMessage',
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:bob',
+        runId: 'run-1',
+        cwd: '/repo',
+        body: expect.objectContaining({
+          settlementMode: 'acceptance',
+          payloadHash: expect.any(String),
+        }),
+      })
+    );
+    expect(executor.execute).not.toHaveBeenCalled();
+  });
+
+  it('falls back to observed send mode when guarded acceptance contract validation fails', async () => {
+    const executor = fakeExecutor(
+      bridgeCommandSuccess<OpenCodeSendMessageCommandData>({
+        command: 'opencode.sendMessage',
+        requestId: 'legacy-observed-send',
+        data: {
+          accepted: true,
+          memberName: 'bob',
+          sessionId: 'session-bob',
+          diagnostics: [],
+        },
+      })
+    );
+    const stateChangingExecute = vi
+      .fn()
+      .mockResolvedValueOnce(
+        bridgeCommandFailure({
+          command: 'opencode.sendMessage',
+          requestId: 'guarded-send-acceptance',
+          kind: 'internal_error',
+          message:
+            'OpenCode delivery acceptance mode is required, but the orchestrator does not advertise contract version 1.',
+        })
+      );
+    const stateChangingCommands = {
+      execute: stateChangingExecute,
+    };
+    const bridge = new OpenCodeReadinessBridge(executor, { stateChangingCommands });
+
+    await expect(
+      bridge.sendOpenCodeTeamMessage({
+        runId: 'run-1',
+        teamId: 'team-a',
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:bob',
+        projectPath: '/repo',
+        memberName: 'bob',
+        text: 'hello',
+        messageId: 'message-1',
+        deliveryAttemptId: 'ledger-1:1:payload',
+        settlementMode: 'acceptance',
+      })
+    ).resolves.toMatchObject({
+      accepted: true,
+      diagnostics: [
+        expect.objectContaining({
+          code: 'opencode_accept_fast_capability_missing',
+          severity: 'warning',
+        }),
+      ],
+    });
+
+    expect(stateChangingExecute).toHaveBeenCalledTimes(1);
+    expect(stateChangingExecute.mock.calls[0]?.[0]?.body).toMatchObject({
+      settlementMode: 'acceptance',
+    });
+    expect(executor.execute).toHaveBeenCalledWith(
+      'opencode.sendMessage',
+      expect.objectContaining({ settlementMode: 'observed' }),
+      expect.objectContaining({
+        cwd: '/repo',
+      })
+    );
+  });
+
   it('routes state-changing launch commands through the guarded command service when configured', async () => {
     const executor = fakeExecutor(
       bridgeFailure('internal_error', 'direct bridge must not run', [])
@@ -687,6 +817,28 @@ function bridgeFailure(
       retryable: true,
     },
     diagnostics,
+  };
+}
+
+function bridgeCommandFailure(input: {
+  command: OpenCodeBridgeCommandName;
+  requestId: string;
+  kind: OpenCodeBridgeFailureKind;
+  message: string;
+}): OpenCodeBridgeResult<unknown> {
+  return {
+    ok: false,
+    schemaVersion: 1,
+    requestId: input.requestId,
+    command: input.command,
+    completedAt: '2026-04-21T12:00:01.000Z',
+    durationMs: 1000,
+    error: {
+      kind: input.kind,
+      message: input.message,
+      retryable: false,
+    },
+    diagnostics: [],
   };
 }
 
