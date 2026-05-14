@@ -31,6 +31,8 @@ lang: ru-RU
 
 Если OpenCode показывает `registered`, но bootstrap не подтверждён, сначала inspect artifacts, прежде чем менять team prompts.
 
+Contributor/debugging details находятся в [Архитектуре для контрибьюторов](/ru/reference/contributor-architecture), где есть ссылка на canonical debugging runbook для agent teams.
+
 Посмотрите на последний artifact неудачного запуска:
 
 ```bash

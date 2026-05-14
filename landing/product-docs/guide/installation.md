@@ -34,7 +34,7 @@ To use agent runtimes, you need access to at least one provider:
 | OpenCode           | API key for a supported backend (e.g. OpenRouter) |
 
 ::: info
-Gemini provider support is in development. You can prepare access now, but it will not appear in the team editor until it is ready.
+Gemini provider support is in development. See [Providers and runtimes](/reference/providers-runtimes) for current status across all providers.
 :::
 
 For source development, you also need:

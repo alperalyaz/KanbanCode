@@ -45,7 +45,7 @@ Messages are durable local records. Delivery still depends on the selected runti
 
 An agent block is hidden, agent-only instruction text wrapped with `<info_for_agent>...</info_for_agent>`. The UI strips these blocks from normal human-facing display, but agents and runtime delivery can use them for coordination details.
 
-The current canonical marker is `info_for_agent`; older documents may still contain legacy agent block formats.
+The current canonical marker is `info_for_agent`. Older documents may use block formats wrapped with `<opencode_agent_info>` or `[AGENT_BLOCK]` markers — these are legacy patterns and should be migrated to `info_for_agent` when encountered.
 
 ## Context Phase
 

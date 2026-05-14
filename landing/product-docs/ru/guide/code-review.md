@@ -87,6 +87,8 @@ Team lead — ревьюер по умолчанию. Вы можете наст
 - **Parsing и task lifecycle logic** — изменения в task references, chunking или filtering могут сломать доставку сообщений
 - **Persistence и code review flows** — изменения в хранении задач или review state должны оставаться консистентными через IPC layers
 
+Canonical feature layout и hard guardrail links смотрите в [Архитектуре для контрибьюторов](/ru/reference/contributor-architecture).
+
 ## Верификация
 
 Лучше запускать focused verification commands. Broad formatting или lint-fix команды не стоит использовать, если задача явно не про форматирование.

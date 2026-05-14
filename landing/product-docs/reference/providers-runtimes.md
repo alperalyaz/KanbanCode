@@ -76,6 +76,8 @@ Agent Teams keeps orchestration provider-aware but not provider-owned:
 - model availability, auth, rate limits, and tool behavior remain runtime/provider responsibilities
 - OpenCode is the broadest routing path when you want one team to use multiple provider/model lanes
 
+For contributor-facing boundaries and canonical implementation guidance, see [Contributor Architecture](/reference/contributor-architecture).
+
 Recommended patterns:
 
 | Pattern | When it helps | Risk |

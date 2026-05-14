@@ -82,6 +82,8 @@ Agent Teams остаётся provider-aware, но не provider-owned:
 - model availability, auth, rate limits и tool behavior остаются ответственностью runtime/provider
 - OpenCode - основной путь, когда одной team нужны разные provider/model lanes
 
+Contributor-facing границы и canonical implementation guidance смотрите в [Архитектуре для контрибьюторов](/ru/reference/contributor-architecture).
+
 Рекомендуемые patterns:
 
 | Pattern | When it helps | Risk |

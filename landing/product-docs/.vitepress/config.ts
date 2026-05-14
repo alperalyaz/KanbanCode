@@ -48,15 +48,24 @@ const rootGuide: DefaultTheme.SidebarItem[] = [
     items: [
       { text: "Runtime setup", link: "/guide/runtime-setup" },
       { text: "Agent workflow", link: "/guide/agent-workflow" },
+      { text: "MCP integration", link: "/guide/mcp-integration" },
+      { text: "Team brief examples", link: "/guide/team-brief-examples" },
+      { text: "Git and worktree strategy", link: "/guide/git-worktree-strategy" },
       { text: "Code review", link: "/guide/code-review" },
       { text: "Troubleshooting", link: "/guide/troubleshooting" }
     ]
+  },
+  {
+    text: "Developers",
+    items: [{ text: "Developer hub", link: "/developers/" }]
   },
   {
     text: "Reference",
     items: [
       { text: "Concepts", link: "/reference/concepts" },
       { text: "Providers and runtimes", link: "/reference/providers-runtimes" },
+      { text: "Contributor architecture", link: "/reference/contributor-architecture" },
+      { text: "Release notes", link: "/reference/release-notes" },
       { text: "Privacy and local data", link: "/reference/privacy-local-data" },
       { text: "FAQ", link: "/reference/faq" }
     ]
@@ -77,15 +86,24 @@ const ruGuide: DefaultTheme.SidebarItem[] = [
     items: [
       { text: "Настройка рантайма", link: "/ru/guide/runtime-setup" },
       { text: "Работа агентов", link: "/ru/guide/agent-workflow" },
+      { text: "MCP integration", link: "/ru/guide/mcp-integration" },
+      { text: "Team brief examples", link: "/ru/guide/team-brief-examples" },
+      { text: "Git and worktree strategy", link: "/ru/guide/git-worktree-strategy" },
       { text: "Код-ревью", link: "/ru/guide/code-review" },
       { text: "Диагностика", link: "/ru/guide/troubleshooting" }
     ]
+  },
+  {
+    text: "Разработчикам",
+    items: [{ text: "Хаб разработчика", link: "/ru/developers/" }]
   },
   {
     text: "Справочник",
     items: [
       { text: "Концепции", link: "/ru/reference/concepts" },
       { text: "Провайдеры и рантаймы", link: "/ru/reference/providers-runtimes" },
+      { text: "Архитектура для контрибьюторов", link: "/ru/reference/contributor-architecture" },
+      { text: "Релизы", link: "/ru/reference/release-notes" },
       { text: "Приватность и локальные данные", link: "/ru/reference/privacy-local-data" },
       { text: "FAQ", link: "/ru/reference/faq" }
     ]
@@ -94,6 +112,7 @@ const ruGuide: DefaultTheme.SidebarItem[] = [
 
 const rootNav: DefaultTheme.NavItem[] = [
   { text: "Guide", link: "/guide/quickstart", activeMatch: "^/guide/(?!troubleshooting(?:/|$))" },
+  { text: "Developers", link: "/developers/", activeMatch: "^/developers/" },
   { text: "Reference", link: "/reference/concepts", activeMatch: "^/reference/" },
   {
     text: "Troubleshooting",
@@ -109,6 +128,7 @@ const ruNav: DefaultTheme.NavItem[] = [
     link: "/ru/guide/quickstart",
     activeMatch: "^/ru/guide/(?!troubleshooting(?:/|$))"
   },
+  { text: "Разработчикам", link: "/ru/developers/", activeMatch: "^/ru/developers/" },
   { text: "Справочник", link: "/ru/reference/concepts", activeMatch: "^/ru/reference/" },
   {
     text: "Диагностика",

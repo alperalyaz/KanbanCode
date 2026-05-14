@@ -51,7 +51,7 @@ Messages - долговечные локальные записи. Но дост
 
 Agent Block - скрытый agent-only instruction text, обёрнутый в `<info_for_agent>...</info_for_agent>`. UI убирает такие блоки из обычного human-facing display, но agents и runtime delivery могут использовать их для coordination details.
 
-Текущий canonical marker - `info_for_agent`; в старых документах могут встречаться legacy agent block formats.
+Текущий canonical marker - `info_for_agent`. В старых документах могут встречаться block formats с маркерами `<opencode_agent_info>` или `[AGENT_BLOCK]` — это устаревшие паттерны, которые стоит заменить на `info_for_agent` при встрече.
 
 ## Context Phase
 

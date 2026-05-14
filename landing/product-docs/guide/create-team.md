@@ -30,7 +30,7 @@ Each team member runs on a provider backend. In the team editor, pick a provider
 Mixing providers in one team is supported — for example, a Claude lead with OpenCode builders.
 
 ::: info
-Gemini support is in development and will appear in the provider list when available.
+Gemini provider support is in development. See [Providers and runtimes](/reference/providers-runtimes) for current provider status.
 :::
 
 ## Write a good team brief

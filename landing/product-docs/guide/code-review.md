@@ -86,6 +86,8 @@ Prioritize these areas when reviewing:
 - **Parsing and task lifecycle logic** — changes to task references, chunking, or filtering can break message delivery
 - **Persistence and code review flows** — changes to task storage or review state must stay consistent across IPC layers
 
+For the canonical feature layout and hard guardrail links, use [Contributor Architecture](/reference/contributor-architecture).
+
 ## Verification
 
 Prefer focused verification commands. Broad formatting or lint-fix commands should not be used unless the task explicitly intends broad formatting churn.

@@ -15,6 +15,10 @@ Download the latest release for your platform from the <a href="https://github.c
 The app is free and open source. The agent runtime you choose may still require provider access — see [Installation](/guide/installation) for details.
 :::
 
+::: info
+The desktop app is the primary product. Agent Teams also runs in a browser for development, but the browser path lacks the full desktop IPC, terminal, provider auth, and team lifecycle behavior. Use `pnpm dev` (Electron) for normal development, not the browser/web dev mode.
+:::
+
 ## 2. Open or create a project
 
 Launch the app and select the project directory you want agents to work in. Agent Teams reads local project files and runtime/session state so the UI can show tasks, logs, diffs, and teammate activity.
@@ -42,7 +46,7 @@ The setup flow auto-detects installed runtimes on your machine. A common first s
 | OpenCode | Multi-model teams and many provider backends    |
 
 ::: info
-Gemini support is in development and will appear in the runtime list when available.
+Gemini provider support is in development. See [Providers and runtimes](/reference/providers-runtimes) for current provider status.
 :::
 
 See [Runtime setup](/guide/runtime-setup) for detailed configuration per provider.

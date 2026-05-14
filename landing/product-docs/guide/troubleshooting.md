@@ -25,6 +25,8 @@ Run the runtime binary in a terminal to verify `PATH` and auth. Example: `claude
 
 If OpenCode shows `registered` but bootstrap is unconfirmed, inspect artifacts first before changing team prompts.
 
+Contributor/debugging details live in [Contributor Architecture](/reference/contributor-architecture), which links to the canonical agent team debugging runbook.
+
 Look at the newest launch failure artifact:
 
 ```bash

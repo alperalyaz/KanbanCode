@@ -59,11 +59,10 @@ Agent Teams is a free desktop app for orchestrating AI agent teams. You are not 
 
 ## Reference
 
-Use the reference pages when you need exact terminology, provider behavior, or privacy boundaries.
+Use the reference pages when you need exact terminology, provider behavior, contributor architecture, or privacy boundaries.
 
 <DocsCardGrid type="reference" />
 
 ## Product preview
 
 <ZoomImage src="/screenshots/1.jpg" alt="Agent Teams kanban board" caption="Task status, teammate activity, and review workflow stay visible in one workspace." />
-
