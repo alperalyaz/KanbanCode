@@ -278,7 +278,11 @@ import { isAgentTeamsToolUse } from './agentTeamsToolNames';
 import { atomicWriteAsync } from './atomicWrite';
 import { peekAutoResumeService } from './AutoResumeService';
 import { ClaudeBinaryResolver } from './ClaudeBinaryResolver';
-import { getConfiguredCliCommandLabel } from './cliFlavor';
+import {
+  getCliFlavorUiOptions,
+  getConfiguredCliCommandLabel,
+  getConfiguredCliFlavor,
+} from './cliFlavor';
 import { withFileLock } from './fileLock';
 import {
   type ClassifiedMainProcessIdle,
@@ -991,6 +995,41 @@ function getPreflightPingArgs(providerId: TeamProviderId | undefined): string[] 
 
 function getPreflightTimeoutMs(providerId: TeamProviderId | undefined): number {
   return getProviderModelProbeTimeoutMs(providerId);
+}
+
+function getProviderRuntimeFailureLabel(providerId: TeamProviderId): string {
+  switch (providerId) {
+    case 'anthropic':
+      return 'Claude CLI';
+    case 'codex':
+      return 'Codex runtime';
+    case 'gemini':
+      return 'Gemini runtime';
+    case 'opencode':
+      return 'OpenCode runtime';
+  }
+}
+
+function getRunRuntimeFailureLabel(run: ProvisioningRun): string {
+  const providerIds = new Set<TeamProviderId>();
+  const addProvider = (providerId: TeamProviderId | undefined): void => {
+    if (providerId) {
+      providerIds.add(providerId);
+    }
+  };
+
+  addProvider(normalizeOptionalTeamProviderId(run.request.providerId));
+  addProvider(inferTeamProviderIdFromModel(run.request.model));
+  for (const member of run.request.members) {
+    addProvider(normalizeOptionalTeamProviderId(member.providerId));
+    addProvider(inferTeamProviderIdFromModel(member.model));
+  }
+
+  if (providerIds.size === 1) {
+    return getProviderRuntimeFailureLabel([...providerIds][0]!);
+  }
+
+  return getCliFlavorUiOptions(getConfiguredCliFlavor()).displayName;
 }
 
 function buildProviderCliCommandArgs(providerArgs: string[], args: string[]): string[] {
@@ -32379,7 +32418,8 @@ export class TeamProvisioningService {
     }
 
     const errorText = buildCliExitError(code, run.stdoutBuffer, run.stderrBuffer);
-    const progress = updateProgress(run, 'failed', 'Claude CLI exited with an error', {
+    const runtimeFailureLabel = getRunRuntimeFailureLabel(run);
+    const progress = updateProgress(run, 'failed', `${runtimeFailureLabel} exited with an error`, {
       error: errorText,
       cliLogsTail: extractCliLogsFromRun(run),
     });

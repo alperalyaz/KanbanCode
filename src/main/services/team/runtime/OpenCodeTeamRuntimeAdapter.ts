@@ -100,6 +100,12 @@ const SECRET_FLAG_PATTERN =
 const BEARER_TOKEN_PATTERN = /\bBearer\s+\S+/gi;
 const SECRET_KEY_PATTERN = /\bsk-[A-Za-z0-9_-]{16,}\b/g;
 
+function resolveOpenCodeRuntimeSettlementMode(
+  input: Pick<OpenCodeTeamRuntimeMessageInput, 'messageKind'>
+): OpenCodeSendMessageCommandBody['settlementMode'] {
+  return input.messageKind === 'member_work_sync_nudge' ? 'observed' : 'acceptance';
+}
+
 export class OpenCodeTeamRuntimeAdapter implements TeamLaunchRuntimeAdapter {
   readonly providerId = 'opencode' as const;
   private readonly lastProjectPathByTeamName = new Map<string, string>();
@@ -334,7 +340,7 @@ export class OpenCodeTeamRuntimeAdapter implements TeamLaunchRuntimeAdapter {
       text: buildOpenCodeRuntimeMessageText(input),
       messageId: input.messageId,
       ...(input.deliveryAttemptId ? { deliveryAttemptId: input.deliveryAttemptId } : {}),
-      settlementMode: 'acceptance',
+      settlementMode: resolveOpenCodeRuntimeSettlementMode(input),
       fileParts: input.fileParts,
       actionMode: input.actionMode,
       messageKind: input.messageKind,

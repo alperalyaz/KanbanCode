@@ -23,6 +23,7 @@
 | [research-worktrees.md](./research-worktrees.md)                             | Git worktrees + teams, запуск Claude процессов из UI (Phase 2)                                       |
 | [task-queue-derived-agenda-plan.md](./task-queue-derived-agenda-plan.md)     | Подробный rollout-plan по разделению queue/inventory, derived actionOwner и phased agenda/delta sync |
 | [debugging-agent-teams.md](./debugging-agent-teams.md)                       | Runtime debugging runbook, включая `CLAUDE_TEAM_TEAMMATE_MODE=tmux` для pane-backed teammate debug   |
+| [adaptive-task-graphs-research-note.md](./adaptive-task-graphs-research-note.md) | Research note по LATTE/AgentConductor: dynamic task graphs, frontier scheduling, selective verify, release stragglers |
 
 ## Ключевые решения
 

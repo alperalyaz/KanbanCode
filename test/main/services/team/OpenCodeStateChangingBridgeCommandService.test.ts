@@ -166,6 +166,50 @@ describe('OpenCodeStateChangingBridgeCommandService', () => {
     await expect(leaseStore.getActive('team-a')).resolves.toBeNull();
   });
 
+  it('waits briefly for an active lane lease instead of failing near-concurrent sends', async () => {
+    clientIdentity.bridgeProtocol.supportedCommands.push('opencode.sendMessage');
+    const server = peerIdentity('agent_teams_orchestrator');
+    server.bridgeProtocol.supportedCommands.push('opencode.sendMessage');
+    server.bridgeProtocol.opencodeDeliveryAcceptanceContractVersion =
+      OPEN_CODE_DELIVERY_ACCEPTANCE_CONTRACT_VERSION;
+    handshakePort.nextHandshake = buildHandshakeWithAcceptedCommands(
+      { client: clientIdentity, server },
+      ['opencode.launchTeam', 'opencode.stopTeam', 'opencode.sendMessage']
+    );
+    bridge.resultFactory = ({ body, command, options }) =>
+      bridgeSuccess({
+        requestId: options.requestId,
+        command,
+        data: {
+          runId: 'run-1',
+          idempotencyKey: body.preconditions.idempotencyKey,
+          runtimeStoreManifestHighWatermark: 10,
+        },
+      });
+    const service = createService({
+      leaseAcquireTimeoutMs: 200,
+      leaseAcquireRetryDelayMs: 5,
+    });
+    const activeLease = await leaseStore.acquire({
+      teamName: 'team-a',
+      laneId: 'secondary:opencode:bob',
+      runId: 'run-1',
+      command: 'opencode.sendMessage',
+      ttlMs: 10_000,
+    });
+
+    const resultPromise = service.execute(buildSendInput('acceptance'));
+    await sleep(20);
+    expect(bridge.calls).toHaveLength(0);
+
+    await leaseStore.release(activeLease.leaseId);
+
+    await expect(resultPromise).resolves.toMatchObject({ ok: true });
+    expect(bridge.calls).toHaveLength(1);
+    expect(bridge.calls[0].body.preconditions.commandLeaseId).toBe('lease-2');
+    await expect(leaseStore.getActive('team-a')).resolves.toBeNull();
+  });
+
   it('records unknown outcome after timeout and blocks retry before a duplicate bridge call', async () => {
     bridge.resultFactory = ({ body, command, options }) => ({
       ok: false,
@@ -238,7 +282,12 @@ describe('OpenCodeStateChangingBridgeCommandService', () => {
     await expect(leaseStore.getActive('team-a')).resolves.toBeNull();
   });
 
-  function createService(): OpenCodeStateChangingBridgeCommandService {
+  function createService(
+    overrides: {
+      leaseAcquireTimeoutMs?: number;
+      leaseAcquireRetryDelayMs?: number;
+    } = {}
+  ): OpenCodeStateChangingBridgeCommandService {
     return new OpenCodeStateChangingBridgeCommandService({
       expectedClientIdentity: clientIdentity,
       handshakePort,
@@ -250,6 +299,7 @@ describe('OpenCodeStateChangingBridgeCommandService', () => {
       requestIdFactory: () => 'cmd-1',
       diagnosticIdFactory: () => 'diag-1',
       clock: () => now,
+      ...overrides,
     });
   }
 });
@@ -405,12 +455,12 @@ function buildHandshakeWithAcceptedCommands(
 class FakeBridgeExecutor implements OpenCodeBridgeCommandExecutor {
   calls: Array<{
     command: OpenCodeBridgeCommandName;
-    body: { prompt: string; preconditions: { idempotencyKey: string } };
+    body: { prompt: string; preconditions: { idempotencyKey: string; commandLeaseId?: string } };
     options: { cwd: string; timeoutMs: number; requestId?: string };
   }> = [];
   resultFactory: (input: {
     command: OpenCodeBridgeCommandName;
-    body: { prompt: string; preconditions: { idempotencyKey: string } };
+    body: { prompt: string; preconditions: { idempotencyKey: string; commandLeaseId?: string } };
     options: { cwd: string; timeoutMs: number; requestId?: string };
   }) => OpenCodeBridgeResult<unknown> = ({ body, options }) =>
     bridgeSuccess({
@@ -429,7 +479,10 @@ class FakeBridgeExecutor implements OpenCodeBridgeCommandExecutor {
   ): Promise<OpenCodeBridgeResult<TData>> {
     const call = {
       command,
-      body: body as { prompt: string; preconditions: { idempotencyKey: string } },
+      body: body as {
+        prompt: string;
+        preconditions: { idempotencyKey: string; commandLeaseId?: string };
+      },
       options,
     };
     this.calls.push(call);
@@ -459,4 +512,8 @@ class FakeManifestReader implements RuntimeStoreManifestReader {
 
 class FakeDiagnosticsSink implements OpenCodeStateChangingBridgeDiagnosticsSink {
   readonly append = vi.fn(async () => {});
+}
+
+function sleep(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
