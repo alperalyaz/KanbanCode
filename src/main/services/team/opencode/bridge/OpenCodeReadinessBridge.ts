@@ -79,6 +79,8 @@ const DEFAULT_STOP_TIMEOUT_MS = 30_000;
 const DEFAULT_CLEANUP_TIMEOUT_MS = 10_000;
 const DEFAULT_BACKFILL_TIMEOUT_MS = 45_000;
 const DEFAULT_COMMAND_STATUS_TIMEOUT_MS = 5_000;
+const OPEN_CODE_COMPLETED_COMMAND_RECOVERY_MESSAGE =
+  'OpenCode bridge command already completed; recover through commandStatus';
 
 function buildSendPayloadHash(input: OpenCodeSendMessageCommandBody): string {
   const { payloadHash: _payloadHash, settlementMode: _settlementMode, ...hashable } = input;
@@ -277,6 +279,17 @@ export class OpenCodeReadinessBridge implements OpenCodeTeamRuntimeBridgePort {
       result = executed.result;
       activeRequestId = executed.requestId;
     } catch (error) {
+      if (body.settlementMode === 'acceptance' && isOpenCodeCompletedCommandRecoveryError(error)) {
+        const recovered = await this.recoverSendMessageOutcome({
+          originalRequestId: null,
+          body: activeBody,
+          diagnosticCode: 'opencode_send_recovered_after_duplicate_completed_command',
+          diagnosticMessage: 'OpenCode bridge outcome recovered after duplicate completed command.',
+        });
+        if (recovered) {
+          return recovered;
+        }
+      }
       if (
         body.settlementMode !== 'acceptance' ||
         !isOpenCodeAcceptanceContractMissingError(error)
@@ -316,9 +329,11 @@ export class OpenCodeReadinessBridge implements OpenCodeTeamRuntimeBridgePort {
         : result.data;
     }
     if (result.error.kind === 'timeout') {
-      const recovered = await this.recoverTimedOutSendMessage({
+      const recovered = await this.recoverSendMessageOutcome({
         originalRequestId: activeRequestId,
         body: activeBody,
+        diagnosticCode: 'opencode_send_recovered_after_bridge_timeout',
+        diagnosticMessage: 'OpenCode bridge outcome recovered after timeout.',
       });
       if (recovered) {
         return usedObservedFallback ? withOpenCodeObservedFallbackDiagnostic(recovered) : recovered;
@@ -342,13 +357,17 @@ export class OpenCodeReadinessBridge implements OpenCodeTeamRuntimeBridgePort {
     };
   }
 
-  private async recoverTimedOutSendMessage(input: {
-    originalRequestId: string;
+  private async recoverSendMessageOutcome(input: {
+    originalRequestId?: string | null;
     body: OpenCodeSendMessageCommandBody;
+    diagnosticCode: string;
+    diagnosticMessage: string;
   }): Promise<OpenCodeSendMessageCommandData | null> {
+    if (!input.originalRequestId && !input.body.deliveryAttemptId) {
+      return null;
+    }
     const statusBody: OpenCodeCommandStatusCommandBody = {
       originalCommand: 'opencode.sendMessage',
-      originalRequestId: input.originalRequestId,
       deliveryAttemptId: input.body.deliveryAttemptId,
       teamId: input.body.teamId,
       teamName: input.body.teamName,
@@ -358,6 +377,7 @@ export class OpenCodeReadinessBridge implements OpenCodeTeamRuntimeBridgePort {
       payloadHash: input.body.payloadHash,
       projectPath: input.body.projectPath,
       runId: input.body.runId,
+      ...(input.originalRequestId ? { originalRequestId: input.originalRequestId } : {}),
     };
     const statusResult = await this.bridge.execute<
       OpenCodeCommandStatusCommandBody,
@@ -370,7 +390,11 @@ export class OpenCodeReadinessBridge implements OpenCodeTeamRuntimeBridgePort {
       return null;
     }
     const status = statusResult.data;
-    if (status.originalRequestId && status.originalRequestId !== input.originalRequestId) {
+    if (
+      input.originalRequestId &&
+      status.originalRequestId &&
+      status.originalRequestId !== input.originalRequestId
+    ) {
       return null;
     }
     if (
@@ -385,9 +409,9 @@ export class OpenCodeReadinessBridge implements OpenCodeTeamRuntimeBridgePort {
     }
     const diagnostics = [
       {
-        code: 'opencode_send_recovered_after_bridge_timeout',
+        code: input.diagnosticCode,
         severity: 'warning' as const,
-        message: 'OpenCode bridge outcome recovered after timeout.',
+        message: input.diagnosticMessage,
       },
       ...status.diagnostics.map((message) => ({
         code: 'opencode_command_status',
@@ -618,6 +642,11 @@ function formatDiagnosticEvent(event: OpenCodeBridgeDiagnosticEvent): string {
 function isOpenCodeAcceptanceContractMissingError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes('OpenCode delivery acceptance mode is required');
+}
+
+function isOpenCodeCompletedCommandRecoveryError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes(OPEN_CODE_COMPLETED_COMMAND_RECOVERY_MESSAGE);
 }
 
 function withOpenCodeObservedFallbackDiagnostic(

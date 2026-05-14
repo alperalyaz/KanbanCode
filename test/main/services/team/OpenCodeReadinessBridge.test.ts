@@ -625,6 +625,70 @@ describe('OpenCodeReadinessBridge', () => {
     expect(executor.execute).not.toHaveBeenCalled();
   });
 
+  it('recovers duplicate completed guarded send through commandStatus without resending', async () => {
+    const executor = fakeExecutor(
+      bridgeCommandSuccess({
+        command: 'opencode.commandStatus',
+        requestId: 'status-req-duplicate',
+        data: {
+          status: 'prompt_accepted',
+          safeToRetry: false,
+          accepted: true,
+          deliveryAttemptId: 'ledger-1:1:payload',
+          sessionId: 'session-bob',
+          runtimePromptMessageId: 'msg_prompt_1',
+          diagnostics: ['OpenCode prompt acceptance recovered from completed idempotent command.'],
+        },
+      })
+    );
+    const stateChangingExecute = vi.fn(async () => {
+      throw new Error('OpenCode bridge command already completed; recover through commandStatus');
+    });
+    const bridge = new OpenCodeReadinessBridge(executor, {
+      stateChangingCommands: { execute: stateChangingExecute },
+    });
+    const executeMock = executor.execute as unknown as ReturnType<typeof vi.fn>;
+
+    await expect(
+      bridge.sendOpenCodeTeamMessage({
+        runId: 'run-1',
+        teamId: 'team-a',
+        teamName: 'team-a',
+        laneId: 'secondary:opencode:bob',
+        projectPath: '/repo',
+        memberName: 'bob',
+        text: 'hello',
+        messageId: 'message-1',
+        deliveryAttemptId: 'ledger-1:1:payload',
+        settlementMode: 'acceptance',
+      })
+    ).resolves.toMatchObject({
+      accepted: true,
+      sessionId: 'session-bob',
+      runtimePromptMessageId: 'msg_prompt_1',
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: 'opencode_send_recovered_after_duplicate_completed_command',
+        }),
+      ]),
+    });
+
+    expect(stateChangingExecute).toHaveBeenCalledTimes(1);
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    const [command, body, options] = executeMock.mock.calls[0] ?? [];
+    expect(command).toBe('opencode.commandStatus');
+    expect(body).toMatchObject({
+      originalCommand: 'opencode.sendMessage',
+      deliveryAttemptId: 'ledger-1:1:payload',
+      payloadHash: expect.any(String),
+    });
+    expect(body).not.toHaveProperty('originalRequestId');
+    expect(options).toMatchObject({
+      cwd: '/repo',
+      timeoutMs: 5_000,
+    });
+  });
+
   it('falls back to observed send mode when guarded acceptance contract validation fails', async () => {
     const executor = fakeExecutor(
       bridgeCommandSuccess<OpenCodeSendMessageCommandData>({
