@@ -278,6 +278,7 @@ function execFileText(
         encoding: 'utf8',
         timeout,
         maxBuffer,
+        windowsHide: true,
       },
       (error: ExecFileException | null, stdout: string | Buffer) => {
         if (error) {

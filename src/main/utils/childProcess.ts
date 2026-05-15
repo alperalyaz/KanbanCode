@@ -376,8 +376,8 @@ export function killProcessTree(
         'System32',
         'taskkill.exe'
       );
-      execFile(taskkillPath, ['/T', '/F', '/PID', String(child.pid)], () => {
-        // Best-effort — ignore errors (process may have already exited)
+      execFile(taskkillPath, ['/T', '/F', '/PID', String(child.pid)], { windowsHide: true }, () => {
+        // Best-effort - ignore errors (process may have already exited)
       });
       return;
     } catch {

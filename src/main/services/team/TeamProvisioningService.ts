@@ -6426,6 +6426,7 @@ export class TeamProvisioningService {
           encoding: 'utf8',
           maxBuffer: 16 * 1024,
           timeout: 1000,
+          windowsHide: true,
         },
         (error, stdout) => {
           if (error) {
