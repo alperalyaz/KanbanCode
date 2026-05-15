@@ -2540,6 +2540,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     };
 
     (svc as any).provisioningRunByTeam.set(run.teamName, run.runId);
+    (svc as any).runs.set(run.runId, run);
 
     await (svc as any).handleProvisioningTurnComplete(run);
 
@@ -2601,6 +2602,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     };
 
     (svc as any).provisioningRunByTeam.set(run.teamName, run.runId);
+    (svc as any).runs.set(run.runId, run);
 
     await (svc as any).handleProvisioningTurnComplete(run);
 
@@ -3054,6 +3056,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     };
 
     (svc as any).provisioningRunByTeam.set(run.teamName, run.runId);
+    (svc as any).runs.set(run.runId, run);
 
     await (svc as any).handleProvisioningTurnComplete(run);
 
