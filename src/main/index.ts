@@ -415,10 +415,30 @@ async function createOpenCodeRuntimeAdapterRegistry(
   }
 
   reportProgress('runtime-bridge', 'Preparing OpenCode bridge...');
+  const resolveBridgeCommandEnv = async (): Promise<NodeJS.ProcessEnv> => {
+    const nextEnv = { ...bridgeEnv };
+    if (!bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL) {
+      return nextEnv;
+    }
+    try {
+      const mcpHttpServer = await agentTeamsMcpHttpServer.ensureStarted();
+      bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL = mcpHttpServer.url;
+      nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL = mcpHttpServer.url;
+    } catch (error) {
+      delete nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL;
+      logger.warn(
+        `[OpenCode] Runtime adapter bridge MCP HTTP server refresh failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+    return nextEnv;
+  };
   const bridgeClient = new OpenCodeBridgeCommandClient({
     binaryPath,
     tempDirectory: join(app.getPath('temp'), 'claude-team-opencode-bridge'),
     env: bridgeEnv,
+    envProvider: resolveBridgeCommandEnv,
   });
   const bridgeControlDir = join(app.getPath('userData'), 'opencode-bridge');
   const clientIdentity = createOpenCodeBridgeClientIdentity({

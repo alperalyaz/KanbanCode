@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'url';
 
 import { FastMCP } from 'fastmcp';
 
