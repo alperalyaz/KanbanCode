@@ -145,6 +145,58 @@ describe('AgentTeamsMcpHttpServer', () => {
     expect(spawnProcess).toHaveBeenCalledTimes(1);
   });
 
+  it('fails startup promptly when the child exits before readiness', async () => {
+    const child = new FakeChildProcess();
+    const server = new AgentTeamsMcpHttpServer({
+      resolveLaunchSpec: async () => ({
+        command: 'node',
+        args: ['mcp-server/dist/index.js'],
+      }),
+      allocatePort: async () => 41003,
+      spawnProcess: vi.fn(() => child as any),
+      waitForPort: vi.fn(() => {
+        child.emit('exit', 1, null);
+        return new Promise<void>(() => {
+          // Keep readiness pending so startup resolves only through the child exit.
+        });
+      }),
+    });
+
+    await expect(server.ensureStarted()).rejects.toThrow(
+      'Agent Teams MCP HTTP server exited before startup completed with code 1'
+    );
+    expect(hoisted.killProcessTreeMock).toHaveBeenCalledWith(child, 'SIGKILL');
+    expect(vi.mocked(console.warn).mock.calls[0]?.join(' ')).toContain(
+      'Agent Teams MCP HTTP server exited before startup completed with code 1'
+    );
+    vi.mocked(console.warn).mockClear();
+  });
+
+  it('does not return a handle if the child exits during readiness polling', async () => {
+    const child = new FakeChildProcess();
+    const server = new AgentTeamsMcpHttpServer({
+      resolveLaunchSpec: async () => ({
+        command: 'node',
+        args: ['mcp-server/dist/index.js'],
+      }),
+      allocatePort: async () => 41004,
+      spawnProcess: vi.fn(() => child as any),
+      waitForPort: vi.fn(async () => {
+        await Promise.resolve();
+        child.emit('exit', 0, null);
+      }),
+    });
+
+    await expect(server.ensureStarted()).rejects.toThrow(
+      'Agent Teams MCP HTTP server exited before startup completed'
+    );
+    expect(hoisted.killProcessTreeMock).toHaveBeenCalledWith(child, 'SIGKILL');
+    expect(vi.mocked(console.warn).mock.calls[0]?.join(' ')).toContain(
+      'Agent Teams MCP HTTP server exited before startup completed with code 0'
+    );
+    vi.mocked(console.warn).mockClear();
+  });
+
   it('waits for the HTTP health endpoint before marking the server ready', async () => {
     const child = new FakeChildProcess();
     const port = await allocateLoopbackPort();

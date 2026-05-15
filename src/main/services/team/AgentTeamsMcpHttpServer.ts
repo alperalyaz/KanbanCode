@@ -168,37 +168,57 @@ export class AgentTeamsMcpHttpServer {
         this.handle = null;
       }
     };
-    child.once('exit', (code, signal) => {
-      clearIfCurrent();
-      logger.warn(
-        `Agent Teams MCP HTTP server exited${typeof code === 'number' ? ` with code ${code}` : ''}${
-          signal ? ` (${signal})` : ''
-        }`
-      );
-    });
-    child.once('error', (error) => {
-      clearIfCurrent();
-      logger.warn(
-        `Agent Teams MCP HTTP server process error: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    });
     child.stderr?.on('data', (chunk: Buffer) => {
       const text = chunk.toString('utf8').trim();
       if (text) {
         logger.debug(`Agent Teams MCP HTTP stderr: ${text.slice(0, 1000)}`);
       }
     });
+    this.child = child;
+
+    let startupSettled = false;
+    const startupFailure = new Promise<never>((_, reject) => {
+      child.once('exit', (code, signal) => {
+        clearIfCurrent();
+        const codeSuffix = typeof code === 'number' ? ` with code ${code}` : '';
+        const signalSuffix = signal ? ` (${signal})` : '';
+        const message = `Agent Teams MCP HTTP server exited before startup completed${codeSuffix}${signalSuffix}`;
+        if (!startupSettled) {
+          reject(new Error(message));
+        }
+        logger.warn(message);
+      });
+      child.once('error', (error) => {
+        clearIfCurrent();
+        const message = `Agent Teams MCP HTTP server process error: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
+        if (!startupSettled) {
+          reject(error instanceof Error ? error : new Error(message));
+        }
+        logger.warn(message);
+      });
+    });
 
     try {
-      await waitForPort(MCP_HTTP_HOST, port, MCP_HTTP_READY_TIMEOUT_MS);
+      await Promise.race([
+        waitForPort(MCP_HTTP_HOST, port, MCP_HTTP_READY_TIMEOUT_MS),
+        startupFailure,
+      ]);
+      if (this.child !== child) {
+        throw new Error('Agent Teams MCP HTTP server exited before startup completed');
+      }
     } catch (error) {
+      startupSettled = true;
+      if (this.child === child) {
+        this.child = null;
+        this.handle = null;
+      }
       killProcessTree(child, 'SIGKILL');
       throw error;
     }
 
-    this.child = child;
+    startupSettled = true;
     this.handle = {
       url: `http://${MCP_HTTP_HOST}:${port}${MCP_HTTP_ENDPOINT}`,
       port,

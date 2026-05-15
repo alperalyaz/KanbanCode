@@ -96,13 +96,13 @@ export async function cleanupManagedOpenCodeServeProcesses(
     }
 
     const details = await readDetails(row.pid);
+    const isManagedByWindowsCommand =
+      platform === 'win32' && isAppManagedWindowsOpenCodeServeCommand(row.command);
     const isManaged =
-      platform === 'win32'
-        ? isAppManagedWindowsOpenCodeServeCommand(row.command) ||
-          Boolean(details && isManagedOpenCodeServeProcessDetails(details))
-        : Boolean(details && isManagedOpenCodeServeProcessDetails(details));
+      isManagedByWindowsCommand || Boolean(details && isManagedOpenCodeServeProcessDetails(details));
     const hasRequiredDetailsMarkers =
       requiredDetailsMarkers.length === 0 ||
+      (isManagedByWindowsCommand && details === null) ||
       Boolean(details && processDetailsIncludeMarkers(details, requiredDetailsMarkers));
     if (!isManaged || !hasRequiredDetailsMarkers) {
       result.candidates.push({

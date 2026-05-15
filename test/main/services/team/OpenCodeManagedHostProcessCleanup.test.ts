@@ -403,6 +403,33 @@ describe('OpenCodeManagedHostProcessCleanup', () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it('does not require unreadable Windows details for app-managed command fallback cleanup', async () => {
+    const killProcess = vi.fn();
+
+    const result = await cleanupManagedOpenCodeServeProcesses({
+      mode: 'force',
+      platform: 'win32',
+      requiredDetailsMarkers: ['CLAUDE_TEAM_APP_INSTANCE_ID=app-1'],
+      listProcessRows: () =>
+        resolved([
+          {
+            pid: 71629,
+            ppid: 86256,
+            command:
+              '"C:\\Users\\User\\AppData\\Roaming\\claude-agent-teams-ui\\data\\runtimes\\opencode\\versions\\1.14.48\\opencode-windows-x64\\opencode.exe" serve --hostname 127.0.0.1 --port 49914',
+          },
+        ]),
+      readProcessDetails: () => resolved(null),
+      disposeServeHost: () => resolved(undefined),
+      isProcessAlive: () => false,
+      killProcess,
+    });
+
+    expect(killProcess).toHaveBeenCalledWith(71629);
+    expect(result.candidates[0]).toMatchObject({ pid: 71629, action: 'killed' });
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it('keeps app-managed Windows OpenCode serve processes while their parent is still alive', async () => {
     const killProcess = vi.fn();
 
