@@ -2537,6 +2537,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       activeToolCalls: new Map(),
       leadActivityState: 'active',
       leadContextUsage: null,
+      child: { killed: false, stdin: { write: vi.fn() } },
     };
 
     (svc as any).provisioningRunByTeam.set(run.teamName, run.runId);
@@ -2599,6 +2600,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       activeToolCalls: new Map(),
       leadActivityState: 'active',
       leadContextUsage: null,
+      child: { killed: false, stdin: { write: vi.fn() } },
     };
 
     (svc as any).provisioningRunByTeam.set(run.teamName, run.runId);
@@ -3053,6 +3055,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       activeToolCalls: new Map(),
       leadActivityState: 'active',
       leadContextUsage: null,
+      child: { killed: false, stdin: { write: vi.fn() } },
     };
 
     (svc as any).provisioningRunByTeam.set(run.teamName, run.runId);
