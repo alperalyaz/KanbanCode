@@ -300,8 +300,12 @@ pnpm dist:mac:arm64  # macOS Apple Silicon (.dmg)
 pnpm dist:mac:x64    # macOS Intel (.dmg)
 pnpm dist:win        # Windows (.exe)
 pnpm dist:linux      # Linux (AppImage/.deb/.rpm/.pacman)
-pnpm dist            # macOS + Windows + Linux
+pnpm dist            # Current platform
 ```
+
+Distribution scripts run the production build and stage the bundled multimodel runtime from
+`runtime.lock.json` before packaging. Use `pnpm clean:runtime` to remove staged runtime files after
+local packaging.
 
 ### Scripts
 

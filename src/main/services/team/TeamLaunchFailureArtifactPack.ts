@@ -269,7 +269,7 @@ export function classifyLaunchFailureArtifact(
       code: 'model_no_bootstrap',
       confidence: 0.82,
       pattern:
-        /did not bootstrap-confirm|bootstrap unconfirmed|bootstrap-confirm before timeout|check-in not yet received|bootstrap_stalled/i,
+        /did not bootstrap-confirm|bootstrap unconfirmed|bootstrap-confirm before timeout|bootstrap was not confirmed|bootstrap not confirmed|check-in not yet received|bootstrap_stalled/i,
     },
     {
       code: 'process_exited',

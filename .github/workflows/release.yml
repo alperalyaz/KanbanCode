@@ -166,10 +166,10 @@ jobs:
         include:
           - arch: arm64
             runner: macos-14
-            dist_command: pnpm dist:mac:arm64
+            dist_command: pnpm pack:mac:arm64
           - arch: x64
             runner: macos-15-intel
-            dist_command: pnpm dist:mac:x64
+            dist_command: pnpm pack:mac:x64
     runs-on: ${{ matrix.runner }}
 
     steps:
@@ -206,32 +206,18 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/v}"
           pnpm pkg set version="$VERSION"
 
-      - name: Resolve runtime asset name (macOS ${{ matrix.arch }})
-        if: startsWith(github.ref, 'refs/tags/v')
-        id: runtime-asset
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${{ matrix.arch }}" == "arm64" ]]; then
-            platform="darwin-arm64"
-          else
-            platform="darwin-x64"
-          fi
-          echo "asset_name=$(node ./scripts/runtime-lock.mjs asset-name "$platform")" >> "$GITHUB_OUTPUT"
-
       - name: Stage bundled runtime (macOS ${{ matrix.arch }})
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF#refs/tags/}"
-          rm -rf .runtime-download resources/runtime
-          mkdir -p .runtime-download resources/runtime
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "${{ steps.runtime-asset.outputs.asset_name }}" --dir .runtime-download
-          tar -xzf ".runtime-download/${{ steps.runtime-asset.outputs.asset_name }}" -C .runtime-download
-          cp -R .runtime-download/runtime/. resources/runtime/
+          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            node ./scripts/stage-runtime.mjs --platform "darwin-${{ matrix.arch }}" --release-tag "$TAG"
+          else
+            node ./scripts/stage-runtime.mjs --platform "darwin-${{ matrix.arch }}"
+          fi
 
       - name: Build app (macOS ${{ matrix.arch }})
         env:
@@ -248,9 +234,7 @@ jobs:
           test -f dist-electron/preload/index.js
           test -f out/renderer/index.html
           test -f mcp-server/dist/index.js
-          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
-            test -f resources/runtime/VERSION
-          fi
+          test -f resources/runtime/VERSION
 
       - name: Package (macOS ${{ matrix.arch }})
         env:
@@ -321,28 +305,18 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/v}"
           pnpm pkg set version="$VERSION"
 
-      - name: Resolve runtime asset name (Windows)
-        if: startsWith(github.ref, 'refs/tags/v')
-        id: runtime-asset
-        shell: bash
-        run: |
-          echo "asset_name=$(node ./scripts/runtime-lock.mjs asset-name win32-x64)" >> "$GITHUB_OUTPUT"
-
       - name: Stage bundled runtime (Windows)
-        if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ErrorActionPreference = "Stop"
-          $tag = $env:GITHUB_REF.Replace('refs/tags/', '')
-          Remove-Item .runtime-download -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item resources/runtime/* -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force -Path .runtime-download | Out-Null
-          New-Item -ItemType Directory -Force -Path resources/runtime | Out-Null
-          gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern "${{ steps.runtime-asset.outputs.asset_name }}" --dir .runtime-download
-          Expand-Archive -Path ".runtime-download/${{ steps.runtime-asset.outputs.asset_name }}" -DestinationPath .runtime-download/unpacked -Force
-          Copy-Item .runtime-download/unpacked/runtime/* resources/runtime -Recurse -Force
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $tag = $env:GITHUB_REF.Replace('refs/tags/', '')
+            node ./scripts/stage-runtime.mjs --platform win32-x64 --release-tag $tag
+          } else {
+            node ./scripts/stage-runtime.mjs --platform win32-x64
+          }
 
       - name: Build app (Windows)
         env:
@@ -360,14 +334,12 @@ jobs:
           test -f dist-electron/preload/index.js
           test -f out/renderer/index.html
           test -f mcp-server/dist/index.js
-          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
-            test -f resources/runtime/VERSION
-          fi
+          test -f resources/runtime/VERSION
 
       - name: Package (Windows)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm dist:win --publish never
+        run: pnpm pack:win --publish never
 
       - name: Validate packaged bundle (Windows)
         shell: bash
@@ -435,26 +407,18 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/v}"
           pnpm pkg set version="$VERSION"
 
-      - name: Resolve runtime asset name (Linux)
-        if: startsWith(github.ref, 'refs/tags/v')
-        id: runtime-asset
-        shell: bash
-        run: |
-          echo "asset_name=$(node ./scripts/runtime-lock.mjs asset-name linux-x64)" >> "$GITHUB_OUTPUT"
-
       - name: Stage bundled runtime (Linux)
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF#refs/tags/}"
-          rm -rf .runtime-download resources/runtime
-          mkdir -p .runtime-download resources/runtime
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "${{ steps.runtime-asset.outputs.asset_name }}" --dir .runtime-download
-          tar -xzf ".runtime-download/${{ steps.runtime-asset.outputs.asset_name }}" -C .runtime-download
-          cp -R .runtime-download/runtime/. resources/runtime/
+          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            node ./scripts/stage-runtime.mjs --platform linux-x64 --release-tag "$TAG"
+          else
+            node ./scripts/stage-runtime.mjs --platform linux-x64
+          fi
 
       - name: Build app (Linux)
         env:
@@ -471,14 +435,12 @@ jobs:
           test -f dist-electron/preload/index.js
           test -f out/renderer/index.html
           test -f mcp-server/dist/index.js
-          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
-            test -f resources/runtime/VERSION
-          fi
+          test -f resources/runtime/VERSION
 
       - name: Package (Linux)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm dist:linux --publish never
+        run: pnpm pack:linux --publish never
 
       - name: Validate packaged bundle (Linux)
         run: node ./scripts/electron-builder/verifyBundle.cjs "release/linux-unpacked" linux x64

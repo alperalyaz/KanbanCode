@@ -250,6 +250,55 @@ function writeLaunchConfig(
   );
 }
 
+async function startDeterministicLaunchCloseHarness(options?: {
+  teamName?: string;
+  leadSessionId?: string;
+  members?: string[];
+}) {
+  const teamName = options?.teamName ?? `launch-close-${Date.now()}`;
+  const leadSessionId = options?.leadSessionId ?? `lead-session-${teamName}`;
+  const members = options?.members ?? ['alice'];
+  writeLaunchConfig(teamName, tempClaudeRoot, leadSessionId, members);
+
+  vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
+  const child = createRunningChild();
+  vi.mocked(spawnCli).mockReturnValue(child as any);
+
+  const svc = new TeamProvisioningService(undefined, undefined, undefined, undefined, {
+    writeConfigFile: vi.fn(async () => '/mock/mcp-config-launch.json'),
+    removeConfigFile: vi.fn(async () => {}),
+  } as any);
+  (svc as any).buildProvisioningEnv = vi.fn(async () => ({
+    env: { CODEX_API_KEY: 'test' },
+    authSource: 'codex_runtime',
+  }));
+  (svc as any).resolveLaunchExpectedMembers = vi.fn(async () => ({
+    members: members.map((name) => ({ name })),
+    source: 'members-meta',
+    warning: undefined,
+  }));
+  (svc as any).normalizeTeamConfigForLaunch = vi.fn(async () => {});
+  (svc as any).assertConfigLeadOnlyForLaunch = vi.fn(async () => {});
+  (svc as any).updateConfigProjectPath = vi.fn(async () => {});
+  (svc as any).restorePrelaunchConfig = vi.fn(async () => {});
+  (svc as any).validateAgentTeamsMcpRuntime = vi.fn(async () => {});
+  (svc as any).persistLaunchStateSnapshot = vi.fn(async () => {});
+  (svc as any).startFilesystemMonitor = vi.fn();
+  (svc as any).waitForValidConfig = vi.fn(async () => ({ ok: false }));
+  (svc as any).pathExists = vi.fn(async (targetPath: string) =>
+    targetPath.endsWith(`${leadSessionId}.jsonl`)
+  );
+
+  const progressUpdates: any[] = [];
+  const { runId } = await svc.launchTeam({ teamName, cwd: tempClaudeRoot }, (progress) => {
+    progressUpdates.push(progress);
+  });
+  const run = (svc as any).runs.get(runId);
+  expect(run).toBeTruthy();
+
+  return { child, members, progressUpdates, run, runId, svc, teamName };
+}
+
 function writeLaunchState(
   teamName: string,
   leadSessionId: string,
@@ -15390,6 +15439,214 @@ describe('TeamProvisioningService', () => {
     expect(respawnAfterAuthFailure).toHaveBeenCalledWith(run);
     expect(waitForValidConfig).not.toHaveBeenCalled();
     expect(progressStates).not.toContain('verifying');
+  });
+
+  it('warns but still starts deterministic launch with more than eight primary teammates', async () => {
+    allowConsoleLogs();
+    const members = Array.from({ length: 9 }, (_, index) => `member-${index + 1}`);
+    const { progressUpdates } = await startDeterministicLaunchCloseHarness({
+      teamName: 'launch-large-primary-team-warning',
+      members,
+    });
+
+    expect(spawnCli).toHaveBeenCalled();
+    expect(progressUpdates[0]?.warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining('9 primary teammates'),
+    ]));
+    expect(progressUpdates[0]?.warnings?.join('\n')).toContain('Launches above 8 teammates');
+  });
+
+  it('fails before spawning when deterministic launch exceeds the current primary teammate cap', async () => {
+    allowConsoleLogs();
+    const members = Array.from({ length: 17 }, (_, index) => `member-${index + 1}`);
+
+    await expect(
+      startDeterministicLaunchCloseHarness({
+        teamName: 'launch-too-many-primary-members',
+        members,
+      })
+    ).rejects.toThrow(/up to 16 primary teammates/);
+    expect(spawnCli).not.toHaveBeenCalled();
+  });
+
+  it('keeps SessionStart hook payloads out of user-facing launch errors', async () => {
+    allowConsoleLogs();
+    const { child, progressUpdates } = await startDeterministicLaunchCloseHarness({
+      teamName: 'launch-hook-payload-sanitized',
+      members: ['alice'],
+    });
+    const hookPayload = [
+      '<EXTREMELY_IMPORTANT>',
+      'You have superpowers.',
+      'digraph skill_flow {',
+      'Might any skill apply?',
+      'Invoke Skill tool',
+      'TodoWrite',
+      'superpowers:using-superpowers',
+      '</EXTREMELY_IMPORTANT>',
+    ].join('\n');
+
+    child.stdout.emit(
+      'data',
+      Buffer.from(
+        `${JSON.stringify({
+          type: 'system',
+          subtype: 'hook_started',
+          hook_name: 'SessionStart:startup',
+        })}\n${JSON.stringify({
+          type: 'system',
+          subtype: 'hook_response',
+          hook_name: 'SessionStart:startup',
+          output: JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: 'SessionStart',
+              additionalContext: hookPayload,
+            },
+          }),
+          exit_code: 0,
+          outcome: 'success',
+        })}\n`,
+        'utf8'
+      )
+    );
+    child.emit('close', 1);
+
+    await vi.waitFor(() => expect(progressUpdates.at(-1)?.state).toBe('failed'));
+    const finalProgress = progressUpdates.at(-1);
+    expect(finalProgress.message).toBe('Launch bootstrap was not confirmed');
+    expect(finalProgress.error).toContain('No team_bootstrap event was received');
+    expect(finalProgress.error).not.toMatch(
+      /skill_flow|EXTREMELY_IMPORTANT|additionalContext|TodoWrite|Skill tool/
+    );
+    expect(finalProgress.cliLogsTail).toMatch(/skill_flow|EXTREMELY_IMPORTANT|additionalContext/);
+  });
+
+  it('does not leak a mid-buffer hook payload when stdout starts inside hook JSON', async () => {
+    allowConsoleLogs();
+    const { child, progressUpdates, run } = await startDeterministicLaunchCloseHarness({
+      teamName: 'launch-hook-mid-buffer-sanitized',
+      members: ['alice'],
+    });
+    run.claudeLogLines = [];
+    run.stdoutBuffer =
+      'evant or requested skills BEFORE any response or action. digraph skill_flow { EXTREMELY_IMPORTANT TodoWrite Skill tool }';
+    run.stderrBuffer = '';
+
+    child.emit('close', 1);
+
+    await vi.waitFor(() => expect(progressUpdates.at(-1)?.state).toBe('failed'));
+    const finalProgress = progressUpdates.at(-1);
+    expect(finalProgress.error).toContain('No team_bootstrap event was received');
+    expect(finalProgress.error).not.toMatch(/skill_flow|EXTREMELY_IMPORTANT|TodoWrite|Skill tool/);
+    expect(finalProgress.cliLogsTail).toContain('skill_flow');
+  });
+
+  it('reports the last bootstrap phase when Codex exits before spawning teammates', async () => {
+    allowConsoleLogs();
+    const { child, progressUpdates, runId, teamName } = await startDeterministicLaunchCloseHarness({
+      teamName: 'launch-bootstrap-phase-before-spawn',
+      members: ['alice'],
+    });
+
+    child.stdout.emit(
+      'data',
+      Buffer.from(
+        `${JSON.stringify({
+          type: 'system',
+          subtype: 'team_bootstrap',
+          event: 'started',
+          run_id: runId,
+          team_name: teamName,
+          seq: 1,
+        })}\n${JSON.stringify({
+          type: 'system',
+          subtype: 'team_bootstrap',
+          event: 'phase_changed',
+          phase: 'acquiring_bootstrap_lock',
+          run_id: runId,
+          team_name: teamName,
+          seq: 2,
+        })}\n`,
+        'utf8'
+      )
+    );
+    child.emit('close', 1);
+
+    await vi.waitFor(() => expect(progressUpdates.at(-1)?.state).toBe('failed'));
+    const finalProgress = progressUpdates.at(-1);
+    expect(finalProgress.message).toBe('Launch bootstrap was not confirmed');
+    expect(finalProgress.error).toContain('before teammate spawning started');
+    expect(finalProgress.error).toContain('phase_changed/acquiring_bootstrap_lock');
+  });
+
+  it('reports pending teammates when Codex exits after member spawning starts', async () => {
+    allowConsoleLogs();
+    const { child, progressUpdates, runId, teamName } = await startDeterministicLaunchCloseHarness({
+      teamName: 'launch-bootstrap-pending-members',
+      members: ['alice', 'bob'],
+    });
+
+    child.stdout.emit(
+      'data',
+      Buffer.from(
+        `${JSON.stringify({
+          type: 'system',
+          subtype: 'team_bootstrap',
+          event: 'started',
+          run_id: runId,
+          team_name: teamName,
+          seq: 1,
+        })}\n${JSON.stringify({
+          type: 'system',
+          subtype: 'team_bootstrap',
+          event: 'member_spawn_started',
+          member_name: 'alice',
+          run_id: runId,
+          team_name: teamName,
+          seq: 2,
+        })}\n`,
+        'utf8'
+      )
+    );
+    child.emit('close', 1);
+
+    await vi.waitFor(() => expect(progressUpdates.at(-1)?.state).toBe('failed'));
+    const finalProgress = progressUpdates.at(-1);
+    expect(finalProgress.message).toBe('Launch bootstrap was not confirmed');
+    expect(finalProgress.error).toContain('Pending teammates: alice, bob');
+  });
+
+  it('preserves real stderr as the user-facing launch error', async () => {
+    allowConsoleLogs();
+    const { child, progressUpdates } = await startDeterministicLaunchCloseHarness({
+      teamName: 'launch-real-stderr-preserved',
+      members: ['alice'],
+    });
+
+    child.stderr.emit('data', Buffer.from('Fatal runtime exploded before bootstrap\n', 'utf8'));
+    child.emit('close', 1);
+
+    await vi.waitFor(() => expect(progressUpdates.at(-1)?.state).toBe('failed'));
+    const finalProgress = progressUpdates.at(-1);
+    expect(finalProgress.error).toBe('Fatal runtime exploded before bootstrap');
+    expect(finalProgress.message).not.toBe('Launch bootstrap was not confirmed');
+  });
+
+  it('preserves the CLI login hint on launch process exit', async () => {
+    allowConsoleLogs();
+    const { child, progressUpdates, svc } = await startDeterministicLaunchCloseHarness({
+      teamName: 'launch-login-hint-preserved',
+      members: ['alice'],
+    });
+    vi.spyOn(svc as any, 'handleAuthFailureInOutput').mockImplementation(() => {});
+
+    child.stderr.emit('data', Buffer.from('Please run /login to continue\n', 'utf8'));
+    child.emit('close', 1);
+
+    await vi.waitFor(() => expect(progressUpdates.at(-1)?.state).toBe('failed'));
+    const finalProgress = progressUpdates.at(-1);
+    expect(finalProgress.error).toContain('reports it is not authenticated');
+    expect(finalProgress.error).toContain('Please run /login');
   });
 
   it('clears stale team-scoped transient state before starting a new launch run', async () => {

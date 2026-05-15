@@ -273,6 +273,11 @@ describe('TeamLaunchFailureArtifactPack', () => {
       code: 'model_no_bootstrap',
     },
     {
+      name: 'sanitized launch bootstrap fallback',
+      text: 'Bootstrap was not confirmed before the Codex runtime exited. Pending teammates: alice.',
+      code: 'model_no_bootstrap',
+    },
+    {
       name: 'process stale pid',
       text: 'persisted runtime pid is not alive; persisted runtime pid was not found in process table',
       code: 'process_exited',
