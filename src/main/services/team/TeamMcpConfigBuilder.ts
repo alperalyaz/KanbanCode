@@ -1,9 +1,9 @@
+import { execCli } from '@main/utils/childProcess';
 import {
   getClaudeBasePath,
   getMcpConfigsBasePath,
   getMcpServerBasePath,
 } from '@main/utils/pathDecoder';
-import { execCli } from '@main/utils/childProcess';
 import { createLogger } from '@shared/utils/logger';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';

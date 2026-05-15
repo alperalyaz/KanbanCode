@@ -361,6 +361,10 @@ function cancelScheduledIdle(handle: ScheduledIdleHandle | null): void {
   window.clearTimeout(handle.id);
 }
 
+function isCurrentPrepareGeneration(ref: { current: number }, generation: number): boolean {
+  return ref.current === generation;
+}
+
 export const CreateTeamDialog = ({
   open,
   canCreate,
@@ -445,6 +449,7 @@ export const CreateTeamDialog = ({
   const [prepareChecks, setPrepareChecks] = useState<ProvisioningProviderCheck[]>([]);
   const prepareRequestSeqRef = useRef(0);
   const prepareIdleHandleRef = useRef<ScheduledIdleHandle | null>(null);
+  const prepareUnmountGenerationRef = useRef(0);
   const appliedDefaultProjectPathRef = useRef<string | null>(null);
   const lastAutoDescriptionRef = useRef<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
@@ -692,11 +697,19 @@ export const CreateTeamDialog = ({
   }, [open]);
 
   useEffect(() => {
+    const generation = ++prepareUnmountGenerationRef.current;
     return () => {
-      cancelScheduledIdle(prepareIdleHandleRef.current);
-      prepareIdleHandleRef.current = null;
-      prepareRequestSeqRef.current += 1;
-      lastPrepareRequestSignatureRef.current = null;
+      // React StrictMode replays effect cleanup/setup in development; defer
+      // invalidation so the replay does not cancel the live prepare request.
+      queueMicrotask(() => {
+        if (!isCurrentPrepareGeneration(prepareUnmountGenerationRef, generation)) {
+          return;
+        }
+        cancelScheduledIdle(prepareIdleHandleRef.current);
+        prepareIdleHandleRef.current = null;
+        prepareRequestSeqRef.current += 1;
+        lastPrepareRequestSignatureRef.current = null;
+      });
     };
   }, []);
 
@@ -1046,6 +1059,7 @@ export const CreateTeamDialog = ({
     effectiveMemberDrafts,
     effectiveAnthropicRuntimeLimitContext,
     prepareRequestSignature,
+    prepareRuntimeStatusSignature,
     runtimeProviderStatusById,
     selectedModel,
     selectedProviderId,
