@@ -109,33 +109,89 @@ jobs:
           done < <(node ./scripts/runtime-lock.mjs asset-list)
           echo "missing=$missing" >> "$GITHUB_OUTPUT"
 
-      - name: Dispatch private runtime build
+      - name: Run and wait for private runtime build
         if: steps.runtime-assets.outputs.missing == '1'
         env:
           GH_TOKEN: ${{ secrets.RUNTIME_BUILD_DISPATCH_TOKEN }}
         run: |
           set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "Missing RUNTIME_BUILD_DISPATCH_TOKEN secret" >&2
+            exit 1
+          fi
+
           TARGET_TAG="${GITHUB_REF#refs/tags/}"
           SOURCE_REPO="$(node ./scripts/runtime-lock.mjs source-repository)"
           SOURCE_REF="$(node ./scripts/runtime-lock.mjs source-ref)"
           RUNTIME_VERSION="$(node ./scripts/runtime-lock.mjs version)"
-          gh api \
-            --method POST \
-            "repos/${SOURCE_REPO}/actions/workflows/release-runtime.yml/dispatches" \
-            -f ref=main \
-            -f "inputs[source_ref]=$SOURCE_REF" \
-            -f "inputs[runtime_version]=$RUNTIME_VERSION" \
-            -f "inputs[target_release_repo]=$GITHUB_REPOSITORY" \
-            -f "inputs[target_release_tag]=$TARGET_TAG"
+          RUN_TITLE="runtime ${RUNTIME_VERSION} -> ${GITHUB_REPOSITORY}@${TARGET_TAG}"
+          STARTED_AT="$(node -e 'console.log(new Date(Date.now() - 120000).toISOString())')"
 
-      - name: Wait for runtime assets
+          gh workflow run release-runtime.yml \
+            --repo "$SOURCE_REPO" \
+            --ref main \
+            -f "source_ref=$SOURCE_REF" \
+            -f "runtime_version=$RUNTIME_VERSION" \
+            -f "target_release_repo=$GITHUB_REPOSITORY" \
+            -f "target_release_tag=$TARGET_TAG"
+
+          run_id=""
+          for attempt in $(seq 1 60); do
+            run_id="$(
+              gh run list \
+                --repo "$SOURCE_REPO" \
+                --workflow release-runtime.yml \
+                --event workflow_dispatch \
+                --limit 30 \
+                --json databaseId,displayTitle,createdAt \
+                --jq '.[] | select(.displayTitle == "'"$RUN_TITLE"'" and .createdAt >= "'"$STARTED_AT"'") | .databaseId' \
+                | head -n 1
+            )"
+
+            if [ -n "$run_id" ]; then
+              echo "Found orchestrator runtime workflow run: $run_id"
+              for wait_attempt in $(seq 1 240); do
+                run_state="$(
+                  gh run view "$run_id" \
+                    --repo "$SOURCE_REPO" \
+                    --json status,conclusion,url \
+                    --jq '[.status, (.conclusion // ""), .url] | @tsv'
+                )"
+                IFS=$'\t' read -r status conclusion url <<< "$run_state"
+
+                if [ "$status" = "completed" ]; then
+                  if [ "$conclusion" = "success" ]; then
+                    echo "Orchestrator runtime workflow succeeded: $url"
+                    exit 0
+                  fi
+
+                  echo "Orchestrator runtime workflow failed with conclusion '$conclusion': $url" >&2
+                  exit 1
+                fi
+
+                echo "Orchestrator runtime workflow status: $status - wait $wait_attempt/240"
+                sleep 15
+              done
+
+              echo "Timed out waiting for orchestrator runtime workflow completion: $run_id" >&2
+              exit 1
+            fi
+
+            echo "Waiting for orchestrator runtime workflow run - attempt $attempt/60"
+            sleep 5
+          done
+
+          echo "Timed out waiting for orchestrator runtime workflow run: $RUN_TITLE" >&2
+          exit 1
+
+      - name: Verify runtime assets
         if: steps.runtime-assets.outputs.missing == '1'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF#refs/tags/}"
-          for attempt in $(seq 1 60); do
+          for attempt in $(seq 1 12); do
             existing="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null || true)"
             all_found=1
             while IFS= read -r asset; do
@@ -151,7 +207,7 @@ jobs:
               exit 0
             fi
 
-            echo "Waiting for runtime assets - attempt $attempt/60"
+            echo "Waiting for runtime assets after orchestrator success - attempt $attempt/12"
             sleep 10
           done
 
