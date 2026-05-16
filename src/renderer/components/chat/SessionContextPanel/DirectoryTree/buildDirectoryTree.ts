@@ -2,6 +2,8 @@
  * Build a directory tree structure from CLAUDE.md injections.
  */
 
+import { getRelativePathWithinPrefix } from '@shared/utils/platformPath';
+
 import type { TreeNode } from './types';
 import type { ClaudeMdContextInjection } from '@renderer/types/contextInjection';
 
@@ -15,12 +17,9 @@ export function buildDirectoryTree(
   const root: TreeNode = { name: '', path: '', isFile: false, children: new Map() };
 
   for (const injection of injections) {
-    let relativePath = injection.path;
-    if (projectRoot && relativePath.startsWith(projectRoot)) {
-      relativePath = relativePath.slice(projectRoot.length);
-      if (relativePath.startsWith('/') || relativePath.startsWith('\\'))
-        relativePath = relativePath.slice(1);
-    }
+    const relativePath = projectRoot
+      ? getRelativePathWithinPrefix(projectRoot, injection.path) ?? injection.path
+      : injection.path;
 
     const parts = relativePath.split(/[\\/]/);
     let current = root;
