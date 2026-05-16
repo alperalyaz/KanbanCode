@@ -4,17 +4,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodexAccountSnapshotDto } from '@features/codex-account/contracts';
 
-vi.mock('@renderer/components/ui/tooltip', () => ({
-  TooltipProvider: ({ children }: { children: React.ReactNode }) =>
-    React.createElement(React.Fragment, null, children),
-  Tooltip: ({ children }: { children: React.ReactNode }) =>
-    React.createElement(React.Fragment, null, children),
-  TooltipTrigger: ({ children }: { children: React.ReactNode }) =>
-    React.createElement(React.Fragment, null, children),
-  TooltipContent: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
-}));
-
 vi.mock('@renderer/components/ui/tabs', () => {
   let currentValue = '';
   let currentOnValueChange: ((value: string) => void) | null = null;
@@ -131,6 +120,12 @@ describe('TeamModelSelector disabled Codex models', () => {
     expect(host.textContent).toContain('Default');
     expect(host.textContent).not.toContain('5.1 Codex Mini');
     expect(host.textContent).not.toContain('5.3 Codex Spark');
+    const defaultButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim().startsWith('Default')
+    );
+    expect(defaultButton?.getAttribute('title')).toBe(
+      'Uses the runtime default for the selected provider.'
+    );
 
     await act(async () => {
       root.unmount();

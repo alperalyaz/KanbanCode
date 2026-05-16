@@ -6,12 +6,6 @@ import { Input } from '@renderer/components/ui/input';
 import { Label } from '@renderer/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
 import { Tabs, TabsList, TabsTrigger } from '@renderer/components/ui/tabs';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@renderer/components/ui/tooltip';
 import { useEffectiveCliProviderStatus } from '@renderer/hooks/useEffectiveCliProviderStatus';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
@@ -53,7 +47,6 @@ import {
   CheckCircle2,
   ChevronDown,
   Filter,
-  Info,
   Search,
   Star,
 } from 'lucide-react';
@@ -740,6 +733,8 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
       effectiveProviderId === 'opencode'
         ? getOpenCodeModelPricingInfo(openCodeCatalogModelById.get(opt.value))
         : null;
+    const modelButtonTitle =
+      modelStatusMessage ?? (opt.value === '' ? defaultModelTooltip : undefined);
 
     return (
       <button
@@ -747,7 +742,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
         type="button"
         id={opt.value === normalizedValue ? id : undefined}
         aria-disabled={!modelSelectable}
-        title={modelStatusMessage ?? undefined}
+        title={modelButtonTitle}
         className={cn(
           'flex min-h-[44px] items-center justify-center gap-1.5 rounded-md border bg-[var(--color-surface)] px-3 py-2 text-center text-xs font-medium transition-[background-color,border-color,color,box-shadow] duration-150',
           hasModelIssue && normalizedValue === opt.value
@@ -824,25 +819,6 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
               <span>{modelRecommendation.label}</span>
             </span>
           ) : null}
-          {opt.value === '' && (
-            <span className="flex items-center justify-center gap-1">
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                    <Info className="size-3 shrink-0 opacity-40 transition-opacity hover:opacity-70" />
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-[240px] text-xs">
-                    {defaultModelTooltip.split('\n').map((line, index) => (
-                      <React.Fragment key={line}>
-                        {index > 0 ? <br /> : null}
-                        {line}
-                      </React.Fragment>
-                    ))}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </span>
-          )}
           {hasModelIssue && (
             <span
               className="flex items-center justify-center gap-1 text-[10px] font-normal text-red-300"
@@ -850,16 +826,6 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
             >
               <AlertTriangle className="size-3 shrink-0" />
               <span>{modelUnavailableReason ? 'Unavailable' : 'Issue'}</span>
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                    <Info className="size-3 shrink-0 opacity-50 transition-opacity hover:opacity-80" />
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-[240px] text-xs">
-                    {modelStatusMessage}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
             </span>
           )}
           {!hasModelIssue && modelDisabledReason && (
@@ -868,16 +834,6 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
               title={modelDisabledReason}
             >
               <span>{TEAM_MODEL_UI_DISABLED_BADGE_LABEL}</span>
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                    <Info className="size-3 shrink-0 opacity-40 transition-opacity hover:opacity-70" />
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-[240px] text-xs">
-                    {modelDisabledReason}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
             </span>
           )}
         </span>
