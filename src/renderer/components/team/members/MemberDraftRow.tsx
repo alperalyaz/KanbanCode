@@ -15,7 +15,6 @@ import { Checkbox } from '@renderer/components/ui/checkbox';
 import { Input } from '@renderer/components/ui/input';
 import { Label } from '@renderer/components/ui/label';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
 import { useFileListCacheWarmer } from '@renderer/hooks/useFileListCacheWarmer';
@@ -234,6 +233,13 @@ export const MemberDraftRow = ({
       : undefined;
   const worktreeIsolationDisabled =
     isRemoved || Boolean(worktreeIsolationDisabledReason && member.isolation !== 'worktree');
+  const worktreeIsolationDescription =
+    worktreeIsolationDisabledReason && member.isolation !== 'worktree'
+      ? worktreeIsolationDisabledReason
+      : 'Run this teammate in a separate git worktree. Apply/reject changes targets that worktree, not the lead workspace.';
+  const worktreeIsolationDescriptionId = showWorktreeIsolationControls
+    ? `member-${member.id}-worktree-isolation-description`
+    : undefined;
   const effectiveModelKey = effectiveModel?.trim() ?? '';
   const selectedModelIssueText =
     effectiveModelKey && modelIssueReasonByProvider?.[effectiveProviderId]?.[effectiveModelKey]
@@ -393,40 +399,39 @@ export const MemberDraftRow = ({
             ) : null}
           </div>
           {showWorktreeIsolationControls ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div
+            <div className="space-y-0.5">
+              <div
+                className={cn(
+                  'flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-[var(--color-border)] px-2 text-xs text-[var(--color-text-secondary)]',
+                  worktreeIsolationDisabled && 'cursor-not-allowed opacity-50'
+                )}
+                title={worktreeIsolationDescription}
+                aria-describedby={worktreeIsolationDescriptionId}
+              >
+                <Checkbox
+                  id={`member-${member.id}-worktree-isolation`}
+                  checked={member.isolation === 'worktree'}
+                  disabled={worktreeIsolationDisabled}
+                  aria-describedby={worktreeIsolationDescriptionId}
+                  onCheckedChange={(checked) =>
+                    onWorktreeIsolationChange?.(member.id, checked === true)
+                  }
+                />
+                <Label
+                  htmlFor={`member-${member.id}-worktree-isolation`}
                   className={cn(
-                    'flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-[var(--color-border)] px-2 text-xs text-[var(--color-text-secondary)]',
-                    worktreeIsolationDisabled && 'cursor-not-allowed opacity-50'
+                    'flex cursor-pointer items-center gap-1.5 text-xs font-normal',
+                    worktreeIsolationDisabled && 'cursor-not-allowed'
                   )}
                 >
-                  <Checkbox
-                    id={`member-${member.id}-worktree-isolation`}
-                    checked={member.isolation === 'worktree'}
-                    disabled={worktreeIsolationDisabled}
-                    onCheckedChange={(checked) =>
-                      onWorktreeIsolationChange?.(member.id, checked === true)
-                    }
-                  />
-                  <Label
-                    htmlFor={`member-${member.id}-worktree-isolation`}
-                    className={cn(
-                      'flex cursor-pointer items-center gap-1.5 text-xs font-normal',
-                      worktreeIsolationDisabled && 'cursor-not-allowed'
-                    )}
-                  >
-                    <GitBranch className="size-3.5 shrink-0" />
-                    <span>Worktree</span>
-                  </Label>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-64 text-xs leading-relaxed">
-                {worktreeIsolationDisabledReason && member.isolation !== 'worktree'
-                  ? worktreeIsolationDisabledReason
-                  : 'Run this teammate in a separate git worktree. Apply/reject changes targets that worktree, not the lead workspace.'}
-              </TooltipContent>
-            </Tooltip>
+                  <GitBranch className="size-3.5 shrink-0" />
+                  <span>Worktree</span>
+                </Label>
+              </div>
+              <span id={worktreeIsolationDescriptionId} className="sr-only">
+                {worktreeIsolationDescription}
+              </span>
+            </div>
           ) : null}
           {hideActionButton ? null : isRemoved ? (
             <Button

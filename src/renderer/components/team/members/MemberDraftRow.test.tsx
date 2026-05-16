@@ -96,15 +96,6 @@ vi.mock('@renderer/components/ui/MentionableTextarea', () => ({
   MentionableTextarea: () => React.createElement('textarea'),
 }));
 
-vi.mock('@renderer/components/ui/tooltip', () => ({
-  Tooltip: ({ children }: { children: React.ReactNode }) =>
-    React.createElement(React.Fragment, null, children),
-  TooltipTrigger: ({ children }: { children: React.ReactNode }) =>
-    React.createElement(React.Fragment, null, children),
-  TooltipContent: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
-}));
-
 vi.mock('@renderer/hooks/useDraftPersistence', () => ({
   useDraftPersistence: ({ initialValue }: { initialValue?: string }) => ({
     value: initialValue ?? '',
@@ -247,6 +238,29 @@ describe('MemberDraftRow', () => {
 
     expect(host.textContent).toContain('team-model-selector');
     expect(host.textContent).toContain('effort-selector');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('renders worktree isolation help without a Radix tooltip trigger', () => {
+    const { host, root } = renderMemberDraftRow({
+      showWorktreeIsolationControls: true,
+      worktreeIsolationDisabledReason: 'Worktree isolation is disabled for this project.',
+    });
+
+    const worktreeControl = host.querySelector<HTMLInputElement>(
+      '#member-member-1-worktree-isolation'
+    )!;
+    const descriptionId = 'member-member-1-worktree-isolation-description';
+    const wrapper = worktreeControl.closest('[title]');
+
+    expect(worktreeControl.getAttribute('aria-describedby')).toBe(descriptionId);
+    expect(wrapper?.getAttribute('title')).toBe('Worktree isolation is disabled for this project.');
+    expect(host.querySelector(`#${descriptionId}`)?.textContent).toBe(
+      'Worktree isolation is disabled for this project.'
+    );
 
     act(() => {
       root.unmount();
