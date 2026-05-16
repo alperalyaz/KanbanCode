@@ -38,24 +38,24 @@ const rootGuide: DefaultTheme.SidebarItem[] = [
   {
     text: "Start",
     items: [
+      { text: "Installation", link: "/guide/installation" },
       { text: "Quickstart", link: "/guide/quickstart" },
-      { text: "Installation", link: "/guide/installation" }
+      { text: "Runtime setup", link: "/guide/runtime-setup" }
     ]
   },
   {
-    text: "Workflows",
-    items: [
-      { text: "Runtime setup", link: "/guide/runtime-setup" },
-      { text: "Agent workflow", link: "/guide/agent-workflow" },
-      { text: "MCP integration", link: "/guide/mcp-integration" },
-      { text: "Code review", link: "/guide/code-review" }
-    ]
-  },
-  {
-    text: "Team Management",
+    text: "Guide",
     items: [
       { text: "Create a team", link: "/guide/create-team" },
-      { text: "Team brief examples", link: "/guide/team-brief-examples" },
+      { text: "Agent workflow", link: "/guide/agent-workflow" },
+      { text: "Code review", link: "/guide/code-review" },
+      { text: "MCP integration", link: "/guide/mcp-integration" },
+      { text: "Team brief examples", link: "/guide/team-brief-examples" }
+    ]
+  },
+  {
+    text: "Operations",
+    items: [
       { text: "Git and worktree strategy", link: "/guide/git-worktree-strategy" },
       { text: "Troubleshooting", link: "/guide/troubleshooting" }
     ]
@@ -81,25 +81,25 @@ const ruGuide: DefaultTheme.SidebarItem[] = [
   {
     text: "Старт",
     items: [
+      { text: "Установка", link: "/ru/guide/installation" },
       { text: "Быстрый старт", link: "/ru/guide/quickstart" },
-      { text: "Установка", link: "/ru/guide/installation" }
+      { text: "Настройка рантайма", link: "/ru/guide/runtime-setup" }
     ]
   },
   {
-    text: "Рабочие процессы",
-    items: [
-      { text: "Настройка рантайма", link: "/ru/guide/runtime-setup" },
-      { text: "Работа агентов", link: "/ru/guide/agent-workflow" },
-      { text: "MCP integration", link: "/ru/guide/mcp-integration" },
-      { text: "Код-ревью", link: "/ru/guide/code-review" }
-    ]
-  },
-  {
-    text: "Управление командами",
+    text: "Руководство",
     items: [
       { text: "Создание команды", link: "/ru/guide/create-team" },
-      { text: "Team brief examples", link: "/ru/guide/team-brief-examples" },
-      { text: "Git and worktree strategy", link: "/ru/guide/git-worktree-strategy" },
+      { text: "Работа агентов", link: "/ru/guide/agent-workflow" },
+      { text: "Код-ревью", link: "/ru/guide/code-review" },
+      { text: "Интеграция MCP", link: "/ru/guide/mcp-integration" },
+      { text: "Примеры брифов", link: "/ru/guide/team-brief-examples" }
+    ]
+  },
+  {
+    text: "Операции",
+    items: [
+      { text: "Стратегия Git и worktree", link: "/ru/guide/git-worktree-strategy" },
       { text: "Диагностика", link: "/ru/guide/troubleshooting" }
     ]
   },
@@ -154,6 +154,7 @@ export default defineConfig({
   description: SITE_DESCRIPTION,
   base,
   cleanUrls: true,
+  ignoreDeadLinks: [/\/download/],
   lastUpdated: true,
   sitemap: {
     hostname: docsUrl,

@@ -7,6 +7,27 @@ description: Fix team launch issues, missing agent replies, rate limits, CLI aut
 
 Most team issues fall into one of four buckets: runtime setup, launch confirmation, task parsing, and provider limits.
 
+## Quick evidence setup
+
+For any team lifecycle issue, define these variables first and reuse the same shell:
+
+```bash
+TEAM="<team-name>"
+TEAM_DIR="$HOME/.claude/teams/$TEAM"
+TASKS_DIR="$HOME/.claude/tasks/$TEAM"
+```
+
+Then confirm the expected files exist before interpreting UI state:
+
+```bash
+test -d "$TEAM_DIR" && find "$TEAM_DIR" -maxdepth 2 -type f | sort | sed -n '1,80p'
+test -d "$TASKS_DIR" && find "$TASKS_DIR" -maxdepth 1 -name '*.json' | sort | sed -n '1,40p'
+```
+
+::: warning Evidence first
+Do not fix prompts, provider settings, or process cleanup based only on a stuck badge. First correlate the UI with persisted files, launch artifacts, and runtime evidence.
+:::
+
 ## Team does not launch
 
 Check each item in order:
@@ -30,10 +51,12 @@ Contributor/debugging details live in [Contributor Architecture](/reference/cont
 Look at the newest launch failure artifact:
 
 ```bash
-~/.claude/teams/<team>/launch-failure-artifacts/latest.json
+LATEST_FAILURE="$TEAM_DIR/launch-failure-artifacts/latest.json"
+MANIFEST_PATH="$(jq -r '.manifestPath' "$LATEST_FAILURE")"
+jq '.classification, .bootstrapTransportBreadcrumb, .memberSpawnStatuses' "$MANIFEST_PATH"
 ```
 
-The manifest inside includes:
+`latest.json` points to the newest packed artifact directory and its `manifest.json`. The manifest includes:
 
 - `classification` — why the launch was considered a failure
 - `bootstrapTransportBreadcrumb` — delivery path used
@@ -43,8 +66,8 @@ The manifest inside includes:
 Also check the lane manifest:
 
 ```bash
-jq '.lanes' ~/.claude/teams/<team>/.opencode-runtime/lanes.json
-jq '.activeRunId, .entries' ~/.claude/teams/<team>/.opencode-runtime/lanes/<lane>/manifest.json
+jq '.lanes' "$TEAM_DIR/.opencode-runtime/lanes.json" 2>/dev/null
+find "$TEAM_DIR/.opencode-runtime/lanes" -maxdepth 2 -name manifest.json -print -exec jq '.activeRunId, .entries' {} \; 2>/dev/null
 ```
 
 ::: tip Do not guess from the UI
@@ -58,7 +81,7 @@ Start with persisted files on disk rather than the UI alone.
 ### Team root
 
 ```bash
-~/.claude/teams/<team>/
+printf '%s\n' "$TEAM_DIR"
 ```
 
 Key files and what they tell you:
@@ -70,8 +93,8 @@ Key files and what they tell you:
 - `inboxes/*.json` and `sentMessages.json` — message delivery state
 
 ```bash
-jq '.teamLaunchState, .summary, .members' ~/.claude/teams/<team>/launch-state.json
-tail -80 ~/.claude/teams/<team>/bootstrap-journal.jsonl 2>/dev/null
+jq '.teamLaunchState, .summary, .members' "$TEAM_DIR/launch-state.json"
+tail -80 "$TEAM_DIR/bootstrap-journal.jsonl" 2>/dev/null
 ```
 
 ### OpenCode runtime evidence
@@ -85,8 +108,8 @@ For OpenCode teammates, session proof is in the lane runtime store:
 Expected healthy state: lane state `active`, manifest has `activeRunId` with at least one evidence entry, member has `bootstrapConfirmed: true`.
 
 ```bash
-jq '.lanes' ~/.claude/teams/<team>/.opencode-runtime/lanes.json 2>/dev/null
-find ~/.claude/teams/<team>/.opencode-runtime -maxdepth 3 -type f | sort
+jq '.lanes' "$TEAM_DIR/.opencode-runtime/lanes.json" 2>/dev/null
+find "$TEAM_DIR/.opencode-runtime" -maxdepth 3 -type f | sort
 ```
 
 ### Launch failure artifacts
@@ -94,7 +117,9 @@ find ~/.claude/teams/<team>/.opencode-runtime -maxdepth 3 -type f | sort
 When a launch is marked as a failure, inspect `latest.json`:
 
 ```bash
-~/.claude/teams/<team>/launch-failure-artifacts/latest.json
+LATEST_FAILURE="$TEAM_DIR/launch-failure-artifacts/latest.json"
+jq '.' "$LATEST_FAILURE"
+jq '.' "$(jq -r '.manifestPath' "$LATEST_FAILURE")"
 ```
 
 The manifest includes:
@@ -114,6 +139,15 @@ Open task logs and teammate messages. Missing replies often come from:
 Do not assume the model ignored the message until logs confirm it.
 :::
 
+Use the persisted message state to separate "not sent" from "sent but not rendered":
+
+```bash
+jq '.' "$TEAM_DIR/inboxes/user.json" 2>/dev/null
+jq '.' "$TEAM_DIR/sentMessages.json" 2>/dev/null
+```
+
+Check `from`, `to`, `messageId`, `relayOfMessageId`, and `taskRefs`. For OpenCode teammates, also inspect runtime delivery evidence before assuming the model ignored the prompt.
+
 ## Tasks are not linked to changes
 
 Use task-specific logs and code review links. If a diff appears detached:
@@ -123,6 +157,26 @@ Use task-specific logs and code review links. If a diff appears detached:
 - Ensure the agent called `task_start` so the board knows work began.
 
 For OpenCode teammates, the authoritative proof that a session belongs to a task is in `opencode-sessions.json` and the lane manifest entry, not only the UI message stream.
+
+### Task log triage
+
+When a task log looks incomplete, search by task id across task JSON, inboxes, and bootstrap events:
+
+```bash
+TASK="<short-or-full-task-id>"
+rg -n "$TASK" "$TASKS_DIR" "$TEAM_DIR/inboxes" "$TEAM_DIR/bootstrap-journal.jsonl" 2>/dev/null
+```
+
+Interpret the result carefully:
+
+| Evidence | What it proves | What it does not prove |
+| --- | --- | --- |
+| Message delivered | The app wrote or relayed a prompt | The agent made progress |
+| Task comment | The agent posted board-visible text | The comment is meaningful progress |
+| Native tool rows | The runtime did work in a session | The work belongs to this task unless attribution matches |
+| Change ledger entry | The app recorded file changes | The implementation is correct |
+
+For OpenCode, a healthy task log usually includes native runtime rows like `read`, `bash`, `edit`, or `write` plus Agent Teams MCP rows. If you only see `agent-teams_*` rows, confirm task attribution and session bounds before widening log matching.
 
 ## Rate limits
 
@@ -189,6 +243,45 @@ CLAUDE_TEAM_TEAMMATE_MODE=tmux pnpm dev
 ```
 
 Use this to inspect interactive CLI behavior. Do not consider this fully equivalent to the process backend.
+
+## Smoke checks
+
+Use the desktop Electron app for normal validation. Browser/web dev mode does not include the full desktop runtime, IPC, provider auth, terminal, or team lifecycle behavior.
+
+### Docs-only changes
+
+From the repo root:
+
+```bash
+pnpm --dir landing docs:build
+git diff --check -- landing/product-docs
+```
+
+### Team lifecycle changes
+
+Start narrow, then expand:
+
+```bash
+pnpm test -- test/main/services/team/TeamProvisioningService.test.ts
+pnpm test -- test/main/services/team/TeamAgentLaunchMatrix.safe-e2e.test.ts
+pnpm typecheck
+git diff --check
+```
+
+### Live team smoke
+
+Use a small team and a Git-tracked disposable project:
+
+1. Start the desktop app with `pnpm dev`.
+2. Create one lead plus one builder.
+3. Ask for a tiny change with an explicit verification command.
+4. Confirm the task moves `pending` -> `in_progress` -> `completed`.
+5. Open task logs and verify tool rows, task comments, and file changes line up.
+6. Stop only the smoke-owned team/processes when cleaning up.
+
+::: warning Narrow cleanup only
+Do not kill all OpenCode hosts, unrelated tmux panes, or user teams while cleaning up a smoke run.
+:::
 
 ## Safe cleanup
 

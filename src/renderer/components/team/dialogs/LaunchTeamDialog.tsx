@@ -438,7 +438,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   );
   const [selectedEffort, setSelectedEffortRaw] = useState(() => {
     const stored = localStorage.getItem('team:lastSelectedEffort');
-    return stored === null ? 'medium' : stored;
+    return stored === null ? '' : stored;
   });
   const [selectedFastMode, setSelectedFastModeRaw] = useState<TeamFastMode>(getStoredTeamFastMode);
   const [anthropicRuntimeNotice, setAnthropicRuntimeNotice] = useState<string | null>(null);
@@ -787,7 +787,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       );
       setSelectedProviderIdRaw(storedProviderId);
       setSelectedModelRaw(getStoredTeamModel(storedProviderId));
-      setSelectedEffortRaw('medium');
+      setSelectedEffortRaw('');
       setSelectedFastModeRaw(getStoredTeamFastMode());
       setSavedLaunchProviderBackendId(null);
       setScheduleHydrationKey(null);
@@ -837,7 +837,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
         previousLaunchParams,
         multimodelEnabled,
         storedProviderId,
-        storedEffort: storedEffort === null ? 'medium' : storedEffort,
+        storedEffort: storedEffort === null ? '' : storedEffort,
         storedFastMode: getStoredTeamFastMode(),
         storedLimitContext: localStorage.getItem('team:lastLimitContext') === 'true',
         getStoredModel: getStoredTeamModel,

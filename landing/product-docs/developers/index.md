@@ -12,6 +12,7 @@ Use this page when you want to change Agent Teams itself, debug a team launch, o
 | Need | Go to |
 | --- | --- |
 | Repo overview, scripts, and source setup | [README.md](https://github.com/777genius/agent-teams-ai/blob/main/README.md) |
+| Agent navigation and architecture index | [AGENTS.md](https://github.com/777genius/agent-teams-ai/blob/main/AGENTS.md) |
 | Working conventions for agents and contributors | [CLAUDE.md](https://github.com/777genius/agent-teams-ai/blob/main/CLAUDE.md) |
 | Hard implementation guardrails | [AGENT_CRITICAL_GUARDRAILS.md](https://github.com/777genius/agent-teams-ai/blob/main/AGENT_CRITICAL_GUARDRAILS.md) |
 | Medium and large feature structure | [Feature architecture standard](https://github.com/777genius/agent-teams-ai/blob/main/docs/FEATURE_ARCHITECTURE_STANDARD.md) |

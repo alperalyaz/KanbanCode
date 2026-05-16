@@ -95,6 +95,18 @@ Task-specific logs isolate runtime output, actions, and messages for one assignm
 - Did it ask another teammate for help?
 - Which task produced this diff?
 
+### Validation checklist
+
+When a task looks stuck or its diff looks detached, verify the lifecycle in this order:
+
+1. The task has the expected owner and moved to `in_progress`.
+2. The owner posted a task comment with the plan or first progress update.
+3. Task logs show runtime activity inside the task window.
+4. File changes are linked to the same task, owner, and session.
+5. The final task comment includes the verification command and result.
+
+For deeper debugging, use the persisted evidence commands in [Troubleshooting](/guide/troubleshooting#task-log-triage). The UI is the working surface, but persisted task files, inboxes, and runtime evidence are the source for hard launch or attribution bugs.
+
 ## Parallel work patterns
 
 Teammates can work on independent tasks at the same time. You can also create dependency links (`blocked-by`) so that one task waits until another is complete. Watch the board for blocked lanes and reassign owners if one teammate is idle while another is overloaded.
