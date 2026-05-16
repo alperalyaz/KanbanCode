@@ -44,7 +44,9 @@ describe('platformPath Windows containment', () => {
     expect(isAbsoluteOrHomePath('/Users/Alice/Repo')).toBe(true);
     expect(isAbsoluteOrHomePath('C:\\Users\\Alice\\Repo')).toBe(true);
     expect(isAbsoluteOrHomePath('\\\\server\\share\\Repo')).toBe(true);
+    expect(isAbsoluteOrHomePath('~')).toBe(true);
     expect(isAbsoluteOrHomePath('~/Repo')).toBe(true);
+    expect(isAbsoluteOrHomePath('~\\Repo')).toBe(true);
     expect(isAbsoluteOrHomePath('src/app.ts')).toBe(false);
   });
 });
