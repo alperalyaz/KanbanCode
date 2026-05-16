@@ -162,12 +162,29 @@ async function terminateChild(child, exitPromise, platform) {
       killer.once('close', resolve);
     });
   } else {
-    child.kill();
+    const pid = child.pid;
+    if (pid) {
+      try {
+        process.kill(-pid, 'SIGTERM');
+      } catch {
+        child.kill();
+      }
+    } else {
+      child.kill();
+    }
   }
 
   const closed = await waitForProcessClose(child, exitPromise, SHUTDOWN_TIMEOUT_MS);
   if (!closed && child.exitCode === null && child.signalCode === null) {
-    child.kill('SIGKILL');
+    if (child.pid && platform !== 'win32') {
+      try {
+        process.kill(-child.pid, 'SIGKILL');
+      } catch {
+        child.kill('SIGKILL');
+      }
+    } else {
+      child.kill('SIGKILL');
+    }
     const killed = await waitForProcessClose(child, exitPromise, SHUTDOWN_TIMEOUT_MS);
     if (!killed && child.exitCode === null && child.signalCode === null) {
       throw new Error(`Timed out after ${SHUTDOWN_TIMEOUT_MS}ms waiting for packaged app to exit`);
@@ -194,6 +211,7 @@ async function main() {
       AGENT_TEAMS_PACKAGED_SMOKE: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: platform !== 'win32',
   });
 
   let log = '';
