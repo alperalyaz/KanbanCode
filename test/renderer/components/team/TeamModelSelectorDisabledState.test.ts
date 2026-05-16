@@ -218,7 +218,11 @@ describe('TeamModelSelector disabled Codex models', () => {
     expect(onValueChange).toHaveBeenCalledWith('');
     expect(host.textContent).toContain('5.4');
     expect(host.textContent).toContain('5.3 Codex');
-    expect(host.textContent).not.toContain('5.2 Codex');
+    const disabledCodexButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('5.2 Codex')
+    );
+    expect(disabledCodexButton).not.toBeNull();
+    expect(disabledCodexButton?.getAttribute('aria-disabled')).toBe('true');
 
     await act(async () => {
       root.unmount();
@@ -692,6 +696,66 @@ describe('TeamModelSelector disabled Codex models', () => {
 
     await act(async () => {
       disabledButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(onValueChange).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('keeps known disabled Codex tiles visible when the runtime omits them', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = {
+      providers: [
+        {
+          providerId: 'codex',
+          models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex', 'gpt-5.2'],
+          modelVerificationState: 'idle',
+          modelAvailability: [],
+        },
+      ],
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onValueChange = vi.fn();
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'codex',
+          onProviderChange: () => undefined,
+          value: '',
+          onValueChange,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const disabledButtons = ['5.3 Codex Spark', '5.2 Codex', '5.1 Codex Mini'].map((label) => {
+      const button = Array.from(host.querySelectorAll('button')).find((candidate) =>
+        candidate.textContent?.includes(label)
+      );
+      expect(button, `${label} should stay visible as a disabled option`).not.toBeNull();
+      expect(button?.getAttribute('aria-disabled')).toBe('true');
+      expect(button?.textContent).toContain('Disabled');
+      expect(button?.getAttribute('title')).toContain('Temporarily disabled for team agents');
+      return button;
+    });
+
+    const activeButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('5.2')
+    );
+    expect(activeButton?.textContent).toContain('Recommended');
+    expect(activeButton?.getAttribute('aria-disabled')).toBe('false');
+
+    await act(async () => {
+      disabledButtons[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
     });
 
