@@ -17,6 +17,13 @@ export function hasOpenCodeLocalMcpLaunchEnv(env: OpenCodeMcpBridgeEnv): boolean
   return LOCAL_MCP_LAUNCH_ENV_KEYS.every((key) => Boolean(env[key]?.trim()));
 }
 
+export function shouldEnsureOpenCodeLocalMcpLaunchEnv(input: {
+  httpBridgeEnabled: boolean;
+  mcpUrl: string | undefined;
+}): boolean {
+  return input.httpBridgeEnabled || !input.mcpUrl?.trim();
+}
+
 export function copyOpenCodeLocalMcpLaunchEnv(
   sourceEnv: OpenCodeMcpBridgeEnv,
   targetEnv: OpenCodeMcpBridgeEnv

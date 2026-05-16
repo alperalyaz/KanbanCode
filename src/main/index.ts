@@ -72,6 +72,7 @@ import {
   copyOpenCodeLocalMcpLaunchEnv,
   hasOpenCodeLocalMcpLaunchEnv,
   isOpenCodeMcpHttpBridgeEnabled,
+  shouldEnsureOpenCodeLocalMcpLaunchEnv,
   snapshotOpenCodeLocalMcpLaunchEnv,
 } from '@main/services/team/opencode/bridge/OpenCodeMcpBridgeEnv';
 import { ReviewApplierService } from '@main/services/team/ReviewApplierService';
@@ -450,7 +451,12 @@ async function createOpenCodeRuntimeAdapterRegistry(
       );
     }
   }
-  if (useHttpMcpBridge || !bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL) {
+  if (
+    shouldEnsureOpenCodeLocalMcpLaunchEnv({
+      httpBridgeEnabled: useHttpMcpBridge,
+      mcpUrl: bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL,
+    })
+  ) {
     await ensureOpenCodeLocalMcpLaunchEnv(bridgeEnv, { emitProgress: true });
   }
 

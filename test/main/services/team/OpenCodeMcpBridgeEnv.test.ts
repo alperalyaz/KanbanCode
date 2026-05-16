@@ -5,6 +5,7 @@ import {
   copyOpenCodeLocalMcpLaunchEnv,
   hasOpenCodeLocalMcpLaunchEnv,
   isOpenCodeMcpHttpBridgeEnabled,
+  shouldEnsureOpenCodeLocalMcpLaunchEnv,
   snapshotOpenCodeLocalMcpLaunchEnv,
 } from '@main/services/team/opencode/bridge/OpenCodeMcpBridgeEnv';
 
@@ -70,7 +71,32 @@ describe('OpenCodeMcpBridgeEnv', () => {
     expect(target.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL).toBe('http://127.0.0.1:41001/mcp');
   });
 
-  it('snapshots explicit local MCP launch env before HTTP mode clears it', () => {
+  it('resolves local MCP launch env even when HTTP MCP already has a URL', () => {
+    expect(
+      shouldEnsureOpenCodeLocalMcpLaunchEnv({
+        httpBridgeEnabled: true,
+        mcpUrl: 'http://127.0.0.1:41001/mcp',
+      })
+    ).toBe(true);
+  });
+
+  it('skips local MCP launch env only when HTTP bridge is disabled and a URL already exists', () => {
+    expect(
+      shouldEnsureOpenCodeLocalMcpLaunchEnv({
+        httpBridgeEnabled: false,
+        mcpUrl: 'http://127.0.0.1:41001/mcp',
+      })
+    ).toBe(false);
+
+    expect(
+      shouldEnsureOpenCodeLocalMcpLaunchEnv({
+        httpBridgeEnabled: false,
+        mcpUrl: undefined,
+      })
+    ).toBe(true);
+  });
+
+  it('snapshots explicit local MCP launch env before mutating an env object', () => {
     const env: NodeJS.ProcessEnv = {
       CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND: ' node ',
       CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY: ' mcp-server/dist/index.js ',
@@ -90,7 +116,7 @@ describe('OpenCodeMcpBridgeEnv', () => {
     expect(env.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND).toBeUndefined();
   });
 
-  it('removes local MCP launch env when HTTP MCP is active', () => {
+  it('removes local MCP launch env when explicitly requested', () => {
     const env: NodeJS.ProcessEnv = {
       CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND: 'node',
       CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY: 'mcp-server/dist/index.js',
