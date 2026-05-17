@@ -9,9 +9,14 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -56,7 +61,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \
             --generate-notes \
-            --draft=false 2>/dev/null || echo "Release $TAG already exists, skipping creation"
+            --draft=true 2>/dev/null || echo "Release $TAG already exists, skipping creation"
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v7
@@ -69,6 +74,7 @@ jobs:
 
   prepare-runtime:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -84,7 +90,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \
             --generate-notes \
-            --draft=false 2>/dev/null || echo "Release $TAG already exists, skipping creation"
+            --draft=true 2>/dev/null || echo "Release $TAG already exists, skipping creation"
 
       - name: Skip runtime asset preparation for manual builds
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
@@ -216,6 +222,7 @@ jobs:
 
   release-mac:
     needs: [build, prepare-runtime]
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -318,13 +325,13 @@ jobs:
             [ -f "$f" ] || continue
             echo "Uploading: $f"
             gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber 2>&1 || \
-              (sleep 5 && gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber 2>&1) || \
-              echo "WARNING: failed to upload $f, continuing..."
+              (sleep 5 && gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber 2>&1)
           done
 
   release-win:
     needs: [build, prepare-runtime]
     runs-on: windows-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -416,13 +423,13 @@ jobs:
             [ -f "$f" ] || continue
             echo "Uploading: $f"
             gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber 2>&1 || \
-              (sleep 5 && gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber 2>&1) || \
-              echo "WARNING: failed to upload $f, continuing..."
+              (sleep 5 && gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber 2>&1)
           done
 
   release-linux:
     needs: [build, prepare-runtime]
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -516,13 +523,13 @@ jobs:
             [ -f "$f" ] || continue
             echo "Uploading: $f"
             gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber 2>&1 || \
-              (sleep 5 && gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber 2>&1) || \
-              echo "WARNING: failed to upload $f, continuing..."
+              (sleep 5 && gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber 2>&1)
           done
 
   upload-stable-links:
     needs: [release-mac, release-win, release-linux]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
@@ -533,7 +540,6 @@ jobs:
           set -euo pipefail
           VERSION="${GITHUB_REF#refs/tags/v}"
           REPO="${GITHUB_REPOSITORY}"
-          DOWNLOAD_BASE="https://github.com/${REPO}/releases/download/v${VERSION}"
           TMP_DIR="$(mktemp -d)"
           trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -551,7 +557,11 @@ jobs:
           for STABLE_NAME in "${!FILES[@]}"; do
             VERSIONED_NAME="${FILES[$STABLE_NAME]}"
             echo "Downloading ${VERSIONED_NAME} -> ${STABLE_NAME}"
-            curl -fSL -o "${TMP_DIR}/${VERSIONED_NAME}" "${DOWNLOAD_BASE}/${VERSIONED_NAME}"
+            gh release download "v${VERSION}" \
+              --repo "$REPO" \
+              --pattern "${VERSIONED_NAME}" \
+              --dir "$TMP_DIR" \
+              --clobber
             cp "${TMP_DIR}/${VERSIONED_NAME}" "${TMP_DIR}/${STABLE_NAME}"
             gh release upload "v${VERSION}" "${TMP_DIR}/${STABLE_NAME}" --repo "$REPO" --clobber
           done
@@ -578,7 +588,11 @@ jobs:
 
           download_asset() {
             local name="$1"
-            curl -fSL -o "$name" "https://github.com/${REPO}/releases/download/${TAG}/${name}"
+            gh release download "${TAG}" \
+              --repo "${REPO}" \
+              --pattern "$name" \
+              --dir . \
+              --clobber
           }
 
           # Canonical Windows feed
@@ -636,3 +650,11 @@ jobs:
           EOF
 
           gh release upload "${TAG}" latest.yml latest-linux.yml latest-mac.yml --repo "${REPO}" --clobber
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest
