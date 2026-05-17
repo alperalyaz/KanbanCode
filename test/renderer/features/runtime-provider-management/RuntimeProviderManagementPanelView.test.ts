@@ -894,7 +894,7 @@ describe('RuntimeProviderManagementPanelView', () => {
     expect(host.textContent).toContain('Model probe passed');
     expect(host.textContent).toContain('Recommended');
     expect(host.textContent).toContain('Not recommended');
-    expect(host.textContent).toContain('Unavailable in OpenCode');
+    expect(host.textContent).toContain('Not verified in OpenCode');
     expect(host.textContent).toContain('Tested');
     expect(host.textContent).toContain('Tested with limits');
     expect(host.textContent).toContain('Recommended only');

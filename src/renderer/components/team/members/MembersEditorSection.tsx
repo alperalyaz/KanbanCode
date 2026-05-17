@@ -7,6 +7,7 @@ import { CUSTOM_ROLE, NO_ROLE, PRESET_ROLES } from '@renderer/constants/teamRole
 import { cn } from '@renderer/lib/utils';
 import { getParticipantAvatarUrlByIndex } from '@renderer/utils/memberAvatarCatalog';
 import { isTeamEffortLevel } from '@shared/utils/effortLevels';
+import { migrateProviderBackendId } from '@shared/utils/providerBackend';
 import { normalizeOptionalTeamProviderId } from '@shared/utils/teamProvider';
 import { GitBranch, Plus } from 'lucide-react';
 
@@ -115,6 +116,9 @@ export interface MembersEditorSectionProps {
   memberInfoById?: Record<string, string | null | undefined>;
   disableGeminiOption?: boolean;
   memberModelIssueById?: Record<string, string | null | undefined>;
+  modelAdvisoryReasonByProvider?: Partial<
+    Record<TeamProviderId, Partial<Record<string, string | null | undefined>>>
+  >;
   modelIssueReasonByProvider?: Partial<
     Record<TeamProviderId, Partial<Record<string, string | null | undefined>>>
   >;
@@ -160,6 +164,7 @@ export const MembersEditorSection = ({
   memberInfoById,
   disableGeminiOption = false,
   memberModelIssueById,
+  modelAdvisoryReasonByProvider,
   modelIssueReasonByProvider,
   modelUnavailableReasonByProvider,
   disableAddMember = false,
@@ -232,11 +237,18 @@ export const MembersEditorSection = ({
     onChange(
       members.map((c) =>
         c.id === memberId
-          ? {
-              ...c,
-              providerId,
-              model: c.providerId === providerId ? c.model : '',
-            }
+          ? (() => {
+              const previousProviderId = c.providerId ?? inheritedProviderId;
+              const providerChanged = previousProviderId !== providerId;
+              return {
+                ...c,
+                providerId,
+                providerBackendId: migrateProviderBackendId(providerId, c.providerBackendId),
+                model: providerChanged ? '' : c.model,
+                effort: providerChanged ? undefined : c.effort,
+                fastMode: providerChanged ? undefined : c.fastMode,
+              };
+            })()
           : c
       )
     );
@@ -444,6 +456,7 @@ export const MembersEditorSection = ({
                   infoText={memberInfoById?.[member.id] ?? null}
                   disableGeminiOption={disableGeminiOption}
                   modelIssueText={memberModelIssueById?.[member.id] ?? null}
+                  modelAdvisoryReasonByProvider={modelAdvisoryReasonByProvider}
                   modelIssueReasonByProvider={modelIssueReasonByProvider}
                   modelUnavailableReasonByProvider={modelUnavailableReasonByProvider}
                 />

@@ -741,6 +741,7 @@ export const GlobalTaskList = memo(function GlobalTaskList({
                             <SidebarTaskItem
                               task={task}
                               hideTeamName
+                              hideProjectName
                               renamingKey={renamingTaskKey}
                               onRenameComplete={handleRenameComplete}
                               onRenameCancel={handleRenameCancel}

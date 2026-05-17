@@ -5,6 +5,7 @@ import { SyncedLoader2 } from '@renderer/components/ui/SyncedLoader2';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
+import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { selectResolvedMembersForTeamName } from '@renderer/store/slices/teamSlice';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
@@ -47,6 +48,7 @@ import type {
 interface MemberCardProps {
   member: ResolvedTeamMember;
   memberColor: string;
+  fullBleedSurface?: boolean;
   runtimeSummary?: string;
   runtimeEntry?: TeamAgentRuntimeEntry;
   runtimeRunId?: string | null;
@@ -77,6 +79,8 @@ interface MemberCardProps {
   onRestartMember?: (memberName: string) => Promise<void> | void;
   onSkipMemberForLaunch?: (memberName: string) => Promise<void> | void;
 }
+
+const MEMBER_ROW_SURFACE_BLEED_CLASS = '-mx-[calc(1rem-5px)] px-[calc(1rem-5px)]';
 
 function splitRuntimeSummaryMemory(runtimeSummary: string | undefined): {
   summary: string | undefined;
@@ -113,6 +117,7 @@ function getLaunchFailureLinkLabel(url: string): string {
 export const MemberCard = memo(function MemberCard({
   member,
   memberColor,
+  fullBleedSurface = true,
   runtimeSummary,
   runtimeEntry,
   runtimeRunId,
@@ -232,6 +237,8 @@ export const MemberCard = memo(function MemberCard({
     spawnLaunchState !== 'failed_to_start' &&
     !activityTask &&
     !runtimeSummary;
+  const usesLaunchSkeletonSurface = spawnCardClass.includes('member-waiting-shimmer');
+  const rowSurfaceBleedClass = fullBleedSurface ? MEMBER_ROW_SURFACE_BLEED_CLASS : undefined;
   const showLaunchBadge =
     !isRemoved &&
     !runtimeAdvisoryLabel &&
@@ -359,10 +366,15 @@ export const MemberCard = memo(function MemberCard({
 
   return (
     <div
-      className={`rounded transition-opacity duration-300 ${isRemoved ? 'opacity-50' : ''} ${spawnCardClass}`}
+      className={cn(
+        'rounded transition-opacity duration-300',
+        usesLaunchSkeletonSurface && rowSurfaceBleedClass,
+        isRemoved && 'opacity-50',
+        spawnCardClass
+      )}
     >
       <div
-        className="group relative cursor-pointer rounded py-1.5"
+        className={cn('group relative cursor-pointer rounded py-1.5', rowSurfaceBleedClass)}
         style={undefined}
         title={activityTitle}
         role="button"

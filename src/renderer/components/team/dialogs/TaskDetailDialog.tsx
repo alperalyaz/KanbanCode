@@ -583,6 +583,15 @@ export const TaskDetailDialog = ({
     });
   }, [requestTaskChangeSummary]);
 
+  const handleTaskChangeFileOpen = useCallback(
+    (filePath: string): void => {
+      if (!currentTask || !onViewChanges) return;
+      handleClose();
+      onViewChanges(currentTask.id, filePath);
+    },
+    [currentTask, handleClose, onViewChanges]
+  );
+
   const handleDependencyClick = (taskId: string): void => {
     // Resolve short displayId (e.g. "8ce74455") to full UUID via taskMap,
     // since kanban cards use the full UUID in data-task-id.
@@ -1301,28 +1310,36 @@ export const TaskDetailDialog = ({
                         {taskChangesFiles.map((file) => (
                           <div
                             key={file.filePath}
-                            className="group flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--color-surface-raised)]"
+                            role={onViewChanges ? 'button' : undefined}
+                            tabIndex={onViewChanges ? 0 : undefined}
+                            title={file.relativePath}
+                            className={`group flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--color-surface-raised)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-border-emphasis)] ${
+                              onViewChanges ? 'cursor-pointer' : ''
+                            }`}
+                            onClick={
+                              onViewChanges
+                                ? () => handleTaskChangeFileOpen(file.filePath)
+                                : undefined
+                            }
+                            onKeyDown={
+                              onViewChanges
+                                ? (event) => {
+                                    if (event.target !== event.currentTarget) return;
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault();
+                                      handleTaskChangeFileOpen(file.filePath);
+                                    }
+                                  }
+                                : undefined
+                            }
                           >
                             <FileIcon
                               fileName={file.relativePath.split(/[\\/]/).pop() ?? file.relativePath}
                               className="size-3.5"
                             />
-                            {onViewChanges ? (
-                              <button
-                                type="button"
-                                className="min-w-0 flex-1 truncate text-left font-mono text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text)]"
-                                onClick={() => {
-                                  handleClose();
-                                  onViewChanges(currentTask.id, file.filePath);
-                                }}
-                              >
-                                {file.relativePath}
-                              </button>
-                            ) : (
-                              <span className="min-w-0 flex-1 truncate text-left font-mono text-[var(--color-text-secondary)]">
-                                {file.relativePath}
-                              </span>
-                            )}
+                            <span className="min-w-0 flex-1 truncate text-left font-mono text-[var(--color-text-secondary)] transition-colors group-hover:text-[var(--color-text)]">
+                              {file.relativePath}
+                            </span>
                             <span className="flex shrink-0 items-center gap-1.5">
                               {file.linesAdded > 0 ? (
                                 <span className="text-emerald-400">+{file.linesAdded}</span>
@@ -1338,9 +1355,9 @@ export const TaskDetailDialog = ({
                                     <button
                                       type="button"
                                       className="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
-                                      onClick={() => {
-                                        handleClose();
-                                        onViewChanges(currentTask.id, file.filePath);
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleTaskChangeFileOpen(file.filePath);
                                       }}
                                     >
                                       <GitCompareArrows size={13} />
@@ -1355,7 +1372,10 @@ export const TaskDetailDialog = ({
                                     <button
                                       type="button"
                                       className="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
-                                      onClick={() => onOpenInEditor(file.filePath)}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        onOpenInEditor(file.filePath);
+                                      }}
                                     >
                                       <SquarePen size={13} />
                                     </button>

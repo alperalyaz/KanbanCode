@@ -377,7 +377,7 @@ export function useClaudeLogsController(teamName: string): ClaudeLogsController 
   const [data, setData] = useState<TeamClaudeLogsResponse>({ lines: [], total: 0, hasMore: false });
   const [pending, setPending] = useState<TeamClaudeLogsResponse | null>(null);
   const [pendingNewCount, setPendingNewCount] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -415,6 +415,7 @@ export function useClaudeLogsController(teamName: string): ClaudeLogsController 
     setData({ lines: [], total: 0, hasMore: false });
     setPending(null);
     setPendingNewCount(0);
+    setLoading(true);
     latestRef.current = null;
     atTopRef.current = true;
     setError(null);

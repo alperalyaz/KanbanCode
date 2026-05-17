@@ -14,6 +14,7 @@ import type {
   SendMessageResult,
   TeamViewSnapshot,
   TeamCreateRequest,
+  TeamLaunchRequest,
   TeamProviderId,
   TeamProvisioningProgress,
 } from '@shared/types/team';
@@ -3569,6 +3570,71 @@ describe('ipc teams handlers', () => {
       ]);
     });
 
+    it('createTeam validates teammate runtime fields against inherited team provider metadata', async () => {
+      const handler = handlers.get(TEAM_CREATE)!;
+      const result = (await handler({ sender: { send: vi.fn() } } as never, {
+        teamName: 'inherited-backend-team',
+        members: [
+          {
+            name: 'builder',
+            providerBackendId: 'codex-native',
+            effort: 'xhigh',
+          },
+        ],
+        cwd: os.tmpdir(),
+        providerId: 'codex',
+        providerBackendId: 'codex-native',
+      })) as { success: boolean };
+
+      expect(result.success).toBe(true);
+      expect(provisioningService.createTeam.mock.calls[0][0].members).toEqual([
+        {
+          name: 'builder',
+          role: undefined,
+          workflow: undefined,
+          isolation: undefined,
+          providerId: undefined,
+          providerBackendId: 'codex-native',
+          model: undefined,
+          effort: 'xhigh',
+          fastMode: undefined,
+        },
+      ]);
+    });
+
+    it('createTeam preserves top-level OpenCode provider and inherited teammate backend', async () => {
+      const handler = handlers.get(TEAM_CREATE)!;
+      const result = (await handler({ sender: { send: vi.fn() } } as never, {
+        teamName: 'opencode-runtime-team',
+        members: [
+          {
+            name: 'builder',
+            providerBackendId: 'opencode-cli',
+          },
+        ],
+        cwd: os.tmpdir(),
+        providerId: 'opencode',
+        providerBackendId: 'opencode-cli',
+      })) as { success: boolean };
+
+      expect(result.success).toBe(true);
+      expect(provisioningService.createTeam).toHaveBeenCalledWith(
+        expect.objectContaining({
+          teamName: 'opencode-runtime-team',
+          providerId: 'opencode',
+          providerBackendId: 'opencode-cli',
+          members: [
+            expect.objectContaining({
+              name: 'builder',
+              providerId: undefined,
+              providerBackendId: 'opencode-cli',
+            }),
+          ],
+        }),
+        expect.any(Function)
+      );
+    });
+
     it('handleCreateConfig accepts members: []', async () => {
       const handler = handlers.get(TEAM_CREATE_CONFIG)!;
       const result = (await handler({} as never, {
@@ -3642,6 +3708,124 @@ describe('ipc teams handlers', () => {
         worktree: 'feature-x',
         extraCliArgs: '--max-turns 5',
       });
+    });
+
+    it('handleCreateConfig validates teammate runtime fields against inherited team provider metadata', async () => {
+      const handler = handlers.get(TEAM_CREATE_CONFIG)!;
+      const result = (await handler({} as never, {
+        teamName: 'draft-inherited-runtime',
+        members: [
+          {
+            name: 'builder',
+            providerBackendId: 'codex-native',
+            effort: 'xhigh',
+          },
+        ],
+        cwd: os.tmpdir(),
+        providerId: 'codex',
+        providerBackendId: 'codex-native',
+      })) as { success: boolean };
+
+      expect(result.success).toBe(true);
+      expect(service.createTeamConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          teamName: 'draft-inherited-runtime',
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          members: [
+            expect.objectContaining({
+              name: 'builder',
+              providerId: undefined,
+              providerBackendId: 'codex-native',
+              effort: 'xhigh',
+            }),
+          ],
+        })
+      );
+    });
+
+    it('handleCreateConfig rejects stale inherited teammate backends for the selected team provider', async () => {
+      const handler = handlers.get(TEAM_CREATE_CONFIG)!;
+      const result = (await handler({} as never, {
+        teamName: 'draft-stale-runtime',
+        members: [
+          {
+            name: 'builder',
+            providerBackendId: 'codex-native',
+          },
+        ],
+        cwd: os.tmpdir(),
+        providerId: 'anthropic',
+      })) as { success: boolean; error?: string };
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('providerBackendId must be valid');
+      expect(service.createTeamConfig).not.toHaveBeenCalled();
+    });
+
+    it('handleCreateConfig drops known stale top-level backend when provider is omitted', async () => {
+      const handler = handlers.get(TEAM_CREATE_CONFIG)!;
+      const result = (await handler({} as never, {
+        teamName: 'draft-stale-top-level-runtime',
+        members: [{ name: 'builder' }],
+        cwd: os.tmpdir(),
+        providerBackendId: 'codex-native',
+      })) as { success: boolean };
+
+      expect(result.success).toBe(true);
+      expect(service.createTeamConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          teamName: 'draft-stale-top-level-runtime',
+          providerId: undefined,
+          providerBackendId: undefined,
+        })
+      );
+    });
+
+    it('handleCreateConfig validates teammate effort against default Anthropic provider metadata', async () => {
+      const handler = handlers.get(TEAM_CREATE_CONFIG)!;
+      const result = (await handler({} as never, {
+        teamName: 'draft-default-anthropic-runtime',
+        members: [
+          {
+            name: 'builder',
+            effort: 'max',
+          },
+        ],
+        cwd: os.tmpdir(),
+      })) as { success: boolean };
+
+      expect(result.success).toBe(true);
+      expect(service.createTeamConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          teamName: 'draft-default-anthropic-runtime',
+          members: [
+            expect.objectContaining({
+              name: 'builder',
+              effort: 'max',
+            }),
+          ],
+        })
+      );
+    });
+
+    it('handleCreateConfig validates top-level effort against default Anthropic provider metadata', async () => {
+      const handler = handlers.get(TEAM_CREATE_CONFIG)!;
+      const result = (await handler({} as never, {
+        teamName: 'draft-default-anthropic-effort',
+        members: [{ name: 'builder' }],
+        cwd: os.tmpdir(),
+        effort: 'max',
+      })) as { success: boolean };
+
+      expect(result.success).toBe(true);
+      expect(service.createTeamConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          teamName: 'draft-default-anthropic-effort',
+          providerId: undefined,
+          effort: 'max',
+        })
+      );
     });
 
     it('launches draft team through saved request without dropping Electron draft metadata', async () => {
@@ -3788,6 +3972,407 @@ describe('ipc teams handlers', () => {
       } finally {
         fs.rmSync(claudeRoot, { recursive: true, force: true });
       }
+    });
+
+    it('prefers Anthropic launch identity over stale root Codex backend during launch', async () => {
+      const claudeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ipc-launch-provider-identity-'));
+      setClaudeBasePathOverride(claudeRoot);
+      try {
+        const teamDir = path.join(claudeRoot, 'teams', 'anthropic-team');
+        fs.mkdirSync(teamDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(teamDir, 'config.json'),
+          JSON.stringify({ teamName: 'anthropic-team' })
+        );
+        fs.writeFileSync(
+          path.join(teamDir, 'team.meta.json'),
+          JSON.stringify({
+            version: 1,
+            displayName: 'Anthropic Team',
+            cwd: '/Users/test/project',
+            providerId: 'codex',
+            providerBackendId: 'codex-native',
+            model: 'gpt-5.4',
+            effort: 'medium',
+            launchIdentity: {
+              providerId: 'anthropic',
+              providerBackendId: null,
+              selectedModel: 'opus[1m]',
+              selectedModelKind: 'explicit',
+              resolvedLaunchModel: 'opus[1m]',
+              catalogId: 'opus',
+              catalogSource: 'runtime',
+              catalogFetchedAt: null,
+              selectedEffort: 'low',
+              resolvedEffort: 'low',
+              selectedFastMode: 'inherit',
+              resolvedFastMode: null,
+              fastResolutionReason: null,
+            },
+            createdAt: Date.now(),
+          })
+        );
+
+        const handler = handlers.get(TEAM_LAUNCH)!;
+        const result = (await handler({ sender: { send: vi.fn() } } as never, {
+          teamName: 'anthropic-team',
+          cwd: os.tmpdir(),
+        })) as { success: boolean };
+
+        expect(result).toMatchObject({ success: true });
+        expect(provisioningService.launchTeam).toHaveBeenCalledWith(
+          expect.objectContaining({
+            teamName: 'anthropic-team',
+            providerId: 'anthropic',
+            providerBackendId: undefined,
+            model: 'opus[1m]',
+            effort: 'low',
+            fastMode: 'inherit',
+          }),
+          expect.any(Function)
+        );
+      } finally {
+        fs.rmSync(claudeRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('lets an explicit relaunch payload override stale persisted provider and model metadata', async () => {
+      const claudeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ipc-relaunch-provider-change-'));
+      setClaudeBasePathOverride(claudeRoot);
+      try {
+        const teamDir = path.join(claudeRoot, 'teams', 'runtime-change-team');
+        fs.mkdirSync(teamDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(teamDir, 'config.json'),
+          JSON.stringify({ teamName: 'runtime-change-team' })
+        );
+        fs.writeFileSync(
+          path.join(teamDir, 'team.meta.json'),
+          JSON.stringify({
+            version: 1,
+            displayName: 'Runtime Change Team',
+            cwd: '/Users/test/project',
+            providerId: 'codex',
+            providerBackendId: 'codex-native',
+            model: 'gpt-5.5',
+            effort: 'medium',
+            launchIdentity: {
+              providerId: 'codex',
+              providerBackendId: 'codex-native',
+              selectedModel: 'gpt-5.5',
+              selectedModelKind: 'explicit',
+              resolvedLaunchModel: 'gpt-5.5',
+              catalogId: 'gpt-5.5',
+              catalogSource: 'runtime',
+              catalogFetchedAt: null,
+              selectedEffort: 'medium',
+              resolvedEffort: 'medium',
+              selectedFastMode: 'inherit',
+              resolvedFastMode: null,
+              fastResolutionReason: null,
+            },
+            createdAt: Date.now(),
+          })
+        );
+
+        const handler = handlers.get(TEAM_LAUNCH)!;
+        const result = (await handler({ sender: { send: vi.fn() } } as never, {
+          teamName: 'runtime-change-team',
+          cwd: os.tmpdir(),
+          providerId: 'anthropic',
+          model: 'sonnet',
+          effort: 'low',
+          fastMode: 'inherit',
+        })) as { success: boolean };
+
+        expect(result).toMatchObject({ success: true });
+        expect(provisioningService.launchTeam).toHaveBeenCalledWith(
+          expect.objectContaining({
+            teamName: 'runtime-change-team',
+            providerId: 'anthropic',
+            providerBackendId: undefined,
+            model: 'sonnet',
+            effort: 'low',
+            fastMode: 'inherit',
+          }),
+          expect.any(Function)
+        );
+      } finally {
+        fs.rmSync(claudeRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('does not reuse a persisted model when an explicit relaunch changes provider without a model', async () => {
+      const claudeRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), 'ipc-relaunch-provider-change-default-model-')
+      );
+      setClaudeBasePathOverride(claudeRoot);
+      try {
+        const teamDir = path.join(claudeRoot, 'teams', 'runtime-default-change-team');
+        fs.mkdirSync(teamDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(teamDir, 'config.json'),
+          JSON.stringify({ teamName: 'runtime-default-change-team' })
+        );
+        fs.writeFileSync(
+          path.join(teamDir, 'team.meta.json'),
+          JSON.stringify({
+            version: 1,
+            displayName: 'Runtime Default Change Team',
+            cwd: '/Users/test/project',
+            providerId: 'codex',
+            providerBackendId: 'codex-native',
+            model: 'gpt-5.5',
+            effort: 'medium',
+            fastMode: 'on',
+            limitContext: true,
+            launchIdentity: {
+              providerId: 'codex',
+              providerBackendId: 'codex-native',
+              selectedModel: 'gpt-5.5',
+              selectedModelKind: 'explicit',
+              resolvedLaunchModel: 'gpt-5.5',
+              catalogId: 'gpt-5.5',
+              catalogSource: 'runtime',
+              catalogFetchedAt: null,
+              selectedEffort: 'medium',
+              resolvedEffort: 'medium',
+              selectedFastMode: 'on',
+              resolvedFastMode: true,
+              fastResolutionReason: null,
+            },
+            createdAt: Date.now(),
+          })
+        );
+
+        const handler = handlers.get(TEAM_LAUNCH)!;
+        const result = (await handler({ sender: { send: vi.fn() } } as never, {
+          teamName: 'runtime-default-change-team',
+          cwd: os.tmpdir(),
+          providerId: 'anthropic',
+        })) as { success: boolean };
+
+        expect(result).toMatchObject({ success: true });
+        const [request] = provisioningService.launchTeam.mock.calls.at(
+          -1
+        ) as unknown as [TeamLaunchRequest, (progress: TeamProvisioningProgress) => void];
+        expect(request).toMatchObject({
+          teamName: 'runtime-default-change-team',
+          providerId: 'anthropic',
+          providerBackendId: undefined,
+        });
+        expect(request.model).toBeUndefined();
+        expect(request.effort).toBeUndefined();
+        expect(request.fastMode).toBeUndefined();
+        expect(request.limitContext).toBeUndefined();
+      } finally {
+        fs.rmSync(claudeRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('keeps persisted backend when an explicit relaunch repeats the same provider without backend', async () => {
+      const claudeRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), 'ipc-relaunch-same-provider-backend-')
+      );
+      setClaudeBasePathOverride(claudeRoot);
+      try {
+        const teamDir = path.join(claudeRoot, 'teams', 'gemini-backend-team');
+        fs.mkdirSync(teamDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(teamDir, 'config.json'),
+          JSON.stringify({ teamName: 'gemini-backend-team' })
+        );
+        fs.writeFileSync(
+          path.join(teamDir, 'team.meta.json'),
+          JSON.stringify({
+            version: 1,
+            displayName: 'Gemini Backend Team',
+            cwd: '/Users/test/project',
+            providerId: 'gemini',
+            providerBackendId: 'api',
+            model: 'gemini-3-pro',
+            createdAt: Date.now(),
+          })
+        );
+
+        const handler = handlers.get(TEAM_LAUNCH)!;
+        const result = (await handler({ sender: { send: vi.fn() } } as never, {
+          teamName: 'gemini-backend-team',
+          cwd: os.tmpdir(),
+          providerId: 'gemini',
+        })) as { success: boolean };
+
+        expect(result).toMatchObject({ success: true });
+        expect(provisioningService.launchTeam).toHaveBeenCalledWith(
+          expect.objectContaining({
+            teamName: 'gemini-backend-team',
+            providerId: 'gemini',
+            providerBackendId: 'api',
+            model: 'gemini-3-pro',
+          }),
+          expect.any(Function)
+        );
+      } finally {
+        fs.rmSync(claudeRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('clears a persisted model when an explicit relaunch repeats the provider with default model', async () => {
+      const claudeRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), 'ipc-relaunch-same-provider-default-model-')
+      );
+      setClaudeBasePathOverride(claudeRoot);
+      try {
+        const teamDir = path.join(claudeRoot, 'teams', 'codex-default-model-team');
+        fs.mkdirSync(teamDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(teamDir, 'config.json'),
+          JSON.stringify({ teamName: 'codex-default-model-team' })
+        );
+        fs.writeFileSync(
+          path.join(teamDir, 'team.meta.json'),
+          JSON.stringify({
+            version: 1,
+            displayName: 'Codex Default Model Team',
+            cwd: '/Users/test/project',
+            providerId: 'codex',
+            providerBackendId: 'codex-native',
+            model: 'gpt-5.5',
+            effort: 'medium',
+            launchIdentity: {
+              providerId: 'codex',
+              providerBackendId: 'codex-native',
+              selectedModel: 'gpt-5.5',
+              selectedModelKind: 'explicit',
+              resolvedLaunchModel: 'gpt-5.5',
+              catalogId: 'gpt-5.5',
+              catalogSource: 'runtime',
+              catalogFetchedAt: null,
+              selectedEffort: 'medium',
+              resolvedEffort: 'medium',
+              selectedFastMode: 'inherit',
+              resolvedFastMode: null,
+              fastResolutionReason: null,
+            },
+            createdAt: Date.now(),
+          })
+        );
+
+        const handler = handlers.get(TEAM_LAUNCH)!;
+        const result = (await handler({ sender: { send: vi.fn() } } as never, {
+          teamName: 'codex-default-model-team',
+          cwd: os.tmpdir(),
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          model: undefined,
+          effort: 'low',
+        })) as { success: boolean };
+
+        expect(result).toMatchObject({ success: true });
+        expect(provisioningService.launchTeam).toHaveBeenCalledWith(
+          expect.objectContaining({
+            teamName: 'codex-default-model-team',
+            providerId: 'codex',
+            providerBackendId: 'codex-native',
+            model: undefined,
+            effort: 'low',
+          }),
+          expect.any(Function)
+        );
+      } finally {
+        fs.rmSync(claudeRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('drops a known stale providerBackendId from explicit Anthropic relaunch payloads', async () => {
+      const claudeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ipc-relaunch-stale-backend-'));
+      setClaudeBasePathOverride(claudeRoot);
+      try {
+        const teamDir = path.join(claudeRoot, 'teams', 'runtime-backend-change-team');
+        fs.mkdirSync(teamDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(teamDir, 'config.json'),
+          JSON.stringify({ teamName: 'runtime-backend-change-team' })
+        );
+        fs.writeFileSync(
+          path.join(teamDir, 'team.meta.json'),
+          JSON.stringify({
+            version: 1,
+            displayName: 'Runtime Backend Change Team',
+            cwd: '/Users/test/project',
+            providerId: 'codex',
+            providerBackendId: 'codex-native',
+            model: 'gpt-5.5',
+            effort: 'medium',
+            createdAt: Date.now(),
+          })
+        );
+
+        const handler = handlers.get(TEAM_LAUNCH)!;
+        const result = (await handler({ sender: { send: vi.fn() } } as never, {
+          teamName: 'runtime-backend-change-team',
+          cwd: os.tmpdir(),
+          providerId: 'anthropic',
+          providerBackendId: 'codex-native',
+          model: 'sonnet',
+          effort: 'low',
+          fastMode: 'inherit',
+        })) as { success: boolean };
+
+        expect(result).toMatchObject({ success: true });
+        expect(provisioningService.launchTeam).toHaveBeenCalledWith(
+          expect.objectContaining({
+            teamName: 'runtime-backend-change-team',
+            providerId: 'anthropic',
+            providerBackendId: undefined,
+            model: 'sonnet',
+            effort: 'low',
+            fastMode: 'inherit',
+          }),
+          expect.any(Function)
+        );
+      } finally {
+        fs.rmSync(claudeRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('still rejects unknown providerBackendId values during launch', async () => {
+      const handler = handlers.get(TEAM_LAUNCH)!;
+      const result = (await handler({ sender: { send: vi.fn() } } as never, {
+        teamName: 'my-team',
+        cwd: os.tmpdir(),
+        providerId: 'anthropic',
+        providerBackendId: 'not-a-backend',
+        model: 'sonnet',
+      })) as { success: boolean; error?: string };
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('providerBackendId must be valid');
+      expect(provisioningService.launchTeam).not.toHaveBeenCalled();
+    });
+
+    it('launchTeam preserves top-level OpenCode provider and backend', async () => {
+      const handler = handlers.get(TEAM_LAUNCH)!;
+      const result = (await handler({ sender: { send: vi.fn() } } as never, {
+        teamName: 'opencode-runtime-team',
+        cwd: os.tmpdir(),
+        providerId: 'opencode',
+        providerBackendId: 'opencode-cli',
+        model: 'opencode/minimax-m2.5-free',
+        effort: 'medium',
+      })) as { success: boolean };
+
+      expect(result.success).toBe(true);
+      expect(provisioningService.launchTeam).toHaveBeenCalledWith(
+        expect.objectContaining({
+          teamName: 'opencode-runtime-team',
+          providerId: 'opencode',
+          providerBackendId: 'opencode-cli',
+          model: 'opencode/minimax-m2.5-free',
+          effort: 'medium',
+        }),
+        expect.any(Function)
+      );
     });
 
     it('handleReplaceMembers accepts members: []', async () => {

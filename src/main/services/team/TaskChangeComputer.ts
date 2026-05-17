@@ -1,4 +1,5 @@
 import { createLogger } from '@shared/utils/logger';
+import { getTaskChangeStateBucket } from '@shared/utils/taskChangeState';
 import { createReadStream } from 'fs';
 import { stat } from 'fs/promises';
 import * as readline from 'readline';
@@ -20,6 +21,7 @@ import type {
 } from '@shared/types';
 
 const logger = createLogger('Service:TaskChangeComputer');
+const NO_LOG_FILES_FOUND_WARNING = 'No log files found for this task.';
 
 interface ParsedSnippetsCacheEntry {
   data: ParsedSnippetRecord[];
@@ -49,6 +51,17 @@ interface MetadataChangePath {
 interface ParsedJsonlEntry {
   entry: Record<string, unknown>;
   lineNumber: number;
+}
+
+function shouldWarnAboutMissingTaskLogs(input: ResolvedTaskChangeComputeInput): boolean {
+  const status = input.taskMeta?.status?.trim() || input.effectiveOptions.status?.trim();
+  const stateBucket = getTaskChangeStateBucket({
+    status,
+    reviewState: input.taskMeta?.reviewState,
+    historyEvents: input.taskMeta?.historyEvents,
+    kanbanColumn: input.taskMeta?.kanbanColumn,
+  });
+  return stateBucket === 'completed' || stateBucket === 'review' || stateBucket === 'approved';
 }
 
 export class TaskChangeComputer {
@@ -102,7 +115,7 @@ export class TaskChangeComputer {
       effectiveOptions
     );
     if (logRefs.length === 0) {
-      return this.emptyTaskChangeSet(teamName, taskId);
+      return this.emptyTaskChangeSet(input);
     }
 
     const allScopes: TaskChangeScope[] = [];
@@ -441,7 +454,8 @@ export class TaskChangeComputer {
     };
   }
 
-  private emptyTaskChangeSet(teamName: string, taskId: string): TaskChangeSetV2 {
+  private emptyTaskChangeSet(input: ResolvedTaskChangeComputeInput): TaskChangeSetV2 {
+    const { teamName, taskId } = input;
     return {
       teamName,
       taskId,
@@ -462,7 +476,7 @@ export class TaskChangeComputer {
         filePaths: [],
         confidence: { tier: 4, label: 'fallback', reason: 'No log files found for task' },
       },
-      warnings: ['No log files found for this task.'],
+      warnings: shouldWarnAboutMissingTaskLogs(input) ? [NO_LOG_FILES_FOUND_WARNING] : [],
     };
   }
 

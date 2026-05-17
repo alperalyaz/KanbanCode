@@ -22,6 +22,19 @@ const PREVIEW_ICONS = {
   tool: <Wrench size={12} className="shrink-0" />,
 } as const;
 
+const LogsHeaderSkeletonPill = ({
+  className,
+}: Readonly<{ className?: string }>): React.JSX.Element => (
+  <span
+    aria-hidden="true"
+    className={cn(
+      'inline-flex animate-pulse rounded-full shadow-[inset_0_0_0_1px_rgba(148,163,184,0.08)]',
+      className
+    )}
+    style={{ backgroundColor: 'color-mix(in srgb, var(--color-text-muted) 30%, transparent)' }}
+  />
+);
+
 // =============================================================================
 // Sub-components
 // =============================================================================
@@ -79,6 +92,7 @@ export const ClaudeLogsSection = memo(function ClaudeLogsSection({
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const isSidebar = position === 'sidebar';
+  const showHeaderSkeleton = ctrl.loading && ctrl.data.lines.length === 0 && !ctrl.error;
 
   const sectionHeaderExtra = useMemo(
     () => (
@@ -90,10 +104,45 @@ export const ClaudeLogsSection = memo(function ClaudeLogsSection({
           </span>
         ) : null}
         {ctrl.lastLogPreview ? <LogPreviewInline preview={ctrl.lastLogPreview} /> : null}
+        {showHeaderSkeleton ? (
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 opacity-70">
+            <LogsHeaderSkeletonPill className="size-3 rounded" />
+            <LogsHeaderSkeletonPill className="h-3 w-12 rounded" />
+            <LogsHeaderSkeletonPill className="h-3 w-2 rounded" />
+            <LogsHeaderSkeletonPill className="h-3 min-w-0 flex-1 rounded" />
+          </span>
+        ) : null}
       </span>
     ),
-    [ctrl.online, ctrl.lastLogPreview, isSidebar]
+    [ctrl.online, ctrl.lastLogPreview, isSidebar, showHeaderSkeleton]
   );
+
+  const afterBadge = showHeaderSkeleton ? (
+    <>
+      <LogsHeaderSkeletonPill className="h-5 w-14" />
+      <span className="pointer-events-auto ml-auto inline-flex size-6 items-center justify-center rounded text-[var(--color-text-muted)] opacity-70">
+        <Expand size={14} />
+      </span>
+    </>
+  ) : ctrl.data.total > 0 ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="pointer-events-auto ml-auto size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+          onClick={(e) => {
+            e.stopPropagation();
+            setDialogOpen(true);
+          }}
+          aria-label="Open fullscreen logs"
+        >
+          <Expand size={14} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top">Fullscreen</TooltipContent>
+    </Tooltip>
+  ) : undefined;
 
   return (
     <>
@@ -102,27 +151,7 @@ export const ClaudeLogsSection = memo(function ClaudeLogsSection({
         title="Logs"
         icon={null}
         badge={ctrl.badge}
-        afterBadge={
-          ctrl.data.total > 0 ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="pointer-events-auto ml-auto size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDialogOpen(true);
-                  }}
-                  aria-label="Open fullscreen logs"
-                >
-                  <Expand size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Fullscreen</TooltipContent>
-            </Tooltip>
-          ) : undefined
-        }
+        afterBadge={afterBadge}
         headerClassName={isSidebar ? '-mx-3 w-[calc(100%+1.5rem)] py-0' : undefined}
         headerSurfaceClassName={isSidebar ? '!rounded-none' : undefined}
         headerContentClassName={isSidebar ? 'flex-wrap items-center gap-y-1 py-1 pr-1' : 'pr-1'}

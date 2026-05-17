@@ -83,6 +83,22 @@ function metadataOnlyMultiFileEditToolUse(
   };
 }
 
+function createNoLogTaskChangeComputer(): TaskChangeComputer {
+  const logsFinder = {
+    findLogFileRefsForTask: () => Promise.resolve([]),
+  };
+  const boundaryParser = {
+    parseBoundaries: () =>
+      Promise.resolve({
+        boundaries: [],
+        scopes: [],
+        isSingleTaskSession: true,
+        detectedMechanism: 'none' as const,
+      }),
+  };
+  return new TaskChangeComputer(logsFinder as never, boundaryParser as never);
+}
+
 describe('TaskChangeComputer', () => {
   let tmpDir: string | null = null;
 
@@ -91,6 +107,86 @@ describe('TaskChangeComputer', () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
       tmpDir = null;
     }
+  });
+
+  it('keeps active tasks without logs quiet even when request status is stale', async () => {
+    const computer = createNoLogTaskChangeComputer();
+
+    const result = await computer.computeTaskChanges({
+      teamName: 'team-a',
+      taskId: 'task-1',
+      taskMeta: {
+        status: 'in_progress',
+        reviewState: 'none',
+      },
+      effectiveOptions: { status: 'completed' },
+      projectPath: '/repo',
+      includeDetails: false,
+    });
+
+    expect(result.files).toEqual([]);
+    expect(result.confidence).toBe('fallback');
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('keeps newly created pending tasks without logs quiet', async () => {
+    const computer = createNoLogTaskChangeComputer();
+
+    const result = await computer.computeTaskChanges({
+      teamName: 'team-a',
+      taskId: 'task-1',
+      taskMeta: {
+        status: 'pending',
+        reviewState: 'none',
+      },
+      effectiveOptions: { status: 'completed' },
+      projectPath: '/repo',
+      includeDetails: false,
+    });
+
+    expect(result.files).toEqual([]);
+    expect(result.confidence).toBe('fallback');
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('warns when completed tasks have no logs even when request status is stale', async () => {
+    const computer = createNoLogTaskChangeComputer();
+
+    const result = await computer.computeTaskChanges({
+      teamName: 'team-a',
+      taskId: 'task-1',
+      taskMeta: {
+        status: 'completed',
+        reviewState: 'none',
+      },
+      effectiveOptions: { status: 'in_progress' },
+      projectPath: '/repo',
+      includeDetails: false,
+    });
+
+    expect(result.files).toEqual([]);
+    expect(result.confidence).toBe('fallback');
+    expect(result.warnings).toEqual(['No log files found for this task.']);
+  });
+
+  it('keeps reopened needs-fix tasks quiet even when their base status is completed', async () => {
+    const computer = createNoLogTaskChangeComputer();
+
+    const result = await computer.computeTaskChanges({
+      teamName: 'team-a',
+      taskId: 'task-1',
+      taskMeta: {
+        status: 'completed',
+        reviewState: 'needsFix',
+      },
+      effectiveOptions: { status: 'completed' },
+      projectPath: '/repo',
+      includeDetails: false,
+    });
+
+    expect(result.files).toEqual([]);
+    expect(result.confidence).toBe('fallback');
+    expect(result.warnings).toEqual([]);
   });
 
   it('shares concurrent JSONL parsing and invalidates when the file changes', async () => {
@@ -452,7 +548,11 @@ describe('TaskChangeComputer', () => {
     const logPath = path.join(tmpDir, 'agent.jsonl');
     await writeJsonl(logPath, [
       metadataOnlyMultiFileEditToolUse('tool-1', ['/repo/index.html', '/repo/style.css']),
-      metadataOnlyMultiFileEditToolUse('tool-1', ['/repo/177/landing.css'], '/repo/177/landing.css'),
+      metadataOnlyMultiFileEditToolUse(
+        'tool-1',
+        ['/repo/177/landing.css'],
+        '/repo/177/landing.css'
+      ),
     ]);
 
     const logsFinder = {

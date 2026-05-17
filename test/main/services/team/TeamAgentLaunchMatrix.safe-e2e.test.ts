@@ -13680,6 +13680,638 @@ describe('Team agent launch matrix safe e2e', () => {
     });
   });
 
+  it('keeps runtime snapshot on current Anthropic provider while stale Codex relaunch metadata remains', async () => {
+    const teamName = 'provider-switch-codex-anthropic-runtime-card-safe-e2e';
+    await writeMixedTeamConfig({ teamName, projectPath });
+    await writeTeamMeta(teamName, projectPath);
+    await writeMembersMeta(teamName);
+    const svc = new TeamProvisioningService();
+
+    const firstRun = createMixedLiveRun({ teamName, projectPath });
+    firstRun.runId = `run-${teamName}-codex`;
+    firstRun.child = { pid: 64611, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, firstRun);
+
+    const beforeSwitch = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(beforeSwitch).toMatchObject({
+      runId: firstRun.runId,
+      providerBackendId: 'codex-native',
+      members: {
+        'team-lead': { runtimeModel: 'gpt-5.4' },
+        alice: { providerId: 'codex', runtimeModel: 'gpt-5.4-mini' },
+        bob: { providerId: 'opencode', runtimeModel: 'opencode/minimax-m2.5-free' },
+      },
+    });
+
+    await writeMixedTeamConfig({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    TeamConfigReader.invalidateTeam(teamName);
+    const secondRun = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    secondRun.runId = `run-${teamName}-anthropic`;
+    secondRun.request.model = 'haiku';
+    secondRun.request.effort = 'low';
+    secondRun.launchIdentity = {
+      ...secondRun.launchIdentity,
+      providerId: 'anthropic',
+      providerBackendId: null,
+      selectedModel: 'haiku',
+      resolvedLaunchModel: 'haiku',
+      catalogId: 'haiku',
+      selectedEffort: 'low',
+      resolvedEffort: 'low',
+    };
+    secondRun.child = { pid: 64621, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, secondRun);
+
+    const afterSwitch = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(afterSwitch).toMatchObject({
+      runId: secondRun.runId,
+      members: {
+        'team-lead': { runtimeModel: 'haiku' },
+        alice: { providerId: 'anthropic', runtimeModel: 'haiku' },
+        bob: { providerId: 'opencode', runtimeModel: 'opencode/minimax-m2.5-free' },
+        tom: { providerId: 'opencode', runtimeModel: 'opencode/nemotron-3-super-free' },
+      },
+    });
+    expect(afterSwitch.providerBackendId).toBeUndefined();
+    expect(afterSwitch.members.alice.providerBackendId).toBeUndefined();
+  });
+
+  it('ignores stale Codex live metadata model for the current Anthropic provider snapshot', async () => {
+    const teamName = 'provider-switch-anthropic-stale-live-codex-model-safe-e2e';
+    await writeMixedTeamConfig({ teamName, projectPath });
+    await writeTeamMeta(teamName, projectPath);
+    await writeMembersMeta(teamName);
+    const svc = new TeamProvisioningService();
+
+    const firstRun = createMixedLiveRun({ teamName, projectPath });
+    firstRun.runId = `run-${teamName}-codex`;
+    firstRun.child = { pid: 64651, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, firstRun);
+
+    const beforeSwitch = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(beforeSwitch.members.alice).toMatchObject({
+      providerId: 'codex',
+      runtimeModel: 'gpt-5.4-mini',
+    });
+
+    await writeMixedTeamConfig({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    TeamConfigReader.invalidateTeam(teamName);
+    const secondRun = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    secondRun.runId = `run-${teamName}-anthropic`;
+    secondRun.child = { pid: 64661, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, secondRun);
+    (svc as any).getLiveTeamAgentRuntimeMetadata = async () =>
+      new Map([
+        [
+          'alice',
+          {
+            alive: true,
+            pid: 64662,
+            providerId: 'codex',
+            model: 'gpt-5.4-mini',
+          },
+        ],
+      ]);
+    (svc as any).readProcessRssBytesByPid = async (pids: number[]) =>
+      new Map(pids.map((pid) => [pid, pid * 1_000]));
+
+    const afterSwitch = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(afterSwitch).toMatchObject({
+      runId: secondRun.runId,
+      members: {
+        'team-lead': { runtimeModel: 'sonnet' },
+        alice: {
+          providerId: 'anthropic',
+          runtimeModel: 'haiku',
+          pid: 64662,
+          rssBytes: 64_662_000,
+        },
+      },
+    });
+    expect(afterSwitch.providerBackendId).toBeUndefined();
+    expect(afterSwitch.members.alice.providerBackendId).toBeUndefined();
+  });
+
+  it('ignores stale Codex live provider evidence even when the live model cannot be inferred', async () => {
+    const teamName = 'provider-switch-anthropic-stale-live-codex-unknown-model-safe-e2e';
+    await writeMixedTeamConfig({ teamName, projectPath });
+    await writeTeamMeta(teamName, projectPath);
+    await writeMembersMeta(teamName);
+    const svc = new TeamProvisioningService();
+
+    const firstRun = createMixedLiveRun({ teamName, projectPath });
+    firstRun.runId = `run-${teamName}-codex`;
+    firstRun.child = { pid: 64711, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, firstRun);
+
+    await writeMixedTeamConfig({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    TeamConfigReader.invalidateTeam(teamName);
+    const secondRun = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    secondRun.runId = `run-${teamName}-anthropic`;
+    secondRun.child = { pid: 64721, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, secondRun);
+    (svc as any).getLiveTeamAgentRuntimeMetadata = async () =>
+      new Map([
+        [
+          'alice',
+          {
+            alive: true,
+            pid: 64722,
+            providerId: 'codex',
+            model: 'legacy-enterprise-custom-model',
+          },
+        ],
+      ]);
+    (svc as any).readProcessRssBytesByPid = async (pids: number[]) =>
+      new Map(pids.map((pid) => [pid, pid * 1_000]));
+
+    const afterSwitch = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(afterSwitch).toMatchObject({
+      runId: secondRun.runId,
+      members: {
+        alice: {
+          providerId: 'anthropic',
+          runtimeModel: 'haiku',
+          pid: 64722,
+          rssBytes: 64_722_000,
+        },
+      },
+    });
+    expect(afterSwitch.members.alice.providerBackendId).toBeUndefined();
+  });
+
+  it('keeps matching-provider custom live models that cannot be inferred', async () => {
+    const teamName = 'provider-switch-anthropic-live-custom-model-safe-e2e';
+    await writeMixedTeamConfig({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    await writeTeamMeta(teamName, projectPath, { primaryProviderId: 'anthropic' });
+    await writeMembersMeta(teamName, { primaryProviderId: 'anthropic' });
+    const svc = new TeamProvisioningService();
+
+    const run = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    run.runId = `run-${teamName}-anthropic`;
+    run.child = { pid: 64731, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, run);
+    (svc as any).getLiveTeamAgentRuntimeMetadata = async () =>
+      new Map([
+        [
+          'alice',
+          {
+            alive: true,
+            pid: 64732,
+            providerId: 'anthropic',
+            model: 'enterprise-custom-model',
+          },
+        ],
+      ]);
+    (svc as any).readProcessRssBytesByPid = async (pids: number[]) =>
+      new Map(pids.map((pid) => [pid, pid * 1_000]));
+
+    const snapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(snapshot.members.alice).toMatchObject({
+      providerId: 'anthropic',
+      runtimeModel: 'enterprise-custom-model',
+      pid: 64732,
+      rssBytes: 64_732_000,
+    });
+    expect(snapshot.members.alice.providerBackendId).toBeUndefined();
+  });
+
+  it('ignores a live Codex model even when stale metadata claims the current Anthropic provider', async () => {
+    const teamName = 'provider-switch-anthropic-conflicting-live-model-safe-e2e';
+    await writeMixedTeamConfig({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    await writeTeamMeta(teamName, projectPath, { primaryProviderId: 'anthropic' });
+    await writeMembersMeta(teamName, { primaryProviderId: 'anthropic' });
+    const svc = new TeamProvisioningService();
+
+    const run = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    run.runId = `run-${teamName}-anthropic`;
+    run.child = { pid: 64801, kill: () => undefined, stdin: { writable: true } };
+    delete run.effectiveMembers[0].providerId;
+    delete run.allEffectiveMembers[0].providerId;
+    trackLiveRun(svc, run);
+    (svc as any).getLiveTeamAgentRuntimeMetadata = async () =>
+      new Map([
+        [
+          'alice',
+          {
+            alive: true,
+            pid: 64802,
+            providerId: 'anthropic',
+            model: 'gpt-5.4-mini',
+          },
+        ],
+      ]);
+    (svc as any).readProcessRssBytesByPid = async (pids: number[]) =>
+      new Map(pids.map((pid) => [pid, pid * 1_000]));
+
+    const snapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(snapshot.members.alice).toMatchObject({
+      providerId: 'anthropic',
+      runtimeModel: 'haiku',
+      pid: 64802,
+      rssBytes: 64_802_000,
+    });
+    expect(snapshot.members.alice.providerBackendId).toBeUndefined();
+  });
+
+  it('ignores stale Codex live provider evidence for a current OpenCode side-lane unknown model', async () => {
+    const teamName = 'provider-switch-opencode-stale-live-codex-unknown-model-safe-e2e';
+    await writeMixedTeamConfig({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    await writeTeamMeta(teamName, projectPath, { primaryProviderId: 'anthropic' });
+    await writeMembersMeta(teamName, { primaryProviderId: 'anthropic' });
+    const svc = new TeamProvisioningService();
+
+    const run = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    run.runId = `run-${teamName}-anthropic`;
+    run.child = { pid: 64761, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, run);
+    (svc as any).getLiveTeamAgentRuntimeMetadata = async () =>
+      new Map([
+        [
+          'bob',
+          {
+            alive: true,
+            pid: 64762,
+            providerId: 'codex',
+            model: 'legacy-enterprise-custom-model',
+          },
+        ],
+      ]);
+    (svc as any).readProcessRssBytesByPid = async (pids: number[]) =>
+      new Map(pids.map((pid) => [pid, pid * 1_000]));
+
+    const snapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(snapshot.members.bob).toMatchObject({
+      providerId: 'opencode',
+      runtimeModel: 'opencode/minimax-m2.5-free',
+      pid: 64762,
+      rssBytes: 64_762_000,
+    });
+    expect(snapshot.members.bob.providerBackendId).toBeUndefined();
+  });
+
+  it('keeps matching OpenCode custom live models that cannot be inferred', async () => {
+    const teamName = 'provider-switch-opencode-live-custom-model-safe-e2e';
+    await writeMixedTeamConfig({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    await writeTeamMeta(teamName, projectPath, { primaryProviderId: 'anthropic' });
+    await writeMembersMeta(teamName, { primaryProviderId: 'anthropic' });
+    const svc = new TeamProvisioningService();
+
+    const run = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    run.runId = `run-${teamName}-anthropic`;
+    run.child = { pid: 64771, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, run);
+    (svc as any).getLiveTeamAgentRuntimeMetadata = async () =>
+      new Map([
+        [
+          'bob',
+          {
+            alive: true,
+            pid: 64772,
+            providerId: 'opencode',
+            model: 'local-custom-opencode-model',
+          },
+        ],
+      ]);
+    (svc as any).readProcessRssBytesByPid = async (pids: number[]) =>
+      new Map(pids.map((pid) => [pid, pid * 1_000]));
+
+    const snapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(snapshot.members.bob).toMatchObject({
+      providerId: 'opencode',
+      runtimeModel: 'local-custom-opencode-model',
+      pid: 64772,
+      rssBytes: 64_772_000,
+    });
+    expect(snapshot.members.bob.providerBackendId).toBeUndefined();
+  });
+
+  it('ignores stale Codex live provider evidence for a current Gemini teammate unknown model', async () => {
+    const teamName = 'provider-switch-gemini-stale-live-codex-unknown-model-safe-e2e';
+    await writeMixedTeamConfig({
+      teamName,
+      projectPath,
+      includeGeminiPrimary: true,
+      primaryProviderId: 'anthropic',
+    });
+    await writeTeamMeta(teamName, projectPath, { primaryProviderId: 'anthropic' });
+    await writeMembersMeta(teamName, {
+      includeGeminiPrimary: true,
+      primaryProviderId: 'anthropic',
+    });
+    const svc = new TeamProvisioningService();
+
+    const run = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    addGeminiPrimaryToMixedRun(run);
+    run.runId = `run-${teamName}-anthropic`;
+    run.child = { pid: 64781, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, run);
+    (svc as any).getLiveTeamAgentRuntimeMetadata = async () =>
+      new Map([
+        [
+          'reviewer',
+          {
+            alive: true,
+            pid: 64782,
+            providerId: 'codex',
+            model: 'legacy-enterprise-custom-model',
+          },
+        ],
+      ]);
+    (svc as any).readProcessRssBytesByPid = async (pids: number[]) =>
+      new Map(pids.map((pid) => [pid, pid * 1_000]));
+
+    const snapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(snapshot.members.reviewer).toMatchObject({
+      providerId: 'gemini',
+      runtimeModel: 'gemini-2.5-flash',
+      pid: 64782,
+      rssBytes: 64_782_000,
+    });
+    expect(snapshot.members.reviewer.providerBackendId).toBeUndefined();
+  });
+
+  it('keeps matching Gemini custom live models that cannot be inferred', async () => {
+    const teamName = 'provider-switch-gemini-live-custom-model-safe-e2e';
+    await writeMixedTeamConfig({
+      teamName,
+      projectPath,
+      includeGeminiPrimary: true,
+      primaryProviderId: 'anthropic',
+    });
+    await writeTeamMeta(teamName, projectPath, { primaryProviderId: 'anthropic' });
+    await writeMembersMeta(teamName, {
+      includeGeminiPrimary: true,
+      primaryProviderId: 'anthropic',
+    });
+    const svc = new TeamProvisioningService();
+
+    const run = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    addGeminiPrimaryToMixedRun(run);
+    run.runId = `run-${teamName}-anthropic`;
+    run.child = { pid: 64791, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, run);
+    (svc as any).getLiveTeamAgentRuntimeMetadata = async () =>
+      new Map([
+        [
+          'reviewer',
+          {
+            alive: true,
+            pid: 64792,
+            providerId: 'gemini',
+            model: 'enterprise-custom-gemini-model',
+          },
+        ],
+      ]);
+    (svc as any).readProcessRssBytesByPid = async (pids: number[]) =>
+      new Map(pids.map((pid) => [pid, pid * 1_000]));
+
+    const snapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(snapshot.members.reviewer).toMatchObject({
+      providerId: 'gemini',
+      runtimeModel: 'enterprise-custom-gemini-model',
+      pid: 64792,
+      rssBytes: 64_792_000,
+    });
+    expect(snapshot.members.reviewer.providerBackendId).toBeUndefined();
+  });
+
+  it('drops stale Codex launch-state backend when the current active run is Anthropic', async () => {
+    const teamName = 'provider-switch-anthropic-stale-launch-state-backend-safe-e2e';
+    await writeMixedTeamConfig({ teamName, projectPath });
+    await writeTeamMeta(teamName, projectPath);
+    await writeMembersMeta(teamName);
+    await writeMixedTeamLaunchState({
+      teamName,
+      members: {
+        alice: mixedMemberState({
+          name: 'alice',
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          model: 'gpt-5.4-mini',
+          laneId: 'primary',
+          laneKind: 'primary',
+          laneOwnerProviderId: 'codex',
+          launchState: 'confirmed_alive',
+          agentToolAccepted: true,
+          runtimeAlive: true,
+          bootstrapConfirmed: true,
+          hardFailure: false,
+        }),
+      },
+    });
+    const svc = new TeamProvisioningService();
+
+    await writeMixedTeamConfig({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    TeamConfigReader.invalidateTeam(teamName);
+    const currentRun = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    currentRun.runId = `run-${teamName}-anthropic`;
+    currentRun.child = { pid: 64671, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, currentRun);
+
+    const snapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(snapshot).toMatchObject({
+      runId: currentRun.runId,
+      members: {
+        alice: {
+          providerId: 'anthropic',
+          runtimeModel: 'haiku',
+        },
+      },
+    });
+    expect(snapshot.providerBackendId).toBeUndefined();
+    expect(snapshot.members.alice.providerBackendId).toBeUndefined();
+  });
+
+  it('restores Codex backend on current Codex relaunch while stale Anthropic metadata remains', async () => {
+    const teamName = 'provider-switch-anthropic-codex-runtime-card-safe-e2e';
+    await writeMixedTeamConfig({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    await writeTeamMeta(teamName, projectPath, { primaryProviderId: 'anthropic' });
+    await writeMembersMeta(teamName, { primaryProviderId: 'anthropic' });
+    const svc = new TeamProvisioningService();
+
+    const firstRun = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    firstRun.runId = `run-${teamName}-anthropic`;
+    firstRun.child = { pid: 64631, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, firstRun);
+
+    const beforeSwitch = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(beforeSwitch.runId).toBe(firstRun.runId);
+    expect(beforeSwitch.providerBackendId).toBeUndefined();
+    expect(beforeSwitch.members.alice).toMatchObject({
+      providerId: 'anthropic',
+      runtimeModel: 'haiku',
+    });
+
+    await writeMixedTeamConfig({ teamName, projectPath });
+    TeamConfigReader.invalidateTeam(teamName);
+    const secondRun = createMixedLiveRun({ teamName, projectPath });
+    secondRun.runId = `run-${teamName}-codex`;
+    secondRun.child = { pid: 64641, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, secondRun);
+
+    const afterSwitch = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(afterSwitch).toMatchObject({
+      runId: secondRun.runId,
+      providerBackendId: 'codex-native',
+      members: {
+        'team-lead': { runtimeModel: 'gpt-5.4' },
+        alice: { providerId: 'codex', runtimeModel: 'gpt-5.4-mini' },
+        bob: { providerId: 'opencode', runtimeModel: 'opencode/minimax-m2.5-free' },
+        tom: { providerId: 'opencode', runtimeModel: 'opencode/nemotron-3-super-free' },
+      },
+    });
+  });
+
+  it('ignores stale Anthropic live metadata model for the current Codex provider snapshot', async () => {
+    const teamName = 'provider-switch-codex-stale-live-anthropic-model-safe-e2e';
+    await writeMixedTeamConfig({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    await writeTeamMeta(teamName, projectPath, { primaryProviderId: 'anthropic' });
+    await writeMembersMeta(teamName, { primaryProviderId: 'anthropic' });
+    const svc = new TeamProvisioningService();
+
+    const firstRun = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    firstRun.runId = `run-${teamName}-anthropic`;
+    firstRun.child = { pid: 64681, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, firstRun);
+
+    const beforeSwitch = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(beforeSwitch.members.alice).toMatchObject({
+      providerId: 'anthropic',
+      runtimeModel: 'haiku',
+    });
+
+    await writeMixedTeamConfig({ teamName, projectPath });
+    TeamConfigReader.invalidateTeam(teamName);
+    const secondRun = createMixedLiveRun({ teamName, projectPath });
+    secondRun.runId = `run-${teamName}-codex`;
+    secondRun.child = { pid: 64691, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, secondRun);
+    (svc as any).getLiveTeamAgentRuntimeMetadata = async () =>
+      new Map([
+        [
+          'alice',
+          {
+            alive: true,
+            pid: 64692,
+            providerId: 'anthropic',
+            model: 'haiku',
+          },
+        ],
+      ]);
+    (svc as any).readProcessRssBytesByPid = async (pids: number[]) =>
+      new Map(pids.map((pid) => [pid, pid * 1_000]));
+
+    const afterSwitch = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(afterSwitch).toMatchObject({
+      runId: secondRun.runId,
+      providerBackendId: 'codex-native',
+      members: {
+        'team-lead': { runtimeModel: 'gpt-5.4' },
+        alice: {
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          runtimeModel: 'gpt-5.4-mini',
+          pid: 64692,
+          rssBytes: 64_692_000,
+        },
+      },
+    });
+  });
+
+  it('ignores stale Anthropic live provider evidence with an unknown model for the current Codex snapshot', async () => {
+    const teamName = 'provider-switch-codex-stale-live-anthropic-unknown-model-safe-e2e';
+    await writeMixedTeamConfig({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    await writeTeamMeta(teamName, projectPath, { primaryProviderId: 'anthropic' });
+    await writeMembersMeta(teamName, { primaryProviderId: 'anthropic' });
+    const svc = new TeamProvisioningService();
+
+    const firstRun = createMixedLiveRun({ teamName, projectPath, primaryProviderId: 'anthropic' });
+    firstRun.runId = `run-${teamName}-anthropic`;
+    firstRun.child = { pid: 64741, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, firstRun);
+
+    await writeMixedTeamConfig({ teamName, projectPath });
+    TeamConfigReader.invalidateTeam(teamName);
+    const secondRun = createMixedLiveRun({ teamName, projectPath });
+    secondRun.runId = `run-${teamName}-codex`;
+    secondRun.child = { pid: 64751, kill: () => undefined, stdin: { writable: true } };
+    trackLiveRun(svc, secondRun);
+    (svc as any).getLiveTeamAgentRuntimeMetadata = async () =>
+      new Map([
+        [
+          'alice',
+          {
+            alive: true,
+            pid: 64752,
+            providerId: 'anthropic',
+            model: 'legacy-enterprise-custom-model',
+          },
+        ],
+      ]);
+    (svc as any).readProcessRssBytesByPid = async (pids: number[]) =>
+      new Map(pids.map((pid) => [pid, pid * 1_000]));
+
+    const afterSwitch = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(afterSwitch).toMatchObject({
+      runId: secondRun.runId,
+      providerBackendId: 'codex-native',
+      members: {
+        alice: {
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          runtimeModel: 'gpt-5.4-mini',
+          pid: 64752,
+          rssBytes: 64_752_000,
+        },
+      },
+    });
+  });
+
+  it('ignores a live Anthropic model even when stale metadata claims the current Codex provider', async () => {
+    const teamName = 'provider-switch-codex-conflicting-live-model-safe-e2e';
+    await writeMixedTeamConfig({ teamName, projectPath });
+    await writeTeamMeta(teamName, projectPath);
+    await writeMembersMeta(teamName);
+    const svc = new TeamProvisioningService();
+
+    const run = createMixedLiveRun({ teamName, projectPath });
+    run.runId = `run-${teamName}-codex`;
+    run.child = { pid: 64811, kill: () => undefined, stdin: { writable: true } };
+    delete run.effectiveMembers[0].providerId;
+    delete run.allEffectiveMembers[0].providerId;
+    trackLiveRun(svc, run);
+    (svc as any).getLiveTeamAgentRuntimeMetadata = async () =>
+      new Map([
+        [
+          'alice',
+          {
+            alive: true,
+            pid: 64812,
+            providerId: 'codex',
+            model: 'haiku',
+          },
+        ],
+      ]);
+    (svc as any).readProcessRssBytesByPid = async (pids: number[]) =>
+      new Map(pids.map((pid) => [pid, pid * 1_000]));
+
+    const snapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
+    expect(snapshot).toMatchObject({
+      runId: run.runId,
+      providerBackendId: 'codex-native',
+      members: {
+        alice: {
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          runtimeModel: 'gpt-5.4-mini',
+          pid: 64812,
+          rssBytes: 64_812_000,
+        },
+      },
+    });
+  });
+
   it('refreshes runtime snapshot cache after same-team Anthropic and Gemini mixed relaunch', async () => {
     const teamName = 'mixed-anthropic-gemini-runtime-cache-relaunch-safe-e2e';
     await writeMixedTeamConfig({

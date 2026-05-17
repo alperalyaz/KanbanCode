@@ -381,6 +381,33 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     expect(launchArg?.members[0]?.prompt).not.toContain('Join team "team-a"');
   });
 
+  it('refreshes readiness and retries once when the launch handshake sees a newer capability snapshot', async () => {
+    const { result, checkReadiness, launchOpenCodeTeam } =
+      await launchWithStaleCapabilitySnapshotRecovery('Bridge server capability snapshot mismatch');
+
+    expect(result.teamLaunchState).toBe('clean_success');
+    expect(result.warnings).toContain(
+      'OpenCode capability snapshot changed between readiness and launch; refreshed readiness and retried once.'
+    );
+    expect(checkReadiness).toHaveBeenCalledTimes(2);
+    expect(launchOpenCodeTeam).toHaveBeenCalledTimes(2);
+    expect(launchOpenCodeTeam.mock.calls[0]?.[0].expectedCapabilitySnapshotId).toBe('cap-old');
+    expect(launchOpenCodeTeam.mock.calls[1]?.[0].expectedCapabilitySnapshotId).toBe('cap-new');
+  });
+
+  it('refreshes readiness and retries once when the launch command sees a newer capability snapshot', async () => {
+    const { result, checkReadiness, launchOpenCodeTeam } =
+      await launchWithStaleCapabilitySnapshotRecovery(
+        'OpenCode bridge capability snapshot precondition mismatch'
+      );
+
+    expect(result.teamLaunchState).toBe('clean_success');
+    expect(checkReadiness).toHaveBeenCalledTimes(2);
+    expect(launchOpenCodeTeam).toHaveBeenCalledTimes(2);
+    expect(launchOpenCodeTeam.mock.calls[0]?.[0].expectedCapabilitySnapshotId).toBe('cap-old');
+    expect(launchOpenCodeTeam.mock.calls[1]?.[0].expectedCapabilitySnapshotId).toBe('cap-new');
+  });
+
   it('does not mark the lane clean_success when ready bridge data omits an expected member', async () => {
     const launchOpenCodeTeam = vi.fn(
       async () =>
@@ -1096,6 +1123,87 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     );
   });
 });
+
+async function launchWithStaleCapabilitySnapshotRecovery(message: string) {
+  let readinessCalls = 0;
+  let capabilitySnapshotId = 'cap-old';
+  const checkReadiness = vi.fn<OpenCodeTeamRuntimeBridgePort['checkOpenCodeTeamLaunchReadiness']>(
+    () => {
+      readinessCalls += 1;
+      capabilitySnapshotId = readinessCalls === 1 ? 'cap-old' : 'cap-new';
+      return Promise.resolve(readiness({ state: 'ready', launchAllowed: true }));
+    }
+  );
+  const launchOpenCodeTeam = vi.fn<
+    NonNullable<OpenCodeTeamRuntimeBridgePort['launchOpenCodeTeam']>
+  >((input) =>
+    Promise.resolve(
+      input.expectedCapabilitySnapshotId === 'cap-old'
+        ? failedCapabilitySnapshotLaunchData(message)
+        : successfulOpenCodeLaunchData()
+    )
+  );
+  const adapter = new OpenCodeTeamRuntimeAdapter({
+    checkOpenCodeTeamLaunchReadiness: checkReadiness,
+    getLastOpenCodeRuntimeSnapshot: vi.fn(() => runtimeSnapshot(capabilitySnapshotId)),
+    launchOpenCodeTeam,
+  });
+
+  return {
+    result: await adapter.launch(launchInput()),
+    checkReadiness,
+    launchOpenCodeTeam,
+  };
+}
+
+function runtimeSnapshot(capabilitySnapshotId: string) {
+  return {
+    providerId: 'opencode' as const,
+    binaryPath: '/opt/homebrew/bin/opencode',
+    binaryFingerprint: 'version:1.14.19',
+    version: '1.14.19',
+    capabilitySnapshotId,
+  };
+}
+
+function successfulOpenCodeLaunchData(): OpenCodeLaunchTeamCommandData {
+  return {
+    runId: 'run-1',
+    teamLaunchState: 'ready',
+    members: {
+      alice: {
+        sessionId: 'oc-session-1',
+        launchState: 'confirmed_alive',
+        runtimePid: 123,
+        model: 'openai/gpt-5.4-mini',
+        evidence: [
+          { kind: 'required_tools_proven', observedAt: '2026-04-21T00:00:00.000Z' },
+          { kind: 'delivery_ready', observedAt: '2026-04-21T00:00:00.000Z' },
+          { kind: 'member_ready', observedAt: '2026-04-21T00:00:00.000Z' },
+          { kind: 'run_ready', observedAt: '2026-04-21T00:00:00.000Z' },
+        ],
+      },
+    },
+    warnings: [],
+    diagnostics: [],
+  };
+}
+
+function failedCapabilitySnapshotLaunchData(message: string): OpenCodeLaunchTeamCommandData {
+  return {
+    runId: 'run-1',
+    teamLaunchState: 'failed',
+    members: {},
+    warnings: [],
+    diagnostics: [
+      {
+        code: 'opencode_bridge',
+        severity: 'error',
+        message: `OpenCode bridge failed: ${message}`,
+      },
+    ],
+  };
+}
 
 function bridgePort(
   readinessResult: OpenCodeTeamLaunchReadiness,

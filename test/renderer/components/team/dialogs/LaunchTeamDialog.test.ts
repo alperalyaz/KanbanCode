@@ -419,6 +419,10 @@ vi.mock('@renderer/components/team/dialogs/providerPrepareCacheKey', () => ({
 vi.mock('@renderer/components/team/dialogs/providerPrepareDiagnostics', () => ({
   buildReusableProviderPrepareModelResults: () => ({}),
   getProviderPrepareCachedSnapshot: () => ({ status: 'checking', details: [] }),
+  mergeReusableProviderPrepareModelResults: (
+    existing: Record<string, unknown> | null | undefined,
+    next: Record<string, unknown>
+  ) => ({ ...(existing ?? {}), ...next }),
   runProviderPrepareDiagnostics: vi.fn(async () => ({
     status: 'ready',
     warnings: [],

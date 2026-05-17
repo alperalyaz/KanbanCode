@@ -4,6 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { useUnreadCommentCount } from '@renderer/hooks/useUnreadCommentCount';
+import { cn } from '@renderer/lib/utils';
 import { clearTaskManualUnread } from '@renderer/services/commentReadStorage';
 import { useStore } from '@renderer/store';
 import { buildMemberColorMap, REVIEW_STATE_DISPLAY } from '@renderer/utils/memberHelpers';
@@ -62,6 +63,7 @@ function formatUpdatedLabel(task: GlobalTask): string | null {
 interface SidebarTaskItemProps {
   task: GlobalTask;
   hideTeamName?: boolean;
+  hideProjectName?: boolean;
   showTeamName?: boolean;
   /** The composite key "teamName:taskId" of the task being renamed, or null */
   renamingKey?: string | null;
@@ -76,6 +78,7 @@ interface SidebarTaskItemProps {
 export const SidebarTaskItem = memo(function SidebarTaskItem({
   task,
   hideTeamName,
+  hideProjectName,
   showTeamName,
   renamingKey,
   onRenameComplete,
@@ -117,6 +120,11 @@ export const SidebarTaskItem = memo(function SidebarTaskItem({
         ? ({ icon: Eye, color: 'text-orange-400', label: 'in review' } as const)
         : (statusConfig[task.status] ?? statusConfig.pending);
   const StatusIcon = cfg.icon;
+  const statusIconClassName = cn(
+    'size-3 shrink-0',
+    cfg.color,
+    cfg.label === 'in progress' && 'animate-spin'
+  );
   const updatedLabel = formatUpdatedLabel(task);
   const dateLabel = updatedLabel ?? formatTaskDate(task.createdAt);
 
@@ -133,9 +141,10 @@ export const SidebarTaskItem = memo(function SidebarTaskItem({
   }, [ownerColorSet, isLight]);
 
   const projectLabel = useMemo(() => {
+    if (hideProjectName) return null;
     if (!task.projectPath?.trim()) return null;
     return projectLabelFromPath(task.projectPath);
-  }, [task.projectPath]);
+  }, [hideProjectName, task.projectPath]);
 
   const projectColorSet = useMemo(
     () => (projectLabel ? projectColor(projectLabel, isLight) : null),
@@ -167,7 +176,7 @@ export const SidebarTaskItem = memo(function SidebarTaskItem({
       <div className="w-full overflow-hidden">
         {isRenaming ? (
           <div className="flex items-start gap-1.5">
-            <StatusIcon className={`mt-0.5 size-3 shrink-0 ${cfg.color}`} />
+            <StatusIcon className={cn('mt-0.5', statusIconClassName)} />
             <input
               ref={inputRef}
               type="text"
@@ -207,7 +216,9 @@ export const SidebarTaskItem = memo(function SidebarTaskItem({
                 className="line-clamp-2 text-[13px] font-medium leading-tight"
                 style={{ color: 'var(--color-text-muted)' }}
               >
-                <StatusIcon className={`mr-1.5 inline-block size-3 align-[-1px] ${cfg.color}`} />
+                <StatusIcon
+                  className={cn('mr-1.5 inline-block align-[-1px]', statusIconClassName)}
+                />
                 {unreadCount > 0 &&
                   (unreadCount === 1 ? (
                     <span className="mr-1 inline-block size-1.5 rounded-full bg-blue-400 align-middle" />

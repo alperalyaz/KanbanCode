@@ -4,6 +4,8 @@ import path from 'node:path';
 
 import { resolveVerifiedAppManagedCodexRuntimeBinaryPath } from '@features/codex-runtime-installer/main';
 import { execCli } from '@main/utils/childProcess';
+import { buildEnrichedEnv } from '@main/utils/cliEnv';
+import { buildMergedCliPath } from '@main/utils/cliPathMerge';
 import { getCachedShellEnv } from '@main/utils/shellEnv';
 
 const CACHE_VERIFY_TTL_MS = 30_000;
@@ -27,6 +29,7 @@ async function fileExists(filePath: string): Promise<boolean> {
 async function binaryCanLaunch(candidate: string): Promise<boolean> {
   try {
     await execCli(candidate, ['--version'], {
+      env: buildEnrichedEnv(candidate),
       timeout: BINARY_LAUNCH_VERIFY_TIMEOUT_MS,
       windowsHide: true,
     });
@@ -69,7 +72,7 @@ function getPathEntries(): string[] {
   const delimiter = process.platform === 'win32' ? ';' : path.delimiter;
   const shellEnv = getCachedShellEnv() ?? {};
   const seen = new Set<string>();
-  return [shellEnv.PATH, process.env.PATH]
+  return [shellEnv.PATH, buildMergedCliPath(null), process.env.PATH]
     .flatMap((pathValue) => (pathValue ?? '').split(delimiter))
     .map((entry) => entry.trim())
     .filter((entry) => {
@@ -193,6 +196,7 @@ export class CodexBinaryResolver {
 
     try {
       const result = await execCli(normalizedPath, ['--version'], {
+        env: buildEnrichedEnv(normalizedPath),
         timeout: 3_000,
       });
       const version = result.stdout.trim().split(/\s+/).filter(Boolean).at(-1) ?? null;

@@ -81,6 +81,25 @@ vi.mock('@features/codex-account/renderer', async (importOriginal) => {
   };
 });
 
+const useVirtualizerMock = vi.fn(
+  (options: { count: number }) =>
+    ({
+      getVirtualItems: () =>
+        Array.from({ length: Math.min(options.count, 9) }, (_, index) => ({
+          index,
+          key: index,
+          start: index * 92,
+          size: 92,
+        })),
+      getTotalSize: () => options.count * 92,
+      measureElement: () => undefined,
+    }) as const
+);
+
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: (options: { count: number }) => useVirtualizerMock(options),
+}));
+
 import { TeamModelSelector } from '@renderer/components/team/dialogs/TeamModelSelector';
 
 describe('TeamModelSelector disabled Codex models', () => {
@@ -96,6 +115,7 @@ describe('TeamModelSelector disabled Codex models', () => {
     codexAccountHookState.startChatgptLogin.mockClear();
     codexAccountHookState.cancelChatgptLogin.mockClear();
     codexAccountHookState.logout.mockClear();
+    useVirtualizerMock.mockClear();
   });
 
   it('shows only Default while Codex runtime models are still loading', async () => {
@@ -288,7 +308,7 @@ describe('TeamModelSelector disabled Codex models', () => {
     expect(host.textContent).toContain('openai/gpt-oss-120b:free');
     expect(host.textContent).toContain('big-pickle');
     expect(host.textContent).toContain('qwen/qwen3-coder-plus');
-    expect(host.textContent).toContain('Unavailable in OpenCode');
+    expect(host.textContent).toContain('Not verified in OpenCode');
     expect(host.textContent).toContain('openai/gpt-oss-20b:free');
     expect(host.textContent).toContain('Not recommended');
     const groupLabels = Array.from(
@@ -322,6 +342,65 @@ describe('TeamModelSelector disabled Codex models', () => {
     expect(notRecommendedIndex).toBeGreaterThan(unavailableIndex);
 
     expect(host.textContent).toContain('Recommended only');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('virtualizes large OpenCode model lists instead of rendering every model tile', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const models = Array.from(
+      { length: 160 },
+      (_, index) => `openrouter/test/model-${String(index).padStart(3, '0')}`
+    );
+    storeState.cliStatus = {
+      flavor: 'agent_teams_orchestrator',
+      providers: [
+        {
+          providerId: 'opencode',
+          authMethod: 'opencode_managed',
+          backend: {
+            kind: 'opencode-cli',
+            label: 'OpenCode CLI',
+            endpointLabel: 'opencode',
+          },
+          authenticated: true,
+          supported: true,
+          capabilities: {
+            teamLaunch: true,
+          },
+          models,
+          modelVerificationState: 'idle',
+          modelAvailability: [],
+        },
+      ],
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'opencode',
+          onProviderChange: () => undefined,
+          value: '',
+          onValueChange: () => undefined,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const virtualizerOptions = useVirtualizerMock.mock.calls.at(-1)?.[0] as
+      | { count: number }
+      | undefined;
+    expect(virtualizerOptions?.count).toBeGreaterThan(80);
+    expect(host.textContent).toContain('OpenRouter');
+    expect(host.textContent).toContain('test/model-000');
+    expect(host.textContent).not.toContain('test/model-159');
 
     await act(async () => {
       root.unmount();
@@ -397,7 +476,7 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
   });
 
-  it('shows short-lived OpenCode preflight notes as selectable issue tiles', async () => {
+  it('shows short-lived OpenCode preflight notes as selectable advisory tiles', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliStatus = {
       flavor: 'agent_teams_orchestrator',
@@ -434,8 +513,8 @@ describe('TeamModelSelector disabled Codex models', () => {
           onProviderChange: () => undefined,
           value: '',
           onValueChange,
-          modelIssueReasonByValue: {
-            'openai/gpt-5.4': 'Model verification timed out',
+          modelAdvisoryReasonByValue: {
+            'opencode/big-pickle': 'big-pickle - ping not confirmed',
           },
         })
       );
@@ -443,19 +522,21 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
 
     const issueButton = Array.from(host.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('GPT-5.4')
+      button.textContent?.includes('big-pickle')
     );
     expect(issueButton).not.toBeNull();
     expect(issueButton?.getAttribute('aria-disabled')).toBe('false');
-    expect(issueButton?.textContent).toContain('Issue');
-    expect(issueButton?.getAttribute('title')).toContain('Model verification timed out');
+    expect(issueButton?.textContent).toContain('Ping not confirmed');
+    expect(issueButton?.className).toContain('border-amber-300/35');
+    expect(issueButton?.className).not.toContain('border-red-500');
+    expect(issueButton?.getAttribute('title')).toContain('ping not confirmed');
 
     await act(async () => {
       issueButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
     });
 
-    expect(onValueChange).toHaveBeenCalledWith('openai/gpt-5.4');
+    expect(onValueChange).toHaveBeenCalledWith('opencode/big-pickle');
 
     await act(async () => {
       root.unmount();

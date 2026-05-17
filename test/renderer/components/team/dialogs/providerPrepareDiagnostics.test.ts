@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildReusableProviderPrepareModelResults,
+  mergeReusableProviderPrepareModelResults,
   runProviderPrepareDiagnostics,
 } from '@renderer/components/team/dialogs/providerPrepareDiagnostics';
 import { DEFAULT_PROVIDER_MODEL_SELECTION } from '@shared/utils/providerModelSelection';
@@ -48,6 +49,75 @@ describe('runProviderPrepareDiagnostics', () => {
       'gpt-5.2-codex': {
         status: 'failed',
         line: '5.2 Codex - unavailable - Not available on this Codex native runtime',
+        warningLine: null,
+      },
+    });
+  });
+
+  it('merges reusable model results without dropping earlier cache entries', () => {
+    expect(
+      mergeReusableProviderPrepareModelResults(
+        {
+          'gpt-5.4': {
+            status: 'ready',
+            line: '5.4 - verified',
+            warningLine: null,
+          },
+        },
+        {
+          'gpt-5.4-mini': {
+            status: 'ready',
+            line: '5.4 Mini - verified',
+            warningLine: null,
+          },
+          'gpt-5.3-codex': {
+            status: 'notes',
+            line: '5.3 Codex - check failed - Model verification timed out',
+            warningLine: '5.3 Codex - check failed - Model verification timed out',
+          },
+        }
+      )
+    ).toEqual({
+      'gpt-5.4': {
+        status: 'ready',
+        line: '5.4 - verified',
+        warningLine: null,
+      },
+      'gpt-5.4-mini': {
+        status: 'ready',
+        line: '5.4 Mini - verified',
+        warningLine: null,
+      },
+    });
+  });
+
+  it('removes a stale reusable model result when the latest result is advisory', () => {
+    expect(
+      mergeReusableProviderPrepareModelResults(
+        {
+          'gpt-5.4': {
+            status: 'ready',
+            line: '5.4 - verified',
+            warningLine: null,
+          },
+          'gpt-5.2-codex': {
+            status: 'failed',
+            line: '5.2 Codex - unavailable - Not available on this Codex native runtime',
+            warningLine: null,
+          },
+        },
+        {
+          'gpt-5.2-codex': {
+            status: 'notes',
+            line: '5.2 Codex - check failed - Model verification timed out',
+            warningLine: '5.2 Codex - check failed - Model verification timed out',
+          },
+        }
+      )
+    ).toEqual({
+      'gpt-5.4': {
+        status: 'ready',
+        line: '5.4 - verified',
         warningLine: null,
       },
     });

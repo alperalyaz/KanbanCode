@@ -60,13 +60,18 @@ import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';
 import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import {
   AlertTriangle,
+  ChevronRight,
   Clock,
   Code,
   Columns3,
+  Expand,
   FolderOpen,
   GitBranch,
   History,
+  MessageSquare,
+  MoreHorizontal,
   Network,
+  Paperclip,
   Pencil,
   Play,
   Plus,
@@ -176,6 +181,7 @@ interface CreateTaskDialogState {
 
 const TEAM_PENDING_REPLY_REFRESH_DELAY_MS = 10_000;
 const MEMBER_ROSTER_HYDRATION_RETRY_DELAY_MS = 1_200;
+const FLOATING_COMPOSER_SCROLL_RESERVE_BASE_PX = 200;
 
 function getSummaryKnownTeammateCount(summary: TeamSummary | undefined): number {
   if (!summary) {
@@ -342,59 +348,107 @@ const SkeletonPill = ({ className }: SkeletonClassNameProps): React.JSX.Element 
   />
 );
 
+const TeamLoadingMessageComposerSkeleton = (): React.JSX.Element => (
+  <div className="relative mb-1.5 pb-1.5" aria-hidden="true">
+    <div className="mb-0">
+      <div className="flex items-center gap-2">
+        <span className="inline-flex size-[22px] shrink-0 items-center justify-center rounded p-1 text-[var(--color-text-muted)] opacity-70">
+          <Paperclip size={14} />
+        </span>
+        <SkeletonPill className="h-3 w-20 rounded bg-yellow-500/20" />
+        <div className="ml-auto mr-[15px] inline-flex h-[26px] shrink-0 items-center overflow-hidden rounded-b-none rounded-t-[1.35rem] border border-b-0 border-[var(--color-border)] bg-[var(--color-surface-raised)]">
+          <div className="flex h-full items-center gap-1.5 border-r border-r-[var(--color-border)] px-2.5">
+            <SkeletonPill className="size-2 bg-[var(--skeleton-base-dim)]" />
+            <SkeletonPill className="h-3 w-16 bg-[var(--skeleton-base-dim)]" />
+            <SkeletonPill className="size-3 rounded bg-[var(--skeleton-base-dim)]" />
+          </div>
+          <div className="flex h-full items-center gap-1.5 px-2.5">
+            <SkeletonPill className="h-4 w-14 bg-[var(--skeleton-base-dim)]" />
+            <SkeletonPill className="size-3 rounded bg-[var(--skeleton-base-dim)]" />
+          </div>
+        </div>
+      </div>
+    </div>
+    <div className="relative z-[2]">
+      <div className="message-composer-shell relative h-[98px] overflow-hidden rounded-md border border-transparent bg-[var(--color-surface-raised)] shadow-[0_8px_24px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.03)]">
+        <div className="pointer-events-none absolute inset-0 rounded-md border border-[var(--color-border-emphasis)]" />
+        <SkeletonPill className="absolute left-3 top-3 h-3 w-[62%] rounded bg-[var(--skeleton-base-dim)]" />
+        <SkeletonPill className="absolute left-3 top-8 h-3 w-[42%] rounded bg-[var(--skeleton-base-dim)]" />
+        <SkeletonPill className="absolute bottom-2 left-2 h-5 w-[68px] border border-[var(--color-border)] bg-[var(--skeleton-base-dim)]" />
+        <div className="absolute bottom-2 right-2 flex items-center gap-2">
+          <SkeletonPill className="size-[26px] bg-[var(--skeleton-base-dim)]" />
+          <SkeletonPill className="h-[30px] w-[72px] bg-blue-600/35" />
+        </div>
+      </div>
+    </div>
+    <div className="mt-1 flex items-start justify-between gap-2">
+      <SkeletonPill className="h-3 w-56 max-w-[68%] rounded bg-[var(--skeleton-base-dim)]" />
+      <SkeletonPill className="h-3 w-12 rounded bg-[var(--skeleton-base-dim)]" />
+    </div>
+  </div>
+);
+
 const TeamLoadingSidebarSkeleton = (): React.JSX.Element => (
   <aside
     className="flex size-full min-h-0 flex-col overflow-hidden bg-[var(--color-surface)]"
     aria-label="Loading team sidebar"
   >
-    <div className="shrink-0 px-3 py-2">
-      <div className="-mx-3 flex min-h-9 items-center gap-3 bg-[var(--color-section-bg)] px-4">
-        <SkeletonPill className="size-4 rounded" />
-        <SkeletonPill className="h-4 w-16" />
-        <SkeletonPill className="h-5 w-8" />
-        <SkeletonPill className="ml-auto size-5 rounded" />
-      </div>
-      <div className="mt-3 flex items-center gap-2">
-        <SkeletonPill className="size-4 rounded" />
-        <SkeletonPill className="h-3.5 w-44" />
-      </div>
-    </div>
-    <div className="h-px shrink-0 bg-[var(--color-border)]" />
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
-      <div className="mb-3 flex min-h-9 items-center gap-3">
-        <SkeletonPill className="size-4 rounded" />
-        <SkeletonPill className="h-4 w-24" />
-        <SkeletonPill className="h-5 w-8" />
-        <div className="ml-auto flex items-center gap-3">
-          <SkeletonPill className="size-5 rounded" />
-          <SkeletonPill className="size-5 rounded" />
-        </div>
-      </div>
-      <div className="mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-3">
-        <SkeletonPill className="h-4 w-52" />
-        <SkeletonPill className="mt-2 h-4 w-40" />
-        <div className="mt-7 flex items-center gap-2">
-          <SkeletonPill className="h-6 w-12" />
-          <SkeletonPill className="h-6 w-16" />
-          <SkeletonPill className="h-6 w-20" />
-          <SkeletonPill className="ml-auto size-8 rounded-full" />
-        </div>
-      </div>
-      <div className="space-y-3 overflow-hidden">
-        {[0, 1, 2].map((index) => (
-          <div
-            key={index}
-            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-sidebar)] p-3"
-          >
-            <div className="flex items-center gap-2">
-              <SkeletonPill className="h-5 w-12" />
-              <SkeletonPill className="h-3 w-16" />
-              <SkeletonPill className="ml-auto h-3 w-12" />
-            </div>
-            <SkeletonPill className="mt-5 h-4 w-[88%]" />
-            <SkeletonPill className="mt-2 h-4 w-[72%]" />
+    <div className="shrink-0 overflow-hidden px-3">
+      <section className="min-w-0">
+        <div className="relative -mx-3 flex min-h-9 w-[calc(100%+1.5rem)] items-stretch py-0">
+          <div className="absolute inset-0 z-0 bg-[var(--color-section-bg)]" />
+          <div className="relative z-10 flex min-w-0 flex-1 basis-0 flex-wrap items-center gap-2 gap-y-1 py-1 pl-4 pr-1">
+            <ChevronRight
+              size={14}
+              className="shrink-0 text-[var(--color-text-muted)] transition-transform duration-150"
+            />
+            <SkeletonPill className="h-4 w-14" />
+            <SkeletonPill className="h-5 w-14" />
+            <span className="pointer-events-auto ml-auto inline-flex size-6 items-center justify-center rounded text-[var(--color-text-muted)] opacity-70">
+              <Expand size={14} />
+            </span>
+            <span className="flex min-w-0 basis-full items-center gap-1.5 opacity-70">
+              <MessageSquare size={12} className="shrink-0 text-[var(--color-text-muted)]" />
+              <SkeletonPill className="h-3 w-12 rounded" />
+              <SkeletonPill className="h-3 w-2 rounded" />
+              <SkeletonPill className="h-3 min-w-0 flex-1 rounded" />
+            </span>
           </div>
-        ))}
+        </div>
+      </section>
+    </div>
+    <div className="bg-[var(--color-text-muted)]/35 h-px shrink-0" />
+    <div className="min-h-0 flex-1">
+      <div className="flex size-full flex-col overflow-hidden bg-[var(--color-surface-sidebar)]">
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface-sidebar)] px-3 py-2">
+          <MessageSquare size={14} className="shrink-0 text-[var(--color-text-muted)]" />
+          <SkeletonPill className="h-4 w-24" />
+          <SkeletonPill className="h-5 w-8" />
+          <span className="ml-auto inline-flex size-7 items-center justify-center rounded text-[var(--color-text-muted)] opacity-70">
+            <MoreHorizontal size={15} />
+          </span>
+        </div>
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden pb-14 pr-3 pt-2">
+          <div className="pl-3">
+            <TeamLoadingMessageComposerSkeleton />
+          </div>
+          <div className="space-y-3 overflow-hidden pl-3">
+            {[0, 1, 2].map((index) => (
+              <div
+                key={index}
+                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-sidebar)] p-3"
+              >
+                <div className="flex items-center gap-2">
+                  <SkeletonPill className="h-5 w-12" />
+                  <SkeletonPill className="h-3 w-16" />
+                  <SkeletonPill className="ml-auto h-3 w-12" />
+                </div>
+                <SkeletonPill className="mt-5 h-4 w-[88%]" />
+                <SkeletonPill className="mt-2 h-4 w-[72%]" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   </aside>
@@ -431,9 +485,10 @@ const TeamLoadingSectionHeader = ({
       )}
     />
     <div className="relative z-10 flex min-w-0 flex-1 items-center gap-2 pl-4">
-      <span
+      <ChevronRight
+        size={14}
         className={cn(
-          'size-0 border-y-[5px] border-l-[6px] border-y-transparent border-l-[var(--color-text-muted)] opacity-80',
+          'shrink-0 text-[var(--color-text-muted)] transition-transform duration-150',
           open && 'rotate-90'
         )}
       />
@@ -496,7 +551,7 @@ const TeamContentLoadingSkeleton = ({
           <SkeletonPill className="h-5 w-24 rounded-md" />
           <SkeletonPill className="h-3 w-16" />
         </div>
-        <SkeletonPill className="-mt-2 h-8 w-36 shrink-0 rounded-full border border-cyan-300/25 bg-cyan-500/10" />
+        <SkeletonPill className="-mt-2 h-8 w-24 shrink-0 rounded-full border border-cyan-300/25 bg-cyan-500/10" />
       </div>
     </div>
 
@@ -504,7 +559,7 @@ const TeamContentLoadingSkeleton = ({
       <TeamProvisioningBanner teamName={teamName} />
     </div>
 
-    <section className="min-w-0">
+    <section className="min-w-0 [&:not(:last-child)]:mb-[10px]">
       <TeamLoadingSectionHeader
         icon={<Users size={14} />}
         titleWidth="w-20"
@@ -513,14 +568,17 @@ const TeamContentLoadingSkeleton = ({
       />
       <div className="mt-3 grid grid-cols-1 gap-1 pb-4">
         {TEAM_LOADING_MEMBER_ACCENTS.map((accent, index) => (
-          <div key={accent} className="flex min-h-[52px] min-w-0 items-center gap-3">
-            <div className="relative size-7 shrink-0">
+          <div key={accent} className="flex min-h-[52px] min-w-0 items-center gap-2.5">
+            <div className="relative size-[34px] shrink-0">
               <div
                 className="absolute inset-0 rounded-full border-2 bg-[var(--color-surface-raised)]"
-                style={{ borderColor: accent }}
+                style={{
+                  borderColor: accent,
+                  boxShadow: isLight ? 'none' : `0 0 0 1px ${accent}26`,
+                }}
               />
               <div
-                className="absolute bottom-0 right-0 size-2 rounded-full border border-[var(--color-surface)]"
+                className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-[var(--color-surface)]"
                 style={{ backgroundColor: accent }}
               />
             </div>
@@ -535,19 +593,19 @@ const TeamContentLoadingSkeleton = ({
             <div className="hidden shrink-0 items-center gap-3 sm:flex">
               <SkeletonPill className="h-[18px] w-[62px]" />
               <SkeletonPill className="h-[18px] w-[62px]" />
-              <SkeletonPill className="size-4 rounded" />
-              <SkeletonPill className="size-4 rounded" />
+              <SkeletonPill className="size-[21px] rounded" />
+              <SkeletonPill className="size-[21px] rounded" />
             </div>
           </div>
         ))}
       </div>
     </section>
 
-    <section className="min-w-0">
+    <section className="min-w-0 [&:not(:last-child)]:mb-[10px]">
       <TeamLoadingSectionHeader icon={<History size={14} />} titleWidth="w-24" open={false} />
     </section>
 
-    <section className="mt-0 min-w-0">
+    <section className="min-w-0 [&:not(:last-child)]:mb-[10px]">
       <TeamLoadingSectionHeader
         icon={<Columns3 size={14} />}
         titleWidth="w-24"
@@ -564,15 +622,15 @@ const TeamContentLoadingSkeleton = ({
           <SkeletonBlock className="h-9 w-28" />
         </div>
       </div>
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
+      <div className="mt-4 grid grid-cols-12 gap-3">
         {TEAM_LOADING_KANBAN_COLUMNS.map((column) => (
           <div
             key={column.title}
-            className="min-h-44 overflow-hidden rounded-lg border border-[var(--color-border)]"
+            className="col-span-4 flex h-[400px] min-h-0 flex-col overflow-hidden rounded-md border border-[var(--color-border)]"
             style={{ backgroundColor: column.bodyBg }}
           >
             <div
-              className="flex h-11 items-center gap-3 px-4"
+              className="flex shrink-0 items-center gap-2 px-3 py-2"
               style={{ backgroundColor: column.headerBg }}
             >
               <SkeletonPill className="size-4 rounded" />
@@ -580,9 +638,9 @@ const TeamContentLoadingSkeleton = ({
                 className={cn('h-4', column.title === 'IN PROGRESS' ? 'w-32' : 'w-20')}
               />
             </div>
-            <div className="p-4">
+            <div className="min-h-0 flex-1 overflow-hidden p-2">
               <div
-                className="flex h-14 items-center justify-center rounded-lg border border-dashed border-[var(--color-border)]"
+                className="flex h-12 items-center justify-center rounded-md border border-dashed border-[var(--color-border)]"
                 style={{
                   backgroundColor: 'color-mix(in srgb, var(--color-surface) 35%, transparent)',
                 }}
@@ -1356,8 +1414,14 @@ export const TeamDetailView = memo(function TeamDetailView({
   const [messagesPanelMountPoint, setMessagesPanelMountPoint] = useState<HTMLDivElement | null>(
     null
   );
+  const [floatingComposerHeight, setFloatingComposerHeight] = useState(0);
   const provisioningBannerRef = useRef<HTMLDivElement>(null);
   const wasProvisioningRef = useRef(false);
+  const handleFloatingComposerHeightChange = useCallback((height: number) => {
+    setFloatingComposerHeight((currentHeight) =>
+      currentHeight === height ? currentHeight : height
+    );
+  }, []);
   const handleOpenGraphTab = useCallback(() => {
     const state = useStore.getState();
     const displayName = state.teamByName[teamName]?.displayName ?? teamName;
@@ -1409,152 +1473,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     window.addEventListener('toggle-team-graph', handler);
     return () => window.removeEventListener('toggle-team-graph', handler);
   }, [handleOpenGraphTab, teamName]);
-
-  // Listen for graph tab actions (open task, send message)
-  useEffect(() => {
-    const onOpenTask = (e: Event) => {
-      const { teamName: tn, taskId } = (e as CustomEvent).detail ?? {};
-      if (tn !== teamName || !data) return;
-      const task = data.tasks.find((t: { id: string }) => t.id === taskId);
-      if (task) setSelectedTask(task);
-    };
-    const onSendMsg = (e: Event) => {
-      const { teamName: tn, memberName } = (e as CustomEvent).detail ?? {};
-      if (tn !== teamName) return;
-      setSendDialogRecipient(memberName);
-      setSendDialogDefaultText(undefined);
-      setSendDialogDefaultChip(undefined);
-      setSendDialogOpen(true);
-    };
-    const onOpenProfile = (e: Event) => {
-      const {
-        teamName: tn,
-        memberName,
-        initialTab,
-        initialActivityFilter,
-      } = (e as CustomEvent).detail ?? {};
-      if (tn !== teamName || !data) return;
-      const member = members.find((m: { name: string }) => m.name === memberName);
-      if (member) {
-        setSelectedMember(member);
-        setSelectedMemberView({
-          initialTab,
-          initialActivityFilter,
-        });
-      }
-    };
-    const onCreateTask = (e: Event) => {
-      const { teamName: tn, owner } = (e as CustomEvent).detail ?? {};
-      if (tn !== teamName) return;
-      openCreateTaskDialog('', '', owner ?? '');
-    };
-    window.addEventListener('graph:open-task', onOpenTask);
-    window.addEventListener('graph:send-message', onSendMsg);
-    window.addEventListener('graph:open-profile', onOpenProfile);
-    window.addEventListener('graph:create-task', onCreateTask);
-
-    // Task action events from graph
-    const taskAction = (handler: (taskId: string) => void) => (e: Event) => {
-      const { teamName: tn, taskId } = (e as CustomEvent).detail ?? {};
-      if (tn !== teamName || !taskId) return;
-      handler(taskId);
-    };
-    const onStartTask = taskAction((taskId) => {
-      void (async () => {
-        try {
-          const result = await startTaskByUser(teamName, taskId);
-          if (data?.isAlive) {
-            const task = data.tasks.find((t: { id: string }) => t.id === taskId);
-            try {
-              if (result.notifiedOwner && task?.owner) {
-                await api.teams.processSend(
-                  teamName,
-                  `Task ${formatTaskDisplayLabel(task)} "${task.subject}" has started. Please begin working on it.`
-                );
-              }
-            } catch {
-              /* best-effort */
-            }
-          }
-        } catch {
-          /* error via store */
-        }
-      })();
-    });
-    const onCompleteTask = taskAction((taskId) => {
-      void (async () => {
-        try {
-          await updateTaskStatus(teamName, taskId, 'completed');
-        } catch {
-          /* */
-        }
-      })();
-    });
-    const onApproveTask = taskAction((taskId) => {
-      void (async () => {
-        try {
-          await updateKanban(teamName, taskId, { op: 'set_column', column: 'approved' });
-        } catch {
-          /* */
-        }
-      })();
-    });
-    const onRequestReviewTask = taskAction((taskId) => {
-      void (async () => {
-        try {
-          await requestReview(teamName, taskId);
-        } catch {
-          /* */
-        }
-      })();
-    });
-    const onRequestChangesTask = taskAction((taskId) => {
-      setRequestChangesTaskId(taskId);
-    });
-    const onCancelTask = taskAction((taskId) => {
-      void (async () => {
-        try {
-          await updateTaskStatus(teamName, taskId, 'pending');
-        } catch {
-          /* */
-        }
-      })();
-    });
-    const onMoveBackToDoneTask = taskAction((taskId) => {
-      void (async () => {
-        try {
-          await updateKanban(teamName, taskId, { op: 'remove' });
-          await updateTaskStatus(teamName, taskId, 'completed');
-        } catch {
-          /* */
-        }
-      })();
-    });
-    const onDeleteTaskGraph = taskAction((taskId) => handleDeleteTask(taskId));
-
-    window.addEventListener('graph:start-task', onStartTask);
-    window.addEventListener('graph:complete-task', onCompleteTask);
-    window.addEventListener('graph:approve-task', onApproveTask);
-    window.addEventListener('graph:request-review', onRequestReviewTask);
-    window.addEventListener('graph:request-changes', onRequestChangesTask);
-    window.addEventListener('graph:cancel-task', onCancelTask);
-    window.addEventListener('graph:move-back-to-done', onMoveBackToDoneTask);
-    window.addEventListener('graph:delete-task', onDeleteTaskGraph);
-    return () => {
-      window.removeEventListener('graph:open-task', onOpenTask);
-      window.removeEventListener('graph:send-message', onSendMsg);
-      window.removeEventListener('graph:open-profile', onOpenProfile);
-      window.removeEventListener('graph:create-task', onCreateTask);
-      window.removeEventListener('graph:start-task', onStartTask);
-      window.removeEventListener('graph:complete-task', onCompleteTask);
-      window.removeEventListener('graph:approve-task', onApproveTask);
-      window.removeEventListener('graph:request-review', onRequestReviewTask);
-      window.removeEventListener('graph:request-changes', onRequestChangesTask);
-      window.removeEventListener('graph:cancel-task', onCancelTask);
-      window.removeEventListener('graph:move-back-to-done', onMoveBackToDoneTask);
-      window.removeEventListener('graph:delete-task', onDeleteTaskGraph);
-    };
-  });
 
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -2548,6 +2466,7 @@ export const TeamDetailView = memo(function TeamDetailView({
       onReplyToMessage: handleReplyToMessage,
       onRestartTeam: handleRestartTeam,
       onTaskIdClick: handleTaskIdClick,
+      onFloatingComposerHeightChange: handleFloatingComposerHeightChange,
       inlineScrollContainerRef: contentRef,
     }),
     [
@@ -2560,6 +2479,7 @@ export const TeamDetailView = memo(function TeamDetailView({
       handleRestartTeam,
       handleSelectMember,
       handleTaskIdClick,
+      handleFloatingComposerHeightChange,
       messagesPanelTasks,
       messagesPanelMountPoint,
       pendingRepliesByMember,
@@ -2695,6 +2615,11 @@ export const TeamDetailView = memo(function TeamDetailView({
     const headerColorSet = data.config.color
       ? getTeamColorSet(data.config.color)
       : nameColorSet(data.config.name);
+    const shouldReserveFloatingComposerScrollSpace =
+      messagesPanelMode === 'floating-composer' && isThisTabActive && isPaneFocused && !graphOpen;
+    const floatingComposerScrollReserve = shouldReserveFloatingComposerScrollSpace
+      ? FLOATING_COMPOSER_SCROLL_RESERVE_BASE_PX + floatingComposerHeight
+      : undefined;
 
     return (
       <>
@@ -2737,6 +2662,7 @@ export const TeamDetailView = memo(function TeamDetailView({
             <div
               ref={contentRef}
               className="size-full min-w-0 overflow-y-auto overflow-x-hidden p-4"
+              style={{ paddingBottom: floatingComposerScrollReserve }}
               data-team-name={teamName}
             >
               <div className="relative -mx-4 -mt-4 mb-3 overflow-hidden border-b border-[var(--color-border)] px-4 py-3">
@@ -2967,24 +2893,28 @@ export const TeamDetailView = memo(function TeamDetailView({
                     </Button>
                   </div>
                 }
+                contentWrapperClassName="-mx-[calc(1rem-5px)] w-[calc(100%+2rem-10px)]"
               >
-                <TeamMemberListBridge
-                  teamName={teamName}
-                  members={membersWithLiveBranches}
-                  expectedTeammateCount={activeTeammateCount}
-                  memberTaskCounts={memberTaskCounts}
-                  taskMap={taskMap}
-                  pendingRepliesByMember={pendingRepliesByMember}
-                  isTeamAlive={data.isAlive}
-                  isTeamProvisioning={isTeamProvisioning}
-                  launchParams={launchParams}
-                  onMemberClick={handleSelectMember}
-                  onSendMessage={handleSendMessageToMember}
-                  onAssignTask={handleAssignTaskToMember}
-                  onOpenTask={handleOpenTaskById}
-                  onRestartMember={handleRestartMember}
-                  onSkipMemberForLaunch={handleSkipMemberForLaunch}
-                />
+                <div className="px-[calc(1rem-5px)]">
+                  <TeamMemberListBridge
+                    teamName={teamName}
+                    members={membersWithLiveBranches}
+                    expectedTeammateCount={activeTeammateCount}
+                    memberTaskCounts={memberTaskCounts}
+                    taskMap={taskMap}
+                    pendingRepliesByMember={pendingRepliesByMember}
+                    isRosterLoading={loading}
+                    isTeamAlive={data.isAlive}
+                    isTeamProvisioning={isTeamProvisioning}
+                    launchParams={launchParams}
+                    onMemberClick={handleSelectMember}
+                    onSendMessage={handleSendMessageToMember}
+                    onAssignTask={handleAssignTaskToMember}
+                    onOpenTask={handleOpenTaskById}
+                    onRestartMember={handleRestartMember}
+                    onSkipMemberForLaunch={handleSkipMemberForLaunch}
+                  />
+                </div>
               </CollapsibleTeamSection>
 
               <CollapsibleTeamSection
@@ -3665,26 +3595,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                 isThisTabActive &&
                 isPaneFocused
               }
-              onSendMessage={(memberName) => {
-                setSendDialogRecipient(memberName);
-                setSendDialogDefaultText(undefined);
-                setSendDialogDefaultChip(undefined);
-                setSendDialogOpen(true);
-              }}
-              onOpenTaskDetail={(taskId) => {
-                const task = data.tasks.find((t) => t.id === taskId);
-                if (task) setSelectedTask(task);
-              }}
-              onOpenMemberProfile={(memberName, options) => {
-                const member = members.find((m) => m.name === memberName);
-                if (member) {
-                  setSelectedMember(member);
-                  setSelectedMemberView({
-                    initialTab: options?.initialTab,
-                    initialActivityFilter: options?.initialActivityFilter,
-                  });
-                }
-              }}
             />
           </Suspense>
         )}

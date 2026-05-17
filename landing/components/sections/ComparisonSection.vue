@@ -305,6 +305,7 @@ function getStatusIcon(status: string): string {
 <style scoped>
 .comparison-section {
   position: relative;
+  --comparison-sticky-header-offset: 76px;
 }
 
 .comparison-section__header {
@@ -354,12 +355,13 @@ function getStatusIcon(status: string): string {
 
 /* Header */
 .comparison-table thead {
-  position: sticky;
-  top: 64px;
-  z-index: 2;
+  position: static;
 }
 
 .comparison-table__th {
+  position: sticky;
+  top: var(--comparison-sticky-header-offset);
+  z-index: 3;
   padding: 16px 12px;
   text-align: center;
   font-weight: 600;
@@ -382,7 +384,7 @@ function getStatusIcon(status: string): string {
 .comparison-table__th--highlight {
   color: #00f0ff;
   background: rgba(0, 18, 20, 0.97);
-  position: relative;
+  z-index: 4;
 }
 
 .comparison-table__th--highlight::after {
@@ -624,6 +626,10 @@ function getStatusIcon(status: string): string {
 
 /* Responsive */
 @media (max-width: 960px) {
+  .comparison-section {
+    --comparison-sticky-header-offset: 60px;
+  }
+
   .comparison-table__wrap {
     overflow-x: auto;
   }
@@ -638,6 +644,12 @@ function getStatusIcon(status: string): string {
 
   .comparison-section__subtitle {
     font-size: 1rem;
+  }
+}
+
+@media (min-width: 1600px) {
+  .comparison-section {
+    --comparison-sticky-header-offset: 124px;
   }
 }
 

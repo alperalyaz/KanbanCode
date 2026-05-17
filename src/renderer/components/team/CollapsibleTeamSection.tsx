@@ -85,7 +85,11 @@ export const CollapsibleTeamSection = memo(function CollapsibleTeamSection({
   }, [isOpen, onOpenChange]);
 
   return (
-    <section ref={sectionRef} data-section-id={sectionId} className="min-w-0">
+    <section
+      ref={sectionRef}
+      data-section-id={sectionId}
+      className="min-w-0 [&:not(:last-child)]:mb-[10px]"
+    >
       <div
         className={cn(
           'relative -mx-[calc(1rem-5px)] flex min-h-9 w-[calc(100%+2rem-10px)] items-stretch py-1.5',

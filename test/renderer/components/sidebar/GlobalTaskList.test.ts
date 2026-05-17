@@ -83,8 +83,15 @@ vi.mock('../../../../src/renderer/components/sidebar/TaskContextMenu', () => ({
 }));
 
 vi.mock('../../../../src/renderer/components/sidebar/SidebarTaskItem', () => ({
-  SidebarTaskItem: ({ task }: { task: GlobalTask }) =>
-    React.createElement('div', { 'data-testid': 'sidebar-task-item' }, task.subject),
+  SidebarTaskItem: ({ task, hideProjectName }: { task: GlobalTask; hideProjectName?: boolean }) =>
+    React.createElement(
+      'div',
+      {
+        'data-testid': 'sidebar-task-item',
+        'data-hide-project-name': hideProjectName ? 'true' : 'false',
+      },
+      task.subject
+    ),
 }));
 
 vi.mock('../../../../src/renderer/components/sidebar/TaskFiltersPopover', () => ({
@@ -238,6 +245,31 @@ describe('GlobalTaskList project grouping', () => {
 
     expect(visibleSubjects(host)).toEqual(['Task 1', 'Task 2', 'Task 3', 'Task 4', 'Task 5']);
     expect(findButton(host, 'Show less')).toBeNull();
+
+    await act(async () => {
+      root.unmount();
+      await flushMicrotasks();
+    });
+  });
+
+  it('hides project labels in task cards when grouped by project', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.globalTasks = [makeTask(1), makeTask(2)];
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(GlobalTaskList));
+      await flushMicrotasks();
+    });
+
+    expect(
+      Array.from(host.querySelectorAll('[data-testid="sidebar-task-item"]')).map((node) =>
+        node.getAttribute('data-hide-project-name')
+      )
+    ).toEqual(['true', 'true']);
 
     await act(async () => {
       root.unmount();

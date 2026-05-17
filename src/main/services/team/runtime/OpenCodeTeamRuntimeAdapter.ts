@@ -100,6 +100,13 @@ const SECRET_FLAG_PATTERN =
   /(--(?:api-key|token|password|secret|authorization|auth-token)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi;
 const BEARER_TOKEN_PATTERN = /\bBearer\s+\S+/gi;
 const SECRET_KEY_PATTERN = /\bsk-[A-Za-z0-9_-]{16,}\b/g;
+const OPEN_CODE_CAPABILITY_SNAPSHOT_REFRESH_RETRY_WARNING =
+  'OpenCode capability snapshot changed between readiness and launch; refreshed readiness and retried once.';
+const OPEN_CODE_CAPABILITY_SNAPSHOT_MISMATCH_MARKERS = [
+  'Bridge server capability snapshot mismatch',
+  'OpenCode bridge capability snapshot precondition mismatch',
+  'OpenCode bridge capability snapshot mismatch',
+];
 
 function resolveOpenCodeRuntimeSettlementMode(
   input: Pick<OpenCodeTeamRuntimeMessageInput, 'messageKind'>
@@ -184,7 +191,7 @@ export class OpenCodeTeamRuntimeAdapter implements TeamLaunchRuntimeAdapter {
       ]);
     }
 
-    const runtimeSnapshot = skipReadinessPreflight
+    let runtimeSnapshot = skipReadinessPreflight
       ? null
       : (this.bridge.getLastOpenCodeRuntimeSnapshot?.(input.cwd) ?? null);
     if (
@@ -197,22 +204,55 @@ export class OpenCodeTeamRuntimeAdapter implements TeamLaunchRuntimeAdapter {
       ]);
     }
     this.lastProjectPathByTeamName.set(input.teamName, input.cwd);
-    const data = await this.bridge.launchOpenCodeTeam({
+    const buildLaunchCommand = (
+      snapshot: OpenCodeBridgeRuntimeSnapshot | null,
+      model: string
+    ): OpenCodeLaunchTeamCommandBody => ({
       runId: input.runId,
       laneId: input.laneId?.trim() || 'primary',
       teamId: input.teamName,
       teamName: input.teamName,
       projectPath: input.cwd,
-      selectedModel,
+      selectedModel: model,
       members: input.expectedMembers.map((member) => ({
         name: member.name,
         role: member.role?.trim() || member.workflow?.trim() || 'teammate',
         prompt: buildMemberBootstrapPrompt(input, member),
       })),
       leadPrompt: input.prompt?.trim() ?? '',
-      expectedCapabilitySnapshotId: runtimeSnapshot?.capabilitySnapshotId ?? null,
+      expectedCapabilitySnapshotId: snapshot?.capabilitySnapshotId ?? null,
       manifestHighWatermark: null,
     });
+
+    let data = await this.bridge.launchOpenCodeTeam(
+      buildLaunchCommand(runtimeSnapshot, selectedModel)
+    );
+    if (!skipReadinessPreflight && isOpenCodeCapabilitySnapshotMismatchLaunchData(data)) {
+      const refreshed = await this.prepare(input);
+      if (!refreshed.ok) {
+        return blockedLaunchResult(
+          input,
+          refreshed.reason,
+          mergeDiagnostics(data.diagnostics.map(formatOpenCodeBridgeDiagnostic), [
+            OPEN_CODE_CAPABILITY_SNAPSHOT_REFRESH_RETRY_WARNING,
+            ...refreshed.diagnostics,
+          ]),
+          mergeDiagnostics(launchWarnings, refreshed.warnings)
+        );
+      }
+      selectedModel = refreshed.modelId ?? selectedModel;
+      const refreshedSnapshot = this.bridge.getLastOpenCodeRuntimeSnapshot?.(input.cwd) ?? null;
+      if (refreshedSnapshot?.capabilitySnapshotId) {
+        runtimeSnapshot = refreshedSnapshot;
+        launchWarnings = mergeDiagnostics(launchWarnings, [
+          ...refreshed.warnings,
+          OPEN_CODE_CAPABILITY_SNAPSHOT_REFRESH_RETRY_WARNING,
+        ]);
+        data = await this.bridge.launchOpenCodeTeam(
+          buildLaunchCommand(runtimeSnapshot, selectedModel)
+        );
+      }
+    }
 
     return mapOpenCodeLaunchDataToRuntimeResult(input, data, launchWarnings);
   }
@@ -1051,6 +1091,30 @@ function formatOpenCodeBridgeDiagnostic(diagnostic: {
   message: string;
 }): string {
   return `${diagnostic.severity}:${diagnostic.code}: ${diagnostic.message}`;
+}
+
+function isOpenCodeCapabilitySnapshotMismatchLaunchData(
+  data: OpenCodeLaunchTeamCommandData
+): boolean {
+  if (
+    data.diagnostics.some(
+      (diagnostic) =>
+        isOpenCodeCapabilitySnapshotMismatchText(diagnostic.message) ||
+        isOpenCodeCapabilitySnapshotMismatchText(diagnostic.code)
+    )
+  ) {
+    return true;
+  }
+  return Object.values(data.members).some((member) =>
+    (member.diagnostics ?? []).some(isOpenCodeCapabilitySnapshotMismatchText)
+  );
+}
+
+function isOpenCodeCapabilitySnapshotMismatchText(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return OPEN_CODE_CAPABILITY_SNAPSHOT_MISMATCH_MARKERS.some((marker) =>
+    normalized.includes(marker.toLowerCase())
+  );
 }
 
 function isOpenCodeLaunchTimingDiagnostic(diagnostic: string): boolean {

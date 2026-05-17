@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { useTheme } from '@renderer/hooks/useTheme';
 import {
   deriveReviewActivityTimerAnchor,
   deriveWorkActivityTimerAnchor,
@@ -38,6 +39,7 @@ interface MemberListProps {
   memberRuntimeEntries?: Map<string, TeamAgentRuntimeEntry>;
   runtimeRunId?: string | null;
   isLaunchSettling?: boolean;
+  isRosterLoading?: boolean;
   isTeamAlive?: boolean;
   isTeamProvisioning?: boolean;
   leadActivity?: LeadActivityState;
@@ -321,6 +323,7 @@ function areMemberListPropsEqual(
     areMemberRuntimeEntriesEquivalent(prev.memberRuntimeEntries, next.memberRuntimeEntries) &&
     prev.runtimeRunId === next.runtimeRunId &&
     prev.isLaunchSettling === next.isLaunchSettling &&
+    prev.isRosterLoading === next.isRosterLoading &&
     prev.isTeamAlive === next.isTeamAlive &&
     prev.isTeamProvisioning === next.isTeamProvisioning &&
     prev.leadActivity === next.leadActivity &&
@@ -338,6 +341,7 @@ interface MemberCardRowProps {
   member: ResolvedTeamMember;
   isRemoved: boolean;
   memberColor: string;
+  fullBleedSurface: boolean;
   currentTask: TeamTaskWithKanban | null;
   reviewTask: TeamTaskWithKanban | null;
   currentTaskTimer: MemberActivityTimerAnchor | null;
@@ -371,6 +375,7 @@ const MemberCardRow = memo(function MemberCardRow({
   member,
   isRemoved,
   memberColor,
+  fullBleedSurface,
   currentTask,
   reviewTask,
   currentTaskTimer,
@@ -418,6 +423,7 @@ const MemberCardRow = memo(function MemberCardRow({
     <MemberCard
       member={member}
       memberColor={memberColor}
+      fullBleedSurface={fullBleedSurface}
       taskCounts={taskCounts}
       isTeamAlive={isTeamAlive}
       isTeamProvisioning={isTeamProvisioning}
@@ -466,6 +472,7 @@ const MemberListLoadingSkeleton = ({
   expectedTeammateCount?: number;
 }>): React.JSX.Element => {
   const skeletonCount = getMemberLoadingSkeletonCount(expectedTeammateCount);
+  const { isLight } = useTheme();
 
   return (
     <div
@@ -477,14 +484,17 @@ const MemberListLoadingSkeleton = ({
         {Array.from({ length: skeletonCount }, (_, index) => {
           const accent = MEMBER_LOADING_ACCENTS[index] ?? MEMBER_LOADING_ACCENTS[0];
           return (
-            <div key={index} className="flex min-h-[52px] min-w-0 items-center gap-3">
-              <div className="relative size-7 shrink-0">
+            <div key={index} className="flex min-h-[52px] min-w-0 items-center gap-2.5">
+              <div className="relative size-[34px] shrink-0">
                 <div
                   className="absolute inset-0 rounded-full border-2 bg-[var(--color-surface-raised)]"
-                  style={{ borderColor: accent }}
+                  style={{
+                    borderColor: accent,
+                    boxShadow: isLight ? 'none' : `0 0 0 1px ${accent}26`,
+                  }}
                 />
                 <div
-                  className="absolute bottom-0 right-0 size-2 rounded-full border border-[var(--color-surface)]"
+                  className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-[var(--color-surface)]"
                   style={{ backgroundColor: accent }}
                 />
               </div>
@@ -523,6 +533,26 @@ const MemberListLoadingSkeleton = ({
   );
 };
 
+const MemberRosterUnavailableState = ({
+  expectedTeammateCount,
+}: Readonly<{
+  expectedTeammateCount?: number;
+}>): React.JSX.Element => {
+  const count = Number.isFinite(expectedTeammateCount)
+    ? Math.max(0, Math.floor(expectedTeammateCount ?? 0))
+    : 0;
+  const teammateLabel = count === 1 ? '1 teammate is' : `${count || 'Some'} teammates are`;
+
+  return (
+    <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-sidebar)] p-4 text-sm text-[var(--color-text-muted)]">
+      <div className="font-medium text-[var(--color-text)]">Member roster unavailable</div>
+      <div className="mt-1 text-xs">
+        {teammateLabel} known from team metadata, but roster details are missing.
+      </div>
+    </div>
+  );
+};
+
 export const MemberList = memo(function MemberList({
   teamName = '__unknown_team__',
   members,
@@ -534,6 +564,7 @@ export const MemberList = memo(function MemberList({
   memberRuntimeEntries,
   runtimeRunId,
   isLaunchSettling,
+  isRosterLoading,
   isTeamAlive,
   isTeamProvisioning,
   leadActivity,
@@ -724,12 +755,19 @@ export const MemberList = memo(function MemberList({
   );
 
   const expectsTeammates = (expectedTeammateCount ?? 0) > 0;
+  const canStillHydrateExpectedTeammates =
+    Boolean(isRosterLoading || isTeamProvisioning) ||
+    (isTeamAlive !== false && Boolean(isLaunchSettling));
+  const shouldShowExpectedTeammateSkeleton = expectsTeammates && canStillHydrateExpectedTeammates;
   const hasOnlyLeadWhileTeammatesLoad =
-    expectsTeammates && activeTeammateCount === 0 && removedMembers.length === 0;
+    shouldShowExpectedTeammateSkeleton && activeTeammateCount === 0 && removedMembers.length === 0;
 
-  if (members.length === 0 || hasOnlyLeadWhileTeammatesLoad) {
-    if (expectsTeammates) {
+  if (members.length === 0) {
+    if (shouldShowExpectedTeammateSkeleton) {
       return <MemberListLoadingSkeleton expectedTeammateCount={expectedTeammateCount} />;
+    }
+    if (expectsTeammates) {
+      return <MemberRosterUnavailableState expectedTeammateCount={expectedTeammateCount} />;
     }
 
     return (
@@ -737,6 +775,10 @@ export const MemberList = memo(function MemberList({
         Solo team - lead only
       </div>
     );
+  }
+
+  if (hasOnlyLeadWhileTeammatesLoad) {
+    return <MemberListLoadingSkeleton expectedTeammateCount={expectedTeammateCount} />;
   }
 
   return (
@@ -787,6 +829,7 @@ export const MemberList = memo(function MemberList({
               member={member}
               isRemoved={false}
               memberColor={colorMap.get(member.name) ?? 'blue'}
+              fullBleedSurface={!isWide}
               currentTask={currentTask}
               reviewTask={reviewTask}
               currentTaskTimer={currentTaskTimer}
@@ -832,6 +875,7 @@ export const MemberList = memo(function MemberList({
                 member={member}
                 isRemoved={true}
                 memberColor={colorMap.get(member.name) ?? 'blue'}
+                fullBleedSurface={!isWide}
                 currentTask={null}
                 reviewTask={null}
                 currentTaskTimer={null}

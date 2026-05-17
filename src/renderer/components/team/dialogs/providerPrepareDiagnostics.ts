@@ -55,6 +55,24 @@ export function buildReusableProviderPrepareModelResults(
   );
 }
 
+export function mergeReusableProviderPrepareModelResults(
+  existingModelResultsById:
+    | Record<string, ProviderPrepareDiagnosticsModelResult>
+    | null
+    | undefined,
+  modelResultsById: Record<string, ProviderPrepareDiagnosticsModelResult>
+): Record<string, ProviderPrepareDiagnosticsModelResult> {
+  const mergedModelResultsById = { ...(existingModelResultsById ?? {}) };
+  for (const [modelId, result] of Object.entries(modelResultsById)) {
+    if (result.status === 'notes') {
+      delete mergedModelResultsById[modelId];
+      continue;
+    }
+    mergedModelResultsById[modelId] = result;
+  }
+  return mergedModelResultsById;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -315,6 +333,7 @@ function createOpenCodeAdvisoryDeepVerificationModelResult(
 ): ProviderPrepareDiagnosticsModelResult {
   const line = `${getModelLabel(providerId, modelId)} - ping not confirmed`;
   return {
+    // TODO: Introduce a dedicated `unconfirmed` model result status for deep-ping advisory results.
     status: 'notes',
     line,
     warningLine: line,

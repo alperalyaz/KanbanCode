@@ -278,6 +278,9 @@ pnpm dev
 
 `pnpm dev` starts the desktop Electron app. Do not start a browser/web dev server for normal development; that path is limited and is not the supported way to run agent teams locally.
 
+Use `pnpm dev:mcp` when you want an MCP browser/debugging tool to attach to the current
+Electron renderer through the local Chrome DevTools Protocol endpoint on `127.0.0.1:9222`.
+
 The desktop app auto-discovers Claude Code projects from `~/.claude/`.
 
 ### Debug teammate runtimes
@@ -309,21 +312,22 @@ local packaging.
 
 ### Scripts
 
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Desktop app development with hot reload |
-| `pnpm build` | Production build |
-| `pnpm typecheck` | TypeScript type checking |
-| `pnpm lint` | Lint (no auto-fix) |
-| `pnpm lint:fix` | Lint and auto-fix |
-| `pnpm format` | Format code with Prettier |
-| `pnpm test` | Run all tests |
-| `pnpm test:watch` | Watch mode |
-| `pnpm test:coverage` | Coverage report |
-| `pnpm test:coverage:critical` | Critical path coverage |
-| `pnpm check` | Full quality gate (types + lint + test + build) |
-| `pnpm fix` | Lint fix + format |
-| `pnpm quality` | Full check + format check + knip |
+| Command                       | Description                                                                  |
+| ----------------------------- | ---------------------------------------------------------------------------- |
+| `pnpm dev`                    | Desktop app development with hot reload                                      |
+| `pnpm dev:mcp`                | Desktop app development with hot reload and local CDP debugging on port 9222 |
+| `pnpm build`                  | Production build                                                             |
+| `pnpm typecheck`              | TypeScript type checking                                                     |
+| `pnpm lint`                   | Lint (no auto-fix)                                                           |
+| `pnpm lint:fix`               | Lint and auto-fix                                                            |
+| `pnpm format`                 | Format code with Prettier                                                    |
+| `pnpm test`                   | Run all tests                                                                |
+| `pnpm test:watch`             | Watch mode                                                                   |
+| `pnpm test:coverage`          | Coverage report                                                              |
+| `pnpm test:coverage:critical` | Critical path coverage                                                       |
+| `pnpm check`                  | Full quality gate (types + lint + test + build)                              |
+| `pnpm fix`                    | Lint fix + format                                                            |
+| `pnpm quality`                | Full check + format check + knip                                             |
 
 </details>
 

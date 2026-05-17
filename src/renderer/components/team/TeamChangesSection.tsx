@@ -332,17 +332,23 @@ export const TeamChangesSection = memo(function TeamChangesSection({
                       {visibleFiles.map((file) => (
                         <div
                           key={`${summary.taskId}:${file.filePath}`}
-                          className="group flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--color-surface-raised)]"
+                          role="button"
+                          tabIndex={0}
+                          title={getVisibleFilePath(file)}
+                          className="group flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--color-surface-raised)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-border-emphasis)]"
+                          onClick={() => onViewChanges(task.id, file.filePath)}
+                          onKeyDown={(event) => {
+                            if (event.target !== event.currentTarget) return;
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              onViewChanges(task.id, file.filePath);
+                            }
+                          }}
                         >
                           <FileIcon fileName={getVisibleFileName(file)} className="size-3.5" />
-                          <button
-                            type="button"
-                            className="min-w-0 flex-1 truncate text-left font-mono text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text)]"
-                            onClick={() => onViewChanges(task.id, file.filePath)}
-                            title={getVisibleFilePath(file)}
-                          >
+                          <span className="min-w-0 flex-1 truncate text-left font-mono text-[var(--color-text-secondary)] transition-colors group-hover:text-[var(--color-text)]">
                             {getVisibleFilePath(file)}
-                          </button>
+                          </span>
                           <span className="flex shrink-0 items-center gap-1.5">
                             {file.linesAdded > 0 ? (
                               <span className="text-emerald-400">+{file.linesAdded}</span>
@@ -357,7 +363,10 @@ export const TeamChangesSection = memo(function TeamChangesSection({
                                 <button
                                   type="button"
                                   className="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
-                                  onClick={() => onViewChanges(task.id, file.filePath)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    onViewChanges(task.id, file.filePath);
+                                  }}
                                   aria-label="Review diff"
                                 >
                                   <GitCompareArrows size={13} />

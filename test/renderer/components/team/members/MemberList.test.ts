@@ -134,6 +134,7 @@ describe('MemberList spawn-status memoization', () => {
         React.createElement(MemberList, {
           members: [],
           expectedTeammateCount: 2,
+          isRosterLoading: true,
           isTeamAlive: false,
         })
       );
@@ -168,6 +169,7 @@ describe('MemberList spawn-status memoization', () => {
             },
           ],
           expectedTeammateCount: 2,
+          isRosterLoading: true,
           isTeamAlive: false,
         })
       );
@@ -178,6 +180,98 @@ describe('MemberList spawn-status memoization', () => {
     expect(host.textContent).not.toContain('Team members are loading');
     expect(host.querySelector('[data-testid="member-team-lead"]')).toBeNull();
     expect(host.textContent).not.toContain('Solo team');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('does not keep a skeleton for a settled count-only roster summary', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberList, {
+          members: [],
+          expectedTeammateCount: 2,
+          isRosterLoading: false,
+          isTeamProvisioning: false,
+          isTeamAlive: false,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[aria-label="Loading team members"]')).toBeNull();
+    expect(host.textContent).toContain('Member roster unavailable');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('does not keep a skeleton for an offline team with stale settling metadata', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberList, {
+          members: [],
+          expectedTeammateCount: 2,
+          isLaunchSettling: true,
+          isRosterLoading: false,
+          isTeamProvisioning: false,
+          isTeamAlive: false,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[aria-label="Loading team members"]')).toBeNull();
+    expect(host.textContent).toContain('Member roster unavailable');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('renders the lead card after loading settles even when summary still expects teammates', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberList, {
+          members: [
+            {
+              ...member,
+              name: 'team-lead',
+              agentType: 'team-lead',
+              role: 'Team Lead',
+            },
+          ],
+          expectedTeammateCount: 2,
+          isRosterLoading: false,
+          isTeamProvisioning: false,
+          isTeamAlive: false,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[aria-label="Loading team members"]')).toBeNull();
+    expect(host.querySelector('[data-testid="member-team-lead"]')).not.toBeNull();
 
     await act(async () => {
       root.unmount();

@@ -477,6 +477,199 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     expect(result.args).toContain('--anthropic-safe-passthrough');
   });
 
+  it('does not inherit lead effort for an Anthropic teammate with an explicit model', async () => {
+    const svc = new TeamProvisioningService();
+
+    const result = await (svc as any).materializeEffectiveTeamMemberSpecs({
+      claudePath: '/fake/claude',
+      cwd: tempRoot,
+      members: [{ name: 'jack', providerId: 'anthropic', model: 'haiku' }, { name: 'alice' }],
+      defaults: {
+        providerId: 'anthropic',
+        model: 'sonnet',
+        effort: 'low',
+      },
+    });
+
+    expect(result).toEqual([
+      { name: 'jack', providerId: 'anthropic', model: 'haiku', effort: undefined },
+      { name: 'alice', providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+    ]);
+  });
+
+  it.each([
+    {
+      label: 'inherits lead model and effort when teammate leaves runtime unset',
+      defaults: { providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+      members: [{ name: 'alice' }],
+      expected: [{ name: 'alice', providerId: 'anthropic', model: 'sonnet', effort: 'low' }],
+    },
+    {
+      label: 'keeps effort unset when teammate selects a different Anthropic model',
+      defaults: { providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+      members: [{ name: 'jack', providerId: 'anthropic', model: 'haiku' }],
+      expected: [{ name: 'jack', providerId: 'anthropic', model: 'haiku', effort: undefined }],
+    },
+    {
+      label: 'keeps effort unset even when teammate explicitly selects the same Anthropic model',
+      defaults: { providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+      members: [{ name: 'bob', providerId: 'anthropic', model: 'sonnet' }],
+      expected: [{ name: 'bob', providerId: 'anthropic', model: 'sonnet', effort: undefined }],
+    },
+    {
+      label: 'preserves teammate explicit effort with an explicit Anthropic model',
+      defaults: { providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+      members: [{ name: 'eve', providerId: 'anthropic', model: 'haiku', effort: 'medium' }],
+      expected: [{ name: 'eve', providerId: 'anthropic', model: 'haiku', effort: 'medium' }],
+    },
+    {
+      label: 'does not inherit lead effort across providers',
+      defaults: { providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+      members: [{ name: 'tom', providerId: 'codex', model: 'gpt-5.4' }],
+      expected: [{ name: 'tom', providerId: 'codex', model: 'gpt-5.4', effort: undefined }],
+    },
+    {
+      label: 'resolves secondary non-Anthropic default model without inheriting lead effort',
+      defaults: { providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+      members: [{ name: 'sam', providerId: 'codex' }],
+      expected: [{ name: 'sam', providerId: 'codex', model: 'gpt-5.4-mini', effort: undefined }],
+    },
+    {
+      label: 'does not inherit Codex lead effort into an Anthropic teammate model',
+      defaults: { providerId: 'codex', model: 'gpt-5.5', effort: 'low' },
+      members: [{ name: 'zoe', providerId: 'anthropic', model: 'haiku' }],
+      expected: [{ name: 'zoe', providerId: 'anthropic', model: 'haiku', effort: undefined }],
+    },
+  ])('$label', async ({ defaults, members, expected }) => {
+    const svc = new TeamProvisioningService();
+
+    const result = await (svc as any).materializeEffectiveTeamMemberSpecs({
+      claudePath: '/fake/claude',
+      cwd: tempRoot,
+      members,
+      defaults,
+    });
+
+    expect(result).toEqual(expected);
+  });
+
+  it('validates the Sonnet low lead plus explicit Haiku teammate launch matrix', async () => {
+    const svc = new TeamProvisioningService();
+    const facts = {
+      defaultModel: 'sonnet',
+      modelIds: new Set(['sonnet', 'haiku']),
+      modelCatalog: {
+        schemaVersion: 1,
+        providerId: 'anthropic',
+        source: 'anthropic-models-api',
+        status: 'ready',
+        fetchedAt: '2026-05-17T00:00:00.000Z',
+        staleAt: '2026-05-17T00:01:00.000Z',
+        defaultModelId: 'sonnet',
+        defaultLaunchModel: 'sonnet',
+        models: [
+          {
+            id: 'sonnet',
+            launchModel: 'sonnet',
+            displayName: 'Sonnet 4.6',
+            hidden: false,
+            supportedReasoningEfforts: ['low', 'medium', 'high'],
+            defaultReasoningEffort: 'medium',
+            supportsFastMode: false,
+            inputModalities: ['text', 'image'],
+            supportsPersonality: false,
+            isDefault: true,
+            upgrade: false,
+            source: 'anthropic-models-api',
+          },
+          {
+            id: 'haiku',
+            launchModel: 'haiku',
+            displayName: 'Haiku 4.5',
+            hidden: false,
+            supportedReasoningEfforts: [],
+            defaultReasoningEffort: null,
+            supportsFastMode: false,
+            inputModalities: ['text', 'image'],
+            supportsPersonality: false,
+            isDefault: false,
+            upgrade: false,
+            source: 'anthropic-models-api',
+          },
+        ],
+        diagnostics: {
+          configReadState: 'ready',
+          appServerState: 'healthy',
+        },
+      },
+      runtimeCapabilities: {
+        modelCatalog: { dynamic: true, source: 'anthropic-models-api' },
+        reasoningEffort: {
+          supported: true,
+          values: ['low', 'medium', 'high'],
+          configPassthrough: true,
+        },
+        fastMode: {
+          supported: true,
+          available: true,
+          reason: null,
+          source: 'runtime',
+        },
+      },
+    };
+
+    const materializedMembers = await (svc as any).materializeEffectiveTeamMemberSpecs({
+      claudePath: '/fake/claude',
+      cwd: tempRoot,
+      members: [{ name: 'jack', providerId: 'anthropic', model: 'haiku' }, { name: 'alice' }],
+      defaults: {
+        providerId: 'anthropic',
+        model: 'sonnet',
+        effort: 'low',
+      },
+    });
+
+    expect(materializedMembers).toEqual([
+      { name: 'jack', providerId: 'anthropic', model: 'haiku', effort: undefined },
+      { name: 'alice', providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+    ]);
+
+    expect(() =>
+      (svc as any).validateRuntimeLaunchSelection({
+        actorLabel: 'Team lead',
+        providerId: 'anthropic',
+        model: 'sonnet',
+        effort: 'low',
+        limitContext: false,
+        facts,
+      })
+    ).not.toThrow();
+
+    for (const member of materializedMembers) {
+      expect(() =>
+        (svc as any).validateRuntimeLaunchSelection({
+          actorLabel: `Member ${member.name}`,
+          providerId: member.providerId,
+          model: member.model,
+          effort: member.effort,
+          limitContext: false,
+          facts,
+        })
+      ).not.toThrow();
+    }
+
+    expect(() =>
+      (svc as any).validateRuntimeLaunchSelection({
+        actorLabel: 'Member jack',
+        providerId: 'anthropic',
+        model: 'haiku',
+        effort: 'low',
+        limitContext: false,
+        facts,
+      })
+    ).toThrow('does not support it in the current runtime');
+  });
+
   afterEach(async () => {
     await removeTempRoot(tempRoot);
   });

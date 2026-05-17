@@ -20,6 +20,7 @@ import { DEFAULT_TEAM_GRAPH_LAYOUT_MODE } from '@shared/constants/teamGraphLayou
 import { DEFAULT_TOOL_APPROVAL_SETTINGS } from '@shared/types/team';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
+import { migrateProviderBackendId } from '@shared/utils/providerBackend';
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { buildTeamGraphDefaultLayoutSeed } from '@shared/utils/teamGraphDefaultLayout';
 import { getStableTeamOwnerId } from '@shared/utils/teamStableOwnerId';
@@ -3078,6 +3079,69 @@ function extractBaseModel(raw?: string, providerId?: TeamProviderId): string | u
   return extractProviderScopedBaseModel(raw, providerId);
 }
 
+function buildLaunchParamsFromRuntimeRequest(
+  request: Pick<
+    TeamCreateRequest,
+    'providerId' | 'providerBackendId' | 'model' | 'effort' | 'fastMode' | 'limitContext'
+  >,
+  fallback?: TeamLaunchParams
+): TeamLaunchParams {
+  const providerId = request.providerId ?? fallback?.providerId ?? 'anthropic';
+  const providerChanged =
+    request.providerId != null &&
+    fallback?.providerId != null &&
+    request.providerId !== fallback.providerId;
+  const hasModel = Object.hasOwn(request, 'model');
+  const baseModel =
+    hasModel && typeof request.model === 'string'
+      ? extractBaseModel(request.model, providerId)
+      : undefined;
+  const rawProviderBackendId = Object.hasOwn(request, 'providerBackendId')
+    ? request.providerBackendId
+    : providerChanged
+      ? undefined
+      : fallback?.providerBackendId;
+  return {
+    providerId,
+    providerBackendId: migrateProviderBackendId(providerId, rawProviderBackendId),
+    model: hasModel
+      ? baseModel || 'default'
+      : (providerChanged ? undefined : fallback?.model) || 'default',
+    effort: Object.hasOwn(request, 'effort')
+      ? request.effort
+      : providerChanged
+        ? undefined
+        : fallback?.effort,
+    fastMode: Object.hasOwn(request, 'fastMode')
+      ? request.fastMode
+      : providerChanged
+        ? undefined
+        : fallback?.fastMode,
+    limitContext:
+      typeof request.limitContext === 'boolean'
+        ? request.limitContext
+        : providerChanged
+          ? false
+          : (fallback?.limitContext ?? false),
+  };
+}
+
+function areTeamLaunchParamsEqual(
+  left: TeamLaunchParams | undefined,
+  right: TeamLaunchParams | undefined
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return (
+    left.providerId === right.providerId &&
+    left.providerBackendId === right.providerBackendId &&
+    left.model === right.model &&
+    left.effort === right.effort &&
+    left.fastMode === right.fastMode &&
+    left.limitContext === right.limitContext
+  );
+}
+
 const TOOL_APPROVAL_PREFIX = 'team:toolApprovalSettings:';
 
 function parseToolApprovalSettings(raw: string | null): ToolApprovalSettings {
@@ -5472,6 +5536,14 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         },
       },
     }));
+    const optimisticLaunchParams = buildLaunchParamsFromRuntimeRequest(request);
+    const previousLaunchParams = get().launchParamsByTeam[request.teamName];
+    set((state) => ({
+      launchParamsByTeam: {
+        ...state.launchParamsByTeam,
+        [request.teamName]: optimisticLaunchParams,
+      },
+    }));
     // Initialize per-team tool approval settings based on skipPermissions flag
     const initialSettings: ToolApprovalSettings =
       request.skipPermissions === false
@@ -5487,21 +5559,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       }
       const response = await unwrapIpc('team:create', () => api.teams.createTeam(request));
 
-      // Persist per-team launch params (model, effort, limit context)
-      const baseModel = extractBaseModel(request.model, request.providerId);
-      const params: TeamLaunchParams = {
-        providerId: request.providerId ?? 'anthropic',
-        providerBackendId: request.providerBackendId,
-        model: baseModel || 'default',
-        effort: request.effort,
-        fastMode: request.fastMode,
-        limitContext: request.limitContext ?? false,
-      };
-      saveLaunchParams(request.teamName, params);
+      saveLaunchParams(request.teamName, optimisticLaunchParams);
       set((state) => ({
         launchParamsByTeam: {
           ...state.launchParamsByTeam,
-          [request.teamName]: params,
+          [request.teamName]: optimisticLaunchParams,
         },
       }));
 
@@ -5551,9 +5613,20 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         if (nextCurrentRunIdByTeam[request.teamName] === pendingRunId) {
           delete nextCurrentRunIdByTeam[request.teamName];
         }
+        const nextLaunchParamsByTeam = { ...state.launchParamsByTeam };
+        if (
+          areTeamLaunchParamsEqual(nextLaunchParamsByTeam[request.teamName], optimisticLaunchParams)
+        ) {
+          if (previousLaunchParams) {
+            nextLaunchParamsByTeam[request.teamName] = previousLaunchParams;
+          } else {
+            delete nextLaunchParamsByTeam[request.teamName];
+          }
+        }
         return {
           provisioningRuns: nextRuns,
           currentProvisioningRunIdByTeam: nextCurrentRunIdByTeam,
+          launchParamsByTeam: nextLaunchParamsByTeam,
           provisioningErrorByTeam: {
             ...state.provisioningErrorByTeam,
             [request.teamName]: message,
@@ -5648,6 +5721,17 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         [request.teamName]: pendingRunId,
       },
     }));
+    const previousLaunchParams = get().launchParamsByTeam[request.teamName];
+    const optimisticLaunchParams = buildLaunchParamsFromRuntimeRequest(
+      request,
+      previousLaunchParams
+    );
+    set((state) => ({
+      launchParamsByTeam: {
+        ...state.launchParamsByTeam,
+        [request.teamName]: optimisticLaunchParams,
+      },
+    }));
     // Initialize per-team tool approval settings based on skipPermissions flag
     {
       const launchSettings: ToolApprovalSettings =
@@ -5660,21 +5744,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     try {
       const response = await unwrapIpc('team:launch', () => api.teams.launchTeam(request));
 
-      // Persist per-team launch params (model, effort, limit context)
-      const baseModel = extractBaseModel(request.model, request.providerId);
-      const params: TeamLaunchParams = {
-        providerId: request.providerId ?? 'anthropic',
-        providerBackendId: request.providerBackendId,
-        model: baseModel || 'default',
-        effort: request.effort,
-        fastMode: request.fastMode,
-        limitContext: request.limitContext ?? false,
-      };
-      saveLaunchParams(request.teamName, params);
+      saveLaunchParams(request.teamName, optimisticLaunchParams);
       set((state) => ({
         launchParamsByTeam: {
           ...state.launchParamsByTeam,
-          [request.teamName]: params,
+          [request.teamName]: optimisticLaunchParams,
         },
       }));
 
@@ -5724,9 +5798,20 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         if (nextCurrentRunIdByTeam[request.teamName] === pendingRunId) {
           delete nextCurrentRunIdByTeam[request.teamName];
         }
+        const nextLaunchParamsByTeam = { ...state.launchParamsByTeam };
+        if (
+          areTeamLaunchParamsEqual(nextLaunchParamsByTeam[request.teamName], optimisticLaunchParams)
+        ) {
+          if (previousLaunchParams) {
+            nextLaunchParamsByTeam[request.teamName] = previousLaunchParams;
+          } else {
+            delete nextLaunchParamsByTeam[request.teamName];
+          }
+        }
         return {
           provisioningRuns: nextRuns,
           currentProvisioningRunIdByTeam: nextCurrentRunIdByTeam,
+          launchParamsByTeam: nextLaunchParamsByTeam,
           provisioningErrorByTeam: {
             ...state.provisioningErrorByTeam,
             [request.teamName]: message,

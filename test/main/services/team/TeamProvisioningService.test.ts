@@ -2546,17 +2546,17 @@ describe('TeamProvisioningService', () => {
       const svc = new TeamProvisioningService();
       (svc as any).configReader = {
         getConfig: vi.fn(async () => ({
-          members: [{ name: 'team-lead', agentType: 'team-lead' }],
+          members: [{ name: 'team-lead', agentType: 'team-lead', providerId: 'codex' }],
         })),
       };
       (svc as any).teamMetaStore = {
-        getMeta: vi.fn(async () => ({ providerBackendId: 'adapter' })),
+        getMeta: vi.fn(async () => ({ providerId: 'codex', providerBackendId: 'adapter' })),
       };
       (svc as any).aliveRunByTeam.set('runtime-team', 'run-1');
       (svc as any).runs.set('run-1', {
         runId: 'run-1',
         child: { pid: 111 },
-        request: { model: 'gpt-5.4', providerBackendId: 'codex-native' },
+        request: { providerId: 'codex', model: 'gpt-5.4', providerBackendId: 'codex-native' },
         processKilled: false,
         cancelRequested: false,
         spawnContext: null,
@@ -2574,16 +2574,58 @@ describe('TeamProvisioningService', () => {
       const svc = new TeamProvisioningService();
       (svc as any).configReader = {
         getConfig: vi.fn(async () => ({
-          members: [{ name: 'team-lead', agentType: 'team-lead' }],
+          members: [{ name: 'team-lead', agentType: 'team-lead', providerId: 'codex' }],
         })),
       };
       (svc as any).teamMetaStore = {
-        getMeta: vi.fn(async () => ({ providerBackendId: 'codex-native' })),
+        getMeta: vi.fn(async () => ({ providerId: 'codex', providerBackendId: 'codex-native' })),
       };
 
       const snapshot = await svc.getTeamAgentRuntimeSnapshot('runtime-team');
 
       expect(snapshot.providerBackendId).toBe('codex-native');
+    });
+
+    it('drops stale Codex backend metadata for Anthropic runtime snapshots', async () => {
+      const svc = new TeamProvisioningService();
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          members: [{ name: 'team-lead', agentType: 'team-lead', providerId: 'anthropic' }],
+        })),
+      };
+      (svc as any).teamMetaStore = {
+        getMeta: vi.fn(async () => ({ providerId: 'anthropic', providerBackendId: 'codex-native' })),
+      };
+
+      const snapshot = await svc.getTeamAgentRuntimeSnapshot('runtime-team');
+
+      expect(snapshot.providerBackendId).toBeUndefined();
+    });
+
+    it('uses launch identity instead of stale root provider metadata for runtime snapshots', async () => {
+      const svc = new TeamProvisioningService();
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          members: [{ name: 'team-lead', agentType: 'team-lead', providerId: 'anthropic' }],
+        })),
+      };
+      (svc as any).teamMetaStore = {
+        getMeta: vi.fn(async () => ({
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          fastMode: 'on',
+          launchIdentity: {
+            providerId: 'anthropic',
+            providerBackendId: null,
+            selectedFastMode: 'inherit',
+          },
+        })),
+      };
+
+      const snapshot = await svc.getTeamAgentRuntimeSnapshot('runtime-team');
+
+      expect(snapshot.providerBackendId).toBeUndefined();
+      expect(snapshot.fastMode).toBe('inherit');
     });
 
     it('falls back to per-pid pidusage reads when batched sampling fails', async () => {
@@ -13193,6 +13235,81 @@ describe('TeamProvisioningService', () => {
       await svc.cancelProvisioning(runId);
     });
 
+    it('starts an Anthropic team without injecting lead effort into explicit teammate models', async () => {
+      allowConsoleLogs();
+      vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
+      vi.mocked(spawnCli).mockReturnValue(createRunningChild() as any);
+
+      const { svc } = createSafeLaunchService();
+      (svc as any).resolveAndValidateLaunchIdentity = vi.fn(async () => ({
+        providerId: 'anthropic',
+        providerBackendId: undefined,
+        selectedModel: 'sonnet',
+        selectedModelKind: 'explicit',
+        resolvedLaunchModel: 'sonnet',
+        catalogId: 'sonnet',
+        catalogSource: 'test',
+        catalogFetchedAt: '2026-05-17T00:00:00.000Z',
+        selectedEffort: 'low',
+        resolvedEffort: 'low',
+        selectedFastMode: null,
+        resolvedFastMode: null,
+        fastResolutionReason: null,
+      }));
+
+      const { runId } = await svc.createTeam(
+        {
+          teamName: 'safe-anthropic-explicit-model-effort-launch',
+          cwd: tempClaudeRoot,
+          providerId: 'anthropic',
+          model: 'sonnet',
+          effort: 'low',
+          members: [
+            {
+              name: 'jack',
+              role: 'Reviewer',
+              providerId: 'anthropic',
+              model: 'haiku',
+            },
+            {
+              name: 'alice',
+              role: 'Developer',
+            },
+          ],
+        },
+        () => {}
+      );
+
+      const spawnArgs = vi.mocked(spawnCli).mock.calls[0]?.[1] as string[];
+      expect(spawnArgs).toEqual(expect.arrayContaining(['--model', 'sonnet', '--effort', 'low']));
+      const bootstrapSpec = readBootstrapSpecFromSpawnArgs(spawnArgs);
+      expect(bootstrapSpec).toMatchObject({
+        mode: 'create',
+        team: {
+          name: 'safe-anthropic-explicit-model-effort-launch',
+          cwd: tempClaudeRoot,
+        },
+      });
+      expect(bootstrapSpec.members).toEqual([
+        expect.objectContaining({
+          name: 'jack',
+          provider: 'anthropic',
+          model: 'haiku',
+          role: 'Reviewer',
+        }),
+        expect.objectContaining({
+          name: 'alice',
+          provider: 'anthropic',
+          model: 'sonnet',
+          effort: 'low',
+          role: 'Developer',
+        }),
+      ]);
+      expect(bootstrapSpec.members[0]).not.toHaveProperty('effort');
+
+      await svc.cancelProvisioning(runId);
+    });
+
     it('routes a pure OpenCode team directly through the runtime adapter without spawning the CLI lane', async () => {
       allowConsoleLogs();
       const adapterLaunch = vi.fn(async (input: Record<string, unknown>) => {
@@ -14465,13 +14582,14 @@ describe('TeamProvisioningService', () => {
       ],
     };
 
-    expect((svc as any).buildTeammatePermissionUpdatedInput('AskUserQuestion', toolInput, ''))
-      .toEqual({
-        ...toolInput,
-        answers: {
-          'Anything else?': '',
-        },
-      });
+    expect(
+      (svc as any).buildTeammatePermissionUpdatedInput('AskUserQuestion', toolInput, '')
+    ).toEqual({
+      ...toolInput,
+      answers: {
+        'Anything else?': '',
+      },
+    });
   });
 
   it('sends teammate AskUserQuestion permission responses to the teammate inbox', async () => {

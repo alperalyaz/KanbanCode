@@ -313,6 +313,9 @@ describe('MemberCard starting-state visuals', () => {
 
     expect(host.textContent).toContain('registered');
     expect(host.querySelector('[aria-label="registered"]')).not.toBeNull();
+    expect(host.firstElementChild?.className).toContain('-mx-[calc(1rem-5px)]');
+    expect(host.firstElementChild?.className).toContain('px-[calc(1rem-5px)]');
+    expect(host.querySelector('[role="button"]')?.className).toContain('-mx-[calc(1rem-5px)]');
 
     await act(async () => {
       root.unmount();
@@ -476,7 +479,6 @@ describe('MemberCard starting-state visuals', () => {
     expect(avatarRing?.style.borderColor).toBe('#3b82f6');
     expect(clickableCard?.style.borderLeft).toBe('');
     expect(clickableCard?.style.background).toBe('');
-    expect(clickableCard?.className).not.toContain('px-');
 
     await act(async () => {
       root.unmount();

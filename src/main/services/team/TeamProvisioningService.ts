@@ -3668,17 +3668,14 @@ function buildEffectiveTeamMemberSpec(
   const memberProviderId = normalizeTeamMemberProviderId(member.providerId);
   const defaultProviderId = normalizeTeamMemberProviderId(defaults.providerId);
   const effectiveProviderId = memberProviderId ?? defaultProviderId ?? 'anthropic';
+  const explicitMemberModel = getExplicitLaunchModelSelection(member.model);
+  const inheritsDefaultRuntime = memberProviderId == null || memberProviderId === defaultProviderId;
   const model =
-    getExplicitLaunchModelSelection(member.model) ||
-    (memberProviderId == null || memberProviderId === defaultProviderId
-      ? getExplicitLaunchModelSelection(defaults.model)
-      : undefined) ||
+    explicitMemberModel ||
+    (inheritsDefaultRuntime ? getExplicitLaunchModelSelection(defaults.model) : undefined) ||
     undefined;
   const effort =
-    member.effort ??
-    (memberProviderId == null || memberProviderId === defaultProviderId
-      ? defaults.effort
-      : undefined);
+    member.effort ?? (inheritsDefaultRuntime && !explicitMemberModel ? defaults.effort : undefined);
 
   return {
     ...member,
@@ -15173,6 +15170,16 @@ export class TeamProvisioningService {
       return fallback;
     };
 
+    const activeRunMemberByName = new Map<string, TeamMember>();
+    const runAllEffectiveMembers = run?.allEffectiveMembers ?? [];
+    const activeRunMembers =
+      runAllEffectiveMembers.length > 0 ? runAllEffectiveMembers : (run?.effectiveMembers ?? []);
+    for (const member of activeRunMembers) {
+      const memberName = typeof member?.name === 'string' ? member.name.trim() : '';
+      if (!memberName) continue;
+      activeRunMemberByName.set(memberName, member);
+    }
+
     const candidateMembers = new Map<string, TeamMember>();
     for (const member of configuredMembers) {
       const memberName = typeof member?.name === 'string' ? member.name.trim() : '';
@@ -15200,6 +15207,11 @@ export class TeamProvisioningService {
         effort: launchMember?.effort,
         fastMode: launchMember?.selectedFastMode,
       });
+    }
+    for (const member of activeRunMemberByName.values()) {
+      const memberName = typeof member?.name === 'string' ? member.name.trim() : '';
+      if (!memberName || this.isMemberRemovedInMeta(metaMembers, memberName)) continue;
+      candidateMembers.set(memberName, member);
     }
 
     for (const member of candidateMembers.values()) {
@@ -15234,22 +15246,52 @@ export class TeamProvisioningService {
       const liveRuntimeMember = getLiveRuntimeMember(memberName);
       const spawnStatusMember = getSpawnStatusMember(memberName);
       const launchMember = launchSnapshot?.members[memberName];
+      const activeRunMember = activeRunMemberByName.get(memberName);
+      const activeRunModel = activeRunMember?.model?.trim();
+      const activeRunProviderId =
+        normalizeOptionalTeamProviderId(activeRunMember?.providerId) ??
+        inferTeamProviderIdFromModel(activeRunModel);
+      const liveRuntimeModel = liveRuntimeMember?.model?.trim();
+      const liveRuntimeModelProviderId = inferTeamProviderIdFromModel(liveRuntimeModel);
+      const explicitLiveRuntimeProviderId = normalizeOptionalTeamProviderId(
+        liveRuntimeMember?.providerId
+      );
+      const liveRuntimeProviderConflictsWithActive =
+        activeRunProviderId != null &&
+        ((explicitLiveRuntimeProviderId != null &&
+          explicitLiveRuntimeProviderId !== activeRunProviderId) ||
+          (liveRuntimeModelProviderId != null &&
+            liveRuntimeModelProviderId !== activeRunProviderId));
+      const canUseLiveRuntimeModel = !!liveRuntimeModel && !liveRuntimeProviderConflictsWithActive;
       const backendType =
         liveRuntimeMember?.backendType ??
         normalizeTeamAgentRuntimeBackendType(persistedRuntimeMember?.backendType, false);
       const runtimeModel =
-        liveRuntimeMember?.model ??
+        (canUseLiveRuntimeModel ? liveRuntimeModel : undefined) ??
+        activeRunModel ??
         launchMember?.model?.trim() ??
         member.model?.trim() ??
         undefined;
       const memberProviderId =
-        launchMember?.providerId ??
+        activeRunProviderId ??
+        normalizeOptionalTeamProviderId(launchMember?.providerId) ??
         normalizeOptionalTeamProviderId(member.providerId) ??
         inferTeamProviderIdFromModel(runtimeModel) ??
         inferTeamProviderIdFromModel(launchMember?.model) ??
         inferTeamProviderIdFromModel(member.model);
+      const memberProviderBackendId = migrateProviderBackendId(
+        memberProviderId,
+        activeRunMember?.providerBackendId ??
+          launchMember?.providerBackendId ??
+          member.providerBackendId
+      );
       const isOpenCodeMember = memberProviderId === 'opencode';
-      const configuredCwd = typeof member.cwd === 'string' ? member.cwd.trim() : '';
+      const configuredCwd =
+        typeof activeRunMember?.cwd === 'string'
+          ? activeRunMember.cwd.trim()
+          : typeof member.cwd === 'string'
+            ? member.cwd.trim()
+            : '';
       const runtimeCwd =
         liveRuntimeMember?.cwd ??
         (configuredCwd || (isOpenCodeMember ? currentRuntimeAdapterRun?.cwd : undefined));
@@ -15319,9 +15361,7 @@ export class TeamProvisioningService {
         restartable,
         ...(backendType ? { backendType } : {}),
         ...(memberProviderId ? { providerId: memberProviderId } : {}),
-        ...(launchMember?.providerBackendId
-          ? { providerBackendId: launchMember.providerBackendId }
-          : {}),
+        ...(memberProviderBackendId ? { providerBackendId: memberProviderBackendId } : {}),
         ...(launchMember?.laneId ? { laneId: launchMember.laneId } : {}),
         ...(launchMember?.laneKind ? { laneKind: launchMember.laneKind } : {}),
         ...(displayPid ? { pid: displayPid } : {}),
@@ -15355,15 +15395,25 @@ export class TeamProvisioningService {
       };
     }
 
+    const persistedLaunchIdentity = persistedTeamMeta?.launchIdentity;
+    const snapshotProviderId =
+      run?.request.providerId ??
+      persistedLaunchIdentity?.providerId ??
+      persistedTeamMeta?.providerId;
+    const snapshotProviderBackendId = run
+      ? run.request.providerBackendId
+      : persistedLaunchIdentity
+        ? (persistedLaunchIdentity.providerBackendId ?? persistedTeamMeta?.providerBackendId)
+        : persistedTeamMeta?.providerBackendId;
     const snapshot: TeamAgentRuntimeSnapshot = {
       teamName,
       updatedAt,
       runId: run?.runId ?? runId,
-      providerBackendId: migrateProviderBackendId(
-        run?.request.providerId ?? persistedTeamMeta?.providerId,
-        run?.request.providerBackendId ?? persistedTeamMeta?.providerBackendId
-      ),
-      fastMode: run?.request.fastMode ?? persistedTeamMeta?.fastMode,
+      providerBackendId: migrateProviderBackendId(snapshotProviderId, snapshotProviderBackendId),
+      fastMode:
+        run?.request.fastMode ??
+        persistedLaunchIdentity?.selectedFastMode ??
+        persistedTeamMeta?.fastMode,
       members: snapshotMembers,
     };
 
@@ -25017,18 +25067,24 @@ export class TeamProvisioningService {
     run: ProvisioningRun | null,
     memberName: string
   ): string | undefined {
+    const member = this.findEffectiveRunMember(run, memberName);
+    const model = member?.model?.trim();
+    return model || undefined;
+  }
+
+  private findEffectiveRunMember(
+    run: ProvisioningRun | null,
+    memberName: string
+  ): TeamCreateRequest['members'][number] | undefined {
     if (!run) {
       return undefined;
     }
-    for (const member of run.effectiveMembers ?? []) {
+    for (const member of [...(run.allEffectiveMembers ?? []), ...(run.effectiveMembers ?? [])]) {
       const candidateName = member.name?.trim() ?? '';
       if (!candidateName || !matchesTeamMemberIdentity(candidateName, memberName)) {
         continue;
       }
-      const model = member.model?.trim();
-      if (model) {
-        return model;
-      }
+      return member;
     }
     return undefined;
   }
@@ -25204,8 +25260,8 @@ export class TeamProvisioningService {
         continue;
       }
       const runtimeModel =
-        this.findConfiguredMemberModel(configuredMembers, memberName) ??
         this.findEffectiveRunMemberModel(run, memberName) ??
+        this.findConfiguredMemberModel(configuredMembers, memberName) ??
         this.findMetaMemberModel(metaMembers, memberName);
       upsertMetadata(memberName, {
         backendType: normalizeTeamAgentRuntimeBackendType(member.backendType, false),
@@ -25248,8 +25304,8 @@ export class TeamProvisioningService {
           ? configuredRuntimeMember.backendType
           : undefined;
       const runtimeModel =
-        member.model?.trim() ||
         this.findEffectiveRunMemberModel(run, memberName) ||
+        member.model?.trim() ||
         this.findMetaMemberModel(metaMembers, memberName);
       upsertMetadata(memberName, {
         ...(runtimeModel ? { model: runtimeModel } : {}),
@@ -25277,9 +25333,9 @@ export class TeamProvisioningService {
         continue;
       }
       const runtimeModel =
+        this.findEffectiveRunMemberModel(run, memberName) ||
         member.model?.trim() ||
-        this.findConfiguredMemberModel(configuredMembers, memberName) ||
-        this.findEffectiveRunMemberModel(run, memberName);
+        this.findConfiguredMemberModel(configuredMembers, memberName);
       upsertMetadata(memberName, {
         ...(runtimeModel ? { model: runtimeModel } : {}),
         ...(normalizeOptionalTeamProviderId(member.providerId)
@@ -25297,8 +25353,10 @@ export class TeamProvisioningService {
       if (!memberName || isLeadMember(member) || memberName.toLowerCase() === 'user') {
         continue;
       }
+      const providerId = normalizeOptionalTeamProviderId(member.providerId);
       upsertMetadata(memberName, {
         ...(member.model?.trim() ? { model: member.model.trim() } : {}),
+        ...(providerId ? { providerId } : {}),
       });
     }
 
@@ -25342,13 +25400,19 @@ export class TeamProvisioningService {
       if (!memberName || this.isMemberRemovedInMeta(metaMembers, memberName)) {
         continue;
       }
+      const activeRunMember = this.findEffectiveRunMember(run, memberName);
+      const activeRunModel = activeRunMember?.model?.trim();
+      const activeRunProviderId =
+        normalizeOptionalTeamProviderId(activeRunMember?.providerId) ??
+        inferTeamProviderIdFromModel(activeRunModel);
+      const effectiveProviderId = activeRunProviderId ?? persistedMember.providerId;
       const currentRuntimeAdapterEvidence = currentRuntimeAdapterRun?.members?.[memberName];
       upsertMetadata(memberName, {
         backendType:
-          persistedMember.providerId === 'opencode'
+          effectiveProviderId === 'opencode'
             ? 'process'
             : metadataByMember.get(memberName)?.backendType,
-        providerId: persistedMember.providerId,
+        providerId: effectiveProviderId,
         alive: false,
         livenessKind: currentRuntimeAdapterEvidence?.livenessKind ?? persistedMember.livenessKind,
         pidSource: currentRuntimeAdapterEvidence?.pidSource ?? persistedMember.pidSource,
@@ -25359,7 +25423,11 @@ export class TeamProvisioningService {
           persistedMember.runtimeLastSeenAt ??
           persistedMember.lastHeartbeatAt ??
           persistedMember.lastRuntimeAliveAt,
-        ...(persistedMember.model?.trim() ? { model: persistedMember.model.trim() } : {}),
+        ...(activeRunModel
+          ? { model: activeRunModel }
+          : persistedMember.model?.trim()
+            ? { model: persistedMember.model.trim() }
+            : {}),
         ...(typeof currentRuntimeAdapterEvidence?.runtimePid === 'number' &&
         currentRuntimeAdapterEvidence.runtimePid > 0
           ? { metricsPid: currentRuntimeAdapterEvidence.runtimePid }
@@ -27758,7 +27826,10 @@ export class TeamProvisioningService {
     }
 
     const teamMeta = await this.teamMetaStore.getMeta(teamName).catch(() => null);
-    const leadProviderId = normalizeOptionalTeamProviderId(teamMeta?.providerId);
+    const leadLaunchIdentity = teamMeta?.launchIdentity;
+    const leadProviderId =
+      normalizeOptionalTeamProviderId(leadLaunchIdentity?.providerId) ??
+      normalizeOptionalTeamProviderId(teamMeta?.providerId);
     if (!leadProviderId || leadProviderId === 'opencode') {
       return null;
     }
@@ -27793,9 +27864,13 @@ export class TeamProvisioningService {
       providerBackendId:
         migrateProviderBackendId(
           leadProviderId,
-          teamMeta?.providerBackendId ?? membersMeta?.providerBackendId
+          leadLaunchIdentity
+            ? (leadLaunchIdentity.providerBackendId ??
+                teamMeta?.providerBackendId ??
+                membersMeta?.providerBackendId)
+            : (teamMeta?.providerBackendId ?? membersMeta?.providerBackendId)
         ) ?? null,
-      selectedFastMode: teamMeta?.fastMode,
+      selectedFastMode: leadLaunchIdentity?.selectedFastMode ?? teamMeta?.fastMode,
       resolvedFastMode:
         typeof teamMeta?.launchIdentity?.resolvedFastMode === 'boolean'
           ? teamMeta.launchIdentity.resolvedFastMode

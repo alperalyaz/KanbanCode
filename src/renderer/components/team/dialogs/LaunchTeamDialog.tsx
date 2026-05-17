@@ -107,8 +107,8 @@ import { loadProjectPathProjects, type ProjectPathProject } from './projectPathP
 import { ProjectPathSelector } from './ProjectPathSelector';
 import { buildProviderPrepareModelCacheKey } from './providerPrepareCacheKey';
 import {
-  buildReusableProviderPrepareModelResults,
   getProviderPrepareCachedSnapshot,
+  mergeReusableProviderPrepareModelResults,
   type ProviderPrepareDiagnosticsModelResult,
   runProviderPrepareDiagnostics,
 } from './providerPrepareDiagnostics';
@@ -1430,6 +1430,8 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     ]
   );
   const shortLivedModelIssueReasons = useMemo(() => {
+    const modelAdvisoryReasonByProvider: Partial<Record<TeamProviderId, Record<string, string>>> =
+      {};
     const modelIssueReasonByProvider: Partial<Record<TeamProviderId, Record<string, string>>> = {};
     const modelUnavailableReasonByProvider: Partial<
       Record<TeamProviderId, Record<string, string>>
@@ -1437,6 +1439,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
 
     if (!isLaunchMode) {
       return {
+        modelAdvisoryReasonByProvider,
         modelIssueReasonByProvider,
         modelUnavailableReasonByProvider,
       };
@@ -1455,6 +1458,9 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
         providerId,
         cacheKey,
       });
+      if (Object.keys(issueReasons.modelAdvisoryReasonByValue).length > 0) {
+        modelAdvisoryReasonByProvider[providerId] = issueReasons.modelAdvisoryReasonByValue;
+      }
       if (Object.keys(issueReasons.modelIssueReasonByValue).length > 0) {
         modelIssueReasonByProvider[providerId] = issueReasons.modelIssueReasonByValue;
       }
@@ -1464,6 +1470,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     }
 
     return {
+      modelAdvisoryReasonByProvider,
       modelIssueReasonByProvider,
       modelUnavailableReasonByProvider,
     };
@@ -1615,10 +1622,13 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
             anyNotes = true;
           }
           if (prepareRequestSeqRef.current === requestSeq) {
-            const reusableModelResults = buildReusableProviderPrepareModelResults(
-              plan.prepResult.modelResultsById
+            prepareModelResultsCacheRef.current.set(
+              plan.cacheKey,
+              mergeReusableProviderPrepareModelResults(
+                prepareModelResultsCacheRef.current.get(plan.cacheKey),
+                plan.prepResult.modelResultsById
+              )
             );
-            prepareModelResultsCacheRef.current.set(plan.cacheKey, reusableModelResults);
             storeShortLivedProviderPrepareModelResults({
               providerId: plan.providerId,
               cacheKey: plan.cacheKey,
@@ -2108,7 +2118,9 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     void (async () => {
       try {
         if (isLaunchMode) {
-          const nextMembers = buildMembersFromDrafts(effectiveMemberDrafts);
+          const nextMembers = buildMembersFromDrafts(effectiveMemberDrafts, {
+            inheritedProviderId: selectedProviderId,
+          });
           const launchRequest: TeamLaunchRequest = {
             teamName: effectiveTeamName,
             cwd: effectiveCwd,
@@ -2316,7 +2328,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       }}
     >
       <DialogContent
-        className={isSchedule ? 'max-h-[90vh] max-w-3xl overflow-y-auto' : 'max-w-3xl'}
+        className={isSchedule ? 'max-h-[90vh] max-w-[52rem] overflow-y-auto' : 'max-w-[52rem]'}
       >
         <DialogHeader>
           <DialogTitle className="text-sm">{dialogTitle}</DialogTitle>
@@ -2616,6 +2628,9 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                   memberInfoById={memberWorktreeContinuationInfoById}
                   leadModelIssueText={leadModelIssueText}
                   memberModelIssueById={memberModelIssueById}
+                  modelAdvisoryReasonByProvider={
+                    shortLivedModelIssueReasons.modelAdvisoryReasonByProvider
+                  }
                   modelIssueReasonByProvider={
                     shortLivedModelIssueReasons.modelIssueReasonByProvider
                   }

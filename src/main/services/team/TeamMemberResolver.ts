@@ -300,13 +300,15 @@ export class TeamMemberResolver {
           providerId: effectiveProviderId,
         },
       });
-      const providerBackendId =
+      const providerBackendId = migrateProviderBackendId(
+        effectiveProviderId,
         launchMember?.providerBackendId ??
-        configMember?.providerBackendId ??
-        metaMember?.providerBackendId ??
-        (effectiveProviderId === options?.leadProviderId
-          ? (options?.leadProviderBackendId ?? undefined)
-          : undefined);
+          configMember?.providerBackendId ??
+          metaMember?.providerBackendId ??
+          (effectiveProviderId === options?.leadProviderId
+            ? (options?.leadProviderBackendId ?? undefined)
+            : undefined)
+      );
       const agentId = configMember?.agentId ?? metaMember?.agentId;
       members.push({
         name,

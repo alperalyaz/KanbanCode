@@ -122,6 +122,8 @@ interface MessagesPanelProps {
   onRestartTeam?: () => void;
   /** Callback when a task ID link is clicked. */
   onTaskIdClick?: (taskId: string) => void;
+  /** Reports the rendered floating composer height so the parent can reserve scroll space. */
+  onFloatingComposerHeightChange?: (height: number) => void;
   /**
    * Scroll container owned by the parent view when `position === 'inline'`.
    * MessagesPanel does not own this element — the viewport lives in
@@ -356,6 +358,7 @@ export const MessagesPanel = memo(function MessagesPanel({
   onReplyToMessage,
   onRestartTeam,
   onTaskIdClick,
+  onFloatingComposerHeightChange,
   inlineScrollContainerRef,
 }: MessagesPanelProps): React.JSX.Element {
   const {
@@ -413,6 +416,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     effectiveMessages.length === 0 && (messagesState === undefined || messagesState.loadingHead);
 
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const floatingComposerMeasureRef = useRef<HTMLDivElement | null>(null);
   const sidebarScrollRef = useRef<HTMLDivElement | null>(null);
   const bottomSheetRef = useRef<SheetRef>(null);
   const bottomSheetStickyTopRef = useRef<HTMLDivElement | null>(null);
@@ -819,6 +823,30 @@ export const MessagesPanel = memo(function MessagesPanel({
     onPositionChange('floating-composer');
   }, [onPositionChange]);
 
+  useLayoutEffect(() => {
+    if (position !== 'floating-composer' || !onFloatingComposerHeightChange) return undefined;
+
+    const node = floatingComposerMeasureRef.current;
+    if (!node) {
+      onFloatingComposerHeightChange(0);
+      return undefined;
+    }
+
+    const updateHeight = (): void => {
+      onFloatingComposerHeightChange(Math.ceil(node.getBoundingClientRect().height));
+    };
+
+    updateHeight();
+
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(node);
+
+    return () => {
+      observer.disconnect();
+      onFloatingComposerHeightChange(0);
+    };
+  }, [onFloatingComposerHeightChange, position]);
+
   const snapBottomSheetTo = useCallback((snapIndex: number) => {
     setBottomSheetSnapIndex(snapIndex);
     bottomSheetRef.current?.snapTo(snapIndex);
@@ -877,49 +905,38 @@ export const MessagesPanel = memo(function MessagesPanel({
   );
 
   const floatingComposerModeControls = (
-    <div className="inline-flex items-center gap-0.5 pr-1">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
-            onClick={moveToInline}
-            aria-label="Move messages to inline panel"
-          >
-            <PanelBottom size={13} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Move to inline</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
-            onClick={moveToBottomSheet}
-            aria-label="Move messages to bottom sheet"
-          >
-            <PanelBottomOpen size={13} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Move to bottom sheet</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
-            onClick={moveToSidebar}
-            aria-label="Move messages to sidebar"
-          >
-            <PanelLeft size={13} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Move to sidebar</TooltipContent>
-      </Tooltip>
+    <div className="inline-flex items-center pr-1">
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="size-6 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] data-[state=open]:bg-[var(--color-surface-raised)] data-[state=open]:text-[var(--color-text-secondary)]"
+                aria-label="Message panel mode"
+              >
+                <MoreHorizontal size={14} />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="top">Message panel mode</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end" side="top" className="w-48">
+          <DropdownMenuItem onSelect={moveToInline}>
+            <PanelBottom size={14} className="shrink-0" />
+            <span>Move to inline</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={moveToBottomSheet}>
+            <PanelBottomOpen size={14} className="shrink-0" />
+            <span>Move to bottom sheet</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={moveToSidebar}>
+            <PanelLeft size={14} className="shrink-0" />
+            <span>Move to sidebar</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 
@@ -944,6 +961,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     <MessagesComposerSection
       teamName={teamName}
       layout="compact"
+      widthMode="floating-adaptive"
       members={members}
       isTeamAlive={isTeamAlive}
       sending={sendingMessage}
@@ -1205,8 +1223,10 @@ export const MessagesPanel = memo(function MessagesPanel({
   if (position === 'floating-composer') {
     return (
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-4 pb-5 sm:px-6 sm:pb-6">
-        <div className="mx-auto w-full max-w-[500px]">
-          <div className="pointer-events-auto">{floatingComposerSection}</div>
+        <div className="mx-auto flex w-full max-w-[500px] justify-center">
+          <div ref={floatingComposerMeasureRef} className="pointer-events-auto">
+            {floatingComposerSection}
+          </div>
         </div>
       </div>
     );

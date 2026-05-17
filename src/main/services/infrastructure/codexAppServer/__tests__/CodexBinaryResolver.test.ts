@@ -8,14 +8,27 @@ import type { PathLike } from 'node:fs';
 
 const accessMock = vi.fn<(filePath: PathLike, mode?: number) => Promise<void>>();
 const resolveVerifiedAppManagedCodexRuntimeBinaryPathMock = vi.fn<() => Promise<string | null>>();
-const execCliMock =
-  vi.fn<
-    (
-      binaryPath: string | null,
-      args: string[],
-      options?: { timeout?: number; windowsHide?: boolean }
-    ) => Promise<{ stdout: string; stderr: string }>
-  >();
+const getCachedShellEnvMock = vi.fn<() => NodeJS.ProcessEnv | null>(() => null);
+const buildEnrichedEnvMock = vi.fn(
+  (binaryPath?: string | null): NodeJS.ProcessEnv => ({
+    PATH: `enriched:${binaryPath ?? ''}`,
+    CODEX_RESOLVER_TEST_BINARY: binaryPath ?? '',
+  })
+);
+const buildMergedCliPathMock = vi.fn(
+  (_binaryPath?: string | null): string => process.env.PATH ?? ''
+);
+const execCliMock = vi.fn<
+  (
+    binaryPath: string | null,
+    args: string[],
+    options?: {
+      env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+      timeout?: number;
+      windowsHide?: boolean;
+    }
+  ) => Promise<{ stdout: string; stderr: string }>
+>();
 
 vi.mock('node:fs/promises', () => ({
   access: (filePath: PathLike, mode?: number) => accessMock(filePath, mode),
@@ -30,8 +43,24 @@ vi.mock('@main/utils/childProcess', () => ({
   execCli: (
     binaryPath: string | null,
     args: string[],
-    options?: { timeout?: number; windowsHide?: boolean }
+    options?: {
+      env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+      timeout?: number;
+      windowsHide?: boolean;
+    }
   ) => execCliMock(binaryPath, args, options),
+}));
+
+vi.mock('@main/utils/cliEnv', () => ({
+  buildEnrichedEnv: (binaryPath?: string | null) => buildEnrichedEnvMock(binaryPath),
+}));
+
+vi.mock('@main/utils/cliPathMerge', () => ({
+  buildMergedCliPath: (binaryPath?: string | null) => buildMergedCliPathMock(binaryPath),
+}));
+
+vi.mock('@main/utils/shellEnv', () => ({
+  getCachedShellEnv: () => getCachedShellEnvMock(),
 }));
 
 const originalPlatform = process.platform;
@@ -54,6 +83,8 @@ describe('CodexBinaryResolver', () => {
     setPlatform('win32');
     process.env.PATHEXT = '.EXE;.CMD;.BAT;.COM';
     delete process.env.CODEX_CLI_PATH;
+    getCachedShellEnvMock.mockReturnValue(null);
+    buildMergedCliPathMock.mockImplementation(() => process.env.PATH ?? '');
     resolveVerifiedAppManagedCodexRuntimeBinaryPathMock.mockResolvedValue(null);
     execCliMock.mockResolvedValue({ stdout: 'codex-cli 0.130.0', stderr: '' });
   });
@@ -169,5 +200,94 @@ describe('CodexBinaryResolver', () => {
     CodexBinaryResolver.clearCache();
 
     await expect(CodexBinaryResolver.resolve()).resolves.toBe(cmdShim);
+  });
+
+  it('verifies POSIX Codex npm shims with enriched env in packaged-like shells', async () => {
+    setPlatform('darwin');
+    process.env.PATH = '/usr/bin:/bin:/usr/sbin:/sbin';
+    const shellPath = '/usr/local/bin:/usr/bin:/bin';
+    const codexShim = path.posix.join('/usr/local/bin', 'codex');
+    getCachedShellEnvMock.mockReturnValue({
+      HOME: '/Users/tester',
+      PATH: shellPath,
+    });
+
+    accessMock.mockImplementation((filePath) => {
+      if (filePath === codexShim) {
+        return Promise.resolve();
+      }
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+    execCliMock.mockImplementation((_binaryPath, _args, options) => {
+      if (options?.env?.PATH !== `enriched:${codexShim}`) {
+        return Promise.reject(
+          Object.assign(new Error('env: node: No such file or directory'), {
+            code: 'ENOENT',
+          })
+        );
+      }
+      return Promise.resolve({ stdout: 'codex-cli 0.130.0', stderr: '' });
+    });
+
+    const { CodexBinaryResolver } = await import('../CodexBinaryResolver');
+    CodexBinaryResolver.clearCache();
+
+    await expect(CodexBinaryResolver.resolve()).resolves.toBe(codexShim);
+    expect(buildEnrichedEnvMock).toHaveBeenCalledWith(codexShim);
+    expect(execCliMock).toHaveBeenCalledWith(
+      codexShim,
+      ['--version'],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          CODEX_RESOLVER_TEST_BINARY: codexShim,
+          PATH: `enriched:${codexShim}`,
+        }),
+        timeout: 3_000,
+        windowsHide: true,
+      })
+    );
+  });
+
+  it('finds POSIX Codex in merged fallback PATH when shell env is cold', async () => {
+    setPlatform('darwin');
+    process.env.PATH = '/usr/bin:/bin:/usr/sbin:/sbin';
+    const codexShim = path.posix.join('/usr/local/bin', 'codex');
+    buildMergedCliPathMock.mockReturnValue('/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin');
+
+    accessMock.mockImplementation((filePath) => {
+      if (filePath === codexShim) {
+        return Promise.resolve();
+      }
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+
+    const { CodexBinaryResolver } = await import('../CodexBinaryResolver');
+    CodexBinaryResolver.clearCache();
+
+    await expect(CodexBinaryResolver.resolve()).resolves.toBe(codexShim);
+    expect(buildMergedCliPathMock).toHaveBeenCalledWith(null);
+    expect(buildEnrichedEnvMock).toHaveBeenCalledWith(codexShim);
+  });
+
+  it('uses enriched env for Codex version probes', async () => {
+    setPlatform('darwin');
+    const codexShim = path.posix.join('/usr/local/bin', 'codex');
+
+    const { CodexBinaryResolver } = await import('../CodexBinaryResolver');
+    CodexBinaryResolver.clearCache();
+
+    await expect(CodexBinaryResolver.resolveVersion(codexShim)).resolves.toBe('0.130.0');
+    expect(buildEnrichedEnvMock).toHaveBeenCalledWith(codexShim);
+    expect(execCliMock).toHaveBeenCalledWith(
+      codexShim,
+      ['--version'],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          CODEX_RESOLVER_TEST_BINARY: codexShim,
+          PATH: `enriched:${codexShim}`,
+        }),
+        timeout: 3_000,
+      })
+    );
   });
 });

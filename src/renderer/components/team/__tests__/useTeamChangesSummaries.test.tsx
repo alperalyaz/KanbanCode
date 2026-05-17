@@ -155,6 +155,15 @@ function malformedLegacyChangeSet(): TaskChangeSetV2 {
   } as unknown as TaskChangeSetV2;
 }
 
+function malformedUnknownChangeSet(): TaskChangeSetV2 {
+  return {
+    ...changeSet(),
+    confidence: 'fallback',
+    files: undefined,
+    warnings: undefined,
+  } as unknown as TaskChangeSetV2;
+}
+
 function malformedResponse(): TeamTaskChangeSummariesResponse {
   return {
     teamName: 'team-a',
@@ -194,6 +203,25 @@ function incompleteChangeSetResponse(): TeamTaskChangeSummariesResponse {
       },
     ],
   } as unknown as TeamTaskChangeSummariesResponse;
+}
+
+function quietNoLogChangeSet(): TaskChangeSetV2 {
+  return {
+    ...changeSet(),
+    confidence: 'fallback',
+    scope: {
+      taskId: 'task-1',
+      memberName: '',
+      startLine: 0,
+      endLine: 0,
+      startTimestamp: '',
+      endTimestamp: '',
+      toolUseIds: [],
+      filePaths: [],
+      confidence: { tier: 4, label: 'fallback', reason: 'No log files found for task' },
+    },
+    warnings: [],
+  };
 }
 
 function lowConfidenceFileResponse(): TeamTaskChangeSummariesResponse {
@@ -662,6 +690,160 @@ describe('useTeamChangesSummaries', () => {
         delete (Element.prototype as { scrollIntoView?: Element['scrollIntoView'] }).scrollIntoView;
       }
     }
+  });
+
+  it('does not render active no-log summaries as Changes warnings', async () => {
+    hoisted.getTeamTaskChangeSummaries.mockResolvedValue(response(quietNoLogChangeSet()));
+
+    const scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(
+      Element.prototype,
+      'scrollIntoView'
+    );
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    try {
+      container = document.createElement('div');
+      document.body.appendChild(container);
+      root = createRoot(container);
+
+      await act(async () => {
+        root?.render(
+          React.createElement(
+            TooltipProvider,
+            null,
+            React.createElement(TeamChangesSection, {
+              teamName: 'team-a',
+              tasks: [task({ status: 'in_progress', changePresence: 'needs_attention' })],
+              onOpenTask: vi.fn(),
+              onViewChanges: vi.fn(),
+            })
+          )
+        );
+      });
+
+      const expandButton = container.querySelector<HTMLButtonElement>(
+        'button[aria-label="Expand section"]'
+      );
+      expect(expandButton).not.toBeNull();
+
+      await act(async () => {
+        expandButton?.click();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(container.textContent).toContain('No file changes recorded');
+      expect(container.textContent).not.toContain('No log files found for this task.');
+      expect(hoisted.recordTaskChangePresence).not.toHaveBeenCalled();
+      expect(hoisted.setSelectedTeamTaskChangePresence).toHaveBeenCalledWith(
+        'team-a',
+        'task-1',
+        'unknown'
+      );
+    } finally {
+      if (scrollIntoViewDescriptor) {
+        Object.defineProperty(Element.prototype, 'scrollIntoView', scrollIntoViewDescriptor);
+      } else {
+        delete (Element.prototype as { scrollIntoView?: Element['scrollIntoView'] }).scrollIntoView;
+      }
+    }
+  });
+
+  it('does not clear completed task presence from an uncertain empty summary', async () => {
+    hoisted.getTeamTaskChangeSummaries.mockResolvedValue(response(quietNoLogChangeSet()));
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        React.createElement(HookHarness, {
+          tasks: [task({ status: 'completed', changePresence: 'needs_attention' })],
+          onSnapshot: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(hoisted.recordTaskChangePresence).not.toHaveBeenCalled();
+    expect(hoisted.setSelectedTeamTaskChangePresence).not.toHaveBeenCalled();
+  });
+
+  it('clears stale selected presence for newly created pending tasks without logs', async () => {
+    hoisted.getTeamTaskChangeSummaries.mockResolvedValue(response(quietNoLogChangeSet()));
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        React.createElement(HookHarness, {
+          tasks: [task({ status: 'pending', changePresence: 'needs_attention' })],
+          onSnapshot: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(hoisted.recordTaskChangePresence).not.toHaveBeenCalled();
+    expect(hoisted.setSelectedTeamTaskChangePresence).toHaveBeenCalledWith(
+      'team-a',
+      'task-1',
+      'unknown'
+    );
+  });
+
+  it('uses the first duplicate task id when deciding whether to clear stale presence', async () => {
+    hoisted.getTeamTaskChangeSummaries.mockResolvedValue(response(quietNoLogChangeSet()));
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        React.createElement(HookHarness, {
+          tasks: [
+            task({ status: 'completed', changePresence: 'needs_attention' }),
+            task({ status: 'in_progress', changePresence: 'needs_attention' }),
+          ],
+          onSnapshot: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(hoisted.recordTaskChangePresence).not.toHaveBeenCalled();
+    expect(hoisted.setSelectedTeamTaskChangePresence).not.toHaveBeenCalled();
+  });
+
+  it('does not clear task presence from malformed unknown summaries', async () => {
+    hoisted.getTeamTaskChangeSummaries.mockResolvedValue(response(malformedUnknownChangeSet()));
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        React.createElement(HookHarness, {
+          tasks: [task({ status: 'in_progress', changePresence: 'needs_attention' })],
+          onSnapshot: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(hoisted.recordTaskChangePresence).not.toHaveBeenCalled();
+    expect(hoisted.setSelectedTeamTaskChangePresence).not.toHaveBeenCalled();
   });
 
   it('shows the closed-section counter only after the background count load resolves', async () => {
@@ -1222,6 +1404,32 @@ describe('useTeamChangesSummaries', () => {
       });
 
       expect(onViewChanges).toHaveBeenCalledWith('task-1');
+
+      onViewChanges.mockClear();
+
+      const fileRow = container.querySelector<HTMLElement>('[role="button"][title="src/app.ts"]');
+      expect(fileRow).not.toBeNull();
+
+      await act(async () => {
+        fileRow?.click();
+      });
+
+      expect(onViewChanges).toHaveBeenCalledTimes(1);
+      expect(onViewChanges).toHaveBeenCalledWith('task-1', '/repo/src/app.ts');
+
+      onViewChanges.mockClear();
+
+      const reviewFileDiffButton = container.querySelector<HTMLButtonElement>(
+        'button[aria-label="Review diff"]'
+      );
+      expect(reviewFileDiffButton).not.toBeNull();
+
+      await act(async () => {
+        reviewFileDiffButton?.click();
+      });
+
+      expect(onViewChanges).toHaveBeenCalledTimes(1);
+      expect(onViewChanges).toHaveBeenCalledWith('task-1', '/repo/src/app.ts');
     } finally {
       if (scrollIntoViewDescriptor) {
         Object.defineProperty(Element.prototype, 'scrollIntoView', scrollIntoViewDescriptor);
