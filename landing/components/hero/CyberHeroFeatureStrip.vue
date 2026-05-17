@@ -7,6 +7,7 @@ import {
   mdiMonitorDashboard,
 } from "@mdi/js";
 import {
+  heroCollaborationFeature,
   heroFeatureRail,
   heroReviewerFeatureCard,
   type HeroMessage,
@@ -48,6 +49,14 @@ const reviewerBubbleText = computed(() => {
 
 <template>
   <div class="cyber-feature-rail-shell">
+    <img
+      class="cyber-feature-rail__collaboration"
+      :src="heroCollaborationFeature.asset"
+      alt=""
+      loading="lazy"
+      decoding="async"
+      aria-hidden="true"
+    >
     <div
       class="cyber-feature-rail__reviewer"
       :class="{
@@ -58,12 +67,13 @@ const reviewerBubbleText = computed(() => {
       aria-hidden="true"
     >
       <Transition name="cyber-feature-bubble">
-        <div
+        <CyberHeroSpeechBubble
           v-if="reviewerBubbleText"
           class="cyber-feature-rail__reviewer-bubble"
+          role="reviewer"
         >
           {{ reviewerBubbleText }}
-        </div>
+        </CyberHeroSpeechBubble>
       </Transition>
       <div class="cyber-feature-rail__reviewer-card cyber-panel">
         <div class="cyber-feature-rail__reviewer-label">{{ heroReviewerFeatureCard.label }}</div>

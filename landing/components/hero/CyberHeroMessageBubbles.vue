@@ -28,29 +28,29 @@ const showReceiver = computed(() =>
 <template>
   <div class="cyber-messages" aria-hidden="true">
     <Transition name="cyber-bubble">
-      <div
+      <CyberHeroSpeechBubble
         v-if="showSender && message && !reducedMotion"
-        class="cyber-message cyber-message--sender"
-        :class="`cyber-message--role-${message.from}`"
-        :style="senderStyle"
+        variant="sender"
+        :role="message.from"
+        :bubble-style="senderStyle"
       >
         {{ message.text }}
-      </div>
+      </CyberHeroSpeechBubble>
     </Transition>
 
     <Transition name="cyber-bubble">
-      <div
+      <CyberHeroSpeechBubble
         v-if="showReceiver && message && !reducedMotion"
-        class="cyber-message cyber-message--receiver"
-        :class="`cyber-message--role-${message.to}`"
-        :style="receiverStyle"
+        variant="receiver"
+        :role="message.to"
+        :bubble-style="receiverStyle"
       >
         {{ message.response }}
-      </div>
+      </CyberHeroSpeechBubble>
     </Transition>
 
-    <div v-if="reducedMotion" class="cyber-message cyber-message--static cyber-panel">
+    <CyberHeroSpeechBubble v-if="reducedMotion" class="cyber-panel" variant="static">
       Agents coordinate work automatically.
-    </div>
+    </CyberHeroSpeechBubble>
   </div>
 </template>

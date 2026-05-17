@@ -9,7 +9,7 @@ const { t, locale } = useI18n();
 const downloadStore = useDownloadStore();
 const { data: releaseData, resolve } = useReleaseDownloads();
 const { trackDownloadClick } = useAnalytics();
-const { repoUrl, releaseDownloadUrl } = useGithubRepo();
+const { releaseDownloadUrl } = useGithubRepo();
 const isMounted = ref(false);
 const showLinuxRobotMessage = ref(false);
 const showFallingLinuxRobot = ref(false);
@@ -21,6 +21,7 @@ let linuxRobotObserver: IntersectionObserver | null = null;
 let linuxRobotFallRaf = 0;
 let linuxRobotFallTimer: number | null = null;
 let lastLinuxRobotScrollY = 0;
+let faqLandingResizeObserver: ResizeObserver | null = null;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -64,8 +65,8 @@ function getLinuxRobotFallMetrics() {
   const target = getPageRect(faqTarget);
   const robotWidth = clamp(sourceViewport.width, 92, 112);
   const robotHeight = sourceViewport.height * (robotWidth / sourceViewport.width);
-  const landedPageX = target.left + target.width * 0.3;
-  const landedPageY = target.top + target.height * 0.08 - robotHeight * 0.62;
+  const landedPageX = target.left + target.width * 0.5 - robotWidth * 0.5;
+  const landedPageY = target.top - robotHeight * 0.58;
 
   return {
     sourceViewport,
@@ -151,6 +152,11 @@ function updateLinuxRobotFall() {
   const viewportHeight = window.innerHeight;
   const startScroll = metrics.download.bottom - viewportHeight * 0.72;
 
+  if (linuxRobotFlightState.value === 'landed') {
+    fallingLinuxRobotStyle.value = getLinuxRobotLandedStyle(metrics);
+    return;
+  }
+
   if (currentScrollY < startScroll) {
     resetLinuxRobotFall({ keepSourceHidden: hasLinuxRobotDeparted.value });
     return;
@@ -165,10 +171,7 @@ function updateLinuxRobotFall() {
 
   if (linuxRobotFlightState.value === 'idle') {
     launchLinuxRobotFall(metrics);
-    return;
   }
-
-  if (linuxRobotFlightState.value === 'landed') return;
 }
 
 onMounted(() => {
@@ -177,6 +180,7 @@ onMounted(() => {
 
   nextTick(() => {
     const linuxCard = document.querySelector<HTMLElement>('[data-download-os="linux"]');
+    const faqTarget = document.querySelector<HTMLElement>('[data-faq-landing-target]');
     if (!linuxCard) return;
 
     linuxRobotObserver = new IntersectionObserver(
@@ -193,21 +197,31 @@ onMounted(() => {
     );
 
     linuxRobotObserver.observe(linuxCard);
+
+    if (faqTarget) {
+      faqLandingResizeObserver = new ResizeObserver(scheduleLinuxRobotFallUpdate);
+      faqLandingResizeObserver.observe(faqTarget);
+    }
+
     scheduleLinuxRobotFallUpdate();
   });
 
   window.addEventListener('scroll', scheduleLinuxRobotFallUpdate, { passive: true });
   window.addEventListener('resize', scheduleLinuxRobotFallUpdate);
+  window.visualViewport?.addEventListener('resize', scheduleLinuxRobotFallUpdate);
 });
 
 onUnmounted(() => {
   linuxRobotObserver?.disconnect();
   linuxRobotObserver = null;
+  faqLandingResizeObserver?.disconnect();
+  faqLandingResizeObserver = null;
   if (linuxRobotFallRaf) window.cancelAnimationFrame(linuxRobotFallRaf);
   linuxRobotFallRaf = 0;
   clearLinuxRobotFallTimer();
   window.removeEventListener('scroll', scheduleLinuxRobotFallUpdate);
   window.removeEventListener('resize', scheduleLinuxRobotFallUpdate);
+  window.visualViewport?.removeEventListener('resize', scheduleLinuxRobotFallUpdate);
 });
 
 const platformIcons: Record<string, string> = {
@@ -262,12 +276,6 @@ const releaseDate = computed(() => {
   });
 });
 
-const devBranchUrl = computed(() => `${repoUrl.value}/tree/dev`);
-const devBranchNote = computed(() =>
-  locale.value === 'ru'
-    ? 'Самая свежая версия доступна в ветке dev - можно развернуть локально.'
-    : 'Freshest version is available on the dev branch - clone and run it locally.',
-);
 </script>
 
 <template>
@@ -366,15 +374,6 @@ const devBranchNote = computed(() =>
           </div>
         </div>
       </div>
-
-      <a
-        class="download-section__dev-note"
-        :href="devBranchUrl"
-        target="_blank"
-        rel="noopener"
-      >
-        {{ devBranchNote }}
-      </a>
 
       <p v-if="isMounted && releaseVersion" class="download-section__release-info">
         v{{ releaseVersion }} · {{ releaseDate }}
@@ -578,7 +577,7 @@ const devBranchNote = computed(() =>
     opacity: 0.96;
     transform:
       translate3d(var(--fall-x), var(--fall-y), 0)
-      rotate(-5deg)
+      rotate(355deg)
       scale(0.95);
   }
 }
@@ -885,38 +884,6 @@ const devBranchNote = computed(() =>
   position: relative;
   z-index: 1;
   font-family: 'JetBrains Mono', monospace;
-}
-
-.download-section__dev-note {
-  display: flex;
-  width: fit-content;
-  max-width: min(620px, calc(100vw - 32px));
-  margin: 18px auto 0;
-  padding: 8px 12px;
-  border: 1px solid rgba(0, 240, 255, 0.12);
-  border-radius: 10px;
-  background: rgba(0, 240, 255, 0.035);
-  color: #00f0ff;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.76rem;
-  line-height: 1.55;
-  text-align: center;
-  text-decoration: none;
-  opacity: 0.82;
-  position: relative;
-  z-index: 1;
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    color 0.2s ease,
-    opacity 0.2s ease;
-}
-
-.download-section__dev-note:hover {
-  border-color: rgba(57, 255, 20, 0.24);
-  background: rgba(57, 255, 20, 0.045);
-  color: #39ff14;
-  opacity: 1;
 }
 
 @keyframes downloadFadeUp {

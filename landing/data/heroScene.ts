@@ -1,6 +1,8 @@
-import robotAvatarCyan from "~/assets/images/hero/robots/robot-avatar-cyan-v1.webp";
-import robotAvatarMagenta from "~/assets/images/hero/robots/robot-avatar-magenta-v1.webp";
+import robotAvatarCyan from "~/assets/images/hero/robots/robot-avatar-cyan-cat-v1.webp";
+import robotAvatarReviewerTeal from "~/assets/images/hero/robots/robot-avatar-reviewer-teal-v1.webp";
 import robotAvatarSeatedMagenta from "~/assets/images/hero/robots/robot-avatar-seated-magenta-v1.webp";
+import robotAvatarYellow from "~/assets/images/hero/robots/robot-avatar-yellow-star-v1.webp";
+import robotRedPurpleHandshake from "~/assets/images/hero/robots/robot-red-purple-handshake-v1.webp";
 
 export const HERO_SCENE_BREAKPOINTS = {
   desktop: 1200,
@@ -95,8 +97,8 @@ export const heroAgents: readonly HeroAgent[] = [
   {
     id: "developer",
     label: "Developer",
-    asset: robotAvatarMagenta,
-    accent: "magenta",
+    asset: robotAvatarYellow,
+    accent: "amber",
     facing: 1,
     lean: -1,
     priority: true,
@@ -110,10 +112,14 @@ export const heroAgents: readonly HeroAgent[] = [
 
 export const heroReviewerFeatureCard = {
   label: "Reviewer",
-  asset: robotAvatarMagenta,
-  accent: "magenta",
+  asset: robotAvatarReviewerTeal,
+  accent: "cyan",
   status: "Reviewing",
   tasks: ["Review code", "Check quality", "Request changes"],
+} as const;
+
+export const heroCollaborationFeature = {
+  asset: robotRedPurpleHandshake,
 } as const;
 
 export const heroMessages: readonly HeroMessage[] = [

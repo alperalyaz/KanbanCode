@@ -25,6 +25,14 @@ const withBase = (path: string) => `${baseURL.replace(/\/?$/, "/")}${path.replac
 useCyberHeroParallax(heroRef);
 
 const releaseVersion = computed(() => releaseData.value?.version || null);
+const releaseDate = computed(() => {
+  if (!releaseData.value?.pubDate) return "";
+  return new Date(releaseData.value.pubDate).toLocaleDateString(locale.value, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+});
 const activeHeroMessage = computed(() => heroMessages[activeHeroMessageIndex.value] ?? null);
 
 const heroDownloadUrl = computed(() => {
@@ -114,6 +122,7 @@ onUnmounted(() => {
 
 <template>
   <section id="hero" ref="heroRef" class="hero-section cyber-hero section anchor-offset" data-cyber-hero>
+    <CyberHeroMontereyBackground />
     <div class="cyber-hero__background" aria-hidden="true" />
     <div class="cyber-hero__wash" aria-hidden="true" />
     <div class="cyber-hero__gridlines" aria-hidden="true" />
@@ -163,6 +172,9 @@ onUnmounted(() => {
           >
             <span class="cyber-hero__release">
               v{{ releaseVersion }}
+              <span v-if="releaseDate" class="cyber-hero__release-date">
+                · {{ releaseDate }}
+              </span>
             </span>
           </p>
         </div>
