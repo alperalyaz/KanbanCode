@@ -101,6 +101,26 @@ interface MemberCardProps {
 }
 
 const MEMBER_ROW_SURFACE_BLEED_CLASS = '-mx-[calc(1rem-5px)] px-[calc(1rem-5px)]';
+const RUNTIME_TELEMETRY_TOOLTIP_DELAY_MS = 1000;
+const RUNTIME_TELEMETRY_TOOLTIP_OPEN_EVENT = 'member-runtime-telemetry-tooltip-open';
+
+let runtimeTelemetryTooltipIdSequence = 0;
+
+function createRuntimeTelemetryTooltipId(): string {
+  runtimeTelemetryTooltipIdSequence += 1;
+  return `runtime-telemetry-tooltip-${runtimeTelemetryTooltipIdSequence}`;
+}
+
+function notifyRuntimeTelemetryTooltipOpen(id: string): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.dispatchEvent(
+    new CustomEvent<{ id: string }>(RUNTIME_TELEMETRY_TOOLTIP_OPEN_EVENT, {
+      detail: { id },
+    })
+  );
+}
 
 function splitRuntimeSummaryMemory(runtimeSummary: string | undefined): {
   summary: string | undefined;
@@ -691,6 +711,11 @@ export const MemberCard = memo(function MemberCard({
   const runtimeTelemetryTitle = buildRuntimeTelemetryTitle(runtimeEntry);
   const showRuntimeTelemetryTooltip = Boolean(runtimeTelemetryTitle);
   const rowTitle = showRuntimeTelemetryTooltip ? undefined : activityTitle;
+  const runtimeTelemetryTooltipIdRef = useRef<string | null>(null);
+  if (runtimeTelemetryTooltipIdRef.current == null) {
+    runtimeTelemetryTooltipIdRef.current = createRuntimeTelemetryTooltipId();
+  }
+  const runtimeTelemetryTooltipId = runtimeTelemetryTooltipIdRef.current;
   const runtimeTelemetryTooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [runtimeTelemetryTooltipOpen, setRuntimeTelemetryTooltipOpen] = useState(false);
   const clearRuntimeTelemetryTooltipTimer = useCallback(() => {
@@ -700,11 +725,15 @@ export const MemberCard = memo(function MemberCard({
     clearTimeout(runtimeTelemetryTooltipTimerRef.current);
     runtimeTelemetryTooltipTimerRef.current = null;
   }, []);
+  const closeRuntimeTelemetryTooltip = useCallback(() => {
+    clearRuntimeTelemetryTooltipTimer();
+    setRuntimeTelemetryTooltipOpen(false);
+  }, [clearRuntimeTelemetryTooltipTimer]);
   const handleRuntimeTelemetryTooltipOpenChange = useCallback(
     (nextOpen: boolean) => {
       clearRuntimeTelemetryTooltipTimer();
       if (!nextOpen) {
-        setRuntimeTelemetryTooltipOpen(false);
+        closeRuntimeTelemetryTooltip();
         return;
       }
       if (runtimeTelemetryTooltipOpen) {
@@ -712,10 +741,16 @@ export const MemberCard = memo(function MemberCard({
       }
       runtimeTelemetryTooltipTimerRef.current = setTimeout(() => {
         runtimeTelemetryTooltipTimerRef.current = null;
+        notifyRuntimeTelemetryTooltipOpen(runtimeTelemetryTooltipId);
         setRuntimeTelemetryTooltipOpen(true);
-      }, 1000);
+      }, RUNTIME_TELEMETRY_TOOLTIP_DELAY_MS);
     },
-    [clearRuntimeTelemetryTooltipTimer, runtimeTelemetryTooltipOpen]
+    [
+      clearRuntimeTelemetryTooltipTimer,
+      closeRuntimeTelemetryTooltip,
+      runtimeTelemetryTooltipId,
+      runtimeTelemetryTooltipOpen,
+    ]
   );
   useEffect(
     () => () => {
@@ -725,10 +760,37 @@ export const MemberCard = memo(function MemberCard({
   );
   useEffect(() => {
     if (!showRuntimeTelemetryTooltip) {
-      clearRuntimeTelemetryTooltipTimer();
-      setRuntimeTelemetryTooltipOpen(false);
+      closeRuntimeTelemetryTooltip();
     }
-  }, [clearRuntimeTelemetryTooltipTimer, showRuntimeTelemetryTooltip]);
+  }, [closeRuntimeTelemetryTooltip, showRuntimeTelemetryTooltip]);
+  useEffect(() => {
+    if (!showRuntimeTelemetryTooltip || typeof window === 'undefined') {
+      return;
+    }
+
+    const closeWhenAnotherRuntimeTooltipOpens = (event: Event): void => {
+      const nextId = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (nextId && nextId !== runtimeTelemetryTooltipId) {
+        closeRuntimeTelemetryTooltip();
+      }
+    };
+
+    window.addEventListener(
+      RUNTIME_TELEMETRY_TOOLTIP_OPEN_EVENT,
+      closeWhenAnotherRuntimeTooltipOpens
+    );
+    return () => {
+      window.removeEventListener(
+        RUNTIME_TELEMETRY_TOOLTIP_OPEN_EVENT,
+        closeWhenAnotherRuntimeTooltipOpens
+      );
+    };
+  }, [closeRuntimeTelemetryTooltip, runtimeTelemetryTooltipId, showRuntimeTelemetryTooltip]);
+  const handleRuntimeTelemetryPointerLeave = useCallback(() => {
+    if (showRuntimeTelemetryTooltip) {
+      closeRuntimeTelemetryTooltip();
+    }
+  }, [closeRuntimeTelemetryTooltip, showRuntimeTelemetryTooltip]);
   const showStartingSkeleton =
     !isRemoved &&
     presenceLabel === 'starting' &&
@@ -894,6 +956,7 @@ export const MemberCard = memo(function MemberCard({
         isRemoved && 'opacity-50',
         spawnCardClass
       )}
+      onPointerLeave={handleRuntimeTelemetryPointerLeave}
     >
       <div
         className={cn(
