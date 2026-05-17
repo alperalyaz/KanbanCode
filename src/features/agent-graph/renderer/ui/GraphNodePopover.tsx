@@ -24,6 +24,10 @@ import { useGraphMemberPopoverContext } from '../hooks/useGraphMemberPopoverCont
 import { GraphTaskCard } from './GraphTaskCard';
 
 import type { GraphNode } from '@claude-teams/agent-graph';
+import type {
+  MemberActivityFilter,
+  MemberDetailTab,
+} from '@renderer/components/team/members/memberDetailTypes';
 import type { TeamTaskWithKanban } from '@shared/types';
 
 // ─── Tool name/preview formatters ───────────────────────────────────────────
@@ -74,7 +78,13 @@ interface GraphNodePopoverProps {
   onClose: () => void;
   onSendMessage?: (memberName: string) => void;
   onOpenTaskDetail?: (taskId: string) => void;
-  onOpenMemberProfile?: (memberName: string) => void;
+  onOpenMemberProfile?: (
+    memberName: string,
+    options?: {
+      initialActivityFilter?: MemberActivityFilter;
+      initialTab?: MemberDetailTab;
+    }
+  ) => void;
   onCreateTask?: (owner: string) => void;
   onStartTask?: (taskId: string) => void;
   onCompleteTask?: (taskId: string) => void;
@@ -83,6 +93,7 @@ interface GraphNodePopoverProps {
   onRequestChanges?: (taskId: string) => void;
   onCancelTask?: (taskId: string) => void;
   onMoveBackToDone?: (taskId: string) => void;
+  onViewChanges?: (taskId: string) => void;
   onDeleteTask?: (taskId: string) => void;
 }
 
@@ -101,6 +112,7 @@ export const GraphNodePopover = ({
   onRequestChanges,
   onCancelTask,
   onMoveBackToDone,
+  onViewChanges,
   onDeleteTask,
 }: GraphNodePopoverProps): React.JSX.Element => {
   if (node.kind === 'member' || node.kind === 'lead') {
@@ -140,6 +152,7 @@ export const GraphNodePopover = ({
         onRequestChanges={onRequestChanges}
         onCancelTask={onCancelTask}
         onMoveBackToDone={onMoveBackToDone}
+        onViewChanges={onViewChanges}
         onDeleteTask={onDeleteTask}
       />
     );

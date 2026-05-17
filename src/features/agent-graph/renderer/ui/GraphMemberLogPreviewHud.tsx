@@ -31,6 +31,7 @@ const NEW_LOG_HIGHLIGHT_MS = 1_000;
 const COMPACT_ROW_TITLE_LIMIT = 24;
 const COMPACT_ROW_TEXT_LIMIT = 76;
 const COMPACT_ROW_MIN_PREVIEW_LIMIT = 40;
+const INTERACTIVE_LOG_CONTROL_CLASS = 'pointer-events-auto';
 
 interface StableRectLike {
   left: number;
@@ -427,7 +428,7 @@ export const GraphMemberLogPreviewHud = ({
 
         const baseOpacity = focusNodeIds && !focusNodeIds.has(node.id) ? 0.25 : 1;
         shell.style.opacity = String(baseOpacity);
-        shell.style.pointerEvents = 'auto';
+        shell.style.pointerEvents = 'none';
         shell.style.left = `${Math.round(laneRect.left)}px`;
         shell.style.top = `${Math.round(laneRect.top)}px`;
         shell.style.width = `${Math.round(laneRect.width)}px`;
@@ -544,7 +545,7 @@ export const GraphMemberLogPreviewHud = ({
           key={item.id}
           type="button"
           className={[
-            'block h-[72px] min-h-[72px] w-full min-w-0 overflow-hidden rounded-md border px-2.5 py-1 text-left text-slate-400 transition-[border-color,background-color,box-shadow] duration-500',
+            `${INTERACTIVE_LOG_CONTROL_CLASS} block h-[72px] min-h-[72px] w-full min-w-0 overflow-hidden rounded-md border px-2.5 py-1 text-left text-slate-400 transition-[border-color,background-color,box-shadow] duration-500`,
             rowStateClassName,
           ].join(' ')}
           title={titleText}
@@ -593,7 +594,7 @@ export const GraphMemberLogPreviewHud = ({
             ref={(element) => {
               shellRefs.current.set(node.id, element);
             }}
-            className="pointer-events-auto absolute z-10 origin-top-left select-none opacity-0"
+            className="pointer-events-none absolute z-10 origin-top-left select-none opacity-0"
             style={{
               width: `${laneWidth}px`,
               maxWidth: `${laneWidth}px`,
@@ -614,7 +615,7 @@ export const GraphMemberLogPreviewHud = ({
                 ) : isEmptyLoading ? (
                   <button
                     type="button"
-                    className="flex min-h-0 flex-1 rounded-md text-left text-[11px] text-slate-400/60"
+                    className={`${INTERACTIVE_LOG_CONTROL_CLASS} flex min-h-0 flex-1 rounded-md text-left text-[11px] text-slate-400/60`}
                     aria-busy="true"
                     aria-label="Loading logs"
                     onClick={() => openLogs(memberName)}
@@ -625,7 +626,7 @@ export const GraphMemberLogPreviewHud = ({
                 ) : (
                   <button
                     type="button"
-                    className="flex h-[72px] min-h-[72px] items-center rounded-md border border-dashed border-white/10 bg-[rgba(8,14,28,0.28)] px-3 text-left text-[11px] text-slate-400/60"
+                    className={`${INTERACTIVE_LOG_CONTROL_CLASS} flex h-[72px] min-h-[72px] items-center rounded-md border border-dashed border-white/10 bg-[rgba(8,14,28,0.28)] px-3 text-left text-[11px] text-slate-400/60`}
                     onClick={() => openLogs(memberName)}
                   >
                     {resolveEmptyText(preview, loading, error)}
@@ -634,7 +635,7 @@ export const GraphMemberLogPreviewHud = ({
                 {preview && preview.overflowCount > 0 ? (
                   <button
                     type="button"
-                    className="h-8 min-h-8 w-full rounded-md border border-white/10 bg-[rgba(8,14,28,0.64)] px-3 py-1 text-center text-[11px] font-medium text-slate-300 transition-colors hover:border-white/20 hover:bg-[rgba(12,20,40,0.78)]"
+                    className={`${INTERACTIVE_LOG_CONTROL_CLASS} h-8 min-h-8 w-full rounded-md border border-white/10 bg-[rgba(8,14,28,0.64)] px-3 py-1 text-center text-[11px] font-medium text-slate-300 transition-colors hover:border-white/20 hover:bg-[rgba(12,20,40,0.78)]`}
                     onClick={() => openLogs(memberName)}
                   >
                     +{preview.overflowCount} more
