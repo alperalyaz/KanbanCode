@@ -1397,7 +1397,6 @@ export const TeamDetailView = memo(function TeamDetailView({
   });
   const [creatingTask, setCreatingTask] = useState(false);
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
-  const [runtimeTelemetryPreviewVisible, setRuntimeTelemetryPreviewVisible] = useState(false);
   const [addingMemberLoading, setAddingMemberLoading] = useState(false);
   const [removeMemberConfirm, setRemoveMemberConfirm] = useState<string | null>(null);
   const [updatingRoleLoading, setUpdatingRoleLoading] = useState(false);
@@ -2872,68 +2871,63 @@ export const TeamDetailView = memo(function TeamDetailView({
                 </div>
               ) : null}
 
-              <CollapsibleTeamSection
-                sectionId="team"
-                title="Team"
-                icon={<Users size={14} />}
-                badge={activeTeammateCount === 0 ? 'Solo' : activeTeammateCount}
-                defaultOpen
-                afterBadge={
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="pointer-events-auto h-6 gap-1 px-2 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setAddMemberDialogOpen(true);
-                    }}
-                  >
-                    <UserPlus size={12} />
-                    Add
-                  </Button>
-                }
-                action={
-                  <div
-                    className={cn(
-                      'flex items-center gap-3 pr-3 text-[11px] font-medium leading-none text-[var(--color-text-muted)] transition-opacity duration-150',
-                      runtimeTelemetryPreviewVisible ? 'opacity-100' : 'opacity-0'
-                    )}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(34,197,94,0.3)]" />
-                      Memory
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="size-2 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.3)]" />
-                      CPU
-                    </span>
+              <div className="runtime-telemetry-hover-scope">
+                <CollapsibleTeamSection
+                  sectionId="team"
+                  title="Team"
+                  icon={<Users size={14} />}
+                  badge={activeTeammateCount === 0 ? 'Solo' : activeTeammateCount}
+                  defaultOpen
+                  afterBadge={
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="pointer-events-auto h-6 gap-1 px-2 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAddMemberDialogOpen(true);
+                      }}
+                    >
+                      <UserPlus size={12} />
+                      Add
+                    </Button>
+                  }
+                  action={
+                    <div className="runtime-telemetry-legend flex items-center gap-3 pr-3 text-[11px] font-medium leading-none text-[var(--color-text-muted)] opacity-0 transition-opacity duration-150">
+                      <span className="flex items-center gap-1.5">
+                        <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(34,197,94,0.3)]" />
+                        Memory
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="size-2 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.3)]" />
+                        CPU
+                      </span>
+                    </div>
+                  }
+                  contentWrapperClassName="-mx-[calc(1rem-5px)] w-[calc(100%+2rem-10px)]"
+                >
+                  <div className="px-[calc(1rem-5px)]">
+                    <TeamMemberListBridge
+                      teamName={teamName}
+                      members={membersWithLiveBranches}
+                      expectedTeammateCount={activeTeammateCount}
+                      memberTaskCounts={memberTaskCounts}
+                      taskMap={taskMap}
+                      pendingRepliesByMember={pendingRepliesByMember}
+                      isRosterLoading={loading}
+                      isTeamAlive={data.isAlive}
+                      isTeamProvisioning={isTeamProvisioning}
+                      launchParams={launchParams}
+                      onMemberClick={handleSelectMember}
+                      onSendMessage={handleSendMessageToMember}
+                      onAssignTask={handleAssignTaskToMember}
+                      onOpenTask={handleOpenTaskById}
+                      onRestartMember={handleRestartMember}
+                      onSkipMemberForLaunch={handleSkipMemberForLaunch}
+                    />
                   </div>
-                }
-                contentWrapperClassName="-mx-[calc(1rem-5px)] w-[calc(100%+2rem-10px)]"
-              >
-                <div className="px-[calc(1rem-5px)]">
-                  <TeamMemberListBridge
-                    teamName={teamName}
-                    members={membersWithLiveBranches}
-                    expectedTeammateCount={activeTeammateCount}
-                    memberTaskCounts={memberTaskCounts}
-                    taskMap={taskMap}
-                    pendingRepliesByMember={pendingRepliesByMember}
-                    isRosterLoading={loading}
-                    isTeamAlive={data.isAlive}
-                    isTeamProvisioning={isTeamProvisioning}
-                    launchParams={launchParams}
-                    runtimeTelemetryVisible={runtimeTelemetryPreviewVisible}
-                    onRuntimeTelemetryHoverChange={setRuntimeTelemetryPreviewVisible}
-                    onMemberClick={handleSelectMember}
-                    onSendMessage={handleSendMessageToMember}
-                    onAssignTask={handleAssignTaskToMember}
-                    onOpenTask={handleOpenTaskById}
-                    onRestartMember={handleRestartMember}
-                    onSkipMemberForLaunch={handleSkipMemberForLaunch}
-                  />
-                </div>
-              </CollapsibleTeamSection>
+                </CollapsibleTeamSection>
+              </div>
 
               <CollapsibleTeamSection
                 sectionId="sessions"

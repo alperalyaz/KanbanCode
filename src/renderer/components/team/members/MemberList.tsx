@@ -45,8 +45,6 @@ interface MemberListProps {
   isTeamProvisioning?: boolean;
   leadActivity?: LeadActivityState;
   launchParams?: TeamLaunchParams;
-  runtimeTelemetryVisible?: boolean;
-  onRuntimeTelemetryHoverChange?: (visible: boolean) => void;
   onMemberClick?: (member: ResolvedTeamMember) => void;
   onSendMessage?: (member: ResolvedTeamMember) => void;
   onAssignTask?: (member: ResolvedTeamMember) => void;
@@ -464,8 +462,6 @@ function areMemberListPropsEqual(
     prev.isTeamAlive === next.isTeamAlive &&
     prev.isTeamProvisioning === next.isTeamProvisioning &&
     prev.leadActivity === next.leadActivity &&
-    prev.runtimeTelemetryVisible === next.runtimeTelemetryVisible &&
-    prev.onRuntimeTelemetryHoverChange === next.onRuntimeTelemetryHoverChange &&
     prev.onRestartMember === next.onRestartMember &&
     prev.onSkipMemberForLaunch === next.onSkipMemberForLaunch &&
     areLaunchParamsEquivalent(prev.launchParams, next.launchParams)
@@ -502,7 +498,6 @@ interface MemberCardRowProps {
   isTeamProvisioning?: boolean;
   leadActivity?: LeadActivityState;
   isLaunchSettling?: boolean;
-  runtimeTelemetryVisible?: boolean;
   runtimeTelemetryScale?: RuntimeTelemetryScale;
   onOpenTask?: (taskId: string) => void;
   onMemberClick?: (member: ResolvedTeamMember) => void;
@@ -538,7 +533,6 @@ const MemberCardRow = memo(function MemberCardRow({
   isTeamProvisioning,
   leadActivity,
   isLaunchSettling,
-  runtimeTelemetryVisible,
   runtimeTelemetryScale,
   onOpenTask,
   onMemberClick,
@@ -589,7 +583,6 @@ const MemberCardRow = memo(function MemberCardRow({
       spawnLaunchState={spawnLaunchState}
       spawnRuntimeAlive={spawnRuntimeAlive}
       isLaunchSettling={isLaunchSettling}
-      runtimeTelemetryVisible={runtimeTelemetryVisible}
       runtimeTelemetryScale={runtimeTelemetryScale}
       onOpenTask={currentTask ? handleOpenTask : undefined}
       onOpenReviewTask={reviewTask ? handleOpenReviewTask : undefined}
@@ -714,8 +707,6 @@ export const MemberList = memo(function MemberList({
   isTeamProvisioning,
   leadActivity,
   launchParams,
-  runtimeTelemetryVisible = false,
-  onRuntimeTelemetryHoverChange,
   onMemberClick,
   onSendMessage,
   onAssignTask,
@@ -741,14 +732,6 @@ export const MemberList = memo(function MemberList({
     observer.observe(el);
     return () => observer.disconnect();
   }, [handleResize]);
-
-  const handleRuntimeTelemetryMouseEnter = useCallback(() => {
-    onRuntimeTelemetryHoverChange?.(true);
-  }, [onRuntimeTelemetryHoverChange]);
-
-  const handleRuntimeTelemetryMouseLeave = useCallback(() => {
-    onRuntimeTelemetryHoverChange?.(false);
-  }, [onRuntimeTelemetryHoverChange]);
 
   const gridClass = isWide ? 'grid grid-cols-2 gap-1' : 'grid grid-cols-1 gap-1';
   const activeMembers = useMemo(
@@ -941,12 +924,7 @@ export const MemberList = memo(function MemberList({
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="flex flex-col gap-1"
-      onMouseEnter={handleRuntimeTelemetryMouseEnter}
-      onMouseLeave={handleRuntimeTelemetryMouseLeave}
-    >
+    <div ref={containerRef} className="runtime-telemetry-list flex flex-col gap-1">
       <div className={gridClass}>
         {activeMembers.map((member) => {
           const spawnEntry = memberSpawnStatuses?.get(member.name);
@@ -1017,7 +995,6 @@ export const MemberList = memo(function MemberList({
               isTeamProvisioning={isTeamProvisioning}
               leadActivity={leadActivity}
               isLaunchSettling={isLaunchSettling}
-              runtimeTelemetryVisible={runtimeTelemetryVisible}
               runtimeTelemetryScale={runtimeTelemetryScale}
               onOpenTask={onOpenTask}
               onMemberClick={onMemberClick}
@@ -1063,7 +1040,6 @@ export const MemberList = memo(function MemberList({
                 isTeamProvisioning={isTeamProvisioning}
                 leadActivity={leadActivity}
                 isLaunchSettling={false}
-                runtimeTelemetryVisible={runtimeTelemetryVisible}
                 runtimeTelemetryScale={runtimeTelemetryScale}
                 onOpenTask={onOpenTask}
                 onMemberClick={onMemberClick}

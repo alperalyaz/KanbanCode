@@ -90,7 +90,6 @@ interface MemberCardProps {
   spawnLaunchState?: MemberLaunchState;
   spawnRuntimeAlive?: boolean;
   isLaunchSettling?: boolean;
-  runtimeTelemetryVisible?: boolean;
   runtimeTelemetryScale?: RuntimeTelemetryScale;
   onOpenTask?: () => void;
   onOpenReviewTask?: () => void;
@@ -502,11 +501,9 @@ function buildRuntimeTelemetryPaths(
 
 const MemberRuntimeTelemetryStrip = memo(function MemberRuntimeTelemetryStrip({
   runtimeEntry,
-  visible,
   scale,
 }: {
   runtimeEntry?: TeamAgentRuntimeEntry;
-  visible: boolean;
   scale?: RuntimeTelemetryScale;
 }): React.JSX.Element | null {
   const paths = useMemo(
@@ -521,10 +518,7 @@ const MemberRuntimeTelemetryStrip = memo(function MemberRuntimeTelemetryStrip({
     <div
       aria-hidden="true"
       data-testid="member-runtime-telemetry-strip"
-      className={cn(
-        'pointer-events-none absolute inset-x-0 bottom-0 z-0 h-5 overflow-hidden rounded-b transition-opacity duration-150',
-        visible ? 'opacity-100' : 'opacity-0'
-      )}
+      className="runtime-telemetry-strip pointer-events-none absolute inset-x-0 bottom-0 z-0 h-5 overflow-hidden rounded-b opacity-0 transition-opacity duration-150"
       style={{
         WebkitMaskImage:
           'linear-gradient(to right, transparent 0, black 44px, black calc(100% - 44px), transparent 100%)',
@@ -602,7 +596,6 @@ export const MemberCard = memo(function MemberCard({
   spawnLaunchState,
   spawnRuntimeAlive,
   isLaunchSettling,
-  runtimeTelemetryVisible = false,
   runtimeTelemetryScale,
   onOpenTask,
   onOpenReviewTask,
@@ -696,7 +689,7 @@ export const MemberCard = memo(function MemberCard({
       ? `Reviewing task: #${deriveTaskDisplayId(reviewTask.id)}`
       : undefined;
   const runtimeTelemetryTitle = buildRuntimeTelemetryTitle(runtimeEntry);
-  const showRuntimeTelemetryTooltip = runtimeTelemetryVisible && Boolean(runtimeTelemetryTitle);
+  const showRuntimeTelemetryTooltip = Boolean(runtimeTelemetryTitle);
   const rowTitle = showRuntimeTelemetryTooltip ? undefined : activityTitle;
   const runtimeTelemetryTooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [runtimeTelemetryTooltipOpen, setRuntimeTelemetryTooltipOpen] = useState(false);
@@ -920,11 +913,7 @@ export const MemberCard = memo(function MemberCard({
         }}
       >
         {!isRemoved ? (
-          <MemberRuntimeTelemetryStrip
-            runtimeEntry={runtimeEntry}
-            visible={runtimeTelemetryVisible}
-            scale={runtimeTelemetryScale}
-          />
+          <MemberRuntimeTelemetryStrip runtimeEntry={runtimeEntry} scale={runtimeTelemetryScale} />
         ) : null}
         <div className="pointer-events-none absolute inset-0 z-10 rounded transition-colors group-hover:bg-white/5" />
         <div className="relative z-20 flex items-center gap-2.5">

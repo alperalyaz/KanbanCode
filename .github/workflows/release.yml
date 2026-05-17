@@ -5,13 +5,28 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to build into a draft, for example v2.0.0
+        required: true
+        type: string
+      publish_release:
+        description: Publish the release after all assets are uploaded
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release_tag || github.ref }}
   cancel-in-progress: false
+
+env:
+  IS_RELEASE_BUILD: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+  RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.release_tag }}
+  PUBLISH_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish_release }}
 
 jobs:
   build:
@@ -36,14 +51,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Set version from tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Validate release metadata
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          set -euo pipefail
+          case "${RELEASE_TAG:-}" in
+            v[0-9]*) ;;
+            *)
+              echo "release_tag must start with v and include a numeric version, got '${RELEASE_TAG:-<empty>}'" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Set version from release tag
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
           pnpm pkg set version="$VERSION"
 
       - name: Verify Sentry release env
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -54,14 +81,14 @@ jobs:
       - name: Build app
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
-          SENTRY_DSN: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.SENTRY_DSN || '' }}
-          SENTRY_AUTH_TOKEN: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_DSN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_DSN || '' }}
+          SENTRY_AUTH_TOKEN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_AUTH_TOKEN || '' }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: pnpm build
 
       - name: Verify Sentry source map upload
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -70,16 +97,28 @@ jobs:
         run: node ./scripts/ci/verify-sentry-release.cjs postbuild
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${RELEASE_TAG:-$TAG}"
+          existing_is_draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
+          if [ -n "$existing_is_draft" ]; then
+            if [ "${PUBLISH_RELEASE}" != "true" ] && [ "$existing_is_draft" != "true" ]; then
+              echo "Release $TAG already exists and is not a draft; refusing to overwrite it from draft mode." >&2
+              exit 1
+            fi
+            echo "Release $TAG already exists, skipping creation"
+            exit 0
+          fi
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
             --title "$TAG" \
             --generate-notes \
-            --draft=true 2>/dev/null || echo "Release $TAG already exists, skipping creation"
+            --draft=true
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v7
@@ -98,30 +137,55 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Validate release metadata
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
+        run: |
+          set -euo pipefail
+          case "${RELEASE_TAG:-}" in
+            v[0-9]*) ;;
+            *)
+              echo "release_tag must start with v and include a numeric version, got '${RELEASE_TAG:-<empty>}'" >&2
+              exit 1
+              ;;
+          esac
+
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${RELEASE_TAG:-$TAG}"
+          existing_is_draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
+          if [ -n "$existing_is_draft" ]; then
+            if [ "${PUBLISH_RELEASE}" != "true" ] && [ "$existing_is_draft" != "true" ]; then
+              echo "Release $TAG already exists and is not a draft; refusing to overwrite it from draft mode." >&2
+              exit 1
+            fi
+            echo "Release $TAG already exists, skipping creation"
+            exit 0
+          fi
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
             --title "$TAG" \
             --generate-notes \
-            --draft=true 2>/dev/null || echo "Release $TAG already exists, skipping creation"
+            --draft=true
 
-      - name: Skip runtime asset preparation for manual builds
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        run: echo "Runtime asset preparation is only needed for tagged releases."
+      - name: Skip runtime asset preparation for non-release builds
+        if: ${{ env.IS_RELEASE_BUILD != 'true' }}
+        run: echo "Runtime asset preparation is only needed for release builds."
 
       - name: Check runtime assets
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         id: runtime-assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${RELEASE_TAG:-$TAG}"
           existing="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null || true)"
           missing=0
           while IFS= read -r asset; do
@@ -144,7 +208,7 @@ jobs:
             exit 1
           fi
 
-          TARGET_TAG="${GITHUB_REF#refs/tags/}"
+          TARGET_TAG="${RELEASE_TAG}"
           SOURCE_REPO="$(node ./scripts/runtime-lock.mjs source-repository)"
           SOURCE_REF="$(node ./scripts/runtime-lock.mjs source-ref)"
           RUNTIME_VERSION="$(node ./scripts/runtime-lock.mjs version)"
@@ -215,6 +279,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${RELEASE_TAG:-$TAG}"
           for attempt in $(seq 1 12); do
             existing="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null || true)"
             all_found=1
@@ -281,10 +346,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Set version from tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Set version from release tag
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          VERSION="${RELEASE_TAG#v}"
           pnpm pkg set version="$VERSION"
 
       - name: Stage bundled runtime (macOS ${{ matrix.arch }})
@@ -293,15 +358,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
+          if [[ "${IS_RELEASE_BUILD}" == "true" ]]; then
+            TAG="${RELEASE_TAG}"
             node ./scripts/stage-runtime.mjs --platform "darwin-${{ matrix.arch }}" --release-tag "$TAG"
           else
             node ./scripts/stage-runtime.mjs --platform "darwin-${{ matrix.arch }}"
           fi
 
       - name: Verify Sentry release env (macOS ${{ matrix.arch }})
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -312,14 +377,14 @@ jobs:
       - name: Build app (macOS ${{ matrix.arch }})
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
-          SENTRY_DSN: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.SENTRY_DSN || '' }}
-          SENTRY_AUTH_TOKEN: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_DSN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_DSN || '' }}
+          SENTRY_AUTH_TOKEN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_AUTH_TOKEN || '' }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: pnpm build
 
       - name: Verify Sentry source map upload (macOS ${{ matrix.arch }})
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -352,11 +417,11 @@ jobs:
         run: node ./scripts/electron-builder/smokePackagedApp.cjs "release/mac-${{ matrix.arch }}/Agent Teams UI.app" darwin
 
       - name: Upload assets to release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${RELEASE_TAG}"
           for f in release/*.dmg release/*.zip release/*.blockmap; do
             [ -f "$f" ] || continue
             echo "Uploading: $f"
@@ -397,11 +462,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Set version from tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Set version from release tag
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         shell: bash
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          VERSION="${RELEASE_TAG#v}"
           pnpm pkg set version="$VERSION"
 
       - name: Stage bundled runtime (Windows)
@@ -410,15 +475,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ErrorActionPreference = "Stop"
-          if ($env:GITHUB_REF -like 'refs/tags/v*') {
-            $tag = $env:GITHUB_REF.Replace('refs/tags/', '')
+          if ($env:IS_RELEASE_BUILD -eq 'true') {
+            $tag = $env:RELEASE_TAG
             node ./scripts/stage-runtime.mjs --platform win32-x64 --release-tag $tag
           } else {
             node ./scripts/stage-runtime.mjs --platform win32-x64
           }
 
       - name: Verify Sentry release env (Windows)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -429,14 +494,14 @@ jobs:
       - name: Build app (Windows)
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
-          SENTRY_DSN: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.SENTRY_DSN || '' }}
-          SENTRY_AUTH_TOKEN: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_DSN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_DSN || '' }}
+          SENTRY_AUTH_TOKEN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_AUTH_TOKEN || '' }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: pnpm build
 
       - name: Verify Sentry source map upload (Windows)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -467,12 +532,12 @@ jobs:
         run: node ./scripts/electron-builder/smokePackagedApp.cjs "release/win-unpacked" win32
 
       - name: Upload assets to release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${RELEASE_TAG}"
           for f in release/*.exe release/*.blockmap; do
             [ -f "$f" ] || continue
             echo "Uploading: $f"
@@ -518,10 +583,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Set version from tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Set version from release tag
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          VERSION="${RELEASE_TAG#v}"
           pnpm pkg set version="$VERSION"
 
       - name: Stage bundled runtime (Linux)
@@ -530,15 +595,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
+          if [[ "${IS_RELEASE_BUILD}" == "true" ]]; then
+            TAG="${RELEASE_TAG}"
             node ./scripts/stage-runtime.mjs --platform linux-x64 --release-tag "$TAG"
           else
             node ./scripts/stage-runtime.mjs --platform linux-x64
           fi
 
       - name: Verify Sentry release env (Linux)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -549,14 +614,14 @@ jobs:
       - name: Build app (Linux)
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
-          SENTRY_DSN: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.SENTRY_DSN || '' }}
-          SENTRY_AUTH_TOKEN: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_DSN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_DSN || '' }}
+          SENTRY_AUTH_TOKEN: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && secrets.SENTRY_AUTH_TOKEN || '' }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: pnpm build
 
       - name: Verify Sentry source map upload (Linux)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -584,12 +649,12 @@ jobs:
         run: xvfb-run -a node ./scripts/electron-builder/smokePackagedApp.cjs "release/linux-unpacked" linux
 
       - name: Upload assets to release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE_BUILD == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -x
-          TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${RELEASE_TAG}"
           ls -la release/ || true
           for f in release/*.AppImage release/*.deb release/*.rpm release/*.pacman release/*.blockmap; do
             [ -f "$f" ] || continue
@@ -602,7 +667,7 @@ jobs:
     needs: [release-mac, release-win, release-linux]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
 
     steps:
       - name: Upload stable-named assets for /latest/download links
@@ -610,7 +675,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          VERSION="${RELEASE_TAG#v}"
+          TAG="${RELEASE_TAG}"
           REPO="${GITHUB_REPOSITORY}"
           TMP_DIR="$(mktemp -d)"
           trap 'rm -rf "$TMP_DIR"' EXIT
@@ -629,13 +695,13 @@ jobs:
           for STABLE_NAME in "${!FILES[@]}"; do
             VERSIONED_NAME="${FILES[$STABLE_NAME]}"
             echo "Downloading ${VERSIONED_NAME} -> ${STABLE_NAME}"
-            gh release download "v${VERSION}" \
+            gh release download "${TAG}" \
               --repo "$REPO" \
               --pattern "${VERSIONED_NAME}" \
               --dir "$TMP_DIR" \
               --clobber
             cp "${TMP_DIR}/${VERSIONED_NAME}" "${TMP_DIR}/${STABLE_NAME}"
-            gh release upload "v${VERSION}" "${TMP_DIR}/${STABLE_NAME}" --repo "$REPO" --clobber
+            gh release upload "${TAG}" "${TMP_DIR}/${STABLE_NAME}" --repo "$REPO" --clobber
           done
 
       - name: Publish canonical updater metadata
@@ -643,8 +709,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF#refs/tags/v}"
-          TAG="v${VERSION}"
+          VERSION="${RELEASE_TAG#v}"
+          TAG="${RELEASE_TAG}"
           REPO="${GITHUB_REPOSITORY}"
           RELEASE_DATE="$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")"
           TMP_DIR="$(mktemp -d)"
@@ -724,9 +790,14 @@ jobs:
           gh release upload "${TAG}" latest.yml latest-linux.yml latest-mac.yml --repo "${REPO}" --clobber
 
       - name: Publish release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish_release }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${RELEASE_TAG}"
           gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest
+
+      - name: Keep release as draft
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish_release }}
+        run: echo "Draft release ${RELEASE_TAG} is ready. It was not published because publish_release=false."

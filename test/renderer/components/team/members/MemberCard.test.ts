@@ -800,7 +800,6 @@ describe('MemberCard starting-state visuals', () => {
             ],
             updatedAt: '2026-04-24T12:00:05.000Z',
           },
-          runtimeTelemetryVisible: true,
           runtimeTelemetryScale: {
             cpuCapPercent: 100,
             memoryCapBytes: 512 * 1024 * 1024,
@@ -861,7 +860,6 @@ describe('MemberCard starting-state visuals', () => {
             resourceHistory: 'not-an-array',
             updatedAt: '2026-04-24T12:00:05.000Z',
           } as any,
-          runtimeTelemetryVisible: true,
           isTeamAlive: true,
           isTeamProvisioning: false,
         })
@@ -911,7 +909,6 @@ describe('MemberCard starting-state visuals', () => {
             ],
             updatedAt: '2026-04-24T12:00:05.000Z',
           } as any,
-          runtimeTelemetryVisible: true,
           isTeamAlive: true,
           isTeamProvisioning: false,
         })
