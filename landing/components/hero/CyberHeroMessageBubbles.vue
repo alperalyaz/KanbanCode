@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { HeroMessage } from "~/data/heroScene";
+import type { HeroMessage, HeroMessagePhase } from "~/data/heroScene";
 
 const props = defineProps<{
   message: HeroMessage | null;
-  phase: "sender" | "packet" | "receiver" | "cooldown";
+  phase: HeroMessagePhase;
   reducedMotion?: boolean;
 }>();
 
@@ -17,8 +17,12 @@ const receiverStyle = computed(() => ({
   "--bubble-y": props.message ? String(props.message.toY) : "0",
 }));
 
-const showSender = computed(() => props.message && (props.phase === "sender" || props.phase === "packet"));
-const showReceiver = computed(() => props.message && props.phase === "receiver");
+const showSender = computed(() =>
+  props.message && props.message.from !== "reviewer" && (props.phase === "sender" || props.phase === "packet"),
+);
+const showReceiver = computed(() =>
+  props.message && props.message.to !== "reviewer" && props.phase === "receiver",
+);
 </script>
 
 <template>
@@ -26,7 +30,8 @@ const showReceiver = computed(() => props.message && props.phase === "receiver")
     <Transition name="cyber-bubble">
       <div
         v-if="showSender && message && !reducedMotion"
-        class="cyber-message cyber-message--sender cyber-panel"
+        class="cyber-message cyber-message--sender"
+        :class="`cyber-message--role-${message.from}`"
         :style="senderStyle"
       >
         {{ message.text }}
@@ -36,7 +41,8 @@ const showReceiver = computed(() => props.message && props.phase === "receiver")
     <Transition name="cyber-bubble">
       <div
         v-if="showReceiver && message && !reducedMotion"
-        class="cyber-message cyber-message--receiver cyber-panel"
+        class="cyber-message cyber-message--receiver"
+        :class="`cyber-message--role-${message.to}`"
         :style="receiverStyle"
       >
         {{ message.response }}

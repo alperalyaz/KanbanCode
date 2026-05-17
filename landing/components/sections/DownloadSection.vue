@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { mdiApple, mdiMicrosoftWindows, mdiPenguin, mdiDownload, mdiCheckCircle } from '@mdi/js';
+import robotAvatarSeatedMagenta from '~/assets/images/hero/robots/robot-avatar-seated-magenta-v1.webp';
 import { downloadAssets } from '~/data/downloads';
 import type { DownloadOs, DownloadArch } from '~/data/downloads';
 
@@ -10,10 +11,203 @@ const { data: releaseData, resolve } = useReleaseDownloads();
 const { trackDownloadClick } = useAnalytics();
 const { repoUrl, releaseDownloadUrl } = useGithubRepo();
 const isMounted = ref(false);
+const showLinuxRobotMessage = ref(false);
+const showFallingLinuxRobot = ref(false);
+const isLinuxRobotDetached = ref(false);
+const hasLinuxRobotDeparted = ref(false);
+const linuxRobotFlightState = ref<'idle' | 'falling' | 'landed'>('idle');
+const fallingLinuxRobotStyle = ref<Record<string, string>>({});
+let linuxRobotObserver: IntersectionObserver | null = null;
+let linuxRobotFallRaf = 0;
+let linuxRobotFallTimer: number | null = null;
+let lastLinuxRobotScrollY = 0;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getPageRect(element: HTMLElement) {
+  const rect = element.getBoundingClientRect();
+  return {
+    left: rect.left + window.scrollX,
+    top: rect.top + window.scrollY,
+    right: rect.right + window.scrollX,
+    bottom: rect.bottom + window.scrollY,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function clearLinuxRobotFallTimer() {
+  if (linuxRobotFallTimer === null) return;
+  window.clearTimeout(linuxRobotFallTimer);
+  linuxRobotFallTimer = null;
+}
+
+function resetLinuxRobotFall(options: { keepSourceHidden?: boolean } = {}) {
+  clearLinuxRobotFallTimer();
+  showFallingLinuxRobot.value = false;
+  isLinuxRobotDetached.value = options.keepSourceHidden || hasLinuxRobotDeparted.value;
+  linuxRobotFlightState.value = 'idle';
+  fallingLinuxRobotStyle.value = {};
+}
+
+function getLinuxRobotFallMetrics() {
+  const sourceRobot = document.querySelector<HTMLElement>('.download-section__card-robot');
+  const downloadSection = document.querySelector<HTMLElement>('#download');
+  const faqTarget = document.querySelector<HTMLElement>('[data-faq-landing-target]');
+
+  if (!sourceRobot || !downloadSection || !faqTarget) return null;
+
+  const sourceViewport = sourceRobot.getBoundingClientRect();
+  const download = getPageRect(downloadSection);
+  const target = getPageRect(faqTarget);
+  const robotWidth = clamp(sourceViewport.width, 92, 112);
+  const robotHeight = sourceViewport.height * (robotWidth / sourceViewport.width);
+  const landedPageX = target.left + target.width * 0.3;
+  const landedPageY = target.top + target.height * 0.08 - robotHeight * 0.62;
+
+  return {
+    sourceViewport,
+    download,
+    landedPageX,
+    landedPageY,
+    robotWidth,
+  };
+}
+
+function getLinuxRobotLandedStyle(metrics: NonNullable<ReturnType<typeof getLinuxRobotFallMetrics>>) {
+  return {
+    left: `${metrics.landedPageX}px`,
+    top: `${metrics.landedPageY}px`,
+    width: `${metrics.robotWidth}px`,
+    opacity: '1',
+    transform: 'translate3d(0, 0, 0) rotate(-5deg) scale(0.95)',
+  };
+}
+
+function finishLinuxRobotFall() {
+  clearLinuxRobotFallTimer();
+  if (linuxRobotFlightState.value !== 'falling') return;
+
+  const metrics = getLinuxRobotFallMetrics();
+  if (!metrics) {
+    resetLinuxRobotFall();
+    return;
+  }
+
+  linuxRobotFlightState.value = 'landed';
+  showFallingLinuxRobot.value = true;
+  isLinuxRobotDetached.value = true;
+  fallingLinuxRobotStyle.value = getLinuxRobotLandedStyle(metrics);
+}
+
+function launchLinuxRobotFall(metrics: NonNullable<ReturnType<typeof getLinuxRobotFallMetrics>>) {
+  clearLinuxRobotFallTimer();
+
+  const endX = metrics.landedPageX - window.scrollX;
+  const endY = metrics.landedPageY - window.scrollY;
+  const startX = metrics.sourceViewport.left;
+  const startY = metrics.sourceViewport.top;
+
+  linuxRobotFlightState.value = 'falling';
+  showFallingLinuxRobot.value = true;
+  isLinuxRobotDetached.value = true;
+  hasLinuxRobotDeparted.value = true;
+  fallingLinuxRobotStyle.value = {
+    left: `${startX}px`,
+    top: `${startY}px`,
+    width: `${metrics.robotWidth}px`,
+    opacity: '1',
+    '--fall-x': `${endX - startX}px`,
+    '--fall-y': `${endY - startY}px`,
+  };
+
+  linuxRobotFallTimer = window.setTimeout(finishLinuxRobotFall, 3000);
+}
+
+function scheduleLinuxRobotFallUpdate() {
+  if (linuxRobotFallRaf) return;
+  linuxRobotFallRaf = window.requestAnimationFrame(updateLinuxRobotFall);
+}
+
+function updateLinuxRobotFall() {
+  linuxRobotFallRaf = 0;
+  const currentScrollY = window.scrollY;
+  const scrollingUp = currentScrollY < lastLinuxRobotScrollY - 4;
+  lastLinuxRobotScrollY = currentScrollY;
+
+  if (window.innerWidth <= 960 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    resetLinuxRobotFall();
+    return;
+  }
+
+  const metrics = getLinuxRobotFallMetrics();
+  if (!metrics) {
+    resetLinuxRobotFall();
+    return;
+  }
+
+  const viewportHeight = window.innerHeight;
+  const startScroll = metrics.download.bottom - viewportHeight * 0.72;
+
+  if (currentScrollY < startScroll) {
+    resetLinuxRobotFall({ keepSourceHidden: hasLinuxRobotDeparted.value });
+    return;
+  }
+
+  if (scrollingUp) {
+    resetLinuxRobotFall({ keepSourceHidden: hasLinuxRobotDeparted.value });
+    return;
+  }
+
+  if (hasLinuxRobotDeparted.value && linuxRobotFlightState.value === 'idle') return;
+
+  if (linuxRobotFlightState.value === 'idle') {
+    launchLinuxRobotFall(metrics);
+    return;
+  }
+
+  if (linuxRobotFlightState.value === 'landed') return;
+}
 
 onMounted(() => {
   isMounted.value = true;
   downloadStore.init();
+
+  nextTick(() => {
+    const linuxCard = document.querySelector<HTMLElement>('[data-download-os="linux"]');
+    if (!linuxCard) return;
+
+    linuxRobotObserver = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        showLinuxRobotMessage.value = true;
+        linuxRobotObserver?.disconnect();
+        linuxRobotObserver = null;
+      },
+      {
+        rootMargin: '0px 0px -18% 0px',
+        threshold: 0.45,
+      },
+    );
+
+    linuxRobotObserver.observe(linuxCard);
+    scheduleLinuxRobotFallUpdate();
+  });
+
+  window.addEventListener('scroll', scheduleLinuxRobotFallUpdate, { passive: true });
+  window.addEventListener('resize', scheduleLinuxRobotFallUpdate);
+});
+
+onUnmounted(() => {
+  linuxRobotObserver?.disconnect();
+  linuxRobotObserver = null;
+  if (linuxRobotFallRaf) window.cancelAnimationFrame(linuxRobotFallRaf);
+  linuxRobotFallRaf = 0;
+  clearLinuxRobotFallTimer();
+  window.removeEventListener('scroll', scheduleLinuxRobotFallUpdate);
+  window.removeEventListener('resize', scheduleLinuxRobotFallUpdate);
 });
 
 const platformIcons: Record<string, string> = {
@@ -91,15 +285,43 @@ const devBranchNote = computed(() =>
           v-for="(asset, index) in visibleAssets"
           :key="asset.id"
           class="download-section__card"
-          :class="{ 'download-section__card--active': downloadStore.selectedId === asset.id }"
+          :class="{
+            'download-section__card--active': downloadStore.selectedId === asset.id,
+            'download-section__card--with-robot': asset.os === 'linux',
+            'download-section__card--robot-flying': asset.os === 'linux' && isLinuxRobotDetached,
+          }"
           :style="{
             '--delay': `${index * 0.1}s`,
             '--accent': platformColors[asset.os] || '#00f0ff',
           }"
+          :data-download-os="asset.os"
           @click="downloadStore.setSelected(asset.id)"
         >
           <!-- Card glow effect -->
           <div class="download-section__card-glow" />
+
+          <span
+            v-if="asset.os === 'linux'"
+            class="download-section__card-robot-seat"
+            aria-hidden="true"
+          >
+            <Transition name="download-robot-bubble">
+              <span
+                v-if="showLinuxRobotMessage"
+                class="download-section__card-robot-bubble"
+              >
+                Готов начать!
+              </span>
+            </Transition>
+            <img
+              class="download-section__card-robot"
+              :src="robotAvatarSeatedMagenta"
+              alt=""
+              loading="lazy"
+              decoding="async"
+              draggable="false"
+            >
+          </span>
 
           <!-- Platform icon -->
           <div class="download-section__card-icon-wrap">
@@ -158,6 +380,25 @@ const devBranchNote = computed(() =>
         v{{ releaseVersion }} · {{ releaseDate }}
       </p>
     </v-container>
+
+    <Teleport to="body">
+      <div
+        v-if="showFallingLinuxRobot"
+        class="download-section__falling-robot"
+        :class="`download-section__falling-robot--${linuxRobotFlightState}`"
+        :style="fallingLinuxRobotStyle"
+        aria-hidden="true"
+        @animationend.self="finishLinuxRobotFall"
+      >
+        <img
+          class="download-section__falling-robot-image"
+          :src="robotAvatarSeatedMagenta"
+          alt=""
+          decoding="async"
+          draggable="false"
+        >
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -230,6 +471,11 @@ const devBranchNote = computed(() =>
   animation-delay: var(--delay, 0s);
 }
 
+.download-section__card--with-robot {
+  overflow: visible;
+  z-index: 3;
+}
+
 .download-section__card:hover {
   transform: translateY(-6px);
   border-color: rgba(0, 240, 255, 0.2);
@@ -246,6 +492,252 @@ const devBranchNote = computed(() =>
     0 0 0 2px rgba(57, 255, 20, 0.15);
   transform: scale(1.06);
   z-index: 2;
+}
+
+.download-section__card-robot-seat {
+  position: absolute;
+  right: 12px;
+  bottom: calc(100% - 68px);
+  z-index: 4;
+  width: 108px;
+  pointer-events: none;
+  transform: rotate(-5deg);
+  transform-origin: center bottom;
+  filter:
+    drop-shadow(0 12px 18px rgba(0, 0, 0, 0.48))
+    drop-shadow(0 0 14px rgba(255, 43, 255, 0.24));
+}
+
+.download-section__card--robot-flying .download-section__card-robot-seat {
+  opacity: 0;
+}
+
+.download-section__falling-robot {
+  --fall-x: 0px;
+  --fall-y: 120vh;
+
+  position: fixed;
+  z-index: 28;
+  pointer-events: none;
+  transform-origin: center 72%;
+  will-change: left, top, transform, opacity;
+  filter:
+    drop-shadow(0 18px 26px rgba(0, 0, 0, 0.52))
+    drop-shadow(0 0 18px rgba(255, 43, 255, 0.28));
+}
+
+.download-section__falling-robot--falling {
+  animation: downloadFallingRobotDrop 2.85s cubic-bezier(0.34, 0, 0.74, 0.28) forwards;
+}
+
+.download-section__falling-robot--landed {
+  position: absolute;
+}
+
+.download-section__falling-robot::after {
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 28%;
+  height: 12px;
+  content: "";
+  border-radius: 999px;
+  background: rgba(255, 43, 255, 0.16);
+  filter: blur(10px);
+  opacity: 0.7;
+}
+
+.download-section__falling-robot-image {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: auto;
+  transform:
+    scaleX(-1)
+    rotate(-4deg);
+  transform-origin: center bottom;
+  user-select: none;
+}
+
+.download-section__falling-robot--falling .download-section__falling-robot-image {
+  animation: none;
+}
+
+.download-section__falling-robot--landed .download-section__falling-robot-image {
+  animation: downloadFallingRobotLanded 2.8s ease-in-out infinite;
+}
+
+@keyframes downloadFallingRobotDrop {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(-6deg) scale(1);
+  }
+
+  100% {
+    opacity: 0.96;
+    transform:
+      translate3d(var(--fall-x), var(--fall-y), 0)
+      rotate(-5deg)
+      scale(0.95);
+  }
+}
+
+@keyframes downloadFallingRobotFlutter {
+  0%,
+  100% {
+    transform:
+      translate3d(0, 0, 0)
+      scaleX(-1)
+      rotate(-5deg);
+  }
+
+  50% {
+    transform:
+      translate3d(0, 4px, 0)
+      scaleX(-1)
+      rotate(4deg);
+  }
+}
+
+@keyframes downloadFallingRobotLanded {
+  0%,
+  100% {
+    transform:
+      translate3d(0, 0, 0)
+      scaleX(-1)
+      rotate(-4deg);
+  }
+
+  50% {
+    transform:
+      translate3d(0, -2px, 0)
+      scaleX(-1)
+      rotate(-3deg);
+  }
+}
+
+.download-section__card-robot-bubble {
+  position: absolute;
+  top: 12px;
+  right: calc(100% - 18px);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  color: #0b1020;
+  font-family: var(--at-font-mono);
+  font-size: 0.66rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  background:
+    radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.84), rgba(255, 244, 168, 0.84) 66%, rgba(255, 215, 0, 0.82) 100%);
+  border: 2px solid #050816;
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 1px rgba(255, 215, 0, 0.28),
+    0 5px 0 rgba(0, 0, 0, 0.2),
+    0 0 12px rgba(255, 215, 0, 0.14);
+  text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.62);
+  pointer-events: none;
+  transform: rotate(-5deg);
+  transform-origin: right bottom;
+  animation: downloadRobotBubbleFloat 2.6s ease-in-out 0.42s infinite;
+}
+
+.download-section__card-robot-bubble::after {
+  position: absolute;
+  top: 52%;
+  right: -28px;
+  width: 30px;
+  height: 12px;
+  content: "";
+  background: rgba(255, 226, 78, 0.96);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  transform: translateY(-50%);
+}
+
+.download-section__card-robot-bubble::before {
+  position: absolute;
+  top: 52%;
+  right: -34px;
+  width: 36px;
+  height: 18px;
+  content: "";
+  background: #050816;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  transform: translateY(-50%);
+}
+
+.download-robot-bubble-enter-active,
+.download-robot-bubble-leave-active {
+  transition:
+    opacity 0.26s ease,
+    filter 0.26s ease;
+}
+
+.download-robot-bubble-enter-active {
+  animation: downloadRobotBubblePop 0.52s cubic-bezier(0.18, 0.9, 0.2, 1.24);
+}
+
+.download-robot-bubble-enter-from,
+.download-robot-bubble-leave-to {
+  opacity: 0;
+  filter: blur(2px);
+}
+
+.download-robot-bubble-leave-active {
+  animation: downloadRobotBubbleExit 0.22s ease forwards;
+}
+
+@keyframes downloadRobotBubblePop {
+  0% {
+    opacity: 0;
+    transform: translate3d(14px, 18px, 0) scale(0.48) rotate(-13deg);
+  }
+
+  58% {
+    opacity: 1;
+    transform: translate3d(-3px, -4px, 0) scale(1.1) rotate(-4deg);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1) rotate(-5deg);
+  }
+}
+
+@keyframes downloadRobotBubbleFloat {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(-5deg);
+  }
+
+  50% {
+    transform: translate3d(0, -3px, 0) rotate(-4deg);
+  }
+}
+
+@keyframes downloadRobotBubbleExit {
+  to {
+    opacity: 0;
+    transform: translate3d(8px, 8px, 0) scale(0.85) rotate(-8deg);
+  }
+}
+
+.download-section__card-robot {
+  display: block;
+  width: 100%;
+  max-width: none;
+  height: auto;
+  transform:
+    scaleX(-1)
+    rotate(-4deg);
+  transform-origin: center bottom;
+  user-select: none;
 }
 
 .download-section__card--active:hover {
@@ -502,6 +994,26 @@ const devBranchNote = computed(() =>
     gap: 20px;
   }
 
+  .download-section__card-robot-seat {
+    right: 18px;
+    bottom: calc(100% - 54px);
+    width: 84px;
+  }
+
+  .download-section__card-robot-bubble {
+    top: 8px;
+    right: calc(100% - 14px);
+    min-height: 28px;
+    padding: 6px 9px;
+    font-size: 0.6rem;
+  }
+
+  .download-section__card-robot {
+    transform:
+      scaleX(-1)
+      rotate(-4deg);
+  }
+
   .download-section__card--active {
     transform: scale(1.03);
   }
@@ -555,6 +1067,10 @@ const devBranchNote = computed(() =>
     padding: 20px 22px;
     gap: 16px;
     border-radius: 16px;
+  }
+
+  .download-section__card-robot-seat {
+    display: none;
   }
 
   .download-section__card-icon-wrap {

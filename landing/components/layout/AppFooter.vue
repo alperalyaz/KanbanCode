@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import robotAvatarCyan from "~/assets/images/hero/robots/robot-avatar-cyan-v1.webp";
+
 const { t, locale } = useI18n();
 const { repoUrl } = useGithubRepo();
 const { baseURL } = useRuntimeConfig().app;
@@ -11,6 +13,14 @@ const docsHref = computed(() => {
 
 <template>
   <footer class="app-footer">
+    <img
+      class="app-footer__robot"
+      :src="robotAvatarCyan"
+      alt=""
+      loading="lazy"
+      decoding="async"
+      aria-hidden="true"
+    >
     <v-container class="app-footer__inner">
       <span class="app-footer__copy"
         >{{ t('footer.copyright', { year }) }} · {{ t('footer.tagline') }}</span
@@ -28,8 +38,26 @@ const docsHref = computed(() => {
 
 <style scoped>
 .app-footer {
+  position: relative;
   border-top: 1px solid var(--at-c-border);
   padding: 20px 0;
+  isolation: isolate;
+}
+
+.app-footer__robot {
+  position: absolute;
+  right: clamp(22px, 9vw, 148px);
+  bottom: calc(100% - 4px);
+  z-index: 2;
+  width: clamp(76px, 6.2vw, 112px);
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+  transform: translateY(14px) rotate(-2deg);
+  transform-origin: center bottom;
+  filter:
+    drop-shadow(0 16px 22px rgba(0, 0, 0, 0.54))
+    drop-shadow(0 0 18px rgba(0, 234, 255, 0.26));
 }
 
 .app-footer__inner {
@@ -91,6 +119,10 @@ const docsHref = computed(() => {
 }
 
 @media (max-width: 600px) {
+  .app-footer__robot {
+    display: none;
+  }
+
   .app-footer__inner {
     flex-direction: column;
     gap: 10px;

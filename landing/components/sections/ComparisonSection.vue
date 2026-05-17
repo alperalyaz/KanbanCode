@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import robotAvatarCyan from "~/assets/images/hero/robots/robot-avatar-cyan-v1.webp";
+
 const { t } = useI18n()
 
 interface CellValue {
@@ -175,7 +177,7 @@ const rows = computed<ComparisonRow[]>(() => [
     gastown: { status: 'partial', note: 'Cost tiers + digest, no hard caps' },
     paperclip: { status: 'yes', note: 'Per-agent budgets + hard stops' },
     cursor: { status: 'partial', note: 'Usage + BG spend limits' },
-    claudeCli: { status: 'partial', note: '/cost + workspace limits' },
+    claudeCli: { status: 'partial', note: '/usage + workspace limits' },
   },
   {
     feature: t('comparison.features.price'),
@@ -193,6 +195,54 @@ const competitors = [
   { key: 'paperclip', name: 'Paperclip' },
   { key: 'cursor', name: 'Cursor' },
   { key: 'claudeCli', name: 'Claude Code CLI' },
+]
+
+const sourceLinks = [
+  {
+    label: 'detailed research notes',
+    href: 'https://github.com/777genius/agent-teams-ai/blob/main/docs/research/gastown-paperclip-comparison-2026-05-16.md',
+  },
+  { label: 'Gastown README', href: 'https://github.com/gastownhall/gastown' },
+  {
+    label: 'Gastown provider guide',
+    href: 'https://github.com/gastownhall/gastown/blob/main/docs/agent-provider-integration.md',
+  },
+  {
+    label: 'Gastown scheduler',
+    href: 'https://github.com/gastownhall/gastown/blob/main/docs/design/scheduler.md',
+  },
+  { label: 'Gastown release', href: 'https://github.com/gastownhall/gastown/releases/tag/v1.1.0' },
+  { label: 'Paperclip README', href: 'https://github.com/paperclipai/paperclip' },
+  {
+    label: 'Paperclip adapters',
+    href: 'https://github.com/paperclipai/paperclip/blob/master/docs/adapters/overview.md',
+  },
+  {
+    label: 'Paperclip budgets',
+    href: 'https://github.com/paperclipai/paperclip/blob/master/docs/guides/board-operator/costs-and-budgets.md',
+  },
+  {
+    label: 'Paperclip runtime services',
+    href: 'https://github.com/paperclipai/paperclip/blob/master/docs/guides/board-operator/execution-workspaces-and-runtime-services.md',
+  },
+  {
+    label: 'Paperclip Kanban source',
+    href: 'https://github.com/paperclipai/paperclip/blob/master/ui/src/components/KanbanBoard.tsx',
+  },
+  {
+    label: 'Paperclip work products',
+    href: 'https://github.com/paperclipai/paperclip/blob/master/packages/shared/src/validators/work-product.ts',
+  },
+  { label: 'Paperclip release', href: 'https://github.com/paperclipai/paperclip/releases/tag/v2026.513.0' },
+  { label: 'Cursor Background Agents', href: 'https://docs.cursor.com/en/background-agents' },
+  { label: 'Cursor Diffs & Review', href: 'https://docs.cursor.com/en/agent/review' },
+  { label: 'Cursor Bugbot', href: 'https://docs.cursor.com/en/bugbot' },
+  { label: 'Cursor pricing', href: 'https://docs.cursor.com/en/account/usage' },
+  { label: 'Claude Code agent teams', href: 'https://code.claude.com/docs/en/agent-teams' },
+  { label: 'Claude Code subagents', href: 'https://code.claude.com/docs/en/sub-agents' },
+  { label: 'Claude Code workflows', href: 'https://code.claude.com/docs/en/common-workflows' },
+  { label: 'Claude Code costs', href: 'https://code.claude.com/docs/en/costs' },
+  { label: 'Claude pricing', href: 'https://claude.com/pricing' },
 ]
 
 function getCellClass(cell: CellValue): string {
@@ -234,6 +284,14 @@ function getStatusIcon(status: string): string {
       </div>
 
       <div class="comparison-table__wrap">
+        <img
+          class="comparison-table__robot"
+          :src="robotAvatarCyan"
+          alt=""
+          loading="lazy"
+          decoding="async"
+          aria-hidden="true"
+        >
         <table class="comparison-table">
           <thead>
             <tr>
@@ -298,6 +356,15 @@ function getStatusIcon(status: string): string {
           </tbody>
         </table>
       </div>
+
+      <p class="comparison-section__sources">
+        Fact sources checked on May 16, 2026:
+        <template v-for="(source, index) in sourceLinks" :key="source.href">
+          <a :href="source.href" target="_blank" rel="noopener noreferrer">
+            {{ source.label }}
+          </a><span v-if="index < sourceLinks.length - 1">, </span>
+        </template>.
+      </p>
     </v-container>
   </section>
 </template>
@@ -305,6 +372,7 @@ function getStatusIcon(status: string): string {
 <style scoped>
 .comparison-section {
   position: relative;
+  --comparison-sticky-header-offset: 76px;
 }
 
 .comparison-section__header {
@@ -345,6 +413,46 @@ function getStatusIcon(status: string): string {
   z-index: 1;
 }
 
+.comparison-table__robot {
+  position: absolute;
+  right: clamp(28px, 7vw, 96px);
+  bottom: calc(100% - 5px);
+  z-index: 4;
+  width: clamp(82px, 7.2vw, 124px);
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+  transform: translateY(14px) scaleX(-1) rotate(2deg);
+  transform-origin: center bottom;
+  filter:
+    drop-shadow(0 18px 22px rgba(0, 0, 0, 0.5))
+    drop-shadow(0 0 18px rgba(0, 234, 255, 0.26));
+}
+
+.comparison-table__robot::selection {
+  background: transparent;
+}
+
+.comparison-section__sources {
+  max-width: 1040px;
+  margin: 18px auto 0;
+  color: rgba(136, 146, 176, 0.82);
+  font-size: 0.78rem;
+  line-height: 1.65;
+  position: relative;
+  z-index: 1;
+}
+
+.comparison-section__sources a {
+  color: #00d4e6;
+  text-decoration: none;
+}
+
+.comparison-section__sources a:hover {
+  color: #00f0ff;
+  text-decoration: underline;
+}
+
 .comparison-table {
   width: 100%;
   border-collapse: collapse;
@@ -354,12 +462,13 @@ function getStatusIcon(status: string): string {
 
 /* Header */
 .comparison-table thead {
-  position: sticky;
-  top: 64px;
-  z-index: 2;
+  position: static;
 }
 
 .comparison-table__th {
+  position: sticky;
+  top: var(--comparison-sticky-header-offset);
+  z-index: 3;
   padding: 16px 12px;
   text-align: center;
   font-weight: 600;
@@ -382,7 +491,7 @@ function getStatusIcon(status: string): string {
 .comparison-table__th--highlight {
   color: #00f0ff;
   background: rgba(0, 18, 20, 0.97);
-  position: relative;
+  z-index: 4;
 }
 
 .comparison-table__th--highlight::after {
@@ -545,6 +654,18 @@ function getStatusIcon(status: string): string {
   border-color: rgba(0, 180, 200, 0.2);
 }
 
+.v-theme--light .comparison-section__sources {
+  color: rgba(71, 85, 105, 0.82);
+}
+
+.v-theme--light .comparison-section__sources a {
+  color: #0891b2;
+}
+
+.v-theme--light .comparison-section__sources a:hover {
+  color: #0e7490;
+}
+
 .v-theme--light .comparison-table__th {
   color: #64748b;
   border-bottom-color: rgba(0, 0, 0, 0.08);
@@ -624,6 +745,10 @@ function getStatusIcon(status: string): string {
 
 /* Responsive */
 @media (max-width: 960px) {
+  .comparison-section {
+    --comparison-sticky-header-offset: 60px;
+  }
+
   .comparison-table__wrap {
     overflow-x: auto;
   }
@@ -638,6 +763,12 @@ function getStatusIcon(status: string): string {
 
   .comparison-section__subtitle {
     font-size: 1rem;
+  }
+}
+
+@media (min-width: 1600px) {
+  .comparison-section {
+    --comparison-sticky-header-offset: 124px;
   }
 }
 

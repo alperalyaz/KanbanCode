@@ -1,4 +1,4 @@
-import { computed, watch, onUnmounted } from "vue";
+import { computed, getCurrentInstance, onUnmounted, watch } from "vue";
 import type { Ref } from "vue";
 import { useThemeStore } from "~/stores/theme";
 
@@ -54,11 +54,13 @@ export const useBrowserTheme = () => {
     applyTheme(themeStore.current === "dark" ? "light" : "dark");
   };
 
-  onUnmounted(() => {
-    if (mediaQuery && mediaQueryHandler) {
-      mediaQuery.removeEventListener("change", mediaQueryHandler);
-    }
-  });
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      if (mediaQuery && mediaQueryHandler) {
+        mediaQuery.removeEventListener("change", mediaQueryHandler);
+      }
+    });
+  }
 
   watch(
     () => themeStore.current,
