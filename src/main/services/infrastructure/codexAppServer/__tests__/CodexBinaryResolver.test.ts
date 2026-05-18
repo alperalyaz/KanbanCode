@@ -205,6 +205,34 @@ describe('CodexBinaryResolver', () => {
     await expect(CodexBinaryResolver.resolve()).resolves.toBe(codexShim);
   });
 
+  it('recovers a cold negative cache entry as soon as shell env becomes available', async () => {
+    setPlatform('darwin');
+    process.env.PATH = '/usr/bin:/bin:/usr/sbin:/sbin';
+    const shellPath = '/usr/local/bin:/usr/bin:/bin';
+    const codexShim = path.posix.join('/usr/local/bin', 'codex');
+    buildMergedCliPathMock.mockReturnValue('/usr/bin:/bin:/usr/sbin:/sbin');
+
+    accessMock.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+    const { CodexBinaryResolver } = await import('../CodexBinaryResolver');
+    CodexBinaryResolver.clearCache();
+
+    await expect(CodexBinaryResolver.resolve()).resolves.toBeNull();
+
+    getCachedShellEnvMock.mockReturnValue({
+      HOME: '/Users/tester',
+      PATH: shellPath,
+    });
+    accessMock.mockImplementation((filePath) => {
+      if (filePath === codexShim) {
+        return Promise.resolve();
+      }
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+
+    await expect(CodexBinaryResolver.resolve()).resolves.toBe(codexShim);
+  });
+
   it('skips Windows PATH candidates that exist but cannot be launched', async () => {
     const blockedDir =
       'C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.422.3464.0_x64__2p2nqsd0c76g0\\app\\resources';

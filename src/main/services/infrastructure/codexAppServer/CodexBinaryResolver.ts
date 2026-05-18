@@ -15,6 +15,7 @@ const BINARY_LAUNCH_VERIFY_TIMEOUT_MS = 3_000;
 let cachedBinaryPath: string | null | undefined;
 let cacheVerifiedAt = 0;
 let resolveInFlight: Promise<string | null> | null = null;
+let cachedMissHadShellEnv = false;
 const versionCache = new Map<string, { version: string | null; observedAt: number }>();
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -121,24 +122,33 @@ export class CodexBinaryResolver {
     cachedBinaryPath = undefined;
     cacheVerifiedAt = 0;
     resolveInFlight = null;
+    cachedMissHadShellEnv = false;
     versionCache.clear();
   }
 
   static async resolve(): Promise<string | null> {
     if (cachedBinaryPath !== undefined) {
       if (cachedBinaryPath === null) {
-        const verifiedAppManagedBinaryPath =
-          await resolveVerifiedAppManagedCodexRuntimeBinaryPath();
-        if (verifiedAppManagedBinaryPath) {
-          cachedBinaryPath = verifiedAppManagedBinaryPath;
-          cacheVerifiedAt = Date.now();
-          return verifiedAppManagedBinaryPath;
+        if (!cachedMissHadShellEnv && getCachedShellEnv() !== null) {
+          cachedBinaryPath = undefined;
+          cacheVerifiedAt = 0;
+          cachedMissHadShellEnv = false;
+        } else {
+          const verifiedAppManagedBinaryPath =
+            await resolveVerifiedAppManagedCodexRuntimeBinaryPath();
+          if (verifiedAppManagedBinaryPath) {
+            cachedBinaryPath = verifiedAppManagedBinaryPath;
+            cacheVerifiedAt = Date.now();
+            cachedMissHadShellEnv = false;
+            return verifiedAppManagedBinaryPath;
+          }
+          if (Date.now() - cacheVerifiedAt <= CACHE_VERIFY_TTL_MS) {
+            return null;
+          }
+          cachedBinaryPath = undefined;
+          cacheVerifiedAt = 0;
+          cachedMissHadShellEnv = false;
         }
-        if (Date.now() - cacheVerifiedAt <= CACHE_VERIFY_TTL_MS) {
-          return null;
-        }
-        cachedBinaryPath = undefined;
-        cacheVerifiedAt = 0;
       } else {
         if (Date.now() - cacheVerifiedAt <= CACHE_VERIFY_TTL_MS) {
           return cachedBinaryPath;
@@ -147,6 +157,7 @@ export class CodexBinaryResolver {
         const verified = await verifyBinary(cachedBinaryPath);
         if (verified) {
           cacheVerifiedAt = Date.now();
+          cachedMissHadShellEnv = false;
           return verified;
         }
 
@@ -178,12 +189,14 @@ export class CodexBinaryResolver {
       if (resolved) {
         cachedBinaryPath = resolved;
         cacheVerifiedAt = Date.now();
+        cachedMissHadShellEnv = false;
         return resolved;
       }
     }
 
     cachedBinaryPath = null;
     cacheVerifiedAt = Date.now();
+    cachedMissHadShellEnv = getCachedShellEnv() !== null;
     return null;
   }
 

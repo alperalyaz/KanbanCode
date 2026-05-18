@@ -20061,14 +20061,28 @@ export class TeamProvisioningService {
   ): Promise<string | null> {
     const { stdout } = await execCli(
       claudePath,
-      buildProviderCliCommandArgs(providerArgs, ['model', 'list', '--json', '--provider', 'all']),
+      buildProviderCliCommandArgs(providerArgs, [
+        'model',
+        'list',
+        '--json',
+        '--provider',
+        providerId,
+      ]),
       {
         cwd,
         env,
         timeout: 10_000,
       }
     );
-    const parsed = extractJsonObjectFromCli<ProviderModelListCommandResponse>(stdout);
+    let parsed: ProviderModelListCommandResponse;
+    try {
+      parsed = extractJsonObjectFromCli<ProviderModelListCommandResponse>(stdout);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Failed to parse runtime default model list for ${getTeamProviderLabel(providerId)} (${providerId}): ${message}`
+      );
+    }
     const defaultModel = parsed.providers?.[providerId]?.defaultModel;
     const normalizedDefaultModel =
       typeof defaultModel === 'string' && defaultModel.trim().length > 0

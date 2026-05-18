@@ -22,7 +22,7 @@ import {
   CodexBinaryResolver,
   JsonRpcStdioClient,
 } from '@main/services/infrastructure/codexAppServer';
-import { getCachedShellEnv } from '@main/utils/shellEnv';
+import { getCachedShellEnv, resolveInteractiveShellEnvBestEffort } from '@main/utils/shellEnv';
 
 import { CodexAccountSnapshotPresenter } from '../adapters/output/presenters/CodexAccountSnapshotPresenter';
 import { CodexAccountAppServerClient } from '../infrastructure/CodexAccountAppServerClient';
@@ -41,6 +41,7 @@ type LoggerPort = Pick<Logger, 'info' | 'warn' | 'error'>;
 const SNAPSHOT_CACHE_TTL_MS = 5_000;
 const RATE_LIMITS_CACHE_TTL_MS = 45_000;
 const LAST_KNOWN_GOOD_MANAGED_ACCOUNT_TTL_MS = 60_000;
+const CODEX_BINARY_COLD_RETRY_TIMEOUT_MS = 12_000;
 
 interface CodexLastKnownAccount {
   payload: CodexAppServerGetAccountResponse;
@@ -251,6 +252,20 @@ function createDeferred(): { promise: Promise<void>; resolve: () => void } {
   };
 }
 
+async function resolveCodexBinaryForAccountSnapshot(): Promise<string | null> {
+  const binaryPath = await CodexBinaryResolver.resolve();
+  if (binaryPath) {
+    return binaryPath;
+  }
+
+  await resolveInteractiveShellEnvBestEffort({
+    timeoutMs: CODEX_BINARY_COLD_RETRY_TIMEOUT_MS,
+    fallbackEnv: process.env,
+  });
+  CodexBinaryResolver.clearCache();
+  return CodexBinaryResolver.resolve();
+}
+
 export interface CodexAccountFeatureFacade {
   getSnapshot(): Promise<CodexAccountSnapshotDto>;
   refreshSnapshot(options?: {
@@ -351,7 +366,7 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
   }): Promise<CodexAccountSnapshotDto> {
     let binaryMissing = false;
     await this.runSerializedMutation(async () => {
-      const binaryPath = await CodexBinaryResolver.resolve();
+      const binaryPath = await resolveCodexBinaryForAccountSnapshot();
       if (!binaryPath) {
         binaryMissing = true;
         return;
@@ -380,7 +395,7 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
     await this.runSerializedMutation(async () => {
       await this.loginSessionManager.cancel().catch(() => undefined);
 
-      const binaryPath = await CodexBinaryResolver.resolve();
+      const binaryPath = await resolveCodexBinaryForAccountSnapshot();
       if (!binaryPath) {
         throw new Error('Codex CLI is not available, so logout cannot be completed.');
       }
@@ -467,7 +482,7 @@ class CodexAccountFeatureFacadeImpl implements CodexAccountFeatureFacade {
     const localAccountState = await detectCodexLocalAccountState();
     const localAccountArtifactsPresent = localAccountState.hasArtifacts;
     const localActiveChatgptAccountPresent = localAccountState.hasActiveChatgptAccount;
-    const binaryPath = await CodexBinaryResolver.resolve();
+    const binaryPath = await resolveCodexBinaryForAccountSnapshot();
     const login = this.loginSessionManager.getState();
     const now = Date.now();
 

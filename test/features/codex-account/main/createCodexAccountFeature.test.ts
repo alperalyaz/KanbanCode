@@ -11,6 +11,7 @@ import type {
 const {
   apiKeyHasPreferredMock,
   apiKeyLookupMock,
+  binaryClearCacheMock,
   binaryResolveMock,
   detectLocalAccountStateMock,
   getCachedShellEnvMock,
@@ -24,12 +25,15 @@ const {
   readAccountMock,
   readAccountSnapshotMock,
   readRateLimitsMock,
+  resolveInteractiveShellEnvBestEffortMock,
 } = vi.hoisted(() => ({
   binaryResolveMock: vi.fn(),
+  binaryClearCacheMock: vi.fn(),
   apiKeyHasPreferredMock: vi.fn(),
   apiKeyLookupMock: vi.fn(),
   detectLocalAccountStateMock: vi.fn(),
   getCachedShellEnvMock: vi.fn(),
+  resolveInteractiveShellEnvBestEffortMock: vi.fn(),
   readAccountMock: vi.fn(),
   readAccountSnapshotMock: vi.fn(),
   readRateLimitsMock: vi.fn(),
@@ -71,12 +75,14 @@ vi.mock('../../../../src/main/utils/shellEnv', async (importOriginal) => {
   return {
     ...actual,
     getCachedShellEnv: getCachedShellEnvMock,
+    resolveInteractiveShellEnvBestEffort: resolveInteractiveShellEnvBestEffortMock,
   };
 });
 
 vi.mock('../../../../src/main/services/infrastructure/codexAppServer', () => ({
   CodexBinaryResolver: {
     resolve: binaryResolveMock,
+    clearCache: binaryClearCacheMock,
   },
   CodexAppServerSessionFactory: class MockCodexAppServerSessionFactory {},
   JsonRpcStdioClient: class MockJsonRpcStdioClient {},
@@ -231,6 +237,9 @@ describe('createCodexAccountFeature', () => {
     delete process.env.OPENAI_API_KEY;
     delete process.env.CODEX_API_KEY;
     binaryResolveMock.mockResolvedValue('/usr/local/bin/codex');
+    binaryClearCacheMock.mockReset();
+    resolveInteractiveShellEnvBestEffortMock.mockReset();
+    resolveInteractiveShellEnvBestEffortMock.mockResolvedValue({});
     apiKeyHasPreferredMock.mockResolvedValue(false);
     apiKeyLookupMock.mockResolvedValue(null);
     detectLocalAccountStateMock.mockResolvedValue({
@@ -355,6 +364,69 @@ describe('createCodexAccountFeature', () => {
         })
       );
       expect(readRateLimitsMock).toHaveBeenCalledTimes(1);
+    } finally {
+      await feature.dispose();
+    }
+  });
+
+  it('retries Codex binary discovery after cold shell env resolves before publishing runtime-missing', async () => {
+    binaryResolveMock.mockResolvedValueOnce(null).mockResolvedValue('/usr/local/bin/codex');
+    resolveInteractiveShellEnvBestEffortMock.mockResolvedValue({
+      PATH: '/usr/local/bin:/usr/bin:/bin',
+    });
+    readAccountMock.mockResolvedValue({
+      account: createAccountResponse(),
+      initialize: {
+        codexHome: '/Users/test/.codex',
+        platformFamily: 'unix',
+        platformOs: 'macos',
+      },
+    });
+
+    const feature = createCodexAccountFeature({
+      logger: createLoggerPort(),
+      configManager: createConfigManager('chatgpt'),
+    });
+
+    try {
+      const snapshot = await feature.refreshSnapshot();
+
+      expect(resolveInteractiveShellEnvBestEffortMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          timeoutMs: 12_000,
+          fallbackEnv: process.env,
+        })
+      );
+      expect(binaryClearCacheMock).toHaveBeenCalledTimes(1);
+      expect(binaryResolveMock).toHaveBeenCalledTimes(2);
+      expect(snapshot.appServerState).toBe('healthy');
+      expect(snapshot.launchReadinessState).toBe('ready_chatgpt');
+      expect(snapshot.launchIssueMessage).toBeNull();
+    } finally {
+      await feature.dispose();
+    }
+  });
+
+  it('still reports runtime-missing after the cold binary retry cannot find Codex', async () => {
+    binaryResolveMock.mockResolvedValue(null);
+    resolveInteractiveShellEnvBestEffortMock.mockResolvedValue({
+      PATH: '/usr/bin:/bin',
+    });
+
+    const feature = createCodexAccountFeature({
+      logger: createLoggerPort(),
+      configManager: createConfigManager('chatgpt'),
+    });
+
+    try {
+      const snapshot = await feature.refreshSnapshot();
+
+      expect(resolveInteractiveShellEnvBestEffortMock).toHaveBeenCalledTimes(1);
+      expect(binaryClearCacheMock).toHaveBeenCalledTimes(1);
+      expect(binaryResolveMock).toHaveBeenCalledTimes(2);
+      expect(snapshot.appServerState).toBe('runtime-missing');
+      expect(snapshot.launchReadinessState).toBe('runtime_missing');
+      expect(snapshot.launchIssueMessage).toContain('Codex CLI not found');
     } finally {
       await feature.dispose();
     }
