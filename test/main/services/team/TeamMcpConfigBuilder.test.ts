@@ -4,12 +4,28 @@ import Module from 'module';
 import * as os from 'os';
 import * as path from 'path';
 
+type ExecCliMock = (
+  binaryPath: string | null,
+  args: string[],
+  options?: {
+    encoding?: BufferEncoding;
+    timeout?: number;
+    env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+  }
+) => Promise<{ stdout: string; stderr: string }>;
+
+type ResolveInteractiveShellEnvMock = (options?: unknown) => Promise<NodeJS.ProcessEnv>;
+
 const hoisted = vi.hoisted(() => ({
   electronState: {
     isPackaged: false,
     version: '9.9.9-test',
   },
-  execCliMock: vi.fn(async () => ({ stdout: '/mock/node', stderr: '' })),
+  execCliMock: vi.fn<ExecCliMock>(async () => ({ stdout: '/mock/node', stderr: '' })),
+  cachedShellEnv: null as NodeJS.ProcessEnv | null,
+  resolveInteractiveShellEnvMock: vi.fn<ResolveInteractiveShellEnvMock>(
+    async () => ({} as NodeJS.ProcessEnv)
+  ),
 }));
 
 let mockHomeDir = '';
@@ -30,6 +46,15 @@ vi.mock('@main/utils/pathDecoder', async (importOriginal) => {
   return {
     ...actual,
     getHomeDir: () => mockHomeDir || actual.getHomeDir(),
+  };
+});
+
+vi.mock('@main/utils/shellEnv', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@main/utils/shellEnv')>();
+  return {
+    ...actual,
+    getCachedShellEnv: () => hoisted.cachedShellEnv,
+    resolveInteractiveShellEnv: hoisted.resolveInteractiveShellEnvMock,
   };
 });
 
@@ -178,6 +203,10 @@ describe('TeamMcpConfigBuilder', () => {
     setPackagedMode(false);
     setResourcesPath(undefined);
     hoisted.execCliMock.mockClear();
+    hoisted.execCliMock.mockResolvedValue({ stdout: '/mock/node', stderr: '' });
+    hoisted.cachedShellEnv = null;
+    hoisted.resolveInteractiveShellEnvMock.mockClear();
+    hoisted.resolveInteractiveShellEnvMock.mockResolvedValue({});
   });
 
   afterEach(() => {
@@ -282,7 +311,72 @@ describe('TeamMcpConfigBuilder', () => {
     expect(hoisted.execCliMock).toHaveBeenCalledWith(
       'node',
       ['-e', 'process.stdout.write(process.execPath)'],
-      expect.objectContaining({ encoding: 'utf-8', timeout: 5000 })
+      expect.objectContaining({
+        encoding: 'utf-8',
+        timeout: 5000,
+        env: expect.objectContaining({ PATH: expect.any(String) }),
+      })
+    );
+  });
+
+  it('resolves packaged MCP Node through shell PATH instead of writing a bare node command', async () => {
+    setPackagedMode(true, '2.0.0');
+    const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-resources-'));
+    createdDirs.push(resourcesDir);
+    createPackagedServerBundle(resourcesDir, '// packaged server');
+    setResourcesPath(resourcesDir);
+    hoisted.cachedShellEnv = {
+      PATH: ['/mock-shell-node-bin', '/usr/bin'].join(path.delimiter),
+      HOME: '/Users/tester',
+    };
+    hoisted.resolveInteractiveShellEnvMock.mockResolvedValue(hoisted.cachedShellEnv);
+    hoisted.execCliMock.mockImplementationOnce(async (command, _args, options) => {
+      expect(command).toBe('node');
+      const env = options?.env as NodeJS.ProcessEnv | undefined;
+      expect(env?.PATH?.split(path.delimiter)[0]).toBe('/mock-shell-node-bin');
+      return { stdout: '/mock-shell-node-bin/node', stderr: '' };
+    });
+
+    const builder = new TeamMcpConfigBuilder();
+    const configPath = await builder.writeConfigFile();
+    createdPaths.push(configPath);
+
+    expect(readGeneratedServer(configPath)?.command).toBe('/mock-shell-node-bin/node');
+    expect(readGeneratedServer(configPath)?.command).not.toBe('node');
+    expect(hoisted.resolveInteractiveShellEnvMock).toHaveBeenCalledWith(expect.any(Object));
+  });
+
+  it('prefers an explicit NODE_BINARY over PATH-based node lookup', async () => {
+    mockBuiltWorkspaceEntryAvailable();
+    const previousNodeBinary = process.env.NODE_BINARY;
+    process.env.NODE_BINARY = '/explicit/node';
+    hoisted.execCliMock.mockImplementationOnce(async (command) => {
+      expect(command).toBe('/explicit/node');
+      return { stdout: '/explicit/node', stderr: '' };
+    });
+
+    try {
+      const builder = new TeamMcpConfigBuilder();
+      const configPath = await builder.writeConfigFile();
+      createdPaths.push(configPath);
+
+      expect(readGeneratedServer(configPath)?.command).toBe('/explicit/node');
+    } finally {
+      if (previousNodeBinary === undefined) {
+        delete process.env.NODE_BINARY;
+      } else {
+        process.env.NODE_BINARY = previousNodeBinary;
+      }
+    }
+  });
+
+  it('fails fast when Node cannot be resolved instead of emitting a broken bare node command', async () => {
+    mockBuiltWorkspaceEntryAvailable();
+    hoisted.execCliMock.mockRejectedValue(new Error('spawn node ENOENT'));
+    const builder = new TeamMcpConfigBuilder();
+
+    await expect(builder.writeConfigFile()).rejects.toThrow(
+      'Node.js runtime for Agent Teams MCP was not found'
     );
   });
 

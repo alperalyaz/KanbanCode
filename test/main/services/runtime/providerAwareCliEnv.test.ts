@@ -140,6 +140,41 @@ describe('buildProviderAwareCliEnv', () => {
     expect(result.providerArgs).toEqual([]);
   });
 
+  it('keeps enriched PATH entries when a provider shell env has a narrower PATH', async () => {
+    buildEnrichedEnvMock.mockReturnValue({
+      PATH: ['/mock/runtime/bin', '/usr/local/bin', '/usr/bin'].join(path.delimiter),
+    });
+
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
+    const result = await buildProviderAwareCliEnv({
+      binaryPath: '/mock/claude',
+      providerId: 'codex',
+      shellEnv: {
+        PATH: ['/usr/bin', '/bin'].join(path.delimiter),
+      },
+    });
+
+    expect(result.env.PATH?.split(path.delimiter).slice(0, 4)).toEqual([
+      '/usr/bin',
+      '/bin',
+      '/mock/runtime/bin',
+      '/usr/local/bin',
+    ]);
+    const appliedEnv = applyConfiguredConnectionEnvMock.mock.calls[0]?.[0] as NodeJS.ProcessEnv;
+    expect(appliedEnv.PATH?.split(path.delimiter).slice(0, 4)).toEqual([
+      '/usr/bin',
+      '/bin',
+      '/mock/runtime/bin',
+      '/usr/local/bin',
+    ]);
+    expect(applyConfiguredConnectionEnvMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      'codex',
+      undefined
+    );
+  });
+
   it('passes metadata-only stored API key access through provider env building', async () => {
     const { buildProviderAwareCliEnv } =
       await import('../../../../src/main/services/runtime/providerAwareCliEnv');

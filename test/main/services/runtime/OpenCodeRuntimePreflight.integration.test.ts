@@ -66,6 +66,7 @@ describePosix('OpenCode packaged-runtime preflight integration', () => {
   let originalPath: string | undefined;
   let originalShell: string | undefined;
   let originalFakeOpenCodeBinDir: string | undefined;
+  let originalFakeNodePath: string | undefined;
 
   beforeEach(async () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), 'opencode-prod-preflight-'));
@@ -75,6 +76,7 @@ describePosix('OpenCode packaged-runtime preflight integration', () => {
     originalPath = process.env.PATH;
     originalShell = process.env.SHELL;
     originalFakeOpenCodeBinDir = process.env.FAKE_OPENCODE_BIN_DIR;
+    originalFakeNodePath = process.env.FAKE_NODE_PATH;
     process.env.PATH = '';
 
     vi.clearAllMocks();
@@ -98,6 +100,11 @@ describePosix('OpenCode packaged-runtime preflight integration', () => {
       delete process.env.FAKE_OPENCODE_BIN_DIR;
     } else {
       process.env.FAKE_OPENCODE_BIN_DIR = originalFakeOpenCodeBinDir;
+    }
+    if (originalFakeNodePath === undefined) {
+      delete process.env.FAKE_NODE_PATH;
+    } else {
+      process.env.FAKE_NODE_PATH = originalFakeNodePath;
     }
 
     if (tempDir) {
@@ -125,6 +132,26 @@ describePosix('OpenCode packaged-runtime preflight integration', () => {
     );
     await chmod(binaryPath, 0o755);
     return { binDir, binaryPath };
+  }
+
+  async function createFakeNodeBinary(binDir: string): Promise<string> {
+    const binaryPath = path.join(binDir, 'node');
+    process.env.FAKE_NODE_PATH = binaryPath;
+    await writeFile(
+      binaryPath,
+      [
+        '#!/bin/sh',
+        'if [ "$1" = "-e" ]; then',
+        '  printf "%s" "$FAKE_NODE_PATH"',
+        '  exit 0',
+        'fi',
+        'echo "unexpected node args: $*" >&2',
+        'exit 2',
+      ].join('\n'),
+      'utf8'
+    );
+    await chmod(binaryPath, 0o755);
+    return binaryPath;
   }
 
   async function createFakeInteractiveShell(binDir: string): Promise<string> {
@@ -195,5 +222,27 @@ describePosix('OpenCode packaged-runtime preflight integration', () => {
       windowsHide: true,
     });
     expect(version.stdout.trim()).toBe('opencode 9.9.9');
+  });
+
+  it('resolves the Agent Teams MCP command to shell Node when GUI PATH is empty', async () => {
+    const { binDir } = await createFakeOpenCodeBinary();
+    const nodePath = await createFakeNodeBinary(binDir);
+    process.env.SHELL = await createFakeInteractiveShell(binDir);
+
+    const providerEnv = await buildProviderAwareCliEnv({
+      providerId: 'opencode',
+      connectionMode: 'augment',
+      shellEnv: {},
+      env: {
+        PATH: '',
+      },
+    });
+
+    expect(providerEnv.env.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND).toBe(nodePath);
+    expect(providerEnv.env.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND).not.toBe('node');
+    expect(providerEnv.env.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY).toBeTruthy();
+    expect(providerEnv.env.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON).toContain(
+      providerEnv.env.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY ?? ''
+    );
   });
 });

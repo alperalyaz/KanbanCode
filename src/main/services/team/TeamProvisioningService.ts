@@ -8130,12 +8130,30 @@ export class TeamProvisioningService {
     return typeof deliveredUserMessageId === 'string' && deliveredUserMessageId.trim().length > 0;
   }
 
+  private hasOpenCodeAcceptedRuntimePrompt(
+    ledgerRecord?: OpenCodePromptDeliveryLedgerRecord | null
+  ): boolean {
+    return Boolean(
+      ledgerRecord?.acceptedAt ||
+      ledgerRecord?.runtimePromptMessageId?.trim() ||
+      ledgerRecord?.lastRuntimePromptMessageId?.trim() ||
+      ledgerRecord?.deliveredUserMessageId?.trim() ||
+      (ledgerRecord?.runtimePromptMessageIds ?? []).some((messageId) => messageId.trim())
+    );
+  }
+
   private isOpenCodeDeliveryRetryablePendingResponse(input: {
     ledgerRecord: OpenCodePromptDeliveryLedgerRecord;
     visibleReply?: OpenCodeVisibleReplyProof | null;
     readAllowed: boolean;
   }): boolean {
     if (input.readAllowed) {
+      return false;
+    }
+    if (
+      input.ledgerRecord.responseState === 'session_stale' &&
+      this.hasOpenCodeAcceptedRuntimePrompt(input.ledgerRecord)
+    ) {
       return false;
     }
     if (isOpenCodePromptDeliveryRetryableResponseState(input.ledgerRecord.responseState)) {
@@ -9405,6 +9423,54 @@ export class TeamProvisioningService {
     const now = nowIso();
     const sessionRefreshRetry =
       input.retry && this.isOpenCodeSessionRefreshRetryRecord(input.ledgerRecord, input.reason);
+    const acceptedPromptSessionStaleObservation =
+      !input.retry &&
+      input.ledgerRecord.responseState === 'session_stale' &&
+      this.hasOpenCodeAcceptedRuntimePrompt(input.ledgerRecord);
+    if (acceptedPromptSessionStaleObservation) {
+      const maxSessionRefreshAttempts =
+        input.ledgerRecord.maxSessionRefreshAttempts ??
+        OPENCODE_PROMPT_DELIVERY_SESSION_REFRESH_MAX_ATTEMPTS;
+      if ((input.ledgerRecord.sessionRefreshAttempts ?? 0) >= maxSessionRefreshAttempts) {
+        return await input.ledger.markFailedTerminal({
+          id: input.ledgerRecord.id,
+          reason: 'opencode_session_stale_observe_loop_after_accepted_prompt',
+          diagnostics: [
+            input.reason,
+            `OpenCode session stayed stale while observing an accepted prompt after ${maxSessionRefreshAttempts} attempt(s).`,
+          ],
+          failedAt: now,
+        });
+      }
+      const delayMs = OPENCODE_PROMPT_DELIVERY_RETRY_DELAY_MS;
+      const nextAttemptAt = new Date(Date.now() + delayMs).toISOString();
+      const ledgerRecord = await input.ledger.markSessionStaleObservationScheduled({
+        id: input.ledgerRecord.id,
+        nextAttemptAt,
+        reason: input.reason,
+        scheduledAt: now,
+        maxSessionRefreshAttempts,
+        diagnostics: ['opencode_session_stale_observe_scheduled_after_accepted_prompt'],
+      });
+      this.logOpenCodePromptDeliveryEvent(
+        'opencode_prompt_delivery_response_observed',
+        ledgerRecord,
+        {
+          retry: false,
+          reason: input.reason,
+          observeOnlyAfterAcceptedPrompt: true,
+          sessionRefreshAttempts: ledgerRecord.sessionRefreshAttempts ?? 0,
+          maxSessionRefreshAttempts,
+        }
+      );
+      this.scheduleOpenCodePromptDeliveryWatchdog({
+        teamName: input.teamName,
+        memberName: input.memberName,
+        messageId: input.ledgerRecord.inboxMessageId,
+        delayMs,
+      });
+      return ledgerRecord;
+    }
     if (sessionRefreshRetry) {
       const maxSessionRefreshAttempts =
         input.ledgerRecord.maxSessionRefreshAttempts ??
@@ -10659,6 +10725,7 @@ export class TeamProvisioningService {
       const retryShouldRefreshSessionBeforeObserve =
         retryDueBeforeObserve &&
         ledgerRecord.status === 'retry_scheduled' &&
+        !this.hasOpenCodeAcceptedRuntimePrompt(ledgerRecord) &&
         this.isOpenCodeSessionRefreshRetryRecord(ledgerRecord, ledgerRecord.lastReason);
       if (
         ledgerRecord.status !== 'pending' &&
@@ -10825,6 +10892,23 @@ export class TeamProvisioningService {
             retry: retryable,
             reason: pendingReason,
           });
+          if (ledgerRecord.status === 'failed_terminal') {
+            return {
+              delivered: false,
+              accepted: true,
+              responsePending: false,
+              responseState: ledgerRecord.responseState,
+              ledgerStatus: ledgerRecord.status,
+              ledgerRecordId: ledgerRecord.id,
+              laneId: laneIdentity.laneId,
+              visibleReplyMessageId: ledgerRecord.visibleReplyMessageId ?? undefined,
+              visibleReplyCorrelation: ledgerRecord.visibleReplyCorrelation ?? undefined,
+              reason: ledgerRecord.lastReason ?? 'opencode_prompt_delivery_failed_terminal',
+              diagnostics: ledgerRecord.diagnostics.length
+                ? ledgerRecord.diagnostics
+                : [ledgerRecord.lastReason ?? 'opencode_prompt_delivery_failed_terminal'],
+            };
+          }
           return {
             delivered: true,
             accepted: true,
@@ -10865,6 +10949,7 @@ export class TeamProvisioningService {
     if (
       !forceOpenCodeSessionRefreshReason &&
       ledgerRecord?.status === 'retry_scheduled' &&
+      !this.hasOpenCodeAcceptedRuntimePrompt(ledgerRecord) &&
       isOpenCodePromptDeliveryAttemptDue(ledgerRecord) &&
       this.isOpenCodeSessionRefreshRetryRecord(ledgerRecord, ledgerRecord.lastReason)
     ) {
@@ -16505,9 +16590,10 @@ export class TeamProvisioningService {
       ...(input.configuredMember.agentType
         ? ['--agent-type', input.configuredMember.agentType]
         : []),
+      '--setting-sources',
+      'user,project,local',
       '--mcp-config',
       mcpConfigPath,
-      '--strict-mcp-config',
       '--disallowedTools',
       APP_TEAM_RUNTIME_DISALLOWED_TOOLS,
       ...(input.run.request.skipPermissions !== false
@@ -16686,9 +16772,10 @@ export class TeamProvisioningService {
       ...(input.configuredMember.agentType
         ? ['--agent-type', input.configuredMember.agentType]
         : []),
+      '--setting-sources',
+      'user,project,local',
       '--mcp-config',
       mcpConfigPath,
-      '--strict-mcp-config',
       '--disallowedTools',
       APP_TEAM_RUNTIME_DISALLOWED_TOOLS,
       ...(input.run.request.skipPermissions !== false

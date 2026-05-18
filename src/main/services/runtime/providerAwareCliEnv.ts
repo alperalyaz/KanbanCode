@@ -43,6 +43,7 @@ export async function buildProviderAwareCliEnv(
     providerBackendId: options.providerBackendId,
     shellEnv,
     env: options.env,
+    mergePathFallbacks: true,
   });
   if (!resolvedProviderId || resolvedProviderId === 'opencode') {
     const openCodeBinary = await resolveVerifiedOpenCodeRuntimeBinaryPath();

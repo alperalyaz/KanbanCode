@@ -583,6 +583,38 @@ export class OpenCodePromptDeliveryLedgerStore {
     });
   }
 
+  async markSessionStaleObservationScheduled(input: {
+    id: string;
+    nextAttemptAt: string;
+    reason: string;
+    scheduledAt: string;
+    maxSessionRefreshAttempts?: number;
+    diagnostics?: string[];
+  }): Promise<OpenCodePromptDeliveryLedgerRecord> {
+    return await this.updateExisting(input.id, (record) => {
+      const maxSessionRefreshAttempts =
+        record.maxSessionRefreshAttempts ??
+        input.maxSessionRefreshAttempts ??
+        OPENCODE_PROMPT_DELIVERY_SESSION_REFRESH_MAX_ATTEMPTS;
+      const sessionRefreshAttempts = (record.sessionRefreshAttempts ?? 0) + 1;
+      return {
+        ...record,
+        status: 'accepted',
+        responseState: 'session_stale',
+        nextAttemptAt: input.nextAttemptAt,
+        sessionRefreshAttempts,
+        maxSessionRefreshAttempts,
+        lastSessionRefreshReason: input.reason,
+        lastReason: input.reason,
+        diagnostics: mergeDiagnostics(record.diagnostics, [
+          input.reason,
+          ...(input.diagnostics ?? []),
+        ]),
+        updatedAt: input.scheduledAt,
+      };
+    });
+  }
+
   async markRetryAttempted(input: {
     id: string;
     attemptedAt: string;

@@ -5354,7 +5354,9 @@ describe('TeamProvisioningService', () => {
       expect(command).toContain("'--agent-id' 'bob@forge-labs-10'");
       expect(command).toContain("'--team-name' 'forge-labs-10'");
       expect(command).toContain("'--parent-session-id' 'lead-session-1'");
+      expect(command).toContain("'--setting-sources' 'user,project,local'");
       expect(command).toContain("'--mcp-config' '/mock/mcp-config.json'");
+      expect(command).not.toContain('--strict-mcp-config');
       expect(command).toContain("'--model' 'gpt-5.4'");
       expect(command).toContain("'--effort' 'high'");
       expect(command).toContain('__CLAUDE_TEAMMATE_EXIT__');
@@ -7721,7 +7723,9 @@ describe('TeamProvisioningService', () => {
       );
     });
 
-    it('retries due stale OpenCode sessions instead of observing forever', async () => {
+    it('observes due stale OpenCode sessions without duplicating accepted prompts', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-04-25T10:00:00.000Z'));
       const svc = new TeamProvisioningService();
       const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
         ok: true,
@@ -7859,7 +7863,7 @@ describe('TeamProvisioningService', () => {
         delivered: true,
         responsePending: true,
         responseState: 'session_stale',
-        ledgerStatus: 'retry_scheduled',
+        ledgerStatus: 'accepted',
       });
 
       expect(observeMessageDelivery).toHaveBeenCalledTimes(1);
@@ -7874,6 +7878,7 @@ describe('TeamProvisioningService', () => {
 
       const scheduledEnvelope = JSON.parse(await fsPromises.readFile(ledgerPath, 'utf8')) as {
         data: Array<{
+          status?: string;
           nextAttemptAt: string | null;
           diagnostics?: string[];
           lastReason?: string | null;
@@ -7888,6 +7893,7 @@ describe('TeamProvisioningService', () => {
         maxAttempts: 3,
         sessionRefreshAttempts: 1,
       });
+      scheduledEnvelope.data[0].status = 'retry_scheduled';
       scheduledEnvelope.data[0].nextAttemptAt = '2000-01-01T00:00:00.000Z';
       scheduledEnvelope.data[0].lastReason = 'resolved_behavior_changed:old->new';
       scheduledEnvelope.data[0].lastSessionRefreshReason = 'resolved_behavior_changed:old->new';
@@ -7909,19 +7915,26 @@ describe('TeamProvisioningService', () => {
       ).resolves.toMatchObject({
         delivered: true,
         responsePending: true,
-        responseState: 'pending',
+        responseState: 'session_stale',
+        ledgerStatus: 'accepted',
       });
 
-      expect(sendMessageToMember).toHaveBeenCalledTimes(2);
-      expect(sendMessageToMember.mock.calls[1]?.[0]).toMatchObject({
-        runId: 'opencode-run-bob',
-        teamName: 'team-a',
-        laneId: 'secondary:opencode:bob',
-        memberName: 'bob',
-        cwd: '/repo',
-        messageId: 'msg-stale-session',
-        deliveryAttemptId: expect.stringContaining(':refresh1'),
-        forceSessionRefreshReason: 'resolved_behavior_changed:old->new',
+      expect(sendMessageToMember).toHaveBeenCalledTimes(1);
+      expect(observeMessageDelivery).toHaveBeenCalledTimes(2);
+      expect(sendMessageToMember).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          deliveryAttemptId: expect.stringContaining(':refresh'),
+          forceSessionRefreshReason: 'resolved_behavior_changed:old->new',
+        })
+      );
+      const rescheduledEnvelope = JSON.parse(await fsPromises.readFile(ledgerPath, 'utf8')) as {
+        data: Array<Record<string, unknown>>;
+      };
+      expect(rescheduledEnvelope.data[0]).toMatchObject({
+        status: 'accepted',
+        responseState: 'session_stale',
+        sessionRefreshAttempts: 2,
+        nextAttemptAt: '2026-04-25T10:00:15.000Z',
       });
     });
 
@@ -8590,12 +8603,23 @@ describe('TeamProvisioningService', () => {
       });
     });
 
-    it('stops repeated OpenCode session refresh loops at the refresh cap', async () => {
+    it.each([
+      {
+        label: 'resolved behavior changes',
+        staleReason: 'resolved_behavior_changed:old->new',
+        staleDiagnostics: ['OpenCode session reconcile skipped because the stored session is stale'],
+      },
+      {
+        label: 'action-required reasons',
+        staleReason: 'permission denied',
+        staleDiagnostics: ['permission denied'],
+      },
+    ])('bounds accepted OpenCode session-stale observations for $label', async (scenario) => {
       const svc = new TeamProvisioningService();
-      const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+      const sendMessageToMember = vi.fn(async (deliveryInput: Record<string, unknown>) => ({
         ok: true,
         providerId: 'opencode',
-        memberName: String(input.memberName),
+        memberName: String(deliveryInput.memberName),
         sessionId: 'oc-session-bob',
         runtimePromptMessageId: 'msg_prompt_refresh_cap',
         prePromptCursor: 'cursor-refresh-cap',
@@ -8612,10 +8636,10 @@ describe('TeamProvisioningService', () => {
         },
         diagnostics: [],
       }));
-      const observeMessageDelivery = vi.fn(async (input: Record<string, unknown>) => ({
+      const observeMessageDelivery = vi.fn(async (deliveryInput: Record<string, unknown>) => ({
         ok: true,
         providerId: 'opencode',
-        memberName: String(input.memberName),
+        memberName: String(deliveryInput.memberName),
         sessionId: 'oc-session-bob',
         responseObservation: {
           state: 'session_stale',
@@ -8626,9 +8650,9 @@ describe('TeamProvisioningService', () => {
           visibleReplyMessageId: null,
           visibleReplyCorrelation: null,
           latestAssistantPreview: null,
-          reason: 'resolved_behavior_changed:old->new',
+          reason: scenario.staleReason,
         },
-        diagnostics: ['OpenCode session reconcile skipped because the stored session is stale'],
+        diagnostics: scenario.staleDiagnostics,
       }));
       await configureOpenCodeBobDeliveryService({
         svc,
@@ -8663,7 +8687,7 @@ describe('TeamProvisioningService', () => {
         status: 'accepted',
         responseState: 'session_stale',
         nextAttemptAt: '2000-01-01T00:00:00.000Z',
-        lastReason: 'resolved_behavior_changed:old->new',
+        lastReason: scenario.staleReason,
         sessionRefreshAttempts: 5,
         maxSessionRefreshAttempts: 5,
       });
@@ -8683,7 +8707,7 @@ describe('TeamProvisioningService', () => {
         responsePending: false,
         responseState: 'session_stale',
         ledgerStatus: 'failed_terminal',
-        reason: 'opencode_session_refresh_loop_after_resolved_behavior_changed',
+        reason: 'opencode_session_stale_observe_loop_after_accepted_prompt',
       });
 
       expect(sendMessageToMember).toHaveBeenCalledTimes(1);
@@ -8696,7 +8720,7 @@ describe('TeamProvisioningService', () => {
         attempts: 1,
         sessionRefreshAttempts: 5,
         maxSessionRefreshAttempts: 5,
-        lastReason: 'opencode_session_refresh_loop_after_resolved_behavior_changed',
+        lastReason: 'opencode_session_stale_observe_loop_after_accepted_prompt',
       });
     });
 
@@ -14823,6 +14847,92 @@ describe('TeamProvisioningService', () => {
       expect(directProcessRestart).toHaveBeenCalledTimes(1);
       expect(sendMessageToRun).not.toHaveBeenCalled();
       expect(run.pendingMemberRestarts.has('forge')).toBe(true);
+    });
+
+    it('launches direct process teammate restarts with normal MCP settings inheritance', async () => {
+      const teamName = 'process-flags-team';
+      const projectPath = path.join(tempProjectsBase, 'process-flags-project');
+      fs.mkdirSync(projectPath, { recursive: true });
+
+      vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/claude');
+      const child = Object.assign(new EventEmitter(), {
+        pid: 4567,
+        stdin: { on: vi.fn(), unref: vi.fn() },
+        stdout: { pipe: vi.fn(), unref: vi.fn() },
+        stderr: { pipe: vi.fn(), unref: vi.fn() },
+        unref: vi.fn(),
+      });
+      vi.mocked(spawnCli).mockReturnValue(child as any);
+
+      const svc = new TeamProvisioningService(undefined, undefined, undefined, undefined, {
+        writeConfigFile: vi.fn(async () => '/mock/mcp-config.json'),
+      } as any);
+      const run = createMemberSpawnRun({
+        teamName,
+        expectedMembers: ['forge'],
+        memberSpawnStatuses: new Map(),
+      });
+      run.child = { pid: 111 };
+      run.request = { providerId: 'codex', skipPermissions: true };
+      run.detectedSessionId = 'lead-session-1';
+      const configuredMember = {
+        name: 'forge',
+        role: 'Developer',
+        providerId: 'codex',
+        model: 'gpt-5.4',
+        effort: 'medium',
+        agentType: 'general-purpose',
+      };
+      const config = {
+        name: 'Process Flags Team',
+        projectPath,
+        leadSessionId: 'lead-session-1',
+        members: [{ name: 'team-lead', agentType: 'team-lead' }, configuredMember],
+      };
+
+      (svc as any).buildProvisioningEnv = vi.fn(async () => ({
+        env: { CODEX_API_KEY: 'test-openai-key' },
+        authSource: 'openai_api_key',
+        providerArgs: [],
+      }));
+      (svc as any).buildTeamRuntimeLaunchArgsPlan = vi.fn(async () => ({
+        fastModeArgs: [],
+        runtimeTurnSettledHookArgs: [],
+        providerArgs: [],
+        settingsArgs: [],
+        extraArgs: [],
+      }));
+      (svc as any).materializeDirectProcessNativeBootstrapContext = vi.fn(async () => ({}));
+      (svc as any).updateDirectTmuxRestartMemberConfig = vi.fn(async () => {});
+      (svc as any).enqueueDirectRestartPrompt = vi.fn();
+      (svc as any).appendDirectProcessRuntimeEvent = vi.fn(async () => {});
+
+      await (svc as any).launchDirectProcessMemberRestart({
+        run,
+        teamName,
+        displayName: 'Process Flags Team',
+        leadName: 'team-lead',
+        memberName: 'forge',
+        config,
+        configuredMember,
+        persistedRuntimeMembers: [],
+      });
+
+      child.emit('close', 0, null);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      const launchArgs = vi.mocked(spawnCli).mock.calls[0]?.[1] as string[];
+      expect(launchArgs).toEqual(
+        expect.arrayContaining([
+          '--teammate-runtime',
+          'headless',
+          '--setting-sources',
+          'user,project,local',
+          '--mcp-config',
+          '/mock/mcp-config.json',
+        ])
+      );
+      expect(launchArgs).not.toContain('--strict-mcp-config');
     });
 
     it('rejects a second restart request while the first restart is still in flight', async () => {

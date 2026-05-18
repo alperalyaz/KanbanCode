@@ -770,6 +770,57 @@ describe('OpenCodePromptDeliveryLedger', () => {
     ).toBe(true);
   });
 
+  it('tracks observe-only stale sessions without scheduling another prompt send', async () => {
+    const store = createStore();
+    const record = await store.ensurePending({
+      teamName: 'team-a',
+      memberName: 'jack',
+      laneId: 'secondary:opencode:jack',
+      inboxMessageId: 'msg-session-stale-observe-only',
+      inboxTimestamp: '2026-04-25T09:59:00.000Z',
+      source: 'watcher',
+      replyRecipient: 'user',
+      payloadHash: 'sha256:session-stale-observe-only',
+      now: '2026-04-25T10:00:00.000Z',
+    });
+    const accepted = await store.applyDeliveryResult({
+      id: record.id,
+      accepted: true,
+      attempted: true,
+      sessionId: 'oc-session-1',
+      runtimePromptMessageId: 'msg_prompt_1',
+      deliveryAttemptId: 'attempt-1',
+      responseObservation: {
+        state: 'pending',
+        deliveredUserMessageId: 'msg_prompt_1',
+        assistantMessageId: null,
+        toolCallNames: [],
+        visibleMessageToolCallId: null,
+        visibleReplyMessageId: null,
+        visibleReplyCorrelation: null,
+        latestAssistantPreview: null,
+        reason: 'assistant_response_pending',
+      },
+      now: '2026-04-25T10:00:01.000Z',
+    });
+
+    const scheduled = await store.markSessionStaleObservationScheduled({
+      id: accepted.id,
+      nextAttemptAt: '2026-04-25T10:00:10.000Z',
+      reason: 'resolved_behavior_changed:old->new',
+      scheduledAt: '2026-04-25T10:00:06.000Z',
+      diagnostics: ['opencode_session_stale_observe_scheduled_after_accepted_prompt'],
+    });
+
+    expect(scheduled.status).toBe('accepted');
+    expect(scheduled.attempts).toBe(1);
+    expect(scheduled.sessionRefreshAttempts).toBe(1);
+    expect(scheduled.runtimePromptMessageIds).toEqual(['msg_prompt_1']);
+    expect(buildOpenCodePromptDeliveryAttemptId(scheduled)).toBe(
+      `${record.id}:2:${record.payloadHash.slice(0, 12)}:refresh1`
+    );
+  });
+
   it('does not treat session_stale with action-required diagnostics as a refresh retry', async () => {
     const store = createStore();
     const record = await store.ensurePending({
