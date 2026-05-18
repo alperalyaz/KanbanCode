@@ -46,6 +46,7 @@ interface LeadModelRowProps {
   warningText?: string | null;
   disableGeminiOption?: boolean;
   modelIssueText?: string | null;
+  modelAdvisoryReasonByValue?: Partial<Record<string, string | null | undefined>>;
   modelIssueReasonByValue?: Partial<Record<string, string | null | undefined>>;
   modelUnavailableReasonByValue?: Partial<Record<string, string | null | undefined>>;
   showAnthropicContextLimit?: boolean;
@@ -66,6 +67,7 @@ export const LeadModelRow = ({
   warningText,
   disableGeminiOption = false,
   modelIssueText,
+  modelAdvisoryReasonByValue,
   modelIssueReasonByValue,
   modelUnavailableReasonByValue,
   showAnthropicContextLimit = providerId === 'anthropic',
@@ -86,9 +88,15 @@ export const LeadModelRow = ({
     model.trim() && modelUnavailableReasonByValue?.[model.trim()]
       ? modelUnavailableReasonByValue[model.trim()]
       : null;
+  const selectedModelAdvisoryText =
+    model.trim() && modelAdvisoryReasonByValue?.[model.trim()]
+      ? modelAdvisoryReasonByValue[model.trim()]
+      : null;
   const currentModelIssueText =
     modelIssueText ?? selectedModelUnavailableText ?? selectedModelIssueText ?? null;
+  const currentModelAdvisoryText = currentModelIssueText ? null : selectedModelAdvisoryText;
   const hasModelIssue = Boolean(currentModelIssueText);
+  const hasModelAdvisory = Boolean(currentModelAdvisoryText);
   const showSonnetExtraUsageWarning =
     providerId === 'anthropic' &&
     !limitContext &&
@@ -155,7 +163,9 @@ export const LeadModelRow = ({
             className={cn(
               'h-8 w-full justify-start gap-1 overflow-hidden text-left',
               hasModelIssue &&
-                'border-red-500/50 bg-red-500/10 text-red-100 hover:border-red-400/60 hover:bg-red-500/15 hover:text-red-50'
+                'border-red-500/50 bg-red-500/10 text-red-100 hover:border-red-400/60 hover:bg-red-500/15 hover:text-red-50',
+              hasModelAdvisory &&
+                'border-amber-300/45 bg-amber-300/10 text-amber-100 hover:border-amber-300/60 hover:bg-amber-300/15 hover:text-amber-50'
             )}
             aria-label={modelButtonAriaLabel}
             onClick={() => setModelExpanded((prev) => !prev)}
@@ -168,6 +178,7 @@ export const LeadModelRow = ({
             <ProviderBrandLogo providerId={providerId} className="size-3.5 shrink-0" />
             <span className="min-w-0 flex-1 truncate">{modelButtonLabel}</span>
             {hasModelIssue ? <AlertTriangle className="size-3.5 shrink-0 text-red-300" /> : null}
+            {hasModelAdvisory ? <Info className="size-3.5 shrink-0 text-amber-300" /> : null}
           </Button>
         </div>
       </div>
@@ -193,6 +204,7 @@ export const LeadModelRow = ({
             onValueChange={onModelChange}
             id="lead-model"
             disableGeminiOption={disableGeminiOption}
+            modelAdvisoryReasonByValue={modelAdvisoryReasonByValue}
             modelIssueReasonByValue={{
               ...(modelIssueReasonByValue ?? {}),
               ...(model.trim() && modelIssueText ? { [model.trim()]: modelIssueText } : {}),

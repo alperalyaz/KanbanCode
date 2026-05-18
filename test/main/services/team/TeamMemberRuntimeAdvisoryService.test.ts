@@ -363,6 +363,107 @@ describe('TeamMemberRuntimeAdvisoryService', () => {
     expect(advisory?.message).not.toContain('Latest assistant message');
   });
 
+  it('keeps pending OpenCode free usage exhaustion visible while delivery is unresolved', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-17T21:44:45.000Z'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-advisory-'));
+    setClaudeBasePathOverride(tmpDir);
+
+    const teamName = 'forge-labs';
+    const laneId = 'secondary:opencode:tom';
+    const oldIso = '2026-05-17T21:44:34.000Z';
+    const laneDir = path.join(
+      tmpDir,
+      'teams',
+      teamName,
+      '.opencode-runtime',
+      'lanes',
+      encodeURIComponent(laneId)
+    );
+    await fs.mkdir(laneDir, { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'teams', teamName, '.opencode-runtime', 'lanes.json'),
+      JSON.stringify({
+        version: 1,
+        updatedAt: oldIso,
+        lanes: {
+          [laneId]: { laneId, state: 'active', updatedAt: oldIso },
+        },
+      }),
+      'utf8'
+    );
+    await fs.writeFile(
+      path.join(laneDir, 'opencode-prompt-delivery-ledger.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        updatedAt: oldIso,
+        data: [
+          {
+            id: 'opencode-prompt:free-usage-pending',
+            teamName,
+            memberName: 'tom',
+            laneId,
+            runId: 'run-1',
+            runtimeSessionId: 'ses-1',
+            inboxMessageId: 'msg-1',
+            inboxTimestamp: oldIso,
+            source: 'watcher',
+            messageKind: null,
+            replyRecipient: 'team-lead',
+            actionMode: null,
+            taskRefs: [],
+            payloadHash: 'sha256:test',
+            status: 'accepted',
+            responseState: 'pending',
+            attempts: 2,
+            maxAttempts: 3,
+            acceptanceUnknown: false,
+            nextAttemptAt: '2026-05-17T21:44:37.000Z',
+            lastAttemptAt: oldIso,
+            lastObservedAt: oldIso,
+            acceptedAt: '2026-05-17T21:40:21.000Z',
+            respondedAt: null,
+            failedAt: null,
+            inboxReadCommittedAt: null,
+            inboxReadCommitError: null,
+            prePromptCursor: null,
+            postPromptCursor: null,
+            deliveredUserMessageId: 'msg-opencode-user',
+            observedAssistantMessageId: 'msg-opencode-assistant',
+            observedAssistantPreview: null,
+            observedToolCallNames: [],
+            observedVisibleMessageId: null,
+            visibleReplyMessageId: null,
+            visibleReplyInbox: null,
+            visibleReplyCorrelation: null,
+            lastReason: 'assistant_response_pending',
+            diagnostics: [
+              'OpenCode app MCP is connected for message delivery.',
+              'OpenCode prompt_async accepted; response observation will continue through durable app-side ledger reconciliation.',
+              'OpenCode session status retry - attempt=1 - Free usage exceeded, subscribe to Go https://opencode.ai/go - next=2026-05-18T00:00:00.502Z)',
+            ],
+            createdAt: oldIso,
+            updatedAt: oldIso,
+          },
+        ],
+      }),
+      'utf8'
+    );
+
+    const service = new TeamMemberRuntimeAdvisoryService({
+      findMemberLogs: vi.fn(async () => []),
+    });
+    const advisory = await service.getMemberAdvisory(teamName, 'tom');
+
+    expect(advisory).toMatchObject({
+      kind: 'api_error',
+      reasonCode: 'quota_exhausted',
+      retryUntil: '2026-05-18T00:00:00.502Z',
+    });
+    expect(advisory?.retryDelayMs).toBeGreaterThan(0);
+    expect(advisory?.message).toContain('Free usage exceeded');
+  });
+
   it('classifies terminal OpenCode protocol proof failures as warnings, not provider errors', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-advisory-'));
     setClaudeBasePathOverride(tmpDir);
@@ -682,6 +783,154 @@ describe('TeamMemberRuntimeAdvisoryService', () => {
       findMemberLogs: vi.fn(async () => []),
     });
     const advisory = await service.getMemberAdvisory(teamName, 'bob');
+
+    expect(advisory).toBeNull();
+  });
+
+  it('suppresses stale OpenCode advisories when task refs can be inferred from the inbox comment', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-18T21:35:00.000Z'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-advisory-'));
+    setClaudeBasePathOverride(tmpDir);
+
+    const teamName = 'relay-works-69';
+    const laneId = 'secondary:opencode:tom';
+    const taskId = 'a7fd5f34-ff82-4ead-8089-34064454a623';
+    const laneDir = path.join(
+      tmpDir,
+      'teams',
+      teamName,
+      '.opencode-runtime',
+      'lanes',
+      encodeURIComponent(laneId)
+    );
+    await fs.mkdir(laneDir, { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'teams', teamName, 'inboxes'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'tasks', teamName), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'teams', teamName, '.opencode-runtime', 'lanes.json'),
+      JSON.stringify({
+        version: 1,
+        updatedAt: '2026-05-18T21:27:58.582Z',
+        lanes: {
+          [laneId]: { laneId, state: 'active', updatedAt: '2026-05-18T21:27:58.582Z' },
+        },
+      }),
+      'utf8'
+    );
+    await fs.writeFile(
+      path.join(laneDir, 'opencode-prompt-delivery-ledger.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        updatedAt: '2026-05-18T21:27:58.582Z',
+        data: [
+          {
+            id: 'opencode-prompt:dependency-comment',
+            teamName,
+            memberName: 'tom',
+            laneId,
+            runId: 'run-1',
+            runtimeSessionId: 'ses-1',
+            inboxMessageId: 'dependency-comment-1',
+            inboxTimestamp: '2026-05-18T21:25:05.428Z',
+            source: 'watcher',
+            messageKind: null,
+            replyRecipient: 'team-lead',
+            actionMode: null,
+            taskRefs: [],
+            payloadHash: 'sha256:test',
+            status: 'failed_terminal',
+            responseState: 'session_stale',
+            attempts: 1,
+            maxAttempts: 3,
+            acceptanceUnknown: false,
+            nextAttemptAt: null,
+            lastAttemptAt: '2026-05-18T21:25:27.592Z',
+            lastObservedAt: '2026-05-18T21:27:58.582Z',
+            acceptedAt: '2026-05-18T21:25:27.592Z',
+            respondedAt: null,
+            failedAt: '2026-05-18T21:27:58.582Z',
+            inboxReadCommittedAt: null,
+            inboxReadCommitError: null,
+            prePromptCursor: null,
+            postPromptCursor: null,
+            deliveredUserMessageId: 'delivered-1',
+            observedAssistantMessageId: null,
+            observedAssistantPreview: null,
+            observedToolCallNames: [],
+            observedVisibleMessageId: null,
+            visibleReplyMessageId: null,
+            visibleReplyInbox: null,
+            visibleReplyCorrelation: null,
+            lastReason: 'opencode_session_stale_observe_loop_after_accepted_prompt',
+            diagnostics: [
+              'OpenCode API error',
+              'OpenCode session stayed stale while observing an accepted prompt after 5 attempt(s).',
+            ],
+            createdAt: '2026-05-18T21:25:05.428Z',
+            updatedAt: '2026-05-18T21:27:58.582Z',
+          },
+        ],
+      }),
+      'utf8'
+    );
+    await fs.writeFile(
+      path.join(tmpDir, 'teams', teamName, 'inboxes', 'tom.json'),
+      JSON.stringify([
+        {
+          from: 'team-lead',
+          to: 'tom',
+          text: [
+            '**Comment on task #a7fd5f34** _Calculator styles_',
+            '',
+            '> **Dependency resolved** - task #8dc34135 completed.',
+            '> All blockers for #a7fd5f34 are resolved - this task is ready to start.',
+          ].join('\n'),
+          timestamp: '2026-05-18T21:25:05.428Z',
+          read: false,
+          summary: 'Comment on #a7fd5f34',
+          messageId: 'dependency-comment-1',
+          source: 'system_notification',
+        },
+      ]),
+      'utf8'
+    );
+    await fs.writeFile(
+      path.join(tmpDir, 'tasks', teamName, `${taskId}.json`),
+      JSON.stringify({
+        id: taskId,
+        displayId: 'a7fd5f34',
+        subject: 'Calculator styles',
+        owner: 'tom',
+        status: 'completed',
+        updatedAt: '2026-05-18T21:25:21.453Z',
+        comments: [
+          {
+            id: 'result-comment',
+            author: 'tom',
+            text: 'Styles completed and verified.',
+            createdAt: '2026-05-18T21:25:18.441Z',
+            type: 'regular',
+          },
+        ],
+        historyEvents: [
+          {
+            id: 'completed-event',
+            type: 'status_changed',
+            from: 'in_progress',
+            to: 'completed',
+            actor: 'tom',
+            timestamp: '2026-05-18T21:25:21.453Z',
+          },
+        ],
+      }),
+      'utf8'
+    );
+
+    const service = new TeamMemberRuntimeAdvisoryService({
+      findMemberLogs: vi.fn(async () => []),
+    });
+    const advisory = await service.getMemberAdvisory(teamName, 'tom');
 
     expect(advisory).toBeNull();
   });

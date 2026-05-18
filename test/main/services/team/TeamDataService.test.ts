@@ -5374,6 +5374,55 @@ describe('TeamDataService', () => {
     });
   });
 
+  it('does not show stale Codex backend when Anthropic launch identity overrides legacy team meta', async () => {
+    const harness = createGetTeamDataHarness({
+      config: {
+        name: 'My team',
+        projectPath: '/repo',
+        members: [{ name: 'alice', role: 'Developer' }],
+      },
+      getTeamMeta: async () => ({
+        version: 1,
+        cwd: '/repo',
+        providerId: 'codex',
+        providerBackendId: 'codex-native',
+        model: 'gpt-5.4',
+        effort: 'medium',
+        launchIdentity: {
+          providerId: 'anthropic',
+          providerBackendId: null,
+          selectedModel: 'opus[1m]',
+          selectedModelKind: 'explicit',
+          resolvedLaunchModel: 'opus[1m]',
+          catalogId: 'opus',
+          catalogSource: 'runtime',
+          catalogFetchedAt: null,
+          selectedEffort: 'low',
+          resolvedEffort: 'low',
+          selectedFastMode: 'inherit',
+          resolvedFastMode: null,
+          fastResolutionReason: null,
+        },
+        createdAt: Date.now(),
+      }),
+    });
+
+    const data = await harness.service.getTeamData('my-team');
+
+    expect(data.members[0]).toMatchObject({
+      name: 'team-lead',
+      providerId: 'anthropic',
+      model: 'opus[1m]',
+      effort: 'low',
+    });
+    expect(data.members[0].providerBackendId).toBeUndefined();
+    const resolverOptions = (
+      harness.resolveMembersSpy.mock.calls[0] as unknown[] | undefined
+    )?.[4] as { leadProviderId?: string; leadProviderBackendId?: string } | undefined;
+    expect(resolverOptions).toMatchObject({ leadProviderId: 'anthropic' });
+    expect(resolverOptions?.leadProviderBackendId).toBeUndefined();
+  });
+
   it('degrades advisory lookup failure to warning and still completes the snapshot', async () => {
     const harness = createGetTeamDataHarness({
       resolveMembers: () => [buildResolvedMember('alice')],

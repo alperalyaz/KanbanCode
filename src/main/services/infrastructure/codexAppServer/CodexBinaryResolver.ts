@@ -4,6 +4,8 @@ import path from 'node:path';
 
 import { resolveVerifiedAppManagedCodexRuntimeBinaryPath } from '@features/codex-runtime-installer/main';
 import { execCli } from '@main/utils/childProcess';
+import { buildEnrichedEnv } from '@main/utils/cliEnv';
+import { buildMergedCliPath } from '@main/utils/cliPathMerge';
 import { getCachedShellEnv } from '@main/utils/shellEnv';
 
 const CACHE_VERIFY_TTL_MS = 30_000;
@@ -13,6 +15,7 @@ const BINARY_LAUNCH_VERIFY_TIMEOUT_MS = 3_000;
 let cachedBinaryPath: string | null | undefined;
 let cacheVerifiedAt = 0;
 let resolveInFlight: Promise<string | null> | null = null;
+let cachedMissHadShellEnv = false;
 const versionCache = new Map<string, { version: string | null; observedAt: number }>();
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -27,6 +30,7 @@ async function fileExists(filePath: string): Promise<boolean> {
 async function binaryCanLaunch(candidate: string): Promise<boolean> {
   try {
     await execCli(candidate, ['--version'], {
+      env: buildEnrichedEnv(candidate),
       timeout: BINARY_LAUNCH_VERIFY_TIMEOUT_MS,
       windowsHide: true,
     });
@@ -69,7 +73,7 @@ function getPathEntries(): string[] {
   const delimiter = process.platform === 'win32' ? ';' : path.delimiter;
   const shellEnv = getCachedShellEnv() ?? {};
   const seen = new Set<string>();
-  return [shellEnv.PATH, process.env.PATH]
+  return [shellEnv.PATH, buildMergedCliPath(null), process.env.PATH]
     .flatMap((pathValue) => (pathValue ?? '').split(delimiter))
     .map((entry) => entry.trim())
     .filter((entry) => {
@@ -118,34 +122,48 @@ export class CodexBinaryResolver {
     cachedBinaryPath = undefined;
     cacheVerifiedAt = 0;
     resolveInFlight = null;
+    cachedMissHadShellEnv = false;
     versionCache.clear();
   }
 
   static async resolve(): Promise<string | null> {
     if (cachedBinaryPath !== undefined) {
       if (cachedBinaryPath === null) {
-        const verifiedAppManagedBinaryPath =
-          await resolveVerifiedAppManagedCodexRuntimeBinaryPath();
-        if (verifiedAppManagedBinaryPath) {
-          cachedBinaryPath = verifiedAppManagedBinaryPath;
-          cacheVerifiedAt = Date.now();
-          return verifiedAppManagedBinaryPath;
+        if (!cachedMissHadShellEnv && getCachedShellEnv() !== null) {
+          cachedBinaryPath = undefined;
+          cacheVerifiedAt = 0;
+          cachedMissHadShellEnv = false;
+        } else {
+          const verifiedAppManagedBinaryPath =
+            await resolveVerifiedAppManagedCodexRuntimeBinaryPath();
+          if (verifiedAppManagedBinaryPath) {
+            cachedBinaryPath = verifiedAppManagedBinaryPath;
+            cacheVerifiedAt = Date.now();
+            cachedMissHadShellEnv = false;
+            return verifiedAppManagedBinaryPath;
+          }
+          if (Date.now() - cacheVerifiedAt <= CACHE_VERIFY_TTL_MS) {
+            return null;
+          }
+          cachedBinaryPath = undefined;
+          cacheVerifiedAt = 0;
+          cachedMissHadShellEnv = false;
         }
-        return null;
-      }
+      } else {
+        if (Date.now() - cacheVerifiedAt <= CACHE_VERIFY_TTL_MS) {
+          return cachedBinaryPath;
+        }
 
-      if (Date.now() - cacheVerifiedAt <= CACHE_VERIFY_TTL_MS) {
-        return cachedBinaryPath;
-      }
+        const verified = await verifyBinary(cachedBinaryPath);
+        if (verified) {
+          cacheVerifiedAt = Date.now();
+          cachedMissHadShellEnv = false;
+          return verified;
+        }
 
-      const verified = await verifyBinary(cachedBinaryPath);
-      if (verified) {
-        cacheVerifiedAt = Date.now();
-        return verified;
+        cachedBinaryPath = undefined;
+        cacheVerifiedAt = 0;
       }
-
-      cachedBinaryPath = undefined;
-      cacheVerifiedAt = 0;
     }
 
     if (!resolveInFlight) {
@@ -171,12 +189,14 @@ export class CodexBinaryResolver {
       if (resolved) {
         cachedBinaryPath = resolved;
         cacheVerifiedAt = Date.now();
+        cachedMissHadShellEnv = false;
         return resolved;
       }
     }
 
     cachedBinaryPath = null;
     cacheVerifiedAt = Date.now();
+    cachedMissHadShellEnv = getCachedShellEnv() !== null;
     return null;
   }
 
@@ -193,6 +213,7 @@ export class CodexBinaryResolver {
 
     try {
       const result = await execCli(normalizedPath, ['--version'], {
+        env: buildEnrichedEnv(normalizedPath),
         timeout: 3_000,
       });
       const version = result.stdout.trim().split(/\s+/).filter(Boolean).at(-1) ?? null;

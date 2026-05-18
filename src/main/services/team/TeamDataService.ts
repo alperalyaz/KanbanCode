@@ -557,6 +557,12 @@ export class TeamDataService {
     }
 
     const launchIdentity = teamMeta?.launchIdentity;
+    const providerBackendId = launchIdentity
+      ? (migrateProviderBackendId(
+          launchIdentity.providerId,
+          launchIdentity.providerBackendId ?? teamMeta?.providerBackendId
+        ) ?? undefined)
+      : (migrateProviderBackendId(teamMeta?.providerId, teamMeta?.providerBackendId) ?? undefined);
     const leadName = 'team-lead';
     const ownedTasks = tasks.filter((task) => task.owner === leadName);
     const currentTask = selectCurrentActiveTeamTask(ownedTasks);
@@ -572,10 +578,7 @@ export class TeamDataService {
       workflow: undefined,
       isolation: undefined,
       providerId: launchIdentity?.providerId ?? teamMeta?.providerId,
-      providerBackendId:
-        launchIdentity?.providerBackendId ??
-        migrateProviderBackendId(teamMeta?.providerId, teamMeta?.providerBackendId) ??
-        undefined,
+      providerBackendId,
       model:
         launchIdentity?.resolvedLaunchModel ?? launchIdentity?.selectedModel ?? teamMeta?.model,
       effort:
@@ -1382,6 +1385,14 @@ export class TeamDataService {
       : tasksWithKanbanBase;
     mark('changePresence');
 
+    const launchIdentity = teamMeta?.launchIdentity;
+    const leadProviderBackendId = launchIdentity
+      ? (migrateProviderBackendId(
+          launchIdentity.providerId,
+          launchIdentity.providerBackendId ?? teamMeta?.providerBackendId
+        ) ?? undefined)
+      : (migrateProviderBackendId(teamMeta?.providerId, teamMeta?.providerBackendId) ?? undefined);
+
     const members = this.memberResolver.resolveMembers(
       config,
       metaMembers,
@@ -1389,11 +1400,8 @@ export class TeamDataService {
       tasksWithKanban,
       {
         launchSnapshot,
-        leadProviderId: teamMeta?.launchIdentity?.providerId ?? teamMeta?.providerId,
-        leadProviderBackendId:
-          teamMeta?.launchIdentity?.providerBackendId ??
-          migrateProviderBackendId(teamMeta?.providerId, teamMeta?.providerBackendId) ??
-          undefined,
+        leadProviderId: launchIdentity?.providerId ?? teamMeta?.providerId,
+        leadProviderBackendId,
         leadFastMode: teamMeta?.launchIdentity?.selectedFastMode ?? teamMeta?.fastMode ?? undefined,
         leadResolvedFastMode:
           typeof teamMeta?.launchIdentity?.resolvedFastMode === 'boolean'

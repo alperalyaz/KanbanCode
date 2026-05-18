@@ -1199,6 +1199,24 @@ export type TeamAgentRuntimePidSource =
 
 export type TeamAgentRuntimeDiagnosticSeverity = 'info' | 'warning' | 'error';
 
+export interface TeamAgentRuntimeResourceSample {
+  timestamp: string;
+  cpuPercent?: number;
+  rssBytes?: number;
+  primaryCpuPercent?: number;
+  primaryRssBytes?: number;
+  childCpuPercent?: number;
+  childRssBytes?: number;
+  processCount?: number;
+  runtimeLoadScope?: TeamAgentRuntimeLoadScope;
+  runtimeLoadTruncated?: boolean;
+  pidSource?: TeamAgentRuntimePidSource;
+  pid?: number;
+  runtimePid?: number;
+}
+
+export type TeamAgentRuntimeLoadScope = 'single-process' | 'process-tree' | 'shared-host';
+
 export interface TeamAgentRuntimeEntry {
   memberName: string;
   alive: boolean;
@@ -1213,6 +1231,15 @@ export interface TeamAgentRuntimeEntry {
   /** Runtime working directory, when known. */
   cwd?: string;
   rssBytes?: number;
+  cpuPercent?: number;
+  primaryCpuPercent?: number;
+  primaryRssBytes?: number;
+  childCpuPercent?: number;
+  childRssBytes?: number;
+  processCount?: number;
+  runtimeLoadScope?: TeamAgentRuntimeLoadScope;
+  runtimeLoadTruncated?: boolean;
+  resourceHistory?: TeamAgentRuntimeResourceSample[];
   livenessKind?: TeamAgentRuntimeLivenessKind;
   pidSource?: TeamAgentRuntimePidSource;
   processCommand?: string;
@@ -1296,6 +1323,12 @@ export interface MemberSpawnStatusEntry {
   hardFailure?: boolean;
   /** Pending runtime permission request ids currently blocking bootstrap. */
   pendingPermissionRequestIds?: string[];
+  /** OpenCode bootstrap evidence source for launch/status recovery. */
+  bootstrapEvidenceSource?: OpenCodeBootstrapEvidenceSource;
+  /** OpenCode bootstrap proof mode. Missing means app-managed for current OpenCode sessions. */
+  bootstrapMode?: OpenCodeBootstrapMode;
+  /** Candidate used by app-managed OpenCode bootstrap before durable evidence promotion. */
+  appManagedBootstrapCandidate?: OpenCodeAppManagedBootstrapCandidate;
   /** ISO timestamp of the first accepted teammate spawn for this member. */
   firstSpawnAcceptedAt?: string;
   /** ISO timestamp of the latest confirmed heartbeat/bootstrap message. */

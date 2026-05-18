@@ -40,6 +40,7 @@ import {
 import {
   buildMemberWorkSyncRuntimeTurnSettledEnvironment,
   createMemberWorkSyncFeature,
+  hasWorkSyncActiveRuntime,
   type MemberWorkSyncFeatureFacade,
   registerMemberWorkSyncIpc,
   removeMemberWorkSyncIpc,
@@ -57,6 +58,7 @@ import {
   type RuntimeProviderManagementFeatureFacade,
 } from '@features/runtime-provider-management/main';
 import { createWorkspaceTrustCoordinator } from '@features/workspace-trust/main';
+import { ensureOpenCodeBridgeRuntimeBinaryEnv } from '@main/services/runtime/openCodeBridgeRuntimeEnv';
 import { ClaudeMultimodelBridgeService } from '@main/services/runtime/ClaudeMultimodelBridgeService';
 import { applyOpenCodeAutoUpdatePolicy } from '@main/services/runtime/openCodeAutoUpdatePolicy';
 import { providerConnectionService } from '@main/services/runtime/ProviderConnectionService';
@@ -137,6 +139,7 @@ import {
   SkillsMutationService,
   SkillsWatcherService,
 } from './services/extensions';
+import { applyAgentTeamsIdentityEnv } from './services/identity/AgentTeamsIdentityStore';
 import { startEventLoopLagMonitor } from './services/infrastructure/EventLoopLagMonitor';
 import { HttpServer } from './services/infrastructure/HttpServer';
 import { clearAutoResumeService } from './services/team/AutoResumeService';
@@ -224,7 +227,7 @@ import {
   TeamTaskStallSnapshotSource,
   TeamTranscriptSourceLocator,
   UpdaterService,
-  resolveVerifiedAppManagedOpenCodeRuntimeBinaryPath,
+  resolveVerifiedOpenCodeRuntimeBinaryPath,
 } from './services';
 
 import type { FileChangeEvent } from '@main/types';
@@ -340,6 +343,23 @@ function describeMemberWorkSyncReviewPickupEscalationReason(reason: string): str
   return 'The current review request is still waiting for explicit review pickup.';
 }
 
+async function resolveOpenCodeRuntimeBinaryForBridgeEnv(): Promise<string | null> {
+  const resolvedBinaryPath = await resolveVerifiedOpenCodeRuntimeBinaryPath();
+  if (resolvedBinaryPath) return resolvedBinaryPath;
+
+  try {
+    const status = await openCodeRuntimeInstallerService?.getStatus();
+    return status?.installed === true && status.binaryPath ? status.binaryPath : null;
+  } catch (error) {
+    logger.warn(
+      `[OpenCode] Runtime installer status unavailable while resolving bridge binary: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return null;
+  }
+}
+
 async function createOpenCodeRuntimeAdapterRegistry(
   reportProgress: (phase: string, message: string) => void = () => undefined
 ): Promise<TeamRuntimeAdapterRegistry> {
@@ -358,6 +378,7 @@ async function createOpenCodeRuntimeAdapterRegistry(
 
   reportProgress('runtime-environment', 'Preparing runtime environment...');
   const bridgeEnv = applyOpenCodeAutoUpdatePolicy({ ...process.env });
+  applyAgentTeamsIdentityEnv(bridgeEnv);
   bridgeEnv.CLAUDE_TEAM_APP_INSTANCE_ID = openCodeManagedHostInstanceId;
   bridgeEnv.AGENT_TEAMS_MCP_CLAUDE_DIR = getClaudeBasePath();
   const useHttpMcpBridge = isOpenCodeMcpHttpBridgeEnabled(bridgeEnv);
@@ -409,18 +430,15 @@ async function createOpenCodeRuntimeAdapterRegistry(
       copyOpenCodeLocalMcpLaunchEnv(targetEnv, bridgeEnv);
     }
   };
-  try {
-    const appManagedOpenCodeBinary = await resolveVerifiedAppManagedOpenCodeRuntimeBinaryPath();
-    if (appManagedOpenCodeBinary && !bridgeEnv.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH) {
-      bridgeEnv.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH = appManagedOpenCodeBinary;
-    }
-  } catch (error) {
-    logger.warn(
-      `[OpenCode] Runtime adapter bundled OpenCode binary unresolved: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-  }
+  const ensureOpenCodeRuntimeBinaryEnv = async (targetEnv: NodeJS.ProcessEnv): Promise<void> => {
+    await ensureOpenCodeBridgeRuntimeBinaryEnv({
+      targetEnv,
+      bridgeEnv,
+      resolveVerifiedOpenCodeRuntimeBinaryPath: resolveOpenCodeRuntimeBinaryForBridgeEnv,
+      onWarning: (message) => logger.warn(message),
+    });
+  };
+  await ensureOpenCodeRuntimeBinaryEnv(bridgeEnv);
   try {
     reportProgress('runtime-work-sync', 'Preparing runtime work sync hooks...');
     const turnSettledEnv = await buildMemberWorkSyncRuntimeTurnSettledEnvironment({
@@ -442,6 +460,7 @@ async function createOpenCodeRuntimeAdapterRegistry(
       reportProgress('runtime-mcp-http', 'Starting Agent Teams MCP server...');
       const mcpHttpServer = await agentTeamsMcpHttpServer.ensureStarted();
       bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL = mcpHttpServer.url;
+      bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL_HASH = mcpHttpServer.urlHash;
       reportProgress('runtime-mcp-http-ready', 'Agent Teams MCP server is ready...');
     } catch (error) {
       logger.warn(
@@ -463,17 +482,22 @@ async function createOpenCodeRuntimeAdapterRegistry(
   reportProgress('runtime-bridge', 'Preparing OpenCode bridge...');
   const resolveBridgeCommandEnv = async (): Promise<NodeJS.ProcessEnv> => {
     const nextEnv = { ...bridgeEnv };
+    await ensureOpenCodeRuntimeBinaryEnv(nextEnv);
     if (!useHttpMcpBridge) {
       return nextEnv;
     }
     try {
       const mcpHttpServer = await agentTeamsMcpHttpServer.ensureStarted();
       bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL = mcpHttpServer.url;
+      bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL_HASH = mcpHttpServer.urlHash;
       nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL = mcpHttpServer.url;
+      nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL_HASH = mcpHttpServer.urlHash;
       await ensureOpenCodeLocalMcpLaunchEnv(nextEnv);
     } catch (error) {
       delete bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL;
+      delete bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL_HASH;
       delete nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL;
+      delete nextEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL_HASH;
       await ensureOpenCodeLocalMcpLaunchEnv(nextEnv);
       logger.warn(
         `[OpenCode] Runtime adapter bridge MCP HTTP server refresh failed: ${
@@ -893,6 +917,23 @@ let appStartupStatus: AppStartupStatus = {
 
 function isShutdownStarted(): boolean {
   return shutdownComplete || shutdownPromise !== null;
+}
+
+function hasActiveTeamRuntimesForWindowClose(): boolean {
+  if (!servicesReady || !teamProvisioningService) {
+    return false;
+  }
+
+  try {
+    return teamProvisioningService.hasActiveTeamRuntimes();
+  } catch (error) {
+    logger.warn(
+      `Failed to check active team runtimes before closing last window: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return false;
+  }
 }
 
 function scheduleStartupTask(action: () => void, delayMs: number): void {
@@ -1740,27 +1781,55 @@ async function initializeServices(): Promise<void> {
     logger: createLogger('Feature:RecentProjects'),
   });
   runtimeProviderManagementFeature = createRuntimeProviderManagementFeature();
+  const memberWorkSyncLogger = createLogger('Feature:MemberWorkSync');
+  const hasMemberWorkSyncRuntimeActivity = async (teamName: string): Promise<boolean> => {
+    try {
+      const snapshot = await teamProvisioningService.getTeamAgentRuntimeSnapshot(teamName);
+      return hasWorkSyncActiveRuntime(snapshot);
+    } catch (error) {
+      memberWorkSyncLogger.warn('member work sync runtime activity check failed', {
+        teamName,
+        error: String(error),
+      });
+      return false;
+    }
+  };
+  const isTeamActiveForMemberWorkSync = async (teamName: string): Promise<boolean> => {
+    if (
+      teamProvisioningService.isTeamAlive(teamName) ||
+      teamProvisioningService.hasProvisioningRun(teamName)
+    ) {
+      return true;
+    }
+    return hasMemberWorkSyncRuntimeActivity(teamName);
+  };
+  const canDispatchMemberWorkSyncNudges = async (teamName: string): Promise<boolean> => {
+    if (teamProvisioningService.isTeamAlive(teamName)) {
+      return true;
+    }
+    return hasMemberWorkSyncRuntimeActivity(teamName);
+  };
+  const listMemberWorkSyncLifecycleActiveTeamNames = async (): Promise<string[]> => {
+    const activeTeamNames: string[] = [];
+    for (const team of await teamDataService.listTeams()) {
+      if (team.deletedAt) {
+        continue;
+      }
+      if (await isTeamActiveForMemberWorkSync(team.teamName)) {
+        activeTeamNames.push(team.teamName);
+      }
+    }
+    return activeTeamNames;
+  };
   memberWorkSyncFeature = createMemberWorkSyncFeature({
     teamsBasePath: getTeamsBasePath(),
     configReader: new TeamConfigReader(),
     taskReader: new TeamTaskReader(),
     kanbanManager: new TeamKanbanManager(),
     membersMetaStore: new TeamMembersMetaStore(),
-    isTeamActive: (teamName) =>
-      teamProvisioningService.isTeamAlive(teamName) ||
-      teamProvisioningService.hasProvisioningRun(teamName),
-    canDispatchNudges: (teamName) => teamProvisioningService.isTeamAlive(teamName),
-    listLifecycleActiveTeamNames: async () => {
-      const teams = await teamDataService.listTeams();
-      return teams
-        .filter(
-          (team) =>
-            !team.deletedAt &&
-            (teamProvisioningService.isTeamAlive(team.teamName) ||
-              teamProvisioningService.hasProvisioningRun(team.teamName))
-        )
-        .map((team) => team.teamName);
-    },
+    isTeamActive: isTeamActiveForMemberWorkSync,
+    canDispatchNudges: canDispatchMemberWorkSyncNudges,
+    listLifecycleActiveTeamNames: listMemberWorkSyncLifecycleActiveTeamNames,
     extraBusySignals: [
       {
         isBusy: (input) => teamProvisioningService.getOpenCodeMemberDeliveryBusyStatus(input),
@@ -1944,7 +2013,7 @@ async function initializeServices(): Promise<void> {
         });
       },
     },
-    logger: createLogger('Feature:MemberWorkSync'),
+    logger: memberWorkSyncLogger,
   });
   teamProvisioningService.setRuntimeTurnSettledHookSettingsProvider((input) =>
     memberWorkSyncFeature
@@ -2746,10 +2815,16 @@ void app.whenReady().then(async () => {
  * All windows closed handler.
  */
 app.on('window-all-closed', () => {
+  const hasActiveTeamRuntimes = hasActiveTeamRuntimesForWindowClose();
   const shouldQuitWhenAllWindowsClosed =
-    process.platform !== 'darwin' || !configManager.getConfig().general.showDockIcon;
+    hasActiveTeamRuntimes ||
+    process.platform !== 'darwin' ||
+    !configManager.getConfig().general.showDockIcon;
 
   if (shouldQuitWhenAllWindowsClosed) {
+    if (hasActiveTeamRuntimes) {
+      logger.info('Quitting after last window closed because active team runtimes are running');
+    }
     app.quit();
   }
 });

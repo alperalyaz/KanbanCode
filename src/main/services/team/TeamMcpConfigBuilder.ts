@@ -1,9 +1,11 @@
 import { execCli } from '@main/utils/childProcess';
+import { buildMergedCliPath } from '@main/utils/cliPathMerge';
 import {
   getClaudeBasePath,
   getMcpConfigsBasePath,
   getMcpServerBasePath,
 } from '@main/utils/pathDecoder';
+import { resolveInteractiveShellEnv } from '@main/utils/shellEnv';
 import { createLogger } from '@shared/utils/logger';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -30,6 +32,7 @@ const MCP_CLAUDE_DIR_ENV = 'AGENT_TEAMS_MCP_CLAUDE_DIR';
 const logger = createLogger('Service:TeamMcpConfigBuilder');
 const MCP_CONFIG_PREFIX = 'agent-teams-mcp-';
 const MCP_CONFIG_REMOVE_RETRY_DELAYS_MS = [25, 75, 150] as const;
+const NODE_RUNTIME_PROBE_TIMEOUT_MS = 5_000;
 /**
  * Stale configs older than this are removed on startup (best-effort).
  * 7 days is intentionally long: respawnAfterAuthFailure() reuses saved
@@ -175,32 +178,113 @@ function emitProgress(
   options?.onProgress?.({ phase, message });
 }
 
+function stringifyError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function looksLikeNodeBinaryPath(candidate: string | undefined): candidate is string {
+  if (!candidate?.trim()) {
+    return false;
+  }
+  return /^node(?:-\d+)?(?:\.exe)?$/i.test(path.basename(candidate.trim()));
+}
+
+function getNodeRuntimeCommandCandidates(): string[] {
+  const candidates = [
+    process.env.NODE_BINARY,
+    'node',
+    process.env.npm_node_execpath,
+    looksLikeNodeBinaryPath(process.execPath) ? process.execPath : undefined,
+  ];
+  const seen = new Set<string>();
+  return candidates.flatMap((candidate) => {
+    const normalized = candidate?.trim();
+    if (!normalized || seen.has(normalized)) {
+      return [];
+    }
+    seen.add(normalized);
+    return [normalized];
+  });
+}
+
+function mergePathValues(...values: (string | undefined)[]): string | undefined {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const value of values) {
+    if (!value) {
+      continue;
+    }
+    for (const segment of value.split(path.delimiter)) {
+      if (!segment || seen.has(segment)) {
+        continue;
+      }
+      seen.add(segment);
+      merged.push(segment);
+    }
+  }
+  return merged.length > 0 ? merged.join(path.delimiter) : undefined;
+}
+
+function buildNodeResolveEnv(shellEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...shellEnv,
+  };
+  const mergedPath = mergePathValues(shellEnv.PATH, buildMergedCliPath(), process.env.PATH);
+  if (mergedPath) {
+    env.PATH = mergedPath;
+  }
+  return env;
+}
+
 /**
  * Find the real `node` binary path. In Electron, process.execPath is the
  * Electron binary — NOT node — so we must resolve node separately.
- * Uses async execFile('node', ...) which is cross-platform (no /usr/bin/env dependency).
+ * Uses the user's shell/enriched PATH so packaged GUI launches do not depend
+ * on the minimal Finder/Dock PATH.
  */
 async function resolveNodePath(options?: McpLaunchSpecResolveOptions): Promise<string> {
   if (_resolvedNodePath) return _resolvedNodePath;
 
+  let shellEnv: NodeJS.ProcessEnv = {};
   try {
     emitProgress(options, 'node-runtime', 'Resolving Node.js runtime for MCP server...');
-    const { stdout } = await execCli('node', ['-e', 'process.stdout.write(process.execPath)'], {
-      encoding: 'utf-8',
-      timeout: 5000,
+    shellEnv = await resolveInteractiveShellEnv({
+      onProgress: options?.onProgress
+        ? ({ phase, message }) => emitProgress(options, `shell-${phase}`, message)
+        : undefined,
     });
-    const resolved = stdout.trim();
-    if (resolved) {
+  } catch (error) {
+    logger.warn(`Failed to resolve shell env before Node.js lookup: ${stringifyError(error)}`);
+  }
+
+  const env = buildNodeResolveEnv(shellEnv);
+  let lastError: unknown = null;
+  for (const command of getNodeRuntimeCommandCandidates()) {
+    try {
+      const { stdout } = await execCli(command, ['-e', 'process.stdout.write(process.execPath)'], {
+        encoding: 'utf-8',
+        timeout: NODE_RUNTIME_PROBE_TIMEOUT_MS,
+        env,
+      });
+      const resolved = stdout.trim();
+      if (!resolved) {
+        throw new Error(`${command} did not report process.execPath`);
+      }
       _resolvedNodePath = resolved;
       emitProgress(options, 'node-runtime-found', 'Using resolved Node.js runtime...');
       return _resolvedNodePath;
+    } catch (error) {
+      lastError = error;
     }
-  } catch {
-    // node not found or timed out — use bare 'node' and let the OS resolve it
   }
-  _resolvedNodePath = 'node';
-  emitProgress(options, 'node-runtime-fallback', 'Using system Node.js command...');
-  return _resolvedNodePath;
+
+  emitProgress(options, 'node-runtime-missing', 'Node.js runtime for MCP server was not found.');
+  throw new Error(
+    `Node.js runtime for Agent Teams MCP was not found. Ensure Node.js is installed and available from the login shell PATH. Last error: ${
+      lastError ? stringifyError(lastError) : 'no Node.js candidates were available'
+    }`
+  );
 }
 
 /**

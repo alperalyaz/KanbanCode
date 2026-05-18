@@ -59,6 +59,7 @@ interface MessageComposerProps {
   teamName: string;
   members: ResolvedTeamMember[];
   layout?: 'default' | 'compact';
+  widthMode?: 'full' | 'floating-adaptive';
   isTeamAlive?: boolean;
   sending: boolean;
   sendError: string | null;
@@ -95,6 +96,9 @@ interface PendingSendState {
 }
 
 let pendingSendIdCounter = 0;
+const FLOATING_COMPOSER_MIN_WIDTH = 350;
+const FLOATING_COMPOSER_MAX_WIDTH = 500;
+const FLOATING_COMPOSER_TEXT_BUFFER = 4;
 
 function createPendingSendId(): string {
   const randomId = globalThis.crypto?.randomUUID?.();
@@ -107,6 +111,7 @@ export const MessageComposer = ({
   teamName,
   members,
   layout = 'default',
+  widthMode = 'full',
   isTeamAlive,
   sending,
   sendError,
@@ -653,6 +658,68 @@ export const MessageComposer = ({
     draft.attachments.length > 0 || Boolean(draft.attachmentError ?? fileRestrictionError);
   const shouldDockRecipientSelector = !hasAttachmentPreviewContent;
   const isCompactLayout = layout === 'compact';
+  const isFloatingAdaptiveWidth = widthMode === 'floating-adaptive';
+  const [floatingComposerWidth, setFloatingComposerWidth] = useState(FLOATING_COMPOSER_MIN_WIDTH);
+
+  useLayoutEffect(() => {
+    if (!isFloatingAdaptiveWidth) return;
+
+    if (draft.attachments.length > 0) {
+      setFloatingComposerWidth(FLOATING_COMPOSER_MAX_WIDTH);
+      return;
+    }
+
+    const textarea = internalTextareaRef.current;
+    if (!textarea) return;
+
+    const visibleText = stripEncodedTaskReferenceMetadata(draft.text);
+    if (visibleText.length === 0) {
+      setFloatingComposerWidth(FLOATING_COMPOSER_MIN_WIDTH);
+      return;
+    }
+
+    const computedStyle = window.getComputedStyle(textarea);
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    context.font =
+      computedStyle.font ||
+      [
+        computedStyle.fontStyle,
+        computedStyle.fontVariant,
+        computedStyle.fontWeight,
+        computedStyle.fontSize,
+        computedStyle.fontFamily,
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+    const longestLineWidth = visibleText
+      .split(/\r\n|\r|\n/)
+      .reduce((maxWidth, line) => Math.max(maxWidth, context.measureText(line).width), 0);
+    const horizontalInset =
+      (Number.parseFloat(computedStyle.paddingLeft) || 0) +
+      (Number.parseFloat(computedStyle.paddingRight) || 0) +
+      (Number.parseFloat(computedStyle.borderLeftWidth) || 0) +
+      (Number.parseFloat(computedStyle.borderRightWidth) || 0) +
+      FLOATING_COMPOSER_TEXT_BUFFER;
+    const nextWidth = Math.min(
+      FLOATING_COMPOSER_MAX_WIDTH,
+      Math.max(FLOATING_COMPOSER_MIN_WIDTH, Math.ceil(longestLineWidth + horizontalInset))
+    );
+
+    setFloatingComposerWidth((currentWidth) =>
+      currentWidth === nextWidth ? currentWidth : nextWidth
+    );
+  }, [draft.attachments.length, draft.text, isFloatingAdaptiveWidth]);
+
+  const floatingAdaptiveStyle = isFloatingAdaptiveWidth
+    ? {
+        width: floatingComposerWidth,
+        maxWidth: `min(${FLOATING_COMPOSER_MAX_WIDTH}px, calc(100vw - 2rem))`,
+      }
+    : undefined;
   const compactFooterNotice = slashCommandRestrictionReason ? (
     <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
       <AlertCircle size={10} className="shrink-0" />
@@ -698,6 +765,7 @@ export const MessageComposer = ({
   return (
     <div
       className={cn('relative', isCompactLayout ? 'pb-1' : 'mb-1.5 pb-1.5')}
+      style={floatingAdaptiveStyle}
       role="group"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}

@@ -20,6 +20,7 @@ import { DEFAULT_TEAM_GRAPH_LAYOUT_MODE } from '@shared/constants/teamGraphLayou
 import { DEFAULT_TOOL_APPROVAL_SETTINGS } from '@shared/types/team';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
+import { migrateProviderBackendId } from '@shared/utils/providerBackend';
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { buildTeamGraphDefaultLayoutSeed } from '@shared/utils/teamGraphDefaultLayout';
 import { getStableTeamOwnerId } from '@shared/utils/teamStableOwnerId';
@@ -61,6 +62,7 @@ import type {
   TaskChangePresenceState,
   TaskComment,
   TeamAgentRuntimeEntry,
+  TeamAgentRuntimeResourceSample,
   TeamAgentRuntimeSnapshot,
   TeamCreateRequest,
   TeamGetDataOptions,
@@ -977,14 +979,44 @@ function maybeLogMemberSpawnUiEqualSuppressed(
   );
 }
 
+function isTeamAgentRuntimeResourceSampleLike(
+  value: unknown
+): value is TeamAgentRuntimeResourceSample {
+  return Boolean(value) && typeof value === 'object';
+}
+
+function areTeamAgentRuntimeResourceSamplesEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (!isTeamAgentRuntimeResourceSampleLike(left) || !isTeamAgentRuntimeResourceSampleLike(right)) {
+    return false;
+  }
+  return (
+    left.timestamp === right.timestamp &&
+    left.cpuPercent === right.cpuPercent &&
+    left.rssBytes === right.rssBytes &&
+    left.primaryCpuPercent === right.primaryCpuPercent &&
+    left.primaryRssBytes === right.primaryRssBytes &&
+    left.childCpuPercent === right.childCpuPercent &&
+    left.childRssBytes === right.childRssBytes &&
+    left.processCount === right.processCount &&
+    left.runtimeLoadScope === right.runtimeLoadScope &&
+    left.runtimeLoadTruncated === right.runtimeLoadTruncated &&
+    left.pidSource === right.pidSource &&
+    left.pid === right.pid &&
+    left.runtimePid === right.runtimePid
+  );
+}
+
 function areTeamAgentRuntimeEntriesEqual(
   left: TeamAgentRuntimeEntry | undefined,
   right: TeamAgentRuntimeEntry | undefined
 ): boolean {
   if (left === right) return true;
   if (!left || !right) return left === right;
-  const leftDiagnostics = left.diagnostics ?? [];
-  const rightDiagnostics = right.diagnostics ?? [];
+  const leftDiagnostics = Array.isArray(left.diagnostics) ? left.diagnostics : [];
+  const rightDiagnostics = Array.isArray(right.diagnostics) ? right.diagnostics : [];
+  const leftResourceHistory = Array.isArray(left.resourceHistory) ? left.resourceHistory : [];
+  const rightResourceHistory = Array.isArray(right.resourceHistory) ? right.resourceHistory : [];
   return (
     left.memberName === right.memberName &&
     left.alive === right.alive &&
@@ -997,6 +1029,14 @@ function areTeamAgentRuntimeEntriesEqual(
     left.pid === right.pid &&
     left.runtimeModel === right.runtimeModel &&
     left.rssBytes === right.rssBytes &&
+    left.cpuPercent === right.cpuPercent &&
+    left.primaryCpuPercent === right.primaryCpuPercent &&
+    left.primaryRssBytes === right.primaryRssBytes &&
+    left.childCpuPercent === right.childCpuPercent &&
+    left.childRssBytes === right.childRssBytes &&
+    left.processCount === right.processCount &&
+    left.runtimeLoadScope === right.runtimeLoadScope &&
+    left.runtimeLoadTruncated === right.runtimeLoadTruncated &&
     left.livenessKind === right.livenessKind &&
     left.pidSource === right.pidSource &&
     left.processCommand === right.processCommand &&
@@ -1010,7 +1050,11 @@ function areTeamAgentRuntimeEntriesEqual(
     left.runtimeLastSeenAt === right.runtimeLastSeenAt &&
     left.historicalBootstrapConfirmed === right.historicalBootstrapConfirmed &&
     leftDiagnostics.length === rightDiagnostics.length &&
-    leftDiagnostics.every((value, index) => value === rightDiagnostics[index])
+    leftDiagnostics.every((value, index) => value === rightDiagnostics[index]) &&
+    leftResourceHistory.length === rightResourceHistory.length &&
+    leftResourceHistory.every((value, index) =>
+      areTeamAgentRuntimeResourceSamplesEqual(value, rightResourceHistory[index])
+    )
   );
 }
 
@@ -3076,6 +3120,69 @@ function saveLaunchParams(teamName: string, params: TeamLaunchParams): void {
  */
 function extractBaseModel(raw?: string, providerId?: TeamProviderId): string | undefined {
   return extractProviderScopedBaseModel(raw, providerId);
+}
+
+function buildLaunchParamsFromRuntimeRequest(
+  request: Pick<
+    TeamCreateRequest,
+    'providerId' | 'providerBackendId' | 'model' | 'effort' | 'fastMode' | 'limitContext'
+  >,
+  fallback?: TeamLaunchParams
+): TeamLaunchParams {
+  const providerId = request.providerId ?? fallback?.providerId ?? 'anthropic';
+  const providerChanged =
+    request.providerId != null &&
+    fallback?.providerId != null &&
+    request.providerId !== fallback.providerId;
+  const hasModel = Object.hasOwn(request, 'model');
+  const baseModel =
+    hasModel && typeof request.model === 'string'
+      ? extractBaseModel(request.model, providerId)
+      : undefined;
+  const rawProviderBackendId = Object.hasOwn(request, 'providerBackendId')
+    ? request.providerBackendId
+    : providerChanged
+      ? undefined
+      : fallback?.providerBackendId;
+  return {
+    providerId,
+    providerBackendId: migrateProviderBackendId(providerId, rawProviderBackendId),
+    model: hasModel
+      ? baseModel || 'default'
+      : (providerChanged ? undefined : fallback?.model) || 'default',
+    effort: Object.hasOwn(request, 'effort')
+      ? request.effort
+      : providerChanged
+        ? undefined
+        : fallback?.effort,
+    fastMode: Object.hasOwn(request, 'fastMode')
+      ? request.fastMode
+      : providerChanged
+        ? undefined
+        : fallback?.fastMode,
+    limitContext:
+      typeof request.limitContext === 'boolean'
+        ? request.limitContext
+        : providerChanged
+          ? false
+          : (fallback?.limitContext ?? false),
+  };
+}
+
+function areTeamLaunchParamsEqual(
+  left: TeamLaunchParams | undefined,
+  right: TeamLaunchParams | undefined
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return (
+    left.providerId === right.providerId &&
+    left.providerBackendId === right.providerBackendId &&
+    left.model === right.model &&
+    left.effort === right.effort &&
+    left.fastMode === right.fastMode &&
+    left.limitContext === right.limitContext
+  );
 }
 
 const TOOL_APPROVAL_PREFIX = 'team:toolApprovalSettings:';
@@ -5472,6 +5579,14 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         },
       },
     }));
+    const optimisticLaunchParams = buildLaunchParamsFromRuntimeRequest(request);
+    const previousLaunchParams = get().launchParamsByTeam[request.teamName];
+    set((state) => ({
+      launchParamsByTeam: {
+        ...state.launchParamsByTeam,
+        [request.teamName]: optimisticLaunchParams,
+      },
+    }));
     // Initialize per-team tool approval settings based on skipPermissions flag
     const initialSettings: ToolApprovalSettings =
       request.skipPermissions === false
@@ -5487,21 +5602,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       }
       const response = await unwrapIpc('team:create', () => api.teams.createTeam(request));
 
-      // Persist per-team launch params (model, effort, limit context)
-      const baseModel = extractBaseModel(request.model, request.providerId);
-      const params: TeamLaunchParams = {
-        providerId: request.providerId ?? 'anthropic',
-        providerBackendId: request.providerBackendId,
-        model: baseModel || 'default',
-        effort: request.effort,
-        fastMode: request.fastMode,
-        limitContext: request.limitContext ?? false,
-      };
-      saveLaunchParams(request.teamName, params);
+      saveLaunchParams(request.teamName, optimisticLaunchParams);
       set((state) => ({
         launchParamsByTeam: {
           ...state.launchParamsByTeam,
-          [request.teamName]: params,
+          [request.teamName]: optimisticLaunchParams,
         },
       }));
 
@@ -5551,9 +5656,20 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         if (nextCurrentRunIdByTeam[request.teamName] === pendingRunId) {
           delete nextCurrentRunIdByTeam[request.teamName];
         }
+        const nextLaunchParamsByTeam = { ...state.launchParamsByTeam };
+        if (
+          areTeamLaunchParamsEqual(nextLaunchParamsByTeam[request.teamName], optimisticLaunchParams)
+        ) {
+          if (previousLaunchParams) {
+            nextLaunchParamsByTeam[request.teamName] = previousLaunchParams;
+          } else {
+            delete nextLaunchParamsByTeam[request.teamName];
+          }
+        }
         return {
           provisioningRuns: nextRuns,
           currentProvisioningRunIdByTeam: nextCurrentRunIdByTeam,
+          launchParamsByTeam: nextLaunchParamsByTeam,
           provisioningErrorByTeam: {
             ...state.provisioningErrorByTeam,
             [request.teamName]: message,
@@ -5648,6 +5764,17 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         [request.teamName]: pendingRunId,
       },
     }));
+    const previousLaunchParams = get().launchParamsByTeam[request.teamName];
+    const optimisticLaunchParams = buildLaunchParamsFromRuntimeRequest(
+      request,
+      previousLaunchParams
+    );
+    set((state) => ({
+      launchParamsByTeam: {
+        ...state.launchParamsByTeam,
+        [request.teamName]: optimisticLaunchParams,
+      },
+    }));
     // Initialize per-team tool approval settings based on skipPermissions flag
     {
       const launchSettings: ToolApprovalSettings =
@@ -5660,21 +5787,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     try {
       const response = await unwrapIpc('team:launch', () => api.teams.launchTeam(request));
 
-      // Persist per-team launch params (model, effort, limit context)
-      const baseModel = extractBaseModel(request.model, request.providerId);
-      const params: TeamLaunchParams = {
-        providerId: request.providerId ?? 'anthropic',
-        providerBackendId: request.providerBackendId,
-        model: baseModel || 'default',
-        effort: request.effort,
-        fastMode: request.fastMode,
-        limitContext: request.limitContext ?? false,
-      };
-      saveLaunchParams(request.teamName, params);
+      saveLaunchParams(request.teamName, optimisticLaunchParams);
       set((state) => ({
         launchParamsByTeam: {
           ...state.launchParamsByTeam,
-          [request.teamName]: params,
+          [request.teamName]: optimisticLaunchParams,
         },
       }));
 
@@ -5724,9 +5841,20 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         if (nextCurrentRunIdByTeam[request.teamName] === pendingRunId) {
           delete nextCurrentRunIdByTeam[request.teamName];
         }
+        const nextLaunchParamsByTeam = { ...state.launchParamsByTeam };
+        if (
+          areTeamLaunchParamsEqual(nextLaunchParamsByTeam[request.teamName], optimisticLaunchParams)
+        ) {
+          if (previousLaunchParams) {
+            nextLaunchParamsByTeam[request.teamName] = previousLaunchParams;
+          } else {
+            delete nextLaunchParamsByTeam[request.teamName];
+          }
+        }
         return {
           provisioningRuns: nextRuns,
           currentProvisioningRunIdByTeam: nextCurrentRunIdByTeam,
+          launchParamsByTeam: nextLaunchParamsByTeam,
           provisioningErrorByTeam: {
             ...state.provisioningErrorByTeam,
             [request.teamName]: message,

@@ -64,6 +64,7 @@
     "sectionTitle": "Cómo nos comparamos",
     "sectionSubtitle": "Comparación detallada de funciones con otras herramientas de programación con IA.",
     "feature": "Función",
+    "robotBubble": "Juzga tú",
     "features": {
       "crossTeam": "Comunicación entre equipos",
       "agentMessaging": "Mensajería entre agentes",
@@ -77,12 +78,17 @@
       "reviewWorkflow": "Flujo de revisión",
       "zeroSetup": "Sin configuración",
       "kanban": "Tablero Kanban",
-      "execLog": "Visor de logs de ejecución",
+      "execLog": "Logs de ejecución",
       "liveProcesses": "Procesos en vivo",
+      "runtimeLoad": "CPU/RAM por compañero",
       "perTaskReview": "Revisión de código por tarea",
       "flexAutonomy": "Autonomía flexible",
       "worktree": "Aislamiento Git worktree",
-      "multiAgent": "Backend multi-agente",
+      "multiAgent": "Compañeros de IA mixtos",
+      "liveWorkGraph": "Mapa del equipo en vivo",
+      "liveTeam": "Compañeros en vivo",
+      "teamWorkspace": "Espacio de trabajo del equipo",
+      "launchProof": "Estado de inicio de compañeros",
       "orgGovernance": "Organigrama / gobernanza",
       "budgetControls": "Controles de presupuesto",
       "price": "Precio"
@@ -98,6 +104,7 @@
   "footer": {
     "copyright": "© {year} Agent Teams",
     "tagline": "Orquestación de agentes IA para desarrolladores",
+    "robotBubble": "Estoy esperando",
     "links": {
       "github": "GitHub",
       "docs": "Documentación"

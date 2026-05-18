@@ -78,6 +78,9 @@ interface MemberDraftRowProps {
   infoText?: string | null;
   disableGeminiOption?: boolean;
   modelIssueText?: string | null;
+  modelAdvisoryReasonByProvider?: Partial<
+    Record<TeamProviderId, Partial<Record<string, string | null | undefined>>>
+  >;
   modelIssueReasonByProvider?: Partial<
     Record<TeamProviderId, Partial<Record<string, string | null | undefined>>>
   >;
@@ -134,6 +137,7 @@ export const MemberDraftRow = ({
   infoText,
   disableGeminiOption = false,
   modelIssueText,
+  modelAdvisoryReasonByProvider,
   modelIssueReasonByProvider,
   modelUnavailableReasonByProvider,
   showWorktreeIsolationControls = false,
@@ -251,27 +255,41 @@ export const MemberDraftRow = ({
     modelUnavailableReasonByProvider?.[effectiveProviderId]?.[effectiveModelKey]
       ? modelUnavailableReasonByProvider[effectiveProviderId]?.[effectiveModelKey]
       : null;
+  const selectedModelAdvisoryText =
+    effectiveModelKey && modelAdvisoryReasonByProvider?.[effectiveProviderId]?.[effectiveModelKey]
+      ? modelAdvisoryReasonByProvider[effectiveProviderId]?.[effectiveModelKey]
+      : null;
   const currentModelIssueText =
     modelIssueText ?? selectedModelUnavailableText ?? selectedModelIssueText ?? null;
+  const currentModelAdvisoryText = currentModelIssueText ? null : selectedModelAdvisoryText;
   const hasModelIssue = Boolean(currentModelIssueText);
+  const hasModelAdvisory = Boolean(currentModelAdvisoryText);
   const modelButtonDisabled = (lockProviderModel && !canOpenLockedModelPanel) || isRemoved;
   const modelButtonTitle =
-    [currentModelIssueText, modelTooltipText]
+    [currentModelIssueText ?? currentModelAdvisoryText, modelTooltipText]
       .filter((message): message is string => Boolean(message))
       .join('\n') || undefined;
-  const modelIssueDescriptionId = hasModelIssue ? `member-${member.id}-model-issue` : undefined;
+  const modelIssueDescriptionId =
+    hasModelIssue || hasModelAdvisory ? `member-${member.id}-model-issue` : undefined;
   const modelHelpDescriptionId = modelTooltipText ? `member-${member.id}-model-help` : undefined;
   const modelButtonDescribedBy =
     [modelIssueDescriptionId, modelHelpDescriptionId].filter(Boolean).join(' ') || undefined;
   const modelButtonTooltipContent =
-    currentModelIssueText || modelTooltipText ? (
+    currentModelIssueText || currentModelAdvisoryText || modelTooltipText ? (
       <>
         {currentModelIssueText ? (
           <span className="block text-red-300">{currentModelIssueText}</span>
         ) : null}
+        {currentModelAdvisoryText ? (
+          <span className="block text-amber-200">{currentModelAdvisoryText}</span>
+        ) : null}
         {modelTooltipText ? (
           <span
-            className={cn('block', currentModelIssueText && 'mt-1 border-t border-white/10 pt-1')}
+            className={cn(
+              'block',
+              (currentModelIssueText || currentModelAdvisoryText) &&
+                'mt-1 border-t border-white/10 pt-1'
+            )}
           >
             {modelTooltipText}
           </span>
@@ -386,7 +404,9 @@ export const MemberDraftRow = ({
                 className={cn(
                   'h-8 w-full justify-start gap-1 overflow-hidden text-left',
                   hasModelIssue &&
-                    'border-red-500/50 bg-red-500/10 text-red-100 hover:border-red-400/60 hover:bg-red-500/15 hover:text-red-50'
+                    'border-red-500/50 bg-red-500/10 text-red-100 hover:border-red-400/60 hover:bg-red-500/15 hover:text-red-50',
+                  hasModelAdvisory &&
+                    'border-amber-300/45 bg-amber-300/10 text-amber-100 hover:border-amber-300/60 hover:bg-amber-300/15 hover:text-amber-50'
                 )}
                 aria-label={modelButtonAriaLabel}
                 aria-describedby={modelButtonDescribedBy}
@@ -403,6 +423,7 @@ export const MemberDraftRow = ({
                 {hasModelIssue ? (
                   <AlertTriangle className="size-3.5 shrink-0 text-red-300" />
                 ) : null}
+                {hasModelAdvisory ? <Info className="size-3.5 shrink-0 text-amber-300" /> : null}
               </Button>
             </HoverTooltip>
             {modelTooltipText ? (
@@ -410,13 +431,20 @@ export const MemberDraftRow = ({
                 {modelTooltipText}
               </span>
             ) : null}
-            {currentModelIssueText ? (
+            {currentModelIssueText || currentModelAdvisoryText ? (
               <p
                 id={modelIssueDescriptionId}
-                className="flex items-start gap-1 text-[10px] leading-snug text-red-300"
+                className={cn(
+                  'flex items-start gap-1 text-[10px] leading-snug',
+                  currentModelIssueText ? 'text-red-300' : 'text-amber-200'
+                )}
               >
-                <AlertTriangle className="mt-0.5 size-3 shrink-0" />
-                <span>{currentModelIssueText}</span>
+                {currentModelIssueText ? (
+                  <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+                ) : (
+                  <Info className="mt-0.5 size-3 shrink-0" />
+                )}
+                <span>{currentModelIssueText ?? currentModelAdvisoryText}</span>
               </p>
             ) : null}
           </div>
@@ -585,6 +613,7 @@ export const MemberDraftRow = ({
                 }}
                 id={`member-${member.id}-model`}
                 disableGeminiOption={disableGeminiOption}
+                modelAdvisoryReasonByValue={modelAdvisoryReasonByProvider?.[effectiveProviderId]}
                 modelIssueReasonByValue={{
                   ...(modelIssueReasonByProvider?.[effectiveProviderId] ?? {}),
                   ...(effectiveModelKey && modelIssueText

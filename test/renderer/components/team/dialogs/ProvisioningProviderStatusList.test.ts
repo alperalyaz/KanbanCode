@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   deriveEffectiveProvisioningPrepareState,
   getPrimaryProvisioningFailureDetail,
+  getProvisioningFailureHint,
   getProvisioningProviderBackendSummary,
   ProvisioningProviderStatusList,
   createInitialProviderChecks,
@@ -106,7 +107,7 @@ describe('ProvisioningProviderStatusList', () => {
       await Promise.resolve();
     });
 
-    expect(host.textContent).toContain('OpenCode (OpenCode CLI): Needs attention');
+    expect(host.textContent).toContain('OpenCode (OpenCode CLI): OpenCode app MCP unreachable');
     expect(host.textContent).not.toContain('Selected model checks');
     expect(host.textContent).not.toContain('model unavailable');
 
@@ -114,6 +115,40 @@ describe('ProvisioningProviderStatusList', () => {
       root.unmount();
       await Promise.resolve();
     });
+  });
+
+  it('gives a concrete hint for missing OpenCode runtime binary failures', () => {
+    expect(
+      getProvisioningFailureHint('Runtime environment is not available - launch is blocked', [
+        {
+          providerId: 'opencode',
+          status: 'failed',
+          backendSummary: null,
+          details: [
+            'OpenCode runtime binary is not installed or not reachable by launch preflight.',
+          ],
+        },
+      ])
+    ).toBe(
+      'Install or retry OpenCode runtime from the provider status card, then reopen this dialog.'
+    );
+  });
+
+  it('gives a concrete hint for stale OpenCode app MCP bridge failures', () => {
+    expect(
+      getProvisioningFailureHint('Runtime environment is not available - launch is blocked', [
+        {
+          providerId: 'opencode',
+          status: 'failed',
+          backendSummary: null,
+          details: [
+            'OpenCode app MCP is unreachable. Retry launch to refresh the app MCP bridge. Details: Unable to connect. Is the computer able to access the url?',
+          ],
+        },
+      ])
+    ).toBe(
+      'Retry launch to refresh the OpenCode app MCP bridge. If it repeats, restart the app and OpenCode runtime.'
+    );
   });
 
   it('picks the first real failure detail instead of a verified line', () => {
@@ -195,6 +230,42 @@ describe('ProvisioningProviderStatusList', () => {
 
     const detailLines = Array.from(host.querySelectorAll('p'));
     expect(detailLines[0]?.className).toContain('text-[var(--color-text-muted)]');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('summarizes OpenCode busy model checks as deferred notes', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(ProvisioningProviderStatusList, {
+          checks: [
+            {
+              providerId: 'opencode',
+              status: 'notes',
+              backendSummary: 'OpenCode CLI',
+              details: [
+                'qwen/qwen3-235b-a22b-thinking-2507 - verification deferred - OpenCode session is busy; retry when idle.',
+              ],
+            },
+          ],
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain(
+      'OpenCode (OpenCode CLI): Selected model checks - 1 verification deferred'
+    );
+    expect(host.textContent).not.toContain('model check failed');
+    expect(host.textContent).not.toContain('Needs attention');
 
     await act(async () => {
       root.unmount();

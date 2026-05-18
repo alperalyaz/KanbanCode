@@ -61,6 +61,37 @@ describe('OpenCodeBridgeCommandContract', () => {
     expect(isOpenCodeBridgeCommandName('opencode.backfillTaskLedger')).toBe(true);
   });
 
+  it('uses capability recovery attempt id as part of the launch idempotency key', () => {
+    const baseInput = {
+      command: 'opencode.launchTeam' as const,
+      teamName: 'team-a',
+      laneId: 'secondary:opencode:alice',
+      runId: 'run-1',
+      body: {
+        runId: 'run-1',
+        laneId: 'secondary:opencode:alice',
+        teamId: 'team-a',
+        teamName: 'team-a',
+        projectPath: '/repo',
+        selectedModel: 'openai/gpt-5.4-mini',
+        members: [{ name: 'alice', role: 'Developer', prompt: 'Launch' }],
+        leadPrompt: '',
+        expectedCapabilitySnapshotId: 'cap-1',
+        manifestHighWatermark: null,
+      },
+    };
+
+    expect(createOpenCodeBridgeIdempotencyKey(baseInput)).not.toBe(
+      createOpenCodeBridgeIdempotencyKey({
+        ...baseInput,
+        body: {
+          ...baseInput.body,
+          capabilitySnapshotRecoveryAttemptId: 'opencode-capability-recovery-test',
+        },
+      })
+    );
+  });
+
   it('validates result request id and command against the command envelope', () => {
     const envelope: OpenCodeBridgeCommandEnvelope<Record<string, never>> = {
       schemaVersion: 1,
@@ -277,7 +308,7 @@ describe('OpenCodeBridgeCommandContract', () => {
     ).toEqual({
       ok: false,
       reason:
-        'OpenCode delivery acceptance mode is required, but the orchestrator does not advertise contract version 1. Falling back to observed delivery mode is required.',
+        `OpenCode delivery acceptance mode is required, but the orchestrator does not advertise contract version ${OPEN_CODE_DELIVERY_ACCEPTANCE_CONTRACT_VERSION}. Falling back to observed delivery mode is required.`,
     });
 
     server.bridgeProtocol.opencodeDeliveryAcceptanceContractVersion =

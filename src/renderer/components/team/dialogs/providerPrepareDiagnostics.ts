@@ -55,11 +55,29 @@ export function buildReusableProviderPrepareModelResults(
   );
 }
 
+export function mergeReusableProviderPrepareModelResults(
+  existingModelResultsById:
+    | Record<string, ProviderPrepareDiagnosticsModelResult>
+    | null
+    | undefined,
+  modelResultsById: Record<string, ProviderPrepareDiagnosticsModelResult>
+): Record<string, ProviderPrepareDiagnosticsModelResult> {
+  const mergedModelResultsById = { ...(existingModelResultsById ?? {}) };
+  for (const [modelId, result] of Object.entries(modelResultsById)) {
+    if (result.status === 'notes') {
+      delete mergedModelResultsById[modelId];
+      continue;
+    }
+    mergedModelResultsById[modelId] = result;
+  }
+  return mergedModelResultsById;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function uniquePrepareLines(lines: Array<string | null | undefined>): string[] {
+function uniquePrepareLines(lines: (string | null | undefined)[]): string[] {
   const seen = new Set<string>();
   const uniqueLines: string[] = [];
   for (const line of lines) {
@@ -151,6 +169,7 @@ function stripSelectedModelPrefix(modelId: string, message: string): string {
   const patterns = [
     new RegExp(`^Selected model ${escapeRegExp(modelId)} is unavailable\\.\\s*`, 'i'),
     new RegExp(`^Selected model ${escapeRegExp(modelId)} could not be verified\\.\\s*`, 'i'),
+    new RegExp(`^Selected model ${escapeRegExp(modelId)} verification deferred\\.\\s*`, 'i'),
     new RegExp(`^Selected model ${escapeRegExp(modelId)} verified for launch\\.\\s*`, 'i'),
     new RegExp(`^Selected model ${escapeRegExp(modelId)} is available for launch\\.\\s*`, 'i'),
     new RegExp(
@@ -233,7 +252,8 @@ function looksLikeOpenCodeRuntimeFailureReason(reason: string | null | undefined
     lower.includes('mcp_unavailable') ||
     lower.includes('unable to connect') ||
     lower.includes('runtime store') ||
-    lower.includes('opencode cli')
+    lower.includes('opencode cli') ||
+    lower.includes('opencode runtime binary')
   );
 }
 
@@ -250,13 +270,6 @@ function getBlockingProviderIssue(
         entry.message.trim().length > 0
     ) ?? null
   );
-}
-
-function getBlockingProviderIssueMessage(
-  providerId: TeamProviderId,
-  result: TeamProvisioningPrepareResult
-): string | null {
-  return getBlockingProviderIssue(providerId, result)?.message.trim() ?? null;
 }
 
 function isAdvisoryOpenCodeDeepVerificationIssue(
@@ -285,7 +298,8 @@ function isAdvisoryOpenCodeDeepVerificationIssue(
     lower.includes('api key') ||
     lower.includes('/experimental/tool') ||
     lower.includes('runtime store') ||
-    lower.includes('opencode cli');
+    lower.includes('opencode cli') ||
+    lower.includes('opencode runtime binary');
   if (hasHardRuntimeMarker) {
     return false;
   }
@@ -309,12 +323,22 @@ function buildOpenCodeAdvisoryDeepVerificationWarning(reason: string | null | un
   return `OpenCode model ping was not confirmed. ${normalizedReason}`;
 }
 
+function isProviderLevelOpenCodeBusyDeepVerificationWarning(value: string): boolean {
+  const lower = value.trim().toLowerCase();
+  return (
+    lower.includes('opencode is currently busy') &&
+    lower.includes('deep model verification') &&
+    lower.includes('idle')
+  );
+}
+
 function createOpenCodeAdvisoryDeepVerificationModelResult(
   providerId: TeamProviderId,
   modelId: string
 ): ProviderPrepareDiagnosticsModelResult {
   const line = `${getModelLabel(providerId, modelId)} - ping not confirmed`;
   return {
+    // TODO: Introduce a dedicated `unconfirmed` model result status for deep-ping advisory results.
     status: 'notes',
     line,
     warningLine: line,
@@ -401,19 +425,68 @@ function buildModelFailureLine(
   return reason ? `${label} - ${kind} - ${reason}` : `${label} - ${kind}`;
 }
 
+function buildModelVerificationDeferredLine(
+  providerId: TeamProviderId,
+  modelId: string,
+  reason: string | null
+): string {
+  const label = getModelLabel(providerId, modelId);
+  return reason
+    ? `${label} - verification deferred - ${reason}`
+    : `${label} - verification deferred`;
+}
+
 function createRuntimeDetailLines(result: TeamProvisioningPrepareResult): string[] {
   return uniquePrepareLines([...(result.details ?? []), ...(result.warnings ?? [])]);
 }
 
 function createRuntimeWarningLines(result: TeamProvisioningPrepareResult): string[] {
-  return uniquePrepareLines(result.warnings ?? []);
+  return uniquePrepareLines(
+    (result.warnings ?? [])
+      .map((warning) => normalizeRuntimeFailureDetailLine(warning))
+      .filter(Boolean)
+  );
+}
+
+function normalizeRuntimeFailureDetailLine(
+  detail: string | null | undefined,
+  code?: string | null
+): string | null {
+  const trimmed = detail?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (/opencode cli (?:not detected on path|not found)/i.test(trimmed)) {
+    return 'OpenCode runtime binary is not installed or not reachable by launch preflight.';
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.includes('unable to connect') &&
+    (lower.includes('/experimental/tool') ||
+      lower.includes('mcp_unavailable') ||
+      code?.trim().toLowerCase() === 'mcp_unavailable')
+  ) {
+    const connectionDetail = trimmed.includes(' - ') ? trimmed.split(' - ').pop()?.trim() : trimmed;
+    const base = 'OpenCode app MCP is unreachable. Retry launch to refresh the app MCP bridge.';
+    return connectionDetail && connectionDetail !== trimmed
+      ? `${base} Details: ${connectionDetail}`
+      : base;
+  }
+
+  return trimmed;
 }
 
 function createRuntimeFailureDetailLines(
   runtimeDetailLines: readonly string[],
   message: string | null | undefined
 ): string[] {
-  return uniquePrepareLines([...runtimeDetailLines, message]);
+  return uniquePrepareLines(
+    [...runtimeDetailLines, message]
+      .map((detail) => normalizeRuntimeFailureDetailLine(detail))
+      .filter(Boolean)
+  );
 }
 
 function extractTimedOutPreflightProbeModelId(detail: string): string | null {
@@ -552,6 +625,18 @@ function resolveModelResultFromBatch(
       status: 'notes',
       line: buildModelCompatibilityPendingLine(providerId, modelId),
       warningLine: null,
+    };
+  }
+
+  const hasVerificationDeferredLine = modelScopedEntries.some((entry) =>
+    /selected model .* verification deferred\./i.test(entry)
+  );
+  if (hasVerificationDeferredLine) {
+    const line = buildModelVerificationDeferredLine(providerId, modelId, scopedReason);
+    return {
+      status: 'notes',
+      line,
+      warningLine: line,
     };
   }
 
@@ -975,15 +1060,20 @@ export async function runProviderPrepareDiagnostics({
           uncachedModelIds,
           compatibilityResult
         );
-        const structuredProviderScopedFailure = getBlockingProviderIssueMessage(
+        const structuredProviderScopedIssue = getBlockingProviderIssue(
           providerId,
           compatibilityResult
         );
+        const structuredProviderScopedFailure =
+          structuredProviderScopedIssue?.message.trim() ?? null;
         if (structuredProviderScopedFailure || providerScopedFailure) {
           return {
             status: 'failed',
             details: [
-              structuredProviderScopedFailure ?? providerScopedFailure ?? 'OpenCode failed',
+              normalizeRuntimeFailureDetailLine(
+                structuredProviderScopedFailure ?? providerScopedFailure ?? 'OpenCode failed',
+                structuredProviderScopedIssue?.code
+              ) ?? 'OpenCode failed',
             ],
             warnings: [],
             modelResultsById: {},
@@ -1115,6 +1205,7 @@ export async function runProviderPrepareDiagnostics({
         const structuredProviderScopedFailure =
           structuredProviderScopedIssue?.message.trim() ?? null;
         let handledAdvisoryDeepFailure = false;
+        let handledBusyDeepDeferral = false;
         if (structuredProviderScopedFailure || providerScopedFailure) {
           const failureReason =
             structuredProviderScopedFailure ?? providerScopedFailure ?? 'OpenCode failed';
@@ -1137,7 +1228,12 @@ export async function runProviderPrepareDiagnostics({
           } else {
             return {
               status: 'failed',
-              details: [failureReason],
+              details: [
+                normalizeRuntimeFailureDetailLine(
+                  failureReason,
+                  structuredProviderScopedIssue?.code
+                ) ?? failureReason,
+              ],
               warnings: [],
               modelResultsById: {},
             };
@@ -1145,6 +1241,24 @@ export async function runProviderPrepareDiagnostics({
         }
         if (
           !handledAdvisoryDeepFailure &&
+          batchedModelResult.ready &&
+          !hasModelScopedEntries &&
+          runtimeWarnings.some(isProviderLevelOpenCodeBusyDeepVerificationWarning)
+        ) {
+          runtimeDetailLines = [];
+          runtimeWarnings = [];
+          for (const modelId of compatibilityPassedModelIds) {
+            recordTerminalModelResult(modelId, {
+              status: 'ready',
+              line: buildModelAvailableLine(providerId, modelId),
+              warningLine: null,
+            });
+          }
+          handledBusyDeepDeferral = true;
+        }
+        if (
+          !handledAdvisoryDeepFailure &&
+          !handledBusyDeepDeferral &&
           (shouldSurfaceProviderRuntimeFailureInsteadOfModelFailure({
             result: batchedModelResult,
             modelIds: compatibilityPassedModelIds,
@@ -1169,6 +1283,7 @@ export async function runProviderPrepareDiagnostics({
         }
         if (
           !handledAdvisoryDeepFailure &&
+          !handledBusyDeepDeferral &&
           !hasModelScopedEntries &&
           compatibilityPassedModelIds.length === 1
         ) {
@@ -1176,7 +1291,7 @@ export async function runProviderPrepareDiagnostics({
           runtimeWarnings = [];
         }
 
-        if (!handledAdvisoryDeepFailure) {
+        if (!handledAdvisoryDeepFailure && !handledBusyDeepDeferral) {
           for (const modelId of compatibilityPassedModelIds) {
             recordTerminalModelResult(
               modelId,

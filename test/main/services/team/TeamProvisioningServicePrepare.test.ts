@@ -477,6 +477,199 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     expect(result.args).toContain('--anthropic-safe-passthrough');
   });
 
+  it('does not inherit lead effort for an Anthropic teammate with an explicit model', async () => {
+    const svc = new TeamProvisioningService();
+
+    const result = await (svc as any).materializeEffectiveTeamMemberSpecs({
+      claudePath: '/fake/claude',
+      cwd: tempRoot,
+      members: [{ name: 'jack', providerId: 'anthropic', model: 'haiku' }, { name: 'alice' }],
+      defaults: {
+        providerId: 'anthropic',
+        model: 'sonnet',
+        effort: 'low',
+      },
+    });
+
+    expect(result).toEqual([
+      { name: 'jack', providerId: 'anthropic', model: 'haiku', effort: undefined },
+      { name: 'alice', providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+    ]);
+  });
+
+  it.each([
+    {
+      label: 'inherits lead model and effort when teammate leaves runtime unset',
+      defaults: { providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+      members: [{ name: 'alice' }],
+      expected: [{ name: 'alice', providerId: 'anthropic', model: 'sonnet', effort: 'low' }],
+    },
+    {
+      label: 'keeps effort unset when teammate selects a different Anthropic model',
+      defaults: { providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+      members: [{ name: 'jack', providerId: 'anthropic', model: 'haiku' }],
+      expected: [{ name: 'jack', providerId: 'anthropic', model: 'haiku', effort: undefined }],
+    },
+    {
+      label: 'keeps effort unset even when teammate explicitly selects the same Anthropic model',
+      defaults: { providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+      members: [{ name: 'bob', providerId: 'anthropic', model: 'sonnet' }],
+      expected: [{ name: 'bob', providerId: 'anthropic', model: 'sonnet', effort: undefined }],
+    },
+    {
+      label: 'preserves teammate explicit effort with an explicit Anthropic model',
+      defaults: { providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+      members: [{ name: 'eve', providerId: 'anthropic', model: 'haiku', effort: 'medium' }],
+      expected: [{ name: 'eve', providerId: 'anthropic', model: 'haiku', effort: 'medium' }],
+    },
+    {
+      label: 'does not inherit lead effort across providers',
+      defaults: { providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+      members: [{ name: 'tom', providerId: 'codex', model: 'gpt-5.4' }],
+      expected: [{ name: 'tom', providerId: 'codex', model: 'gpt-5.4', effort: undefined }],
+    },
+    {
+      label: 'resolves secondary non-Anthropic default model without inheriting lead effort',
+      defaults: { providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+      members: [{ name: 'sam', providerId: 'codex' }],
+      expected: [{ name: 'sam', providerId: 'codex', model: 'gpt-5.4-mini', effort: undefined }],
+    },
+    {
+      label: 'does not inherit Codex lead effort into an Anthropic teammate model',
+      defaults: { providerId: 'codex', model: 'gpt-5.5', effort: 'low' },
+      members: [{ name: 'zoe', providerId: 'anthropic', model: 'haiku' }],
+      expected: [{ name: 'zoe', providerId: 'anthropic', model: 'haiku', effort: undefined }],
+    },
+  ])('$label', async ({ defaults, members, expected }) => {
+    const svc = new TeamProvisioningService();
+
+    const result = await (svc as any).materializeEffectiveTeamMemberSpecs({
+      claudePath: '/fake/claude',
+      cwd: tempRoot,
+      members,
+      defaults,
+    });
+
+    expect(result).toEqual(expected);
+  });
+
+  it('validates the Sonnet low lead plus explicit Haiku teammate launch matrix', async () => {
+    const svc = new TeamProvisioningService();
+    const facts = {
+      defaultModel: 'sonnet',
+      modelIds: new Set(['sonnet', 'haiku']),
+      modelCatalog: {
+        schemaVersion: 1,
+        providerId: 'anthropic',
+        source: 'anthropic-models-api',
+        status: 'ready',
+        fetchedAt: '2026-05-17T00:00:00.000Z',
+        staleAt: '2026-05-17T00:01:00.000Z',
+        defaultModelId: 'sonnet',
+        defaultLaunchModel: 'sonnet',
+        models: [
+          {
+            id: 'sonnet',
+            launchModel: 'sonnet',
+            displayName: 'Sonnet 4.6',
+            hidden: false,
+            supportedReasoningEfforts: ['low', 'medium', 'high'],
+            defaultReasoningEffort: 'medium',
+            supportsFastMode: false,
+            inputModalities: ['text', 'image'],
+            supportsPersonality: false,
+            isDefault: true,
+            upgrade: false,
+            source: 'anthropic-models-api',
+          },
+          {
+            id: 'haiku',
+            launchModel: 'haiku',
+            displayName: 'Haiku 4.5',
+            hidden: false,
+            supportedReasoningEfforts: [],
+            defaultReasoningEffort: null,
+            supportsFastMode: false,
+            inputModalities: ['text', 'image'],
+            supportsPersonality: false,
+            isDefault: false,
+            upgrade: false,
+            source: 'anthropic-models-api',
+          },
+        ],
+        diagnostics: {
+          configReadState: 'ready',
+          appServerState: 'healthy',
+        },
+      },
+      runtimeCapabilities: {
+        modelCatalog: { dynamic: true, source: 'anthropic-models-api' },
+        reasoningEffort: {
+          supported: true,
+          values: ['low', 'medium', 'high'],
+          configPassthrough: true,
+        },
+        fastMode: {
+          supported: true,
+          available: true,
+          reason: null,
+          source: 'runtime',
+        },
+      },
+    };
+
+    const materializedMembers = await (svc as any).materializeEffectiveTeamMemberSpecs({
+      claudePath: '/fake/claude',
+      cwd: tempRoot,
+      members: [{ name: 'jack', providerId: 'anthropic', model: 'haiku' }, { name: 'alice' }],
+      defaults: {
+        providerId: 'anthropic',
+        model: 'sonnet',
+        effort: 'low',
+      },
+    });
+
+    expect(materializedMembers).toEqual([
+      { name: 'jack', providerId: 'anthropic', model: 'haiku', effort: undefined },
+      { name: 'alice', providerId: 'anthropic', model: 'sonnet', effort: 'low' },
+    ]);
+
+    expect(() =>
+      (svc as any).validateRuntimeLaunchSelection({
+        actorLabel: 'Team lead',
+        providerId: 'anthropic',
+        model: 'sonnet',
+        effort: 'low',
+        limitContext: false,
+        facts,
+      })
+    ).not.toThrow();
+
+    for (const member of materializedMembers) {
+      expect(() =>
+        (svc as any).validateRuntimeLaunchSelection({
+          actorLabel: `Member ${member.name}`,
+          providerId: member.providerId,
+          model: member.model,
+          effort: member.effort,
+          limitContext: false,
+          facts,
+        })
+      ).not.toThrow();
+    }
+
+    expect(() =>
+      (svc as any).validateRuntimeLaunchSelection({
+        actorLabel: 'Member jack',
+        providerId: 'anthropic',
+        model: 'haiku',
+        effort: 'low',
+        limitContext: false,
+        facts,
+      })
+    ).toThrow('does not support it in the current runtime');
+  });
+
   afterEach(async () => {
     await removeTempRoot(tempRoot);
   });
@@ -801,7 +994,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     );
   });
 
-  it('runs OpenCode model verification with bounded concurrency and preserves model order', async () => {
+  it('serializes OpenCode model verification and preserves model order', async () => {
     const started: string[] = [];
     let activeCount = 0;
     let maxActiveCount = 0;
@@ -859,11 +1052,16 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       ],
     });
 
+    await vi.waitFor(() => expect(started).toEqual(['opencode/minimax-m2.5-free']));
+    expect(maxActiveCount).toBe(1);
+    expect(releases.has('opencode/nemotron-3-super-free')).toBe(false);
+    expect(releases.has('opencode/big-pickle')).toBe(false);
+
+    releases.get('opencode/minimax-m2.5-free')?.();
     await vi.waitFor(() =>
       expect(started).toEqual(['opencode/minimax-m2.5-free', 'opencode/nemotron-3-super-free'])
     );
-    expect(maxActiveCount).toBe(2);
-    expect(releases.has('opencode/big-pickle')).toBe(false);
+    expect(maxActiveCount).toBe(1);
 
     releases.get('opencode/nemotron-3-super-free')?.();
     await vi.waitFor(() =>
@@ -873,10 +1071,9 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
         'opencode/big-pickle',
       ])
     );
-    expect(maxActiveCount).toBe(2);
+    expect(maxActiveCount).toBe(1);
 
     releases.get('opencode/big-pickle')?.();
-    releases.get('opencode/minimax-m2.5-free')?.();
 
     const result = await resultPromise;
 
@@ -886,7 +1083,120 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       'Selected model opencode/nemotron-3-super-free verified for launch.',
     ]);
     expect(result.warnings).toEqual([
-      'Selected model opencode/big-pickle could not be verified. provider busy',
+      'OpenCode is currently busy with another session. Deep model verification will retry when OpenCode is idle.',
+    ]);
+    expect(result.issues).toEqual([
+      {
+        providerId: 'opencode',
+        scope: 'provider',
+        severity: 'warning',
+        code: 'provider_busy',
+        message:
+          'OpenCode is currently busy with another session. Deep model verification will retry when OpenCode is idle.',
+      },
+    ]);
+  });
+
+  it('stops OpenCode deep model verification after the first busy host result', async () => {
+    const prepare = vi.fn(async (input: { model?: string }) => {
+      if (input.model === 'opencode/minimax-m2.5-free') {
+        return {
+          ok: false as const,
+          providerId: 'opencode' as const,
+          reason: 'provider_busy',
+          retryable: true,
+          diagnostics: ['OpenCode session status busy'],
+          warnings: [],
+        };
+      }
+
+      return {
+        ok: true as const,
+        providerId: 'opencode' as const,
+        modelId: input.model ?? null,
+        diagnostics: [],
+        warnings: [],
+      };
+    });
+    const registry = new TeamRuntimeAdapterRegistry([
+      {
+        providerId: 'opencode',
+        prepare,
+        launch: vi.fn(),
+        reconcile: vi.fn(),
+        stop: vi.fn(),
+      } as any,
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(registry);
+
+    const result = await svc.prepareForProvisioning(tempRoot, {
+      providerId: 'opencode',
+      forceFresh: true,
+      modelIds: [
+        'opencode/minimax-m2.5-free',
+        'opencode/nemotron-3-super-free',
+        'opencode/big-pickle',
+      ],
+      modelVerificationMode: 'deep',
+    });
+
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(prepare).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'opencode/minimax-m2.5-free',
+        runtimeOnly: false,
+      })
+    );
+    expect(result.ready).toBe(true);
+    expect(result.details).toBeUndefined();
+    expect(result.warnings).toEqual([
+      'OpenCode is currently busy with another session. Deep model verification will retry when OpenCode is idle.',
+    ]);
+  });
+
+  it('does not mask OpenCode model verification timeouts as busy deferred checks', async () => {
+    const prepare = vi.fn(async () => ({
+      ok: false as const,
+      providerId: 'opencode' as const,
+      reason: 'model_unavailable' as const,
+      retryable: true,
+      diagnostics: ['OpenCode session status busy', 'Model verification timed out'],
+      warnings: [],
+    }));
+    const registry = new TeamRuntimeAdapterRegistry([
+      {
+        providerId: 'opencode',
+        prepare,
+        launch: vi.fn(),
+        reconcile: vi.fn(),
+        stop: vi.fn(),
+      } as any,
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(registry);
+
+    const result = await svc.prepareForProvisioning(tempRoot, {
+      providerId: 'opencode',
+      forceFresh: true,
+      modelIds: ['opencode/big-pickle'],
+      modelVerificationMode: 'deep',
+    });
+
+    expect(result.ready).toBe(true);
+    expect(result.warnings).toEqual([
+      'Selected model opencode/big-pickle could not be verified. Model verification timed out',
+    ]);
+    expect(result.warnings?.join('\n')).not.toContain('verification deferred');
+    expect(result.issues).toEqual([
+      {
+        providerId: 'opencode',
+        modelId: 'opencode/big-pickle',
+        scope: 'model',
+        severity: 'warning',
+        code: 'model_unavailable',
+        message: 'Model verification timed out',
+      },
     ]);
   });
 
@@ -1131,6 +1441,8 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
   it('keeps deep OpenCode runtime failures provider-scoped instead of model-scoped', async () => {
     const runtimeFailure =
       'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?';
+    const normalizedRuntimeFailure =
+      'OpenCode app MCP is unreachable. Retry launch to refresh the app MCP bridge. Details: Unable to connect. Is the computer able to access the url?';
     const prepare = vi.fn(async () => ({
       ok: false as const,
       providerId: 'opencode' as const,
@@ -1159,16 +1471,16 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     });
 
     expect(result.ready).toBe(false);
-    expect(result.message).toBe(runtimeFailure);
-    expect(result.details).toEqual([runtimeFailure]);
-    expect(result.warnings).toEqual([runtimeFailure]);
+    expect(result.message).toBe(normalizedRuntimeFailure);
+    expect(result.details).toEqual([normalizedRuntimeFailure]);
+    expect(result.warnings).toEqual([normalizedRuntimeFailure]);
     expect(result.issues).toEqual([
       {
         providerId: 'opencode',
         scope: 'provider',
         severity: 'blocking',
         code: 'mcp_unavailable',
-        message: runtimeFailure,
+        message: normalizedRuntimeFailure,
       },
     ]);
   });
@@ -1217,6 +1529,8 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
   });
 
   it('keeps shared OpenCode MCP compatibility failures provider-scoped', async () => {
+    const normalizedRuntimeFailure =
+      'OpenCode app MCP is unreachable. Retry launch to refresh the app MCP bridge. Details: Unable to connect. Is the computer able to access the url?';
     const prepare = vi.fn(async () => ({
       ok: false as const,
       providerId: 'opencode' as const,
@@ -1247,25 +1561,60 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     });
 
     expect(result.ready).toBe(false);
-    expect(result.message).toBe(
-      'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?'
-    );
-    expect(result.details).toEqual([
-      'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?',
-    ]);
-    expect(result.warnings).toEqual([
-      'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?',
-    ]);
+    expect(result.message).toBe(normalizedRuntimeFailure);
+    expect(result.details).toEqual([normalizedRuntimeFailure]);
+    expect(result.warnings).toEqual([normalizedRuntimeFailure]);
     expect(result.issues).toEqual([
       {
         providerId: 'opencode',
         scope: 'provider',
         severity: 'blocking',
         code: 'mcp_unavailable',
-        message:
-          'OpenCode /experimental/tool/ids unavailable - Unable to connect. Is the computer able to access the url?',
+        message: normalizedRuntimeFailure,
       },
     ]);
+  });
+
+  it('restores OpenCode MCP context when the bridge reports only a plain connect failure', async () => {
+    const normalizedRuntimeFailure =
+      'OpenCode app MCP is unreachable. Retry launch to refresh the app MCP bridge.';
+    const prepare = vi.fn(async () => ({
+      ok: false as const,
+      providerId: 'opencode' as const,
+      reason: 'mcp_unavailable',
+      retryable: true,
+      diagnostics: ['Unable to connect. Is the computer able to access the url?'],
+      warnings: [],
+    }));
+    const registry = new TeamRuntimeAdapterRegistry([
+      {
+        providerId: 'opencode',
+        prepare,
+        launch: vi.fn(),
+        reconcile: vi.fn(),
+        stop: vi.fn(),
+      } as any,
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(registry);
+
+    const result = await svc.prepareForProvisioning(tempRoot, {
+      providerId: 'opencode',
+      forceFresh: true,
+      modelIds: ['opencode/big-pickle'],
+      modelVerificationMode: 'compatibility',
+    });
+
+    expect(result.ready).toBe(false);
+    expect(result.message).toBe(normalizedRuntimeFailure);
+    expect(result.details).toEqual([normalizedRuntimeFailure]);
+    expect(result.issues?.[0]).toMatchObject({
+      providerId: 'opencode',
+      scope: 'provider',
+      severity: 'blocking',
+      code: 'mcp_unavailable',
+      message: normalizedRuntimeFailure,
+    });
   });
 
   it('normalizes unexpected OpenCode model prepare exceptions into a blocking diagnostic', async () => {

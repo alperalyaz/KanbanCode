@@ -1,10 +1,11 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '@renderer/components/ui/badge';
 import { SyncedLoader2 } from '@renderer/components/ui/SyncedLoader2';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
+import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { selectResolvedMembersForTeamName } from '@renderer/store/slices/teamSlice';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
@@ -15,6 +16,7 @@ import {
   buildMemberLaunchPresentation,
   displayMemberName,
   isOpenCodeRelaunchActionable,
+  shouldDisplayMemberCurrentTask,
 } from '@renderer/utils/memberHelpers';
 import {
   buildMemberLaunchDiagnosticsPayload,
@@ -25,7 +27,20 @@ import {
 import { getRuntimeMemorySourceLabel } from '@renderer/utils/memberRuntimeSummary';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { deriveTaskDisplayId } from '@shared/utils/taskIdentity';
-import { AlertTriangle, Ban, GitBranch, MessageSquare, Plus, RotateCcw } from 'lucide-react';
+import {
+  Activity,
+  AlertTriangle,
+  Ban,
+  Cpu,
+  GitBranch,
+  HardDrive,
+  Info,
+  Layers3,
+  MessageSquare,
+  Plus,
+  RotateCcw,
+  Server,
+} from 'lucide-react';
 
 import { CurrentTaskIndicator } from './CurrentTaskIndicator';
 import { MemberLaunchDiagnosticsButton } from './MemberLaunchDiagnosticsButton';
@@ -41,12 +56,19 @@ import type {
   MemberSpawnStatusEntry,
   ResolvedTeamMember,
   TeamAgentRuntimeEntry,
+  TeamAgentRuntimeResourceSample,
   TeamTaskWithKanban,
 } from '@shared/types';
+
+export interface RuntimeTelemetryScale {
+  memoryCapBytes?: number;
+  cpuCapPercent?: number;
+}
 
 interface MemberCardProps {
   member: ResolvedTeamMember;
   memberColor: string;
+  fullBleedSurface?: boolean;
   runtimeSummary?: string;
   runtimeEntry?: TeamAgentRuntimeEntry;
   runtimeRunId?: string | null;
@@ -69,6 +91,7 @@ interface MemberCardProps {
   spawnLaunchState?: MemberLaunchState;
   spawnRuntimeAlive?: boolean;
   isLaunchSettling?: boolean;
+  runtimeTelemetryScale?: RuntimeTelemetryScale;
   onOpenTask?: () => void;
   onOpenReviewTask?: () => void;
   onClick?: () => void;
@@ -76,6 +99,39 @@ interface MemberCardProps {
   onAssignTask?: () => void;
   onRestartMember?: (memberName: string) => Promise<void> | void;
   onSkipMemberForLaunch?: (memberName: string) => Promise<void> | void;
+}
+
+const MEMBER_ROW_SURFACE_BLEED_CLASS = '-mx-[calc(1rem-5px)] px-[calc(1rem-5px)]';
+const RUNTIME_TELEMETRY_TOOLTIP_DELAY_MS = 1000;
+const RUNTIME_TELEMETRY_TOOLTIP_OPEN_EVENT = 'member-runtime-telemetry-tooltip-open';
+
+let runtimeTelemetryTooltipIdSequence = 0;
+
+function createRuntimeTelemetryTooltipId(): string {
+  runtimeTelemetryTooltipIdSequence += 1;
+  return `runtime-telemetry-tooltip-${runtimeTelemetryTooltipIdSequence}`;
+}
+
+function notifyRuntimeTelemetryTooltipOpen(id: string): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.dispatchEvent(
+    new CustomEvent<{ id: string }>(RUNTIME_TELEMETRY_TOOLTIP_OPEN_EVENT, {
+      detail: { id },
+    })
+  );
+}
+
+function isRuntimeTelemetryTooltipBlockedTarget(
+  currentTarget: EventTarget,
+  target: EventTarget | null
+): boolean {
+  if (!(currentTarget instanceof Element) || !(target instanceof Element)) {
+    return false;
+  }
+  const blockedTarget = target.closest('button,a,[title],[data-runtime-telemetry-exempt="true"]');
+  return Boolean(blockedTarget && blockedTarget !== currentTarget);
 }
 
 function splitRuntimeSummaryMemory(runtimeSummary: string | undefined): {
@@ -110,9 +166,446 @@ function getLaunchFailureLinkLabel(url: string): string {
   return url;
 }
 
+const RUNTIME_TELEMETRY_SAMPLE_LIMIT = 48;
+const RUNTIME_TELEMETRY_WIDTH = 100;
+const RUNTIME_TELEMETRY_HEIGHT = 18;
+const RUNTIME_TELEMETRY_BASELINE_Y = 16.5;
+
+interface TelemetryPoint {
+  x: number;
+  y: number;
+}
+
+interface RuntimeTelemetryPaths {
+  memoryAreaPath?: string;
+  memoryLinePath?: string;
+  cpuLinePath?: string;
+}
+
+function isFiniteNonNegative(value: number | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function formatTelemetryCoordinate(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+function buildLinePath(points: readonly TelemetryPoint[]): string | undefined {
+  if (points.length < 2) {
+    return undefined;
+  }
+  return points
+    .map((point, index) => {
+      const command = index === 0 ? 'M' : 'L';
+      return `${command}${formatTelemetryCoordinate(point.x)} ${formatTelemetryCoordinate(point.y)}`;
+    })
+    .join(' ');
+}
+
+function buildAreaPath(points: readonly TelemetryPoint[]): string | undefined {
+  if (points.length < 2) {
+    return undefined;
+  }
+  const first = points[0];
+  const last = points[points.length - 1];
+  return [
+    `M${formatTelemetryCoordinate(first.x)} ${formatTelemetryCoordinate(RUNTIME_TELEMETRY_BASELINE_Y)}`,
+    `L${formatTelemetryCoordinate(first.x)} ${formatTelemetryCoordinate(first.y)}`,
+    ...points
+      .slice(1)
+      .map(
+        (point) => `L${formatTelemetryCoordinate(point.x)} ${formatTelemetryCoordinate(point.y)}`
+      ),
+    `L${formatTelemetryCoordinate(last.x)} ${formatTelemetryCoordinate(RUNTIME_TELEMETRY_BASELINE_Y)}`,
+    'Z',
+  ].join(' ');
+}
+
+function getRelativeTelemetryY(
+  value: number,
+  values: readonly number[],
+  options: {
+    bottomY: number;
+    amplitude: number;
+    fallbackRatio: number;
+    minimumSpan?: number;
+  }
+): number {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min;
+  if (span <= 0) {
+    return options.bottomY - options.fallbackRatio * options.amplitude;
+  }
+
+  const effectiveSpan = Math.max(span, options.minimumSpan ?? 0);
+  const ratio = Math.max(0, Math.min(1, (value - min) / effectiveSpan));
+  return options.bottomY - ratio * options.amplitude;
+}
+
+function getCappedTelemetryY(
+  value: number,
+  cap: number | undefined,
+  options: {
+    bottomY: number;
+    amplitude: number;
+    curve?: 'linear' | 'sqrt';
+  }
+): number | undefined {
+  if (!isFiniteNonNegative(cap) || cap <= 0) {
+    return undefined;
+  }
+  const rawRatio = Math.max(0, Math.min(1, value / cap));
+  const ratio = options.curve === 'sqrt' ? Math.sqrt(rawRatio) : rawRatio;
+  return options.bottomY - ratio * options.amplitude;
+}
+
+function formatRuntimeTelemetryPercent(value: number | undefined): string | undefined {
+  if (!isFiniteNonNegative(value)) {
+    return undefined;
+  }
+  return `${value >= 10 ? Math.round(value) : value.toFixed(1)}%`;
+}
+
+function formatRuntimeTelemetryBytes(value: number | undefined): string | undefined {
+  if (!isFiniteNonNegative(value)) {
+    return undefined;
+  }
+  const mib = value / (1024 * 1024);
+  if (mib < 1024) {
+    return `${mib.toFixed(mib >= 10 ? 0 : 1)} MB`;
+  }
+  return `${(mib / 1024).toFixed(1)} GB`;
+}
+
+function isRuntimeTelemetrySampleLike(value: unknown): value is TeamAgentRuntimeResourceSample {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const sample = value as Partial<TeamAgentRuntimeResourceSample>;
+  return (
+    typeof sample.timestamp === 'string' ||
+    isFiniteNonNegative(sample.cpuPercent) ||
+    isFiniteNonNegative(sample.rssBytes)
+  );
+}
+
+function normalizeRuntimeTelemetrySamples(history: unknown): TeamAgentRuntimeResourceSample[] {
+  return (Array.isArray(history) ? history : []).filter(isRuntimeTelemetrySampleLike);
+}
+
+function buildRuntimeTelemetryTitle(
+  runtimeEntry: TeamAgentRuntimeEntry | undefined
+): string | undefined {
+  if (!runtimeEntry) {
+    return undefined;
+  }
+  if (normalizeRuntimeTelemetrySamples(runtimeEntry?.resourceHistory).length === 0) {
+    return undefined;
+  }
+
+  const lines = [
+    'CPU includes parent + child processes.',
+    'Local CPU excludes remote LLM inference.',
+  ];
+  if (runtimeEntry.runtimeLoadScope === 'shared-host') {
+    lines.push('Shared OpenCode host metric; not exclusive to this member.');
+  }
+  if (runtimeEntry.runtimeLoadTruncated) {
+    lines.push('Process tree was capped for this sample.');
+  }
+
+  const detailParts = [
+    runtimeEntry.pid ? `root PID ${runtimeEntry.pid}` : undefined,
+    runtimeEntry.processCount ? `${runtimeEntry.processCount} processes` : undefined,
+    runtimeEntry.runtimeLoadScope ? `scope ${runtimeEntry.runtimeLoadScope}` : undefined,
+    'sample 5s',
+  ].filter((part): part is string => Boolean(part));
+  if (detailParts.length > 0) {
+    lines.push(detailParts.join(' · '));
+  }
+
+  const aggregateCpuLabel = formatRuntimeTelemetryPercent(runtimeEntry.cpuPercent);
+  const primaryCpuLabel = formatRuntimeTelemetryPercent(runtimeEntry.primaryCpuPercent);
+  const childCpuLabel = formatRuntimeTelemetryPercent(runtimeEntry.childCpuPercent);
+  const rssLabel = formatRuntimeTelemetryBytes(runtimeEntry.rssBytes);
+  const splitParts = [
+    aggregateCpuLabel ? `CPU ${aggregateCpuLabel}` : undefined,
+    primaryCpuLabel ? `root ${primaryCpuLabel}` : undefined,
+    childCpuLabel ? `children ${childCpuLabel}` : undefined,
+    rssLabel ? `RSS ${rssLabel}` : undefined,
+  ].filter((part): part is string => Boolean(part));
+  if (splitParts.length > 0) {
+    lines.push(splitParts.join(' · '));
+  }
+
+  lines.push('RSS is summed process RSS and can include shared pages.');
+  return lines.join('\n');
+}
+
+const RuntimeTelemetryTooltipContent = ({
+  runtimeEntry,
+}: Readonly<{
+  runtimeEntry: TeamAgentRuntimeEntry | undefined;
+}>): React.JSX.Element | null => {
+  if (!runtimeEntry) {
+    return null;
+  }
+
+  const aggregateCpuLabel = formatRuntimeTelemetryPercent(runtimeEntry.cpuPercent);
+  const primaryCpuLabel = formatRuntimeTelemetryPercent(runtimeEntry.primaryCpuPercent);
+  const childCpuLabel = formatRuntimeTelemetryPercent(runtimeEntry.childCpuPercent);
+  const rssLabel = formatRuntimeTelemetryBytes(runtimeEntry.rssBytes);
+  const detailParts = [
+    runtimeEntry.pid ? `root PID ${runtimeEntry.pid}` : undefined,
+    runtimeEntry.processCount ? `${runtimeEntry.processCount} processes` : undefined,
+    runtimeEntry.runtimeLoadScope ? `scope ${runtimeEntry.runtimeLoadScope}` : undefined,
+    'sample 5s',
+  ].filter((part): part is string => Boolean(part));
+  const cpuSplit = [
+    primaryCpuLabel ? `root ${primaryCpuLabel}` : undefined,
+    childCpuLabel ? `children ${childCpuLabel}` : undefined,
+  ].filter((part): part is string => Boolean(part));
+
+  return (
+    <div className="w-[320px] max-w-[min(320px,var(--radix-tooltip-content-available-width))] space-y-2.5">
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md border border-blue-500/30 bg-blue-500/10 text-blue-300">
+          <Activity className="size-3.5" />
+        </span>
+        <div className="min-w-0">
+          <div className="text-[12px] font-semibold leading-tight text-[var(--color-text)]">
+            Local runtime load
+          </div>
+          <div className="mt-0.5 text-[10px] leading-snug text-[var(--color-text-muted)]">
+            Parent and child processes only. Remote LLM inference is not included.
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-1.5">
+        <div className="rounded-md border border-blue-500/20 bg-blue-500/10 px-2 py-1.5">
+          <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-blue-200/80">
+            <Cpu className="size-3" />
+            CPU
+          </div>
+          <div className="mt-1 text-[14px] font-semibold text-blue-100">
+            {aggregateCpuLabel ?? 'unknown'}
+          </div>
+          {cpuSplit.length > 0 ? (
+            <div className="mt-0.5 text-[10px] leading-snug text-blue-100/65">
+              {cpuSplit.join(' · ')}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-1.5">
+          <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-emerald-200/80">
+            <HardDrive className="size-3" />
+            Memory
+          </div>
+          <div className="mt-1 text-[14px] font-semibold text-emerald-100">
+            {rssLabel ?? 'unknown'}
+          </div>
+          <div className="mt-0.5 text-[10px] leading-snug text-emerald-100/65">summed RSS</div>
+        </div>
+      </div>
+
+      {detailParts.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {detailParts.map((part) => (
+            <span
+              key={part}
+              className="inline-flex items-center gap-1 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-[10px] leading-none text-[var(--color-text-muted)]"
+            >
+              <Layers3 className="size-2.5" />
+              {part}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {runtimeEntry.runtimeLoadScope === 'shared-host' ? (
+        <div className="flex gap-1.5 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[10px] leading-snug text-amber-100/80">
+          <Server className="mt-0.5 size-3 shrink-0" />
+          Shared OpenCode host metric. It is not exclusive to this member.
+        </div>
+      ) : null}
+
+      {runtimeEntry.runtimeLoadTruncated ? (
+        <div className="flex gap-1.5 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[10px] leading-snug text-amber-100/80">
+          <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+          Process tree was capped for this sample.
+        </div>
+      ) : null}
+
+      <div className="flex gap-1.5 border-t border-[var(--color-border)] pt-2 text-[10px] leading-snug text-[var(--color-text-muted)]">
+        <Info className="mt-0.5 size-3 shrink-0" />
+        RSS can include shared pages, so it is best read as a load signal, not exclusive memory.
+      </div>
+    </div>
+  );
+};
+
+function buildTelemetryPoints(
+  samples: readonly TeamAgentRuntimeResourceSample[],
+  getValue: (sample: TeamAgentRuntimeResourceSample) => number | undefined,
+  getY: (value: number, values: readonly number[]) => number
+): TelemetryPoint[] {
+  const values = samples.map(getValue).filter(isFiniteNonNegative);
+  if (values.length < 2 || samples.length < 2) {
+    return [];
+  }
+  return samples.flatMap((sample, index) => {
+    const value = getValue(sample);
+    if (!isFiniteNonNegative(value)) {
+      return [];
+    }
+    return [
+      {
+        x: (index / (samples.length - 1)) * RUNTIME_TELEMETRY_WIDTH,
+        y: getY(value, values),
+      },
+    ];
+  });
+}
+
+function buildRuntimeTelemetryPaths(
+  history: readonly TeamAgentRuntimeResourceSample[] | undefined,
+  scale?: RuntimeTelemetryScale
+): RuntimeTelemetryPaths | undefined {
+  const samples = normalizeRuntimeTelemetrySamples(history).slice(-RUNTIME_TELEMETRY_SAMPLE_LIMIT);
+  if (samples.length < 2) {
+    return undefined;
+  }
+
+  const memoryPoints = buildTelemetryPoints(
+    samples,
+    (sample) => sample.rssBytes,
+    (value, values) => {
+      const cappedY = getCappedTelemetryY(value, scale?.memoryCapBytes, {
+        bottomY: 15.25,
+        amplitude: 4.4,
+      });
+      return (
+        cappedY ??
+        getRelativeTelemetryY(value, values, {
+          bottomY: 15.25,
+          amplitude: 4.4,
+          fallbackRatio: 0.32,
+        })
+      );
+    }
+  );
+  const cpuPoints = buildTelemetryPoints(
+    samples,
+    (sample) => sample.cpuPercent,
+    (value, values) => {
+      const cappedY = getCappedTelemetryY(value, scale?.cpuCapPercent, {
+        bottomY: 16.1,
+        amplitude: 5.2,
+        curve: 'sqrt',
+      });
+      return (
+        cappedY ??
+        getRelativeTelemetryY(value, values, {
+          bottomY: 16.1,
+          amplitude: 5.2,
+          fallbackRatio: 0,
+          minimumSpan: 0.5,
+        })
+      );
+    }
+  );
+
+  const memoryAreaPath = buildAreaPath(memoryPoints);
+  const memoryLinePath = buildLinePath(memoryPoints);
+  const cpuLinePath = buildLinePath(cpuPoints);
+  if (!memoryAreaPath && !cpuLinePath) {
+    return undefined;
+  }
+  return {
+    memoryAreaPath,
+    memoryLinePath,
+    cpuLinePath,
+  };
+}
+
+const MemberRuntimeTelemetryStrip = memo(function MemberRuntimeTelemetryStrip({
+  runtimeEntry,
+  scale,
+}: {
+  runtimeEntry?: TeamAgentRuntimeEntry;
+  scale?: RuntimeTelemetryScale;
+}): React.JSX.Element | null {
+  const paths = useMemo(
+    () => buildRuntimeTelemetryPaths(runtimeEntry?.resourceHistory, scale),
+    [runtimeEntry?.resourceHistory, scale]
+  );
+  if (!paths) {
+    return null;
+  }
+
+  return (
+    <div
+      aria-hidden="true"
+      data-testid="member-runtime-telemetry-strip"
+      className="runtime-telemetry-strip pointer-events-none absolute inset-x-0 bottom-0 z-0 h-5 overflow-hidden rounded-b opacity-0 transition-opacity duration-150"
+      style={{
+        WebkitMaskImage:
+          'linear-gradient(to right, transparent 0, black 44px, black calc(100% - 44px), transparent 100%)',
+        maskImage:
+          'linear-gradient(to right, transparent 0, black 44px, black calc(100% - 44px), transparent 100%)',
+      }}
+    >
+      <svg
+        className="size-full"
+        viewBox={`0 0 ${RUNTIME_TELEMETRY_WIDTH} ${RUNTIME_TELEMETRY_HEIGHT}`}
+        preserveAspectRatio="none"
+      >
+        {paths.memoryAreaPath ? (
+          <path d={paths.memoryAreaPath} fill="#22c55e" opacity="0.14" />
+        ) : null}
+        {paths.memoryLinePath ? (
+          <path
+            d={paths.memoryLinePath}
+            fill="none"
+            stroke="#4ade80"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="0.55"
+            opacity="0.45"
+          />
+        ) : null}
+        {paths.cpuLinePath ? (
+          <path
+            d={paths.cpuLinePath}
+            fill="none"
+            stroke="#3b82f6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="0.62"
+            opacity="0.62"
+          />
+        ) : null}
+      </svg>
+      <div
+        className="absolute inset-x-0 bottom-0 h-1.5"
+        style={{
+          background:
+            'linear-gradient(to top, color-mix(in srgb, var(--color-surface) 35%, transparent), transparent)',
+        }}
+      />
+      <div className="absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-[var(--color-surface)] to-transparent opacity-80 blur-[1px]" />
+      <div className="absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-[var(--color-surface)] to-transparent opacity-80 blur-[1px]" />
+    </div>
+  );
+});
+
 export const MemberCard = memo(function MemberCard({
   member,
   memberColor,
+  fullBleedSurface = true,
   runtimeSummary,
   runtimeEntry,
   runtimeRunId,
@@ -135,6 +628,7 @@ export const MemberCard = memo(function MemberCard({
   spawnLaunchState,
   spawnRuntimeAlive,
   isLaunchSettling,
+  runtimeTelemetryScale,
   onOpenTask,
   onOpenReviewTask,
   onClick,
@@ -157,8 +651,18 @@ export const MemberCard = memo(function MemberCard({
     selectedTeamName ? selectResolvedMembersForTeamName(s, selectedTeamName) : []
   );
   const avatarMap = useMemo(() => buildMemberAvatarMap(teamMembers), [teamMembers]);
+  const showTaskActivity = shouldDisplayMemberCurrentTask({
+    member,
+    isTeamAlive,
+    spawnStatus,
+    spawnLaunchState,
+    spawnRuntimeAlive,
+    runtimeEntry,
+  });
+  const visibleCurrentTask = showTaskActivity ? currentTask : null;
+  const visibleReviewTask = showTaskActivity ? reviewTask : null;
   const presentationMember =
-    member.currentTaskId && !currentTask
+    member.currentTaskId && !visibleCurrentTask
       ? {
           ...member,
           currentTaskId: null,
@@ -172,6 +676,9 @@ export const MemberCard = memo(function MemberCard({
     spawnRuntimeAlive,
     spawnBootstrapConfirmed: spawnEntry?.bootstrapConfirmed,
     spawnBootstrapStalled: spawnEntry?.bootstrapStalled,
+    spawnAgentToolAccepted: spawnEntry?.agentToolAccepted,
+    spawnHardFailure: spawnEntry?.hardFailure,
+    spawnLivenessKind: spawnEntry?.livenessKind,
     spawnFirstSpawnAcceptedAt: spawnEntry?.firstSpawnAcceptedAt,
     spawnUpdatedAt: spawnEntry?.updatedAt,
     runtimeEntry,
@@ -220,18 +727,118 @@ export const MemberCard = memo(function MemberCard({
     workspacePath ? `Path: ${workspacePath}` : 'Path is not available yet.',
     member.gitBranch ? `Branch: ${member.gitBranch}` : null,
   ].filter((line): line is string => Boolean(line));
-  const activityTask = currentTask ?? reviewTask ?? null;
-  const activityTitle = currentTask
-    ? `Current task: #${deriveTaskDisplayId(currentTask.id)}`
-    : reviewTask
-      ? `Reviewing task: #${deriveTaskDisplayId(reviewTask.id)}`
+  const activityTask = visibleCurrentTask ?? visibleReviewTask ?? null;
+  const activityTitle = visibleCurrentTask
+    ? `Current task: #${deriveTaskDisplayId(visibleCurrentTask.id)}`
+    : visibleReviewTask
+      ? `Reviewing task: #${deriveTaskDisplayId(visibleReviewTask.id)}`
       : undefined;
+  const runtimeTelemetryTitle = buildRuntimeTelemetryTitle(runtimeEntry);
+  const showRuntimeTelemetryTooltip = Boolean(runtimeTelemetryTitle);
+  const rowTitle = showRuntimeTelemetryTooltip ? undefined : activityTitle;
+  const runtimeTelemetryTooltipIdRef = useRef<string | null>(null);
+  if (runtimeTelemetryTooltipIdRef.current == null) {
+    runtimeTelemetryTooltipIdRef.current = createRuntimeTelemetryTooltipId();
+  }
+  const runtimeTelemetryTooltipId = runtimeTelemetryTooltipIdRef.current;
+  const runtimeTelemetryPointerBlockedRef = useRef(false);
+  const runtimeTelemetryTooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [runtimeTelemetryTooltipOpen, setRuntimeTelemetryTooltipOpen] = useState(false);
+  const clearRuntimeTelemetryTooltipTimer = useCallback(() => {
+    if (runtimeTelemetryTooltipTimerRef.current == null) {
+      return;
+    }
+    clearTimeout(runtimeTelemetryTooltipTimerRef.current);
+    runtimeTelemetryTooltipTimerRef.current = null;
+  }, []);
+  const closeRuntimeTelemetryTooltip = useCallback(() => {
+    clearRuntimeTelemetryTooltipTimer();
+    setRuntimeTelemetryTooltipOpen(false);
+  }, [clearRuntimeTelemetryTooltipTimer]);
+  const handleRuntimeTelemetryTooltipOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      clearRuntimeTelemetryTooltipTimer();
+      if (!nextOpen) {
+        closeRuntimeTelemetryTooltip();
+        return;
+      }
+      if (runtimeTelemetryPointerBlockedRef.current || runtimeTelemetryTooltipOpen) {
+        return;
+      }
+      runtimeTelemetryTooltipTimerRef.current = setTimeout(() => {
+        runtimeTelemetryTooltipTimerRef.current = null;
+        notifyRuntimeTelemetryTooltipOpen(runtimeTelemetryTooltipId);
+        setRuntimeTelemetryTooltipOpen(true);
+      }, RUNTIME_TELEMETRY_TOOLTIP_DELAY_MS);
+    },
+    [
+      clearRuntimeTelemetryTooltipTimer,
+      closeRuntimeTelemetryTooltip,
+      runtimeTelemetryTooltipId,
+      runtimeTelemetryTooltipOpen,
+    ]
+  );
+  useEffect(
+    () => () => {
+      clearRuntimeTelemetryTooltipTimer();
+    },
+    [clearRuntimeTelemetryTooltipTimer]
+  );
+  useEffect(() => {
+    if (!showRuntimeTelemetryTooltip) {
+      closeRuntimeTelemetryTooltip();
+    }
+  }, [closeRuntimeTelemetryTooltip, showRuntimeTelemetryTooltip]);
+  useEffect(() => {
+    if (!showRuntimeTelemetryTooltip || typeof window === 'undefined') {
+      return;
+    }
+
+    const closeWhenAnotherRuntimeTooltipOpens = (event: Event): void => {
+      const nextId = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (nextId && nextId !== runtimeTelemetryTooltipId) {
+        closeRuntimeTelemetryTooltip();
+      }
+    };
+
+    window.addEventListener(
+      RUNTIME_TELEMETRY_TOOLTIP_OPEN_EVENT,
+      closeWhenAnotherRuntimeTooltipOpens
+    );
+    return () => {
+      window.removeEventListener(
+        RUNTIME_TELEMETRY_TOOLTIP_OPEN_EVENT,
+        closeWhenAnotherRuntimeTooltipOpens
+      );
+    };
+  }, [closeRuntimeTelemetryTooltip, runtimeTelemetryTooltipId, showRuntimeTelemetryTooltip]);
+  const handleRuntimeTelemetryPointerLeave = useCallback(() => {
+    runtimeTelemetryPointerBlockedRef.current = false;
+    if (showRuntimeTelemetryTooltip) {
+      closeRuntimeTelemetryTooltip();
+    }
+  }, [closeRuntimeTelemetryTooltip, showRuntimeTelemetryTooltip]);
+  const handleRuntimeTelemetryPointerBlockCapture = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!showRuntimeTelemetryTooltip) {
+        return;
+      }
+      const blocked = isRuntimeTelemetryTooltipBlockedTarget(event.currentTarget, event.target);
+      runtimeTelemetryPointerBlockedRef.current = blocked;
+      if (blocked) {
+        closeRuntimeTelemetryTooltip();
+      }
+    },
+    [closeRuntimeTelemetryTooltip, showRuntimeTelemetryTooltip]
+  );
   const showStartingSkeleton =
     !isRemoved &&
     presenceLabel === 'starting' &&
     spawnLaunchState !== 'failed_to_start' &&
     !activityTask &&
     !runtimeSummary;
+  const usesLaunchSkeletonSurface = spawnCardClass.includes('member-waiting-shimmer');
+  const rowSurfaceBleedClass = fullBleedSurface ? MEMBER_ROW_SURFACE_BLEED_CLASS : undefined;
   const showLaunchBadge =
     !isRemoved &&
     !runtimeAdvisoryLabel &&
@@ -251,15 +858,21 @@ export const MemberCard = memo(function MemberCard({
         teamName: selectedTeamName,
         runId: runtimeRunId,
         memberName: member.name,
+        member,
         spawnStatus,
         launchState: spawnLaunchState,
         livenessSource: spawnLivenessSource,
         spawnEntry,
         runtimeEntry,
+        runtimeAdvisory: member.runtimeAdvisory,
+        runtimeAdvisoryLabel,
+        runtimeAdvisoryTitle,
       }),
     [
-      member.name,
+      member,
       runtimeEntry,
+      runtimeAdvisoryLabel,
+      runtimeAdvisoryTitle,
       runtimeRunId,
       selectedTeamName,
       spawnEntry,
@@ -271,6 +884,11 @@ export const MemberCard = memo(function MemberCard({
   const showCopyDiagnostics =
     !isRemoved &&
     hasMemberLaunchDiagnosticsError(launchDiagnosticsPayload) &&
+    hasMemberLaunchDiagnosticsDetails(launchDiagnosticsPayload);
+  const showRuntimeAdvisoryDiagnostics =
+    !isRemoved &&
+    Boolean(runtimeAdvisoryLabel) &&
+    runtimeAdvisoryTone === 'error' &&
     hasMemberLaunchDiagnosticsDetails(launchDiagnosticsPayload);
   const isFailedLaunch = spawnStatus === 'error' || spawnLaunchState === 'failed_to_start';
   const isSkippedLaunch =
@@ -315,13 +933,26 @@ export const MemberCard = memo(function MemberCard({
     !isFailedLaunch &&
     !isSkippedLaunch &&
     (Boolean(activityTask) || !isAwaitingReply);
-  const restartActionIdleLabel = canRelaunchOpenCode ? 'Relaunch OpenCode' : 'Retry teammate';
-  const restartActionBusyLabel = canRelaunchOpenCode
-    ? 'Relaunching OpenCode teammate'
-    : 'Retrying teammate';
-  const restartActionErrorFallback = canRelaunchOpenCode
-    ? 'Failed to relaunch OpenCode teammate'
-    : 'Failed to retry teammate';
+  const canRelaunchRuntimeAdvisoryOpenCode =
+    Boolean(runtimeAdvisoryLabel) &&
+    runtimeAdvisoryTone === 'error' &&
+    member.providerId === 'opencode' &&
+    hasRestartMemberControl &&
+    !showLaunchBadge &&
+    !isFailedLaunch &&
+    !isSkippedLaunch;
+  const restartActionIdleLabel =
+    canRelaunchOpenCode || canRelaunchRuntimeAdvisoryOpenCode
+      ? 'Relaunch OpenCode'
+      : 'Retry teammate';
+  const restartActionBusyLabel =
+    canRelaunchOpenCode || canRelaunchRuntimeAdvisoryOpenCode
+      ? 'Relaunching OpenCode teammate'
+      : 'Retrying teammate';
+  const restartActionErrorFallback =
+    canRelaunchOpenCode || canRelaunchRuntimeAdvisoryOpenCode
+      ? 'Failed to relaunch OpenCode teammate'
+      : 'Failed to retry teammate';
   const handleRestartMember = async (event: React.MouseEvent<HTMLButtonElement>): Promise<void> => {
     event.preventDefault();
     event.stopPropagation();
@@ -357,14 +988,25 @@ export const MemberCard = memo(function MemberCard({
     }
   };
 
-  return (
+  const cardContent = (
     <div
-      className={`rounded transition-opacity duration-300 ${isRemoved ? 'opacity-50' : ''} ${spawnCardClass}`}
+      className={cn(
+        'rounded transition-opacity duration-300',
+        usesLaunchSkeletonSurface && rowSurfaceBleedClass,
+        isRemoved && 'opacity-50',
+        spawnCardClass
+      )}
+      onPointerOverCapture={handleRuntimeTelemetryPointerBlockCapture}
+      onPointerMoveCapture={handleRuntimeTelemetryPointerBlockCapture}
+      onPointerLeave={handleRuntimeTelemetryPointerLeave}
     >
       <div
-        className="group relative cursor-pointer rounded py-1.5"
+        className={cn(
+          'group relative cursor-pointer overflow-hidden rounded py-1.5',
+          rowSurfaceBleedClass
+        )}
         style={undefined}
-        title={activityTitle}
+        title={rowTitle}
         role="button"
         tabIndex={0}
         onClick={onClick}
@@ -375,8 +1017,11 @@ export const MemberCard = memo(function MemberCard({
           }
         }}
       >
-        <div className="pointer-events-none absolute inset-0 rounded transition-colors group-hover:bg-white/5" />
-        <div className="flex items-center gap-2.5">
+        {!isRemoved ? (
+          <MemberRuntimeTelemetryStrip runtimeEntry={runtimeEntry} scale={runtimeTelemetryScale} />
+        ) : null}
+        <div className="pointer-events-none absolute inset-0 z-10 rounded transition-colors group-hover:bg-white/5" />
+        <div className="relative z-20 flex items-center gap-2.5">
           <div className="relative shrink-0">
             <div
               className="rounded-full border-2 p-px"
@@ -408,7 +1053,10 @@ export const MemberCard = memo(function MemberCard({
               {showWorkspaceBadge ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="shrink-0 rounded border border-emerald-400/35 bg-emerald-400/10 px-1 py-0.5 text-[9px] font-semibold uppercase leading-none text-emerald-300">
+                    <span
+                      className="shrink-0 rounded border border-emerald-400/35 bg-emerald-400/10 px-1 py-0.5 text-[9px] font-semibold uppercase leading-none text-emerald-300"
+                      data-runtime-telemetry-exempt="true"
+                    >
                       worktree
                     </span>
                   </TooltipTrigger>
@@ -423,9 +1071,9 @@ export const MemberCard = memo(function MemberCard({
                   </TooltipContent>
                 </Tooltip>
               ) : null}
-              {currentTask ? (
+              {visibleCurrentTask ? (
                 <CurrentTaskIndicator
-                  task={currentTask}
+                  task={visibleCurrentTask}
                   borderColor={colors.border}
                   activityLabel="working on"
                   activityTimer={currentTaskTimer}
@@ -433,9 +1081,9 @@ export const MemberCard = memo(function MemberCard({
                   onOpenTask={onOpenTask}
                 />
               ) : null}
-              {reviewTask ? (
+              {visibleReviewTask ? (
                 <CurrentTaskIndicator
-                  task={reviewTask}
+                  task={visibleReviewTask}
                   borderColor={colors.border}
                   activityLabel={reviewTaskTimer ? 'reviewing' : 'review requested'}
                   activityTimer={reviewTaskTimer}
@@ -465,6 +1113,39 @@ export const MemberCard = memo(function MemberCard({
                   >
                     {runtimeAdvisoryLabel ?? 'awaiting reply'}
                   </span>
+                  {canRelaunchRuntimeAdvisoryOpenCode ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={
+                            retryingLaunch ? restartActionBusyLabel : restartActionIdleLabel
+                          }
+                          className="rounded p-1 text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={retryingLaunch}
+                          onClick={handleRestartMember}
+                        >
+                          {retryingLaunch ? (
+                            <SyncedLoader2 className="size-3.5" />
+                          ) : (
+                            <RotateCcw className="size-3.5" />
+                          )}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        {retryLaunchError ??
+                          (retryingLaunch
+                            ? `${restartActionBusyLabel}...`
+                            : restartActionIdleLabel)}
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : null}
+                  {showRuntimeAdvisoryDiagnostics ? (
+                    <MemberLaunchDiagnosticsButton
+                      payload={launchDiagnosticsPayload}
+                      className="size-auto rounded p-1 text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200"
+                    />
+                  ) : null}
                 </>
               ) : null}
             </div>
@@ -672,31 +1353,62 @@ export const MemberCard = memo(function MemberCard({
               ) : null}
             </span>
           ) : showRuntimeAdvisoryBadge ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="flex shrink-0 items-center gap-1">
-                  <AlertTriangle
-                    className={`size-3.5 shrink-0 ${
-                      runtimeAdvisoryTone === 'error' ? 'text-red-400' : 'text-amber-400'
-                    }`}
-                  />
-                  <Badge
-                    variant="secondary"
-                    className={`shrink-0 px-1.5 py-0.5 text-[10px] font-normal leading-none ${
-                      runtimeAdvisoryTone === 'error'
-                        ? 'bg-red-500/15 text-red-300'
-                        : 'bg-amber-500/15 text-amber-300'
-                    }`}
-                    title={runtimeAdvisoryTitle}
-                  >
-                    {runtimeAdvisoryLabel}
-                  </Badge>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {runtimeAdvisoryTitle ?? runtimeAdvisoryLabel}
-              </TooltipContent>
-            </Tooltip>
+            <span className="flex shrink-0 items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="flex shrink-0 items-center gap-1">
+                    <AlertTriangle
+                      className={`size-3.5 shrink-0 ${
+                        runtimeAdvisoryTone === 'error' ? 'text-red-400' : 'text-amber-400'
+                      }`}
+                    />
+                    <Badge
+                      variant="secondary"
+                      className={`shrink-0 px-1.5 py-0.5 text-[10px] font-normal leading-none ${
+                        runtimeAdvisoryTone === 'error'
+                          ? 'bg-red-500/15 text-red-300'
+                          : 'bg-amber-500/15 text-amber-300'
+                      }`}
+                      title={runtimeAdvisoryTitle}
+                    >
+                      {runtimeAdvisoryLabel}
+                    </Badge>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {runtimeAdvisoryTitle ?? runtimeAdvisoryLabel}
+                </TooltipContent>
+              </Tooltip>
+              {canRelaunchRuntimeAdvisoryOpenCode ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={retryingLaunch ? restartActionBusyLabel : restartActionIdleLabel}
+                      className="rounded p-1 text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={retryingLaunch}
+                      onClick={handleRestartMember}
+                    >
+                      {retryingLaunch ? (
+                        <SyncedLoader2 className="size-3.5" />
+                      ) : (
+                        <RotateCcw className="size-3.5" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {retryLaunchError ??
+                      (retryingLaunch ? `${restartActionBusyLabel}...` : restartActionIdleLabel)}
+                  </TooltipContent>
+                </Tooltip>
+              ) : null}
+              {showRuntimeAdvisoryDiagnostics ? (
+                <MemberLaunchDiagnosticsButton
+                  payload={launchDiagnosticsPayload}
+                  className="size-auto rounded p-1 text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200"
+                />
+              ) : null}
+            </span>
           ) : !activityTask ? (
             <Badge
               variant="secondary"
@@ -779,5 +1491,27 @@ export const MemberCard = memo(function MemberCard({
         </div>
       </div>
     </div>
+  );
+
+  if (!showRuntimeTelemetryTooltip) {
+    return cardContent;
+  }
+
+  return (
+    <Tooltip
+      delayDuration={0}
+      open={runtimeTelemetryTooltipOpen}
+      onOpenChange={handleRuntimeTelemetryTooltipOpenChange}
+    >
+      <TooltipTrigger asChild>{cardContent}</TooltipTrigger>
+      <TooltipContent
+        side="top"
+        align="start"
+        sideOffset={8}
+        className="border-blue-400/20 bg-[var(--color-surface)] p-3 shadow-xl shadow-black/30"
+      >
+        <RuntimeTelemetryTooltipContent runtimeEntry={runtimeEntry} />
+      </TooltipContent>
+    </Tooltip>
   );
 });

@@ -24,9 +24,10 @@ import {
 import { createTeamRuntimeLaneCoordinator } from '@features/team-runtime-lanes/main';
 import {
   killTmuxPaneForCurrentPlatformSync,
-  listRuntimeProcessesForCurrentTmuxPlatform,
+  listRuntimeProcessTableForCurrentPlatform,
   listTmuxPanePidsForCurrentPlatform,
   listTmuxPaneRuntimeInfoForCurrentPlatform,
+  type RuntimeProcessTableRow,
   sendKeysToTmuxPaneForCurrentPlatform,
   type TmuxPaneRuntimeInfo,
 } from '@features/tmux-installer/main';
@@ -195,10 +196,15 @@ import {
   type NativeAppManagedBootstrapSpec,
 } from './bootstrap/NativeAppManagedBootstrapContextBuilder';
 import {
+  buildOpenCodePromptDeliveryAttemptId,
   createOpenCodePromptDeliveryLedgerStore,
   hashOpenCodePromptDeliveryPayload,
   isOpenCodePromptDeliveryAttemptDue,
   isOpenCodePromptResponseStateResponded,
+  isOpenCodeResolvedBehaviorChangedReason,
+  isOpenCodeSessionRefreshResponseState,
+  isOpenCodeSessionTransportChangedReason,
+  OPENCODE_PROMPT_DELIVERY_SESSION_REFRESH_MAX_ATTEMPTS,
   type OpenCodePromptDeliveryLedgerRecord,
   type OpenCodePromptDeliveryLedgerStore,
   type OpenCodePromptDeliveryStatus,
@@ -238,6 +244,7 @@ import {
   openCodeTaskRefsIncludeAll as openCodeTaskRefsIncludeAllValue,
 } from './opencode/delivery/OpenCodeRuntimeDeliveryProofMatching';
 import { OpenCodeRuntimeDeliveryProofReader } from './opencode/delivery/OpenCodeRuntimeDeliveryProofReader';
+import { inferOpenCodeTaskRefsFromInboxMessage } from './opencode/delivery/OpenCodeRuntimeDeliveryTaskRefInference';
 import { createRuntimeDeliveryJournalStore } from './opencode/delivery/RuntimeDeliveryJournal';
 import {
   type RuntimeDeliveryDestinationPort,
@@ -275,6 +282,7 @@ import {
 } from './opencode/store/RuntimeStoreManifest';
 import { OpenCodeTaskLogAttributionStore } from './taskLogs/stream/OpenCodeTaskLogAttributionStore';
 import { buildActionModeProtocol } from './actionModeInstructions';
+import { getCurrentAgentTeamsMcpHttpTransportEvidence } from './AgentTeamsMcpHttpServer';
 import { isAgentTeamsToolUse } from './agentTeamsToolNames';
 import { atomicWriteAsync } from './atomicWrite';
 import { peekAutoResumeService } from './AutoResumeService';
@@ -342,6 +350,7 @@ import { TeamMemberWorktreeManager } from './TeamMemberWorktreeManager';
 import { TeamMetaStore } from './TeamMetaStore';
 import {
   commandArgEquals,
+  extractCliArgValues,
   isStrongRuntimeEvidence,
   resolveTeamMemberRuntimeLiveness,
   sanitizeProcessCommandForDiagnostics,
@@ -543,7 +552,9 @@ import type {
   TeamAgentRuntimeDiagnosticSeverity,
   TeamAgentRuntimeEntry,
   TeamAgentRuntimeLivenessKind,
+  TeamAgentRuntimeLoadScope,
   TeamAgentRuntimePidSource,
+  TeamAgentRuntimeResourceSample,
   TeamAgentRuntimeSnapshot,
   TeamChangeEvent,
   TeamConfig,
@@ -576,6 +587,49 @@ import type {
 // its initial two-sample pass. Keep this above slow PowerShell startup time, or
 // the first sample can expire before the recursive second read and loop again.
 const RUNTIME_PIDUSAGE_OPTIONS = process.platform === 'win32' ? { maxage: 10_000 } : { maxage: 0 };
+
+interface RuntimeProcessUsageStats {
+  rssBytes?: number;
+  cpuPercent?: number;
+}
+
+interface RuntimeProcessLoadStats extends RuntimeProcessUsageStats {
+  primaryCpuPercent?: number;
+  primaryRssBytes?: number;
+  childCpuPercent?: number;
+  childRssBytes?: number;
+  processCount?: number;
+  runtimeLoadScope?: TeamAgentRuntimeLoadScope;
+  runtimeLoadTruncated?: boolean;
+}
+
+type RuntimeTelemetryProcessSource = 'native' | 'wsl' | 'windows-host';
+
+interface RuntimeTelemetryProcessTableRow extends RuntimeProcessTableRow {
+  runtimeTelemetrySource?: RuntimeTelemetryProcessSource;
+}
+
+class RuntimeTelemetryTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RuntimeTelemetryTimeoutError';
+  }
+}
+
+function normalizeRuntimeTelemetryNumber(value: unknown): number | undefined {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
 
 const logger = createLogger('Service:TeamProvisioning');
 const PREFLIGHT_DEBUG_LOG_PATH = path.join(os.tmpdir(), 'claude-team-preflight-debug.log');
@@ -852,7 +906,6 @@ const PROBE_CACHE_TTL_MS = 36 * 60 * 60 * 1000;
 const PREFLIGHT_BINARY_TIMEOUT_MS = 8000;
 const PREFLIGHT_AUTH_RETRY_DELAY_MS = 2000;
 const PREFLIGHT_AUTH_MAX_RETRIES = 2;
-const OPENCODE_PREFLIGHT_MODEL_PROBE_CONCURRENCY = 2;
 const OPENCODE_PROVIDER_SCOPED_PREPARE_FAILURE_REASONS = new Set([
   'not_installed',
   'not_authenticated',
@@ -862,6 +915,10 @@ const OPENCODE_PROVIDER_SCOPED_PREPARE_FAILURE_REASONS = new Set([
   'mcp_unavailable',
   'adapter_disabled',
 ]);
+const OPENCODE_RUNTIME_BINARY_UNREACHABLE_DIAGNOSTIC =
+  'OpenCode runtime binary is not installed or not reachable by launch preflight.';
+const OPENCODE_APP_MCP_UNREACHABLE_DIAGNOSTIC =
+  'OpenCode app MCP is unreachable. Retry launch to refresh the app MCP bridge.';
 
 function pushUniqueLine(lines: string[], line: string): void {
   const trimmed = line.trim();
@@ -878,8 +935,88 @@ function looksLikeOpenCodeProviderPrepareDiagnostic(value: string): boolean {
     lower.includes('mcp_unavailable') ||
     lower.includes('runtime store') ||
     lower.includes('opencode cli') ||
+    lower.includes('opencode runtime binary') ||
     lower.includes('unable to connect')
   );
+}
+
+function normalizeOpenCodePrepareDiagnostic(value: string, reason?: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  if (/opencode cli (?:not detected on path|not found)/i.test(trimmed)) {
+    return OPENCODE_RUNTIME_BINARY_UNREACHABLE_DIAGNOSTIC;
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.includes('unable to connect') &&
+    (lower.includes('/experimental/tool') ||
+      lower.includes('mcp_unavailable') ||
+      reason === 'mcp_unavailable')
+  ) {
+    const detail = trimmed.includes(' - ') ? trimmed.split(' - ').pop()?.trim() : trimmed;
+    return detail && detail !== trimmed
+      ? `${OPENCODE_APP_MCP_UNREACHABLE_DIAGNOSTIC} Details: ${detail}`
+      : OPENCODE_APP_MCP_UNREACHABLE_DIAGNOSTIC;
+  }
+
+  if (reason === 'mcp_unavailable' && lower.includes('mcp_unavailable')) {
+    return 'OpenCode app MCP is unavailable. Retry launch to refresh the app MCP bridge.';
+  }
+
+  return trimmed;
+}
+
+function isRetryableOpenCodePreflightBusyDiagnostic(value: string | null | undefined): boolean {
+  const lower = value?.trim().toLowerCase() ?? '';
+  if (!lower) {
+    return false;
+  }
+  // Fact: these diagnostics report OpenCode host/session occupancy, not that
+  // the selected model is unavailable or rejected by the provider.
+  return (
+    lower.includes('opencode session status busy') ||
+    lower.includes('session status busy') ||
+    lower === 'provider busy' ||
+    lower.includes('provider busy')
+  );
+}
+
+function isOpenCodeModelVerificationTimeoutDiagnostic(value: string | null | undefined): boolean {
+  const lower = value?.trim().toLowerCase() ?? '';
+  return lower.includes('model verification timed out');
+}
+
+function selectOpenCodeModelPreparePrimaryReason(
+  prepare: Extract<TeamRuntimePrepareResult, { ok: false }>
+): string {
+  const candidates = [...prepare.diagnostics, prepare.reason]
+    .map((entry) => entry?.trim() ?? '')
+    .filter(Boolean);
+  const timeoutReason = candidates.find(isOpenCodeModelVerificationTimeoutDiagnostic);
+  return timeoutReason ?? candidates[0] ?? prepare.reason;
+}
+
+function isOpenCodeModelPrepareBusyDeferred(
+  prepare: Extract<TeamRuntimePrepareResult, { ok: false }>,
+  primaryReason: string
+): boolean {
+  const candidates = [primaryReason, prepare.reason, ...prepare.diagnostics];
+  return (
+    prepare.retryable &&
+    !candidates.some(isOpenCodeModelVerificationTimeoutDiagnostic) &&
+    candidates.some(isRetryableOpenCodePreflightBusyDiagnostic)
+  );
+}
+
+function buildOpenCodeProviderVerificationDeferredLine(reason: string): string {
+  const normalizedReason = isRetryableOpenCodePreflightBusyDiagnostic(reason)
+    ? 'OpenCode is currently busy with another session. Deep model verification will retry when OpenCode is idle.'
+    : reason;
+  return normalizedReason;
 }
 
 function applyDistinctProvisioningMemberColors<
@@ -2401,6 +2538,8 @@ function isDefinitiveOpenCodePreLaunchFailure(
 
 const OPENCODE_BOOTSTRAP_PENDING_DIAGNOSTIC =
   'opencode_bootstrap_pending_after_materialized_session';
+const OPENCODE_APP_MANAGED_BOOTSTRAP_PENDING_DIAGNOSTIC =
+  'OpenCode app-managed bootstrap evidence is pending after materialized session.';
 
 function isMaterializedOpenCodeSessionId(sessionId: unknown): boolean {
   if (typeof sessionId !== 'string') {
@@ -2479,7 +2618,9 @@ function normalizeRecoverableOpenCodeBootstrapPendingLaunchResult(
     new Set([
       ...(member.diagnostics ?? []),
       OPENCODE_BOOTSTRAP_PENDING_DIAGNOSTIC,
-      'OpenCode runtime session materialized; waiting for runtime_bootstrap_checkin.',
+      isExplicitLegacyOpenCodeBootstrap(member)
+        ? 'OpenCode runtime session materialized; waiting for runtime_bootstrap_checkin.'
+        : OPENCODE_APP_MANAGED_BOOTSTRAP_PENDING_DIAGNOSTIC,
       ...diagnostics,
     ])
   );
@@ -2683,9 +2824,37 @@ function isPersistedOpenCodeSecondaryLaneMember(
 }
 
 const OPENCODE_BOOTSTRAP_CHECKIN_RETRY_SENT_PREFIX = 'opencode_bootstrap_checkin_retry_prompt_sent';
+const OPENCODE_APP_MANAGED_BOOTSTRAP_STALLED_DIAGNOSTIC =
+  'OpenCode app-managed bootstrap evidence did not commit within 5 min.';
 
 function getOpenCodeBootstrapCheckinRetryMarker(runId: string, runtimeSessionId: string): string {
   return `${OPENCODE_BOOTSTRAP_CHECKIN_RETRY_SENT_PREFIX}:${runId}:${runtimeSessionId}`;
+}
+
+function isExplicitLegacyOpenCodeBootstrap(
+  value:
+    | {
+        bootstrapMode?: 'model_tool_checkin' | 'app_managed_context';
+      }
+    | undefined
+    | null
+): boolean {
+  return value?.bootstrapMode === 'model_tool_checkin';
+}
+
+function resolveOpenCodeSecondaryLaneMemberEvidence(
+  lane: MixedSecondaryRuntimeLaneState | undefined,
+  memberName: string
+): TeamRuntimeMemberLaunchEvidence | undefined {
+  if (!lane?.result) {
+    return undefined;
+  }
+  return (
+    lane.result.members[memberName] ??
+    Object.values(lane.result.members).find((member) =>
+      matchesTeamMemberIdentity(member.memberName ?? '', memberName)
+    )
+  );
 }
 
 const OPENCODE_MEMBER_SESSION_RECORDED_AT_PATTERN =
@@ -2777,6 +2946,10 @@ function selectOpenCodeSecondaryBootstrapStallDiagnostic(
 function getOpenCodeSecondaryBootstrapStallDiagnosticFromPersisted(
   member: PersistedTeamLaunchMemberState
 ): string {
+  if (!isExplicitLegacyOpenCodeBootstrap(member)) {
+    return OPENCODE_APP_MANAGED_BOOTSTRAP_STALLED_DIAGNOSTIC;
+  }
+
   const selected = selectOpenCodeSecondaryBootstrapStallDiagnostic([
     member.runtimeDiagnostic,
     ...(member.diagnostics ?? []),
@@ -3668,17 +3841,14 @@ function buildEffectiveTeamMemberSpec(
   const memberProviderId = normalizeTeamMemberProviderId(member.providerId);
   const defaultProviderId = normalizeTeamMemberProviderId(defaults.providerId);
   const effectiveProviderId = memberProviderId ?? defaultProviderId ?? 'anthropic';
+  const explicitMemberModel = getExplicitLaunchModelSelection(member.model);
+  const inheritsDefaultRuntime = memberProviderId == null || memberProviderId === defaultProviderId;
   const model =
-    getExplicitLaunchModelSelection(member.model) ||
-    (memberProviderId == null || memberProviderId === defaultProviderId
-      ? getExplicitLaunchModelSelection(defaults.model)
-      : undefined) ||
+    explicitMemberModel ||
+    (inheritsDefaultRuntime ? getExplicitLaunchModelSelection(defaults.model) : undefined) ||
     undefined;
   const effort =
-    member.effort ??
-    (memberProviderId == null || memberProviderId === defaultProviderId
-      ? defaults.effort
-      : undefined);
+    member.effort ?? (inheritsDefaultRuntime && !explicitMemberModel ? defaults.effort : undefined);
 
   return {
     ...member,
@@ -5854,6 +6024,14 @@ export class TeamProvisioningService {
   private static readonly SAME_TEAM_RUN_START_SKEW_MS = 1_000;
   private static readonly SAME_TEAM_PERSIST_RETRY_MS = 2_000;
   private static readonly AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS = 2_000;
+  private static readonly AGENT_RUNTIME_RESOURCE_HISTORY_LIMIT = 60;
+  private static readonly MAX_RUNTIME_TREE_PIDS_PER_ROOT = 64;
+  private static readonly MAX_RUNTIME_USAGE_PIDS_PER_SNAPSHOT = 512;
+  private static readonly RUNTIME_PROCESS_TABLE_TIMEOUT_MS = 1_500;
+  private static readonly RUNTIME_WINDOWS_PROCESS_TABLE_TIMEOUT_MS = 1_500;
+  private static readonly RUNTIME_PIDUSAGE_BATCH_TIMEOUT_MS = 2_000;
+  private static readonly RUNTIME_PIDUSAGE_SINGLE_TIMEOUT_MS = 750;
+  private static readonly RUNTIME_PIDUSAGE_FALLBACK_CONCURRENCY = 16;
   private static readonly MEMBER_SPAWN_STATUS_SNAPSHOT_CACHE_TTL_MS = 500;
   private static readonly LAUNCH_STATE_NOOP_REFRESH_MS = 15_000;
   private static readonly RETAINED_PROVISIONING_PROGRESS_TTL_MS = 5 * 60_000;
@@ -5928,6 +6106,20 @@ export class TeamProvisioningService {
   private readonly agentRuntimeSnapshotCache = new Map<
     string,
     { expiresAtMs: number; snapshot: TeamAgentRuntimeSnapshot }
+  >();
+  private readonly agentRuntimeResourceHistoryByTeam = new Map<
+    string,
+    Map<string, TeamAgentRuntimeResourceSample[]>
+  >();
+  private readonly runtimeProcessRowsForUsageSnapshotByTeam = new Map<
+    string,
+    {
+      expiresAtMs: number;
+      generation: number;
+      runId: string | null;
+      rows: RuntimeTelemetryProcessTableRow[] | null;
+      includesWindowsHostRows: boolean;
+    }
   >();
   private readonly agentRuntimeSnapshotInFlightByTeam = new Map<
     string,
@@ -6219,6 +6411,7 @@ export class TeamProvisioningService {
     this.agentRuntimeSnapshotInFlightByTeam.delete(teamName);
     this.liveTeamAgentRuntimeMetadataCache.delete(teamName);
     this.liveTeamAgentRuntimeMetadataInFlightByTeam.delete(teamName);
+    this.runtimeProcessRowsForUsageSnapshotByTeam.delete(teamName);
   }
 
   private cloneMemberSpawnStatusesSnapshot(
@@ -7938,12 +8131,30 @@ export class TeamProvisioningService {
     return typeof deliveredUserMessageId === 'string' && deliveredUserMessageId.trim().length > 0;
   }
 
+  private hasOpenCodeAcceptedRuntimePrompt(
+    ledgerRecord?: OpenCodePromptDeliveryLedgerRecord | null
+  ): boolean {
+    return Boolean(
+      ledgerRecord?.acceptedAt ||
+      ledgerRecord?.runtimePromptMessageId?.trim() ||
+      ledgerRecord?.lastRuntimePromptMessageId?.trim() ||
+      ledgerRecord?.deliveredUserMessageId?.trim() ||
+      (ledgerRecord?.runtimePromptMessageIds ?? []).some((messageId) => messageId.trim())
+    );
+  }
+
   private isOpenCodeDeliveryRetryablePendingResponse(input: {
     ledgerRecord: OpenCodePromptDeliveryLedgerRecord;
     visibleReply?: OpenCodeVisibleReplyProof | null;
     readAllowed: boolean;
   }): boolean {
     if (input.readAllowed) {
+      return false;
+    }
+    if (
+      input.ledgerRecord.responseState === 'session_stale' &&
+      this.hasOpenCodeAcceptedRuntimePrompt(input.ledgerRecord)
+    ) {
       return false;
     }
     if (isOpenCodePromptDeliveryRetryableResponseState(input.ledgerRecord.responseState)) {
@@ -8042,6 +8253,80 @@ export class TeamProvisioningService {
         typeof reason === 'string' &&
         reason.toLowerCase().includes('runtime manifest high watermark is stale')
     );
+  }
+
+  private isOpenCodeNoAssistantDeliveryFailure(
+    record: OpenCodePromptDeliveryLedgerRecord
+  ): boolean {
+    if (record.inboxReadCommittedAt) {
+      return false;
+    }
+
+    const noAssistantState =
+      record.responseState === 'empty_assistant_turn' ||
+      record.responseState === 'prompt_delivered_no_assistant_message';
+    const reasonText = [record.responseState, record.lastReason, ...record.diagnostics]
+      .filter((reason): reason is string => typeof reason === 'string' && reason.trim().length > 0)
+      .join('\n')
+      .toLowerCase();
+    if (
+      !noAssistantState &&
+      !reasonText.includes('empty_assistant_turn') &&
+      !reasonText.includes('prompt_delivered_no_assistant_message') &&
+      !reasonText.includes('accepted the prompt, but no assistant turn was recorded')
+    ) {
+      return false;
+    }
+
+    return ![record.lastReason, ...record.diagnostics].some((reason) => {
+      const reasonCode = classifyOpenCodeRuntimeDeliveryReasonCode(reason ?? undefined);
+      return (
+        reasonCode === 'quota_exhausted' ||
+        reasonCode === 'auth_error' ||
+        reasonCode === 'filesystem_error'
+      );
+    });
+  }
+
+  private isOpenCodeNoAssistantTerminalDeliveryFailure(
+    record: OpenCodePromptDeliveryLedgerRecord
+  ): boolean {
+    return (
+      record.status === 'failed_terminal' &&
+      record.attempts <= record.maxAttempts &&
+      this.isOpenCodeNoAssistantDeliveryFailure(record)
+    );
+  }
+
+  private async requeueOpenCodeNoAssistantTerminalDeliveryIfNeeded(input: {
+    ledger: OpenCodePromptDeliveryLedgerStore;
+    ledgerRecord: OpenCodePromptDeliveryLedgerRecord;
+  }): Promise<OpenCodePromptDeliveryLedgerRecord> {
+    if (!this.isOpenCodeNoAssistantTerminalDeliveryFailure(input.ledgerRecord)) {
+      return input.ledgerRecord;
+    }
+
+    const scheduledAt = nowIso();
+    const requeued = await input.ledger.markNextAttemptScheduled({
+      id: input.ledgerRecord.id,
+      status: 'retry_scheduled',
+      nextAttemptAt: scheduledAt,
+      reason: 'opencode_prompt_delivery_requeued_after_terminal_no_assistant_response',
+      scheduledAt,
+    });
+    logger.info(
+      'opencode_prompt_delivery_requeued_after_terminal_no_assistant_response',
+      JSON.stringify({
+        teamName: requeued.teamName,
+        memberName: requeued.memberName,
+        laneId: requeued.laneId,
+        runId: requeued.runId,
+        inboxMessageId: requeued.inboxMessageId,
+        attempts: requeued.attempts,
+        maxAttempts: requeued.maxAttempts,
+      })
+    );
+    return requeued;
   }
 
   private async requeueOpenCodeRuntimeManifestWatermarkDeliveryIfNeeded(input: {
@@ -9084,6 +9369,50 @@ export class TeamProvisioningService {
     );
   }
 
+  private isOpenCodeSessionRefreshRetryRecord(
+    record: OpenCodePromptDeliveryLedgerRecord,
+    reason: string | null | undefined
+  ): boolean {
+    const stampedSessionRefreshReason = record.lastSessionRefreshReason?.trim();
+    const stampedSessionRefreshReasonIsExplicit = this.isExplicitOpenCodeSessionRefreshStamp(
+      stampedSessionRefreshReason
+    );
+    const currentReason = reason?.trim();
+    const lastReason = record.lastReason?.trim();
+    const currentReasonConfirmsStamp = currentReason
+      ? currentReason === stampedSessionRefreshReason
+      : lastReason === stampedSessionRefreshReason;
+    if (
+      record.responseState === 'session_stale' &&
+      stampedSessionRefreshReason &&
+      stampedSessionRefreshReasonIsExplicit &&
+      currentReasonConfirmsStamp
+    ) {
+      return isOpenCodeSessionRefreshResponseState({
+        responseState: record.responseState,
+        reason: currentReason ?? stampedSessionRefreshReason,
+      });
+    }
+    if (record.responseState !== 'session_stale') {
+      return isOpenCodeSessionRefreshResponseState({
+        responseState: record.responseState,
+        reason,
+      });
+    }
+    return isOpenCodeSessionRefreshResponseState({
+      responseState: record.responseState,
+      reason,
+      diagnostics: record.diagnostics,
+    });
+  }
+
+  private isExplicitOpenCodeSessionRefreshStamp(reason: string | null | undefined): boolean {
+    return (
+      isOpenCodeResolvedBehaviorChangedReason(reason) ||
+      isOpenCodeSessionTransportChangedReason(reason)
+    );
+  }
+
   private async scheduleOpenCodePromptLedgerFollowUp(input: {
     ledger: OpenCodePromptDeliveryLedgerStore;
     ledgerRecord: OpenCodePromptDeliveryLedgerRecord;
@@ -9093,7 +9422,112 @@ export class TeamProvisioningService {
     reason: string;
   }): Promise<OpenCodePromptDeliveryLedgerRecord> {
     const now = nowIso();
-    if (input.retry && input.ledgerRecord.attempts >= input.ledgerRecord.maxAttempts) {
+    const sessionRefreshRetry =
+      input.retry && this.isOpenCodeSessionRefreshRetryRecord(input.ledgerRecord, input.reason);
+    const acceptedPromptSessionStaleObservation =
+      !input.retry &&
+      input.ledgerRecord.responseState === 'session_stale' &&
+      this.hasOpenCodeAcceptedRuntimePrompt(input.ledgerRecord);
+    if (acceptedPromptSessionStaleObservation) {
+      const maxSessionRefreshAttempts =
+        input.ledgerRecord.maxSessionRefreshAttempts ??
+        OPENCODE_PROMPT_DELIVERY_SESSION_REFRESH_MAX_ATTEMPTS;
+      if ((input.ledgerRecord.sessionRefreshAttempts ?? 0) >= maxSessionRefreshAttempts) {
+        return await input.ledger.markFailedTerminal({
+          id: input.ledgerRecord.id,
+          reason: 'opencode_session_stale_observe_loop_after_accepted_prompt',
+          diagnostics: [
+            input.reason,
+            `OpenCode session stayed stale while observing an accepted prompt after ${maxSessionRefreshAttempts} attempt(s).`,
+          ],
+          failedAt: now,
+        });
+      }
+      const delayMs = OPENCODE_PROMPT_DELIVERY_RETRY_DELAY_MS;
+      const nextAttemptAt = new Date(Date.now() + delayMs).toISOString();
+      const ledgerRecord = await input.ledger.markSessionStaleObservationScheduled({
+        id: input.ledgerRecord.id,
+        nextAttemptAt,
+        reason: input.reason,
+        scheduledAt: now,
+        maxSessionRefreshAttempts,
+        diagnostics: ['opencode_session_stale_observe_scheduled_after_accepted_prompt'],
+      });
+      this.logOpenCodePromptDeliveryEvent(
+        'opencode_prompt_delivery_response_observed',
+        ledgerRecord,
+        {
+          retry: false,
+          reason: input.reason,
+          observeOnlyAfterAcceptedPrompt: true,
+          sessionRefreshAttempts: ledgerRecord.sessionRefreshAttempts ?? 0,
+          maxSessionRefreshAttempts,
+        }
+      );
+      this.scheduleOpenCodePromptDeliveryWatchdog({
+        teamName: input.teamName,
+        memberName: input.memberName,
+        messageId: input.ledgerRecord.inboxMessageId,
+        delayMs,
+      });
+      return ledgerRecord;
+    }
+    if (sessionRefreshRetry) {
+      const maxSessionRefreshAttempts =
+        input.ledgerRecord.maxSessionRefreshAttempts ??
+        OPENCODE_PROMPT_DELIVERY_SESSION_REFRESH_MAX_ATTEMPTS;
+      if ((input.ledgerRecord.sessionRefreshAttempts ?? 0) >= maxSessionRefreshAttempts) {
+        return await input.ledger.markFailedTerminal({
+          id: input.ledgerRecord.id,
+          reason: 'opencode_session_refresh_loop_after_resolved_behavior_changed',
+          diagnostics: [
+            input.reason,
+            `OpenCode session stayed stale after ${maxSessionRefreshAttempts} session refresh attempt(s).`,
+          ],
+          failedAt: now,
+        });
+      }
+      const delayMs = this.getOpenCodeDeliveryNextDelayMs({
+        responseState: input.ledgerRecord.responseState,
+        retry: input.retry,
+        ledgerRecord: input.ledgerRecord,
+      });
+      const nextAttemptAt = new Date(Date.now() + delayMs).toISOString();
+      const ledgerRecord = await input.ledger.markSessionRefreshScheduled({
+        id: input.ledgerRecord.id,
+        nextAttemptAt,
+        reason: input.reason,
+        scheduledAt: now,
+        maxSessionRefreshAttempts,
+        diagnostics: ['opencode_session_refresh_scheduled_after_resolved_behavior_changed'],
+      });
+      this.logOpenCodePromptDeliveryEvent(
+        'opencode_prompt_delivery_session_refresh_scheduled',
+        ledgerRecord,
+        {
+          retry: true,
+          reason: input.reason,
+          sessionRefreshAttempts: ledgerRecord.sessionRefreshAttempts ?? 0,
+          maxSessionRefreshAttempts,
+        }
+      );
+      this.scheduleOpenCodePromptDeliveryWatchdog({
+        teamName: input.teamName,
+        memberName: input.memberName,
+        messageId: input.ledgerRecord.inboxMessageId,
+        delayMs,
+      });
+      return ledgerRecord;
+    }
+    const canScheduleNoAssistantRecoveryRetry =
+      input.retry &&
+      input.ledgerRecord.attempts === input.ledgerRecord.maxAttempts &&
+      this.isOpenCodeNoAssistantDeliveryFailure(input.ledgerRecord);
+    if (
+      input.retry &&
+      input.ledgerRecord.attempts >= input.ledgerRecord.maxAttempts &&
+      !canScheduleNoAssistantRecoveryRetry
+    ) {
       return await input.ledger.markFailedTerminal({
         id: input.ledgerRecord.id,
         reason: input.reason,
@@ -9816,7 +10250,6 @@ export class TeamProvisioningService {
     let liveSecondaryLaneRunId: string | null = null;
     let trackedSecondaryLanePresent = false;
     let trackedSecondaryLaneSnapshotKnown = false;
-    let trackedSecondaryLaneBootstrapConfirmed: boolean | null = null;
     if (
       trackedRun &&
       laneIdentity.laneKind === 'secondary' &&
@@ -9831,15 +10264,6 @@ export class TeamProvisioningService {
       );
       trackedSecondaryLanePresent = liveLane != null;
       liveSecondaryLaneRunId = liveLane?.runId?.trim() || null;
-      const liveLaneMember = liveLane
-        ? (liveLane.result?.members?.[canonicalMemberName] ??
-          liveLane.result?.members?.[liveLane.member.name])
-        : null;
-      if (liveLaneMember) {
-        trackedSecondaryLaneBootstrapConfirmed =
-          liveLaneMember.bootstrapConfirmed === true ||
-          liveLaneMember.launchState === 'confirmed_alive';
-      }
       if (!liveLane && trackedSecondaryLaneSnapshotKnown) {
         return { delivered: false, reason: 'opencode_runtime_not_active' };
       }
@@ -9952,23 +10376,41 @@ export class TeamProvisioningService {
       return { delivered: false, reason: 'opencode_runtime_not_active' };
     }
 
-    if (laneIdentity.laneKind === 'secondary' && laneIdentity.laneOwnerProviderId === 'opencode') {
-      const bootstrapReady =
-        trackedSecondaryLaneBootstrapConfirmed === true ||
-        (await this.hasDeliverableOpenCodeRuntimeBootstrapSessionEvidence({
-          teamName,
-          runId: runtimeRunId,
-          laneId: laneIdentity.laneId,
-          memberName: canonicalMemberName,
-        }));
-      if (!bootstrapReady) {
-        return {
-          delivered: false,
-          reason: 'opencode_runtime_not_active',
-          diagnostics: [
-            `OpenCode runtime bootstrap is not confirmed for ${canonicalMemberName}. Message was saved and will be retried after runtime check-in.`,
-          ],
-        };
+    let legacyOpenCodeBootstrapSessionToStamp: OpenCodeCommittedBootstrapSessionRecord | null =
+      null;
+    let refreshedOpenCodeBootstrapSessionToStamp: OpenCodeCommittedBootstrapSessionRecord | null =
+      null;
+    let forceOpenCodeSessionRefreshReason: string | undefined;
+    if (laneIdentity.laneOwnerProviderId === 'opencode') {
+      const bootstrapSession = await this.findDeliverableOpenCodeRuntimeBootstrapSessionEvidence({
+        teamName,
+        runId: runtimeRunId,
+        laneId: laneIdentity.laneId,
+        memberName: canonicalMemberName,
+      });
+      if (!bootstrapSession) {
+        if (laneIdentity.laneKind === 'secondary') {
+          return {
+            delivered: false,
+            reason: 'opencode_runtime_not_active',
+            diagnostics: [
+              `OpenCode runtime bootstrap is not confirmed for ${canonicalMemberName}. Message was saved and will be retried after runtime check-in.`,
+            ],
+          };
+        }
+      } else {
+        if (!bootstrapSession.appMcpTransportHash?.trim()) {
+          legacyOpenCodeBootstrapSessionToStamp = bootstrapSession;
+        }
+        const appMcpTransportMismatch =
+          this.getOpenCodeAppMcpTransportMismatchDiagnostic(bootstrapSession);
+        if (appMcpTransportMismatch) {
+          refreshedOpenCodeBootstrapSessionToStamp = bootstrapSession;
+          forceOpenCodeSessionRefreshReason = appMcpTransportMismatch;
+          logger.info(
+            `[${teamName}] OpenCode delivery detected stale app MCP transport for ${canonicalMemberName}; requesting bridge session refresh before send. ${appMcpTransportMismatch}`
+          );
+        }
       }
     }
 
@@ -10024,6 +10466,7 @@ export class TeamProvisioningService {
         workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
         controlUrl: controlUrl ?? undefined,
         taskRefs: input.taskRefs,
+        forceSessionRefreshReason: forceOpenCodeSessionRefreshReason,
       });
       await this.rememberOpenCodeRuntimePidFromBridge({
         teamName,
@@ -10034,6 +10477,20 @@ export class TeamProvisioningService {
         runtimePid: result.runtimePid,
         reason: 'opencode_delivery_runtime_pid_observed',
       });
+      if (result.ok && legacyOpenCodeBootstrapSessionToStamp) {
+        await this.stampOpenCodeAppMcpTransportEvidenceIfMissing(
+          legacyOpenCodeBootstrapSessionToStamp
+        );
+      }
+      if (result.ok && result.sessionId && refreshedOpenCodeBootstrapSessionToStamp) {
+        await this.stampOpenCodeAppMcpTransportEvidenceIfMissing(
+          refreshedOpenCodeBootstrapSessionToStamp,
+          {
+            overwriteExistingHash: true,
+            runtimeSessionId: result.sessionId,
+          }
+        );
+      }
       const responseObservation = this.normalizeOpenCodeDeliveryResponseObservation(
         result.responseObservation
       );
@@ -10147,9 +10604,7 @@ export class TeamProvisioningService {
       this.logOpenCodePromptDeliveryEvent('opencode_prompt_delivery_ledger_created', ledgerRecord);
     }
     const deliveryAttemptId = ledgerRecord
-      ? [ledgerRecord.id, ledgerRecord.attempts + 1, ledgerRecord.payloadHash.slice(0, 12)].join(
-          ':'
-        )
+      ? buildOpenCodePromptDeliveryAttemptId(ledgerRecord)
       : undefined;
 
     if (ledgerRecord && ledger && messageId) {
@@ -10268,7 +10723,16 @@ export class TeamProvisioningService {
         attemptDue,
         ledgerRecord,
       });
-      if (ledgerRecord.status !== 'pending' && adapter.observeMessageDelivery) {
+      const retryShouldRefreshSessionBeforeObserve =
+        retryDueBeforeObserve &&
+        ledgerRecord.status === 'retry_scheduled' &&
+        !this.hasOpenCodeAcceptedRuntimePrompt(ledgerRecord) &&
+        this.isOpenCodeSessionRefreshRetryRecord(ledgerRecord, ledgerRecord.lastReason);
+      if (
+        ledgerRecord.status !== 'pending' &&
+        adapter.observeMessageDelivery &&
+        !retryShouldRefreshSessionBeforeObserve
+      ) {
         const observed = await adapter.observeMessageDelivery({
           ...(runtimeRunId ? { runId: runtimeRunId } : {}),
           teamName,
@@ -10376,6 +10840,50 @@ export class TeamProvisioningService {
           readAllowed,
         });
         const retryDue = retryDueBeforeObserve;
+        if (
+          retryDue &&
+          retryable &&
+          this.isOpenCodeSessionRefreshRetryRecord(ledgerRecord, pendingReason)
+        ) {
+          ledgerRecord = await this.scheduleOpenCodePromptLedgerFollowUp({
+            ledger,
+            ledgerRecord,
+            teamName,
+            memberName: canonicalMemberName,
+            retry: true,
+            reason: pendingReason,
+          });
+          if (ledgerRecord.status === 'failed_terminal') {
+            return {
+              delivered: false,
+              accepted: true,
+              responsePending: false,
+              responseState: ledgerRecord.responseState,
+              ledgerStatus: ledgerRecord.status,
+              ledgerRecordId: ledgerRecord.id,
+              laneId: laneIdentity.laneId,
+              visibleReplyMessageId: ledgerRecord.visibleReplyMessageId ?? undefined,
+              visibleReplyCorrelation: ledgerRecord.visibleReplyCorrelation ?? undefined,
+              reason: ledgerRecord.lastReason ?? 'opencode_prompt_delivery_failed_terminal',
+              diagnostics: ledgerRecord.diagnostics.length
+                ? ledgerRecord.diagnostics
+                : [ledgerRecord.lastReason ?? 'opencode_prompt_delivery_failed_terminal'],
+            };
+          }
+          return {
+            delivered: true,
+            accepted: true,
+            responsePending: true,
+            responseState: ledgerRecord.responseState,
+            ledgerStatus: ledgerRecord.status,
+            ledgerRecordId: ledgerRecord.id,
+            laneId: laneIdentity.laneId,
+            visibleReplyMessageId: ledgerRecord.visibleReplyMessageId ?? undefined,
+            visibleReplyCorrelation: ledgerRecord.visibleReplyCorrelation ?? undefined,
+            reason: ledgerRecord.lastReason ?? 'opencode_delivery_response_pending',
+            diagnostics: ledgerRecord.diagnostics,
+          };
+        }
         if (!retryDue || !retryable) {
           ledgerRecord = await this.scheduleOpenCodePromptLedgerFollowUp({
             ledger,
@@ -10385,6 +10893,23 @@ export class TeamProvisioningService {
             retry: retryable,
             reason: pendingReason,
           });
+          if (ledgerRecord.status === 'failed_terminal') {
+            return {
+              delivered: false,
+              accepted: true,
+              responsePending: false,
+              responseState: ledgerRecord.responseState,
+              ledgerStatus: ledgerRecord.status,
+              ledgerRecordId: ledgerRecord.id,
+              laneId: laneIdentity.laneId,
+              visibleReplyMessageId: ledgerRecord.visibleReplyMessageId ?? undefined,
+              visibleReplyCorrelation: ledgerRecord.visibleReplyCorrelation ?? undefined,
+              reason: ledgerRecord.lastReason ?? 'opencode_prompt_delivery_failed_terminal',
+              diagnostics: ledgerRecord.diagnostics.length
+                ? ledgerRecord.diagnostics
+                : [ledgerRecord.lastReason ?? 'opencode_prompt_delivery_failed_terminal'],
+            };
+          }
           return {
             delivered: true,
             accepted: true,
@@ -10422,6 +10947,19 @@ export class TeamProvisioningService {
       : 'opencode_delivery_response_pending';
     const controlUrl =
       input.messageKind === 'member_work_sync_nudge' ? await this.resolveControlApiBaseUrl() : null;
+    if (
+      !forceOpenCodeSessionRefreshReason &&
+      ledgerRecord?.status === 'retry_scheduled' &&
+      !this.hasOpenCodeAcceptedRuntimePrompt(ledgerRecord) &&
+      isOpenCodePromptDeliveryAttemptDue(ledgerRecord) &&
+      this.isOpenCodeSessionRefreshRetryRecord(ledgerRecord, ledgerRecord.lastReason)
+    ) {
+      forceOpenCodeSessionRefreshReason =
+        ledgerRecord.lastSessionRefreshReason ??
+        ledgerRecord.lastReason ??
+        ledgerRecord.responseState ??
+        'session_stale';
+    }
     const deliveryText = this.buildOpenCodePromptDeliveryAttemptText({
       text: input.text,
       controlText: this.buildOpenCodePromptDeliveryRepairControlText({
@@ -10450,6 +10988,7 @@ export class TeamProvisioningService {
         workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
         controlUrl: controlUrl ?? undefined,
         taskRefs: input.taskRefs,
+        forceSessionRefreshReason: forceOpenCodeSessionRefreshReason,
       });
     } catch (error) {
       const diagnostic = `opencode_message_delivery_exception: ${getErrorMessage(error)}`;
@@ -10516,6 +11055,20 @@ export class TeamProvisioningService {
       runtimePid: result.runtimePid,
       reason: 'opencode_delivery_runtime_pid_observed',
     });
+    if (result.ok && legacyOpenCodeBootstrapSessionToStamp) {
+      await this.stampOpenCodeAppMcpTransportEvidenceIfMissing(
+        legacyOpenCodeBootstrapSessionToStamp
+      );
+    }
+    if (result.ok && result.sessionId && refreshedOpenCodeBootstrapSessionToStamp) {
+      await this.stampOpenCodeAppMcpTransportEvidenceIfMissing(
+        refreshedOpenCodeBootstrapSessionToStamp,
+        {
+          overwriteExistingHash: true,
+          runtimeSessionId: result.sessionId,
+        }
+      );
+    }
     const responseObservation = this.normalizeOpenCodeDeliveryResponseObservation(
       result.responseObservation
     );
@@ -12689,6 +13242,8 @@ export class TeamProvisioningService {
     const sessionStorePath = path.join(runtimeDirectory, descriptor.relativePath);
     const existingSessions = await this.readOpenCodeRuntimeSessionStore(sessionStorePath);
     const source = input.source ?? 'runtime_bootstrap_checkin';
+    const appMcpTransportEvidence =
+      source === 'app_managed_bootstrap' ? getCurrentAgentTeamsMcpHttpTransportEvidence() : null;
     const session = {
       id: input.runtimeSessionId,
       teamName: input.teamName,
@@ -12700,6 +13255,12 @@ export class TeamProvisioningService {
       source,
       ...(source === 'app_managed_bootstrap' && input.appManagedBootstrapCandidate
         ? { appManagedBootstrapCandidate: input.appManagedBootstrapCandidate }
+        : {}),
+      ...(appMcpTransportEvidence
+        ? {
+            appMcpTransportHash: appMcpTransportEvidence.urlHash,
+            appMcpTransportEvidence,
+          }
         : {}),
     };
     const sessions = this.mergeOpenCodeRuntimeSessionRecords(existingSessions, session);
@@ -12788,29 +13349,159 @@ export class TeamProvisioningService {
     });
   }
 
-  private async hasDeliverableOpenCodeRuntimeBootstrapSessionEvidence(input: {
+  private getOpenCodeAppMcpTransportMismatchDiagnostic(
+    session: OpenCodeCommittedBootstrapSessionRecord
+  ): string | null {
+    const committedHash = session.appMcpTransportHash?.trim();
+    const currentHash = getCurrentAgentTeamsMcpHttpTransportEvidence()?.urlHash?.trim();
+    if (!committedHash || !currentHash || committedHash === currentHash) {
+      return null;
+    }
+    return `opencode_app_mcp_transport_changed:${committedHash}->${currentHash}`;
+  }
+
+  private async stampOpenCodeAppMcpTransportEvidenceIfMissing(
+    session: OpenCodeCommittedBootstrapSessionRecord,
+    options: {
+      overwriteExistingHash?: boolean;
+      runtimeSessionId?: string | null;
+    } = {}
+  ): Promise<void> {
+    const overwriteExistingHash = options.overwriteExistingHash === true;
+    const runtimeSessionId = options.runtimeSessionId?.trim() || null;
+    if (session.appMcpTransportHash?.trim() && !overwriteExistingHash) {
+      return;
+    }
+    const appMcpTransportEvidence = getCurrentAgentTeamsMcpHttpTransportEvidence();
+    if (!appMcpTransportEvidence) {
+      return;
+    }
+    const descriptor = OPENCODE_RUNTIME_STORE_DESCRIPTORS.find(
+      (candidate) => candidate.schemaName === 'opencode.sessionStore'
+    );
+    if (!descriptor) {
+      return;
+    }
+
+    try {
+      const manifestPath = getOpenCodeRuntimeManifestPath(
+        getTeamsBasePath(),
+        session.teamName,
+        session.laneId
+      );
+      const runtimeDirectory = path.dirname(manifestPath);
+      const sessionStorePath = path.join(runtimeDirectory, descriptor.relativePath);
+      const existingSessions = await this.readOpenCodeRuntimeSessionStore(sessionStorePath);
+      let changed = false;
+      const sessions = existingSessions
+        .filter((record) => {
+          if (!runtimeSessionId || runtimeSessionId === session.id) {
+            return true;
+          }
+          const recordId = typeof record.id === 'string' ? record.id : '';
+          const recordRunId = typeof record.runId === 'string' ? record.runId : null;
+          const recordLaneId = typeof record.laneId === 'string' ? record.laneId : '';
+          const recordMemberName = typeof record.memberName === 'string' ? record.memberName : '';
+          return !(
+            recordId === runtimeSessionId &&
+            recordRunId === session.runId &&
+            recordLaneId === session.laneId &&
+            namesMatchCaseInsensitive(recordMemberName, session.memberName)
+          );
+        })
+        .map((record) => {
+          const recordId = typeof record.id === 'string' ? record.id : '';
+          const recordRunId = typeof record.runId === 'string' ? record.runId : null;
+          const recordLaneId = typeof record.laneId === 'string' ? record.laneId : '';
+          const recordMemberName = typeof record.memberName === 'string' ? record.memberName : '';
+          const hasTransportHash =
+            typeof record.appMcpTransportHash === 'string' &&
+            record.appMcpTransportHash.trim().length > 0;
+          if (
+            recordId !== session.id ||
+            recordRunId !== session.runId ||
+            recordLaneId !== session.laneId ||
+            !namesMatchCaseInsensitive(recordMemberName, session.memberName) ||
+            (hasTransportHash && !overwriteExistingHash)
+          ) {
+            return record;
+          }
+          changed = true;
+          return {
+            ...record,
+            ...(runtimeSessionId ? { id: runtimeSessionId } : {}),
+            appMcpTransportHash: appMcpTransportEvidence.urlHash,
+            appMcpTransportEvidence,
+          };
+        });
+      if (!changed) {
+        return;
+      }
+
+      const manifestStore = createRuntimeStoreManifestStore({
+        filePath: manifestPath,
+        teamName: session.teamName,
+        lockOptions: OPENCODE_BOOTSTRAP_EVIDENCE_LOCK_OPTIONS,
+      });
+      const receiptStore = createRuntimeStoreReceiptStore({
+        filePath: path.join(runtimeDirectory, 'opencode-runtime-receipts.json'),
+        lockOptions: OPENCODE_BOOTSTRAP_EVIDENCE_LOCK_OPTIONS,
+      });
+      const writer = new RuntimeStoreBatchWriter(runtimeDirectory, manifestStore, receiptStore);
+      await writer.writeBatch({
+        teamName: session.teamName,
+        runId: session.runId,
+        capabilitySnapshotId: null,
+        behaviorFingerprint: null,
+        reason: 'delivery_commit',
+        writes: [
+          {
+            descriptor,
+            data: { sessions },
+          },
+        ],
+      });
+    } catch (error) {
+      logger.warn(
+        `[${session.teamName}] Failed to stamp OpenCode app MCP transport evidence for ${session.memberName}: ${getErrorMessage(error)}`
+      );
+    }
+  }
+
+  private async findDeliverableOpenCodeRuntimeBootstrapSessionEvidence(input: {
     teamName: string;
     runId: string | null;
     laneId: string;
     memberName: string;
-  }): Promise<boolean> {
+  }): Promise<OpenCodeCommittedBootstrapSessionRecord | null> {
     const evidence = await readCommittedOpenCodeBootstrapSessionEvidence({
       teamsBasePath: getTeamsBasePath(),
       teamName: input.teamName,
       laneId: input.laneId,
     }).catch(() => null);
     if (!evidence?.committed) {
-      return false;
+      return null;
     }
     const activeRunId = evidence.activeRunId?.trim() || null;
     if (activeRunId !== input.runId) {
-      return false;
+      return null;
     }
-    return evidence.sessions.some(
-      (session) =>
-        session.runId === input.runId &&
-        namesMatchCaseInsensitive(session.memberName, input.memberName)
+    return (
+      evidence.sessions.find(
+        (session) =>
+          session.runId === input.runId &&
+          namesMatchCaseInsensitive(session.memberName, input.memberName)
+      ) ?? null
     );
+  }
+
+  private async hasDeliverableOpenCodeRuntimeBootstrapSessionEvidence(input: {
+    teamName: string;
+    runId: string | null;
+    laneId: string;
+    memberName: string;
+  }): Promise<boolean> {
+    return (await this.findDeliverableOpenCodeRuntimeBootstrapSessionEvidence(input)) != null;
   }
 
   private async readOpenCodeRuntimeSessionStore(
@@ -15119,20 +15810,86 @@ export class TeamProvisioningService {
       spawnStatusSnapshot?.source === 'live' &&
       activeRuntimeRunId.length > 0 &&
       spawnStatusRunId === activeRuntimeRunId;
-    const runtimePids = new Set<number>();
+    const runtimeRootOwnersByPid = new Map<number, Set<string>>();
+    const runtimeUsageRootPids = new Set<number>();
+    const addRuntimeRootPid = (
+      pid: unknown,
+      ownerKey: string,
+      options: { sampleUsage?: boolean } = {}
+    ): void => {
+      if (typeof pid !== 'number' || !Number.isFinite(pid) || pid <= 0) {
+        return;
+      }
+      const owners = runtimeRootOwnersByPid.get(pid) ?? new Set<string>();
+      owners.add(ownerKey);
+      runtimeRootOwnersByPid.set(pid, owners);
+      if (options.sampleUsage !== false) {
+        runtimeUsageRootPids.add(pid);
+      }
+    };
+    const canSampleRuntimeMetadataPid = (
+      metadata: LiveTeamAgentRuntimeMetadata,
+      pid: unknown
+    ): boolean => {
+      if (typeof pid !== 'number' || !Number.isFinite(pid) || pid <= 0) {
+        return false;
+      }
+      if (process.platform !== 'win32') {
+        return true;
+      }
+      const paneId = metadata.tmuxPaneId?.trim() ?? '';
+      if (metadata.backendType === 'tmux' || (paneId && !paneId.startsWith('process:'))) {
+        return false;
+      }
+      return (
+        metadata.pidSource !== 'tmux_child' &&
+        metadata.pidSource !== 'tmux_pane' &&
+        metadata.pidSource !== 'persisted_metadata'
+      );
+    };
     const leadPid = run?.child?.pid;
-    if (typeof leadPid === 'number' && Number.isFinite(leadPid) && leadPid > 0) {
-      runtimePids.add(leadPid);
-    }
-    for (const metadata of liveRuntimeByMember.values()) {
-      const memberPid = metadata.pid ?? metadata.metricsPid;
-      if (typeof memberPid === 'number' && Number.isFinite(memberPid) && memberPid > 0) {
-        runtimePids.add(memberPid);
+    addRuntimeRootPid(leadPid, '__lead__');
+    for (const [memberName, metadata] of liveRuntimeByMember.entries()) {
+      const memberPids = [metadata.pid, metadata.metricsPid];
+      for (const memberPid of memberPids) {
+        addRuntimeRootPid(memberPid, memberName, {
+          sampleUsage: canSampleRuntimeMetadataPid(metadata, memberPid),
+        });
       }
     }
-    const rssBytesByPid = await this.readProcessRssBytesByPid([...runtimePids]);
+    let runtimeUsageTreesByRootPid = new Map<number, { pids: number[]; truncated: boolean }>();
+    let usageStatsByPid = new Map<number, RuntimeProcessUsageStats>();
+    try {
+      const runtimeProcessRows =
+        runtimeRootOwnersByPid.size > 0
+          ? await this.readRuntimeProcessRowsForUsageSnapshot(teamName, {
+              includeWindowsHostRows: process.platform === 'win32',
+            })
+          : null;
+      this.addRuntimeRootOwnersFromProcessRows(
+        teamName,
+        runtimeProcessRows,
+        runtimeRootOwnersByPid
+      );
+      runtimeUsageTreesByRootPid = this.buildRuntimeUsageProcessTrees(
+        [...runtimeUsageRootPids],
+        runtimeProcessRows,
+        runtimeRootOwnersByPid
+      );
+      const runtimeUsagePids = [
+        ...new Set([...runtimeUsageTreesByRootPid.values()].flatMap((tree) => tree.pids)),
+      ];
+      usageStatsByPid = await this.readProcessUsageStatsByPid(runtimeUsagePids);
+    } catch (error) {
+      logger.debug(
+        `[${teamName}] Runtime telemetry sampling failed; continuing without resource metrics: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
     const persistedRuntimeMembers = this.readPersistedRuntimeMembers(teamName);
     const snapshotMembers: Record<string, TeamAgentRuntimeEntry> = {};
+    const activeResourceHistoryKeys = new Set<string>();
 
     const getPersistedRuntimeMember = (
       memberName: string
@@ -15173,6 +15930,16 @@ export class TeamProvisioningService {
       return fallback;
     };
 
+    const activeRunMemberByName = new Map<string, TeamMember>();
+    const runAllEffectiveMembers = run?.allEffectiveMembers ?? [];
+    const activeRunMembers =
+      runAllEffectiveMembers.length > 0 ? runAllEffectiveMembers : (run?.effectiveMembers ?? []);
+    for (const member of activeRunMembers) {
+      const memberName = typeof member?.name === 'string' ? member.name.trim() : '';
+      if (!memberName) continue;
+      activeRunMemberByName.set(memberName, member);
+    }
+
     const candidateMembers = new Map<string, TeamMember>();
     for (const member of configuredMembers) {
       const memberName = typeof member?.name === 'string' ? member.name.trim() : '';
@@ -15201,6 +15968,11 @@ export class TeamProvisioningService {
         fastMode: launchMember?.selectedFastMode,
       });
     }
+    for (const member of activeRunMemberByName.values()) {
+      const memberName = typeof member?.name === 'string' ? member.name.trim() : '';
+      if (!memberName || this.isMemberRemovedInMeta(metaMembers, memberName)) continue;
+      candidateMembers.set(memberName, member);
+    }
 
     for (const member of candidateMembers.values()) {
       const memberName = typeof member?.name === 'string' ? member.name.trim() : '';
@@ -15209,7 +15981,13 @@ export class TeamProvisioningService {
       const isLead = isLeadMember({ name: memberName, agentType: member.agentType });
       if (isLead) {
         const pid = run?.child?.pid;
-        const rssBytes = pid ? rssBytesByPid.get(pid) : undefined;
+        const usageStats = pid
+          ? this.buildRuntimeProcessLoadStatsSafely(teamName, memberName, {
+              rootPid: pid,
+              usageStatsByPid,
+              processTree: runtimeUsageTreesByRootPid.get(pid),
+            })
+          : undefined;
         const runtimeModel =
           run?.request.model?.trim() ||
           (run?.spawnContext
@@ -15217,6 +15995,25 @@ export class TeamProvisioningService {
             : undefined) ||
           member.model?.trim() ||
           undefined;
+        const resourceHistory = pid
+          ? this.recordAgentRuntimeResourceSampleSafely({
+              teamName,
+              memberName,
+              timestamp: updatedAt,
+              cpuPercent: usageStats?.cpuPercent,
+              rssBytes: usageStats?.rssBytes,
+              primaryCpuPercent: usageStats?.primaryCpuPercent,
+              primaryRssBytes: usageStats?.primaryRssBytes,
+              childCpuPercent: usageStats?.childCpuPercent,
+              childRssBytes: usageStats?.childRssBytes,
+              processCount: usageStats?.processCount,
+              runtimeLoadScope: usageStats?.runtimeLoadScope,
+              runtimeLoadTruncated: usageStats?.runtimeLoadTruncated,
+              pidSource: 'lead_process',
+              pid,
+              activeKeys: activeResourceHistoryKeys,
+            })
+          : undefined;
         snapshotMembers[memberName] = {
           memberName,
           alive: Boolean(pid && !run?.processKilled && !run?.cancelRequested),
@@ -15224,7 +16021,25 @@ export class TeamProvisioningService {
           backendType: 'lead',
           ...(pid ? { pid } : {}),
           ...(runtimeModel ? { runtimeModel } : {}),
-          ...(rssBytes != null ? { rssBytes } : {}),
+          ...(usageStats?.rssBytes != null ? { rssBytes: usageStats.rssBytes } : {}),
+          ...(usageStats?.cpuPercent != null ? { cpuPercent: usageStats.cpuPercent } : {}),
+          ...(usageStats?.primaryRssBytes != null
+            ? { primaryRssBytes: usageStats.primaryRssBytes }
+            : {}),
+          ...(usageStats?.primaryCpuPercent != null
+            ? { primaryCpuPercent: usageStats.primaryCpuPercent }
+            : {}),
+          ...(usageStats?.childRssBytes != null ? { childRssBytes: usageStats.childRssBytes } : {}),
+          ...(usageStats?.childCpuPercent != null
+            ? { childCpuPercent: usageStats.childCpuPercent }
+            : {}),
+          ...(usageStats?.processCount != null ? { processCount: usageStats.processCount } : {}),
+          ...(usageStats?.runtimeLoadScope
+            ? { runtimeLoadScope: usageStats.runtimeLoadScope }
+            : {}),
+          ...(usageStats?.runtimeLoadTruncated ? { runtimeLoadTruncated: true } : {}),
+          ...(pid ? { pidSource: 'lead_process' as const } : {}),
+          ...(resourceHistory && resourceHistory.length > 0 ? { resourceHistory } : {}),
           updatedAt,
         };
         continue;
@@ -15234,22 +16049,52 @@ export class TeamProvisioningService {
       const liveRuntimeMember = getLiveRuntimeMember(memberName);
       const spawnStatusMember = getSpawnStatusMember(memberName);
       const launchMember = launchSnapshot?.members[memberName];
+      const activeRunMember = activeRunMemberByName.get(memberName);
+      const activeRunModel = activeRunMember?.model?.trim();
+      const activeRunProviderId =
+        normalizeOptionalTeamProviderId(activeRunMember?.providerId) ??
+        inferTeamProviderIdFromModel(activeRunModel);
+      const liveRuntimeModel = liveRuntimeMember?.model?.trim();
+      const liveRuntimeModelProviderId = inferTeamProviderIdFromModel(liveRuntimeModel);
+      const explicitLiveRuntimeProviderId = normalizeOptionalTeamProviderId(
+        liveRuntimeMember?.providerId
+      );
+      const liveRuntimeProviderConflictsWithActive =
+        activeRunProviderId != null &&
+        ((explicitLiveRuntimeProviderId != null &&
+          explicitLiveRuntimeProviderId !== activeRunProviderId) ||
+          (liveRuntimeModelProviderId != null &&
+            liveRuntimeModelProviderId !== activeRunProviderId));
+      const canUseLiveRuntimeModel = !!liveRuntimeModel && !liveRuntimeProviderConflictsWithActive;
       const backendType =
         liveRuntimeMember?.backendType ??
         normalizeTeamAgentRuntimeBackendType(persistedRuntimeMember?.backendType, false);
       const runtimeModel =
-        liveRuntimeMember?.model ??
+        (canUseLiveRuntimeModel ? liveRuntimeModel : undefined) ??
+        activeRunModel ??
         launchMember?.model?.trim() ??
         member.model?.trim() ??
         undefined;
       const memberProviderId =
-        launchMember?.providerId ??
+        activeRunProviderId ??
+        normalizeOptionalTeamProviderId(launchMember?.providerId) ??
         normalizeOptionalTeamProviderId(member.providerId) ??
         inferTeamProviderIdFromModel(runtimeModel) ??
         inferTeamProviderIdFromModel(launchMember?.model) ??
         inferTeamProviderIdFromModel(member.model);
+      const memberProviderBackendId = migrateProviderBackendId(
+        memberProviderId,
+        activeRunMember?.providerBackendId ??
+          launchMember?.providerBackendId ??
+          member.providerBackendId
+      );
       const isOpenCodeMember = memberProviderId === 'opencode';
-      const configuredCwd = typeof member.cwd === 'string' ? member.cwd.trim() : '';
+      const configuredCwd =
+        typeof activeRunMember?.cwd === 'string'
+          ? activeRunMember.cwd.trim()
+          : typeof member.cwd === 'string'
+            ? member.cwd.trim()
+            : '';
       const runtimeCwd =
         liveRuntimeMember?.cwd ??
         (configuredCwd || (isOpenCodeMember ? currentRuntimeAdapterRun?.cwd : undefined));
@@ -15300,18 +16145,55 @@ export class TeamProvisioningService {
         liveRuntimeMember?.livenessKind === 'runtime_process_candidate'
           ? 'info'
           : liveRuntimeMember?.runtimeDiagnosticSeverity;
-      let rssBytes = rssPid ? rssBytesByPid.get(rssPid) : undefined;
-      if (rssBytes == null && isSharedOpenCodeHost && typeof rssPid === 'number' && rssPid > 0) {
+      if (
+        rssPid &&
+        !usageStatsByPid.has(rssPid) &&
+        isSharedOpenCodeHost &&
+        typeof rssPid === 'number' &&
+        rssPid > 0
+      ) {
         try {
-          const refreshedStat = await pidusage(rssPid, RUNTIME_PIDUSAGE_OPTIONS);
-          if (Number.isFinite(refreshedStat.memory) && refreshedStat.memory >= 0) {
-            rssBytesByPid.set(rssPid, refreshedStat.memory);
-            rssBytes = refreshedStat.memory;
+          const refreshedUsageStats = (await this.readProcessUsageStatsByPid([rssPid])).get(rssPid);
+          if (refreshedUsageStats) {
+            usageStatsByPid.set(rssPid, refreshedUsageStats);
           }
-        } catch {
+        } catch (error) {
+          logger.debug(
+            `[${teamName}] Shared OpenCode host runtime usage refresh failed for pid ${rssPid}; continuing without refreshed metrics: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
           // Shared OpenCode host can exit between discovery and the targeted RSS refresh.
         }
       }
+      const usageStats = rssPid
+        ? this.buildRuntimeProcessLoadStatsSafely(teamName, memberName, {
+            rootPid: rssPid,
+            usageStatsByPid,
+            processTree: runtimeUsageTreesByRootPid.get(rssPid),
+            scope: isSharedOpenCodeHost ? 'shared-host' : undefined,
+          })
+        : undefined;
+      const resourceHistory = rssPid
+        ? this.recordAgentRuntimeResourceSampleSafely({
+            teamName,
+            memberName,
+            timestamp: updatedAt,
+            cpuPercent: usageStats?.cpuPercent,
+            rssBytes: usageStats?.rssBytes,
+            primaryCpuPercent: usageStats?.primaryCpuPercent,
+            primaryRssBytes: usageStats?.primaryRssBytes,
+            childCpuPercent: usageStats?.childCpuPercent,
+            childRssBytes: usageStats?.childRssBytes,
+            processCount: usageStats?.processCount,
+            runtimeLoadScope: usageStats?.runtimeLoadScope,
+            runtimeLoadTruncated: usageStats?.runtimeLoadTruncated,
+            pidSource: liveRuntimeMember?.pidSource,
+            pid: rssPid,
+            runtimePid: liveRuntimeMember?.metricsPid,
+            activeKeys: activeResourceHistoryKeys,
+          })
+        : undefined;
 
       snapshotMembers[memberName] = {
         memberName,
@@ -15319,15 +16201,28 @@ export class TeamProvisioningService {
         restartable,
         ...(backendType ? { backendType } : {}),
         ...(memberProviderId ? { providerId: memberProviderId } : {}),
-        ...(launchMember?.providerBackendId
-          ? { providerBackendId: launchMember.providerBackendId }
-          : {}),
+        ...(memberProviderBackendId ? { providerBackendId: memberProviderBackendId } : {}),
         ...(launchMember?.laneId ? { laneId: launchMember.laneId } : {}),
         ...(launchMember?.laneKind ? { laneKind: launchMember.laneKind } : {}),
         ...(displayPid ? { pid: displayPid } : {}),
         ...(runtimeModel ? { runtimeModel } : {}),
         ...(runtimeCwd ? { cwd: runtimeCwd } : {}),
-        ...(typeof rssBytes === 'number' && rssBytes >= 0 ? { rssBytes } : {}),
+        ...(usageStats?.rssBytes != null ? { rssBytes: usageStats.rssBytes } : {}),
+        ...(usageStats?.cpuPercent != null ? { cpuPercent: usageStats.cpuPercent } : {}),
+        ...(usageStats?.primaryRssBytes != null
+          ? { primaryRssBytes: usageStats.primaryRssBytes }
+          : {}),
+        ...(usageStats?.primaryCpuPercent != null
+          ? { primaryCpuPercent: usageStats.primaryCpuPercent }
+          : {}),
+        ...(usageStats?.childRssBytes != null ? { childRssBytes: usageStats.childRssBytes } : {}),
+        ...(usageStats?.childCpuPercent != null
+          ? { childCpuPercent: usageStats.childCpuPercent }
+          : {}),
+        ...(usageStats?.processCount != null ? { processCount: usageStats.processCount } : {}),
+        ...(usageStats?.runtimeLoadScope ? { runtimeLoadScope: usageStats.runtimeLoadScope } : {}),
+        ...(usageStats?.runtimeLoadTruncated ? { runtimeLoadTruncated: true } : {}),
+        ...(resourceHistory && resourceHistory.length > 0 ? { resourceHistory } : {}),
         ...(effectiveLivenessKind ? { livenessKind: effectiveLivenessKind } : {}),
         ...(liveRuntimeMember?.pidSource ? { pidSource: liveRuntimeMember.pidSource } : {}),
         ...(liveRuntimeMember?.processCommand
@@ -15354,16 +16249,35 @@ export class TeamProvisioningService {
         updatedAt,
       };
     }
+    try {
+      this.pruneAgentRuntimeResourceHistory(teamName, activeResourceHistoryKeys);
+    } catch (error) {
+      logger.debug(
+        `[${teamName}] Failed to prune runtime telemetry history; continuing with snapshot: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
 
+    const persistedLaunchIdentity = persistedTeamMeta?.launchIdentity;
+    const snapshotProviderId =
+      run?.request.providerId ??
+      persistedLaunchIdentity?.providerId ??
+      persistedTeamMeta?.providerId;
+    const snapshotProviderBackendId = run
+      ? run.request.providerBackendId
+      : persistedLaunchIdentity
+        ? (persistedLaunchIdentity.providerBackendId ?? persistedTeamMeta?.providerBackendId)
+        : persistedTeamMeta?.providerBackendId;
     const snapshot: TeamAgentRuntimeSnapshot = {
       teamName,
       updatedAt,
       runId: run?.runId ?? runId,
-      providerBackendId: migrateProviderBackendId(
-        run?.request.providerId ?? persistedTeamMeta?.providerId,
-        run?.request.providerBackendId ?? persistedTeamMeta?.providerBackendId
-      ),
-      fastMode: run?.request.fastMode ?? persistedTeamMeta?.fastMode,
+      providerBackendId: migrateProviderBackendId(snapshotProviderId, snapshotProviderBackendId),
+      fastMode:
+        run?.request.fastMode ??
+        persistedLaunchIdentity?.selectedFastMode ??
+        persistedTeamMeta?.fastMode,
       members: snapshotMembers,
     };
 
@@ -15677,9 +16591,10 @@ export class TeamProvisioningService {
       ...(input.configuredMember.agentType
         ? ['--agent-type', input.configuredMember.agentType]
         : []),
+      '--setting-sources',
+      'user,project,local',
       '--mcp-config',
       mcpConfigPath,
-      '--strict-mcp-config',
       '--disallowedTools',
       APP_TEAM_RUNTIME_DISALLOWED_TOOLS,
       ...(input.run.request.skipPermissions !== false
@@ -15858,9 +16773,10 @@ export class TeamProvisioningService {
       ...(input.configuredMember.agentType
         ? ['--agent-type', input.configuredMember.agentType]
         : []),
+      '--setting-sources',
+      'user,project,local',
       '--mcp-config',
       mcpConfigPath,
-      '--strict-mcp-config',
       '--disallowedTools',
       APP_TEAM_RUNTIME_DISALLOWED_TOOLS,
       ...(input.run.request.skipPermissions !== false
@@ -17704,6 +18620,13 @@ export class TeamProvisioningService {
         candidate.providerId === 'opencode' &&
         matchesTeamMemberIdentity(candidate.member.name, memberName)
     );
+    if (
+      !isExplicitLegacyOpenCodeBootstrap(
+        resolveOpenCodeSecondaryLaneMemberEvidence(lane, memberName)
+      )
+    ) {
+      return OPENCODE_APP_MANAGED_BOOTSTRAP_STALLED_DIAGNOSTIC;
+    }
     const selectedDiagnostic = selectOpenCodeSecondaryBootstrapStallDiagnostic([
       current.runtimeDiagnostic,
       ...(lane?.diagnostics ?? []),
@@ -17818,6 +18741,13 @@ export class TeamProvisioningService {
         ?.sessionId?.trim() ||
       '';
     if (!lane || !laneRunId || !isMaterializedOpenCodeSessionId(runtimeSessionId)) {
+      return;
+    }
+    if (
+      !isExplicitLegacyOpenCodeBootstrap(
+        resolveOpenCodeSecondaryLaneMemberEvidence(lane, memberName)
+      )
+    ) {
       return;
     }
 
@@ -18197,10 +19127,21 @@ export class TeamProvisioningService {
             expectedMembers: [],
             previousLaunchState: null,
           });
-          details.push(...prepare.diagnostics);
-          warnings.push(...prepare.warnings);
+          const prepareReason = prepare.ok ? undefined : prepare.reason;
+          details.push(
+            ...prepare.diagnostics.map((diagnostic) =>
+              normalizeOpenCodePrepareDiagnostic(diagnostic, prepareReason)
+            )
+          );
+          warnings.push(
+            ...prepare.warnings.map((warning) =>
+              normalizeOpenCodePrepareDiagnostic(warning, prepareReason)
+            )
+          );
           if (!prepare.ok) {
-            blockingMessages.push(`OpenCode: ${prepare.reason}`);
+            blockingMessages.push(
+              normalizeOpenCodePrepareDiagnostic(`OpenCode: ${prepare.reason}`, prepare.reason)
+            );
           }
           continue;
         }
@@ -18439,11 +19380,14 @@ export class TeamProvisioningService {
       }
     }
 
-    const results = new Array<{ modelId: string; prepare: TeamRuntimePrepareResult }>(
+    const results = new Array<{ modelId: string; prepare: TeamRuntimePrepareResult } | undefined>(
       modelIds.length
     );
-    const workerCount = Math.min(OPENCODE_PREFLIGHT_MODEL_PROBE_CONCURRENCY, modelIds.length);
-    let nextIndex = 0;
+    let providerBusyDeferred: {
+      modelId: string;
+      reason: string;
+      code: string;
+    } | null = null;
 
     const prepareModel = async (modelId: string): Promise<TeamRuntimePrepareResult> => {
       const startedAt = Date.now();
@@ -18493,26 +19437,45 @@ export class TeamProvisioningService {
       }
     };
 
-    await Promise.all(
-      Array.from({ length: workerCount }, async () => {
-        while (true) {
-          const currentIndex = nextIndex;
-          nextIndex += 1;
-          if (currentIndex >= modelIds.length) {
-            return;
-          }
+    // Facts:
+    // - Deep OpenCode preflight maps to a real foreground execution probe.
+    // - The host reports "session status busy" while another probe/member turn is active.
+    // - Once busy is observed, probing more selected models only repeats the same host state.
+    for (let index = 0; index < modelIds.length; index += 1) {
+      const modelId = modelIds[index];
+      const prepare = await prepareModel(modelId);
+      results[index] = { modelId, prepare };
 
-          const modelId = modelIds[currentIndex];
-          results[currentIndex] = {
-            modelId,
-            prepare: await prepareModel(modelId),
-          };
-        }
-      })
-    );
+      if (verificationMode === 'compatibility' || prepare.ok) {
+        continue;
+      }
+
+      const primaryReason = normalizeOpenCodePrepareDiagnostic(
+        selectOpenCodeModelPreparePrimaryReason(prepare),
+        prepare.reason
+      );
+      if (isOpenCodeModelPrepareBusyDeferred(prepare, primaryReason)) {
+        providerBusyDeferred = {
+          modelId,
+          reason: primaryReason,
+          code: prepare.reason,
+        };
+        appendPreflightDebugLog('opencode_model_prepare_batch_busy_deferred', {
+          cwd,
+          modelId,
+          verificationMode,
+          skippedModelIds: modelIds.slice(index + 1),
+          reason: primaryReason,
+        });
+        break;
+      }
+    }
 
     for (const result of results) {
       if (!result) {
+        if (providerBusyDeferred) {
+          continue;
+        }
         blockingMessages.push(
           'OpenCode preflight could not collect model verification results for all selected models.'
         );
@@ -18520,7 +19483,12 @@ export class TeamProvisioningService {
       }
 
       const { modelId, prepare } = result;
-      warnings.push(...prepare.warnings);
+      const prepareReason = prepare.ok ? undefined : prepare.reason;
+      warnings.push(
+        ...prepare.warnings.map((warning) =>
+          normalizeOpenCodePrepareDiagnostic(warning, prepareReason)
+        )
+      );
       if (prepare.ok) {
         details.push(
           verificationMode === 'compatibility'
@@ -18530,8 +19498,18 @@ export class TeamProvisioningService {
         continue;
       }
 
-      const primaryReason =
-        prepare.diagnostics.find((entry) => entry.trim().length > 0) ?? prepare.reason;
+      const primaryReason = normalizeOpenCodePrepareDiagnostic(
+        selectOpenCodeModelPreparePrimaryReason(prepare),
+        prepare.reason
+      );
+      if (isOpenCodeModelPrepareBusyDeferred(prepare, primaryReason)) {
+        providerBusyDeferred ??= {
+          modelId,
+          reason: primaryReason,
+          code: prepare.reason,
+        };
+        continue;
+      }
       if (this.isProviderScopedOpenCodePrepareFailure(prepare, primaryReason)) {
         pushUniqueLine(details, primaryReason);
         pushUniqueLine(blockingMessages, primaryReason);
@@ -18579,6 +19557,20 @@ export class TeamProvisioningService {
         }
         blockingMessages.push(unavailableLine);
       }
+    }
+
+    if (providerBusyDeferred) {
+      const providerBusyLine = buildOpenCodeProviderVerificationDeferredLine(
+        providerBusyDeferred.reason
+      );
+      pushUniqueLine(warnings, providerBusyLine);
+      issues.push({
+        providerId: 'opencode',
+        scope: 'provider',
+        severity: 'warning',
+        code: providerBusyDeferred.code,
+        message: providerBusyLine,
+      });
     }
 
     appendPreflightDebugLog('opencode_model_prepare_batch_complete', {
@@ -18657,7 +19649,12 @@ export class TeamProvisioningService {
       };
     }
 
-    warnings.push(...sharedPrepare.warnings);
+    const sharedPrepareReason = sharedPrepare.ok ? undefined : sharedPrepare.reason;
+    warnings.push(
+      ...sharedPrepare.warnings.map((warning) =>
+        normalizeOpenCodePrepareDiagnostic(warning, sharedPrepareReason)
+      )
+    );
     appendPreflightDebugLog('opencode_compatibility_batch_shared_prepare', {
       cwd,
       modelIds,
@@ -18668,8 +19665,10 @@ export class TeamProvisioningService {
     });
 
     if (!sharedPrepare.ok) {
-      const primaryReason =
-        sharedPrepare.diagnostics.find((entry) => entry.trim().length > 0) ?? sharedPrepare.reason;
+      const primaryReason = normalizeOpenCodePrepareDiagnostic(
+        sharedPrepare.diagnostics.find((entry) => entry.trim().length > 0) ?? sharedPrepare.reason,
+        sharedPrepare.reason
+      );
       if (primaryReason.trim().length > 0) {
         details.push(primaryReason);
         blockingMessages.push(primaryReason);
@@ -19063,14 +20062,28 @@ export class TeamProvisioningService {
   ): Promise<string | null> {
     const { stdout } = await execCli(
       claudePath,
-      buildProviderCliCommandArgs(providerArgs, ['model', 'list', '--json', '--provider', 'all']),
+      buildProviderCliCommandArgs(providerArgs, [
+        'model',
+        'list',
+        '--json',
+        '--provider',
+        providerId,
+      ]),
       {
         cwd,
         env,
         timeout: 10_000,
       }
     );
-    const parsed = extractJsonObjectFromCli<ProviderModelListCommandResponse>(stdout);
+    let parsed: ProviderModelListCommandResponse;
+    try {
+      parsed = extractJsonObjectFromCli<ProviderModelListCommandResponse>(stdout);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Failed to parse runtime default model list for ${getTeamProviderLabel(providerId)} (${providerId}): ${message}`
+      );
+    }
     const defaultModel = parsed.providers?.[providerId]?.defaultModel;
     const normalizedDefaultModel =
       typeof defaultModel === 'string' && defaultModel.trim().length > 0
@@ -22783,6 +23796,27 @@ export class TeamProvisioningService {
       : null;
   }
 
+  private async inferOpenCodeInboxMessageTaskRefs(
+    teamName: string,
+    message: InboxMessage,
+    readTasks?: () => Promise<readonly TeamTask[]>
+  ): Promise<TaskRef[]> {
+    if (Array.isArray(message.taskRefs) && message.taskRefs.length > 0) {
+      return message.taskRefs;
+    }
+
+    const tasks = await (readTasks?.() ?? new TeamTaskReader().getTasks(teamName).catch(() => []));
+    if (tasks.length === 0) {
+      return [];
+    }
+
+    return inferOpenCodeTaskRefsFromInboxMessage({
+      teamName,
+      message,
+      tasks,
+    });
+  }
+
   async relayOpenCodeMemberInboxMessages(
     teamName: string,
     memberName: string,
@@ -22924,6 +23958,12 @@ export class TeamProvisioningService {
         })
         .slice(0, 10);
 
+      let taskRefInferenceTasks: Promise<readonly TeamTask[]> | null = null;
+      const readTaskRefInferenceTasks = (): Promise<readonly TeamTask[]> => {
+        taskRefInferenceTasks ??= new TeamTaskReader().getTasks(teamName).catch(() => []);
+        return taskRefInferenceTasks;
+      };
+
       for (const message of unread) {
         let existingRecord = await promptLedger
           .getByInboxMessage({
@@ -22940,6 +23980,15 @@ export class TeamProvisioningService {
               ledgerRecord: existingRecord,
             }
           );
+          if (requeuedRecord.status !== 'failed_terminal') {
+            existingRecord = requeuedRecord;
+          }
+        }
+        if (existingRecord?.status === 'failed_terminal') {
+          const requeuedRecord = await this.requeueOpenCodeNoAssistantTerminalDeliveryIfNeeded({
+            ledger: promptLedger,
+            ledgerRecord: existingRecord,
+          });
           if (requeuedRecord.status !== 'failed_terminal') {
             existingRecord = requeuedRecord;
           }
@@ -23048,8 +24097,23 @@ export class TeamProvisioningService {
           options.deliveryMetadata?.actionMode ??
           message.actionMode ??
           null;
+        const existingTaskRefs = existingRecord?.taskRefs?.length
+          ? existingRecord.taskRefs
+          : undefined;
+        const metadataTaskRefs = options.deliveryMetadata?.taskRefs?.length
+          ? options.deliveryMetadata.taskRefs
+          : undefined;
+        const messageTaskRefs = message.taskRefs?.length ? message.taskRefs : undefined;
+        const inferredTaskRefs =
+          existingTaskRefs || metadataTaskRefs || messageTaskRefs
+            ? []
+            : await this.inferOpenCodeInboxMessageTaskRefs(
+                teamName,
+                message,
+                readTaskRefInferenceTasks
+              );
         const effectiveTaskRefs =
-          existingRecord?.taskRefs ?? options.deliveryMetadata?.taskRefs ?? message.taskRefs ?? [];
+          existingTaskRefs ?? metadataTaskRefs ?? messageTaskRefs ?? inferredTaskRefs;
         const effectiveSource = existingRecord?.source ?? options.source ?? 'watcher';
         result.attempted += 1;
         const attachmentPayloads = await this.resolveOpenCodeInboxAttachmentPayloads({
@@ -24002,6 +25066,15 @@ export class TeamProvisioningService {
     return Array.from(this.aliveRunByTeam.keys()).filter((name) => this.isTeamAlive(name));
   }
 
+  /**
+   * True when shutdown has team runtime state that must not be left headless.
+   * Includes active leads, provisioning runs, runtime-adapter runs, secondary lanes,
+   * and in-flight team operations that may expose a runtime shortly.
+   */
+  hasActiveTeamRuntimes(): boolean {
+    return this.getShutdownTrackedTeamNames().length > 0;
+  }
+
   async getRuntimeState(teamName: string): Promise<TeamRuntimeState> {
     const runId = this.getTrackedRunId(teamName);
     const run = runId ? (this.runs.get(runId) ?? null) : null;
@@ -24627,8 +25700,9 @@ export class TeamProvisioningService {
         nextEntry.livenessSource = undefined;
         nextEntry.bootstrapStalled = openCodeBootstrapStalled ? true : undefined;
         if (openCodeBootstrapStalled) {
-          nextEntry.runtimeDiagnostic =
-            'Runtime process is alive, but no bootstrap check-in after 5 min.';
+          nextEntry.runtimeDiagnostic = isExplicitLegacyOpenCodeBootstrap(current)
+            ? 'Runtime process is alive, but no bootstrap check-in after 5 min.'
+            : OPENCODE_APP_MANAGED_BOOTSTRAP_STALLED_DIAGNOSTIC;
           nextEntry.runtimeDiagnosticSeverity = 'warning';
         }
         nextEntry.launchState = deriveMemberLaunchState(nextEntry);
@@ -24684,9 +25758,11 @@ export class TeamProvisioningService {
       }
       const runtimeProcessAlive =
         current.runtimeAlive === true && current.livenessKind === 'runtime_process';
-      const runtimeDiagnostic = runtimeProcessAlive
-        ? 'Runtime process is alive, but no bootstrap check-in after 5 min.'
-        : 'OpenCode bootstrap did not complete runtime_bootstrap_checkin after 5 min.';
+      const runtimeDiagnostic = isExplicitLegacyOpenCodeBootstrap(current)
+        ? runtimeProcessAlive
+          ? 'Runtime process is alive, but no bootstrap check-in after 5 min.'
+          : 'OpenCode bootstrap did not complete runtime_bootstrap_checkin after 5 min.'
+        : OPENCODE_APP_MANAGED_BOOTSTRAP_STALLED_DIAGNOSTIC;
       const nextEntry: MemberSpawnStatusEntry = {
         ...current,
         status: 'waiting',
@@ -25017,18 +26093,24 @@ export class TeamProvisioningService {
     run: ProvisioningRun | null,
     memberName: string
   ): string | undefined {
+    const member = this.findEffectiveRunMember(run, memberName);
+    const model = member?.model?.trim();
+    return model || undefined;
+  }
+
+  private findEffectiveRunMember(
+    run: ProvisioningRun | null,
+    memberName: string
+  ): TeamCreateRequest['members'][number] | undefined {
     if (!run) {
       return undefined;
     }
-    for (const member of run.effectiveMembers ?? []) {
+    for (const member of [...(run.allEffectiveMembers ?? []), ...(run.effectiveMembers ?? [])]) {
       const candidateName = member.name?.trim() ?? '';
       if (!candidateName || !matchesTeamMemberIdentity(candidateName, memberName)) {
         continue;
       }
-      const model = member.model?.trim();
-      if (model) {
-        return model;
-      }
+      return member;
     }
     return undefined;
   }
@@ -25204,8 +26286,8 @@ export class TeamProvisioningService {
         continue;
       }
       const runtimeModel =
-        this.findConfiguredMemberModel(configuredMembers, memberName) ??
         this.findEffectiveRunMemberModel(run, memberName) ??
+        this.findConfiguredMemberModel(configuredMembers, memberName) ??
         this.findMetaMemberModel(metaMembers, memberName);
       upsertMetadata(memberName, {
         backendType: normalizeTeamAgentRuntimeBackendType(member.backendType, false),
@@ -25248,8 +26330,8 @@ export class TeamProvisioningService {
           ? configuredRuntimeMember.backendType
           : undefined;
       const runtimeModel =
-        member.model?.trim() ||
         this.findEffectiveRunMemberModel(run, memberName) ||
+        member.model?.trim() ||
         this.findMetaMemberModel(metaMembers, memberName);
       upsertMetadata(memberName, {
         ...(runtimeModel ? { model: runtimeModel } : {}),
@@ -25277,9 +26359,9 @@ export class TeamProvisioningService {
         continue;
       }
       const runtimeModel =
+        this.findEffectiveRunMemberModel(run, memberName) ||
         member.model?.trim() ||
-        this.findConfiguredMemberModel(configuredMembers, memberName) ||
-        this.findEffectiveRunMemberModel(run, memberName);
+        this.findConfiguredMemberModel(configuredMembers, memberName);
       upsertMetadata(memberName, {
         ...(runtimeModel ? { model: runtimeModel } : {}),
         ...(normalizeOptionalTeamProviderId(member.providerId)
@@ -25297,8 +26379,10 @@ export class TeamProvisioningService {
       if (!memberName || isLeadMember(member) || memberName.toLowerCase() === 'user') {
         continue;
       }
+      const providerId = normalizeOptionalTeamProviderId(member.providerId);
       upsertMetadata(memberName, {
         ...(member.model?.trim() ? { model: member.model.trim() } : {}),
+        ...(providerId ? { providerId } : {}),
       });
     }
 
@@ -25342,13 +26426,19 @@ export class TeamProvisioningService {
       if (!memberName || this.isMemberRemovedInMeta(metaMembers, memberName)) {
         continue;
       }
+      const activeRunMember = this.findEffectiveRunMember(run, memberName);
+      const activeRunModel = activeRunMember?.model?.trim();
+      const activeRunProviderId =
+        normalizeOptionalTeamProviderId(activeRunMember?.providerId) ??
+        inferTeamProviderIdFromModel(activeRunModel);
+      const effectiveProviderId = activeRunProviderId ?? persistedMember.providerId;
       const currentRuntimeAdapterEvidence = currentRuntimeAdapterRun?.members?.[memberName];
       upsertMetadata(memberName, {
         backendType:
-          persistedMember.providerId === 'opencode'
+          effectiveProviderId === 'opencode'
             ? 'process'
             : metadataByMember.get(memberName)?.backendType,
-        providerId: persistedMember.providerId,
+        providerId: effectiveProviderId,
         alive: false,
         livenessKind: currentRuntimeAdapterEvidence?.livenessKind ?? persistedMember.livenessKind,
         pidSource: currentRuntimeAdapterEvidence?.pidSource ?? persistedMember.pidSource,
@@ -25359,7 +26449,11 @@ export class TeamProvisioningService {
           persistedMember.runtimeLastSeenAt ??
           persistedMember.lastHeartbeatAt ??
           persistedMember.lastRuntimeAliveAt,
-        ...(persistedMember.model?.trim() ? { model: persistedMember.model.trim() } : {}),
+        ...(activeRunModel
+          ? { model: activeRunModel }
+          : persistedMember.model?.trim()
+            ? { model: persistedMember.model.trim() }
+            : {}),
         ...(typeof currentRuntimeAdapterEvidence?.runtimePid === 'number' &&
         currentRuntimeAdapterEvidence.runtimePid > 0
           ? { metricsPid: currentRuntimeAdapterEvidence.runtimePid }
@@ -25391,10 +26485,18 @@ export class TeamProvisioningService {
       }
     }
 
-    let processRows: Awaited<ReturnType<typeof listRuntimeProcessesForCurrentTmuxPlatform>> = [];
+    let processRows: RuntimeTelemetryProcessTableRow[] = [];
     let processTableAvailable = true;
     try {
-      processRows = await listRuntimeProcessesForCurrentTmuxPlatform();
+      processRows =
+        this.normalizeRuntimeProcessRowsForTelemetry(
+          await this.withRuntimeTelemetryTimeout(
+            listRuntimeProcessTableForCurrentPlatform(),
+            TeamProvisioningService.RUNTIME_PROCESS_TABLE_TIMEOUT_MS,
+            'process table runtime snapshot'
+          ),
+          process.platform === 'win32' ? 'wsl' : 'native'
+        ) ?? [];
     } catch (error) {
       processTableAvailable = false;
       logger.debug(
@@ -25403,14 +26505,31 @@ export class TeamProvisioningService {
         }`
       );
     }
-    let windowsHostProcessRows: typeof processRows | null = null;
+    this.runtimeProcessRowsForUsageSnapshotByTeam.set(teamName, {
+      expiresAtMs: Date.now() + TeamProvisioningService.AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS,
+      generation: generationAtStart,
+      runId,
+      rows: processTableAvailable ? processRows : null,
+      includesWindowsHostRows: false,
+    });
+    let windowsHostProcessRows: RuntimeTelemetryProcessTableRow[] | null = null;
     let windowsHostProcessTableAvailable = false;
-    const getWindowsHostProcessRows = async (): Promise<typeof processRows> => {
+    const getWindowsHostProcessRows = async (): Promise<RuntimeTelemetryProcessTableRow[]> => {
       if (windowsHostProcessRows) {
         return windowsHostProcessRows;
       }
       try {
-        windowsHostProcessRows = await listWindowsProcessTable();
+        windowsHostProcessRows =
+          this.normalizeRuntimeProcessRowsForTelemetry(
+            await this.withRuntimeTelemetryTimeout(
+              listWindowsProcessTable(
+                TeamProvisioningService.RUNTIME_WINDOWS_PROCESS_TABLE_TIMEOUT_MS
+              ),
+              TeamProvisioningService.RUNTIME_WINDOWS_PROCESS_TABLE_TIMEOUT_MS,
+              'Windows process table runtime snapshot'
+            ),
+            'windows-host'
+          ) ?? [];
         windowsHostProcessTableAvailable = true;
       } catch (error) {
         windowsHostProcessRows = [];
@@ -25556,25 +26675,616 @@ export class TeamProvisioningService {
     return metadataByMember;
   }
 
-  private async readProcessRssBytesByPid(pids: readonly number[]): Promise<Map<number, number>> {
-    const uniquePids = [...new Set(pids.filter((pid) => Number.isFinite(pid) && pid > 0))];
+  private buildAgentRuntimeResourceHistoryKey(params: {
+    memberName: string;
+    pid?: number;
+    runtimePid?: number;
+    pidSource?: TeamAgentRuntimePidSource;
+  }): string | null {
+    const memberName = params.memberName.trim();
+    const usagePid =
+      typeof params.pid === 'number' && Number.isFinite(params.pid) && params.pid > 0
+        ? params.pid
+        : typeof params.runtimePid === 'number' &&
+            Number.isFinite(params.runtimePid) &&
+            params.runtimePid > 0
+          ? params.runtimePid
+          : null;
+    if (!memberName || usagePid == null) {
+      return null;
+    }
+    return [memberName, usagePid, params.pidSource ?? 'unknown'].join('\0');
+  }
+
+  private recordAgentRuntimeResourceSample(params: {
+    teamName: string;
+    memberName: string;
+    timestamp: string;
+    cpuPercent?: number;
+    rssBytes?: number;
+    primaryCpuPercent?: number;
+    primaryRssBytes?: number;
+    childCpuPercent?: number;
+    childRssBytes?: number;
+    processCount?: number;
+    runtimeLoadScope?: TeamAgentRuntimeLoadScope;
+    runtimeLoadTruncated?: boolean;
+    pidSource?: TeamAgentRuntimePidSource;
+    pid?: number;
+    runtimePid?: number;
+    activeKeys?: Set<string>;
+  }): TeamAgentRuntimeResourceSample[] | undefined {
+    const key = this.buildAgentRuntimeResourceHistoryKey(params);
+    if (!key) {
+      return undefined;
+    }
+    params.activeKeys?.add(key);
+
+    const cpuPercent =
+      typeof params.cpuPercent === 'number' &&
+      Number.isFinite(params.cpuPercent) &&
+      params.cpuPercent >= 0
+        ? params.cpuPercent
+        : undefined;
+    const rssBytes =
+      typeof params.rssBytes === 'number' &&
+      Number.isFinite(params.rssBytes) &&
+      params.rssBytes >= 0
+        ? params.rssBytes
+        : undefined;
+    const primaryCpuPercent =
+      typeof params.primaryCpuPercent === 'number' &&
+      Number.isFinite(params.primaryCpuPercent) &&
+      params.primaryCpuPercent >= 0
+        ? params.primaryCpuPercent
+        : undefined;
+    const primaryRssBytes =
+      typeof params.primaryRssBytes === 'number' &&
+      Number.isFinite(params.primaryRssBytes) &&
+      params.primaryRssBytes >= 0
+        ? params.primaryRssBytes
+        : undefined;
+    const childCpuPercent =
+      typeof params.childCpuPercent === 'number' &&
+      Number.isFinite(params.childCpuPercent) &&
+      params.childCpuPercent >= 0
+        ? params.childCpuPercent
+        : undefined;
+    const childRssBytes =
+      typeof params.childRssBytes === 'number' &&
+      Number.isFinite(params.childRssBytes) &&
+      params.childRssBytes >= 0
+        ? params.childRssBytes
+        : undefined;
+    const processCount =
+      typeof params.processCount === 'number' &&
+      Number.isFinite(params.processCount) &&
+      params.processCount > 0
+        ? Math.floor(params.processCount)
+        : undefined;
+    let historyByKey = this.agentRuntimeResourceHistoryByTeam.get(params.teamName);
+    if (!historyByKey) {
+      historyByKey = new Map<string, TeamAgentRuntimeResourceSample[]>();
+      this.agentRuntimeResourceHistoryByTeam.set(params.teamName, historyByKey);
+    }
+    const existingHistory = historyByKey.get(key) ?? [];
+    if (cpuPercent == null && rssBytes == null) {
+      return existingHistory.length > 0
+        ? existingHistory.map((sample) => ({ ...sample }))
+        : undefined;
+    }
+
+    const sample: TeamAgentRuntimeResourceSample = {
+      timestamp: params.timestamp,
+      ...(cpuPercent != null ? { cpuPercent } : {}),
+      ...(rssBytes != null ? { rssBytes } : {}),
+      ...(primaryCpuPercent != null ? { primaryCpuPercent } : {}),
+      ...(primaryRssBytes != null ? { primaryRssBytes } : {}),
+      ...(childCpuPercent != null ? { childCpuPercent } : {}),
+      ...(childRssBytes != null ? { childRssBytes } : {}),
+      ...(processCount != null ? { processCount } : {}),
+      ...(params.runtimeLoadScope ? { runtimeLoadScope: params.runtimeLoadScope } : {}),
+      ...(params.runtimeLoadTruncated ? { runtimeLoadTruncated: true } : {}),
+      ...(params.pidSource ? { pidSource: params.pidSource } : {}),
+      ...(params.pid ? { pid: params.pid } : {}),
+      ...(params.runtimePid ? { runtimePid: params.runtimePid } : {}),
+    };
+    const nextHistory = [...existingHistory, sample].slice(
+      -TeamProvisioningService.AGENT_RUNTIME_RESOURCE_HISTORY_LIMIT
+    );
+    historyByKey.set(key, nextHistory);
+    return nextHistory.map((entry) => ({ ...entry }));
+  }
+
+  private recordAgentRuntimeResourceSampleSafely(params: {
+    teamName: string;
+    memberName: string;
+    timestamp: string;
+    cpuPercent?: number;
+    rssBytes?: number;
+    primaryCpuPercent?: number;
+    primaryRssBytes?: number;
+    childCpuPercent?: number;
+    childRssBytes?: number;
+    processCount?: number;
+    runtimeLoadScope?: TeamAgentRuntimeLoadScope;
+    runtimeLoadTruncated?: boolean;
+    pidSource?: TeamAgentRuntimePidSource;
+    pid?: number;
+    runtimePid?: number;
+    activeKeys?: Set<string>;
+  }): TeamAgentRuntimeResourceSample[] | undefined {
+    try {
+      return this.recordAgentRuntimeResourceSample(params);
+    } catch (error) {
+      logger.debug(
+        `[${params.teamName}] Failed to record runtime telemetry sample for ${
+          params.memberName
+        }; continuing without history: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return undefined;
+    }
+  }
+
+  private pruneAgentRuntimeResourceHistory(
+    teamName: string,
+    activeKeys: ReadonlySet<string>
+  ): void {
+    const historyByKey = this.agentRuntimeResourceHistoryByTeam.get(teamName);
+    if (!historyByKey) {
+      return;
+    }
+    for (const key of historyByKey.keys()) {
+      if (!activeKeys.has(key)) {
+        historyByKey.delete(key);
+      }
+    }
+    if (historyByKey.size === 0) {
+      this.agentRuntimeResourceHistoryByTeam.delete(teamName);
+    }
+  }
+
+  private normalizeRuntimeProcessUsageStats(stat: unknown): RuntimeProcessUsageStats | undefined {
+    if (!stat || typeof stat !== 'object') {
+      return undefined;
+    }
+    const candidate = stat as { memory?: unknown; cpu?: unknown };
+    const rssBytes = normalizeRuntimeTelemetryNumber(candidate.memory);
+    const cpuPercent = normalizeRuntimeTelemetryNumber(candidate.cpu);
+    const normalized: RuntimeProcessUsageStats = {
+      ...(rssBytes != null && rssBytes >= 0 ? { rssBytes } : {}),
+      ...(cpuPercent != null && cpuPercent >= 0 ? { cpuPercent } : {}),
+    };
+    return normalized.rssBytes != null || normalized.cpuPercent != null ? normalized : undefined;
+  }
+
+  private normalizeRuntimeProcessRowsForTelemetry(
+    rows: unknown,
+    source?: RuntimeTelemetryProcessSource
+  ): RuntimeTelemetryProcessTableRow[] | null {
+    if (!Array.isArray(rows)) {
+      return null;
+    }
+    const normalizedRows: RuntimeTelemetryProcessTableRow[] = [];
+    for (const row of rows) {
+      if (!row || typeof row !== 'object') {
+        continue;
+      }
+      const candidate = row as Partial<RuntimeTelemetryProcessTableRow>;
+      const pid = normalizeRuntimeTelemetryNumber(candidate.pid);
+      const ppid = normalizeRuntimeTelemetryNumber(candidate.ppid);
+      const command = typeof candidate.command === 'string' ? candidate.command.trim() : '';
+      if (pid != null && pid > 0 && ppid != null && ppid >= 0 && command.length > 0) {
+        const runtimeTelemetrySource =
+          source ??
+          (candidate.runtimeTelemetrySource === 'native' ||
+          candidate.runtimeTelemetrySource === 'wsl' ||
+          candidate.runtimeTelemetrySource === 'windows-host'
+            ? candidate.runtimeTelemetrySource
+            : undefined);
+        normalizedRows.push({
+          pid: Math.floor(pid),
+          ppid: Math.floor(ppid),
+          command,
+          ...(runtimeTelemetrySource ? { runtimeTelemetrySource } : {}),
+        });
+      }
+    }
+    return normalizedRows;
+  }
+
+  private async readRuntimeProcessRowsForUsageSnapshot(
+    teamName: string,
+    options: { includeWindowsHostRows?: boolean } = {}
+  ): Promise<RuntimeTelemetryProcessTableRow[] | null> {
+    const includeWindowsHostRows =
+      process.platform === 'win32' && options.includeWindowsHostRows === true;
+    const cached = this.runtimeProcessRowsForUsageSnapshotByTeam.get(teamName);
+    const canUseCached =
+      cached &&
+      cached.expiresAtMs > Date.now() &&
+      cached.generation === this.getRuntimeSnapshotCacheGeneration(teamName) &&
+      cached.runId === this.getTrackedRunId(teamName);
+    if (canUseCached && (!includeWindowsHostRows || cached.includesWindowsHostRows)) {
+      return cached.rows;
+    }
+
+    let rows =
+      canUseCached && cached.rows
+        ? this.normalizeRuntimeProcessRowsForTelemetry(cached.rows)
+        : null;
+    let runtimeProcessTableAvailable = rows != null;
+    try {
+      if (!rows) {
+        rows =
+          this.normalizeRuntimeProcessRowsForTelemetry(
+            await this.withRuntimeTelemetryTimeout(
+              listRuntimeProcessTableForCurrentPlatform(),
+              TeamProvisioningService.RUNTIME_PROCESS_TABLE_TIMEOUT_MS,
+              'process table runtime telemetry'
+            ),
+            process.platform === 'win32' ? 'wsl' : 'native'
+          ) ?? [];
+        runtimeProcessTableAvailable = true;
+      }
+    } catch (error) {
+      logger.debug(
+        `[${teamName}] Failed to read process table for runtime usage snapshot: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      rows = null;
+      runtimeProcessTableAvailable = false;
+    }
+
+    let includesWindowsHostRows = false;
+    if (includeWindowsHostRows) {
+      try {
+        const windowsHostRows = await this.withRuntimeTelemetryTimeout(
+          listWindowsProcessTable(TeamProvisioningService.RUNTIME_WINDOWS_PROCESS_TABLE_TIMEOUT_MS),
+          TeamProvisioningService.RUNTIME_WINDOWS_PROCESS_TABLE_TIMEOUT_MS,
+          'Windows process table runtime telemetry'
+        );
+        rows = [
+          ...(rows ?? []),
+          ...(this.normalizeRuntimeProcessRowsForTelemetry(windowsHostRows, 'windows-host') ?? []),
+        ];
+        includesWindowsHostRows = true;
+      } catch (error) {
+        logger.debug(
+          `[${teamName}] Failed to read Windows host process table for runtime usage snapshot: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    }
+
+    const resultRows = rows && rows.length > 0 ? rows : runtimeProcessTableAvailable ? [] : null;
+    this.runtimeProcessRowsForUsageSnapshotByTeam.set(teamName, {
+      expiresAtMs: Date.now() + TeamProvisioningService.AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS,
+      generation: this.getRuntimeSnapshotCacheGeneration(teamName),
+      runId: this.getTrackedRunId(teamName),
+      rows: resultRows,
+      includesWindowsHostRows,
+    });
+    return resultRows;
+  }
+
+  private buildRuntimeProcessChildrenByParent(
+    processRows: readonly RuntimeTelemetryProcessTableRow[]
+  ): Map<number, RuntimeTelemetryProcessTableRow[]> {
+    const childrenByParent = new Map<number, RuntimeTelemetryProcessTableRow[]>();
+    for (const row of this.normalizeRuntimeProcessRowsForTelemetry(processRows) ?? []) {
+      const current = childrenByParent.get(row.ppid) ?? [];
+      current.push(row);
+      childrenByParent.set(row.ppid, current);
+    }
+    return childrenByParent;
+  }
+
+  private addRuntimeRootOwnersFromProcessRows(
+    teamName: string,
+    processRows: readonly RuntimeTelemetryProcessTableRow[] | null,
+    rootOwnersByPid: Map<number, Set<string>>
+  ): void {
+    const normalizedRows = this.normalizeRuntimeProcessRowsForTelemetry(processRows);
+    if (!normalizedRows || normalizedRows.length === 0) {
+      return;
+    }
+
+    for (const row of normalizedRows) {
+      if (process.platform === 'win32' && row.runtimeTelemetrySource === 'wsl') {
+        continue;
+      }
+      if (!commandArgEquals(row.command, '--team-name', teamName)) {
+        continue;
+      }
+      const agentNames = extractCliArgValues(row.command, '--agent-name');
+      const agentIds = extractCliArgValues(row.command, '--agent-id');
+      const ownerKey =
+        agentNames.find((value) => value.trim().length > 0)?.trim() ??
+        agentIds
+          .map((value) => value.split('@', 1)[0]?.trim() ?? '')
+          .find((value) => value.length > 0);
+      if (!ownerKey) {
+        continue;
+      }
+      const owners = rootOwnersByPid.get(row.pid) ?? new Set<string>();
+      owners.add(ownerKey);
+      rootOwnersByPid.set(row.pid, owners);
+    }
+  }
+
+  private buildRuntimeUsageProcessTrees(
+    rootPids: readonly number[],
+    processRows: readonly RuntimeTelemetryProcessTableRow[] | null,
+    rootOwnersByPid?: ReadonlyMap<number, ReadonlySet<string>>
+  ): Map<number, { pids: number[]; truncated: boolean }> {
+    const uniqueRoots = [...new Set(rootPids.filter((pid) => Number.isFinite(pid) && pid > 0))];
+    const rootOwnerKeysByPid = new Map<number, ReadonlySet<string>>();
+    for (const [pid, owners] of rootOwnersByPid ?? []) {
+      if (Number.isFinite(pid) && pid > 0 && owners.size > 0) {
+        rootOwnerKeysByPid.set(pid, owners);
+      }
+    }
+    for (const rootPid of uniqueRoots) {
+      if (!rootOwnerKeysByPid.has(rootPid)) {
+        rootOwnerKeysByPid.set(rootPid, new Set([String(rootPid)]));
+      }
+    }
+    const haveSameRootOwners = (
+      left: ReadonlySet<string> | undefined,
+      right: ReadonlySet<string> | undefined
+    ): boolean => {
+      if (!left || left.size !== right?.size) {
+        return false;
+      }
+      for (const value of left) {
+        if (!right.has(value)) {
+          return false;
+        }
+      }
+      return true;
+    };
+    const usageTreesByRootPid = new Map<number, { pids: number[]; truncated: boolean }>();
+    const scheduledPids = new Set<number>();
+    const normalizedProcessRows = this.normalizeRuntimeProcessRowsForTelemetry(processRows);
+
+    if (!normalizedProcessRows || normalizedProcessRows.length === 0) {
+      for (const rootPid of uniqueRoots) {
+        if (scheduledPids.size >= TeamProvisioningService.MAX_RUNTIME_USAGE_PIDS_PER_SNAPSHOT) {
+          usageTreesByRootPid.set(rootPid, { pids: [], truncated: true });
+          continue;
+        }
+        scheduledPids.add(rootPid);
+        usageTreesByRootPid.set(rootPid, { pids: [rootPid], truncated: false });
+      }
+      return usageTreesByRootPid;
+    }
+
+    const childrenByParent = this.buildRuntimeProcessChildrenByParent(normalizedProcessRows);
+    const rowByPid = new Map(normalizedProcessRows.map((row) => [row.pid, row]));
+    for (const rootPid of uniqueRoots) {
+      const pids: number[] = [];
+      let truncated = false;
+      const rootProcessRow = rowByPid.get(rootPid);
+      if (process.platform === 'win32' && rootProcessRow?.runtimeTelemetrySource === 'wsl') {
+        usageTreesByRootPid.set(rootPid, { pids: [], truncated: false });
+        continue;
+      }
+      const rootProcessSource = rootProcessRow?.runtimeTelemetrySource;
+      const addPid = (pid: number): boolean => {
+        if (pids.includes(pid)) {
+          return true;
+        }
+        if (
+          pids.length >= TeamProvisioningService.MAX_RUNTIME_TREE_PIDS_PER_ROOT ||
+          (!scheduledPids.has(pid) &&
+            scheduledPids.size >= TeamProvisioningService.MAX_RUNTIME_USAGE_PIDS_PER_SNAPSHOT)
+        ) {
+          truncated = true;
+          return false;
+        }
+        pids.push(pid);
+        scheduledPids.add(pid);
+        return true;
+      };
+
+      if (!addPid(rootPid)) {
+        usageTreesByRootPid.set(rootPid, { pids, truncated });
+        continue;
+      }
+
+      const queue = [...(childrenByParent.get(rootPid) ?? [])];
+      const seen = new Set<number>();
+      const rootOwners = rootOwnerKeysByPid.get(rootPid);
+      while (queue.length > 0) {
+        const row = queue.shift();
+        if (!row || seen.has(row.pid)) {
+          continue;
+        }
+        seen.add(row.pid);
+        if (
+          rootProcessSource &&
+          row.runtimeTelemetrySource &&
+          row.runtimeTelemetrySource !== rootProcessSource
+        ) {
+          continue;
+        }
+        const candidateRootOwners = rootOwnerKeysByPid.get(row.pid);
+        if (
+          row.pid !== rootPid &&
+          candidateRootOwners &&
+          !haveSameRootOwners(rootOwners, candidateRootOwners)
+        ) {
+          continue;
+        }
+        if (!addPid(row.pid)) {
+          break;
+        }
+        queue.push(...(childrenByParent.get(row.pid) ?? []));
+      }
+      if (queue.length > 0) {
+        truncated = true;
+      }
+      usageTreesByRootPid.set(rootPid, { pids, truncated });
+    }
+
+    return usageTreesByRootPid;
+  }
+
+  private buildRuntimeProcessLoadStats(params: {
+    rootPid: number | undefined;
+    usageStatsByPid: ReadonlyMap<number, RuntimeProcessUsageStats>;
+    processTree?: { pids: number[]; truncated: boolean };
+    scope?: TeamAgentRuntimeLoadScope;
+  }): RuntimeProcessLoadStats | undefined {
+    const rootPid =
+      typeof params.rootPid === 'number' && Number.isFinite(params.rootPid) && params.rootPid > 0
+        ? params.rootPid
+        : undefined;
+    if (!rootPid) {
+      return undefined;
+    }
+
+    if (params.processTree && params.processTree.pids.length === 0) {
+      return undefined;
+    }
+
+    const processPids = params.processTree ? params.processTree.pids : [rootPid];
+    const primaryStats = params.usageStatsByPid.get(rootPid);
+    let childCpuPercent = 0;
+    let childRssBytes = 0;
+    let hasChildCpu = false;
+    let hasChildRss = false;
+    let sampledProcessCount = primaryStats ? 1 : 0;
+
+    for (const pid of processPids) {
+      if (pid === rootPid) {
+        continue;
+      }
+      const childStats = params.usageStatsByPid.get(pid);
+      if (!childStats) {
+        continue;
+      }
+      sampledProcessCount += 1;
+      if (typeof childStats.cpuPercent === 'number') {
+        childCpuPercent += childStats.cpuPercent;
+        hasChildCpu = true;
+      }
+      if (typeof childStats.rssBytes === 'number') {
+        childRssBytes += childStats.rssBytes;
+        hasChildRss = true;
+      }
+    }
+
+    if (!primaryStats && sampledProcessCount === 0) {
+      return undefined;
+    }
+
+    const primaryCpuPercent = primaryStats?.cpuPercent;
+    const primaryRssBytes = primaryStats?.rssBytes;
+    const cpuPercent =
+      primaryCpuPercent != null || hasChildCpu
+        ? (primaryCpuPercent ?? 0) + childCpuPercent
+        : undefined;
+    const rssBytes =
+      primaryRssBytes != null || hasChildRss ? (primaryRssBytes ?? 0) + childRssBytes : undefined;
+    const hasSampledChildren = hasChildCpu || hasChildRss;
+    const hasProcessTree = processPids.length > 1 && hasSampledChildren;
+    const runtimeLoadScope =
+      params.scope ?? (hasProcessTree ? 'process-tree' : ('single-process' as const));
+
+    return {
+      ...(rssBytes != null ? { rssBytes } : {}),
+      ...(cpuPercent != null ? { cpuPercent } : {}),
+      ...(primaryCpuPercent != null ? { primaryCpuPercent } : {}),
+      ...(primaryRssBytes != null ? { primaryRssBytes } : {}),
+      ...(hasChildCpu ? { childCpuPercent } : {}),
+      ...(hasChildRss ? { childRssBytes } : {}),
+      ...(sampledProcessCount > 0 ? { processCount: sampledProcessCount } : {}),
+      runtimeLoadScope,
+      ...(params.processTree?.truncated ? { runtimeLoadTruncated: true } : {}),
+    };
+  }
+
+  private buildRuntimeProcessLoadStatsSafely(
+    teamName: string,
+    memberName: string,
+    params: {
+      rootPid: number | undefined;
+      usageStatsByPid: ReadonlyMap<number, RuntimeProcessUsageStats>;
+      processTree?: { pids: number[]; truncated: boolean };
+      scope?: TeamAgentRuntimeLoadScope;
+    }
+  ): RuntimeProcessLoadStats | undefined {
+    try {
+      return this.buildRuntimeProcessLoadStats(params);
+    } catch (error) {
+      logger.debug(
+        `[${teamName}] Failed to build runtime telemetry stats for ${memberName}; continuing without metrics: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return undefined;
+    }
+  }
+
+  private async withRuntimeTelemetryTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    label: string
+  ): Promise<T> {
+    let timeout: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_resolve, reject) => {
+          timeout = setTimeout(() => {
+            reject(new RuntimeTelemetryTimeoutError(`${label} timed out after ${timeoutMs}ms`));
+          }, timeoutMs);
+          timeout.unref?.();
+        }),
+      ]);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }
+  }
+
+  private async readProcessUsageStatsByPid(
+    pids: readonly number[]
+  ): Promise<Map<number, RuntimeProcessUsageStats>> {
+    const pidCandidates = Array.isArray(pids) ? pids : [];
+    const uniquePids = [...new Set(pidCandidates.filter((pid) => Number.isFinite(pid) && pid > 0))];
     if (uniquePids.length === 0) {
       return new Map();
     }
 
-    const rssBytesByPid = new Map<number, number>();
+    const usageStatsByPid = new Map<number, RuntimeProcessUsageStats>();
     const options = RUNTIME_PIDUSAGE_OPTIONS;
     try {
-      const statsByPid = await pidusage(uniquePids, options);
-      for (const [rawPid, stat] of Object.entries(statsByPid)) {
+      const statsByPid = await this.withRuntimeTelemetryTimeout(
+        pidusage(uniquePids, options),
+        TeamProvisioningService.RUNTIME_PIDUSAGE_BATCH_TIMEOUT_MS,
+        'pidusage batch runtime telemetry'
+      );
+      for (const [rawPid, stat] of Object.entries(
+        statsByPid && typeof statsByPid === 'object' ? statsByPid : {}
+      )) {
         const pid = Number.parseInt(rawPid, 10);
-        const rssBytes = stat?.memory;
-        if (Number.isFinite(pid) && pid > 0 && Number.isFinite(rssBytes) && rssBytes >= 0) {
-          rssBytesByPid.set(pid, rssBytes);
+        const usageStats = this.normalizeRuntimeProcessUsageStats(stat);
+        if (Number.isFinite(pid) && pid > 0 && usageStats) {
+          usageStatsByPid.set(pid, usageStats);
         }
       }
-      return rssBytesByPid;
+      return usageStatsByPid;
     } catch (error) {
+      if (error instanceof RuntimeTelemetryTimeoutError) {
+        logger.debug(`${error.message}; continuing without runtime resource metrics`);
+        return usageStatsByPid;
+      }
       logger.debug(
         `pidusage batch runtime snapshot failed; falling back to per-pid reads: ${
           error instanceof Error ? error.message : String(error)
@@ -25582,19 +27292,37 @@ export class TeamProvisioningService {
       );
     }
 
-    await Promise.all(
-      uniquePids.map(async (pid) => {
-        try {
-          const stat = await pidusage(pid, options);
-          if (Number.isFinite(stat.memory) && stat.memory >= 0) {
-            rssBytesByPid.set(pid, stat.memory);
+    for (
+      let offset = 0;
+      offset < uniquePids.length;
+      offset += TeamProvisioningService.RUNTIME_PIDUSAGE_FALLBACK_CONCURRENCY
+    ) {
+      const chunk = uniquePids.slice(
+        offset,
+        offset + TeamProvisioningService.RUNTIME_PIDUSAGE_FALLBACK_CONCURRENCY
+      );
+      await Promise.all(
+        chunk.map(async (pid) => {
+          try {
+            const stat = await this.withRuntimeTelemetryTimeout(
+              pidusage(pid, options),
+              TeamProvisioningService.RUNTIME_PIDUSAGE_SINGLE_TIMEOUT_MS,
+              `pidusage runtime telemetry pid=${pid}`
+            );
+            const usageStats = this.normalizeRuntimeProcessUsageStats(stat);
+            if (usageStats) {
+              usageStatsByPid.set(pid, usageStats);
+            }
+          } catch (error) {
+            if (error instanceof RuntimeTelemetryTimeoutError) {
+              logger.debug(error.message);
+            }
+            // Process likely exited between discovery and sampling.
           }
-        } catch {
-          // Process likely exited between discovery and sampling.
-        }
-      })
-    );
-    return rssBytesByPid;
+        })
+      );
+    }
+    return usageStatsByPid;
   }
 
   private async clearPersistedLaunchState(
@@ -27758,7 +29486,10 @@ export class TeamProvisioningService {
     }
 
     const teamMeta = await this.teamMetaStore.getMeta(teamName).catch(() => null);
-    const leadProviderId = normalizeOptionalTeamProviderId(teamMeta?.providerId);
+    const leadLaunchIdentity = teamMeta?.launchIdentity;
+    const leadProviderId =
+      normalizeOptionalTeamProviderId(leadLaunchIdentity?.providerId) ??
+      normalizeOptionalTeamProviderId(teamMeta?.providerId);
     if (!leadProviderId || leadProviderId === 'opencode') {
       return null;
     }
@@ -27793,9 +29524,13 @@ export class TeamProvisioningService {
       providerBackendId:
         migrateProviderBackendId(
           leadProviderId,
-          teamMeta?.providerBackendId ?? membersMeta?.providerBackendId
+          leadLaunchIdentity
+            ? (leadLaunchIdentity.providerBackendId ??
+                teamMeta?.providerBackendId ??
+                membersMeta?.providerBackendId)
+            : (teamMeta?.providerBackendId ?? membersMeta?.providerBackendId)
         ) ?? null,
-      selectedFastMode: teamMeta?.fastMode,
+      selectedFastMode: leadLaunchIdentity?.selectedFastMode ?? teamMeta?.fastMode,
       resolvedFastMode:
         typeof teamMeta?.launchIdentity?.resolvedFastMode === 'boolean'
           ? teamMeta.launchIdentity.resolvedFastMode

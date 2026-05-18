@@ -49,6 +49,9 @@ interface TeamRosterEditorSectionProps {
   disableGeminiOption?: boolean;
   leadModelIssueText?: string | null;
   memberModelIssueById?: Record<string, string | null | undefined>;
+  modelAdvisoryReasonByProvider?: Partial<
+    Record<TeamProviderId, Partial<Record<string, string | null | undefined>>>
+  >;
   modelIssueReasonByProvider?: Partial<
     Record<TeamProviderId, Partial<Record<string, string | null | undefined>>>
   >;
@@ -101,6 +104,7 @@ const TeamRosterEditorSectionImpl = ({
   disableGeminiOption = false,
   leadModelIssueText,
   memberModelIssueById,
+  modelAdvisoryReasonByProvider,
   modelIssueReasonByProvider,
   modelUnavailableReasonByProvider,
   showWorktreeIsolationControls = false,
@@ -161,6 +165,7 @@ const TeamRosterEditorSectionImpl = ({
       softDeleteMembers={softDeleteMembers}
       disableGeminiOption={disableGeminiOption}
       memberModelIssueById={memberModelIssueById}
+      modelAdvisoryReasonByProvider={modelAdvisoryReasonByProvider}
       modelIssueReasonByProvider={modelIssueReasonByProvider}
       modelUnavailableReasonByProvider={modelUnavailableReasonByProvider}
       showWorktreeIsolationControls={showWorktreeIsolationControls}
@@ -184,6 +189,7 @@ const TeamRosterEditorSectionImpl = ({
             warningText={leadWarningText}
             disableGeminiOption={disableGeminiOption}
             modelIssueText={leadModelIssueText}
+            modelAdvisoryReasonByValue={modelAdvisoryReasonByProvider?.[providerId]}
             modelIssueReasonByValue={modelIssueReasonByProvider?.[providerId]}
             modelUnavailableReasonByValue={modelUnavailableReasonByProvider?.[providerId]}
             showAnthropicContextLimit={hasAnthropicRuntime}

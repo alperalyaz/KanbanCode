@@ -5,6 +5,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui
 import { shortcutLabel } from '@renderer/utils/platformKeys';
 import { ChevronDown, ChevronRight, FilePlus, GitBranch, Loader2, Save, Undo2 } from 'lucide-react';
 
+import {
+  getResolvedReviewModifiedContent,
+  getReviewRejectBlockReason,
+  isReviewFileMissingOnDisk,
+  isReviewTextContentUnavailable,
+  requiresManualLedgerReview,
+} from './reviewContentPreview';
+
 import type { FileChangeWithContent, HunkDecision } from '@shared/types';
 import type { FileChangeSummary } from '@shared/types/review';
 
@@ -57,32 +65,15 @@ export const FileSectionHeader = ({
   onAcceptFile,
   onRejectFile,
 }: FileSectionHeaderProps): React.ReactElement => {
-  const isMissingOnDisk = fileContent ? fileContent.modifiedFullContent == null : false;
-  const isContentUnavailable = fileContent?.contentSource === 'unavailable';
+  const restoreContent = getResolvedReviewModifiedContent(file, fileContent);
+  const isMissingOnDisk = isReviewFileMissingOnDisk(fileContent);
+  const isContentUnavailable = isReviewTextContentUnavailable(file, fileContent);
   const isPreviewOnly = isMissingOnDisk || isContentUnavailable;
-  const requiresManualLedgerReview = file.snippets.some(
-    (snippet) =>
-      !!snippet.ledger &&
-      (!!snippet.ledger.beforeState?.unavailableReason ||
-        !!snippet.ledger.afterState?.unavailableReason) &&
-      (snippet.ledger.originalFullContent == null || snippet.ledger.modifiedFullContent == null)
-  );
-  const rejectDisabled = isPreviewOnly || requiresManualLedgerReview;
-  const restoreContent =
-    fileContent?.modifiedFullContent ??
-    (() => {
-      const writeSnippets = file.snippets.filter(
-        (s) => !s.isError && (s.type === 'write-new' || s.type === 'write-update')
-      );
-      if (writeSnippets.length === 0) return null;
-      return writeSnippets[writeSnippets.length - 1].newString;
-    })();
+  const manualLedgerReviewRequired = requiresManualLedgerReview(file);
+  const rejectBlockReason = getReviewRejectBlockReason(file, fileContent);
+  const rejectDisabled = rejectBlockReason !== null;
   const canRestore =
-    !!onRestoreMissingFile &&
-    isMissingOnDisk &&
-    !isContentUnavailable &&
-    !hasEdits &&
-    restoreContent != null;
+    !!onRestoreMissingFile && isMissingOnDisk && !hasEdits && restoreContent != null;
   const externalChangeLabel =
     externalChange?.type === 'unlink'
       ? 'Deleted on disk'
@@ -240,7 +231,7 @@ export const FileSectionHeader = ({
         </span>
       )}
 
-      {requiresManualLedgerReview && (
+      {manualLedgerReviewRequired && (
         <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-300">
           MANUAL REVIEW
         </span>
@@ -315,11 +306,13 @@ export const FileSectionHeader = ({
                 </TooltipTrigger>
                 {rejectDisabled && (
                   <TooltipContent side="bottom">
-                    {requiresManualLedgerReview
+                    {rejectBlockReason === 'manual-ledger-review'
                       ? 'Reject is disabled because this ledger change has binary, large, or unavailable content.'
-                      : isContentUnavailable
+                      : rejectBlockReason === 'content-unavailable'
                         ? 'Reject is disabled because full text content is unavailable.'
-                        : 'Accept/Reject is disabled while the file is missing on disk.'}
+                        : rejectBlockReason === 'missing-on-disk'
+                          ? 'Accept/Reject is disabled while the file is missing on disk.'
+                          : 'Reject is disabled because the original baseline is unavailable.'}
                   </TooltipContent>
                 )}
               </Tooltip>

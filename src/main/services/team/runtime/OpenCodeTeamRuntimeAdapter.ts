@@ -71,6 +71,7 @@ export interface OpenCodeTeamRuntimeMessageInput {
   workSyncReviewRequestEventIds?: string[];
   controlUrl?: string;
   taskRefs?: TaskRef[];
+  forceSessionRefreshReason?: string;
   bootstrapCheckinRetry?: {
     runtimeSessionId: string;
     reason?: string;
@@ -100,6 +101,72 @@ const SECRET_FLAG_PATTERN =
   /(--(?:api-key|token|password|secret|authorization|auth-token)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi;
 const BEARER_TOKEN_PATTERN = /\bBearer\s+\S+/gi;
 const SECRET_KEY_PATTERN = /\bsk-[A-Za-z0-9_-]{16,}\b/g;
+const OPEN_CODE_CAPABILITY_SNAPSHOT_REFRESH_RETRY_WARNING =
+  'OpenCode capability snapshot changed between readiness and launch; refreshed readiness and retried once.';
+const OPEN_CODE_CAPABILITY_SNAPSHOT_PRELAUNCH_MISMATCH_MARKERS = [
+  'Bridge server capability snapshot mismatch',
+  'OpenCode bridge capability snapshot precondition mismatch',
+];
+const OPEN_CODE_READINESS_RETRY_DELAYS_MS = [750, 2_000] as const;
+
+type OpenCodeTeamLaunchReadinessInput = Parameters<
+  OpenCodeTeamRuntimeBridgePort['checkOpenCodeTeamLaunchReadiness']
+>[0];
+
+function getOpenCodeReadinessDiagnosticText(readiness: OpenCodeTeamLaunchReadiness): string {
+  return [...readiness.diagnostics, ...readiness.missing].join('\n');
+}
+
+function isTransientOpenCodeReadinessTransportFailure(
+  readiness: OpenCodeTeamLaunchReadiness
+): boolean {
+  if (readiness.launchAllowed) {
+    return false;
+  }
+  if (readiness.state !== 'mcp_unavailable' && readiness.state !== 'unknown_error') {
+    return false;
+  }
+
+  const diagnosticText = getOpenCodeReadinessDiagnosticText(readiness).toLowerCase();
+  if (!diagnosticText) {
+    return false;
+  }
+
+  const hasHardFailureMarker =
+    /\b(?:401|403)\b/.test(diagnosticText) ||
+    diagnosticText.includes('unauthorized') ||
+    diagnosticText.includes('forbidden') ||
+    diagnosticText.includes('missing canonical app mcp tool id') ||
+    diagnosticText.includes('observed alias') ||
+    diagnosticText.includes('app mcp tool missing') ||
+    diagnosticText.includes('tool is absent') ||
+    diagnosticText.includes('missing required field') ||
+    diagnosticText.includes('runtime store') ||
+    diagnosticText.includes('capability snapshot') ||
+    diagnosticText.includes('contract') ||
+    diagnosticText.includes('schema') ||
+    diagnosticText.includes('invalid input') ||
+    /\b(?:404|405)\b/.test(diagnosticText) ||
+    diagnosticText.includes('not found');
+  if (hasHardFailureMarker) {
+    return false;
+  }
+
+  return (
+    diagnosticText.includes('unable to connect') ||
+    diagnosticText.includes('socket connection was closed') ||
+    diagnosticText.includes('fetch failed') ||
+    diagnosticText.includes('econnreset') ||
+    diagnosticText.includes('econnrefused') ||
+    diagnosticText.includes('socket hang up') ||
+    diagnosticText.includes('networkerror') ||
+    diagnosticText.includes('/experimental/tool/ids unavailable')
+  );
+}
+
+function sleepOpenCodeReadinessRetry(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
 
 function resolveOpenCodeRuntimeSettlementMode(
   input: Pick<OpenCodeTeamRuntimeMessageInput, 'messageKind'>
@@ -116,7 +183,7 @@ export class OpenCodeTeamRuntimeAdapter implements TeamLaunchRuntimeAdapter {
 
   async prepare(input: TeamRuntimeLaunchInput): Promise<TeamRuntimePrepareResult> {
     const runtimeOnly = input.runtimeOnly === true;
-    const readiness = await this.bridge.checkOpenCodeTeamLaunchReadiness({
+    const readiness = await this.checkOpenCodeReadinessWithTransientRetry({
       projectPath: input.cwd,
       selectedModel: input.model ?? null,
       requireExecutionProbe: !runtimeOnly,
@@ -145,6 +212,20 @@ export class OpenCodeTeamRuntimeAdapter implements TeamLaunchRuntimeAdapter {
 
   getLastOpenCodeTeamLaunchReadiness(projectPath: string): OpenCodeTeamLaunchReadiness | null {
     return this.lastReadinessByProjectPath.get(projectPath) ?? null;
+  }
+
+  private async checkOpenCodeReadinessWithTransientRetry(
+    input: OpenCodeTeamLaunchReadinessInput
+  ): Promise<OpenCodeTeamLaunchReadiness> {
+    let readiness = await this.bridge.checkOpenCodeTeamLaunchReadiness(input);
+    for (const delayMs of OPEN_CODE_READINESS_RETRY_DELAYS_MS) {
+      if (!isTransientOpenCodeReadinessTransportFailure(readiness)) {
+        return readiness;
+      }
+      await sleepOpenCodeReadinessRetry(delayMs);
+      readiness = await this.bridge.checkOpenCodeTeamLaunchReadiness(input);
+    }
+    return readiness;
   }
 
   async launch(input: TeamRuntimeLaunchInput): Promise<TeamRuntimeLaunchResult> {
@@ -184,7 +265,7 @@ export class OpenCodeTeamRuntimeAdapter implements TeamLaunchRuntimeAdapter {
       ]);
     }
 
-    const runtimeSnapshot = skipReadinessPreflight
+    let runtimeSnapshot = skipReadinessPreflight
       ? null
       : (this.bridge.getLastOpenCodeRuntimeSnapshot?.(input.cwd) ?? null);
     if (
@@ -197,22 +278,65 @@ export class OpenCodeTeamRuntimeAdapter implements TeamLaunchRuntimeAdapter {
       ]);
     }
     this.lastProjectPathByTeamName.set(input.teamName, input.cwd);
-    const data = await this.bridge.launchOpenCodeTeam({
+    const buildLaunchCommand = (
+      snapshot: OpenCodeBridgeRuntimeSnapshot | null,
+      model: string,
+      recoveryAttemptId?: string
+    ): OpenCodeLaunchTeamCommandBody => ({
       runId: input.runId,
       laneId: input.laneId?.trim() || 'primary',
       teamId: input.teamName,
       teamName: input.teamName,
       projectPath: input.cwd,
-      selectedModel,
+      selectedModel: model,
       members: input.expectedMembers.map((member) => ({
         name: member.name,
         role: member.role?.trim() || member.workflow?.trim() || 'teammate',
         prompt: buildMemberBootstrapPrompt(input, member),
       })),
       leadPrompt: input.prompt?.trim() ?? '',
-      expectedCapabilitySnapshotId: runtimeSnapshot?.capabilitySnapshotId ?? null,
+      expectedCapabilitySnapshotId: snapshot?.capabilitySnapshotId ?? null,
       manifestHighWatermark: null,
+      ...(recoveryAttemptId ? { capabilitySnapshotRecoveryAttemptId: recoveryAttemptId } : {}),
     });
+
+    let data = await this.bridge.launchOpenCodeTeam(
+      buildLaunchCommand(runtimeSnapshot, selectedModel)
+    );
+    if (!skipReadinessPreflight && isOpenCodePreLaunchCapabilitySnapshotMismatchData(data)) {
+      const refreshed = await this.prepare(input);
+      if (!refreshed.ok) {
+        return blockedLaunchResult(
+          input,
+          refreshed.reason,
+          mergeDiagnostics(data.diagnostics.map(formatOpenCodeBridgeDiagnostic), [
+            OPEN_CODE_CAPABILITY_SNAPSHOT_REFRESH_RETRY_WARNING,
+            ...refreshed.diagnostics,
+          ]),
+          mergeDiagnostics(launchWarnings, refreshed.warnings)
+        );
+      }
+      selectedModel = refreshed.modelId ?? selectedModel;
+      const refreshedSnapshot = this.bridge.getLastOpenCodeRuntimeSnapshot?.(input.cwd) ?? null;
+      if (refreshedSnapshot?.capabilitySnapshotId) {
+        runtimeSnapshot = refreshedSnapshot;
+        launchWarnings = mergeDiagnostics(launchWarnings, [
+          ...refreshed.warnings,
+          OPEN_CODE_CAPABILITY_SNAPSHOT_REFRESH_RETRY_WARNING,
+        ]);
+        // TODO(opencode-bridge): replace marker-based capability recovery with
+        // structured bridge failure details: expectedCapabilitySnapshotId,
+        // actualCapabilitySnapshotId, preconditionStage, and safeToRetryWithFreshCommand.
+        // Keep this app-side attempt id until packaged runtimes all expose that protocol.
+        data = await this.bridge.launchOpenCodeTeam(
+          buildLaunchCommand(
+            runtimeSnapshot,
+            selectedModel,
+            `opencode-capability-recovery-${randomUUID()}`
+          )
+        );
+      }
+    }
 
     return mapOpenCodeLaunchDataToRuntimeResult(input, data, launchWarnings);
   }
@@ -341,6 +465,9 @@ export class OpenCodeTeamRuntimeAdapter implements TeamLaunchRuntimeAdapter {
       text: buildOpenCodeRuntimeMessageText(input),
       messageId: input.messageId,
       ...(input.deliveryAttemptId ? { deliveryAttemptId: input.deliveryAttemptId } : {}),
+      ...(input.forceSessionRefreshReason
+        ? { forceSessionRefreshReason: input.forceSessionRefreshReason }
+        : {}),
       settlementMode: resolveOpenCodeRuntimeSettlementMode(input),
       fileParts: input.fileParts,
       actionMode: input.actionMode,
@@ -1051,6 +1178,33 @@ function formatOpenCodeBridgeDiagnostic(diagnostic: {
   message: string;
 }): string {
   return `${diagnostic.severity}:${diagnostic.code}: ${diagnostic.message}`;
+}
+
+function isOpenCodePreLaunchCapabilitySnapshotMismatchData(
+  data: OpenCodeLaunchTeamCommandData
+): boolean {
+  if (data.teamLaunchState !== 'failed') {
+    return false;
+  }
+  if (
+    data.diagnostics.some(
+      (diagnostic) =>
+        isOpenCodePreLaunchCapabilitySnapshotMismatchText(diagnostic.message) ||
+        isOpenCodePreLaunchCapabilitySnapshotMismatchText(diagnostic.code)
+    )
+  ) {
+    return true;
+  }
+  return Object.values(data.members).some((member) =>
+    (member.diagnostics ?? []).some(isOpenCodePreLaunchCapabilitySnapshotMismatchText)
+  );
+}
+
+function isOpenCodePreLaunchCapabilitySnapshotMismatchText(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return OPEN_CODE_CAPABILITY_SNAPSHOT_PRELAUNCH_MISMATCH_MARKERS.some((marker) =>
+    normalized.includes(marker.toLowerCase())
+  );
 }
 
 function isOpenCodeLaunchTimingDiagnostic(diagnostic: string): boolean {

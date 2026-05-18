@@ -2,11 +2,15 @@ import { CUSTOM_ROLE, NO_ROLE, PRESET_ROLES } from '@renderer/constants/teamRole
 import { serializeChipsWithText } from '@renderer/types/inlineChip';
 import { normalizeCreateLaunchProviderForUi } from '@renderer/utils/geminiUiFreeze';
 import { normalizeExplicitTeamModelForUi } from '@renderer/utils/teamModelAvailability';
-import { isTeamEffortLevel } from '@shared/utils/effortLevels';
+import { isTeamEffortLevel, isTeamEffortLevelForProvider } from '@shared/utils/effortLevels';
 import { isLeadMember } from '@shared/utils/leadDetection';
+import { migrateProviderBackendId } from '@shared/utils/providerBackend';
 import { buildTeamMemberColorMap } from '@shared/utils/teamMemberColors';
 import { validateTeamMemberNameFormat } from '@shared/utils/teamMemberName';
-import { normalizeOptionalTeamProviderId } from '@shared/utils/teamProvider';
+import {
+  inferTeamProviderIdFromModel,
+  normalizeOptionalTeamProviderId,
+} from '@shared/utils/teamProvider';
 
 import type { MemberDraft } from './membersEditorTypes';
 import type { MentionSuggestion } from '@renderer/types/mention';
@@ -150,6 +154,44 @@ function normalizeDraftEffort(value: string | undefined): EffortLevel | undefine
   return isTeamEffortLevel(value) ? value : undefined;
 }
 
+function normalizeDraftEffortForProvider(
+  value: string | undefined,
+  providerId: TeamProviderId | undefined
+): EffortLevel | undefined {
+  if (!providerId) {
+    return normalizeDraftEffort(value);
+  }
+  return isTeamEffortLevelForProvider(value, providerId) ? value : undefined;
+}
+
+function normalizeDraftModelForProvider(
+  value: string | undefined,
+  providerId: TeamProviderId | undefined
+): string | undefined {
+  const normalized = normalizeExplicitTeamModelForUi(providerId, value?.trim() ?? '');
+  if (!normalized) {
+    return undefined;
+  }
+
+  const inferredProviderId =
+    inferTeamProviderIdFromModel(normalized) ?? inferTeamProviderIdFromModel(value);
+  if (providerId && inferredProviderId && inferredProviderId !== providerId) {
+    return undefined;
+  }
+
+  return normalized;
+}
+
+function normalizeDraftProviderBackendForProvider(
+  value: TeamProviderBackendId | undefined,
+  providerId: TeamProviderId | undefined
+): TeamProviderBackendId | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return providerId ? migrateProviderBackendId(providerId, value) : value;
+}
+
 interface ExistingMemberColorInput {
   name: string;
   color?: string;
@@ -248,7 +290,10 @@ export function getWorkflowForExport(member: MemberDraft): string | undefined {
   return chips.length > 0 ? serializeChipsWithText(workflowRaw, chips) : workflowRaw;
 }
 
-export function buildMembersFromDrafts(members: MemberDraft[]): TeamProvisioningMemberInput[] {
+export function buildMembersFromDrafts(
+  members: MemberDraft[],
+  options?: { inheritedProviderId?: TeamProviderId }
+): TeamProvisioningMemberInput[] {
   return members
     .map((member) => {
       if (member.removedAt) {
@@ -268,14 +313,27 @@ export function buildMembersFromDrafts(members: MemberDraft[]): TeamProvisioning
       if (providerId) {
         result.providerId = providerId;
       }
-      if (member.providerBackendId) {
-        result.providerBackendId = member.providerBackendId;
+      const providerBackendId = normalizeDraftProviderBackendForProvider(
+        member.providerBackendId,
+        providerId ?? options?.inheritedProviderId
+      );
+      if (providerBackendId) {
+        result.providerBackendId = providerBackendId;
       }
       const model = member.model?.trim();
       if (model) {
-        result.model = normalizeExplicitTeamModelForUi(providerId, model);
+        const normalizedModel = normalizeDraftModelForProvider(
+          model,
+          providerId ?? options?.inheritedProviderId
+        );
+        if (normalizedModel) {
+          result.model = normalizedModel;
+        }
       }
-      const effort = normalizeDraftEffort(member.effort);
+      const effort = normalizeDraftEffortForProvider(
+        member.effort,
+        providerId ?? options?.inheritedProviderId
+      );
       if (effort) {
         result.effort = effort;
       }

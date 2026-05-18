@@ -103,8 +103,8 @@ import { loadProjectPathProjects, type ProjectPathProject } from './projectPathP
 import { ProjectPathSelector } from './ProjectPathSelector';
 import { buildProviderPrepareModelCacheKey } from './providerPrepareCacheKey';
 import {
-  buildReusableProviderPrepareModelResults,
   getProviderPrepareCachedSnapshot,
+  mergeReusableProviderPrepareModelResults,
   type ProviderPrepareDiagnosticsModelResult,
   runProviderPrepareDiagnostics,
 } from './providerPrepareDiagnostics';
@@ -776,6 +776,9 @@ export const CreateTeamDialog = ({
     ]
   );
   const shortLivedModelIssueReasons = useMemo(() => {
+    void prepareChecks;
+    const modelAdvisoryReasonByProvider: Partial<Record<TeamProviderId, Record<string, string>>> =
+      {};
     const modelIssueReasonByProvider: Partial<Record<TeamProviderId, Record<string, string>>> = {};
     const modelUnavailableReasonByProvider: Partial<
       Record<TeamProviderId, Record<string, string>>
@@ -794,6 +797,9 @@ export const CreateTeamDialog = ({
         providerId,
         cacheKey,
       });
+      if (Object.keys(issueReasons.modelAdvisoryReasonByValue).length > 0) {
+        modelAdvisoryReasonByProvider[providerId] = issueReasons.modelAdvisoryReasonByValue;
+      }
       if (Object.keys(issueReasons.modelIssueReasonByValue).length > 0) {
         modelIssueReasonByProvider[providerId] = issueReasons.modelIssueReasonByValue;
       }
@@ -803,12 +809,14 @@ export const CreateTeamDialog = ({
     }
 
     return {
+      modelAdvisoryReasonByProvider,
       modelIssueReasonByProvider,
       modelUnavailableReasonByProvider,
     };
   }, [
     effectiveAnthropicRuntimeLimitContext,
     effectiveCwd,
+    prepareChecks,
     prepareRuntimeStatusSignature,
     runtimeBackendSummaryByProvider,
     selectedMemberProviders,
@@ -1037,10 +1045,13 @@ export const CreateTeamDialog = ({
               anyNotes = true;
             }
             if (prepareRequestSeqRef.current === requestSeq) {
-              const reusableModelResults = buildReusableProviderPrepareModelResults(
-                plan.prepResult.modelResultsById
+              prepareModelResultsCacheRef.current.set(
+                plan.cacheKey,
+                mergeReusableProviderPrepareModelResults(
+                  prepareModelResultsCacheRef.current.get(plan.cacheKey),
+                  plan.prepResult.modelResultsById
+                )
               );
-              prepareModelResultsCacheRef.current.set(plan.cacheKey, reusableModelResults);
               storeShortLivedProviderPrepareModelResults({
                 providerId: plan.providerId,
                 cacheKey: plan.cacheKey,
@@ -1499,7 +1510,11 @@ export const CreateTeamDialog = ({
       teamName: sanitizedTeamName,
       description: description.trim() || undefined,
       color: teamColor || undefined,
-      members: soloTeam ? [] : buildMembersFromDrafts(effectiveMemberDrafts),
+      members: soloTeam
+        ? []
+        : buildMembersFromDrafts(effectiveMemberDrafts, {
+            inheritedProviderId: selectedProviderId,
+          }),
       cwd: effectiveCwd,
       prompt: prompt.trim() || undefined,
       providerId: selectedProviderId,
@@ -2064,6 +2079,9 @@ export const CreateTeamDialog = ({
               leadModelIssueText={leadModelIssueText}
               memberWarningById={teammateRuntimeCompatibility.memberWarningById}
               memberModelIssueById={memberModelIssueById}
+              modelAdvisoryReasonByProvider={
+                shortLivedModelIssueReasons.modelAdvisoryReasonByProvider
+              }
               modelIssueReasonByProvider={shortLivedModelIssueReasons.modelIssueReasonByProvider}
               modelUnavailableReasonByProvider={
                 shortLivedModelIssueReasons.modelUnavailableReasonByProvider
@@ -2350,7 +2368,7 @@ export const CreateTeamDialog = ({
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                   <div className="min-w-0">
                     <p className="font-medium">
-                      CLI environment is not available - launch is blocked
+                      Runtime environment is not available - launch is blocked
                     </p>
                     <p className="mt-0.5 text-red-300/80">
                       {effectivePrepare.message ?? 'Failed to prepare environment'}

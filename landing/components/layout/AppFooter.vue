@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import robotLeadLounge from "~/assets/images/footer/robot-lead-lounge-v1.webp";
+
 const { t, locale } = useI18n();
 const { repoUrl } = useGithubRepo();
 const { baseURL } = useRuntimeConfig().app;
@@ -11,6 +13,19 @@ const docsHref = computed(() => {
 
 <template>
   <footer class="app-footer">
+    <div class="app-footer__robot-stage">
+      <RobotSpeechBubble class="app-footer__robot-bubble" tail="down">
+        {{ t('footer.robotBubble') }}
+      </RobotSpeechBubble>
+      <img
+        class="app-footer__robot"
+        :src="robotLeadLounge"
+        alt=""
+        loading="lazy"
+        decoding="async"
+        draggable="false"
+      >
+    </div>
     <v-container class="app-footer__inner">
       <span class="app-footer__copy"
         >{{ t('footer.copyright', { year }) }} · {{ t('footer.tagline') }}</span
@@ -28,8 +43,45 @@ const docsHref = computed(() => {
 
 <style scoped>
 .app-footer {
+  position: relative;
   border-top: 1px solid var(--at-c-border);
   padding: 20px 0;
+  isolation: isolate;
+}
+
+.app-footer__robot-stage {
+  position: absolute;
+  right: clamp(24px, 7vw, 112px);
+  bottom: calc(100% - 5px);
+  z-index: 2;
+  width: clamp(178px, 16vw, 236px);
+  pointer-events: none;
+  user-select: none;
+  transform: translateY(3px) rotate(-1deg);
+  transform-origin: 54% bottom;
+  filter:
+    drop-shadow(0 14px 18px rgba(0, 0, 0, 0.52))
+    drop-shadow(0 0 14px rgba(130, 255, 0, 0.2));
+}
+
+.app-footer__robot {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.app-footer__robot-bubble {
+  --robot-bubble-position: absolute;
+  --robot-bubble-min-width: 82px;
+  --robot-bubble-max-width: 116px;
+  --robot-bubble-min-height: 50px;
+  --robot-bubble-font-size: 0.62rem;
+  --robot-bubble-padding: 9px 13px 16px;
+
+  top: -28px;
+  left: -18px;
+  transform: rotate(-2deg);
+  transform-origin: 72% 74%;
 }
 
 .app-footer__inner {
@@ -91,6 +143,10 @@ const docsHref = computed(() => {
 }
 
 @media (max-width: 600px) {
+  .app-footer__robot-stage {
+    display: none;
+  }
+
   .app-footer__inner {
     flex-direction: column;
     gap: 10px;

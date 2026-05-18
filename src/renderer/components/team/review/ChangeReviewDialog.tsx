@@ -31,6 +31,7 @@ import { FileEditTimeline } from './FileEditTimeline';
 import { buildInitialReviewFileScrollKey } from './initialReviewFileScroll';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
 import { buildPathChangeLabels } from './pathChangeLabels';
+import { getResolvedReviewModifiedContent, isReviewRejectable } from './reviewContentPreview';
 import { resolveReviewFilePath } from './reviewFilePathResolution';
 import { ReviewFileTree } from './ReviewFileTree';
 import { ReviewToolbar } from './ReviewToolbar';
@@ -185,7 +186,7 @@ export const ChangeReviewDialog = ({
     globalTasks,
   } = useStore();
 
-  // Build scope keys (pure values — safe to compute before hooks that depend on them)
+  // Build scope keys (pure values - safe to compute before hooks that depend on them)
   const scopeKey = mode === 'task' ? `task:${taskId ?? ''}` : `agent:${memberName ?? ''}`;
   // Filesystem-safe: use `-` instead of `:` for decision persistence key
   const decisionScopeKey = mode === 'task' ? `task-${taskId ?? ''}` : `agent-${memberName ?? ''}`;
@@ -242,7 +243,7 @@ export const ChangeReviewDialog = ({
   // EditorView map for all visible file editors
   const editorViewMapRef = useRef(new Map<string, EditorView>());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  // Last focused CM editor — for Cmd+Z outside editor
+  // Last focused CM editor - for Cmd+Z outside editor
   const lastFocusedEditorRef = useRef<EditorView | null>(null);
   // Timestamp of last bulk accept/reject-all operation (for Ctrl/Cmd+Z UX)
   const lastBulkActionAtRef = useRef<number>(0);
@@ -329,6 +330,18 @@ export const ChangeReviewDialog = ({
   const pathChangeLabels = useMemo(() => {
     return buildPathChangeLabels(activeChangeSet?.files ?? [], fileContents);
   }, [activeChangeSet, fileContents]);
+
+  const rejectablePendingFiles = useMemo(
+    () =>
+      sortedFiles.filter((file) => {
+        const reviewKey = getFileReviewKey(file);
+        const fileDecision = fileDecisions[reviewKey] ?? fileDecisions[file.filePath] ?? 'pending';
+        if (fileDecision !== 'pending') return false;
+        return isReviewRejectable(file, fileContents[file.filePath] ?? null);
+      }),
+    [fileContents, fileDecisions, sortedFiles]
+  );
+  const canRejectAll = rejectablePendingFiles.length > 0;
 
   const {
     viewedSet,
@@ -426,9 +439,12 @@ export const ChangeReviewDialog = ({
 
   const handleRejectAll = useCallback(() => {
     if (!activeChangeSet) return;
+    const rejectableFilePaths = new Set(rejectablePendingFiles.map((file) => file.filePath));
+    if (rejectableFilePaths.size === 0) return;
     pushReviewUndoSnapshot();
     lastBulkActionAtRef.current = Date.now();
     for (const file of activeChangeSet.files) {
+      if (!rejectableFilePaths.has(file.filePath)) continue;
       rejectAllFile(file.filePath);
     }
     requestAnimationFrame(() => {
@@ -443,6 +459,7 @@ export const ChangeReviewDialog = ({
     }
   }, [
     activeChangeSet,
+    rejectablePendingFiles,
     rejectAllFile,
     pushReviewUndoSnapshot,
     applyReview,
@@ -489,16 +506,8 @@ export const ChangeReviewDialog = ({
             const hasErrorForFile = !!result?.errors.some((e) => e.filePath === filePath);
             if (result && !hasErrorForFile && file) {
               // Keep undo payload so Ctrl/Cmd+Z can restore the file (and re-add it to the review list).
-              const cachedModified = fileContents[filePath]?.modifiedFullContent;
               const restoreContent =
-                cachedModified ??
-                (() => {
-                  const writeSnippets = file.snippets.filter(
-                    (s) => !s.isError && (s.type === 'write-new' || s.type === 'write-update')
-                  );
-                  if (writeSnippets.length === 0) return '';
-                  return writeSnippets[writeSnippets.length - 1].newString;
-                })();
+                getResolvedReviewModifiedContent(file, fileContents[filePath] ?? null) ?? '';
               const index = activeChangeSet?.files.findIndex((f) => f.filePath === filePath) ?? 0;
               removedNewFileUndoStackRef.current.push({
                 file,
@@ -688,7 +697,7 @@ export const ChangeReviewDialog = ({
     }, SELECTION_DEBOUNCE_MS);
   }, []);
 
-  // Scroll repositioning — re-query coords when parent scrolls (rAF-throttled)
+  // Scroll repositioning - re-query coords when parent scrolls (rAF-throttled)
   const hasData = !changeSetLoading && !changeSetError && !!activeChangeSet;
   useEffect(() => {
     if (!hasData) return;
@@ -832,7 +841,7 @@ export const ChangeReviewDialog = ({
       void fetchTaskChanges(teamName, taskId, taskChangeRequestOptions ?? {});
     }
 
-    // On close — clear only volatile cache, keep decisions in store
+    // On close - clear only volatile cache, keep decisions in store
     return () => clearChangeReviewCache();
   }, [
     open,
@@ -1110,6 +1119,7 @@ export const ChangeReviewDialog = ({
     addReviewFile,
     updateEditedContent,
     saveEditedFile,
+    markRecentReviewWrite,
     projectPath,
     scheduleScrollToFile,
   ]);
@@ -1277,6 +1287,7 @@ export const ChangeReviewDialog = ({
           onRejectAll={handleRejectAll}
           onApply={handleApply}
           onCollapseUnchangedChange={setCollapseUnchanged}
+          canRejectAll={canRejectAll}
           instantApply={REVIEW_INSTANT_APPLY}
           editedCount={editedCount}
           canUndo={reviewUndoStack.length > 0}

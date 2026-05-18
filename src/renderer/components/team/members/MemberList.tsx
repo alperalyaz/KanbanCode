@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { useTheme } from '@renderer/hooks/useTheme';
 import {
   deriveReviewActivityTimerAnchor,
   deriveWorkActivityTimerAnchor,
@@ -11,7 +12,7 @@ import { isDisplayableCurrentTask } from '@renderer/utils/teamTaskDisplayState';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { getTeamTaskWorkflowColumn } from '@shared/utils/teamTaskState';
 
-import { MemberCard } from './MemberCard';
+import { MemberCard, type RuntimeTelemetryScale } from './MemberCard';
 
 import type { TeamLaunchParams } from '@renderer/store/slices/teamSlice';
 import type { MemberActivityTimerAnchor } from '@renderer/utils/memberActivityTimer';
@@ -24,6 +25,7 @@ import type {
   MemberSpawnStatusEntry,
   ResolvedTeamMember,
   TeamAgentRuntimeEntry,
+  TeamAgentRuntimeResourceSample,
   TeamTaskWithKanban,
 } from '@shared/types';
 
@@ -38,6 +40,7 @@ interface MemberListProps {
   memberRuntimeEntries?: Map<string, TeamAgentRuntimeEntry>;
   runtimeRunId?: string | null;
   isLaunchSettling?: boolean;
+  isRosterLoading?: boolean;
   isTeamAlive?: boolean;
   isTeamProvisioning?: boolean;
   leadActivity?: LeadActivityState;
@@ -262,6 +265,32 @@ function areLaunchParamsEquivalent(
   );
 }
 
+function isRuntimeResourceSampleLike(value: unknown): value is TeamAgentRuntimeResourceSample {
+  return Boolean(value) && typeof value === 'object';
+}
+
+function areRuntimeResourceSamplesEquivalent(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (!isRuntimeResourceSampleLike(left) || !isRuntimeResourceSampleLike(right)) {
+    return false;
+  }
+  return (
+    left.timestamp === right.timestamp &&
+    left.cpuPercent === right.cpuPercent &&
+    left.rssBytes === right.rssBytes &&
+    left.primaryCpuPercent === right.primaryCpuPercent &&
+    left.primaryRssBytes === right.primaryRssBytes &&
+    left.childCpuPercent === right.childCpuPercent &&
+    left.childRssBytes === right.childRssBytes &&
+    left.processCount === right.processCount &&
+    left.runtimeLoadScope === right.runtimeLoadScope &&
+    left.runtimeLoadTruncated === right.runtimeLoadTruncated &&
+    left.pidSource === right.pidSource &&
+    left.pid === right.pid &&
+    left.runtimePid === right.runtimePid
+  );
+}
+
 function areMemberRuntimeEntriesEquivalent(
   left: Map<string, TeamAgentRuntimeEntry> | undefined,
   right: Map<string, TeamAgentRuntimeEntry> | undefined
@@ -271,8 +300,15 @@ function areMemberRuntimeEntriesEquivalent(
   if (left.size !== right.size) return false;
   for (const [key, leftEntry] of left) {
     const rightEntry = right.get(key);
-    const leftDiagnostics = leftEntry.diagnostics ?? [];
-    const rightDiagnostics = rightEntry?.diagnostics ?? [];
+    const leftDiagnostics = Array.isArray(leftEntry.diagnostics) ? leftEntry.diagnostics : [];
+    const rightDiagnostics = Array.isArray(rightEntry?.diagnostics) ? rightEntry.diagnostics : [];
+    const rightResourceHistoryCandidate = rightEntry?.resourceHistory;
+    const leftResourceHistory = Array.isArray(leftEntry.resourceHistory)
+      ? leftEntry.resourceHistory
+      : [];
+    const rightResourceHistory = Array.isArray(rightResourceHistoryCandidate)
+      ? rightResourceHistoryCandidate
+      : [];
     if (
       leftEntry.memberName !== rightEntry?.memberName ||
       leftEntry.alive !== rightEntry?.alive ||
@@ -285,6 +321,14 @@ function areMemberRuntimeEntriesEquivalent(
       leftEntry.pid !== rightEntry?.pid ||
       leftEntry.runtimeModel !== rightEntry?.runtimeModel ||
       leftEntry.rssBytes !== rightEntry?.rssBytes ||
+      leftEntry.cpuPercent !== rightEntry?.cpuPercent ||
+      leftEntry.primaryCpuPercent !== rightEntry?.primaryCpuPercent ||
+      leftEntry.primaryRssBytes !== rightEntry?.primaryRssBytes ||
+      leftEntry.childCpuPercent !== rightEntry?.childCpuPercent ||
+      leftEntry.childRssBytes !== rightEntry?.childRssBytes ||
+      leftEntry.processCount !== rightEntry?.processCount ||
+      leftEntry.runtimeLoadScope !== rightEntry?.runtimeLoadScope ||
+      leftEntry.runtimeLoadTruncated !== rightEntry?.runtimeLoadTruncated ||
       leftEntry.livenessKind !== rightEntry?.livenessKind ||
       leftEntry.pidSource !== rightEntry?.pidSource ||
       leftEntry.processCommand !== rightEntry?.processCommand ||
@@ -298,12 +342,105 @@ function areMemberRuntimeEntriesEquivalent(
       leftEntry.runtimeLastSeenAt !== rightEntry?.runtimeLastSeenAt ||
       leftEntry.historicalBootstrapConfirmed !== rightEntry?.historicalBootstrapConfirmed ||
       leftDiagnostics.length !== rightDiagnostics.length ||
-      !leftDiagnostics.every((value, index) => value === rightDiagnostics[index])
+      !leftDiagnostics.every((value, index) => value === rightDiagnostics[index]) ||
+      leftResourceHistory.length !== rightResourceHistory.length ||
+      !leftResourceHistory.every((value, index) =>
+        areRuntimeResourceSamplesEquivalent(value, rightResourceHistory[index])
+      )
     ) {
       return false;
     }
   }
   return true;
+}
+
+function isFiniteNonNegative(value: number | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function percentile(values: readonly number[], percentileValue: number): number | undefined {
+  if (values.length === 0) {
+    return undefined;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = (sorted.length - 1) * percentileValue;
+  const lowerIndex = Math.floor(rank);
+  const upperIndex = Math.ceil(rank);
+  const lower = sorted[lowerIndex];
+  const upper = sorted[upperIndex];
+  if (lower == null || upper == null) {
+    return sorted[sorted.length - 1];
+  }
+  if (lowerIndex === upperIndex) {
+    return lower;
+  }
+  return lower + (upper - lower) * (rank - lowerIndex);
+}
+
+function collectRuntimeTelemetryValues(
+  entry: TeamAgentRuntimeEntry | undefined,
+  getSampleValue: (sample: TeamAgentRuntimeResourceSample) => number | undefined,
+  currentValue: number | undefined
+): { historyValues: number[]; currentValues: number[] } {
+  const history = Array.isArray(entry?.resourceHistory) ? entry.resourceHistory : [];
+  const historyValues = history.flatMap((sample) => {
+    if (!isRuntimeResourceSampleLike(sample)) {
+      return [];
+    }
+    const value = getSampleValue(sample);
+    return isFiniteNonNegative(value) ? [value] : [];
+  });
+  const currentValues = isFiniteNonNegative(currentValue) ? [currentValue] : [];
+  return { historyValues, currentValues };
+}
+
+function buildRuntimeTelemetryScale(
+  members: readonly ResolvedTeamMember[],
+  runtimeEntries: Map<string, TeamAgentRuntimeEntry> | undefined
+): RuntimeTelemetryScale | undefined {
+  if (!runtimeEntries || members.length === 0) {
+    return undefined;
+  }
+
+  const memoryHistoryValues: number[] = [];
+  const memoryCurrentValues: number[] = [];
+  const cpuHistoryValues: number[] = [];
+  const cpuCurrentValues: number[] = [];
+
+  for (const member of members) {
+    const runtimeEntry = runtimeEntries.get(member.name);
+    const memoryValues = collectRuntimeTelemetryValues(
+      runtimeEntry,
+      (sample) => sample.rssBytes,
+      runtimeEntry?.rssBytes
+    );
+    memoryHistoryValues.push(...memoryValues.historyValues);
+    memoryCurrentValues.push(...memoryValues.currentValues);
+
+    const cpuValues = collectRuntimeTelemetryValues(
+      runtimeEntry,
+      (sample) => sample.cpuPercent,
+      runtimeEntry?.cpuPercent
+    );
+    cpuHistoryValues.push(...cpuValues.historyValues);
+    cpuCurrentValues.push(...cpuValues.currentValues);
+  }
+
+  const memoryP95 = percentile(memoryHistoryValues, 0.95);
+  const memoryCurrentMax =
+    memoryCurrentValues.length > 0 ? Math.max(...memoryCurrentValues) : undefined;
+  const memoryReference = Math.max(memoryP95 ?? 0, memoryCurrentMax ?? 0);
+
+  const cpuP95 = percentile(cpuHistoryValues, 0.95);
+  const cpuCurrentMax = cpuCurrentValues.length > 0 ? Math.max(...cpuCurrentValues) : undefined;
+  const cpuReference = Math.max(cpuP95 ?? 0, cpuCurrentMax ?? 0);
+  const hasCpuValues = cpuHistoryValues.length > 0 || cpuCurrentValues.length > 0;
+
+  const scale: RuntimeTelemetryScale = {
+    ...(memoryReference > 0 ? { memoryCapBytes: memoryReference * 1.1 } : {}),
+    ...(hasCpuValues ? { cpuCapPercent: Math.max(25, cpuReference) } : {}),
+  };
+  return scale.memoryCapBytes != null || scale.cpuCapPercent != null ? scale : undefined;
 }
 
 function areMemberListPropsEqual(
@@ -321,6 +458,7 @@ function areMemberListPropsEqual(
     areMemberRuntimeEntriesEquivalent(prev.memberRuntimeEntries, next.memberRuntimeEntries) &&
     prev.runtimeRunId === next.runtimeRunId &&
     prev.isLaunchSettling === next.isLaunchSettling &&
+    prev.isRosterLoading === next.isRosterLoading &&
     prev.isTeamAlive === next.isTeamAlive &&
     prev.isTeamProvisioning === next.isTeamProvisioning &&
     prev.leadActivity === next.leadActivity &&
@@ -338,6 +476,7 @@ interface MemberCardRowProps {
   member: ResolvedTeamMember;
   isRemoved: boolean;
   memberColor: string;
+  fullBleedSurface: boolean;
   currentTask: TeamTaskWithKanban | null;
   reviewTask: TeamTaskWithKanban | null;
   currentTaskTimer: MemberActivityTimerAnchor | null;
@@ -359,6 +498,7 @@ interface MemberCardRowProps {
   isTeamProvisioning?: boolean;
   leadActivity?: LeadActivityState;
   isLaunchSettling?: boolean;
+  runtimeTelemetryScale?: RuntimeTelemetryScale;
   onOpenTask?: (taskId: string) => void;
   onMemberClick?: (member: ResolvedTeamMember) => void;
   onSendMessage?: (member: ResolvedTeamMember) => void;
@@ -371,6 +511,7 @@ const MemberCardRow = memo(function MemberCardRow({
   member,
   isRemoved,
   memberColor,
+  fullBleedSurface,
   currentTask,
   reviewTask,
   currentTaskTimer,
@@ -392,6 +533,7 @@ const MemberCardRow = memo(function MemberCardRow({
   isTeamProvisioning,
   leadActivity,
   isLaunchSettling,
+  runtimeTelemetryScale,
   onOpenTask,
   onMemberClick,
   onSendMessage,
@@ -418,6 +560,7 @@ const MemberCardRow = memo(function MemberCardRow({
     <MemberCard
       member={member}
       memberColor={memberColor}
+      fullBleedSurface={fullBleedSurface}
       taskCounts={taskCounts}
       isTeamAlive={isTeamAlive}
       isTeamProvisioning={isTeamProvisioning}
@@ -440,6 +583,7 @@ const MemberCardRow = memo(function MemberCardRow({
       spawnLaunchState={spawnLaunchState}
       spawnRuntimeAlive={spawnRuntimeAlive}
       isLaunchSettling={isLaunchSettling}
+      runtimeTelemetryScale={runtimeTelemetryScale}
       onOpenTask={currentTask ? handleOpenTask : undefined}
       onOpenReviewTask={reviewTask ? handleOpenReviewTask : undefined}
       onClick={handleClick}
@@ -466,6 +610,7 @@ const MemberListLoadingSkeleton = ({
   expectedTeammateCount?: number;
 }>): React.JSX.Element => {
   const skeletonCount = getMemberLoadingSkeletonCount(expectedTeammateCount);
+  const { isLight } = useTheme();
 
   return (
     <div
@@ -477,14 +622,17 @@ const MemberListLoadingSkeleton = ({
         {Array.from({ length: skeletonCount }, (_, index) => {
           const accent = MEMBER_LOADING_ACCENTS[index] ?? MEMBER_LOADING_ACCENTS[0];
           return (
-            <div key={index} className="flex min-h-[52px] min-w-0 items-center gap-3">
-              <div className="relative size-7 shrink-0">
+            <div key={index} className="flex min-h-[52px] min-w-0 items-center gap-2.5">
+              <div className="relative size-[34px] shrink-0">
                 <div
                   className="absolute inset-0 rounded-full border-2 bg-[var(--color-surface-raised)]"
-                  style={{ borderColor: accent }}
+                  style={{
+                    borderColor: accent,
+                    boxShadow: isLight ? 'none' : `0 0 0 1px ${accent}26`,
+                  }}
                 />
                 <div
-                  className="absolute bottom-0 right-0 size-2 rounded-full border border-[var(--color-surface)]"
+                  className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-[var(--color-surface)]"
                   style={{ backgroundColor: accent }}
                 />
               </div>
@@ -523,6 +671,26 @@ const MemberListLoadingSkeleton = ({
   );
 };
 
+const MemberRosterUnavailableState = ({
+  expectedTeammateCount,
+}: Readonly<{
+  expectedTeammateCount?: number;
+}>): React.JSX.Element => {
+  const count = Number.isFinite(expectedTeammateCount)
+    ? Math.max(0, Math.floor(expectedTeammateCount ?? 0))
+    : 0;
+  const teammateLabel = count === 1 ? '1 teammate is' : `${count || 'Some'} teammates are`;
+
+  return (
+    <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-sidebar)] p-4 text-sm text-[var(--color-text-muted)]">
+      <div className="font-medium text-[var(--color-text)]">Member roster unavailable</div>
+      <div className="mt-1 text-xs">
+        {teammateLabel} known from team metadata, but roster details are missing.
+      </div>
+    </div>
+  );
+};
+
 export const MemberList = memo(function MemberList({
   teamName = '__unknown_team__',
   members,
@@ -534,6 +702,7 @@ export const MemberList = memo(function MemberList({
   memberRuntimeEntries,
   runtimeRunId,
   isLaunchSettling,
+  isRosterLoading,
   isTeamAlive,
   isTeamProvisioning,
   leadActivity,
@@ -582,6 +751,10 @@ export const MemberList = memo(function MemberList({
     [activeMembers]
   );
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
+  const runtimeTelemetryScale = useMemo(
+    () => buildRuntimeTelemetryScale(activeMembers, memberRuntimeEntries),
+    [activeMembers, memberRuntimeEntries]
+  );
   // Pre-compute reviewer->task map to avoid O(n*n) scan per member.
   const reviewTaskByMember = useMemo(() => {
     const result = new Map<string, TeamTaskWithKanban>();
@@ -596,29 +769,18 @@ export const MemberList = memo(function MemberList({
 
   const isMemberActivityTimerRunning = useCallback(
     (
+      member: ResolvedTeamMember,
       spawnEntry: MemberSpawnStatusEntry | undefined,
       runtimeEntry: TeamAgentRuntimeEntry | undefined
     ): boolean => {
-      if (isTeamAlive === false) return false;
-      if (
-        spawnEntry?.status === 'offline' ||
-        spawnEntry?.status === 'error' ||
-        spawnEntry?.status === 'skipped'
-      ) {
-        return false;
-      }
-      if (spawnEntry?.runtimeAlive === false && spawnEntry.status !== 'online') {
-        return false;
-      }
-      if (
-        runtimeEntry?.livenessKind === 'shell_only' ||
-        runtimeEntry?.livenessKind === 'registered_only' ||
-        runtimeEntry?.livenessKind === 'stale_metadata' ||
-        runtimeEntry?.livenessKind === 'not_found'
-      ) {
-        return false;
-      }
-      return true;
+      return shouldDisplayMemberCurrentTask({
+        member,
+        isTeamAlive,
+        spawnStatus: spawnEntry?.status,
+        spawnLaunchState: spawnEntry?.launchState,
+        spawnRuntimeAlive: spawnEntry?.runtimeAlive,
+        runtimeEntry,
+      });
     },
     [isTeamAlive]
   );
@@ -651,7 +813,7 @@ export const MemberList = memo(function MemberList({
     for (const member of activeMembers) {
       const spawnEntry = memberSpawnStatuses?.get(member.name);
       const runtimeEntry = memberRuntimeEntries?.get(member.name);
-      const running = isMemberActivityTimerRunning(spawnEntry, runtimeEntry);
+      const running = isMemberActivityTimerRunning(member, spawnEntry, runtimeEntry);
       const currentTaskCandidate = member.currentTaskId
         ? (taskMap.get(member.currentTaskId) ?? null)
         : null;
@@ -724,12 +886,19 @@ export const MemberList = memo(function MemberList({
   );
 
   const expectsTeammates = (expectedTeammateCount ?? 0) > 0;
+  const canStillHydrateExpectedTeammates =
+    Boolean(isRosterLoading || isTeamProvisioning) ||
+    (isTeamAlive !== false && Boolean(isLaunchSettling));
+  const shouldShowExpectedTeammateSkeleton = expectsTeammates && canStillHydrateExpectedTeammates;
   const hasOnlyLeadWhileTeammatesLoad =
-    expectsTeammates && activeTeammateCount === 0 && removedMembers.length === 0;
+    shouldShowExpectedTeammateSkeleton && activeTeammateCount === 0 && removedMembers.length === 0;
 
-  if (members.length === 0 || hasOnlyLeadWhileTeammatesLoad) {
-    if (expectsTeammates) {
+  if (members.length === 0) {
+    if (shouldShowExpectedTeammateSkeleton) {
       return <MemberListLoadingSkeleton expectedTeammateCount={expectedTeammateCount} />;
+    }
+    if (expectsTeammates) {
+      return <MemberRosterUnavailableState expectedTeammateCount={expectedTeammateCount} />;
     }
 
     return (
@@ -739,8 +908,12 @@ export const MemberList = memo(function MemberList({
     );
   }
 
+  if (hasOnlyLeadWhileTeammatesLoad) {
+    return <MemberListLoadingSkeleton expectedTeammateCount={expectedTeammateCount} />;
+  }
+
   return (
-    <div ref={containerRef} className="flex flex-col gap-1">
+    <div ref={containerRef} className="runtime-telemetry-list flex flex-col gap-1">
       <div className={gridClass}>
         {activeMembers.map((member) => {
           const spawnEntry = memberSpawnStatuses?.get(member.name);
@@ -761,8 +934,23 @@ export const MemberList = memo(function MemberList({
               : null;
           const reviewCandidate = reviewTaskByMember.get(member.name) ?? null;
           const reviewTask =
-            reviewCandidate && reviewCandidate.id !== currentTask?.id ? reviewCandidate : null;
-          const activityTimerRunning = isMemberActivityTimerRunning(spawnEntry, runtimeEntry);
+            reviewCandidate &&
+            reviewCandidate.id !== currentTask?.id &&
+            shouldDisplayMemberCurrentTask({
+              member,
+              isTeamAlive,
+              spawnStatus: spawnEntry?.status,
+              spawnLaunchState: spawnEntry?.launchState,
+              spawnRuntimeAlive: spawnEntry?.runtimeAlive,
+              runtimeEntry,
+            })
+              ? reviewCandidate
+              : null;
+          const activityTimerRunning = isMemberActivityTimerRunning(
+            member,
+            spawnEntry,
+            runtimeEntry
+          );
           const currentTaskTimer = withActivityTimerRunId(
             currentTask
               ? deriveWorkActivityTimerAnchor(currentTask, {
@@ -787,6 +975,7 @@ export const MemberList = memo(function MemberList({
               member={member}
               isRemoved={false}
               memberColor={colorMap.get(member.name) ?? 'blue'}
+              fullBleedSurface={!isWide}
               currentTask={currentTask}
               reviewTask={reviewTask}
               currentTaskTimer={currentTaskTimer}
@@ -810,6 +999,7 @@ export const MemberList = memo(function MemberList({
               isTeamProvisioning={isTeamProvisioning}
               leadActivity={leadActivity}
               isLaunchSettling={isLaunchSettling}
+              runtimeTelemetryScale={runtimeTelemetryScale}
               onOpenTask={onOpenTask}
               onMemberClick={onMemberClick}
               onSendMessage={onSendMessage}
@@ -832,6 +1022,7 @@ export const MemberList = memo(function MemberList({
                 member={member}
                 isRemoved={true}
                 memberColor={colorMap.get(member.name) ?? 'blue'}
+                fullBleedSurface={!isWide}
                 currentTask={null}
                 reviewTask={null}
                 currentTaskTimer={null}
@@ -853,6 +1044,7 @@ export const MemberList = memo(function MemberList({
                 isTeamProvisioning={isTeamProvisioning}
                 leadActivity={leadActivity}
                 isLaunchSettling={false}
+                runtimeTelemetryScale={runtimeTelemetryScale}
                 onOpenTask={onOpenTask}
                 onMemberClick={onMemberClick}
                 onSendMessage={onSendMessage}

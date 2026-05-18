@@ -11,7 +11,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/u
 import { useMemberStats } from '@renderer/hooks/useMemberStats';
 import { useStore } from '@renderer/store';
 import { selectMemberMessagesForTeamMember } from '@renderer/store/slices/teamSlice';
-import { isOpenCodeRelaunchActionable } from '@renderer/utils/memberHelpers';
+import {
+  isOpenCodeRelaunchActionable,
+  shouldDisplayMemberCurrentTask,
+} from '@renderer/utils/memberHelpers';
 import {
   buildMemberLaunchDiagnosticsPayload,
   getMemberLaunchDiagnosticsErrorMessage,
@@ -171,9 +174,20 @@ export const MemberDetailDialog = ({
         : null,
     [member?.currentTaskId, tasks]
   );
-  const displayableCurrentTask = isDisplayableCurrentTask(currentTaskCandidate)
-    ? currentTaskCandidate
-    : null;
+  const showCurrentTaskActivity =
+    member != null &&
+    shouldDisplayMemberCurrentTask({
+      member,
+      isTeamAlive,
+      spawnStatus: spawnEntry?.status,
+      spawnLaunchState: spawnEntry?.launchState,
+      spawnRuntimeAlive: spawnEntry?.runtimeAlive,
+      runtimeEntry,
+    });
+  const displayableCurrentTask =
+    showCurrentTaskActivity && isDisplayableCurrentTask(currentTaskCandidate)
+      ? currentTaskCandidate
+      : null;
 
   const completedTasks = useMemo(
     () => memberTasks.filter(isTeamTaskFinishedForDependency).length,
@@ -208,6 +222,7 @@ export const MemberDetailDialog = ({
             teamName,
             runId: runtimeRunId,
             memberName: member.name,
+            member,
             spawnEntry,
             runtimeEntry,
           })
@@ -289,6 +304,9 @@ export const MemberDetailDialog = ({
               spawnRuntimeAlive={spawnEntry?.runtimeAlive}
               spawnBootstrapConfirmed={spawnEntry?.bootstrapConfirmed}
               spawnBootstrapStalled={spawnEntry?.bootstrapStalled}
+              spawnAgentToolAccepted={spawnEntry?.agentToolAccepted}
+              spawnHardFailure={spawnEntry?.hardFailure}
+              spawnLivenessKind={spawnEntry?.livenessKind}
               spawnFirstSpawnAcceptedAt={spawnEntry?.firstSpawnAcceptedAt}
               spawnUpdatedAt={spawnEntry?.updatedAt}
               runtimeEntry={runtimeEntry}

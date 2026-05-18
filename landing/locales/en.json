@@ -64,6 +64,7 @@
     "sectionTitle": "How we compare",
     "sectionSubtitle": "Feature-by-feature comparison with other AI coding tools.",
     "feature": "Feature",
+    "robotBubble": "Judge for yourself",
     "features": {
       "crossTeam": "Cross-team communication",
       "agentMessaging": "Agent-to-agent messaging",
@@ -77,12 +78,17 @@
       "reviewWorkflow": "Review workflow",
       "zeroSetup": "Zero setup",
       "kanban": "Kanban board",
-      "execLog": "Execution log viewer",
+      "execLog": "Execution logs",
       "liveProcesses": "Live processes",
+      "runtimeLoad": "CPU/RAM per teammate",
       "perTaskReview": "Per-task code review",
       "flexAutonomy": "Flexible autonomy",
       "worktree": "Git worktree isolation",
-      "multiAgent": "Multi-agent backend",
+      "multiAgent": "Mixed AI teammates",
+      "liveWorkGraph": "Live team map",
+      "liveTeam": "Live teammates",
+      "teamWorkspace": "Team workspace",
+      "launchProof": "Teammate launch status",
       "orgGovernance": "Org chart / governance",
       "budgetControls": "Budget controls",
       "price": "Price"
@@ -98,6 +104,7 @@
   "footer": {
     "copyright": "© {year} Agent Teams",
     "tagline": "AI agent orchestration for developers",
+    "robotBubble": "I'm waiting",
     "links": {
       "github": "GitHub",
       "docs": "Documentation"

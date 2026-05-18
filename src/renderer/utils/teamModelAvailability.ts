@@ -340,6 +340,22 @@ function getModelAvailabilityMap(
   );
 }
 
+function getRuntimeModelAvailabilityFromLookup(
+  model: string,
+  visibleModelSet: ReadonlySet<string>,
+  modelAvailabilityById: ReadonlyMap<string, CliProviderModelAvailability>
+): CliProviderModelAvailabilityStatus | null {
+  if (!visibleModelSet.has(model)) {
+    return null;
+  }
+
+  const runtimeAvailability = modelAvailabilityById.get(model)?.status ?? null;
+  if (runtimeAvailability === 'unavailable') {
+    return 'unavailable';
+  }
+  return 'available';
+}
+
 function getRuntimeModelAvailability(
   providerId: SupportedProviderId,
   model: string,
@@ -411,8 +427,10 @@ export function getAvailableTeamProviderModels(
     return [];
   }
 
-  return getVisibleRuntimeModels(providerId, providerStatus).filter(
-    (model) => getRuntimeModelAvailability(providerId, model, providerStatus) === 'available'
+  const visibleModels = getVisibleRuntimeModels(providerId, providerStatus);
+  const modelAvailabilityById = getModelAvailabilityMap(providerStatus);
+  return visibleModels.filter(
+    (model) => modelAvailabilityById.get(model)?.status !== 'unavailable'
   );
 }
 
@@ -447,6 +465,17 @@ export function getAvailableTeamProviderModelOptions(
     getRuntimeSelectorModels(providerId, providerStatus),
     providerStatus
   );
+  const runtimeVisibleModelSet = new Set(
+    visibleModels.filter(
+      (model) => getTeamModelUiDisabledReason(providerId, model, providerStatus) == null
+    )
+  );
+  const modelAvailabilityById = getModelAvailabilityMap(providerStatus);
+  const getPrecomputedAvailability = (model: string): CliProviderModelAvailabilityStatus | null =>
+    getRuntimeModelAvailabilityFromLookup(model, runtimeVisibleModelSet, modelAvailabilityById);
+  const getPrecomputedAvailabilityReason = (model: string): string | null =>
+    modelAvailabilityById.get(model)?.reason ?? null;
+
   return [
     { value: '', label: 'Default', badgeLabel: 'Default' },
     ...visibleModels.map((model) => {
@@ -454,8 +483,8 @@ export function getAvailableTeamProviderModelOptions(
       if (catalogOption) {
         return {
           ...catalogOption,
-          availabilityStatus: getRuntimeModelAvailability(providerId, model, providerStatus),
-          availabilityReason: getRuntimeModelAvailabilityReason(model, providerStatus),
+          availabilityStatus: getPrecomputedAvailability(model),
+          availabilityReason: getPrecomputedAvailabilityReason(model),
         };
       }
       return {
@@ -465,8 +494,8 @@ export function getAvailableTeamProviderModelOptions(
           providerId === 'opencode'
             ? (getTeamModelSourceBadgeLabel(providerId, model) ?? undefined)
             : undefined,
-        availabilityStatus: getRuntimeModelAvailability(providerId, model, providerStatus),
-        availabilityReason: getRuntimeModelAvailabilityReason(model, providerStatus),
+        availabilityStatus: getPrecomputedAvailability(model),
+        availabilityReason: getPrecomputedAvailabilityReason(model),
       };
     }),
   ];
@@ -591,7 +620,8 @@ export function getTeamModelSelectionError(
   const availability = getRuntimeModelAvailability(providerId, trimmed, providerStatus);
   if (availability !== 'available') {
     const reason = getRuntimeModelAvailabilityReason(trimmed, providerStatus);
-    return `Model "${trimmed}" is not available for the current ${getTeamProviderLabel(providerId) ?? providerId} runtime.${reason ? ` ${reason}` : ''} Pick one of the listed models or use Default.`;
+    const reasonSuffix = reason ? ` ${reason}` : '';
+    return `Model "${trimmed}" is not available for the current ${getTeamProviderLabel(providerId) ?? providerId} runtime.${reasonSuffix} Pick one of the listed models or use Default.`;
   }
 
   return null;

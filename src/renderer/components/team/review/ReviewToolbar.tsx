@@ -18,6 +18,7 @@ interface ReviewToolbarProps {
   onRejectAll: () => void;
   onApply: () => void;
   onCollapseUnchangedChange: (collapse: boolean) => void;
+  canRejectAll?: boolean;
   editedCount?: number;
   canUndo?: boolean;
   onUndo?: () => void;
@@ -34,6 +35,7 @@ export const ReviewToolbar = ({
   onRejectAll,
   onApply,
   onCollapseUnchangedChange: _onCollapseUnchangedChange,
+  canRejectAll = true,
   instantApply = false,
   editedCount = 0,
   canUndo = false,
@@ -43,6 +45,7 @@ export const ReviewToolbar = ({
   const canApply = hasRejected && !applying;
   const totalChanges = stats.pending + stats.accepted + stats.rejected;
   const reviewedCount = stats.accepted + stats.rejected;
+  const rejectAllDisabled = applying || !canRejectAll;
 
   return (
     <div className="flex items-center gap-3 border-b border-border bg-surface-sidebar px-4 py-2">
@@ -175,15 +178,27 @@ export const ReviewToolbar = ({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                onClick={onRejectAll}
-                className="flex items-center gap-1 rounded bg-red-500/15 px-2.5 py-1 text-xs text-red-400 transition-colors hover:bg-red-500/25"
-              >
-                <X className="size-3" />
-                Reject All
-              </button>
+              <span>
+                <button
+                  onClick={onRejectAll}
+                  disabled={rejectAllDisabled}
+                  className={cn(
+                    'flex items-center gap-1 rounded px-2.5 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                    rejectAllDisabled
+                      ? 'bg-red-500/10 text-red-500'
+                      : 'bg-red-500/15 text-red-400 hover:bg-red-500/25'
+                  )}
+                >
+                  <X className="size-3" />
+                  Reject All
+                </button>
+              </span>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Reject all changes across all files</TooltipContent>
+            <TooltipContent side="bottom">
+              {canRejectAll
+                ? 'Reject all safely rejectable changes across all files'
+                : 'No pending files have a safe original baseline to reject.'}
+            </TooltipContent>
           </Tooltip>
         </>
       )}

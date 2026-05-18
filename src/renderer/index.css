@@ -1644,6 +1644,13 @@ a[href],
   opacity: 0.96;
 }
 
+.runtime-telemetry-list:hover .runtime-telemetry-strip,
+.runtime-telemetry-list:focus-within .runtime-telemetry-strip,
+.runtime-telemetry-hover-scope:has(.runtime-telemetry-list:hover) .runtime-telemetry-legend,
+.runtime-telemetry-hover-scope:has(.runtime-telemetry-list:focus-within) .runtime-telemetry-legend {
+  opacity: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .kanban-comment-badge-pulse,
   .message-composer-orbit-path,

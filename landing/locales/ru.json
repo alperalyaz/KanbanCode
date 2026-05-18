@@ -64,6 +64,7 @@
     "sectionTitle": "Сравнение с конкурентами",
     "sectionSubtitle": "Подробное сравнение возможностей с другими AI-инструментами для разработки.",
     "feature": "Возможность",
+    "robotBubble": "Суди сам",
     "features": {
       "crossTeam": "Межкомандная коммуникация",
       "agentMessaging": "Обмен сообщениями между агентами",
@@ -77,12 +78,17 @@
       "reviewWorkflow": "Процесс ревью",
       "zeroSetup": "Без настройки",
       "kanban": "Канбан-доска",
-      "execLog": "Просмотр логов выполнения",
+      "execLog": "Логи выполнения",
       "liveProcesses": "Живые процессы",
+      "runtimeLoad": "CPU/RAM каждого участника",
       "perTaskReview": "Код-ревью по задачам",
       "flexAutonomy": "Гибкая автономность",
       "worktree": "Изоляция Git worktree",
-      "multiAgent": "Мультиагентный бэкенд",
+      "multiAgent": "Смешанные AI-участники",
+      "liveWorkGraph": "Живая карта команды",
+      "liveTeam": "Живые участники",
+      "teamWorkspace": "Рабочее место команды",
+      "launchProof": "Статус запуска участников",
       "orgGovernance": "Оргструктура / управление",
       "budgetControls": "Бюджетные лимиты",
       "price": "Цена"
@@ -98,6 +104,7 @@
   "footer": {
     "copyright": "© {year} Agent Teams",
     "tagline": "Оркестрация ИИ-агентов для разработчиков",
+    "robotBubble": "Я жду",
     "links": {
       "github": "GitHub",
       "docs": "Документация"

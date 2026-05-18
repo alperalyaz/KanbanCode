@@ -53,6 +53,7 @@ import {
 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
+import { executeTeamRelaunch } from './dialogs/teamRelaunchFlow';
 import { TeamEmptyState } from './TeamEmptyState';
 import { EMPTY_TEAM_FILTER, TeamListFilterPopover } from './TeamListFilterPopover';
 import {
@@ -63,6 +64,7 @@ import {
 import { TeamTaskStatusSummary } from './TeamTaskStatusSummary';
 
 import type { ActiveTeamRef, TeamCopyData } from './dialogs/CreateTeamDialog';
+import type { TeamLaunchDialogMode } from './dialogs/LaunchTeamDialog';
 import type { TeamListFilterState } from './TeamListFilterPopover';
 import type { TeamStatus } from '@renderer/utils/teamListStatus';
 import type {
@@ -267,6 +269,7 @@ interface ActiveTeamCardProps {
   onLaunchTeam: (
     teamName: string,
     projectPath: string | undefined,
+    mode: TeamLaunchDialogMode,
     event: React.MouseEvent
   ) => void;
   onStopTeam: (teamName: string, event: React.MouseEvent) => void;
@@ -297,6 +300,8 @@ const ActiveTeamCard = ({
       status === 'partial_skipped' ||
       status === 'partial_pending') &&
     Boolean(team.projectPath);
+  const launchMode: TeamLaunchDialogMode = status === 'offline' ? 'launch' : 'relaunch';
+  const launchLabel = launchMode === 'relaunch' ? 'Relaunch team' : 'Launch team';
 
   return (
     <div
@@ -347,16 +352,21 @@ const ActiveTeamCard = ({
                       type="button"
                       className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-emerald-500/10 hover:text-emerald-300 disabled:opacity-50 group-hover:opacity-100"
                       onClick={(event) =>
-                        onLaunchTeam(team.teamName, team.projectPath ?? undefined, event)
+                        onLaunchTeam(
+                          team.teamName,
+                          team.projectPath ?? undefined,
+                          launchMode,
+                          event
+                        )
                       }
                       disabled={launchingTeamName === team.teamName}
-                      aria-label="Launch team"
+                      aria-label={launchLabel}
                     >
                       <Play size={14} fill="currentColor" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    {launchingTeamName === team.teamName ? 'Launching…' : 'Launch team'}
+                    {launchingTeamName === team.teamName ? 'Launching…' : launchLabel}
                   </TooltipContent>
                 </Tooltip>
               ) : null}
@@ -867,18 +877,25 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
 
   const [launchingTeamName, setLaunchingTeamName] = useState<string | null>(null);
   const [launchDialogOpen, setLaunchDialogOpen] = useState(false);
+  const [launchDialogMode, setLaunchDialogMode] = useState<TeamLaunchDialogMode>('launch');
   const [launchDialogTeamName, setLaunchDialogTeamName] = useState('');
   const [launchDialogMembers, setLaunchDialogMembers] = useState<ResolvedTeamMember[]>([]);
   const [launchDialogDefaultPath, setLaunchDialogDefaultPath] = useState<string | undefined>();
 
   const handleLaunchTeam = useCallback(
-    async (teamName: string, projectPath: string | undefined, e: React.MouseEvent) => {
+    async (
+      teamName: string,
+      projectPath: string | undefined,
+      mode: TeamLaunchDialogMode,
+      e: React.MouseEvent
+    ) => {
       e.stopPropagation();
       if (!projectPath) return;
       try {
         const data = await api.teams.getData(teamName, {
           includeMemberBranches: false,
         });
+        setLaunchDialogMode(mode);
         setLaunchDialogTeamName(teamName);
         setLaunchDialogMembers(resolveLaunchDialogMembers(data.members ?? []));
         setLaunchDialogDefaultPath(data.config.projectPath ?? projectPath);
@@ -889,6 +906,7 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
           console.error('Failed to load team data for launch dialog:', err);
         }
         // Fallback: open dialog with minimal data
+        setLaunchDialogMode(mode);
         setLaunchDialogTeamName(teamName);
         setLaunchDialogMembers([]);
         setLaunchDialogDefaultPath(projectPath);
@@ -905,6 +923,30 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
         await launchTeam(request);
       } catch (err) {
         console.error('Failed to launch team:', err);
+        throw err;
+      } finally {
+        setLaunchingTeamName(null);
+      }
+    },
+    [launchTeam]
+  );
+
+  const handleRelaunchSubmit = useCallback(
+    async (request: TeamLaunchRequest, members: TeamCreateRequest['members']) => {
+      setLaunchingTeamName(request.teamName);
+      try {
+        await executeTeamRelaunch({
+          teamName: request.teamName,
+          isTeamAlive: true,
+          request,
+          members,
+          stopTeam: (nextTeamName) => api.teams.stop(nextTeamName),
+          replaceMembers: (nextTeamName, nextRequest) =>
+            api.teams.replaceMembers(nextTeamName, nextRequest),
+          launchTeam,
+        });
+      } catch (err) {
+        console.error('Failed to relaunch team:', err);
         throw err;
       } finally {
         setLaunchingTeamName(null);
@@ -982,18 +1024,33 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
 
   const launchDialogElement = launchDialogOpen && (
     <Suspense fallback={null}>
-      <LaunchTeamDialog
-        mode="launch"
-        open={launchDialogOpen}
-        teamName={launchDialogTeamName}
-        members={launchDialogMembers}
-        defaultProjectPath={launchDialogDefaultPath}
-        provisioningError={provisioningErrorByTeam[launchDialogTeamName] ?? null}
-        clearProvisioningError={clearProvisioningError}
-        activeTeams={activeTeams}
-        onClose={() => setLaunchDialogOpen(false)}
-        onLaunch={handleLaunchSubmit}
-      />
+      {launchDialogMode === 'relaunch' ? (
+        <LaunchTeamDialog
+          mode="relaunch"
+          open={launchDialogOpen}
+          teamName={launchDialogTeamName}
+          members={launchDialogMembers}
+          defaultProjectPath={launchDialogDefaultPath}
+          provisioningError={provisioningErrorByTeam[launchDialogTeamName] ?? null}
+          clearProvisioningError={clearProvisioningError}
+          activeTeams={activeTeams}
+          onClose={() => setLaunchDialogOpen(false)}
+          onRelaunch={handleRelaunchSubmit}
+        />
+      ) : (
+        <LaunchTeamDialog
+          mode="launch"
+          open={launchDialogOpen}
+          teamName={launchDialogTeamName}
+          members={launchDialogMembers}
+          defaultProjectPath={launchDialogDefaultPath}
+          provisioningError={provisioningErrorByTeam[launchDialogTeamName] ?? null}
+          clearProvisioningError={clearProvisioningError}
+          activeTeams={activeTeams}
+          onClose={() => setLaunchDialogOpen(false)}
+          onLaunch={handleLaunchSubmit}
+        />
+      )}
     </Suspense>
   );
 

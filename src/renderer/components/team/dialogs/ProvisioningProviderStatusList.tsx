@@ -135,18 +135,22 @@ export function failIncompleteProviderChecks(
 
 type ProvisioningDetailSummary =
   | 'CLI binary missing'
+  | 'OpenCode runtime missing'
+  | 'OpenCode app MCP unreachable'
   | 'Working directory missing'
   | 'CLI binary could not be started'
   | 'CLI preflight did not complete'
   | 'Authentication required'
   | 'Runtime provider is not configured'
   | 'CLI preflight failed'
+  | 'Selected model compatible'
   | 'Selected model compatibility pending'
   | 'Selected model available'
   | 'Selected model verified'
   | 'Selected model unavailable'
   | 'Selected model verification timed out'
   | 'Selected model check failed'
+  | 'Selected model verification deferred'
   | 'Selected model ping not confirmed'
   | 'Ready with notes'
   | 'Needs attention';
@@ -160,9 +164,11 @@ function isFormattedModelDetail(lower: string): boolean {
     lower.includes(' - checking...') ||
     lower.includes(' - verified') ||
     lower.includes(' - available for launch') ||
+    lower.includes(' - compatible for launch') ||
     lower.includes(' - compatible, deep verification pending') ||
     lower.includes(' - unavailable') ||
     lower.includes(' - check failed') ||
+    lower.includes(' - verification deferred') ||
     lower.includes(' - ping not confirmed')
   );
 }
@@ -196,6 +202,16 @@ function summarizeDetail(
   if (lower.includes('spawn ') && lower.includes(' enoent')) {
     return 'CLI binary missing';
   }
+  if (lower.includes('opencode runtime binary is not installed')) {
+    return 'OpenCode runtime missing';
+  }
+  if (
+    lower.includes('opencode app mcp is unreachable') ||
+    (lower.includes('unable to connect') &&
+      (lower.includes('/experimental/tool') || lower.includes('mcp_unavailable')))
+  ) {
+    return 'OpenCode app MCP unreachable';
+  }
   if (lower.includes('working directory does not exist:')) {
     return 'Working directory missing';
   }
@@ -225,6 +241,9 @@ function summarizeDetail(
   if (isModelDetail(lower) && lower.includes('compatible, deep verification pending')) {
     return 'Selected model compatibility pending';
   }
+  if (isModelDetail(lower) && lower.includes('compatible for launch')) {
+    return 'Selected model compatible';
+  }
   if (isSelectedModelDetail(lower) && lower.includes('verified for launch')) {
     return 'Selected model verified';
   }
@@ -244,6 +263,9 @@ function summarizeDetail(
   if (isSelectedModelDetail(lower) && lower.includes('could not be verified')) {
     return 'Selected model check failed';
   }
+  if (isSelectedModelDetail(lower) && lower.includes('verification deferred')) {
+    return 'Selected model verification deferred';
+  }
   if (lower.includes(' - verified')) {
     return 'Selected model verified';
   }
@@ -258,6 +280,9 @@ function summarizeDetail(
   }
   if (lower.includes(' - check failed -')) {
     return 'Selected model check failed';
+  }
+  if (lower.includes(' - verification deferred')) {
+    return 'Selected model verification deferred';
   }
   if (lower.includes(' - ping not confirmed')) {
     return 'Selected model ping not confirmed';
@@ -274,11 +299,13 @@ function summarizeDetail(
 
 function getModelDetailSummary(details: string[]): string | null {
   let compatibilityPendingCount = 0;
+  let compatibleCount = 0;
   let availableCount = 0;
   let verifiedCount = 0;
   let unavailableCount = 0;
   let timedOutCount = 0;
   let checkFailedCount = 0;
+  let deferredCount = 0;
   let pingNotConfirmedCount = 0;
   let checkingCount = 0;
 
@@ -289,6 +316,10 @@ function getModelDetailSummary(details: string[]): string | null {
     }
     if (lower.includes('compatible, deep verification pending')) {
       compatibilityPendingCount += 1;
+      continue;
+    }
+    if (lower.includes('compatible for launch')) {
+      compatibleCount += 1;
       continue;
     }
     if (
@@ -327,6 +358,13 @@ function getModelDetailSummary(details: string[]): string | null {
       checkFailedCount += 1;
       continue;
     }
+    if (
+      lower.includes(' - verification deferred') ||
+      (isSelectedModelDetail(lower) && lower.includes('verification deferred'))
+    ) {
+      deferredCount += 1;
+      continue;
+    }
     if (lower.includes(' - ping not confirmed')) {
       pingNotConfirmedCount += 1;
       continue;
@@ -346,11 +384,17 @@ function getModelDetailSummary(details: string[]): string | null {
   if (timedOutCount > 0) {
     parts.push(`${timedOutCount} model${timedOutCount === 1 ? '' : 's'} timed out`);
   }
+  if (deferredCount > 0) {
+    parts.push(`${deferredCount} verification deferred`);
+  }
   if (pingNotConfirmedCount > 0) {
     parts.push(`${pingNotConfirmedCount} ping not confirmed`);
   }
   if (compatibilityPendingCount > 0) {
     parts.push(`${compatibilityPendingCount} compatible, deep verification pending`);
+  }
+  if (compatibleCount > 0) {
+    parts.push(`${compatibleCount} compatible`);
   }
   if (checkingCount > 0) {
     parts.push(`${checkingCount} checking`);
@@ -387,6 +431,8 @@ function getDisplayStatusText(check: ProvisioningProviderCheck): string {
     check.status === 'failed'
       ? (summarizedDetails.find(
           (detail) =>
+            detail === 'OpenCode app MCP unreachable' ||
+            detail === 'OpenCode runtime missing' ||
             detail === 'Selected model unavailable' ||
             detail === 'Selected model check failed' ||
             detail === 'Authentication required' ||
@@ -404,7 +450,11 @@ function getDetailTone(
   status: ProvisioningProviderCheckStatus
 ): 'success' | 'failure' | 'checking' | 'neutral' {
   const summary = summarizeDetail(detail, status);
-  if (summary === 'Selected model verified' || summary === 'Selected model available') {
+  if (
+    summary === 'Selected model verified' ||
+    summary === 'Selected model available' ||
+    summary === 'Selected model compatible'
+  ) {
     return 'success';
   }
   if (summary === 'Selected model verification timed out') {
@@ -417,6 +467,8 @@ function getDetailTone(
     summary === 'Selected model unavailable' ||
     summary === 'Selected model check failed' ||
     summary === 'CLI binary missing' ||
+    summary === 'OpenCode runtime missing' ||
+    summary === 'OpenCode app MCP unreachable' ||
     summary === 'Working directory missing' ||
     summary === 'CLI binary could not be started' ||
     summary === 'CLI preflight did not complete' ||
@@ -670,6 +722,20 @@ export function getProvisioningFailureHint(
   }
   if (combined.includes('provider is not configured for runtime use')) {
     return 'Configure the selected provider runtime, then reopen this dialog.';
+  }
+  if (
+    combined.includes('opencode cli not detected on path') ||
+    combined.includes('opencode cli not found') ||
+    combined.includes('opencode runtime binary is not installed')
+  ) {
+    return 'Install or retry OpenCode runtime from the provider status card, then reopen this dialog.';
+  }
+  if (
+    combined.includes('opencode app mcp is unreachable') ||
+    (combined.includes('unable to connect') &&
+      (combined.includes('/experimental/tool') || combined.includes('mcp_unavailable')))
+  ) {
+    return 'Retry launch to refresh the OpenCode app MCP bridge. If it repeats, restart the app and OpenCode runtime.';
   }
   if (
     combined.includes('spawn ') ||

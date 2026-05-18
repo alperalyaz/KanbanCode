@@ -419,6 +419,10 @@ vi.mock('@renderer/components/team/dialogs/providerPrepareCacheKey', () => ({
 vi.mock('@renderer/components/team/dialogs/providerPrepareDiagnostics', () => ({
   buildReusableProviderPrepareModelResults: () => ({}),
   getProviderPrepareCachedSnapshot: () => ({ status: 'checking', details: [] }),
+  mergeReusableProviderPrepareModelResults: (
+    existing: Record<string, unknown> | null | undefined,
+    next: Record<string, unknown>
+  ) => ({ ...(existing ?? {}), ...next }),
   runProviderPrepareDiagnostics: vi.fn(async () => ({
     status: 'ready',
     warnings: [],
@@ -1747,7 +1751,7 @@ describe('LaunchTeamDialog', () => {
     });
   });
 
-  it('keeps the in-flight preflight result after a same-signature rerender', async () => {
+  it('keeps the in-flight OpenCode preflight result when live catalog expands during rerender', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliStatus = {
       flavor: 'agent_teams_orchestrator',
@@ -1760,11 +1764,11 @@ describe('LaunchTeamDialog', () => {
           verificationState: 'verified',
           modelVerificationState: 'verified',
           statusMessage: 'warming up',
-          detailMessage: 'first render',
+          detailMessage: 'catalog still loading',
           models: ['opencode/minimax-m2.5-free'],
           modelCatalog: {
-            source: 'app-server',
-            status: 'ready',
+            source: 'live',
+            status: 'checking',
             models: [{ id: 'opencode/minimax-m2.5-free' }],
           },
           capabilities: {
@@ -1834,13 +1838,21 @@ describe('LaunchTeamDialog', () => {
           authMethod: 'opencode_managed',
           verificationState: 'verified',
           modelVerificationState: 'verified',
-          statusMessage: 'still warming',
-          detailMessage: 'same semantic status',
-          models: ['opencode/minimax-m2.5-free'],
+          statusMessage: 'healthy',
+          detailMessage: 'catalog ready',
+          models: [
+            'opencode/minimax-m2.5-free',
+            'opencode/qwen3.6-plus-free',
+            'openrouter/google/gemma-4-26b-a4b-it',
+          ],
           modelCatalog: {
-            source: 'app-server',
+            source: 'live',
             status: 'ready',
-            models: [{ id: 'opencode/minimax-m2.5-free' }],
+            models: [
+              { id: 'opencode/minimax-m2.5-free' },
+              { id: 'opencode/qwen3.6-plus-free' },
+              { id: 'openrouter/google/gemma-4-26b-a4b-it' },
+            ],
           },
           capabilities: {
             teamLaunch: true,

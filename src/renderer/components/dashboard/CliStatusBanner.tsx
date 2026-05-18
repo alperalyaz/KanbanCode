@@ -28,6 +28,7 @@ import {
   getProviderCurrentRuntimeSummary,
   getProviderDisconnectAction,
   isConnectionManagedRuntimeProvider,
+  isOpenCodeCatalogHydrating,
   shouldShowProviderConnectAction,
 } from '@renderer/components/runtime/providerConnectionUi';
 import { ProviderModelBadges } from '@renderer/components/runtime/ProviderModelBadges';
@@ -588,15 +589,13 @@ function shouldShowOpenCodeInstallAction(
   showSkeleton: boolean,
   openCodeRuntimeStatus: OpenCodeRuntimeStatus | null
 ): boolean {
-  return (
-    provider.providerId === 'opencode' &&
-    !showSkeleton &&
-    !provider.supported &&
-    !provider.authenticated &&
-    provider.backend == null &&
-    openCodeRuntimeStatus?.source !== 'path' &&
-    !(openCodeRuntimeStatus?.source === 'app-managed' && openCodeRuntimeStatus.state !== 'failed')
-  );
+  const runtimeReady =
+    openCodeRuntimeStatus?.installed === true &&
+    (openCodeRuntimeStatus.source === 'path' ||
+      (openCodeRuntimeStatus.source === 'app-managed' && openCodeRuntimeStatus.state !== 'failed'));
+  const runtimeNeedsInstall = !runtimeReady;
+
+  return provider.providerId === 'opencode' && !showSkeleton && runtimeNeedsInstall;
 }
 
 function shouldShowCodexInstallAction(
@@ -627,7 +626,6 @@ function shouldShowCodexInstallAction(
     !showSkeleton &&
     !provider.authenticated &&
     runtimeMissing &&
-    codexRuntimeStatus?.source !== 'path' &&
     !(codexRuntimeStatus?.source === 'app-managed' && codexRuntimeStatus.state !== 'failed')
   );
 }
@@ -855,6 +853,9 @@ const InstalledBanner = ({
               isProviderCardLoading(provider, providerLoading) ||
               isCodexSnapshotPending(provider, codexSnapshotPending) ||
               maskNegativeBootstrapState;
+            const anthropicRateLimitsLoading =
+              provider.providerId === 'anthropic' &&
+              (anthropicRateLimitsRefreshing || provider.modelCatalogRefreshState === 'loading');
             const showRateLimitSkeleton =
               (showSkeleton &&
                 shouldShowDashboardRateLimitSkeleton({
@@ -865,14 +866,18 @@ const InstalledBanner = ({
               (isSubscriptionRateLimitMode &&
                 !hasDashboardRateLimits &&
                 ((provider.providerId === 'codex' && codexRateLimitsLoading) ||
-                  (provider.providerId === 'anthropic' && anthropicRateLimitsRefreshing)));
+                  anthropicRateLimitsLoading));
             const statusText = showSkeleton ? 'Checking...' : formatProviderStatusText(provider);
+            const modelCatalogLoading =
+              provider.modelCatalogRefreshState === 'loading' ||
+              isOpenCodeCatalogHydrating(provider);
             const hasDetailContent = Boolean(
               (provider.backend?.label && !runtimeSummary) ||
               runtimeSummary ||
               connectionModeSummary ||
               credentialSummary ||
-              provider.models.length === 0
+              provider.models.length === 0 ||
+              modelCatalogLoading
             );
 
             return (
@@ -934,7 +939,8 @@ const InstalledBanner = ({
                         ) : null}
                         {connectionModeSummary ? <span>{connectionModeSummary}</span> : null}
                         {credentialSummary ? <span>{credentialSummary}</span> : null}
-                        {provider.models.length === 0 && (
+                        {modelCatalogLoading ? <span>Loading models...</span> : null}
+                        {provider.models.length === 0 && !modelCatalogLoading && (
                           <span>Models unavailable for this runtime build</span>
                         )}
                       </div>
@@ -1047,7 +1053,7 @@ const InstalledBanner = ({
                         title={
                           openCodeRuntimeStatus?.error ??
                           openCodeRuntimeStatus?.progress?.detail ??
-                          'Install OpenCode CLI into app data'
+                          'Install OpenCode runtime into app data'
                         }
                       >
                         {isRuntimeInstalling(
@@ -1116,7 +1122,7 @@ const InstalledBanner = ({
                     </button>
                   </div>
                 </div>
-                {!showSkeleton && provider.models.length > 0 && (
+                {!showSkeleton && !modelCatalogLoading && provider.models.length > 0 && (
                   <div className="col-span-2">
                     <ProviderModelBadges
                       providerId={provider.providerId}
@@ -1349,12 +1355,15 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
   }, [installCli]);
 
   const handleRefresh = useCallback(() => {
-    void refreshCliStatusForCurrentMode({
-      multimodelEnabled,
-      bootstrapCliStatus,
-      fetchCliStatus,
-    });
-  }, [bootstrapCliStatus, fetchCliStatus, multimodelEnabled]);
+    void (async () => {
+      await invalidateCliStatus();
+      await refreshCliStatusForCurrentMode({
+        multimodelEnabled,
+        bootstrapCliStatus,
+        fetchCliStatus,
+      });
+    })();
+  }, [bootstrapCliStatus, fetchCliStatus, invalidateCliStatus, multimodelEnabled]);
 
   const handleToggleProvidersCollapsed = useCallback(() => {
     setProvidersCollapsed((current) => {
@@ -1431,9 +1440,12 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
 
   const handleProviderRefresh = useCallback(
     (providerId: CliProviderId) => {
-      void fetchCliProviderStatus(providerId);
+      void (async () => {
+        await invalidateCliStatus();
+        await fetchCliProviderStatus(providerId);
+      })();
     },
-    [fetchCliProviderStatus]
+    [fetchCliProviderStatus, invalidateCliStatus]
   );
 
   const handleProviderBackendChange = useCallback(
@@ -1517,8 +1529,11 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
           }
           providerStatusLoading={cliProviderStatusLoading}
           disabled={isBusy || cliStatusLoading || !renderCliStatus.binaryPath}
+          codexRuntimeStatus={codexRuntimeStatus}
+          codexRuntimeStatusLoading={codexRuntimeStatusLoading}
+          onInstallCodexRuntime={() => installCodexRuntime()}
           onSelectBackend={handleProviderBackendChange}
-          onRefreshProvider={(providerId) => fetchCliProviderStatus(providerId)}
+          onRefreshProvider={handleProviderRefresh}
           onRequestLogin={(providerId) => setProviderTerminal({ providerId, action: 'login' })}
         />
         {providerTerminal && renderCliStatus.binaryPath && (

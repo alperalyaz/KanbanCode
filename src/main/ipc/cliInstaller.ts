@@ -18,6 +18,7 @@ import {
 import { getErrorMessage } from '@shared/utils/errorHandling';
 import { createLogger } from '@shared/utils/logger';
 
+import { CodexBinaryResolver } from '../services/infrastructure/codexAppServer';
 import { ClaudeBinaryResolver } from '../services/team/ClaudeBinaryResolver';
 
 import type { CliInstallerService } from '../services';
@@ -35,7 +36,23 @@ let service: CliInstallerService;
 let statusInFlight: Promise<CliInstallationStatus> | null = null;
 const providerStatusInFlight = new Map<CliProviderId, Promise<CliProviderStatus | null>>();
 let cachedStatus: { value: CliInstallationStatus; at: number } | null = null;
+let statusCacheGeneration = 0;
 const STATUS_CACHE_TTL_MS = 5_000;
+const FRONTEND_MULTIMODEL_PROVIDER_IDS = new Set<CliProviderId>(['anthropic', 'codex', 'opencode']);
+
+function isFrontendMultimodelProviderId(providerId: CliProviderId): boolean {
+  return FRONTEND_MULTIMODEL_PROVIDER_IDS.has(providerId);
+}
+
+function getCachedStatusAuthenticatedProvider(
+  providers: CliProviderStatus[]
+): CliProviderStatus | null {
+  return (
+    providers.find(
+      (provider) => isFrontendMultimodelProviderId(provider.providerId) && provider.authenticated
+    ) ?? null
+  );
+}
 
 /**
  * Initializes CLI installer handlers with the service instance.
@@ -89,14 +106,19 @@ async function handleGetStatus(
 
     if (!statusInFlight) {
       const startedAt = Date.now();
-      statusInFlight = service
+      const generation = statusCacheGeneration;
+      const request = service
         .getStatus()
         .then((status) => {
-          cachedStatus = { value: status, at: Date.now() };
+          if (generation === statusCacheGeneration) {
+            cachedStatus = { value: status, at: Date.now() };
+          }
           return status;
         })
         .catch((err) => {
-          cachedStatus = null;
+          if (generation === statusCacheGeneration) {
+            cachedStatus = null;
+          }
           throw err;
         })
         .finally(() => {
@@ -104,8 +126,11 @@ async function handleGetStatus(
           if (ms >= 2000) {
             logger.warn(`cliInstaller:getStatus slow ms=${ms}`);
           }
-          statusInFlight = null;
+          if (statusInFlight === request) {
+            statusInFlight = null;
+          }
         });
+      statusInFlight = request;
     }
 
     const status = await statusInFlight;
@@ -122,6 +147,13 @@ function patchCachedProviderStatus(providerStatus: CliProviderStatus | null): vo
     return;
   }
 
+  if (
+    cachedStatus.value.flavor === 'agent_teams_orchestrator' &&
+    !isFrontendMultimodelProviderId(providerStatus.providerId)
+  ) {
+    return;
+  }
+
   const hasProvider = cachedStatus.value.providers.some(
     (provider) => provider.providerId === providerStatus.providerId
   );
@@ -130,13 +162,19 @@ function patchCachedProviderStatus(providerStatus: CliProviderStatus | null): vo
         provider.providerId === providerStatus.providerId ? providerStatus : provider
       )
     : [...cachedStatus.value.providers, providerStatus];
-  const authenticatedProvider = nextProviders.find((provider) => provider.authenticated) ?? null;
+  const authenticatedProvider =
+    cachedStatus.value.flavor === 'agent_teams_orchestrator'
+      ? getCachedStatusAuthenticatedProvider(nextProviders)
+      : (nextProviders.find((provider) => provider.authenticated) ?? null);
 
   cachedStatus = {
     value: {
       ...cachedStatus.value,
       providers: nextProviders,
-      authLoggedIn: nextProviders.some((provider) => provider.authenticated),
+      authLoggedIn:
+        cachedStatus.value.flavor === 'agent_teams_orchestrator'
+          ? authenticatedProvider !== null
+          : nextProviders.some((provider) => provider.authenticated),
       authMethod: authenticatedProvider?.authMethod ?? null,
     },
     at: Date.now(),
@@ -154,14 +192,19 @@ async function handleGetProviderStatus(
       return { success: true, data: status };
     }
 
+    const generation = statusCacheGeneration;
     const request = service
       .getProviderStatus(providerId)
       .then((status) => {
-        patchCachedProviderStatus(status);
+        if (generation === statusCacheGeneration) {
+          patchCachedProviderStatus(status);
+        }
         return status;
       })
       .finally(() => {
-        providerStatusInFlight.delete(providerId);
+        if (providerStatusInFlight.get(providerId) === request) {
+          providerStatusInFlight.delete(providerId);
+        }
       });
 
     providerStatusInFlight.set(providerId, request);
@@ -201,9 +244,12 @@ async function handleVerifyProviderModels(
 }
 
 function handleInvalidateStatus(_event: IpcMainInvokeEvent): IpcResult<void> {
+  statusCacheGeneration += 1;
   cachedStatus = null;
+  statusInFlight = null;
   providerStatusInFlight.clear();
   ClaudeBinaryResolver.clearCache();
+  CodexBinaryResolver.clearCache();
   service.invalidateStatusCache();
   return { success: true, data: undefined };
 }
