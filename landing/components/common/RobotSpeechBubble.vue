@@ -44,8 +44,11 @@ const bubblePath = computed(() => {
   position: var(--robot-bubble-position, relative);
   z-index: var(--robot-bubble-z-index, auto);
   display: inline-grid;
+  width: max-content;
+  inline-size: max-content;
   min-width: var(--robot-bubble-min-width, 86px);
   max-width: var(--robot-bubble-max-width, 184px);
+  max-inline-size: var(--robot-bubble-max-width, 184px);
   min-height: var(--robot-bubble-min-height, 42px);
   box-sizing: border-box;
   color: var(--robot-bubble-color, #07111d);
@@ -85,12 +88,15 @@ const bubblePath = computed(() => {
   justify-self: stretch;
   box-sizing: border-box;
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
   padding: var(--robot-bubble-padding, 8px 16px 16px);
   text-align: center;
   white-space: normal;
-  overflow-wrap: anywhere;
+  word-break: normal;
+  overflow-wrap: break-word;
   hyphens: auto;
-  text-wrap: balance;
+  text-wrap: normal;
 }
 
 .robot-speech-bubble--tail-right .robot-speech-bubble__text {

@@ -1,6 +1,10 @@
 import { getErrorMessage } from '@shared/utils/errorHandling';
 
-import { applyOpenCodeRuntimeBinaryEnv } from './openCodeRuntimeBinaryEnv';
+import {
+  applyOpenCodeRuntimeBinaryEnv,
+  OPENCODE_LEGACY_BINARY_PATH_ENV,
+  OPENCODE_RUNTIME_BINARY_PATH_ENV,
+} from './openCodeRuntimeBinaryEnv';
 
 export interface EnsureOpenCodeBridgeRuntimeBinaryEnvOptions {
   targetEnv: NodeJS.ProcessEnv;
@@ -15,7 +19,10 @@ export async function ensureOpenCodeBridgeRuntimeBinaryEnv({
   resolveVerifiedAppManagedOpenCodeRuntimeBinaryPath,
   onWarning,
 }: EnsureOpenCodeBridgeRuntimeBinaryEnvOptions): Promise<void> {
-  if (targetEnv.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH?.trim()) {
+  if (
+    targetEnv[OPENCODE_RUNTIME_BINARY_PATH_ENV]?.trim() ||
+    targetEnv[OPENCODE_LEGACY_BINARY_PATH_ENV]?.trim()
+  ) {
     applyOpenCodeRuntimeBinaryEnv(targetEnv, null);
     return;
   }
@@ -25,10 +32,10 @@ export async function ensureOpenCodeBridgeRuntimeBinaryEnv({
     applyOpenCodeRuntimeBinaryEnv(targetEnv, appManagedOpenCodeBinary);
     if (
       targetEnv !== bridgeEnv &&
-      targetEnv.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH &&
-      !bridgeEnv.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH
+      targetEnv[OPENCODE_RUNTIME_BINARY_PATH_ENV] &&
+      !bridgeEnv[OPENCODE_RUNTIME_BINARY_PATH_ENV]
     ) {
-      applyOpenCodeRuntimeBinaryEnv(bridgeEnv, targetEnv.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH);
+      applyOpenCodeRuntimeBinaryEnv(bridgeEnv, targetEnv[OPENCODE_RUNTIME_BINARY_PATH_ENV]);
     }
   } catch (error) {
     onWarning?.(

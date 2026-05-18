@@ -691,6 +691,13 @@ export function getProvisioningFailureHint(
     return 'Configure the selected provider runtime, then reopen this dialog.';
   }
   if (
+    combined.includes('opencode cli not detected on path') ||
+    combined.includes('opencode cli not found') ||
+    combined.includes('opencode runtime binary is not installed')
+  ) {
+    return 'Install or retry OpenCode runtime from the provider status card, then reopen this dialog.';
+  }
+  if (
     combined.includes('spawn ') ||
     combined.includes(' enoent') ||
     combined.includes('eacces') ||

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   deriveEffectiveProvisioningPrepareState,
   getPrimaryProvisioningFailureDetail,
+  getProvisioningFailureHint,
   getProvisioningProviderBackendSummary,
   ProvisioningProviderStatusList,
   createInitialProviderChecks,
@@ -114,6 +115,21 @@ describe('ProvisioningProviderStatusList', () => {
       root.unmount();
       await Promise.resolve();
     });
+  });
+
+  it('gives a concrete hint for missing OpenCode runtime binary failures', () => {
+    expect(
+      getProvisioningFailureHint('CLI environment is not available - launch is blocked', [
+        {
+          providerId: 'opencode',
+          status: 'failed',
+          backendSummary: null,
+          details: ['OpenCode runtime binary is not installed or not reachable by launch preflight.'],
+        },
+      ])
+    ).toBe(
+      'Install or retry OpenCode runtime from the provider status card, then reopen this dialog.'
+    );
   });
 
   it('picks the first real failure detail instead of a verified line', () => {

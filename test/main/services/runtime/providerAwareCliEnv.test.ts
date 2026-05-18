@@ -371,11 +371,13 @@ describe('buildProviderAwareCliEnv', () => {
     expect(applyConfiguredConnectionEnvMock).toHaveBeenCalledWith(
       expect.objectContaining({
         CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH: appManagedBinaryPath,
+        OPENCODE_BIN_PATH: appManagedBinaryPath,
       }),
       'opencode',
       undefined
     );
     expect(result.env.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH).toBe(appManagedBinaryPath);
+    expect(result.env.OPENCODE_BIN_PATH).toBe(appManagedBinaryPath);
     expect(result.env.PATH?.split(path.delimiter)[0]).toBe(path.dirname(appManagedBinaryPath));
   });
 
@@ -392,6 +394,7 @@ describe('buildProviderAwareCliEnv', () => {
     });
 
     expect(result.env.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH).toBe(explicitBinaryPath);
+    expect(result.env.OPENCODE_BIN_PATH).toBe(explicitBinaryPath);
     expect(result.env.PATH?.split(path.delimiter)[0]).toBe(path.dirname(explicitBinaryPath));
   });
 
@@ -407,6 +410,7 @@ describe('buildProviderAwareCliEnv', () => {
     });
 
     expect(result.env.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH).toBeUndefined();
+    expect(result.env.OPENCODE_BIN_PATH).toBeUndefined();
   });
 
   it('injects the verified app-managed Codex binary for Codex launches', async () => {

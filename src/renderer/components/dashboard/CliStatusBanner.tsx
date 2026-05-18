@@ -588,15 +588,13 @@ function shouldShowOpenCodeInstallAction(
   showSkeleton: boolean,
   openCodeRuntimeStatus: OpenCodeRuntimeStatus | null
 ): boolean {
-  return (
-    provider.providerId === 'opencode' &&
-    !showSkeleton &&
-    !provider.supported &&
-    !provider.authenticated &&
-    provider.backend == null &&
-    openCodeRuntimeStatus?.source !== 'path' &&
-    !(openCodeRuntimeStatus?.source === 'app-managed' && openCodeRuntimeStatus.state !== 'failed')
-  );
+  const runtimeReady =
+    openCodeRuntimeStatus?.installed === true &&
+    (openCodeRuntimeStatus.source === 'path' ||
+      (openCodeRuntimeStatus.source === 'app-managed' && openCodeRuntimeStatus.state !== 'failed'));
+  const runtimeNeedsInstall = !runtimeReady;
+
+  return provider.providerId === 'opencode' && !showSkeleton && runtimeNeedsInstall;
 }
 
 function shouldShowCodexInstallAction(
@@ -1054,7 +1052,7 @@ const InstalledBanner = ({
                         title={
                           openCodeRuntimeStatus?.error ??
                           openCodeRuntimeStatus?.progress?.detail ??
-                          'Install OpenCode CLI into app data'
+                          'Install OpenCode runtime into app data'
                         }
                       >
                         {isRuntimeInstalling(

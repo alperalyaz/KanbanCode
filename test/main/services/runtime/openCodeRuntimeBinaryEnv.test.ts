@@ -14,6 +14,7 @@ describe('applyOpenCodeRuntimeBinaryEnv', () => {
     applyOpenCodeRuntimeBinaryEnv(env, binaryPath);
 
     expect(env.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH).toBe(binaryPath);
+    expect(env.OPENCODE_BIN_PATH).toBe(binaryPath);
     expect(env.PATH?.split(path.delimiter)).toEqual([
       path.dirname(binaryPath),
       '/usr/bin',
@@ -32,6 +33,21 @@ describe('applyOpenCodeRuntimeBinaryEnv', () => {
     applyOpenCodeRuntimeBinaryEnv(env, discoveredBinaryPath);
 
     expect(env.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH).toBe(explicitBinaryPath);
+    expect(env.OPENCODE_BIN_PATH).toBe(explicitBinaryPath);
+    expect(env.PATH?.split(path.delimiter)[0]).toBe(path.dirname(explicitBinaryPath));
+  });
+
+  it('mirrors a legacy OpenCode binary override into the managed env var', () => {
+    const explicitBinaryPath = path.join(process.cwd(), 'legacy opencode', 'opencode');
+    const env: NodeJS.ProcessEnv = {
+      OPENCODE_BIN_PATH: explicitBinaryPath,
+      PATH: '/usr/bin',
+    };
+
+    applyOpenCodeRuntimeBinaryEnv(env, null);
+
+    expect(env.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH).toBe(explicitBinaryPath);
+    expect(env.OPENCODE_BIN_PATH).toBe(explicitBinaryPath);
     expect(env.PATH?.split(path.delimiter)[0]).toBe(path.dirname(explicitBinaryPath));
   });
 

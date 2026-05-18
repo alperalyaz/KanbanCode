@@ -640,7 +640,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
         return (
           providerStatus.detailMessage ??
           providerStatus.statusMessage ??
-          'OpenCode CLI is not installed.'
+          'OpenCode runtime is not installed.'
         );
       }
       if (!providerStatus.authenticated) {

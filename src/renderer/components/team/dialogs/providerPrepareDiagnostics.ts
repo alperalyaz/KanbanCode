@@ -440,11 +440,26 @@ function createRuntimeWarningLines(result: TeamProvisioningPrepareResult): strin
   return uniquePrepareLines(result.warnings ?? []);
 }
 
+function normalizeRuntimeFailureDetailLine(detail: string | null | undefined): string | null {
+  const trimmed = detail?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (/opencode cli (?:not detected on path|not found)/i.test(trimmed)) {
+    return 'OpenCode runtime binary is not installed or not reachable by launch preflight.';
+  }
+
+  return trimmed;
+}
+
 function createRuntimeFailureDetailLines(
   runtimeDetailLines: readonly string[],
   message: string | null | undefined
 ): string[] {
-  return uniquePrepareLines([...runtimeDetailLines, message]);
+  return uniquePrepareLines(
+    [...runtimeDetailLines, message].map(normalizeRuntimeFailureDetailLine).filter(Boolean)
+  );
 }
 
 function extractTimedOutPreflightProbeModelId(detail: string): string | null {

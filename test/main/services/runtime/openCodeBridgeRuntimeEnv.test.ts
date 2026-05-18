@@ -17,6 +17,7 @@ describe('ensureOpenCodeBridgeRuntimeBinaryEnv', () => {
     });
 
     expect(env.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH).toBe(binaryPath);
+    expect(env.OPENCODE_BIN_PATH).toBe(binaryPath);
     expect(env.PATH?.split(path.delimiter)).toEqual([
       path.dirname(binaryPath),
       '/usr/bin',
@@ -48,9 +49,30 @@ describe('ensureOpenCodeBridgeRuntimeBinaryEnv', () => {
     });
 
     expect(commandEnv.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH).toBe(binaryPath);
+    expect(commandEnv.OPENCODE_BIN_PATH).toBe(binaryPath);
     expect(commandEnv.PATH?.split(path.delimiter)[0]).toBe(path.dirname(binaryPath));
     expect(bridgeEnv.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH).toBe(binaryPath);
+    expect(bridgeEnv.OPENCODE_BIN_PATH).toBe(binaryPath);
     expect(bridgeEnv.PATH?.split(path.delimiter)[0]).toBe(path.dirname(binaryPath));
+  });
+
+  it('honors a legacy OpenCode binary override already present in the command env', async () => {
+    const binaryPath = path.join(process.cwd(), 'legacy opencode', 'opencode');
+    const env: NodeJS.ProcessEnv = {
+      OPENCODE_BIN_PATH: binaryPath,
+      PATH: '/usr/bin',
+    };
+    const resolver = vi.fn<() => Promise<string | null>>();
+
+    await ensureOpenCodeBridgeRuntimeBinaryEnv({
+      targetEnv: env,
+      resolveVerifiedAppManagedOpenCodeRuntimeBinaryPath: resolver,
+    });
+
+    expect(resolver).not.toHaveBeenCalled();
+    expect(env.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH).toBe(binaryPath);
+    expect(env.OPENCODE_BIN_PATH).toBe(binaryPath);
+    expect(env.PATH?.split(path.delimiter)[0]).toBe(path.dirname(binaryPath));
   });
 
   it('keeps bridge startup non-fatal when the managed resolver fails', async () => {
@@ -72,6 +94,7 @@ describe('ensureOpenCodeBridgeRuntimeBinaryEnv', () => {
       '[OpenCode] Runtime adapter bundled OpenCode binary unresolved: manifest unreadable'
     );
     expect(env.CLAUDE_MULTIMODEL_OPENCODE_BIN_PATH).toBeUndefined();
+    expect(env.OPENCODE_BIN_PATH).toBeUndefined();
     expect(env.PATH).toBe('/usr/bin');
   });
 });

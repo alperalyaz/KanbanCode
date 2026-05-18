@@ -342,6 +342,25 @@ function describeMemberWorkSyncReviewPickupEscalationReason(reason: string): str
   return 'The current review request is still waiting for explicit review pickup.';
 }
 
+async function resolveOpenCodeRuntimeBinaryForBridgeEnv(): Promise<string | null> {
+  const manifestBinaryPath = await resolveVerifiedAppManagedOpenCodeRuntimeBinaryPath();
+  if (manifestBinaryPath) {
+    return manifestBinaryPath;
+  }
+
+  try {
+    const status = await openCodeRuntimeInstallerService?.getStatus();
+    return status?.installed === true && status.binaryPath ? status.binaryPath : null;
+  } catch (error) {
+    logger.warn(
+      `[OpenCode] Runtime installer status unavailable while resolving bridge binary: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return null;
+  }
+}
+
 async function createOpenCodeRuntimeAdapterRegistry(
   reportProgress: (phase: string, message: string) => void = () => undefined
 ): Promise<TeamRuntimeAdapterRegistry> {
@@ -416,7 +435,7 @@ async function createOpenCodeRuntimeAdapterRegistry(
     await ensureOpenCodeBridgeRuntimeBinaryEnv({
       targetEnv,
       bridgeEnv,
-      resolveVerifiedAppManagedOpenCodeRuntimeBinaryPath,
+      resolveVerifiedAppManagedOpenCodeRuntimeBinaryPath: resolveOpenCodeRuntimeBinaryForBridgeEnv,
       onWarning: (message) => logger.warn(message),
     });
   };
