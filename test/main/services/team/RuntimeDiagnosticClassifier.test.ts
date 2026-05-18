@@ -208,6 +208,26 @@ describe('RuntimeDiagnosticClassifier', () => {
       generic: true,
       actionRequired: false,
     });
+    expect(
+      classifyRuntimeDiagnostic(
+        'OpenCode API error. opencode_prompt_delivery_session_refresh_scheduled'
+      )
+    ).toMatchObject({
+      reasonCode: 'backend_error',
+      normalizedMessage: 'OpenCode session changed; refreshing the session before retry.',
+      generic: true,
+      actionRequired: false,
+    });
+    expect(
+      classifyRuntimeDiagnostic(
+        'OpenCode API error. opencode_prompt_delivery_session_refresh_scheduled.'
+      )
+    ).toMatchObject({
+      reasonCode: 'backend_error',
+      normalizedMessage: 'OpenCode session changed; refreshing the session before retry.',
+      generic: true,
+      actionRequired: false,
+    });
   });
 
   it('does not classify refresh markers with unknown extra text as clean refresh', () => {

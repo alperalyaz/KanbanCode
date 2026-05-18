@@ -51,6 +51,32 @@ function isPlainGenericOpenCodeApiError(message: string): boolean {
   );
 }
 
+function isOpenCodeRuntimeDeliverySessionRefreshScheduledDiagnostic(message: string): boolean {
+  const normalized = stripOpenCodeGenericApiErrorPrefix(message.trim().toLowerCase()).replace(
+    /[.:\s-]+$/,
+    ''
+  );
+  return (
+    normalized === 'opencode prompt delivery session refresh scheduled' ||
+    normalized === 'opencode_prompt_delivery_session_refresh_scheduled' ||
+    normalized === 'opencode session refresh scheduled after resolved behavior changed' ||
+    normalized === 'opencode_session_refresh_scheduled_after_resolved_behavior_changed' ||
+    normalized === 'opencode session changed; refreshing the session before retry'
+  );
+}
+
+function stripOpenCodeGenericApiErrorPrefix(message: string): string {
+  return message.replace(/^opencode api error(?:[.:\s-]+|$)/i, '');
+}
+
+function isOpenCodeRuntimeDeliveryCleanSessionRefreshDiagnostic(message: string): boolean {
+  return (
+    isOpenCodeRuntimeDeliverySessionRefreshScheduledDiagnostic(message) ||
+    isOpenCodeResolvedBehaviorChangedReason(message) ||
+    isOpenCodeSessionTransportChangedReason(message)
+  );
+}
+
 function isInformationalOpenCodeRuntimeDeliveryDiagnostic(
   message: string | null | undefined
 ): boolean {
@@ -61,12 +87,7 @@ function isInformationalOpenCodeRuntimeDeliveryDiagnostic(
       'opencode prompt_async accepted; response observation will continue through durable app-side ledger reconciliation.' ||
     normalized === 'opencode session status busy' ||
     normalized === 'opencode_delivery_response_pending' ||
-    normalized === 'opencode_prompt_delivery_session_refresh_scheduled' ||
-    normalized === 'opencode_session_refresh_scheduled_after_resolved_behavior_changed' ||
-    Boolean(
-      isOpenCodeResolvedBehaviorChangedReason(normalized) ||
-      isOpenCodeSessionTransportChangedReason(normalized)
-    )
+    Boolean(normalized && isOpenCodeRuntimeDeliveryCleanSessionRefreshDiagnostic(normalized))
   );
 }
 
@@ -85,11 +106,7 @@ function getOpenCodeRuntimeDeliveryStateFallback(
   const diagnostics = record.diagnostics.map((diagnostic) => diagnostic.trim().toLowerCase());
   const diagnosticText = diagnostics.join('\n');
   const hasCleanSessionRefreshDiagnostic = diagnostics.some(
-    (diagnostic) =>
-      diagnostic === 'opencode_prompt_delivery_session_refresh_scheduled' ||
-      diagnostic === 'opencode_session_refresh_scheduled_after_resolved_behavior_changed' ||
-      isOpenCodeResolvedBehaviorChangedReason(diagnostic) ||
-      isOpenCodeSessionTransportChangedReason(diagnostic)
+    isOpenCodeRuntimeDeliveryCleanSessionRefreshDiagnostic
   );
   if (state === 'empty_assistant_turn' || normalizedReason === 'empty_assistant_turn') {
     return 'OpenCode returned an empty assistant turn.';

@@ -890,7 +890,7 @@ function isCleanOpenCodeSessionRefreshReason(
   if (!pattern.test(normalized)) {
     return false;
   }
-  const markerText = normalized.replace(/^opencode api error(?:[.:\s-]+|$)/i, '');
+  const markerText = stripOpenCodeGenericApiErrorPrefix(normalized);
   if (hasOpenCodeSessionRefreshFailureConflict(markerText)) {
     return false;
   }
@@ -924,11 +924,9 @@ function isBenignOpenCodeSessionRefreshRemainder(rawRemainder: string): boolean 
 }
 
 function isOpenCodeSessionRefreshScheduledReason(message: string | null | undefined): boolean {
-  const normalized =
-    message
-      ?.trim()
-      .toLowerCase()
-      .replace(/[.:\s-]+$/, '') ?? '';
+  const normalized = stripOpenCodeGenericApiErrorPrefix(
+    message?.trim().toLowerCase() ?? ''
+  ).replace(/[.:\s-]+$/, '');
   return (
     normalized === 'opencode prompt delivery session refresh scheduled' ||
     normalized === 'opencode_prompt_delivery_session_refresh_scheduled' ||
@@ -936,6 +934,10 @@ function isOpenCodeSessionRefreshScheduledReason(message: string | null | undefi
     normalized === 'opencode_session_refresh_scheduled_after_resolved_behavior_changed' ||
     normalized === 'opencode session changed; refreshing the session before retry'
   );
+}
+
+function stripOpenCodeGenericApiErrorPrefix(message: string): string {
+  return message.replace(/^opencode api error(?:[.:\s-]+|$)/i, '');
 }
 
 function hasOpenCodeSessionRefreshFailureConflict(value: string): boolean {

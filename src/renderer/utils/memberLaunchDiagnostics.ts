@@ -166,21 +166,22 @@ function isRuntimeDiagnosticCardError(params: {
 
 function isRecoverableOpenCodeSessionRefreshText(value: string | undefined): boolean {
   const normalized = value?.trim().toLowerCase() ?? '';
+  const refreshText = stripOpenCodeGenericApiErrorPrefix(normalized);
+  const refreshMarkerText = refreshText.replace(/[.:\s-]+$/, '');
   if (
-    normalized === 'session_stale' ||
-    normalized === 'opencode session refresh' ||
-    normalized === 'opencode session changed; refreshing the session before retry' ||
-    normalized === 'opencode session changed; refreshing the session before retry.' ||
-    normalized === 'opencode session refresh scheduled after resolved behavior changed' ||
-    normalized === 'opencode_prompt_delivery_session_refresh_scheduled' ||
-    normalized === 'opencode_session_refresh_scheduled_after_resolved_behavior_changed'
+    refreshMarkerText === 'session_stale' ||
+    refreshMarkerText === 'opencode session refresh' ||
+    refreshMarkerText === 'opencode session changed; refreshing the session before retry' ||
+    refreshMarkerText === 'opencode session refresh scheduled after resolved behavior changed' ||
+    refreshMarkerText === 'opencode_prompt_delivery_session_refresh_scheduled' ||
+    refreshMarkerText === 'opencode_session_refresh_scheduled_after_resolved_behavior_changed'
   ) {
     return true;
   }
-  if (!OPENCODE_SESSION_REFRESH_REASON_PATTERN.test(normalized)) {
+  if (!OPENCODE_SESSION_REFRESH_REASON_PATTERN.test(refreshText)) {
     return false;
   }
-  const markerText = normalized.replace(/^opencode api error(?:[.:\s-]+|$)/i, '');
+  const markerText = refreshText;
   if (hasOpenCodeSessionRefreshFailureConflict(markerText)) {
     return false;
   }
@@ -194,6 +195,10 @@ function isRecoverableOpenCodeSessionRefreshText(value: string | undefined): boo
     normalized.includes('stored session is stale') ||
     normalized.includes('session reconcile skipped');
   return staleLogProjectionContext && isBenignOpenCodeSessionRefreshRemainder(rawRemainder);
+}
+
+function stripOpenCodeGenericApiErrorPrefix(message: string): string {
+  return message.replace(/^opencode api error(?:[.:\s-]+|$)/i, '');
 }
 
 function isBenignOpenCodeSessionRefreshRemainder(rawRemainder: string): boolean {
@@ -774,6 +779,7 @@ export function hasMemberLaunchDiagnosticsError(payload: MemberLaunchDiagnostics
     return false;
   }
   return Boolean(
+    payload.memberCardError ||
     payload.spawnStatus === 'error' ||
     payload.launchState === 'failed_to_start' ||
     payload.runtimeDiagnosticSeverity === 'error'

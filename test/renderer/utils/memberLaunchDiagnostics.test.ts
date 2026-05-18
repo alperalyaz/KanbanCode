@@ -278,7 +278,7 @@ describe('member launch diagnostics', () => {
         kind: 'api_error',
         observedAt: '2026-05-18T08:31:46.075Z',
         reasonCode: 'backend_error',
-        message: 'opencode_prompt_delivery_session_refresh_scheduled',
+        message: 'OpenCode API error. opencode_prompt_delivery_session_refresh_scheduled.',
       },
     });
 
@@ -310,6 +310,25 @@ describe('member launch diagnostics', () => {
 
     expect(payload.memberCardError).toBeUndefined();
     expect(hasMemberLaunchDiagnosticsError(payload)).toBe(false);
+  });
+
+  it('treats member card errors from runtime advisory as diagnostics errors', () => {
+    const payload = buildMemberLaunchDiagnosticsPayload({
+      memberName: 'tom',
+      member: { name: 'tom', providerId: 'opencode' },
+      runtimeAdvisoryLabel: 'OpenCode API error',
+      runtimeAdvisoryTitle: 'OpenCode API error',
+      runtimeAdvisory: {
+        kind: 'api_error',
+        observedAt: '2026-05-18T08:31:46.075Z',
+        reasonCode: 'backend_error',
+        message: 'OpenCode API error. opencode_prompt_delivery_session_refresh_scheduled permission denied',
+      },
+    });
+
+    expect(payload.memberCardError).toBe('OpenCode API error');
+    expect(hasMemberLaunchDiagnosticsError(payload)).toBe(true);
+    expect(getMemberLaunchDiagnosticsErrorMessage(payload)).toBe('OpenCode API error');
   });
 
   it('does not treat OpenCode response-state names inside refresh markers as card errors', () => {

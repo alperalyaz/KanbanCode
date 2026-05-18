@@ -981,6 +981,8 @@ describe('memberHelpers spawn-aware presence', () => {
     'OpenCode session is stale (resolved_behavior_changed:old->new); reading historical messages for log projection only',
     'opencode_app_mcp_transport_changed:old->new',
     'opencode_prompt_delivery_session_refresh_scheduled',
+    'OpenCode API error. opencode_prompt_delivery_session_refresh_scheduled',
+    'OpenCode API error. opencode_prompt_delivery_session_refresh_scheduled.',
     'OpenCode session refresh scheduled after resolved behavior changed',
     'opencode_session_refresh_scheduled_after_resolved_behavior_changed',
   ])('renders recoverable OpenCode session refresh advisory %s as a warning', (message) => {

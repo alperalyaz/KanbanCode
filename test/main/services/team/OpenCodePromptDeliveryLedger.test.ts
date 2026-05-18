@@ -591,7 +591,9 @@ describe('OpenCodePromptDeliveryLedger', () => {
     ).toBe(true);
     for (const reason of [
       'opencode_prompt_delivery_session_refresh_scheduled',
+      'OpenCode API error. opencode_prompt_delivery_session_refresh_scheduled',
       'opencode_session_refresh_scheduled_after_resolved_behavior_changed',
+      'OpenCode API error: opencode_session_refresh_scheduled_after_resolved_behavior_changed',
       'OpenCode session refresh scheduled after resolved behavior changed',
       'OpenCode session changed; refreshing the session before retry.',
     ]) {
@@ -602,6 +604,12 @@ describe('OpenCodePromptDeliveryLedger', () => {
         })
       ).toBe(true);
     }
+    expect(
+      isOpenCodeSessionRefreshResponseState({
+        responseState: 'pending',
+        reason: 'OpenCode API erroropencode_prompt_delivery_session_refresh_scheduled',
+      })
+    ).toBe(false);
     expect(
       isOpenCodeSessionRefreshResponseState({
         diagnostics: [

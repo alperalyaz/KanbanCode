@@ -131,6 +131,38 @@ describe('OpenCodeRuntimeDeliveryDiagnostics', () => {
     );
   });
 
+  it('treats generic-prefixed legacy prompt-delivery refresh scheduled diagnostics as session refresh', () => {
+    const record = {
+      diagnostics: [
+        'OpenCode API error',
+        'OpenCode API error. opencode_prompt_delivery_session_refresh_scheduled',
+      ],
+      lastReason: 'OpenCode API error',
+      responseState: 'not_observed',
+      status: 'retry_scheduled',
+    } as Parameters<typeof selectOpenCodeRuntimeDeliveryReason>[0];
+
+    expect(selectOpenCodeRuntimeDeliveryReason(record)).toBe(
+      'OpenCode session changed; refreshing the session before retry.'
+    );
+  });
+
+  it('treats generic-prefixed resolved-behavior refresh scheduled diagnostics as session refresh', () => {
+    const record = {
+      diagnostics: [
+        'OpenCode API error',
+        'OpenCode API error. opencode_session_refresh_scheduled_after_resolved_behavior_changed',
+      ],
+      lastReason: 'OpenCode API error',
+      responseState: 'not_observed',
+      status: 'retry_scheduled',
+    } as Parameters<typeof selectOpenCodeRuntimeDeliveryReason>[0];
+
+    expect(selectOpenCodeRuntimeDeliveryReason(record)).toBe(
+      'OpenCode session changed; refreshing the session before retry.'
+    );
+  });
+
   it('treats colon-terminated generic OpenCode API errors plus clean refresh evidence as session refresh', () => {
     const record = {
       diagnostics: ['OpenCode API error:', 'resolved_behavior_changed:old->new'],
@@ -142,6 +174,19 @@ describe('OpenCodeRuntimeDeliveryDiagnostics', () => {
     expect(selectOpenCodeRuntimeDeliveryReason(record)).toBe(
       'OpenCode session changed; refreshing the session before retry.'
     );
+  });
+
+  it('does not treat generic-prefixed refresh scheduled diagnostics with failure details as session refresh', () => {
+    const reason =
+      'OpenCode API error. opencode_prompt_delivery_session_refresh_scheduled permission denied';
+    const record = {
+      diagnostics: ['OpenCode API error', reason],
+      lastReason: 'OpenCode API error',
+      responseState: 'reconcile_failed',
+      status: 'failed_retryable',
+    } as Parameters<typeof selectOpenCodeRuntimeDeliveryReason>[0];
+
+    expect(selectOpenCodeRuntimeDeliveryReason(record)).toBe(reason);
   });
 
   it('keeps real failure diagnostics above generic OpenCode API error plus refresh evidence', () => {

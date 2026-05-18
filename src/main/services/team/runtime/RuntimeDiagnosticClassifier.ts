@@ -41,19 +41,20 @@ const OPENCODE_SESSION_REFRESH_SAFE_MARKER_STATE_PATTERN =
 
 function isCleanOpenCodeSessionRefreshDiagnostic(message: string): boolean {
   const normalized = message.trim().toLowerCase();
+  const refreshText = stripOpenCodeGenericApiErrorPrefix(normalized);
+  const refreshMarkerText = refreshText.replace(/[.:\s-]+$/, '');
   if (
-    normalized === 'opencode session changed; refreshing the session before retry' ||
-    normalized === 'opencode session changed; refreshing the session before retry.' ||
-    normalized === 'opencode session refresh scheduled after resolved behavior changed' ||
-    normalized === 'opencode_prompt_delivery_session_refresh_scheduled' ||
-    normalized === 'opencode_session_refresh_scheduled_after_resolved_behavior_changed'
+    refreshMarkerText === 'opencode session changed; refreshing the session before retry' ||
+    refreshMarkerText === 'opencode session refresh scheduled after resolved behavior changed' ||
+    refreshMarkerText === 'opencode_prompt_delivery_session_refresh_scheduled' ||
+    refreshMarkerText === 'opencode_session_refresh_scheduled_after_resolved_behavior_changed'
   ) {
     return true;
   }
-  if (!OPENCODE_SESSION_REFRESH_REASON_PATTERN.test(normalized)) {
+  if (!OPENCODE_SESSION_REFRESH_REASON_PATTERN.test(refreshText)) {
     return false;
   }
-  const markerText = normalized.replace(/^opencode api error(?:[.:\s-]+|$)/i, '');
+  const markerText = refreshText;
   if (hasOpenCodeSessionRefreshFailureConflict(markerText)) {
     return false;
   }
@@ -63,6 +64,10 @@ function isCleanOpenCodeSessionRefreshDiagnostic(message: string): boolean {
     return true;
   }
   return isBenignOpenCodeSessionRefreshRemainder(rawRemainder);
+}
+
+function stripOpenCodeGenericApiErrorPrefix(message: string): string {
+  return message.replace(/^opencode api error(?:[.:\s-]+|$)/i, '');
 }
 
 function isBenignOpenCodeSessionRefreshRemainder(rawRemainder: string): boolean {
