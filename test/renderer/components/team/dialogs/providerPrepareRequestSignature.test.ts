@@ -349,6 +349,118 @@ describe('providerPrepareRequestSignature', () => {
     expect(first).toBe(second);
   });
 
+  it('ignores OpenCode catalog expansion that can happen while preflight is already running', () => {
+    const providerIds = ['opencode'] as const;
+    const first = buildProviderPrepareRuntimeStatusSignature(
+      providerIds,
+      new Map([
+        [
+          'opencode',
+          {
+            providerId: 'opencode',
+            supported: true,
+            authenticated: true,
+            authMethod: 'oauth',
+            selectedBackendId: 'opencode-cli',
+            resolvedBackendId: 'opencode-cli',
+            models: ['opencode/minimax-m2.5-free'],
+            modelCatalog: {
+              source: 'live',
+              status: 'checking',
+              models: [{ id: 'opencode/minimax-m2.5-free' }],
+            },
+          },
+        ],
+      ]) as any
+    );
+    const second = buildProviderPrepareRuntimeStatusSignature(
+      providerIds,
+      new Map([
+        [
+          'opencode',
+          {
+            providerId: 'opencode',
+            supported: true,
+            authenticated: true,
+            authMethod: 'oauth',
+            selectedBackendId: 'opencode-cli',
+            resolvedBackendId: 'opencode-cli',
+            models: [
+              'opencode/minimax-m2.5-free',
+              'opencode/qwen3.6-plus-free',
+              'openrouter/google/gemma-4-26b-a4b-it',
+            ],
+            modelCatalog: {
+              source: 'live',
+              status: 'ready',
+              models: [
+                { id: 'opencode/minimax-m2.5-free' },
+                { id: 'opencode/qwen3.6-plus-free' },
+                { id: 'openrouter/google/gemma-4-26b-a4b-it' },
+              ],
+            },
+          },
+        ],
+      ]) as any
+    );
+
+    expect(first).toBe(second);
+  });
+
+  it('still changes the full request signature when selected OpenCode model checks change', () => {
+    const runtimeStatusSignature = buildProviderPrepareRuntimeStatusSignature(
+      ['opencode'],
+      new Map([
+        [
+          'opencode',
+          {
+            providerId: 'opencode',
+            supported: true,
+            authenticated: true,
+            authMethod: 'oauth',
+            selectedBackendId: 'opencode-cli',
+            resolvedBackendId: 'opencode-cli',
+            models: [
+              'opencode/minimax-m2.5-free',
+              'opencode/qwen3.6-plus-free',
+            ],
+            modelCatalog: {
+              source: 'live',
+              status: 'ready',
+              models: [
+                { id: 'opencode/minimax-m2.5-free' },
+                { id: 'opencode/qwen3.6-plus-free' },
+              ],
+            },
+          },
+        ],
+      ]) as any
+    );
+
+    const first = buildProviderPrepareRequestSignature({
+      cwd: '/tmp/project',
+      selectedProviderId: 'opencode',
+      selectedModel: 'opencode/minimax-m2.5-free',
+      selectedMemberProviders: ['opencode'],
+      runtimeStatusSignature,
+      modelChecksSignature: buildProviderPrepareModelChecksSignature(
+        new Map([['opencode', ['opencode/minimax-m2.5-free']]])
+      ),
+    });
+    const second = buildProviderPrepareRequestSignature({
+      cwd: '/tmp/project',
+      selectedProviderId: 'opencode',
+      selectedModel: 'opencode/qwen3.6-plus-free',
+      selectedMemberProviders: ['opencode'],
+      runtimeStatusSignature,
+      modelChecksSignature: buildProviderPrepareModelChecksSignature(
+        new Map([['opencode', ['opencode/qwen3.6-plus-free']]])
+      ),
+    });
+
+    expect(first).not.toBe(second);
+  });
+
   it('ignores live verification fields that can drift while preflight is already running', () => {
     const providerIds = ['opencode'] as const;
     const first = buildProviderPrepareRuntimeStatusSignature(

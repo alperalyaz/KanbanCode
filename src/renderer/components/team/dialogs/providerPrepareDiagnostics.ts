@@ -323,6 +323,15 @@ function buildOpenCodeAdvisoryDeepVerificationWarning(reason: string | null | un
   return `OpenCode model ping was not confirmed. ${normalizedReason}`;
 }
 
+function isProviderLevelOpenCodeBusyDeepVerificationWarning(value: string): boolean {
+  const lower = value.trim().toLowerCase();
+  return (
+    lower.includes('opencode is currently busy') &&
+    lower.includes('deep model verification') &&
+    lower.includes('idle')
+  );
+}
+
 function createOpenCodeAdvisoryDeepVerificationModelResult(
   providerId: TeamProviderId,
   modelId: string
@@ -1196,6 +1205,7 @@ export async function runProviderPrepareDiagnostics({
         const structuredProviderScopedFailure =
           structuredProviderScopedIssue?.message.trim() ?? null;
         let handledAdvisoryDeepFailure = false;
+        let handledBusyDeepDeferral = false;
         if (structuredProviderScopedFailure || providerScopedFailure) {
           const failureReason =
             structuredProviderScopedFailure ?? providerScopedFailure ?? 'OpenCode failed';
@@ -1231,6 +1241,24 @@ export async function runProviderPrepareDiagnostics({
         }
         if (
           !handledAdvisoryDeepFailure &&
+          batchedModelResult.ready &&
+          !hasModelScopedEntries &&
+          runtimeWarnings.some(isProviderLevelOpenCodeBusyDeepVerificationWarning)
+        ) {
+          runtimeDetailLines = [];
+          runtimeWarnings = [];
+          for (const modelId of compatibilityPassedModelIds) {
+            recordTerminalModelResult(modelId, {
+              status: 'ready',
+              line: buildModelAvailableLine(providerId, modelId),
+              warningLine: null,
+            });
+          }
+          handledBusyDeepDeferral = true;
+        }
+        if (
+          !handledAdvisoryDeepFailure &&
+          !handledBusyDeepDeferral &&
           (shouldSurfaceProviderRuntimeFailureInsteadOfModelFailure({
             result: batchedModelResult,
             modelIds: compatibilityPassedModelIds,
@@ -1255,6 +1283,7 @@ export async function runProviderPrepareDiagnostics({
         }
         if (
           !handledAdvisoryDeepFailure &&
+          !handledBusyDeepDeferral &&
           !hasModelScopedEntries &&
           compatibilityPassedModelIds.length === 1
         ) {
@@ -1262,7 +1291,7 @@ export async function runProviderPrepareDiagnostics({
           runtimeWarnings = [];
         }
 
-        if (!handledAdvisoryDeepFailure) {
+        if (!handledAdvisoryDeepFailure && !handledBusyDeepDeferral) {
           for (const modelId of compatibilityPassedModelIds) {
             recordTerminalModelResult(
               modelId,

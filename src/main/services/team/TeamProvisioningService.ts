@@ -903,13 +903,6 @@ const PROBE_CACHE_TTL_MS = 36 * 60 * 60 * 1000;
 const PREFLIGHT_BINARY_TIMEOUT_MS = 8000;
 const PREFLIGHT_AUTH_RETRY_DELAY_MS = 2000;
 const PREFLIGHT_AUTH_MAX_RETRIES = 2;
-// Facts:
-// - Deep OpenCode preflight below calls adapter.prepare({ runtimeOnly: false }).
-// - OpenCodeTeamRuntimeAdapter maps runtimeOnly:false to requireExecutionProbe:true.
-// - The readiness bridge then runs modelExecution.verify against the OpenCode host.
-// - The host reports "session status busy" when another foreground probe/request is active.
-// Keep probes serial so preflight does not create its own busy failures.
-const OPENCODE_PREFLIGHT_MODEL_PROBE_CONCURRENCY = 1;
 const OPENCODE_PROVIDER_SCOPED_PREPARE_FAILURE_REASONS = new Set([
   'not_installed',
   'not_authenticated',
@@ -989,11 +982,38 @@ function isRetryableOpenCodePreflightBusyDiagnostic(value: string | null | undef
   );
 }
 
-function buildOpenCodeModelVerificationDeferredLine(modelId: string, reason: string): string {
+function isOpenCodeModelVerificationTimeoutDiagnostic(value: string | null | undefined): boolean {
+  const lower = value?.trim().toLowerCase() ?? '';
+  return lower.includes('model verification timed out');
+}
+
+function selectOpenCodeModelPreparePrimaryReason(
+  prepare: Extract<TeamRuntimePrepareResult, { ok: false }>
+): string {
+  const candidates = [...prepare.diagnostics, prepare.reason]
+    .map((entry) => entry?.trim() ?? '')
+    .filter(Boolean);
+  const timeoutReason = candidates.find(isOpenCodeModelVerificationTimeoutDiagnostic);
+  return timeoutReason ?? candidates[0] ?? prepare.reason;
+}
+
+function isOpenCodeModelPrepareBusyDeferred(
+  prepare: Extract<TeamRuntimePrepareResult, { ok: false }>,
+  primaryReason: string
+): boolean {
+  const candidates = [primaryReason, prepare.reason, ...prepare.diagnostics];
+  return (
+    prepare.retryable &&
+    !candidates.some(isOpenCodeModelVerificationTimeoutDiagnostic) &&
+    candidates.some(isRetryableOpenCodePreflightBusyDiagnostic)
+  );
+}
+
+function buildOpenCodeProviderVerificationDeferredLine(reason: string): string {
   const normalizedReason = isRetryableOpenCodePreflightBusyDiagnostic(reason)
-    ? 'OpenCode session is busy; retry when idle.'
+    ? 'OpenCode is currently busy with another session. Deep model verification will retry when OpenCode is idle.'
     : reason;
-  return `Selected model ${modelId} verification deferred. ${normalizedReason}`;
+  return normalizedReason;
 }
 
 function applyDistinctProvisioningMemberColors<
@@ -19227,11 +19247,14 @@ export class TeamProvisioningService {
       }
     }
 
-    const results = new Array<{ modelId: string; prepare: TeamRuntimePrepareResult }>(
+    const results = new Array<{ modelId: string; prepare: TeamRuntimePrepareResult } | undefined>(
       modelIds.length
     );
-    const workerCount = Math.min(OPENCODE_PREFLIGHT_MODEL_PROBE_CONCURRENCY, modelIds.length);
-    let nextIndex = 0;
+    let providerBusyDeferred: {
+      modelId: string;
+      reason: string;
+      code: string;
+    } | null = null;
 
     const prepareModel = async (modelId: string): Promise<TeamRuntimePrepareResult> => {
       const startedAt = Date.now();
@@ -19281,26 +19304,45 @@ export class TeamProvisioningService {
       }
     };
 
-    await Promise.all(
-      Array.from({ length: workerCount }, async () => {
-        while (true) {
-          const currentIndex = nextIndex;
-          nextIndex += 1;
-          if (currentIndex >= modelIds.length) {
-            return;
-          }
+    // Facts:
+    // - Deep OpenCode preflight maps to a real foreground execution probe.
+    // - The host reports "session status busy" while another probe/member turn is active.
+    // - Once busy is observed, probing more selected models only repeats the same host state.
+    for (let index = 0; index < modelIds.length; index += 1) {
+      const modelId = modelIds[index];
+      const prepare = await prepareModel(modelId);
+      results[index] = { modelId, prepare };
 
-          const modelId = modelIds[currentIndex];
-          results[currentIndex] = {
-            modelId,
-            prepare: await prepareModel(modelId),
-          };
-        }
-      })
-    );
+      if (verificationMode === 'compatibility' || prepare.ok) {
+        continue;
+      }
+
+      const primaryReason = normalizeOpenCodePrepareDiagnostic(
+        selectOpenCodeModelPreparePrimaryReason(prepare),
+        prepare.reason
+      );
+      if (isOpenCodeModelPrepareBusyDeferred(prepare, primaryReason)) {
+        providerBusyDeferred = {
+          modelId,
+          reason: primaryReason,
+          code: prepare.reason,
+        };
+        appendPreflightDebugLog('opencode_model_prepare_batch_busy_deferred', {
+          cwd,
+          modelId,
+          verificationMode,
+          skippedModelIds: modelIds.slice(index + 1),
+          reason: primaryReason,
+        });
+        break;
+      }
+    }
 
     for (const result of results) {
       if (!result) {
+        if (providerBusyDeferred) {
+          continue;
+        }
         blockingMessages.push(
           'OpenCode preflight could not collect model verification results for all selected models.'
         );
@@ -19324,25 +19366,15 @@ export class TeamProvisioningService {
       }
 
       const primaryReason = normalizeOpenCodePrepareDiagnostic(
-        prepare.diagnostics.find((entry) => entry.trim().length > 0) ?? prepare.reason,
+        selectOpenCodeModelPreparePrimaryReason(prepare),
         prepare.reason
       );
-      if (
-        prepare.retryable &&
-        [primaryReason, prepare.reason, ...prepare.diagnostics].some(
-          isRetryableOpenCodePreflightBusyDiagnostic
-        )
-      ) {
-        const deferredLine = buildOpenCodeModelVerificationDeferredLine(modelId, primaryReason);
-        warnings.push(deferredLine);
-        issues.push({
-          providerId: 'opencode',
+      if (isOpenCodeModelPrepareBusyDeferred(prepare, primaryReason)) {
+        providerBusyDeferred ??= {
           modelId,
-          scope: 'model',
-          severity: 'warning',
+          reason: primaryReason,
           code: prepare.reason,
-          message: primaryReason,
-        });
+        };
         continue;
       }
       if (this.isProviderScopedOpenCodePrepareFailure(prepare, primaryReason)) {
@@ -19392,6 +19424,20 @@ export class TeamProvisioningService {
         }
         blockingMessages.push(unavailableLine);
       }
+    }
+
+    if (providerBusyDeferred) {
+      const providerBusyLine = buildOpenCodeProviderVerificationDeferredLine(
+        providerBusyDeferred.reason
+      );
+      pushUniqueLine(warnings, providerBusyLine);
+      issues.push({
+        providerId: 'opencode',
+        scope: 'provider',
+        severity: 'warning',
+        code: providerBusyDeferred.code,
+        message: providerBusyLine,
+      });
     }
 
     appendPreflightDebugLog('opencode_model_prepare_batch_complete', {

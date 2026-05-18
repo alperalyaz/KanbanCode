@@ -543,6 +543,101 @@ describe('runProviderPrepareDiagnostics', () => {
           'big-pickle - verification deferred - OpenCode session is busy; retry when idle.',
       },
     });
+    expect(prepareProvisioning).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats provider-level OpenCode busy after compatibility as launch-ready', async () => {
+    const prepareProvisioning = vi.fn<
+      (
+        cwd?: string,
+        providerId?: TeamProviderId,
+        providerIds?: TeamProviderId[],
+        selectedModels?: string[],
+        limitContext?: boolean,
+        modelVerificationMode?: 'compatibility' | 'deep'
+      ) => Promise<TeamProvisioningPrepareResult>
+    >((_cwd, _providerId, _providerIds, selectedModels, _limitContext, modelVerificationMode) =>
+      Promise.resolve(
+        modelVerificationMode === 'compatibility'
+          ? {
+              ready: true,
+              message: 'CLI is ready to launch',
+              details: (selectedModels ?? []).map(
+                (modelId) => `Selected model ${modelId} is compatible. Deep verification pending.`
+              ),
+              warnings: [],
+            }
+          : {
+              ready: true,
+              message: 'CLI is ready to launch',
+              warnings: [
+                'OpenCode is currently busy with another session. Deep model verification will retry when OpenCode is idle.',
+              ],
+            }
+      )
+    );
+
+    const result = await runProviderPrepareDiagnostics({
+      cwd: '/tmp/project',
+      providerId: 'opencode',
+      selectedModelIds: ['opencode/kimi-k2.6', 'openrouter/google/gemma-4-26b-a4b-it'],
+      prepareProvisioning,
+    });
+
+    expect(result.status).toBe('ready');
+    expect(result.details).toEqual([
+      'kimi-k2.6 - available for launch',
+      'google/gemma-4-26b-a4b-it - available for launch',
+    ]);
+    expect(result.warnings).toEqual([]);
+    expect(result.details.join('\n')).not.toContain('verification deferred - OpenCode session is busy');
+    expect(prepareProvisioning).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats provider-level OpenCode busy after compatibility as launch-ready for one selected model', async () => {
+    const prepareProvisioning = vi.fn<
+      (
+        cwd?: string,
+        providerId?: TeamProviderId,
+        providerIds?: TeamProviderId[],
+        selectedModels?: string[],
+        limitContext?: boolean,
+        modelVerificationMode?: 'compatibility' | 'deep'
+      ) => Promise<TeamProvisioningPrepareResult>
+    >((_cwd, _providerId, _providerIds, selectedModels, _limitContext, modelVerificationMode) =>
+      Promise.resolve(
+        modelVerificationMode === 'compatibility'
+          ? {
+              ready: true,
+              message: 'CLI is ready to launch',
+              details: (selectedModels ?? []).map(
+                (modelId) => `Selected model ${modelId} is compatible. Deep verification pending.`
+              ),
+              warnings: [],
+            }
+          : {
+              ready: true,
+              message: 'CLI is ready to launch',
+              warnings: [
+                'OpenCode is currently busy with another session. Deep model verification will retry when OpenCode is idle.',
+              ],
+            }
+      )
+    );
+
+    const result = await runProviderPrepareDiagnostics({
+      cwd: '/tmp/project',
+      providerId: 'opencode',
+      selectedModelIds: ['opencode/kimi-k2.6'],
+      prepareProvisioning,
+    });
+
+    expect(result.status).toBe('ready');
+    expect(result.details).toEqual([
+      'kimi-k2.6 - available for launch',
+    ]);
+    expect(result.warnings).toEqual([]);
+    expect(prepareProvisioning).toHaveBeenCalledTimes(2);
   });
 
   it('keeps stale OpenCode model-scoped runtime failures provider-scoped', async () => {

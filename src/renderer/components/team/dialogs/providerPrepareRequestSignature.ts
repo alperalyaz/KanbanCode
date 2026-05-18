@@ -51,12 +51,11 @@ export function buildProviderPrepareRuntimeStatusSignature(
           authMethod: provider?.authMethod ?? null,
           selectedBackendId: provider?.selectedBackendId ?? null,
           resolvedBackendId: provider?.resolvedBackendId ?? null,
-          models: normalizeModelIds(provider?.models),
-          modelCatalogSource: provider?.modelCatalog?.source ?? null,
-          modelCatalogStatus: provider?.modelCatalog?.status ?? null,
-          modelCatalogModels: normalizeModelIds(
-            provider?.modelCatalog?.models?.map((model) => model.id)
-          ),
+          // Facts:
+          // - Selected models are already represented by modelChecksSignature.
+          // - OpenCode/Codex live catalogs can expand while preflight is running.
+          // - Including catalog contents here retriggers duplicate preflights and can
+          //   make still-running OpenCode PONG probes look like persistent busy.
           connection: provider?.connection
             ? {
                 supportsOAuth: provider.connection.supportsOAuth,

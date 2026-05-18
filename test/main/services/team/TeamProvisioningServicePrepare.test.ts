@@ -1083,7 +1083,120 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
       'Selected model opencode/nemotron-3-super-free verified for launch.',
     ]);
     expect(result.warnings).toEqual([
-      'Selected model opencode/big-pickle verification deferred. OpenCode session is busy; retry when idle.',
+      'OpenCode is currently busy with another session. Deep model verification will retry when OpenCode is idle.',
+    ]);
+    expect(result.issues).toEqual([
+      {
+        providerId: 'opencode',
+        scope: 'provider',
+        severity: 'warning',
+        code: 'provider_busy',
+        message:
+          'OpenCode is currently busy with another session. Deep model verification will retry when OpenCode is idle.',
+      },
+    ]);
+  });
+
+  it('stops OpenCode deep model verification after the first busy host result', async () => {
+    const prepare = vi.fn(async (input: { model?: string }) => {
+      if (input.model === 'opencode/minimax-m2.5-free') {
+        return {
+          ok: false as const,
+          providerId: 'opencode' as const,
+          reason: 'provider_busy',
+          retryable: true,
+          diagnostics: ['OpenCode session status busy'],
+          warnings: [],
+        };
+      }
+
+      return {
+        ok: true as const,
+        providerId: 'opencode' as const,
+        modelId: input.model ?? null,
+        diagnostics: [],
+        warnings: [],
+      };
+    });
+    const registry = new TeamRuntimeAdapterRegistry([
+      {
+        providerId: 'opencode',
+        prepare,
+        launch: vi.fn(),
+        reconcile: vi.fn(),
+        stop: vi.fn(),
+      } as any,
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(registry);
+
+    const result = await svc.prepareForProvisioning(tempRoot, {
+      providerId: 'opencode',
+      forceFresh: true,
+      modelIds: [
+        'opencode/minimax-m2.5-free',
+        'opencode/nemotron-3-super-free',
+        'opencode/big-pickle',
+      ],
+      modelVerificationMode: 'deep',
+    });
+
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(prepare).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'opencode/minimax-m2.5-free',
+        runtimeOnly: false,
+      })
+    );
+    expect(result.ready).toBe(true);
+    expect(result.details).toBeUndefined();
+    expect(result.warnings).toEqual([
+      'OpenCode is currently busy with another session. Deep model verification will retry when OpenCode is idle.',
+    ]);
+  });
+
+  it('does not mask OpenCode model verification timeouts as busy deferred checks', async () => {
+    const prepare = vi.fn(async () => ({
+      ok: false as const,
+      providerId: 'opencode' as const,
+      reason: 'model_unavailable' as const,
+      retryable: true,
+      diagnostics: ['OpenCode session status busy', 'Model verification timed out'],
+      warnings: [],
+    }));
+    const registry = new TeamRuntimeAdapterRegistry([
+      {
+        providerId: 'opencode',
+        prepare,
+        launch: vi.fn(),
+        reconcile: vi.fn(),
+        stop: vi.fn(),
+      } as any,
+    ]);
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeAdapterRegistry(registry);
+
+    const result = await svc.prepareForProvisioning(tempRoot, {
+      providerId: 'opencode',
+      forceFresh: true,
+      modelIds: ['opencode/big-pickle'],
+      modelVerificationMode: 'deep',
+    });
+
+    expect(result.ready).toBe(true);
+    expect(result.warnings).toEqual([
+      'Selected model opencode/big-pickle could not be verified. Model verification timed out',
+    ]);
+    expect(result.warnings?.join('\n')).not.toContain('verification deferred');
+    expect(result.issues).toEqual([
+      {
+        providerId: 'opencode',
+        modelId: 'opencode/big-pickle',
+        scope: 'model',
+        severity: 'warning',
+        code: 'model_unavailable',
+        message: 'Model verification timed out',
+      },
     ]);
   });
 
