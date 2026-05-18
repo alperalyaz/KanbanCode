@@ -203,7 +203,7 @@ export const MemberHoverCard = memo(function MemberHoverCard({
   const showCopyDiagnostics =
     hasMemberLaunchDiagnosticsError(launchDiagnosticsPayload) &&
     hasMemberLaunchDiagnosticsDetails(launchDiagnosticsPayload);
-  const reviewTask: TeamTaskWithKanban | null = tasks
+  const reviewTaskCandidate: TeamTaskWithKanban | null = tasks
     ? (tasks.find(
         (task) =>
           task.reviewer === member.name &&
@@ -211,6 +211,18 @@ export const MemberHoverCard = memo(function MemberHoverCard({
           getTeamTaskWorkflowColumn(task) === 'review'
       ) ?? null)
     : null;
+  const reviewTask =
+    reviewTaskCandidate &&
+    shouldDisplayMemberCurrentTask({
+      member,
+      isTeamAlive,
+      spawnStatus: spawnEntry?.status,
+      spawnLaunchState: spawnEntry?.launchState,
+      spawnRuntimeAlive: spawnEntry?.runtimeAlive,
+      runtimeEntry,
+    })
+      ? reviewTaskCandidate
+      : null;
 
   return (
     <HoverCard openDelay={300} closeDelay={200}>

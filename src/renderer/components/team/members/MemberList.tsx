@@ -769,32 +769,18 @@ export const MemberList = memo(function MemberList({
 
   const isMemberActivityTimerRunning = useCallback(
     (
+      member: ResolvedTeamMember,
       spawnEntry: MemberSpawnStatusEntry | undefined,
       runtimeEntry: TeamAgentRuntimeEntry | undefined
     ): boolean => {
-      if (isTeamAlive === false) return false;
-      if (
-        spawnEntry?.status === 'offline' ||
-        spawnEntry?.status === 'error' ||
-        spawnEntry?.status === 'skipped'
-      ) {
-        return false;
-      }
-      if (spawnEntry?.runtimeAlive === false) {
-        return false;
-      }
-      if (runtimeEntry?.alive === false) {
-        return false;
-      }
-      if (
-        runtimeEntry?.livenessKind === 'shell_only' ||
-        runtimeEntry?.livenessKind === 'registered_only' ||
-        runtimeEntry?.livenessKind === 'stale_metadata' ||
-        runtimeEntry?.livenessKind === 'not_found'
-      ) {
-        return false;
-      }
-      return true;
+      return shouldDisplayMemberCurrentTask({
+        member,
+        isTeamAlive,
+        spawnStatus: spawnEntry?.status,
+        spawnLaunchState: spawnEntry?.launchState,
+        spawnRuntimeAlive: spawnEntry?.runtimeAlive,
+        runtimeEntry,
+      });
     },
     [isTeamAlive]
   );
@@ -827,7 +813,7 @@ export const MemberList = memo(function MemberList({
     for (const member of activeMembers) {
       const spawnEntry = memberSpawnStatuses?.get(member.name);
       const runtimeEntry = memberRuntimeEntries?.get(member.name);
-      const running = isMemberActivityTimerRunning(spawnEntry, runtimeEntry);
+      const running = isMemberActivityTimerRunning(member, spawnEntry, runtimeEntry);
       const currentTaskCandidate = member.currentTaskId
         ? (taskMap.get(member.currentTaskId) ?? null)
         : null;
@@ -948,8 +934,23 @@ export const MemberList = memo(function MemberList({
               : null;
           const reviewCandidate = reviewTaskByMember.get(member.name) ?? null;
           const reviewTask =
-            reviewCandidate && reviewCandidate.id !== currentTask?.id ? reviewCandidate : null;
-          const activityTimerRunning = isMemberActivityTimerRunning(spawnEntry, runtimeEntry);
+            reviewCandidate &&
+            reviewCandidate.id !== currentTask?.id &&
+            shouldDisplayMemberCurrentTask({
+              member,
+              isTeamAlive,
+              spawnStatus: spawnEntry?.status,
+              spawnLaunchState: spawnEntry?.launchState,
+              spawnRuntimeAlive: spawnEntry?.runtimeAlive,
+              runtimeEntry,
+            })
+              ? reviewCandidate
+              : null;
+          const activityTimerRunning = isMemberActivityTimerRunning(
+            member,
+            spawnEntry,
+            runtimeEntry
+          );
           const currentTaskTimer = withActivityTimerRunId(
             currentTask
               ? deriveWorkActivityTimerAnchor(currentTask, {

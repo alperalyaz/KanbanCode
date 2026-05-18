@@ -935,10 +935,13 @@ function getLaunchVisualStateDotClass(visualState: MemberLaunchVisualState): str
 }
 
 function getCurrentRuntimeOfflineVisualState(
+  member: ResolvedTeamMember,
   runtimeEntry: TeamAgentRuntimeEntry | undefined,
   spawnStatus: MemberSpawnStatus | undefined,
   spawnLaunchState: MemberLaunchState | undefined,
-  spawnRuntimeAlive: boolean | undefined
+  spawnRuntimeAlive: boolean | undefined,
+  spawnBootstrapConfirmed: boolean | undefined,
+  isTeamProvisioning: boolean | undefined
 ): MemberLaunchVisualState {
   if (runtimeEntry?.livenessKind === 'registered_only') {
     return 'registered_only';
@@ -963,7 +966,107 @@ function getCurrentRuntimeOfflineVisualState(
   ) {
     return 'stale_runtime';
   }
+  if (
+    shouldTreatCodexNativeRuntimeAsOffline({
+      member,
+      runtimeEntry,
+      spawnStatus,
+      spawnLaunchState,
+      spawnRuntimeAlive,
+      spawnBootstrapConfirmed,
+      isTeamProvisioning,
+    })
+  ) {
+    return 'stale_runtime';
+  }
   return null;
+}
+
+function isCodexNativeProcessTeammate(member: ResolvedTeamMember): boolean {
+  if (isLeadMember(member)) {
+    return false;
+  }
+  return (
+    member.providerId === 'codex' &&
+    (member.providerBackendId == null || member.providerBackendId === 'codex-native')
+  );
+}
+
+function hasLiveRuntimeProcessEvidence(runtimeEntry: TeamAgentRuntimeEntry | undefined): boolean {
+  if (runtimeEntry?.alive !== true) {
+    return false;
+  }
+  return (
+    runtimeEntry.livenessKind == null ||
+    runtimeEntry.livenessKind === 'runtime_process' ||
+    runtimeEntry.livenessKind === 'confirmed_bootstrap'
+  );
+}
+
+function hasSpawnRuntimeLiveClaim({
+  spawnStatus,
+  spawnLaunchState,
+  spawnRuntimeAlive,
+  spawnBootstrapConfirmed,
+}: {
+  spawnStatus?: MemberSpawnStatus;
+  spawnLaunchState?: MemberLaunchState;
+  spawnRuntimeAlive?: boolean;
+  spawnBootstrapConfirmed?: boolean;
+}): boolean {
+  return (
+    spawnStatus === 'online' ||
+    spawnLaunchState === 'confirmed_alive' ||
+    spawnRuntimeAlive === true ||
+    spawnBootstrapConfirmed === true
+  );
+}
+
+function shouldTreatCodexNativeRuntimeAsOffline({
+  member,
+  runtimeEntry,
+  spawnStatus,
+  spawnLaunchState,
+  spawnRuntimeAlive,
+  spawnBootstrapConfirmed,
+  isTeamProvisioning,
+}: {
+  member: ResolvedTeamMember;
+  runtimeEntry?: TeamAgentRuntimeEntry;
+  spawnStatus?: MemberSpawnStatus;
+  spawnLaunchState?: MemberLaunchState;
+  spawnRuntimeAlive?: boolean;
+  spawnBootstrapConfirmed?: boolean;
+  isTeamProvisioning?: boolean;
+}): boolean {
+  if (!isCodexNativeProcessTeammate(member)) {
+    return false;
+  }
+  if (hasLiveRuntimeProcessEvidence(runtimeEntry)) {
+    return false;
+  }
+  if (
+    isTeamProvisioning === true &&
+    runtimeEntry == null &&
+    !hasSpawnRuntimeLiveClaim({
+      spawnStatus,
+      spawnLaunchState,
+      spawnRuntimeAlive,
+      spawnBootstrapConfirmed,
+    })
+  ) {
+    return false;
+  }
+  return (
+    runtimeEntry != null ||
+    hasSpawnRuntimeLiveClaim({
+      spawnStatus,
+      spawnLaunchState,
+      spawnRuntimeAlive,
+      spawnBootstrapConfirmed,
+    }) ||
+    spawnStatus == null
+  );
 }
 
 export function shouldDisplayMemberCurrentTask({
@@ -1009,6 +1112,9 @@ export function shouldDisplayMemberCurrentTask({
     return false;
   }
   if (spawnRuntimeAlive === false) {
+    return false;
+  }
+  if (isCodexNativeProcessTeammate(member) && !hasLiveRuntimeProcessEvidence(runtimeEntry)) {
     return false;
   }
   return true;
@@ -1205,10 +1311,13 @@ export function buildMemberLaunchPresentation({
   nowMs?: number;
 }): MemberLaunchPresentation {
   const currentRuntimeOfflineVisualState = getCurrentRuntimeOfflineVisualState(
+    member,
     runtimeEntry,
     spawnStatus,
     spawnLaunchState,
-    spawnRuntimeAlive
+    spawnRuntimeAlive,
+    spawnBootstrapConfirmed,
+    isTeamProvisioning
   );
   const hasConfirmedSpawnLaunch =
     spawnLaunchState === 'confirmed_alive' && spawnBootstrapConfirmed === true;

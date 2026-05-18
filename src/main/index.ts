@@ -40,6 +40,7 @@ import {
 import {
   buildMemberWorkSyncRuntimeTurnSettledEnvironment,
   createMemberWorkSyncFeature,
+  hasWorkSyncActiveRuntime,
   type MemberWorkSyncFeatureFacade,
   registerMemberWorkSyncIpc,
   removeMemberWorkSyncIpc,
@@ -1780,27 +1781,55 @@ async function initializeServices(): Promise<void> {
     logger: createLogger('Feature:RecentProjects'),
   });
   runtimeProviderManagementFeature = createRuntimeProviderManagementFeature();
+  const memberWorkSyncLogger = createLogger('Feature:MemberWorkSync');
+  const hasMemberWorkSyncRuntimeActivity = async (teamName: string): Promise<boolean> => {
+    try {
+      const snapshot = await teamProvisioningService.getTeamAgentRuntimeSnapshot(teamName);
+      return hasWorkSyncActiveRuntime(snapshot);
+    } catch (error) {
+      memberWorkSyncLogger.warn('member work sync runtime activity check failed', {
+        teamName,
+        error: String(error),
+      });
+      return false;
+    }
+  };
+  const isTeamActiveForMemberWorkSync = async (teamName: string): Promise<boolean> => {
+    if (
+      teamProvisioningService.isTeamAlive(teamName) ||
+      teamProvisioningService.hasProvisioningRun(teamName)
+    ) {
+      return true;
+    }
+    return hasMemberWorkSyncRuntimeActivity(teamName);
+  };
+  const canDispatchMemberWorkSyncNudges = async (teamName: string): Promise<boolean> => {
+    if (teamProvisioningService.isTeamAlive(teamName)) {
+      return true;
+    }
+    return hasMemberWorkSyncRuntimeActivity(teamName);
+  };
+  const listMemberWorkSyncLifecycleActiveTeamNames = async (): Promise<string[]> => {
+    const activeTeamNames: string[] = [];
+    for (const team of await teamDataService.listTeams()) {
+      if (team.deletedAt) {
+        continue;
+      }
+      if (await isTeamActiveForMemberWorkSync(team.teamName)) {
+        activeTeamNames.push(team.teamName);
+      }
+    }
+    return activeTeamNames;
+  };
   memberWorkSyncFeature = createMemberWorkSyncFeature({
     teamsBasePath: getTeamsBasePath(),
     configReader: new TeamConfigReader(),
     taskReader: new TeamTaskReader(),
     kanbanManager: new TeamKanbanManager(),
     membersMetaStore: new TeamMembersMetaStore(),
-    isTeamActive: (teamName) =>
-      teamProvisioningService.isTeamAlive(teamName) ||
-      teamProvisioningService.hasProvisioningRun(teamName),
-    canDispatchNudges: (teamName) => teamProvisioningService.isTeamAlive(teamName),
-    listLifecycleActiveTeamNames: async () => {
-      const teams = await teamDataService.listTeams();
-      return teams
-        .filter(
-          (team) =>
-            !team.deletedAt &&
-            (teamProvisioningService.isTeamAlive(team.teamName) ||
-              teamProvisioningService.hasProvisioningRun(team.teamName))
-        )
-        .map((team) => team.teamName);
-    },
+    isTeamActive: isTeamActiveForMemberWorkSync,
+    canDispatchNudges: canDispatchMemberWorkSyncNudges,
+    listLifecycleActiveTeamNames: listMemberWorkSyncLifecycleActiveTeamNames,
     extraBusySignals: [
       {
         isBusy: (input) => teamProvisioningService.getOpenCodeMemberDeliveryBusyStatus(input),
@@ -1984,7 +2013,7 @@ async function initializeServices(): Promise<void> {
         });
       },
     },
-    logger: createLogger('Feature:MemberWorkSync'),
+    logger: memberWorkSyncLogger,
   });
   teamProvisioningService.setRuntimeTurnSettledHookSettingsProvider((input) =>
     memberWorkSyncFeature

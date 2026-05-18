@@ -16,6 +16,7 @@ import {
   buildMemberLaunchPresentation,
   displayMemberName,
   isOpenCodeRelaunchActionable,
+  shouldDisplayMemberCurrentTask,
 } from '@renderer/utils/memberHelpers';
 import {
   buildMemberLaunchDiagnosticsPayload,
@@ -650,8 +651,18 @@ export const MemberCard = memo(function MemberCard({
     selectedTeamName ? selectResolvedMembersForTeamName(s, selectedTeamName) : []
   );
   const avatarMap = useMemo(() => buildMemberAvatarMap(teamMembers), [teamMembers]);
+  const showTaskActivity = shouldDisplayMemberCurrentTask({
+    member,
+    isTeamAlive,
+    spawnStatus,
+    spawnLaunchState,
+    spawnRuntimeAlive,
+    runtimeEntry,
+  });
+  const visibleCurrentTask = showTaskActivity ? currentTask : null;
+  const visibleReviewTask = showTaskActivity ? reviewTask : null;
   const presentationMember =
-    member.currentTaskId && !currentTask
+    member.currentTaskId && !visibleCurrentTask
       ? {
           ...member,
           currentTaskId: null,
@@ -716,11 +727,11 @@ export const MemberCard = memo(function MemberCard({
     workspacePath ? `Path: ${workspacePath}` : 'Path is not available yet.',
     member.gitBranch ? `Branch: ${member.gitBranch}` : null,
   ].filter((line): line is string => Boolean(line));
-  const activityTask = currentTask ?? reviewTask ?? null;
-  const activityTitle = currentTask
-    ? `Current task: #${deriveTaskDisplayId(currentTask.id)}`
-    : reviewTask
-      ? `Reviewing task: #${deriveTaskDisplayId(reviewTask.id)}`
+  const activityTask = visibleCurrentTask ?? visibleReviewTask ?? null;
+  const activityTitle = visibleCurrentTask
+    ? `Current task: #${deriveTaskDisplayId(visibleCurrentTask.id)}`
+    : visibleReviewTask
+      ? `Reviewing task: #${deriveTaskDisplayId(visibleReviewTask.id)}`
       : undefined;
   const runtimeTelemetryTitle = buildRuntimeTelemetryTitle(runtimeEntry);
   const showRuntimeTelemetryTooltip = Boolean(runtimeTelemetryTitle);
@@ -1060,9 +1071,9 @@ export const MemberCard = memo(function MemberCard({
                   </TooltipContent>
                 </Tooltip>
               ) : null}
-              {currentTask ? (
+              {visibleCurrentTask ? (
                 <CurrentTaskIndicator
-                  task={currentTask}
+                  task={visibleCurrentTask}
                   borderColor={colors.border}
                   activityLabel="working on"
                   activityTimer={currentTaskTimer}
@@ -1070,9 +1081,9 @@ export const MemberCard = memo(function MemberCard({
                   onOpenTask={onOpenTask}
                 />
               ) : null}
-              {reviewTask ? (
+              {visibleReviewTask ? (
                 <CurrentTaskIndicator
-                  task={reviewTask}
+                  task={visibleReviewTask}
                   borderColor={colors.border}
                   activityLabel={reviewTaskTimer ? 'reviewing' : 'review requested'}
                   activityTimer={reviewTaskTimer}
