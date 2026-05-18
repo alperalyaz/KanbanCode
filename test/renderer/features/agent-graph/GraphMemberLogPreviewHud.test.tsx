@@ -166,10 +166,11 @@ describe('GraphMemberLogPreviewHud', () => {
       button.textContent?.includes('pnpm test')
     );
     expect(row).not.toBeUndefined();
-    expect(row?.querySelector('.float-left')).not.toBeNull();
+    expect(row?.querySelector('svg.text-amber-300')).not.toBeNull();
     expect(row?.querySelector('.line-clamp-3')).toBeNull();
+    expect(row?.querySelector('.line-clamp-2')).not.toBeNull();
     expect(row?.className).toContain('h-[72px]');
-    expect(row?.querySelector('span.text-slate-200')?.className).toContain('leading-5');
+    expect(row?.querySelector('span.text-slate-200')?.className).toContain('leading-4');
     expect(row?.textContent).toContain('pnpm test');
 
     const errorRow = Array.from(host.querySelectorAll('button')).find((button) =>

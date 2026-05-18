@@ -53,9 +53,9 @@ import {
 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
+import { executeTeamRelaunch } from './dialogs/teamRelaunchFlow';
 import { TeamEmptyState } from './TeamEmptyState';
 import { EMPTY_TEAM_FILTER, TeamListFilterPopover } from './TeamListFilterPopover';
-import { executeTeamRelaunch } from './dialogs/teamRelaunchFlow';
 import {
   findTeamProjectSelectionTarget,
   resolveTeamProjectSelection,

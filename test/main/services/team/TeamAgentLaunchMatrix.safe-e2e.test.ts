@@ -13554,22 +13554,29 @@ describe('Team agent launch matrix safe e2e', () => {
     await (svc as any).launchMixedSecondaryLaneIfNeeded(currentRun);
     await waitForCondition(() => adapter.pendingLaunchInputs.length === 1);
 
-    svc.stopTeam(teamName);
+    const killTracker = trackProcessKillsForPids([64901, 64902]);
+    try {
+      svc.stopTeam(teamName);
 
-    await waitForCondition(() => adapter.stopInputs.length === 1);
-    expectDirectChildKillCount(staleKillCount, 0);
-    expectDirectChildKillCount(currentKillCount, 1);
-    expect(staleRun.cancelRequested).toBe(false);
-    expect(currentRun.cancelRequested).toBe(true);
-    expect(adapter.stopInputs.map((input) => input.laneId).sort()).toEqual([
-      'secondary:opencode:bob',
-    ]);
-    expect(await svc.getRuntimeState(teamName)).toMatchObject({
-      teamName,
-      isAlive: false,
-      runId: null,
-      progress: null,
-    });
+      await waitForCondition(() => adapter.stopInputs.length === 1);
+      expectProcessKillCount(killTracker.killedPids, 64901, 0);
+      expectProcessKillCount(killTracker.killedPids, 64902, 1);
+      expectDirectChildKillCount(staleKillCount, 0);
+      expectDirectChildKillCount(currentKillCount, 0);
+      expect(staleRun.cancelRequested).toBe(false);
+      expect(currentRun.cancelRequested).toBe(true);
+      expect(adapter.stopInputs.map((input) => input.laneId).sort()).toEqual([
+        'secondary:opencode:bob',
+      ]);
+      expect(await svc.getRuntimeState(teamName)).toMatchObject({
+        teamName,
+        isAlive: false,
+        runId: null,
+        progress: null,
+      });
+    } finally {
+      killTracker.restore();
+    }
   });
 
   it('cancels a stale Anthropic and Gemini mixed run without stopping current OpenCode lanes', async () => {
@@ -13611,43 +13618,50 @@ describe('Team agent launch matrix safe e2e', () => {
     await (svc as any).launchMixedSecondaryLaneIfNeeded(currentRun);
     await waitForCondition(() => adapter.pendingLaunchInputs.length === 1);
 
-    await svc.cancelProvisioning(staleRun.runId);
+    const killTracker = trackProcessKillsForPids([65001, 65002]);
+    try {
+      await svc.cancelProvisioning(staleRun.runId);
 
-    expectDirectChildKillCount(staleKillCount, 1);
-    expectDirectChildKillCount(currentKillCount, 0);
-    expect(staleRun.cancelRequested).toBe(true);
-    expect(currentRun.cancelRequested).toBe(false);
-    expect(adapter.stopInputs).toEqual([]);
-    expect(svc.isTeamAlive(teamName)).toBe(true);
-    expect(await svc.getRuntimeState(teamName)).toMatchObject({
-      teamName,
-      isAlive: true,
-      runId: currentRun.runId,
-    });
+      expectProcessKillCount(killTracker.killedPids, 65001, 1);
+      expectProcessKillCount(killTracker.killedPids, 65002, 0);
+      expectDirectChildKillCount(staleKillCount, 0);
+      expectDirectChildKillCount(currentKillCount, 0);
+      expect(staleRun.cancelRequested).toBe(true);
+      expect(currentRun.cancelRequested).toBe(false);
+      expect(adapter.stopInputs).toEqual([]);
+      expect(svc.isTeamAlive(teamName)).toBe(true);
+      expect(await svc.getRuntimeState(teamName)).toMatchObject({
+        teamName,
+        isAlive: true,
+        runId: currentRun.runId,
+      });
 
-    adapter.releaseLaunches();
-    await waitForCondition(() => adapter.launchInputs.length === 2);
-    await waitForCondition(() =>
-      currentRun.mixedSecondaryLanes.every((lane: { state: string }) => lane.state === 'finished')
-    );
+      adapter.releaseLaunches();
+      await waitForCondition(() => adapter.launchInputs.length === 2);
+      await waitForCondition(() =>
+        currentRun.mixedSecondaryLanes.every((lane: { state: string }) => lane.state === 'finished')
+      );
 
-    const statuses = await svc.getMemberSpawnStatuses(teamName);
-    expect(statuses.teamLaunchState).toBe('clean_success');
-    expect(statuses.statuses.reviewer).toMatchObject({
-      status: 'online',
-      launchState: 'confirmed_alive',
-      hardFailure: false,
-    });
-    expect(statuses.statuses.bob).toMatchObject({
-      status: 'online',
-      launchState: 'confirmed_alive',
-      hardFailure: false,
-    });
-    expect(statuses.statuses.tom).toMatchObject({
-      status: 'online',
-      launchState: 'confirmed_alive',
-      hardFailure: false,
-    });
+      const statuses = await svc.getMemberSpawnStatuses(teamName);
+      expect(statuses.teamLaunchState).toBe('clean_success');
+      expect(statuses.statuses.reviewer).toMatchObject({
+        status: 'online',
+        launchState: 'confirmed_alive',
+        hardFailure: false,
+      });
+      expect(statuses.statuses.bob).toMatchObject({
+        status: 'online',
+        launchState: 'confirmed_alive',
+        hardFailure: false,
+      });
+      expect(statuses.statuses.tom).toMatchObject({
+        status: 'online',
+        launchState: 'confirmed_alive',
+        hardFailure: false,
+      });
+    } finally {
+      killTracker.restore();
+    }
   });
 
   it('stops the current pure Anthropic run instead of a stale same-team run', async () => {
@@ -13677,18 +13691,25 @@ describe('Team agent launch matrix safe e2e', () => {
       runId: currentRun.runId,
     });
 
-    svc.stopTeam(teamName);
+    const killTracker = trackProcessKillsForPids([63101, 63102]);
+    try {
+      svc.stopTeam(teamName);
 
-    expectDirectChildKillCount(staleKillCount, 0);
-    expectDirectChildKillCount(currentKillCount, 1);
-    expect(staleRun.cancelRequested).toBe(false);
-    expect(currentRun.cancelRequested).toBe(true);
-    expect(await svc.getRuntimeState(teamName)).toMatchObject({
-      teamName,
-      isAlive: false,
-      runId: null,
-      progress: null,
-    });
+      expectProcessKillCount(killTracker.killedPids, 63101, 0);
+      expectProcessKillCount(killTracker.killedPids, 63102, 1);
+      expectDirectChildKillCount(staleKillCount, 0);
+      expectDirectChildKillCount(currentKillCount, 0);
+      expect(staleRun.cancelRequested).toBe(false);
+      expect(currentRun.cancelRequested).toBe(true);
+      expect(await svc.getRuntimeState(teamName)).toMatchObject({
+        teamName,
+        isAlive: false,
+        runId: null,
+        progress: null,
+      });
+    } finally {
+      killTracker.restore();
+    }
   });
 
   it('cancels a stale pure Anthropic run without stopping the current same-team run', async () => {
@@ -13712,20 +13733,27 @@ describe('Team agent launch matrix safe e2e', () => {
     trackLiveRun(svc, staleRun);
     trackLiveRun(svc, currentRun);
 
-    await svc.cancelProvisioning(staleRun.runId);
+    const killTracker = trackProcessKillsForPids([63301, 63302]);
+    try {
+      await svc.cancelProvisioning(staleRun.runId);
 
-    expectDirectChildKillCount(staleKillCount, 1);
-    expectDirectChildKillCount(currentKillCount, 0);
-    expect(staleRun.cancelRequested).toBe(true);
-    expect(currentRun.cancelRequested).toBe(false);
-    expect(svc.isTeamAlive(teamName)).toBe(true);
-    expect(await svc.getRuntimeState(teamName)).toMatchObject({
-      teamName,
-      isAlive: true,
-      runId: currentRun.runId,
-    });
+      expectProcessKillCount(killTracker.killedPids, 63301, 1);
+      expectProcessKillCount(killTracker.killedPids, 63302, 0);
+      expectDirectChildKillCount(staleKillCount, 0);
+      expectDirectChildKillCount(currentKillCount, 0);
+      expect(staleRun.cancelRequested).toBe(true);
+      expect(currentRun.cancelRequested).toBe(false);
+      expect(svc.isTeamAlive(teamName)).toBe(true);
+      expect(await svc.getRuntimeState(teamName)).toMatchObject({
+        teamName,
+        isAlive: true,
+        runId: currentRun.runId,
+      });
 
-    await svc.sendMessageToTeam(teamName, 'current run still receives messages');
+      await svc.sendMessageToTeam(teamName, 'current run still receives messages');
+    } finally {
+      killTracker.restore();
+    }
   });
 
   it('cancels the current pure Anthropic run without resurrecting a stale same-team run', async () => {
@@ -13749,22 +13777,29 @@ describe('Team agent launch matrix safe e2e', () => {
     trackLiveRun(svc, staleRun);
     trackLiveRun(svc, currentRun);
 
-    await svc.cancelProvisioning(currentRun.runId);
+    const killTracker = trackProcessKillsForPids([63501, 63502]);
+    try {
+      await svc.cancelProvisioning(currentRun.runId);
 
-    expectDirectChildKillCount(staleKillCount, 0);
-    expectDirectChildKillCount(currentKillCount, 1);
-    expect(staleRun.cancelRequested).toBe(false);
-    expect(currentRun.cancelRequested).toBe(true);
-    expect(svc.isTeamAlive(teamName)).toBe(false);
-    expect(await svc.getRuntimeState(teamName)).toMatchObject({
-      teamName,
-      isAlive: false,
-      runId: null,
-      progress: null,
-    });
-    await expect(svc.sendMessageToTeam(teamName, 'must not hit stale run')).rejects.toThrow(
-      `No active process for team "${teamName}"`
-    );
+      expectProcessKillCount(killTracker.killedPids, 63501, 0);
+      expectProcessKillCount(killTracker.killedPids, 63502, 1);
+      expectDirectChildKillCount(staleKillCount, 0);
+      expectDirectChildKillCount(currentKillCount, 0);
+      expect(staleRun.cancelRequested).toBe(false);
+      expect(currentRun.cancelRequested).toBe(true);
+      expect(svc.isTeamAlive(teamName)).toBe(false);
+      expect(await svc.getRuntimeState(teamName)).toMatchObject({
+        teamName,
+        isAlive: false,
+        runId: null,
+        progress: null,
+      });
+      await expect(svc.sendMessageToTeam(teamName, 'must not hit stale run')).rejects.toThrow(
+        `No active process for team "${teamName}"`
+      );
+    } finally {
+      killTracker.restore();
+    }
   });
 
   it('refreshes runtime snapshot cache after same-team pure Anthropic relaunch', async () => {
@@ -19067,7 +19102,38 @@ async function writeStoppedProcessRegistry(teamName: string): Promise<void> {
 }
 
 function expectDirectChildKillCount(actual: number, expected: number): void {
-  // Windows uses taskkill.exe for process-tree termination, so fake child.kill is not called.
+  expect(actual).toBe(expected);
+}
+
+function trackProcessKillsForPids(pids: readonly number[]): {
+  killedPids: number[];
+  restore: () => void;
+} {
+  const targetPids = new Set(pids);
+  const killedPids: number[] = [];
+  const spy = vi.spyOn(process, 'kill').mockImplementation(((
+    pid: number | string,
+    signal?: number | string
+  ) => {
+    const numericPid = Number(pid);
+    if (targetPids.has(numericPid) && signal !== 0) {
+      killedPids.push(numericPid);
+    }
+    return true;
+  }) as typeof process.kill);
+  return {
+    killedPids,
+    restore: () => spy.mockRestore(),
+  };
+}
+
+function expectProcessKillCount(
+  killedPids: readonly number[],
+  pid: number,
+  expected: number
+): void {
+  const actual = killedPids.filter((killedPid) => killedPid === pid).length;
+  // Windows uses taskkill.exe for process-tree termination, so process.kill is not called.
   expect(actual).toBe(process.platform === 'win32' ? 0 : expected);
 }
 

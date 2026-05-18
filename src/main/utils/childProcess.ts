@@ -5,8 +5,8 @@ import {
   type ExecFileOptions,
   type ExecOptions,
   spawn,
-  spawnSync,
   type SpawnOptions,
+  spawnSync,
 } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
@@ -30,19 +30,12 @@ function execFileAsync(
     let stdoutText = '';
     let stderrText = '';
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    const cleanup = (): void => {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-        timeoutHandle = null;
-      }
-      untrackCliProcess(child);
-    };
     child = execFile(cmd, args, execOptions, (err, stdout, stderr) => {
       if (settled) {
         return;
       }
       settled = true;
-      cleanup();
+      timeoutHandle = cleanupTimedCliProcess(child, timeoutHandle);
       if (err) {
         const normalizedError =
           err instanceof Error ? err : new Error(typeof err === 'string' ? err : 'Unknown error');
@@ -67,7 +60,7 @@ function execFileAsync(
             return;
           }
           settled = true;
-          cleanup();
+          timeoutHandle = cleanupTimedCliProcess(child, timeoutHandle);
           killProcessTree(child, timeoutSignal);
           const error = new Error(
             `Command timed out after ${timeoutMs}ms: ${cmd} ${args.join(' ')}`
@@ -104,20 +97,13 @@ function execShellAsync(
     let stdoutText = '';
     let stderrText = '';
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    const cleanup = (): void => {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-        timeoutHandle = null;
-      }
-      untrackCliProcess(child);
-    };
     // eslint-disable-next-line sonarjs/os-command, security/detect-child-process -- cmd from known binaryPath+args, not user input (Windows EINVAL fallback)
     child = exec(cmd, execOptions, (err, stdout, stderr) => {
       if (settled) {
         return;
       }
       settled = true;
-      cleanup();
+      timeoutHandle = cleanupTimedCliProcess(child, timeoutHandle);
       if (err)
         reject(
           err instanceof Error ? err : new Error(typeof err === 'string' ? err : 'Unknown error')
@@ -138,7 +124,7 @@ function execShellAsync(
             return;
           }
           settled = true;
-          cleanup();
+          timeoutHandle = cleanupTimedCliProcess(child, timeoutHandle);
           killProcessTree(child, timeoutSignal);
           const error = new Error(`Command timed out after ${timeoutMs}ms: ${cmd}`);
           Object.assign(error, {
@@ -153,6 +139,17 @@ function execShellAsync(
       }
     }
   });
+}
+
+function cleanupTimedCliProcess(
+  child: ChildProcess | null,
+  timeoutHandle: ReturnType<typeof setTimeout> | null
+): null {
+  if (timeoutHandle) {
+    clearTimeout(timeoutHandle);
+  }
+  untrackCliProcess(child);
+  return null;
 }
 
 /**
@@ -436,8 +433,8 @@ export function spawnCli(
  * `cmd.exe` shell, leaving the actual process (e.g. `claude.cmd`) orphaned.
  * `taskkill /T /F /PID` recursively kills the entire process tree.
  *
- * On macOS/Linux, processes are killed directly (no shell wrapper), so
- * the standard `child.kill(signal)` works correctly.
+ * On macOS/Linux, kill the child and descendants by PID so shell wrappers
+ * and spawned grandchildren do not survive a timeout or team stop.
  */
 export function killProcessTree(
   child: ChildProcess | null | undefined,
@@ -477,7 +474,7 @@ export function killProcessTree(
 }
 
 function normalizeKillSignal(signal: ExecFileOptions['killSignal']): NodeJS.Signals {
-  return typeof signal === 'string' ? (signal as NodeJS.Signals) : 'SIGTERM';
+  return typeof signal === 'string' ? signal : 'SIGTERM';
 }
 
 function getDescendantProcessIds(parentPid: number): number[] {
@@ -496,7 +493,7 @@ function getDescendantProcessIds(parentPid: number): number[] {
 
     const childrenByParent = new Map<number, number[]>();
     for (const line of result.stdout.split('\n')) {
-      const match = line.trim().match(/^(\d+)\s+(\d+)$/);
+      const match = /^(\d+)\s+(\d+)$/.exec(line.trim());
       if (!match) {
         continue;
       }

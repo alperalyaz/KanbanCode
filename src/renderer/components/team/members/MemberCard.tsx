@@ -343,11 +343,11 @@ function buildRuntimeTelemetryTitle(
   return lines.join('\n');
 }
 
-function RuntimeTelemetryTooltipContent({
+const RuntimeTelemetryTooltipContent = ({
   runtimeEntry,
-}: {
+}: Readonly<{
   runtimeEntry: TeamAgentRuntimeEntry | undefined;
-}): React.JSX.Element | null {
+}>): React.JSX.Element | null => {
   if (!runtimeEntry) {
     return null;
   }
@@ -445,7 +445,7 @@ function RuntimeTelemetryTooltipContent({
       </div>
     </div>
   );
-}
+};
 
 function buildTelemetryPoints(
   samples: readonly TeamAgentRuntimeResourceSample[],

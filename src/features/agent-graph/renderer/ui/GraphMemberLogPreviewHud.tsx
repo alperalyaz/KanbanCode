@@ -28,8 +28,8 @@ import type {
 const LOG_PREVIEW_FALLBACK_WIDTH = 260;
 const LOG_PREVIEW_FALLBACK_HEIGHT = 292;
 const NEW_LOG_HIGHLIGHT_MS = 1_000;
-const COMPACT_ROW_TITLE_LIMIT = 28;
-const COMPACT_ROW_TEXT_LIMIT = 160;
+const COMPACT_ROW_TITLE_LIMIT = 24;
+const COMPACT_ROW_TEXT_LIMIT = 110;
 const COMPACT_ROW_MIN_PREVIEW_LIMIT = 96;
 const INTERACTIVE_LOG_CONTROL_CLASS = 'pointer-events-auto';
 
@@ -256,7 +256,7 @@ function renderLoadingSkeleton(): React.JSX.Element {
           key={index}
           className="grid h-[72px] min-h-[72px] w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)] gap-x-1.5 overflow-hidden rounded-md border border-white/10 bg-[rgba(8,14,28,0.42)] px-2 py-1.5"
         >
-          <span className="mt-0.5 inline-flex size-4 shrink-0 rounded bg-white/10" />
+          <span className="mt-0.5 inline-flex size-4 shrink-0 animate-pulse rounded bg-white/10" />
           <span className="flex min-w-0 flex-1 flex-col gap-1 pt-0.5">
             <span className="h-3 w-2/5 rounded bg-slate-400/20" />
             <span className="h-2.5 w-full rounded bg-slate-400/15" />

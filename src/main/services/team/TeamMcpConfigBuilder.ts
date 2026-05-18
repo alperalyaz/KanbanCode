@@ -192,8 +192,8 @@ function looksLikeNodeBinaryPath(candidate: string | undefined): candidate is st
 function getNodeRuntimeCommandCandidates(): string[] {
   const candidates = [
     process.env.NODE_BINARY,
-    process.env.npm_node_execpath,
     'node',
+    process.env.npm_node_execpath,
     looksLikeNodeBinaryPath(process.execPath) ? process.execPath : undefined,
   ];
   const seen = new Set<string>();
