@@ -288,7 +288,7 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     );
     expect(prompt).toContain('Do NOT start implementation in this turn.');
     expect(prompt).toContain(
-      'Use this turn only to refresh context, review the current board snapshot, and confirm you are ready.'
+      'Use this turn only to review the current board snapshot and confirm operational readiness.'
     );
     expect(prompt).toContain(
       'Do NOT create, assign, or delegate any new task in this turn. If the board is empty, stay silent and wait for a fresh user instruction.'
@@ -866,7 +866,7 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     );
     expect(prompt).toContain('Do NOT use Agent to spawn or restore teammates.');
     expect(prompt).toContain(
-      'Use this turn only to refresh context and review the current board snapshot.'
+      'Use this turn only to review the current board snapshot and teammate readiness.'
     );
     expect(prompt).toContain(
       'Do NOT create, assign, or delegate any new task in this turn. If the board is empty, stay silent and wait for a fresh user instruction.'
