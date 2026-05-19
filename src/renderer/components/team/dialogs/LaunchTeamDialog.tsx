@@ -1073,6 +1073,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
             selectedEffort,
             selectedFastMode,
             providerFastModeDefault: anthropicProviderFastModeDefault,
+            runtimeCapabilities: runtimeProviderStatusById.get('anthropic')?.runtimeCapabilities,
           })
         : {
             nextEffort: selectedEffort,

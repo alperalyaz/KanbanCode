@@ -1498,6 +1498,7 @@ export const CreateTeamDialog = ({
             selectedEffort,
             selectedFastMode,
             providerFastModeDefault: anthropicProviderFastModeDefault,
+            runtimeCapabilities: runtimeProviderStatusById.get('anthropic')?.runtimeCapabilities,
           })
         : {
             nextEffort: selectedEffort,

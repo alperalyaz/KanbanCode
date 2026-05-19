@@ -246,6 +246,7 @@ export function reconcileAnthropicRuntimeSelections(params: {
   selectedEffort?: string | null;
   selectedFastMode?: TeamFastMode | null;
   providerFastModeDefault?: boolean;
+  runtimeCapabilities?: CliProviderRuntimeCapabilities | null;
 }): AnthropicRuntimeReconciliation {
   const selectedEffort = normalizeEffortLevel(params.selectedEffort ?? null);
   if (!hasCatalogTruth(params.selection)) {
@@ -257,14 +258,22 @@ export function reconcileAnthropicRuntimeSelections(params: {
     };
   }
 
-  const nextEffort =
-    selectedEffort && !params.selection.supportedEfforts.includes(selectedEffort)
-      ? ''
-      : (selectedEffort ?? '');
-  const effortResetReason =
-    selectedEffort && nextEffort === ''
-      ? `${selectedEffort} effort is not available for the currently selected Anthropic model. Reset to Default.`
-      : null;
+  let nextEffort: EffortLevel | '' = selectedEffort ?? '';
+  let effortResetReason: string | null = null;
+  if (selectedEffort) {
+    const effortSupport = resolveAnthropicEffortSupport({
+      selection: params.selection,
+      effort: selectedEffort,
+      runtimeCapabilities: params.runtimeCapabilities,
+    });
+    if (
+      effortSupport.kind === 'unsupported-by-catalog' ||
+      effortSupport.kind === 'unsupported-by-runtime-capability'
+    ) {
+      nextEffort = '';
+      effortResetReason = `${selectedEffort} effort is not available for the currently selected Anthropic model. Reset to Default.`;
+    }
+  }
 
   const fastResolution = resolveAnthropicFastMode({
     selection: params.selection,

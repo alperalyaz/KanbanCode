@@ -312,6 +312,59 @@ describe('resolveAnthropicRuntimeProfile', () => {
     ).toBe('Anthropic runtime capability data is still loading.');
   });
 
+  it('does not reset effort when catalog exists but the exact known model entry is missing', () => {
+    const source = createAnthropicSource({
+      defaultLaunchModel: 'haiku',
+      models: [
+        {
+          id: 'haiku',
+          launchModel: 'haiku',
+          displayName: 'Haiku 4.5',
+          hidden: false,
+          supportedReasoningEfforts: [],
+          defaultReasoningEffort: null,
+          inputModalities: ['text', 'image'],
+          supportsFastMode: false,
+          supportsPersonality: false,
+          isDefault: true,
+          upgrade: false,
+          source: 'anthropic-models-api',
+        },
+      ],
+    });
+    const selection = resolveAnthropicRuntimeSelection({
+      source: {
+        modelCatalog: source.modelCatalog,
+        runtimeCapabilities: null,
+      },
+      selectedModel: 'claude-opus-4-6[1m]',
+      limitContext: false,
+    });
+
+    expect(selection.catalogModel).toBeNull();
+    expect(
+      resolveAnthropicEffortSupport({
+        selection,
+        effort: 'medium',
+        runtimeCapabilities: null,
+      })
+    ).toEqual({ kind: 'supported', source: 'static-fallback' });
+    expect(
+      reconcileAnthropicRuntimeSelections({
+        selection,
+        selectedEffort: 'medium',
+        selectedFastMode: 'inherit',
+        providerFastModeDefault: false,
+        runtimeCapabilities: null,
+      })
+    ).toEqual({
+      nextEffort: 'medium',
+      effortResetReason: null,
+      nextFastMode: 'inherit',
+      fastModeResetReason: null,
+    });
+  });
+
   it('allows known Opus 1M effort when catalog is unavailable but runtime capability passthrough is present', () => {
     const selection = resolveAnthropicRuntimeSelection({
       source: {
