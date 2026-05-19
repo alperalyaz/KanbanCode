@@ -40,7 +40,7 @@ export function normalizeTeamMemberMcpScopes(
   const out: Partial<Record<TeamMemberMcpScope, boolean>> = {};
   for (const scope of TEAM_MEMBER_MCP_SCOPES) {
     if (typeof input[scope] === 'boolean') {
-      out[scope] = input[scope] as boolean;
+      out[scope] = input[scope];
     }
   }
 

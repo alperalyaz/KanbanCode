@@ -24,10 +24,10 @@ interface ProvisioningProviderRuntimeSettingsDialogProps {
   readonly onProviderRuntimeChanged?: (providerId: CliProviderId) => void;
 }
 
-type ProviderTerminalState = {
+interface ProviderTerminalState {
   providerId: CliProviderId;
   action: 'login' | 'logout';
-};
+}
 
 export const ProvisioningProviderRuntimeSettingsDialog = ({
   openProviderId,
