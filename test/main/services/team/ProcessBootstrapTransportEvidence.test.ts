@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import {
   buildProcessBootstrapPendingDiagnostic,
   buildProcessBootstrapTimeoutDiagnostic,
@@ -7,6 +5,7 @@ import {
   sanitizeProcessRuntimeEventFilePrefix,
   summarizeProcessBootstrapTransportEvents,
 } from '@main/services/team/ProcessBootstrapTransportEvidence';
+import { describe, expect, it } from 'vitest';
 
 describe('ProcessBootstrapTransportEvidence', () => {
   it('keeps retryable submit rejection non-terminal when a later submit succeeds', () => {
@@ -112,6 +111,33 @@ describe('ProcessBootstrapTransportEvidence', () => {
     );
     expect(buildProcessBootstrapTimeoutDiagnostic(summary!)).toBe(
       'Bootstrap prompt was not submitted before timeout. Last transport stage: bootstrap prompt observed: prompt seen'
+    );
+  });
+
+  it('reports inbox poller readiness as progress without treating bootstrap as submitted', () => {
+    const summary = summarizeProcessBootstrapTransportEvents([
+      {
+        type: 'mailbox_bootstrap_written',
+        timestamp: '2026-05-07T10:00:00.000Z',
+        detail: 'messageId=bootstrap-1; readbackAttempts=1',
+      },
+      {
+        type: 'inbox_poller_ready',
+        timestamp: '2026-05-07T10:00:01.000Z',
+        detail: 'initial poll observed bootstrap prompt',
+      },
+    ]);
+
+    expect(summary).toMatchObject({
+      submitted: false,
+      hasProgress: true,
+      lastStage: 'inbox poller ready: initial poll observed bootstrap prompt',
+    });
+    expect(buildProcessBootstrapPendingDiagnostic(summary!)).toBe(
+      'Bootstrap prompt has not been submitted yet. Last transport stage: inbox poller ready: initial poll observed bootstrap prompt.'
+    );
+    expect(buildProcessBootstrapTimeoutDiagnostic(summary!)).toBe(
+      'Bootstrap prompt was not submitted before timeout. Last transport stage: inbox poller ready: initial poll observed bootstrap prompt'
     );
   });
 
