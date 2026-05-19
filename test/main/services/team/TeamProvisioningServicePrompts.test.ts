@@ -392,11 +392,11 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
       runId = created.runId;
 
       expect(extractBootstrapSpec().launch).toMatchObject({
-        bootstrapTimeoutMs: 300_000,
+        bootstrapTimeoutMs: 375_000,
         continueOnPartialFailure: true,
       });
 
-      expect(setTimeoutSpy.mock.calls.some((call) => call[1] === 330_000)).toBe(true);
+      expect(setTimeoutSpy.mock.calls.some((call) => call[1] === 405_000)).toBe(true);
     } finally {
       if (runId) {
         await svc.cancelProvisioning(runId);
