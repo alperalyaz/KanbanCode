@@ -2864,6 +2864,42 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     expect(result.env.AGENT_TEAMS_RUNTIME_TURN_SETTLED_SPOOL_ROOT).toBe('/tmp/runtime-hooks');
   });
 
+  it('materializes Anthropic turn-settled hook settings instead of passing inline JSON', async () => {
+    const svc = new TeamProvisioningService();
+    svc.setRuntimeTurnSettledHookSettingsProvider(async ({ provider }) =>
+      provider === 'claude'
+        ? {
+            hooks: {
+              Stop: [
+                {
+                  matcher: '',
+                  hooks: [{ type: 'command', command: '/bin/true # test-hook' }],
+                },
+              ],
+            },
+          }
+        : null
+    );
+
+    const result = await (svc as any).buildTeamRuntimeLaunchArgsPlan({
+      teamName: 'anthropic-hook-settings-team',
+      providerId: 'anthropic',
+      launchIdentity: null,
+      envResolution: { providerArgs: [] },
+      extraArgs: [],
+      includeAnthropicHelper: false,
+      contextLabel: 'Team launch',
+    });
+
+    expect(result.fastModeArgs).toEqual([]);
+    expect(result.runtimeTurnSettledHookArgs).toEqual([]);
+    expect(result.settingsArgs[0]).toBe('--settings');
+    const settingsPath = result.settingsArgs[1];
+    expect(settingsPath).toContain('agent-teams-runtime-settings');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    expect(settings.hooks.Stop[0].hooks[0].command).toBe('/bin/true # test-hook');
+  });
+
   it('adds Codex turn-settled env when Codex is only a secondary member provider', async () => {
     const svc = new TeamProvisioningService();
     svc.setRuntimeTurnSettledEnvironmentProvider(async ({ provider }) =>

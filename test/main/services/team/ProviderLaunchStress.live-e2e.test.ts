@@ -42,7 +42,7 @@ const DEFAULT_ORCHESTRATOR_CLI = '/Users/belief/dev/projects/claude/agent_teams_
 const DEFAULT_ANTHROPIC_MODEL = 'haiku';
 const DEFAULT_CODEX_MODEL = 'gpt-5.4-mini';
 const DEFAULT_CODEX_EFFORT = 'low' as const;
-const DEFAULT_OPENCODE_MODEL = 'openai/gpt-5.4-mini';
+const DEFAULT_OPENCODE_MODEL = 'opencode/big-pickle';
 const DEFAULT_ORDER: ProviderLaunchStressScenario[] = ['anthropic', 'codex', 'opencode', 'mixed'];
 const MEMBER_NAMES = [
   'alice',

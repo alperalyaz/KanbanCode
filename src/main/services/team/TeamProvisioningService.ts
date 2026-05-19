@@ -1588,6 +1588,18 @@ function buildAnthropicSettingsArgs(
   return ['--settings', JSON.stringify(settings)];
 }
 
+function sanitizeRuntimeSettingsTeamName(teamName: string): string {
+  return teamName.replace(/[^a-zA-Z0-9._-]+/g, '_') || 'team';
+}
+
+function buildRuntimeSettingsTempDirectory(teamName: string): string {
+  return path.join(
+    os.tmpdir(),
+    'agent-teams-runtime-settings',
+    `${sanitizeRuntimeSettingsTeamName(teamName)}-${randomUUID()}`
+  );
+}
+
 function buildProviderFastModeArgs(
   providerId: TeamProviderId,
   launchIdentity?: ProviderModelLaunchIdentity | null
@@ -7124,7 +7136,7 @@ export class TeamProvisioningService {
     const rawProviderArgs = input.envResolution.providerArgs ?? [];
     const rawExtraArgs = input.extraArgs ?? [];
 
-    if (!helper) {
+    if (!helper && resolvedProviderId !== 'anthropic') {
       return {
         settingsArgs: [],
         fastModeArgs: buildProviderFastModeArgs(resolvedProviderId, input.launchIdentity),
@@ -7137,13 +7149,14 @@ export class TeamProvisioningService {
 
     const providerArgsWithoutHelper = filterOutSettingsPathArgs(
       rawProviderArgs,
-      helper.settingsPath
+      helper?.settingsPath
     );
     const splitProviderArgs = splitSettingsJsonArgs(providerArgsWithoutHelper);
     const splitExtraArgs = splitSettingsJsonArgs(rawExtraArgs);
     if (
-      hasPathBasedSettingsArgs(splitProviderArgs.passthroughArgs) ||
-      hasPathBasedSettingsArgs(splitExtraArgs.passthroughArgs)
+      helper &&
+      (hasPathBasedSettingsArgs(splitProviderArgs.passthroughArgs) ||
+        hasPathBasedSettingsArgs(splitExtraArgs.passthroughArgs))
     ) {
       throw new Error(
         `${input.contextLabel}: app-managed Anthropic API-key helper cannot be combined with path-based --settings. Use inline JSON settings or remove the custom --settings path.`
@@ -7160,6 +7173,7 @@ export class TeamProvisioningService {
         ...splitExtraArgs.settingsFragments,
       ],
       anthropicHelper: helper,
+      settingsDirectory: helper ? null : buildRuntimeSettingsTempDirectory(input.teamName),
     });
 
     return {
