@@ -141,6 +141,56 @@ describe('ProcessBootstrapTransportEvidence', () => {
     );
   });
 
+  it('treats runtime failure after mailbox write as terminal without marking bootstrap submitted', () => {
+    const summary = summarizeProcessBootstrapTransportEvents([
+      {
+        type: 'mailbox_bootstrap_written',
+        timestamp: '2026-05-07T10:00:00.000Z',
+        detail: 'messageId=bootstrap-1',
+      },
+      {
+        type: 'failed',
+        timestamp: '2026-05-07T10:00:01.000Z',
+        detail: 'teammate process exited before inbox_poller_ready',
+      },
+    ]);
+
+    expect(summary).toMatchObject({
+      submitted: false,
+      hasProgress: true,
+      lastStage: 'runtime failed: teammate process exited before inbox_poller_ready',
+      terminalFailure: {
+        kind: 'runtime_failed_before_confirmation',
+        reason: 'runtime failed: teammate process exited before inbox_poller_ready',
+      },
+    });
+  });
+
+  it('treats process exit after submit attempt as terminal without durable submit proof', () => {
+    const summary = summarizeProcessBootstrapTransportEvents([
+      {
+        type: 'bootstrap_submit_attempted',
+        timestamp: '2026-05-07T10:00:00.000Z',
+        detail: 'submitting bootstrap prompt',
+      },
+      {
+        type: 'exited',
+        timestamp: '2026-05-07T10:00:01.000Z',
+        detail: 'process exited before bootstrap_submitted',
+      },
+    ]);
+
+    expect(summary).toMatchObject({
+      submitted: false,
+      hasProgress: true,
+      lastStage: 'runtime exited: process exited before bootstrap_submitted',
+      terminalFailure: {
+        kind: 'process_exited_before_confirmation',
+        reason: 'runtime exited: process exited before bootstrap_submitted',
+      },
+    });
+  });
+
   it('distinguishes submitted bootstrap prompts from not-submitted transport timeouts', () => {
     const summary = summarizeProcessBootstrapTransportEvents([
       {

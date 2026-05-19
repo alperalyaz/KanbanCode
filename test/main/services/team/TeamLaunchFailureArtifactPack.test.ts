@@ -241,6 +241,30 @@ describe('TeamLaunchFailureArtifactPack', () => {
     });
   });
 
+  it('keeps process exits after bootstrap transport evidence out of stdin_missing classification', () => {
+    const input = {
+      teamName: 'artifact-team',
+      runId: 'run-submit-attempt-process-exit',
+      reason:
+        'alice: Teammate process alice@signal-ops did not submit bootstrap prompt: teammate process exited before bootstrap_submitted; last transport stage: bootstrap_submit_attempted: submitting bootstrap prompt Last stderr: Warning: no stdin data received in 3s, proceeding without it.',
+      progressTraceLines: [
+        'mailbox_bootstrap_written detail=messageId=bootstrap-alice-1',
+        'bootstrap_submit_attempted detail=submitting bootstrap prompt',
+        'process exited before bootstrap_submitted',
+        'Warning: no stdin data received in 3s, proceeding without it.',
+      ],
+    };
+
+    expect(classifyLaunchFailureArtifact(input).code).toBe('model_no_bootstrap');
+    expect(extractLaunchBootstrapTransportBreadcrumb(input)).toMatchObject({
+      lastTransportStage: expect.stringContaining(
+        'bootstrap_submit_attempted: submitting bootstrap prompt'
+      ),
+      noStdinWarning: true,
+      bootstrapSubmitted: false,
+    });
+  });
+
   it('classifies provider quota separately from protocol errors', () => {
     expect(
       classifyLaunchFailureArtifact({
