@@ -2850,6 +2850,34 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     expect(result.env.ANTHROPIC_API_KEY).toBe('real-key');
   });
 
+  it('does not leak Vitest NODE_ENV into real team runtime children', async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'test';
+    try {
+      const svc = new TeamProvisioningService();
+      const buildProvisioningEnv = (
+        svc as unknown as {
+          buildProvisioningEnv(): Promise<{ env: NodeJS.ProcessEnv }>;
+        }
+      ).buildProvisioningEnv.bind(svc);
+
+      const result = await buildProvisioningEnv();
+
+      expect(result.env.NODE_ENV).toBe('development');
+      expect(buildProviderAwareCliEnvMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          env: expect.objectContaining({ NODE_ENV: 'development' }),
+        })
+      );
+    } finally {
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+    }
+  });
+
   it('adds member-work-sync turn-settled spool env for Codex provisioning', async () => {
     const svc = new TeamProvisioningService();
     svc.setRuntimeTurnSettledEnvironmentProvider(async ({ provider }) =>

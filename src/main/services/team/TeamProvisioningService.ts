@@ -1600,6 +1600,15 @@ function buildRuntimeSettingsTempDirectory(teamName: string): string {
   );
 }
 
+function normalizeTeamRuntimeNodeEnv(env: NodeJS.ProcessEnv): void {
+  // Vitest sets NODE_ENV=test in the desktop parent process. Real team runtime
+  // children must run the CLI normally, otherwise source launches can take
+  // test-only startup paths and exit before deterministic bootstrap starts.
+  if (env.NODE_ENV === 'test') {
+    env.NODE_ENV = 'development';
+  }
+}
+
 function buildProviderFastModeArgs(
   providerId: TeamProviderId,
   launchIdentity?: ProviderModelLaunchIdentity | null
@@ -22033,6 +22042,7 @@ export class TeamProvisioningService {
         contextLabel: 'Team create launch',
       });
       const spawnArgs = mergeJsonSettingsArgs([
+        '--print',
         '--input-format',
         'stream-json',
         '--output-format',
@@ -23302,6 +23312,7 @@ export class TeamProvisioningService {
         throw error;
       }
       const launchArgs = [
+        '--print',
         '--input-format',
         'stream-json',
         '--output-format',
@@ -36072,6 +36083,7 @@ export class TeamProvisioningService {
         : {}),
       CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
     };
+    normalizeTeamRuntimeNodeEnv(env);
     const resolvedProviderId = resolveTeamProviderId(providerId);
     const providerEnvResult = await buildProviderAwareCliEnv({
       providerId,
