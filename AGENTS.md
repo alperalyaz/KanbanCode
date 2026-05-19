@@ -26,6 +26,7 @@ Live team smoke runtime:
 
 - Use the orchestrator source launcher by default for live/dev smoke loops: `/Users/belief/dev/projects/claude/agent_teams_orchestrator/cli-source`
 - The source launcher runs `src/entrypoints/cli.tsx` through Bun, so it reflects local orchestrator source edits immediately and cannot accidentally test stale `dist` output.
+- Source-mode teammate startup can be slower than bundled startup. Live smoke harnesses may raise `CLAUDE_TEAM_PROCESS_RUNTIME_READY_TIMEOUT_MS` and `CLAUDE_TEAM_PROCESS_INBOX_POLLER_READY_TIMEOUT_MS` when the test is validating source behavior instead of watchdog latency.
 - Use the built wrapper only for release or production-like smoke checks. Build first in `/Users/belief/dev/projects/claude/agent_teams_orchestrator` with `bun run build`, then set `CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH=/Users/belief/dev/projects/claude/agent_teams_orchestrator/cli`.
 - Do not use `cli-dev` or `bun run build:dev` as proof for the production wrapper. `cli` reads `dist/local-cli/cli.js`; `cli-dev` reads `dist/local-cli-dev/cli.js`.
 

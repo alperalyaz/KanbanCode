@@ -56,6 +56,7 @@ liveDescribe('Anthropic launch selection live e2e', () => {
   let previousDisableAppBootstrap: string | undefined;
   let previousDisableRuntimeBootstrap: string | undefined;
   let previousRuntimeReadyTimeout: string | undefined;
+  let previousInboxPollerReadyTimeout: string | undefined;
   let previousClaudeJsonConfig: string | null | undefined;
   let svc: TeamProvisioningService | null;
   let teamName: string | null;
@@ -100,12 +101,15 @@ liveDescribe('Anthropic launch selection live e2e', () => {
     previousDisableAppBootstrap = process.env.CLAUDE_APP_DISABLE_DETERMINISTIC_TEAM_BOOTSTRAP;
     previousDisableRuntimeBootstrap = process.env.CLAUDE_DISABLE_DETERMINISTIC_TEAM_BOOTSTRAP;
     previousRuntimeReadyTimeout = process.env.CLAUDE_TEAM_PROCESS_RUNTIME_READY_TIMEOUT_MS;
+    previousInboxPollerReadyTimeout = process.env.CLAUDE_TEAM_PROCESS_INBOX_POLLER_READY_TIMEOUT_MS;
 
     process.env.CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH =
       process.env.CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH?.trim() || DEFAULT_ORCHESTRATOR_CLI;
     process.env.CLAUDE_TEAM_CLI_FLAVOR = 'agent_teams_orchestrator';
     process.env.CLAUDE_TEAM_PROCESS_RUNTIME_READY_TIMEOUT_MS =
       process.env.CLAUDE_TEAM_PROCESS_RUNTIME_READY_TIMEOUT_MS?.trim() || '90000';
+    process.env.CLAUDE_TEAM_PROCESS_INBOX_POLLER_READY_TIMEOUT_MS =
+      process.env.CLAUDE_TEAM_PROCESS_INBOX_POLLER_READY_TIMEOUT_MS?.trim() || '30000';
     process.env.HOME = subscriptionAuth ? os.userInfo().homedir : tempHome;
     process.env.USERPROFILE = subscriptionAuth ? os.userInfo().homedir : tempHome;
     process.env.NODE_ENV = 'production';
@@ -151,6 +155,7 @@ liveDescribe('Anthropic launch selection live e2e', () => {
     restoreEnv('CLAUDE_APP_DISABLE_DETERMINISTIC_TEAM_BOOTSTRAP', previousDisableAppBootstrap);
     restoreEnv('CLAUDE_DISABLE_DETERMINISTIC_TEAM_BOOTSTRAP', previousDisableRuntimeBootstrap);
     restoreEnv('CLAUDE_TEAM_PROCESS_RUNTIME_READY_TIMEOUT_MS', previousRuntimeReadyTimeout);
+    restoreEnv('CLAUDE_TEAM_PROCESS_INBOX_POLLER_READY_TIMEOUT_MS', previousInboxPollerReadyTimeout);
 
     if (preserveArtifacts) {
       process.stderr.write(`[AnthropicLaunchSelection.live] preserved temp dir: ${tempDir}\n`);
