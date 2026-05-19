@@ -610,8 +610,8 @@ export function deriveEffectiveProvisioningPrepareState(params: {
   return {
     state: 'ready',
     message: hasNotes
-      ? 'Selected providers are ready with notes.'
-      : 'Selected providers are ready.',
+      ? 'All selected providers are ready, with notes.'
+      : 'All selected providers are ready.',
   };
 }
 

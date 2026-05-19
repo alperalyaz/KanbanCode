@@ -22,6 +22,13 @@ Default local run target:
 - Do not start the browser/web dev mode for normal development or smoke checks. The browser path is limited and lacks the full desktop runtime, IPC, terminal, provider auth, and team lifecycle behavior.
 - When documenting or recommending startup commands, point contributors to the desktop app unless a task explicitly asks for browser-mode internals.
 
+Live team smoke runtime:
+
+- Use the orchestrator source launcher by default for live/dev smoke loops: `/Users/belief/dev/projects/claude/agent_teams_orchestrator/cli-source`
+- The source launcher runs `src/entrypoints/cli.tsx` through Bun, so it reflects local orchestrator source edits immediately and cannot accidentally test stale `dist` output.
+- Use the built wrapper only for release or production-like smoke checks. Build first in `/Users/belief/dev/projects/claude/agent_teams_orchestrator` with `bun run build`, then set `CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH=/Users/belief/dev/projects/claude/agent_teams_orchestrator/cli`.
+- Do not use `cli-dev` or `bun run build:dev` as proof for the production wrapper. `cli` reads `dist/local-cli/cli.js`; `cli-dev` reads `dist/local-cli-dev/cli.js`.
+
 Fast local lint:
 
 - Use `pnpm lint:fast:files -- <changed files>` for quick preflight on files you touched.

@@ -1,13 +1,13 @@
-import { describe, expect, it } from 'vitest';
-
 import {
+  type AnthropicRuntimeProfileSource,
   reconcileAnthropicRuntimeSelections,
+  resolveAnthropicEffortSupport,
   resolveAnthropicFastMode,
   resolveAnthropicRuntimeSelection,
 } from '@features/anthropic-runtime-profile/renderer';
-import type { CliProviderModelCatalog, CliProviderRuntimeCapabilities } from '@shared/types';
+import { describe, expect, it } from 'vitest';
 
-import type { AnthropicRuntimeProfileSource } from '@features/anthropic-runtime-profile/renderer';
+import type { CliProviderModelCatalog, CliProviderRuntimeCapabilities } from '@shared/types';
 
 function createAnthropicSource(options: {
   models: CliProviderModelCatalog['models'];
@@ -258,6 +258,77 @@ describe('resolveAnthropicRuntimeProfile', () => {
         providerFastModeDefault: false,
       }).disabledReason
     ).toBe('Anthropic runtime capability data is still loading.');
+  });
+
+  it('allows known Opus 1M effort when catalog is unavailable but runtime capability passthrough is present', () => {
+    const selection = resolveAnthropicRuntimeSelection({
+      source: {
+        modelCatalog: null,
+        runtimeCapabilities: {
+          reasoningEffort: {
+            supported: true,
+            values: ['low', 'medium', 'high', 'max'],
+            configPassthrough: true,
+          },
+        },
+      },
+      selectedModel: 'claude-opus-4-6[1m]',
+      limitContext: false,
+    });
+
+    expect(
+      resolveAnthropicEffortSupport({
+        selection,
+        effort: 'medium',
+        runtimeCapabilities: {
+          reasoningEffort: {
+            supported: true,
+            values: ['low', 'medium', 'high', 'max'],
+            configPassthrough: true,
+          },
+        },
+      })
+    ).toEqual({ kind: 'supported', source: 'runtime-capability' });
+  });
+
+  it('falls back to runtime launch model ids when catalog is unavailable', () => {
+    const selection = resolveAnthropicRuntimeSelection({
+      source: {
+        modelCatalog: null,
+        runtimeCapabilities: null,
+      },
+      selectedModel: 'claude-opus-4-6[1m]',
+      limitContext: false,
+      availableLaunchModels: ['claude-opus-4-6'],
+    });
+
+    expect(selection.resolvedLaunchModel).toBe('claude-opus-4-6');
+    expect(
+      resolveAnthropicEffortSupport({
+        selection,
+        effort: 'medium',
+        runtimeCapabilities: null,
+      })
+    ).toEqual({ kind: 'supported', source: 'static-fallback' });
+  });
+
+  it('does not infer effort support for unknown Anthropic models without catalog truth', () => {
+    const selection = resolveAnthropicRuntimeSelection({
+      source: {
+        modelCatalog: null,
+        runtimeCapabilities: null,
+      },
+      selectedModel: 'claude-experimental-5',
+      limitContext: false,
+    });
+
+    expect(
+      resolveAnthropicEffortSupport({
+        selection,
+        effort: 'medium',
+        runtimeCapabilities: null,
+      })
+    ).toEqual({ kind: 'unverified-catalog-missing' });
   });
 
   it('keeps the fast control visible in degraded states and surfaces the provider reason', () => {

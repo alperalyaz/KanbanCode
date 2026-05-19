@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import Module from 'module';
 import * as os from 'os';
 import * as path from 'path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type ExecCliMock = (
   binaryPath: string | null,
@@ -58,11 +58,11 @@ vi.mock('@main/utils/shellEnv', async (importOriginal) => {
   };
 });
 
-import { setAppDataBasePath, setClaudeBasePathOverride } from '@main/utils/pathDecoder';
 import {
-  TeamMcpConfigBuilder,
   clearResolvedNodePathForTests,
+  TeamMcpConfigBuilder,
 } from '@main/services/team/TeamMcpConfigBuilder';
+import { setAppDataBasePath, setClaudeBasePathOverride } from '@main/utils/pathDecoder';
 
 describe('TeamMcpConfigBuilder', () => {
   const createdPaths: string[] = [];
@@ -492,6 +492,58 @@ describe('TeamMcpConfigBuilder', () => {
       mcpServers: Record<string, { command?: string; args?: string[] }>;
     };
 
+    expectNodeTsxSourceEntry(parsed.mcpServers['agent-teams'], tsxCli, sourceEntry);
+  });
+
+  it('forces the generated agent-teams MCP server on regardless of user, local, or project settings', async () => {
+    const { sourceEntry, tsxCli } = mockSourceWorkspaceEntryAvailable();
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-home-'));
+    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-project-'));
+    createdDirs.push(homeDir, projectDir);
+    mockHomeDir = homeDir;
+
+    fs.writeFileSync(
+      path.join(homeDir, '.claude.json'),
+      JSON.stringify(
+        {
+          mcpServers: {
+            'agent-teams': { command: 'node', args: ['user-disabled.js'], enabled: false },
+          },
+          projects: {
+            [projectDir]: {
+              mcpServers: {
+                'agent-teams': { command: 'node', args: ['local-disabled.js'], enabled: false },
+              },
+            },
+          },
+        },
+        null,
+        2
+      )
+    );
+    fs.writeFileSync(
+      path.join(projectDir, '.mcp.json'),
+      JSON.stringify(
+        {
+          mcpServers: {
+            'agent-teams': { command: 'node', args: ['project-disabled.js'], enabled: false },
+          },
+        },
+        null,
+        2
+      )
+    );
+
+    const builder = new TeamMcpConfigBuilder();
+    const configPath = await builder.writeConfigFile(projectDir);
+    createdPaths.push(configPath);
+
+    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
+      mcpServers: Record<string, { command?: string; args?: string[]; enabled?: boolean }>;
+    };
+
+    expect(Object.keys(parsed.mcpServers)).toEqual(['agent-teams']);
+    expect(parsed.mcpServers['agent-teams']?.enabled).toBe(true);
     expectNodeTsxSourceEntry(parsed.mcpServers['agent-teams'], tsxCli, sourceEntry);
   });
 

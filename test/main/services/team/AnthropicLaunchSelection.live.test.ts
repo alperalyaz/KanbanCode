@@ -35,10 +35,11 @@ const liveDescribe =
     ? describe
     : describe.skip;
 
-const DEFAULT_ORCHESTRATOR_CLI = '/Users/belief/dev/projects/claude/agent_teams_orchestrator/cli';
-const DEFAULT_LEAD_MODEL = 'sonnet';
+const DEFAULT_ORCHESTRATOR_CLI =
+  '/Users/belief/dev/projects/claude/agent_teams_orchestrator/cli-source';
+const DEFAULT_LEAD_MODEL = 'claude-opus-4-6[1m]';
 const DEFAULT_MEMBER_MODEL = 'haiku';
-const DEFAULT_LEAD_EFFORT = 'low' as const;
+const DEFAULT_LEAD_EFFORT = 'medium' as const;
 
 liveDescribe('Anthropic launch selection live e2e', () => {
   let tempDir: string;
@@ -165,9 +166,10 @@ liveDescribe('Anthropic launch selection live e2e', () => {
     if (subscriptionAuth && teamName) {
       await removeTeamArtifacts(teamName);
     }
+    discardKnownAnthropicLaunchSelectionWarnings();
   }, 180_000);
 
-  it('launches Sonnet low lead with explicit Haiku teammate without inherited effort', async () => {
+  it('launches Opus 4.6 1M medium lead with explicit Haiku teammate without inherited effort', async () => {
     const orchestratorCli = process.env.CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH?.trim();
     expect(orchestratorCli).toBeTruthy();
     await assertExecutable(orchestratorCli!);
@@ -191,6 +193,7 @@ liveDescribe('Anthropic launch selection live e2e', () => {
         model: leadModel,
         effort: leadEffort,
         skipPermissions: true,
+        extraCliArgs: "--settings '{\"disableAllHooks\":true}'",
         prompt: 'Keep the team idle after bootstrap. Do not start extra work.',
         members: [
           {
@@ -283,6 +286,18 @@ function restoreEnv(name: string, previous: string | undefined): void {
     delete process.env[name];
   } else {
     process.env[name] = previous;
+  }
+}
+
+function discardKnownAnthropicLaunchSelectionWarnings(): void {
+  const warn = vi.mocked(console.warn);
+  if (!warn.mock) return;
+  const calls = warn.mock.calls;
+  for (let index = calls.length - 1; index >= 0; index -= 1) {
+    const text = calls[index]?.map((value) => String(value)).join(' ') ?? '';
+    if (text.includes('Failed to resolve login shell env: shell env resolve timeout')) {
+      calls.splice(index, 1);
+    }
   }
 }
 

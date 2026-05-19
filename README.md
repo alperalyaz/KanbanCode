@@ -92,11 +92,11 @@ If you want the FRESHEST version, clone the repo and run it from the `dev` branc
 - [Installation](#installation)
 - [Table of contents](#table-of-contents)
 - [What is this](#what-is-this)
-- [Developer architecture docs](#developer-architecture-docs)
 - [Comparison](#comparison)
 - [Quick start](#quick-start)
 - [FAQ](#faq)
 - [Development](#development)
+  - [Developer architecture docs](#developer-architecture-docs)
 - [Tech stack](#tech-stack)
   - [Build for distribution](#build-for-distribution)
   - [Scripts](#scripts)
@@ -158,15 +158,6 @@ An orchestration layer for AI agent teams across Claude, Codex, and OpenCode.
 - **Workflow history** — see the full timeline of each task: when and how its status changed, which agents were involved, and every action that led to the current state
 
 </details>
-
-## Developer architecture docs
-
-For feature architecture and implementation guidance:
-
-- Canonical standard - [docs/FEATURE_ARCHITECTURE_STANDARD.md](docs/FEATURE_ARCHITECTURE_STANDARD.md)
-- Repo working instructions - [CLAUDE.md](CLAUDE.md)
-- Feature root guidance - [src/features/README.md](src/features/README.md)
-- Reference implementation - `src/features/recent-projects`
 
 ## Comparison
 
@@ -262,6 +253,15 @@ Yes. Run multiple teams in one project or across different projects, even simult
 ---
 
 ## Development
+
+### Developer architecture docs
+
+For feature architecture and implementation guidance:
+
+- Canonical standard - [docs/FEATURE_ARCHITECTURE_STANDARD.md](docs/FEATURE_ARCHITECTURE_STANDARD.md)
+- Repo working instructions - [CLAUDE.md](CLAUDE.md)
+- Feature root guidance - [src/features/README.md](src/features/README.md)
+- Reference implementation - `src/features/recent-projects`
 
 ## Tech stack
 

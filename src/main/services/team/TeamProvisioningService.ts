@@ -7,6 +7,7 @@ import {
   type OpenCodeFilePart,
 } from '@features/agent-attachments/main';
 import {
+  resolveAnthropicEffortSupport,
   resolveAnthropicFastMode,
   resolveAnthropicRuntimeSelection,
 } from '@features/anthropic-runtime-profile/main';
@@ -568,6 +569,7 @@ import type {
   TeamMember,
   TeamProviderBackendId,
   TeamProviderId,
+  TeamProvisioningModelCheckRequest,
   TeamProvisioningModelVerificationMode,
   TeamProvisioningPrepareIssue,
   TeamProvisioningPrepareResult,
@@ -1328,6 +1330,11 @@ interface RuntimeProviderLaunchFacts {
     | null;
 }
 
+interface ProviderSelectedModelCheck {
+  modelId: string;
+  effort?: EffortLevel;
+}
+
 function extractJsonObjectFromCli<T>(raw: string): T {
   const trimmed = raw.trim();
   try {
@@ -1389,6 +1396,58 @@ function normalizeProviderModelListModels(
   return models;
 }
 
+function normalizeProviderSelectedModelChecks(
+  modelIds: readonly string[],
+  modelChecks?: readonly ProviderSelectedModelCheck[]
+): ProviderSelectedModelCheck[] {
+  const checks: ProviderSelectedModelCheck[] =
+    modelChecks && modelChecks.length > 0
+      ? [...modelChecks]
+      : modelIds.map((modelId) => ({ modelId }));
+  const seen = new Set<string>();
+  const normalized: ProviderSelectedModelCheck[] = [];
+  for (const check of checks) {
+    const modelId = check.modelId.trim();
+    if (!modelId) {
+      continue;
+    }
+    const key = `${modelId}\n${check.effort ?? ''}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    normalized.push({
+      modelId,
+      ...(check.effort ? { effort: check.effort } : {}),
+    });
+  }
+  return normalized;
+}
+
+function normalizeProvisioningModelCheckRequests(
+  checks: readonly TeamProvisioningModelCheckRequest[] | undefined
+): TeamProvisioningModelCheckRequest[] {
+  const seen = new Set<string>();
+  const normalized: TeamProvisioningModelCheckRequest[] = [];
+  for (const check of checks ?? []) {
+    const model = check.model.trim();
+    if (!model) {
+      continue;
+    }
+    const key = `${check.providerId}\n${model}\n${check.effort ?? ''}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    normalized.push({
+      providerId: check.providerId,
+      model,
+      ...(check.effort ? { effort: check.effort } : {}),
+    });
+  }
+  return normalized;
+}
+
 function addModelCatalogLaunchModels(
   modelIds: Set<string>,
   catalog: CliProviderModelCatalog
@@ -1444,7 +1503,7 @@ function getAnthropicFastModeDefault(): boolean {
 function resolveAnthropicSelectionFromFacts(params: {
   selectedModel?: string;
   limitContext?: boolean;
-  facts: Pick<RuntimeProviderLaunchFacts, 'modelCatalog' | 'runtimeCapabilities'>;
+  facts: Pick<RuntimeProviderLaunchFacts, 'modelCatalog' | 'modelIds' | 'runtimeCapabilities'>;
 }) {
   return resolveAnthropicRuntimeSelection({
     source: {
@@ -1453,7 +1512,31 @@ function resolveAnthropicSelectionFromFacts(params: {
     },
     selectedModel: params.selectedModel,
     limitContext: params.limitContext === true,
+    availableLaunchModels: params.facts.modelCatalog ? undefined : params.facts.modelIds,
   });
+}
+
+function formatAnthropicEffortSupportFailure(params: {
+  effort: EffortLevel;
+  modelLabel: string;
+  supportedEfforts?: readonly EffortLevel[];
+  kind:
+    | 'unsupported-by-catalog'
+    | 'unsupported-by-runtime-capability'
+    | 'unverified-catalog-missing';
+}): string {
+  if (params.kind === 'unverified-catalog-missing') {
+    return `Anthropic runtime catalog was unavailable, so effort "${params.effort}" for ${params.modelLabel} could not be verified.`;
+  }
+
+  const supported = params.supportedEfforts?.length
+    ? ` Supported efforts: ${params.supportedEfforts.join(', ')}.`
+    : '';
+  const runtimeSuffix =
+    params.kind === 'unsupported-by-runtime-capability'
+      ? ' in the current runtime capability data'
+      : ' in the current runtime';
+  return `${params.modelLabel} does not support Anthropic effort "${params.effort}"${runtimeSuffix}.${supported}`;
 }
 
 function resolveCodexSelectionFromFacts(params: {
@@ -4467,6 +4550,33 @@ interface RuntimeBootstrapSpec {
   };
 }
 
+const DETERMINISTIC_BOOTSTRAP_MIN_TIMEOUT_MS = 120_000;
+const DETERMINISTIC_BOOTSTRAP_TIMEOUT_PER_MEMBER_MS = 60_000;
+const DETERMINISTIC_BOOTSTRAP_MAX_TIMEOUT_MS = 300_000;
+const DETERMINISTIC_BOOTSTRAP_OUTER_TIMEOUT_GRACE_MS = 30_000;
+
+function getDeterministicBootstrapTimeoutMs(memberCount: number): number {
+  const perMemberBudget = Math.max(0, memberCount) * DETERMINISTIC_BOOTSTRAP_TIMEOUT_PER_MEMBER_MS;
+  return Math.min(
+    DETERMINISTIC_BOOTSTRAP_MAX_TIMEOUT_MS,
+    Math.max(DETERMINISTIC_BOOTSTRAP_MIN_TIMEOUT_MS, perMemberBudget)
+  );
+}
+
+function getProvisioningRunTimeoutMs(
+  run: Pick<ProvisioningRun, 'deterministicBootstrap' | 'effectiveMembers'>
+): number {
+  if (!run.deterministicBootstrap) {
+    return RUN_TIMEOUT_MS;
+  }
+
+  return Math.max(
+    RUN_TIMEOUT_MS,
+    getDeterministicBootstrapTimeoutMs(run.effectiveMembers.length) +
+      DETERMINISTIC_BOOTSTRAP_OUTER_TIMEOUT_GRACE_MS
+  );
+}
+
 function buildDeterministicCreateBootstrapSpec(
   runId: string,
   request: TeamCreateRequest,
@@ -4516,6 +4626,7 @@ function buildDeterministicCreateBootstrapSpec(
         : {}),
     })),
     launch: {
+      bootstrapTimeoutMs: getDeterministicBootstrapTimeoutMs(effectiveMembers.length),
       continueOnPartialFailure: true,
     },
     ui: {
@@ -4570,6 +4681,7 @@ function buildDeterministicLaunchBootstrapSpec(
         : {}),
     })),
     launch: {
+      bootstrapTimeoutMs: getDeterministicBootstrapTimeoutMs(effectiveMembers.length),
       continueOnPartialFailure: true,
     },
     ui: {
@@ -7342,11 +7454,28 @@ export class TeamProvisioningService {
           `${params.actorLabel} resolves to Anthropic model "${resolvedLaunchModel}", but the current runtime does not list it as launchable.`
         );
       }
-      if (params.effort && !selection.supportedEfforts.includes(params.effort)) {
+      if (params.effort) {
         const modelLabel = selection.displayName ?? resolvedLaunchModel;
-        throw new Error(
-          `${params.actorLabel} uses Anthropic effort "${params.effort}", but ${modelLabel} does not support it in the current runtime.`
-        );
+        const effortSupport = resolveAnthropicEffortSupport({
+          selection,
+          effort: params.effort,
+          runtimeCapabilities: params.facts.runtimeCapabilities,
+        });
+        if (effortSupport.kind !== 'supported') {
+          throw new Error(
+            `${params.actorLabel} uses Anthropic effort "${params.effort}", but ${formatAnthropicEffortSupportFailure(
+              {
+                effort: params.effort,
+                modelLabel,
+                kind: effortSupport.kind,
+                supportedEfforts:
+                  effortSupport.kind === 'unverified-catalog-missing'
+                    ? undefined
+                    : effortSupport.supportedEfforts,
+              }
+            )}`
+          );
+        }
       }
 
       const fastResolution = resolveAnthropicFastMode({
@@ -19000,6 +19129,7 @@ export class TeamProvisioningService {
       providerId?: TeamProviderId;
       providerIds?: TeamProviderId[];
       modelIds?: string[];
+      modelChecks?: TeamProvisioningModelCheckRequest[];
       limitContext?: boolean;
       modelVerificationMode?: TeamProvisioningModelVerificationMode;
     }
@@ -19026,6 +19156,7 @@ export class TeamProvisioningService {
       providerId?: TeamProviderId;
       providerIds?: TeamProviderId[];
       modelIds?: string[];
+      modelChecks?: TeamProvisioningModelCheckRequest[];
       limitContext?: boolean;
       modelVerificationMode?: TeamProvisioningModelVerificationMode;
     }
@@ -19040,11 +19171,24 @@ export class TeamProvisioningService {
     const modelIds = Array.from(
       new Set((opts?.modelIds ?? []).map((modelId) => modelId.trim()).filter(Boolean))
     );
+    const modelChecks = normalizeProvisioningModelCheckRequests(opts?.modelChecks)
+      .map((check) => ({
+        providerId: check.providerId,
+        model: check.model,
+        effort: check.effort ?? null,
+      }))
+      .sort(
+        (left, right) =>
+          left.providerId.localeCompare(right.providerId) ||
+          left.model.localeCompare(right.model) ||
+          (left.effort ?? '').localeCompare(right.effort ?? '')
+      );
     return JSON.stringify({
       cwd: cwd?.trim() || process.cwd(),
       forceFresh: opts?.forceFresh === true,
       providerIds,
       modelIds,
+      modelChecks,
       limitContext: opts?.limitContext === true,
       modelVerificationMode: opts?.modelVerificationMode ?? null,
     });
@@ -19068,6 +19212,7 @@ export class TeamProvisioningService {
       providerId?: TeamProviderId;
       providerIds?: TeamProviderId[];
       modelIds?: string[];
+      modelChecks?: TeamProvisioningModelCheckRequest[];
       limitContext?: boolean;
       modelVerificationMode?: TeamProvisioningModelVerificationMode;
     }
@@ -19104,8 +19249,20 @@ export class TeamProvisioningService {
     const selectedModelIds = Array.from(
       new Set((opts?.modelIds ?? []).map((modelId) => modelId.trim()).filter(Boolean))
     );
+    const selectedModelChecks = normalizeProvisioningModelCheckRequests(opts?.modelChecks);
+    const useStructuredModelChecks = selectedModelChecks.length > 0;
 
     for (const providerId of providerIds) {
+      const providerModelChecks = selectedModelChecks
+        .filter((check) => check.providerId === providerId)
+        .map((check) => ({
+          modelId: check.model,
+          ...(check.effort ? { effort: check.effort } : {}),
+        }));
+      const providerSelectedModelIds = useStructuredModelChecks
+        ? Array.from(new Set(providerModelChecks.map((check) => check.modelId)))
+        : selectedModelIds;
+
       if (providerId === 'opencode') {
         const adapter = this.getOpenCodeRuntimeAdapter();
         if (!adapter) {
@@ -19115,7 +19272,7 @@ export class TeamProvisioningService {
           continue;
         }
 
-        if (selectedModelIds.length === 0) {
+        if (providerSelectedModelIds.length === 0) {
           const prepare = await adapter.prepare({
             runId: `prepare-${randomUUID()}`,
             teamName: '__prepare_opencode__',
@@ -19149,7 +19306,7 @@ export class TeamProvisioningService {
         const openCodeModelPrepare = await this.prepareSelectedOpenCodeModels({
           adapter,
           cwd: targetCwd,
-          modelIds: selectedModelIds,
+          modelIds: providerSelectedModelIds,
           verificationMode: opts?.modelVerificationMode ?? 'deep',
         });
         details.push(...openCodeModelPrepare.details);
@@ -19176,7 +19333,7 @@ export class TeamProvisioningService {
       }
 
       const appendSelectedModelVerification = async (): Promise<void> => {
-        if (selectedModelIds.length === 0) {
+        if (providerSelectedModelIds.length === 0) {
           return;
         }
 
@@ -19184,12 +19341,14 @@ export class TeamProvisioningService {
           claudePath: probeResult.claudePath,
           cwd: targetCwd,
           providerId,
-          modelIds: selectedModelIds,
+          modelIds: providerSelectedModelIds,
+          modelChecks: providerModelChecks,
           limitContext: opts?.limitContext === true,
         });
         details.push(...modelVerification.details);
         warnings.push(...modelVerification.warnings);
         blockingMessages.push(...modelVerification.blockingMessages);
+        issues.push(...(modelVerification.issues ?? []));
       };
 
       const appendOneShotDiagnostic = async (): Promise<void> => {
@@ -19298,7 +19457,7 @@ export class TeamProvisioningService {
           // Preflight warnings (including timeouts) should not block provisioning.
           warnings.push(prefixedWarning);
           const blockingCountBeforeModelChecks = blockingMessages.length;
-          if (!isBlockingPreflightWarning && selectedModelIds.length > 0) {
+          if (!isBlockingPreflightWarning && providerSelectedModelIds.length > 0) {
             await appendSelectedModelVerification();
           }
           if (
@@ -19964,24 +20123,29 @@ export class TeamProvisioningService {
     cwd,
     providerId,
     modelIds,
+    modelChecks,
     limitContext,
   }: {
     claudePath: string;
     cwd: string;
     providerId: TeamProviderId;
     modelIds: string[];
+    modelChecks?: ProviderSelectedModelCheck[];
     limitContext: boolean;
   }): Promise<{
     details: string[];
     warnings: string[];
     blockingMessages: string[];
+    issues?: TeamProvisioningPrepareIssue[];
   }> {
     const details: string[] = [];
     const warnings: string[] = [];
     const blockingMessages: string[] = [];
+    const issues: TeamProvisioningPrepareIssue[] = [];
     const startedAt = Date.now();
+    const selectedModelChecks = normalizeProviderSelectedModelChecks(modelIds, modelChecks);
 
-    if (modelIds.length === 0) {
+    if (selectedModelChecks.length === 0) {
       return { details, warnings, blockingMessages };
     }
 
@@ -20013,35 +20177,99 @@ export class TeamProvisioningService {
         return;
       }
       blockingMessages.push(`Selected model ${requestedModelId} is unavailable. ${outcome.reason}`);
+      issues.push({
+        providerId,
+        modelId: requestedModelId,
+        scope: 'model',
+        severity: 'blocking',
+        code: 'model_unavailable',
+        message: outcome.reason,
+      });
+    };
+
+    const recordAnthropicEffortOutcome = (
+      requestedModelId: string,
+      effort: EffortLevel
+    ): boolean => {
+      const selection = resolveAnthropicSelectionFromFacts({
+        selectedModel: requestedModelId,
+        limitContext,
+        facts: runtimeFacts,
+      });
+      const modelLabel = selection.displayName ?? selection.resolvedLaunchModel ?? requestedModelId;
+      const effortSupport = resolveAnthropicEffortSupport({
+        selection,
+        effort,
+        runtimeCapabilities: runtimeFacts.runtimeCapabilities,
+      });
+      if (effortSupport.kind === 'supported') {
+        return true;
+      }
+
+      const reason = formatAnthropicEffortSupportFailure({
+        effort,
+        modelLabel,
+        kind: effortSupport.kind,
+        supportedEfforts:
+          effortSupport.kind === 'unverified-catalog-missing'
+            ? undefined
+            : effortSupport.supportedEfforts,
+      });
+      blockingMessages.push(`Selected model ${requestedModelId} is unavailable. ${reason}`);
+      issues.push({
+        providerId,
+        modelId: requestedModelId,
+        scope: 'model',
+        severity: 'blocking',
+        code:
+          effortSupport.kind === 'unverified-catalog-missing'
+            ? 'effort_unverified'
+            : 'effort_unsupported',
+        message: reason,
+      });
+      return false;
     };
 
     appendPreflightDebugLog('provider_model_catalog_check_start', {
       providerId,
       cwd,
-      modelIds,
+      modelIds: selectedModelChecks.map((check) => check.modelId),
     });
 
-    for (const modelId of modelIds) {
-      const label = modelId.trim();
+    const checksByModelId = new Map<string, ProviderSelectedModelCheck[]>();
+    for (const check of selectedModelChecks) {
+      const label = check.modelId.trim();
       if (!label) {
         continue;
       }
+      checksByModelId.set(label, [...(checksByModelId.get(label) ?? []), check]);
+    }
 
-      recordOutcome(
-        label,
-        this.resolveProviderCompatibilityModel({
-          providerId,
-          requestedModelId: label,
-          runtimeFacts,
-          limitContext,
-        })
-      );
+    for (const [label, checks] of checksByModelId.entries()) {
+      const outcome = this.resolveProviderCompatibilityModel({
+        providerId,
+        requestedModelId: label,
+        runtimeFacts,
+        limitContext,
+      });
+      let effortSupported = true;
+      if (outcome.kind !== 'unavailable' && providerId === 'anthropic') {
+        for (const check of checks) {
+          if (check.effort && !recordAnthropicEffortOutcome(label, check.effort)) {
+            effortSupported = false;
+          }
+        }
+      }
+      if (!effortSupported) {
+        continue;
+      }
+      recordOutcome(label, outcome);
     }
 
     appendPreflightDebugLog('provider_model_catalog_check_complete', {
       providerId,
       cwd,
-      modelIds,
+      modelIds: selectedModelChecks.map((check) => check.modelId),
       durationMs: Date.now() - startedAt,
       modelCount: runtimeFacts.modelIds.size,
       details,
@@ -20049,7 +20277,12 @@ export class TeamProvisioningService {
       blockingMessages,
     });
 
-    return { details, warnings, blockingMessages };
+    return {
+      details,
+      warnings,
+      blockingMessages,
+      ...(issues.length > 0 ? { issues } : {}),
+    };
   }
 
   private async resolveProviderDefaultModel(
@@ -20999,7 +21232,7 @@ export class TeamProvisioningService {
           this.cleanupRun(run);
         })();
       }
-    }, RUN_TIMEOUT_MS);
+    }, getProvisioningRunTimeoutMs(run));
 
     child.once('error', (error) => {
       const hint = run.isLaunch ? ' (launch)' : '';
@@ -21795,7 +22028,7 @@ export class TeamProvisioningService {
             this.cleanupRun(run);
           })();
         }
-      }, RUN_TIMEOUT_MS);
+      }, getProvisioningRunTimeoutMs(run));
 
       child.once('error', (error) => {
         const progress = updateProgress(run, 'failed', 'Failed to start Claude CLI', {
@@ -23098,7 +23331,7 @@ export class TeamProvisioningService {
             this.cleanupRun(run);
           })();
         }
-      }, RUN_TIMEOUT_MS);
+      }, getProvisioningRunTimeoutMs(run));
 
       child.once('error', (error) => {
         const progress = updateProgress(run, 'failed', 'Failed to start Claude CLI (launch)', {

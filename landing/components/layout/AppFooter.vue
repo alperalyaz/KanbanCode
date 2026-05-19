@@ -61,7 +61,7 @@ const docsHref = computed(() => {
 .app-footer__robot-stage {
   position: absolute;
   right: clamp(24px, 7vw, 112px);
-  bottom: calc(100% - 18px);
+  bottom: calc(100% - 11px);
   z-index: 2;
   width: clamp(178px, 16vw, 236px);
   pointer-events: none;

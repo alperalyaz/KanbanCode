@@ -1,11 +1,10 @@
-import { describe, expect, it } from 'vitest';
-
 import {
   buildProviderPrepareMembersSignature,
   buildProviderPrepareModelChecksSignature,
   buildProviderPrepareRequestSignature,
   buildProviderPrepareRuntimeStatusSignature,
 } from '@renderer/components/team/dialogs/providerPrepareRequestSignature';
+import { describe, expect, it } from 'vitest';
 
 describe('providerPrepareRequestSignature', () => {
   it('stays stable for semantically identical provider runtime snapshots', () => {
@@ -572,5 +571,18 @@ describe('providerPrepareRequestSignature', () => {
         modelChecksSignature,
       })
     );
+  });
+
+  it('changes model checks signature when selected effort changes', () => {
+    const medium = buildProviderPrepareModelChecksSignature(
+      new Map([['anthropic', [{ model: 'claude-opus-4-6[1m]', effort: 'medium' }]]])
+    );
+    const high = buildProviderPrepareModelChecksSignature(
+      new Map([['anthropic', [{ model: 'claude-opus-4-6[1m]', effort: 'high' }]]])
+    );
+
+    expect(medium).not.toBe(high);
+    expect(medium).toContain('"effort":"medium"');
+    expect(high).toContain('"effort":"high"');
   });
 });

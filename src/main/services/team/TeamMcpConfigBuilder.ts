@@ -432,6 +432,7 @@ export class TeamMcpConfigBuilder {
       [MCP_SERVER_NAME]: {
         command: launchSpec.command,
         args: launchSpec.args,
+        enabled: true,
         env: {
           [MCP_CLAUDE_DIR_ENV]: getClaudeBasePath(),
         },

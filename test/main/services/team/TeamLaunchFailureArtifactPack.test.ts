@@ -177,6 +177,25 @@ describe('TeamLaunchFailureArtifactPack', () => {
     });
   });
 
+  it('does not classify stdin warning as root cause after bootstrap transport evidence', () => {
+    const input = {
+      teamName: 'artifact-team',
+      runId: 'run-mailbox-written',
+      reason:
+        'atlas: Teammate process atlas@signal-ops did not submit bootstrap prompt: timed out waiting for bootstrap_submitted; last transport stage: mailbox_bootstrap_written Last stderr: Warning: no stdin data received in 3s, proceeding without it.',
+      progressTraceLines: [
+        'mailbox_bootstrap_written detail=messageId=bootstrap-atlas-1',
+        'Warning: no stdin data received in 3s, proceeding without it.',
+      ],
+    };
+
+    expect(classifyLaunchFailureArtifact(input).code).toBe('model_no_bootstrap');
+    expect(extractLaunchBootstrapTransportBreadcrumb(input)).toMatchObject({
+      noStdinWarning: true,
+      bootstrapSubmitted: false,
+    });
+  });
+
   it('classifies provider quota separately from protocol errors', () => {
     expect(
       classifyLaunchFailureArtifact({

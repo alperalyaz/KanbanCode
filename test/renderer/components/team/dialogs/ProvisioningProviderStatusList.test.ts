@@ -520,7 +520,7 @@ describe('ProvisioningProviderStatusList', () => {
       })
     ).toEqual({
       state: 'ready',
-      message: 'Selected providers are ready.',
+      message: 'All selected providers are ready.',
     });
   });
 

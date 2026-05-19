@@ -1,13 +1,47 @@
 import type { MemberDraft } from '@renderer/components/team/members/membersEditorTypes';
-import type { CliProviderStatus, TeamProviderId } from '@shared/types';
+import type {
+  CliProviderStatus,
+  TeamProviderId,
+  TeamProvisioningModelCheckRequest,
+} from '@shared/types';
 
 type RuntimeProviderStatusById = ReadonlyMap<TeamProviderId, CliProviderStatus | null | undefined>;
-type SelectedModelChecksByProvider = ReadonlyMap<TeamProviderId, readonly string[]>;
+type ProviderModelCheckSignatureInput =
+  | string
+  | Pick<TeamProvisioningModelCheckRequest, 'model' | 'effort'>;
+type SelectedModelChecksByProvider = ReadonlyMap<
+  TeamProviderId,
+  readonly ProviderModelCheckSignatureInput[]
+>;
 
 function normalizeModelIds(modelIds: readonly string[] | null | undefined): string[] {
   return Array.from(
     new Set((modelIds ?? []).map((modelId) => modelId.trim()).filter(Boolean))
   ).sort();
+}
+
+function normalizeModelChecks(
+  checks: readonly ProviderModelCheckSignatureInput[] | null | undefined
+): { model: string; effort: string | null }[] {
+  const seen = new Set<string>();
+  const normalized: { model: string; effort: string | null }[] = [];
+  for (const check of checks ?? []) {
+    const model = (typeof check === 'string' ? check : check.model).trim();
+    if (!model) {
+      continue;
+    }
+    const effort = typeof check === 'string' ? null : (check.effort ?? null);
+    const key = `${model}\n${effort ?? ''}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    normalized.push({ model, effort });
+  }
+  return normalized.sort(
+    (left, right) =>
+      left.model.localeCompare(right.model) || (left.effort ?? '').localeCompare(right.effort ?? '')
+  );
 }
 
 export function buildProviderPrepareMembersSignature(members: readonly MemberDraft[]): string {
@@ -29,7 +63,10 @@ export function buildProviderPrepareModelChecksSignature(
     Array.from(modelChecksByProvider.entries())
       .map(([providerId, modelIds]) => ({
         providerId,
-        modelIds: normalizeModelIds(modelIds),
+        modelIds: normalizeModelIds(
+          modelIds.map((modelId) => (typeof modelId === 'string' ? modelId : modelId.model))
+        ),
+        modelChecks: normalizeModelChecks(modelIds),
       }))
       .sort((left, right) => left.providerId.localeCompare(right.providerId))
   );

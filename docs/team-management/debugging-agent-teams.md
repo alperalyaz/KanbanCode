@@ -81,6 +81,32 @@ Use this mode to inspect interactive CLI behavior, terminal prompts, and pane ou
 as equivalent to the process backend for recovery semantics; persisted pane IDs can help discovery,
 but app restart does not make old panes a fully app-owned runtime again.
 
+## Live Smoke Runtime Launcher
+
+Live/dev smoke checks should run the orchestrator from source unless the test explicitly says it is
+validating packaged output. This keeps app smoke tests aligned with the source tree and avoids a stale
+`dist` bundle hiding runtime changes.
+
+Default live/dev smoke launcher:
+
+```bash
+export CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH=/Users/belief/dev/projects/claude/agent_teams_orchestrator/cli-source
+```
+
+The source launcher executes `src/entrypoints/cli.tsx` through Bun. It is the right default for local
+debug loops, live model/provider checks, and cross-repo runtime fixes.
+
+Release or production-like smoke checks must validate the built wrapper:
+
+```bash
+cd /Users/belief/dev/projects/claude/agent_teams_orchestrator
+bun run build
+export CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH=/Users/belief/dev/projects/claude/agent_teams_orchestrator/cli
+```
+
+`cli` reads `dist/local-cli/cli.js`. `cli-dev` reads `dist/local-cli-dev/cli.js`, so a passing
+`cli-dev` smoke is not proof that the production wrapper is fresh.
+
 ## Member State Meanings
 
 Common `launch-state.json` cases:

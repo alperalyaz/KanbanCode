@@ -146,6 +146,7 @@ function extractBootstrapSpec(callIndex = 0): {
   team?: { name?: string; cwd?: string };
   lead?: { permissionSeedTools?: string[] };
   members?: Array<Record<string, unknown>>;
+  launch?: { bootstrapTimeoutMs?: number; continueOnPartialFailure?: boolean };
 } {
   const args = vi.mocked(spawnCli).mock.calls[callIndex]?.[1] as string[] | undefined;
   const specFlagIndex = args?.indexOf('--team-bootstrap-spec') ?? -1;
@@ -158,6 +159,7 @@ function extractBootstrapSpec(callIndex = 0): {
     team?: { name?: string; cwd?: string };
     lead?: { permissionSeedTools?: string[] };
     members?: Array<Record<string, unknown>>;
+    launch?: { bootstrapTimeoutMs?: number; continueOnPartialFailure?: boolean };
   };
 }
 
@@ -348,8 +350,59 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
         cwd: process.cwd(),
       }),
     ]);
+    expect(bootstrapSpec.launch).toMatchObject({
+      bootstrapTimeoutMs: 120_000,
+      continueOnPartialFailure: true,
+    });
 
     await svc.cancelProvisioning(runId);
+  });
+
+  it('createTeam scales deterministic bootstrap timeout with member count', async () => {
+    vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/fake/claude');
+    const { child } = createFakeChild();
+    vi.mocked(spawnCli).mockReturnValue(child as any);
+    const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
+
+    const svc = new TeamProvisioningService();
+    (svc as any).buildProvisioningEnv = vi.fn(async () => ({
+      env: { ANTHROPIC_API_KEY: 'test' },
+      authSource: 'anthropic_api_key',
+    }));
+    (svc as any).validateAgentTeamsMcpRuntime = vi.fn(async () => {});
+    (svc as any).startFilesystemMonitor = vi.fn();
+    (svc as any).pathExists = vi.fn(async () => false);
+
+    let runId: string | undefined;
+    try {
+      const created = await svc.createTeam(
+        {
+          teamName: 'large-team',
+          cwd: process.cwd(),
+          members: [
+            { name: 'alice' },
+            { name: 'atlas' },
+            { name: 'bob' },
+            { name: 'jack' },
+            { name: 'tom' },
+          ],
+        },
+        () => {}
+      );
+      runId = created.runId;
+
+      expect(extractBootstrapSpec().launch).toMatchObject({
+        bootstrapTimeoutMs: 300_000,
+        continueOnPartialFailure: true,
+      });
+
+      expect(setTimeoutSpy.mock.calls.some((call) => call[1] === 330_000)).toBe(true);
+    } finally {
+      if (runId) {
+        await svc.cancelProvisioning(runId);
+      }
+      setTimeoutSpy.mockRestore();
+    }
   });
 
   it('createTeam bootstrap spec includes worktree isolation only for selected teammates', async () => {

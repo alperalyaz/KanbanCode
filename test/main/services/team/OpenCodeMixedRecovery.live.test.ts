@@ -47,7 +47,8 @@ const liveDescribe =
 const liveMultiLaneIt = process.env.OPENCODE_E2E_MIXED_RECOVERY_MULTI === '1' ? it : it.skip;
 
 const PROJECT_PATH = process.env.OPENCODE_E2E_PROJECT_PATH?.trim() || process.cwd();
-const DEFAULT_ORCHESTRATOR_CLI = '/Users/belief/dev/projects/claude/agent_teams_orchestrator/cli';
+const DEFAULT_ORCHESTRATOR_CLI =
+  '/Users/belief/dev/projects/claude/agent_teams_orchestrator/cli-source';
 const DEFAULT_MODEL = 'opencode/big-pickle';
 
 liveDescribe('OpenCode mixed recovery live e2e', () => {

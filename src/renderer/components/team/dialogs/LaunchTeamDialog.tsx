@@ -166,6 +166,7 @@ import type {
   TeamFastMode,
   TeamLaunchRequest,
   TeamProviderId,
+  TeamProvisioningModelCheckRequest,
   UpdateSchedulePatch,
 } from '@shared/types';
 
@@ -1133,37 +1134,53 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   ]);
 
   const selectedModelChecksByProvider = useMemo(() => {
-    const modelsByProvider = new Map<TeamProviderId, string[]>();
-    const defaultSelectionByProvider = new Map<TeamProviderId, boolean>();
-    const addModel = (providerId: TeamProviderId, model: string | undefined): void => {
+    const modelsByProvider = new Map<TeamProviderId, TeamProvisioningModelCheckRequest[]>();
+    const leadEffort = (selectedEffort as EffortLevel | '') || undefined;
+    const addModel = (
+      providerId: TeamProviderId,
+      model: string | undefined,
+      effort?: EffortLevel
+    ): void => {
       const trimmed = model?.trim() ?? '';
       if (!trimmed) {
         return;
       }
       const existing = modelsByProvider.get(providerId) ?? [];
-      if (!existing.includes(trimmed)) {
-        modelsByProvider.set(providerId, [...existing, trimmed]);
+      if (!existing.some((entry) => entry.model === trimmed && entry.effort === effort)) {
+        modelsByProvider.set(providerId, [
+          ...existing,
+          {
+            providerId,
+            model: trimmed,
+            ...(effort ? { effort } : {}),
+          },
+        ]);
       }
     };
-    const addDefaultSelection = (providerId: TeamProviderId): void => {
+    const addDefaultSelection = (providerId: TeamProviderId, effort?: EffortLevel): void => {
       if (
         providerId === 'codex' ||
         providerId === 'gemini' ||
         (providerId === 'anthropic' && selectedProviderId === 'anthropic')
       ) {
-        defaultSelectionByProvider.set(providerId, true);
+        addModel(providerId, DEFAULT_PROVIDER_MODEL_SELECTION, effort);
       }
     };
 
     if (selectedModel.trim()) {
-      addModel(selectedProviderId, effectiveLeadRuntimeModel);
+      addModel(selectedProviderId, effectiveLeadRuntimeModel, leadEffort);
     } else {
-      addDefaultSelection(selectedProviderId);
+      addDefaultSelection(selectedProviderId, leadEffort);
     }
     for (const member of effectiveMemberDrafts) {
       if (member.removedAt) {
         continue;
       }
+      const memberProviderId = normalizeOptionalTeamProviderId(member.providerId);
+      const inheritsDefaultRuntime = !memberProviderId || memberProviderId === selectedProviderId;
+      const explicitMemberModel = member.model?.trim() ?? '';
+      const memberEffort =
+        member.effort ?? (inheritsDefaultRuntime && !explicitMemberModel ? leadEffort : undefined);
       const scopedModel = resolveProviderScopedMemberModel({
         memberProviderId: member.providerId,
         memberModel: member.model,
@@ -1171,13 +1188,10 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
         runtimeProviderStatusById,
       });
       if (scopedModel.model) {
-        addModel(scopedModel.providerId, scopedModel.model);
+        addModel(scopedModel.providerId, scopedModel.model, memberEffort);
       } else {
-        addDefaultSelection(scopedModel.providerId);
+        addDefaultSelection(scopedModel.providerId, memberEffort);
       }
-    }
-    for (const providerId of defaultSelectionByProvider.keys()) {
-      addModel(providerId, DEFAULT_PROVIDER_MODEL_SELECTION);
     }
 
     return modelsByProvider;
@@ -1185,6 +1199,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     effectiveLeadRuntimeModel,
     effectiveMemberDrafts,
     runtimeProviderStatusById,
+    selectedEffort,
     selectedModel,
     selectedProviderId,
   ]);
@@ -1470,6 +1485,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
         backendSummary,
         limitContext: effectiveAnthropicRuntimeLimitContext,
         runtimeStatusSignature: prepareRuntimeStatusSignature,
+        modelChecksSignature: selectedModelChecksByProviderSignature,
       });
       const issueReasons = getShortLivedProviderPrepareModelIssueReasons({
         providerId,
@@ -1498,6 +1514,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     prepareChecks,
     prepareRuntimeStatusSignature,
     runtimeBackendSummaryByProvider,
+    selectedModelChecksByProviderSignature,
     selectedMemberProviders,
   ]);
 
@@ -1557,6 +1574,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       let checks = initialChecks;
       const providerPlans = selectedMemberProviders.map((providerId) => {
         const selectedModelChecks = selectedModelChecksByProvider.get(providerId) ?? [];
+        const selectedModelIds = selectedModelChecks.map((check) => check.model);
         const backendSummary = runtimeBackendSummaryByProviderRef.current.get(providerId) ?? null;
         const cacheKey = buildProviderPrepareModelCacheKey({
           cwd: effectiveCwd,
@@ -1564,6 +1582,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
           backendSummary,
           limitContext: effectiveAnthropicRuntimeLimitContext,
           runtimeStatusSignature: prepareRuntimeStatusSignature,
+          modelChecksSignature: selectedModelChecksByProviderSignature,
         });
         const cachedModelResultsById = {
           ...getShortLivedProviderPrepareModelResults({
@@ -1574,12 +1593,13 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
         };
         const cachedSnapshot = getProviderPrepareCachedSnapshot({
           providerId,
-          selectedModelIds: selectedModelChecks,
+          selectedModelIds,
           cachedModelResultsById,
         });
         return {
           providerId,
           selectedModelChecks,
+          selectedModelIds,
           backendSummary,
           cacheKey,
           cachedModelResultsById,
@@ -1590,7 +1610,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       try {
         for (const plan of providerPlans) {
           checks = updateProviderCheck(checks, plan.providerId, {
-            status: plan.selectedModelChecks.length > 0 ? plan.cachedSnapshot.status : 'checking',
+            status: plan.selectedModelIds.length > 0 ? plan.cachedSnapshot.status : 'checking',
             backendSummary: plan.backendSummary,
             details: plan.cachedSnapshot.details,
           });
@@ -1603,7 +1623,8 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
             const prepResult = await runProviderPrepareDiagnostics({
               cwd: effectiveCwd,
               providerId: plan.providerId,
-              selectedModelIds: plan.selectedModelChecks,
+              selectedModelIds: plan.selectedModelIds,
+              selectedModelChecks: plan.selectedModelChecks,
               prepareProvisioning: api.teams.prepareProvisioning,
               limitContext: effectiveAnthropicRuntimeLimitContext,
               cachedModelResultsById: plan.cachedModelResultsById,
@@ -1669,14 +1690,14 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
           anyFailure
             ? failureMessage
             : anyNotes
-              ? 'Selected providers are ready with notes.'
-              : 'Selected providers are ready.'
+              ? 'All selected providers are ready, with notes.'
+              : 'All selected providers are ready.'
         );
         setPrepareWarnings(collectedWarnings);
       } catch (error) {
         if (prepareRequestSeqRef.current !== requestSeq) return;
         const failureMessage =
-          error instanceof Error ? error.message : 'Failed to warm up Claude CLI environment';
+          error instanceof Error ? error.message : 'Failed to prepare selected providers';
         setPrepareState('failed');
         setPrepareWarnings([]);
         setPrepareChecks(failIncompleteProviderChecks(checks, failureMessage));
@@ -1692,6 +1713,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     selectedProviderId,
     selectedMemberProviders,
     selectedModelChecksByProvider,
+    selectedModelChecksByProviderSignature,
   ]);
 
   // ---------------------------------------------------------------------------
@@ -2832,7 +2854,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                   id="dialog-effort"
                   providerId={selectedProviderId}
                   model={selectedModel}
-                  limitContext={false}
+                  limitContext={effectiveAnthropicRuntimeLimitContext}
                 />
                 {selectedProviderId === 'anthropic' ? (
                   <div className="mt-2">
@@ -2841,7 +2863,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                       onValueChange={setSelectedFastMode}
                       providerFastModeDefault={anthropicProviderFastModeDefault}
                       model={selectedModel}
-                      limitContext={false}
+                      limitContext={effectiveAnthropicRuntimeLimitContext}
                       id="dialog-fast-mode"
                     />
                     {anthropicRuntimeNotice ? (
@@ -2951,7 +2973,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                       <span>
                         {effectivePrepare.message ??
                           (effectivePrepare.state === 'idle'
-                            ? 'Warming up CLI environment...'
+                            ? 'Checking selected providers...'
                             : 'Preparing environment...')}
                       </span>
                       <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[var(--color-text-muted)] opacity-70">
@@ -2973,8 +2995,8 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                     <span>
                       {prepareChecks.some((check) => check.status === 'notes') ||
                       prepareWarnings.length > 0
-                        ? 'CLI environment ready (with notes)'
-                        : 'CLI environment ready'}
+                        ? 'Selected providers ready (with notes)'
+                        : 'Selected providers ready'}
                     </span>
                   </div>
                   {effectivePrepare.message ? (

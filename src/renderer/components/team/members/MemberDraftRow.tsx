@@ -6,6 +6,7 @@ import { EffortLevelSelector } from '@renderer/components/team/dialogs/EffortLev
 import {
   formatTeamModelSummary,
   getProviderScopedTeamModelLabel,
+  getTeamEffortLabel,
   getTeamProviderLabel,
   TeamModelSelector,
 } from '@renderer/components/team/dialogs/TeamModelSelector';
@@ -32,6 +33,7 @@ import {
   Info,
   RotateCcw,
   Trash2,
+  Workflow as WorkflowIcon,
 } from 'lucide-react';
 
 import type { MemberDraft } from './membersEditorTypes';
@@ -310,11 +312,24 @@ export const MemberDraftRow = ({
   const anthropicContextModeLabel = limitContext
     ? '200K limit enabled'
     : '1M-capable context allowed';
+  const workflowTooltipText = workflowDraft.value.trim()
+    ? 'Edit teammate workflow'
+    : 'Add teammate workflow';
   const runtimeSummary = formatTeamModelSummary(
     effectiveProviderId,
     effectiveModel?.trim() ?? '',
     effectiveEffort
   );
+  const runtimeMeta = [
+    effectiveEffort || effectiveProviderId === 'anthropic'
+      ? `Effort ${getTeamEffortLabel(effectiveEffort ?? '')}`
+      : null,
+    effectiveProviderId === 'anthropic'
+      ? limitContext
+        ? '200K context'
+        : '1M-capable context'
+      : null,
+  ].filter((item): item is string => Boolean(item));
 
   return (
     <div
@@ -346,6 +361,7 @@ export const MemberDraftRow = ({
             value={member.name}
             aria-label={`Member ${index + 1} name`}
             disabled={isRemoved || lockIdentity}
+            title={lockIdentity ? identityLockReason : undefined}
             onChange={(event) => onNameChange(member.id, event.target.value)}
             placeholder="member-name"
           />
@@ -372,23 +388,31 @@ export const MemberDraftRow = ({
       <div className="space-y-1">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
           {showWorkflow && onWorkflowChange ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="relative h-8 shrink-0 gap-1"
-              disabled={isRemoved}
-              onClick={() => setWorkflowExpanded((prev) => !prev)}
+            <HoverTooltip
+              content={workflowTooltipText}
+              title={workflowTooltipText}
+              className="shrink-0"
+              contentClassName="max-w-64"
             >
-              {workflowExpanded ? (
-                <ChevronDown className="size-3.5" />
-              ) : (
-                <ChevronRight className="size-3.5" />
-              )}
-              Workflow
-              {!workflowExpanded && workflowDraft.value.trim() ? (
-                <span className="absolute -right-1 -top-1 size-2 rounded-full bg-blue-500" />
-              ) : null}
-            </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  'relative size-8 shrink-0 px-0',
+                  workflowExpanded &&
+                    'border-blue-400/50 bg-blue-500/10 text-blue-100 hover:bg-blue-500/15'
+                )}
+                aria-label={workflowTooltipText}
+                aria-expanded={workflowExpanded}
+                disabled={isRemoved}
+                onClick={() => setWorkflowExpanded((prev) => !prev)}
+              >
+                <WorkflowIcon className="size-3.5" />
+                {!workflowExpanded && workflowDraft.value.trim() ? (
+                  <span className="absolute -right-1 -top-1 size-2 rounded-full bg-blue-500" />
+                ) : null}
+              </Button>
+            </HoverTooltip>
           ) : null}
           <div className="w-full min-w-0 space-y-1 sm:w-[150px] sm:min-w-[150px]">
             <HoverTooltip
@@ -426,6 +450,12 @@ export const MemberDraftRow = ({
                 {hasModelAdvisory ? <Info className="size-3.5 shrink-0 text-amber-300" /> : null}
               </Button>
             </HoverTooltip>
+            {runtimeMeta.length > 0 ? (
+              <p className="truncate px-1 text-[10px] leading-tight text-[var(--color-text-muted)]">
+                {runtimeMeta.join(' · ')}
+                <span className="sr-only">. {runtimeSummary}</span>
+              </p>
+            ) : null}
             {modelTooltipText ? (
               <span id={modelHelpDescriptionId} className="sr-only">
                 {modelTooltipText}

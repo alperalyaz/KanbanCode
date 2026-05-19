@@ -11,7 +11,6 @@
 <style scoped>
 .app-layout__main {
   flex: 1;
-  padding-top: 64px;
   background:
     radial-gradient(circle at 78% 18%, rgba(0, 234, 255, 0.08), transparent 32%),
     radial-gradient(circle at 18% 72%, rgba(47, 125, 255, 0.07), transparent 38%),

@@ -16,6 +16,7 @@ vi.mock('@renderer/components/team/dialogs/TeamModelSelector', () => ({
   formatTeamModelSummary: (providerId: string, model: string, effort?: string) =>
     [providerId, model || 'Default', effort].filter(Boolean).join(' · '),
   getProviderScopedTeamModelLabel: (_providerId: string, model: string) => model || 'Default',
+  getTeamEffortLabel: (effort: string) => effort || 'Default',
   getTeamProviderLabel: (providerId: string) => providerId,
   TeamModelSelector: () => React.createElement('div', null, 'team-model-selector'),
 }));
@@ -32,6 +33,7 @@ vi.mock('@renderer/components/ui/button', () => ({
     disabled,
     title,
     'aria-describedby': ariaDescribedBy,
+    'aria-expanded': ariaExpanded,
     'aria-label': ariaLabel,
   }: {
     children: React.ReactNode;
@@ -40,6 +42,7 @@ vi.mock('@renderer/components/ui/button', () => ({
     disabled?: boolean;
     title?: string;
     'aria-describedby'?: string;
+    'aria-expanded'?: boolean;
     'aria-label'?: string;
   }) =>
     React.createElement(
@@ -51,6 +54,7 @@ vi.mock('@renderer/components/ui/button', () => ({
         disabled,
         title,
         'aria-describedby': ariaDescribedBy,
+        'aria-expanded': ariaExpanded,
         'aria-label': ariaLabel,
       },
       children
@@ -168,6 +172,33 @@ describe('MemberDraftRow', () => {
     });
 
     expect(host.textContent).not.toContain('This teammate is synced with the lead model');
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it('renders the workflow control as an icon-only button with tooltip text', () => {
+    const { host, root } = renderMemberDraftRow({
+      showWorkflow: true,
+      onWorkflowChange: () => undefined,
+    });
+
+    const workflowButton = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Add teammate workflow"]'
+    )!;
+
+    expect(workflowButton).toBeTruthy();
+    expect(workflowButton.textContent).not.toContain('Workflow');
+    expect(workflowButton.closest('[title]')?.getAttribute('title')).toBe('Add teammate workflow');
+    expect(host.textContent).not.toContain('Workflow (optional)');
+
+    act(() => {
+      workflowButton.click();
+    });
+
+    expect(workflowButton.getAttribute('aria-expanded')).toBe('true');
+    expect(host.textContent).toContain('Workflow (optional)');
 
     act(() => {
       root.unmount();

@@ -1466,6 +1466,12 @@ export interface TeamCreateResponse {
 
 export type TeamProvisioningModelVerificationMode = 'compatibility' | 'deep';
 
+export interface TeamProvisioningModelCheckRequest {
+  providerId: TeamProviderId;
+  model: string;
+  effort?: EffortLevel;
+}
+
 export type TeamProvisioningPrepareIssueScope = 'provider' | 'model';
 export type TeamProvisioningPrepareIssueSeverity = 'blocking' | 'warning';
 

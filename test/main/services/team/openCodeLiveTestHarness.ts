@@ -33,7 +33,8 @@ import { getClaudeBasePath, getTeamsBasePath } from '../../../../src/main/utils/
 import type { HttpServices } from '../../../../src/main/http';
 import type { TaskRef } from '../../../../src/shared/types';
 
-const DEFAULT_ORCHESTRATOR_CLI = '/Users/belief/dev/projects/claude/agent_teams_orchestrator/cli';
+const DEFAULT_ORCHESTRATOR_CLI =
+  '/Users/belief/dev/projects/claude/agent_teams_orchestrator/cli-source';
 
 export interface InboxMessage {
   from?: string;

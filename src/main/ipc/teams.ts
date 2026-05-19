@@ -222,6 +222,7 @@ import type {
   TeamMessageNotificationData,
   TeamProviderBackendId,
   TeamProviderId,
+  TeamProvisioningModelCheckRequest,
   TeamProvisioningModelVerificationMode,
   TeamProvisioningPrepareResult,
   TeamProvisioningProgress,
@@ -2366,7 +2367,8 @@ async function handlePrepareProvisioning(
   providerIds: unknown,
   selectedModels: unknown,
   limitContext: unknown,
-  modelVerificationMode: unknown
+  modelVerificationMode: unknown,
+  selectedModelChecks: unknown
 ): Promise<IpcResult<TeamProvisioningPrepareResult>> {
   let validatedCwd: string | undefined;
   let validatedProviderId: TeamLaunchRequest['providerId'];
@@ -2374,6 +2376,7 @@ async function handlePrepareProvisioning(
   let validatedSelectedModels: string[] | undefined;
   let validatedLimitContext: boolean | undefined;
   let validatedModelVerificationMode: TeamProvisioningModelVerificationMode | undefined;
+  let validatedSelectedModelChecks: TeamProvisioningModelCheckRequest[] | undefined;
   if (cwd !== undefined) {
     if (typeof cwd !== 'string' || cwd.trim().length === 0) {
       return { success: false, error: 'cwd must be a non-empty string' };
@@ -2436,6 +2439,51 @@ async function handlePrepareProvisioning(
     }
     validatedModelVerificationMode = modelVerificationMode;
   }
+  if (selectedModelChecks !== undefined) {
+    if (!Array.isArray(selectedModelChecks)) {
+      return { success: false, error: 'selectedModelChecks must be an array when provided' };
+    }
+    const normalized: TeamProvisioningModelCheckRequest[] = [];
+    const seen = new Set<string>();
+    for (const entry of selectedModelChecks) {
+      if (!entry || typeof entry !== 'object') {
+        return { success: false, error: 'selectedModelChecks entries must be objects' };
+      }
+      const rawEntry = entry as {
+        providerId?: unknown;
+        model?: unknown;
+        effort?: unknown;
+      };
+      if (!isTeamProviderId(rawEntry.providerId)) {
+        return {
+          success: false,
+          error: 'selectedModelChecks entries must include a valid providerId',
+        };
+      }
+      if (typeof rawEntry.model !== 'string' || rawEntry.model.trim().length === 0) {
+        return {
+          success: false,
+          error: 'selectedModelChecks entries must include a non-empty model',
+        };
+      }
+      const effortValidation = parseOptionalTeamEffort(rawEntry.effort, rawEntry.providerId);
+      if (!effortValidation.valid) {
+        return { success: false, error: `selectedModelChecks ${effortValidation.error}` };
+      }
+      const model = rawEntry.model.trim();
+      const key = `${rawEntry.providerId}\n${model}\n${effortValidation.value ?? ''}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      normalized.push({
+        providerId: rawEntry.providerId,
+        model,
+        ...(effortValidation.value ? { effort: effortValidation.value } : {}),
+      });
+    }
+    validatedSelectedModelChecks = normalized;
+  }
   return wrapTeamHandler('prepareProvisioning', () =>
     getTeamProvisioningService().prepareForProvisioning(validatedCwd, {
       providerId: validatedProviderId,
@@ -2443,6 +2491,7 @@ async function handlePrepareProvisioning(
       modelIds: validatedSelectedModels,
       limitContext: validatedLimitContext,
       modelVerificationMode: validatedModelVerificationMode,
+      modelChecks: validatedSelectedModelChecks,
     })
   );
 }

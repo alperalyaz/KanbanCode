@@ -1896,7 +1896,7 @@ describe('LaunchTeamDialog', () => {
       .mocked(runProviderPrepareDiagnostics)
       .mock.calls.filter((call) => call[0]?.providerId === 'opencode');
     expect(inFlightOpencodePrepareCalls).toHaveLength(1);
-    expect(host.textContent).toContain('Selected providers are ready.');
+    expect(host.textContent).toContain('All selected providers are ready.');
 
     await act(async () => {
       root.unmount();
@@ -2046,7 +2046,7 @@ describe('LaunchTeamDialog', () => {
     expect(vi.mocked(runProviderPrepareDiagnostics)).toHaveBeenCalledTimes(
       callsAfterSameSignatureRerender
     );
-    expect(host.textContent).toContain('Selected providers are ready.');
+    expect(host.textContent).toContain('All selected providers are ready.');
 
     await act(async () => {
       root.unmount();
