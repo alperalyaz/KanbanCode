@@ -1,15 +1,15 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  createInitialProviderChecks,
   deriveEffectiveProvisioningPrepareState,
   getPrimaryProvisioningFailureDetail,
   getProvisioningFailureHint,
   getProvisioningProviderBackendSummary,
   ProvisioningProviderStatusList,
-  createInitialProviderChecks,
 } from '@renderer/components/team/dialogs/ProvisioningProviderStatusList';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('ProvisioningProviderStatusList', () => {
   afterEach(() => {
@@ -230,6 +230,44 @@ describe('ProvisioningProviderStatusList', () => {
 
     const detailLines = Array.from(host.querySelectorAll('p'));
     expect(detailLines[0]?.className).toContain('text-[var(--color-text-muted)]');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('hides internal OpenCode MCP proof cache markers from preflight details', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(ProvisioningProviderStatusList, {
+          checks: [
+            {
+              providerId: 'opencode',
+              status: 'ready',
+              backendSummary: 'OpenCode CLI',
+              details: ['opencode_app_mcp_tool_proof_persisted_cache_hit', 'big-pickle - verified'],
+            },
+          ],
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain(
+      'OpenCode (OpenCode CLI): Selected model checks - 1 verified'
+    );
+    expect(host.textContent).toContain('big-pickle - verified');
+    expect(host.textContent).not.toContain('opencode_app_mcp_tool_proof_persisted_cache_hit');
+
+    const detailLines = Array.from(host.querySelectorAll('p'));
+    expect(detailLines).toHaveLength(1);
+    expect(detailLines[0]?.textContent).toBe('big-pickle - verified');
 
     await act(async () => {
       root.unmount();

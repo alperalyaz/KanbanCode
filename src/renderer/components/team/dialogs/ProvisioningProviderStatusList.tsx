@@ -177,6 +177,15 @@ function isModelDetail(lower: string): boolean {
   return isSelectedModelDetail(lower) || isFormattedModelDetail(lower);
 }
 
+function isInternalProvisioningDetail(detail: string): boolean {
+  const normalized = detail.trim().toLowerCase();
+  return normalized === 'opencode_app_mcp_tool_proof_persisted_cache_hit';
+}
+
+function getPublicProvisioningDetails(details: string[]): string[] {
+  return details.filter((detail) => !isInternalProvisioningDetail(detail));
+}
+
 function getStatusLabel(status: ProvisioningProviderCheckStatus): string {
   switch (status) {
     case 'checking':
@@ -418,12 +427,13 @@ function hasCompatibilityPendingDetails(checks: ProvisioningProviderCheck[]): bo
 }
 
 function getDisplayStatusText(check: ProvisioningProviderCheck): string {
-  const modelSummary = getModelDetailSummary(check.details);
+  const publicDetails = getPublicProvisioningDetails(check.details);
+  const modelSummary = getModelDetailSummary(publicDetails);
   if (modelSummary) {
     return modelSummary;
   }
 
-  const summarizedDetails = check.details
+  const summarizedDetails = publicDetails
     .map((detail) => summarizeDetail(detail, check.status))
     .filter((detail): detail is ProvisioningDetailSummary => Boolean(detail));
 
@@ -507,7 +517,8 @@ export function getPrimaryProvisioningFailureDetail(
       continue;
     }
 
-    const unavailableDetail = check.details.find((detail) =>
+    const publicDetails = getPublicProvisioningDetails(check.details);
+    const unavailableDetail = publicDetails.find((detail) =>
       detail.toLowerCase().includes('selected model') &&
       detail.toLowerCase().includes('is unavailable')
         ? true
@@ -523,22 +534,23 @@ export function getPrimaryProvisioningFailureDetail(
       continue;
     }
 
-    const preferredFailure = check.details.find(
+    const publicDetails = getPublicProvisioningDetails(check.details);
+    const preferredFailure = publicDetails.find(
       (detail) => getDetailTone(detail, check.status) === 'failure'
     );
     if (preferredFailure) {
       return preferredFailure;
     }
 
-    const nonSuccessDetail = check.details.find(
+    const nonSuccessDetail = publicDetails.find(
       (detail) => getDetailTone(detail, check.status) !== 'success'
     );
     if (nonSuccessDetail) {
       return nonSuccessDetail;
     }
 
-    if (check.details.length > 0) {
-      return check.details[0];
+    if (publicDetails.length > 0) {
+      return publicDetails[0];
     }
   }
 
@@ -671,8 +683,9 @@ export const ProvisioningProviderStatusList = ({
   return (
     <div className={`space-y-1 pl-5 ${className}`.trim()}>
       {checks.map((check) => {
-        const visibleDetails = check.details.filter(
-          (detail) => detail.trim() !== (suppressDetailsMatching ?? '').trim()
+        const suppressDetailsMatchingTrimmed = (suppressDetailsMatching ?? '').trim();
+        const visibleDetails = getPublicProvisioningDetails(check.details).filter(
+          (detail) => detail.trim() !== suppressDetailsMatchingTrimmed
         );
 
         return (

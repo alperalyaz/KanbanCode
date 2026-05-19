@@ -1,5 +1,5 @@
 /**
- * Main process entry point for Agent Teams UI.
+ * Main process entry point for Agent Teams AI.
  *
  * Responsibilities:
  * - Initialize Electron app and main window

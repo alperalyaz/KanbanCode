@@ -1,5 +1,6 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodexAccountSnapshotDto } from '@features/codex-account/contracts';
@@ -29,11 +30,13 @@ vi.mock('@renderer/components/ui/tabs', () => {
       value,
       disabled,
       title,
+      'aria-disabled': ariaDisabled,
     }: {
       children: React.ReactNode;
       value: string;
       disabled?: boolean;
       title?: string;
+      'aria-disabled'?: boolean;
     }) =>
       React.createElement(
         'button',
@@ -41,6 +44,7 @@ vi.mock('@renderer/components/ui/tabs', () => {
           type: 'button',
           disabled,
           title,
+          'aria-disabled': ariaDisabled,
           'data-state': currentValue === value ? 'active' : 'inactive',
           onClick: () => {
             if (!disabled) {
@@ -1283,7 +1287,7 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
   });
 
-  it('shows OpenCode as readiness-gated and keeps it non-selectable', async () => {
+  it('opens readiness-gated OpenCode as diagnostics without selecting it', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -1309,7 +1313,8 @@ describe('TeamModelSelector disabled Codex models', () => {
     const buttons = Array.from(host.querySelectorAll('button'));
     const openCodeButton = buttons.find((button) => button.textContent?.includes('OpenCode'));
     expect(openCodeButton).not.toBeNull();
-    expect(openCodeButton?.hasAttribute('disabled')).toBe(true);
+    expect(openCodeButton?.hasAttribute('disabled')).toBe(false);
+    expect(openCodeButton?.getAttribute('aria-disabled')).toBe('true');
     expect(openCodeButton?.getAttribute('title')).toContain(
       'OpenCode runtime status is still loading.'
     );
@@ -1320,6 +1325,15 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
 
     expect(onProviderChange).not.toHaveBeenCalled();
+    const activeOpenCodeButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('OpenCode')
+    );
+    expect(activeOpenCodeButton?.getAttribute('data-state')).toBe('active');
+    expect(host.textContent).toContain('OpenCode is not ready for team launch');
+    expect(host.textContent).toContain('OpenCode status: checking runtime');
+    expect(host.textContent).toContain(
+      'The app is still checking the OpenCode runtime. Wait for provider status to finish, then try again.'
+    );
 
     await act(async () => {
       root.unmount();
@@ -1361,11 +1375,217 @@ describe('TeamModelSelector disabled Codex models', () => {
     const openCodeButton = Array.from(host.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('OpenCode')
     );
-    expect(openCodeButton?.hasAttribute('disabled')).toBe(true);
+    expect(openCodeButton?.hasAttribute('disabled')).toBe(false);
+    expect(openCodeButton?.getAttribute('aria-disabled')).toBe('true');
     expect(openCodeButton?.getAttribute('title')).toContain(
       'OpenCode runtime store needs recovery'
     );
-    expect(openCodeButton?.textContent).toContain('Gate');
+    expect(openCodeButton?.textContent).toContain('Setup');
+
+    await act(async () => {
+      openCodeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('OpenCode is not ready for team launch');
+    expect(host.textContent).toContain(
+      'OpenCode status: runtime detected · provider connected · team launch blocked'
+    );
+    expect(host.textContent).toContain(
+      'OpenCode is installed and authenticated, but Agent Teams launch readiness is blocked.'
+    );
+    expect(host.textContent).toContain('Reason: OpenCode runtime store needs recovery');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('keeps inspected OpenCode explicit until the user selects it after readiness recovers', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = {
+      providers: [
+        {
+          providerId: 'opencode',
+          supported: true,
+          authenticated: true,
+          statusMessage: 'OpenCode team launch is gated',
+          detailMessage: 'OpenCode runtime store needs recovery',
+          capabilities: { teamLaunch: false },
+          models: [],
+        },
+      ],
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onProviderChange = vi.fn();
+    const render = (): void => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'anthropic',
+          onProviderChange,
+          value: '',
+          onValueChange: () => undefined,
+        })
+      );
+    };
+
+    await act(async () => {
+      render();
+      await Promise.resolve();
+    });
+
+    const openCodeButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('OpenCode')
+    );
+    await act(async () => {
+      openCodeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(onProviderChange).not.toHaveBeenCalled();
+    expect(host.textContent).toContain('OpenCode is not ready for team launch');
+
+    storeState.cliStatus = {
+      providers: [
+        {
+          providerId: 'opencode',
+          supported: true,
+          authenticated: true,
+          detailMessage: null,
+          statusMessage: null,
+          capabilities: {
+            teamLaunch: true,
+          },
+          models: ['openrouter/minimax/minimax-m2.5-free'],
+        },
+      ],
+    };
+
+    await act(async () => {
+      render();
+      await Promise.resolve();
+    });
+
+    expect(onProviderChange).not.toHaveBeenCalled();
+    expect(host.textContent).toContain('OpenCode is ready');
+    expect(host.textContent).toContain('Use OpenCode');
+
+    const useOpenCodeButton = Array.from(host.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Use OpenCode'
+    );
+    await act(async () => {
+      useOpenCodeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(onProviderChange).toHaveBeenCalledWith('opencode');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('does not normalize the selected model while viewing OpenCode readiness diagnostics', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onValueChange = vi.fn();
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'anthropic',
+          onProviderChange: () => undefined,
+          value: 'claude-opus-4-7[1m]',
+          onValueChange,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const openCodeButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('OpenCode')
+    );
+    await act(async () => {
+      openCodeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('OpenCode is not ready for team launch');
+    expect(onValueChange).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('can leave OpenCode diagnostics for another provider tab', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = {
+      providers: [
+        {
+          providerId: 'opencode',
+          supported: true,
+          authenticated: true,
+          statusMessage: 'OpenCode team launch is gated',
+          detailMessage: 'OpenCode runtime store needs recovery',
+          capabilities: { teamLaunch: false },
+          models: [],
+        },
+      ],
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onProviderChange = vi.fn();
+
+    const ControlledSelector = (): React.JSX.Element => {
+      const [provider, setProvider] = React.useState<'anthropic' | 'codex'>('anthropic');
+      return React.createElement(TeamModelSelector, {
+        providerId: provider,
+        onProviderChange: (nextProvider) => {
+          onProviderChange(nextProvider);
+          if (nextProvider === 'anthropic' || nextProvider === 'codex') {
+            setProvider(nextProvider);
+          }
+        },
+        value: '',
+        onValueChange: () => undefined,
+      });
+    };
+
+    await act(async () => {
+      root.render(React.createElement(ControlledSelector));
+      await Promise.resolve();
+    });
+
+    const getTab = (label: string): HTMLButtonElement | undefined =>
+      Array.from(host.querySelectorAll('button')).find((button) =>
+        button.textContent?.includes(label)
+      );
+
+    await act(async () => {
+      getTab('OpenCode')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(getTab('OpenCode')?.getAttribute('data-state')).toBe('active');
+    expect(host.textContent).toContain('OpenCode is not ready for team launch');
+
+    await act(async () => {
+      getTab('Codex')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(onProviderChange).toHaveBeenCalledWith('codex');
+    expect(getTab('Codex')?.getAttribute('data-state')).toBe('active');
+    expect(host.textContent).not.toContain('OpenCode is not ready for team launch');
 
     await act(async () => {
       root.unmount();
