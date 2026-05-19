@@ -5,10 +5,14 @@ import * as path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createWorkspaceTrustCoordinator } from '../../../../src/features/workspace-trust/main';
 import { TeamDataService } from '../../../../src/main/services/team/TeamDataService';
 import { TeamProvisioningService } from '../../../../src/main/services/team/TeamProvisioningService';
 import { TeamTaskReader } from '../../../../src/main/services/team/TeamTaskReader';
 import {
+  getAutoDetectedClaudeBasePath,
+  getClaudeBasePath,
+  getHomeDir,
   getTasksBasePath,
   getTeamsBasePath,
   setClaudeBasePathOverride,
@@ -236,6 +240,7 @@ async function runProviderStressScenario(
     throw error;
   }
   const svc = harness?.svc ?? new TeamProvisioningService();
+  configureWorkspaceTrustCoordinator(svc);
   const active: ActiveScenario = { scenario, teamName, svc, harness, codexCleanup, failed: false };
   activeScenarios.push(active);
 
@@ -294,6 +299,20 @@ async function runProviderStressScenario(
       if (index >= 0) activeScenarios.splice(index, 1);
     }
   }
+}
+
+function configureWorkspaceTrustCoordinator(svc: TeamProvisioningService): void {
+  svc.setWorkspaceTrustCoordinator(
+    createWorkspaceTrustCoordinator({
+      claudeConfigDir: () => getClaudeBasePath(),
+      globalConfigFilePath: () => {
+        const claudeBasePath = getClaudeBasePath();
+        return claudeBasePath !== getAutoDetectedClaudeBasePath()
+          ? path.join(claudeBasePath, '.claude.json')
+          : path.join(getHomeDir(), '.claude.json');
+      },
+    })
+  );
 }
 
 async function runRestartStressChecks(
