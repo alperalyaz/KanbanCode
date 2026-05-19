@@ -1234,4 +1234,30 @@ describe('member launch diagnostics', () => {
       'CLI read empty stdin before bootstrap submit; verify headless teammate runtime flag/env and startup input handling.'
     );
   });
+
+  it('prioritizes submitted-but-unconfirmed bootstrap over no-stdin stderr noise', () => {
+    const payload = buildMemberLaunchDiagnosticsPayload({
+      teamName: 'signal-ops',
+      runId: 'run-submitted-no-confirm',
+      memberName: 'alice',
+      spawnEntry: {
+        status: 'error',
+        launchState: 'failed_to_start',
+        hardFailure: true,
+        error:
+          'Teammate was registered but did not bootstrap-confirm before timeout. Last transport stage: bootstrap_submitted: messageId=bootstrap-alice-1 Last stderr: Warning: no stdin data received in 3s, proceeding without it.',
+        updatedAt: '2026-05-19T13:53:36.668Z',
+      },
+    });
+
+    expect(payload.probableCause).toBe(
+      'Bootstrap prompt was submitted, but teammate did not bootstrap-confirm before timeout.'
+    );
+    expect(payload.diagnosticHints?.[0]).toBe(
+      'Bootstrap prompt was submitted, but teammate did not bootstrap-confirm before timeout.'
+    );
+    expect(payload.diagnosticHints).toContain(
+      'CLI read empty stdin before bootstrap submit; verify headless teammate runtime flag/env and startup input handling.'
+    );
+  });
 });

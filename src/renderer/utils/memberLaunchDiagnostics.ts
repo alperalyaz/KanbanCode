@@ -390,6 +390,18 @@ function buildDiagnosticHints(input: {
   }
   if (
     textIncludesAny(text, [
+      'did not bootstrap-confirm',
+      'bootstrap-confirm before timeout',
+      'bootstrap was not confirmed',
+      'last transport stage: bootstrap_submitted',
+    ])
+  ) {
+    hints.push(
+      'Bootstrap prompt was submitted, but teammate did not bootstrap-confirm before timeout.'
+    );
+  }
+  if (
+    textIncludesAny(text, [
       'did not submit bootstrap prompt',
       'timed out waiting for bootstrap_submitted',
     ])
