@@ -328,6 +328,38 @@ function getOpenCodeModelPricingInfo(
   };
 }
 
+function isFreeOpenCodeModelRoute(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  return (
+    normalized === 'opencode/big-pickle' ||
+    normalized.includes(':free') ||
+    normalized.endsWith('-free') ||
+    normalized.endsWith('/free')
+  );
+}
+
+function hasFreeOpenCodeModelRoute(providerStatus: CliProviderStatus | null | undefined): boolean {
+  if (providerStatus?.providerId !== 'opencode') {
+    return false;
+  }
+
+  if (providerStatus.models.some(isFreeOpenCodeModelRoute)) {
+    return true;
+  }
+
+  return (
+    providerStatus.modelCatalog?.models.some((model) => {
+      const badgeLabel = model.badgeLabel?.trim().toLowerCase();
+      return (
+        model.metadata?.free === true ||
+        badgeLabel === 'free' ||
+        isFreeOpenCodeModelRoute(model.launchModel) ||
+        isFreeOpenCodeModelRoute(model.id)
+      );
+    }) ?? false
+  );
+}
+
 const OPENCODE_UI_DISABLED_REASON = 'OpenCode team launch is not ready.';
 export const OPENCODE_ONE_SHOT_DISABLED_REASON =
   'OpenCode team launch is available for normal teams, but scheduled one-shot prompts still run through claude -p. Choose Anthropic or Codex for one-shot schedules.';
@@ -343,7 +375,7 @@ function getOpenCodeReadinessBadgeLabel(
     return 'Install';
   }
   if (!providerStatus.authenticated) {
-    return 'Auth';
+    return 'Free';
   }
   return 'Setup';
 }
@@ -353,10 +385,26 @@ function getOpenCodeReadinessSummary(providerStatus: CliProviderStatus | null | 
     return 'OpenCode status: checking runtime';
   }
 
+  const runtimeReady = providerStatus.supported;
+  const hasFreeModelRoute = hasFreeOpenCodeModelRoute(providerStatus);
+  let readinessSummary = 'team launch blocked';
+  if (runtimeReady) {
+    if (!providerStatus.authenticated) {
+      readinessSummary = hasFreeModelRoute
+        ? 'provider connection optional'
+        : 'provider-backed models need setup';
+    } else if (providerStatus.capabilities.teamLaunch) {
+      readinessSummary = 'team launch ready';
+    }
+  }
   const parts = [
-    providerStatus.supported ? 'runtime detected' : 'runtime missing',
-    providerStatus.authenticated ? 'provider connected' : 'provider not connected',
-    providerStatus.capabilities.teamLaunch ? 'team launch ready' : 'team launch blocked',
+    runtimeReady ? 'runtime detected' : 'runtime missing',
+    runtimeReady && !providerStatus.authenticated && hasFreeModelRoute
+      ? 'free models available without auth'
+      : providerStatus.authenticated
+        ? 'provider connected'
+        : 'provider not connected',
+    readinessSummary,
   ];
   return `OpenCode status: ${parts.join(' · ')}`;
 }
@@ -369,7 +417,10 @@ function getOpenCodeReadinessMessage(providerStatus: CliProviderStatus | null | 
     return 'OpenCode is not installed, not found, or the detected runtime is not supported. Install or update OpenCode, then refresh provider status.';
   }
   if (!providerStatus.authenticated) {
-    return 'OpenCode is detected, but it does not have a connected provider. Connect a provider in OpenCode, then refresh provider status.';
+    if (hasFreeOpenCodeModelRoute(providerStatus)) {
+      return 'OpenCode is detected. You can use free OpenCode models such as Big Pickle without connecting a provider. Connect a provider only when you want provider-backed models.';
+    }
+    return 'OpenCode is detected, but no free OpenCode model is listed yet. Refresh provider status, or connect a provider in OpenCode for provider-backed models.';
   }
   if (!providerStatus.capabilities.teamLaunch) {
     return 'OpenCode is installed and authenticated, but Agent Teams launch readiness is blocked.';
@@ -702,14 +753,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
           'OpenCode runtime is not installed.'
         );
       }
-      if (!providerStatus.authenticated) {
-        return (
-          providerStatus.detailMessage ??
-          providerStatus.statusMessage ??
-          'OpenCode has no connected provider.'
-        );
-      }
-      if (!providerStatus.capabilities.teamLaunch) {
+      if (providerStatus.authenticated && !providerStatus.capabilities.teamLaunch) {
         return (
           providerStatus.detailMessage ??
           providerStatus.statusMessage ??
@@ -1104,17 +1148,30 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
           reason: activeProviderDisabledReason,
           actionLabel: null,
         }
-      : canActivateInspectedOpenCode
+      : effectiveProviderId === 'opencode' &&
+          runtimeProviderStatus?.supported === true &&
+          runtimeProviderStatus.authenticated === false
         ? {
-            tone: 'ready' as const,
-            title: 'OpenCode is ready',
+            tone: 'warning' as const,
+            title: hasFreeOpenCodeModelRoute(runtimeProviderStatus)
+              ? 'OpenCode free models are available'
+              : 'OpenCode provider is not connected',
             summary: getOpenCodeReadinessSummary(runtimeProviderStatus),
-            message:
-              'OpenCode passed provider readiness. Select it to use OpenCode models for this team.',
+            message: getOpenCodeReadinessMessage(runtimeProviderStatus),
             reason: null,
-            actionLabel: 'Use OpenCode',
+            actionLabel: null,
           }
-        : null;
+        : canActivateInspectedOpenCode
+          ? {
+              tone: 'ready' as const,
+              title: 'OpenCode is ready',
+              summary: getOpenCodeReadinessSummary(runtimeProviderStatus),
+              message:
+                'OpenCode passed provider readiness. Select it to use OpenCode models for this team.',
+              reason: null,
+              actionLabel: 'Use OpenCode',
+            }
+          : null;
   const activeProviderNotice = providerNoticeById?.[effectiveProviderId] ?? null;
   const getModelAdvisoryBadgeLabel = (reason: string | null): string =>
     reason?.toLowerCase().includes('ping not confirmed') ? 'Ping not confirmed' : 'Note';

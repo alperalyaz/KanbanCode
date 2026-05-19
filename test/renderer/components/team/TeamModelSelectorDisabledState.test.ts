@@ -1548,6 +1548,125 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
   });
 
+  it('allows selecting unauthenticated OpenCode when free models are available', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = {
+      providers: [
+        {
+          providerId: 'opencode',
+          supported: true,
+          authenticated: false,
+          statusMessage: 'Provider not connected',
+          detailMessage: null,
+          capabilities: { teamLaunch: false },
+          models: ['opencode/big-pickle'],
+          modelVerificationState: 'idle',
+          modelAvailability: [],
+        },
+      ],
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onProviderChange = vi.fn();
+
+    const ControlledSelector = (): React.JSX.Element => {
+      const [provider, setProvider] = React.useState<'anthropic' | 'opencode'>('anthropic');
+      return React.createElement(TeamModelSelector, {
+        providerId: provider,
+        onProviderChange: (nextProvider) => {
+          onProviderChange(nextProvider);
+          if (nextProvider === 'anthropic' || nextProvider === 'opencode') {
+            setProvider(nextProvider);
+          }
+        },
+        value: '',
+        onValueChange: () => undefined,
+      });
+    };
+
+    await act(async () => {
+      root.render(React.createElement(ControlledSelector));
+      await Promise.resolve();
+    });
+
+    const openCodeButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('OpenCode')
+    );
+    expect(openCodeButton?.hasAttribute('disabled')).toBe(false);
+    expect(openCodeButton?.getAttribute('aria-disabled')).toBeNull();
+    expect(openCodeButton?.textContent).not.toContain('Auth');
+
+    await act(async () => {
+      openCodeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(onProviderChange).toHaveBeenCalledWith('opencode');
+    expect(host.textContent).toContain('OpenCode free models are available');
+    expect(host.textContent).toContain('provider connection optional');
+    expect(host.textContent).toContain(
+      'You can use free OpenCode models such as Big Pickle without connecting a provider.'
+    );
+    expect(host.textContent).not.toContain('OpenCode is not ready for team launch');
+    expect(host.textContent).not.toContain('team launch available');
+    expect(host.textContent).toContain('big-pickle');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('keeps unauthenticated OpenCode selectable but does not promise free models when none are listed', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = {
+      providers: [
+        {
+          providerId: 'opencode',
+          supported: true,
+          authenticated: false,
+          statusMessage: 'Provider not connected',
+          detailMessage: null,
+          capabilities: { teamLaunch: false },
+          models: ['openai/gpt-5.4-mini'],
+          modelVerificationState: 'idle',
+          modelAvailability: [],
+        },
+      ],
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'opencode',
+          onProviderChange: () => undefined,
+          value: '',
+          onValueChange: () => undefined,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const openCodeButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('OpenCode')
+    );
+    expect(openCodeButton?.hasAttribute('disabled')).toBe(false);
+    expect(host.textContent).toContain('OpenCode provider is not connected');
+    expect(host.textContent).toContain('no free OpenCode model is listed yet');
+    expect(host.textContent).toContain('provider-backed models need setup');
+    expect(host.textContent).not.toContain('team launch available');
+    expect(host.textContent).not.toContain('OpenCode free models are available');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('does not normalize the selected model while viewing OpenCode readiness diagnostics', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');
