@@ -328,6 +328,10 @@ describe('teamModelAvailability', () => {
         availabilityReason: null,
       },
     ]);
+    expect(normalizeTeamModelForUi('opencode', 'openai/gpt-5.4', providerStatus)).toBe(
+      'openai/gpt-5.4'
+    );
+    expect(getTeamModelSelectionError('opencode', 'openai/gpt-5.4', providerStatus)).toBeNull();
   });
 
   it('reports OpenCode openai routes unavailable when OpenAI auth is invalid', () => {
