@@ -334,6 +334,63 @@ describe('teamModelAvailability', () => {
     expect(getTeamModelSelectionError('opencode', 'openai/gpt-5.4', providerStatus)).toBeNull();
   });
 
+  it('uses the OpenCode model catalog when runtime models are empty', () => {
+    const providerStatus = createOpenCodeProviderStatus([], {
+      modelCatalog: {
+        schemaVersion: 1,
+        providerId: 'opencode',
+        source: 'app-server',
+        status: 'ready',
+        fetchedAt: '2026-05-12T00:00:00.000Z',
+        staleAt: '2026-05-12T00:10:00.000Z',
+        defaultModelId: 'opencode/big-pickle',
+        defaultLaunchModel: 'opencode/big-pickle',
+        models: [
+          {
+            id: 'opencode/big-pickle',
+            launchModel: 'opencode/big-pickle',
+            displayName: 'opencode/big-pickle',
+            hidden: false,
+            supportedReasoningEfforts: [],
+            defaultReasoningEffort: null,
+            inputModalities: ['text'],
+            supportsPersonality: true,
+            isDefault: true,
+            upgrade: false,
+            source: 'app-server',
+            badgeLabel: 'Free',
+          },
+          {
+            id: 'openai/gpt-5.4',
+            launchModel: 'openai/gpt-5.4',
+            displayName: 'openai/gpt-5.4',
+            hidden: false,
+            supportedReasoningEfforts: [],
+            defaultReasoningEffort: null,
+            inputModalities: ['text'],
+            supportsPersonality: true,
+            isDefault: false,
+            upgrade: false,
+            source: 'app-server',
+            badgeLabel: null,
+          },
+        ],
+        diagnostics: {
+          configReadState: 'ready',
+          appServerState: 'healthy',
+        },
+      },
+    });
+
+    expect(getAvailableTeamProviderModels('opencode', providerStatus)).toEqual([
+      'opencode/big-pickle',
+      'openai/gpt-5.4',
+    ]);
+    expect(
+      getAvailableTeamProviderModelOptions('opencode', providerStatus).map((option) => option.value)
+    ).toEqual(['', 'opencode/big-pickle', 'openai/gpt-5.4']);
+  });
+
   it('reports OpenCode openai routes unavailable when OpenAI auth is invalid', () => {
     const providerStatus = createOpenCodeProviderStatus(['openai/gpt-5.4', 'opencode/big-pickle'], {
       statusMessage: 'OpenAI token invalid',
