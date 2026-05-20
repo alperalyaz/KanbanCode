@@ -41,10 +41,18 @@ function buildRequiredReportFollowUp(input: {
     return input.status;
   }
 
-  const memberName =
-    input.memberName?.trim() ||
-    input.from?.trim() ||
-    (typeof status.memberName === 'string' ? status.memberName.trim() : '');
+  const inputMemberName = input.memberName?.trim();
+  const fromMemberName = input.from?.trim();
+  let memberName = '';
+  if (typeof status.memberName === 'string') {
+    memberName = status.memberName.trim();
+  }
+  if (fromMemberName) {
+    memberName = fromMemberName;
+  }
+  if (inputMemberName) {
+    memberName = inputMemberName;
+  }
   const items = Array.isArray(agenda?.items) ? agenda.items : [];
   const taskIds = items
     .map((item) => asRecord(item)?.taskId)
