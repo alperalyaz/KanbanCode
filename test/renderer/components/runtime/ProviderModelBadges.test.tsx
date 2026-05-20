@@ -1,8 +1,8 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ProviderModelBadges } from '@renderer/components/runtime/ProviderModelBadges';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 function render(element: React.ReactElement): HTMLDivElement {
   const host = document.createElement('div');
@@ -169,6 +169,54 @@ describe('ProviderModelBadges', () => {
     expect(host.textContent).toContain('big-pickle');
     expect(host.textContent).toContain('GPT-5.4');
     expect(host.textContent?.match(/Free/g)).toHaveLength(1);
+  });
+
+  it('renders OpenCode free badges from metadata when badgeLabel is absent', () => {
+    const host = render(
+      <ProviderModelBadges
+        providerId="opencode"
+        models={['openrouter/openai/gpt-oss-20b']}
+        providerStatus={{
+          providerId: 'opencode',
+          authMethod: 'opencode_managed',
+          backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
+          modelCatalog: {
+            schemaVersion: 1,
+            providerId: 'opencode',
+            source: 'app-server',
+            status: 'ready',
+            fetchedAt: '2026-05-12T00:00:00.000Z',
+            staleAt: '2026-05-12T00:10:00.000Z',
+            defaultModelId: 'opencode/big-pickle',
+            defaultLaunchModel: 'opencode/big-pickle',
+            models: [
+              {
+                id: 'openrouter/openai/gpt-oss-20b',
+                launchModel: 'openrouter/openai/gpt-oss-20b',
+                displayName: 'openrouter/openai/gpt-oss-20b',
+                hidden: false,
+                supportedReasoningEfforts: [],
+                defaultReasoningEffort: null,
+                inputModalities: ['text'],
+                supportsPersonality: true,
+                isDefault: false,
+                upgrade: false,
+                source: 'app-server',
+                badgeLabel: null,
+                metadata: { free: true },
+              },
+            ],
+            diagnostics: {
+              configReadState: 'ready',
+              appServerState: 'healthy',
+            },
+          },
+        }}
+      />
+    );
+
+    expect(host.textContent).toContain('gpt-oss');
+    expect(host.textContent).toContain('Free');
   });
 
   it('does not duplicate a catalog badge that matches the displayed model label', () => {

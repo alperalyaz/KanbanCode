@@ -1,11 +1,10 @@
-import { describe, expect, it } from 'vitest';
-
 import {
   getVisibleTeamProviderModels,
   isAnthropicOneMillionContextTeamModel,
   isAnthropicSonnetOneMillionContextTeamModel,
   isAnthropicSonnetTeamModel,
 } from '@renderer/utils/teamModelCatalog';
+import { describe, expect, it } from 'vitest';
 
 describe('teamModelCatalog', () => {
   it('filters UI-disabled Codex models from provider badge lists', () => {
@@ -136,6 +135,89 @@ describe('teamModelCatalog', () => {
       'openrouter/openai/gpt-oss-20b:free',
       'openai/gpt-5.4',
       'openrouter/deepseek/deepseek-r1',
+    ]);
+  });
+
+  it('orders OpenCode free models by metadata when badge labels are absent', () => {
+    expect(
+      getVisibleTeamProviderModels(
+        'opencode',
+        [
+          'openai/gpt-5.4',
+          'opencode/big-pickle',
+          'openrouter/openai/gpt-oss-20b',
+        ],
+        {
+          providerId: 'opencode',
+          authMethod: 'opencode_managed',
+          backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
+          modelCatalog: {
+            schemaVersion: 1,
+            providerId: 'opencode',
+            source: 'app-server',
+            status: 'ready',
+            fetchedAt: '2026-05-12T00:00:00.000Z',
+            staleAt: '2026-05-12T00:10:00.000Z',
+            defaultModelId: 'opencode/big-pickle',
+            defaultLaunchModel: 'opencode/big-pickle',
+            models: [
+              {
+                id: 'openai/gpt-5.4',
+                launchModel: 'openai/gpt-5.4',
+                displayName: 'openai/gpt-5.4',
+                hidden: false,
+                supportedReasoningEfforts: [],
+                defaultReasoningEffort: null,
+                inputModalities: ['text'],
+                supportsPersonality: true,
+                isDefault: false,
+                upgrade: false,
+                source: 'app-server',
+                badgeLabel: null,
+                metadata: { free: false },
+              },
+              {
+                id: 'openrouter/openai/gpt-oss-20b',
+                launchModel: 'openrouter/openai/gpt-oss-20b',
+                displayName: 'openrouter/openai/gpt-oss-20b',
+                hidden: false,
+                supportedReasoningEfforts: [],
+                defaultReasoningEffort: null,
+                inputModalities: ['text'],
+                supportsPersonality: true,
+                isDefault: false,
+                upgrade: false,
+                source: 'app-server',
+                badgeLabel: null,
+                metadata: { free: true },
+              },
+              {
+                id: 'opencode/big-pickle',
+                launchModel: 'opencode/big-pickle',
+                displayName: 'opencode/big-pickle',
+                hidden: false,
+                supportedReasoningEfforts: [],
+                defaultReasoningEffort: null,
+                inputModalities: ['text'],
+                supportsPersonality: true,
+                isDefault: true,
+                upgrade: false,
+                source: 'app-server',
+                badgeLabel: null,
+                metadata: { free: true },
+              },
+            ],
+            diagnostics: {
+              configReadState: 'ready',
+              appServerState: 'healthy',
+            },
+          },
+        }
+      )
+    ).toEqual([
+      'opencode/big-pickle',
+      'openrouter/openai/gpt-oss-20b',
+      'openai/gpt-5.4',
     ]);
   });
 
