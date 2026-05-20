@@ -142,16 +142,41 @@ liveDescribe('OpenCode team provisioning live e2e', () => {
         ),
         progressDump
       ).toBe(true);
+      expect(
+        progressEvents.some((progress) =>
+          progress.message.includes('Validating OpenCode team launch gate')
+        ),
+        progressDump
+      ).toBe(true);
+      expect(
+        progressEvents.some((progress) =>
+          progress.message.includes('Starting OpenCode sessions through runtime adapter')
+        ),
+        progressDump
+      ).toBe(true);
+      expect(progressDump).not.toContain('Starting Claude CLI process for team launch');
+      expect(progressDump).not.toContain('OpenCode team launch is not enabled');
 
       const runtimeSnapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
+      expect(runtimeSnapshot.runId).toBe(runId);
       expect(runtimeSnapshot.members.alice).toMatchObject({
         alive: true,
+        providerId: 'opencode',
+        laneId: 'primary',
+        laneKind: 'primary',
         runtimeModel: selectedModel,
+        historicalBootstrapConfirmed: true,
       });
       expect(runtimeSnapshot.members.bob).toMatchObject({
         alive: true,
+        providerId: 'opencode',
+        laneId: 'primary',
+        laneKind: 'primary',
         runtimeModel: selectedModel,
+        historicalBootstrapConfirmed: true,
       });
+      expect(hasOpenCodeRuntimeHandle(runtimeSnapshot.members.alice)).toBe(true);
+      expect(hasOpenCodeRuntimeHandle(runtimeSnapshot.members.bob)).toBe(true);
       await expect(
         readOpenCodeRuntimeLaneIndex(getTeamsBasePath(), teamName)
       ).resolves.toMatchObject({
@@ -253,4 +278,16 @@ function createStableBridgeEnv(): NodeJS.ProcessEnv {
     HOME: realHome,
     USERPROFILE: realHome,
   };
+}
+
+function hasOpenCodeRuntimeHandle(member: {
+  readonly pid?: number;
+  readonly runtimePid?: number;
+  readonly runtimeSessionId?: string;
+}): boolean {
+  return (
+    (typeof member.pid === 'number' && member.pid > 0) ||
+    (typeof member.runtimePid === 'number' && member.runtimePid > 0) ||
+    (typeof member.runtimeSessionId === 'string' && member.runtimeSessionId.trim().length > 0)
+  );
 }
