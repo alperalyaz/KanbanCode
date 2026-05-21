@@ -20,6 +20,7 @@ let heroMotionQuery: MediaQueryList | null = null;
 const downloadStore = useDownloadStore();
 const { resolve, data: releaseData } = useReleaseDownloads();
 const { latestReleaseUrl, releaseDownloadUrl } = useGithubRepo();
+const { selectedDownloadAsset } = useDownloadAssetPresentation();
 const withBase = (path: string) => `${baseURL.replace(/\/?$/, "/")}${path.replace(/^\/+/, "")}`;
 
 useCyberHeroParallax(heroRef);
@@ -71,6 +72,20 @@ const heroDownloadUrl = computed(() => {
 });
 
 const docsHref = computed(() => withBase(locale.value === "ru" ? "docs/ru/" : "docs/"));
+const downloadActionSubtitle = computed(() => {
+  if (!selectedDownloadAsset.value) {
+    return locale.value === "ru"
+      ? "Для вашей платформы"
+      : "For your platform";
+  }
+
+  return selectedDownloadAsset.value.actionSubtitle;
+});
+const docsActionSubtitle = computed(() => (
+  locale.value === "ru"
+    ? "Гайды и настройка"
+    : "Guides and setup"
+));
 
 function clearHeroMessageTimers() {
   heroMessageTimers.forEach(window.clearTimeout);
@@ -195,25 +210,23 @@ onUnmounted(() => {
           </div>
 
           <div class="cyber-hero__actions">
-            <v-btn
-              variant="flat"
-              size="large"
+            <CyberHeroActionButton
               :href="heroDownloadUrl"
               target="_blank"
-              class="cyber-hero__action cyber-hero__action--primary"
-              :prepend-icon="mdiDownload"
+              tone="primary"
+              :icon="mdiDownload"
+              :subtitle="downloadActionSubtitle"
             >
               {{ t("hero.downloadNow") }}
-            </v-btn>
-            <v-btn
-              variant="outlined"
-              size="large"
+            </CyberHeroActionButton>
+            <CyberHeroActionButton
               :href="docsHref"
-              class="cyber-hero__action cyber-hero__action--docs"
-              :prepend-icon="mdiBookOpenPageVariantOutline"
+              tone="secondary"
+              :icon="mdiBookOpenPageVariantOutline"
+              :subtitle="docsActionSubtitle"
             >
               {{ t("hero.ctaDocs") }}
-            </v-btn>
+            </CyberHeroActionButton>
           </div>
 
           <p
@@ -239,9 +252,6 @@ onUnmounted(() => {
 
       <CyberHeroFeatureStrip
         class="cyber-hero__feature-strip"
-        :active-message="activeHeroMessage"
-        :phase="heroMessagePhase"
-        :reduced-motion="heroReducedMotion"
       />
     </v-container>
   </section>

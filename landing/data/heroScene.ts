@@ -193,7 +193,7 @@ export const heroFeatureRail = [
   {
     id: "local",
     title: "Your Machine, Your Code",
-    text: "Local-first workflow with task logs, process control, and Git visibility.",
+    text: "Track activity, logs, file changes, and what every agent is doing inside each task.",
   },
 ] as const;
 
@@ -255,7 +255,7 @@ const ruHeroFeatureRail: Record<string, { title: string; text: string }> = {
   },
   local: {
     title: "Ваша машина, ваш код",
-    text: "Локальный рабочий процесс с логами задач, управлением процессами и видимостью Git.",
+    text: "Легко отслеживайте активность, логи, изменения файлов и работу каждого агента внутри каждой задачи.",
   },
 };
 
