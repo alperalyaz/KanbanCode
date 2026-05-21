@@ -49,6 +49,42 @@ function getDebMember(archivePath, prefix) {
   return member;
 }
 
+function runDebTar(archivePath, memberName, tarMode, filePath) {
+  const args = filePath
+    ? [
+        '-c',
+        'set -euo pipefail; ar p "$1" "$2" | tar "$3" - "$4"',
+        'bash',
+        archivePath,
+        memberName,
+        tarMode,
+        filePath,
+      ]
+    : [
+        '-c',
+        'set -euo pipefail; ar p "$1" "$2" | tar "$3" -',
+        'bash',
+        archivePath,
+        memberName,
+        tarMode,
+      ];
+  return execFileSync('bash', args, {
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  });
+}
+
+function listDebTar(archivePath, memberName, verbose = false) {
+  const flag = getTarCompressionFlag(memberName);
+  const mode = verbose ? `-tv${flag}f` : `-t${flag}f`;
+  return runDebTar(archivePath, memberName, mode);
+}
+
+function extractDebTarFile(archivePath, memberName, filePath) {
+  const flag = getTarCompressionFlag(memberName);
+  return runDebTar(archivePath, memberName, `-xO${flag}f`, filePath);
+}
+
 function listTar(tarBuffer, memberName, verbose = false) {
   const flag = getTarCompressionFlag(memberName);
   const mode = verbose ? `-tv${flag}f` : `-t${flag}f`;
@@ -69,10 +105,9 @@ function assertContains(haystack, needle, label) {
 function verifyDeb(debPath) {
   const dataMember = getDebMember(debPath, 'data.tar.');
   const controlMember = getDebMember(debPath, 'control.tar.');
-  const data = readArMember(debPath, dataMember);
   const control = readArMember(debPath, controlMember);
-  const dataList = listTar(data, dataMember);
-  const dataVerboseList = listTar(data, dataMember, true);
+  const dataList = listDebTar(debPath, dataMember);
+  const dataVerboseList = listDebTar(debPath, dataMember, true);
 
   assertContains(dataList, './usr/bin/agent-teams-ai\n', path.basename(debPath));
   assertContains(dataList, './opt/Agent-Teams-AI/agent-teams-ai\n', path.basename(debPath));
@@ -85,18 +120,14 @@ function verifyDeb(debPath) {
     fail(`/usr/bin/agent-teams-ai is not executable in ${debPath}`);
   }
 
-  const launcher = extractTarFile(data, dataMember, './usr/bin/agent-teams-ai');
+  const launcher = extractDebTarFile(debPath, dataMember, './usr/bin/agent-teams-ai');
   assertContains(launcher, '/opt/Agent-Teams-AI/agent-teams-ai', 'CLI launcher');
   if (launcher.includes('--no-sandbox')) {
     fail('CLI launcher must not force --no-sandbox');
   }
 
   const postinst = extractTarFile(control, controlMember, './postinst');
-  assertContains(
-    postinst,
-    'SANDBOX_PATH="/opt/Agent-Teams-AI/chrome-sandbox"',
-    'deb postinst'
-  );
+  assertContains(postinst, 'SANDBOX_PATH="/opt/Agent-Teams-AI/chrome-sandbox"', 'deb postinst');
   assertContains(postinst, 'chmod 4755 "$SANDBOX_PATH"', 'deb postinst');
 }
 
