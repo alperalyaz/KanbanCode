@@ -43,7 +43,8 @@ describe('NativeAppManagedBootstrapContextBuilder', () => {
       {
         name: 'alice',
         providerId: 'anthropic',
-        role: 'Reviewer ANTHROPIC_API_KEY=sk-ant-secret',
+        role:
+          'Reviewer ANTHROPIC_API_KEY=sk-ant-secret ANTHROPIC_AUTH_TOKEN="lmstudio local token"',
       },
       {
         name: 'bob',
@@ -69,7 +70,8 @@ describe('NativeAppManagedBootstrapContextBuilder', () => {
         {
           name: 'alice',
           providerId: 'anthropic',
-          role: 'Reviewer ANTHROPIC_API_KEY=sk-ant-secret',
+          role:
+            'Reviewer ANTHROPIC_API_KEY=sk-ant-secret ANTHROPIC_AUTH_TOKEN="lmstudio local token"',
         },
         {
           name: 'bob',
@@ -95,6 +97,9 @@ describe('NativeAppManagedBootstrapContextBuilder', () => {
     expect(alice?.contextText).toContain('<agent_teams_native_bootstrap_context>');
     expect(alice?.contextText).not.toContain('sk-ant-secret');
     expect(alice?.contextText).toContain('ANTHROPIC_API_KEY=[REDACTED]');
+    expect(alice?.contextText).toContain('ANTHROPIC_AUTH_TOKEN=[REDACTED]');
+    expect(alice?.contextText).not.toContain('lmstudio');
+    expect(alice?.contextText).not.toContain('local token');
     expect(bob?.contextText).not.toContain('Bearer secret-token');
     expect(bob?.contextText).toContain('Bearer [REDACTED]');
     expect(bob?.contextText).toContain('Codex Native visible messaging rule');

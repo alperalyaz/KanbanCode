@@ -94,7 +94,7 @@ import {
   TEAM_VALIDATE_CLI_ARGS,
   // eslint-disable-next-line boundaries/element-types -- IPC channel constants are shared between main and preload by design
 } from '@preload/constants/ipcChannels';
-import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN, wrapAgentBlock } from '@shared/constants/agentBlocks';
+import { wrapAgentBlock } from '@shared/constants/agentBlocks';
 import { KANBAN_COLUMN_IDS } from '@shared/constants/kanban';
 import { MAX_TEXT_LENGTH } from '@shared/constants/teamLimits';
 import { isApiErrorMessage } from '@shared/utils/apiErrorDetector';
@@ -2786,27 +2786,27 @@ function buildMessageDeliveryText(
           'Do NOT answer only with normal assistant text because that will not appear in the UI message thread.',
         ];
     hiddenBlocks.push(
-      [
-        AGENT_BLOCK_OPEN,
-        `You received a direct message from ${senderDescriptor} via the UI.`,
-        ...replyInstructionLines,
-        `Please reply back to recipient "${replyRecipient}" with a short, human-readable answer.`,
-        'If you cannot respond now, reply with a brief status (e.g. "Busy, will reply later").',
-        ...(canUseAgentTeamsMessageSend
-          ? [
-              'If neither Agent Teams MCP message_send tool name is available before any visible-message tool attempt, write exactly the concise reply text as normal assistant text so the runtime can relay it.',
-            ]
-          : []),
-        ...(isUserReplyRecipient
-          ? [
-              'CRITICAL: If the user asks you to check with the lead or another teammate before you can fully answer, FIRST send a short acknowledgement to "user" so the human sees you started (for example: "Принял, сейчас уточню и вернусь с ответом.").',
-              'Only after that first acknowledgement may you message the lead or another teammate.',
-              'After you get the needed information, send the final answer back to "user".',
-              'Do NOT stay silent while you go ask someone else.',
-            ]
-          : []),
-        AGENT_BLOCK_CLOSE,
-      ].join('\n')
+      wrapAgentBlock(
+        [
+          `You received a direct message from ${senderDescriptor} via the UI.`,
+          ...replyInstructionLines,
+          `Please reply back to recipient "${replyRecipient}" with a short, human-readable answer.`,
+          'If you cannot respond now, reply with a brief status (e.g. "Busy, will reply later").',
+          ...(canUseAgentTeamsMessageSend
+            ? [
+                'If neither Agent Teams MCP message_send tool name is available before any visible-message tool attempt, write exactly the concise reply text as normal assistant text so the runtime can relay it.',
+              ]
+            : []),
+          ...(isUserReplyRecipient
+            ? [
+                'CRITICAL: If the user asks you to check with the lead or another teammate before you can fully answer, FIRST send a short acknowledgement to "user" so the human sees you started (for example: "Принял, сейчас уточню и вернусь с ответом.").',
+                'Only after that first acknowledgement may you message the lead or another teammate.',
+                'After you get the needed information, send the final answer back to "user".',
+                'Do NOT stay silent while you go ask someone else.',
+              ]
+            : []),
+        ].join('\n')
+      )
     );
   }
 
@@ -3062,10 +3062,12 @@ async function handleSendMessage(
             `IMPORTANT: Your text response here is shown to the user in the Messages panel. Always include a brief human-readable reply. Do NOT respond with only an agent-only block.`,
             ...(rosterContextBlock ? [rosterContextBlock] : []),
             ...(delegateAckBlock ? [delegateAckBlock] : []),
-            AGENT_BLOCK_OPEN,
-            `MessageId: ${preGeneratedMessageId}`,
-            `When creating a task from this user message, prefer task_create_from_message with messageId="${preGeneratedMessageId}" for reliable provenance. Only use this exact messageId — never guess or fabricate one.`,
-            AGENT_BLOCK_CLOSE,
+            wrapAgentBlock(
+              [
+                `MessageId: ${preGeneratedMessageId}`,
+                `When creating a task from this user message, prefer task_create_from_message with messageId="${preGeneratedMessageId}" for reliable provenance. Only use this exact messageId — never guess or fabricate one.`,
+              ].join('\n')
+            ),
             ``,
             `Message from user:`,
             buildMessageDeliveryText(payload.text!, {

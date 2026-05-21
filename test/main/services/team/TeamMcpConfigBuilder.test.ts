@@ -324,9 +324,10 @@ describe('TeamMcpConfigBuilder', () => {
         env: expect.objectContaining({ PATH: expect.any(String) }),
       })
     );
+    expect(hoisted.resolveInteractiveShellEnvMock).not.toHaveBeenCalled();
   });
 
-  it('resolves packaged MCP Node through shell PATH instead of writing a bare node command', async () => {
+  it('resolves packaged MCP Node through cached shell PATH without spawning shell', async () => {
     setPackagedMode(true, '2.0.0');
     const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-resources-'));
     createdDirs.push(resourcesDir);
@@ -350,7 +351,79 @@ describe('TeamMcpConfigBuilder', () => {
 
     expect(readGeneratedServer(configPath)?.command).toBe('/mock-shell-node-bin/node');
     expect(readGeneratedServer(configPath)?.command).not.toBe('node');
-    expect(hoisted.resolveInteractiveShellEnvMock).toHaveBeenCalledWith(expect.any(Object));
+    expect(hoisted.resolveInteractiveShellEnvMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to strict shell env lookup when fast Node lookup cannot resolve Node', async () => {
+    mockBuiltWorkspaceEntryAvailable();
+    const previousNodeBinary = process.env.NODE_BINARY;
+    const previousNpmNodeExecPath = process.env.npm_node_execpath;
+    delete process.env.NODE_BINARY;
+    delete process.env.npm_node_execpath;
+    hoisted.resolveInteractiveShellEnvMock.mockResolvedValue({
+      PATH: ['/strict-shell-node-bin', '/usr/bin'].join(path.delimiter),
+      HOME: '/Users/tester',
+    });
+    hoisted.execCliMock.mockImplementation(async (command, _args, options) => {
+      const env = options?.env as NodeJS.ProcessEnv | undefined;
+      if (env?.PATH?.split(path.delimiter)[0] === '/strict-shell-node-bin') {
+        expect(command).toBe('node');
+        return { stdout: '/strict-shell-node-bin/node', stderr: '' };
+      }
+      throw new Error(`spawn ${command} ENOENT`);
+    });
+
+    try {
+      const builder = new TeamMcpConfigBuilder();
+      const configPath = await builder.writeConfigFile();
+      createdPaths.push(configPath);
+
+      expect(readGeneratedServer(configPath)?.command).toBe('/strict-shell-node-bin/node');
+      expect(hoisted.resolveInteractiveShellEnvMock).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'mcp-node-runtime' })
+      );
+    } finally {
+      if (previousNodeBinary === undefined) {
+        delete process.env.NODE_BINARY;
+      } else {
+        process.env.NODE_BINARY = previousNodeBinary;
+      }
+      if (previousNpmNodeExecPath === undefined) {
+        delete process.env.npm_node_execpath;
+      } else {
+        process.env.npm_node_execpath = previousNpmNodeExecPath;
+      }
+    }
+  });
+
+  it('falls back to strict shell env lookup when fast Node lookup reports an empty path', async () => {
+    mockBuiltWorkspaceEntryAvailable();
+    hoisted.resolveInteractiveShellEnvMock.mockResolvedValue({
+      PATH: ['/strict-shell-node-bin', '/usr/bin'].join(path.delimiter),
+      HOME: '/Users/tester',
+    });
+    let returnedEmptyPath = false;
+    hoisted.execCliMock.mockImplementation(async (command, _args, options) => {
+      const env = options?.env as NodeJS.ProcessEnv | undefined;
+      if (env?.PATH?.split(path.delimiter)[0] === '/strict-shell-node-bin') {
+        expect(command).toBe('node');
+        return { stdout: '/strict-shell-node-bin/node', stderr: '' };
+      }
+      if (!returnedEmptyPath) {
+        returnedEmptyPath = true;
+        return { stdout: '   ', stderr: '' };
+      }
+      throw new Error(`spawn ${command} ENOENT`);
+    });
+
+    const builder = new TeamMcpConfigBuilder();
+    const configPath = await builder.writeConfigFile();
+    createdPaths.push(configPath);
+
+    expect(readGeneratedServer(configPath)?.command).toBe('/strict-shell-node-bin/node');
+    expect(hoisted.resolveInteractiveShellEnvMock).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'mcp-node-runtime' })
+    );
   });
 
   it('prefers an explicit NODE_BINARY over PATH-based node lookup', async () => {
@@ -368,6 +441,7 @@ describe('TeamMcpConfigBuilder', () => {
       createdPaths.push(configPath);
 
       expect(readGeneratedServer(configPath)?.command).toBe('/explicit/node');
+      expect(hoisted.resolveInteractiveShellEnvMock).not.toHaveBeenCalled();
     } finally {
       if (previousNodeBinary === undefined) {
         delete process.env.NODE_BINARY;

@@ -76,7 +76,7 @@ const MAX_PERMISSION_REQUEST_IDS = 10;
 const SECRET_FLAG_PATTERN =
   /(--(?:api-key|token|password|secret|authorization|auth-token)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi;
 const SECRET_VALUE_PATTERN =
-  /\b(sk-[A-Za-z0-9._~+/=-]{12,}|[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})\b/g;
+  /\b(sk-[A-Za-z0-9._~+/=-]{12,}|[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}|[A-Z0-9_]*(?:API_KEY|AUTH_TOKEN|TOKEN|SECRET|PASSWORD|AUTHORIZATION)[A-Z0-9_]*\s*=\s*("[^"]*"|'[^']*'|\S+))\b/gi;
 const OPENCODE_SESSION_REFRESH_REASON_PATTERN =
   /\b(?:resolved_behavior_changed|opencode_app_mcp_transport_changed):[-a-z0-9._~/=]+->[-a-z0-9._~/=]+/i;
 const OPENCODE_SESSION_REFRESH_FAILURE_PATTERN =

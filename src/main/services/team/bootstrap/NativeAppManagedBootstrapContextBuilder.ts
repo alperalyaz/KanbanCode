@@ -75,7 +75,10 @@ function redactNativeBootstrapContextText(input: string): string {
   return input
     .replace(/sk-ant-[A-Za-z0-9_-]+/g, '[REDACTED_ANTHROPIC_API_KEY]')
     .replace(/sk-[A-Za-z0-9_-]{20,}/g, '[REDACTED_API_KEY]')
-    .replace(/(ANTHROPIC_API_KEY|OPENAI_API_KEY|CODEX_API_KEY)=\S+/g, '$1=[REDACTED]')
+    .replace(
+      /(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|OPENAI_API_KEY|CODEX_API_KEY)\s*=\s*("[^"]*"|'[^']*'|\S+)/g,
+      '$1=[REDACTED]'
+    )
     .replace(/Bearer\s+[A-Z0-9._-]+/gi, 'Bearer [REDACTED]');
 }
 

@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import { type RuntimeProcessTableRow } from '@features/tmux-installer/main';
 import { applyAgentTeamsIdentityEnv } from '@main/services/identity/AgentTeamsIdentityStore';
 import { atomicWriteAsync } from '@main/utils/atomicWrite';
-import { killProcessTree, spawnCli } from '@main/utils/childProcess';
+import { killProcessTree, spawnCli, untrackCliProcess } from '@main/utils/childProcess';
 import { getAppDataPath, getClaudeBasePath } from '@main/utils/pathDecoder';
 import { killProcessByPid } from '@main/utils/processKill';
 import { createLogger } from '@shared/utils/logger';
@@ -332,11 +332,13 @@ function defaultSpawnProcess(
   args: string[],
   env: NodeJS.ProcessEnv
 ): ChildProcess {
-  return spawnCli(command, args, {
+  const child = spawnCli(command, args, {
     env,
     stdio: ['ignore', 'ignore', 'pipe'],
     windowsHide: true,
   });
+  untrackCliProcess(child);
+  return child;
 }
 
 function buildHttpServerArgs(launchSpec: McpLaunchSpec, port: number): string[] {
@@ -681,10 +683,12 @@ export class AgentTeamsMcpHttpServer {
   private readonly expectedStopChildren = new WeakSet<ChildProcess>();
   private readonly ownerInstanceId = randomUUID();
   private readonly startedAtMs = Date.now();
+  private preventFutureStarts = false;
 
   constructor(private readonly deps: AgentTeamsMcpHttpServerDeps = {}) {}
 
   async ensureStarted(): Promise<AgentTeamsMcpHttpServerHandle> {
+    this.throwIfStartsPrevented();
     if (this.startPromise) {
       return this.startPromise;
     }
@@ -697,7 +701,10 @@ export class AgentTeamsMcpHttpServer {
     return this.startPromise;
   }
 
-  async stop(): Promise<void> {
+  async stop(input: { preventRestart?: boolean } = {}): Promise<void> {
+    if (input.preventRestart) {
+      this.preventFutureStarts = true;
+    }
     const child = this.child;
     const handle = this.handle;
     const releasePort = child ? (handle?.port ?? null) : null;
@@ -728,6 +735,12 @@ export class AgentTeamsMcpHttpServer {
       return null;
     }
     return this.deps.statePath ?? buildStatePath();
+  }
+
+  private throwIfStartsPrevented(): void {
+    if (this.preventFutureStarts) {
+      throw new Error('Agent Teams MCP HTTP server startup is disabled during shutdown');
+    }
   }
 
   private async reuseOrRestartExistingHandle(
@@ -1008,8 +1021,10 @@ export class AgentTeamsMcpHttpServer {
       reason?: string;
     } = {}
   ): Promise<AgentTeamsMcpHttpServerHandle> {
+    this.throwIfStartsPrevented();
     const resolveLaunchSpec = this.deps.resolveLaunchSpec ?? resolveAgentTeamsMcpLaunchSpec;
     const launchSpec = await resolveLaunchSpec();
+    this.throwIfStartsPrevented();
     const expectedIdentity = buildExpectedIdentity(launchSpec, this.ownerInstanceId);
     const statePath = this.resolveStatePath();
     const startUnlocked = async (effectiveStatePath: string | null, diagnostics: string[]) =>
@@ -1045,6 +1060,7 @@ export class AgentTeamsMcpHttpServer {
     const diagnostics = [...initialDiagnostics];
     const spawnProcess = this.deps.spawnProcess ?? defaultSpawnProcess;
     const waitForPort = this.deps.waitForPort ?? waitForLoopbackPort;
+    this.throwIfStartsPrevented();
 
     if (statePath) {
       const adopted = await this.tryAdoptStateHandle(statePath, expectedIdentity, diagnostics);
@@ -1059,6 +1075,7 @@ export class AgentTeamsMcpHttpServer {
       statePath,
       diagnostics
     );
+    this.throwIfStartsPrevented();
     if (selectedTarget.kind === 'handle') {
       return selectedTarget.handle;
     }

@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const hoisted = vi.hoisted(() => ({
   killProcessTreeMock: vi.fn(),
   spawnCliMock: vi.fn(),
+  untrackCliProcessMock: vi.fn(),
 }));
 
 vi.mock('@main/utils/childProcess', async (importOriginal) => {
@@ -21,6 +22,7 @@ vi.mock('@main/utils/childProcess', async (importOriginal) => {
     ...actual,
     killProcessTree: (...args: unknown[]) => hoisted.killProcessTreeMock(...args),
     spawnCli: (...args: unknown[]) => hoisted.spawnCliMock(...args),
+    untrackCliProcess: (...args: unknown[]) => hoisted.untrackCliProcessMock(...args),
   };
 });
 
@@ -114,6 +116,7 @@ describe('AgentTeamsMcpHttpServer', () => {
   beforeEach(() => {
     hoisted.killProcessTreeMock.mockReset();
     hoisted.spawnCliMock.mockReset();
+    hoisted.untrackCliProcessMock.mockReset();
   });
 
   it('starts the MCP server over HTTP with hidden app-owned process env', async () => {
@@ -212,6 +215,7 @@ describe('AgentTeamsMcpHttpServer', () => {
         windowsHide: true,
       })
     );
+    expect(hoisted.untrackCliProcessMock).toHaveBeenCalledWith(child);
   });
 
   it('coalesces concurrent starts', async () => {
@@ -232,6 +236,48 @@ describe('AgentTeamsMcpHttpServer', () => {
 
     expect(first).toBe(second);
     expect(spawnProcess).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start after shutdown has disabled future starts', async () => {
+    const spawnProcess = vi.fn();
+    const server = new AgentTeamsMcpHttpServer({
+      statePath: null,
+      resolveLaunchSpec: async () => ({
+        command: 'node',
+        args: ['mcp-server/dist/index.js'],
+      }),
+      allocatePort: async () => 41026,
+      spawnProcess: spawnProcess as AgentTeamsMcpHttpServerDeps['spawnProcess'],
+      waitForPort: vi.fn(async () => undefined),
+    });
+
+    await server.stop({ preventRestart: true });
+
+    await expect(server.ensureStarted()).rejects.toThrow('startup is disabled during shutdown');
+    expect(spawnProcess).not.toHaveBeenCalled();
+  });
+
+  it('cancels an in-flight start before spawn when shutdown disables future starts', async () => {
+    let resolveLaunchSpec!: (launchSpec: { command: string; args: string[] }) => void;
+    const launchSpecPromise = new Promise<{ command: string; args: string[] }>((resolve) => {
+      resolveLaunchSpec = resolve;
+    });
+    const spawnProcess = vi.fn();
+    const server = new AgentTeamsMcpHttpServer({
+      statePath: null,
+      resolveLaunchSpec: async () => launchSpecPromise,
+      allocatePort: async () => 41027,
+      spawnProcess: spawnProcess as AgentTeamsMcpHttpServerDeps['spawnProcess'],
+      waitForPort: vi.fn(async () => undefined),
+    });
+
+    const startPromise = server.ensureStarted();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await server.stop({ preventRestart: true });
+    resolveLaunchSpec({ command: 'node', args: ['mcp-server/dist/index.js'] });
+
+    await expect(startPromise).rejects.toThrow('startup is disabled during shutdown');
+    expect(spawnProcess).not.toHaveBeenCalled();
   });
 
   it('uses the persistent state lock so a concurrent second instance adopts the first', async () => {

@@ -258,28 +258,9 @@ function buildNodeResolveEnv(shellEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return env;
 }
 
-/**
- * Find the real `node` binary path. In Electron, process.execPath is the
- * Electron binary — NOT node — so we must resolve node separately.
- * Uses the user's shell/enriched PATH so packaged GUI launches do not depend
- * on the minimal Finder/Dock PATH.
- */
-async function resolveNodePath(options?: McpLaunchSpecResolveOptions): Promise<string> {
-  if (_resolvedNodePath) return _resolvedNodePath;
-
-  let shellEnv: NodeJS.ProcessEnv = {};
-  try {
-    emitProgress(options, 'node-runtime', 'Resolving Node.js runtime for MCP server...');
-    shellEnv = await resolveInteractiveShellEnv({
-      onProgress: options?.onProgress
-        ? ({ phase, message }) => emitProgress(options, `shell-${phase}`, message)
-        : undefined,
-    });
-  } catch (error) {
-    logger.warn(`Failed to resolve shell env before Node.js lookup: ${stringifyError(error)}`);
-  }
-
-  const env = buildNodeResolveEnv(shellEnv);
+async function probeNodeRuntimePath(
+  env: NodeJS.ProcessEnv
+): Promise<{ ok: true; path: string } | { ok: false; error: unknown }> {
   let lastError: unknown = null;
   for (const command of getNodeRuntimeCommandCandidates()) {
     try {
@@ -292,18 +273,55 @@ async function resolveNodePath(options?: McpLaunchSpecResolveOptions): Promise<s
       if (!resolved) {
         throw new Error(`${command} did not report process.execPath`);
       }
-      _resolvedNodePath = resolved;
-      emitProgress(options, 'node-runtime-found', 'Using resolved Node.js runtime...');
-      return _resolvedNodePath;
+      return { ok: true, path: resolved };
     } catch (error) {
       lastError = error;
     }
+  }
+  return { ok: false, error: lastError ?? 'no Node.js candidates were available' };
+}
+
+/**
+ * Find the real `node` binary path. In Electron, process.execPath is the
+ * Electron binary — NOT node — so we must resolve node separately.
+ * Uses the user's shell/enriched PATH so packaged GUI launches do not depend
+ * on the minimal Finder/Dock PATH.
+ */
+async function resolveNodePath(options?: McpLaunchSpecResolveOptions): Promise<string> {
+  if (_resolvedNodePath) return _resolvedNodePath;
+
+  emitProgress(options, 'node-runtime', 'Resolving Node.js runtime for MCP server...');
+  const fastProbe = await probeNodeRuntimePath(buildNodeResolveEnv({}));
+  if (fastProbe.ok) {
+    _resolvedNodePath = fastProbe.path;
+    emitProgress(options, 'node-runtime-found', 'Using resolved Node.js runtime...');
+    return _resolvedNodePath;
+  }
+
+  let shellEnv: NodeJS.ProcessEnv = {};
+  try {
+    shellEnv = await resolveInteractiveShellEnv({
+      source: 'mcp-node-runtime',
+      onProgress: options?.onProgress
+        ? ({ phase, message }) => emitProgress(options, `shell-${phase}`, message)
+        : undefined,
+    });
+  } catch (error) {
+    logger.warn(`Failed to resolve shell env before Node.js lookup: ${stringifyError(error)}`);
+  }
+
+  const env = buildNodeResolveEnv(shellEnv);
+  const shellProbe = await probeNodeRuntimePath(env);
+  if (shellProbe.ok) {
+    _resolvedNodePath = shellProbe.path;
+    emitProgress(options, 'node-runtime-found', 'Using resolved Node.js runtime...');
+    return _resolvedNodePath;
   }
 
   emitProgress(options, 'node-runtime-missing', 'Node.js runtime for MCP server was not found.');
   throw new Error(
     `Node.js runtime for Agent Teams MCP was not found. Ensure Node.js is installed and available from the login shell PATH. Last error: ${
-      lastError ? stringifyError(lastError) : 'no Node.js candidates were available'
+      shellProbe.error ? stringifyError(shellProbe.error) : stringifyError(fastProbe.error)
     }`
   );
 }
