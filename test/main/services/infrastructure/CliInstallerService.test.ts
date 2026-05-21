@@ -79,6 +79,10 @@ vi.mock('@main/services/runtime/providerAwareCliEnv', () => ({
   })),
 }));
 
+vi.mock('@main/utils/cliAuthDiagLog', () => ({
+  appendCliAuthDiag: vi.fn(() => Promise.resolve(null)),
+}));
+
 import {
   CliInstallerService,
   isVersionOlder,
@@ -88,6 +92,9 @@ import { ClaudeMultimodelBridgeService } from '@main/services/runtime/ClaudeMult
 import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
 import { getCliFlavorUiOptions, getConfiguredCliFlavor } from '@main/services/team/cliFlavor';
 import { execCli } from '@main/utils/childProcess';
+import { appendCliAuthDiag } from '@main/utils/cliAuthDiagLog';
+
+import type { CliProviderId, CliProviderStatus } from '@shared/types';
 
 /**
  * Helper: allow expected console.error/warn calls in tests where service logs errors.
@@ -96,6 +103,42 @@ import { execCli } from '@main/utils/childProcess';
 function allowConsoleLogs(): void {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
+}
+
+function createTestProviderStatus(
+  providerId: CliProviderId,
+  authenticated: boolean,
+  authMethod: string | null
+): CliProviderStatus {
+  return {
+    providerId,
+    displayName: providerId,
+    supported: true,
+    authenticated,
+    authMethod,
+    verificationState: authenticated ? 'verified' : 'unknown',
+    modelVerificationState: 'idle',
+    modelCatalogRefreshState: 'idle',
+    statusMessage: null,
+    detailMessage: null,
+    models: [],
+    modelAvailability: [],
+    runtimeCapabilities: null,
+    subscriptionRateLimits: null,
+    canLoginFromUi: providerId !== 'opencode',
+    capabilities: {
+      teamLaunch: true,
+      oneShot: true,
+      extensions: undefined as never,
+    },
+    selectedBackendId: null,
+    resolvedBackendId: null,
+    availableBackends: [],
+    externalRuntimeDiagnostics: [],
+    backend: null,
+    connection: null,
+    modelCatalog: null,
+  };
 }
 
 describe('CliInstallerService', () => {
@@ -126,6 +169,33 @@ describe('CliInstallerService', () => {
       expect(status.installedVersion).toBeNull();
       expect(status.binaryPath).toBeNull();
       expect(status.updateAvailable).toBe(false);
+    });
+
+    it('does not block getStatus on diagnostic file writes', async () => {
+      allowConsoleLogs();
+      vi.mocked(getCliFlavorUiOptions).mockReturnValue({
+        displayName: 'Claude CLI',
+        supportsSelfUpdate: false,
+        showVersionDetails: true,
+        showBinaryPath: true,
+      });
+      vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue(null);
+
+      let resolveDiag!: (value: string | null) => void;
+      vi.mocked(appendCliAuthDiag).mockReturnValueOnce(
+        new Promise<string | null>((resolve) => {
+          resolveDiag = resolve;
+        })
+      );
+
+      const status = await service.getStatus();
+
+      expect(status.installed).toBe(false);
+      await Promise.resolve();
+      expect(appendCliAuthDiag).toHaveBeenCalledTimes(1);
+
+      resolveDiag(null);
+      await Promise.resolve();
     });
 
     it('includes frontend-visible providers in unavailable multimodel bootstrap status', async () => {
@@ -1016,6 +1086,172 @@ describe('CliInstallerService', () => {
       expect(status.installedVersion).toBe('2.5.0');
       expect(status.authLoggedIn).toBe(true);
       expect(status.authMethod).toBe('api_key');
+    });
+
+    it('returns multimodel metadata before provider status hydration finishes', async () => {
+      allowConsoleLogs();
+      vi.useFakeTimers();
+
+      vi.mocked(getConfiguredCliFlavor).mockReturnValue('agent_teams_orchestrator');
+      vi.mocked(getCliFlavorUiOptions).mockReturnValue({
+        displayName: 'agent_teams_orchestrator',
+        supportsSelfUpdate: false,
+        showVersionDetails: false,
+        showBinaryPath: false,
+      });
+      vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/agent_teams_orchestrator');
+      vi.mocked(execCli).mockResolvedValueOnce({ stdout: '0.0.45', stderr: '' });
+
+      let resolveProviders!: (providers: CliProviderStatus[]) => void;
+      const providerStatuses = new Promise<CliProviderStatus[]>((resolve) => {
+        resolveProviders = resolve;
+      });
+      const providerStatusesSpy = vi.spyOn(
+        ClaudeMultimodelBridgeService.prototype,
+        'getProviderStatuses'
+      ).mockReturnValue(providerStatuses);
+
+      const statusPromise = service.getStatus();
+      await vi.advanceTimersByTimeAsync(1_600);
+
+      const status = await statusPromise;
+      expect(status.installed).toBe(true);
+      expect(status.installedVersion).toBe('0.0.45');
+      expect(status.authStatusChecking).toBe(true);
+      expect(status.providers.every((provider) => provider.statusMessage === 'Checking...')).toBe(
+        true
+      );
+
+      resolveProviders([
+        createTestProviderStatus('anthropic', true, 'oauth_token'),
+        createTestProviderStatus('codex', false, null),
+        createTestProviderStatus('opencode', false, null),
+      ]);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const latest = service.getLatestStatusSnapshot();
+      expect(latest?.authStatusChecking).toBe(false);
+      expect(latest?.authLoggedIn).toBe(true);
+      expect(latest?.authMethod).toBe('oauth_token');
+      expect(status.authStatusChecking).toBe(true);
+      expect(status.authLoggedIn).toBe(false);
+      expect(status.providers.every((provider) => provider.statusMessage === 'Checking...')).toBe(
+        true
+      );
+
+      providerStatusesSpy.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it('does not publish stale background provider hydration after status invalidation', async () => {
+      allowConsoleLogs();
+      vi.useFakeTimers();
+
+      vi.mocked(getConfiguredCliFlavor).mockReturnValue('agent_teams_orchestrator');
+      vi.mocked(getCliFlavorUiOptions).mockReturnValue({
+        displayName: 'agent_teams_orchestrator',
+        supportsSelfUpdate: false,
+        showVersionDetails: false,
+        showBinaryPath: false,
+      });
+      vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/agent_teams_orchestrator');
+      vi.mocked(execCli).mockResolvedValueOnce({ stdout: '0.0.45', stderr: '' });
+
+      let resolveProviders!: (providers: CliProviderStatus[]) => void;
+      const providerStatuses = new Promise<CliProviderStatus[]>((resolve) => {
+        resolveProviders = resolve;
+      });
+      const providerStatusesSpy = vi.spyOn(
+        ClaudeMultimodelBridgeService.prototype,
+        'getProviderStatuses'
+      ).mockReturnValue(providerStatuses);
+
+      const statusPromise = service.getStatus();
+      await vi.advanceTimersByTimeAsync(1_600);
+      await statusPromise;
+
+      service.invalidateStatusCache();
+      expect(service.getLatestStatusSnapshot()).toBeNull();
+
+      resolveProviders([
+        createTestProviderStatus('anthropic', true, 'oauth_token'),
+        createTestProviderStatus('codex', false, null),
+        createTestProviderStatus('opencode', false, null),
+      ]);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(service.getLatestStatusSnapshot()).toBeNull();
+
+      providerStatusesSpy.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it('does not let stale explicit provider refresh mutate a newer status snapshot', async () => {
+      allowConsoleLogs();
+
+      vi.mocked(getConfiguredCliFlavor).mockReturnValue('agent_teams_orchestrator');
+      vi.mocked(getCliFlavorUiOptions).mockReturnValue({
+        displayName: 'agent_teams_orchestrator',
+        supportsSelfUpdate: false,
+        showVersionDetails: false,
+        showBinaryPath: false,
+      });
+      vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/agent_teams_orchestrator');
+      vi.mocked(execCli).mockResolvedValue({ stdout: '0.0.45', stderr: '' });
+
+      const providerStatusesSpy = vi
+        .spyOn(ClaudeMultimodelBridgeService.prototype, 'getProviderStatuses')
+        .mockResolvedValueOnce([
+          createTestProviderStatus('anthropic', false, null),
+          {
+            ...createTestProviderStatus('codex', false, null),
+            statusMessage: 'initial codex state',
+          },
+          createTestProviderStatus('opencode', false, null),
+        ])
+        .mockResolvedValueOnce([
+          createTestProviderStatus('anthropic', false, null),
+          {
+            ...createTestProviderStatus('codex', true, 'chatgpt'),
+            statusMessage: 'fresh codex state',
+          },
+          createTestProviderStatus('opencode', false, null),
+        ]);
+
+      let resolveStaleProvider!: (provider: CliProviderStatus) => void;
+      const staleProvider = new Promise<CliProviderStatus>((resolve) => {
+        resolveStaleProvider = resolve;
+      });
+      const providerStatusSpy = vi
+        .spyOn(ClaudeMultimodelBridgeService.prototype, 'getProviderStatus')
+        .mockReturnValue(staleProvider);
+
+      await service.getStatus();
+      const staleRefresh = service.getProviderStatus('codex');
+      await vi.waitFor(() => {
+        expect(providerStatusSpy).toHaveBeenCalledTimes(1);
+      });
+
+      service.invalidateStatusCache();
+      await service.getStatus();
+
+      resolveStaleProvider({
+        ...createTestProviderStatus('codex', false, null),
+        verificationState: 'error',
+        statusMessage: 'stale codex state',
+      });
+      await staleRefresh;
+
+      const latestCodex = service
+        .getLatestStatusSnapshot()
+        ?.providers.find((provider) => provider.providerId === 'codex');
+      expect(latestCodex?.statusMessage).toBe('fresh codex state');
+      expect(latestCodex?.authenticated).toBe(true);
+
+      providerStatusesSpy.mockRestore();
+      providerStatusSpy.mockRestore();
     });
   });
 

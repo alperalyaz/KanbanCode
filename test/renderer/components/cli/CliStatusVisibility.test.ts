@@ -371,7 +371,7 @@ describe('CLI status visibility during completed install state', () => {
     window.localStorage.clear();
   });
 
-  it('shows multimodel status without exposing the legacy runtime toggle', async () => {
+  it('does not expose the legacy runtime toggle or multimodel banner label', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -382,7 +382,7 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
-    expect(host.textContent).toContain('Multimodel');
+    expect(host.textContent).not.toContain('Multimodel');
     expect(host.textContent).toContain('Login');
 
     const toggle = host.querySelector('[data-testid="multimodel-toggle"]');
