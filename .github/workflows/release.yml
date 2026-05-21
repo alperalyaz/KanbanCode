@@ -642,6 +642,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm pack:linux --publish never
 
+      - name: Validate Linux installers
+        run: node ./scripts/electron-builder/verifyLinuxInstallers.cjs release
+
       - name: Validate packaged bundle (Linux)
         run: node ./scripts/electron-builder/verifyBundle.cjs "release/linux-unpacked" linux x64
 
