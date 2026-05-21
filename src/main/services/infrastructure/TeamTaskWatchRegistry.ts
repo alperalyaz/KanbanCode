@@ -18,6 +18,8 @@ export interface TeamTaskWatchRegistryOptions {
 
 const RECONCILE_INTERVAL_MS = 30_000;
 
+// Keep this list aligned with FileWatcher.processTeamsChange().
+// If a new team artifact should produce TeamChangeEvent, add it here too.
 const TEAM_ROOT_FILES = new Set([
   'config.json',
   'processes.json',
@@ -27,6 +29,22 @@ const TEAM_ROOT_FILES = new Set([
   OPENCODE_TASK_LOG_ATTRIBUTION_FILE,
 ]);
 
+/**
+ * Shallow watcher registry for team and task artifacts.
+ *
+ * Why this exists:
+ * - Node recursive fs.watch on Linux expands into many inotify subscriptions.
+ *   Large ~/.claude/teams trees can hit EMFILE/ENOSPC and freeze startup work.
+ * - FileWatcher only consumes a small set of team/task JSON artifacts, so a
+ *   broad recursive watcher mostly watches runtime/log/member noise.
+ *
+ * Contract:
+ * - Watch only teams/, teams/<team>/, teams/<team>/inboxes/, tasks/, tasks/<team>/.
+ * - Do not enable Chokidar polling here. Polling is owned by FileWatcher fallback.
+ * - Initial app startup baseline must stay silent to avoid replaying old files.
+ * - Newly discovered targets are scanned once so files created before rebuild
+ *   are not lost.
+ */
 export class TeamTaskWatchRegistry {
   private watcher: FSWatcher | null = null;
   private reconcileTimer: NodeJS.Timeout | null = null;
@@ -49,6 +67,8 @@ export class TeamTaskWatchRegistry {
       return;
     }
 
+    // This is target reconciliation, not content polling. It only rebuilds the
+    // shallow watch set when team/task/inbox directories appear or disappear.
     this.reconcileTimer = setInterval(() => {
       void this.reconcileTargets();
     }, RECONCILE_INTERVAL_MS);
@@ -132,6 +152,8 @@ export class TeamTaskWatchRegistry {
     this.watcher = nextWatcher;
     this.targets = new Set(targets);
     this.targetKey = nextKey;
+    // First registry build is app startup baseline and must not emit old files.
+    // Later rebuilds can emit existing files only for newly added targets.
     const shouldEmitExistingFiles = this.initialTargetsCaptured;
     this.initialTargetsCaptured = true;
 
@@ -145,6 +167,8 @@ export class TeamTaskWatchRegistry {
         return;
       }
 
+      // addDir/unlinkDir can make the watch target set stale immediately.
+      // Periodic reconciliation is the backup path if the directory event is missed.
       if (this.shouldReconcile(eventType, relativePath)) {
         void this.reconcileTargets();
       }
@@ -184,6 +208,9 @@ export class TeamTaskWatchRegistry {
       if (path.normalize(targetPath) === normalizedRoot) {
         continue;
       }
+      // Covers the race where a new team/task/inbox dir is created with JSON
+      // files before Chokidar has rebuilt its target list. Only immediate files
+      // are scanned, matching depth: 0.
       const entries = await this.readDirectory(targetPath);
       for (const entry of entries) {
         if (this.closed || generation !== this.generation) {
@@ -201,6 +228,9 @@ export class TeamTaskWatchRegistry {
   }
 
   private async collectTargets(): Promise<string[]> {
+    // Keep this intentionally shallow. Do not add members/, runtime/,
+    // .opencode-runtime/, logs, or other deep trees unless FileWatcher starts
+    // emitting user-visible events for those artifacts.
     const targets = new Set<string>([path.normalize(this.options.rootPath)]);
     const rootEntries = await this.readDirectory(this.options.rootPath);
 
@@ -276,6 +306,8 @@ export class TeamTaskWatchRegistry {
       return false;
     }
 
+    // This is the event gate. Expanding it changes the FileWatcher public event
+    // surface, so update tests and TeamChangeEvent consumers together.
     const parts = relativePath.split('/').filter(Boolean);
     if (this.options.kind === 'tasks') {
       return parts.length === 2 && !parts[1].startsWith('.') && parts[1].endsWith('.json');
