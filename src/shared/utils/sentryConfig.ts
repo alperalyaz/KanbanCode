@@ -34,6 +34,10 @@ const SENSITIVE_STRING_PATTERNS: Array<[RegExp, string]> = [
   [/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, REDACTED],
   [/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi, REDACTED],
   [/\b(?:sk|pk|rk|ghp|gho|github_pat|xoxb|xoxp|ya29)[A-Za-z0-9_\-]{12,}\b/g, REDACTED],
+  [
+    /\b[A-Z0-9_]*(?:API_KEY|AUTH_TOKEN|TOKEN|SECRET|PASSWORD|AUTHORIZATION)[A-Z0-9_]*\s*=\s*("[^"]*"|'[^']*'|\S+)/gi,
+    REDACTED,
+  ],
   [/\/Users\/[^/\s"'`]+(?:\/[^\s"'`]+)*/g, '/Users/[redacted]/[redacted-path]'],
   [/\/home\/[^/\s"'`]+(?:\/[^\s"'`]+)*/g, '/home/[redacted]/[redacted-path]'],
   [/([A-Za-z]:\\Users\\)[^\\\s"'`]+(?:\\[^\\\s"'`]+)*/g, '$1[redacted]\\[redacted-path]'],
