@@ -6,8 +6,17 @@ const path = require('path');
 const { createController } = require('../src/index.js');
 
 describe('agent-teams-controller API', () => {
+  const tempDirs = [];
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   function makeClaudeDir() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-teams-controller-'));
+    tempDirs.push(dir);
     fs.mkdirSync(path.join(dir, 'teams', 'my-team'), { recursive: true });
     fs.mkdirSync(path.join(dir, 'tasks', 'my-team'), { recursive: true });
     fs.writeFileSync(

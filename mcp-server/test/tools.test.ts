@@ -31,6 +31,13 @@ function parseJsonToolResult(result: unknown) {
 
 describe('agent-teams-mcp tools', () => {
   const tools = collectTools();
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   function getTool(name: string) {
     const tool = tools.get(name);
@@ -39,7 +46,9 @@ describe('agent-teams-mcp tools', () => {
   }
 
   function makeClaudeDir() {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'agent-teams-mcp-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-teams-mcp-'));
+    tempDirs.push(dir);
+    return dir;
   }
 
   function writeTeamConfig(

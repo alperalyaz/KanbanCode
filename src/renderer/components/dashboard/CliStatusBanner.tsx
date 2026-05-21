@@ -900,11 +900,6 @@ const InstalledBanner = ({
         </div>
 
         <div className="flex shrink-0 items-center gap-8">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-              Multimodel
-            </span>
-          </div>
           {/* Extensions button — available whenever the runtime is installed */}
           {canOpenExtensions && (
             <button
