@@ -51,6 +51,38 @@ function createOpenCodeProviderStatus(
   };
 }
 
+function createAnthropicCompatibleProviderStatus(
+  overrides: Partial<TeamModelRuntimeProviderStatus> = {}
+): TeamModelRuntimeProviderStatus {
+  return {
+    providerId: 'anthropic',
+    models: [],
+    authMethod: 'api_key',
+    backend: null,
+    authenticated: true,
+    supported: true,
+    modelVerificationState: 'idle',
+    modelAvailability: [],
+    connection: {
+      supportsOAuth: true,
+      supportsApiKey: true,
+      configurableAuthModes: ['auto', 'oauth', 'api_key'],
+      configuredAuthMode: 'auto',
+      apiKeyConfigured: false,
+      apiKeySource: null,
+      apiKeySourceLabel: null,
+      compatibleEndpoint: {
+        enabled: true,
+        baseUrl: 'http://localhost:1234',
+        tokenConfigured: true,
+        tokenSource: 'stored',
+        tokenSourceLabel: 'Stored in app',
+      },
+    },
+    ...overrides,
+  };
+}
+
 describe('teamModelAvailability', () => {
   it('uses runtime-reported Codex models as the source of truth', () => {
     const providerStatus = createCodexProviderStatus(['gpt-5.4', 'gpt-5.3-codex']);
@@ -560,5 +592,218 @@ describe('teamModelAvailability', () => {
     );
     expect(getTeamModelSelectionError('anthropic', 'claude-opus-4-7')).toBeNull();
     expect(getTeamModelSelectionError('anthropic', 'claude-haiku-4-5-20251001')).toBeNull();
+  });
+
+  it('uses Anthropic-compatible runtime catalog models instead of curated Claude aliases', () => {
+    const providerStatus = createAnthropicCompatibleProviderStatus({
+      modelCatalog: {
+        schemaVersion: 1,
+        providerId: 'anthropic',
+        source: 'anthropic-compatible-api',
+        status: 'ready',
+        fetchedAt: '2026-05-21T00:00:00.000Z',
+        staleAt: '2026-05-21T00:10:00.000Z',
+        defaultModelId: 'openai/gpt-oss-20b',
+        defaultLaunchModel: 'openai/gpt-oss-20b',
+        models: [
+          {
+            id: 'openai/gpt-oss-20b',
+            launchModel: 'openai/gpt-oss-20b',
+            displayName: 'GPT OSS 20B',
+            hidden: false,
+            supportedReasoningEfforts: [],
+            defaultReasoningEffort: null,
+            inputModalities: ['text'],
+            supportsPersonality: true,
+            isDefault: true,
+            upgrade: false,
+            source: 'anthropic-compatible-api',
+            badgeLabel: 'Local',
+          },
+          {
+            id: 'hidden-local',
+            launchModel: 'hidden-local',
+            displayName: 'Hidden',
+            hidden: true,
+            supportedReasoningEfforts: [],
+            defaultReasoningEffort: null,
+            inputModalities: ['text'],
+            supportsPersonality: true,
+            isDefault: false,
+            upgrade: false,
+            source: 'anthropic-compatible-api',
+            badgeLabel: null,
+          },
+        ],
+        diagnostics: {
+          configReadState: 'ready',
+          appServerState: 'healthy',
+        },
+      },
+    });
+
+    expect(getAvailableTeamProviderModels('anthropic', providerStatus)).toEqual([
+      'openai/gpt-oss-20b',
+    ]);
+    expect(getAvailableTeamProviderModelOptions('anthropic', providerStatus)).toEqual([
+      { value: '', label: 'Default', badgeLabel: 'Default' },
+      {
+        value: 'openai/gpt-oss-20b',
+        label: 'GPT OSS 20B',
+        badgeLabel: 'Local',
+        availabilityStatus: 'available',
+        availabilityReason: null,
+      },
+    ]);
+    expect(normalizeTeamModelForUi('anthropic', 'openai/gpt-oss-20b', providerStatus)).toBe(
+      'openai/gpt-oss-20b'
+    );
+    expect(normalizeTeamModelForUi('anthropic', 'opus', providerStatus)).toBe('');
+  });
+
+  it('keeps custom Anthropic-compatible model ids selectable when the catalog is degraded', () => {
+    const providerStatus = createAnthropicCompatibleProviderStatus({
+      modelCatalog: {
+        schemaVersion: 1,
+        providerId: 'anthropic',
+        source: 'anthropic-compatible-api',
+        status: 'degraded',
+        fetchedAt: '2026-05-21T00:00:00.000Z',
+        staleAt: '2026-05-21T00:10:00.000Z',
+        defaultModelId: null,
+        defaultLaunchModel: null,
+        models: [],
+        diagnostics: {
+          configReadState: 'failed',
+          appServerState: 'degraded',
+          message: 'Local catalog unavailable',
+        },
+      },
+    });
+
+    expect(normalizeTeamModelForUi('anthropic', 'openai/gpt-oss-20b', providerStatus)).toBe(
+      'openai/gpt-oss-20b'
+    );
+    expect(
+      getTeamModelSelectionError('anthropic', 'openai/gpt-oss-20b', providerStatus)
+    ).toBeNull();
+    expect(getAvailableTeamProviderModelOptions('anthropic', providerStatus)).toEqual([
+      { value: '', label: 'Default', badgeLabel: 'Default' },
+    ]);
+  });
+
+  it('allows custom Anthropic-compatible model ids before a runtime catalog is available', () => {
+    const providerStatus = createAnthropicCompatibleProviderStatus({
+      modelCatalog: null,
+      runtimeCapabilities: {
+        modelCatalog: {
+          dynamic: true,
+          source: 'anthropic-compatible-api',
+        },
+        reasoningEffort: {
+          supported: false,
+          values: [],
+          configPassthrough: true,
+        },
+      },
+    });
+
+    expect(getAvailableTeamProviderModelOptions('anthropic', providerStatus)).toEqual([
+      { value: '', label: 'Default', badgeLabel: 'Default' },
+    ]);
+    expect(normalizeTeamModelForUi('anthropic', 'qwen/qwen3-coder', providerStatus)).toBe(
+      'qwen/qwen3-coder'
+    );
+    expect(getTeamModelSelectionError('anthropic', 'qwen/qwen3-coder', providerStatus)).toBeNull();
+  });
+
+  it('keeps stale Anthropic-compatible catalog models visible while allowing custom ids', () => {
+    const providerStatus = createAnthropicCompatibleProviderStatus({
+      modelCatalog: {
+        schemaVersion: 1,
+        providerId: 'anthropic',
+        source: 'anthropic-compatible-api',
+        status: 'stale',
+        fetchedAt: '2026-05-21T00:00:00.000Z',
+        staleAt: '2026-05-21T00:10:00.000Z',
+        defaultModelId: 'local-default',
+        defaultLaunchModel: 'local-default',
+        models: [
+          {
+            id: 'local-default',
+            launchModel: 'local-default',
+            displayName: 'Local Default',
+            hidden: false,
+            supportedReasoningEfforts: [],
+            defaultReasoningEffort: null,
+            inputModalities: ['text'],
+            supportsPersonality: true,
+            isDefault: true,
+            upgrade: false,
+            source: 'anthropic-compatible-api',
+            badgeLabel: 'Stale',
+          },
+        ],
+        diagnostics: {
+          configReadState: 'ready',
+          appServerState: 'degraded',
+          message: 'Using stale local catalog',
+        },
+      },
+    });
+
+    expect(getAvailableTeamProviderModelOptions('anthropic', providerStatus)).toEqual([
+      { value: '', label: 'Default', badgeLabel: 'Default' },
+      {
+        value: 'local-default',
+        label: 'Local Default',
+        badgeLabel: 'Stale',
+        availabilityStatus: 'available',
+        availabilityReason: null,
+      },
+    ]);
+    expect(normalizeTeamModelForUi('anthropic', 'openai/gpt-oss-20b', providerStatus)).toBe(
+      'openai/gpt-oss-20b'
+    );
+  });
+
+  it('rejects custom Anthropic-compatible ids when a ready compatible catalog has visible models', () => {
+    const providerStatus = createAnthropicCompatibleProviderStatus({
+      modelCatalog: {
+        schemaVersion: 1,
+        providerId: 'anthropic',
+        source: 'anthropic-compatible-api',
+        status: 'ready',
+        fetchedAt: '2026-05-21T00:00:00.000Z',
+        staleAt: '2026-05-21T00:10:00.000Z',
+        defaultModelId: 'local-default',
+        defaultLaunchModel: 'local-default',
+        models: [
+          {
+            id: 'local-default',
+            launchModel: 'local-default',
+            displayName: 'Local Default',
+            hidden: false,
+            supportedReasoningEfforts: [],
+            defaultReasoningEffort: null,
+            inputModalities: ['text'],
+            supportsPersonality: true,
+            isDefault: true,
+            upgrade: false,
+            source: 'anthropic-compatible-api',
+            badgeLabel: 'Local',
+          },
+        ],
+        diagnostics: {
+          configReadState: 'ready',
+          appServerState: 'healthy',
+        },
+      },
+    });
+
+    expect(normalizeTeamModelForUi('anthropic', 'openai/gpt-oss-20b', providerStatus)).toBe('');
+    expect(
+      getTeamModelSelectionError('anthropic', 'openai/gpt-oss-20b', providerStatus)
+    ).toContain('not available');
   });
 });

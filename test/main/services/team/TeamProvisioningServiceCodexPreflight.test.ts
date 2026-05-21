@@ -13,6 +13,7 @@ vi.mock('@main/services/team/ClaudeBinaryResolver', () => ({
 
 vi.mock('@main/utils/shellEnv', () => ({
   resolveInteractiveShellEnv: vi.fn(),
+  resolveInteractiveShellEnvBestEffort: vi.fn(),
 }));
 
 vi.mock('@main/services/runtime/providerAwareCliEnv', () => ({
@@ -36,7 +37,7 @@ vi.mock('@main/services/infrastructure/NotificationManager', () => ({
 
 import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
 import { TeamProvisioningService } from '@main/services/team/TeamProvisioningService';
-import { resolveInteractiveShellEnv } from '@main/utils/shellEnv';
+import { resolveInteractiveShellEnvBestEffort } from '@main/utils/shellEnv';
 
 type CodexProbeHarness = TeamProvisioningService & {
   probeClaudeRuntime: (
@@ -62,7 +63,7 @@ describe('TeamProvisioningService Codex create-team preflight', () => {
     vi.clearAllMocks();
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-team-codex-preflight-'));
     vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/fake/claude');
-    vi.mocked(resolveInteractiveShellEnv).mockResolvedValue({
+    vi.mocked(resolveInteractiveShellEnvBestEffort).mockResolvedValue({
       PATH: '/usr/bin',
       SHELL: '/bin/zsh',
     });

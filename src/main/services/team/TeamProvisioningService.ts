@@ -75,7 +75,7 @@ import {
 import { isPathWithinRoot } from '@main/utils/pathValidation';
 import { isProcessAlive } from '@main/utils/processHealth';
 import { killProcessByPid } from '@main/utils/processKill';
-import { resolveInteractiveShellEnv } from '@main/utils/shellEnv';
+import { resolveInteractiveShellEnvBestEffort } from '@main/utils/shellEnv';
 import { shouldAutoAllow } from '@main/utils/toolApprovalRules';
 import {
   listWindowsProcessTable,
@@ -1291,6 +1291,17 @@ export function buildDirectTmuxRestartEnvAssignments(
   }
   assignments.set('CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST', '1');
   assignments.set('CLAUDE_CODE_ENTRY_PROVIDER', getDirectRestartEntryProvider(providerId));
+  if (providerId === 'anthropic') {
+    if (hasAnthropicCompatibleAuthTokenEnv(env)) {
+      assignments.set('ANTHROPIC_BASE_URL', env.ANTHROPIC_BASE_URL?.trim() ?? '');
+      assignments.set('ANTHROPIC_AUTH_TOKEN', env.ANTHROPIC_AUTH_TOKEN?.trim() ?? '');
+      if (!env.ANTHROPIC_API_KEY?.trim()) {
+        assignments.set('ANTHROPIC_API_KEY', '');
+      }
+    } else if (!isAnthropicCompatibleBaseUrl(env.ANTHROPIC_BASE_URL)) {
+      assignments.set('ANTHROPIC_AUTH_TOKEN', '');
+    }
+  }
   if (
     providerId === 'anthropic' &&
     env[CLAUDE_TEAM_ANTHROPIC_AUTH_MODE_ENV] === CLAUDE_TEAM_ANTHROPIC_AUTH_MODE_API_KEY_HELPER
@@ -2460,10 +2471,16 @@ function isAnthropicCompatibleBaseUrl(baseUrl?: string | null): boolean {
   }
 
   try {
-    const host = new URL(trimmed).host;
-    return host !== 'api.anthropic.com' && host !== 'api-staging.anthropic.com';
+    const url = new URL(trimmed);
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      !url.username &&
+      !url.password &&
+      url.hostname !== 'api.anthropic.com' &&
+      url.hostname !== 'api-staging.anthropic.com'
+    );
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -35089,7 +35106,12 @@ export class TeamProvisioningService {
       teamRuntimeAuth?: TeamRuntimeAuthContext;
     }
   ): Promise<ProvisioningEnvResolution> {
-    const shellEnv = await resolveInteractiveShellEnv();
+    const shellEnv = await resolveInteractiveShellEnvBestEffort({
+      source: 'team-provisioning',
+      timeoutMs: 1_500,
+      fallbackEnv: process.env,
+      background: false,
+    });
     // getHomeDir() uses Electron's app.getPath('home') which handles Unicode
     // correctly on Windows. Prefer it over process.env which may be garbled.
     const electronHome = getHomeDir();

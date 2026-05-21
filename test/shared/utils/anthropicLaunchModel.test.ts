@@ -99,6 +99,25 @@ describe('resolveAnthropicLaunchModel', () => {
     ).toBe('qwen3.6');
   });
 
+  it('uses Anthropic-compatible runtime defaults without manufacturing 1M variants', () => {
+    expect(
+      resolveAnthropicLaunchModel({
+        selectedModel: DEFAULT_PROVIDER_MODEL_SELECTION,
+        limitContext: false,
+        defaultLaunchModel: 'openai/gpt-oss-20b',
+        availableLaunchModels: ['openai/gpt-oss-20b'],
+      })
+    ).toBe('openai/gpt-oss-20b');
+    expect(
+      resolveAnthropicLaunchModel({
+        selectedModel: '',
+        limitContext: true,
+        defaultLaunchModel: 'qwen/qwen3-coder',
+        availableLaunchModels: ['qwen/qwen3-coder'],
+      })
+    ).toBe('qwen/qwen3-coder');
+  });
+
   it('honors explicit 1M Sonnet selections unless 200K context is requested', () => {
     expect(
       resolveAnthropicLaunchModel({

@@ -62,7 +62,7 @@ vi.mock('@main/utils/childProcess', () => ({
 }));
 
 vi.mock('@main/utils/shellEnv', () => ({
-  resolveInteractiveShellEnv: () => resolveInteractiveShellEnvMock(),
+  resolveInteractiveShellEnvBestEffort: () => resolveInteractiveShellEnvMock(),
 }));
 
 import { AgentTeamsRuntimeProviderManagementCliClient } from '../../../../src/features/runtime-provider-management/main/infrastructure/AgentTeamsRuntimeProviderManagementCliClient';

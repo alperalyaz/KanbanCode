@@ -313,6 +313,209 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
   });
 
+  it('renders Anthropic-compatible catalog models instead of Claude fallback aliases', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const onValueChange = vi.fn();
+    storeState.cliStatus = {
+      providers: [
+        {
+          providerId: 'anthropic',
+          models: [],
+          authMethod: 'auth_token',
+          authenticated: true,
+          supported: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+          },
+          connection: {
+            supportsOAuth: true,
+            supportsApiKey: true,
+            configurableAuthModes: ['auto', 'oauth', 'api_key'],
+            configuredAuthMode: 'auto',
+            apiKeyConfigured: false,
+            apiKeySource: null,
+            apiKeySourceLabel: null,
+            compatibleEndpoint: {
+              enabled: true,
+              baseUrl: 'http://localhost:1234',
+              tokenConfigured: true,
+              tokenSource: 'stored',
+              tokenSourceLabel: 'Stored in app',
+            },
+          },
+          modelCatalog: {
+            schemaVersion: 1,
+            providerId: 'anthropic',
+            source: 'anthropic-compatible-api',
+            status: 'ready',
+            fetchedAt: '2026-05-21T00:00:00.000Z',
+            staleAt: '2026-05-21T00:10:00.000Z',
+            defaultModelId: 'openai/gpt-oss-20b',
+            defaultLaunchModel: 'openai/gpt-oss-20b',
+            models: [
+              {
+                id: 'openai/gpt-oss-20b',
+                launchModel: 'openai/gpt-oss-20b',
+                displayName: 'GPT OSS 20B',
+                hidden: false,
+                supportedReasoningEfforts: [],
+                defaultReasoningEffort: null,
+                inputModalities: ['text'],
+                supportsPersonality: true,
+                isDefault: true,
+                upgrade: false,
+                source: 'anthropic-compatible-api',
+                badgeLabel: 'Local',
+              },
+            ],
+            diagnostics: {
+              configReadState: 'ready',
+              appServerState: 'healthy',
+            },
+          },
+        },
+      ],
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'anthropic',
+          onProviderChange: () => undefined,
+          value: '',
+          onValueChange,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('GPT OSS 20B');
+    expect(host.textContent).not.toContain('Opus 4.7');
+    expect(
+      host.querySelector('[data-testid="team-model-selector-anthropic-compatible-custom-model"]')
+    ).toBeNull();
+    const defaultModelButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Default')
+    );
+    expect(defaultModelButton?.getAttribute('title')).toContain(
+      'Anthropic-compatible endpoint default model'
+    );
+    expect(defaultModelButton?.getAttribute('title')).toContain('openai/gpt-oss-20b');
+    const localModelButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('GPT OSS 20B')
+    );
+    expect(localModelButton).toBeDefined();
+
+    await act(async () => {
+      localModelButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(onValueChange).toHaveBeenCalledWith('openai/gpt-oss-20b');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('renders Anthropic-compatible custom model input for degraded catalogs', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const onValueChange = vi.fn();
+    storeState.cliStatus = {
+      providers: [
+        {
+          providerId: 'anthropic',
+          models: [],
+          authMethod: 'auth_token',
+          authenticated: true,
+          supported: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+          },
+          connection: {
+            supportsOAuth: true,
+            supportsApiKey: true,
+            configurableAuthModes: ['auto', 'oauth', 'api_key'],
+            configuredAuthMode: 'auto',
+            apiKeyConfigured: false,
+            apiKeySource: null,
+            apiKeySourceLabel: null,
+            compatibleEndpoint: {
+              enabled: true,
+              baseUrl: 'http://localhost:1234',
+              tokenConfigured: true,
+              tokenSource: 'stored',
+              tokenSourceLabel: 'Stored in app',
+            },
+          },
+          modelCatalog: {
+            schemaVersion: 1,
+            providerId: 'anthropic',
+            source: 'anthropic-compatible-api',
+            status: 'degraded',
+            fetchedAt: '2026-05-21T00:00:00.000Z',
+            staleAt: '2026-05-21T00:10:00.000Z',
+            defaultModelId: null,
+            defaultLaunchModel: null,
+            models: [],
+            diagnostics: {
+              configReadState: 'failed',
+              appServerState: 'degraded',
+              message: 'Local catalog unavailable',
+            },
+          },
+        },
+      ],
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'anthropic',
+          onProviderChange: () => undefined,
+          value: 'openai/gpt-oss-20b',
+          onValueChange,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const customInput = host.querySelector<HTMLInputElement>(
+      '[data-testid="team-model-selector-anthropic-compatible-custom-model"]'
+    );
+    expect(customInput).toBeTruthy();
+    expect(customInput?.value).toBe('openai/gpt-oss-20b');
+    expect(host.textContent).toContain('Local catalog unavailable');
+
+    await act(async () => {
+      const setValue = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        'value'
+      )?.set;
+      setValue?.call(customInput, 'qwen/qwen3-coder');
+      customInput?.dispatchEvent(new Event('input', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(onValueChange).toHaveBeenCalledWith('qwen/qwen3-coder');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('labels, sorts, and filters OpenCode models with real Agent Teams E2E recommendations', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliStatus = {

@@ -11,6 +11,7 @@ vi.mock('@main/services/team/ClaudeBinaryResolver', () => ({
 
 vi.mock('@main/utils/shellEnv', () => ({
   resolveInteractiveShellEnv: vi.fn(),
+  resolveInteractiveShellEnvBestEffort: vi.fn(),
 }));
 
 const buildProviderAwareCliEnvMock = vi.fn();
@@ -102,7 +103,7 @@ import {
   TeamProvisioningService,
 } from '@main/services/team/TeamProvisioningService';
 import { spawnCli } from '@main/utils/childProcess';
-import { resolveInteractiveShellEnv } from '@main/utils/shellEnv';
+import { resolveInteractiveShellEnvBestEffort } from '@main/utils/shellEnv';
 
 function getRealAgentTeamsMcpLaunchSpec(): { command: string; args: string[] } {
   const workspaceRoot = process.cwd();
@@ -335,7 +336,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     addTeamNotificationMock.mockResolvedValue(null);
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-team-prepare-'));
     vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/fake/claude');
-    vi.mocked(resolveInteractiveShellEnv).mockResolvedValue({
+    vi.mocked(resolveInteractiveShellEnvBestEffort).mockResolvedValue({
       PATH: '/usr/bin',
       SHELL: '/bin/zsh',
     });
@@ -403,6 +404,57 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     expect(assignments).toContain("ANTHROPIC_AWS_WORKSPACE_ID='wrkspc_123'");
     expect(assignments).toContain("ANTHROPIC_AWS_API_KEY='aws-platform-key'");
     expect(assignments).toContain("CLAUDE_CODE_ENTRY_PROVIDER='anthropic'");
+  });
+
+  it('preserves Anthropic-compatible direct restart env while blanking stale first-party tokens', () => {
+    const compatibleAssignments = buildDirectTmuxRestartEnvAssignments(
+      {
+        ANTHROPIC_BASE_URL: 'http://localhost:1234',
+        ANTHROPIC_AUTH_TOKEN: 'lmstudio',
+        ANTHROPIC_API_KEY: '',
+      },
+      'anthropic'
+    );
+
+    expect(compatibleAssignments).toContain("ANTHROPIC_BASE_URL='http://localhost:1234'");
+    expect(compatibleAssignments).toContain("ANTHROPIC_AUTH_TOKEN='lmstudio'");
+    expect(compatibleAssignments).toContain("ANTHROPIC_API_KEY=''");
+
+    const firstPartyAssignments = buildDirectTmuxRestartEnvAssignments(
+      {
+        ANTHROPIC_BASE_URL: 'https://api.anthropic.com',
+        ANTHROPIC_AUTH_TOKEN: 'stale-oauth-token',
+      },
+      'anthropic'
+    );
+
+    expect(firstPartyAssignments).toContain("ANTHROPIC_BASE_URL='https://api.anthropic.com'");
+    expect(firstPartyAssignments).toContain("ANTHROPIC_AUTH_TOKEN=''");
+    expect(firstPartyAssignments).not.toContain('stale-oauth-token');
+
+    const malformedAssignments = buildDirectTmuxRestartEnvAssignments(
+      {
+        ANTHROPIC_BASE_URL: 'not a url',
+        ANTHROPIC_AUTH_TOKEN: 'malformed-local-token',
+      },
+      'anthropic'
+    );
+
+    expect(malformedAssignments).toContain("ANTHROPIC_BASE_URL='not a url'");
+    expect(malformedAssignments).toContain("ANTHROPIC_AUTH_TOKEN=''");
+    expect(malformedAssignments).not.toContain('malformed-local-token');
+
+    const credentialUrlAssignments = buildDirectTmuxRestartEnvAssignments(
+      {
+        ANTHROPIC_BASE_URL: 'http://token@localhost:1234',
+        ANTHROPIC_AUTH_TOKEN: 'credential-url-token',
+      },
+      'anthropic'
+    );
+
+    expect(credentialUrlAssignments).toContain("ANTHROPIC_BASE_URL='http://token@localhost:1234'");
+    expect(credentialUrlAssignments).toContain("ANTHROPIC_AUTH_TOKEN=''");
+    expect(credentialUrlAssignments).not.toContain('credential-url-token');
   });
 
   it('does not flatten Anthropic helper settings into non-Anthropic lead cross-provider args', async () => {
@@ -3175,7 +3227,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
 
   it('maps ANTHROPIC_AUTH_TOKEN into ANTHROPIC_API_KEY for headless preflight', async () => {
     const svc = new TeamProvisioningService();
-    vi.mocked(resolveInteractiveShellEnv).mockResolvedValue({
+    vi.mocked(resolveInteractiveShellEnvBestEffort).mockResolvedValue({
       ANTHROPIC_AUTH_TOKEN: 'proxy-token',
       PATH: '/usr/bin',
       SHELL: '/bin/zsh',
@@ -3189,7 +3241,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
 
   it('preserves Anthropic-compatible Ollama auth token without mapping it into ANTHROPIC_API_KEY', async () => {
     const svc = new TeamProvisioningService();
-    vi.mocked(resolveInteractiveShellEnv).mockResolvedValue({
+    vi.mocked(resolveInteractiveShellEnvBestEffort).mockResolvedValue({
       ANTHROPIC_BASE_URL: 'http://localhost:11434',
       ANTHROPIC_AUTH_TOKEN: 'ollama',
       ANTHROPIC_API_KEY: '',
@@ -3205,9 +3257,45 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     expect(result.env.ANTHROPIC_API_KEY).toBe('');
   });
 
+  it('does not materialize the Anthropic API-key helper for compatible endpoints without a token', async () => {
+    const svc = new TeamProvisioningService();
+    const getConfiguredAnthropicApiKeyForTeamRuntime = vi.fn().mockResolvedValue(null);
+    (svc as any).providerConnectionService = {
+      getConfiguredAnthropicApiKeyForTeamRuntime,
+      augmentConfiguredConnectionEnv: vi.fn(),
+    };
+    buildProviderAwareCliEnvMock.mockResolvedValue({
+      env: {
+        ANTHROPIC_BASE_URL: 'http://localhost:1234',
+        ANTHROPIC_API_KEY: '',
+        PATH: '/usr/bin',
+        SHELL: '/bin/zsh',
+      },
+      connectionIssues: {},
+      providerArgs: [],
+    });
+
+    const result = await (svc as any).buildProvisioningEnv('anthropic', undefined, {
+      teamRuntimeAuth: {
+        allowAnthropicApiKeyHelper: true,
+        teamName: 'local-team',
+        authMaterialId: 'auth-local',
+      },
+    });
+
+    expect(getConfiguredAnthropicApiKeyForTeamRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ANTHROPIC_BASE_URL: 'http://localhost:1234',
+        ANTHROPIC_API_KEY: '',
+      })
+    );
+    expect(result.authSource).toBe('none');
+    expect(result.providerArgs).toEqual([]);
+  });
+
   it('prefers explicit ANTHROPIC_API_KEY over ANTHROPIC_AUTH_TOKEN', async () => {
     const svc = new TeamProvisioningService();
-    vi.mocked(resolveInteractiveShellEnv).mockResolvedValue({
+    vi.mocked(resolveInteractiveShellEnvBestEffort).mockResolvedValue({
       ANTHROPIC_API_KEY: 'real-key',
       ANTHROPIC_AUTH_TOKEN: 'proxy-token',
       PATH: '/usr/bin',
@@ -3246,6 +3334,33 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
         process.env.NODE_ENV = previousNodeEnv;
       }
     }
+  });
+
+  it('uses no-background best-effort shell env for provisioning launch env', async () => {
+    const svc = new TeamProvisioningService();
+    const buildProvisioningEnv = (
+      svc as unknown as {
+        buildProvisioningEnv(): Promise<{ env: NodeJS.ProcessEnv }>;
+      }
+    ).buildProvisioningEnv.bind(svc);
+
+    await buildProvisioningEnv();
+
+    const [options] = vi.mocked(resolveInteractiveShellEnvBestEffort).mock.calls.at(-1) ?? [];
+    expect(options).toMatchObject({
+      source: 'team-provisioning',
+      timeoutMs: 1_500,
+      background: false,
+    });
+    expect(options?.fallbackEnv).toBe(process.env);
+    expect(buildProviderAwareCliEnvMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        shellEnv: expect.objectContaining({
+          PATH: '/usr/bin',
+          SHELL: '/bin/zsh',
+        }),
+      })
+    );
   });
 
   it('adds member-work-sync turn-settled spool env for Codex provisioning', async () => {

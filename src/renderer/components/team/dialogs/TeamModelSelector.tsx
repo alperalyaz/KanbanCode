@@ -17,9 +17,11 @@ import {
   isGeminiUiFrozen,
 } from '@renderer/utils/geminiUiFreeze';
 import {
+  canUseCustomAnthropicCompatibleModel,
   getAvailableTeamProviderModelOptions,
   getOpenCodeOpenAiRouteAuthUnavailableReason,
   getTeamModelUiDisabledReason,
+  isAnthropicCompatibleRuntime,
   isTeamProviderModelVerificationPending,
   normalizeTeamModelForUi,
   TEAM_MODEL_UI_DISABLED_BADGE_LABEL,
@@ -745,6 +747,16 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
   );
   const defaultModelTooltip = useMemo(() => {
     if (effectiveProviderId === 'anthropic') {
+      if (isAnthropicCompatibleRuntime(runtimeProviderStatus)) {
+        const defaultCompatibleModel =
+          runtimeProviderStatus?.modelCatalog?.defaultLaunchModel?.trim() ||
+          runtimeProviderStatus?.modelCatalog?.defaultModelId?.trim() ||
+          null;
+        return defaultCompatibleModel
+          ? `Uses the Anthropic-compatible endpoint default model.\nCurrently resolves to ${defaultCompatibleModel}.`
+          : 'Uses the Anthropic-compatible endpoint default model.';
+      }
+
       const defaultLongContextModel =
         getRuntimeAwareProviderScopedTeamModelLabel(
           'anthropic',
@@ -879,6 +891,23 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
     }
     return getAvailableTeamProviderModelOptions(effectiveProviderId, runtimeProviderStatus);
   }, [effectiveProviderId, runtimeProviderStatus, shouldAwaitRuntimeModelList]);
+  const showAnthropicCompatibleCustomModelInput =
+    effectiveProviderId === 'anthropic' &&
+    canUseCustomAnthropicCompatibleModel(runtimeProviderStatus);
+  const selectedModelMatchesOption = modelOptions.some(
+    (option) => option.value === normalizedValue
+  );
+  const anthropicCompatibleCustomModelValue =
+    showAnthropicCompatibleCustomModelInput && normalizedValue && !selectedModelMatchesOption
+      ? normalizedValue
+      : '';
+  const anthropicCompatibleCatalogWarning =
+    showAnthropicCompatibleCustomModelInput &&
+    runtimeProviderStatus?.modelCatalog?.providerId === 'anthropic'
+      ? (runtimeProviderStatus.modelCatalog.diagnostics.message ??
+        runtimeProviderStatus.modelCatalog.diagnostics.code ??
+        null)
+      : null;
   const openCodeCatalogModelById = useMemo(() => {
     const catalog = runtimeProviderStatus?.modelCatalog;
     const modelById = new Map<string, ProviderModelCatalogItem>();
@@ -1619,6 +1648,30 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                   Explicit models load from the current runtime. Default remains available while the
                   list is syncing.
                 </p>
+              ) : null}
+              {showAnthropicCompatibleCustomModelInput ? (
+                <div className="mb-2 rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] p-2">
+                  <Label
+                    htmlFor="anthropic-compatible-custom-model"
+                    className="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]"
+                  >
+                    Custom model id
+                  </Label>
+                  <Input
+                    id="anthropic-compatible-custom-model"
+                    data-testid="team-model-selector-anthropic-compatible-custom-model"
+                    value={anthropicCompatibleCustomModelValue}
+                    onChange={(event) => onValueChange(event.currentTarget.value.trim())}
+                    placeholder="openai/gpt-oss-20b"
+                    className="h-8 text-xs"
+                    disabled={isInspectingInactiveProvider || !activeProviderSelectable}
+                  />
+                  {anthropicCompatibleCatalogWarning ? (
+                    <p className="mt-1.5 text-[10px] leading-relaxed text-amber-200">
+                      {anthropicCompatibleCatalogWarning}
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
               {shouldShowModelSearch ? (
                 <div className="relative mb-2">

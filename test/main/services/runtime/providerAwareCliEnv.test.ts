@@ -193,6 +193,47 @@ describe('buildProviderAwareCliEnv', () => {
     );
   });
 
+  it('passes a stored API key decrypt allowlist through provider env building', async () => {
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
+    await buildProviderAwareCliEnv({
+      providerId: 'anthropic',
+      allowStoredApiKeyDecryption: false,
+      allowedStoredApiKeyEnvVarNames: ['ANTHROPIC_AUTH_TOKEN'],
+    });
+
+    expect(applyConfiguredConnectionEnvMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        CLAUDE_CODE_ENTRY_PROVIDER: 'anthropic',
+      }),
+      'anthropic',
+      undefined,
+      {
+        allowStoredApiKeyDecryption: false,
+        allowedStoredApiKeyEnvVarNames: ['ANTHROPIC_AUTH_TOKEN'],
+      }
+    );
+  });
+
+  it('passes a stored API key decrypt allowlist through augment env building', async () => {
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
+    await buildProviderAwareCliEnv({
+      connectionMode: 'augment',
+      allowStoredApiKeyDecryption: false,
+      allowedStoredApiKeyEnvVarNames: ['ANTHROPIC_AUTH_TOKEN'],
+    });
+
+    expect(augmentAllConfiguredConnectionEnvMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      {
+        allowStoredApiKeyDecryption: false,
+        allowedStoredApiKeyEnvVarNames: ['ANTHROPIC_AUTH_TOKEN'],
+      }
+    );
+    expect(applyAllConfiguredConnectionEnvMock).not.toHaveBeenCalled();
+  });
+
   it('builds shared env for generic CLI launches when no provider is specified', async () => {
     const { buildProviderAwareCliEnv } =
       await import('../../../../src/main/services/runtime/providerAwareCliEnv');

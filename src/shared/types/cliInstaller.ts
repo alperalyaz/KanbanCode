@@ -44,6 +44,13 @@ export interface CliProviderConnectionInfo {
   apiKeyConfigured: boolean;
   apiKeySource: 'stored' | 'environment' | null;
   apiKeySourceLabel?: string | null;
+  compatibleEndpoint?: {
+    enabled: boolean;
+    baseUrl: string;
+    tokenConfigured: boolean;
+    tokenSource: 'stored' | 'environment' | null;
+    tokenSourceLabel?: string | null;
+  } | null;
   codex?: {
     preferredAuthMode: CodexAccountAuthMode;
     effectiveAuthMode: CodexAccountEffectiveAuthMode;
