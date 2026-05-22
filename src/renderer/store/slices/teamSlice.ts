@@ -111,6 +111,7 @@ import {
   collectTeamScopedVisibleLoadingResets,
 } from '../team/teamScopedStateCleanup';
 import { structurallyShareTeamSnapshot } from '../team/teamSnapshotStructuralSharing';
+import { parseToolApprovalSettings } from '../team/teamToolApprovalSettings';
 import { noteTeamRefreshFanout } from '../teamRefreshFanoutDiagnostics';
 import { getWorktreeNavigationState } from '../utils/stateResetHelpers';
 
@@ -2271,39 +2272,6 @@ function saveLaunchParams(teamName: string, params: TeamLaunchParams): void {
 }
 
 const TOOL_APPROVAL_PREFIX = 'team:toolApprovalSettings:';
-
-function parseToolApprovalSettings(raw: string | null): ToolApprovalSettings {
-  if (!raw) return DEFAULT_TOOL_APPROVAL_SETTINGS;
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const d = DEFAULT_TOOL_APPROVAL_SETTINGS;
-    return {
-      autoAllowAll: typeof parsed.autoAllowAll === 'boolean' ? parsed.autoAllowAll : d.autoAllowAll,
-      autoAllowFileEdits:
-        typeof parsed.autoAllowFileEdits === 'boolean'
-          ? parsed.autoAllowFileEdits
-          : d.autoAllowFileEdits,
-      autoAllowSafeBash:
-        typeof parsed.autoAllowSafeBash === 'boolean'
-          ? parsed.autoAllowSafeBash
-          : d.autoAllowSafeBash,
-      timeoutAction:
-        typeof parsed.timeoutAction === 'string' &&
-        ['allow', 'deny', 'wait'].includes(parsed.timeoutAction)
-          ? (parsed.timeoutAction as ToolApprovalSettings['timeoutAction'])
-          : d.timeoutAction,
-      timeoutSeconds:
-        typeof parsed.timeoutSeconds === 'number' &&
-        Number.isFinite(parsed.timeoutSeconds) &&
-        parsed.timeoutSeconds >= 5 &&
-        parsed.timeoutSeconds <= 300
-          ? parsed.timeoutSeconds
-          : d.timeoutSeconds,
-    };
-  } catch {
-    return DEFAULT_TOOL_APPROVAL_SETTINGS;
-  }
-}
 
 function loadToolApprovalSettingsForTeam(teamName: string): ToolApprovalSettings {
   return parseToolApprovalSettings(localStorage.getItem(TOOL_APPROVAL_PREFIX + teamName));
