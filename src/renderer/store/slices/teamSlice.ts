@@ -29,6 +29,14 @@ import {
   isTeamTaskNeedsFixActionable,
 } from '@shared/utils/teamTaskState';
 
+import {
+  getFullTeamDataRequestKey,
+  getTeamDataRequestKey,
+  getTeamDataRequestLabel,
+  getThinTeamDataRequestKey,
+  isTeamDataRequestKeyForTeam,
+  normalizeTeamGetDataOptions,
+} from '../team/teamDataRequestKeys';
 import { selectTeamDataForName } from '../team/teamDataSelectors';
 import {
   areInboxMessageArraysEquivalent,
@@ -155,38 +163,6 @@ interface RefreshTeamDataOptions {
   withDedup?: boolean;
 }
 
-type TeamDataSnapshotMode = 'full' | 'thin';
-
-function normalizeTeamGetDataOptions(options?: TeamGetDataOptions): TeamGetDataOptions | undefined {
-  return options?.includeMemberBranches === false ? { includeMemberBranches: false } : undefined;
-}
-
-function shouldIncludeMemberBranches(options?: TeamGetDataOptions): boolean {
-  return normalizeTeamGetDataOptions(options)?.includeMemberBranches !== false;
-}
-
-function getTeamDataSnapshotMode(options?: TeamGetDataOptions): TeamDataSnapshotMode {
-  return shouldIncludeMemberBranches(options) ? 'full' : 'thin';
-}
-
-function getTeamDataRequestKey(teamName: string, options?: TeamGetDataOptions): string {
-  const normalizedOptions = normalizeTeamGetDataOptions(options);
-  return `${teamName}\u0000mode:${getTeamDataSnapshotMode(normalizedOptions)}`;
-}
-
-function getTeamDataRequestLabel(teamName: string, options?: TeamGetDataOptions): string {
-  const normalizedOptions = normalizeTeamGetDataOptions(options);
-  return `team:getData(${teamName},mode=${getTeamDataSnapshotMode(normalizedOptions)})`;
-}
-
-function getFullTeamDataRequestKey(teamName: string): string {
-  return getTeamDataRequestKey(teamName);
-}
-
-function getThinTeamDataRequestKey(teamName: string): string {
-  return getTeamDataRequestKey(teamName, { includeMemberBranches: false });
-}
-
 function hasFullTeamDataRequestForTeam(teamName: string): boolean {
   return inFlightTeamDataRequests.has(getFullTeamDataRequestKey(teamName));
 }
@@ -196,9 +172,8 @@ function hasThinTeamDataRequestForTeam(teamName: string): boolean {
 }
 
 function clearTeamDataRequestsForTeam(teamName: string): void {
-  const prefix = `${teamName}\u0000`;
   for (const key of inFlightTeamDataRequests.keys()) {
-    if (key.startsWith(prefix)) {
+    if (isTeamDataRequestKeyForTeam(key, teamName)) {
       inFlightTeamDataRequests.delete(key);
     }
   }
