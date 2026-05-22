@@ -2281,6 +2281,7 @@ interface ProvisioningRun {
     leadName: string;
     startedAt: string;
     textParts: string[];
+    textJoinMode?: 'block' | 'stream';
     replyVisibility?: 'user' | 'internal_activity';
     hasVisibleSendMessage?: boolean;
     hasUserVisibleSendMessage?: boolean;
@@ -2297,6 +2298,14 @@ interface ProvisioningRun {
   }[];
   /** Monotonic counter for individual lead assistant messages. */
   leadMsgSeq: number;
+  /** Active text bubble for token-streamed lead assistant output. */
+  liveLeadTextBuffer: {
+    messageId: string;
+    text: string;
+    timestamp: string;
+    toolCalls?: ToolCallMeta[];
+    toolSummary?: string;
+  } | null;
   /** Accumulated tool_use details between text messages. */
   pendingToolCalls: ToolCallMeta[];
   /** Active runtime tool calls keyed by tool_use_id. */
@@ -20997,6 +21006,7 @@ export class TeamProvisioningService {
         leadRelayCapture: null,
         activeCrossTeamReplyHints: [],
         leadMsgSeq: 0,
+        liveLeadTextBuffer: null,
         pendingToolCalls: [],
         activeToolCalls: new Map(),
         pendingDirectCrossTeamSendRefresh: false,
@@ -22311,6 +22321,7 @@ export class TeamProvisioningService {
         leadRelayCapture: null,
         activeCrossTeamReplyHints: [],
         leadMsgSeq: 0,
+        liveLeadTextBuffer: null,
         pendingToolCalls: [],
         activeToolCalls: new Map(),
         pendingDirectCrossTeamSendRefresh: false,
@@ -24577,7 +24588,9 @@ export class TeamProvisioningService {
         replyText = (await capturePromise).trim() || null;
       } catch {
         // Best-effort: if we captured some text but never got result.success, keep it.
-        const partial = run.leadRelayCapture?.textParts?.join('')?.trim();
+        const partial = run.leadRelayCapture
+          ? this.joinLeadRelayCaptureText(run.leadRelayCapture)
+          : null;
         replyText = partial && partial.length > 0 ? partial : null;
       } finally {
         if (run.leadRelayCapture) {
@@ -31127,6 +31140,21 @@ export class TeamProvisioningService {
     return null;
   }
 
+  private isSyntheticLeadTextChunk(msg: Record<string, unknown>): boolean {
+    const message = (msg.message ?? msg) as Record<string, unknown>;
+    return message.model === '<synthetic>' && message.type === 'message';
+  }
+
+  private joinLeadRelayCaptureText(
+    capture: NonNullable<ProvisioningRun['leadRelayCapture']>
+  ): string {
+    return capture.textParts.join(capture.textJoinMode === 'stream' ? '' : '\n').trim();
+  }
+
+  private resetLiveLeadTextBuffer(run: ProvisioningRun): void {
+    run.liveLeadTextBuffer = null;
+  }
+
   private appendProvisioningAssistantText(
     run: ProvisioningRun,
     msg: Record<string, unknown>,
@@ -31172,27 +31200,61 @@ export class TeamProvisioningService {
     run: ProvisioningRun,
     cleanText: string,
     stableMessageId?: string,
-    messageTimestamp?: string
+    messageTimestamp?: string,
+    options?: { coalesceStreamChunk?: boolean }
   ): void {
-    run.leadMsgSeq += 1;
     const leadName = this.getRunLeadName(run);
-    const messageId = stableMessageId || `lead-turn-${run.runId}-${run.leadMsgSeq}`;
     const timestamp =
       typeof messageTimestamp === 'string' &&
       messageTimestamp.trim().length > 0 &&
       Number.isFinite(Date.parse(messageTimestamp))
         ? messageTimestamp
         : nowIso();
-    // Attach accumulated tool call details from preceding tool_use messages, then reset.
-    const toolCalls = run.pendingToolCalls.length > 0 ? [...run.pendingToolCalls] : undefined;
-    const toolSummary = toolCalls ? formatToolSummaryFromCalls(toolCalls) : undefined;
-    run.pendingToolCalls = [];
+    const coalesceStreamChunk = options?.coalesceStreamChunk === true;
+    let messageId = stableMessageId;
+    let text = cleanText;
+    let timestampForMessage = timestamp;
+    let toolCalls: ToolCallMeta[] | undefined;
+    let toolSummary: string | undefined;
+
+    if (coalesceStreamChunk) {
+      if (!run.liveLeadTextBuffer) {
+        run.leadMsgSeq += 1;
+        toolCalls = run.pendingToolCalls.length > 0 ? [...run.pendingToolCalls] : undefined;
+        toolSummary = toolCalls ? formatToolSummaryFromCalls(toolCalls) : undefined;
+        run.liveLeadTextBuffer = {
+          messageId: `lead-turn-${run.runId}-${run.leadMsgSeq}`,
+          text: cleanText,
+          timestamp,
+          toolCalls,
+          toolSummary,
+        };
+        run.pendingToolCalls = [];
+      } else {
+        run.liveLeadTextBuffer.text += cleanText;
+      }
+
+      messageId = run.liveLeadTextBuffer.messageId;
+      text = stripAgentBlocks(run.liveLeadTextBuffer.text).trim();
+      timestampForMessage = run.liveLeadTextBuffer.timestamp;
+      toolCalls = run.liveLeadTextBuffer.toolCalls;
+      toolSummary = run.liveLeadTextBuffer.toolSummary;
+    } else {
+      this.resetLiveLeadTextBuffer(run);
+      run.leadMsgSeq += 1;
+      messageId = messageId || `lead-turn-${run.runId}-${run.leadMsgSeq}`;
+      // Attach accumulated tool call details from preceding tool_use messages, then reset.
+      toolCalls = run.pendingToolCalls.length > 0 ? [...run.pendingToolCalls] : undefined;
+      toolSummary = toolCalls ? formatToolSummaryFromCalls(toolCalls) : undefined;
+      run.pendingToolCalls = [];
+    }
+
     const leadMsg: InboxMessage = {
       from: leadName,
-      text: cleanText,
-      timestamp,
+      text,
+      timestamp: timestampForMessage,
       read: true,
-      summary: cleanText.length > 60 ? cleanText.slice(0, 57) + '...' : cleanText,
+      summary: text.length > 60 ? text.slice(0, 57) + '...' : text,
       messageId,
       source: 'lead_process',
       toolSummary,
@@ -31979,6 +32041,7 @@ export class TeamProvisioningService {
     }
 
     if (msg.type === 'user') {
+      this.resetLiveLeadTextBuffer(run);
       // Check for permission_request in raw user message text BEFORE teammate-message parsing.
       // The permission_request may arrive as plain JSON without <teammate-message> wrapper,
       // and handleNativeTeammateUserMessage only processes <teammate-message> blocks.
@@ -32056,12 +32119,17 @@ export class TeamProvisioningService {
         // until relayLeadInboxMessages() finally clears run.leadRelayCapture.
         if (run.leadRelayCapture && !run.leadRelayCapture.settled) {
           const capture = run.leadRelayCapture;
+          if (this.isSyntheticLeadTextChunk(msg)) {
+            capture.textJoinMode = 'stream';
+          } else if (!capture.textJoinMode) {
+            capture.textJoinMode = 'block';
+          }
           capture.textParts.push(text);
           if (capture.idleHandle) {
             clearTimeout(capture.idleHandle);
           }
           capture.idleHandle = setTimeout(() => {
-            const combined = capture.textParts.join('\n').trim();
+            const combined = this.joinLeadRelayCaptureText(capture);
             capture.resolveOnce(combined);
           }, capture.idleMs);
         } else if (run.provisioningComplete) {
@@ -32074,13 +32142,18 @@ export class TeamProvisioningService {
             !run.suppressGeminiPostLaunchHydrationOutput &&
             !hasCapturedVisibleSendMessage
           ) {
-            const cleanText = stripAgentBlocks(text).trim();
-            if (cleanText.length > 0 && !isTeamInternalControlMessageText(cleanText)) {
+            const isSyntheticChunk = this.isSyntheticLeadTextChunk(msg);
+            const displayText = isSyntheticChunk ? text : stripAgentBlocks(text).trim();
+            if (
+              (displayText.length > 0 || (isSyntheticChunk && run.liveLeadTextBuffer)) &&
+              !isTeamInternalControlMessageText(displayText)
+            ) {
               this.pushLiveLeadTextMessage(
                 run,
-                cleanText,
+                displayText,
                 this.getStableLeadThoughtMessageId(msg) ?? undefined,
-                messageTimestamp
+                messageTimestamp,
+                { coalesceStreamChunk: isSyntheticChunk }
               );
             }
           }
@@ -32088,13 +32161,18 @@ export class TeamProvisioningService {
           // Pre-ready: keep showing provisioning narration in the banner, but also mirror it
           // into the live cache so Messages/Activity can show the earliest assistant output.
           if (!run.silentUserDmForward && !hasCapturedVisibleSendMessage) {
-            const cleanText = stripAgentBlocks(text).trim();
-            if (cleanText.length > 0 && !isTeamInternalControlMessageText(cleanText)) {
+            const isSyntheticChunk = this.isSyntheticLeadTextChunk(msg);
+            const displayText = isSyntheticChunk ? text : stripAgentBlocks(text).trim();
+            if (
+              (displayText.length > 0 || (isSyntheticChunk && run.liveLeadTextBuffer)) &&
+              !isTeamInternalControlMessageText(displayText)
+            ) {
               this.pushLiveLeadTextMessage(
                 run,
-                cleanText,
+                displayText,
                 this.getStableLeadThoughtMessageId(msg) ?? undefined,
-                messageTimestamp
+                messageTimestamp,
+                { coalesceStreamChunk: isSyntheticChunk }
               );
             }
           }
@@ -32116,6 +32194,7 @@ export class TeamProvisioningService {
             preview: extractToolPreview(block.name, input),
             toolUseId: typeof block.id === 'string' ? block.id : undefined,
           });
+          this.resetLiveLeadTextBuffer(run);
           this.startRuntimeToolActivity(run, this.getRunLeadName(run), block);
         }
       }
@@ -32264,9 +32343,10 @@ export class TeamProvisioningService {
         }
         if (run.leadRelayCapture) {
           const capture = run.leadRelayCapture;
-          const combined = capture.textParts.join('\n').trim();
+          const combined = this.joinLeadRelayCaptureText(capture);
           capture.resolveOnce(combined);
         }
+        this.resetLiveLeadTextBuffer(run);
         // Clear silent relay flag after any successful turn.
         run.activeCrossTeamReplyHints = [];
         run.pendingInboxRelayCandidates = [];
@@ -32302,6 +32382,7 @@ export class TeamProvisioningService {
         if (run.leadRelayCapture) {
           run.leadRelayCapture.rejectOnce(errorMsg);
         }
+        this.resetLiveLeadTextBuffer(run);
         // Clear silent relay flag after any errored turn.
         run.pendingDirectCrossTeamSendRefresh = false;
         run.activeCrossTeamReplyHints = [];

@@ -58,6 +58,29 @@ function createLeadAssistantEntry(
   };
 }
 
+function createSyntheticLeadAssistantChunk(
+  uuid: string,
+  timestamp: string,
+  text: string
+): Record<string, unknown> {
+  return {
+    ...createLeadAssistantEntry(uuid, timestamp, text),
+    message: {
+      role: 'assistant',
+      model: '<synthetic>',
+      id: `msg-${uuid}`,
+      type: 'message',
+      stop_reason: 'stop_sequence',
+      stop_sequence: '',
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+      },
+      content: [{ type: 'text', text }],
+    },
+  };
+}
+
 async function createTempJsonl(entries: Record<string, unknown>[]): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'team-data-lead-session-'));
   tempPaths.push(dir);
@@ -4366,6 +4389,38 @@ describe('TeamDataService', () => {
     );
 
     expect(linked?.relayOfMessageId).toBeUndefined();
+  });
+
+  it('coalesces Codex synthetic lead stream chunks into one lead-session message', async () => {
+    const service = createLeadSessionCachingService();
+    const jsonlPath = await createTempJsonl([
+      createSyntheticLeadAssistantChunk('chunk-1', '2026-03-27T22:17:01.000Z', 'Соз'),
+      createSyntheticLeadAssistantChunk('chunk-2', '2026-03-27T22:17:01.010Z', 'дал'),
+      createSyntheticLeadAssistantChunk(
+        'chunk-3',
+        '2026-03-27T22:17:01.020Z',
+        ' стартовую задачу для /212 и раздал работу.'
+      ),
+    ]);
+
+    const extract = (
+      service as unknown as {
+        extractLeadSessionTextsFromJsonl: (
+          jsonlPath: string,
+          leadName: string,
+          leadSessionId: string,
+          maxTexts: number
+        ) => Promise<Array<{ messageId?: string; text: string }>>;
+      }
+    ).extractLeadSessionTextsFromJsonl.bind(service);
+
+    const messages = await extract(jsonlPath, 'team-lead', 'lead-1', 150);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      messageId: 'lead-thought-stream-chunk-1',
+      text: 'Создал стартовую задачу для /212 и раздал работу.',
+    });
   });
 
   it('caches unchanged lead-session extraction results and returns defensive clones', async () => {

@@ -809,6 +809,63 @@ describe('TeamProvisioningService', () => {
     });
   });
 
+  describe('live lead messages', () => {
+    it('updates one live message for Codex synthetic text chunks', () => {
+      const svc = new TeamProvisioningService();
+      const internals = svc as unknown as {
+        pushLiveLeadTextMessage: (
+          run: object,
+          cleanText: string,
+          stableMessageId?: string,
+          messageTimestamp?: string,
+          options?: { coalesceStreamChunk?: boolean }
+        ) => void;
+      };
+      const run = {
+        teamName: 'my-team',
+        runId: 'run-1',
+        request: {
+          members: [{ name: 'team-lead', role: 'Team Lead' }],
+        },
+        leadMsgSeq: 0,
+        liveLeadTextBuffer: null,
+        pendingToolCalls: [],
+        lastLeadTextEmitMs: 0,
+      };
+
+      internals.pushLiveLeadTextMessage(
+        run,
+        'Соз',
+        undefined,
+        '2026-04-17T12:00:00.000Z',
+        { coalesceStreamChunk: true }
+      );
+      internals.pushLiveLeadTextMessage(
+        run,
+        'дал',
+        undefined,
+        '2026-04-17T12:00:00.010Z',
+        { coalesceStreamChunk: true }
+      );
+      internals.pushLiveLeadTextMessage(
+        run,
+        ' стартовую задачу',
+        undefined,
+        '2026-04-17T12:00:00.020Z',
+        { coalesceStreamChunk: true }
+      );
+
+      const messages = svc.getLiveLeadProcessMessages('my-team');
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({
+        messageId: 'lead-turn-run-1-1',
+        text: 'Создал стартовую задачу',
+        timestamp: '2026-04-17T12:00:00.000Z',
+        source: 'lead_process',
+      });
+    });
+  });
+
   describe('OpenCode runtime delivery user-visible impact', () => {
     it('treats policy none as authoritative over raw failed delivery facts', () => {
       const svc = new TeamProvisioningService();
