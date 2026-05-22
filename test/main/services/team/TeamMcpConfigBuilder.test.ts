@@ -339,6 +339,9 @@ describe('TeamMcpConfigBuilder', () => {
       HOME: '/Users/tester',
     };
     hoisted.resolveInteractiveShellEnvMock.mockResolvedValue(hoisted.cachedShellEnv);
+    hoisted.execCliMock.mockImplementationOnce(async () => {
+      throw new Error('Electron-as-Node unavailable');
+    });
     hoisted.execCliMock.mockImplementationOnce(async (command, _args, options) => {
       expect(command).toBe('node');
       const env = options?.env as NodeJS.ProcessEnv | undefined;
@@ -355,18 +358,27 @@ describe('TeamMcpConfigBuilder', () => {
     expect(hoisted.resolveInteractiveShellEnvMock).not.toHaveBeenCalled();
   });
 
-  it('uses the packaged Electron Node runtime for Linux packaged MCP launches', async () => {
+  it.each(['linux', 'darwin', 'win32'] as const)(
+    'uses the packaged Electron Node runtime for %s packaged MCP launches',
+    async (platform) => {
     const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
     const execPathDescriptor = Object.getOwnPropertyDescriptor(process, 'execPath');
-    const electronBinary = '/opt/Agent Teams AI/agent-teams-ai';
+    const electronBinary =
+      platform === 'win32'
+        ? 'C:\\Program Files\\Agent Teams AI\\agent-teams-ai.exe'
+        : '/opt/Agent Teams AI/agent-teams-ai';
     setPackagedMode(true, '3.0.0');
     const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-resources-'));
     createdDirs.push(resourcesDir);
-    createPackagedServerBundle(resourcesDir, '// packaged linux server');
+    createPackagedServerBundle(resourcesDir, '// packaged server');
     setResourcesPath(resourcesDir);
+    hoisted.execCliMock.mockResolvedValue({
+      stdout: 'agent-teams-electron-node-ok',
+      stderr: '',
+    });
 
     Object.defineProperty(process, 'platform', {
-      value: 'linux',
+      value: platform,
       configurable: true,
     });
     Object.defineProperty(process, 'execPath', {
@@ -391,7 +403,14 @@ describe('TeamMcpConfigBuilder', () => {
       expect(server?.command).toBe(electronBinary);
       expect(server?.args).toEqual([expectedEntry]);
       expect(server?.env?.ELECTRON_RUN_AS_NODE).toBe('1');
-      expect(hoisted.execCliMock).not.toHaveBeenCalled();
+      expect(hoisted.execCliMock).toHaveBeenCalledTimes(1);
+      expect(hoisted.execCliMock).toHaveBeenCalledWith(
+        electronBinary,
+        ['-e', 'process.stdout.write("agent-teams-electron-node-ok")'],
+        expect.objectContaining({
+          env: expect.objectContaining({ ELECTRON_RUN_AS_NODE: '1' }),
+        })
+      );
     } finally {
       if (platformDescriptor) {
         Object.defineProperty(process, 'platform', platformDescriptor);
@@ -400,7 +419,8 @@ describe('TeamMcpConfigBuilder', () => {
         Object.defineProperty(process, 'execPath', execPathDescriptor);
       }
     }
-  });
+    }
+  );
 
   it('falls back to strict shell env lookup when fast Node lookup cannot resolve Node', async () => {
     mockBuiltWorkspaceEntryAvailable();

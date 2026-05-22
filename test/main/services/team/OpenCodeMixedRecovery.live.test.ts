@@ -77,10 +77,10 @@ liveDescribe('OpenCode mixed recovery live e2e', () => {
       PATH: withBunOnPath(process.env.PATH ?? ''),
       XDG_DATA_HOME: path.join(tempDir, 'xdg-data-single'),
       AGENT_TEAMS_MCP_CLAUDE_DIR: tempClaudeRoot,
-      ...mcpLaunchSpec.env,
       CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND: mcpLaunchSpec.command,
       CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY: mcpLaunchSpec.args[0] ?? '',
       CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON: JSON.stringify(mcpLaunchSpec.args),
+      CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENV_JSON: JSON.stringify(mcpLaunchSpec.env ?? {}),
     };
     const bridgeClient = new OpenCodeBridgeCommandClient({
       binaryPath: orchestratorCli,
@@ -190,10 +190,10 @@ liveDescribe('OpenCode mixed recovery live e2e', () => {
         PATH: withBunOnPath(process.env.PATH ?? ''),
         XDG_DATA_HOME: path.join(tempDir, 'xdg-data-multi'),
         AGENT_TEAMS_MCP_CLAUDE_DIR: tempClaudeRoot,
-        ...mcpLaunchSpec.env,
         CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND: mcpLaunchSpec.command,
         CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY: mcpLaunchSpec.args[0] ?? '',
         CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON: JSON.stringify(mcpLaunchSpec.args),
+        CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENV_JSON: JSON.stringify(mcpLaunchSpec.env ?? {}),
       };
       const bridgeClient = new OpenCodeBridgeCommandClient({
         binaryPath: orchestratorCli,

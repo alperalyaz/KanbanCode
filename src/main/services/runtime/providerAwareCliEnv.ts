@@ -11,6 +11,7 @@ import { providerConnectionService } from './ProviderConnectionService';
 import type { CliProviderId, TeamProviderId } from '@shared/types';
 
 type ProviderEnvTargetId = CliProviderId | TeamProviderId | undefined;
+const ELECTRON_RUN_AS_NODE_ENV = 'ELECTRON_RUN_AS_NODE';
 
 export interface ProviderAwareCliEnvOptions {
   binaryPath?: string | null;
@@ -27,6 +28,10 @@ export interface ProviderAwareCliEnvResult {
   env: NodeJS.ProcessEnv;
   connectionIssues: Partial<Record<CliProviderId, string>>;
   providerArgs: string[];
+}
+
+function removeGlobalElectronRunAsNodeEnv(env: NodeJS.ProcessEnv): void {
+  delete env[ELECTRON_RUN_AS_NODE_ENV];
 }
 
 export async function buildProviderAwareCliEnv(
@@ -79,6 +84,7 @@ export async function buildProviderAwareCliEnv(
         options.providerBackendId,
         ...storedApiKeyAccessArgs
       );
+      removeGlobalElectronRunAsNodeEnv(env);
       return {
         env,
         connectionIssues: {},
@@ -92,22 +98,25 @@ export async function buildProviderAwareCliEnv(
       options.providerBackendId,
       ...storedApiKeyAccessArgs
     );
+    removeGlobalElectronRunAsNodeEnv(env);
 
+    const providerArgs = await providerConnectionService.getConfiguredConnectionLaunchArgs(
+      env,
+      resolvedProviderId,
+      options.providerBackendId,
+      options.binaryPath
+    );
+    const connectionIssues = await providerConnectionService.getConfiguredConnectionIssues(
+      env,
+      [resolvedProviderId],
+      resolvedProviderId === 'codex' || resolvedProviderId === 'gemini'
+        ? { [resolvedProviderId]: options.providerBackendId?.trim() || undefined }
+        : undefined
+    );
     return {
       env,
-      providerArgs: await providerConnectionService.getConfiguredConnectionLaunchArgs(
-        env,
-        resolvedProviderId,
-        options.providerBackendId,
-        options.binaryPath
-      ),
-      connectionIssues: await providerConnectionService.getConfiguredConnectionIssues(
-        env,
-        [resolvedProviderId],
-        resolvedProviderId === 'codex' || resolvedProviderId === 'gemini'
-          ? { [resolvedProviderId]: options.providerBackendId?.trim() || undefined }
-          : undefined
-      ),
+      providerArgs,
+      connectionIssues,
     };
   }
 
@@ -116,6 +125,7 @@ export async function buildProviderAwareCliEnv(
       env,
       ...storedApiKeyAccessArgs
     );
+    removeGlobalElectronRunAsNodeEnv(env);
     return {
       env,
       connectionIssues: {},
@@ -124,9 +134,11 @@ export async function buildProviderAwareCliEnv(
   }
 
   await providerConnectionService.applyAllConfiguredConnectionEnv(env, ...storedApiKeyAccessArgs);
+  removeGlobalElectronRunAsNodeEnv(env);
+  const connectionIssues = await providerConnectionService.getConfiguredConnectionIssues(env);
   return {
     env,
-    connectionIssues: await providerConnectionService.getConfiguredConnectionIssues(env),
+    connectionIssues,
     providerArgs: [],
   };
 }

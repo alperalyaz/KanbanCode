@@ -405,7 +405,12 @@ function buildStatePath(): string {
 }
 
 function buildLaunchSpecHash(launchSpec: McpLaunchSpec): string {
-  return sha256Hex(JSON.stringify({ command: launchSpec.command, args: launchSpec.args }));
+  const env = launchSpec.env
+    ? Object.fromEntries(
+        Object.entries(launchSpec.env).sort(([left], [right]) => left.localeCompare(right))
+      )
+    : {};
+  return sha256Hex(JSON.stringify({ command: launchSpec.command, args: launchSpec.args, env }));
 }
 
 function buildExpectedIdentity(

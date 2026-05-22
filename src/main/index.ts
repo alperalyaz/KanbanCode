@@ -392,6 +392,10 @@ async function createOpenCodeRuntimeAdapterRegistry(
   bridgeEnv.AGENT_TEAMS_MCP_CLAUDE_DIR = getClaudeBasePath();
   const useHttpMcpBridge = isOpenCodeMcpHttpBridgeEnabled(bridgeEnv);
   const explicitLocalMcpLaunchEnv = snapshotOpenCodeLocalMcpLaunchEnv(bridgeEnv);
+  delete bridgeEnv.ELECTRON_RUN_AS_NODE;
+  if (explicitLocalMcpLaunchEnv) {
+    copyOpenCodeLocalMcpLaunchEnv(explicitLocalMcpLaunchEnv, bridgeEnv);
+  }
   delete bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL;
   const applyMcpLaunchSpecEnv = async (
     targetEnv: NodeJS.ProcessEnv,
@@ -408,12 +412,12 @@ async function createOpenCodeRuntimeAdapterRegistry(
       });
       const mcpEntry = mcpLaunchSpec.args[0];
       if (mcpEntry) {
-        for (const [key, value] of Object.entries(mcpLaunchSpec.env ?? {})) {
-          targetEnv[key] = value;
-        }
         targetEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND = mcpLaunchSpec.command;
         targetEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY = mcpEntry;
         targetEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON = JSON.stringify(mcpLaunchSpec.args);
+        targetEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENV_JSON = JSON.stringify(
+          mcpLaunchSpec.env ?? {}
+        );
       }
     } catch (error) {
       logger.warn(

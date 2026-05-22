@@ -45,8 +45,21 @@ function sha256Hex(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function buildLaunchSpecHash(launchSpec: { command: string; args: string[] }): string {
-  return sha256Hex(JSON.stringify({ command: launchSpec.command, args: launchSpec.args }));
+type TestLaunchSpec = {
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+};
+
+function buildLaunchSpecHash(launchSpec: TestLaunchSpec): string {
+  const env = launchSpec.env
+    ? Object.fromEntries(
+        Object.entries(launchSpec.env).sort(([left], [right]) => left.localeCompare(right))
+      )
+    : {};
+  return sha256Hex(
+    JSON.stringify({ command: launchSpec.command, args: launchSpec.args, env })
+  );
 }
 
 async function createTempStatePath(): Promise<{ root: string; statePath: string }> {
@@ -58,7 +71,7 @@ async function createTempStatePath(): Promise<{ root: string; statePath: string 
 
 function buildIdentity(input: {
   port: number;
-  launchSpec: { command: string; args: string[] };
+  launchSpec: TestLaunchSpec;
   ownerInstanceId?: string;
 }) {
   return {
@@ -77,7 +90,7 @@ function buildIdentity(input: {
 function buildState(input: {
   port: number;
   pid?: number | null;
-  launchSpec: { command: string; args: string[] };
+  launchSpec: TestLaunchSpec;
   ownerInstanceId?: string;
 }) {
   const identity = buildIdentity(input);
@@ -426,6 +439,45 @@ describe('AgentTeamsMcpHttpServer', () => {
 
       expect(handle.port).toBe(41022);
       expect(handle.diagnostics).toContain('opencode_app_mcp_state_ignored:parse_failed');
+      expect(spawnProcess).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      vi.mocked(console.warn).mockClear();
+    }
+  });
+
+  it('ignores persistent state when the MCP child env changed', async () => {
+    const { root, statePath } = await createTempStatePath();
+    const previousLaunchSpec = { command: 'node', args: ['mcp-server/dist/index.js'] };
+    const currentLaunchSpec = {
+      command: 'node',
+      args: ['mcp-server/dist/index.js'],
+      env: { ELECTRON_RUN_AS_NODE: '1' },
+    };
+    await writeFile(
+      statePath,
+      `${JSON.stringify(
+        buildState({ port: 41029, pid: 51235, launchSpec: previousLaunchSpec }),
+        null,
+        2
+      )}\n`
+    );
+    const child = new FakeChildProcess();
+    const spawnProcess = vi.fn(() => child as unknown as ChildProcess);
+    const server = new AgentTeamsMcpHttpServer({
+      statePath,
+      disableOrphanCleanup: true,
+      resolveLaunchSpec: async () => currentLaunchSpec,
+      allocatePort: async () => 41030,
+      spawnProcess,
+      waitForPort: vi.fn(async () => undefined),
+    });
+
+    try {
+      const handle = await server.ensureStarted();
+
+      expect(handle.port).toBe(41030);
+      expect(handle.diagnostics).toContain('opencode_app_mcp_state_ignored:identity_mismatch');
       expect(spawnProcess).toHaveBeenCalledTimes(1);
     } finally {
       await rm(root, { recursive: true, force: true });
