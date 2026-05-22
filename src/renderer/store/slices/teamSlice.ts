@@ -83,6 +83,11 @@ import {
   setPendingReplyRefreshEnabled,
 } from '../team/teamPendingReplyWaits';
 import {
+  isActiveProvisioningState,
+  isTerminalProvisioningState,
+  shouldIgnoreProvisioningProgressRegression,
+} from '../team/teamProvisioningStateRules';
+import {
   clearAllTeamRefreshBurstDiagnostics,
   clearTeamRefreshBurstDiagnostics,
   hasTeamRefreshBurstDiagnostics,
@@ -532,33 +537,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const ACTIVE_PROVISIONING_STATES = new Set([
-  'validating',
-  'spawning',
-  'configuring',
-  'assembling',
-  'finalizing',
-  'verifying',
-]);
-const TERMINAL_PROVISIONING_STATES = new Set(['ready', 'failed', 'disconnected', 'cancelled']);
-
-function shouldIgnoreProvisioningProgressRegression(
-  currentState: TeamProvisioningProgress['state'],
-  nextState: TeamProvisioningProgress['state']
-): boolean {
-  if (currentState === 'ready') {
-    return nextState !== 'ready' && nextState !== 'disconnected';
-  }
-  if (
-    currentState === 'failed' ||
-    currentState === 'cancelled' ||
-    currentState === 'disconnected'
-  ) {
-    return nextState !== currentState;
-  }
-  return false;
-}
-
 function isPendingProvisioningRunId(runId: string): boolean {
   return runId.startsWith('pending:');
 }
@@ -698,12 +676,12 @@ async function pollProvisioningStatus(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const state = getState();
     const current = state.provisioningRuns[runId];
-    if (current && TERMINAL_PROVISIONING_STATES.has(current.state)) {
+    if (current && isTerminalProvisioningState(current.state)) {
       return;
     }
     try {
       const progress = await state.getProvisioningStatus(runId);
-      if (TERMINAL_PROVISIONING_STATES.has(progress.state)) {
+      if (isTerminalProvisioningState(progress.state)) {
         return;
       }
     } catch (error) {
@@ -2345,7 +2323,7 @@ export function isTeamProvisioningActive(
   teamName: string
 ): boolean {
   const current = getCurrentProvisioningProgressForTeam(state, teamName);
-  return current != null && ACTIVE_PROVISIONING_STATES.has(current.state);
+  return current != null && isActiveProvisioningState(current.state);
 }
 
 function loadAllLaunchParams(): Record<string, TeamLaunchParams> {
@@ -5342,7 +5320,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       }
     }
 
-    if (isCanonicalRun && TERMINAL_PROVISIONING_STATES.has(progress.state)) {
+    if (isCanonicalRun && isTerminalProvisioningState(progress.state)) {
       set((prev) => {
         const next = { ...prev.memberSpawnStatusesByTeam };
         const nextSnapshots = { ...prev.memberSpawnSnapshotsByTeam };
