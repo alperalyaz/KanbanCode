@@ -12,17 +12,10 @@ import {
   type TaskChangeRequestOptions,
 } from '@renderer/utils/taskChangeRequest';
 import { IpcError, unwrapIpc } from '@renderer/utils/unwrapIpc';
-import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { DEFAULT_TEAM_GRAPH_LAYOUT_MODE } from '@shared/constants/teamGraphLayoutMode';
 import { DEFAULT_TOOL_APPROVAL_SETTINGS } from '@shared/types/team';
 import { createLogger } from '@shared/utils/logger';
-import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { buildTeamGraphDefaultLayoutSeed } from '@shared/utils/teamGraphDefaultLayout';
-import {
-  getTeamTaskWorkflowColumn,
-  isTeamTaskFinalForCompletionNotification,
-  isTeamTaskNeedsFixActionable,
-} from '@shared/utils/teamTaskState';
 
 import { areTeamAgentRuntimeSnapshotsEqual } from '../team/teamAgentRuntimeSnapshotEquality';
 import {
@@ -45,6 +38,11 @@ import {
   mapSendMessageError,
   shouldInvalidateCachedTeamDataForError,
 } from '../team/teamErrorPolicies';
+import {
+  consumeFirstGlobalTasksFetchFlag,
+  processGlobalTaskNotifications,
+  resetGlobalTaskNotificationTrackerForTests,
+} from '../team/teamGlobalTaskNotifications';
 import {
   areTeamGraphSlotAssignmentsEqual,
   DISABLE_PERSISTED_TEAM_GRAPH_SLOT_ASSIGNMENTS,
@@ -141,7 +139,6 @@ import type {
 } from '../team/teamMessagesCache';
 import type { AppState } from '../types';
 import type { GraphLayoutMode, GraphOwnerSlotAssignment } from '@claude-teams/agent-graph';
-import type { AppConfig } from '@renderer/types/data';
 import type { TeamMessagesPanelMode } from '@renderer/types/teamMessagesPanelMode';
 import type { OpenCodeRuntimeDeliveryDebugDetails } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 import type {
@@ -297,6 +294,7 @@ export function __resetTeamSliceModuleStateForTests(): void {
   clearAllMemberSpawnUiEqualLastWarns();
   clearResolvedMemberSelectorCaches();
   clearTeamMessageSelectorCaches();
+  resetGlobalTaskNotificationTrackerForTests();
 }
 
 function clearTeamScopedSelectorCaches(teamName: string): void {
@@ -710,433 +708,6 @@ async function pollProvisioningStatus(
     await sleep(delayMs);
     delayMs = Math.min(1500, Math.round(delayMs * 1.5));
   }
-}
-
-// --- Clarification notification tracking ---
-// Native OS notifications for new inbox messages are handled in main process
-// (main/index.ts → notifyNewInboxMessages). This renderer-side tracking only
-// handles clarification-specific logic (e.g., marking tasks as needing user input).
-const notifiedClarificationTaskKeys = new Set<string>();
-const notifiedStatusChangeKeys = new Set<string>();
-const notifiedCommentKeys = new Set<string>();
-const notifiedCreatedTaskKeys = new Set<string>();
-const notifiedAllCompletedTeams = new Set<string>();
-const notifiedBlockedTaskKeys = new Set<string>();
-
-let isFirstFetchAllTasks = true;
-
-function detectClarificationNotifications(
-  oldTasks: GlobalTask[],
-  newTasks: GlobalTask[],
-  notifyEnabled: boolean
-): void {
-  for (const task of newTasks) {
-    const key = `${task.teamName}:${task.id}`;
-    if (task.needsClarification === 'user') {
-      const oldTask = oldTasks.find((t) => t.teamName === task.teamName && t.id === task.id);
-      if (oldTask?.needsClarification !== 'user' && !notifiedClarificationTaskKeys.has(key)) {
-        notifiedClarificationTaskKeys.add(key);
-        // Always store in-app; suppress OS toast when per-type toggle is off
-        fireClarificationNotification(task, !notifyEnabled);
-      }
-    } else {
-      notifiedClarificationTaskKeys.delete(key);
-    }
-  }
-}
-
-function fireClarificationNotification(task: GlobalTask, suppressToast: boolean): void {
-  // Delegate to main process for native OS notification (cross-platform, no permission needed)
-  const latestComment = task.comments?.length ? task.comments[task.comments.length - 1] : undefined;
-  const rawBody =
-    latestComment?.text || task.description || `${formatTaskDisplayLabel(task)}: ${task.subject}`;
-  const body = stripAgentBlocks(rawBody).trim();
-
-  void api.teams
-    ?.showMessageNotification({
-      teamName: task.teamName,
-      teamDisplayName: task.teamDisplayName,
-      from: latestComment?.author || 'team-lead',
-      to: 'user',
-      summary: `Clarification needed — Task ${formatTaskDisplayLabel(task)}`,
-      body,
-      teamEventType: 'task_clarification',
-      dedupeKey: `clarification:${task.teamName}:${task.id}:${task.updatedAt ?? Date.now()}`,
-      target: {
-        kind: 'task',
-        teamName: task.teamName,
-        taskId: task.id,
-        commentId: latestComment?.id,
-        focus: 'comments',
-      },
-      suppressToast,
-    })
-    .catch(() => undefined);
-}
-
-function detectStatusChangeNotifications(
-  oldTasks: GlobalTask[],
-  newTasks: GlobalTask[],
-  config: AppConfig | null,
-  teamByName: Record<string, TeamSummary>
-): void {
-  const statusChangeEnabled =
-    !!config?.notifications?.notifyOnStatusChange && !!config.notifications.enabled;
-  const statuses = config?.notifications?.statusChangeStatuses ?? ['in_progress', 'completed'];
-  if (statuses.length === 0) return;
-
-  const onlySolo = config?.notifications?.statusChangeOnlySolo ?? true;
-
-  for (const task of newTasks) {
-    const oldTask = oldTasks.find((t) => t.teamName === task.teamName && t.id === task.id);
-    if (!oldTask) continue;
-
-    // Detect kanbanColumn change to 'approved' (status stays 'completed', column changes)
-    const taskKanbanColumn = getTeamTaskWorkflowColumn(task);
-    const oldTaskKanbanColumn = getTeamTaskWorkflowColumn(oldTask);
-    const becameApproved = taskKanbanColumn === 'approved' && oldTaskKanbanColumn !== 'approved';
-    const becameReview = taskKanbanColumn === 'review' && oldTaskKanbanColumn !== 'review';
-    const becameNeedsFix =
-      isTeamTaskNeedsFixActionable(task) && !isTeamTaskNeedsFixActionable(oldTask);
-
-    const statusChanged = oldTask.status !== task.status;
-    if (!statusChanged && !becameApproved && !becameReview && !becameNeedsFix) continue;
-
-    if (onlySolo) {
-      const team = teamByName[task.teamName];
-      if (team && team.memberCount > 0) continue;
-    }
-
-    // Resolve the effective status for notification matching
-    const effectiveStatus = becameApproved
-      ? 'approved'
-      : becameReview
-        ? 'review'
-        : becameNeedsFix
-          ? 'needsFix'
-          : task.status;
-    if (!statuses.includes(effectiveStatus)) continue;
-
-    const key = `${task.teamName}:${task.id}:${effectiveStatus}`;
-    if (notifiedStatusChangeKeys.has(key)) continue;
-    notifiedStatusChangeKeys.add(key);
-
-    const fromLabel = becameApproved ? 'Completed' : becameReview ? 'Completed' : oldTask.status;
-    fireStatusChangeNotification(
-      task,
-      fromLabel,
-      becameApproved
-        ? 'approved'
-        : becameReview
-          ? 'review'
-          : becameNeedsFix
-            ? 'needsFix'
-            : undefined,
-      !statusChangeEnabled
-    );
-  }
-}
-
-function fireStatusChangeNotification(
-  task: GlobalTask,
-  fromStatus: string,
-  overrideToStatus?: string,
-  suppressToast?: boolean
-): void {
-  const statusLabels: Record<string, string> = {
-    pending: 'Pending',
-    in_progress: 'In Progress',
-    completed: 'Completed',
-    deleted: 'Deleted',
-    review: 'Review',
-    needsFix: 'Needs Fixes',
-    approved: 'Approved',
-  };
-  const from = statusLabels[fromStatus] ?? fromStatus;
-  const toStatus = overrideToStatus ?? task.status;
-  const to = statusLabels[toStatus] ?? toStatus;
-
-  void api.teams
-    ?.showMessageNotification({
-      teamName: task.teamName,
-      teamDisplayName: task.teamDisplayName,
-      from: task.owner ?? 'system',
-      to: 'user',
-      summary: `Task ${formatTaskDisplayLabel(task)}: ${from} → ${to}`,
-      body: task.subject,
-      teamEventType: 'task_status_change',
-      dedupeKey: `status:${task.teamName}:${task.id}:${fromStatus}:${toStatus}:${task.updatedAt ?? Date.now()}`,
-      target: {
-        kind: 'task',
-        teamName: task.teamName,
-        taskId: task.id,
-        focus: 'status',
-      },
-      suppressToast,
-    })
-    .catch(() => undefined);
-}
-
-function detectTaskCommentNotifications(
-  oldTasks: GlobalTask[],
-  newTasks: GlobalTask[],
-  notifyEnabled: boolean
-): void {
-  const oldTaskMap = new Map(oldTasks.map((t) => [`${t.teamName}:${t.id}`, t]));
-
-  for (const task of newTasks) {
-    const mapKey = `${task.teamName}:${task.id}`;
-    const oldTask = oldTaskMap.get(mapKey);
-    const oldCommentCount = oldTask?.comments?.length ?? 0;
-    const newCommentCount = task.comments?.length ?? 0;
-
-    if (newCommentCount <= oldCommentCount) continue;
-
-    const newComments = (task.comments ?? []).slice(oldCommentCount);
-    for (const comment of newComments) {
-      // Don't notify about user's own comments
-      if (comment.author === 'user') continue;
-
-      const key = `${task.teamName}:${task.id}:${comment.id}`;
-      if (notifiedCommentKeys.has(key)) continue;
-      notifiedCommentKeys.add(key);
-
-      if (comment.type === 'review_request') {
-        fireTaskReviewRequestedNotification(task, comment, !notifyEnabled);
-        continue;
-      }
-      if (comment.type === 'review_approved') continue;
-
-      fireTaskCommentNotification(task, comment, !notifyEnabled);
-    }
-  }
-}
-
-function fireTaskCommentNotification(
-  task: GlobalTask,
-  comment: Pick<TaskComment, 'author' | 'text' | 'id'>,
-  suppressToast: boolean
-): void {
-  // Double-check: never notify about user's own comments
-  if (comment.author === 'user') return;
-
-  const stripped = stripAgentBlocks(comment.text).trim();
-  const preview = stripped.length > 100 ? stripped.slice(0, 100) + '...' : stripped;
-
-  void api.teams
-    ?.showMessageNotification({
-      teamName: task.teamName,
-      teamDisplayName: task.teamDisplayName,
-      from: comment.author,
-      to: 'user',
-      summary: `Comment on ${formatTaskDisplayLabel(task)}: ${task.subject}`,
-      body: preview,
-      teamEventType: 'task_comment',
-      dedupeKey: `comment:${task.teamName}:${task.id}:${comment.id}`,
-      target: {
-        kind: 'task',
-        teamName: task.teamName,
-        taskId: task.id,
-        commentId: comment.id,
-        focus: 'comments',
-      },
-      suppressToast,
-    })
-    .catch(() => undefined);
-}
-
-function fireTaskReviewRequestedNotification(
-  task: GlobalTask,
-  comment: Pick<TaskComment, 'author' | 'text' | 'id'>,
-  suppressToast: boolean
-): void {
-  const stripped = stripAgentBlocks(comment.text).trim();
-  const preview = stripped.length > 100 ? stripped.slice(0, 100) + '...' : stripped;
-
-  void api.teams
-    ?.showMessageNotification({
-      teamName: task.teamName,
-      teamDisplayName: task.teamDisplayName,
-      from: comment.author,
-      to: 'user',
-      summary: `Review requested ${formatTaskDisplayLabel(task)}: ${task.subject}`,
-      body: preview || task.subject,
-      teamEventType: 'task_review_requested',
-      dedupeKey: `review-request:${task.teamName}:${task.id}:${comment.id}`,
-      target: {
-        kind: 'task',
-        teamName: task.teamName,
-        taskId: task.id,
-        commentId: comment.id,
-        focus: 'review',
-      },
-      suppressToast,
-    })
-    .catch(() => undefined);
-}
-
-function detectBlockedTaskNotifications(
-  oldTasks: GlobalTask[],
-  newTasks: GlobalTask[],
-  notifyEnabled: boolean
-): void {
-  const oldTaskMap = new Map(oldTasks.map((task) => [`${task.teamName}:${task.id}`, task]));
-
-  for (const task of newTasks) {
-    const oldTask = oldTaskMap.get(`${task.teamName}:${task.id}`);
-    const oldBlockedBy = new Set(oldTask?.blockedBy?.filter(Boolean) ?? []);
-    const newBlockedBy = Array.from(new Set(task.blockedBy?.filter(Boolean) ?? []));
-    const taskKeyPrefix = `${task.teamName}:${task.id}:`;
-    const key = `${taskKeyPrefix}${[...newBlockedBy].sort().join(',')}`;
-    const addedBlockedBy = newBlockedBy.filter((id) => !oldBlockedBy.has(id));
-
-    for (const existingKey of Array.from(notifiedBlockedTaskKeys)) {
-      if (existingKey.startsWith(taskKeyPrefix) && existingKey !== key) {
-        notifiedBlockedTaskKeys.delete(existingKey);
-      }
-    }
-
-    if (newBlockedBy.length > 0 && addedBlockedBy.length > 0) {
-      if (notifiedBlockedTaskKeys.has(key)) continue;
-      notifiedBlockedTaskKeys.add(key);
-      fireTaskBlockedNotification(task, newBlockedBy, !notifyEnabled);
-    } else if (newBlockedBy.length === 0) {
-      for (const existingKey of Array.from(notifiedBlockedTaskKeys)) {
-        if (existingKey.startsWith(taskKeyPrefix)) {
-          notifiedBlockedTaskKeys.delete(existingKey);
-        }
-      }
-    }
-  }
-}
-
-function fireTaskBlockedNotification(
-  task: GlobalTask,
-  blockedBy: readonly string[],
-  suppressToast: boolean
-): void {
-  const blockerRefs = blockedBy.map((id) => formatTaskDisplayLabel({ id })).join(', ');
-
-  void api.teams
-    ?.showMessageNotification({
-      teamName: task.teamName,
-      teamDisplayName: task.teamDisplayName,
-      from: task.owner ?? 'system',
-      to: 'user',
-      summary: `Blocked ${formatTaskDisplayLabel(task)}: ${task.subject}`,
-      body: blockerRefs ? `Blocked by ${blockerRefs}` : task.subject,
-      teamEventType: 'task_blocked',
-      dedupeKey: `blocked:${task.teamName}:${task.id}:${blockedBy.join(',')}`,
-      target: {
-        kind: 'task',
-        teamName: task.teamName,
-        taskId: task.id,
-        focus: 'detail',
-      },
-      suppressToast,
-    })
-    .catch(() => undefined);
-}
-
-function detectTaskCreatedNotifications(
-  oldTasks: GlobalTask[],
-  newTasks: GlobalTask[],
-  notifyEnabled: boolean
-): void {
-  const oldTaskKeys = new Set(oldTasks.map((t) => `${t.teamName}:${t.id}`));
-
-  for (const task of newTasks) {
-    const key = `${task.teamName}:${task.id}`;
-    if (oldTaskKeys.has(key)) continue;
-    if (notifiedCreatedTaskKeys.has(key)) continue;
-    notifiedCreatedTaskKeys.add(key);
-
-    fireTaskCreatedNotification(task, !notifyEnabled);
-  }
-}
-
-function fireTaskCreatedNotification(task: GlobalTask, suppressToast: boolean): void {
-  void api.teams
-    ?.showMessageNotification({
-      teamName: task.teamName,
-      teamDisplayName: task.teamDisplayName,
-      from: task.owner ?? 'system',
-      to: 'user',
-      summary: `New task ${formatTaskDisplayLabel(task)}: ${task.subject}`,
-      body: stripAgentBlocks(task.description || task.subject).trim(),
-      teamEventType: 'task_created',
-      dedupeKey: `created:${task.teamName}:${task.id}`,
-      target: {
-        kind: 'task',
-        teamName: task.teamName,
-        taskId: task.id,
-        focus: 'detail',
-      },
-      suppressToast,
-    })
-    .catch(() => undefined);
-}
-
-function detectAllTasksCompletedNotification(
-  oldTasks: GlobalTask[],
-  newTasks: GlobalTask[],
-  notifyEnabled: boolean
-): void {
-  // Group tasks by team
-  const teamTasks = new Map<string, GlobalTask[]>();
-  for (const task of newTasks) {
-    const list = teamTasks.get(task.teamName) ?? [];
-    list.push(task);
-    teamTasks.set(task.teamName, list);
-  }
-
-  for (const [teamName, tasks] of teamTasks) {
-    if (tasks.length === 0) continue;
-    const allCompleted = tasks.every(isTeamTaskFinalForCompletionNotification);
-    if (!allCompleted) {
-      // Reset so we can notify again if tasks become all-completed later
-      notifiedAllCompletedTeams.delete(teamName);
-      continue;
-    }
-    if (notifiedAllCompletedTeams.has(teamName)) continue;
-
-    // Check that at least one task was NOT completed before (real transition)
-    const oldTeamTasks = oldTasks.filter((t) => t.teamName === teamName);
-    const wasAlreadyAllCompleted =
-      oldTeamTasks.length > 0 && oldTeamTasks.every(isTeamTaskFinalForCompletionNotification);
-    if (wasAlreadyAllCompleted) {
-      notifiedAllCompletedTeams.add(teamName);
-      continue;
-    }
-
-    notifiedAllCompletedTeams.add(teamName);
-    fireAllTasksCompletedNotification(tasks[0], tasks.length, !notifyEnabled);
-  }
-}
-
-function fireAllTasksCompletedNotification(
-  sampleTask: GlobalTask,
-  taskCount: number,
-  suppressToast: boolean
-): void {
-  void api.teams
-    ?.showMessageNotification({
-      teamName: sampleTask.teamName,
-      teamDisplayName: sampleTask.teamDisplayName,
-      from: 'system',
-      to: 'user',
-      summary: `All ${taskCount} tasks completed`,
-      body: `All tasks in team "${sampleTask.teamDisplayName}" are done`,
-      teamEventType: 'all_tasks_completed',
-      dedupeKey: `all-done:${sampleTask.teamName}:${Date.now()}`,
-      target: {
-        kind: 'team',
-        teamName: sampleTask.teamName,
-        section: 'tasks',
-      },
-      suppressToast,
-    })
-    .catch(() => undefined);
 }
 
 function collectTaskChangeInvalidationState(
@@ -1912,69 +1483,21 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           set({ globalTasksLoading: true, globalTasksError: null });
         }
         const oldTasks = get().globalTasks;
-        const wasFirst = isFirstFetchAllTasks;
-        isFirstFetchAllTasks = false;
+        const wasFirst = consumeFirstGlobalTasksFetchFlag();
         try {
           const tasks = await withTimeout(
             unwrapIpc('team:getAllTasks', () => api.teams.getAllTasks()),
             TEAM_FETCH_TIMEOUT_MS,
             'fetchAllTasks'
           );
-          if (!wasFirst) {
-            const notifyOnClarifications =
-              get().appConfig?.notifications?.notifyOnClarifications ?? true;
-            detectClarificationNotifications(oldTasks, tasks, notifyOnClarifications);
-            detectBlockedTaskNotifications(oldTasks, tasks, notifyOnClarifications);
-            detectStatusChangeNotifications(oldTasks, tasks, get().appConfig, get().teamByName);
-            const notifyOnTaskComments =
-              get().appConfig?.notifications?.notifyOnTaskComments ?? true;
-            detectTaskCommentNotifications(oldTasks, tasks, notifyOnTaskComments);
-            const notifyOnTaskCreated = get().appConfig?.notifications?.notifyOnTaskCreated ?? true;
-            detectTaskCreatedNotifications(oldTasks, tasks, notifyOnTaskCreated);
-            const notifyOnAllCompleted =
-              get().appConfig?.notifications?.notifyOnAllTasksCompleted ?? true;
-            detectAllTasksCompletedNotification(oldTasks, tasks, notifyOnAllCompleted);
-          } else {
-            // Initial load — seed the Sets to prevent false notifications on next update
-            for (const task of tasks) {
-              if (task.needsClarification === 'user') {
-                notifiedClarificationTaskKeys.add(`${task.teamName}:${task.id}`);
-              }
-              if ((task.blockedBy?.length ?? 0) > 0) {
-                notifiedBlockedTaskKeys.add(
-                  `${task.teamName}:${task.id}:${(task.blockedBy ?? []).join(',')}`
-                );
-              }
-              notifiedStatusChangeKeys.add(`${task.teamName}:${task.id}:${task.status}`);
-              if (isTeamTaskNeedsFixActionable(task)) {
-                notifiedStatusChangeKeys.add(`${task.teamName}:${task.id}:needsFix`);
-              }
-              if (getTeamTaskWorkflowColumn(task) === 'approved') {
-                notifiedStatusChangeKeys.add(`${task.teamName}:${task.id}:approved`);
-              }
-              if (getTeamTaskWorkflowColumn(task) === 'review') {
-                notifiedStatusChangeKeys.add(`${task.teamName}:${task.id}:review`);
-              }
-              // Seed comment keys to prevent false notifications
-              for (const comment of task.comments ?? []) {
-                notifiedCommentKeys.add(`${task.teamName}:${task.id}:${comment.id}`);
-              }
-              // Seed created task keys to prevent false notifications
-              notifiedCreatedTaskKeys.add(`${task.teamName}:${task.id}`);
-            }
-            // Seed all-completed teams
-            const teamTasksMap = new Map<string, GlobalTask[]>();
-            for (const task of tasks) {
-              const list = teamTasksMap.get(task.teamName) ?? [];
-              list.push(task);
-              teamTasksMap.set(task.teamName, list);
-            }
-            for (const [teamName, teamTasks] of teamTasksMap) {
-              if (teamTasks.every(isTeamTaskFinalForCompletionNotification)) {
-                notifiedAllCompletedTeams.add(teamName);
-              }
-            }
-          }
+          const notificationState = get();
+          processGlobalTaskNotifications({
+            oldTasks,
+            newTasks: tasks,
+            appConfig: notificationState.appConfig,
+            teamByName: notificationState.teamByName,
+            isInitialFetch: wasFirst,
+          });
 
           set({
             globalTasks: tasks,
