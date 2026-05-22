@@ -252,6 +252,9 @@ onUnmounted(() => {
 
       <CyberHeroFeatureStrip
         class="cyber-hero__feature-strip"
+        :active-message="activeHeroMessage"
+        :phase="heroMessagePhase"
+        :reduced-motion="heroReducedMotion"
       />
     </v-container>
   </section>

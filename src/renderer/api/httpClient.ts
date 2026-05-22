@@ -98,6 +98,7 @@ import type {
   UpdaterAPI,
   UpdateSchedulePatch,
   WaterfallData,
+  WindowsElevationStatus,
   WslClaudeRootCandidate,
 } from '@shared/types';
 import type { AgentConfig, MemberWorkSyncElectronApi } from '@shared/types/api';
@@ -243,6 +244,14 @@ export class HttpAPIClient implements ElectronAPI {
   // ---------------------------------------------------------------------------
 
   getAppVersion = (): Promise<string> => this.get<string>('/api/version');
+
+  getWindowsElevationStatus = async (): Promise<WindowsElevationStatus> => ({
+    platform: 'browser',
+    isWindows: false,
+    isAdministrator: null,
+    checkFailed: false,
+    error: null,
+  });
 
   getCodexAccountSnapshot = (): Promise<CodexAccountSnapshotDto> =>
     Promise.reject(new Error('Codex account bridge is unavailable in browser mode'));

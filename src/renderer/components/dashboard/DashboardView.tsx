@@ -16,6 +16,7 @@ import { CliStatusBanner } from './CliStatusBanner';
 import { DashboardUpdateBanner } from './DashboardUpdateBanner';
 import { TmuxStatusBanner } from './TmuxStatusBanner';
 import { WebPreviewBanner } from './WebPreviewBanner';
+import { WindowsAdministratorBanner } from './WindowsAdministratorBanner';
 
 interface CommandSearchProps {
   value: string;
@@ -114,6 +115,7 @@ export const DashboardView = (): React.JSX.Element => {
 
       <div className="relative mx-auto max-w-5xl px-8 py-12">
         <WebPreviewBanner />
+        <WindowsAdministratorBanner />
         <DashboardUpdateBanner />
         <CliStatusBanner />
         <TmuxStatusBanner />

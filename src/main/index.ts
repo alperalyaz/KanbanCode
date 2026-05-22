@@ -88,7 +88,9 @@ import {
 } from '@main/services/team/TeamMcpConfigBuilder';
 import { TeamTranscriptProjectResolver } from '@main/services/team/TeamTranscriptProjectResolver';
 import { killTrackedCliProcesses } from '@main/utils/childProcess';
+import { getWindowsElevationStatus } from '@main/utils/windowsElevation';
 import {
+  APP_GET_WINDOWS_ELEVATION_STATUS,
   APP_STARTUP_GET_STATUS,
   APP_STARTUP_PROGRESS,
   CONTEXT_CHANGED,
@@ -975,6 +977,7 @@ function registerAppStartupHandlers(): void {
   appStartupHandlersRegistered = true;
   registerRendererLogHandlers(ipcMain);
   ipcMain.handle(APP_STARTUP_GET_STATUS, () => appStartupStatus);
+  ipcMain.handle(APP_GET_WINDOWS_ELEVATION_STATUS, () => getWindowsElevationStatus());
 }
 
 function cloneStartupSteps(): AppStartupStep[] {

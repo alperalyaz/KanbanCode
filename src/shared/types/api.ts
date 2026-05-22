@@ -806,6 +806,14 @@ export interface TelemetryAPI {
   getSentryContext: () => Promise<SentryTelemetryContext | null>;
 }
 
+export interface WindowsElevationStatus {
+  platform: string;
+  isWindows: boolean;
+  isAdministrator: boolean | null;
+  checkFailed: boolean;
+  error: string | null;
+}
+
 // =============================================================================
 // Main Electron API
 // =============================================================================
@@ -817,6 +825,7 @@ export interface ElectronAPI extends RecentProjectsElectronApi, CodexAccountElec
   startup?: AppStartupAPI;
   telemetry: TelemetryAPI;
   getAppVersion: () => Promise<string>;
+  getWindowsElevationStatus: () => Promise<WindowsElevationStatus>;
   getProjects: () => Promise<Project[]>;
   getSessions: (projectId: string) => Promise<Session[]>;
   getSessionsPaginated: (
