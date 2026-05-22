@@ -11,7 +11,6 @@ import {
   canDisplayTaskChangesForOptions,
   type TaskChangeRequestOptions,
 } from '@renderer/utils/taskChangeRequest';
-import { extractProviderScopedBaseModel } from '@renderer/utils/teamModelContext';
 import { IpcError, unwrapIpc } from '@renderer/utils/unwrapIpc';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { getMemberColorByName } from '@shared/constants/memberColors';
@@ -19,7 +18,6 @@ import { DEFAULT_TEAM_GRAPH_LAYOUT_MODE } from '@shared/constants/teamGraphLayou
 import { DEFAULT_TOOL_APPROVAL_SETTINGS } from '@shared/types/team';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
-import { migrateProviderBackendId } from '@shared/utils/providerBackend';
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { buildTeamGraphDefaultLayoutSeed } from '@shared/utils/teamGraphDefaultLayout';
 import { getStableTeamOwnerId } from '@shared/utils/teamStableOwnerId';
@@ -50,6 +48,11 @@ import {
   mapSendMessageError,
   shouldInvalidateCachedTeamDataForError,
 } from '../team/teamErrorPolicies';
+import {
+  areTeamLaunchParamsEqual,
+  buildLaunchParamsFromRuntimeRequest,
+  type TeamLaunchParams,
+} from '../team/teamLaunchParams';
 import {
   captureTeamLocalStateEpoch,
   clearAllTeamLocalStateEpochs,
@@ -126,7 +129,6 @@ import type {
   AddTaskCommentRequest,
   CreateTaskRequest,
   CrossTeamSendRequest,
-  EffortLevel,
   GlobalTask,
   InboxMessage,
   KanbanColumnId,
@@ -148,7 +150,6 @@ import type {
   TeamLaunchRequest,
   TeamMemberActivityMeta,
   TeamMemberSnapshot,
-  TeamProviderId,
   TeamProvisioningProgress,
   TeamSummary,
   TeamTask,
@@ -167,6 +168,7 @@ export {
   selectTeamMemberSnapshotsForName,
   selectTeamTasksForName,
 } from '../team/teamDataSelectors';
+export type { TeamLaunchParams } from '../team/teamLaunchParams';
 export type {
   RefreshTeamMessagesHeadResult,
   TeamMessagesCacheEntry,
@@ -1226,16 +1228,6 @@ export interface PendingTeamSectionFocusState {
   section: TeamSectionTarget;
 }
 
-/** Per-team launch parameters shown in the header badge. */
-export interface TeamLaunchParams {
-  providerId?: TeamProviderId;
-  providerBackendId?: string;
-  model?: string; // 'opus' | 'sonnet' | 'haiku'
-  effort?: EffortLevel;
-  fastMode?: 'inherit' | 'on' | 'off';
-  limitContext?: boolean;
-}
-
 const resolvedMembersSelectorCache = new Map<
   string,
   {
@@ -2276,77 +2268,6 @@ function saveLaunchParams(teamName: string, params: TeamLaunchParams): void {
   } catch {
     // ignore — best-effort persist
   }
-}
-
-/**
- * Extract the base model name from the raw model string sent to CLI.
- * E.g. 'opus[1m]' → 'opus', 'sonnet' → 'sonnet', undefined → undefined.
- */
-function extractBaseModel(raw?: string, providerId?: TeamProviderId): string | undefined {
-  return extractProviderScopedBaseModel(raw, providerId);
-}
-
-function buildLaunchParamsFromRuntimeRequest(
-  request: Pick<
-    TeamCreateRequest,
-    'providerId' | 'providerBackendId' | 'model' | 'effort' | 'fastMode' | 'limitContext'
-  >,
-  fallback?: TeamLaunchParams
-): TeamLaunchParams {
-  const providerId = request.providerId ?? fallback?.providerId ?? 'anthropic';
-  const providerChanged =
-    request.providerId != null &&
-    fallback?.providerId != null &&
-    request.providerId !== fallback.providerId;
-  const hasModel = Object.hasOwn(request, 'model');
-  const baseModel =
-    hasModel && typeof request.model === 'string'
-      ? extractBaseModel(request.model, providerId)
-      : undefined;
-  const rawProviderBackendId = Object.hasOwn(request, 'providerBackendId')
-    ? request.providerBackendId
-    : providerChanged
-      ? undefined
-      : fallback?.providerBackendId;
-  return {
-    providerId,
-    providerBackendId: migrateProviderBackendId(providerId, rawProviderBackendId),
-    model: hasModel
-      ? baseModel || 'default'
-      : (providerChanged ? undefined : fallback?.model) || 'default',
-    effort: Object.hasOwn(request, 'effort')
-      ? request.effort
-      : providerChanged
-        ? undefined
-        : fallback?.effort,
-    fastMode: Object.hasOwn(request, 'fastMode')
-      ? request.fastMode
-      : providerChanged
-        ? undefined
-        : fallback?.fastMode,
-    limitContext:
-      typeof request.limitContext === 'boolean'
-        ? request.limitContext
-        : providerChanged
-          ? false
-          : (fallback?.limitContext ?? false),
-  };
-}
-
-function areTeamLaunchParamsEqual(
-  left: TeamLaunchParams | undefined,
-  right: TeamLaunchParams | undefined
-): boolean {
-  if (left === right) return true;
-  if (!left || !right) return false;
-  return (
-    left.providerId === right.providerId &&
-    left.providerBackendId === right.providerBackendId &&
-    left.model === right.model &&
-    left.effort === right.effort &&
-    left.fastMode === right.fastMode &&
-    left.limitContext === right.limitContext
-  );
 }
 
 const TOOL_APPROVAL_PREFIX = 'team:toolApprovalSettings:';
