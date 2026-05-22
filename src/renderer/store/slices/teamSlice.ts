@@ -30,6 +30,12 @@ import {
 } from '@shared/utils/teamTaskState';
 
 import {
+  clearAllLastResolvedTeamDataRefreshes,
+  clearLastResolvedTeamDataRefreshAt,
+  hasLastResolvedTeamDataRefreshAt,
+  recordLastResolvedTeamDataRefresh,
+} from '../team/teamDataRefreshTimestamps';
+import {
   getFullTeamDataRequestKey,
   getTeamDataRequestKey,
   getTeamDataRequestLabel,
@@ -116,6 +122,7 @@ import type {
 } from '@shared/types';
 import type { StateCreator } from 'zustand';
 
+export { getLastResolvedTeamDataRefreshAt } from '../team/teamDataRefreshTimestamps';
 export {
   selectTeamDataForName,
   selectTeamIsAliveForName,
@@ -164,7 +171,6 @@ const pendingFreshTeamMessagesHeadRefreshes = new Set<string>();
 const inFlightTeamMemberActivityMetaRequests = new Map<string, Promise<void>>();
 const pendingFreshTeamMemberActivityMetaRefreshes = new Set<string>();
 const pendingTeamPendingReplyRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const lastResolvedTeamDataRefreshAtByTeam = new Map<string, number>();
 let inFlightGlobalTasksRefresh: Promise<void> | null = null;
 let pendingFreshGlobalTasksRefresh = false;
 const memberSpawnStatusesIpcBackoffUntilByTeam = new Map<string, number>();
@@ -213,10 +219,6 @@ export function isTeamDataRefreshPending(teamName: string): boolean {
   );
 }
 
-export function getLastResolvedTeamDataRefreshAt(teamName: string): number | undefined {
-  return lastResolvedTeamDataRefreshAtByTeam.get(teamName);
-}
-
 export function __resetTeamSliceModuleStateForTests(): void {
   inFlightTeamDataRequests.clear();
   inFlightRefreshTeamDataCalls.clear();
@@ -237,7 +239,7 @@ export function __resetTeamSliceModuleStateForTests(): void {
   }
   pendingTeamPendingReplyRefreshTimers.clear();
   clearAllPendingReplyRefreshWaits();
-  lastResolvedTeamDataRefreshAtByTeam.clear();
+  clearAllLastResolvedTeamDataRefreshes();
   clearAllTeamLocalStateEpochs();
   memberSpawnStatusesIpcBackoffUntilByTeam.clear();
   teamRefreshBurstDiagnostics.clear();
@@ -271,7 +273,7 @@ function clearTeamScopedTransientState(teamName: string): void {
   pendingFreshTeamMessagesHeadRefreshes.delete(teamName);
   inFlightTeamMemberActivityMetaRequests.delete(teamName);
   pendingFreshTeamMemberActivityMetaRefreshes.delete(teamName);
-  lastResolvedTeamDataRefreshAtByTeam.delete(teamName);
+  clearLastResolvedTeamDataRefreshAt(teamName);
   memberSpawnStatusesIpcBackoffUntilByTeam.delete(teamName);
   teamRefreshBurstDiagnostics.delete(teamName);
   memberSpawnUiEqualLastWarnAtByTeam.delete(teamName);
@@ -656,7 +658,7 @@ export function __getTeamScopedTransientStateForTests(teamName: string): {
     hasPendingFreshMessagesHeadRefresh: pendingFreshTeamMessagesHeadRefreshes.has(teamName),
     hasPendingFreshMemberActivityMetaRefresh:
       pendingFreshTeamMemberActivityMetaRefreshes.has(teamName),
-    hasLastResolvedTeamDataRefresh: lastResolvedTeamDataRefreshAtByTeam.has(teamName),
+    hasLastResolvedTeamDataRefresh: hasLastResolvedTeamDataRefreshAt(teamName),
     hasCurrentLocalStateEpoch: hasTeamLocalStateEpoch(teamName),
     hasMemberSpawnStatusesIpcBackoff: memberSpawnStatusesIpcBackoffUntilByTeam.has(teamName),
     hasTeamRefreshBurstDiagnostics: teamRefreshBurstDiagnostics.has(teamName),
@@ -4014,7 +4016,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           selectedTeamError: null,
         };
       });
-      lastResolvedTeamDataRefreshAtByTeam.set(teamName, Date.now());
+      recordLastResolvedTeamDataRefresh(teamName);
 
       try {
         const invalidationState = previousData
@@ -4238,7 +4240,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           ...selectedState,
         };
       });
-      lastResolvedTeamDataRefreshAtByTeam.set(teamName, Date.now());
+      recordLastResolvedTeamDataRefresh(teamName);
       const invalidationState = previousData
         ? collectTaskChangeInvalidationState(teamName, previousData.tasks, data.tasks)
         : { cacheKeys: [], taskIds: [] };
