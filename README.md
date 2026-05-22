@@ -70,7 +70,9 @@ No prerequisites - the app can detect supported runtimes/providers and guide set
     <img src="https://img.shields.io/badge/Windows-Download_.exe-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
   </a>
   <br />
-  <sub>May trigger SmartScreen — click "More info" → "Run anyway"</sub>
+  <sub>May trigger SmartScreen - click "More info" -> "Run anyway"</sub>
+  <br />
+  <sub><strong>Windows required:</strong> launch Agent Teams AI as Administrator, especially when using OpenCode runtimes.</sub>
 </td>
 <td align="center">
   <a href="https://github.com/777genius/agent-teams-ai/releases/latest/download/Agent.Teams.AI.AppImage">
