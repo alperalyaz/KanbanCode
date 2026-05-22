@@ -39,6 +39,13 @@ import {
 } from '../team/teamDataRequestKeys';
 import { selectTeamDataForName } from '../team/teamDataSelectors';
 import {
+  captureTeamLocalStateEpoch,
+  clearAllTeamLocalStateEpochs,
+  hasTeamLocalStateEpoch,
+  invalidateTeamLocalStateEpoch,
+  isTeamLocalStateEpochCurrent,
+} from '../team/teamLocalStateEpoch';
+import {
   areInboxMessageArraysEquivalent,
   clearTeamMessageSelectorCaches,
   clearTeamMessageSelectorCachesForTeam,
@@ -158,7 +165,6 @@ const inFlightTeamMemberActivityMetaRequests = new Map<string, Promise<void>>();
 const pendingFreshTeamMemberActivityMetaRefreshes = new Set<string>();
 const pendingTeamPendingReplyRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const lastResolvedTeamDataRefreshAtByTeam = new Map<string, number>();
-const teamLocalStateEpochByTeam = new Map<string, number>();
 let inFlightGlobalTasksRefresh: Promise<void> | null = null;
 let pendingFreshGlobalTasksRefresh = false;
 const memberSpawnStatusesIpcBackoffUntilByTeam = new Map<string, number>();
@@ -232,7 +238,7 @@ export function __resetTeamSliceModuleStateForTests(): void {
   pendingTeamPendingReplyRefreshTimers.clear();
   clearAllPendingReplyRefreshWaits();
   lastResolvedTeamDataRefreshAtByTeam.clear();
-  teamLocalStateEpochByTeam.clear();
+  clearAllTeamLocalStateEpochs();
   memberSpawnStatusesIpcBackoffUntilByTeam.clear();
   teamRefreshBurstDiagnostics.clear();
   memberSpawnUiEqualLastWarnAtByTeam.clear();
@@ -430,18 +436,6 @@ function buildTeamScopedProgressTombstones(
       [teamName]: floor,
     },
   };
-}
-
-function captureTeamLocalStateEpoch(teamName: string): number {
-  return teamLocalStateEpochByTeam.get(teamName) ?? 0;
-}
-
-function isTeamLocalStateEpochCurrent(teamName: string, epoch: number): boolean {
-  return captureTeamLocalStateEpoch(teamName) === epoch;
-}
-
-function invalidateTeamLocalStateEpoch(teamName: string): void {
-  teamLocalStateEpochByTeam.set(teamName, captureTeamLocalStateEpoch(teamName) + 1);
 }
 
 function beginInFlightTeamDataRefresh(teamName: string): symbol {
@@ -663,7 +657,7 @@ export function __getTeamScopedTransientStateForTests(teamName: string): {
     hasPendingFreshMemberActivityMetaRefresh:
       pendingFreshTeamMemberActivityMetaRefreshes.has(teamName),
     hasLastResolvedTeamDataRefresh: lastResolvedTeamDataRefreshAtByTeam.has(teamName),
-    hasCurrentLocalStateEpoch: teamLocalStateEpochByTeam.has(teamName),
+    hasCurrentLocalStateEpoch: hasTeamLocalStateEpoch(teamName),
     hasMemberSpawnStatusesIpcBackoff: memberSpawnStatusesIpcBackoffUntilByTeam.has(teamName),
     hasTeamRefreshBurstDiagnostics: teamRefreshBurstDiagnostics.has(teamName),
     hasMemberSpawnUiEqualLastWarn: memberSpawnUiEqualLastWarnAtByTeam.has(teamName),
