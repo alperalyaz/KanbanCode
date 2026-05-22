@@ -255,7 +255,9 @@ export class OpenCodeTeamRuntimeAdapter implements TeamLaunchRuntimeAdapter {
       );
     }
 
-    const skipReadinessPreflight = input.skipReadinessPreflight === true;
+    // App-managed OpenCode launch requires a fresh capability snapshot from
+    // readiness before any state-changing bridge command can run.
+    const skipReadinessPreflight = false;
     let selectedModel = input.model?.trim() ?? '';
     let launchWarnings: string[] = [];
     if (!skipReadinessPreflight) {

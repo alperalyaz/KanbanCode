@@ -87,7 +87,7 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     });
   });
 
-  it('can rely on the launch bridge as the only readiness authority', async () => {
+  it('still runs readiness when a legacy caller asks to skip OpenCode preflight', async () => {
     const launchOpenCodeTeam = vi.fn<
       NonNullable<OpenCodeTeamRuntimeBridgePort['launchOpenCodeTeam']>
     >(
@@ -126,23 +126,26 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     );
     const bridge = bridgePort(
       readiness({
-        state: 'unknown_error',
-        launchAllowed: false,
-        diagnostics: ['readiness should be skipped'],
+        state: 'ready',
+        launchAllowed: true,
+        diagnostics: ['readiness was required'],
       }),
-      { launchOpenCodeTeam }
+      {
+        getLastOpenCodeRuntimeSnapshot: vi.fn(() => runtimeSnapshot('cap-1')),
+        launchOpenCodeTeam,
+      }
     );
     const adapter = new OpenCodeTeamRuntimeAdapter(bridge);
 
     const result = await adapter.launch(launchInput({ skipReadinessPreflight: true }));
 
     expect(result.teamLaunchState).toBe('clean_success');
-    expect(bridge.checkOpenCodeTeamLaunchReadiness).not.toHaveBeenCalled();
+    expect(bridge.checkOpenCodeTeamLaunchReadiness).toHaveBeenCalledTimes(1);
     expect(launchOpenCodeTeam).toHaveBeenCalledWith(
       expect.objectContaining({
         selectedModel: 'openai/gpt-5.4-mini',
         skipPermissions: true,
-        expectedCapabilitySnapshotId: null,
+        expectedCapabilitySnapshotId: 'cap-1',
       })
     );
     expect(result.diagnostics).toEqual(

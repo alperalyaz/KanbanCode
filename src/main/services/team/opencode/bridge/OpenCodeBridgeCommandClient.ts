@@ -1,6 +1,6 @@
 import { applyOpenCodeAutoUpdatePolicy } from '@main/services/runtime/openCodeAutoUpdatePolicy';
 import { execCli } from '@main/utils/childProcess';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 
@@ -68,6 +68,7 @@ const DEFAULT_STDERR_LIMIT_BYTES = 256_000;
 const WINDOWS_BATCH_EXTENSIONS = new Set(['.cmd', '.bat']);
 const EMPTY_STDOUT_READINESS_MAX_ATTEMPTS = 2;
 const EMPTY_STDOUT_READINESS_RETRY_DELAY_MS = 250;
+const SAFE_BRIDGE_INPUT_FILE_REQUEST_ID = /^[A-Za-z0-9._-]{1,120}$/;
 
 export function resolveOpenCodeBridgeProcessCwd(
   binaryPath: string,
@@ -278,26 +279,44 @@ export class OpenCodeBridgeCommandClient {
     outputPath: string
   ): Promise<OpenCodeBridgeOutputReadResult> {
     const stdoutBytes = byteLength(stdout);
-    if (stdout.trim().length > 0) {
-      return {
-        content: stdout,
-        outputSource: 'stdout',
-        stdoutBytes,
-        outputFileBytes: null,
-        outputReadError: null,
-      };
-    }
     try {
       const output = await fs.readFile(outputPath, 'utf8');
       const outputFileBytes = byteLength(output);
+      if (output.trim().length > 0) {
+        return {
+          content: output,
+          outputSource: 'file',
+          stdoutBytes,
+          outputFileBytes,
+          outputReadError: null,
+        };
+      }
+      if (stdout.trim().length > 0) {
+        return {
+          content: stdout,
+          outputSource: 'stdout',
+          stdoutBytes,
+          outputFileBytes,
+          outputReadError: null,
+        };
+      }
       return {
         content: output,
-        outputSource: output.trim().length > 0 ? 'file' : 'none',
+        outputSource: 'none',
         stdoutBytes,
         outputFileBytes,
         outputReadError: null,
       };
     } catch (error) {
+      if (stdout.trim().length > 0) {
+        return {
+          content: stdout,
+          outputSource: 'stdout',
+          stdoutBytes,
+          outputFileBytes: 0,
+          outputReadError: getBridgeOutputReadError(error),
+        };
+      }
       return {
         content: stdout,
         outputSource: 'none',
@@ -319,7 +338,7 @@ export class OpenCodeBridgeCommandClient {
     envelope: OpenCodeBridgeCommandEnvelope<TBody>
   ): Promise<string> {
     await fs.mkdir(this.tempDirectory, { recursive: true, mode: 0o700 });
-    const inputPath = path.join(this.tempDirectory, `opencode-command-${envelope.requestId}.json`);
+    const inputPath = path.join(this.tempDirectory, buildBridgeInputFileName(envelope.requestId));
     await fs.writeFile(inputPath, `${JSON.stringify(envelope, null, 2)}\n`, {
       encoding: 'utf8',
       mode: 0o600,
@@ -410,6 +429,27 @@ function bufferToString(value: string | Buffer | undefined): string {
 
 function byteLength(value: string): number {
   return Buffer.byteLength(value, 'utf8');
+}
+
+function buildBridgeInputFileName(requestId: string): string {
+  const trimmed = requestId.trim();
+  if (requestId === trimmed && SAFE_BRIDGE_INPUT_FILE_REQUEST_ID.test(trimmed)) {
+    return `opencode-command-${trimmed}.json`;
+  }
+
+  const sanitized =
+    Array.from(trimmed, (char) => (isUnsafeBridgeInputFileNameChar(char) ? '_' : char))
+      .join('')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^\.+/, '_')
+      .slice(0, 80) || 'request';
+  const fingerprint = createHash('sha256').update(requestId).digest('hex').slice(0, 12);
+  return `opencode-command-${sanitized}-${fingerprint}.json`;
+}
+
+function isUnsafeBridgeInputFileNameChar(char: string): boolean {
+  return char.charCodeAt(0) < 32 || '<>:"/\\|?*'.includes(char);
 }
 
 function getBridgeOutputReadError(error: unknown): string {

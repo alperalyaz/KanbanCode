@@ -115,6 +115,68 @@ describe('OpenCodeBridgeCommandClient', () => {
     });
   });
 
+  it('keeps bridge temp file names safe when requestId contains Windows path characters', async () => {
+    const requestId = 'req:windows/path\\unsafe*id?';
+    runner.nextResult = {
+      stdout: `${JSON.stringify(bridgeSuccess({ requestId, data: { runId: 'run-1' } }))}\n`,
+      stderr: '',
+      exitCode: 0,
+      timedOut: false,
+    };
+    const client = createClient();
+
+    const result = await client.execute(
+      'opencode.launchTeam',
+      { runId: 'run-1' },
+      {
+        cwd: '/tmp/project',
+        timeoutMs: 10_000,
+        requestId,
+      }
+    );
+
+    const inputPath = runner.calls[0].args[4];
+    expect(result).toMatchObject({
+      ok: true,
+      requestId,
+    });
+    expect(path.dirname(inputPath)).toBe(tempDir);
+    expect(path.basename(inputPath)).not.toContain('/');
+    expect(path.basename(inputPath)).not.toContain('\\');
+    expect(path.basename(inputPath)).not.toContain(':');
+    expect(JSON.parse(await runner.readInputEnvelope(0))).toMatchObject({
+      requestId,
+    });
+  });
+
+  it('prefers a non-empty output file over process stdout wrapper text', async () => {
+    runner.nextResult = {
+      stdout: '{"ok":true,"command":"opencode.launchTeam","requestId":"req-1","bytes":512}\n',
+      stderr: '',
+      exitCode: 0,
+      timedOut: false,
+    };
+    runner.nextOutputFileContents = `${JSON.stringify(
+      bridgeSuccess({ data: { runId: 'run-1' } })
+    )}\n`;
+    const client = createClient();
+
+    const result = await client.execute(
+      'opencode.launchTeam',
+      { runId: 'run-1' },
+      {
+        cwd: '/tmp/project',
+        timeoutMs: 10_000,
+      }
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      requestId: 'req-1',
+      command: 'opencode.launchTeam',
+    });
+  });
+
   it('fails closed when stdout contains logs plus json', async () => {
     runner.nextResult = {
       stdout: 'debug token=secret\n{"ok":true}\n',

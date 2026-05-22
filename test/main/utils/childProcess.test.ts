@@ -1,10 +1,17 @@
 // @vitest-environment node
+import {
+  execCli,
+  killProcessTree,
+  killTrackedCliProcesses,
+  quoteWindowsCmdArg,
+  spawnCli,
+} from '@main/utils/childProcess';
+import * as child from 'child_process';
+import { EventEmitter } from 'events';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
-import { EventEmitter } from 'events';
-
-import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 
 // Mock the entire child_process module so that we can inspect how our helpers
 // invoke spawn/exec without hitting the real filesystem or spawning anything.
@@ -19,17 +26,13 @@ vi.mock('child_process', async (importOriginal) => {
   };
 });
 
-// Import after the mock call so that the mocked module is returned.
-import * as child from 'child_process';
-import {
-  execCli,
-  killTrackedCliProcesses,
-  killProcessTree,
-  quoteWindowsCmdArg,
-  spawnCli,
-} from '@main/utils/childProcess';
-
 type ExecCallback = (error: Error | null, stdout: string, stderr: string) => void;
+type SpawnCliChild = ReturnType<typeof spawnCli>;
+type ExecChild = ReturnType<typeof child.exec>;
+
+function createMockProcess<TProcess>(): TProcess {
+  return new EventEmitter() as TProcess;
+}
 
 // Helper to temporarily override process.platform
 function setPlatform(value: string) {
@@ -153,7 +156,8 @@ describe('cli child process helpers', () => {
   describe('spawnCli', () => {
     it('calls spawn directly when path is ascii on windows', () => {
       setPlatform('win32');
-      (child.spawn as unknown as Mock).mockReturnValue({} as any);
+      const fake = createMockProcess<SpawnCliChild>();
+      (child.spawn as unknown as Mock).mockReturnValue(fake);
 
       const result = spawnCli('C:\\bin\\claude.exe', ['--version'], { cwd: 'x' });
       expect(child.spawn).toHaveBeenCalledWith(
@@ -164,13 +168,13 @@ describe('cli child process helpers', () => {
           env: expect.objectContaining({ CLAUDE_HOOK_JUDGE_MODE: 'true' }),
         })
       );
-      expect(result).toEqual({} as any);
+      expect(result).toBe(fake);
     });
 
     it('hides spawned CLI windows by default but preserves explicit opt-out', () => {
       setPlatform('win32');
       const spawnMock = child.spawn as unknown as Mock;
-      spawnMock.mockReturnValue({} as any);
+      spawnMock.mockReturnValue(createMockProcess<SpawnCliChild>());
 
       spawnCli('C:\\bin\\claude.exe', ['--version']);
       expect(spawnMock.mock.calls[0][2]).toMatchObject({ windowsHide: true });
@@ -181,9 +185,9 @@ describe('cli child process helpers', () => {
 
     it('falls back to shell when spawn throws EINVAL', () => {
       setPlatform('win32');
-      const error: any = new Error('spawn EINVAL');
+      const error = new Error('spawn EINVAL') as NodeJS.ErrnoException;
       error.code = 'EINVAL';
-      const fake = {} as any;
+      const fake = createMockProcess<SpawnCliChild>();
       const spawnMock = child.spawn as unknown as Mock;
       spawnMock.mockImplementationOnce(() => {
         throw error;
@@ -203,7 +207,7 @@ describe('cli child process helpers', () => {
 
     it('uses shell directly for Windows cmd launchers', () => {
       setPlatform('win32');
-      const fake = {} as any;
+      const fake = createMockProcess<SpawnCliChild>();
       const spawnMock = child.spawn as unknown as Mock;
       spawnMock.mockReturnValue(fake);
 
@@ -216,7 +220,7 @@ describe('cli child process helpers', () => {
 
     it('runs generated Bun cmd launchers directly to preserve percent args', () => {
       setPlatform('win32');
-      const fake = {} as any;
+      const fake = createMockProcess<SpawnCliChild>();
       const spawnMock = child.spawn as unknown as Mock;
       spawnMock.mockReturnValue(fake);
       const { dir, launcher, target } = createGeneratedBunLauncher();
@@ -234,7 +238,7 @@ describe('cli child process helpers', () => {
 
     it('runs extensionless npm node cmd launchers directly', () => {
       setPlatform('win32');
-      const fake = {} as any;
+      const fake = createMockProcess<SpawnCliChild>();
       const spawnMock = child.spawn as unknown as Mock;
       spawnMock.mockReturnValue(fake);
       const { dir, launcher, target } = createExtensionlessNpmNodeLauncher();
@@ -271,7 +275,7 @@ describe('cli child process helpers', () => {
 
     it('uses shell directly when path contains non-ASCII on windows', () => {
       setPlatform('win32');
-      const fake = {} as any;
+      const fake = createMockProcess<SpawnCliChild>();
       const spawnMock = child.spawn as unknown as Mock;
       spawnMock.mockReturnValue(fake);
 
@@ -288,7 +292,8 @@ describe('cli child process helpers', () => {
 
     it('does not use shell when not on windows', () => {
       setPlatform('linux');
-      (child.spawn as unknown as Mock).mockReturnValue({} as any);
+      const fake = createMockProcess<SpawnCliChild>();
+      (child.spawn as unknown as Mock).mockReturnValue(fake);
       const result = spawnCli('/usr/bin/claude', ['--help']);
       expect(child.spawn).toHaveBeenCalledWith(
         '/usr/bin/claude',
@@ -297,7 +302,7 @@ describe('cli child process helpers', () => {
           env: expect.objectContaining({ CLAUDE_HOOK_JUDGE_MODE: 'true' }),
         })
       );
-      expect(result).toEqual({} as any);
+      expect(result).toBe(fake);
     });
 
     it('kills tracked CLI processes on shutdown', () => {
@@ -350,7 +355,7 @@ describe('cli child process helpers', () => {
       execFileMock.mockImplementation(
         (_cmd: string, _args: string[], _opts: unknown, cb: ExecCallback) => {
           cb(null, 'ok', '');
-          return {} as any;
+          return createMockProcess<ExecChild>();
         }
       );
       const result = await execCli('C:\\bin\\claude.exe', ['--version']);
@@ -371,7 +376,7 @@ describe('cli child process helpers', () => {
       execFileMock.mockImplementation(
         (_cmd: string, _args: string[], _opts: unknown, cb: ExecCallback) => {
           cb(null, 'ok', '');
-          return {} as any;
+          return createMockProcess<ExecChild>();
         }
       );
 
@@ -388,7 +393,7 @@ describe('cli child process helpers', () => {
       const execMock = child.exec as unknown as Mock;
       execMock.mockImplementation((_cmd: string, _opts: unknown, cb: ExecCallback) => {
         cb(null, '0.0.8', '');
-        return {} as any;
+        return createMockProcess<ExecChild>();
       });
 
       const result = await execCli('C:\\runtime\\cli-dev.cmd', ['--version']);
@@ -404,7 +409,7 @@ describe('cli child process helpers', () => {
       execFileMock.mockImplementation(
         (_cmd: string, _args: string[], _opts: unknown, cb: ExecCallback) => {
           cb(null, 'ok', '');
-          return {} as any;
+          return createMockProcess<ExecChild>();
         }
       );
       const { dir, launcher, target } = createGeneratedBunLauncher();
@@ -427,7 +432,7 @@ describe('cli child process helpers', () => {
       execFileMock.mockImplementation(
         (_cmd: string, _args: string[], _opts: unknown, cb: ExecCallback) => {
           cb(null, 'ok', '');
-          return {} as any;
+          return createMockProcess<ExecChild>();
         }
       );
       const { dir, launcher, target } = createExtensionlessNpmNodeLauncher();
@@ -443,13 +448,37 @@ describe('cli child process helpers', () => {
       }
     });
 
+    it('executes npm native exe cmd launchers directly', async () => {
+      setPlatform('win32');
+      const execFileMock = child.execFile as unknown as Mock;
+      const execMock = child.exec as unknown as Mock;
+      execFileMock.mockImplementation(
+        (_cmd: string, _args: string[], _opts: unknown, cb: ExecCallback) => {
+          cb(null, '{"ok":true}', '');
+          return createMockProcess<ExecChild>();
+        }
+      );
+      const { dir, launcher, target } = createNpmNativeExeLauncher();
+      try {
+        const result = await execCli(launcher, ['runtime', 'providers', 'view']);
+        expect(execFileMock).toHaveBeenCalledTimes(1);
+        expect(execFileMock.mock.calls[0][0]).toBe(target);
+        expect(execFileMock.mock.calls[0][1]).toEqual(['runtime', 'providers', 'view']);
+        expect(execFileMock.mock.calls[0][2]).toMatchObject({ windowsHide: true });
+        expect(execMock).not.toHaveBeenCalled();
+        expect(result.stdout).toBe('{"ok":true}');
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
     it('skips straight to shell when path contains non-ASCII on windows', async () => {
       setPlatform('win32');
       const execFileMock = child.execFile as unknown as Mock;
       const execMock = child.exec as unknown as Mock;
       execMock.mockImplementation((_cmd: string, _opts: unknown, cb: ExecCallback) => {
         cb(null, '1.2.3', '');
-        return {} as any;
+        return createMockProcess<ExecChild>();
       });
 
       const result = await execCli('C:\\Users\\Алексей\\AppData\\Roaming\\npm\\claude.cmd', [
@@ -466,7 +495,7 @@ describe('cli child process helpers', () => {
       const execMock = child.exec as unknown as Mock;
       execMock.mockImplementation((_cmd: string, _opts: unknown, cb: ExecCallback) => {
         cb(null, 'ok', '');
-        return {} as any;
+        return createMockProcess<ExecChild>();
       });
 
       await execCli('C:\\Users\\Алексей\\bin\\claude.cmd', ['--model', 'test%PATH%"arg']);
@@ -485,7 +514,7 @@ describe('cli child process helpers', () => {
       const execMock = child.exec as unknown as Mock;
       execMock.mockImplementation((_cmd: string, _opts: unknown, cb: ExecCallback) => {
         cb(null, 'ok', '');
-        return {} as any;
+        return createMockProcess<ExecChild>();
       });
 
       await execCli('C:\\runtime\\cli-dev.cmd', [
@@ -505,9 +534,9 @@ describe('cli child process helpers', () => {
     it('shell: true cannot be overridden by caller options', () => {
       setPlatform('win32');
       const spawnMock = child.spawn as unknown as Mock;
-      spawnMock.mockReturnValue({} as any);
+      spawnMock.mockReturnValue(createMockProcess<SpawnCliChild>());
 
-      spawnCli('C:\\Users\\Алексей\\bin\\claude.cmd', ['--version'], { shell: false } as any);
+      spawnCli('C:\\Users\\Алексей\\bin\\claude.cmd', ['--version'], { shell: false });
       // shell: true must win over caller's shell: false
       expect(spawnMock.mock.calls[0][1]).toMatchObject({ shell: true });
     });
@@ -520,13 +549,13 @@ describe('cli child process helpers', () => {
           const err = new Error('spawn EINVAL') as Error & { code?: string };
           err.code = 'EINVAL';
           cb(err, '', '');
-          return {} as any;
+          return createMockProcess<ExecChild>();
         }
       );
       const execMock = child.exec as unknown as Mock;
       execMock.mockImplementation((_cmd: string, _opts: unknown, cb: ExecCallback) => {
         cb(null, '2.3.4', '');
-        return {} as any;
+        return createMockProcess<ExecChild>();
       });
 
       // ASCII path — goes through execFile first, gets EINVAL, falls back to shell
@@ -542,7 +571,7 @@ describe('cli child process helpers', () => {
       execFileMock.mockImplementation(
         (_cmd: string, _args: string[], _opts: unknown, cb: ExecCallback) => {
           cb(new Error('Command failed'), '{"error":"bad"}', 'bun: not found');
-          return {} as any;
+          return createMockProcess<ExecChild>();
         }
       );
 
@@ -646,7 +675,7 @@ describe('cli child process helpers', () => {
       });
 
       try {
-        killProcessTree({ pid: 200 } as any, 'SIGKILL');
+        killProcessTree({ pid: 200 } as Parameters<typeof killProcessTree>[0], 'SIGKILL');
 
         expect(killSpy.mock.calls.map(([pid]) => pid)).toEqual(
           expect.arrayContaining([200, 201, 202])
