@@ -28,8 +28,8 @@ import type {
 } from '@features/runtime-provider-management/contracts';
 import type { ChildProcessWithoutNullStreams } from 'child_process';
 
-const COMMAND_TIMEOUT_MS = 45_000;
 const PROBE_COMMAND_TIMEOUT_MS = 90_000;
+const COMMAND_TIMEOUT_MS = PROBE_COMMAND_TIMEOUT_MS;
 const COMMAND_ERROR_DETAIL_LIMIT = 1_600;
 const COMMAND_OUTPUT_PREVIEW_LIMIT = 1_200;
 const ESCAPE_CHARACTER = String.fromCharCode(27);

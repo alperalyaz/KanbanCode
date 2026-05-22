@@ -19,7 +19,22 @@ function createStatus(overrides: Partial<WindowsElevationStatus> = {}): WindowsE
 }
 
 function installElevationStatus(status: WindowsElevationStatus) {
-  const getWindowsElevationStatus = vi.fn().mockResolvedValue(status);
+  return installElevationStatusPromise(Promise.resolve(status));
+}
+
+function installElevationStatusPromise(promise: Promise<WindowsElevationStatus>) {
+  const getWindowsElevationStatus = vi.fn().mockReturnValue(promise);
+  Object.defineProperty(window, 'electronAPI', {
+    configurable: true,
+    value: {
+      getWindowsElevationStatus,
+    },
+  });
+  return getWindowsElevationStatus;
+}
+
+function installElevationStatusFailure() {
+  const getWindowsElevationStatus = vi.fn().mockRejectedValue(new Error('IPC failed'));
   Object.defineProperty(window, 'electronAPI', {
     configurable: true,
     value: {
@@ -108,6 +123,73 @@ describe('WindowsAdministratorBanner', () => {
       root.unmount();
       await flushReact();
     });
+  });
+
+  it('hides the warning when the status check is inconclusive', async () => {
+    const getWindowsElevationStatus = installElevationStatus(
+      createStatus({ isAdministrator: null, checkFailed: true, error: 'probe unavailable' })
+    );
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(WindowsAdministratorBanner));
+      await flushReact();
+    });
+
+    expect(getWindowsElevationStatus).toHaveBeenCalledTimes(1);
+    expect(host.textContent).toBe('');
+
+    await act(async () => {
+      root.unmount();
+      await flushReact();
+    });
+  });
+
+  it('hides the warning when the status check rejects', async () => {
+    const getWindowsElevationStatus = installElevationStatusFailure();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(WindowsAdministratorBanner));
+      await flushReact();
+    });
+
+    expect(getWindowsElevationStatus).toHaveBeenCalledTimes(1);
+    expect(host.textContent).toBe('');
+
+    await act(async () => {
+      root.unmount();
+      await flushReact();
+    });
+  });
+
+  it('does not render stale status after unmount', async () => {
+    let resolveStatus: ((status: WindowsElevationStatus) => void) | null = null;
+    const pendingStatus = new Promise<WindowsElevationStatus>((resolve) => {
+      resolveStatus = resolve;
+    });
+    const getWindowsElevationStatus = installElevationStatusPromise(pendingStatus);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(WindowsAdministratorBanner));
+      await flushReact();
+    });
+
+    await act(async () => {
+      root.unmount();
+      resolveStatus?.(createStatus());
+      await flushReact();
+    });
+
+    expect(getWindowsElevationStatus).toHaveBeenCalledTimes(1);
+    expect(host.textContent).toBe('');
   });
 
   it('hides the warning when the preload bridge does not expose the status check', async () => {

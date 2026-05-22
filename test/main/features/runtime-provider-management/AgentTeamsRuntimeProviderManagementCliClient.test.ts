@@ -1096,6 +1096,7 @@ describe('AgentTeamsRuntimeProviderManagementCliClient', () => {
       expect.arrayContaining(['runtime', 'providers', 'view']),
       expect.any(Object)
     );
+    expect(execCliMock.mock.calls[0]?.[2]).toMatchObject({ timeout: 90_000 });
   });
 
   it('explains OpenCode CLI help output instead of returning a generic JSON error', async () => {
@@ -1274,7 +1275,7 @@ describe('AgentTeamsRuntimeProviderManagementCliClient', () => {
       apiKey: 'sk-input-secret-value-123456',
     });
 
-    await vi.advanceTimersByTimeAsync(45_000);
+    await vi.advanceTimersByTimeAsync(90_000);
     const response = await responsePromise;
     vi.useRealTimers();
 

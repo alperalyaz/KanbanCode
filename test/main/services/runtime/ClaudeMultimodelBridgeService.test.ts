@@ -350,7 +350,7 @@ describe('ClaudeMultimodelBridgeService', () => {
       if (normalizedArgs === 'runtime status --json --provider codex --summary') {
         return Promise.reject(
           new Error(
-            'Command timed out after 25000ms: /mock/agent_teams_orchestrator runtime status --json --provider codex --summary'
+            'Command timed out after 30000ms: /mock/agent_teams_orchestrator runtime status --json --provider codex --summary'
           )
         );
       }
@@ -370,7 +370,7 @@ describe('ClaudeMultimodelBridgeService', () => {
       verificationState: 'error',
       statusMessage: 'Provider status unavailable',
     });
-    expect(provider.detailMessage).toContain('Command timed out after 25000ms');
+    expect(provider.detailMessage).toContain('Command timed out after 30000ms');
     expect(calls).toEqual(['runtime status --json --provider codex --summary']);
     expect(vi.mocked(console.warn).mock.calls.map((call) => call.join(' '))).toEqual([
       expect.stringContaining(
@@ -386,7 +386,7 @@ describe('ClaudeMultimodelBridgeService', () => {
       if (normalizedArgs === 'runtime status --json --provider opencode --summary') {
         return Promise.reject(
           new Error(
-            'Command timed out after 25000ms: /mock/agent_teams_orchestrator runtime status --json --provider opencode --summary'
+            'Command timed out after 30000ms: /mock/agent_teams_orchestrator runtime status --json --provider opencode --summary'
           )
         );
       }
@@ -412,7 +412,7 @@ describe('ClaudeMultimodelBridgeService', () => {
       'not necessarily that OpenCode auth is missing'
     );
     expect(provider.detailMessage).toContain('provider/model inventory');
-    expect(provider.detailMessage).toContain('Raw timeout detail: Command timed out after 25000ms');
+    expect(provider.detailMessage).toContain('Raw timeout detail: Command timed out after 30000ms');
     expect(execCliMock.mock.calls.map((call) => call[1].join(' '))).toEqual([
       'runtime status --json --provider opencode --summary',
     ]);
@@ -509,9 +509,9 @@ describe('ClaudeMultimodelBridgeService', () => {
 
     expect(execCliMock).toHaveBeenCalledTimes(3);
     expect(execCliMock.mock.calls.map((call) => call[2]?.timeout)).toEqual([
-      15000,
-      15000,
-      15000,
+      30000,
+      30000,
+      30000,
     ]);
     expect(calls).toEqual([
       'runtime status --json --provider anthropic --summary',
@@ -895,6 +895,16 @@ describe('ClaudeMultimodelBridgeService', () => {
         defaultModelId: 'gpt-5.4',
       },
     });
+    expect(
+      execCliMock.mock.calls.find(
+        (call) => call[1].join(' ') === 'runtime status --json --provider codex --summary'
+      )?.[2]?.timeout
+    ).toBe(30_000);
+    expect(
+      execCliMock.mock.calls.find(
+        (call) => call[1].join(' ') === 'runtime status --json --provider codex'
+      )?.[2]?.timeout
+    ).toBe(90_000);
   });
 
   it('queues fresh single-provider catalog hydration behind an in-flight one', async () => {
