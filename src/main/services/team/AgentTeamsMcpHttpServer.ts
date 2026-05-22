@@ -405,7 +405,12 @@ function buildStatePath(): string {
 }
 
 function buildLaunchSpecHash(launchSpec: McpLaunchSpec): string {
-  return sha256Hex(JSON.stringify({ command: launchSpec.command, args: launchSpec.args }));
+  const env = launchSpec.env
+    ? Object.fromEntries(
+        Object.entries(launchSpec.env).sort(([left], [right]) => left.localeCompare(right))
+      )
+    : {};
+  return sha256Hex(JSON.stringify({ command: launchSpec.command, args: launchSpec.args, env }));
 }
 
 function buildExpectedIdentity(
@@ -1095,6 +1100,7 @@ export class AgentTeamsMcpHttpServer {
     };
     const childEnv = applyAgentTeamsIdentityEnv({
       ...process.env,
+      ...launchSpec.env,
       AGENT_TEAMS_MCP_CLAUDE_DIR: getClaudeBasePath(),
       AGENT_TEAMS_MCP_TRANSPORT: 'httpStream',
       AGENT_TEAMS_MCP_HTTP_HOST: MCP_HTTP_HOST,

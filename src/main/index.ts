@@ -88,7 +88,9 @@ import {
 } from '@main/services/team/TeamMcpConfigBuilder';
 import { TeamTranscriptProjectResolver } from '@main/services/team/TeamTranscriptProjectResolver';
 import { killTrackedCliProcesses } from '@main/utils/childProcess';
+import { getWindowsElevationStatus } from '@main/utils/windowsElevation';
 import {
+  APP_GET_WINDOWS_ELEVATION_STATUS,
   APP_STARTUP_GET_STATUS,
   APP_STARTUP_PROGRESS,
   CONTEXT_CHANGED,
@@ -147,6 +149,7 @@ import { clearAutoResumeService } from './services/team/AutoResumeService';
 import { agentTeamsMcpHttpServer } from './services/team/AgentTeamsMcpHttpServer';
 import { LaunchIoGovernor } from './services/team/LaunchIoGovernor';
 import { OpenCodeBridgeCommandClient } from './services/team/opencode/bridge/OpenCodeBridgeCommandClient';
+import { OpenCodeBridgeDiagnosticsStore } from './services/team/opencode/bridge/OpenCodeBridgeDiagnosticsStore';
 import {
   createOpenCodeBridgeCommandLeaseStore,
   createOpenCodeBridgeCommandLedgerStore,
@@ -391,6 +394,10 @@ async function createOpenCodeRuntimeAdapterRegistry(
   bridgeEnv.AGENT_TEAMS_MCP_CLAUDE_DIR = getClaudeBasePath();
   const useHttpMcpBridge = isOpenCodeMcpHttpBridgeEnabled(bridgeEnv);
   const explicitLocalMcpLaunchEnv = snapshotOpenCodeLocalMcpLaunchEnv(bridgeEnv);
+  delete bridgeEnv.ELECTRON_RUN_AS_NODE;
+  if (explicitLocalMcpLaunchEnv) {
+    copyOpenCodeLocalMcpLaunchEnv(explicitLocalMcpLaunchEnv, bridgeEnv);
+  }
   delete bridgeEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_URL;
   const applyMcpLaunchSpecEnv = async (
     targetEnv: NodeJS.ProcessEnv,
@@ -410,6 +417,9 @@ async function createOpenCodeRuntimeAdapterRegistry(
         targetEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND = mcpLaunchSpec.command;
         targetEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY = mcpEntry;
         targetEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON = JSON.stringify(mcpLaunchSpec.args);
+        targetEnv.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENV_JSON = JSON.stringify(
+          mcpLaunchSpec.env ?? {}
+        );
       }
     } catch (error) {
       logger.warn(
@@ -515,13 +525,16 @@ async function createOpenCodeRuntimeAdapterRegistry(
     }
     return nextEnv;
   };
+  const bridgeControlDir = join(app.getPath('userData'), 'opencode-bridge');
   const bridgeClient = new OpenCodeBridgeCommandClient({
     binaryPath,
     tempDirectory: join(app.getPath('temp'), 'claude-team-opencode-bridge'),
     env: bridgeEnv,
     envProvider: resolveBridgeCommandEnv,
+    diagnostics: new OpenCodeBridgeDiagnosticsStore({
+      directory: join(bridgeControlDir, 'diagnostics'),
+    }),
   });
-  const bridgeControlDir = join(app.getPath('userData'), 'opencode-bridge');
   const clientIdentity = createOpenCodeBridgeClientIdentity({
     appVersion: typeof app.getVersion === 'function' ? app.getVersion() : '1.3.0',
     gitSha: process.env.VITE_GIT_SHA ?? process.env.GIT_SHA ?? null,
@@ -546,6 +559,7 @@ async function createOpenCodeRuntimeAdapterRegistry(
   });
   const readinessBridge = new OpenCodeReadinessBridge(bridgeClient, {
     stateChangingCommands,
+    appVersion: clientIdentity.appVersion,
   });
   openCodeLifecycleBridge = readinessBridge;
   return new TeamRuntimeAdapterRegistry([new OpenCodeTeamRuntimeAdapter(readinessBridge)]);
@@ -963,6 +977,7 @@ function registerAppStartupHandlers(): void {
   appStartupHandlersRegistered = true;
   registerRendererLogHandlers(ipcMain);
   ipcMain.handle(APP_STARTUP_GET_STATUS, () => appStartupStatus);
+  ipcMain.handle(APP_GET_WINDOWS_ELEVATION_STATUS, () => getWindowsElevationStatus());
 }
 
 function cloneStartupSteps(): AppStartupStep[] {

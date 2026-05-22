@@ -79,6 +79,7 @@ export async function createOpenCodeLiveHarness(input: {
     CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND: mcpLaunchSpec.command,
     CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY: mcpLaunchSpec.args[0] ?? '',
     CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON: JSON.stringify(mcpLaunchSpec.args),
+    CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENV_JSON: JSON.stringify(mcpLaunchSpec.env ?? {}),
   };
   const turnSettledEnv = await buildMemberWorkSyncRuntimeTurnSettledEnvironment({
     teamsBasePath: getTeamsBasePath(),

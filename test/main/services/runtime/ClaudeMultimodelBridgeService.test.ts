@@ -350,7 +350,7 @@ describe('ClaudeMultimodelBridgeService', () => {
       if (normalizedArgs === 'runtime status --json --provider codex --summary') {
         return Promise.reject(
           new Error(
-            'Command timed out after 25000ms: /mock/agent_teams_orchestrator runtime status --json --provider codex --summary'
+            'Command timed out after 30000ms: /mock/agent_teams_orchestrator runtime status --json --provider codex --summary'
           )
         );
       }
@@ -370,7 +370,7 @@ describe('ClaudeMultimodelBridgeService', () => {
       verificationState: 'error',
       statusMessage: 'Provider status unavailable',
     });
-    expect(provider.detailMessage).toContain('Command timed out after 25000ms');
+    expect(provider.detailMessage).toContain('Command timed out after 30000ms');
     expect(calls).toEqual(['runtime status --json --provider codex --summary']);
     expect(vi.mocked(console.warn).mock.calls.map((call) => call.join(' '))).toEqual([
       expect.stringContaining(
@@ -378,6 +378,108 @@ describe('ClaudeMultimodelBridgeService', () => {
       ),
     ]);
     vi.mocked(console.warn).mockClear();
+  });
+
+  it('explains OpenCode provider status timeouts as runtime inventory failures', async () => {
+    execCliMock.mockImplementation((_binaryPath, args) => {
+      const normalizedArgs = Array.isArray(args) ? args.join(' ') : '';
+      if (normalizedArgs === 'runtime status --json --provider opencode --summary') {
+        return Promise.reject(
+          new Error(
+            'Command timed out after 30000ms: /mock/agent_teams_orchestrator runtime status --json --provider opencode --summary'
+          )
+        );
+      }
+
+      return Promise.reject(new Error(`Unexpected execCli call: ${normalizedArgs}`));
+    });
+
+    const { ClaudeMultimodelBridgeService } =
+      await import('@main/services/runtime/ClaudeMultimodelBridgeService');
+    const service = new ClaudeMultimodelBridgeService();
+
+    const provider = await service.getProviderStatus('/mock/agent_teams_orchestrator', 'opencode');
+
+    expect(provider).toMatchObject({
+      providerId: 'opencode',
+      verificationState: 'error',
+      statusMessage: 'Provider status unavailable',
+    });
+    expect(provider.detailMessage).toContain(
+      'OpenCode runtime status did not return before the desktop timeout.'
+    );
+    expect(provider.detailMessage).toContain(
+      'not necessarily that OpenCode auth is missing'
+    );
+    expect(provider.detailMessage).toContain('provider/model inventory');
+    expect(provider.detailMessage).toContain('Raw timeout detail: Command timed out after 30000ms');
+    expect(execCliMock.mock.calls.map((call) => call[1].join(' '))).toEqual([
+      'runtime status --json --provider opencode --summary',
+    ]);
+    vi.mocked(console.warn).mockClear();
+  });
+
+  it('maps runtime-side OpenCode degraded status without replacing it with a generic error', async () => {
+    execCliMock.mockImplementation((_binaryPath, args) => {
+      const normalizedArgs = Array.isArray(args) ? args.join(' ') : '';
+      if (normalizedArgs === 'runtime status --json --provider opencode --summary') {
+        return Promise.resolve({
+          stdout: JSON.stringify({
+            schemaVersion: 2,
+            providers: {
+              opencode: {
+                supported: true,
+                authenticated: false,
+                authMethod: null,
+                verificationState: 'error',
+                canLoginFromUi: false,
+                statusMessage: 'OpenCode probe incomplete',
+                detailMessage:
+                  'OpenCode inventory probe timed out after 12000ms during opencode providers list',
+                capabilities: {
+                  teamLaunch: false,
+                  oneShot: false,
+                  extensions: {
+                    plugins: { status: 'read-only', ownership: 'provider-scoped' },
+                    mcp: { status: 'read-only', ownership: 'provider-scoped' },
+                    skills: { status: 'read-only', ownership: 'provider-scoped' },
+                    apiKeys: { status: 'read-only', ownership: 'provider-scoped' },
+                  },
+                },
+                backend: {
+                  kind: 'opencode-cli',
+                  label: 'OpenCode CLI',
+                  authMethodDetail: null,
+                },
+              },
+            },
+          }),
+          stderr: '',
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected execCli call: ${normalizedArgs}`));
+    });
+
+    const { ClaudeMultimodelBridgeService } =
+      await import('@main/services/runtime/ClaudeMultimodelBridgeService');
+    const service = new ClaudeMultimodelBridgeService();
+
+    const provider = await service.getProviderStatus('/mock/agent_teams_orchestrator', 'opencode');
+
+    expect(provider).toMatchObject({
+      providerId: 'opencode',
+      verificationState: 'error',
+      statusMessage: 'OpenCode probe incomplete',
+      detailMessage:
+        'OpenCode inventory probe timed out after 12000ms during opencode providers list',
+      supported: true,
+      authenticated: false,
+    });
+    expect(provider.detailMessage).not.toContain('Provider status unavailable');
+    expect(execCliMock.mock.calls.map((call) => call[1].join(' '))).toEqual([
+      'runtime status --json --provider opencode --summary',
+    ]);
   });
 
   it('does not cascade aggregate summary timeouts into slower fallback probes', async () => {
@@ -407,9 +509,9 @@ describe('ClaudeMultimodelBridgeService', () => {
 
     expect(execCliMock).toHaveBeenCalledTimes(3);
     expect(execCliMock.mock.calls.map((call) => call[2]?.timeout)).toEqual([
-      15000,
-      15000,
-      15000,
+      30000,
+      30000,
+      30000,
     ]);
     expect(calls).toEqual([
       'runtime status --json --provider anthropic --summary',
@@ -793,6 +895,16 @@ describe('ClaudeMultimodelBridgeService', () => {
         defaultModelId: 'gpt-5.4',
       },
     });
+    expect(
+      execCliMock.mock.calls.find(
+        (call) => call[1].join(' ') === 'runtime status --json --provider codex --summary'
+      )?.[2]?.timeout
+    ).toBe(30_000);
+    expect(
+      execCliMock.mock.calls.find(
+        (call) => call[1].join(' ') === 'runtime status --json --provider codex'
+      )?.[2]?.timeout
+    ).toBe(90_000);
   });
 
   it('queues fresh single-provider catalog hydration behind an in-flight one', async () => {
@@ -1698,8 +1810,7 @@ describe('ClaudeMultimodelBridgeService', () => {
                 plugins: {
                   status: 'unsupported',
                   ownership: 'shared',
-                  reason:
-                    'Plugins are not currently guaranteed for codex-native sessions in the multimodel runtime.',
+                  reason: 'Plugin support is not yet guaranteed for this agent.',
                 },
                 mcp: {
                   status: 'unsupported',

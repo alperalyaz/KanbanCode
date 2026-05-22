@@ -23,8 +23,8 @@ import type {
 
 const logger = createLogger('ClaudeMultimodelBridgeService');
 
-const PROVIDER_STATUS_TIMEOUT_MS = 25_000;
-const PROVIDER_STATUS_SUMMARY_TIMEOUT_MS = 15_000;
+const PROVIDER_STATUS_TIMEOUT_MS = 90_000;
+const PROVIDER_STATUS_SUMMARY_TIMEOUT_MS = 30_000;
 const PROVIDER_MODELS_TIMEOUT_MS = 25_000;
 const PROVIDER_STATUS_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 const PROVIDER_MODELS_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
@@ -396,11 +396,21 @@ function createRuntimeStatusErrorProviderStatus(
   error: unknown
 ): CliProviderStatus {
   const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+  const detailMessage =
+    providerId === 'opencode' && (lower.includes('timed out') || lower.includes('timeout'))
+      ? [
+          'OpenCode runtime status did not return before the desktop timeout.',
+          'This means the Agent Teams runtime process did not produce provider-status JSON in time, not necessarily that OpenCode auth is missing.',
+          'Likely causes include slow or hung OpenCode CLI startup, provider/model inventory, local OpenCode plugins, cache/profile corruption, stale bundled runtime, or Windows security software delaying child processes.',
+          `Raw timeout detail: ${message}`,
+        ].join(' ')
+      : message;
   return {
     ...createDefaultProviderStatus(providerId),
     verificationState: 'error',
     statusMessage: 'Provider status unavailable',
-    detailMessage: message,
+    detailMessage,
   };
 }
 
@@ -985,8 +995,11 @@ export class ClaudeMultimodelBridgeService {
     if (options.summary) {
       args.push('--summary');
     }
+    const timeout =
+      options.timeoutMs ??
+      (options.summary ? PROVIDER_STATUS_SUMMARY_TIMEOUT_MS : PROVIDER_STATUS_TIMEOUT_MS);
     const { stdout } = await execCli(binaryPath, args, {
-      timeout: options.timeoutMs ?? PROVIDER_STATUS_TIMEOUT_MS,
+      timeout,
       maxBuffer: PROVIDER_STATUS_MAX_BUFFER_BYTES,
       env,
     });

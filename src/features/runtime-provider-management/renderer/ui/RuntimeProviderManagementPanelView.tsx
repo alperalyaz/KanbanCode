@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
@@ -20,7 +20,9 @@ import {
 } from '@renderer/utils/openCodeModelRecommendations';
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
+  ClipboardList,
   KeyRound,
   Loader2,
   RefreshCcw,
@@ -47,6 +49,7 @@ import type {
   RuntimeProviderDefaultModelSourceDto,
   RuntimeProviderDefaultScopeDto,
   RuntimeProviderDirectoryEntryDto,
+  RuntimeProviderManagementErrorDiagnosticsDto,
   RuntimeProviderModelDto,
   RuntimeProviderModelTestResultDto,
   RuntimeProviderSetupPromptDto,
@@ -82,6 +85,12 @@ interface ProviderRowProps {
   readonly disabled: boolean;
   readonly hasProjectContext: boolean;
   readonly actions: RuntimeProviderManagementActions;
+}
+
+interface RuntimeProviderErrorAlertProps {
+  readonly message: string;
+  readonly diagnostics?: RuntimeProviderManagementErrorDiagnosticsDto | null;
+  readonly testId: string;
 }
 
 type OpenCodeSettingsSection = 'models' | 'providers';
@@ -338,8 +347,11 @@ function ProviderSetupFormPanel({
   const form = state.setupForm?.providerId === provider.providerId ? state.setupForm : null;
   const loading = state.setupFormLoading && state.activeFormProviderId === provider.providerId;
   const error = state.setupFormError;
+  const errorDiagnostics = state.setupFormErrorDiagnostics;
   const submitError =
     state.activeFormProviderId === provider.providerId ? state.setupSubmitError : null;
+  const submitErrorDiagnostics =
+    state.activeFormProviderId === provider.providerId ? state.setupSubmitErrorDiagnostics : null;
   const canSubmit = setupFormCanSubmit(state, provider.providerId);
 
   return (
@@ -356,9 +368,11 @@ function ProviderSetupFormPanel({
       ) : null}
 
       {!loading && error ? (
-        <div className="rounded-md border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs text-red-200">
-          {error}
-        </div>
+        <RuntimeProviderErrorAlert
+          message={error}
+          diagnostics={errorDiagnostics}
+          testId="runtime-provider-setup-form-error"
+        />
       ) : null}
 
       {!loading && form ? (
@@ -445,8 +459,12 @@ function ProviderSetupFormPanel({
       ) : null}
 
       {submitError ? (
-        <div className="mt-3 rounded-md border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs text-red-200">
-          {submitError}
+        <div className="mt-3">
+          <RuntimeProviderErrorAlert
+            message={submitError}
+            diagnostics={submitErrorDiagnostics}
+            testId="runtime-provider-setup-submit-error"
+          />
         </div>
       ) : null}
 
@@ -667,6 +685,228 @@ function RuntimeProviderLoadingPlaceholder(): JSX.Element {
     </div>
   );
 }
+
+function formatRuntimeProviderDiagnosticsCopyText(
+  message: string,
+  diagnostics: RuntimeProviderManagementErrorDiagnosticsDto | null | undefined
+): string {
+  const lines = ['OpenCode provider settings diagnostics', '', 'Message:', message.trim()];
+  if (!diagnostics) {
+    return lines.join('\n');
+  }
+  const hints = diagnostics.hints ?? [];
+
+  const fields: Array<[string, string | number | null]> = [
+    ['Error code', diagnostics.errorCode ?? null],
+    ['Summary', diagnostics.summary],
+    ['Likely cause', diagnostics.likelyCause],
+    ['Resolved runtime binary', diagnostics.binaryPath],
+    ['Command', diagnostics.command],
+    ['Project path', diagnostics.projectPath],
+    ['Exit code', diagnostics.exitCode],
+  ];
+
+  lines.push('', 'Structured diagnostics:');
+  for (const [label, value] of fields) {
+    if (value !== null && value !== '') {
+      lines.push(`${label}: ${String(value)}`);
+    }
+  }
+
+  if (hints.length > 0) {
+    lines.push('', 'Hints:', ...hints.map((hint) => `- ${hint}`));
+  }
+  if (diagnostics.stderrPreview) {
+    lines.push('', 'stderr preview:', diagnostics.stderrPreview);
+  }
+  if (diagnostics.stdoutPreview) {
+    lines.push('', 'stdout preview:', diagnostics.stdoutPreview);
+  }
+
+  return lines.join('\n');
+}
+
+function getRuntimeProviderDiagnosticRows(
+  diagnostics: RuntimeProviderManagementErrorDiagnosticsDto
+): Array<[string, string]> {
+  const rows: Array<[string, string | number | null]> = [
+    ['Code', diagnostics.errorCode ?? null],
+    ['Binary', diagnostics.binaryPath],
+    ['Command', diagnostics.command],
+    ['Project', diagnostics.projectPath],
+    ['Exit', diagnostics.exitCode],
+  ];
+  return rows
+    .filter(([, value]) => value !== null && value !== '')
+    .map(([label, value]) => [label, String(value)]);
+}
+
+async function writeRuntimeProviderDiagnosticsToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall back to the selection API below.
+    }
+  }
+
+  return copyRuntimeProviderDiagnosticsWithSelection(text);
+}
+
+function copyRuntimeProviderDiagnosticsWithSelection(text: string): boolean {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.top = '-9999px';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    textarea.remove();
+  }
+}
+
+const RuntimeProviderErrorAlert = ({
+  message,
+  diagnostics = null,
+  testId,
+}: RuntimeProviderErrorAlertProps): JSX.Element => {
+  const [copied, setCopied] = useState(false);
+  const [headline = message, ...detailLines] = message.trim().split(/\r?\n/);
+  const fallbackDetails = detailLines.join('\n').trim();
+  const hints = diagnostics?.hints ?? [];
+  const copyText = useMemo(
+    () => formatRuntimeProviderDiagnosticsCopyText(message, diagnostics),
+    [diagnostics, message]
+  );
+  const diagnosticRows = diagnostics ? getRuntimeProviderDiagnosticRows(diagnostics) : [];
+  const copyDiagnostics = useCallback(async (): Promise<void> => {
+    setCopied(await writeRuntimeProviderDiagnosticsToClipboard(copyText));
+  }, [copyText]);
+
+  useEffect(() => {
+    if (!copied) {
+      return;
+    }
+    const timeout = window.setTimeout(() => setCopied(false), 1_500);
+    return () => window.clearTimeout(timeout);
+  }, [copied]);
+
+  return (
+    <div
+      data-testid={testId}
+      role="alert"
+      className="flex min-w-0 items-start gap-2 rounded-md border px-3 py-2 text-xs"
+      style={{
+        borderColor: 'rgba(248, 113, 113, 0.25)',
+        backgroundColor: 'rgba(248, 113, 113, 0.06)',
+        color: '#fca5a5',
+      }}
+    >
+      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 whitespace-pre-wrap break-words font-medium leading-5">
+            {headline || message}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-6 shrink-0 px-2 text-[11px]"
+            title={copied ? 'Diagnostics copied' : 'Copy diagnostics'}
+            aria-label={copied ? 'Diagnostics copied' : 'Copy diagnostics'}
+            onClick={(event) => {
+              event.stopPropagation();
+              void copyDiagnostics();
+            }}
+          >
+            {copied ? <Check className="mr-1 size-3" /> : <ClipboardList className="mr-1 size-3" />}
+            {copied ? 'Copied' : 'Copy diagnostics'}
+          </Button>
+        </div>
+        {diagnostics ? (
+          <div className="mt-2 space-y-2">
+            {diagnostics.likelyCause ? (
+              <div className="whitespace-pre-wrap break-words leading-5 text-red-100">
+                <span className="font-medium text-red-100">Likely cause: </span>
+                {diagnostics.likelyCause}
+              </div>
+            ) : null}
+            {diagnosticRows.length > 0 ? (
+              <dl className="grid gap-1 rounded border px-2 py-1.5 text-[11px] leading-4 sm:grid-cols-[92px_minmax(0,1fr)]">
+                {diagnosticRows.map(([label, value]) => (
+                  <div key={label} className="contents">
+                    <dt className="text-red-200/75">{label}</dt>
+                    <dd className="min-w-0 break-words font-mono text-red-100">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+            {hints.length > 0 ? (
+              <div>
+                <div className="mb-1 font-medium text-red-100">Hints</div>
+                <ul className="space-y-1 pl-4">
+                  {hints.map((hint, index) => (
+                    <li
+                      key={`${hint}-${index}`}
+                      className="list-disc whitespace-pre-wrap break-words"
+                    >
+                      {hint}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {diagnostics.stderrPreview ? (
+              <pre
+                data-testid={`${testId}-stderr-preview`}
+                className="m-0 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded border px-2 py-1.5 font-mono text-[11px] leading-4"
+                style={{
+                  borderColor: 'rgba(248, 113, 113, 0.2)',
+                  backgroundColor: 'rgba(15, 23, 42, 0.38)',
+                  color: '#fecaca',
+                }}
+              >
+                {`stderr preview:\n${diagnostics.stderrPreview}`}
+              </pre>
+            ) : null}
+            {diagnostics.stdoutPreview ? (
+              <pre
+                data-testid={`${testId}-stdout-preview`}
+                className="m-0 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded border px-2 py-1.5 font-mono text-[11px] leading-4"
+                style={{
+                  borderColor: 'rgba(248, 113, 113, 0.2)',
+                  backgroundColor: 'rgba(15, 23, 42, 0.38)',
+                  color: '#fecaca',
+                }}
+              >
+                {`stdout preview:\n${diagnostics.stdoutPreview}`}
+              </pre>
+            ) : null}
+          </div>
+        ) : fallbackDetails ? (
+          <pre
+            className="m-0 mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border px-2 py-1.5 font-mono text-[11px] leading-4"
+            style={{
+              borderColor: 'rgba(248, 113, 113, 0.2)',
+              backgroundColor: 'rgba(15, 23, 42, 0.38)',
+              color: '#fecaca',
+            }}
+          >
+            {fallbackDetails}
+          </pre>
+        ) : null}
+      </div>
+    </div>
+  );
+};
 
 function RuntimeProviderModelLoadingSkeleton(): JSX.Element {
   return (
@@ -1096,8 +1336,8 @@ function ModelBadges({
 }): JSX.Element | null {
   const modelRecommendation = getOpenCodeTeamModelRecommendation(model.modelId);
   const localRoute = model.routeKind === 'configured_local';
-  const builtinFreeRoute = model.routeKind === 'builtin_free';
   const connectedRoute = model.routeKind === 'connected_provider';
+  const freeModel = isFreeRuntimeProviderModel(model);
   const verified =
     model.proofState === 'verified' ||
     model.availability === 'available' ||
@@ -1111,8 +1351,7 @@ function ModelBadges({
   const unknown = model.accessKind === 'unknown_model' || model.accessKind === 'no_model';
 
   if (
-    !model.free &&
-    !builtinFreeRoute &&
+    !freeModel &&
     !model.default &&
     !usedForNewTeams &&
     !modelRecommendation &&
@@ -1163,7 +1402,7 @@ function ModelBadges({
           Used in team picker
         </Badge>
       ) : null}
-      {model.free ? (
+      {freeModel ? (
         <Badge className="bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-200">free</Badge>
       ) : null}
       {localRoute ? (
@@ -1171,9 +1410,6 @@ function ModelBadges({
           <Badge className="bg-cyan-400/15 px-1.5 py-0 text-[10px] text-cyan-200">local</Badge>
           <Badge className="bg-sky-400/15 px-1.5 py-0 text-[10px] text-sky-200">configured</Badge>
         </>
-      ) : null}
-      {builtinFreeRoute && !model.free ? (
-        <Badge className="bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-200">free</Badge>
       ) : null}
       {connectedRoute ? (
         <Badge className="bg-emerald-400/15 px-1.5 py-0 text-[10px] text-emerald-100">
@@ -1198,6 +1434,19 @@ function ModelBadges({
         <Badge className="bg-amber-400/15 px-1.5 py-0 text-[10px] text-amber-200">default</Badge>
       ) : null}
     </div>
+  );
+}
+
+function isFreeRuntimeProviderModel(model: RuntimeProviderModelDto): boolean {
+  const normalizedModelId = model.modelId.trim().toLowerCase();
+  return (
+    model.free ||
+    model.routeKind === 'builtin_free' ||
+    model.accessKind === 'builtin_free' ||
+    normalizedModelId === 'opencode/big-pickle' ||
+    normalizedModelId.includes(':free') ||
+    normalizedModelId.endsWith('-free') ||
+    normalizedModelId.endsWith('/free')
   );
 }
 
@@ -1245,7 +1494,7 @@ function getOpenCodeModelSearchText(model: RuntimeProviderModelDto): string {
     model.proofState,
     model.availability,
     model.accessReason ?? '',
-    model.free ? 'free' : '',
+    isFreeRuntimeProviderModel(model) ? 'free' : '',
     model.default ? 'default' : '',
     model.requiresExecutionProof ? 'needs test needs probe' : '',
     recommendation?.label ?? '',
@@ -1688,8 +1937,13 @@ function ProviderModelList({
 }): JSX.Element {
   const pickerOpen = state.modelPickerProviderId === provider.providerId;
   const [recommendedOnly, setRecommendedOnly] = useState(false);
+  const [freeOnly, setFreeOnly] = useState(false);
   const hasRecommendedModels = useMemo(
     () => state.models.some((model) => isOpenCodeTeamModelRecommended(model.modelId)),
+    [state.models]
+  );
+  const hasFreeModels = useMemo(
+    () => state.models.some((model) => isFreeRuntimeProviderModel(model)),
     [state.models]
   );
 
@@ -1699,11 +1953,18 @@ function ProviderModelList({
     }
   }, [hasRecommendedModels]);
 
+  useEffect(() => {
+    if (!hasFreeModels) {
+      setFreeOnly(false);
+    }
+  }, [hasFreeModels]);
+
   const visibleModels = useMemo(
     () =>
       state.models
         .map((model, index) => ({ model, index }))
         .filter(({ model }) => !recommendedOnly || isOpenCodeTeamModelRecommended(model.modelId))
+        .filter(({ model }) => !freeOnly || isFreeRuntimeProviderModel(model))
         .sort((left, right) => {
           const recommendationOrder = compareOpenCodeTeamModelRecommendations(
             left.model.modelId,
@@ -1712,8 +1973,15 @@ function ProviderModelList({
           return recommendationOrder || left.index - right.index;
         })
         .map(({ model }) => model),
-    [recommendedOnly, state.models]
+    [freeOnly, recommendedOnly, state.models]
   );
+  const emptyModelListMessage = recommendedOnly
+    ? freeOnly
+      ? 'No recommended free models found.'
+      : 'No recommended models found.'
+    : freeOnly
+      ? 'No free models found.'
+      : 'No models found.';
 
   return (
     <div className="mt-4 space-y-3 border-t border-white/10 pt-3">
@@ -1753,12 +2021,35 @@ function ProviderModelList({
             </Label>
           </div>
         ) : null}
+        {hasFreeModels ? (
+          <div
+            className="flex h-10 items-center gap-2 rounded-md border border-white/10 px-3"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <Checkbox
+              id={`runtime-provider-${provider.providerId}-free-only`}
+              checked={freeOnly}
+              disabled={disabled || state.modelsLoading}
+              onCheckedChange={(checked) => setFreeOnly(checked === true)}
+              className="size-3.5"
+            />
+            <Label
+              htmlFor={`runtime-provider-${provider.providerId}-free-only`}
+              className="cursor-pointer text-xs font-normal text-[var(--color-text-secondary)]"
+            >
+              Free only
+            </Label>
+          </div>
+        ) : null}
       </div>
 
       {state.modelsError ? (
-        <div className="rounded-md border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs text-red-200">
-          {state.modelsError}
-        </div>
+        <RuntimeProviderErrorAlert
+          message={state.modelsError}
+          diagnostics={state.modelsErrorDiagnostics}
+          testId="runtime-provider-models-error"
+        />
       ) : null}
 
       <div
@@ -1768,9 +2059,7 @@ function ProviderModelList({
       >
         {!pickerOpen || state.modelsLoading ? <RuntimeProviderModelLoadingSkeleton /> : null}
         {pickerOpen && !state.modelsLoading && visibleModels.length === 0 && !state.modelsError ? (
-          <div className="text-sm text-[var(--color-text-muted)]">
-            {recommendedOnly ? 'No recommended models found.' : 'No models found.'}
-          </div>
+          <div className="text-sm text-[var(--color-text-muted)]">{emptyModelListMessage}</div>
         ) : null}
         {pickerOpen
           ? visibleModels.map((model) => (
@@ -1843,17 +2132,11 @@ export function RuntimeProviderManagementPanelView({
       <RuntimeSummary state={state} disabled={disabled} onRefresh={() => void actions.refresh()} />
 
       {state.error ? (
-        <div
-          className="flex items-start gap-2 rounded-md border px-3 py-2 text-xs"
-          style={{
-            borderColor: 'rgba(248, 113, 113, 0.25)',
-            backgroundColor: 'rgba(248, 113, 113, 0.06)',
-            color: '#fca5a5',
-          }}
-        >
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-          <span>{state.error}</span>
-        </div>
+        <RuntimeProviderErrorAlert
+          message={state.error}
+          diagnostics={state.errorDiagnostics}
+          testId="runtime-provider-error"
+        />
       ) : null}
 
       {state.successMessage ? (
@@ -1988,9 +2271,11 @@ export function RuntimeProviderManagementPanelView({
           ) : null}
 
           {state.directoryError ? (
-            <div className="rounded-md border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs text-red-200">
-              {state.directoryError}
-            </div>
+            <RuntimeProviderErrorAlert
+              message={state.directoryError}
+              diagnostics={state.directoryErrorDiagnostics}
+              testId="runtime-provider-directory-error"
+            />
           ) : null}
 
           <div className="max-h-[min(52vh,640px)] space-y-2 overflow-y-auto pr-1">

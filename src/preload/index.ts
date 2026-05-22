@@ -14,6 +14,7 @@ import {
   API_KEYS_LOOKUP,
   API_KEYS_SAVE,
   API_KEYS_STORAGE_STATUS,
+  APP_GET_WINDOWS_ELEVATION_STATUS,
   APP_RELAUNCH,
   APP_STARTUP_GET_STATUS,
   APP_STARTUP_PROGRESS,
@@ -350,6 +351,7 @@ import type {
   TriggerTestResult,
   UpdateKanbanPatch,
   UpdateSchedulePatch,
+  WindowsElevationStatus,
   WslClaudeRootCandidate,
 } from '@shared/types';
 import type {
@@ -514,6 +516,8 @@ const electronAPI: ElectronAPI = {
     },
   },
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  getWindowsElevationStatus: () =>
+    ipcRenderer.invoke(APP_GET_WINDOWS_ELEVATION_STATUS) as Promise<WindowsElevationStatus>,
   getProjects: () => ipcRenderer.invoke('get-projects'),
   getSessions: (projectId: string) => ipcRenderer.invoke('get-sessions', projectId),
   getSessionsPaginated: (

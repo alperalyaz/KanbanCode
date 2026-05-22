@@ -1,3 +1,5 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import vuetify from "vite-plugin-vuetify";
 import { generateI18nRoutes, supportedLocales } from "./data/i18n";
 
@@ -12,6 +14,7 @@ const muxPlaybackId = process.env.NUXT_PUBLIC_MUX_PLAYBACK_ID || "qyeNuDjFqoDALK
 const muxBackgroundPlaybackId = process.env.NUXT_PUBLIC_MUX_BACKGROUND_PLAYBACK_ID || muxPlaybackId;
 const baseURL = process.env.NUXT_APP_BASE_URL || "/";
 const basePrefixedDocsPath = `${baseURL.replace(/\/?$/, "/")}docs`;
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const defaultSeoTitle = "Agent Teams - AI Agent Orchestration for Developers";
 const defaultSeoDescription = "Free, open-source desktop app for AI agent teams. Start with a free model with no auth, then connect Claude, Codex, or OpenCode when you need more models.";
 const defaultSeoImage = `${siteUrl.replace(/\/+$/, "")}/og-image-agent-teams-v5.png`;
@@ -82,6 +85,13 @@ export default defineNuxtConfig({
   },
   nitro: {
     compressPublicAssets: true,
+    publicAssets: [
+      {
+        baseURL: "/screenshots",
+        dir: resolve(repoRoot, "docs/screenshots"),
+        maxAge: 60 * 60 * 24 * 365
+      }
+    ],
     prerender: {
       ignore: [
         "/docs",

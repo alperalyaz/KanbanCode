@@ -21,6 +21,7 @@ import type { TeamMemberMcpPolicy, TeamMemberMcpScope } from '@shared/types';
 export interface McpLaunchSpec {
   command: string;
   args: string[];
+  env?: Record<string, string>;
 }
 
 export interface McpLaunchSpecResolveProgress {
@@ -40,10 +41,12 @@ interface WriteMcpConfigOptions {
 const MCP_SERVER_NAME = 'agent-teams';
 const MCP_CLAUDE_DIR_ENV = 'AGENT_TEAMS_MCP_CLAUDE_DIR';
 const MCP_CONTROL_URL_ENV = 'CLAUDE_TEAM_CONTROL_URL';
+const ELECTRON_RUN_AS_NODE_ENV = 'ELECTRON_RUN_AS_NODE';
 const logger = createLogger('Service:TeamMcpConfigBuilder');
 const MCP_CONFIG_PREFIX = 'agent-teams-mcp-';
 const MCP_CONFIG_REMOVE_RETRY_DELAYS_MS = [25, 75, 150] as const;
 const NODE_RUNTIME_PROBE_TIMEOUT_MS = 5_000;
+const ELECTRON_NODE_RUNTIME_PROBE_TIMEOUT_MS = 5_000;
 /**
  * Stale configs older than this are removed on startup (best-effort).
  * 7 days is intentionally long: respawnAfterAuthFailure() reuses saved
@@ -58,6 +61,7 @@ const MCP_CONFIG_SCOPE_PRECEDENCE: readonly TeamMemberMcpScope[] = ['user', 'pro
 
 function isPackagedApp(): boolean {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { app } = require('electron') as typeof import('electron');
     return app.isPackaged;
   } catch {
@@ -86,6 +90,26 @@ function getPackagedServerEntry(): string {
 
 function getWorkspaceRoot(): string {
   return process.cwd();
+}
+
+function shouldUsePackagedElectronNodeRuntime(): boolean {
+  return (
+    isPackagedApp() && typeof process.execPath === 'string' && process.execPath.trim().length > 0
+  );
+}
+
+function getPackagedElectronNodeEnv(): Record<string, string> {
+  return {
+    [ELECTRON_RUN_AS_NODE_ENV]: '1',
+  };
+}
+
+function buildPackagedElectronNodeLaunchSpec(entry: string): McpLaunchSpec {
+  return {
+    command: process.execPath.trim(),
+    args: [entry],
+    env: getPackagedElectronNodeEnv(),
+  };
 }
 
 function getWorkspaceMcpServerDir(): string {
@@ -178,9 +202,11 @@ async function hasValidServerCopy(dir: string): Promise<boolean> {
 }
 
 let _resolvedNodePath: string | undefined;
+let _packagedElectronNodeRuntimeProbe: { ok: true } | { ok: false; error: unknown } | undefined;
 
 export function clearResolvedNodePathForTests(): void {
   _resolvedNodePath = undefined;
+  _packagedElectronNodeRuntimeProbe = undefined;
 }
 
 function emitProgress(
@@ -299,6 +325,37 @@ async function probeNodeRuntimePath(
     }
   }
   return { ok: false, error: lastError ?? 'no Node.js candidates were available' };
+}
+
+async function probePackagedElectronNodeRuntime(
+  options?: McpLaunchSpecResolveOptions
+): Promise<{ ok: true } | { ok: false; error: unknown }> {
+  if (_packagedElectronNodeRuntimeProbe) {
+    return _packagedElectronNodeRuntimeProbe;
+  }
+
+  emitProgress(options, 'electron-node-runtime', 'Checking bundled Electron Node runtime...');
+  try {
+    const { stdout } = await execCli(
+      process.execPath.trim(),
+      ['-e', 'process.stdout.write("agent-teams-electron-node-ok")'],
+      {
+        encoding: 'utf-8',
+        timeout: ELECTRON_NODE_RUNTIME_PROBE_TIMEOUT_MS,
+        env: {
+          ...process.env,
+          ...getPackagedElectronNodeEnv(),
+        },
+      }
+    );
+    if (stdout.trim() !== 'agent-teams-electron-node-ok') {
+      throw new Error('Electron Node runtime probe did not return the expected marker');
+    }
+    _packagedElectronNodeRuntimeProbe = { ok: true };
+  } catch (error) {
+    _packagedElectronNodeRuntimeProbe = { ok: false, error };
+  }
+  return _packagedElectronNodeRuntimeProbe;
 }
 
 async function probeShellNodeRuntimePath(
@@ -450,6 +507,27 @@ export async function resolveAgentTeamsMcpLaunchSpec(
     const packagedEntry = await resolvePackagedServerEntry(options);
     checked.push(packagedEntry);
     if (await pathExists(packagedEntry)) {
+      if (shouldUsePackagedElectronNodeRuntime()) {
+        const electronProbe = await probePackagedElectronNodeRuntime(options);
+        if (electronProbe.ok) {
+          emitProgress(
+            options,
+            'electron-node-runtime-found',
+            'Using bundled Electron Node runtime...'
+          );
+          return buildPackagedElectronNodeLaunchSpec(packagedEntry);
+        }
+        logger.warn(
+          `Bundled Electron Node runtime is unavailable for Agent Teams MCP; falling back to Node.js runtime: ${stringifyError(
+            electronProbe.error
+          )}`
+        );
+        emitProgress(
+          options,
+          'electron-node-runtime-fallback',
+          'Bundled Electron Node runtime unavailable, resolving Node.js fallback...'
+        );
+      }
       return {
         command: await resolveNodePath(options),
         args: [packagedEntry],
@@ -520,6 +598,7 @@ export class TeamMcpConfigBuilder {
       args: launchSpec.args,
       enabled: true,
       env: {
+        ...launchSpec.env,
         [MCP_CLAUDE_DIR_ENV]: getClaudeBasePath(),
         ...(controlApiBaseUrl ? { [MCP_CONTROL_URL_ENV]: controlApiBaseUrl } : {}),
       },

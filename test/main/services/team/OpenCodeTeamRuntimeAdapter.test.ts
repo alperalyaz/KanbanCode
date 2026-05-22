@@ -87,7 +87,7 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     });
   });
 
-  it('can rely on the launch bridge as the only readiness authority', async () => {
+  it('still runs readiness when a legacy caller asks to skip OpenCode preflight', async () => {
     const launchOpenCodeTeam = vi.fn<
       NonNullable<OpenCodeTeamRuntimeBridgePort['launchOpenCodeTeam']>
     >(
@@ -126,22 +126,26 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     );
     const bridge = bridgePort(
       readiness({
-        state: 'unknown_error',
-        launchAllowed: false,
-        diagnostics: ['readiness should be skipped'],
+        state: 'ready',
+        launchAllowed: true,
+        diagnostics: ['readiness was required'],
       }),
-      { launchOpenCodeTeam }
+      {
+        getLastOpenCodeRuntimeSnapshot: vi.fn(() => runtimeSnapshot('cap-1')),
+        launchOpenCodeTeam,
+      }
     );
     const adapter = new OpenCodeTeamRuntimeAdapter(bridge);
 
     const result = await adapter.launch(launchInput({ skipReadinessPreflight: true }));
 
     expect(result.teamLaunchState).toBe('clean_success');
-    expect(bridge.checkOpenCodeTeamLaunchReadiness).not.toHaveBeenCalled();
+    expect(bridge.checkOpenCodeTeamLaunchReadiness).toHaveBeenCalledTimes(1);
     expect(launchOpenCodeTeam).toHaveBeenCalledWith(
       expect.objectContaining({
         selectedModel: 'openai/gpt-5.4-mini',
-        expectedCapabilitySnapshotId: null,
+        skipPermissions: true,
+        expectedCapabilitySnapshotId: 'cap-1',
       })
     );
     expect(result.diagnostics).toEqual(
@@ -372,6 +376,32 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
     expect(launchOpenCodeTeam).toHaveBeenCalledWith(
       expect.objectContaining({
         expectedCapabilitySnapshotId: 'cap-fresh',
+      })
+    );
+  });
+
+  it('passes manual tool approval intent with a fresh capability precondition', async () => {
+    const launchOpenCodeTeam = vi.fn<
+      NonNullable<OpenCodeTeamRuntimeBridgePort['launchOpenCodeTeam']>
+    >(() => Promise.resolve(successfulOpenCodeLaunchData()));
+    const adapter = new OpenCodeTeamRuntimeAdapter({
+      checkOpenCodeTeamLaunchReadiness: vi.fn(async () =>
+        readiness({ state: 'ready', launchAllowed: true })
+      ),
+      getLastOpenCodeRuntimeSnapshot: vi.fn(() => runtimeSnapshot('cap-manual')),
+      launchOpenCodeTeam,
+    });
+
+    await expect(
+      adapter.launch(launchInput({ skipPermissions: false }))
+    ).resolves.toMatchObject({
+      teamLaunchState: 'clean_success',
+    });
+
+    expect(launchOpenCodeTeam).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skipPermissions: false,
+        expectedCapabilitySnapshotId: 'cap-manual',
       })
     );
   });
@@ -1357,6 +1387,23 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
               sessionId: 'oc-session-1',
               launchState: 'permission_blocked',
               pendingPermissionRequestIds: ['perm-1', 'perm-1', 'perm-2'],
+              pendingPermissions: [
+                {
+                  requestId: 'perm-1',
+                  sessionId: 'oc-session-1',
+                  tool: 'bash',
+                  title: 'Run git status',
+                  kind: 'tool',
+                  raw: {
+                    requestID: 'perm-1',
+                    sessionID: 'oc-session-1',
+                    tool: 'bash',
+                    title: 'Run git status',
+                    kind: 'tool',
+                    patterns: ['git status'],
+                  },
+                },
+              ],
               diagnostics: ['waiting for permission approval'],
               runtimePid: 123,
               model: 'openai/gpt-5.4-mini',
@@ -1393,6 +1440,15 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
           providerId: 'opencode',
           launchState: 'runtime_pending_permission',
           pendingPermissionRequestIds: ['perm-1', 'perm-2'],
+          pendingPermissions: [
+            {
+              providerId: 'opencode',
+              requestId: 'perm-1',
+              sessionId: 'oc-session-1',
+              tool: 'bash',
+              title: 'Run git status',
+            },
+          ],
           runtimeAlive: false,
           agentToolAccepted: true,
           livenessKind: 'permission_blocked',
@@ -1408,6 +1464,85 @@ describe('OpenCodeTeamRuntimeAdapter', () => {
         },
       },
     });
+  });
+
+  it('answers OpenCode runtime permissions through the bridge and remaps the lane state', async () => {
+    const answerOpenCodeRuntimePermission = vi.fn<
+      NonNullable<OpenCodeTeamRuntimeBridgePort['answerOpenCodeRuntimePermission']>
+    >(async () => ({
+      runId: 'run-1',
+      teamLaunchState: 'ready',
+      members: {
+        alice: {
+          sessionId: 'oc-session-1',
+          launchState: 'confirmed_alive',
+          runtimePid: 123,
+          model: 'openai/gpt-5.4-mini',
+          evidence: [
+            { kind: 'required_tools_proven', observedAt: '2026-04-21T00:00:00.000Z' },
+            { kind: 'delivery_ready', observedAt: '2026-04-21T00:00:00.000Z' },
+            { kind: 'member_ready', observedAt: '2026-04-21T00:00:00.000Z' },
+            { kind: 'run_ready', observedAt: '2026-04-21T00:00:00.000Z' },
+          ],
+        },
+      },
+      warnings: [],
+      diagnostics: [],
+    }));
+    const adapter = new OpenCodeTeamRuntimeAdapter(
+      bridgePort(readiness({ state: 'ready', launchAllowed: true }), {
+        answerOpenCodeRuntimePermission,
+      })
+    );
+
+    const result = await adapter.answerRuntimePermission({
+      runId: 'run-1',
+      teamName: 'team-a',
+      laneId: 'primary',
+      cwd: '/repo',
+      providerId: 'opencode',
+      memberName: 'alice',
+      requestId: 'perm-1',
+      decision: 'allow',
+      expectedMembers: launchInput().expectedMembers,
+      previousLaunchState: null,
+    });
+
+    expect(answerOpenCodeRuntimePermission).toHaveBeenCalledWith({
+      runId: 'run-1',
+      laneId: 'primary',
+      teamId: 'team-a',
+      teamName: 'team-a',
+      projectPath: '/repo',
+      memberName: 'alice',
+      requestId: 'perm-1',
+      decision: 'allow',
+      expectedCapabilitySnapshotId: null,
+      manifestHighWatermark: null,
+    });
+    expect(result.teamLaunchState).toBe('clean_success');
+    expect(result.members.alice?.launchState).toBe('confirmed_alive');
+  });
+
+  it('fails runtime permission answers when the OpenCode answer bridge is unavailable', async () => {
+    const adapter = new OpenCodeTeamRuntimeAdapter(
+      bridgePort(readiness({ state: 'ready', launchAllowed: true }))
+    );
+
+    await expect(
+      adapter.answerRuntimePermission({
+        runId: 'run-1',
+        teamName: 'team-a',
+        laneId: 'primary',
+        cwd: '/repo',
+        providerId: 'opencode',
+        memberName: 'alice',
+        requestId: 'perm-1',
+        decision: 'allow',
+        expectedMembers: launchInput().expectedMembers,
+        previousLaunchState: null,
+      })
+    ).rejects.toThrow('OpenCode permission answer bridge is not registered.');
   });
 
   it('does not mark created bridge members without runtimePid as runtimeAlive', async () => {
@@ -1706,7 +1841,7 @@ function launchInput(overrides: Partial<TeamRuntimeLaunchInput> = {}): TeamRunti
     cwd: '/repo',
     providerId: 'opencode',
     model: 'openai/gpt-5.4-mini',
-    skipPermissions: false,
+    skipPermissions: true,
     expectedMembers: [
       {
         name: 'alice',

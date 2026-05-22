@@ -23,6 +23,9 @@ export const APP_STARTUP_GET_STATUS = 'appStartup:getStatus';
 /** Main -> renderer startup progress update */
 export const APP_STARTUP_PROGRESS = 'appStartup:progress';
 
+/** Renderer -> main Windows elevation status request */
+export const APP_GET_WINDOWS_ELEVATION_STATUS = 'app:getWindowsElevationStatus';
+
 // =============================================================================
 // Telemetry Channels
 // =============================================================================

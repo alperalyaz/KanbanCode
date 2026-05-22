@@ -105,7 +105,7 @@ const logger = createLogger('Service:TeamDataService');
 
 const MIN_TEXT_LENGTH = 30;
 const MAX_LEAD_TEXTS = 150;
-const LEAD_SESSION_PARSE_CACHE_SCHEMA_VERSION = 'combined-v1';
+const LEAD_SESSION_PARSE_CACHE_SCHEMA_VERSION = 'combined-v2';
 const PROCESS_HEALTH_INTERVAL_MS = 2_000;
 const TASK_MAP_YIELD_EVERY = 250;
 const TASK_COMMENT_NOTIFICATION_SOURCE = 'system_notification';
@@ -3221,7 +3221,8 @@ export class TeamDataService {
     const MAX_SCAN_BYTES = 8 * 1024 * 1024;
     const INITIAL_SCAN_BYTES = 256 * 1024;
 
-    const textsReversed: InboxMessage[] = [];
+    const rawLinesReversed: string[] = [];
+    const seenRawLines = new Set<string>();
     const seenMessageIds = new Set<string>();
     const handle = await fs.promises.open(jsonlPath, 'r');
     try {
@@ -3229,7 +3230,7 @@ export class TeamDataService {
       const fileSize = stat.size;
 
       let scanBytes = Math.min(INITIAL_SCAN_BYTES, fileSize);
-      while (textsReversed.length < maxTexts && scanBytes <= MAX_SCAN_BYTES) {
+      while (scanBytes <= MAX_SCAN_BYTES) {
         const start = Math.max(0, fileSize - scanBytes);
         const buffer = Buffer.alloc(scanBytes);
         await handle.read(buffer, 0, scanBytes, start);
@@ -3241,96 +3242,11 @@ export class TeamDataService {
         for (let i = lines.length - 1; i >= fromIndex; i--) {
           const trimmed = lines[i]?.trim();
           if (!trimmed) continue;
-
-          let msg: Record<string, unknown>;
-          try {
-            msg = JSON.parse(trimmed) as Record<string, unknown>;
-          } catch {
-            continue;
-          }
-
-          if (msg.type !== 'assistant') continue;
-
-          const message = (msg.message ?? msg) as Record<string, unknown>;
-          const content = message.content;
-          if (!Array.isArray(content)) continue;
-
-          const timestamp =
-            typeof msg.timestamp === 'string' ? msg.timestamp : new Date().toISOString();
-
-          const textParts: string[] = [];
-          for (const block of content as Record<string, unknown>[]) {
-            if (block.type !== 'text' || typeof block.text !== 'string') continue;
-            textParts.push(block.text);
-          }
-          if (textParts.length === 0) continue;
-
-          const combined = stripAgentBlocks(textParts.join('\n')).trim();
-          if (combined.length < MIN_TEXT_LENGTH) continue;
-
-          const toolCallsList: ToolCallMeta[] = [];
-          const lookaheadLimit = Math.min(i + 200, lines.length);
-          for (let j = i + 1; j < lookaheadLimit; j++) {
-            const tLine = lines[j]?.trim();
-            if (!tLine) continue;
-            let tMsg: Record<string, unknown>;
-            try {
-              tMsg = JSON.parse(tLine) as Record<string, unknown>;
-            } catch {
-              continue;
-            }
-            if (tMsg.type !== 'assistant') continue;
-            const tMessage = (tMsg.message ?? tMsg) as Record<string, unknown>;
-            const tContent = tMessage.content;
-            if (!Array.isArray(tContent)) continue;
-            const tBlocks = tContent as Record<string, unknown>[];
-            if (tBlocks.some((b) => b.type === 'text')) break;
-            for (const b of tBlocks) {
-              if (b.type === 'tool_use' && typeof b.name === 'string' && b.name !== 'SendMessage') {
-                const input = (b.input ?? {}) as Record<string, unknown>;
-                toolCallsList.push({
-                  name: b.name,
-                  preview: extractToolPreview(b.name, input),
-                });
-              }
-            }
-          }
-          const toolCalls = toolCallsList.length > 0 ? toolCallsList : undefined;
-          const toolSummary = toolCalls ? formatToolSummaryFromCalls(toolCalls) : undefined;
-
-          const entryUuid = typeof msg.uuid === 'string' ? msg.uuid.trim() : '';
-          const assistantMessageId = typeof message.id === 'string' ? message.id.trim() : '';
-          const stableMessageId = entryUuid
-            ? `lead-thought-${entryUuid}`
-            : assistantMessageId
-              ? `lead-thought-msg-${assistantMessageId}`
-              : null;
-
-          const textPrefix = combined
-            .slice(0, 50)
-            .replace(/[^\p{L}\p{N}]/gu, '')
-            .slice(0, 20);
-
-          const messageId =
-            stableMessageId ?? `lead-session-${leadSessionId}-${timestamp}-${textPrefix}`;
-          if (seenMessageIds.has(messageId)) continue;
-          seenMessageIds.add(messageId);
-
-          textsReversed.push({
-            from: leadName,
-            text: combined,
-            timestamp,
-            read: true,
-            source: 'lead_session',
-            leadSessionId,
-            messageId,
-            toolSummary,
-            toolCalls,
-          });
-          if (textsReversed.length >= maxTexts) break;
+          if (seenRawLines.has(trimmed)) continue;
+          seenRawLines.add(trimmed);
+          rawLinesReversed.push(trimmed);
         }
 
-        if (textsReversed.length >= maxTexts) break;
         if (scanBytes === fileSize) break;
         scanBytes = Math.min(fileSize, scanBytes * 2);
       }
@@ -3338,8 +3254,163 @@ export class TeamDataService {
       await handle.close();
     }
 
-    textsReversed.reverse();
-    return textsReversed.length > maxTexts ? textsReversed.slice(-maxTexts) : textsReversed;
+    const rawLines = rawLinesReversed.reverse();
+    const texts: InboxMessage[] = [];
+    let syntheticBuffer: {
+      firstMsg: Record<string, unknown>;
+      firstMessage: Record<string, unknown>;
+      timestamp: string;
+      parts: string[];
+    } | null = null;
+
+    const collectToolCallsAfterIndex = (index: number): ToolCallMeta[] | undefined => {
+      const toolCallsList: ToolCallMeta[] = [];
+      const lookaheadLimit = Math.min(index + 200, rawLines.length);
+      for (let j = index + 1; j < lookaheadLimit; j++) {
+        const tLine = rawLines[j]?.trim();
+        if (!tLine) continue;
+        let tMsg: Record<string, unknown>;
+        try {
+          tMsg = JSON.parse(tLine) as Record<string, unknown>;
+        } catch {
+          continue;
+        }
+        if (tMsg.type !== 'assistant') break;
+        const tMessage = (tMsg.message ?? tMsg) as Record<string, unknown>;
+        const tContent = tMessage.content;
+        if (!Array.isArray(tContent)) continue;
+        const tBlocks = tContent as Record<string, unknown>[];
+        if (tBlocks.some((b) => b.type === 'text')) break;
+        for (const b of tBlocks) {
+          if (b.type === 'tool_use' && typeof b.name === 'string' && b.name !== 'SendMessage') {
+            const input = (b.input ?? {}) as Record<string, unknown>;
+            toolCallsList.push({
+              name: b.name,
+              preview: extractToolPreview(b.name, input),
+            });
+          }
+        }
+      }
+      return toolCallsList.length > 0 ? toolCallsList : undefined;
+    };
+
+    const pushLeadText = (
+      msg: Record<string, unknown>,
+      message: Record<string, unknown>,
+      combined: string,
+      timestamp: string,
+      toolCalls?: ToolCallMeta[],
+      streamGroup = false
+    ): void => {
+      if (combined.length < MIN_TEXT_LENGTH) return;
+
+      const entryUuid = typeof msg.uuid === 'string' ? msg.uuid.trim() : '';
+      const assistantMessageId = typeof message.id === 'string' ? message.id.trim() : '';
+      const stableMessageId = entryUuid
+        ? streamGroup
+          ? `lead-thought-stream-${entryUuid}`
+          : `lead-thought-${entryUuid}`
+        : assistantMessageId
+          ? `lead-thought-msg-${assistantMessageId}`
+          : null;
+
+      const textPrefix = combined
+        .slice(0, 50)
+        .replace(/[^\p{L}\p{N}]/gu, '')
+        .slice(0, 20);
+
+      const messageId =
+        stableMessageId ?? `lead-session-${leadSessionId}-${timestamp}-${textPrefix}`;
+      if (seenMessageIds.has(messageId)) return;
+      seenMessageIds.add(messageId);
+
+      const toolSummary = toolCalls ? formatToolSummaryFromCalls(toolCalls) : undefined;
+      texts.push({
+        from: leadName,
+        text: combined,
+        timestamp,
+        read: true,
+        source: 'lead_session',
+        leadSessionId,
+        messageId,
+        toolSummary,
+        toolCalls,
+      });
+    };
+
+    const flushSyntheticBuffer = (): void => {
+      if (!syntheticBuffer) return;
+      const combined = stripAgentBlocks(syntheticBuffer.parts.join('')).trim();
+      pushLeadText(
+        syntheticBuffer.firstMsg,
+        syntheticBuffer.firstMessage,
+        combined,
+        syntheticBuffer.timestamp,
+        undefined,
+        true
+      );
+      syntheticBuffer = null;
+    };
+
+    for (let i = 0; i < rawLines.length; i++) {
+      const trimmed = rawLines[i]?.trim();
+      if (!trimmed) continue;
+
+      let msg: Record<string, unknown>;
+      try {
+        msg = JSON.parse(trimmed) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+
+      if (msg.type !== 'assistant') {
+        flushSyntheticBuffer();
+        continue;
+      }
+
+      const message = (msg.message ?? msg) as Record<string, unknown>;
+      const content = message.content;
+      if (!Array.isArray(content)) {
+        flushSyntheticBuffer();
+        continue;
+      }
+
+      const textParts: string[] = [];
+      for (const block of content as Record<string, unknown>[]) {
+        if (block.type !== 'text' || typeof block.text !== 'string') continue;
+        textParts.push(block.text);
+      }
+
+      if (textParts.length === 0) {
+        if ((content as Record<string, unknown>[]).some((block) => block.type === 'tool_use')) {
+          flushSyntheticBuffer();
+        }
+        continue;
+      }
+
+      const timestamp =
+        typeof msg.timestamp === 'string' ? msg.timestamp : new Date().toISOString();
+      const isSyntheticChunk = message.model === '<synthetic>' && message.type === 'message';
+      if (isSyntheticChunk) {
+        if (!syntheticBuffer) {
+          syntheticBuffer = {
+            firstMsg: msg,
+            firstMessage: message,
+            timestamp,
+            parts: [],
+          };
+        }
+        syntheticBuffer.parts.push(textParts.join(''));
+        continue;
+      }
+
+      flushSyntheticBuffer();
+      const combined = stripAgentBlocks(textParts.join('\n')).trim();
+      pushLeadText(msg, message, combined, timestamp, collectToolCallsAfterIndex(i));
+    }
+
+    flushSyntheticBuffer();
+    return texts.length > maxTexts ? texts.slice(-maxTexts) : texts;
   }
 
   private async extractLeadSessionTextsFromJsonl(

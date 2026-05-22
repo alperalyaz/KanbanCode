@@ -276,6 +276,29 @@ describe('buildProviderAwareCliEnv', () => {
     );
   });
 
+  it('serializes Agent Teams MCP launch env overrides for OpenCode provider commands', async () => {
+    resolveAgentTeamsMcpLaunchSpecMock.mockResolvedValue({
+      command: '/opt/Agent Teams AI/agent-teams-ai',
+      args: ['/app/mcp-server/index.js'],
+      env: { ELECTRON_RUN_AS_NODE: '1' },
+    });
+    const { buildProviderAwareCliEnv } =
+      await import('../../../../src/main/services/runtime/providerAwareCliEnv');
+
+    const result = await buildProviderAwareCliEnv({
+      providerId: 'opencode',
+      env: { ELECTRON_RUN_AS_NODE: 'inherited-global-value' },
+    });
+
+    expect(result.env.ELECTRON_RUN_AS_NODE).toBeUndefined();
+    expect(result.env.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENV_JSON).toBe(
+      '{"ELECTRON_RUN_AS_NODE":"1"}'
+    );
+    expect(result.env.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND).toBe(
+      '/opt/Agent Teams AI/agent-teams-ai'
+    );
+  });
+
   it('preserves explicit local Agent Teams MCP launch env for OpenCode provider commands', async () => {
     const { buildProviderAwareCliEnv } =
       await import('../../../../src/main/services/runtime/providerAwareCliEnv');
@@ -285,6 +308,7 @@ describe('buildProviderAwareCliEnv', () => {
         CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND: 'custom-node',
         CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY: '/custom/mcp.js',
         CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON: '["/custom/mcp.js"]',
+        ELECTRON_RUN_AS_NODE: '1',
       },
     });
 
@@ -292,6 +316,10 @@ describe('buildProviderAwareCliEnv', () => {
     expect(result.env.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_COMMAND).toBe('custom-node');
     expect(result.env.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENTRY).toBe('/custom/mcp.js');
     expect(result.env.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ARGS_JSON).toBe('["/custom/mcp.js"]');
+    expect(result.env.CLAUDE_MULTIMODEL_AGENT_TEAMS_MCP_ENV_JSON).toBe(
+      '{"ELECTRON_RUN_AS_NODE":"1"}'
+    );
+    expect(result.env.ELECTRON_RUN_AS_NODE).toBeUndefined();
   });
 
   it('allows OpenCode auto-update only behind an explicit app override', async () => {
