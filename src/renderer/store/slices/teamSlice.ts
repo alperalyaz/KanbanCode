@@ -80,6 +80,12 @@ import {
   clearPendingReplyRefreshWaits,
   setPendingReplyRefreshEnabled,
 } from '../team/teamPendingReplyWaits';
+import {
+  clearAllTeamRefreshBurstDiagnostics,
+  clearTeamRefreshBurstDiagnostics,
+  hasTeamRefreshBurstDiagnostics,
+  noteTeamRefreshBurst,
+} from '../team/teamRefreshBurstDiagnostics';
 import { noteTeamRefreshFanout } from '../teamRefreshFanoutDiagnostics';
 import { getWorktreeNavigationState } from '../utils/stateResetHelpers';
 
@@ -186,10 +192,6 @@ const pendingFreshTeamMemberActivityMetaRefreshes = new Set<string>();
 const pendingTeamPendingReplyRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let inFlightGlobalTasksRefresh: Promise<void> | null = null;
 let pendingFreshGlobalTasksRefresh = false;
-const teamRefreshBurstDiagnostics = new Map<
-  string,
-  { windowStartedAt: number; count: number; lastWarnAt: number }
->();
 interface RefreshTeamDataOptions {
   withDedup?: boolean;
 }
@@ -253,7 +255,7 @@ export function __resetTeamSliceModuleStateForTests(): void {
   clearAllLastResolvedTeamDataRefreshes();
   clearAllTeamLocalStateEpochs();
   clearAllMemberSpawnStatusesIpcBackoffs();
-  teamRefreshBurstDiagnostics.clear();
+  clearAllTeamRefreshBurstDiagnostics();
   clearAllMemberSpawnUiEqualLastWarns();
   resolvedMembersSelectorCache.clear();
   resolvedMemberSelectorCache.clear();
@@ -286,7 +288,7 @@ function clearTeamScopedTransientState(teamName: string): void {
   pendingFreshTeamMemberActivityMetaRefreshes.delete(teamName);
   clearLastResolvedTeamDataRefreshAt(teamName);
   clearMemberSpawnStatusesIpcBackoff(teamName);
-  teamRefreshBurstDiagnostics.delete(teamName);
+  clearTeamRefreshBurstDiagnostics(teamName);
   clearMemberSpawnUiEqualLastWarn(teamName);
   clearTeamScopedSelectorCaches(teamName);
 }
@@ -672,7 +674,7 @@ export function __getTeamScopedTransientStateForTests(teamName: string): {
     hasLastResolvedTeamDataRefresh: hasLastResolvedTeamDataRefreshAt(teamName),
     hasCurrentLocalStateEpoch: hasTeamLocalStateEpoch(teamName),
     hasMemberSpawnStatusesIpcBackoff: hasMemberSpawnStatusesIpcBackoff(teamName),
-    hasTeamRefreshBurstDiagnostics: teamRefreshBurstDiagnostics.has(teamName),
+    hasTeamRefreshBurstDiagnostics: hasTeamRefreshBurstDiagnostics(teamName),
     hasMemberSpawnUiEqualLastWarn: hasMemberSpawnUiEqualLastWarn(teamName),
   };
 }
@@ -836,25 +838,6 @@ function fetchTeamDataFresh(
     TEAM_GET_DATA_TIMEOUT_MS,
     getTeamDataRequestLabel(teamName, normalizedOptions)
   );
-}
-
-function noteTeamRefreshBurst(teamName: string): number {
-  const now = Date.now();
-  const diagnostic = teamRefreshBurstDiagnostics.get(teamName) ?? {
-    windowStartedAt: now,
-    count: 0,
-    lastWarnAt: 0,
-  };
-
-  if (now - diagnostic.windowStartedAt > TEAM_REFRESH_BURST_WINDOW_MS) {
-    diagnostic.windowStartedAt = now;
-    diagnostic.count = 0;
-  }
-
-  diagnostic.count += 1;
-
-  teamRefreshBurstDiagnostics.set(teamName, diagnostic);
-  return diagnostic.count;
 }
 
 function areLaunchSummaryCountsEqual(
@@ -4203,7 +4186,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     const refreshToken = beginInFlightTeamDataRefresh(teamName);
     // Silent refresh — update data without showing loading skeleton.
     // Only selectTeam() sets loading: true (for initial load).
-    noteTeamRefreshBurst(teamName);
+    noteTeamRefreshBurst(teamName, TEAM_REFRESH_BURST_WINDOW_MS);
     if (reusedInFlightRequest) {
       pendingFreshTeamDataRefreshes.add(teamName);
     }
