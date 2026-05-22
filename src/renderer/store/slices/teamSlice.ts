@@ -49,6 +49,11 @@ import {
   pruneOptimisticMessages,
   upsertOptimisticTeamMessage,
 } from '../team/teamMessagesCache';
+import {
+  clearAllPendingReplyRefreshWaits,
+  clearPendingReplyRefreshWaits,
+  setPendingReplyRefreshEnabled,
+} from '../team/teamPendingReplyWaits';
 import { noteTeamRefreshFanout } from '../teamRefreshFanoutDiagnostics';
 import { getWorktreeNavigationState } from '../utils/stateResetHelpers';
 
@@ -115,6 +120,10 @@ export type {
   TeamMessagesCacheEntry,
 } from '../team/teamMessagesCache';
 export { selectMemberMessagesForTeamMember, selectTeamMessages } from '../team/teamMessagesCache';
+export {
+  getActiveTeamPendingReplyWaits,
+  hasActiveTeamPendingReplyWait,
+} from '../team/teamPendingReplyWaits';
 
 const GRAPH_STABLE_SLOT_LAYOUT_VERSION = 'stable-slots-v1' as const;
 const DISABLE_PERSISTED_TEAM_GRAPH_SLOT_ASSIGNMENTS = true;
@@ -148,7 +157,6 @@ const pendingFreshTeamMessagesHeadRefreshes = new Set<string>();
 const inFlightTeamMemberActivityMetaRequests = new Map<string, Promise<void>>();
 const pendingFreshTeamMemberActivityMetaRefreshes = new Set<string>();
 const pendingTeamPendingReplyRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const activeTeamPendingReplyWaitSourceIdsByTeam = new Map<string, Set<string>>();
 const lastResolvedTeamDataRefreshAtByTeam = new Map<string, number>();
 const teamLocalStateEpochByTeam = new Map<string, number>();
 let inFlightGlobalTasksRefresh: Promise<void> | null = null;
@@ -203,18 +211,6 @@ export function getLastResolvedTeamDataRefreshAt(teamName: string): number | und
   return lastResolvedTeamDataRefreshAtByTeam.get(teamName);
 }
 
-export function hasActiveTeamPendingReplyWait(teamName: string): boolean {
-  return (activeTeamPendingReplyWaitSourceIdsByTeam.get(teamName)?.size ?? 0) > 0;
-}
-
-export function getActiveTeamPendingReplyWaits(): Set<string> {
-  return new Set(
-    Array.from(activeTeamPendingReplyWaitSourceIdsByTeam.entries())
-      .filter(([, sourceIds]) => sourceIds.size > 0)
-      .map(([teamName]) => teamName)
-  );
-}
-
 export function __resetTeamSliceModuleStateForTests(): void {
   inFlightTeamDataRequests.clear();
   inFlightRefreshTeamDataCalls.clear();
@@ -234,7 +230,7 @@ export function __resetTeamSliceModuleStateForTests(): void {
     clearTimeout(timer);
   }
   pendingTeamPendingReplyRefreshTimers.clear();
-  activeTeamPendingReplyWaitSourceIdsByTeam.clear();
+  clearAllPendingReplyRefreshWaits();
   lastResolvedTeamDataRefreshAtByTeam.clear();
   teamLocalStateEpochByTeam.clear();
   memberSpawnStatusesIpcBackoffUntilByTeam.clear();
@@ -1080,34 +1076,6 @@ function clearPendingReplyRefreshTimer(teamName: string): void {
   }
   clearTimeout(existingTimer);
   pendingTeamPendingReplyRefreshTimers.delete(teamName);
-}
-
-function clearPendingReplyRefreshWaits(teamName: string): void {
-  activeTeamPendingReplyWaitSourceIdsByTeam.delete(teamName);
-}
-
-function setPendingReplyRefreshEnabled(
-  teamName: string,
-  sourceId: string,
-  enabled: boolean
-): boolean {
-  if (enabled) {
-    const existing = activeTeamPendingReplyWaitSourceIdsByTeam.get(teamName) ?? new Set<string>();
-    existing.add(sourceId);
-    activeTeamPendingReplyWaitSourceIdsByTeam.set(teamName, existing);
-    return true;
-  }
-
-  const existing = activeTeamPendingReplyWaitSourceIdsByTeam.get(teamName);
-  if (!existing) {
-    return false;
-  }
-  existing.delete(sourceId);
-  if (existing.size === 0) {
-    activeTeamPendingReplyWaitSourceIdsByTeam.delete(teamName);
-    return false;
-  }
-  return true;
 }
 
 async function refreshTaskChangePresenceForUpdatedTask(
