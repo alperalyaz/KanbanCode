@@ -37,6 +37,7 @@ export const Sidebar = (): React.JSX.Element => {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('tasks');
+  const [hasOpenedSessionsTab, setHasOpenedSessionsTab] = useState(false);
   const [taskFilters, setTaskFilters] = useState<TaskFiltersState>(defaultTaskFiltersState);
   const [taskFiltersPopoverOpen, setTaskFiltersPopoverOpen] = useState(false);
   const [isCollapseHovered, setIsCollapseHovered] = useState(false);
@@ -76,6 +77,12 @@ export const Sidebar = (): React.JSX.Element => {
       document.body.style.userSelect = '';
     };
   }, [isResizing, handleMouseMove, handleMouseUp]);
+
+  useEffect(() => {
+    if (sidebarTab === 'sessions') {
+      setHasOpenedSessionsTab(true);
+    }
+  }, [sidebarTab]);
 
   const handleResizeStart = (e: React.MouseEvent): void => {
     e.preventDefault();
@@ -195,7 +202,7 @@ export const Sidebar = (): React.JSX.Element => {
           hidden={sidebarTab !== 'sessions'}
           className="min-w-0 flex-1 overflow-hidden"
         >
-          <DateGroupedSessions />
+          {hasOpenedSessionsTab && <DateGroupedSessions />}
         </div>
       </div>
 

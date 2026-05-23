@@ -215,11 +215,10 @@ export function initializeNotificationListeners(): () => void {
   cleanupFns.push(() => {
     useStore.getState().unsubscribeProvisioningProgress();
   });
-  // Initial data fetches. Config loads first (needed for theme), then the rest
-  // run in parallel (no data dependencies between them). UV_THREADPOOL_SIZE=16
-  // prevents thread pool saturation even with concurrent I/O on Windows.
-  // Components also fire these from useEffect — loading guards in each action
-  // prevent duplicate IPC calls (whichever caller starts first wins).
+  // Initial data fetches. Config loads first (needed for theme), then the
+  // immediately visible data follows. Repository grouping is owned by the
+  // Sessions sidebar tab when it first mounts; scanning it here made startup
+  // pay for a hidden panel.
   void (async () => {
     // Config: fast (in-memory read) — needed for theme before first paint.
     await useStore.getState().fetchConfig();
@@ -262,10 +261,8 @@ export function initializeNotificationListeners(): () => void {
       runtimeStatusTimer = null;
     }, STARTUP_RUNTIME_STATUS_IDLE_DELAY_MS);
 
-    // Remaining fetches have no data dependency on each other — run in parallel
-    // to avoid blocking teams/notifications behind a slow repository scan.
+    // Remaining visible startup fetches have no data dependency on each other.
     await Promise.all([
-      useStore.getState().fetchRepositoryGroups(),
       useStore.getState().fetchAllTasks(),
       useStore.getState().fetchTeams(),
       useStore.getState().fetchNotifications(),
