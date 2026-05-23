@@ -19,7 +19,7 @@ interface ProviderActivityState {
 
 interface ProviderActivityStatusStripProps {
   readonly cliStatus: CliInstallationStatus | null | undefined;
-  readonly sourceCliStatus?: CliInstallationStatus | null | undefined;
+  readonly sourceCliStatus?: CliInstallationStatus | null;
   readonly cliStatusLoading: boolean;
   readonly cliProviderStatusLoading: Partial<Record<CliProviderId, boolean>>;
   readonly multimodelEnabled: boolean;
