@@ -927,7 +927,7 @@ let shutdownComplete = false;
 const startupTimers = new Set<ReturnType<typeof setTimeout>>();
 
 const SHUTDOWN_STEP_TIMEOUT_MS = 5_000;
-const STARTUP_RECOVERY_DELAY_MS = 60_000;
+const STARTUP_RECOVERY_DELAY_MS = 10_000;
 const STARTUP_CLI_WARMUP_DELAY_MS = 90_000;
 const STARTUP_BACKGROUND_SERVICE_DELAY_MS = 5_000;
 const STARTUP_RECOVERY_CONCURRENCY = 1;

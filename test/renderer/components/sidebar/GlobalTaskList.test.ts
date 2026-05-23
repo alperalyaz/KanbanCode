@@ -15,6 +15,7 @@ interface StoreState {
   softDeleteTask: ReturnType<typeof vi.fn>;
   projects: { path: string; name: string; sessions: unknown[]; totalSessions?: number }[];
   projectsLoading: boolean;
+  projectsInitialized: boolean;
   projectsError: string | null;
   viewMode: 'flat' | 'grouped';
   repositoryGroups: {
@@ -24,6 +25,7 @@ interface StoreState {
     worktrees: { path: string }[];
   }[];
   repositoryGroupsLoading: boolean;
+  repositoryGroupsInitialized: boolean;
   repositoryGroupsError: string | null;
   teams: (Pick<TeamSummary, 'teamName' | 'displayName'> & Partial<TeamSummary>)[];
   provisioningRuns: Record<string, { state: string; runId: string; updatedAt: string }>;
@@ -216,10 +218,12 @@ describe('GlobalTaskList project grouping', () => {
     storeState.softDeleteTask = vi.fn(() => Promise.resolve(undefined));
     storeState.projects = [];
     storeState.projectsLoading = false;
+    storeState.projectsInitialized = false;
     storeState.projectsError = null;
     storeState.viewMode = 'flat';
     storeState.repositoryGroups = [];
     storeState.repositoryGroupsLoading = false;
+    storeState.repositoryGroupsInitialized = false;
     storeState.repositoryGroupsError = null;
     storeState.teams = [{ teamName: 'alpha-team', displayName: 'Alpha Team' }];
     storeState.provisioningRuns = {};
@@ -303,6 +307,43 @@ describe('GlobalTaskList project grouping', () => {
 
     expect(storeState.fetchRepositoryGroups).not.toHaveBeenCalled();
     expect(storeState.fetchProjects).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+      await flushMicrotasks();
+    });
+  });
+
+  it('does not refetch repository groups after an empty grouped result is initialized', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.viewMode = 'grouped';
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(GlobalTaskList));
+      await flushMicrotasks();
+    });
+
+    expect(storeState.fetchRepositoryGroups).toHaveBeenCalledTimes(1);
+
+    storeState.repositoryGroupsLoading = true;
+    await act(async () => {
+      notifyStoreUpdate();
+      await flushMicrotasks();
+    });
+
+    storeState.repositoryGroupsLoading = false;
+    storeState.repositoryGroupsInitialized = true;
+    storeState.repositoryGroups = [];
+    await act(async () => {
+      notifyStoreUpdate();
+      await flushMicrotasks();
+    });
+
+    expect(storeState.fetchRepositoryGroups).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       root.unmount();

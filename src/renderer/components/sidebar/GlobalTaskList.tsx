@@ -206,10 +206,12 @@ export const GlobalTaskList = memo(function GlobalTaskList({
     softDeleteTask,
     projects,
     projectsLoading,
+    projectsInitialized,
     projectsError,
     viewMode,
     repositoryGroups,
     repositoryGroupsLoading,
+    repositoryGroupsInitialized,
     repositoryGroupsError,
     teams,
     provisioningRuns,
@@ -226,10 +228,12 @@ export const GlobalTaskList = memo(function GlobalTaskList({
       softDeleteTask: s.softDeleteTask,
       projects: s.projects,
       projectsLoading: s.projectsLoading,
+      projectsInitialized: s.projectsInitialized,
       projectsError: s.projectsError,
       viewMode: s.viewMode,
       repositoryGroups: s.repositoryGroups,
       repositoryGroupsLoading: s.repositoryGroupsLoading,
+      repositoryGroupsInitialized: s.repositoryGroupsInitialized,
       repositoryGroupsError: s.repositoryGroupsError,
       teams: s.teams,
       provisioningRuns: s.provisioningRuns,
@@ -457,22 +461,22 @@ export const GlobalTaskList = memo(function GlobalTaskList({
   useEffect(() => {
     if (
       viewMode === 'grouped' &&
-      repositoryGroups.length === 0 &&
+      !repositoryGroupsInitialized &&
       !repositoryGroupsLoading &&
       !repositoryGroupsError
     ) {
       void fetchRepositoryGroups();
-    } else if (viewMode === 'flat' && projects.length === 0 && !projectsLoading && !projectsError) {
+    } else if (viewMode === 'flat' && !projectsInitialized && !projectsLoading && !projectsError) {
       void fetchProjects();
     }
   }, [
     fetchProjects,
     fetchRepositoryGroups,
-    projects.length,
     projectsError,
+    projectsInitialized,
     projectsLoading,
-    repositoryGroups.length,
     repositoryGroupsError,
+    repositoryGroupsInitialized,
     repositoryGroupsLoading,
     viewMode,
   ]);
