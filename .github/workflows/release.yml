@@ -46,7 +46,9 @@ jobs:
           cache: pnpm
 
       - name: Restore pnpm node-gyp executable bit
-        run: find "$(dirname "$(command -v pnpm)")/store" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
+        run: |
+          PNPM_STORE="$(pnpm store path)"
+          find "$PNPM_STORE" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -340,7 +342,9 @@ jobs:
           python-version: '3.11'
 
       - name: Restore pnpm node-gyp executable bit
-        run: find "$(dirname "$(command -v pnpm)")/store" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
+        run: |
+          PNPM_STORE="$(pnpm store path)"
+          find "$PNPM_STORE" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -459,7 +463,9 @@ jobs:
           python-version: '3.11'
 
       - name: Restore pnpm node-gyp executable bit
-        run: find "$(dirname "$(command -v pnpm)")/store" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
+        run: |
+          PNPM_STORE="$(pnpm store path)"
+          find "$PNPM_STORE" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -583,7 +589,9 @@ jobs:
           sudo apt-get install -y libarchive-tools rpm xvfb
 
       - name: Restore pnpm node-gyp executable bit
-        run: find "$(dirname "$(command -v pnpm)")/store" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
+        run: |
+          PNPM_STORE="$(pnpm store path)"
+          find "$PNPM_STORE" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
