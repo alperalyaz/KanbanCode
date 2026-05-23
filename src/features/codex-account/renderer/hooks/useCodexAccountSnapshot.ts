@@ -65,6 +65,9 @@ export function useCodexAccountSnapshot(options: {
   const [visible, setVisible] = useState(() => isDocumentVisible());
   const lastUpdatedAtRef = useRef<number | null>(null);
   const initialRefreshDelayMs = options.initialRefreshDelayMs ?? 0;
+  const [initialRefreshAttempted, setInitialRefreshAttempted] = useState(
+    () => initialRefreshDelayMs <= 0
+  );
 
   const applySnapshot = useCallback((nextSnapshot: CodexAccountSnapshotDto) => {
     lastUpdatedAtRef.current = Date.now();
@@ -157,6 +160,7 @@ export function useCodexAccountSnapshot(options: {
           if (!active) {
             return;
           }
+          setInitialRefreshAttempted(true);
           setLoading(false);
           if (options.includeRateLimits) {
             setRateLimitsLoading(false);
@@ -206,7 +210,12 @@ export function useCodexAccountSnapshot(options: {
         ? CODEX_VISIBLE_RATE_LIMITS_REFRESH_MS
         : CODEX_VISIBLE_STANDARD_REFRESH_MS;
 
-      if (initialRefreshDelayMs > 0 && lastUpdatedAtRef.current === null && snapshot === null) {
+      if (
+        initialRefreshDelayMs > 0 &&
+        lastUpdatedAtRef.current === null &&
+        snapshot === null &&
+        !initialRefreshAttempted
+      ) {
         return;
       }
 
@@ -227,6 +236,7 @@ export function useCodexAccountSnapshot(options: {
     };
   }, [
     electronMode,
+    initialRefreshAttempted,
     initialRefreshDelayMs,
     options.enabled,
     options.includeRateLimits,
@@ -238,7 +248,7 @@ export function useCodexAccountSnapshot(options: {
     if (!electronMode || !options.enabled) {
       return;
     }
-    if (initialRefreshDelayMs > 0 && snapshot === null) {
+    if (initialRefreshDelayMs > 0 && snapshot === null && !initialRefreshAttempted) {
       return;
     }
 
@@ -259,6 +269,7 @@ export function useCodexAccountSnapshot(options: {
     };
   }, [
     electronMode,
+    initialRefreshAttempted,
     initialRefreshDelayMs,
     options.enabled,
     options.includeRateLimits,

@@ -45,6 +45,10 @@ const codexAccountHookState = {
 const pluginsPanelSpy = vi.fn();
 const mcpServersPanelSpy = vi.fn();
 const customMcpDialogSpy = vi.fn();
+const useCodexAccountSnapshotSpy = vi.fn(
+  (_options: { enabled: boolean; includeRateLimits?: boolean; initialRefreshDelayMs?: number }) =>
+    codexAccountHookState
+);
 
 vi.mock('@renderer/store', () => ({
   useStore: (selector: (state: StoreState) => unknown) => selector(storeState),
@@ -67,7 +71,11 @@ vi.mock('@features/codex-account/renderer', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@features/codex-account/renderer')>();
   return {
     ...actual,
-    useCodexAccountSnapshot: () => codexAccountHookState,
+    useCodexAccountSnapshot: (options: {
+      enabled: boolean;
+      includeRateLimits?: boolean;
+      initialRefreshDelayMs?: number;
+    }) => useCodexAccountSnapshotSpy(options),
   };
 });
 
@@ -296,6 +304,7 @@ describe('ExtensionStoreView provider loading placeholders', () => {
     pluginsPanelSpy.mockReset();
     mcpServersPanelSpy.mockReset();
     customMcpDialogSpy.mockReset();
+    useCodexAccountSnapshotSpy.mockClear();
     codexAccountHookState.snapshot = null;
     codexAccountHookState.loading = false;
     codexAccountHookState.error = null;
@@ -360,6 +369,34 @@ describe('ExtensionStoreView provider loading placeholders', () => {
     expect(host.textContent).toContain('Checking provider status...');
     expect(host.textContent).toContain('Loading...');
     expect(host.textContent).not.toContain('Checking extensions runtime availability');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('does not defer Codex account refresh again after the lazy Extensions tab mounts', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(ExtensionStoreView));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const lastOptions = useCodexAccountSnapshotSpy.mock.calls.at(-1)?.[0] as
+      | { enabled?: boolean; includeRateLimits?: boolean; initialRefreshDelayMs?: number }
+      | undefined;
+    expect(lastOptions).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        includeRateLimits: true,
+      })
+    );
+    expect(lastOptions?.initialRefreshDelayMs).toBeUndefined();
 
     await act(async () => {
       root.unmount();

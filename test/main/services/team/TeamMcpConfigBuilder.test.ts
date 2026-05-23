@@ -21,10 +21,13 @@ const hoisted = vi.hoisted(() => ({
     isPackaged: false,
     version: '9.9.9-test',
   },
-  execCliMock: vi.fn<ExecCliMock>(async () => ({ stdout: '/mock/node', stderr: '' })),
+  execCliMock: vi.fn<ExecCliMock>(async () => ({
+    stdout: JSON.stringify({ execPath: '/mock/node', version: '20.11.0' }),
+    stderr: '',
+  })),
   cachedShellEnv: null as NodeJS.ProcessEnv | null,
   resolveInteractiveShellEnvMock: vi.fn<ResolveInteractiveShellEnvMock>(
-    async () => ({} as NodeJS.ProcessEnv)
+    async () => ({}) as NodeJS.ProcessEnv
   ),
 }));
 
@@ -65,6 +68,10 @@ import {
 } from '@main/services/team/TeamMcpConfigBuilder';
 import { setAppDataBasePath, setClaudeBasePathOverride } from '@main/utils/pathDecoder';
 
+function nodeRuntimeProbeStdout(execPath: string, version = '20.11.0'): string {
+  return JSON.stringify({ execPath, version });
+}
+
 describe('TeamMcpConfigBuilder', () => {
   const createdPaths: string[] = [];
   const createdDirs: string[] = [];
@@ -95,7 +102,9 @@ describe('TeamMcpConfigBuilder', () => {
 
   function readGeneratedServer(
     configPath: string
-  ): { command?: string; args?: string[]; enabled?: boolean; env?: Record<string, string> } | undefined {
+  ):
+    | { command?: string; args?: string[]; enabled?: boolean; env?: Record<string, string> }
+    | undefined {
     const raw = fs.readFileSync(configPath, 'utf8');
     const parsed = JSON.parse(raw) as {
       mcpServers?: Record<
@@ -206,7 +215,10 @@ describe('TeamMcpConfigBuilder', () => {
     setPackagedMode(false);
     setResourcesPath(undefined);
     hoisted.execCliMock.mockClear();
-    hoisted.execCliMock.mockResolvedValue({ stdout: '/mock/node', stderr: '' });
+    hoisted.execCliMock.mockResolvedValue({
+      stdout: nodeRuntimeProbeStdout('/mock/node'),
+      stderr: '',
+    });
     hoisted.cachedShellEnv = null;
     hoisted.resolveInteractiveShellEnvMock.mockClear();
     hoisted.resolveInteractiveShellEnvMock.mockResolvedValue({});
@@ -318,7 +330,7 @@ describe('TeamMcpConfigBuilder', () => {
     expect(readGeneratedServer(configPath)?.command).toBe('/mock/node');
     expect(hoisted.execCliMock).toHaveBeenCalledWith(
       'node',
-      ['-e', 'process.stdout.write(process.execPath)'],
+      ['-e', expect.stringContaining('process.versions.node')],
       expect.objectContaining({
         encoding: 'utf-8',
         timeout: 5000,
@@ -346,7 +358,7 @@ describe('TeamMcpConfigBuilder', () => {
       expect(command).toBe('node');
       const env = options?.env as NodeJS.ProcessEnv | undefined;
       expect(env?.PATH?.split(path.delimiter)[0]).toBe('/mock-shell-node-bin');
-      return { stdout: '/mock-shell-node-bin/node', stderr: '' };
+      return { stdout: nodeRuntimeProbeStdout('/mock-shell-node-bin/node'), stderr: '' };
     });
 
     const builder = new TeamMcpConfigBuilder();
@@ -361,64 +373,64 @@ describe('TeamMcpConfigBuilder', () => {
   it.each(['linux', 'darwin', 'win32'] as const)(
     'uses the packaged Electron Node runtime for %s packaged MCP launches',
     async (platform) => {
-    const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
-    const execPathDescriptor = Object.getOwnPropertyDescriptor(process, 'execPath');
-    const electronBinary =
-      platform === 'win32'
-        ? 'C:\\Program Files\\Agent Teams AI\\agent-teams-ai.exe'
-        : '/opt/Agent Teams AI/agent-teams-ai';
-    setPackagedMode(true, '3.0.0');
-    const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-resources-'));
-    createdDirs.push(resourcesDir);
-    createPackagedServerBundle(resourcesDir, '// packaged server');
-    setResourcesPath(resourcesDir);
-    hoisted.execCliMock.mockResolvedValue({
-      stdout: 'agent-teams-electron-node-ok',
-      stderr: '',
-    });
-
-    Object.defineProperty(process, 'platform', {
-      value: platform,
-      configurable: true,
-    });
-    Object.defineProperty(process, 'execPath', {
-      value: electronBinary,
-      configurable: true,
-      writable: true,
-    });
-
-    try {
-      const launchSpec = await resolveAgentTeamsMcpLaunchSpec();
-      const builder = new TeamMcpConfigBuilder();
-      const configPath = await builder.writeConfigFile();
-      createdPaths.push(configPath);
-      const server = readGeneratedServer(configPath);
-      const expectedEntry = path.join(tempAppData, 'mcp-server', '3.0.0', 'index.js');
-
-      expect(launchSpec).toEqual({
-        command: electronBinary,
-        args: [expectedEntry],
-        env: { ELECTRON_RUN_AS_NODE: '1' },
+      const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+      const execPathDescriptor = Object.getOwnPropertyDescriptor(process, 'execPath');
+      const electronBinary =
+        platform === 'win32'
+          ? 'C:\\Program Files\\Agent Teams AI\\agent-teams-ai.exe'
+          : '/opt/Agent Teams AI/agent-teams-ai';
+      setPackagedMode(true, '3.0.0');
+      const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-resources-'));
+      createdDirs.push(resourcesDir);
+      createPackagedServerBundle(resourcesDir, '// packaged server');
+      setResourcesPath(resourcesDir);
+      hoisted.execCliMock.mockResolvedValue({
+        stdout: 'agent-teams-electron-node-ok',
+        stderr: '',
       });
-      expect(server?.command).toBe(electronBinary);
-      expect(server?.args).toEqual([expectedEntry]);
-      expect(server?.env?.ELECTRON_RUN_AS_NODE).toBe('1');
-      expect(hoisted.execCliMock).toHaveBeenCalledTimes(1);
-      expect(hoisted.execCliMock).toHaveBeenCalledWith(
-        electronBinary,
-        ['-e', 'process.stdout.write("agent-teams-electron-node-ok")'],
-        expect.objectContaining({
-          env: expect.objectContaining({ ELECTRON_RUN_AS_NODE: '1' }),
-        })
-      );
-    } finally {
-      if (platformDescriptor) {
-        Object.defineProperty(process, 'platform', platformDescriptor);
+
+      Object.defineProperty(process, 'platform', {
+        value: platform,
+        configurable: true,
+      });
+      Object.defineProperty(process, 'execPath', {
+        value: electronBinary,
+        configurable: true,
+        writable: true,
+      });
+
+      try {
+        const launchSpec = await resolveAgentTeamsMcpLaunchSpec();
+        const builder = new TeamMcpConfigBuilder();
+        const configPath = await builder.writeConfigFile();
+        createdPaths.push(configPath);
+        const server = readGeneratedServer(configPath);
+        const expectedEntry = path.join(tempAppData, 'mcp-server', '3.0.0', 'index.js');
+
+        expect(launchSpec).toEqual({
+          command: electronBinary,
+          args: [expectedEntry],
+          env: { ELECTRON_RUN_AS_NODE: '1' },
+        });
+        expect(server?.command).toBe(electronBinary);
+        expect(server?.args).toEqual([expectedEntry]);
+        expect(server?.env?.ELECTRON_RUN_AS_NODE).toBe('1');
+        expect(hoisted.execCliMock).toHaveBeenCalledTimes(1);
+        expect(hoisted.execCliMock).toHaveBeenCalledWith(
+          electronBinary,
+          ['-e', 'process.stdout.write("agent-teams-electron-node-ok")'],
+          expect.objectContaining({
+            env: expect.objectContaining({ ELECTRON_RUN_AS_NODE: '1' }),
+          })
+        );
+      } finally {
+        if (platformDescriptor) {
+          Object.defineProperty(process, 'platform', platformDescriptor);
+        }
+        if (execPathDescriptor) {
+          Object.defineProperty(process, 'execPath', execPathDescriptor);
+        }
       }
-      if (execPathDescriptor) {
-        Object.defineProperty(process, 'execPath', execPathDescriptor);
-      }
-    }
     }
   );
 
@@ -436,7 +448,7 @@ describe('TeamMcpConfigBuilder', () => {
       const env = options?.env as NodeJS.ProcessEnv | undefined;
       if (env?.PATH?.split(path.delimiter)[0] === '/strict-shell-node-bin') {
         expect(command).toBe('node');
-        return { stdout: '/strict-shell-node-bin/node', stderr: '' };
+        return { stdout: nodeRuntimeProbeStdout('/strict-shell-node-bin/node'), stderr: '' };
       }
       throw new Error(`spawn ${command} ENOENT`);
     });
@@ -468,7 +480,10 @@ describe('TeamMcpConfigBuilder', () => {
     mockBuiltWorkspaceEntryAvailable();
     const previousPath = process.env.PATH;
     process.env.PATH = ['/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(path.delimiter);
-    hoisted.execCliMock.mockResolvedValue({ stdout: '/fast/node', stderr: '' });
+    hoisted.execCliMock.mockResolvedValue({
+      stdout: nodeRuntimeProbeStdout('/fast/node'),
+      stderr: '',
+    });
 
     try {
       const builder = new TeamMcpConfigBuilder();
@@ -478,6 +493,58 @@ describe('TeamMcpConfigBuilder', () => {
       expect(readGeneratedServer(configPath)?.command).toBe('/fast/node');
       expect(hoisted.resolveInteractiveShellEnvMock).not.toHaveBeenCalled();
     } finally {
+      if (previousPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = previousPath;
+      }
+    }
+  });
+
+  it('falls back to strict shell env lookup when the fast Node runtime is too old', async () => {
+    mockBuiltWorkspaceEntryAvailable();
+    const previousNodeBinary = process.env.NODE_BINARY;
+    const previousNpmNodeExecPath = process.env.npm_node_execpath;
+    const previousPath = process.env.PATH;
+    delete process.env.NODE_BINARY;
+    delete process.env.npm_node_execpath;
+    process.env.PATH = ['/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(path.delimiter);
+    hoisted.resolveInteractiveShellEnvMock.mockResolvedValue({
+      PATH: ['/strict-shell-node-bin', '/usr/bin'].join(path.delimiter),
+      HOME: '/Users/tester',
+    });
+    hoisted.execCliMock.mockImplementation(async (command, _args, options) => {
+      const env = options?.env as NodeJS.ProcessEnv | undefined;
+      if (env?.PATH?.split(path.delimiter)[0] === '/strict-shell-node-bin') {
+        expect(command).toBe('node');
+        return {
+          stdout: nodeRuntimeProbeStdout('/strict-shell-node-bin/node', '20.11.0'),
+          stderr: '',
+        };
+      }
+      return { stdout: nodeRuntimeProbeStdout('/usr/bin/node', '18.19.0'), stderr: '' };
+    });
+
+    try {
+      const builder = new TeamMcpConfigBuilder();
+      const configPath = await builder.writeConfigFile();
+      createdPaths.push(configPath);
+
+      expect(readGeneratedServer(configPath)?.command).toBe('/strict-shell-node-bin/node');
+      expect(hoisted.resolveInteractiveShellEnvMock).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'mcp-node-runtime' })
+      );
+    } finally {
+      if (previousNodeBinary === undefined) {
+        delete process.env.NODE_BINARY;
+      } else {
+        process.env.NODE_BINARY = previousNodeBinary;
+      }
+      if (previousNpmNodeExecPath === undefined) {
+        delete process.env.npm_node_execpath;
+      } else {
+        process.env.npm_node_execpath = previousNpmNodeExecPath;
+      }
       if (previousPath === undefined) {
         delete process.env.PATH;
       } else {
@@ -497,7 +564,7 @@ describe('TeamMcpConfigBuilder', () => {
       const env = options?.env as NodeJS.ProcessEnv | undefined;
       if (env?.PATH?.split(path.delimiter)[0] === '/strict-shell-node-bin') {
         expect(command).toBe('node');
-        return { stdout: '/strict-shell-node-bin/node', stderr: '' };
+        return { stdout: nodeRuntimeProbeStdout('/strict-shell-node-bin/node'), stderr: '' };
       }
       if (!returnedEmptyPath) {
         returnedEmptyPath = true;
@@ -522,7 +589,7 @@ describe('TeamMcpConfigBuilder', () => {
     process.env.NODE_BINARY = '/explicit/node';
     hoisted.execCliMock.mockImplementationOnce(async (command) => {
       expect(command).toBe('/explicit/node');
-      return { stdout: '/explicit/node', stderr: '' };
+      return { stdout: nodeRuntimeProbeStdout('/explicit/node'), stderr: '' };
     });
 
     try {
@@ -665,7 +732,10 @@ describe('TeamMcpConfigBuilder', () => {
     createdPaths.push(configPath);
 
     const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
-      mcpServers: Record<string, { command?: string; args?: string[]; enabled?: boolean; env?: Record<string, string> }>;
+      mcpServers: Record<
+        string,
+        { command?: string; args?: string[]; enabled?: boolean; env?: Record<string, string> }
+      >;
     };
 
     expect(Object.keys(parsed.mcpServers)).toEqual(['agent-teams']);
@@ -766,7 +836,10 @@ describe('TeamMcpConfigBuilder', () => {
     createdPaths.push(configPath);
 
     const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
-      mcpServers: Record<string, { command?: string; args?: string[]; type?: string; url?: string }>;
+      mcpServers: Record<
+        string,
+        { command?: string; args?: string[]; type?: string; url?: string }
+      >;
     };
 
     expect(Object.keys(parsed.mcpServers).sort()).toEqual(['agent-teams', 'github', 'linear']);

@@ -79,8 +79,9 @@ function createDeferred<T>() {
 describe('useCodexAccountSnapshot', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-      .IS_REACT_ACT_ENVIRONMENT = true;
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
     vi.useRealTimers();
   });
 
@@ -212,6 +213,59 @@ describe('useCodexAccountSnapshot', () => {
     });
 
     expect(apiMocks.refreshCodexAccountSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('keeps retrying after a deferred initial Codex snapshot fails transiently', async () => {
+    vi.useFakeTimers();
+    const snapshot = createSnapshot();
+    apiMocks.refreshCodexAccountSnapshot
+      .mockRejectedValueOnce(new Error('temporary Codex outage'))
+      .mockResolvedValueOnce(snapshot);
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    function Harness(): React.ReactElement {
+      const state = useCodexAccountSnapshot({
+        enabled: true,
+        includeRateLimits: true,
+        initialRefreshDelayMs: 30_000,
+      });
+
+      return React.createElement(
+        'div',
+        null,
+        state.error ?? state.snapshot?.managedAccount?.email ?? 'empty'
+      );
+    }
+
+    await act(async () => {
+      root.render(React.createElement(Harness));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(apiMocks.refreshCodexAccountSnapshot).toHaveBeenCalledTimes(1);
+    expect(host.textContent).toContain('temporary Codex outage');
+
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(apiMocks.refreshCodexAccountSnapshot).toHaveBeenCalledTimes(2);
+    expect(host.textContent).toContain('belief@example.com');
+
+    act(() => {
+      root.unmount();
+    });
   });
 
   it('does not run the deferred initial snapshot after a manual refresh already loaded one', async () => {

@@ -201,10 +201,16 @@ export const GlobalTaskList = memo(function GlobalTaskList({
     globalTasksLoading,
     globalTasksInitialized,
     fetchAllTasks,
+    fetchProjects,
+    fetchRepositoryGroups,
     softDeleteTask,
     projects,
+    projectsLoading,
+    projectsError,
     viewMode,
     repositoryGroups,
+    repositoryGroupsLoading,
+    repositoryGroupsError,
     teams,
     provisioningRuns,
     currentProvisioningRunIdByTeam,
@@ -215,10 +221,16 @@ export const GlobalTaskList = memo(function GlobalTaskList({
       globalTasksLoading: s.globalTasksLoading,
       globalTasksInitialized: s.globalTasksInitialized,
       fetchAllTasks: s.fetchAllTasks,
+      fetchProjects: s.fetchProjects,
+      fetchRepositoryGroups: s.fetchRepositoryGroups,
       softDeleteTask: s.softDeleteTask,
       projects: s.projects,
+      projectsLoading: s.projectsLoading,
+      projectsError: s.projectsError,
       viewMode: s.viewMode,
       repositoryGroups: s.repositoryGroups,
+      repositoryGroupsLoading: s.repositoryGroupsLoading,
+      repositoryGroupsError: s.repositoryGroupsError,
       teams: s.teams,
       provisioningRuns: s.provisioningRuns,
       currentProvisioningRunIdByTeam: s.currentProvisioningRunIdByTeam,
@@ -441,6 +453,29 @@ export const GlobalTaskList = memo(function GlobalTaskList({
       void fetchAllTasks();
     }
   }, [fetchAllTasks, globalTasksLoading]);
+
+  useEffect(() => {
+    if (
+      viewMode === 'grouped' &&
+      repositoryGroups.length === 0 &&
+      !repositoryGroupsLoading &&
+      !repositoryGroupsError
+    ) {
+      void fetchRepositoryGroups();
+    } else if (viewMode === 'flat' && projects.length === 0 && !projectsLoading && !projectsError) {
+      void fetchProjects();
+    }
+  }, [
+    fetchProjects,
+    fetchRepositoryGroups,
+    projects.length,
+    projectsError,
+    projectsLoading,
+    repositoryGroups.length,
+    repositoryGroupsError,
+    repositoryGroupsLoading,
+    viewMode,
+  ]);
 
   // Build project combobox options from available projects/repos
   const projectFilterOptions = useMemo((): ComboboxOption[] => {

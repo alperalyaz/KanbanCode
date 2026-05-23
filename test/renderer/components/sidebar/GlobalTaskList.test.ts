@@ -10,8 +10,12 @@ interface StoreState {
   globalTasksLoading: boolean;
   globalTasksInitialized: boolean;
   fetchAllTasks: ReturnType<typeof vi.fn>;
+  fetchProjects: ReturnType<typeof vi.fn>;
+  fetchRepositoryGroups: ReturnType<typeof vi.fn>;
   softDeleteTask: ReturnType<typeof vi.fn>;
   projects: { path: string; name: string; sessions: unknown[]; totalSessions?: number }[];
+  projectsLoading: boolean;
+  projectsError: string | null;
   viewMode: 'flat' | 'grouped';
   repositoryGroups: {
     id: string;
@@ -19,6 +23,8 @@ interface StoreState {
     totalSessions: number;
     worktrees: { path: string }[];
   }[];
+  repositoryGroupsLoading: boolean;
+  repositoryGroupsError: string | null;
   teams: (Pick<TeamSummary, 'teamName' | 'displayName'> & Partial<TeamSummary>)[];
   provisioningRuns: Record<string, { state: string; runId: string; updatedAt: string }>;
   currentProvisioningRunIdByTeam: Record<string, string | null>;
@@ -205,10 +211,16 @@ describe('GlobalTaskList project grouping', () => {
     storeState.globalTasksLoading = false;
     storeState.globalTasksInitialized = true;
     storeState.fetchAllTasks = vi.fn(() => Promise.resolve(undefined));
+    storeState.fetchProjects = vi.fn(() => Promise.resolve(undefined));
+    storeState.fetchRepositoryGroups = vi.fn(() => Promise.resolve(undefined));
     storeState.softDeleteTask = vi.fn(() => Promise.resolve(undefined));
     storeState.projects = [];
+    storeState.projectsLoading = false;
+    storeState.projectsError = null;
     storeState.viewMode = 'flat';
     storeState.repositoryGroups = [];
+    storeState.repositoryGroupsLoading = false;
+    storeState.repositoryGroupsError = null;
     storeState.teams = [{ teamName: 'alpha-team', displayName: 'Alpha Team' }];
     storeState.provisioningRuns = {};
     storeState.currentProvisioningRunIdByTeam = {};
@@ -230,6 +242,72 @@ describe('GlobalTaskList project grouping', () => {
     setElectronApiForTest(undefined);
     vi.unstubAllGlobals();
     storeListeners.clear();
+  });
+
+  it('fetches repository groups when grouped project filter data is missing', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.viewMode = 'grouped';
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(GlobalTaskList));
+      await flushMicrotasks();
+    });
+
+    expect(storeState.fetchRepositoryGroups).toHaveBeenCalledTimes(1);
+    expect(storeState.fetchProjects).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+      await flushMicrotasks();
+    });
+  });
+
+  it('fetches flat projects when flat project filter data is missing', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(GlobalTaskList));
+      await flushMicrotasks();
+    });
+
+    expect(storeState.fetchProjects).toHaveBeenCalledTimes(1);
+    expect(storeState.fetchRepositoryGroups).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+      await flushMicrotasks();
+    });
+  });
+
+  it('does not duplicate project filter data fetches while a repository fetch is already pending', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.viewMode = 'grouped';
+    storeState.repositoryGroupsLoading = true;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(GlobalTaskList));
+      await flushMicrotasks();
+    });
+
+    expect(storeState.fetchRepositoryGroups).not.toHaveBeenCalled();
+    expect(storeState.fetchProjects).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+      await flushMicrotasks();
+    });
   });
 
   it('shows five tasks first, then expands and collapses with Show more and Show less', async () => {

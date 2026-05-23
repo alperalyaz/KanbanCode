@@ -55,7 +55,7 @@ const ruNotes: Record<string, string> = {
   '5 columns, real-time': '5 колонок, в реальном времени',
   'Dashboard, not Kanban': 'Панель, не канбан',
   '7 columns, drag-and-drop': '7 колонок, перетаскивание',
-  'Инструменты, ход рассуждений и таймлайн': 'Инструменты, ход рассуждений и таймлайн',
+  'Tools, reasoning trace, and timeline': 'Инструменты, ход рассуждений и таймлайн',
   'Feed, metrics, dashboard': 'Лента, метрики, панель',
   'Agent chat + terminal': 'Чат агента и терминал',
   'View, stop, open URLs': 'Просмотр, остановка, открытие URL',
@@ -271,7 +271,7 @@ const rows = computed<ComparisonRow[]>(() => [
   },
   {
     feature: t('comparison.features.execLog'),
-    us: { status: 'yes', note: note('Инструменты, ход рассуждений и таймлайн') },
+    us: { status: 'yes', note: note('Tools, reasoning trace, and timeline') },
     gastown: { status: 'partial', note: note('Feed, metrics, dashboard') },
     paperclip: { status: 'yes', note: note('Run transcripts + audit log') },
     cursor: { status: 'partial', note: note('Agent chat + terminal') },

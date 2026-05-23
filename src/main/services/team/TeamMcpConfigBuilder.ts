@@ -47,6 +47,9 @@ const MCP_CONFIG_PREFIX = 'agent-teams-mcp-';
 const MCP_CONFIG_REMOVE_RETRY_DELAYS_MS = [25, 75, 150] as const;
 const NODE_RUNTIME_PROBE_TIMEOUT_MS = 5_000;
 const ELECTRON_NODE_RUNTIME_PROBE_TIMEOUT_MS = 5_000;
+const MIN_MCP_NODE_MAJOR_VERSION = 20;
+const NODE_RUNTIME_PROBE_SCRIPT =
+  'process.stdout.write(JSON.stringify({execPath:process.execPath,version:process.versions.node}))';
 /**
  * Stale configs older than this are removed on startup (best-effort).
  * 7 days is intentionally long: respawnAfterAuthFailure() reuses saved
@@ -56,6 +59,11 @@ const ELECTRON_NODE_RUNTIME_PROBE_TIMEOUT_MS = 5_000;
 const MCP_CONFIG_STALE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 type McpServerConfig = Record<string, unknown>;
+
+interface NodeRuntimeProbeMetadata {
+  path: string;
+  version: string;
+}
 
 const MCP_CONFIG_SCOPE_PRECEDENCE: readonly TeamMemberMcpScope[] = ['user', 'project', 'local'];
 
@@ -284,6 +292,56 @@ function mergePathValues(...values: (string | undefined)[]): string | undefined 
   return merged.length > 0 ? merged.join(path.delimiter) : undefined;
 }
 
+function parseNodeMajorVersion(version: string): number | null {
+  const match = /^v?(\d+)(?:\.|$)/.exec(version.trim());
+  if (!match) {
+    return null;
+  }
+
+  const major = Number.parseInt(match[1] ?? '', 10);
+  return Number.isFinite(major) ? major : null;
+}
+
+function parseNodeRuntimeProbeMetadata(stdout: string, command: string): NodeRuntimeProbeMetadata {
+  const trimmed = stdout.trim();
+  if (!trimmed) {
+    throw new Error(`${command} did not report Node.js runtime metadata`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new Error(`${command} reported invalid Node.js runtime metadata`);
+  }
+
+  if (parsed === null || typeof parsed !== 'object') {
+    throw new Error(`${command} reported invalid Node.js runtime metadata`);
+  }
+
+  const metadata = parsed as { execPath?: unknown; version?: unknown };
+  const resolvedPath = typeof metadata.execPath === 'string' ? metadata.execPath.trim() : '';
+  if (!resolvedPath) {
+    throw new Error(`${command} did not report process.execPath`);
+  }
+
+  const version = typeof metadata.version === 'string' ? metadata.version.trim() : '';
+  if (!version) {
+    throw new Error(`${command} did not report process.versions.node`);
+  }
+
+  return { path: resolvedPath, version };
+}
+
+function assertSupportedMcpNodeRuntime(command: string, metadata: NodeRuntimeProbeMetadata): void {
+  const major = parseNodeMajorVersion(metadata.version);
+  if (major === null || major < MIN_MCP_NODE_MAJOR_VERSION) {
+    throw new Error(
+      `${command} resolved ${metadata.path} with Node.js ${metadata.version}; Agent Teams MCP requires Node.js ${MIN_MCP_NODE_MAJOR_VERSION}+`
+    );
+  }
+}
+
 function isWriteMcpConfigOptions(value: unknown): value is WriteMcpConfigOptions {
   return (
     value !== null &&
@@ -310,16 +368,14 @@ async function probeNodeRuntimePath(
   let lastError: unknown = null;
   for (const command of getNodeRuntimeCommandCandidates()) {
     try {
-      const { stdout } = await execCli(command, ['-e', 'process.stdout.write(process.execPath)'], {
+      const { stdout } = await execCli(command, ['-e', NODE_RUNTIME_PROBE_SCRIPT], {
         encoding: 'utf-8',
         timeout: NODE_RUNTIME_PROBE_TIMEOUT_MS,
         env,
       });
-      const resolved = stdout.trim();
-      if (!resolved) {
-        throw new Error(`${command} did not report process.execPath`);
-      }
-      return { ok: true, path: resolved };
+      const metadata = parseNodeRuntimeProbeMetadata(stdout, command);
+      assertSupportedMcpNodeRuntime(command, metadata);
+      return { ok: true, path: metadata.path };
     } catch (error) {
       lastError = error;
     }
