@@ -1,3 +1,5 @@
+import { CLI_PROVIDER_STATUS_DEFERRED_MESSAGE } from '@shared/types/cliInstaller';
+
 import type { CliProviderAuthMode, CliProviderStatus } from '@shared/types';
 
 const CODEX_NATIVE_LABEL = 'Codex native';
@@ -128,6 +130,48 @@ export function isOpenCodeCatalogHydrating(
     provider.modelCatalogRefreshState === 'loading' ||
     provider.runtimeCapabilities?.modelCatalog?.dynamic === true
   );
+}
+
+function hasKnownProviderStatus(
+  provider: Pick<
+    CliProviderStatus,
+    | 'authenticated'
+    | 'supported'
+    | 'statusMessage'
+    | 'models'
+    | 'backend'
+    | 'availableBackends'
+    | 'connection'
+    | 'modelCatalog'
+  >
+): boolean {
+  const statusMessage = provider.statusMessage?.trim() ?? '';
+  return (
+    provider.authenticated ||
+    provider.supported ||
+    provider.models.length > 0 ||
+    provider.backend != null ||
+    (provider.availableBackends?.length ?? 0) > 0 ||
+    provider.connection != null ||
+    provider.modelCatalog != null ||
+    (statusMessage.length > 0 &&
+      statusMessage !== 'Checking...' &&
+      statusMessage !== CLI_PROVIDER_STATUS_DEFERRED_MESSAGE)
+  );
+}
+
+export function shouldShowProviderStatusSkeleton(
+  provider: CliProviderStatus,
+  providerLoading: boolean
+): boolean {
+  const isPlaceholder =
+    !provider.authenticated &&
+    (provider.statusMessage === 'Checking...' ||
+      provider.statusMessage === CLI_PROVIDER_STATUS_DEFERRED_MESSAGE) &&
+    provider.models.length === 0 &&
+    provider.backend == null;
+
+  return isPlaceholder || (providerLoading && !hasKnownProviderStatus(provider));
 }
 
 export function isConnectionManagedRuntimeProvider(provider: CliProviderStatus): boolean {

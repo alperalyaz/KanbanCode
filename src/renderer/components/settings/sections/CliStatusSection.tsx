@@ -24,6 +24,7 @@ import {
   isConnectionManagedRuntimeProvider,
   isOpenCodeCatalogHydrating,
   shouldShowProviderConnectAction,
+  shouldShowProviderStatusSkeleton,
 } from '@renderer/components/runtime/providerConnectionUi';
 import { ProviderModelBadges } from '@renderer/components/runtime/ProviderModelBadges';
 import { getProviderRuntimeBackendSummary } from '@renderer/components/runtime/ProviderRuntimeBackendSelector';
@@ -42,7 +43,6 @@ import { resolveProjectPathById } from '@renderer/utils/projectLookup';
 import { refreshCliStatusForCurrentMode } from '@renderer/utils/refreshCliStatus';
 import { getRuntimeDisplayName } from '@renderer/utils/runtimeDisplayName';
 import { getVisibleTeamProviderModels } from '@renderer/utils/teamModelCatalog';
-import { CLI_PROVIDER_STATUS_DEFERRED_MESSAGE } from '@shared/types/cliInstaller';
 import {
   AlertTriangle,
   CheckCircle,
@@ -83,17 +83,6 @@ const ProviderDetailSkeleton = (): React.JSX.Element => {
     </div>
   );
 };
-
-function isProviderCardLoading(provider: CliProviderStatus, providerLoading: boolean): boolean {
-  return (
-    providerLoading ||
-    (!provider.authenticated &&
-      (provider.statusMessage === 'Checking...' ||
-        provider.statusMessage === CLI_PROVIDER_STATUS_DEFERRED_MESSAGE) &&
-      provider.models.length === 0 &&
-      provider.backend == null)
-  );
-}
 
 function isCodexSnapshotPending(
   provider: CliProviderStatus,
@@ -476,7 +465,7 @@ export const CliStatusSection = (): React.JSX.Element | null => {
                           const providerLoading =
                             cliProviderStatusLoading[provider.providerId] === true;
                           const showSkeleton =
-                            isProviderCardLoading(provider, providerLoading) ||
+                            shouldShowProviderStatusSkeleton(provider, providerLoading) ||
                             isCodexSnapshotPending(provider, codexSnapshotPending);
                           const runtimeSummary = isConnectionManagedRuntimeProvider(provider)
                             ? getProviderCurrentRuntimeSummary(provider)

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { api, isElectronMode } from '@renderer/api';
+import { scheduleStartupIdleTask } from '@renderer/utils/startupIdleTask';
 
 import type {
   CodexAccountSnapshotDto,
@@ -11,7 +12,9 @@ const CODEX_PENDING_LOGIN_REFRESH_MS = 3_000;
 const CODEX_VISIBLE_RATE_LIMITS_REFRESH_MS = 10_000;
 const CODEX_VISIBLE_STANDARD_REFRESH_MS = 20_000;
 const CODEX_HIDDEN_REFRESH_MS = 60_000;
-export const CODEX_ACCOUNT_STARTUP_IDLE_DELAY_MS = 30_000;
+export const CODEX_ACCOUNT_STARTUP_IDLE_MIN_DELAY_MS = 2_000;
+export const CODEX_ACCOUNT_STARTUP_IDLE_MAX_DELAY_MS = 30_000;
+export const CODEX_ACCOUNT_STARTUP_IDLE_DELAY_MS = CODEX_ACCOUNT_STARTUP_IDLE_MAX_DELAY_MS;
 
 function isDocumentVisible(): boolean {
   if (typeof document === 'undefined') {
@@ -43,6 +46,7 @@ export function useCodexAccountSnapshot(options: {
   enabled: boolean;
   includeRateLimits?: boolean;
   initialRefreshDelayMs?: number;
+  initialRefreshMaxDelayMs?: number;
 }): {
   snapshot: CodexAccountSnapshotDto | null;
   loading: boolean;
@@ -65,6 +69,7 @@ export function useCodexAccountSnapshot(options: {
   const [visible, setVisible] = useState(() => isDocumentVisible());
   const lastUpdatedAtRef = useRef<number | null>(null);
   const initialRefreshDelayMs = options.initialRefreshDelayMs ?? 0;
+  const initialRefreshMaxDelayMs = options.initialRefreshMaxDelayMs;
   const [initialRefreshAttempted, setInitialRefreshAttempted] = useState(
     () => initialRefreshDelayMs <= 0
   );
@@ -124,7 +129,7 @@ export function useCodexAccountSnapshot(options: {
     }
 
     let active = true;
-    let initialRefreshTimer: number | null = null;
+    let cancelInitialRefresh: (() => void) | null = null;
 
     const startInitialSnapshotRequest = (): void => {
       if (!active || lastUpdatedAtRef.current !== null) {
@@ -169,7 +174,18 @@ export function useCodexAccountSnapshot(options: {
     };
 
     if (initialRefreshDelayMs > 0) {
-      initialRefreshTimer = window.setTimeout(startInitialSnapshotRequest, initialRefreshDelayMs);
+      if (typeof initialRefreshMaxDelayMs === 'number') {
+        cancelInitialRefresh = scheduleStartupIdleTask(startInitialSnapshotRequest, {
+          minDelayMs: initialRefreshDelayMs,
+          maxDelayMs: initialRefreshMaxDelayMs,
+        });
+      } else {
+        const initialRefreshTimer = window.setTimeout(
+          startInitialSnapshotRequest,
+          initialRefreshDelayMs
+        );
+        cancelInitialRefresh = () => window.clearTimeout(initialRefreshTimer);
+      }
     } else {
       startInitialSnapshotRequest();
     }
@@ -180,15 +196,14 @@ export function useCodexAccountSnapshot(options: {
 
     return () => {
       active = false;
-      if (initialRefreshTimer) {
-        window.clearTimeout(initialRefreshTimer);
-      }
+      cancelInitialRefresh?.();
       unsubscribe();
     };
   }, [
     applySnapshot,
     electronMode,
     initialRefreshDelayMs,
+    initialRefreshMaxDelayMs,
     options.enabled,
     options.includeRateLimits,
   ]);

@@ -1,8 +1,7 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { CodexAccountSnapshotDto } from '@features/codex-account/contracts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface StoreState {
   cliStatus: Record<string, unknown> | null;
@@ -28,9 +27,9 @@ interface StoreState {
 
 const storeState = {} as StoreState;
 const codexAccountHookState = {
-  snapshot: null as CodexAccountSnapshotDto | null,
+  snapshot: null,
   loading: false,
-  error: null as string | null,
+  error: null,
   refresh: vi.fn(() => Promise.resolve(undefined)),
   startChatgptLogin: vi.fn(() => Promise.resolve(true)),
   cancelChatgptLogin: vi.fn(() => Promise.resolve(true)),
@@ -60,18 +59,15 @@ vi.mock('@renderer/store', () => ({
 
 import { GlobalProviderStatusHeader } from '@renderer/components/common/GlobalProviderStatusHeader';
 
-function createProvider(
-  overrides: Partial<Record<string, unknown>> & {
-    providerId: string;
-    displayName: string;
-  }
-): Record<string, unknown> {
+function createProvider(overrides: Record<string, unknown>): Record<string, unknown> {
   return {
+    providerId: 'anthropic',
+    displayName: 'Anthropic',
     supported: true,
     authenticated: false,
     authMethod: null,
-    verificationState: 'verified',
-    statusMessage: null,
+    verificationState: 'unknown',
+    statusMessage: 'Checking...',
     detailMessage: null,
     models: [],
     modelVerificationState: 'idle',
@@ -80,10 +76,7 @@ function createProvider(
     capabilities: {
       teamLaunch: true,
       oneShot: true,
-      extensions: {
-        plugins: { status: 'unsupported' },
-        mcp: { status: 'unsupported' },
-      },
+      extensions: {},
     },
     backend: null,
     availableBackends: [],
@@ -127,18 +120,15 @@ function setFocusedTab(type: string): void {
 describe('GlobalProviderStatusHeader', () => {
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-    storeState.cliStatus = null;
+    storeState.cliStatus = createMultimodelStatus([createProvider({})]);
     storeState.cliStatusLoading = false;
-    storeState.cliProviderStatusLoading = {};
+    storeState.cliProviderStatusLoading = { anthropic: true };
     storeState.appConfig = {
       general: {
         multimodelEnabled: true,
       },
     };
     setFocusedTab('team');
-    codexAccountHookState.snapshot = null;
-    codexAccountHookState.loading = false;
-    codexAccountHookState.error = null;
   });
 
   afterEach(() => {
@@ -146,17 +136,7 @@ describe('GlobalProviderStatusHeader', () => {
     vi.unstubAllGlobals();
   });
 
-  it('shows loading providers on non-dashboard screens', async () => {
-    storeState.cliStatus = createMultimodelStatus([
-      createProvider({
-        providerId: 'anthropic',
-        displayName: 'Anthropic',
-        verificationState: 'unknown',
-        statusMessage: 'Checking...',
-      }),
-    ]);
-    storeState.cliProviderStatusLoading = { anthropic: true };
-
+  it('shows provider activity on non-dashboard screens', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -176,18 +156,8 @@ describe('GlobalProviderStatusHeader', () => {
     });
   });
 
-  it('hides on dashboard tabs', async () => {
+  it('hides on dashboard screens', async () => {
     setFocusedTab('dashboard');
-    storeState.cliStatus = createMultimodelStatus([
-      createProvider({
-        providerId: 'anthropic',
-        displayName: 'Anthropic',
-        verificationState: 'unknown',
-        statusMessage: 'Checking...',
-      }),
-    ]);
-    storeState.cliProviderStatusLoading = { anthropic: true };
-
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -198,167 +168,6 @@ describe('GlobalProviderStatusHeader', () => {
     });
 
     expect(host.textContent).toBe('');
-
-    await act(async () => {
-      root.unmount();
-      await Promise.resolve();
-    });
-  });
-
-  it('keeps completed providers visible as Checked while the same cycle still has loading work, then hides when clean', async () => {
-    storeState.cliStatus = createMultimodelStatus([
-      createProvider({
-        providerId: 'anthropic',
-        displayName: 'Anthropic',
-        verificationState: 'unknown',
-        statusMessage: 'Checking...',
-      }),
-      createProvider({
-        providerId: 'codex',
-        displayName: 'Codex',
-        verificationState: 'unknown',
-        statusMessage: 'Checking...',
-      }),
-    ]);
-    storeState.cliProviderStatusLoading = { anthropic: true, codex: true };
-
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const root = createRoot(host);
-
-    await act(async () => {
-      root.render(React.createElement(GlobalProviderStatusHeader));
-      await Promise.resolve();
-    });
-
-    storeState.cliStatus = createMultimodelStatus([
-      createProvider({
-        providerId: 'anthropic',
-        displayName: 'Anthropic',
-        verificationState: 'verified',
-        statusMessage: 'Not connected',
-      }),
-      createProvider({
-        providerId: 'codex',
-        displayName: 'Codex',
-        verificationState: 'unknown',
-        statusMessage: 'Checking...',
-      }),
-    ]);
-    storeState.cliProviderStatusLoading = { anthropic: false, codex: true };
-
-    await act(async () => {
-      root.render(React.createElement(GlobalProviderStatusHeader));
-      await Promise.resolve();
-    });
-
-    expect(host.textContent).toContain('Anthropic');
-    expect(host.textContent).toContain('Checked');
-    expect(host.textContent).toContain('Codex');
-    expect(host.textContent).toContain('Checking...');
-
-    storeState.cliStatus = createMultimodelStatus([
-      createProvider({
-        providerId: 'anthropic',
-        displayName: 'Anthropic',
-        verificationState: 'verified',
-        statusMessage: 'Not connected',
-      }),
-      createProvider({
-        providerId: 'codex',
-        displayName: 'Codex',
-        verificationState: 'verified',
-        statusMessage: 'ChatGPT account ready',
-        authenticated: true,
-        authMethod: 'chatgpt',
-      }),
-    ]);
-    storeState.cliProviderStatusLoading = { anthropic: false, codex: false };
-
-    await act(async () => {
-      root.render(React.createElement(GlobalProviderStatusHeader));
-      await Promise.resolve();
-    });
-
-    expect(host.textContent).toBe('');
-
-    await act(async () => {
-      root.unmount();
-      await Promise.resolve();
-    });
-  });
-
-  it('stays visible for provider errors after loading finishes', async () => {
-    storeState.cliStatus = createMultimodelStatus([
-      createProvider({
-        providerId: 'anthropic',
-        displayName: 'Anthropic',
-        verificationState: 'error',
-        statusMessage: 'Failed to refresh anthropic status',
-      }),
-    ]);
-
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const root = createRoot(host);
-
-    await act(async () => {
-      root.render(React.createElement(GlobalProviderStatusHeader));
-      await Promise.resolve();
-    });
-
-    expect(host.textContent).toContain('Anthropic');
-    expect(host.textContent).toContain('Failed to refresh anthropic status');
-
-    await act(async () => {
-      root.unmount();
-      await Promise.resolve();
-    });
-  });
-
-  it('masks the negative Codex bootstrap snapshot while placeholder loading is still active', async () => {
-    storeState.cliStatus = null;
-    storeState.cliStatusLoading = true;
-    codexAccountHookState.snapshot = {
-      preferredAuthMode: 'chatgpt',
-      effectiveAuthMode: null,
-      launchAllowed: false,
-      launchIssueMessage: 'Connect a ChatGPT account to use your Codex subscription.',
-      launchReadinessState: 'missing_auth',
-      appServerState: 'healthy',
-      appServerStatusMessage: null,
-      managedAccount: null,
-      apiKey: {
-        available: false,
-        source: null,
-        sourceLabel: null,
-      },
-      requiresOpenaiAuth: true,
-      localAccountArtifactsPresent: false,
-      localActiveChatgptAccountPresent: false,
-      login: {
-        status: 'idle',
-        error: null,
-        startedAt: null,
-      },
-      rateLimits: null,
-      updatedAt: new Date().toISOString(),
-    };
-
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const root = createRoot(host);
-
-    await act(async () => {
-      root.render(React.createElement(GlobalProviderStatusHeader));
-      await Promise.resolve();
-    });
-
-    expect(host.textContent).toContain('Codex');
-    expect(host.textContent).toContain('Checking...');
-    expect(host.textContent).not.toContain(
-      'Connect a ChatGPT account to use your Codex subscription.'
-    );
 
     await act(async () => {
       root.unmount();

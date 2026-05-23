@@ -86,11 +86,28 @@ function isDeferredProviderStatusSnapshot(status: CliInstallationStatus): boolea
   );
 }
 
-function canUseLatestSnapshotForCacheKey(
+function hasDeferredProviderStatus(status: CliInstallationStatus): boolean {
+  return (
+    status.flavor === 'agent_teams_orchestrator' &&
+    status.providers.some(
+      (provider) => provider.statusMessage === CLI_PROVIDER_STATUS_DEFERRED_MESSAGE
+    )
+  );
+}
+
+function canUseStatusForCacheKey(
   cacheKey: CliInstallerProviderStatusMode,
   status: CliInstallationStatus
 ): boolean {
-  return cacheKey === 'defer' || !isDeferredProviderStatusSnapshot(status);
+  if (cacheKey === 'defer') {
+    return true;
+  }
+
+  return (
+    !status.authStatusChecking &&
+    !hasDeferredProviderStatus(status) &&
+    !isDeferredProviderStatusSnapshot(status)
+  );
 }
 
 /**
@@ -140,7 +157,7 @@ async function handleGetStatus(
     const latestSnapshot = service.getLatestStatusSnapshot();
     const cached = cachedStatus.get(cacheKey);
     if (cached && Date.now() - cached.at < STATUS_CACHE_TTL_MS) {
-      if (latestSnapshot && canUseLatestSnapshotForCacheKey(cacheKey, latestSnapshot)) {
+      if (latestSnapshot && canUseStatusForCacheKey(cacheKey, latestSnapshot)) {
         cachedStatus.set(cacheKey, { value: latestSnapshot, at: Date.now() });
         return { success: true, data: latestSnapshot };
       }
@@ -153,7 +170,7 @@ async function handleGetStatus(
       const request = service
         .getStatus(normalizedOptions)
         .then((status) => {
-          if (generation === statusCacheGeneration) {
+          if (generation === statusCacheGeneration && canUseStatusForCacheKey(cacheKey, status)) {
             cachedStatus.set(cacheKey, { value: status, at: Date.now() });
           }
           return status;

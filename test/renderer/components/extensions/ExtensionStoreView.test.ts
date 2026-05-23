@@ -356,10 +356,7 @@ describe('ExtensionStoreView provider loading placeholders', () => {
       await Promise.resolve();
     });
 
-    expect(storeState.bootstrapCliStatus).toHaveBeenCalledWith({
-      multimodelEnabled: true,
-      providerStatusMode: 'defer',
-    });
+    expect(storeState.bootstrapCliStatus).not.toHaveBeenCalled();
     expect(storeState.fetchCliStatus).not.toHaveBeenCalled();
     expect(storeState.fetchApiKeys).not.toHaveBeenCalled();
 
@@ -410,6 +407,7 @@ describe('ExtensionStoreView provider loading placeholders', () => {
         multimodelEnabled: false,
       },
     };
+    storeState.cliStatusLoading = false;
 
     const host = document.createElement('div');
     document.body.appendChild(host);

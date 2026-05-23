@@ -381,6 +381,55 @@ describe('cliInstaller IPC handlers', () => {
     expect(cached.data?.providers[0]?.statusMessage).toBe('Connected');
   });
 
+  it('does not cache incomplete full provider status responses', async () => {
+    const incompleteFullStatus = status([
+      provider({
+        providerId: 'anthropic',
+        supported: false,
+        verificationState: 'unknown',
+        statusMessage: 'Provider status will refresh when needed.',
+      }),
+      provider({
+        providerId: 'codex',
+        supported: false,
+        verificationState: 'unknown',
+        statusMessage: 'Checking...',
+      }),
+    ]);
+    const freshFullStatus = status([
+      provider({
+        providerId: 'anthropic',
+        authenticated: true,
+        authMethod: 'oauth_token',
+        verificationState: 'verified',
+        statusMessage: 'Connected',
+      }),
+      provider({
+        providerId: 'codex',
+        authenticated: true,
+        authMethod: 'chatgpt',
+        verificationState: 'verified',
+        statusMessage: 'ChatGPT account ready',
+      }),
+    ]);
+    incompleteFullStatus.authStatusChecking = true;
+    service.getStatus
+      .mockResolvedValueOnce(incompleteFullStatus)
+      .mockResolvedValueOnce(freshFullStatus);
+
+    const first = (await ipcMain.invoke(CLI_INSTALLER_GET_STATUS)) as IpcResult<CliInstallationStatus>;
+    const second = (await ipcMain.invoke(CLI_INSTALLER_GET_STATUS)) as IpcResult<CliInstallationStatus>;
+
+    expect(service.getStatus).toHaveBeenCalledTimes(2);
+    expect(first.success).toBe(true);
+    expect(first.data?.providers[0]?.statusMessage).toBe(
+      'Provider status will refresh when needed.'
+    );
+    expect(second.success).toBe(true);
+    expect(second.data?.authLoggedIn).toBe(true);
+    expect(second.data?.providers[0]?.statusMessage).toBe('Connected');
+  });
+
   it('does not let a stale in-flight provider refresh patch the cache after invalidation', async () => {
     const staleProviderRequest = deferred<CliProviderStatus | null>();
     service.getStatus

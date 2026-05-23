@@ -16,6 +16,7 @@ import {
   resolveCodexRuntimeSelection,
 } from '@features/codex-runtime-profile/renderer';
 import { api } from '@renderer/api';
+import { ProviderActivityStatusStrip } from '@renderer/components/common/ProviderActivityStatusStrip';
 import { SkipPermissionsCheckbox } from '@renderer/components/team/dialogs/SkipPermissionsCheckbox';
 import {
   buildMemberDraftColorMap,
@@ -356,6 +357,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   );
   const cliStatus = useStore((s) => s.cliStatus);
   const cliStatusLoading = useStore((s) => s.cliStatusLoading);
+  const cliProviderStatusLoading = useStore((s) => s.cliProviderStatusLoading);
   const bootstrapCliStatus = useStore((s) => s.bootstrapCliStatus);
   const fetchCliStatus = useStore((s) => s.fetchCliStatus);
   const isLaunchMode = props.mode === 'launch' || props.mode === 'relaunch';
@@ -377,6 +379,10 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     () => mergeCodexCliStatusWithSnapshot(loadingCliStatus, codexAccount.snapshot),
     [loadingCliStatus, codexAccount.snapshot]
   );
+  const codexSnapshotPending =
+    codexAccount.loading &&
+    Boolean(loadingCliStatus?.providers.some((provider) => provider.providerId === 'codex')) &&
+    !codexAccount.snapshot;
   const isSchedule = props.mode === 'schedule';
   const schedule = isSchedule ? (props.schedule ?? null) : null;
   const isEditing = isSchedule && !!schedule;
@@ -3040,6 +3046,16 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
           {/* Launch-only: CLI warm-up status */}
           {isLaunchMode ? (
             <div className="min-w-0">
+              <ProviderActivityStatusStrip
+                cliStatus={effectiveCliStatus}
+                sourceCliStatus={loadingCliStatus}
+                cliStatusLoading={cliStatusLoading}
+                cliProviderStatusLoading={cliProviderStatusLoading}
+                multimodelEnabled={multimodelEnabled}
+                codexSnapshotPending={codexSnapshotPending}
+                providerIds={selectedMemberProviders}
+                className="mb-2"
+              />
               {effectivePrepare.state === 'idle' || effectivePrepare.state === 'loading' ? (
                 <>
                   <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">

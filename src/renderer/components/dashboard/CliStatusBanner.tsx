@@ -10,7 +10,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
-  CODEX_ACCOUNT_STARTUP_IDLE_DELAY_MS,
+  CODEX_ACCOUNT_STARTUP_IDLE_MAX_DELAY_MS,
+  CODEX_ACCOUNT_STARTUP_IDLE_MIN_DELAY_MS,
   mergeCodexProviderStatusWithSnapshot,
   useCodexAccountSnapshot,
 } from '@features/codex-account/renderer';
@@ -32,6 +33,7 @@ import {
   isConnectionManagedRuntimeProvider,
   isOpenCodeCatalogHydrating,
   shouldShowProviderConnectAction,
+  shouldShowProviderStatusSkeleton,
 } from '@renderer/components/runtime/providerConnectionUi';
 import { ProviderModelBadges } from '@renderer/components/runtime/ProviderModelBadges';
 import { getProviderRuntimeBackendSummary } from '@renderer/components/runtime/ProviderRuntimeBackendSelector';
@@ -444,17 +446,6 @@ const ProviderDetailSkeleton = (): React.JSX.Element => {
     </div>
   );
 };
-
-function isProviderCardLoading(provider: CliProviderStatus, providerLoading: boolean): boolean {
-  return (
-    providerLoading ||
-    (!provider.authenticated &&
-      (provider.statusMessage === 'Checking...' ||
-        provider.statusMessage === CLI_PROVIDER_STATUS_DEFERRED_MESSAGE) &&
-      provider.models.length === 0 &&
-      provider.backend == null)
-  );
-}
 
 function isCodexSnapshotPending(
   provider: CliProviderStatus,
@@ -973,7 +964,7 @@ const InstalledBanner = ({
               provider
             );
             const showSkeleton =
-              isProviderCardLoading(provider, providerLoading) ||
+              shouldShowProviderStatusSkeleton(provider, providerLoading) ||
               isCodexSnapshotPending(provider, codexSnapshotPending) ||
               maskNegativeBootstrapState;
             const anthropicRateLimitsLoading =
@@ -1376,7 +1367,8 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
       loadingCliStatus?.flavor === 'agent_teams_orchestrator' &&
       Boolean(loadingCliStatus?.providers.some((provider) => provider.providerId === 'codex')),
     includeRateLimits: true,
-    initialRefreshDelayMs: CODEX_ACCOUNT_STARTUP_IDLE_DELAY_MS,
+    initialRefreshDelayMs: CODEX_ACCOUNT_STARTUP_IDLE_MIN_DELAY_MS,
+    initialRefreshMaxDelayMs: CODEX_ACCOUNT_STARTUP_IDLE_MAX_DELAY_MS,
   });
   const visibleCliProviders = useMemo(
     () =>

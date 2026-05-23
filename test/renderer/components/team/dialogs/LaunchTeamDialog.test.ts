@@ -60,6 +60,7 @@ const storeState = {
   appConfig: { general: { multimodelEnabled: true } },
   cliStatus: { providers: [] },
   cliStatusLoading: false,
+  cliProviderStatusLoading: {},
   fetchCliStatus,
   createSchedule,
   updateSchedule,
@@ -412,6 +413,7 @@ vi.mock('@renderer/hooks/useTheme', () => ({
 }));
 
 vi.mock('@renderer/utils/geminiUiFreeze', () => ({
+  filterMainScreenCliProviders: <T,>(providers: readonly T[]) => [...providers],
   isGeminiUiFrozen: () => false,
   normalizeCreateLaunchProviderForUi: (providerId: unknown) => providerId ?? 'anthropic',
 }));

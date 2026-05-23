@@ -583,6 +583,92 @@ describe('CLI status visibility during completed install state', () => {
     });
   });
 
+  it('keeps connected provider details visible while a refresh is in flight', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      displayName: 'Multimodel runtime',
+      supportsSelfUpdate: false,
+      showVersionDetails: false,
+      showBinaryPath: false,
+      authLoggedIn: true,
+      authStatusChecking: true,
+      providers: [
+        {
+          providerId: 'anthropic',
+          displayName: 'Anthropic',
+          supported: true,
+          authenticated: true,
+          authMethod: 'oauth',
+          verificationState: 'verified',
+          statusMessage: 'Connected via Anthropic subscription',
+          models: ['claude-3-5-sonnet'],
+          modelAvailability: [],
+          canLoginFromUi: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+          },
+          backend: null,
+        },
+        createCodexNativeRolloutProvider({
+          state: 'ready',
+          statusMessage: 'ChatGPT account ready',
+          models: ['gpt-5-codex'],
+        }),
+        {
+          providerId: 'opencode',
+          displayName: 'OpenCode (200+ models)',
+          supported: true,
+          authenticated: true,
+          authMethod: 'opencode_managed',
+          verificationState: 'verified',
+          statusMessage: null,
+          models: [],
+          modelAvailability: [],
+          canLoginFromUi: false,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: false,
+          },
+          backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
+          modelCatalog: null,
+          modelCatalogRefreshState: 'idle',
+          runtimeCapabilities: {
+            modelCatalog: {
+              dynamic: true,
+              source: 'runtime',
+            },
+          },
+        },
+      ],
+    });
+    storeState.cliProviderStatusLoading = {
+      codex: true,
+      opencode: true,
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Providers: 3/3 connected');
+    expect(host.textContent).toContain('ChatGPT account ready');
+    expect(host.textContent).toContain('Loading models...');
+    expect(host.textContent).not.toContain('Checking...');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('shows an OpenCode install action on the dashboard when the OpenCode CLI is missing', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliInstallerState = 'idle';

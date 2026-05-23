@@ -7,6 +7,7 @@ import { syncRendererTelemetry } from '@renderer/sentry';
 import { cleanupStale as cleanupCommentReadState } from '@renderer/services/commentReadStorage';
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import { refreshCliStatusForCurrentMode } from '@renderer/utils/refreshCliStatus';
+import { scheduleStartupIdleTask } from '@renderer/utils/startupIdleTask';
 import {
   buildTaskChangePresenceKey,
   buildTaskChangeRequestOptions,
@@ -97,7 +98,8 @@ const TEAM_VISIBLE_IDLE_WATCHDOG_STALE_MS = 30_000;
 const TEAM_MESSAGE_FALLBACK_POLL_MS = 10_000;
 const TASK_LOG_ACTIVITY_PULSE_MS = 3_500;
 const STARTUP_RUNTIME_STATUS_IDLE_DELAY_MS = 30_000;
-const STARTUP_PROVIDER_STATUS_IDLE_DELAY_MS = 30_000;
+const STARTUP_PROVIDER_STATUS_MIN_DELAY_MS = 2_000;
+const STARTUP_PROVIDER_STATUS_MAX_DELAY_MS = 30_000;
 const ACTIVE_PROVISIONING_STATES_FOR_PROCESS_LITE: ReadonlySet<TeamProvisioningProgress['state']> =
   new Set(['validating', 'spawning', 'configuring', 'assembling', 'finalizing', 'verifying']);
 export const TEAM_PROCESS_LITE_FANOUT_STORAGE_KEY = 'team:processLiteFanout';
@@ -213,7 +215,7 @@ export function initializeNotificationListeners(): () => void {
   cleanupFns.push(installTeamRefreshFanoutDebugBridge());
   let cliStatusTimer: ReturnType<typeof setTimeout> | null = null;
   let runtimeStatusTimer: ReturnType<typeof setTimeout> | null = null;
-  let deferredProviderStatusTimer: ReturnType<typeof setTimeout> | null = null;
+  let deferredProviderStatusCleanup: (() => void) | null = null;
   useStore.getState().subscribeProvisioningProgress();
   cleanupFns.push(() => {
     useStore.getState().unsubscribeProvisioningProgress();
@@ -249,16 +251,24 @@ export function initializeNotificationListeners(): () => void {
             await useStore
               .getState()
               .bootstrapCliStatus({ multimodelEnabled: true, providerStatusMode: 'defer' });
-            if (deferredProviderStatusTimer) {
-              clearTimeout(deferredProviderStatusTimer);
+            if (deferredProviderStatusCleanup) {
+              deferredProviderStatusCleanup();
             }
-            deferredProviderStatusTimer = setTimeout(() => {
-              const providerIds = getIncompleteMultimodelProviderIds(useStore.getState().cliStatus);
-              for (const providerId of providerIds) {
-                void useStore.getState().fetchCliProviderStatus(providerId, { silent: false });
+            deferredProviderStatusCleanup = scheduleStartupIdleTask(
+              () => {
+                const providerIds = getIncompleteMultimodelProviderIds(
+                  useStore.getState().cliStatus
+                );
+                for (const providerId of providerIds) {
+                  void useStore.getState().fetchCliProviderStatus(providerId, { silent: false });
+                }
+                deferredProviderStatusCleanup = null;
+              },
+              {
+                minDelayMs: STARTUP_PROVIDER_STATUS_MIN_DELAY_MS,
+                maxDelayMs: STARTUP_PROVIDER_STATUS_MAX_DELAY_MS,
               }
-              deferredProviderStatusTimer = null;
-            }, STARTUP_PROVIDER_STATUS_IDLE_DELAY_MS);
+            );
           })();
         } else {
           void useStore.getState().fetchCliStatus();
@@ -287,7 +297,7 @@ export function initializeNotificationListeners(): () => void {
   cleanupFns.push(() => {
     if (cliStatusTimer) clearTimeout(cliStatusTimer);
     if (runtimeStatusTimer) clearTimeout(runtimeStatusTimer);
-    if (deferredProviderStatusTimer) clearTimeout(deferredProviderStatusTimer);
+    if (deferredProviderStatusCleanup) deferredProviderStatusCleanup();
   });
   // TODO(task-change-presence): re-enable this only after the board uses a bounded
   // batch/priority presence pipeline. The old one-task-per-tick poll was accurate

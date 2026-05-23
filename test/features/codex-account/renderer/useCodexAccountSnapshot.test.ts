@@ -16,6 +16,11 @@ const apiMocks = vi.hoisted(() => ({
   onCodexAccountSnapshotChanged: vi.fn(() => () => undefined),
 }));
 
+type IdleCallbackForTest = (deadline: {
+  didTimeout: boolean;
+  timeRemaining: () => number;
+}) => void;
+
 vi.mock('@renderer/api', () => ({
   api: apiMocks,
   isElectronMode: () => true,
@@ -87,6 +92,8 @@ describe('useCodexAccountSnapshot', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
+    Reflect.deleteProperty(window, 'requestIdleCallback');
+    Reflect.deleteProperty(window, 'cancelIdleCallback');
   });
 
   it('loads the initial Codex snapshot through refresh when rate limits are requested', async () => {
@@ -178,6 +185,80 @@ describe('useCodexAccountSnapshot', () => {
     act(() => {
       root.unmount();
     });
+  });
+
+  it('uses idle scheduling for deferred initial Codex snapshots when a max delay is provided', async () => {
+    vi.useFakeTimers();
+    const snapshot = createSnapshot();
+    apiMocks.refreshCodexAccountSnapshot.mockResolvedValue(snapshot);
+    let idleCallback: IdleCallbackForTest = () => undefined;
+    const requestIdleCallback = vi.fn((callback, options?: { timeout?: number }) => {
+      idleCallback = callback;
+      expect(options).toEqual({ timeout: 28_000 });
+      return 7;
+    });
+    const cancelIdleCallback = vi.fn();
+    Object.defineProperty(window, 'requestIdleCallback', {
+      configurable: true,
+      value: requestIdleCallback,
+    });
+    Object.defineProperty(window, 'cancelIdleCallback', {
+      configurable: true,
+      value: cancelIdleCallback,
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    function Harness(): React.ReactElement {
+      const state = useCodexAccountSnapshot({
+        enabled: true,
+        includeRateLimits: true,
+        initialRefreshDelayMs: 2_000,
+        initialRefreshMaxDelayMs: 30_000,
+      });
+
+      return React.createElement('div', null, state.snapshot?.managedAccount?.email ?? 'empty');
+    }
+
+    await act(async () => {
+      root.render(React.createElement(Harness));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_999);
+      await Promise.resolve();
+    });
+
+    expect(apiMocks.refreshCodexAccountSnapshot).not.toHaveBeenCalled();
+    expect(requestIdleCallback).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+      await Promise.resolve();
+    });
+
+    expect(requestIdleCallback).toHaveBeenCalledTimes(1);
+    expect(apiMocks.refreshCodexAccountSnapshot).not.toHaveBeenCalled();
+
+    await act(async () => {
+      idleCallback({ didTimeout: false, timeRemaining: () => 10 });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(apiMocks.refreshCodexAccountSnapshot).toHaveBeenCalledTimes(1);
+    expect(apiMocks.refreshCodexAccountSnapshot).toHaveBeenCalledWith({
+      includeRateLimits: true,
+    });
+    expect(host.textContent).toContain('belief@example.com');
+
+    act(() => {
+      root.unmount();
+    });
+    expect(cancelIdleCallback).not.toHaveBeenCalled();
   });
 
   it('clears a deferred initial Codex snapshot timer on unmount', async () => {
