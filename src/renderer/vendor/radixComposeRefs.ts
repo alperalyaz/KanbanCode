@@ -39,3 +39,10 @@ export function composeRefs<T>(...refs: PossibleRef<T>[]): React.RefCallback<T> 
     return undefined;
   };
 }
+
+export function useComposedRefs<T>(...refs: PossibleRef<T>[]): React.RefCallback<T> {
+  // This file is aliased over @radix-ui/react-compose-refs, so Radix imports this
+  // export directly even though local source code does not reference it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Radix expects refs to be the dependency list.
+  return React.useCallback(composeRefs(...refs), refs);
+}
