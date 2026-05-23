@@ -561,6 +561,7 @@
         var TEAM_MEMBER_OFFSETS = [0, 4, 7];
         var TEAM_LABELS = ['Marketing', 'Researchers', 'Coding'];
         var MAX_DPR = 2;
+        var SPLASH_SCENE_FRAME_INTERVAL_MS = 1000 / 30;
         var FALLBACK_AVATAR_URLS = [
           './assets/participant-avatars/01.png',
           './assets/participant-avatars/02.png',
@@ -637,6 +638,7 @@
             particles: [],
             running: true,
             frameId: 0,
+            lastRenderedAt: 0,
             startedAt: performance.now(),
           };
 
@@ -661,14 +663,21 @@
 
           function render(now) {
             if (!state.running) return;
-            resize();
-            drawScene(
-              ctx,
-              state.width,
-              state.height,
-              reducedMotion ? 1.2 : (now - state.startedAt) / 1000,
-              state.particles
-            );
+            if (
+              reducedMotion ||
+              state.lastRenderedAt === 0 ||
+              now - state.lastRenderedAt >= SPLASH_SCENE_FRAME_INTERVAL_MS
+            ) {
+              resize();
+              drawScene(
+                ctx,
+                state.width,
+                state.height,
+                reducedMotion ? 1.2 : (now - state.startedAt) / 1000,
+                state.particles
+              );
+              state.lastRenderedAt = now;
+            }
             if (!reducedMotion) state.frameId = window.requestAnimationFrame(render);
           }
 
