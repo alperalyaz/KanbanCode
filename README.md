@@ -1,3 +1,4 @@
+
 <p align="center">
   <a href="docs/screenshots/1.jpg"><img src="docs/screenshots/1.jpg" width="75" alt="Kanban Board" /></a>&nbsp;
   <a href="docs/screenshots/7.png"><img src="docs/screenshots/7.png" width="75" alt="Code Review" /></a>&nbsp;
@@ -35,8 +36,7 @@
 
 <a href="https://777genius.github.io/agent-teams-ai/">Watch demo on the site or here:</a>
 
-
-https://github.com/user-attachments/assets/d1a85fe5-fb49-4009-b2c1-79ae8818e8c4
+[demo_new_15s.webm](https://github.com/user-attachments/assets/d78cf5a4-80fe-4a8b-a1db-fb272e18029c)
 
 <table>
 <tr>
