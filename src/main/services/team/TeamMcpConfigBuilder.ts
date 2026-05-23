@@ -442,6 +442,17 @@ async function resolveNodePath(options?: McpLaunchSpecResolveOptions): Promise<s
   if (_resolvedNodePath) return _resolvedNodePath;
 
   emitProgress(options, 'node-runtime', 'Resolving Node.js runtime for MCP server...');
+  const preferShellNodeProbe = shouldPreferShellNodeProbe();
+  if (preferShellNodeProbe && !process.env.NODE_BINARY?.trim()) {
+    emitProgress(options, 'node-runtime-shell-fallback', 'Trying login shell Node.js runtime...');
+    const shellProbe = await probeShellNodeRuntimePath(options);
+    if (shellProbe.ok) {
+      _resolvedNodePath = shellProbe.path;
+      emitProgress(options, 'node-runtime-found', 'Using resolved Node.js runtime...');
+      return _resolvedNodePath;
+    }
+  }
+
   const fastProbe = await probeNodeRuntimePath(buildNodeResolveEnv({}));
   if (fastProbe.ok) {
     _resolvedNodePath = fastProbe.path;
@@ -449,21 +460,28 @@ async function resolveNodePath(options?: McpLaunchSpecResolveOptions): Promise<s
     return _resolvedNodePath;
   }
 
-  if (shouldPreferShellNodeProbe()) {
+  if (!preferShellNodeProbe) {
     emitProgress(options, 'node-runtime-shell-fallback', 'Trying login shell Node.js runtime...');
-  }
-  const shellProbe = await probeShellNodeRuntimePath(options);
-  if (shellProbe.ok) {
-    _resolvedNodePath = shellProbe.path;
-    emitProgress(options, 'node-runtime-found', 'Using resolved Node.js runtime...');
-    return _resolvedNodePath;
+    const shellProbe = await probeShellNodeRuntimePath(options);
+    if (shellProbe.ok) {
+      _resolvedNodePath = shellProbe.path;
+      emitProgress(options, 'node-runtime-found', 'Using resolved Node.js runtime...');
+      return _resolvedNodePath;
+    }
+
+    emitProgress(options, 'node-runtime-missing', 'Node.js runtime for MCP server was not found.');
+    throw new Error(
+      `Node.js runtime for Agent Teams MCP was not found. Ensure Node.js is installed and available from the login shell PATH. Last error: ${
+        shellProbe.error ? stringifyError(shellProbe.error) : stringifyError(fastProbe.error)
+      }`
+    );
   }
 
   emitProgress(options, 'node-runtime-missing', 'Node.js runtime for MCP server was not found.');
   throw new Error(
-    `Node.js runtime for Agent Teams MCP was not found. Ensure Node.js is installed and available from the login shell PATH. Last error: ${
-      shellProbe.error ? stringifyError(shellProbe.error) : stringifyError(fastProbe.error)
-    }`
+    `Node.js runtime for Agent Teams MCP was not found. Ensure Node.js is installed and available from the login shell PATH. Last error: ${stringifyError(
+      fastProbe.error
+    )}`
   );
 }
 

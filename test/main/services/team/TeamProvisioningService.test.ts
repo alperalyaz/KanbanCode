@@ -52,6 +52,13 @@ vi.mock('@main/services/team/TeamTaskReader', () => ({
 
 vi.mock('@main/utils/childProcess', () => ({
   execCli: vi.fn(async (_binaryPath: string | null, args: string[]) => {
+    if (args[0] === '-e' && args[1]?.includes('process.execPath')) {
+      return {
+        stdout: JSON.stringify({ execPath: process.execPath, version: process.versions.node }),
+        stderr: '',
+      };
+    }
+
     if (args[0] === 'model') {
       return {
         stdout: JSON.stringify({

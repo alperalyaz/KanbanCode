@@ -476,13 +476,21 @@ describe('TeamMcpConfigBuilder', () => {
     }
   });
 
-  it('skips strict shell env lookup when fast Node lookup succeeds from a minimal GUI PATH', async () => {
+  it('prefers strict shell env lookup over fast Node lookup from a minimal GUI PATH', async () => {
     mockBuiltWorkspaceEntryAvailable();
     const previousPath = process.env.PATH;
     process.env.PATH = ['/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(path.delimiter);
-    hoisted.execCliMock.mockResolvedValue({
-      stdout: nodeRuntimeProbeStdout('/fast/node'),
-      stderr: '',
+    hoisted.resolveInteractiveShellEnvMock.mockResolvedValue({
+      PATH: ['/strict-shell-node-bin', '/usr/bin'].join(path.delimiter),
+      HOME: '/Users/tester',
+    });
+    hoisted.execCliMock.mockImplementation(async (command, _args, options) => {
+      const env = options?.env as NodeJS.ProcessEnv | undefined;
+      if (env?.PATH?.split(path.delimiter)[0] === '/strict-shell-node-bin') {
+        expect(command).toBe('node');
+        return { stdout: nodeRuntimeProbeStdout('/strict-shell-node-bin/node'), stderr: '' };
+      }
+      return { stdout: nodeRuntimeProbeStdout('/fast/node'), stderr: '' };
     });
 
     try {
@@ -490,8 +498,10 @@ describe('TeamMcpConfigBuilder', () => {
       const configPath = await builder.writeConfigFile();
       createdPaths.push(configPath);
 
-      expect(readGeneratedServer(configPath)?.command).toBe('/fast/node');
-      expect(hoisted.resolveInteractiveShellEnvMock).not.toHaveBeenCalled();
+      expect(readGeneratedServer(configPath)?.command).toBe('/strict-shell-node-bin/node');
+      expect(hoisted.resolveInteractiveShellEnvMock).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'mcp-node-runtime' })
+      );
     } finally {
       if (previousPath === undefined) {
         delete process.env.PATH;
