@@ -173,6 +173,14 @@ vi.mock('@renderer/store', () => {
 import { CliStatusBanner } from '@renderer/components/dashboard/CliStatusBanner';
 import { CliStatusSection } from '@renderer/components/settings/sections/CliStatusSection';
 
+async function flushLazyImports(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
 function createInstalledCliStatus(
   overrides?: Partial<Record<string, unknown>>
 ): Record<string, unknown> {
@@ -447,6 +455,63 @@ describe('CLI status visibility during completed install state', () => {
     await act(async () => {
       root.unmount();
       await Promise.resolve();
+    });
+  });
+
+  it('keeps the dashboard terminal modal unmounted until login is requested', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = createInstalledCliStatus({
+      authLoggedIn: false,
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await flushLazyImports();
+    });
+
+    expect(host.querySelector('[data-testid="terminal-modal"]')).toBeNull();
+
+    const loginButton = Array.from(host.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Login'
+    );
+    expect(loginButton).not.toBeUndefined();
+
+    await act(async () => {
+      loginButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushLazyImports();
+    });
+
+    expect(host.querySelector('[data-testid="terminal-modal"]')).not.toBeNull();
+
+    await act(async () => {
+      root.unmount();
+      await flushLazyImports();
+    });
+  });
+
+  it('loads the installer terminal log only while installation is active', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'installing';
+    storeState.cliInstallerRawChunks = ['installing...\n'];
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await flushLazyImports();
+    });
+
+    expect(host.textContent).toContain('terminal-log');
+
+    await act(async () => {
+      root.unmount();
+      await flushLazyImports();
     });
   });
 
@@ -1089,6 +1154,15 @@ describe('CLI status visibility during completed install state', () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliInstallerState = 'idle';
     storeState.fetchCliProviderStatus = vi.fn(() => Promise.reject(new Error('refresh failed')));
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      displayName: 'Multimodel runtime',
+      supportsSelfUpdate: false,
+      showVersionDetails: false,
+      showBinaryPath: false,
+      authLoggedIn: true,
+      providers: [createCodexNativeRolloutProvider()],
+    });
 
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -1096,6 +1170,19 @@ describe('CLI status visibility during completed install state', () => {
 
     await act(async () => {
       root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(providerRuntimeSettingsDialogProps).toBeNull();
+
+    const manageButton = Array.from(host.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Manage'
+    );
+    expect(manageButton).not.toBeUndefined();
+
+    await act(async () => {
+      manageButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
       await Promise.resolve();
     });
 
