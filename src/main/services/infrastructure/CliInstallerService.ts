@@ -28,6 +28,7 @@ import {
   getShellPreferredHome,
   resolveInteractiveShellEnvBestEffort,
 } from '@main/utils/shellEnv';
+import { CLI_PROVIDER_STATUS_DEFERRED_MESSAGE } from '@shared/types/cliInstaller';
 import { getErrorMessage } from '@shared/utils/errorHandling';
 import { createLogger } from '@shared/utils/logger';
 import { createDefaultCliExtensionCapabilities } from '@shared/utils/providerExtensionCapabilities';
@@ -49,7 +50,9 @@ import { getCliFlavorUiOptions, getConfiguredCliFlavor } from '../team/cliFlavor
 
 import type {
   CliInstallationStatus,
+  CliInstallerGetStatusOptions,
   CliInstallerProgress,
+  CliInstallerProviderStatusMode,
   CliPlatform,
   CliProviderId,
   CliProviderModelAvailability,
@@ -171,6 +174,7 @@ function parseClaudeAuthStatusStdout(stdout: string): { loggedIn?: boolean; auth
 
 /** NDJSON: strip C0 controls (except \\t \\n \\r) so logs stay valid text and tiny. */
 function stripControlForDiag(s: string): string {
+  // eslint-disable-next-line no-control-regex -- Strip raw terminal C0 controls before diagnostic logging.
   return s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '\uFFFD');
 }
 
@@ -868,8 +872,9 @@ export class CliInstallerService {
   // Public: getStatus
   // ---------------------------------------------------------------------------
 
-  async getStatus(): Promise<CliInstallationStatus> {
+  async getStatus(options: CliInstallerGetStatusOptions = {}): Promise<CliInstallationStatus> {
     const statusStartedAt = Date.now();
+    const providerStatusMode: CliInstallerProviderStatusMode = options.providerStatusMode ?? 'full';
     const generation = ++this.statusGatherGeneration;
     const result = this.createInitialStatus();
     this.latestProviderSignatures.clear();
@@ -882,7 +887,7 @@ export class CliInstallerService {
     let timer: ReturnType<typeof setTimeout> | null = null;
     try {
       await Promise.race([
-        this.gatherStatus(ref, runDiag, generation),
+        this.gatherStatus(ref, runDiag, generation, providerStatusMode),
         new Promise<void>((resolve) => {
           timer = setTimeout(() => {
             logger.warn(
@@ -1023,16 +1028,21 @@ export class CliInstallerService {
   private async gatherStatus(
     ref: { current: CliInstallationStatus },
     diag: CliInstallerStatusRunDiag,
-    generation: number
+    generation: number,
+    providerStatusMode: CliInstallerProviderStatusMode
   ): Promise<void> {
     resetGatherDiag(diag);
-    const shellEnvStartedAt = Date.now();
-    await resolveInteractiveShellEnvBestEffort({
-      timeoutMs: 1_500,
-      fallbackEnv: process.env,
-      background: false,
-    });
-    diag.shellEnvMs = Date.now() - shellEnvStartedAt;
+    if (providerStatusMode === 'defer') {
+      diag.shellEnvMs = 0;
+    } else {
+      const shellEnvStartedAt = Date.now();
+      await resolveInteractiveShellEnvBestEffort({
+        timeoutMs: 1_500,
+        fallbackEnv: process.env,
+        background: false,
+      });
+      diag.shellEnvMs = Date.now() - shellEnvStartedAt;
+    }
 
     const r = ref.current;
     const binaryResolveStartedAt = Date.now();
@@ -1048,6 +1058,14 @@ export class CliInstallerService {
         r.installedVersion = versionProbe.version;
         r.launchError = null;
         r.authStatusChecking = true;
+
+        if (r.flavor === 'agent_teams_orchestrator' && providerStatusMode === 'defer') {
+          r.authStatusChecking = false;
+          this.markProvidersDeferred(r);
+          this.publishStatusSnapshotIfCurrent(r, generation);
+          return;
+        }
+
         this.rememberHealthyStatus(r);
         this.publishStatusSnapshotIfCurrent(r, generation);
 
@@ -1180,6 +1198,28 @@ export class CliInstallerService {
       models: [],
       modelAvailability: [],
       canLoginFromUi: false,
+      backend: null,
+    }));
+    result.authLoggedIn = false;
+    result.authMethod = null;
+  }
+
+  private markProvidersDeferred(result: CliInstallationStatus): void {
+    if (result.flavor !== 'agent_teams_orchestrator') {
+      return;
+    }
+
+    result.providers = result.providers.map((provider) => ({
+      ...provider,
+      authenticated: false,
+      authMethod: null,
+      verificationState: 'unknown',
+      modelVerificationState: 'idle',
+      modelCatalogRefreshState: 'idle',
+      statusMessage: CLI_PROVIDER_STATUS_DEFERRED_MESSAGE,
+      detailMessage: null,
+      models: [],
+      modelAvailability: [],
       backend: null,
     }));
     result.authLoggedIn = false;

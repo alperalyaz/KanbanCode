@@ -30,6 +30,7 @@ import type { ChildProcessWithoutNullStreams } from 'child_process';
 
 const PROBE_COMMAND_TIMEOUT_MS = 90_000;
 const COMMAND_TIMEOUT_MS = PROBE_COMMAND_TIMEOUT_MS;
+const COMMAND_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 const COMMAND_ERROR_DETAIL_LIMIT = 1_600;
 const COMMAND_OUTPUT_PREVIEW_LIMIT = 1_200;
 const ESCAPE_CHARACTER = String.fromCharCode(27);
@@ -870,8 +871,12 @@ function appendOptionalArg(args: string[], name: string, value: string | null | 
 function runtimeProviderCommandOptions<T extends { env: NodeJS.ProcessEnv }>(
   options: T,
   projectPath: string | null
-): T & { cwd?: string } {
-  return projectPath ? { ...options, cwd: projectPath } : options;
+): T & { cwd?: string; maxBuffer: number } {
+  const commandOptions = {
+    ...options,
+    maxBuffer: COMMAND_MAX_BUFFER_BYTES,
+  };
+  return projectPath ? { ...commandOptions, cwd: projectPath } : commandOptions;
 }
 
 async function resolveCliEnv(): Promise<{

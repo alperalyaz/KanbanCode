@@ -45,6 +45,12 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Restore pnpm node-gyp executable bit
+        shell: bash
+        run: |
+          PNPM_STORE="$(pnpm store path)"
+          find "$PNPM_STORE" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -336,6 +342,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Restore pnpm node-gyp executable bit
+        run: |
+          PNPM_STORE="$(pnpm store path)"
+          find "$PNPM_STORE" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -451,6 +462,12 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+
+      - name: Restore pnpm node-gyp executable bit
+        shell: bash
+        run: |
+          PNPM_STORE="$(pnpm store path)"
+          find "$PNPM_STORE" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -572,6 +589,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libarchive-tools rpm xvfb
+
+      - name: Restore pnpm node-gyp executable bit
+        run: |
+          PNPM_STORE="$(pnpm store path)"
+          find "$PNPM_STORE" -path '*/node-gyp/gyp/gyp_main.py' -exec chmod +x {} \; 2>/dev/null || true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

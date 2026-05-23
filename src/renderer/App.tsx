@@ -16,6 +16,7 @@ declare global {
   interface Window {
     __claudeTeamsSplashEnhancedStartedAt?: number;
     __claudeTeamsSplashScene?: SplashSceneHandle;
+    __claudeTeamsSplashEnhancedDisabled?: boolean;
     __claudeTeamsSplashStartedAt?: number;
   }
 }
@@ -38,7 +39,11 @@ export const App = (): React.JSX.Element => {
     const splash = document.getElementById('splash');
     if (splash) {
       const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const scene = window.__claudeTeamsSplashScene ?? startSplashScene(splash, { reducedMotion });
+      const scene: SplashSceneHandle =
+        window.__claudeTeamsSplashScene ??
+        (window.__claudeTeamsSplashEnhancedDisabled
+          ? { stop: () => undefined, ready: Promise.resolve() }
+          : startSplashScene(splash, { reducedMotion }));
       const startedAt = window.__claudeTeamsSplashStartedAt ?? performance.now();
       const enhancedStartedAt = window.__claudeTeamsSplashEnhancedStartedAt ?? performance.now();
       const elapsed = performance.now() - startedAt;
@@ -62,6 +67,7 @@ export const App = (): React.JSX.Element => {
           scene.stop();
           window.__claudeTeamsSplashScene = undefined;
           window.__claudeTeamsSplashEnhancedStartedAt = undefined;
+          window.__claudeTeamsSplashEnhancedDisabled = undefined;
           splash.remove();
         }, fadeDuration);
       };

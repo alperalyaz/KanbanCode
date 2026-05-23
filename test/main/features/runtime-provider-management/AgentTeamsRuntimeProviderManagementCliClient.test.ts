@@ -1380,6 +1380,7 @@ describe('AgentTeamsRuntimeProviderManagementCliClient', () => {
       ],
       expect.objectContaining({ cwd: '/Users/test/project' })
     );
+    expect(execCliMock.mock.calls[0]?.[2]).toMatchObject({ maxBuffer: 8 * 1024 * 1024 });
     expect(JSON.stringify(execCliMock.mock.calls[0])).not.toContain('undefined');
   });
 

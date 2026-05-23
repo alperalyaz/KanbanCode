@@ -41,33 +41,8 @@ export function composeRefs<T>(...refs: PossibleRef<T>[]): React.RefCallback<T> 
 }
 
 export function useComposedRefs<T>(...refs: PossibleRef<T>[]): React.RefCallback<T> {
-  const refsRef = React.useRef(refs);
-  refsRef.current = refs;
-
-  return React.useCallback((node) => {
-    const currentRefs = refsRef.current;
-    let hasCleanup = false;
-    const cleanups = currentRefs.map((ref) => {
-      const cleanup = setRef(ref, node);
-      if (!hasCleanup && typeof cleanup === 'function') {
-        hasCleanup = true;
-      }
-      return cleanup;
-    });
-
-    if (hasCleanup) {
-      return () => {
-        for (let index = 0; index < cleanups.length; index += 1) {
-          const cleanup = cleanups[index];
-          if (typeof cleanup === 'function') {
-            cleanup();
-          } else {
-            setRef(currentRefs[index], null);
-          }
-        }
-      };
-    }
-
-    return undefined;
-  }, []);
+  // This file is aliased over @radix-ui/react-compose-refs, so Radix imports this
+  // export directly even though local source code does not reference it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Radix expects refs to be the dependency list.
+  return React.useCallback(composeRefs(...refs), refs);
 }

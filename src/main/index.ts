@@ -354,9 +354,17 @@ function describeMemberWorkSyncReviewPickupEscalationReason(reason: string): str
   return 'The current review request is still waiting for explicit review pickup.';
 }
 
-async function resolveOpenCodeRuntimeBinaryForBridgeEnv(): Promise<string | null> {
-  const resolvedBinaryPath = await resolveVerifiedOpenCodeRuntimeBinaryPath();
+async function resolveOpenCodeRuntimeBinaryForBridgeEnv(options?: {
+  includeShellEnv?: boolean;
+}): Promise<string | null> {
+  const resolvedBinaryPath = await resolveVerifiedOpenCodeRuntimeBinaryPath({
+    includeShellEnv: options?.includeShellEnv,
+  });
   if (resolvedBinaryPath) return resolvedBinaryPath;
+
+  if (options?.includeShellEnv === false) {
+    return null;
+  }
 
   try {
     const status = await openCodeRuntimeInstallerService?.getStatus();
@@ -448,15 +456,18 @@ async function createOpenCodeRuntimeAdapterRegistry(
       copyOpenCodeLocalMcpLaunchEnv(targetEnv, bridgeEnv);
     }
   };
-  const ensureOpenCodeRuntimeBinaryEnv = async (targetEnv: NodeJS.ProcessEnv): Promise<void> => {
+  const ensureOpenCodeRuntimeBinaryEnv = async (
+    targetEnv: NodeJS.ProcessEnv,
+    options: { includeShellEnv?: boolean } = {}
+  ): Promise<void> => {
     await ensureOpenCodeBridgeRuntimeBinaryEnv({
       targetEnv,
       bridgeEnv,
-      resolveVerifiedOpenCodeRuntimeBinaryPath: resolveOpenCodeRuntimeBinaryForBridgeEnv,
+      resolveVerifiedOpenCodeRuntimeBinaryPath: () =>
+        resolveOpenCodeRuntimeBinaryForBridgeEnv({ includeShellEnv: options.includeShellEnv }),
       onWarning: (message) => logger.warn(message),
     });
   };
-  await ensureOpenCodeRuntimeBinaryEnv(bridgeEnv);
   try {
     reportProgress('runtime-work-sync', 'Preparing runtime work sync hooks...');
     const turnSettledEnv = await buildMemberWorkSyncRuntimeTurnSettledEnvironment({
@@ -500,7 +511,7 @@ async function createOpenCodeRuntimeAdapterRegistry(
   reportProgress('runtime-bridge', 'Preparing OpenCode bridge...');
   const resolveBridgeCommandEnv = async (): Promise<NodeJS.ProcessEnv> => {
     const nextEnv = { ...bridgeEnv };
-    await ensureOpenCodeRuntimeBinaryEnv(nextEnv);
+    await ensureOpenCodeRuntimeBinaryEnv(nextEnv, { includeShellEnv: true });
     if (!useHttpMcpBridge) {
       return nextEnv;
     }
@@ -917,6 +928,8 @@ const startupTimers = new Set<ReturnType<typeof setTimeout>>();
 
 const SHUTDOWN_STEP_TIMEOUT_MS = 5_000;
 const STARTUP_RECOVERY_DELAY_MS = 10_000;
+const STARTUP_CLI_WARMUP_DELAY_MS = 90_000;
+const STARTUP_BACKGROUND_SERVICE_DELAY_MS = 5_000;
 const STARTUP_RECOVERY_CONCURRENCY = 1;
 const appStartupStartedAt = Date.now();
 let appStartupSteps: AppStartupStep[] = [
@@ -2456,10 +2469,12 @@ function runPostRendererStartupTasks(): void {
   );
 
   scheduleStartupTask(() => {
-    void teamProvisioningService.warmup();
     teamDataService.startProcessHealthPolling();
     void schedulerService?.start();
-  }, 5000);
+  }, STARTUP_BACKGROUND_SERVICE_DELAY_MS);
+  scheduleStartupTask(() => {
+    void teamProvisioningService.warmup();
+  }, STARTUP_CLI_WARMUP_DELAY_MS);
 }
 
 function scheduleRendererRecovery(win: BrowserWindow): void {

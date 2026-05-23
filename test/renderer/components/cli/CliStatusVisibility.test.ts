@@ -1,6 +1,7 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { CLI_PROVIDER_STATUS_DEFERRED_MESSAGE } from '@shared/types/cliInstaller';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CodexAccountSnapshotDto } from '@features/codex-account/contracts';
@@ -173,6 +174,14 @@ vi.mock('@renderer/store', () => {
 import { CliStatusBanner } from '@renderer/components/dashboard/CliStatusBanner';
 import { CliStatusSection } from '@renderer/components/settings/sections/CliStatusSection';
 
+async function flushLazyImports(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
 function createInstalledCliStatus(
   overrides?: Partial<Record<string, unknown>>
 ): Record<string, unknown> {
@@ -302,6 +311,30 @@ function createCodexNativeRolloutProvider(
           }
         : null,
     ...overrides,
+  };
+}
+
+function createDeferredMultimodelProvider(
+  providerId: 'anthropic' | 'codex' | 'opencode',
+  displayName: string
+): Record<string, unknown> {
+  return {
+    providerId,
+    displayName,
+    supported: false,
+    authenticated: false,
+    authMethod: null,
+    verificationState: 'unknown',
+    statusMessage: CLI_PROVIDER_STATUS_DEFERRED_MESSAGE,
+    models: [],
+    modelAvailability: [],
+    canLoginFromUi: providerId !== 'opencode',
+    capabilities: {
+      teamLaunch: false,
+      oneShot: false,
+    },
+    backend: null,
+    availableBackends: [],
   };
 }
 
@@ -443,6 +476,192 @@ describe('CLI status visibility during completed install state', () => {
     });
 
     expect(storeState.openExtensionsTab).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('keeps the dashboard terminal modal unmounted until login is requested', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliStatus = createInstalledCliStatus({
+      authLoggedIn: false,
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await flushLazyImports();
+    });
+
+    expect(host.querySelector('[data-testid="terminal-modal"]')).toBeNull();
+
+    const loginButton = Array.from(host.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Login'
+    );
+    expect(loginButton).not.toBeUndefined();
+
+    await act(async () => {
+      loginButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushLazyImports();
+    });
+
+    expect(host.querySelector('[data-testid="terminal-modal"]')).not.toBeNull();
+
+    await act(async () => {
+      root.unmount();
+      await flushLazyImports();
+    });
+  });
+
+  it('loads the installer terminal log only while installation is active', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'installing';
+    storeState.cliInstallerRawChunks = ['installing...\n'];
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await flushLazyImports();
+    });
+
+    expect(host.textContent).toContain('terminal-log');
+
+    await act(async () => {
+      root.unmount();
+      await flushLazyImports();
+    });
+  });
+
+  it('shows deferred multimodel provider snapshots as pending instead of disconnected', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      displayName: 'Multimodel runtime',
+      supportsSelfUpdate: false,
+      showVersionDetails: false,
+      showBinaryPath: false,
+      authLoggedIn: false,
+      authStatusChecking: true,
+      providers: [
+        createDeferredMultimodelProvider('anthropic', 'Anthropic'),
+        createDeferredMultimodelProvider('codex', 'Codex'),
+        createDeferredMultimodelProvider('opencode', 'OpenCode'),
+      ],
+    });
+    storeState.cliProviderStatusLoading = {
+      anthropic: true,
+      codex: true,
+      opencode: true,
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Checking providers...');
+    expect(host.textContent).toContain('Checking...');
+    expect(host.textContent).not.toContain('Providers: 0/3 connected');
+    expect(host.textContent).not.toContain('Models unavailable for this runtime build');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('keeps connected provider details visible while a refresh is in flight', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      displayName: 'Multimodel runtime',
+      supportsSelfUpdate: false,
+      showVersionDetails: false,
+      showBinaryPath: false,
+      authLoggedIn: true,
+      authStatusChecking: true,
+      providers: [
+        {
+          providerId: 'anthropic',
+          displayName: 'Anthropic',
+          supported: true,
+          authenticated: true,
+          authMethod: 'oauth',
+          verificationState: 'verified',
+          statusMessage: 'Connected via Anthropic subscription',
+          models: ['claude-3-5-sonnet'],
+          modelAvailability: [],
+          canLoginFromUi: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+          },
+          backend: null,
+        },
+        createCodexNativeRolloutProvider({
+          state: 'ready',
+          statusMessage: 'ChatGPT account ready',
+          models: ['gpt-5-codex'],
+        }),
+        {
+          providerId: 'opencode',
+          displayName: 'OpenCode (200+ models)',
+          supported: true,
+          authenticated: true,
+          authMethod: 'opencode_managed',
+          verificationState: 'verified',
+          statusMessage: null,
+          models: [],
+          modelAvailability: [],
+          canLoginFromUi: false,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: false,
+          },
+          backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
+          modelCatalog: null,
+          modelCatalogRefreshState: 'idle',
+          runtimeCapabilities: {
+            modelCatalog: {
+              dynamic: true,
+              source: 'runtime',
+            },
+          },
+        },
+      ],
+    });
+    storeState.cliProviderStatusLoading = {
+      codex: true,
+      opencode: true,
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Providers: 3/3 connected');
+    expect(host.textContent).toContain('ChatGPT account ready');
+    expect(host.textContent).toContain('Loading models...');
+    expect(host.textContent).not.toContain('Checking...');
 
     await act(async () => {
       root.unmount();
@@ -1089,6 +1308,15 @@ describe('CLI status visibility during completed install state', () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliInstallerState = 'idle';
     storeState.fetchCliProviderStatus = vi.fn(() => Promise.reject(new Error('refresh failed')));
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      displayName: 'Multimodel runtime',
+      supportsSelfUpdate: false,
+      showVersionDetails: false,
+      showBinaryPath: false,
+      authLoggedIn: true,
+      providers: [createCodexNativeRolloutProvider()],
+    });
 
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -1096,6 +1324,19 @@ describe('CLI status visibility during completed install state', () => {
 
     await act(async () => {
       root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(providerRuntimeSettingsDialogProps).toBeNull();
+
+    const manageButton = Array.from(host.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Manage'
+    );
+    expect(manageButton).not.toBeUndefined();
+
+    await act(async () => {
+      manageButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
       await Promise.resolve();
     });
 

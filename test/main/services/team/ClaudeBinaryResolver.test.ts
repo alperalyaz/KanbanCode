@@ -7,9 +7,8 @@ import type { PathLike } from 'fs';
 const mockBuildMergedCliPath = vi.fn<(binaryPath: string | null) => string>();
 const mockGetShellPreferredHome = vi.fn<() => string>();
 const mockGetClaudeBasePath = vi.fn<() => string>();
-const mockResolveInteractiveShellEnvBestEffort = vi.fn<
-  (options?: unknown) => Promise<NodeJS.ProcessEnv>
->();
+const mockResolveInteractiveShellEnvBestEffort =
+  vi.fn<(options?: unknown) => Promise<NodeJS.ProcessEnv>>();
 const mockGetConfiguredCliFlavor = vi.fn<() => 'claude' | 'agent_teams_orchestrator'>();
 const mockGetDoctorInvokedCandidates = vi.fn<(commandName: string) => Promise<string[]>>();
 
@@ -120,6 +119,7 @@ describe('ClaudeBinaryResolver', () => {
 
     await expect(ClaudeBinaryResolver.resolve()).resolves.toBe(expectedBinary);
     expect(accessMock).toHaveBeenCalledWith(expectedBinary, 1);
+    expect(mockResolveInteractiveShellEnvBestEffort).not.toHaveBeenCalled();
   });
 
   it('prefers the dedicated CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH override', async () => {
@@ -138,6 +138,7 @@ describe('ClaudeBinaryResolver', () => {
 
     await expect(ClaudeBinaryResolver.resolve()).resolves.toBe(expectedBinary);
     expect(accessMock).toHaveBeenCalledWith(expectedBinary, 1);
+    expect(mockResolveInteractiveShellEnvBestEffort).not.toHaveBeenCalled();
   });
 
   it('does not wait for shell env before using an explicit absolute runtime override', async () => {
@@ -249,6 +250,7 @@ describe('ClaudeBinaryResolver', () => {
 
     await expect(ClaudeBinaryResolver.resolve()).resolves.toBe(expectedBinary);
     expect(accessMock).toHaveBeenCalledWith(expectedBinary, 1);
+    expect(mockResolveInteractiveShellEnvBestEffort).not.toHaveBeenCalled();
   });
 
   it('finds npm-local Claude install in the vendor bin directory', async () => {

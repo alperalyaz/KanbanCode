@@ -16,6 +16,7 @@ import {
   resolveCodexRuntimeSelection,
 } from '@features/codex-runtime-profile/renderer';
 import { api } from '@renderer/api';
+import { ProviderActivityStatusStrip } from '@renderer/components/common/ProviderActivityStatusStrip';
 import {
   buildMemberDraftColorMap,
   buildMemberDraftSuggestions,
@@ -396,8 +397,12 @@ export const CreateTeamDialog = ({
   const anthropicProviderFastModeDefault = useStore(
     (s) => s.appConfig?.providerConnections?.anthropic.fastModeDefault ?? false
   );
-  const { cliStatus, cliStatusLoading } = useStore(
-    useShallow((s) => ({ cliStatus: s.cliStatus, cliStatusLoading: s.cliStatusLoading }))
+  const { cliStatus, cliStatusLoading, cliProviderStatusLoading } = useStore(
+    useShallow((s) => ({
+      cliStatus: s.cliStatus,
+      cliStatusLoading: s.cliStatusLoading,
+      cliProviderStatusLoading: s.cliProviderStatusLoading,
+    }))
   );
   const bootstrapCliStatus = useStore((s) => s.bootstrapCliStatus);
   const fetchCliStatus = useStore((s) => s.fetchCliStatus);
@@ -419,6 +424,10 @@ export const CreateTeamDialog = ({
     () => mergeCodexCliStatusWithSnapshot(loadingCliStatus, codexAccount.snapshot),
     [loadingCliStatus, codexAccount.snapshot]
   );
+  const codexSnapshotPending =
+    codexAccount.loading &&
+    Boolean(loadingCliStatus?.providers.some((provider) => provider.providerId === 'codex')) &&
+    !codexAccount.snapshot;
 
   // ── Persisted draft state (survives tab navigation) ──────────────────
   const {
@@ -2457,6 +2466,18 @@ export const CreateTeamDialog = ({
 
         <DialogFooter className="pt-4 sm:justify-between">
           <div className="min-w-0">
+            {canCreate && launchTeam ? (
+              <ProviderActivityStatusStrip
+                cliStatus={effectiveCliStatus}
+                sourceCliStatus={loadingCliStatus}
+                cliStatusLoading={cliStatusLoading}
+                cliProviderStatusLoading={cliProviderStatusLoading}
+                multimodelEnabled={multimodelEnabled}
+                codexSnapshotPending={codexSnapshotPending}
+                providerIds={selectedMemberProviders}
+                className="mb-2"
+              />
+            ) : null}
             {canCreate &&
             launchTeam &&
             (effectivePrepare.state === 'idle' || effectivePrepare.state === 'loading') ? (

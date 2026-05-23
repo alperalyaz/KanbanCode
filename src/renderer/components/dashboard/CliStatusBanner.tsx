@@ -7,9 +7,11 @@
  * Only rendered in Electron mode.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
+  CODEX_ACCOUNT_STARTUP_IDLE_MAX_DELAY_MS,
+  CODEX_ACCOUNT_STARTUP_IDLE_MIN_DELAY_MS,
   mergeCodexProviderStatusWithSnapshot,
   useCodexAccountSnapshot,
 } from '@features/codex-account/renderer';
@@ -31,16 +33,14 @@ import {
   isConnectionManagedRuntimeProvider,
   isOpenCodeCatalogHydrating,
   shouldShowProviderConnectAction,
+  shouldShowProviderStatusSkeleton,
 } from '@renderer/components/runtime/providerConnectionUi';
 import { ProviderModelBadges } from '@renderer/components/runtime/ProviderModelBadges';
 import { getProviderRuntimeBackendSummary } from '@renderer/components/runtime/ProviderRuntimeBackendSelector';
-import { ProviderRuntimeSettingsDialog } from '@renderer/components/runtime/ProviderRuntimeSettingsDialog';
 import {
   getProviderTerminalCommand,
   getProviderTerminalLogoutCommand,
 } from '@renderer/components/runtime/providerTerminalCommands';
-import { TerminalLogPanel } from '@renderer/components/terminal/TerminalLogPanel';
-import { TerminalModal } from '@renderer/components/terminal/TerminalModal';
 import { useCliInstaller } from '@renderer/hooks/useCliInstaller';
 import {
   loadDashboardCliStatusBannerCollapsed,
@@ -55,6 +55,7 @@ import { resolveProjectPathById } from '@renderer/utils/projectLookup';
 import { refreshCliStatusForCurrentMode } from '@renderer/utils/refreshCliStatus';
 import { getRuntimeDisplayName as getHumanRuntimeDisplayName } from '@renderer/utils/runtimeDisplayName';
 import { getVisibleTeamProviderModels } from '@renderer/utils/teamModelCatalog';
+import { CLI_PROVIDER_STATUS_DEFERRED_MESSAGE } from '@shared/types/cliInstaller';
 import {
   AlertTriangle,
   CheckCircle,
@@ -111,6 +112,22 @@ const ATLAS_CLOUD_OPENCODE_PROVIDER_ID = 'atlascloud';
 const ATLAS_CLOUD_CODING_PLAN_URL = 'https://www.atlascloud.ai/console/coding-plan';
 const ATLAS_CLOUD_DESCRIPTION =
   "Atlas Cloud is a full-modal AI inference platform that gives developers a single AI API to access video generation, image generation, and LLM APIs. Instead of managing multiple vendor integrations, you connect once and get unified access to 300+ curated models across all modalities. Check out Atlas Cloud's new coding plan promotion for more budget-friendly API access.";
+
+const ProviderRuntimeSettingsDialog = lazy(() =>
+  import('@renderer/components/runtime/ProviderRuntimeSettingsDialog').then((module) => ({
+    default: module.ProviderRuntimeSettingsDialog,
+  }))
+);
+const TerminalLogPanel = lazy(() =>
+  import('@renderer/components/terminal/TerminalLogPanel').then((module) => ({
+    default: module.TerminalLogPanel,
+  }))
+);
+const TerminalModal = lazy(() =>
+  import('@renderer/components/terminal/TerminalModal').then((module) => ({
+    default: module.TerminalModal,
+  }))
+);
 
 const DashboardRateLimitChips = ({
   providerId,
@@ -430,16 +447,6 @@ const ProviderDetailSkeleton = (): React.JSX.Element => {
   );
 };
 
-function isProviderCardLoading(provider: CliProviderStatus, providerLoading: boolean): boolean {
-  return (
-    providerLoading ||
-    (!provider.authenticated &&
-      provider.statusMessage === 'Checking...' &&
-      provider.models.length === 0 &&
-      provider.backend == null)
-  );
-}
-
 function isCodexSnapshotPending(
   provider: CliProviderStatus,
   codexSnapshotPending: boolean
@@ -489,6 +496,14 @@ function formatRuntimeLabel(
     : runtimeLabel;
 }
 
+function isPendingMultimodelProviderStatus(provider: CliProviderStatus): boolean {
+  return (
+    !provider.authenticated &&
+    (provider.statusMessage === 'Checking...' ||
+      provider.statusMessage === CLI_PROVIDER_STATUS_DEFERRED_MESSAGE)
+  );
+}
+
 function formatRuntimeAuthSummary(
   cliStatus: NonNullable<ReturnType<typeof useCliInstaller>['cliStatus']>,
   visibleProviders: readonly CliProviderStatus[]
@@ -498,11 +513,7 @@ function formatRuntimeAuthSummary(
       return null;
     }
 
-    if (
-      visibleProviders.every(
-        (provider) => provider.statusMessage === 'Checking...' && !provider.authenticated
-      )
-    ) {
+    if (visibleProviders.every(isPendingMultimodelProviderStatus)) {
       return 'Checking providers...';
     }
     const denominator = visibleProviders.length;
@@ -529,9 +540,7 @@ function isCheckingMultimodelStatus(
   return (
     isMultimodelRuntimeStatus(cliStatus) &&
     visibleProviders.length > 0 &&
-    visibleProviders.every(
-      (provider) => provider.statusMessage === 'Checking...' && !provider.authenticated
-    )
+    visibleProviders.every(isPendingMultimodelProviderStatus)
   );
 }
 
@@ -955,7 +964,7 @@ const InstalledBanner = ({
               provider
             );
             const showSkeleton =
-              isProviderCardLoading(provider, providerLoading) ||
+              shouldShowProviderStatusSkeleton(provider, providerLoading) ||
               isCodexSnapshotPending(provider, codexSnapshotPending) ||
               maskNegativeBootstrapState;
             const anthropicRateLimitsLoading =
@@ -1358,6 +1367,8 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
       loadingCliStatus?.flavor === 'agent_teams_orchestrator' &&
       Boolean(loadingCliStatus?.providers.some((provider) => provider.providerId === 'codex')),
     includeRateLimits: true,
+    initialRefreshDelayMs: CODEX_ACCOUNT_STARTUP_IDLE_MIN_DELAY_MS,
+    initialRefreshMaxDelayMs: CODEX_ACCOUNT_STARTUP_IDLE_MAX_DELAY_MS,
   });
   const visibleCliProviders = useMemo(
     () =>
@@ -1653,50 +1664,58 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
   const installedAuxiliaryUi =
     renderCliStatus !== null ? (
       <>
-        <ProviderRuntimeSettingsDialog
-          open={manageDialogOpen}
-          onOpenChange={handleManageDialogOpenChange}
-          providers={visibleCliProviders}
-          projectPath={selectedProjectPath}
-          initialProviderId={
-            visibleCliProviders.some((provider) => provider.providerId === manageProviderId)
-              ? manageProviderId
-              : (visibleCliProviders[0]?.providerId ?? 'anthropic')
-          }
-          initialRuntimeProviderId={manageRuntimeProviderId}
-          initialRuntimeProviderAction={manageRuntimeProviderId ? 'connect' : null}
-          providerStatusLoading={cliProviderStatusLoading}
-          disabled={isBusy || cliStatusLoading || !renderCliStatus.binaryPath}
-          codexRuntimeStatus={codexRuntimeStatus}
-          codexRuntimeStatusLoading={codexRuntimeStatusLoading}
-          onInstallCodexRuntime={() => installCodexRuntime()}
-          onSelectBackend={handleProviderBackendChange}
-          onRefreshProvider={handleProviderRefresh}
-          onRequestLogin={(providerId) => setProviderTerminal({ providerId, action: 'login' })}
-        />
+        {manageDialogOpen && (
+          <Suspense fallback={null}>
+            <ProviderRuntimeSettingsDialog
+              open={manageDialogOpen}
+              onOpenChange={handleManageDialogOpenChange}
+              providers={visibleCliProviders}
+              projectPath={selectedProjectPath}
+              initialProviderId={
+                visibleCliProviders.some((provider) => provider.providerId === manageProviderId)
+                  ? manageProviderId
+                  : (visibleCliProviders[0]?.providerId ?? 'anthropic')
+              }
+              initialRuntimeProviderId={manageRuntimeProviderId}
+              initialRuntimeProviderAction={manageRuntimeProviderId ? 'connect' : null}
+              providerStatusLoading={cliProviderStatusLoading}
+              disabled={isBusy || cliStatusLoading || !renderCliStatus.binaryPath}
+              codexRuntimeStatus={codexRuntimeStatus}
+              codexRuntimeStatusLoading={codexRuntimeStatusLoading}
+              onInstallCodexRuntime={() => installCodexRuntime()}
+              onSelectBackend={handleProviderBackendChange}
+              onRefreshProvider={handleProviderRefresh}
+              onRequestLogin={(providerId) => setProviderTerminal({ providerId, action: 'login' })}
+            />
+          </Suspense>
+        )}
         {providerTerminal && renderCliStatus.binaryPath && (
-          <TerminalModal
-            title={`${getHumanRuntimeDisplayName(renderCliStatus, multimodelEnabled)} ${
-              providerTerminal.action === 'login' ? 'Login' : 'Logout'
-            }: ${getProviderLabel(providerTerminal.providerId)}`}
-            command={renderCliStatus.binaryPath}
-            args={providerTerminalCommand?.args}
-            env={providerTerminalCommand?.env}
-            onClose={() => {
-              setProviderTerminal(null);
-              recheckAuthState();
-            }}
-            onExit={() => {
-              recheckAuthState();
-            }}
-            autoCloseOnSuccessMs={3000}
-            successMessage={
-              providerTerminal.action === 'login' ? 'Authentication updated' : 'Provider logged out'
-            }
-            failureMessage={
-              providerTerminal.action === 'login' ? 'Authentication failed' : 'Logout failed'
-            }
-          />
+          <Suspense fallback={null}>
+            <TerminalModal
+              title={`${getHumanRuntimeDisplayName(renderCliStatus, multimodelEnabled)} ${
+                providerTerminal.action === 'login' ? 'Login' : 'Logout'
+              }: ${getProviderLabel(providerTerminal.providerId)}`}
+              command={renderCliStatus.binaryPath}
+              args={providerTerminalCommand?.args}
+              env={providerTerminalCommand?.env}
+              onClose={() => {
+                setProviderTerminal(null);
+                recheckAuthState();
+              }}
+              onExit={() => {
+                recheckAuthState();
+              }}
+              autoCloseOnSuccessMs={3000}
+              successMessage={
+                providerTerminal.action === 'login'
+                  ? 'Authentication updated'
+                  : 'Provider logged out'
+              }
+              failureMessage={
+                providerTerminal.action === 'login' ? 'Authentication failed' : 'Logout failed'
+              }
+            />
+          </Suspense>
         )}
       </>
     ) : null;
@@ -1875,7 +1894,9 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
             Installing {runtimeDisplayName}...
           </span>
         </div>
-        <TerminalLogPanel chunks={installerRawChunks} />
+        <Suspense fallback={null}>
+          <TerminalLogPanel chunks={installerRawChunks} />
+        </Suspense>
       </div>
     );
   }
@@ -2248,45 +2269,47 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
         </div>
         {installedAuxiliaryUi}
         {showLoginTerminal && renderCliStatus.binaryPath && (
-          <TerminalModal
-            title={`${getHumanRuntimeDisplayName(renderCliStatus, multimodelEnabled)} Login`}
-            command={renderCliStatus.binaryPath}
-            args={['auth', 'login']}
-            onClose={() => {
-              setShowLoginTerminal(false);
-              setIsVerifyingAuth(true);
-              void (async () => {
-                try {
-                  await invalidateCliStatus();
-                  if (multimodelEnabled) {
-                    await bootstrapCliStatus({ multimodelEnabled: true });
-                  } else {
-                    await fetchCliStatus();
+          <Suspense fallback={null}>
+            <TerminalModal
+              title={`${getHumanRuntimeDisplayName(renderCliStatus, multimodelEnabled)} Login`}
+              command={renderCliStatus.binaryPath}
+              args={['auth', 'login']}
+              onClose={() => {
+                setShowLoginTerminal(false);
+                setIsVerifyingAuth(true);
+                void (async () => {
+                  try {
+                    await invalidateCliStatus();
+                    if (multimodelEnabled) {
+                      await bootstrapCliStatus({ multimodelEnabled: true });
+                    } else {
+                      await fetchCliStatus();
+                    }
+                  } finally {
+                    setIsVerifyingAuth(false);
                   }
-                } finally {
-                  setIsVerifyingAuth(false);
-                }
-              })();
-            }}
-            onExit={() => {
-              setIsVerifyingAuth(true);
-              void (async () => {
-                try {
-                  await invalidateCliStatus();
-                  if (multimodelEnabled) {
-                    await bootstrapCliStatus({ multimodelEnabled: true });
-                  } else {
-                    await fetchCliStatus();
+                })();
+              }}
+              onExit={() => {
+                setIsVerifyingAuth(true);
+                void (async () => {
+                  try {
+                    await invalidateCliStatus();
+                    if (multimodelEnabled) {
+                      await bootstrapCliStatus({ multimodelEnabled: true });
+                    } else {
+                      await fetchCliStatus();
+                    }
+                  } finally {
+                    setIsVerifyingAuth(false);
                   }
-                } finally {
-                  setIsVerifyingAuth(false);
-                }
-              })();
-            }}
-            autoCloseOnSuccessMs={4000}
-            successMessage="Login complete"
-            failureMessage="Login failed"
-          />
+                })();
+              }}
+              autoCloseOnSuccessMs={4000}
+              successMessage="Login complete"
+              failureMessage="Login failed"
+            />
+          </Suspense>
         )}
       </>
     );

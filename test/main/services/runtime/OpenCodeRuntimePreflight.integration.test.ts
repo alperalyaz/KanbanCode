@@ -142,7 +142,7 @@ describePosix('OpenCode packaged-runtime preflight integration', () => {
       [
         '#!/bin/sh',
         'if [ "$1" = "-e" ]; then',
-        '  printf "%s" "$FAKE_NODE_PATH"',
+        '  printf "{\\"execPath\\":\\"%s\\",\\"version\\":\\"%s\\"}" "$FAKE_NODE_PATH" "22.0.0"',
         '  exit 0',
         'fi',
         'echo "unexpected node args: $*" >&2',

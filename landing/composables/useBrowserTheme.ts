@@ -42,6 +42,10 @@ export const useBrowserTheme = () => {
   const applyDocumentTheme = (name: ThemeName) => {
     if (!import.meta.client) return;
 
+    document.documentElement.classList.toggle("dark", name === "dark");
+    document.documentElement.classList.toggle("light", name === "light");
+    document.documentElement.style.colorScheme = name;
+
     document.querySelectorAll(".v-application").forEach((app) => {
       app.classList.toggle("v-theme--dark", name === "dark");
       app.classList.toggle("v-theme--light", name === "light");

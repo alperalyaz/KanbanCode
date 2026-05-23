@@ -302,6 +302,19 @@ export class ClaudeBinaryResolver {
       }
     }
 
+    const shouldTryBundledOrchestratorBeforeShell =
+      flavor === 'agent_teams_orchestrator' && (!overrideRaw || overrideIsExplicitPath);
+    if (shouldTryBundledOrchestratorBeforeShell) {
+      emitProgress(options, 'bundled-runtime', 'Checking bundled Agent Teams runtime...');
+      const bundledBinary = await resolveBundledOrchestratorBinary();
+      if (bundledBinary) {
+        cachedPath = bundledBinary;
+        cacheVerifiedAt = Date.now();
+        emitProgress(options, 'bundled-runtime-found', 'Using bundled Agent Teams runtime...');
+        return cachedPath;
+      }
+    }
+
     await resolveInteractiveShellEnvBestEffort({
       timeoutMs: 1_500,
       fallbackEnv: process.env,
@@ -323,13 +336,15 @@ export class ClaudeBinaryResolver {
     }
 
     if (flavor === 'agent_teams_orchestrator') {
-      emitProgress(options, 'bundled-runtime', 'Checking bundled Agent Teams runtime...');
-      const bundledBinary = await resolveBundledOrchestratorBinary();
-      if (bundledBinary) {
-        cachedPath = bundledBinary;
-        cacheVerifiedAt = Date.now();
-        emitProgress(options, 'bundled-runtime-found', 'Using bundled Agent Teams runtime...');
-        return cachedPath;
+      if (!shouldTryBundledOrchestratorBeforeShell) {
+        emitProgress(options, 'bundled-runtime', 'Checking bundled Agent Teams runtime...');
+        const bundledBinary = await resolveBundledOrchestratorBinary();
+        if (bundledBinary) {
+          cachedPath = bundledBinary;
+          cacheVerifiedAt = Date.now();
+          emitProgress(options, 'bundled-runtime-found', 'Using bundled Agent Teams runtime...');
+          return cachedPath;
+        }
       }
 
       // Keep agent_teams_orchestrator resolution generic. Dev flows should

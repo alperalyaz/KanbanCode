@@ -258,12 +258,21 @@ export const ExtensionStoreView = (): React.JSX.Element => {
   }, [fetchPluginCatalog, projectPath]);
 
   useEffect(() => {
+    const cliStatusMatchesCurrentMode =
+      cliStatus &&
+      (multimodelEnabled
+        ? cliStatus.flavor === 'agent_teams_orchestrator'
+        : cliStatus.flavor !== 'agent_teams_orchestrator');
+    if (cliStatusLoading || cliStatusMatchesCurrentMode) {
+      return;
+    }
     void refreshCliStatusForCurrentMode({
       multimodelEnabled,
+      providerStatusMode: 'defer',
       bootstrapCliStatus,
       fetchCliStatus,
     });
-  }, [bootstrapCliStatus, fetchCliStatus, multimodelEnabled]);
+  }, [bootstrapCliStatus, cliStatus, cliStatusLoading, fetchCliStatus, multimodelEnabled]);
 
   // Fetch MCP installed state on mount
   useEffect(() => {
@@ -512,6 +521,7 @@ export const ExtensionStoreView = (): React.JSX.Element => {
     effectiveCliStatus,
     effectiveCliStatusLoading,
     openDashboard,
+    runtimeDisplayName,
   ]);
 
   // Browser mode guard
@@ -586,7 +596,7 @@ export const ExtensionStoreView = (): React.JSX.Element => {
                 {tabState.activeSubTab === 'mcp-servers' && (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span tabIndex={mcpMutationDisableReason ? 0 : -1}>
+                      <span>
                         <Button
                           variant="outline"
                           size="sm"

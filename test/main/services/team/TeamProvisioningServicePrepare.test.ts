@@ -31,6 +31,14 @@ vi.mock('@main/services/infrastructure/NotificationManager', () => ({
 }));
 
 const defaultExecCliMockImplementation = async (_binaryPath: string | null, args: string[]) => {
+  if (args[0] === '-e' && args[1]?.includes('process.execPath')) {
+    return {
+      stdout: JSON.stringify({ execPath: process.execPath, version: process.versions.node }),
+      stderr: '',
+      exitCode: 0,
+    };
+  }
+
   if (args[0] === 'model') {
     return {
       stdout: JSON.stringify({

@@ -80,6 +80,13 @@ async function setupRunningTeam(teamName: string) {
   const { child, writeSpy } = createFakeChild();
   vi.mocked(spawnCli).mockReturnValue(child as any);
   vi.mocked(execCli).mockImplementation(async (_binaryPath, args) => {
+    if (args[0] === '-e' && args[1]?.includes('process.execPath')) {
+      return {
+        stdout: JSON.stringify({ execPath: process.execPath, version: process.versions.node }),
+        stderr: '',
+      };
+    }
+
     const providerIndex = args.indexOf('--provider');
     const providerId = providerIndex >= 0 ? args[providerIndex + 1] : 'anthropic';
     if (args[0] === 'model' && args[1] === 'list') {

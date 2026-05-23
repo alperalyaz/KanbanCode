@@ -274,24 +274,26 @@ export const DateGroupedSessions = memo((): React.JSX.Element => {
   // Loading guards in the store actions prevent duplicate IPC calls
   // when the centralized init chain has already started a fetch.
   const repositoryGroupsLoading = useStore((s) => s.repositoryGroupsLoading);
+  const repositoryGroupsInitialized = useStore((s) => s.repositoryGroupsInitialized);
   const repositoryGroupsError = useStore((s) => s.repositoryGroupsError);
   const projectsLoading = useStore((s) => s.projectsLoading);
+  const projectsInitialized = useStore((s) => s.projectsInitialized);
   const projectsError = useStore((s) => s.projectsError);
   useEffect(() => {
     if (
       viewMode === 'grouped' &&
-      repositoryGroups.length === 0 &&
+      !repositoryGroupsInitialized &&
       !repositoryGroupsLoading &&
       !repositoryGroupsError
     ) {
       void fetchRepositoryGroups();
-    } else if (viewMode === 'flat' && projects.length === 0 && !projectsLoading && !projectsError) {
+    } else if (viewMode === 'flat' && !projectsInitialized && !projectsLoading && !projectsError) {
       void fetchProjects();
     }
   }, [
     viewMode,
-    repositoryGroups.length,
-    projects.length,
+    repositoryGroupsInitialized,
+    projectsInitialized,
     repositoryGroupsLoading,
     repositoryGroupsError,
     projectsLoading,
