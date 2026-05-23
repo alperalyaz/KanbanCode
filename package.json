@@ -311,6 +311,7 @@
       "target": [
         "nsis"
       ],
+      "executableName": "AgentTeamsAI",
       "icon": "resources/icons/win/icon.ico"
     },
     "linux": {
@@ -348,7 +349,8 @@
       "artifactName": "Agent.Teams.AI.Setup.${version}.${ext}",
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Agent Teams AI"
     },
     "publish": [
       {

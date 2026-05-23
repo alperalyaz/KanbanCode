@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@renderer/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs';
+import { cn } from '@renderer/lib/utils';
 import {
   compareOpenCodeTeamModelRecommendations,
   getOpenCodeTeamModelRecommendation,
@@ -819,7 +820,10 @@ const RuntimeProviderErrorAlert = ({
             type="button"
             size="sm"
             variant="ghost"
-            className="h-6 shrink-0 px-2 text-[11px]"
+            className={cn(
+              'h-6 shrink-0 px-2 text-[11px]',
+              !copied && 'member-launch-diagnostics-pulse'
+            )}
             title={copied ? 'Diagnostics copied' : 'Copy diagnostics'}
             aria-label={copied ? 'Diagnostics copied' : 'Copy diagnostics'}
             onClick={(event) => {
