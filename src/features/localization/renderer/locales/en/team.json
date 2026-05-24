@@ -2062,6 +2062,10 @@
       },
       "joining": {
         "teammatesStillJoining": "{{count}} teammates still joining",
+        "teammatesStillJoining_one": "{{count}} teammate still joining",
+        "teammatesStillJoining_few": "{{count}} teammates still joining",
+        "teammatesStillJoining_many": "{{count}} teammates still joining",
+        "teammatesStillJoining_other": "{{count}} teammates still joining",
         "teammatesConfirmedRatio": "{{count}}/{{total}} teammates confirmed"
       },
       "ready": {

@@ -2062,6 +2062,10 @@
       },
       "joining": {
         "teammatesStillJoining": "{{count}} участник(ов) ещё подключается",
+        "teammatesStillJoining_one": "{{count}} участник ещё подключается",
+        "teammatesStillJoining_few": "{{count}} участника ещё подключаются",
+        "teammatesStillJoining_many": "{{count}} участников ещё подключается",
+        "teammatesStillJoining_other": "{{count}} участника(ов) ещё подключается",
         "teammatesConfirmedRatio": "{{count}}/{{total}} участников подтверждено"
       },
       "ready": {

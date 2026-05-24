@@ -4503,6 +4503,10 @@ export default interface Resources {
         joining: {
           teammatesConfirmedRatio: '{{count}}/{{total}} teammates confirmed';
           teammatesStillJoining: '{{count}} teammates still joining';
+          teammatesStillJoining_few: '{{count}} teammates still joining';
+          teammatesStillJoining_many: '{{count}} teammates still joining';
+          teammatesStillJoining_one: '{{count}} teammate still joining';
+          teammatesStillJoining_other: '{{count}} teammates still joining';
         };
         nameListWithMore: '{{names}}, +{{count}} more';
         namedPendingDiagnostic: '{{label}}: {{names}}';
