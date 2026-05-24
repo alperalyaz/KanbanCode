@@ -77,6 +77,7 @@ import { refreshCliStatusForCurrentMode } from '@renderer/utils/refreshCliStatus
 import { getAvailableTeamEffortValue } from '@renderer/utils/teamEffortOptions';
 import {
   getTeamModelSelectionError,
+  isTeamProviderRuntimeStatusLoading,
   normalizeExplicitTeamModelForUi,
 } from '@renderer/utils/teamModelAvailability';
 import { getTeamProviderLabel as getCatalogTeamProviderLabel } from '@renderer/utils/teamModelCatalog';
@@ -699,6 +700,29 @@ export const CreateTeamDialog = ({
       ),
     [effectiveCliStatus?.providers]
   );
+  const runtimeProviderLoadingById = useMemo(
+    () =>
+      new Map(
+        selectedMemberProviders.map(
+          (providerId) =>
+            [
+              providerId,
+              isTeamProviderRuntimeStatusLoading(
+                providerId,
+                runtimeProviderStatusById.get(providerId),
+                cliProviderStatusLoading[providerId] === true ||
+                  (providerId === 'codex' && codexSnapshotPending)
+              ),
+            ] as const
+        )
+      ),
+    [
+      cliProviderStatusLoading,
+      codexSnapshotPending,
+      runtimeProviderStatusById,
+      selectedMemberProviders,
+    ]
+  );
   const selectedProviderBackendId = useMemo(
     () =>
       resolveUiOwnedProviderBackendId(
@@ -1033,9 +1057,15 @@ export const CreateTeamDialog = ({
       }
     }
 
+    const loadingProviderIds = selectedMemberProviders.filter((providerId) =>
+      runtimeProviderLoadingById.get(providerId)
+    );
+    const readyProviderIds = selectedMemberProviders.filter(
+      (providerId) => !runtimeProviderLoadingById.get(providerId)
+    );
     const providerPlans = buildProviderPreparePlans({
       cwd: effectiveCwd,
-      providerIds: selectedMemberProviders,
+      providerIds: readyProviderIds,
       selectedModelChecksByProvider,
       backendSummaryByProvider: runtimeBackendSummaryByProviderRef.current,
       limitContext: effectiveAnthropicRuntimeLimitContext,
@@ -1048,7 +1078,7 @@ export const CreateTeamDialog = ({
       return lastSignature !== plan.requestSignature && pendingSignature !== plan.requestSignature;
     });
     const loadingMessage = getProvisioningProviderProgressMessage(
-      changedPlans.map((plan) => plan.providerId),
+      [...loadingProviderIds, ...changedPlans.map((plan) => plan.providerId)],
       selectedMemberProviders.length
     );
     const getSelectedWarnings = (): string[] =>
@@ -1089,6 +1119,20 @@ export const CreateTeamDialog = ({
     };
 
     let checks = alignProvisioningChecks(prepareChecksRef.current, selectedMemberProviders);
+    for (const providerId of loadingProviderIds) {
+      lastPrepareProviderSignatureByIdRef.current.delete(providerId);
+      pendingPrepareProviderSignatureByIdRef.current.delete(providerId);
+      prepareProviderRequestSeqByIdRef.current.delete(providerId);
+      prepareWarningsByProviderIdRef.current.delete(providerId);
+      checks = updateProviderCheck(checks, providerId, {
+        status: 'checking',
+        backendSummary: runtimeBackendSummaryByProviderRef.current.get(providerId) ?? null,
+        details: [
+          `${getProviderLabel(providerId)} provider status is still loading. Model checks will start automatically.`,
+        ],
+        supportDiagnostics: undefined,
+      });
+    }
     for (const plan of changedPlans) {
       checks = updateProviderCheck(checks, plan.providerId, {
         status: plan.selectedModelIds.length > 0 ? plan.cachedSnapshot.status : 'checking',
@@ -1229,6 +1273,7 @@ export const CreateTeamDialog = ({
     effectiveAnthropicRuntimeLimitContext,
     prepareProviderInvalidationEpochById,
     runtimeProviderStatusById,
+    runtimeProviderLoadingById,
     selectedModel,
     selectedModelChecksByProvider,
     selectedModelChecksByProviderSignature,
@@ -1724,13 +1769,15 @@ export const CreateTeamDialog = ({
       }
     }
 
-    const leadError = getTeamModelSelectionError(
-      selectedProviderId,
-      selectedModel,
-      runtimeProviderStatusById.get(selectedProviderId)
-    );
-    if (leadError) {
-      return leadError;
+    if (!runtimeProviderLoadingById.get(selectedProviderId)) {
+      const leadError = getTeamModelSelectionError(
+        selectedProviderId,
+        selectedModel,
+        runtimeProviderStatusById.get(selectedProviderId)
+      );
+      if (leadError) {
+        return leadError;
+      }
     }
 
     for (const member of effectiveMemberDrafts) {
@@ -1739,6 +1786,9 @@ export const CreateTeamDialog = ({
       }
 
       const providerId = normalizeOptionalTeamProviderId(member.providerId) ?? selectedProviderId;
+      if (runtimeProviderLoadingById.get(providerId)) {
+        continue;
+      }
       const memberError = getTeamModelSelectionError(
         providerId,
         member.model,
@@ -1756,6 +1806,7 @@ export const CreateTeamDialog = ({
   }, [
     effectiveMemberDrafts,
     runtimeProviderStatusById,
+    runtimeProviderLoadingById,
     selectedModel,
     selectedProviderId,
     soloTeam,
@@ -2488,6 +2539,12 @@ export const CreateTeamDialog = ({
                 codexSnapshotPending={codexSnapshotPending}
                 providerIds={selectedMemberProviders}
                 className="mb-2"
+                label="Selected providers"
+                layout="stacked"
+                showReadyProviders={
+                  effectivePrepare.state === 'idle' || effectivePrepare.state === 'loading'
+                }
+                readyStatusText="Ready"
               />
             ) : null}
             {canCreate &&

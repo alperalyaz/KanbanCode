@@ -68,6 +68,7 @@ import { refreshCliStatusForCurrentMode } from '@renderer/utils/refreshCliStatus
 import { getAvailableTeamEffortValue } from '@renderer/utils/teamEffortOptions';
 import {
   getTeamModelSelectionError,
+  isTeamProviderRuntimeStatusLoading,
   normalizeExplicitTeamModelForUi,
 } from '@renderer/utils/teamModelAvailability';
 import { getTeamProviderLabel as getCatalogTeamProviderLabel } from '@renderer/utils/teamModelCatalog';
@@ -608,6 +609,29 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
         )
       ),
     [effectiveCliStatus?.providers]
+  );
+  const runtimeProviderLoadingById = useMemo(
+    () =>
+      new Map(
+        selectedMemberProviders.map(
+          (providerId) =>
+            [
+              providerId,
+              isTeamProviderRuntimeStatusLoading(
+                providerId,
+                runtimeProviderStatusById.get(providerId),
+                cliProviderStatusLoading[providerId] === true ||
+                  (providerId === 'codex' && codexSnapshotPending)
+              ),
+            ] as const
+        )
+      ),
+    [
+      cliProviderStatusLoading,
+      codexSnapshotPending,
+      runtimeProviderStatusById,
+      selectedMemberProviders,
+    ]
   );
 
   useEffect(() => {
@@ -1620,9 +1644,15 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       }
     }
 
+    const loadingProviderIds = selectedMemberProviders.filter((providerId) =>
+      runtimeProviderLoadingById.get(providerId)
+    );
+    const readyProviderIds = selectedMemberProviders.filter(
+      (providerId) => !runtimeProviderLoadingById.get(providerId)
+    );
     const providerPlans = buildProviderPreparePlans({
       cwd: effectiveCwd,
-      providerIds: selectedMemberProviders,
+      providerIds: readyProviderIds,
       selectedModelChecksByProvider,
       backendSummaryByProvider: runtimeBackendSummaryByProviderRef.current,
       limitContext: effectiveAnthropicRuntimeLimitContext,
@@ -1634,7 +1664,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
         lastPrepareProviderSignatureByIdRef.current.get(plan.providerId) !== plan.requestSignature
     );
     const loadingMessage = getProvisioningProviderProgressMessage(
-      changedPlans.map((plan) => plan.providerId),
+      [...loadingProviderIds, ...changedPlans.map((plan) => plan.providerId)],
       selectedMemberProviders.length
     );
     const getSelectedWarnings = (): string[] =>
@@ -1675,6 +1705,19 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     };
 
     let checks = alignProvisioningChecks(prepareChecksRef.current, selectedMemberProviders);
+    for (const providerId of loadingProviderIds) {
+      lastPrepareProviderSignatureByIdRef.current.delete(providerId);
+      prepareProviderRequestSeqByIdRef.current.delete(providerId);
+      prepareWarningsByProviderIdRef.current.delete(providerId);
+      checks = updateProviderCheck(checks, providerId, {
+        status: 'checking',
+        backendSummary: runtimeBackendSummaryByProviderRef.current.get(providerId) ?? null,
+        details: [
+          `${getProviderLabel(providerId)} provider status is still loading. Model checks will start automatically.`,
+        ],
+        supportDiagnostics: undefined,
+      });
+    }
     for (const plan of changedPlans) {
       checks = updateProviderCheck(checks, plan.providerId, {
         status: plan.selectedModelIds.length > 0 ? plan.cachedSnapshot.status : 'checking',
@@ -1789,6 +1832,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     effectiveCwd,
     effectiveAnthropicRuntimeLimitContext,
     prepareProviderInvalidationEpochById,
+    runtimeProviderLoadingById,
     runtimeProviderStatusById,
     selectedMemberProviders,
     selectedModelChecksByProvider,
@@ -2056,13 +2100,15 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       }
     }
 
-    const leadError = getTeamModelSelectionError(
-      selectedProviderId,
-      selectedModel,
-      runtimeProviderStatusById.get(selectedProviderId)
-    );
-    if (leadError) {
-      return leadError;
+    if (!runtimeProviderLoadingById.get(selectedProviderId)) {
+      const leadError = getTeamModelSelectionError(
+        selectedProviderId,
+        selectedModel,
+        runtimeProviderStatusById.get(selectedProviderId)
+      );
+      if (leadError) {
+        return leadError;
+      }
     }
 
     if (!isLaunchMode) {
@@ -2075,6 +2121,9 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       }
 
       const providerId = normalizeOptionalTeamProviderId(member.providerId) ?? selectedProviderId;
+      if (runtimeProviderLoadingById.get(providerId)) {
+        continue;
+      }
       const memberError = getTeamModelSelectionError(
         providerId,
         member.model,
@@ -2092,6 +2141,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   }, [
     effectiveMemberDrafts,
     isLaunchMode,
+    runtimeProviderLoadingById,
     runtimeProviderStatusById,
     selectedModel,
     selectedProviderId,
@@ -3054,6 +3104,12 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                 multimodelEnabled={multimodelEnabled}
                 codexSnapshotPending={codexSnapshotPending}
                 providerIds={selectedMemberProviders}
+                label="Selected providers"
+                layout="stacked"
+                showReadyProviders={
+                  effectivePrepare.state === 'idle' || effectivePrepare.state === 'loading'
+                }
+                readyStatusText="Ready"
                 className="mb-2"
               />
               {effectivePrepare.state === 'idle' || effectivePrepare.state === 'loading' ? (
