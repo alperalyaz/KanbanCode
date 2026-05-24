@@ -131,6 +131,18 @@ EOF
 )"
 ```
 
+### 4. Required release closeout gate
+
+Do not publish or call a release finished until this is true:
+
+- The GitHub release body is not just auto-generated `Full Changelog`.
+- The release body starts with short user-facing notes: what changed, why users care, and the most important fixes.
+- The `Downloads` table from the template is present and every link points to the current `v<VERSION>` assets.
+- The asset names in the notes match the assets uploaded by `release.yml`.
+- `gh release view v<VERSION> --json body,assets,isDraft,isPrerelease` confirms the release is public, has notes, and has the expected installer assets.
+
+If a draft was published before notes were written, immediately edit the public release body with `gh release edit`; do not leave a release with only generated notes.
+
 ## Release Notes Template
 
 ```markdown
