@@ -371,13 +371,15 @@ function writeBootstrapState(
     lastObservedAt?: number;
     failureReason?: string;
   }[],
-  updatedAt = new Date().toISOString()
+  updatedAt = new Date().toISOString(),
+  options?: { runId?: string }
 ): void {
   fs.writeFileSync(
     getTeamBootstrapStatePath(teamName),
     `${JSON.stringify(
       {
         version: 1,
+        ...(options?.runId ? { runId: options.runId } : {}),
         teamName,
         updatedAt,
         phase: 'completed',
@@ -388,6 +390,17 @@ function writeBootstrapState(
     )}\n`,
     'utf8'
   );
+}
+
+function writeMemberBootstrapRunId(teamName: string, memberName: string, runId: string): void {
+  const configPath = path.join(tempTeamsBase, teamName, 'config.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
+    members?: Array<Record<string, unknown>>;
+  };
+  config.members = (config.members ?? []).map((member) =>
+    member.name === memberName ? { ...member, bootstrapRunId: runId } : member
+  );
+  fs.writeFileSync(configPath, JSON.stringify(config), 'utf8');
 }
 
 function writeAliveProcessRegistry(teamName: string): void {
@@ -666,6 +679,8 @@ interface LeadActivityTestRun {
 interface LeadActivityServiceInternals {
   runs: Map<string, LeadActivityTestRun>;
   aliveRunByTeam: Map<string, string>;
+  runtimeAdapterProgressByRunId: Map<string, unknown>;
+  runtimeAdapterRunByTeam: Map<string, unknown>;
   setLeadActivity(run: LeadActivityTestRun, state: LeadActivityTestState): void;
 }
 
@@ -2498,6 +2513,63 @@ describe('TeamProvisioningService', () => {
   });
 
   describe('lead activity task intervals', () => {
+    it('reports runtime adapter teams as idle instead of offline when no legacy run exists', () => {
+      const svc = new TeamProvisioningService();
+      const internals = svc as unknown as LeadActivityServiceInternals;
+      const teamName = 'opencode-runtime-adapter-lead-activity-team';
+      const runId = 'opencode-runtime-adapter-run';
+
+      internals.aliveRunByTeam.set(teamName, runId);
+      internals.runtimeAdapterRunByTeam.set(teamName, {
+        runId,
+        providerId: 'opencode',
+        cwd: '/tmp/opencode-runtime-adapter-lead-activity-team',
+        members: {},
+      });
+      internals.runtimeAdapterProgressByRunId.set(runId, {
+        runId,
+        teamName,
+        state: 'ready',
+        message: 'OpenCode team launch is waiting for runtime evidence or permissions',
+        startedAt: '2026-05-02T10:00:00.000Z',
+        updatedAt: '2026-05-02T10:00:05.000Z',
+      });
+
+      expect(svc.isTeamAlive(teamName)).toBe(true);
+      expect(svc.getLeadActivityState(teamName)).toEqual({
+        state: 'idle',
+        runId,
+      });
+    });
+
+    it('keeps terminal runtime adapter progress offline without a legacy run', () => {
+      const svc = new TeamProvisioningService();
+      const internals = svc as unknown as LeadActivityServiceInternals;
+      const teamName = 'opencode-runtime-adapter-terminal-lead-activity-team';
+      const runId = 'opencode-runtime-adapter-terminal-run';
+
+      internals.aliveRunByTeam.set(teamName, runId);
+      internals.runtimeAdapterRunByTeam.set(teamName, {
+        runId,
+        providerId: 'opencode',
+        cwd: '/tmp/opencode-runtime-adapter-terminal-lead-activity-team',
+        members: {},
+      });
+      internals.runtimeAdapterProgressByRunId.set(runId, {
+        runId,
+        teamName,
+        state: 'failed',
+        message: 'OpenCode team launch failed readiness gate',
+        startedAt: '2026-05-02T10:00:00.000Z',
+        updatedAt: '2026-05-02T10:00:05.000Z',
+      });
+
+      expect(svc.getLeadActivityState(teamName)).toEqual({
+        state: 'offline',
+        runId: null,
+      });
+    });
+
     it('read-repairs active lead task intervals once when lead activity is polled', () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-05-02T10:00:00.000Z'));
@@ -2978,6 +3050,22 @@ describe('TeamProvisioningService', () => {
           'run-stale'
         )
       ).toBe(false);
+    });
+
+    it('invalidates runtime cache when launch-state is cleared', async () => {
+      const svc = new TeamProvisioningService();
+      const teamName = 'launch-state-clear-invalidates-runtime-cache';
+      (svc as any).launchStateStore = {
+        read: vi.fn(async () => null),
+        write: vi.fn(async () => {}),
+        clear: vi.fn(async () => {}),
+      };
+      const invalidateRuntime = vi.spyOn(svc as any, 'invalidateRuntimeSnapshotCaches');
+
+      await (svc as any).clearPersistedLaunchState(teamName);
+
+      expect((svc as any).launchStateStore.clear).toHaveBeenCalledWith(teamName);
+      expect(invalidateRuntime).toHaveBeenCalledTimes(1);
     });
 
     it('does not rewrite launch-state or invalidate runtime cache for a recent semantic no-op', async () => {
@@ -4766,6 +4854,82 @@ describe('TeamProvisioningService', () => {
       });
     });
 
+    it('reconciles persisted launch state before building runtime snapshot metadata', async () => {
+      const teamName = 'zz-runtime-snapshot-reconciles-before-live-metadata';
+      const leadSessionId = 'lead-session';
+      const projectPath = '/Users/test/proj';
+      const bootstrapAttemptAt = '2026-05-24T09:25:33.388Z';
+      const bootstrapConfirmedAt = '2026-05-24T09:25:42.904Z';
+      const appAcceptedAt = '2026-05-24T09:25:45.178Z';
+      const staleRefreshAt = '2026-05-24T11:36:58.278Z';
+      const runtimePid = 97_255;
+      const bootstrapRunId = 'run-runtime-snapshot-reconcile-first';
+      const staleDiagnostic = 'persisted runtime pid is not alive';
+
+      writeLaunchConfig(teamName, projectPath, leadSessionId, ['tom']);
+      writeMemberBootstrapRunId(teamName, 'tom', bootstrapRunId);
+      writeLaunchState(
+        teamName,
+        leadSessionId,
+        {
+          tom: {
+            providerId: 'anthropic',
+            model: 'haiku',
+            laneId: 'primary',
+            laneKind: 'primary',
+            laneOwnerProviderId: 'codex',
+            launchState: 'failed_to_start',
+            agentToolAccepted: true,
+            runtimeAlive: false,
+            runtimePid,
+            bootstrapConfirmed: false,
+            hardFailure: true,
+            hardFailureReason:
+              'runtime pid could not be verified because process table is unavailable',
+            livenessKind: 'stale_metadata',
+            runtimeDiagnostic: staleDiagnostic,
+            runtimeDiagnosticSeverity: 'warning',
+            firstSpawnAcceptedAt: appAcceptedAt,
+            runtimeLastSeenAt: staleRefreshAt,
+            lastEvaluatedAt: staleRefreshAt,
+          },
+        },
+        { launchPhase: 'finished', updatedAt: staleRefreshAt }
+      );
+      writeBootstrapState(
+        teamName,
+        [
+          {
+            name: 'tom',
+            status: 'bootstrap_confirmed',
+            lastAttemptAt: Date.parse(bootstrapAttemptAt),
+            lastObservedAt: Date.parse(bootstrapConfirmedAt),
+          },
+        ],
+        '2026-05-24T09:26:08.090Z',
+        { runId: bootstrapRunId }
+      );
+
+      const svc = new TeamProvisioningService();
+
+      const snapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
+      const persisted = JSON.parse(fs.readFileSync(getTeamLaunchStatePath(teamName), 'utf8'));
+
+      expect(snapshot.members.tom).toMatchObject({
+        alive: true,
+        livenessKind: 'confirmed_bootstrap',
+        runtimeDiagnostic: 'bootstrap confirmed',
+        runtimeDiagnosticSeverity: 'info',
+      });
+      expect(snapshot.members.tom?.runtimeDiagnostic).not.toBe(staleDiagnostic);
+      expect(persisted.members.tom).toMatchObject({
+        launchState: 'confirmed_alive',
+        bootstrapConfirmed: true,
+        hardFailure: false,
+      });
+      expect(persisted.members.tom?.runtimeDiagnostic).not.toBe(staleDiagnostic);
+    });
+
     it('does not treat a reused OpenCode runtime pid as live', async () => {
       const teamName = 'pure-opencode-reused-pid-team';
       const projectPath = '/Users/test/project';
@@ -4784,7 +4948,7 @@ describe('TeamProvisioningService', () => {
           runtimeSessionId: 'session-alice',
         },
       });
-      vi.mocked(listRuntimeProcessTableForCurrentPlatform).mockResolvedValueOnce([
+      vi.mocked(listRuntimeProcessTableForCurrentPlatform).mockResolvedValue([
         { pid: 333, ppid: 1, command: 'node unrelated-worker.js' },
       ]);
       vi.mocked(pidusage).mockResolvedValueOnce({
@@ -20028,10 +20192,293 @@ describe('TeamProvisioningService', () => {
       status: 'online',
       launchState: 'confirmed_alive',
       bootstrapConfirmed: true,
+      runtimeAlive: false,
+      livenessKind: 'confirmed_bootstrap',
       hardFailure: false,
       error: undefined,
     });
     expect(result.statuses.jack?.hardFailureReason).toBeUndefined();
+    expect(result.statuses.jack?.runtimeDiagnostic).toBeUndefined();
+    expect(result.statuses.jack?.runtimeDiagnosticSeverity).toBeUndefined();
+  });
+
+  it('heals process-table unavailable failure when Anthropic bootstrap confirmation slightly predates delayed app acceptance', async () => {
+    allowConsoleLogs();
+    const teamName = 'zz-unit-process-table-unavailable-bootstrap-skew-heals';
+    const leadSessionId = 'lead-session';
+    const projectPath = '/Users/test/proj';
+    const bootstrapAttemptAt = '2026-05-24T09:25:33.388Z';
+    const bootstrapConfirmedAt = '2026-05-24T09:25:42.494Z';
+    const appAcceptedAt = '2026-05-24T09:25:45.178Z';
+    const cleanupAt = '2026-05-24T09:31:05.525Z';
+    const runtimePid = 97_255;
+    const bootstrapRunId = 'run-process-table-unavailable-skew';
+    const reason = 'runtime pid could not be verified because process table is unavailable';
+
+    writeLaunchConfig(teamName, projectPath, leadSessionId, ['tom']);
+    writeMemberBootstrapRunId(teamName, 'tom', bootstrapRunId);
+    writeLaunchState(
+      teamName,
+      leadSessionId,
+      {
+        tom: {
+          providerId: 'anthropic',
+          model: 'haiku',
+          laneId: 'primary',
+          laneKind: 'primary',
+          laneOwnerProviderId: 'codex',
+          launchState: 'failed_to_start',
+          agentToolAccepted: true,
+          runtimeAlive: false,
+          runtimePid,
+          bootstrapConfirmed: false,
+          hardFailure: true,
+          hardFailureReason: reason,
+          livenessKind: 'registered_only',
+          runtimeDiagnostic: reason,
+          runtimeDiagnosticSeverity: 'warning',
+          firstSpawnAcceptedAt: appAcceptedAt,
+          runtimeLastSeenAt: cleanupAt,
+          lastEvaluatedAt: cleanupAt,
+        },
+      },
+      { launchPhase: 'finished', updatedAt: cleanupAt }
+    );
+    writeBootstrapState(
+      teamName,
+      [
+        {
+          name: 'tom',
+          status: 'bootstrap_confirmed',
+          lastAttemptAt: Date.parse(bootstrapAttemptAt),
+          lastObservedAt: Date.parse(bootstrapConfirmedAt),
+        },
+      ],
+      cleanupAt,
+      { runId: bootstrapRunId }
+    );
+
+    const svc = new TeamProvisioningService();
+    privateHarness(svc).getLiveTeamAgentRuntimeMetadata = vi.fn(
+      async () =>
+        new Map([
+          [
+            'tom',
+            {
+              alive: false,
+              backendType: 'process',
+              providerId: 'anthropic',
+              livenessKind: 'registered_only',
+              pidSource: 'persisted_metadata',
+              runtimeDiagnostic: reason,
+              runtimeDiagnosticSeverity: 'warning',
+              metricsPid: runtimePid,
+              model: 'haiku',
+            },
+          ],
+        ])
+    );
+
+    const result = await svc.getMemberSpawnStatuses(teamName);
+
+    expect(result.teamLaunchState).toBe('clean_success');
+    expect(result.statuses.tom).toMatchObject({
+      status: 'online',
+      launchState: 'confirmed_alive',
+      bootstrapConfirmed: true,
+      runtimeAlive: false,
+      livenessKind: 'confirmed_bootstrap',
+      hardFailure: false,
+      error: undefined,
+    });
+    expect(result.statuses.tom?.hardFailureReason).toBeUndefined();
+    expect(result.statuses.tom?.runtimeDiagnostic).toBeUndefined();
+    expect(result.statuses.tom?.runtimeDiagnosticSeverity).toBeUndefined();
+  });
+
+  it('does not heal rapid relaunch failures from previous bootstrap-state run id', async () => {
+    allowConsoleLogs();
+    const teamName = 'zz-unit-process-table-unavailable-stale-rapid-run-ignored';
+    const leadSessionId = 'lead-session';
+    const projectPath = '/Users/test/proj';
+    const bootstrapAttemptAt = '2026-05-24T09:25:33.388Z';
+    const bootstrapConfirmedAt = '2026-05-24T09:25:42.494Z';
+    const appAcceptedAt = '2026-05-24T09:25:45.178Z';
+    const cleanupAt = '2026-05-24T09:31:05.525Z';
+    const runtimePid = 97_255;
+    const currentRunId = 'run-new-process-table-unavailable';
+    const staleRunId = 'run-old-process-table-unavailable';
+    const reason = 'runtime pid could not be verified because process table is unavailable';
+
+    writeLaunchConfig(teamName, projectPath, leadSessionId, ['tom']);
+    writeMemberBootstrapRunId(teamName, 'tom', currentRunId);
+    writeLaunchState(
+      teamName,
+      leadSessionId,
+      {
+        tom: {
+          providerId: 'anthropic',
+          model: 'haiku',
+          laneId: 'primary',
+          laneKind: 'primary',
+          laneOwnerProviderId: 'codex',
+          launchState: 'failed_to_start',
+          agentToolAccepted: true,
+          runtimeAlive: false,
+          runtimePid,
+          bootstrapConfirmed: false,
+          hardFailure: true,
+          hardFailureReason: reason,
+          livenessKind: 'registered_only',
+          runtimeDiagnostic: reason,
+          runtimeDiagnosticSeverity: 'warning',
+          firstSpawnAcceptedAt: appAcceptedAt,
+          runtimeLastSeenAt: cleanupAt,
+          lastEvaluatedAt: cleanupAt,
+        },
+      },
+      { launchPhase: 'finished', updatedAt: cleanupAt }
+    );
+    writeBootstrapState(
+      teamName,
+      [
+        {
+          name: 'tom',
+          status: 'bootstrap_confirmed',
+          lastAttemptAt: Date.parse(bootstrapAttemptAt),
+          lastObservedAt: Date.parse(bootstrapConfirmedAt),
+        },
+      ],
+      cleanupAt,
+      { runId: staleRunId }
+    );
+
+    const svc = new TeamProvisioningService();
+    privateHarness(svc).getLiveTeamAgentRuntimeMetadata = vi.fn(
+      async () =>
+        new Map([
+          [
+            'tom',
+            {
+              alive: false,
+              backendType: 'process',
+              providerId: 'anthropic',
+              livenessKind: 'registered_only',
+              pidSource: 'persisted_metadata',
+              runtimeDiagnostic: reason,
+              runtimeDiagnosticSeverity: 'warning',
+              metricsPid: runtimePid,
+              model: 'haiku',
+            },
+          ],
+        ])
+    );
+
+    const result = await svc.getMemberSpawnStatuses(teamName);
+
+    expect(result.teamLaunchState).toBe('partial_failure');
+    expect(result.statuses.tom).toMatchObject({
+      status: 'error',
+      launchState: 'failed_to_start',
+      bootstrapConfirmed: false,
+      hardFailure: true,
+    });
+  });
+
+  it('heals post-stop stale pid diagnostics when bootstrap-state already confirmed the Anthropic member', async () => {
+    allowConsoleLogs();
+    const teamName = 'zz-unit-post-stop-stale-pid-bootstrap-skew-heals';
+    const leadSessionId = 'lead-session';
+    const projectPath = '/Users/test/proj';
+    const bootstrapAttemptAt = '2026-05-24T09:25:33.388Z';
+    const bootstrapConfirmedAt = '2026-05-24T09:25:42.904Z';
+    const appAcceptedAt = '2026-05-24T09:25:45.178Z';
+    const originalFailureAt = '2026-05-24T09:31:05.525Z';
+    const postStopRefreshAt = '2026-05-24T11:36:56.881Z';
+    const runtimePid = 97_255;
+    const bootstrapRunId = 'run-post-stop-stale-pid-bootstrap-skew';
+    const originalReason = 'runtime pid could not be verified because process table is unavailable';
+    const postStopDiagnostic = 'persisted runtime pid is not alive';
+
+    writeLaunchConfig(teamName, projectPath, leadSessionId, ['tom']);
+    writeMemberBootstrapRunId(teamName, 'tom', bootstrapRunId);
+    writeLaunchState(
+      teamName,
+      leadSessionId,
+      {
+        tom: {
+          providerId: 'anthropic',
+          model: 'haiku',
+          laneId: 'primary',
+          laneKind: 'primary',
+          laneOwnerProviderId: 'codex',
+          launchState: 'failed_to_start',
+          agentToolAccepted: true,
+          runtimeAlive: false,
+          runtimePid,
+          bootstrapConfirmed: false,
+          hardFailure: true,
+          hardFailureReason: originalReason,
+          livenessKind: 'stale_metadata',
+          runtimeDiagnostic: postStopDiagnostic,
+          runtimeDiagnosticSeverity: 'warning',
+          firstSpawnAcceptedAt: appAcceptedAt,
+          runtimeLastSeenAt: originalFailureAt,
+          lastEvaluatedAt: originalFailureAt,
+        },
+      },
+      { launchPhase: 'finished', updatedAt: postStopRefreshAt }
+    );
+    writeBootstrapState(
+      teamName,
+      [
+        {
+          name: 'tom',
+          status: 'bootstrap_confirmed',
+          lastAttemptAt: Date.parse(bootstrapAttemptAt),
+          lastObservedAt: Date.parse(bootstrapConfirmedAt),
+        },
+      ],
+      '2026-05-24T09:26:08.090Z',
+      { runId: bootstrapRunId }
+    );
+
+    const svc = new TeamProvisioningService();
+    privateHarness(svc).getLiveTeamAgentRuntimeMetadata = vi.fn(
+      async () =>
+        new Map([
+          [
+            'tom',
+            {
+              alive: false,
+              backendType: 'process',
+              providerId: 'anthropic',
+              livenessKind: 'stale_metadata',
+              pidSource: 'persisted_metadata',
+              runtimeDiagnostic: postStopDiagnostic,
+              runtimeDiagnosticSeverity: 'warning',
+              metricsPid: runtimePid,
+              model: 'haiku',
+            },
+          ],
+        ])
+    );
+
+    const result = await svc.getMemberSpawnStatuses(teamName);
+
+    expect(result.teamLaunchState).toBe('clean_success');
+    expect(result.statuses.tom).toMatchObject({
+      status: 'online',
+      launchState: 'confirmed_alive',
+      bootstrapConfirmed: true,
+      runtimeAlive: false,
+      livenessKind: 'confirmed_bootstrap',
+      hardFailure: false,
+      error: undefined,
+    });
+    expect(result.statuses.tom?.hardFailureReason).toBeUndefined();
+    expect(result.statuses.tom?.runtimeDiagnostic).toBeUndefined();
+    expect(result.statuses.tom?.runtimeDiagnosticSeverity).toBeUndefined();
   });
 
   it('does not heal cleanup-finalized launch failures from stale bootstrap-state confirmation', async () => {
@@ -25882,6 +26329,292 @@ describe('TeamProvisioningService', () => {
       failedCount: 2,
       missingMembers: ['alice', 'tom'],
     });
+  });
+
+  it('reconciles mixed launch when Anthropic primary bootstrap confirmation slightly predates delayed app acceptance', async () => {
+    const teamName = 'mixed-anthropic-primary-bootstrap-skew-heals';
+    const reason = 'runtime pid could not be verified because process table is unavailable';
+    const postStopDiagnostic = 'persisted runtime pid is not alive';
+    const bootstrapRunId = 'run-mixed-anthropic-primary-bootstrap-skew';
+    writeTeamMeta(teamName, {
+      providerId: 'codex',
+      providerBackendId: 'codex-native',
+      model: 'gpt-5.5',
+    });
+    writeMembersMeta(teamName, [
+      { name: 'alice', providerId: 'codex', model: 'gpt-5.5' },
+      { name: 'tom', providerId: 'anthropic', model: 'haiku' },
+      { name: 'bob', providerId: 'opencode', model: 'opencode/deepseek-v4-flash-free' },
+      { name: 'jack', providerId: 'opencode', model: 'opencode/big-pickle' },
+    ]);
+    writeLaunchConfig(teamName, '/Users/test/proj', 'lead-session', ['alice', 'tom']);
+    writeMemberBootstrapRunId(teamName, 'alice', bootstrapRunId);
+    writeMemberBootstrapRunId(teamName, 'tom', bootstrapRunId);
+    writeBootstrapState(
+      teamName,
+      [
+        {
+          name: 'alice',
+          status: 'bootstrap_confirmed',
+          lastAttemptAt: Date.parse('2026-05-24T09:25:28.034Z'),
+          lastObservedAt: Date.parse('2026-05-24T09:26:07.735Z'),
+        },
+        {
+          name: 'tom',
+          status: 'bootstrap_confirmed',
+          lastAttemptAt: Date.parse('2026-05-24T09:25:33.388Z'),
+          lastObservedAt: Date.parse('2026-05-24T09:25:42.494Z'),
+        },
+      ],
+      '2026-05-24T09:26:08.090Z',
+      { runId: bootstrapRunId }
+    );
+    fs.writeFileSync(
+      getTeamLaunchStatePath(teamName),
+      `${JSON.stringify(
+        createPersistedLaunchSnapshot({
+          teamName,
+          leadSessionId: 'lead-session',
+          launchPhase: 'finished',
+          expectedMembers: ['alice', 'tom', 'bob', 'jack'],
+          bootstrapExpectedMembers: ['alice', 'tom'],
+          members: {
+            alice: {
+              name: 'alice',
+              providerId: 'codex',
+              laneId: 'primary',
+              laneKind: 'primary',
+              laneOwnerProviderId: 'codex',
+              launchState: 'confirmed_alive',
+              agentToolAccepted: true,
+              runtimeAlive: true,
+              bootstrapConfirmed: true,
+              hardFailure: false,
+              firstSpawnAcceptedAt: '2026-05-24T09:25:45.176Z',
+              lastHeartbeatAt: '2026-05-24T09:26:07.735Z',
+              lastEvaluatedAt: '2026-05-24T09:26:09.249Z',
+            },
+            tom: {
+              name: 'tom',
+              providerId: 'anthropic',
+              model: 'haiku',
+              laneId: 'primary',
+              laneKind: 'primary',
+              laneOwnerProviderId: 'codex',
+              launchState: 'failed_to_start',
+              agentToolAccepted: true,
+              runtimeAlive: false,
+              runtimePid: 97_255,
+              bootstrapConfirmed: false,
+              hardFailure: true,
+              hardFailureReason: reason,
+              livenessKind: 'stale_metadata',
+              runtimeDiagnostic: postStopDiagnostic,
+              runtimeDiagnosticSeverity: 'warning',
+              firstSpawnAcceptedAt: '2026-05-24T09:25:45.178Z',
+              runtimeLastSeenAt: '2026-05-24T09:31:05.525Z',
+              lastEvaluatedAt: '2026-05-24T09:31:05.525Z',
+            },
+            bob: {
+              name: 'bob',
+              providerId: 'opencode',
+              model: 'opencode/deepseek-v4-flash-free',
+              laneId: 'secondary:opencode:bob',
+              laneKind: 'secondary',
+              laneOwnerProviderId: 'opencode',
+              launchState: 'confirmed_alive',
+              agentToolAccepted: true,
+              runtimeAlive: true,
+              bootstrapConfirmed: true,
+              hardFailure: false,
+              runtimePid: 2_756,
+              runtimeSessionId: 'ses_bob',
+              livenessKind: 'confirmed_bootstrap',
+              lastHeartbeatAt: '2026-05-24T09:31:39.741Z',
+              lastEvaluatedAt: '2026-05-24T09:31:39.741Z',
+            },
+            jack: {
+              name: 'jack',
+              providerId: 'opencode',
+              model: 'opencode/big-pickle',
+              laneId: 'secondary:opencode:jack',
+              laneKind: 'secondary',
+              laneOwnerProviderId: 'opencode',
+              launchState: 'confirmed_alive',
+              agentToolAccepted: true,
+              runtimeAlive: true,
+              bootstrapConfirmed: true,
+              hardFailure: false,
+              runtimePid: 2_756,
+              runtimeSessionId: 'ses_jack',
+              livenessKind: 'confirmed_bootstrap',
+              lastHeartbeatAt: '2026-05-24T09:31:39.741Z',
+              lastEvaluatedAt: '2026-05-24T09:31:39.741Z',
+            },
+          },
+          updatedAt: '2026-05-24T11:36:56.881Z',
+        }),
+        null,
+        2
+      )}\n`,
+      'utf8'
+    );
+
+    const svc = new TeamProvisioningService();
+    const result = await svc.getMemberSpawnStatuses(teamName);
+
+    expect(result.teamLaunchState).toBe('clean_success');
+    expect(result.statuses.tom).toMatchObject({
+      status: 'online',
+      launchState: 'confirmed_alive',
+      bootstrapConfirmed: true,
+      runtimeAlive: false,
+      livenessKind: 'confirmed_bootstrap',
+      hardFailure: false,
+      error: undefined,
+    });
+    expect(result.statuses.tom?.runtimeDiagnostic).toBeUndefined();
+    expect(result.statuses.tom?.runtimeDiagnosticSeverity).toBeUndefined();
+    expect(result.statuses.bob).toMatchObject({
+      status: 'online',
+      launchState: 'confirmed_alive',
+      bootstrapConfirmed: true,
+    });
+    expect(result.statuses.jack).toMatchObject({
+      status: 'online',
+      launchState: 'confirmed_alive',
+      bootstrapConfirmed: true,
+    });
+  });
+
+  it('cleans stale confirmed primary diagnostics from an already successful mixed launch', async () => {
+    const teamName = 'mixed-confirmed-primary-stale-diagnostic-cleans';
+    writeTeamMeta(teamName, {
+      providerId: 'codex',
+      providerBackendId: 'codex-native',
+      model: 'gpt-5.5',
+    });
+    writeMembersMeta(teamName, [
+      { name: 'alice', providerId: 'codex', model: 'gpt-5.5' },
+      { name: 'tom', providerId: 'anthropic', model: 'haiku' },
+      { name: 'bob', providerId: 'opencode', model: 'opencode/deepseek-v4-flash-free' },
+      { name: 'jack', providerId: 'opencode', model: 'opencode/big-pickle' },
+    ]);
+    writeLaunchConfig(teamName, '/Users/test/proj', 'lead-session', ['alice', 'tom']);
+    fs.writeFileSync(
+      getTeamLaunchStatePath(teamName),
+      `${JSON.stringify(
+        createPersistedLaunchSnapshot({
+          teamName,
+          leadSessionId: 'lead-session',
+          launchPhase: 'finished',
+          expectedMembers: ['alice', 'tom', 'bob', 'jack'],
+          members: {
+            alice: {
+              name: 'alice',
+              providerId: 'codex',
+              laneId: 'primary',
+              laneKind: 'primary',
+              laneOwnerProviderId: 'codex',
+              launchState: 'confirmed_alive',
+              agentToolAccepted: true,
+              runtimeAlive: true,
+              bootstrapConfirmed: true,
+              hardFailure: false,
+              lastEvaluatedAt: '2026-05-24T12:04:48.900Z',
+            },
+            tom: {
+              name: 'tom',
+              providerId: 'anthropic',
+              model: 'haiku',
+              laneId: 'primary',
+              laneKind: 'primary',
+              laneOwnerProviderId: 'codex',
+              launchState: 'confirmed_alive',
+              agentToolAccepted: true,
+              runtimeAlive: false,
+              runtimePid: 97_255,
+              bootstrapConfirmed: true,
+              hardFailure: false,
+              livenessKind: 'stale_metadata',
+              pidSource: 'persisted_metadata',
+              runtimeDiagnostic: 'persisted runtime pid is not alive',
+              runtimeDiagnosticSeverity: 'warning',
+              firstSpawnAcceptedAt: '2026-05-24T09:25:45.178Z',
+              lastHeartbeatAt: '2026-05-24T09:25:42.904Z',
+              runtimeLastSeenAt: '2026-05-24T09:31:05.525Z',
+              lastEvaluatedAt: '2026-05-24T12:04:48.900Z',
+            },
+            bob: {
+              name: 'bob',
+              providerId: 'opencode',
+              model: 'opencode/deepseek-v4-flash-free',
+              laneId: 'secondary:opencode:bob',
+              laneKind: 'secondary',
+              laneOwnerProviderId: 'opencode',
+              launchState: 'confirmed_alive',
+              agentToolAccepted: true,
+              runtimeAlive: true,
+              bootstrapConfirmed: true,
+              hardFailure: false,
+              runtimePid: 2_756,
+              runtimeSessionId: 'ses_bob',
+              livenessKind: 'confirmed_bootstrap',
+              lastHeartbeatAt: '2026-05-24T09:31:39.741Z',
+              lastEvaluatedAt: '2026-05-24T09:31:39.741Z',
+            },
+            jack: {
+              name: 'jack',
+              providerId: 'opencode',
+              model: 'opencode/big-pickle',
+              laneId: 'secondary:opencode:jack',
+              laneKind: 'secondary',
+              laneOwnerProviderId: 'opencode',
+              launchState: 'confirmed_alive',
+              agentToolAccepted: true,
+              runtimeAlive: true,
+              bootstrapConfirmed: true,
+              hardFailure: false,
+              runtimePid: 2_756,
+              runtimeSessionId: 'ses_jack',
+              livenessKind: 'confirmed_bootstrap',
+              lastHeartbeatAt: '2026-05-24T09:31:39.741Z',
+              lastEvaluatedAt: '2026-05-24T09:31:39.741Z',
+            },
+          },
+          updatedAt: '2026-05-24T12:04:48.900Z',
+        }),
+        null,
+        2
+      )}\n`,
+      'utf8'
+    );
+
+    const svc = new TeamProvisioningService();
+    const result = await svc.getMemberSpawnStatuses(teamName);
+
+    expect(result.teamLaunchState).toBe('clean_success');
+    expect(result.statuses.tom).toMatchObject({
+      status: 'online',
+      launchState: 'confirmed_alive',
+      bootstrapConfirmed: true,
+      runtimeAlive: false,
+      livenessKind: 'confirmed_bootstrap',
+      hardFailure: false,
+      error: undefined,
+    });
+    expect(result.statuses.tom?.runtimeDiagnostic).toBeUndefined();
+    expect(result.statuses.tom?.runtimeDiagnosticSeverity).toBeUndefined();
+    const persisted = JSON.parse(
+      await fsPromises.readFile(getTeamLaunchStatePath(teamName), 'utf8')
+    );
+    expect(persisted.members.tom).toMatchObject({
+      launchState: 'confirmed_alive',
+      bootstrapConfirmed: true,
+      livenessKind: 'confirmed_bootstrap',
+    });
+    expect(persisted.members.tom.runtimeDiagnostic).toBeUndefined();
+    expect(persisted.members.tom.runtimeDiagnosticSeverity).toBeUndefined();
   });
 
   it('does not collapse persisted mixed secondary failures when primary bootstrap snapshot is clean and richer', async () => {
