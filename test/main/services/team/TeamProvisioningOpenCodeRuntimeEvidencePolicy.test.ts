@@ -128,6 +128,9 @@ describe('TeamProvisioningOpenCodeRuntimeEvidencePolicy', () => {
     expect(hasOpenCodeRuntimeHandle({ runtimeSessionId: ' session-1 ' })).toBe(true);
     expect(hasOpenCodeRuntimeHandle({ sessionId: 'session-2' })).toBe(true);
     expect(hasOpenCodeRuntimeHandle({ runtimePid: 0, sessionId: '  ' })).toBe(false);
+    expect(hasOpenCodeRuntimeHandle({ sessionId: 'failed:session-2' })).toBe(false);
+    expect(hasOpenCodeRuntimeHandle({ runtimeSessionId: 'FAILED:session-3' })).toBe(false);
+    expect(hasOpenCodeRuntimeEntryHandle({ runtimeSessionId: 'failed:entry-session' })).toBe(false);
     expect(hasOpenCodeRuntimeLivenessMarker({ livenessKind: 'runtime_process_candidate' })).toBe(
       true
     );
@@ -195,6 +198,7 @@ describe('TeamProvisioningOpenCodeRuntimeEvidencePolicy', () => {
     );
     expect(isMaterializedOpenCodeSessionId('runtime-session')).toBe(true);
     expect(isMaterializedOpenCodeSessionId('failed:runtime-session')).toBe(false);
+    expect(isMaterializedOpenCodeSessionId('FAILED:runtime-session')).toBe(false);
     expect(hasMaterializedOpenCodeRuntimeForBootstrap(result.members.Builder)).toBe(true);
     expect(isRecoverableOpenCodeBootstrapPendingLaunchResult(result, 'Builder')).toBe(true);
 

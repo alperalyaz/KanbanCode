@@ -185,7 +185,7 @@ export function isMaterializedOpenCodeSessionId(sessionId: unknown): boolean {
     return false;
   }
   const trimmed = sessionId.trim();
-  return trimmed.length > 0 && !trimmed.startsWith('failed:');
+  return trimmed.length > 0 && !trimmed.toLowerCase().startsWith('failed:');
 }
 
 export function hasMaterializedOpenCodeRuntimeForBootstrap(
@@ -372,8 +372,8 @@ export function hasOpenCodeRuntimeHandle(
   const runtimeSessionId = (value as { runtimeSessionId?: unknown }).runtimeSessionId;
   const runtimeEvidenceSessionId = (value as { sessionId?: unknown }).sessionId;
   const sessionId =
-    (typeof runtimeSessionId === 'string' && runtimeSessionId.trim().length > 0) ||
-    (typeof runtimeEvidenceSessionId === 'string' && runtimeEvidenceSessionId.trim().length > 0);
+    isMaterializedOpenCodeSessionId(runtimeSessionId) ||
+    isMaterializedOpenCodeSessionId(runtimeEvidenceSessionId);
   return runtimePid || sessionId;
 }
 
@@ -401,8 +401,7 @@ export function hasOpenCodeRuntimeEntryHandle(
     typeof value.runtimePid === 'number' &&
     Number.isFinite(value.runtimePid) &&
     value.runtimePid > 0;
-  const runtimeSessionId =
-    typeof value.runtimeSessionId === 'string' && value.runtimeSessionId.trim().length > 0;
+  const runtimeSessionId = isMaterializedOpenCodeSessionId(value.runtimeSessionId);
   return pid || runtimePid || runtimeSessionId || hasOpenCodeRuntimeLivenessMarker(value);
 }
 
