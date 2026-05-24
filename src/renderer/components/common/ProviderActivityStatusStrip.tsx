@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { isElectronMode } from '@renderer/api';
 import { formatProviderStatusText } from '@renderer/components/runtime/providerConnectionUi';
 import { createLoadingMultimodelCliStatus } from '@renderer/store/slices/cliInstallerSlice';
@@ -245,11 +246,13 @@ export const ProviderActivityStatusStrip = ({
   codexSnapshotPending = false,
   providerIds,
   className = '',
-  label = 'Provider Activity',
+  label,
   layout = 'inline',
   showReadyProviders = false,
-  readyStatusText = 'Checked',
+  readyStatusText,
 }: ProviderActivityStatusStripProps): React.JSX.Element | null => {
+  const { t } = useAppTranslation('settings');
+  const effectiveLabel = label ?? t('providerRuntime.connectionUi.status.providerActivity');
   const { displayProviderIds, providerStateMap, shouldRender } = useProviderActivityDisplay({
     cliStatus,
     sourceCliStatus,
@@ -276,12 +279,12 @@ export const ProviderActivityStatusStrip = ({
 
   return (
     <div className={rootClassName}>
-      {label ? (
+      {effectiveLabel ? (
         <span
           className="shrink-0 text-[11px] font-medium uppercase tracking-[0.08em]"
           style={{ color: 'var(--color-text-muted)' }}
         >
-          {label}
+          {effectiveLabel}
         </span>
       ) : null}
       <div className={itemsClassName}>
@@ -299,10 +302,12 @@ export const ProviderActivityStatusStrip = ({
           const styles = getActivityToneStyles(tone);
           const statusText =
             tone === 'loading'
-              ? 'Checking...'
+              ? t('providerRuntime.connectionUi.status.checking')
               : tone === 'error'
-                ? formatProviderStatusText(providerState.provider)
-                : readyStatusText;
+                ? formatProviderStatusText(providerState.provider, t)
+                : t('providerRuntime.connectionUi.status.checked');
+          const displayStatusText =
+            tone === 'checked' && readyStatusText ? readyStatusText : statusText;
 
           return (
             <div
@@ -332,9 +337,9 @@ export const ProviderActivityStatusStrip = ({
               <span
                 className="max-w-[280px] truncate"
                 style={{ color: styles.statusColor }}
-                title={statusText}
+                title={displayStatusText}
               >
-                {statusText}
+                {displayStatusText}
               </span>
             </div>
           );

@@ -107,6 +107,49 @@ describe('ClaudeLogsPanel', () => {
     });
   });
 
+  it('renders leading toolbar controls before the search field', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const ctrl = createController({
+      isAlive: true,
+      data: {
+        lines: ['lead output'],
+        total: 1,
+        hasMore: false,
+      },
+      filteredText: 'lead output',
+    });
+
+    await act(async () => {
+      root.render(
+        React.createElement(ClaudeLogsPanel, {
+          ctrl,
+          toolbarControlsStart: React.createElement(
+            'div',
+            { 'data-testid': 'toolbar-source' },
+            'Lead'
+          ),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const source = host.querySelector('[data-testid="toolbar-source"]');
+    const search = host.querySelector('input[placeholder="Search logs..."]');
+    expect(source).not.toBeNull();
+    expect(search).not.toBeNull();
+    expect(source?.compareDocumentPosition(search as Node)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('shows the offline empty state only when no logs exist', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');
