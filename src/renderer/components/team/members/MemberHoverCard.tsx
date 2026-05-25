@@ -84,6 +84,7 @@ export const MemberHoverCard = memo(function MemberHoverCard({
     memberSpawnStatuses,
     spawnEntry,
     runtimeRunId,
+    runtimeEntries,
     runtimeEntry,
     leadActivity,
   } = useStore(
@@ -109,6 +110,9 @@ export const MemberHoverCard = memo(function MemberHoverCard({
       runtimeRunId: effectiveTeamName
         ? s.teamAgentRuntimeByTeam?.[effectiveTeamName]?.runId
         : undefined,
+      runtimeEntries: effectiveTeamName
+        ? s.teamAgentRuntimeByTeam?.[effectiveTeamName]?.members
+        : undefined,
       runtimeEntry: effectiveTeamName
         ? s.teamAgentRuntimeByTeam?.[effectiveTeamName]?.members[name]
         : undefined,
@@ -126,6 +130,7 @@ export const MemberHoverCard = memo(function MemberHoverCard({
     members: teamMembers,
     memberSpawnStatuses,
     memberSpawnSnapshot,
+    memberRuntimeEntries: runtimeEntries,
   });
   const isLaunchSettling =
     progress?.state === 'ready' && getLaunchJoinState(launchJoinMilestones).hasMembersStillJoining;

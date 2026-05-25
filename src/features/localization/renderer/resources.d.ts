@@ -2852,10 +2852,11 @@ export default interface Resources {
         default: 'default';
         failed: 'failed';
         free: 'free';
+        knownRoute: 'known route';
         local: 'local';
         needsTest: 'needs test';
         unknown: 'unknown';
-        usedInTeamPicker: 'Used in team picker';
+        usedInTeamPicker: 'Saved for team picker';
         verified: 'verified';
       };
       compatibleEndpoint: {
@@ -2889,22 +2890,30 @@ export default interface Resources {
         searchPlaceholder: 'Search model routes';
       };
       models: {
+        actionsUnavailable: 'Actions are temporarily unavailable.';
         alreadyDefault: 'This is already the selected OpenCode default.';
+        defaultSaveInProgress: 'OpenCode default is being saved.';
         empty: 'No models found.';
         emptyFree: 'No free models found.';
         emptyRecommended: 'No recommended models found.';
         emptyRecommendedFree: 'No recommended free models found.';
         freeOnly: 'Free only';
-        launchableDescription: 'Routes you can test or use in the team picker: local config, free built-in models, and current default.';
-        launchableTitle: 'Launchable OpenCode models';
+        launchableDescription: 'Known routes from OpenCode config, free built-in models, and the current default. Local routes need a successful test before they are ready for team launches.';
+        launchableTitle: 'OpenCode model routes';
         loadingRoutes: 'Loading OpenCode model routes...';
         noRoutesMatch: 'No OpenCode model routes match "{{query}}".';
-        noneReported: 'No launchable OpenCode model routes were reported yet. Configure a local route in OpenCode or use the Providers tab to inspect catalog providers.';
+        noneReported: 'No OpenCode model routes were reported yet. Configure a local route in OpenCode or use the Providers tab to inspect catalog providers.';
         recommendedOnly: 'Recommended only';
+        routeUnavailableAuth: 'This provider requires authentication before this model can be used.';
+        routeUnavailableFailed: 'This model route failed its last execution test.';
+        routeUnavailableGeneric: 'This model route cannot be used right now.';
+        routeUnavailableUnknown: 'This model is the current OpenCode default, but it is not available in the live catalog yet.';
         searchPlaceholder: 'Search models';
         selectProjectBeforeTesting: 'Select a project context before testing models.';
         selectProjectBeforeTestingDefaults: 'Select a project context before testing or saving OpenCode defaults.';
-        useInTeamPicker: 'Use in team picker';
+        testInProgress: 'Model test is already running.';
+        useInTeamPicker: 'Save for team picker';
+        validationContextRequired: 'Select a validation context above to enable Test and Set default. Saving for team picker only stores the route for new teams.';
       };
       providers: {
         catalog: 'OpenCode provider catalog';
@@ -3000,6 +3009,7 @@ export default interface Resources {
     activity: {
       actions: {
         createTaskFromMessage: 'Create task from message';
+        editMessage: 'Edit message';
         expandMessage: 'Expand message';
         replyToMessage: 'Reply to message';
         restartTeam: 'Restart team';
@@ -4209,6 +4219,11 @@ export default interface Resources {
         noResults: 'No results';
         searchPlaceholder: 'Search...';
         select: 'Select...';
+      };
+      revision: {
+        cancel: 'Cancel';
+        editing: 'Editing previous message';
+        tooltip: 'Ask the agent to ignore the previous message and restore it to the composer.';
       };
       slash: {
         restrictions: {

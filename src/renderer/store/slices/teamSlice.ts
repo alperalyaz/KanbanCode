@@ -522,10 +522,8 @@ export function __getTeamScopedTransientStateForTests(teamName: string): {
     getResolvedMemberSelectorCacheSnapshotForTeam(teamName);
 
   return {
-    hasResolvedMembersSelector:
-      resolvedMemberSelectorCacheSnapshot.hasResolvedMembersSelector,
-    resolvedMemberSelectorCount:
-      resolvedMemberSelectorCacheSnapshot.resolvedMemberSelectorCount,
+    hasResolvedMembersSelector: resolvedMemberSelectorCacheSnapshot.hasResolvedMembersSelector,
+    resolvedMemberSelectorCount: resolvedMemberSelectorCacheSnapshot.resolvedMemberSelectorCount,
     hasMergedMessagesSelector: messageSelectorCache.hasMergedMessagesSelector,
     memberMessagesSelectorCount: messageSelectorCache.memberMessagesSelectorCount,
     hasPendingFreshTeamDataRefresh: pendingFreshTeamDataRefreshes.has(teamName),
@@ -621,12 +619,7 @@ function maybeLogMemberSpawnUiEqualSuppressed(
   teamName: string,
   runId: string | null | undefined
 ): void {
-  if (
-    !shouldLogMemberSpawnUiEqualSuppressed(
-      teamName,
-      MEMBER_SPAWN_UI_EQUAL_WARN_THROTTLE_MS
-    )
-  ) {
+  if (!shouldLogMemberSpawnUiEqualSuppressed(teamName, MEMBER_SPAWN_UI_EQUAL_WARN_THROTTLE_MS)) {
     return;
   }
   logger.debug(
@@ -2050,6 +2043,13 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         let changed = false;
         const nextTasks = teamData.tasks.map((task) => {
           const nextPresence = presenceByTaskId[task.id] ?? 'unknown';
+          if (
+            nextPresence === 'unknown' &&
+            task.changePresence &&
+            task.changePresence !== 'unknown'
+          ) {
+            return task;
+          }
           if (task.changePresence === nextPresence) {
             return task;
           }

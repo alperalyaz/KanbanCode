@@ -25,6 +25,10 @@ import {
   CodexLoginUserCodeBadge,
 } from '@renderer/components/runtime/CodexLoginLinkCopyButton';
 import {
+  isCodexProviderRuntimeMissing,
+  shouldOfferCodexRuntimeInstall,
+} from '@renderer/components/runtime/codexRuntimeInstallAction';
+import {
   formatProviderStatusText,
   getProviderConnectionModeSummary,
   getProviderConnectLabel,
@@ -606,30 +610,12 @@ function shouldShowCodexInstallAction(
   showSkeleton: boolean,
   codexRuntimeStatus: CodexRuntimeStatus | null
 ): boolean {
-  const codexNativeBackend = provider.availableBackends?.find(
-    (backend) => backend.id === 'codex-native'
-  );
-  const runtimeMissingText = [
-    provider.statusMessage,
-    provider.detailMessage,
-    codexNativeBackend?.statusMessage,
-    codexNativeBackend?.detailMessage,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-  const runtimeMissing =
-    provider.verificationState === 'error' &&
-    (codexNativeBackend?.state === 'runtime-missing' ||
-      runtimeMissingText.includes('codex cli not found') ||
-      runtimeMissingText.includes('runtime missing'));
-
   return (
     provider.providerId === 'codex' &&
     !showSkeleton &&
     !provider.authenticated &&
-    runtimeMissing &&
-    !(codexRuntimeStatus?.source === 'app-managed' && codexRuntimeStatus.state !== 'failed')
+    isCodexProviderRuntimeMissing(provider) &&
+    shouldOfferCodexRuntimeInstall(codexRuntimeStatus)
   );
 }
 
@@ -1368,6 +1354,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     bootstrapCliStatus,
     fetchCliStatus,
     fetchCliProviderStatus,
+    fetchCodexRuntimeStatus,
     invalidateCliStatus,
     installCli,
     installOpenCodeRuntime,
@@ -1455,6 +1442,23 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     [loadingCliStatus, visibleCliProviders]
   );
   const renderCliStatus = effectiveCliStatus;
+
+  useEffect(() => {
+    if (!isElectron || codexRuntimeStatus || codexRuntimeStatusLoading) {
+      return;
+    }
+
+    if (visibleCliProviders.some(isCodexProviderRuntimeMissing)) {
+      void fetchCodexRuntimeStatus();
+    }
+  }, [
+    codexRuntimeStatus,
+    codexRuntimeStatusLoading,
+    fetchCodexRuntimeStatus,
+    isElectron,
+    visibleCliProviders,
+  ]);
+
   const shouldPollAnthropicSubscriptionLimits = useMemo(() => {
     if (
       !renderCliStatus?.installed ||

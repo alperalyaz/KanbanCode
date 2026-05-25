@@ -9,12 +9,18 @@ import { isLeadMember } from '@shared/utils/leadDetection';
 import type {
   MemberSpawnStatusEntry,
   MemberSpawnStatusesSnapshot,
+  TeamAgentRuntimeEntry,
   TeamProvisioningProgress,
 } from '@shared/types';
 
 type MemberSpawnStatusCollection =
   | Record<string, MemberSpawnStatusEntry>
   | Map<string, MemberSpawnStatusEntry>
+  | undefined;
+
+type TeamAgentRuntimeEntryCollection =
+  | Record<string, TeamAgentRuntimeEntry>
+  | Map<string, TeamAgentRuntimeEntry>
   | undefined;
 
 interface ProvisioningMemberLike {
@@ -892,6 +898,7 @@ export function buildTeamProvisioningPresentation({
   members,
   memberSpawnStatuses,
   memberSpawnSnapshot,
+  memberRuntimeEntries,
   t,
 }: {
   progress: TeamProvisioningProgress | null | undefined;
@@ -903,6 +910,7 @@ export function buildTeamProvisioningPresentation({
   > & {
     statuses?: MemberSpawnStatusesSnapshot['statuses'];
   };
+  memberRuntimeEntries?: TeamAgentRuntimeEntryCollection;
   t?: unknown;
 }): TeamProvisioningPresentation | null {
   if (!progress) {
@@ -934,6 +942,7 @@ export function buildTeamProvisioningPresentation({
     members,
     memberSpawnStatuses,
     memberSpawnSnapshot,
+    memberRuntimeEntries,
   });
   const failedSpawnDetails = getFailedSpawnDetails({
     memberSpawnStatuses,

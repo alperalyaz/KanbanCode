@@ -15,6 +15,7 @@ import { useAppTranslation } from '@features/localization/renderer';
 import { isElectronMode } from '@renderer/api';
 import { confirm } from '@renderer/components/common/ConfirmDialog';
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
+import { isCodexProviderRuntimeMissing } from '@renderer/components/runtime/codexRuntimeInstallAction';
 import {
   formatProviderStatusText,
   getProviderConnectionModeSummary,
@@ -148,6 +149,7 @@ export const CliStatusSection = (): React.JSX.Element | null => {
     bootstrapCliStatus,
     fetchCliStatus,
     fetchCliProviderStatus,
+    fetchCodexRuntimeStatus,
     installCodexRuntime,
     installCli,
     isBusy,
@@ -225,6 +227,22 @@ export const CliStatusSection = (): React.JSX.Element | null => {
       }
     }
   }, [bootstrapCliStatus, cliStatus, fetchCliStatus, isElectron, multimodelEnabled]);
+
+  useEffect(() => {
+    if (!isElectron || codexRuntimeStatus || codexRuntimeStatusLoading) {
+      return;
+    }
+
+    if (visibleEffectiveProviders.some(isCodexProviderRuntimeMissing)) {
+      void fetchCodexRuntimeStatus();
+    }
+  }, [
+    codexRuntimeStatus,
+    codexRuntimeStatusLoading,
+    fetchCodexRuntimeStatus,
+    isElectron,
+    visibleEffectiveProviders,
+  ]);
 
   const handleInstall = useCallback(() => {
     installCli();

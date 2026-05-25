@@ -38,12 +38,12 @@ function buildMemberSegmentRenderKey(segment: MemberLogStreamSegment): string {
   return `${segment.id}:${firstChunkId ?? segment.startTimestamp}`;
 }
 
-export function MemberLogStreamSection({
+export const MemberLogStreamSection = ({
   teamName,
   member,
   enabled = true,
   onInitialLoadErrorChange,
-}: Readonly<MemberLogStreamSectionProps>): React.JSX.Element {
+}: Readonly<MemberLogStreamSectionProps>): React.JSX.Element => {
   const { t } = useAppTranslation('team');
   const [selectedLogView, setSelectedLogView] = useState<'execution' | 'process'>('execution');
   const teamMembers = useStore((s) => selectResolvedMembersForTeamName(s, teamName));
@@ -70,11 +70,11 @@ export function MemberLogStreamSection({
   }, [hasInitialLoadError, onInitialLoadErrorChange]);
 
   return (
-    <div className="space-y-4">
-      <div className="inline-flex rounded-xl bg-[var(--color-surface-subtle)] p-1">
+    <div className="space-y-3">
+      <div className="inline-flex rounded-md bg-[var(--color-surface-subtle)] p-0.5">
         <button
           type="button"
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+          className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
             selectedLogView === 'execution'
               ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm'
               : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
@@ -85,7 +85,7 @@ export function MemberLogStreamSection({
         </button>
         <button
           type="button"
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+          className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
             selectedLogView === 'process'
               ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm'
               : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
@@ -111,6 +111,7 @@ export function MemberLogStreamSection({
           selectionResetKey={`${teamName}:${member.name}`}
           boundedHistoryNote={boundedHistoryNote}
           forceSegmentHeaders
+          showSegmentParticipantBadge={false}
           buildSegmentRenderKey={buildMemberSegmentRenderKey}
           getSegmentMetaLabel={getSegmentMetaLabel}
         />
@@ -122,4 +123,4 @@ export function MemberLogStreamSection({
       )}
     </div>
   );
-}
+};
