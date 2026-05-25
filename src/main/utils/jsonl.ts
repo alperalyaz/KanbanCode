@@ -267,15 +267,36 @@ function isCountableJsonlEntryLine(line: string): boolean {
     message?: unknown;
   };
 
-  if (typeof entry.uuid !== 'string' || !parseMessageType(String(entry.type))) {
+  const type = typeof entry.type === 'string' ? parseMessageType(entry.type) : null;
+  if (typeof entry.uuid !== 'string' || entry.uuid.length === 0 || !type) {
     return false;
   }
 
-  if (entry.type === 'user' || entry.type === 'assistant') {
-    return entry.message != null && typeof entry.message === 'object';
+  if (type === 'user') {
+    if (entry.message == null) {
+      return false;
+    }
+    const content = (entry.message as { content?: unknown }).content;
+    return content == null || isParserSafeContent(content);
+  }
+
+  if (type === 'assistant') {
+    if (!isJsonObjectRecord(entry.message)) {
+      return false;
+    }
+    const content = entry.message.content;
+    return isParserSafeContent(content);
   }
 
   return true;
+}
+
+function isJsonObjectRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isParserSafeContent(value: unknown): boolean {
+  return typeof value === 'string' || (Array.isArray(value) && value.every((item) => item != null));
 }
 
 // =============================================================================

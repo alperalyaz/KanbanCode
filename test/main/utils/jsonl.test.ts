@@ -212,9 +212,48 @@ describe('jsonl', () => {
           timestamp: '2026-01-01T00:00:02.000Z',
           content: 'system line',
         });
+        const validUserWithoutContent = JSON.stringify({
+          type: 'user',
+          uuid: 'u1',
+          timestamp: '2026-01-01T00:00:03.000Z',
+          message: {
+            role: 'user',
+          },
+        });
+        const validUserArrayMessage = JSON.stringify({
+          type: 'user',
+          uuid: 'u2',
+          timestamp: '2026-01-01T00:00:04.000Z',
+          message: [],
+        });
         const invalidMissingMessage = JSON.stringify({
           type: 'assistant',
           uuid: 'bad-assistant',
+        });
+        const invalidEmptyUuid = JSON.stringify({
+          type: 'system',
+          uuid: '',
+          content: 'empty uuid',
+        });
+        const invalidAssistantMissingContent = JSON.stringify({
+          type: 'assistant',
+          uuid: 'bad-assistant-content',
+          message: {
+            role: 'assistant',
+          },
+        });
+        const invalidAssistantArrayMessage = JSON.stringify({
+          type: 'assistant',
+          uuid: 'bad-assistant-array',
+          message: [],
+        });
+        const invalidAssistantNullContentBlock = JSON.stringify({
+          type: 'assistant',
+          uuid: 'bad-assistant-null-block',
+          message: {
+            role: 'assistant',
+            content: [null],
+          },
         });
         const unknownType = JSON.stringify({
           type: 'unknown',
@@ -228,7 +267,13 @@ describe('jsonl', () => {
           [
             validAssistant,
             validSystem,
+            validUserWithoutContent,
+            validUserArrayMessage,
             invalidMissingMessage,
+            invalidEmptyUuid,
+            invalidAssistantMissingContent,
+            invalidAssistantArrayMessage,
+            invalidAssistantNullContentBlock,
             unknownType,
             'not json',
             partialJson,
@@ -239,7 +284,7 @@ describe('jsonl', () => {
         const parsed = await parseJsonlFileWithStats(filePath);
         const counted = await countJsonlFileWithStats(filePath);
 
-        expect(parsed.messages.map((message) => message.uuid)).toEqual(['a1', 's1']);
+        expect(parsed.messages.map((message) => message.uuid)).toEqual(['a1', 's1', 'u1', 'u2']);
         expect(counted.parsedLineCount).toBe(parsed.parsedLineCount);
         expect(counted.consumedBytes).toBe(parsed.consumedBytes);
       } finally {
