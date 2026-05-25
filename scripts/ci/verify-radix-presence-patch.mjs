@@ -9,16 +9,60 @@ const patchChecks = [
   {
     packageName: '@radix-ui/react-presence',
     requiredMarkers: ['nodeCleanupGenerationRef', 'syncNode(null)'],
+    forbiddenSnippets: ['setNode(node2);'],
   },
   {
     packageName: '@radix-ui/react-focus-scope',
     resolverFromPackage: '@radix-ui/react-dialog',
     requiredMarkers: ['containerCleanupGenerationRef', 'syncContainer(null)'],
+    forbiddenSnippets: ['(node) => setContainer(node)'],
   },
   {
     packageName: '@radix-ui/react-dismissable-layer',
     resolverFromPackage: '@radix-ui/react-dialog',
     requiredMarkers: ['nodeCleanupGenerationRef', 'syncNode(null)'],
+    forbiddenSnippets: ['(node2) => setNode(node2)'],
+  },
+  {
+    packageName: '@radix-ui/react-select',
+    requiredMarkers: ['useGuardedNodeSetter', 'setContentRef', 'setItemTextNodeRef'],
+    forbiddenSnippets: [
+      '(node) => setContent(node)',
+      '(node) => setItemTextNode(node)',
+      'onTriggerChange: setTrigger,',
+      'onValueNodeChange: setValueNode,',
+      'onViewportChange: setViewport,',
+      'ref: setContentWrapper,',
+      'setSelectedItem(node);',
+      'setSelectedItemText(node);',
+    ],
+  },
+  {
+    packageName: '@radix-ui/react-popper',
+    resolverFromPackage: '@radix-ui/react-select',
+    requiredMarkers: ['useGuardedNodeSetter', 'setContentRef'],
+    forbiddenSnippets: ['(node) => setContent(node)'],
+  },
+  {
+    packageName: '@radix-ui/react-tooltip',
+    requiredMarkers: ['useGuardedNodeSetter', 'setTriggerRef'],
+    forbiddenSnippets: ['onTriggerChange: setTrigger,'],
+  },
+  {
+    packageName: '@radix-ui/react-menu',
+    resolverFromPackage: '@radix-ui/react-dropdown-menu',
+    requiredMarkers: ['useGuardedNodeSetter', 'setContentRef', 'setTriggerRef'],
+    forbiddenSnippets: ['onContentChange: setContent,', 'onTriggerChange: setTrigger,'],
+  },
+  {
+    packageName: '@radix-ui/react-checkbox',
+    requiredMarkers: ['useGuardedNodeSetter', 'setControlRef', 'setBubbleInputRef'],
+    forbiddenSnippets: [
+      'useComposedRefs(forwardedRef, setControl)',
+      'useComposedRefs(forwardedRef, setBubbleInput)',
+      'useComposedRefs)(forwardedRef, setControl)',
+      'useComposedRefs)(forwardedRef, setBubbleInput)',
+    ],
   },
 ];
 
@@ -41,6 +85,14 @@ for (const check of patchChecks) {
     const missingMarkers = check.requiredMarkers.filter((marker) => !source.includes(marker));
     if (missingMarkers.length > 0) {
       missing.push(`${check.packageName}/${relativePath}: ${missingMarkers.join(', ')}`);
+    }
+
+    const forbiddenSnippets = check.forbiddenSnippets ?? [];
+    const presentForbiddenSnippets = forbiddenSnippets.filter((snippet) => source.includes(snippet));
+    if (presentForbiddenSnippets.length > 0) {
+      missing.push(
+        `${check.packageName}/${relativePath}: forbidden snippets still present: ${presentForbiddenSnippets.join(', ')}`
+      );
     }
   }
 }
