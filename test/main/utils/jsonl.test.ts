@@ -6,9 +6,12 @@ import { describe, expect, it } from 'vitest';
 import {
   analyzeSessionFileMetadata,
   calculateMetrics,
+  countJsonlFileWithStats,
   parseJsonlFile,
+  parseJsonlFileWithStats,
   parseJsonlLine,
 } from '../../../src/main/utils/jsonl';
+
 import type { ParsedMessage } from '../../../src/main/types';
 
 // Helper to create a minimal ParsedMessage
@@ -190,6 +193,105 @@ describe('jsonl', () => {
   });
 
   describe('tolerant parsing', () => {
+    it('counts parseable entries without retaining messages', async () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jsonl-count-'));
+      try {
+        const filePath = path.join(tempDir, 'session.jsonl');
+        const validAssistant = JSON.stringify({
+          type: 'assistant',
+          uuid: 'a1',
+          timestamp: '2026-01-01T00:00:01.000Z',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'hello' }],
+          },
+        });
+        const validSystem = JSON.stringify({
+          type: 'system',
+          uuid: 's1',
+          timestamp: '2026-01-01T00:00:02.000Z',
+          content: 'system line',
+        });
+        const validUserWithoutContent = JSON.stringify({
+          type: 'user',
+          uuid: 'u1',
+          timestamp: '2026-01-01T00:00:03.000Z',
+          message: {
+            role: 'user',
+          },
+        });
+        const validUserArrayMessage = JSON.stringify({
+          type: 'user',
+          uuid: 'u2',
+          timestamp: '2026-01-01T00:00:04.000Z',
+          message: [],
+        });
+        const invalidMissingMessage = JSON.stringify({
+          type: 'assistant',
+          uuid: 'bad-assistant',
+        });
+        const invalidEmptyUuid = JSON.stringify({
+          type: 'system',
+          uuid: '',
+          content: 'empty uuid',
+        });
+        const invalidAssistantMissingContent = JSON.stringify({
+          type: 'assistant',
+          uuid: 'bad-assistant-content',
+          message: {
+            role: 'assistant',
+          },
+        });
+        const invalidAssistantArrayMessage = JSON.stringify({
+          type: 'assistant',
+          uuid: 'bad-assistant-array',
+          message: [],
+        });
+        const invalidAssistantNullContentBlock = JSON.stringify({
+          type: 'assistant',
+          uuid: 'bad-assistant-null-block',
+          message: {
+            role: 'assistant',
+            content: [null],
+          },
+        });
+        const unknownType = JSON.stringify({
+          type: 'unknown',
+          uuid: 'unknown-1',
+        });
+        const partialJson =
+          '{"type":"assistant","uuid":"a2","timestamp":"2026-01-01T00:00:03.000Z","message":{"role":"assistant","content":[{"type":"text","text":"partial"';
+
+        fs.writeFileSync(
+          filePath,
+          [
+            validAssistant,
+            validSystem,
+            validUserWithoutContent,
+            validUserArrayMessage,
+            invalidMissingMessage,
+            invalidEmptyUuid,
+            invalidAssistantMissingContent,
+            invalidAssistantArrayMessage,
+            invalidAssistantNullContentBlock,
+            unknownType,
+            'not json',
+            partialJson,
+          ].join('\n'),
+          'utf8'
+        );
+
+        const parsed = await parseJsonlFileWithStats(filePath);
+        const counted = await countJsonlFileWithStats(filePath);
+
+        expect(parsed.messages.map((message) => message.uuid)).toEqual(['a1', 's1', 'u1', 'u2']);
+        expect(counted.parsedLineCount).toBe(parsed.parsedLineCount);
+        expect(counted.consumedBytes).toBe(parsed.consumedBytes);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it('skips non-JSON garbage and ignores a partial trailing object', async () => {
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jsonl-tolerant-'));
       try {
