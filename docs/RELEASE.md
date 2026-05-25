@@ -146,6 +146,14 @@ Public release notes must follow this standard every time:
 - Verify actual asset names with `gh release view v<VERSION> --repo 777genius/agent-teams-ai --json assets` before writing links.
 - Prefer versioned installer links for release-specific notes: `Agent.Teams.AI-<VERSION>-arm64.dmg`, `Agent.Teams.AI-<VERSION>-x64.dmg`, `Agent.Teams.AI.Setup.<VERSION>.exe`, `Agent.Teams.AI-<VERSION>.AppImage`, `agent-teams-ai_<VERSION>_amd64.deb`, `agent-teams-ai-<VERSION>.x86_64.rpm`, and `agent-teams-ai-<VERSION>.pacman`.
 
+Draft releases must be treated as review artifacts:
+
+- Do not hand off a draft release for review while it still has generated notes, stale notes from an earlier run, or a `Full Changelog`-only body.
+- Before telling the user a draft is ready, always edit the draft body with the current release notes template and then re-check it with `gh release view v<VERSION> --repo 777genius/agent-teams-ai --json body,assets,isDraft,isPrerelease,targetCommitish`.
+- Confirm the notes describe the exact target commit that the draft was built from, including any commits added after a previous draft attempt.
+- If a draft already exists when starting or retrying a release, do not delete it automatically. Ask for explicit permission to delete, replace, or reuse it.
+- Never delete a draft release just because the user said to "make a release" or "redo the release". Deleting a draft requires a separate explicit command such as "delete the draft release".
+
 ### 4. Required release closeout gate
 
 Do not publish or call a release finished until this is true:
@@ -154,7 +162,8 @@ Do not publish or call a release finished until this is true:
 - The release body starts with short user-facing notes: what changed, why users care, and the most important fixes.
 - The `Downloads` table from the template is present and every link points to the current `v<VERSION>` assets.
 - The asset names in the notes match the assets uploaded by `release.yml`.
-- `gh release view v<VERSION> --json body,assets,isDraft,isPrerelease` confirms the release is public, has notes, and has the expected installer assets.
+- For a draft handoff, `gh release view v<VERSION> --json body,assets,isDraft,isPrerelease,targetCommitish` confirms the release is still a draft, targets the intended commit, has current notes, and has the expected installer assets.
+- For final publication, `gh release view v<VERSION> --json body,assets,isDraft,isPrerelease,targetCommitish` confirms the release is public, has current notes, targets the intended commit, and has the expected installer assets.
 
 If a draft was published before notes were written, immediately edit the public release body with `gh release edit`; do not leave a release with only generated notes.
 
