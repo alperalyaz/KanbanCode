@@ -356,7 +356,6 @@ describe('CliInstallerService', () => {
         showBinaryPath: false,
       });
       vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/mock/agent_teams_orchestrator');
-      vi.mocked(execCli).mockResolvedValueOnce({ stdout: '0.0.46', stderr: '' });
       const getProviderStatusesSpy = vi
         .spyOn(ClaudeMultimodelBridgeService.prototype, 'getProviderStatuses')
         .mockResolvedValue([
@@ -377,6 +376,8 @@ describe('CliInstallerService', () => {
         .filter((event) => event.type === 'status');
 
       expect(status.installed).toBe(true);
+      expect(status.binaryPath).toBe('/mock/agent_teams_orchestrator');
+      expect(status.installedVersion).toBeNull();
       expect(resolveInteractiveShellEnvBestEffortMock).not.toHaveBeenCalled();
       expect(status.authStatusChecking).toBe(false);
       expect(status.authLoggedIn).toBe(false);
@@ -403,11 +404,14 @@ describe('CliInstallerService', () => {
         )
       ).toBe(true);
       expect(getProviderStatusesSpy).not.toHaveBeenCalled();
-      expect(execCli).toHaveBeenCalledTimes(1);
-      expect(execCli).toHaveBeenCalledWith(
-        '/mock/agent_teams_orchestrator',
-        ['--version'],
-        expect.objectContaining({ timeout: expect.any(Number) })
+      expect(execCli).not.toHaveBeenCalled();
+      await vi.waitFor(() =>
+        expect(appendCliAuthDiag).toHaveBeenCalledWith(
+          expect.objectContaining({
+            shellEnvMs: 0,
+            versionProbeMs: 0,
+          })
+        )
       );
     });
 
