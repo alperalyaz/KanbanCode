@@ -48,6 +48,10 @@ import { useStore } from '@renderer/store';
 import { AlertTriangle, Download, Key, Link2, Loader2, Save, Trash2 } from 'lucide-react';
 
 import {
+  isCodexProviderRuntimeMissing,
+  shouldOfferCodexRuntimeInstall,
+} from './codexRuntimeInstallAction';
+import {
   formatProviderAuthMethodLabelForProvider,
   formatProviderAuthModeLabelForProvider,
   getProviderConnectLabel,
@@ -1056,8 +1060,8 @@ export const ProviderRuntimeSettingsDialog = ({
   const showCodexRuntimeInstallAction =
     selectedProvider?.providerId === 'codex' &&
     typeof onInstallCodexRuntime === 'function' &&
-    codexConnection?.appServerState === 'runtime-missing' &&
-    !(codexRuntimeStatus?.source === 'app-managed' && codexRuntimeStatus.state !== 'failed');
+    isCodexProviderRuntimeMissing(selectedProvider) &&
+    shouldOfferCodexRuntimeInstall(codexRuntimeStatus);
   const runtimeBusy = disabled || selectedProviderLoading || runtimeSaving;
   const anthropicFastModeCapability =
     selectedProvider?.providerId === 'anthropic'
