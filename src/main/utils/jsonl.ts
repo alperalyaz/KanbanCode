@@ -58,6 +58,10 @@ export interface JsonlParseResult {
   consumedBytes: number;
 }
 
+interface JsonlStreamParseOptions {
+  collectMessages?: boolean;
+}
+
 /**
  * Parse a JSONL file line by line using streaming.
  * This avoids loading the entire file into memory.
@@ -89,13 +93,37 @@ export async function parseJsonlFileWithStats(
 }
 
 /**
+ * Count parseable JSONL messages and consumed bytes without retaining message
+ * objects. Useful for first-read baselines where old transcript contents should
+ * not be surfaced and can be too large to keep in memory.
+ */
+export async function countJsonlFileWithStats(
+  filePath: string,
+  fsProvider: FileSystemProvider = defaultProvider
+): Promise<Omit<JsonlParseResult, 'messages'>> {
+  if (!(await fsProvider.exists(filePath))) {
+    return { parsedLineCount: 0, consumedBytes: 0 };
+  }
+
+  const result = await parseJsonlStream(fsProvider.createReadStream(filePath), filePath, {
+    collectMessages: false,
+  });
+  return {
+    parsedLineCount: result.parsedLineCount,
+    consumedBytes: result.consumedBytes,
+  };
+}
+
+/**
  * Parse JSONL data from a readable stream while tracking how many bytes were
  * safely consumed as complete lines.
  */
 export async function parseJsonlStream(
   stream: Readable,
-  filePath?: string
+  filePath?: string,
+  options: JsonlStreamParseOptions = {}
 ): Promise<JsonlParseResult> {
+  const collectMessages = options.collectMessages !== false;
   const messages: ParsedMessage[] = [];
   let pending = Buffer.alloc(0);
   let parsedLineCount = 0;
@@ -124,7 +152,9 @@ export async function parseJsonlStream(
     try {
       const parsed = parseJsonlLine(normalized);
       if (parsed) {
-        messages.push(parsed);
+        if (collectMessages) {
+          messages.push(parsed);
+        }
         parsedLineCount += 1;
       }
     } catch {
@@ -165,7 +195,9 @@ export async function parseJsonlStream(
       if (looksLikeJsonObjectLine(normalized)) {
         const parsed = parseJsonlLine(normalized);
         if (parsed) {
-          messages.push(parsed);
+          if (collectMessages) {
+            messages.push(parsed);
+          }
           parsedLineCount += 1;
           consumedBytes += pending.length;
         }

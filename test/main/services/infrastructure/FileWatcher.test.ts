@@ -2542,6 +2542,56 @@ describe('FileWatcher', () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     });
 
+    it('preserves line offset for oversized pre-existing files without notifications', async () => {
+      vi.useRealTimers();
+      useRealExistsSync();
+
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filewatcher-large-baseline-'));
+      const projectsDir = path.join(tempDir, 'projects');
+      const projectDir = path.join(projectsDir, 'test-project');
+      fs.mkdirSync(projectDir, { recursive: true });
+
+      const filePath = path.join(projectDir, 'session-large.jsonl');
+      const largeLineCount = 17_000;
+      const largePayload = 'old data '.repeat(120);
+      fs.writeFileSync(
+        filePath,
+        Array.from({ length: largeLineCount }, (_, index) =>
+          jsonlLine(`large-${index}`, largePayload)
+        ).join(''),
+        'utf8'
+      );
+
+      const dataCache = new DataCache(50, 10, false);
+      const notificationManager = createMockNotificationManager();
+      const watcher = new FileWatcher(dataCache, projectsDir, path.join(tempDir, 'todos'));
+      watcher.setNotificationManager(notificationManager);
+
+      const watcherAny = watcher as unknown as {
+        detectErrorsInSessionFile: (
+          projectId: string,
+          sessionId: string,
+          filePath: string
+        ) => Promise<void>;
+        lastProcessedLineCount: Map<string, number>;
+        lastProcessedSize: Map<string, number>;
+        instanceCreatedAt: number;
+      };
+      watcherAny.instanceCreatedAt = Date.now() + 60_000;
+
+      vi.mocked(errorDetector.detectErrors).mockClear();
+
+      await watcherAny.detectErrorsInSessionFile('test-project', 'session-large', filePath);
+
+      expect(errorDetector.detectErrors).not.toHaveBeenCalled();
+      expect(watcherAny.lastProcessedLineCount.get(filePath)).toBe(largeLineCount);
+      expect(watcherAny.lastProcessedSize.get(filePath)).toBe(fs.statSync(filePath).size);
+      expect(notificationManager.addError).not.toHaveBeenCalled();
+
+      watcher.stop();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+
     it('detects errors immediately for files created after watcher startup', async () => {
       vi.useRealTimers();
       useRealExistsSync();

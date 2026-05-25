@@ -11,7 +11,11 @@
  */
 
 import { type FileChangeEvent, type ParsedMessage } from '@main/types';
-import { parseJsonlFileWithStats, parseJsonlStream } from '@main/utils/jsonl';
+import {
+  countJsonlFileWithStats,
+  parseJsonlFileWithStats,
+  parseJsonlStream,
+} from '@main/utils/jsonl';
 import {
   getProjectsBasePath,
   getTasksBasePath,
@@ -928,6 +932,11 @@ export class FileWatcher extends EventEmitter {
       }
 
       const isFirstRead = lastLineCount === 0 && lastSize === 0;
+      if (isFirstRead && fileStats.birthtimeMs < this.instanceCreatedAt) {
+        await this.establishPreExistingFileBaseline(filePath, currentSize);
+        return;
+      }
+
       const canUseIncrementalAppend = lastSize > 0 && currentSize > lastSize;
       let newMessages: ParsedMessage[] = [];
       let currentLineCount: number;
@@ -950,22 +959,6 @@ export class FileWatcher extends EventEmitter {
       if (currentLineCount <= lastLineCount) {
         this.lastProcessedSize.set(filePath, processedSize);
         return;
-      }
-
-      // On first read (after app restart), establish baseline without detecting errors
-      // for files that existed BEFORE this FileWatcher started. This prevents flooding
-      // notifications with historical errors from old sessions.
-      // Files created AFTER startup are new sessions — detect errors normally.
-      if (isFirstRead) {
-        const isPreExistingFile = fileStats.birthtimeMs < this.instanceCreatedAt;
-        if (isPreExistingFile) {
-          this.lastProcessedLineCount.set(filePath, currentLineCount);
-          this.lastProcessedSize.set(filePath, processedSize);
-          logger.info(
-            `FileWatcher: Baseline established for ${filePath} (${currentLineCount} lines, ${processedSize} bytes)`
-          );
-          return;
-        }
       }
 
       // Detect errors in new messages
@@ -1007,6 +1000,18 @@ export class FileWatcher extends EventEmitter {
         });
       }
     }
+  }
+
+  private async establishPreExistingFileBaseline(
+    filePath: string,
+    currentSize: number
+  ): Promise<void> {
+    const baseline = await countJsonlFileWithStats(filePath, this.fsProvider);
+    this.lastProcessedLineCount.set(filePath, baseline.parsedLineCount);
+    this.lastProcessedSize.set(filePath, baseline.consumedBytes);
+    logger.info(
+      `FileWatcher: Baseline established for ${filePath} (${baseline.parsedLineCount} lines, ${baseline.consumedBytes}/${currentSize} bytes)`
+    );
   }
 
   /**
