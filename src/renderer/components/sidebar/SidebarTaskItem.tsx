@@ -94,6 +94,7 @@ export const SidebarTaskItem = memo(function SidebarTaskItem({
   getDisplaySubject,
 }: SidebarTaskItemProps): React.JSX.Element {
   const { t } = useAppTranslation('team');
+  const { t: tCommon } = useAppTranslation('common');
   const openGlobalTaskDetail = useStore((s) => s.openGlobalTaskDetail);
   const teamMembers = useStore(useShallow((s) => s.teamByName[task.teamName]?.members));
   const unreadCount = useUnreadCommentCount(task.teamName, task.id, task.comments);
@@ -137,10 +138,10 @@ export const SidebarTaskItem = memo(function SidebarTaskItem({
   );
   const updatedLabel = formatUpdatedLabel(
     task,
-    t('tasks.date.updatedPrefix'),
-    t('tasks.date.updatedYesterday')
+    tCommon('tasks.date.updatedPrefix'),
+    tCommon('tasks.date.updatedYesterday')
   );
-  const dateLabel = updatedLabel ?? formatTaskDate(task.createdAt, t('tasks.date.yesterday'));
+  const dateLabel = updatedLabel ?? formatTaskDate(task.createdAt, tCommon('tasks.date.yesterday'));
 
   const ownerColorSet = useMemo(() => {
     if (!teamMembers || !task.owner) return null;
@@ -246,7 +247,7 @@ export const SidebarTaskItem = memo(function SidebarTaskItem({
                   <span
                     className={`ml-1.5 inline-block rounded-full px-1.5 py-0.5 align-middle text-[10px] font-medium leading-none ${REVIEW_STATE_DISPLAY.needsFix.bg} ${REVIEW_STATE_DISPLAY.needsFix.text}`}
                   >
-                    {t('tasks.reviewState.needsFix')}
+                    {tCommon('tasks.reviewState.needsFix')}
                   </span>
                 )}
               </span>

@@ -6,8 +6,8 @@ import {
   __resetTeamSliceModuleStateForTests,
   createTeamSlice,
   getActiveTeamPendingReplyWaits,
-  hasActiveTeamPendingReplyWait,
   getCurrentProvisioningProgressForTeam,
+  hasActiveTeamPendingReplyWait,
   loadPersistedMessagesPanelMode,
   savePersistedMessagesPanelMode,
   selectMemberMessagesForTeamMember,
@@ -24,6 +24,7 @@ import {
 const hoisted = vi.hoisted(() => ({
   list: vi.fn(),
   getData: vi.fn(),
+  getTaskChangePresence: vi.fn(),
   getMessagesPage: vi.fn(),
   getMemberActivityMeta: vi.fn(),
   createTeam: vi.fn(),
@@ -61,6 +62,7 @@ vi.mock('@renderer/api', () => ({
     teams: {
       list: hoisted.list,
       getData: hoisted.getData,
+      getTaskChangePresence: hoisted.getTaskChangePresence,
       getMessagesPage: hoisted.getMessagesPage,
       getMemberActivityMeta: hoisted.getMemberActivityMeta,
       createTeam: hoisted.createTeam,
@@ -302,6 +304,7 @@ describe('teamSlice actions', () => {
     __resetTeamRefreshFanoutDiagnosticsForTests();
     hoisted.list.mockResolvedValue([]);
     hoisted.getData.mockResolvedValue(createTeamSnapshot());
+    hoisted.getTaskChangePresence.mockResolvedValue({});
     hoisted.getMessagesPage.mockResolvedValue({
       messages: [],
       nextCursor: null,
@@ -5144,6 +5147,36 @@ describe('teamSlice actions', () => {
       });
 
       await store.getState().refreshTeamData('my-team');
+
+      expect(store.getState().selectedTeamData?.tasks[0]?.changePresence).toBe('has_changes');
+    });
+
+    it('does not clear known task changePresence when presence refresh returns unknown', async () => {
+      const store = createSliceStore();
+      store.setState({
+        selectedTeamName: 'my-team',
+        selectedTeamData: createTeamSnapshot({
+          tasks: [
+            {
+              id: 'task-1',
+              subject: 'Known changes',
+              status: 'in_progress',
+              owner: 'alice',
+              createdAt: '2026-03-01T10:00:00.000Z',
+              updatedAt: '2026-03-01T10:00:00.000Z',
+              workIntervals: [{ startedAt: '2026-03-01T10:05:00.000Z' }],
+              historyEvents: [],
+              comments: [],
+              attachments: [],
+              changePresence: 'has_changes',
+            },
+          ],
+        }),
+      });
+
+      hoisted.getTaskChangePresence.mockResolvedValue({ 'task-1': 'unknown' });
+
+      await store.getState().refreshTeamChangePresence('my-team');
 
       expect(store.getState().selectedTeamData?.tasks[0]?.changePresence).toBe('has_changes');
     });
