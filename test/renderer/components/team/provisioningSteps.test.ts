@@ -1,6 +1,5 @@
-import { describe, expect, it } from 'vitest';
-
 import { getLaunchJoinMilestonesFromMembers } from '@renderer/components/team/provisioningSteps';
+import { describe, expect, it } from 'vitest';
 
 const members = [{ name: 'alice' }, { name: 'bob' }, { name: 'tom' }, { name: 'jane' }];
 
@@ -186,6 +185,56 @@ describe('getLaunchJoinMilestonesFromMembers', () => {
           pendingCount: 0,
           failedCount: 0,
           runtimeAlivePendingCount: 0,
+        },
+      },
+    });
+
+    expect(milestones.heartbeatConfirmedCount).toBe(3);
+    expect(milestones.pendingSpawnCount).toBe(1);
+    expect(milestones.expectedTeammateCount).toBe(4);
+  });
+
+  it('does not count confirmed spawn as joined when runtime snapshot is unavailable', () => {
+    const milestones = getLaunchJoinMilestonesFromMembers({
+      members,
+      memberSpawnStatuses: {
+        alice: {
+          status: 'online',
+          launchState: 'confirmed_alive',
+          runtimeAlive: true,
+          bootstrapConfirmed: true,
+          updatedAt: '2026-04-24T12:00:00.000Z',
+        },
+        bob: {
+          status: 'online',
+          launchState: 'confirmed_alive',
+          runtimeAlive: true,
+          bootstrapConfirmed: true,
+          updatedAt: '2026-04-24T12:00:01.000Z',
+        },
+        tom: {
+          status: 'online',
+          launchState: 'confirmed_alive',
+          runtimeAlive: true,
+          bootstrapConfirmed: true,
+          updatedAt: '2026-04-24T12:00:00.000Z',
+        },
+        jane: {
+          status: 'online',
+          launchState: 'confirmed_alive',
+          runtimeAlive: true,
+          bootstrapConfirmed: true,
+          updatedAt: '2026-04-24T12:00:00.000Z',
+        },
+      },
+      memberRuntimeEntries: {
+        bob: {
+          memberName: 'bob',
+          alive: false,
+          restartable: true,
+          livenessKind: 'registered_only',
+          runtimeDiagnostic: 'registered runtime metadata without live process',
+          updatedAt: '2026-04-24T12:00:02.000Z',
         },
       },
     });

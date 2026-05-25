@@ -3,6 +3,7 @@ import { isLeadMember } from '@shared/utils/leadDetection';
 import type {
   MemberSpawnStatusEntry,
   MemberSpawnStatusesSnapshot,
+  TeamAgentRuntimeEntry,
   TeamProvisioningProgress,
 } from '@shared/types';
 
@@ -39,6 +40,11 @@ type MemberSpawnStatusCollection =
   | Map<string, MemberSpawnStatusEntry>
   | undefined;
 
+type TeamAgentRuntimeEntryCollection =
+  | Record<string, TeamAgentRuntimeEntry>
+  | Map<string, TeamAgentRuntimeEntry>
+  | undefined;
+
 function getSpawnEntry(
   memberSpawnStatuses: MemberSpawnStatusCollection,
   memberName: string
@@ -50,6 +56,19 @@ function getSpawnEntry(
     return memberSpawnStatuses.get(memberName);
   }
   return memberSpawnStatuses[memberName];
+}
+
+function getRuntimeEntry(
+  memberRuntimeEntries: TeamAgentRuntimeEntryCollection,
+  memberName: string
+): TeamAgentRuntimeEntry | undefined {
+  if (!memberRuntimeEntries) {
+    return undefined;
+  }
+  if (memberRuntimeEntries instanceof Map) {
+    return memberRuntimeEntries.get(memberName);
+  }
+  return memberRuntimeEntries[memberName];
 }
 
 function parseStatusUpdatedAtMs(value: string | undefined): number | null {
@@ -70,6 +89,16 @@ function isStrongRuntimeProcessSpawnEntry(entry: MemberSpawnStatusEntry): boolea
     entry.livenessKind === 'runtime_process' &&
     entry.bootstrapStalled !== true
   );
+}
+
+function isConfirmedSpawnEntry(entry: MemberSpawnStatusEntry): boolean {
+  return entry.launchState === 'confirmed_alive' || entry.bootstrapConfirmed === true;
+}
+
+function runtimeEntryContradictsConfirmedJoin(
+  runtimeEntry: TeamAgentRuntimeEntry | undefined
+): boolean {
+  return runtimeEntry?.alive === false;
 }
 
 function shouldPreferSnapshotEntryOverLive(
@@ -98,6 +127,7 @@ function summarizeLiveLaunchJoinMilestones(params: {
   memberSpawnStatuses?: MemberSpawnStatusCollection;
   memberSpawnSnapshotStatuses?: MemberSpawnStatusesSnapshot['statuses'];
   memberSpawnSnapshotUpdatedAt?: string;
+  memberRuntimeEntries?: TeamAgentRuntimeEntryCollection;
 }): Omit<LaunchJoinMilestones, 'expectedTeammateCount'> & {
   observedTeammateCount: number;
 } {
@@ -137,6 +167,13 @@ function summarizeLiveLaunchJoinMilestones(params: {
       skippedSpawnCount += 1;
       continue;
     }
+    if (
+      isConfirmedSpawnEntry(entry) &&
+      runtimeEntryContradictsConfirmedJoin(getRuntimeEntry(params.memberRuntimeEntries, memberName))
+    ) {
+      pendingSpawnCount += 1;
+      continue;
+    }
     if (entry.launchState === 'confirmed_alive') {
       heartbeatConfirmedCount += 1;
       continue;
@@ -172,6 +209,7 @@ export function getLaunchJoinMilestonesFromMembers({
   members,
   memberSpawnStatuses,
   memberSpawnSnapshot,
+  memberRuntimeEntries,
 }: {
   members: readonly LaunchJoinMemberLike[];
   memberSpawnStatuses?: MemberSpawnStatusCollection;
@@ -181,6 +219,7 @@ export function getLaunchJoinMilestonesFromMembers({
   > & {
     statuses?: MemberSpawnStatusesSnapshot['statuses'];
   };
+  memberRuntimeEntries?: TeamAgentRuntimeEntryCollection;
 }): LaunchJoinMilestones {
   const removedTeammateNameSet = new Set(
     members
@@ -209,6 +248,7 @@ export function getLaunchJoinMilestonesFromMembers({
     memberSpawnStatuses,
     memberSpawnSnapshotStatuses: memberSpawnSnapshot?.statuses,
     memberSpawnSnapshotUpdatedAt: memberSpawnSnapshot?.updatedAt,
+    memberRuntimeEntries,
   });
 
   if (snapshotSummary) {

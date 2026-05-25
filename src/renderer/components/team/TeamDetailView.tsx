@@ -1240,6 +1240,7 @@ const TeamMemberListBridge = memo(function TeamMemberListBridge({
     () => buildTeamAgentRuntimeMap(runtimeSnapshot?.members),
     [runtimeSnapshot?.members]
   );
+  const runtimeEntries = runtimeSnapshot?.members;
   const runtimeRunId = runtimeSnapshot?.runId ?? memberSpawnSnapshot?.runId ?? progress?.runId;
   const isLaunchSettling = useMemo(() => {
     if (progress?.state !== 'ready') {
@@ -1250,9 +1251,10 @@ const TeamMemberListBridge = memo(function TeamMemberListBridge({
         members: props.members,
         memberSpawnStatuses,
         memberSpawnSnapshot,
+        memberRuntimeEntries: runtimeEntries,
       })
     ).hasMembersStillJoining;
-  }, [memberSpawnSnapshot, memberSpawnStatuses, progress?.state, props.members]);
+  }, [memberSpawnSnapshot, memberSpawnStatuses, progress?.state, props.members, runtimeEntries]);
 
   return (
     <MemberList
@@ -1324,6 +1326,7 @@ const TeamMemberDetailDialogBridge = memo(function TeamMemberDetailDialogBridge(
     memberSpawnSnapshot,
     spawnEntry,
     runtimeRunId,
+    runtimeEntries,
     runtimeEntry,
   } = useStore(
     useShallow((s) => ({
@@ -1338,6 +1341,7 @@ const TeamMemberDetailDialogBridge = memo(function TeamMemberDetailDialogBridge(
         s.teamAgentRuntimeByTeam[teamName]?.runId ??
         s.memberSpawnSnapshotsByTeam[teamName]?.runId ??
         getCurrentProvisioningProgressForTeam(s, teamName)?.runId,
+      runtimeEntries: s.teamAgentRuntimeByTeam[teamName]?.members,
       runtimeEntry: member ? s.teamAgentRuntimeByTeam[teamName]?.members[member.name] : undefined,
     }))
   );
@@ -1350,9 +1354,10 @@ const TeamMemberDetailDialogBridge = memo(function TeamMemberDetailDialogBridge(
         members: launchMembers,
         memberSpawnStatuses,
         memberSpawnSnapshot,
+        memberRuntimeEntries: runtimeEntries,
       })
     ).hasMembersStillJoining;
-  }, [launchMembers, memberSpawnSnapshot, memberSpawnStatuses, progress?.state]);
+  }, [launchMembers, memberSpawnSnapshot, memberSpawnStatuses, progress?.state, runtimeEntries]);
 
   return (
     <MemberDetailDialog

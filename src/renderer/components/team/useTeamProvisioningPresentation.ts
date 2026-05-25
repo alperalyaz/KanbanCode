@@ -51,9 +51,10 @@ export function useTeamProvisioningPresentation(teamName: string): {
         members: teamMembers,
         memberSpawnStatuses,
         memberSpawnSnapshot,
+        memberRuntimeEntries: runtimeSnapshot?.members,
         t,
       }),
-    [memberSpawnSnapshot, memberSpawnStatuses, progress, teamMembers, t]
+    [memberSpawnSnapshot, memberSpawnStatuses, progress, runtimeSnapshot?.members, teamMembers, t]
   );
   const memberDiagnostics = useMemo(
     () =>
