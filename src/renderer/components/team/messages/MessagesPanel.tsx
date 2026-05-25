@@ -733,12 +733,21 @@ export const MessagesPanel = memo(function MessagesPanel({
   }, []);
 
   const handleReviseMessage = useCallback(
-    (message: InboxMessage) => {
+    async (message: InboxMessage) => {
       if (!isRevisableUserSentMessage(message, memberNames)) return;
       const originalMessageId = trimString(message.messageId);
       if (originalMessageId !== revisionMessageId) return;
       const recipient = trimString(message.to);
       const originalText = getRevisableMessageText(message);
+      try {
+        await sendTeamMessage(teamName, {
+          member: recipient,
+          text: buildRevisionNoticeText(originalMessageId, originalText),
+          summary: `${REVISION_NOTICE_PREFIX} ${originalMessageId}`,
+        });
+      } catch {
+        return;
+      }
       setRevisionRequest({
         requestId: `${originalMessageId}:${Date.now()}`,
         originalMessageId,
@@ -747,11 +756,6 @@ export const MessagesPanel = memo(function MessagesPanel({
         actionMode: message.actionMode,
       });
       composerTextareaRef.current?.focus();
-      void sendTeamMessage(teamName, {
-        member: recipient,
-        text: buildRevisionNoticeText(originalMessageId, originalText),
-        summary: `${REVISION_NOTICE_PREFIX} ${originalMessageId}`,
-      }).catch(() => undefined);
     },
     [memberNames, revisionMessageId, sendTeamMessage, teamName]
   );
