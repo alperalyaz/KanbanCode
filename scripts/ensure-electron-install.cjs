@@ -21,20 +21,21 @@ function getPlatformPath() {
   }
 }
 
-function ensurePathFile(electronDir, platformPath) {
+function getElectronPaths(electronDir, platformPath) {
   const pathFile = path.join(electronDir, 'path.txt');
   const distPath = process.env.ELECTRON_OVERRIDE_DIST_PATH || path.join(electronDir, 'dist');
   const executablePath = path.join(distPath, platformPath);
 
-  if (!fs.existsSync(executablePath)) {
-    return false;
-  }
+  return { executablePath, pathFile };
+}
+
+function ensurePathFile(electronDir, platformPath) {
+  const { pathFile } = getElectronPaths(electronDir, platformPath);
 
   const currentPath = fs.existsSync(pathFile) ? fs.readFileSync(pathFile, 'utf8') : '';
   if (currentPath !== platformPath) {
     fs.writeFileSync(pathFile, platformPath);
   }
-  return true;
 }
 
 function runElectronInstaller(installPath) {
@@ -52,11 +53,15 @@ const electronPackagePath = require.resolve('electron/package.json');
 const electronDir = path.dirname(electronPackagePath);
 const installPath = path.join(electronDir, 'install.js');
 const platformPath = getPlatformPath();
+const { executablePath, pathFile } = getElectronPaths(electronDir, platformPath);
 
-if (!ensurePathFile(electronDir, platformPath)) {
+if (!fs.existsSync(executablePath)) {
   runElectronInstaller(installPath);
 }
 
-if (!ensurePathFile(electronDir, platformPath)) {
-  throw new Error(`Electron binary is missing after install: ${platformPath}`);
+ensurePathFile(electronDir, platformPath);
+
+if (!fs.existsSync(executablePath)) {
+  console.warn(`Electron binary is missing after install: ${executablePath}`);
+  console.warn(`Wrote Electron import marker: ${pathFile}`);
 }
