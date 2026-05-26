@@ -105,6 +105,17 @@ function targetSnapshot() {
   };
 }
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((innerResolve) => {
+    resolve = innerResolve;
+  });
+  return { promise, resolve };
+}
+
 describe('context slice team/task reset', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -167,6 +178,51 @@ describe('context slice team/task reset', () => {
     expect(store.getState().teamDataCacheByName).toEqual({});
     expect(apiMock.teams.list).toHaveBeenCalledTimes(1);
     expect(apiMock.teams.getAllTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it('updates the active context before slow first-visit project scans can trigger team refreshes', async () => {
+    contextStorageMock.loadSnapshot.mockResolvedValue(null);
+    const projectScan = deferred<unknown[]>();
+    apiMock.getProjects.mockReturnValue(projectScan.promise);
+    apiMock.getRepositoryGroups.mockResolvedValue([]);
+    const store = createTestStore();
+    store.setState({
+      activeContextId: 'local',
+      teams: [
+        {
+          teamName: 'local-team',
+          displayName: 'Local Team',
+          projectPath: '/local/project',
+        },
+      ],
+      globalTasks: [
+        {
+          id: 'local-task',
+          subject: 'Local task',
+          status: 'todo',
+          teamName: 'local-team',
+          teamDisplayName: 'Local Team',
+          projectPath: '/local/project',
+          comments: [],
+        },
+      ],
+      globalTasksInitialized: true,
+    } as never);
+
+    const switchPromise = store.getState().switchContext('ssh-dev');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(store.getState().activeContextId).toBe('ssh-dev');
+    expect(store.getState().isContextSwitching).toBe(true);
+    expect(store.getState().teams).toEqual([]);
+    expect(store.getState().globalTasks).toEqual([]);
+
+    projectScan.resolve(targetSnapshot().projects);
+    await switchPromise;
+
+    expect(store.getState().activeContextId).toBe('ssh-dev');
+    expect(store.getState().isContextSwitching).toBe(false);
   });
 
   it('drops previous-context team and task caches when lazy context initialization changes context', async () => {

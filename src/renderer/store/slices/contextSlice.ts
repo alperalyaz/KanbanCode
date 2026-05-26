@@ -356,6 +356,13 @@ export const createContextSlice: StateCreator<AppState, [], [], ContextSlice> = 
           isContextSwitching: false,
           targetContextId: null,
         });
+      } else {
+        set({
+          ...getEmptyContextState(),
+          activeContextId: targetContextId,
+          isContextSwitching: true,
+          targetContextId,
+        });
       }
 
       // Step 3: Fetch fresh data in background (slow over SSH)
