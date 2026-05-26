@@ -89,6 +89,11 @@ describe('TeamProvisioningLaunchFailurePolicy', () => {
         'Teammate did not join within the launch grace window.; process table unavailable'
       )
     ).toBe(true);
+    expect(
+      isAutoClearableLaunchFailureReason(
+        'CLI process exited (code 1) — team provisioned but not alive'
+      )
+    ).toBe(true);
     expect(isAutoClearableLaunchFailureReason('model not found')).toBe(false);
     expect(isAutoClearableLaunchFailureReason(undefined)).toBe(false);
   });

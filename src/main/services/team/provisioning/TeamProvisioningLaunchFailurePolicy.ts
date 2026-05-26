@@ -37,6 +37,16 @@ export function isProcessTableUnavailableFailureReason(reason?: string): boolean
   );
 }
 
+export function isCliProvisionedButNotAliveFailureReason(reason?: string): boolean {
+  const text = reason?.trim();
+  if (!text) {
+    return false;
+  }
+  return /^CLI process exited \(code (?:unknown|\d+|\?)\) [\u2014-] team provisioned but not alive$/i.test(
+    text
+  );
+}
+
 export function stripProcessTableUnavailableDiagnosticSuffix(reason: string): string | null {
   const match = /^(.*?);\s*process table (?:is )?unavailable$/i.exec(reason.trim());
   const baseReason = match?.[1]?.trim();
@@ -53,7 +63,8 @@ function isBaseAutoClearableLaunchFailureReason(reason?: string): boolean {
     isBootstrapMcpResourceReadFailureReason(reason) ||
     isBootstrapCheckInTimeoutFailureReason(reason) ||
     isBootstrapInstructionPromptFailureReason(reason) ||
-    isLaunchCleanupBootstrapIncompleteFailureReason(reason)
+    isLaunchCleanupBootstrapIncompleteFailureReason(reason) ||
+    isCliProvisionedButNotAliveFailureReason(reason)
   );
 }
 
