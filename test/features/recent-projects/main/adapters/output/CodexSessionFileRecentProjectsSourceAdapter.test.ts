@@ -596,6 +596,61 @@ describe('CodexSessionFileRecentProjectsSourceAdapter', () => {
     });
   });
 
+  it('skips an oversized legacy session-file cache before reading it', async () => {
+    const codexHome = path.join(tempDir, '.codex');
+    const appDataPath = path.join(tempDir, 'app-data');
+    const logger = createLogger();
+    const identityResolver = {
+      resolve: vi.fn().mockResolvedValue(null),
+    } as unknown as RecentProjectIdentityResolver;
+    await writeRollout(
+      path.join(codexHome, 'sessions', '2026', '04', '14', 'rollout-alpha.jsonl'),
+      {
+        cwd: '/Users/test/projects/alpha',
+      },
+      new Date('2026-04-14T12:00:00.000Z')
+    );
+    const cachePath = getSessionFileCachePath(appDataPath);
+    await fs.mkdir(path.dirname(cachePath), { recursive: true });
+    await fs.writeFile(cachePath, 'x', 'utf8');
+    await fs.truncate(cachePath, 4 * 1024 * 1024 + 1);
+    const readFileSpy = vi.spyOn(fs, 'readFile');
+
+    const adapter = new CodexSessionFileRecentProjectsSourceAdapter({
+      getActiveContext: () => ({ type: 'local', id: 'local-1' }) as never,
+      getLocalContext: () => ({ type: 'local', id: 'local-1' }) as never,
+      identityResolver,
+      logger,
+      codexHome,
+      appDataPath,
+    });
+
+    const result = await adapter.list();
+
+    expect(readFileSpy).not.toHaveBeenCalledWith(cachePath, 'utf8');
+    expect(result).toEqual({
+      candidates: [
+        expect.objectContaining({
+          primaryPath: '/Users/test/projects/alpha',
+        }),
+      ],
+      degraded: false,
+    });
+    expect(logger.warn).toHaveBeenCalledWith(
+      'codex session-file recent-projects cache skipped - too large',
+      expect.objectContaining({
+        bytes: 4 * 1024 * 1024 + 1,
+        maxBytes: 4 * 1024 * 1024,
+      })
+    );
+    await expect(fs.stat(cachePath)).resolves.toEqual(
+      expect.objectContaining({
+        size: expect.any(Number),
+      })
+    );
+    expect((await fs.stat(cachePath)).size).toBeLessThan(4 * 1024 * 1024);
+  });
+
   it('returns a degraded partial result under the uncached read cap and completes on the next cached pass', async () => {
     const codexHome = path.join(tempDir, '.codex');
     const appDataPath = path.join(tempDir, 'app-data');

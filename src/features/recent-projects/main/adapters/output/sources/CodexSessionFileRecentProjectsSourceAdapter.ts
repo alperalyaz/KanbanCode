@@ -30,6 +30,7 @@ const CODEX_SESSION_FILE_CACHE_RELATIVE_PATH = path.join(
   'recent-projects',
   'codex-session-files-index.json'
 );
+const CODEX_SESSION_FILE_CACHE_MAX_BYTES = 4 * 1024 * 1024;
 
 interface CodexSessionFileEntry {
   filePath: string;
@@ -663,6 +664,16 @@ export class CodexSessionFileRecentProjectsSourceAdapter implements RecentProjec
 
   async #readCacheSafe(): Promise<CodexSessionFileCacheFile> {
     try {
+      const stats = await fs.stat(this.#cachePath);
+      if (stats.size > CODEX_SESSION_FILE_CACHE_MAX_BYTES) {
+        this.deps.logger.warn('codex session-file recent-projects cache skipped - too large', {
+          cachePath: this.#cachePath,
+          bytes: stats.size,
+          maxBytes: CODEX_SESSION_FILE_CACHE_MAX_BYTES,
+        });
+        return emptyCache();
+      }
+
       const raw = await fs.readFile(this.#cachePath, 'utf8');
       const parsed = JSON.parse(raw) as Partial<CodexSessionFileCacheFile>;
       if (
