@@ -231,7 +231,7 @@ describe('useRuntimeProviderManagement', () => {
     });
 
     await vi.waitFor(() => {
-      expect(state?.error).toContain('wrong runtime binary');
+      expect(state?.error ?? '').toContain('wrong runtime binary');
     });
     expect(state?.errorDiagnostics?.binaryPath).toBe('/opt/homebrew/bin/opencode');
 
