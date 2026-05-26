@@ -282,11 +282,26 @@ export const createContextSlice: StateCreator<AppState, [], [], ContextSlice> = 
       }
 
       set({
-        ...(contextChanged ? getContextScopedTeamResetState() : {}),
+        ...(contextChanged
+          ? {
+              ...getFullResetState(),
+              ...getContextScopedTeamResetState(),
+              projects: [],
+              projectsLoading: false,
+              projectsInitialized: false,
+              projectsError: null,
+              repositoryGroups: [],
+              repositoryGroupsLoading: false,
+              repositoryGroupsInitialized: false,
+              repositoryGroupsError: null,
+            }
+          : {}),
         contextSnapshotsReady: true,
         activeContextId,
       });
       if (contextChanged) {
+        void get().fetchProjects();
+        void get().fetchRepositoryGroups();
         void get().fetchTeams();
         void get().fetchAllTasks();
       }

@@ -290,6 +290,27 @@ describe('context slice team/task reset', () => {
     const store = createTestStore();
     store.setState({
       activeContextId: 'local',
+      projects: [
+        {
+          id: 'local-project',
+          name: 'Local Project',
+          path: '/local/project',
+          sessions: [],
+          createdAt: new Date(0).toISOString(),
+          updatedAt: new Date(0).toISOString(),
+        },
+      ],
+      projectsInitialized: true,
+      repositoryGroups: [
+        {
+          id: 'local-repo',
+          identity: null,
+          name: 'Local Repo',
+          totalSessions: 0,
+          worktrees: [],
+        },
+      ],
+      repositoryGroupsInitialized: true,
       teams: [
         {
           teamName: 'local-team',
@@ -321,11 +342,46 @@ describe('context slice team/task reset', () => {
     await store.getState().initializeContextSystem();
 
     expect(store.getState().activeContextId).toBe('ssh-dev');
+    expect(store.getState().projects).toEqual(targetSnapshot().projects);
+    expect(store.getState().projectsInitialized).toBe(true);
+    expect(store.getState().repositoryGroups).toEqual([]);
+    expect(store.getState().repositoryGroupsInitialized).toBe(true);
     expect(store.getState().teams).toEqual([]);
     expect(store.getState().teamByName).toEqual({});
     expect(store.getState().globalTasks).toEqual([]);
+    expect(apiMock.getProjects).toHaveBeenCalledTimes(1);
+    expect(apiMock.getRepositoryGroups).toHaveBeenCalledTimes(1);
     expect(apiMock.teams.list).toHaveBeenCalledTimes(1);
     expect(apiMock.teams.getAllTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears project and repository loading guards before lazy context initialization refetches', async () => {
+    apiMock.context.getActive.mockResolvedValue('ssh-dev');
+    const projectScan = deferred<unknown[]>();
+    const repositoryScan = deferred<unknown[]>();
+    apiMock.getProjects.mockReturnValue(projectScan.promise);
+    apiMock.getRepositoryGroups.mockReturnValue(repositoryScan.promise);
+    const store = createTestStore();
+    store.setState({
+      activeContextId: 'local',
+      projectsLoading: true,
+      repositoryGroupsLoading: true,
+    } as never);
+
+    await store.getState().initializeContextSystem();
+
+    expect(apiMock.getProjects).toHaveBeenCalledTimes(1);
+    expect(apiMock.getRepositoryGroups).toHaveBeenCalledTimes(1);
+    expect(store.getState().projectsLoading).toBe(true);
+    expect(store.getState().repositoryGroupsLoading).toBe(true);
+
+    projectScan.resolve([]);
+    repositoryScan.resolve([]);
+    await Promise.all([projectScan.promise, repositoryScan.promise]);
+    await flushMicrotasks();
+
+    expect(store.getState().projectsLoading).toBe(false);
+    expect(store.getState().repositoryGroupsLoading).toBe(false);
   });
 
   it('drops previous-context team and task caches on direct SSH connect', async () => {
