@@ -3133,11 +3133,18 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
 
   fetchCrossTeamTargets: async () => {
+    const requestScope = captureContextRequestScope(get);
     set({ crossTeamTargetsLoading: true });
     try {
       const targets = await api.crossTeam.listTargets();
+      if (!isContextRequestScopeCurrent(get, requestScope)) {
+        return;
+      }
       set({ crossTeamTargets: targets, crossTeamTargetsLoading: false });
     } catch (error) {
+      if (!isContextRequestScopeCurrent(get, requestScope)) {
+        return;
+      }
       logger.error('fetchCrossTeamTargets failed', error);
       set({ crossTeamTargets: [], crossTeamTargetsLoading: false });
     }

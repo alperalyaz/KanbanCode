@@ -26,6 +26,9 @@ const apiMock = vi.hoisted(() => ({
   review: {
     invalidateTaskChangeSummaries: vi.fn(async () => undefined),
   },
+  crossTeam: {
+    listTargets: vi.fn(),
+  },
 }));
 
 interface TeamSummaryLike {
@@ -61,6 +64,11 @@ interface TeamSnapshotLike {
     tasks: Record<string, never>;
   };
   processes: [];
+}
+
+interface CrossTeamTargetLike {
+  teamName: string;
+  displayName: string;
 }
 
 const teamSnapshot = (
@@ -176,6 +184,7 @@ describe('team slice context races', () => {
     apiMock.teams.getTaskChangePresence.mockReset();
     apiMock.teams.showMessageNotification.mockClear();
     apiMock.review.invalidateTaskChangeSummaries.mockClear();
+    apiMock.crossTeam.listTargets.mockReset();
   });
 
   afterEach(() => {
@@ -321,6 +330,57 @@ describe('team slice context races', () => {
     expect(store.getState().globalTasks).toEqual([]);
     expect(store.getState().globalTasksInitialized).toBe(false);
     expect(store.getState().globalTasksLoading).toBe(false);
+  });
+
+  it('ignores cross-team targets loaded for a previous context', async () => {
+    const store = createSliceStore();
+    const localTargets = deferred<CrossTeamTargetLike[]>();
+    apiMock.crossTeam.listTargets.mockReturnValueOnce(localTargets.promise);
+
+    const fetchPromise = store.getState().fetchCrossTeamTargets();
+    expect(store.getState().crossTeamTargetsLoading).toBe(true);
+
+    store.setState({
+      activeContextId: 'ssh-dev',
+      crossTeamTargets: [],
+      crossTeamTargetsLoading: false,
+    });
+    localTargets.resolve([
+      {
+        teamName: 'local-target',
+        displayName: 'Local Target',
+      },
+    ]);
+    await fetchPromise;
+
+    expect(store.getState().crossTeamTargets).toEqual([]);
+    expect(store.getState().crossTeamTargetsLoading).toBe(false);
+  });
+
+  it('ignores cross-team targets loaded before a context epoch reset with the same context id', async () => {
+    const store = createSliceStore();
+    const localTargets = deferred<CrossTeamTargetLike[]>();
+    apiMock.crossTeam.listTargets.mockReturnValueOnce(localTargets.promise);
+
+    const fetchPromise = store.getState().fetchCrossTeamTargets();
+    expect(store.getState().crossTeamTargetsLoading).toBe(true);
+
+    invalidateContextScopedRequestEpoch();
+    store.setState({
+      activeContextId: 'local',
+      crossTeamTargets: [],
+      crossTeamTargetsLoading: false,
+    });
+    localTargets.resolve([
+      {
+        teamName: 'old-local-target',
+        displayName: 'Old Local Target',
+      },
+    ]);
+    await fetchPromise;
+
+    expect(store.getState().crossTeamTargets).toEqual([]);
+    expect(store.getState().crossTeamTargetsLoading).toBe(false);
   });
 
   it('ignores selected team data loaded for a previous context', async () => {
