@@ -236,6 +236,7 @@ const pendingFreshTeamMessagesHeadRefreshes = new Set<string>();
 const inFlightTeamMemberActivityMetaRequests = new Map<string, Promise<void>>();
 const pendingFreshTeamMemberActivityMetaRefreshes = new Set<string>();
 const pendingTeamPendingReplyRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+let latestTeamsFetchRequestId = 0;
 let inFlightGlobalTasksRefresh: Promise<void> | null = null;
 let pendingFreshGlobalTasksRefresh = false;
 interface RefreshTeamDataOptions {
@@ -286,6 +287,9 @@ export function __resetTeamSliceModuleStateForTests(): void {
     clearTimeout(timer);
   }
   pendingTeamPendingReplyRefreshTimers.clear();
+  latestTeamsFetchRequestId = 0;
+  inFlightGlobalTasksRefresh = null;
+  pendingFreshGlobalTasksRefresh = false;
   clearAllPendingReplyRefreshWaits();
   clearAllLastResolvedTeamDataRefreshes();
   clearAllTeamLocalStateEpochs();
@@ -1401,6 +1405,8 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     // Only effective during initial load (when teamsLoading is set to true below).
     // Refreshes are already serialized by the throttle timer in onTeamChange.
     if (get().teamsLoading) return;
+    const requestContextId = get().activeContextId;
+    const requestId = ++latestTeamsFetchRequestId;
     // Only show loading spinner on initial load — avoids flickering when refreshing
     const isInitialLoad = get().teams.length === 0;
     if (isInitialLoad) {
@@ -1412,6 +1418,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         TEAM_FETCH_TIMEOUT_MS,
         'fetchTeams'
       );
+      if (get().activeContextId !== requestContextId || latestTeamsFetchRequestId !== requestId) {
+        return;
+      }
       const teamByName: Record<string, TeamSummary> = {};
       const teamBySessionId: Record<string, TeamSummary> = {};
       for (const team of teams) {
@@ -1444,6 +1453,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         };
       });
     } catch (error) {
+      if (get().activeContextId !== requestContextId || latestTeamsFetchRequestId !== requestId) {
+        return;
+      }
       // On refresh failure, keep existing teams visible
       set({
         teamsLoading: false,
@@ -1475,15 +1487,19 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         if (isInitialLoad) {
           set({ globalTasksLoading: true, globalTasksError: null });
         }
+        const requestContextId = get().activeContextId;
         const oldTasks = get().globalTasks;
-        const wasFirst = consumeFirstGlobalTasksFetchFlag();
         try {
           const tasks = await withTimeout(
             unwrapIpc('team:getAllTasks', () => api.teams.getAllTasks()),
             TEAM_FETCH_TIMEOUT_MS,
             'fetchAllTasks'
           );
+          if (get().activeContextId !== requestContextId) {
+            continue;
+          }
           const notificationState = get();
+          const wasFirst = consumeFirstGlobalTasksFetchFlag();
           processGlobalTaskNotifications({
             oldTasks,
             newTasks: tasks,
@@ -1499,6 +1515,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
             globalTasksError: null,
           });
         } catch (error) {
+          if (get().activeContextId !== requestContextId) {
+            continue;
+          }
           set({
             globalTasksLoading: false,
             globalTasksInitialized: true,

@@ -7,7 +7,7 @@
 
 import { api } from '@renderer/api';
 
-import { getFullResetState } from '../utils/stateResetHelpers';
+import { getContextScopedTeamResetState, getFullResetState } from '../utils/stateResetHelpers';
 
 import type { AppState } from '../types';
 import type {
@@ -98,6 +98,7 @@ export const createConnectionSlice: StateCreator<AppState, [], [], ConnectionSli
                 focusedPaneId: 'pane-default',
               },
               ...getFullResetState(),
+              ...getContextScopedTeamResetState(),
             }
           : {}),
       });
@@ -107,6 +108,8 @@ export const createConnectionSlice: StateCreator<AppState, [], [], ConnectionSli
         const state = get();
         void state.fetchProjects();
         void state.fetchRepositoryGroups();
+        void state.fetchTeams();
+        void state.fetchAllTasks();
 
         // Save connection config (without password) for form pre-fill on next launch
         const saved: SshLastConnection = {
@@ -156,12 +159,15 @@ export const createConnectionSlice: StateCreator<AppState, [], [], ConnectionSli
           focusedPaneId: 'pane-default',
         },
         ...getFullResetState(),
+        ...getContextScopedTeamResetState(),
       });
 
       // Re-fetch local data
       const state = get();
       void state.fetchProjects();
       void state.fetchRepositoryGroups();
+      void state.fetchTeams();
+      void state.fetchAllTasks();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       set({ connectionError: message });

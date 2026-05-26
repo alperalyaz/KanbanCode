@@ -9,7 +9,7 @@ import { api } from '@renderer/api';
 import { contextStorage } from '@renderer/services/contextStorage';
 import { draftStorage } from '@renderer/services/draftStorage';
 
-import { getFullResetState } from '../utils/stateResetHelpers';
+import { getContextScopedTeamResetState, getFullResetState } from '../utils/stateResetHelpers';
 
 import type { AppState } from '../types';
 import type { ContextSnapshot } from '@renderer/services/contextStorage';
@@ -47,6 +47,7 @@ export interface ContextSlice {
 function getEmptyContextState(): Partial<AppState> {
   return {
     ...getFullResetState(),
+    ...getContextScopedTeamResetState(),
     projects: [],
     projectsLoading: false,
     projectsInitialized: false,
@@ -259,11 +260,17 @@ export const createContextSlice: StateCreator<AppState, [], [], ContextSlice> = 
 
       // Fetch active context from main process
       const activeContextId = await api.context.getActive();
+      const previousContextId = get().activeContextId;
 
       set({
+        ...(activeContextId !== previousContextId ? getContextScopedTeamResetState() : {}),
         contextSnapshotsReady: true,
         activeContextId,
       });
+      if (activeContextId !== previousContextId) {
+        void get().fetchTeams();
+        void get().fetchAllTasks();
+      }
 
       // Fetch available contexts
       await get().fetchAvailableContexts();
@@ -317,6 +324,7 @@ export const createContextSlice: StateCreator<AppState, [], [], ContextSlice> = 
       // Step 2: Apply cached snapshot immediately for instant visual feedback
       if (targetSnapshot) {
         set({
+          ...getContextScopedTeamResetState(),
           projects: targetSnapshot.projects,
           projectsLoading: false,
           projectsInitialized: true,
@@ -402,6 +410,8 @@ export const createContextSlice: StateCreator<AppState, [], [], ContextSlice> = 
 
       // Step 4: Fetch notifications in background
       void get().fetchNotifications();
+      void get().fetchTeams();
+      void get().fetchAllTasks();
     } catch (error) {
       console.error('[contextSlice] Failed to switch context:', error);
       // Do NOT leave in broken state
