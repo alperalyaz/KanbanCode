@@ -121,6 +121,12 @@ function deferred<T>(): {
   return { promise, resolve };
 }
 
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 describe('context slice team/task reset', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -374,6 +380,40 @@ describe('context slice team/task reset', () => {
     expect(apiMock.teams.getAllTasks).toHaveBeenCalledTimes(1);
   });
 
+  it('clears project and repository loading guards before direct SSH connect refetches', async () => {
+    const projectScan = deferred<unknown[]>();
+    const repositoryScan = deferred<unknown[]>();
+    apiMock.getProjects.mockReturnValue(projectScan.promise);
+    apiMock.getRepositoryGroups.mockReturnValue(repositoryScan.promise);
+    const store = createTestStore();
+    store.setState({
+      activeContextId: 'local',
+      projectsLoading: true,
+      repositoryGroupsLoading: true,
+    } as never);
+
+    await store.getState().connectSsh({
+      host: 'dev',
+      port: 22,
+      username: 'me',
+      authMethod: 'privateKey',
+      privateKeyPath: '/tmp/key',
+    });
+
+    expect(apiMock.getProjects).toHaveBeenCalledTimes(1);
+    expect(apiMock.getRepositoryGroups).toHaveBeenCalledTimes(1);
+    expect(store.getState().projectsLoading).toBe(true);
+    expect(store.getState().repositoryGroupsLoading).toBe(true);
+
+    projectScan.resolve([]);
+    repositoryScan.resolve([]);
+    await Promise.all([projectScan.promise, repositoryScan.promise]);
+    await flushMicrotasks();
+
+    expect(store.getState().projectsLoading).toBe(false);
+    expect(store.getState().repositoryGroupsLoading).toBe(false);
+  });
+
   it('drops previous-context team and task caches on direct SSH disconnect', async () => {
     const store = createTestStore();
     store.setState({
@@ -418,5 +458,33 @@ describe('context slice team/task reset', () => {
     expect(store.getState().targetContextId).toBeNull();
     expect(apiMock.teams.list).toHaveBeenCalledTimes(1);
     expect(apiMock.teams.getAllTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears project and repository loading guards before direct SSH disconnect refetches', async () => {
+    const projectScan = deferred<unknown[]>();
+    const repositoryScan = deferred<unknown[]>();
+    apiMock.getProjects.mockReturnValue(projectScan.promise);
+    apiMock.getRepositoryGroups.mockReturnValue(repositoryScan.promise);
+    const store = createTestStore();
+    store.setState({
+      activeContextId: 'ssh-dev',
+      projectsLoading: true,
+      repositoryGroupsLoading: true,
+    } as never);
+
+    await store.getState().disconnectSsh();
+
+    expect(apiMock.getProjects).toHaveBeenCalledTimes(1);
+    expect(apiMock.getRepositoryGroups).toHaveBeenCalledTimes(1);
+    expect(store.getState().projectsLoading).toBe(true);
+    expect(store.getState().repositoryGroupsLoading).toBe(true);
+
+    projectScan.resolve([]);
+    repositoryScan.resolve([]);
+    await Promise.all([projectScan.promise, repositoryScan.promise]);
+    await flushMicrotasks();
+
+    expect(store.getState().projectsLoading).toBe(false);
+    expect(store.getState().repositoryGroupsLoading).toBe(false);
   });
 });
