@@ -312,10 +312,25 @@ function spawnRealCli(
 ) {
   const spawnOptions = options ?? {};
   const needsWindowsCommandShell = process.platform === 'win32' && /\.(bat|cmd)$/i.test(command);
-  return spawn(command, [...args], {
-    ...spawnOptions,
-    ...(needsWindowsCommandShell ? { shell: true } : {}),
-  });
+  if (needsWindowsCommandShell) {
+    const commandLine = [command, ...args].map(quoteWindowsCmdArg).join(' ');
+    return spawn(commandLine, {
+      ...spawnOptions,
+      shell: true,
+    });
+  }
+
+  return spawn(command, [...args], spawnOptions);
+}
+
+function quoteWindowsCmdArg(value: string) {
+  if (value.length === 0) {
+    return '""';
+  }
+  if (!/[ \t\r\n"&|<>^()%!]/.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/%/g, '%%').replace(/(["^&|<>])/g, '^$1')}"`;
 }
 
 async function removeTempRoot(dirPath: string): Promise<void> {
