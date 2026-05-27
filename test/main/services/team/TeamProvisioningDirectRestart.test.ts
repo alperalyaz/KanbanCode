@@ -57,9 +57,11 @@ describe('TeamProvisioningDirectRestart', () => {
     const assignments = buildDirectTmuxRestartEnvAssignments(
       {
         CODEX_HOME: '/tmp/codex home',
+        CODEX_CLI_PATH: '/opt/codex/bin/codex',
         CLAUDE_CODE_USE_GEMINI: '1',
         CLAUDE_CODE_ENTRY_PROVIDER: 'gemini',
         CLAUDE_CODE_CODEX_BACKEND: 'codex-native',
+        CLAUDE_CODE_CODEX_FORCED_LOGIN_METHOD: 'chatgpt',
       },
       'codex'
     );
@@ -67,9 +69,11 @@ describe('TeamProvisioningDirectRestart', () => {
     expect(assignments).toContain("CLAUDECODE='1'");
     expect(assignments).toContain("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS='1'");
     expect(assignments).toContain("CODEX_HOME='/tmp/codex home'");
+    expect(assignments).toContain("CODEX_CLI_PATH='/opt/codex/bin/codex'");
     expect(assignments).toContain("CLAUDE_CODE_USE_GEMINI=''");
     expect(assignments).toContain("CLAUDE_CODE_ENTRY_PROVIDER='codex'");
     expect(assignments).toContain("CLAUDE_CODE_CODEX_BACKEND='codex-native'");
+    expect(assignments).toContain("CLAUDE_CODE_CODEX_FORCED_LOGIN_METHOD='chatgpt'");
     expect(assignments).toContain("CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST='1'");
   });
 

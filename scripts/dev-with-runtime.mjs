@@ -523,6 +523,7 @@ async function main() {
 
   const uiEnv = {
     ...process.env,
+    UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE?.trim() || '16',
     CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH: resolvedRuntime.binaryPath,
   };
   delete uiEnv.CLAUDE_CLI_PATH;

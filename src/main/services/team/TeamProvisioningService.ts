@@ -2198,6 +2198,24 @@ function buildAnthropicCrossProviderDirectAuthEnvPatch(
   return envPatch;
 }
 
+const CODEX_CROSS_PROVIDER_SAFE_ENV_KEYS = [
+  'CLAUDE_CODE_CODEX_BACKEND',
+  'CLAUDE_CODE_CODEX_FORCED_LOGIN_METHOD',
+  'CODEX_CLI_PATH',
+  'CODEX_HOME',
+] as const;
+
+function buildCodexCrossProviderSafeEnvPatch(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const envPatch: NodeJS.ProcessEnv = {};
+  for (const key of CODEX_CROSS_PROVIDER_SAFE_ENV_KEYS) {
+    const value = env[key]?.trim();
+    if (value) {
+      envPatch[key] = value;
+    }
+  }
+  return envPatch;
+}
+
 interface TeamRuntimeAuthContext {
   teamName?: string;
   authMaterialId?: string;
@@ -2219,6 +2237,7 @@ interface TeamRuntimeLaunchArgsPlan {
   runtimeTurnSettledHookArgs: string[];
   providerArgs: string[];
   extraArgs: string[];
+  inheritedProviderArgs: string[];
 }
 
 type WorkspaceTrustProviderArgsResolver = (input: {
@@ -4218,6 +4237,7 @@ export class TeamProvisioningService {
     launchIdentity?: ProviderModelLaunchIdentity | null;
     envResolution: ProvisioningEnvResolution;
     extraArgs?: string[];
+    inheritedProviderArgs?: string[];
     includeAnthropicHelper: boolean;
     contextLabel: string;
   }): Promise<TeamRuntimeLaunchArgsPlan> {
@@ -4228,6 +4248,7 @@ export class TeamProvisioningService {
         : null;
     const rawProviderArgs = input.envResolution.providerArgs ?? [];
     const rawExtraArgs = input.extraArgs ?? [];
+    const rawInheritedProviderArgs = input.inheritedProviderArgs ?? [];
 
     if (!helper && resolvedProviderId !== 'anthropic') {
       return {
@@ -4237,6 +4258,7 @@ export class TeamProvisioningService {
           await this.buildRuntimeTurnSettledHookSettingsArgs(resolvedProviderId),
         providerArgs: rawProviderArgs,
         extraArgs: rawExtraArgs,
+        inheritedProviderArgs: rawInheritedProviderArgs,
       };
     }
 
@@ -4246,13 +4268,27 @@ export class TeamProvisioningService {
     );
     const splitProviderArgs = splitSettingsJsonArgs(providerArgsWithoutHelper);
     const splitExtraArgs = splitSettingsJsonArgs(rawExtraArgs);
+    const splitInheritedArgs = splitSettingsJsonArgs(rawInheritedProviderArgs);
+    const shouldCoalesceInheritedSettings = splitInheritedArgs.settingsFragments.length > 0;
     if (
       helper &&
       (hasPathBasedSettingsArgs(splitProviderArgs.passthroughArgs) ||
-        hasPathBasedSettingsArgs(splitExtraArgs.passthroughArgs))
+        hasPathBasedSettingsArgs(splitExtraArgs.passthroughArgs) ||
+        hasPathBasedSettingsArgs(splitInheritedArgs.passthroughArgs))
     ) {
       throw new Error(
         `${input.contextLabel}: app-managed Anthropic API-key helper cannot be combined with path-based --settings. Use inline JSON settings or remove the custom --settings path.`
+      );
+    }
+    if (
+      shouldCoalesceInheritedSettings &&
+      !helper &&
+      (hasPathBasedSettingsArgs(splitProviderArgs.passthroughArgs) ||
+        hasPathBasedSettingsArgs(splitExtraArgs.passthroughArgs) ||
+        hasPathBasedSettingsArgs(splitInheritedArgs.passthroughArgs))
+    ) {
+      throw new Error(
+        `${input.contextLabel}: mixed-provider launch cannot combine app-managed inherited settings with path-based --settings. Use inline JSON settings or remove the custom --settings path.`
       );
     }
 
@@ -4264,6 +4300,7 @@ export class TeamProvisioningService {
         await this.buildRuntimeTurnSettledHookSettingsObject(resolvedProviderId),
         ...splitProviderArgs.settingsFragments,
         ...splitExtraArgs.settingsFragments,
+        ...splitInheritedArgs.settingsFragments,
       ],
       anthropicHelper: helper,
       settingsDirectory: helper ? null : buildRuntimeSettingsTempDirectory(input.teamName),
@@ -4275,6 +4312,7 @@ export class TeamProvisioningService {
       runtimeTurnSettledHookArgs: [],
       providerArgs: splitProviderArgs.passthroughArgs,
       extraArgs: splitExtraArgs.passthroughArgs,
+      inheritedProviderArgs: splitInheritedArgs.passthroughArgs,
     };
   }
 
@@ -20181,6 +20219,7 @@ export class TeamProvisioningService {
         launchIdentity,
         envResolution: { ...provisioningEnv, providerArgs: providerArgsForLaunch },
         extraArgs: extraCliArgs,
+        inheritedProviderArgs: crossProviderMemberArgsForLaunch.args,
         includeAnthropicHelper: resolvedProviderId === 'anthropic',
         contextLabel: 'Team create launch',
       });
@@ -20216,7 +20255,7 @@ export class TeamProvisioningService {
         ...runtimeArgsPlan.extraArgs,
         ...runtimeArgsPlan.providerArgs,
         ...runtimeArgsPlan.settingsArgs,
-        ...crossProviderMemberArgsForLaunch.args,
+        ...runtimeArgsPlan.inheritedProviderArgs,
       ]);
       const runtimeWarning = buildRuntimeLaunchWarning(request, shellEnv, {
         geminiRuntimeAuth,
@@ -21509,6 +21548,7 @@ export class TeamProvisioningService {
         launchIdentity,
         envResolution: { ...provisioningEnv, providerArgs: providerArgsForLaunch },
         extraArgs: extraCliArgs,
+        inheritedProviderArgs: crossProviderMemberArgsForLaunch.args,
         includeAnthropicHelper: resolvedProviderId === 'anthropic',
         contextLabel: 'Team launch',
       });
@@ -21533,7 +21573,7 @@ export class TeamProvisioningService {
       // Without this, a codex teammate spawned from an anthropic lead has no way to learn
       // about the required forced_login_method (chatgpt/api) and fails to start.
       emitProvisioningCheckpoint(run, 'Resolving cross-provider member launch args');
-      launchArgs.push(...crossProviderMemberArgsForLaunch.args);
+      launchArgs.push(...runtimeArgsPlan.inheritedProviderArgs);
       const finalLaunchArgs = mergeJsonSettingsArgs(launchArgs);
       const runtimeWarning = buildRuntimeLaunchWarning(request, shellEnv, {
         geminiRuntimeAuth,
@@ -35178,6 +35218,9 @@ export class TeamProvisioningService {
       args.push(...(await this.buildRuntimeTurnSettledHookSettingsArgs(providerId)));
       const providerArgs = env.providerArgs ?? [];
       providerArgsByProvider.set(providerId, providerArgs);
+      if (providerId === 'codex') {
+        Object.assign(envPatch, buildCodexCrossProviderSafeEnvPatch(env.env));
+      }
       if (env.anthropicApiKeyHelper) {
         usesAnthropicApiKeyHelper = true;
         Object.assign(envPatch, env.anthropicApiKeyHelper.envPatch);
