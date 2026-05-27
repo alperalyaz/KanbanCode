@@ -1635,13 +1635,7 @@ export const ProviderRuntimeSettingsDialog = ({
                 onProviderChanged={() => onRefreshProvider?.('opencode')}
               />
             ) : (
-              <div
-                className="space-y-3 rounded-lg border p-3"
-                style={{
-                  borderColor: 'var(--color-border-subtle)',
-                  backgroundColor: 'rgba(255, 255, 255, 0.025)',
-                }}
-              >
+              <div className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
