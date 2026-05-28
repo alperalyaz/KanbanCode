@@ -70,6 +70,17 @@ describe('openCodeWindowsNodeModulesJunction', () => {
       expect(extractProfileIdFromSymlinkError(message)).toBe('abc123def456');
     });
 
+    it('extracts the profile hash from JSON-escaped Windows paths', () => {
+      const runtimeMessage =
+        "EPERM: symlink 'C:\\Users\\test\\AppData\\Local\\claude-multimodel-nodejs\\Cache\\opencode\\shared-cache\\config-node_modules' -> 'C:\\Users\\test\\AppData\\Local\\claude-multimodel-nodejs\\Data\\opencode\\profiles\\abc123\\config\\opencode\\node_modules'";
+      const message = JSON.stringify({
+        schemaVersion: 1,
+        runtimeId: 'opencode',
+        error: { message: runtimeMessage },
+      });
+      expect(extractProfileIdFromSymlinkError(message)).toBe('abc123');
+    });
+
     it('returns null when no profile path pattern is found', () => {
       const message = 'EPERM: some other error without a profile path';
       expect(extractProfileIdFromSymlinkError(message)).toBeNull();
@@ -93,6 +104,15 @@ describe('openCodeWindowsNodeModulesJunction', () => {
       );
     });
 
+    it('normalizes JSON-escaped Windows separators in the source path', () => {
+      const runtimeMessage =
+        "EPERM: operation not permitted, symlink 'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Cache\\opencode\\shared-cache\\config-node_modules' -> 'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Data\\opencode\\profiles\\e8e2eadb00beea6c\\config\\opencode\\node_modules'";
+      const message = JSON.stringify({ error: { message: runtimeMessage } });
+      expect(extractSymlinkSourcePath(message)).toBe(
+        'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Cache\\opencode\\shared-cache\\config-node_modules'
+      );
+    });
+
     it('returns null when no source path is found', () => {
       const message = 'EPERM: some error without paths';
       expect(extractSymlinkSourcePath(message)).toBeNull();
@@ -103,6 +123,15 @@ describe('openCodeWindowsNodeModulesJunction', () => {
     it('extracts the target path from a Windows error message', () => {
       const message =
         "EPERM: operation not permitted, symlink 'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Cache\\opencode\\shared-cache\\config-node_modules' -> 'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Data\\opencode\\profiles\\e8e2eadb00beea6c\\config\\opencode\\node_modules'";
+      expect(extractSymlinkTargetPath(message)).toBe(
+        'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Data\\opencode\\profiles\\e8e2eadb00beea6c\\config\\opencode\\node_modules'
+      );
+    });
+
+    it('normalizes JSON-escaped Windows separators in the target path', () => {
+      const runtimeMessage =
+        "EPERM: operation not permitted, symlink 'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Cache\\opencode\\shared-cache\\config-node_modules' -> 'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Data\\opencode\\profiles\\e8e2eadb00beea6c\\config\\opencode\\node_modules'";
+      const message = JSON.stringify({ error: { message: runtimeMessage } });
       expect(extractSymlinkTargetPath(message)).toBe(
         'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Data\\opencode\\profiles\\e8e2eadb00beea6c\\config\\opencode\\node_modules'
       );
@@ -227,6 +256,79 @@ describe('openCodeWindowsNodeModulesJunction', () => {
       statSyncSpy.mockRestore();
       mkdirSyncSpy.mockRestore();
       symlinkSyncSpy.mockRestore();
+    });
+
+    it('uses validated error-derived junction paths instead of the local process env', () => {
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      const originalEnv = process.env.LOCALAPPDATA;
+      process.env.LOCALAPPDATA = 'C:\\fallback\\local';
+      const source =
+        'D:\\runtime-root\\claude-multimodel-nodejs\\Cache\\opencode\\shared-cache\\config-node_modules';
+      const target =
+        'D:\\runtime-root\\claude-multimodel-nodejs\\Data\\opencode\\profiles\\abc123\\config\\opencode\\node_modules';
+      const message = JSON.stringify({
+        error: {
+          message: `EPERM: operation not permitted, symlink '${source}' -> '${target}'`,
+        },
+      });
+      const statSyncSpy = vi.spyOn(fs, 'statSync').mockImplementation(
+        (...args: Parameters<typeof fs.statSync>) => {
+          if (String(args[0]) === target) {
+            const err = new Error('ENOENT') as NodeJS.ErrnoException;
+            err.code = 'ENOENT';
+            throw err;
+          }
+          return {} as fs.Stats;
+        }
+      );
+      const mkdirSyncSpy = vi.spyOn(fs, 'mkdirSync').mockImplementation(() => '');
+      const symlinkSyncSpy = vi.spyOn(fs, 'symlinkSync').mockImplementation(() => undefined);
+      try {
+        const result = ensureOpenCodeProfileNodeModulesJunction('abc123', message);
+        expect(result).toBe(true);
+        expect(symlinkSyncSpy).toHaveBeenCalledWith(source, target, 'junction');
+      } finally {
+        process.env.LOCALAPPDATA = originalEnv;
+        statSyncSpy.mockRestore();
+        mkdirSyncSpy.mockRestore();
+        symlinkSyncSpy.mockRestore();
+      }
+    });
+
+    it('falls back to computed paths when error-derived paths fail validation', () => {
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      const originalEnv = process.env.LOCALAPPDATA;
+      process.env.LOCALAPPDATA = 'C:\\Users\\test\\AppData\\Local';
+      const computedSource = getSharedCacheNodeModulesPath();
+      const computedTarget = getProfileNodeModulesPath('abc123');
+      const message =
+        "EPERM: operation not permitted, symlink 'C:\\Users\\test\\AppData\\Local\\claude-multimodel-nodejs\\Cache\\opencode\\shared-cache\\config-node_modules' -> 'C:\\Temp\\outside\\node_modules'";
+      const statSyncSpy = vi.spyOn(fs, 'statSync').mockImplementation(
+        (...args: Parameters<typeof fs.statSync>) => {
+          if (String(args[0]) === computedTarget) {
+            const err = new Error('ENOENT') as NodeJS.ErrnoException;
+            err.code = 'ENOENT';
+            throw err;
+          }
+          return {} as fs.Stats;
+        }
+      );
+      const mkdirSyncSpy = vi.spyOn(fs, 'mkdirSync').mockImplementation(() => '');
+      const symlinkSyncSpy = vi.spyOn(fs, 'symlinkSync').mockImplementation(() => undefined);
+      try {
+        const result = ensureOpenCodeProfileNodeModulesJunction('abc123', message);
+        expect(result).toBe(true);
+        expect(symlinkSyncSpy).toHaveBeenCalledWith(
+          computedSource,
+          computedTarget,
+          'junction'
+        );
+      } finally {
+        process.env.LOCALAPPDATA = originalEnv;
+        statSyncSpy.mockRestore();
+        mkdirSyncSpy.mockRestore();
+        symlinkSyncSpy.mockRestore();
+      }
     });
 
     it('returns false when junction creation fails', () => {

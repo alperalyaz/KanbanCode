@@ -83,11 +83,10 @@ vi.mock(
 );
 
 import { AgentTeamsRuntimeProviderManagementCliClient } from '../../../../src/features/runtime-provider-management/main/infrastructure/AgentTeamsRuntimeProviderManagementCliClient';
-
 import {
-  isOpenCodeNodeModulesSymlinkError as isOpenCodeNodeModulesSymlinkErrorMock,
-  extractProfileIdFromSymlinkError as extractProfileIdFromSymlinkErrorMock,
   ensureOpenCodeProfileNodeModulesJunction as ensureOpenCodeProfileNodeModulesJunctionMock,
+  extractProfileIdFromSymlinkError as extractProfileIdFromSymlinkErrorMock,
+  isOpenCodeNodeModulesSymlinkError as isOpenCodeNodeModulesSymlinkErrorMock,
 } from '../../../../src/features/runtime-provider-management/main/infrastructure/openCodeWindowsNodeModulesJunction';
 
 describe('AgentTeamsRuntimeProviderManagementCliClient', () => {
@@ -1000,6 +999,45 @@ describe('AgentTeamsRuntimeProviderManagementCliClient', () => {
 
       expect(ensureOpenCodeProfileNodeModulesJunctionMock).toHaveBeenCalledWith('abc123', expect.any(String));
       expect(execCliMock).toHaveBeenCalledTimes(2);
+      expect(response.error?.message).toBe(runtimeMessage);
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+      vi.mocked(isOpenCodeNodeModulesSymlinkErrorMock).mockRestore();
+      vi.mocked(extractProfileIdFromSymlinkErrorMock).mockRestore();
+      vi.mocked(ensureOpenCodeProfileNodeModulesJunctionMock).mockRestore();
+    }
+  });
+
+  it('does not retry when junction pre-seed fails in loadView', async () => {
+    const runtimeMessage = [
+      'Runtime provider management command failed unexpectedly:',
+      "EPERM: operation not permitted, symlink 'C:\\Users\\test\\AppData\\Local\\claude-multimodel-nodejs\\Cache\\opencode\\shared-cache\\config-node_modules'",
+      "-> 'C:\\Users\\test\\AppData\\Local\\claude-multimodel-nodejs\\Data\\opencode\\profiles\\abc123\\config\\opencode\\node_modules'",
+    ].join(' ');
+    const error = new Error('Command failed: /repo/cli-dev runtime providers view');
+    Object.assign(error, {
+      stdout: JSON.stringify({
+        schemaVersion: 1,
+        runtimeId: 'opencode',
+        error: { code: 'runtime-unhealthy', message: runtimeMessage, recoverable: true },
+      }),
+      stderr: '',
+    });
+
+    execCliMock.mockRejectedValue(error);
+
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    (isOpenCodeNodeModulesSymlinkErrorMock as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (extractProfileIdFromSymlinkErrorMock as ReturnType<typeof vi.fn>).mockReturnValue('abc123');
+    (ensureOpenCodeProfileNodeModulesJunctionMock as ReturnType<typeof vi.fn>).mockReturnValue(false);
+
+    try {
+      const client = new AgentTeamsRuntimeProviderManagementCliClient();
+      const response = await client.loadView({ runtimeId: 'opencode' });
+
+      expect(ensureOpenCodeProfileNodeModulesJunctionMock).toHaveBeenCalledWith('abc123', expect.any(String));
+      expect(execCliMock).toHaveBeenCalledTimes(1);
       expect(response.error?.message).toBe(runtimeMessage);
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform });

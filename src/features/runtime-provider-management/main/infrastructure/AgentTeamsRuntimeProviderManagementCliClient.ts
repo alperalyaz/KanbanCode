@@ -1092,20 +1092,22 @@ export class AgentTeamsRuntimeProviderManagementCliClient implements RuntimeProv
       if (process.platform === 'win32' && isOpenCodeNodeModulesSymlinkError(failure.message)) {
         const profileId = extractProfileIdFromSymlinkError(failure.message);
         if (profileId) {
-          ensureOpenCodeProfileNodeModulesJunction(profileId, failure.message);
-          try {
-            const retryResult = await execCli(
-              binaryPath,
-              args,
-              runtimeProviderCommandOptions({ env, timeout: COMMAND_TIMEOUT_MS }, projectPath)
-            );
-            return extractJsonObjectWithContext<RuntimeProviderManagementViewResponse>(
-              retryResult.stdout,
-              context,
-              retryResult.stderr
-            );
-          } catch {
-            // Retry also failed; fall through to return the original error.
+          const junctionReady = ensureOpenCodeProfileNodeModulesJunction(profileId, failure.message);
+          if (junctionReady) {
+            try {
+              const retryResult = await execCli(
+                binaryPath,
+                args,
+                runtimeProviderCommandOptions({ env, timeout: COMMAND_TIMEOUT_MS }, projectPath)
+              );
+              return extractJsonObjectWithContext<RuntimeProviderManagementViewResponse>(
+                retryResult.stdout,
+                context,
+                retryResult.stderr
+              );
+            } catch {
+              // Retry also failed; fall through to return the original error.
+            }
           }
         }
       }
@@ -1170,20 +1172,22 @@ export class AgentTeamsRuntimeProviderManagementCliClient implements RuntimeProv
       if (process.platform === 'win32' && isOpenCodeNodeModulesSymlinkError(failure.message)) {
         const profileId = extractProfileIdFromSymlinkError(failure.message);
         if (profileId) {
-          ensureOpenCodeProfileNodeModulesJunction(profileId, failure.message);
-          try {
-            const retryResult = await execCli(
-              binaryPath,
-              args,
-              runtimeProviderCommandOptions({ env, timeout: COMMAND_TIMEOUT_MS }, projectPath)
-            );
-            return extractJsonObjectWithContext<RuntimeProviderManagementDirectoryResponse>(
-              retryResult.stdout,
-              context,
-              retryResult.stderr
-            );
-          } catch {
-            // Retry also failed; fall through to return the original error.
+          const junctionReady = ensureOpenCodeProfileNodeModulesJunction(profileId, failure.message);
+          if (junctionReady) {
+            try {
+              const retryResult = await execCli(
+                binaryPath,
+                args,
+                runtimeProviderCommandOptions({ env, timeout: COMMAND_TIMEOUT_MS }, projectPath)
+              );
+              return extractJsonObjectWithContext<RuntimeProviderManagementDirectoryResponse>(
+                retryResult.stdout,
+                context,
+                retryResult.stderr
+              );
+            } catch {
+              // Retry also failed; fall through to return the original error.
+            }
           }
         }
       }
