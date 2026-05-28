@@ -54,13 +54,45 @@ export function extractProfileIdFromSymlinkError(message: string): string | null
   return match ? match[1] : null;
 }
 
-export function ensureOpenCodeProfileNodeModulesJunction(profileId: string): boolean {
+const SYMLINK_SOURCE_PATTERN = /symlink\s+'([^']+)'/i;
+const SYMLINK_TARGET_PATTERN = /->\s+'([^']+)'/i;
+
+export function extractSymlinkSourcePath(message: string): string | null {
+  const match = SYMLINK_SOURCE_PATTERN.exec(message);
+  return match ? match[1] : null;
+}
+
+export function extractSymlinkTargetPath(message: string): string | null {
+  const match = SYMLINK_TARGET_PATTERN.exec(message);
+  return match ? match[1] : null;
+}
+
+export function ensureOpenCodeProfileNodeModulesJunction(
+  profileId: string,
+  errorMessage?: string
+): boolean {
   if (process.platform !== 'win32') {
     return false;
   }
 
-  const source = getSharedCacheNodeModulesPath();
-  const target = getProfileNodeModulesPath(profileId);
+  let source: string;
+  let target: string;
+
+  if (errorMessage) {
+    const extractedSource = extractSymlinkSourcePath(errorMessage);
+    const extractedTarget = extractSymlinkTargetPath(errorMessage);
+
+    if (extractedTarget) {
+      target = extractedTarget;
+      source = extractedSource ?? getSharedCacheNodeModulesPath();
+    } else {
+      target = getProfileNodeModulesPath(profileId);
+      source = getSharedCacheNodeModulesPath();
+    }
+  } else {
+    target = getProfileNodeModulesPath(profileId);
+    source = getSharedCacheNodeModulesPath();
+  }
 
   try {
     const existingStat = fs.statSync(target, { throwIfNoEntry: false });
