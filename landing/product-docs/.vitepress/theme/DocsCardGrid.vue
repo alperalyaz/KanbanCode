@@ -20,10 +20,12 @@ const cards = computed(() => {
           { icon: "?", title: "FAQ", desc: "Короткие ответы на частые вопросы.", link: "/ru/reference/faq" }
         ]
       : [
-          { icon: "01", title: "Быстрый старт", desc: "Поставить приложение и создать первую команду.", link: "/ru/guide/quickstart" },
-          { icon: "02", title: "Установка", desc: "Платформы, релизы и запуск из исходников.", link: "/ru/guide/installation" },
-          { icon: "03", title: "Создание команды", desc: "Роли, lead prompt и границы работы.", link: "/ru/guide/create-team" },
-          { icon: "04", title: "Код-ревью", desc: "Проверка изменений по задачам и hunk-level decisions.", link: "/ru/guide/code-review" }
+          { icon: "01", title: "Путь новичка", desc: "Понять весь первый запуск от проекта до approval.", link: "/ru/guide/beginner-workflow" },
+          { icon: "02", title: "Быстрый старт", desc: "Поставить приложение и проверить базовый запуск.", link: "/ru/guide/quickstart" },
+          { icon: "03", title: "Первая команда", desc: "Lead, builder, reviewer, роли, модели и Worktree.", link: "/ru/guide/create-first-team" },
+          { icon: "04", title: "Запуск работы", desc: "Brief для lead, task board, comments и monitoring.", link: "/ru/guide/run-and-monitor-work" },
+          { icon: "05", title: "Review и approval", desc: "Task detail, logs, diff и hunk-level decisions.", link: "/ru/guide/review-and-approve" },
+          { icon: "06", title: "Рантаймы", desc: "Claude, Codex, OpenCode и multimodel setup.", link: "/ru/guide/runtime-setup" }
         ];
   }
 
@@ -36,10 +38,12 @@ const cards = computed(() => {
         { icon: "?", title: "FAQ", desc: "Short answers to common questions.", link: "/reference/faq" }
       ]
     : [
-        { icon: "01", title: "Quickstart", desc: "Install the app and create your first team.", link: "/guide/quickstart" },
-        { icon: "02", title: "Installation", desc: "Platforms, releases, and running from source.", link: "/guide/installation" },
-        { icon: "03", title: "Create a team", desc: "Roles, lead prompt, and task boundaries.", link: "/guide/create-team" },
-        { icon: "04", title: "Code review", desc: "Review task changes with hunk-level decisions.", link: "/guide/code-review" }
+        { icon: "01", title: "Beginner workflow", desc: "Understand the first run from project to approval.", link: "/guide/beginner-workflow" },
+        { icon: "02", title: "Quickstart", desc: "Install the app and validate the base launch.", link: "/guide/quickstart" },
+        { icon: "03", title: "First team", desc: "Lead, builder, reviewer, roles, models, and Worktree.", link: "/guide/create-first-team" },
+        { icon: "04", title: "Run work", desc: "Lead brief, task board, comments, and monitoring.", link: "/guide/run-and-monitor-work" },
+        { icon: "05", title: "Review and approve", desc: "Task detail, logs, diff, and hunk-level decisions.", link: "/guide/review-and-approve" },
+        { icon: "06", title: "Runtime setup", desc: "Claude, Codex, OpenCode, and multimodel setup.", link: "/guide/runtime-setup" }
       ];
 });
 </script>
