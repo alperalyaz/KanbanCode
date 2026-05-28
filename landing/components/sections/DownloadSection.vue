@@ -974,9 +974,13 @@ const linuxRobotBubble = computed(() => locale.value === 'ru' ? 'Готов на
   }
 
   .download-section__card {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr);
+    align-items: center;
     padding: 20px 22px;
     gap: 16px;
     border-radius: 16px;
+    text-align: left;
   }
 
   .download-section__card-robot-seat {
@@ -989,13 +993,28 @@ const linuxRobotBubble = computed(() => locale.value === 'ru' ? 'Готов на
     border-radius: 14px;
   }
 
+  .download-section__card-info {
+    min-width: 0;
+  }
+
   .download-section__card-label {
     font-size: 1.05rem;
   }
 
   .download-section__btn {
-    padding: 8px 20px;
+    grid-column: 1 / -1;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    padding: 9px 18px;
     font-size: 0.85rem;
+    box-sizing: border-box;
+  }
+
+  .download-section__card-indicator {
+    grid-column: 1 / -1;
+    justify-content: center;
+    margin-top: -4px;
   }
 }
 </style>

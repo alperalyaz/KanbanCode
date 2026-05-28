@@ -1943,8 +1943,12 @@
 }
 
 @media (max-width: 767px) {
+  #hero.cyber-hero {
+    padding-top: 64px;
+  }
+
   .cyber-hero {
-    padding: 84px 0 36px;
+    padding: 64px 0 8px;
   }
 
   .cyber-hero__background {
@@ -1962,19 +1966,21 @@
   }
 
   .cyber-hero__container {
-    width: min(100% - 32px, 680px);
+    width: min(100% - 24px, 680px);
+    max-width: min(100% - 24px, 680px) !important;
+    padding-inline: 0 !important;
   }
 
   .cyber-hero__layout {
     min-width: 0;
-    gap: 0;
-    overflow: hidden;
+    gap: 8px;
+    overflow: visible;
   }
 
   .cyber-hero__copy {
     width: 100%;
     max-width: 100%;
-    padding-bottom: 0;
+    padding: 8px 0 0;
   }
 
   .cyber-hero__brand-lockup {
@@ -1988,28 +1994,40 @@
   }
 
   .cyber-hero__title {
-    gap: 0.12em;
-    font-size: clamp(2rem, 9.4vw, 3.1rem);
+    flex-wrap: wrap;
+    gap: 0.06em 0.12em;
+    margin-bottom: 16px;
+    max-width: 9.4em;
+    font-size: 2.35rem;
+    line-height: 0.96;
+    white-space: normal;
   }
 
   .cyber-hero__slogan {
     display: flex;
     width: 100%;
-    padding: 10px 14px;
-    letter-spacing: 0.04em;
+    margin-bottom: 16px;
+    padding: 9px 13px;
+    flex-wrap: wrap;
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    overflow-wrap: anywhere;
   }
 
   .cyber-hero__description {
-    font-size: 1rem;
-    line-height: 1.62;
+    margin-bottom: 18px;
+    max-width: 100%;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    overflow-wrap: break-word;
   }
 
   .cyber-hero__providers {
-    margin-bottom: 22px;
+    margin-bottom: 18px;
   }
 
   .cyber-hero__provider-list {
-    gap: 12px 18px;
+    gap: 10px 14px;
   }
 
   .cyber-hero__provider {
@@ -2033,31 +2051,49 @@
   .cyber-hero__actions {
     display: grid;
     grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
   }
 
   .cyber-action-button.v-btn {
     width: 100%;
-    min-height: 72px !important;
+    min-height: 60px !important;
     min-width: 0 !important;
-    padding-inline: 20px !important;
+    padding-inline: 16px !important;
+  }
+
+  .cyber-action-button.v-btn .v-btn__content {
+    gap: 12px;
+  }
+
+  .cyber-action-button__icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .cyber-action-button__label {
+    font-size: 0.92rem;
+  }
+
+  .cyber-action-button__subtitle {
+    font-size: 0.62rem;
   }
 
   .cyber-hero__terminal-note {
-    display: inline-flex;
-    font-size: 0.68rem;
+    display: none;
   }
 
   .cyber-scene {
     min-height: auto;
     aspect-ratio: auto;
-    padding: 96px 0 14px;
+    padding: 86px 0 2px;
     transform: none;
   }
 
   .cyber-hero__scene {
     width: 100%;
     max-width: 100%;
-    margin-top: 8px;
+    margin-top: 14px;
     overflow: hidden;
   }
 
@@ -2070,17 +2106,20 @@
     position: relative;
     left: auto;
     top: auto;
-    width: 100%;
+    width: min(100%, 320px);
+    margin-inline: auto;
     transform: none;
   }
 
   .cyber-scene__robots {
     inset: 0 0 auto;
-    height: 96px;
+    z-index: 7;
+    height: 76px;
     display: flex;
     align-items: flex-end;
     justify-content: center;
-    gap: clamp(18px, 6vw, 34px);
+    gap: 18px;
+    overflow: visible;
   }
 
   .cyber-agent {
@@ -2089,7 +2128,7 @@
     display: none;
     left: auto;
     top: auto;
-    width: clamp(58px, 18vw, 74px);
+    width: 54px;
     transform: none;
   }
 
@@ -2099,7 +2138,7 @@
 
   .cyber-agent[data-agent="planner"] {
     z-index: auto;
-    width: clamp(58px, 18vw, 74px);
+    width: 54px;
     transform: none;
   }
 
@@ -2145,93 +2184,18 @@
     display: none;
   }
 
-  .cyber-feature-rail {
-    grid-template-columns: 1fr;
-    gap: 20px;
-    padding: 0 4px;
-  }
-
   .cyber-feature-rail-shell {
-    margin-top: clamp(104px, 24vw, 128px);
-  }
-
-  .cyber-feature-rail__collaboration {
-    left: 31%;
-    bottom: calc(100% + 8px);
-    width: clamp(96px, 30vw, 124px);
-  }
-
-  .cyber-feature-rail__reviewer {
-    --reviewer-robot-width: clamp(58px, 18vw, 72px);
-
-    right: clamp(6px, 3vw, 16px);
-    bottom: calc(100% + 8px);
-    gap: 0;
-  }
-
-  .cyber-feature-rail__reviewer-card,
-  .cyber-feature-rail__reviewer-bubble {
     display: none;
   }
+}
 
-  .cyber-feature-rail__robot {
-    top: 4px;
+@media (max-width: 360px) {
+  .cyber-hero__title {
+    font-size: 2.1rem;
   }
 
-  .cyber-feature-rail__item {
-    grid-template-columns: 48px 44px minmax(0, 1fr);
-    grid-template-rows: auto;
-    align-items: center;
-    justify-items: start;
-    gap: 10px;
-    padding: 0;
-    text-align: left;
-  }
-
-  .cyber-feature-rail__icon {
-    width: 44px;
-    height: 44px;
-  }
-
-  .cyber-feature-rail__icon::before,
-  .cyber-feature-rail__icon::after {
-    width: 12px;
-    height: 12px;
-  }
-
-  .cyber-feature-rail__icon .v-icon {
-    font-size: 26px !important;
-  }
-
-  .cyber-feature-rail__node {
-    width: 40px;
-    height: 40px;
-    font-size: 0.8rem;
-  }
-
-  .cyber-feature-rail__node::before {
-    display: none;
-  }
-
-  .cyber-feature-rail__copy {
-    max-width: none;
-    padding: 8px 10px 9px;
-  }
-
-  .cyber-feature-rail__copy::before {
-    inset: 0 -6px;
-    border-radius: 14px;
-    backdrop-filter: blur(9px) saturate(1.06);
-  }
-
-  .cyber-feature-rail__title {
-    margin-bottom: 5px;
-    font-size: 0.92rem;
-  }
-
-  .cyber-feature-rail__text {
-    font-size: 0.78rem;
-    line-height: 1.42;
+  .cyber-hero__provider-list {
+    gap: 9px 12px;
   }
 }
 
