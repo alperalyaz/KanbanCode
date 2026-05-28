@@ -157,13 +157,17 @@ function sanitizeRuntimeProviderError(error: unknown): RuntimeProviderManagement
       ? (rawCode as RuntimeProviderManagementErrorDto['code'])
       : 'runtime-unhealthy';
   const diagnostics = sanitizeRuntimeProviderDiagnostics(error.diagnostics);
+  const message =
+    sanitizeNullableRuntimeProviderText(error.message) ??
+    'Runtime provider management command failed';
   return {
     code,
-    message:
-      sanitizeNullableRuntimeProviderText(error.message) ??
-      'Runtime provider management command failed',
+    message,
     recoverable: typeof error.recoverable === 'boolean' ? error.recoverable : true,
-    diagnostics: withRuntimeProviderErrorCode(code, diagnostics),
+    diagnostics: withRuntimeProviderErrorCode(
+      code,
+      diagnostics ?? buildOpenCodeProfileNodeModulesLinkDiagnostics(message)
+    ),
   };
 }
 
@@ -238,7 +242,7 @@ function buildOpenCodeProfileNodeModulesLinkDiagnostics(
 
   const summary = 'OpenCode managed profile node_modules link was blocked.';
   const likelyCause =
-    'Windows denied creating the managed OpenCode profile node_modules link. The runtime does not yet fall back to a junction or local profile directory on Windows — this is a known limitation.';
+    'Windows denied creating the managed OpenCode profile node_modules link. The app attempted automatic junction recovery when possible, but the link is still unavailable.';
   return {
     summary,
     likelyCause,
@@ -249,7 +253,7 @@ function buildOpenCodeProfileNodeModulesLinkDiagnostics(
     stderrPreview: message,
     stdoutPreview: null,
     hints: [
-      'The next runtime update will include automatic junction fallback for Windows.',
+      'The app attempts automatic junction fallback for this Windows link failure before showing this error.',
       'As a temporary workaround, enable Windows Developer Mode or run Agent Teams AI as Administrator.',
       'After enabling Developer Mode, refresh the OpenCode provider catalog.',
     ],
