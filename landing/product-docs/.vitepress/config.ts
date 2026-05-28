@@ -40,6 +40,7 @@ const rootGuide: DefaultTheme.SidebarItem[] = [
     text: "Start",
     items: [
       { text: "Installation", link: "/guide/installation" },
+      { text: "Beginner workflow", link: "/guide/beginner-workflow" },
       { text: "Quickstart", link: "/guide/quickstart" },
       { text: "Runtime setup", link: "/guide/runtime-setup" }
     ]
@@ -47,7 +48,10 @@ const rootGuide: DefaultTheme.SidebarItem[] = [
   {
     text: "Guide",
     items: [
-      { text: "Create a team", link: "/guide/create-team" },
+      { text: "Create your first team", link: "/guide/create-first-team" },
+      { text: "Run and monitor work", link: "/guide/run-and-monitor-work" },
+      { text: "Review and approve", link: "/guide/review-and-approve" },
+      { text: "Team configuration", link: "/guide/create-team" },
       { text: "Agent workflow", link: "/guide/agent-workflow" },
       { text: "Code review", link: "/guide/code-review" },
       { text: "MCP integration", link: "/guide/mcp-integration" },
@@ -83,6 +87,7 @@ const ruGuide: DefaultTheme.SidebarItem[] = [
     text: "Старт",
     items: [
       { text: "Установка", link: "/ru/guide/installation" },
+      { text: "Путь новичка", link: "/ru/guide/beginner-workflow" },
       { text: "Быстрый старт", link: "/ru/guide/quickstart" },
       { text: "Настройка рантайма", link: "/ru/guide/runtime-setup" }
     ]
@@ -90,7 +95,10 @@ const ruGuide: DefaultTheme.SidebarItem[] = [
   {
     text: "Руководство",
     items: [
-      { text: "Создание команды", link: "/ru/guide/create-team" },
+      { text: "Создать первую команду", link: "/ru/guide/create-first-team" },
+      { text: "Запуск и мониторинг", link: "/ru/guide/run-and-monitor-work" },
+      { text: "Проверка и approval", link: "/ru/guide/review-and-approve" },
+      { text: "Настройка команды", link: "/ru/guide/create-team" },
       { text: "Работа агентов", link: "/ru/guide/agent-workflow" },
       { text: "Код-ревью", link: "/ru/guide/code-review" },
       { text: "Интеграция MCP", link: "/ru/guide/mcp-integration" },
@@ -122,7 +130,7 @@ const ruGuide: DefaultTheme.SidebarItem[] = [
 ];
 
 const rootNav: DefaultTheme.NavItem[] = [
-  { text: "Guide", link: "/guide/quickstart", activeMatch: "^/guide/(?!troubleshooting(?:/|$))" },
+  { text: "Guide", link: "/guide/beginner-workflow", activeMatch: "^/guide/(?!troubleshooting(?:/|$))" },
   { text: "Developers", link: "/developers/", activeMatch: "^/developers/" },
   { text: "Reference", link: "/reference/concepts", activeMatch: "^/reference/" },
   {
@@ -136,7 +144,7 @@ const rootNav: DefaultTheme.NavItem[] = [
 const ruNav: DefaultTheme.NavItem[] = [
   {
     text: "Руководство",
-    link: "/ru/guide/quickstart",
+    link: "/ru/guide/beginner-workflow",
     activeMatch: "^/ru/guide/(?!troubleshooting(?:/|$))"
   },
   { text: "Разработчикам", link: "/ru/developers/", activeMatch: "^/ru/developers/" },
