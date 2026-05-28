@@ -811,6 +811,29 @@ const navItems = computed(() => [
   }
 }
 
+@media (max-width: 360px) {
+  .app-header__inner {
+    width: min(100% - 24px, 680px);
+  }
+
+  .app-header__brand-frame {
+    padding-left: 10px;
+    padding-right: 34px;
+  }
+
+  .app-header__brand-frame :deep(.app-logo) {
+    gap: 8px;
+  }
+
+  .app-header__brand-frame :deep(.app-logo__text) {
+    font-size: 10px;
+  }
+
+  .app-header__mobile-actions {
+    margin-left: 8px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .app-header__hud-energy path {
     animation: none;
