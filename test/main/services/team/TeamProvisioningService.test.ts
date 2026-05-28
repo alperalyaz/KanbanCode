@@ -20579,6 +20579,105 @@ describe('TeamProvisioningService', () => {
     });
   });
 
+  it('heals native runtime proof that predates delayed app acceptance but follows bootstrap boundary', async () => {
+    allowConsoleLogs();
+    const teamName = 'zz-unit-native-proof-delayed-app-acceptance-heals';
+    const leadSessionId = 'lead-session';
+    const projectPath = '/Users/test/proj';
+    const bootstrapExpectedAfter = '2026-05-28T14:32:47.928Z';
+    const proofAt = '2026-05-28T14:32:54.123Z';
+    const appAcceptedAt = '2026-05-28T14:33:04.126Z';
+    const cleanupAt = '2026-05-28T14:39:22.768Z';
+    const proofToken = 'proof-token-tom-native';
+    const bootstrapRunId = 'run-native-delayed-acceptance';
+    const contextHash = 'c'.repeat(64);
+    const briefingHash = 'd'.repeat(64);
+    const runtimePid = 48_518;
+    const runtimeEventsPath = path.join(tempTeamsBase, teamName, 'runtime', 'tom.runtime.jsonl');
+    const processTableReason =
+      'runtime pid could not be verified because process table is unavailable';
+
+    writeLaunchConfig(teamName, projectPath, leadSessionId, ['tom']);
+    const configPath = path.join(tempTeamsBase, teamName, 'config.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
+      members: Array<Record<string, unknown>>;
+    };
+    config.members = config.members.map((member) =>
+      member.name === 'tom'
+        ? {
+            ...member,
+            agentId: `tom@${teamName}`,
+            backendType: 'process',
+            tmuxPaneId: `process:${runtimePid}`,
+            runtimePid,
+            bootstrapExpectedAfter,
+            bootstrapProofToken: proofToken,
+            bootstrapRunId,
+            bootstrapProofMode: 'native_app_managed_context',
+            bootstrapContextHash: contextHash,
+            bootstrapBriefingHash: briefingHash,
+            bootstrapRuntimeEventsPath: runtimeEventsPath,
+          }
+        : member
+    );
+    fs.writeFileSync(configPath, JSON.stringify(config), 'utf8');
+    const snapshot = createPersistedLaunchSnapshot({
+      teamName,
+      leadSessionId,
+      launchPhase: 'finished',
+      expectedMembers: ['tom'],
+      members: {
+        tom: {
+          name: 'tom',
+          launchState: 'failed_to_start',
+          agentToolAccepted: true,
+          runtimeAlive: false,
+          runtimePid,
+          bootstrapConfirmed: false,
+          hardFailure: true,
+          hardFailureReason: processTableReason,
+          livenessKind: 'registered_only',
+          runtimeDiagnostic: processTableReason,
+          runtimeDiagnosticSeverity: 'warning',
+          firstSpawnAcceptedAt: appAcceptedAt,
+          runtimeLastSeenAt: cleanupAt,
+          lastEvaluatedAt: cleanupAt,
+        },
+      },
+    });
+    fs.mkdirSync(path.dirname(runtimeEventsPath), { recursive: true });
+    fs.writeFileSync(
+      runtimeEventsPath,
+      `${JSON.stringify({
+        version: 1,
+        type: 'bootstrap_confirmed',
+        timestamp: proofAt,
+        pid: runtimePid,
+        teamName,
+        agentName: 'tom',
+        agentId: `tom@${teamName}`,
+        runId: bootstrapRunId,
+        bootstrapRunId,
+        source: 'native_app_managed_bootstrap_private_turn',
+        bootstrapProofToken: proofToken,
+        contextHash,
+        briefingHash,
+      })}\n`,
+      'utf8'
+    );
+
+    const svc = new TeamProvisioningService();
+    const result = await privateHarness(svc).applyBootstrapTranscriptEvidenceOverlay(snapshot);
+
+    expect(result?.members.tom).toMatchObject({
+      launchState: 'confirmed_alive',
+      bootstrapConfirmed: true,
+      runtimeAlive: true,
+      hardFailure: false,
+      hardFailureReason: undefined,
+    });
+  });
+
   it('heals cleanup-finalized launch failures when bootstrap-state confirms an Anthropic primary member', async () => {
     allowConsoleLogs();
     const teamName = 'zz-unit-cleanup-finalized-bootstrap-state-heals';

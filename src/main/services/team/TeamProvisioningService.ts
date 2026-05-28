@@ -5017,7 +5017,11 @@ export class TeamProvisioningService {
   }
 
   private readPersistedTeamProcessRows(teamName: string): unknown[] | null {
-    const processesPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), teamName, 'processes.json');
+    const processesPath = this.resolveSafeTeamStoragePath(
+      getTeamsBasePath(),
+      teamName,
+      'processes.json'
+    );
     let parsed: unknown;
     try {
       parsed = JSON.parse(fs.readFileSync(processesPath, 'utf8')) as unknown;
@@ -14768,7 +14772,11 @@ export class TeamProvisioningService {
     bootstrapContextHash?: string;
     bootstrapBriefingHash?: string;
   }): Promise<void> {
-    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), input.teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(
+      getTeamsBasePath(),
+      input.teamName,
+      'config.json'
+    );
     const raw = await tryReadRegularFileUtf8(configPath, {
       timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
       maxBytes: TEAM_CONFIG_MAX_BYTES,
@@ -19982,7 +19990,11 @@ export class TeamProvisioningService {
     try {
       const teamsBasePathsToProbe = getTeamsBasePathsToProbe();
       for (const probe of teamsBasePathsToProbe) {
-        const configPath = this.resolveSafeTeamStoragePath(probe.basePath, request.teamName, 'config.json');
+        const configPath = this.resolveSafeTeamStoragePath(
+          probe.basePath,
+          request.teamName,
+          'config.json'
+        );
         if (await this.pathExists(configPath)) {
           const suffix = probe.location === 'configured' ? '' : ` (found under ${probe.basePath})`;
           throw new Error(`Team already exists${suffix}`);
@@ -20602,7 +20614,11 @@ export class TeamProvisioningService {
   ): Promise<TeamCreateResponse> {
     const teamsBasePathsToProbe = getTeamsBasePathsToProbe();
     for (const probe of teamsBasePathsToProbe) {
-      const configPath = this.resolveSafeTeamStoragePath(probe.basePath, request.teamName, 'config.json');
+      const configPath = this.resolveSafeTeamStoragePath(
+        probe.basePath,
+        request.teamName,
+        'config.json'
+      );
       if (await this.pathExists(configPath)) {
         const suffix = probe.location === 'configured' ? '' : ` (found under ${probe.basePath})`;
         throw new Error(`Team already exists${suffix}`);
@@ -20661,7 +20677,11 @@ export class TeamProvisioningService {
     request: TeamLaunchRequest,
     onProgress: (progress: TeamProvisioningProgress) => void
   ): Promise<TeamLaunchResponse> {
-    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), request.teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(
+      getTeamsBasePath(),
+      request.teamName,
+      'config.json'
+    );
     const configRaw = await tryReadRegularFileUtf8(configPath, {
       timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
       maxBytes: TEAM_CONFIG_MAX_BYTES,
@@ -20943,7 +20963,11 @@ export class TeamProvisioningService {
     request: TeamCreateRequest,
     members: TeamCreateRequest['members']
   ): Promise<void> {
-    const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), request.teamName, 'config.json');
+    const configPath = this.resolveSafeTeamStoragePath(
+      getTeamsBasePath(),
+      request.teamName,
+      'config.json'
+    );
     const config: TeamConfig = {
       name: request.displayName?.trim() || request.teamName,
       description: request.description,
@@ -21182,7 +21206,11 @@ export class TeamProvisioningService {
 
     try {
       // Verify config.json exists — team must already be provisioned
-      const configPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), request.teamName, 'config.json');
+      const configPath = this.resolveSafeTeamStoragePath(
+        getTeamsBasePath(),
+        request.teamName,
+        'config.json'
+      );
       const configRaw = await tryReadRegularFileUtf8(configPath, {
         timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
         maxBytes: TEAM_CONFIG_MAX_BYTES,
@@ -29399,17 +29427,41 @@ export class TeamProvisioningService {
     );
   }
 
+  private resolveBootstrapRuntimeEvidenceBoundaryMs(
+    member: Pick<PersistedTeamLaunchMemberState, 'firstSpawnAcceptedAt' | 'runtimeRunId'>,
+    runtimeMember: PersistedRuntimeMemberLike | undefined
+  ): number {
+    const firstSpawnAcceptedMs = Date.parse(member.firstSpawnAcceptedAt ?? '');
+    const bootstrapExpectedAfterMs = Date.parse(runtimeMember?.bootstrapExpectedAfter ?? '');
+    if (!Number.isFinite(firstSpawnAcceptedMs)) {
+      return Number.isFinite(bootstrapExpectedAfterMs) ? bootstrapExpectedAfterMs : Number.NaN;
+    }
+    if (!Number.isFinite(bootstrapExpectedAfterMs)) {
+      return firstSpawnAcceptedMs;
+    }
+
+    const proofToken = runtimeMember?.bootstrapProofToken?.trim() ?? '';
+    const memberRunId = typeof member.runtimeRunId === 'string' ? member.runtimeRunId.trim() : '';
+    const runtimeRunId = runtimeMember?.bootstrapRunId?.trim() ?? '';
+    const runIdsCompatible =
+      memberRunId.length === 0 || runtimeRunId.length === 0 || memberRunId === runtimeRunId;
+    if (proofToken.length === 0 || !runIdsCompatible) {
+      return firstSpawnAcceptedMs;
+    }
+
+    return Math.min(firstSpawnAcceptedMs, bootstrapExpectedAfterMs);
+  }
+
   private async findBootstrapRuntimeProofObservedAt(
     teamName: string,
     memberName: string,
     member: Pick<
       PersistedTeamLaunchMemberState,
-      'firstSpawnAcceptedAt' | 'launchState' | 'hardFailureReason'
+      'firstSpawnAcceptedAt' | 'launchState' | 'hardFailureReason' | 'runtimeRunId'
     >
   ): Promise<string | null> {
     const runtimeMember = this.resolveBootstrapRuntimeMember(teamName, memberName);
-    const boundaryText = member.firstSpawnAcceptedAt ?? runtimeMember?.bootstrapExpectedAfter;
-    const boundaryMs = boundaryText ? Date.parse(boundaryText) : Number.NaN;
+    const boundaryMs = this.resolveBootstrapRuntimeEvidenceBoundaryMs(member, runtimeMember);
     if (!runtimeMember?.bootstrapProofToken && !Number.isFinite(boundaryMs)) {
       return null;
     }
@@ -29510,8 +29562,7 @@ export class TeamProvisioningService {
     if (runtimeBackendType !== 'process' && !processPaneId?.startsWith('process:')) {
       return null;
     }
-    const boundaryText = member.firstSpawnAcceptedAt ?? runtimeMember?.bootstrapExpectedAfter;
-    const boundaryMs = boundaryText ? Date.parse(boundaryText) : Number.NaN;
+    const boundaryMs = this.resolveBootstrapRuntimeEvidenceBoundaryMs(member, runtimeMember);
     const expectedPid =
       typeof member.runtimePid === 'number' && member.runtimePid > 0
         ? member.runtimePid
@@ -34451,7 +34502,11 @@ export class TeamProvisioningService {
       // Best-effort: detect CLI-suffixed member names (alice-2, bob-2) that indicate
       // a stale config.json was present during launch (double-launch race).
       try {
-        const postLaunchConfigPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), run.teamName, 'config.json');
+        const postLaunchConfigPath = this.resolveSafeTeamStoragePath(
+          getTeamsBasePath(),
+          run.teamName,
+          'config.json'
+        );
         const raw = await tryReadRegularFileUtf8(postLaunchConfigPath, {
           timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
           maxBytes: TEAM_CONFIG_MAX_BYTES,
@@ -35787,9 +35842,17 @@ export class TeamProvisioningService {
     }
 
     if (code === 0) {
-      const configuredConfigPath = this.resolveSafeTeamStoragePath(getTeamsBasePath(), run.teamName, 'config.json');
+      const configuredConfigPath = this.resolveSafeTeamStoragePath(
+        getTeamsBasePath(),
+        run.teamName,
+        'config.json'
+      );
       const defaultTeamsBasePath = path.join(getAutoDetectedClaudeBasePath(), 'teams');
-      const defaultConfigPath = this.resolveSafeTeamStoragePath(defaultTeamsBasePath, run.teamName, 'config.json');
+      const defaultConfigPath = this.resolveSafeTeamStoragePath(
+        defaultTeamsBasePath,
+        run.teamName,
+        'config.json'
+      );
       const combinedLogs = buildCombinedLogs(run.stdoutBuffer, run.stderrBuffer);
       const cleanupHint = logsSuggestShutdownOrCleanup(combinedLogs)
         ? ' CLI output suggests the team was shut down / cleaned up, so no persisted config was left on disk.'
