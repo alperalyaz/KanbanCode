@@ -1,12 +1,13 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   ensureOpenCodeProfileNodeModulesJunction,
   extractProfileIdFromSymlinkError,
+  extractSymlinkSourcePath,
+  extractSymlinkTargetPath,
   getProfileNodeModulesPath,
   getSharedCacheNodeModulesPath,
   isOpenCodeNodeModulesSymlinkError,
@@ -72,6 +73,44 @@ describe('openCodeWindowsNodeModulesJunction', () => {
     it('returns null when no profile path pattern is found', () => {
       const message = 'EPERM: some other error without a profile path';
       expect(extractProfileIdFromSymlinkError(message)).toBeNull();
+    });
+  });
+
+  describe('extractSymlinkSourcePath', () => {
+    it('extracts the source path from a Windows error message', () => {
+      const message =
+        "EPERM: operation not permitted, symlink 'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Cache\\opencode\\shared-cache\\config-node_modules' -> 'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Data\\opencode\\profiles\\e8e2eadb00beea6c\\config\\opencode\\node_modules'";
+      expect(extractSymlinkSourcePath(message)).toBe(
+        'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Cache\\opencode\\shared-cache\\config-node_modules'
+      );
+    });
+
+    it('extracts the source path from a single-quoted error', () => {
+      const message =
+        "EPERM: operation not permitted, symlink '/home/user/.cache/opencode/shared-cache/config-node_modules' -> '/home/user/.data/opencode/profiles/abc123/config/opencode/node_modules'";
+      expect(extractSymlinkSourcePath(message)).toBe(
+        '/home/user/.cache/opencode/shared-cache/config-node_modules'
+      );
+    });
+
+    it('returns null when no source path is found', () => {
+      const message = 'EPERM: some error without paths';
+      expect(extractSymlinkSourcePath(message)).toBeNull();
+    });
+  });
+
+  describe('extractSymlinkTargetPath', () => {
+    it('extracts the target path from a Windows error message', () => {
+      const message =
+        "EPERM: operation not permitted, symlink 'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Cache\\opencode\\shared-cache\\config-node_modules' -> 'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Data\\opencode\\profiles\\e8e2eadb00beea6c\\config\\opencode\\node_modules'";
+      expect(extractSymlinkTargetPath(message)).toBe(
+        'C:\\Users\\Swarog\\AppData\\Local\\claude-multimodel-nodejs\\Data\\opencode\\profiles\\e8e2eadb00beea6c\\config\\opencode\\node_modules'
+      );
+    });
+
+    it('returns null when no target path is found', () => {
+      const message = "EPERM: operation not permitted, symlink '/some/path'";
+      expect(extractSymlinkTargetPath(message)).toBeNull();
     });
   });
 
@@ -143,9 +182,11 @@ describe('openCodeWindowsNodeModulesJunction', () => {
 
     it('returns false on Windows when shared cache does not exist', () => {
       Object.defineProperty(process, 'platform', { value: 'win32' });
-      const statSyncSpy = vi.spyOn(fs, 'statSync').mockImplementation(() => {
-        throw new Error('ENOENT');
-      });
+      const statSyncSpy = vi.spyOn(fs, 'statSync').mockImplementation(
+        (..._args: Parameters<typeof fs.statSync>) => {
+          throw new Error('ENOENT');
+        }
+      );
       const result = ensureOpenCodeProfileNodeModulesJunction('abc123');
       expect(result).toBe(false);
       statSyncSpy.mockRestore();
@@ -153,9 +194,11 @@ describe('openCodeWindowsNodeModulesJunction', () => {
 
     it('returns true on Windows when target node_modules already exists', () => {
       Object.defineProperty(process, 'platform', { value: 'win32' });
-      const statSyncSpy = vi.spyOn(fs, 'statSync').mockImplementation(() => {
-        return {} as fs.Stats;
-      });
+      const statSyncSpy = vi.spyOn(fs, 'statSync').mockImplementation(
+        (..._args: Parameters<typeof fs.statSync>) => {
+          return {} as fs.Stats;
+        }
+      );
       const result = ensureOpenCodeProfileNodeModulesJunction('abc123');
       expect(result).toBe(true);
       statSyncSpy.mockRestore();
@@ -164,17 +207,17 @@ describe('openCodeWindowsNodeModulesJunction', () => {
     it('creates junction on Windows when shared cache exists and target is missing', () => {
       Object.defineProperty(process, 'platform', { value: 'win32' });
       let callCount = 0;
-      const statSyncSpy = vi.spyOn(fs, 'statSync').mockImplementation(() => {
-        callCount++;
-        // First call: target does not exist (throw)
-        // Second call: source exists (return stats)
-        if (callCount === 1) {
-          const err = new Error('ENOENT') as NodeJS.ErrnoException;
-          err.code = 'ENOENT';
-          throw err;
+      const statSyncSpy = vi.spyOn(fs, 'statSync').mockImplementation(
+        (..._args: Parameters<typeof fs.statSync>) => {
+          callCount++;
+          if (callCount === 1) {
+            const err = new Error('ENOENT') as NodeJS.ErrnoException;
+            err.code = 'ENOENT';
+            throw err;
+          }
+          return {} as fs.Stats;
         }
-        return {} as fs.Stats;
-      });
+      );
       const mkdirSyncSpy = vi.spyOn(fs, 'mkdirSync').mockImplementation(() => '');
       const symlinkSyncSpy = vi.spyOn(fs, 'symlinkSync').mockImplementation(() => undefined);
       const result = ensureOpenCodeProfileNodeModulesJunction('abc123');
@@ -189,15 +232,17 @@ describe('openCodeWindowsNodeModulesJunction', () => {
     it('returns false when junction creation fails', () => {
       Object.defineProperty(process, 'platform', { value: 'win32' });
       let callCount2 = 0;
-      const statSyncSpy = vi.spyOn(fs, 'statSync').mockImplementation(() => {
-        callCount2++;
-        if (callCount2 === 1) {
-          const err = new Error('ENOENT') as NodeJS.ErrnoException;
-          err.code = 'ENOENT';
-          throw err;
+      const statSyncSpy = vi.spyOn(fs, 'statSync').mockImplementation(
+        (..._args: Parameters<typeof fs.statSync>) => {
+          callCount2++;
+          if (callCount2 === 1) {
+            const err = new Error('ENOENT') as NodeJS.ErrnoException;
+            err.code = 'ENOENT';
+            throw err;
+          }
+          return {} as fs.Stats;
         }
-        return {} as fs.Stats;
-      });
+      );
       const mkdirSyncSpy = vi.spyOn(fs, 'mkdirSync').mockImplementation(() => '');
       const symlinkSyncSpy = vi.spyOn(fs, 'symlinkSync').mockImplementation(() => {
         throw new Error('EPERM');
