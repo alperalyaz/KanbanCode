@@ -693,6 +693,11 @@ interface BootstrapTranscriptOutcomeCacheEntry {
   outcome: BootstrapTranscriptOutcome | null;
 }
 
+interface BootstrapTranscriptOutcomeLookupCacheEntry {
+  expiresAtMs: number;
+  outcome: BootstrapTranscriptOutcome | null;
+}
+
 import type {
   ActiveToolCall,
   AgentActionMode,
@@ -3295,9 +3300,10 @@ export class TeamProvisioningService {
   private static readonly SAME_TEAM_RUN_START_SKEW_MS = 1_000;
   private static readonly SAME_TEAM_PERSIST_RETRY_MS = 2_000;
   private static readonly AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS = 2_000;
-  private static readonly PERSISTED_AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS = 5_000;
+  private static readonly PERSISTED_AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS = 10_000;
   private static readonly AGENT_RUNTIME_RESOURCE_HISTORY_LIMIT = 60;
   private static readonly BOOTSTRAP_TRANSCRIPT_OUTCOME_CACHE_MAX_ENTRIES = 2_048;
+  private static readonly PERSISTED_BOOTSTRAP_TRANSCRIPT_OUTCOME_LOOKUP_CACHE_TTL_MS = 10_000;
   private static readonly MAX_RUNTIME_TREE_PIDS_PER_ROOT = 64;
   private static readonly MAX_RUNTIME_USAGE_PIDS_PER_SNAPSHOT = 512;
   private static readonly RUNTIME_PROCESS_TABLE_TIMEOUT_MS = 1_500;
@@ -3362,6 +3368,10 @@ export class TeamProvisioningService {
   private readonly bootstrapTranscriptOutcomeCache = new Map<
     string,
     BootstrapTranscriptOutcomeCacheEntry
+  >();
+  private readonly bootstrapTranscriptOutcomeLookupCache = new Map<
+    string,
+    BootstrapTranscriptOutcomeLookupCacheEntry
   >();
   private readonly teamOpLocks = new Map<string, Promise<void>>();
   private readonly leadInboxRelayInFlight = new Map<string, Promise<number>>();
@@ -30101,6 +30111,19 @@ export class TeamProvisioningService {
     memberName: string,
     sinceMs: number | null
   ): Promise<BootstrapTranscriptOutcome | null> {
+    const lookupCacheKey = this.buildBootstrapTranscriptOutcomeLookupCacheKey(
+      teamName,
+      memberName,
+      sinceMs
+    );
+    const cachedLookup = this.getPersistedBootstrapTranscriptOutcomeLookupCacheEntry(
+      teamName,
+      lookupCacheKey
+    );
+    if (cachedLookup !== undefined) {
+      return this.cloneBootstrapTranscriptOutcome(cachedLookup);
+    }
+
     let summaries: Awaited<ReturnType<TeamMemberLogsFinder['findMemberLogs']>>;
     try {
       summaries = await this.memberLogsFinder.findMemberLogs(teamName, memberName, sinceMs);
@@ -30127,7 +30150,69 @@ export class TeamProvisioningService {
       ...(await this.readBootstrapTranscriptOutcomesInProjectRoot(teamName, memberName, sinceMs))
     );
 
-    return this.selectLatestBootstrapTranscriptOutcome(outcomes);
+    const outcome = this.selectLatestBootstrapTranscriptOutcome(outcomes);
+    this.setPersistedBootstrapTranscriptOutcomeLookupCacheEntry(teamName, lookupCacheKey, outcome);
+    return outcome;
+  }
+
+  private cloneBootstrapTranscriptOutcome(
+    outcome: BootstrapTranscriptOutcome | null
+  ): BootstrapTranscriptOutcome | null {
+    return outcome ? { ...outcome } : null;
+  }
+
+  private buildBootstrapTranscriptOutcomeLookupCacheKey(
+    teamName: string,
+    memberName: string,
+    sinceMs: number | null
+  ): string {
+    return [teamName.trim().toLowerCase(), memberName.trim().toLowerCase(), sinceMs ?? ''].join(
+      '\0'
+    );
+  }
+
+  private getPersistedBootstrapTranscriptOutcomeLookupCacheEntry(
+    teamName: string,
+    cacheKey: string
+  ): BootstrapTranscriptOutcome | null | undefined {
+    if (this.getTrackedRunId(teamName) || this.runtimeAdapterRunByTeam.has(teamName)) {
+      return undefined;
+    }
+    const cached = this.bootstrapTranscriptOutcomeLookupCache.get(cacheKey);
+    if (!cached) {
+      return undefined;
+    }
+    if (cached.expiresAtMs <= Date.now()) {
+      this.bootstrapTranscriptOutcomeLookupCache.delete(cacheKey);
+      return undefined;
+    }
+    return cached.outcome;
+  }
+
+  private setPersistedBootstrapTranscriptOutcomeLookupCacheEntry(
+    teamName: string,
+    cacheKey: string,
+    outcome: BootstrapTranscriptOutcome | null
+  ): void {
+    if (this.getTrackedRunId(teamName) || this.runtimeAdapterRunByTeam.has(teamName)) {
+      return;
+    }
+    if (
+      !this.bootstrapTranscriptOutcomeLookupCache.has(cacheKey) &&
+      this.bootstrapTranscriptOutcomeLookupCache.size >=
+        TeamProvisioningService.BOOTSTRAP_TRANSCRIPT_OUTCOME_CACHE_MAX_ENTRIES
+    ) {
+      const oldestKey = this.bootstrapTranscriptOutcomeLookupCache.keys().next().value;
+      if (oldestKey) {
+        this.bootstrapTranscriptOutcomeLookupCache.delete(oldestKey);
+      }
+    }
+    this.bootstrapTranscriptOutcomeLookupCache.set(cacheKey, {
+      expiresAtMs:
+        Date.now() +
+        TeamProvisioningService.PERSISTED_BOOTSTRAP_TRANSCRIPT_OUTCOME_LOOKUP_CACHE_TTL_MS,
+      outcome: this.cloneBootstrapTranscriptOutcome(outcome),
+    });
   }
 
   private async readRecentBootstrapTranscriptOutcome(
