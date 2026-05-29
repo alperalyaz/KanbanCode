@@ -10,12 +10,7 @@ import { AttachmentDisplay } from '@renderer/components/team/attachments/Attachm
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { TaskTooltip } from '@renderer/components/team/TaskTooltip';
 import { ExpandableContent } from '@renderer/components/ui/ExpandableContent';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@renderer/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import {
   CARD_BG,
   CARD_BG_ZEBRA,
@@ -1310,7 +1305,7 @@ export const ActivityItem = memo(
 
     return (
       <article
-        className="group overflow-hidden rounded-md"
+        className="activity-timeline-card group overflow-hidden rounded-md"
         style={{
           marginLeft: isSlashCommandResult ? 26 : isUserSent ? 15 : undefined,
           backgroundColor:
@@ -1424,27 +1419,14 @@ export const ActivityItem = memo(
                   )}
                 </div>
               </div>
-              <TooltipProvider delayDuration={1000}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <CompactMarkdownPreview
-                        content={compactPreviewMarkdown}
-                        className="mt-1 line-clamp-2 w-full min-w-0 max-w-full break-words text-[11px] leading-4"
-                        teamColorByName={teamColorByName}
-                        onTeamClick={onTeamClick}
-                      />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent
-                    side="bottom"
-                    align="start"
-                    className="max-w-sm whitespace-normal break-words"
-                  >
-                    {compactPreviewTooltipText}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <div title={compactPreviewTooltipText}>
+                <CompactMarkdownPreview
+                  content={compactPreviewMarkdown}
+                  className="mt-1 line-clamp-2 w-full min-w-0 max-w-full break-words text-[11px] leading-4"
+                  teamColorByName={teamColorByName}
+                  onTeamClick={onTeamClick}
+                />
+              </div>
             </div>
           ) : !isExpanded ? (
             <div className="min-w-0 flex-1">
@@ -1506,27 +1488,14 @@ export const ActivityItem = memo(
                   )}
                 </div>
               </div>
-              <TooltipProvider delayDuration={1000}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <CompactMarkdownPreview
-                        content={compactPreviewMarkdown}
-                        className="mt-1 line-clamp-2 w-full min-w-0 max-w-full break-words text-[11px] leading-4"
-                        teamColorByName={teamColorByName}
-                        onTeamClick={onTeamClick}
-                      />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent
-                    side="bottom"
-                    align="start"
-                    className="max-w-sm whitespace-normal break-words"
-                  >
-                    {compactPreviewTooltipText}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <div title={compactPreviewTooltipText}>
+                <CompactMarkdownPreview
+                  content={compactPreviewMarkdown}
+                  className="mt-1 line-clamp-2 w-full min-w-0 max-w-full break-words text-[11px] leading-4"
+                  teamColorByName={teamColorByName}
+                  onTeamClick={onTeamClick}
+                />
+              </div>
             </div>
           ) : (
             <>

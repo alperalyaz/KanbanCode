@@ -1,7 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { useUnreadCommentCount } from '@renderer/hooks/useUnreadCommentCount';
@@ -178,7 +177,7 @@ export const SidebarTaskItem = memo(function SidebarTaskItem({
   return (
     <button
       type="button"
-      className={`flex w-full cursor-pointer flex-col justify-center border-b px-2 py-1.5 text-left transition-colors hover:bg-surface-raised ${unreadBackgroundClass} ${task.teamDeleted ? 'opacity-50' : ''}`}
+      className={`sidebar-task-item flex w-full cursor-pointer flex-col justify-center border-b px-2 py-1.5 text-left transition-colors hover:bg-surface-raised ${unreadBackgroundClass} ${task.teamDeleted ? 'opacity-50' : ''}`}
       style={{ borderColor: 'var(--color-border)' }}
       onClick={() => {
         if (!isRenaming) {
@@ -225,37 +224,29 @@ export const SidebarTaskItem = memo(function SidebarTaskItem({
             />
           </div>
         ) : (
-          <Tooltip>
-            <TooltipTrigger asChild>
+          <span
+            className="line-clamp-2 text-[13px] font-medium leading-tight"
+            style={{ color: 'var(--color-text-muted)' }}
+            title={displaySubject}
+          >
+            <StatusIcon className={cn('mr-1.5 inline-block align-[-1px]', statusIconClassName)} />
+            {unreadCount > 0 &&
+              (unreadCount === 1 ? (
+                <span className="mr-1 inline-block size-1.5 rounded-full bg-blue-400 align-middle" />
+              ) : (
+                <span className="mr-1 inline-flex size-3.5 items-center justify-center rounded-full bg-blue-500 align-middle text-[8px] font-bold leading-none text-white">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              ))}
+            {displaySubject}
+            {isTeamTaskNeedsFixActionable(task) && (
               <span
-                className="line-clamp-2 text-[13px] font-medium leading-tight"
-                style={{ color: 'var(--color-text-muted)' }}
+                className={`ml-1.5 inline-block rounded-full px-1.5 py-0.5 align-middle text-[10px] font-medium leading-none ${REVIEW_STATE_DISPLAY.needsFix.bg} ${REVIEW_STATE_DISPLAY.needsFix.text}`}
               >
-                <StatusIcon
-                  className={cn('mr-1.5 inline-block align-[-1px]', statusIconClassName)}
-                />
-                {unreadCount > 0 &&
-                  (unreadCount === 1 ? (
-                    <span className="mr-1 inline-block size-1.5 rounded-full bg-blue-400 align-middle" />
-                  ) : (
-                    <span className="mr-1 inline-flex size-3.5 items-center justify-center rounded-full bg-blue-500 align-middle text-[8px] font-bold leading-none text-white">
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  ))}
-                {displaySubject}
-                {isTeamTaskNeedsFixActionable(task) && (
-                  <span
-                    className={`ml-1.5 inline-block rounded-full px-1.5 py-0.5 align-middle text-[10px] font-medium leading-none ${REVIEW_STATE_DISPLAY.needsFix.bg} ${REVIEW_STATE_DISPLAY.needsFix.text}`}
-                  >
-                    {tCommon('tasks.reviewState.needsFix')}
-                  </span>
-                )}
+                {tCommon('tasks.reviewState.needsFix')}
               </span>
-            </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={6}>
-              {displaySubject}
-            </TooltipContent>
-          </Tooltip>
+            )}
+          </span>
         )}
       </div>
 

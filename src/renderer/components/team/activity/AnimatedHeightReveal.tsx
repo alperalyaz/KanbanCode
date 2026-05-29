@@ -29,6 +29,29 @@ export const AnimatedHeightReveal = ({
   containerRef,
   children,
 }: AnimatedHeightRevealProps): JSX.Element => {
+  if (!animate && !className && !style && !containerRef) {
+    return <>{children}</>;
+  }
+
+  return (
+    <AnimatedHeightRevealInner
+      animate={animate}
+      className={className}
+      style={style}
+      containerRef={containerRef}
+    >
+      {children}
+    </AnimatedHeightRevealInner>
+  );
+};
+
+const AnimatedHeightRevealInner = ({
+  animate,
+  className,
+  style,
+  containerRef,
+  children,
+}: AnimatedHeightRevealProps): JSX.Element => {
   const [shouldAnimateOnMount] = useState(() => Boolean(animate));
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);

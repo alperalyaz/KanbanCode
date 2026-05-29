@@ -1470,6 +1470,25 @@ a[href],
   --row-zebra-bg: color-mix(in srgb, var(--color-surface-raised) 99%, var(--color-text) 1%);
   --row-zebra-hover-bg: color-mix(in srgb, var(--row-zebra-bg) 97%, var(--color-text) 3%);
   background-color: var(--row-card-bg);
+  content-visibility: auto;
+}
+
+.team-row-zebra-card {
+  contain-intrinsic-size: auto 260px;
+}
+
+.project-row-zebra-card {
+  contain-intrinsic-size: auto 190px;
+}
+
+.activity-timeline-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
+}
+
+.sidebar-task-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
 }
 
 .team-row-zebra-card:hover,

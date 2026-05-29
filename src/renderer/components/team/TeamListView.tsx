@@ -356,6 +356,12 @@ const ActiveTeamCard = ({
   const launchMode: TeamLaunchDialogMode = status === 'offline' ? 'launch' : 'relaunch';
   const launchLabel =
     launchMode === 'relaunch' ? t('list.actions.relaunchTeam') : t('list.actions.launchTeam');
+  const launchTitle =
+    launchingTeamName === team.teamName ? t('list.actions.launching') : launchLabel;
+  const stopTitle =
+    stoppingTeamName === team.teamName ? t('list.actions.stopping') : t('list.actions.stopTeam');
+  const copyTitle = t('list.actions.copyTeam');
+  const deleteTitle = t('list.actions.deleteTeam');
 
   return (
     <div
@@ -400,78 +406,51 @@ const ActiveTeamCard = ({
             </div>
             <div className="flex shrink-0 gap-1">
               {canLaunch ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-emerald-500/10 hover:text-emerald-300 disabled:opacity-50 group-hover:opacity-100"
-                      onClick={(event) =>
-                        onLaunchTeam(
-                          team.teamName,
-                          team.projectPath ?? undefined,
-                          launchMode,
-                          event
-                        )
-                      }
-                      disabled={launchingTeamName === team.teamName}
-                      aria-label={launchLabel}
-                    >
-                      <Play size={14} fill="currentColor" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {launchingTeamName === team.teamName
-                      ? t('list.actions.launching')
-                      : launchLabel}
-                  </TooltipContent>
-                </Tooltip>
+                <button
+                  type="button"
+                  className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-emerald-500/10 hover:text-emerald-300 disabled:opacity-50 group-hover:opacity-100"
+                  onClick={(event) =>
+                    onLaunchTeam(team.teamName, team.projectPath ?? undefined, launchMode, event)
+                  }
+                  disabled={launchingTeamName === team.teamName}
+                  aria-label={launchTitle}
+                  title={launchTitle}
+                >
+                  <Play size={14} fill="currentColor" />
+                </button>
               ) : null}
               {status === 'active' || status === 'idle' ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-amber-500/10 hover:text-amber-300 disabled:opacity-50 group-hover:opacity-100"
-                      onClick={(event) => onStopTeam(team.teamName, event)}
-                      disabled={stoppingTeamName === team.teamName}
-                      aria-label={t('list.actions.stopTeam')}
-                    >
-                      <Square size={14} fill="currentColor" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {stoppingTeamName === team.teamName
-                      ? t('list.actions.stopping')
-                      : t('list.actions.stopTeam')}
-                  </TooltipContent>
-                </Tooltip>
+                <button
+                  type="button"
+                  className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-amber-500/10 hover:text-amber-300 disabled:opacity-50 group-hover:opacity-100"
+                  onClick={(event) => onStopTeam(team.teamName, event)}
+                  disabled={stoppingTeamName === team.teamName}
+                  aria-label={stopTitle}
+                  title={stopTitle}
+                >
+                  <Square size={14} fill="currentColor" />
+                </button>
               ) : null}
               {!team.pendingCreate ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-blue-500/10 hover:text-blue-300 group-hover:opacity-100"
-                      onClick={(event) => onCopyTeam(team.teamName, event)}
-                    >
-                      <Copy size={14} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">{t('list.actions.copyTeam')}</TooltipContent>
-                </Tooltip>
+                <button
+                  type="button"
+                  className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-blue-500/10 hover:text-blue-300 group-hover:opacity-100"
+                  onClick={(event) => onCopyTeam(team.teamName, event)}
+                  aria-label={copyTitle}
+                  title={copyTitle}
+                >
+                  <Copy size={14} />
+                </button>
               ) : null}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-300 group-hover:opacity-100"
-                    onClick={(event) => onDeleteTeam(team.teamName, !!team.pendingCreate, event)}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">{t('list.actions.deleteTeam')}</TooltipContent>
-              </Tooltip>
+              <button
+                type="button"
+                className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-300 group-hover:opacity-100"
+                onClick={(event) => onDeleteTeam(team.teamName, !!team.pendingCreate, event)}
+                aria-label={deleteTitle}
+                title={deleteTitle}
+              >
+                <Trash2 size={14} />
+              </button>
             </div>
           </div>
         </div>
