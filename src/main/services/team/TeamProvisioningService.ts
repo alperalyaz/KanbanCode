@@ -698,6 +698,12 @@ interface BootstrapTranscriptOutcomeLookupCacheEntry {
   outcome: BootstrapTranscriptOutcome | null;
 }
 
+interface BootstrapTranscriptOutcomeCandidate {
+  text: string;
+  observedAt: string;
+  parsedAgentName: string | null;
+}
+
 import type {
   ActiveToolCall,
   AgentActionMode,
@@ -30298,7 +30304,9 @@ export class TeamProvisioningService {
       if (start > 0) {
         lines.shift();
       }
+      const shouldCollectBootstrapContext = options.allowAnonymousFailure !== true;
       const bootstrapContextMembers = new Set<string>();
+      const candidates: BootstrapTranscriptOutcomeCandidate[] = [];
       for (const rawLine of lines) {
         const line = rawLine?.trim();
         if (!line) continue;
@@ -30327,62 +30335,49 @@ export class TeamProvisioningService {
         if (!text) {
           continue;
         }
-        for (const contextMemberName of contextMemberNames) {
-          if (isBootstrapTranscriptContextText(text, teamName, contextMemberName)) {
-            bootstrapContextMembers.add(contextMemberName.trim().toLowerCase());
+        if (shouldCollectBootstrapContext) {
+          for (const contextMemberName of contextMemberNames) {
+            if (isBootstrapTranscriptContextText(text, teamName, contextMemberName)) {
+              bootstrapContextMembers.add(contextMemberName.trim().toLowerCase());
+            }
           }
         }
+        candidates.push({
+          text,
+          observedAt:
+            typeof parsed.timestamp === 'string' && parsed.timestamp.trim().length > 0
+              ? parsed.timestamp.trim()
+              : new Date().toISOString(),
+          parsedAgentName,
+        });
       }
       const hasUnambiguousMatchingBootstrapContext =
-        bootstrapContextMembers.size === 1 && bootstrapContextMembers.has(normalizedMemberName);
+        shouldCollectBootstrapContext &&
+        bootstrapContextMembers.size === 1 &&
+        bootstrapContextMembers.has(normalizedMemberName);
       let outcome: BootstrapTranscriptOutcome | null = null;
-      for (let index = lines.length - 1; index >= 0; index -= 1) {
-        const line = lines[index]?.trim();
-        if (!line) continue;
-        let parsed: { timestamp?: unknown } | null = null;
-        try {
-          parsed = JSON.parse(line) as { timestamp?: unknown };
-        } catch {
-          continue;
-        }
-        const timestampMs =
-          typeof parsed.timestamp === 'string' ? Date.parse(parsed.timestamp) : Number.NaN;
-        if (sinceMs != null) {
-          if (!Number.isFinite(timestampMs) || timestampMs < sinceMs) {
-            continue;
-          }
-        }
-        const parsedAgentName =
-          typeof (parsed as { agentName?: unknown }).agentName === 'string'
-            ? (parsed as { agentName?: string }).agentName?.trim().toLowerCase() || null
-            : null;
-        if (
-          parsedAgentName &&
-          !matchesObservedMemberNameForExpected(parsedAgentName, normalizedMemberName)
-        ) {
-          continue;
-        }
-        const text = extractTranscriptMessageText(parsed);
-        if (!text) continue;
-        const observedAt =
-          typeof parsed.timestamp === 'string' && parsed.timestamp.trim().length > 0
-            ? parsed.timestamp.trim()
-            : new Date().toISOString();
-        const reason = extractBootstrapFailureReason(text);
+      for (let index = candidates.length - 1; index >= 0; index -= 1) {
+        const candidate = candidates[index];
+        if (!candidate) continue;
+        const reason = extractBootstrapFailureReason(candidate.text);
         if (reason) {
           if (
-            !parsedAgentName &&
+            !candidate.parsedAgentName &&
             options.allowAnonymousFailure !== true &&
             !hasUnambiguousMatchingBootstrapContext
           ) {
             continue;
           }
-          outcome = { kind: 'failure', observedAt, reason };
+          outcome = { kind: 'failure', observedAt: candidate.observedAt, reason };
           break;
         }
-        const successSource = getBootstrapTranscriptSuccessSource(text, teamName, memberName);
+        const successSource = getBootstrapTranscriptSuccessSource(
+          candidate.text,
+          teamName,
+          memberName
+        );
         if (successSource) {
-          outcome = { kind: 'success', observedAt, source: successSource };
+          outcome = { kind: 'success', observedAt: candidate.observedAt, source: successSource };
           break;
         }
       }
