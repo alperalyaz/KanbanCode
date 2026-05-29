@@ -3295,6 +3295,7 @@ export class TeamProvisioningService {
   private static readonly SAME_TEAM_RUN_START_SKEW_MS = 1_000;
   private static readonly SAME_TEAM_PERSIST_RETRY_MS = 2_000;
   private static readonly AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS = 2_000;
+  private static readonly PERSISTED_AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS = 5_000;
   private static readonly AGENT_RUNTIME_RESOURCE_HISTORY_LIMIT = 60;
   private static readonly BOOTSTRAP_TRANSCRIPT_OUTCOME_CACHE_MAX_ENTRIES = 2_048;
   private static readonly MAX_RUNTIME_TREE_PIDS_PER_ROOT = 64;
@@ -4865,6 +4866,13 @@ export class TeamProvisioningService {
 
   private getTrackedRunId(teamName: string): string | null {
     return this.getProvisioningRunId(teamName) ?? this.getAliveRunId(teamName);
+  }
+
+  private getAgentRuntimeSnapshotCacheTtlMs(teamName: string, runId: string | null): number {
+    if (runId || this.runtimeAdapterRunByTeam.has(teamName)) {
+      return TeamProvisioningService.AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS;
+    }
+    return TeamProvisioningService.PERSISTED_AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS;
   }
 
   private canDeliverToTrackedRuntimeRun(teamName: string, runId: string): boolean {
@@ -14589,7 +14597,7 @@ export class TeamProvisioningService {
       this.getTrackedRunId(teamName) === runId
     ) {
       this.agentRuntimeSnapshotCache.set(teamName, {
-        expiresAtMs: Date.now() + TeamProvisioningService.AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS,
+        expiresAtMs: Date.now() + this.getAgentRuntimeSnapshotCacheTtlMs(teamName, runId),
         snapshot,
       });
     }
@@ -25330,7 +25338,7 @@ export class TeamProvisioningService {
       );
     }
     this.runtimeProcessRowsForUsageSnapshotByTeam.set(teamName, {
-      expiresAtMs: Date.now() + TeamProvisioningService.AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS,
+      expiresAtMs: Date.now() + this.getAgentRuntimeSnapshotCacheTtlMs(teamName, runId),
       generation: generationAtStart,
       runId,
       rows: processTableAvailable ? processRows : null,
@@ -25491,7 +25499,7 @@ export class TeamProvisioningService {
       this.getTrackedRunId(teamName) === runId
     ) {
       this.liveTeamAgentRuntimeMetadataCache.set(teamName, {
-        expiresAtMs: Date.now() + TeamProvisioningService.AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS,
+        expiresAtMs: Date.now() + this.getAgentRuntimeSnapshotCacheTtlMs(teamName, runId),
         metadata: this.cloneLiveTeamAgentRuntimeMetadata(metadataByMember),
         runId,
       });
@@ -25796,7 +25804,9 @@ export class TeamProvisioningService {
 
     const resultRows = rows && rows.length > 0 ? rows : runtimeProcessTableAvailable ? [] : null;
     this.runtimeProcessRowsForUsageSnapshotByTeam.set(teamName, {
-      expiresAtMs: Date.now() + TeamProvisioningService.AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS,
+      expiresAtMs:
+        Date.now() +
+        this.getAgentRuntimeSnapshotCacheTtlMs(teamName, this.getTrackedRunId(teamName)),
       generation: this.getRuntimeSnapshotCacheGeneration(teamName),
       runId: this.getTrackedRunId(teamName),
       rows: resultRows,

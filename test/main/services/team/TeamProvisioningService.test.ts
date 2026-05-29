@@ -3385,6 +3385,51 @@ describe('TeamProvisioningService', () => {
       expect(listRuntimeProcessTableForCurrentPlatform).toHaveBeenCalledTimes(1);
     });
 
+    it('uses a longer live runtime metadata cache for persisted teams without a tracked run', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-05-03T12:00:00.000Z'));
+      const svc = new TeamProvisioningService();
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          members: [
+            { name: 'team-lead', agentType: 'team-lead' },
+            { name: 'alice', model: 'gpt-5.4-mini' },
+          ],
+        })),
+      };
+      vi.mocked(listRuntimeProcessTableForCurrentPlatform).mockResolvedValue([]);
+
+      await (svc as any).getLiveTeamAgentRuntimeMetadata('runtime-team');
+      vi.setSystemTime(new Date('2026-05-03T12:00:03.000Z'));
+      await (svc as any).getLiveTeamAgentRuntimeMetadata('runtime-team');
+      vi.setSystemTime(new Date('2026-05-03T12:00:06.000Z'));
+      await (svc as any).getLiveTeamAgentRuntimeMetadata('runtime-team');
+
+      expect(listRuntimeProcessTableForCurrentPlatform).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the short live runtime metadata cache for tracked runs', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-05-03T12:00:00.000Z'));
+      const svc = new TeamProvisioningService();
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          members: [
+            { name: 'team-lead', agentType: 'team-lead' },
+            { name: 'alice', model: 'gpt-5.4-mini' },
+          ],
+        })),
+      };
+      (svc as any).aliveRunByTeam.set('runtime-team', 'run-1');
+      vi.mocked(listRuntimeProcessTableForCurrentPlatform).mockResolvedValue([]);
+
+      await (svc as any).getLiveTeamAgentRuntimeMetadata('runtime-team');
+      vi.setSystemTime(new Date('2026-05-03T12:00:03.000Z'));
+      await (svc as any).getLiveTeamAgentRuntimeMetadata('runtime-team');
+
+      expect(listRuntimeProcessTableForCurrentPlatform).toHaveBeenCalledTimes(2);
+    });
+
     it('clears runtime probe caches when starting a new run for the team', async () => {
       const svc = new TeamProvisioningService();
       (svc as any).configReader = {
