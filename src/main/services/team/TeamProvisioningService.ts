@@ -687,6 +687,12 @@ type BootstrapTranscriptOutcome =
       reason: string;
     };
 
+interface BootstrapTranscriptOutcomeCacheEntry {
+  mtimeMs: number;
+  size: number;
+  outcome: BootstrapTranscriptOutcome | null;
+}
+
 import type {
   ActiveToolCall,
   AgentActionMode,
@@ -3290,6 +3296,7 @@ export class TeamProvisioningService {
   private static readonly SAME_TEAM_PERSIST_RETRY_MS = 2_000;
   private static readonly AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS = 2_000;
   private static readonly AGENT_RUNTIME_RESOURCE_HISTORY_LIMIT = 60;
+  private static readonly BOOTSTRAP_TRANSCRIPT_OUTCOME_CACHE_MAX_ENTRIES = 2_048;
   private static readonly MAX_RUNTIME_TREE_PIDS_PER_ROOT = 64;
   private static readonly MAX_RUNTIME_USAGE_PIDS_PER_SNAPSHOT = 512;
   private static readonly RUNTIME_PROCESS_TABLE_TIMEOUT_MS = 1_500;
@@ -3349,6 +3356,10 @@ export class TeamProvisioningService {
   private readonly persistedTranscriptClaudeLogsCache = new Map<
     string,
     PersistedTranscriptClaudeLogsCacheEntry
+  >();
+  private readonly bootstrapTranscriptOutcomeCache = new Map<
+    string,
+    BootstrapTranscriptOutcomeCacheEntry
   >();
   private readonly teamOpLocks = new Map<string, Promise<void>>();
   private readonly leadInboxRelayInFlight = new Map<string, Promise<number>>();
@@ -30102,11 +30113,23 @@ export class TeamProvisioningService {
           .filter(Boolean)
       )
     );
+    const cacheKey = this.buildBootstrapTranscriptOutcomeCacheKey({
+      filePath,
+      sinceMs,
+      memberName: normalizedMemberName,
+      teamName,
+      allowAnonymousFailure: options.allowAnonymousFailure === true,
+      contextMemberNames,
+    });
     try {
       handle = await fs.promises.open(filePath, 'r');
       const stat = await handle.stat();
       if (!stat.isFile() || stat.size <= 0) {
         return null;
+      }
+      const cached = this.bootstrapTranscriptOutcomeCache.get(cacheKey);
+      if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+        return cached.outcome;
       }
       const start = Math.max(0, stat.size - TeamProvisioningService.BOOTSTRAP_FAILURE_TAIL_BYTES);
       const buffer = Buffer.alloc(stat.size - start);
@@ -30155,6 +30178,7 @@ export class TeamProvisioningService {
       }
       const hasUnambiguousMatchingBootstrapContext =
         bootstrapContextMembers.size === 1 && bootstrapContextMembers.has(normalizedMemberName);
+      let outcome: BootstrapTranscriptOutcome | null = null;
       for (let index = lines.length - 1; index >= 0; index -= 1) {
         const line = lines[index]?.trim();
         if (!line) continue;
@@ -30196,13 +30220,21 @@ export class TeamProvisioningService {
           ) {
             continue;
           }
-          return { kind: 'failure', observedAt, reason };
+          outcome = { kind: 'failure', observedAt, reason };
+          break;
         }
         const successSource = getBootstrapTranscriptSuccessSource(text, teamName, memberName);
         if (successSource) {
-          return { kind: 'success', observedAt, source: successSource };
+          outcome = { kind: 'success', observedAt, source: successSource };
+          break;
         }
       }
+      this.setBootstrapTranscriptOutcomeCacheEntry(cacheKey, {
+        mtimeMs: stat.mtimeMs,
+        size: stat.size,
+        outcome,
+      });
+      return outcome;
     } catch {
       return null;
     } finally {
@@ -30210,6 +30242,46 @@ export class TeamProvisioningService {
     }
 
     return null;
+  }
+
+  private buildBootstrapTranscriptOutcomeCacheKey(input: {
+    filePath: string;
+    sinceMs: number | null;
+    memberName: string;
+    teamName: string;
+    allowAnonymousFailure: boolean;
+    contextMemberNames: readonly string[];
+  }): string {
+    const normalizedContextMembers = Array.from(
+      new Set(input.contextMemberNames.map((name) => name.trim().toLowerCase()).filter(Boolean))
+    )
+      .sort()
+      .join('\0');
+    return [
+      input.filePath,
+      input.sinceMs ?? '',
+      input.memberName,
+      input.teamName.trim().toLowerCase(),
+      input.allowAnonymousFailure ? '1' : '0',
+      normalizedContextMembers,
+    ].join('\0');
+  }
+
+  private setBootstrapTranscriptOutcomeCacheEntry(
+    cacheKey: string,
+    entry: BootstrapTranscriptOutcomeCacheEntry
+  ): void {
+    if (
+      !this.bootstrapTranscriptOutcomeCache.has(cacheKey) &&
+      this.bootstrapTranscriptOutcomeCache.size >=
+        TeamProvisioningService.BOOTSTRAP_TRANSCRIPT_OUTCOME_CACHE_MAX_ENTRIES
+    ) {
+      const oldestKey = this.bootstrapTranscriptOutcomeCache.keys().next().value;
+      if (oldestKey) {
+        this.bootstrapTranscriptOutcomeCache.delete(oldestKey);
+      }
+    }
+    this.bootstrapTranscriptOutcomeCache.set(cacheKey, entry);
   }
 
   private async readBootstrapTranscriptOutcomesInProjectRoot(

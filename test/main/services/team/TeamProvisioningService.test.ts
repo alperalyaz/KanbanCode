@@ -623,6 +623,13 @@ type TeamProvisioningServicePrivateHarness = {
   readProcessUsageStatsByPid: (
     pids: readonly number[]
   ) => Promise<Map<number, { rssBytes?: number; cpuPercent?: number }>>;
+  readRecentBootstrapTranscriptOutcome: (
+    filePath: string,
+    sinceMs: number | null,
+    memberName: string,
+    teamName: string,
+    options?: { allowAnonymousFailure?: boolean; contextMemberNames?: readonly string[] }
+  ) => Promise<{ kind: string; observedAt: string; source?: string; reason?: string } | null>;
 };
 
 function privateHarness(svc: TeamProvisioningService): TeamProvisioningServicePrivateHarness {
@@ -21023,6 +21030,57 @@ describe('TeamProvisioningService', () => {
     expect(result.statuses.tom?.hardFailureReason).toBeUndefined();
     expect(result.statuses.tom?.runtimeDiagnostic).toBeUndefined();
     expect(result.statuses.tom?.runtimeDiagnosticSeverity).toBeUndefined();
+  });
+
+  it('refreshes cached bootstrap transcript outcome when the transcript file changes', async () => {
+    const teamName = 'zz-unit-bootstrap-transcript-cache-refresh';
+    const memberName = 'tom';
+    const transcriptPath = path.join(tempProjectsBase, 'bootstrap-cache.jsonl');
+    const writeTranscriptText = async (text: string, timestamp: string): Promise<void> => {
+      await fsPromises.writeFile(
+        transcriptPath,
+        `${JSON.stringify({
+          timestamp,
+          agentName: memberName,
+          text,
+        })}\n`,
+        'utf8'
+      );
+      const updatedAt = new Date(Date.now() + 5_000);
+      await fsPromises.utimes(transcriptPath, updatedAt, updatedAt);
+    };
+
+    await writeTranscriptText(
+      `member briefing for ${memberName} on team "${teamName}" (${teamName}). Ready.`,
+      '2026-05-24T09:25:42.904Z'
+    );
+
+    const svc = new TeamProvisioningService();
+    const firstOutcome = await privateHarness(svc).readRecentBootstrapTranscriptOutcome(
+      transcriptPath,
+      null,
+      memberName,
+      teamName
+    );
+
+    expect(firstOutcome).toMatchObject({ kind: 'success', source: 'member_briefing' });
+
+    await writeTranscriptText(
+      'bootstrap failed: model not found during teammate startup',
+      '2026-05-24T09:26:42.904Z'
+    );
+
+    const secondOutcome = await privateHarness(svc).readRecentBootstrapTranscriptOutcome(
+      transcriptPath,
+      null,
+      memberName,
+      teamName
+    );
+
+    expect(secondOutcome).toMatchObject({
+      kind: 'failure',
+      reason: 'bootstrap failed: model not found during teammate startup',
+    });
   });
 
   it('does not heal cleanup-finalized launch failures from stale bootstrap-state confirmation', async () => {
