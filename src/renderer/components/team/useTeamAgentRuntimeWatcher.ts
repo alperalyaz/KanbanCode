@@ -4,7 +4,7 @@ import { useStore } from '@renderer/store';
 import { isTeamProvisioningActive, selectTeamDataForName } from '@renderer/store/slices/teamSlice';
 import { useShallow } from 'zustand/react/shallow';
 
-const TEAM_AGENT_RUNTIME_REFRESH_MS = 5_000;
+const TEAM_AGENT_RUNTIME_REFRESH_MS = 10_000;
 
 export function shouldWatchTeamAgentRuntime(input: {
   enabled: boolean;
