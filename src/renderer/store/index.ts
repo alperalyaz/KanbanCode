@@ -363,6 +363,7 @@ export function initializeNotificationListeners(): () => void {
   const TEAM_MEMBER_SPAWN_REFRESH_THROTTLE_MS = 500;
   const TEAM_LIST_REFRESH_THROTTLE_MS = 2000;
   const GLOBAL_TASKS_REFRESH_THROTTLE_MS = 500;
+  const GLOBAL_TASKS_REFRESH_DURING_LAUNCH_THROTTLE_MS = 5000;
   const PROCESS_LITE_STRUCTURAL_RECONCILE_IDLE_MS = 2_500;
   const PROCESS_LITE_STRUCTURAL_RECONCILE_MAX_WAIT_MS = 15_000;
   const buildTeamChangeFanoutReason = (eventType: string): string => `event:${eventType}`;
@@ -2054,6 +2055,11 @@ export function initializeNotificationListeners(): () => void {
 
       // Throttled refresh of global tasks list for sidebar.
       if (shouldRefreshGlobalTasks) {
+        const globalTasksRefreshDelayMs = shouldDeferAutomaticTeamDataRefreshDuringLaunch(
+          event.teamName
+        )
+          ? GLOBAL_TASKS_REFRESH_DURING_LAUNCH_THROTTLE_MS
+          : GLOBAL_TASKS_REFRESH_THROTTLE_MS;
         noteGlobalRefreshScheduled(
           pendingGlobalTasksRefreshDiagnostics,
           event.teamName,
@@ -2069,7 +2075,7 @@ export function initializeNotificationListeners(): () => void {
               'fetchAllTasks'
             );
             void useStore.getState().fetchAllTasks();
-          }, GLOBAL_TASKS_REFRESH_THROTTLE_MS);
+          }, globalTasksRefreshDelayMs);
         }
       }
 

@@ -1101,6 +1101,35 @@ describe('team change throttling', () => {
     expect(snapshot?.counts['team-change-listener:event:config:fetchAllTasks:executed']).toBe(1);
   });
 
+  it('slows global task refreshes during active provisioning', async () => {
+    const fetchAllTasksSpy = vi.fn(async () => undefined);
+    useStore.setState({
+      fetchAllTasks: fetchAllTasksSpy,
+      currentProvisioningRunIdByTeam: { 'my-team': 'run-1' },
+      provisioningRuns: {
+        'run-1': {
+          runId: 'run-1',
+          teamName: 'my-team',
+          state: 'spawning',
+          message: 'Spawning',
+          startedAt: '2026-05-03T00:00:00.000Z',
+          updatedAt: '2026-05-03T00:00:00.000Z',
+        },
+      },
+    } as never);
+
+    await vi.advanceTimersByTimeAsync(5000);
+    fetchAllTasksSpy.mockClear();
+
+    hoisted.onTeamChangeCb?.({}, { type: 'task', teamName: 'my-team' });
+
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(fetchAllTasksSpy).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchAllTasksSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('lead-message refreshes message head only, not team list, tasks, or structural detail', async () => {
     const state = useStore.getState();
     const fetchTeamsSpy = vi.spyOn(state, 'fetchTeams');
