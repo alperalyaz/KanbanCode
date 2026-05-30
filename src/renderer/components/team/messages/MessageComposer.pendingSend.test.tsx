@@ -71,9 +71,9 @@ const provisioningHarness = vi.hoisted(() => {
   };
 });
 
-type SuggestionHookOptions = {
+interface SuggestionHookOptions {
   enabled?: boolean;
-};
+}
 
 const suggestionHarness = vi.hoisted(() => {
   const state = {

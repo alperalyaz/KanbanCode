@@ -82,7 +82,7 @@ function writeLockFile(lockPath: string): void {
     }
   }
   if (closeError) {
-    throw closeError;
+    throw closeError instanceof Error ? closeError : new Error('Failed to close file lock');
   }
 }
 
