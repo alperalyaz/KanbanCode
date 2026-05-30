@@ -248,7 +248,7 @@ describe('GlobalTaskList project grouping', () => {
     storeListeners.clear();
   });
 
-  it('fetches repository groups when grouped project filter data is missing', async () => {
+  it('fetches repository groups when grouped project filter data is needed', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.viewMode = 'grouped';
 
@@ -261,6 +261,19 @@ describe('GlobalTaskList project grouping', () => {
       await flushMicrotasks();
     });
 
+    expect(storeState.fetchRepositoryGroups).not.toHaveBeenCalled();
+    expect(storeState.fetchProjects).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.render(
+        React.createElement(GlobalTaskList, {
+          filtersPopoverOpen: true,
+          onFiltersPopoverOpenChange: vi.fn(),
+        })
+      );
+      await flushMicrotasks();
+    });
+
     expect(storeState.fetchRepositoryGroups).toHaveBeenCalledTimes(1);
     expect(storeState.fetchProjects).not.toHaveBeenCalled();
 
@@ -270,7 +283,7 @@ describe('GlobalTaskList project grouping', () => {
     });
   });
 
-  it('fetches flat projects when flat project filter data is missing', async () => {
+  it('fetches flat projects when flat project filter data is needed', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 
     const host = document.createElement('div');
@@ -279,6 +292,19 @@ describe('GlobalTaskList project grouping', () => {
 
     await act(async () => {
       root.render(React.createElement(GlobalTaskList));
+      await flushMicrotasks();
+    });
+
+    expect(storeState.fetchProjects).not.toHaveBeenCalled();
+    expect(storeState.fetchRepositoryGroups).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.render(
+        React.createElement(GlobalTaskList, {
+          filtersPopoverOpen: true,
+          onFiltersPopoverOpenChange: vi.fn(),
+        })
+      );
       await flushMicrotasks();
     });
 
@@ -301,7 +327,12 @@ describe('GlobalTaskList project grouping', () => {
     const root = createRoot(host);
 
     await act(async () => {
-      root.render(React.createElement(GlobalTaskList));
+      root.render(
+        React.createElement(GlobalTaskList, {
+          filtersPopoverOpen: true,
+          onFiltersPopoverOpenChange: vi.fn(),
+        })
+      );
       await flushMicrotasks();
     });
 
@@ -323,7 +354,12 @@ describe('GlobalTaskList project grouping', () => {
     const root = createRoot(host);
 
     await act(async () => {
-      root.render(React.createElement(GlobalTaskList));
+      root.render(
+        React.createElement(GlobalTaskList, {
+          filtersPopoverOpen: true,
+          onFiltersPopoverOpenChange: vi.fn(),
+        })
+      );
       await flushMicrotasks();
     });
 

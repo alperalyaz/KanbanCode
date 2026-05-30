@@ -462,6 +462,9 @@ export const GlobalTaskList = memo(function GlobalTaskList({
   }, [fetchAllTasks, globalTasksLoading]);
 
   useEffect(() => {
+    if (!filtersPopoverOpen) {
+      return;
+    }
     if (
       viewMode === 'grouped' &&
       !repositoryGroupsInitialized &&
@@ -475,6 +478,7 @@ export const GlobalTaskList = memo(function GlobalTaskList({
   }, [
     fetchProjects,
     fetchRepositoryGroups,
+    filtersPopoverOpen,
     projectsError,
     projectsInitialized,
     projectsLoading,
