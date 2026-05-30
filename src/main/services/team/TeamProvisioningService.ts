@@ -54,6 +54,7 @@ import {
 } from '@features/workspace-trust/main';
 import { ConfigManager } from '@main/services/infrastructure/ConfigManager';
 import { NotificationManager } from '@main/services/infrastructure/NotificationManager';
+import { notifyTeamWatchScopeChanged } from '@main/services/infrastructure/teamWatchScope';
 import { prepareAgentChildProcessWritableEnv } from '@main/services/runtime/agentChildProcessPreflight';
 import { getAppIconPath } from '@main/utils/appIcon';
 import {
@@ -3315,6 +3316,10 @@ export class TeamProvisioningService {
 
   private static readonly CLAUDE_LOG_LINES_LIMIT = 50_000;
   private static readonly BOOTSTRAP_FAILURE_TAIL_BYTES = 128 * 1024;
+  // A transcript whose mtime predates the lookup window (minus slack for clock skew
+  // between the line timestamp source and the filesystem) cannot hold a line at/after
+  // sinceMs, so it is skipped without opening it. The slack keeps detection safe.
+  private static readonly BOOTSTRAP_TRANSCRIPT_MTIME_SLACK_MS = 5_000;
   private static readonly RECENT_CROSS_TEAM_DELIVERY_TTL_MS = 10 * 60 * 1000;
   private static readonly PENDING_INBOX_RELAY_TTL_MS = 2 * 60 * 1000;
   private static readonly SAME_TEAM_NATIVE_DELIVERY_GRACE_MS = 15_000;
@@ -3332,6 +3337,7 @@ export class TeamProvisioningService {
   private static readonly RUNTIME_PROCESS_TABLE_TIMEOUT_MS = 1_500;
   private static readonly RUNTIME_WINDOWS_PROCESS_TABLE_TIMEOUT_MS = 1_500;
   private static readonly RUNTIME_PROCESS_USAGE_CACHE_TTL_MS = 30_000;
+  private static readonly RUNTIME_PROCESS_USAGE_CACHE_MAX_ENTRIES = 4_096;
   private static readonly RUNTIME_PIDUSAGE_BATCH_TIMEOUT_MS = 2_000;
   private static readonly RUNTIME_PIDUSAGE_SINGLE_TIMEOUT_MS = 750;
   private static readonly RUNTIME_PIDUSAGE_FALLBACK_CONCURRENCY = 16;
@@ -4903,6 +4909,20 @@ export class TeamProvisioningService {
 
   private getAliveRunId(teamName: string): string | null {
     return this.aliveRunByTeam.get(teamName) ?? null;
+  }
+
+  private setAliveRunId(teamName: string, runId: string): void {
+    if (!teamName || !runId || this.aliveRunByTeam.get(teamName) === runId) {
+      return;
+    }
+    this.aliveRunByTeam.set(teamName, runId);
+    notifyTeamWatchScopeChanged();
+  }
+
+  private deleteAliveRunId(teamName: string): void {
+    if (this.aliveRunByTeam.delete(teamName)) {
+      notifyTeamWatchScopeChanged();
+    }
   }
 
   /**
@@ -30566,8 +30586,27 @@ export class TeamProvisioningService {
         if (config?.leadSessionId && entry.name === `${config.leadSessionId}.jsonl`) {
           continue;
         }
+        const candidatePath = path.join(projectDir, entry.name);
+        // Project dirs can hold hundreds of old session transcripts. A file last
+        // modified before the lookup window cannot contain a bootstrap line at/after
+        // sinceMs (append-only: line timestamp <= write time <= mtime), so
+        // readRecentBootstrapTranscriptOutcome would return null. Skip it with a
+        // cheap stat instead of opening + tail-reading every file each poll.
+        if (sinceMs != null) {
+          try {
+            const candidateStat = await fs.promises.stat(candidatePath);
+            if (
+              candidateStat.mtimeMs <
+              sinceMs - TeamProvisioningService.BOOTSTRAP_TRANSCRIPT_MTIME_SLACK_MS
+            ) {
+              continue;
+            }
+          } catch {
+            continue;
+          }
+        }
         const outcome = await this.readRecentBootstrapTranscriptOutcome(
-          path.join(projectDir, entry.name),
+          candidatePath,
           sinceMs,
           memberName,
           teamName,
