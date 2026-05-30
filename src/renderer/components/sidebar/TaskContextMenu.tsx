@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import { useAppTranslation } from '@features/localization/renderer';
 import {
   ContextMenu,
@@ -34,63 +36,66 @@ export const TaskContextMenu = ({
   children,
 }: TaskContextMenuProps): React.JSX.Element => {
   const { t } = useAppTranslation('common');
+  const [open, setOpen] = useState(false);
 
   return (
-    <ContextMenu>
+    <ContextMenu open={open} onOpenChange={setOpen}>
       <ContextMenuTrigger asChild>
         <div className="w-full">{children}</div>
       </ContextMenuTrigger>
-      <ContextMenuContent onCloseAutoFocus={(e) => e.preventDefault()}>
-        <ContextMenuItem onSelect={onTogglePin}>
-          {isPinned ? (
+      {open ? (
+        <ContextMenuContent onCloseAutoFocus={(e) => e.preventDefault()}>
+          <ContextMenuItem onSelect={onTogglePin}>
+            {isPinned ? (
+              <>
+                <PinOff className="size-3.5 shrink-0" />
+                <span>{t('taskContextMenu.unpin')}</span>
+              </>
+            ) : (
+              <>
+                <Pin className="size-3.5 shrink-0" />
+                <span>{t('taskContextMenu.pin')}</span>
+              </>
+            )}
+          </ContextMenuItem>
+
+          <ContextMenuItem onSelect={onRename}>
+            <Pencil className="size-3.5 shrink-0" />
+            <span>{t('taskContextMenu.rename')}</span>
+          </ContextMenuItem>
+
+          <ContextMenuItem onSelect={onMarkUnread}>
+            <Mail className="size-3.5 shrink-0" />
+            <span>{t('taskContextMenu.markUnread')}</span>
+          </ContextMenuItem>
+
+          <ContextMenuSeparator />
+
+          <ContextMenuItem onSelect={onToggleArchive}>
+            {isArchived ? (
+              <>
+                <ArchiveRestore className="size-3.5 shrink-0" />
+                <span>{t('taskContextMenu.unarchive')}</span>
+              </>
+            ) : (
+              <>
+                <Archive className="size-3.5 shrink-0" />
+                <span>{t('taskContextMenu.archive')}</span>
+              </>
+            )}
+          </ContextMenuItem>
+
+          {onDelete && (
             <>
-              <PinOff className="size-3.5 shrink-0" />
-              <span>{t('taskContextMenu.unpin')}</span>
-            </>
-          ) : (
-            <>
-              <Pin className="size-3.5 shrink-0" />
-              <span>{t('taskContextMenu.pin')}</span>
+              <ContextMenuSeparator />
+              <ContextMenuItem onSelect={onDelete} className="text-red-400 focus:text-red-400">
+                <Trash2 className="size-3.5 shrink-0" />
+                <span>{t('taskContextMenu.deleteTask')}</span>
+              </ContextMenuItem>
             </>
           )}
-        </ContextMenuItem>
-
-        <ContextMenuItem onSelect={onRename}>
-          <Pencil className="size-3.5 shrink-0" />
-          <span>{t('taskContextMenu.rename')}</span>
-        </ContextMenuItem>
-
-        <ContextMenuItem onSelect={onMarkUnread}>
-          <Mail className="size-3.5 shrink-0" />
-          <span>{t('taskContextMenu.markUnread')}</span>
-        </ContextMenuItem>
-
-        <ContextMenuSeparator />
-
-        <ContextMenuItem onSelect={onToggleArchive}>
-          {isArchived ? (
-            <>
-              <ArchiveRestore className="size-3.5 shrink-0" />
-              <span>{t('taskContextMenu.unarchive')}</span>
-            </>
-          ) : (
-            <>
-              <Archive className="size-3.5 shrink-0" />
-              <span>{t('taskContextMenu.archive')}</span>
-            </>
-          )}
-        </ContextMenuItem>
-
-        {onDelete && (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem onSelect={onDelete} className="text-red-400 focus:text-red-400">
-              <Trash2 className="size-3.5 shrink-0" />
-              <span>{t('taskContextMenu.deleteTask')}</span>
-            </ContextMenuItem>
-          </>
-        )}
-      </ContextMenuContent>
+        </ContextMenuContent>
+      ) : null}
     </ContextMenu>
   );
 };
