@@ -206,32 +206,34 @@ const CancelTaskButton = ({
         </TooltipTrigger>
         <TooltipContent side="top">{t('kanban.taskCard.cancel')}</TooltipContent>
       </Tooltip>
-      <PopoverContent
-        className="w-56 p-3"
-        side="top"
-        align="start"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <p className="mb-3 text-xs text-[var(--color-text-secondary)]">
-          {t('kanban.taskCard.moveBackToTodoConfirm')}
-        </p>
-        <div className="flex gap-2">
-          <Button
-            variant="destructive"
-            size="sm"
-            className="flex-1"
-            onClick={() => {
-              setOpen(false);
-              onConfirm(taskId);
-            }}
-          >
-            {t('kanban.taskCard.confirm')}
-          </Button>
-          <Button variant="outline" size="sm" className="flex-1" onClick={() => setOpen(false)}>
-            {t('kanban.taskCard.keep')}
-          </Button>
-        </div>
-      </PopoverContent>
+      {open ? (
+        <PopoverContent
+          className="w-56 p-3"
+          side="top"
+          align="start"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="mb-3 text-xs text-[var(--color-text-secondary)]">
+            {t('kanban.taskCard.moveBackToTodoConfirm')}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="destructive"
+              size="sm"
+              className="flex-1"
+              onClick={() => {
+                setOpen(false);
+                onConfirm(taskId);
+              }}
+            >
+              {t('kanban.taskCard.confirm')}
+            </Button>
+            <Button variant="outline" size="sm" className="flex-1" onClick={() => setOpen(false)}>
+              {t('kanban.taskCard.keep')}
+            </Button>
+          </div>
+        </PopoverContent>
+      ) : null}
     </Popover>
   );
 };
