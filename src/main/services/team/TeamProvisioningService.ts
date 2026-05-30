@@ -26313,14 +26313,10 @@ export class TeamProvisioningService {
   }
 
   private shouldSampleMissingRuntimeUsageStatsWithPidusage(): boolean {
-    if (!this.isRuntimePidusageTelemetryEnabled()) {
-      return false;
-    }
-
     // CPU/RSS telemetry already comes from the enriched process table in the
     // default path. If this opt-in is enabled, preserve the older fallback for
     // missing rows across platforms.
-    return true;
+    return this.isRuntimePidusageTelemetryEnabled();
   }
 
   private isRuntimePidusageTelemetryEnabled(): boolean {
