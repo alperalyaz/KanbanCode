@@ -700,6 +700,9 @@ interface BootstrapTranscriptOutcomeLookupCacheEntry {
 
 interface BootstrapTranscriptOutcomeCandidate {
   text: string;
+  // text.replace(/\s+/g,' ').trim().toLowerCase(), computed once and reused across
+  // members so success/context detection does not re-normalize the same line.
+  normalizedText: string;
   observedAt: string;
   parsedAgentName: string | null;
 }
@@ -708,6 +711,7 @@ interface ParsedBootstrapTranscriptTailLine {
   rawTimestamp: string | null;
   timestampMs: number;
   text: string | null;
+  normalizedText: string | null;
   parsedAgentName: string | null;
 }
 
@@ -30334,7 +30338,7 @@ export class TeamProvisioningService {
       const bootstrapContextMembers = new Set<string>();
       const candidates: BootstrapTranscriptOutcomeCandidate[] = [];
       for (const parsedLine of parsedLines) {
-        const { timestampMs, parsedAgentName, text, rawTimestamp } = parsedLine;
+        const { timestampMs, parsedAgentName, text, rawTimestamp, normalizedText } = parsedLine;
         if (sinceMs != null && (!Number.isFinite(timestampMs) || timestampMs < sinceMs)) {
           continue;
         }
@@ -30347,15 +30351,24 @@ export class TeamProvisioningService {
         if (!text) {
           continue;
         }
+        const lineNormalizedText = normalizedText ?? '';
         if (shouldCollectBootstrapContext) {
           for (const contextMemberName of contextMemberNames) {
-            if (isBootstrapTranscriptContextText(text, teamName, contextMemberName)) {
+            if (
+              isBootstrapTranscriptContextText(
+                text,
+                teamName,
+                contextMemberName,
+                lineNormalizedText
+              )
+            ) {
               bootstrapContextMembers.add(contextMemberName.trim().toLowerCase());
             }
           }
         }
         candidates.push({
           text,
+          normalizedText: lineNormalizedText,
           observedAt:
             rawTimestamp && rawTimestamp.length > 0 ? rawTimestamp : new Date().toISOString(),
           parsedAgentName,
@@ -30384,7 +30397,8 @@ export class TeamProvisioningService {
         const successSource = getBootstrapTranscriptSuccessSource(
           candidate.text,
           teamName,
-          memberName
+          memberName,
+          candidate.normalizedText
         );
         if (successSource) {
           outcome = { kind: 'success', observedAt: candidate.observedAt, source: successSource };
@@ -30468,7 +30482,8 @@ export class TeamProvisioningService {
             ? parsed.agentName.trim().toLowerCase() || null
             : null;
         const text = extractTranscriptMessageText(parsed);
-        lines.push({ rawTimestamp, timestampMs, text, parsedAgentName });
+        const normalizedText = text ? text.replace(/\s+/g, ' ').trim().toLowerCase() : null;
+        lines.push({ rawTimestamp, timestampMs, text, normalizedText, parsedAgentName });
       }
     }
     this.setParsedBootstrapTranscriptTailCacheEntry(filePath, {
