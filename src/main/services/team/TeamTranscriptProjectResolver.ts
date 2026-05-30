@@ -241,6 +241,12 @@ interface TeamAffinityFileCacheEntry {
   mtimeMs: number;
   size: number;
   belongsToTeam: boolean;
+  // True when the verdict was decided after inspecting a FULL head window
+  // (>= TEAM_AFFINITY_SCAN_LINES non-empty lines). For append-only transcripts the
+  // head is immutable, so a `false` verdict from a full window stays valid while the
+  // file only grows — letting us cache negatives durably instead of re-streaming
+  // every non-matching transcript on each bootstrap poll.
+  headWindowFull: boolean;
 }
 
 export class TeamTranscriptProjectResolver {
@@ -1031,6 +1037,16 @@ export class TeamTranscriptProjectResolver {
       if (cached.belongsToTeam && fileStat.size >= cached.size) {
         return true;
       }
+      // A `false` decided from a FULL head window is durable while the file only
+      // grows: the first TEAM_AFFINITY_SCAN_LINES lines of an append-only transcript
+      // are immutable, so growth cannot introduce a team mention inside the inspected
+      // window. A shrink/rewrite makes size < cached.size and falls through to a
+      // re-scan below, identically to the positive path. This is the main launch win:
+      // non-matching transcripts in the project dir are no longer re-streamed +
+      // re-parsed on every bootstrap poll.
+      if (!cached.belongsToTeam && cached.headWindowFull && fileStat.size >= cached.size) {
+        return false;
+      }
       if (cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
         return cached.belongsToTeam;
       }
@@ -1039,9 +1055,9 @@ export class TeamTranscriptProjectResolver {
     const stream = createReadStream(filePath, { encoding: 'utf8' });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
     let belongsToTeam = false;
+    let inspected = 0;
 
     try {
-      let inspected = 0;
       for await (const line of rl) {
         const trimmed = line.trim();
         if (!trimmed) {
@@ -1085,6 +1101,7 @@ export class TeamTranscriptProjectResolver {
       mtimeMs: fileStat.mtimeMs,
       size: fileStat.size,
       belongsToTeam,
+      headWindowFull: inspected >= TEAM_AFFINITY_SCAN_LINES,
     });
     return belongsToTeam;
   }

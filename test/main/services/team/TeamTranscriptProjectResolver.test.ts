@@ -623,4 +623,97 @@ describe('TeamTranscriptProjectResolver', () => {
     expect(fastContext?.sessionIds).not.toContain('old-member-session');
     expect(fullContext?.sessionIds).toContain('old-member-session');
   });
+
+  // Regression for the launch hot path: non-matching transcripts must not be
+  // re-streamed + re-parsed on every bootstrap poll. A negative verdict decided from
+  // a FULL head window (>= 40 inspected lines) is durable while the file only grows,
+  // because an append-only transcript's head is immutable. Observed via the private
+  // affinity cache: the durable branch returns WITHOUT re-caching, so the cached size
+  // stays at the first scan's size (a re-scan would update it to the grown size).
+  type AffinityCacheEntry = {
+    mtimeMs: number;
+    size: number;
+    belongsToTeam: boolean;
+    headWindowFull: boolean;
+  };
+  type ResolverProbe = {
+    fileBelongsToTeam: (filePath: string, teamName: string) => Promise<boolean>;
+    buildTeamAffinityFileCacheKey: (filePath: string, normalizedTeam: string) => string;
+    teamAffinityFileCache: Map<string, AffinityCacheEntry>;
+  };
+
+  it('caches a full-head-window negative and stops re-scanning a growing non-matching transcript', async () => {
+    await setupClaudeRoot();
+    const resolver = new TeamTranscriptProjectResolver() as unknown as ResolverProbe;
+    const team = 'absent-team';
+    const projectDir = path.join(tmpDir!, 'projects', encodePath('/repo/neg-durable'));
+    await fs.mkdir(projectDir, { recursive: true });
+    const jsonlPath = path.join(projectDir, 'unrelated.jsonl');
+    const mkLine = (i: number) =>
+      JSON.stringify({ type: 'user', message: { role: 'user', content: `unrelated line ${i}` } });
+    // 45 non-empty lines, none mentioning the team -> full head window (40) inspected.
+    await fs.writeFile(
+      jsonlPath,
+      `${Array.from({ length: 45 }, (_, i) => mkLine(i)).join('\n')}\n`,
+      'utf8'
+    );
+
+    expect(await resolver.fileBelongsToTeam(jsonlPath, team)).toBe(false);
+    const key = resolver.buildTeamAffinityFileCacheKey(jsonlPath, team.toLowerCase());
+    const first = resolver.teamAffinityFileCache.get(key);
+    expect(first?.belongsToTeam).toBe(false);
+    expect(first?.headWindowFull).toBe(true);
+    const sizeAfterFirst = first!.size;
+
+    // Append-only growth: size grows, mtime changes, but the inspected head is fixed.
+    await fs.appendFile(jsonlPath, `${mkLine(100)}\n`);
+    expect(await resolver.fileBelongsToTeam(jsonlPath, team)).toBe(false);
+    // Durable negative: the cache entry was NOT re-written (no re-scan), so its size
+    // is still the original, smaller size.
+    expect(resolver.teamAffinityFileCache.get(key)?.size).toBe(sizeAfterFirst);
+  });
+
+  // Correctness guard: a SHORT-file negative (head window not yet full) is NOT durable
+  // and must be re-scanned on growth, so a team mention that lands inside the first 40
+  // lines is still detected (the verdict flips to true).
+  it('re-scans a short-file negative on growth and flips to true when the head gains a team mention', async () => {
+    await setupClaudeRoot();
+    const resolver = new TeamTranscriptProjectResolver() as unknown as ResolverProbe;
+    const team = 'team-x';
+    const projectDir = path.join(tmpDir!, 'projects', encodePath('/repo/short-neg'));
+    await fs.mkdir(projectDir, { recursive: true });
+    const jsonlPath = path.join(projectDir, 'short.jsonl');
+    // Only 3 lines, none mentioning the team -> partial head window (not durable).
+    await fs.writeFile(
+      jsonlPath,
+      `${[0, 1, 2]
+        .map((i) => JSON.stringify({ type: 'user', message: { role: 'user', content: `hi ${i}` } }))
+        .join('\n')}\n`,
+      'utf8'
+    );
+
+    expect(await resolver.fileBelongsToTeam(jsonlPath, team)).toBe(false);
+    const key = resolver.buildTeamAffinityFileCacheKey(jsonlPath, team.toLowerCase());
+    const first = resolver.teamAffinityFileCache.get(key);
+    expect(first?.headWindowFull).toBe(false);
+    const sizeAfterFirst = first!.size;
+
+    // Append a line whose text content mentions the team (still within the first 40 lines).
+    await fs.appendFile(
+      jsonlPath,
+      `${JSON.stringify({
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'text', text: `Current durable team context:\n- Team name: ${team}` },
+          ],
+        },
+      })}\n`
+    );
+    expect(await resolver.fileBelongsToTeam(jsonlPath, team)).toBe(true); // re-scanned -> flips
+    const second = resolver.teamAffinityFileCache.get(key);
+    expect(second?.belongsToTeam).toBe(true);
+    expect(second!.size).toBeGreaterThan(sizeAfterFirst); // re-scanned + re-cached
+  });
 });
