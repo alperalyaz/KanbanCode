@@ -706,6 +706,10 @@ interface BootstrapTranscriptOutcomeCandidate {
   normalizedText: string;
   observedAt: string;
   parsedAgentName: string | null;
+  // The shared parsed-tail line this candidate was built from. Used to memoize the
+  // pure extractBootstrapFailureReason() result on the line itself so an N-member
+  // team extracts each line's failure reason at most once instead of once per member.
+  parsedLine: ParsedBootstrapTranscriptTailLine;
 }
 
 interface ParsedBootstrapTranscriptTailLine {
@@ -714,6 +718,11 @@ interface ParsedBootstrapTranscriptTailLine {
   text: string | null;
   normalizedText: string | null;
   parsedAgentName: string | null;
+  // Memoized extractBootstrapFailureReason(text): undefined = not computed yet,
+  // null = computed/no failure reason, string = the failure reason. Lives as long as
+  // this line's parse-cache entry (filePath + mtime + size); a file change re-parses
+  // into fresh line objects, so the memo cannot drift from the line's text.
+  bootstrapFailureReason?: string | null;
 }
 
 interface ParsedBootstrapTranscriptTailCacheEntry {
@@ -30439,6 +30448,7 @@ export class TeamProvisioningService {
           observedAt:
             rawTimestamp && rawTimestamp.length > 0 ? rawTimestamp : new Date().toISOString(),
           parsedAgentName,
+          parsedLine,
         });
       }
       const hasUnambiguousMatchingBootstrapContext =
@@ -30449,7 +30459,14 @@ export class TeamProvisioningService {
       for (let index = candidates.length - 1; index >= 0; index -= 1) {
         const candidate = candidates[index];
         if (!candidate) continue;
-        const reason = extractBootstrapFailureReason(candidate.text);
+        // Lazy + memoized on the shared parsed line: computed at most once per line
+        // across all members and re-scans, and only for lines this newest-first loop
+        // actually reaches (lines past the first match are never extracted).
+        const cachedLine = candidate.parsedLine;
+        if (cachedLine.bootstrapFailureReason === undefined) {
+          cachedLine.bootstrapFailureReason = extractBootstrapFailureReason(candidate.text);
+        }
+        const reason = cachedLine.bootstrapFailureReason;
         if (reason) {
           if (
             !candidate.parsedAgentName &&
