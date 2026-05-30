@@ -657,6 +657,9 @@ type TeamProvisioningServicePrivateHarness = {
   readProcessUsageStatsByPid: (
     pids: readonly number[]
   ) => Promise<Map<number, { rssBytes?: number; cpuPercent?: number }>>;
+  readRuntimeProcessRowsForUsageSnapshot: (teamName: string) => Promise<unknown[] | null>;
+  invalidateRuntimeSnapshotCaches: (teamName: string) => void;
+  aliveRunByTeam: Map<string, string>;
   readRecentBootstrapTranscriptOutcome: (
     filePath: string,
     sinceMs: number | null,
@@ -3733,6 +3736,32 @@ describe('TeamProvisioningService', () => {
         cpuPercent: 7,
         rssBytes: 456_000_000,
       });
+    });
+
+    it('keeps cached runtime resource process rows across snapshot invalidations', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-05-03T12:00:00.000Z'));
+      const svc = new TeamProvisioningService();
+      const harness = privateHarness(svc);
+      harness.aliveRunByTeam.set('runtime-team', 'run-1');
+      vi.mocked(listRuntimeProcessTableForCurrentPlatform).mockResolvedValueOnce([
+        {
+          pid: 111,
+          ppid: 1,
+          command: '/usr/bin/node lead.js',
+          cpuPercent: 3.5,
+          rssBytes: 123_000_000,
+        },
+      ]);
+
+      const firstRows = await harness.readRuntimeProcessRowsForUsageSnapshot('runtime-team');
+      harness.invalidateRuntimeSnapshotCaches('runtime-team');
+      vi.setSystemTime(new Date('2026-05-03T12:00:05.000Z'));
+      const secondRows = await harness.readRuntimeProcessRowsForUsageSnapshot('runtime-team');
+
+      expect(listRuntimeProcessTableForCurrentPlatform).toHaveBeenCalledTimes(1);
+      expect(secondRows).toEqual(firstRows);
+      vi.useRealTimers();
     });
 
     it('skips pidusage by default when process table metrics are missing', async () => {

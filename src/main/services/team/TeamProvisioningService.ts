@@ -3347,6 +3347,9 @@ export class TeamProvisioningService {
   private static readonly SAME_TEAM_PERSIST_RETRY_MS = 2_000;
   private static readonly AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS = 2_000;
   private static readonly PERSISTED_AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS = 10_000;
+  private static readonly RUNTIME_RESOURCE_TELEMETRY_CACHE_TTL_MS = 60_000;
+  private static readonly RUNTIME_RESOURCE_TELEMETRY_FAILURE_CACHE_TTL_MS = 10_000;
+  private static readonly RUNTIME_RESOURCE_SAMPLE_MIN_INTERVAL_MS = 30_000;
   private static readonly AGENT_RUNTIME_RESOURCE_HISTORY_LIMIT = 60;
   private static readonly BOOTSTRAP_TRANSCRIPT_OUTCOME_CACHE_MAX_ENTRIES = 2_048;
   private static readonly PERSISTED_BOOTSTRAP_TRANSCRIPT_OUTCOME_LOOKUP_CACHE_TTL_MS = 10_000;
@@ -3773,10 +3776,10 @@ export class TeamProvisioningService {
     this.agentRuntimeSnapshotInFlightByTeam.delete(teamName);
     this.liveTeamAgentRuntimeMetadataCache.delete(teamName);
     this.liveTeamAgentRuntimeMetadataInFlightByTeam.delete(teamName);
-    this.runtimeProcessRowsForUsageSnapshotByTeam.delete(teamName);
     this.persistedTeamConfigCache.delete(teamName);
-    // CPU/RSS samples are TTL-bound and do not decide liveness; keeping them
-    // avoids repeated pidusage forks when launch-state churn invalidates snapshots.
+    // CPU/RSS telemetry is TTL-bound and does not decide liveness. Keep the
+    // process table cache across noisy runtime snapshot invalidations so UI
+    // refreshes do not respawn `ps` just to repaint resource badges.
   }
 
   private cloneMemberSpawnStatusesSnapshot(
@@ -25448,7 +25451,11 @@ export class TeamProvisioningService {
     }
     if (processRowsReadForMetadata) {
       this.runtimeProcessRowsForUsageSnapshotByTeam.set(teamName, {
-        expiresAtMs: Date.now() + this.getAgentRuntimeSnapshotCacheTtlMs(teamName, runId),
+        expiresAtMs:
+          Date.now() +
+          (processTableAvailable
+            ? TeamProvisioningService.RUNTIME_RESOURCE_TELEMETRY_CACHE_TTL_MS
+            : TeamProvisioningService.RUNTIME_RESOURCE_TELEMETRY_FAILURE_CACHE_TTL_MS),
         generation: generationAtStart,
         runId,
         rows: processTableAvailable ? processRows : null,
@@ -25732,6 +25739,17 @@ export class TeamProvisioningService {
       ...(params.pid ? { pid: params.pid } : {}),
       ...(params.runtimePid ? { runtimePid: params.runtimePid } : {}),
     };
+    const lastSample = existingHistory.at(-1);
+    const lastSampleMs = lastSample ? Date.parse(lastSample.timestamp) : Number.NaN;
+    const sampleMs = Date.parse(sample.timestamp);
+    const sampledRecently =
+      Number.isFinite(lastSampleMs) &&
+      Number.isFinite(sampleMs) &&
+      sampleMs - lastSampleMs >= 0 &&
+      sampleMs - lastSampleMs < TeamProvisioningService.RUNTIME_RESOURCE_SAMPLE_MIN_INTERVAL_MS;
+    if (sampledRecently) {
+      return existingHistory.map((entry) => ({ ...entry }));
+    }
     const nextHistory = [...existingHistory, sample].slice(
       -TeamProvisioningService.AGENT_RUNTIME_RESOURCE_HISTORY_LIMIT
     );
@@ -25883,10 +25901,7 @@ export class TeamProvisioningService {
       process.platform === 'win32' && options.includeWindowsHostRows === true;
     const cached = this.runtimeProcessRowsForUsageSnapshotByTeam.get(teamName);
     const canUseCached =
-      cached &&
-      cached.expiresAtMs > Date.now() &&
-      cached.generation === this.getRuntimeSnapshotCacheGeneration(teamName) &&
-      cached.runId === this.getTrackedRunId(teamName);
+      cached && cached.expiresAtMs > Date.now() && cached.runId === this.getTrackedRunId(teamName);
     if (canUseCached && (!includeWindowsHostRows || cached.includesWindowsHostRows)) {
       return cached.rows;
     }
@@ -25945,7 +25960,9 @@ export class TeamProvisioningService {
     this.runtimeProcessRowsForUsageSnapshotByTeam.set(teamName, {
       expiresAtMs:
         Date.now() +
-        this.getAgentRuntimeSnapshotCacheTtlMs(teamName, this.getTrackedRunId(teamName)),
+        (resultRows === null
+          ? TeamProvisioningService.RUNTIME_RESOURCE_TELEMETRY_FAILURE_CACHE_TTL_MS
+          : TeamProvisioningService.RUNTIME_RESOURCE_TELEMETRY_CACHE_TTL_MS),
       generation: this.getRuntimeSnapshotCacheGeneration(teamName),
       runId: this.getTrackedRunId(teamName),
       rows: resultRows,

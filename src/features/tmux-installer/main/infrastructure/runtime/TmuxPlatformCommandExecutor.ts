@@ -39,16 +39,13 @@ export interface RuntimeProcessTableRow {
  * from the large Electron main process. Runtime liveness/telemetry callers fire
  * very frequently (every team file change invalidates their per-team snapshot
  * caches), so without throttling here the main process spawns `ps` dozens of
- * times per second while a team runs. Those callers already tolerate ~2s
- * staleness via their own snapshot caches (AGENT_RUNTIME_SNAPSHOT_CACHE_TTL_MS),
- * so caching the table for a SHORTER window than the consumers read it just
- * re-spawns `ps` on every consumer rebuild for no freshness benefit. Match the
- * 2s consumer window to collapse those redundant spawns: liveness verdicts are
- * identity- (team+agent+command) not bare-PID matched, and OpenCode host cleanup
- * re-validates each PID against live state before acting, so a ~2s-stale table
- * cannot cause a wrong liveness call or an unsafe kill.
+ * times per second while a team runs. Runtime liveness can tolerate a small
+ * delay because verdicts are identity- (team+agent+command) not bare-PID
+ * matched, and OpenCode host cleanup re-validates each PID against live state
+ * before acting. Keep this cache long enough to collapse bursts from concurrent
+ * team refreshes, but short enough that stale "alive" UI is brief.
  */
-const RUNTIME_PROCESS_TABLE_CACHE_TTL_MS = 2_000;
+const RUNTIME_PROCESS_TABLE_CACHE_TTL_MS = 10_000;
 
 interface RuntimeProcessTableCacheEntry {
   rows: RuntimeProcessTableRow[];
