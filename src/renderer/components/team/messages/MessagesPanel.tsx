@@ -682,18 +682,42 @@ export const MessagesPanel = memo(function MessagesPanel({
     if (!open) setExpandedItemKey(null);
   }, []);
 
-  const { readSet, markRead, markAllRead } = useTeamMessagesRead(teamName);
+  const { readSet, markAllRead } = useTeamMessagesRead(teamName);
   const { expandedSet, toggle: toggleExpandOverride } = useTeamMessagesExpanded(teamName);
+  const pendingVisibleReadKeysRef = useRef<Set<string>>(new Set());
+  const visibleReadFlushFrameRef = useRef<number | null>(null);
 
   const messagesUnreadCount = useMemo(
     () => filteredMessages.filter((m) => !m.read && !readSet.has(toMessageKey(m))).length,
     [filteredMessages, readSet]
   );
 
+  const flushVisibleReadKeys = useCallback(() => {
+    visibleReadFlushFrameRef.current = null;
+    const keys = [...pendingVisibleReadKeysRef.current];
+    pendingVisibleReadKeysRef.current.clear();
+    markAllRead(keys);
+  }, [markAllRead]);
+
   const handleMessageVisible = useCallback(
-    (message: InboxMessage) => markRead(toMessageKey(message)),
-    [markRead]
+    (message: InboxMessage) => {
+      pendingVisibleReadKeysRef.current.add(toMessageKey(message));
+      if (visibleReadFlushFrameRef.current !== null) return;
+      visibleReadFlushFrameRef.current = window.requestAnimationFrame(flushVisibleReadKeys);
+    },
+    [flushVisibleReadKeys]
   );
+
+  useEffect(() => {
+    const pendingVisibleReadKeys = pendingVisibleReadKeysRef.current;
+    return () => {
+      if (visibleReadFlushFrameRef.current !== null) {
+        window.cancelAnimationFrame(visibleReadFlushFrameRef.current);
+        visibleReadFlushFrameRef.current = null;
+      }
+      pendingVisibleReadKeys.clear();
+    };
+  }, [teamName]);
 
   const readState = useMemo(() => ({ readSet, getMessageKey: toMessageKey }), [readSet]);
 
@@ -745,10 +769,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     };
   }, [
     refreshSendMessageRuntimeDeliveryStatus,
-    sendMessageDebugDetails?.messageId,
-    sendMessageDebugDetails?.statusMessageId,
-    sendMessageDebugDetails?.responsePending,
-    sendMessageDebugDetails?.userVisibleState,
+    sendMessageDebugDetails,
     sendMessageRuntimeReplyVisible,
     teamName,
   ]);
