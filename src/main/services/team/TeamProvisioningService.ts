@@ -3764,7 +3764,8 @@ export class TeamProvisioningService {
     this.liveTeamAgentRuntimeMetadataCache.delete(teamName);
     this.liveTeamAgentRuntimeMetadataInFlightByTeam.delete(teamName);
     this.runtimeProcessRowsForUsageSnapshotByTeam.delete(teamName);
-    this.runtimeProcessUsageStatsCacheByPid.clear();
+    // CPU/RSS samples are TTL-bound and do not decide liveness; keeping them
+    // avoids repeated pidusage forks when launch-state churn invalidates snapshots.
   }
 
   private cloneMemberSpawnStatusesSnapshot(
@@ -14232,7 +14233,10 @@ export class TeamProvisioningService {
       ];
       usageStatsByPid = this.buildProcessUsageStatsFromRows(runtimeProcessRows, runtimeUsagePids);
       const pidsMissingUsageStats = runtimeUsagePids.filter((pid) => !usageStatsByPid.has(pid));
-      if (pidsMissingUsageStats.length > 0) {
+      if (
+        pidsMissingUsageStats.length > 0 &&
+        this.shouldSampleMissingRuntimeUsageStatsWithPidusage()
+      ) {
         const sampledUsageStats = await this.readProcessUsageStatsByPid(pidsMissingUsageStats);
         for (const [pid, stats] of sampledUsageStats) {
           usageStatsByPid.set(pid, stats);
@@ -14543,7 +14547,8 @@ export class TeamProvisioningService {
         !usageStatsByPid.has(rssPid) &&
         isSharedOpenCodeHost &&
         typeof rssPid === 'number' &&
-        rssPid > 0
+        rssPid > 0 &&
+        this.isRuntimePidusageTelemetryEnabled()
       ) {
         try {
           const refreshedUsageStats = (
@@ -26258,6 +26263,22 @@ export class TeamProvisioningService {
     return usageStatsByPid;
   }
 
+  private shouldSampleMissingRuntimeUsageStatsWithPidusage(): boolean {
+    if (!this.isRuntimePidusageTelemetryEnabled()) {
+      return false;
+    }
+
+    // CPU/RSS telemetry already comes from the enriched process table in the
+    // default path. If this opt-in is enabled, preserve the older fallback for
+    // missing rows across platforms.
+    return true;
+  }
+
+  private isRuntimePidusageTelemetryEnabled(): boolean {
+    const value = process.env.CLAUDE_TEAM_RUNTIME_PIDUSAGE_ENABLED?.trim().toLowerCase();
+    return value === '1' || value === 'true' || value === 'yes';
+  }
+
   private async readProcessUsageStatsByPid(
     pids: readonly number[],
     cacheOptions: { ignoreCachedMisses?: boolean } = {}
@@ -26288,6 +26309,9 @@ export class TeamProvisioningService {
       pidsToRead.push(pid);
     }
     if (pidsToRead.length === 0) {
+      return usageStatsByPid;
+    }
+    if (!this.isRuntimePidusageTelemetryEnabled()) {
       return usageStatsByPid;
     }
 

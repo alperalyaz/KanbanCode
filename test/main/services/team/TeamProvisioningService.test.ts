@@ -202,6 +202,34 @@ import pidusage from 'pidusage';
 
 const EXPECTED_RUNTIME_PIDUSAGE_OPTIONS =
   process.platform === 'win32' ? { maxage: 10_000 } : { maxage: 0 };
+const ORIGINAL_RUNTIME_PIDUSAGE_ENABLED = process.env.CLAUDE_TEAM_RUNTIME_PIDUSAGE_ENABLED;
+
+function restoreRuntimePidusageTelemetryEnv() {
+  if (ORIGINAL_RUNTIME_PIDUSAGE_ENABLED === undefined) {
+    delete process.env.CLAUDE_TEAM_RUNTIME_PIDUSAGE_ENABLED;
+    return;
+  }
+  process.env.CLAUDE_TEAM_RUNTIME_PIDUSAGE_ENABLED = ORIGINAL_RUNTIME_PIDUSAGE_ENABLED;
+}
+
+function withRuntimePidusageTelemetryEnv(
+  value: string | undefined,
+  callback: () => Promise<void>
+): Promise<void> {
+  const previous = process.env.CLAUDE_TEAM_RUNTIME_PIDUSAGE_ENABLED;
+  if (value === undefined) {
+    delete process.env.CLAUDE_TEAM_RUNTIME_PIDUSAGE_ENABLED;
+  } else {
+    process.env.CLAUDE_TEAM_RUNTIME_PIDUSAGE_ENABLED = value;
+  }
+  return callback().finally(() => {
+    if (previous === undefined) {
+      delete process.env.CLAUDE_TEAM_RUNTIME_PIDUSAGE_ENABLED;
+    } else {
+      process.env.CLAUDE_TEAM_RUNTIME_PIDUSAGE_ENABLED = previous;
+    }
+  });
+}
 
 function allowConsoleLogs() {
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -789,7 +817,9 @@ async function waitForFile(filePath: string, timeoutMs = 2_000): Promise<void> {
 
 describe('TeamProvisioningService', () => {
   beforeEach(() => {
+    process.env.CLAUDE_TEAM_RUNTIME_PIDUSAGE_ENABLED = '1';
     vi.clearAllMocks();
+    vi.mocked(pidusage).mockReset();
     vi.mocked(killTmuxPaneForCurrentPlatformSync).mockReset();
     vi.mocked(listRuntimeProcessTableForCurrentPlatform).mockReset();
     vi.mocked(listRuntimeProcessTableForCurrentPlatform).mockResolvedValue([]);
@@ -818,6 +848,7 @@ describe('TeamProvisioningService', () => {
   });
 
   afterEach(() => {
+    restoreRuntimePidusageTelemetryEnv();
     clearAutoResumeService();
     vi.useRealTimers();
     try {
@@ -3657,6 +3688,66 @@ describe('TeamProvisioningService', () => {
       });
     });
 
+    it('skips pidusage by default when process table metrics are missing', async () => {
+      await withRuntimePidusageTelemetryEnv(undefined, async () => {
+        const svc = new TeamProvisioningService();
+        (svc as any).configReader = {
+          getConfig: vi.fn(async () => ({
+            members: [
+              { name: 'team-lead', agentType: 'team-lead' },
+              { name: 'alice', model: 'gpt-5.4-mini' },
+            ],
+          })),
+        };
+        (svc as any).readPersistedRuntimeMembers = vi.fn(() => [
+          {
+            name: 'alice',
+            agentId: 'alice@runtime-team',
+            tmuxPaneId: '%1',
+            backendType: 'tmux',
+          },
+        ]);
+        (svc as any).aliveRunByTeam.set('runtime-team', 'run-1');
+        (svc as any).runs.set('run-1', {
+          runId: 'run-1',
+          child: { pid: 111 },
+          request: { model: 'gpt-5.4' },
+          processKilled: false,
+          cancelRequested: false,
+          spawnContext: null,
+        });
+        vi.mocked(listTmuxPaneRuntimeInfoForCurrentPlatform).mockResolvedValueOnce(
+          new Map([
+            [
+              '%1',
+              {
+                paneId: '%1',
+                panePid: 222,
+                currentCommand: 'codex',
+              },
+            ],
+          ])
+        );
+        vi.mocked(listRuntimeProcessTableForCurrentPlatform).mockResolvedValue([
+          {
+            pid: 999,
+            ppid: 1,
+            command: '/usr/bin/node unrelated.js',
+            cpuPercent: 1.5,
+            rssBytes: 12_000_000,
+          },
+        ]);
+
+        const snapshot = await svc.getTeamAgentRuntimeSnapshot('runtime-team');
+
+        expect(pidusage).not.toHaveBeenCalled();
+        expect(snapshot.members['team-lead']).toMatchObject({ pid: 111 });
+        expect(snapshot.members['team-lead']?.rssBytes).toBeUndefined();
+        expect(snapshot.members.alice).toMatchObject({ pid: 222 });
+        expect(snapshot.members.alice?.rssBytes).toBeUndefined();
+      });
+    });
+
     it('falls back to pidusage for root pids missing from an otherwise available process table', async () => {
       const svc = new TeamProvisioningService();
       (svc as any).configReader = {
@@ -3724,6 +3815,8 @@ describe('TeamProvisioningService', () => {
     });
 
     it('captures CPU and memory history on runtime snapshots', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-05-03T12:00:00.000Z'));
       const svc = new TeamProvisioningService();
       (svc as any).configReader = {
         getConfig: vi.fn(async () => ({
@@ -3769,6 +3862,7 @@ describe('TeamProvisioningService', () => {
       ]);
 
       (svc as any).invalidateRuntimeSnapshotCaches('runtime-team');
+      vi.setSystemTime(new Date('2026-05-03T12:00:31.000Z'));
       vi.mocked(pidusage).mockResolvedValueOnce({
         '111': createPidusageStat(111, 130_000_000, 18),
       } as any);
