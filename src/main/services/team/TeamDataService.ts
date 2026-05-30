@@ -39,7 +39,7 @@ import {
   choosePreferredLaunchSnapshot,
   readBootstrapLaunchSnapshot,
 } from './TeamBootstrapStateReader';
-import { TeamConfigReader } from './TeamConfigReader';
+import { resolveProjectPathFromConfig, TeamConfigReader } from './TeamConfigReader';
 import { TeamInboxReader } from './TeamInboxReader';
 import { TeamInboxWriter } from './TeamInboxWriter';
 import { TeamKanbanManager } from './TeamKanbanManager';
@@ -108,6 +108,7 @@ const TASK_MAP_YIELD_EVERY = 250;
 const TASK_COMMENT_NOTIFICATION_SOURCE = 'system_notification';
 const PASSIVE_USER_REPLY_LINK_WINDOW_MS = 15_000;
 const MEMBER_RUNTIME_ADVISORY_SNAPSHOT_BUDGET_MS = 250;
+const GLOBAL_TASK_TEAM_CONFIG_CONCURRENCY = 12;
 const MIXED_TEAM_LIVE_MUTATION_BLOCK_MESSAGE =
   'Live roster mutation on a running mixed team is not supported in V1. Stop the team, edit the roster, then relaunch.';
 
@@ -231,6 +232,36 @@ interface FileWatchReconcileDiagnostics {
   burstCount: number;
   windowStartedAt: number;
   lastPressureLogAt: number;
+}
+
+interface GlobalTaskTeamInfo {
+  displayName: string;
+  projectPath?: string;
+  deletedAt?: string;
+}
+
+async function mapLimitLocal<T, R>(
+  items: readonly T[],
+  limit: number,
+  mapper: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, limit), items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const index = nextIndex++;
+        if (index >= items.length) {
+          return;
+        }
+        results[index] = await mapper(items[index]!);
+      }
+    })
+  );
+
+  return results;
 }
 
 function applyDistinctRosterColors<T extends { name: string; color?: string; removedAt?: number }>(
@@ -421,6 +452,58 @@ export class TeamDataService {
 
   private readSnapshotConfig(teamName: string): Promise<TeamConfig | null> {
     return readConfigForUiSnapshot(this.configReader, teamName);
+  }
+
+  private async readGlobalTaskTeamInfoFromListTeams(): Promise<Map<string, GlobalTaskTeamInfo>> {
+    const teams = await this.configReader.listTeams();
+    const teamInfoMap = new Map<string, GlobalTaskTeamInfo>();
+    for (const team of teams) {
+      teamInfoMap.set(team.teamName, {
+        displayName: team.displayName,
+        projectPath: team.projectPath,
+        deletedAt: team.deletedAt,
+      });
+    }
+    return teamInfoMap;
+  }
+
+  private async readGlobalTaskTeamInfo(
+    rawTasks: readonly (TeamTask & { teamName: string })[]
+  ): Promise<Map<string, GlobalTaskTeamInfo>> {
+    const canReadConfigDirectly =
+      typeof (this.configReader as { getConfigSnapshot?: unknown }).getConfigSnapshot ===
+        'function' ||
+      typeof (this.configReader as { getConfig?: unknown }).getConfig === 'function';
+    if (!canReadConfigDirectly) {
+      return this.readGlobalTaskTeamInfoFromListTeams();
+    }
+
+    const teamNames = [...new Set(rawTasks.map((task) => task.teamName))];
+    const entries = await mapLimitLocal(
+      teamNames,
+      GLOBAL_TASK_TEAM_CONFIG_CONCURRENCY,
+      async (teamName) => {
+        const config = await readConfigForUiSnapshot(this.configReader, teamName).catch(() => null);
+        const displayName = config?.name?.trim();
+        if (!config || !displayName) {
+          return null;
+        }
+        return [
+          teamName,
+          {
+            displayName,
+            projectPath: resolveProjectPathFromConfig(config),
+            deletedAt: typeof config.deletedAt === 'string' ? config.deletedAt : undefined,
+          },
+        ] as const;
+      }
+    );
+
+    if (entries.some((entry) => entry === null)) {
+      return this.readGlobalTaskTeamInfoFromListTeams();
+    }
+
+    return new Map(entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null));
   }
 
   private invalidateGlobalTaskProjectionCache(): void {
@@ -1025,21 +1108,7 @@ export class TeamDataService {
 
   async getAllTasks(): Promise<GlobalTask[]> {
     const rawTasks = await this.taskReader.getAllTasks();
-    const teams = await this.configReader.listTeams();
-
-    const teamInfoMap = new Map<
-      string,
-      { displayName: string; projectPath?: string; deletedAt?: string }
-    >();
-    for (const team of teams) {
-      teamInfoMap.set(team.teamName, {
-        displayName: team.displayName,
-        projectPath: team.projectPath,
-        deletedAt: team.deletedAt,
-      });
-    }
-
-    const deletedTeams = new Set(teams.filter((t) => t.deletedAt).map((t) => t.teamName));
+    const teamInfoMap = await this.readGlobalTaskTeamInfo(rawTasks);
 
     const MAX_GLOBAL_TASKS_EXPORTED = 500;
     let tasksToExport = rawTasks.filter((task) => teamInfoMap.has(task.teamName));
@@ -1118,7 +1187,7 @@ export class TeamDataService {
         kanbanColumn,
         teamName: task.teamName,
         teamDisplayName: info.displayName,
-        teamDeleted: deletedTeams.has(task.teamName) || undefined,
+        teamDeleted: Boolean(info.deletedAt) || undefined,
       });
       processed++;
       if (processed % TASK_MAP_YIELD_EVERY === 0) {

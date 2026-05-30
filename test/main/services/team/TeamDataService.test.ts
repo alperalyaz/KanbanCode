@@ -2235,6 +2235,64 @@ describe('TeamDataService', () => {
     });
   });
 
+  it('uses config snapshots instead of full team summaries for global task team info', async () => {
+    const listTeams = vi.fn(async () => [
+      {
+        teamName: 'my-team',
+        displayName: 'My team from list',
+        projectPath: '/repo-from-list',
+      },
+    ]);
+    const getConfigSnapshot = vi.fn(async (teamName: string) =>
+      teamName === 'my-team'
+        ? {
+            name: 'My team from config',
+            members: [{ name: 'lead', role: 'Team Lead', cwd: '/repo-from-lead' }],
+            deletedAt: '2026-03-01T12:00:00.000Z',
+          }
+        : null
+    );
+    const service = new TeamDataService(
+      {
+        listTeams,
+        getConfigSnapshot,
+      } as never,
+      {
+        getAllTasks: vi.fn(async () => [
+          {
+            id: 'task-global-config',
+            teamName: 'my-team',
+            subject: 'Global config task',
+            status: 'pending',
+            owner: 'bob',
+          },
+        ]),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        getState: vi.fn(async () => ({
+          teamName: 'my-team',
+          reviewers: [],
+          tasks: {},
+        })),
+      } as never
+    );
+
+    const tasks = await service.getAllTasks();
+
+    expect(listTeams).not.toHaveBeenCalled();
+    expect(getConfigSnapshot).toHaveBeenCalledWith('my-team');
+    expect(tasks[0]).toMatchObject({
+      id: 'task-global-config',
+      teamDisplayName: 'My team from config',
+      projectPath: '/repo-from-lead',
+      teamDeleted: true,
+    });
+  });
+
   it('caps global task projections before building lightweight comment payloads', async () => {
     const rawTasks = Array.from({ length: 501 }, (_, index) => ({
       id: `task-${index}`,

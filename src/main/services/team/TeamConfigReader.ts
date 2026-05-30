@@ -109,7 +109,7 @@ function normalizeProjectPathCandidate(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function resolveProjectPathFromConfig(
+export function resolveProjectPathFromConfig(
   config: Pick<TeamConfig, 'projectPath' | 'projectPathHistory' | 'members'>
 ): string | undefined {
   const direct = normalizeProjectPathCandidate(config.projectPath);
