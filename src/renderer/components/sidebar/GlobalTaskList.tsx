@@ -190,6 +190,100 @@ function buildTaskTeamSummary(task: GlobalTask): TeamSummary {
   };
 }
 
+type TaskRowAction = (teamName: string, taskId: string) => void;
+type TaskRowDeleteAction = (teamName: string, taskId: string) => void | Promise<void>;
+type TaskDisplaySubjectResolver = (task: GlobalTask) => string | undefined;
+
+interface GlobalTaskRowProps {
+  task: GlobalTask;
+  isPinned: boolean;
+  isArchived: boolean;
+  isNew: boolean;
+  teamOffline: boolean;
+  renamingKey: string | null;
+  hideTeamName?: boolean;
+  hideProjectName?: boolean;
+  showTeamName?: boolean;
+  onTogglePin: TaskRowAction;
+  onToggleArchive: TaskRowAction;
+  onMarkUnread: TaskRowAction;
+  onRename: TaskRowAction;
+  onDelete: TaskRowDeleteAction;
+  onRenameComplete: (teamName: string, taskId: string, newSubject: string) => void;
+  onRenameCancel: () => void;
+  getDisplaySubject: TaskDisplaySubjectResolver;
+}
+
+const GlobalTaskRow = memo(function GlobalTaskRow({
+  task,
+  isPinned,
+  isArchived,
+  isNew,
+  teamOffline,
+  renamingKey,
+  hideTeamName,
+  hideProjectName,
+  showTeamName,
+  onTogglePin,
+  onToggleArchive,
+  onMarkUnread,
+  onRename,
+  onDelete,
+  onRenameComplete,
+  onRenameCancel,
+  getDisplaySubject,
+}: GlobalTaskRowProps): React.JSX.Element {
+  const taskRenamingKey = `${task.teamName}:${task.id}`;
+  const effectiveRenamingKey = renamingKey === taskRenamingKey ? renamingKey : null;
+
+  const handleTogglePin = useCallback(() => {
+    onTogglePin(task.teamName, task.id);
+  }, [onTogglePin, task.id, task.teamName]);
+
+  const handleToggleArchive = useCallback(() => {
+    onToggleArchive(task.teamName, task.id);
+  }, [onToggleArchive, task.id, task.teamName]);
+
+  const handleMarkUnread = useCallback(() => {
+    onMarkUnread(task.teamName, task.id);
+  }, [onMarkUnread, task.id, task.teamName]);
+
+  const handleRename = useCallback(() => {
+    onRename(task.teamName, task.id);
+  }, [onRename, task.id, task.teamName]);
+
+  const handleDelete = useCallback(() => {
+    void onDelete(task.teamName, task.id);
+  }, [onDelete, task.id, task.teamName]);
+
+  return (
+    <TaskContextMenu
+      task={task}
+      isPinned={isPinned}
+      isArchived={isArchived}
+      onTogglePin={handleTogglePin}
+      onToggleArchive={handleToggleArchive}
+      onMarkUnread={handleMarkUnread}
+      onRename={handleRename}
+      onDelete={handleDelete}
+    >
+      <AnimatedHeightReveal animate={isNew}>
+        <SidebarTaskItem
+          task={task}
+          hideTeamName={hideTeamName}
+          hideProjectName={hideProjectName}
+          showTeamName={showTeamName}
+          teamOffline={teamOffline}
+          renamingKey={effectiveRenamingKey}
+          onRenameComplete={onRenameComplete}
+          onRenameCancel={onRenameCancel}
+          getDisplaySubject={getDisplaySubject}
+        />
+      </AnimatedHeightReveal>
+    </TaskContextMenu>
+  );
+});
+
 export const GlobalTaskList = memo(function GlobalTaskList({
   hideHeader = false,
   filters: externalFilters,
@@ -424,6 +518,30 @@ export const GlobalTaskList = memo(function GlobalTaskList({
   const handleMarkTaskUnread = useCallback((teamName: string, taskId: string): void => {
     markTaskUnread(teamName, taskId);
   }, []);
+
+  const handleToggleTaskPin = useCallback(
+    (teamName: string, taskId: string): void => {
+      taskLocalState.togglePin(teamName, taskId);
+    },
+    [taskLocalState]
+  );
+
+  const handleToggleTaskArchive = useCallback(
+    (teamName: string, taskId: string): void => {
+      taskLocalState.toggleArchive(teamName, taskId);
+    },
+    [taskLocalState]
+  );
+
+  const handleStartTaskRename = useCallback((teamName: string, taskId: string): void => {
+    setRenamingTaskKey(`${teamName}:${taskId}`);
+  }, []);
+
+  const getTaskDisplaySubject = useCallback(
+    (task: GlobalTask): string | undefined =>
+      taskLocalState.getRenamedSubject(task.teamName, task.id),
+    [taskLocalState]
+  );
 
   const handleDeleteTask = useCallback(
     async (teamName: string, taskId: string): Promise<void> => {
@@ -713,29 +831,24 @@ export const GlobalTaskList = memo(function GlobalTaskList({
             <span className="text-[11px] text-text-muted">{t('tasksPanel.pinned')}</span>
           </div>
           {sortTasksByFreshness(pinnedTasks).map((task) => (
-            <TaskContextMenu
+            <GlobalTaskRow
               key={`pinned-${task.teamName}-${task.id}`}
               task={task}
               isPinned={true}
               isArchived={false}
-              onTogglePin={() => taskLocalState.togglePin(task.teamName, task.id)}
-              onToggleArchive={() => taskLocalState.toggleArchive(task.teamName, task.id)}
-              onMarkUnread={() => handleMarkTaskUnread(task.teamName, task.id)}
-              onRename={() => setRenamingTaskKey(`${task.teamName}:${task.id}`)}
-              onDelete={() => handleDeleteTask(task.teamName, task.id)}
-            >
-              <AnimatedHeightReveal animate={isNewTask(task)}>
-                <SidebarTaskItem
-                  task={task}
-                  showTeamName
-                  teamOffline={offlineTeamNames.has(task.teamName)}
-                  renamingKey={renamingTaskKey}
-                  onRenameComplete={handleRenameComplete}
-                  onRenameCancel={handleRenameCancel}
-                  getDisplaySubject={(t) => taskLocalState.getRenamedSubject(t.teamName, t.id)}
-                />
-              </AnimatedHeightReveal>
-            </TaskContextMenu>
+              isNew={isNewTask(task)}
+              showTeamName
+              teamOffline={offlineTeamNames.has(task.teamName)}
+              renamingKey={renamingTaskKey}
+              onTogglePin={handleToggleTaskPin}
+              onToggleArchive={handleToggleTaskArchive}
+              onMarkUnread={handleMarkTaskUnread}
+              onRename={handleStartTaskRename}
+              onDelete={handleDeleteTask}
+              onRenameComplete={handleRenameComplete}
+              onRenameCancel={handleRenameCancel}
+              getDisplaySubject={getTaskDisplaySubject}
+            />
           ))}
         </div>
       )}
@@ -821,29 +934,24 @@ export const GlobalTaskList = memo(function GlobalTaskList({
 
         {groupingMode === 'none' &&
           sortedFlat.map((task) => (
-            <TaskContextMenu
+            <GlobalTaskRow
               key={`${task.teamName}-${task.id}`}
               task={task}
               isPinned={taskLocalState.isPinned(task.teamName, task.id)}
               isArchived={taskLocalState.isArchived(task.teamName, task.id)}
-              onTogglePin={() => taskLocalState.togglePin(task.teamName, task.id)}
-              onToggleArchive={() => taskLocalState.toggleArchive(task.teamName, task.id)}
-              onMarkUnread={() => handleMarkTaskUnread(task.teamName, task.id)}
-              onRename={() => setRenamingTaskKey(`${task.teamName}:${task.id}`)}
-              onDelete={() => handleDeleteTask(task.teamName, task.id)}
-            >
-              <AnimatedHeightReveal animate={isNewTask(task)}>
-                <SidebarTaskItem
-                  task={task}
-                  showTeamName
-                  teamOffline={offlineTeamNames.has(task.teamName)}
-                  renamingKey={renamingTaskKey}
-                  onRenameComplete={handleRenameComplete}
-                  onRenameCancel={handleRenameCancel}
-                  getDisplaySubject={(t) => taskLocalState.getRenamedSubject(t.teamName, t.id)}
-                />
-              </AnimatedHeightReveal>
-            </TaskContextMenu>
+              isNew={isNewTask(task)}
+              showTeamName
+              teamOffline={offlineTeamNames.has(task.teamName)}
+              renamingKey={renamingTaskKey}
+              onTogglePin={handleToggleTaskPin}
+              onToggleArchive={handleToggleTaskArchive}
+              onMarkUnread={handleMarkTaskUnread}
+              onRename={handleStartTaskRename}
+              onDelete={handleDeleteTask}
+              onRenameComplete={handleRenameComplete}
+              onRenameCancel={handleRenameCancel}
+              getDisplaySubject={getTaskDisplaySubject}
+            />
           ))}
 
         {groupingMode === 'project' &&
@@ -907,33 +1015,24 @@ export const GlobalTaskList = memo(function GlobalTaskList({
                             {t('tasksPanel.teamLabel', { team: task.teamDisplayName })}
                           </div>
                         )}
-                        <TaskContextMenu
+                        <GlobalTaskRow
                           task={task}
                           isPinned={taskLocalState.isPinned(task.teamName, task.id)}
                           isArchived={taskLocalState.isArchived(task.teamName, task.id)}
-                          onTogglePin={() => taskLocalState.togglePin(task.teamName, task.id)}
-                          onToggleArchive={() =>
-                            taskLocalState.toggleArchive(task.teamName, task.id)
-                          }
-                          onMarkUnread={() => handleMarkTaskUnread(task.teamName, task.id)}
-                          onRename={() => setRenamingTaskKey(`${task.teamName}:${task.id}`)}
-                          onDelete={() => handleDeleteTask(task.teamName, task.id)}
-                        >
-                          <AnimatedHeightReveal animate={isNewTask(task)}>
-                            <SidebarTaskItem
-                              task={task}
-                              hideTeamName
-                              hideProjectName
-                              teamOffline={offlineTeamNames.has(task.teamName)}
-                              renamingKey={renamingTaskKey}
-                              onRenameComplete={handleRenameComplete}
-                              onRenameCancel={handleRenameCancel}
-                              getDisplaySubject={(t) =>
-                                taskLocalState.getRenamedSubject(t.teamName, t.id)
-                              }
-                            />
-                          </AnimatedHeightReveal>
-                        </TaskContextMenu>
+                          isNew={isNewTask(task)}
+                          hideTeamName
+                          hideProjectName
+                          teamOffline={offlineTeamNames.has(task.teamName)}
+                          renamingKey={renamingTaskKey}
+                          onTogglePin={handleToggleTaskPin}
+                          onToggleArchive={handleToggleTaskArchive}
+                          onMarkUnread={handleMarkTaskUnread}
+                          onRename={handleStartTaskRename}
+                          onDelete={handleDeleteTask}
+                          onRenameComplete={handleRenameComplete}
+                          onRenameCancel={handleRenameCancel}
+                          getDisplaySubject={getTaskDisplaySubject}
+                        />
                       </div>
                     );
                   })}
@@ -1016,31 +1115,22 @@ export const GlobalTaskList = memo(function GlobalTaskList({
                             {t('tasksPanel.teamLabel', { team: task.teamDisplayName })}
                           </div>
                         )}
-                        <TaskContextMenu
+                        <GlobalTaskRow
                           task={task}
                           isPinned={taskLocalState.isPinned(task.teamName, task.id)}
                           isArchived={taskLocalState.isArchived(task.teamName, task.id)}
-                          onTogglePin={() => taskLocalState.togglePin(task.teamName, task.id)}
-                          onToggleArchive={() =>
-                            taskLocalState.toggleArchive(task.teamName, task.id)
-                          }
-                          onMarkUnread={() => handleMarkTaskUnread(task.teamName, task.id)}
-                          onRename={() => setRenamingTaskKey(`${task.teamName}:${task.id}`)}
-                          onDelete={() => handleDeleteTask(task.teamName, task.id)}
-                        >
-                          <AnimatedHeightReveal animate={isNewTask(task)}>
-                            <SidebarTaskItem
-                              task={task}
-                              teamOffline={offlineTeamNames.has(task.teamName)}
-                              renamingKey={renamingTaskKey}
-                              onRenameComplete={handleRenameComplete}
-                              onRenameCancel={handleRenameCancel}
-                              getDisplaySubject={(t) =>
-                                taskLocalState.getRenamedSubject(t.teamName, t.id)
-                              }
-                            />
-                          </AnimatedHeightReveal>
-                        </TaskContextMenu>
+                          isNew={isNewTask(task)}
+                          teamOffline={offlineTeamNames.has(task.teamName)}
+                          renamingKey={renamingTaskKey}
+                          onTogglePin={handleToggleTaskPin}
+                          onToggleArchive={handleToggleTaskArchive}
+                          onMarkUnread={handleMarkTaskUnread}
+                          onRename={handleStartTaskRename}
+                          onDelete={handleDeleteTask}
+                          onRenameComplete={handleRenameComplete}
+                          onRenameCancel={handleRenameCancel}
+                          getDisplaySubject={getTaskDisplaySubject}
+                        />
                       </div>
                     );
                   })}
