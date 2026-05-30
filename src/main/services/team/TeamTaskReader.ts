@@ -600,7 +600,7 @@ export class TeamTaskReader {
       const tasks = await request;
       if (TeamTaskReader.allTasksGeneration === generationAtStart) {
         TeamTaskReader.allTasksCache = {
-          value: cloneTasks(tasks),
+          value: tasks,
           expiresAt: Date.now() + ALL_TASKS_CACHE_TTL_MS,
         };
       }

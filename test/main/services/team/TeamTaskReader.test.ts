@@ -92,6 +92,24 @@ describe('TeamTaskReader', () => {
     expect(readAllTasksUncached).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps cached getAllTasks data isolated from caller mutations', async () => {
+    const readAllTasksUncached = vi
+      .spyOn(
+        TeamTaskReader.prototype as unknown as {
+          readAllTasksUncached: () => Promise<(TeamTask & { teamName: string })[]>;
+        },
+        'readAllTasksUncached'
+      )
+      .mockResolvedValueOnce([makeTask('cached-task')]);
+
+    const reader = new TeamTaskReader();
+    const firstRead = await reader.getAllTasks();
+    firstRead[0]!.subject = 'mutated caller copy';
+
+    await expect(reader.getAllTasks()).resolves.toEqual([makeTask('cached-task')]);
+    expect(readAllTasksUncached).toHaveBeenCalledTimes(1);
+  });
+
   it('reuses parsed task files until their file signature changes', async () => {
     await setupTasksRoot();
     await writeTaskFile('atlas-hq', {
