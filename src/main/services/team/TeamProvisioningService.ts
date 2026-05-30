@@ -26033,7 +26033,6 @@ export class TeamProvisioningService {
     const childrenByParent = this.buildRuntimeProcessChildrenByParent(normalizedProcessRows);
     const rowByPid = new Map(normalizedProcessRows.map((row) => [row.pid, row]));
     const missingRootPids: number[] = [];
-    let hasMatchedRootPid = false;
     for (const rootPid of uniqueRoots) {
       const pids: number[] = [];
       let truncated = false;
@@ -26047,7 +26046,6 @@ export class TeamProvisioningService {
         usageTreesByRootPid.set(rootPid, { pids: [], truncated: false });
         continue;
       }
-      hasMatchedRootPid = true;
       const rootProcessSource = rootProcessRow?.runtimeTelemetrySource;
       const addPid = (pid: number): boolean => {
         if (pids.includes(pid)) {
@@ -26106,15 +26104,13 @@ export class TeamProvisioningService {
       usageTreesByRootPid.set(rootPid, { pids, truncated });
     }
 
-    if (hasMatchedRootPid) {
-      for (const rootPid of missingRootPids) {
-        if (scheduledPids.size >= TeamProvisioningService.MAX_RUNTIME_USAGE_PIDS_PER_SNAPSHOT) {
-          usageTreesByRootPid.set(rootPid, { pids: [], truncated: true });
-          continue;
-        }
-        scheduledPids.add(rootPid);
-        usageTreesByRootPid.set(rootPid, { pids: [rootPid], truncated: false });
+    for (const rootPid of missingRootPids) {
+      if (scheduledPids.size >= TeamProvisioningService.MAX_RUNTIME_USAGE_PIDS_PER_SNAPSHOT) {
+        usageTreesByRootPid.set(rootPid, { pids: [], truncated: true });
+        continue;
       }
+      scheduledPids.add(rootPid);
+      usageTreesByRootPid.set(rootPid, { pids: [rootPid], truncated: false });
     }
 
     return usageTreesByRootPid;

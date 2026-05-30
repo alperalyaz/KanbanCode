@@ -3657,7 +3657,7 @@ describe('TeamProvisioningService', () => {
       });
     });
 
-    it('does not fall back to pidusage for root pids missing from an available process table', async () => {
+    it('falls back to pidusage for root pids missing from an otherwise available process table', async () => {
       const svc = new TeamProvisioningService();
       (svc as any).configReader = {
         getConfig: vi.fn(async () => ({
@@ -3705,20 +3705,22 @@ describe('TeamProvisioningService', () => {
           rssBytes: 12_000_000,
         },
       ]);
+      vi.mocked(pidusage).mockResolvedValueOnce({
+        '111': createPidusageStat(111, 123_000_000),
+        '222': createPidusageStat(222, 456_000_000),
+      });
 
       const snapshot = await svc.getTeamAgentRuntimeSnapshot('runtime-team');
 
-      expect(pidusage).not.toHaveBeenCalled();
+      expect(pidusage).toHaveBeenCalledWith([111, 222], EXPECTED_RUNTIME_PIDUSAGE_OPTIONS);
       expect(snapshot.members['team-lead']).toMatchObject({
         pid: 111,
+        rssBytes: 123_000_000,
       });
-      expect(snapshot.members['team-lead'].cpuPercent).toBeUndefined();
-      expect(snapshot.members['team-lead'].rssBytes).toBeUndefined();
       expect(snapshot.members.alice).toMatchObject({
         pid: 222,
+        rssBytes: 456_000_000,
       });
-      expect(snapshot.members.alice.cpuPercent).toBeUndefined();
-      expect(snapshot.members.alice.rssBytes).toBeUndefined();
     });
 
     it('captures CPU and memory history on runtime snapshots', async () => {
