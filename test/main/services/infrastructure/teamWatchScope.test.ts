@@ -69,6 +69,18 @@ describe('teamWatchScope', () => {
     expect(computeTeamWatchScope(0)).toBeNull();
   });
 
+  it('notifies on engagement when alive provider fails so watcher can refresh to fallback', () => {
+    const listener = vi.fn();
+    setAliveTeamsProvider(() => {
+      throw new Error('boom');
+    });
+    setTeamWatchScopeChangeListener(listener);
+
+    markTeamEngaged('x', 0);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it('ignores empty team names', () => {
     const listener = vi.fn();
     setTeamWatchScopeChangeListener(listener);

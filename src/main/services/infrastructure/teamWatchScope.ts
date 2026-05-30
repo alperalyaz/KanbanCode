@@ -76,7 +76,7 @@ export function markTeamEngaged(teamName: string, nowMs: number = Date.now()): v
     return;
   }
   const currentScope = computeTeamWatchScope(nowMs);
-  const wasInScope = currentScope === null || currentScope.has(teamName);
+  const wasInScope = currentScope?.has(teamName) === true;
   engagedAtByTeam.set(teamName, nowMs);
   if (!wasInScope) {
     scopeChangeListener?.();
