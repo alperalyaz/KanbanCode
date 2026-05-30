@@ -637,7 +637,11 @@ describe('TeamTranscriptProjectResolver', () => {
     headWindowFull: boolean;
   };
   type ResolverProbe = {
-    fileBelongsToTeam: (filePath: string, teamName: string) => Promise<boolean>;
+    fileBelongsToTeam: (
+      filePath: string,
+      teamName: string,
+      precomputedStat?: { mtimeMs: number; size: number; isFile: () => boolean }
+    ) => Promise<boolean>;
     buildTeamAffinityFileCacheKey: (filePath: string, normalizedTeam: string) => string;
     teamAffinityFileCache: Map<string, AffinityCacheEntry>;
   };
@@ -715,5 +719,34 @@ describe('TeamTranscriptProjectResolver', () => {
     const second = resolver.teamAffinityFileCache.get(key);
     expect(second?.belongsToTeam).toBe(true);
     expect(second!.size).toBeGreaterThan(sizeAfterFirst); // re-scanned + re-cached
+  });
+
+  // Regression: when the caller already statted the file (the mtime-window filter in
+  // collectRootJsonlSessionIds), fileBelongsToTeam must reuse that stat rather than
+  // issuing a second fs.stat of the same file. Proven without mocking fs: a precomputed
+  // stat with a deliberately distinct size/mtime must be the one recorded in the cache.
+  it('reuses a caller-supplied stat instead of re-statting the file', async () => {
+    await setupClaudeRoot();
+    const resolver = new TeamTranscriptProjectResolver() as unknown as ResolverProbe;
+    const team = 'absent-team';
+    const projectDir = path.join(tmpDir!, 'projects', encodePath('/repo/precomp'));
+    await fs.mkdir(projectDir, { recursive: true });
+    const jsonlPath = path.join(projectDir, 'f.jsonl');
+    await fs.writeFile(
+      jsonlPath,
+      `${Array.from({ length: 45 }, (_, i) =>
+        JSON.stringify({ type: 'user', message: { role: 'user', content: `x ${i}` } })
+      ).join('\n')}\n`,
+      'utf8'
+    );
+
+    // Distinct sentinel values the real file does not have.
+    const precomputedStat = { mtimeMs: 123_456, size: 999_999, isFile: () => true };
+    expect(await resolver.fileBelongsToTeam(jsonlPath, team, precomputedStat)).toBe(false);
+
+    const key = resolver.buildTeamAffinityFileCacheKey(jsonlPath, team);
+    const entry = resolver.teamAffinityFileCache.get(key);
+    expect(entry?.size).toBe(999_999); // cache recorded the precomputed stat -> no re-stat
+    expect(entry?.mtimeMs).toBe(123_456);
   });
 });

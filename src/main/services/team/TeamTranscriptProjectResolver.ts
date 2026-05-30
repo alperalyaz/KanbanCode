@@ -966,17 +966,19 @@ export class TeamTranscriptProjectResolver {
       while (nextIndex < rootJsonlEntries.length) {
         const entry = rootJsonlEntries[nextIndex++];
         const filePath = path.join(projectDir, entry.name);
+        let precomputedStat: { mtimeMs: number; size: number; isFile: () => boolean } | undefined;
         if (mtimeSinceMs != null) {
           try {
             const stat = await fs.stat(filePath);
             if (!stat.isFile() || stat.mtimeMs < mtimeSinceMs) {
               continue;
             }
+            precomputedStat = stat;
           } catch {
             continue;
           }
         }
-        if (!(await this.fileBelongsToTeam(filePath, teamName))) {
+        if (!(await this.fileBelongsToTeam(filePath, teamName, precomputedStat))) {
           continue;
         }
         discovered.add(entry.name.slice(0, -'.jsonl'.length));
@@ -1008,17 +1010,29 @@ export class TeamTranscriptProjectResolver {
     return this.collectRootJsonlSessionIds(rootJsonlEntries, projectDir, teamName, mtimeSinceMs);
   }
 
-  private async fileBelongsToTeam(filePath: string, teamName: string): Promise<boolean> {
+  private async fileBelongsToTeam(
+    filePath: string,
+    teamName: string,
+    precomputedStat?: { mtimeMs: number; size: number; isFile: () => boolean }
+  ): Promise<boolean> {
     const normalizedTeam = teamName.trim().toLowerCase();
     if (!normalizedTeam) {
       return false;
     }
 
+    // Reuse the caller's stat when it already statted this exact file (the mtime-window
+    // filter in collectRootJsonlSessionIds does). On the live resolution path this drops
+    // a second fs.stat of the same file per entry, every poll — and using a single stat
+    // snapshot is also more consistent than two reads that could straddle a write.
     let fileStat: { mtimeMs: number; size: number; isFile: () => boolean };
-    try {
-      fileStat = await fs.stat(filePath);
-    } catch {
-      return false;
+    if (precomputedStat) {
+      fileStat = precomputedStat;
+    } else {
+      try {
+        fileStat = await fs.stat(filePath);
+      } catch {
+        return false;
+      }
     }
 
     if (!fileStat.isFile()) {
