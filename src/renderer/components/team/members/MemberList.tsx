@@ -453,6 +453,28 @@ function buildRuntimeTelemetryScale(
   return scale.memoryCapBytes != null || scale.cpuCapPercent != null ? scale : undefined;
 }
 
+function buildActivityTimerRuntimeSignature(
+  members: readonly ResolvedTeamMember[],
+  runtimeEntries: Map<string, TeamAgentRuntimeEntry> | undefined
+): string {
+  if (!runtimeEntries || members.length === 0) {
+    return '';
+  }
+
+  return members
+    .map((member) => {
+      const entry = runtimeEntries.get(member.name);
+      return [
+        member.name,
+        entry?.alive,
+        entry?.livenessKind,
+        entry?.runtimeDiagnosticSeverity,
+        entry?.runtimeDiagnostic,
+      ].join('\u001f');
+    })
+    .join('\u001e');
+}
+
 function areMemberListPropsEqual(
   prev: Readonly<MemberListProps>,
   next: Readonly<MemberListProps>
@@ -740,6 +762,8 @@ export const MemberList = memo(function MemberList({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isWide, setIsWide] = useState(false);
   const [runtimeTelemetryPreviewActive, setRuntimeTelemetryPreviewActive] = useState(false);
+  const memberRuntimeEntriesRef = useRef(memberRuntimeEntries);
+  memberRuntimeEntriesRef.current = memberRuntimeEntries;
 
   const handleResize = useCallback((entries: ResizeObserverEntry[]) => {
     const entry = entries[0];
@@ -796,7 +820,14 @@ export const MemberList = memo(function MemberList({
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
   const avatarMap = useMemo(() => buildMemberAvatarMap(members), [members]);
   const runtimeTelemetryScale = useMemo(
-    () => buildRuntimeTelemetryScale(activeMembers, memberRuntimeEntries),
+    () =>
+      runtimeTelemetryPreviewActive
+        ? buildRuntimeTelemetryScale(activeMembers, memberRuntimeEntries)
+        : undefined,
+    [activeMembers, memberRuntimeEntries, runtimeTelemetryPreviewActive]
+  );
+  const activityTimerRuntimeSignature = useMemo(
+    () => buildActivityTimerRuntimeSignature(activeMembers, memberRuntimeEntries),
     [activeMembers, memberRuntimeEntries]
   );
   // Pre-compute reviewer->task map to avoid O(n*n) scan per member.
@@ -855,9 +886,10 @@ export const MemberList = memo(function MemberList({
   useEffect(() => {
     if (!taskMap) return;
     const nowMs = Date.now();
+    const latestRuntimeEntries = memberRuntimeEntriesRef.current;
     for (const member of activeMembers) {
       const spawnEntry = memberSpawnStatuses?.get(member.name);
-      const runtimeEntry = memberRuntimeEntries?.get(member.name);
+      const runtimeEntry = latestRuntimeEntries?.get(member.name);
       const running = isMemberActivityTimerRunning(member, spawnEntry, runtimeEntry);
       const currentTaskCandidate = member.currentTaskId
         ? (taskMap.get(member.currentTaskId) ?? null)
@@ -910,10 +942,10 @@ export const MemberList = memo(function MemberList({
     }
   }, [
     activeMembers,
+    activityTimerRuntimeSignature,
     getActivityTimerRunId,
     isMemberActivityTimerRunning,
     isTeamAlive,
-    memberRuntimeEntries,
     memberSpawnStatuses,
     reviewTaskByMember,
     taskMap,
