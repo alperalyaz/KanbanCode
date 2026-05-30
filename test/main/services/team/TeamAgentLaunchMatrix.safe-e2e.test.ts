@@ -78,11 +78,30 @@ const WORKSPACE_TRUST_TEST_ENV_NAMES = [
 
 type WorkspaceTrustTestEnvName = (typeof WORKSPACE_TRUST_TEST_ENV_NAMES)[number];
 type RuntimeUsageStatsForTest = { rssBytes: number; cpuPercent?: number };
+type RuntimeUsageStatsStubTarget = {
+  readRuntimeProcessRowsForUsageSnapshot: () => Promise<null>;
+  readProcessUsageStatsByPid: (
+    pids: readonly number[]
+  ) => Promise<Map<number, RuntimeUsageStatsForTest>>;
+};
 
 function createRuntimeUsageStatsMap(
   entries: readonly (readonly [number, number])[]
 ): Map<number, RuntimeUsageStatsForTest> {
   return new Map(entries.map(([pid, rssBytes]) => [pid, { rssBytes }]));
+}
+
+function stubRuntimeUsageStatsByPid(
+  service: TeamProvisioningService,
+  entries: readonly (readonly [number, number])[]
+): void {
+  const statsByPid = createRuntimeUsageStatsMap(entries);
+  const target = service as unknown as RuntimeUsageStatsStubTarget;
+  target.readRuntimeProcessRowsForUsageSnapshot = async () => null;
+  target.readProcessUsageStatsByPid = async (pids: readonly number[]) => {
+    const requestedPids = new Set(pids);
+    return new Map([...statsByPid].filter(([pid]) => requestedPids.has(pid)));
+  };
 }
 
 function createRuntimeUsageStatsByPid(
@@ -4121,8 +4140,7 @@ describe('Team agent launch matrix safe e2e', () => {
           },
         ],
       ]);
-    (svc as any).readProcessUsageStatsByPid = async () =>
-      createRuntimeUsageStatsMap([[sharedHostPid, 183.9 * 1024 * 1024]]);
+    stubRuntimeUsageStatsByPid(svc, [[sharedHostPid, 183.9 * 1024 * 1024]]);
 
     await waitForCondition(async () => {
       const snapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
@@ -4227,8 +4245,7 @@ describe('Team agent launch matrix safe e2e', () => {
           },
         ],
       ]);
-    (svc as any).readProcessUsageStatsByPid = async () =>
-      createRuntimeUsageStatsMap([[sharedHostPid, sharedRssBytes]]);
+    stubRuntimeUsageStatsByPid(svc, [[sharedHostPid, sharedRssBytes]]);
 
     const runtimeSnapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
 
@@ -4329,8 +4346,7 @@ describe('Team agent launch matrix safe e2e', () => {
           },
         ],
       ]);
-    (svc as any).readProcessUsageStatsByPid = async () =>
-      createRuntimeUsageStatsMap([[sharedHostPid, sharedRssBytes]]);
+    stubRuntimeUsageStatsByPid(svc, [[sharedHostPid, sharedRssBytes]]);
 
     const runtimeSnapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
 
@@ -4451,8 +4467,7 @@ describe('Team agent launch matrix safe e2e', () => {
           },
         ],
       ]);
-    (svc as any).readProcessUsageStatsByPid = async () =>
-      createRuntimeUsageStatsMap([[sharedHostPid, sharedRssBytes]]);
+    stubRuntimeUsageStatsByPid(svc, [[sharedHostPid, sharedRssBytes]]);
 
     const runtimeSnapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
 
@@ -4535,8 +4550,7 @@ describe('Team agent launch matrix safe e2e', () => {
           },
         ],
       ]);
-    (restartedService as any).readProcessUsageStatsByPid = async () =>
-      createRuntimeUsageStatsMap([[sharedHostPid, 188.4 * 1024 * 1024]]);
+    stubRuntimeUsageStatsByPid(restartedService, [[sharedHostPid, 188.4 * 1024 * 1024]]);
 
     const runtimeSnapshot = await restartedService.getTeamAgentRuntimeSnapshot(teamName);
 
@@ -5294,8 +5308,7 @@ describe('Team agent launch matrix safe e2e', () => {
           },
         ],
       ]);
-    (svc as any).readProcessUsageStatsByPid = async () =>
-      createRuntimeUsageStatsMap([[sharedHostPid, sharedRssBytes]]);
+    stubRuntimeUsageStatsByPid(svc, [[sharedHostPid, sharedRssBytes]]);
 
     const runtimeSnapshot = await svc.getTeamAgentRuntimeSnapshot(teamName);
 
