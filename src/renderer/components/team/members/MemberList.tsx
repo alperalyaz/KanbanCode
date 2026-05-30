@@ -512,6 +512,7 @@ interface MemberCardRowProps {
   leadActivity?: LeadActivityState;
   isLaunchSettling?: boolean;
   runtimeTelemetryScale?: RuntimeTelemetryScale;
+  renderRuntimeTelemetryStrip?: boolean;
   onOpenTask?: (taskId: string) => void;
   onMemberClick?: (member: ResolvedTeamMember) => void;
   onSendMessage?: (member: ResolvedTeamMember) => void;
@@ -550,6 +551,7 @@ const MemberCardRow = memo(function MemberCardRow({
   leadActivity,
   isLaunchSettling,
   runtimeTelemetryScale,
+  renderRuntimeTelemetryStrip,
   onOpenTask,
   onMemberClick,
   onSendMessage,
@@ -603,6 +605,7 @@ const MemberCardRow = memo(function MemberCardRow({
       spawnRuntimeAlive={spawnRuntimeAlive}
       isLaunchSettling={isLaunchSettling}
       runtimeTelemetryScale={runtimeTelemetryScale}
+      renderRuntimeTelemetryStrip={renderRuntimeTelemetryStrip}
       onOpenTask={currentTask ? handleOpenTask : undefined}
       onOpenReviewTask={reviewTask ? handleOpenReviewTask : undefined}
       onClick={handleClick}
@@ -736,6 +739,7 @@ export const MemberList = memo(function MemberList({
   const { t } = useAppTranslation('team');
   const containerRef = useRef<HTMLDivElement>(null);
   const [isWide, setIsWide] = useState(false);
+  const [runtimeTelemetryPreviewActive, setRuntimeTelemetryPreviewActive] = useState(false);
 
   const handleResize = useCallback((entries: ResizeObserverEntry[]) => {
     const entry = entries[0];
@@ -752,6 +756,25 @@ export const MemberList = memo(function MemberList({
     observer.observe(el);
     return () => observer.disconnect();
   }, [handleResize]);
+
+  const activateRuntimeTelemetryPreview = useCallback(() => {
+    setRuntimeTelemetryPreviewActive(true);
+  }, []);
+
+  const deactivateRuntimeTelemetryPreview = useCallback(() => {
+    setRuntimeTelemetryPreviewActive(false);
+  }, []);
+
+  const handleRuntimeTelemetryPreviewBlur = useCallback(
+    (event: React.FocusEvent<HTMLDivElement>) => {
+      const nextTarget = event.relatedTarget;
+      if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+        return;
+      }
+      deactivateRuntimeTelemetryPreview();
+    },
+    [deactivateRuntimeTelemetryPreview]
+  );
 
   const gridClass = isWide ? 'grid grid-cols-2 gap-1' : 'grid grid-cols-1 gap-1';
   const activeMembers = useMemo(
@@ -936,7 +959,14 @@ export const MemberList = memo(function MemberList({
   }
 
   return (
-    <div ref={containerRef} className="runtime-telemetry-list flex flex-col gap-1">
+    <div
+      ref={containerRef}
+      className="runtime-telemetry-list flex flex-col gap-1"
+      onPointerEnter={activateRuntimeTelemetryPreview}
+      onPointerLeave={deactivateRuntimeTelemetryPreview}
+      onFocusCapture={activateRuntimeTelemetryPreview}
+      onBlurCapture={handleRuntimeTelemetryPreviewBlur}
+    >
       <div className={gridClass}>
         {activeMembers.map((member) => {
           const spawnEntry = memberSpawnStatuses?.get(member.name);
@@ -1057,6 +1087,7 @@ export const MemberList = memo(function MemberList({
               leadActivity={leadActivity}
               isLaunchSettling={isLaunchSettling}
               runtimeTelemetryScale={runtimeTelemetryScale}
+              renderRuntimeTelemetryStrip={runtimeTelemetryPreviewActive}
               onOpenTask={onOpenTask}
               onMemberClick={onMemberClick}
               onSendMessage={onSendMessage}
@@ -1105,6 +1136,7 @@ export const MemberList = memo(function MemberList({
                 leadActivity={leadActivity}
                 isLaunchSettling={false}
                 runtimeTelemetryScale={runtimeTelemetryScale}
+                renderRuntimeTelemetryStrip={runtimeTelemetryPreviewActive}
                 onOpenTask={onOpenTask}
                 onMemberClick={onMemberClick}
                 onSendMessage={onSendMessage}

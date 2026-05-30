@@ -97,6 +97,7 @@ interface MemberCardProps {
   spawnRuntimeAlive?: boolean;
   isLaunchSettling?: boolean;
   runtimeTelemetryScale?: RuntimeTelemetryScale;
+  renderRuntimeTelemetryStrip?: boolean;
   onOpenTask?: () => void;
   onOpenReviewTask?: () => void;
   onClick?: () => void;
@@ -575,6 +576,7 @@ export const MemberCard = memo(function MemberCard({
   runtimeSummary,
   runtimeEntry,
   runtimeRunId,
+  renderRuntimeTelemetryStrip = true,
   taskCounts,
   isTeamAlive,
   isTeamProvisioning,
@@ -1016,7 +1018,7 @@ export const MemberCard = memo(function MemberCard({
           }
         }}
       >
-        {!isRemoved ? (
+        {!isRemoved && renderRuntimeTelemetryStrip ? (
           <MemberRuntimeTelemetryStrip runtimeEntry={runtimeEntry} scale={runtimeTelemetryScale} />
         ) : null}
         <div className="pointer-events-none absolute inset-0 z-10 rounded transition-colors group-hover:bg-white/5" />
