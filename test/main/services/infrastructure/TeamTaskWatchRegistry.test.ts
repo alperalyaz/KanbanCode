@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 type MockChokidarWatcher = {
   targets: string[];
   options: unknown;
+  handlers: Map<string, Array<(...args: unknown[]) => void>>;
   on: (event: string, handler: (...args: unknown[]) => void) => MockChokidarWatcher;
+  emit: (event: string, ...args: unknown[]) => void;
   close: ReturnType<typeof vi.fn>;
 };
 
@@ -16,9 +18,18 @@ const chokidarMock = vi.hoisted(() => {
     const watcher = {
       targets: (Array.isArray(targets) ? targets : [targets]).map((t) => String(t)),
       options,
+      handlers: new Map<string, Array<(...args: unknown[]) => void>>(),
       close: vi.fn().mockResolvedValue(undefined),
+      emit(event: string, ...args: unknown[]) {
+        for (const h of watcher.handlers.get(event) ?? []) h(...args);
+      },
     } as MockChokidarWatcher;
-    watcher.on = vi.fn(() => watcher);
+    watcher.on = vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+      const hs = watcher.handlers.get(event) ?? [];
+      hs.push(handler);
+      watcher.handlers.set(event, hs);
+      return watcher;
+    });
     instances.push(watcher);
     return watcher;
   };
@@ -155,5 +166,32 @@ describe('TeamTaskWatchRegistry scoping', () => {
     await registry.close();
 
     expect(targets).toContain(path.normalize(path.join(root, 'beta')));
+  });
+
+  it('coalesces a burst of addDir events into a single watcher rebuild', async () => {
+    const registry = new TeamTaskWatchRegistry({
+      kind: 'teams',
+      rootPath: root,
+      onChange: () => {},
+      onError: () => {},
+    });
+    await registry.start();
+    const instancesAfterStart = chokidarMock.instances.length;
+    const watcher = chokidarMock.instances.at(-1) as MockChokidarWatcher;
+
+    // A new team dir appears, then a burst of addDir events fire for it.
+    fs.mkdirSync(path.join(root, 'delta', 'inboxes'), { recursive: true });
+    for (let i = 0; i < 4; i += 1) {
+      watcher.emit('addDir', path.join(root, 'delta'));
+    }
+
+    // Wait past the debounce window for the single coalesced reconcile to run.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const finalTargets = latestTargets();
+    await registry.close();
+
+    // Exactly one rebuild despite 4 addDir events, and it picked up the new dir.
+    expect(chokidarMock.instances.length).toBe(instancesAfterStart + 1);
+    expect(finalTargets).toContain(path.normalize(path.join(root, 'delta')));
   });
 });

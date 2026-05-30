@@ -32,6 +32,12 @@ export interface TeamTaskWatchRegistryOptions {
 
 const RECONCILE_INTERVAL_MS = 30_000;
 
+// Coalesce bursts of directory add/remove events (e.g. a team launch creating
+// many dirs/files) into a single target reconcile + watcher rebuild. collectTargets
+// re-reads the current directory state, so a trailing reconcile still sees every
+// change; this only avoids rebuilding the whole watcher once per event in a burst.
+const RECONCILE_DEBOUNCE_MS = 250;
+
 // Keep this list aligned with FileWatcher.processTeamsChange().
 // If a new team artifact should produce TeamChangeEvent, add it here too.
 const TEAM_ROOT_FILES = new Set([
@@ -70,6 +76,7 @@ export class TeamTaskWatchRegistry {
   private generation = 0;
   private reconcileInProgress = false;
   private reconcileAgain = false;
+  private reconcileDebounceTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly options: TeamTaskWatchRegistryOptions) {}
 
@@ -101,6 +108,26 @@ export class TeamTaskWatchRegistry {
     await this.reconcileTargets();
   }
 
+  /**
+   * Debounced target reconcile for high-frequency directory events. Bursts of
+   * add/remove dir events (notably while a team launch creates many dirs/files)
+   * collapse into a single rebuild after a short window instead of tearing down
+   * and recreating the whole watcher once per event. Correctness is preserved:
+   * collectTargets re-reads the current directory state, so the trailing reconcile
+   * still sees every change, and emitExistingFilesForNewTargets backfills files
+   * created before the rebuild.
+   */
+  private scheduleReconcile(): void {
+    if (this.closed || this.reconcileDebounceTimer) {
+      return;
+    }
+    this.reconcileDebounceTimer = setTimeout(() => {
+      this.reconcileDebounceTimer = null;
+      void this.reconcileTargets();
+    }, RECONCILE_DEBOUNCE_MS);
+    this.reconcileDebounceTimer.unref?.();
+  }
+
   async close(): Promise<void> {
     this.closed = true;
     this.generation += 1;
@@ -108,6 +135,10 @@ export class TeamTaskWatchRegistry {
     if (this.reconcileTimer) {
       clearInterval(this.reconcileTimer);
       this.reconcileTimer = null;
+    }
+    if (this.reconcileDebounceTimer) {
+      clearTimeout(this.reconcileDebounceTimer);
+      this.reconcileDebounceTimer = null;
     }
 
     const watcher = this.watcher;
@@ -197,9 +228,10 @@ export class TeamTaskWatchRegistry {
       }
 
       // addDir/unlinkDir can make the watch target set stale immediately.
-      // Periodic reconciliation is the backup path if the directory event is missed.
+      // Debounced so a burst of dir events (e.g. a team launch) coalesces into one
+      // rebuild; periodic reconciliation is the backup path if an event is missed.
       if (this.shouldReconcile(eventType, relativePath)) {
-        void this.reconcileTargets();
+        this.scheduleReconcile();
       }
 
       if (!this.shouldEmit(eventType, relativePath)) {
