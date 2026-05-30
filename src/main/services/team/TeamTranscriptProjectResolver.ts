@@ -1021,8 +1021,19 @@ export class TeamTranscriptProjectResolver {
 
     const cacheKey = this.buildTeamAffinityFileCacheKey(filePath, normalizedTeam);
     const cached = this.teamAffinityFileCache.get(cacheKey);
-    if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
-      return cached.belongsToTeam;
+    if (cached) {
+      // A positive affinity is decided by early "head" lines that persist as an
+      // append-only transcript grows, so a `true` result stays valid while the file
+      // only grows (size >= cached). This avoids re-streaming the team's own
+      // continuously-growing transcripts on every bootstrap poll. A `false` result
+      // is still re-checked on any change, since a short file may later grow head
+      // lines that mention the team; a shrink (rewrite/truncate) also forces a re-scan.
+      if (cached.belongsToTeam && fileStat.size >= cached.size) {
+        return true;
+      }
+      if (cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
+        return cached.belongsToTeam;
+      }
     }
 
     const stream = createReadStream(filePath, { encoding: 'utf8' });
