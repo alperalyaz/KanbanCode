@@ -71,6 +71,10 @@ function escapeRegexLiteral(value: string): string {
 }
 
 export function extractCliArgValues(command: string, argName: string): string[] {
+  if (!command.includes(argName)) {
+    return [];
+  }
+
   const cachedByArg = cliArgValuesCache.get(command);
   const cachedValues = cachedByArg?.get(argName);
   if (cachedValues) {
@@ -111,6 +115,7 @@ export function commandArgEquals(
 ): boolean {
   const normalizedExpected = expected?.trim();
   if (!normalizedExpected) return false;
+  if (!command.includes(argName)) return false;
   return extractCliArgValues(command, argName).some((value) => value === normalizedExpected);
 }
 
@@ -147,6 +152,28 @@ function isVerifiedRuntimeProcess(params: {
     commandArgEquals(params.row.command, '--team-name', params.teamName) &&
     commandArgEquals(params.row.command, '--agent-id', params.agentId)
   );
+}
+
+function findNewestVerifiedRuntimeProcess(params: {
+  rows: readonly RuntimeProcessTableRow[];
+  teamName: string;
+  agentId?: string;
+}): RuntimeProcessTableRow | undefined {
+  const agentId = params.agentId?.trim();
+  if (!agentId) {
+    return undefined;
+  }
+
+  let newest: RuntimeProcessTableRow | undefined;
+  for (const row of params.rows) {
+    if (!isVerifiedRuntimeProcess({ row, teamName: params.teamName, agentId })) {
+      continue;
+    }
+    if (!newest || row.pid > newest.pid) {
+      newest = row;
+    }
+  }
+  return newest;
 }
 
 function isOpenCodeRuntimeProcess(command: string | undefined): boolean {
@@ -227,11 +254,11 @@ export function resolveTeamMemberRuntimeLiveness(
     });
   }
 
-  const verifiedProcess = input.processRows
-    .filter((row) =>
-      isVerifiedRuntimeProcess({ row, teamName: input.teamName, agentId: input.agentId })
-    )
-    .sort((left, right) => right.pid - left.pid)[0];
+  const verifiedProcess = findNewestVerifiedRuntimeProcess({
+    rows: input.processRows,
+    teamName: input.teamName,
+    agentId: input.agentId,
+  });
   if (verifiedProcess) {
     return result({
       alive: true,
@@ -325,11 +352,11 @@ export function resolveTeamMemberRuntimeLiveness(
   const pane = input.pane;
   if (pane) {
     const descendants = collectDescendants(input.processRows, pane.panePid);
-    const verifiedDescendant = descendants
-      .filter((row) =>
-        isVerifiedRuntimeProcess({ row, teamName: input.teamName, agentId: input.agentId })
-      )
-      .sort((left, right) => right.pid - left.pid)[0];
+    const verifiedDescendant = findNewestVerifiedRuntimeProcess({
+      rows: descendants,
+      teamName: input.teamName,
+      agentId: input.agentId,
+    });
     if (verifiedDescendant) {
       return result({
         alive: true,

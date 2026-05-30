@@ -50,6 +50,39 @@ describe('resolveTeamMemberRuntimeLiveness', () => {
     expect(result.pid).toBe(222);
   });
 
+  it('uses the newest verified team and agent process without requiring sorted rows', () => {
+    const result = resolveTeamMemberRuntimeLiveness({
+      teamName: 'demo',
+      memberName: 'alice',
+      agentId: 'agent-alice',
+      backendType: 'tmux',
+      processRows: [
+        {
+          pid: 222,
+          ppid: 1,
+          command: 'node runtime --team-name demo --agent-id agent-alice',
+        },
+        {
+          pid: 111,
+          ppid: 1,
+          command: 'node runtime --team-name demo --agent-id agent-alice',
+        },
+        {
+          pid: 333,
+          ppid: 1,
+          command: 'node runtime --team-name other --agent-id agent-alice',
+        },
+      ],
+      processTableAvailable: true,
+      nowIso: NOW,
+    });
+
+    expect(result.alive).toBe(true);
+    expect(result.livenessKind).toBe('runtime_process');
+    expect(result.pidSource).toBe('agent_process_table');
+    expect(result.pid).toBe(222);
+  });
+
   it('keeps a verified process pid visible after bootstrap is confirmed', () => {
     const result = resolveTeamMemberRuntimeLiveness({
       teamName: 'demo',
@@ -247,5 +280,9 @@ describe('resolveTeamMemberRuntimeLiveness', () => {
 
     expect(extractCliArgValues(command, '--agent-id')).toEqual(['agent alice', 'agent-bob']);
     expect(extractCliArgValues(command, '--team-name')).toEqual(['demo']);
+  });
+
+  it('returns no CLI arg values when the flag is absent', () => {
+    expect(extractCliArgValues('node runtime --other value', '--agent-id')).toEqual([]);
   });
 });
