@@ -266,6 +266,208 @@ const TaskActionIconButton = ({
   </Button>
 );
 
+interface TaskMetaActionsProps {
+  taskId: string;
+  unreadCount: number;
+  commentCount: number;
+  pulseKey: number;
+  canOpenChanges: boolean;
+  changesNeedAttention: boolean;
+  onViewChanges?: (taskId: string) => void;
+  onDeleteTask?: (taskId: string) => void;
+}
+
+const TaskMetaActions = memo(function TaskMetaActions({
+  taskId,
+  unreadCount,
+  commentCount,
+  pulseKey,
+  canOpenChanges,
+  changesNeedAttention,
+  onViewChanges,
+  onDeleteTask,
+}: TaskMetaActionsProps): React.JSX.Element {
+  const { t } = useAppTranslation('team');
+
+  return (
+    <>
+      {canOpenChanges && onViewChanges ? (
+        <TaskActionIconButton
+          label={
+            changesNeedAttention
+              ? t('kanban.taskCard.changesNeedAttention')
+              : t('kanban.taskCard.changes')
+          }
+          icon={<FileCode className="size-2.5" />}
+          variant="ghost"
+          className={
+            changesNeedAttention
+              ? 'text-amber-400 hover:bg-amber-500/10 hover:text-amber-300'
+              : 'text-sky-400 hover:bg-sky-500/10 hover:text-sky-300'
+          }
+          onClick={(e) => {
+            e.stopPropagation();
+            onViewChanges(taskId);
+          }}
+        />
+      ) : null}
+      <UnreadCommentsBadge
+        unreadCount={unreadCount}
+        totalCount={commentCount}
+        pulseKey={pulseKey}
+      />
+      {onDeleteTask ? (
+        <TaskActionIconButton
+          label={t('kanban.taskCard.deleteTask')}
+          icon={<Trash2 size={11} />}
+          variant="ghost"
+          className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteTask(taskId);
+          }}
+        />
+      ) : null}
+    </>
+  );
+});
+
+interface TaskPrimaryActionsProps {
+  taskId: string;
+  columnId: KanbanColumnId;
+  isReviewManual: boolean;
+  onRequestReview: (taskId: string) => void;
+  onApprove: (taskId: string) => void;
+  onRequestChanges: (taskId: string) => void;
+  onMoveBackToDone: (taskId: string) => void;
+  onStartTask: (taskId: string) => void;
+  onCompleteTask: (taskId: string) => void;
+  onCancelTask: (taskId: string) => void;
+}
+
+const TaskPrimaryActions = memo(function TaskPrimaryActions({
+  taskId,
+  columnId,
+  isReviewManual,
+  onRequestReview,
+  onApprove,
+  onRequestChanges,
+  onMoveBackToDone,
+  onStartTask,
+  onCompleteTask,
+  onCancelTask,
+}: TaskPrimaryActionsProps): React.JSX.Element {
+  const { t } = useAppTranslation('team');
+
+  return (
+    <div className="flex min-w-0 flex-nowrap gap-2">
+      {columnId === 'todo' ? (
+        <>
+          <TaskActionIconButton
+            label={t('kanban.taskCard.start')}
+            icon={<Play size={11} />}
+            className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+            onClick={(e) => {
+              e.stopPropagation();
+              onStartTask(taskId);
+            }}
+          />
+          <TaskActionIconButton
+            label={t('kanban.taskCard.complete')}
+            icon={<CheckCircle2 size={11} />}
+            className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCompleteTask(taskId);
+            }}
+          />
+        </>
+      ) : null}
+
+      {columnId === 'in_progress' ? (
+        <>
+          <TaskActionIconButton
+            label={t('kanban.taskCard.complete')}
+            icon={<CheckCircle2 size={11} />}
+            className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCompleteTask(taskId);
+            }}
+          />
+          <CancelTaskButton taskId={taskId} onConfirm={onCancelTask} />
+        </>
+      ) : null}
+
+      {columnId === 'done' ? (
+        <>
+          <TaskActionIconButton
+            label={t('kanban.taskCard.approve')}
+            icon={<CheckCircle2 size={11} />}
+            className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+            onClick={(e) => {
+              e.stopPropagation();
+              onApprove(taskId);
+            }}
+          />
+          <TaskActionIconButton
+            label={t('kanban.taskCard.requestReview')}
+            icon={<Eye size={11} />}
+            className="border-violet-500/40 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRequestReview(taskId);
+            }}
+          />
+        </>
+      ) : null}
+
+      {columnId === 'review' ? (
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {isReviewManual ? (
+            <div className="whitespace-nowrap text-[11px] text-[var(--color-text-muted)]">
+              {t('kanban.taskCard.manualReview')}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <TaskActionIconButton
+              label={t('kanban.taskCard.approve')}
+              icon={<CheckCircle2 size={11} />}
+              className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+              onClick={(e) => {
+                e.stopPropagation();
+                onApprove(taskId);
+              }}
+            />
+            <TaskActionIconButton
+              label={t('kanban.taskCard.requestChanges')}
+              icon={<FilePenLine size={11} />}
+              variant="destructive"
+              className="bg-red-500/90 text-white hover:bg-red-500"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRequestChanges(taskId);
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {columnId === 'approved' ? (
+        <TaskActionIconButton
+          label="Disapprove"
+          icon={<RotateCcw size={11} />}
+          className="border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMoveBackToDone(taskId);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+});
+
 export const KanbanTaskCard = memo(
   function KanbanTaskCard({
     task,
@@ -325,48 +527,6 @@ export const KanbanTaskCard = memo(
     useEffect(() => {
       syncCommentPulse({ taskKey: commentPulseTaskKey, comments });
     }, [commentCount, commentPulseTaskKey, comments]);
-
-    const metaActions = (
-      <>
-        {canOpenChanges ? (
-          <TaskActionIconButton
-            label={
-              changesNeedAttention
-                ? t('kanban.taskCard.changesNeedAttention')
-                : t('kanban.taskCard.changes')
-            }
-            icon={<FileCode className="size-2.5" />}
-            variant="ghost"
-            className={
-              changesNeedAttention
-                ? 'text-amber-400 hover:bg-amber-500/10 hover:text-amber-300'
-                : 'text-sky-400 hover:bg-sky-500/10 hover:text-sky-300'
-            }
-            onClick={(e) => {
-              e.stopPropagation();
-              onViewChanges!(task.id);
-            }}
-          />
-        ) : null}
-        <UnreadCommentsBadge
-          unreadCount={unreadCount}
-          totalCount={commentCount}
-          pulseKey={visibleCommentPulseKey}
-        />
-        {onDeleteTask ? (
-          <TaskActionIconButton
-            label={t('kanban.taskCard.deleteTask')}
-            icon={<Trash2 size={11} />}
-            variant="ghost"
-            className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDeleteTask(task.id);
-            }}
-          />
-        ) : null}
-      </>
-    );
 
     return (
       <div
@@ -460,113 +620,31 @@ export const KanbanTaskCard = memo(
         ) : null}
 
         <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-nowrap gap-2">
-            {columnId === 'todo' ? (
-              <>
-                <TaskActionIconButton
-                  label={t('kanban.taskCard.start')}
-                  icon={<Play size={11} />}
-                  className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onStartTask(task.id);
-                  }}
-                />
-                <TaskActionIconButton
-                  label={t('kanban.taskCard.complete')}
-                  icon={<CheckCircle2 size={11} />}
-                  className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCompleteTask(task.id);
-                  }}
-                />
-              </>
-            ) : null}
+          <TaskPrimaryActions
+            taskId={task.id}
+            columnId={columnId}
+            isReviewManual={isReviewManual}
+            onRequestReview={onRequestReview}
+            onApprove={onApprove}
+            onRequestChanges={onRequestChanges}
+            onMoveBackToDone={onMoveBackToDone}
+            onStartTask={onStartTask}
+            onCompleteTask={onCompleteTask}
+            onCancelTask={onCancelTask}
+          />
 
-            {columnId === 'in_progress' ? (
-              <>
-                <TaskActionIconButton
-                  label={t('kanban.taskCard.complete')}
-                  icon={<CheckCircle2 size={11} />}
-                  className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCompleteTask(task.id);
-                  }}
-                />
-                <CancelTaskButton taskId={task.id} onConfirm={onCancelTask} />
-              </>
-            ) : null}
-
-            {columnId === 'done' ? (
-              <>
-                <TaskActionIconButton
-                  label={t('kanban.taskCard.approve')}
-                  icon={<CheckCircle2 size={11} />}
-                  className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onApprove(task.id);
-                  }}
-                />
-                <TaskActionIconButton
-                  label={t('kanban.taskCard.requestReview')}
-                  icon={<Eye size={11} />}
-                  className="border-violet-500/40 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRequestReview(task.id);
-                  }}
-                />
-              </>
-            ) : null}
-
-            {columnId === 'review' ? (
-              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                {isReviewManual ? (
-                  <div className="whitespace-nowrap text-[11px] text-[var(--color-text-muted)]">
-                    {t('kanban.taskCard.manualReview')}
-                  </div>
-                ) : null}
-                <div className="flex flex-wrap items-center gap-2">
-                  <TaskActionIconButton
-                    label={t('kanban.taskCard.approve')}
-                    icon={<CheckCircle2 size={11} />}
-                    className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onApprove(task.id);
-                    }}
-                  />
-                  <TaskActionIconButton
-                    label={t('kanban.taskCard.requestChanges')}
-                    icon={<FilePenLine size={11} />}
-                    variant="destructive"
-                    className="bg-red-500/90 text-white hover:bg-red-500"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRequestChanges(task.id);
-                    }}
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            {columnId === 'approved' ? (
-              <TaskActionIconButton
-                label="Disapprove"
-                icon={<RotateCcw size={11} />}
-                className="border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMoveBackToDone(task.id);
-                }}
-              />
-            ) : null}
+          <div className="flex shrink-0 flex-nowrap items-center gap-1.5">
+            <TaskMetaActions
+              taskId={task.id}
+              unreadCount={unreadCount}
+              commentCount={commentCount}
+              pulseKey={visibleCommentPulseKey}
+              canOpenChanges={canOpenChanges}
+              changesNeedAttention={changesNeedAttention}
+              onViewChanges={onViewChanges}
+              onDeleteTask={onDeleteTask}
+            />
           </div>
-
-          <div className="flex shrink-0 flex-nowrap items-center gap-1.5">{metaActions}</div>
         </div>
       </div>
     );
