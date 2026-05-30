@@ -318,7 +318,6 @@ import {
   getBootstrapTranscriptSuccessSource,
   getCanonicalSendMessageFieldRule,
   getCanonicalSendMessageToolRule,
-  isBootstrapTranscriptContextText,
   isTaskBoardSnapshotWorkCandidate,
   normalizeMemberDiagnosticText,
   shouldUseGeminiStagedLaunch,
@@ -738,6 +737,28 @@ interface ParsedBootstrapTranscriptTailCacheEntry {
   mtimeMs: number;
   size: number;
   lines: ParsedBootstrapTranscriptTailLine[];
+}
+
+function isNormalizedBootstrapTranscriptContextText(
+  normalizedText: string,
+  normalizedTeamName: string,
+  normalizedMemberName: string
+): boolean {
+  if (!normalizedText || !normalizedTeamName || !normalizedMemberName) {
+    return false;
+  }
+  if (
+    !normalizedText.includes(normalizedTeamName) ||
+    !normalizedText.includes(normalizedMemberName)
+  ) {
+    return false;
+  }
+  return (
+    normalizedText.includes('bootstrap') ||
+    normalizedText.includes('bootstrapping') ||
+    normalizedText.includes('member briefing') ||
+    normalizedText.includes('task briefing')
+  );
 }
 
 import type {
@@ -30426,12 +30447,16 @@ export class TeamProvisioningService {
     } = {}
   ): Promise<BootstrapTranscriptOutcome | null> {
     const normalizedMemberName = memberName.trim().toLowerCase();
+    const normalizedTeamName = teamName.trim().toLowerCase();
     const contextMemberNames = Array.from(
       new Set(
         [memberName, ...(options.contextMemberNames ?? [])]
           .map((name) => name.trim())
           .filter(Boolean)
       )
+    );
+    const normalizedContextMemberNames = contextMemberNames.map((name) =>
+      name.trim().toLowerCase()
     );
     const cacheKey = this.buildBootstrapTranscriptOutcomeCacheKey({
       filePath,
@@ -30477,16 +30502,15 @@ export class TeamProvisioningService {
         }
         const lineNormalizedText = normalizedText ?? '';
         if (shouldCollectBootstrapContext) {
-          for (const contextMemberName of contextMemberNames) {
+          for (const contextMemberName of normalizedContextMemberNames) {
             if (
-              isBootstrapTranscriptContextText(
-                text,
-                teamName,
-                contextMemberName,
-                lineNormalizedText
+              isNormalizedBootstrapTranscriptContextText(
+                lineNormalizedText,
+                normalizedTeamName,
+                contextMemberName
               )
             ) {
-              bootstrapContextMembers.add(contextMemberName.trim().toLowerCase());
+              bootstrapContextMembers.add(contextMemberName);
             }
           }
         }
