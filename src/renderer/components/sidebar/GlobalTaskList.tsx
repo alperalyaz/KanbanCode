@@ -210,12 +210,14 @@ interface SidebarTeamsDerived {
 }
 
 let cachedSidebarTeamsSignature: string | null = null;
+let cachedSidebarTeamsSource: readonly TeamSummary[] | null = null;
 let cachedSidebarTeamsDerived: SidebarTeamsDerived = {
   identityKey: '',
   filterTeams: [],
   statusSummaries: [],
   memberColorByTeam: new Map(),
 };
+let cachedLeadOfflineTeamsSource: Partial<Record<string, LeadActivityState>> | null = null;
 let cachedLeadOfflineTeamsSignature = '';
 let cachedLeadOfflineTeamNames: string[] = [];
 
@@ -255,6 +257,10 @@ function buildTeamNamesIdentityKey(teams: readonly TeamSummary[]): string {
 function selectLeadOfflineTeamNames(
   leadActivityByTeam: Partial<Record<string, LeadActivityState>>
 ): string[] {
+  if (leadActivityByTeam === cachedLeadOfflineTeamsSource) {
+    return cachedLeadOfflineTeamNames;
+  }
+
   const offlineTeamNames: string[] = [];
   for (const [teamName, activity] of Object.entries(leadActivityByTeam)) {
     if (activity === 'offline') {
@@ -269,17 +275,24 @@ function selectLeadOfflineTeamNames(
   }
 
   if (signature === cachedLeadOfflineTeamsSignature) {
+    cachedLeadOfflineTeamsSource = leadActivityByTeam;
     return cachedLeadOfflineTeamNames;
   }
 
+  cachedLeadOfflineTeamsSource = leadActivityByTeam;
   cachedLeadOfflineTeamsSignature = signature;
   cachedLeadOfflineTeamNames = offlineTeamNames;
   return cachedLeadOfflineTeamNames;
 }
 
 function selectSidebarTeamsDerived(teams: readonly TeamSummary[]): SidebarTeamsDerived {
+  if (teams === cachedSidebarTeamsSource) {
+    return cachedSidebarTeamsDerived;
+  }
+
   const signature = buildSidebarTeamsSignature(teams);
   if (signature === cachedSidebarTeamsSignature) {
+    cachedSidebarTeamsSource = teams;
     return cachedSidebarTeamsDerived;
   }
 
@@ -290,6 +303,7 @@ function selectSidebarTeamsDerived(teams: readonly TeamSummary[]): SidebarTeamsD
     }
   }
 
+  cachedSidebarTeamsSource = teams;
   cachedSidebarTeamsSignature = signature;
   cachedSidebarTeamsDerived = {
     identityKey: buildTeamNamesIdentityKey(teams),

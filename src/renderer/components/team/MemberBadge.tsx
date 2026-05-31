@@ -34,6 +34,18 @@ interface MemberBadgeProps {
 }
 
 const EMPTY_TEAM_MEMBERS: readonly ResolvedTeamMember[] = [];
+const memberAvatarMapCache = new WeakMap<readonly ResolvedTeamMember[], Map<string, string>>();
+
+function getCachedMemberAvatarMap(members: readonly ResolvedTeamMember[]): Map<string, string> {
+  const cached = memberAvatarMapCache.get(members);
+  if (cached) {
+    return cached;
+  }
+
+  const next = buildMemberAvatarMap(members);
+  memberAvatarMapCache.set(members, next);
+  return next;
+}
 
 /**
  * Reusable member avatar + colored name badge.
@@ -61,7 +73,7 @@ export const MemberBadge = memo(
         ? selectResolvedMembersForTeamName(s, effectiveAvatarTeamName)
         : EMPTY_TEAM_MEMBERS
     );
-    const avatarMap = useMemo(() => buildMemberAvatarMap(teamMembers), [teamMembers]);
+    const avatarMap = useMemo(() => getCachedMemberAvatarMap(teamMembers), [teamMembers]);
     const avatarSize = size === 'md' ? 32 : size === 'sm' ? 24 : 18;
     const avatarClass = size === 'md' ? 'size-6' : size === 'sm' ? 'size-5' : 'size-4';
     const textClass = size === 'md' ? 'text-xs' : size === 'sm' ? 'text-[10px]' : 'text-[9px]';

@@ -114,6 +114,7 @@ interface TeamMentionEntry {
 }
 
 let cachedTeamMentionSignature = '';
+let cachedTeamMentionSource: readonly TeamSummary[] | null = null;
 let cachedTeamMentionMeta: TeamMentionMeta = {
   teamNames: EMPTY_TEAM_NAMES,
   teamColorByName: EMPTY_TEAM_COLOR_MAP,
@@ -142,8 +143,13 @@ function getTeamMentionSignature(teams: readonly TeamSummary[]): string {
 }
 
 function selectMessagesPanelTeamMentionMeta(teams: readonly TeamSummary[]): TeamMentionMeta {
+  if (teams === cachedTeamMentionSource) {
+    return cachedTeamMentionMeta;
+  }
+
   const signature = getTeamMentionSignature(teams);
   if (signature === cachedTeamMentionSignature) {
+    cachedTeamMentionSource = teams;
     return cachedTeamMentionMeta;
   }
 
@@ -157,6 +163,7 @@ function selectMessagesPanelTeamMentionMeta(teams: readonly TeamSummary[]): Team
     .sort(compareTeamMentionEntries);
 
   if (entries.length === 0) {
+    cachedTeamMentionSource = teams;
     cachedTeamMentionSignature = signature;
     cachedTeamMentionMeta = {
       teamNames: EMPTY_TEAM_NAMES,
@@ -180,6 +187,7 @@ function selectMessagesPanelTeamMentionMeta(teams: readonly TeamSummary[]): Team
     }
   }
 
+  cachedTeamMentionSource = teams;
   cachedTeamMentionSignature = signature;
   cachedTeamMentionMeta = { teamNames, teamColorByName };
   return cachedTeamMentionMeta;
