@@ -581,9 +581,6 @@ const LeadThoughtsGroupRowComponent = ({
   const oldest = thoughts[thoughts.length - 1];
   const leadName = newest.from;
 
-  // Chronological order for rendering (oldest at top, newest at bottom)
-  const chronologicalThoughts = useMemo(() => [...thoughts].reverse(), [thoughts]);
-
   // Aggregate tool usage across all thoughts in this group
   const totalToolSummary = useMemo(() => {
     const merged: Record<string, number> = {};
@@ -609,8 +606,22 @@ const LeadThoughtsGroupRowComponent = ({
     return calls.length > 0 ? calls : undefined;
   }, [thoughts]);
 
+  const [expanded, setExpanded] = useState(false);
+  const [needsTruncation, setNeedsTruncation] = useState(false);
+  const isManaged = collapseMode === 'managed';
+  const isBodyVisible = isManaged ? !isCollapsed : true;
+  const canToggleBodyVisibility = isManaged && canToggleCollapse;
+  const useCompactCollapsedHeader = compactHeader && !isBodyVisible;
+
+  // Chronological order for rendering (oldest at top, newest at bottom)
+  const chronologicalThoughts = useMemo(
+    () => (isBodyVisible ? [...thoughts].reverse() : []),
+    [isBodyVisible, thoughts]
+  );
+
   // Reuse the same markdown preprocessing as the expanded thought body.
   const compactPreviewMarkdown = useMemo(() => {
+    if (isBodyVisible) return null;
     // Try newest first (most relevant), then scan for any text
     for (const t of thoughts) {
       if (t.text && t.text.trim()) {
@@ -626,8 +637,9 @@ const LeadThoughtsGroupRowComponent = ({
       }
     }
     return totalToolSummary;
-  }, [memberColorMap, teamNames, thoughts, totalToolSummary]);
+  }, [isBodyVisible, memberColorMap, teamNames, thoughts, totalToolSummary]);
   const compactPreviewTooltipText = useMemo(() => {
+    if (!compactPreviewMarkdown) return null;
     const normalized = extractMarkdownPlainTextCached(compactPreviewMarkdown ?? '')
       .replace(/\n+/g, ' ')
       .trim();
@@ -637,11 +649,6 @@ const LeadThoughtsGroupRowComponent = ({
   // Detect if any thought in this group is an API error
   const hasApiError = useMemo(() => thoughts.some((t) => isApiErrorMessage(t.text)), [thoughts]);
 
-  const [expanded, setExpanded] = useState(false);
-  const [needsTruncation, setNeedsTruncation] = useState(false);
-  const isManaged = collapseMode === 'managed';
-  const isBodyVisible = isManaged ? !isCollapsed : true;
-  const canToggleBodyVisibility = isManaged && canToggleCollapse;
   const handleBodyToggle = useCallback(() => {
     if (canToggleBodyVisibility && collapseToggleKey) {
       onToggleCollapse?.(collapseToggleKey);
@@ -798,8 +805,6 @@ const LeadThoughtsGroupRowComponent = ({
     const newestTime = formatTime(newest.timestamp);
     return oldestTime === newestTime ? oldestTime : `${oldestTime}–${newestTime}`;
   }, [newest.timestamp, oldest.timestamp]);
-  const useCompactCollapsedHeader = compactHeader && !isBodyVisible;
-
   return (
     <AnimatedHeightReveal animate={isNew} containerRef={ref} style={{ overflowAnchor: 'none' }}>
       <article
