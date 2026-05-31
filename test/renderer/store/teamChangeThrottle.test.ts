@@ -298,8 +298,7 @@ describe('team change throttling', () => {
     await vi.advanceTimersByTimeAsync(500);
     expect(fetchMemberSpawnStatusesSpy).toHaveBeenCalledTimes(1);
     expect(fetchMemberSpawnStatusesSpy).toHaveBeenCalledWith('my-team');
-    expect(fetchTeamAgentRuntimeSpy).toHaveBeenCalledTimes(1);
-    expect(fetchTeamAgentRuntimeSpy).toHaveBeenCalledWith('my-team');
+    expect(fetchTeamAgentRuntimeSpy).not.toHaveBeenCalled();
     expect(refreshTeamDataSpy).not.toHaveBeenCalled();
     expect(fetchTeamsSpy).not.toHaveBeenCalled();
 
@@ -311,6 +310,10 @@ describe('team change throttling', () => {
     expect(fetchTeamsSpy).toHaveBeenCalledTimes(1);
     expect(refreshTeamDataSpy).toHaveBeenCalledTimes(1);
     expect(refreshTeamDataSpy).toHaveBeenCalledWith('my-team', { withDedup: true });
+
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(fetchTeamAgentRuntimeSpy).toHaveBeenCalledTimes(1);
+    expect(fetchTeamAgentRuntimeSpy).toHaveBeenCalledWith('my-team');
 
     const summary = summarizeTeamRefreshFanout('my-team');
     expect(summary.rows).toEqual(
@@ -436,14 +439,19 @@ describe('team change throttling', () => {
     expect(refreshTeamDataSpy).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(799);
     expect(refreshTeamDataSpy).not.toHaveBeenCalled();
+    expect(fetchMemberSpawnStatusesSpy).toHaveBeenCalledWith('my-team');
+    expect(fetchTeamAgentRuntimeSpy).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(fetchMemberSpawnStatusesSpy).toHaveBeenCalledWith('my-team');
+    expect(fetchMemberSpawnStatusesSpy).toHaveBeenCalledTimes(1);
+    expect(fetchTeamAgentRuntimeSpy).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(4_200);
     expect(fetchTeamAgentRuntimeSpy).toHaveBeenCalledWith('my-team');
     expect(useStore.getState().selectedTeamData).toBeNull();
     expect(useStore.getState().teamDataCacheByName['my-team']).toBeUndefined();
 
-    await vi.advanceTimersByTimeAsync(19_200);
+    await vi.advanceTimersByTimeAsync(15_000);
     expect(fetchTeamsSpy).not.toHaveBeenCalled();
     expect(refreshTeamDataSpy).not.toHaveBeenCalled();
 

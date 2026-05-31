@@ -361,6 +361,8 @@ export function initializeNotificationListeners(): () => void {
   const TEAM_REFRESH_THROTTLE_MS = 800;
   const TEAM_PRESENCE_REFRESH_THROTTLE_MS = 400;
   const TEAM_MEMBER_SPAWN_REFRESH_THROTTLE_MS = 500;
+  const TEAM_AGENT_RUNTIME_REFRESH_THROTTLE_MS = 500;
+  const TEAM_AGENT_RUNTIME_PROCESS_LITE_REFRESH_THROTTLE_MS = 5_000;
   const TEAM_LIST_REFRESH_THROTTLE_MS = 2000;
   const GLOBAL_TASKS_REFRESH_THROTTLE_MS = 500;
   const GLOBAL_TASKS_REFRESH_DURING_LAUNCH_THROTTLE_MS = 5000;
@@ -512,6 +514,10 @@ export function initializeNotificationListeners(): () => void {
     if (teamAgentRuntimeRefreshTimers.has(timerKey)) {
       return;
     }
+    const throttleMs =
+      reason === 'event:process-lite'
+        ? TEAM_AGENT_RUNTIME_PROCESS_LITE_REFRESH_THROTTLE_MS
+        : TEAM_AGENT_RUNTIME_REFRESH_THROTTLE_MS;
     const timer = setTimeout(() => {
       teamAgentRuntimeRefreshTimers.delete(timerKey);
       if (options.skipIfHiddenAtExecution === true && !isTeamVisibleInAnyPane(teamName)) {
@@ -533,7 +539,7 @@ export function initializeNotificationListeners(): () => void {
         operation: 'fetchTeamAgentRuntime',
       });
       void useStore.getState().fetchTeamAgentRuntime(teamName);
-    }, TEAM_MEMBER_SPAWN_REFRESH_THROTTLE_MS);
+    }, throttleMs);
     teamAgentRuntimeRefreshTimers.set(timerKey, timer);
   };
   const scheduleProcessLiteRuntimeRefresh = (teamName: string): void => {
