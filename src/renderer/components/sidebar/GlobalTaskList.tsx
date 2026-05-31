@@ -230,37 +230,37 @@ let cachedLeadOfflineTeamsSource: Partial<Record<string, LeadActivityState>> | n
 let cachedLeadOfflineTeamsSignature = '';
 let cachedLeadOfflineTeamNames: string[] = [];
 
-function appendSignaturePart(signature: string, part: unknown): string {
+function pushSignaturePart(parts: string[], part: unknown): void {
   const text = part == null ? '' : String(part);
-  return `${signature}${text.length}:${text}|`;
+  parts.push(`${text.length}:${text}|`);
 }
 
 function buildSidebarTeamsSignature(teams: readonly TeamSummary[]): string {
-  let signature = '';
+  const signatureParts: string[] = [];
   for (const team of teams) {
-    signature = appendSignaturePart(signature, team.teamName);
-    signature = appendSignaturePart(signature, team.displayName);
-    signature = appendSignaturePart(signature, team.projectPath);
-    signature = appendSignaturePart(signature, team.lastActivity);
-    signature = appendSignaturePart(signature, team.partialLaunchFailure ? 1 : 0);
-    signature = appendSignaturePart(signature, team.teamLaunchState);
+    pushSignaturePart(signatureParts, team.teamName);
+    pushSignaturePart(signatureParts, team.displayName);
+    pushSignaturePart(signatureParts, team.projectPath);
+    pushSignaturePart(signatureParts, team.lastActivity);
+    pushSignaturePart(signatureParts, team.partialLaunchFailure ? 1 : 0);
+    pushSignaturePart(signatureParts, team.teamLaunchState);
     for (const member of team.members ?? []) {
       const colorMember = member as TeamMemberColorInput;
-      signature = appendSignaturePart(signature, colorMember.name);
-      signature = appendSignaturePart(signature, colorMember.color);
-      signature = appendSignaturePart(signature, colorMember.agentType);
-      signature = appendSignaturePart(signature, colorMember.removedAt);
+      pushSignaturePart(signatureParts, colorMember.name);
+      pushSignaturePart(signatureParts, colorMember.color);
+      pushSignaturePart(signatureParts, colorMember.agentType);
+      pushSignaturePart(signatureParts, colorMember.removedAt);
     }
   }
-  return signature;
+  return signatureParts.join('');
 }
 
 function buildTeamNamesIdentityKey(teams: readonly TeamSummary[]): string {
-  let signature = '';
+  const signatureParts: string[] = [];
   for (const team of teams) {
-    signature = appendSignaturePart(signature, team.teamName);
+    pushSignaturePart(signatureParts, team.teamName);
   }
-  return signature;
+  return signatureParts.join('');
 }
 
 function selectLeadOfflineTeamNames(
@@ -278,10 +278,11 @@ function selectLeadOfflineTeamNames(
   }
   offlineTeamNames.sort();
 
-  let signature = '';
+  const signatureParts: string[] = [];
   for (const teamName of offlineTeamNames) {
-    signature = appendSignaturePart(signature, teamName);
+    pushSignaturePart(signatureParts, teamName);
   }
+  const signature = signatureParts.join('');
 
   if (signature === cachedLeadOfflineTeamsSignature) {
     cachedLeadOfflineTeamsSource = leadActivityByTeam;
