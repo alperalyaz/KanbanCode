@@ -70,6 +70,7 @@ import type {
   KanbanColumnId,
   KanbanState,
   MessagesPage,
+  PersistedTeamLaunchSnapshot,
   ReplaceMembersRequest,
   SendMessageRequest,
   SendMessageResult,
@@ -598,9 +599,12 @@ export class TeamDataService {
 
   private async getMemberRuntimeAdvisoriesForSnapshot(
     teamName: string,
-    members: readonly Pick<TeamMemberSnapshot, 'name' | 'removedAt'>[]
+    members: readonly Pick<TeamMemberSnapshot, 'name' | 'removedAt'>[],
+    observedAfterMs: number | null = null
   ): Promise<Map<string, NonNullable<TeamMemberSnapshot['runtimeAdvisory']>>> {
-    const request = this.memberRuntimeAdvisoryService.getMemberAdvisories(teamName, members);
+    const request = this.memberRuntimeAdvisoryService.getMemberAdvisories(teamName, members, {
+      observedAfterMs,
+    });
     const timeoutToken = Symbol('member-runtime-advisory-timeout');
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     const timeout = new Promise<typeof timeoutToken>((resolve) => {
@@ -626,6 +630,27 @@ export class TeamDataService {
     }
 
     return result;
+  }
+
+  private getRuntimeAdvisoryObservedAfterMs(
+    launchSnapshot: PersistedTeamLaunchSnapshot | null
+  ): number | null {
+    if (!launchSnapshot) {
+      return null;
+    }
+
+    const candidates = [
+      launchSnapshot.updatedAt,
+      ...Object.values(launchSnapshot.members).flatMap((member) => [
+        member.lastEvaluatedAt,
+        member.firstSpawnAcceptedAt,
+        member.lastHeartbeatAt,
+      ]),
+    ];
+    const validTimes = candidates
+      .map((value) => (typeof value === 'string' ? Date.parse(value) : Number.NaN))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    return validTimes.length > 0 ? Math.min(...validTimes) : null;
   }
 
   private async synthesizeLeadMemberIfMissing(
@@ -1494,7 +1519,11 @@ export class TeamDataService {
     mark('resolveMembers');
 
     try {
-      const runtimeAdvisories = await this.getMemberRuntimeAdvisoriesForSnapshot(teamName, members);
+      const runtimeAdvisories = await this.getMemberRuntimeAdvisoriesForSnapshot(
+        teamName,
+        members,
+        this.getRuntimeAdvisoryObservedAfterMs(launchSnapshot)
+      );
       for (const member of members) {
         const advisory = runtimeAdvisories.get(member.name);
         if (advisory) {

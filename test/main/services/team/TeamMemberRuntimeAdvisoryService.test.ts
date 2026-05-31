@@ -183,7 +183,11 @@ async function writeOpenCodeDeliveryFixture(input: {
     const inboxDir = path.join(teamDir, 'inboxes');
     await fs.mkdir(inboxDir, { recursive: true });
     for (const [inboxName, messages] of Object.entries(input.inboxes)) {
-      await fs.writeFile(path.join(inboxDir, `${inboxName}.json`), JSON.stringify(messages), 'utf8');
+      await fs.writeFile(
+        path.join(inboxDir, `${inboxName}.json`),
+        JSON.stringify(messages),
+        'utf8'
+      );
     }
   }
 
@@ -365,6 +369,45 @@ describe('TeamMemberRuntimeAdvisoryService', () => {
     });
     expect(advisory?.retryUntil).toBeUndefined();
     expect(advisory?.message).toContain('auth_unavailable');
+  });
+
+  it('does not reuse API errors observed before the current launch floor', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-31T12:10:00.000Z'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-team-advisory-'));
+    const logPath = path.join(tmpDir, 'bob.jsonl');
+    await fs.writeFile(
+      logPath,
+      `${JSON.stringify({
+        type: 'assistant',
+        timestamp: '2026-05-31T12:01:00.000Z',
+        isApiErrorMessage: true,
+        error: 'unknown',
+        message: {
+          content: [
+            {
+              type: 'text',
+              text: 'API Error: 500 {"error":{"message":"old Codex API error","type":"server_error"}}',
+            },
+          ],
+        },
+      })}\n`,
+      'utf8'
+    );
+
+    const service = new TeamMemberRuntimeAdvisoryService({
+      findMemberLogs: vi.fn(async () => [{ filePath: logPath }]),
+    });
+
+    await expect(service.getMemberAdvisory('signal-ops', 'bob')).resolves.toMatchObject({
+      kind: 'api_error',
+      message: expect.stringContaining('old Codex API error'),
+    });
+    await expect(
+      service.getMemberAdvisory('signal-ops', 'bob', {
+        observedAfterMs: Date.parse('2026-05-31T12:05:00.000Z'),
+      })
+    ).resolves.toBeNull();
   });
 
   it('treats Claude Code account access failures as auth errors', () => {
