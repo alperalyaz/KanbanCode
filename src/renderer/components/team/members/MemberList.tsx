@@ -408,6 +408,21 @@ function buildCachedMemberRuntimeEntries(
   return nextEntries.size > 0 ? nextEntries : undefined;
 }
 
+function reuseRuntimeEntriesMapIfUnchanged(
+  previous: Map<string, TeamAgentRuntimeEntry> | undefined,
+  next: Map<string, TeamAgentRuntimeEntry> | undefined
+): Map<string, TeamAgentRuntimeEntry> | undefined {
+  if (previous === next) return previous;
+  if (!previous || !next) return next;
+  if (previous.size !== next.size) return next;
+  for (const [memberName, entry] of next) {
+    if (previous.get(memberName) !== entry) {
+      return next;
+    }
+  }
+  return previous;
+}
+
 function isFiniteNonNegative(value: number | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
@@ -808,6 +823,9 @@ export const MemberList = memo(function MemberList({
   const [runtimeTelemetryPreviewActive, setRuntimeTelemetryPreviewActive] = useState(false);
   const memberRuntimeEntriesRef = useRef(memberRuntimeEntries);
   const memberRuntimeEntryCacheRef = useRef(new Map<string, CachedMemberRuntimeEntry>());
+  const displayedRuntimeEntriesRef = useRef<Map<string, TeamAgentRuntimeEntry> | undefined>(
+    undefined
+  );
   memberRuntimeEntriesRef.current = memberRuntimeEntries;
 
   const handleResize = useCallback((entries: ResizeObserverEntry[]) => {
@@ -864,23 +882,25 @@ export const MemberList = memo(function MemberList({
   );
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
   const avatarMap = useMemo(() => buildMemberAvatarMap(members), [members]);
+  const cardRuntimeEntries = useMemo(() => {
+    const nextEntries = buildCachedMemberRuntimeEntries(
+      memberRuntimeEntries,
+      memberRuntimeEntryCacheRef.current,
+      Date.now()
+    );
+    const reusedEntries = reuseRuntimeEntriesMapIfUnchanged(
+      displayedRuntimeEntriesRef.current,
+      nextEntries
+    );
+    displayedRuntimeEntriesRef.current = reusedEntries;
+    return reusedEntries;
+  }, [memberRuntimeEntries]);
   const runtimeTelemetryScale = useMemo(
     () =>
       runtimeTelemetryPreviewActive
-        ? buildRuntimeTelemetryScale(activeMembers, memberRuntimeEntries)
+        ? buildRuntimeTelemetryScale(activeMembers, cardRuntimeEntries)
         : undefined,
-    [activeMembers, memberRuntimeEntries, runtimeTelemetryPreviewActive]
-  );
-  const cardRuntimeEntries = useMemo(
-    () =>
-      runtimeTelemetryPreviewActive
-        ? memberRuntimeEntries
-        : buildCachedMemberRuntimeEntries(
-            memberRuntimeEntries,
-            memberRuntimeEntryCacheRef.current,
-            Date.now()
-          ),
-    [memberRuntimeEntries, runtimeTelemetryPreviewActive]
+    [activeMembers, cardRuntimeEntries, runtimeTelemetryPreviewActive]
   );
   const activityTimerRuntimeSignature = useMemo(
     () => buildActivityTimerRuntimeSignature(activeMembers, memberRuntimeEntries),

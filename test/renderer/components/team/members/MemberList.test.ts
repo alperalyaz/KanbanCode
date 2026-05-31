@@ -492,6 +492,74 @@ describe('MemberList spawn-status memoization', () => {
     });
   });
 
+  it('keeps hovered runtime telemetry preview on cached snapshots', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const members = [member];
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberList, {
+          members,
+          isTeamAlive: true,
+          memberRuntimeEntries: new Map([['bob', liveRuntimeEntry()]]),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const list = host.querySelector('.runtime-telemetry-list');
+    expect(list).not.toBeNull();
+
+    await act(async () => {
+      list?.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(memberCardRenderSpy).toHaveBeenCalledTimes(2);
+    memberCardRenderSpy.mockClear();
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberList, {
+          members,
+          isTeamAlive: true,
+          memberRuntimeEntries: new Map([
+            [
+              'bob',
+              liveRuntimeEntry({
+                cpuPercent: 12,
+                rssBytes: 240 * 1024 * 1024,
+                resourceHistory: [
+                  {
+                    timestamp: '2026-05-31T10:00:05.000Z',
+                    rssBytes: 230 * 1024 * 1024,
+                    cpuPercent: 10,
+                  },
+                  {
+                    timestamp: '2026-05-31T10:00:10.000Z',
+                    rssBytes: 240 * 1024 * 1024,
+                    cpuPercent: 12,
+                  },
+                ],
+              }),
+            ],
+          ]),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(memberCardRenderSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('passes retry callbacks to failed member cards and rerenders when the callback changes', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');
