@@ -585,6 +585,68 @@ describe('TeamTaskActivityIntervalService', () => {
     expect(mutateWithLockSpy).not.toHaveBeenCalled();
   });
 
+  it('reuses cached task file reads across unchanged team-wide scans', async () => {
+    await writeTask('alpha', {
+      id: 'bob-task',
+      subject: 'Bob work',
+      owner: 'bob',
+      status: 'in_progress',
+      workIntervals: [{ startedAt: '2026-05-08T10:00:00.000Z' }],
+      historyEvents: [],
+    });
+    await writeTask('alpha', {
+      id: 'alice-task',
+      subject: 'Alice work',
+      owner: 'alice',
+      status: 'completed',
+      reviewIntervals: [{ reviewer: 'bob', startedAt: '2026-05-08T10:00:00.000Z' }],
+      historyEvents: [],
+    });
+
+    const service = new TeamTaskActivityIntervalService();
+    expect(service.pauseActiveIntervalsForTeam('alpha', '2026-05-08T10:20:00.000Z').changedTasks)
+      .toBe(2);
+
+    const jsonParseSpy = vi.spyOn(JSON, 'parse');
+    const secondResult = service.pauseActiveIntervalsForTeam('alpha', '2026-05-08T10:25:00.000Z');
+
+    expect(secondResult.changedTasks).toBe(0);
+    expect(jsonParseSpy).not.toHaveBeenCalled();
+  });
+
+  it('refreshes cached task file reads when a task file changes', async () => {
+    await writeTask('alpha', {
+      id: 'bob-task',
+      subject: 'Bob work',
+      owner: 'bob',
+      status: 'in_progress',
+      workIntervals: [{ startedAt: '2026-05-08T10:00:00.000Z' }],
+      historyEvents: [],
+    });
+
+    const service = new TeamTaskActivityIntervalService();
+    expect(service.pauseActiveIntervalsForTeam('alpha', '2026-05-08T10:20:00.000Z').changedTasks)
+      .toBe(1);
+
+    await writeTask('alpha', {
+      id: 'bob-task',
+      subject: 'Bob work',
+      owner: 'bob',
+      status: 'in_progress',
+      workIntervals: [{ startedAt: '2026-05-08T10:30:00.000Z' }],
+      historyEvents: [],
+      signaturePadding: 'changed-file-signature',
+    });
+
+    const result = service.pauseActiveIntervalsForTeam('alpha', '2026-05-08T10:35:00.000Z');
+    const task = await readTask('alpha', 'bob-task');
+
+    expect(result.changedTasks).toBe(1);
+    expect(task.workIntervals).toEqual([
+      { startedAt: '2026-05-08T10:30:00.000Z', completedAt: '2026-05-08T10:35:00.000Z' },
+    ]);
+  });
+
   it('skips the task lock after an unchanged single-member resume no-op pass', async () => {
     await writeTask('alpha', {
       id: 'bob-task',

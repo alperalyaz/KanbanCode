@@ -22,6 +22,19 @@ interface TaskDirectorySignature {
   key: string;
 }
 
+interface TaskFileSignature {
+  size: number;
+  mtimeMs: number;
+  ctimeMs: number;
+  dev: number;
+  ino: number;
+}
+
+interface CachedActivityTaskFile {
+  signature: TaskFileSignature;
+  task: MutableTeamTask | null;
+}
+
 interface ResumeMembersCacheEntry {
   memberKey: string;
   signatureKey: string;
@@ -34,6 +47,7 @@ type MutableTeamTask = TeamTask & {
 };
 
 const CRASH_REPAIR_GRACE_MS = 5_000;
+const TASK_FILE_CACHE_MAX_ENTRIES = 8_192;
 const logger = createLogger('Service:TeamTaskActivityIntervalService');
 
 function normalizeMemberName(value: string | null | undefined): string {
@@ -317,24 +331,36 @@ function materializePausedReviewInterval(
   return true;
 }
 
-function readTaskFile(filePath: string): MutableTeamTask | null {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
-    return parsed && typeof parsed === 'object' ? (parsed as MutableTeamTask) : null;
-  } catch {
-    return null;
-  }
-}
-
 function writeTaskFile(filePath: string, task: MutableTeamTask): void {
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(tempPath, JSON.stringify(task, null, 2));
   fs.renameSync(tempPath, filePath);
 }
 
+function buildTaskFileSignature(stat: fs.Stats): TaskFileSignature {
+  return {
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+    ctimeMs: stat.ctimeMs,
+    dev: stat.dev,
+    ino: stat.ino,
+  };
+}
+
+function taskFileSignaturesEqual(a: TaskFileSignature, b: TaskFileSignature): boolean {
+  return (
+    a.size === b.size &&
+    a.mtimeMs === b.mtimeMs &&
+    a.ctimeMs === b.ctimeMs &&
+    a.dev === b.dev &&
+    a.ino === b.ino
+  );
+}
+
 export class TeamTaskActivityIntervalService {
   private readonly resumeMembersCache = new Map<string, ResumeMembersCacheEntry>();
   private readonly memberActivityNoopCache = new Map<string, string>();
+  private readonly taskFileCache = new Map<string, CachedActivityTaskFile>();
 
   private getBoardStateLockPath(teamName: string): string {
     return `${path.join(getTeamsBasePath(), teamName, 'board-state')}.lock`;
@@ -360,6 +386,81 @@ export class TeamTaskActivityIntervalService {
   private clearActivityNoopCachesForTeam(teamName: string): void {
     this.clearMemberActivityNoopCacheForTeam(teamName);
     this.resumeMembersCache.delete(teamName);
+  }
+
+  private getCachedTaskFile(
+    filePath: string,
+    signature: TaskFileSignature
+  ): MutableTeamTask | null | undefined {
+    const cached = this.taskFileCache.get(filePath);
+    if (!cached) return undefined;
+    if (!taskFileSignaturesEqual(cached.signature, signature)) {
+      this.taskFileCache.delete(filePath);
+      return undefined;
+    }
+    return cached.task ? structuredClone(cached.task) : null;
+  }
+
+  private setCachedTaskFile(
+    filePath: string,
+    signature: TaskFileSignature,
+    task: MutableTeamTask | null
+  ): void {
+    if (
+      !this.taskFileCache.has(filePath) &&
+      this.taskFileCache.size >= TASK_FILE_CACHE_MAX_ENTRIES
+    ) {
+      const oldestKey = this.taskFileCache.keys().next().value;
+      if (oldestKey) {
+        this.taskFileCache.delete(oldestKey);
+      }
+    }
+    this.taskFileCache.set(filePath, {
+      signature,
+      task: task ? structuredClone(task) : null,
+    });
+  }
+
+  private readTaskFile(filePath: string): MutableTeamTask | null {
+    let signature: TaskFileSignature;
+    try {
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) {
+        this.taskFileCache.delete(filePath);
+        return null;
+      }
+      signature = buildTaskFileSignature(stat);
+      const cached = this.getCachedTaskFile(filePath, signature);
+      if (cached !== undefined) {
+        return cached;
+      }
+    } catch {
+      this.taskFileCache.delete(filePath);
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
+      const task = parsed && typeof parsed === 'object' ? (parsed as MutableTeamTask) : null;
+      this.setCachedTaskFile(filePath, signature, task);
+      return task;
+    } catch {
+      this.setCachedTaskFile(filePath, signature, null);
+      return null;
+    }
+  }
+
+  private cacheWrittenTaskFile(filePath: string, task: MutableTeamTask): void {
+    try {
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) {
+        this.taskFileCache.delete(filePath);
+        return;
+      }
+      this.setCachedTaskFile(filePath, buildTaskFileSignature(stat), task);
+    } catch {
+      this.taskFileCache.delete(filePath);
+    }
   }
 
   private mutateTeamTasksWithLock(
@@ -457,10 +558,11 @@ export class TeamTaskActivityIntervalService {
     for (const fileName of entries) {
       if (!fileName.endsWith('.json') || fileName.startsWith('.')) continue;
       const filePath = path.join(tasksDir, fileName);
-      const task = readTaskFile(filePath);
+      const task = this.readTaskFile(filePath);
       if (!task) continue;
       if (!mutate(task)) continue;
       writeTaskFile(filePath, task);
+      this.cacheWrittenTaskFile(filePath, task);
       changedTasks += 1;
     }
 
