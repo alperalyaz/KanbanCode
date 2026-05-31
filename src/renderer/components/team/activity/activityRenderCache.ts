@@ -20,22 +20,22 @@ export function getCachedString(cache: StringCache, key: string, buildValue: () 
 }
 
 export function encodeCacheParts(parts: readonly string[]): string {
-  let signature = '';
+  const encodedParts: string[] = [];
   for (const part of parts) {
-    signature = appendEncodedCachePart(signature, part);
+    pushEncodedCachePart(encodedParts, part);
   }
-  return signature;
+  return encodedParts.join('|');
 }
 
 export function taskRefsCacheSignature(taskRefs?: readonly TaskRef[]): string {
   if (!taskRefs || taskRefs.length === 0) return '';
-  let signature = '';
+  const encodedParts: string[] = [];
   for (const ref of taskRefs) {
-    signature = appendEncodedCachePart(signature, ref.taskId);
-    signature = appendEncodedCachePart(signature, ref.displayId);
-    signature = appendEncodedCachePart(signature, ref.teamName ?? '');
+    pushEncodedCachePart(encodedParts, ref.taskId);
+    pushEncodedCachePart(encodedParts, ref.displayId);
+    pushEncodedCachePart(encodedParts, ref.teamName ?? '');
   }
-  return signature;
+  return encodedParts.join('|');
 }
 
 export function stringArrayCacheSignature(values?: readonly string[]): string {
@@ -46,17 +46,16 @@ export function stringArrayCacheSignature(values?: readonly string[]): string {
 export function stringMapCacheSignature(map?: ReadonlyMap<string, string>): string {
   if (!map || map.size === 0) return '';
   const entries = [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  let signature = '';
+  const encodedParts: string[] = [];
   for (const [key, value] of entries) {
-    signature = appendEncodedCachePart(signature, key);
-    signature = appendEncodedCachePart(signature, value);
+    pushEncodedCachePart(encodedParts, key);
+    pushEncodedCachePart(encodedParts, value);
   }
-  return signature;
+  return encodedParts.join('|');
 }
 
-function appendEncodedCachePart(signature: string, part: string): string {
-  const encodedPart = `${part.length}:${part}`;
-  return signature ? `${signature}|${encodedPart}` : encodedPart;
+function pushEncodedCachePart(encodedParts: string[], part: string): void {
+  encodedParts.push(`${part.length}:${part}`);
 }
 
 const markdownPlainTextCache: StringCache = new Map();
