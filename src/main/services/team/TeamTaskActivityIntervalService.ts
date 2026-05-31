@@ -27,6 +27,8 @@ interface ResumeMembersCacheEntry {
   signatureKey: string;
 }
 
+type MemberActivityNoopOperation = 'pause-member' | 'resume-member';
+
 type MutableTeamTask = TeamTask & {
   reviewIntervals?: TaskReviewInterval[];
 };
@@ -332,9 +334,32 @@ function writeTaskFile(filePath: string, task: MutableTeamTask): void {
 
 export class TeamTaskActivityIntervalService {
   private readonly resumeMembersCache = new Map<string, ResumeMembersCacheEntry>();
+  private readonly memberActivityNoopCache = new Map<string, string>();
 
   private getBoardStateLockPath(teamName: string): string {
     return `${path.join(getTeamsBasePath(), teamName, 'board-state')}.lock`;
+  }
+
+  private getMemberActivityNoopCacheKey(
+    teamName: string,
+    operation: MemberActivityNoopOperation,
+    memberKey: string
+  ): string {
+    return `${teamName}\u0000${operation}\u0000${memberKey}`;
+  }
+
+  private clearMemberActivityNoopCacheForTeam(teamName: string): void {
+    const prefix = `${teamName}\u0000`;
+    for (const key of this.memberActivityNoopCache.keys()) {
+      if (key.startsWith(prefix)) {
+        this.memberActivityNoopCache.delete(key);
+      }
+    }
+  }
+
+  private clearActivityNoopCachesForTeam(teamName: string): void {
+    this.clearMemberActivityNoopCacheForTeam(teamName);
+    this.resumeMembersCache.delete(teamName);
   }
 
   private mutateTeamTasksWithLock(
@@ -362,7 +387,53 @@ export class TeamTaskActivityIntervalService {
       this.mutateTeamTasksUnlocked(teamName, mutate)
     );
     if (result.changedTasks > 0 || result.failed) {
-      this.resumeMembersCache.delete(teamName);
+      this.clearActivityNoopCachesForTeam(teamName);
+    }
+    return result;
+  }
+
+  private mutateMemberTasksWithNoopCache(
+    teamName: string,
+    operation: MemberActivityNoopOperation,
+    memberKey: string,
+    mutate: (task: MutableTeamTask) => boolean
+  ): ActivityIntervalResult {
+    const cacheKey = this.getMemberActivityNoopCacheKey(teamName, operation, memberKey);
+    const cachedSignatureKey = this.memberActivityNoopCache.get(cacheKey);
+    if (cachedSignatureKey) {
+      const beforeLockSignature = this.readTaskDirectorySignature(teamName);
+      if (
+        beforeLockSignature &&
+        beforeLockSignature.key === cachedSignatureKey &&
+        !fs.existsSync(this.getBoardStateLockPath(teamName))
+      ) {
+        return { changedTasks: 0 };
+      }
+    }
+
+    const result = this.mutateTeamTasksWithLock(teamName, () => {
+      const beforeSignature = this.readTaskDirectorySignature(teamName);
+      if (beforeSignature && this.memberActivityNoopCache.get(cacheKey) === beforeSignature.key) {
+        return { changedTasks: 0 };
+      }
+
+      const mutationResult = this.mutateTeamTasksUnlocked(teamName, mutate);
+      if (mutationResult.changedTasks > 0) {
+        this.clearActivityNoopCachesForTeam(teamName);
+        return mutationResult;
+      }
+
+      const nextSignature = beforeSignature ?? this.readTaskDirectorySignature(teamName);
+      if (nextSignature) {
+        this.memberActivityNoopCache.set(cacheKey, nextSignature.key);
+      } else {
+        this.memberActivityNoopCache.delete(cacheKey);
+      }
+      return mutationResult;
+    });
+
+    if (result.changedTasks > 0 || result.failed) {
+      this.clearActivityNoopCachesForTeam(teamName);
     }
     return result;
   }
@@ -449,13 +520,19 @@ export class TeamTaskActivityIntervalService {
     memberName: string,
     at = new Date().toISOString()
   ): ActivityIntervalResult {
-    return this.mutateTeamTasks(teamName, (task) => {
+    const memberKey = normalizeMemberName(memberName);
+    const mutate = (task: MutableTeamTask): boolean => {
       const changedWork = closeOpenWorkIntervals(task, at, memberName);
       const changedReview = closeOpenReviewIntervals(task, at, memberName);
       const materializedWork = materializePausedWorkInterval(task, at, memberName);
       const materializedReview = materializePausedReviewInterval(task, at, memberName);
       return changedWork || changedReview || materializedWork || materializedReview;
-    });
+    };
+
+    if (!memberKey) {
+      return this.mutateTeamTasks(teamName, mutate);
+    }
+    return this.mutateMemberTasksWithNoopCache(teamName, 'pause-member', memberKey, mutate);
   }
 
   resumeActiveIntervalsForMember(
@@ -466,7 +543,7 @@ export class TeamTaskActivityIntervalService {
     const memberKey = normalizeMemberName(memberName);
     if (!memberKey) return { changedTasks: 0 };
 
-    return this.mutateTeamTasks(teamName, (task) => {
+    return this.mutateMemberTasksWithNoopCache(teamName, 'resume-member', memberKey, (task) => {
       let changed = false;
 
       if (
@@ -599,7 +676,9 @@ export class TeamTaskActivityIntervalService {
     });
 
     if (result.failed) {
-      this.resumeMembersCache.delete(teamName);
+      this.clearActivityNoopCachesForTeam(teamName);
+    } else if (result.changedTasks > 0) {
+      this.clearMemberActivityNoopCacheForTeam(teamName);
     }
     return result;
   }
