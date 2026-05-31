@@ -384,7 +384,7 @@ describe('MemberList spawn-status memoization', () => {
     });
   });
 
-  it('does not rerender cards when only runtime telemetry history changes', async () => {
+  it('does not rerender cards when only cached runtime telemetry changes', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -435,6 +435,7 @@ describe('MemberList spawn-status memoization', () => {
     });
 
     expect(memberCardRenderSpy).not.toHaveBeenCalled();
+    memberCardRenderSpy.mockClear();
 
     await act(async () => {
       root.render(
@@ -453,6 +454,28 @@ describe('MemberList spawn-status memoization', () => {
                     cpuPercent: 7,
                   },
                 ],
+              }),
+            ],
+          ]),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(memberCardRenderSpy).not.toHaveBeenCalled();
+    memberCardRenderSpy.mockClear();
+
+    await act(async () => {
+      root.render(
+        React.createElement(MemberList, {
+          members,
+          isTeamAlive: true,
+          memberRuntimeEntries: new Map([
+            [
+              'bob',
+              liveRuntimeEntry({
+                runtimeDiagnosticSeverity: 'error',
+                runtimeDiagnostic: 'runtime went stale',
               }),
             ],
           ]),

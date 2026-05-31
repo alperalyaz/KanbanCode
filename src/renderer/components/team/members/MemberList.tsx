@@ -331,6 +331,83 @@ function areMemberRuntimeEntriesEquivalent(
   return true;
 }
 
+const MEMBER_CARD_RUNTIME_TELEMETRY_CACHE_MS = 30_000;
+
+interface CachedMemberRuntimeEntry {
+  signature: string;
+  cachedAt: number;
+  entry: TeamAgentRuntimeEntry;
+}
+
+function buildMemberRuntimeCardSignature(entry: TeamAgentRuntimeEntry): string {
+  const diagnostics = Array.isArray(entry.diagnostics) ? entry.diagnostics : [];
+  return [
+    entry.memberName,
+    entry.alive,
+    entry.restartable,
+    entry.backendType,
+    entry.providerId,
+    entry.providerBackendId,
+    entry.laneId,
+    entry.laneKind,
+    entry.pid,
+    entry.runtimeModel,
+    entry.processCount,
+    entry.runtimeLoadScope,
+    entry.runtimeLoadTruncated,
+    entry.livenessKind,
+    entry.pidSource,
+    entry.processCommand,
+    entry.paneId,
+    entry.panePid,
+    entry.paneCurrentCommand,
+    entry.runtimePid,
+    entry.runtimeSessionId,
+    entry.runtimeDiagnostic,
+    entry.runtimeDiagnosticSeverity,
+    entry.runtimeLastSeenAt,
+    entry.historicalBootstrapConfirmed,
+    diagnostics.join('\u001f'),
+  ].join('\u001e');
+}
+
+function buildCachedMemberRuntimeEntries(
+  runtimeEntries: Map<string, TeamAgentRuntimeEntry> | undefined,
+  cache: Map<string, CachedMemberRuntimeEntry>,
+  nowMs: number
+): Map<string, TeamAgentRuntimeEntry> | undefined {
+  if (!runtimeEntries) {
+    cache.clear();
+    return undefined;
+  }
+
+  const nextEntries = new Map<string, TeamAgentRuntimeEntry>();
+  const seenMemberNames = new Set<string>();
+  for (const [memberName, entry] of runtimeEntries) {
+    seenMemberNames.add(memberName);
+    const signature = buildMemberRuntimeCardSignature(entry);
+    const cached = cache.get(memberName);
+    if (
+      !cached ||
+      cached.signature !== signature ||
+      nowMs - cached.cachedAt >= MEMBER_CARD_RUNTIME_TELEMETRY_CACHE_MS
+    ) {
+      cache.set(memberName, { signature, cachedAt: nowMs, entry });
+      nextEntries.set(memberName, entry);
+      continue;
+    }
+    nextEntries.set(memberName, cached.entry);
+  }
+
+  for (const memberName of cache.keys()) {
+    if (!seenMemberNames.has(memberName)) {
+      cache.delete(memberName);
+    }
+  }
+
+  return nextEntries.size > 0 ? nextEntries : undefined;
+}
+
 function isFiniteNonNegative(value: number | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
@@ -730,6 +807,7 @@ export const MemberList = memo(function MemberList({
   const [isWide, setIsWide] = useState(false);
   const [runtimeTelemetryPreviewActive, setRuntimeTelemetryPreviewActive] = useState(false);
   const memberRuntimeEntriesRef = useRef(memberRuntimeEntries);
+  const memberRuntimeEntryCacheRef = useRef(new Map<string, CachedMemberRuntimeEntry>());
   memberRuntimeEntriesRef.current = memberRuntimeEntries;
 
   const handleResize = useCallback((entries: ResizeObserverEntry[]) => {
@@ -792,6 +870,17 @@ export const MemberList = memo(function MemberList({
         ? buildRuntimeTelemetryScale(activeMembers, memberRuntimeEntries)
         : undefined,
     [activeMembers, memberRuntimeEntries, runtimeTelemetryPreviewActive]
+  );
+  const cardRuntimeEntries = useMemo(
+    () =>
+      runtimeTelemetryPreviewActive
+        ? memberRuntimeEntries
+        : buildCachedMemberRuntimeEntries(
+            memberRuntimeEntries,
+            memberRuntimeEntryCacheRef.current,
+            Date.now()
+          ),
+    [memberRuntimeEntries, runtimeTelemetryPreviewActive]
   );
   const activityTimerRuntimeSignature = useMemo(
     () => buildActivityTimerRuntimeSignature(activeMembers, memberRuntimeEntries),
@@ -969,7 +1058,10 @@ export const MemberList = memo(function MemberList({
       <div className={gridClass}>
         {activeMembers.map((member) => {
           const spawnEntry = memberSpawnStatuses?.get(member.name);
-          const runtimeEntry = memberRuntimeEntries?.get(member.name);
+          const liveRuntimeEntry = memberRuntimeEntries?.get(member.name);
+          const cardRuntimeEntry = cardRuntimeEntries?.get(member.name);
+          const runtimeEntry = liveRuntimeEntry;
+          const displayRuntimeEntry = cardRuntimeEntry ?? liveRuntimeEntry;
           const bootstrapConfirmedProvisionedButNotAlive =
             isBootstrapConfirmedProvisionedButNotAliveFailure(spawnEntry);
           const hasUnsafeProvisionedButNotAliveEvidence =
@@ -1062,14 +1154,14 @@ export const MemberList = memo(function MemberList({
               reviewTask={reviewTask}
               currentTaskTimer={currentTaskTimer}
               reviewTaskTimer={reviewTaskTimer}
-              currentTaskTimerRunning={activityTimerRunning}
-              reviewTaskTimerRunning={activityTimerRunning}
+              currentTaskTimerRunning={currentTask !== null && activityTimerRunning}
+              reviewTaskTimerRunning={reviewTask !== null && activityTimerRunning}
               awaitingReply={
                 isTeamAlive !== false && Boolean(pendingRepliesByMember?.[member.name])
               }
               taskCounts={memberTaskCounts?.get(member.name.toLowerCase())}
-              runtimeSummary={buildRuntimeSummary(member, spawnEntry, runtimeEntry)}
-              runtimeEntry={runtimeEntry}
+              runtimeSummary={buildRuntimeSummary(member, spawnEntry, displayRuntimeEntry)}
+              runtimeEntry={displayRuntimeEntry}
               runtimeRunId={runtimeRunId}
               spawnStatus={effectiveSpawnStatus}
               spawnEntry={spawnEntry}
