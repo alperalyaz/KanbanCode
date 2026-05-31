@@ -46,7 +46,9 @@ const SHELL_COMMAND_NAMES = new Set(['sh', 'bash', 'zsh', 'fish', 'dash', 'login
 const SECRET_FLAG_PATTERN =
   /(--(?:api-key|token|password|secret|authorization|auth-token)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi;
 const CLI_ARG_VALUES_CACHE_MAX_COMMANDS = 1_000;
+const CLI_ARG_EQUALS_CACHE_MAX_KEYS_PER_COMMAND = 100;
 const cliArgValuesCache = new Map<string, Map<string, string[]>>();
+const cliArgEqualsCache = new Map<string, Map<string, boolean>>();
 
 function basenameCommand(command: string | undefined): string {
   const firstToken = command?.trim().split(/\s+/, 1)[0] ?? '';
@@ -108,6 +110,51 @@ function getCachedCliArgValues(command: string, argName: string): readonly strin
   return values;
 }
 
+function getCachedCliArgEquals(
+  command: string,
+  argName: string,
+  normalizedExpected: string
+): boolean | undefined {
+  const cachedByKey = cliArgEqualsCache.get(command);
+  if (!cachedByKey) {
+    return undefined;
+  }
+  const cacheKey = `${argName}\0${normalizedExpected}`;
+  const cached = cachedByKey.get(cacheKey);
+  if (cached !== undefined) {
+    cliArgEqualsCache.delete(command);
+    cliArgEqualsCache.set(command, cachedByKey);
+  }
+  return cached;
+}
+
+function setCachedCliArgEquals(
+  command: string,
+  argName: string,
+  normalizedExpected: string,
+  value: boolean
+): void {
+  let cachedByKey = cliArgEqualsCache.get(command);
+  if (!cachedByKey) {
+    cachedByKey = new Map<string, boolean>();
+  }
+  const cacheKey = `${argName}\0${normalizedExpected}`;
+  if (!cachedByKey.has(cacheKey) && cachedByKey.size >= CLI_ARG_EQUALS_CACHE_MAX_KEYS_PER_COMMAND) {
+    const oldestKey = cachedByKey.keys().next().value;
+    if (oldestKey !== undefined) {
+      cachedByKey.delete(oldestKey);
+    }
+  }
+  cachedByKey.set(cacheKey, value);
+  cliArgEqualsCache.delete(command);
+  cliArgEqualsCache.set(command, cachedByKey);
+  while (cliArgEqualsCache.size > CLI_ARG_VALUES_CACHE_MAX_COMMANDS) {
+    const oldestCommand = cliArgEqualsCache.keys().next().value;
+    if (oldestCommand === undefined) break;
+    cliArgEqualsCache.delete(oldestCommand);
+  }
+}
+
 export function extractCliArgValues(command: string, argName: string): string[] {
   const values = getCachedCliArgValues(command, argName);
   return [...values];
@@ -121,7 +168,15 @@ export function commandArgEquals(
   const normalizedExpected = expected?.trim();
   if (!normalizedExpected) return false;
   if (!command.includes(argName)) return false;
-  return getCachedCliArgValues(command, argName).some((value) => value === normalizedExpected);
+  const cached = getCachedCliArgEquals(command, argName, normalizedExpected);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const value = getCachedCliArgValues(command, argName).some(
+    (argValue) => argValue === normalizedExpected
+  );
+  setCachedCliArgEquals(command, argName, normalizedExpected, value);
+  return value;
 }
 
 function collectDescendants(

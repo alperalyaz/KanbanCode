@@ -1,4 +1,5 @@
 import {
+  commandArgEquals,
   extractCliArgValues,
   resolveTeamMemberRuntimeLiveness,
   sanitizeProcessCommandForDiagnostics,
@@ -284,5 +285,14 @@ describe('resolveTeamMemberRuntimeLiveness', () => {
 
   it('returns no CLI arg values when the flag is absent', () => {
     expect(extractCliArgValues('node runtime --other value', '--agent-id')).toEqual([]);
+  });
+
+  it('matches CLI arg values repeatedly without changing extraction results', () => {
+    const command = 'node runtime --team-name demo --agent-id "agent alice"';
+
+    expect(commandArgEquals(command, '--agent-id', 'agent alice')).toBe(true);
+    expect(commandArgEquals(command, '--agent-id', 'agent-bob')).toBe(false);
+    expect(commandArgEquals(command, '--agent-id', 'agent alice')).toBe(true);
+    expect(extractCliArgValues(command, '--agent-id')).toEqual(['agent alice']);
   });
 });
