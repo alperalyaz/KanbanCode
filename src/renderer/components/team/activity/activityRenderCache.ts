@@ -20,14 +20,22 @@ export function getCachedString(cache: StringCache, key: string, buildValue: () 
 }
 
 export function encodeCacheParts(parts: readonly string[]): string {
-  return parts.map((part) => `${part.length}:${part}`).join('|');
+  let signature = '';
+  for (const part of parts) {
+    signature = appendEncodedCachePart(signature, part);
+  }
+  return signature;
 }
 
 export function taskRefsCacheSignature(taskRefs?: readonly TaskRef[]): string {
   if (!taskRefs || taskRefs.length === 0) return '';
-  return encodeCacheParts(
-    taskRefs.flatMap((ref) => [ref.taskId, ref.displayId, ref.teamName ?? ''])
-  );
+  let signature = '';
+  for (const ref of taskRefs) {
+    signature = appendEncodedCachePart(signature, ref.taskId);
+    signature = appendEncodedCachePart(signature, ref.displayId);
+    signature = appendEncodedCachePart(signature, ref.teamName ?? '');
+  }
+  return signature;
 }
 
 export function stringArrayCacheSignature(values?: readonly string[]): string {
@@ -38,7 +46,17 @@ export function stringArrayCacheSignature(values?: readonly string[]): string {
 export function stringMapCacheSignature(map?: ReadonlyMap<string, string>): string {
   if (!map || map.size === 0) return '';
   const entries = [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  return encodeCacheParts(entries.flatMap(([key, value]) => [key, value]));
+  let signature = '';
+  for (const [key, value] of entries) {
+    signature = appendEncodedCachePart(signature, key);
+    signature = appendEncodedCachePart(signature, value);
+  }
+  return signature;
+}
+
+function appendEncodedCachePart(signature: string, part: string): string {
+  const encodedPart = `${part.length}:${part}`;
+  return signature ? `${signature}|${encodedPart}` : encodedPart;
 }
 
 const markdownPlainTextCache: StringCache = new Map();
