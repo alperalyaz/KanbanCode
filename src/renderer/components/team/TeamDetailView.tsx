@@ -5,11 +5,11 @@ import {
   Suspense,
   useCallback,
   useEffect,
-  useId,
   useImperativeHandle,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
@@ -895,20 +895,20 @@ const TeamOfflineStatusBanner = memo(function TeamOfflineStatusBanner({
 type LeadUpdatedKey = `lead${'Con'}${'text'}UpdatedAt`;
 type TeamMessagesPanelBridgeProps = Omit<
   ComponentProps<typeof MessagesPanel>,
-  'leadActivity' | LeadUpdatedKey
+  'leadActivity' | LeadUpdatedKey | 'pendingRepliesByMember' | 'onPendingReplyChange'
 >;
 type SendMessageDialogBridgeProps = Omit<
   ComponentProps<typeof SendMessageDialog>,
   'sending' | 'sendError' | 'sendWarning' | 'sendDebugDetails' | 'lastResult' | 'onSend'
-> & {
-  onPendingReplyStart: (member: string, sentAtMs: number) => void;
-  onPendingReplySettled: (member: string, sentAtMs: number) => void;
-};
+>;
 type SendMessageDialogOnSend = ComponentProps<typeof SendMessageDialog>['onSend'];
+type PendingRepliesUpdater =
+  | Record<string, number>
+  | ((current: Record<string, number>) => Record<string, number>);
 type SharedTeamMessagesPanelProps = Omit<TeamMessagesPanelBridgeProps, 'position'>;
 type TeamMemberListBridgeProps = Omit<
   ComponentProps<typeof MemberList>,
-  'leadActivity' | 'memberSpawnStatuses'
+  'leadActivity' | 'memberSpawnStatuses' | 'pendingRepliesByMember'
 > & {
   teamName: string;
 };
@@ -930,6 +930,54 @@ interface LeadLoadBridgeProps {
   leadProviderId?: TeamProviderId;
   fallbackProjectRoot?: string;
   isThisTabActive: boolean;
+}
+
+const pendingRepliesCacheByTeam = new Map<string, Record<string, number>>();
+const pendingRepliesListenersByTeam = new Map<string, Set<() => void>>();
+let pendingReplyRefreshSourceSequence = 0;
+
+function getPendingRepliesSnapshot(teamName: string): Record<string, number> {
+  let snapshot = pendingRepliesCacheByTeam.get(teamName);
+  if (!snapshot) {
+    snapshot = getTeamPendingRepliesState(teamName);
+    pendingRepliesCacheByTeam.set(teamName, snapshot);
+  }
+  return snapshot;
+}
+
+function subscribePendingReplies(teamName: string, listener: () => void): () => void {
+  let listeners = pendingRepliesListenersByTeam.get(teamName);
+  if (!listeners) {
+    listeners = new Set();
+    pendingRepliesListenersByTeam.set(teamName, listeners);
+  }
+  listeners.add(listener);
+  return () => {
+    listeners?.delete(listener);
+    if (listeners?.size === 0) {
+      pendingRepliesListenersByTeam.delete(teamName);
+    }
+  };
+}
+
+function setPendingRepliesForTeam(teamName: string, updater: PendingRepliesUpdater): void {
+  const current = getPendingRepliesSnapshot(teamName);
+  const next = typeof updater === 'function' ? updater(current) : updater;
+  if (next === current) {
+    return;
+  }
+  pendingRepliesCacheByTeam.set(teamName, next);
+  setTeamPendingRepliesState(teamName, next);
+  pendingRepliesListenersByTeam.get(teamName)?.forEach((listener) => listener());
+}
+
+function useTeamPendingReplies(teamName: string): Record<string, number> {
+  const subscribe = useCallback(
+    (listener: () => void) => subscribePendingReplies(teamName, listener),
+    [teamName]
+  );
+  const getSnapshot = useCallback(() => getPendingRepliesSnapshot(teamName), [teamName]);
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
 const EMPTY_MESSAGES_PANEL_TASKS: TeamTaskWithKanban[] = [];
@@ -1337,6 +1385,7 @@ const TeamMemberListBridge = memo(function TeamMemberListBridge({
   teamName,
   ...props
 }: TeamMemberListBridgeProps): React.JSX.Element {
+  const pendingRepliesByMember = useTeamPendingReplies(teamName);
   const { leadActivity, progress, memberSpawnStatuses, memberSpawnSnapshot, runtimeSnapshot } =
     useStore(
       useShallow((s) => ({
@@ -1376,6 +1425,7 @@ const TeamMemberListBridge = memo(function TeamMemberListBridge({
       {...props}
       teamName={teamName}
       leadActivity={leadActivity}
+      pendingRepliesByMember={pendingRepliesByMember}
       memberSpawnStatuses={memberSpawnStatusMap}
       memberRuntimeEntries={memberRuntimeMap}
       runtimeRunId={runtimeRunId}
@@ -1386,21 +1436,53 @@ const TeamMemberListBridge = memo(function TeamMemberListBridge({
 
 const TeamMessagesPanelBridge = memo(function TeamMessagesPanelBridge({
   teamName,
+  isTeamAlive,
   ...props
 }: TeamMessagesPanelBridgeProps): React.JSX.Element {
-  const { leadActivity, leadContextUpdatedAt } = useStore(
+  const pendingRepliesByMember = useTeamPendingReplies(teamName);
+  const pendingReplyRefreshSourceId = useRef<string | null>(null);
+  if (pendingReplyRefreshSourceId.current === null) {
+    pendingReplyRefreshSourceSequence += 1;
+    pendingReplyRefreshSourceId.current = `team-messages:${pendingReplyRefreshSourceSequence}`;
+  }
+  const { leadActivity, leadContextUpdatedAt, syncTeamPendingReplyRefresh } = useStore(
     useShallow((s) => ({
       leadActivity: s.leadActivityByTeam[teamName],
       leadContextUpdatedAt: s.leadContextByTeam[teamName]?.updatedAt,
+      syncTeamPendingReplyRefresh: s.syncTeamPendingReplyRefresh,
     }))
+  );
+
+  useEffect(() => {
+    const hasPendingReplies = Object.keys(pendingRepliesByMember).length > 0;
+    syncTeamPendingReplyRefresh(
+      teamName,
+      pendingReplyRefreshSourceId.current!,
+      Boolean(isTeamAlive) && hasPendingReplies,
+      TEAM_PENDING_REPLY_REFRESH_DELAY_MS
+    );
+
+    return () => {
+      syncTeamPendingReplyRefresh(teamName, pendingReplyRefreshSourceId.current!, false);
+    };
+  }, [isTeamAlive, pendingRepliesByMember, syncTeamPendingReplyRefresh, teamName]);
+
+  const handlePendingReplyChange = useCallback(
+    (updater: PendingRepliesUpdater) => {
+      setPendingRepliesForTeam(teamName, updater);
+    },
+    [teamName]
   );
 
   return (
     <MessagesPanel
       {...props}
       teamName={teamName}
+      isTeamAlive={isTeamAlive}
       leadActivity={leadActivity}
       leadContextUpdatedAt={leadContextUpdatedAt}
+      pendingRepliesByMember={pendingRepliesByMember}
+      onPendingReplyChange={handlePendingReplyChange}
     />
   );
 });
@@ -1409,19 +1491,60 @@ const TeamSidebarRailBridge = memo(function TeamSidebarRailBridge({
   messagesPanelProps,
   ...props
 }: TeamSidebarRailBridgeProps): React.JSX.Element {
-  const { leadActivity, leadContextUpdatedAt } = useStore(
+  const teamName = messagesPanelProps.teamName;
+  const pendingRepliesByMember = useTeamPendingReplies(teamName);
+  const pendingReplyRefreshSourceId = useRef<string | null>(null);
+  if (pendingReplyRefreshSourceId.current === null) {
+    pendingReplyRefreshSourceSequence += 1;
+    pendingReplyRefreshSourceId.current = `team-sidebar:${pendingReplyRefreshSourceSequence}`;
+  }
+  const { leadActivity, leadContextUpdatedAt, syncTeamPendingReplyRefresh } = useStore(
     useShallow((s) => ({
-      leadActivity: s.leadActivityByTeam[messagesPanelProps.teamName],
-      leadContextUpdatedAt: s.leadContextByTeam[messagesPanelProps.teamName]?.updatedAt,
+      leadActivity: s.leadActivityByTeam[teamName],
+      leadContextUpdatedAt: s.leadContextByTeam[teamName]?.updatedAt,
+      syncTeamPendingReplyRefresh: s.syncTeamPendingReplyRefresh,
     }))
+  );
+  useEffect(() => {
+    const hasPendingReplies = Object.keys(pendingRepliesByMember).length > 0;
+    syncTeamPendingReplyRefresh(
+      teamName,
+      pendingReplyRefreshSourceId.current!,
+      Boolean(messagesPanelProps.isTeamAlive) && hasPendingReplies,
+      TEAM_PENDING_REPLY_REFRESH_DELAY_MS
+    );
+
+    return () => {
+      syncTeamPendingReplyRefresh(teamName, pendingReplyRefreshSourceId.current!, false);
+    };
+  }, [
+    messagesPanelProps.isTeamAlive,
+    pendingRepliesByMember,
+    syncTeamPendingReplyRefresh,
+    teamName,
+  ]);
+
+  const handlePendingReplyChange = useCallback(
+    (updater: PendingRepliesUpdater) => {
+      setPendingRepliesForTeam(teamName, updater);
+    },
+    [teamName]
   );
   const bridgedMessagesPanelProps = useMemo(
     () => ({
       ...messagesPanelProps,
       leadActivity,
       leadContextUpdatedAt,
+      pendingRepliesByMember,
+      onPendingReplyChange: handlePendingReplyChange,
     }),
-    [leadActivity, leadContextUpdatedAt, messagesPanelProps]
+    [
+      handlePendingReplyChange,
+      leadActivity,
+      leadContextUpdatedAt,
+      messagesPanelProps,
+      pendingRepliesByMember,
+    ]
   );
 
   return <TeamSidebarRail {...props} messagesPanelProps={bridgedMessagesPanelProps} />;
@@ -1429,8 +1552,6 @@ const TeamSidebarRailBridge = memo(function TeamSidebarRailBridge({
 
 const SendMessageDialogBridge = memo(function SendMessageDialogBridge({
   teamName,
-  onPendingReplyStart,
-  onPendingReplySettled,
   ...props
 }: SendMessageDialogBridgeProps): React.JSX.Element {
   const {
@@ -1454,7 +1575,7 @@ const SendMessageDialogBridge = memo(function SendMessageDialogBridge({
   const handleSend = useCallback<SendMessageDialogOnSend>(
     async (member, text, summary, attachments, actionMode, taskRefs) => {
       const sentAtMs = Date.now();
-      onPendingReplyStart(member, sentAtMs);
+      setPendingRepliesForTeam(teamName, (prev) => ({ ...prev, [member]: sentAtMs }));
       try {
         const result = await sendTeamMessage(teamName, {
           member,
@@ -1465,15 +1586,25 @@ const SendMessageDialogBridge = memo(function SendMessageDialogBridge({
           taskRefs,
         });
         if (shouldClearPendingReplyForOpenCodeRuntimeDelivery(result?.runtimeDelivery)) {
-          onPendingReplySettled(member, sentAtMs);
+          setPendingRepliesForTeam(teamName, (prev) => {
+            if (prev[member] !== sentAtMs) return prev;
+            const next = { ...prev };
+            delete next[member];
+            return next;
+          });
         }
         return result;
       } catch (error) {
-        onPendingReplySettled(member, sentAtMs);
+        setPendingRepliesForTeam(teamName, (prev) => {
+          if (prev[member] !== sentAtMs) return prev;
+          const next = { ...prev };
+          delete next[member];
+          return next;
+        });
         throw error;
       }
     },
-    [onPendingReplySettled, onPendingReplyStart, sendTeamMessage, teamName]
+    [sendTeamMessage, teamName]
   );
 
   return (
@@ -1564,9 +1695,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     initialTab?: MemberDetailTab;
     initialActivityFilter?: MemberActivityFilter;
   } | null>(null);
-  const [pendingRepliesByMember, setPendingRepliesByMember] = useState<Record<string, number>>(() =>
-    getTeamPendingRepliesState(teamName)
-  );
   const [createTaskDialog, setCreateTaskDialog] = useState<CreateTaskDialogState>({
     open: false,
     defaultSubject: '',
@@ -1725,7 +1853,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     refreshTeamData,
     refreshTeamMessagesHead,
     refreshMemberActivityMeta,
-    syncTeamPendingReplyRefresh,
     kanbanFilterQuery,
     clearKanbanFilter,
     softDeleteTask,
@@ -1785,7 +1912,6 @@ export const TeamDetailView = memo(function TeamDetailView({
       refreshTeamData: s.refreshTeamData,
       refreshTeamMessagesHead: s.refreshTeamMessagesHead,
       refreshMemberActivityMeta: s.refreshMemberActivityMeta,
-      syncTeamPendingReplyRefresh: s.syncTeamPendingReplyRefresh,
       kanbanFilterQuery: s.kanbanFilterQuery,
       clearKanbanFilter: s.clearKanbanFilter,
       softDeleteTask: s.softDeleteTask,
@@ -1847,14 +1973,6 @@ export const TeamDetailView = memo(function TeamDetailView({
       initTabUIState(tabId);
     }
   }, [tabId, initTabUIState]);
-
-  useEffect(() => {
-    setPendingRepliesByMember(getTeamPendingRepliesState(teamName));
-  }, [teamName]);
-
-  useEffect(() => {
-    setTeamPendingRepliesState(teamName, pendingRepliesByMember);
-  }, [pendingRepliesByMember, teamName]);
 
   useEffect(() => {
     const wasProvisioning = wasProvisioningRef.current;
@@ -1960,34 +2078,10 @@ export const TeamDetailView = memo(function TeamDetailView({
   );
 
   const leadSessionId = data?.config.leadSessionId ?? null;
-  const pendingReplyRefreshSourceId = useId();
   const sessionHistoryKey = useMemo(
     () => (data?.config.sessionHistory ?? []).join('|'),
     [data?.config.sessionHistory]
   );
-
-  // Keep team message state fresh while we are explicitly waiting for a reply.
-  // This stays enabled even for hidden mounted tabs, because the waiting state
-  // is renderer-local and should keep its lightweight polling until resolved.
-  useEffect(() => {
-    const hasPendingReplies = Object.keys(pendingRepliesByMember).length > 0;
-    syncTeamPendingReplyRefresh(
-      teamName,
-      pendingReplyRefreshSourceId,
-      Boolean(data?.isAlive) && hasPendingReplies,
-      TEAM_PENDING_REPLY_REFRESH_DELAY_MS
-    );
-
-    return () => {
-      syncTeamPendingReplyRefresh(teamName, pendingReplyRefreshSourceId, false);
-    };
-  }, [
-    data?.isAlive,
-    pendingRepliesByMember,
-    pendingReplyRefreshSourceId,
-    syncTeamPendingReplyRefresh,
-    teamName,
-  ]);
 
   useEffect(() => {
     if (!isThisTabActive || !projectId) return;
@@ -2832,17 +2926,6 @@ export const TeamDetailView = memo(function TeamDetailView({
   };
 
   const messagesPanelTasks = useStableMessagesPanelTasks(data?.tasks);
-  const handlePendingReplyStart = useCallback((member: string, sentAtMs: number): void => {
-    setPendingRepliesByMember((prev) => ({ ...prev, [member]: sentAtMs }));
-  }, []);
-  const handlePendingReplySettled = useCallback((member: string, sentAtMs: number): void => {
-    setPendingRepliesByMember((prev) => {
-      if (prev[member] !== sentAtMs) return prev;
-      const next = { ...prev };
-      delete next[member];
-      return next;
-    });
-  }, []);
 
   const sharedMessagesPanelProps = useMemo<SharedTeamMessagesPanelProps>(
     () => ({
@@ -2854,8 +2937,6 @@ export const TeamDetailView = memo(function TeamDetailView({
       isTeamAlive: data?.isAlive,
       timeWindow,
       currentLeadSessionId: data?.config.leadSessionId,
-      pendingRepliesByMember,
-      onPendingReplyChange: setPendingRepliesByMember,
       onMemberClick: handleSelectMember,
       onTaskClick: handleOpenMessagePanelTask,
       onCreateTaskFromMessage: handleCreateTaskFromMessage,
@@ -2878,7 +2959,6 @@ export const TeamDetailView = memo(function TeamDetailView({
       handleFloatingComposerHeightChange,
       messagesPanelTasks,
       messagesPanelMountPoint,
-      pendingRepliesByMember,
       teamName,
       timeWindow,
       changeMessagesPanelMode,
@@ -3326,7 +3406,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                       expectedTeammateCount={activeTeammateCount}
                       memberTaskCounts={memberTaskCounts}
                       taskMap={taskMap}
-                      pendingRepliesByMember={pendingRepliesByMember}
                       isRosterLoading={loading}
                       isTeamAlive={data.isAlive}
                       isTeamProvisioning={isTeamProvisioning}
@@ -3735,8 +3814,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                     defaultChip={sendDialogDefaultChip}
                     quotedMessage={replyQuote}
                     isTeamAlive={data.isAlive}
-                    onPendingReplyStart={handlePendingReplyStart}
-                    onPendingReplySettled={handlePendingReplySettled}
                     onClose={() => {
                       setSendDialogOpen(false);
                       setReplyQuote(undefined);
