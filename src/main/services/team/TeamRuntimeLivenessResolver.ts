@@ -168,6 +168,7 @@ export function commandArgEquals(
   const normalizedExpected = expected?.trim();
   if (!normalizedExpected) return false;
   if (!command.includes(argName)) return false;
+  if (!command.includes(normalizedExpected)) return false;
   const cached = getCachedCliArgEquals(command, argName, normalizedExpected);
   if (cached !== undefined) {
     return cached;
