@@ -1,16 +1,26 @@
 import type { TeamViewSnapshot } from '@shared/types';
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value == null || typeof value !== 'object') {
+function arePlainObjectPair(previous: object, next: object): boolean {
+  const previousPrototype = Object.getPrototypeOf(previous);
+  if (previousPrototype !== Object.prototype && previousPrototype !== null) {
     return false;
   }
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  const nextPrototype = Object.getPrototypeOf(next);
+  return nextPrototype === Object.prototype || nextPrototype === null;
 }
 
 export function structurallySharePlainValue<T>(previous: T, next: T): T {
   if (Object.is(previous, next)) {
     return previous;
+  }
+
+  if (
+    previous == null ||
+    next == null ||
+    typeof previous !== 'object' ||
+    typeof next !== 'object'
+  ) {
+    return next;
   }
 
   if (Array.isArray(previous) && Array.isArray(next)) {
@@ -35,7 +45,7 @@ export function structurallySharePlainValue<T>(previous: T, next: T): T {
     return result ? (result as T) : previous;
   }
 
-  if (isPlainObject(previous) && isPlainObject(next)) {
+  if (arePlainObjectPair(previous, next)) {
     const previousRecord = previous as Record<string, unknown>;
     const nextRecord = next as Record<string, unknown>;
     const previousKeys = Object.keys(previousRecord);
