@@ -148,6 +148,7 @@ const OPENCODE_MODEL_GRID_MAX_HEIGHT_PX = 400;
 const OPENCODE_MODEL_VIRTUALIZATION_THRESHOLD = 80;
 const OPENCODE_MODEL_GROUP_HEADING_ESTIMATE_PX = 28;
 const OPENCODE_MODEL_ROW_ESTIMATE_PX = 92;
+const ANTHROPIC_OPUS_48_NEW_BADGE_EXPIRES_AT_MS = Date.UTC(2026, 5, 12);
 
 const PROVIDERS: ProviderDef[] = [
   { id: 'anthropic', label: 'Anthropic', comingSoon: false },
@@ -418,6 +419,24 @@ function isFreeOpenCodeModelRoute(model: string): boolean {
     normalized.includes(':free') ||
     normalized.endsWith('-free') ||
     normalized.endsWith('/free')
+  );
+}
+
+function isAnthropicOpus48NewBadgeVisible(
+  providerId: TeamProviderId,
+  model: string,
+  nowMs = Date.now()
+): boolean {
+  if (providerId !== 'anthropic' || nowMs >= ANTHROPIC_OPUS_48_NEW_BADGE_EXPIRES_AT_MS) {
+    return false;
+  }
+
+  const normalized = model.trim().toLowerCase();
+  return (
+    normalized === 'opus' ||
+    normalized === 'opus[1m]' ||
+    normalized === 'claude-opus-4-8' ||
+    normalized === 'claude-opus-4-8[1m]'
   );
 }
 
@@ -825,13 +844,13 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
           'anthropic',
           getAnthropicDefaultTeamModel(false),
           runtimeProviderStatus
-        ) ?? 'Opus 4.7 (1M)';
+        ) ?? 'Opus 4.8 (1M)';
       const defaultLimitedContextModel =
         getRuntimeAwareProviderScopedTeamModelLabel(
           'anthropic',
           getAnthropicDefaultTeamModel(true),
           runtimeProviderStatus
-        ) ?? 'Opus 4.7';
+        ) ?? 'Opus 4.8';
 
       return t('modelSelector.defaultTooltip.anthropic', {
         longContextModel: defaultLongContextModel,
@@ -1420,6 +1439,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
     const openCodeProofState = openCodeRouteMetadata?.proofState ?? null;
     const modelButtonTitle =
       modelStatusMessage ?? (opt.value === '' ? defaultModelTooltip : undefined);
+    const showNewRibbon = isAnthropicOpus48NewBadgeVisible(effectiveProviderId, opt.value);
 
     return (
       <button
@@ -1429,7 +1449,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
         aria-disabled={!modelSelectable}
         title={modelButtonTitle}
         className={cn(
-          'flex min-h-[44px] items-center justify-center gap-1.5 rounded-md border bg-[var(--color-surface)] px-3 py-2 text-center text-xs font-medium transition-[background-color,border-color,color,box-shadow] duration-150',
+          'relative flex min-h-[44px] items-center justify-center gap-1.5 overflow-hidden rounded-md border bg-[var(--color-surface)] px-3 py-2 text-center text-xs font-medium transition-[background-color,border-color,color,box-shadow] duration-150',
           hasBlockingModelIssue && normalizedValue === opt.value
             ? 'border-red-500/60 bg-red-500/10 text-red-100 shadow-sm'
             : hasBlockingModelIssue
@@ -1609,6 +1629,11 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
             </span>
           )}
         </span>
+        {showNewRibbon ? (
+          <span className="pointer-events-none absolute right-[-22px] top-1.5 w-[72px] rotate-45 border border-emerald-300/35 bg-emerald-400/15 py-0.5 text-center text-[8px] font-bold uppercase leading-none tracking-[0.14em] text-emerald-100 shadow-sm">
+            New
+          </span>
+        ) : null}
       </button>
     );
   };

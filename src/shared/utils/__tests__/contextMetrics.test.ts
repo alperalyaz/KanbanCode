@@ -112,6 +112,12 @@ describe('contextMetrics', () => {
     expect(
       inferContextWindowTokens({
         providerId: 'anthropic',
+        modelName: 'claude-opus-4-8',
+      })
+    ).toBe(1_000_000);
+    expect(
+      inferContextWindowTokens({
+        providerId: 'anthropic',
         modelName: 'claude-opus-4-7',
       })
     ).toBe(1_000_000);

@@ -270,6 +270,68 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
   });
 
+  it('shows a temporary New ribbon for Opus 4.8 during the launch window', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 4, 31));
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'anthropic',
+          onProviderChange: () => undefined,
+          value: 'opus',
+          onValueChange: () => undefined,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const opus48Button = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim().startsWith('Opus 4.8')
+    );
+    expect(opus48Button?.textContent).toContain('New');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+    dateNowSpy.mockRestore();
+  });
+
+  it('hides the Opus 4.8 New ribbon after the launch window expires', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 5, 12));
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(TeamModelSelector, {
+          providerId: 'anthropic',
+          onProviderChange: () => undefined,
+          value: 'opus',
+          onValueChange: () => undefined,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const opus48Button = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim().startsWith('Opus 4.8')
+    );
+    expect(opus48Button?.textContent).not.toContain('New');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+    dateNowSpy.mockRestore();
+  });
+
   it('uses the runtime-reported Codex list and clears stale unsupported selections', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliStatus = {
