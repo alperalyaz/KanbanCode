@@ -733,6 +733,7 @@ interface ParsedBootstrapTranscriptTailLine {
   bootstrapFailureReason?: string | null;
   bootstrapContextCandidateByTeam?: Map<string, boolean>;
   bootstrapContextMemberMatchByName?: Map<string, boolean>;
+  bootstrapSuccessSourceByTeamMember?: Map<string, BootstrapTranscriptSuccessSource | null>;
 }
 
 interface ParsedBootstrapTranscriptTailCacheEntry {
@@ -808,6 +809,30 @@ function getCachedBootstrapContextMemberMatchForLine(
   );
   matchByName.set(normalizedMemberName, value);
   return value;
+}
+
+function getCachedBootstrapSuccessSourceForLine(
+  line: ParsedBootstrapTranscriptTailLine,
+  normalizedText: string,
+  normalizedTeamName: string,
+  normalizedMemberName: string
+): BootstrapTranscriptSuccessSource | null {
+  let sourceByTeamMember = line.bootstrapSuccessSourceByTeamMember;
+  if (!sourceByTeamMember) {
+    sourceByTeamMember = new Map<string, BootstrapTranscriptSuccessSource | null>();
+    line.bootstrapSuccessSourceByTeamMember = sourceByTeamMember;
+  }
+  const cacheKey = `${normalizedTeamName}\0${normalizedMemberName}`;
+  if (sourceByTeamMember.has(cacheKey)) {
+    return sourceByTeamMember.get(cacheKey) ?? null;
+  }
+  const source = getBootstrapTranscriptSuccessSourceFromNormalized(
+    normalizedText,
+    normalizedTeamName,
+    normalizedMemberName
+  );
+  sourceByTeamMember.set(cacheKey, source);
+  return source;
 }
 
 import type {
@@ -30646,7 +30671,8 @@ export class TeamProvisioningService {
           outcome = { kind: 'failure', observedAt: candidate.observedAt, reason };
           break;
         }
-        const successSource = getBootstrapTranscriptSuccessSourceFromNormalized(
+        const successSource = getCachedBootstrapSuccessSourceForLine(
+          cachedLine,
           candidate.normalizedText,
           normalizedTeamName,
           normalizedMemberName
