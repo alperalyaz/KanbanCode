@@ -1529,22 +1529,24 @@ export class ClaudeMultimodelBridgeService {
         }
       }
 
-      logger.warn(
-        `Provider-scoped summary runtime status unavailable for ${providerId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
+      const summaryStatusError = error instanceof Error ? error.message : String(error);
       if (
         this.isRuntimeStatusTimeoutError(error) &&
         this.shouldUseLegacyProviderTimeoutFallback(providerId)
       ) {
+        logger.debug(
+          `Provider-scoped summary runtime status unavailable for ${providerId}: ${summaryStatusError}`
+        );
         logger.warn(
           `Provider-scoped summary runtime status timed out for ${providerId}, falling back to scoped legacy probes: ${
-            error instanceof Error ? error.message : String(error)
+            summaryStatusError
           }`
         );
         return this.getProviderStatusFromLegacyProbesOrError(binaryPath, providerId, error);
       }
+      logger.warn(
+        `Provider-scoped summary runtime status unavailable for ${providerId}: ${summaryStatusError}`
+      );
       return createRuntimeStatusErrorProviderStatus(providerId, error);
     }
   }
