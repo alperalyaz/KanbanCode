@@ -916,6 +916,7 @@ type TeamMemberDetailDialogBridgeProps = Omit<
   ComponentProps<typeof MemberDetailDialog>,
   'leadActivity' | 'spawnEntry' | 'runtimeEntry'
 >;
+type TeamKanbanBoardBridgeProps = Omit<ComponentProps<typeof KanbanBoard>, 'activeTaskLogActivity'>;
 type TeamSidebarRailBridgeProps = Omit<
   ComponentProps<typeof TeamSidebarRail>,
   'messagesPanelProps'
@@ -1682,6 +1683,17 @@ const TeamMemberDetailDialogBridge = memo(function TeamMemberDetailDialogBridge(
   );
 });
 
+const TeamKanbanBoardBridge = memo(function TeamKanbanBoardBridge({
+  teamName,
+  ...props
+}: TeamKanbanBoardBridgeProps): React.JSX.Element {
+  const activeTaskLogActivity = useStore((s) => s.activeTaskLogActivityByTeam[teamName]);
+
+  return (
+    <KanbanBoard {...props} teamName={teamName} activeTaskLogActivity={activeTaskLogActivity} />
+  );
+});
+
 export const TeamDetailView = memo(function TeamDetailView({
   teamName,
   isActive = true,
@@ -1859,7 +1871,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     restoreTask,
     fetchDeletedTasks,
     deletedTasks,
-    activeTaskLogActivity,
     launchParams,
     messagesPanelMode,
     messagesPanelWidth,
@@ -1918,7 +1929,6 @@ export const TeamDetailView = memo(function TeamDetailView({
       restoreTask: s.restoreTask,
       fetchDeletedTasks: s.fetchDeletedTasks,
       deletedTasks: s.deletedTasks,
-      activeTaskLogActivity: teamName ? s.activeTaskLogActivityByTeam[teamName] : undefined,
       launchParams: teamName ? s.launchParamsByTeam[teamName] : undefined,
       messagesPanelMode: s.messagesPanelMode,
       messagesPanelWidth: s.messagesPanelWidth,
@@ -3461,7 +3471,7 @@ export const TeamDetailView = memo(function TeamDetailView({
                   </Button>
                 }
               >
-                <KanbanBoard
+                <TeamKanbanBoardBridge
                   tasks={kanbanDisplayTasks}
                   teamName={teamName}
                   kanbanState={data.kanbanState}
@@ -3470,7 +3480,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                   sessions={teamSessions}
                   leadSessionId={data.config.leadSessionId}
                   members={activeMembers}
-                  activeTaskLogActivity={activeTaskLogActivity}
                   forceShowAllTasks={isKanbanSearchActive}
                   onFilterChange={setKanbanFilter}
                   onSortChange={setKanbanSort}
