@@ -463,6 +463,69 @@ interface TaskRowsProps {
   getOwnerColorName: TaskOwnerColorResolver;
 }
 
+type TaskRowsDerivedProps = Pick<
+  TaskRowsProps,
+  | 'tasks'
+  | 'visibleCount'
+  | 'isPinned'
+  | 'isArchived'
+  | 'isNewTask'
+  | 'isTeamOffline'
+  | 'pinnedOverride'
+  | 'archivedOverride'
+  | 'getDisplaySubject'
+  | 'getOwnerColorName'
+>;
+
+function getTaskRowsVisibleTasks(
+  props: Pick<TaskRowsProps, 'tasks' | 'visibleCount'>
+): GlobalTask[] {
+  return typeof props.visibleCount === 'number'
+    ? props.tasks.slice(0, props.visibleCount)
+    : props.tasks;
+}
+
+function resolveTaskBooleanState(
+  override: boolean | undefined,
+  resolver: TaskBooleanResolver,
+  task: GlobalTask
+): boolean {
+  return override ?? resolver(task.teamName, task.id);
+}
+
+function areTaskRowsDerivedValuesEqual(
+  prev: TaskRowsDerivedProps,
+  next: TaskRowsDerivedProps
+): boolean {
+  const prevVisibleTasks = getTaskRowsVisibleTasks(prev);
+  const nextVisibleTasks = getTaskRowsVisibleTasks(next);
+  if (!areTaskSidebarArraysEqual(prevVisibleTasks, nextVisibleTasks)) {
+    return false;
+  }
+
+  for (let index = 0; index < prevVisibleTasks.length; index += 1) {
+    const prevTask = prevVisibleTasks[index];
+    const nextTask = nextVisibleTasks[index];
+    if (!prevTask || !nextTask) {
+      return false;
+    }
+    if (
+      resolveTaskBooleanState(prev.pinnedOverride, prev.isPinned, prevTask) !==
+        resolveTaskBooleanState(next.pinnedOverride, next.isPinned, nextTask) ||
+      resolveTaskBooleanState(prev.archivedOverride, prev.isArchived, prevTask) !==
+        resolveTaskBooleanState(next.archivedOverride, next.isArchived, nextTask) ||
+      prev.isNewTask(prevTask) !== next.isNewTask(nextTask) ||
+      prev.isTeamOffline(prevTask.teamName) !== next.isTeamOffline(nextTask.teamName) ||
+      prev.getDisplaySubject(prevTask) !== next.getDisplaySubject(nextTask) ||
+      prev.getOwnerColorName(prevTask) !== next.getOwnerColorName(nextTask)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 const TaskRows = memo(function TaskRows({
   tasks,
   visibleCount,
@@ -540,13 +603,41 @@ const TaskRows = memo(function TaskRows({
       })}
     </>
   );
-});
+}, areTaskRowsPropsEqual);
 
-function areTaskReferencesEqual(prev: readonly GlobalTask[], next: readonly GlobalTask[]): boolean {
+function areTaskRowsPropsEqual(prev: TaskRowsProps, next: TaskRowsProps): boolean {
+  return (
+    prev.visibleCount === next.visibleCount &&
+    prev.keyPrefix === next.keyPrefix &&
+    prev.hideTeamName === next.hideTeamName &&
+    prev.hideProjectName === next.hideProjectName &&
+    prev.showTeamName === next.showTeamName &&
+    prev.showTeamHeader === next.showTeamHeader &&
+    prev.pinnedOverride === next.pinnedOverride &&
+    prev.archivedOverride === next.archivedOverride &&
+    prev.formatTeamHeader === next.formatTeamHeader &&
+    prev.renamingKey === next.renamingKey &&
+    prev.onTogglePin === next.onTogglePin &&
+    prev.onToggleArchive === next.onToggleArchive &&
+    prev.onMarkUnread === next.onMarkUnread &&
+    prev.onRename === next.onRename &&
+    prev.onDelete === next.onDelete &&
+    prev.onRenameComplete === next.onRenameComplete &&
+    prev.onRenameCancel === next.onRenameCancel &&
+    areTaskRowsDerivedValuesEqual(prev, next)
+  );
+}
+
+function areTaskSidebarArraysEqual(
+  prev: readonly GlobalTask[],
+  next: readonly GlobalTask[]
+): boolean {
   if (prev === next) return true;
   if (prev.length !== next.length) return false;
   for (let i = 0; i < prev.length; i += 1) {
-    if (prev[i] !== next[i]) return false;
+    if (!taskSidebarFieldsEqual(prev[i], next[i])) {
+      return false;
+    }
   }
   return true;
 }
@@ -706,16 +797,12 @@ const ProjectTaskGroup = memo(
   (prev, next) =>
     prev.group.projectKey === next.group.projectKey &&
     prev.group.projectLabel === next.group.projectLabel &&
-    areTaskReferencesEqual(prev.group.tasks, next.group.tasks) &&
+    areTaskSidebarArraysEqual(prev.group.tasks, next.group.tasks) &&
     prev.isCollapsed === next.isCollapsed &&
     prev.visibleCount === next.visibleCount &&
     prev.noProjectGroupColor === next.noProjectGroupColor &&
     prev.showMoreLabel === next.showMoreLabel &&
     prev.showLessLabel === next.showLessLabel &&
-    prev.isPinned === next.isPinned &&
-    prev.isArchived === next.isArchived &&
-    prev.isNewTask === next.isNewTask &&
-    prev.isTeamOffline === next.isTeamOffline &&
     prev.renamingKey === next.renamingKey &&
     prev.formatTeamHeader === next.formatTeamHeader &&
     prev.onToggleGroup === next.onToggleGroup &&
@@ -727,8 +814,28 @@ const ProjectTaskGroup = memo(
     prev.onDelete === next.onDelete &&
     prev.onRenameComplete === next.onRenameComplete &&
     prev.onRenameCancel === next.onRenameCancel &&
-    prev.getDisplaySubject === next.getDisplaySubject &&
-    prev.getOwnerColorName === next.getOwnerColorName
+    areTaskRowsDerivedValuesEqual(
+      {
+        tasks: prev.group.tasks,
+        visibleCount: prev.visibleCount,
+        isPinned: prev.isPinned,
+        isArchived: prev.isArchived,
+        isNewTask: prev.isNewTask,
+        isTeamOffline: prev.isTeamOffline,
+        getDisplaySubject: prev.getDisplaySubject,
+        getOwnerColorName: prev.getOwnerColorName,
+      },
+      {
+        tasks: next.group.tasks,
+        visibleCount: next.visibleCount,
+        isPinned: next.isPinned,
+        isArchived: next.isArchived,
+        isNewTask: next.isNewTask,
+        isTeamOffline: next.isTeamOffline,
+        getDisplaySubject: next.getDisplaySubject,
+        getOwnerColorName: next.getOwnerColorName,
+      }
+    )
 );
 
 export const GlobalTaskList = memo(function GlobalTaskList({
