@@ -81,6 +81,8 @@ interface SidebarTaskItemProps {
   onRenameCancel?: () => void;
   /** Returns a custom display subject if the task was renamed locally */
   getDisplaySubject?: (task: GlobalTask) => string | undefined;
+  /** Precomputed custom display subject from list parents. */
+  displaySubjectOverride?: string;
   ownerColorName?: string | null;
 }
 
@@ -95,6 +97,7 @@ const SidebarTaskItemContent = ({
   onRenameComplete,
   onRenameCancel,
   getDisplaySubject,
+  displaySubjectOverride,
   ownerColorName,
 }: SidebarTaskItemProps & { isLight: boolean }): React.JSX.Element => {
   const { t } = useAppTranslation('team');
@@ -109,7 +112,7 @@ const SidebarTaskItemContent = ({
   const unreadCount = useUnreadCommentCount(task.teamName, task.id, task.comments);
 
   const isRenaming = renamingKey === `${task.teamName}:${task.id}`;
-  const displaySubject = getDisplaySubject?.(task) ?? task.subject;
+  const displaySubject = displaySubjectOverride ?? getDisplaySubject?.(task) ?? task.subject;
   const [editValue, setEditValue] = useState(displaySubject);
   const inputRef = useRef<HTMLInputElement>(null);
   // Focus input when rename starts

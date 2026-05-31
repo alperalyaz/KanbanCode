@@ -203,15 +203,57 @@ function buildTaskTeamSummary(task: GlobalTask): TeamSummary {
   };
 }
 
+function buildTaskLocalPresentationKey(task: GlobalTask): string {
+  return `${task.teamName}:${task.id}`;
+}
+
+function buildTaskLocalPresentationState(
+  task: GlobalTask,
+  pinnedIds: ReadonlySet<string>,
+  archivedIds: ReadonlySet<string>,
+  renamedSubjects: ReadonlyMap<string, string>
+): TaskLocalPresentationState {
+  const key = buildTaskLocalPresentationKey(task);
+  return {
+    key,
+    pinned: pinnedIds.has(key),
+    archived: archivedIds.has(key),
+    renamedSubject: renamedSubjects.get(key),
+  };
+}
+
+function buildTaskLocalPresentationByTask(
+  tasks: readonly GlobalTask[],
+  pinnedIds: ReadonlySet<string>,
+  archivedIds: ReadonlySet<string>,
+  renamedSubjects: ReadonlyMap<string, string>
+): WeakMap<GlobalTask, TaskLocalPresentationState> {
+  const presentationByTask = new WeakMap<GlobalTask, TaskLocalPresentationState>();
+  for (const task of tasks) {
+    presentationByTask.set(
+      task,
+      buildTaskLocalPresentationState(task, pinnedIds, archivedIds, renamedSubjects)
+    );
+  }
+  return presentationByTask;
+}
+
 type TaskRowAction = (teamName: string, taskId: string) => void;
 type TaskRowDeleteAction = (teamName: string, taskId: string) => void | Promise<void>;
-type TaskDisplaySubjectResolver = (task: GlobalTask) => string | undefined;
-type TaskBooleanResolver = (teamName: string, taskId: string) => boolean;
 type TeamBooleanResolver = (teamName: string) => boolean;
 type TaskOwnerColorResolver = (task: GlobalTask) => string | null | undefined;
 type TeamHeaderFormatter = (teamDisplayName: string) => string;
 type ProjectGroupVisibleCountChange = (projectKey: string, visibleCount: number) => void;
 type TeamMemberColorInput = Parameters<typeof buildMemberColorMap>[0][number];
+
+interface TaskLocalPresentationState {
+  key: string;
+  pinned: boolean;
+  archived: boolean;
+  renamedSubject: string | undefined;
+}
+
+type TaskLocalPresentationResolver = (task: GlobalTask) => TaskLocalPresentationState;
 interface SidebarTeamsDerived {
   identityKey: string;
   filterTeams: { teamName: string; displayName: string }[];
@@ -340,6 +382,7 @@ function selectSidebarTeamsDerived(teams: readonly TeamSummary[]): SidebarTeamsD
 
 interface GlobalTaskRowProps {
   task: GlobalTask;
+  taskLocalKey: string;
   isPinned: boolean;
   isArchived: boolean;
   isNew: boolean;
@@ -356,7 +399,7 @@ interface GlobalTaskRowProps {
   onDelete: TaskRowDeleteAction;
   onRenameComplete: (teamName: string, taskId: string, newSubject: string) => void;
   onRenameCancel: () => void;
-  getDisplaySubject: TaskDisplaySubjectResolver;
+  displaySubjectOverride?: string;
   ownerColorName?: string | null;
 }
 
@@ -395,14 +438,14 @@ function taskSidebarFieldsEqual(prev: GlobalTask, next: GlobalTask): boolean {
   );
 }
 
-function effectiveRenamingKey(task: GlobalTask, renamingKey: string | null): string | null {
-  const taskRenamingKey = `${task.teamName}:${task.id}`;
-  return renamingKey === taskRenamingKey ? renamingKey : null;
+function effectiveRenamingKey(taskLocalKey: string, renamingKey: string | null): string | null {
+  return renamingKey === taskLocalKey ? renamingKey : null;
 }
 
 const GlobalTaskRow = memo(
   function GlobalTaskRow({
     task,
+    taskLocalKey,
     isPinned,
     isArchived,
     isNew,
@@ -419,11 +462,10 @@ const GlobalTaskRow = memo(
     onDelete,
     onRenameComplete,
     onRenameCancel,
-    getDisplaySubject,
+    displaySubjectOverride,
     ownerColorName,
   }: GlobalTaskRowProps): React.JSX.Element {
-    const taskRenamingKey = `${task.teamName}:${task.id}`;
-    const effectiveRenamingKey = renamingKey === taskRenamingKey ? renamingKey : null;
+    const rowRenamingKey = effectiveRenamingKey(taskLocalKey, renamingKey);
 
     const handleTogglePin = useCallback(() => {
       onTogglePin(task.teamName, task.id);
@@ -464,10 +506,10 @@ const GlobalTaskRow = memo(
             showTeamName={showTeamName}
             isLight={isLight}
             teamOffline={teamOffline}
-            renamingKey={effectiveRenamingKey}
+            renamingKey={rowRenamingKey}
             onRenameComplete={onRenameComplete}
             onRenameCancel={onRenameCancel}
-            getDisplaySubject={getDisplaySubject}
+            displaySubjectOverride={displaySubjectOverride}
             ownerColorName={ownerColorName}
           />
         </AnimatedHeightReveal>
@@ -476,12 +518,13 @@ const GlobalTaskRow = memo(
   },
   (prev, next) =>
     taskSidebarFieldsEqual(prev.task, next.task) &&
+    prev.taskLocalKey === next.taskLocalKey &&
     prev.isPinned === next.isPinned &&
     prev.isArchived === next.isArchived &&
     prev.isNew === next.isNew &&
     prev.teamOffline === next.teamOffline &&
-    effectiveRenamingKey(prev.task, prev.renamingKey) ===
-      effectiveRenamingKey(next.task, next.renamingKey) &&
+    effectiveRenamingKey(prev.taskLocalKey, prev.renamingKey) ===
+      effectiveRenamingKey(next.taskLocalKey, next.renamingKey) &&
     prev.hideTeamName === next.hideTeamName &&
     prev.hideProjectName === next.hideProjectName &&
     prev.showTeamName === next.showTeamName &&
@@ -493,7 +536,7 @@ const GlobalTaskRow = memo(
     prev.onDelete === next.onDelete &&
     prev.onRenameComplete === next.onRenameComplete &&
     prev.onRenameCancel === next.onRenameCancel &&
-    prev.getDisplaySubject === next.getDisplaySubject &&
+    prev.displaySubjectOverride === next.displaySubjectOverride &&
     prev.ownerColorName === next.ownerColorName
 );
 
@@ -501,8 +544,7 @@ interface TaskRowsProps {
   tasks: GlobalTask[];
   visibleCount?: number;
   keyPrefix?: string;
-  isPinned: TaskBooleanResolver;
-  isArchived: TaskBooleanResolver;
+  getTaskLocalPresentation: TaskLocalPresentationResolver;
   isNewTask: (task: GlobalTask) => boolean;
   isTeamOffline: TeamBooleanResolver;
   renamingKey: string | null;
@@ -521,7 +563,6 @@ interface TaskRowsProps {
   onDelete: TaskRowDeleteAction;
   onRenameComplete: (teamName: string, taskId: string, newSubject: string) => void;
   onRenameCancel: () => void;
-  getDisplaySubject: TaskDisplaySubjectResolver;
   getOwnerColorName: TaskOwnerColorResolver;
 }
 
@@ -529,13 +570,11 @@ type TaskRowsDerivedProps = Pick<
   TaskRowsProps,
   | 'tasks'
   | 'visibleCount'
-  | 'isPinned'
-  | 'isArchived'
+  | 'getTaskLocalPresentation'
   | 'isNewTask'
   | 'isTeamOffline'
   | 'pinnedOverride'
   | 'archivedOverride'
-  | 'getDisplaySubject'
   | 'getOwnerColorName'
 >;
 
@@ -545,14 +584,6 @@ function getTaskRowsVisibleTasks(
   return typeof props.visibleCount === 'number'
     ? props.tasks.slice(0, props.visibleCount)
     : props.tasks;
-}
-
-function resolveTaskBooleanState(
-  override: boolean | undefined,
-  resolver: TaskBooleanResolver,
-  task: GlobalTask
-): boolean {
-  return override ?? resolver(task.teamName, task.id);
 }
 
 function areTaskRowsDerivedValuesEqual(
@@ -571,14 +602,16 @@ function areTaskRowsDerivedValuesEqual(
     if (!prevTask || !nextTask) {
       return false;
     }
+    const prevLocalPresentation = prev.getTaskLocalPresentation(prevTask);
+    const nextLocalPresentation = next.getTaskLocalPresentation(nextTask);
     if (
-      resolveTaskBooleanState(prev.pinnedOverride, prev.isPinned, prevTask) !==
-        resolveTaskBooleanState(next.pinnedOverride, next.isPinned, nextTask) ||
-      resolveTaskBooleanState(prev.archivedOverride, prev.isArchived, prevTask) !==
-        resolveTaskBooleanState(next.archivedOverride, next.isArchived, nextTask) ||
+      (prev.pinnedOverride ?? prevLocalPresentation.pinned) !==
+        (next.pinnedOverride ?? nextLocalPresentation.pinned) ||
+      (prev.archivedOverride ?? prevLocalPresentation.archived) !==
+        (next.archivedOverride ?? nextLocalPresentation.archived) ||
       prev.isNewTask(prevTask) !== next.isNewTask(nextTask) ||
       prev.isTeamOffline(prevTask.teamName) !== next.isTeamOffline(nextTask.teamName) ||
-      prev.getDisplaySubject(prevTask) !== next.getDisplaySubject(nextTask) ||
+      prevLocalPresentation.renamedSubject !== nextLocalPresentation.renamedSubject ||
       prev.getOwnerColorName(prevTask) !== next.getOwnerColorName(nextTask)
     ) {
       return false;
@@ -592,8 +625,7 @@ const TaskRows = memo(function TaskRows({
   tasks,
   visibleCount,
   keyPrefix = '',
-  isPinned,
-  isArchived,
+  getTaskLocalPresentation,
   isNewTask,
   isTeamOffline,
   renamingKey,
@@ -612,7 +644,6 @@ const TaskRows = memo(function TaskRows({
   onDelete,
   onRenameComplete,
   onRenameCancel,
-  getDisplaySubject,
   getOwnerColorName,
 }: TaskRowsProps): React.JSX.Element {
   let lastTeam: string | null = null;
@@ -621,13 +652,15 @@ const TaskRows = memo(function TaskRows({
   return (
     <>
       {visibleTasks.map((task) => {
+        const taskLocalPresentation = getTaskLocalPresentation(task);
         const taskKey = `${keyPrefix}${task.teamName}-${task.id}`;
         const row = (
           <GlobalTaskRow
             key={taskKey}
             task={task}
-            isPinned={pinnedOverride ?? isPinned(task.teamName, task.id)}
-            isArchived={archivedOverride ?? isArchived(task.teamName, task.id)}
+            taskLocalKey={taskLocalPresentation.key}
+            isPinned={pinnedOverride ?? taskLocalPresentation.pinned}
+            isArchived={archivedOverride ?? taskLocalPresentation.archived}
             isNew={isNewTask(task)}
             hideTeamName={hideTeamName}
             hideProjectName={hideProjectName}
@@ -643,7 +676,7 @@ const TaskRows = memo(function TaskRows({
             onDelete={onDelete}
             onRenameComplete={onRenameComplete}
             onRenameCancel={onRenameCancel}
-            getDisplaySubject={getDisplaySubject}
+            displaySubjectOverride={taskLocalPresentation.renamedSubject}
           />
         );
 
@@ -714,8 +747,7 @@ interface ProjectTaskGroupProps {
   noProjectGroupColor: ReturnType<typeof projectColor>;
   showMoreLabel: string;
   showLessLabel: string;
-  isPinned: TaskBooleanResolver;
-  isArchived: TaskBooleanResolver;
+  getTaskLocalPresentation: TaskLocalPresentationResolver;
   isNewTask: (task: GlobalTask) => boolean;
   isTeamOffline: TeamBooleanResolver;
   renamingKey: string | null;
@@ -730,7 +762,6 @@ interface ProjectTaskGroupProps {
   onDelete: TaskRowDeleteAction;
   onRenameComplete: (teamName: string, taskId: string, newSubject: string) => void;
   onRenameCancel: () => void;
-  getDisplaySubject: TaskDisplaySubjectResolver;
   getOwnerColorName: TaskOwnerColorResolver;
 }
 
@@ -742,8 +773,7 @@ const ProjectTaskGroup = memo(
     noProjectGroupColor,
     showMoreLabel,
     showLessLabel,
-    isPinned,
-    isArchived,
+    getTaskLocalPresentation,
     isNewTask,
     isTeamOffline,
     renamingKey,
@@ -758,7 +788,6 @@ const ProjectTaskGroup = memo(
     onDelete,
     onRenameComplete,
     onRenameCancel,
-    getDisplaySubject,
     getOwnerColorName,
   }: ProjectTaskGroupProps): React.JSX.Element | null {
     if (group.tasks.length === 0) return null;
@@ -806,8 +835,7 @@ const ProjectTaskGroup = memo(
           <TaskRows
             tasks={group.tasks}
             visibleCount={visibleCount}
-            isPinned={isPinned}
-            isArchived={isArchived}
+            getTaskLocalPresentation={getTaskLocalPresentation}
             isNewTask={isNewTask}
             isTeamOffline={isTeamOffline}
             isLight={isLight}
@@ -823,7 +851,6 @@ const ProjectTaskGroup = memo(
             onDelete={onDelete}
             onRenameComplete={onRenameComplete}
             onRenameCancel={onRenameCancel}
-            getDisplaySubject={getDisplaySubject}
             getOwnerColorName={getOwnerColorName}
           />
         )}
@@ -887,21 +914,17 @@ const ProjectTaskGroup = memo(
       {
         tasks: prev.group.tasks,
         visibleCount: prev.visibleCount,
-        isPinned: prev.isPinned,
-        isArchived: prev.isArchived,
+        getTaskLocalPresentation: prev.getTaskLocalPresentation,
         isNewTask: prev.isNewTask,
         isTeamOffline: prev.isTeamOffline,
-        getDisplaySubject: prev.getDisplaySubject,
         getOwnerColorName: prev.getOwnerColorName,
       },
       {
         tasks: next.group.tasks,
         visibleCount: next.visibleCount,
-        isPinned: next.isPinned,
-        isArchived: next.isArchived,
+        getTaskLocalPresentation: next.getTaskLocalPresentation,
         isNewTask: next.isNewTask,
         isTeamOffline: next.isTeamOffline,
-        getDisplaySubject: next.getDisplaySubject,
         getOwnerColorName: next.getOwnerColorName,
       }
     )
@@ -984,6 +1007,39 @@ export const GlobalTaskList = memo(function GlobalTaskList({
   const taskLocalState = useTaskLocalState();
   const electronMode = isElectronMode();
 
+  const taskLocalPresentationByTask = useMemo(
+    () =>
+      buildTaskLocalPresentationByTask(
+        globalTasks,
+        taskLocalState.pinnedIds,
+        taskLocalState.archivedIds,
+        taskLocalState.renamedSubjects
+      ),
+    [
+      globalTasks,
+      taskLocalState.pinnedIds,
+      taskLocalState.archivedIds,
+      taskLocalState.renamedSubjects,
+    ]
+  );
+
+  const getTaskLocalPresentation = useCallback(
+    (task: GlobalTask): TaskLocalPresentationState =>
+      taskLocalPresentationByTask.get(task) ??
+      buildTaskLocalPresentationState(
+        task,
+        taskLocalState.pinnedIds,
+        taskLocalState.archivedIds,
+        taskLocalState.renamedSubjects
+      ),
+    [
+      taskLocalPresentationByTask,
+      taskLocalState.pinnedIds,
+      taskLocalState.archivedIds,
+      taskLocalState.renamedSubjects,
+    ]
+  );
+
   const provisioningState = useMemo(
     () => ({ currentProvisioningRunIdByTeam, provisioningRuns }),
     [currentProvisioningRunIdByTeam, provisioningRuns]
@@ -1012,14 +1068,14 @@ export const GlobalTaskList = memo(function GlobalTaskList({
       isInitialTaskLoadRef.current = false;
       for (const t of globalTasks) {
         // eslint-disable-next-line react-hooks/refs -- Synchronous diff is required so new rows mount with animate=true.
-        knownTaskIdsRef.current.add(`${t.teamName}:${t.id}`);
+        knownTaskIdsRef.current.add(buildTaskLocalPresentationKey(t));
       }
       return new Set<string>();
     }
 
     const newIds = new Set<string>();
     for (const t of globalTasks) {
-      const key = `${t.teamName}:${t.id}`;
+      const key = buildTaskLocalPresentationKey(t);
       // eslint-disable-next-line react-hooks/refs -- Synchronous diff is required so new rows mount with animate=true.
       if (!knownTaskIdsRef.current.has(key)) {
         newIds.add(key);
@@ -1031,7 +1087,7 @@ export const GlobalTaskList = memo(function GlobalTaskList({
   }, [globalTasks, globalTasksInitialized]);
 
   const isNewTask = useCallback(
-    (task: GlobalTask): boolean => newTaskIds.has(`${task.teamName}:${task.id}`),
+    (task: GlobalTask): boolean => newTaskIds.has(buildTaskLocalPresentationKey(task)),
     [newTaskIds]
   );
 
@@ -1189,12 +1245,6 @@ export const GlobalTaskList = memo(function GlobalTaskList({
     setRenamingTaskKey(`${teamName}:${taskId}`);
   }, []);
 
-  const getTaskDisplaySubject = useCallback(
-    (task: GlobalTask): string | undefined =>
-      taskLocalState.getRenamedSubject(task.teamName, task.id),
-    [taskLocalState]
-  );
-
   const handleDeleteTask = useCallback(
     async (teamName: string, taskId: string): Promise<void> => {
       const confirmed = await confirm({
@@ -1287,8 +1337,8 @@ export const GlobalTaskList = memo(function GlobalTaskList({
   // Resolve project filter from filters state
   const selectedProjectPath = filters.projectPath;
   const hasArchivedTasks = useMemo(
-    () => globalTasks.some((t) => taskLocalState.isArchived(t.teamName, t.id)),
-    [globalTasks, taskLocalState]
+    () => globalTasks.some((t) => getTaskLocalPresentation(t).archived),
+    [globalTasks, getTaskLocalPresentation]
   );
   const effectiveShowArchived = showArchived && hasArchivedTasks;
 
@@ -1311,9 +1361,9 @@ export const GlobalTaskList = memo(function GlobalTaskList({
     result = applySearch(result, searchQuery);
     // Archive filtering
     if (effectiveShowArchived) {
-      result = result.filter((t) => taskLocalState.isArchived(t.teamName, t.id));
+      result = result.filter((t) => getTaskLocalPresentation(t).archived);
     } else {
-      result = result.filter((t) => !taskLocalState.isArchived(t.teamName, t.id));
+      result = result.filter((t) => !getTaskLocalPresentation(t).archived);
     }
     return result;
   }, [
@@ -1325,17 +1375,17 @@ export const GlobalTaskList = memo(function GlobalTaskList({
     searchQuery,
     readState,
     effectiveShowArchived,
-    taskLocalState,
+    getTaskLocalPresentation,
   ]);
 
   // Split into pinned and normal (non-pinned) tasks
   const pinnedTasks = useMemo(
-    () => filtered.filter((t) => taskLocalState.isPinned(t.teamName, t.id)),
-    [filtered, taskLocalState]
+    () => filtered.filter((t) => getTaskLocalPresentation(t).pinned),
+    [filtered, getTaskLocalPresentation]
   );
   const normalTasks = useMemo(
-    () => filtered.filter((t) => !taskLocalState.isPinned(t.teamName, t.id)),
-    [filtered, taskLocalState]
+    () => filtered.filter((t) => !getTaskLocalPresentation(t).pinned),
+    [filtered, getTaskLocalPresentation]
   );
   const sortedPinnedTasks = useMemo(() => sortTasksByFreshness(pinnedTasks), [pinnedTasks]);
 
@@ -1508,8 +1558,7 @@ export const GlobalTaskList = memo(function GlobalTaskList({
           <TaskRows
             tasks={sortedPinnedTasks}
             keyPrefix="pinned-"
-            isPinned={taskLocalState.isPinned}
-            isArchived={taskLocalState.isArchived}
+            getTaskLocalPresentation={getTaskLocalPresentation}
             isNewTask={isNewTask}
             isTeamOffline={isTeamOffline}
             isLight={isLight}
@@ -1524,7 +1573,6 @@ export const GlobalTaskList = memo(function GlobalTaskList({
             onDelete={handleDeleteTask}
             onRenameComplete={handleRenameComplete}
             onRenameCancel={handleRenameCancel}
-            getDisplaySubject={getTaskDisplaySubject}
             getOwnerColorName={getOwnerColorName}
           />
         </div>
@@ -1612,8 +1660,7 @@ export const GlobalTaskList = memo(function GlobalTaskList({
         {groupingMode === 'none' && (
           <TaskRows
             tasks={sortedFlat}
-            isPinned={taskLocalState.isPinned}
-            isArchived={taskLocalState.isArchived}
+            getTaskLocalPresentation={getTaskLocalPresentation}
             isNewTask={isNewTask}
             isTeamOffline={isTeamOffline}
             isLight={isLight}
@@ -1626,7 +1673,6 @@ export const GlobalTaskList = memo(function GlobalTaskList({
             onDelete={handleDeleteTask}
             onRenameComplete={handleRenameComplete}
             onRenameCancel={handleRenameCancel}
-            getDisplaySubject={getTaskDisplaySubject}
             getOwnerColorName={getOwnerColorName}
           />
         )}
@@ -1646,8 +1692,7 @@ export const GlobalTaskList = memo(function GlobalTaskList({
                 noProjectGroupColor={noProjectGroupColor}
                 showMoreLabel={t('tasksPanel.showMore')}
                 showLessLabel={t('tasksPanel.showLess')}
-                isPinned={taskLocalState.isPinned}
-                isArchived={taskLocalState.isArchived}
+                getTaskLocalPresentation={getTaskLocalPresentation}
                 isNewTask={isNewTask}
                 isTeamOffline={isTeamOffline}
                 isLight={isLight}
@@ -1662,7 +1707,6 @@ export const GlobalTaskList = memo(function GlobalTaskList({
                 onDelete={handleDeleteTask}
                 onRenameComplete={handleRenameComplete}
                 onRenameCancel={handleRenameCancel}
-                getDisplaySubject={getTaskDisplaySubject}
                 getOwnerColorName={getOwnerColorName}
               />
             );
@@ -1695,8 +1739,7 @@ export const GlobalTaskList = memo(function GlobalTaskList({
                 {!isGroupCollapsed && (
                   <TaskRows
                     tasks={tasks}
-                    isPinned={taskLocalState.isPinned}
-                    isArchived={taskLocalState.isArchived}
+                    getTaskLocalPresentation={getTaskLocalPresentation}
                     isNewTask={isNewTask}
                     isTeamOffline={isTeamOffline}
                     isLight={isLight}
@@ -1710,7 +1753,6 @@ export const GlobalTaskList = memo(function GlobalTaskList({
                     onDelete={handleDeleteTask}
                     onRenameComplete={handleRenameComplete}
                     onRenameCancel={handleRenameCancel}
-                    getDisplaySubject={getTaskDisplaySubject}
                     getOwnerColorName={getOwnerColorName}
                   />
                 )}

@@ -37,6 +37,9 @@ const storeState = {} as StoreState;
 const toggleCollapsedGroup = vi.fn();
 const sidebarTaskItemRenderSpy = vi.hoisted(() => vi.fn());
 const taskLocalState = {
+  pinnedIds: new Set<string>(),
+  archivedIds: new Set<string>(),
+  renamedSubjects: new Map<string, string>(),
   isPinned: vi.fn(() => false),
   isArchived: vi.fn(() => false),
   getRenamedSubject: vi.fn(() => undefined),
@@ -100,10 +103,12 @@ vi.mock('../../../../src/renderer/components/sidebar/SidebarTaskItem', () => ({
     task,
     hideProjectName,
     teamOffline,
+    displaySubjectOverride,
   }: {
     task: GlobalTask;
     hideProjectName?: boolean;
     teamOffline?: boolean;
+    displaySubjectOverride?: string;
   }) => {
     sidebarTaskItemRenderSpy(task.id);
     return React.createElement(
@@ -113,7 +118,7 @@ vi.mock('../../../../src/renderer/components/sidebar/SidebarTaskItem', () => ({
         'data-hide-project-name': hideProjectName ? 'true' : 'false',
         'data-team-offline': teamOffline ? 'true' : 'false',
       },
-      task.subject
+      displaySubjectOverride ?? task.subject
     );
   },
 }));
@@ -233,6 +238,9 @@ describe('GlobalTaskList project grouping', () => {
     storeState.currentProvisioningRunIdByTeam = {};
     storeState.leadActivityByTeam = {};
     toggleCollapsedGroup.mockReset();
+    taskLocalState.pinnedIds.clear();
+    taskLocalState.archivedIds.clear();
+    taskLocalState.renamedSubjects.clear();
     taskLocalState.isPinned.mockClear();
     taskLocalState.isArchived.mockClear();
     taskLocalState.getRenamedSubject.mockClear();
