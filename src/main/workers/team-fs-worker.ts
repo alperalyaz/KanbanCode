@@ -838,16 +838,21 @@ async function readPersistentTaskProjectionCache(
     const parsed = JSON.parse(raw) as unknown;
     if (!isRecord(parsed)) {
       taskDiag.persistentCacheReadFailures++;
+      await fs.promises.rm(cachePath, { force: true }).catch(() => undefined);
       return null;
     }
     if (
       parsed.version !== PERSISTENT_TASK_PROJECTION_CACHE_VERSION ||
       parsed.tasksBase !== payload.tasksBase ||
       parsed.teamName !== teamName ||
-      parsed.optionKey !== optionKey ||
-      !isRecord(parsed.entries)
+      parsed.optionKey !== optionKey
     ) {
       taskDiag.persistentCacheMisses++;
+      return null;
+    }
+    if (!isRecord(parsed.entries)) {
+      taskDiag.persistentCacheReadFailures++;
+      await fs.promises.rm(cachePath, { force: true }).catch(() => undefined);
       return null;
     }
 
@@ -866,6 +871,7 @@ async function readPersistentTaskProjectionCache(
       return null;
     }
     taskDiag.persistentCacheReadFailures++;
+    await fs.promises.rm(cachePath, { force: true }).catch(() => undefined);
     return null;
   }
 }
