@@ -130,7 +130,23 @@ function compareTeamMentionEntries(a: TeamMentionEntry, b: TeamMentionEntry): nu
   );
 }
 
+function getTeamMentionSignature(teams: readonly TeamSummary[]): string {
+  return encodeTeamMentionParts(
+    teams.flatMap((team) => [
+      team.teamName ?? '',
+      team.displayName ?? '',
+      team.color ?? '',
+      team.deletedAt ?? '',
+    ])
+  );
+}
+
 function selectMessagesPanelTeamMentionMeta(teams: readonly TeamSummary[]): TeamMentionMeta {
+  const signature = getTeamMentionSignature(teams);
+  if (signature === cachedTeamMentionSignature) {
+    return cachedTeamMentionMeta;
+  }
+
   const entries = teams
     .map((team) => ({
       teamName: team.teamName ?? '',
@@ -139,13 +155,6 @@ function selectMessagesPanelTeamMentionMeta(teams: readonly TeamSummary[]): Team
       deletedAt: team.deletedAt ?? '',
     }))
     .sort(compareTeamMentionEntries);
-  const signature = encodeTeamMentionParts(
-    entries.flatMap((entry) => [entry.teamName, entry.displayName, entry.color, entry.deletedAt])
-  );
-
-  if (signature === cachedTeamMentionSignature) {
-    return cachedTeamMentionMeta;
-  }
 
   if (entries.length === 0) {
     cachedTeamMentionSignature = signature;
