@@ -100,6 +100,7 @@ const OPENCODE_RUNTIME_DELIVERY_STATUS_REFRESH_DELAYS_MS = [15_000, 45_000, 90_0
 const MESSAGES_SCROLL_TOP_PERSIST_DELAY_MS = 100;
 const EMPTY_TEAM_NAMES: string[] = [];
 const EMPTY_TEAM_COLOR_MAP = new Map<string, string>();
+const EMPTY_REPLY_CANDIDATE_MESSAGES: InboxMessage[] = [];
 
 interface TeamMentionMeta {
   teamNames: string[];
@@ -691,17 +692,23 @@ export const MessagesPanel = memo(function MessagesPanel({
     });
   }, [effectiveMessages, leadNames, messagesFilter, messagesSearchQuery, timeWindow]);
 
+  const hasTrackedPendingReplies = useMemo(
+    () => Object.keys(pendingRepliesByMember).length > 0,
+    [pendingRepliesByMember]
+  );
   const replyCandidateMessages = useMemo(
     () =>
-      effectiveMessages.filter(
-        (m) =>
-          m.messageKind !== 'task_comment_notification' &&
-          !isTaskStallRemediationMessage(m) &&
-          !isMemberWorkSyncNudgeMessage(m) &&
-          !isReviewPickupEscalationMessage(m) &&
-          !shouldExcludeInboxTextFromReplyCandidates(typeof m.text === 'string' ? m.text : '')
-      ),
-    [effectiveMessages]
+      hasTrackedPendingReplies
+        ? effectiveMessages.filter(
+            (m) =>
+              m.messageKind !== 'task_comment_notification' &&
+              !isTaskStallRemediationMessage(m) &&
+              !isMemberWorkSyncNudgeMessage(m) &&
+              !isReviewPickupEscalationMessage(m) &&
+              !shouldExcludeInboxTextFromReplyCandidates(typeof m.text === 'string' ? m.text : '')
+          )
+        : EMPTY_REPLY_CANDIDATE_MESSAGES,
+    [effectiveMessages, hasTrackedPendingReplies]
   );
   const sendMessageRuntimeReplyVisible = useMemo(
     () => hasVisibleReplyForSendMessageDiagnostics(sendMessageDebugDetails, effectiveMessages),
@@ -840,10 +847,15 @@ export const MessagesPanel = memo(function MessagesPanel({
 
   // Auto-clear pending replies when a member actually responds
   useEffect(() => {
-    if (Object.keys(pendingRepliesByMember).length === 0) return;
+    if (!hasTrackedPendingReplies) return;
     const next = reconcilePendingRepliesByMember(pendingRepliesByMember, replyCandidateMessages);
     if (next !== pendingRepliesByMember) onPendingReplyChange(() => next);
-  }, [onPendingReplyChange, pendingRepliesByMember, replyCandidateMessages]);
+  }, [
+    hasTrackedPendingReplies,
+    onPendingReplyChange,
+    pendingRepliesByMember,
+    replyCandidateMessages,
+  ]);
 
   useEffect(() => {
     if (!sendMessageRuntimeReplyVisible || !sendMessageDebugDetails?.messageId) return;
