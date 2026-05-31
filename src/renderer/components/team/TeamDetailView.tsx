@@ -897,6 +897,14 @@ type TeamMessagesPanelBridgeProps = Omit<
   ComponentProps<typeof MessagesPanel>,
   'leadActivity' | LeadUpdatedKey
 >;
+type SendMessageDialogBridgeProps = Omit<
+  ComponentProps<typeof SendMessageDialog>,
+  'sending' | 'sendError' | 'sendWarning' | 'sendDebugDetails' | 'lastResult' | 'onSend'
+> & {
+  onPendingReplyStart: (member: string, sentAtMs: number) => void;
+  onPendingReplySettled: (member: string, sentAtMs: number) => void;
+};
+type SendMessageDialogOnSend = ComponentProps<typeof SendMessageDialog>['onSend'];
 type SharedTeamMessagesPanelProps = Omit<TeamMessagesPanelBridgeProps, 'position'>;
 type TeamMemberListBridgeProps = Omit<
   ComponentProps<typeof MemberList>,
@@ -1419,6 +1427,69 @@ const TeamSidebarRailBridge = memo(function TeamSidebarRailBridge({
   return <TeamSidebarRail {...props} messagesPanelProps={bridgedMessagesPanelProps} />;
 });
 
+const SendMessageDialogBridge = memo(function SendMessageDialogBridge({
+  teamName,
+  onPendingReplyStart,
+  onPendingReplySettled,
+  ...props
+}: SendMessageDialogBridgeProps): React.JSX.Element {
+  const {
+    sendTeamMessage,
+    sendingMessage,
+    sendMessageError,
+    sendMessageWarning,
+    sendMessageDebugDetails,
+    lastSendMessageResult,
+  } = useStore(
+    useShallow((s) => ({
+      sendTeamMessage: s.sendTeamMessage,
+      sendingMessage: s.sendingMessage,
+      sendMessageError: s.sendMessageError,
+      sendMessageWarning: s.sendMessageWarning,
+      sendMessageDebugDetails: s.sendMessageDebugDetails,
+      lastSendMessageResult: s.lastSendMessageResult,
+    }))
+  );
+
+  const handleSend = useCallback<SendMessageDialogOnSend>(
+    async (member, text, summary, attachments, actionMode, taskRefs) => {
+      const sentAtMs = Date.now();
+      onPendingReplyStart(member, sentAtMs);
+      try {
+        const result = await sendTeamMessage(teamName, {
+          member,
+          text,
+          summary,
+          attachments,
+          actionMode,
+          taskRefs,
+        });
+        if (shouldClearPendingReplyForOpenCodeRuntimeDelivery(result?.runtimeDelivery)) {
+          onPendingReplySettled(member, sentAtMs);
+        }
+        return result;
+      } catch (error) {
+        onPendingReplySettled(member, sentAtMs);
+        throw error;
+      }
+    },
+    [onPendingReplySettled, onPendingReplyStart, sendTeamMessage, teamName]
+  );
+
+  return (
+    <SendMessageDialog
+      {...props}
+      teamName={teamName}
+      sending={sendingMessage}
+      sendError={sendMessageError}
+      sendWarning={sendMessageWarning}
+      sendDebugDetails={sendMessageDebugDetails}
+      lastResult={lastSendMessageResult}
+      onSend={handleSend}
+    />
+  );
+});
+
 const TeamMemberDetailDialogBridge = memo(function TeamMemberDetailDialogBridge({
   teamName,
   member,
@@ -1634,18 +1705,12 @@ export const TeamDetailView = memo(function TeamDetailView({
     updateKanbanColumnOrder,
     updateTaskStatus,
     updateTaskOwner,
-    sendTeamMessage,
     requestReview,
     createTeamTask,
     startTaskByUser,
     deleteTeam,
     openTeamsTab,
     closeTab,
-    sendingMessage,
-    sendMessageError,
-    sendMessageWarning,
-    sendMessageDebugDetails,
-    lastSendMessageResult,
     reviewActionError,
     addMember,
     restartMember,
@@ -1691,18 +1756,12 @@ export const TeamDetailView = memo(function TeamDetailView({
       updateKanbanColumnOrder: s.updateKanbanColumnOrder,
       updateTaskStatus: s.updateTaskStatus,
       updateTaskOwner: s.updateTaskOwner,
-      sendTeamMessage: s.sendTeamMessage,
       requestReview: s.requestReview,
       createTeamTask: s.createTeamTask,
       startTaskByUser: s.startTaskByUser,
       deleteTeam: s.deleteTeam,
       openTeamsTab: s.openTeamsTab,
       closeTab: s.closeTab,
-      sendingMessage: s.sendingMessage,
-      sendMessageError: s.sendMessageError,
-      sendMessageWarning: s.sendMessageWarning,
-      sendMessageDebugDetails: s.sendMessageDebugDetails,
-      lastSendMessageResult: s.lastSendMessageResult,
       reviewActionError: s.reviewActionError,
       addMember: s.addMember,
       restartMember: s.restartMember,
@@ -2773,6 +2832,17 @@ export const TeamDetailView = memo(function TeamDetailView({
   };
 
   const messagesPanelTasks = useStableMessagesPanelTasks(data?.tasks);
+  const handlePendingReplyStart = useCallback((member: string, sentAtMs: number): void => {
+    setPendingRepliesByMember((prev) => ({ ...prev, [member]: sentAtMs }));
+  }, []);
+  const handlePendingReplySettled = useCallback((member: string, sentAtMs: number): void => {
+    setPendingRepliesByMember((prev) => {
+      if (prev[member] !== sentAtMs) return prev;
+      const next = { ...prev };
+      delete next[member];
+      return next;
+    });
+  }, []);
 
   const sharedMessagesPanelProps = useMemo<SharedTeamMessagesPanelProps>(
     () => ({
@@ -3656,7 +3726,7 @@ export const TeamDetailView = memo(function TeamDetailView({
 
               {sendDialogOpen && (
                 <Suspense fallback={null}>
-                  <SendMessageDialog
+                  <SendMessageDialogBridge
                     open={sendDialogOpen}
                     teamName={teamName}
                     members={activeMembers}
@@ -3665,44 +3735,8 @@ export const TeamDetailView = memo(function TeamDetailView({
                     defaultChip={sendDialogDefaultChip}
                     quotedMessage={replyQuote}
                     isTeamAlive={data.isAlive}
-                    sending={sendingMessage}
-                    sendError={sendMessageError}
-                    sendWarning={sendMessageWarning}
-                    sendDebugDetails={sendMessageDebugDetails}
-                    lastResult={lastSendMessageResult}
-                    onSend={async (member, text, summary, attachments, actionMode, taskRefs) => {
-                      const sentAtMs = Date.now();
-                      setPendingRepliesByMember((prev) => ({ ...prev, [member]: sentAtMs }));
-                      try {
-                        const result = await sendTeamMessage(teamName, {
-                          member,
-                          text,
-                          summary,
-                          attachments,
-                          actionMode,
-                          taskRefs,
-                        });
-                        if (
-                          shouldClearPendingReplyForOpenCodeRuntimeDelivery(result?.runtimeDelivery)
-                        ) {
-                          setPendingRepliesByMember((prev) => {
-                            if (prev[member] !== sentAtMs) return prev;
-                            const next = { ...prev };
-                            delete next[member];
-                            return next;
-                          });
-                        }
-                        return result;
-                      } catch (error) {
-                        setPendingRepliesByMember((prev) => {
-                          if (prev[member] !== sentAtMs) return prev;
-                          const next = { ...prev };
-                          delete next[member];
-                          return next;
-                        });
-                        throw error;
-                      }
-                    }}
+                    onPendingReplyStart={handlePendingReplyStart}
+                    onPendingReplySettled={handlePendingReplySettled}
                     onClose={() => {
                       setSendDialogOpen(false);
                       setReplyQuote(undefined);
