@@ -171,6 +171,7 @@ import type {
   TeamAgentRuntimeSnapshot,
   TeamCreateRequest,
   TeamGetDataOptions,
+  TeamLaunchDiagnosticItem,
   TeamLaunchRequest,
   TeamMemberActivityMeta,
   TeamProvisioningProgress,
@@ -1192,6 +1193,65 @@ export function getCurrentProvisioningProgressForTeam(
 ): TeamProvisioningProgress | null {
   const currentRunId = state.currentProvisioningRunIdByTeam[teamName];
   return currentRunId ? (state.provisioningRuns[currentRunId] ?? null) : null;
+}
+
+function stringArraysEqual(
+  a: readonly string[] | undefined,
+  b: readonly string[] | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function launchDiagnosticsEqual(
+  a: readonly TeamLaunchDiagnosticItem[] | undefined,
+  b: readonly TeamLaunchDiagnosticItem[] | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const left = a[i];
+    const right = b[i];
+    if (
+      !left ||
+      !right ||
+      left.id !== right.id ||
+      left.memberName !== right.memberName ||
+      left.severity !== right.severity ||
+      left.code !== right.code ||
+      left.label !== right.label ||
+      left.detail !== right.detail ||
+      left.observedAt !== right.observedAt
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function provisioningProgressPayloadEqual(
+  a: TeamProvisioningProgress,
+  b: TeamProvisioningProgress
+): boolean {
+  return (
+    a.runId === b.runId &&
+    a.teamName === b.teamName &&
+    a.state === b.state &&
+    a.message === b.message &&
+    a.messageSeverity === b.messageSeverity &&
+    a.startedAt === b.startedAt &&
+    a.pid === b.pid &&
+    a.error === b.error &&
+    a.cliLogsTail === b.cliLogsTail &&
+    a.assistantOutput === b.assistantOutput &&
+    a.configReady === b.configReady &&
+    stringArraysEqual(a.warnings, b.warnings) &&
+    launchDiagnosticsEqual(a.launchDiagnostics, b.launchDiagnostics)
+  );
 }
 
 export function isTeamProvisioningActive(
@@ -4004,11 +4064,8 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     const becameConfigReady =
       progress.configReady === true && existingProgress?.configReady !== true;
     const isDuplicateProgress =
-      existingProgress?.updatedAt === progress.updatedAt &&
-      existingProgress?.state === progress.state &&
-      existingProgress?.message === progress.message &&
-      existingProgress?.error === progress.error &&
-      existingProgress?.pid === progress.pid;
+      existingProgress !== undefined &&
+      provisioningProgressPayloadEqual(existingProgress, progress);
     if (isDuplicateProgress && currentRunId === progress.runId) {
       return;
     }
