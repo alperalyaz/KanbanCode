@@ -18,6 +18,7 @@ import { createLogger } from '@shared/utils/logger';
 import { buildTeamGraphDefaultLayoutSeed } from '@shared/utils/teamGraphDefaultLayout';
 
 import { areTeamAgentRuntimeSnapshotsEqual } from '../team/teamAgentRuntimeSnapshotEquality';
+import { stabilizeTeamAgentRuntimeSnapshot } from '../team/teamAgentRuntimeSnapshotStabilizer';
 import {
   clearAllLastResolvedTeamDataRefreshes,
   clearLastResolvedTeamDataRefreshAt,
@@ -1479,13 +1480,14 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           return {};
         }
         const previousSnapshot = prev.teamAgentRuntimeByTeam[teamName];
-        if (areTeamAgentRuntimeSnapshotsEqual(previousSnapshot, snapshot)) {
+        const stabilizedSnapshot = stabilizeTeamAgentRuntimeSnapshot(previousSnapshot, snapshot);
+        if (areTeamAgentRuntimeSnapshotsEqual(previousSnapshot, stabilizedSnapshot)) {
           return {};
         }
         return {
           teamAgentRuntimeByTeam: {
             ...prev.teamAgentRuntimeByTeam,
-            [teamName]: snapshot,
+            [teamName]: stabilizedSnapshot,
           },
         };
       });
