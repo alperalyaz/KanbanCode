@@ -52,7 +52,6 @@ import {
   parseCrossTeamPrefix,
   stripCrossTeamPrefix,
 } from '@shared/constants/crossTeam';
-import { extractMarkdownPlainText } from '@shared/utils/markdownTextSearch';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
 import {
   buildStandaloneSlashCommandMeta,
@@ -80,6 +79,14 @@ import {
 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
+import {
+  encodeCacheParts,
+  extractMarkdownPlainTextCached,
+  getCachedString,
+  stringArrayCacheSignature,
+  stringMapCacheSignature,
+  taskRefsCacheSignature,
+} from './activityRenderCache';
 import { ReplyQuoteBlock } from './ReplyQuoteBlock';
 
 import type { TeamColorSet } from '@renderer/constants/teamColors';
@@ -710,6 +717,65 @@ const AUTH_ERROR_PATTERNS = [
   /unauthorized/i,
 ];
 
+const EMPTY_MEMBER_COLOR_MAP = new Map<string, string>();
+const activityTimestampCache = new Map<string, string>();
+const activityDisplayTextCache = new Map<string, string>();
+
+function getLocalDayCacheKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function formatActivityTimestamp(timestamp: string): string {
+  const now = new Date();
+  return getCachedString(
+    activityTimestampCache,
+    encodeCacheParts([timestamp, getLocalDayCacheKey(now)]),
+    () => {
+      const parsed = Date.parse(timestamp);
+      if (Number.isNaN(parsed)) return timestamp;
+
+      const date = new Date(parsed);
+      const isToday =
+        date.getFullYear() === now.getFullYear() &&
+        date.getMonth() === now.getMonth() &&
+        date.getDate() === now.getDate();
+
+      return isToday
+        ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : date.toLocaleString();
+    }
+  );
+}
+
+function buildActivityDisplayText(
+  strippedText: string,
+  isSystem: boolean,
+  taskRefs: InboxMessage['taskRefs'],
+  memberColorMap: Map<string, string> | undefined,
+  teamNames: readonly string[]
+): string {
+  const cacheKey = encodeCacheParts([
+    strippedText,
+    isSystem ? '1' : '0',
+    taskRefsCacheSignature(taskRefs),
+    stringMapCacheSignature(memberColorMap),
+    stringArrayCacheSignature(teamNames),
+  ]);
+
+  return getCachedString(activityDisplayTextCache, cacheKey, () => {
+    let result = highlightSystemLabels(strippedText, isSystem);
+    result = linkifyTaskIdsInMarkdown(result, taskRefs);
+    if ((memberColorMap && memberColorMap.size > 0) || teamNames.length > 0) {
+      result = linkifyAllMentionsInMarkdown(
+        result,
+        memberColorMap ?? EMPTY_MEMBER_COLOR_MAP,
+        teamNames
+      );
+    }
+    return result;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Full message card — left colored border, name badge, collapsible content
 // ---------------------------------------------------------------------------
@@ -848,18 +914,10 @@ export const ActivityItem = memo(
     const formattedRole =
       memberRole && memberRole !== message.from ? formatAgentRole(memberRole) : null;
 
-    const timestamp = useMemo(() => {
-      if (Number.isNaN(Date.parse(message.timestamp))) return message.timestamp;
-      const date = new Date(message.timestamp);
-      const now = new Date();
-      const isToday =
-        date.getFullYear() === now.getFullYear() &&
-        date.getMonth() === now.getMonth() &&
-        date.getDate() === now.getDate();
-      return isToday
-        ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : date.toLocaleString();
-    }, [message.timestamp]);
+    const timestamp = useMemo(
+      () => formatActivityTimestamp(message.timestamp),
+      [message.timestamp]
+    );
 
     const structured = parseStructuredAgentMessage(message.text);
     const bootstrapDisplay = getBootstrapPromptDisplay(message);
@@ -963,12 +1021,14 @@ export const ActivityItem = memo(
     // Linkify task IDs (always, for TaskTooltip) + @mentions for display
     const displayText = useMemo(() => {
       if (!strippedText) return null;
-      let result = highlightSystemLabels(strippedText, !!systemLabel);
-      result = linkifyTaskIdsInMarkdown(result, message.taskRefs);
-      if ((memberColorMap && memberColorMap.size > 0) || teamNames.length > 0)
-        result = linkifyAllMentionsInMarkdown(result, memberColorMap ?? new Map(), teamNames);
-      return result;
-    }, [strippedText, memberColorMap, teamNames, systemLabel]);
+      return buildActivityDisplayText(
+        strippedText,
+        !!systemLabel,
+        message.taskRefs,
+        memberColorMap,
+        teamNames
+      );
+    }, [strippedText, message.taskRefs, memberColorMap, teamNames, systemLabel]);
 
     const crossTeamPreview = useMemo(() => {
       if (!isCrossTeamAny || !strippedText) return '';
@@ -1011,7 +1071,7 @@ export const ActivityItem = memo(
       slashCommandMeta,
       structured,
     ]);
-    const summaryText = extractMarkdownPlainText(rawSummary);
+    const summaryText = extractMarkdownPlainTextCached(rawSummary);
     const compactPreviewMarkdown = useMemo(() => {
       if (idleSemantic?.hasPeerSummary && idleSemantic.peerSummary) {
         return idleSemantic.peerSummary;
@@ -1047,7 +1107,7 @@ export const ActivityItem = memo(
       summaryText,
     ]);
     const compactPreviewTooltipText = useMemo(() => {
-      const normalized = extractMarkdownPlainText(compactPreviewMarkdown)
+      const normalized = extractMarkdownPlainTextCached(compactPreviewMarkdown)
         .replace(/\n+/g, ' ')
         .trim();
       return normalized || compactPreviewMarkdown;

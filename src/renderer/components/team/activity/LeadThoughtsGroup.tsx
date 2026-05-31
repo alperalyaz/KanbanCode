@@ -31,12 +31,16 @@ import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { isApiErrorMessage } from '@shared/utils/apiErrorDetector';
 import { isThoughtProtocolNoise } from '@shared/utils/inboxNoise';
-import { extractMarkdownPlainText } from '@shared/utils/markdownTextSearch';
 import { isTeamInternalControlMessageText } from '@shared/utils/teamInternalControlMessages';
 import { formatToolSummary, parseToolSummary } from '@shared/utils/toolSummary';
 import { ChevronDown, ChevronRight, ChevronUp, Maximize2 } from 'lucide-react';
 
 import { buildThoughtDisplayContent } from './activityMarkdown';
+import {
+  encodeCacheParts,
+  extractMarkdownPlainTextCached,
+  getCachedString,
+} from './activityRenderCache';
 import {
   AnimatedHeightReveal,
   ENTRY_REVEAL_ANIMATION_MS,
@@ -149,6 +153,7 @@ const LIVE_WINDOW_MS = 5_000;
 const COLLAPSED_THOUGHTS_HEIGHT = 200;
 const AUTO_SCROLL_THRESHOLD = 30;
 const THOUGHT_HEIGHT_ANIMATION_MS = ENTRY_REVEAL_ANIMATION_MS;
+const leadThoughtTimeCache = new Map<string, string>();
 
 interface LeadThoughtsGroupRowProps {
   group: LeadThoughtGroup;
@@ -200,15 +205,19 @@ interface LeadThoughtsGroupRowProps {
 }
 
 function formatTime(timestamp: string): string {
-  const d = new Date(timestamp);
-  if (Number.isNaN(d.getTime())) return timestamp;
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return getCachedString(leadThoughtTimeCache, encodeCacheParts(['minute', timestamp]), () => {
+    const d = new Date(timestamp);
+    if (Number.isNaN(d.getTime())) return timestamp;
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  });
 }
 
 export function formatTimeWithSec(timestamp: string): string {
-  const d = new Date(timestamp);
-  if (Number.isNaN(d.getTime())) return timestamp;
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return getCachedString(leadThoughtTimeCache, encodeCacheParts(['second', timestamp]), () => {
+    const d = new Date(timestamp);
+    if (Number.isNaN(d.getTime())) return timestamp;
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  });
 }
 
 function isRecentTimestamp(timestamp: string): boolean {
@@ -619,7 +628,7 @@ const LeadThoughtsGroupRowComponent = ({
     return totalToolSummary;
   }, [memberColorMap, teamNames, thoughts, totalToolSummary]);
   const compactPreviewTooltipText = useMemo(() => {
-    const normalized = extractMarkdownPlainText(compactPreviewMarkdown ?? '')
+    const normalized = extractMarkdownPlainTextCached(compactPreviewMarkdown ?? '')
       .replace(/\n+/g, ' ')
       .trim();
     return normalized || compactPreviewMarkdown;
@@ -784,10 +793,11 @@ const LeadThoughtsGroupRowComponent = ({
     });
   }, []);
 
-  const timestampLabel =
-    formatTime(oldest.timestamp) === formatTime(newest.timestamp)
-      ? formatTime(oldest.timestamp)
-      : `${formatTime(oldest.timestamp)}–${formatTime(newest.timestamp)}`;
+  const timestampLabel = useMemo(() => {
+    const oldestTime = formatTime(oldest.timestamp);
+    const newestTime = formatTime(newest.timestamp);
+    return oldestTime === newestTime ? oldestTime : `${oldestTime}–${newestTime}`;
+  }, [newest.timestamp, oldest.timestamp]);
   const useCompactCollapsedHeader = compactHeader && !isBodyVisible;
 
   return (
