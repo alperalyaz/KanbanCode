@@ -166,7 +166,13 @@ export function isTeamProviderModelVerificationPending(
     return true;
   }
 
-  if (providerStatus.verificationState === 'error') {
+  const verificationState = providerStatus.verificationState as
+    | 'verified'
+    | 'unknown'
+    | 'offline'
+    | 'error'
+    | undefined;
+  if (verificationState === 'error' || providerStatus.modelCatalogRefreshState === 'error') {
     return false;
   }
 
@@ -174,14 +180,11 @@ export function isTeamProviderModelVerificationPending(
   const statusMessagePending =
     statusMessage === 'checking...' ||
     statusMessage === CLI_PROVIDER_STATUS_DEFERRED_MESSAGE.toLowerCase();
-  if (providerStatus.verificationState !== 'error' && statusMessagePending) {
+  if (statusMessagePending) {
     return true;
   }
 
-  if (
-    providerStatus.verificationState !== 'error' &&
-    providerStatus.modelCatalogRefreshState === 'loading'
-  ) {
+  if (providerStatus.modelCatalogRefreshState === 'loading') {
     return true;
   }
 

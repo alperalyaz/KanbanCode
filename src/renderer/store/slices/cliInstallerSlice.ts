@@ -29,6 +29,8 @@ const OPENCODE_PROVIDER_INSTALL_REFRESH_ATTEMPTS = 3;
 const OPENCODE_PROVIDER_INSTALL_REFRESH_RETRY_DELAY_MS = 700;
 const CODEX_PROVIDER_INSTALL_REFRESH_ATTEMPTS = 3;
 const CODEX_PROVIDER_INSTALL_REFRESH_RETRY_DELAY_MS = 700;
+const CODEX_CATALOG_LOADING_REFRESH_ATTEMPTS = 3;
+const CODEX_CATALOG_LOADING_REFRESH_RETRY_DELAY_MS = 2_000;
 
 export const MULTIMODEL_PROVIDER_IDS: CliProviderId[] = isGeminiUiFrozen()
   ? ['anthropic', 'codex', 'opencode']
@@ -166,6 +168,15 @@ function getProviderStatus(
   providerId: CliProviderId
 ): CliProviderStatus | undefined {
   return status?.providers.find((provider) => provider.providerId === providerId);
+}
+
+function isCodexCatalogLoadingSnapshot(provider: CliProviderStatus | undefined): boolean {
+  return (
+    provider?.providerId === 'codex' &&
+    provider.modelCatalog == null &&
+    provider.modelCatalogRefreshState === 'loading' &&
+    provider.runtimeCapabilities?.modelCatalog?.dynamic === true
+  );
 }
 
 function hasOpenCodeModels(provider: CliProviderStatus | undefined): boolean {
@@ -747,8 +758,59 @@ let cliStatusInFlight: Promise<void> | null = null;
 const cliProviderStatusInFlight = new Map<string, Promise<void>>();
 let cliStatusEpoch = 0;
 const cliProviderStatusSeq = new Map<CliProviderId, number>();
+const codexCatalogLoadingRefreshAttempts = new Map<CliProviderId, number>();
+const codexCatalogLoadingRefreshTimers = new Map<CliProviderId, ReturnType<typeof setTimeout>>();
 let openCodeRuntimeStatusInFlight: Promise<void> | null = null;
 let codexRuntimeStatusInFlight: Promise<void> | null = null;
+
+function clearCodexCatalogLoadingRefresh(providerId: CliProviderId): void {
+  const timer = codexCatalogLoadingRefreshTimers.get(providerId);
+  if (timer) {
+    clearTimeout(timer);
+    codexCatalogLoadingRefreshTimers.delete(providerId);
+  }
+  codexCatalogLoadingRefreshAttempts.delete(providerId);
+}
+
+function scheduleCodexCatalogLoadingRefresh(
+  get: () => Pick<CliInstallerSlice, 'cliStatus' | 'fetchCliProviderStatus'>,
+  providerId: CliProviderId
+): void {
+  const provider = getProviderStatus(get().cliStatus, providerId);
+  if (!isCodexCatalogLoadingSnapshot(provider)) {
+    clearCodexCatalogLoadingRefresh(providerId);
+    return;
+  }
+
+  if (codexCatalogLoadingRefreshTimers.has(providerId)) {
+    return;
+  }
+
+  const attempts = codexCatalogLoadingRefreshAttempts.get(providerId) ?? 0;
+  if (attempts >= CODEX_CATALOG_LOADING_REFRESH_ATTEMPTS) {
+    return;
+  }
+
+  codexCatalogLoadingRefreshAttempts.set(providerId, attempts + 1);
+  const timer = setTimeout(() => {
+    codexCatalogLoadingRefreshTimers.delete(providerId);
+    const latestProvider = getProviderStatus(get().cliStatus, providerId);
+    if (!isCodexCatalogLoadingSnapshot(latestProvider)) {
+      codexCatalogLoadingRefreshAttempts.delete(providerId);
+      return;
+    }
+
+    void get().fetchCliProviderStatus(providerId, { silent: true });
+  }, CODEX_CATALOG_LOADING_REFRESH_RETRY_DELAY_MS);
+  (timer as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
+  codexCatalogLoadingRefreshTimers.set(providerId, timer);
+}
+
+function scheduleCodexCatalogLoadingRefreshes(
+  get: () => Pick<CliInstallerSlice, 'cliStatus' | 'fetchCliProviderStatus'>
+): void {
+  scheduleCodexCatalogLoadingRefresh(get, 'codex');
+}
 
 // =============================================================================
 // Slice Creator
@@ -877,6 +939,8 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
         };
       });
 
+      scheduleCodexCatalogLoadingRefreshes(get);
+
       if (!metadata.installed) {
         if (epoch === cliStatusEpoch) {
           set({
@@ -948,6 +1012,7 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
             cliProviderStatusLoading: {},
           };
         });
+        scheduleCodexCatalogLoadingRefreshes(get);
         if (status.installed) {
           for (const provider of status.providers) {
             if (!isActiveMultimodelProviderId(provider.providerId)) {
@@ -1085,6 +1150,7 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
             cliProviderStatusLoading: nextLoading,
           };
         });
+        scheduleCodexCatalogLoadingRefresh(get, providerId);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : `Failed to refresh ${providerId} status`;
@@ -1174,6 +1240,7 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
                 },
           };
         });
+        clearCodexCatalogLoadingRefresh(providerId);
       } finally {
         cliProviderStatusInFlight.delete(requestKey);
       }
@@ -1184,6 +1251,7 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
   },
 
   invalidateCliStatus: async () => {
+    clearCodexCatalogLoadingRefresh('codex');
     await api.cliInstaller?.invalidateStatus();
   },
 

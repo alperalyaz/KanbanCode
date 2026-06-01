@@ -38,6 +38,7 @@ import {
   isConnectionManagedRuntimeProvider,
   isOpenCodeCatalogHydrating,
   isProviderInventoryOnlyFallback,
+  shouldMaskCodexNegativeBootstrapState,
   shouldShowProviderConnectAction,
   shouldShowProviderStatusSkeleton,
 } from '@renderer/components/runtime/providerConnectionUi';
@@ -476,19 +477,6 @@ function isCodexSnapshotPending(
   codexSnapshotPending: boolean
 ): boolean {
   return provider.providerId === 'codex' && codexSnapshotPending;
-}
-
-function shouldMaskCodexNegativeBootstrapState(
-  sourceProvider: CliProviderStatus | null,
-  mergedProvider: CliProviderStatus
-): boolean {
-  return (
-    sourceProvider?.providerId === 'codex' &&
-    sourceProvider.statusMessage === 'Checking...' &&
-    mergedProvider.providerId === 'codex' &&
-    mergedProvider.connection?.codex?.launchReadinessState === 'missing_auth' &&
-    mergedProvider.connection.codex.login.status === 'idle'
-  );
 }
 
 function getProviderStatusColor(statusText: string, authenticated: boolean): string {
@@ -991,7 +979,8 @@ const InstalledBanner = ({
             const sourceProvider = sourceProviderMap.get(provider.providerId) ?? null;
             const maskNegativeBootstrapState = shouldMaskCodexNegativeBootstrapState(
               sourceProvider,
-              provider
+              provider,
+              { providerLoading }
             );
             const showSkeleton =
               shouldShowProviderStatusSkeleton(provider, providerLoading) ||
