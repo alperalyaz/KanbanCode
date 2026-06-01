@@ -142,6 +142,121 @@ describe('isTeamTaskBlockedByUnfinishedDependency', () => {
       isTeamTaskBlockedByUnfinishedDependency({ blockedBy: ['missing'] }, taskStateById)
     ).toBe(true);
   });
+
+  it('resolves blocker references by display id and #display id', () => {
+    const taskStateById = new Map([
+      [
+        'task-completed',
+        {
+          id: 'task-completed',
+          displayId: 'abc12345',
+          status: 'completed',
+        },
+      ],
+      [
+        'task-approved',
+        {
+          id: 'task-approved',
+          displayId: 'def67890',
+          status: 'in_progress',
+          kanbanColumn: 'approved',
+        },
+      ],
+      [
+        'task-active',
+        {
+          id: 'task-active',
+          displayId: 'fedcba98',
+          status: 'in_progress',
+        },
+      ],
+    ]);
+
+    expect(
+      isTeamTaskBlockedByUnfinishedDependency(
+        { blockedBy: ['abc12345', '#def67890'] },
+        taskStateById
+      )
+    ).toBe(false);
+    expect(
+      isTeamTaskBlockedByUnfinishedDependency({ blockedBy: ['#fedcba98'] }, taskStateById)
+    ).toBe(true);
+  });
+
+  it('fails closed for ambiguous display id blocker references', () => {
+    const taskStateById = new Map([
+      [
+        'task-completed',
+        {
+          id: 'task-completed',
+          displayId: 'abc12345',
+          status: 'completed',
+        },
+      ],
+      [
+        'task-active',
+        {
+          id: 'task-active',
+          displayId: 'abc12345',
+          status: 'in_progress',
+        },
+      ],
+    ]);
+
+    expect(
+      isTeamTaskBlockedByUnfinishedDependency({ blockedBy: ['#abc12345'] }, taskStateById)
+    ).toBe(true);
+  });
+
+  it('fails closed when a direct map key match is an ambiguous display id', () => {
+    const taskStateById = new Map([
+      [
+        'abc12345',
+        {
+          id: 'task-completed',
+          displayId: 'abc12345',
+          status: 'completed',
+        },
+      ],
+      [
+        'task-active',
+        {
+          id: 'task-active',
+          displayId: 'abc12345',
+          status: 'in_progress',
+        },
+      ],
+    ]);
+
+    expect(
+      isTeamTaskBlockedByUnfinishedDependency({ blockedBy: ['abc12345'] }, taskStateById)
+    ).toBe(true);
+  });
+
+  it('prefers canonical id matches over colliding display ids', () => {
+    const taskStateById = new Map([
+      [
+        'task-completed',
+        {
+          id: 'task-completed',
+          displayId: 'abc12345',
+          status: 'completed',
+        },
+      ],
+      [
+        'task-active',
+        {
+          id: 'task-active',
+          displayId: 'task-completed',
+          status: 'in_progress',
+        },
+      ],
+    ]);
+
+    expect(
+      isTeamTaskBlockedByUnfinishedDependency({ blockedBy: ['task-completed'] }, taskStateById)
+    ).toBe(false);
+  });
 });
 
 describe('getTeamTaskWorkflowColumn', () => {

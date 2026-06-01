@@ -1,4 +1,6 @@
 export interface TeamTaskStateLike {
+  id?: string | null;
+  displayId?: string | null;
   status: string;
   reviewState?: string | null;
   kanbanColumn?: string | null;
@@ -126,6 +128,55 @@ export function isTeamTaskFinishedForDependency(task: TeamTaskStateLike): boolea
   return getCachedTeamTaskState(task).finishedForDependency;
 }
 
+function normalizeTaskReference(value: unknown): string {
+  return typeof value === 'string' ? value.trim().replace(/^#/, '') : '';
+}
+
+function findTaskStateByReference(
+  taskStateById: ReadonlyMap<string, TeamTaskStateLike>,
+  taskId: string
+): TeamTaskStateLike | null {
+  const normalized = normalizeTaskReference(taskId);
+  if (!normalized) {
+    return null;
+  }
+
+  const direct =
+    taskStateById.get(taskId) ??
+    taskStateById.get(normalized) ??
+    taskStateById.get(`#${normalized}`);
+  if (direct && (!direct.id || normalizeTaskReference(direct.id) === normalized)) {
+    return direct;
+  }
+
+  let idMatched: TeamTaskStateLike | null = null;
+  for (const task of taskStateById.values()) {
+    if (normalizeTaskReference(task.id) === normalized) {
+      if (idMatched && idMatched !== task) {
+        return null;
+      }
+      idMatched = task;
+    }
+  }
+  if (idMatched) {
+    return idMatched;
+  }
+
+  let displayMatched: TeamTaskStateLike | null = null;
+  for (const [key, task] of taskStateById) {
+    if (
+      normalizeTaskReference(key) === normalized ||
+      normalizeTaskReference(task.displayId) === normalized
+    ) {
+      if (displayMatched && displayMatched !== task) {
+        return null;
+      }
+      displayMatched = task;
+    }
+  }
+  return displayMatched;
+}
+
 export function isTeamTaskBlockedByUnfinishedDependency(
   task: TeamTaskBlockerLike,
   taskStateById: ReadonlyMap<string, TeamTaskStateLike>
@@ -137,7 +188,7 @@ export function isTeamTaskBlockedByUnfinishedDependency(
   }
 
   return blockedBy.some((taskId) => {
-    const blocker = taskStateById.get(taskId);
+    const blocker = findTaskStateByReference(taskStateById, taskId);
     return !blocker || (!isTeamTaskFinishedForDependency(blocker) && !isTeamTaskDeleted(blocker));
   });
 }
