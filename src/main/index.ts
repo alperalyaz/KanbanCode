@@ -257,6 +257,11 @@ const appStartedAtMs = Date.now();
 const openCodeManagedHostInstanceId = `${process.pid}-${appStartedAtMs}`;
 let openCodeLifecycleBridge: OpenCodeReadinessBridge | null = null;
 
+if (process.env.AGENT_TEAMS_DISABLE_GPU?.trim() === '1') {
+  app.disableHardwareAcceleration();
+  logger.info('Hardware acceleration disabled by AGENT_TEAMS_DISABLE_GPU=1');
+}
+
 function hasWarningRelayDiagnostics(diagnostics: readonly string[]): boolean {
   return diagnostics.some(
     (diagnostic) => !isInformationalOpenCodeRuntimeDeliveryDiagnostic(diagnostic)

@@ -228,6 +228,12 @@ No. You can start with the free model with no auth right away. If you want Claud
 </details>
 
 <details>
+<summary><strong>What if the Linux app freezes or shows a blank window over RDP?</strong></summary>
+<br />
+Some RDP (Remote Desktop Protocol) sessions expose virtual GPU drivers that can break Electron rendering. Launch with `AGENT_TEAMS_DISABLE_GPU=1` to disable Electron hardware acceleration for that run, for example `AGENT_TEAMS_DISABLE_GPU=1 pnpm dev` from source or `AGENT_TEAMS_DISABLE_GPU=1 ./Agent.Teams.AI.AppImage` for AppImage builds.
+</details>
+
+<details>
 <summary><strong>Does it read or upload my code?</strong></summary>
 <br />
 The app is not a cloud code-sync service. It reads local runtime/session data to power the UI, and your project stays on your machine unless you choose a provider/runtime path that sends data to that provider. In `multimodel` mode, startup may also perform runtime access and capability checks before launch.
