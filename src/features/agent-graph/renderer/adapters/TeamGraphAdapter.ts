@@ -677,19 +677,60 @@ export class TeamGraphAdapter {
   ): void {
     const taskStateById = new Map<
       string,
-      Pick<TeamGraphData['tasks'][number], 'status' | 'reviewState' | 'kanbanColumn' | 'deletedAt'>
+      Pick<
+        TeamGraphData['tasks'][number],
+        'id' | 'displayId' | 'status' | 'reviewState' | 'kanbanColumn' | 'deletedAt'
+      >
     >();
     const taskDisplayIds = new Map<string, string>();
+    const taskIdsByCanonicalReference = new Map<string, Set<string>>();
+    const taskIdsByDisplayReference = new Map<string, Set<string>>();
     const memberColorByName = new Map<string, string>();
+    const addTaskReference = (
+      references: Map<string, Set<string>>,
+      reference: string | undefined,
+      taskId: string
+    ): void => {
+      const normalized = reference?.trim().replace(/^#/, '');
+      if (!normalized) return;
+      const taskIds = references.get(normalized) ?? new Set<string>();
+      taskIds.add(taskId);
+      references.set(normalized, taskIds);
+    };
+    const resolveTaskReference = (reference: string): string | null => {
+      const normalized = reference.trim().replace(/^#/, '');
+      if (!normalized) return null;
+      const canonicalTaskIds = taskIdsByCanonicalReference.get(normalized);
+      if (canonicalTaskIds?.size === 1) {
+        return [...canonicalTaskIds][0];
+      }
+      if (canonicalTaskIds && canonicalTaskIds.size > 1) {
+        return null;
+      }
+      const displayTaskIds = taskIdsByDisplayReference.get(normalized);
+      return displayTaskIds?.size === 1 ? [...displayTaskIds][0] : null;
+    };
+    const formatTaskReference = (reference: string): string => {
+      const taskId = resolveTaskReference(reference);
+      if (taskId) {
+        return taskDisplayIds.get(taskId) ?? `#${taskId.slice(0, 6)}`;
+      }
+      const trimmed = reference.trim();
+      return trimmed.startsWith('#') ? trimmed : `#${trimmed.slice(0, 6)}`;
+    };
 
     for (const t of data.tasks) {
       taskStateById.set(t.id, {
+        id: t.id,
+        ...(t.displayId ? { displayId: t.displayId } : {}),
         status: t.status,
         ...(t.reviewState ? { reviewState: t.reviewState } : {}),
         ...(t.kanbanColumn ? { kanbanColumn: t.kanbanColumn } : {}),
         ...(t.deletedAt ? { deletedAt: t.deletedAt } : {}),
       });
       taskDisplayIds.set(t.id, t.displayId ?? `#${t.id.slice(0, 6)}`);
+      addTaskReference(taskIdsByCanonicalReference, t.id, t.id);
+      addTaskReference(taskIdsByDisplayReference, t.displayId, t.id);
     }
     for (const member of data.members) {
       if (member.color) {
@@ -726,10 +767,10 @@ export class TeamGraphAdapter {
             : TeamGraphAdapter.#mapReviewState(task.reviewState);
 
       const blockedByDisplayIds = task.blockedBy?.length
-        ? task.blockedBy.map((id) => taskDisplayIds.get(id) ?? `#${id.slice(0, 6)}`)
+        ? task.blockedBy.map(formatTaskReference)
         : undefined;
       const blocksDisplayIds = task.blocks?.length
-        ? task.blocks.map((id) => taskDisplayIds.get(id) ?? `#${id.slice(0, 6)}`)
+        ? task.blocks.map(formatTaskReference)
         : undefined;
 
       const totalCommentCount = task.comments?.length ?? 0;
@@ -799,7 +840,10 @@ export class TeamGraphAdapter {
         targetTaskIds: Set<string>;
       }
     >();
-    const addBlockingRelation = (blockerId: string, blockedId: string): void => {
+    const addBlockingRelation = (blockerRef: string, blockedRef: string): void => {
+      const blockerId = resolveTaskReference(blockerRef);
+      const blockedId = resolveTaskReference(blockedRef);
+      if (!blockerId || !blockedId) return;
       if (blockerId === blockedId) return;
       const rawRelationKey = `${blockerId}->${blockedId}`;
       if (seenBlockingRelations.has(rawRelationKey)) return;
@@ -842,7 +886,9 @@ export class TeamGraphAdapter {
 
       if (!visibleTaskIds.has(task.id)) continue;
 
-      for (const relatedId of task.related ?? []) {
+      for (const relatedRef of task.related ?? []) {
+        const relatedId = resolveTaskReference(relatedRef);
+        if (!relatedId) continue;
         if (!visibleTaskIds.has(relatedId)) continue;
         const key =
           task.id.localeCompare(relatedId) <= 0

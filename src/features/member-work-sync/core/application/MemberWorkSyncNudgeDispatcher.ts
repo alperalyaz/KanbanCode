@@ -14,6 +14,7 @@ import type { MemberWorkSyncAuditEventName, MemberWorkSyncUseCaseDeps } from './
 const MEMBER_WORK_SYNC_MAX_NUDGES_PER_MEMBER_PER_HOUR = 2;
 const MEMBER_WORK_SYNC_RETRY_BASE_MINUTES = 10;
 const MEMBER_WORK_SYNC_RETRY_MAX_MINUTES = 60;
+const AGENDA_SYNC_STILL_STUCK_RECOVERY_INTENT_PREFIX = 'agenda-sync-still-stuck:';
 
 export interface MemberWorkSyncNudgeDispatchSummary {
   claimed: number;
@@ -74,6 +75,13 @@ function getProofMissingRecoveryOriginalMessageId(item: MemberWorkSyncOutboxItem
 
 function isStatusOnlyRecoveryOutboxItem(item: MemberWorkSyncOutboxItem): boolean {
   return item.payload.workSyncIntentKey?.startsWith('status-only:') === true;
+}
+
+function isAgendaSyncStillStuckRecoveryOutboxItem(item: MemberWorkSyncOutboxItem): boolean {
+  return (
+    item.payload.workSyncIntentKey?.startsWith(AGENDA_SYNC_STILL_STUCK_RECOVERY_INTENT_PREFIX) ===
+    true
+  );
 }
 
 function getPayloadReviewRequestEventIds(item: MemberWorkSyncOutboxItem): string[] {
@@ -419,8 +427,9 @@ export class MemberWorkSyncNudgeDispatcher {
       inactive: source.inactive || !teamActive,
     });
     const providerId = source.providerId ?? previous.providerId;
+    const { report: _previousReport, ...previousWithoutReport } = previous;
     const revalidatedStatus: MemberWorkSyncStatus = {
-      ...previous,
+      ...previousWithoutReport,
       state: decision.state,
       agenda,
       ...(decision.acceptedReport ? { report: decision.acceptedReport } : {}),
@@ -487,6 +496,9 @@ export class MemberWorkSyncNudgeDispatcher {
       teamName: item.teamName,
       memberName: item.memberName,
       sinceIso: subtractMinutes(nowIso, 60),
+      ...(isAgendaSyncStillStuckRecoveryOutboxItem(item)
+        ? { workSyncIntentKeyPrefix: AGENDA_SYNC_STILL_STUCK_RECOVERY_INTENT_PREFIX }
+        : {}),
     });
     if (
       recentDelivered != null &&

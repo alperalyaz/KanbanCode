@@ -17,11 +17,13 @@ import { describe, expect, it } from 'vitest';
 
 import type {
   MemberWorkSyncActionableWorkItem,
+  MemberWorkSyncMetricEvent,
   MemberWorkSyncOutboxEnsureInput,
   MemberWorkSyncOutboxItem,
   MemberWorkSyncOutboxMarkDeliveredInput,
   MemberWorkSyncOutboxMarkFailedInput,
   MemberWorkSyncOutboxMarkSupersededInput,
+  MemberWorkSyncPhase2ReadinessReason,
   MemberWorkSyncPhase2ReadinessState,
   MemberWorkSyncReportIntent,
   MemberWorkSyncReportRequest,
@@ -94,6 +96,9 @@ class InMemoryStatusStore implements MemberWorkSyncStatusStorePort {
   readonly pendingReports: Array<{ request: MemberWorkSyncReportRequest; reason: string }> = [];
   readonly pendingIntents = new Map<string, MemberWorkSyncReportIntent>();
   phase2ReadinessState: MemberWorkSyncPhase2ReadinessState = 'collecting_shadow_data';
+  phase2ReadinessReasons: MemberWorkSyncPhase2ReadinessReason[] = [];
+  metricsGeneratedAt = '2026-04-29T00:00:00.000Z';
+  recentEvents: MemberWorkSyncMetricEvent[] = [];
 
   async read(): Promise<MemberWorkSyncStatus | null> {
     return this.writes.at(-1) ?? null;
@@ -129,7 +134,7 @@ class InMemoryStatusStore implements MemberWorkSyncStatusStorePort {
   async readTeamMetrics(teamName: string): Promise<MemberWorkSyncTeamMetrics> {
     return {
       teamName,
-      generatedAt: '2026-04-29T00:00:00.000Z',
+      generatedAt: this.metricsGeneratedAt,
       memberCount: 1,
       stateCounts: {
         caught_up: 0,
@@ -144,10 +149,10 @@ class InMemoryStatusStore implements MemberWorkSyncStatusStorePort {
       fingerprintChangeCount: 0,
       reportAcceptedCount: 0,
       reportRejectedCount: 0,
-      recentEvents: [],
+      recentEvents: this.recentEvents,
       phase2Readiness: {
         state: this.phase2ReadinessState,
-        reasons: [],
+        reasons: this.phase2ReadinessReasons,
         thresholds: {
           minObservedMembers: 1,
           minStatusEvents: 20,
@@ -227,14 +232,16 @@ class InMemoryOutboxStore implements MemberWorkSyncOutboxStorePort {
   async markDelivered(input: MemberWorkSyncOutboxMarkDeliveredInput): Promise<void> {
     const current = this.items.get(input.id);
     if (current?.attemptGeneration === input.attemptGeneration) {
-      this.items.set(input.id, {
+      const next = {
         ...current,
-        status: 'delivered',
+        status: 'delivered' as const,
         deliveredMessageId: input.deliveredMessageId,
         ...(input.deliveryState ? { deliveryState: input.deliveryState } : {}),
         ...(input.deliveryDiagnostics ? { deliveryDiagnostics: input.deliveryDiagnostics } : {}),
         updatedAt: input.nowIso,
-      });
+      };
+      delete next.nextAttemptAt;
+      this.items.set(input.id, next);
     }
   }
 
@@ -258,12 +265,18 @@ class InMemoryOutboxStore implements MemberWorkSyncOutboxStorePort {
     }
   }
 
-  async countRecentDelivered(input: { memberName: string; sinceIso: string }): Promise<number> {
+  async countRecentDelivered(input: {
+    memberName: string;
+    sinceIso: string;
+    workSyncIntentKeyPrefix?: string;
+  }): Promise<number> {
     return [...this.items.values()].filter(
       (item) =>
         item.status === 'delivered' &&
         item.memberName === input.memberName &&
-        item.updatedAt >= input.sinceIso
+        item.updatedAt >= input.sinceIso &&
+        (!input.workSyncIntentKeyPrefix ||
+          item.payload.workSyncIntentKey?.startsWith(input.workSyncIntentKeyPrefix) === true)
     ).length;
   }
 
@@ -291,10 +304,14 @@ class InMemoryOutboxStore implements MemberWorkSyncOutboxStorePort {
 class InMemoryInboxNudge implements MemberWorkSyncInboxNudgePort {
   readonly inserted: Array<Parameters<MemberWorkSyncInboxNudgePort['insertIfAbsent']>[0]> = [];
   fail = false;
+  conflict = false;
 
   async insertIfAbsent(input: Parameters<MemberWorkSyncInboxNudgePort['insertIfAbsent']>[0]) {
     if (this.fail) {
       throw new Error('inbox unavailable');
+    }
+    if (this.conflict) {
+      return { inserted: false, messageId: input.messageId, conflict: true };
     }
     this.inserted.push(input);
     return { inserted: true, messageId: input.messageId };
@@ -302,6 +319,7 @@ class InMemoryInboxNudge implements MemberWorkSyncInboxNudgePort {
 }
 
 function createDeps(options?: {
+  memberName?: string;
   items?: MemberWorkSyncActionableWorkItem[];
   activeMemberNames?: string[];
   inactive?: boolean;
@@ -316,15 +334,16 @@ function createDeps(options?: {
   const clock = new MutableClock();
   const store = new InMemoryStatusStore();
   const auditEvents: MemberWorkSyncAuditEvent[] = [];
+  const memberName = options?.memberName ?? 'bob';
   const source: MemberWorkSyncAgendaSourceResult = {
     agenda: {
       teamName: 'team-a',
-      memberName: 'bob',
+      memberName,
       generatedAt: '2026-04-29T00:00:00.000Z',
       items: options?.items ?? [workItem],
       diagnostics: [],
     },
-    activeMemberNames: options?.activeMemberNames ?? ['bob'],
+    activeMemberNames: options?.activeMemberNames ?? [memberName],
     inactive: options?.inactive ?? false,
     ...(options?.providerId ? { providerId: options.providerId } : {}),
     diagnostics: [],
@@ -517,6 +536,33 @@ describe('MemberWorkSync use cases', () => {
 
     expect(result.accepted).toBe(true);
     expect(result.status.state).toBe('caught_up');
+  });
+
+  it('rejects still_working on an empty agenda without recording a working status', async () => {
+    const { deps, store } = createDeps({ items: [] });
+    const reader = new MemberWorkSyncReconciler(deps);
+    const reporter = new MemberWorkSyncReporter(deps);
+    const current = await reader.execute({ teamName: 'team-a', memberName: 'bob' });
+
+    const result = await reporter.execute({
+      teamName: 'team-a',
+      memberName: 'bob',
+      state: 'still_working',
+      agendaFingerprint: current.agenda.fingerprint,
+      reportToken: current.reportToken,
+      source: 'test',
+    });
+
+    expect(result.accepted).toBe(false);
+    expect(result.code).toBe('still_working_rejected_agenda_empty');
+    expect(result.status.state).toBe('caught_up');
+    expect(store.writes.at(-1)).toMatchObject({
+      state: 'caught_up',
+      report: {
+        accepted: false,
+        rejectionCode: 'still_working_rejected_agenda_empty',
+      },
+    });
   });
 
   it('marks status inactive when the team runtime is not active', async () => {
@@ -908,6 +954,147 @@ describe('MemberWorkSync use cases', () => {
     expect(inbox.inserted[1]?.messageId).toContain('status-only');
   });
 
+  it('creates a delivered-still-stuck recovery after a delivered status-only nudge gets no report', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const inbox = new InMemoryInboxNudge();
+    const { clock, deps, store } = createDeps({
+      providerId: 'codex',
+      outboxStore: outbox,
+      inboxNudge: inbox,
+    });
+    store.phase2ReadinessState = 'shadow_ready';
+
+    const reconciler = new MemberWorkSyncReconciler(deps);
+    const firstStatus = await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+    await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['turn_settled'] }
+    );
+    await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    expect(inbox.inserted).toHaveLength(2);
+    expect(inbox.inserted[1]?.messageId).toContain('status-only');
+
+    clock.set('2026-04-29T00:10:00.000Z');
+    store.metricsGeneratedAt = '2026-04-29T00:10:00.000Z';
+    await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['turn_settled'] }
+    );
+
+    const stillStuck = [...outbox.items.values()].find((item) =>
+      item.payload.workSyncIntentKey?.startsWith('agenda-sync-still-stuck:')
+    );
+    expect(stillStuck).toMatchObject({
+      status: 'pending',
+      agendaFingerprint: firstStatus.agenda.fingerprint,
+    });
+
+    const summary = await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    expect(summary).toMatchObject({ claimed: 1, delivered: 1, retryable: 0 });
+    expect(inbox.inserted).toHaveLength(3);
+    expect(inbox.inserted[2]?.messageId).toContain('agenda-sync-still-stuck');
+  });
+
+  it('creates a still-stuck recovery when a terminal inbox conflict blocks a status-only nudge', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const inbox = new InMemoryInboxNudge();
+    const { clock, deps, store } = createDeps({
+      providerId: 'codex',
+      outboxStore: outbox,
+      inboxNudge: inbox,
+    });
+    store.phase2ReadinessState = 'shadow_ready';
+
+    const reconciler = new MemberWorkSyncReconciler(deps);
+    const firstStatus = await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+    await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['turn_settled'] }
+    );
+
+    inbox.conflict = true;
+    const terminalSummary = await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    const statusOnly = [...outbox.items.values()].find((item) =>
+      item.payload.workSyncIntentKey?.startsWith('status-only:')
+    );
+    expect(terminalSummary).toMatchObject({ claimed: 1, delivered: 0, terminal: 1 });
+    expect(statusOnly).toMatchObject({
+      status: 'failed_terminal',
+      lastError: 'inbox_payload_conflict',
+    });
+
+    inbox.conflict = false;
+    clock.set('2026-04-29T00:10:00.000Z');
+    store.metricsGeneratedAt = '2026-04-29T00:10:00.000Z';
+    await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['turn_settled'] }
+    );
+
+    const stillStuck = [...outbox.items.values()].find((item) =>
+      item.payload.workSyncIntentKey?.startsWith('agenda-sync-still-stuck:')
+    );
+    expect(stillStuck).toMatchObject({
+      status: 'pending',
+      agendaFingerprint: firstStatus.agenda.fingerprint,
+    });
+
+    const recoverySummary = await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    expect(recoverySummary).toMatchObject({ claimed: 1, delivered: 1, retryable: 0 });
+    expect(inbox.inserted).toHaveLength(2);
+    expect(inbox.inserted[1]?.messageId).toContain('agenda-sync-still-stuck');
+  });
+
   it('creates an agenda-sync refresh recovery when a delivered nudge has a stale payload hash', async () => {
     const outbox = new InMemoryOutboxStore();
     const inbox = new InMemoryInboxNudge();
@@ -1006,6 +1193,460 @@ describe('MemberWorkSync use cases', () => {
     );
     expect(statusOnlyItems).toHaveLength(1);
     expect(statusOnlyItems[0]?.payload.text).toContain('Status-only recovery');
+  });
+
+  it('creates a delivered-still-stuck recovery after a delivered refresh nudge gets no report', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const inbox = new InMemoryInboxNudge();
+    outbox.rejectPayloadConflicts = true;
+    const { clock, deps, store } = createDeps({
+      providerId: 'codex',
+      outboxStore: outbox,
+      inboxNudge: inbox,
+    });
+    store.phase2ReadinessState = 'shadow_ready';
+
+    const reconciler = new MemberWorkSyncReconciler(deps);
+    const firstStatus = await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+    await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    const baseId = `member-work-sync:team-a:bob:${firstStatus.agenda.fingerprint}`;
+    const delivered = outbox.items.get(baseId);
+    expect(delivered).toMatchObject({ status: 'delivered' });
+    outbox.items.set(baseId, {
+      ...delivered!,
+      payloadHash: 'legacy-payload-hash',
+      payload: {
+        ...delivered!.payload,
+        text: 'Legacy delivered work-sync nudge text.',
+      },
+    });
+
+    await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+    await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    expect(
+      [...outbox.items.values()].filter((item) =>
+        item.payload.workSyncIntentKey?.startsWith('agenda-sync-refresh:')
+      )
+    ).toHaveLength(1);
+    expect(inbox.inserted).toHaveLength(2);
+
+    clock.set('2026-04-29T00:10:00.000Z');
+    store.metricsGeneratedAt = '2026-04-29T00:10:00.000Z';
+    await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['manual_refresh'] }
+    );
+
+    const stillStuck = [...outbox.items.values()].find((item) =>
+      item.payload.workSyncIntentKey?.startsWith('agenda-sync-still-stuck:')
+    );
+    expect(stillStuck).toMatchObject({
+      status: 'pending',
+      agendaFingerprint: firstStatus.agenda.fingerprint,
+    });
+
+    const summary = await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    expect(summary).toMatchObject({ claimed: 1, delivered: 1, retryable: 0 });
+    expect(inbox.inserted).toHaveLength(3);
+    expect(inbox.inserted[2]?.messageId).toContain('agenda-sync-still-stuck');
+  });
+
+  it('creates a delivered-still-stuck recovery when a delivered agenda nudge gets no report', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const inbox = new InMemoryInboxNudge();
+    const { clock, deps, store } = createDeps({
+      providerId: 'codex',
+      outboxStore: outbox,
+      inboxNudge: inbox,
+    });
+    store.phase2ReadinessState = 'shadow_ready';
+
+    const reconciler = new MemberWorkSyncReconciler(deps);
+    const firstStatus = await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+    await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    const baseId = `member-work-sync:team-a:bob:${firstStatus.agenda.fingerprint}`;
+    expect(outbox.items.get(baseId)).toMatchObject({ status: 'delivered' });
+
+    clock.set('2026-04-29T00:10:00.000Z');
+    store.phase2ReadinessState = 'blocked';
+    store.phase2ReadinessReasons = ['would_nudge_rate_high'];
+    store.metricsGeneratedAt = '2026-04-29T00:10:00.000Z';
+    store.recentEvents = [
+      {
+        id: 'stale-current-needs-sync',
+        teamName: 'team-a',
+        memberName: 'bob',
+        kind: 'status_evaluated',
+        state: 'needs_sync',
+        agendaFingerprint: firstStatus.agenda.fingerprint,
+        recordedAt: '2026-04-29T00:02:00.000Z',
+        actionableCount: 1,
+        providerId: 'codex',
+      },
+    ];
+
+    await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['manual_refresh'] }
+    );
+
+    const recovery = [...outbox.items.values()].find((item) =>
+      item.payload.workSyncIntentKey?.startsWith('agenda-sync-still-stuck:')
+    );
+    expect(recovery).toMatchObject({
+      status: 'pending',
+      agendaFingerprint: firstStatus.agenda.fingerprint,
+      payload: {
+        workSyncIntent: 'agenda_sync',
+        workSyncIntentKey: expect.stringContaining(
+          `agenda-sync-still-stuck:${firstStatus.agenda.fingerprint}:`
+        ),
+      },
+    });
+    expect(recovery?.payload.text).toContain('still no accepted member_work_sync_report');
+    expect(outbox.items.get(baseId)).toMatchObject({ status: 'delivered' });
+
+    const summary = await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    expect(summary).toMatchObject({ claimed: 1, delivered: 1, retryable: 0 });
+    expect(inbox.inserted).toHaveLength(2);
+    expect(inbox.inserted[1]?.messageId).toContain('agenda-sync-still-stuck');
+
+    clock.set('2026-04-29T00:20:00.000Z');
+    store.metricsGeneratedAt = '2026-04-29T00:20:00.000Z';
+    await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['manual_refresh'] }
+    );
+
+    expect(
+      [...outbox.items.values()].filter((item) =>
+        item.payload.workSyncIntentKey?.startsWith('agenda-sync-still-stuck:')
+      )
+    ).toHaveLength(1);
+
+    clock.set('2026-04-29T01:02:00.000Z');
+    store.metricsGeneratedAt = '2026-04-29T01:02:00.000Z';
+    await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['manual_refresh'] }
+    );
+
+    const recoveryItems = [...outbox.items.values()].filter((item) =>
+      item.payload.workSyncIntentKey?.startsWith('agenda-sync-still-stuck:')
+    );
+    expect(recoveryItems).toHaveLength(2);
+    expect(new Set(recoveryItems.map((item) => item.id)).size).toBe(2);
+
+    const secondSummary = await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    expect(secondSummary).toMatchObject({ claimed: 1, delivered: 1, retryable: 0 });
+    expect(inbox.inserted).toHaveLength(3);
+  });
+
+  it('records an existing delivered agenda nudge as skipped before still-stuck recovery age', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const inbox = new InMemoryInboxNudge();
+    const { auditEvents, clock, deps, store } = createDeps({
+      providerId: 'codex',
+      outboxStore: outbox,
+      inboxNudge: inbox,
+    });
+    store.phase2ReadinessState = 'shadow_ready';
+
+    const reconciler = new MemberWorkSyncReconciler(deps);
+    const firstStatus = await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+    await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    const baseId = `member-work-sync:team-a:bob:${firstStatus.agenda.fingerprint}`;
+    expect(outbox.items.get(baseId)).toMatchObject({ status: 'delivered' });
+
+    clock.set('2026-04-29T00:04:00.000Z');
+    store.metricsGeneratedAt = '2026-04-29T00:04:00.000Z';
+    await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['manual_refresh'] }
+    );
+
+    expect(
+      [...outbox.items.values()].filter((item) =>
+        item.payload.workSyncIntentKey?.startsWith('agenda-sync-still-stuck:')
+      )
+    ).toHaveLength(0);
+    expect(auditEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'nudge_skipped',
+          reason: 'existing',
+        }),
+      ])
+    );
+  });
+
+  it('creates a delivered-still-stuck recovery for a targeted lead despite noisy metrics', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const inbox = new InMemoryInboxNudge();
+    const leadWorkItem: MemberWorkSyncActionableWorkItem = {
+      ...workItem,
+      assignee: 'team-lead',
+      evidence: {
+        status: 'pending',
+        owner: 'team-lead',
+      },
+    };
+    const { clock, deps, store } = createDeps({
+      memberName: 'team-lead',
+      items: [leadWorkItem],
+      providerId: 'codex',
+      outboxStore: outbox,
+      inboxNudge: inbox,
+    });
+    store.phase2ReadinessState = 'blocked';
+    store.phase2ReadinessReasons = ['would_nudge_rate_high'];
+
+    const reconciler = new MemberWorkSyncReconciler(deps);
+    const firstStatus = await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'team-lead',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['manual_refresh'] }
+    );
+    await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    const baseId = `member-work-sync:team-a:team-lead:${firstStatus.agenda.fingerprint}`;
+    expect(outbox.items.get(baseId)).toMatchObject({ status: 'delivered' });
+
+    clock.set('2026-04-29T00:10:00.000Z');
+    store.metricsGeneratedAt = '2026-04-29T00:10:00.000Z';
+    await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'team-lead',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['manual_refresh'] }
+    );
+
+    const recovery = [...outbox.items.values()].find((item) =>
+      item.payload.workSyncIntentKey?.startsWith('agenda-sync-still-stuck:')
+    );
+    expect(recovery).toMatchObject({
+      status: 'pending',
+      memberName: 'team-lead',
+      agendaFingerprint: firstStatus.agenda.fingerprint,
+    });
+
+    const recoverySummary = await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    expect(recoverySummary).toMatchObject({ claimed: 1, delivered: 1, retryable: 0 });
+    expect(inbox.inserted).toHaveLength(2);
+    expect(inbox.inserted[1]?.messageId).toContain('agenda-sync-still-stuck');
+  });
+
+  it('creates a still-stuck recovery when a terminal inbox conflict blocks an agenda nudge', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const inbox = new InMemoryInboxNudge();
+    const { clock, deps, store } = createDeps({
+      providerId: 'codex',
+      outboxStore: outbox,
+      inboxNudge: inbox,
+    });
+    store.phase2ReadinessState = 'shadow_ready';
+
+    const reconciler = new MemberWorkSyncReconciler(deps);
+    const firstStatus = await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+    const baseId = `member-work-sync:team-a:bob:${firstStatus.agenda.fingerprint}`;
+    expect(outbox.items.get(baseId)).toMatchObject({ status: 'pending' });
+
+    inbox.conflict = true;
+    const terminalSummary = await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    expect(terminalSummary).toMatchObject({ claimed: 1, delivered: 0, terminal: 1 });
+    expect(outbox.items.get(baseId)).toMatchObject({
+      status: 'failed_terminal',
+      lastError: 'inbox_payload_conflict',
+    });
+
+    inbox.conflict = false;
+    clock.set('2026-04-29T00:10:00.000Z');
+    store.metricsGeneratedAt = '2026-04-29T00:10:00.000Z';
+    await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['manual_refresh'] }
+    );
+
+    const recovery = [...outbox.items.values()].find((item) =>
+      item.payload.workSyncIntentKey?.startsWith('agenda-sync-still-stuck:')
+    );
+    expect(recovery).toMatchObject({
+      status: 'pending',
+      agendaFingerprint: firstStatus.agenda.fingerprint,
+      payload: {
+        workSyncIntent: 'agenda_sync',
+        workSyncIntentKey: expect.stringContaining(
+          `agenda-sync-still-stuck:${firstStatus.agenda.fingerprint}:`
+        ),
+      },
+    });
+    expect(recovery?.payload.text).toContain('still no accepted member_work_sync_report');
+    expect(outbox.items.get(baseId)).toMatchObject({ status: 'failed_terminal' });
+
+    const recoverySummary = await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    expect(recoverySummary).toMatchObject({ claimed: 1, delivered: 1, retryable: 0 });
+    expect(inbox.inserted).toHaveLength(1);
+    expect(inbox.inserted[0]?.messageId).toContain('agenda-sync-still-stuck');
+  });
+
+  it('creates a still-stuck recovery when a terminal inbox conflict has a stale payload hash', async () => {
+    const outbox = new InMemoryOutboxStore();
+    outbox.rejectPayloadConflicts = true;
+    const inbox = new InMemoryInboxNudge();
+    const { clock, deps, store } = createDeps({
+      providerId: 'codex',
+      outboxStore: outbox,
+      inboxNudge: inbox,
+    });
+    store.phase2ReadinessState = 'shadow_ready';
+
+    const reconciler = new MemberWorkSyncReconciler(deps);
+    const firstStatus = await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+    const baseId = `member-work-sync:team-a:bob:${firstStatus.agenda.fingerprint}`;
+
+    inbox.conflict = true;
+    await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    const terminal = outbox.items.get(baseId);
+    expect(terminal).toMatchObject({
+      status: 'failed_terminal',
+      lastError: 'inbox_payload_conflict',
+    });
+    outbox.items.set(baseId, {
+      ...terminal!,
+      payloadHash: 'stale-terminal-payload-hash',
+    });
+
+    inbox.conflict = false;
+    clock.set('2026-04-29T00:10:00.000Z');
+    store.metricsGeneratedAt = '2026-04-29T00:10:00.000Z';
+    await reconciler.execute(
+      {
+        teamName: 'team-a',
+        memberName: 'bob',
+      },
+      { reconciledBy: 'queue', triggerReasons: ['manual_refresh'] }
+    );
+
+    const recovery = [...outbox.items.values()].find((item) =>
+      item.payload.workSyncIntentKey?.startsWith('agenda-sync-still-stuck:')
+    );
+    expect(recovery).toMatchObject({
+      status: 'pending',
+      agendaFingerprint: firstStatus.agenda.fingerprint,
+    });
+
+    const recoverySummary = await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    expect(recoverySummary).toMatchObject({ claimed: 1, delivered: 1, retryable: 0 });
+    expect(inbox.inserted).toHaveLength(1);
+    expect(inbox.inserted[0]?.messageId).toContain('agenda-sync-still-stuck');
   });
 
   it('marks review pickup delivered only after the delivery port confirms prompt acceptance', async () => {
@@ -1284,6 +1925,85 @@ describe('MemberWorkSync use cases', () => {
     const revived = outbox.items.get(`member-work-sync:team-a:bob:${current.agenda.fingerprint}`);
     expect(revived).toMatchObject({ status: 'pending' });
     expect(revived).not.toHaveProperty('lastError');
+  });
+
+  it('dispatches native stale recovery after an attached still_working report expires', async () => {
+    const outbox = new InMemoryOutboxStore();
+    const inbox = new InMemoryInboxNudge();
+    const inProgressItem: MemberWorkSyncActionableWorkItem = {
+      ...workItem,
+      reason: 'owned_in_progress_task',
+      evidence: {
+        status: 'in_progress',
+        owner: 'bob',
+      },
+    };
+    const { clock, deps, store } = createDeps({
+      items: [inProgressItem],
+      providerId: 'codex',
+      outboxStore: outbox,
+      inboxNudge: inbox,
+    });
+    store.phase2ReadinessState = 'shadow_ready';
+
+    const reconciler = new MemberWorkSyncReconciler(deps);
+    const reporter = new MemberWorkSyncReporter(deps);
+    const current = await reconciler.execute(
+      { teamName: 'team-a', memberName: 'bob' },
+      { reconciledBy: 'queue', triggerReasons: ['task_changed'] }
+    );
+    await reporter.execute({
+      teamName: 'team-a',
+      memberName: 'bob',
+      state: 'still_working',
+      agendaFingerprint: current.agenda.fingerprint,
+      reportToken: current.reportToken,
+      taskIds: ['task-1'],
+      leaseTtlMs: 120_000,
+      source: 'test',
+    });
+
+    clock.set('2026-04-29T00:10:00.000Z');
+    store.phase2ReadinessState = 'blocked';
+    store.phase2ReadinessReasons = ['would_nudge_rate_high'];
+    store.metricsGeneratedAt = '2026-04-29T00:10:00.000Z';
+    store.recentEvents = [
+      {
+        id: 'old-report-accepted',
+        teamName: 'team-a',
+        memberName: 'bob',
+        kind: 'report_accepted',
+        state: 'still_working',
+        agendaFingerprint: current.agenda.fingerprint,
+        recordedAt: '2026-04-29T00:01:00.000Z',
+        actionableCount: 1,
+        providerId: 'codex',
+      },
+      {
+        id: 'needs-sync-after-lease-expired',
+        teamName: 'team-a',
+        memberName: 'bob',
+        kind: 'status_evaluated',
+        state: 'needs_sync',
+        agendaFingerprint: current.agenda.fingerprint,
+        recordedAt: '2026-04-29T00:04:00.000Z',
+        actionableCount: 1,
+        providerId: 'codex',
+      },
+    ];
+
+    const summary = await new MemberWorkSyncNudgeDispatcher(deps).dispatchDue({
+      teamNames: ['team-a'],
+      claimedBy: 'test-dispatcher',
+    });
+
+    expect(summary).toMatchObject({ claimed: 1, delivered: 1, retryable: 0 });
+    expect(inbox.inserted).toHaveLength(1);
+    expect(
+      outbox.items.get(`member-work-sync:team-a:bob:${current.agenda.fingerprint}`)
+    ).toMatchObject({
+      status: 'delivered',
+    });
   });
 
   it('rate-limits delivered nudges per member per hour', async () => {

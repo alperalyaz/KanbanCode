@@ -22,7 +22,7 @@ describe('teamModelCatalog', () => {
     ).toEqual(['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex', 'gpt-5.2', 'gpt-5.1-codex-max']);
   });
 
-  it('adds curated Anthropic Opus 4.7 badges when the runtime list only reports legacy Opus variants', () => {
+  it('adds curated Anthropic Opus 4.8 badges when the runtime list only reports legacy Opus variants', () => {
     expect(
       getVisibleTeamProviderModels('anthropic', [
         'claude-haiku-4-5-20251001',
@@ -33,6 +33,8 @@ describe('teamModelCatalog', () => {
       ])
     ).toEqual([
       'claude-haiku-4-5-20251001',
+      'claude-opus-4-8',
+      'claude-opus-4-8[1m]',
       'claude-opus-4-7',
       'claude-opus-4-7[1m]',
       'claude-opus-4-6',
@@ -301,6 +303,8 @@ describe('teamModelCatalog', () => {
   it('detects 1M Anthropic selections and native 1M launch ids', () => {
     expect(isAnthropicOneMillionContextTeamModel('sonnet')).toBe(false);
     expect(isAnthropicOneMillionContextTeamModel('sonnet[1m]')).toBe(true);
+    expect(isAnthropicOneMillionContextTeamModel('claude-opus-4-8')).toBe(true);
+    expect(isAnthropicOneMillionContextTeamModel('claude-opus-4-8[1m]')).toBe(true);
     expect(isAnthropicOneMillionContextTeamModel('claude-opus-4-7')).toBe(true);
     expect(isAnthropicOneMillionContextTeamModel('claude-opus-4-7[1m]')).toBe(true);
     expect(isAnthropicOneMillionContextTeamModel('claude-sonnet-4-6')).toBe(true);

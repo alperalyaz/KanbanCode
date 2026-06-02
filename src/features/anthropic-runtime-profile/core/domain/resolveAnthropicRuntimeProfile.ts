@@ -95,6 +95,8 @@ function isKnownAnthropicReasoningModel(model: string | null | undefined): boole
   return (
     normalized === 'opus' ||
     normalized === 'sonnet' ||
+    normalized === 'claude-opus-4-8' ||
+    normalized.startsWith('claude-opus-4-8-') ||
     normalized === 'claude-opus-4-7' ||
     normalized.startsWith('claude-opus-4-7-') ||
     normalized === 'claude-opus-4-6' ||

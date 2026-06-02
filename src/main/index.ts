@@ -62,6 +62,11 @@ import { ensureOpenCodeBridgeRuntimeBinaryEnv } from '@main/services/runtime/ope
 import { ClaudeMultimodelBridgeService } from '@main/services/runtime/ClaudeMultimodelBridgeService';
 import { applyOpenCodeAutoUpdatePolicy } from '@main/services/runtime/openCodeAutoUpdatePolicy';
 import { providerConnectionService } from '@main/services/runtime/ProviderConnectionService';
+import {
+  computeTeamWatchScope,
+  setAliveTeamsProvider,
+  setTeamWatchScopeChangeListener,
+} from '@main/services/infrastructure/teamWatchScope';
 import { JsonScheduleRepository } from '@main/services/schedule/JsonScheduleRepository';
 import { ScheduledTaskExecutor } from '@main/services/schedule/ScheduledTaskExecutor';
 import { SchedulerService } from '@main/services/schedule/SchedulerService';
@@ -251,6 +256,11 @@ const logger = createLogger('App');
 const appStartedAtMs = Date.now();
 const openCodeManagedHostInstanceId = `${process.pid}-${appStartedAtMs}`;
 let openCodeLifecycleBridge: OpenCodeReadinessBridge | null = null;
+
+if (process.env.AGENT_TEAMS_DISABLE_GPU?.trim() === '1') {
+  app.disableHardwareAcceleration();
+  logger.info('Hardware acceleration disabled by AGENT_TEAMS_DISABLE_GPU=1');
+}
 
 function hasWarningRelayDiagnostics(diagnostics: readonly string[]): boolean {
   return diagnostics.some(
@@ -1412,8 +1422,23 @@ function wireFileWatcherEvents(context: ServiceContext): void {
     }
   };
   context.fileWatcher.on('team-change', teamChangeHandler);
+
+  // Scope team-root/task file watching to alive + UI-engaged teams so it no longer
+  // scales with the number of teams on disk. Inboxes and the teams root stay fully
+  // watched, so cross-team delivery, the lead inbox relay, and notifications are
+  // unaffected. Unsetting the provider on cleanup reverts to watching every team.
+  setAliveTeamsProvider(() => teamProvisioningService.getAliveTeamNames());
+  setTeamWatchScopeChangeListener(() => {
+    void context.fileWatcher.refreshTeamWatchScope();
+  });
+  context.fileWatcher.setTeamWatchScopeProvider(() => computeTeamWatchScope());
+  void context.fileWatcher.refreshTeamWatchScope();
+
   teamChangeCleanup = () => {
     context.fileWatcher.off('team-change', teamChangeHandler);
+    setAliveTeamsProvider(null);
+    setTeamWatchScopeChangeListener(null);
+    context.fileWatcher.setTeamWatchScopeProvider(null);
     reconcileScheduler?.dispose();
   };
 
@@ -1909,16 +1934,19 @@ async function initializeServices(): Promise<void> {
     resolveControlUrl: async () => getTeamControlApiBaseUrl(),
     proofMissingRecoveryGuard: {
       shouldDispatch: async (input) => {
+        const isOpenCodeRecipient = await teamProvisioningService
+          .isOpenCodeRuntimeRecipient(input.teamName, input.memberName)
+          .catch(() => false);
+        if (!isOpenCodeRecipient) {
+          return { ok: true };
+        }
+
         const status = await teamProvisioningService.getOpenCodeRuntimeDeliveryStatus(
           input.teamName,
           input.originalMessageId
         );
         if (!status) {
-          return {
-            ok: false,
-            reason: 'proof_missing_recovery_record_missing',
-            retryable: false,
-          };
+          return { ok: true };
         }
 
         const impact = status.userVisibleImpact;
@@ -2102,6 +2130,21 @@ async function initializeServices(): Promise<void> {
       ? memberWorkSyncFeature.scheduleProofMissingRecovery(input)
       : Promise.resolve({ scheduled: false, reason: 'invalid' })
   );
+  teamProvisioningService.setMemberWorkSyncAcceptedReportChecker(async (input) => {
+    if (!memberWorkSyncFeature) {
+      return false;
+    }
+    const status = await memberWorkSyncFeature.getStatus(input);
+    const report = status.report;
+    if (report?.accepted !== true || report.agendaFingerprint !== status.agenda.fingerprint) {
+      return false;
+    }
+    if (report.state !== 'still_working' && report.state !== 'blocked') {
+      return true;
+    }
+    const expiresAtMs = Date.parse(report.expiresAt ?? '');
+    return Number.isFinite(expiresAtMs) && expiresAtMs > Date.now();
+  });
   scheduleStartupTask(() => {
     void teamDataService
       .listTeams()
