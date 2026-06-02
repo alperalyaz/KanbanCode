@@ -220,6 +220,38 @@ type LeadWorkSyncTestInboxMessage = {
   messageKind?: string;
   taskRefs?: LeadWorkSyncTestTaskRef[];
 };
+type LeadRelayPriorityTestInboxMessage = LeadWorkSyncTestInboxMessage & {
+  source?: string;
+  workSyncIntent?: string;
+};
+type LeadRelayPriorityTestRun = ReturnType<typeof createMemberSpawnRun> & {
+  leadRelayCapture?: { resolveOnce(text: string): void } | null;
+};
+type LeadRelayPriorityServiceHarness = {
+  runs: Map<string, LeadRelayPriorityTestRun>;
+  aliveRunByTeam: Map<string, string>;
+  configReader: {
+    getConfig(teamName: string): Promise<Record<string, unknown>>;
+  };
+  inboxReader: {
+    getMessagesFor(
+      teamName: string,
+      inboxName: string
+    ): Promise<LeadRelayPriorityTestInboxMessage[]>;
+  };
+  confirmSameTeamNativeMatches(input: unknown): Promise<{
+    nativeMatchedMessageIds: Set<string>;
+    persisted: boolean;
+  }>;
+  markInboxMessagesRead(
+    teamName: string,
+    inboxName: string,
+    messages: LeadRelayPriorityTestInboxMessage[]
+  ): Promise<void>;
+  resolveControlApiBaseUrl(): Promise<string | null>;
+  scheduleLeadInboxFollowUpRelay(teamName: string): void;
+  sendMessageToRun(run: LeadRelayPriorityTestRun, message: string): Promise<void>;
+};
 type LeadWorkSyncReadCommitTestHarness = {
   hasAcceptedLeadWorkSyncReport(input: { teamName: string; leadName: string }): Promise<boolean>;
   getLeadRelayReadCommitBatch(input: {
@@ -11798,6 +11830,88 @@ describe('TeamProvisioningService', () => {
       }
     });
 
+    it('prioritizes OpenCode work-sync nudges over older ordinary inbox rows', async () => {
+      const svc = new TeamProvisioningService();
+      const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+        ok: true,
+        providerId: 'opencode',
+        memberName: String(input.memberName),
+        sessionId: 'oc-session-bob',
+        runtimePromptMessageId: `runtime-${String(input.messageId)}`,
+        prePromptCursor: 'cursor-before',
+        responseObservation: {
+          state: 'responded_non_visible_tool' as const,
+          deliveredUserMessageId: `oc-user-${String(input.messageId)}`,
+          assistantMessageId: `oc-assistant-${String(input.messageId)}`,
+          toolCallNames:
+            input.messageKind === 'member_work_sync_nudge'
+              ? ['member_work_sync_status', 'member_work_sync_report']
+              : ['task_get'],
+          visibleMessageToolCallId: null,
+          visibleReplyMessageId: null,
+          visibleReplyCorrelation: null,
+          latestAssistantPreview: null,
+          reason: null,
+        },
+        diagnostics: [],
+      }));
+      await configureOpenCodeBobDeliveryService({ svc, sendMessageToMember });
+      svc.setMemberWorkSyncAcceptedReportChecker(async () => true);
+
+      const inboxDir = path.join(tempTeamsBase, 'team-a', 'inboxes');
+      await fsPromises.mkdir(inboxDir, { recursive: true });
+      await fsPromises.writeFile(
+        path.join(inboxDir, 'bob.json'),
+        `${JSON.stringify(
+          [
+            {
+              from: 'team-lead',
+              to: 'bob',
+              text: 'Older ordinary follow-up.',
+              timestamp: '2026-04-25T09:00:00.000Z',
+              read: false,
+              messageId: 'msg-ordinary-old',
+            },
+            {
+              from: 'system',
+              to: 'bob',
+              text: 'Work sync check for #task-1.',
+              timestamp: '2026-04-25T10:00:00.000Z',
+              read: false,
+              messageId: 'msg-work-sync-priority',
+              source: 'system_notification',
+              messageKind: 'member_work_sync_nudge',
+              workSyncIntent: 'agenda_sync',
+              taskRefs: [
+                {
+                  taskId: 'task-1',
+                  displayId: 'task-1',
+                  teamName: 'team-a',
+                },
+              ],
+            },
+          ],
+          null,
+          2
+        )}\n`,
+        'utf8'
+      );
+
+      await expect(svc.relayOpenCodeMemberInboxMessages('team-a', 'bob')).resolves.toMatchObject({
+        attempted: 1,
+        delivered: 1,
+        failed: 0,
+        relayed: 1,
+      });
+      expect(sendMessageToMember).toHaveBeenCalledTimes(1);
+      expect(sendMessageToMember).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId: 'msg-work-sync-priority',
+          messageKind: 'member_work_sync_nudge',
+        })
+      );
+    });
+
     it('retries OpenCode direct asks after non-visible tool activity with an explicit retry header', async () => {
       const svc = new TeamProvisioningService();
       const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
@@ -12536,7 +12650,7 @@ describe('TeamProvisioningService', () => {
         responsePending: true,
         responseState: 'prompt_delivered_no_assistant_message',
         ledgerStatus: 'retry_scheduled',
-        reason: 'prompt_delivered_no_assistant_message',
+        reason: 'member_work_sync_report_required',
       });
     });
 
@@ -24351,6 +24465,114 @@ describe('TeamProvisioningService', () => {
     });
 
     expect(readCommitBatch).toEqual([normalMessage]);
+  });
+
+  it('prioritizes lead work-sync nudges without mixing them into user-visible batches', async () => {
+    const teamName = 'lead-work-sync-priority-team';
+    const svc = new TeamProvisioningService();
+    const harness = svc as unknown as LeadRelayPriorityServiceHarness;
+    const run = createMemberSpawnRun({
+      teamName,
+      expectedMembers: ['alice'],
+    }) as LeadRelayPriorityTestRun;
+    run.child = { pid: 123 };
+    run.processKilled = false;
+    run.cancelRequested = false;
+    run.provisioningComplete = true;
+
+    const oldUserMessages = Array.from({ length: 10 }, (_, index) => {
+      const suffix = String(index + 1).padStart(2, '0');
+      return {
+        from: 'user',
+        to: 'team-lead',
+        text: `Older user request ${suffix}.`,
+        timestamp: `2026-04-25T09:${suffix}:00.000Z`,
+        messageId: `msg-user-${suffix}`,
+        source: 'user_sent',
+        read: false,
+      };
+    });
+    const workSyncMessage = {
+      from: 'system',
+      to: 'team-lead',
+      text: 'Work sync required for task-1.',
+      timestamp: '2026-04-25T10:00:00.000Z',
+      messageId: 'msg-work-sync-priority',
+      source: 'system_notification',
+      messageKind: 'member_work_sync_nudge',
+      workSyncIntent: 'agenda_sync',
+      taskRefs: [{ taskId: 'task-1', displayId: 'task-1', teamName }],
+      read: false,
+    };
+    const ordinarySystemMessage = {
+      from: 'system',
+      to: 'team-lead',
+      text: 'Routine system notification.',
+      timestamp: '2026-04-25T09:59:00.000Z',
+      messageId: 'msg-system-routine',
+      source: 'system_notification',
+      read: false,
+    };
+    const inboxMessages: LeadRelayPriorityTestInboxMessage[] = [
+      ...oldUserMessages,
+      ordinarySystemMessage,
+      workSyncMessage,
+    ];
+    let deliveredPrompt = '';
+    const recoveryScheduler = vi.fn(async () => ({
+      scheduled: true,
+      reason: 'scheduled',
+    }));
+    const sendMessageToRun = vi.fn(
+      async (targetRun: LeadRelayPriorityTestRun, message: string) => {
+        deliveredPrompt = message;
+        targetRun.leadRelayCapture?.resolveOnce('');
+      }
+    );
+
+    harness.runs.set(run.runId, run);
+    harness.aliveRunByTeam.set(teamName, run.runId);
+    harness.configReader = {
+      getConfig: vi.fn(async () => ({
+        projectPath: '/repo',
+        members: [
+          { name: 'team-lead', agentType: 'team-lead', role: 'Team Lead' },
+          { name: 'alice', role: 'Developer' },
+        ],
+      })),
+    };
+    vi.spyOn(harness.inboxReader, 'getMessagesFor').mockResolvedValue(inboxMessages);
+    harness.confirmSameTeamNativeMatches = vi.fn(async () => ({
+      nativeMatchedMessageIds: new Set<string>(),
+      persisted: true,
+    }));
+    harness.markInboxMessagesRead = vi.fn(async () => undefined);
+    harness.resolveControlApiBaseUrl = vi.fn(async () => null);
+    harness.scheduleLeadInboxFollowUpRelay = vi.fn();
+    harness.sendMessageToRun = sendMessageToRun;
+    svc.setMemberWorkSyncProofMissingRecoveryScheduler(recoveryScheduler);
+
+    await expect(svc.relayLeadInboxMessages(teamName)).resolves.toBe(1);
+
+    expect(sendMessageToRun).toHaveBeenCalledTimes(1);
+    const messagesSection = deliveredPrompt.slice(deliveredPrompt.indexOf('Messages:'));
+    expect(messagesSection).toContain('1) From: system');
+    expect(messagesSection).toContain('Message kind: member_work_sync_nudge');
+    expect(messagesSection).toContain('Work sync required for task-1.');
+    expect(messagesSection).not.toContain('Older user request 01.');
+    expect(messagesSection).not.toContain('Older user request 10.');
+    expect(messagesSection).not.toContain('Routine system notification.');
+    expect(deliveredPrompt).toContain(
+      'Plain text reply visibility for this batch: internal lead activity only.'
+    );
+    expect(recoveryScheduler).toHaveBeenCalledWith({
+      teamName,
+      memberName: 'team-lead',
+      originalMessageId: 'msg-work-sync-priority',
+      taskRefs: [{ taskId: 'task-1', displayId: 'task-1', teamName }],
+      reason: 'lead_member_work_sync_report_required',
+    });
+    expect(harness.scheduleLeadInboxFollowUpRelay).toHaveBeenCalledWith(teamName);
   });
 
   it('read-commits lead work-sync inbox rows after accepted report proof', async () => {

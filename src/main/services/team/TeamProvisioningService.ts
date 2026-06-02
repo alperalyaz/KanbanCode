@@ -3444,6 +3444,47 @@ function getOpenCodeInboxRelayPriority(
   return 0;
 }
 
+function getLeadInboxRelayPriority(message: Pick<InboxMessage, 'messageKind'>): number {
+  if (message.messageKind === 'member_work_sync_nudge') {
+    return 30;
+  }
+  return 0;
+}
+
+function compareInboxRelayMessages(
+  a: Pick<InboxMessage, 'messageKind' | 'source' | 'timestamp'> & { messageId: string },
+  b: Pick<InboxMessage, 'messageKind' | 'source' | 'timestamp'> & { messageId: string },
+  getPriority: (message: Pick<InboxMessage, 'messageKind' | 'source'>) => number
+): number {
+  const priorityDelta = getPriority(b) - getPriority(a);
+  if (priorityDelta !== 0) return priorityDelta;
+  const aTime = Date.parse(a.timestamp);
+  const bTime = Date.parse(b.timestamp);
+  if (Number.isFinite(aTime) && Number.isFinite(bTime)) {
+    const timeDelta = aTime - bTime;
+    if (timeDelta !== 0) return timeDelta;
+  } else if (Number.isFinite(aTime)) {
+    return -1;
+  } else if (Number.isFinite(bTime)) {
+    return 1;
+  }
+  return a.messageId.localeCompare(b.messageId);
+}
+
+function compareOpenCodeInboxRelayMessagesByPriority(
+  a: Pick<InboxMessage, 'messageKind' | 'source' | 'timestamp'> & { messageId: string },
+  b: Pick<InboxMessage, 'messageKind' | 'source' | 'timestamp'> & { messageId: string }
+): number {
+  return compareInboxRelayMessages(a, b, getOpenCodeInboxRelayPriority);
+}
+
+function compareLeadInboxRelayMessagesByPriority(
+  a: Pick<InboxMessage, 'messageKind' | 'source' | 'timestamp'> & { messageId: string },
+  b: Pick<InboxMessage, 'messageKind' | 'source' | 'timestamp'> & { messageId: string }
+): number {
+  return compareInboxRelayMessages(a, b, getLeadInboxRelayPriority);
+}
+
 export class TeamProvisioningService {
   private readonly runtimeLaneCoordinator = createTeamRuntimeLaneCoordinator();
   private readonly providerConnectionService = ProviderConnectionService.getInstance();
@@ -23567,13 +23608,7 @@ export class TeamProvisioningService {
           if (typeof message.text !== 'string' || message.text.trim().length === 0) return false;
           return this.hasStableMessageId(message);
         })
-        .sort((a, b) => {
-          const priorityDelta = getOpenCodeInboxRelayPriority(a) - getOpenCodeInboxRelayPriority(b);
-          if (priorityDelta !== 0) return priorityDelta;
-          const timeDelta = Date.parse(a.timestamp) - Date.parse(b.timestamp);
-          if (timeDelta !== 0) return timeDelta;
-          return a.messageId.localeCompare(b.messageId);
-        })
+        .sort(compareOpenCodeInboxRelayMessagesByPriority)
         .slice(0, 10);
 
       let taskRefInferenceTasks: Promise<readonly TeamTask[]> | null = null;
@@ -24491,13 +24526,26 @@ export class TeamProvisioningService {
       if (actionableUnread.length === 0) return 0;
 
       const MAX_RELAY = 10;
-      const userOriginatedUnread = actionableUnread.filter((message) =>
+      const prioritizedActionableUnread = [...actionableUnread].sort(
+        compareLeadInboxRelayMessagesByPriority
+      );
+      const priorityUnread = prioritizedActionableUnread.filter(
+        (message) => getLeadInboxRelayPriority(message) > 0
+      );
+      const userOriginatedUnread = prioritizedActionableUnread.filter((message) =>
         this.isUserOriginatedLeadRelayMessage(message)
       );
-      const replyVisibility: 'user' | 'internal_activity' =
-        userOriginatedUnread.length > 0 ? 'user' : 'internal_activity';
-      const batchSource = userOriginatedUnread.length > 0 ? userOriginatedUnread : actionableUnread;
+      const batchSource =
+        priorityUnread.length > 0
+          ? priorityUnread
+          : userOriginatedUnread.length > 0
+            ? userOriginatedUnread
+            : prioritizedActionableUnread;
       const batch = batchSource.slice(0, MAX_RELAY);
+      const replyVisibility: 'user' | 'internal_activity' =
+        priorityUnread.length === 0 && userOriginatedUnread.length > 0
+          ? 'user'
+          : 'internal_activity';
       const batchIds = new Set(batch.map((message) => message.messageId));
       const hasPendingFollowUpRelay = unread.some(
         (message) => !batchIds.has(message.messageId) && !readOnlyIgnoredIds.has(message.messageId)
@@ -24540,7 +24588,7 @@ export class TeamProvisioningService {
 
       const message = [
         `You have new inbox messages addressed to you (team lead "${leadName}").`,
-        `Process them in order (oldest first).`,
+        `Process them in the listed order. High-priority work-sync control messages may appear before older routine rows.`,
         `If action is required, delegate via task creation or SendMessage, and keep responses minimal.`,
         ...replyVisibilityInstruction,
         `If there is no action to take, produce ZERO text output. Do NOT write "No action needed.", status echoes, or any other no-op summary.`,
