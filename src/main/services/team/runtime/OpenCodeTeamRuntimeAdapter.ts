@@ -1126,6 +1126,7 @@ function buildMemberBootstrapPrompt(
     'This OpenCode session is created, attached, and launch-verified by the desktop app.',
     'Do not call runtime_bootstrap_checkin or member_briefing just to prove launch readiness.',
     'Do NOT create local team files, run join scripts, or search the project for a fake team registry.',
+    'That bootstrap restriction is only about team registry/startup files. It does not restrict assigned project work: when a task requires implementation, fixes, review follow-up, or investigation, you may inspect, read/search, and edit files in the project working directory as your available tools allow.',
     'Use the app MCP tools exposed by the "agent-teams" server for team communication and task state.',
     'Launch bootstrap is a silent attach, not a user/team conversation turn.',
     'Do not call task_briefing, message_send, or cross_team_send just to announce readiness, say understood, report no tasks, or ask for work.',
@@ -1190,6 +1191,12 @@ function buildOpenCodeRuntimeMessageText(input: OpenCodeTeamRuntimeMessageInput)
     input.taskRefs
       ?.map((ref) => ref.taskId?.trim())
       .filter((taskId): taskId is string => Boolean(taskId)) ?? [];
+  const actionModeWorkScopeReminder =
+    input.actionMode === 'ask'
+      ? 'Action mode ASK is read-only for this delivered message: do not edit files, change task state, or run side-effecting tools for this message.'
+      : input.actionMode === 'delegate'
+        ? 'Action mode DELEGATE is orchestration-only for this delivered message: pass the task with context instead of implementing or editing files yourself.'
+        : 'If this delivered message assigns implementation, fixes, review follow-up, or concrete investigation, you may inspect, read/search, and edit files in the project working directory as your available tools allow.';
   // Work-sync nudges are health/reporting probes. Requiring a visible
   // message_send reply here causes false delivery failures, so accept the
   // dedicated member_work_sync_report proof path while keeping normal user
@@ -1199,7 +1206,7 @@ function buildOpenCodeRuntimeMessageText(input: OpenCodeTeamRuntimeMessageInput)
         'This delivered app message is a targeted member-work-sync review pickup nudge.',
         'Process the current review request now if it is still assigned to you. Open the task, verify reviewState/status, then use the review workflow tools to start or continue the review.',
         'Do not mark the review complete from this prompt alone.',
-        'A visible agent-teams_message_send reply is optional. Concrete review progress, review tool usage, or agent-teams_member_work_sync_report (or mcp__agent-teams__member_work_sync_report) is sufficient response proof.',
+        'A visible agent-teams_message_send reply is optional. Review workflow tool usage or agent-teams_member_work_sync_report (or mcp__agent-teams__member_work_sync_report) is sufficient response proof.',
         `If you cannot pick up the review now, call agent-teams_member_work_sync_status (or mcp__agent-teams__member_work_sync_status) with ${workSyncToolArgs}, then report state "blocked" or "still_working" only for the real current state.`,
         'Do not stop after member_work_sync_status. A status-only tool call is incomplete; member_work_sync_report is the required proof.',
         taskIds.length ? `Relevant taskIds: ${taskIds.map((id) => `"${id}"`).join(', ')}.` : null,
@@ -1209,7 +1216,7 @@ function buildOpenCodeRuntimeMessageText(input: OpenCodeTeamRuntimeMessageInput)
     : isWorkSyncNudge
       ? [
           'This delivered app message is a member-work-sync nudge.',
-          'A visible agent-teams_message_send reply is optional. Concrete task progress or agent-teams_member_work_sync_report (or mcp__agent-teams__member_work_sync_report) is sufficient response proof.',
+          'A visible agent-teams_message_send reply is optional. For agenda sync, only agent-teams_member_work_sync_report (or mcp__agent-teams__member_work_sync_report) is sufficient response proof.',
           `Call agent-teams_member_work_sync_status (or mcp__agent-teams__member_work_sync_status) with ${workSyncToolArgs}.`,
           `Then call agent-teams_member_work_sync_report (or mcp__agent-teams__member_work_sync_report) with ${workSyncToolArgs}, the returned agendaFingerprint/reportToken, and state "still_working" or "blocked".`,
           'Do not stop after member_work_sync_status. A status-only tool call is incomplete; member_work_sync_report is the required proof.',
@@ -1241,6 +1248,7 @@ function buildOpenCodeRuntimeMessageText(input: OpenCodeTeamRuntimeMessageInput)
       ? `<opencode_delivery_context>${deliveryContext}</opencode_delivery_context>`
       : null,
     'You are running in OpenCode, not Claude Code or Codex native.',
+    actionModeWorkScopeReminder,
     ...responseInstructions,
     'Do not call runtime_bootstrap_checkin or member_briefing just to answer this delivered app message.',
     'Do not use SendMessage or runtime_deliver_message for ordinary visible replies.',

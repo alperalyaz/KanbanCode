@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 describe('CompositeMemberWorkSyncBusySignal', () => {
   it('does not block nudges forever when one busy signal fails', async () => {
-    const logger = { warn: vi.fn() };
+    const logger = { debug: vi.fn(), error: vi.fn(), warn: vi.fn() };
     const signal = new CompositeMemberWorkSyncBusySignal(
       [
         {
@@ -24,7 +24,7 @@ describe('CompositeMemberWorkSyncBusySignal', () => {
         memberName: 'bob',
         nowIso: '2026-04-29T00:00:00.000Z',
         workSyncIntent: 'agenda_sync',
-        taskRefs: [{ teamName: 'team-a', taskId: 'task-1' }],
+        taskRefs: [{ teamName: 'team-a', taskId: 'task-1', displayId: '11111111' }],
       })
     ).resolves.toEqual({ busy: false });
     expect(logger.warn).toHaveBeenCalledWith(
@@ -56,7 +56,7 @@ describe('CompositeMemberWorkSyncBusySignal', () => {
         memberName: 'bob',
         nowIso: '2026-04-29T00:00:00.000Z',
         workSyncIntent: 'agenda_sync',
-        taskRefs: [{ teamName: 'team-a', taskId: 'task-1' }],
+        taskRefs: [{ teamName: 'team-a', taskId: 'task-1', displayId: '11111111' }],
       })
     ).resolves.toEqual({
       busy: true,

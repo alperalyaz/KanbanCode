@@ -702,13 +702,13 @@ export class TeamGraphAdapter {
       if (!normalized) return null;
       const canonicalTaskIds = taskIdsByCanonicalReference.get(normalized);
       if (canonicalTaskIds?.size === 1) {
-        return [...canonicalTaskIds][0]!;
+        return [...canonicalTaskIds][0];
       }
       if (canonicalTaskIds && canonicalTaskIds.size > 1) {
         return null;
       }
       const displayTaskIds = taskIdsByDisplayReference.get(normalized);
-      return displayTaskIds?.size === 1 ? [...displayTaskIds][0]! : null;
+      return displayTaskIds?.size === 1 ? [...displayTaskIds][0] : null;
     };
     const formatTaskReference = (reference: string): string => {
       const taskId = resolveTaskReference(reference);

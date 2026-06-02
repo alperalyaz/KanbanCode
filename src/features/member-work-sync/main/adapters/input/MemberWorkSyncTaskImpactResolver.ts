@@ -183,7 +183,7 @@ export class MemberWorkSyncTaskImpactResolver {
         diagnostics: ['task_reference_ambiguous'],
       };
     }
-    const task = matchingTasks[0]!;
+    const task = matchingTasks[0];
 
     addMember(task.owner);
 

@@ -1934,16 +1934,19 @@ async function initializeServices(): Promise<void> {
     resolveControlUrl: async () => getTeamControlApiBaseUrl(),
     proofMissingRecoveryGuard: {
       shouldDispatch: async (input) => {
+        const isOpenCodeRecipient = await teamProvisioningService
+          .isOpenCodeRuntimeRecipient(input.teamName, input.memberName)
+          .catch(() => false);
+        if (!isOpenCodeRecipient) {
+          return { ok: true };
+        }
+
         const status = await teamProvisioningService.getOpenCodeRuntimeDeliveryStatus(
           input.teamName,
           input.originalMessageId
         );
         if (!status) {
-          return {
-            ok: false,
-            reason: 'proof_missing_recovery_record_missing',
-            retryable: false,
-          };
+          return { ok: true };
         }
 
         const impact = status.userVisibleImpact;
@@ -2127,6 +2130,21 @@ async function initializeServices(): Promise<void> {
       ? memberWorkSyncFeature.scheduleProofMissingRecovery(input)
       : Promise.resolve({ scheduled: false, reason: 'invalid' })
   );
+  teamProvisioningService.setMemberWorkSyncAcceptedReportChecker(async (input) => {
+    if (!memberWorkSyncFeature) {
+      return false;
+    }
+    const status = await memberWorkSyncFeature.getStatus(input);
+    const report = status.report;
+    if (report?.accepted !== true || report.agendaFingerprint !== status.agenda.fingerprint) {
+      return false;
+    }
+    if (report.state !== 'still_working' && report.state !== 'blocked') {
+      return true;
+    }
+    const expiresAtMs = Date.parse(report.expiresAt ?? '');
+    return Number.isFinite(expiresAtMs) && expiresAtMs > Date.now();
+  });
   scheduleStartupTask(() => {
     void teamDataService
       .listTeams()

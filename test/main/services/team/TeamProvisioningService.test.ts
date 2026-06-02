@@ -209,6 +209,32 @@ type RuntimeTelemetryProcessTableRow = RuntimeProcessTableRow & {
   runtimeTelemetrySource?: 'native' | 'wsl' | 'windows-host';
 };
 
+type LeadWorkSyncTestTaskRef = { taskId: string; displayId?: string; teamName?: string };
+type LeadWorkSyncTestInboxMessage = {
+  from: string;
+  to?: string;
+  text: string;
+  timestamp: string;
+  messageId: string;
+  read: boolean;
+  messageKind?: string;
+  taskRefs?: LeadWorkSyncTestTaskRef[];
+};
+type LeadWorkSyncReadCommitTestHarness = {
+  hasAcceptedLeadWorkSyncReport(input: { teamName: string; leadName: string }): Promise<boolean>;
+  getLeadRelayReadCommitBatch(input: {
+    teamName: string;
+    leadName: string;
+    batch: LeadWorkSyncTestInboxMessage[];
+  }): Promise<LeadWorkSyncTestInboxMessage[]>;
+};
+
+function leadWorkSyncReadCommitHarness(
+  svc: TeamProvisioningService
+): LeadWorkSyncReadCommitTestHarness {
+  return svc as unknown as LeadWorkSyncReadCommitTestHarness;
+}
+
 function restoreRuntimePidusageTelemetryEnv() {
   if (ORIGINAL_RUNTIME_PIDUSAGE_ENABLED === undefined) {
     delete process.env.CLAUDE_TEAM_RUNTIME_PIDUSAGE_ENABLED;
@@ -11711,6 +11737,67 @@ describe('TeamProvisioningService', () => {
       }
     });
 
+    it('keeps legacy OpenCode work-sync delivery pending without accepted report proof', async () => {
+      const previous = process.env.CLAUDE_TEAM_OPENCODE_PROMPT_DELIVERY_WATCHDOG;
+      process.env.CLAUDE_TEAM_OPENCODE_PROMPT_DELIVERY_WATCHDOG = '0';
+      try {
+        const svc = new TeamProvisioningService();
+        const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+          ok: true,
+          providerId: 'opencode',
+          memberName: String(input.memberName),
+          sessionId: 'oc-session-bob',
+          responseObservation: {
+            state: 'responded_non_visible_tool' as const,
+            deliveredUserMessageId: 'oc-user-legacy-work-sync',
+            assistantMessageId: 'oc-assistant-legacy-work-sync',
+            toolCallNames: ['member_work_sync_status', 'member_work_sync_report'],
+            visibleMessageToolCallId: null,
+            visibleReplyMessageId: null,
+            visibleReplyCorrelation: null,
+            latestAssistantPreview: null,
+            reason: null,
+          },
+          diagnostics: [],
+        }));
+        await configureOpenCodeBobDeliveryService({ svc, sendMessageToMember });
+        svc.setMemberWorkSyncAcceptedReportChecker(async () => false);
+
+        await expect(
+          svc.deliverOpenCodeMemberMessage('team-a', {
+            memberName: 'bob',
+            text: 'Work sync check for #task-1.',
+            messageId: 'msg-legacy-work-sync-report',
+            replyRecipient: 'team-lead',
+            actionMode: 'do',
+            messageKind: 'member_work_sync_nudge',
+            workSyncIntent: 'agenda_sync',
+            taskRefs: [
+              {
+                taskId: 'task-1',
+                displayId: 'task-1',
+                teamName: 'team-a',
+              },
+            ],
+            source: 'watcher',
+            inboxTimestamp: '2026-04-25T10:00:00.000Z',
+          })
+        ).resolves.toMatchObject({
+          delivered: true,
+          accepted: true,
+          responsePending: true,
+          responseState: 'responded_non_visible_tool',
+          reason: 'member_work_sync_report_required',
+        });
+      } finally {
+        if (previous === undefined) {
+          delete process.env.CLAUDE_TEAM_OPENCODE_PROMPT_DELIVERY_WATCHDOG;
+        } else {
+          process.env.CLAUDE_TEAM_OPENCODE_PROMPT_DELIVERY_WATCHDOG = previous;
+        }
+      }
+    });
+
     it('retries OpenCode direct asks after non-visible tool activity with an explicit retry header', async () => {
       const svc = new TeamProvisioningService();
       const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
@@ -11977,6 +12064,7 @@ describe('TeamProvisioningService', () => {
       }));
       await configureOpenCodeBobDeliveryService({ svc, sendMessageToMember });
       svc.setControlApiBaseUrlResolver(async () => 'http://127.0.0.1:43123');
+      svc.setMemberWorkSyncAcceptedReportChecker(async () => true);
 
       await expect(
         svc.deliverOpenCodeMemberMessage('team-a', {
@@ -12008,6 +12096,155 @@ describe('TeamProvisioningService', () => {
           controlUrl: 'http://127.0.0.1:43123',
         })
       );
+    });
+
+    it('accepts member work sync report proof even when OpenCode also sends a visible reply', async () => {
+      const svc = new TeamProvisioningService();
+      const taskRef = {
+        taskId: 'task-1',
+        displayId: 'task-1',
+        teamName: 'team-a',
+      };
+      const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+        ok: true,
+        providerId: 'opencode',
+        memberName: String(input.memberName),
+        sessionId: 'oc-session-bob',
+        prePromptCursor: 'cursor-before',
+        responseObservation: {
+          state: 'responded_visible_message' as const,
+          deliveredUserMessageId: 'oc-user-work-sync-report-visible',
+          assistantMessageId: 'oc-assistant-work-sync-report-visible',
+          toolCallNames: ['member_work_sync_status', 'member_work_sync_report', 'message_send'],
+          visibleMessageToolCallId: 'call-visible-work-sync-report',
+          visibleReplyMessageId: 'visible-work-sync-report-reply',
+          visibleReplyCorrelation: 'relayOfMessageId' as const,
+          latestAssistantPreview: null,
+          reason: null,
+        },
+        diagnostics: [],
+      }));
+      const observeMessageDelivery = vi.fn(async (input: Record<string, unknown>) => ({
+        ok: true,
+        providerId: 'opencode',
+        memberName: String(input.memberName),
+        sessionId: 'oc-session-bob',
+        responseObservation: {
+          state: 'responded_visible_message' as const,
+          deliveredUserMessageId: 'oc-user-work-sync-report-visible',
+          assistantMessageId: 'oc-assistant-work-sync-report-visible',
+          toolCallNames: ['member_work_sync_status', 'member_work_sync_report', 'message_send'],
+          visibleMessageToolCallId: 'call-visible-work-sync-report',
+          visibleReplyMessageId: 'visible-work-sync-report-reply',
+          visibleReplyCorrelation: 'relayOfMessageId' as const,
+          latestAssistantPreview: null,
+          reason: null,
+        },
+        diagnostics: [],
+      }));
+      await configureOpenCodeBobDeliveryService({
+        svc,
+        sendMessageToMember,
+        observeMessageDelivery,
+      });
+      svc.setMemberWorkSyncAcceptedReportChecker(async () => true);
+      const inboxDir = path.join(tempTeamsBase, 'team-a', 'inboxes');
+      await fsPromises.mkdir(inboxDir, { recursive: true });
+      await fsPromises.writeFile(
+        path.join(inboxDir, 'team-lead.json'),
+        `${JSON.stringify(
+          [
+            {
+              from: 'bob',
+              to: 'team-lead',
+              text: 'I reported that I am still working on task-1.',
+              timestamp: '2026-04-25T10:00:01.000Z',
+              read: false,
+              messageId: 'visible-work-sync-report-reply',
+              relayOfMessageId: 'msg-work-sync-report-visible',
+              source: 'runtime_delivery',
+              taskRefs: [taskRef],
+            },
+          ],
+          null,
+          2
+        )}\n`,
+        'utf8'
+      );
+
+      await expect(
+        svc.deliverOpenCodeMemberMessage('team-a', {
+          memberName: 'bob',
+          text: 'Work sync check for #task-1.',
+          messageId: 'msg-work-sync-report-visible',
+          replyRecipient: 'team-lead',
+          actionMode: 'do',
+          messageKind: 'member_work_sync_nudge',
+          workSyncIntent: 'agenda_sync',
+          taskRefs: [taskRef],
+          source: 'watcher',
+          inboxTimestamp: '2026-04-25T10:00:00.000Z',
+        })
+      ).resolves.toMatchObject({
+        delivered: true,
+        accepted: true,
+        responsePending: false,
+        responseState: 'responded_visible_message',
+        ledgerStatus: 'responded',
+      });
+    });
+
+    it('keeps OpenCode member work sync report pending until the report is accepted', async () => {
+      const svc = new TeamProvisioningService();
+      const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+        ok: true,
+        providerId: 'opencode',
+        memberName: String(input.memberName),
+        sessionId: 'oc-session-bob',
+        prePromptCursor: 'cursor-before',
+        responseObservation: {
+          state: 'responded_non_visible_tool' as const,
+          deliveredUserMessageId: 'oc-user-work-sync-rejected-report',
+          assistantMessageId: 'oc-assistant-work-sync-rejected-report',
+          toolCallNames: ['member_work_sync_status', 'member_work_sync_report'],
+          visibleMessageToolCallId: null,
+          visibleReplyMessageId: null,
+          visibleReplyCorrelation: null,
+          latestAssistantPreview: null,
+          reason: null,
+        },
+        diagnostics: [],
+      }));
+      await configureOpenCodeBobDeliveryService({ svc, sendMessageToMember });
+      svc.setMemberWorkSyncAcceptedReportChecker(async () => false);
+
+      await expect(
+        svc.deliverOpenCodeMemberMessage('team-a', {
+          memberName: 'bob',
+          text: 'Work sync check for #task-1.',
+          messageId: 'msg-work-sync-rejected-report',
+          replyRecipient: 'team-lead',
+          actionMode: 'do',
+          messageKind: 'member_work_sync_nudge',
+          workSyncIntent: 'agenda_sync',
+          taskRefs: [
+            {
+              taskId: 'task-1',
+              displayId: 'task-1',
+              teamName: 'team-a',
+            },
+          ],
+          source: 'watcher',
+          inboxTimestamp: '2026-04-25T10:00:00.000Z',
+        })
+      ).resolves.toMatchObject({
+        delivered: true,
+        accepted: true,
+        responsePending: true,
+        responseState: 'responded_non_visible_tool',
+        ledgerStatus: 'retry_scheduled',
+        reason: 'member_work_sync_report_required',
+      });
     });
 
     it('accepts review workflow tools as review pickup delivery response proof', async () => {
@@ -12062,6 +12299,145 @@ describe('TeamProvisioningService', () => {
       });
     });
 
+    it.each([
+      {
+        name: 'plain text',
+        responseObservation: {
+          state: 'responded_plain_text' as const,
+          deliveredUserMessageId: 'oc-user-work-sync-plain',
+          assistantMessageId: 'oc-assistant-work-sync-plain',
+          toolCallNames: [],
+          visibleMessageToolCallId: null,
+          visibleReplyMessageId: null,
+          visibleReplyCorrelation: null,
+          latestAssistantPreview: 'I am still working on task-1 and will continue now.',
+          reason: null,
+        },
+      },
+      {
+        name: 'visible message',
+        seedVisibleReply: true,
+        responseObservation: {
+          state: 'responded_visible_message' as const,
+          deliveredUserMessageId: 'oc-user-work-sync-visible',
+          assistantMessageId: 'oc-assistant-work-sync-visible',
+          toolCallNames: ['agent-teams_message_send'],
+          visibleMessageToolCallId: 'call-visible-work-sync',
+          visibleReplyMessageId: 'visible-work-sync-reply',
+          visibleReplyCorrelation: 'relayOfMessageId' as const,
+          latestAssistantPreview: null,
+          reason: null,
+        },
+      },
+      {
+        name: 'task tool',
+        responseObservation: {
+          state: 'responded_non_visible_tool' as const,
+          deliveredUserMessageId: 'oc-user-work-sync-task-tool',
+          assistantMessageId: 'oc-assistant-work-sync-task-tool',
+          toolCallNames: ['task_start'],
+          visibleMessageToolCallId: null,
+          visibleReplyMessageId: null,
+          visibleReplyCorrelation: null,
+          latestAssistantPreview: null,
+          reason: null,
+        },
+      },
+      {
+        name: 'agenda-sync review tool',
+        responseObservation: {
+          state: 'responded_non_visible_tool' as const,
+          deliveredUserMessageId: 'oc-user-work-sync-review-tool',
+          assistantMessageId: 'oc-assistant-work-sync-review-tool',
+          toolCallNames: ['review_start'],
+          visibleMessageToolCallId: null,
+          visibleReplyMessageId: null,
+          visibleReplyCorrelation: null,
+          latestAssistantPreview: null,
+          reason: null,
+        },
+      },
+    ])(
+      'keeps member work sync $name OpenCode deliveries pending without report proof',
+      async ({ responseObservation, seedVisibleReply }) => {
+        const svc = new TeamProvisioningService();
+        const taskRef = {
+          taskId: 'task-1',
+          displayId: 'task-1',
+          teamName: 'team-a',
+        };
+        const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
+          ok: true,
+          providerId: 'opencode',
+          memberName: String(input.memberName),
+          sessionId: 'oc-session-bob',
+          prePromptCursor: 'cursor-before',
+          responseObservation,
+          diagnostics: [],
+        }));
+        const observeMessageDelivery = vi.fn(async (input: Record<string, unknown>) => ({
+          ok: true,
+          providerId: 'opencode',
+          memberName: String(input.memberName),
+          sessionId: 'oc-session-bob',
+          responseObservation,
+          diagnostics: [],
+        }));
+        await configureOpenCodeBobDeliveryService({
+          svc,
+          sendMessageToMember,
+          observeMessageDelivery,
+        });
+        if (seedVisibleReply) {
+          const inboxDir = path.join(tempTeamsBase, 'team-a', 'inboxes');
+          await fsPromises.mkdir(inboxDir, { recursive: true });
+          await fsPromises.writeFile(
+            path.join(inboxDir, 'team-lead.json'),
+            `${JSON.stringify(
+              [
+                {
+                  from: 'bob',
+                  to: 'team-lead',
+                  text: 'I am still working on task-1 and will continue now.',
+                  timestamp: '2026-04-25T10:00:01.000Z',
+                  read: false,
+                  messageId: 'visible-work-sync-reply',
+                  relayOfMessageId: 'msg-work-sync-without-report-proof',
+                  source: 'runtime_delivery',
+                  taskRefs: [taskRef],
+                },
+              ],
+              null,
+              2
+            )}\n`,
+            'utf8'
+          );
+        }
+
+        await expect(
+          svc.deliverOpenCodeMemberMessage('team-a', {
+            memberName: 'bob',
+            text: 'Work sync check for #task-1.',
+            messageId: 'msg-work-sync-without-report-proof',
+            replyRecipient: 'team-lead',
+            actionMode: 'do',
+            messageKind: 'member_work_sync_nudge',
+            workSyncIntent: 'agenda_sync',
+            taskRefs: [taskRef],
+            source: 'watcher',
+            inboxTimestamp: '2026-04-25T10:00:00.000Z',
+          })
+        ).resolves.toMatchObject({
+          delivered: true,
+          accepted: true,
+          responsePending: true,
+          responseState: responseObservation.state,
+          ledgerStatus: 'retry_scheduled',
+          reason: 'member_work_sync_report_required',
+        });
+      }
+    );
+
     it('keeps member work sync status-only OpenCode deliveries pending', async () => {
       const svc = new TeamProvisioningService();
       const sendMessageToMember = vi.fn(async (input: Record<string, unknown>) => ({
@@ -12109,7 +12485,7 @@ describe('TeamProvisioningService', () => {
         responsePending: true,
         responseState: 'responded_non_visible_tool',
         ledgerStatus: 'retry_scheduled',
-        reason: 'non_visible_tool_without_task_progress',
+        reason: 'member_work_sync_report_required',
       });
     });
 
@@ -23942,6 +24318,103 @@ describe('TeamProvisioningService', () => {
     expect(run.memberSpawnLeadInboxCursorByMember.get('alice')).toEqual({
       timestamp: latestHeartbeatAt,
       messageId: 'msg-3',
+    });
+  });
+
+  it('keeps lead work-sync inbox rows unread without accepted report or recovery', async () => {
+    const svc = new TeamProvisioningService();
+    const harness = leadWorkSyncReadCommitHarness(svc);
+    const normalMessage = {
+      from: 'alice',
+      to: 'team-lead',
+      text: 'Please check task-1.',
+      timestamp: '2026-04-25T10:00:00.000Z',
+      messageId: 'msg-normal',
+      read: false,
+    };
+    const workSyncMessage = {
+      from: 'system',
+      to: 'team-lead',
+      text: 'Work sync required.',
+      timestamp: '2026-04-25T10:00:01.000Z',
+      messageId: 'msg-work-sync',
+      messageKind: 'member_work_sync_nudge',
+      taskRefs: [{ taskId: 'task-1', displayId: 'task-1', teamName: 'team-a' }],
+      read: false,
+    };
+    vi.spyOn(harness, 'hasAcceptedLeadWorkSyncReport').mockResolvedValue(false);
+
+    const readCommitBatch = await harness.getLeadRelayReadCommitBatch({
+      teamName: 'team-a',
+      leadName: 'team-lead',
+      batch: [normalMessage, workSyncMessage],
+    });
+
+    expect(readCommitBatch).toEqual([normalMessage]);
+  });
+
+  it('read-commits lead work-sync inbox rows after accepted report proof', async () => {
+    const svc = new TeamProvisioningService();
+    const harness = leadWorkSyncReadCommitHarness(svc);
+    const recoveryScheduler = vi.fn();
+    const workSyncMessage = {
+      from: 'system',
+      to: 'team-lead',
+      text: 'Work sync required.',
+      timestamp: '2026-04-25T10:00:01.000Z',
+      messageId: 'msg-work-sync',
+      messageKind: 'member_work_sync_nudge',
+      taskRefs: [{ taskId: 'task-1', displayId: 'task-1', teamName: 'team-a' }],
+      read: false,
+    };
+    vi.spyOn(harness, 'hasAcceptedLeadWorkSyncReport').mockResolvedValue(true);
+    svc.setMemberWorkSyncProofMissingRecoveryScheduler(recoveryScheduler);
+
+    const readCommitBatch = await harness.getLeadRelayReadCommitBatch({
+      teamName: 'team-a',
+      leadName: 'team-lead',
+      batch: [workSyncMessage],
+    });
+
+    expect(readCommitBatch).toEqual([workSyncMessage]);
+    expect(recoveryScheduler).not.toHaveBeenCalled();
+  });
+
+  it('read-commits lead work-sync inbox rows when proof-missing recovery is queued', async () => {
+    const svc = new TeamProvisioningService();
+    const harness = leadWorkSyncReadCommitHarness(svc);
+    const recoveryScheduler = vi.fn(async () => ({
+      scheduled: true,
+      reason: 'scheduled',
+      intentKey: 'proof-missing:msg-work-sync',
+    }));
+    const taskRefs = [{ taskId: 'task-1', displayId: 'task-1', teamName: 'team-a' }];
+    const workSyncMessage = {
+      from: 'system',
+      to: 'team-lead',
+      text: 'Work sync required.',
+      timestamp: '2026-04-25T10:00:01.000Z',
+      messageId: 'msg-work-sync',
+      messageKind: 'member_work_sync_nudge',
+      taskRefs,
+      read: false,
+    };
+    vi.spyOn(harness, 'hasAcceptedLeadWorkSyncReport').mockResolvedValue(false);
+    svc.setMemberWorkSyncProofMissingRecoveryScheduler(recoveryScheduler);
+
+    const readCommitBatch = await harness.getLeadRelayReadCommitBatch({
+      teamName: 'team-a',
+      leadName: 'team-lead',
+      batch: [workSyncMessage],
+    });
+
+    expect(readCommitBatch).toEqual([workSyncMessage]);
+    expect(recoveryScheduler).toHaveBeenCalledWith({
+      teamName: 'team-a',
+      memberName: 'team-lead',
+      originalMessageId: 'msg-work-sync',
+      taskRefs,
+      reason: 'lead_member_work_sync_report_required',
     });
   });
 

@@ -8,8 +8,6 @@
  * - read-mentioned-file: Validates mentioned files for context injection
  */
 
-import type { AgentConfig } from '@shared/types/api';
-
 import { createLogger } from '@shared/utils/logger';
 import { app, type IpcMain, type IpcMainInvokeEvent, net, shell } from 'electron';
 import * as fsp from 'fs/promises';
@@ -26,6 +24,8 @@ import {
   validateOpenPathUserSelected,
 } from '../utils/pathValidation';
 import { countTokens } from '../utils/tokenizer';
+
+import type { AgentConfig } from '@shared/types/api';
 
 const logger = createLogger('IPC:utility');
 const DISCORD_INVITE_COUNT_URL = 'https://discord.com/api/v10/invites/qtqSZSyuEc?with_counts=true';

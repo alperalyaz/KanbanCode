@@ -124,13 +124,13 @@ function findUniqueReferencedTask(
   const normalized = reference.trim().replace(/^#/, '');
   const canonicalMatches = tasksByReference.canonical.get(normalized);
   if (canonicalMatches?.size === 1) {
-    return [...canonicalMatches][0]!;
+    return [...canonicalMatches][0];
   }
   if (canonicalMatches && canonicalMatches.size > 1) {
     return null;
   }
   const matches = tasksByReference.display.get(normalized);
-  return matches?.size === 1 ? [...matches][0]! : null;
+  return matches?.size === 1 ? [...matches][0] : null;
 }
 
 export function buildActionableWorkAgenda(

@@ -166,12 +166,7 @@ export function isTeamProviderModelVerificationPending(
     return true;
   }
 
-  const verificationState = providerStatus.verificationState as
-    | 'verified'
-    | 'unknown'
-    | 'offline'
-    | 'error'
-    | undefined;
+  const verificationState = providerStatus.verificationState;
   if (verificationState === 'error' || providerStatus.modelCatalogRefreshState === 'error') {
     return false;
   }

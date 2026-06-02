@@ -372,6 +372,51 @@ async function forceRetryableOutboxDue(input: {
   );
 }
 
+async function backdateDeliveredOutboxItems(input: {
+  teamsBasePath: string;
+  teamName: string;
+  memberName: string;
+  updatedAt: string;
+}): Promise<void> {
+  const outboxPath = path.join(
+    input.teamsBasePath,
+    input.teamName,
+    'members',
+    input.memberName,
+    '.member-work-sync',
+    'outbox.json'
+  );
+  const parsed = JSON.parse(await fs.promises.readFile(outboxPath, 'utf8')) as {
+    items?: Record<string, { status?: string; updatedAt?: string }>;
+  };
+  const touchedIds: string[] = [];
+  for (const [id, item] of Object.entries(parsed.items ?? {})) {
+    if (item.status === 'delivered') {
+      item.updatedAt = input.updatedAt;
+      touchedIds.push(id);
+    }
+  }
+  expect(touchedIds.length).toBeGreaterThan(0);
+  await fs.promises.writeFile(outboxPath, `${JSON.stringify(parsed, null, 2)}\n`, 'utf8');
+
+  const indexPath = path.join(
+    input.teamsBasePath,
+    input.teamName,
+    '.member-work-sync',
+    'indexes',
+    'outbox-index.json'
+  );
+  const index = JSON.parse(await fs.promises.readFile(indexPath, 'utf8')) as {
+    items?: Record<string, { updatedAt?: string }>;
+  };
+  for (const id of touchedIds) {
+    if (index.items?.[id]) {
+      index.items[id].updatedAt = input.updatedAt;
+    }
+  }
+  await fs.promises.writeFile(indexPath, `${JSON.stringify(index, null, 2)}\n`, 'utf8');
+}
+
 describe('createMemberWorkSyncFeature composition', () => {
   it('schedules proof-missing recovery through the work-sync queue', async () => {
     const claudeRoot = makeTempRoot();
@@ -1526,6 +1571,108 @@ describe('createMemberWorkSyncFeature composition', () => {
       );
       expect(journal).toContain('"event":"nudge_delivered"');
       expect(journal).not.toContain('"reason":"blocking_metrics"');
+    } finally {
+      await feature.dispose();
+    }
+  });
+
+  it('delivers still-stuck recovery from json outbox when a delivered agenda nudge gets no report', async () => {
+    const claudeRoot = makeTempRoot();
+    setClaudeBasePathOverride(claudeRoot);
+    const teamsBasePath = getTeamsBasePath();
+    const teamName = 'team-json-still-stuck-recovery';
+    const memberName = 'alice';
+    const nudgeDeliveryWake = {
+      schedule: vi.fn(async () => undefined),
+    };
+    const feature = createMemberWorkSyncFeature({
+      teamsBasePath,
+      configReader: {
+        getConfig: vi.fn(async () => ({
+          name: teamName,
+          members: [{ name: memberName, providerId: 'codex' }],
+        })),
+      } as never,
+      taskReader: {
+        getTasks: vi.fn(async () => [
+          {
+            id: 'task-1',
+            displayId: '11111111',
+            subject: 'Recover ignored delivered sync',
+            status: 'pending',
+            owner: memberName,
+          },
+        ]),
+      } as never,
+      kanbanManager: {
+        getState: vi.fn(async () => ({
+          teamName,
+          reviewers: [],
+          tasks: {},
+        })),
+      } as never,
+      membersMetaStore: {
+        getMembers: vi.fn(async () => []),
+      } as never,
+      isTeamActive: vi.fn(async () => true),
+      nudgeDeliveryWake,
+      queueQuietWindowMs: 1,
+    });
+
+    try {
+      await seedShadowReadyMetrics({ teamsBasePath, teamName, memberName });
+      feature.noteTeamChange({ type: 'task', teamName, taskId: 'task-1' } as never);
+
+      let agendaFingerprint = '';
+      await waitForAssertion(async () => {
+        const status = await feature.getStatus({ teamName, memberName });
+        agendaFingerprint = status.agenda.fingerprint;
+        const nudges = (await readInboxMessages({ teamsBasePath, teamName, memberName })).filter(
+          (message) => message.messageKind === 'member_work_sync_nudge'
+        );
+        expect(nudges).toHaveLength(1);
+        expect(
+          Object.values(await readMemberOutboxItems({ teamsBasePath, teamName, memberName }))
+        ).toEqual([
+          expect.objectContaining({
+            status: 'delivered',
+            deliveredMessageId: nudges[0]?.messageId,
+          }),
+        ]);
+      });
+
+      await backdateDeliveredOutboxItems({
+        teamsBasePath,
+        teamName,
+        memberName,
+        updatedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+      });
+      await seedNativeStaleInProgressBlockingMetrics({
+        teamsBasePath,
+        teamName,
+        memberName,
+        agendaFingerprint,
+      });
+      feature.noteTeamChange({ type: 'task', teamName, taskId: 'task-1' } as never);
+
+      await waitForAssertion(async () => {
+        const nudges = (await readInboxMessages({ teamsBasePath, teamName, memberName })).filter(
+          (message) => message.messageKind === 'member_work_sync_nudge'
+        );
+        expect(nudges).toHaveLength(2);
+        expect(nudges[1]?.messageId).toContain('agenda-sync-still-stuck');
+        expect(nudges[1]?.text).toContain('still no accepted member_work_sync_report');
+        expect(
+          Object.values(await readMemberOutboxItems({ teamsBasePath, teamName, memberName }))
+        ).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              status: 'delivered',
+              deliveredMessageId: nudges[1]?.messageId,
+            }),
+          ])
+        );
+      });
     } finally {
       await feature.dispose();
     }

@@ -263,30 +263,6 @@ function canClaimOutboxItem(item: MemberWorkSyncOutboxItem, nowIso: string): boo
   return item.nextAttemptAt <= nowIso;
 }
 
-function getReviewPickupIntentKey(item: Pick<MemberWorkSyncOutboxItem, 'payload'>): string | null {
-  if (item.payload.workSyncIntent !== 'review_pickup') {
-    return null;
-  }
-  const explicit = item.payload.workSyncIntentKey?.trim();
-  if (explicit) {
-    return explicit;
-  }
-  const requestEventIds = [...new Set(item.payload.workSyncReviewRequestEventIds ?? [])]
-    .map((id) => id.trim())
-    .filter(Boolean)
-    .sort();
-  return requestEventIds.length > 0 ? `review-pickup:${requestEventIds.join('+')}` : null;
-}
-
-function isSameReviewPickupIntent(
-  current: MemberWorkSyncOutboxItem,
-  input: MemberWorkSyncOutboxEnsureInput
-): boolean {
-  const currentIntentKey = getReviewPickupIntentKey(current);
-  const inputIntentKey = getReviewPickupIntentKey({ payload: input.payload });
-  return Boolean(currentIntentKey && inputIntentKey && currentIntentKey === inputIntentKey);
-}
-
 function getDueOutboxRoutes(
   index: OutboxIndexFile,
   nowIso: string,
@@ -732,13 +708,17 @@ export class JsonMemberWorkSyncStore
             const current = outbox.items[input.id];
             if (current) {
               if (current.payloadHash !== input.payloadHash) {
-                if (isSameReviewPickupIntent(current, input) && !isOutboxTerminal(current.status)) {
+                if (current.status !== 'delivered' && current.status !== 'failed_terminal') {
                   const next: MemberWorkSyncOutboxItem = {
                     ...current,
                     agendaFingerprint: input.agendaFingerprint,
                     payloadHash: input.payloadHash,
                     payload: input.payload,
                     status: 'pending',
+                    attemptGeneration:
+                      current.status === 'claimed'
+                        ? current.attemptGeneration + 1
+                        : current.attemptGeneration,
                     updatedAt: input.nowIso,
                   };
                   applyOptionalNextAttemptAt(next, input.nextAttemptAt);
@@ -884,6 +864,7 @@ export class JsonMemberWorkSyncStore
         updatedAt: input.nowIso,
       };
       delete next.lastError;
+      delete next.nextAttemptAt;
       return next;
     });
   }
@@ -924,6 +905,17 @@ export class JsonMemberWorkSyncStore
   async countRecentDelivered(
     input: MemberWorkSyncOutboxCountRecentDeliveredInput
   ): Promise<number> {
+    const workSyncIntentKeyPrefix = input.workSyncIntentKeyPrefix?.trim();
+    if (workSyncIntentKeyPrefix) {
+      const memberOutbox = await this.readMemberOutboxFile(input.teamName, input.memberName);
+      return Object.values(memberOutbox.items).filter(
+        (item) =>
+          item.status === 'delivered' &&
+          item.updatedAt >= input.sinceIso &&
+          item.payload.workSyncIntentKey?.startsWith(workSyncIntentKeyPrefix) === true
+      ).length;
+    }
+
     let index = await this.readOutboxIndexFile(input.teamName);
     if (Object.keys(index.items).length === 0) {
       await this.enqueue(input.teamName, async () => {
