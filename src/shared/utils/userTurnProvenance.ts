@@ -66,9 +66,7 @@ export function classifyUserTurnProvenance(
     return originKind;
   }
 
-  const legacyProtocolKind = classifyLegacyProtocolText(
-    getTextContent(getMessageContent(message))
-  );
+  const legacyProtocolKind = classifyLegacyProtocolText(getTextContent(getMessageContent(message)));
   if (legacyProtocolKind) {
     return legacyProtocolKind;
   }
@@ -97,9 +95,7 @@ export function isSyntheticReplayNoise(message: UserTurnProvenanceInput): boolea
   );
 }
 
-export function isDisplayableTeammateProtocol(
-  message: UserTurnProvenanceInput
-): boolean {
+export function isDisplayableTeammateProtocol(message: UserTurnProvenanceInput): boolean {
   return (
     classifyUserTurnProvenance(message) === 'teammate-protocol' &&
     message.isMeta !== true &&
@@ -149,9 +145,7 @@ function normalizeOriginKind(
   }
 }
 
-function classifyLegacyProtocolText(
-  text: string | undefined
-): UserTurnProvenanceKind | undefined {
+function classifyLegacyProtocolText(text: string | undefined): UserTurnProvenanceKind | undefined {
   if (!text) {
     return undefined;
   }
@@ -215,9 +209,7 @@ function hasSystemOutputContent(content: unknown): boolean {
     Array.isArray(content) &&
     content.some(
       (block) =>
-        isContentBlock(block) &&
-        block.type === 'text' &&
-        startsWithSystemOutputTag(block.text)
+        isContentBlock(block) && block.type === 'text' && startsWithSystemOutputTag(block.text)
     )
   );
 }

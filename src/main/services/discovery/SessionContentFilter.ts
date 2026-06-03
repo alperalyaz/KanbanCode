@@ -21,9 +21,7 @@
  * - synthetic assistant messages (model='<synthetic>')
  */
 
-import {
-  HARD_NOISE_TAGS,
-} from '@main/constants/messageTags';
+import { HARD_NOISE_TAGS } from '@main/constants/messageTags';
 import { LocalFileSystemProvider } from '@main/services/infrastructure/LocalFileSystemProvider';
 import { type ChatHistoryEntry, type ContentBlock } from '@main/types';
 import { createLogger } from '@shared/utils/logger';

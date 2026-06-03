@@ -7,17 +7,30 @@ declare const process: {
   env: Record<string, string | undefined>;
 };
 
-const siteUrl = process.env.NUXT_PUBLIC_SITE_URL || "https://777genius.github.io/agent-teams-ai";
+const siteUrl =
+  process.env.NUXT_PUBLIC_LANDING_SITE_URL ||
+  process.env.AGENT_TEAMS_LANDING_SITE_URL ||
+  process.env.NUXT_PUBLIC_SITE_URL ||
+  "https://777genius.github.io/agent-teams-ai";
 const githubRepo = process.env.NUXT_PUBLIC_GITHUB_REPO || "777genius/agent-teams-ai";
 const githubReleasesUrl = `https://github.com/${githubRepo}/releases`;
 const muxPlaybackId = process.env.NUXT_PUBLIC_MUX_PLAYBACK_ID || "qyeNuDjFqoDALK8eB02jMTOWUz006BdIhiqiAip3U00x7I";
 const muxBackgroundPlaybackId = process.env.NUXT_PUBLIC_MUX_BACKGROUND_PLAYBACK_ID || muxPlaybackId;
+const docsSiteUrl =
+  process.env.AGENT_TEAMS_DOCS_SITE_URL || process.env.NUXT_PUBLIC_DOCS_SITE_URL || "";
+
+process.env.NUXT_PUBLIC_SITE_URL = siteUrl;
+if (docsSiteUrl) {
+  process.env.NUXT_PUBLIC_DOCS_SITE_URL = docsSiteUrl;
+}
+
 const baseURL = process.env.NUXT_APP_BASE_URL || "/";
 const basePrefixedDocsPath = `${baseURL.replace(/\/?$/, "/")}docs`;
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const defaultSeoTitle = "Agent Teams - AI Agent Orchestration for Developers";
 const defaultSeoDescription = "Free, open-source desktop app for AI agent teams. Start with a free model with no auth, then connect Claude, Codex, or OpenCode when you need more models.";
 const defaultSeoImage = `${siteUrl.replace(/\/+$/, "")}/og-image-agent-teams-v6.png`;
+const robots = process.env.NUXT_PUBLIC_ROBOTS || "noindex, nofollow";
 
 export default defineNuxtConfig({
   compatibilityDate: "2026-01-19",
@@ -29,7 +42,7 @@ export default defineNuxtConfig({
       title: defaultSeoTitle,
       meta: [
         { name: "description", content: defaultSeoDescription },
-        { name: "robots", content: "noindex, nofollow" },
+        { name: "robots", content: robots },
         { property: "og:title", content: defaultSeoTitle },
         { property: "og:description", content: defaultSeoDescription },
         { property: "og:type", content: "website" },
@@ -143,6 +156,7 @@ export default defineNuxtConfig({
       siteUrl,
       githubRepo,
       githubReleasesUrl,
+      docsSiteUrl,
       muxPlaybackId,
       muxBackgroundPlaybackId
     }

@@ -181,10 +181,7 @@ export class SubagentResolver {
   }
 
   private isAuthoredUserMessage(message: ParsedMessage): boolean {
-    return (
-      isHumanAuthoredParsedUserMessage(message) ||
-      isDisplayableTeammateProtocol(message)
-    );
+    return isHumanAuthoredParsedUserMessage(message) || isDisplayableTeammateProtocol(message);
   }
 
   private extractUserText(message: ParsedMessage): string {

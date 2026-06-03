@@ -8,8 +8,8 @@ hero:
   tagline: Create teams, watch work move across a kanban board, review code changes, and coordinate Claude, Codex, OpenCode, and multimodel workflows without giving up local control.
   actions:
     - theme: brand
-      text: Quickstart
-      link: /guide/quickstart
+      text: Beginner workflow
+      link: /guide/beginner-workflow
     - theme: alt
       text: Install
       link: /guide/installation
@@ -62,6 +62,10 @@ Agent Teams is a free desktop app for orchestrating AI agent teams. You are not 
 After creating your first team, explore these guides to go further:
 
 - **Runtime setup** - configure Claude, Codex, OpenCode, or multimodel providers: [Configure runtimes](/guide/runtime-setup)
+- **Beginner workflow** - follow the complete first-run path from project to approval: [Start the walkthrough](/guide/beginner-workflow)
+- **Create your first team** - set up lead, builder, reviewer, roles, models, and Worktree: [Create the team](/guide/create-first-team)
+- **Run and monitor work** - read the board, comments, task detail, and logs: [Run the team](/guide/run-and-monitor-work)
+- **Review and approve** - inspect task results and code changes before approval: [Review work](/guide/review-and-approve)
 - **Agent workflow** - understand how agents coordinate through the task board: [Understand workflow](/guide/agent-workflow)
 - **Team brief examples** - learn prompt patterns from real-world briefs: [See examples](/guide/team-brief-examples)
 - **Code review** - inspect diffs, accept or reject changes: [Review changes](/guide/code-review)
@@ -77,4 +81,4 @@ Use the reference pages when you need exact terminology, provider behavior, cont
 
 ## Product preview
 
-<ZoomImage src="/screenshots/1.jpg" alt="Agent Teams kanban board" caption="Task status, teammate activity, and review workflow stay visible in one workspace." />
+<ZoomImage src="/screenshots/product-preview.jpg" alt="Agent Teams kanban board" caption="Task status, teammate activity, and review workflow stay visible in one workspace." />

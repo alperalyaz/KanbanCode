@@ -14,7 +14,7 @@
 <h1 align="center"><a href="https://agentteams.live/">Agent Teams</a></h1>
 
 <p align="center">
-  <strong><code>You're the CTO, agents are your team. They handle tasks themselves, message each other, review each other. You just look at the kanban board and drink coffee.</code></strong>
+  <strong><code>You're the boss, agents are your team. They handle tasks themselves, message each other, review each other. You just look at the kanban board and drink coffee.</code></strong>
 </p>
 
 <p align="center">

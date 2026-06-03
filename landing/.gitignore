@@ -5,6 +5,7 @@ node_modules
 .env
 --host/
 product-docs/.vitepress/dist/
+product-docs/.vitepress/cache/
 
 # Large video files
 public/video/*.mp4

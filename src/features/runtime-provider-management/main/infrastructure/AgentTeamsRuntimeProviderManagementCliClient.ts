@@ -1096,7 +1096,10 @@ export class AgentTeamsRuntimeProviderManagementCliClient implements RuntimeProv
       if (process.platform === 'win32' && isOpenCodeNodeModulesSymlinkError(failure.message)) {
         const profileId = extractProfileIdFromSymlinkError(failure.message);
         if (profileId) {
-          const junctionReady = ensureOpenCodeProfileNodeModulesJunction(profileId, failure.message);
+          const junctionReady = ensureOpenCodeProfileNodeModulesJunction(
+            profileId,
+            failure.message
+          );
           if (junctionReady) {
             try {
               const retryResult = await execCli(
@@ -1116,7 +1119,8 @@ export class AgentTeamsRuntimeProviderManagementCliClient implements RuntimeProv
         }
       }
 
-      const retryResponse = extractJsonObjectFromError<RuntimeProviderManagementViewResponse>(error);
+      const retryResponse =
+        extractJsonObjectFromError<RuntimeProviderManagementViewResponse>(error);
       if (retryResponse) {
         return retryResponse;
       }
@@ -1176,7 +1180,10 @@ export class AgentTeamsRuntimeProviderManagementCliClient implements RuntimeProv
       if (process.platform === 'win32' && isOpenCodeNodeModulesSymlinkError(failure.message)) {
         const profileId = extractProfileIdFromSymlinkError(failure.message);
         if (profileId) {
-          const junctionReady = ensureOpenCodeProfileNodeModulesJunction(profileId, failure.message);
+          const junctionReady = ensureOpenCodeProfileNodeModulesJunction(
+            profileId,
+            failure.message
+          );
           if (junctionReady) {
             try {
               const retryResult = await execCli(
