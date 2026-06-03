@@ -256,8 +256,8 @@
       "ariaLabel": "{{provider}} 提供商，{{model}}",
       "currentLeadRuntime": "当前领先运行时",
       "default": "默认",
-      "inheritedTooltip": "启用同步时，提供商、模型和工作量将从潜在客户继承。",
-      "leadSuffix": "{{label}}（铅）",
+      "inheritedTooltip": "启用同步时，提供商、模型和工作量将从团队负责人继承。",
+      "leadSuffix": "{{label}}（团队负责人）",
       "liveDisabled": "当团队上线时，提供商、模型和工作量更改将被禁用。重新连接团队以安全地应用它们。",
       "lockedActionFallback": "领导运行时更改打开重新启动团队，可以在其中更新提供商、模型和工作。",
       "restartWholeTeam": "保存这些运行时更改会重新启动整个团队。"
