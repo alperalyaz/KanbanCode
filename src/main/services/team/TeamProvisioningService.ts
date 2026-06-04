@@ -1478,7 +1478,11 @@ function classifyDeterministicBootstrapFailure(reason: string): {
 }
 
 function getPreflightPingArgs(providerId: TeamProviderId | undefined): string[] {
-  return buildProviderPreflightPingArgs(providerId);
+  const codexCustomModel =
+    resolveTeamProviderId(providerId) === 'codex'
+      ? ProviderConnectionService.getInstance().getConfiguredCodexCustomProviderModel()
+      : null;
+  return buildProviderPreflightPingArgs(providerId, { modelOverride: codexCustomModel });
 }
 
 function getPreflightTimeoutMs(providerId: TeamProviderId | undefined): number {
