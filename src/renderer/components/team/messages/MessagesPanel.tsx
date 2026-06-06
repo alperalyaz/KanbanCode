@@ -21,7 +21,6 @@ import {
   DropdownMenuTrigger,
 } from '@renderer/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
-import { useStableTeamMentionMeta } from '@renderer/hooks/useStableTeamMentionMeta';
 import { useTeamMessagesExpanded } from '@renderer/hooks/useTeamMessagesExpanded';
 import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { useStore } from '@renderer/store';
@@ -54,7 +53,11 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 
 import { ActivityTimeline, type TimelineViewport } from '../activity/ActivityTimeline';
-import { getThoughtGroupKey, groupTimelineItems } from '../activity/LeadThoughtsGroup';
+import {
+  getThoughtGroupKey,
+  groupTimelineItems,
+  isLeadThought,
+} from '../activity/LeadThoughtsGroup';
 import { MessageExpandDialog } from '../activity/MessageExpandDialog';
 import { CollapsibleTeamSection } from '../CollapsibleTeamSection';
 import {
@@ -80,7 +83,13 @@ import type { TimelineItem } from '../activity/LeadThoughtsGroup';
 import type { ActionMode } from './ActionModeSelector';
 import type { MessagesFilterState } from './MessagesFilterPopover';
 import type { TeamMessagesPanelMode } from '@renderer/types/teamMessagesPanelMode';
-import type { InboxMessage, ResolvedTeamMember, TaskRef, TeamTaskWithKanban } from '@shared/types';
+import type {
+  InboxMessage,
+  ResolvedTeamMember,
+  TaskRef,
+  TeamSummary,
+  TeamTaskWithKanban,
+} from '@shared/types';
 
 interface TimeWindow {
   start: number;
@@ -93,6 +102,101 @@ const BOTTOM_SHEET_COMPOSER_SNAP_INDEX = 2;
 const BOTTOM_SHEET_FULL_SNAP_INDEX = 4;
 const OPENCODE_RUNTIME_DELIVERY_STATUS_REFRESH_DELAYS_MS = [15_000, 45_000, 90_000] as const;
 const MESSAGES_SCROLL_TOP_PERSIST_DELAY_MS = 100;
+const EMPTY_TEAM_NAMES: string[] = [];
+const EMPTY_TEAM_COLOR_MAP = new Map<string, string>();
+const EMPTY_REPLY_CANDIDATE_MESSAGES: InboxMessage[] = [];
+
+interface TeamMentionMeta {
+  teamNames: string[];
+  teamColorByName: ReadonlyMap<string, string>;
+}
+
+interface TeamMentionEntry {
+  teamName: string;
+  displayName: string;
+  color: string;
+  deletedAt: string;
+}
+
+let cachedTeamMentionSignature = '';
+let cachedTeamMentionSource: readonly TeamSummary[] | null = null;
+let cachedTeamMentionMeta: TeamMentionMeta = {
+  teamNames: EMPTY_TEAM_NAMES,
+  teamColorByName: EMPTY_TEAM_COLOR_MAP,
+};
+
+function encodeTeamMentionParts(parts: readonly string[]): string {
+  return parts.map((part) => `${part.length}:${part}`).join('|');
+}
+
+function compareTeamMentionEntries(a: TeamMentionEntry, b: TeamMentionEntry): number {
+  return (
+    a.teamName.localeCompare(b.teamName, undefined, { sensitivity: 'base' }) ||
+    a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' })
+  );
+}
+
+function getTeamMentionSignature(teams: readonly TeamSummary[]): string {
+  return encodeTeamMentionParts(
+    teams.flatMap((team) => [
+      team.teamName ?? '',
+      team.displayName ?? '',
+      team.color ?? '',
+      team.deletedAt ?? '',
+    ])
+  );
+}
+
+function selectMessagesPanelTeamMentionMeta(teams: readonly TeamSummary[]): TeamMentionMeta {
+  if (teams === cachedTeamMentionSource) {
+    return cachedTeamMentionMeta;
+  }
+
+  const signature = getTeamMentionSignature(teams);
+  if (signature === cachedTeamMentionSignature) {
+    cachedTeamMentionSource = teams;
+    return cachedTeamMentionMeta;
+  }
+
+  const entries = teams
+    .map((team) => ({
+      teamName: team.teamName ?? '',
+      displayName: team.displayName ?? '',
+      color: team.color ?? '',
+      deletedAt: team.deletedAt ?? '',
+    }))
+    .sort(compareTeamMentionEntries);
+
+  if (entries.length === 0) {
+    cachedTeamMentionSource = teams;
+    cachedTeamMentionSignature = signature;
+    cachedTeamMentionMeta = {
+      teamNames: EMPTY_TEAM_NAMES,
+      teamColorByName: EMPTY_TEAM_COLOR_MAP,
+    };
+    return cachedTeamMentionMeta;
+  }
+
+  const teamNames: string[] = [];
+  const teamColorByName = new Map<string, string>();
+
+  for (const entry of entries) {
+    if (!entry.deletedAt && entry.teamName) {
+      teamNames.push(entry.teamName);
+    }
+    if (entry.teamName) {
+      teamColorByName.set(entry.teamName, entry.color);
+    }
+    if (entry.displayName) {
+      teamColorByName.set(entry.displayName, entry.color);
+    }
+  }
+
+  cachedTeamMentionSource = teams;
+  cachedTeamMentionSignature = signature;
+  cachedTeamMentionMeta = { teamNames, teamColorByName };
+  return cachedTeamMentionMeta;
+}
 
 interface MessagesPanelProps {
   teamName: string;
@@ -286,49 +390,58 @@ export const MessagesPanel = memo(function MessagesPanel({
     lastSendMessageResult,
     clearSendMessageRuntimeDiagnostics,
     refreshSendMessageRuntimeDeliveryStatus,
-    teams,
+    teamMentionMeta,
     openTeamTab,
     messages,
-    messagesState,
+    messagesEntryPresent,
+    messagesHasMore,
+    messagesLoadingHead,
+    messagesLoadingOlder,
     loadOlderTeamMessages,
     refreshTeamMessagesHead,
   } = useStore(
-    useShallow((s) => ({
-      sendTeamMessage: s.sendTeamMessage,
-      sendCrossTeamMessage: s.sendCrossTeamMessage,
-      sendingMessage: s.sendingMessage,
-      sendMessageError: s.sendMessageError,
-      sendMessageWarning: s.sendMessageWarning,
-      sendMessageDebugDetails: s.sendMessageDebugDetails,
-      lastSendMessageResult: s.lastSendMessageResult,
-      clearSendMessageRuntimeDiagnostics: s.clearSendMessageRuntimeDiagnostics,
-      refreshSendMessageRuntimeDeliveryStatus: s.refreshSendMessageRuntimeDeliveryStatus,
-      teams: s.teams,
-      openTeamTab: s.openTeamTab,
-      messages: selectTeamMessages(s, teamName),
-      messagesState: teamName ? s.teamMessagesByName[teamName] : undefined,
-      loadOlderTeamMessages: s.loadOlderTeamMessages,
-      refreshTeamMessagesHead: s.refreshTeamMessagesHead,
-    }))
+    useShallow((s) => {
+      const messagesState = teamName ? s.teamMessagesByName[teamName] : undefined;
+      return {
+        sendTeamMessage: s.sendTeamMessage,
+        sendCrossTeamMessage: s.sendCrossTeamMessage,
+        sendingMessage: s.sendingMessage,
+        sendMessageError: s.sendMessageError,
+        sendMessageWarning: s.sendMessageWarning,
+        sendMessageDebugDetails: s.sendMessageDebugDetails,
+        lastSendMessageResult: s.lastSendMessageResult,
+        clearSendMessageRuntimeDiagnostics: s.clearSendMessageRuntimeDiagnostics,
+        refreshSendMessageRuntimeDeliveryStatus: s.refreshSendMessageRuntimeDeliveryStatus,
+        teamMentionMeta: selectMessagesPanelTeamMentionMeta(s.teams),
+        openTeamTab: s.openTeamTab,
+        messages: selectTeamMessages(s, teamName),
+        messagesEntryPresent: messagesState !== undefined,
+        messagesHasMore: messagesState?.hasMore ?? false,
+        messagesLoadingHead: messagesState?.loadingHead ?? false,
+        messagesLoadingOlder: messagesState?.loadingOlder ?? false,
+        loadOlderTeamMessages: s.loadOlderTeamMessages,
+        refreshTeamMessagesHead: s.refreshTeamMessagesHead,
+      };
+    })
   );
   const bootstrapHeadRefreshAttemptedForTeamRef = useRef<string | null>(null);
 
   const loadOlderMessages = useCallback(async () => {
-    if (!messagesState?.hasMore || messagesState.loadingHead || messagesState.loadingOlder) {
+    if (!messagesHasMore || messagesLoadingHead || messagesLoadingOlder) {
       return;
     }
     await loadOlderTeamMessages(teamName);
-  }, [loadOlderTeamMessages, messagesState, teamName]);
+  }, [loadOlderTeamMessages, messagesHasMore, messagesLoadingHead, messagesLoadingOlder, teamName]);
 
   const handleLoadOlderMessagesClick = useCallback(() => {
     void loadOlderMessages();
   }, [loadOlderMessages]);
 
-  const loadingOlderMessages = messagesState?.loadingOlder ?? false;
-  const hasMore = messagesState?.hasMore ?? false;
+  const loadingOlderMessages = messagesLoadingOlder;
+  const hasMore = messagesHasMore;
   const effectiveMessages = messages;
   const loadingInitialMessages =
-    effectiveMessages.length === 0 && (messagesState === undefined || messagesState.loadingHead);
+    effectiveMessages.length === 0 && (!messagesEntryPresent || messagesLoadingHead);
 
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const floatingComposerMeasureRef = useRef<HTMLDivElement | null>(null);
@@ -363,8 +476,9 @@ export const MessagesPanel = memo(function MessagesPanel({
       // path for short lists and only switches to the windowed path once
       // the row count crosses its internal threshold.
       virtualizationEnabled: true,
+      virtualizationRowThreshold: position === 'sidebar' ? 48 : undefined,
     };
-  }, [activeScrollContainerRef]);
+  }, [activeScrollContainerRef, position]);
   const handleExpandContent = useCallback(() => {
     // no-op: user is reading expanded content, not composing
   }, []);
@@ -393,6 +507,9 @@ export const MessagesPanel = memo(function MessagesPanel({
   );
   const messagesScrollTopRef = useRef(initialSidebarStateRef.current.messagesScrollTop);
   const messagesScrollPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks which team the pending scroll persistence belongs to, so a debounced update
+  // scheduled before a team switch is never applied to or persisted under the new team.
+  const messagesScrollPersistTeamRef = useRef(teamName);
   const [bottomSheetSnapIndex, setBottomSheetSnapIndex] = useState(
     initialSidebarStateRef.current.bottomSheetSnapIndex
   );
@@ -408,27 +525,47 @@ export const MessagesPanel = memo(function MessagesPanel({
     setMessagesSearchBarVisible(initialSidebarStateRef.current.messagesSearchBarVisible);
     setExpandedItemKey(initialSidebarStateRef.current.expandedItemKey);
     messagesScrollTopRef.current = initialSidebarStateRef.current.messagesScrollTop;
+    messagesScrollPersistTeamRef.current = teamName;
     setMessagesScrollTop(initialSidebarStateRef.current.messagesScrollTop);
     setBottomSheetSnapIndex(initialSidebarStateRef.current.bottomSheetSnapIndex);
   }, [teamName]);
 
-  useEffect(
-    () => () => {
-      if (messagesScrollPersistTimerRef.current) {
-        clearTimeout(messagesScrollPersistTimerRef.current);
-        messagesScrollPersistTimerRef.current = null;
+  useEffect(() => {
+    const persistTeamName = teamName;
+    return () => {
+      if (!messagesScrollPersistTimerRef.current) {
+        return;
       }
-    },
-    []
-  );
+      // A debounced scroll update was still pending when the panel unmounts (e.g. switching
+      // panel mode away from sidebar, closing the tab) or when the team changes. Flush the
+      // latest scroll position directly into persisted UI state so a scroll within the 100ms
+      // debounce window is not lost.
+      clearTimeout(messagesScrollPersistTimerRef.current);
+      messagesScrollPersistTimerRef.current = null;
+      const pendingScrollTop = messagesScrollTopRef.current;
+      const persisted = getTeamMessagesSidebarUiState(persistTeamName);
+      if (Math.abs(persisted.messagesScrollTop - pendingScrollTop) >= 1) {
+        setTeamMessagesSidebarUiState(persistTeamName, {
+          ...persisted,
+          messagesScrollTop: pendingScrollTop,
+        });
+      }
+    };
+  }, [teamName]);
 
   const persistMessagesScrollTop = useCallback((nextScrollTop: number): void => {
     messagesScrollTopRef.current = nextScrollTop;
+    const scheduledTeamName = messagesScrollPersistTeamRef.current;
     if (messagesScrollPersistTimerRef.current) {
       clearTimeout(messagesScrollPersistTimerRef.current);
     }
     messagesScrollPersistTimerRef.current = setTimeout(() => {
       messagesScrollPersistTimerRef.current = null;
+      // Drop a queued update that outlived a team switch: it carries the previous team's
+      // offset and must not overwrite the scroll state the new team just restored.
+      if (messagesScrollPersistTeamRef.current !== scheduledTeamName) {
+        return;
+      }
       setMessagesScrollTop((current) =>
         Math.abs(current - messagesScrollTopRef.current) < 1
           ? current
@@ -486,7 +623,7 @@ export const MessagesPanel = memo(function MessagesPanel({
       bootstrapHeadRefreshAttemptedForTeamRef.current = null;
       return;
     }
-    if (messagesState?.loadingHead || messagesState?.loadingOlder) {
+    if (messagesLoadingHead || messagesLoadingOlder) {
       return;
     }
     if (bootstrapHeadRefreshAttemptedForTeamRef.current === teamName) {
@@ -496,8 +633,8 @@ export const MessagesPanel = memo(function MessagesPanel({
     void refreshTeamMessagesHead(teamName).catch(() => undefined);
   }, [
     effectiveMessages.length,
-    messagesState?.loadingHead,
-    messagesState?.loadingOlder,
+    messagesLoadingHead,
+    messagesLoadingOlder,
     refreshTeamMessagesHead,
     teamName,
   ]);
@@ -568,18 +705,33 @@ export const MessagesPanel = memo(function MessagesPanel({
       searchQuery: messagesSearchQuery,
     });
   }, [effectiveMessages, leadNames, messagesFilter, messagesSearchQuery, timeWindow]);
+  const firstTimelineMessage = activityTimelineMessages[0];
+  const hasVisibleCurrentLeadThought =
+    firstTimelineMessage != null &&
+    isLeadThought(firstTimelineMessage) &&
+    (currentLeadSessionId ? firstTimelineMessage.leadSessionId === currentLeadSessionId : true);
+  const timelineLeadActivity = hasVisibleCurrentLeadThought ? leadActivity : undefined;
+  const timelineLeadContextUpdatedAt = hasVisibleCurrentLeadThought
+    ? leadContextUpdatedAt
+    : undefined;
 
+  const hasTrackedPendingReplies = useMemo(
+    () => Object.keys(pendingRepliesByMember).length > 0,
+    [pendingRepliesByMember]
+  );
   const replyCandidateMessages = useMemo(
     () =>
-      effectiveMessages.filter(
-        (m) =>
-          m.messageKind !== 'task_comment_notification' &&
-          !isTaskStallRemediationMessage(m) &&
-          !isMemberWorkSyncNudgeMessage(m) &&
-          !isReviewPickupEscalationMessage(m) &&
-          !shouldExcludeInboxTextFromReplyCandidates(typeof m.text === 'string' ? m.text : '')
-      ),
-    [effectiveMessages]
+      hasTrackedPendingReplies
+        ? effectiveMessages.filter(
+            (m) =>
+              m.messageKind !== 'task_comment_notification' &&
+              !isTaskStallRemediationMessage(m) &&
+              !isMemberWorkSyncNudgeMessage(m) &&
+              !isReviewPickupEscalationMessage(m) &&
+              !shouldExcludeInboxTextFromReplyCandidates(typeof m.text === 'string' ? m.text : '')
+          )
+        : EMPTY_REPLY_CANDIDATE_MESSAGES,
+    [effectiveMessages, hasTrackedPendingReplies]
   );
   const sendMessageRuntimeReplyVisible = useMemo(
     () => hasVisibleReplyForSendMessageDiagnostics(sendMessageDebugDetails, effectiveMessages),
@@ -668,22 +820,46 @@ export const MessagesPanel = memo(function MessagesPanel({
     if (!open) setExpandedItemKey(null);
   }, []);
 
-  const { readSet, markRead, markAllRead } = useTeamMessagesRead(teamName);
+  const { readSet, markAllRead } = useTeamMessagesRead(teamName);
   const { expandedSet, toggle: toggleExpandOverride } = useTeamMessagesExpanded(teamName);
+  const pendingVisibleReadKeysRef = useRef<Set<string>>(new Set());
+  const visibleReadFlushFrameRef = useRef<number | null>(null);
 
   const messagesUnreadCount = useMemo(
     () => filteredMessages.filter((m) => !m.read && !readSet.has(toMessageKey(m))).length,
     [filteredMessages, readSet]
   );
 
+  const flushVisibleReadKeys = useCallback(() => {
+    visibleReadFlushFrameRef.current = null;
+    const keys = [...pendingVisibleReadKeysRef.current];
+    pendingVisibleReadKeysRef.current.clear();
+    markAllRead(keys);
+  }, [markAllRead]);
+
   const handleMessageVisible = useCallback(
-    (message: InboxMessage) => markRead(toMessageKey(message)),
-    [markRead]
+    (message: InboxMessage) => {
+      pendingVisibleReadKeysRef.current.add(toMessageKey(message));
+      if (visibleReadFlushFrameRef.current !== null) return;
+      visibleReadFlushFrameRef.current = window.requestAnimationFrame(flushVisibleReadKeys);
+    },
+    [flushVisibleReadKeys]
   );
+
+  useEffect(() => {
+    const pendingVisibleReadKeys = pendingVisibleReadKeysRef.current;
+    return () => {
+      if (visibleReadFlushFrameRef.current !== null) {
+        window.cancelAnimationFrame(visibleReadFlushFrameRef.current);
+        visibleReadFlushFrameRef.current = null;
+      }
+      pendingVisibleReadKeys.clear();
+    };
+  }, [teamName]);
 
   const readState = useMemo(() => ({ readSet, getMessageKey: toMessageKey }), [readSet]);
 
-  const { teamNames, teamColorByName } = useStableTeamMentionMeta(teams);
+  const { teamNames, teamColorByName } = teamMentionMeta;
 
   const handleMarkAllRead = useCallback(() => {
     const keys = filteredMessages
@@ -694,10 +870,15 @@ export const MessagesPanel = memo(function MessagesPanel({
 
   // Auto-clear pending replies when a member actually responds
   useEffect(() => {
-    if (Object.keys(pendingRepliesByMember).length === 0) return;
+    if (!hasTrackedPendingReplies) return;
     const next = reconcilePendingRepliesByMember(pendingRepliesByMember, replyCandidateMessages);
     if (next !== pendingRepliesByMember) onPendingReplyChange(() => next);
-  }, [onPendingReplyChange, pendingRepliesByMember, replyCandidateMessages]);
+  }, [
+    hasTrackedPendingReplies,
+    onPendingReplyChange,
+    pendingRepliesByMember,
+    replyCandidateMessages,
+  ]);
 
   useEffect(() => {
     if (!sendMessageRuntimeReplyVisible || !sendMessageDebugDetails?.messageId) return;
@@ -731,10 +912,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     };
   }, [
     refreshSendMessageRuntimeDeliveryStatus,
-    sendMessageDebugDetails?.messageId,
-    sendMessageDebugDetails?.statusMessageId,
-    sendMessageDebugDetails?.responsePending,
-    sendMessageDebugDetails?.userVisibleState,
+    sendMessageDebugDetails,
     sendMessageRuntimeReplyVisible,
     teamName,
   ]);
@@ -885,7 +1063,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     );
   }, [bottomSheetSnapIndex]);
 
-  const defaultComposerSection = (
+  const renderDefaultComposerSection = (): React.JSX.Element => (
     <MessagesComposerSection
       teamName={teamName}
       members={members}
@@ -904,7 +1082,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     />
   );
 
-  const floatingComposerModeControls = (
+  const renderFloatingComposerModeControls = (): React.JSX.Element => (
     <div className="inline-flex items-center pr-1">
       <DropdownMenu>
         <Tooltip>
@@ -940,7 +1118,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     </div>
   );
 
-  const compactComposerSection = (
+  const renderCompactComposerSection = (): React.JSX.Element => (
     <MessagesComposerSection
       teamName={teamName}
       layout="compact"
@@ -960,7 +1138,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     />
   );
 
-  const floatingComposerSection = (
+  const renderFloatingComposerSection = (): React.JSX.Element => (
     <MessagesComposerSection
       teamName={teamName}
       layout="compact"
@@ -972,7 +1150,7 @@ export const MessagesPanel = memo(function MessagesPanel({
       sendWarning={effectiveSendMessageWarning}
       sendDebugDetails={effectiveSendMessageDebugDetails}
       lastResult={lastSendMessageResult}
-      cornerActionPrefix={floatingComposerModeControls}
+      cornerActionPrefix={renderFloatingComposerModeControls()}
       revisionRequest={revisionRequest}
       textareaRef={composerTextareaRef}
       onSend={handleSend}
@@ -982,7 +1160,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     />
   );
 
-  const inlineStatusSection = (
+  const renderInlineStatusSection = (): React.JSX.Element => (
     <MessagesStatusSection
       members={members}
       tasks={tasks}
@@ -995,7 +1173,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     />
   );
 
-  const sidebarStatusSection = (
+  const renderSidebarStatusSection = (): React.JSX.Element => (
     <MessagesStatusSection
       members={members}
       tasks={tasks}
@@ -1008,7 +1186,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     />
   );
 
-  const timelineSection = (
+  const renderTimelineSection = (): React.JSX.Element => (
     <MessagesTimelineSection
       messages={activityTimelineMessages}
       loading={loadingInitialMessages}
@@ -1020,8 +1198,8 @@ export const MessagesPanel = memo(function MessagesPanel({
       onToggleExpandOverride={toggleExpandOverride}
       currentLeadSessionId={currentLeadSessionId}
       isTeamAlive={isTeamAlive}
-      leadActivity={leadActivity}
-      leadContextUpdatedAt={leadContextUpdatedAt}
+      leadActivity={timelineLeadActivity}
+      leadContextUpdatedAt={timelineLeadContextUpdatedAt}
       teamNames={teamNames}
       teamColorByName={teamColorByName}
       onTeamClick={openTeamTab}
@@ -1046,7 +1224,7 @@ export const MessagesPanel = memo(function MessagesPanel({
   );
 
   // ---- Shared content (used in both modes) ----
-  const searchAndFilterControls = (
+  const renderSearchAndFilterControls = (): React.JSX.Element => (
     <div className="flex items-center gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-transparent px-2 py-1">
         <Search size={12} className="shrink-0 text-[var(--color-text-muted)]" />
@@ -1081,9 +1259,9 @@ export const MessagesPanel = memo(function MessagesPanel({
     </div>
   );
 
-  const searchAndFilterBar = (
+  const renderSearchAndFilterBar = (): React.JSX.Element => (
     <div className="flex items-center gap-2">
-      {searchAndFilterControls}
+      {renderSearchAndFilterControls()}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -1105,11 +1283,11 @@ export const MessagesPanel = memo(function MessagesPanel({
     </div>
   );
 
-  const messagesContent = (
+  const renderMessagesContent = (): React.JSX.Element => (
     <div className="pb-14">
-      {defaultComposerSection}
-      {inlineStatusSection}
-      {timelineSection}
+      {renderDefaultComposerSection()}
+      {renderInlineStatusSection()}
+      {renderTimelineSection()}
     </div>
   );
 
@@ -1223,7 +1401,7 @@ export const MessagesPanel = memo(function MessagesPanel({
         {/* Search & filter bar (toggleable) */}
         {messagesSearchBarVisible && (
           <div className="shrink-0 border-b border-[var(--color-border)] px-3 py-1.5">
-            {searchAndFilterControls}
+            {renderSearchAndFilterControls()}
           </div>
         )}
         {/* Scrollable content */}
@@ -1233,10 +1411,10 @@ export const MessagesPanel = memo(function MessagesPanel({
           onScroll={handleSidebarScroll}
         >
           <div className="pl-3">
-            {defaultComposerSection}
-            {sidebarStatusSection}
+            {renderDefaultComposerSection()}
+            {renderSidebarStatusSection()}
           </div>
-          {timelineSection}
+          {renderTimelineSection()}
         </div>
       </div>
     );
@@ -1247,7 +1425,7 @@ export const MessagesPanel = memo(function MessagesPanel({
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-4 pb-5 sm:px-6 sm:pb-6">
         <div className="mx-auto flex w-full max-w-[500px] justify-center">
           <div ref={floatingComposerMeasureRef} className="pointer-events-auto">
-            {floatingComposerSection}
+            {renderFloatingComposerSection()}
           </div>
         </div>
       </div>
@@ -1428,13 +1606,13 @@ export const MessagesPanel = memo(function MessagesPanel({
               >
                 {messagesSearchBarVisible && (
                   <div className="border-b border-[var(--color-border)] px-3 py-2">
-                    {searchAndFilterControls}
+                    {renderSearchAndFilterControls()}
                   </div>
                 )}
-                <div className="p-3">{compactComposerSection}</div>
+                <div className="p-3">{renderCompactComposerSection()}</div>
               </div>
-              <div className="shrink-0 px-3 pt-2">{inlineStatusSection}</div>
-              <div className="flex-1 px-3 pb-4 pt-2">{timelineSection}</div>
+              <div className="shrink-0 px-3 pt-2">{renderInlineStatusSection()}</div>
+              <div className="flex-1 px-3 pb-4 pt-2">{renderTimelineSection()}</div>
             </Sheet.Content>
           )}
         </Sheet.Container>
@@ -1527,9 +1705,9 @@ export const MessagesPanel = memo(function MessagesPanel({
         </div>
       }
       defaultOpen
-      action={<div className="flex items-center gap-2 px-2">{searchAndFilterBar}</div>}
+      action={<div className="flex items-center gap-2 px-2">{renderSearchAndFilterBar()}</div>}
     >
-      {messagesContent}
+      {renderMessagesContent()}
     </CollapsibleTeamSection>
   );
 });

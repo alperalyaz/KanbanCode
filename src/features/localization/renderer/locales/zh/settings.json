@@ -68,12 +68,12 @@
       "useInTeamPicker": "用于团队拾取器",
       "testInProgress": "模型测试已在运行。",
       "validationContextRequired": "请先在上方选择验证上下文, 才能启用 Test 和 Set default。保存到 team picker 只会为新团队记录 route。",
+      "actionsUnavailable": "操作暂时不可用。",
       "defaultSaveInProgress": "正在保存 OpenCode default。",
       "routeUnavailableAuth": "此 provider 需要先完成身份验证, 才能使用此模型。",
       "routeUnavailableFailed": "此 model route 未通过上次 execution test。",
-      "routeUnavailableUnknown": "此模型是当前 OpenCode default, 但尚未出现在 live catalog 中。",
-      "actionsUnavailable": "操作暂时不可用。",
-      "routeUnavailableGeneric": "此 model route 当前无法使用。"
+      "routeUnavailableGeneric": "此 model route 当前无法使用。",
+      "routeUnavailableUnknown": "此模型是当前 OpenCode default, 但尚未出现在 live catalog 中。"
     },
     "providers": {
       "catalog": "OpenCode 提供者目录",

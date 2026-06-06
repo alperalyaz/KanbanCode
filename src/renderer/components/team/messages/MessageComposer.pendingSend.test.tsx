@@ -71,9 +71,9 @@ const provisioningHarness = vi.hoisted(() => {
   };
 });
 
-type SuggestionHookOptions = {
+interface SuggestionHookOptions {
   enabled?: boolean;
-};
+}
 
 const suggestionHarness = vi.hoisted(() => {
   const state = {
@@ -102,7 +102,9 @@ const storeHarness = vi.hoisted(() => {
     }[],
   };
   const methods = {
-    fetchCrossTeamTargets: vi.fn(),
+    // Returns a resolved Promise<boolean> to match the store contract: the composer
+    // chains `.then()` on this to clear its dedup ref and retry on failure.
+    fetchCrossTeamTargets: vi.fn().mockResolvedValue(true),
     fetchSkillsCatalog: vi.fn(),
   };
   return {

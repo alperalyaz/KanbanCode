@@ -68,12 +68,12 @@
       "useInTeamPicker": "গ্রুপ বাছাইকারী ব্যবহার করো",
       "testInProgress": "মডেল পরীক্ষা ইতিমধ্যেই চলছে।",
       "validationContextRequired": "Test এবং Set default চালু করতে উপরে একটি validation context নির্বাচন করুন। team picker-এ সংরক্ষণ করলে শুধু নতুন দলের জন্য route রাখা হয়।",
+      "actionsUnavailable": "অ্যাকশনগুলো সাময়িকভাবে পাওয়া যাচ্ছে না।",
       "defaultSaveInProgress": "OpenCode default সংরক্ষণ করা হচ্ছে।",
       "routeUnavailableAuth": "এই মডেল ব্যবহারের আগে এই provider-এর authentication দরকার।",
       "routeUnavailableFailed": "এই model route শেষ execution test-এ ব্যর্থ হয়েছে।",
-      "routeUnavailableUnknown": "এই মডেলটি বর্তমান OpenCode default, কিন্তু এখনও live catalog-এ নেই।",
-      "actionsUnavailable": "অ্যাকশনগুলো সাময়িকভাবে পাওয়া যাচ্ছে না।",
-      "routeUnavailableGeneric": "এই model route এখন ব্যবহার করা যাবে না।"
+      "routeUnavailableGeneric": "এই model route এখন ব্যবহার করা যাবে না।",
+      "routeUnavailableUnknown": "এই মডেলটি বর্তমান OpenCode default, কিন্তু এখনও live catalog-এ নেই।"
     },
     "providers": {
       "catalog": "OpenCode উপলব্ধকারী ক্যাটালগ",

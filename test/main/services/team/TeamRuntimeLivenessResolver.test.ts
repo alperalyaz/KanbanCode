@@ -1,4 +1,6 @@
 import {
+  commandArgEquals,
+  extractCliArgValues,
   resolveTeamMemberRuntimeLiveness,
   sanitizeProcessCommandForDiagnostics,
 } from '@main/services/team/TeamRuntimeLivenessResolver';
@@ -49,17 +51,27 @@ describe('resolveTeamMemberRuntimeLiveness', () => {
     expect(result.pid).toBe(222);
   });
 
-  it('promotes a verified team and agent-name process when agent id metadata is missing', () => {
+  it('uses the newest verified team and agent process without requiring sorted rows', () => {
     const result = resolveTeamMemberRuntimeLiveness({
       teamName: 'demo',
       memberName: 'alice',
-      backendType: 'process',
-      persistedRuntimePid: 222,
+      agentId: 'agent-alice',
+      backendType: 'tmux',
       processRows: [
         {
           pid: 222,
           ppid: 1,
-          command: 'node runtime --team-name demo --agent-name alice',
+          command: 'node runtime --team-name demo --agent-id agent-alice',
+        },
+        {
+          pid: 111,
+          ppid: 1,
+          command: 'node runtime --team-name demo --agent-id agent-alice',
+        },
+        {
+          pid: 333,
+          ppid: 1,
+          command: 'node runtime --team-name other --agent-id agent-alice',
         },
       ],
       processTableAvailable: true,
@@ -70,97 +82,6 @@ describe('resolveTeamMemberRuntimeLiveness', () => {
     expect(result.livenessKind).toBe('runtime_process');
     expect(result.pidSource).toBe('agent_process_table');
     expect(result.pid).toBe(222);
-  });
-
-  it('does not let matching agent name override a mismatched command agent id', () => {
-    const result = resolveTeamMemberRuntimeLiveness({
-      teamName: 'demo',
-      memberName: 'alice',
-      agentId: 'alice@demo',
-      backendType: 'process',
-      persistedRuntimePid: 222,
-      processRows: [
-        {
-          pid: 222,
-          ppid: 1,
-          command: 'node runtime --team-name demo --agent-id other@demo --agent-name alice',
-        },
-      ],
-      processTableAvailable: true,
-      nowIso: NOW,
-    });
-
-    expect(result.alive).toBe(false);
-    expect(result.livenessKind).toBe('registered_only');
-  });
-
-  it('does not use agent-name fallback for OpenCode runtime rows', () => {
-    const result = resolveTeamMemberRuntimeLiveness({
-      teamName: 'demo',
-      memberName: 'alice',
-      providerId: 'opencode',
-      backendType: 'process',
-      persistedRuntimePid: 222,
-      processRows: [
-        {
-          pid: 222,
-          ppid: 1,
-          command: 'opencode runtime --team-name demo --agent-name alice',
-        },
-      ],
-      processTableAvailable: true,
-      nowIso: NOW,
-    });
-
-    expect(result.alive).toBe(false);
-    expect(result.livenessKind).toBe('runtime_process_candidate');
-    expect(result.pidSource).toBe('opencode_bridge');
-  });
-
-  it('uses targeted pid verification when the full process table missed a live direct process', () => {
-    const result = resolveTeamMemberRuntimeLiveness({
-      teamName: 'demo',
-      memberName: 'alice',
-      agentId: 'alice@demo',
-      backendType: 'process',
-      persistedRuntimePid: 222,
-      processRows: [],
-      processTableAvailable: true,
-      targetedProcess: {
-        pid: 222,
-        command: 'node runtime --agent-id alice@demo --agent-name alice --team-name demo',
-      },
-      nowIso: NOW,
-    });
-
-    expect(result.alive).toBe(true);
-    expect(result.livenessKind).toBe('runtime_process');
-    expect(result.pidSource).toBe('agent_process_table');
-    expect(result.pid).toBe(222);
-    expect(result.runtimeDiagnostic).toBe(
-      'verified runtime process detected by targeted pid check'
-    );
-  });
-
-  it('does not trust targeted pid verification with mismatched team identity', () => {
-    const result = resolveTeamMemberRuntimeLiveness({
-      teamName: 'demo',
-      memberName: 'alice',
-      agentId: 'alice@demo',
-      backendType: 'process',
-      persistedRuntimePid: 222,
-      processRows: [],
-      processTableAvailable: true,
-      targetedProcess: {
-        pid: 222,
-        command: 'node runtime --agent-id alice@other --agent-name alice --team-name other',
-      },
-      nowIso: NOW,
-    });
-
-    expect(result.alive).toBe(false);
-    expect(result.livenessKind).toBe('stale_metadata');
-    expect(result.pidSource).toBe('persisted_metadata');
   });
 
   it('keeps a verified process pid visible after bootstrap is confirmed', () => {
@@ -350,5 +271,28 @@ describe('resolveTeamMemberRuntimeLiveness', () => {
     expect(
       sanitizeProcessCommandForDiagnostics('node runtime --api-key sk-123 --token=abc --safe ok')
     ).toBe('node runtime --api-key [redacted] --token=[redacted] --safe ok');
+  });
+
+  it('keeps cached CLI arg extraction immutable for callers', () => {
+    const command =
+      'node runtime --team-name demo --agent-id "agent alice" --agent-id agent-bob';
+    const first = extractCliArgValues(command, '--agent-id');
+    first.push('mutated');
+
+    expect(extractCliArgValues(command, '--agent-id')).toEqual(['agent alice', 'agent-bob']);
+    expect(extractCliArgValues(command, '--team-name')).toEqual(['demo']);
+  });
+
+  it('returns no CLI arg values when the flag is absent', () => {
+    expect(extractCliArgValues('node runtime --other value', '--agent-id')).toEqual([]);
+  });
+
+  it('matches CLI arg values repeatedly without changing extraction results', () => {
+    const command = 'node runtime --team-name demo --agent-id "agent alice"';
+
+    expect(commandArgEquals(command, '--agent-id', 'agent alice')).toBe(true);
+    expect(commandArgEquals(command, '--agent-id', 'agent-bob')).toBe(false);
+    expect(commandArgEquals(command, '--agent-id', 'agent alice')).toBe(true);
+    expect(extractCliArgValues(command, '--agent-id')).toEqual(['agent alice']);
   });
 });

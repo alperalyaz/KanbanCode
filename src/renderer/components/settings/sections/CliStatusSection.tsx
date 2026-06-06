@@ -25,6 +25,7 @@ import {
   getProviderDisconnectAction,
   isConnectionManagedRuntimeProvider,
   isOpenCodeCatalogHydrating,
+  shouldMaskCodexNegativeBootstrapState,
   shouldShowProviderConnectAction,
   shouldShowProviderStatusSkeleton,
 } from '@renderer/components/runtime/providerConnectionUi';
@@ -94,19 +95,6 @@ function isCodexSnapshotPending(
   codexSnapshotPending: boolean
 ): boolean {
   return provider.providerId === 'codex' && codexSnapshotPending;
-}
-
-function shouldMaskCodexNegativeBootstrapState(
-  sourceProvider: CliProviderStatus | null,
-  mergedProvider: CliProviderStatus
-): boolean {
-  return (
-    sourceProvider?.providerId === 'codex' &&
-    sourceProvider.statusMessage === 'Checking...' &&
-    mergedProvider.providerId === 'codex' &&
-    mergedProvider.connection?.codex?.launchReadinessState === 'missing_auth' &&
-    mergedProvider.connection.codex.login.status === 'idle'
-  );
 }
 
 function getProviderStatusColor(statusText: string, authenticated: boolean): string {
@@ -506,7 +494,8 @@ export const CliStatusSection = (): React.JSX.Element | null => {
                             loadingCliProviderMap.get(provider.providerId) ?? null;
                           const maskNegativeBootstrapState = shouldMaskCodexNegativeBootstrapState(
                             sourceProvider,
-                            provider
+                            provider,
+                            { providerLoading }
                           );
                           const effectiveShowSkeleton = showSkeleton || maskNegativeBootstrapState;
                           const statusText = effectiveShowSkeleton

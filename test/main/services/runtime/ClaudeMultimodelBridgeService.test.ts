@@ -431,9 +431,15 @@ describe('ClaudeMultimodelBridgeService', () => {
       'model list --json --provider codex',
     ]);
     expect(execCliMock.mock.calls[0][2]?.timeout).toBe(5000);
-    expect(vi.mocked(console.warn).mock.calls.map((call) => call.join(' '))).toEqual(
+    const warnMessages = vi.mocked(console.warn).mock.calls.map((call) => call.join(' '));
+    expect(warnMessages).toEqual(
       expect.arrayContaining([
         expect.stringContaining('Provider-scoped summary runtime status timed out for codex'),
+      ])
+    );
+    expect(warnMessages).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Provider-scoped summary runtime status unavailable for codex:'),
       ])
     );
     vi.mocked(console.warn).mockClear();

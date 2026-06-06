@@ -68,12 +68,12 @@
       "useInTeamPicker": "チームピッカーでの使用",
       "testInProgress": "モデルテストはすでに実行中です。",
       "validationContextRequired": "Test と Set default を有効にするには、上で validation context を選択してください。team picker への保存は新しいチーム用の route だけを保存します。",
+      "actionsUnavailable": "操作は一時的に利用できません。",
       "defaultSaveInProgress": "OpenCode default を保存しています。",
       "routeUnavailableAuth": "この provider は、このモデルを使用する前に認証が必要です。",
       "routeUnavailableFailed": "この model route は前回の execution test に失敗しました。",
-      "routeUnavailableUnknown": "このモデルは現在の OpenCode default ですが、まだ live catalog では利用できません。",
-      "actionsUnavailable": "操作は一時的に利用できません。",
-      "routeUnavailableGeneric": "この model route は現在使用できません。"
+      "routeUnavailableGeneric": "この model route は現在使用できません。",
+      "routeUnavailableUnknown": "このモデルは現在の OpenCode default ですが、まだ live catalog では利用できません。"
     },
     "providers": {
       "catalog": "OpenCode プロバイダーカタログ",

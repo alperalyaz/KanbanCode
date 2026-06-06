@@ -3045,6 +3045,83 @@ describe('CLI status visibility during completed install state', () => {
     });
   });
 
+  it('keeps Codex on checking while its model catalog is loading and the live snapshot is only a negative auth result', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    codexAccountHookState.snapshot = {
+      preferredAuthMode: 'chatgpt',
+      effectiveAuthMode: null,
+      launchAllowed: false,
+      launchIssueMessage: 'Reconnect ChatGPT to refresh the current Codex subscription session.',
+      launchReadinessState: 'missing_auth',
+      appServerState: 'healthy',
+      appServerStatusMessage: null,
+      managedAccount: null,
+      apiKey: {
+        available: true,
+        source: 'environment',
+        sourceLabel: 'Detected from OPENAI_API_KEY',
+      },
+      requiresOpenaiAuth: true,
+      localAccountArtifactsPresent: true,
+      localActiveChatgptAccountPresent: true,
+      login: {
+        status: 'idle',
+        error: null,
+        startedAt: null,
+      },
+      rateLimits: null,
+      updatedAt: new Date().toISOString(),
+    };
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      displayName: 'agent_teams_orchestrator',
+      supportsSelfUpdate: false,
+      showVersionDetails: false,
+      showBinaryPath: false,
+      authLoggedIn: false,
+      providers: [
+        createCodexNativeRolloutProvider({
+          authenticated: false,
+          authMethod: null,
+          verificationState: 'unknown',
+          statusMessage: 'Reconnect ChatGPT to refresh the current Codex subscription session.',
+          models: [],
+          modelCatalog: null,
+          modelCatalogRefreshState: 'loading',
+          runtimeCapabilities: {
+            modelCatalog: {
+              dynamic: true,
+              source: 'app-server',
+            },
+          },
+        }),
+      ],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Checking...');
+    expect(host.textContent).not.toContain(
+      'Reconnect ChatGPT to refresh the current Codex subscription session.'
+    );
+    expect(host.textContent).not.toContain(
+      'Models unavailable for this runtime build'
+    );
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('explains missing Codex limits when ChatGPT mode is selected but Codex is not logged in', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliInstallerState = 'idle';

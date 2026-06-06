@@ -19,8 +19,8 @@ type RuntimeAwareProviderStatus = Pick<
   CliProviderStatus,
   'providerId' | 'authMethod' | 'backend' | 'modelCatalog'
 >;
-type RuntimeAwareModelCatalog = NonNullable<RuntimeAwareProviderStatus['modelCatalog']>;
-type RuntimeAwareCatalogModel = RuntimeAwareModelCatalog['models'][number];
+type RuntimeModelCatalog = NonNullable<RuntimeAwareProviderStatus['modelCatalog']>;
+type RuntimeCatalogModel = RuntimeModelCatalog['models'][number];
 
 export interface TeamProviderModelOption {
   value: string;
@@ -80,6 +80,8 @@ const ANTHROPIC_MODEL_ORDER = [
 const TEAM_MODEL_LABEL_OVERRIDES: Record<string, string> = {
   default: 'Default',
   ...ANTHROPIC_ALIAS_LABELS,
+  'opus[1m]': 'Opus 4.8 (1M)',
+  'sonnet[1m]': 'Sonnet 4.6 (1M)',
   'claude-opus-4-8': 'Opus 4.8',
   'claude-opus-4-8[1m]': 'Opus 4.8 (1M)',
   'claude-opus-4-7': 'Opus 4.7',
@@ -230,34 +232,6 @@ const SUPPORTED_ANTHROPIC_TEAM_MODELS = new Set<string>([
   'claude-haiku-4-5-20251001',
 ]);
 
-const runtimeCatalogModelIndexCache = new WeakMap<
-  RuntimeAwareModelCatalog,
-  Map<string, RuntimeAwareCatalogModel>
->();
-
-function getRuntimeCatalogModelIndex(
-  modelCatalog: RuntimeAwareModelCatalog
-): Map<string, RuntimeAwareCatalogModel> {
-  const cached = runtimeCatalogModelIndexCache.get(modelCatalog);
-  if (cached) {
-    return cached;
-  }
-
-  const index = new Map<string, RuntimeAwareCatalogModel>();
-  for (const model of modelCatalog.models) {
-    const launchModel = model.launchModel.trim();
-    if (launchModel) {
-      index.set(launchModel, model);
-    }
-    const id = model.id.trim();
-    if (id) {
-      index.set(id, model);
-    }
-  }
-  runtimeCatalogModelIndexCache.set(modelCatalog, index);
-  return index;
-}
-
 export function isSupportedAnthropicTeamModel(model: string | undefined): boolean {
   const trimmed = model?.trim();
   if (!trimmed) {
@@ -332,17 +306,118 @@ export function getTeamModelLabel(model: string | undefined): string | undefined
   return formatParsedClaudeModelLabel(labelTarget) ?? labelTarget;
 }
 
+const runtimeCatalogModelIndexCache = new WeakMap<
+  RuntimeModelCatalog,
+  Map<string, RuntimeCatalogModel>
+>();
+
+function getRuntimeCatalogModelIndex(
+  catalog: RuntimeModelCatalog
+): Map<string, RuntimeCatalogModel> {
+  const cached = runtimeCatalogModelIndexCache.get(catalog);
+  if (cached) {
+    return cached;
+  }
+
+  const index = new Map<string, RuntimeCatalogModel>();
+  for (const item of catalog.models) {
+    if (item.launchModel && !index.has(item.launchModel)) {
+      index.set(item.launchModel, item);
+    }
+    if (item.id && !index.has(item.id)) {
+      index.set(item.id, item);
+    }
+  }
+  runtimeCatalogModelIndexCache.set(catalog, index);
+  return index;
+}
+
 function getRuntimeCatalogModel(
   providerId: SupportedProviderId | undefined,
   model: string | undefined,
   providerStatus?: RuntimeAwareProviderStatus | null
-): RuntimeAwareCatalogModel | null {
+): RuntimeCatalogModel | null {
   const trimmed = model?.trim();
   if (!providerId || !trimmed || providerStatus?.modelCatalog?.providerId !== providerId) {
     return null;
   }
 
   return getRuntimeCatalogModelIndex(providerStatus.modelCatalog).get(trimmed) ?? null;
+}
+
+function getAnthropicAliasFamily(model: string | undefined): 'opus' | 'sonnet' | 'haiku' | null {
+  const baseModel =
+    model
+      ?.trim()
+      .toLowerCase()
+      .replace(/\[1m\]$/i, '') ?? '';
+  if (baseModel === 'opus' || baseModel === 'sonnet' || baseModel === 'haiku') {
+    return baseModel;
+  }
+  return null;
+}
+
+function readAnthropicDisplayVersion(
+  label: string | undefined,
+  family: 'opus' | 'sonnet' | 'haiku'
+): { major: number; minor: number | null } | null {
+  const pattern = new RegExp(`\\b${family}\\s+(\\d+)(?:\\.(\\d+))?\\b`, 'i');
+  const match = pattern.exec(label ?? '');
+  if (!match) {
+    return null;
+  }
+
+  const major = Number.parseInt(match[1], 10);
+  const minor = match[2] == null ? null : Number.parseInt(match[2], 10);
+  if (!Number.isFinite(major) || (minor !== null && !Number.isFinite(minor))) {
+    return null;
+  }
+
+  return { major, minor };
+}
+
+function compareAnthropicDisplayVersions(
+  left: { major: number; minor: number | null },
+  right: { major: number; minor: number | null }
+): number {
+  if (left.major !== right.major) {
+    return left.major - right.major;
+  }
+  return (left.minor ?? 0) - (right.minor ?? 0);
+}
+
+function getRuntimeSafeAnthropicAliasLabel(params: {
+  model: string | undefined;
+  runtimeLabel?: string | null;
+  fallbackLabel?: string;
+}): string | null {
+  const family = getAnthropicAliasFamily(params.model);
+  if (!family) {
+    return null;
+  }
+
+  const fallbackLabel =
+    params.fallbackLabel ?? getProviderScopedTeamModelLabel('anthropic', params.model);
+  if (!fallbackLabel) {
+    return null;
+  }
+
+  const runtimeLabel = params.runtimeLabel?.trim();
+  if (!runtimeLabel) {
+    return fallbackLabel;
+  }
+
+  const runtimeVersion = readAnthropicDisplayVersion(runtimeLabel, family);
+  const fallbackVersion = readAnthropicDisplayVersion(fallbackLabel, family);
+  if (
+    runtimeVersion &&
+    fallbackVersion &&
+    compareAnthropicDisplayVersions(runtimeVersion, fallbackVersion) >= 0
+  ) {
+    return getProviderScopedTeamModelLabel('anthropic', runtimeLabel) ?? runtimeLabel;
+  }
+
+  return fallbackLabel;
 }
 
 export function getTeamModelBadgeLabel(
@@ -411,8 +486,17 @@ export function getRuntimeAwareProviderScopedTeamModelLabel(
   model: string | undefined,
   providerStatus?: RuntimeAwareProviderStatus | null
 ): string | undefined {
+  const trimmed = model?.trim();
   const runtimeModel = getRuntimeCatalogModel(providerId, model, providerStatus);
   const runtimeLabel = runtimeModel?.displayName?.trim();
+  const safeAnthropicAliasLabel =
+    providerId === 'anthropic'
+      ? getRuntimeSafeAnthropicAliasLabel({ model: trimmed, runtimeLabel })
+      : null;
+  if (safeAnthropicAliasLabel) {
+    return safeAnthropicAliasLabel;
+  }
+
   if (runtimeLabel) {
     return getProviderScopedTeamModelLabel(providerId, runtimeLabel) ?? runtimeLabel;
   }
@@ -425,7 +509,20 @@ export function getRuntimeAwareTeamModelBadgeLabel(
   model: string | undefined,
   providerStatus?: RuntimeAwareProviderStatus | null
 ): string | undefined {
+  const trimmed = model?.trim();
   const runtimeModel = getRuntimeCatalogModel(providerId, model, providerStatus);
+  const safeAnthropicAliasLabel =
+    providerId === 'anthropic'
+      ? getRuntimeSafeAnthropicAliasLabel({
+          model: trimmed,
+          runtimeLabel: runtimeModel?.badgeLabel?.trim() || runtimeModel?.displayName?.trim(),
+          fallbackLabel: getTeamModelBadgeLabel(providerId, trimmed),
+        })
+      : null;
+  if (safeAnthropicAliasLabel) {
+    return safeAnthropicAliasLabel;
+  }
+
   if (runtimeModel?.badgeLabel?.trim()) {
     return runtimeModel.badgeLabel.trim();
   }
@@ -494,18 +591,11 @@ export function sortTeamProviderModels(
     return sorted;
   }
 
-  const freeByModel = new Map(
-    sorted.map((model) => [
-      model,
-      isFreeOpenCodeModelForOrdering(providerId, model, providerStatus),
-    ])
-  );
-
   return sorted
     .map((model, index) => ({ model, index }))
     .sort((left, right) => {
-      const leftFree = freeByModel.get(left.model) ?? false;
-      const rightFree = freeByModel.get(right.model) ?? false;
+      const leftFree = isFreeOpenCodeModelForOrdering(providerId, left.model, providerStatus);
+      const rightFree = isFreeOpenCodeModelForOrdering(providerId, right.model, providerStatus);
       if (leftFree !== rightFree) {
         return leftFree ? -1 : 1;
       }

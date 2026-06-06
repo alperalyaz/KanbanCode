@@ -68,12 +68,12 @@
       "useInTeamPicker": "Gunakan dalam tim picker",
       "testInProgress": "Pengujian model sudah berjalan.",
       "validationContextRequired": "Pilih validation context di atas untuk mengaktifkan Test dan Set default. Menyimpan untuk team picker hanya menyimpan route untuk tim baru.",
+      "actionsUnavailable": "Aksi sementara tidak tersedia.",
       "defaultSaveInProgress": "OpenCode default sedang disimpan.",
       "routeUnavailableAuth": "Provider ini memerlukan autentikasi sebelum model ini dapat digunakan.",
       "routeUnavailableFailed": "Model route ini gagal pada execution test terakhir.",
-      "routeUnavailableUnknown": "Model ini adalah OpenCode default saat ini, tetapi belum tersedia di live catalog.",
-      "actionsUnavailable": "Aksi sementara tidak tersedia.",
-      "routeUnavailableGeneric": "Model route ini tidak dapat digunakan sekarang."
+      "routeUnavailableGeneric": "Model route ini tidak dapat digunakan sekarang.",
+      "routeUnavailableUnknown": "Model ini adalah OpenCode default saat ini, tetapi belum tersedia di live catalog."
     },
     "providers": {
       "catalog": "Katalog penyedia OpenCode",

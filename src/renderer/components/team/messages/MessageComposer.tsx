@@ -26,7 +26,7 @@ import {
   validateAttachmentPayloadsForMember,
 } from '@renderer/utils/attachmentRecipientCapabilities';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
-import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { buildMemberAvatarMap, buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { isOpenCodeRuntimeDeliveryHardUxFailureFromDebugDetails } from '@renderer/utils/openCodeRuntimeDeliveryDiagnostics';
 import { nameColorSet } from '@renderer/utils/projectColor';
 import { getSuggestedSlashCommandsForProvider } from '@renderer/utils/providerSlashCommands';
@@ -207,8 +207,18 @@ export const MessageComposer = ({
   useEffect(() => {
     if (!teamSelectorOpen) return;
     if (!crossTeamTargetsFetchedRef.current) {
+      // Set the guard synchronously to dedupe concurrent fetches, but clear it if the fetch
+      // fails so a later open retries instead of leaving cross-team targets permanently empty.
       crossTeamTargetsFetchedRef.current = true;
-      void fetchCrossTeamTargets();
+      void fetchCrossTeamTargets()
+        .then((ok) => {
+          if (!ok) {
+            crossTeamTargetsFetchedRef.current = false;
+          }
+        })
+        .catch(() => {
+          crossTeamTargetsFetchedRef.current = false;
+        });
     }
     void refreshAliveTeams();
   }, [fetchCrossTeamTargets, refreshAliveTeams, teamSelectorOpen]);
@@ -283,6 +293,7 @@ export const MessageComposer = ({
   const slashCommandDataEnabled = textHasSlashCommandTrigger;
 
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
+  const avatarMap = useMemo(() => buildMemberAvatarMap(members), [members]);
 
   const mentionSuggestions = useMemo<MentionSuggestion[]>(
     () =>
@@ -884,7 +895,7 @@ export const MessageComposer = ({
           isCompactLayout ? 'space-y-1.5' : 'space-y-2'
         )}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           {showAttachmentControl ? (
             <>
               <input
@@ -920,9 +931,12 @@ export const MessageComposer = ({
             </>
           ) : null}
 
-          <div className="ml-auto flex shrink-0 items-center gap-2">
+          <div className="ml-auto flex min-w-0 max-w-full items-center justify-end gap-2">
             {!isTeamAlive && !isLaunchBlocking && (
-              <span className="text-[10px]" style={{ color: 'var(--warning-text)' }}>
+              <span
+                className="shrink-0 whitespace-nowrap text-[10px]"
+                style={{ color: 'var(--warning-text)' }}
+              >
                 {t('messageComposer.status.teamOffline')}
               </span>
             )}
@@ -930,7 +944,7 @@ export const MessageComposer = ({
             {/* Combined team + member selector */}
             <div
               className={cn(
-                'mr-[15px] inline-flex items-center border text-xs transition-colors',
+                'mr-[15px] inline-flex min-w-0 max-w-[calc(100%_-_15px)] items-center overflow-hidden border text-xs transition-colors',
                 shouldDockRecipientSelector
                   ? 'relative z-[1] -mb-px overflow-hidden rounded-b-none rounded-t-[1.35rem] border-b-0 bg-[var(--color-surface-raised)]'
                   : 'rounded-full',
@@ -942,7 +956,7 @@ export const MessageComposer = ({
                   <button
                     type="button"
                     className={cn(
-                      'inline-flex items-center gap-1.5 border-r border-r-[var(--color-border)] px-2.5 py-1 text-xs transition-colors',
+                      'inline-flex min-w-0 max-w-[160px] items-center gap-1.5 border-r border-r-[var(--color-border)] px-2.5 py-1 text-xs transition-colors',
                       shouldDockRecipientSelector
                         ? 'rounded-bl-none rounded-tl-[1.35rem]'
                         : 'rounded-l-full',
@@ -978,7 +992,7 @@ export const MessageComposer = ({
                             style={{ backgroundColor: currentTeamColor }}
                           />
                         ) : null}
-                        <span className="text-[var(--color-text-secondary)]">
+                        <span className="min-w-0 truncate text-[var(--color-text-secondary)]">
                           {t('messageComposer.teamSelector.thisTeam')}
                         </span>
                       </>
@@ -1101,7 +1115,7 @@ export const MessageComposer = ({
                   <button
                     type="button"
                     className={cn(
-                      'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs transition-colors',
+                      'inline-flex min-w-0 max-w-[150px] items-center gap-1.5 px-2.5 py-1 text-xs transition-colors',
                       shouldDockRecipientSelector
                         ? 'rounded-br-none rounded-tr-[1.35rem]'
                         : 'rounded-r-full',
@@ -1116,6 +1130,7 @@ export const MessageComposer = ({
                         name={recipient}
                         color={selectedResolvedColor}
                         size="sm"
+                        avatarUrl={avatarMap.get(recipient)}
                         hideAvatar={recipient === 'user'}
                         disableHoverCard
                       />
@@ -1194,6 +1209,7 @@ export const MessageComposer = ({
                               name={m.name}
                               color={resolvedColor}
                               size="sm"
+                              avatarUrl={avatarMap.get(m.name)}
                               hideAvatar={m.name === 'user'}
                               disableHoverCard
                             />

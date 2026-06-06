@@ -32,17 +32,67 @@ export interface RuntimeProcessTableRow {
   rssBytes?: number;
 }
 
+export interface ListRuntimeProcessesOptions {
+  bypassCache?: boolean;
+}
+
+/**
+ * Short-lived cache window for the global process table.
+ *
+ * `listRuntimeProcesses` spawns a full `ps -ax`, which is expensive when forked
+ * from the large Electron main process. Runtime liveness/telemetry callers fire
+ * very frequently (every team file change invalidates their per-team snapshot
+ * caches), so without throttling here the main process spawns `ps` dozens of
+ * times per second while a team runs. Runtime liveness can tolerate a small
+ * delay because verdicts are identity- (team+agent+command) not bare-PID
+ * matched, and OpenCode host cleanup re-validates each PID against live state
+ * before acting. Keep this cache long enough to collapse bursts from concurrent
+ * team refreshes, but short enough that stale "alive" UI is brief.
+ */
+const RUNTIME_PROCESS_TABLE_CACHE_TTL_MS = 30_000;
+
+interface RuntimeProcessTableCacheEntry {
+  rows: RuntimeProcessTableRow[];
+  expiresAtMs: number;
+}
+
 export function parseRuntimeProcessTable(output: string): RuntimeProcessTableRow[] {
   const rows: RuntimeProcessTableRow[] = [];
   for (const line of output.split('\n')) {
-    const match = /^\s*(\d+)\s+(\d+)\s+(?:(\d+(?:\.\d+)?)\s+(\d+)\s+)?(.*)$/.exec(line);
+    const enrichedMatch = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(.*)$/.exec(line);
+    if (enrichedMatch) {
+      const pid = Number.parseInt(enrichedMatch[1], 10);
+      const ppid = Number.parseInt(enrichedMatch[2], 10);
+      // `ps` formats the %cpu column with the locale decimal separator (e.g. "12,5" on
+      // de_DE/fr_FR locales, which the runtime inherits via process.env). Normalize the
+      // comma to a dot so Number() does not return NaN — otherwise the enriched parse would
+      // fail its isFinite guard and fall back to the basic parser, leaking the pcpu/rss
+      // columns into `command`.
+      const cpuPercent = Number(enrichedMatch[3]?.replace(',', '.'));
+      const rssKb = Number(enrichedMatch[4]?.replace(',', '.'));
+      const command = enrichedMatch[5]?.trim() ?? '';
+      if (
+        Number.isFinite(pid) &&
+        pid > 0 &&
+        Number.isFinite(ppid) &&
+        ppid >= 0 &&
+        Number.isFinite(cpuPercent) &&
+        cpuPercent >= 0 &&
+        Number.isFinite(rssKb) &&
+        rssKb >= 0 &&
+        command.length > 0
+      ) {
+        rows.push({ pid, ppid, command, cpuPercent, rssBytes: Math.round(rssKb * 1024) });
+        continue;
+      }
+    }
+
+    const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
     if (!match) continue;
 
     const pid = Number.parseInt(match[1], 10);
     const ppid = Number.parseInt(match[2], 10);
-    const cpuPercent = match[3] != null ? Number.parseFloat(match[3]) : Number.NaN;
-    const rssKb = match[4] != null ? Number.parseInt(match[4], 10) : Number.NaN;
-    const command = match[5]?.trim() ?? '';
+    const command = match[3]?.trim() ?? '';
     if (
       Number.isFinite(pid) &&
       pid > 0 &&
@@ -50,13 +100,7 @@ export function parseRuntimeProcessTable(output: string): RuntimeProcessTableRow
       ppid >= 0 &&
       command.length > 0
     ) {
-      rows.push({
-        pid,
-        ppid,
-        command,
-        ...(Number.isFinite(cpuPercent) && cpuPercent >= 0 ? { cpuPercent } : {}),
-        ...(Number.isFinite(rssKb) && rssKb >= 0 ? { rssBytes: rssKb * 1024 } : {}),
-      });
+      rows.push({ pid, ppid, command });
     }
   }
   return rows;
@@ -65,6 +109,8 @@ export function parseRuntimeProcessTable(output: string): RuntimeProcessTableRow
 export class TmuxPlatformCommandExecutor {
   readonly #wslService: TmuxWslService;
   readonly #packageManagerResolver: TmuxPackageManagerResolver;
+  #runtimeProcessTableCache: RuntimeProcessTableCacheEntry | null = null;
+  #runtimeProcessTableInFlight: Promise<RuntimeProcessTableRow[]> | null = null;
 
   constructor(
     wslService = new TmuxWslService(),
@@ -176,7 +222,34 @@ export class TmuxPlatformCommandExecutor {
     return new Map([...info.entries()].map(([paneId, pane]) => [paneId, pane.panePid]));
   }
 
-  async listRuntimeProcesses(): Promise<RuntimeProcessTableRow[]> {
+  async listRuntimeProcesses(
+    options: ListRuntimeProcessesOptions = {}
+  ): Promise<RuntimeProcessTableRow[]> {
+    const cached = this.#runtimeProcessTableCache;
+    if (options.bypassCache !== true && cached && cached.expiresAtMs > Date.now()) {
+      return cached.rows;
+    }
+    if (this.#runtimeProcessTableInFlight) {
+      return this.#runtimeProcessTableInFlight;
+    }
+    const request = this.#readRuntimeProcessesUncached()
+      .then((rows) => {
+        this.#runtimeProcessTableCache = {
+          rows,
+          expiresAtMs: Date.now() + RUNTIME_PROCESS_TABLE_CACHE_TTL_MS,
+        };
+        return rows;
+      })
+      .finally(() => {
+        if (this.#runtimeProcessTableInFlight === request) {
+          this.#runtimeProcessTableInFlight = null;
+        }
+      });
+    this.#runtimeProcessTableInFlight = request;
+    return request;
+  }
+
+  async #readRuntimeProcessesUncached(): Promise<RuntimeProcessTableRow[]> {
     const result =
       process.platform === 'win32'
         ? await this.#wslService.execInPreferredDistro([

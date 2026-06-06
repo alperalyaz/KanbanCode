@@ -1,22 +1,28 @@
 <script setup lang="ts">
 import { mdiMenu, mdiClose, mdiGithub } from '@mdi/js';
+import { buildDocsHref } from '~/utils/docsUrl';
 
 const { t, locale } = useI18n();
 const { repoUrl } = useGithubRepo();
-const { baseURL } = useRuntimeConfig().app;
+const runtimeConfig = useRuntimeConfig();
+const { baseURL } = runtimeConfig.app;
 const menuOpen = ref(false);
 
-const withBase = (path: string) => `${baseURL.replace(/\/?$/, '/')}${path.replace(/^\/+/, '')}`;
-const docsHref = computed(() => withBase(locale.value === 'ru' ? 'docs/ru/' : 'docs/'));
-const openMenuLabel = computed(() => t('nav.openMenu'));
-const closeMenuLabel = computed(() => t('nav.closeMenu'));
+const docsHref = computed(() => buildDocsHref({
+  locale: locale.value,
+  docsSiteUrl: runtimeConfig.public.docsSiteUrl,
+  embeddedBaseURL: baseURL,
+}));
+const isRu = computed(() => locale.value === 'ru');
+const openMenuLabel = computed(() => (isRu.value ? 'Открыть меню' : 'Open menu'));
+const closeMenuLabel = computed(() => (isRu.value ? 'Закрыть меню' : 'Close menu'));
 
 const navItems = computed(() => [
-  { href: '#screenshots', label: t('nav.screenshots'), shortLabel: t('nav.short.screenshots') },
-  { href: docsHref.value, label: t('nav.docs'), shortLabel: t('nav.short.docs') },
-  { href: '#download', label: t('nav.download'), shortLabel: t('nav.short.download') },
-  { href: '#comparison', label: t('nav.comparison'), shortLabel: t('nav.short.comparison') },
-  { href: '#pricing', label: t('nav.pricing'), shortLabel: t('nav.short.pricing') },
+  { href: '#screenshots', label: t('nav.screenshots'), shortLabel: isRu.value ? 'Скрины' : 'Shots' },
+  { href: docsHref.value, label: t('nav.docs'), shortLabel: isRu.value ? 'Док' : 'Docs' },
+  { href: '#download', label: t('nav.download'), shortLabel: isRu.value ? 'Скачать' : 'Get' },
+  { href: '#comparison', label: t('nav.comparison'), shortLabel: isRu.value ? 'Сравн.' : 'Compare' },
+  { href: '#pricing', label: t('nav.pricing'), shortLabel: isRu.value ? 'Беспл.' : 'Free' },
   { href: '#faq', label: t('nav.faq'), shortLabel: 'FAQ' },
 ]);
 </script>
@@ -807,6 +813,29 @@ const navItems = computed(() => [
     color: rgba(244, 247, 255, 0.92) !important;
     border: 1px solid rgba(0, 234, 255, 0.28);
     background: rgba(2, 6, 16, 0.72);
+  }
+}
+
+@media (max-width: 360px) {
+  .app-header__inner {
+    width: min(100% - 24px, 680px);
+  }
+
+  .app-header__brand-frame {
+    padding-left: 10px;
+    padding-right: 34px;
+  }
+
+  .app-header__brand-frame :deep(.app-logo) {
+    gap: 8px;
+  }
+
+  .app-header__brand-frame :deep(.app-logo__text) {
+    font-size: 10px;
+  }
+
+  .app-header__mobile-actions {
+    margin-left: 8px;
   }
 }
 

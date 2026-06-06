@@ -68,12 +68,12 @@
       "useInTeamPicker": "팀 피커에서 사용",
       "testInProgress": "모델 테스트가 이미 실행 중입니다.",
       "validationContextRequired": "Test와 Set default를 활성화하려면 위에서 validation context를 선택하세요. team picker 저장은 새 팀용 route만 저장합니다.",
+      "actionsUnavailable": "작업을 일시적으로 사용할 수 없습니다.",
       "defaultSaveInProgress": "OpenCode default를 저장하는 중입니다.",
       "routeUnavailableAuth": "이 provider는 이 모델을 사용하기 전에 인증이 필요합니다.",
       "routeUnavailableFailed": "이 model route는 마지막 execution test에 실패했습니다.",
-      "routeUnavailableUnknown": "이 모델은 현재 OpenCode default이지만 아직 live catalog에서 사용할 수 없습니다.",
-      "actionsUnavailable": "작업을 일시적으로 사용할 수 없습니다.",
-      "routeUnavailableGeneric": "이 model route는 지금 사용할 수 없습니다."
+      "routeUnavailableGeneric": "이 model route는 지금 사용할 수 없습니다.",
+      "routeUnavailableUnknown": "이 모델은 현재 OpenCode default이지만 아직 live catalog에서 사용할 수 없습니다."
     },
     "providers": {
       "catalog": "OpenCode 공급자 카탈로그",

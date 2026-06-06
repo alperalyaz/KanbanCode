@@ -23,10 +23,6 @@ export interface ResolveTeamMemberRuntimeLivenessInput {
   pane?: TmuxPaneRuntimeInfo;
   processRows: readonly RuntimeProcessTableRow[];
   processTableAvailable: boolean;
-  targetedProcess?: {
-    pid: number;
-    command: string;
-  };
   nowIso: string;
 }
 
@@ -49,11 +45,10 @@ export interface ResolvedTeamMemberRuntimeLiveness {
 const SHELL_COMMAND_NAMES = new Set(['sh', 'bash', 'zsh', 'fish', 'dash', 'login', 'tmux']);
 const SECRET_FLAG_PATTERN =
   /(--(?:api-key|token|password|secret|authorization|auth-token)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi;
-const MAX_CLI_ARG_CACHE_ENTRIES = 2_000;
-const CLI_ARG_CACHE_KEY_SEPARATOR = '\u0000';
-
-const cliArgValuesCache = new Map<string, string[]>();
-const commandArgEqualsCache = new Map<string, boolean>();
+const CLI_ARG_VALUES_CACHE_MAX_COMMANDS = 1_000;
+const CLI_ARG_EQUALS_CACHE_MAX_KEYS_PER_COMMAND = 100;
+const cliArgValuesCache = new Map<string, Map<string, string[]>>();
+const cliArgEqualsCache = new Map<string, Map<string, boolean>>();
 
 function basenameCommand(command: string | undefined): string {
   const firstToken = command?.trim().split(/\s+/, 1)[0] ?? '';
@@ -77,35 +72,19 @@ function escapeRegexLiteral(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function buildCliArgCacheKey(...parts: readonly string[]): string {
-  return parts.join(CLI_ARG_CACHE_KEY_SEPARATOR);
-}
-
-function getCachedValue<T>(cache: Map<string, T>, key: string): T | undefined {
-  if (!cache.has(key)) {
-    return undefined;
+function getCachedCliArgValues(command: string, argName: string): readonly string[] {
+  if (!command.includes(argName)) {
+    return [];
   }
-  const value = cache.get(key) as T;
-  cache.delete(key);
-  cache.set(key, value);
-  return value;
-}
 
-function setCachedValue<T>(cache: Map<string, T>, key: string, value: T): void {
-  if (!cache.has(key) && cache.size >= MAX_CLI_ARG_CACHE_ENTRIES) {
-    const oldestKey = cache.keys().next().value;
-    if (oldestKey !== undefined) {
-      cache.delete(oldestKey);
+  const cachedByArg = cliArgValuesCache.get(command);
+  const cachedValues = cachedByArg?.get(argName);
+  if (cachedValues) {
+    if (cachedByArg) {
+      cliArgValuesCache.delete(command);
+      cliArgValuesCache.set(command, cachedByArg);
     }
-  }
-  cache.set(key, value);
-}
-
-export function extractCliArgValues(command: string, argName: string): string[] {
-  const cacheKey = buildCliArgCacheKey(command, argName);
-  const cached = getCachedValue(cliArgValuesCache, cacheKey);
-  if (cached) {
-    return cached.slice();
+    return cachedValues;
   }
 
   const escapedArg = escapeRegexLiteral(argName);
@@ -119,8 +98,66 @@ export function extractCliArgValues(command: string, argName: string): string[] 
     const value = (match[2] ?? match[3] ?? match[4] ?? '').trim();
     if (value) values.push(value);
   }
-  setCachedValue(cliArgValuesCache, cacheKey, values);
-  return values.slice();
+  const nextByArg = cachedByArg ?? new Map<string, string[]>();
+  nextByArg.set(argName, values);
+  cliArgValuesCache.delete(command);
+  cliArgValuesCache.set(command, nextByArg);
+  while (cliArgValuesCache.size > CLI_ARG_VALUES_CACHE_MAX_COMMANDS) {
+    const oldestKey = cliArgValuesCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    cliArgValuesCache.delete(oldestKey);
+  }
+  return values;
+}
+
+function getCachedCliArgEquals(
+  command: string,
+  argName: string,
+  normalizedExpected: string
+): boolean | undefined {
+  const cachedByKey = cliArgEqualsCache.get(command);
+  if (!cachedByKey) {
+    return undefined;
+  }
+  const cacheKey = `${argName}\0${normalizedExpected}`;
+  const cached = cachedByKey.get(cacheKey);
+  if (cached !== undefined) {
+    cliArgEqualsCache.delete(command);
+    cliArgEqualsCache.set(command, cachedByKey);
+  }
+  return cached;
+}
+
+function setCachedCliArgEquals(
+  command: string,
+  argName: string,
+  normalizedExpected: string,
+  value: boolean
+): void {
+  let cachedByKey = cliArgEqualsCache.get(command);
+  if (!cachedByKey) {
+    cachedByKey = new Map<string, boolean>();
+  }
+  const cacheKey = `${argName}\0${normalizedExpected}`;
+  if (!cachedByKey.has(cacheKey) && cachedByKey.size >= CLI_ARG_EQUALS_CACHE_MAX_KEYS_PER_COMMAND) {
+    const oldestKey = cachedByKey.keys().next().value;
+    if (oldestKey !== undefined) {
+      cachedByKey.delete(oldestKey);
+    }
+  }
+  cachedByKey.set(cacheKey, value);
+  cliArgEqualsCache.delete(command);
+  cliArgEqualsCache.set(command, cachedByKey);
+  while (cliArgEqualsCache.size > CLI_ARG_VALUES_CACHE_MAX_COMMANDS) {
+    const oldestCommand = cliArgEqualsCache.keys().next().value;
+    if (oldestCommand === undefined) break;
+    cliArgEqualsCache.delete(oldestCommand);
+  }
+}
+
+export function extractCliArgValues(command: string, argName: string): string[] {
+  const values = getCachedCliArgValues(command, argName);
+  return [...values];
 }
 
 export function commandArgEquals(
@@ -130,16 +167,17 @@ export function commandArgEquals(
 ): boolean {
   const normalizedExpected = expected?.trim();
   if (!normalizedExpected) return false;
-  const cacheKey = buildCliArgCacheKey(command, argName, normalizedExpected);
-  const cached = getCachedValue(commandArgEqualsCache, cacheKey);
+  if (!command.includes(argName)) return false;
+  if (!command.includes(normalizedExpected)) return false;
+  const cached = getCachedCliArgEquals(command, argName, normalizedExpected);
   if (cached !== undefined) {
     return cached;
   }
-  const result = extractCliArgValues(command, argName).some(
-    (value) => value === normalizedExpected
+  const value = getCachedCliArgValues(command, argName).some(
+    (argValue) => argValue === normalizedExpected
   );
-  setCachedValue(commandArgEqualsCache, cacheKey, result);
-  return result;
+  setCachedCliArgEquals(command, argName, normalizedExpected, value);
+  return value;
 }
 
 function collectDescendants(
@@ -169,24 +207,34 @@ function collectDescendants(
 function isVerifiedRuntimeProcess(params: {
   row: RuntimeProcessTableRow;
   teamName: string;
-  memberName?: string;
   agentId?: string;
-  allowAgentNameFallback?: boolean;
 }): boolean {
-  if (!commandArgEquals(params.row.command, '--team-name', params.teamName)) {
-    return false;
+  return (
+    commandArgEquals(params.row.command, '--team-name', params.teamName) &&
+    commandArgEquals(params.row.command, '--agent-id', params.agentId)
+  );
+}
+
+function findNewestVerifiedRuntimeProcess(params: {
+  rows: readonly RuntimeProcessTableRow[];
+  teamName: string;
+  agentId?: string;
+}): RuntimeProcessTableRow | undefined {
+  const agentId = params.agentId?.trim();
+  if (!agentId) {
+    return undefined;
   }
-  if (commandArgEquals(params.row.command, '--agent-id', params.agentId)) {
-    return true;
+
+  let newest: RuntimeProcessTableRow | undefined;
+  for (const row of params.rows) {
+    if (!isVerifiedRuntimeProcess({ row, teamName: params.teamName, agentId })) {
+      continue;
+    }
+    if (!newest || row.pid > newest.pid) {
+      newest = row;
+    }
   }
-  if (!params.allowAgentNameFallback) {
-    return false;
-  }
-  const expectedAgentId = params.agentId?.trim();
-  if (expectedAgentId && extractCliArgValues(params.row.command, '--agent-id').length > 0) {
-    return false;
-  }
-  return commandArgEquals(params.row.command, '--agent-name', params.memberName);
+  return newest;
 }
 
 function isOpenCodeRuntimeProcess(command: string | undefined): boolean {
@@ -267,17 +315,11 @@ export function resolveTeamMemberRuntimeLiveness(
     });
   }
 
-  const verifiedProcess = input.processRows
-    .filter((row) =>
-      isVerifiedRuntimeProcess({
-        row,
-        teamName: input.teamName,
-        memberName: input.memberName,
-        agentId: input.agentId,
-        allowAgentNameFallback: input.providerId !== 'opencode' && input.backendType === 'process',
-      })
-    )
-    .sort((left, right) => right.pid - left.pid)[0];
+  const verifiedProcess = findNewestVerifiedRuntimeProcess({
+    rows: input.processRows,
+    teamName: input.teamName,
+    agentId: input.agentId,
+  });
   if (verifiedProcess) {
     return result({
       alive: true,
@@ -296,35 +338,6 @@ export function resolveTeamMemberRuntimeLiveness(
     typeof runtimePid === 'number' && runtimePid > 0
       ? input.processRows.find((row) => row.pid === runtimePid)
       : undefined;
-  const targetedProcess =
-    typeof runtimePid === 'number' &&
-    runtimePid > 0 &&
-    input.targetedProcess?.pid === runtimePid &&
-    isVerifiedRuntimeProcess({
-      row: {
-        pid: input.targetedProcess.pid,
-        ppid: 0,
-        command: input.targetedProcess.command,
-      },
-      teamName: input.teamName,
-      memberName: input.memberName,
-      agentId: input.agentId,
-      allowAgentNameFallback: input.providerId !== 'opencode' && input.backendType === 'process',
-    })
-      ? input.targetedProcess
-      : undefined;
-  if (targetedProcess) {
-    return result({
-      alive: true,
-      livenessKind: 'runtime_process',
-      pidSource: 'agent_process_table',
-      pid: targetedProcess.pid,
-      runtimeSessionId,
-      processCommand: sanitizeProcessCommandForDiagnostics(targetedProcess.command),
-      runtimeDiagnostic: 'verified runtime process detected by targeted pid check',
-      diagnostics: [...diagnostics, 'matched targeted process by pid and team/member identity'],
-    });
-  }
   if (runtimePidRow && input.providerId === 'opencode') {
     const processCommand = sanitizeProcessCommandForDiagnostics(runtimePidRow.command);
     if (isOpenCodeRuntimeProcess(runtimePidRow.command)) {
@@ -400,18 +413,11 @@ export function resolveTeamMemberRuntimeLiveness(
   const pane = input.pane;
   if (pane) {
     const descendants = collectDescendants(input.processRows, pane.panePid);
-    const verifiedDescendant = descendants
-      .filter((row) =>
-        isVerifiedRuntimeProcess({
-          row,
-          teamName: input.teamName,
-          memberName: input.memberName,
-          agentId: input.agentId,
-          allowAgentNameFallback:
-            input.providerId !== 'opencode' && input.backendType === 'process',
-        })
-      )
-      .sort((left, right) => right.pid - left.pid)[0];
+    const verifiedDescendant = findNewestVerifiedRuntimeProcess({
+      rows: descendants,
+      teamName: input.teamName,
+      agentId: input.agentId,
+    });
     if (verifiedDescendant) {
       return result({
         alive: true,

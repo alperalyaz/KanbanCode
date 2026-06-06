@@ -303,6 +303,8 @@ describe('teamModelCatalog', () => {
   it('detects 1M Anthropic selections and native 1M launch ids', () => {
     expect(isAnthropicOneMillionContextTeamModel('sonnet')).toBe(false);
     expect(isAnthropicOneMillionContextTeamModel('sonnet[1m]')).toBe(true);
+    expect(isAnthropicOneMillionContextTeamModel('claude-opus-4-8')).toBe(true);
+    expect(isAnthropicOneMillionContextTeamModel('claude-opus-4-8[1m]')).toBe(true);
     expect(isAnthropicOneMillionContextTeamModel('claude-opus-4-7')).toBe(true);
     expect(isAnthropicOneMillionContextTeamModel('claude-opus-4-7[1m]')).toBe(true);
     expect(isAnthropicOneMillionContextTeamModel('claude-sonnet-4-6')).toBe(true);

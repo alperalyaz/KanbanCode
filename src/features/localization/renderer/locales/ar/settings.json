@@ -68,12 +68,12 @@
       "useInTeamPicker": "الاستخدام في مشغل الفريق",
       "testInProgress": "اختبار النموذج قيد التشغيل بالفعل.",
       "validationContextRequired": "حدد سياق تحقق أعلاه لتفعيل Test و Set default. الحفظ في team picker يخزن route للفرق الجديدة فقط.",
+      "actionsUnavailable": "الإجراءات غير متاحة مؤقتًا.",
       "defaultSaveInProgress": "يتم حفظ OpenCode default.",
       "routeUnavailableAuth": "يتطلب هذا provider مصادقة قبل استخدام هذا النموذج.",
       "routeUnavailableFailed": "فشل هذا model route في آخر execution test.",
-      "routeUnavailableUnknown": "هذا النموذج هو OpenCode default الحالي، لكنه غير متاح بعد في live catalog.",
-      "actionsUnavailable": "الإجراءات غير متاحة مؤقتًا.",
-      "routeUnavailableGeneric": "لا يمكن استخدام هذا model route الآن."
+      "routeUnavailableGeneric": "لا يمكن استخدام هذا model route الآن.",
+      "routeUnavailableUnknown": "هذا النموذج هو OpenCode default الحالي، لكنه غير متاح بعد في live catalog."
     },
     "providers": {
       "catalog": "مُقدِّم الخدمات المفتوحة",

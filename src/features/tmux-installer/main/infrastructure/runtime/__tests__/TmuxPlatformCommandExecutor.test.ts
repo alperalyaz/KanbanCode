@@ -13,7 +13,10 @@ vi.mock('node:child_process', async () => {
 import * as childProcess from 'node:child_process';
 import * as fs from 'node:fs';
 
-import { TmuxPlatformCommandExecutor } from '../TmuxPlatformCommandExecutor';
+import {
+  parseRuntimeProcessTable,
+  TmuxPlatformCommandExecutor,
+} from '../TmuxPlatformCommandExecutor';
 
 function setPlatform(value: string): void {
   Object.defineProperty(process, 'platform', {
@@ -100,11 +103,28 @@ describe('TmuxPlatformCommandExecutor', () => {
     );
   });
 
+  it('parses the %cpu column when the locale uses a comma decimal separator', () => {
+    // de_DE/fr_FR locales make `ps` print pcpu as e.g. "7,5". The enriched parser must
+    // normalize the comma so the row keeps its cpu/rss metrics and does not leak the
+    // numeric columns into `command` via the basic fallback parser.
+    const rows = parseRuntimeProcessTable('  42   1  7,5  128 opencode runtime --team-name demo\n');
+
+    expect(rows).toEqual([
+      {
+        pid: 42,
+        ppid: 1,
+        command: 'opencode runtime --team-name demo',
+        cpuPercent: 7.5,
+        rssBytes: 131_072,
+      },
+    ]);
+  });
+
   it('lists runtime processes inside WSL on Windows instead of using host ps', async () => {
     setPlatform('win32');
     const execInPreferredDistro = vi.fn(async () => ({
       exitCode: 0,
-      stdout: '  42   1  3.5  1024 opencode runtime --team-name demo\n',
+      stdout: '  42   1  7.5  128 opencode runtime --team-name demo\n',
       stderr: '',
     }));
     const executor = new TmuxPlatformCommandExecutor(
@@ -120,8 +140,8 @@ describe('TmuxPlatformCommandExecutor', () => {
         pid: 42,
         ppid: 1,
         command: 'opencode runtime --team-name demo',
-        cpuPercent: 3.5,
-        rssBytes: 1024 * 1024,
+        cpuPercent: 7.5,
+        rssBytes: 131_072,
       },
     ]);
     expect(execInPreferredDistro).toHaveBeenCalledWith([
@@ -131,5 +151,40 @@ describe('TmuxPlatformCommandExecutor', () => {
       'pid=,ppid=,pcpu=,rss=,command=',
     ]);
     expect(childProcess.execFile).not.toHaveBeenCalled();
+  });
+
+  it('can bypass the runtime process table cache for fresh process reads', async () => {
+    setPlatform('win32');
+    const execInPreferredDistro = vi
+      .fn()
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '  42   1  1.0  128 opencode runtime --team-name demo --agent-id alice@demo\n',
+        stderr: '',
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '  43   1  1.0  128 opencode runtime --team-name demo --agent-id alice@demo\n',
+        stderr: '',
+      });
+    const executor = new TmuxPlatformCommandExecutor(
+      {
+        execInPreferredDistro,
+        getPersistedPreferredDistroSync: () => 'Ubuntu',
+      } as never,
+      {} as never
+    );
+
+    await expect(executor.listRuntimeProcesses()).resolves.toEqual([
+      expect.objectContaining({ pid: 42 }),
+    ]);
+    await expect(executor.listRuntimeProcesses()).resolves.toEqual([
+      expect.objectContaining({ pid: 42 }),
+    ]);
+    await expect(executor.listRuntimeProcesses({ bypassCache: true })).resolves.toEqual([
+      expect.objectContaining({ pid: 43 }),
+    ]);
+
+    expect(execInPreferredDistro).toHaveBeenCalledTimes(2);
   });
 });

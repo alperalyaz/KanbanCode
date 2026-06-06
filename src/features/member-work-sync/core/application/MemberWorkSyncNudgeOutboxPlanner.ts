@@ -5,13 +5,25 @@ import {
 } from '../domain';
 
 import { appendMemberWorkSyncAudit } from './MemberWorkSyncAudit';
-import { decideMemberWorkSyncNudgeActivation } from './MemberWorkSyncNudgeActivationPolicy';
+import {
+  decideMemberWorkSyncNudgeActivation,
+  type MemberWorkSyncNudgeActivationReason,
+} from './MemberWorkSyncNudgeActivationPolicy';
 
-import type { MemberWorkSyncOutboxEnsureInput, MemberWorkSyncStatus } from '../../contracts';
+import type {
+  MemberWorkSyncOutboxEnsureInput,
+  MemberWorkSyncOutboxItem,
+  MemberWorkSyncStatus,
+} from '../../contracts';
 import type { MemberWorkSyncUseCaseDeps } from './ports';
 
 const STATUS_ONLY_RECOVERY_INTENT_PREFIX = 'status-only';
 const AGENDA_SYNC_REFRESH_INTENT_PREFIX = 'agenda-sync-refresh';
+const DELIVERED_STILL_STUCK_RECOVERY_INTENT_PREFIX = 'agenda-sync-still-stuck';
+const DELIVERED_STILL_STUCK_RECOVERY_MIN_AGE_MS = 6 * 60_000;
+const DELIVERED_STILL_STUCK_RECOVERY_BUCKET_MS = 30 * 60_000;
+const DELIVERED_STILL_STUCK_RECOVERY_DELIVERY_WINDOW_MS = 60 * 60_000;
+const DELIVERED_STILL_STUCK_RECOVERY_MAX_DELIVERED_PER_WINDOW = 2;
 
 function getReviewRequestEventIds(status: MemberWorkSyncStatus): string[] {
   return [
@@ -44,6 +56,29 @@ function isTurnSettledReconcile(status: MemberWorkSyncStatus): boolean {
   return status.shadow?.triggerReasons?.includes('turn_settled') === true;
 }
 
+function parseTime(value: string | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : null;
+}
+
+function hasActiveAcceptedWorkLease(status: MemberWorkSyncStatus): boolean {
+  const report = status.report;
+  if (
+    report?.accepted !== true ||
+    report.agendaFingerprint !== status.agenda.fingerprint ||
+    (report.state !== 'still_working' && report.state !== 'blocked')
+  ) {
+    return false;
+  }
+
+  const evaluatedAtMs = parseTime(status.evaluatedAt);
+  const expiresAtMs = parseTime(report.expiresAt);
+  return evaluatedAtMs != null && expiresAtMs != null && expiresAtMs > evaluatedAtMs;
+}
+
 function shouldPlanStatusOnlyRecovery(input: {
   status: MemberWorkSyncStatus;
   baseInput: MemberWorkSyncOutboxEnsureInput;
@@ -56,7 +91,7 @@ function shouldPlanStatusOnlyRecovery(input: {
     input.baseInput.payload.workSyncIntent === 'agenda_sync' &&
     input.baseInput.payload.workSyncIntentKey === undefined &&
     input.existingItemStatus === 'delivered' &&
-    input.status.report?.accepted !== true
+    !hasActiveAcceptedWorkLease(input.status)
   );
 }
 
@@ -72,8 +107,67 @@ function shouldPlanAgendaSyncRefreshRecovery(input: {
     input.baseInput.payload.workSyncIntentKey === undefined &&
     input.existingItem.status === 'delivered' &&
     input.existingItem.agendaFingerprint === input.baseInput.agendaFingerprint &&
-    input.status.report?.accepted !== true
+    !hasActiveAcceptedWorkLease(input.status)
   );
+}
+
+function isDeliveredStillStuckRecoveryReason(reason: MemberWorkSyncNudgeActivationReason): boolean {
+  return (
+    reason === 'shadow_ready' ||
+    reason === 'native_stale_in_progress' ||
+    reason === 'native_stale_assigned_work' ||
+    reason === 'opencode_targeted_shadow_collecting' ||
+    reason === 'lead_targeted_shadow_collecting' ||
+    reason === 'native_targeted_shadow_collecting'
+  );
+}
+
+function shouldPlanDeliveredStillStuckRecovery(input: {
+  status: MemberWorkSyncStatus;
+  baseInput: MemberWorkSyncOutboxEnsureInput;
+  existingItem: MemberWorkSyncOutboxItem;
+  activationReason: MemberWorkSyncNudgeActivationReason;
+}): boolean {
+  const recoverableExistingItem =
+    input.existingItem.status === 'delivered' ||
+    (input.existingItem.status === 'failed_terminal' &&
+      input.existingItem.lastError === 'inbox_payload_conflict');
+
+  if (
+    input.status.state !== 'needs_sync' ||
+    input.status.shadow?.wouldNudge !== true ||
+    input.baseInput.payload.workSyncIntent !== 'agenda_sync' ||
+    input.baseInput.payload.workSyncIntentKey !== undefined ||
+    !recoverableExistingItem ||
+    input.existingItem.agendaFingerprint !== input.baseInput.agendaFingerprint ||
+    hasActiveAcceptedWorkLease(input.status) ||
+    !isDeliveredStillStuckRecoveryReason(input.activationReason)
+  ) {
+    return false;
+  }
+
+  const deliveredAtMs = parseTime(input.existingItem.updatedAt);
+  const evaluatedAtMs = parseTime(input.status.evaluatedAt);
+  return (
+    deliveredAtMs != null &&
+    evaluatedAtMs != null &&
+    evaluatedAtMs - deliveredAtMs >= DELIVERED_STILL_STUCK_RECOVERY_MIN_AGE_MS
+  );
+}
+
+function isOutboxItemAwaitingDelivery(item: MemberWorkSyncOutboxItem): boolean {
+  return item.status !== 'delivered' && item.status !== 'failed_terminal';
+}
+
+function getDeliveredStillStuckRecoveryBucket(status: MemberWorkSyncStatus): string | null {
+  const evaluatedAtMs = parseTime(status.evaluatedAt);
+  if (evaluatedAtMs == null) {
+    return null;
+  }
+  const bucketMs =
+    Math.floor(evaluatedAtMs / DELIVERED_STILL_STUCK_RECOVERY_BUCKET_MS) *
+    DELIVERED_STILL_STUCK_RECOVERY_BUCKET_MS;
+  return new Date(bucketMs).toISOString();
 }
 
 export interface MemberWorkSyncNudgeOutboxPlanResult {
@@ -151,9 +245,39 @@ export class MemberWorkSyncNudgeOutboxPlanner {
     };
   }
 
+  private buildDeliveredStillStuckRecoveryInput(
+    status: MemberWorkSyncStatus,
+    baseInput: MemberWorkSyncOutboxEnsureInput,
+    bucket: string
+  ): MemberWorkSyncOutboxEnsureInput {
+    const intentKey = `${DELIVERED_STILL_STUCK_RECOVERY_INTENT_PREFIX}:${status.agenda.fingerprint}:${baseInput.payloadHash}:${bucket}`;
+    const payload = {
+      ...baseInput.payload,
+      workSyncIntentKey: intentKey,
+      text: [
+        'Work sync retry: the previous work-sync nudge for this agenda is still stuck and still no accepted member_work_sync_report exists.',
+        'Use this latest nudge as the current required sync action.',
+        baseInput.payload.text,
+      ].join('\n'),
+    };
+
+    return {
+      ...baseInput,
+      id: buildMemberWorkSyncNudgeId({
+        teamName: status.teamName,
+        memberName: status.memberName,
+        agendaFingerprint: status.agenda.fingerprint,
+        intentKey,
+      }),
+      payload,
+      payloadHash: buildMemberWorkSyncNudgePayloadHash(this.deps.hash, payload),
+    };
+  }
+
   private async planStatusOnlyRecovery(
     status: MemberWorkSyncStatus,
-    baseInput: MemberWorkSyncOutboxEnsureInput
+    baseInput: MemberWorkSyncOutboxEnsureInput,
+    activationReason?: MemberWorkSyncNudgeActivationReason
   ): Promise<MemberWorkSyncNudgeOutboxPlanResult> {
     const outboxStore = this.deps.outboxStore;
     if (!outboxStore) {
@@ -173,7 +297,82 @@ export class MemberWorkSyncNudgeOutboxPlanner {
       return { planned: false, code: 'payload_conflict' };
     }
 
-    const recoveryPlanned = recoveryResult.item.status !== 'delivered';
+    if (activationReason) {
+      const deliveredStillStuckRecovery = await this.planDeliveredStillStuckRecovery(
+        status,
+        baseInput,
+        recoveryResult.item,
+        activationReason
+      );
+      if (deliveredStillStuckRecovery) {
+        return deliveredStillStuckRecovery;
+      }
+    }
+
+    const recoveryPlanned = isOutboxItemAwaitingDelivery(recoveryResult.item);
+    const recoveryPlanResult = {
+      planned: recoveryPlanned,
+      code: recoveryResult.outcome,
+    } as const;
+    await this.appendPlanAudit(status, recoveryPlanResult);
+    return recoveryPlanResult;
+  }
+
+  private async planDeliveredStillStuckRecovery(
+    status: MemberWorkSyncStatus,
+    baseInput: MemberWorkSyncOutboxEnsureInput,
+    existingItem: MemberWorkSyncOutboxItem,
+    activationReason: MemberWorkSyncNudgeActivationReason
+  ): Promise<MemberWorkSyncNudgeOutboxPlanResult | null> {
+    const outboxStore = this.deps.outboxStore;
+    if (!outboxStore) {
+      return { planned: false, code: 'outbox_unavailable' };
+    }
+    if (
+      !shouldPlanDeliveredStillStuckRecovery({
+        status,
+        baseInput,
+        existingItem,
+        activationReason,
+      })
+    ) {
+      return null;
+    }
+
+    const bucket = getDeliveredStillStuckRecoveryBucket(status);
+    const evaluatedAtMs = parseTime(status.evaluatedAt);
+    if (!bucket || evaluatedAtMs == null) {
+      await this.appendPlanAudit(status, { planned: false, code: 'existing' });
+      return { planned: false, code: 'existing' };
+    }
+    const recentDelivered = await outboxStore.countRecentDelivered({
+      teamName: status.teamName,
+      memberName: status.memberName,
+      sinceIso: new Date(
+        evaluatedAtMs - DELIVERED_STILL_STUCK_RECOVERY_DELIVERY_WINDOW_MS
+      ).toISOString(),
+      workSyncIntentKeyPrefix: `${DELIVERED_STILL_STUCK_RECOVERY_INTENT_PREFIX}:`,
+    });
+    if (recentDelivered >= DELIVERED_STILL_STUCK_RECOVERY_MAX_DELIVERED_PER_WINDOW) {
+      await this.appendPlanAudit(status, { planned: false, code: 'existing' });
+      return { planned: false, code: 'existing' };
+    }
+
+    const recoveryInput = this.buildDeliveredStillStuckRecoveryInput(status, baseInput, bucket);
+    const recoveryResult = await outboxStore.ensurePending(recoveryInput);
+    if (!recoveryResult.ok) {
+      this.deps.logger?.warn('member work sync delivered-still-stuck recovery payload conflict', {
+        teamName: status.teamName,
+        memberName: status.memberName,
+        outboxId: recoveryInput.id,
+        existingPayloadHash: recoveryResult.existingPayloadHash,
+        requestedPayloadHash: recoveryResult.requestedPayloadHash,
+      });
+      await this.appendPlanAudit(status, { planned: false, code: 'payload_conflict' });
+      return { planned: false, code: 'payload_conflict' };
+    }
+
+    const recoveryPlanned = isOutboxItemAwaitingDelivery(recoveryResult.item);
     const recoveryPlanResult = {
       planned: recoveryPlanned,
       code: recoveryResult.outcome,
@@ -299,16 +498,34 @@ export class MemberWorkSyncNudgeOutboxPlanner {
             existingItemStatus: recoveryResult.item.status,
           })
         ) {
-          return this.planStatusOnlyRecovery(status, input);
+          return this.planStatusOnlyRecovery(status, input, activation.reason);
+        }
+        const deliveredStillStuckRecovery = await this.planDeliveredStillStuckRecovery(
+          status,
+          input,
+          recoveryResult.item,
+          activation.reason
+        );
+        if (deliveredStillStuckRecovery) {
+          return deliveredStillStuckRecovery;
         }
 
-        const recoveryPlanned = recoveryResult.item.status !== 'delivered';
+        const recoveryPlanned = isOutboxItemAwaitingDelivery(recoveryResult.item);
         const recoveryPlanResult = {
           planned: recoveryPlanned,
           code: recoveryResult.outcome,
         } as const;
         await this.appendPlanAudit(status, recoveryPlanResult);
         return recoveryPlanResult;
+      }
+      const deliveredStillStuckRecovery = await this.planDeliveredStillStuckRecovery(
+        status,
+        input,
+        result.item,
+        activation.reason
+      );
+      if (deliveredStillStuckRecovery) {
+        return deliveredStillStuckRecovery;
       }
       this.deps.logger?.warn('member work sync nudge outbox payload conflict', {
         teamName: status.teamName,
@@ -334,7 +551,16 @@ export class MemberWorkSyncNudgeOutboxPlanner {
         existingItemStatus: result.item.status,
       })
     ) {
-      return this.planStatusOnlyRecovery(status, input);
+      return this.planStatusOnlyRecovery(status, input, activation.reason);
+    }
+    const deliveredStillStuckRecovery = await this.planDeliveredStillStuckRecovery(
+      status,
+      input,
+      result.item,
+      activation.reason
+    );
+    if (deliveredStillStuckRecovery) {
+      return deliveredStillStuckRecovery;
     }
     if (
       input.payload.workSyncIntent === 'review_pickup' &&
@@ -346,7 +572,10 @@ export class MemberWorkSyncNudgeOutboxPlanner {
       return { planned: false, code };
     }
 
-    const planResult = { planned: true, code: result.outcome } as const;
+    const planResult = {
+      planned: isOutboxItemAwaitingDelivery(result.item),
+      code: result.outcome,
+    } as const;
     await this.appendPlanAudit(status, planResult);
     return planResult;
   }

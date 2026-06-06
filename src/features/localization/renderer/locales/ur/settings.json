@@ -68,12 +68,12 @@
       "useInTeamPicker": "ٹیم چیسٹر میں استعمال ہوتی ہے۔",
       "testInProgress": "ماڈل ٹیسٹ پہلے ہی چل رہا ہے۔",
       "validationContextRequired": "Test اور Set default فعال کرنے کے لیے اوپر validation context منتخب کریں۔ team picker کے لیے محفوظ کرنا صرف نئی ٹیموں کے لیے route محفوظ کرتا ہے۔",
+      "actionsUnavailable": "کارروائیاں عارضی طور پر دستیاب نہیں ہیں۔",
       "defaultSaveInProgress": "OpenCode default محفوظ ہو رہا ہے۔",
       "routeUnavailableAuth": "اس model کو استعمال کرنے سے پہلے اس provider کو authentication چاہیے۔",
       "routeUnavailableFailed": "یہ model route آخری execution test میں ناکام ہوا۔",
-      "routeUnavailableUnknown": "یہ model موجودہ OpenCode default ہے، مگر ابھی live catalog میں دستیاب نہیں۔",
-      "actionsUnavailable": "کارروائیاں عارضی طور پر دستیاب نہیں ہیں۔",
-      "routeUnavailableGeneric": "یہ model route اس وقت استعمال نہیں ہو سکتا۔"
+      "routeUnavailableGeneric": "یہ model route اس وقت استعمال نہیں ہو سکتا۔",
+      "routeUnavailableUnknown": "یہ model موجودہ OpenCode default ہے، مگر ابھی live catalog میں دستیاب نہیں۔"
     },
     "providers": {
       "catalog": "کھولیں",

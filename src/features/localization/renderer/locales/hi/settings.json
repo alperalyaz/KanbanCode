@@ -68,12 +68,12 @@
       "useInTeamPicker": "टीम पिकर में उपयोग करें",
       "testInProgress": "मॉडल टेस्ट पहले से चल रहा है।",
       "validationContextRequired": "Test और Set default सक्षम करने के लिए ऊपर validation context चुनें। team picker के लिए सेव करने से सिर्फ नई टीमों की route सेव होती है।",
+      "actionsUnavailable": "Actions अस्थायी रूप से उपलब्ध नहीं हैं।",
       "defaultSaveInProgress": "OpenCode default सेव हो रहा है।",
       "routeUnavailableAuth": "इस model का उपयोग करने से पहले इस provider को authentication चाहिए।",
       "routeUnavailableFailed": "यह model route पिछले execution test में विफल रहा।",
-      "routeUnavailableUnknown": "यह model वर्तमान OpenCode default है, लेकिन अभी live catalog में उपलब्ध नहीं है।",
-      "actionsUnavailable": "Actions अस्थायी रूप से उपलब्ध नहीं हैं।",
-      "routeUnavailableGeneric": "यह model route अभी उपयोग नहीं किया जा सकता।"
+      "routeUnavailableGeneric": "यह model route अभी उपयोग नहीं किया जा सकता।",
+      "routeUnavailableUnknown": "यह model वर्तमान OpenCode default है, लेकिन अभी live catalog में उपलब्ध नहीं है।"
     },
     "providers": {
       "catalog": "ओपनकोड प्रदाता सूची",

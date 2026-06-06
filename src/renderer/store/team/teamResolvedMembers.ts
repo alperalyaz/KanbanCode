@@ -45,12 +45,12 @@ const resolvedMemberSelectorCache = new Map<
     result: ResolvedTeamMember | null;
   }
 >();
-let activeRawTeammateNameKeysCache = new WeakMap<TeamViewSnapshot['members'], string[]>();
+let activeRawTeammateNameKeysCache = new WeakMap<TeamViewSnapshot['members'], readonly string[]>();
 
 export function clearResolvedMemberSelectorCaches(): void {
   resolvedMembersSelectorCache.clear();
   resolvedMemberSelectorCache.clear();
-  activeRawTeammateNameKeysCache = new WeakMap<TeamViewSnapshot['members'], string[]>();
+  activeRawTeammateNameKeysCache = new WeakMap<TeamViewSnapshot['members'], readonly string[]>();
 }
 
 export function clearResolvedMemberSelectorCachesForTeam(teamName: string): void {
@@ -164,7 +164,9 @@ function buildConfigFallbackMemberSnapshots(snapshot: TeamViewSnapshot): TeamMem
   return fallbackMembers;
 }
 
-function getActiveRawTeammateNameKeys(snapshot: TeamViewSnapshot | null | undefined): string[] {
+function getActiveRawTeammateNameKeys(
+  snapshot: TeamViewSnapshot | null | undefined
+): readonly string[] {
   if (!snapshot) {
     return [];
   }

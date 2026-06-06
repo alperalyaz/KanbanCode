@@ -68,12 +68,12 @@
       "useInTeamPicker": "Utilisation dans le sélectionneur d'équipe",
       "testInProgress": "Le test du modèle est déjà en cours.",
       "validationContextRequired": "Sélectionnez un contexte de validation ci-dessus pour activer Test et Set default. L'enregistrement pour team picker ne conserve que la route pour les nouvelles équipes.",
+      "actionsUnavailable": "Les actions sont temporairement indisponibles.",
       "defaultSaveInProgress": "L'OpenCode default est en cours d'enregistrement.",
       "routeUnavailableAuth": "Ce provider nécessite une authentification avant d'utiliser ce modèle.",
       "routeUnavailableFailed": "Cette model route a échoué au dernier execution test.",
-      "routeUnavailableUnknown": "Ce modèle est l'OpenCode default actuel, mais il n'est pas encore disponible dans le live catalog.",
-      "actionsUnavailable": "Les actions sont temporairement indisponibles.",
-      "routeUnavailableGeneric": "Cette model route ne peut pas être utilisée maintenant."
+      "routeUnavailableGeneric": "Cette model route ne peut pas être utilisée maintenant.",
+      "routeUnavailableUnknown": "Ce modèle est l'OpenCode default actuel, mais il n'est pas encore disponible dans le live catalog."
     },
     "providers": {
       "catalog": "Catalogue des fournisseurs OpenCode",
