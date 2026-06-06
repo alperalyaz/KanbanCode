@@ -4556,7 +4556,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     });
   });
 
-  it('rejects explicit Codex Fast before launch when auth or model eligibility is invalid', () => {
+  it('allows explicit Codex Fast to downgrade before launch when auth or model eligibility is invalid', () => {
     const svc = new TeamProvisioningService();
     const facts = {
       defaultModel: 'gpt-5.4-mini',
@@ -4624,7 +4624,27 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
         fastMode: 'on',
         facts,
       })
-    ).toThrow('enables Codex Fast mode');
+    ).not.toThrow();
+
+    expect(
+      (svc as any).buildProviderModelLaunchIdentity({
+        request: {
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          model: 'gpt-5.4-mini',
+          fastMode: 'on',
+        },
+        facts,
+      })
+    ).toMatchObject({
+      providerId: 'codex',
+      providerBackendId: 'codex-native',
+      selectedModel: 'gpt-5.4-mini',
+      resolvedLaunchModel: 'gpt-5.4-mini',
+      selectedFastMode: 'on',
+      resolvedFastMode: false,
+      fastResolutionReason: expect.stringContaining('API key mode uses standard API pricing'),
+    });
   });
 
   it('rejects Anthropic max and fast when the exact resolved launch model does not support them', () => {

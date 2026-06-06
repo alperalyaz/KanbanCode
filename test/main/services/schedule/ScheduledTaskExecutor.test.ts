@@ -529,26 +529,32 @@ describe('ScheduledTaskExecutor', () => {
     proc.emit('close', 0);
   });
 
-  it('rejects explicit Codex schedule Fast before spawn when saved eligibility is false', async () => {
+  it('runs a standard Codex schedule when saved Fast eligibility is false', async () => {
+    const proc = createMockProcess();
+    mockSpawnCli.mockReturnValue(proc);
+
     const executor = new ScheduledTaskExecutor();
 
-    await expect(
-      executor.execute(
-        makeRequest({
-          config: {
-            cwd: '/tmp/project',
-            prompt: 'do it',
-            providerId: 'codex',
-            providerBackendId: 'codex-native',
-            model: 'gpt-5.4-mini',
-            fastMode: 'on',
-            resolvedFastMode: false,
-          },
-        })
-      )
-    ).rejects.toThrow('Codex Fast mode was requested');
+    void executor.execute(
+      makeRequest({
+        config: {
+          cwd: '/tmp/project',
+          prompt: 'do it',
+          providerId: 'codex',
+          providerBackendId: 'codex-native',
+          model: 'gpt-5.4-mini',
+          fastMode: 'on',
+          resolvedFastMode: false,
+        },
+      })
+    );
+    await flushAsync();
 
-    expect(mockSpawnCli).not.toHaveBeenCalled();
+    const args = mockSpawnCli.mock.calls[0][1] as string[];
+    expect(args).not.toContain('service_tier="fast"');
+    expect(args).not.toContain('features.fast_mode=true');
+
+    proc.emit('close', 0);
   });
 
   it('does not hard-code Codex Fast schedules to GPT-5.4 when saved eligibility is true', async () => {

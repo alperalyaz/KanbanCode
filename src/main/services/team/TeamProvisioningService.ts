@@ -4987,22 +4987,8 @@ export class TeamProvisioningService {
       );
     }
 
-    const codexSelection = resolveCodexSelectionFromFacts({
-      selectedModel: params.model,
-      facts: params.facts,
-    });
-    const codexFastResolution = resolveCodexFastMode({
-      selection: codexSelection,
-      selectedFastMode: params.fastMode,
-    });
-    if ((params.fastMode ?? 'inherit') === 'on' && !codexFastResolution.selectable) {
-      throw new Error(
-        `${params.actorLabel} enables Codex Fast mode, but ${
-          codexFastResolution.disabledReason ??
-          'it is unavailable for the selected runtime, model, or auth mode.'
-        }`
-      );
-    }
+    // Codex Fast is optional acceleration. If it is no longer eligible, the launch identity
+    // resolves it to normal Codex mode instead of blocking an otherwise launch-ready model.
 
     if (!explicitModel || params.facts.modelIds.has(explicitModel)) {
       return;

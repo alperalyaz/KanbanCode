@@ -55,15 +55,6 @@ function buildProviderFastModeArgs(config: ScheduleLaunchConfig): string[] {
 }
 
 function validateFastModeLaunchConfig(config: ScheduleLaunchConfig): void {
-  if (
-    config.providerId === 'codex' &&
-    config.fastMode === 'on' &&
-    config.resolvedFastMode !== true
-  ) {
-    throw new Error(
-      'Codex Fast mode was requested for this schedule, but the saved launch profile is not Fast-eligible. Reopen the schedule and save it again with a supported ChatGPT account configuration.'
-    );
-  }
   if (config.providerId !== 'codex' || config.resolvedFastMode !== true) {
     return;
   }
