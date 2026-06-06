@@ -285,7 +285,7 @@ describe('Team agent launch matrix safe e2e', () => {
       undefined,
       undefined,
       undefined,
-      worktreeManager
+      worktreeManager as TeamMemberWorktreeManager
     );
     svc.setRuntimeAdapterRegistry(new TeamRuntimeAdapterRegistry([adapter]));
     const progressEvents: TeamProvisioningProgress[] = [];
@@ -463,7 +463,7 @@ describe('Team agent launch matrix safe e2e', () => {
     expect(runId).toBe(adapter.launchInputs[0]?.runId);
     expect(adapter.bootstrapCheckins).toEqual([
       {
-        memberName: 'alice',
+        memberName: 'team-lead',
         runId,
         state: 'accepted',
       },
@@ -535,6 +535,7 @@ describe('Team agent launch matrix safe e2e', () => {
 
     expect(runId).toBe(adapter.launchInputs[0]?.runId);
     expect(adapter.launchInputs[0]?.expectedMembers.map((member) => member.name)).toEqual([
+      'team-lead',
       'alice',
       'bob',
     ]);
@@ -677,7 +678,7 @@ describe('Team agent launch matrix safe e2e', () => {
 
     const approval = approvalEvents.find(
       (event): event is ToolApprovalRequest =>
-        !('dismissed' in event) && !('autoResolved' in event)
+        !('dismissed' in event) && !('autoResolved' in event) && event.source === 'alice'
     );
     expect(approval).toMatchObject({
       runId: launch.runId,

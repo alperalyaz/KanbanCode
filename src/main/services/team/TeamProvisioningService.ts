@@ -233,6 +233,7 @@ import {
 import {
   deriveMemberLaunchState,
   isAutoClearableLaunchFailureReason,
+  isBootstrapCheckInTimeoutFailureReason,
   isCliProvisionedButNotAliveFailureReason,
   isNeverSpawnedDuringLaunchReason,
   isProvisionedButNotAliveFailureReason,
@@ -3468,10 +3469,7 @@ function getMemberInboxRelayPriority(
 }
 
 function getLeadInboxRelayPriority(message: Pick<InboxMessage, 'messageKind'>): number {
-  if (message.messageKind === 'member_work_sync_nudge') {
-    return 30;
-  }
-  return 0;
+  return message.messageKind === 'member_work_sync_nudge' ? 30 : 0;
 }
 
 function compareInboxRelayMessages(
@@ -23980,15 +23978,26 @@ export class TeamProvisioningService {
         return 0;
       }
 
+      const readCommitBatch: (InboxMessage & { messageId: string })[] = [];
       for (const m of batch) {
-        relayedIds.add(m.messageId);
+        if (m.messageKind !== 'member_work_sync_nudge') {
+          readCommitBatch.push(m);
+          relayedIds.add(m.messageId);
+          continue;
+        }
+        if (await this.hasAcceptedMemberWorkSyncReport({ teamName, memberName })) {
+          readCommitBatch.push(m);
+          relayedIds.add(m.messageId);
+        }
       }
       this.relayedMemberInboxMessageIds.set(relayKey, this.trimRelayedSet(relayedIds));
 
-      try {
-        await this.markInboxMessagesRead(teamName, memberName, batch);
-      } catch {
-        // Best-effort: relay succeeded; marking read failed.
+      if (readCommitBatch.length > 0) {
+        try {
+          await this.markInboxMessagesRead(teamName, memberName, readCommitBatch);
+        } catch {
+          // Best-effort: relay succeeded; marking read failed.
+        }
       }
 
       return batch.length;
@@ -31863,9 +31872,21 @@ export class TeamProvisioningService {
       const heartbeatReason = heartbeatMessage
         ? extractBootstrapFailureReason(heartbeatMessage.text)
         : null;
+      const bootstrapFailureReason =
+        bootstrapMember?.hardFailure === true &&
+        !bootstrapMember.bootstrapConfirmed &&
+        isBootstrapMemberEvidenceCurrentForMember(
+          currentBootstrapEvidenceBoundary,
+          bootstrapMember,
+          'confirmation'
+        )
+          ? (bootstrapMember.hardFailureReason ?? bootstrapMember.runtimeDiagnostic)
+          : null;
       const acceptedAtMs =
         current.firstSpawnAcceptedAt != null ? Date.parse(current.firstSpawnAcceptedAt) : NaN;
       const initialFailureReason = current.hardFailureReason ?? current.runtimeDiagnostic;
+      const hasBootstrapCheckInTimeoutFailure =
+        isBootstrapCheckInTimeoutFailureReason(initialFailureReason);
       const hadAutoClearableFailure = isAutoClearableLaunchFailureReason(initialFailureReason);
       const requiresConfirmedBootstrapToClearFailure =
         isCliProvisionedButNotAliveFailureReason(initialFailureReason);
@@ -31937,6 +31958,8 @@ export class TeamProvisioningService {
       const currentProvesSpawnAcceptance =
         current.agentToolAccepted === true || typeof current.firstSpawnAcceptedAt === 'string';
       if (
+        !bootstrapFailureReason &&
+        !hasBootstrapCheckInTimeoutFailure &&
         hadAutoClearableFailure &&
         !requiresConfirmedBootstrapToClearFailure &&
         (bootstrapProvesSpawnAcceptance || currentProvesSpawnAcceptance)
@@ -31965,6 +31988,18 @@ export class TeamProvisioningService {
       if (heartbeatReason) {
         current.hardFailure = true;
         current.hardFailureReason = heartbeatReason;
+        current.runtimeDiagnostic = heartbeatReason;
+        current.runtimeDiagnosticSeverity = 'error';
+        current.diagnostics = mergeRuntimeDiagnostics(current.diagnostics, [heartbeatReason]);
+        current.sources.hardFailureSignal = true;
+      } else if (bootstrapFailureReason) {
+        current.hardFailure = true;
+        current.hardFailureReason = bootstrapFailureReason;
+        current.runtimeDiagnostic = bootstrapFailureReason;
+        current.runtimeDiagnosticSeverity = 'error';
+        current.diagnostics = mergeRuntimeDiagnostics(current.diagnostics, [
+          bootstrapFailureReason,
+        ]);
         current.sources.hardFailureSignal = true;
       } else if (heartbeatMessage && !isOpenCodeSecondaryLaneMember) {
         current.bootstrapConfirmed = true;

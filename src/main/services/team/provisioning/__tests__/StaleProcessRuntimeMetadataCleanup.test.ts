@@ -47,7 +47,7 @@ function createRuntimeMember(overrides: Record<string, unknown> = {}): Record<st
     bootstrapProofMode: 'native_app_managed_context',
     bootstrapContextHash: 'context-hash',
     bootstrapBriefingHash: 'briefing-hash',
-    bootstrapRuntimeEventsPath: '/tmp/tom.runtime.jsonl',
+    bootstrapRuntimeEventsPath: '/repo/.agent-teams/tom.runtime.jsonl',
     ...overrides,
   };
 }

@@ -18191,6 +18191,11 @@ describe('TeamProvisioningService', () => {
           cwd: tempClaudeRoot,
           expectedMembers: [
             expect.objectContaining({
+              name: 'team-lead',
+              providerId: 'opencode',
+              model: 'big-pickle',
+            }),
+            expect.objectContaining({
               name: 'bob',
               providerId: 'opencode',
               model: 'minimax-m2.5-free',

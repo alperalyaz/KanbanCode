@@ -20,10 +20,8 @@ import { TeamProvisioningService } from '../../../../src/main/services/team/Team
 interface TranscriptIndexHarness {
   bootstrapTranscriptOutcomeCache: Map<string, unknown>;
   bootstrapTranscriptOutcomeInFlight: Map<string, Promise<unknown>>;
-  bootstrapTranscriptFileIndexByPath: Map<string, unknown>;
-  bootstrapTranscriptFileIndexInFlight: Map<string, Promise<unknown>>;
-  appendBootstrapTranscriptFileIndex: (...args: unknown[]) => Promise<unknown>;
-  rebuildBootstrapTranscriptFileIndex: (...args: unknown[]) => Promise<unknown>;
+  parsedBootstrapTranscriptTailCache: Map<string, unknown>;
+  getParsedBootstrapTranscriptTail: (...args: unknown[]) => Promise<unknown>;
   readRecentBootstrapTranscriptOutcome: (
     filePath: string,
     sinceMs: number | null,
@@ -39,8 +37,7 @@ function createTranscriptIndexHarness(): TranscriptIndexHarness {
   ) as unknown as TranscriptIndexHarness;
   service.bootstrapTranscriptOutcomeCache = new Map();
   service.bootstrapTranscriptOutcomeInFlight = new Map();
-  service.bootstrapTranscriptFileIndexByPath = new Map();
-  service.bootstrapTranscriptFileIndexInFlight = new Map();
+  service.parsedBootstrapTranscriptTailCache = new Map();
   return service;
 }
 
@@ -84,17 +81,11 @@ describe('TeamProvisioningService bootstrap transcript index', () => {
     );
 
     const service = createTranscriptIndexHarness();
-    const originalRebuild = service.rebuildBootstrapTranscriptFileIndex.bind(service);
-    const originalAppend = service.appendBootstrapTranscriptFileIndex.bind(service);
-    let rebuildCalls = 0;
-    let appendCalls = 0;
-    service.rebuildBootstrapTranscriptFileIndex = async (...args: unknown[]) => {
-      rebuildCalls += 1;
-      return originalRebuild(...args);
-    };
-    service.appendBootstrapTranscriptFileIndex = async (...args: unknown[]) => {
-      appendCalls += 1;
-      return originalAppend(...args);
+    const originalParseTail = service.getParsedBootstrapTranscriptTail.bind(service);
+    let parseTailCalls = 0;
+    service.getParsedBootstrapTranscriptTail = async (...args: unknown[]) => {
+      parseTailCalls += 1;
+      return originalParseTail(...args);
     };
 
     await expect(
@@ -110,8 +101,7 @@ describe('TeamProvisioningService bootstrap transcript index', () => {
       observedAt: '2026-04-18T10:00:00.000Z',
       source: 'member_briefing',
     });
-    expect(rebuildCalls).toBe(1);
-    expect(appendCalls).toBe(0);
+    expect(parseTailCalls).toBe(1);
 
     await fs.appendFile(
       transcriptPath,
@@ -135,7 +125,21 @@ describe('TeamProvisioningService bootstrap transcript index', () => {
       observedAt: '2026-04-18T10:01:00.000Z',
       reason: 'Bootstrap failed: member_briefing tool is not available',
     });
-    expect(rebuildCalls).toBe(1);
-    expect(appendCalls).toBe(1);
+    expect(parseTailCalls).toBe(2);
+
+    await expect(
+      service.readRecentBootstrapTranscriptOutcome(
+        transcriptPath,
+        null,
+        'alice',
+        'demo-team',
+        { contextMemberNames: ['alice'] }
+      )
+    ).resolves.toEqual({
+      kind: 'failure',
+      observedAt: '2026-04-18T10:01:00.000Z',
+      reason: 'Bootstrap failed: member_briefing tool is not available',
+    });
+    expect(parseTailCalls).toBe(2);
   });
 });

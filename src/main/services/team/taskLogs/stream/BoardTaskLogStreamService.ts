@@ -2,6 +2,10 @@ import { extractToolCalls, extractToolResults } from '@main/utils/toolExtraction
 import { isLeadMember as isLeadMemberCheck } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
 import { getTaskDisplayId } from '@shared/utils/taskIdentity';
+import {
+  inferTeamProviderIdFromModel,
+  normalizeOptionalTeamProviderId,
+} from '@shared/utils/teamProvider';
 
 import { TeamConfigReader } from '../../TeamConfigReader';
 import { TeamMembersMetaStore } from '../../TeamMembersMetaStore';
@@ -36,6 +40,8 @@ import type {
   BoardTaskLogSegment,
   BoardTaskLogStreamResponse,
   BoardTaskLogStreamSummary,
+  TeamMember,
+  TeamProviderId,
   TeamTask,
 } from '@shared/types';
 
@@ -102,6 +108,58 @@ function emptySummary(): BoardTaskLogStreamSummary {
 
 function normalizeMemberName(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function resolveExplicitMemberProviderId(
+  member: TeamMember | undefined
+): TeamProviderId | undefined {
+  if (!member) {
+    return undefined;
+  }
+  const legacyProvider = (member as { provider?: unknown }).provider;
+  return (
+    normalizeOptionalTeamProviderId(member.providerId) ??
+    normalizeOptionalTeamProviderId(legacyProvider)
+  );
+}
+
+function inferProviderIdFromMemberModel(
+  member: TeamMember | undefined
+): TeamProviderId | undefined {
+  return inferTeamProviderIdFromModel(member?.model);
+}
+
+function inferProviderIdFromBackend(providerBackendId: unknown): TeamProviderId | undefined {
+  const normalized = typeof providerBackendId === 'string' ? providerBackendId.trim() : '';
+  if (normalized === 'codex-native') {
+    return 'codex';
+  }
+  if (normalized === 'opencode-cli') {
+    return 'opencode';
+  }
+  return undefined;
+}
+
+function resolveProviderFromMemberSources(input: {
+  configMembers: readonly TeamMember[];
+  metaMembers: readonly TeamMember[];
+  memberName: string;
+}): TeamProviderId | undefined {
+  const normalizedMemberName = normalizeMemberName(input.memberName);
+  const configMember = input.configMembers.find(
+    (candidate) => normalizeMemberName(candidate.name) === normalizedMemberName
+  );
+  const metaMember = input.metaMembers.find(
+    (candidate) => normalizeMemberName(candidate.name) === normalizedMemberName
+  );
+  return (
+    resolveExplicitMemberProviderId(metaMember) ??
+    resolveExplicitMemberProviderId(configMember) ??
+    inferProviderIdFromBackend(configMember?.providerBackendId) ??
+    inferProviderIdFromMemberModel(configMember) ??
+    inferProviderIdFromBackend(metaMember?.providerBackendId) ??
+    inferProviderIdFromMemberModel(metaMember)
+  );
 }
 
 const isBoardMcpToolName = isBoardTaskLogMcpToolName;
@@ -2260,10 +2318,13 @@ export class BoardTaskLogStreamService {
         return false;
       }
 
-      const member = [...metaMembers, ...(config?.members ?? [])].find(
-        (candidate) => normalizeMemberName(candidate.name) === normalizedOwner
+      return (
+        resolveProviderFromMemberSources({
+          configMembers: config?.members ?? [],
+          metaMembers,
+          memberName: normalizedOwner,
+        }) === 'opencode'
       );
-      return member?.providerId === 'opencode';
     } catch {
       return false;
     }

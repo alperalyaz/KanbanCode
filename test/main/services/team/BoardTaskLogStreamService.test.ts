@@ -272,7 +272,7 @@ describe('BoardTaskLogStreamService', () => {
     expect(runtimeFallbackSource.getTaskLogStream).toHaveBeenCalledTimes(1);
   });
 
-  it('merges OpenCode runtime stream when board transcript slices mask member execution', async () => {
+  it('merges OpenCode runtime stream using config provider when runtime meta has stale model only', async () => {
     const lead = {
       role: 'lead' as const,
       sessionId: 'session-lead',
@@ -344,10 +344,13 @@ describe('BoardTaskLogStreamService', () => {
       getDeletedTasks: vi.fn(async () => []),
     };
     const membersMetaStore = {
-      getMembers: vi.fn(async () => [{ name: 'jack', providerId: 'opencode' }]),
+      getMembers: vi.fn(async () => [{ name: 'jack', role: 'developer', model: 'gpt-5.5' }]),
     };
     const configReader = {
-      getConfig: vi.fn(async () => null),
+      getConfig: vi.fn(async () => ({
+        name: 'demo',
+        members: [{ name: 'jack', providerBackendId: 'opencode-cli', model: 'gpt-5.5' }],
+      })),
     };
     const buildBundleChunks = vi.fn((messages: ParsedMessage[]) => [{ id: messages[0]?.uuid }]);
 
