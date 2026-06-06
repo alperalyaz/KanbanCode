@@ -1352,14 +1352,16 @@ const LeadLoadBridge = memo(function LeadLoadBridge({
                     {t('detail.context.title')}
                   </p>
                   <p className="text-[10px] text-[var(--color-text-muted)]">
-                    {leadSessionLoading ? 'Loading…' : 'No session loaded'}
+                    {leadSessionLoading
+                      ? t('detail.context.loading')
+                      : t('detail.context.noSessionLoaded')}
                   </p>
                 </div>
                 <button
                   type="button"
                   className="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
                   onClick={() => setContextPanelVisible(false)}
-                  aria-label={`Close ${teamName} context panel`}
+                  aria-label={t('detail.context.closePanel', { team: teamName })}
                 >
                   ×
                 </button>
@@ -1367,8 +1369,8 @@ const LeadLoadBridge = memo(function LeadLoadBridge({
               <div className="flex flex-1 items-center justify-center p-4">
                 <p className="text-xs text-[var(--color-text-muted)]">
                   {leadSessionLoading
-                    ? 'Loading context…'
-                    : 'Open the team lead session to view context.'}
+                    ? t('detail.context.loadingContext')
+                    : t('detail.context.openLeadSession')}
                 </p>
               </div>
             </div>
@@ -1401,7 +1403,7 @@ const LeadLoadBridge = memo(function LeadLoadBridge({
             leadSessionLoaded
               ? `Session: ${leadSessionId}`
               : leadSessionLoading
-                ? 'Loading context…'
+                ? t('detail.context.loadingContext')
                 : leadSessionId
           }
         >
