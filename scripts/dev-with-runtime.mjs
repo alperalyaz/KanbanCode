@@ -529,6 +529,11 @@ async function main() {
   delete uiEnv.CLAUDE_CLI_PATH;
   const uiPackageManager = readPackageManagerCommand(uiRepoRoot);
 
+  runOrExit(process.execPath, [path.join(scriptDir, 'ensure-electron-install.cjs'), '--strict'], {
+    cwd: uiRepoRoot,
+    env: uiEnv,
+  });
+
   runOrExit(uiPackageManager, ['exec', 'electron-vite', 'dev', ...electronViteArgs], {
     cwd: uiRepoRoot,
     env: uiEnv,
