@@ -21,9 +21,9 @@ type RuntimeAwareProviderStatus = Pick<
 >;
 type RuntimeModelCatalog = NonNullable<RuntimeAwareProviderStatus['modelCatalog']>;
 type RuntimeCatalogModel = RuntimeModelCatalog['models'][number];
-type VisibleTeamProviderModelsOptions = {
+interface VisibleTeamProviderModelsOptions {
   expandOpenCodeSummaryCatalog?: boolean;
-};
+}
 
 export interface TeamProviderModelOption {
   value: string;
