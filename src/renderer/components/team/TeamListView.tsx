@@ -47,7 +47,6 @@ import { getBaseName } from '@renderer/utils/pathUtils';
 import { nameColorSet } from '@renderer/utils/projectColor';
 import { buildPendingRuntimeSummaryCopy } from '@renderer/utils/teamLaunchSummaryCopy';
 import { isTeamListStatusRunning, resolveTeamStatus } from '@renderer/utils/teamListStatus';
-import { isLeadMember } from '@shared/utils/leadDetection';
 import {
   Copy,
   FolderOpen,
@@ -64,6 +63,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { LaunchTeamDialogLoadingFallback } from './dialogs/LaunchTeamDialogLoadingFallback';
 import { executeTeamRelaunch } from './dialogs/teamRelaunchFlow';
+import { buildCopiedTeamMembers } from './teamCopyData';
 import { TeamEmptyState } from './TeamEmptyState';
 import { EMPTY_TEAM_FILTER, TeamListFilterPopover } from './TeamListFilterPopover';
 import {
@@ -524,6 +524,7 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
   const [copyData, setCopyData] = useState<TeamCopyData | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<TeamListFilterState>(EMPTY_TEAM_FILTER);
+  const [teamPriorityProjectPath, setTeamPriorityProjectPath] = useState<string | null>(null);
   const [aliveTeams, setAliveTeams] = useState<string[]>([]);
   const [teamSectionVisibleCountByKey, setTeamSectionVisibleCountByKey] = useState<
     Record<string, number>
@@ -694,7 +695,7 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
       activeProjectId,
     ]
   );
-  const currentProjectPath = currentProjectSelection.projectPath;
+  const currentProjectPath = teamPriorityProjectPath ?? currentProjectSelection.projectPath;
 
   const filteredTeams = useMemo<TeamSummary[]>(() => {
     let result = teamsWithProvisioning;
@@ -775,13 +776,14 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
   const handleProjectSelectionChange = useCallback(
     (projectPath: string | null): void => {
       if (!projectPath) {
+        setTeamPriorityProjectPath(null);
         useStore.setState(getProjectSelectionResetState());
         return;
       }
 
+      setTeamPriorityProjectPath(projectPath);
       const target = findTeamProjectSelectionTarget(repositoryGroups, projects, projectPath);
       if (!target) {
-        console.warn('Unable to resolve selected team project path:', projectPath);
         return;
       }
 
@@ -883,25 +885,38 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
       e.stopPropagation();
       void (async () => {
         try {
+          const existingNames = teams.map((t) => t.teamName);
+          const uniqueName = generateUniqueName(teamName, existingNames);
+
+          const savedRequest = await api.teams.getSavedRequest(teamName).catch(() => null);
+          if (savedRequest) {
+            setCopyData({
+              teamName: uniqueName,
+              description: savedRequest.description,
+              color: savedRequest.color,
+              cwd: savedRequest.cwd,
+              prompt: savedRequest.prompt,
+              providerId: savedRequest.providerId,
+              model: savedRequest.model,
+              effort: savedRequest.effort,
+              fastMode: savedRequest.fastMode,
+              limitContext: savedRequest.limitContext,
+              skipPermissions: savedRequest.skipPermissions,
+              members: buildCopiedTeamMembers(savedRequest.members),
+            });
+            setShowCreateDialog(true);
+            return;
+          }
+
           const data = await api.teams.getData(teamName, {
             includeMemberBranches: false,
           });
-          const existingNames = teams.map((t) => t.teamName);
-          const uniqueName = generateUniqueName(teamName, existingNames);
-          const members = (data.members ?? [])
-            .filter((m) => !m.removedAt && !isLeadMember(m))
-            .map((m) => {
-              let role = m.role;
-              if (!role && m.agentType && m.agentType !== 'general-purpose') {
-                role = m.agentType;
-              }
-              return { name: m.name, role, mcpPolicy: m.mcpPolicy };
-            });
           setCopyData({
             teamName: uniqueName,
             description: data.config.description,
             color: data.config.color,
-            members,
+            cwd: data.config.projectPath,
+            members: buildCopiedTeamMembers(data.config.members, data.members),
           });
           setShowCreateDialog(true);
         } catch {
@@ -1072,7 +1087,7 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
         provisioningTeamNames={provisioningTeamNames}
         activeTeams={activeTeams}
         initialData={copyData ?? undefined}
-        defaultProjectPath={currentProjectPath}
+        defaultProjectPath={copyData?.cwd ?? currentProjectPath}
         onClose={handleCreateDialogClose}
         onCreate={handleCreateSubmit}
         onOpenTeam={openTeamTab}

@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import path from 'node:path';
 
 import { evaluateCodexLaunchReadiness } from '@features/codex-account';
 import { execCli } from '@main/utils/childProcess';
@@ -11,6 +10,9 @@ import {
 
 import { ApiKeyService } from '../extensions/apikeys/ApiKeyService';
 import { ConfigManager } from '../infrastructure/ConfigManager';
+
+import { readClaudeUserAnthropicSettingsAuthEnv } from './claudeUserSettingsEnv';
+import { isCodexExecBinary } from './codexCliBinary';
 
 import type {
   AnthropicCompatibleEndpointConfig,
@@ -43,6 +45,7 @@ type ExternalCredential = {
 interface StoredApiKeyAccessOptions {
   allowStoredApiKeyDecryption?: boolean;
   allowedStoredApiKeyEnvVarNames?: readonly string[];
+  allowClaudeUserSettingsAuthEnv?: boolean;
 }
 
 interface CodexLaunchSnapshotRefreshOptions {
@@ -91,8 +94,10 @@ const CODEX_FORCED_LOGIN_METHOD_ENV_VAR = 'CLAUDE_CODE_CODEX_FORCED_LOGIN_METHOD
 const CODEX_CUSTOM_PROVIDER_ID = 'agent_teams_custom';
 const CODEX_CUSTOM_PROVIDER_NAME = 'Agent Teams Custom';
 const CODEX_CUSTOM_PROVIDER_SETTINGS_KEY = 'agent_teams_custom_provider';
+const CODEX_LAUNCH_CONFIG_SETTINGS_KEY = 'agent_teams_launch_config';
 const CODEX_NATIVE_BACKEND_ID = 'codex-native';
 const CODEX_LOGIN_STATUS_TIMEOUT_MS = 5_000;
+const CODEX_LOGIN_STATUS_CONFIG_OVERRIDES = ['service_tier="fast"'] as const;
 const ANTHROPIC_API_KEY_VERIFY_TIMEOUT_MS = 10_000;
 const ANTHROPIC_API_KEY_VERIFY_CACHE_TTL_MS = 60_000;
 const ANTHROPIC_DEFAULT_API_BASE_URL = 'https://api.anthropic.com';
@@ -198,6 +203,14 @@ function hasAnthropicCompatibleAuthEnv(env: NodeJS.ProcessEnv): boolean {
   return Boolean(env.ANTHROPIC_AUTH_TOKEN?.trim() || env.ANTHROPIC_API_KEY?.trim());
 }
 
+function hasExplicitAnthropicCredentialEnv(env: NodeJS.ProcessEnv): boolean {
+  return Boolean(
+    env.ANTHROPIC_BASE_URL?.trim() ||
+    env.ANTHROPIC_AUTH_TOKEN?.trim() ||
+    env.ANTHROPIC_API_KEY?.trim()
+  );
+}
+
 function isUsableAnthropicCompatibleEndpoint(
   endpoint: AnthropicCompatibleEndpointConfig | undefined
 ): endpoint is AnthropicCompatibleEndpointConfig {
@@ -269,20 +282,6 @@ async function verifyAnthropicApiKeyWithApi(
   }
 }
 
-function isCodexExecBinary(binaryPath?: string | null): boolean {
-  const binaryName = path.basename(binaryPath?.trim() ?? '').toLowerCase();
-  return (
-    binaryName === 'codex' ||
-    binaryName === 'codex.exe' ||
-    binaryName === 'codex.cmd' ||
-    binaryName === 'codex.bat' ||
-    binaryName === 'codex-cli' ||
-    binaryName === 'codex-cli.exe' ||
-    binaryName === 'codex-cli.cmd' ||
-    binaryName === 'codex-cli.bat'
-  );
-}
-
 function tomlString(value: string): string {
   return JSON.stringify(value);
 }
@@ -300,20 +299,31 @@ function buildCodexCustomProviderConfigOverrides(config: CodexCustomProviderConf
 function buildCodexLaunchArgs(
   binaryPath: string | null | undefined,
   loginMethod: 'chatgpt' | 'api',
-  configOverrides: readonly string[] = []
+  options: {
+    customProviderConfigOverrides?: readonly string[];
+    cliConfigOverrides?: readonly string[];
+  } = {}
 ): string[] {
+  const customProviderConfigOverrides = options.customProviderConfigOverrides ?? [];
+  const cliConfigOverrides = [...(options.cliConfigOverrides ?? [])];
   if (isCodexExecBinary(binaryPath)) {
     return [
       '-c',
       `forced_login_method="${loginMethod}"`,
-      ...configOverrides.flatMap((override) => ['-c', override]),
+      ...customProviderConfigOverrides.flatMap((override) => ['-c', override]),
+      ...cliConfigOverrides.flatMap((override) => ['-c', override]),
     ];
   }
 
   const codexSettings: Record<string, unknown> = { forced_login_method: loginMethod };
-  if (configOverrides.length > 0) {
+  if (customProviderConfigOverrides.length > 0) {
     codexSettings[CODEX_CUSTOM_PROVIDER_SETTINGS_KEY] = {
-      config_overrides: [...configOverrides],
+      config_overrides: [...customProviderConfigOverrides],
+    };
+  }
+  if (cliConfigOverrides.length > 0) {
+    codexSettings[CODEX_LAUNCH_CONFIG_SETTINGS_KEY] = {
+      config_overrides: [...cliConfigOverrides],
     };
   }
 
@@ -322,9 +332,10 @@ function buildCodexLaunchArgs(
 
 function buildCodexForcedLoginLaunchArgs(
   binaryPath: string | null | undefined,
-  loginMethod: 'chatgpt' | 'api'
+  loginMethod: 'chatgpt' | 'api',
+  cliConfigOverrides: readonly string[] = []
 ): string[] {
-  return buildCodexLaunchArgs(binaryPath, loginMethod);
+  return buildCodexLaunchArgs(binaryPath, loginMethod, { cliConfigOverrides });
 }
 
 function isCodexCustomProviderBaseUrlUsable(baseUrl: string): boolean {
@@ -452,7 +463,11 @@ async function checkCodexCliLoginStatus({
   env: NodeJS.ProcessEnv;
 }): Promise<CodexCliLoginStatusCheckResult> {
   const executable = binaryPath?.trim() || 'codex';
-  const args = [...buildCodexForcedLoginLaunchArgs(executable, 'chatgpt'), 'login', 'status'];
+  const args = [
+    ...buildCodexForcedLoginLaunchArgs(executable, 'chatgpt', CODEX_LOGIN_STATUS_CONFIG_OVERRIDES),
+    'login',
+    'status',
+  ];
 
   try {
     const result = await execCli(executable, args, {
@@ -687,6 +702,42 @@ export class ProviderConnectionService {
     return true;
   }
 
+  private async applyClaudeUserAnthropicSettingsAuthEnv(
+    env: NodeJS.ProcessEnv,
+    options?: StoredApiKeyAccessOptions
+  ): Promise<boolean> {
+    if (options?.allowClaudeUserSettingsAuthEnv === false) {
+      return false;
+    }
+
+    if (this.getConfiguredAuthMode('anthropic') !== 'auto') {
+      return false;
+    }
+
+    if (hasExplicitAnthropicCredentialEnv(env)) {
+      return false;
+    }
+
+    const settingsEnv = await readClaudeUserAnthropicSettingsAuthEnv();
+    if (!settingsEnv) {
+      return false;
+    }
+
+    if (settingsEnv.ANTHROPIC_BASE_URL) {
+      env.ANTHROPIC_BASE_URL = settingsEnv.ANTHROPIC_BASE_URL;
+    }
+    if (settingsEnv.ANTHROPIC_API_KEY) {
+      env.ANTHROPIC_API_KEY = settingsEnv.ANTHROPIC_API_KEY;
+      delete env.ANTHROPIC_AUTH_TOKEN;
+      return true;
+    }
+    if (settingsEnv.ANTHROPIC_AUTH_TOKEN) {
+      env.ANTHROPIC_AUTH_TOKEN = settingsEnv.ANTHROPIC_AUTH_TOKEN;
+    }
+    env.ANTHROPIC_API_KEY = '';
+    return true;
+  }
+
   private async getAnthropicCompatibleEndpointConnectionInfo(): Promise<
     NonNullable<CliProviderConnectionInfo['compatibleEndpoint']>
   > {
@@ -741,6 +792,10 @@ export class ProviderConnectionService {
   ): Promise<NodeJS.ProcessEnv> {
     if (providerId === 'anthropic') {
       if (await this.applyConfiguredAnthropicCompatibleEndpointEnv(env, options)) {
+        return env;
+      }
+
+      if (await this.applyClaudeUserAnthropicSettingsAuthEnv(env, options)) {
         return env;
       }
 
@@ -844,6 +899,10 @@ export class ProviderConnectionService {
   ): Promise<NodeJS.ProcessEnv> {
     if (providerId === 'anthropic') {
       if (await this.applyConfiguredAnthropicCompatibleEndpointEnv(env, options)) {
+        return env;
+      }
+
+      if (await this.applyClaudeUserAnthropicSettingsAuthEnv(env, options)) {
         return env;
       }
 
@@ -1094,11 +1153,11 @@ export class ProviderConnectionService {
 
     if (readiness.effectiveAuthMode === 'api_key') {
       const customProvider = this.getConfiguredCodexCustomProvider();
-      return buildCodexLaunchArgs(
-        binaryPath,
-        'api',
-        customProvider ? buildCodexCustomProviderConfigOverrides(customProvider) : []
-      );
+      return buildCodexLaunchArgs(binaryPath, 'api', {
+        customProviderConfigOverrides: customProvider
+          ? buildCodexCustomProviderConfigOverrides(customProvider)
+          : [],
+      });
     }
 
     return [];

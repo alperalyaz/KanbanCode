@@ -485,6 +485,46 @@ describe('TeamDataService draft metadata', () => {
       ],
     });
   });
+
+  it('omits removed members from saved request members', async () => {
+    const claudeRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'team-data-saved-request-removed-'));
+    tempPaths.push(claudeRoot);
+    setClaudeBasePathOverride(claudeRoot);
+
+    const service = new TeamDataService();
+    await service.createTeamConfig({
+      teamName: 'draft-team',
+      cwd: '/Users/test/project',
+      providerId: 'anthropic',
+      members: [
+        {
+          name: 'active-builder',
+          role: 'Engineer',
+          workflow: 'Keep shipping',
+          model: 'claude-sonnet-4.5',
+        },
+        {
+          name: 'old-builder',
+          role: 'Legacy Engineer',
+          workflow: 'Should not be reused',
+          model: 'claude-haiku-4.5',
+        },
+      ],
+    });
+
+    await service.removeMember('draft-team', 'old-builder');
+
+    await expect(service.getSavedRequest('draft-team')).resolves.toMatchObject({
+      members: [
+        {
+          name: 'active-builder',
+          role: 'Engineer',
+          workflow: 'Keep shipping',
+          model: 'claude-sonnet-4.5',
+        },
+      ],
+    });
+  });
 });
 
 function createForwardingJournalStore(initialEntries: Array<Record<string, unknown>> = []) {

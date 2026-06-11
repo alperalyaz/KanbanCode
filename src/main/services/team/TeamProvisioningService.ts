@@ -172,6 +172,10 @@ import {
   resolveGeminiRuntimeAuth,
 } from '../runtime/geminiRuntimeAuth';
 import { buildProviderAwareCliEnv } from '../runtime/providerAwareCliEnv';
+import {
+  buildProviderControlPlaneCliCommandArgs,
+  buildProviderLaunchCliCommandArgs,
+} from '../runtime/providerCliCommandArgs';
 import { ProviderConnectionService } from '../runtime/ProviderConnectionService';
 import {
   buildProviderPreflightPingArgs,
@@ -1539,7 +1543,7 @@ function buildMissingCliError(): Error {
 }
 
 function buildProviderCliCommandArgs(providerArgs: string[], args: string[]): string[] {
-  return mergeJsonSettingsArgs([...providerArgs, ...args]);
+  return buildProviderLaunchCliCommandArgs(providerArgs, args);
 }
 
 interface ProviderModelListCommandResponse {
@@ -3626,6 +3630,10 @@ export class TeamProvisioningService {
     string,
     Promise<OpenCodeMemberInboxRelayResult>
   >();
+  private readonly openCodeMemberSendInFlightByLane = new Map<
+    string,
+    Promise<OpenCodeTeamRuntimeMessageResult>
+  >();
   private readonly openCodePromptDeliveryWatchdogTimers = new Map<string, NodeJS.Timeout>();
   private readonly openCodePromptDeliveryWatchdogDeadlines = new Map<string, number>();
   private readonly openCodeRuntimeDeliveryAdvisoryReviewTimers = new Map<string, NodeJS.Timeout>();
@@ -4178,7 +4186,7 @@ export class TeamProvisioningService {
     leadProviderId?: TeamProviderId;
     members: TeamCreateRequest['members'];
   }): WorkspaceTrustProvider[] {
-    const providers = new Set<WorkspaceTrustProvider>(['claude']);
+    const providers = new Set<WorkspaceTrustProvider>();
     providers.add(this.toWorkspaceTrustProvider(resolveTeamProviderId(input.leadProviderId)));
     for (const member of input.members) {
       const providerId =
@@ -4188,7 +4196,11 @@ export class TeamProvisioningService {
         providers.add(this.toWorkspaceTrustProvider(providerId));
       }
     }
-    return [...providers];
+    if (providers.size === 0) {
+      providers.add('claude');
+    }
+    const providerOrder: WorkspaceTrustProvider[] = ['claude', 'codex', 'gemini', 'opencode'];
+    return providerOrder.filter((provider) => providers.has(provider));
   }
 
   private async resolveWorkspaceTrustGitRoot(cwd: string): Promise<string | null> {
@@ -4337,7 +4349,7 @@ export class TeamProvisioningService {
           error instanceof Error ? error.message : String(error)
         }`
       );
-      return { workspaces: request.workspaces, launchArgPatches: [] };
+      return { providers: request.providers, workspaces: request.workspaces, launchArgPatches: [] };
     }
   }
 
@@ -4384,6 +4396,7 @@ export class TeamProvisioningService {
     let execution: WorkspaceTrustExecutionResult;
     try {
       execution = await this.workspaceTrustCoordinator.execute({
+        providers: input.workspaceTrustPlan.providers,
         claudePath: input.claudePath,
         workspaces: input.workspaceTrustPlan.workspaces,
         env: buildWorkspaceTrustPreflightEnv(input.shellEnv),
@@ -4685,7 +4698,7 @@ export class TeamProvisioningService {
     const providerArgs = params.providerArgs ?? [];
     const modelListPromise = execCli(
       params.claudePath,
-      buildProviderCliCommandArgs(providerArgs, [
+      buildProviderControlPlaneCliCommandArgs(providerArgs, [
         'model',
         'list',
         '--json',
@@ -4702,7 +4715,7 @@ export class TeamProvisioningService {
       params.providerId === 'codex' || params.providerId === 'anthropic'
         ? execCli(
             params.claudePath,
-            buildProviderCliCommandArgs(providerArgs, [
+            buildProviderControlPlaneCliCommandArgs(providerArgs, [
               'runtime',
               'status',
               '--json',
@@ -5938,6 +5951,54 @@ export class TeamProvisioningService {
     );
   }
 
+  private isOpenCodeAcceptedDeliveryMissingPromptProof(
+    ledgerRecord: OpenCodePromptDeliveryLedgerRecord
+  ): boolean {
+    if (ledgerRecord.status !== 'accepted') {
+      return false;
+    }
+    if (this.hasOpenCodeAcceptedRuntimePrompt(ledgerRecord)) {
+      return false;
+    }
+    if (
+      ledgerRecord.inboxReadCommittedAt ||
+      ledgerRecord.visibleReplyMessageId?.trim() ||
+      ledgerRecord.observedAssistantMessageId?.trim() ||
+      ledgerRecord.observedAssistantPreview?.trim() ||
+      this.hasOpenCodeNonVisibleProgressProof(ledgerRecord)
+    ) {
+      return false;
+    }
+    return (
+      ledgerRecord.responseState === 'prompt_not_indexed' ||
+      ledgerRecord.responseState === 'pending' ||
+      ledgerRecord.responseState === 'not_observed'
+    );
+  }
+
+  private async markOpenCodeAcceptedDeliveryMissingPromptProofForRetry(input: {
+    ledger: OpenCodePromptDeliveryLedgerStore;
+    ledgerRecord: OpenCodePromptDeliveryLedgerRecord;
+    eventContext?: Record<string, unknown>;
+  }): Promise<OpenCodePromptDeliveryLedgerRecord> {
+    const reason = 'opencode_prompt_acceptance_unknown_missing_runtime_prompt_id';
+    const now = nowIso();
+    const ledgerRecord = await input.ledger.markAcceptanceUnknown({
+      id: input.ledgerRecord.id,
+      reason,
+      nextAttemptAt: now,
+      diagnostics: ['opencode_accepted_prompt_missing_runtime_prompt_id_recovered'],
+      markedAt: now,
+    });
+    this.logOpenCodePromptDeliveryEvent('opencode_prompt_delivery_retry_scheduled', ledgerRecord, {
+      acceptanceUnknown: true,
+      recoveredLegacyAcceptedWithoutPromptProof: true,
+      ...input.eventContext,
+      reason,
+    });
+    return ledgerRecord;
+  }
+
   private isOpenCodeDeliveryRetryablePendingResponse(input: {
     ledgerRecord: OpenCodePromptDeliveryLedgerRecord;
     visibleReply?: OpenCodeVisibleReplyProof | null;
@@ -5951,6 +6012,12 @@ export class TeamProvisioningService {
       this.hasOpenCodeAcceptedRuntimePrompt(input.ledgerRecord)
     ) {
       return false;
+    }
+    if (
+      input.ledgerRecord.acceptanceUnknown &&
+      !this.hasOpenCodeAcceptedRuntimePrompt(input.ledgerRecord)
+    ) {
+      return true;
     }
     if (isOpenCodePromptDeliveryRetryableResponseState(input.ledgerRecord.responseState)) {
       return true;
@@ -8942,23 +9009,28 @@ export class TeamProvisioningService {
         input.messageKind === 'member_work_sync_nudge'
           ? await this.resolveControlApiBaseUrl()
           : null;
-      const result = await adapter.sendMessageToMember({
-        ...(runtimeRunId ? { runId: runtimeRunId } : {}),
+      const result = await this.sendOpenCodeMemberMessageToRuntimeSerialized({
         teamName,
         laneId: laneIdentity.laneId,
-        memberName: canonicalMemberName,
-        cwd,
-        text: input.text,
-        messageId: input.messageId,
-        fileParts: openCodeFileParts,
-        replyRecipient: input.replyRecipient,
-        actionMode: input.actionMode,
-        messageKind: input.messageKind,
-        workSyncIntent: input.workSyncIntent,
-        workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
-        controlUrl: controlUrl ?? undefined,
-        taskRefs: input.taskRefs,
-        forceSessionRefreshReason: forceOpenCodeSessionRefreshReason,
+        send: async () =>
+          await adapter.sendMessageToMember({
+            ...(runtimeRunId ? { runId: runtimeRunId } : {}),
+            teamName,
+            laneId: laneIdentity.laneId,
+            memberName: canonicalMemberName,
+            cwd,
+            text: input.text,
+            messageId: input.messageId,
+            fileParts: openCodeFileParts,
+            replyRecipient: input.replyRecipient,
+            actionMode: input.actionMode,
+            messageKind: input.messageKind,
+            workSyncIntent: input.workSyncIntent,
+            workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
+            controlUrl: controlUrl ?? undefined,
+            taskRefs: input.taskRefs,
+            forceSessionRefreshReason: forceOpenCodeSessionRefreshReason,
+          }),
       });
       await this.rememberOpenCodeRuntimePidFromBridge({
         teamName,
@@ -9069,6 +9141,18 @@ export class TeamProvisioningService {
           unblockedNextDelivery: true,
         });
         active = null;
+      } else if (this.isOpenCodeAcceptedDeliveryMissingPromptProof(active)) {
+        active = await this.markOpenCodeAcceptedDeliveryMissingPromptProofForRetry({
+          ledger,
+          ledgerRecord: active,
+          eventContext: { recoveredActiveBlocker: true },
+        });
+        this.scheduleOpenCodePromptDeliveryWatchdog({
+          teamName,
+          memberName: canonicalMemberName,
+          messageId: active.inboxMessageId,
+          delayMs: 500,
+        });
       }
     }
     if (active && active.inboxMessageId !== messageId) {
@@ -9196,7 +9280,14 @@ export class TeamProvisioningService {
         };
       }
 
-      const attemptDue = isOpenCodePromptDeliveryAttemptDue(ledgerRecord);
+      let attemptDue = isOpenCodePromptDeliveryAttemptDue(ledgerRecord);
+      if (this.isOpenCodeAcceptedDeliveryMissingPromptProof(ledgerRecord)) {
+        ledgerRecord = await this.markOpenCodeAcceptedDeliveryMissingPromptProofForRetry({
+          ledger,
+          ledgerRecord,
+        });
+        attemptDue = true;
+      }
       if (ledgerRecord.status !== 'pending' && !attemptDue) {
         const nextAttemptMs = ledgerRecord.nextAttemptAt
           ? Date.parse(ledgerRecord.nextAttemptAt)
@@ -9224,16 +9315,31 @@ export class TeamProvisioningService {
         };
       }
 
-      if (ledgerRecord.status !== 'pending' && !adapter.observeMessageDelivery) {
+      const retryDueBeforeObserve = isOpenCodePromptDeliveryRetryAttemptDue({
+        attemptDue,
+        ledgerRecord,
+      });
+      const hasAcceptedRuntimePromptBeforeObserve =
+        this.hasOpenCodeAcceptedRuntimePrompt(ledgerRecord);
+      if (
+        ledgerRecord.status !== 'pending' &&
+        !adapter.observeMessageDelivery &&
+        (!retryDueBeforeObserve || hasAcceptedRuntimePromptBeforeObserve)
+      ) {
+        const accepted = hasAcceptedRuntimePromptBeforeObserve;
+        const acceptanceUnknown = Boolean(ledgerRecord.acceptanceUnknown && !accepted);
         return {
-          delivered: true,
-          accepted: true,
+          delivered: accepted || acceptanceUnknown,
+          accepted,
           responsePending: true,
           responseState: ledgerRecord.responseState,
           ledgerStatus: ledgerRecord.status,
           ledgerRecordId: ledgerRecord.id,
           laneId: laneIdentity.laneId,
-          reason: 'opencode_delivery_observe_bridge_unavailable',
+          ...(acceptanceUnknown ? { acceptanceUnknown: true } : {}),
+          reason: acceptanceUnknown
+            ? (ledgerRecord.lastReason ?? 'opencode_delivery_acceptance_unknown')
+            : 'opencode_delivery_observe_bridge_unavailable',
           diagnostics: [
             ...ledgerRecord.diagnostics,
             'OpenCode message delivery observe bridge is unavailable.',
@@ -9241,10 +9347,6 @@ export class TeamProvisioningService {
         };
       }
 
-      const retryDueBeforeObserve = isOpenCodePromptDeliveryRetryAttemptDue({
-        attemptDue,
-        ledgerRecord,
-      });
       const retryShouldRefreshSessionBeforeObserve =
         retryDueBeforeObserve &&
         ledgerRecord.status === 'retry_scheduled' &&
@@ -9510,24 +9612,29 @@ export class TeamProvisioningService {
     });
     let result: OpenCodeTeamRuntimeMessageResult;
     try {
-      result = await adapter.sendMessageToMember({
-        ...(runtimeRunId ? { runId: runtimeRunId } : {}),
+      result = await this.sendOpenCodeMemberMessageToRuntimeSerialized({
         teamName,
         laneId: laneIdentity.laneId,
-        memberName: canonicalMemberName,
-        cwd,
-        text: deliveryText,
-        messageId: input.messageId,
-        deliveryAttemptId,
-        fileParts: openCodeFileParts,
-        replyRecipient: input.replyRecipient,
-        actionMode: input.actionMode,
-        messageKind: input.messageKind,
-        workSyncIntent: input.workSyncIntent,
-        workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
-        controlUrl: controlUrl ?? undefined,
-        taskRefs: input.taskRefs,
-        forceSessionRefreshReason: forceOpenCodeSessionRefreshReason,
+        send: async () =>
+          await adapter.sendMessageToMember({
+            ...(runtimeRunId ? { runId: runtimeRunId } : {}),
+            teamName,
+            laneId: laneIdentity.laneId,
+            memberName: canonicalMemberName,
+            cwd,
+            text: deliveryText,
+            messageId: input.messageId,
+            deliveryAttemptId,
+            fileParts: openCodeFileParts,
+            replyRecipient: input.replyRecipient,
+            actionMode: input.actionMode,
+            messageKind: input.messageKind,
+            workSyncIntent: input.workSyncIntent,
+            workSyncReviewRequestEventIds: input.workSyncReviewRequestEventIds,
+            controlUrl: controlUrl ?? undefined,
+            taskRefs: input.taskRefs,
+            forceSessionRefreshReason: forceOpenCodeSessionRefreshReason,
+          }),
       });
     } catch (error) {
       const diagnostic = `opencode_message_delivery_exception: ${getErrorMessage(error)}`;
@@ -10968,6 +11075,11 @@ export class TeamProvisioningService {
         this.openCodeMemberInboxRelayInFlight.delete(key);
       }
     }
+    for (const key of Array.from(this.openCodeMemberSendInFlightByLane.keys())) {
+      if (key.startsWith(`opencode-send:${teamName}:`)) {
+        this.openCodeMemberSendInFlightByLane.delete(key);
+      }
+    }
     for (const key of Array.from(this.openCodePromptDeliveryWatchdogTimers.keys())) {
       if (key.startsWith(`opencode-delivery:${teamName}:`)) {
         const timer = this.openCodePromptDeliveryWatchdogTimers.get(key);
@@ -11727,6 +11839,38 @@ export class TeamProvisioningService {
 
   private getOpenCodeMemberRelayKey(teamName: string, memberName: string): string {
     return `opencode:${this.getMemberRelayKey(teamName, memberName)}`;
+  }
+
+  private getOpenCodeMemberSendLaneKey(teamName: string, laneId: string): string {
+    return `opencode-send:${teamName}:${laneId.trim()}`;
+  }
+
+  private async sendOpenCodeMemberMessageToRuntimeSerialized(input: {
+    teamName: string;
+    laneId: string;
+    send: () => Promise<OpenCodeTeamRuntimeMessageResult>;
+  }): Promise<OpenCodeTeamRuntimeMessageResult> {
+    const laneKey = this.getOpenCodeMemberSendLaneKey(input.teamName, input.laneId);
+    const previous = this.openCodeMemberSendInFlightByLane.get(laneKey);
+    const work = (async (): Promise<OpenCodeTeamRuntimeMessageResult> => {
+      if (previous) {
+        try {
+          await previous;
+        } catch {
+          // A failed send must not permanently block later deliveries on the same lane.
+        }
+      }
+      return await input.send();
+    })();
+
+    this.openCodeMemberSendInFlightByLane.set(laneKey, work);
+    try {
+      return await work;
+    } finally {
+      if (this.openCodeMemberSendInFlightByLane.get(laneKey) === work) {
+        this.openCodeMemberSendInFlightByLane.delete(laneKey);
+      }
+    }
   }
 
   private async waitForInboxRelayInFlight<T>(input: {
@@ -15642,9 +15786,9 @@ export class TeamProvisioningService {
         : ['--permission-prompt-tool', 'stdio', '--permission-mode', 'default']),
       ...(memberSpec.model ? ['--model', memberSpec.model] : []),
       ...(memberSpec.effort ? ['--effort', memberSpec.effort] : []),
+      ...runtimeArgsPlan.providerArgs,
       ...runtimeArgsPlan.fastModeArgs,
       ...runtimeArgsPlan.runtimeTurnSettledHookArgs,
-      ...runtimeArgsPlan.providerArgs,
       ...runtimeArgsPlan.settingsArgs,
     ]);
     const command = buildDirectTmuxRestartCommand({
@@ -15852,9 +15996,9 @@ export class TeamProvisioningService {
         : ['--permission-prompt-tool', 'stdio', '--permission-mode', 'default']),
       ...(memberSpec.model ? ['--model', memberSpec.model] : []),
       ...(memberSpec.effort ? ['--effort', memberSpec.effort] : []),
+      ...runtimeArgsPlan.providerArgs,
       ...runtimeArgsPlan.fastModeArgs,
       ...runtimeArgsPlan.runtimeTurnSettledHookArgs,
-      ...runtimeArgsPlan.providerArgs,
       ...runtimeArgsPlan.settingsArgs,
     ]);
 
@@ -18245,18 +18389,23 @@ export class TeamProvisioningService {
     this.appendMemberBootstrapDiagnostic(run, memberName, marker);
 
     try {
-      const result = await adapter.sendMessageToMember({
-        runId: laneRunId,
+      const result = await this.sendOpenCodeMemberMessageToRuntimeSerialized({
         teamName: run.teamName,
         laneId: lane.laneId,
-        memberName,
-        cwd: lane.member.cwd?.trim() || run.request.cwd,
-        text: '',
-        messageId: `bootstrap-checkin-retry-${run.runId}-${memberName}-${runtimeSessionId}`,
-        bootstrapCheckinRetry: {
-          runtimeSessionId,
-          reason: runtimeDiagnostic,
-        },
+        send: async () =>
+          await adapter.sendMessageToMember({
+            runId: laneRunId,
+            teamName: run.teamName,
+            laneId: lane.laneId,
+            memberName,
+            cwd: lane.member.cwd?.trim() || run.request.cwd,
+            text: '',
+            messageId: `bootstrap-checkin-retry-${run.runId}-${memberName}-${runtimeSessionId}`,
+            bootstrapCheckinRetry: {
+              runtimeSessionId,
+              reason: runtimeDiagnostic,
+            },
+          }),
       });
       if (!result.ok) {
         this.appendMemberBootstrapDiagnostic(
@@ -19668,7 +19817,7 @@ export class TeamProvisioningService {
     try {
       const { stdout } = await execCli(
         claudePath,
-        buildProviderCliCommandArgs(providerArgs, [
+        buildProviderControlPlaneCliCommandArgs(providerArgs, [
           'model',
           'list',
           '--json',
@@ -19727,7 +19876,7 @@ export class TeamProvisioningService {
   ): Promise<string | null> {
     const { stdout } = await execCli(
       claudePath,
-      buildProviderCliCommandArgs(providerArgs, [
+      buildProviderControlPlaneCliCommandArgs(providerArgs, [
         'runtime',
         'status',
         '--json',
@@ -21468,12 +21617,12 @@ export class TeamProvisioningService {
           : ['--permission-prompt-tool', 'stdio', '--permission-mode', 'default']),
         ...(launchModelArg ? ['--model', launchModelArg] : []),
         ...(launchIdentity.resolvedEffort ? ['--effort', launchIdentity.resolvedEffort] : []),
+        ...runtimeArgsPlan.providerArgs,
         ...runtimeArgsPlan.fastModeArgs,
         ...runtimeArgsPlan.runtimeTurnSettledHookArgs,
         ...(request.worktree ? ['--worktree', request.worktree] : []),
         ...buildDesktopTeammateModeCliArgs(teammateModeDecision),
         ...runtimeArgsPlan.extraArgs,
-        ...runtimeArgsPlan.providerArgs,
         ...runtimeArgsPlan.settingsArgs,
         ...runtimeArgsPlan.inheritedProviderArgs,
       ]);
@@ -23241,6 +23390,7 @@ export class TeamProvisioningService {
       if (launchIdentity.resolvedEffort) {
         launchArgs.push('--effort', launchIdentity.resolvedEffort);
       }
+      launchArgs.push(...runtimeArgsPlan.providerArgs);
       launchArgs.push(...runtimeArgsPlan.fastModeArgs);
       launchArgs.push(...runtimeArgsPlan.runtimeTurnSettledHookArgs);
       if (request.worktree) {
@@ -23248,7 +23398,6 @@ export class TeamProvisioningService {
       }
       launchArgs.push(...buildDesktopTeammateModeCliArgs(teammateModeDecision));
       launchArgs.push(...runtimeArgsPlan.extraArgs);
-      launchArgs.push(...runtimeArgsPlan.providerArgs);
       launchArgs.push(...runtimeArgsPlan.settingsArgs);
       // When the lead uses a different provider than some teammates (e.g., anthropic lead
       // with codex teammates), the lead needs the teammate provider's launch args so they
@@ -28940,10 +29089,18 @@ export class TeamProvisioningService {
     return next;
   }
 
+  private shouldOverlayPrimaryBootstrapTruth(run: ProvisioningRun): boolean {
+    return (
+      run.isLaunch ||
+      run.deterministicBootstrap === true ||
+      (run.mixedSecondaryLanes?.length ?? 0) > 0
+    );
+  }
+
   private async overlayPrimaryBootstrapTruthIntoRunStatusesFromBootstrapState(
     run: ProvisioningRun
   ): Promise<void> {
-    if (!run.isLaunch) {
+    if (!this.shouldOverlayPrimaryBootstrapTruth(run)) {
       return;
     }
 
@@ -29050,7 +29207,7 @@ export class TeamProvisioningService {
     run: ProvisioningRun,
     snapshot: PersistedTeamLaunchSnapshot | null
   ): Promise<PersistedTeamLaunchSnapshot | null> {
-    if (!run.isLaunch || !snapshot) {
+    if (!this.shouldOverlayPrimaryBootstrapTruth(run) || !snapshot) {
       return snapshot;
     }
 
@@ -36899,6 +37056,11 @@ export class TeamProvisioningService {
           this.openCodeMemberInboxRelayInFlight.delete(key);
         }
       }
+      for (const key of Array.from(this.openCodeMemberSendInFlightByLane.keys())) {
+        if (key.startsWith(`opencode-send:${run.teamName}:`)) {
+          this.openCodeMemberSendInFlightByLane.delete(key);
+        }
+      }
       for (const key of Array.from(this.openCodePromptDeliveryWatchdogTimers.keys())) {
         if (key.startsWith(`opencode-delivery:${run.teamName}:`)) {
           const timer = this.openCodePromptDeliveryWatchdogTimers.get(key);
@@ -39118,7 +39280,7 @@ export class TeamProvisioningService {
     try {
       const runtimeStatus = await execCli(
         claudePath,
-        buildProviderCliCommandArgs(providerArgs, [
+        buildProviderControlPlaneCliCommandArgs(providerArgs, [
           'runtime',
           'status',
           '--json',
@@ -39153,7 +39315,7 @@ export class TeamProvisioningService {
       try {
         const authStatus = await execCli(
           claudePath,
-          buildProviderCliCommandArgs(providerArgs, [
+          buildProviderControlPlaneCliCommandArgs(providerArgs, [
             'auth',
             'status',
             '--json',

@@ -44,6 +44,7 @@ import {
   processGlobalTaskNotifications,
   resetGlobalTaskNotificationTrackerForTests,
 } from '../team/teamGlobalTaskNotifications';
+import { projectTeamSnapshotOntoGlobalTasks } from '../team/teamGlobalTaskProjection';
 import {
   areTeamGraphSlotAssignmentsEqual,
   DISABLE_PERSISTED_TEAM_GRAPH_SLOT_ASSIGNMENTS,
@@ -251,6 +252,9 @@ let latestTeamsFetchRequestId = 0;
 let inFlightGlobalTasksRefresh: Promise<void> | null = null;
 let inFlightGlobalTasksRefreshScope: ContextRequestScope | null = null;
 let pendingFreshGlobalTasksRefresh = false;
+
+type GlobalTaskNotificationParams = Parameters<typeof processGlobalTaskNotifications>[0];
+
 interface RefreshTeamDataOptions {
   withDedup?: boolean;
 }
@@ -873,6 +877,23 @@ function preserveKnownTaskChangePresence(
   });
 
   return changed ? mergedTasks : nextTasks;
+}
+
+function buildGlobalTaskProjectionNotification(
+  state: Pick<AppState, 'appConfig' | 'globalTasks' | 'globalTasksInitialized' | 'teamByName'>,
+  nextGlobalTasks: GlobalTask[]
+): GlobalTaskNotificationParams | null {
+  if (!state.globalTasksInitialized || nextGlobalTasks === state.globalTasks) {
+    return null;
+  }
+
+  return {
+    oldTasks: state.globalTasks,
+    newTasks: nextGlobalTasks,
+    appConfig: state.appConfig,
+    teamByName: state.teamByName,
+    isInitialFetch: false,
+  };
 }
 
 export interface GlobalTaskDetailState {
@@ -2374,6 +2395,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       }
 
       let committedTeamData: TeamViewSnapshot = data;
+      let projectedGlobalTaskNotifications: GlobalTaskNotificationParams | null = null;
       set((state) => {
         if (
           state.selectedTeamName === teamName &&
@@ -2393,6 +2415,13 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
                   [teamName]: preservedTeamData,
                 }
               : state.teamDataCacheByName;
+          const nextGlobalTasks = preservedTeamData
+            ? projectTeamSnapshotOntoGlobalTasks(state.globalTasks, teamName, preservedTeamData)
+            : state.globalTasks;
+          projectedGlobalTaskNotifications = buildGlobalTaskProjectionNotification(
+            state,
+            nextGlobalTasks
+          );
 
           return {
             selectedTeamName: teamName,
@@ -2400,6 +2429,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
             teamDataCacheByName: nextCache,
             selectedTeamLoading: false,
             selectedTeamError: null,
+            ...(nextGlobalTasks !== state.globalTasks ? { globalTasks: nextGlobalTasks } : {}),
           };
         }
 
@@ -2426,6 +2456,15 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
                 ...state.teamDataCacheByName,
                 [teamName]: nextTeamData,
               };
+        const nextGlobalTasks = projectTeamSnapshotOntoGlobalTasks(
+          state.globalTasks,
+          teamName,
+          nextTeamData
+        );
+        projectedGlobalTaskNotifications = buildGlobalTaskProjectionNotification(
+          state,
+          nextGlobalTasks
+        );
 
         return {
           selectedTeamName: teamName,
@@ -2433,8 +2472,12 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           teamDataCacheByName: nextCache,
           selectedTeamLoading: false,
           selectedTeamError: null,
+          ...(nextGlobalTasks !== state.globalTasks ? { globalTasks: nextGlobalTasks } : {}),
         };
       });
+      if (projectedGlobalTaskNotifications) {
+        processGlobalTaskNotifications(projectedGlobalTaskNotifications);
+      }
       recordLastResolvedTeamDataRefresh(teamName);
 
       try {
@@ -2629,6 +2672,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           }
         : data;
       const nextTeamData = structurallyShareTeamSnapshot(previousData, projectedTeamData);
+      let projectedGlobalTaskNotifications: GlobalTaskNotificationParams | null = null;
       set((state) => {
         const nextCache =
           state.teamDataCacheByName[teamName] === nextTeamData
@@ -2645,9 +2689,19 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
                 selectedTeamError: null,
               }
             : {};
+        const nextGlobalTasks = projectTeamSnapshotOntoGlobalTasks(
+          state.globalTasks,
+          teamName,
+          nextTeamData
+        );
+        projectedGlobalTaskNotifications = buildGlobalTaskProjectionNotification(
+          state,
+          nextGlobalTasks
+        );
 
         if (
           nextCache === state.teamDataCacheByName &&
+          nextGlobalTasks === state.globalTasks &&
           (state.selectedTeamName !== teamName ||
             (state.selectedTeamData === nextTeamData && state.selectedTeamError == null))
         ) {
@@ -2656,9 +2710,13 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
         return {
           teamDataCacheByName: nextCache,
+          ...(nextGlobalTasks !== state.globalTasks ? { globalTasks: nextGlobalTasks } : {}),
           ...selectedState,
         };
       });
+      if (projectedGlobalTaskNotifications) {
+        processGlobalTaskNotifications(projectedGlobalTaskNotifications);
+      }
       recordLastResolvedTeamDataRefresh(teamName);
       const invalidationState = previousData
         ? collectTaskChangeInvalidationState(teamName, previousData.tasks, data.tasks)

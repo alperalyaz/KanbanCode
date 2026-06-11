@@ -1103,19 +1103,21 @@ export class TeamDataService {
       worktree: meta.worktree,
       extraCliArgs: meta.extraCliArgs,
       limitContext: meta.limitContext,
-      members: members.map((member) => ({
-        name: member.name,
-        role: member.role,
-        workflow: member.workflow,
-        isolation: member.isolation,
-        cwd: member.cwd,
-        providerId: member.providerId,
-        providerBackendId: member.providerBackendId,
-        model: member.model,
-        effort: member.effort,
-        fastMode: member.fastMode,
-        mcpPolicy: normalizeTeamMemberMcpPolicy(member.mcpPolicy),
-      })),
+      members: members
+        .filter((member) => !member.removedAt)
+        .map((member) => ({
+          name: member.name,
+          role: member.role,
+          workflow: member.workflow,
+          isolation: member.isolation,
+          cwd: member.cwd,
+          providerId: member.providerId,
+          providerBackendId: member.providerBackendId,
+          model: member.model,
+          effort: member.effort,
+          fastMode: member.fastMode,
+          mcpPolicy: normalizeTeamMemberMcpPolicy(member.mcpPolicy),
+        })),
     };
   }
 

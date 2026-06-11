@@ -21,6 +21,9 @@ type RuntimeAwareProviderStatus = Pick<
 >;
 type RuntimeModelCatalog = NonNullable<RuntimeAwareProviderStatus['modelCatalog']>;
 type RuntimeCatalogModel = RuntimeModelCatalog['models'][number];
+interface VisibleTeamProviderModelsOptions {
+  expandOpenCodeSummaryCatalog?: boolean;
+}
 
 export interface TeamProviderModelOption {
   value: string;
@@ -644,6 +647,32 @@ function getRuntimeCatalogLaunchModels(
   return models.length > 0 ? models : null;
 }
 
+function isOpenCodeSummaryOnlyModelList(
+  models: readonly string[],
+  providerStatus?: RuntimeAwareProviderStatus | null
+): boolean {
+  if (providerStatus?.modelCatalog?.providerId !== 'opencode') {
+    return false;
+  }
+
+  const trimmedModels = models.map((model) => model.trim()).filter(Boolean);
+  if (trimmedModels.length !== 1) {
+    return false;
+  }
+
+  const summaryModel = trimmedModels[0].toLowerCase();
+  const catalogDefaultIds = [
+    providerStatus.modelCatalog.defaultLaunchModel,
+    providerStatus.modelCatalog.defaultModelId,
+    providerStatus.modelCatalog.models.find((model) => model.isDefault)?.launchModel,
+    providerStatus.modelCatalog.models.find((model) => model.isDefault)?.id,
+  ]
+    .map((model) => model?.trim().toLowerCase())
+    .filter((model): model is string => Boolean(model));
+
+  return summaryModel === 'opencode/big-pickle' || catalogDefaultIds.includes(summaryModel);
+}
+
 function mergeModelLists(primary: readonly string[], supplemental: readonly string[]): string[] {
   const merged = new Map<string, string>();
   for (const model of [...primary, ...supplemental]) {
@@ -683,12 +712,20 @@ function getSupplementalVisibleModels(
 export function getVisibleTeamProviderModels(
   providerId: SupportedProviderId,
   models: readonly string[],
-  providerStatus?: RuntimeAwareProviderStatus | null
+  providerStatus?: RuntimeAwareProviderStatus | null,
+  options: VisibleTeamProviderModelsOptions = {}
 ): string[] {
+  const expandOpenCodeSummaryCatalog = options.expandOpenCodeSummaryCatalog ?? true;
+  const hasExplicitModels = models.some((model) => model.trim().length > 0);
   const catalogModels =
     providerId === 'opencode' ? getRuntimeCatalogLaunchModels(providerId, providerStatus) : null;
   const sourceModels =
-    providerId === 'opencode' && catalogModels ? mergeModelLists(catalogModels, models) : models;
+    providerId === 'opencode' &&
+    catalogModels &&
+    (!hasExplicitModels ||
+      (expandOpenCodeSummaryCatalog && isOpenCodeSummaryOnlyModelList(models, providerStatus)))
+      ? mergeModelLists(catalogModels, models)
+      : models;
 
   return sortTeamProviderModels(
     providerId,

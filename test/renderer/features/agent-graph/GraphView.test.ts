@@ -89,6 +89,8 @@ vi.mock('../../../../packages/agent-graph/src/hooks/useGraphSimulation', () => (
     getExtraWorldBounds: vi.fn(() => []),
     getLaunchAnchorWorldPosition: vi.fn(() => null),
     getActivityWorldRect: vi.fn(() => null),
+    getLogWorldRect: vi.fn(() => null),
+    getOwnerColumnGroupRects: vi.fn(() => []),
     resolveNearestOwnerSlot: hoisted.resolveNearestOwnerSlot,
     resolveNearestOwnerGridTarget: hoisted.resolveNearestOwnerGridTarget,
     clearNodePosition: hoisted.clearNodePosition,
@@ -198,6 +200,26 @@ describe('GraphView pan interactions', () => {
     });
 
     expect((hoisted.graphControlsProps?.filters as { showEdges: boolean }).showEdges).toBe(true);
+  });
+
+  it('can opt out of animated space effects through config', async () => {
+    await act(async () => {
+      root.render(
+        React.createElement(GraphView, {
+          data: {
+            teamName: 'demo-team',
+            nodes: [],
+            edges: [],
+            particles: [],
+          },
+          config: { animationEnabled: false, showSpaceEffects: false },
+        })
+      );
+    });
+
+    expect(
+      (hoisted.graphControlsProps?.filters as { showSpaceEffects: boolean }).showSpaceEffects
+    ).toBe(false);
   });
 
   it('starts panning when dragging from a hit-tested edge instead of getting stuck on edge selection', async () => {
@@ -588,6 +610,7 @@ describe('GraphView pan interactions', () => {
         showTasks: boolean;
         showProcesses: boolean;
         showEdges: boolean;
+        showSpaceEffects: boolean;
         paused: boolean;
       };
       onFiltersChange: (filters: {
@@ -596,6 +619,7 @@ describe('GraphView pan interactions', () => {
         showTasks: boolean;
         showProcesses: boolean;
         showEdges: boolean;
+        showSpaceEffects: boolean;
         paused: boolean;
       }) => void;
     } | null;
