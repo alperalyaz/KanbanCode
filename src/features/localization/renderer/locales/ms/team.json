@@ -2483,5 +2483,15 @@
     "empty": "Tiada peranan ditemui.",
     "reservedRole": "Peranan ini dikhaskan",
     "emptyCustomRole": "Peranan tidak boleh kosong"
+  },
+  "terminalWorkspace": {
+    "currentWorkingDirectory": "Current working directory",
+    "gitBranchTitle": "Git branch: {{branch}}",
+    "openTerminalPlatformRepository": "Open terminal-platform on GitHub",
+    "poweredByTerminalPlatform": "powered by terminal-platform",
+    "shellDefaultDirectory": "Default shell working directory",
+    "openTeamTerminal": "Open {{team}} terminal",
+    "openTerminal": "Open terminal",
+    "terminalSheetOpen": "Terminal sheet is open"
   }
 }

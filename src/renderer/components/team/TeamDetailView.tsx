@@ -14,6 +14,7 @@ import {
 } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
+import { TerminalWorkspaceFloatingLauncher } from '@features/terminal-workspace/renderer';
 import { api } from '@renderer/api';
 import { SessionPanel } from '@renderer/components/chat/session-panel';
 import { confirm } from '@renderer/components/common/ConfirmDialog';
@@ -1609,7 +1610,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     },
     [setMessagesPanelMode]
   );
-
   useEffect(() => {
     if (tabId) {
       initTabUIState(tabId);
@@ -2771,7 +2771,7 @@ export const TeamDetailView = memo(function TeamDetailView({
 
     return (
       <>
-        <div className="flex size-full overflow-hidden">
+        <div className="relative flex size-full overflow-hidden">
           <LeadLoadBridge
             teamName={teamName}
             tabId={tabId}
@@ -3558,6 +3558,12 @@ export const TeamDetailView = memo(function TeamDetailView({
                   {...sharedMessagesPanelProps}
                 />
               )}
+            <TerminalWorkspaceFloatingLauncher
+              teamName={teamName}
+              bottomOffset={Math.max(floatingComposerHeight + 18, 18)}
+              buttonTestId="open-terminal-floating-button"
+              enabled={isThisTabActive && !graphOpen}
+            />
           </div>
         </div>
 

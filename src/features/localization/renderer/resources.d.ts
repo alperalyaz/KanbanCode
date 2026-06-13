@@ -2778,7 +2778,6 @@ export default interface Resources {
           chatGptVerificationDegraded: 'ChatGPT account detected - account verification is currently degraded.';
           checked: 'Checked';
           checking: 'Checking...';
-          modelsAvailable: 'Models available';
           codexLocalAccountNeedsReconnect: 'Codex has a locally selected ChatGPT account, but the current session needs reconnect.';
           codexNativeReady: 'Codex native ready';
           codexNativeUnavailable: 'Codex native unavailable';
@@ -2787,6 +2786,7 @@ export default interface Resources {
           connectChatGptForSubscription: 'Connect a ChatGPT account to use your Codex subscription.';
           connectedVia: 'Connected via {{method}}';
           connectedViaApiKey: 'Connected via API key';
+          modelsAvailable: 'Models available';
           notConnected: 'Not connected';
           providerActivity: 'Provider Activity';
           startingChatGptLogin: 'Starting ChatGPT login...';
@@ -3151,9 +3151,9 @@ export default interface Resources {
         close: 'Close';
         hiddenBlockingLinks_one: '{{count}} hidden blocking link';
         hiddenBlockingLinks_other: '{{count}} hidden blocking links';
+        hiddenTaskStack: 'Hidden task stack';
         hiddenTasks_one: '{{count}} hidden task';
         hiddenTasks_other: '{{count}} hidden tasks';
-        hiddenTaskStack: 'Hidden task stack';
         links_one: '{{count}} link';
         links_other: '{{count}} links';
         openBlockedStack: 'Open blocked stack';
@@ -3165,8 +3165,8 @@ export default interface Resources {
       };
       logPreview: {
         error: 'Error';
-        logEvent: 'Log event';
         loading: 'Loading logs';
+        logEvent: 'Log event';
         logs: 'Logs';
         logsUnavailable: 'Logs unavailable';
         more: '+{{count}} more';
@@ -5474,6 +5474,16 @@ export default interface Resources {
       };
       teamPrefix: 'Team:';
       unassigned: 'Unassigned';
+    };
+    terminalWorkspace: {
+      currentWorkingDirectory: 'Current working directory';
+      gitBranchTitle: 'Git branch: {{branch}}';
+      openTeamTerminal: 'Open {{team}} terminal';
+      openTerminal: 'Open terminal';
+      openTerminalPlatformRepository: 'Open terminal-platform on GitHub';
+      poweredByTerminalPlatform: 'powered by terminal-platform';
+      shellDefaultDirectory: 'Default shell working directory';
+      terminalSheetOpen: 'Terminal sheet is open';
     };
     toolApproval: {
       after: 'after';

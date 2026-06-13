@@ -2483,5 +2483,15 @@
     "empty": "Walang nahanap na role.",
     "reservedRole": "Nakareserba ang role na ito",
     "emptyCustomRole": "Hindi maaaring blangko ang role"
+  },
+  "terminalWorkspace": {
+    "currentWorkingDirectory": "Current working directory",
+    "gitBranchTitle": "Git branch: {{branch}}",
+    "openTerminalPlatformRepository": "Open terminal-platform on GitHub",
+    "poweredByTerminalPlatform": "powered by terminal-platform",
+    "shellDefaultDirectory": "Default shell working directory",
+    "openTeamTerminal": "Open {{team}} terminal",
+    "openTerminal": "Open terminal",
+    "terminalSheetOpen": "Terminal sheet is open"
   }
 }

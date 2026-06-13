@@ -114,6 +114,29 @@ export function filterVisibleGraphEdges(
   });
 }
 
+export function isEditableGraphShortcutTarget(event: KeyboardEvent): boolean {
+  const targets =
+    typeof event.composedPath === 'function'
+      ? event.composedPath()
+      : [event.target].filter(Boolean);
+
+  return targets.some((target) => {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+
+    const editableElement = target.closest(
+      'input, textarea, select, [role="textbox"], [contenteditable]'
+    );
+    if (!editableElement) {
+      return false;
+    }
+
+    const contentEditable = editableElement.getAttribute('contenteditable');
+    return contentEditable?.toLowerCase() !== 'false';
+  });
+}
+
 export function GraphView({
   data,
   events,
@@ -945,10 +968,7 @@ export function GraphView({
   // ─── Keyboard ───────────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Don't capture from inputs
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
-        return;
+      if (isEditableGraphShortcutTarget(e)) return;
 
       if (e.key === 'Escape') {
         if (selectedNodeId || selectedEdgeId) {

@@ -199,6 +199,16 @@ export const useStore = create<AppState>()((...args) => ({
   ...createExtensionsSlice(...args),
 }));
 
+declare global {
+  interface Window {
+    __agentTeamsDevStore?: typeof useStore;
+  }
+}
+
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  window.__agentTeamsDevStore = useStore;
+}
+
 // =============================================================================
 // Re-exports
 // =============================================================================

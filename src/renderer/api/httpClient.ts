@@ -20,6 +20,7 @@ import type { CodexRuntimeAPI } from '@features/codex-runtime-installer/contract
 import type { MemberLogStreamApi } from '@features/member-log-stream/contracts';
 import type { DashboardRecentProjectsPayload } from '@features/recent-projects/contracts';
 import type { RuntimeProviderManagementApi } from '@features/runtime-provider-management/contracts';
+import type { TerminalWorkspaceElectronApi } from '@features/terminal-workspace/contracts';
 import type {
   AppConfig,
   AttachmentFileData,
@@ -1480,6 +1481,13 @@ export class HttpAPIClient implements ElectronAPI {
   // ---------------------------------------------------------------------------
   // Terminal (not available in browser mode)
   // ---------------------------------------------------------------------------
+
+  terminalWorkspace: TerminalWorkspaceElectronApi = {
+    getBootstrap: async () => {
+      throw new Error('Terminal workspace is not available in browser mode');
+    },
+    stopTeamRuntime: async (): Promise<void> => {},
+  };
 
   terminal: TerminalAPI = {
     spawn: async (): Promise<string> => {

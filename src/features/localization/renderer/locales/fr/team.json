@@ -2483,5 +2483,15 @@
     "empty": "Aucun rôle trouvé.",
     "reservedRole": "Ce rôle est réservé",
     "emptyCustomRole": "Le rôle ne peut pas être vide"
+  },
+  "terminalWorkspace": {
+    "currentWorkingDirectory": "Current working directory",
+    "gitBranchTitle": "Git branch: {{branch}}",
+    "openTerminalPlatformRepository": "Open terminal-platform on GitHub",
+    "poweredByTerminalPlatform": "powered by terminal-platform",
+    "shellDefaultDirectory": "Default shell working directory",
+    "openTeamTerminal": "Open {{team}} terminal",
+    "openTerminal": "Open terminal",
+    "terminalSheetOpen": "Terminal sheet is open"
   }
 }

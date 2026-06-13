@@ -2483,5 +2483,15 @@
     "empty": "কোনো ভূমিকা পাওয়া যায়নি।",
     "reservedRole": "এই ভূমিকা সংরক্ষিত রয়েছে",
     "emptyCustomRole": "Role খালি হতে পারে না"
+  },
+  "terminalWorkspace": {
+    "currentWorkingDirectory": "Current working directory",
+    "gitBranchTitle": "Git branch: {{branch}}",
+    "openTerminalPlatformRepository": "Open terminal-platform on GitHub",
+    "poweredByTerminalPlatform": "powered by terminal-platform",
+    "shellDefaultDirectory": "Default shell working directory",
+    "openTeamTerminal": "Open {{team}} terminal",
+    "openTerminal": "Open terminal",
+    "terminalSheetOpen": "Terminal sheet is open"
   }
 }

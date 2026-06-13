@@ -291,7 +291,7 @@
       "add": "Добавить",
       "cancel": "Отмена",
       "delete": "Удалить",
-      "editCode": "Редактировать код",
+      "editCode": "Код",
       "launch": "Запустить",
       "remove": "Удалить",
       "stop": "Остановить",
@@ -2483,5 +2483,15 @@
     "empty": "Роли не найдены.",
     "reservedRole": "Эта роль зарезервирована",
     "emptyCustomRole": "Роль не может быть пустой"
+  },
+  "terminalWorkspace": {
+    "currentWorkingDirectory": "Текущая рабочая директория",
+    "gitBranchTitle": "Git ветка: {{branch}}",
+    "openTerminalPlatformRepository": "Открыть terminal-platform на GitHub",
+    "poweredByTerminalPlatform": "powered by terminal-platform",
+    "shellDefaultDirectory": "Рабочая директория shell по умолчанию",
+    "openTeamTerminal": "Открыть терминал команды {{team}}",
+    "openTerminal": "Открыть терминал",
+    "terminalSheetOpen": "Терминал открыт"
   }
 }

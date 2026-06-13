@@ -15,6 +15,8 @@ const prodDeps = Object.keys(pkg.dependencies || {})
 const runtimeExternalDeps = new Set([
   'node-pty',
   'agent-teams-controller',
+  'terminal-platform-node',
+  'ws',
   'fastify',
   '@fastify/cors',
   '@fastify/static',
@@ -149,7 +151,18 @@ export default defineConfig({
     cacheDir: resolve(__dirname, 'node_modules/.vite/electron-renderer'),
     optimizeDeps: {
       include: ['@codemirror/language-data'],
-      exclude: ['@claude-teams/agent-graph']
+      exclude: [
+        '@claude-teams/agent-graph',
+        '@terminal-platform/design-tokens',
+        '@terminal-platform/foundation',
+        '@terminal-platform/runtime-types',
+        '@terminal-platform/workspace-adapter-websocket',
+        '@terminal-platform/workspace-contracts',
+        '@terminal-platform/workspace-core',
+        '@terminal-platform/workspace-elements',
+        '@terminal-platform/workspace-gateway-node',
+        '@terminal-platform/workspace-react',
+      ]
     },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
@@ -165,6 +178,14 @@ export default defineConfig({
         '@radix-ui/react-compose-refs': resolve(
           __dirname,
           'src/renderer/vendor/radixComposeRefs.ts'
+        ),
+        '@terminal-platform/workspace-elements': resolve(
+          __dirname,
+          '../terminal-platform/sdk/packages/workspace-elements/dist/index.js'
+        ),
+        '@terminal-platform/workspace-react': resolve(
+          __dirname,
+          '../terminal-platform/sdk/packages/workspace-react/dist/index.js'
         ),
         '@claude-teams/agent-graph': resolve(__dirname, 'packages/agent-graph/src/index.ts')
       }

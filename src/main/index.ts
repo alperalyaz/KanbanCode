@@ -60,6 +60,12 @@ import {
   removeRuntimeProviderManagementIpc,
   type RuntimeProviderManagementFeatureFacade,
 } from '@features/runtime-provider-management/main';
+import {
+  createTerminalWorkspaceFeature,
+  registerTerminalWorkspaceIpc,
+  removeTerminalWorkspaceIpc,
+  type TerminalWorkspaceFeatureFacade,
+} from '@features/terminal-workspace/main';
 import { createWorkspaceTrustCoordinator } from '@features/workspace-trust/main';
 import { ensureOpenCodeBridgeRuntimeBinaryEnv } from '@main/services/runtime/openCodeBridgeRuntimeEnv';
 import { ClaudeMultimodelBridgeService } from '@main/services/runtime/ClaudeMultimodelBridgeService';
@@ -923,6 +929,7 @@ let codexAccountFeature: CodexAccountFeatureFacade | null = null;
 let codexModelCatalogFeature: CodexModelCatalogFeatureFacade | null = null;
 let recentProjectsFeature: RecentProjectsFeatureFacade;
 let runtimeProviderManagementFeature: RuntimeProviderManagementFeatureFacade;
+let terminalWorkspaceFeature: TerminalWorkspaceFeatureFacade | null = null;
 let memberWorkSyncFeature: MemberWorkSyncFeatureFacade | null = null;
 let teamDataService: TeamDataService;
 let teamProvisioningService: TeamProvisioningService;
@@ -1883,6 +1890,10 @@ async function initializeServices(): Promise<void> {
     logger: createLogger('Feature:RecentProjects'),
   });
   runtimeProviderManagementFeature = createRuntimeProviderManagementFeature();
+  terminalWorkspaceFeature = createTerminalWorkspaceFeature({
+    teamsBasePath: getTeamsBasePath(),
+    logger: createLogger('Feature:TerminalWorkspace'),
+  });
   const memberWorkSyncLogger = createLogger('Feature:MemberWorkSync');
   const getMemberWorkSyncRuntimeSnapshot = async (input: {
     teamName: string;
@@ -2340,6 +2351,7 @@ async function initializeServices(): Promise<void> {
   registerCodexAccountIpc(ipcMain, codexAccountFeature);
   registerRecentProjectsIpc(ipcMain, recentProjectsFeature);
   registerRuntimeProviderManagementIpc(ipcMain, runtimeProviderManagementFeature);
+  registerTerminalWorkspaceIpc(ipcMain, terminalWorkspaceFeature);
   registerMemberWorkSyncIpc(ipcMain, memberWorkSyncFeature);
   registerMemberLogStreamIpc(ipcMain, memberLogStreamFeature);
 
@@ -2536,6 +2548,8 @@ async function shutdownServices(): Promise<void> {
     codexAccountFeature = null;
     await runShutdownStep('member work sync dispose', () => memberWorkSyncFeature?.dispose());
     memberWorkSyncFeature = null;
+    await runShutdownStep('terminal workspace dispose', () => terminalWorkspaceFeature?.dispose());
+    terminalWorkspaceFeature = null;
 
     if (ptyTerminalService) {
       await runShutdownStep('PTY terminals kill', () => ptyTerminalService.killAll());
@@ -2546,6 +2560,7 @@ async function shutdownServices(): Promise<void> {
       removeCodexAccountIpc(ipcMain);
       removeRecentProjectsIpc(ipcMain);
       removeRuntimeProviderManagementIpc(ipcMain);
+      removeTerminalWorkspaceIpc(ipcMain);
       removeMemberWorkSyncIpc(ipcMain);
       removeMemberLogStreamIpc(ipcMain);
     });
