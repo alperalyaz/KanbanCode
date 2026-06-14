@@ -25,6 +25,8 @@ const SHUTDOWN_TIMEOUT_MS = 5_000;
 const TERMINAL_PLATFORM_ROOT_ENV = 'CLAUDE_TERMINAL_PLATFORM_ROOT';
 const LEGACY_TERMINAL_PLATFORM_ROOT_ENV = 'TERMINAL_PLATFORM_ROOT';
 const TERMINAL_DAEMON_BINARY_ENV = 'CLAUDE_TERMINAL_DAEMON_BINARY';
+const BUNDLED_TERMINAL_PLATFORM_DIR_NAME = 'terminal-platform';
+const TERMINAL_PLATFORM_NODE_PACKAGE_DIR_NAME = 'terminal-platform-node';
 const TERMINAL_NODE_STUB_UNAVAILABLE_MESSAGE =
   'terminal-platform-node native runtime is not installed';
 
@@ -239,7 +241,7 @@ class TeamTerminalDaemonSupervisor {
       daemonBinaryPath,
       ['--runtime-slug', this.#runtimeSlug, '--session-store', this.#sessionStorePath],
       {
-        cwd: resolveTerminalPlatformRoot(),
+        cwd: resolveDaemonWorkingDirectory(daemonBinaryPath),
         env: process.env,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
@@ -336,7 +338,7 @@ function isTerminalNodeStubUnavailableError(error: unknown): boolean {
 function createTerminalNodeClientReadinessError(error: unknown): Error {
   const message = error instanceof Error ? error.message : String(error);
   return new Error(
-    `${message}. Set ${TERMINAL_PLATFORM_ROOT_ENV} to a built terminal-platform checkout, or keep a built ../terminal-platform sibling checkout for local development.`
+    `${message}. Set ${TERMINAL_PLATFORM_ROOT_ENV} to a built terminal-platform checkout, stage bundled resources/terminal-platform for production builds, or keep a built ../terminal-platform sibling checkout for local development.`
   );
 }
 
@@ -503,8 +505,34 @@ function resolveTerminalNodePackageSpecifier(): string {
 }
 
 function resolveTerminalNodeLocalPackagePath(): string | null {
-  const candidate = path.join(
-    resolveTerminalPlatformRoot(),
+  const explicitRoot = resolveExplicitTerminalPlatformRoot();
+  if (explicitRoot) {
+    const explicitCandidate = path.join(
+      explicitRoot,
+      'crates',
+      'terminal-node-napi',
+      'package',
+      'artifacts',
+      'local',
+      'index.mjs'
+    );
+    return fsSync.existsSync(explicitCandidate) ? explicitCandidate : null;
+  }
+
+  const bundledRoot = resolveBundledTerminalPlatformRoot();
+  if (bundledRoot) {
+    const bundledCandidate = path.join(
+      bundledRoot,
+      TERMINAL_PLATFORM_NODE_PACKAGE_DIR_NAME,
+      'index.mjs'
+    );
+    if (fsSync.existsSync(bundledCandidate)) {
+      return bundledCandidate;
+    }
+  }
+
+  const checkoutCandidate = path.join(
+    resolveDefaultTerminalPlatformCheckoutRoot(),
     'crates',
     'terminal-node-napi',
     'package',
@@ -512,7 +540,7 @@ function resolveTerminalNodeLocalPackagePath(): string | null {
     'local',
     'index.mjs'
   );
-  return fsSync.existsSync(candidate) ? candidate : null;
+  return fsSync.existsSync(checkoutCandidate) ? checkoutCandidate : null;
 }
 
 async function resolveExistingDirectory(value: string | null | undefined): Promise<string | null> {
@@ -531,32 +559,97 @@ async function resolveExistingDirectory(value: string | null | undefined): Promi
 
 async function resolveDaemonBinaryPath(): Promise<string> {
   const explicit = process.env[TERMINAL_DAEMON_BINARY_ENV]?.trim();
-  const binaryPath =
-    explicit ||
-    path.join(
-      resolveTerminalPlatformRoot(),
-      'target',
-      'debug',
-      process.platform === 'win32' ? 'terminal-daemon.exe' : 'terminal-daemon'
-    );
+  if (explicit) {
+    await assertExecutableExists(explicit, TERMINAL_DAEMON_BINARY_ENV);
+    return explicit;
+  }
 
+  const explicitRoot = resolveExplicitTerminalPlatformRoot();
+  if (explicitRoot) {
+    const explicitRootBinaryPath = path.join(explicitRoot, 'target', 'debug', daemonBinaryName());
+    await assertExecutableExists(explicitRootBinaryPath, TERMINAL_PLATFORM_ROOT_ENV);
+    return explicitRootBinaryPath;
+  }
+
+  const bundledRoot = resolveBundledTerminalPlatformRoot();
+  if (bundledRoot) {
+    const bundledBinaryPath = path.join(bundledRoot, daemonBinaryName());
+    if (await fileExists(bundledBinaryPath)) {
+      return bundledBinaryPath;
+    }
+  }
+
+  const checkoutBinaryPath = path.join(
+    resolveDefaultTerminalPlatformCheckoutRoot(),
+    'target',
+    'debug',
+    daemonBinaryName()
+  );
+  if (await fileExists(checkoutBinaryPath)) {
+    return checkoutBinaryPath;
+  }
+
+  throw new Error(
+    `terminal-daemon binary not found. Set ${TERMINAL_DAEMON_BINARY_ENV}, set ${TERMINAL_PLATFORM_ROOT_ENV} to a built terminal-platform checkout, or stage bundled resources/terminal-platform.`
+  );
+}
+
+async function assertExecutableExists(binaryPath: string, source: string): Promise<void> {
   try {
     await fs.access(binaryPath);
   } catch {
     throw new Error(
-      `terminal-daemon binary not found at ${binaryPath}. Build terminal-platform or set ${TERMINAL_DAEMON_BINARY_ENV}.`
+      `terminal-daemon binary not found at ${binaryPath}. Build terminal-platform or update ${source}.`
     );
   }
-
-  return binaryPath;
 }
 
-function resolveTerminalPlatformRoot(): string {
-  const explicit = resolveExplicitTerminalPlatformRoot();
-  if (explicit) {
-    return explicit;
+async function fileExists(value: string): Promise<boolean> {
+  try {
+    const stat = await fs.stat(value);
+    return stat.isFile();
+  } catch {
+    return false;
+  }
+}
+
+function resolveDaemonWorkingDirectory(binaryPath: string): string {
+  const bundledRoot = resolveBundledTerminalPlatformRoot();
+  if (bundledRoot && isPathInside(binaryPath, bundledRoot)) {
+    return bundledRoot;
   }
 
+  const explicitRoot = resolveExplicitTerminalPlatformRoot();
+  if (explicitRoot) {
+    return explicitRoot;
+  }
+
+  const checkoutRoot = resolveDefaultTerminalPlatformCheckoutRoot();
+  if (isPathInside(binaryPath, checkoutRoot)) {
+    return checkoutRoot;
+  }
+
+  return path.dirname(binaryPath);
+}
+
+function resolveBundledTerminalPlatformRoot(): string | null {
+  const candidates = [
+    process.resourcesPath
+      ? path.join(process.resourcesPath, BUNDLED_TERMINAL_PLATFORM_DIR_NAME)
+      : null,
+    path.join(process.cwd(), 'resources', BUNDLED_TERMINAL_PLATFORM_DIR_NAME),
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && fsSync.existsSync(candidate) && fsSync.statSync(candidate).isDirectory()) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function resolveDefaultTerminalPlatformCheckoutRoot(): string {
   return path.resolve(process.cwd(), '../terminal-platform');
 }
 
@@ -565,6 +658,15 @@ function resolveExplicitTerminalPlatformRoot(): string | null {
     process.env[TERMINAL_PLATFORM_ROOT_ENV]?.trim() ||
     process.env[LEGACY_TERMINAL_PLATFORM_ROOT_ENV]?.trim();
   return explicit ? path.resolve(explicit) : null;
+}
+
+function daemonBinaryName(): string {
+  return process.platform === 'win32' ? 'terminal-daemon.exe' : 'terminal-daemon';
+}
+
+function isPathInside(value: string, parent: string): boolean {
+  const relative = path.relative(parent, value);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 function resolveDefaultShell(): string {
@@ -586,5 +688,7 @@ export const terminalWorkspaceFeatureTestInternals = {
   createTerminalNodeClientReadinessError,
   isTerminalNodeStubUnavailableError,
   probeTerminalNodeClientReadiness,
+  resolveBundledTerminalPlatformRoot,
+  resolveDaemonBinaryPath,
   resolveTerminalNodePackageSpecifier,
 };

@@ -53,6 +53,7 @@ describe('terminal workspace feature composition fixture-e2e', () => {
   let originalDaemonBinary: string | undefined;
   let originalTerminalPlatformRoot: string | undefined;
   let originalLegacyTerminalPlatformRoot: string | undefined;
+  let originalProcessResourcesPath: string | undefined;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -67,6 +68,7 @@ describe('terminal workspace feature composition fixture-e2e', () => {
     originalDaemonBinary = process.env.CLAUDE_TERMINAL_DAEMON_BINARY;
     originalTerminalPlatformRoot = process.env.CLAUDE_TERMINAL_PLATFORM_ROOT;
     originalLegacyTerminalPlatformRoot = process.env.TERMINAL_PLATFORM_ROOT;
+    originalProcessResourcesPath = processWithResourcesPath().resourcesPath;
 
     tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'terminal-workspace-feature-'));
     teamsBasePath = path.join(tempRoot, 'teams');
@@ -112,6 +114,7 @@ describe('terminal workspace feature composition fixture-e2e', () => {
     restoreEnv('CLAUDE_TERMINAL_DAEMON_BINARY', originalDaemonBinary);
     restoreEnv('CLAUDE_TERMINAL_PLATFORM_ROOT', originalTerminalPlatformRoot);
     restoreEnv('TERMINAL_PLATFORM_ROOT', originalLegacyTerminalPlatformRoot);
+    restoreProcessResourcesPath(originalProcessResourcesPath);
   });
 
   it('bootstraps a team daemon, native session, and gateway without touching real projects', async () => {
@@ -372,20 +375,58 @@ describe('terminal workspace feature composition fixture-e2e', () => {
     );
   });
 
+  it('resolves bundled terminal-platform resources for packaged builds', async () => {
+    const resourcesPath = path.join(tempRoot, 'electron-resources');
+    const bundledRoot = path.join(resourcesPath, 'terminal-platform');
+    const terminalNodePackagePath = path.join(bundledRoot, 'terminal-platform-node', 'index.mjs');
+    const daemonPath = path.join(
+      bundledRoot,
+      process.platform === 'win32' ? 'terminal-daemon.exe' : 'terminal-daemon'
+    );
+    await fs.mkdir(path.join(bundledRoot, 'terminal-platform-node', 'native'), { recursive: true });
+    await fs.writeFile(terminalNodePackagePath, 'export const TerminalNodeClient = {};\n');
+    await fs.writeFile(
+      path.join(bundledRoot, 'terminal-platform-node', 'native', 'manifest.json'),
+      '{}\n'
+    );
+    await fs.writeFile(path.join(bundledRoot, 'VERSION'), '0.2.0\n');
+    await fs.writeFile(daemonPath, '#!/bin/sh\n');
+    delete process.env.CLAUDE_TERMINAL_DAEMON_BINARY;
+    delete process.env.CLAUDE_TERMINAL_PLATFORM_ROOT;
+    delete process.env.TERMINAL_PLATFORM_ROOT;
+    setProcessResourcesPath(resourcesPath);
+
+    expect(terminalWorkspaceFeatureTestInternals.resolveBundledTerminalPlatformRoot()).toBe(
+      bundledRoot
+    );
+    expect(terminalWorkspaceFeatureTestInternals.resolveTerminalNodePackageSpecifier()).toBe(
+      `file://${terminalNodePackagePath}`
+    );
+    await expect(terminalWorkspaceFeatureTestInternals.resolveDaemonBinaryPath()).resolves.toBe(
+      daemonPath
+    );
+  });
+
   it('fails daemon readiness fast when only the terminal-platform-node install-time stub is available', async () => {
     const loadStubClient = async () =>
       ({
         fromRuntimeSlug: () =>
           ({
             close: vi.fn().mockResolvedValue(undefined),
-            handshakeInfo: vi.fn().mockRejectedValue(
-              new Error(
-                'terminal-platform-node native runtime is not installed. Set CLAUDE_TERMINAL_PLATFORM_ROOT to a built terminal-platform checkout.'
-              )
-            ),
+            handshakeInfo: vi
+              .fn()
+              .mockRejectedValue(
+                new Error(
+                  'terminal-platform-node native runtime is not installed. Set CLAUDE_TERMINAL_PLATFORM_ROOT to a built terminal-platform checkout.'
+                )
+              ),
           }) as TerminalNodeClientLike,
       }) as unknown as Awaited<
-        ReturnType<Parameters<typeof terminalWorkspaceFeatureTestInternals.probeTerminalNodeClientReadiness>[0]>
+        ReturnType<
+          Parameters<
+            typeof terminalWorkspaceFeatureTestInternals.probeTerminalNodeClientReadiness
+          >[0]
+        >
       >;
     const readiness = await terminalWorkspaceFeatureTestInternals.probeTerminalNodeClientReadiness(
       loadStubClient,
@@ -570,4 +611,24 @@ function restoreEnv(name: string, value: string | undefined): void {
     return;
   }
   process.env[name] = value;
+}
+
+function processWithResourcesPath(): NodeJS.Process & { resourcesPath?: string } {
+  return process as NodeJS.Process & { resourcesPath?: string };
+}
+
+function setProcessResourcesPath(value: string): void {
+  Object.defineProperty(processWithResourcesPath(), 'resourcesPath', {
+    configurable: true,
+    value,
+    writable: true,
+  });
+}
+
+function restoreProcessResourcesPath(value: string | undefined): void {
+  if (value === undefined) {
+    Reflect.deleteProperty(processWithResourcesPath(), 'resourcesPath');
+    return;
+  }
+  setProcessResourcesPath(value);
 }
