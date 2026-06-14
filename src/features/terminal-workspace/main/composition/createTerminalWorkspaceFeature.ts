@@ -117,9 +117,14 @@ export function createTerminalWorkspaceFeature(
   }
 
   async function dispose(): Promise<void> {
+    const pendingStarts = [...pending.values()];
+    for (const pendingStart of pendingStarts) {
+      cancelledStarts.add(pendingStart);
+    }
+
     const allRecords = [
       ...records.values(),
-      ...(await Promise.allSettled(pending.values())).flatMap((result) =>
+      ...(await Promise.allSettled(pendingStarts)).flatMap((result) =>
         result.status === 'fulfilled' ? [result.value] : []
       ),
     ];
@@ -149,31 +154,43 @@ async function startRuntime(
     sessionStorePath,
     logger: deps.logger,
   });
-  await daemon.ensureRunning();
+  try {
+    await daemon.ensureRunning();
 
-  const TerminalNodeClient = await loadTerminalNodeClientConstructor();
-  const client = TerminalNodeClient.fromRuntimeSlug(runtimeSlug);
-  const projectPath = await resolveExistingDirectory(request.projectPath);
-  await ensureInitialNativeSession(client, {
-    title: request.teamDisplayName ?? request.teamName,
-    cwd: projectPath,
-  });
+    const TerminalNodeClient = await loadTerminalNodeClientConstructor();
+    const client = TerminalNodeClient.fromRuntimeSlug(runtimeSlug);
+    const projectPath = await resolveExistingDirectory(request.projectPath);
+    await ensureInitialNativeSession(client, {
+      title: request.teamDisplayName ?? request.teamName,
+      cwd: projectPath,
+    });
 
-  const gateway = await startWorkspaceGatewayNodeServer({
-    runtime: createRuntimeClientPort(client),
-    logger: {
-      warn: (message, context) => deps.logger.warn(message, context),
-      error: (message, context) => deps.logger.error(message, context),
-    },
-  });
+    const gateway = await startWorkspaceGatewayNodeServer({
+      runtime: createRuntimeClientPort(client),
+      logger: {
+        warn: (message, context) => deps.logger.warn(message, context),
+        error: (message, context) => deps.logger.error(message, context),
+      },
+    });
 
-  return {
-    runtimeSlug,
-    teamName: request.teamName,
-    projectPath,
-    daemon,
-    gateway,
-  };
+    return {
+      runtimeSlug,
+      teamName: request.teamName,
+      projectPath,
+      daemon,
+      gateway,
+    };
+  } catch (error) {
+    await daemon.dispose().catch((disposeError: unknown) => {
+      deps.logger.warn('terminal workspace daemon cleanup failed after bootstrap error', {
+        disposeError,
+        error,
+        runtimeSlug,
+        teamName: request.teamName,
+      });
+    });
+    throw error;
+  }
 }
 
 function toBootstrap(record: TerminalRuntimeRecord): TerminalWorkspaceBootstrap {

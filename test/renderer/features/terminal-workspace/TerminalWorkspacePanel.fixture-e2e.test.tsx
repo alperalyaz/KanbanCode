@@ -21,8 +21,7 @@ vi.mock('@features/localization/renderer', () => ({
     t: (key: string, values?: Record<string, string>) => {
       const translations: Record<string, string> = {
         'terminalWorkspace.currentWorkingDirectory': 'Current working directory',
-        'terminalWorkspace.openTerminalPlatformRepository':
-          'Open terminal-platform repository',
+        'terminalWorkspace.openTerminalPlatformRepository': 'Open terminal-platform repository',
         'terminalWorkspace.poweredByTerminalPlatform': 'powered by terminal-platform',
         'terminalWorkspace.shellDefaultDirectory': 'Shell default directory',
       };
@@ -71,43 +70,41 @@ vi.mock('@terminal-platform/workspace-react', async () => {
       children
     );
 
-  const TerminalScreen = React.forwardRef<HTMLDivElement, Record<string, unknown>>(
-    (props, ref) => {
-      const elementRef = React.useRef<HTMLDivElement | null>(null);
-      const fallbackElementRef = React.useRef<HTMLDivElement | null>(null);
-      if (!fallbackElementRef.current && typeof document !== 'undefined') {
-        fallbackElementRef.current = document.createElement('div');
-      }
-
-      panelFixture.screenProps.push(props);
-
-      React.useImperativeHandle(ref, () => {
-        const element = elementRef.current ?? fallbackElementRef.current;
-        if (!element) {
-          throw new Error('Terminal screen test element was not created');
-        }
-        Object.assign(element, {
-          requestUpdate: panelFixture.requestUpdate,
-          scrollToLatestOutput: panelFixture.scrollToLatestOutput,
-        });
-        return element;
-      });
-
-      const metadata = props.commandPresentationMetadata;
-      const serializedMetadata = JSON.stringify(Array.isArray(metadata) ? metadata : []);
-
-      return React.createElement(
-        'div',
-        {
-          'data-command-metadata': serializedMetadata,
-          'data-prompt-label': String(props.terminalPromptLabel ?? ''),
-          'data-testid': 'mock-terminal-screen',
-          ref: elementRef,
-        },
-        serializedMetadata
-      );
+  const TerminalScreen = React.forwardRef<HTMLDivElement, Record<string, unknown>>((props, ref) => {
+    const elementRef = React.useRef<HTMLDivElement | null>(null);
+    const fallbackElementRef = React.useRef<HTMLDivElement | null>(null);
+    if (!fallbackElementRef.current && typeof document !== 'undefined') {
+      fallbackElementRef.current = document.createElement('div');
     }
-  );
+
+    panelFixture.screenProps.push(props);
+
+    React.useImperativeHandle(ref, () => {
+      const element = elementRef.current ?? fallbackElementRef.current;
+      if (!element) {
+        throw new Error('Terminal screen test element was not created');
+      }
+      Object.assign(element, {
+        requestUpdate: panelFixture.requestUpdate,
+        scrollToLatestOutput: panelFixture.scrollToLatestOutput,
+      });
+      return element;
+    });
+
+    const metadata = props.commandPresentationMetadata;
+    const serializedMetadata = JSON.stringify(Array.isArray(metadata) ? metadata : []);
+
+    return React.createElement(
+      'div',
+      {
+        'data-command-metadata': serializedMetadata,
+        'data-prompt-label': String(props.terminalPromptLabel ?? ''),
+        'data-testid': 'mock-terminal-screen',
+        ref: elementRef,
+      },
+      serializedMetadata
+    );
+  });
   TerminalScreen.displayName = 'MockTerminalScreen';
 
   const TerminalCommandDock = React.forwardRef<HTMLDivElement, Record<string, unknown>>(
@@ -246,6 +243,44 @@ describe('terminal workspace panel fixture-e2e', () => {
     expect(currentKernel().bootstrap).toHaveBeenCalledOnce();
   });
 
+  it('keeps terminal storage isolated per team when another team has persisted state', async () => {
+    window.localStorage.setItem(
+      'agent-teams:terminal-workspace:other-team:command-history',
+      JSON.stringify(['pnpm test --filter other-team'])
+    );
+    window.localStorage.setItem(
+      'agent-teams:terminal-workspace:other-team:theme',
+      'terminal-platform-light'
+    );
+    window.localStorage.setItem('agent-teams:terminal-workspace:other-team:font-scale', 'large');
+    window.localStorage.setItem('agent-teams:terminal-workspace:other-team:line-wrap', 'true');
+
+    await renderPanel();
+
+    expect(panelFixture.createWorkspaceKernel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialCommandHistoryEntries: null,
+        initialTerminalFontScale: null,
+        initialTerminalLineWrap: null,
+        initialThemeId: null,
+      })
+    );
+  });
+
+  it('ignores corrupt terminal storage without blocking workspace bootstrap', async () => {
+    window.localStorage.setItem(storageKey('command-history'), '{not-json');
+    window.localStorage.setItem(storageKey('tab-preferences'), '{not-json');
+
+    await renderPanel();
+
+    expect(panelFixture.createWorkspaceKernel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialCommandHistoryEntries: null,
+      })
+    );
+    expect(getVisibleTabLabels()).toEqual(['Terminal UI Smoke']);
+  });
+
   it('persists terminal display settings and command history from the workspace snapshot', async () => {
     nextSnapshot = createWorkspaceSnapshot({
       commandHistoryEntries: ['pnpm typecheck', 'git status'],
@@ -347,6 +382,52 @@ describe('terminal workspace panel fixture-e2e', () => {
     });
   });
 
+  it('keeps mux controls inert when the backend reports tab actions unavailable', async () => {
+    nextSnapshot = createWorkspaceSnapshot({
+      controls: {
+        canCloseTab: false,
+        canCreateTab: false,
+        canFocusTab: false,
+        canRenameTab: false,
+      },
+      tabs: [
+        createTab('tab-1', 'Terminal UI Smoke', 'pane-1'),
+        createTab('tab-2', 'Logs', 'pane-2'),
+      ],
+    });
+
+    await renderPanel();
+    const kernel = currentKernel();
+    kernel.commands.dispatchMuxCommand.mockClear();
+
+    const newTabButton = document.querySelector<HTMLButtonElement>(
+      '[data-testid="agent-team-terminal-new-mux-tab"]'
+    );
+    expect(newTabButton?.disabled).toBe(true);
+    expect(
+      Array.from(
+        document.querySelectorAll<HTMLButtonElement>(
+          '[data-testid="agent-team-terminal-close-mux-tab"]'
+        )
+      ).map((button) => button.disabled)
+    ).toEqual([true, true]);
+
+    await clickButton('Create terminal tab');
+    await clickButton('Close terminal tab Logs');
+    await act(async () => {
+      getTabButton('Logs').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      getTabButton('Terminal UI Smoke').dispatchEvent(
+        new MouseEvent('dblclick', { bubbles: true, cancelable: true })
+      );
+      await flushMicrotasks();
+    });
+
+    expect(kernel.commands.dispatchMuxCommand).not.toHaveBeenCalled();
+    expect(
+      document.querySelector('[data-testid="agent-team-terminal-tab-title-input"]')
+    ).toBeNull();
+  });
+
   it('supports double-click tab rename and dispatches the mux rename command', async () => {
     nextSnapshot = createWorkspaceSnapshot({
       tabs: [
@@ -364,9 +445,7 @@ describe('terminal workspace panel fixture-e2e', () => {
       tabButton.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
       await flushMicrotasks();
     });
-    const input = getRequiredElement(
-      'agent-team-terminal-tab-title-input'
-    ) as HTMLInputElement;
+    const input = getRequiredElement('agent-team-terminal-tab-title-input') as HTMLInputElement;
     await act(async () => {
       setInputValue(input, 'Logs');
       await flushMicrotasks();

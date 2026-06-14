@@ -290,6 +290,64 @@ describe('terminal workspace feature composition fixture-e2e', () => {
 
     await feature.dispose();
   });
+
+  it('cleans up the daemon and retries cleanly when gateway startup fails', async () => {
+    compositionFixture.startWorkspaceGatewayNodeServer.mockRejectedValueOnce(
+      new Error('gateway bind failed')
+    );
+    const feature = createTerminalWorkspaceFeature({ teamsBasePath, logger: logger as Logger });
+
+    await expect(
+      feature.getBootstrap({
+        projectPath: sandboxProjectPath,
+        teamDisplayName: 'Terminal Fixture',
+        teamName: 'terminal-fixture',
+      })
+    ).rejects.toThrow('gateway bind failed');
+
+    expect(compositionFixture.children[0]?.kill).toHaveBeenCalledWith('SIGTERM');
+    expect(compositionFixture.spawnedSlugs.size).toBe(0);
+
+    const restarted = await feature.getBootstrap({
+      projectPath: sandboxProjectPath,
+      teamDisplayName: 'Terminal Fixture',
+      teamName: 'terminal-fixture',
+    });
+
+    expect(restarted.controlPlaneUrl).toBe('ws://fixture-control-1');
+    expect(compositionFixture.spawn).toHaveBeenCalledTimes(2);
+    expect(compositionFixture.startWorkspaceGatewayNodeServer).toHaveBeenCalledTimes(2);
+
+    await feature.dispose();
+  });
+
+  it('cancels pending bootstraps during facade disposal and does not cache disposed runtimes', async () => {
+    compositionFixture.gatewayStartDeferred = createDeferred<FakeGatewayHandle>();
+    const feature = createTerminalWorkspaceFeature({ teamsBasePath, logger: logger as Logger });
+
+    const bootstrapPromise = feature.getBootstrap({
+      projectPath: sandboxProjectPath,
+      teamDisplayName: 'Terminal Fixture',
+      teamName: 'terminal-fixture',
+    });
+    const disposePromise = feature.dispose();
+
+    await expect(bootstrapPromise).rejects.toThrow('Terminal runtime start was cancelled');
+    await expect(disposePromise).resolves.toBeUndefined();
+    expect(compositionFixture.gatewayHandles[0]?.dispose).toHaveBeenCalledOnce();
+    expect(compositionFixture.children[0]?.kill).toHaveBeenCalledWith('SIGTERM');
+
+    const restarted = await feature.getBootstrap({
+      projectPath: sandboxProjectPath,
+      teamDisplayName: 'Terminal Fixture',
+      teamName: 'terminal-fixture',
+    });
+
+    expect(restarted.controlPlaneUrl).toBe('ws://fixture-control-2');
+    expect(compositionFixture.spawn).toHaveBeenCalledTimes(2);
+
+    await feature.dispose();
+  });
 });
 
 interface Deferred<T> {

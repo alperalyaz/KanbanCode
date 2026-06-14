@@ -442,6 +442,76 @@ describe('terminal workspace bottom sheet fixture-e2e', () => {
     );
   });
 
+  it('floating launcher tears down an open sheet when the terminal surface becomes disabled', async () => {
+    useStore.setState({
+      branchByPath: {
+        [normalizePath(PROJECT_PATH)]: 'feature/terminal-ui',
+      },
+      messagesPanelMode: 'inline',
+      selectedTeamName: TEAM_NAME,
+      selectedTeamData: createTeamSnapshot(),
+      teamDataCacheByName: {
+        [TEAM_NAME]: createTeamSnapshot(),
+      },
+      teamByName: {
+        [TEAM_NAME]: {
+          teamName: TEAM_NAME,
+          displayName: 'Terminal UI Smoke Sandbox',
+          description: 'fixture',
+          memberCount: 1,
+          taskCount: 0,
+          lastActivity: null,
+          projectPath: PROJECT_PATH,
+        },
+      },
+    } as never);
+
+    await act(async () => {
+      root.render(
+        React.createElement(
+          TooltipProvider,
+          null,
+          React.createElement(TerminalWorkspaceFloatingLauncher, {
+            buttonTestId: 'open-terminal-floating-button-fixture',
+            enabled: true,
+            teamName: TEAM_NAME,
+          })
+        )
+      );
+      await flushMicrotasks();
+    });
+
+    const button = getRequiredElement('open-terminal-floating-button-fixture');
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      await flushMicrotasks();
+    });
+    expect(getRequiredElement('mock-terminal-bottom-sheet-adapter').getAttribute('data-open')).toBe(
+      'true'
+    );
+
+    await act(async () => {
+      root.render(
+        React.createElement(
+          TooltipProvider,
+          null,
+          React.createElement(TerminalWorkspaceFloatingLauncher, {
+            buttonTestId: 'open-terminal-floating-button-fixture',
+            enabled: false,
+            teamName: TEAM_NAME,
+          })
+        )
+      );
+      await flushMicrotasks();
+    });
+
+    expect(
+      document.querySelector('[data-testid="open-terminal-floating-button-fixture"]')
+    ).toBeNull();
+    expect(document.querySelector('[data-testid="mock-terminal-bottom-sheet-adapter"]')).toBeNull();
+    expect(useBranchSync).toHaveBeenLastCalledWith([], { live: true });
+  });
+
   it('floating launcher stays fully disabled without mounting a stale sheet', async () => {
     useStore.setState({
       selectedTeamName: TEAM_NAME,
