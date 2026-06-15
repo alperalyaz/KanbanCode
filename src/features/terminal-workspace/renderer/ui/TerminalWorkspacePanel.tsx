@@ -121,6 +121,7 @@ type TerminalScreenElementHandle = ComponentRef<typeof TerminalScreen> & {
   scrollToLatestOutput?: () => void;
 };
 type TerminalCommandDockElementHandle = ComponentRef<typeof TerminalCommandDock>;
+type TeamTFunction = ReturnType<typeof useAppTranslation>['t'];
 type TerminalMuxTab = NonNullable<
   TerminalWorkspaceSnapshot['attachedSession']
 >['topology']['tabs'][number];
@@ -129,7 +130,6 @@ type TerminalTabColorId = (typeof TERMINAL_TAB_COLOR_OPTIONS)[number]['id'];
 
 interface TerminalTabColorOption {
   id: string;
-  label: string;
   accent: string;
   border: string;
   background: string;
@@ -165,23 +165,11 @@ const DEFAULT_TERMINAL_APPEARANCE_SETTINGS: TerminalAppearanceSettings = {
 
 const TERMINAL_BACKGROUND_MODE_OPTIONS: Array<{
   id: TerminalBackgroundMode;
-  label: string;
-}> = [
-  { id: 'transparent', label: 'Transparent' },
-  { id: 'solid', label: 'Solid color' },
-  { id: 'image', label: 'Image' },
-];
+}> = [{ id: 'transparent' }, { id: 'solid' }, { id: 'image' }];
 
 const TERMINAL_BACKGROUND_IMAGE_FIT_OPTIONS: Array<{
   id: TerminalBackgroundImageFit;
-  label: string;
-}> = [
-  { id: 'cover', label: 'Cover' },
-  { id: 'contain', label: 'Contain' },
-  { id: 'stretch', label: 'Stretch' },
-  { id: 'tile', label: 'Tile' },
-  { id: 'center', label: 'Center' },
-];
+}> = [{ id: 'cover' }, { id: 'contain' }, { id: 'stretch' }, { id: 'tile' }, { id: 'center' }];
 
 interface TerminalTabPreferences {
   version: number;
@@ -202,6 +190,14 @@ interface TerminalTabPointerDrag {
   startClientX: number;
   startClientY: number;
   tabId: string;
+}
+
+interface TerminalCommandContextMenuState {
+  blockText: string;
+  commandText: string;
+  outputText: string;
+  x: number;
+  y: number;
 }
 
 export interface TerminalCommandRunPresentation extends TerminalCommandPresentationMetadata {
@@ -233,7 +229,6 @@ export interface TerminalLocalAutocompleteOptions {
 const TERMINAL_TAB_COLOR_OPTIONS = [
   {
     id: 'slate',
-    label: 'Slate',
     accent: '#94a3b8',
     border: 'rgba(148, 163, 184, 0.56)',
     background: 'rgba(148, 163, 184, 0.14)',
@@ -241,7 +236,6 @@ const TERMINAL_TAB_COLOR_OPTIONS = [
   },
   {
     id: 'sky',
-    label: 'Sky',
     accent: '#38bdf8',
     border: 'rgba(56, 189, 248, 0.58)',
     background: 'rgba(56, 189, 248, 0.15)',
@@ -249,7 +243,6 @@ const TERMINAL_TAB_COLOR_OPTIONS = [
   },
   {
     id: 'blue',
-    label: 'Blue',
     accent: '#60a5fa',
     border: 'rgba(96, 165, 250, 0.58)',
     background: 'rgba(96, 165, 250, 0.15)',
@@ -257,7 +250,6 @@ const TERMINAL_TAB_COLOR_OPTIONS = [
   },
   {
     id: 'cyan',
-    label: 'Cyan',
     accent: '#22d3ee',
     border: 'rgba(34, 211, 238, 0.58)',
     background: 'rgba(34, 211, 238, 0.14)',
@@ -265,7 +257,6 @@ const TERMINAL_TAB_COLOR_OPTIONS = [
   },
   {
     id: 'teal',
-    label: 'Teal',
     accent: '#2dd4bf',
     border: 'rgba(45, 212, 191, 0.56)',
     background: 'rgba(45, 212, 191, 0.14)',
@@ -273,7 +264,6 @@ const TERMINAL_TAB_COLOR_OPTIONS = [
   },
   {
     id: 'emerald',
-    label: 'Emerald',
     accent: '#34d399',
     border: 'rgba(52, 211, 153, 0.56)',
     background: 'rgba(52, 211, 153, 0.14)',
@@ -281,7 +271,6 @@ const TERMINAL_TAB_COLOR_OPTIONS = [
   },
   {
     id: 'lime',
-    label: 'Lime',
     accent: '#a3e635',
     border: 'rgba(163, 230, 53, 0.52)',
     background: 'rgba(163, 230, 53, 0.12)',
@@ -289,7 +278,6 @@ const TERMINAL_TAB_COLOR_OPTIONS = [
   },
   {
     id: 'amber',
-    label: 'Amber',
     accent: '#fbbf24',
     border: 'rgba(251, 191, 36, 0.54)',
     background: 'rgba(251, 191, 36, 0.13)',
@@ -297,7 +285,6 @@ const TERMINAL_TAB_COLOR_OPTIONS = [
   },
   {
     id: 'orange',
-    label: 'Orange',
     accent: '#fb923c',
     border: 'rgba(251, 146, 60, 0.54)',
     background: 'rgba(251, 146, 60, 0.13)',
@@ -305,7 +292,6 @@ const TERMINAL_TAB_COLOR_OPTIONS = [
   },
   {
     id: 'rose',
-    label: 'Rose',
     accent: '#fb7185',
     border: 'rgba(251, 113, 133, 0.56)',
     background: 'rgba(251, 113, 133, 0.14)',
@@ -313,7 +299,6 @@ const TERMINAL_TAB_COLOR_OPTIONS = [
   },
   {
     id: 'violet',
-    label: 'Violet',
     accent: '#a78bfa',
     border: 'rgba(167, 139, 250, 0.56)',
     background: 'rgba(167, 139, 250, 0.14)',
@@ -354,6 +339,7 @@ export const TerminalWorkspacePanel = ({
   getBootstrap,
   stopTeamRuntime,
 }: TerminalWorkspacePanelProps): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
   const [bootstrap, setBootstrap] = useState<TerminalWorkspaceBootstrap | null>(null);
   const [kernel, setKernel] = useState<WorkspaceKernel | null>(null);
   const [loading, setLoading] = useState(true);
@@ -446,7 +432,9 @@ export const TerminalWorkspacePanel = ({
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
                 <p className="truncate text-sm font-medium text-text">
-                  {teamDisplayName || teamName} terminal
+                  {t('terminalWorkspace.teamTerminalTitle', {
+                    team: teamDisplayName || teamName,
+                  })}
                 </p>
                 <span
                   className={cn(
@@ -457,30 +445,32 @@ export const TerminalWorkspacePanel = ({
                   )}
                 >
                   <span className="size-1.5 rounded-full bg-current" />
-                  {isTeamAlive ? 'team runtime' : 'local shell'}
+                  {isTeamAlive
+                    ? t('terminalWorkspace.teamRuntimeBadge')
+                    : t('terminalWorkspace.localShellBadge')}
                 </span>
               </div>
               <p className="truncate text-[11px] text-text-muted">
-                {projectPath || 'Default shell working directory'}
+                {projectPath || t('terminalWorkspace.shellDefaultDirectory')}
               </p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <TerminalButtonTooltip label="Reload terminal workspace">
+            <TerminalButtonTooltip label={t('terminalWorkspace.reloadTerminalWorkspace')}>
               <button
                 type="button"
                 className="hover:bg-background inline-flex size-7 items-center justify-center rounded-md text-text-muted transition-colors hover:text-text"
-                aria-label="Reload terminal workspace"
+                aria-label={t('terminalWorkspace.reloadTerminalWorkspace')}
                 onClick={() => setReloadKey((value) => value + 1)}
               >
                 <RefreshCw size={14} />
               </button>
             </TerminalButtonTooltip>
-            <TerminalButtonTooltip label="Stop terminal runtime">
+            <TerminalButtonTooltip label={t('terminalWorkspace.stopTerminalRuntime')}>
               <button
                 type="button"
                 className="inline-flex size-7 items-center justify-center rounded-md text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
-                aria-label="Stop terminal runtime"
+                aria-label={t('terminalWorkspace.stopTerminalRuntime')}
                 onClick={() => void handleStop()}
               >
                 <Square size={13} />
@@ -501,13 +491,13 @@ export const TerminalWorkspacePanel = ({
         {loading ? (
           <TerminalWorkspaceStatus
             icon={<Loader2 size={16} className="animate-spin" />}
-            title="Starting terminal runtime"
-            detail="Preparing the team workspace and restoring persisted terminal state."
+            title={t('terminalWorkspace.startingRuntimeTitle')}
+            detail={t('terminalWorkspace.startingRuntimeDetail')}
           />
         ) : error ? (
           <TerminalWorkspaceStatus
             icon={<AlertTriangle size={16} />}
-            title="Terminal runtime is unavailable"
+            title={t('terminalWorkspace.runtimeUnavailableTitle')}
             detail={error}
             tone="danger"
           />
@@ -529,8 +519,8 @@ export const TerminalWorkspacePanel = ({
         ) : (
           <TerminalWorkspaceStatus
             icon={<AlertTriangle size={16} />}
-            title="Terminal runtime is not connected"
-            detail="Reload the workspace to reconnect."
+            title={t('terminalWorkspace.runtimeDisconnectedTitle')}
+            detail={t('terminalWorkspace.runtimeDisconnectedDetail')}
           />
         )}
       </div>
@@ -565,6 +555,7 @@ const TerminalWorkspaceKernelView = ({
   onReload: () => void;
   onStopRuntime: () => Promise<void>;
 }): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
   const snapshot = useWorkspaceSnapshot(kernel);
   const isSheetSurface = surface === 'sheet';
   const autoAttachAttemptRef = useRef<string | null>(null);
@@ -574,6 +565,8 @@ const TerminalWorkspaceKernelView = ({
   const [commandDockElement, setCommandDockElement] =
     useState<TerminalCommandDockElementHandle | null>(null);
   const [terminalContentPending, setTerminalContentPending] = useState(false);
+  const [commandContextMenu, setCommandContextMenu] =
+    useState<TerminalCommandContextMenuState | null>(null);
   const [commandRuns, setCommandRuns] = useState<TerminalCommandRunPresentation[]>(() =>
     readStoredTerminalCommandRuns(teamName)
   );
@@ -667,6 +660,60 @@ const TerminalWorkspaceKernelView = ({
     element.setAttribute('hide-shell-prompt-noise', '');
     element.requestUpdate?.();
   }, []);
+
+  const closeCommandContextMenu = useCallback((): void => {
+    setCommandContextMenu(null);
+  }, []);
+
+  const copyCommandContextMenuText = useCallback(async (text: string): Promise<void> => {
+    setCommandContextMenu(null);
+    if (!text.trim()) {
+      return;
+    }
+
+    await copyTextToClipboard(text);
+  }, []);
+
+  const handleTerminalScreenContextMenuCapture = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>): void => {
+      const menu = resolveTerminalCommandContextMenuState(event.nativeEvent);
+      if (!menu) {
+        setCommandContextMenu(null);
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      setCommandContextMenu(menu);
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!commandContextMenu) {
+      return undefined;
+    }
+
+    const close = (): void => setCommandContextMenu(null);
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      event.preventDefault();
+      close();
+    };
+
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('resize', close);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [commandContextMenu]);
 
   useEffect(() => {
     if (!commandDockElement) {
@@ -1141,13 +1188,20 @@ const TerminalWorkspaceKernelView = ({
         >
           <div slot="status-bar" className="h-0 min-h-0 overflow-hidden" aria-hidden="true" />
           <div slot="tab-strip" className="h-0 min-h-0 overflow-hidden" aria-hidden="true" />
-          <div slot="screen" className="relative h-full min-h-0 overflow-hidden">
+          <div
+            slot="screen"
+            className="relative h-full min-h-0 overflow-hidden"
+            onContextMenuCapture={handleTerminalScreenContextMenuCapture}
+          >
             <TerminalScreen
               ref={terminalScreenRef}
               hideShellPromptNoise
               kernel={kernel}
               placement="terminal"
-              terminalPromptLabel={formatTerminalPromptLabel(projectPath)}
+              terminalPromptLabel={formatTerminalPromptLabel(
+                projectPath,
+                t('terminalWorkspace.localShellBadge')
+              )}
               commandPresentationMetadata={activeCommandRuns}
             />
             {terminalContentPending ? <TerminalTabContentSkeleton /> : null}
@@ -1158,33 +1212,135 @@ const TerminalWorkspaceKernelView = ({
               ref={setCommandDockElement}
               autoFocusInput
               autocompleteSuggestion={autocompleteSuggestion ?? undefined}
+              commandActionsLabel={t('terminalWorkspace.terminalCommandActions')}
+              commandPlaceholder={t('terminalWorkspace.commandPlaceholder')}
+              interruptLabel={t('terminalWorkspace.commandInterrupt')}
+              interruptTitle={t('terminalWorkspace.commandInterruptTitle')}
               kernel={kernel}
               placement="terminal"
               quickCommands={quickCommands}
+              submitLabel={t('terminalWorkspace.commandRun')}
+              submitTitle={t('terminalWorkspace.commandRunTitle')}
             />
           </div>
         </TerminalWorkspace>
       )}
+      {commandContextMenu
+        ? createPortal(
+            <TerminalCommandContextMenu
+              menu={commandContextMenu}
+              onClose={closeCommandContextMenu}
+              onCopy={copyCommandContextMenuText}
+            />,
+            document.body
+          )
+        : null}
     </div>
   );
 };
 
-const TerminalTabContentSkeleton = (): React.JSX.Element => (
-  <div
-    className="pointer-events-none absolute inset-0 z-20 border-t border-white/10 bg-[#080c14]/65 px-6 py-5 backdrop-blur-xl"
-    data-testid="agent-team-terminal-content-skeleton"
-    aria-label="Loading terminal tab"
-  >
-    <div className="flex h-full flex-col justify-end gap-6">
-      {[0, 1, 2].map((sectionIndex) => (
-        <div key={sectionIndex} className="space-y-3 border-t border-white/[0.06] pt-4">
-          <div className="h-3 w-2/3 max-w-[34rem] animate-pulse rounded bg-white/10" />
-          <div className="h-4 w-1/2 max-w-[24rem] animate-pulse rounded bg-white/[0.15]" />
-          <div className="h-3 w-1/3 max-w-[18rem] animate-pulse rounded bg-white/[0.08]" />
-        </div>
-      ))}
+const TerminalTabContentSkeleton = (): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
+
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 z-20 border-t border-white/10 bg-[#080c14]/65 px-6 py-5 backdrop-blur-xl"
+      data-testid="agent-team-terminal-content-skeleton"
+      aria-label={t('terminalWorkspace.loadingTerminalTab')}
+    >
+      <div className="flex h-full flex-col justify-end gap-6">
+        {[0, 1, 2].map((sectionIndex) => (
+          <div key={sectionIndex} className="space-y-3 border-t border-white/[0.06] pt-4">
+            <div className="h-3 w-2/3 max-w-[34rem] animate-pulse rounded bg-white/10" />
+            <div className="h-4 w-1/2 max-w-[24rem] animate-pulse rounded bg-white/[0.15]" />
+            <div className="h-3 w-1/3 max-w-[18rem] animate-pulse rounded bg-white/[0.08]" />
+          </div>
+        ))}
+      </div>
     </div>
-  </div>
+  );
+};
+
+const TerminalCommandContextMenu = ({
+  menu,
+  onClose,
+  onCopy,
+}: {
+  menu: TerminalCommandContextMenuState;
+  onClose: () => void;
+  onCopy: (text: string) => void | Promise<void>;
+}): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
+
+  return (
+    <div
+      role="menu"
+      aria-label={t('terminalWorkspace.terminalCommandActions')}
+      tabIndex={-1}
+      className="fixed z-[10000] min-w-56 rounded-md border border-white/10 bg-[#181a1f] p-1 text-[13px] text-slate-100 shadow-[0_18px_44px_rgba(0,0,0,0.46)] outline-none"
+      data-testid="agent-team-terminal-command-context-menu"
+      style={{ left: menu.x, top: menu.y }}
+      onContextMenu={(event) => event.preventDefault()}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          onClose();
+        }
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <TerminalCommandContextMenuItem
+        label={t('terminalWorkspace.copy')}
+        shortcut="⌘C"
+        testId="agent-team-terminal-command-context-copy"
+        text={menu.blockText}
+        onCopy={onCopy}
+      />
+      <TerminalCommandContextMenuItem
+        label={t('terminalWorkspace.copyCommand')}
+        shortcut="⇧⌘C"
+        testId="agent-team-terminal-command-context-copy-command"
+        text={menu.commandText}
+        onCopy={onCopy}
+      />
+      <TerminalCommandContextMenuItem
+        disabled={!menu.outputText}
+        label={t('terminalWorkspace.copyOutput')}
+        shortcut="⌥⇧⌘C"
+        testId="agent-team-terminal-command-context-copy-output"
+        text={menu.outputText}
+        onCopy={onCopy}
+      />
+    </div>
+  );
+};
+
+const TerminalCommandContextMenuItem = ({
+  disabled = false,
+  label,
+  shortcut,
+  testId,
+  text,
+  onCopy,
+}: {
+  disabled?: boolean;
+  label: string;
+  shortcut: string;
+  testId: string;
+  text: string;
+  onCopy: (text: string) => void | Promise<void>;
+}): React.JSX.Element => (
+  <button
+    type="button"
+    role="menuitem"
+    className="flex w-full items-center justify-between gap-6 rounded px-3 py-2 text-left text-slate-100 outline-none transition-colors hover:bg-white/[0.07] focus:bg-white/[0.07] disabled:cursor-not-allowed disabled:text-slate-500"
+    data-testid={testId}
+    disabled={disabled}
+    onClick={() => void onCopy(text)}
+  >
+    <span>{label}</span>
+    <span className="font-mono text-[12px] text-slate-500">{shortcut}</span>
+  </button>
 );
 
 const TerminalMuxTabs = ({
@@ -1204,6 +1360,7 @@ const TerminalMuxTabs = ({
   onTabContentPendingChange?: (pending: boolean) => void;
   placement?: 'console' | 'sheet-header';
 }): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [closeCandidate, setCloseCandidate] = useState<TerminalMuxTab | null>(null);
@@ -1439,7 +1596,17 @@ const TerminalMuxTabs = ({
       return;
     }
 
-    await runMuxCommand(`close-tab:${tab.tab_id}`, { kind: 'close_tab', tab_id: tab.tab_id });
+    const tabToFocusAfterClose =
+      controls.canFocusTab && tab.tab_id === activeVisibleTabId
+        ? resolveVisibleTabToFocusAfterClose(orderedVisibleTabs, tab.tab_id)
+        : null;
+    const commands: TerminalMuxCommand[] = [{ kind: 'close_tab', tab_id: tab.tab_id }];
+
+    if (tabToFocusAfterClose) {
+      commands.push({ kind: 'focus_tab', tab_id: tabToFocusAfterClose });
+    }
+
+    await runMuxCommands(`close-tab:${tab.tab_id}`, commands);
   };
 
   const requestCloseTab = async (tab: TerminalMuxTab): Promise<void> => {
@@ -1705,6 +1872,26 @@ const TerminalMuxTabs = ({
     reorderTabs(activeDrag.tabId, reorderTarget.tabId, reorderTarget.placementMode);
   };
 
+  const handleTabPointerUp = (
+    event: React.PointerEvent<HTMLDivElement>,
+    tab: TerminalMuxTab
+  ): void => {
+    const activeDrag = tabPointerDragRef.current;
+    const shouldFocusTab =
+      activeDrag?.pointerId === event.pointerId &&
+      activeDrag.tabId === tab.tab_id &&
+      controls.canFocusTab &&
+      tab.tab_id !== activeTabId &&
+      !busy;
+
+    if (shouldFocusTab) {
+      suppressNextTabClickRef.current = true;
+      void focusTab(tab.tab_id);
+    }
+
+    endTabPointerDrag(event);
+  };
+
   useEffect(() => {
     if (
       !activeSessionId ||
@@ -1827,14 +2014,16 @@ const TerminalMuxTabs = ({
             )}
             ref={tabListElementRef}
             role="tablist"
-            aria-label="Terminal tabs"
+            aria-label={t('terminalWorkspace.terminalTabs')}
             tabIndex={-1}
           >
             {visibleTabs.length === 0 ? (
               headerPlacement ? (
-                <span className="sr-only">No terminal tabs</span>
+                <span className="sr-only">{t('terminalWorkspace.noTerminalTabs')}</span>
               ) : (
-                <span className="px-2 py-1.5 text-xs text-slate-500">No terminal tabs</span>
+                <span className="px-2 py-1.5 text-xs text-slate-500">
+                  {t('terminalWorkspace.noTerminalTabs')}
+                </span>
               )
             ) : (
               orderedVisibleTabs.map((tab, index) => {
@@ -1842,8 +2031,8 @@ const TerminalMuxTabs = ({
                 const active = !settingsOpen && tab.tab_id === activeVisibleTabId;
                 const pendingClose = pendingAction === `close-tab:${tab.tab_id}`;
                 const closeLabel = canCloseVisibleTabs
-                  ? `Close terminal tab ${label}`
-                  : 'Create another tab before closing this one';
+                  ? t('terminalWorkspace.closeTerminalTab', { tab: label })
+                  : t('terminalWorkspace.createAnotherTabBeforeClosing');
                 const explicitColorId = tabPreferences.colors[tab.tab_id];
                 const color = resolveTerminalTabColor(explicitColorId);
                 const editing = editingTabId === tab.tab_id;
@@ -1893,7 +2082,7 @@ const TerminalMuxTabs = ({
                         onPointerCancel={endTabPointerDrag}
                         onPointerDown={(event) => handleTabPointerDown(event, tab)}
                         onPointerMove={handleTabPointerMove}
-                        onPointerUp={endTabPointerDrag}
+                        onPointerUp={(event) => handleTabPointerUp(event, tab)}
                         style={tabStyle}
                       >
                         {dropIndicator?.tabId === tab.tab_id && draggingTabId !== tab.tab_id ? (
@@ -1912,7 +2101,7 @@ const TerminalMuxTabs = ({
                               ref={renameInputRef}
                               className="h-5 min-w-0 flex-1 rounded border border-white/15 bg-black/35 px-1 font-mono text-[12px] text-slate-100 outline-none ring-0 focus:border-sky-400/60"
                               value={editingTitle}
-                              aria-label="Edit terminal tab title"
+                              aria-label={t('terminalWorkspace.editTerminalTabTitle')}
                               data-testid="agent-team-terminal-tab-title-input"
                               onBlur={() => void commitRenameTab()}
                               onChange={(event) => setEditingTitle(event.target.value)}
@@ -1964,7 +2153,7 @@ const TerminalMuxTabs = ({
                                 'pointer-events-none absolute bottom-0 right-0 top-0 z-20 h-7 w-7 rounded-none border-0 bg-transparent p-0 text-slate-500 opacity-0 transition-[background-color,color,opacity] duration-150 hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-0 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100',
                                 pendingClose && 'pointer-events-auto opacity-100'
                               )}
-                              aria-label={`Close terminal tab ${label}`}
+                              aria-label={t('terminalWorkspace.closeTerminalTab', { tab: label })}
                               data-terminal-tab-drag-ignore="true"
                               data-testid="agent-team-terminal-close-mux-tab"
                               disabled={!canCloseVisibleTabs || (busy && !pendingClose)}
@@ -1992,16 +2181,16 @@ const TerminalMuxTabs = ({
                         onSelect={() => startRenameTab(tab, label)}
                       >
                         <Pencil size={13} />
-                        Rename tab
+                        {t('terminalWorkspace.renameTab')}
                       </ContextMenuItem>
                       <ContextMenuSeparator />
                       <ContextMenuSub>
                         <ContextMenuSubTrigger>
                           <Palette size={13} />
-                          Tab color
+                          {t('terminalWorkspace.tabColor')}
                         </ContextMenuSubTrigger>
                         <ContextMenuSubContent className="w-44">
-                          <ContextMenuLabel>Choose color</ContextMenuLabel>
+                          <ContextMenuLabel>{t('terminalWorkspace.chooseColor')}</ContextMenuLabel>
                           {TERMINAL_TAB_COLOR_OPTIONS.map((option) => (
                             <ContextMenuItem
                               key={option.id}
@@ -2011,7 +2200,9 @@ const TerminalMuxTabs = ({
                                 className="size-2.5 shrink-0 rounded-full"
                                 style={{ backgroundColor: option.accent }}
                               />
-                              <span className="min-w-0 flex-1">{option.label}</span>
+                              <span className="min-w-0 flex-1">
+                                {formatTerminalTabColorLabel(t, option.id)}
+                              </span>
                               {color.id === option.id ? <Check size={13} /> : null}
                             </ContextMenuItem>
                           ))}
@@ -2038,15 +2229,15 @@ const TerminalMuxTabs = ({
                   onClick={() => onSettingsOpenChange?.(true)}
                 >
                   <Palette size={13} className="shrink-0 text-sky-200" />
-                  <span className="min-w-0 truncate">Settings</span>
+                  <span className="min-w-0 truncate">{t('terminalWorkspace.settingsTab')}</span>
                 </button>
-                <TerminalButtonTooltip label="Close terminal settings">
+                <TerminalButtonTooltip label={t('terminalWorkspace.closeTerminalSettings')}>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     className="absolute bottom-0 right-0 top-0 h-7 w-7 rounded-none border-0 bg-transparent p-0 text-slate-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
-                    aria-label="Close terminal settings tab"
+                    aria-label={t('terminalWorkspace.closeTerminalSettingsTab')}
                     onClick={(event) => {
                       event.stopPropagation();
                       onSettingsOpenChange?.(false);
@@ -2059,7 +2250,9 @@ const TerminalMuxTabs = ({
             ) : null}
             <TerminalButtonTooltip
               label={
-                controls.canCreateTab ? 'Create terminal tab' : 'Terminal tabs are unavailable'
+                controls.canCreateTab
+                  ? t('terminalWorkspace.createTerminalTab')
+                  : t('terminalWorkspace.terminalTabsUnavailable')
               }
             >
               <Button
@@ -2070,7 +2263,7 @@ const TerminalMuxTabs = ({
                   'size-7 shrink-0 border border-white/10 bg-white/[0.04] p-0 text-slate-400 transition-colors hover:bg-white/[0.08] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-45',
                   'rounded-b-none rounded-t-md'
                 )}
-                aria-label="Create terminal tab"
+                aria-label={t('terminalWorkspace.createTerminalTab')}
                 data-testid="agent-team-terminal-new-mux-tab"
                 disabled={busy || !controls.canCreateTab}
                 onClick={() => void createTab()}
@@ -2102,14 +2295,15 @@ const TerminalMuxTabs = ({
       >
         <AlertDialogContent className="max-w-md bg-[#10141d]">
           <AlertDialogHeader>
-            <AlertDialogTitle>Close terminal tab?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t('terminalWorkspace.closeTerminalTabDialogTitle')}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This tab has terminal output history. Closing it will remove the tab and its visible
-              output from this workspace.
+              {t('terminalWorkspace.closeTerminalTabDialogDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('terminalWorkspace.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 const tab = closeCandidate;
@@ -2119,7 +2313,7 @@ const TerminalMuxTabs = ({
                 }
               }}
             >
-              Close tab
+              {t('terminalWorkspace.closeTab')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -2136,7 +2330,7 @@ const TerminalWorkingDirectoryBar = ({
   gitBranch?: string | null;
 }): React.JSX.Element => {
   const { t } = useAppTranslation('team');
-  const label = formatWorkingDirectory(projectPath);
+  const label = formatWorkingDirectory(projectPath, t('terminalWorkspace.shellDefaultDirectory'));
   const openTerminalPlatformRepository = useCallback((): void => {
     if (window.electronAPI?.openExternal) {
       void window.electronAPI.openExternal(TERMINAL_PLATFORM_GITHUB_URL);
@@ -2197,6 +2391,7 @@ const TerminalWorkspaceSettingsPage = ({
   onStopRuntime: () => Promise<void>;
   snapshot: TerminalWorkspaceSnapshot;
 }): React.JSX.Element => {
+  const { t } = useAppTranslation('team');
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const display = snapshot.terminalDisplay;
   const showBackgroundColor = appearanceSettings.backgroundMode !== 'transparent';
@@ -2220,15 +2415,19 @@ const TerminalWorkspaceSettingsPage = ({
     >
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-white/[0.025] px-5 py-4 backdrop-blur-xl">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-100">Terminal settings</p>
-          <p className="mt-0.5 text-xs text-slate-400">Appearance and runtime controls.</p>
+          <p className="text-sm font-semibold text-slate-100">
+            {t('terminalWorkspace.settingsTitle')}
+          </p>
+          <p className="mt-0.5 text-xs text-slate-400">
+            {t('terminalWorkspace.settingsDescription')}
+          </p>
         </div>
         <Button
           type="button"
           variant="ghost"
           size="icon"
           className="size-7 shrink-0 text-slate-400 hover:bg-white/[0.07] hover:text-slate-100"
-          aria-label="Close terminal settings"
+          aria-label={t('terminalWorkspace.closeTerminalSettings')}
           onClick={onClose}
         >
           <X size={14} />
@@ -2239,23 +2438,23 @@ const TerminalWorkspaceSettingsPage = ({
         <div className="mx-auto grid max-w-5xl gap-5 lg:grid-cols-2">
           <TerminalSettingsSection
             icon={<Palette size={14} />}
-            title="Theme"
-            description="Choose the base terminal palette."
+            title={t('terminalWorkspace.settingsThemeTitle')}
+            description={t('terminalWorkspace.settingsThemeDescription')}
           >
             <Select
               value={snapshot.theme.themeId}
               onValueChange={(themeId) => kernel.commands.setTheme(themeId)}
             >
               <SelectTrigger
-                aria-label="Terminal theme"
+                aria-label={t('terminalWorkspace.settingsThemeAria')}
                 className="border-white/10 bg-white/[0.035]"
               >
-                <SelectValue placeholder="Select theme" />
+                <SelectValue placeholder={t('terminalWorkspace.settingsThemePlaceholder')} />
               </SelectTrigger>
               <SelectContent className="z-[100]">
                 {terminalPlatformThemeManifests.map((theme) => (
                   <SelectItem key={theme.id} value={theme.id}>
-                    {formatThemeLabel(theme.displayName, theme.id)}
+                    {formatThemeLabel(t, theme.displayName, theme.id)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -2264,13 +2463,13 @@ const TerminalWorkspaceSettingsPage = ({
 
           <TerminalSettingsSection
             icon={<Terminal size={14} />}
-            title="Font"
-            description="Tune text size and the SDK font preset."
+            title={t('terminalWorkspace.settingsFontTitle')}
+            description={t('terminalWorkspace.settingsFontDescription')}
           >
             <div className="grid grid-cols-[minmax(0,1fr)_6rem] items-end gap-3">
               <div className="grid gap-1.5">
                 <Label htmlFor="terminal-settings-font-preset" className="text-xs text-slate-300">
-                  Preset
+                  {t('terminalWorkspace.settingsFontPreset')}
                 </Label>
                 <Select
                   value={display.fontScale}
@@ -2278,15 +2477,17 @@ const TerminalWorkspaceSettingsPage = ({
                 >
                   <SelectTrigger
                     id="terminal-settings-font-preset"
-                    aria-label="Terminal font preset"
+                    aria-label={t('terminalWorkspace.settingsFontPresetAria')}
                     className="border-white/10 bg-white/[0.035]"
                   >
-                    <SelectValue placeholder="Font preset" />
+                    <SelectValue
+                      placeholder={t('terminalWorkspace.settingsFontPresetPlaceholder')}
+                    />
                   </SelectTrigger>
                   <SelectContent className="z-[100]">
                     {terminalPlatformTerminalFontScales.map((fontScale) => (
                       <SelectItem key={fontScale} value={fontScale}>
-                        {formatFontScaleLabel(fontScale)}
+                        {formatFontScaleLabel(t, fontScale)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -2294,7 +2495,7 @@ const TerminalWorkspaceSettingsPage = ({
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="terminal-settings-font-size" className="text-xs text-slate-300">
-                  Size
+                  {t('terminalWorkspace.settingsFontSize')}
                 </Label>
                 <Input
                   id="terminal-settings-font-size"
@@ -2317,8 +2518,8 @@ const TerminalWorkspaceSettingsPage = ({
 
           <TerminalSettingsSection
             icon={<Image size={14} />}
-            title="Background"
-            description="Control transparency, blur, color, and optional image."
+            title={t('terminalWorkspace.settingsBackgroundTitle')}
+            description={t('terminalWorkspace.settingsBackgroundDescription')}
           >
             <div className="grid gap-3">
               <div
@@ -2329,7 +2530,7 @@ const TerminalWorkspaceSettingsPage = ({
               >
                 <div className="grid gap-1.5">
                   <Label htmlFor="terminal-settings-opacity" className="text-xs text-slate-300">
-                    Opacity
+                    {t('terminalWorkspace.settingsOpacity')}
                   </Label>
                   <input
                     id="terminal-settings-opacity-range"
@@ -2338,7 +2539,7 @@ const TerminalWorkspaceSettingsPage = ({
                     max={100}
                     step={1}
                     className="h-9 w-full accent-sky-300"
-                    aria-label="Terminal opacity"
+                    aria-label={t('terminalWorkspace.settingsOpacityAria')}
                     value={appearanceSettings.opacityPercent}
                     onChange={(event) =>
                       onAppearanceSettingsChange({
@@ -2370,7 +2571,7 @@ const TerminalWorkspaceSettingsPage = ({
                     htmlFor="terminal-settings-background-mode"
                     className="text-xs text-slate-300"
                   >
-                    Background
+                    {t('terminalWorkspace.settingsBackgroundMode')}
                   </Label>
                   <Select
                     value={appearanceSettings.backgroundMode}
@@ -2382,15 +2583,15 @@ const TerminalWorkspaceSettingsPage = ({
                   >
                     <SelectTrigger
                       id="terminal-settings-background-mode"
-                      aria-label="Terminal background mode"
+                      aria-label={t('terminalWorkspace.settingsBackgroundModeAria')}
                       className="border-white/10 bg-white/[0.035]"
                     >
-                      <SelectValue placeholder="Background" />
+                      <SelectValue placeholder={t('terminalWorkspace.settingsBackgroundMode')} />
                     </SelectTrigger>
                     <SelectContent className="z-[100]">
                       {TERMINAL_BACKGROUND_MODE_OPTIONS.map((option) => (
                         <SelectItem key={option.id} value={option.id}>
-                          {option.label}
+                          {formatTerminalBackgroundModeLabel(t, option.id)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -2399,7 +2600,7 @@ const TerminalWorkspaceSettingsPage = ({
                 {showBackgroundColor ? (
                   <Input
                     type="color"
-                    aria-label="Terminal background color"
+                    aria-label={t('terminalWorkspace.settingsBackgroundColorAria')}
                     className="h-9 border-white/10 bg-white/[0.035] p-1"
                     value={appearanceSettings.backgroundColor}
                     onChange={(event) =>
@@ -2417,7 +2618,7 @@ const TerminalWorkspaceSettingsPage = ({
                     htmlFor="terminal-settings-backdrop-blur"
                     className="text-xs text-slate-300"
                   >
-                    Backdrop blur
+                    {t('terminalWorkspace.settingsBackdropBlur')}
                   </Label>
                   <Input
                     id="terminal-settings-backdrop-blur"
@@ -2444,7 +2645,7 @@ const TerminalWorkspaceSettingsPage = ({
                       htmlFor="terminal-settings-background-image"
                       className="text-xs text-slate-300"
                     >
-                      Image URL
+                      {t('terminalWorkspace.settingsImageUrl')}
                     </Label>
                     <Input
                       id="terminal-settings-background-image"
@@ -2466,7 +2667,7 @@ const TerminalWorkspaceSettingsPage = ({
                         htmlFor="terminal-settings-background-fit"
                         className="text-xs text-slate-300"
                       >
-                        Image fit
+                        {t('terminalWorkspace.settingsImageFit')}
                       </Label>
                       <Select
                         value={appearanceSettings.backgroundImageFit}
@@ -2478,15 +2679,15 @@ const TerminalWorkspaceSettingsPage = ({
                       >
                         <SelectTrigger
                           id="terminal-settings-background-fit"
-                          aria-label="Terminal background image fit"
+                          aria-label={t('terminalWorkspace.settingsImageFitAria')}
                           className="border-white/10 bg-white/[0.035]"
                         >
-                          <SelectValue placeholder="Image fit" />
+                          <SelectValue placeholder={t('terminalWorkspace.settingsImageFit')} />
                         </SelectTrigger>
                         <SelectContent className="z-[100]">
                           {TERMINAL_BACKGROUND_IMAGE_FIT_OPTIONS.map((option) => (
                             <SelectItem key={option.id} value={option.id}>
-                              {option.label}
+                              {formatTerminalBackgroundImageFitLabel(t, option.id)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -2494,7 +2695,7 @@ const TerminalWorkspaceSettingsPage = ({
                     </div>
                     <div className="grid gap-1.5">
                       <Label htmlFor="terminal-settings-blur" className="text-xs text-slate-300">
-                        Image blur
+                        {t('terminalWorkspace.settingsImageBlur')}
                       </Label>
                       <Input
                         id="terminal-settings-blur"
@@ -2521,7 +2722,7 @@ const TerminalWorkspaceSettingsPage = ({
                         onAppearanceSettingsChange({ dimBackgroundImage: checked === true })
                       }
                     />
-                    Dim image behind terminal text
+                    {t('terminalWorkspace.settingsDimImage')}
                   </label>
                 </>
               ) : null}
@@ -2530,22 +2731,22 @@ const TerminalWorkspaceSettingsPage = ({
 
           <TerminalSettingsSection
             icon={<Check size={14} />}
-            title="Behavior"
-            description="Keep command output readable for long lines."
+            title={t('terminalWorkspace.settingsBehaviorTitle')}
+            description={t('terminalWorkspace.settingsBehaviorDescription')}
           >
             <label className="flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.025] px-3 py-2 text-xs text-slate-300">
               <Checkbox
                 checked={display.lineWrap}
                 onCheckedChange={(checked) => kernel.commands.setTerminalLineWrap(checked === true)}
               />
-              Wrap long command output
+              {t('terminalWorkspace.settingsWrapLongOutput')}
             </label>
           </TerminalSettingsSection>
 
           <TerminalSettingsSection
             icon={<RefreshCw size={14} />}
-            title="Runtime"
-            description="Use these only when the terminal transport looks stale."
+            title={t('terminalWorkspace.settingsRuntimeTitle')}
+            description={t('terminalWorkspace.settingsRuntimeDescription')}
           >
             <div className="grid grid-cols-2 gap-2">
               <Button
@@ -2561,7 +2762,7 @@ const TerminalWorkspaceSettingsPage = ({
                 ) : (
                   <RefreshCw size={13} className="mr-1.5" />
                 )}
-                Reconnect
+                {t('terminalWorkspace.settingsReconnect')}
               </Button>
               <Button
                 type="button"
@@ -2578,7 +2779,7 @@ const TerminalWorkspaceSettingsPage = ({
                 ) : (
                   <Terminal size={13} className="mr-1.5" />
                 )}
-                Sessions
+                {t('terminalWorkspace.settingsSessions')}
               </Button>
               <Button
                 type="button"
@@ -2589,7 +2790,7 @@ const TerminalWorkspaceSettingsPage = ({
                 onClick={onReload}
               >
                 <RefreshCw size={13} className="mr-1.5" />
-                Reload
+                {t('terminalWorkspace.settingsReload')}
               </Button>
               <Button
                 type="button"
@@ -2604,7 +2805,7 @@ const TerminalWorkspaceSettingsPage = ({
                 ) : (
                   <Square size={12} className="mr-1.5" />
                 )}
-                Stop
+                {t('terminalWorkspace.settingsStop')}
               </Button>
             </div>
           </TerminalSettingsSection>
@@ -2616,7 +2817,7 @@ const TerminalWorkspaceSettingsPage = ({
             className="w-full text-slate-400 hover:bg-white/[0.06] hover:text-slate-100 lg:col-span-2"
             onClick={() => onAppearanceSettingsChange(DEFAULT_TERMINAL_APPEARANCE_SETTINGS)}
           >
-            Reset appearance
+            {t('terminalWorkspace.settingsResetAppearance')}
           </Button>
         </div>
       </div>
@@ -2684,6 +2885,123 @@ const TerminalWorkspaceStatus = ({
 
 function storageKey(teamName: string, key: string): string {
   return `agent-teams:terminal-workspace:${teamName}:${key}`;
+}
+
+function resolveTerminalCommandContextMenuState(
+  event: MouseEvent
+): TerminalCommandContextMenuState | null {
+  const entry = findTerminalHistoryEntryElement(event);
+  if (!entry) {
+    return null;
+  }
+
+  const commandText = getTerminalHistoryEntryText(entry, [
+    '[part~="history-entry-command-text"]',
+    '.history-entry-command .history-entry-text',
+    '[part~="history-entry-command"]',
+    '.history-entry-command',
+  ]);
+  if (!commandText) {
+    return null;
+  }
+
+  const outputText = getTerminalHistoryEntryText(entry, [
+    '[part~="history-entry-output-text"]',
+    '.history-entry-output .history-entry-text',
+    '[part~="history-entry-output"]',
+    '.history-entry-output',
+  ]);
+  const blockText = [commandText, outputText].filter(Boolean).join('\n');
+
+  return {
+    blockText,
+    commandText,
+    outputText,
+    x: clampTerminalContextMenuCoordinate(event.clientX, window.innerWidth, 240),
+    y: clampTerminalContextMenuCoordinate(event.clientY, window.innerHeight, 132),
+  };
+}
+
+function findTerminalHistoryEntryElement(event: MouseEvent): HTMLElement | null {
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+  for (const pathItem of path) {
+    if (pathItem instanceof HTMLElement && isTerminalHistoryEntryElement(pathItem)) {
+      return pathItem;
+    }
+  }
+
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return null;
+  }
+
+  return target.closest<HTMLElement>('.history-entry,[part~="history-entry"]');
+}
+
+function isTerminalHistoryEntryElement(element: HTMLElement): boolean {
+  return (
+    element.classList.contains('history-entry') || hasTerminalElementPart(element, 'history-entry')
+  );
+}
+
+function hasTerminalElementPart(element: HTMLElement, part: string): boolean {
+  return (
+    element
+      .getAttribute('part')
+      ?.split(/\s+/u)
+      .some((value) => value === part) === true
+  );
+}
+
+function getTerminalHistoryEntryText(entry: HTMLElement, selectors: readonly string[]): string {
+  for (const selector of selectors) {
+    const text = normalizeTerminalContextMenuText(
+      Array.from(entry.querySelectorAll<HTMLElement>(selector))
+        .map((element) => element.textContent ?? '')
+        .join('\n')
+    );
+    if (text) {
+      return text;
+    }
+  }
+
+  return '';
+}
+
+function normalizeTerminalContextMenuText(value: string): string {
+  return value
+    .replace(/\r\n/gu, '\n')
+    .replace(/[ \t]+\n/gu, '\n')
+    .trim();
+}
+
+function clampTerminalContextMenuCoordinate(value: number, max: number, size: number): number {
+  return Math.max(8, Math.min(value, Math.max(8, max - size - 8)));
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    // Fall through to the textarea fallback below.
+  }
+
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.setAttribute('readonly', '');
+  textArea.style.position = 'fixed';
+  textArea.style.left = '-9999px';
+  textArea.style.top = '0';
+  document.body.appendChild(textArea);
+  textArea.select();
+  try {
+    document.execCommand('copy');
+  } finally {
+    textArea.remove();
+  }
 }
 
 function readStoredValue(key: string): string | null {
@@ -3204,6 +3522,18 @@ function orderTerminalTabsByPreference(
   return [...orderedTabs, ...tabs.filter((tab) => remainingTabsById.has(tab.tab_id))];
 }
 
+function resolveVisibleTabToFocusAfterClose(
+  orderedTabs: readonly TerminalMuxTab[],
+  closingTabId: string
+): string | null {
+  const closingIndex = orderedTabs.findIndex((tab) => tab.tab_id === closingTabId);
+  if (closingIndex < 0) {
+    return null;
+  }
+
+  return orderedTabs[closingIndex - 1]?.tab_id ?? orderedTabs[closingIndex + 1]?.tab_id ?? null;
+}
+
 function reorderTerminalTabsById(
   currentOrder: readonly string[],
   tabs: readonly TerminalMuxTab[],
@@ -3298,18 +3628,18 @@ function collectPaneIds(node: TerminalMuxPaneTreeNode): string[] {
   return [...collectPaneIds(node.first), ...collectPaneIds(node.second)];
 }
 
-export function formatWorkingDirectory(path?: string | null): string {
+export function formatWorkingDirectory(path?: string | null, fallback = ''): string {
   const normalizedPath = trimTrailingSlashes(path?.trim() || '');
   if (!normalizedPath) {
-    return 'Shell default directory';
+    return fallback;
   }
 
   return compactUserHome(normalizedPath);
 }
 
-export function formatTerminalPromptLabel(path?: string | null): string {
-  const workingDirectory = formatWorkingDirectory(path);
-  return workingDirectory === 'Shell default directory' ? 'local shell' : workingDirectory;
+export function formatTerminalPromptLabel(path?: string | null, localShellLabel = ''): string {
+  const workingDirectory = formatWorkingDirectory(path, '');
+  return workingDirectory || localShellLabel;
 }
 
 function trimTrailingSlashes(value: string): string {
@@ -3527,16 +3857,72 @@ function normalizeOptionalPath(path: string | null | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
-function formatThemeLabel(displayName: string, themeId: string): string {
-  if (themeId === 'terminal-platform-default') return 'Dark';
-  if (themeId === 'terminal-platform-light') return 'Light';
+function formatThemeLabel(t: TeamTFunction, displayName: string, themeId: string): string {
+  if (themeId === 'terminal-platform-default') return t('terminalWorkspace.themeDark');
+  if (themeId === 'terminal-platform-light') return t('terminalWorkspace.themeLight');
   return displayName.replace(/^Terminal Platform\s*/i, '').trim() || displayName;
 }
 
-function formatFontScaleLabel(fontScale: string): string {
-  if (fontScale === 'compact') return 'Compact';
-  if (fontScale === 'large') return 'Large';
-  return 'Default';
+function formatFontScaleLabel(t: TeamTFunction, fontScale: string): string {
+  if (fontScale === 'compact') return t('terminalWorkspace.fontScaleCompact');
+  if (fontScale === 'large') return t('terminalWorkspace.fontScaleLarge');
+  return t('terminalWorkspace.fontScaleDefault');
+}
+
+function formatTerminalBackgroundModeLabel(t: TeamTFunction, mode: TerminalBackgroundMode): string {
+  switch (mode) {
+    case 'transparent':
+      return t('terminalWorkspace.backgroundModeTransparent');
+    case 'solid':
+      return t('terminalWorkspace.backgroundModeSolid');
+    case 'image':
+      return t('terminalWorkspace.backgroundModeImage');
+  }
+}
+
+function formatTerminalBackgroundImageFitLabel(
+  t: TeamTFunction,
+  fit: TerminalBackgroundImageFit
+): string {
+  switch (fit) {
+    case 'cover':
+      return t('terminalWorkspace.imageFitCover');
+    case 'contain':
+      return t('terminalWorkspace.imageFitContain');
+    case 'stretch':
+      return t('terminalWorkspace.imageFitStretch');
+    case 'tile':
+      return t('terminalWorkspace.imageFitTile');
+    case 'center':
+      return t('terminalWorkspace.imageFitCenter');
+  }
+}
+
+function formatTerminalTabColorLabel(t: TeamTFunction, colorId: TerminalTabColorId): string {
+  switch (colorId) {
+    case 'slate':
+      return t('terminalWorkspace.tabColorSlate');
+    case 'sky':
+      return t('terminalWorkspace.tabColorSky');
+    case 'blue':
+      return t('terminalWorkspace.tabColorBlue');
+    case 'cyan':
+      return t('terminalWorkspace.tabColorCyan');
+    case 'teal':
+      return t('terminalWorkspace.tabColorTeal');
+    case 'emerald':
+      return t('terminalWorkspace.tabColorEmerald');
+    case 'lime':
+      return t('terminalWorkspace.tabColorLime');
+    case 'amber':
+      return t('terminalWorkspace.tabColorAmber');
+    case 'orange':
+      return t('terminalWorkspace.tabColorOrange');
+    case 'rose':
+      return t('terminalWorkspace.tabColorRose');
+    case 'violet':
+      return t('terminalWorkspace.tabColorViolet');
+  }
 }
 
 export function normalizeTerminalCommandRunEventDetail(

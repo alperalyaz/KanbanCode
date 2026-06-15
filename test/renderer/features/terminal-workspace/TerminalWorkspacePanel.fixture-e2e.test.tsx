@@ -21,17 +21,142 @@ vi.mock('@features/localization/renderer', () => ({
     t: (key: string, values?: Record<string, string>) => {
       const translations: Record<string, string> = {
         'terminalWorkspace.currentWorkingDirectory': 'Current working directory',
-        'terminalWorkspace.openTerminalPlatformRepository': 'Open terminal-platform repository',
+        'terminalWorkspace.gitBranchTitle': 'Git branch: {{branch}}',
+        'terminalWorkspace.openTerminalPlatformRepository': 'Open terminal-platform on GitHub',
         'terminalWorkspace.poweredByTerminalPlatform': 'powered by terminal-platform',
-        'terminalWorkspace.shellDefaultDirectory': 'Shell default directory',
+        'terminalWorkspace.shellDefaultDirectory': 'Default shell working directory',
+        'terminalWorkspace.openTeamTerminal': 'Open {{team}} terminal',
+        'terminalWorkspace.openTerminal': 'Open terminal',
+        'terminalWorkspace.terminalSheetOpen': 'Terminal sheet is open',
+        'terminalWorkspace.teamTerminalTitle': '{{team}} terminal',
+        'terminalWorkspace.teamRuntime': 'Team runtime',
+        'terminalWorkspace.teamRuntimeBadge': 'team runtime',
+        'terminalWorkspace.localShell': 'Local shell',
+        'terminalWorkspace.localShellBadge': 'local shell',
+        'terminalWorkspace.reloadTerminalWorkspace': 'Reload terminal workspace',
+        'terminalWorkspace.stopTerminalRuntime': 'Stop terminal runtime',
+        'terminalWorkspace.startingRuntimeTitle': 'Starting terminal runtime',
+        'terminalWorkspace.startingRuntimeDetail':
+          'Preparing the team workspace and restoring persisted terminal state.',
+        'terminalWorkspace.runtimeUnavailableTitle': 'Terminal runtime is unavailable',
+        'terminalWorkspace.runtimeDisconnectedTitle': 'Terminal runtime is not connected',
+        'terminalWorkspace.runtimeDisconnectedDetail': 'Reload the workspace to reconnect.',
+        'terminalWorkspace.restoreHalfHeightSheet': 'Restore half-height sheet',
+        'terminalWorkspace.expandTerminalSheet': 'Expand terminal sheet',
+        'terminalWorkspace.openTerminalSettings': 'Open terminal settings',
+        'terminalWorkspace.closeTerminalSettings': 'Close terminal settings',
+        'terminalWorkspace.closeTerminalSheet': 'Close terminal sheet',
+        'terminalWorkspace.loadingTerminalTab': 'Loading terminal tab',
+        'terminalWorkspace.terminalCommandActions': 'Terminal command actions',
+        'terminalWorkspace.copy': 'Copy',
+        'terminalWorkspace.copyCommand': 'Copy command',
+        'terminalWorkspace.copyOutput': 'Copy output',
+        'terminalWorkspace.terminalTabs': 'Terminal tabs',
+        'terminalWorkspace.noTerminalTabs': 'No terminal tabs',
+        'terminalWorkspace.closeTerminalTab': 'Close terminal tab {{tab}}',
+        'terminalWorkspace.createAnotherTabBeforeClosing':
+          'Create another tab before closing this one',
+        'terminalWorkspace.editTerminalTabTitle': 'Edit terminal tab title',
+        'terminalWorkspace.renameTab': 'Rename tab',
+        'terminalWorkspace.tabColor': 'Tab color',
+        'terminalWorkspace.chooseColor': 'Choose color',
+        'terminalWorkspace.settingsTab': 'Settings',
+        'terminalWorkspace.closeTerminalSettingsTab': 'Close terminal settings tab',
+        'terminalWorkspace.createTerminalTab': 'Create terminal tab',
+        'terminalWorkspace.terminalTabsUnavailable': 'Terminal tabs are unavailable',
+        'terminalWorkspace.closeTerminalTabDialogTitle': 'Close terminal tab?',
+        'terminalWorkspace.closeTerminalTabDialogDescription':
+          'This tab has terminal output history. Closing it will remove the tab and its visible output from this workspace.',
+        'terminalWorkspace.cancel': 'Cancel',
+        'terminalWorkspace.closeTab': 'Close tab',
+        'terminalWorkspace.commandPlaceholder': 'Type a command...',
+        'terminalWorkspace.commandRun': 'Run',
+        'terminalWorkspace.commandRunTitle': 'Send command to the focused pane',
+        'terminalWorkspace.commandInterrupt': 'Ctrl+C',
+        'terminalWorkspace.commandInterruptTitle': 'Send Ctrl+C to the focused pane',
+        'terminalWorkspace.settingsTitle': 'Terminal settings',
+        'terminalWorkspace.settingsDescription': 'Appearance and runtime controls.',
+        'terminalWorkspace.settingsThemeTitle': 'Theme',
+        'terminalWorkspace.settingsThemeDescription': 'Choose the base terminal palette.',
+        'terminalWorkspace.settingsThemeAria': 'Terminal theme',
+        'terminalWorkspace.settingsThemePlaceholder': 'Select theme',
+        'terminalWorkspace.settingsFontTitle': 'Font',
+        'terminalWorkspace.settingsFontDescription': 'Tune text size and the SDK font preset.',
+        'terminalWorkspace.settingsFontPreset': 'Preset',
+        'terminalWorkspace.settingsFontPresetAria': 'Terminal font preset',
+        'terminalWorkspace.settingsFontPresetPlaceholder': 'Font preset',
+        'terminalWorkspace.settingsFontSize': 'Size',
+        'terminalWorkspace.settingsBackgroundTitle': 'Background',
+        'terminalWorkspace.settingsBackgroundDescription':
+          'Control transparency, blur, color, and optional image.',
+        'terminalWorkspace.settingsOpacity': 'Opacity',
+        'terminalWorkspace.settingsOpacityAria': 'Terminal opacity',
+        'terminalWorkspace.settingsBackgroundMode': 'Background',
+        'terminalWorkspace.settingsBackgroundModeAria': 'Terminal background mode',
+        'terminalWorkspace.settingsBackgroundColorAria': 'Terminal background color',
+        'terminalWorkspace.settingsBackdropBlur': 'Backdrop blur',
+        'terminalWorkspace.settingsImageUrl': 'Image URL',
+        'terminalWorkspace.settingsImageFit': 'Image fit',
+        'terminalWorkspace.settingsImageFitAria': 'Terminal background image fit',
+        'terminalWorkspace.settingsImageBlur': 'Image blur',
+        'terminalWorkspace.settingsDimImage': 'Dim image behind terminal text',
+        'terminalWorkspace.settingsBehaviorTitle': 'Behavior',
+        'terminalWorkspace.settingsBehaviorDescription':
+          'Keep command output readable for long lines.',
+        'terminalWorkspace.settingsWrapLongOutput': 'Wrap long command output',
+        'terminalWorkspace.settingsRuntimeTitle': 'Runtime',
+        'terminalWorkspace.settingsRuntimeDescription':
+          'Use these only when the terminal transport looks stale.',
+        'terminalWorkspace.settingsReconnect': 'Reconnect',
+        'terminalWorkspace.settingsSessions': 'Sessions',
+        'terminalWorkspace.settingsReload': 'Reload',
+        'terminalWorkspace.settingsStop': 'Stop',
+        'terminalWorkspace.settingsResetAppearance': 'Reset appearance',
+        'terminalWorkspace.backgroundModeTransparent': 'Transparent',
+        'terminalWorkspace.backgroundModeSolid': 'Solid color',
+        'terminalWorkspace.backgroundModeImage': 'Image',
+        'terminalWorkspace.imageFitCover': 'Cover',
+        'terminalWorkspace.imageFitContain': 'Contain',
+        'terminalWorkspace.imageFitStretch': 'Stretch',
+        'terminalWorkspace.imageFitTile': 'Tile',
+        'terminalWorkspace.imageFitCenter': 'Center',
+        'terminalWorkspace.themeDark': 'Dark',
+        'terminalWorkspace.themeLight': 'Light',
+        'terminalWorkspace.fontScaleCompact': 'Compact',
+        'terminalWorkspace.fontScaleDefault': 'Default',
+        'terminalWorkspace.fontScaleLarge': 'Large',
+        'terminalWorkspace.tabColorSlate': 'Slate',
+        'terminalWorkspace.tabColorSky': 'Sky',
+        'terminalWorkspace.tabColorBlue': 'Blue',
+        'terminalWorkspace.tabColorCyan': 'Cyan',
+        'terminalWorkspace.tabColorTeal': 'Teal',
+        'terminalWorkspace.tabColorEmerald': 'Emerald',
+        'terminalWorkspace.tabColorLime': 'Lime',
+        'terminalWorkspace.tabColorAmber': 'Amber',
+        'terminalWorkspace.tabColorOrange': 'Orange',
+        'terminalWorkspace.tabColorRose': 'Rose',
+        'terminalWorkspace.tabColorViolet': 'Violet',
       };
-      if (key === 'terminalWorkspace.gitBranchTitle') {
-        return `Git branch: ${values?.branch ?? ''}`;
-      }
-      return translations[key] ?? key;
+      return interpolateFixtureTranslation(translations[key] ?? key, values);
     },
   }),
 }));
+
+function interpolateFixtureTranslation(value: string, values?: Record<string, string>): string {
+  if (!values) {
+    return value;
+  }
+
+  return Object.entries(values).reduce(
+    (current, [key, replacement]) =>
+      current.replace(new RegExp(`\\{\\{\\s*${escapeRegExp(key)}\\s*\\}\\}`, 'gu'), replacement),
+    value
+  );
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
 
 vi.mock('@terminal-platform/design-tokens', () => ({
   terminalPlatformThemeManifests: [
@@ -413,7 +538,7 @@ describe('terminal workspace panel fixture-e2e', () => {
       '~/dev/projects/claude/.terminal-platform-sandbox/terminal-ui-smoke'
     );
 
-    await clickButton('Open terminal-platform repository');
+    await clickButton('Open terminal-platform on GitHub');
     expect(openExternal).toHaveBeenCalledWith(TERMINAL_PLATFORM_REPOSITORY_URL);
   });
 
@@ -642,6 +767,35 @@ describe('terminal workspace panel fixture-e2e', () => {
     });
   });
 
+  it('focuses the visible tab on the left after closing the active terminal tab', async () => {
+    nextSnapshot = createWorkspaceSnapshot({
+      focusedTabId: 'tab-3',
+      tabs: [
+        createTab('tab-1', 'Build', 'pane-build'),
+        createTab('tab-2', 'Tests', 'pane-tests'),
+        createTab('tab-3', 'Deploy', 'pane-deploy'),
+        createTab('tab-prewarmed', '__tp_prewarmed_shell__', 'pane-prewarmed'),
+      ],
+    });
+
+    await renderPanel();
+    const kernel = currentKernel();
+    kernel.commands.dispatchMuxCommand.mockClear();
+
+    await clickButton('Close terminal tab Deploy');
+
+    expect(kernel.commands.dispatchMuxCommand.mock.calls.map(([, command]) => command)).toEqual([
+      {
+        kind: 'close_tab',
+        tab_id: 'tab-3',
+      },
+      {
+        kind: 'focus_tab',
+        tab_id: 'tab-2',
+      },
+    ]);
+  });
+
   it('restores user tab order preferences and strips the hidden prewarmed tab from visible UI', async () => {
     window.localStorage.setItem(
       storageKey('tab-preferences'),
@@ -743,6 +897,34 @@ describe('terminal workspace panel fixture-e2e', () => {
       document.querySelector('[data-testid="agent-team-terminal-tab-drop-indicator"]')
     ).toBeNull();
     expect(getVisibleTabLabels()).toEqual(['Logs', 'Terminal UI Smoke']);
+  });
+
+  it('selects a terminal tab from the pointer interaction path without requiring a synthetic click', async () => {
+    nextSnapshot = createWorkspaceSnapshot({
+      tabs: [
+        createTab('tab-1', 'Terminal UI Smoke', 'pane-1'),
+        createTab('tab-2', 'Logs', 'pane-2'),
+        createTab('tab-prewarmed', '__tp_prewarmed_shell__', 'pane-prewarmed'),
+      ],
+    });
+
+    await renderPanel();
+    const kernel = currentKernel();
+    kernel.commands.dispatchMuxCommand.mockClear();
+
+    const targetButton = getTabButton('Logs');
+    const targetTab = getTabDragElement('Logs');
+
+    await act(async () => {
+      dispatchMockPointerEvent(targetButton, 'pointerdown', { clientX: 144, clientY: 10 });
+      dispatchMockPointerEvent(targetTab, 'pointerup', { clientX: 144, clientY: 10 });
+      await flushMicrotasks();
+    });
+
+    expect(kernel.commands.dispatchMuxCommand).toHaveBeenCalledWith('session-1', {
+      kind: 'focus_tab',
+      tab_id: 'tab-2',
+    });
   });
 
   it('keeps the close hit target out of tab dragging while closing the tab', async () => {
@@ -920,6 +1102,74 @@ describe('terminal workspace panel fixture-e2e', () => {
       status: 'failed',
     });
     expect(metadata[0]?.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('opens a command history context menu and copies command block text', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    await renderPanel();
+
+    const screen = getRequiredElement('mock-terminal-screen');
+    const historyEntry = document.createElement('section');
+    historyEntry.className = 'history-entry';
+    historyEntry.setAttribute('part', 'history-entry');
+    historyEntry.innerHTML = `
+      <div class="history-entry-command" part="history-entry-command">
+        <span class="history-entry-text" part="history-entry-command-text">echo TP_CONTEXT</span>
+      </div>
+      <div class="history-entry-output" part="history-entry-output">
+        <span class="history-entry-text" part="history-entry-output-text">TP_CONTEXT_OUTPUT</span>
+      </div>
+    `;
+    screen.appendChild(historyEntry);
+
+    await act(async () => {
+      historyEntry.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 120,
+          clientY: 140,
+        })
+      );
+      await flushMicrotasks();
+    });
+
+    const menu = getRequiredElement('agent-team-terminal-command-context-menu');
+    expect(menu.textContent).toContain('Copy');
+    expect(menu.textContent).toContain('Copy command');
+    expect(menu.textContent).toContain('Copy output');
+
+    await act(async () => {
+      getRequiredElement('agent-team-terminal-command-context-copy-output').dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true })
+      );
+      await flushMicrotasks();
+    });
+    expect(writeText).toHaveBeenLastCalledWith('TP_CONTEXT_OUTPUT');
+
+    await act(async () => {
+      historyEntry.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 150,
+          clientY: 160,
+        })
+      );
+      await flushMicrotasks();
+    });
+    await act(async () => {
+      getRequiredElement('agent-team-terminal-command-context-copy-command').dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true })
+      );
+      await flushMicrotasks();
+    });
+    expect(writeText).toHaveBeenLastCalledWith('echo TP_CONTEXT');
   });
 
   it('keeps command lifecycle metadata scoped to the active tab during rapid tab switching', async () => {

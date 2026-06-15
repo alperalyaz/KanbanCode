@@ -14,8 +14,8 @@ import { describe, expect, it } from 'vitest';
 
 describe('terminal workspace panel internals fixture-e2e', () => {
   it('formats working directories for compact terminal chrome', () => {
-    expect(formatWorkingDirectory(null)).toBe('Shell default directory');
-    expect(formatWorkingDirectory('   ')).toBe('Shell default directory');
+    expect(formatWorkingDirectory(null, 'Shell default directory')).toBe('Shell default directory');
+    expect(formatWorkingDirectory('   ', 'Shell default directory')).toBe('Shell default directory');
     expect(formatWorkingDirectory('/Users/belief/dev/projects/claude_team///')).toBe(
       '~/dev/projects/claude_team'
     );
@@ -24,7 +24,7 @@ describe('terminal workspace panel internals fixture-e2e', () => {
   });
 
   it('uses a readable local-shell prompt when no cwd is available', () => {
-    expect(formatTerminalPromptLabel(null)).toBe('local shell');
+    expect(formatTerminalPromptLabel(null, 'local shell')).toBe('local shell');
     expect(formatTerminalPromptLabel('/Users/belief/dev/quanta')).toBe('~/dev/quanta');
   });
 

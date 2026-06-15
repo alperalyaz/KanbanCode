@@ -4003,7 +4003,7 @@ packages:
     version: 0.1.0
 
   '@terminal-platform/workspace-elements@file:vendor/terminal-platform/sdk/terminal-platform-workspace-elements-0.1.0.tgz':
-    resolution: {integrity: sha512-1jYzsvRJ4p2fl2w1QCQKmSpY1r2k9svA9rxdbgQ11kYWtmfbW19AyYsnWQ/SRPqiLsbLVl2I1t9ZTtXrvwOUOw==, tarball: file:vendor/terminal-platform/sdk/terminal-platform-workspace-elements-0.1.0.tgz}
+    resolution: {integrity: sha512-wWuNE6tL9dmbrw2wuTlswdlMCItpl9bTq8pvr7QlwtO5y9tUmjLl2ppgwZyj/fLf1a0ZmxJJpxXvlVlCG7y63g==, tarball: file:vendor/terminal-platform/sdk/terminal-platform-workspace-elements-0.1.0.tgz}
     version: 0.1.0
 
   '@terminal-platform/workspace-gateway-node@file:vendor/terminal-platform/sdk/terminal-platform-workspace-gateway-node-0.1.0.tgz':
@@ -4011,7 +4011,7 @@ packages:
     version: 0.1.0
 
   '@terminal-platform/workspace-react@file:vendor/terminal-platform/sdk/terminal-platform-workspace-react-0.1.0.tgz':
-    resolution: {integrity: sha512-Dmsl/USfWNBdzE4OZN5W1orE/wvGFTuAEEmpzY6P5k5FPxkfS918qhKuYUU5SCSQax+QDw7PlHheXQ4eFnr1FQ==, tarball: file:vendor/terminal-platform/sdk/terminal-platform-workspace-react-0.1.0.tgz}
+    resolution: {integrity: sha512-6i8EsiEpKURwJMyzfGb3WGM5+MdWbBd8PLKYwgculsRpATUTVitl0OOtQhCvO42LH4ZFHkh4BkiEwK5aChh6Hg==, tarball: file:vendor/terminal-platform/sdk/terminal-platform-workspace-react-0.1.0.tgz}
     version: 0.1.0
     peerDependencies:
       react: '>=19.0.0 <20'

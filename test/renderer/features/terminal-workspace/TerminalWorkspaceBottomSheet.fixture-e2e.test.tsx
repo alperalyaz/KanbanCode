@@ -352,6 +352,7 @@ describe('terminal workspace bottom sheet fixture-e2e', () => {
           React.createElement(TerminalWorkspaceFloatingLauncher, {
             bottomOffset: 24,
             buttonTestId: 'open-terminal-floating-button-fixture',
+            rightOffset: 350,
             teamName: TEAM_NAME,
           })
         )
@@ -363,6 +364,7 @@ describe('terminal workspace bottom sheet fixture-e2e', () => {
     expect(button.getAttribute('aria-label')).toBe('Open Terminal UI Smoke Sandbox terminal');
     expect(button.getAttribute('aria-pressed')).toBe('false');
     expect(button.style.bottom).toBe('24px');
+    expect(button.style.right).toBe('350px');
     expect(useBranchSync).toHaveBeenLastCalledWith([PROJECT_PATH], { live: true });
 
     await act(async () => {
@@ -421,6 +423,7 @@ describe('terminal workspace bottom sheet fixture-e2e', () => {
           React.createElement(TerminalWorkspaceFloatingLauncher, {
             bottomOffset: -40,
             buttonTestId: 'open-terminal-floating-button-fixture',
+            rightOffset: -40,
             teamName: TEAM_NAME,
           })
         )
@@ -430,6 +433,7 @@ describe('terminal workspace bottom sheet fixture-e2e', () => {
 
     const button = getRequiredElement('open-terminal-floating-button-fixture');
     expect(button.style.bottom).toBe('10px');
+    expect(button.style.right).toBe('10px');
 
     await act(async () => {
       button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));

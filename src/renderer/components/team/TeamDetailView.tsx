@@ -1362,7 +1362,7 @@ export const TeamDetailView = memo(function TeamDetailView({
   const [editorOpen, setEditorOpen] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
-  const visualizeButtonRef = useRef<HTMLButtonElement>(null);
+  const visualizeButtonAnchorRef = useRef<HTMLDivElement>(null);
   const taskDetailDialogRef = useRef<TaskDetailDialogHostHandle>(null);
   const taskDetailDialogPreloadScheduledRef = useRef(false);
   const [pinnedVisualizeButtonPosition, setPinnedVisualizeButtonPosition] = useState<{
@@ -1638,24 +1638,19 @@ export const TeamDetailView = memo(function TeamDetailView({
       return undefined;
     }
 
-    let trackedButton: HTMLButtonElement | null = null;
     const updatePinnedButton = (): void => {
-      const button = visualizeButtonRef.current;
+      const anchor = visualizeButtonAnchorRef.current;
       const currentContainer = contentRef.current;
-      if (!button || !currentContainer) {
+      if (!anchor || !currentContainer) {
         setPinnedVisualizeButtonPosition(null);
         return;
       }
 
-      trackedButton = button;
       const containerRect = currentContainer.getBoundingClientRect();
-      const buttonRect = button.getBoundingClientRect();
+      const anchorRect = anchor.getBoundingClientRect();
       const top = Math.round(containerRect.top + 12);
       const right = Math.round(Math.max(window.innerWidth - containerRect.right + 16, 16));
-      const shouldPin = currentContainer.scrollTop > 0 && buttonRect.top <= top;
-
-      button.style.visibility = shouldPin ? 'hidden' : '';
-      button.style.pointerEvents = shouldPin ? 'none' : '';
+      const shouldPin = currentContainer.scrollTop > 0 && anchorRect.top <= top;
 
       setPinnedVisualizeButtonPosition((current) => {
         if (!shouldPin) return current === null ? current : null;
@@ -1673,8 +1668,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     resizeObserver?.observe(container);
 
     return () => {
-      trackedButton?.style.removeProperty('visibility');
-      trackedButton?.style.removeProperty('pointer-events');
       container.removeEventListener('scroll', updatePinnedButton);
       window.removeEventListener('resize', updatePinnedButton);
       resizeObserver?.disconnect();
@@ -2688,13 +2681,11 @@ export const TeamDetailView = memo(function TeamDetailView({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          ref={pinned ? undefined : visualizeButtonRef}
           variant="ghost"
           size="sm"
           className={cn(
             'h-8 shrink-0 rounded-full border px-3.5 text-xs font-semibold tracking-[0.02em] transition-all',
-            pinned ? 'pointer-events-auto fixed z-50' : '-mt-2 self-start',
-            !pinned && pinnedVisualizeButtonPosition && 'pointer-events-none invisible',
+            pinned ? 'pointer-events-auto fixed z-50' : 'pointer-events-auto',
             'hover:-translate-y-0.5 hover:brightness-[1.03] active:translate-y-0 active:brightness-[0.98]',
             isLight
               ? 'hover:border-sky-400/50'
@@ -3041,7 +3032,9 @@ export const TeamDetailView = memo(function TeamDetailView({
                       </span>
                     )}
                   </div>
-                  {renderVisualizeButton(false)}
+                  <div ref={visualizeButtonAnchorRef} className="-mt-2 h-8 shrink-0 self-start">
+                    {pinnedVisualizeButtonPosition ? null : renderVisualizeButton(false)}
+                  </div>
                 </div>
                 {(() => {
                   const currentPath = data.config.projectPath;
