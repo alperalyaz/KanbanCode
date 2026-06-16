@@ -3782,6 +3782,47 @@ describe('ipc teams handlers', () => {
   });
 
   describe('replaceMembers', () => {
+    it('updates non-live draft members without requiring a full team snapshot', async () => {
+      provisioningService.isTeamAlive.mockReturnValueOnce(false);
+      service.getTeamData.mockRejectedValueOnce(new Error('Team not found: draft-team'));
+
+      const handler = handlers.get(TEAM_REPLACE_MEMBERS)!;
+      const result = (await handler({} as never, 'draft-team', {
+        members: [
+          {
+            name: 'alice',
+            role: 'Developer',
+            providerId: 'codex',
+          },
+        ],
+      })) as { success: boolean; error?: string };
+
+      expect(result.success).toBe(true);
+      expect(service.getTeamData).not.toHaveBeenCalled();
+      expect(service.replaceMembers).toHaveBeenCalledWith('draft-team', {
+        members: [
+          {
+            name: 'alice',
+            role: 'Developer',
+            workflow: undefined,
+            isolation: undefined,
+            providerId: 'codex',
+            providerBackendId: undefined,
+            model: undefined,
+            effort: undefined,
+            fastMode: undefined,
+            mcpPolicy: undefined,
+          },
+        ],
+      });
+      expect(provisioningService.attachLiveRosterMember).not.toHaveBeenCalled();
+      expect(provisioningService.detachLiveRosterMember).not.toHaveBeenCalled();
+      expect(mockTeamDataWorkerClient.invalidateTeamConfig).toHaveBeenCalledWith('draft-team');
+      expect(mockTeamDataWorkerClient.invalidateMemberRuntimeAdvisory).toHaveBeenCalledWith(
+        'draft-team'
+      );
+    });
+
     it('attaches added teammates through lifecycle during live replaceMembers', async () => {
       service.getTeamData.mockResolvedValueOnce({
         teamName: 'my-team',

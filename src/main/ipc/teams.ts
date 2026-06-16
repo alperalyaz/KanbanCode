@@ -4556,13 +4556,19 @@ async function handleReplaceMembers(
   return wrapTeamHandler('replaceMembers', async () => {
     const tn = vTeam.value!;
     const teamDataService = getTeamDataService();
+    const provisioning = getTeamProvisioningService();
+    const isTeamAlive = provisioning.isTeamAlive(tn);
+    if (!isTeamAlive) {
+      await teamDataService.replaceMembers(tn, { members });
+      invalidateTeamRosterSnapshotCaches(tn);
+      return;
+    }
+
     const previousMembersMeta = await new TeamMembersMetaStore().getMeta(tn).catch(() => null);
     const previousTeamData = await teamDataService.getTeamData(tn);
     const previousMembers = previousTeamData.members as RuntimeRosterMutationMember[];
-    const provisioning = getTeamProvisioningService();
-    const isTeamAlive = provisioning.isTeamAlive(tn);
     const useSecondaryOpenCodeLaneRouting = isTeamAlive && !isOpenCodeLedRoster(previousMembers);
-    if (isTeamAlive && !useSecondaryOpenCodeLaneRouting) {
+    if (!useSecondaryOpenCodeLaneRouting) {
       throw new Error(OPENCODE_LEAD_LIVE_ROSTER_MUTATION_BLOCK_MESSAGE);
     }
     if (useSecondaryOpenCodeLaneRouting) {
