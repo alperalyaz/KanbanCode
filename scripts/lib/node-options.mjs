@@ -4,25 +4,25 @@ const OLD_SPACE_FLAG_ALIAS = '--max_old_space_size';
 const OLD_SPACE_FLAGS = new Set([OLD_SPACE_FLAG, OLD_SPACE_FLAG_ALIAS]);
 const OLD_SPACE_VALUE_RE = /^\d+$/;
 
-function splitNodeOptions(value: string): string[] {
+function splitNodeOptions(value) {
   return value
     .trim()
     .split(/\s+/)
     .filter((part) => part.length > 0);
 }
 
-function joinNodeOptions(parts: readonly string[]): string | undefined {
+function joinNodeOptions(parts) {
   return parts.length > 0 ? parts.join(' ') : undefined;
 }
 
-function parseOldSpaceMb(value: string | undefined): number {
+function parseOldSpaceMb(value) {
   if (!value || !OLD_SPACE_VALUE_RE.test(value)) {
     return NaN;
   }
   return Number.parseInt(value, 10);
 }
 
-function splitOldSpaceEquals(value: string): { flag: string; mb: number } | null {
+function splitOldSpaceEquals(value) {
   const separatorIndex = value.indexOf('=');
   if (separatorIndex <= 0) {
     return null;
@@ -35,16 +35,13 @@ function splitOldSpaceEquals(value: string): { flag: string; mb: number } | null
   return Number.isFinite(mb) ? { flag, mb } : null;
 }
 
-export function ensureMinimumNodeOldSpaceOptions(
-  value: string | undefined,
-  minMb = DEFAULT_MIN_OLD_SPACE_MB
-): string | undefined {
+export function ensureMinimumNodeOldSpaceOptions(value, minMb = DEFAULT_MIN_OLD_SPACE_MB) {
   if (!value?.trim()) {
     return value;
   }
 
   const parts = splitNodeOptions(value);
-  const consumedIndexes = new Set<number>();
+  const consumedIndexes = new Set();
   let changed = false;
   for (const [index, current] of parts.entries()) {
     if (consumedIndexes.has(index)) {
@@ -76,10 +73,7 @@ export function ensureMinimumNodeOldSpaceOptions(
   return changed ? joinNodeOptions(parts) : value;
 }
 
-export function ensureMinimumNodeOldSpaceEnv(
-  env: NodeJS.ProcessEnv,
-  minMb = DEFAULT_MIN_OLD_SPACE_MB
-): void {
+export function ensureMinimumNodeOldSpaceEnv(env, minMb = DEFAULT_MIN_OLD_SPACE_MB) {
   const normalized = ensureMinimumNodeOldSpaceOptions(env.NODE_OPTIONS, minMb);
   if (normalized === undefined) {
     delete env.NODE_OPTIONS;
