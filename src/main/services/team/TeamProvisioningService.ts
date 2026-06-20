@@ -470,6 +470,8 @@ import {
   buildProgressLiveOutput,
   buildProgressLogsTail,
   buildProgressTraceLine,
+  PROGRESS_RETAINED_LOG_CHARS,
+  PROGRESS_RETAINED_LOG_LINE_CHARS,
 } from './progressPayload';
 import {
   applyDesktopTeammateModeDecisionToEnv,
@@ -1227,6 +1229,8 @@ const MCP_PREFLIGHT_SHUTDOWN_TIMEOUT_MS = 2_000;
 const MCP_PREFLIGHT_SHUTDOWN_POLL_MS = 50;
 const STDERR_RING_LIMIT = 64 * 1024;
 const STDOUT_RING_LIMIT = 64 * 1024;
+const CLI_LOG_LINE_CARRY_LIMIT = PROGRESS_RETAINED_LOG_LINE_CHARS;
+const STDOUT_PARSER_CARRY_LIMIT = PROGRESS_RETAINED_LOG_CHARS;
 // Progress emissions fan out the latest CLI tail + assistant output to the
 // renderer over IPC. Under load the previous 300ms cadence combined with an
 // unbounded payload (see `emitLogsProgress`) caused renderer OOM crashes
@@ -2813,6 +2817,28 @@ function boundRunClaudeLogLines(run: ProvisioningRun): void {
     return;
   }
   run.claudeLogLines.splice(0, run.claudeLogLines.length, ...bounded);
+}
+
+function boundSingleRetainedLogLine(line: string): string {
+  return boundProgressLogLines([line], { maxLines: 1 })[0] ?? '';
+}
+
+function boundPendingLogLineCarry(carry: string): string {
+  if (carry.length <= CLI_LOG_LINE_CARRY_LIMIT) {
+    return carry;
+  }
+  const marker = '...[truncated pending line]\n';
+  if (CLI_LOG_LINE_CARRY_LIMIT <= marker.length) {
+    return carry.slice(-CLI_LOG_LINE_CARRY_LIMIT);
+  }
+  return `${marker}${carry.slice(-(CLI_LOG_LINE_CARRY_LIMIT - marker.length))}`;
+}
+
+function boundStdoutParserCarry(carry: string): string {
+  if (carry.length <= STDOUT_PARSER_CARRY_LIMIT) {
+    return carry;
+  }
+  return carry.slice(-STDOUT_PARSER_CARRY_LIMIT);
 }
 
 function boundRunProvisioningOutputParts(run: ProvisioningRun): void {
@@ -10896,18 +10922,18 @@ export class TeamProvisioningService {
     if (stream === 'stdout') {
       run.stdoutLogLineBuf += text;
       const parts = run.stdoutLogLineBuf.split('\n');
-      run.stdoutLogLineBuf = parts.pop() ?? '';
+      run.stdoutLogLineBuf = boundPendingLogLineCarry(parts.pop() ?? '');
       for (const part of parts) {
         const normalized = part.endsWith('\r') ? part.slice(0, -1) : part;
-        run.claudeLogLines.push(normalized);
+        run.claudeLogLines.push(boundSingleRetainedLogLine(normalized));
       }
     } else {
       run.stderrLogLineBuf += text;
       const parts = run.stderrLogLineBuf.split('\n');
-      run.stderrLogLineBuf = parts.pop() ?? '';
+      run.stderrLogLineBuf = boundPendingLogLineCarry(parts.pop() ?? '');
       for (const part of parts) {
         const normalized = part.endsWith('\r') ? part.slice(0, -1) : part;
-        run.claudeLogLines.push(normalized);
+        run.claudeLogLines.push(boundSingleRetainedLogLine(normalized));
       }
     }
     boundRunClaudeLogLines(run);
@@ -20739,7 +20765,7 @@ export class TeamProvisioningService {
       // Parse stream-json lines (newline-delimited JSON)
       stdoutLineBuf += text;
       const lines = stdoutLineBuf.split('\n');
-      stdoutLineBuf = lines.pop() ?? '';
+      stdoutLineBuf = boundStdoutParserCarry(lines.pop() ?? '');
       this.updateStdoutParserCarry(run, stdoutLineBuf);
       for (const line of lines) {
         const trimmed = line.trim();
@@ -20755,8 +20781,9 @@ export class TeamProvisioningService {
   }
 
   private updateStdoutParserCarry(run: ProvisioningRun, carry: string): void {
-    run.stdoutParserCarry = carry;
-    const trimmedCarry = carry.trim();
+    const boundedCarry = boundStdoutParserCarry(carry);
+    run.stdoutParserCarry = boundedCarry;
+    const trimmedCarry = boundedCarry.trim();
     if (!trimmedCarry) {
       run.stdoutParserCarryIsCompleteJson = false;
       run.stdoutParserCarryLooksLikeClaudeJson = false;

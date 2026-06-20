@@ -2480,6 +2480,44 @@ describe('TeamProvisioningService', () => {
       expect(run.claudeLogLines.join('\n')).not.toContain('line-0-');
     });
 
+    it('bounds pending CLI line carry buffers before newline arrives', () => {
+      const svc = new TeamProvisioningService();
+      const run = createClaudeLogsRun({
+        provisioningComplete: false,
+        claudeLogLines: [],
+        lastClaudeLogStream: null,
+        stdoutLogLineBuf: '',
+        stderrLogLineBuf: '',
+      });
+      const hugePendingLine = 'x'.repeat(PROGRESS_RETAINED_LOG_LINE_CHARS + 5_000);
+
+      (svc as any).appendCliLogs(run, 'stdout', hugePendingLine);
+      (svc as any).appendCliLogs(run, 'stderr', hugePendingLine);
+
+      expect(run.stdoutLogLineBuf.length).toBeLessThanOrEqual(PROGRESS_RETAINED_LOG_LINE_CHARS);
+      expect(run.stderrLogLineBuf.length).toBeLessThanOrEqual(PROGRESS_RETAINED_LOG_LINE_CHARS);
+      expect(run.stdoutLogLineBuf).toContain('[truncated pending line]');
+      expect(run.stderrLogLineBuf).toContain('[truncated pending line]');
+    });
+
+    it('bounds incomplete stdout parser carry before process-close diagnostics retain it', () => {
+      const svc = new TeamProvisioningService();
+      const run = createClaudeLogsRun({
+        provisioningComplete: false,
+        stdoutParserCarry: '',
+        stdoutParserCarryIsCompleteJson: false,
+        stdoutParserCarryLooksLikeClaudeJson: false,
+      });
+      const hugeIncompleteJson = `{"type":"assistant","content":"${'x'.repeat(
+        PROGRESS_RETAINED_LOG_CHARS + 5_000
+      )}`;
+
+      (svc as any).updateStdoutParserCarry(run, hugeIncompleteJson);
+
+      expect(run.stdoutParserCarry.length).toBeLessThanOrEqual(PROGRESS_RETAINED_LOG_CHARS);
+      expect(run.stdoutParserCarry).not.toBe(hugeIncompleteJson);
+    });
+
     it('bounds retained provisioning output parts and keeps message indexes valid', () => {
       const svc = new TeamProvisioningService();
       const run = createClaudeLogsRun({
