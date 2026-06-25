@@ -91,6 +91,7 @@ import type {
   TeamSummary,
   TeamTask,
   TeamTaskStatus,
+  TeamTaskWithKanban,
   TeamUpdateConfigRequest,
   TeamViewSnapshot,
   TeamWorktreeGitStatus,
@@ -531,6 +532,7 @@ export interface TeamsAPI {
   ) => Promise<MessagesPage>;
   getMemberActivityMeta: (teamName: string) => Promise<TeamMemberActivityMeta>;
   createTask: (teamName: string, request: CreateTaskRequest) => Promise<TeamTask>;
+  getTask: (teamName: string, taskId: string) => Promise<TeamTaskWithKanban | null>;
   requestReview: (teamName: string, taskId: string) => Promise<void>;
   updateKanban: (teamName: string, taskId: string, patch: UpdateKanbanPatch) => Promise<void>;
   updateKanbanColumnOrder: (

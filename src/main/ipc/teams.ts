@@ -37,6 +37,7 @@ import {
   TEAM_GET_OPENCODE_RUNTIME_DELIVERY_STATUS,
   TEAM_GET_PROJECT_BRANCH,
   TEAM_GET_SAVED_REQUEST,
+  TEAM_GET_TASK,
   TEAM_GET_TASK_ACTIVITY,
   TEAM_GET_TASK_ACTIVITY_DETAIL,
   TEAM_GET_TASK_ATTACHMENT,
@@ -230,6 +231,7 @@ import type {
   TeamSummary,
   TeamTask,
   TeamTaskStatus,
+  TeamTaskWithKanban,
   TeamUpdateConfigRequest,
   TeamViewSnapshot,
   TeamWorktreeGitStatus,
@@ -723,6 +725,7 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_GET_MESSAGES_PAGE, handleGetMessagesPage);
   ipcMain.handle(TEAM_GET_MEMBER_ACTIVITY_META, handleGetMemberActivityMeta);
   ipcMain.handle(TEAM_CREATE_TASK, handleCreateTask);
+  ipcMain.handle(TEAM_GET_TASK, handleGetTask);
   ipcMain.handle(TEAM_REQUEST_REVIEW, handleRequestReview);
   ipcMain.handle(TEAM_UPDATE_KANBAN, handleUpdateKanban);
   ipcMain.handle(TEAM_UPDATE_KANBAN_COLUMN_ORDER, handleUpdateKanbanColumnOrder);
@@ -811,6 +814,7 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_GET_MESSAGES_PAGE);
   ipcMain.removeHandler(TEAM_GET_MEMBER_ACTIVITY_META);
   ipcMain.removeHandler(TEAM_CREATE_TASK);
+  ipcMain.removeHandler(TEAM_GET_TASK);
   ipcMain.removeHandler(TEAM_REQUEST_REVIEW);
   ipcMain.removeHandler(TEAM_UPDATE_KANBAN);
   ipcMain.removeHandler(TEAM_UPDATE_KANBAN_COLUMN_ORDER);
@@ -3452,6 +3456,26 @@ async function handleRequestReview(
 
   return wrapTeamHandler('requestReview', () =>
     getTeamDataService().requestReview(validatedTeamName.value!, validatedTaskId.value!)
+  );
+}
+
+async function handleGetTask(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  taskId: unknown
+): Promise<IpcResult<TeamTaskWithKanban | null>> {
+  const validatedTeamName = validateTeamName(teamName);
+  if (!validatedTeamName.valid) {
+    return { success: false, error: validatedTeamName.error ?? 'Invalid teamName' };
+  }
+
+  const validatedTaskId = validateTaskId(taskId);
+  if (!validatedTaskId.valid) {
+    return { success: false, error: validatedTaskId.error ?? 'Invalid taskId' };
+  }
+
+  return wrapTeamHandler('getTask', () =>
+    getTeamDataService().getTask(validatedTeamName.value!, validatedTaskId.value!)
   );
 }
 

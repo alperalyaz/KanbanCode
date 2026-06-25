@@ -14,7 +14,11 @@ const hoisted = vi.hoisted(() => {
       error.code = 'ENOENT';
       throw error;
     }
-    const signatureValue = Array.from(data).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    const signatureStride = Math.max(1, Math.floor(data.length / 128));
+    let signatureValue = Buffer.byteLength(data, 'utf8');
+    for (let i = 0; i < data.length; i += signatureStride) {
+      signatureValue = (signatureValue * 33 + data.charCodeAt(i)) % 1_000_000_007;
+    }
     return {
       isFile: () => true,
       size: Buffer.byteLength(data, 'utf8'),
@@ -68,10 +72,11 @@ vi.mock('../../../../src/main/utils/pathDecoder', () => ({
 import { TeamInboxReader } from '../../../../src/main/services/team/TeamInboxReader';
 
 describe('TeamInboxReader', () => {
-  const reader = new TeamInboxReader();
+  let reader: TeamInboxReader;
   const inboxDir = '/mock/teams/my-team/inboxes';
 
   beforeEach(() => {
+    reader = new TeamInboxReader();
     hoisted.files.clear();
     hoisted.dirs.clear();
     hoisted.stat.mockClear();
@@ -152,6 +157,53 @@ describe('TeamInboxReader', () => {
         to: undefined,
       }),
     ]);
+  });
+
+  it('does not cache oversized parsed inbox payloads', async () => {
+    hoisted.files.set(
+      '/mock/teams/my-team/inboxes/alice.json',
+      JSON.stringify([
+        {
+          from: 'alice',
+          text: 'x'.repeat(2_150_000),
+          timestamp: '2026-01-01T00:00:00.000Z',
+          read: false,
+          messageId: 'm-large',
+        },
+      ])
+    );
+
+    const first = await reader.getMessagesFor('my-team', 'alice');
+    const second = await reader.getMessagesFor('my-team', 'alice');
+
+    expect(first[0]?.messageId).toBe('m-large');
+    expect(second[0]?.messageId).toBe('m-large');
+    expect(hoisted.readFile).toHaveBeenCalledTimes(2);
+  });
+
+  it('evicts old inbox payloads when the cache byte budget is exceeded', async () => {
+    const memberCount = 18;
+    for (let index = 0; index < memberCount; index++) {
+      hoisted.files.set(
+        `/mock/teams/my-team/inboxes/member-${index}.json`,
+        JSON.stringify([
+          {
+            from: `member-${index}`,
+            text: 'x'.repeat(950_000),
+            timestamp: `2026-01-01T00:00:${String(index).padStart(2, '0')}.000Z`,
+            read: false,
+            messageId: `m-${index}`,
+          },
+        ])
+      );
+    }
+
+    for (let index = 0; index < memberCount; index++) {
+      await reader.getMessagesFor('my-team', `member-${index}`);
+    }
+    await reader.getMessagesFor('my-team', 'member-0');
+
+    expect(hoisted.readFile).toHaveBeenCalledTimes(memberCount + 1);
   });
 
   it('re-reads getMessagesFor results when the inbox file signature changes', async () => {

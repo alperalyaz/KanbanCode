@@ -3,13 +3,16 @@ import { getTeamsBasePath } from '@main/utils/pathDecoder';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { estimateCachedValueBytes } from './cacheMemoryEstimate';
 import { getEffectiveInboxMessageId } from './inboxMessageIdentity';
 
 import type { InboxMessage } from '@shared/types';
 
 const MAX_INBOX_FILE_BYTES = 10 * 1024 * 1024; // 10MB — skip corrupt/oversized inbox files
 const INBOX_READ_CONCURRENCY = process.platform === 'win32' ? 4 : 12;
-const INBOX_FILE_CACHE_MAX_ENTRIES = 1_024;
+const INBOX_FILE_CACHE_MAX_ENTRIES = 64;
+const INBOX_FILE_CACHE_MAX_BYTES = 32 * 1024 * 1024;
+const INBOX_FILE_CACHE_MAX_ENTRY_BYTES = 4 * 1024 * 1024;
 
 interface InboxFileSignature {
   size: number;
@@ -22,6 +25,7 @@ interface InboxFileSignature {
 interface CachedInboxFile {
   signature: InboxFileSignature;
   messages: InboxMessage[];
+  estimatedBytes: number;
 }
 
 function buildInboxFileSignature(stat: fs.Stats): InboxFileSignature {
@@ -48,6 +52,10 @@ function cloneInboxMessages(messages: readonly InboxMessage[]): InboxMessage[] {
   return structuredClone([...messages]);
 }
 
+function estimateInboxMessagesBytes(messages: readonly InboxMessage[]): number {
+  return estimateCachedValueBytes(messages);
+}
+
 async function mapLimit<T, R>(
   items: readonly T[],
   limit: number,
@@ -69,6 +77,36 @@ async function mapLimit<T, R>(
 
 export class TeamInboxReader {
   private readonly inboxFileCache = new Map<string, CachedInboxFile>();
+  private inboxFileCacheBytes = 0;
+
+  private deleteCachedMessages(inboxPath: string): void {
+    const cached = this.inboxFileCache.get(inboxPath);
+    if (!cached) {
+      return;
+    }
+    this.inboxFileCacheBytes = Math.max(0, this.inboxFileCacheBytes - cached.estimatedBytes);
+    this.inboxFileCache.delete(inboxPath);
+  }
+
+  private evictOldestCachedInboxFile(): boolean {
+    const oldestKey = this.inboxFileCache.keys().next().value;
+    if (oldestKey === undefined) {
+      return false;
+    }
+    this.deleteCachedMessages(oldestKey);
+    return true;
+  }
+
+  private trimInboxFileCache(): void {
+    while (
+      this.inboxFileCache.size > INBOX_FILE_CACHE_MAX_ENTRIES ||
+      this.inboxFileCacheBytes > INBOX_FILE_CACHE_MAX_BYTES
+    ) {
+      if (!this.evictOldestCachedInboxFile()) {
+        return;
+      }
+    }
+  }
 
   private getCachedMessages(
     inboxPath: string,
@@ -79,9 +117,11 @@ export class TeamInboxReader {
       return undefined;
     }
     if (!inboxFileSignaturesEqual(cached.signature, signature)) {
-      this.inboxFileCache.delete(inboxPath);
+      this.deleteCachedMessages(inboxPath);
       return undefined;
     }
+    this.inboxFileCache.delete(inboxPath);
+    this.inboxFileCache.set(inboxPath, cached);
     return cloneInboxMessages(cached.messages);
   }
 
@@ -90,19 +130,18 @@ export class TeamInboxReader {
     signature: InboxFileSignature,
     messages: readonly InboxMessage[]
   ): void {
-    if (
-      !this.inboxFileCache.has(inboxPath) &&
-      this.inboxFileCache.size >= INBOX_FILE_CACHE_MAX_ENTRIES
-    ) {
-      const oldestKey = this.inboxFileCache.keys().next().value;
-      if (oldestKey) {
-        this.inboxFileCache.delete(oldestKey);
-      }
+    const estimatedBytes = estimateInboxMessagesBytes(messages);
+    this.deleteCachedMessages(inboxPath);
+    if (estimatedBytes > INBOX_FILE_CACHE_MAX_ENTRY_BYTES) {
+      return;
     }
     this.inboxFileCache.set(inboxPath, {
       signature,
       messages: cloneInboxMessages(messages),
+      estimatedBytes,
     });
+    this.inboxFileCacheBytes += estimatedBytes;
+    this.trimInboxFileCache();
   }
 
   async listInboxNames(teamName: string): Promise<string[]> {
@@ -133,7 +172,7 @@ export class TeamInboxReader {
       const stat = await fs.promises.stat(inboxPath);
       // Avoid hangs on non-regular files (FIFO, sockets) and unbounded memory usage on huge files.
       if (!stat.isFile() || stat.size > MAX_INBOX_FILE_BYTES) {
-        this.inboxFileCache.delete(inboxPath);
+        this.deleteCachedMessages(inboxPath);
         return [];
       }
       signature = buildInboxFileSignature(stat);
@@ -144,7 +183,7 @@ export class TeamInboxReader {
       raw = await readFileUtf8WithTimeout(inboxPath, 5_000);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        this.inboxFileCache.delete(inboxPath);
+        this.deleteCachedMessages(inboxPath);
         return [];
       }
       if (error instanceof FileReadTimeoutError) {

@@ -54,6 +54,7 @@ import { TeamSentMessagesStore } from './TeamSentMessagesStore';
 import { getTeamTaskWorkflowColumn, selectCurrentActiveTeamTask } from './teamTaskActiveState';
 import { TeamTaskCommentNotificationJournal } from './TeamTaskCommentNotificationJournal';
 import { TeamTaskReader } from './TeamTaskReader';
+import { compactTeamTaskForSnapshot } from './teamTaskSnapshotCompaction';
 import { TeamTaskWriter } from './TeamTaskWriter';
 import { TeamTranscriptProjectResolver } from './TeamTranscriptProjectResolver';
 
@@ -760,6 +761,27 @@ export class TeamDataService {
     };
   }
 
+  async getTask(teamName: string, taskId: string): Promise<TeamTaskWithKanban | null> {
+    const controller = this.getController(teamName);
+    const task = controller.tasks?.getTask?.(taskId) as TeamTask | null | undefined;
+    if (!task) {
+      return null;
+    }
+
+    let kanbanState: KanbanState = {
+      teamName,
+      reviewers: [],
+      tasks: {},
+    };
+    try {
+      kanbanState = await this.kanbanManager.getState(teamName);
+    } catch {
+      // Task detail must still open if kanban state is temporarily unreadable.
+    }
+
+    return this.attachKanbanCompatibility(task, kanbanState.tasks[task.id]);
+  }
+
   private resolveTaskKanbanColumn(
     task: Pick<TeamTask, 'status'>,
     kanbanTaskState?: KanbanState['tasks'][string],
@@ -1208,7 +1230,7 @@ export class TeamDataService {
         //
         // Fix: include lightweight comment metadata (id, author, truncated text for toast
         // preview, createdAt, type). Full text and attachments are still omitted — those
-        // are loaded on-demand by the task detail view via team:getData.
+        // are loaded on-demand by the task detail view via team:getTask.
         comments: Array.isArray(task.comments)
           ? task.comments.map((c) => ({
               id: c.id,
@@ -1586,7 +1608,7 @@ export class TeamDataService {
     return {
       teamName,
       config,
-      tasks: tasksWithKanban,
+      tasks: tasksWithKanban.map(compactTeamTaskForSnapshot),
       members,
       kanbanState,
       processes,
