@@ -180,31 +180,38 @@ function addTextMentionTeamName(teamNames: Set<string>, value: string): boolean 
 }
 
 function collectTextMentionTeamNames(textContent: string | null): Set<string> {
-  const teamNames = new Set<string>();
   const normalizedText = textContent?.trim().toLowerCase();
   if (!normalizedText) {
-    return teamNames;
+    return new Set<string>();
   }
 
+  const teamNames = new Set<string>();
   const quotedPattern = /\b(?:team name|on team|team)\s+["']([^"'\r\n]{1,160})["']/g;
   let match: RegExpExecArray | null;
+  let reachedLimit = false;
   while ((match = quotedPattern.exec(normalizedText))) {
     if (addTextMentionTeamName(teamNames, match[1] ?? '')) {
-      return teamNames;
+      reachedLimit = true;
+      break;
     }
   }
 
-  const colonPattern = /\bteam name:\s*["']?([^"'\r\n,.;|)\]}]{1,160})/g;
-  while ((match = colonPattern.exec(normalizedText))) {
-    if (addTextMentionTeamName(teamNames, match[1] ?? '')) {
-      return teamNames;
+  if (!reachedLimit) {
+    const colonPattern = /\bteam name:\s*["']?([^"'\r\n,.;|)\]}]{1,160})/g;
+    while ((match = colonPattern.exec(normalizedText))) {
+      if (addTextMentionTeamName(teamNames, match[1] ?? '')) {
+        reachedLimit = true;
+        break;
+      }
     }
   }
 
-  const parentheticalPattern = /\(([^()\r\n]{1,160})\)/g;
-  while ((match = parentheticalPattern.exec(normalizedText))) {
-    if (addTextMentionTeamName(teamNames, match[1] ?? '')) {
-      return teamNames;
+  if (!reachedLimit) {
+    const parentheticalPattern = /\(([^()\r\n]{1,160})\)/g;
+    while ((match = parentheticalPattern.exec(normalizedText))) {
+      if (addTextMentionTeamName(teamNames, match[1] ?? '')) {
+        break;
+      }
     }
   }
 
