@@ -438,6 +438,8 @@ export class TeamDataService {
     this.messageFeedService = new TeamMessageFeedService({
       getConfig: (teamName) => this.readSnapshotConfig(teamName),
       getInboxMessages: (teamName) => this.inboxReader.getMessages(teamName),
+      getInboxMessagesWindow: (teamName, options) =>
+        this.inboxReader.getMessagesWindow(teamName, options),
       getLeadSessionMessages: (teamName, config) => this.extractLeadSessionTexts(teamName, config),
       getSentMessages: (teamName) => this.sentMessagesStore.readMessages(teamName),
     });

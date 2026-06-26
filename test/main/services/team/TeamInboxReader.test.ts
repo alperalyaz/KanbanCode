@@ -130,6 +130,289 @@ describe('TeamInboxReader', () => {
     expect(merged[1].text).toBe('older');
   });
 
+  it('getMessagesWindow keeps a bounded newest window while revision tracks older source changes', async () => {
+    hoisted.dirs.set(inboxDir, ['alice.json', 'bob.json']);
+    const writeAlice = (olderText: string) => {
+      hoisted.files.set(
+        '/mock/teams/my-team/inboxes/alice.json',
+        JSON.stringify([
+          {
+            from: 'alice',
+            text: olderText,
+            timestamp: '2026-01-01T00:00:00.000Z',
+            read: false,
+            messageId: 'm-1',
+          },
+          {
+            from: 'alice',
+            text: 'alice newest',
+            timestamp: '2026-01-03T00:00:00.000Z',
+            read: false,
+            messageId: 'm-3',
+          },
+        ])
+      );
+    };
+    writeAlice('older');
+    hoisted.files.set(
+      '/mock/teams/my-team/inboxes/bob.json',
+      JSON.stringify([
+        {
+          from: 'bob',
+          text: 'middle',
+          timestamp: '2026-01-02T00:00:00.000Z',
+          read: false,
+          messageId: 'm-2',
+        },
+        {
+          from: 'bob',
+          text: 'bob newest',
+          timestamp: '2026-01-04T00:00:00.000Z',
+          read: false,
+          messageId: 'm-4',
+        },
+      ])
+    );
+
+    const first = await reader.getMessagesWindow('my-team', { limit: 2 });
+    expect(first.messages.map((message) => message.messageId)).toEqual(['m-4', 'm-3']);
+    expect(first.messages.map((message) => message.to)).toEqual(['bob', 'alice']);
+    expect(first.truncated).toBe(true);
+    expect(first.sourceMessageCount).toBe(4);
+
+    writeAlice('older changed outside window');
+    const second = await reader.getMessagesWindow('my-team', { limit: 2 });
+    expect(second.messages.map((message) => message.messageId)).toEqual(['m-4', 'm-3']);
+    expect(second.sourceRevision).not.toBe(first.sourceRevision);
+  });
+
+  it('getMessagesWindow applies the pagination cursor before bounding the window', async () => {
+    hoisted.dirs.set(inboxDir, ['alice.json']);
+    hoisted.files.set(
+      '/mock/teams/my-team/inboxes/alice.json',
+      JSON.stringify([
+        {
+          from: 'alice',
+          text: 'newest',
+          timestamp: '2026-01-04T00:00:00.000Z',
+          read: false,
+          messageId: 'm-4',
+        },
+        {
+          from: 'alice',
+          text: 'cursor row',
+          timestamp: '2026-01-03T00:00:00.000Z',
+          read: false,
+          messageId: 'm-3',
+        },
+        {
+          from: 'alice',
+          text: 'older one',
+          timestamp: '2026-01-02T00:00:00.000Z',
+          read: false,
+          messageId: 'm-2',
+        },
+        {
+          from: 'alice',
+          text: 'older two',
+          timestamp: '2026-01-01T00:00:00.000Z',
+          read: false,
+          messageId: 'm-1',
+        },
+      ])
+    );
+
+    const window = await reader.getMessagesWindow('my-team', {
+      cursor: {
+        timestampMs: Date.parse('2026-01-03T00:00:00.000Z'),
+        messageId: 'm-3',
+      },
+      limit: 1,
+    });
+
+    expect(window.messages.map((message) => message.messageId)).toEqual(['m-2']);
+    expect(window.truncated).toBe(true);
+    expect(window.sourceMessageCount).toBe(4);
+  });
+
+  it('getMessagesWindow keeps sourceRevision stable across cursor and limit changes', async () => {
+    hoisted.dirs.set(inboxDir, ['alice.json']);
+    hoisted.files.set(
+      '/mock/teams/my-team/inboxes/alice.json',
+      JSON.stringify([
+        {
+          from: 'alice',
+          text: 'newest',
+          timestamp: '2026-01-03T00:00:00.000Z',
+          read: false,
+          messageId: 'm-3',
+        },
+        {
+          from: 'alice',
+          text: 'middle',
+          timestamp: '2026-01-02T00:00:00.000Z',
+          read: false,
+          messageId: 'm-2',
+        },
+        {
+          from: 'alice',
+          text: 'oldest',
+          timestamp: '2026-01-01T00:00:00.000Z',
+          read: false,
+          messageId: 'm-1',
+        },
+      ])
+    );
+
+    const head = await reader.getMessagesWindow('my-team', { limit: 1 });
+    const older = await reader.getMessagesWindow('my-team', {
+      cursor: {
+        timestampMs: Date.parse('2026-01-03T00:00:00.000Z'),
+        messageId: 'm-3',
+      },
+      limit: 2,
+    });
+
+    expect(older.messages.map((message) => message.messageId)).toEqual(['m-2', 'm-1']);
+    expect(older.sourceRevision).toBe(head.sourceRevision);
+  });
+
+  it('getMessagesWindow keeps same-timestamp rows after the cursor by message id', async () => {
+    hoisted.dirs.set(inboxDir, ['alice.json']);
+    hoisted.files.set(
+      '/mock/teams/my-team/inboxes/alice.json',
+      JSON.stringify([
+        {
+          from: 'alice',
+          text: 'same timestamp before cursor',
+          timestamp: '2026-01-01T00:00:00.000Z',
+          read: false,
+          messageId: 'm-1',
+        },
+        {
+          from: 'alice',
+          text: 'cursor row',
+          timestamp: '2026-01-01T00:00:00.000Z',
+          read: false,
+          messageId: 'm-2',
+        },
+        {
+          from: 'alice',
+          text: 'same timestamp after cursor',
+          timestamp: '2026-01-01T00:00:00.000Z',
+          read: false,
+          messageId: 'm-3',
+        },
+      ])
+    );
+
+    const window = await reader.getMessagesWindow('my-team', {
+      cursor: {
+        timestampMs: Date.parse('2026-01-01T00:00:00.000Z'),
+        messageId: 'm-2',
+      },
+      limit: 10,
+    });
+
+    expect(window.messages.map((message) => message.messageId)).toEqual(['m-3']);
+  });
+
+  it('getMessagesWindow parses objects with quoted braces and nested tool metadata', async () => {
+    hoisted.dirs.set(inboxDir, ['alice.json']);
+    hoisted.files.set(
+      '/mock/teams/my-team/inboxes/alice.json',
+      JSON.stringify([
+        {
+          from: 'alice',
+          text: 'quoted "{ brace }" and escaped slash \\\\ ok',
+          timestamp: '2026-01-01T00:00:00.000Z',
+          read: false,
+          messageId: 'm-1',
+          toolCalls: [
+            {
+              name: 'inspect',
+              preview: '{"nested": true, "value": "{still string}"}',
+            },
+          ],
+        },
+      ])
+    );
+
+    const window = await reader.getMessagesWindow('my-team', { limit: 10 });
+
+    expect(window.messages).toHaveLength(1);
+    expect(window.messages[0]).toMatchObject({
+      messageId: 'm-1',
+      text: 'quoted "{ brace }" and escaped slash \\\\ ok',
+      toolCalls: [{ name: 'inspect', preview: '{"nested": true, "value": "{still string}"}' }],
+    });
+  });
+
+  it('getMessagesWindow rejects arrays with trailing non-whitespace data', async () => {
+    hoisted.dirs.set(inboxDir, ['alice.json']);
+    hoisted.files.set(
+      '/mock/teams/my-team/inboxes/alice.json',
+      `${JSON.stringify([
+        {
+          from: 'alice',
+          text: 'valid before garbage',
+          timestamp: '2026-01-01T00:00:00.000Z',
+          read: false,
+          messageId: 'm-1',
+        },
+      ])} trailing`
+    );
+
+    const window = await reader.getMessagesWindow('my-team', { limit: 10 });
+
+    expect(window.messages).toEqual([]);
+    expect(window.sourceMessageCount).toBe(0);
+  });
+
+  it('getMessagesWindow rejects invalid comma placement like JSON.parse', async () => {
+    hoisted.dirs.set(inboxDir, ['alice.json']);
+    const validMessage = JSON.stringify({
+      from: 'alice',
+      text: 'valid before invalid comma',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      read: false,
+      messageId: 'm-1',
+    });
+
+    for (const raw of [`[${validMessage},]`, `[,${validMessage}]`, `[${validMessage},,${validMessage}]`]) {
+      hoisted.files.set('/mock/teams/my-team/inboxes/alice.json', raw);
+      const window = await reader.getMessagesWindow('my-team', { limit: 10 });
+      expect(window.messages).toEqual([]);
+      expect(window.sourceMessageCount).toBe(0);
+    }
+  });
+
+  it('getMessagesWindow skips valid non-object array items instead of rejecting the file', async () => {
+    hoisted.dirs.set(inboxDir, ['alice.json']);
+    hoisted.files.set(
+      '/mock/teams/my-team/inboxes/alice.json',
+      JSON.stringify([
+        null,
+        'noise',
+        42,
+        true,
+        ['nested', 'noise'],
+        {
+          from: 'alice',
+          text: 'valid after noise',
+          timestamp: '2026-01-01T00:00:00.000Z',
+          read: false,
+          messageId: 'm-1',
+        },
+      ])
+    );
+
+    const window = await reader.getMessagesWindow('my-team', { limit: 10 });
+
+    expect(window.messages.map((message) => message.messageId)).toEqual(['m-1']);
+    expect(window.sourceMessageCount).toBe(1);
+  });
+
   it('caches getMessagesFor results while the inbox file signature is unchanged', async () => {
     hoisted.files.set(
       '/mock/teams/my-team/inboxes/alice.json',
