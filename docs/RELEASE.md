@@ -468,6 +468,8 @@ Public release notes must follow this standard every time:
 - Do not start with a template sentence like `Agent Teams AI <VERSION> is...`; start with the concrete user impact.
 - Use the sections `What's New`, `Improvements`, and `Bug Fixes`; omit a section only if it would be empty.
 - Keep internal-only CI, lint, dependency, and refactor work out of public notes unless it directly explains a user-visible fix.
+- Do not mention the Agent Teams/orchestrator runtime version in public notes. Describe the user-visible runtime change instead, for example "Update bundled runtime" or "Improve native startup validation".
+- For Terminal Platform updates, prefer user-facing wording such as "Update terminal runtime" unless the exact version is specifically relevant.
 - Put `Downloads` as the final section, after all text notes.
 - Use badge/button links in `Downloads`, not bare asset links.
 - Verify actual asset names with `gh release view v<VERSION> --repo 777genius/agent-teams-ai --json assets` before writing links.
