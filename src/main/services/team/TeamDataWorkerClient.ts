@@ -16,6 +16,8 @@ import { Worker } from 'node:worker_threads';
 
 import { createLogger } from '@shared/utils/logger';
 
+import { formatCurrentProcessMemorySnapshot } from '../../utils/startupTelemetry';
+
 import type { TeamDataWorkerRequest, TeamDataWorkerResponse } from './teamDataWorkerTypes';
 import type {
   InboxMessage,
@@ -77,9 +79,18 @@ interface PendingEntry {
   resolve: (v: unknown, diag?: Extract<TeamDataWorkerResponse, { ok: true }>['diag']) => void;
   reject: (e: Error) => void;
   op: TeamDataWorkerRequest['op'];
+  payload: TeamDataWorkerRequest['payload'];
   summary: Record<string, unknown>;
-  startedAt: number;
+  createdAt: number;
+  postedAt: number;
+  pendingAtStart: number;
 }
+
+interface QueuedEntry extends Omit<PendingEntry, 'postedAt' | 'pendingAtStart'> {
+  id: string;
+}
+
+const MAX_WORKER_LIVE_MESSAGES_PAYLOAD = 200;
 
 function normalizeTeamGetDataOptions(options?: TeamGetDataOptions): TeamGetDataOptions | undefined {
   return options?.includeMemberBranches === false ? { includeMemberBranches: false } : undefined;
@@ -137,6 +148,34 @@ function getLiveMessagesRequestKey(liveMessages?: InboxMessage[]): unknown {
   }));
 }
 
+function compareInboxMessagesNewestFirst(left: InboxMessage, right: InboxMessage): number {
+  const leftTime = Date.parse(left.timestamp);
+  const rightTime = Date.parse(right.timestamp);
+  if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+    return rightTime - leftTime;
+  }
+  const leftId = typeof left.messageId === 'string' ? left.messageId : '';
+  const rightId = typeof right.messageId === 'string' ? right.messageId : '';
+  return leftId.localeCompare(rightId);
+}
+
+function normalizeMessagesPageOptions(options: {
+  cursor?: string | null;
+  limit: number;
+  liveMessages?: InboxMessage[];
+}): { cursor?: string | null; limit: number; liveMessages?: InboxMessage[] } {
+  if (!options.liveMessages?.length) {
+    return options;
+  }
+  const liveMessages =
+    options.liveMessages.length > MAX_WORKER_LIVE_MESSAGES_PAYLOAD
+      ? [...options.liveMessages]
+          .sort(compareInboxMessagesNewestFirst)
+          .slice(0, MAX_WORKER_LIVE_MESSAGES_PAYLOAD)
+      : [...options.liveMessages];
+  return { ...options, liveMessages };
+}
+
 function summarizeWorkerRequest(request: TeamDataWorkerRequest): Record<string, unknown> {
   switch (request.op) {
     case 'warmup':
@@ -188,6 +227,9 @@ export class TeamDataWorkerClient {
   private readonly workerPath: string | null = resolveWorkerPath();
   private warnedUnavailable = false;
   private pending = new Map<string, PendingEntry>();
+  private queue: QueuedEntry[] = [];
+  private activeCallId: string | null = null;
+  private activeTimeout: ReturnType<typeof setTimeout> | null = null;
   private getTeamDataInFlight = new Map<string, Promise<TeamViewSnapshot>>();
   private getMessagesPageInFlight = new Map<string, Promise<MessagesPage>>();
   private getMemberActivityMetaInFlight = new Map<string, Promise<TeamMemberActivityMeta>>();
@@ -201,23 +243,33 @@ export class TeamDataWorkerClient {
     if (isTeamDataWorkerFatalError(error)) {
       this.lastFatalWorkerError = error.message;
       this.fatalRestartCooldownUntilMs = Date.now() + WORKER_FATAL_RESTART_COOLDOWN_MS;
-      const pendingSummary = Array.from(this.pending.values())
+      const pendingSummary = [
+        ...Array.from(this.pending.values()).map((entry) => ({ ...entry, state: 'active' })),
+        ...this.queue.map((entry) => ({ ...entry, state: 'queued' })),
+      ]
         .slice(0, 10)
         .map((entry) => ({
+          state: entry.state,
           op: entry.op,
-          ms: Date.now() - entry.startedAt,
+          ms: Date.now() - entry.createdAt,
           payload: entry.summary,
         }));
       logger.error(
-        `worker fatal failure pending=${this.pending.size} pendingSample=${JSON.stringify(
+        `worker fatal failure pending=${this.pending.size} queued=${this.queue.length} pendingSample=${JSON.stringify(
           pendingSummary
-        )} error=${error.message}`
+        )} memory=${formatCurrentProcessMemorySnapshot()} error=${error.message}`
       );
     }
+    this.clearActiveCall();
     const pendingEntries = Array.from(this.pending.values());
+    const queuedEntries = [...this.queue];
     this.pending.clear();
+    this.queue = [];
 
     for (const entry of pendingEntries) {
+      entry.reject(error);
+    }
+    for (const entry of queuedEntries) {
       entry.reject(error);
     }
   }
@@ -248,11 +300,13 @@ export class TeamDataWorkerClient {
       const entry = this.pending.get(msg.id);
       if (!entry) return;
       this.pending.delete(msg.id);
+      this.clearActiveCall(msg.id);
       if (msg.ok) {
         entry.resolve(msg.result, msg.diag);
       } else {
         entry.reject(new Error(msg.error));
       }
+      this.processQueue();
     });
 
     // Scope error/exit handlers to this specific worker instance.
@@ -271,68 +325,115 @@ export class TeamDataWorkerClient {
     return w;
   }
 
+  private clearActiveCall(id?: string): void {
+    if (id && this.activeCallId !== id) {
+      return;
+    }
+    if (this.activeTimeout) {
+      clearTimeout(this.activeTimeout);
+      this.activeTimeout = null;
+    }
+    this.activeCallId = null;
+  }
+
+  private processQueue(): void {
+    if (this.activeCallId || this.queue.length === 0) {
+      return;
+    }
+
+    const entry = this.queue.shift();
+    if (!entry) {
+      return;
+    }
+
+    let worker: Worker;
+    try {
+      worker = this.ensureWorker();
+    } catch (error) {
+      entry.reject(error instanceof Error ? error : new Error(String(error)));
+      this.processQueue();
+      return;
+    }
+
+    const postedAt = Date.now();
+    const pendingAtStart = this.pending.size;
+    const request = { id: entry.id, op: entry.op, payload: entry.payload } as TeamDataWorkerRequest;
+    const pendingEntry: PendingEntry = {
+      ...entry,
+      postedAt,
+      pendingAtStart,
+    };
+    this.pending.set(entry.id, pendingEntry);
+    this.activeCallId = entry.id;
+    this.activeTimeout = setTimeout(() => {
+      if (this.activeCallId !== entry.id) {
+        return;
+      }
+      const timeoutError = new Error(`Worker call timeout after ${WORKER_CALL_TIMEOUT_MS}ms`);
+      logger.warn(
+        `worker call timeout op=${entry.op} ms=${Date.now() - entry.createdAt} workerMs=${Date.now() - postedAt} queuedMs=${postedAt - entry.createdAt} pendingAtStart=${pendingAtStart} pendingNow=${this.pending.size} queued=${this.queue.length} payload=${JSON.stringify(
+          entry.summary
+        )} memory=${formatCurrentProcessMemorySnapshot()}`
+      );
+      this.failWorker(worker, timeoutError);
+      worker.terminate().catch(() => undefined);
+    }, WORKER_CALL_TIMEOUT_MS);
+
+    try {
+      worker.postMessage(request);
+    } catch (error) {
+      const postError = error instanceof Error ? error : new Error(String(error));
+      this.pending.delete(entry.id);
+      this.clearActiveCall(entry.id);
+      pendingEntry.reject(postError);
+      this.processQueue();
+    }
+  }
+
   private call(
     op: TeamDataWorkerRequest['op'],
     payload: TeamDataWorkerRequest['payload']
   ): Promise<unknown> {
-    const worker = this.ensureWorker();
     const id = makeId();
     const request = { id, op, payload } as TeamDataWorkerRequest;
     const summary = summarizeWorkerRequest(request);
-    const startedAt = Date.now();
-    const pendingAtStart = this.pending.size;
+    const createdAt = Date.now();
 
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        const timeoutError = new Error(`Worker call timeout after ${WORKER_CALL_TIMEOUT_MS}ms`);
-        logger.warn(
-          `worker call timeout op=${op} ms=${Date.now() - startedAt} pendingAtStart=${pendingAtStart} pendingNow=${this.pending.size} payload=${JSON.stringify(
-            summary
-          )}`
-        );
-        this.failWorker(worker, timeoutError);
-        worker.terminate().catch(() => undefined);
-        reject(timeoutError);
-      }, WORKER_CALL_TIMEOUT_MS);
-
-      this.pending.set(id, {
+      this.queue.push({
+        id,
         resolve: (value, diag) => {
-          clearTimeout(timeout);
-          const ms = Date.now() - startedAt;
+          const ms = Date.now() - createdAt;
           if (ms >= 1500) {
+            const memorySuffix =
+              ms >= 5_000 ? ` memory=${formatCurrentProcessMemorySnapshot()}` : '';
             logger.warn(
-              `worker call slow op=${op} ms=${ms} workerTotalMs=${String(diag?.totalMs ?? 'unknown')} pendingAtStart=${pendingAtStart} pendingNow=${this.pending.size} payload=${JSON.stringify(
+              `worker call slow op=${op} ms=${ms} workerTotalMs=${String(diag?.totalMs ?? 'unknown')} pendingNow=${this.pending.size} queued=${this.queue.length} payload=${JSON.stringify(
                 summary
-              )}`
+              )}${memorySuffix}`
             );
           }
           resolve(value);
         },
         reject: (error) => {
-          clearTimeout(timeout);
-          const ms = Date.now() - startedAt;
+          const ms = Date.now() - createdAt;
           if (ms >= 1500) {
+            const memorySuffix =
+              ms >= 5_000 ? ` memory=${formatCurrentProcessMemorySnapshot()}` : '';
             logger.warn(
-              `worker call failed slow op=${op} ms=${ms} pendingAtStart=${pendingAtStart} pendingNow=${this.pending.size} payload=${JSON.stringify(
+              `worker call failed slow op=${op} ms=${ms} pendingNow=${this.pending.size} queued=${this.queue.length} payload=${JSON.stringify(
                 summary
-              )} error=${error.message}`
+              )}${memorySuffix} error=${error.message}`
             );
           }
           reject(error);
         },
         op,
+        payload,
         summary,
-        startedAt,
+        createdAt,
       });
-
-      try {
-        worker.postMessage(request);
-      } catch (error) {
-        const postError = error instanceof Error ? error : new Error(String(error));
-        const entry = this.pending.get(id);
-        this.pending.delete(id);
-        entry?.reject(postError);
-      }
+      this.processQueue();
     });
   }
 
@@ -409,11 +510,12 @@ export class TeamDataWorkerClient {
     options: { cursor?: string | null; limit: number; liveMessages?: InboxMessage[] }
   ): Promise<MessagesPage> {
     if (!SAFE_NAME_RE.test(teamName)) throw new Error('Invalid teamName');
+    const normalizedOptions = normalizeMessagesPageOptions(options);
     const key = JSON.stringify({
       teamName,
-      cursor: options.cursor ?? null,
-      limit: options.limit,
-      liveMessages: getLiveMessagesRequestKey(options.liveMessages),
+      cursor: normalizedOptions.cursor ?? null,
+      limit: normalizedOptions.limit,
+      liveMessages: getLiveMessagesRequestKey(normalizedOptions.liveMessages),
     });
     const existing = this.getMessagesPageInFlight.get(key);
     if (existing) return existing;
@@ -421,7 +523,7 @@ export class TeamDataWorkerClient {
     const promise = (
       this.call('getMessagesPage', {
         teamName,
-        options,
+        options: normalizedOptions,
       }) as Promise<MessagesPage>
     ).finally(() => {
       if (this.getMessagesPageInFlight.get(key) === promise) {
@@ -471,10 +573,15 @@ export class TeamDataWorkerClient {
     this.getTeamDataInFlight.clear();
     this.getMessagesPageInFlight.clear();
     this.getMemberActivityMetaInFlight.clear();
+    this.clearActiveCall();
     for (const [, entry] of this.pending) {
       entry.reject(new Error('Client disposed'));
     }
+    for (const entry of this.queue) {
+      entry.reject(new Error('Client disposed'));
+    }
     this.pending.clear();
+    this.queue = [];
   }
 }
 

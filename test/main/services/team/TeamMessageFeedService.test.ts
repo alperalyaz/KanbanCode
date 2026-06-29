@@ -243,9 +243,7 @@ Messages:
     expect(
       refreshed.messages.some(
         (message) =>
-          message.from === 'jack' &&
-          message.to === 'user' &&
-          message.text.includes('Да, я тут')
+          message.from === 'jack' && message.to === 'user' && message.text.includes('Да, я тут')
       )
     ).toBe(true);
   });
@@ -355,6 +353,184 @@ Messages:
     expect(getInboxMessages).not.toHaveBeenCalled();
     expect(page.messages.map((message) => message.messageId)).toEqual(['window-message']);
     expect(page.hasMore).toBe(true);
+  });
+
+  it('shares concurrent bounded page source reads across different live overlays', async () => {
+    const inboxWindow = createDeferred<{
+      messages: InboxMessage[];
+      truncated: boolean;
+      sourceRevision: string;
+      sourceMessageCount: number;
+    }>();
+    const getConfig = vi.fn(async () => config);
+    const getInboxMessagesWindow = vi.fn(() => inboxWindow.promise);
+    const getLeadSessionMessages = vi.fn(async () => [] as InboxMessage[]);
+    const getSentMessages = vi.fn(async () => [] as InboxMessage[]);
+    const service = new TeamMessageFeedService({
+      getConfig,
+      getInboxMessages: vi.fn(async () => []),
+      getInboxMessagesWindow,
+      getLeadSessionMessages,
+      getSentMessages,
+    });
+
+    const first = service.getPage('signal-ops-4', {
+      limit: 50,
+      liveMessages: [
+        makeMessage({
+          messageId: 'live-1',
+          source: 'lead_process',
+          timestamp: '2026-04-19T18:47:00.000Z',
+        }),
+      ],
+    });
+    const second = service.getPage('signal-ops-4', {
+      limit: 50,
+      liveMessages: [
+        makeMessage({
+          messageId: 'live-2',
+          source: 'lead_process',
+          timestamp: '2026-04-19T18:47:01.000Z',
+        }),
+      ],
+    });
+
+    await Promise.resolve();
+
+    expect(getConfig).toHaveBeenCalledTimes(1);
+    expect(getInboxMessagesWindow).toHaveBeenCalledTimes(1);
+    expect(getInboxMessagesWindow).toHaveBeenCalledWith('signal-ops-4', {
+      cursor: null,
+      limit: 302,
+    });
+    expect(getLeadSessionMessages).toHaveBeenCalledTimes(1);
+    expect(getSentMessages).toHaveBeenCalledTimes(1);
+
+    inboxWindow.resolve({
+      messages: [
+        makeMessage({
+          messageId: 'window-message',
+          text: 'window',
+          timestamp: '2026-04-19T18:46:45.000Z',
+        }),
+      ],
+      truncated: false,
+      sourceRevision: 'inbox-window-rev',
+      sourceMessageCount: 1,
+    });
+
+    const [firstPage, secondPage] = await Promise.all([first, second]);
+    expect(firstPage.messages.map((message) => message.messageId)).toEqual(['window-message']);
+    expect(secondPage.messages.map((message) => message.messageId)).toEqual(['window-message']);
+  });
+
+  it('reuses recently completed bounded page sources across live overlay refreshes', async () => {
+    const getConfig = vi.fn(async () => config);
+    const getInboxMessagesWindow = vi.fn(async () => ({
+      messages: [
+        makeMessage({
+          messageId: 'window-message',
+          text: 'window',
+          timestamp: '2026-04-19T18:46:45.000Z',
+        }),
+      ],
+      truncated: false,
+      sourceRevision: 'inbox-window-rev',
+      sourceMessageCount: 1,
+    }));
+    const getLeadSessionMessages = vi.fn(async () => [] as InboxMessage[]);
+    const getSentMessages = vi.fn(async () => [] as InboxMessage[]);
+    const service = new TeamMessageFeedService({
+      getConfig,
+      getInboxMessages: vi.fn(async () => []),
+      getInboxMessagesWindow,
+      getLeadSessionMessages,
+      getSentMessages,
+    });
+
+    const first = await service.getPage('signal-ops-4', {
+      limit: 50,
+      liveMessages: [
+        makeMessage({
+          messageId: 'live-1',
+          source: 'lead_process',
+          timestamp: '2026-04-19T18:47:00.000Z',
+        }),
+      ],
+    });
+
+    vi.setSystemTime(new Date('2026-04-19T18:46:43.000Z'));
+
+    const second = await service.getPage('signal-ops-4', {
+      limit: 50,
+      liveMessages: [
+        makeMessage({
+          messageId: 'live-2',
+          source: 'lead_process',
+          timestamp: '2026-04-19T18:47:01.000Z',
+        }),
+      ],
+    });
+
+    expect(first.messages.map((message) => message.messageId)).toEqual(['window-message']);
+    expect(second.messages.map((message) => message.messageId)).toEqual(['window-message']);
+    expect(getConfig).toHaveBeenCalledTimes(1);
+    expect(getInboxMessagesWindow).toHaveBeenCalledTimes(1);
+    expect(getLeadSessionMessages).toHaveBeenCalledTimes(1);
+    expect(getSentMessages).toHaveBeenCalledTimes(1);
+
+    service.invalidate('signal-ops-4');
+    await service.getPage('signal-ops-4', {
+      limit: 50,
+      liveMessages: [
+        makeMessage({
+          messageId: 'live-3',
+          source: 'lead_process',
+          timestamp: '2026-04-19T18:47:02.000Z',
+        }),
+      ],
+    });
+
+    expect(getInboxMessagesWindow).toHaveBeenCalledTimes(2);
+  });
+
+  it('caps live overlay reserve before sizing bounded page source reads', async () => {
+    const getInboxMessagesWindow = vi.fn(async () => ({
+      messages: [
+        makeMessage({
+          messageId: 'window-message',
+          text: 'window',
+          timestamp: '2026-04-19T18:46:45.000Z',
+        }),
+      ],
+      truncated: false,
+      sourceRevision: 'inbox-window-rev',
+      sourceMessageCount: 1,
+    }));
+    const service = new TeamMessageFeedService({
+      getConfig: vi.fn(async () => config),
+      getInboxMessages: vi.fn(async () => []),
+      getInboxMessagesWindow,
+      getLeadSessionMessages: vi.fn(async () => []),
+      getSentMessages: vi.fn(async () => []),
+    });
+    const liveMessages = Array.from({ length: 205 }, (_, index) =>
+      makeMessage({
+        messageId: `live-${index}`,
+        source: 'lead_process',
+        timestamp: new Date(Date.UTC(2026, 3, 19, 18, 47, index)).toISOString(),
+      })
+    );
+
+    await service.getPage('signal-ops-4', {
+      limit: 50,
+      liveMessages,
+    });
+
+    expect(getInboxMessagesWindow).toHaveBeenCalledWith('signal-ops-4', {
+      cursor: null,
+      limit: 502,
+    });
   });
 
   it('does not fall back to a full inbox read when the bounded page source fails', async () => {

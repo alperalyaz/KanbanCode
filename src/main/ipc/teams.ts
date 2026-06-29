@@ -145,7 +145,10 @@ import {
   buildReplaceMembersDiff,
   buildReplaceMembersSummaryMessage,
 } from '../services/team/memberUpdateNotifications';
-import { mergeLiveLeadProcessMessages } from '../services/team/mergeLiveLeadProcessMessages';
+import {
+  mergeLiveLeadProcessMessages,
+  mergeLiveLeadProcessMessagesPage,
+} from '../services/team/mergeLiveLeadProcessMessages';
 import { TeamAttachmentStore } from '../services/team/TeamAttachmentStore';
 import { TeamConfigReader } from '../services/team/TeamConfigReader';
 import { readTeamLaunchFailureDiagnosticsBundle } from '../services/team/TeamLaunchFailureArtifactPack';
@@ -251,6 +254,7 @@ const OPENCODE_RUNTIME_DELIVERY_UI_TIMEOUT_MS = 6_000;
 const OPENCODE_RUNTIME_DELIVERY_STATUS_AFTER_UI_TIMEOUT_MS = 1_000;
 const OPENCODE_RUNTIME_DELIVERY_UI_TIMEOUT_PENDING_REASON =
   'opencode_runtime_delivery_ui_timeout_pending';
+const MAX_LIVE_MESSAGES_OVERLAY_PAYLOAD = 200;
 
 type OpenCodeMemberInboxRelayResult = Awaited<
   ReturnType<TeamProvisioningService['relayOpenCodeMemberInboxMessages']>
@@ -514,20 +518,51 @@ function throwIfFatalTeamDataWorkerFailure(_operation: string, error: unknown): 
   }
 }
 
+function compareInboxMessagesNewestFirst(left: InboxMessage, right: InboxMessage): number {
+  const leftTime = Date.parse(left.timestamp);
+  const rightTime = Date.parse(right.timestamp);
+  if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+    return rightTime - leftTime;
+  }
+  const leftId = typeof left.messageId === 'string' ? left.messageId : '';
+  const rightId = typeof right.messageId === 'string' ? right.messageId : '';
+  return leftId.localeCompare(rightId);
+}
+
+function capLiveOverlayMessages(liveMessages: readonly InboxMessage[]): InboxMessage[] {
+  if (liveMessages.length <= MAX_LIVE_MESSAGES_OVERLAY_PAYLOAD) {
+    return [...liveMessages];
+  }
+  return [...liveMessages]
+    .sort(compareInboxMessagesNewestFirst)
+    .slice(0, MAX_LIVE_MESSAGES_OVERLAY_PAYLOAD);
+}
+
 async function getNewestMessagesPageWithLiveOverlay(input: {
   teamName: string;
   limit: number;
   liveMessages: InboxMessage[];
   includeUndefinedCursorInFallback?: boolean;
 }): Promise<MessagesPage> {
-  const { teamName, limit, liveMessages } = input;
+  const { teamName, limit } = input;
+  const liveMessages = capLiveOverlayMessages(input.liveMessages);
+  const liveReserve = liveMessages.length ? Math.max(liveMessages.length, 100) : 0;
+  const durableLimit = limit + liveReserve + 1;
   const worker = getTeamDataWorkerClient();
   const options = input.includeUndefinedCursorInFallback
-    ? { cursor: undefined, limit, liveMessages }
-    : { limit, liveMessages };
+    ? { cursor: undefined, limit: durableLimit }
+    : { limit: durableLimit };
+  let durablePage: MessagesPage;
   if (worker.isAvailable()) {
     try {
-      return await worker.getMessagesPage(teamName, options);
+      durablePage = await worker.getMessagesPage(teamName, options);
+      return mergeLiveLeadProcessMessagesPage({
+        durableMessages: durablePage.messages,
+        liveMessages,
+        limit,
+        feedRevision: durablePage.feedRevision,
+        durableHasMoreAfterWindow: durablePage.hasMore,
+      });
     } catch (workerErr) {
       throwIfFatalTeamDataWorkerFailure('teams:getMessagesPage.liveOverlay', workerErr);
       logger.warn(
@@ -539,7 +574,14 @@ async function getNewestMessagesPageWithLiveOverlay(input: {
   }
 
   noteHeavyTeamDataWorkerFallback('teams:getMessagesPage.liveOverlay');
-  return getTeamDataService().getMessagesPage(teamName, options);
+  durablePage = await getTeamDataService().getMessagesPage(teamName, options);
+  return mergeLiveLeadProcessMessagesPage({
+    durableMessages: durablePage.messages,
+    liveMessages,
+    limit,
+    feedRevision: durablePage.feedRevision,
+    durableHasMoreAfterWindow: durablePage.hasMore,
+  });
 }
 
 function invalidateTeamRosterSnapshotCaches(teamName: string): void {

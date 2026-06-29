@@ -1762,6 +1762,51 @@ describe('TeamDataService', () => {
     expect(getConfig).not.toHaveBeenCalled();
   });
 
+  it('deduplicates repeated notification context reads', async () => {
+    const getConfig = vi.fn(async () => ({
+      name: 'Fallback Team',
+      members: [],
+    }));
+    const getConfigSnapshot = vi.fn(async () => ({
+      name: 'My Team',
+      projectPath: '/Users/dev/my-project',
+      members: [],
+    }));
+
+    const service = new TeamDataService(
+      {
+        listTeams: vi.fn(),
+        getConfig,
+        getConfigSnapshot,
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      (() => ({ processes: { listProcesses: vi.fn(() => []) } })) as never
+    );
+
+    const [first, second] = await Promise.all([
+      service.getTeamNotificationContext('my-team'),
+      service.getTeamNotificationContext('my-team'),
+    ]);
+    const third = await service.getTeamNotificationContext('my-team');
+
+    expect(first).toEqual({
+      displayName: 'My Team',
+      projectPath: '/Users/dev/my-project',
+    });
+    expect(second).toEqual(first);
+    expect(third).toEqual(first);
+    expect(getConfigSnapshot).toHaveBeenCalledTimes(1);
+    expect(getConfig).not.toHaveBeenCalled();
+  });
+
   it('creates task with status pending when startImmediately is false', async () => {
     const createTaskMock = vi.fn((task) => ({ ...task, status: 'pending' }));
     const service = new TeamDataService(
@@ -5080,7 +5125,10 @@ describe('TeamDataService', () => {
       ),
     ]);
 
-    const assistantSpy = vi.spyOn(teamDataServicePrivate(service), 'extractLeadAssistantTextsFromJsonlLines');
+    const assistantSpy = vi.spyOn(
+      teamDataServicePrivate(service),
+      'extractLeadAssistantTextsFromJsonlLines'
+    );
     const extract = (
       service as unknown as {
         extractLeadSessionTextsFromJsonl: (
@@ -5312,7 +5360,10 @@ describe('TeamDataService', () => {
       ),
     ]);
 
-    const assistantSpy = vi.spyOn(teamDataServicePrivate(service), 'extractLeadAssistantTextsFromJsonlLines');
+    const assistantSpy = vi.spyOn(
+      teamDataServicePrivate(service),
+      'extractLeadAssistantTextsFromJsonlLines'
+    );
     const extract = (
       service as unknown as {
         extractLeadSessionTextsFromJsonl: (
@@ -5346,7 +5397,10 @@ describe('TeamDataService', () => {
       ),
     ]);
 
-    const assistantSpy = vi.spyOn(teamDataServicePrivate(service), 'extractLeadAssistantTextsFromJsonlLines');
+    const assistantSpy = vi.spyOn(
+      teamDataServicePrivate(service),
+      'extractLeadAssistantTextsFromJsonlLines'
+    );
     const extract = (
       service as unknown as {
         extractLeadSessionTextsFromJsonl: (
@@ -5378,7 +5432,10 @@ describe('TeamDataService', () => {
     ]);
     await fs.appendFile(jsonlPath, '{"type":"assistant"', 'utf8');
 
-    const assistantSpy = vi.spyOn(teamDataServicePrivate(service), 'extractLeadAssistantTextsFromJsonlLines');
+    const assistantSpy = vi.spyOn(
+      teamDataServicePrivate(service),
+      'extractLeadAssistantTextsFromJsonlLines'
+    );
     const extract = (
       service as unknown as {
         extractLeadSessionTextsFromJsonl: (
@@ -5426,7 +5483,10 @@ describe('TeamDataService', () => {
       ),
     ]);
 
-    const assistantSpy = vi.spyOn(teamDataServicePrivate(service), 'extractLeadAssistantTextsFromJsonlLines');
+    const assistantSpy = vi.spyOn(
+      teamDataServicePrivate(service),
+      'extractLeadAssistantTextsFromJsonlLines'
+    );
     const extract = (
       service as unknown as {
         extractLeadSessionTextsFromJsonl: (
@@ -5514,7 +5574,10 @@ describe('TeamDataService', () => {
       ),
     ]);
 
-    const firstSpy = vi.spyOn(teamDataServicePrivate(firstService), 'extractLeadAssistantTextsFromJsonlLines');
+    const firstSpy = vi.spyOn(
+      teamDataServicePrivate(firstService),
+      'extractLeadAssistantTextsFromJsonlLines'
+    );
     const secondSpy = vi.spyOn(
       teamDataServicePrivate(secondService),
       'extractLeadAssistantTextsFromJsonlLines'
@@ -5570,17 +5633,19 @@ describe('TeamDataService', () => {
     vi.spyOn(teamDataServicePrivate(service), 'getLeadSessionJsonlPaths').mockResolvedValue(
       new Map([['lead-1', '/fast-project/lead-1.jsonl']])
     );
-    vi.spyOn(teamDataServicePrivate(service), 'extractLeadSessionTextsFromJsonl').mockResolvedValue([
-      {
-        from: 'fast-lead',
-        text: 'Fast path recovered lead thought from the known lead session.',
-        timestamp: '2026-04-18T10:00:00.000Z',
-        read: true,
-        source: 'lead_session',
-        leadSessionId: 'lead-1',
-        messageId: 'lead-fast-1',
-      },
-    ]);
+    vi.spyOn(teamDataServicePrivate(service), 'extractLeadSessionTextsFromJsonl').mockResolvedValue(
+      [
+        {
+          from: 'fast-lead',
+          text: 'Fast path recovered lead thought from the known lead session.',
+          timestamp: '2026-04-18T10:00:00.000Z',
+          read: true,
+          source: 'lead_session',
+          leadSessionId: 'lead-1',
+          messageId: 'lead-fast-1',
+        },
+      ]
+    );
 
     const feed = await service.getMessageFeed('my-team');
 
@@ -5627,17 +5692,19 @@ describe('TeamDataService', () => {
         return Promise.resolve(new Map());
       }
     );
-    vi.spyOn(teamDataServicePrivate(service), 'extractLeadSessionTextsFromJsonl').mockResolvedValue([
-      {
-        from: 'actual-lead',
-        text: 'Fallback path recovered lead thought from the repaired context.',
-        timestamp: '2026-04-18T10:00:00.000Z',
-        read: true,
-        source: 'lead_session',
-        leadSessionId: 'lead-1',
-        messageId: 'lead-fallback-1',
-      },
-    ]);
+    vi.spyOn(teamDataServicePrivate(service), 'extractLeadSessionTextsFromJsonl').mockResolvedValue(
+      [
+        {
+          from: 'actual-lead',
+          text: 'Fallback path recovered lead thought from the repaired context.',
+          timestamp: '2026-04-18T10:00:00.000Z',
+          read: true,
+          source: 'lead_session',
+          leadSessionId: 'lead-1',
+          messageId: 'lead-fallback-1',
+        },
+      ]
+    );
 
     const feed = await service.getMessageFeed('my-team');
 
@@ -6928,6 +6995,29 @@ describe('TeamDataService', () => {
         'durable-2',
         'durable-1',
       ]);
+    });
+
+    it('caps live overlay messages before merging the newest page', async () => {
+      const service = createPaginationService([]);
+      const liveMessages = Array.from({ length: 205 }, (_, index) => ({
+        from: 'team-lead',
+        text: `live-${index}`,
+        timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+        read: true,
+        source: 'lead_process' as const,
+        messageId: `live-${index}`,
+        leadSessionId: 'lead-1',
+      }));
+
+      const page = await service.getMessagesPage('my-team', {
+        limit: 250,
+        liveMessages,
+      });
+
+      expect(page.messages).toHaveLength(200);
+      expect(page.messages.map((message) => message.messageId)).toContain('live-204');
+      expect(page.messages.map((message) => message.messageId)).toContain('live-5');
+      expect(page.messages.map((message) => message.messageId)).not.toContain('live-4');
     });
   });
 });

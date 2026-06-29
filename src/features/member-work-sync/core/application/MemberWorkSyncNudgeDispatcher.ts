@@ -70,6 +70,27 @@ function subtractMinutes(iso: string, minutes: number): string {
   return new Date(Date.parse(iso) - minutes * 60_000).toISOString();
 }
 
+function preserveCurrentRuntimeStallDiagnostics(input: {
+  previous: MemberWorkSyncStatus;
+  agenda: MemberWorkSyncAgenda;
+  state: MemberWorkSyncStatus['state'];
+  diagnostics: string[];
+}): string[] {
+  const diagnostics = new Set(input.diagnostics);
+  if (
+    input.state !== 'needs_sync' ||
+    input.previous.agenda.fingerprint !== input.agenda.fingerprint
+  ) {
+    return [...diagnostics];
+  }
+  for (const diagnostic of input.previous.diagnostics) {
+    if (diagnostic.startsWith('runtime_stall:')) {
+      diagnostics.add(diagnostic);
+    }
+  }
+  return [...diagnostics];
+}
+
 function stableJitterMinutes(id: string, attemptGeneration: number): number {
   const seed = `${id}:${attemptGeneration}`;
   let value = 0;
@@ -186,24 +207,21 @@ export class MemberWorkSyncNudgeDispatcher {
       options.claimTimeoutMs ?? MEMBER_WORK_SYNC_NUDGE_CLAIM_TIMEOUT_MS
     );
     const teamNames = [...new Set(options.teamNames.map((name) => name.trim()).filter(Boolean))];
-    const summaries = await Promise.allSettled(
-      teamNames.map((teamName) =>
-        this.dispatchTeamWithTimeout(teamName, options, nowIso, {
-          itemTimeoutMs,
-          teamTimeoutMs,
-          claimTimeoutMs,
-        })
-      )
-    );
-
     let summary = emptySummary();
-    for (const [index, result] of summaries.entries()) {
-      if (result.status === 'fulfilled') {
-        summary = addSummary(summary, result.value);
-      } else {
+    for (const teamName of teamNames) {
+      try {
+        summary = addSummary(
+          summary,
+          await this.dispatchTeamWithTimeout(teamName, options, nowIso, {
+            itemTimeoutMs,
+            teamTimeoutMs,
+            claimTimeoutMs,
+          })
+        );
+      } catch (error) {
         this.deps.logger?.warn('member work sync team nudge dispatch failed', {
-          teamName: teamNames[index],
-          error: String(result.reason),
+          teamName,
+          error: String(error),
         });
       }
     }
@@ -806,7 +824,12 @@ export class MemberWorkSyncNudgeDispatcher {
           previous.agenda.fingerprint !== agenda.fingerprint,
       },
       evaluatedAt: nowIso,
-      diagnostics: [...agenda.diagnostics, ...decision.diagnostics],
+      diagnostics: preserveCurrentRuntimeStallDiagnostics({
+        previous,
+        agenda,
+        state: decision.state,
+        diagnostics: [...agenda.diagnostics, ...decision.diagnostics],
+      }),
       ...(providerId ? { providerId } : {}),
     };
     const agendaStillMatches =

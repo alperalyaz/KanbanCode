@@ -1231,7 +1231,8 @@ const STDERR_RING_LIMIT = 64 * 1024;
 const STDOUT_RING_LIMIT = 64 * 1024;
 const CLI_LOG_LINE_CARRY_LIMIT = PROGRESS_RETAINED_LOG_LINE_CHARS;
 const STDOUT_PARSER_CARRY_LIMIT = PROGRESS_RETAINED_LOG_CHARS;
-const LIVE_LEAD_PROCESS_MESSAGE_TEXT_LIMIT = 256 * 1024;
+const LIVE_LEAD_PROCESS_MESSAGE_TEXT_LIMIT = 32 * 1024;
+const LIVE_LEAD_PROCESS_MESSAGE_CACHE_LIMIT = 100;
 // Progress emissions fan out the latest CLI tail + assistant output to the
 // renderer over IPC. Under load the previous 300ms cadence combined with an
 // unbounded payload (see `emitLogsProgress`) caused renderer OOM crashes
@@ -32533,7 +32534,6 @@ export class TeamProvisioningService {
       }
     }
     cacheMessage = boundLiveLeadProcessMessage(cacheMessage);
-    const MAX = 100;
     const list = this.liveLeadProcessMessages.get(teamName) ?? [];
     const id = typeof cacheMessage.messageId === 'string' ? cacheMessage.messageId.trim() : '';
     if (id) {
@@ -32546,8 +32546,8 @@ export class TeamProvisioningService {
     } else {
       list.push(cacheMessage);
     }
-    if (list.length > MAX) {
-      list.splice(0, list.length - MAX);
+    if (list.length > LIVE_LEAD_PROCESS_MESSAGE_CACHE_LIMIT) {
+      list.splice(0, list.length - LIVE_LEAD_PROCESS_MESSAGE_CACHE_LIMIT);
     }
     this.liveLeadProcessMessages.set(teamName, list);
   }

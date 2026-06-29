@@ -111,8 +111,51 @@ const TASK_COMMENT_NOTIFICATION_SOURCE = 'system_notification';
 const PASSIVE_USER_REPLY_LINK_WINDOW_MS = 15_000;
 const MEMBER_RUNTIME_ADVISORY_SNAPSHOT_BUDGET_MS = 250;
 const GLOBAL_TASK_TEAM_CONFIG_CONCURRENCY = 12;
+const TEAM_NOTIFICATION_CONTEXT_CACHE_MAX_AGE_MS = 5_000;
+const MAX_MESSAGES_PAGE_LIVE_OVERLAY_PAYLOAD = 200;
 const MIXED_TEAM_LIVE_MUTATION_BLOCK_MESSAGE =
   'Live roster mutation on a running mixed team is not supported in V1. Stop the team, edit the roster, then relaunch.';
+
+interface TeamNotificationContext {
+  displayName: string;
+  projectPath?: string;
+}
+
+interface TeamNotificationContextCacheEntry {
+  value: TeamNotificationContext;
+  cachedAt: number;
+  generation: number;
+}
+
+interface InFlightTeamNotificationContext {
+  promise: Promise<TeamNotificationContext>;
+  generation: number;
+}
+
+function compareInboxMessagesNewestFirst(left: InboxMessage, right: InboxMessage): number {
+  const leftTime = Date.parse(left.timestamp);
+  const rightTime = Date.parse(right.timestamp);
+  if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+    return rightTime - leftTime;
+  }
+  const leftId = typeof left.messageId === 'string' ? left.messageId : '';
+  const rightId = typeof right.messageId === 'string' ? right.messageId : '';
+  return leftId.localeCompare(rightId);
+}
+
+function capMessagesPageLiveOverlay(
+  liveMessages: readonly InboxMessage[] | undefined
+): InboxMessage[] {
+  if (!liveMessages?.length) {
+    return [];
+  }
+  if (liveMessages.length <= MAX_MESSAGES_PAGE_LIVE_OVERLAY_PAYLOAD) {
+    return [...liveMessages];
+  }
+  return [...liveMessages]
+    .sort(compareInboxMessagesNewestFirst)
+    .slice(0, MAX_MESSAGES_PAGE_LIVE_OVERLAY_PAYLOAD);
+}
 
 function resolveEffectiveMemberProviderId(
   leadProviderId: TeamProviderId | undefined,
@@ -415,6 +458,9 @@ export class TeamDataService {
   private fileWatchReconcileDiagnostics = new Map<string, FileWatchReconcileDiagnostics>();
   private readonly messageFeedService: TeamMessageFeedService;
   private readonly memberActivityMetaService: MemberActivityMetaService;
+  private readonly notificationContextCache = new Map<string, TeamNotificationContextCacheEntry>();
+  private readonly notificationContextInFlight = new Map<string, InFlightTeamNotificationContext>();
+  private readonly notificationContextGenerationByTeam = new Map<string, number>();
 
   constructor(
     private readonly configReader: TeamConfigReader = new TeamConfigReader(),
@@ -454,6 +500,18 @@ export class TeamDataService {
 
   private readSnapshotConfig(teamName: string): Promise<TeamConfig | null> {
     return readConfigForUiSnapshot(this.configReader, teamName);
+  }
+
+  private getNotificationContextGeneration(teamName: string): number {
+    return this.notificationContextGenerationByTeam.get(teamName) ?? 0;
+  }
+
+  private invalidateNotificationContext(teamName: string): void {
+    this.notificationContextCache.delete(teamName);
+    this.notificationContextGenerationByTeam.set(
+      teamName,
+      this.getNotificationContextGeneration(teamName) + 1
+    );
   }
 
   private async readGlobalTaskTeamInfoFromListTeams(): Promise<Map<string, GlobalTaskTeamInfo>> {
@@ -1266,7 +1324,9 @@ export class TeamDataService {
     teamName: string,
     updates: { name?: string; description?: string; color?: string }
   ): Promise<TeamConfig | null> {
-    return this.configReader.updateConfig(teamName, updates);
+    const updated = await this.configReader.updateConfig(teamName, updates);
+    this.invalidateNotificationContext(teamName);
+    return updated;
   }
 
   async deleteTeam(teamName: string): Promise<void> {
@@ -1278,6 +1338,7 @@ export class TeamDataService {
     const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
     await atomicWriteAsync(configPath, JSON.stringify(config, null, 2));
     await TeamConfigReader.primeConfig(teamName, config);
+    this.invalidateNotificationContext(teamName);
   }
 
   async restoreTeam(teamName: string): Promise<void> {
@@ -1289,12 +1350,14 @@ export class TeamDataService {
     const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
     await atomicWriteAsync(configPath, JSON.stringify(config, null, 2));
     await TeamConfigReader.primeConfig(teamName, config);
+    this.invalidateNotificationContext(teamName);
   }
 
   async permanentlyDeleteTeam(teamName: string): Promise<void> {
     const teamsDir = path.join(getTeamsBasePath(), teamName);
     await fs.promises.rm(teamsDir, { recursive: true, force: true });
     TeamConfigReader.invalidateTeam(teamName);
+    this.invalidateNotificationContext(teamName);
 
     const tasksDir = path.join(getTasksBasePath(), teamName);
     await fs.promises.rm(tasksDir, { recursive: true, force: true });
@@ -1633,8 +1696,19 @@ export class TeamDataService {
     teamName: string,
     options: { cursor?: string | null; limit: number; liveMessages?: InboxMessage[] }
   ): Promise<MessagesPage> {
-    const page = await this.messageFeedService.getPage(teamName, options);
-    if (options.cursor || !options.liveMessages?.length) {
+    const liveMessages = capMessagesPageLiveOverlay(options.liveMessages);
+    const pageOptions =
+      liveMessages.length > 0
+        ? {
+            ...options,
+            liveMessages,
+          }
+        : {
+            cursor: options.cursor,
+            limit: options.limit,
+          };
+    const page = await this.messageFeedService.getPage(teamName, pageOptions);
+    if (options.cursor || liveMessages.length === 0) {
       return {
         messages: page.messages,
         nextCursor: page.nextCursor,
@@ -1645,7 +1719,7 @@ export class TeamDataService {
 
     return mergeLiveLeadProcessMessagesPage({
       durableMessages: page.durableWindowMessages,
-      liveMessages: options.liveMessages,
+      liveMessages,
       limit: options.limit,
       feedRevision: page.feedRevision,
       durableHasMoreAfterWindow: page.durableHasMoreAfterWindow,
@@ -3129,10 +3203,37 @@ export class TeamDataService {
     }
   }
 
-  async getTeamNotificationContext(teamName: string): Promise<{
-    displayName: string;
-    projectPath?: string;
-  }> {
+  async getTeamNotificationContext(teamName: string): Promise<TeamNotificationContext> {
+    const now = Date.now();
+    const generation = this.getNotificationContextGeneration(teamName);
+    const cached = this.notificationContextCache.get(teamName);
+    if (
+      cached &&
+      cached.generation === generation &&
+      now - cached.cachedAt < TEAM_NOTIFICATION_CONTEXT_CACHE_MAX_AGE_MS
+    ) {
+      return cached.value;
+    }
+
+    const existing = this.notificationContextInFlight.get(teamName);
+    if (existing?.generation === generation) {
+      return existing.promise;
+    }
+
+    const promise = this.readTeamNotificationContext(teamName, generation, now).finally(() => {
+      if (this.notificationContextInFlight.get(teamName)?.promise === promise) {
+        this.notificationContextInFlight.delete(teamName);
+      }
+    });
+    this.notificationContextInFlight.set(teamName, { promise, generation });
+    return promise;
+  }
+
+  private async readTeamNotificationContext(
+    teamName: string,
+    generationAtStart: number,
+    now: number
+  ): Promise<TeamNotificationContext> {
     try {
       const config = await this.readSnapshotConfig(teamName);
       const displayName = config?.name?.trim() || teamName;
@@ -3140,9 +3241,27 @@ export class TeamDataService {
         typeof config?.projectPath === 'string' && config.projectPath.trim().length > 0
           ? config.projectPath
           : undefined;
-      return { displayName, projectPath };
+      const value: TeamNotificationContext = projectPath
+        ? { displayName, projectPath }
+        : { displayName };
+      if (this.getNotificationContextGeneration(teamName) === generationAtStart) {
+        this.notificationContextCache.set(teamName, {
+          value,
+          cachedAt: now,
+          generation: generationAtStart,
+        });
+      }
+      return value;
     } catch {
-      return { displayName: teamName };
+      const value = { displayName: teamName };
+      if (this.getNotificationContextGeneration(teamName) === generationAtStart) {
+        this.notificationContextCache.set(teamName, {
+          value,
+          cachedAt: now,
+          generation: generationAtStart,
+        });
+      }
+      return value;
     }
   }
 

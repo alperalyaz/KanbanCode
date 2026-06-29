@@ -309,8 +309,11 @@ export class TeamConfigReader {
 
   static invalidatePath(configPath: string): void {
     TeamConfigReader.configCacheByPath.delete(configPath);
-    TeamConfigReader.configReadInFlightByPath.delete(configPath);
-    TeamConfigReader.configStatInFlightByPath.delete(configPath);
+    // Keep in-flight stat/read work alive. File watchers can invalidate the same
+    // config many times while a slow Windows disk read is already running; dropping
+    // the in-flight entry starts duplicate reads and amplifies the IO stall. The
+    // generation checks on cache writes prevent stale in-flight results from being
+    // stored after this invalidation.
     TeamConfigReader.bumpConfigGeneration(configPath);
     TeamConfigReader.invalidateListTeamsCache();
   }

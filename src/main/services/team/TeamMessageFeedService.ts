@@ -11,6 +11,9 @@ import type { InboxMessage, MessagesPage, TeamConfig } from '@shared/types';
 
 const PASSIVE_USER_REPLY_LINK_WINDOW_MS = 15_000;
 const MESSAGE_FEED_CACHE_MAX_AGE_MS = 5_000;
+const MESSAGE_PAGE_SOURCE_CACHE_MAX_AGE_MS = 5_000;
+const MESSAGE_PAGE_SOURCE_CACHE_MAX_ENTRIES = 24;
+const MAX_PAGE_LIVE_MESSAGES_PAYLOAD = 200;
 const logger = createLogger('Service:TeamMessageFeedService');
 
 type TeamConfigMember = NonNullable<TeamConfig['members']>[number];
@@ -37,6 +40,25 @@ interface InFlightTeamMessageFeed {
   generationAtStart: number;
 }
 
+interface CachedMessagePageSourcePayload {
+  payload: MessagePageSourcePayload;
+  generationAtStart: number;
+  cachedAt: number;
+}
+
+type MessagePageInboxPayload =
+  | { kind: 'window'; window: InboxMessagesWindow }
+  | { kind: 'full'; messages: InboxMessage[] };
+
+interface MessagePageSourcePayload {
+  config: TeamConfig | null;
+  inboxPayload: MessagePageInboxPayload;
+  leadSource: InboxMessage[];
+  sentSource: InboxMessage[];
+  syntheticSource: InboxMessage[];
+  sourceMs: number;
+}
+
 export interface TeamNormalizedMessageFeed {
   teamName: string;
   feedRevision: string;
@@ -59,6 +81,42 @@ function requireCanonicalMessageId(message: InboxMessage): string {
     return messageId;
   }
   throw new Error('Normalized team message is missing effective messageId');
+}
+
+function cloneMessages(messages: readonly InboxMessage[]): InboxMessage[] {
+  return structuredClone([...messages]);
+}
+
+function cloneInboxWindow(window: InboxMessagesWindow): InboxMessagesWindow {
+  return {
+    ...window,
+    messages: cloneMessages(window.messages),
+  };
+}
+
+function cloneInboxPayload(payload: MessagePageInboxPayload): MessagePageInboxPayload {
+  if (payload.kind === 'window') {
+    return {
+      kind: 'window',
+      window: cloneInboxWindow(payload.window),
+    };
+  }
+  return {
+    kind: 'full',
+    messages: cloneMessages(payload.messages),
+  };
+}
+
+function cloneMessagePageSourcePayload(
+  payload: MessagePageSourcePayload
+): MessagePageSourcePayload {
+  return {
+    ...payload,
+    inboxPayload: cloneInboxPayload(payload.inboxPayload),
+    leadSource: cloneMessages(payload.leadSource),
+    sentSource: cloneMessages(payload.sentSource),
+    syntheticSource: cloneMessages(payload.syntheticSource),
+  };
 }
 
 function normalizePassiveUserReplyLinkText(value: string | undefined): string {
@@ -553,6 +611,29 @@ function sortNewestFirst(messages: InboxMessage[]): InboxMessage[] {
   return messages;
 }
 
+function compareInboxMessagesNewestFirst(left: InboxMessage, right: InboxMessage): number {
+  const leftTime = Date.parse(left.timestamp);
+  const rightTime = Date.parse(right.timestamp);
+  if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+    return rightTime - leftTime;
+  }
+  const leftId = typeof left.messageId === 'string' ? left.messageId : '';
+  const rightId = typeof right.messageId === 'string' ? right.messageId : '';
+  return leftId.localeCompare(rightId);
+}
+
+function capPageLiveMessages(liveMessages: readonly InboxMessage[] | undefined): InboxMessage[] {
+  if (!liveMessages?.length) {
+    return [];
+  }
+  if (liveMessages.length <= MAX_PAGE_LIVE_MESSAGES_PAYLOAD) {
+    return [...liveMessages];
+  }
+  return [...liveMessages]
+    .sort(compareInboxMessagesNewestFirst)
+    .slice(0, MAX_PAGE_LIVE_MESSAGES_PAYLOAD);
+}
+
 function selectSourceWindow(input: {
   messages: InboxMessage[];
   cursor: MessageCursor | null;
@@ -573,6 +654,11 @@ export class TeamMessageFeedService {
   private readonly cacheByTeam = new Map<string, TeamMessageFeedCacheEntry>();
   private readonly dirtyTeams = new Set<string>();
   private readonly inFlightByTeam = new Map<string, InFlightTeamMessageFeed>();
+  private readonly pageSourceInFlightByKey = new Map<
+    string,
+    { promise: Promise<MessagePageSourcePayload>; generationAtStart: number }
+  >();
+  private readonly pageSourceCacheByKey = new Map<string, CachedMessagePageSourcePayload>();
   private readonly generationByTeam = new Map<string, number>();
   private readonly syntheticBootstrapTimestampByMessageId = new Map<string, string>();
 
@@ -581,6 +667,7 @@ export class TeamMessageFeedService {
   invalidate(teamName: string): void {
     this.dirtyTeams.add(teamName);
     this.generationByTeam.set(teamName, this.getGeneration(teamName) + 1);
+    this.pageSourceCacheByKey.clear();
   }
 
   async getFeed(teamName: string): Promise<TeamNormalizedMessageFeed> {
@@ -636,13 +723,14 @@ export class TeamMessageFeedService {
     const startedAt = Date.now();
     const requestedLimit = Number.isFinite(options.limit) ? Math.floor(options.limit) : 50;
     const limit = Math.max(1, requestedLimit);
-    const liveReserve = options.liveMessages?.length
-      ? Math.max(options.liveMessages.length, 100)
-      : 0;
+    const liveMessages = capPageLiveMessages(options.liveMessages);
+    const liveReserve = liveMessages.length ? Math.max(liveMessages.length, 100) : 0;
     const durableWindowLimit = limit + liveReserve + 1;
     const sourceWindowLimit = Math.max(durableWindowLimit * 2, 200);
     const cursor = parseMessageCursor(options.cursor);
-    const config = await this.deps.getConfig(teamName);
+    const generationAtStart = this.getGeneration(teamName);
+    const { config, inboxPayload, leadSource, sentSource, syntheticSource, sourceMs } =
+      await this.loadPageSources(teamName, cursor, sourceWindowLimit, generationAtStart);
     if (!config) {
       return {
         messages: [],
@@ -653,41 +741,6 @@ export class TeamMessageFeedService {
         durableHasMoreAfterWindow: false,
       };
     }
-
-    const sourceStartedAt = Date.now();
-    const inboxSourcePromise = this.deps.getInboxMessagesWindow
-      ? this.deps
-          .getInboxMessagesWindow(teamName, {
-            cursor,
-            limit: sourceWindowLimit,
-          })
-          .then((window) => ({ kind: 'window' as const, window }))
-          .catch((error) => {
-            logger.warn(
-              `[${teamName}] message page inbox window failed; omitting inbox source instead of falling back to full read: ${getErrorMessage(
-                error
-              )}`
-            );
-            return {
-              kind: 'window' as const,
-              window: {
-                messages: [],
-                truncated: false,
-                sourceRevision: toErrorSourceRevision('inbox', error),
-                sourceMessageCount: 0,
-              },
-            };
-          })
-      : this.deps
-          .getInboxMessages(teamName)
-          .then((messages) => ({ kind: 'full' as const, messages }))
-          .catch(() => ({ kind: 'full' as const, messages: [] as InboxMessage[] }));
-    const [inboxPayload, leadSource, sentSource] = await Promise.all([
-      inboxSourcePromise,
-      this.deps.getLeadSessionMessages(teamName, config).catch(() => [] as InboxMessage[]),
-      this.deps.getSentMessages(teamName).catch(() => [] as InboxMessage[]),
-    ]);
-    const sourceMs = Date.now() - sourceStartedAt;
 
     const inboxWindow =
       inboxPayload.kind === 'window'
@@ -710,9 +763,6 @@ export class TeamMessageFeedService {
       cursor,
       limit: sourceWindowLimit,
     });
-    const syntheticSource = buildSyntheticBootstrapMessages(config, (messageId) =>
-      this.getSyntheticBootstrapFallbackTimestamp(messageId)
-    );
     const syntheticWindow = selectSourceWindow({
       messages: syntheticSource,
       cursor,
@@ -784,6 +834,124 @@ export class TeamMessageFeedService {
       feedRevision,
       durableWindowMessages,
       durableHasMoreAfterWindow,
+    };
+  }
+
+  private loadPageSources(
+    teamName: string,
+    cursor: MessageCursor | null,
+    sourceWindowLimit: number,
+    generationAtStart: number
+  ): Promise<MessagePageSourcePayload> {
+    const cursorKey = cursor ? `${cursor.timestampMs}|${cursor.messageId}` : '';
+    const key = `${teamName}\0${cursorKey}\0${sourceWindowLimit}`;
+    const cached = this.pageSourceCacheByKey.get(key);
+    if (
+      cached?.generationAtStart === generationAtStart &&
+      Date.now() - cached.cachedAt < MESSAGE_PAGE_SOURCE_CACHE_MAX_AGE_MS
+    ) {
+      return Promise.resolve(cloneMessagePageSourcePayload(cached.payload));
+    }
+
+    const existing = this.pageSourceInFlightByKey.get(key);
+    if (existing?.generationAtStart === generationAtStart) {
+      return existing.promise;
+    }
+
+    const promise = this.buildPageSources(teamName, cursor, sourceWindowLimit)
+      .then((payload) => {
+        if (this.getGeneration(teamName) === generationAtStart) {
+          this.pageSourceCacheByKey.set(key, {
+            payload: cloneMessagePageSourcePayload(payload),
+            generationAtStart,
+            cachedAt: Date.now(),
+          });
+          this.trimPageSourceCache();
+        }
+        return payload;
+      })
+      .finally(() => {
+        if (this.pageSourceInFlightByKey.get(key)?.promise === promise) {
+          this.pageSourceInFlightByKey.delete(key);
+        }
+      });
+    this.pageSourceInFlightByKey.set(key, {
+      promise,
+      generationAtStart,
+    });
+    return promise;
+  }
+
+  private trimPageSourceCache(): void {
+    while (this.pageSourceCacheByKey.size > MESSAGE_PAGE_SOURCE_CACHE_MAX_ENTRIES) {
+      const oldestKey = this.pageSourceCacheByKey.keys().next().value;
+      if (typeof oldestKey !== 'string') {
+        return;
+      }
+      this.pageSourceCacheByKey.delete(oldestKey);
+    }
+  }
+
+  private async buildPageSources(
+    teamName: string,
+    cursor: MessageCursor | null,
+    sourceWindowLimit: number
+  ): Promise<MessagePageSourcePayload> {
+    const config = await this.deps.getConfig(teamName);
+    if (!config) {
+      return {
+        config: null,
+        inboxPayload: { kind: 'full', messages: [] },
+        leadSource: [],
+        sentSource: [],
+        syntheticSource: [],
+        sourceMs: 0,
+      };
+    }
+
+    const sourceStartedAt = Date.now();
+    const inboxSourcePromise: Promise<MessagePageInboxPayload> = this.deps.getInboxMessagesWindow
+      ? this.deps
+          .getInboxMessagesWindow(teamName, {
+            cursor,
+            limit: sourceWindowLimit,
+          })
+          .then((window) => ({ kind: 'window' as const, window }))
+          .catch((error) => {
+            logger.warn(
+              `[${teamName}] message page inbox window failed; omitting inbox source instead of falling back to full read: ${getErrorMessage(
+                error
+              )}`
+            );
+            return {
+              kind: 'window' as const,
+              window: {
+                messages: [],
+                truncated: false,
+                sourceRevision: toErrorSourceRevision('inbox', error),
+                sourceMessageCount: 0,
+              },
+            };
+          })
+      : this.deps
+          .getInboxMessages(teamName)
+          .then((messages) => ({ kind: 'full' as const, messages }))
+          .catch(() => ({ kind: 'full' as const, messages: [] as InboxMessage[] }));
+    const [inboxPayload, leadSource, sentSource] = await Promise.all([
+      inboxSourcePromise,
+      this.deps.getLeadSessionMessages(teamName, config).catch(() => [] as InboxMessage[]),
+      this.deps.getSentMessages(teamName).catch(() => [] as InboxMessage[]),
+    ]);
+    const syntheticSource = buildSyntheticBootstrapMessages(config, (messageId) =>
+      this.getSyntheticBootstrapFallbackTimestamp(messageId)
+    );
+    return {
+      config,
+      inboxPayload,
+      leadSource,
+      sentSource,
+      syntheticSource,
+      sourceMs: Date.now() - sourceStartedAt,
     };
   }
 

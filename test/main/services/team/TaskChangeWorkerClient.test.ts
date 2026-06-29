@@ -5,7 +5,10 @@ import {
   TaskChangeWorkerClient,
 } from '../../../../src/main/services/team/TaskChangeWorkerClient';
 
-import type { TaskChangeWorkerRequest, TaskChangeWorkerResponse } from '../../../../src/main/services/team/taskChangeWorkerTypes';
+import type {
+  TaskChangeWorkerRequest,
+  TaskChangeWorkerResponse,
+} from '../../../../src/main/services/team/taskChangeWorkerTypes';
 import type { TaskChangeSetV2 } from '../../../../src/shared/types';
 
 interface FakeWorkerLike {
@@ -39,7 +42,8 @@ class FakeWorker implements FakeWorkerLike {
       | ((error: Error) => void)
       | ((code: number) => void)
   ): this {
-    if (event === 'message') this.listeners.message.push(listener as (message: TaskChangeWorkerResponse) => void);
+    if (event === 'message')
+      this.listeners.message.push(listener as (message: TaskChangeWorkerResponse) => void);
     if (event === 'error') this.listeners.error.push(listener as (error: Error) => void);
     if (event === 'exit') this.listeners.exit.push(listener as (code: number) => void);
     return this;
@@ -75,14 +79,18 @@ function makePayload(taskId = 'task-1') {
     taskMeta: {
       owner: 'alice',
       status: 'completed',
-      intervals: [{ startedAt: '2026-03-01T10:00:00.000Z', completedAt: '2026-03-01T10:10:00.000Z' }],
+      intervals: [
+        { startedAt: '2026-03-01T10:00:00.000Z', completedAt: '2026-03-01T10:10:00.000Z' },
+      ],
       reviewState: 'none' as const,
       historyEvents: [],
     },
     effectiveOptions: {
       owner: 'alice',
       status: 'completed',
-      intervals: [{ startedAt: '2026-03-01T10:00:00.000Z', completedAt: '2026-03-01T10:10:00.000Z' }],
+      intervals: [
+        { startedAt: '2026-03-01T10:00:00.000Z', completedAt: '2026-03-01T10:10:00.000Z' },
+      ],
     },
     projectPath: '/repo',
     includeDetails: false,
@@ -166,6 +174,7 @@ describe('TaskChangeWorkerClient', () => {
     const firstExpectation = expect(firstPromise).rejects.toThrow('Worker call timeout');
     await vi.advanceTimersByTimeAsync(25);
     await firstExpectation;
+    vi.mocked(console.warn).mockClear();
     expect(workers[0]!.terminate).toHaveBeenCalledTimes(1);
 
     const duringCooldown = client.computeTaskChanges(makePayload('task-during-cooldown'));

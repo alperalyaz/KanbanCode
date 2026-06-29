@@ -2237,7 +2237,6 @@ describe('ipc teams handlers', () => {
     };
     mockTeamDataWorkerClient.getMessagesPage.mockResolvedValueOnce({
       messages: [
-        liveMessage,
         {
           from: 'user',
           text: 'Ping',
@@ -2266,9 +2265,45 @@ describe('ipc teams handlers', () => {
     expect(result.data.feedRevision).toBe('rev-worker');
     expect(mockTeamDataWorkerClient.getMessagesPage).toHaveBeenCalledWith('my-team', {
       cursor: undefined,
-      limit: 20,
-      liveMessages: [liveMessage],
+      limit: 121,
     });
+    expect(service.getMessagesPage).not.toHaveBeenCalled();
+  });
+
+  it('caps live message overlay before merging newest page results from the worker', async () => {
+    mockTeamDataWorkerClient.isAvailable.mockReturnValue(true);
+    const liveMessages: InboxMessage[] = Array.from({ length: 205 }, (_, index) => ({
+      from: 'team-lead',
+      text: `Live thought ${index}`,
+      timestamp: new Date(Date.UTC(2026, 1, 23, 10, 0, index)).toISOString(),
+      read: true,
+      source: 'lead_process' as const,
+      messageId: `live-${index}`,
+    }));
+    mockTeamDataWorkerClient.getMessagesPage.mockResolvedValueOnce({
+      messages: [],
+      nextCursor: null,
+      hasMore: false,
+      feedRevision: 'rev-worker',
+    });
+    provisioningService.getLiveLeadProcessMessages.mockReturnValueOnce(liveMessages);
+
+    const handler = handlers.get(TEAM_GET_MESSAGES_PAGE)!;
+    const result = (await handler({} as never, 'my-team', {
+      limit: 20,
+    })) as { success: boolean; data: MessagesPage };
+
+    expect(result.success).toBe(true);
+    const workerOptions = mockTeamDataWorkerClient.getMessagesPage.mock.calls[0]?.[1] as {
+      liveMessages?: InboxMessage[];
+      limit: number;
+    };
+    expect(workerOptions.limit).toBe(221);
+    expect(workerOptions.liveMessages).toBeUndefined();
+    expect(result.data.messages.map((message) => message.messageId)).toContain('live-204');
+    expect(result.data.messages.map((message) => message.messageId)).toContain('live-185');
+    expect(result.data.messages.map((message) => message.messageId)).not.toContain('live-184');
+    expect(result.data.messages.map((message) => message.messageId)).not.toContain('live-4');
     expect(service.getMessagesPage).not.toHaveBeenCalled();
   });
 
@@ -2900,13 +2935,7 @@ describe('ipc teams handlers', () => {
 
     expect(result.success).toBe(true);
     expect(service.getMessagesPage).toHaveBeenCalledWith('my-team', {
-      limit: 50,
-      liveMessages: expect.arrayContaining([
-        expect.objectContaining({
-          messageId: 'live-dup',
-          source: 'lead_process',
-        }),
-      ]),
+      limit: 151,
     });
     expect(result.data.messages).toHaveLength(50);
   });
@@ -2962,8 +2991,7 @@ describe('ipc teams handlers', () => {
 
     expect(result.success).toBe(true);
     expect(mockTeamDataWorkerClient.getMessagesPage).toHaveBeenCalledWith('my-team', {
-      limit: 50,
-      liveMessages: [liveMessage],
+      limit: 151,
     });
     expect(service.getMessagesPage).not.toHaveBeenCalled();
     expect(result.data.messages).toHaveLength(50);
@@ -3005,40 +3033,33 @@ describe('ipc teams handlers', () => {
       success: boolean;
       data: { messages?: InboxMessage[] };
     };
-    expect(vi.mocked(console.warn).mock.calls[0]?.join(' ')).toContain(
-      'TEAM_DATA_WORKER_FAILED'
-    );
+    expect(vi.mocked(console.warn).mock.calls[0]?.join(' ')).toContain('TEAM_DATA_WORKER_FAILED');
     vi.mocked(console.warn).mockClear();
     vi.mocked(console.error).mockClear();
 
     expect(result.success).toBe(true);
     expect(mockTeamDataWorkerClient.getMessagesPage).toHaveBeenCalledWith('my-team', {
-      limit: 50,
-      liveMessages: [liveMessage],
+      limit: 151,
     });
     expect(service.getMessagesPage).not.toHaveBeenCalled();
     expect(result.data.messages).toHaveLength(50);
   });
 
   it('overlays live lead_process messages onto the newest messages page', async () => {
-    service.getMessagesPage.mockImplementationOnce(async (...args: unknown[]) => {
-      const { liveMessages = [] } = (args[1] ?? {}) as { liveMessages?: InboxMessage[] };
-      return {
-        messages: [
-          {
-            from: 'user',
-            text: 'Ping',
-            timestamp: '2026-02-23T10:00:00.000Z',
-            read: true,
-            source: 'user_sent' as const,
-            messageId: 'durable-1',
-          },
-          ...liveMessages,
-        ].sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp)),
-        nextCursor: '2026-02-23T10:00:00.000Z|durable-1',
-        hasMore: true,
-        feedRevision: 'rev-1',
-      } satisfies MessagesPage;
+    service.getMessagesPage.mockResolvedValueOnce({
+      messages: [
+        {
+          from: 'user',
+          text: 'Ping',
+          timestamp: '2026-02-23T10:00:00.000Z',
+          read: true,
+          source: 'user_sent' as const,
+          messageId: 'durable-1',
+        },
+      ],
+      nextCursor: '2026-02-23T10:00:00.000Z|durable-1',
+      hasMore: true,
+      feedRevision: 'rev-1',
     });
     provisioningService.getLiveLeadProcessMessages.mockReturnValueOnce([
       {
@@ -3065,37 +3086,27 @@ describe('ipc teams handlers', () => {
     expect(result.data.nextCursor).toBe('2026-02-23T10:00:00.000Z|durable-1');
     expect(result.data.hasMore).toBe(true);
     expect(service.getMessagesPage).toHaveBeenCalledWith('my-team', {
-      limit: 20,
       cursor: undefined,
-      liveMessages: expect.arrayContaining([
-        expect.objectContaining({
-          source: 'lead_process',
-          messageId: 'live-1',
-        }),
-      ]),
+      limit: 121,
     });
   });
 
   it('dedups live lead thoughts on the newest messages page when durable lead_session already exists', async () => {
-    service.getMessagesPage.mockImplementationOnce(async (...args: unknown[]) => {
-      const { liveMessages = [] } = (args[1] ?? {}) as { liveMessages?: InboxMessage[] };
-      expect(liveMessages).toHaveLength(1);
-      return {
-        messages: [
-          {
-            from: 'team-lead',
-            text: 'Hello there',
-            timestamp: '2026-02-23T10:00:00.000Z',
-            read: true,
-            source: 'lead_session' as const,
-            leadSessionId: 'lead-1',
-            messageId: 'durable-1',
-          },
-        ],
-        nextCursor: null,
-        hasMore: false,
-        feedRevision: 'rev-1',
-      } satisfies MessagesPage;
+    service.getMessagesPage.mockResolvedValueOnce({
+      messages: [
+        {
+          from: 'team-lead',
+          text: 'Hello there',
+          timestamp: '2026-02-23T10:00:00.000Z',
+          read: true,
+          source: 'lead_session' as const,
+          leadSessionId: 'lead-1',
+          messageId: 'durable-1',
+        },
+      ],
+      nextCursor: null,
+      hasMore: false,
+      feedRevision: 'rev-1',
     });
     provisioningService.getLiveLeadProcessMessages.mockReturnValueOnce([
       {

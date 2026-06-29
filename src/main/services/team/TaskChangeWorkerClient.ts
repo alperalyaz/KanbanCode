@@ -5,6 +5,8 @@ import { Worker } from 'node:worker_threads';
 
 import { createLogger } from '@shared/utils/logger';
 
+import { formatCurrentProcessMemorySnapshot } from '../../utils/startupTelemetry';
+
 import type {
   ResolvedTaskChangeComputeInput,
   TaskChangeWorkerRequest,
@@ -191,6 +193,9 @@ export class TaskChangeWorkerClient {
       const timeoutError = new Error(
         `Worker call timeout after ${this.timeoutMs}ms (computeTaskChanges)`
       );
+      logger.warn(
+        `Task change worker call timeout pending=${this.pending.size} queued=${this.queue.length} memory=${formatCurrentProcessMemorySnapshot()}`
+      );
       this.rememberFatalWorkerFailure(timeoutError);
       this.rejectAllPending(timeoutError);
       this.clearActiveState();
@@ -246,7 +251,10 @@ export class TaskChangeWorkerClient {
       return;
     }
 
-    logger.error('Task change worker error', error);
+    logger.error(
+      `Task change worker error pending=${this.pending.size} queued=${this.queue.length} memory=${formatCurrentProcessMemorySnapshot()}`,
+      error
+    );
     if (isTaskChangeWorkerFatalError(error)) {
       this.rememberFatalWorkerFailure(error);
     }
@@ -268,7 +276,9 @@ export class TaskChangeWorkerClient {
     }
 
     if (code !== 0) {
-      logger.warn(`Task change worker exited with code ${code}`);
+      logger.warn(
+        `Task change worker exited with code ${code} pending=${this.pending.size} queued=${this.queue.length} memory=${formatCurrentProcessMemorySnapshot()}`
+      );
     }
     const error = new Error(`Worker exited with code ${code}`);
     if (code !== 0) {

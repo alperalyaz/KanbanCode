@@ -187,6 +187,41 @@ describe('TeamDataWorkerClient', () => {
     client.dispose();
   });
 
+  it('serializes distinct heavy requests before posting them to the worker', async () => {
+    const { TeamDataWorkerClient } =
+      await import('../../../../src/main/services/team/TeamDataWorkerClient');
+    hoisted.skipResponsesForOps.add('getTeamData');
+    const client = new TeamDataWorkerClient();
+
+    const first = client.getTeamData('my-team');
+    const second = client.getMessagesPage('my-team', { cursor: null, limit: 50 });
+
+    expect(hoisted.workers).toHaveLength(1);
+    expect(hoisted.workers[0].messages).toHaveLength(1);
+    expect(hoisted.workers[0].messages[0]).toMatchObject({
+      op: 'getTeamData',
+      payload: { teamName: 'my-team' },
+    });
+
+    const firstRequest = hoisted.workers[0].messages[0] as { id: string };
+    hoisted.workers[0].handlers.get('message')?.({
+      id: firstRequest.id,
+      ok: true,
+      result: { teamName: 'my-team', config: { name: 'Team' } },
+      diag: { op: 'getTeamData', totalMs: 1 },
+    });
+
+    await first;
+    expect(hoisted.workers[0].messages).toHaveLength(2);
+    expect(hoisted.workers[0].messages[1]).toMatchObject({
+      op: 'getMessagesPage',
+      payload: { teamName: 'my-team', options: { cursor: null, limit: 50 } },
+    });
+    await second;
+
+    client.dispose();
+  });
+
   it('sends best-effort team config invalidation to the worker', async () => {
     const { TeamDataWorkerClient } =
       await import('../../../../src/main/services/team/TeamDataWorkerClient');
@@ -384,6 +419,40 @@ describe('TeamDataWorkerClient', () => {
     client.dispose();
   });
 
+  it('caps live overlay payloads before queueing worker message-page calls', async () => {
+    const { TeamDataWorkerClient } =
+      await import('../../../../src/main/services/team/TeamDataWorkerClient');
+    const client = new TeamDataWorkerClient();
+    const liveMessages = Array.from({ length: 205 }, (_, index) => ({
+      from: 'team-lead',
+      text: `live ${index}`,
+      timestamp: new Date(Date.UTC(2026, 1, 23, 10, 0, index)).toISOString(),
+      read: true,
+      source: 'lead_process' as const,
+      messageId: `live-${index}`,
+    }));
+
+    await client.getMessagesPage('my-team', {
+      cursor: null,
+      limit: 50,
+      liveMessages,
+    });
+
+    const postedMessage = hoisted.workers[0].messages[0] as {
+      payload?: { options?: { liveMessages?: { messageId?: string }[] } };
+    };
+    const workerOptions = postedMessage.payload?.options;
+    if (!workerOptions) {
+      throw new Error('Expected worker message-page options');
+    }
+    expect(workerOptions.liveMessages).toHaveLength(200);
+    expect(workerOptions.liveMessages?.map((message) => message.messageId)).toContain('live-204');
+    expect(workerOptions.liveMessages?.map((message) => message.messageId)).toContain('live-5');
+    expect(workerOptions.liveMessages?.map((message) => message.messageId)).not.toContain('live-4');
+
+    client.dispose();
+  });
+
   it('sends best-effort message feed invalidation to the worker', async () => {
     const { TeamDataWorkerClient } =
       await import('../../../../src/main/services/team/TeamDataWorkerClient');
@@ -460,8 +529,8 @@ describe('TeamDataWorkerClient', () => {
     expect(hoisted.workers).toHaveLength(1);
     expect(hoisted.workers[0].messages.map((message) => (message as { op: string }).op)).toEqual([
       'getTeamData',
-      'getTeamData',
       'invalidateTeamConfig',
+      'getTeamData',
     ]);
 
     const payloads = hoisted.workers[0].messages.map(
@@ -469,8 +538,8 @@ describe('TeamDataWorkerClient', () => {
     );
     expect(payloads).toEqual([
       { teamName: 'my-team' },
-      { teamName: 'my-team', options: { includeMemberBranches: false } },
       { teamName: 'my-team' },
+      { teamName: 'my-team', options: { includeMemberBranches: false } },
     ]);
 
     client.dispose();
@@ -507,7 +576,7 @@ describe('TeamDataWorkerClient', () => {
     const thin = client.getTeamData('my-team', { includeMemberBranches: false });
 
     expect(hoisted.workers).toHaveLength(1);
-    expect(hoisted.workers[0].messages).toHaveLength(2);
+    expect(hoisted.workers[0].messages).toHaveLength(1);
 
     client.dispose();
 
@@ -554,9 +623,8 @@ describe('TeamDataWorkerClient', () => {
   });
 
   it('classifies worker exits as fatal only for non-zero exit codes', async () => {
-    const { isTeamDataWorkerFatalError } = await import(
-      '../../../../src/main/services/team/TeamDataWorkerClient'
-    );
+    const { isTeamDataWorkerFatalError } =
+      await import('../../../../src/main/services/team/TeamDataWorkerClient');
 
     expect(isTeamDataWorkerFatalError(new Error('Worker exited with code 0'))).toBe(false);
     expect(isTeamDataWorkerFatalError(new Error('Worker exited with code 1'))).toBe(true);

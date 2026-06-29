@@ -16,6 +16,85 @@ function createRouter(activeMembers: string[] = ['alice', 'bob']) {
 }
 
 describe('MemberWorkSyncTeamChangeRouter', () => {
+  it('scans startup teams sequentially', async () => {
+    let releaseFirst!: () => void;
+    const startedTeams: string[] = [];
+    const queue = {
+      enqueue: vi.fn(),
+      dropTeam: vi.fn(),
+    };
+    const router = new MemberWorkSyncTeamChangeRouter(
+      {
+        loadActiveMemberNames: async (teamName) => {
+          startedTeams.push(teamName);
+          if (teamName === 'team-a') {
+            await new Promise<void>((resolve) => {
+              releaseFirst = resolve;
+            });
+          }
+          return ['alice'];
+        },
+      },
+      queue as never
+    );
+
+    const scan = router.enqueueStartupScan(['team-a', 'team-b']);
+    await Promise.resolve();
+
+    expect(startedTeams).toEqual(['team-a']);
+
+    releaseFirst();
+    await scan;
+
+    expect(startedTeams).toEqual(['team-a', 'team-b']);
+    expect(queue.enqueue).toHaveBeenCalledWith({
+      teamName: 'team-b',
+      memberName: 'alice',
+      triggerReason: 'startup_scan',
+      runAfterMs: 30_000,
+    });
+  });
+
+  it('materializes team members sequentially before enqueuing team-wide work', async () => {
+    let releaseAlice!: () => void;
+    const calls: string[] = [];
+    const queue = {
+      enqueue: vi.fn(),
+      dropTeam: vi.fn(),
+    };
+    const router = new MemberWorkSyncTeamChangeRouter(
+      { loadActiveMemberNames: async () => ['alice', 'bob'] },
+      queue as never,
+      {
+        materializeMember: vi.fn(async (_teamName, memberName) => {
+          calls.push(memberName);
+          if (memberName === 'alice') {
+            await new Promise<void>((resolve) => {
+              releaseAlice = resolve;
+            });
+          }
+        }),
+      }
+    );
+
+    const scan = router.enqueueStartupScan(['team-a']);
+    await Promise.resolve();
+
+    expect(calls).toEqual(['alice']);
+    expect(queue.enqueue).not.toHaveBeenCalled();
+
+    releaseAlice();
+    await scan;
+
+    expect(calls).toEqual(['alice', 'bob']);
+    expect(queue.enqueue).toHaveBeenCalledWith({
+      teamName: 'team-a',
+      memberName: 'bob',
+      triggerReason: 'startup_scan',
+      runAfterMs: 30_000,
+    });
+  });
+
   it('routes task and config events to all active members', async () => {
     const { queue, router } = createRouter();
 
