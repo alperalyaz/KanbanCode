@@ -547,6 +547,16 @@ describe('TeamDataWorkerClient', () => {
     client.dispose();
   });
 
+  it('classifies worker exits as fatal only for non-zero exit codes', async () => {
+    const { isTeamDataWorkerFatalError } = await import(
+      '../../../../src/main/services/team/TeamDataWorkerClient'
+    );
+
+    expect(isTeamDataWorkerFatalError(new Error('Worker exited with code 0'))).toBe(false);
+    expect(isTeamDataWorkerFatalError(new Error('Worker exited with code 1'))).toBe(true);
+    expect(isTeamDataWorkerFatalError(new Error('Worker exited with code 9'))).toBe(true);
+  });
+
   it('does not spawn a worker only to send config invalidation', async () => {
     const { TeamDataWorkerClient } =
       await import('../../../../src/main/services/team/TeamDataWorkerClient');
