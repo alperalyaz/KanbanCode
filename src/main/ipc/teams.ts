@@ -5,7 +5,10 @@ import {
 import { addMainBreadcrumb } from '@main/sentry';
 import { setCurrentMainOp } from '@main/services/infrastructure/EventLoopLagMonitor';
 import { markTeamEngaged } from '@main/services/infrastructure/teamWatchScope';
-import { getTeamDataWorkerClient } from '@main/services/team/TeamDataWorkerClient';
+import {
+  getTeamDataWorkerClient,
+  isTeamDataWorkerFatalError,
+} from '@main/services/team/TeamDataWorkerClient';
 import { getAppIconPath } from '@main/utils/appIcon';
 import { getAppDataPath, getTeamsBasePath } from '@main/utils/pathDecoder';
 import { safeSendToRenderer } from '@main/utils/safeWebContentsSend';
@@ -492,6 +495,25 @@ function noteHeavyTeamDataWorkerFallback(operation: string): void {
   );
 }
 
+function getWorkerErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getFatalTeamDataWorkerFailureMessage(error: unknown): string | null {
+  if (!isTeamDataWorkerFatalError(error)) {
+    return null;
+  }
+  const message = getWorkerErrorMessage(error);
+  return `TEAM_DATA_WORKER_FAILED: ${message}`;
+}
+
+function throwIfFatalTeamDataWorkerFailure(_operation: string, error: unknown): void {
+  const message = getFatalTeamDataWorkerFailureMessage(error);
+  if (message) {
+    throw new Error(message);
+  }
+}
+
 async function getNewestMessagesPageWithLiveOverlay(input: {
   teamName: string;
   limit: number;
@@ -507,10 +529,11 @@ async function getNewestMessagesPageWithLiveOverlay(input: {
     try {
       return await worker.getMessagesPage(teamName, options);
     } catch (workerErr) {
+      throwIfFatalTeamDataWorkerFailure('teams:getMessagesPage.liveOverlay', workerErr);
       logger.warn(
-        `[teams:getMessagesPage] worker failed for live overlay, falling back: ${
-          workerErr instanceof Error ? workerErr.message : workerErr
-        }`
+        `[teams:getMessagesPage] worker failed for live overlay, falling back: ${getWorkerErrorMessage(
+          workerErr
+        )}`
       );
     }
   }
@@ -1095,8 +1118,9 @@ async function handleGetData(
             : await worker.getTeamData(tn, getDataOptions);
         dataSource = 'worker';
       } catch (workerErr) {
+        throwIfFatalTeamDataWorkerFailure('teams:getData', workerErr);
         logger.warn(
-          `[teams:getData] worker failed, falling back: ${workerErr instanceof Error ? workerErr.message : workerErr}`
+          `[teams:getData] worker failed, falling back: ${getWorkerErrorMessage(workerErr)}`
         );
         noteHeavyTeamDataWorkerFallback('teams:getData');
         data = await readFromMain();
@@ -2896,10 +2920,9 @@ async function handleGetMessagesPage(
         scanNotifications(page);
         return page;
       } catch (workerErr) {
+        throwIfFatalTeamDataWorkerFailure('teams:getMessagesPage', workerErr);
         logger.warn(
-          `[teams:getMessagesPage] worker failed, falling back: ${
-            workerErr instanceof Error ? workerErr.message : workerErr
-          }`
+          `[teams:getMessagesPage] worker failed, falling back: ${getWorkerErrorMessage(workerErr)}`
         );
       }
     }
@@ -2925,10 +2948,11 @@ async function handleGetMemberActivityMeta(
       try {
         return await worker.getMemberActivityMeta(vTeam.value!);
       } catch (workerErr) {
+        throwIfFatalTeamDataWorkerFailure('teams:getMemberActivityMeta', workerErr);
         logger.warn(
-          `[teams:getMemberActivityMeta] worker failed, falling back: ${
-            workerErr instanceof Error ? workerErr.message : workerErr
-          }`
+          `[teams:getMemberActivityMeta] worker failed, falling back: ${getWorkerErrorMessage(
+            workerErr
+          )}`
         );
       }
     }
@@ -4006,8 +4030,12 @@ async function handleGetLogsForTask(
       const result = await worker.findLogsForTask(vTeam.value!, vTask.value!, opts);
       return { success: true, data: result };
     } catch (workerErr) {
+      const fatalError = getFatalTeamDataWorkerFailureMessage(workerErr);
+      if (fatalError) {
+        return { success: false, error: fatalError };
+      }
       logger.warn(
-        `[teams:getLogsForTask] worker failed, falling back: ${workerErr instanceof Error ? workerErr.message : workerErr}`
+        `[teams:getLogsForTask] worker failed, falling back: ${getWorkerErrorMessage(workerErr)}`
       );
     }
   }

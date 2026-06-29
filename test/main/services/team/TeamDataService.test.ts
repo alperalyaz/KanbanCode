@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import * as nodeFs from 'fs';
 import * as fs from 'fs/promises';
 import * as os from 'os';
@@ -5,12 +6,17 @@ import * as path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { gitIdentityResolver } from '../../../../src/main/services/parsing/GitIdentityResolver';
+import { getEffectiveInboxMessageId } from '../../../../src/main/services/team/inboxMessageIdentity';
 import { buildTaskChangePresenceDescriptor } from '../../../../src/main/services/team/taskChangePresenceUtils';
 import { TeamConfigReader } from '../../../../src/main/services/team/TeamConfigReader';
 import { TeamDataService } from '../../../../src/main/services/team/TeamDataService';
 import { TeamTaskReader } from '../../../../src/main/services/team/TeamTaskReader';
 import { encodePath, setClaudeBasePathOverride } from '../../../../src/main/utils/pathDecoder';
 
+import type {
+  InboxMessageCursor,
+  InboxMessagesWindow,
+} from '../../../../src/main/services/team/TeamInboxReader';
 import type { TeamMetaFile } from '../../../../src/main/services/team/TeamMetaStore';
 import type {
   InboxMessage,
@@ -44,6 +50,68 @@ type TeamDataServicePrivate = {
 
 function teamDataServicePrivate(service: TeamDataService): TeamDataServicePrivate {
   return service as unknown as TeamDataServicePrivate;
+}
+
+function normalizeMockInboxMessage(message: InboxMessage): InboxMessage {
+  const messageId = getEffectiveInboxMessageId(message);
+  return messageId ? { ...message, messageId } : { ...message };
+}
+
+function isMockMessageAfterCursor(
+  message: InboxMessage,
+  cursor: InboxMessageCursor | null | undefined
+): boolean {
+  if (!cursor) return true;
+  const messageMs = Date.parse(message.timestamp);
+  if (messageMs < cursor.timestampMs) return true;
+  if (messageMs > cursor.timestampMs) return false;
+  const messageId = getEffectiveInboxMessageId(message);
+  return messageId ? messageId.localeCompare(cursor.messageId) > 0 : false;
+}
+
+function sortMockMessagesNewestFirst(messages: InboxMessage[]): InboxMessage[] {
+  messages.sort((left, right) => {
+    const timeDiff = Date.parse(right.timestamp) - Date.parse(left.timestamp);
+    if (timeDiff !== 0) return timeDiff;
+    return (getEffectiveInboxMessageId(left) ?? '').localeCompare(
+      getEffectiveInboxMessageId(right) ?? ''
+    );
+  });
+  return messages;
+}
+
+function buildMockInboxSourceRevision(messages: readonly InboxMessage[]): string {
+  const hash = createHash('sha256');
+  for (const message of messages) {
+    hash.update(
+      `${message.from ?? ''}\0${message.timestamp ?? ''}\0${message.text ?? ''}\0${
+        getEffectiveInboxMessageId(message) ?? ''
+      }\n`
+    );
+  }
+  return hash.digest('hex').slice(0, 24);
+}
+
+function createMockInboxMessagesWindowReader(
+  getMessages: (teamName: string) => Promise<InboxMessage[]>
+): (
+  teamName: string,
+  options: { cursor?: InboxMessageCursor | null; limit: number }
+) => Promise<InboxMessagesWindow> {
+  return async (teamName, options) => {
+    const limit = Math.max(1, Math.floor(options.limit));
+    const messages = (await getMessages(teamName)).map(normalizeMockInboxMessage);
+    const filtered = messages.filter((message) =>
+      isMockMessageAfterCursor(message, options.cursor ?? null)
+    );
+    sortMockMessagesNewestFirst(filtered);
+    return {
+      messages: filtered.slice(0, limit),
+      truncated: filtered.length > limit,
+      sourceRevision: buildMockInboxSourceRevision(messages),
+      sourceMessageCount: messages.length,
+    };
+  };
 }
 
 function createLeadAssistantEntry(
@@ -215,6 +283,7 @@ function createResolverBackedService(): TeamDataService {
     {
       listInboxNames: vi.fn(async () => []),
       getMessages: vi.fn(async () => []),
+      getMessagesWindow: vi.fn(createMockInboxMessagesWindowReader(async () => [])),
     } as never,
     {} as never,
     {} as never,
@@ -698,6 +767,7 @@ function createGetTeamDataHarness(
   const inboxReader = {
     listInboxNames: vi.fn(listInboxNames),
     getMessages: vi.fn(getMessages),
+    getMessagesWindow: vi.fn(createMockInboxMessagesWindowReader(getMessages)),
   };
   const membersMetaStore = {
     getMembers: vi.fn(getMembers),
@@ -3510,9 +3580,264 @@ describe('TeamDataService', () => {
       await second;
 
       expect(inboxWriter.sendMessage).toHaveBeenCalledTimes(1);
+      expect(journal.withEntries).toHaveBeenCalledTimes(3);
       expect(journalEntries[0]).toMatchObject({
         state: 'sent',
       });
+    } finally {
+      if (previous === undefined) delete process.env[TASK_COMMENT_FORWARDING_ENV];
+      else process.env[TASK_COMMENT_FORWARDING_ENV] = previous;
+    }
+  });
+
+  it('queues same-task comment notification refreshes that arrive during an active pass', async () => {
+    const previous = process.env[TASK_COMMENT_FORWARDING_ENV];
+    process.env[TASK_COMMENT_FORWARDING_ENV] = 'on';
+    const journalEntries: Array<Record<string, unknown>> = [];
+    let withEntriesCalls = 0;
+    let releaseFirstJournalWrite: (() => void) | undefined;
+    let resolveFirstJournalWriteStarted: (() => void) | undefined;
+    const firstJournalWriteStarted = new Promise<void>((resolve) => {
+      resolveFirstJournalWriteStarted = resolve;
+    });
+    const firstJournalWriteGate = new Promise<void>((resolve) => {
+      releaseFirstJournalWrite = resolve;
+    });
+    const inboxWriter = {
+      sendMessage: vi.fn(async (_teamName: string, message: { messageId?: string }) => ({
+        deliveredToInbox: true,
+        messageId: message.messageId ?? 'msg-1',
+      })),
+    };
+    const firstTaskSnapshot = {
+      id: 'task-1',
+      displayId: 'abcd1234',
+      subject: 'Investigate',
+      status: 'pending',
+      owner: 'alice',
+      comments: [
+        {
+          id: 'comment-1',
+          author: 'alice',
+          text: 'First task update.',
+          createdAt: '2026-03-14T10:00:00.000Z',
+          type: 'regular',
+        },
+      ],
+    };
+    const secondTaskSnapshot = {
+      ...firstTaskSnapshot,
+      comments: [
+        ...firstTaskSnapshot.comments,
+        {
+          id: 'comment-2',
+          author: 'alice',
+          text: 'Second task update.',
+          createdAt: '2026-03-14T10:01:00.000Z',
+          type: 'regular',
+        },
+      ],
+    };
+    const journal = {
+      exists: vi.fn(async () => true),
+      ensureFile: vi.fn(async () => undefined),
+      withEntries: vi.fn(
+        async (_teamName: string, fn: (entries: unknown[]) => Promise<{ result: unknown }>) => {
+          withEntriesCalls += 1;
+          if (withEntriesCalls === 1) {
+            resolveFirstJournalWriteStarted?.();
+            await firstJournalWriteGate;
+          }
+          const outcome = await fn(journalEntries);
+          return outcome.result;
+        }
+      ),
+    };
+
+    try {
+      const service = new TeamDataService(
+        {
+          listTeams: vi.fn(),
+          getConfig: vi.fn(async () => ({
+            name: 'My team',
+            members: [{ name: 'team-lead', role: 'Lead' }],
+          })),
+        } as never,
+        {
+          getTasks: vi
+            .fn()
+            .mockResolvedValueOnce([firstTaskSnapshot])
+            .mockResolvedValue([secondTaskSnapshot]),
+        } as never,
+        {
+          listInboxNames: vi.fn(async () => []),
+          getMessages: vi.fn(async () => []),
+          getMessagesFor: vi.fn(async () => []),
+        } as never,
+        inboxWriter as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        (() => ({}) as never) as never,
+        journal as never
+      );
+
+      const first = service.notifyLeadOnTeammateTaskComment('my-team', 'task-1');
+      await firstJournalWriteStarted;
+      const second = service.notifyLeadOnTeammateTaskComment('my-team', 'task-1');
+
+      if (!releaseFirstJournalWrite) {
+        throw new Error('Expected journal release');
+      }
+      releaseFirstJournalWrite();
+
+      await first;
+      await second;
+
+      expect(inboxWriter.sendMessage).toHaveBeenCalledTimes(2);
+      expect(journalEntries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ key: 'task-1:comment-1', state: 'sent' }),
+          expect.objectContaining({ key: 'task-1:comment-2', state: 'sent' }),
+        ])
+      );
+    } finally {
+      if (previous === undefined) delete process.env[TASK_COMMENT_FORWARDING_ENV];
+      else process.env[TASK_COMMENT_FORWARDING_ENV] = previous;
+    }
+  });
+
+  it('serializes concurrent task comment notification passes for one team journal', async () => {
+    const previous = process.env[TASK_COMMENT_FORWARDING_ENV];
+    process.env[TASK_COMMENT_FORWARDING_ENV] = 'on';
+    const journalEntries: Array<Record<string, unknown>> = [];
+    let activeJournalWrites = 0;
+    let maxActiveJournalWrites = 0;
+    let withEntriesCalls = 0;
+    let releaseFirstJournalWrite: (() => void) | undefined;
+    let resolveFirstJournalWriteStarted: (() => void) | undefined;
+    const firstJournalWriteStarted = new Promise<void>((resolve) => {
+      resolveFirstJournalWriteStarted = resolve;
+    });
+    const firstJournalWriteGate = new Promise<void>((resolve) => {
+      releaseFirstJournalWrite = resolve;
+    });
+    const inboxWriter = {
+      sendMessage: vi.fn(async (_teamName: string, message: { messageId?: string }) => ({
+        deliveredToInbox: true,
+        messageId: message.messageId ?? 'msg-1',
+      })),
+    };
+    const journal = {
+      exists: vi.fn(async () => true),
+      ensureFile: vi.fn(async () => undefined),
+      withEntries: vi.fn(
+        async (_teamName: string, fn: (entries: unknown[]) => Promise<{ result: unknown }>) => {
+          withEntriesCalls += 1;
+          activeJournalWrites += 1;
+          maxActiveJournalWrites = Math.max(maxActiveJournalWrites, activeJournalWrites);
+          try {
+            if (withEntriesCalls === 1) {
+              resolveFirstJournalWriteStarted?.();
+              await firstJournalWriteGate;
+            }
+            const outcome = await fn(journalEntries);
+            return outcome.result;
+          } finally {
+            activeJournalWrites -= 1;
+          }
+        }
+      ),
+    };
+
+    try {
+      const service = new TeamDataService(
+        {
+          listTeams: vi.fn(),
+          getConfig: vi.fn(async () => ({
+            name: 'My team',
+            members: [{ name: 'team-lead', role: 'Lead' }],
+          })),
+        } as never,
+        {
+          getTasks: vi.fn(async () => [
+            {
+              id: 'task-1',
+              displayId: 'aaaa1111',
+              subject: 'Investigate A',
+              status: 'pending',
+              owner: 'alice',
+              comments: [
+                {
+                  id: 'comment-1',
+                  author: 'alice',
+                  text: 'First task update.',
+                  createdAt: '2026-03-14T10:00:00.000Z',
+                  type: 'regular',
+                },
+              ],
+            },
+            {
+              id: 'task-2',
+              displayId: 'bbbb2222',
+              subject: 'Investigate B',
+              status: 'pending',
+              owner: 'bob',
+              comments: [
+                {
+                  id: 'comment-2',
+                  author: 'bob',
+                  text: 'Second task update.',
+                  createdAt: '2026-03-14T10:01:00.000Z',
+                  type: 'regular',
+                },
+              ],
+            },
+          ]),
+        } as never,
+        {
+          listInboxNames: vi.fn(async () => []),
+          getMessages: vi.fn(async () => []),
+          getMessagesFor: vi.fn(async () => []),
+        } as never,
+        inboxWriter as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        (() => ({}) as never) as never,
+        journal as never
+      );
+
+      const first = service.notifyLeadOnTeammateTaskComment('my-team', 'task-1');
+      await firstJournalWriteStarted;
+      const second = service.notifyLeadOnTeammateTaskComment('my-team', 'task-2');
+      await Promise.resolve();
+
+      expect(journal.withEntries).toHaveBeenCalledTimes(1);
+      expect(maxActiveJournalWrites).toBe(1);
+
+      if (!releaseFirstJournalWrite) {
+        throw new Error('Expected journal release');
+      }
+      releaseFirstJournalWrite();
+
+      await first;
+      await second;
+
+      expect(maxActiveJournalWrites).toBe(1);
+      expect(inboxWriter.sendMessage).toHaveBeenCalledTimes(2);
+      expect(journalEntries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ key: 'task-1:comment-1', state: 'sent' }),
+          expect.objectContaining({ key: 'task-2:comment-2', state: 'sent' }),
+        ])
+      );
     } finally {
       if (previous === undefined) delete process.env[TASK_COMMENT_FORWARDING_ENV];
       else process.env[TASK_COMMENT_FORWARDING_ENV] = previous;
@@ -6380,7 +6705,7 @@ describe('TeamDataService', () => {
         text: string;
         timestamp: string;
         messageId?: string;
-        source?: string;
+        source?: InboxMessage['source'];
         leadSessionId?: string;
       }>
     ) {
@@ -6397,6 +6722,11 @@ describe('TeamDataService', () => {
         {
           listInboxNames: vi.fn(async () => []),
           getMessages: vi.fn(async () => messages.map((m) => ({ ...m, read: true }))),
+          getMessagesWindow: vi.fn(
+            createMockInboxMessagesWindowReader(async () =>
+              messages.map((message) => ({ ...message, read: true }))
+            )
+          ),
         } as never,
         {} as never,
         {} as never,
@@ -6457,7 +6787,7 @@ describe('TeamDataService', () => {
           text: '/cost',
           timestamp: '2026-01-01T00:00:00.000Z',
           messageId: 'cmd1',
-          source: 'user_sent',
+          source: 'user_sent' as const,
           leadSessionId: 'lead-1',
         },
         {
@@ -6465,7 +6795,7 @@ describe('TeamDataService', () => {
           text: 'Total cost: $1.05',
           timestamp: '2026-01-01T00:00:01.000Z',
           messageId: 'resp1',
-          source: 'lead_process',
+          source: 'lead_process' as const,
           leadSessionId: 'lead-1',
         },
       ];
