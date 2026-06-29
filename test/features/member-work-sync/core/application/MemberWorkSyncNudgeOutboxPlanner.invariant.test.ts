@@ -110,10 +110,27 @@ function itemFromInput(
 class PlannerOutboxHarness {
   readonly ensureInputs: MemberWorkSyncOutboxEnsureInput[] = [];
 
-  constructor(private readonly existingStatus: MemberWorkSyncOutboxItem['status']) {}
+  constructor(
+    private readonly existingStatus: MemberWorkSyncOutboxItem['status'],
+    private readonly existingStatusByIntentPrefix: ReadonlyMap<
+      string,
+      MemberWorkSyncOutboxItem['status']
+    > = new Map()
+  ) {}
 
   async ensurePending(input: MemberWorkSyncOutboxEnsureInput) {
     this.ensureInputs.push(input);
+    const intentKey = input.payload.workSyncIntentKey;
+    const configuredExistingStatus = Array.from(this.existingStatusByIntentPrefix.entries()).find(
+      ([prefix]) => intentKey?.startsWith(prefix)
+    )?.[1];
+    if (configuredExistingStatus) {
+      return {
+        ok: true as const,
+        outcome: 'existing' as const,
+        item: itemFromInput(input, configuredExistingStatus),
+      };
+    }
     if (this.ensureInputs.length === 1) {
       return {
         ok: true as const,
@@ -228,5 +245,21 @@ describe('MemberWorkSyncNudgeOutboxPlanner invariants', () => {
     if (scenario.expectedRecovery) {
       expect(result.planned).toBe(true);
     }
+  });
+
+  it('does not create another status-only recovery when that recovery was already delivered', async () => {
+    const outbox = new PlannerOutboxHarness(
+      'delivered',
+      new Map([['status-only:', 'delivered' as const]])
+    );
+    const planner = new MemberWorkSyncNudgeOutboxPlanner(createDeps(outbox));
+
+    const result = await planner.plan(status());
+
+    const recoveryInputs = outbox.ensureInputs.filter((input) =>
+      input.payload.workSyncIntentKey?.startsWith('status-only:')
+    );
+    expect(recoveryInputs).toHaveLength(1);
+    expect(result).toMatchObject({ planned: false, code: 'existing' });
   });
 });
