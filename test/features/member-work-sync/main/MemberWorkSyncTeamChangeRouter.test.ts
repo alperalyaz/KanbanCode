@@ -73,6 +73,49 @@ describe('MemberWorkSyncTeamChangeRouter', () => {
     });
   });
 
+  it('routes task events team-wide when the resolver cannot produce impacted members', async () => {
+    const queue = {
+      enqueue: vi.fn(),
+      dropTeam: vi.fn(),
+    };
+    const resolver = {
+      resolve: vi.fn(async () => ({
+        memberNames: [],
+        fallbackTeamWide: false,
+        diagnostics: ['task_impact_empty'],
+      })),
+    };
+    const router = new MemberWorkSyncTeamChangeRouter(
+      { loadActiveMemberNames: async () => ['alice', 'bob'] },
+      queue as never,
+      undefined,
+      resolver as never
+    );
+
+    router.noteTeamChange({
+      type: 'task',
+      teamName: 'team-a',
+      detail: 'task-1.json',
+      taskId: 'task-1',
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(resolver.resolve).toHaveBeenCalledWith({ teamName: 'team-a', taskId: 'task-1' });
+    expect(queue.enqueue).toHaveBeenCalledWith({
+      teamName: 'team-a',
+      memberName: 'alice',
+      triggerReason: 'task_changed',
+      runAfterMs: undefined,
+    });
+    expect(queue.enqueue).toHaveBeenCalledWith({
+      teamName: 'team-a',
+      memberName: 'bob',
+      triggerReason: 'task_changed',
+      runAfterMs: undefined,
+    });
+  });
+
   it('routes inbox and tool-finish events to the addressed member only', () => {
     const { queue, router } = createRouter();
 
