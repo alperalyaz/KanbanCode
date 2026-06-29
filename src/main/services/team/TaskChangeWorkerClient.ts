@@ -237,13 +237,16 @@ export class TaskChangeWorkerClient {
   }
 
   private handleWorkerFailure(worker: WorkerLike, error: Error): void {
-    logger.error('Task change worker error', error);
     if (this.terminatingForTimeoutRequestId && this.terminatingWorker === worker) {
       this.terminatingForTimeoutRequestId = null;
       this.terminatingWorker = null;
       return;
     }
+    if (this.worker !== worker) {
+      return;
+    }
 
+    logger.error('Task change worker error', error);
     if (isTaskChangeWorkerFatalError(error)) {
       this.rememberFatalWorkerFailure(error);
     }
@@ -258,6 +261,9 @@ export class TaskChangeWorkerClient {
     if (this.terminatingForTimeoutRequestId && this.terminatingWorker === worker) {
       this.terminatingForTimeoutRequestId = null;
       this.terminatingWorker = null;
+      return;
+    }
+    if (this.worker !== worker) {
       return;
     }
 

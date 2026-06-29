@@ -256,6 +256,38 @@ describe('TaskChangeWorkerClient', () => {
     await expect(third).resolves.toEqual(makeResult('task-3'));
   });
 
+  it('ignores stale worker exit events after a replacement worker starts', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const workers: FakeWorker[] = [];
+    const client = new TaskChangeWorkerClient({
+      workerPath: '/tmp/task-change-worker.cjs',
+      workerFactory: () => {
+        const worker = new FakeWorker();
+        workers.push(worker);
+        return worker;
+      },
+      enabled: true,
+    });
+
+    const first = client.computeTaskChanges(makePayload('task-1'));
+    workers[0]!.emitError(new Error('transient worker failure'));
+    await expect(first).rejects.toThrow('transient worker failure');
+
+    const second = client.computeTaskChanges(makePayload('task-2'));
+    expect(workers).toHaveLength(2);
+    workers[0]!.emitExit(1);
+
+    const request = workers[1]!.posted[0]!;
+    workers[1]!.emitMessage({
+      id: request.id,
+      ok: true,
+      result: makeResult('task-2', '/repo/src/current.ts'),
+    });
+
+    await expect(second).resolves.toEqual(makeResult('task-2', '/repo/src/current.ts'));
+  });
+
   it('rejects all pending requests on worker exit', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const workers: FakeWorker[] = [];
