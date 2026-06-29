@@ -20,6 +20,10 @@ Release body source for GitHub release:
 <!-- RELEASE_BODY_START v2.5.1 -->
 Reduces memory growth in long-running teams and large projects. Fixes OOM risks in transcript/project matching, duplicate runtime probes, and unbounded runtime/provisioning diagnostic buffers.
 
+### What's New
+
+- Lower memory overhead for long-running teams and large project scans.
+
 ### Improvements
 
 - Keep transcript/project matching metadata compact after large scans finish.

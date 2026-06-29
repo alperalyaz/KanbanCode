@@ -487,11 +487,16 @@ export class TeamDataService {
     ),
     private readonly launchStateStore: TeamLaunchStateStore = new TeamLaunchStateStore()
   ) {
+    const getInboxMessagesWindow =
+      typeof this.inboxReader.getMessagesWindow === 'function'
+        ? (teamName: string, options: Parameters<TeamInboxReader['getMessagesWindow']>[1]) =>
+            this.inboxReader.getMessagesWindow(teamName, options)
+        : undefined;
+
     this.messageFeedService = new TeamMessageFeedService({
       getConfig: (teamName) => this.readSnapshotConfig(teamName),
       getInboxMessages: (teamName) => this.inboxReader.getMessages(teamName),
-      getInboxMessagesWindow: (teamName, options) =>
-        this.inboxReader.getMessagesWindow(teamName, options),
+      getInboxMessagesWindow,
       getLeadSessionMessages: (teamName, config) => this.extractLeadSessionTexts(teamName, config),
       getSentMessages: (teamName) => this.sentMessagesStore.readMessages(teamName),
     });

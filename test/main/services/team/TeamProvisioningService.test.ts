@@ -3892,7 +3892,9 @@ describe('TeamProvisioningService', () => {
       const first = (svc as any).getLiveTeamAgentRuntimeMetadata('runtime-team') as Promise<
         Map<string, unknown>
       >;
-      await vi.waitFor(() => expect(listRuntimeProcessTableForCurrentPlatform).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() =>
+        expect(listRuntimeProcessTableForCurrentPlatform).toHaveBeenCalledTimes(1)
+      );
       (svc as any).invalidateRuntimeSnapshotCaches('runtime-team');
       const second = (svc as any).getLiveTeamAgentRuntimeMetadata('runtime-team') as Promise<
         Map<string, unknown>
@@ -6463,9 +6465,7 @@ describe('TeamProvisioningService', () => {
       ];
       (svc as any).aliveRunByTeam.set('runtime-team', 'run-1');
       (svc as any).runs.set('run-1', run);
-      mockRuntimeUsageProcessRows([
-        { pid: 333, ppid: 1, command: 'opencode runtime host' },
-      ]);
+      mockRuntimeUsageProcessRows([{ pid: 333, ppid: 1, command: 'opencode runtime host' }]);
       vi.mocked(pidusage).mockReset();
       vi.mocked(pidusage).mockImplementation(
         async (target: number | string | Array<number | string>) => {
@@ -6548,9 +6548,7 @@ describe('TeamProvisioningService', () => {
         ),
       };
       vi.mocked(pidusage).mockReset();
-      mockRuntimeUsageProcessRows([
-        { pid: 333, ppid: 1, command: 'opencode runtime host' },
-      ]);
+      mockRuntimeUsageProcessRows([{ pid: 333, ppid: 1, command: 'opencode runtime host' }]);
       vi.mocked(pidusage).mockImplementation(
         async (target: number | string | Array<number | string>) => {
           if (Array.isArray(target)) {
@@ -26766,7 +26764,9 @@ describe('TeamProvisioningService', () => {
       cwd: worktreeDir,
       memberId: 'alice',
     });
-    expect(path.normalize(memberWorktrees[0]?.gitRootConfigKey ?? '')).toBe(path.normalize(repoDir));
+    expect(path.normalize(memberWorktrees[0]?.gitRootConfigKey ?? '')).toBe(
+      path.normalize(repoDir)
+    );
     expect(
       memberWorktrees.every(
         (workspace) => path.normalize(workspace.gitRootConfigKey ?? '') === path.normalize(repoDir)
