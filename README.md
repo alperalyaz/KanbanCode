@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="docs/assets/github-header-agent-teams-ai.png" alt="KanbanCode - AI agent teams on a kanban board" width="100%" />
+  <img src="docs/assets/github-header-kanbancode.png" alt="KanbanCode - AI agent teams on a kanban board" width="100%" />
 </p>
 
 <p align="center">
