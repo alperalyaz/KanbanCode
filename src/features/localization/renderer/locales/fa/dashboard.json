@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "حالت مدیر Windows توصیه می‌شود",
-    "description": "وقتی Agent Teams AI با دسترسی بالا اجرا نشود، بررسی‌های زمان اجرای OpenCode ممکن است زمان‌بر شده و منقضی شوند. پیش از راه‌اندازی تیم‌های OpenCode، برنامه را با «Run as administrator» مجدداً اجرا کنید."
+    "description": "وقتی KanbanCode با دسترسی بالا اجرا نشود، بررسی‌های زمان اجرای OpenCode ممکن است زمان‌بر شده و منقضی شوند. پیش از راه‌اندازی تیم‌های OpenCode، برنامه را با «Run as administrator» مجدداً اجرا کنید."
   },
   "webPreview": {
     "title": "برای عملکرد کامل، برنامه دسکتاپ را باز کنید",

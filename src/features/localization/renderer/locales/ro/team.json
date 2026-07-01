@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "Reîncearcă lansarea pentru a reîmprospăta puntea MCP a aplicației OpenCode. Dacă se repetă, repornește aplicația și runtime-ul OpenCode.",
         "cliBinaryMissing": "Asigură-te că binarul Claude CLI local există și poate fi pornit, apoi redeschide acest dialog.",
         "default": "Rezolvă problema de mai sus, apoi redeschide acest dialog.",
-        "openCodeNodeModulesSymlinkPermission": "Rulează Agent Teams AI ca Administrator, apoi reîncearcă lansarea."
+        "openCodeNodeModulesSymlinkPermission": "Rulează KanbanCode ca Administrator, apoi reîncearcă lansarea."
       }
     },
     "presentation": {

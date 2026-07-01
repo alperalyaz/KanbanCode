@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "OpenCode uygulama MCP köprüsünü yenilemek için başlatmayı yeniden deneyin. Tekrarlarsa uygulamayı ve OpenCode çalışma zamanını yeniden başlatın.",
         "cliBinaryMissing": "Yerel Claude CLI ikili dosyasının var olduğundan ve başlatılabildiğinden emin olun, ardından bu iletişim kutusunu yeniden açın.",
         "default": "Yukarıdaki sorunu çözün, ardından bu iletişim kutusunu yeniden açın.",
-        "openCodeNodeModulesSymlinkPermission": "Agent Teams AI'yi Yönetici olarak çalıştırın, ardından başlatmayı yeniden deneyin."
+        "openCodeNodeModulesSymlinkPermission": "KanbanCode'yi Yönetici olarak çalıştırın, ardından başlatmayı yeniden deneyin."
       }
     },
     "presentation": {

@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "重试启动以刷新 OpenCode 应用 MCP 桥。如果重复出现，请重新启动应用和 OpenCode 运行时。",
         "cliBinaryMissing": "确保本地 Claude CLI 二进制文件存在并且可以启动，然后重新打开此对话框。",
         "default": "解决上述问题，然后重新打开此对话框。",
-        "openCodeNodeModulesSymlinkPermission": "以管理员身份运行 Agent Teams AI，然后重试启动。"
+        "openCodeNodeModulesSymlinkPermission": "以管理员身份运行 KanbanCode，然后重试启动。"
       }
     },
     "presentation": {

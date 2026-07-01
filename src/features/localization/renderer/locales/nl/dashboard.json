@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "Windows-beheerdersmodus aanbevolen",
-    "description": "Controles van de OpenCode-runtime kunnen verlopen wanneer Agent Teams AI niet verhoogd is. Start de app opnieuw met Als administrator uitvoeren voordat je OpenCode-teams start."
+    "description": "Controles van de OpenCode-runtime kunnen verlopen wanneer KanbanCode niet verhoogd is. Start de app opnieuw met Als administrator uitvoeren voordat je OpenCode-teams start."
   },
   "webPreview": {
     "title": "Open de desktop-app voor volledige functionaliteit",

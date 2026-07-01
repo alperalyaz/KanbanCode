@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "Reessayer le lancement pour actualiser l'application OpenCode MCP pont. Si elle se répète, redémarrez l'application et l'exécution OpenCode.",
         "cliBinaryMissing": "Assurez-vous que le Claude local CLI binaire existe et peut être démarré, puis rouvrir cette boîte de dialogue.",
         "default": "Résolvez le problème ci-dessus, puis rouvrez ce dialogue.",
-        "openCodeNodeModulesSymlinkPermission": "Lancez Agent Teams AI en tant qu'administrateur, puis réessayez le launch."
+        "openCodeNodeModulesSymlinkPermission": "Lancez KanbanCode en tant qu'administrateur, puis réessayez le launch."
       }
     },
     "presentation": {

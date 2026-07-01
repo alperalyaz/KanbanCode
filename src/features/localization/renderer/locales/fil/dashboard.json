@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "Inirerekomenda ang Windows Administrator mode",
-    "description": "Maaaring mag-time out ang mga pagsuri ng OpenCode runtime kapag hindi naka-elevate ang Agent Teams AI. I-restart ang app gamit ang Run as administrator bago maglunsad ng mga OpenCode team."
+    "description": "Maaaring mag-time out ang mga pagsuri ng OpenCode runtime kapag hindi naka-elevate ang KanbanCode. I-restart ang app gamit ang Run as administrator bago maglunsad ng mga OpenCode team."
   },
   "webPreview": {
     "title": "Buksan ang desktop app para sa buong functionality",

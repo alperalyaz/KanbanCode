@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { APP_NAME } from '@shared/constants/brand';
 import { buildProviderAwareCliEnv } from '@main/services/runtime/providerAwareCliEnv';
 import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
 import { execCli, killProcessTree, spawnCli } from '@main/utils/childProcess';
@@ -255,7 +256,7 @@ function buildOpenCodeProfileNodeModulesLinkDiagnostics(
     stdoutPreview: null,
     hints: [
       'The app attempts automatic junction fallback for this Windows link failure before showing this error.',
-      'As a temporary workaround, enable Windows Developer Mode or run Agent Teams AI as Administrator.',
+      `As a temporary workaround, enable Windows Developer Mode or run ${APP_NAME} as Administrator.`,
       'After enabling Developer Mode, refresh the OpenCode provider catalog.',
     ],
   };

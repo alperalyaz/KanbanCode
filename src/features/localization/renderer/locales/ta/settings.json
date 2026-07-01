@@ -47,7 +47,7 @@
       "copy": "Diagnostics ஐ நகலெடு",
       "hints": "குறிப்புகள்",
       "likelyCause": "சாத்தியமான காரணம்:",
-      "windowsSymlinkAdminHint": "Windows: Agent Teams AI ஐ Administrator ஆக இயக்கவும்"
+      "windowsSymlinkAdminHint": "Windows: KanbanCode ஐ Administrator ஆக இயக்கவும்"
     },
     "models": {
       "alreadyDefault": "இது ஏற்கனவே தேர்ந்தெடுக்கப்பட்ட OpenCode இயல்புநிலை.",
@@ -388,7 +388,7 @@
       "unknownVersion": "தெரியாதது",
       "upToDate": "புதுப்பித்த நிலையில் உள்ளது"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

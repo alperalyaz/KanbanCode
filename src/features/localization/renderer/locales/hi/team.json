@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "ओपनकोड ऐप MCP पुल को रीफ्रेश करने के लिए रिट्री लॉन्च। यदि यह दोहराता है, तो ऐप और ओपनकोड रनटाइम को पुनः आरंभ करें।",
         "cliBinaryMissing": "सुनिश्चित करें कि स्थानीय क्लाउड CLI द्विआधारी मौजूद है और इसे शुरू किया जा सकता है, फिर इस संवाद को फिर से खोलना।",
         "default": "ऊपर इस मुद्दे को हल करें, फिर इस संवाद को फिर से खोलें।",
-        "openCodeNodeModulesSymlinkPermission": "Agent Teams AI को Administrator के रूप में चलाएं, फिर launch दोबारा करें."
+        "openCodeNodeModulesSymlinkPermission": "KanbanCode को Administrator के रूप में चलाएं, फिर launch दोबारा करें."
       }
     },
     "presentation": {

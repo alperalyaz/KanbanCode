@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "البدء من جديد لتنشيط طلب الموافقة المفتوحة MCP الجسر إذا كرر، إعادة تشغيل التطبيق وفتح الوقت.",
         "cliBinaryMissing": "تأكد من كلود المحلي CLI وجود ثنائي ويمكن البدء به، ثم إعادة فتح هذا الهاتف.",
         "default": "حل المسألة أعلاه، ثم إعادة فتح هذا الهاتف.",
-        "openCodeNodeModulesSymlinkPermission": "شغّل Agent Teams AI كمسؤول، ثم أعد محاولة launch."
+        "openCodeNodeModulesSymlinkPermission": "شغّل KanbanCode كمسؤول، ثم أعد محاولة launch."
       }
     },
     "presentation": {

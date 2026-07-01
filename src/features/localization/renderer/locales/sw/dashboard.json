@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "Hali ya Msimamizi wa Windows inapendekezwa",
-    "description": "Ukaguzi wa runtime ya OpenCode unaweza kuisha muda Agent Teams AI isipopandishwa hadhi. Anzisha upya programu kwa Endesha kama msimamizi kabla ya kuzindua timu za OpenCode."
+    "description": "Ukaguzi wa runtime ya OpenCode unaweza kuisha muda KanbanCode isipopandishwa hadhi. Anzisha upya programu kwa Endesha kama msimamizi kabla ya kuzindua timu za OpenCode."
   },
   "webPreview": {
     "title": "Fungua programu ya eneo-kazi kwa utendaji kamili",

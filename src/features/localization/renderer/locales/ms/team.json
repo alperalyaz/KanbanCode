@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "Cuba lancarkan semula untuk menyegarkan jambatan MCP aplikasi OpenCode. Jika berulang, mulakan semula aplikasi dan runtime OpenCode.",
         "cliBinaryMissing": "Pastikan binari Claude CLI tempatan wujud dan boleh dimulakan, kemudian buka semula dialog ini.",
         "default": "Selesaikan isu di atas, kemudian buka semula dialog ini.",
-        "openCodeNodeModulesSymlinkPermission": "Jalankan Agent Teams AI sebagai Pentadbir, kemudian cuba lancarkan semula."
+        "openCodeNodeModulesSymlinkPermission": "Jalankan KanbanCode sebagai Pentadbir, kemudian cuba lancarkan semula."
       }
     },
     "presentation": {

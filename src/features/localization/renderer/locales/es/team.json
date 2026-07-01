@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "Lanzamiento de entrada para refrescar el puente de OpenCode MCP. Si se repite, reinicie la aplicación y el tiempo de ejecución OpenCode.",
         "cliBinaryMissing": "Asegúrese de que el binario local Claude CLI exista y pueda comenzar, y luego vuelva a abrir este diálogo.",
         "default": "Resolver el tema anterior, luego reabrir este diálogo.",
-        "openCodeNodeModulesSymlinkPermission": "Ejecuta Agent Teams AI como administrador y vuelve a intentar el launch."
+        "openCodeNodeModulesSymlinkPermission": "Ejecuta KanbanCode como administrador y vuelve a intentar el launch."
       }
     },
     "presentation": {

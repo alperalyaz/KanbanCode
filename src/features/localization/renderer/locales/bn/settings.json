@@ -47,7 +47,7 @@
       "copy": "ডায়গনিস্টিক কপি করুন",
       "hints": "ইঙ্গিত",
       "likelyCause": "হতে পারে:",
-      "windowsSymlinkAdminHint": "Windows: Agent Teams AI অ্যাডমিনিস্ট্রেটর হিসেবে চালান"
+      "windowsSymlinkAdminHint": "Windows: KanbanCode অ্যাডমিনিস্ট্রেটর হিসেবে চালান"
     },
     "models": {
       "alreadyDefault": "বর্তমানে নির্বাচিত ডিফল্ট মান ।",

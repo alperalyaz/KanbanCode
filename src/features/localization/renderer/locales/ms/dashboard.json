@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "Mod Pentadbir Windows disyorkan",
-    "description": "Semakan runtime OpenCode boleh tamat masa apabila Agent Teams AI tidak dinaik taraf. Mulakan semula aplikasi dengan Run as administrator sebelum melancarkan pasukan OpenCode."
+    "description": "Semakan runtime OpenCode boleh tamat masa apabila KanbanCode tidak dinaik taraf. Mulakan semula aplikasi dengan Run as administrator sebelum melancarkan pasukan OpenCode."
   },
   "webPreview": {
     "title": "Buka aplikasi desktop untuk fungsi penuh",

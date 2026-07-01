@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "Windows Yönetici modu önerilir",
-    "description": "Agent Teams AI yükseltilmediğinde OpenCode çalışma zamanı kontrolleri zaman aşımına uğrayabilir. OpenCode ekiplerini başlatmadan önce uygulamayı Yönetici olarak çalıştır ile yeniden başlatın."
+    "description": "KanbanCode yükseltilmediğinde OpenCode çalışma zamanı kontrolleri zaman aşımına uğrayabilir. OpenCode ekiplerini başlatmadan önce uygulamayı Yönetici olarak çalıştır ile yeniden başlatın."
   },
   "webPreview": {
     "title": "Tüm işlevsellik için masaüstü uygulamasını açın",

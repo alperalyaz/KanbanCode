@@ -47,7 +47,7 @@
       "copy": "Copier les diagnostics",
       "hints": "Conseils",
       "likelyCause": "Cause probable:",
-      "windowsSymlinkAdminHint": "Windows: lancez Agent Teams AI en tant qu'administrateur"
+      "windowsSymlinkAdminHint": "Windows: lancez KanbanCode en tant qu'administrateur"
     },
     "models": {
       "alreadyDefault": "C'est déjà la valeur par défaut d'OpenCode sélectionnée.",

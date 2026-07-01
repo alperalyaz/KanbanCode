@@ -47,7 +47,7 @@
       "copy": "Kopyahin ang diagnostics",
       "hints": "Mga Hint",
       "likelyCause": "Malamang na sanhi:",
-      "windowsSymlinkAdminHint": "Windows: patakbuhin ang Agent Teams AI bilang Administrator"
+      "windowsSymlinkAdminHint": "Windows: patakbuhin ang KanbanCode bilang Administrator"
     },
     "models": {
       "alreadyDefault": "Ito na ang napiling OpenCode default.",
@@ -388,7 +388,7 @@
       "unknownVersion": "hindi alam",
       "upToDate": "Napapanahon"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

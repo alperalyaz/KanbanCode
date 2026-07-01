@@ -47,7 +47,7 @@
       "copy": "Tanılamayı kopyala",
       "hints": "İpuçları",
       "likelyCause": "Olası neden:",
-      "windowsSymlinkAdminHint": "Windows: Agent Teams AI'yi Yönetici olarak çalıştırın"
+      "windowsSymlinkAdminHint": "Windows: KanbanCode'yi Yönetici olarak çalıştırın"
     },
     "models": {
       "alreadyDefault": "Bu zaten seçili OpenCode varsayılanı.",
@@ -388,7 +388,7 @@
       "unknownVersion": "bilinmiyor",
       "upToDate": "Güncel"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

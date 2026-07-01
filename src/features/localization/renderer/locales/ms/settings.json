@@ -47,7 +47,7 @@
       "copy": "Salin diagnostik",
       "hints": "Petua",
       "likelyCause": "Kemungkinan punca:",
-      "windowsSymlinkAdminHint": "Windows: jalankan Agent Teams AI sebagai Pentadbir"
+      "windowsSymlinkAdminHint": "Windows: jalankan KanbanCode sebagai Pentadbir"
     },
     "models": {
       "alreadyDefault": "Ini sudah menjadi lalai OpenCode yang dipilih.",
@@ -388,7 +388,7 @@
       "unknownVersion": "tidak diketahui",
       "upToDate": "Terkini"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

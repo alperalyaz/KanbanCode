@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "แนะนำให้ใช้โหมดผู้ดูแลระบบ Windows",
-    "description": "การตรวจสอบรันไทม์ OpenCode อาจหมดเวลาเมื่อ Agent Teams AI ไม่ได้รันด้วยสิทธิ์ที่ยกระดับ รีสตาร์ทแอปด้วย Run as administrator ก่อนเริ่มทีม OpenCode"
+    "description": "การตรวจสอบรันไทม์ OpenCode อาจหมดเวลาเมื่อ KanbanCode ไม่ได้รันด้วยสิทธิ์ที่ยกระดับ รีสตาร์ทแอปด้วย Run as administrator ก่อนเริ่มทีม OpenCode"
   },
   "webPreview": {
     "title": "เปิดแอปเดสก์ท็อปเพื่อใช้งานเต็มรูปแบบ",

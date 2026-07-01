@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "Windows Administrator பயன்முறை பரிந்துரைக்கப்படுகிறது",
-    "description": "Agent Teams AI elevated இல்லாதபோது OpenCode runtime சரிபார்ப்புகள் காலாவதியாகலாம். OpenCode teams ஐ தொடங்குவதற்கு முன் பயன்பாட்டை Run as administrator உடன் மறுதொடக்கம் செய்யவும்."
+    "description": "KanbanCode elevated இல்லாதபோது OpenCode runtime சரிபார்ப்புகள் காலாவதியாகலாம். OpenCode teams ஐ தொடங்குவதற்கு முன் பயன்பாட்டை Run as administrator உடன் மறுதொடக்கம் செய்யவும்."
   },
   "webPreview": {
     "title": "முழு செயல்பாட்டிற்கு desktop பயன்பாட்டைத் திறக்கவும்",

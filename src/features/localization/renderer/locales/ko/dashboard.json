@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "Windows 관리자 모드 권장",
-    "description": "OpenCode 런타임 체크는 Agent Teams AI가 높을 때 시간을 확인할 수 있습니다. OpenCode 팀을 실행하기 전에 관리자로 실행하는 앱을 복원합니다."
+    "description": "OpenCode 런타임 체크는 KanbanCode가 높을 때 시간을 확인할 수 있습니다. OpenCode 팀을 실행하기 전에 관리자로 실행하는 앱을 복원합니다."
   },
   "webPreview": {
     "title": "전체 기능을 위한 데스크톱 앱 열기",

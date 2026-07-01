@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "Jaribu tena uzinduzi ili kuonyesha upya daraja la MCP la programu ya OpenCode. Ikijirudia, anzisha upya programu na runtime ya OpenCode.",
         "cliBinaryMissing": "Hakikisha binari ya Claude CLI ya ndani ipo na inaweza kuanzishwa, kisha ufungue tena kidirisha hiki.",
         "default": "Suluhisha tatizo hapo juu, kisha ufungue tena kidirisha hiki.",
-        "openCodeNodeModulesSymlinkPermission": "Endesha Agent Teams AI kama Msimamizi, kisha ujaribu tena uzinduzi."
+        "openCodeNodeModulesSymlinkPermission": "Endesha KanbanCode kama Msimamizi, kisha ujaribu tena uzinduzi."
       }
     },
     "presentation": {

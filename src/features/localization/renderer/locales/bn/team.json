@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "OpenChod অ্যাপ্লিকেশন পুনরায় চালু করতে পুনরায় চেষ্টা করুন MCP ব্রিজ. যদি এটা আবার হয়, তাহলে অ্যাপ্লিকেশন পুনরায় চালু করুন এবং ওপেনোডে ধারণ করুন।",
         "cliBinaryMissing": "স্থানীয় Klalou নিশ্চিত করুন CLI বাইনারি উপস্থিত রয়েছে এবং এটি পুনরায় আরম্ভ করা যাবে।",
         "default": "উপরে ব্যাপারটা সমাধান করো, তারপর এই সংলাপ খুলে দাও।",
-        "openCodeNodeModulesSymlinkPermission": "Agent Teams AI অ্যাডমিনিস্ট্রেটর হিসেবে চালান, তারপর launch আবার চেষ্টা করুন।"
+        "openCodeNodeModulesSymlinkPermission": "KanbanCode অ্যাডমিনিস্ট্রেটর হিসেবে চালান, তারপর launch আবার চেষ্টা করুন।"
       }
     },
     "presentation": {

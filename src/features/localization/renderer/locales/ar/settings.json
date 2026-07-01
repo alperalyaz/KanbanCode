@@ -47,7 +47,7 @@
       "copy": "تشخيص النسخ",
       "hints": "Hints",
       "likelyCause": "السبب الغالب:",
-      "windowsSymlinkAdminHint": "Windows: شغّل Agent Teams AI كمسؤول"
+      "windowsSymlinkAdminHint": "Windows: شغّل KanbanCode كمسؤول"
     },
     "models": {
       "alreadyDefault": "هذا هو التخلف المختار من قبل",

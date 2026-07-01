@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "Hãy thử khởi chạy lại để làm mới cầu nối MCP ứng dụng OpenCode. Nếu lặp lại, hãy khởi động lại ứng dụng và runtime OpenCode.",
         "cliBinaryMissing": "Hãy đảm bảo tệp nhị phân Claude CLI cục bộ tồn tại và có thể được khởi động, rồi mở lại hộp thoại này.",
         "default": "Hãy giải quyết vấn đề ở trên, rồi mở lại hộp thoại này.",
-        "openCodeNodeModulesSymlinkPermission": "Hãy chạy Agent Teams AI với quyền Quản trị viên, rồi thử khởi chạy lại."
+        "openCodeNodeModulesSymlinkPermission": "Hãy chạy KanbanCode với quyền Quản trị viên, rồi thử khởi chạy lại."
       }
     },
     "presentation": {

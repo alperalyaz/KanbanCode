@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "Modalità Amministratore di Windows consigliata",
-    "description": "I controlli del runtime OpenCode possono scadere quando Agent Teams AI non viene eseguito con privilegi elevati. Riavvia l'app con Esegui come amministratore prima di avviare i team OpenCode."
+    "description": "I controlli del runtime OpenCode possono scadere quando KanbanCode non viene eseguito con privilegi elevati. Riavvia l'app con Esegui come amministratore prima di avviare i team OpenCode."
   },
   "webPreview": {
     "title": "Apri l'app desktop per la piena funzionalità",

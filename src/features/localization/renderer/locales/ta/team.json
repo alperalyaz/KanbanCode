@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "OpenCode app MCP bridge ஐ புதுப்பிக்க launch ஐ மீண்டும் முயற்சிக்கவும். மீண்டும் நிகழ்ந்தால், app மற்றும் OpenCode runtime ஐ மறுதொடக்கம் செய்யவும்.",
         "cliBinaryMissing": "உள்ளூர் Claude CLI binary உள்ளது மற்றும் தொடங்க முடியும் என்பதை உறுதிப்படுத்தவும், பிறகு இந்த dialog ஐ மீண்டும் திறக்கவும்.",
         "default": "மேலே உள்ள சிக்கலைத் தீர்க்கவும், பிறகு இந்த dialog ஐ மீண்டும் திறக்கவும்.",
-        "openCodeNodeModulesSymlinkPermission": "Agent Teams AI ஐ Administrator ஆக இயக்கவும், பிறகு launch ஐ மீண்டும் முயற்சிக்கவும்."
+        "openCodeNodeModulesSymlinkPermission": "KanbanCode ஐ Administrator ஆக இயக்கவும், பிறகு launch ஐ மீண்டும் முயற்சிக்கவும்."
       }
     },
     "presentation": {

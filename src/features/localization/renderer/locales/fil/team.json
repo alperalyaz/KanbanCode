@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "Subukang muli ang paglunsad para i-refresh ang OpenCode app MCP bridge. Kung uulit ito, i-restart ang app at OpenCode runtime.",
         "cliBinaryMissing": "Tiyaking umiiral ang lokal na Claude CLI binary at masisimulan ito, pagkatapos ay buksang muli ang dialog na ito.",
         "default": "Lutasin ang isyu sa itaas, pagkatapos ay buksang muli ang dialog na ito.",
-        "openCodeNodeModulesSymlinkPermission": "Patakbuhin ang Agent Teams AI bilang Administrator, pagkatapos ay subukang muli ang paglunsad."
+        "openCodeNodeModulesSymlinkPermission": "Patakbuhin ang KanbanCode bilang Administrator, pagkatapos ay subukang muli ang paglunsad."
       }
     },
     "presentation": {

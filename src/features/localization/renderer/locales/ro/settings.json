@@ -47,7 +47,7 @@
       "copy": "Copiază diagnosticele",
       "hints": "Indicii",
       "likelyCause": "Cauză probabilă:",
-      "windowsSymlinkAdminHint": "Windows: rulează Agent Teams AI ca Administrator"
+      "windowsSymlinkAdminHint": "Windows: rulează KanbanCode ca Administrator"
     },
     "models": {
       "alreadyDefault": "Acesta este deja modelul OpenCode implicit selectat.",
@@ -388,7 +388,7 @@
       "unknownVersion": "necunoscută",
       "upToDate": "La zi"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

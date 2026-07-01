@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "Se recomandă modul Administrator Windows",
-    "description": "Verificările runtime-ului OpenCode pot expira când Agent Teams AI nu rulează cu privilegii ridicate. Repornește aplicația cu Rulează ca administrator înainte de a lansa echipe OpenCode."
+    "description": "Verificările runtime-ului OpenCode pot expira când KanbanCode nu rulează cu privilegii ridicate. Repornește aplicația cu Rulează ca administrator înainte de a lansa echipe OpenCode."
   },
   "webPreview": {
     "title": "Deschide aplicația desktop pentru funcționalitate completă",

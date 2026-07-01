@@ -47,7 +47,7 @@
       "copy": "డయాగ్నొస్టిక్‌లను కాపీ చేయి",
       "hints": "సూచనలు",
       "likelyCause": "సంభావ్య కారణం:",
-      "windowsSymlinkAdminHint": "Windows: Agent Teams AI ను Administrator గా అమలు చేయండి"
+      "windowsSymlinkAdminHint": "Windows: KanbanCode ను Administrator గా అమలు చేయండి"
     },
     "models": {
       "alreadyDefault": "ఇది ఇప్పటికే ఎంచుకున్న OpenCode డిఫాల్ట్.",
@@ -388,7 +388,7 @@
       "unknownVersion": "తెలియదు",
       "upToDate": "తాజాగా ఉంది"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

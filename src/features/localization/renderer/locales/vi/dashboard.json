@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "Khuyến nghị chế độ Quản trị viên Windows",
-    "description": "Việc kiểm tra runtime OpenCode có thể hết thời gian chờ khi Agent Teams AI không được nâng quyền. Khởi động lại ứng dụng với Run as administrator trước khi khởi chạy các đội ngũ OpenCode."
+    "description": "Việc kiểm tra runtime OpenCode có thể hết thời gian chờ khi KanbanCode không được nâng quyền. Khởi động lại ứng dụng với Run as administrator trước khi khởi chạy các đội ngũ OpenCode."
   },
   "webPreview": {
     "title": "Mở ứng dụng máy tính để có đầy đủ chức năng",

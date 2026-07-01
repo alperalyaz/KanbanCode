@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "Windows అడ్మినిస్ట్రేటర్ మోడ్ సిఫార్సు చేయబడింది",
-    "description": "Agent Teams AI ఎలివేట్ చేయబడనప్పుడు OpenCode రన్‌టైమ్ తనిఖీలు టైమ్ అవుట్ కావచ్చు. OpenCode టీమ్‌లను లాంచ్ చేయడానికి ముందు Run as administrator తో యాప్‌ను పునఃప్రారంభించండి."
+    "description": "KanbanCode ఎలివేట్ చేయబడనప్పుడు OpenCode రన్‌టైమ్ తనిఖీలు టైమ్ అవుట్ కావచ్చు. OpenCode టీమ్‌లను లాంచ్ చేయడానికి ముందు Run as administrator తో యాప్‌ను పునఃప్రారంభించండి."
   },
   "webPreview": {
     "title": "పూర్తి కార్యాచరణ కోసం డెస్క్‌టాప్ యాప్‌ను తెరవండి",

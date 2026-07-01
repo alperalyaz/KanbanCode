@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "推荐使用 Windows 管理员模式",
-    "description": "当 Agent Teams AI 未提升时，OpenCode 运行时检查可能会超时。在启动 OpenCode 团队之前，使用以管理员身份运行重新启动应用。"
+    "description": "当 KanbanCode 未提升时，OpenCode 运行时检查可能会超时。在启动 OpenCode 团队之前，使用以管理员身份运行重新启动应用。"
   },
   "webPreview": {
     "title": "打开桌面应用以获取完整功能",

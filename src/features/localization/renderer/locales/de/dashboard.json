@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "Windows Administrator Modus empfohlen",
-    "description": "OpenCode-Laufzeit-Checks können Zeit, wenn Agent Teams AI nicht erhöht ist. Starten Sie die App mit Run als Administrator, bevor Sie OpenCode Teams starten."
+    "description": "OpenCode-Laufzeit-Checks können Zeit, wenn KanbanCode nicht erhöht ist. Starten Sie die App mit Run als Administrator, bevor Sie OpenCode Teams starten."
   },
   "webPreview": {
     "title": "Öffnen Sie die Desktop-App für volle Funktionalität",

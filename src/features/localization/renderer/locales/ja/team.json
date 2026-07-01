@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "OpenCodeアプリのMCPブリッジをリフレッシュするためのリトリー起動。 繰り返すと、アプリとOpenCodeのランタイムを再起動します。",
         "cliBinaryMissing": "ローカルClaude CLIバイナリが存在し、起動できることを確認してください。その後、このダイアログが開きます。",
         "default": "上記の問題を解決し、このダイアログを再オープンします。",
-        "openCodeNodeModulesSymlinkPermission": "Agent Teams AI を管理者として実行してから、launch を再試行してください。"
+        "openCodeNodeModulesSymlinkPermission": "KanbanCode を管理者として実行してから、launch を再試行してください。"
       }
     },
     "presentation": {

@@ -47,7 +47,7 @@
       "copy": "Salin diagnosa",
       "hints": "Petunjuk",
       "likelyCause": "Kemungkinan menyebabkan:",
-      "windowsSymlinkAdminHint": "Windows: jalankan Agent Teams AI sebagai Administrator"
+      "windowsSymlinkAdminHint": "Windows: jalankan KanbanCode sebagai Administrator"
     },
     "models": {
       "alreadyDefault": "Ini sudah menjadi standar OpenCode yang dipilih.",

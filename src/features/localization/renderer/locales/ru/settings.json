@@ -47,7 +47,7 @@
       "copy": "Скопировать diagnostics",
       "hints": "Подсказки",
       "likelyCause": "Вероятная причина:",
-      "windowsSymlinkAdminHint": "Windows: запустите Agent Teams AI от имени администратора"
+      "windowsSymlinkAdminHint": "Windows: запустите KanbanCode от имени администратора"
     },
     "models": {
       "alreadyDefault": "Это уже выбранный OpenCode default.",
@@ -388,7 +388,7 @@
       "unknownVersion": "неизвестная",
       "upToDate": "Актуальная версия"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

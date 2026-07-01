@@ -47,7 +47,7 @@
       "copy": "Diagnostiek kopiëren",
       "hints": "Tips",
       "likelyCause": "Waarschijnlijke oorzaak:",
-      "windowsSymlinkAdminHint": "Windows: voer Agent Teams AI uit als administrator"
+      "windowsSymlinkAdminHint": "Windows: voer KanbanCode uit als administrator"
     },
     "models": {
       "alreadyDefault": "Dit is al de geselecteerde OpenCode-standaard.",
@@ -388,7 +388,7 @@
       "unknownVersion": "onbekend",
       "upToDate": "Up-to-date"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

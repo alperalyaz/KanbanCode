@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "ลองเริ่มอีกครั้งเพื่อรีเฟรช MCP บริดจ์ของแอป OpenCode หากเกิดขึ้นซ้ำ ให้รีสตาร์ทแอปและรันไทม์ OpenCode",
         "cliBinaryMissing": "ตรวจสอบให้แน่ใจว่าไบนารี Claude CLI ในเครื่องมีอยู่และสามารถเริ่มได้ แล้วเปิดกล่องโต้ตอบนี้ใหม่",
         "default": "แก้ไขปัญหาด้านบน แล้วเปิดกล่องโต้ตอบนี้ใหม่",
-        "openCodeNodeModulesSymlinkPermission": "รัน Agent Teams AI ในฐานะผู้ดูแลระบบ แล้วลองเริ่มอีกครั้ง"
+        "openCodeNodeModulesSymlinkPermission": "รัน KanbanCode ในฐานะผู้ดูแลระบบ แล้วลองเริ่มอีกครั้ง"
       }
     },
     "presentation": {

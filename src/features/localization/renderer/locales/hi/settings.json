@@ -47,7 +47,7 @@
       "copy": "निदान की प्रतिलिपि",
       "hints": "हिंट",
       "likelyCause": "समान कारण:",
-      "windowsSymlinkAdminHint": "Windows: Agent Teams AI को Administrator के रूप में चलाएं"
+      "windowsSymlinkAdminHint": "Windows: KanbanCode को Administrator के रूप में चलाएं"
     },
     "models": {
       "alreadyDefault": "यह पहले से ही चयनित OpenCode डिफ़ॉल्ट है।",

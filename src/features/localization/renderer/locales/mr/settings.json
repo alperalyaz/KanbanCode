@@ -47,7 +47,7 @@
       "copy": "डायग्नॉस्टिक्स कॉपी करा",
       "hints": "इशारे",
       "likelyCause": "संभाव्य कारण:",
-      "windowsSymlinkAdminHint": "Windows: Agent Teams AI प्रशासक म्हणून चालवा"
+      "windowsSymlinkAdminHint": "Windows: KanbanCode प्रशासक म्हणून चालवा"
     },
     "models": {
       "alreadyDefault": "हे आधीच निवडलेले OpenCode डीफॉल्ट आहे.",
@@ -388,7 +388,7 @@
       "unknownVersion": "अज्ञात",
       "upToDate": "अद्ययावत"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

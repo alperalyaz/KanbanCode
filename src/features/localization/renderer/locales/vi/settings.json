@@ -47,7 +47,7 @@
       "copy": "Sao chép chẩn đoán",
       "hints": "Gợi ý",
       "likelyCause": "Nguyên nhân có thể:",
-      "windowsSymlinkAdminHint": "Windows: chạy Agent Teams AI với quyền Quản trị viên"
+      "windowsSymlinkAdminHint": "Windows: chạy KanbanCode với quyền Quản trị viên"
     },
     "models": {
       "alreadyDefault": "Đây đã là mặc định OpenCode được chọn.",
@@ -388,7 +388,7 @@
       "unknownVersion": "không xác định",
       "upToDate": "Đã cập nhật"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

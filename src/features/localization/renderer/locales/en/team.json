@@ -2114,7 +2114,7 @@
         "openCodeAppMcpUnreachable": "Retry launch to refresh the OpenCode app MCP bridge. If it repeats, restart the app and OpenCode runtime.",
         "cliBinaryMissing": "Make sure the local Claude CLI binary exists and can be started, then reopen this dialog.",
         "default": "Resolve the issue above, then reopen this dialog.",
-        "openCodeNodeModulesSymlinkPermission": "Run Agent Teams AI as Administrator, then retry launch."
+        "openCodeNodeModulesSymlinkPermission": "Run KanbanCode as Administrator, then retry launch."
       }
     },
     "presentation": {

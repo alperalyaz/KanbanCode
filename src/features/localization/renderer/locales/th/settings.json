@@ -47,7 +47,7 @@
       "copy": "คัดลอกการวินิจฉัย",
       "hints": "คำใบ้",
       "likelyCause": "สาเหตุที่เป็นไปได้:",
-      "windowsSymlinkAdminHint": "Windows: รัน Agent Teams AI ในฐานะผู้ดูแลระบบ"
+      "windowsSymlinkAdminHint": "Windows: รัน KanbanCode ในฐานะผู้ดูแลระบบ"
     },
     "models": {
       "alreadyDefault": "นี่เป็นค่าเริ่มต้น OpenCode ที่เลือกอยู่แล้ว",
@@ -388,7 +388,7 @@
       "unknownVersion": "ไม่ทราบ",
       "upToDate": "เป็นเวอร์ชันล่าสุด"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

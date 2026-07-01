@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "اوپن کووڈ ایپ کو تازگی بخشنے کے لئے دوبارہ آغاز MCP بریگیڈ. اگر اسے دوبارہ بحال کیا جائے تو ایپ اور اوپنCode وقت کو دوبارہ شروع کریں۔",
         "cliBinaryMissing": "مقامی پلگ ان کو یقینی بنائیں CLI binary موجود ہے اور شروع کیا جا سکتا ہے، پھر اسے دوبارہ کھول.",
         "default": "اوپر کے شمارے پر غور کریں، پھر اس کو دوبارہ کھول دیں۔",
-        "openCodeNodeModulesSymlinkPermission": "Agent Teams AI کو Administrator کے طور پر چلائیں، پھر launch دوبارہ آزمائیں."
+        "openCodeNodeModulesSymlinkPermission": "KanbanCode کو Administrator کے طور پر چلائیں، پھر launch دوبارہ آزمائیں."
       }
     },
     "presentation": {

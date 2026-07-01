@@ -47,7 +47,7 @@
       "copy": "复制诊断",
       "hints": "提示词",
       "likelyCause": "可能的原因：",
-      "windowsSymlinkAdminHint": "Windows：以管理员身份运行 Agent Teams AI"
+      "windowsSymlinkAdminHint": "Windows：以管理员身份运行 KanbanCode"
     },
     "models": {
       "alreadyDefault": "这已经是选定的 OpenCode 默认值。",
@@ -367,7 +367,7 @@
   "advanced": {
     "about": {
       "appIconAlt": "应用图标",
-      "description": "组建 Agent Teams AI 团队，这些团队可以并行自主工作、跨团队沟通并在看板上管理任务 - 具有内置代码审核、实时流程监控和完整的工具可见性。",
+      "description": "组建 KanbanCode 团队，这些团队可以并行自主工作、跨团队沟通并在看板上管理任务 - 具有内置代码审核、实时流程监控和完整的工具可见性。",
       "standalone": "独立式",
       "title": "关于",
       "version": "版本 {{version}}"
@@ -388,7 +388,7 @@
       "unknownVersion": "未知",
       "upToDate": "最新"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

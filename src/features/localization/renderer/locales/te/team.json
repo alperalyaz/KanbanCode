@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "OpenCode యాప్ MCP వంతెనను రిఫ్రెష్ చేయడానికి లాంచ్ మళ్లీ ప్రయత్నించండి. ఇది పునరావృతమైతే, యాప్ మరియు OpenCode రన్‌టైమ్‌ను పునఃప్రారంభించండి.",
         "cliBinaryMissing": "స్థానిక Claude CLI బైనరీ ఉందని మరియు ప్రారంభించగలదని నిర్ధారించుకోండి, ఆపై ఈ డైలాగ్‌ను మళ్లీ తెరవండి.",
         "default": "పై సమస్యను పరిష్కరించండి, ఆపై ఈ డైలాగ్‌ను మళ్లీ తెరవండి.",
-        "openCodeNodeModulesSymlinkPermission": "Agent Teams AI ను Administrator గా రన్ చేయండి, ఆపై లాంచ్ మళ్లీ ప్రయత్నించండి."
+        "openCodeNodeModulesSymlinkPermission": "KanbanCode ను Administrator గా రన్ చేయండి, ఆపై లాంచ్ మళ్లీ ప్రయత్నించండి."
       }
     },
     "presentation": {

@@ -47,7 +47,7 @@
       "copy": "کپی عیب‌یابی",
       "hints": "نکات",
       "likelyCause": "علت احتمالی:",
-      "windowsSymlinkAdminHint": "Windows: Agent Teams AI را به‌عنوان مدیر اجرا کنید"
+      "windowsSymlinkAdminHint": "Windows: KanbanCode را به‌عنوان مدیر اجرا کنید"
     },
     "models": {
       "alreadyDefault": "این از قبل پیش‌فرض انتخاب‌شده OpenCode است.",
@@ -388,7 +388,7 @@
       "unknownVersion": "نامشخص",
       "upToDate": "به‌روز"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

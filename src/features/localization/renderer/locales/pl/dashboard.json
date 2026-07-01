@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "Zalecany tryb administratora Windows",
-    "description": "Sprawdzanie środowiska uruchomieniowego OpenCode może przekroczyć limit czasu, gdy Agent Teams AI nie działa z podwyższonymi uprawnieniami. Uruchom ponownie aplikację z opcją Uruchom jako administrator przed uruchomieniem zespołów OpenCode."
+    "description": "Sprawdzanie środowiska uruchomieniowego OpenCode może przekroczyć limit czasu, gdy KanbanCode nie działa z podwyższonymi uprawnieniami. Uruchom ponownie aplikację z opcją Uruchom jako administrator przed uruchomieniem zespołów OpenCode."
   },
   "webPreview": {
     "title": "Otwórz aplikację desktopową dla pełnej funkcjonalności",

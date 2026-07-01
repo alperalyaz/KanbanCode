@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "Повторіть запуск, щоб оновити міст застосунку MCP OpenCode. Якщо повторюється, перезапустіть застосунок і середовище OpenCode.",
         "cliBinaryMissing": "Переконайтеся, що локальний бінарний файл Claude CLI існує й може запускатися, потім відкрийте цей діалог знову.",
         "default": "Вирішіть проблему вище, потім відкрийте цей діалог знову.",
-        "openCodeNodeModulesSymlinkPermission": "Запустіть Agent Teams AI від імені адміністратора, потім повторіть запуск."
+        "openCodeNodeModulesSymlinkPermission": "Запустіть KanbanCode від імені адміністратора, потім повторіть запуск."
       }
     },
     "presentation": {

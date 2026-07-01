@@ -47,7 +47,7 @@
       "copy": "Copy diagnostics",
       "hints": "Hints",
       "likelyCause": "Likely cause:",
-      "windowsSymlinkAdminHint": "Windows: run Agent Teams AI as Administrator"
+      "windowsSymlinkAdminHint": "Windows: run KanbanCode as Administrator"
     },
     "models": {
       "alreadyDefault": "This is already the selected OpenCode default.",
@@ -388,7 +388,7 @@
       "unknownVersion": "unknown",
       "upToDate": "Up to date"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

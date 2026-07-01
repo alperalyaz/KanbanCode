@@ -47,7 +47,7 @@
       "copy": "コピー診断",
       "hints": "ヒント",
       "likelyCause": "同様に原因:",
-      "windowsSymlinkAdminHint": "Windows: Agent Teams AI を管理者として実行してください"
+      "windowsSymlinkAdminHint": "Windows: KanbanCode を管理者として実行してください"
     },
     "models": {
       "alreadyDefault": "これは既に選択したOpenCodeのデフォルトです。",

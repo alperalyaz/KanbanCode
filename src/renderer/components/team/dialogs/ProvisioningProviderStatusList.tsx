@@ -1136,7 +1136,7 @@ export function getProvisioningFailureHint(
   ) {
     return (
       t?.('provisioning.providerStatus.failureHints.openCodeNodeModulesSymlinkPermission') ??
-      'Run Agent Teams AI as Administrator, then retry launch.'
+      'Run KanbanCode as Administrator, then retry launch.'
     );
   }
   if (hasOpenCodeAccessDeniedDetail || hasOpenCodeAccessDeniedMessage) {

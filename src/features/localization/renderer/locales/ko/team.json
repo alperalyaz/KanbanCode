@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "OpenCode 앱 MCP 브리지를 새로 고침합니다. 반복하면 앱과 OpenCode runtime을 다시 시작합니다.",
         "cliBinaryMissing": "로컬 클로드 CLI 바이너리가 존재하고 시작할 수 있는지 확인하고, 이 대화 상자를 다시 엽니다.",
         "default": "위의 문제를 해결 한 다음이 대화 상자를 다시 엽니다.",
-        "openCodeNodeModulesSymlinkPermission": "Agent Teams AI를 관리자 권한으로 실행한 다음 launch를 다시 시도하세요."
+        "openCodeNodeModulesSymlinkPermission": "KanbanCode를 관리자 권한으로 실행한 다음 launch를 다시 시도하세요."
       }
     },
     "presentation": {

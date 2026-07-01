@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "برای تازه‌سازی پل MCP برنامه OpenCode، راه‌اندازی را دوباره تلاش کنید. اگر تکرار شد، برنامه و زمان اجرای OpenCode را مجدداً راه‌اندازی کنید.",
         "cliBinaryMissing": "مطمئن شوید باینری محلی Claude CLI وجود دارد و می‌تواند شروع شود، سپس این گفت‌وگو را دوباره باز کنید.",
         "default": "مشکل بالا را حل کنید، سپس این گفت‌وگو را دوباره باز کنید.",
-        "openCodeNodeModulesSymlinkPermission": "Agent Teams AI را به‌عنوان مدیر اجرا کنید، سپس راه‌اندازی را دوباره تلاش کنید."
+        "openCodeNodeModulesSymlinkPermission": "KanbanCode را به‌عنوان مدیر اجرا کنید، سپس راه‌اندازی را دوباره تلاش کنید."
       }
     },
     "presentation": {

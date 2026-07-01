@@ -2112,7 +2112,7 @@
         "openCodeAppMcpUnreachable": "OpenCode अॅप MCP ब्रिज रिफ्रेश करण्यासाठी लॉन्च पुन्हा प्रयत्न करा. पुन्हा झाल्यास, अॅप आणि OpenCode रनटाइम रीस्टार्ट करा.",
         "cliBinaryMissing": "स्थानिक Claude CLI बायनरी अस्तित्वात आहे आणि सुरू करता येते याची खात्री करा, मग हा डायलॉग पुन्हा उघडा.",
         "default": "वरील समस्या सोडवा, मग हा डायलॉग पुन्हा उघडा.",
-        "openCodeNodeModulesSymlinkPermission": "Agent Teams AI प्रशासक म्हणून चालवा, मग लॉन्च पुन्हा प्रयत्न करा."
+        "openCodeNodeModulesSymlinkPermission": "KanbanCode प्रशासक म्हणून चालवा, मग लॉन्च पुन्हा प्रयत्न करा."
       }
     },
     "presentation": {

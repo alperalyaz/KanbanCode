@@ -47,7 +47,7 @@
       "copy": "Nakili utambuzi",
       "hints": "Vidokezo",
       "likelyCause": "Sababu inayowezekana:",
-      "windowsSymlinkAdminHint": "Windows: endesha Agent Teams AI kama Msimamizi"
+      "windowsSymlinkAdminHint": "Windows: endesha KanbanCode kama Msimamizi"
     },
     "models": {
       "alreadyDefault": "Hii tayari ni chaguo-msingi la OpenCode lililochaguliwa.",
@@ -388,7 +388,7 @@
       "unknownVersion": "haijulikani",
       "upToDate": "Limesasishwa"
     },
-    "appName": "Agent Teams AI"
+    "appName": "KanbanCode"
   },
   "configEditor": {
     "errors": {

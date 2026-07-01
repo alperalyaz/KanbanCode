@@ -47,7 +47,7 @@
       "copy": "복사 진단",
       "hints": "뚱 베어",
       "likelyCause": "같은 원인:",
-      "windowsSymlinkAdminHint": "Windows: Agent Teams AI를 관리자 권한으로 실행하세요"
+      "windowsSymlinkAdminHint": "Windows: KanbanCode를 관리자 권한으로 실행하세요"
     },
     "models": {
       "alreadyDefault": "이미 선택한 OpenCode 기본값입니다.",

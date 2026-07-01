@@ -183,7 +183,7 @@
   },
   "windowsAdmin": {
     "title": "Windows 管理者モード 推奨",
-    "description": "OpenCode のランタイムチェックは、Agent Teams AI が上昇していないときにタイムアウトできます。 OpenCode チームを起動する前に、管理者として実行してアプリを再起動します。"
+    "description": "OpenCode のランタイムチェックは、KanbanCode が上昇していないときにタイムアウトできます。 OpenCode チームを起動する前に、管理者として実行してアプリを再起動します。"
   },
   "webPreview": {
     "title": "デスクトップアプリをフル機能で開く",

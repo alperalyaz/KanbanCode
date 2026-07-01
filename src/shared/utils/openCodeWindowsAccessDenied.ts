@@ -1,8 +1,10 @@
+import { APP_NAME } from '@shared/constants/brand';
+
 export const OPENCODE_WINDOWS_ACCESS_DENIED_MESSAGE =
   'Windows blocked OpenCode from accessing project or runtime files. Fix folder permissions or move the project to a user-writable folder. Running as administrator is only a temporary workaround.';
 
 export const OPENCODE_WINDOWS_NODE_MODULES_SYMLINK_PERMISSION_MESSAGE =
-  'Windows blocked OpenCode from creating the managed node_modules symlink. Run Agent Teams AI as Administrator, then retry launch.';
+  `Windows blocked OpenCode from creating the managed node_modules symlink. Run ${APP_NAME} as Administrator, then retry launch.`;
 
 const OPENCODE_WINDOWS_ACCESS_DENIED_PATTERN =
   /\b(?:EPERM|EACCES)\b|access is denied|permission denied|operation not permitted/i;
