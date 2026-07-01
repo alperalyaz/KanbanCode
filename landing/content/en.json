@@ -1,18 +1,18 @@
-{
+﻿{
   "hero": {
-    "title": "Agent Teams",
+    "title": "KanbanCode",
     "subtitle": "You're the Boss, agents are your team. They handle tasks themselves, message each other, review each other's code. You just look at the kanban board and drink coffee."
   },
   "features": [
     {
       "id": "agentTeams",
-      "title": "Agent Teams",
+      "title": "KanbanCode",
       "description": "Create teams with different roles. Agents work autonomously in parallel, communicate with each other, and collaborate across teams."
     },
     {
       "id": "kanban",
       "title": "Kanban Board",
-      "description": "Tasks change status in real-time as agents work. Drag, assign, review — all on a visual board."
+      "description": "Tasks change status in real-time as agents work. Drag, assign, review â€” all on a visual board."
     },
     {
       "id": "codeReview",
@@ -38,7 +38,7 @@
   "faq": [
     {
       "id": "whatIsIt",
-      "question": "What is Agent Teams?",
+      "question": "What is KanbanCode?",
       "answer": "A desktop app for orchestrating AI agent teams with our own local coordination layer. Agents have roles, work autonomously, collaborate through a kanban board, and can run on Anthropic or Codex."
     },
     {
@@ -54,7 +54,7 @@
     {
       "id": "howItWorks",
       "question": "How does it work?",
-      "answer": "Install the app, create a team, assign roles — agents start working in parallel. You monitor progress on the kanban board, review code diffs, and communicate with agents directly."
+      "answer": "Install the app, create a team, assign roles â€” agents start working in parallel. You monitor progress on the kanban board, review code diffs, and communicate with agents directly."
     },
     {
       "id": "privacy",
@@ -69,15 +69,15 @@
   ],
   "download": {
     "title": "Download",
-    "note": "Choose your platform and start building with AI agent teams."
+    "note": "Choose your platform and start building with KanbanCode."
   },
   "testimonials": [
     { "id": "user1", "name": "Alex K.", "role": "Tech Lead", "text": "Finally, a tool that lets me manage AI agents like I manage my engineering team. The kanban board is a game-changer for keeping track of parallel agent work." },
     { "id": "user2", "name": "Sarah M.", "role": "Full-stack Developer", "text": "Solo mode is perfect for quick tasks. When I need more firepower, I spin up a full team in seconds. The cross-team communication just works." },
-    { "id": "user3", "name": "David R.", "role": "Senior Engineer", "text": "The code review workflow is brilliant — diff view per task, accept/reject, comments. It's like having a team of junior devs that actually follow instructions." },
+    { "id": "user3", "name": "David R.", "role": "Senior Engineer", "text": "The code review workflow is brilliant â€” diff view per task, accept/reject, comments. It's like having a team of junior devs that actually follow instructions." },
     { "id": "user4", "name": "Yuki T.", "role": "DevOps Engineer", "text": "Live process monitoring and context tracking are incredibly useful. I can see exactly what each agent is doing and how much context they're using." },
-    { "id": "user5", "name": "Maria S.", "role": "Indie Developer", "text": "Zero-setup onboarding is real — installed the app, authenticated once, and had agents working on my codebase within 5 minutes. No API keys, no config files." },
-    { "id": "user6", "name": "Chris L.", "role": "Startup CTO", "text": "This completely changed how I prototype. I set up agent teams for different parts of the stack and let them work in parallel. 10x productivity boost, no joke." }
+    { "id": "user5", "name": "Maria S.", "role": "Indie Developer", "text": "Zero-setup onboarding is real â€” installed the app, authenticated once, and had agents working on my codebase within 5 minutes. No API keys, no config files." },
+    { "id": "user6", "name": "Chris L.", "role": "Startup CTO", "text": "This completely changed how I prototype. I set up KanbanCode for different parts of the stack and let them work in parallel. 10x productivity boost, no joke." }
   ],
   "pricing": [
     {
@@ -100,3 +100,4 @@
     }
   ]
 }
+

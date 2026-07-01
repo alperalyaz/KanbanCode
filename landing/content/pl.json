@@ -1,6 +1,6 @@
-{
+﻿{
   "hero": {
-    "title": "Agent Teams",
+    "title": "KanbanCode",
     "subtitle": "Ty jestes Boss, a agenci sa Twoim zespolem. Sami prowadza zadania, pisza do siebie i sprawdzaja kod. Ty patrzysz na tablice kanban i pijesz kawe."
   },
   "features": [
@@ -38,7 +38,7 @@
   "faq": [
     {
       "id": "whatIsIt",
-      "question": "Czym jest Agent Teams?",
+      "question": "Czym jest KanbanCode?",
       "answer": "Aplikacja desktopowa do orkiestracji zespolow agentow AI z lokalna warstwa koordynacji. Agenci maja role, pracuja autonomicznie, wspolpracuja przez kanban i moga dzialac na Anthropic lub Codex."
     },
     {
@@ -130,3 +130,4 @@
     }
   ]
 }
+

@@ -1,112 +1,112 @@
-{
+﻿{
   "hero": {
-    "title": "Agent Teams",
-    "subtitle": "तुम्ही Boss आहात आणि agents तुमची team आहे. ते tasks स्वतः हाताळतात, एकमेकांना messages करतात आणि code review करतात. तुम्ही फक्त kanban board पाहता आणि coffee पिता."
+    "title": "KanbanCode",
+    "subtitle": "à¤¤à¥à¤®à¥à¤¹à¥€ Boss à¤†à¤¹à¤¾à¤¤ à¤†à¤£à¤¿ agents à¤¤à¥à¤®à¤šà¥€ team à¤†à¤¹à¥‡. à¤¤à¥‡ tasks à¤¸à¥à¤µà¤¤à¤ƒ à¤¹à¤¾à¤¤à¤¾à¤³à¤¤à¤¾à¤¤, à¤à¤•à¤®à¥‡à¤•à¤¾à¤‚à¤¨à¤¾ messages à¤•à¤°à¤¤à¤¾à¤¤ à¤†à¤£à¤¿ code review à¤•à¤°à¤¤à¤¾à¤¤. à¤¤à¥à¤®à¥à¤¹à¥€ à¤«à¤•à¥à¤¤ kanban board à¤ªà¤¾à¤¹à¤¤à¤¾ à¤†à¤£à¤¿ coffee à¤ªà¤¿à¤¤à¤¾."
   },
   "features": [
     {
       "id": "agentTeams",
-      "title": "Agent teams",
-      "description": "वेगवेगळ्या roles असलेल्या teams तयार करा. Agents parallel आणि autonomous काम करतात, एकमेकांशी बोलतात आणि teams मधे collaborate करतात."
+      "title": "KanbanCode",
+      "description": "à¤µà¥‡à¤—à¤µà¥‡à¤—à¤³à¥à¤¯à¤¾ roles à¤…à¤¸à¤²à¥‡à¤²à¥à¤¯à¤¾ teams à¤¤à¤¯à¤¾à¤° à¤•à¤°à¤¾. Agents parallel à¤†à¤£à¤¿ autonomous à¤•à¤¾à¤® à¤•à¤°à¤¤à¤¾à¤¤, à¤à¤•à¤®à¥‡à¤•à¤¾à¤‚à¤¶à¥€ à¤¬à¥‹à¤²à¤¤à¤¾à¤¤ à¤†à¤£à¤¿ teams à¤®à¤§à¥‡ collaborate à¤•à¤°à¤¤à¤¾à¤¤."
     },
     {
       "id": "kanban",
       "title": "Kanban board",
-      "description": "Agents काम करत असताना task status realtime बदलतो. Drag, assign, review - सगळे visual board वर."
+      "description": "Agents à¤•à¤¾à¤® à¤•à¤°à¤¤ à¤…à¤¸à¤¤à¤¾à¤¨à¤¾ task status realtime à¤¬à¤¦à¤²à¤¤à¥‹. Drag, assign, review - à¤¸à¤—à¤³à¥‡ visual board à¤µà¤°."
     },
     {
       "id": "codeReview",
       "title": "Code review",
-      "description": "प्रत्येक task साठी diff view, accept, reject आणि comments. Git support असलेला built-in code editor."
+      "description": "à¤ªà¥à¤°à¤¤à¥à¤¯à¥‡à¤• task à¤¸à¤¾à¤ à¥€ diff view, accept, reject à¤†à¤£à¤¿ comments. Git support à¤…à¤¸à¤²à¥‡à¤²à¤¾ built-in code editor."
     },
     {
       "id": "crossTeam",
-      "title": "Teams मधला संवाद",
-      "description": "Agents team मध्ये आणि teams मधे messages करतात. Direct messages, task comments आणि quick actions."
+      "title": "Teams à¤®à¤§à¤²à¤¾ à¤¸à¤‚à¤µà¤¾à¤¦",
+      "description": "Agents team à¤®à¤§à¥à¤¯à¥‡ à¤†à¤£à¤¿ teams à¤®à¤§à¥‡ messages à¤•à¤°à¤¤à¤¾à¤¤. Direct messages, task comments à¤†à¤£à¤¿ quick actions."
     },
     {
       "id": "soloMode",
       "title": "Solo mode",
-      "description": "स्वतः tasks manage करणाऱ्या एका agent पासून सुरुवात करा. जास्त power हवी तेव्हा full team करा."
+      "description": "à¤¸à¥à¤µà¤¤à¤ƒ tasks manage à¤•à¤°à¤£à¤¾à¤±à¥à¤¯à¤¾ à¤à¤•à¤¾ agent à¤ªà¤¾à¤¸à¥‚à¤¨ à¤¸à¥à¤°à¥à¤µà¤¾à¤¤ à¤•à¤°à¤¾. à¤œà¤¾à¤¸à¥à¤¤ power à¤¹à¤µà¥€ à¤¤à¥‡à¤µà¥à¤¹à¤¾ full team à¤•à¤°à¤¾."
     },
     {
       "id": "liveProcesses",
       "title": "Live processes",
-      "description": "Running agents पहा, browser मध्ये URLs उघडा आणि token usage व session context realtime monitor करा."
+      "description": "Running agents à¤ªà¤¹à¤¾, browser à¤®à¤§à¥à¤¯à¥‡ URLs à¤‰à¤˜à¤¡à¤¾ à¤†à¤£à¤¿ token usage à¤µ session context realtime monitor à¤•à¤°à¤¾."
     }
   ],
   "faq": [
     {
       "id": "whatIsIt",
-      "question": "Agent Teams म्हणजे काय?",
-      "answer": "Local coordination layer सह AI agent teams orchestrate करणारा desktop app. Agents ना roles असतात, ते autonomous काम करतात, kanban board वर collaborate करतात आणि Anthropic किंवा Codex वर run होऊ शकतात."
+      "question": "KanbanCode à¤®à¥à¤¹à¤£à¤œà¥‡ à¤•à¤¾à¤¯?",
+      "answer": "Local coordination layer à¤¸à¤¹ AI KanbanCode orchestrate à¤•à¤°à¤£à¤¾à¤°à¤¾ desktop app. Agents à¤¨à¤¾ roles à¤…à¤¸à¤¤à¤¾à¤¤, à¤¤à¥‡ autonomous à¤•à¤¾à¤® à¤•à¤°à¤¤à¤¾à¤¤, kanban board à¤µà¤° collaborate à¤•à¤°à¤¤à¤¾à¤¤ à¤†à¤£à¤¿ Anthropic à¤•à¤¿à¤‚à¤µà¤¾ Codex à¤µà¤° run à¤¹à¥‹à¤Š à¤¶à¤•à¤¤à¤¾à¤¤."
     },
     {
       "id": "isFree",
-      "question": "हे खरंच free आहे का?",
-      "answer": "हो. App free आणि open source आहे. Auth न लागणाऱ्या free model ने सुरुवात करू शकता - registration, API key किंवा credit card नाही. जास्त models हवे असतील तर Claude, Codex, OpenCode/OpenRouter किंवा supported provider connect करा."
+      "question": "à¤¹à¥‡ à¤–à¤°à¤‚à¤š free à¤†à¤¹à¥‡ à¤•à¤¾?",
+      "answer": "à¤¹à¥‹. App free à¤†à¤£à¤¿ open source à¤†à¤¹à¥‡. Auth à¤¨ à¤²à¤¾à¤—à¤£à¤¾à¤±à¥à¤¯à¤¾ free model à¤¨à¥‡ à¤¸à¥à¤°à¥à¤µà¤¾à¤¤ à¤•à¤°à¥‚ à¤¶à¤•à¤¤à¤¾ - registration, API key à¤•à¤¿à¤‚à¤µà¤¾ credit card à¤¨à¤¾à¤¹à¥€. à¤œà¤¾à¤¸à¥à¤¤ models à¤¹à¤µà¥‡ à¤…à¤¸à¤¤à¥€à¤² à¤¤à¤° Claude, Codex, OpenCode/OpenRouter à¤•à¤¿à¤‚à¤µà¤¾ supported provider connect à¤•à¤°à¤¾."
     },
     {
       "id": "platforms",
-      "question": "कोणते platforms support आहेत?",
-      "answer": "macOS (Apple Silicon आणि Intel), Windows आणि Linux."
+      "question": "à¤•à¥‹à¤£à¤¤à¥‡ platforms support à¤†à¤¹à¥‡à¤¤?",
+      "answer": "macOS (Apple Silicon à¤†à¤£à¤¿ Intel), Windows à¤†à¤£à¤¿ Linux."
     },
     {
       "id": "howItWorks",
-      "question": "हे कसे काम करते?",
-      "answer": "App install करा, team तयार करा, roles assign करा. Agents parallel काम सुरू करतात. तुम्ही kanban वर progress पाहता, diffs review करता आणि agents शी directly बोलता."
+      "question": "à¤¹à¥‡ à¤•à¤¸à¥‡ à¤•à¤¾à¤® à¤•à¤°à¤¤à¥‡?",
+      "answer": "App install à¤•à¤°à¤¾, team à¤¤à¤¯à¤¾à¤° à¤•à¤°à¤¾, roles assign à¤•à¤°à¤¾. Agents parallel à¤•à¤¾à¤® à¤¸à¥à¤°à¥‚ à¤•à¤°à¤¤à¤¾à¤¤. à¤¤à¥à¤®à¥à¤¹à¥€ kanban à¤µà¤° progress à¤ªà¤¾à¤¹à¤¤à¤¾, diffs review à¤•à¤°à¤¤à¤¾ à¤†à¤£à¤¿ agents à¤¶à¥€ directly à¤¬à¥‹à¤²à¤¤à¤¾."
     },
     {
       "id": "privacy",
-      "question": "माझा code private राहतो का?",
-      "answer": "सगळे तुमच्या machine वर locally चालते. Data external servers कडे जात नाही. Code, conversations आणि agent activity private राहते."
+      "question": "à¤®à¤¾à¤à¤¾ code private à¤°à¤¾à¤¹à¤¤à¥‹ à¤•à¤¾?",
+      "answer": "à¤¸à¤—à¤³à¥‡ à¤¤à¥à¤®à¤šà¥à¤¯à¤¾ machine à¤µà¤° locally à¤šà¤¾à¤²à¤¤à¥‡. Data external servers à¤•à¤¡à¥‡ à¤œà¤¾à¤¤ à¤¨à¤¾à¤¹à¥€. Code, conversations à¤†à¤£à¤¿ agent activity private à¤°à¤¾à¤¹à¤¤à¥‡."
     },
     {
       "id": "requirements",
-      "question": "सुरुवात करण्यासाठी काय पाहिजे?",
-      "answer": "फक्त app install करा - auth नसलेल्या free model ने सुरुवात करा, नंतर गरज लागल्यावर UI मधून provider-backed models connect करा."
+      "question": "à¤¸à¥à¤°à¥à¤µà¤¾à¤¤ à¤•à¤°à¤£à¥à¤¯à¤¾à¤¸à¤¾à¤ à¥€ à¤•à¤¾à¤¯ à¤ªà¤¾à¤¹à¤¿à¤œà¥‡?",
+      "answer": "à¤«à¤•à¥à¤¤ app install à¤•à¤°à¤¾ - auth à¤¨à¤¸à¤²à¥‡à¤²à¥à¤¯à¤¾ free model à¤¨à¥‡ à¤¸à¥à¤°à¥à¤µà¤¾à¤¤ à¤•à¤°à¤¾, à¤¨à¤‚à¤¤à¤° à¤—à¤°à¤œ à¤²à¤¾à¤—à¤²à¥à¤¯à¤¾à¤µà¤° UI à¤®à¤§à¥‚à¤¨ provider-backed models connect à¤•à¤°à¤¾."
     }
   ],
   "download": {
     "title": "Download",
-    "note": "तुमचा platform निवडा आणि AI agent teams सोबत build करायला सुरुवात करा."
+    "note": "à¤¤à¥à¤®à¤šà¤¾ platform à¤¨à¤¿à¤µà¤¡à¤¾ à¤†à¤£à¤¿ AI KanbanCode à¤¸à¥‹à¤¬à¤¤ build à¤•à¤°à¤¾à¤¯à¤²à¤¾ à¤¸à¥à¤°à¥à¤µà¤¾à¤¤ à¤•à¤°à¤¾."
   },
   "testimonials": [
     {
       "id": "user1",
       "name": "Alex K.",
       "role": "Tech Lead",
-      "text": "वेगवेगळ्या roles असलेल्या teams तयार करा. Agents parallel आणि autonomous काम करतात, एकमेकांशी बोलतात आणि teams मधे collaborate करतात."
+      "text": "à¤µà¥‡à¤—à¤µà¥‡à¤—à¤³à¥à¤¯à¤¾ roles à¤…à¤¸à¤²à¥‡à¤²à¥à¤¯à¤¾ teams à¤¤à¤¯à¤¾à¤° à¤•à¤°à¤¾. Agents parallel à¤†à¤£à¤¿ autonomous à¤•à¤¾à¤® à¤•à¤°à¤¤à¤¾à¤¤, à¤à¤•à¤®à¥‡à¤•à¤¾à¤‚à¤¶à¥€ à¤¬à¥‹à¤²à¤¤à¤¾à¤¤ à¤†à¤£à¤¿ teams à¤®à¤§à¥‡ collaborate à¤•à¤°à¤¤à¤¾à¤¤."
     },
     {
       "id": "user2",
       "name": "Sarah M.",
       "role": "Full-stack Developer",
-      "text": "स्वतः tasks manage करणाऱ्या एका agent पासून सुरुवात करा. जास्त power हवी तेव्हा full team करा."
+      "text": "à¤¸à¥à¤µà¤¤à¤ƒ tasks manage à¤•à¤°à¤£à¤¾à¤±à¥à¤¯à¤¾ à¤à¤•à¤¾ agent à¤ªà¤¾à¤¸à¥‚à¤¨ à¤¸à¥à¤°à¥à¤µà¤¾à¤¤ à¤•à¤°à¤¾. à¤œà¤¾à¤¸à¥à¤¤ power à¤¹à¤µà¥€ à¤¤à¥‡à¤µà¥à¤¹à¤¾ full team à¤•à¤°à¤¾."
     },
     {
       "id": "user3",
       "name": "David R.",
       "role": "Senior Engineer",
-      "text": "प्रत्येक task साठी diff view, accept, reject आणि comments. Git support असलेला built-in code editor."
+      "text": "à¤ªà¥à¤°à¤¤à¥à¤¯à¥‡à¤• task à¤¸à¤¾à¤ à¥€ diff view, accept, reject à¤†à¤£à¤¿ comments. Git support à¤…à¤¸à¤²à¥‡à¤²à¤¾ built-in code editor."
     },
     {
       "id": "user4",
       "name": "Yuki T.",
       "role": "DevOps Engineer",
-      "text": "Running agents पहा, browser मध्ये URLs उघडा आणि token usage व session context realtime monitor करा."
+      "text": "Running agents à¤ªà¤¹à¤¾, browser à¤®à¤§à¥à¤¯à¥‡ URLs à¤‰à¤˜à¤¡à¤¾ à¤†à¤£à¤¿ token usage à¤µ session context realtime monitor à¤•à¤°à¤¾."
     },
     {
       "id": "user5",
       "name": "Maria S.",
       "role": "Indie Developer",
-      "text": "फक्त app install करा - auth नसलेल्या free model ने सुरुवात करा, नंतर गरज लागल्यावर UI मधून provider-backed models connect करा."
+      "text": "à¤«à¤•à¥à¤¤ app install à¤•à¤°à¤¾ - auth à¤¨à¤¸à¤²à¥‡à¤²à¥à¤¯à¤¾ free model à¤¨à¥‡ à¤¸à¥à¤°à¥à¤µà¤¾à¤¤ à¤•à¤°à¤¾, à¤¨à¤‚à¤¤à¤° à¤—à¤°à¤œ à¤²à¤¾à¤—à¤²à¥à¤¯à¤¾à¤µà¤° UI à¤®à¤§à¥‚à¤¨ provider-backed models connect à¤•à¤°à¤¾."
     },
     {
       "id": "user6",
       "name": "Chris L.",
       "role": "Startup CTO",
-      "text": "Agents team मध्ये आणि teams मधे messages करतात. Direct messages, task comments आणि quick actions."
+      "text": "Agents team à¤®à¤§à¥à¤¯à¥‡ à¤†à¤£à¤¿ teams à¤®à¤§à¥‡ messages à¤•à¤°à¤¤à¤¾à¤¤. Direct messages, task comments à¤†à¤£à¤¿ quick actions."
     }
   ],
   "pricing": [
@@ -115,18 +115,19 @@
       "name": "Free",
       "price": "$0",
       "period": "",
-      "description": "हो. App free आणि open source आहे. Auth न लागणाऱ्या free model ने सुरुवात करू शकता - registration, API key किंवा credit card नाही. जास्त models हवे असतील तर Claude, Codex, OpenCode/OpenRouter किंवा supported provider connect करा.",
+      "description": "à¤¹à¥‹. App free à¤†à¤£à¤¿ open source à¤†à¤¹à¥‡. Auth à¤¨ à¤²à¤¾à¤—à¤£à¤¾à¤±à¥à¤¯à¤¾ free model à¤¨à¥‡ à¤¸à¥à¤°à¥à¤µà¤¾à¤¤ à¤•à¤°à¥‚ à¤¶à¤•à¤¤à¤¾ - registration, API key à¤•à¤¿à¤‚à¤µà¤¾ credit card à¤¨à¤¾à¤¹à¥€. à¤œà¤¾à¤¸à¥à¤¤ models à¤¹à¤µà¥‡ à¤…à¤¸à¤¤à¥€à¤² à¤¤à¤° Claude, Codex, OpenCode/OpenRouter à¤•à¤¿à¤‚à¤µà¤¾ supported provider connect à¤•à¤°à¤¾.",
       "features": [
-        "Agent teams",
+        "KanbanCode",
         "Kanban board",
         "Code review",
-        "Teams मधला संवाद",
+        "Teams à¤®à¤§à¤²à¤¾ à¤¸à¤‚à¤µà¤¾à¤¦",
         "Solo mode",
         "Live processes",
-        "माझा code private राहतो का?",
-        "सुरुवात करण्यासाठी काय पाहिजे?"
+        "à¤®à¤¾à¤à¤¾ code private à¤°à¤¾à¤¹à¤¤à¥‹ à¤•à¤¾?",
+        "à¤¸à¥à¤°à¥à¤µà¤¾à¤¤ à¤•à¤°à¤£à¥à¤¯à¤¾à¤¸à¤¾à¤ à¥€ à¤•à¤¾à¤¯ à¤ªà¤¾à¤¹à¤¿à¤œà¥‡?"
       ],
       "highlighted": true
     }
   ]
 }
+

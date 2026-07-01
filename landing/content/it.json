@@ -1,6 +1,6 @@
-{
+﻿{
   "hero": {
-    "title": "Agent Teams",
+    "title": "KanbanCode",
     "subtitle": "Tu sei il Boss, gli agenti sono il tuo team. Gestiscono i task da soli, si scrivono, rivedono il codice a vicenda. Tu guardi la kanban board e bevi caffe."
   },
   "features": [
@@ -38,7 +38,7 @@
   "faq": [
     {
       "id": "whatIsIt",
-      "question": "Cos'e Agent Teams?",
+      "question": "Cos'e KanbanCode?",
       "answer": "Un'app desktop per orchestrare team di agenti AI con un livello locale di coordinamento. Gli agenti hanno ruoli, lavorano in autonomia, collaborano tramite kanban board e possono usare Anthropic o Codex."
     },
     {
@@ -113,7 +113,7 @@
     {
       "id": "free",
       "name": "Gratis",
-      "price": "0 €",
+      "price": "0 â‚¬",
       "period": "",
       "description": "Inizia con il modello gratuito incluso senza autenticazione. Nessuna registrazione, API key o carta di credito.",
       "features": [
@@ -130,3 +130,4 @@
     }
   ]
 }
+

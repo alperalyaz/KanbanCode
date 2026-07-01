@@ -1,6 +1,6 @@
-{
+﻿{
   "hero": {
-    "title": "Agent Teams",
+    "title": "KanbanCode",
     "subtitle": "Boss sensin, ajanlar ekibin. Gorevleri kendileri yurutur, birbirleriyle mesajlasir, kodlarini inceler. Sen kanban panosuna bakar ve kahveni icersin."
   },
   "features": [
@@ -38,7 +38,7 @@
   "faq": [
     {
       "id": "whatIsIt",
-      "question": "Agent Teams nedir?",
+      "question": "KanbanCode nedir?",
       "answer": "Yerel koordinasyon katmanimizla AI ajan ekiplerini yoneten bir masaustu uygulamasi. Ajanlar rollere sahiptir, otonom calisir, kanban panosu uzerinden is birligi yapar ve Anthropic ya da Codex ile calisabilir."
     },
     {
@@ -130,3 +130,4 @@
     }
   ]
 }
+

@@ -1,102 +1,103 @@
-{
+﻿{
   "hero": {
-    "title": "Agent Teams",
-    "subtitle": "Vous êtes le Boss, les agents sont votre équipe. Ils gèrent les tâches, communiquent entre eux, révisent le code. Vous regardez le kanban et buvez votre café."
+    "title": "KanbanCode",
+    "subtitle": "Vous Ãªtes le Boss, les agents sont votre Ã©quipe. Ils gÃ¨rent les tÃ¢ches, communiquent entre eux, rÃ©visent le code. Vous regardez le kanban et buvez votre cafÃ©."
   },
   "features": [
     {
       "id": "agentTeams",
-      "title": "Équipes d'agents",
-      "description": "Créez des équipes avec différents rôles. Les agents travaillent en parallèle de manière autonome, communiquent entre eux et collaborent entre équipes."
+      "title": "Ã‰quipes d'agents",
+      "description": "CrÃ©ez des Ã©quipes avec diffÃ©rents rÃ´les. Les agents travaillent en parallÃ¨le de maniÃ¨re autonome, communiquent entre eux et collaborent entre Ã©quipes."
     },
     {
       "id": "kanban",
       "title": "Tableau Kanban",
-      "description": "Les tâches changent de statut en temps réel. Glissez, assignez, révisez — tout sur un tableau visuel."
+      "description": "Les tÃ¢ches changent de statut en temps rÃ©el. Glissez, assignez, rÃ©visez â€” tout sur un tableau visuel."
     },
     {
       "id": "codeReview",
       "title": "Revue de code",
-      "description": "Vue diff par tâche avec acceptation, rejet et commentaires. Éditeur de code intégré avec support Git."
+      "description": "Vue diff par tÃ¢che avec acceptation, rejet et commentaires. Ã‰diteur de code intÃ©grÃ© avec support Git."
     },
     {
       "id": "crossTeam",
-      "title": "Communication inter-équipes",
-      "description": "Les agents communiquent entre eux au sein et entre les équipes. Messages directs, commentaires sur les tâches et actions rapides."
+      "title": "Communication inter-Ã©quipes",
+      "description": "Les agents communiquent entre eux au sein et entre les Ã©quipes. Messages directs, commentaires sur les tÃ¢ches et actions rapides."
     },
     {
       "id": "soloMode",
       "title": "Mode solo",
-      "description": "Commencez avec un seul agent qui gère ses tâches. Passez à une équipe complète quand vous avez besoin de plus de puissance."
+      "description": "Commencez avec un seul agent qui gÃ¨re ses tÃ¢ches. Passez Ã  une Ã©quipe complÃ¨te quand vous avez besoin de plus de puissance."
     },
     {
       "id": "liveProcesses",
       "title": "Processus en direct",
-      "description": "Visualisez les agents en cours, ouvrez les URL dans le navigateur, surveillez l'utilisation des tokens et le contexte en temps réel."
+      "description": "Visualisez les agents en cours, ouvrez les URL dans le navigateur, surveillez l'utilisation des tokens et le contexte en temps rÃ©el."
     }
   ],
   "faq": [
     {
       "id": "whatIsIt",
-      "question": "Qu'est-ce que Agent Teams ?",
-      "answer": "Une application de bureau pour orchestrer des équipes d'agents IA avec notre propre couche de coordination locale. Les agents ont des rôles, travaillent de façon autonome, collaborent sur un tableau kanban et peuvent s'exécuter avec Anthropic ou Codex."
+      "question": "Qu'est-ce que KanbanCode ?",
+      "answer": "Une application de bureau pour orchestrer des Ã©quipes d'agents IA avec notre propre couche de coordination locale. Les agents ont des rÃ´les, travaillent de faÃ§on autonome, collaborent sur un tableau kanban et peuvent s'exÃ©cuter avec Anthropic ou Codex."
     },
     {
       "id": "isFree",
       "question": "C'est vraiment gratuit ?",
-      "answer": "Oui. L'application est gratuite et open source, et vous pouvez commencer avec un modèle gratuit sans authentification - sans inscription, clé API ni carte bancaire. Pour plus de modèles, connectez Claude, Codex, OpenCode/OpenRouter ou un autre provider pris en charge."
+      "answer": "Oui. L'application est gratuite et open source, et vous pouvez commencer avec un modÃ¨le gratuit sans authentification - sans inscription, clÃ© API ni carte bancaire. Pour plus de modÃ¨les, connectez Claude, Codex, OpenCode/OpenRouter ou un autre provider pris en charge."
     },
     {
       "id": "platforms",
-      "question": "Quelles plateformes sont supportées ?",
+      "question": "Quelles plateformes sont supportÃ©es ?",
       "answer": "macOS (Apple Silicon et Intel), Windows et Linux."
     },
     {
       "id": "howItWorks",
-      "question": "Comment ça marche ?",
-      "answer": "Installez l'application, créez une équipe, assignez des rôles — les agents commencent à travailler en parallèle. Vous suivez la progression sur le kanban, révisez le code et communiquez directement avec les agents."
+      "question": "Comment Ã§a marche ?",
+      "answer": "Installez l'application, crÃ©ez une Ã©quipe, assignez des rÃ´les â€” les agents commencent Ã  travailler en parallÃ¨le. Vous suivez la progression sur le kanban, rÃ©visez le code et communiquez directement avec les agents."
     },
     {
       "id": "privacy",
-      "question": "Mon code est-il privé ?",
-      "answer": "Tout fonctionne localement sur votre machine. Aucune donnée n'est envoyée à des serveurs externes. Votre code, vos conversations et l'activité des agents restent entièrement privés."
+      "question": "Mon code est-il privÃ© ?",
+      "answer": "Tout fonctionne localement sur votre machine. Aucune donnÃ©e n'est envoyÃ©e Ã  des serveurs externes. Votre code, vos conversations et l'activitÃ© des agents restent entiÃ¨rement privÃ©s."
     },
     {
       "id": "requirements",
       "question": "De quoi ai-je besoin pour commencer ?",
-      "answer": "Installez simplement l'application - commencez avec le modèle gratuit sans authentification, puis connectez les modèles provider-backed depuis l'interface seulement si nécessaire."
+      "answer": "Installez simplement l'application - commencez avec le modÃ¨le gratuit sans authentification, puis connectez les modÃ¨les provider-backed depuis l'interface seulement si nÃ©cessaire."
     }
   ],
   "download": {
-    "title": "Télécharger",
-    "note": "Choisissez votre plateforme et commencez à travailler avec des équipes d'agents IA."
+    "title": "TÃ©lÃ©charger",
+    "note": "Choisissez votre plateforme et commencez Ã  travailler avec des Ã©quipes d'agents IA."
   },
   "testimonials": [
-    { "id": "user1", "name": "Alex K.", "role": "Tech Lead", "text": "Enfin un outil qui me permet de gérer les agents IA comme mon équipe d'ingénieurs. Le kanban est un game-changer pour suivre le travail parallèle." },
-    { "id": "user2", "name": "Sarah M.", "role": "Développeuse full-stack", "text": "Le mode solo est parfait pour les tâches rapides. Quand j'ai besoin de plus, je lance une équipe complète en quelques secondes." },
-    { "id": "user3", "name": "David R.", "role": "Ingénieur senior", "text": "Le workflow de revue de code est brillant — vue diff par tâche, accepter/rejeter, commentaires. Comme avoir une équipe qui suit vraiment les instructions." },
-    { "id": "user4", "name": "Yuki T.", "role": "Ingénieur DevOps", "text": "La surveillance des processus et le suivi du contexte sont incroyablement utiles. Je vois exactement ce que chaque agent fait." },
-    { "id": "user5", "name": "Maria S.", "role": "Développeuse indépendante", "text": "L'onboarding zéro-configuration est réel — installé, authentifié une fois, et les agents travaillaient sur mon code en 5 minutes." },
-    { "id": "user6", "name": "Chris L.", "role": "CTO de startup", "text": "Ça a complètement changé ma façon de prototyper. Je configure des équipes pour différentes parties du stack et les laisse travailler en parallèle." }
+    { "id": "user1", "name": "Alex K.", "role": "Tech Lead", "text": "Enfin un outil qui me permet de gÃ©rer les agents IA comme mon Ã©quipe d'ingÃ©nieurs. Le kanban est un game-changer pour suivre le travail parallÃ¨le." },
+    { "id": "user2", "name": "Sarah M.", "role": "DÃ©veloppeuse full-stack", "text": "Le mode solo est parfait pour les tÃ¢ches rapides. Quand j'ai besoin de plus, je lance une Ã©quipe complÃ¨te en quelques secondes." },
+    { "id": "user3", "name": "David R.", "role": "IngÃ©nieur senior", "text": "Le workflow de revue de code est brillant â€” vue diff par tÃ¢che, accepter/rejeter, commentaires. Comme avoir une Ã©quipe qui suit vraiment les instructions." },
+    { "id": "user4", "name": "Yuki T.", "role": "IngÃ©nieur DevOps", "text": "La surveillance des processus et le suivi du contexte sont incroyablement utiles. Je vois exactement ce que chaque agent fait." },
+    { "id": "user5", "name": "Maria S.", "role": "DÃ©veloppeuse indÃ©pendante", "text": "L'onboarding zÃ©ro-configuration est rÃ©el â€” installÃ©, authentifiÃ© une fois, et les agents travaillaient sur mon code en 5 minutes." },
+    { "id": "user6", "name": "Chris L.", "role": "CTO de startup", "text": "Ã‡a a complÃ¨tement changÃ© ma faÃ§on de prototyper. Je configure des Ã©quipes pour diffÃ©rentes parties du stack et les laisse travailler en parallÃ¨le." }
   ],
   "pricing": [
     {
       "id": "free",
       "name": "Gratuit",
-      "price": "0€",
+      "price": "0â‚¬",
       "period": "",
-      "description": "Commencez avec le modèle gratuit sans authentification inclus. Sans inscription, sans clé API, sans carte bancaire.",
+      "description": "Commencez avec le modÃ¨le gratuit sans authentification inclus. Sans inscription, sans clÃ© API, sans carte bancaire.",
       "features": [
-        "Modèle gratuit sans authentification pour les premiers essais",
+        "ModÃ¨le gratuit sans authentification pour les premiers essais",
         "Aucun compte ni login provider requis pour tester",
-        "Accès optionnel à Claude, Codex et OpenCode",
-        "Équipes d'agents illimitées",
-        "Kanban avec mises à jour en temps réel",
+        "AccÃ¨s optionnel Ã  Claude, Codex et OpenCode",
+        "Ã‰quipes d'agents illimitÃ©es",
+        "Kanban avec mises Ã  jour en temps rÃ©el",
         "Revue de code avec vue diff",
-        "Communication inter-équipes",
-        "Modes solo et équipe"
+        "Communication inter-Ã©quipes",
+        "Modes solo et Ã©quipe"
       ],
       "highlighted": true
     }
   ]
 }
+

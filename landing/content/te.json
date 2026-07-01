@@ -1,112 +1,112 @@
-{
+﻿{
   "hero": {
-    "title": "Agent Teams",
-    "subtitle": "మీరు Boss, agents మీ టీమ్. అవి tasks ను తామే తీసుకుంటాయి, ఒకదానికొకటి message చేస్తాయి, code review చేస్తాయి. మీరు kanban board చూస్తూ coffee తాగొచ్చు."
+    "title": "KanbanCode",
+    "subtitle": "à°®à±€à°°à± Boss, agents à°®à±€ à°Ÿà±€à°®à±. à°…à°µà°¿ tasks à°¨à± à°¤à°¾à°®à±‡ à°¤à±€à°¸à±à°•à±à°‚à°Ÿà°¾à°¯à°¿, à°’à°•à°¦à°¾à°¨à°¿à°•à±Šà°•à°Ÿà°¿ message à°šà±‡à°¸à±à°¤à°¾à°¯à°¿, code review à°šà±‡à°¸à±à°¤à°¾à°¯à°¿. à°®à±€à°°à± kanban board à°šà±‚à°¸à±à°¤à±‚ coffee à°¤à°¾à°—à±Šà°šà±à°šà±."
   },
   "features": [
     {
       "id": "agentTeams",
-      "title": "Agent టీమ్‌లు",
-      "description": "వేర్వేరు roles తో టీమ్‌లు సృష్టించండి. Agents parallel గా autonomous గా పని చేస్తాయి, మాట్లాడుకుంటాయి, టీమ్‌ల మధ్య collaborate చేస్తాయి."
+      "title": "Agent à°Ÿà±€à°®à±â€Œà°²à±",
+      "description": "à°µà±‡à°°à±à°µà±‡à°°à± roles à°¤à±‹ à°Ÿà±€à°®à±â€Œà°²à± à°¸à±ƒà°·à±à°Ÿà°¿à°‚à°šà°‚à°¡à°¿. Agents parallel à°—à°¾ autonomous à°—à°¾ à°ªà°¨à°¿ à°šà±‡à°¸à±à°¤à°¾à°¯à°¿, à°®à°¾à°Ÿà±à°²à°¾à°¡à±à°•à±à°‚à°Ÿà°¾à°¯à°¿, à°Ÿà±€à°®à±â€Œà°² à°®à°§à±à°¯ collaborate à°šà±‡à°¸à±à°¤à°¾à°¯à°¿."
     },
     {
       "id": "kanban",
       "title": "Kanban board",
-      "description": "Agents పని చేస్తుండగా task status realtime లో మారుతుంది. Drag, assign, review - అన్నీ ఒక visual board లో."
+      "description": "Agents à°ªà°¨à°¿ à°šà±‡à°¸à±à°¤à±à°‚à°¡à°—à°¾ task status realtime à°²à±‹ à°®à°¾à°°à±à°¤à±à°‚à°¦à°¿. Drag, assign, review - à°…à°¨à±à°¨à±€ à°’à°• visual board à°²à±‹."
     },
     {
       "id": "codeReview",
       "title": "Code review",
-      "description": "ప్రతి task కి diff view, accept, reject, comment. Git support తో built-in code editor."
+      "description": "à°ªà±à°°à°¤à°¿ task à°•à°¿ diff view, accept, reject, comment. Git support à°¤à±‹ built-in code editor."
     },
     {
       "id": "crossTeam",
-      "title": "టీమ్‌ల మధ్య కమ్యూనికేషన్",
-      "description": "Agents ఒకే టీమ్‌లోనూ, టీమ్‌ల మధ్యనూ message చేస్తాయి. Direct messages, task comments, quick actions."
+      "title": "à°Ÿà±€à°®à±â€Œà°² à°®à°§à±à°¯ à°•à°®à±à°¯à±‚à°¨à°¿à°•à±‡à°·à°¨à±",
+      "description": "Agents à°’à°•à±‡ à°Ÿà±€à°®à±â€Œà°²à±‹à°¨à±‚, à°Ÿà±€à°®à±â€Œà°² à°®à°§à±à°¯à°¨à±‚ message à°šà±‡à°¸à±à°¤à°¾à°¯à°¿. Direct messages, task comments, quick actions."
     },
     {
       "id": "soloMode",
       "title": "Solo mode",
-      "description": "తన tasks తానే నిర్వహించే ఒక agent తో ప్రారంభించండి. మరింత power కావాలంటే full team గా విస్తరించండి."
+      "description": "à°¤à°¨ tasks à°¤à°¾à°¨à±‡ à°¨à°¿à°°à±à°µà°¹à°¿à°‚à°šà±‡ à°’à°• agent à°¤à±‹ à°ªà±à°°à°¾à°°à°‚à°­à°¿à°‚à°šà°‚à°¡à°¿. à°®à°°à°¿à°‚à°¤ power à°•à°¾à°µà°¾à°²à°‚à°Ÿà±‡ full team à°—à°¾ à°µà°¿à°¸à±à°¤à°°à°¿à°‚à°šà°‚à°¡à°¿."
     },
     {
       "id": "liveProcesses",
       "title": "Live processes",
-      "description": "Running agents చూడండి, URLs ను browser లో open చేయండి, token usage మరియు session context realtime లో monitor చేయండి."
+      "description": "Running agents à°šà±‚à°¡à°‚à°¡à°¿, URLs à°¨à± browser à°²à±‹ open à°šà±‡à°¯à°‚à°¡à°¿, token usage à°®à°°à°¿à°¯à± session context realtime à°²à±‹ monitor à°šà±‡à°¯à°‚à°¡à°¿."
     }
   ],
   "faq": [
     {
       "id": "whatIsIt",
-      "question": "Agent Teams అంటే ఏమిటి?",
-      "answer": "మా local coordination layer తో AI agent teams ని orchestrate చేసే desktop app. Agents కు roles ఉంటాయి, autonomous గా పని చేస్తాయి, kanban board ద్వారా collaborate చేస్తాయి, Anthropic లేదా Codex మీద run అవుతాయి."
+      "question": "KanbanCode à°…à°‚à°Ÿà±‡ à°à°®à°¿à°Ÿà°¿?",
+      "answer": "à°®à°¾ local coordination layer à°¤à±‹ AI KanbanCode à°¨à°¿ orchestrate à°šà±‡à°¸à±‡ desktop app. Agents à°•à± roles à°‰à°‚à°Ÿà°¾à°¯à°¿, autonomous à°—à°¾ à°ªà°¨à°¿ à°šà±‡à°¸à±à°¤à°¾à°¯à°¿, kanban board à°¦à±à°µà°¾à°°à°¾ collaborate à°šà±‡à°¸à±à°¤à°¾à°¯à°¿, Anthropic à°²à±‡à°¦à°¾ Codex à°®à±€à°¦ run à°…à°µà±à°¤à°¾à°¯à°¿."
     },
     {
       "id": "isFree",
-      "question": "ఇది నిజంగా free నా?",
-      "answer": "అవును. App free మరియు open source. Auth అవసరం లేని free model తో మొదలుపెట్టవచ్చు - registration, API key, credit card అవసరం లేదు. మరిన్ని models కోసం Claude, Codex, OpenCode/OpenRouter లేదా supported provider connect చేయండి."
+      "question": "à°‡à°¦à°¿ à°¨à°¿à°œà°‚à°—à°¾ free à°¨à°¾?",
+      "answer": "à°…à°µà±à°¨à±. App free à°®à°°à°¿à°¯à± open source. Auth à°…à°µà°¸à°°à°‚ à°²à±‡à°¨à°¿ free model à°¤à±‹ à°®à±Šà°¦à°²à±à°ªà±†à°Ÿà±à°Ÿà°µà°šà±à°šà± - registration, API key, credit card à°…à°µà°¸à°°à°‚ à°²à±‡à°¦à±. à°®à°°à°¿à°¨à±à°¨à°¿ models à°•à±‹à°¸à°‚ Claude, Codex, OpenCode/OpenRouter à°²à±‡à°¦à°¾ supported provider connect à°šà±‡à°¯à°‚à°¡à°¿."
     },
     {
       "id": "platforms",
-      "question": "ఏ platforms support?",
-      "answer": "macOS (Apple Silicon మరియు Intel), Windows, Linux."
+      "question": "à° platforms support?",
+      "answer": "macOS (Apple Silicon à°®à°°à°¿à°¯à± Intel), Windows, Linux."
     },
     {
       "id": "howItWorks",
-      "question": "ఇది ఎలా పని చేస్తుంది?",
-      "answer": "App install చేయండి, team create చేయండి, roles assign చేయండి. Agents parallel గా పని మొదలుపెడతాయి. మీరు kanban లో progress చూస్తారు, diffs review చేస్తారు, agents తో directly మాట్లాడతారు."
+      "question": "à°‡à°¦à°¿ à°à°²à°¾ à°ªà°¨à°¿ à°šà±‡à°¸à±à°¤à±à°‚à°¦à°¿?",
+      "answer": "App install à°šà±‡à°¯à°‚à°¡à°¿, team create à°šà±‡à°¯à°‚à°¡à°¿, roles assign à°šà±‡à°¯à°‚à°¡à°¿. Agents parallel à°—à°¾ à°ªà°¨à°¿ à°®à±Šà°¦à°²à±à°ªà±†à°¡à°¤à°¾à°¯à°¿. à°®à±€à°°à± kanban à°²à±‹ progress à°šà±‚à°¸à±à°¤à°¾à°°à±, diffs review à°šà±‡à°¸à±à°¤à°¾à°°à±, agents à°¤à±‹ directly à°®à°¾à°Ÿà±à°²à°¾à°¡à°¤à°¾à°°à±."
     },
     {
       "id": "privacy",
-      "question": "నా code private గా ఉంటుందా?",
-      "answer": "అన్నీ మీ machine లో locally run అవుతాయి. Data external servers కు పంపబడదు. Code, conversations, agent activity private గానే ఉంటాయి."
+      "question": "à°¨à°¾ code private à°—à°¾ à°‰à°‚à°Ÿà±à°‚à°¦à°¾?",
+      "answer": "à°…à°¨à±à°¨à±€ à°®à±€ machine à°²à±‹ locally run à°…à°µà±à°¤à°¾à°¯à°¿. Data external servers à°•à± à°ªà°‚à°ªà°¬à°¡à°¦à±. Code, conversations, agent activity private à°—à°¾à°¨à±‡ à°‰à°‚à°Ÿà°¾à°¯à°¿."
     },
     {
       "id": "requirements",
-      "question": "మొదలు పెట్టడానికి ఏమి కావాలి?",
-      "answer": "App install చేస్తే చాలు - auth లేని free model తో మొదలుపెట్టి, అవసరమైతే UI నుండి provider-backed models connect చేయండి."
+      "question": "à°®à±Šà°¦à°²à± à°ªà±†à°Ÿà±à°Ÿà°¡à°¾à°¨à°¿à°•à°¿ à°à°®à°¿ à°•à°¾à°µà°¾à°²à°¿?",
+      "answer": "App install à°šà±‡à°¸à±à°¤à±‡ à°šà°¾à°²à± - auth à°²à±‡à°¨à°¿ free model à°¤à±‹ à°®à±Šà°¦à°²à±à°ªà±†à°Ÿà±à°Ÿà°¿, à°…à°µà°¸à°°à°®à±ˆà°¤à±‡ UI à°¨à±à°‚à°¡à°¿ provider-backed models connect à°šà±‡à°¯à°‚à°¡à°¿."
     }
   ],
   "download": {
     "title": "Download",
-    "note": "మీ platform ఎంచుకుని AI agent teams తో build చేయడం మొదలుపెట్టండి."
+    "note": "à°®à±€ platform à°à°‚à°šà±à°•à±à°¨à°¿ AI KanbanCode à°¤à±‹ build à°šà±‡à°¯à°¡à°‚ à°®à±Šà°¦à°²à±à°ªà±†à°Ÿà±à°Ÿà°‚à°¡à°¿."
   },
   "testimonials": [
     {
       "id": "user1",
       "name": "Alex K.",
       "role": "Tech Lead",
-      "text": "వేర్వేరు roles తో టీమ్‌లు సృష్టించండి. Agents parallel గా autonomous గా పని చేస్తాయి, మాట్లాడుకుంటాయి, టీమ్‌ల మధ్య collaborate చేస్తాయి."
+      "text": "à°µà±‡à°°à±à°µà±‡à°°à± roles à°¤à±‹ à°Ÿà±€à°®à±â€Œà°²à± à°¸à±ƒà°·à±à°Ÿà°¿à°‚à°šà°‚à°¡à°¿. Agents parallel à°—à°¾ autonomous à°—à°¾ à°ªà°¨à°¿ à°šà±‡à°¸à±à°¤à°¾à°¯à°¿, à°®à°¾à°Ÿà±à°²à°¾à°¡à±à°•à±à°‚à°Ÿà°¾à°¯à°¿, à°Ÿà±€à°®à±â€Œà°² à°®à°§à±à°¯ collaborate à°šà±‡à°¸à±à°¤à°¾à°¯à°¿."
     },
     {
       "id": "user2",
       "name": "Sarah M.",
       "role": "Full-stack Developer",
-      "text": "తన tasks తానే నిర్వహించే ఒక agent తో ప్రారంభించండి. మరింత power కావాలంటే full team గా విస్తరించండి."
+      "text": "à°¤à°¨ tasks à°¤à°¾à°¨à±‡ à°¨à°¿à°°à±à°µà°¹à°¿à°‚à°šà±‡ à°’à°• agent à°¤à±‹ à°ªà±à°°à°¾à°°à°‚à°­à°¿à°‚à°šà°‚à°¡à°¿. à°®à°°à°¿à°‚à°¤ power à°•à°¾à°µà°¾à°²à°‚à°Ÿà±‡ full team à°—à°¾ à°µà°¿à°¸à±à°¤à°°à°¿à°‚à°šà°‚à°¡à°¿."
     },
     {
       "id": "user3",
       "name": "David R.",
       "role": "Senior Engineer",
-      "text": "ప్రతి task కి diff view, accept, reject, comment. Git support తో built-in code editor."
+      "text": "à°ªà±à°°à°¤à°¿ task à°•à°¿ diff view, accept, reject, comment. Git support à°¤à±‹ built-in code editor."
     },
     {
       "id": "user4",
       "name": "Yuki T.",
       "role": "DevOps Engineer",
-      "text": "Running agents చూడండి, URLs ను browser లో open చేయండి, token usage మరియు session context realtime లో monitor చేయండి."
+      "text": "Running agents à°šà±‚à°¡à°‚à°¡à°¿, URLs à°¨à± browser à°²à±‹ open à°šà±‡à°¯à°‚à°¡à°¿, token usage à°®à°°à°¿à°¯à± session context realtime à°²à±‹ monitor à°šà±‡à°¯à°‚à°¡à°¿."
     },
     {
       "id": "user5",
       "name": "Maria S.",
       "role": "Indie Developer",
-      "text": "App install చేస్తే చాలు - auth లేని free model తో మొదలుపెట్టి, అవసరమైతే UI నుండి provider-backed models connect చేయండి."
+      "text": "App install à°šà±‡à°¸à±à°¤à±‡ à°šà°¾à°²à± - auth à°²à±‡à°¨à°¿ free model à°¤à±‹ à°®à±Šà°¦à°²à±à°ªà±†à°Ÿà±à°Ÿà°¿, à°…à°µà°¸à°°à°®à±ˆà°¤à±‡ UI à°¨à±à°‚à°¡à°¿ provider-backed models connect à°šà±‡à°¯à°‚à°¡à°¿."
     },
     {
       "id": "user6",
       "name": "Chris L.",
       "role": "Startup CTO",
-      "text": "Agents ఒకే టీమ్‌లోనూ, టీమ్‌ల మధ్యనూ message చేస్తాయి. Direct messages, task comments, quick actions."
+      "text": "Agents à°’à°•à±‡ à°Ÿà±€à°®à±â€Œà°²à±‹à°¨à±‚, à°Ÿà±€à°®à±â€Œà°² à°®à°§à±à°¯à°¨à±‚ message à°šà±‡à°¸à±à°¤à°¾à°¯à°¿. Direct messages, task comments, quick actions."
     }
   ],
   "pricing": [
@@ -115,18 +115,19 @@
       "name": "Free",
       "price": "$0",
       "period": "",
-      "description": "అవును. App free మరియు open source. Auth అవసరం లేని free model తో మొదలుపెట్టవచ్చు - registration, API key, credit card అవసరం లేదు. మరిన్ని models కోసం Claude, Codex, OpenCode/OpenRouter లేదా supported provider connect చేయండి.",
+      "description": "à°…à°µà±à°¨à±. App free à°®à°°à°¿à°¯à± open source. Auth à°…à°µà°¸à°°à°‚ à°²à±‡à°¨à°¿ free model à°¤à±‹ à°®à±Šà°¦à°²à±à°ªà±†à°Ÿà±à°Ÿà°µà°šà±à°šà± - registration, API key, credit card à°…à°µà°¸à°°à°‚ à°²à±‡à°¦à±. à°®à°°à°¿à°¨à±à°¨à°¿ models à°•à±‹à°¸à°‚ Claude, Codex, OpenCode/OpenRouter à°²à±‡à°¦à°¾ supported provider connect à°šà±‡à°¯à°‚à°¡à°¿.",
       "features": [
-        "Agent టీమ్‌లు",
+        "Agent à°Ÿà±€à°®à±â€Œà°²à±",
         "Kanban board",
         "Code review",
-        "టీమ్‌ల మధ్య కమ్యూనికేషన్",
+        "à°Ÿà±€à°®à±â€Œà°² à°®à°§à±à°¯ à°•à°®à±à°¯à±‚à°¨à°¿à°•à±‡à°·à°¨à±",
         "Solo mode",
         "Live processes",
-        "నా code private గా ఉంటుందా?",
-        "మొదలు పెట్టడానికి ఏమి కావాలి?"
+        "à°¨à°¾ code private à°—à°¾ à°‰à°‚à°Ÿà±à°‚à°¦à°¾?",
+        "à°®à±Šà°¦à°²à± à°ªà±†à°Ÿà±à°Ÿà°¡à°¾à°¨à°¿à°•à°¿ à°à°®à°¿ à°•à°¾à°µà°¾à°²à°¿?"
       ],
       "highlighted": true
     }
   ]
 }
+

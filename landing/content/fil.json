@@ -1,6 +1,6 @@
-{
+﻿{
   "hero": {
-    "title": "Agent Teams",
+    "title": "KanbanCode",
     "subtitle": "Ikaw ang Boss, ang mga agent ang team mo. Sila ang humahawak ng tasks, nagme-message sa isa't isa, at nagre-review ng code. Ikaw, titingin lang sa kanban board habang nagkakape."
   },
   "features": [
@@ -38,8 +38,8 @@
   "faq": [
     {
       "id": "whatIsIt",
-      "question": "Ano ang Agent Teams?",
-      "answer": "Desktop app para mag-orchestrate ng AI agent teams gamit ang sarili naming local coordination layer. May roles ang agents, autonomous silang nagtatrabaho, nagco-collaborate sa kanban board, at puwedeng tumakbo sa Anthropic o Codex."
+      "question": "Ano ang KanbanCode?",
+      "answer": "Desktop app para mag-orchestrate ng AI KanbanCode gamit ang sarili naming local coordination layer. May roles ang agents, autonomous silang nagtatrabaho, nagco-collaborate sa kanban board, at puwedeng tumakbo sa Anthropic o Codex."
     },
     {
       "id": "isFree",
@@ -69,7 +69,7 @@
   ],
   "download": {
     "title": "Download",
-    "note": "Piliin ang platform mo at magsimulang mag-build gamit ang AI agent teams."
+    "note": "Piliin ang platform mo at magsimulang mag-build gamit ang AI KanbanCode."
   },
   "testimonials": [
     {
@@ -130,3 +130,4 @@
     }
   ]
 }
+

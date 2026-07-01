@@ -1,6 +1,6 @@
-{
+﻿{
   "hero": {
-    "title": "Agent Teams",
+    "title": "KanbanCode",
     "subtitle": "Anda Boss, agent ialah pasukan anda. Mereka urus task sendiri, mesej sesama sendiri dan review kod. Anda cuma lihat papan kanban sambil minum kopi."
   },
   "features": [
@@ -38,7 +38,7 @@
   "faq": [
     {
       "id": "whatIsIt",
-      "question": "Apa itu Agent Teams?",
+      "question": "Apa itu KanbanCode?",
       "answer": "Aplikasi desktop untuk mengorkestra pasukan agent AI dengan lapisan koordinasi lokal kami. Agent mempunyai role, bekerja autonomi, bekerjasama melalui kanban board dan boleh berjalan pada Anthropic atau Codex."
     },
     {
@@ -130,3 +130,4 @@
     }
   ]
 }
+

@@ -26,9 +26,9 @@ export default defineEventHandler((event) => {
     )
     .join("\n");
 
-  return `# Agent Teams
+  return `# KanbanCode
 
-> Agent Teams is a free, open-source local desktop app for orchestrating AI agent teams across Claude, Codex, and OpenCode. It provides a live kanban board, agent-to-agent messaging, task logs, code review, downloads for macOS, Windows, and Linux, and local-first control.
+> KanbanCode is a free, open-source local desktop app for orchestrating AI agent teams across Claude, Codex, and OpenCode. It provides a live kanban board, agent-to-agent messaging, task logs, code review, downloads for macOS, Windows, and Linux, and local-first control.
 
 ## Primary URLs
 

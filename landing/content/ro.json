@@ -1,6 +1,6 @@
-{
+﻿{
   "hero": {
-    "title": "Agent Teams",
+    "title": "KanbanCode",
     "subtitle": "Tu esti Boss-ul, agentii sunt echipa ta. Ei gestioneaza taskurile singuri, isi trimit mesaje si isi fac code review. Tu te uiti la kanban board si bei cafea."
   },
   "features": [
@@ -38,7 +38,7 @@
   "faq": [
     {
       "id": "whatIsIt",
-      "question": "Ce este Agent Teams?",
+      "question": "Ce este KanbanCode?",
       "answer": "O aplicatie desktop pentru orchestrarea echipelor de agenti AI cu propriul nostru strat local de coordonare. Agentii au roluri, lucreaza autonom, colaboreaza prin kanban si pot rula pe Anthropic sau Codex."
     },
     {
@@ -130,3 +130,4 @@
     }
   ]
 }
+

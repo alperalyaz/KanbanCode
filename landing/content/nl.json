@@ -1,6 +1,6 @@
-{
+﻿{
   "hero": {
-    "title": "Agent Teams",
+    "title": "KanbanCode",
     "subtitle": "Jij bent de Boss, de agents zijn je team. Ze pakken taken zelf op, sturen elkaar berichten en reviewen elkaars code. Jij kijkt naar het kanbanbord en drinkt koffie."
   },
   "features": [
@@ -38,7 +38,7 @@
   "faq": [
     {
       "id": "whatIsIt",
-      "question": "Wat is Agent Teams?",
+      "question": "Wat is KanbanCode?",
       "answer": "Een desktop-app voor het orkestreren van AI-agentteams met onze eigen lokale coordinatielaag. Agents hebben rollen, werken autonoom, werken samen via kanban en kunnen draaien op Anthropic of Codex."
     },
     {
@@ -130,3 +130,4 @@
     }
   ]
 }
+

@@ -1,132 +1,133 @@
-{
+﻿{
   "hero": {
-    "title": "Agent Teams",
-    "subtitle": "நீங்கள் Boss, agents உங்கள் குழு. அவை tasks-ஐ தானாக நடத்தும், ஒருவருக்கொருவர் செய்தி அனுப்பும், code review செய்யும். நீங்கள் kanban board-ஐ பார்த்து காபி குடிக்கலாம்."
+    "title": "KanbanCode",
+    "subtitle": "à®¨à¯€à®™à¯à®•à®³à¯ Boss, agents à®‰à®™à¯à®•à®³à¯ à®•à¯à®´à¯. à®…à®µà¯ˆ tasks-à® à®¤à®¾à®©à®¾à®• à®¨à®Ÿà®¤à¯à®¤à¯à®®à¯, à®’à®°à¯à®µà®°à¯à®•à¯à®•à¯Šà®°à¯à®µà®°à¯ à®šà¯†à®¯à¯à®¤à®¿ à®…à®©à¯à®ªà¯à®ªà¯à®®à¯, code review à®šà¯†à®¯à¯à®¯à¯à®®à¯. à®¨à¯€à®™à¯à®•à®³à¯ kanban board-à® à®ªà®¾à®°à¯à®¤à¯à®¤à¯ à®•à®¾à®ªà®¿ à®•à¯à®Ÿà®¿à®•à¯à®•à®²à®¾à®®à¯."
   },
   "features": [
     {
       "id": "agentTeams",
-      "title": "Agent குழுக்கள்",
-      "description": "வேறு வேறு roles உடன் குழுக்கள் உருவாக்குங்கள். Agents parallel ஆக தானாக வேலை செய்து, பேசிக் கொண்டு, குழுக்களுக்குள் இணைந்து செயல்படும்."
+      "title": "Agent à®•à¯à®´à¯à®•à¯à®•à®³à¯",
+      "description": "à®µà¯‡à®±à¯ à®µà¯‡à®±à¯ roles à®‰à®Ÿà®©à¯ à®•à¯à®´à¯à®•à¯à®•à®³à¯ à®‰à®°à¯à®µà®¾à®•à¯à®•à¯à®™à¯à®•à®³à¯. Agents parallel à®†à®• à®¤à®¾à®©à®¾à®• à®µà¯‡à®²à¯ˆ à®šà¯†à®¯à¯à®¤à¯, à®ªà¯‡à®šà®¿à®•à¯ à®•à¯Šà®£à¯à®Ÿà¯, à®•à¯à®´à¯à®•à¯à®•à®³à¯à®•à¯à®•à¯à®³à¯ à®‡à®£à¯ˆà®¨à¯à®¤à¯ à®šà¯†à®¯à®²à¯à®ªà®Ÿà¯à®®à¯."
     },
     {
       "id": "kanban",
       "title": "Kanban board",
-      "description": "Agents வேலை செய்யும் போது task status நேரடியாக மாறும். Drag, assign, review - எல்லாம் ஒரு visual board-ல்."
+      "description": "Agents à®µà¯‡à®²à¯ˆ à®šà¯†à®¯à¯à®¯à¯à®®à¯ à®ªà¯‹à®¤à¯ task status à®¨à¯‡à®°à®Ÿà®¿à®¯à®¾à®• à®®à®¾à®±à¯à®®à¯. Drag, assign, review - à®à®²à¯à®²à®¾à®®à¯ à®’à®°à¯ visual board-à®²à¯."
     },
     {
       "id": "codeReview",
       "title": "Code review",
-      "description": "ஒவ்வொரு task-க்கும் diff view, accept, reject, comment. Git support உடன் built-in code editor."
+      "description": "à®’à®µà¯à®µà¯Šà®°à¯ task-à®•à¯à®•à¯à®®à¯ diff view, accept, reject, comment. Git support à®‰à®Ÿà®©à¯ built-in code editor."
     },
     {
       "id": "crossTeam",
-      "title": "குழுக்கள் இடையேயான தொடர்பு",
-      "description": "Agents ஒரே குழுவிலும் பல குழுக்களிடையிலும் message செய்கின்றன. Direct messages, task comments, quick actions."
+      "title": "à®•à¯à®´à¯à®•à¯à®•à®³à¯ à®‡à®Ÿà¯ˆà®¯à¯‡à®¯à®¾à®© à®¤à¯Šà®Ÿà®°à¯à®ªà¯",
+      "description": "Agents à®’à®°à¯‡ à®•à¯à®´à¯à®µà®¿à®²à¯à®®à¯ à®ªà®² à®•à¯à®´à¯à®•à¯à®•à®³à®¿à®Ÿà¯ˆà®¯à®¿à®²à¯à®®à¯ message à®šà¯†à®¯à¯à®•à®¿à®©à¯à®±à®©. Direct messages, task comments, quick actions."
     },
     {
       "id": "soloMode",
       "title": "Solo mode",
-      "description": "தன் tasks-ஐ தானாக நிர்வகிக்கும் ஒரு agent-இல் தொடங்குங்கள். அதிக சக்தி தேவைப்பட்டால் முழு குழுவாக விரிவாக்குங்கள்."
+      "description": "à®¤à®©à¯ tasks-à® à®¤à®¾à®©à®¾à®• à®¨à®¿à®°à¯à®µà®•à®¿à®•à¯à®•à¯à®®à¯ à®’à®°à¯ agent-à®‡à®²à¯ à®¤à¯Šà®Ÿà®™à¯à®•à¯à®™à¯à®•à®³à¯. à®…à®¤à®¿à®• à®šà®•à¯à®¤à®¿ à®¤à¯‡à®µà¯ˆà®ªà¯à®ªà®Ÿà¯à®Ÿà®¾à®²à¯ à®®à¯à®´à¯ à®•à¯à®´à¯à®µà®¾à®• à®µà®¿à®°à®¿à®µà®¾à®•à¯à®•à¯à®™à¯à®•à®³à¯."
     },
     {
       "id": "liveProcesses",
       "title": "Live processes",
-      "description": "இயங்கும் agents-ஐ பார்க்கவும், browser-ல் URLs திறக்கவும், token usage மற்றும் session context-ஐ real time-ல் கண்காணிக்கவும்."
+      "description": "à®‡à®¯à®™à¯à®•à¯à®®à¯ agents-à® à®ªà®¾à®°à¯à®•à¯à®•à®µà¯à®®à¯, browser-à®²à¯ URLs à®¤à®¿à®±à®•à¯à®•à®µà¯à®®à¯, token usage à®®à®±à¯à®±à¯à®®à¯ session context-à® real time-à®²à¯ à®•à®£à¯à®•à®¾à®£à®¿à®•à¯à®•à®µà¯à®®à¯."
     }
   ],
   "faq": [
     {
       "id": "whatIsIt",
-      "question": "Agent Teams என்றால் என்ன?",
-      "answer": "உள்ளூர் coordination layer உடன் AI agent குழுக்களை இயக்கும் desktop app. Agents-க்கு roles இருக்கும், அவை autonomous ஆக வேலை செய்யும், kanban board மூலம் collaborate செய்யும், Anthropic அல்லது Codex-ல் இயங்கும்."
+      "question": "KanbanCode à®à®©à¯à®±à®¾à®²à¯ à®à®©à¯à®©?",
+      "answer": "à®‰à®³à¯à®³à¯‚à®°à¯ coordination layer à®‰à®Ÿà®©à¯ AI agent à®•à¯à®´à¯à®•à¯à®•à®³à¯ˆ à®‡à®¯à®•à¯à®•à¯à®®à¯ desktop app. Agents-à®•à¯à®•à¯ roles à®‡à®°à¯à®•à¯à®•à¯à®®à¯, à®…à®µà¯ˆ autonomous à®†à®• à®µà¯‡à®²à¯ˆ à®šà¯†à®¯à¯à®¯à¯à®®à¯, kanban board à®®à¯‚à®²à®®à¯ collaborate à®šà¯†à®¯à¯à®¯à¯à®®à¯, Anthropic à®…à®²à¯à®²à®¤à¯ Codex-à®²à¯ à®‡à®¯à®™à¯à®•à¯à®®à¯."
     },
     {
       "id": "isFree",
-      "question": "இது உண்மையில் இலவசமா?",
-      "answer": "ஆம். App இலவசமும் open source-மும். Auth இல்லாத free model-ல் தொடங்கலாம் - பதிவு, API key, credit card எதுவும் தேவையில்லை. மேலும் models வேண்டுமெனில் Claude, Codex, OpenCode/OpenRouter அல்லது supported provider-ஐ இணைக்கவும்."
+      "question": "à®‡à®¤à¯ à®‰à®£à¯à®®à¯ˆà®¯à®¿à®²à¯ à®‡à®²à®µà®šà®®à®¾?",
+      "answer": "à®†à®®à¯. App à®‡à®²à®µà®šà®®à¯à®®à¯ open source-à®®à¯à®®à¯. Auth à®‡à®²à¯à®²à®¾à®¤ free model-à®²à¯ à®¤à¯Šà®Ÿà®™à¯à®•à®²à®¾à®®à¯ - à®ªà®¤à®¿à®µà¯, API key, credit card à®à®¤à¯à®µà¯à®®à¯ à®¤à¯‡à®µà¯ˆà®¯à®¿à®²à¯à®²à¯ˆ. à®®à¯‡à®²à¯à®®à¯ models à®µà¯‡à®£à¯à®Ÿà¯à®®à¯†à®©à®¿à®²à¯ Claude, Codex, OpenCode/OpenRouter à®…à®²à¯à®²à®¤à¯ supported provider-à® à®‡à®£à¯ˆà®•à¯à®•à®µà¯à®®à¯."
     },
     {
       "id": "platforms",
-      "question": "எந்த platforms support?",
-      "answer": "macOS (Apple Silicon மற்றும் Intel), Windows, Linux."
+      "question": "à®à®¨à¯à®¤ platforms support?",
+      "answer": "macOS (Apple Silicon à®®à®±à¯à®±à¯à®®à¯ Intel), Windows, Linux."
     },
     {
       "id": "howItWorks",
-      "question": "எப்படி வேலை செய்கிறது?",
-      "answer": "App install செய்யுங்கள், team உருவாக்குங்கள், roles assign செய்யுங்கள். Agents parallel ஆக வேலை தொடங்கும். நீங்கள் kanban-ல் progress பார்க்கலாம், diffs review செய்யலாம், agents-ுடன் நேரடியாக பேசலாம்."
+      "question": "à®à®ªà¯à®ªà®Ÿà®¿ à®µà¯‡à®²à¯ˆ à®šà¯†à®¯à¯à®•à®¿à®±à®¤à¯?",
+      "answer": "App install à®šà¯†à®¯à¯à®¯à¯à®™à¯à®•à®³à¯, team à®‰à®°à¯à®µà®¾à®•à¯à®•à¯à®™à¯à®•à®³à¯, roles assign à®šà¯†à®¯à¯à®¯à¯à®™à¯à®•à®³à¯. Agents parallel à®†à®• à®µà¯‡à®²à¯ˆ à®¤à¯Šà®Ÿà®™à¯à®•à¯à®®à¯. à®¨à¯€à®™à¯à®•à®³à¯ kanban-à®²à¯ progress à®ªà®¾à®°à¯à®•à¯à®•à®²à®¾à®®à¯, diffs review à®šà¯†à®¯à¯à®¯à®²à®¾à®®à¯, agents-à¯à®Ÿà®©à¯ à®¨à¯‡à®°à®Ÿà®¿à®¯à®¾à®• à®ªà¯‡à®šà®²à®¾à®®à¯."
     },
     {
       "id": "privacy",
-      "question": "என் code private ஆக இருக்குமா?",
-      "answer": "எல்லாம் உங்கள் machine-ல் locally ஓடும். Data வெளி servers-க்கு அனுப்பப்படாது. Code, conversations, agent activity அனைத்தும் private."
+      "question": "à®à®©à¯ code private à®†à®• à®‡à®°à¯à®•à¯à®•à¯à®®à®¾?",
+      "answer": "à®à®²à¯à®²à®¾à®®à¯ à®‰à®™à¯à®•à®³à¯ machine-à®²à¯ locally à®“à®Ÿà¯à®®à¯. Data à®µà¯†à®³à®¿ servers-à®•à¯à®•à¯ à®…à®©à¯à®ªà¯à®ªà®ªà¯à®ªà®Ÿà®¾à®¤à¯. Code, conversations, agent activity à®…à®©à¯ˆà®¤à¯à®¤à¯à®®à¯ private."
     },
     {
       "id": "requirements",
-      "question": "தொடங்க என்ன தேவை?",
-      "answer": "App install செய்தாலே போதும் - auth இல்லாத free model-ல் தொடங்கி, தேவைப்பட்டால் UI-யில் provider-backed models இணைக்கவும்."
+      "question": "à®¤à¯Šà®Ÿà®™à¯à®• à®à®©à¯à®© à®¤à¯‡à®µà¯ˆ?",
+      "answer": "App install à®šà¯†à®¯à¯à®¤à®¾à®²à¯‡ à®ªà¯‹à®¤à¯à®®à¯ - auth à®‡à®²à¯à®²à®¾à®¤ free model-à®²à¯ à®¤à¯Šà®Ÿà®™à¯à®•à®¿, à®¤à¯‡à®µà¯ˆà®ªà¯à®ªà®Ÿà¯à®Ÿà®¾à®²à¯ UI-à®¯à®¿à®²à¯ provider-backed models à®‡à®£à¯ˆà®•à¯à®•à®µà¯à®®à¯."
     }
   ],
   "download": {
     "title": "Download",
-    "note": "உங்கள் platform-ஐ தேர்ந்தெடுத்து AI agent குழுக்களுடன் build செய்ய தொடங்குங்கள்."
+    "note": "à®‰à®™à¯à®•à®³à¯ platform-à® à®¤à¯‡à®°à¯à®¨à¯à®¤à¯†à®Ÿà¯à®¤à¯à®¤à¯ AI agent à®•à¯à®´à¯à®•à¯à®•à®³à¯à®Ÿà®©à¯ build à®šà¯†à®¯à¯à®¯ à®¤à¯Šà®Ÿà®™à¯à®•à¯à®™à¯à®•à®³à¯."
   },
   "testimonials": [
     {
       "id": "user1",
       "name": "Alex K.",
       "role": "Tech Lead",
-      "text": "வேறு வேறு roles உடன் குழுக்கள் உருவாக்குங்கள். Agents parallel ஆக தானாக வேலை செய்து, பேசிக் கொண்டு, குழுக்களுக்குள் இணைந்து செயல்படும்."
+      "text": "à®µà¯‡à®±à¯ à®µà¯‡à®±à¯ roles à®‰à®Ÿà®©à¯ à®•à¯à®´à¯à®•à¯à®•à®³à¯ à®‰à®°à¯à®µà®¾à®•à¯à®•à¯à®™à¯à®•à®³à¯. Agents parallel à®†à®• à®¤à®¾à®©à®¾à®• à®µà¯‡à®²à¯ˆ à®šà¯†à®¯à¯à®¤à¯, à®ªà¯‡à®šà®¿à®•à¯ à®•à¯Šà®£à¯à®Ÿà¯, à®•à¯à®´à¯à®•à¯à®•à®³à¯à®•à¯à®•à¯à®³à¯ à®‡à®£à¯ˆà®¨à¯à®¤à¯ à®šà¯†à®¯à®²à¯à®ªà®Ÿà¯à®®à¯."
     },
     {
       "id": "user2",
       "name": "Sarah M.",
       "role": "Full-stack Developer",
-      "text": "தன் tasks-ஐ தானாக நிர்வகிக்கும் ஒரு agent-இல் தொடங்குங்கள். அதிக சக்தி தேவைப்பட்டால் முழு குழுவாக விரிவாக்குங்கள்."
+      "text": "à®¤à®©à¯ tasks-à® à®¤à®¾à®©à®¾à®• à®¨à®¿à®°à¯à®µà®•à®¿à®•à¯à®•à¯à®®à¯ à®’à®°à¯ agent-à®‡à®²à¯ à®¤à¯Šà®Ÿà®™à¯à®•à¯à®™à¯à®•à®³à¯. à®…à®¤à®¿à®• à®šà®•à¯à®¤à®¿ à®¤à¯‡à®µà¯ˆà®ªà¯à®ªà®Ÿà¯à®Ÿà®¾à®²à¯ à®®à¯à®´à¯ à®•à¯à®´à¯à®µà®¾à®• à®µà®¿à®°à®¿à®µà®¾à®•à¯à®•à¯à®™à¯à®•à®³à¯."
     },
     {
       "id": "user3",
       "name": "David R.",
       "role": "Senior Engineer",
-      "text": "ஒவ்வொரு task-க்கும் diff view, accept, reject, comment. Git support உடன் built-in code editor."
+      "text": "à®’à®µà¯à®µà¯Šà®°à¯ task-à®•à¯à®•à¯à®®à¯ diff view, accept, reject, comment. Git support à®‰à®Ÿà®©à¯ built-in code editor."
     },
     {
       "id": "user4",
       "name": "Yuki T.",
       "role": "DevOps Engineer",
-      "text": "இயங்கும் agents-ஐ பார்க்கவும், browser-ல் URLs திறக்கவும், token usage மற்றும் session context-ஐ real time-ல் கண்காணிக்கவும்."
+      "text": "à®‡à®¯à®™à¯à®•à¯à®®à¯ agents-à® à®ªà®¾à®°à¯à®•à¯à®•à®µà¯à®®à¯, browser-à®²à¯ URLs à®¤à®¿à®±à®•à¯à®•à®µà¯à®®à¯, token usage à®®à®±à¯à®±à¯à®®à¯ session context-à® real time-à®²à¯ à®•à®£à¯à®•à®¾à®£à®¿à®•à¯à®•à®µà¯à®®à¯."
     },
     {
       "id": "user5",
       "name": "Maria S.",
       "role": "Indie Developer",
-      "text": "App install செய்தாலே போதும் - auth இல்லாத free model-ல் தொடங்கி, தேவைப்பட்டால் UI-யில் provider-backed models இணைக்கவும்."
+      "text": "App install à®šà¯†à®¯à¯à®¤à®¾à®²à¯‡ à®ªà¯‹à®¤à¯à®®à¯ - auth à®‡à®²à¯à®²à®¾à®¤ free model-à®²à¯ à®¤à¯Šà®Ÿà®™à¯à®•à®¿, à®¤à¯‡à®µà¯ˆà®ªà¯à®ªà®Ÿà¯à®Ÿà®¾à®²à¯ UI-à®¯à®¿à®²à¯ provider-backed models à®‡à®£à¯ˆà®•à¯à®•à®µà¯à®®à¯."
     },
     {
       "id": "user6",
       "name": "Chris L.",
       "role": "Startup CTO",
-      "text": "Agents ஒரே குழுவிலும் பல குழுக்களிடையிலும் message செய்கின்றன. Direct messages, task comments, quick actions."
+      "text": "Agents à®’à®°à¯‡ à®•à¯à®´à¯à®µà®¿à®²à¯à®®à¯ à®ªà®² à®•à¯à®´à¯à®•à¯à®•à®³à®¿à®Ÿà¯ˆà®¯à®¿à®²à¯à®®à¯ message à®šà¯†à®¯à¯à®•à®¿à®©à¯à®±à®©. Direct messages, task comments, quick actions."
     }
   ],
   "pricing": [
     {
       "id": "free",
-      "name": "இலவசம்",
+      "name": "à®‡à®²à®µà®šà®®à¯",
       "price": "$0",
       "period": "",
-      "description": "ஆம். App இலவசமும் open source-மும். Auth இல்லாத free model-ல் தொடங்கலாம் - பதிவு, API key, credit card எதுவும் தேவையில்லை. மேலும் models வேண்டுமெனில் Claude, Codex, OpenCode/OpenRouter அல்லது supported provider-ஐ இணைக்கவும்.",
+      "description": "à®†à®®à¯. App à®‡à®²à®µà®šà®®à¯à®®à¯ open source-à®®à¯à®®à¯. Auth à®‡à®²à¯à®²à®¾à®¤ free model-à®²à¯ à®¤à¯Šà®Ÿà®™à¯à®•à®²à®¾à®®à¯ - à®ªà®¤à®¿à®µà¯, API key, credit card à®à®¤à¯à®µà¯à®®à¯ à®¤à¯‡à®µà¯ˆà®¯à®¿à®²à¯à®²à¯ˆ. à®®à¯‡à®²à¯à®®à¯ models à®µà¯‡à®£à¯à®Ÿà¯à®®à¯†à®©à®¿à®²à¯ Claude, Codex, OpenCode/OpenRouter à®…à®²à¯à®²à®¤à¯ supported provider-à® à®‡à®£à¯ˆà®•à¯à®•à®µà¯à®®à¯.",
       "features": [
-        "Agent குழுக்கள்",
+        "Agent à®•à¯à®´à¯à®•à¯à®•à®³à¯",
         "Kanban board",
         "Code review",
-        "குழுக்கள் இடையேயான தொடர்பு",
+        "à®•à¯à®´à¯à®•à¯à®•à®³à¯ à®‡à®Ÿà¯ˆà®¯à¯‡à®¯à®¾à®© à®¤à¯Šà®Ÿà®°à¯à®ªà¯",
         "Solo mode",
         "Live processes",
-        "என் code private ஆக இருக்குமா?",
-        "தொடங்க என்ன தேவை?"
+        "à®à®©à¯ code private à®†à®• à®‡à®°à¯à®•à¯à®•à¯à®®à®¾?",
+        "à®¤à¯Šà®Ÿà®™à¯à®• à®à®©à¯à®© à®¤à¯‡à®µà¯ˆ?"
       ],
       "highlighted": true
     }
   ]
 }
+

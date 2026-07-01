@@ -1,6 +1,6 @@
-{
+﻿{
   "hero": {
-    "title": "Agent Teams",
+    "title": "KanbanCode",
     "subtitle": "Ban la Boss, cac agent la doi cua ban. Chung tu xu ly task, nhan tin voi nhau va review code cho nhau. Ban chi can nhin bang kanban va uong ca phe."
   },
   "features": [
@@ -38,7 +38,7 @@
   "faq": [
     {
       "id": "whatIsIt",
-      "question": "Agent Teams la gi?",
+      "question": "KanbanCode la gi?",
       "answer": "Ung dung desktop de dieu phoi cac doi agent AI voi lop dieu phoi cuc bo rieng. Agent co vai tro, lam viec tu chu, cong tac qua bang kanban va co the chay tren Anthropic hoac Codex."
     },
     {
@@ -130,3 +130,4 @@
     }
   ]
 }
+

@@ -23,17 +23,17 @@ useSeoMeta({
   ogTitle: errorTitle,
   ogDescription: errorDescription,
   ogType: "website",
-  ogSiteName: "Agent Teams",
+  ogSiteName: "KanbanCode",
   ogImage,
   ogImageType: "image/png",
   ogImageWidth: "1200",
   ogImageHeight: "630",
-  ogImageAlt: "Agent Teams - AI agent orchestration",
+  ogImageAlt: "KanbanCode - AI agent orchestration",
   twitterCard: "summary_large_image",
   twitterTitle: errorTitle,
   twitterDescription: errorDescription,
   twitterImage: ogImage,
-  twitterImageAlt: "Agent Teams - AI agent orchestration"
+  twitterImageAlt: "KanbanCode - AI agent orchestration"
 });
 
 const handleGoHome = () => clearError({ redirect: "/" });

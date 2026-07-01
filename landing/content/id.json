@@ -1,12 +1,12 @@
-{
+﻿{
   "hero": {
-    "title": "Agent Teams",
+    "title": "KanbanCode",
     "subtitle": "Kau Boss, agen adalah tim Anda. Mereka menangani tugas mereka sendiri, saling mengirim pesan, meninjau kode masing-masing. Anda hanya melihat papan kanban dan minum kopi."
   },
   "features": [
     {
       "id": "AgentTeams",
-      "title": "Agent Teams",
+      "title": "KanbanCode",
       "description": "Membuat tim dengan peran yang berbeda. Agen bekerja secara mandiri secara paralel, berkomunikasi satu sama lain, dan berkolaborasi dalam tim."
     },
     {
@@ -38,7 +38,7 @@
   "faq": [
     {
       "id": "APA ITU",
-      "question": "Apa Agent Teams?",
+      "question": "Apa KanbanCode?",
       "answer": "Aplikasi desktop untuk mendalangi AI tim agen dengan lapisan koordinasi lokal kita sendiri. Agen memiliki peran, bekerja sendiri, berkolaborasi melalui papan kanban, dan dapat berjalan di Anthropic atau Codex."
     },
     {
@@ -130,3 +130,4 @@
     }
   ]
 }
+

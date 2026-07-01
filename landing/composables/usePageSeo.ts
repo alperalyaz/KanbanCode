@@ -22,7 +22,7 @@ export const usePageSeo = (titleKey: string, descriptionKey: string, options: Pa
   const route = useRoute();
   const config = useRuntimeConfig();
   const siteUrl = ((config.public.siteUrl as string) || "https://example.com").replace(/\/+$/, "");
-  const siteName = "Agent Teams";
+  const siteName = "KanbanCode";
   const switchLocale = useSwitchLocalePath();
 
   const title = computed(() => t(titleKey));
@@ -200,7 +200,7 @@ export const usePageSeo = (titleKey: string, descriptionKey: string, options: Pa
       htmlAttrs: { lang: currentLocale.iso, dir: "dir" in currentLocale ? currentLocale.dir : "ltr" },
       link: links,
       meta: [
-        { name: "author", content: "Agent Teams" },
+        { name: "author", content: "KanbanCode" },
         { name: "application-name", content: siteName },
         { name: "apple-mobile-web-app-title", content: siteName },
         { name: "format-detection", content: "telephone=no" },

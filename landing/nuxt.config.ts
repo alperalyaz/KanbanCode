@@ -27,7 +27,7 @@ if (docsSiteUrl) {
 const baseURL = process.env.NUXT_APP_BASE_URL || "/";
 const basePrefixedDocsPath = `${baseURL.replace(/\/?$/, "/")}docs`;
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const defaultSeoTitle = "Agent Teams - AI Agent Orchestration for Developers";
+const defaultSeoTitle = "KanbanCode - AI Agent Orchestration for Developers";
 const defaultSeoDescription = "Free, open-source desktop app for AI agent teams. Start with a free model with no auth, then connect Claude, Codex, or OpenCode when you need more models.";
 const defaultSeoImage = `${siteUrl.replace(/\/+$/, "")}/og-image-agent-teams-v6.png`;
 const robots = process.env.NUXT_PUBLIC_ROBOTS || "noindex, nofollow";
@@ -46,17 +46,17 @@ export default defineNuxtConfig({
         { property: "og:title", content: defaultSeoTitle },
         { property: "og:description", content: defaultSeoDescription },
         { property: "og:type", content: "website" },
-        { property: "og:site_name", content: "Agent Teams" },
+        { property: "og:site_name", content: "KanbanCode" },
         { property: "og:image", content: defaultSeoImage },
         { property: "og:image:type", content: "image/png" },
         { property: "og:image:width", content: "1200" },
         { property: "og:image:height", content: "630" },
-        { property: "og:image:alt", content: "Agent Teams - AI agent orchestration" },
+        { property: "og:image:alt", content: "KanbanCode - AI agent orchestration" },
         { name: "twitter:card", content: "summary_large_image" },
         { name: "twitter:title", content: defaultSeoTitle },
         { name: "twitter:description", content: defaultSeoDescription },
         { name: "twitter:image", content: defaultSeoImage },
-        { name: "twitter:image:alt", content: "Agent Teams - AI agent orchestration" }
+        { name: "twitter:image:alt", content: "KanbanCode - AI agent orchestration" }
       ],
       link: [
         { rel: "icon", type: "image/x-icon", href: `${baseURL}favicon.ico` },
@@ -146,7 +146,7 @@ export default defineNuxtConfig({
   // @ts-expect-error - field provided by nuxt modules
   site: {
     url: siteUrl,
-    name: "Agent Teams"
+    name: "KanbanCode"
   },
   runtimeConfig: {
     github: {
