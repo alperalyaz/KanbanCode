@@ -4,9 +4,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/alperalyaz/agent-teams-ai/releases/latest"><img src="https://img.shields.io/github/v/release/alperalyaz/agent-teams-ai?label=version&color=007ec6&style=flat-square" alt="Latest Release" /></a>&nbsp;
-  <a href="https://github.com/alperalyaz/agent-teams-ai/actions/workflows/ci.yml"><img src="https://github.com/alperalyaz/agent-teams-ai/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>&nbsp;
-  <a href="https://github.com/alperalyaz/agent-teams-ai/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" alt="AGPL-3.0 License" /></a>
+  <a href="https://github.com/alperalyaz/kanbancode/releases/latest"><img src="https://img.shields.io/github/v/release/alperalyaz/kanbancode?label=version&color=007ec6&style=flat-square" alt="Latest Release" /></a>&nbsp;
+  <a href="https://github.com/alperalyaz/kanbancode/actions/workflows/ci.yml"><img src="https://github.com/alperalyaz/kanbancode/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>&nbsp;
+  <a href="https://github.com/alperalyaz/kanbancode/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" alt="AGPL-3.0 License" /></a>
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
 **KanbanCode** is a fork of [Agent Teams AI](https://github.com/alperalyaz/kanbancode) by **777genius**, distributed under the same [AGPL-3.0](LICENSE) license. All credit for the original design and implementation goes to the upstream project and its contributors.
 
 - Upstream project: https://github.com/alperalyaz/kanbancode
-- This fork: https://github.com/alperalyaz/agent-teams-ai
+- This fork: https://github.com/alperalyaz/kanbancode
 - Please file bugs, feature requests, and questions about this fork against **this** repository, not the upstream one.
 
 <table>
@@ -85,7 +85,7 @@ For the full feature list and FAQ, see the [upstream README](https://github.com/
 
 No prerequisites - the app can detect supported runtimes/providers and guide setup from the UI.
 
-Grab the installer for your platform from this fork's [**Releases page**](https://github.com/alperalyaz/agent-teams-ai/releases/latest):
+Grab the installer for your platform from this fork's [**Releases page**](https://github.com/alperalyaz/kanbancode/releases/latest):
 
 - **Windows** — `.exe` installer or Microsoft Store (KanbanCode)
 - **macOS** — `.dmg` (Apple Silicon / Intel)
@@ -107,8 +107,8 @@ Use the desktop app as the primary product. The browser/web path is not needed f
 **Prerequisites:** Node.js 24.15.0+ (below 25), pnpm 10+
 
 ```bash
-git clone https://github.com/alperalyaz/agent-teams-ai.git
-cd agent-teams-ai
+git clone https://github.com/alperalyaz/kanbancode.git
+cd kanbancode
 pnpm install
 pnpm dev
 ```
