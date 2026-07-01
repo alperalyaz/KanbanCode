@@ -111,17 +111,23 @@ function isAnthropicNativeLongContextModel(modelName: string | undefined): boole
     return false;
   }
 
-  if (normalized.startsWith('claude-mythos')) {
+  if (normalized.startsWith('claude-mythos') || normalized.startsWith('claude-fable')) {
     return true;
   }
 
   const claude4MinorMatch = /^claude-(opus|sonnet)-4-(\d{1,2})(?:-|$)/.exec(normalized);
-  if (!claude4MinorMatch) {
-    return false;
+  if (claude4MinorMatch) {
+    const minorVersion = Number.parseInt(claude4MinorMatch[2], 10);
+    return Number.isFinite(minorVersion) && minorVersion >= 6;
   }
 
-  const minorVersion = Number.parseInt(claude4MinorMatch[2], 10);
-  return Number.isFinite(minorVersion) && minorVersion >= 6;
+  const majorVersionMatch = /^claude-(opus|sonnet)-(\d+)(?:-|$)/.exec(normalized);
+  if (majorVersionMatch) {
+    const majorVersion = Number.parseInt(majorVersionMatch[2], 10);
+    return Number.isFinite(majorVersion) && majorVersion >= 5;
+  }
+
+  return false;
 }
 
 function hasOpenAiPromptDetails(usage: ContextUsageLike): boolean {
