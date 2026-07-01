@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-export type TeamSidebarSurface = 'team' | 'graph-tab' | 'graph-overlay';
+export type TeamSidebarSurface = 'team';
 
 interface TeamSidebarHostEntry {
   id: string;
@@ -28,8 +28,6 @@ interface TeamSidebarSnapshot {
 
 const SURFACE_PRIORITY: Record<TeamSidebarSurface, number> = {
   team: 1,
-  'graph-tab': 2,
-  'graph-overlay': 3,
 };
 
 const hostById = new Map<string, TeamSidebarHostEntry>();

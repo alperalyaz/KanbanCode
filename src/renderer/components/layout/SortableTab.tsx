@@ -88,7 +88,7 @@ export const SortableTab = ({
 
   const teamColorSet = useStore(
     useShallow((s) => {
-      if ((tab.type !== 'team' && tab.type !== 'graph' && tab.type !== 'usage') || !tab.teamName) {
+      if ((tab.type !== 'team' && tab.type !== 'usage') || !tab.teamName) {
         return null;
       }
       const team = s.teamByName[tab.teamName];

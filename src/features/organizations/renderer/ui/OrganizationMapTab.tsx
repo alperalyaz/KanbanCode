@@ -53,7 +53,6 @@ export const OrganizationMapTab = ({
     setSelectedNodeId,
     refresh,
     openTeam,
-    openTeamGraph,
   } = useOrganizationMap({ isActive, organizationId: activeOrganizationId, scope: mapScope });
   const refreshMapAfterStructureMutation = useCallback(() => refresh({ force: true }), [refresh]);
   const structureManager = useOrganizationStructureManager({
@@ -323,7 +322,6 @@ export const OrganizationMapTab = ({
             isCollapsed={selectedNode ? collapsedNodeIds.has(selectedNode.id) : false}
             onToggleCollapse={toggleSelectedCollapse}
             onOpenTeam={openTeam}
-            onOpenGraph={openTeamGraph}
             onClose={() => setSelectedNodeId(null)}
           />
         ) : null}

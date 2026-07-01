@@ -22,7 +22,6 @@ interface UseOrganizationMapResult {
   setSelectedNodeId: (nodeId: string | null) => void;
   refresh: (options?: { force?: boolean }) => Promise<void>;
   openTeam: (node: OrganizationNodeDto) => void;
-  openTeamGraph: (node: OrganizationNodeDto) => void;
 }
 
 const REFRESH_INTERVAL_MS = 5_000;
@@ -37,8 +36,6 @@ export function useOrganizationMap(input: UseOrganizationMapInput): UseOrganizat
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const openTeamTab = useStore((state) => state.openTeamTab);
-  const openTab = useStore((state) => state.openTab);
-  const selectTeam = useStore((state) => state.selectTeam);
   const inFlightRefreshRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
   const refreshSequenceRef = useRef(0);
 
@@ -133,27 +130,6 @@ export function useOrganizationMap(input: UseOrganizationMapInput): UseOrganizat
     [openTeamTab]
   );
 
-  const openTeamGraph = useCallback(
-    (node: OrganizationNodeDto) => {
-      if (!node.team) return;
-      const { displayName, teamName } = node.team;
-      void (async () => {
-        try {
-          await selectTeam(teamName);
-        } catch (err) {
-          setError(err instanceof Error ? err.message : String(err));
-          return;
-        }
-        openTab({
-          type: 'graph',
-          label: `${displayName} Graph`,
-          teamName,
-        });
-      })();
-    },
-    [openTab, selectTeam]
-  );
-
   return {
     payload,
     viewModel,
@@ -163,6 +139,5 @@ export function useOrganizationMap(input: UseOrganizationMapInput): UseOrganizat
     setSelectedNodeId,
     refresh,
     openTeam,
-    openTeamGraph,
   };
 }

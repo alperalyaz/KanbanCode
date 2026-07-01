@@ -18,7 +18,6 @@ interface OrgInspectorProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onOpenTeam: (node: OrganizationNodeDto) => void;
-  onOpenGraph: (node: OrganizationNodeDto) => void;
   onClose: () => void;
 }
 
@@ -60,7 +59,6 @@ export const OrgInspector = ({
   isCollapsed,
   onToggleCollapse,
   onOpenTeam,
-  onOpenGraph,
   onClose,
 }: OrgInspectorProps): React.JSX.Element | null => {
   const { t } = useAppTranslation('team');
@@ -207,15 +205,6 @@ export const OrgInspector = ({
         <Button size="sm" className="h-8 flex-1" onClick={() => onOpenTeam(node)}>
           <ExternalLink size={13} />
           {t('organizations.inspector.actions.open')}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 flex-1"
-          onClick={() => onOpenGraph(node)}
-        >
-          <Network size={13} />
-          {t('organizations.inspector.actions.graph')}
         </Button>
       </div>
 
