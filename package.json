@@ -8,13 +8,13 @@
     "name": "Илия (777genius)",
     "email": "quantjumppro@gmail.com"
   },
-  "homepage": "https://github.com/alperalyaz/agent-teams-ai",
+  "homepage": "https://github.com/alperalyaz/kanbancode",
   "repository": {
     "type": "git",
-    "url": "https://github.com/alperalyaz/agent-teams-ai.git"
+    "url": "https://github.com/alperalyaz/kanbancode.git"
   },
   "bugs": {
-    "url": "https://github.com/alperalyaz/agent-teams-ai/issues"
+    "url": "https://github.com/alperalyaz/kanbancode/issues"
   },
   "engines": {
     "node": ">=24.15.0 <25"
@@ -412,7 +412,7 @@
       {
         "provider": "github",
         "owner": "alperalyaz",
-        "repo": "agent-teams-ai",
+        "repo": "kanbancode",
         "releaseType": "release"
       }
     ]
