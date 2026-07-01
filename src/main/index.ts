@@ -3100,96 +3100,97 @@ if (!singleInstanceLock) {
       logger.debug('second-instance: restored existing window to focus');
     }
   });
-}
 
-/**
- * Application ready handler.
- */
-void app.whenReady().then(async () => {
-  logger.info('App ready, initializing...');
-  configureFatalDiagnosticReport({
-    directory: join(app.getPath('userData'), 'diagnostics'),
-    logger,
-  });
-  registerAppStartupHandlers();
-
-  try {
-    publishStartupStatus({
-      phase: 'electron-ready',
-      message: 'Opening window...',
+  /**
+   * Application ready handler.
+   * Moved inside single-instance lock to guarantee second instances never reach initialization.
+   */
+  void app.whenReady().then(async () => {
+    logger.info('App ready, initializing...');
+    configureFatalDiagnosticReport({
+      directory: join(app.getPath('userData'), 'diagnostics'),
+      logger,
     });
+    registerAppStartupHandlers();
 
-    const config = configManager.getConfig();
-
-    // Sync Sentry telemetry opt-in flag from persisted config
-    syncTelemetryFlag(config.general.telemetryEnabled);
-
-    // Apply launch-at-login only where Electron can persist it without noisy OS errors.
-    // Local packaged macOS smoke builds run outside /Applications and cannot set login items.
-    const canSyncLaunchAtLogin =
-      app.isPackaged &&
-      (process.platform === 'win32' ||
-        (process.platform === 'darwin' && app.isInApplicationsFolder()));
-    if (canSyncLaunchAtLogin) {
-      app.setLoginItemSettings({
-        openAtLogin: config.general.launchAtLogin,
+    try {
+      publishStartupStatus({
+        phase: 'electron-ready',
+        message: 'Opening window...',
       });
-    }
 
-    // Apply dock visibility and icon (macOS)
-    if (process.platform === 'darwin') {
-      if (!config.general.showDockIcon) {
-        app.dock?.hide();
+      const config = configManager.getConfig();
+
+      // Sync Sentry telemetry opt-in flag from persisted config
+      syncTelemetryFlag(config.general.telemetryEnabled);
+
+      // Apply launch-at-login only where Electron can persist it without noisy OS errors.
+      // Local packaged macOS smoke builds run outside /Applications and cannot set login items.
+      const canSyncLaunchAtLogin =
+        app.isPackaged &&
+        (process.platform === 'win32' ||
+          (process.platform === 'darwin' && app.isInApplicationsFolder()));
+      if (canSyncLaunchAtLogin) {
+        app.setLoginItemSettings({
+          openAtLogin: config.general.launchAtLogin,
+        });
       }
-      // macOS app icon is already provided by the signed bundle (.icns)
-      // so we avoid runtime setIcon calls that can fail and block startup.
+
+      // Apply dock visibility and icon (macOS)
+      if (process.platform === 'darwin') {
+        if (!config.general.showDockIcon) {
+          app.dock?.hide();
+        }
+        // macOS app icon is already provided by the signed bundle (.icns)
+        // so we avoid runtime setIcon calls that can fail and block startup.
+      }
+
+      createWindow();
+
+      await initializeServices();
+      servicesReady = true;
+      attachMainWindowToServices();
+      publishStartupStatus({
+        phase: 'ready',
+        message: 'Ready',
+        ready: true,
+        error: null,
+      });
+      runPostRendererStartupTasks();
+
+      // Listen for notification click events
+      notificationManager.on('notification-clicked', (_error) => {
+        if (isShutdownStarted()) {
+          return;
+        }
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      });
+    } catch (error) {
+      logger.error('Startup initialization failed:', error);
+      publishStartupStatus({
+        phase: 'failed',
+        message: 'Startup failed',
+        ready: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (!mainWindow) {
+        createWindow();
+      }
     }
 
-    createWindow();
-
-    await initializeServices();
-    servicesReady = true;
-    attachMainWindowToServices();
-    publishStartupStatus({
-      phase: 'ready',
-      message: 'Ready',
-      ready: true,
-      error: null,
-    });
-    runPostRendererStartupTasks();
-
-    // Listen for notification click events
-    notificationManager.on('notification-clicked', (_error) => {
+    app.on('activate', () => {
       if (isShutdownStarted()) {
         return;
       }
-      if (mainWindow) {
-        mainWindow.show();
-        mainWindow.focus();
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
       }
     });
-  } catch (error) {
-    logger.error('Startup initialization failed:', error);
-    publishStartupStatus({
-      phase: 'failed',
-      message: 'Startup failed',
-      ready: false,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    if (!mainWindow) {
-      createWindow();
-    }
-  }
-
-  app.on('activate', () => {
-    if (isShutdownStarted()) {
-      return;
-    }
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
   });
-});
+}
 
 /**
  * All windows closed handler.
