@@ -272,8 +272,8 @@
     "vitest": "^3.2.5"
   },
   "build": {
-    "appId": "com.alperalyaz.crewboard",
-    "productName": "CrewBoard",
+    "appId": "com.alperalyaz.kanbancode",
+    "productName": "KanbanCode",
     "directories": {
       "output": "release"
     },
@@ -362,7 +362,7 @@
         "nsis",
         "appx"
       ],
-      "executableName": "CrewBoard",
+      "executableName": "KanbanCode",
       "icon": "resources/icons/win/icon.ico"
     },
     "linux": {
@@ -397,19 +397,19 @@
       ]
     },
     "nsis": {
-      "artifactName": "CrewBoard.Setup.${version}.${ext}",
+      "artifactName": "KanbanCode.Setup.${version}.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "CrewBoard"
+      "shortcutName": "KanbanCode"
     },
     "appx": {
-      "artifactName": "CrewBoard.${version}.${ext}",
-      "applicationId": "CrewBoard",
+      "artifactName": "KanbanCode.${version}.${ext}",
+      "applicationId": "KanbanCode",
       "identityName": "REPLACE_WITH_PARTNER_CENTER_PACKAGE_IDENTITY_NAME",
       "publisher": "REPLACE_WITH_PARTNER_CENTER_PUBLISHER_ID",
       "publisherDisplayName": "REPLACE_WITH_PARTNER_CENTER_PUBLISHER_DISPLAY_NAME",
-      "displayName": "CrewBoard",
+      "displayName": "KanbanCode",
       "backgroundColor": "#000000"
     },
     "publish": [
