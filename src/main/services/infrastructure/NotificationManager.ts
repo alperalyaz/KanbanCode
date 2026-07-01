@@ -17,17 +17,17 @@
 
 import { getAppIconPath } from '@main/utils/appIcon';
 import { atomicWriteAsync } from '@main/utils/atomicWrite';
-import { getAppDataPath, getHomeDir, getTeamsBasePath } from '@main/utils/pathDecoder';
+import { getAppDataPath, getHomeDir } from '@main/utils/pathDecoder';
 import { safeSendToRenderer } from '@main/utils/safeWebContentsSend';
 import { stripMarkdown } from '@main/utils/textFormatting';
 import { APP_NAME } from '@shared/constants';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { getMemberColorByName, MEMBER_COLOR_HUE } from '@shared/constants/memberColors';
-import { isLeadMember } from '@shared/utils/leadDetection';
+
 import { createLogger } from '@shared/utils/logger';
 import { nativeImage, Notification as ElectronNotification } from 'electron';
 import { EventEmitter } from 'events';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
@@ -109,8 +109,6 @@ const LEGACY_NOTIFICATION_PATHS = LEGACY_NOTIFICATION_FILENAMES.map((filename) =
 );
 const SENDER_ICON_CACHE = new Map<string, NotificationConstructorOptions['icon'] | undefined>();
 const WINDOWS_TOAST_AVATAR_CACHE = new Map<string, string | undefined>();
-const PARTICIPANT_AVATAR_COUNT = 13;
-const LEAD_PARTICIPANT_AVATAR_NUMBER = 1;
 
 interface TeamNotificationAvatarMember {
   name: string;
@@ -143,113 +141,9 @@ function getNativeImage(): typeof nativeImage | null {
   return nativeImage && typeof nativeImage.createFromPath === 'function' ? nativeImage : null;
 }
 
-function hashStringToIndex(str: string): number {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash);
-}
-
-function getParticipantAvatarNumberByIndex(index: number): number {
-  const normalized =
-    ((Math.trunc(index) % PARTICIPANT_AVATAR_COUNT) + PARTICIPANT_AVATAR_COUNT) %
-    PARTICIPANT_AVATAR_COUNT;
-  return normalized + 1;
-}
-
-function getFallbackParticipantAvatarNumber(name: string): number {
-  const normalized = name.trim().toLowerCase();
-  if (normalized === 'team-lead' || normalized === 'lead') {
-    return LEAD_PARTICIPANT_AVATAR_NUMBER;
-  }
-  return getParticipantAvatarNumberByIndex(hashStringToIndex(normalized));
-}
-
-function getParticipantAvatarNumber(
-  sender: string,
-  members: readonly TeamNotificationAvatarMember[]
-): number {
-  const senderName = sender.trim();
-  if (!senderName) return getFallbackParticipantAvatarNumber(sender);
-
-  const map = new Map<string, number>();
-  const activeMembers = members.filter((member) => !member.removedAt);
-  const leadMembers = activeMembers.filter((member) => isLeadMember(member));
-  const teammateMembers = activeMembers.filter((member) => !isLeadMember(member));
-
-  for (const [index, member] of leadMembers.entries()) {
-    map.set(
-      member.name,
-      index === 0 ? LEAD_PARTICIPANT_AVATAR_NUMBER : getFallbackParticipantAvatarNumber(member.name)
-    );
-  }
-
-  for (const [index, member] of teammateMembers.entries()) {
-    map.set(member.name, 2 + (index % (PARTICIPANT_AVATAR_COUNT - 1)));
-  }
-
-  for (const member of members) {
-    if (!map.has(member.name)) {
-      map.set(
-        member.name,
-        isLeadMember(member)
-          ? LEAD_PARTICIPANT_AVATAR_NUMBER
-          : getFallbackParticipantAvatarNumber(member.name)
-      );
-    }
-  }
-
-  map.set('user', getFallbackParticipantAvatarNumber('user'));
-  map.set('system', getFallbackParticipantAvatarNumber('system'));
-
-  return map.get(senderName) ?? getFallbackParticipantAvatarNumber(senderName);
-}
-
-function readTeamNotificationMembers(teamName: string): TeamNotificationAvatarMember[] {
-  try {
-    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
-    if (!existsSync(configPath)) return [];
-
-    const parsed = JSON.parse(readFileSync(configPath, 'utf8')) as {
-      members?: unknown;
-    };
-    if (!Array.isArray(parsed.members)) return [];
-
-    return parsed.members
-      .map((member): TeamNotificationAvatarMember | null => {
-        if (!member || typeof member !== 'object') return null;
-        const record = member as Record<string, unknown>;
-        const name = typeof record.name === 'string' ? record.name.trim() : '';
-        if (!name) return null;
-        return {
-          name,
-          removedAt:
-            typeof record.removedAt === 'number' || typeof record.removedAt === 'string'
-              ? record.removedAt
-              : null,
-          agentType: typeof record.agentType === 'string' ? record.agentType : undefined,
-        };
-      })
-      .filter((member): member is TeamNotificationAvatarMember => Boolean(member));
-  } catch (error) {
-    logger.debug(`[team-toast] failed to read team members for avatar: ${String(error)}`);
-    return [];
-  }
-}
-
-function resolveParticipantAvatarPath(avatarNumber: number): string | undefined {
-  const filename = `${String(avatarNumber).padStart(2, '0')}.png`;
-  const resourceRoot =
-    typeof process.resourcesPath === 'string' && process.resourcesPath.length > 0
-      ? process.resourcesPath
-      : null;
-  const candidates = [
-    path.join(process.cwd(), 'src/renderer/assets/participant-avatars', filename),
-    ...(resourceRoot ? [path.join(resourceRoot, 'participant-avatars', filename)] : []),
-  ];
-
-  return candidates.find((candidate) => existsSync(candidate));
+// Participant PNG avatars have been removed; notifications use the SVG initials fallback.
+function resolveParticipantAvatarPath(_avatarNumber: number): string | undefined {
+  return undefined;
 }
 
 function escapeXmlAttribute(value: string): string {
@@ -408,15 +302,12 @@ function getSenderInitials(sender: string): string {
 
 function resolveSenderParticipantAvatarPath(
   sender: string,
-  teamName: string,
-  members: readonly TeamNotificationAvatarMember[] | undefined
+  _teamName: string,
+  _members: readonly TeamNotificationAvatarMember[] | undefined
 ): string | undefined {
   const senderLabel = sender.trim();
   if (!senderLabel || senderLabel.toLowerCase() === 'system') return undefined;
-
-  const roster = members && members.length > 0 ? members : readTeamNotificationMembers(teamName);
-  const avatarNumber = getParticipantAvatarNumber(senderLabel, roster);
-  return resolveParticipantAvatarPath(avatarNumber);
+  return resolveParticipantAvatarPath(0);
 }
 
 function getWindowsToastAvatarPath(avatarPath: string): string {
