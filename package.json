@@ -8,13 +8,13 @@
     "name": "Илия (777genius)",
     "email": "quantjumppro@gmail.com"
   },
-  "homepage": "https://github.com/777genius/agent-teams-ai",
+  "homepage": "https://github.com/alperalyaz/agent-teams-ai",
   "repository": {
     "type": "git",
-    "url": "https://github.com/777genius/agent-teams-ai.git"
+    "url": "https://github.com/alperalyaz/agent-teams-ai.git"
   },
   "bugs": {
-    "url": "https://github.com/777genius/agent-teams-ai/issues"
+    "url": "https://github.com/alperalyaz/agent-teams-ai/issues"
   },
   "engines": {
     "node": ">=24.15.0 <25"
@@ -272,8 +272,8 @@
     "vitest": "^3.2.5"
   },
   "build": {
-    "appId": "com.agent-teams.app",
-    "productName": "Agent Teams AI",
+    "appId": "com.alperalyaz.crewboard",
+    "productName": "CrewBoard",
     "directories": {
       "output": "release"
     },
@@ -359,9 +359,10 @@
     },
     "win": {
       "target": [
-        "nsis"
+        "nsis",
+        "appx"
       ],
-      "executableName": "AgentTeamsAI",
+      "executableName": "CrewBoard",
       "icon": "resources/icons/win/icon.ico"
     },
     "linux": {
@@ -396,16 +397,25 @@
       ]
     },
     "nsis": {
-      "artifactName": "Agent.Teams.AI.Setup.${version}.${ext}",
+      "artifactName": "CrewBoard.Setup.${version}.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Agent Teams AI"
+      "shortcutName": "CrewBoard"
+    },
+    "appx": {
+      "artifactName": "CrewBoard.${version}.${ext}",
+      "applicationId": "CrewBoard",
+      "identityName": "REPLACE_WITH_PARTNER_CENTER_PACKAGE_IDENTITY_NAME",
+      "publisher": "REPLACE_WITH_PARTNER_CENTER_PUBLISHER_ID",
+      "publisherDisplayName": "REPLACE_WITH_PARTNER_CENTER_PUBLISHER_DISPLAY_NAME",
+      "displayName": "CrewBoard",
+      "backgroundColor": "#000000"
     },
     "publish": [
       {
         "provider": "github",
-        "owner": "777genius",
+        "owner": "alperalyaz",
         "repo": "agent-teams-ai",
         "releaseType": "release"
       }
