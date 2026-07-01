@@ -76,7 +76,6 @@ const TRANSIENT_CHROMIUM_FILE_NAMES = new Set([
 ]);
 
 const DURABLE_USER_DATA_ROOT_NAMES = new Set(['data', 'backups']);
-const PREFERRED_USER_DATA_DIR_NAME = 'agent-teams-ai';
 
 const STALE_MIGRATION_TEMP_MAX_AGE_MS = 60 * 60 * 1000;
 
@@ -108,30 +107,6 @@ export function migrateElectronUserDataDirectory(
       fallbackToLegacy: false,
       reason: 'error',
     };
-  }
-
-  const preferredExistingPath = selectPreferredElectronUserDataPath(currentPath);
-  if (preferredExistingPath) {
-    try {
-      setLegacyElectronPaths(app, preferredExistingPath, logger);
-      logger?.info(`Reusing preferred Electron userData at ${preferredExistingPath}`);
-      return {
-        currentPath,
-        legacyPath: preferredExistingPath,
-        migrated: false,
-        fallbackToLegacy: false,
-        reason: 'legacy-reused',
-      };
-    } catch (error) {
-      logger?.warn(`Electron userData preferred reuse failed: ${stringifyError(error)}`);
-      return {
-        currentPath,
-        legacyPath: preferredExistingPath,
-        migrated: false,
-        fallbackToLegacy: false,
-        reason: 'error',
-      };
-    }
   }
 
   if (directoryExists(currentPath) && directoryHasDurableUserDataEntries(currentPath)) {
@@ -244,16 +219,6 @@ function selectLegacyElectronUserDataPath(currentPath: string): string | null {
       .filter(directoryExists)
       .find((candidatePath) => directoryHasDurableUserDataEntries(candidatePath)) ?? null
   );
-}
-
-function selectPreferredElectronUserDataPath(currentPath: string): string | null {
-  const preferredPath = path.join(path.dirname(currentPath), PREFERRED_USER_DATA_DIR_NAME);
-  if (path.resolve(preferredPath) === path.resolve(currentPath)) {
-    return null;
-  }
-  return directoryExists(preferredPath) && directoryHasDurableUserDataEntries(preferredPath)
-    ? preferredPath
-    : null;
 }
 
 function setLegacyElectronPaths(

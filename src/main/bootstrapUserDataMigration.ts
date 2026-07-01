@@ -12,4 +12,4 @@ export const earlyElectronUserDataMigrationResult = earlyElectronDevPathOverride
       fallbackToLegacy: false,
       reason: 'current-path-exists' as const,
     }
-  : migrateElectronUserDataDirectory(app);
+  : migrateElectronUserDataDirectory(app, { strategy: 'copy' });

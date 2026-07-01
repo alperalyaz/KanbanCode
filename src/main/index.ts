@@ -1,5 +1,5 @@
 /**
- * Main process entry point for Agent Teams AI.
+ * Main process entry point for KanbanCode.
  *
  * Responsibilities:
  * - Initialize Electron app and main window
@@ -128,6 +128,7 @@ import {
   // eslint-disable-next-line boundaries/element-types -- IPC channel constants shared between main and preload
 } from '@preload/constants/ipcChannels';
 import {
+  APP_NAME,
   DEFAULT_WINDOW_HEIGHT,
   DEFAULT_WINDOW_WIDTH,
   DEV_SERVER_PORT,
@@ -997,7 +998,7 @@ const initialStartupMemory = captureStartupMemorySnapshot();
 let appStartupSteps: AppStartupStep[] = [
   {
     phase: 'boot',
-    message: 'Starting Agent Teams AI...',
+    message: `Starting ${APP_NAME}...`,
     startedAt: appStartupStartedAt,
     updatedAt: appStartupStartedAt,
     memoryAtStart: initialStartupMemory,
@@ -1005,7 +1006,7 @@ let appStartupSteps: AppStartupStep[] = [
 ];
 let appStartupStatus: AppStartupStatus = {
   phase: 'boot',
-  message: 'Starting Agent Teams AI...',
+  message: `Starting ${APP_NAME}...`,
   ready: false,
   error: null,
   startedAt: appStartupStartedAt,
@@ -2851,7 +2852,7 @@ function createWindow(): void {
     backgroundColor: '#1a1a1a',
     ...(useNativeTitleBar ? {} : { titleBarStyle: 'hidden' as const }),
     ...(isMac && { trafficLightPosition: getTrafficLightPositionForZoom(1) }),
-    title: 'Agent Teams AI',
+    title: APP_NAME,
   });
   markRendererUnavailable(mainWindow);
 

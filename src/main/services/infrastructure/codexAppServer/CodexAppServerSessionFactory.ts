@@ -1,3 +1,5 @@
+import { APP_NAME } from '@shared/constants';
+
 import type { JsonRpcSession, JsonRpcStdioClient } from './JsonRpcStdioClient';
 import type { CodexAppServerInitializeResponse } from './protocol';
 
@@ -114,7 +116,7 @@ export class CodexAppServerSessionFactory {
       {
         clientInfo: {
           name: 'agent-teams-ai',
-          title: 'Agent Teams AI',
+          title: APP_NAME,
           version: '0.1.0',
         },
         capabilities: {

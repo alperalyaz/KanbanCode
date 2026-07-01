@@ -20,6 +20,7 @@ import { atomicWriteAsync } from '@main/utils/atomicWrite';
 import { getAppDataPath, getHomeDir, getTeamsBasePath } from '@main/utils/pathDecoder';
 import { safeSendToRenderer } from '@main/utils/safeWebContentsSend';
 import { stripMarkdown } from '@main/utils/textFormatting';
+import { APP_NAME } from '@shared/constants';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { getMemberColorByName, MEMBER_COLOR_HUE } from '@shared/constants/memberColors';
 import { isLeadMember } from '@shared/utils/leadDetection';
@@ -1179,10 +1180,10 @@ export class NotificationManager extends EventEmitter {
     logger.debug(`[test-notification] creating Notification (platform=${process.platform})`);
     const notification = new NotificationClass({
       title: 'Test Notification',
-      ...(isMac ? { subtitle: 'Agent Teams AI' } : {}),
+      ...(isMac ? { subtitle: APP_NAME } : {}),
       body: isMac
         ? 'Notifications are working correctly!'
-        : 'Agent Teams AI\nNotifications are working correctly!',
+        : `${APP_NAME}\nNotifications are working correctly!`,
       ...(iconPath ? { icon: iconPath } : {}),
     });
 
