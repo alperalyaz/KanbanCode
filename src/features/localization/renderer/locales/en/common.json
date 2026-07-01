@@ -672,7 +672,6 @@
     "updateAvailable": "Update available",
     "updateReady": "Update Ready",
     "noReleaseNotes": "No release notes available.",
-    "viewOnGitHub": "View on GitHub",
     "later": "Later",
     "restartNow": "Restart now",
     "download": "Download"
@@ -684,9 +683,7 @@
     "tryAgain": "Try Again",
     "copied": "Copied",
     "copyErrorDetails": "Copy Error Details",
-    "reportBugOnGitHub": "Report Bug on GitHub",
-    "reloadApp": "Reload App",
-    "diagnosticsNotice": "GitHub bug reports and copied diagnostics include the error message, stack traces, app version, active tab, selected team, task context, and environment details."
+    "reloadApp": "Reload App"
   },
   "runtimeBackendSelector": {
     "label": "Runtime backend",
@@ -813,7 +810,6 @@
     "restartNow": "Restart now"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "Expand sidebar",
     "collapseSidebarShortcut": "Collapse sidebar ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "Extensions",
       "search": "Search",
       "schedules": "Schedules",
-      "docs": "Docs",
       "exportMarkdown": "Export as Markdown",
       "exportJson": "Export as JSON",
       "exportPlainText": "Export as Plain Text",

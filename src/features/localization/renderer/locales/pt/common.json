@@ -672,7 +672,6 @@
     "updateAvailable": "Atualizar disponível",
     "updateReady": "Atualizar Pronto",
     "noReleaseNotes": "Nenhuma nota de lançamento disponível.",
-    "viewOnGitHub": "Ver no GitHub",
     "later": "Mais tarde.",
     "restartNow": "Reiniciar agora",
     "download": "Baixar"
@@ -684,9 +683,7 @@
     "tryAgain": "Tente novamente",
     "copied": "Copiado",
     "copyErrorDetails": "Copiar os Detalhes do Erro",
-    "reportBugOnGitHub": "Reportar Erro no GitHub",
-    "reloadApp": "Recarregar aplicativo",
-    "diagnosticsNotice": "Relatórios de erros do GitHub e diagnósticos copiados incluem a mensagem de erro, stack traces, versão do aplicativo, guia ativa, equipe selecionada, contexto de tarefa e detalhes do ambiente."
+    "reloadApp": "Recarregar aplicativo"
   },
   "runtimeBackendSelector": {
     "label": "Infraestrutura de tempo de execução",
@@ -813,7 +810,6 @@
     "restartNow": "Reiniciar agora"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discórdia",
     "expandSidebar": "Expandir a barra lateral",
     "collapseSidebarShortcut": "Recolher a barra lateral ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "Extensões",
       "search": "Procurar",
       "schedules": "Agendamentos",
-      "docs": "Docs",
       "exportMarkdown": "Exportar como Markdown",
       "exportJson": "Exportar como JSON",
       "exportPlainText": "Exportar como Texto Simples",

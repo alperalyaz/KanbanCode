@@ -672,7 +672,6 @@
     "updateAvailable": "Доступне оновлення",
     "updateReady": "Оновлення готове",
     "noReleaseNotes": "Немає доступних приміток до випуску.",
-    "viewOnGitHub": "Переглянути на GitHub",
     "later": "Пізніше",
     "restartNow": "Перезапустити зараз",
     "download": "Завантажити"
@@ -684,9 +683,7 @@
     "tryAgain": "Спробувати знову",
     "copied": "Скопійовано",
     "copyErrorDetails": "Копіювати деталі помилки",
-    "reportBugOnGitHub": "Повідомити про баг на GitHub",
-    "reloadApp": "Перезавантажити застосунок",
-    "diagnosticsNotice": "Звіти про баги на GitHub і скопійована діагностика включають повідомлення про помилку, трасування стека, версію застосунку, активну вкладку, вибрану команду, контекст завдання та деталі середовища."
+    "reloadApp": "Перезавантажити застосунок"
   },
   "runtimeBackendSelector": {
     "label": "Бекенд середовища",
@@ -813,7 +810,6 @@
     "restartNow": "Перезапустити зараз"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "Розгорнути бічну панель",
     "collapseSidebarShortcut": "Згорнути бічну панель ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "Розширення",
       "search": "Пошук",
       "schedules": "Розклади",
-      "docs": "Документація",
       "exportMarkdown": "Експортувати як Markdown",
       "exportJson": "Експортувати як JSON",
       "exportPlainText": "Експортувати як простий текст",

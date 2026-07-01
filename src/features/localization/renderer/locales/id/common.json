@@ -672,7 +672,6 @@
     "updateAvailable": "Mutakhirkan tersedia",
     "updateReady": "Perbarui Siap",
     "noReleaseNotes": "Tidak ada catatan rilis yang tersedia.",
-    "viewOnGitHub": "Tilik di GitHub",
     "later": "Nanti",
     "restartNow": "Mulai lagi sekarang",
     "download": "Unduh"
@@ -684,9 +683,7 @@
     "tryAgain": "Coba Lagi",
     "copied": "Disalin",
     "copyErrorDetails": "Salin Rincian Galat",
-    "reportBugOnGitHub": "Laporkan Bug di GitHub",
-    "reloadApp": "Muat Ulang App",
-    "diagnosticsNotice": "Laporan bug GitHub dan diagnosis disalin termasuk pesan kesalahan, jejak stack, versi app, tab aktif, tim terpilih, konteks tugas, dan rincian lingkungan."
+    "reloadApp": "Muat Ulang App"
   },
   "runtimeBackendSelector": {
     "label": "Backend runtime",
@@ -813,7 +810,6 @@
     "restartNow": "Mulai lagi sekarang"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "Batang samping Expand",
     "collapseSidebarShortcut": "Batang samping collapse ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "Ekstensi",
       "search": "Cari",
       "schedules": "Schedules",
-      "docs": "Dokumen",
       "exportMarkdown": "Ekspor sebagai Markdown",
       "exportJson": "Ekspor sebagai JSON",
       "exportPlainText": "Ekspor sebagai Teks Biasa",

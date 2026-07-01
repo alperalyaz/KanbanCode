@@ -672,7 +672,6 @@
     "updateAvailable": "Доступно обновление",
     "updateReady": "Обновление готово",
     "noReleaseNotes": "Описание релиза недоступно.",
-    "viewOnGitHub": "Открыть на GitHub",
     "later": "Позже",
     "restartNow": "Перезапустить сейчас",
     "download": "Скачать"
@@ -684,9 +683,7 @@
     "tryAgain": "Попробовать снова",
     "copied": "Скопировано",
     "copyErrorDetails": "Скопировать детали ошибки",
-    "reportBugOnGitHub": "Сообщить об ошибке на GitHub",
-    "reloadApp": "Перезагрузить приложение",
-    "diagnosticsNotice": "GitHub-отчёты и скопированная диагностика включают сообщение об ошибке, stack trace, версию приложения, активную вкладку, выбранную команду, контекст задачи и сведения окружения."
+    "reloadApp": "Перезагрузить приложение"
   },
   "runtimeBackendSelector": {
     "label": "Runtime backend",
@@ -813,7 +810,6 @@
     "restartNow": "Перезапустить сейчас"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "Развернуть боковую панель",
     "collapseSidebarShortcut": "Свернуть боковую панель ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "Расширения",
       "search": "Поиск",
       "schedules": "Расписания",
-      "docs": "Документация",
       "exportMarkdown": "Экспорт в Markdown",
       "exportJson": "Экспорт в JSON",
       "exportPlainText": "Экспорт в обычный текст",

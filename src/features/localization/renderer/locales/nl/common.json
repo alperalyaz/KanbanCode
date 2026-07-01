@@ -672,7 +672,6 @@
     "updateAvailable": "Update beschikbaar",
     "updateReady": "Update klaar",
     "noReleaseNotes": "Geen release-opmerkingen beschikbaar.",
-    "viewOnGitHub": "Bekijken op GitHub",
     "later": "Later",
     "restartNow": "Nu opnieuw starten",
     "download": "Downloaden"
@@ -684,9 +683,7 @@
     "tryAgain": "Opnieuw proberen",
     "copied": "Gekopieerd",
     "copyErrorDetails": "Foutdetails kopiëren",
-    "reportBugOnGitHub": "Bug melden op GitHub",
-    "reloadApp": "App opnieuw laden",
-    "diagnosticsNotice": "GitHub-bugmeldingen en gekopieerde diagnostiek bevatten de foutmelding, stacktraces, app-versie, actief tabblad, geselecteerd team, taakcontext en omgevingsdetails."
+    "reloadApp": "App opnieuw laden"
   },
   "runtimeBackendSelector": {
     "label": "Runtime-backend",
@@ -813,7 +810,6 @@
     "restartNow": "Nu opnieuw starten"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "Zijbalk uitklappen",
     "collapseSidebarShortcut": "Zijbalk inklappen ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "Extensies",
       "search": "Zoeken",
       "schedules": "Planningen",
-      "docs": "Docs",
       "exportMarkdown": "Exporteren als Markdown",
       "exportJson": "Exporteren als JSON",
       "exportPlainText": "Exporteren als platte tekst",

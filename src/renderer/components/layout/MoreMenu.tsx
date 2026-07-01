@@ -8,14 +8,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
-import { isElectronMode } from '@renderer/api';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
 import { triggerDownload } from '@renderer/utils/sessionExporter';
 import { formatShortcut } from '@renderer/utils/stringUtils';
 import {
   Activity,
-  BookOpen,
   Braces,
   Calendar,
   FileText,
@@ -31,8 +29,6 @@ import { useShallow } from 'zustand/react/shallow';
 import type { SessionDetail } from '@renderer/types/data';
 import type { Tab } from '@renderer/types/tabs';
 import type { ExportFormat } from '@renderer/utils/sessionExporter';
-
-const DOCS_URL = 'https://github.com/alperalyaz/agent-teams-ai#readme';
 
 interface MoreMenuProps {
   activeTab: Tab | undefined;
@@ -115,15 +111,6 @@ export const MoreMenu = ({
     [activeTabSessionDetail]
   );
 
-  const handleOpenDocs = useCallback(async () => {
-    if (isElectronMode()) {
-      await window.electronAPI.openExternal(DOCS_URL);
-    } else {
-      window.open(DOCS_URL, '_blank', 'noopener,noreferrer');
-    }
-    setIsOpen(false);
-  }, []);
-
   const isSessionWithData = activeTab?.type === 'session' && activeTabSessionDetail != null;
 
   // Build menu sections
@@ -172,14 +159,6 @@ export const MoreMenu = ({
       onClick: () => {
         openSchedulesTab();
         setIsOpen(false);
-      },
-    },
-    {
-      id: 'docs',
-      label: t('layout.menu.docs'),
-      icon: BookOpen,
-      onClick: () => {
-        void handleOpenDocs();
       },
     },
   ];

@@ -672,7 +672,6 @@
     "updateAvailable": "புதுப்பிப்பு கிடைக்கிறது",
     "updateReady": "புதுப்பிப்பு தயார்",
     "noReleaseNotes": "release notes எதுவும் கிடைக்கவில்லை.",
-    "viewOnGitHub": "GitHub இல் காண்",
     "later": "பிறகு",
     "restartNow": "இப்போது மறுதொடக்கம்",
     "download": "பதிவிறக்கு"
@@ -684,9 +683,7 @@
     "tryAgain": "மீண்டும் முயற்சி",
     "copied": "நகலெடுக்கப்பட்டது",
     "copyErrorDetails": "பிழை விவரங்களை நகலெடு",
-    "reportBugOnGitHub": "GitHub இல் பிழையைப் புகாரளி",
-    "reloadApp": "பயன்பாட்டை மீண்டும் ஏற்று",
-    "diagnosticsNotice": "GitHub பிழை அறிக்கைகள் மற்றும் நகலெடுக்கப்பட்ட diagnostics இல் பிழைச் செய்தி, stack traces, பயன்பாட்டு பதிப்பு, செயலில் உள்ள tab, தேர்ந்தெடுத்த team, task context மற்றும் சூழல் விவரங்கள் அடங்கும்."
+    "reloadApp": "பயன்பாட்டை மீண்டும் ஏற்று"
   },
   "runtimeBackendSelector": {
     "label": "Runtime backend",
@@ -813,7 +810,6 @@
     "restartNow": "இப்போது மறுதொடக்கம்"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "sidebar ஐ விரிவாக்கு",
     "collapseSidebarShortcut": "sidebar ஐ சுருக்கு ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "நீட்டிப்புகள்",
       "search": "தேடு",
       "schedules": "அட்டவணைகள்",
-      "docs": "Docs",
       "exportMarkdown": "Markdown ஆக ஏற்றுமதி செய்",
       "exportJson": "JSON ஆக ஏற்றுமதி செய்",
       "exportPlainText": "வெற்று உரையாக ஏற்றுமதி செய்",

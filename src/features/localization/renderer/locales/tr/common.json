@@ -672,7 +672,6 @@
     "updateAvailable": "Güncelleme mevcut",
     "updateReady": "Güncelleme Hazır",
     "noReleaseNotes": "Sürüm notu yok.",
-    "viewOnGitHub": "GitHub'da görüntüle",
     "later": "Sonra",
     "restartNow": "Şimdi yeniden başlat",
     "download": "İndir"
@@ -684,9 +683,7 @@
     "tryAgain": "Yeniden Dene",
     "copied": "Kopyalandı",
     "copyErrorDetails": "Hata Ayrıntılarını Kopyala",
-    "reportBugOnGitHub": "GitHub'da Hata Bildir",
-    "reloadApp": "Uygulamayı Yeniden Yükle",
-    "diagnosticsNotice": "GitHub hata raporları ve kopyalanan tanılamalar; hata mesajını, yığın izlerini, uygulama sürümünü, etkin sekmeyi, seçili ekibi, görev bağlamını ve ortam ayrıntılarını içerir."
+    "reloadApp": "Uygulamayı Yeniden Yükle"
   },
   "runtimeBackendSelector": {
     "label": "Çalışma zamanı arka ucu",
@@ -813,7 +810,6 @@
     "restartNow": "Şimdi yeniden başlat"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "Kenar çubuğunu genişlet",
     "collapseSidebarShortcut": "Kenar çubuğunu daralt ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "Eklentiler",
       "search": "Ara",
       "schedules": "Zamanlamalar",
-      "docs": "Dokümanlar",
       "exportMarkdown": "Markdown olarak dışa aktar",
       "exportJson": "JSON olarak dışa aktar",
       "exportPlainText": "Düz Metin olarak dışa aktar",

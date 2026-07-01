@@ -672,7 +672,6 @@
     "updateAvailable": "تجدید دستیاب",
     "updateReady": "تیار دیکھو",
     "noReleaseNotes": "کوئی دستیاب نوٹ نہیں.",
-    "viewOnGitHub": "جی‌نہیں ۔",
     "later": "بعد",
     "restartNow": "اب",
     "download": "گر تے ہوئے"
@@ -684,9 +683,7 @@
     "tryAgain": "دوبارہ کوشش کریں",
     "copied": "کوس",
     "copyErrorDetails": "خامی تفصیلات کاپی کریں",
-    "reportBugOnGitHub": "GitHub پر رپورٹ بگ",
-    "reloadApp": "ایپ دوبارہ لوڈ کریں",
-    "diagnosticsNotice": "GitHub بگ باس رپورٹوں اور نقل کرنے والوں میں غلطی کا پیغام، اسٹاک کے نشانات، ایپ ورژن، فعال تبتی، منتخب ٹیم، کامی سیاق و سباق اور ماحول کی تفصیلات شامل ہیں۔"
+    "reloadApp": "ایپ دوبارہ لوڈ کریں"
   },
   "runtimeBackendSelector": {
     "label": "آخری بار بھاگنا",
@@ -813,7 +810,6 @@
     "restartNow": "اب"
   },
   "layout": {
-    "github": "جٹوب",
     "discord": "تقسیم کار",
     "expandSidebar": "قریبی کنارہ",
     "collapseSidebarShortcut": "Collapse sidebar ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "وسیع خط",
       "search": "تلاش",
       "schedules": "سبز رنگ",
-      "docs": "ڈاک",
       "exportMarkdown": "Export as Markdown",
       "exportJson": "بطور JSON",
       "exportPlainText": "پلانٹ متن کے طور پر پیش کریں",

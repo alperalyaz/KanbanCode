@@ -672,7 +672,6 @@
     "updateAvailable": "最新情報",
     "updateReady": "Readyの更新",
     "noReleaseNotes": "リリースノートはありません。",
-    "viewOnGitHub": "GitHubで見る",
     "later": "後で",
     "restartNow": "今すぐ再起動",
     "download": "ダウンロード"
@@ -684,9 +683,7 @@
     "tryAgain": "お問い合わせ",
     "copied": "コピッド",
     "copyErrorDetails": "コピーエラーの詳細",
-    "reportBugOnGitHub": "GitHubでバグ報告",
-    "reloadApp": "アプリをダウンロード",
-    "diagnosticsNotice": "GitHubのバグレポートとコピーされた診断には、エラーメッセージ、スタックトレース、アプリバージョン、アクティブタブ、選択したチーム、タスクコンテキスト、および環境の詳細が含まれます。"
+    "reloadApp": "アプリをダウンロード"
   },
   "runtimeBackendSelector": {
     "label": "Runtime バックエンド",
@@ -813,7 +810,6 @@
     "restartNow": "今すぐ再起動"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "ディスコード",
     "expandSidebar": "サイドバーを拡張",
     "collapseSidebarShortcut": "崩壊のサイドバー({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "エクステンション",
       "search": "インフォメーション",
       "schedules": "スケジュール",
-      "docs": "ドキュメント",
       "exportMarkdown": "マークダウンとしてエクスポート",
       "exportJson": "JSONとしてエクスポート",
       "exportPlainText": "プレーンテキストとしてエクスポート",

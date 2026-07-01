@@ -672,7 +672,6 @@
     "updateAvailable": "Actualizare disponibilă",
     "updateReady": "Actualizare pregătită",
     "noReleaseNotes": "Nu sunt disponibile note de lansare.",
-    "viewOnGitHub": "Vezi pe GitHub",
     "later": "Mai târziu",
     "restartNow": "Repornește acum",
     "download": "Descarcă"
@@ -684,9 +683,7 @@
     "tryAgain": "Încearcă din nou",
     "copied": "Copiat",
     "copyErrorDetails": "Copiază detaliile erorii",
-    "reportBugOnGitHub": "Raportează eroarea pe GitHub",
-    "reloadApp": "Reîncarcă aplicația",
-    "diagnosticsNotice": "Rapoartele de erori GitHub și diagnosticele copiate includ mesajul de eroare, urmele de stivă, versiunea aplicației, fila activă, echipa selectată, contextul sarcinii și detaliile de mediu."
+    "reloadApp": "Reîncarcă aplicația"
   },
   "runtimeBackendSelector": {
     "label": "Backend runtime",
@@ -813,7 +810,6 @@
     "restartNow": "Repornește acum"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "Extinde bara laterală",
     "collapseSidebarShortcut": "Restrânge bara laterală ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "Extensii",
       "search": "Căutare",
       "schedules": "Programări",
-      "docs": "Documentație",
       "exportMarkdown": "Exportă ca Markdown",
       "exportJson": "Exportă ca JSON",
       "exportPlainText": "Exportă ca text simplu",

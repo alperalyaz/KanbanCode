@@ -672,7 +672,6 @@
     "updateAvailable": "May available na update",
     "updateReady": "Handa na ang Update",
     "noReleaseNotes": "Walang available na release notes.",
-    "viewOnGitHub": "Tingnan sa GitHub",
     "later": "Mamaya",
     "restartNow": "I-restart ngayon",
     "download": "I-download"
@@ -684,9 +683,7 @@
     "tryAgain": "Subukang Muli",
     "copied": "Nakopya",
     "copyErrorDetails": "Kopyahin ang mga Detalye ng Error",
-    "reportBugOnGitHub": "Mag-ulat ng Bug sa GitHub",
-    "reloadApp": "I-reload ang App",
-    "diagnosticsNotice": "Kasama sa mga ulat ng bug sa GitHub at sa mga kinopyang diagnostics ang mensahe ng error, mga stack trace, bersyon ng app, aktibong tab, napiling team, task context, at mga detalye ng environment."
+    "reloadApp": "I-reload ang App"
   },
   "runtimeBackendSelector": {
     "label": "Runtime backend",
@@ -813,7 +810,6 @@
     "restartNow": "I-restart ngayon"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "I-expand ang sidebar",
     "collapseSidebarShortcut": "I-collapse ang sidebar ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "Extensions",
       "search": "Maghanap",
       "schedules": "Mga Schedule",
-      "docs": "Docs",
       "exportMarkdown": "I-export bilang Markdown",
       "exportJson": "I-export bilang JSON",
       "exportPlainText": "I-export bilang Plain Text",

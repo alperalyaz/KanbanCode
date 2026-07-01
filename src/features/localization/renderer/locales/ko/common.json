@@ -672,7 +672,6 @@
     "updateAvailable": "자주 묻는 질문",
     "updateReady": "업데이트",
     "noReleaseNotes": "사용할 수 없습니다.",
-    "viewOnGitHub": "GitHub에서 보기",
     "later": "이름 *",
     "restartNow": "지금 예약",
     "download": "다운로드"
@@ -684,9 +683,7 @@
     "tryAgain": "다시 시도",
     "copied": "뚱 베어",
     "copyErrorDetails": "비밀번호",
-    "reportBugOnGitHub": "GitHub의 버그",
-    "reloadApp": "Reload 앱",
-    "diagnosticsNotice": "GitHub 버그 보고서 및 복사 진단은 오류 메시지, 스택 추적, 앱 버전, 활성 탭, 선택한 팀, 작업 컨텍스트 및 환경 세부 사항을 포함합니다."
+    "reloadApp": "Reload 앱"
   },
   "runtimeBackendSelector": {
     "label": "실행 시간 backend",
@@ -813,7 +810,6 @@
     "restartNow": "지금 예약"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "공지사항",
     "expandSidebar": "사이드바를 확장",
     "collapseSidebarShortcut": "붕괴 측바 ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "제품정보",
       "search": "제품정보",
       "schedules": "일정표",
-      "docs": "사이트맵",
       "exportMarkdown": "Markdown으로 수출",
       "exportJson": "JSON로 수출",
       "exportPlainText": "일반 텍스트로 내보내기",

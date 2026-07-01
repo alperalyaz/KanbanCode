@@ -672,7 +672,6 @@
     "updateAvailable": "अपडेट उपलब्ध",
     "updateReady": "अपडेट तयार",
     "noReleaseNotes": "कोणत्याही रिलीज नोट्स उपलब्ध नाहीत.",
-    "viewOnGitHub": "GitHub वर पाहा",
     "later": "नंतर",
     "restartNow": "आता रीस्टार्ट करा",
     "download": "डाउनलोड"
@@ -684,9 +683,7 @@
     "tryAgain": "पुन्हा प्रयत्न करा",
     "copied": "कॉपी केले",
     "copyErrorDetails": "त्रुटी तपशील कॉपी करा",
-    "reportBugOnGitHub": "GitHub वर बग नोंदवा",
-    "reloadApp": "अॅप पुन्हा लोड करा",
-    "diagnosticsNotice": "GitHub बग अहवाल आणि कॉपी केलेल्या डायग्नॉस्टिक्समध्ये त्रुटी संदेश, स्टॅक ट्रेसेस, अॅप आवृत्ती, सक्रिय टॅब, निवडलेली टीम, टास्क संदर्भ आणि एन्व्हायर्न्मेंट तपशील समाविष्ट आहेत."
+    "reloadApp": "अॅप पुन्हा लोड करा"
   },
   "runtimeBackendSelector": {
     "label": "रनटाइम बॅकएंड",
@@ -813,7 +810,6 @@
     "restartNow": "आता रीस्टार्ट करा"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "साइडबार विस्तृत करा",
     "collapseSidebarShortcut": "साइडबार संकुचित करा ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "एक्सटेन्शन्स",
       "search": "शोध",
       "schedules": "वेळापत्रके",
-      "docs": "दस्तऐवज",
       "exportMarkdown": "Markdown म्हणून एक्सपोर्ट करा",
       "exportJson": "JSON म्हणून एक्सपोर्ट करा",
       "exportPlainText": "साध्या मजकुरात एक्सपोर्ट करा",

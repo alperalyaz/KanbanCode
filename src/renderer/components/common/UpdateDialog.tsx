@@ -15,7 +15,7 @@ import { markdownComponents } from '@renderer/components/chat/markdownComponents
 import { useStore } from '@renderer/store';
 import { REHYPE_PLUGINS } from '@renderer/utils/markdownPlugins';
 import { stripDownloadsSection } from '@shared/utils/releaseNotes';
-import { ExternalLink, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import remarkGfm from 'remark-gfm';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -99,19 +99,6 @@ export const UpdateDialog = (): React.JSX.Element | null => {
 
   const filteredNotes = releaseNotes ? stripDownloadsSection(releaseNotes) : releaseNotes;
 
-  const releaseUrl = availableVersion
-    ? `https://github.com/alperalyaz/agent-teams-ai/releases/tag/v${availableVersion}`
-    : null;
-
-  const openReleaseOnGitHub = (): void => {
-    if (!releaseUrl) return;
-    if (isElectronMode()) {
-      void window.electronAPI.openExternal(releaseUrl);
-    } else {
-      window.open(releaseUrl, '_blank');
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
@@ -187,16 +174,6 @@ export const UpdateDialog = (): React.JSX.Element | null => {
 
         {/* Actions */}
         <div className="flex items-center gap-2">
-          {releaseUrl && (
-            <button
-              onClick={openReleaseOnGitHub}
-              className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors hover:bg-white/5"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              <ExternalLink className="size-3" />
-              {t('updateDialog.viewOnGitHub')}
-            </button>
-          )}
           <div className="flex-1" />
           <button
             onClick={dismissUpdateDialog}

@@ -672,7 +672,6 @@
     "updateAvailable": "Sasisho linapatikana",
     "updateReady": "Sasisho Liko Tayari",
     "noReleaseNotes": "Hakuna maelezo ya toleo yanayopatikana.",
-    "viewOnGitHub": "Tazama kwenye GitHub",
     "later": "Baadaye",
     "restartNow": "Anzisha upya sasa",
     "download": "Pakua"
@@ -684,9 +683,7 @@
     "tryAgain": "Jaribu Tena",
     "copied": "Imenakiliwa",
     "copyErrorDetails": "Nakili Maelezo ya Hitilafu",
-    "reportBugOnGitHub": "Ripoti Hitilafu kwenye GitHub",
-    "reloadApp": "Pakia Upya Programu",
-    "diagnosticsNotice": "Ripoti za hitilafu za GitHub na utambuzi uliyonakiliwa zinajumuisha ujumbe wa hitilafu, ufuatiliaji wa rundo, toleo la programu, kichupo hai, timu iliyochaguliwa, muktadha wa kazi, na maelezo ya mazingira."
+    "reloadApp": "Pakia Upya Programu"
   },
   "runtimeBackendSelector": {
     "label": "Backend ya runtime",
@@ -813,7 +810,6 @@
     "restartNow": "Anzisha upya sasa"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "Panua utepe wa kando",
     "collapseSidebarShortcut": "Kunja utepe wa kando ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "Viendelezi",
       "search": "Tafuta",
       "schedules": "Ratiba",
-      "docs": "Hati",
       "exportMarkdown": "Hamisha kama Markdown",
       "exportJson": "Hamisha kama JSON",
       "exportPlainText": "Hamisha kama Maandishi Tupu",

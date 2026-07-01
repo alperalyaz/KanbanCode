@@ -672,7 +672,6 @@
     "updateAvailable": "Có bản cập nhật",
     "updateReady": "Bản cập nhật sẵn sàng",
     "noReleaseNotes": "Không có ghi chú phát hành nào.",
-    "viewOnGitHub": "Xem trên GitHub",
     "later": "Để sau",
     "restartNow": "Khởi động lại ngay",
     "download": "Tải xuống"
@@ -684,9 +683,7 @@
     "tryAgain": "Thử lại",
     "copied": "Đã sao chép",
     "copyErrorDetails": "Sao chép chi tiết lỗi",
-    "reportBugOnGitHub": "Báo lỗi trên GitHub",
-    "reloadApp": "Tải lại ứng dụng",
-    "diagnosticsNotice": "Báo lỗi trên GitHub và thông tin chẩn đoán đã sao chép bao gồm thông báo lỗi, stack trace, phiên bản ứng dụng, tab đang hoạt động, đội ngũ đã chọn, ngữ cảnh tác vụ và chi tiết môi trường."
+    "reloadApp": "Tải lại ứng dụng"
   },
   "runtimeBackendSelector": {
     "label": "Backend runtime",
@@ -813,7 +810,6 @@
     "restartNow": "Khởi động lại ngay"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "Mở rộng thanh bên",
     "collapseSidebarShortcut": "Thu gọn thanh bên ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "Tiện ích mở rộng",
       "search": "Tìm kiếm",
       "schedules": "Lịch",
-      "docs": "Tài liệu",
       "exportMarkdown": "Xuất dưới dạng Markdown",
       "exportJson": "Xuất dưới dạng JSON",
       "exportPlainText": "Xuất dưới dạng văn bản thuần",

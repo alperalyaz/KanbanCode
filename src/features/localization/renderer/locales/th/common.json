@@ -672,7 +672,6 @@
     "updateAvailable": "มีการอัปเดต",
     "updateReady": "การอัปเดตพร้อมแล้ว",
     "noReleaseNotes": "ไม่มีบันทึกการเผยแพร่",
-    "viewOnGitHub": "ดูบน GitHub",
     "later": "ภายหลัง",
     "restartNow": "รีสตาร์ทเลย",
     "download": "ดาวน์โหลด"
@@ -684,9 +683,7 @@
     "tryAgain": "ลองอีกครั้ง",
     "copied": "คัดลอกแล้ว",
     "copyErrorDetails": "คัดลอกรายละเอียดข้อผิดพลาด",
-    "reportBugOnGitHub": "รายงานบั๊กบน GitHub",
-    "reloadApp": "โหลดแอปใหม่",
-    "diagnosticsNotice": "รายงานบั๊กบน GitHub และการวินิจฉัยที่คัดลอกจะรวมข้อความข้อผิดพลาด, สแต็กเทรซ, เวอร์ชันแอป, แท็บที่ใช้งานอยู่, ทีมที่เลือก, บริบทงาน และรายละเอียดสภาพแวดล้อม"
+    "reloadApp": "โหลดแอปใหม่"
   },
   "runtimeBackendSelector": {
     "label": "แบ็กเอนด์รันไทม์",
@@ -813,7 +810,6 @@
     "restartNow": "รีสตาร์ทเลย"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "ขยายแถบด้านข้าง",
     "collapseSidebarShortcut": "ยุบแถบด้านข้าง ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "ส่วนขยาย",
       "search": "ค้นหา",
       "schedules": "กำหนดการ",
-      "docs": "เอกสาร",
       "exportMarkdown": "ส่งออกเป็น Markdown",
       "exportJson": "ส่งออกเป็น JSON",
       "exportPlainText": "ส่งออกเป็นข้อความธรรมดา",

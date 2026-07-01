@@ -672,7 +672,6 @@
     "updateAvailable": "به‌روزرسانی در دسترس است",
     "updateReady": "به‌روزرسانی آماده است",
     "noReleaseNotes": "هیچ یادداشت انتشاری در دسترس نیست.",
-    "viewOnGitHub": "مشاهده در GitHub",
     "later": "بعداً",
     "restartNow": "راه‌اندازی مجدد",
     "download": "دانلود"
@@ -684,9 +683,7 @@
     "tryAgain": "تلاش مجدد",
     "copied": "کپی شد",
     "copyErrorDetails": "کپی جزئیات خطا",
-    "reportBugOnGitHub": "گزارش باگ در GitHub",
-    "reloadApp": "بارگذاری مجدد برنامه",
-    "diagnosticsNotice": "گزارش‌های باگ GitHub و تشخیص‌های کپی‌شده شامل پیام خطا، ردیابی پشته، نسخه برنامه، زبانه فعال، تیم انتخاب‌شده، بافت وظیفه و جزئیات محیط هستند."
+    "reloadApp": "بارگذاری مجدد برنامه"
   },
   "runtimeBackendSelector": {
     "label": "بک‌اند زمان اجرا",
@@ -813,7 +810,6 @@
     "restartNow": "راه‌اندازی مجدد"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "گسترش نوار کناری",
     "collapseSidebarShortcut": "جمع کردن نوار کناری ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "افزونه‌ها",
       "search": "جستجو",
       "schedules": "زمان‌بندی‌ها",
-      "docs": "مستندات",
       "exportMarkdown": "خروجی به‌صورت Markdown",
       "exportJson": "خروجی به‌صورت JSON",
       "exportPlainText": "خروجی به‌صورت متن ساده",

@@ -3,13 +3,9 @@ import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { useAppTranslation } from '@features/localization/renderer';
 import { captureRendererException, isSentryRendererActive } from '@renderer/sentry';
 import { useStore } from '@renderer/store';
-import {
-  type BugReportContext,
-  buildBugReportText,
-  buildGitHubBugReportUrl,
-} from '@renderer/utils/bugReportUtils';
+import { type BugReportContext, buildBugReportText } from '@renderer/utils/bugReportUtils';
 import { createLogger } from '@shared/utils/logger';
-import { AlertTriangle, Bug, Check, Copy, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Check, Copy, RefreshCw } from 'lucide-react';
 
 const logger = createLogger('Component:ErrorBoundary');
 
@@ -26,7 +22,6 @@ interface ErrorBoundaryLabels {
   tryAgain: string;
   copied: string;
   copyErrorDetails: string;
-  reportBugOnGitHub: string;
   reloadApp: string;
   diagnosticsNotice: string;
 }
@@ -106,21 +101,6 @@ class ErrorBoundaryInner extends Component<Props, State> {
       sessionId: activeTab?.sessionId ?? null,
       projectId: activeTab?.projectId ?? state.activeProjectId,
     };
-  };
-
-  handleCreateGitHubIssue = (): void => {
-    const issueUrl = buildGitHubBugReportUrl({
-      error: this.state.error,
-      componentStack: this.state.errorInfo?.componentStack ?? null,
-      context: this.getBugReportContext(),
-    });
-
-    if (window.electronAPI?.openExternal) {
-      void window.electronAPI.openExternal(issueUrl);
-      return;
-    }
-
-    window.open(issueUrl, '_blank', 'noopener,noreferrer');
   };
 
   handleCopyErrorDetails = async (): Promise<void> => {
@@ -203,13 +183,6 @@ class ErrorBoundaryInner extends Component<Props, State> {
               {copiedReport ? labels?.copied : labels?.copyErrorDetails}
             </button>
             <button
-              onClick={this.handleCreateGitHubIssue}
-              className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-red-300 transition-colors hover:bg-red-500/20"
-            >
-              <Bug className="size-4" />
-              {labels?.reportBugOnGitHub}
-            </button>
-            <button
               onClick={this.handleReload}
               className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 transition-colors hover:bg-blue-700"
             >
@@ -241,7 +214,6 @@ export const ErrorBoundary = ({ children, fallback }: Omit<Props, 'labels'>): Re
         tryAgain: t('errorBoundary.tryAgain'),
         copied: t('errorBoundary.copied'),
         copyErrorDetails: t('errorBoundary.copyErrorDetails'),
-        reportBugOnGitHub: t('errorBoundary.reportBugOnGitHub'),
         reloadApp: t('errorBoundary.reloadApp'),
         diagnosticsNotice: t('errorBoundary.diagnosticsNotice'),
       }}

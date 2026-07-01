@@ -672,7 +672,6 @@
     "updateAvailable": "آخر المعلومات المتاحة",
     "updateReady": "Update Ready",
     "noReleaseNotes": "لا توجد مذكرات إطلاق",
-    "viewOnGitHub": "View on GitHub",
     "later": "لاحقا",
     "restartNow": "ارجع الآن",
     "download": "تحميل"
@@ -684,9 +683,7 @@
     "tryAgain": "حاول مرة أخرى",
     "copied": "Copied",
     "copyErrorDetails": "معلومات خاطئة",
-    "reportBugOnGitHub": "Report Bug on GitHub",
-    "reloadApp": "Reload App",
-    "diagnosticsNotice": "وتشمل تقارير حشرات جيت هوب وعمليات التشخيص المنسخة رسالة الخطأ، وتتبعات الحزم، ونسخة التطبيق، وكتابة نشطة، ومجموعة مختارة، وسياق المهام، وتفاصيل البيئة."
+    "reloadApp": "Reload App"
   },
   "runtimeBackendSelector": {
     "label": "متأخر",
@@ -813,7 +810,6 @@
     "restartNow": "ارجع الآن"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "Expand sidebar",
     "collapseSidebarShortcut": "Collapse sidebar ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "التمديدات",
       "search": "البحث",
       "schedules": "الجداول",
-      "docs": "Docs",
       "exportMarkdown": "Export as Markdown",
       "exportJson": "الصادرات JSON",
       "exportPlainText": "Export as Plain Text",

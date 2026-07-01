@@ -1,6 +1,5 @@
 import packageJson from '../../../package.json';
 
-const GITHUB_BUG_REPORT_URL = 'https://github.com/alperalyaz/agent-teams-ai/issues/new';
 const MAX_TITLE_LENGTH = 120;
 const URL_MAX_STACK_LENGTH = 1800;
 const URL_MAX_COMPONENT_STACK_LENGTH = 1200;
@@ -142,16 +141,3 @@ export const buildBugReportText = (options: BugReportOptions): string =>
     react: COPY_MAX_COMPONENT_STACK_LENGTH,
   });
 
-export const buildGitHubBugReportUrl = (options: BugReportOptions): string => {
-  const params = new URLSearchParams({
-    template: 'bug_report.md',
-    labels: 'bug',
-    title: buildIssueTitle(options.error),
-    body: buildBugReportMarkdown(options, {
-      js: URL_MAX_STACK_LENGTH,
-      react: URL_MAX_COMPONENT_STACK_LENGTH,
-    }),
-  });
-
-  return `${GITHUB_BUG_REPORT_URL}?${params.toString()}`;
-};

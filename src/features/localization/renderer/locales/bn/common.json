@@ -672,7 +672,6 @@
     "updateAvailable": "আপডেট উপলব্ধ রয়েছে",
     "updateReady": "আপডেট প্রস্তুত",
     "noReleaseNotes": "কোনো রিলিজ উপলব্ধ নেই।",
-    "viewOnGitHub": "গিটহাবে দেখুন",
     "later": "পরে ( L)",
     "restartNow": "এখন পুনরায় আরম্ভ করুন",
     "download": "ডাউনলোড করা হয়েছে"
@@ -684,9 +683,7 @@
     "tryAgain": "পুনরায় প্রচেষ্টা করুন",
     "copied": "প্রতিলিপি",
     "copyErrorDetails": "ত্রুটির বিবরণ কপি করুন",
-    "reportBugOnGitHub": "গিটহাবে বাগ রিপোর্ট করুন",
-    "reloadApp": "ব্যাক- এন্ড পুনরায় লোড করুন",
-    "diagnosticsNotice": "গিটহাব বাগ রিপোর্ট এবং অনুলিপি করা ডায়াগনস্টিকের মধ্যে রয়েছে ত্রুটি বার্তা, স্ট্যাক চিহ্ন, সক্রিয় ট্যাব, সক্রিয় টিম, কর্ম সংক্রান্ত তথ্য, এবং পরিবেশ সংক্রান্ত তথ্য।"
+    "reloadApp": "ব্যাক- এন্ড পুনরায় লোড করুন"
   },
   "runtimeBackendSelector": {
     "label": "ব্যাক-এন্ড আরম্ভ করা হবে",
@@ -813,7 +810,6 @@
     "restartNow": "এখন পুনরায় আরম্ভ করুন"
   },
   "layout": {
-    "github": "গিটহাব",
     "discord": "ডিস্ক সংযুক্ত করুন",
     "expandSidebar": "সাইড-বার প্রসারণ",
     "collapseSidebarShortcut": "Collapse sidebar ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "এক্সটেনশন",
       "search": "অনুসন্ধান",
       "schedules": "সিডিউলার",
-      "docs": "ডক",
       "exportMarkdown": "রপ্তানি করো",
       "exportJson": "এক্সপোর্ট করুন JSON",
       "exportPlainText": "প্লেইন-টেক্সট রূপে এক্সপোর্ট করা হবে",

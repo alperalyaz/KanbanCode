@@ -672,7 +672,6 @@
     "updateAvailable": "అప్‌డేట్ అందుబాటులో ఉంది",
     "updateReady": "అప్‌డేట్ సిద్ధం",
     "noReleaseNotes": "రిలీజ్ నోట్‌లు అందుబాటులో లేవు.",
-    "viewOnGitHub": "GitHub లో చూడండి",
     "later": "తర్వాత",
     "restartNow": "ఇప్పుడే పునఃప్రారంభించు",
     "download": "డౌన్‌లోడ్"
@@ -684,9 +683,7 @@
     "tryAgain": "మళ్లీ ప్రయత్నించు",
     "copied": "కాపీ చేయబడింది",
     "copyErrorDetails": "లోప వివరాలను కాపీ చేయి",
-    "reportBugOnGitHub": "GitHub లో బగ్ నివేదించు",
-    "reloadApp": "యాప్‌ను మళ్లీ లోడ్ చేయి",
-    "diagnosticsNotice": "GitHub బగ్ నివేదికలు మరియు కాపీ చేసిన డయాగ్నొస్టిక్‌లలో లోప సందేశం, స్టాక్ ట్రేస్‌లు, యాప్ వెర్షన్, క్రియాశీల ట్యాబ్, ఎంచుకున్న టీమ్, టాస్క్ కాంటెక్స్ట్ మరియు ఎన్విరాన్‌మెంట్ వివరాలు ఉంటాయి."
+    "reloadApp": "యాప్‌ను మళ్లీ లోడ్ చేయి"
   },
   "runtimeBackendSelector": {
     "label": "రన్‌టైమ్ బ్యాకెండ్",
@@ -813,7 +810,6 @@
     "restartNow": "ఇప్పుడే పునఃప్రారంభించు"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discord",
     "expandSidebar": "సైడ్‌బార్‌ను విస్తరించు",
     "collapseSidebarShortcut": "సైడ్‌బార్‌ను కుదించు ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "ఎక్స్‌టెన్షన్‌లు",
       "search": "శోధన",
       "schedules": "షెడ్యూల్‌లు",
-      "docs": "డాక్స్",
       "exportMarkdown": "Markdown గా ఎగుమతి చేయి",
       "exportJson": "JSON గా ఎగుమతి చేయి",
       "exportPlainText": "సాదా టెక్స్ట్‌గా ఎగుమతి చేయి",

@@ -672,7 +672,6 @@
     "updateAvailable": "可用更新",
     "updateReady": "更新就绪",
     "noReleaseNotes": "没有可用的发行说明。",
-    "viewOnGitHub": "在 GitHub 上查看",
     "later": "之后",
     "restartNow": "立即重新启动",
     "download": "下载"
@@ -684,9 +683,7 @@
     "tryAgain": "再试一次",
     "copied": "已复制",
     "copyErrorDetails": "复制错误详细信息",
-    "reportBugOnGitHub": "在 GitHub 上报告错误",
-    "reloadApp": "重新加载应用",
-    "diagnosticsNotice": "GitHub 错误报告和复制的诊断信息包括错误消息、堆栈跟踪、应用版本、活动选项卡、选定的团队、任务上下文和环境详细信息。"
+    "reloadApp": "重新加载应用"
   },
   "runtimeBackendSelector": {
     "label": "运行时后端",
@@ -813,7 +810,6 @@
     "restartNow": "立即重新启动"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "不和谐",
     "expandSidebar": "展开侧边栏",
     "collapseSidebarShortcut": "折叠侧边栏（{{shortcut}}）",
@@ -834,7 +830,6 @@
       "extensions": "扩展",
       "search": "搜索",
       "schedules": "计划任务",
-      "docs": "文档",
       "exportMarkdown": "导出为 Markdown",
       "exportJson": "导出为 JSON",
       "exportPlainText": "导出为纯文本",

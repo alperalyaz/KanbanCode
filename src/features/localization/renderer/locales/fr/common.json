@@ -672,7 +672,6 @@
     "updateAvailable": "Mise à jour disponible",
     "updateReady": "Mise à jour prête",
     "noReleaseNotes": "Aucune note de sortie disponible.",
-    "viewOnGitHub": "Vue sur GitHub",
     "later": "Plus tard",
     "restartNow": "Redémarrer maintenant",
     "download": "Télécharger"
@@ -684,9 +683,7 @@
     "tryAgain": "Essaie encore",
     "copied": "Copié",
     "copyErrorDetails": "Copier les détails de l'erreur",
-    "reportBugOnGitHub": "Signaler un bogue sur GitHub",
-    "reloadApp": "Recharger l'application",
-    "diagnosticsNotice": "Les rapports de bogue GitHub et les diagnostics copiés comprennent le message d'erreur, les traces de pile, la version de l'application, l'onglet actif, l'équipe sélectionnée, le contexte des tâches et les détails d'environnement."
+    "reloadApp": "Recharger l'application"
   },
   "runtimeBackendSelector": {
     "label": "Moteur d'exécution",
@@ -813,7 +810,6 @@
     "restartNow": "Redémarrer maintenant"
   },
   "layout": {
-    "github": "GitHub",
     "discord": "Discorde",
     "expandSidebar": "Élargir la barre latérale",
     "collapseSidebarShortcut": "Réduire la barre latérale ({{shortcut}})",
@@ -834,7 +830,6 @@
       "extensions": "Prorogations",
       "search": "Recherche",
       "schedules": "Tableaux",
-      "docs": "Docteurs",
       "exportMarkdown": "Exporter sous forme de marquage",
       "exportJson": "Exportation en tant que JSON",
       "exportPlainText": "Exporter sous forme de texte simple",
