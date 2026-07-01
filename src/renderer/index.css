@@ -5,7 +5,7 @@
 /* Theme CSS Custom Properties */
 
 :root {
-  /* Dark theme (default) - Midnight Slate palette (cool indigo undertone) */
+  /* Dark theme (default) - Midnight Slate palette (cool cyan undertone — KanbanCode brand) */
   --color-surface: #12131a;
   /* Main background — deep midnight */
   --color-surface-raised: #1c1d26;
@@ -21,13 +21,13 @@
   --color-border-emphasis: rgba(148, 163, 184, 0.12);
   /* Emphasis borders */
   --kanban-task-card-hover-shadow:
-    0 0 0 1px rgba(129, 140, 248, 0.28), 0 10px 30px rgba(37, 99, 235, 0.24),
-    0 0 22px rgba(129, 140, 248, 0.16);
+    0 0 0 1px rgba(34, 211, 238, 0.28), 0 10px 30px rgba(6, 182, 212, 0.24),
+    0 0 22px rgba(34, 211, 238, 0.16);
   --color-text: #f1f5f9;
   --color-text-secondary: #94a3b8;
   --color-text-muted: #64748b;
-  --color-accent: #818cf8;
-  /* Accent — indigo-400, visible on dark surfaces */
+  --color-accent: #22d3ee;
+  /* Accent — cyan-400, KanbanCode electric blue */
   /* Scrollbar colors */
   --scrollbar-thumb: rgba(148, 163, 184, 0.15);
   --scrollbar-thumb-hover: rgba(148, 163, 184, 0.25);
@@ -63,7 +63,7 @@
   --code-header-bg: #171822;
   --code-border: rgba(148, 163, 184, 0.1);
   --code-line-number: #475569;
-  --code-filename: #818cf8;
+  --code-filename: #22d3ee;
   /* Syntax highlighting — cooler accents */
   --syntax-string: #4ade80;
   --syntax-comment: #64748b;
@@ -71,7 +71,7 @@
   --syntax-keyword: #c084fc;
   --syntax-type: #fbbf24;
   --syntax-operator: #94a3b8;
-  --syntax-function: #818cf8;
+  --syntax-function: #22d3ee;
   /* Inline code */
   --inline-code-bg: rgba(148, 163, 184, 0.08);
   --inline-code-text: #e2e8f0;
@@ -110,7 +110,7 @@
   --prose-heading: #f8fafc;
   --prose-body: #f1f5f9;
   --prose-muted: #94a3b8;
-  --prose-link: #818cf8;
+  --prose-link: #22d3ee;
   --prose-code-bg: rgba(148, 163, 184, 0.08);
   --prose-code-text: #e2e8f0;
   --prose-pre-bg: #171822;
@@ -154,7 +154,7 @@
   --badge-warning-text: #ffffff;
   --badge-success-bg: #16a34a;
   --badge-success-text: #ffffff;
-  --badge-info-bg: #4f46e5;
+  --badge-info-bg: #0e7490;
   --badge-info-text: #ffffff;
   --badge-neutral-bg: #2a2c38;
   --badge-neutral-text: #e2e8f0;
@@ -206,19 +206,19 @@
   --cross-team-border: rgba(168, 85, 247, 0.12);
   --cross-team-accent: rgba(192, 132, 252, 0.5);
   /* Info style — banners, status indicators */
-  --info-bg: rgba(59, 130, 246, 0.08);
-  --info-border: rgba(59, 130, 246, 0.25);
-  --info-text: #60a5fa;
+  --info-bg: rgba(6, 182, 212, 0.08);
+  --info-border: rgba(6, 182, 212, 0.25);
+  --info-text: #22d3ee;
   /* Assessment severity colors (badges, health indicators) */
   --assess-good: #4ade80;
   --assess-warning: #fbbf24;
   --assess-danger: #f87171;
   --assess-neutral: #a1a1aa;
-  /* Sticky Context button — indigo glass */
+  /* Sticky Context button — cyan glass */
   --context-btn-bg: rgba(148, 163, 184, 0.08);
   --context-btn-bg-hover: rgba(148, 163, 184, 0.14);
-  --context-btn-active-bg: rgba(99, 102, 241, 0.5);
-  --context-btn-active-text: #e0e7ff;
+  --context-btn-active-bg: rgba(6, 182, 212, 0.5);
+  --context-btn-active-text: #cffafe;
   /* Skeleton — cool midnight */
   --skeleton-base: #1a1c28;
   --skeleton-base-light: #23252f;
@@ -227,8 +227,8 @@
   --step-done-bg: rgba(16, 185, 129, 0.1);
   --step-done-border: rgba(52, 211, 153, 0.6);
   --step-done-text: #6ee7b7;
-  --step-current-bg: rgba(99, 102, 241, 0.15);
-  --step-current-border: rgba(129, 140, 248, 0.7);
+  --step-current-bg: rgba(6, 182, 212, 0.15);
+  --step-current-border: rgba(34, 211, 238, 0.7);
   --step-current-text: #f1f5f9;
   --step-error-text: #fca5a5;
   --step-error-text-dim: rgba(252, 165, 165, 0.8);
@@ -257,8 +257,8 @@
   --color-section-hover: rgba(255, 255, 255, 0.08);
   --color-section-hover-open: rgba(255, 255, 255, 0.1);
   /* Compact boundary — phase badge */
-  --compact-phase-bg: rgba(99, 102, 241, 0.15);
-  --compact-phase-text: #818cf8;
+  --compact-phase-bg: rgba(6, 182, 212, 0.15);
+  --compact-phase-text: #22d3ee;
 }
 
 .kanban-grid-layout {
@@ -299,7 +299,7 @@
   position: absolute;
   inset: 0;
   border-radius: 9999px;
-  background: rgba(129, 140, 248, 0.55);
+  background: rgba(34, 211, 238, 0.55);
   opacity: 0;
 }
 
@@ -328,38 +328,38 @@
 
 @keyframes kanban-focus-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.6);
-    background-color: rgba(96, 165, 250, 0.15);
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.6);
+    background-color: rgba(34, 211, 238, 0.15);
   }
   14% {
-    box-shadow: 0 0 16px 6px rgba(96, 165, 250, 0.5);
-    background-color: rgba(96, 165, 250, 0.12);
+    box-shadow: 0 0 16px 6px rgba(34, 211, 238, 0.5);
+    background-color: rgba(34, 211, 238, 0.12);
   }
   28% {
-    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.1);
-    background-color: rgba(96, 165, 250, 0.02);
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.1);
+    background-color: rgba(34, 211, 238, 0.02);
   }
   42% {
-    box-shadow: 0 0 14px 5px rgba(96, 165, 250, 0.45);
-    background-color: rgba(96, 165, 250, 0.1);
+    box-shadow: 0 0 14px 5px rgba(34, 211, 238, 0.45);
+    background-color: rgba(34, 211, 238, 0.1);
   }
   56% {
-    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.1);
-    background-color: rgba(96, 165, 250, 0.02);
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.1);
+    background-color: rgba(34, 211, 238, 0.02);
   }
   70% {
-    box-shadow: 0 0 10px 4px rgba(96, 165, 250, 0.3);
-    background-color: rgba(96, 165, 250, 0.06);
+    box-shadow: 0 0 10px 4px rgba(34, 211, 238, 0.3);
+    background-color: rgba(34, 211, 238, 0.06);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0);
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0);
     background-color: transparent;
   }
 }
 
 .kanban-card-focus-pulse {
   animation: kanban-focus-pulse 2.2s ease-out;
-  outline: 2px solid rgba(96, 165, 250, 0.6);
+  outline: 2px solid rgba(34, 211, 238, 0.6);
   outline-offset: -1px;
 }
 
@@ -509,16 +509,16 @@
   --color-border-emphasis: #a8a5a0;
   /* Warm emphasis border */
   --kanban-task-card-hover-shadow:
-    0 0 0 1px rgba(37, 99, 235, 0.28), 0 10px 26px rgba(37, 99, 235, 0.18),
-    0 0 18px rgba(79, 70, 229, 0.12);
+    0 0 0 1px rgba(2, 132, 199, 0.28), 0 10px 26px rgba(2, 132, 199, 0.18),
+    0 0 18px rgba(8, 145, 178, 0.12);
   --color-text: #1c1b19;
   /* Warm near-black text */
   --color-text-secondary: #4d4b46;
   /* Warm secondary text */
   --color-text-muted: #6d6b65;
   /* Warm muted text */
-  --color-accent: #4f46e5;
-  /* Accent — indigo-600, visible on light surfaces */
+  --color-accent: #0284c7;
+  /* Accent — sky-600, KanbanCode brand on light surfaces */
   /* Assessment severity colors - darker for light backgrounds */
   --assess-good: #16a34a;
   --assess-warning: #d97706;
@@ -650,7 +650,7 @@
   --badge-warning-text: #ffffff;
   --badge-success-bg: #16a34a;
   --badge-success-text: #ffffff;
-  --badge-info-bg: #2563eb;
+  --badge-info-bg: #0284c7;
   --badge-info-text: #ffffff;
   --badge-neutral-bg: #e3e1dd;
   --badge-neutral-text: #3a3935;
@@ -702,14 +702,14 @@
   --cross-team-border: rgba(168, 85, 247, 0.25);
   --cross-team-accent: rgba(124, 58, 237, 0.7);
   /* Info style — banners, status indicators */
-  --info-bg: rgba(59, 130, 246, 0.1);
-  --info-border: rgba(37, 99, 235, 0.3);
-  --info-text: #2563eb;
+  --info-bg: rgba(8, 145, 178, 0.1);
+  --info-border: rgba(8, 145, 178, 0.3);
+  --info-text: #0284c7;
   /* Sticky Context button - transparent glass */
   --context-btn-bg: rgba(0, 0, 0, 0.06);
   --context-btn-bg-hover: rgba(0, 0, 0, 0.1);
-  --context-btn-active-bg: rgba(99, 102, 241, 0.35);
-  --context-btn-active-text: #3730a3;
+  --context-btn-active-bg: rgba(2, 132, 199, 0.35);
+  --context-btn-active-text: #0c4a6e;
   /* Skeleton — tinted cool gray */
   --skeleton-base: #d6d8de;
   --skeleton-base-light: #cdd0d7;
@@ -718,8 +718,8 @@
   --step-done-bg: rgba(16, 185, 129, 0.12);
   --step-done-border: rgba(5, 150, 105, 0.5);
   --step-done-text: #047857;
-  --step-current-bg: rgba(79, 70, 229, 0.1);
-  --step-current-border: rgba(79, 70, 229, 0.5);
+  --step-current-bg: rgba(2, 132, 199, 0.1);
+  --step-current-border: rgba(2, 132, 199, 0.5);
   --step-current-text: #1c1b19;
   --step-error-text: #dc2626;
   --step-error-text-dim: rgba(220, 38, 38, 0.7);
@@ -748,8 +748,8 @@
   --color-section-hover: rgba(0, 0, 0, 0.08);
   --color-section-hover-open: rgba(0, 0, 0, 0.1);
   /* Compact boundary — phase badge */
-  --compact-phase-bg: rgba(67, 56, 202, 0.12);
-  --compact-phase-text: #4338ca;
+  --compact-phase-bg: rgba(2, 132, 199, 0.12);
+  --compact-phase-text: #0284c7;
 }
 
 /* rehype-highlight (highlight.js) — map hljs classes to app theme variables */
@@ -1453,8 +1453,8 @@ a[href],
 
 .message-composer-orbit-surface {
   isolation: isolate;
-  --message-composer-orbit-stroke: rgba(129, 140, 248, 0.92);
-  --message-composer-orbit-glow-stroke: rgba(96, 165, 250, 0.62);
+  --message-composer-orbit-stroke: rgba(34, 211, 238, 0.92);
+  --message-composer-orbit-glow-stroke: rgba(34, 211, 238, 0.62);
 }
 
 .message-composer-shell {
@@ -1620,8 +1620,8 @@ a[href],
 }
 
 :root.light .message-composer-orbit-surface {
-  --message-composer-orbit-stroke: rgba(79, 70, 229, 0.76);
-  --message-composer-orbit-glow-stroke: rgba(96, 165, 250, 0.46);
+  --message-composer-orbit-stroke: rgba(2, 132, 199, 0.76);
+  --message-composer-orbit-glow-stroke: rgba(2, 132, 199, 0.46);
 }
 
 :root.light .message-composer-orbit-track {

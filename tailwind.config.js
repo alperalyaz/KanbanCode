@@ -38,7 +38,7 @@ module.exports = {
           success: '#22c55e',  // green-500
           error: '#ef4444',    // red-500
           warning: '#f59e0b',  // amber-500
-          info: '#3b82f6',     // blue-500
+          info: '#0891b2',     // cyan-600 — KanbanCode brand
         },
         // Theme-aware info color (use for blue informational elements)
         info: {
