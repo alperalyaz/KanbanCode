@@ -111,7 +111,7 @@ function writeCache(data: DownloadsApiResponse): void {
 
 export const useReleaseDownloads = () => {
   const config = useRuntimeConfig();
-  const githubRepo = (config.public.githubRepo as string) || "777genius/agent-teams-ai";
+  const githubRepo = (config.public.githubRepo as string) || "alperalyaz/kanbancode";
 
   const fallbackUrl =
     (config.public.githubReleasesUrl as string) ||

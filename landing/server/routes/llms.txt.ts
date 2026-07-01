@@ -6,9 +6,9 @@ const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 export default defineEventHandler((event) => {
   const config = useRuntimeConfig();
   const siteUrl = trimTrailingSlash(
-    (config.public.siteUrl as string) || "https://777genius.github.io/kanbancode"
+    (config.public.siteUrl as string) || "https://alperalyaz.github.io/kanbancode"
   );
-  const githubRepo = (config.public.githubRepo as string) || "777genius/kanbancode";
+  const githubRepo = (config.public.githubRepo as string) || "alperalyaz/kanbancode";
   const githubUrl = `https://github.com/${githubRepo}`;
   const releasesUrl = `${githubUrl}/releases`;
   const toSiteUrl = (path: string) => `${siteUrl}${path === "/" ? "/" : `/${path.replace(/^\/+/, "")}`}`;

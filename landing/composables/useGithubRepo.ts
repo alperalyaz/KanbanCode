@@ -1,7 +1,7 @@
 export const useGithubRepo = () => {
   const config = useRuntimeConfig();
   const githubRepo = computed(
-    () => (config.public.githubRepo as string) || '777genius/agent-teams-ai',
+    () => (config.public.githubRepo as string) || 'alperalyaz/kanbancode',
   );
   const repoUrl = computed(() => `https://github.com/${githubRepo.value}`);
   const releasesUrl = computed(
