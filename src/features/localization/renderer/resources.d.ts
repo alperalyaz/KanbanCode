@@ -2421,6 +2421,11 @@ export default interface Resources {
         "selectPlaceholder": "Select repository to ignore...",
         "title": "Ignored Repositories"
       },
+      "criticalOnlyPreset": {
+        "apply": "Apply critical-only",
+        "description": "Keep only actionable signals on: user inbox, clarifications, review requests, and tool approvals.",
+        "title": "Critical-only"
+      },
       "settings": {
         "enabled": {
           "description": "Show system notifications for errors and events",

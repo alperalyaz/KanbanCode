@@ -244,6 +244,11 @@
     }
   },
   "notifications": {
+    "criticalOnlyPreset": {
+      "apply": "Sadece kritik modu uygula",
+      "description": "Yalnızca aksiyon gerektiren sinyalleri açık tut: kullanıcı gelen kutusu, açıklamalar, inceleme istekleri ve araç onayları.",
+      "title": "Sadece Kritik"
+    },
     "dev": {
       "descriptionPrefix": "Bildirimler geliştirme modunda çalışmayabilir. macOS, uygulamayı üretim uygulama adı yerine \"Electron\" olarak tanımlar (paket kimliği",
       "descriptionSuffix": "). İzinleri doğrulamak için Sistem Ayarları > Bildirimler > Electron yolunu kontrol edin.",

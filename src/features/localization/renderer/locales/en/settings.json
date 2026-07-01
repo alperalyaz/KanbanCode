@@ -244,6 +244,11 @@
     }
   },
   "notifications": {
+    "criticalOnlyPreset": {
+      "apply": "Apply critical-only",
+      "description": "Keep only actionable signals on: user inbox, clarifications, review requests, and tool approvals.",
+      "title": "Critical-only"
+    },
     "dev": {
       "descriptionPrefix": "Notifications may not work in development mode. macOS identifies the app as \"Electron\" (bundle ID",
       "descriptionSuffix": ") instead of the production app name. Check System Settings > Notifications > Electron to verify permissions.",

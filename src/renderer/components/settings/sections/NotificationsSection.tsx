@@ -199,11 +199,10 @@ export const NotificationsSection = ({
       >
         <div className="min-w-0">
           <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-            Sadece Kritik
+            {t('notifications.criticalOnlyPreset.title')}
           </div>
           <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            User inbox, clarification, review requested, and tool approval stay on; noisy task
-            updates stay off.
+            {t('notifications.criticalOnlyPreset.description')}
           </div>
         </div>
         <button
@@ -217,7 +216,7 @@ export const NotificationsSection = ({
             color: 'var(--color-text)',
           }}
         >
-          Sadece Kritik'i Uygula
+          {t('notifications.criticalOnlyPreset.apply')}
         </button>
       </div>
       <SettingRow
