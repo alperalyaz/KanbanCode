@@ -406,9 +406,9 @@
     "appx": {
       "artifactName": "KanbanCode.${version}.${ext}",
       "applicationId": "KanbanCode",
-      "identityName": "REPLACE_WITH_PARTNER_CENTER_PACKAGE_IDENTITY_NAME",
-      "publisher": "REPLACE_WITH_PARTNER_CENTER_PUBLISHER_ID",
-      "publisherDisplayName": "REPLACE_WITH_PARTNER_CENTER_PUBLISHER_DISPLAY_NAME",
+      "identityName": "Hidroteknik.KanbanCode",
+      "publisher": "CN=119D3611-306D-4F5E-B28C-3904B4C07374",
+      "publisherDisplayName": "Hidroteknik",
       "displayName": "KanbanCode",
       "backgroundColor": "#000000"
     },
