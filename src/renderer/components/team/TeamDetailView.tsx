@@ -72,7 +72,6 @@ import {
   FolderOpen,
   GitBranch,
   History,
-  Network,
   Pencil,
   Play,
   Plus,
@@ -110,11 +109,6 @@ const LaunchTeamDialog = lazy(() =>
 );
 const ProjectEditorOverlay = lazy(() =>
   import('./editor/ProjectEditorOverlay').then((m) => ({ default: m.ProjectEditorOverlay }))
-);
-const TeamGraphOverlay = lazy(() =>
-  import('@features/agent-graph/renderer').then((m) => ({
-    default: m.TeamGraphOverlay,
-  }))
 );
 type TaskDetailDialogComponent = typeof import('./dialogs/TaskDetailDialog').TaskDetailDialog;
 let loadedTaskDetailDialogComponent: TaskDetailDialogComponent | null = null;
@@ -1408,15 +1402,9 @@ export const TeamDetailView = memo(function TeamDetailView({
     mode: 'launch',
   });
   const [editorOpen, setEditorOpen] = useState(false);
-  const [graphOpen, setGraphOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
-  const visualizeButtonAnchorRef = useRef<HTMLDivElement>(null);
   const taskDetailDialogRef = useRef<TaskDetailDialogHostHandle>(null);
   const taskDetailDialogPreloadScheduledRef = useRef(false);
-  const [pinnedVisualizeButtonPosition, setPinnedVisualizeButtonPosition] = useState<{
-    right: number;
-    top: number;
-  } | null>(null);
   const [messagesPanelMountPoint, setMessagesPanelMountPoint] = useState<HTMLDivElement | null>(
     null
   );
@@ -1428,15 +1416,6 @@ export const TeamDetailView = memo(function TeamDetailView({
       currentHeight === height ? currentHeight : height
     );
   }, []);
-  const handleOpenGraphTab = useCallback(() => {
-    const state = useStore.getState();
-    const displayName = state.teamByName[teamName]?.displayName ?? teamName;
-    state.openTab({
-      type: 'graph',
-      label: `${displayName} Graph`,
-      teamName,
-    });
-  }, [teamName]);
   const handleOpenUsageTab = useCallback(() => {
     const state = useStore.getState();
     const displayName = state.teamByName[teamName]?.displayName ?? teamName;
@@ -1446,25 +1425,6 @@ export const TeamDetailView = memo(function TeamDetailView({
       teamName,
     });
   }, [teamName]);
-  const visualizeButtonStyle = useMemo<CSSProperties>(
-    () =>
-      isLight
-        ? {
-            background:
-              'linear-gradient(135deg, rgba(59,130,246,0.14) 0%, rgba(34,197,94,0.16) 100%)',
-            borderColor: 'rgba(59,130,246,0.30)',
-            color: '#0f172a',
-            boxShadow: '0 10px 24px rgba(59,130,246,0.12)',
-          }
-        : {
-            background:
-              'linear-gradient(135deg, rgba(56,189,248,0.18) 0%, rgba(16,185,129,0.16) 100%)',
-            borderColor: 'rgba(56,189,248,0.34)',
-            color: 'rgba(236,253,255,0.96)',
-            boxShadow: '0 12px 28px rgba(8,145,178,0.22)',
-          },
-    [isLight]
-  );
   const usageButtonStyle = useMemo<CSSProperties>(
     () =>
       isLight
@@ -1485,28 +1445,16 @@ export const TeamDetailView = memo(function TeamDetailView({
     [isLight]
   );
 
-  // Set inert on background content when editor/graph overlay is open (a11y focus trap)
+  // Set inert on background content when editor overlay is open (a11y focus trap)
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
-    if (editorOpen || graphOpen) {
+    if (editorOpen) {
       el.setAttribute('inert', '');
     } else {
       el.removeAttribute('inert');
     }
-  }, [editorOpen, graphOpen]);
-
-  // Listen for Cmd+Shift+G keyboard shortcut — opens graph tab
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.teamName === teamName) {
-        handleOpenGraphTab();
-      }
-    };
-    window.addEventListener('toggle-team-graph', handler);
-    return () => window.removeEventListener('toggle-team-graph', handler);
-  }, [handleOpenGraphTab, teamName]);
+  }, [editorOpen]);
 
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -1667,8 +1615,6 @@ export const TeamDetailView = memo(function TeamDetailView({
         : nameColorSet(teamSummaryDisplayName || teamName),
     [teamName, teamSummaryColor, teamSummaryDisplayName]
   );
-  const canTrackVisualizeButton = data?.teamName === teamName;
-
   // Messages panel resize
   const { isResizing: isMessagesPanelResizing, handleProps: messagesPanelHandleProps } =
     useResizablePanel({
@@ -1706,49 +1652,6 @@ export const TeamDetailView = memo(function TeamDetailView({
       provisioningBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [isTeamProvisioning, isThisTabActive]);
-
-  useEffect(() => {
-    const container = contentRef.current;
-    if (!container || !canTrackVisualizeButton || graphOpen) {
-      setPinnedVisualizeButtonPosition(null);
-      return undefined;
-    }
-
-    const updatePinnedButton = (): void => {
-      const anchor = visualizeButtonAnchorRef.current;
-      const currentContainer = contentRef.current;
-      if (!anchor || !currentContainer) {
-        setPinnedVisualizeButtonPosition(null);
-        return;
-      }
-
-      const containerRect = currentContainer.getBoundingClientRect();
-      const anchorRect = anchor.getBoundingClientRect();
-      const top = Math.round(containerRect.top + 12);
-      const right = Math.round(Math.max(window.innerWidth - containerRect.right + 16, 16));
-      const shouldPin = currentContainer.scrollTop > 0 && anchorRect.top <= top;
-
-      setPinnedVisualizeButtonPosition((current) => {
-        if (!shouldPin) return current === null ? current : null;
-        if (current?.top === top && current.right === right) return current;
-        return { right, top };
-      });
-    };
-
-    updatePinnedButton();
-    container.addEventListener('scroll', updatePinnedButton, { passive: true });
-    window.addEventListener('resize', updatePinnedButton);
-
-    const resizeObserver =
-      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updatePinnedButton);
-    resizeObserver?.observe(container);
-
-    return () => {
-      container.removeEventListener('scroll', updatePinnedButton);
-      window.removeEventListener('resize', updatePinnedButton);
-      resizeObserver?.disconnect();
-    };
-  }, [canTrackVisualizeButton, graphOpen]);
 
   const [kanbanSearch, setKanbanSearch] = useState('');
 
@@ -2753,21 +2656,8 @@ export const TeamDetailView = memo(function TeamDetailView({
     ]
   );
 
-  const renderTeamActionButtons = (pinned: boolean): React.JSX.Element => (
-    <div
-      className={cn(
-        'flex items-center gap-2',
-        pinned ? 'pointer-events-auto fixed z-50' : 'pointer-events-auto'
-      )}
-      style={
-        pinned && pinnedVisualizeButtonPosition
-          ? {
-              right: pinnedVisualizeButtonPosition.right,
-              top: pinnedVisualizeButtonPosition.top,
-            }
-          : undefined
-      }
-    >
+  const renderTeamActionButtons = (): React.JSX.Element => (
+    <div className="pointer-events-auto flex items-center gap-2">
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -2790,27 +2680,6 @@ export const TeamDetailView = memo(function TeamDetailView({
         <TooltipContent side="bottom">
           {t('detail.tooltips.openTeamUsage', { defaultValue: 'Open team usage' })}
         </TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              'h-8 shrink-0 rounded-full border px-3.5 text-xs font-semibold tracking-[0.02em] transition-all',
-              'hover:-translate-y-0.5 hover:brightness-[1.03] active:translate-y-0 active:brightness-[0.98]',
-              isLight
-                ? 'hover:border-sky-400/50'
-                : 'hover:border-cyan-300/50 hover:shadow-[0_14px_32px_rgba(8,145,178,0.28)]'
-            )}
-            style={visualizeButtonStyle}
-            onClick={handleOpenGraphTab}
-          >
-            <Network size={13} className="shrink-0" />
-            {t('detail.actions.visualize')}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{t('detail.tooltips.openTeamGraph')}</TooltipContent>
       </Tooltip>
     </div>
   );
@@ -2951,14 +2820,13 @@ export const TeamDetailView = memo(function TeamDetailView({
       ? getTeamColorSet(data.config.color)
       : nameColorSet(data.config.name);
     const shouldReserveFloatingComposerScrollSpace =
-      messagesPanelMode === 'floating-composer' && isThisTabActive && isPaneFocused && !graphOpen;
+      messagesPanelMode === 'floating-composer' && isThisTabActive && isPaneFocused;
     const floatingComposerScrollReserve = shouldReserveFloatingComposerScrollSpace
       ? FLOATING_COMPOSER_SCROLL_RESERVE_BASE_PX + floatingComposerHeight
       : undefined;
 
     return (
       <>
-        {pinnedVisualizeButtonPosition ? renderTeamActionButtons(true) : null}
         <div className="relative flex size-full overflow-hidden">
           <LeadLoadBridge
             teamName={teamName}
@@ -3137,11 +3005,8 @@ export const TeamDetailView = memo(function TeamDetailView({
                       </span>
                     )}
                   </div>
-                  <div
-                    ref={visualizeButtonAnchorRef}
-                    className="-mt-2 flex h-8 shrink-0 self-start"
-                  >
-                    {pinnedVisualizeButtonPosition ? null : renderTeamActionButtons(false)}
+                  <div className="-mt-2 flex h-8 shrink-0 self-start">
+                    {renderTeamActionButtons()}
                   </div>
                 </div>
                 {(() => {
@@ -3707,23 +3572,20 @@ export const TeamDetailView = memo(function TeamDetailView({
               ref={setMessagesPanelMountPoint}
               className="pointer-events-none absolute inset-0 z-30"
             />
-            {messagesPanelMode === 'bottom-sheet' && !graphOpen && (
+            {messagesPanelMode === 'bottom-sheet' && (
               <TeamMessagesPanelBridge position="bottom-sheet" {...sharedMessagesPanelProps} />
             )}
-            {messagesPanelMode === 'floating-composer' &&
-              isThisTabActive &&
-              isPaneFocused &&
-              !graphOpen && (
-                <TeamMessagesPanelBridge
-                  position="floating-composer"
-                  {...sharedMessagesPanelProps}
-                />
-              )}
+            {messagesPanelMode === 'floating-composer' && isThisTabActive && isPaneFocused && (
+              <TeamMessagesPanelBridge
+                position="floating-composer"
+                {...sharedMessagesPanelProps}
+              />
+            )}
             <TerminalWorkspaceFloatingLauncher
               teamName={teamName}
               bottomOffset={Math.max(floatingComposerHeight + 18, 18)}
               buttonTestId="open-terminal-floating-button"
-              enabled={isThisTabActive && !graphOpen}
+              enabled={isThisTabActive}
             />
           </div>
         </div>
@@ -3738,26 +3600,6 @@ export const TeamDetailView = memo(function TeamDetailView({
           </Suspense>
         )}
 
-        {graphOpen && (
-          <Suspense fallback={null}>
-            <TeamGraphOverlay
-              teamName={teamName}
-              onClose={() => setGraphOpen(false)}
-              onPinAsTab={() => {
-                setGraphOpen(false);
-                useStore
-                  .getState()
-                  .openTab({ type: 'graph', label: `${data.config.name} Graph`, teamName });
-              }}
-              messagesPanelEnabled={
-                (messagesPanelMode === 'floating-composer' ||
-                  messagesPanelMode === 'bottom-sheet') &&
-                isThisTabActive &&
-                isPaneFocused
-              }
-            />
-          </Suspense>
-        )}
       </>
     );
   };

@@ -251,9 +251,7 @@ export default interface Resources {
       "copied": "Copied",
       "copyErrorDetails": "Copy Error Details",
       "description": "An unexpected error occurred in the application. You can try reloading the page or resetting the error state.",
-      "diagnosticsNotice": "GitHub bug reports and copied diagnostics include the error message, stack traces, app version, active tab, selected team, task context, and environment details.",
       "reloadApp": "Reload App",
-      "reportBugOnGitHub": "Report Bug on GitHub",
       "title": "Something went wrong",
       "tryAgain": "Try Again"
     },
@@ -266,12 +264,10 @@ export default interface Resources {
       "collapseSidebarShortcut": "Collapse sidebar ({{shortcut}})",
       "discord": "Discord",
       "expandSidebar": "Expand sidebar",
-      "github": "GitHub",
       "jumpToSection": "Jump to section",
       "loadingTab": "Loading tab",
       "menu": {
         "analyzeSession": "Analyze Session",
-        "docs": "Docs",
         "exportJson": "Export as JSON",
         "exportMarkdown": "Export as Markdown",
         "exportPlainText": "Export as Plain Text",
@@ -909,8 +905,7 @@ export default interface Resources {
       "noReleaseNotes": "No release notes available.",
       "restartNow": "Restart now",
       "updateAvailable": "Update available",
-      "updateReady": "Update Ready",
-      "viewOnGitHub": "View on GitHub"
+      "updateReady": "Update Ready"
     },
     "updates": {
       "downloadedRestartTooltip": "Update downloaded, restart to apply",
@@ -5775,9 +5770,7 @@ export default interface Resources {
       "noTerminalTabs": "No terminal tabs",
       "openTeamTerminal": "Open {{team}} terminal",
       "openTerminal": "Open terminal",
-      "openTerminalPlatformRepository": "Open terminal-platform on GitHub",
       "openTerminalSettings": "Open terminal settings",
-      "poweredByTerminalPlatform": "powered by terminal-platform",
       "reloadTerminalWorkspace": "Reload terminal workspace",
       "renameTab": "Rename tab",
       "restoreHalfHeightSheet": "Restore half-height sheet",

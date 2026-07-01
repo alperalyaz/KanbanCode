@@ -334,8 +334,7 @@
       "remove": "Remove",
       "stop": "Stop",
       "task": "Task",
-      "usage": "Usage",
-      "visualize": "Visualize"
+      "usage": "Usage"
     },
     "deleteTeam": {
       "description": "Delete team \"{{team}}\"? This action is irreversible. All team data and tasks will be deleted.",
@@ -389,7 +388,6 @@
       "editTeam": "Edit team",
       "editUnavailableProvisioning": "Edit team is unavailable while provisioning is still in progress",
       "openBuiltInEditor": "Open project in built-in editor",
-      "openTeamGraph": "Open team graph",
       "openTeamUsage": "Open team usage",
       "stopTeam": "Stop team"
     },

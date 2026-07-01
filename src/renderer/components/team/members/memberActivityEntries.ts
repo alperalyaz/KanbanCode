@@ -1,8 +1,8 @@
-import { buildInlineActivityEntries } from '@features/agent-graph/renderer';
+import { buildInlineActivityEntries } from '@renderer/utils/teamActivity';
 import { filterTeamMessages } from '@renderer/utils/teamMessageFiltering';
 import { isLeadMember } from '@shared/utils/leadDetection';
 
-import type { InlineActivityEntry } from '@features/agent-graph/renderer';
+import type { InlineActivityEntry } from '@renderer/utils/teamActivity';
 import type { InboxMessage, ResolvedTeamMember, TeamTaskWithKanban } from '@shared/types';
 
 export function buildMemberActivityEntries({

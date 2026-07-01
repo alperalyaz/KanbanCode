@@ -974,7 +974,6 @@ export function initializeNotificationListeners(): () => void {
       const activeTab = pane.tabs.find((tab) => tab.id === pane.activeTabId);
       if (
         (activeTab?.type === 'team' ||
-          activeTab?.type === 'graph' ||
           activeTab?.type === 'usage') &&
         activeTab.teamName != null
       ) {
@@ -1034,7 +1033,7 @@ export function initializeNotificationListeners(): () => void {
 
     const activeTab = focusedPane.tabs.find((tab) => tab.id === focusedPane.activeTabId);
     if (
-      (activeTab?.type !== 'team' && activeTab?.type !== 'graph' && activeTab?.type !== 'usage') ||
+      (activeTab?.type !== 'team' && activeTab?.type !== 'usage') ||
       !activeTab.teamName
     ) {
       return null;

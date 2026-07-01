@@ -64,11 +64,6 @@ const SessionTabContent = lazy(() =>
     default: module.SessionTabContent,
   }))
 );
-const TeamGraphTab = lazy(() =>
-  import('@features/agent-graph/renderer').then((module) => ({
-    default: module.TeamGraphTab,
-  }))
-);
 const OrganizationMapTab = lazy(() =>
   import('@features/organizations/renderer').then((module) => ({
     default: module.OrganizationMapTab,
@@ -189,15 +184,7 @@ const PaneTabSlot = ({ tab, isActive, isPaneFocused }: PaneTabSlotProps): React.
             </TabUIProvider>
           )}
           {tab.type === 'schedules' && <SchedulesView />}
-          {tab.type === 'graph' && (
-            <TabUIProvider tabId={tab.id}>
-              <TeamGraphTab
-                teamName={tab.teamName ?? ''}
-                isActive={isActive}
-                isPaneFocused={isPaneFocused}
-              />
-            </TabUIProvider>
-          )}
+
         </Suspense>
       )}
     </div>

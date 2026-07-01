@@ -62,7 +62,6 @@ const TAB_ICONS = {
   report: Activity,
   extensions: Puzzle,
   schedules: Calendar,
-  graph: Network,
   usage: BarChart3,
 } as const;
 

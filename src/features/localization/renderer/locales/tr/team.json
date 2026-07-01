@@ -333,8 +333,7 @@
       "launch": "Başlat",
       "remove": "Kaldır",
       "stop": "Durdur",
-      "task": "Görev",
-      "visualize": "Görselleştir"
+      "task": "Görev"
     },
     "deleteTeam": {
       "description": "\"{{team}}\" ekibi silinsin mi? Bu işlem geri alınamaz. Tüm ekip verileri ve görevler silinecek.",
@@ -388,7 +387,6 @@
       "editTeam": "Ekibi düzenle",
       "editUnavailableProvisioning": "Sağlama hâlâ devam ederken ekibi düzenleme kullanılamaz",
       "openBuiltInEditor": "Projeyi yerleşik düzenleyicide aç",
-      "openTeamGraph": "Ekip grafiğini aç",
       "stopTeam": "Ekibi durdur"
     },
     "waitingForProvisioning": "Sağlama tamamlandığında ekip verileri görünecek",

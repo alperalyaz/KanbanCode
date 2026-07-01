@@ -1,9 +1,16 @@
+/**
+ * Team activity entry utilities — shared across MemberDetailDialog, MemberMessagesTab,
+ * and any other non-graph views that need to build inline activity timelines.
+ *
+ * Moved here from src/features/agent-graph/core/domain/buildInlineActivityEntries.ts
+ * so non-graph consumers survive the agent-graph feature deletion.
+ */
+
 import { stripCrossTeamPrefix } from '@shared/constants/crossTeam';
 import { getIdleGraphLabel } from '@shared/utils/idleNotificationSemantics';
 import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 import { isLeadMember } from '@shared/utils/leadDetection';
-
-import { buildGraphMemberNodeIdAliasMap } from './graphOwnerIdentity';
+import { getStableTeamOwnerId } from '@shared/utils/teamStableOwnerId';
 
 import type { GraphActivityItem } from '@claude-teams/agent-graph';
 import type {
@@ -45,6 +52,45 @@ export function getGraphLeadMemberName(
   return data.members.find((member) => isLeadMember(member))?.name ?? `${teamName}-lead`;
 }
 
+// ---------------------------------------------------------------------------
+// Node ID helpers (inlined from graphOwnerIdentity.ts)
+// ---------------------------------------------------------------------------
+
+type StableTeamOwnerLike = { name: string; agentId?: string; removedAt?: string };
+
+function buildMemberNodeId(teamName: string, stableOwnerId: string): string {
+  return `member:${teamName}:${stableOwnerId}`;
+}
+
+function buildMemberNodeIdForMember(teamName: string, member: StableTeamOwnerLike): string {
+  return buildMemberNodeId(teamName, getStableTeamOwnerId(member));
+}
+
+function buildMemberNodeIdAliasMap(
+  teamName: string,
+  members: readonly StableTeamOwnerLike[]
+): Map<string, string> {
+  const aliases = new Map<string, string>();
+
+  for (const member of members) {
+    const stableOwnerId = getStableTeamOwnerId(member).trim();
+    if (!stableOwnerId) continue;
+    aliases.set(stableOwnerId, buildMemberNodeId(teamName, stableOwnerId));
+  }
+
+  for (const member of members) {
+    const memberName = member.name.trim();
+    if (!memberName || aliases.has(memberName)) continue;
+    aliases.set(memberName, buildMemberNodeIdForMember(teamName, member));
+  }
+
+  return aliases;
+}
+
+// ---------------------------------------------------------------------------
+// Main export
+// ---------------------------------------------------------------------------
+
 export function buildInlineActivityEntries({
   data,
   teamName,
@@ -53,7 +99,7 @@ export function buildInlineActivityEntries({
   ownerNodeIds,
 }: BuildInlineActivityEntriesArgs): Map<string, InlineActivityEntry[]> {
   const entriesByOwnerNodeId = new Map<string, InlineActivityEntry[]>();
-  const memberNodeIdByAlias = buildGraphMemberNodeIdAliasMap(
+  const memberNodeIdByAlias = buildMemberNodeIdAliasMap(
     teamName,
     data.members.filter((member) => !isLeadMember(member))
   );
@@ -305,13 +351,7 @@ function buildCommentActivityMessage(args: {
 
 function buildTaskRefs(teamName: string, task: TeamTaskWithKanban): TaskRef[] | undefined {
   const displayId = task.displayId ?? `#${task.id.slice(0, 6)}`;
-  return [
-    {
-      taskId: task.id,
-      displayId,
-      teamName,
-    },
-  ];
+  return [{ taskId: task.id, displayId, teamName }];
 }
 
 function mapCommentAttachments(

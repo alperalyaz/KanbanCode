@@ -7,17 +7,44 @@
  * - get-worktree-sessions: List sessions for a specific worktree
  */
 
+import {
+  PROJECT_LIST_FILES,
+  // eslint-disable-next-line boundaries/element-types -- IPC channel constants are shared between main and preload by design
+} from '@preload/constants/ipcChannels';
 import { createLogger } from '@shared/utils/logger';
 import { type IpcMain, type IpcMainInvokeEvent } from 'electron';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
+import { FileSearchService } from '../services/editor';
 import { setCurrentMainOp } from '../services/infrastructure/EventLoopLagMonitor';
 import { type Project, type RepositoryGroup, type Session } from '../types';
 
 import { validateProjectId } from './guards';
+import { createIpcWrapper } from './ipcWrapper';
 
 import type { ServiceContextRegistry } from '../services';
+import type { QuickOpenFile } from '@shared/types/editor';
+import type { IpcResult } from '@shared/types/ipc';
 
 const logger = createLogger('IPC:projects');
+
+const fileSearchService = new FileSearchService();
+const wrapListFiles = createIpcWrapper('IPC:projects');
+
+const MISSING_PROJECT_PATH_ERROR_CODES = new Set(['ENOENT', 'ENOTDIR']);
+
+function getFileSystemErrorCode(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null || !('code' in error)) {
+    return null;
+  }
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code : null;
+}
+
+function isMissingProjectPathError(error: unknown): boolean {
+  return MISSING_PROJECT_PATH_ERROR_CODES.has(getFileSystemErrorCode(error) ?? '');
+}
 
 // Service registry - set via initialize
 let registry: ServiceContextRegistry;
@@ -36,6 +63,7 @@ export function registerProjectHandlers(ipcMain: IpcMain): void {
   ipcMain.handle('get-projects', handleGetProjects);
   ipcMain.handle('get-repository-groups', handleGetRepositoryGroups);
   ipcMain.handle('get-worktree-sessions', handleGetWorktreeSessions);
+  ipcMain.handle(PROJECT_LIST_FILES, handleProjectListFiles);
 
   logger.info('Project handlers registered');
 }
@@ -47,6 +75,7 @@ export function removeProjectHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler('get-projects');
   ipcMain.removeHandler('get-repository-groups');
   ipcMain.removeHandler('get-worktree-sessions');
+  ipcMain.removeHandler(PROJECT_LIST_FILES);
 
   logger.info('Project handlers removed');
 }
@@ -136,4 +165,30 @@ async function handleGetWorktreeSessions(
     logger.error(`Error in get-worktree-sessions for ${worktreeId}:`, error);
     return [];
   }
+}
+
+/**
+ * List project files by explicit path (for @file mentions).
+ * Independent of editor state.
+ */
+async function handleProjectListFiles(
+  _event: IpcMainInvokeEvent,
+  projectPath: string
+): Promise<IpcResult<QuickOpenFile[]>> {
+  return wrapListFiles('project:listFiles', async () => {
+    if (typeof projectPath !== 'string' || projectPath.length === 0) {
+      throw new Error('projectPath is required');
+    }
+    const normalized = path.resolve(projectPath);
+    const stat = await fs.stat(normalized).catch((error: unknown) => {
+      if (isMissingProjectPathError(error)) {
+        return null;
+      }
+      throw error;
+    });
+    if (!stat?.isDirectory()) {
+      return [];
+    }
+    return fileSearchService.listFiles(normalized);
+  });
 }

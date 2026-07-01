@@ -364,7 +364,7 @@ const DEFAULT_CONFIG: AppConfig = {
     snoozedUntil: null,
     snoozeMinutes: 30,
     includeSubagentErrors: false,
-    notifyOnLeadInbox: true,
+    notifyOnLeadInbox: false,
     notifyOnUserInbox: true,
     notifyOnClarifications: true,
     notifyOnStatusChange: false,

@@ -34,7 +34,6 @@ import {
   registerCrossTeamHandlers,
   removeCrossTeamHandlers,
 } from './crossTeam';
-import { initializeEditorHandlers, registerEditorHandlers, removeEditorHandlers } from './editor';
 import {
   initializeExtensionHandlers,
   registerExtensionHandlers,
@@ -224,7 +223,6 @@ export function initializeIpcHandlers(
   if (ptyTerminal) {
     initializeTerminalHandlers(ptyTerminal);
   }
-  initializeEditorHandlers();
   if (schedulerService) {
     initializeScheduleHandlers(schedulerService);
   }
