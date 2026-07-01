@@ -70,8 +70,14 @@ export function processGlobalTaskNotifications(params: ProcessGlobalTaskNotifica
   detectBlockedTaskNotifications(oldTaskIndexes, newTasks, notifyOnClarifications);
   detectStatusChangeNotifications(oldTaskIndexes, newTasks, appConfig, teamByName);
 
+  const notificationsEnabled = appConfig?.notifications?.enabled ?? true;
   const notifyOnTaskComments = appConfig?.notifications?.notifyOnTaskComments ?? true;
-  detectTaskCommentNotifications(oldTaskIndexes, newTasks, notifyOnTaskComments);
+  detectTaskCommentNotifications(
+    oldTaskIndexes,
+    newTasks,
+    notifyOnTaskComments,
+    notificationsEnabled
+  );
 
   const notifyOnTaskCreated = appConfig?.notifications?.notifyOnTaskCreated ?? true;
   detectTaskCreatedNotifications(oldTaskIndexes, newTasks, notifyOnTaskCreated);
@@ -304,7 +310,8 @@ function showStatusChangeNotification(
 function detectTaskCommentNotifications(
   oldTaskIndexes: TaskNotificationIndexes,
   newTasks: GlobalTask[],
-  notifyEnabled: boolean
+  notifyOnTaskComments: boolean,
+  notificationsEnabled: boolean
 ): void {
   for (const task of newTasks) {
     const oldTask = oldTaskIndexes.lastOldTaskByKey.get(getTaskNotificationKey(task));
@@ -322,12 +329,12 @@ function detectTaskCommentNotifications(
       notifiedCommentKeys.add(key);
 
       if (comment.type === 'review_request') {
-        showTaskReviewRequestedNotification(task, comment, !notifyEnabled);
+        showTaskReviewRequestedNotification(task, comment, !notificationsEnabled);
         continue;
       }
       if (comment.type === 'review_approved') continue;
 
-      showTaskCommentNotification(task, comment, !notifyEnabled);
+      showTaskCommentNotification(task, comment, !notifyOnTaskComments);
     }
   }
 }

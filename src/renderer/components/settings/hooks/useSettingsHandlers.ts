@@ -14,6 +14,19 @@ import type { AppConfig, NotificationTrigger } from '@renderer/types/data';
 // Get the setState function from the store to update appConfig globally
 const setStoreState = useStore.setState;
 
+const CRITICAL_ONLY_NOTIFICATION_DEFAULTS = {
+  notifyOnLeadInbox: false,
+  notifyOnUserInbox: true,
+  notifyOnClarifications: true,
+  notifyOnStatusChange: false,
+  notifyOnTaskComments: false,
+  notifyOnTaskCreated: false,
+  notifyOnAllTasksCompleted: false,
+  notifyOnCrossTeamMessage: false,
+  notifyOnTeamLaunched: false,
+  notifyOnToolApproval: true,
+} as const;
+
 interface UseSettingsHandlersProps {
   config: AppConfig | null;
   setSaving: (saving: boolean) => void;
@@ -36,6 +49,7 @@ interface SettingsHandlers {
 
   // Notification handlers
   handleNotificationToggle: (key: keyof AppConfig['notifications'], value: boolean) => void;
+  handleApplyCriticalOnlyNotificationsPreset: () => Promise<void>;
   handleStatusChangeStatusesUpdate: (statuses: string[]) => void;
   handleSnooze: (minutes: number) => Promise<void>;
   handleClearSnooze: () => Promise<void>;
@@ -118,6 +132,12 @@ export function useSettingsHandlers({
     },
     [fireAndForgetConfigUpdate]
   );
+
+  const handleApplyCriticalOnlyNotificationsPreset = useCallback(async () => {
+    await updateConfig('notifications', {
+      ...CRITICAL_ONLY_NOTIFICATION_DEFAULTS,
+    });
+  }, [updateConfig]);
 
   const handleStatusChangeStatusesUpdate = useCallback(
     (statuses: string[]) => {
@@ -309,16 +329,7 @@ export function useSettingsHandlers({
           snoozedUntil: null,
           snoozeMinutes: 30,
           includeSubagentErrors: false,
-          notifyOnLeadInbox: false,
-          notifyOnUserInbox: true,
-          notifyOnClarifications: true,
-          notifyOnStatusChange: true,
-          notifyOnTaskComments: true,
-          notifyOnTaskCreated: true,
-          notifyOnAllTasksCompleted: true,
-          notifyOnCrossTeamMessage: true,
-          notifyOnTeamLaunched: true,
-          notifyOnToolApproval: true,
+          ...CRITICAL_ONLY_NOTIFICATION_DEFAULTS,
           autoResumeOnRateLimit: false,
           statusChangeOnlySolo: true,
           statusChangeStatuses: ['in_progress', 'completed'],
@@ -452,6 +463,7 @@ export function useSettingsHandlers({
     handleAppLocaleChange,
     handleDefaultTabChange,
     handleNotificationToggle,
+    handleApplyCriticalOnlyNotificationsPreset,
     handleStatusChangeStatusesUpdate,
     handleSnooze,
     handleClearSnooze,

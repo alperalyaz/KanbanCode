@@ -93,6 +93,7 @@ interface NotificationsSectionProps {
       | 'statusChangeOnlySolo',
     value: boolean
   ) => void;
+  readonly onApplyCriticalOnlyNotificationsPreset: () => Promise<void>;
   readonly onStatusChangeStatusesUpdate: (statuses: string[]) => void;
   readonly onSnooze: (minutes: number) => Promise<void>;
   readonly onClearSnooze: () => Promise<void>;
@@ -113,6 +114,7 @@ export const NotificationsSection = ({
   ignoredRepositoryItems,
   excludedRepositoryIds,
   onNotificationToggle,
+  onApplyCriticalOnlyNotificationsPreset,
   onSnooze,
   onClearSnooze,
   onAddIgnoredRepository,
@@ -188,6 +190,36 @@ export const NotificationsSection = ({
         title={t('notifications.settings.title')}
         icon={<Bell className="size-3.5" />}
       />
+      <div
+        className="mb-4 flex items-center justify-between gap-4 rounded-lg border px-4 py-3"
+        style={{
+          borderColor: 'rgba(59, 130, 246, 0.2)',
+          backgroundColor: 'rgba(59, 130, 246, 0.06)',
+        }}
+      >
+        <div className="min-w-0">
+          <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
+            Sadece Kritik
+          </div>
+          <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            User inbox, clarification, review requested, and tool approval stay on; noisy task
+            updates stay off.
+          </div>
+        </div>
+        <button
+          onClick={() => void onApplyCriticalOnlyNotificationsPreset()}
+          disabled={saving}
+          className={`shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors hover:brightness-125 ${
+            saving ? 'cursor-not-allowed opacity-50' : ''
+          }`}
+          style={{
+            backgroundColor: 'var(--color-border-emphasis)',
+            color: 'var(--color-text)',
+          }}
+        >
+          Sadece Kritik'i Uygula
+        </button>
+      </div>
       <SettingRow
         label={t('notifications.settings.enabled.label')}
         description={t('notifications.settings.enabled.description')}
