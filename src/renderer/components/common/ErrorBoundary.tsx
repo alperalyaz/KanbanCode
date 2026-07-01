@@ -23,7 +23,6 @@ interface ErrorBoundaryLabels {
   copied: string;
   copyErrorDetails: string;
   reloadApp: string;
-  diagnosticsNotice: string;
 }
 
 interface State {
@@ -190,9 +189,6 @@ class ErrorBoundaryInner extends Component<Props, State> {
               {labels?.reloadApp}
             </button>
           </div>
-          <p className="mt-4 max-w-md text-center text-xs text-claude-dark-text-secondary">
-            {labels?.diagnosticsNotice}
-          </p>
         </div>
       );
     }
@@ -215,7 +211,6 @@ export const ErrorBoundary = ({ children, fallback }: Omit<Props, 'labels'>): Re
         copied: t('errorBoundary.copied'),
         copyErrorDetails: t('errorBoundary.copyErrorDetails'),
         reloadApp: t('errorBoundary.reloadApp'),
-        diagnosticsNotice: t('errorBoundary.diagnosticsNotice'),
       }}
     >
       {children}

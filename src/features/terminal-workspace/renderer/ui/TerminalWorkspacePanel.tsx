@@ -65,7 +65,6 @@ import {
   Check,
   Folder,
   GitBranch,
-  Github,
   Image,
   Loader2,
   Palette,
@@ -107,7 +106,6 @@ const TERMINAL_LOCAL_AUTOCOMPLETE_MAX_DRAFT_LENGTH = 160;
 const TERMINAL_LOCAL_AUTOCOMPLETE_DANGEROUS_MIN_PREFIX_LENGTH = 8;
 const PREWARMED_TERMINAL_TAB_TITLE = '__tp_prewarmed_shell__';
 const TERMINAL_TAB_PREFERENCES_VERSION = 1;
-const TERMINAL_PLATFORM_GITHUB_URL = 'https://github.com/777genius/terminal-platform';
 const TERMINAL_APPEARANCE_SETTINGS_VERSION = 1;
 const ANSI_ESCAPE_SEQUENCE_PATTERN = new RegExp(
   `${String.fromCharCode(27)}(?:[@-Z\\\\-_]|\\[[0-?]*[ -/]*[@-~])`,
@@ -2331,14 +2329,6 @@ const TerminalWorkingDirectoryBar = ({
 }): React.JSX.Element => {
   const { t } = useAppTranslation('team');
   const label = formatWorkingDirectory(projectPath, t('terminalWorkspace.shellDefaultDirectory'));
-  const openTerminalPlatformRepository = useCallback((): void => {
-    if (window.electronAPI?.openExternal) {
-      void window.electronAPI.openExternal(TERMINAL_PLATFORM_GITHUB_URL);
-      return;
-    }
-
-    window.open(TERMINAL_PLATFORM_GITHUB_URL, '_blank', 'noopener,noreferrer');
-  }, []);
 
   return (
     <div
@@ -2360,16 +2350,6 @@ const TerminalWorkingDirectoryBar = ({
           </span>
         ) : null}
       </div>
-      <button
-        type="button"
-        className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.025] px-2 py-0.5 text-[10px] font-medium text-slate-400 transition-colors hover:border-sky-300/30 hover:bg-sky-300/10 hover:text-slate-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-300/60"
-        aria-label={t('terminalWorkspace.openTerminalPlatformRepository')}
-        title={t('terminalWorkspace.openTerminalPlatformRepository')}
-        onClick={openTerminalPlatformRepository}
-      >
-        <span>{t('terminalWorkspace.poweredByTerminalPlatform')}</span>
-        <Github size={11} className="shrink-0" />
-      </button>
     </div>
   );
 };
