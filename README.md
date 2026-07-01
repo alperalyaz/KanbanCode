@@ -15,9 +15,9 @@
 
 ## This is a fork
 
-**KanbanCode** is a fork of [Agent Teams AI](https://github.com/777genius/agent-teams-ai) by **777genius**, distributed under the same [AGPL-3.0](LICENSE) license. All credit for the original design and implementation goes to the upstream project and its contributors.
+**KanbanCode** is a fork of [Agent Teams AI](https://github.com/alperalyaz/kanbancode) by **777genius**, distributed under the same [AGPL-3.0](LICENSE) license. All credit for the original design and implementation goes to the upstream project and its contributors.
 
-- Upstream project: https://github.com/777genius/agent-teams-ai
+- Upstream project: https://github.com/alperalyaz/kanbancode
 - This fork: https://github.com/alperalyaz/agent-teams-ai
 - Please file bugs, feature requests, and questions about this fork against **this** repository, not the upstream one.
 
@@ -79,7 +79,7 @@ An orchestration layer for AI agent teams across Claude, Codex, and OpenCode.
 
 100% free, open source, and local-first. The app uses available Claude/Codex/OpenCode provider access instead of forcing a single app-level API-key setup.
 
-For the full feature list and FAQ, see the [upstream README](https://github.com/777genius/agent-teams-ai#readme) — this fork has not changed the core feature set.
+For the full feature list and FAQ, see the [upstream README](https://github.com/alperalyaz/kanbancode#readme) — this fork has not changed the core feature set.
 
 ## Installation
 
