@@ -1,50 +1,117 @@
 <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
+    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7c3aed" />
+      <stop offset="50%" stop-color="#14b8ff" />
+      <stop offset="100%" stop-color="#22d3ee" />
+    </linearGradient>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#18181b"/>
-      <stop offset="100%" stop-color="#111113"/>
+      <stop offset="0%" stop-color="#050608" />
+      <stop offset="100%" stop-color="#080a12" />
     </linearGradient>
-    <radialGradient id="glow" cx="50%" cy="48%" r="38%">
-      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.12"/>
-      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0"/>
+    <radialGradient id="glow" cx="50%" cy="48%" r="48%">
+      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.16" />
+      <stop offset="50%" stop-color="#14b8ff" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#14b8ff" stop-opacity="0" />
     </radialGradient>
-    <linearGradient id="edge1" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#818cf8"/>
-      <stop offset="100%" stop-color="#a78bfa"/>
+    <linearGradient id="leftCard" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7c3aed" />
+      <stop offset="100%" stop-color="#1d1fbf" />
     </linearGradient>
-    <linearGradient id="edge2" x1="1" y1="0" x2="0.3" y2="1">
-      <stop offset="0%" stop-color="#a78bfa"/>
-      <stop offset="100%" stop-color="#c084fc"/>
+    <linearGradient id="midCard" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0%" stop-color="#28a8ff" />
+      <stop offset="100%" stop-color="#0d2f88" />
     </linearGradient>
-    <linearGradient id="edge3" x1="0.7" y1="1" x2="0" y2="0">
-      <stop offset="0%" stop-color="#c084fc"/>
-      <stop offset="100%" stop-color="#818cf8"/>
+    <linearGradient id="rightCard" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#14d7d9" />
+      <stop offset="100%" stop-color="#128a96" />
     </linearGradient>
+    <linearGradient id="topRail" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="50%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#2dd4bf" />
+    </linearGradient>
+    <filter id="blur20" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="20" />
+    </filter>
+    <filter id="blur10" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" />
+    </filter>
+    <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity="0.55" />
+    </filter>
+    <filter id="kShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="18" dy="18" stdDeviation="6" flood-color="#06124a" flood-opacity="0.92" />
+    </filter>
   </defs>
 
-  <!-- Background -->
-  <rect width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="226" fill="url(#bg)" />
+  <rect x="14" y="14" width="996" height="996" rx="214" fill="none" stroke="url(#frame)" stroke-width="12" opacity="0.9" filter="url(#blur20)" />
+  <rect x="18" y="18" width="988" height="988" rx="210" fill="none" stroke="url(#frame)" stroke-width="8" opacity="0.92" />
+  <circle cx="512" cy="506" r="372" fill="url(#glow)" />
 
-  <!-- Subtle central glow -->
-  <circle cx="512" cy="470" r="320" fill="url(#glow)"/>
+  <g filter="url(#blur10)" opacity="0.45">
+    <line x1="212" y1="182" x2="512" y2="182" stroke="url(#topRail)" stroke-width="18" stroke-linecap="round" />
+    <line x1="512" y1="182" x2="812" y2="182" stroke="url(#topRail)" stroke-width="18" stroke-linecap="round" />
+    <line x1="212" y1="840" x2="512" y2="840" stroke="url(#topRail)" stroke-width="18" stroke-linecap="round" />
+    <line x1="512" y1="840" x2="812" y2="840" stroke="url(#topRail)" stroke-width="18" stroke-linecap="round" />
+  </g>
 
-  <!-- Triangle edges (connections between agents) -->
-  <line x1="354" y1="340" x2="670" y2="340" stroke="url(#edge1)" stroke-width="30" stroke-linecap="round" opacity="0.4"/>
-  <line x1="670" y1="340" x2="512" y2="640" stroke="url(#edge2)" stroke-width="30" stroke-linecap="round" opacity="0.4"/>
-  <line x1="512" y1="640" x2="354" y2="340" stroke="url(#edge3)" stroke-width="30" stroke-linecap="round" opacity="0.4"/>
+  <g opacity="0.98">
+    <line x1="212" y1="182" x2="512" y2="182" stroke="url(#topRail)" stroke-width="10" stroke-linecap="round" />
+    <line x1="512" y1="182" x2="812" y2="182" stroke="url(#topRail)" stroke-width="10" stroke-linecap="round" />
+    <line x1="212" y1="840" x2="512" y2="840" stroke="url(#topRail)" stroke-width="10" stroke-linecap="round" />
+    <line x1="512" y1="840" x2="812" y2="840" stroke="url(#topRail)" stroke-width="10" stroke-linecap="round" />
 
-  <!-- Agent nodes — outer glow rings -->
-  <circle cx="354" cy="340" r="96" fill="#818cf8" opacity="0.12"/>
-  <circle cx="670" cy="340" r="96" fill="#a78bfa" opacity="0.12"/>
-  <circle cx="512" cy="640" r="104" fill="#c084fc" opacity="0.12"/>
+    <line x1="212" y1="182" x2="212" y2="274" stroke="url(#topRail)" stroke-width="10" stroke-linecap="round" />
+    <line x1="512" y1="182" x2="512" y2="274" stroke="url(#topRail)" stroke-width="10" stroke-linecap="round" />
+    <line x1="812" y1="182" x2="812" y2="274" stroke="url(#topRail)" stroke-width="10" stroke-linecap="round" />
 
-  <!-- Agent nodes — solid circles -->
-  <circle cx="354" cy="340" r="72" fill="#818cf8"/>
-  <circle cx="670" cy="340" r="72" fill="#a78bfa"/>
-  <circle cx="512" cy="640" r="80" fill="#c084fc"/>
+    <line x1="212" y1="792" x2="212" y2="840" stroke="url(#topRail)" stroke-width="10" stroke-linecap="round" />
+    <line x1="512" y1="792" x2="512" y2="840" stroke="url(#topRail)" stroke-width="10" stroke-linecap="round" />
+    <line x1="812" y1="792" x2="812" y2="840" stroke="url(#topRail)" stroke-width="10" stroke-linecap="round" />
+  </g>
 
-  <!-- Inner highlights (cores) -->
-  <circle cx="354" cy="340" r="28" fill="#e0e7ff"/>
-  <circle cx="670" cy="340" r="28" fill="#ede9fe"/>
-  <circle cx="512" cy="640" r="32" fill="#f3e8ff"/>
+  <g filter="url(#blur10)" opacity="0.5">
+    <circle cx="212" cy="182" r="34" fill="#1d9cff" />
+    <circle cx="512" cy="182" r="34" fill="#14d7d9" />
+    <circle cx="812" cy="182" r="34" fill="#22f0e0" />
+    <circle cx="212" cy="840" r="34" fill="#1d9cff" />
+    <circle cx="512" cy="840" r="34" fill="#14d7d9" />
+    <circle cx="812" cy="840" r="34" fill="#22f0e0" />
+  </g>
+  <g>
+    <circle cx="212" cy="182" r="28" fill="#1e9dff" />
+    <circle cx="512" cy="182" r="28" fill="#1ad6eb" />
+    <circle cx="812" cy="182" r="28" fill="#22f0e0" />
+    <circle cx="212" cy="840" r="28" fill="#1e9dff" />
+    <circle cx="512" cy="840" r="28" fill="#1ad6eb" />
+    <circle cx="812" cy="840" r="28" fill="#22f0e0" />
+  </g>
+
+  <g filter="url(#cardShadow)">
+    <rect x="76" y="268" width="242" height="520" rx="48" fill="url(#leftCard)" opacity="0.98" />
+    <rect x="390" y="268" width="244" height="520" rx="48" fill="url(#midCard)" opacity="0.99" />
+    <rect x="704" y="268" width="244" height="520" rx="48" fill="url(#rightCard)" opacity="0.96" />
+  </g>
+
+  <rect x="76" y="268" width="242" height="520" rx="48" fill="none" stroke="#b77cff" stroke-width="10" opacity="0.45" />
+  <rect x="390" y="268" width="244" height="520" rx="48" fill="none" stroke="#38d9ff" stroke-width="10" opacity="0.45" />
+  <rect x="704" y="268" width="244" height="520" rx="48" fill="none" stroke="#31f0ea" stroke-width="10" opacity="0.4" />
+
+  <rect x="104" y="300" width="186" height="440" rx="38" fill="#ffffff" opacity="0.06" />
+  <rect x="418" y="300" width="188" height="440" rx="38" fill="#ffffff" opacity="0.07" />
+  <rect x="732" y="300" width="188" height="440" rx="38" fill="#ffffff" opacity="0.05" />
+
+  <rect x="126" y="398" width="180" height="28" rx="14" fill="#9b7cff" opacity="0.95" />
+  <rect x="126" y="484" width="180" height="28" rx="14" fill="#9b7cff" opacity="0.9" />
+  <rect x="440" y="398" width="180" height="28" rx="14" fill="#58d6ff" opacity="0.95" />
+  <rect x="440" y="484" width="122" height="28" rx="14" fill="#58d6ff" opacity="0.8" />
+  <rect x="754" y="398" width="180" height="28" rx="14" fill="#4ceff0" opacity="0.95" />
+  <rect x="754" y="484" width="180" height="28" rx="14" fill="#4ceff0" opacity="0.88" />
+
+  <g filter="url(#kShadow)">
+    <path d="M 398 786 V 484 H 454 V 786 Z" fill="#ffffff" />
+    <path d="M 470 648 L 626 484 H 690 L 532 648 L 690 786 H 626 Z" fill="#ffffff" />
+  </g>
 </svg>
