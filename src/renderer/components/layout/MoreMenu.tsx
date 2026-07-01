@@ -32,7 +32,7 @@ import type { SessionDetail } from '@renderer/types/data';
 import type { Tab } from '@renderer/types/tabs';
 import type { ExportFormat } from '@renderer/utils/sessionExporter';
 
-const DOCS_URL = 'https://777genius.github.io/agent-teams-ai/docs/';
+const DOCS_URL = 'https://github.com/alperalyaz/agent-teams-ai#readme';
 
 interface MoreMenuProps {
   activeTab: Tab | undefined;

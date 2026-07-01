@@ -4,5 +4,5 @@ contact_links:
     url: https://discord.gg/qtqSZSyuEc
     about: Use Discord for support questions, broad ideas, and discussions before opening a large feature request.
   - name: Security vulnerability
-    url: https://github.com/777genius/agent-teams-ai/security/policy
+    url: https://github.com/alperalyaz/agent-teams-ai/security/policy
     about: Please report undisclosed security issues privately instead of opening a public issue.
