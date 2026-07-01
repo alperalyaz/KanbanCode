@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
+import { APP_NAME } from '@shared/constants/brand';
 import { formatProviderBackendLabel } from '@renderer/utils/providerBackendIdentity';
 import { getTeamProviderLabel as getCatalogTeamProviderLabel } from '@renderer/utils/teamModelCatalog';
 import {
@@ -1136,7 +1137,7 @@ export function getProvisioningFailureHint(
   ) {
     return (
       t?.('provisioning.providerStatus.failureHints.openCodeNodeModulesSymlinkPermission') ??
-      'Run KanbanCode as Administrator, then retry launch.'
+      `Run ${APP_NAME} as Administrator, then retry launch.`
     );
   }
   if (hasOpenCodeAccessDeniedDetail || hasOpenCodeAccessDeniedMessage) {

@@ -2,6 +2,7 @@ import {
   OPENCODE_WINDOWS_ACCESS_DENIED_MESSAGE,
   OPENCODE_WINDOWS_NODE_MODULES_SYMLINK_PERMISSION_MESSAGE,
 } from '@shared/utils/openCodeWindowsAccessDenied';
+import { APP_NAME } from '@shared/constants/brand';
 import { describe, expect, it } from 'vitest';
 
 import { getProvisioningFailureHint } from './ProvisioningProviderStatusList';
@@ -16,7 +17,7 @@ describe('getProvisioningFailureHint', () => {
           details: [OPENCODE_WINDOWS_NODE_MODULES_SYMLINK_PERMISSION_MESSAGE],
         },
       ])
-    ).toBe('Run Agent Teams AI as Administrator, then retry launch.');
+    ).toBe(`Run ${APP_NAME} as Administrator, then retry launch.`);
   });
 
   it('returns the OpenCode Windows permissions hint for OpenCode access-denied details', () => {

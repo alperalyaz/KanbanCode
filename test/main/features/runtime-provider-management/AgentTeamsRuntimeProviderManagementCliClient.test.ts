@@ -5,6 +5,8 @@ import path from 'node:path';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { APP_NAME } from '../../../../src/shared/constants/brand';
+
 const buildProviderAwareCliEnvMock = vi.fn();
 const resolveBinaryMock = vi.fn();
 const clearBinaryCacheMock = vi.fn();
@@ -908,7 +910,7 @@ describe('AgentTeamsRuntimeProviderManagementCliClient', () => {
     expect(response.error?.diagnostics?.hints).toEqual(
       expect.arrayContaining([
         'The app attempts automatic junction fallback for this Windows link failure before showing this error.',
-        'As a temporary workaround, enable Windows Developer Mode or run Agent Teams AI as Administrator.',
+        `As a temporary workaround, enable Windows Developer Mode or run ${APP_NAME} as Administrator.`,
       ])
     );
   });

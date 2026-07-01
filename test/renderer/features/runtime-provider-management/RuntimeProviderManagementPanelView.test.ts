@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RuntimeProviderManagementPanelView } from '../../../../src/features/runtime-provider-management/renderer/ui/RuntimeProviderManagementPanelView';
+import { APP_NAME } from '../../../../src/shared/constants/brand';
 
 import type {
   RuntimeProviderManagementActions,
@@ -253,7 +254,7 @@ describe('RuntimeProviderManagementPanelView', () => {
       await Promise.resolve();
     });
 
-    expect(host.textContent).toContain('Windows: run Agent Teams AI as Administrator');
+    expect(host.textContent).toContain(`Windows: run ${APP_NAME} as Administrator`);
 
     await act(async () => {
       root.render(
@@ -268,7 +269,7 @@ describe('RuntimeProviderManagementPanelView', () => {
       await Promise.resolve();
     });
 
-    expect(host.textContent).not.toContain('Windows: run Agent Teams AI as Administrator');
+    expect(host.textContent).not.toContain(`Windows: run ${APP_NAME} as Administrator`);
   });
 
   it('copies fallback error text when structured diagnostics are unavailable', async () => {

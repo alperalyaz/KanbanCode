@@ -1120,7 +1120,7 @@ export default interface Resources {
       "title": "Open the desktop app for full functionality"
     },
     "windowsAdmin": {
-      "description": "OpenCode runtime checks can time out when Agent Teams AI is not elevated. Restart the app with Run as administrator before launching OpenCode teams.",
+      "description": "OpenCode runtime checks can time out when KanbanCode is not elevated. Restart the app with Run as administrator before launching OpenCode teams.",
       "title": "Windows Administrator mode recommended"
     }
   },
@@ -2041,7 +2041,7 @@ export default interface Resources {
         "title": "About",
         "version": "Version {{version}}"
       },
-      "appName": "Agent Teams AI",
+      "appName": "KanbanCode",
       "configuration": {
         "editConfig": "Edit Config",
         "exportConfig": "Export Config",
@@ -2905,7 +2905,7 @@ export default interface Resources {
         "copy": "Copy diagnostics",
         "hints": "Hints",
         "likelyCause": "Likely cause:",
-        "windowsSymlinkAdminHint": "Windows: run Agent Teams AI as Administrator"
+        "windowsSymlinkAdminHint": "Windows: run KanbanCode as Administrator"
       },
       "modelRoutes": {
         "searchPlaceholder": "Search model routes"
@@ -4942,7 +4942,7 @@ export default interface Resources {
           "openCodeAccessDenied": "Fix folder permissions or move the project to a user-writable folder. Running as administrator is only a temporary workaround.",
           "openCodeAppMcpUnreachable": "Retry launch to refresh the OpenCode app MCP bridge. If it repeats, restart the app and OpenCode runtime.",
           "openCodeBridgeNoOutput": "Restart the app and OpenCode runtime, then retry. If it repeats, copy diagnostics.",
-          "openCodeNodeModulesSymlinkPermission": "Run Agent Teams AI as Administrator, then retry launch.",
+          "openCodeNodeModulesSymlinkPermission": "Run KanbanCode as Administrator, then retry launch.",
           "openCodeRuntimeMissing": "Install or retry OpenCode runtime from the provider status card, then reopen this dialog.",
           "runtimeProviderNotConfigured": "Configure the selected provider runtime, then reopen this dialog.",
           "workingDirectoryMissing": "Choose an existing working directory, then reopen this dialog."
