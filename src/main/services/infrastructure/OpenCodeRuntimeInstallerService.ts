@@ -13,7 +13,10 @@ import { createLogger } from '@shared/utils/logger';
 import { createHash, randomUUID } from 'crypto';
 import { promises as fsp, readdirSync, readFileSync } from 'fs';
 import path from 'path';
-import { gunzipSync } from 'zlib';
+import { promisify } from 'util';
+import { gunzip } from 'zlib';
+
+const gunzipAsync = promisify(gunzip);
 
 import type { OpenCodeRuntimeInstallProgress, OpenCodeRuntimeStatus } from '@shared/types';
 import type { BrowserWindow } from 'electron';
@@ -620,8 +623,8 @@ function assertSafeTarPath(name: string): void {
   }
 }
 
-export function extractOpenCodeRuntimeBinaryFromTarball(tarball: Buffer): Buffer {
-  const tar = gunzipSync(tarball, { maxOutputLength: MAX_BINARY_BYTES + 1024 * 1024 });
+export async function extractOpenCodeRuntimeBinaryFromTarball(tarball: Buffer): Promise<Buffer> {
+  const tar = await gunzipAsync(tarball, { maxOutputLength: MAX_BINARY_BYTES + 1024 * 1024 });
   const targetName = `package/bin/${getExecutableName()}`;
   let offset = 0;
   while (offset + 512 <= tar.length) {
@@ -842,7 +845,7 @@ export class OpenCodeRuntimeInstallerService {
       verifyOpenCodeRuntimePackageIntegrity(tarball, platformMetadata.dist!.integrity!);
 
       this.publishProgress({ phase: 'installing', detail: 'Extracting OpenCode binary...' });
-      const binary = extractOpenCodeRuntimeBinaryFromTarball(tarball);
+      const binary = await extractOpenCodeRuntimeBinaryFromTarball(tarball);
       const runtimeRoot = getRuntimeRootPath();
       const tempDir = path.join(runtimeRoot, `installing-${process.pid}-${randomUUID()}`);
       const versionDir = path.join(

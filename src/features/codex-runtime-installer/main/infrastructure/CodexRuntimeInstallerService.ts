@@ -14,7 +14,10 @@ import { createLogger } from '@shared/utils/logger';
 import { createHash, randomUUID } from 'crypto';
 import { promises as fsp, readFileSync } from 'fs';
 import path from 'path';
-import { gunzipSync } from 'zlib';
+import { promisify } from 'util';
+import { gunzip } from 'zlib';
+
+const gunzipAsync = promisify(gunzip);
 
 import type { CodexRuntimeInstallerPort } from '../../core/application/ports/CodexRuntimeInstallerPort';
 import type {
@@ -346,12 +349,12 @@ function assertSafeTarPath(name: string): void {
   }
 }
 
-export function extractCodexRuntimePackageFilesFromTarball(
+export async function extractCodexRuntimePackageFilesFromTarball(
   tarball: Buffer,
   vendorTarget: string,
   executableName = getExecutableName()
-): CodexRuntimePackageFile[] {
-  const tar = gunzipSync(tarball, { maxOutputLength: MAX_UNPACKED_BYTES });
+): Promise<CodexRuntimePackageFile[]> {
+  const tar = await gunzipAsync(tarball, { maxOutputLength: MAX_UNPACKED_BYTES });
   const targetPrefix = `package/vendor/${vendorTarget}/`;
   const targetBinaryNames = new Set(
     getCodexRuntimeBinaryRelativePathCandidates(executableName).map(
@@ -616,7 +619,10 @@ export class CodexRuntimeInstallerService implements CodexRuntimeInstallerPort {
       verifyCodexRuntimePackageIntegrity(tarball, platformMetadata.dist!.integrity!);
 
       this.publishProgress({ phase: 'installing', detail: 'Extracting Codex runtime...' });
-      const files = extractCodexRuntimePackageFilesFromTarball(tarball, selected.vendorTarget);
+      const files = await extractCodexRuntimePackageFilesFromTarball(
+        tarball,
+        selected.vendorTarget
+      );
       const binaryRelativePath = resolveCodexRuntimeBinaryRelativePath(files);
       const runtimeRoot = getRuntimeRootPath();
       tempDir = path.join(runtimeRoot, `installing-${process.pid}-${randomUUID()}`);

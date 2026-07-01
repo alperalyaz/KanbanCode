@@ -713,7 +713,7 @@ describe('OpenCodeRuntimeInstallerService package safety helpers', () => {
     );
   });
 
-  it('extracts only the expected OpenCode binary from the package tarball', () => {
+  it('extracts only the expected OpenCode binary from the package tarball', async () => {
     const tarball = createTarball([
       { name: 'package/bin/not-opencode', data: 'wrong' },
       {
@@ -722,10 +722,11 @@ describe('OpenCodeRuntimeInstallerService package safety helpers', () => {
       },
     ]);
 
-    expect(extractOpenCodeRuntimeBinaryFromTarball(tarball).toString()).toBe('right');
+    const binary = await extractOpenCodeRuntimeBinaryFromTarball(tarball);
+    expect(binary.toString()).toBe('right');
   });
 
-  it('rejects tar path traversal before extraction', () => {
+  it('rejects tar path traversal before extraction', async () => {
     const tarball = createTarball([
       { name: '../opencode', data: 'unsafe' },
       {
@@ -734,7 +735,7 @@ describe('OpenCodeRuntimeInstallerService package safety helpers', () => {
       },
     ]);
 
-    expect(() => extractOpenCodeRuntimeBinaryFromTarball(tarball)).toThrow(
+    await expect(extractOpenCodeRuntimeBinaryFromTarball(tarball)).rejects.toThrow(
       'Unsafe OpenCode package tar entry'
     );
   });

@@ -256,14 +256,14 @@ describe('CodexRuntimeInstallerService package safety helpers', () => {
     );
   });
 
-  it('extracts the full selected Codex vendor payload from the package tarball', () => {
+  it('extracts the full selected Codex vendor payload from the package tarball', async () => {
     const tarball = createTarball([
       { name: 'package/vendor/other-target/codex/codex', data: 'wrong' },
       { name: 'package/vendor/aarch64-apple-darwin/codex/codex', data: 'codex-binary' },
       { name: 'package/vendor/aarch64-apple-darwin/path/rg', data: 'rg-binary' },
     ]);
 
-    const files = extractCodexRuntimePackageFilesFromTarball(
+    const files = await extractCodexRuntimePackageFilesFromTarball(
       tarball,
       'aarch64-apple-darwin',
       'codex'
@@ -278,14 +278,14 @@ describe('CodexRuntimeInstallerService package safety helpers', () => {
     );
   });
 
-  it('extracts the current Codex platform package layout', () => {
+  it('extracts the current Codex platform package layout', async () => {
     const tarball = createTarball([
       { name: 'package/vendor/x86_64-unknown-linux-musl/bin/codex', data: 'codex-binary' },
       { name: 'package/vendor/x86_64-unknown-linux-musl/codex-path/rg', data: 'rg-binary' },
       { name: 'package/vendor/x86_64-unknown-linux-musl/codex-resources/bwrap', data: 'bwrap' },
     ]);
 
-    const files = extractCodexRuntimePackageFilesFromTarball(
+    const files = await extractCodexRuntimePackageFilesFromTarball(
       tarball,
       'x86_64-unknown-linux-musl',
       'codex'
@@ -301,14 +301,14 @@ describe('CodexRuntimeInstallerService package safety helpers', () => {
     );
   });
 
-  it('rejects tar path traversal before extraction', () => {
+  it('rejects tar path traversal before extraction', async () => {
     const tarball = createTarball([
       { name: '../codex', data: 'unsafe' },
       { name: 'package/vendor/aarch64-apple-darwin/codex/codex', data: 'right' },
     ]);
 
-    expect(() =>
+    await expect(
       extractCodexRuntimePackageFilesFromTarball(tarball, 'aarch64-apple-darwin', 'codex')
-    ).toThrow('Unsafe Codex package tar entry');
+    ).rejects.toThrow('Unsafe Codex package tar entry');
   });
 });
