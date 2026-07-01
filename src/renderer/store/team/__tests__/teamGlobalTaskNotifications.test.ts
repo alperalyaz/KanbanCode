@@ -157,4 +157,54 @@ describe('processGlobalTaskNotifications', () => {
       })
     );
   });
+
+  it('keeps task comments and review requests on separate notification paths', () => {
+    const oldTask = buildTask({ comments: [] });
+    const newTask = buildTask({
+      comments: [
+        {
+          id: 'comment-1',
+          author: 'teammate',
+          text: 'Regular task comment',
+          createdAt: '2026-07-01T18:05:00.000Z',
+          type: 'regular',
+        },
+        {
+          id: 'comment-2',
+          author: 'teammate',
+          text: 'Please review this change',
+          createdAt: '2026-07-01T18:06:00.000Z',
+          type: 'review_request',
+        },
+      ],
+    });
+
+    processGlobalTaskNotifications({
+      oldTasks: [oldTask],
+      newTasks: [newTask],
+      appConfig: {
+        notifications: buildNotificationConfig({
+          notifyOnTaskComments: true,
+        }),
+      } as AppConfig,
+      teamByName: {},
+      isInitialFetch: false,
+    });
+
+    expect(showMessageNotificationMock).toHaveBeenCalledTimes(2);
+    expect(showMessageNotificationMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        teamEventType: 'task_comment',
+        suppressToast: false,
+      })
+    );
+    expect(showMessageNotificationMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        teamEventType: 'task_review_requested',
+        suppressToast: false,
+      })
+    );
+  });
 });
