@@ -3080,6 +3080,29 @@ function createWindow(): void {
 }
 
 /**
+ * Single-instance lock: prevents duplicate app instances.
+ * Fixes bug where notification clicks launch new instances instead of focusing existing.
+ */
+const singleInstanceLock = app.requestSingleInstanceLock();
+if (!singleInstanceLock) {
+  logger.warn('Another instance of the app is already running');
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    // User clicked notification or app was launched while already running
+    // Bring existing window to foreground
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.show();
+      mainWindow.focus();
+      logger.debug('second-instance: restored existing window to focus');
+    }
+  });
+}
+
+/**
  * Application ready handler.
  */
 void app.whenReady().then(async () => {
