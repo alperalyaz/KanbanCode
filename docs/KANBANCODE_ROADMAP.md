@@ -37,6 +37,15 @@ Core to keep: team creation + agent process management + kanban board + messagin
 
 ## Status log
 
+- **2026-07-02 (cloud session)** — Phase 5 rebrand sweep: `package.json` name → `kanbancode`,
+  author → Hidroteknik; mac/dmg/AppImage `artifactName` → `KanbanCode-*`; linux launcher
+  `resources/linux/bin/agent-teams-ai` → `kanbancode` (fpm mappings updated, `/opt/KanbanCode`);
+  updater repo/asset expectations → `alperalyaz/kanbancode` + `KanbanCode-*` (legacy fallback:
+  `agent-teams-ai`); Sentry release prefix → `kanbancode@`. **Sentry finding:** DSN is injected at
+  build time from `SENTRY_DSN` env (upstream CI secret) — local/Store builds compile with an empty
+  DSN, so Sentry is already a no-op; full package removal can wait for the pruning phase.
+  Not touched: `.github/workflows/release.yml` (upstream CI, needs its own pass if fork ever uses it).
+
 - **2026-07-02** — Built-in code editor and team-graph visualization removed (commit `4359e7b6` + earlier commits). Typecheck green after cleaning ~250 leftover errors (orphaned tests deleted, preload/MarkdownViewer/MemberBadge/KanbanTaskCard fixes). i18n types regenerated. Branch `claude/agent-teams-ai-overview-f8n3rm` merged into `main` and deleted; all work now on `main`.
 - **2026-07-02** — Full vitest suite after clean install: 9219 passed / 50 failed / 69 skipped. Failure triage pending (distinguish machine-specific env failures from real regressions). Known local-machine quirks: `node_modules/.bin` can end up empty → run tools via `node node_modules/vitest/vitest.mjs run`; a stale process once locked `node-pty` and broke `pnpm install`.
 
