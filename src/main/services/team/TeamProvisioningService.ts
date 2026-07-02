@@ -15850,7 +15850,15 @@ export class TeamProvisioningService {
     const stderrLog = fs.createWriteStream(runtimePaths.stderrPath, { flags: 'a', mode: 0o600 });
     const child = spawnCli(claudePath, runtimeArgs, {
       cwd,
-      detached: true,
+      // POSIX needs a detached process group so killProcessTree() can signal the
+      // whole group. On Windows we intentionally do NOT detach: a detached
+      // process gets DETACHED_PROCESS (no console at all), so any git.exe the
+      // agent runs internally allocates a fresh *visible* console window
+      // (windowsHide/CREATE_NO_WINDOW only covers the direct child, not its
+      // grandchildren). Staying attached lets git children inherit the parent's
+      // hidden console. Windows tree-kill already uses `taskkill /T`, so the
+      // process group is not needed here.
+      detached: process.platform !== 'win32',
       env: {
         ...provisioningEnv.env,
         ...nativeBootstrapEnv,
