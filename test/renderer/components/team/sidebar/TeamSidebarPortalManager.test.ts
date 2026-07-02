@@ -12,24 +12,17 @@ afterEach(() => {
 });
 
 describe('TeamSidebarPortalManager', () => {
-  it('prefers overlay host over graph tab and team hosts for the same team', () => {
-    upsertTeamSidebarHost('team-host', {
+  it('prefers the focused host over an unfocused host for the same team', () => {
+    upsertTeamSidebarHost('host-a', {
       teamName: 'alpha',
       surface: 'team',
       element: document.createElement('div'),
       isActive: true,
-      isFocused: true,
-    });
-    upsertTeamSidebarHost('graph-host', {
-      teamName: 'alpha',
-      surface: 'graph-tab',
-      element: document.createElement('div'),
-      isActive: true,
       isFocused: false,
     });
-    upsertTeamSidebarHost('overlay-host', {
+    upsertTeamSidebarHost('host-b', {
       teamName: 'alpha',
-      surface: 'graph-overlay',
+      surface: 'team',
       element: document.createElement('div'),
       isActive: true,
       isFocused: true,
@@ -37,20 +30,20 @@ describe('TeamSidebarPortalManager', () => {
 
     const snapshot = getTeamSidebarPortalSnapshotForTests();
 
-    expect(snapshot.activeHostIdByTeam.alpha).toBe('overlay-host');
+    expect(snapshot.activeHostIdByTeam.alpha).toBe('host-b');
   });
 
-  it('prefers the active team host over an inactive graph host', () => {
-    upsertTeamSidebarHost('team-host', {
+  it('prefers the active host over an inactive host for the same team', () => {
+    upsertTeamSidebarHost('active-host', {
       teamName: 'alpha',
       surface: 'team',
       element: document.createElement('div'),
       isActive: true,
-      isFocused: true,
+      isFocused: false,
     });
-    upsertTeamSidebarHost('graph-host', {
+    upsertTeamSidebarHost('inactive-host', {
       teamName: 'alpha',
-      surface: 'graph-tab',
+      surface: 'team',
       element: document.createElement('div'),
       isActive: false,
       isFocused: false,
@@ -58,28 +51,28 @@ describe('TeamSidebarPortalManager', () => {
 
     const snapshot = getTeamSidebarPortalSnapshotForTests();
 
-    expect(snapshot.activeHostIdByTeam.alpha).toBe('team-host');
+    expect(snapshot.activeHostIdByTeam.alpha).toBe('active-host');
   });
 
-  it('prefers focused graph host over unfocused graph host of the same priority', () => {
-    upsertTeamSidebarHost('graph-a', {
+  it('prefers the most recently registered host when focus and activity tie', () => {
+    upsertTeamSidebarHost('older-host', {
       teamName: 'alpha',
-      surface: 'graph-tab',
+      surface: 'team',
       element: document.createElement('div'),
       isActive: true,
       isFocused: false,
     });
-    upsertTeamSidebarHost('graph-b', {
+    upsertTeamSidebarHost('newer-host', {
       teamName: 'alpha',
-      surface: 'graph-tab',
+      surface: 'team',
       element: document.createElement('div'),
       isActive: true,
-      isFocused: true,
+      isFocused: false,
     });
 
     const snapshot = getTeamSidebarPortalSnapshotForTests();
 
-    expect(snapshot.activeHostIdByTeam.alpha).toBe('graph-b');
+    expect(snapshot.activeHostIdByTeam.alpha).toBe('newer-host');
   });
 
   it('prefers focused active source over stale mounted source for the same team', () => {

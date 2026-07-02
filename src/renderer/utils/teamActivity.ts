@@ -56,7 +56,7 @@ export function getGraphLeadMemberName(
 // Node ID helpers (inlined from graphOwnerIdentity.ts)
 // ---------------------------------------------------------------------------
 
-type StableTeamOwnerLike = { name: string; agentId?: string; removedAt?: string };
+type StableTeamOwnerLike = { name: string; agentId?: string | null };
 
 function buildMemberNodeId(teamName: string, stableOwnerId: string): string {
   return `member:${teamName}:${stableOwnerId}`;

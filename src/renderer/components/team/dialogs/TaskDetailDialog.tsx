@@ -93,7 +93,6 @@ import {
   PenLine,
   RefreshCw,
   ScrollText,
-  SquarePen,
   Trash2,
   X,
 } from 'lucide-react';
@@ -132,7 +131,6 @@ interface TaskDetailDialogProps {
   onScrollToTask?: (taskId: string) => void;
   onOwnerChange?: (taskId: string, owner: string | null) => void;
   onViewChanges?: (taskId: string, filePath?: string) => void;
-  onOpenInEditor?: (filePath: string) => void;
   onDeleteTask?: (taskId: string) => void;
   focusCommentId?: string;
   /** Extra content rendered in the dialog header (e.g. "Open team" button). */
@@ -219,7 +217,6 @@ export const TaskDetailDialog = ({
   onScrollToTask,
   onOwnerChange,
   onViewChanges,
-  onOpenInEditor,
   onDeleteTask,
   focusCommentId,
   headerExtra,
@@ -1429,25 +1426,6 @@ export const TaskDetailDialog = ({
                                   </TooltipTrigger>
                                   <TooltipContent side="top">
                                     {t('taskDetail.changes.reviewDiff')}
-                                  </TooltipContent>
-                                </Tooltip>
-                              ) : null}
-                              {onOpenInEditor ? (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      type="button"
-                                      className="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        onOpenInEditor(file.filePath);
-                                      }}
-                                    >
-                                      <SquarePen size={13} />
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top">
-                                    {t('taskDetail.changes.openInEditor')}
                                   </TooltipContent>
                                 </Tooltip>
                               ) : null}

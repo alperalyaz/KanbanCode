@@ -125,7 +125,7 @@ import type {
   WslClaudeRootCandidate,
 } from '@shared/types';
 import type { AgentConfig, MemberWorkSyncElectronApi } from '@shared/types/api';
-import type { EditorAPI, ProjectAPI } from '@shared/types/editor';
+import type { ProjectAPI } from '@shared/types/editor';
 import type { TerminalAPI } from '@shared/types/terminal';
 
 export class HttpAPIClient implements ElectronAPI {
@@ -1593,67 +1593,6 @@ export class HttpAPIClient implements ElectronAPI {
   project: ProjectAPI = {
     listFiles: async () => {
       throw new Error('Project API not available in browser mode');
-    },
-  };
-
-  // ---------------------------------------------------------------------------
-  // Editor (not available in browser mode)
-  // ---------------------------------------------------------------------------
-
-  editor: EditorAPI = {
-    open: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    close: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    readDir: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    readFile: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    writeFile: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    createFile: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    createDir: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    deleteFile: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    moveFile: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    renameFile: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    searchInFiles: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    listFiles: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    readBinaryPreview: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    gitStatus: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    watchDir: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    setWatchedFiles: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    setWatchedDirs: async () => {
-      throw new Error('Editor not available in browser mode');
-    },
-    onEditorChange: () => {
-      return () => {};
     },
   };
 

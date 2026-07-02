@@ -242,7 +242,6 @@ export const OrgInspector = ({
                     kanbanTaskState={inspectorTasks.kanbanTaskStateById?.[fullTask.id]}
                     hasReviewers={false}
                     taskMap={inspectorTasks.taskMap}
-                    memberColorMap={inspectorTasks.memberColorMap}
                     onTaskClick={inspectorTasks.openTaskDetail}
                     onStartTask={inspectorTasks.onStartTask}
                     onCompleteTask={inspectorTasks.onCompleteTask}

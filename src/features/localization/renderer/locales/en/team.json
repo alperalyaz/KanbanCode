@@ -329,7 +329,6 @@
       "add": "Add",
       "cancel": "Cancel",
       "delete": "Delete",
-      "editCode": "Edit code",
       "launch": "Launch",
       "remove": "Remove",
       "stop": "Stop",
@@ -387,7 +386,6 @@
       "deleteTeam": "Delete team",
       "editTeam": "Edit team",
       "editUnavailableProvisioning": "Edit team is unavailable while provisioning is still in progress",
-      "openBuiltInEditor": "Open project in built-in editor",
       "openTeamUsage": "Open team usage",
       "stopTeam": "Stop team"
     },
@@ -926,7 +924,6 @@
       "fileRowsHidden": "{{count}} file rows hidden",
       "moreDiagnostics": "{{count}} more diagnostics",
       "moreFiles": "{{count}} more files",
-      "openInEditor": "Open in editor",
       "openTask": "Open task {{subject}}",
       "refresh": "Refresh changes",
       "refreshFailed": "Refresh failed: {{error}}",
@@ -1134,177 +1131,6 @@
       "message": "Move task #{{taskId}} to trash?",
       "confirmLabel": "Delete",
       "cancelLabel": "Cancel"
-    }
-  },
-  "editor": {
-    "actions": {
-      "cancel": "Cancel",
-      "closeEditor": "Close editor",
-      "closeTab": "Close tab",
-      "closeTooltip": "Close editor (Esc)",
-      "discard": "Discard",
-      "discardAndClose": "Discard & Close",
-      "keep": "Keep",
-      "keepMine": "Keep mine",
-      "keyboardShortcuts": "Keyboard shortcuts",
-      "overwrite": "Overwrite",
-      "refreshAria": "Refresh (F5)",
-      "refreshTooltip": "Refresh git status (F5)",
-      "reload": "Reload",
-      "retry": "Retry",
-      "save": "Save",
-      "saveAllAndClose": "Save All & Close"
-    },
-    "ariaLabel": "Project Editor",
-    "dialogs": {
-      "conflictDescription": "The file has been modified externally since you opened it. Overwrite with your changes?",
-      "conflictTitle": "Save Conflict",
-      "unsavedDescription": "You have unsaved changes. What would you like to do?",
-      "unsavedFileDescription": "This file has unsaved changes. What would you like to do?",
-      "unsavedTitle": "Unsaved Changes"
-    },
-    "newFile": {
-      "validation": {
-        "nameRequired": "Name cannot be empty",
-        "invalidName": "Invalid name",
-        "invalidCharacters": "Name contains invalid characters",
-        "nameTooLong": "Name is too long"
-      },
-      "placeholders": {
-        "fileName": "File name...",
-        "folderName": "Folder name..."
-      },
-      "aria": {
-        "newFileName": "New file name",
-        "newFolderName": "New folder name"
-      }
-    },
-    "draftRecovered": "Recovered unsaved changes from a previous session.",
-    "externalChange": {
-      "changed": "File changed on disk.",
-      "deleted": "File no longer exists on disk."
-    },
-    "saveFailed": "Save failed: {{error}}",
-    "sidebar": {
-      "explorer": "Explorer",
-      "hide": "Hide sidebar",
-      "hideWithShortcut": "Hide sidebar ({{shortcut}})",
-      "show": "Show sidebar",
-      "showWithShortcut": "Show sidebar ({{shortcut}})"
-    },
-    "searchInFiles": {
-      "title": "Search in Files",
-      "closeSearch": "Close search",
-      "closeSearchShortcut": "Close search (Esc)",
-      "searchPlaceholder": "Search...",
-      "matchCase": "Match Case",
-      "matchCaseToggle": "Aa",
-      "noResults": "No results found",
-      "resultsSummary": "{{count}} matches in {{fileCount}} files",
-      "resultsSummary_one": "{{count}} match in {{fileCount}} files",
-      "truncated": "(truncated)",
-      "resultsSummary_few": "{{count}} matches in {{fileCount}} files",
-      "resultsSummary_many": "{{count}} matches in {{fileCount}} files",
-      "resultsSummary_other": "{{count}} matches in {{fileCount}} files"
-    },
-    "fileTree": {
-      "failedToLoadFiles": "Failed to load files: {{error}}",
-      "loading": "Loading files...",
-      "empty": "No files found",
-      "dropForProjectRoot": "Drop here for project root",
-      "moveToTrash": "Move to Trash",
-      "moveToTrashConfirm": "Move \"{{name}}\" to Trash?",
-      "cancel": "Cancel"
-    },
-    "goToLine": {
-      "title": "Go to Line",
-      "position": "(current: {{current}}, total: {{total}})",
-      "placeholder": "Line number, +offset, -offset, or %",
-      "go": "Go"
-    },
-    "searchPanel": {
-      "previousMatch": "Previous Match",
-      "nextMatch": "Next Match",
-      "close": "Close",
-      "replacePlaceholder": "Replace",
-      "replace": "Replace",
-      "replaceNext": "Replace Next",
-      "all": "All",
-      "replaceAll": "Replace All"
-    },
-    "statusBar": {
-      "position": "Ln {{line}}, Col {{col}}",
-      "enableWatcher": "Enable file watcher",
-      "disableWatcher": "Disable file watcher",
-      "watch": "watch",
-      "watching": "watching",
-      "watchExternalChanges": "Watch for external changes",
-      "disableExternalWatcher": "Disable external change watcher",
-      "encodingUtf8": "UTF-8",
-      "spaces": "Spaces: {{count}}"
-    },
-    "imagePreview": {
-      "loading": "Loading preview...",
-      "openFullSize": "Open full-size preview",
-      "openSystemViewer": "Open in System Viewer"
-    },
-    "quickOpen": {
-      "title": "Quick Open",
-      "searchPlaceholder": "Search files by name...",
-      "loading": "Loading files...",
-      "empty": "No files found"
-    },
-    "errorBoundary": {
-      "crashed": "Editor crashed",
-      "unknownError": "Unknown error"
-    },
-    "binaryPlaceholder": {
-      "file": "Binary file ({{size}})"
-    },
-    "unsavedChanges": "Unsaved changes",
-    "empty": {
-      "selectFile": "Select a file from the tree to edit"
-    },
-    "search": {
-      "toggleReplace": "Toggle Replace",
-      "placeholder": "Search"
-    },
-    "shortcuts": {
-      "title": "Keyboard Shortcuts",
-      "groups": {
-        "fileOperations": "File Operations",
-        "search": "Search",
-        "navigation": "Navigation",
-        "editing": "Editing",
-        "markdown": "Markdown",
-        "general": "General"
-      },
-      "actions": {
-        "quickOpen": "Quick Open",
-        "save": "Save",
-        "saveAll": "Save All",
-        "closeTab": "Close Tab",
-        "findInFile": "Find in File",
-        "searchInFiles": "Search in Files",
-        "goToLine": "Go to Line",
-        "nextTab": "Next Tab",
-        "previousTab": "Previous Tab",
-        "cycleTabs": "Cycle Tabs",
-        "toggleSidebar": "Toggle Sidebar",
-        "undo": "Undo",
-        "redo": "Redo",
-        "selectNextMatch": "Select Next Match",
-        "toggleComment": "Toggle Comment",
-        "splitPreview": "Split Preview",
-        "fullPreview": "Full Preview",
-        "closeEditor": "Close Editor"
-      }
-    },
-    "toolbar": {
-      "enableWordWrap": "Enable word wrap",
-      "disableWordWrap": "Disable word wrap",
-      "closeSplitPreview": "Close split preview",
-      "closePreview": "Close preview"
     }
   },
   "launch": {

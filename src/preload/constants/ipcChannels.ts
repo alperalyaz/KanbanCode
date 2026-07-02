@@ -614,62 +614,8 @@ export const REVIEW_SAVE_DECISIONS = 'review:saveDecisions';
 export const REVIEW_CLEAR_DECISIONS = 'review:clearDecisions';
 
 // =============================================================================
-// Editor Channels
+// Project Channels
 // =============================================================================
-
-/** Initialize editor, set activeProjectRoot in module-level state */
-export const EDITOR_OPEN = 'editor:open';
-
-/** Cleanup: reset activeProjectRoot, stop watcher */
-export const EDITOR_CLOSE = 'editor:close';
-
-/** Recursive directory reading (depth=1, lazy) */
-export const EDITOR_READ_DIR = 'editor:readDir';
-
-/** Read file content with binary detection */
-export const EDITOR_READ_FILE = 'editor:readFile';
-
-/** Write file content (atomic write) */
-export const EDITOR_WRITE_FILE = 'editor:writeFile';
-
-/** Create a new file */
-export const EDITOR_CREATE_FILE = 'editor:createFile';
-
-/** Create a new directory */
-export const EDITOR_CREATE_DIR = 'editor:createDir';
-
-/** Delete file or directory (move to Trash) */
-export const EDITOR_DELETE_FILE = 'editor:deleteFile';
-
-/** Move file or directory to a new location */
-export const EDITOR_MOVE_FILE = 'editor:moveFile';
-
-/** Rename file or directory in place */
-export const EDITOR_RENAME_FILE = 'editor:renameFile';
-
-/** Search in files (literal string search) */
-export const EDITOR_SEARCH_IN_FILES = 'editor:searchInFiles';
-
-/** List all project files (for Quick Open) */
-export const EDITOR_LIST_FILES = 'editor:listFiles';
-
-/** Get git status for current project */
-export const EDITOR_GIT_STATUS = 'editor:gitStatus';
-
-/** Enable/disable file watcher for current project */
-export const EDITOR_WATCH_DIR = 'editor:watchDir';
-
-/** Update list of watched file paths (open tabs) */
-export const EDITOR_SET_WATCHED_FILES = 'editor:setWatchedFiles';
-
-/** Update list of watched directories (shallow: depth=0) */
-export const EDITOR_SET_WATCHED_DIRS = 'editor:setWatchedDirs';
-
-/** Read binary file as base64 for inline preview */
-export const EDITOR_READ_BINARY_PREVIEW = 'editor:readBinaryPreview';
-
-/** File change event from watcher (main -> renderer) */
-export const EDITOR_CHANGE = 'editor:change';
 
 /** List project files by path (for @file mentions, independent of editor state) */
 export const PROJECT_LIST_FILES = 'project:listFiles';

@@ -67,7 +67,6 @@ import {
   AlertTriangle,
   BarChart3,
   Clock,
-  Code,
   Columns3,
   FolderOpen,
   GitBranch,
@@ -106,9 +105,6 @@ const sumInjectionTokens = tokenMath[
 ] as (injections: readonly unknown[]) => number;
 const LaunchTeamDialog = lazy(() =>
   import('./dialogs/LaunchTeamDialog').then((m) => ({ default: m.LaunchTeamDialog }))
-);
-const ProjectEditorOverlay = lazy(() =>
-  import('./editor/ProjectEditorOverlay').then((m) => ({ default: m.ProjectEditorOverlay }))
 );
 type TaskDetailDialogComponent = typeof import('./dialogs/TaskDetailDialog').TaskDetailDialog;
 let loadedTaskDetailDialogComponent: TaskDetailDialogComponent | null = null;
@@ -195,7 +191,6 @@ interface TaskDetailDialogHostProps {
   members: ResolvedTeamMember[];
   onOwnerChange: (taskId: string, owner: string | null) => void;
   onViewChanges: (taskId: string, filePath?: string) => void;
-  onOpenInEditor: (filePath: string) => void;
   onDeleteTask: (taskId: string) => void;
 }
 
@@ -208,7 +203,6 @@ const TaskDetailDialogHost = memo(
       members,
       onOwnerChange,
       onViewChanges,
-      onOpenInEditor,
       onDeleteTask,
     },
     ref
@@ -302,7 +296,6 @@ const TaskDetailDialogHost = memo(
         onScrollToTask={handleScrollToTask}
         onOwnerChange={onOwnerChange}
         onViewChanges={onViewChanges}
-        onOpenInEditor={onOpenInEditor}
         onDeleteTask={onDeleteTask}
       />
     );
@@ -1401,7 +1394,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     open: false,
     mode: 'launch',
   });
-  const [editorOpen, setEditorOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const taskDetailDialogRef = useRef<TaskDetailDialogHostHandle>(null);
   const taskDetailDialogPreloadScheduledRef = useRef(false);
@@ -1444,17 +1436,6 @@ export const TeamDetailView = memo(function TeamDetailView({
           },
     [isLight]
   );
-
-  // Set inert on background content when editor overlay is open (a11y focus trap)
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    if (editorOpen) {
-      el.setAttribute('inert', '');
-    } else {
-      el.removeAttribute('inert');
-    }
-  }, [editorOpen]);
 
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -1654,15 +1635,6 @@ export const TeamDetailView = memo(function TeamDetailView({
   }, [isTeamProvisioning, isThisTabActive]);
 
   const [kanbanSearch, setKanbanSearch] = useState('');
-
-  // Open editor overlay when a file reveal is requested (e.g. from chip click)
-  const pendingRevealFile = useStore((s) => s.editorPendingRevealFile);
-  useEffect(() => {
-    if (!isThisTabActive) return;
-    if (pendingRevealFile && data?.config.projectPath) {
-      setEditorOpen(true);
-    }
-  }, [isThisTabActive, pendingRevealFile, data?.config.projectPath]);
 
   useEffect(() => {
     if (!isThisTabActive || !teamName) {
@@ -2152,6 +2124,13 @@ export const TeamDetailView = memo(function TeamDetailView({
     [restoreMember, teamName]
   );
 
+  const handleRemoveFailedMember = useCallback(
+    async (memberName: string): Promise<void> => {
+      await removeMember(teamName, memberName);
+    },
+    [removeMember, teamName]
+  );
+
   const handleSelectMember = useCallback((member: ResolvedTeamMember) => {
     setSelectedMember(member);
     setSelectedMemberView(null);
@@ -2219,11 +2198,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     },
     [teamName, updateTaskOwner]
   );
-
-  const handleOpenTaskFileInEditor = useCallback((filePath: string) => {
-    const { revealFileInEditor } = useStore.getState();
-    revealFileInEditor(filePath);
-  }, []);
 
   const handleEditorAction = useCallback(
     (action: EditorSelectionAction) => {
@@ -2982,17 +2956,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                             </span>
                           </TooltipContent>
                         </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              onClick={() => setEditorOpen(true)}
-                              className="ml-1 flex items-center gap-0.5 rounded border border-[var(--color-border-emphasis)] bg-[var(--color-surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
-                            >
-                              <Code size={10} className="shrink-0" /> {t('detail.actions.editCode')}
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent>{t('detail.tooltips.openBuiltInEditor')}</TooltipContent>
-                        </Tooltip>
                       </span>
                     )}
                     {leadBranch && (
@@ -3106,6 +3069,7 @@ export const TeamDetailView = memo(function TeamDetailView({
                       onRestartMember={handleRestartMember}
                       onSkipMemberForLaunch={handleSkipMemberForLaunch}
                       onRestoreMember={handleRestoreMember}
+                      onRemoveMember={handleRemoveFailedMember}
                     />
                   </div>
                 </CollapsibleTeamSection>
@@ -3522,7 +3486,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                 members={activeMembers}
                 onOwnerChange={handleTaskOwnerChange}
                 onViewChanges={handleViewChangesForFile}
-                onOpenInEditor={handleOpenTaskFileInEditor}
                 onDeleteTask={handleDeleteTask}
               />
 
@@ -3576,10 +3539,7 @@ export const TeamDetailView = memo(function TeamDetailView({
               <TeamMessagesPanelBridge position="bottom-sheet" {...sharedMessagesPanelProps} />
             )}
             {messagesPanelMode === 'floating-composer' && isThisTabActive && isPaneFocused && (
-              <TeamMessagesPanelBridge
-                position="floating-composer"
-                {...sharedMessagesPanelProps}
-              />
+              <TeamMessagesPanelBridge position="floating-composer" {...sharedMessagesPanelProps} />
             )}
             <TerminalWorkspaceFloatingLauncher
               teamName={teamName}
@@ -3589,17 +3549,6 @@ export const TeamDetailView = memo(function TeamDetailView({
             />
           </div>
         </div>
-
-        {editorOpen && data.config.projectPath && (
-          <Suspense fallback={null}>
-            <ProjectEditorOverlay
-              projectPath={data.config.projectPath}
-              onClose={() => setEditorOpen(false)}
-              onEditorAction={handleEditorAction}
-            />
-          </Suspense>
-        )}
-
       </>
     );
   };

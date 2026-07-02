@@ -329,7 +329,6 @@
       "add": "Ekle",
       "cancel": "İptal",
       "delete": "Sil",
-      "editCode": "Kodu düzenle",
       "launch": "Başlat",
       "remove": "Kaldır",
       "stop": "Durdur",
@@ -386,7 +385,6 @@
       "deleteTeam": "Ekibi sil",
       "editTeam": "Ekibi düzenle",
       "editUnavailableProvisioning": "Sağlama hâlâ devam ederken ekibi düzenleme kullanılamaz",
-      "openBuiltInEditor": "Projeyi yerleşik düzenleyicide aç",
       "stopTeam": "Ekibi durdur"
     },
     "waitingForProvisioning": "Sağlama tamamlandığında ekip verileri görünecek",
@@ -924,7 +922,6 @@
       "fileRowsHidden": "{{count}} dosya satırı gizli",
       "moreDiagnostics": "{{count}} tanılama daha",
       "moreFiles": "{{count}} dosya daha",
-      "openInEditor": "Düzenleyicide aç",
       "openTask": "{{subject}} görevini aç",
       "refresh": "Değişiklikleri yenile",
       "refreshFailed": "Yenileme başarısız oldu: {{error}}",
@@ -1132,177 +1129,6 @@
       "message": "#{{taskId}} görevi çöpe taşınsın mı?",
       "confirmLabel": "Sil",
       "cancelLabel": "İptal"
-    }
-  },
-  "editor": {
-    "actions": {
-      "cancel": "İptal",
-      "closeEditor": "Düzenleyiciyi kapat",
-      "closeTab": "Sekmeyi kapat",
-      "closeTooltip": "Düzenleyiciyi kapat (Esc)",
-      "discard": "At",
-      "discardAndClose": "At ve Kapat",
-      "keep": "Koru",
-      "keepMine": "Benimkini koru",
-      "keyboardShortcuts": "Klavye kısayolları",
-      "overwrite": "Üzerine yaz",
-      "refreshAria": "Yenile (F5)",
-      "refreshTooltip": "Git durumunu yenile (F5)",
-      "reload": "Yeniden yükle",
-      "retry": "Yeniden dene",
-      "save": "Kaydet",
-      "saveAllAndClose": "Tümünü Kaydet ve Kapat"
-    },
-    "ariaLabel": "Proje Düzenleyici",
-    "dialogs": {
-      "conflictDescription": "Dosya, siz açtığınızdan beri harici olarak değiştirildi. Değişikliklerinizle üzerine yazılsın mı?",
-      "conflictTitle": "Kaydetme Çakışması",
-      "unsavedDescription": "Kaydedilmemiş değişiklikleriniz var. Ne yapmak istersiniz?",
-      "unsavedFileDescription": "Bu dosyada kaydedilmemiş değişiklikler var. Ne yapmak istersiniz?",
-      "unsavedTitle": "Kaydedilmemiş Değişiklikler"
-    },
-    "newFile": {
-      "validation": {
-        "nameRequired": "Ad boş olamaz",
-        "invalidName": "Geçersiz ad",
-        "invalidCharacters": "Ad geçersiz karakterler içeriyor",
-        "nameTooLong": "Ad çok uzun"
-      },
-      "placeholders": {
-        "fileName": "Dosya adı...",
-        "folderName": "Klasör adı..."
-      },
-      "aria": {
-        "newFileName": "Yeni dosya adı",
-        "newFolderName": "Yeni klasör adı"
-      }
-    },
-    "draftRecovered": "Önceki oturumdan kaydedilmemiş değişiklikler kurtarıldı.",
-    "externalChange": {
-      "changed": "Dosya diskte değiştirildi.",
-      "deleted": "Dosya artık diskte mevcut değil."
-    },
-    "saveFailed": "Kaydetme başarısız oldu: {{error}}",
-    "sidebar": {
-      "explorer": "Gezgin",
-      "hide": "Kenar çubuğunu gizle",
-      "hideWithShortcut": "Kenar çubuğunu gizle ({{shortcut}})",
-      "show": "Kenar çubuğunu göster",
-      "showWithShortcut": "Kenar çubuğunu göster ({{shortcut}})"
-    },
-    "searchInFiles": {
-      "title": "Dosyalarda Ara",
-      "closeSearch": "Aramayı kapat",
-      "closeSearchShortcut": "Aramayı kapat (Esc)",
-      "searchPlaceholder": "Ara...",
-      "matchCase": "Büyük/Küçük Harf Eşleştir",
-      "matchCaseToggle": "Aa",
-      "noResults": "Sonuç bulunamadı",
-      "resultsSummary": "{{fileCount}} dosyada {{count}} eşleşme",
-      "resultsSummary_one": "{{fileCount}} dosyada {{count}} eşleşme",
-      "truncated": "(kısaltıldı)",
-      "resultsSummary_few": "{{fileCount}} dosyada {{count}} eşleşme",
-      "resultsSummary_many": "{{fileCount}} dosyada {{count}} eşleşme",
-      "resultsSummary_other": "{{fileCount}} dosyada {{count}} eşleşme"
-    },
-    "fileTree": {
-      "failedToLoadFiles": "Dosyalar yüklenemedi: {{error}}",
-      "loading": "Dosyalar yükleniyor...",
-      "empty": "Dosya bulunamadı",
-      "dropForProjectRoot": "Proje kökü için buraya bırakın",
-      "moveToTrash": "Çöpe Taşı",
-      "moveToTrashConfirm": "\"{{name}}\" çöpe taşınsın mı?",
-      "cancel": "İptal"
-    },
-    "goToLine": {
-      "title": "Satıra Git",
-      "position": "(geçerli: {{current}}, toplam: {{total}})",
-      "placeholder": "Satır numarası, +ofset, -ofset veya %",
-      "go": "Git"
-    },
-    "searchPanel": {
-      "previousMatch": "Önceki Eşleşme",
-      "nextMatch": "Sonraki Eşleşme",
-      "close": "Kapat",
-      "replacePlaceholder": "Değiştir",
-      "replace": "Değiştir",
-      "replaceNext": "Sonrakini Değiştir",
-      "all": "Tümü",
-      "replaceAll": "Tümünü Değiştir"
-    },
-    "statusBar": {
-      "position": "Sat {{line}}, Süt {{col}}",
-      "enableWatcher": "Dosya izleyiciyi etkinleştir",
-      "disableWatcher": "Dosya izleyiciyi devre dışı bırak",
-      "watch": "izle",
-      "watching": "izleniyor",
-      "watchExternalChanges": "Harici değişiklikleri izle",
-      "disableExternalWatcher": "Harici değişiklik izleyiciyi devre dışı bırak",
-      "encodingUtf8": "UTF-8",
-      "spaces": "Boşluklar: {{count}}"
-    },
-    "imagePreview": {
-      "loading": "Önizleme yükleniyor...",
-      "openFullSize": "Tam boyut önizlemeyi aç",
-      "openSystemViewer": "Sistem Görüntüleyicide Aç"
-    },
-    "quickOpen": {
-      "title": "Hızlı Aç",
-      "searchPlaceholder": "Dosyaları ada göre ara...",
-      "loading": "Dosyalar yükleniyor...",
-      "empty": "Dosya bulunamadı"
-    },
-    "errorBoundary": {
-      "crashed": "Düzenleyici çöktü",
-      "unknownError": "Bilinmeyen hata"
-    },
-    "binaryPlaceholder": {
-      "file": "İkili dosya ({{size}})"
-    },
-    "unsavedChanges": "Kaydedilmemiş değişiklikler",
-    "empty": {
-      "selectFile": "Düzenlemek için ağaçtan bir dosya seçin"
-    },
-    "search": {
-      "toggleReplace": "Değiştirmeyi Aç/Kapat",
-      "placeholder": "Ara"
-    },
-    "shortcuts": {
-      "title": "Klavye Kısayolları",
-      "groups": {
-        "fileOperations": "Dosya İşlemleri",
-        "search": "Arama",
-        "navigation": "Gezinme",
-        "editing": "Düzenleme",
-        "markdown": "Markdown",
-        "general": "Genel"
-      },
-      "actions": {
-        "quickOpen": "Hızlı Aç",
-        "save": "Kaydet",
-        "saveAll": "Tümünü Kaydet",
-        "closeTab": "Sekmeyi Kapat",
-        "findInFile": "Dosyada Bul",
-        "searchInFiles": "Dosyalarda Ara",
-        "goToLine": "Satıra Git",
-        "nextTab": "Sonraki Sekme",
-        "previousTab": "Önceki Sekme",
-        "cycleTabs": "Sekmeler Arasında Geçiş",
-        "toggleSidebar": "Kenar Çubuğunu Aç/Kapat",
-        "undo": "Geri Al",
-        "redo": "Yinele",
-        "selectNextMatch": "Sonraki Eşleşmeyi Seç",
-        "toggleComment": "Yorumu Aç/Kapat",
-        "splitPreview": "Bölünmüş Önizleme",
-        "fullPreview": "Tam Önizleme",
-        "closeEditor": "Düzenleyiciyi Kapat"
-      }
-    },
-    "toolbar": {
-      "enableWordWrap": "Sözcük kaydırmayı etkinleştir",
-      "disableWordWrap": "Sözcük kaydırmayı devre dışı bırak",
-      "closeSplitPreview": "Bölünmüş önizlemeyi kapat",
-      "closePreview": "Önizlemeyi kapat"
     }
   },
   "launch": {

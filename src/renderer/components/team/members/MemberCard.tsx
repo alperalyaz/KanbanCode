@@ -42,6 +42,7 @@ import {
   Plus,
   RotateCcw,
   Server,
+  Trash2,
   Undo2,
 } from 'lucide-react';
 
@@ -106,6 +107,7 @@ interface MemberCardProps {
   onRestartMember?: (memberName: string) => Promise<void> | void;
   onSkipMemberForLaunch?: (memberName: string) => Promise<void> | void;
   onRestoreMember?: (memberName: string) => Promise<void> | void;
+  onRemoveMember?: (memberName: string) => Promise<void> | void;
 }
 
 const MEMBER_ROW_SURFACE_BLEED_CLASS = '-mx-[calc(1rem-5px)] px-[calc(1rem-5px)]';
@@ -717,6 +719,7 @@ export const MemberCard = memo(function MemberCard({
   onRestartMember,
   onSkipMemberForLaunch,
   onRestoreMember,
+  onRemoveMember,
 }: MemberCardProps): React.JSX.Element {
   const { t } = useAppTranslation('team');
   // NOTE: lead context display disabled — usage formula is inaccurate
@@ -730,6 +733,8 @@ export const MemberCard = memo(function MemberCard({
   const [skipLaunchError, setSkipLaunchError] = useState<string | null>(null);
   const [restoringMember, setRestoringMember] = useState(false);
   const [restoreMemberError, setRestoreMemberError] = useState<string | null>(null);
+  const [removingMember, setRemovingMember] = useState(false);
+  const [removeMemberError, setRemoveMemberError] = useState<string | null>(null);
   const bootstrapConfirmedProvisionedButNotAlive =
     isBootstrapConfirmedProvisionedButNotAliveFailure(spawnEntry);
   const hasUnsafeBootstrapConfirmedProvisionedButNotAlive =
@@ -1022,6 +1027,11 @@ export const MemberCard = memo(function MemberCard({
     !isLeadMember(member) &&
     Boolean(onSkipMemberForLaunch) &&
     hasLiveLaunchControls;
+  const canRemoveFailedLaunch =
+    showFailedLaunchBadge &&
+    !isLeadMember(member) &&
+    Boolean(onRemoveMember) &&
+    hasLiveLaunchControls;
   const showRuntimeAdvisoryBadge =
     !isRemoved &&
     Boolean(runtimeAdvisoryLabel) &&
@@ -1098,6 +1108,24 @@ export const MemberCard = memo(function MemberCard({
       setRestoreMemberError(error instanceof Error ? error.message : 'Failed to restore teammate');
     } finally {
       setRestoringMember(false);
+    }
+  };
+  const handleRemoveMemberCleanup = async (
+    event: React.MouseEvent<HTMLButtonElement>
+  ): Promise<void> => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!onRemoveMember || removingMember) {
+      return;
+    }
+    setRemoveMemberError(null);
+    setRemovingMember(true);
+    try {
+      await onRemoveMember(member.name);
+    } catch (error) {
+      setRemoveMemberError(error instanceof Error ? error.message : 'Failed to remove teammate');
+    } finally {
+      setRemovingMember(false);
     }
   };
 
@@ -1411,6 +1439,29 @@ export const MemberCard = memo(function MemberCard({
                     <TooltipContent side="bottom">
                       {retryLaunchError ??
                         (retryingLaunch ? `${restartActionBusyLabel}...` : restartActionIdleLabel)}
+                    </TooltipContent>
+                  </Tooltip>
+                ) : null}
+                {canRemoveFailedLaunch ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={removingMember ? 'Removing teammate' : 'Remove teammate'}
+                        className="rounded p-1 text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={removingMember || retryingLaunch || skippingLaunch}
+                        onClick={handleRemoveMemberCleanup}
+                      >
+                        {removingMember ? (
+                          <SyncedLoader2 className="size-3.5" />
+                        ) : (
+                          <Trash2 className="size-3.5" />
+                        )}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {removeMemberError ??
+                        (removingMember ? 'Removing teammate...' : 'Remove (clean up)')}
                     </TooltipContent>
                   </Tooltip>
                 ) : null}

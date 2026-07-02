@@ -123,7 +123,6 @@ function createTaskCardElement(
     hasReviewers: true,
     compact: false,
     taskMap: new Map(),
-    memberColorMap: new Map([['alice', 'blue']]),
     onRequestReview: noop,
     onApprove: noop,
     onRequestChanges: noop,
@@ -218,11 +217,9 @@ describe('KanbanTaskCard comment badge pulse', () => {
 
   it('skips rerender when refreshed task objects keep the same snapshot', async () => {
     const taskMap = new Map();
-    const memberColorMap = new Map([['alice', 'blue']]);
     const { root } = await renderTaskCard({
       task: { ...baseTask, comments: [] },
       taskMap,
-      memberColorMap,
     });
 
     expect(unreadCommentCountMock.calls).toBeGreaterThan(0);
@@ -231,7 +228,6 @@ describe('KanbanTaskCard comment badge pulse', () => {
     await rerenderTaskCard(root, {
       task: { ...baseTask, comments: [] },
       taskMap,
-      memberColorMap,
     });
 
     expect(unreadCommentCountMock.calls).toBe(0);
@@ -243,11 +239,9 @@ describe('KanbanTaskCard comment badge pulse', () => {
   });
 
   it('skips rerender when an unrelated taskMap entry changes', async () => {
-    const memberColorMap = new Map([['alice', 'blue']]);
     const { root } = await renderTaskCard({
       task: { ...baseTask, blockedBy: [], blocks: [], comments: [] },
       taskMap: new Map([['other-task', { ...baseTask, id: 'other-task', subject: 'Other task' }]]),
-      memberColorMap,
     });
 
     unreadCommentCountMock.calls = 0;
@@ -256,7 +250,6 @@ describe('KanbanTaskCard comment badge pulse', () => {
       taskMap: new Map([
         ['other-task', { ...baseTask, id: 'other-task', subject: 'Updated unrelated task' }],
       ]),
-      memberColorMap,
     });
 
     expect(unreadCommentCountMock.calls).toBe(0);
@@ -268,12 +261,10 @@ describe('KanbanTaskCard comment badge pulse', () => {
   });
 
   it('rerenders when a displayed dependency task changes', async () => {
-    const memberColorMap = new Map([['alice', 'blue']]);
     const blockedTask = { ...baseTask, id: 'dep-1', displayId: 'dep1', subject: 'Dependency A' };
     const { root } = await renderTaskCard({
       task: { ...baseTask, blockedBy: ['dep-1'], blocks: [], comments: [] },
       taskMap: new Map([['dep-1', blockedTask]]),
-      memberColorMap,
     });
 
     unreadCommentCountMock.calls = 0;
@@ -282,7 +273,6 @@ describe('KanbanTaskCard comment badge pulse', () => {
       taskMap: new Map([
         ['dep-1', { ...blockedTask, subject: 'Dependency B', status: 'completed' }],
       ]),
-      memberColorMap,
     });
 
     expect(unreadCommentCountMock.calls).toBeGreaterThan(0);
@@ -295,18 +285,15 @@ describe('KanbanTaskCard comment badge pulse', () => {
 
   it('rerenders when a hidden task field changes so click handlers stay current', async () => {
     const taskMap = new Map();
-    const memberColorMap = new Map([['alice', 'blue']]);
     const { root } = await renderTaskCard({
       task: { ...baseTask, comments: [] },
       taskMap,
-      memberColorMap,
     });
 
     unreadCommentCountMock.calls = 0;
     await rerenderTaskCard(root, {
       task: { ...baseTask, comments: [], description: 'Updated hidden details' },
       taskMap,
-      memberColorMap,
     });
 
     expect(unreadCommentCountMock.calls).toBeGreaterThan(0);
@@ -510,7 +497,6 @@ describe('KanbanTaskCard change badge', () => {
           hasReviewers: true,
           compact: false,
           taskMap: new Map(),
-          memberColorMap: new Map([['alice', 'blue']]),
           onRequestReview: noop,
           onApprove: noop,
           onRequestChanges: noop,
@@ -547,7 +533,6 @@ describe('KanbanTaskCard change badge', () => {
           hasReviewers: true,
           compact: false,
           taskMap: new Map(),
-          memberColorMap: new Map([['alice', 'blue']]),
           onRequestReview: noop,
           onApprove: noop,
           onRequestChanges: noop,
@@ -584,7 +569,6 @@ describe('KanbanTaskCard change badge', () => {
           hasReviewers: true,
           compact: false,
           taskMap: new Map(),
-          memberColorMap: new Map([['alice', 'blue']]),
           onRequestReview: noop,
           onApprove: noop,
           onRequestChanges: noop,
@@ -668,7 +652,6 @@ describe('KanbanTaskCard live log indicator', () => {
           hasReviewers: true,
           compact: false,
           taskMap: new Map(),
-          memberColorMap: new Map([['alice', 'blue']]),
           onRequestReview: noop,
           onApprove: noop,
           onRequestChanges: noop,

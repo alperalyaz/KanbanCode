@@ -9,7 +9,6 @@ import { Button } from '@renderer/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useResizableColumns } from '@renderer/hooks/useResizableColumns';
 import { cn } from '@renderer/lib/utils';
-import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { isTeamTaskNeedsFixActionable } from '@shared/utils/teamTaskState';
 import {
   CheckCircle2,
@@ -246,7 +245,6 @@ interface SortableKanbanTaskCardProps {
   kanbanState: KanbanState;
   compact?: boolean;
   taskMap: Map<string, TeamTask>;
-  memberColorMap: Map<string, string>;
   hasLiveTaskLogs?: boolean;
   onRequestReview: (taskId: string) => void;
   onApprove: (taskId: string) => void;
@@ -268,7 +266,6 @@ const SortableKanbanTaskCard = ({
   kanbanState,
   compact,
   taskMap,
-  memberColorMap,
   hasLiveTaskLogs,
   onRequestReview,
   onApprove,
@@ -304,7 +301,6 @@ const SortableKanbanTaskCard = ({
         hasReviewers={kanbanState.reviewers.length > 0}
         compact={compact}
         taskMap={taskMap}
-        memberColorMap={memberColorMap}
         hasLiveTaskLogs={hasLiveTaskLogs}
         onRequestReview={onRequestReview}
         onApprove={onApprove}
@@ -386,7 +382,6 @@ export const KanbanBoard = memo(function KanbanBoard({
     stableTaskMapRef.current = { signatures, map: next };
     return next;
   }, [tasks]);
-  const memberColorMap = useMemo(() => buildMemberColorMap(members), [members]);
   const grouped = useMemo(() => {
     const result = new Map<KanbanColumnId, TeamTask[]>(
       COLUMNS.map(({ id }) => [id, [] as TeamTask[]])
@@ -585,7 +580,6 @@ export const KanbanBoard = memo(function KanbanBoard({
                   kanbanState={kanbanState}
                   compact={compact}
                   taskMap={taskMap}
-                  memberColorMap={memberColorMap}
                   hasLiveTaskLogs={Boolean(activeTaskLogActivity?.[task.id])}
                   onRequestReview={onRequestReview}
                   onApprove={onApprove}
@@ -618,7 +612,6 @@ export const KanbanBoard = memo(function KanbanBoard({
               hasReviewers={hasReviewers}
               compact={compact}
               taskMap={taskMap}
-              memberColorMap={memberColorMap}
               hasLiveTaskLogs={Boolean(activeTaskLogActivity?.[task.id])}
               onRequestReview={onRequestReview}
               onApprove={onApprove}
@@ -644,7 +637,6 @@ export const KanbanBoard = memo(function KanbanBoard({
       handleScrollToTask,
       hasReviewers,
       kanbanState,
-      memberColorMap,
       onAddTask,
       onApprove,
       onCancelTask,

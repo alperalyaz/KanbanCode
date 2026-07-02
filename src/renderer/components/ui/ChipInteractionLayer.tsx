@@ -17,11 +17,10 @@ import { oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
 import { EditorView } from '@codemirror/view';
 import { useAppTranslation } from '@features/localization/renderer';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
-import { useStore } from '@renderer/store';
 import { chipDisplayLabel } from '@renderer/types/inlineChip';
 import { calculateChipPositions } from '@renderer/utils/chipUtils';
 import { getSyncLanguageExtension } from '@renderer/utils/codemirrorLanguages';
-import { ExternalLink, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
 import type { InlineChip } from '@renderer/types/inlineChip';
 import type { ChipPosition } from '@renderer/utils/chipUtils';
@@ -56,50 +55,13 @@ const chipPreviewTheme = EditorView.theme({
 const MAX_PREVIEW_LINES = 12;
 
 /** Simple tooltip for file-level mention chips (no code preview). */
-const ChipFilePreview = ({
-  chip,
-  onOpenInEditor,
-  onRevealFolder,
-}: {
-  chip: InlineChip;
-  onOpenInEditor?: (filePath: string) => void;
-  onRevealFolder?: (folderPath: string) => void;
-}): React.JSX.Element => {
-  const { t } = useAppTranslation('common');
+const ChipFilePreview = ({ chip }: { chip: InlineChip }): React.JSX.Element => {
   const displayPath = chip.displayPath ?? chip.filePath;
-  const isFolder = chip.isFolder === true;
   return (
     <div className="max-w-md overflow-hidden rounded-md">
       <div className="flex items-center gap-2 bg-[var(--code-bg,#1e1e2e)] px-2.5 py-2">
         <span className="text-[11px] font-medium text-[var(--color-text)]">{chip.fileName}</span>
         <span className="flex-1 text-[10px] text-[var(--color-text-muted)]">{displayPath}</span>
-        {isFolder && onRevealFolder ? (
-          <button
-            type="button"
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onRevealFolder(chip.filePath);
-            }}
-          >
-            <ExternalLink size={10} />
-            {t('actions.reveal')}
-          </button>
-        ) : !isFolder && onOpenInEditor ? (
-          <button
-            type="button"
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onOpenInEditor(chip.filePath);
-            }}
-          >
-            <ExternalLink size={10} />
-            {t('actions.open')}
-          </button>
-        ) : null}
       </div>
     </div>
   );
@@ -208,8 +170,6 @@ export const ChipInteractionLayer = ({
 }: ChipInteractionLayerProps): React.JSX.Element | null => {
   const [positions, setPositions] = React.useState<ChipPosition[]>([]);
   const positionsRef = React.useRef<ChipPosition[]>([]);
-  const revealFileInEditor = useStore((s) => s.revealFileInEditor);
-  const revealFolderInEditor = useStore((s) => s.revealFolderInEditor);
 
   const commitPositions = React.useCallback((nextPositions: ChipPosition[]) => {
     if (areChipPositionsEquivalent(positionsRef.current, nextPositions)) return;
@@ -234,20 +194,12 @@ export const ChipInteractionLayer = ({
       <div style={{ transform: `translateY(-${scrollTop}px)` }}>
         {positions.map((pos) => {
           const isFileChip = pos.chip.fromLine == null;
-          const isFolderChip = pos.chip.isFolder === true;
-          const openChipTarget = (): void => {
-            if (isFolderChip) {
-              revealFolderInEditor(pos.chip.filePath);
-            } else {
-              revealFileInEditor(pos.chip.filePath);
-            }
-          };
 
           return (
             <Tooltip key={pos.chip.id}>
               <TooltipTrigger asChild>
                 <div
-                  className={`group pointer-events-auto absolute ${isFileChip ? 'cursor-pointer' : 'cursor-default'}`}
+                  className="group pointer-events-auto absolute cursor-default"
                   style={{
                     top: pos.top,
                     left: pos.left,
@@ -255,18 +207,6 @@ export const ChipInteractionLayer = ({
                     height: pos.height,
                   }}
                 >
-                  {isFileChip ? (
-                    <button
-                      type="button"
-                      className="absolute inset-0 cursor-pointer rounded-sm bg-transparent p-0"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        openChipTarget();
-                      }}
-                      aria-label={`Open ${chipDisplayLabel(pos.chip)}`}
-                    />
-                  ) : null}
                   <button
                     type="button"
                     className="pointer-events-none absolute -right-1 -top-1.5 z-30 flex size-3.5 items-center justify-center rounded-full border border-[var(--color-border-emphasis)] bg-[var(--color-surface-raised)] opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100"
@@ -282,11 +222,7 @@ export const ChipInteractionLayer = ({
               </TooltipTrigger>
               <TooltipContent side="top" className="max-w-md p-0">
                 {isFileChip ? (
-                  <ChipFilePreview
-                    chip={pos.chip}
-                    onOpenInEditor={revealFileInEditor}
-                    onRevealFolder={revealFolderInEditor}
-                  />
+                  <ChipFilePreview chip={pos.chip} />
                 ) : (
                   <ChipCodePreview chip={pos.chip} />
                 )}

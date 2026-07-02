@@ -325,7 +325,7 @@ export function resolveRelativePath(relativeSrc: string, baseDir: string): strin
 }
 
 // =============================================================================
-// LocalImage — loads images via IPC (readBinaryPreview) for local file access
+// LocalImage — local file images render as a text fallback (no filesystem IPC)
 // =============================================================================
 
 interface LocalImageProps {
@@ -337,49 +337,13 @@ interface LocalImageProps {
 const LocalImage = React.memo(function LocalImage({
   src,
   alt,
-  baseDir,
 }: LocalImageProps): React.ReactElement {
   const { t } = useAppTranslation('common');
-  const [dataUrl, setDataUrl] = React.useState<string | null>(null);
-  const [error, setError] = React.useState(false);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    setDataUrl(null);
-    setError(false);
-
-    const fullPath = resolveRelativePath(src, baseDir);
-    window.electronAPI.editor
-      .readBinaryPreview(fullPath)
-      .then((result) => {
-        if (!cancelled) {
-          setDataUrl(`data:${result.mimeType};base64,${result.base64}`);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [src, baseDir]);
-
-  if (error) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs text-text-muted">
-        {t('markdown.imageFallback', { label: alt || src })}
-      </span>
-    );
-  }
-
-  if (!dataUrl) {
-    return (
-      <span className="inline-block size-4 animate-pulse rounded bg-surface-raised align-middle" />
-    );
-  }
-
-  return <img src={dataUrl} alt={alt || ''} className="my-2 max-w-full rounded" />;
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-text-muted">
+      {t('markdown.imageFallback', { label: alt || src })}
+    </span>
+  );
 });
 
 /** Extract plain text from a hast (HTML AST) node tree */

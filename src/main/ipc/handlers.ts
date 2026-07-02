@@ -263,7 +263,6 @@ export function initializeIpcHandlers(
   registerContextHandlers(ipcMain);
   registerTeamHandlers(ipcMain);
   registerReviewHandlers(ipcMain);
-  registerEditorHandlers(ipcMain);
   registerWindowHandlers(ipcMain);
   registerRendererLogHandlers(ipcMain);
   registerScheduleHandlers(ipcMain);
@@ -311,7 +310,6 @@ export function removeIpcHandlers(): void {
   removeContextHandlers(ipcMain);
   removeTeamHandlers(ipcMain);
   removeReviewHandlers(ipcMain);
-  removeEditorHandlers(ipcMain);
   removeWindowHandlers(ipcMain);
   removeRendererLogHandlers(ipcMain);
   removeScheduleHandlers(ipcMain);

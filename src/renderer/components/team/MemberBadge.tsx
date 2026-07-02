@@ -22,6 +22,7 @@ import type { ResolvedTeamMember } from '@shared/types';
 interface MemberBadgeProps {
   name: string;
   color?: string;
+  variant?: 'colored' | 'neutral';
   /** Owning team context for hover-card store lookups. */
   teamName?: string;
   /** Pre-resolved theme flag from callers that already read theme state. */
@@ -69,6 +70,7 @@ const MemberBadgeResolvedContent = memo(
   ({
     name,
     color,
+    variant = 'colored',
     teamName,
     isLight,
     size = 'sm',
@@ -77,17 +79,24 @@ const MemberBadgeResolvedContent = memo(
     onClick,
     disableHoverCard,
   }: MemberBadgeResolvedContentProps): React.JSX.Element => {
-    const colors = getTeamColorSet(color ?? '');
+    const isNeutral = variant === 'neutral';
+    const colors = isNeutral ? undefined : getTeamColorSet(color ?? '');
     const avatarSize = size === 'md' ? 32 : size === 'sm' ? 24 : 18;
     const avatarClass = size === 'md' ? 'size-6' : size === 'sm' ? 'size-5' : 'size-4';
     const textClass = size === 'md' ? 'text-xs' : size === 'sm' ? 'text-[10px]' : 'text-[9px]';
     const paddingClass = size === 'xs' ? 'px-1 py-0.5' : 'px-1.5 py-0.5';
 
-    const badgeStyle = {
-      backgroundColor: getThemedBadge(colors, isLight),
-      color: getThemedText(colors, isLight),
-      border: `1px solid ${getThemedBorder(colors, isLight)}40`,
-    };
+    const badgeStyle = !colors
+      ? {
+          backgroundColor: 'var(--color-surface)',
+          color: 'var(--color-text-secondary)',
+          border: '1px solid var(--color-border)',
+        }
+      : {
+          backgroundColor: getThemedBadge(colors, isLight),
+          color: getThemedText(colors, isLight),
+          border: `1px solid ${getThemedBorder(colors, isLight)}40`,
+        };
 
     const avatar = (
       <img
@@ -134,7 +143,7 @@ const MemberBadgeResolvedContent = memo(
     }
 
     return (
-      <MemberHoverCard name={name} color={color} teamName={teamName}>
+      <MemberHoverCard name={name} color={isNeutral ? undefined : color} teamName={teamName}>
         {content}
       </MemberHoverCard>
     );

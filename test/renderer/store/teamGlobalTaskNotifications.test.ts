@@ -233,6 +233,48 @@ describe('teamGlobalTaskNotifications', () => {
     ]);
   });
 
+  it('keeps task_comment and task_review_requested on separate notification paths', () => {
+    processGlobalTaskNotifications({
+      oldTasks: [createTask({ comments: [] })],
+      newTasks: [
+        createTask({
+          comments: [
+            createComment({ id: 'c1', author: 'bob', text: 'Looks blocked' }),
+            createComment({
+              id: 'c2',
+              author: 'reviewer',
+              text: 'Please review this',
+              type: 'review_request',
+            }),
+          ],
+        }),
+      ],
+      appConfig: createConfig(),
+      teamByName: { 'team-a': teamSummary() },
+      isInitialFetch: false,
+    });
+
+    const notifications = sentNotifications();
+
+    expect(notifications).toHaveLength(2);
+    expect(notifications.map((notification) => notification.teamEventType)).toEqual([
+      'task_comment',
+      'task_review_requested',
+    ]);
+    expect(notifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          teamEventType: 'task_comment',
+          dedupeKey: 'comment:team-a:task-1:c1',
+        }),
+        expect.objectContaining({
+          teamEventType: 'task_review_requested',
+          dedupeKey: 'review-request:team-a:task-1:c2',
+        }),
+      ])
+    );
+  });
+
   it('emits blocked and created task notifications on non-initial updates', () => {
     const existingTask = createTask();
     const newTask = createTask({ id: 'task-3', subject: 'New work' });

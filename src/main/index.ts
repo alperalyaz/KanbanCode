@@ -145,7 +145,6 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
-import { cleanupEditorState, setEditorMainWindow } from './ipc/editor';
 import { initializeIpcHandlers, removeIpcHandlers } from './ipc/handlers';
 import { registerRendererLogHandlers } from './ipc/rendererLogs';
 import { setReviewMainWindow } from './ipc/review';
@@ -2624,8 +2623,6 @@ async function shutdownServices(): Promise<void> {
       }
     });
 
-    await runShutdownStep('editor cleanup', () => cleanupEditorState());
-
     if (contextRegistry) {
       await runShutdownStep('context registry dispose', () => contextRegistry.dispose());
     }
@@ -2720,7 +2717,6 @@ function attachMainWindowToServices(): void {
   ptyTerminalService?.setMainWindow(win);
   teamProvisioningService?.setMainWindow(win);
   codexAccountFeature?.setMainWindow(win);
-  setEditorMainWindow(win);
   setReviewMainWindow(win);
 }
 
@@ -3053,9 +3049,7 @@ function createWindow(): void {
       teamProvisioningService.setMainWindow(null);
     }
     codexAccountFeature?.setMainWindow(null);
-    setEditorMainWindow(null);
     setReviewMainWindow(null);
-    cleanupEditorState();
   });
 
   // Handle renderer process crashes (render-process-gone replaces deprecated 'crashed' event)

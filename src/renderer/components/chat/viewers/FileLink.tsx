@@ -139,27 +139,21 @@ export const FileLink = React.memo(function FileLink({
     );
   }
 
-  const { filePath, line } = parsePathWithLine(href);
+  const { filePath } = parsePathWithLine(href);
   const absolutePath = resolveFileLinkPath(filePath, projectPath);
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
 
-    if (isTeamTab) {
-      const { revealFileInEditor, setPendingGoToLine } = useStore.getState();
-      if (line !== null) setPendingGoToLine(line);
-      revealFileInEditor(absolutePath);
-    } else {
-      void navigator.clipboard.writeText(absolutePath).then(
-        () => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        },
-        () => {
-          // Clipboard API may not be available in all contexts
-        }
-      );
-    }
+    void navigator.clipboard.writeText(absolutePath).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      },
+      () => {
+        // Clipboard API may not be available in all contexts
+      }
+    );
   };
 
   return (

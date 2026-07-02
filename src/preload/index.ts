@@ -33,24 +33,6 @@ import {
   CROSS_TEAM_GET_OUTBOX,
   CROSS_TEAM_LIST_TARGETS,
   CROSS_TEAM_SEND,
-  EDITOR_CHANGE,
-  EDITOR_CLOSE,
-  EDITOR_CREATE_DIR,
-  EDITOR_CREATE_FILE,
-  EDITOR_DELETE_FILE,
-  EDITOR_GIT_STATUS,
-  EDITOR_LIST_FILES,
-  EDITOR_MOVE_FILE,
-  EDITOR_OPEN,
-  EDITOR_READ_BINARY_PREVIEW,
-  EDITOR_READ_DIR,
-  EDITOR_READ_FILE,
-  EDITOR_RENAME_FILE,
-  EDITOR_SEARCH_IN_FILES,
-  EDITOR_SET_WATCHED_DIRS,
-  EDITOR_SET_WATCHED_FILES,
-  EDITOR_WATCH_DIR,
-  EDITOR_WRITE_FILE,
   HTTP_SERVER_GET_STATUS,
   HTTP_SERVER_START,
   HTTP_SERVER_STOP,
@@ -359,21 +341,7 @@ import type {
   WindowsElevationStatus,
   WslClaudeRootCandidate,
 } from '@shared/types';
-import type {
-  BinaryPreviewResult,
-  CreateDirResponse,
-  CreateFileResponse,
-  DeleteFileResponse,
-  EditorFileChangeEvent,
-  GitStatusResult,
-  MoveFileResponse,
-  QuickOpenFile,
-  ReadDirResult,
-  ReadFileResult,
-  SearchInFilesOptions,
-  SearchInFilesResult,
-  WriteFileResponse,
-} from '@shared/types/editor';
+import type { EditorFileChangeEvent, QuickOpenFile } from '@shared/types/editor';
 import type {
   ApiKeyEntry,
   ApiKeyLookupResult,
@@ -1661,46 +1629,6 @@ const electronAPI: ElectronAPI = {
   project: {
     listFiles: (projectPath: string) =>
       invokeIpcWithResult<QuickOpenFile[]>(PROJECT_LIST_FILES, projectPath),
-  },
-
-  // ===== Editor API =====
-  editor: {
-    open: (projectPath: string) => invokeIpcWithResult<void>(EDITOR_OPEN, projectPath),
-    close: () => invokeIpcWithResult<void>(EDITOR_CLOSE),
-    readDir: (dirPath: string, maxEntries?: number) =>
-      invokeIpcWithResult<ReadDirResult>(EDITOR_READ_DIR, dirPath, maxEntries),
-    readFile: (filePath: string) => invokeIpcWithResult<ReadFileResult>(EDITOR_READ_FILE, filePath),
-    writeFile: (filePath: string, content: string, baselineMtimeMs?: number) =>
-      invokeIpcWithResult<WriteFileResponse>(EDITOR_WRITE_FILE, filePath, content, baselineMtimeMs),
-    createFile: (parentDir: string, fileName: string) =>
-      invokeIpcWithResult<CreateFileResponse>(EDITOR_CREATE_FILE, parentDir, fileName),
-    createDir: (parentDir: string, dirName: string) =>
-      invokeIpcWithResult<CreateDirResponse>(EDITOR_CREATE_DIR, parentDir, dirName),
-    deleteFile: (filePath: string) =>
-      invokeIpcWithResult<DeleteFileResponse>(EDITOR_DELETE_FILE, filePath),
-    moveFile: (sourcePath: string, destDir: string) =>
-      invokeIpcWithResult<MoveFileResponse>(EDITOR_MOVE_FILE, sourcePath, destDir),
-    renameFile: (sourcePath: string, newName: string) =>
-      invokeIpcWithResult<MoveFileResponse>(EDITOR_RENAME_FILE, sourcePath, newName),
-    searchInFiles: (options: SearchInFilesOptions) =>
-      invokeIpcWithResult<SearchInFilesResult>(EDITOR_SEARCH_IN_FILES, options),
-    listFiles: () => invokeIpcWithResult<QuickOpenFile[]>(EDITOR_LIST_FILES),
-    readBinaryPreview: (filePath: string) =>
-      invokeIpcWithResult<BinaryPreviewResult>(EDITOR_READ_BINARY_PREVIEW, filePath),
-    gitStatus: () => invokeIpcWithResult<GitStatusResult>(EDITOR_GIT_STATUS),
-    watchDir: (enable: boolean) => invokeIpcWithResult<void>(EDITOR_WATCH_DIR, enable),
-    setWatchedFiles: (filePaths: string[]) =>
-      invokeIpcWithResult<void>(EDITOR_SET_WATCHED_FILES, filePaths),
-    setWatchedDirs: (dirPaths: string[]) =>
-      invokeIpcWithResult<void>(EDITOR_SET_WATCHED_DIRS, dirPaths),
-    onEditorChange: (callback: (event: EditorFileChangeEvent) => void): (() => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, data: EditorFileChangeEvent): void =>
-        callback(data);
-      ipcRenderer.on(EDITOR_CHANGE, listener);
-      return (): void => {
-        ipcRenderer.removeListener(EDITOR_CHANGE, listener);
-      };
-    },
   },
 
   schedules: {

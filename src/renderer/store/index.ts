@@ -33,7 +33,6 @@ import { createConfigSlice } from './slices/configSlice';
 import { createConnectionSlice } from './slices/connectionSlice';
 import { createContextSlice } from './slices/contextSlice';
 import { createConversationSlice } from './slices/conversationSlice';
-import { createEditorSlice } from './slices/editorSlice';
 import { createExtensionsSlice } from './slices/extensionsSlice';
 import { createNotificationSlice } from './slices/notificationSlice';
 import { createPaneSlice } from './slices/paneSlice';
@@ -194,7 +193,6 @@ export const useStore = create<AppState>()((...args) => ({
   ...createUpdateSlice(...args),
   ...createChangeReviewSlice(...args),
   ...createCliInstallerSlice(...args),
-  ...createEditorSlice(...args),
   ...createScheduleSlice(...args),
   ...createExtensionsSlice(...args),
 }));
@@ -973,8 +971,7 @@ export function initializeNotificationListeners(): () => void {
       if (!pane.activeTabId) continue;
       const activeTab = pane.tabs.find((tab) => tab.id === pane.activeTabId);
       if (
-        (activeTab?.type === 'team' ||
-          activeTab?.type === 'usage') &&
+        (activeTab?.type === 'team' || activeTab?.type === 'usage') &&
         activeTab.teamName != null
       ) {
         visibleTeamNames.add(activeTab.teamName);
@@ -1032,10 +1029,7 @@ export function initializeNotificationListeners(): () => void {
     }
 
     const activeTab = focusedPane.tabs.find((tab) => tab.id === focusedPane.activeTabId);
-    if (
-      (activeTab?.type !== 'team' && activeTab?.type !== 'usage') ||
-      !activeTab.teamName
-    ) {
+    if ((activeTab?.type !== 'team' && activeTab?.type !== 'usage') || !activeTab.teamName) {
       return null;
     }
 
@@ -2246,19 +2240,6 @@ export function initializeNotificationListeners(): () => void {
     api.teams.updateToolApprovalSettings?.(activeTeam, savedSettings).catch(() => {
       // Silently ignore — settings will use defaults until next update
     });
-  }
-
-  // Listen for editor file change events (chokidar watcher → renderer)
-  if (api.editor?.onEditorChange) {
-    const cleanup = api.editor.onEditorChange((event) => {
-      const state = useStore.getState();
-      if (state.editorProjectPath) {
-        state.handleExternalFileChange(event);
-      }
-    });
-    if (typeof cleanup === 'function') {
-      cleanupFns.push(cleanup);
-    }
   }
 
   // Listen for schedule change events from main process

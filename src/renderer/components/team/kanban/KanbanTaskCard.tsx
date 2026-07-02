@@ -49,7 +49,6 @@ interface KanbanTaskCardProps {
   hasReviewers: boolean;
   compact?: boolean;
   taskMap: Map<string, TeamTask>;
-  memberColorMap: Map<string, string>;
   hasLiveTaskLogs?: boolean;
   onRequestReview: (taskId: string) => void;
   onApprove: (taskId: string) => void;
@@ -541,7 +540,6 @@ export const KanbanTaskCard = memo(
     hasReviewers,
     compact,
     taskMap,
-    memberColorMap,
     hasLiveTaskLogs = false,
     onRequestReview,
     onApprove,
@@ -620,7 +618,7 @@ export const KanbanTaskCard = memo(
         </span>
         {task.owner ? (
           <span className="absolute right-[6px] top-[2px]">
-            <MemberBadge name={task.owner} color={memberColorMap.get(task.owner)} size="xs" />
+            <MemberBadge name={task.owner} size="xs" variant="neutral" />
           </span>
         ) : null}
         <div className="mb-2 pt-[11px]">
@@ -721,7 +719,6 @@ export const KanbanTaskCard = memo(
     prev.hasReviewers === next.hasReviewers &&
     prev.compact === next.compact &&
     areTaskMapDependenciesEqual(prev.task, next.task, prev.taskMap, next.taskMap) &&
-    prev.memberColorMap === next.memberColorMap &&
     prev.hasLiveTaskLogs === next.hasLiveTaskLogs &&
     prev.onRequestReview === next.onRequestReview &&
     prev.onApprove === next.onApprove &&

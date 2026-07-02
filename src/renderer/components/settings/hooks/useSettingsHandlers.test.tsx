@@ -46,11 +46,32 @@ function createSettingsConfig(): AppConfig {
       statusChangeStatuses: ['review'],
       statusChangeOnlySolo: false,
       ignoredRepositories: [],
+      ignoredRegex: [],
+      autoResumeOnRateLimit: false,
+      triggers: [],
     },
     display: {
       showGraph: true,
       showTerminal: true,
       showTeamMembers: true,
+    },
+    providerConnections: {
+      anthropic: {
+        authMode: 'auto',
+        fastModeDefault: false,
+        compatibleEndpoint: {
+          enabled: false,
+          baseUrl: '',
+        },
+      },
+      codex: {
+        preferredAuthMode: 'auto',
+        customProvider: {
+          enabled: false,
+          baseUrl: '',
+          model: '',
+        },
+      },
     },
     runtime: {
       provider: 'codex',
@@ -58,7 +79,7 @@ function createSettingsConfig(): AppConfig {
     sessions: {
       retentionDays: 30,
     },
-  } as AppConfig;
+  } as unknown as AppConfig;
 }
 
 describe('useSettingsHandlers critical-only preset', () => {

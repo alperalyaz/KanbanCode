@@ -176,41 +176,6 @@ export interface QuickOpenFile {
   relativePath: string;
 }
 
-export interface EditorAPI {
-  open: (projectPath: string) => Promise<void>;
-  close: () => Promise<void>;
-  readDir: (dirPath: string, maxEntries?: number) => Promise<ReadDirResult>;
-  readFile: (filePath: string) => Promise<ReadFileResult>;
-  writeFile: (
-    filePath: string,
-    content: string,
-    baselineMtimeMs?: number
-  ) => Promise<WriteFileResponse>;
-  createFile: (parentDir: string, fileName: string) => Promise<CreateFileResponse>;
-  createDir: (parentDir: string, dirName: string) => Promise<CreateDirResponse>;
-  deleteFile: (filePath: string) => Promise<DeleteFileResponse>;
-  moveFile: (sourcePath: string, destDir: string) => Promise<MoveFileResponse>;
-  renameFile: (sourcePath: string, newName: string) => Promise<MoveFileResponse>;
-  searchInFiles: (options: SearchInFilesOptions) => Promise<SearchInFilesResult>;
-  listFiles: () => Promise<QuickOpenFile[]>;
-  readBinaryPreview: (filePath: string) => Promise<BinaryPreviewResult>;
-  gitStatus: () => Promise<GitStatusResult>;
-  watchDir: (enable: boolean) => Promise<void>;
-  /**
-   * Provide the list of currently-open file paths (tabs) to watch.
-   * Intended as a performance optimization: avoids watching the whole project tree.
-   */
-  setWatchedFiles: (filePaths: string[]) => Promise<void>;
-  /**
-   * Provide the list of directories to watch shallowly (depth=0).
-   * Intended to keep the explorer tree in sync with external changes without
-   * recursively watching the whole project.
-   */
-  setWatchedDirs: (dirPaths: string[]) => Promise<void>;
-  /** Subscribe to file change events (main → renderer). Returns cleanup function. */
-  onEditorChange: (callback: (event: EditorFileChangeEvent) => void) => () => void;
-}
-
 /** Editor-independent project file operations (e.g. @file mentions). */
 export interface ProjectAPI {
   listFiles: (projectPath: string) => Promise<QuickOpenFile[]>;

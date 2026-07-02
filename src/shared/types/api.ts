@@ -9,7 +9,7 @@
 
 import type { CliArgsValidationResult } from '../utils/cliArgsParser';
 import type { CliInstallerAPI, OpenCodeRuntimeAPI } from './cliInstaller';
-import type { EditorAPI, EditorFileChangeEvent, ProjectAPI } from './editor';
+import type { EditorFileChangeEvent, ProjectAPI } from './editor';
 import type { ApiKeysAPI, McpCatalogAPI, PluginCatalogAPI, SkillsCatalogAPI } from './extensions';
 import type {
   AppConfig,
@@ -999,9 +999,6 @@ export interface ElectronAPI extends RecentProjectsElectronApi, CodexAccountElec
 
   // Project file operations (editor-independent)
   project: ProjectAPI;
-
-  // Project Editor API (file browser + CodeMirror)
-  editor: EditorAPI;
 
   // Schedule API (cron-based task execution)
   schedules: ScheduleAPI;

@@ -6,7 +6,7 @@ import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
 import { selectResolvedMembersForTeamName } from '@renderer/store/slices/teamSlice';
-import { buildMemberColorMap, REVIEW_STATE_DISPLAY } from '@renderer/utils/memberHelpers';
+import { REVIEW_STATE_DISPLAY } from '@renderer/utils/memberHelpers';
 import { linkifyTaskIdsInMarkdown } from '@renderer/utils/taskReferenceUtils';
 import { formatTaskDisplayLabel, taskMatchesRef } from '@shared/utils/taskIdentity';
 import {
@@ -141,11 +141,6 @@ const TaskTooltipContent = memo(function TaskTooltipContent({
     return [];
   }, [selectedTeamMembers, selectedTeamName, teamName, task]);
 
-  const colorMap = useMemo(
-    () => (members ? buildMemberColorMap(members) : new Map<string, string>()),
-    [members]
-  );
-
   // If task not found, render children without tooltip
   if (!task) return null;
 
@@ -192,11 +187,7 @@ const TaskTooltipContent = memo(function TaskTooltipContent({
 
         {/* Owner */}
         {task.owner && members.length > 0 ? (
-          <MemberBadge
-            name={task.owner}
-            color={colorMap.get(task.owner)}
-            teamName={resolvedTeamName}
-          />
+          <MemberBadge name={task.owner} teamName={resolvedTeamName} variant="neutral" />
         ) : task.owner ? (
           <span className="text-[10px] text-[var(--color-text-secondary)]">{task.owner}</span>
         ) : (
