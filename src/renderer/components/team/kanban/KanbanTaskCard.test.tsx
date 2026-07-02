@@ -430,7 +430,9 @@ describe('KanbanTaskCard comment badge pulse', () => {
 
     unreadBadgeMock.props.length = 0;
     unreadCommentCountMock.value = 1;
-    await rerenderTaskCard(root, { task: taskWithComment });
+    // Fresh callback identity forces a re-render despite the memo comparator,
+    // standing in for the store-driven update that changes the unread count.
+    await rerenderTaskCard(root, { task: taskWithComment, onViewChanges: () => undefined });
 
     const props = getLastUnreadBadgeProps();
     expect(props.unreadCount).toBe(1);

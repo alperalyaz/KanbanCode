@@ -38,7 +38,8 @@ Core to keep: team creation + agent process management + kanban board + messagin
 ## Status log
 
 - **2026-07-02** — Built-in code editor and team-graph visualization removed (commit `4359e7b6` + earlier commits). Typecheck green after cleaning ~250 leftover errors (orphaned tests deleted, preload/MarkdownViewer/MemberBadge/KanbanTaskCard fixes). i18n types regenerated. Branch `claude/agent-teams-ai-overview-f8n3rm` merged into `main` and deleted; all work now on `main`.
-- **2026-07-02** — Full vitest suite after clean install: 9219 passed / 50 failed / 69 skipped. Failure triage pending (distinguish machine-specific env failures from real regressions). Known local-machine quirks: `node_modules/.bin` can end up empty → run tools via `node node_modules/vitest/vitest.mjs run`; a stale process once locked `node-pty` and broke `pnpm install`.
+- **2026-07-02** — Full vitest suite after clean install: 9219 passed / 50 failed / 69 skipped. Known local-machine quirks: `node_modules/.bin` can end up empty → run tools via `node node_modules/vitest/vitest.mjs run`; a stale process once locked `node-pty` and broke `pnpm install`.
+- **2026-07-02** — Test triage done. Fixed the removal-related failures: 19 orphaned graph-layout tests deleted from `teamSlice.test.ts`, `AttachmentDisplay.test` rewritten for the no-editor behavior, `KanbanTaskCard` pulse test no longer depends on the removed `memberColorMap` prop identity. Remaining ~25 failures are **pre-existing upstream Windows path-normalization bugs** (drive-letter prefixes, hardcoded `\Users\belief\...` author paths) in Codex/model-catalog/trust/live-smoke tests, plus terminal-workspace tests that disappear with the terminal removal. They are not regressions; fix or prune separately.
 
 ## Working agreements
 
