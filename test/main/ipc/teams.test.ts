@@ -347,6 +347,7 @@ describe('ipc teams handlers', () => {
     detachOpenCodeOwnedMemberLane: vi.fn(async () => undefined),
     attachLiveRosterMember: vi.fn(async () => undefined),
     detachLiveRosterMember: vi.fn(async () => undefined),
+    getMemberSpawnStatuses: vi.fn(async () => ({ statuses: {} })),
   };
   const boardTaskActivityService = {
     getTaskActivity: vi.fn<() => Promise<BoardTaskActivityEntry[]>>(async () => []),
@@ -429,6 +430,8 @@ describe('ipc teams handlers', () => {
     provisioningService.attachLiveRosterMember.mockResolvedValue(undefined);
     provisioningService.detachLiveRosterMember.mockReset();
     provisioningService.detachLiveRosterMember.mockResolvedValue(undefined);
+    provisioningService.getMemberSpawnStatuses.mockReset();
+    provisioningService.getMemberSpawnStatuses.mockResolvedValue({ statuses: {} });
     provisioningService.repairStaleTaskActivityIntervalsBeforeSnapshot.mockReset();
     provisioningService.repairStaleTaskActivityIntervalsBeforeSnapshot.mockResolvedValue(undefined);
     launchIoGovernor = new LaunchIoGovernor({ quietWindowMs: 100 });
@@ -3764,6 +3767,16 @@ describe('ipc teams handlers', () => {
         kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
         processes: [],
       });
+      provisioningService.getMemberSpawnStatuses.mockResolvedValueOnce({
+        statuses: {
+          alice: {
+            status: 'online',
+            launchState: 'confirmed_alive',
+            runtimeAlive: true,
+            bootstrapConfirmed: true,
+          },
+        },
+      });
       provisioningService.detachLiveRosterMember.mockRejectedValueOnce(new Error('detach failed'));
 
       const result = (await handler({} as never, 'my-team', 'alice')) as {
@@ -3798,6 +3811,78 @@ describe('ipc teams handlers', () => {
       expect(provisioningService.attachLiveRosterMember).toHaveBeenCalledWith('my-team', 'alice', {
         reason: 'member_updated',
       });
+      vi.mocked(console.error).mockClear();
+    });
+
+    it('keeps removal for a never-spawned member when detach fails', async () => {
+      const handler = handlers.get(TEAM_REMOVE_MEMBER)!;
+      mockGetMembersMetaFile.mockResolvedValueOnce({
+        version: 1,
+        providerBackendId: undefined,
+        members: [
+          {
+            name: 'team-lead',
+            providerId: 'codex',
+            role: 'Team Lead',
+            agentType: 'team-lead',
+          },
+          {
+            name: 'alice',
+            providerId: 'codex',
+            role: 'Developer',
+            agentType: 'general-purpose',
+          },
+        ],
+      });
+      service.getTeamData.mockResolvedValueOnce({
+        teamName: 'my-team',
+        config: { name: 'My Team' },
+        tasks: [],
+        members: [
+          {
+            name: 'team-lead',
+            providerId: 'codex',
+            role: 'Team Lead',
+            currentTaskId: null,
+            taskCount: 0,
+          },
+          {
+            name: 'alice',
+            providerId: 'codex',
+            role: 'Developer',
+            currentTaskId: null,
+            taskCount: 0,
+          },
+        ],
+        kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
+        processes: [],
+      });
+      provisioningService.getMemberSpawnStatuses.mockResolvedValueOnce({
+        statuses: {
+          alice: {
+            status: 'error',
+            launchState: 'failed_to_start',
+            hardFailure: true,
+            hardFailureReason: 'Teammate was never spawned during launch.',
+            runtimeAlive: false,
+            bootstrapConfirmed: false,
+          },
+        },
+      });
+      provisioningService.detachLiveRosterMember.mockRejectedValueOnce(new Error('detach failed'));
+
+      const result = (await handler({} as never, 'my-team', 'alice')) as {
+        success: boolean;
+        error?: string;
+      };
+
+      expect(result.success).toBe(true);
+      expect(service.removeMember).toHaveBeenCalledWith('my-team', 'alice');
+      expect(provisioningService.attachLiveRosterMember).not.toHaveBeenCalled();
+      expect(vi.mocked(console.warn).mock.calls.some((call) => call.join(' ').includes('never-spawned member "alice"'))).toBe(
+        true
+      );
+      vi.mocked(console.warn).mockClear();
       vi.mocked(console.error).mockClear();
     });
   });

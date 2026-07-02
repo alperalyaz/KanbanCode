@@ -153,6 +153,7 @@ import { TeamAttachmentStore } from '../services/team/TeamAttachmentStore';
 import { TeamConfigReader } from '../services/team/TeamConfigReader';
 import { readTeamLaunchFailureDiagnosticsBundle } from '../services/team/TeamLaunchFailureArtifactPack';
 import { TeamMembersMetaStore } from '../services/team/TeamMembersMetaStore';
+import { isAutoClearableLaunchFailureReason } from '../services/team/provisioning/TeamProvisioningLaunchFailurePolicy';
 import { TeamMetaStore } from '../services/team/TeamMetaStore';
 import { TeamTaskAttachmentStore } from '../services/team/TeamTaskAttachmentStore';
 import { TeamWorktreeGitService } from '../services/team/TeamWorktreeGitService';
@@ -1892,6 +1893,48 @@ async function rollbackLiveRosterMutation(options: {
       );
     }
   }
+}
+
+/**
+ * Determines whether a live-roster member never reached a real runtime, so a failed
+ * detach during removal is harmless (no process to orphan) and the durable config
+ * removal must stand instead of being rolled back ("deleted but came back" bug).
+ */
+async function isNeverSpawnedLiveRosterMember(
+  provisioning: TeamProvisioningService,
+  teamName: string,
+  memberName: string
+): Promise<boolean> {
+  const snapshot = await provisioning.getMemberSpawnStatuses(teamName);
+  const trimmedName = memberName.trim();
+  const entry =
+    snapshot.statuses[memberName] ??
+    snapshot.statuses[trimmedName] ??
+    Object.entries(snapshot.statuses).find(
+      ([name]) => name.trim().toLowerCase() === trimmedName.toLowerCase()
+    )?.[1];
+
+  if (!entry) {
+    // No spawn record at all — the member was never launched.
+    return true;
+  }
+  if (entry.runtimeAlive === true || entry.bootstrapConfirmed === true) {
+    // A real runtime existed; a detach failure is genuine and must roll back.
+    return false;
+  }
+  if (
+    entry.launchState === 'confirmed_alive' ||
+    entry.launchState === 'runtime_pending_bootstrap' ||
+    entry.launchState === 'runtime_pending_permission'
+  ) {
+    return false;
+  }
+  if (entry.launchState === 'failed_to_start') {
+    // Only treat auto-clearable (never-really-alive) launch failures as safe.
+    return isAutoClearableLaunchFailureReason(entry.hardFailureReason);
+  }
+  // 'starting' / 'skipped_for_launch' with no live runtime evidence.
+  return true;
 }
 
 async function validateProvisioningRequest(
@@ -4827,15 +4870,27 @@ async function handleRemoveMember(
       try {
         await provisioning.detachLiveRosterMember(tn, name);
       } catch (error) {
-        await rollbackLiveRosterMutation({
-          teamName: tn,
-          teamDataService,
+        const removalShouldStand = await isNeverSpawnedLiveRosterMember(
           provisioning,
-          previousMembers,
-          previousMembersMeta,
-          restoreLiveMemberNames: [name],
-        });
-        throw error;
+          tn,
+          name
+        ).catch(() => false);
+        if (!removalShouldStand) {
+          await rollbackLiveRosterMutation({
+            teamName: tn,
+            teamDataService,
+            provisioning,
+            previousMembers,
+            previousMembersMeta,
+            restoreLiveMemberNames: [name],
+          });
+          throw error;
+        }
+        logger.warn(
+          `Detach for never-spawned member "${name}" in ${tn} failed; removal stands: ${getErrorMessage(
+            error
+          )}`
+        );
       }
 
       const message =
