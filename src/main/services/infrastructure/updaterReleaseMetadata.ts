@@ -1,6 +1,6 @@
 const REPO_OWNER = 'alperalyaz';
-const REPO_NAME = 'agent-teams-ai';
-const LEGACY_REPO_NAME = 'claude_agent_teams_ui';
+const REPO_NAME = 'kanbancode';
+const LEGACY_REPO_NAME = 'agent-teams-ai';
 
 const UPDATER_SKIP_MARKERS = [
   '[skip-updater]',
@@ -54,12 +54,12 @@ export function getExpectedReleaseAssetUrl(
   switch (platform) {
     case 'darwin':
       return arch === 'arm64'
-        ? `${base}/Agent.Teams.AI-${version}-arm64.dmg`
-        : `${base}/Agent.Teams.AI-${version}-x64.dmg`;
+        ? `${base}/KanbanCode-${version}-arm64.dmg`
+        : `${base}/KanbanCode-${version}-x64.dmg`;
     case 'win32':
-      return `${base}/Agent.Teams.AI.Setup.${version}.exe`;
+      return `${base}/KanbanCode.Setup.${version}.exe`;
     case 'linux':
-      return `${base}/Agent.Teams.AI-${version}.AppImage`;
+      return `${base}/KanbanCode-${version}.AppImage`;
     default:
       return null;
   }
@@ -92,8 +92,8 @@ export function getExpectedLatestMacArtifacts(
   arch: Extract<NodeJS.Architecture, 'arm64' | 'x64'>
 ): readonly string[] {
   return arch === 'arm64'
-    ? [`Agent.Teams.AI-${version}-arm64-mac.zip`, `Agent.Teams.AI-${version}-arm64.dmg`]
-    : [`Agent.Teams.AI-${version}-x64-mac.zip`, `Agent.Teams.AI-${version}-x64.dmg`];
+    ? [`KanbanCode-${version}-arm64-mac.zip`, `KanbanCode-${version}-arm64.dmg`]
+    : [`KanbanCode-${version}-x64-mac.zip`, `KanbanCode-${version}-x64.dmg`];
 }
 
 function stripYamlScalar(rawValue: string): string {

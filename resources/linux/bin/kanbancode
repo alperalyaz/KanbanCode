@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+if [ "${KANBANCODE_BIN:-}" != "" ]; then
+  exec "$KANBANCODE_BIN" "$@"
+fi
+
+for executable in \
+  "/opt/KanbanCode/kanbancode" \
+  "/opt/KanbanCode/KanbanCode"
+do
+  if [ -x "$executable" ]; then
+    exec "$executable" "$@"
+  fi
+done
+
+echo "kanbancode: installed app executable was not found under /opt/KanbanCode" >&2
+exit 127

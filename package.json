@@ -1,12 +1,12 @@
 {
-  "name": "agent-teams-ai",
+  "name": "kanbancode",
   "type": "module",
   "version": "2.1.2",
-  "description": "Desktop app for managing AI agent teams, reviews, runtime logs, and provider-aware workflows",
+  "description": "KanbanCode - light multi-agent kanban desktop app (fork of Agent Teams AI by 777genius)",
   "license": "AGPL-3.0",
   "author": {
-    "name": "Илия (777genius)",
-    "email": "quantjumppro@gmail.com"
+    "name": "Hidroteknik",
+    "email": "alperalyaz@gmail.com"
   },
   "homepage": "https://github.com/alperalyaz/kanbancode",
   "repository": {
@@ -335,7 +335,7 @@
       "main": "dist-electron/main/index.cjs"
     },
     "mac": {
-      "artifactName": "Agent.Teams.AI-${version}-${arch}-mac.${ext}",
+      "artifactName": "KanbanCode-${version}-${arch}-mac.${ext}",
       "category": "public.app-category.developer-tools",
       "minimumSystemVersion": "12.0",
       "target": [
@@ -351,7 +351,7 @@
     },
     "dmg": {
       "sign": false,
-      "artifactName": "Agent.Teams.AI-${version}-${arch}.${ext}"
+      "artifactName": "KanbanCode-${version}-${arch}.${ext}"
     },
     "win": {
       "target": [
@@ -372,24 +372,24 @@
       "category": "Development"
     },
     "appImage": {
-      "artifactName": "Agent.Teams.AI-${version}.${ext}"
+      "artifactName": "KanbanCode-${version}.${ext}"
     },
     "deb": {
       "afterInstall": "resources/afterInstall.sh",
       "fpm": [
-        "resources/linux/bin/agent-teams-ai=/usr/bin/agent-teams-ai"
+        "resources/linux/bin/kanbancode=/usr/bin/kanbancode"
       ]
     },
     "rpm": {
       "afterInstall": "resources/afterInstall.sh",
       "fpm": [
-        "resources/linux/bin/agent-teams-ai=/usr/bin/agent-teams-ai"
+        "resources/linux/bin/kanbancode=/usr/bin/kanbancode"
       ]
     },
     "pacman": {
       "afterInstall": "resources/afterInstall.sh",
       "fpm": [
-        "resources/linux/bin/agent-teams-ai=/usr/bin/agent-teams-ai"
+        "resources/linux/bin/kanbancode=/usr/bin/kanbancode"
       ]
     },
     "nsis": {
