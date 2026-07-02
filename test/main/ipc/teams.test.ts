@@ -3892,7 +3892,7 @@ describe('ipc teams handlers', () => {
       vi.mocked(console.error).mockClear();
     });
 
-    it('rolls back removal for a genuinely alive member (weak launchState but confirmed runtime) when detach fails', async () => {
+    it('rolls back removal when a stale never-spawned classification collides with authoritative live runtime evidence and detach fails', async () => {
       const handler = handlers.get(TEAM_REMOVE_MEMBER)!;
       mockGetMembersMetaFile.mockResolvedValueOnce({
         version: 1,
@@ -3935,14 +3935,19 @@ describe('ipc teams handlers', () => {
         kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
         processes: [],
       });
-      // A member with NO auto-clearable never-spawned proof but authoritative
-      // live runtime evidence (runtime_process) must still roll back on detach
-      // failure so we never orphan a real process.
+      // The dangerous collision: a genuinely late-started member still carries a
+      // stale "Teammate was never spawned during launch." snapshot (auto-clearable
+      // failed_to_start) while its LIVE runtime is authoritatively up
+      // (livenessKind:'runtime_process'). Authoritative live evidence must take
+      // precedence over the stale launch classification, so a detach failure rolls
+      // back and never orphans the real process.
       provisioningService.getMemberSpawnStatuses.mockResolvedValueOnce({
         statuses: {
           alice: {
             status: 'online',
-            launchState: 'starting',
+            launchState: 'failed_to_start',
+            hardFailure: true,
+            hardFailureReason: 'Teammate was never spawned during launch.',
             runtimeAlive: true,
             bootstrapConfirmed: false,
             livenessKind: 'runtime_process',

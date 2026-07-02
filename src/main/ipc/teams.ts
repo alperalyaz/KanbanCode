@@ -1918,25 +1918,30 @@ async function isNeverSpawnedLiveRosterMember(
     // No spawn record at all — the member was never launched.
     return true;
   }
-  // An auto-clearable hard failure reason (e.g. "Teammate was never spawned
-  // during launch.") is authoritative proof the member never reached a real
-  // runtime. This must be checked BEFORE runtimeAlive, because the phantom-alive
-  // production case is reported as runtimeAlive:true with no real process handle;
-  // keying off runtimeAlive alone would wrongly roll back and resurrect it.
-  if (
-    entry.launchState === 'failed_to_start' &&
-    isAutoClearableLaunchFailureReason(entry.hardFailureReason)
-  ) {
-    return true;
-  }
-  // Authoritative live runtime evidence: a real process/bootstrap exists, so a
-  // detach failure is genuine and the removal must roll back.
+  // Authoritative live runtime evidence takes precedence over any stale launch
+  // classification: a real process/bootstrap exists, so a detach failure is
+  // genuine and the removal must roll back (never orphan a real runtime). This
+  // MUST be checked before the auto-clearable never-spawned reason, because a
+  // late-started member can still carry a stale "Teammate was never spawned
+  // during launch." snapshot while its live runtime is genuinely up.
   if (
     entry.bootstrapConfirmed === true ||
     entry.livenessKind === 'runtime_process' ||
     entry.livenessKind === 'confirmed_bootstrap'
   ) {
     return false;
+  }
+  // An auto-clearable hard failure reason (e.g. "Teammate was never spawned
+  // during launch.") is authoritative proof the member never reached a real
+  // runtime. Checked before runtimeAlive because the phantom-alive production
+  // case is reported as runtimeAlive:true with only a weak
+  // runtime_process_candidate liveness and no real process handle; keying off
+  // runtimeAlive alone would wrongly roll back and resurrect it.
+  if (
+    entry.launchState === 'failed_to_start' &&
+    isAutoClearableLaunchFailureReason(entry.hardFailureReason)
+  ) {
+    return true;
   }
   if (entry.runtimeAlive === true) {
     // Alive without an authoritative "never spawned" proof: stay conservative
