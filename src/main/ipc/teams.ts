@@ -1918,8 +1918,29 @@ async function isNeverSpawnedLiveRosterMember(
     // No spawn record at all — the member was never launched.
     return true;
   }
-  if (entry.runtimeAlive === true || entry.bootstrapConfirmed === true) {
-    // A real runtime existed; a detach failure is genuine and must roll back.
+  // An auto-clearable hard failure reason (e.g. "Teammate was never spawned
+  // during launch.") is authoritative proof the member never reached a real
+  // runtime. This must be checked BEFORE runtimeAlive, because the phantom-alive
+  // production case is reported as runtimeAlive:true with no real process handle;
+  // keying off runtimeAlive alone would wrongly roll back and resurrect it.
+  if (
+    entry.launchState === 'failed_to_start' &&
+    isAutoClearableLaunchFailureReason(entry.hardFailureReason)
+  ) {
+    return true;
+  }
+  // Authoritative live runtime evidence: a real process/bootstrap exists, so a
+  // detach failure is genuine and the removal must roll back.
+  if (
+    entry.bootstrapConfirmed === true ||
+    entry.livenessKind === 'runtime_process' ||
+    entry.livenessKind === 'confirmed_bootstrap'
+  ) {
+    return false;
+  }
+  if (entry.runtimeAlive === true) {
+    // Alive without an authoritative "never spawned" proof: stay conservative
+    // and roll back so we never orphan a process we cannot positively classify.
     return false;
   }
   if (
@@ -1930,8 +1951,8 @@ async function isNeverSpawnedLiveRosterMember(
     return false;
   }
   if (entry.launchState === 'failed_to_start') {
-    // Only treat auto-clearable (never-really-alive) launch failures as safe.
-    return isAutoClearableLaunchFailureReason(entry.hardFailureReason);
+    // Non-auto-clearable hard failure: unknown cause, stay conservative.
+    return false;
   }
   // 'starting' / 'skipped_for_launch' with no live runtime evidence.
   return true;

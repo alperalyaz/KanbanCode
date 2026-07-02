@@ -16524,12 +16524,16 @@ export class TeamProvisioningService {
   }
 
   /**
-   * A restart target that is reported alive but never reached a real runtime
-   * (failed_to_start with an auto-clearable/never-spawned reason, or a stuck
-   * 'starting'/'skipped_for_launch' member with no accepted spawn). Such a
-   * member has no live process to preserve, so restart should re-spawn it fresh
-   * instead of throwing on the missing-pid guard. Genuinely-live members
-   * (accepted spawn or confirmed bootstrap) are never treated as candidates.
+   * A restart target whose launch classification proves it never reached a real
+   * runtime: a failed_to_start with an auto-clearable ("never spawned during
+   * launch") reason, or a member intentionally skipped for the launch. Both are
+   * provably process-less, so restart can re-spawn them fresh instead of
+   * throwing on the missing-pid guard. 'starting' is deliberately EXCLUDED: a
+   * member still in 'starting' may be a genuinely late-booting teammate, and
+   * classification alone must not authorize bypassing the duplicate-process
+   * guard. The caller additionally requires the absence of any authoritative
+   * live runtime evidence before re-spawning. Members with an accepted spawn or
+   * confirmed bootstrap are never candidates.
    */
   private isNeverSpawnedRestartCandidate(run: ProvisioningRun, memberName: string): boolean {
     const spawnStatus = run.memberSpawnStatuses.get(memberName);
@@ -16542,9 +16546,7 @@ export class TeamProvisioningService {
     if (spawnStatus.launchState === 'failed_to_start') {
       return isAutoClearableLaunchFailureReason(spawnStatus.hardFailureReason);
     }
-    return (
-      spawnStatus.launchState === 'starting' || spawnStatus.launchState === 'skipped_for_launch'
-    );
+    return spawnStatus.launchState === 'skipped_for_launch';
   }
 
   private async restartMemberUnlocked(teamName: string, memberName: string): Promise<void> {
@@ -16647,6 +16649,7 @@ export class TeamProvisioningService {
     const liveRuntimeByMember = await this.getLiveTeamAgentRuntimeMetadata(teamName);
     const livePids = new Set<number>();
     let hasAliveRuntimeWithoutPid = false;
+    let hasAuthoritativeRuntimeEvidence = false;
     for (const [candidateName, metadata] of liveRuntimeByMember.entries()) {
       if (!matchesMemberNameOrBase(candidateName, memberName)) {
         continue;
@@ -16657,18 +16660,41 @@ export class TeamProvisioningService {
       }
       if (metadata.alive && metadata.backendType !== 'in-process') {
         hasAliveRuntimeWithoutPid = true;
+        // Even without a killable OS pid, these signals prove a real runtime is
+        // (or may be) attached: a tmux pane pid/id, a metrics-tracked pid, or an
+        // authoritative liveness classification. If any are present we must NOT
+        // re-spawn, or we would duplicate a genuinely-live (possibly
+        // late-booting) teammate. We err toward the guard (throw) here.
+        if (
+          metadata.panePid != null ||
+          metadata.metricsPid != null ||
+          (typeof metadata.tmuxPaneId === 'string' && metadata.tmuxPaneId.trim().length > 0) ||
+          metadata.livenessKind === 'runtime_process' ||
+          metadata.livenessKind === 'confirmed_bootstrap'
+        ) {
+          hasAuthoritativeRuntimeEvidence = true;
+        }
       }
     }
 
-    if (hasAliveRuntimeWithoutPid && !this.isNeverSpawnedRestartCandidate(run, memberName)) {
+    // A model/runtime change for a never-spawned member can only re-spawn when
+    // BOTH hold: (1) launch classification proves it never spawned, AND (2) live
+    // runtime metadata shows no authoritative process evidence. Stale launch
+    // classification alone is insufficient to bypass the duplicate-process guard.
+    const canRespawnNeverSpawned =
+      hasAliveRuntimeWithoutPid &&
+      !hasAuthoritativeRuntimeEvidence &&
+      this.isNeverSpawnedRestartCandidate(run, memberName);
+
+    if (hasAliveRuntimeWithoutPid && !canRespawnNeverSpawned) {
       throw new Error(
         `Member "${memberName}" is running, but its backend does not expose a restartable pid yet`
       );
     }
-    if (hasAliveRuntimeWithoutPid) {
-      // Never-spawned/failed member is reported alive but never had a real
-      // process; fall through to a fresh re-spawn instead of blocking (this is
-      // what lets a model/runtime change take effect for such members).
+    if (canRespawnNeverSpawned) {
+      // Never-spawned member reported alive but with no real process; fall
+      // through to a fresh re-spawn instead of blocking (this is what lets a
+      // model/runtime change take effect for such members).
       this.appendMemberBootstrapDiagnostic(
         run,
         memberName,

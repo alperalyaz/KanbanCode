@@ -6700,6 +6700,9 @@ describe('TeamProvisioningService', () => {
         ]),
       };
       (svc as any).readPersistedRuntimeMembers = vi.fn(() => []);
+      // Reproduce the exact production phantom-alive metadata: the runtime falsely
+      // reports the never-spawned member as alive with only a weak candidate
+      // liveness kind and NO real process handle (no pid/metricsPid/panePid/pane).
       (svc as any).getLiveTeamAgentRuntimeMetadata = vi.fn(
         async () =>
           new Map([
@@ -6709,6 +6712,7 @@ describe('TeamProvisioningService', () => {
                 alive: true,
                 backendType: 'process',
                 providerId: 'codex',
+                livenessKind: 'runtime_process_candidate',
               },
             ],
           ])
@@ -6725,6 +6729,89 @@ describe('TeamProvisioningService', () => {
       const restartMessage = restartCall?.[1] ?? '';
       expect(restartMessage).toContain('provider="codex"');
       expect(restartMessage).toContain('model="gpt-5.4"');
+    });
+
+    it('does NOT re-spawn (throws the no-pid guard) when a never-spawned classification collides with authoritative live runtime evidence, preventing a duplicate process', async () => {
+      const svc = new TeamProvisioningService();
+      // Launch classification still says "never spawned during launch", but the
+      // live runtime now shows authoritative evidence of a real (late-booting)
+      // teammate: alive with a tmux pane pid and a runtime_process liveness kind,
+      // yet no killable OS pid. Re-spawning here would duplicate the teammate, so
+      // the missing-pid guard must still throw.
+      const run = createMemberSpawnRun({
+        teamName: 'edited-team',
+        expectedMembers: ['alice'],
+        memberSpawnStatuses: new Map([
+          [
+            'alice',
+            createMemberSpawnStatusEntry({
+              status: 'error',
+              launchState: 'failed_to_start',
+              agentToolAccepted: false,
+              runtimeAlive: false,
+              bootstrapConfirmed: false,
+              hardFailure: true,
+              hardFailureReason: 'Teammate was never spawned during launch.',
+              firstSpawnAcceptedAt: undefined,
+            }),
+          ],
+        ]),
+      });
+      run.child = { pid: 111 };
+      run.processKilled = false;
+      run.cancelRequested = false;
+
+      const sendMessageToRun = vi.fn(async () => {});
+      (svc as any).sendMessageToRun = sendMessageToRun;
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          name: 'Edited Team',
+          members: [
+            { name: 'team-lead', agentType: 'team-lead' },
+            {
+              name: 'alice',
+              role: 'Reviewer',
+              providerId: 'codex',
+              model: 'gpt-5.4',
+              agentType: 'general-purpose',
+            },
+          ],
+        })),
+      };
+      (svc as any).membersMetaStore = {
+        getMembers: vi.fn(async () => [
+          {
+            name: 'alice',
+            role: 'Reviewer',
+            providerId: 'codex',
+            model: 'gpt-5.4',
+            agentType: 'general-purpose',
+          },
+        ]),
+      };
+      (svc as any).readPersistedRuntimeMembers = vi.fn(() => []);
+      (svc as any).getLiveTeamAgentRuntimeMetadata = vi.fn(
+        async () =>
+          new Map([
+            [
+              'alice',
+              {
+                alive: true,
+                backendType: 'process',
+                providerId: 'codex',
+                panePid: 4242,
+                livenessKind: 'runtime_process',
+              },
+            ],
+          ])
+      );
+      (svc as any).aliveRunByTeam.set('edited-team', run.runId);
+      (svc as any).runs.set(run.runId, run);
+
+      await expect(svc.restartMember('edited-team', 'alice')).rejects.toThrow(
+        /does not expose a restartable pid/
+      );
+      expect(sendMessageToRun).not.toHaveBeenCalled();
     });
 
     it('re-reads teammate runtime settings immediately before respawn so stale edit snapshots are not reused', async () => {

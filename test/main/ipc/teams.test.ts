@@ -3814,7 +3814,7 @@ describe('ipc teams handlers', () => {
       vi.mocked(console.error).mockClear();
     });
 
-    it('keeps removal for a never-spawned member when detach fails', async () => {
+    it('keeps removal for a phantom-alive never-spawned member (alive without pid/pane) when detach fails', async () => {
       const handler = handlers.get(TEAM_REMOVE_MEMBER)!;
       mockGetMembersMetaFile.mockResolvedValueOnce({
         version: 1,
@@ -3857,6 +3857,11 @@ describe('ipc teams handlers', () => {
         kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
         processes: [],
       });
+      // Reproduce the real production state: live runtime metadata falsely
+      // reports the never-spawned member as alive (runtimeAlive:true) with only a
+      // weak candidate liveness kind and no real process handle. The authoritative
+      // "never spawned during launch." hard-failure reason must still let the
+      // removal stand instead of rolling back and resurrecting the member.
       provisioningService.getMemberSpawnStatuses.mockResolvedValueOnce({
         statuses: {
           alice: {
@@ -3864,8 +3869,9 @@ describe('ipc teams handlers', () => {
             launchState: 'failed_to_start',
             hardFailure: true,
             hardFailureReason: 'Teammate was never spawned during launch.',
-            runtimeAlive: false,
+            runtimeAlive: true,
             bootstrapConfirmed: false,
+            livenessKind: 'runtime_process_candidate',
           },
         },
       });
@@ -3883,6 +3889,78 @@ describe('ipc teams handlers', () => {
         true
       );
       vi.mocked(console.warn).mockClear();
+      vi.mocked(console.error).mockClear();
+    });
+
+    it('rolls back removal for a genuinely alive member (weak launchState but confirmed runtime) when detach fails', async () => {
+      const handler = handlers.get(TEAM_REMOVE_MEMBER)!;
+      mockGetMembersMetaFile.mockResolvedValueOnce({
+        version: 1,
+        providerBackendId: undefined,
+        members: [
+          {
+            name: 'team-lead',
+            providerId: 'codex',
+            role: 'Team Lead',
+            agentType: 'team-lead',
+          },
+          {
+            name: 'alice',
+            providerId: 'codex',
+            role: 'Developer',
+            agentType: 'general-purpose',
+          },
+        ],
+      });
+      service.getTeamData.mockResolvedValueOnce({
+        teamName: 'my-team',
+        config: { name: 'My Team' },
+        tasks: [],
+        members: [
+          {
+            name: 'team-lead',
+            providerId: 'codex',
+            role: 'Team Lead',
+            currentTaskId: null,
+            taskCount: 0,
+          },
+          {
+            name: 'alice',
+            providerId: 'codex',
+            role: 'Developer',
+            currentTaskId: null,
+            taskCount: 0,
+          },
+        ],
+        kanbanState: { teamName: 'my-team', reviewers: [], tasks: {} },
+        processes: [],
+      });
+      // A member with NO auto-clearable never-spawned proof but authoritative
+      // live runtime evidence (runtime_process) must still roll back on detach
+      // failure so we never orphan a real process.
+      provisioningService.getMemberSpawnStatuses.mockResolvedValueOnce({
+        statuses: {
+          alice: {
+            status: 'online',
+            launchState: 'starting',
+            runtimeAlive: true,
+            bootstrapConfirmed: false,
+            livenessKind: 'runtime_process',
+          },
+        },
+      });
+      provisioningService.detachLiveRosterMember.mockRejectedValueOnce(new Error('detach failed'));
+
+      const result = (await handler({} as never, 'my-team', 'alice')) as {
+        success: boolean;
+        error?: string;
+      };
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('detach failed');
+      expect(provisioningService.attachLiveRosterMember).toHaveBeenCalledWith('my-team', 'alice', {
+        reason: 'member_updated',
+      });
       vi.mocked(console.error).mockClear();
     });
   });
