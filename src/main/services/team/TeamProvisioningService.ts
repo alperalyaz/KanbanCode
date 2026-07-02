@@ -16523,6 +16523,30 @@ export class TeamProvisioningService {
     );
   }
 
+  /**
+   * A restart target that is reported alive but never reached a real runtime
+   * (failed_to_start with an auto-clearable/never-spawned reason, or a stuck
+   * 'starting'/'skipped_for_launch' member with no accepted spawn). Such a
+   * member has no live process to preserve, so restart should re-spawn it fresh
+   * instead of throwing on the missing-pid guard. Genuinely-live members
+   * (accepted spawn or confirmed bootstrap) are never treated as candidates.
+   */
+  private isNeverSpawnedRestartCandidate(run: ProvisioningRun, memberName: string): boolean {
+    const spawnStatus = run.memberSpawnStatuses.get(memberName);
+    if (!spawnStatus) {
+      return false;
+    }
+    if (spawnStatus.agentToolAccepted === true || spawnStatus.bootstrapConfirmed === true) {
+      return false;
+    }
+    if (spawnStatus.launchState === 'failed_to_start') {
+      return isAutoClearableLaunchFailureReason(spawnStatus.hardFailureReason);
+    }
+    return (
+      spawnStatus.launchState === 'starting' || spawnStatus.launchState === 'skipped_for_launch'
+    );
+  }
+
   private async restartMemberUnlocked(teamName: string, memberName: string): Promise<void> {
     const runId = this.getAliveRunId(teamName);
     if (!runId) {
@@ -16636,9 +16660,19 @@ export class TeamProvisioningService {
       }
     }
 
-    if (hasAliveRuntimeWithoutPid) {
+    if (hasAliveRuntimeWithoutPid && !this.isNeverSpawnedRestartCandidate(run, memberName)) {
       throw new Error(
         `Member "${memberName}" is running, but its backend does not expose a restartable pid yet`
+      );
+    }
+    if (hasAliveRuntimeWithoutPid) {
+      // Never-spawned/failed member is reported alive but never had a real
+      // process; fall through to a fresh re-spawn instead of blocking (this is
+      // what lets a model/runtime change take effect for such members).
+      this.appendMemberBootstrapDiagnostic(
+        run,
+        memberName,
+        'restart: no live pid/pane for never-spawned member; re-spawning fresh'
       );
     }
 

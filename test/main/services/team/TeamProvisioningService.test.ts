@@ -6646,6 +6646,87 @@ describe('TeamProvisioningService', () => {
       expect(restartMessage).toContain('Their workflow: Use checklist');
     });
 
+    it('re-spawns a never-spawned member (alive without pid) instead of throwing so a model change can take effect', async () => {
+      const svc = new TeamProvisioningService();
+      const run = createMemberSpawnRun({
+        teamName: 'edited-team',
+        expectedMembers: ['alice'],
+        memberSpawnStatuses: new Map([
+          [
+            'alice',
+            createMemberSpawnStatusEntry({
+              status: 'error',
+              launchState: 'failed_to_start',
+              agentToolAccepted: false,
+              runtimeAlive: false,
+              bootstrapConfirmed: false,
+              hardFailure: true,
+              hardFailureReason: 'Teammate was never spawned during launch.',
+              firstSpawnAcceptedAt: undefined,
+            }),
+          ],
+        ]),
+      });
+      run.child = { pid: 111 };
+      run.processKilled = false;
+      run.cancelRequested = false;
+
+      const sendMessageToRun = vi.fn(async () => {});
+      (svc as any).sendMessageToRun = sendMessageToRun;
+      (svc as any).configReader = {
+        getConfig: vi.fn(async () => ({
+          name: 'Edited Team',
+          members: [
+            { name: 'team-lead', agentType: 'team-lead' },
+            {
+              name: 'alice',
+              role: 'Reviewer',
+              providerId: 'codex',
+              model: 'gpt-5.4',
+              agentType: 'general-purpose',
+            },
+          ],
+        })),
+      };
+      (svc as any).membersMetaStore = {
+        getMembers: vi.fn(async () => [
+          {
+            name: 'alice',
+            role: 'Reviewer',
+            providerId: 'codex',
+            model: 'gpt-5.4',
+            agentType: 'general-purpose',
+          },
+        ]),
+      };
+      (svc as any).readPersistedRuntimeMembers = vi.fn(() => []);
+      (svc as any).getLiveTeamAgentRuntimeMetadata = vi.fn(
+        async () =>
+          new Map([
+            [
+              'alice',
+              {
+                alive: true,
+                backendType: 'process',
+                providerId: 'codex',
+              },
+            ],
+          ])
+      );
+      (svc as any).aliveRunByTeam.set('edited-team', run.runId);
+      (svc as any).runs.set(run.runId, run);
+
+      await expect(svc.restartMember('edited-team', 'alice')).resolves.toBeUndefined();
+
+      expect(sendMessageToRun).toHaveBeenCalledTimes(1);
+      const restartCall = sendMessageToRun.mock.calls[0] as unknown as
+        | [unknown, string]
+        | undefined;
+      const restartMessage = restartCall?.[1] ?? '';
+      expect(restartMessage).toContain('provider="codex"');
+      expect(restartMessage).toContain('model="gpt-5.4"');
+    });
+
     it('re-reads teammate runtime settings immediately before respawn so stale edit snapshots are not reused', async () => {
       const svc = new TeamProvisioningService();
       const run = createMemberSpawnRun({
