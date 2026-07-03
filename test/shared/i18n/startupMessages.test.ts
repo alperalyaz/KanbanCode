@@ -13,6 +13,10 @@ describe('startupMessages', () => {
     expect(resolveStartupLocale({ cachedLocale: 'tr' })).toBe('tr');
   });
 
+  it('resolves Turkish from cached app locale preference', () => {
+    expect(resolveStartupLocale({ cachedPreference: 'tr' })).toBe('tr');
+  });
+
   it('resolves Turkish from system locale when preference is system', () => {
     expect(resolveStartupLocale({ preference: 'system', systemLocale: 'tr-TR' })).toBe('tr');
   });

@@ -12,10 +12,13 @@ import { initSentryRenderer } from './sentry';
 import { initializeNotificationListeners } from './store';
 
 import {
+  getInitialSplashMessage,
   localizeStartupMessage,
   localizeStartupTimelineDurationLabel,
+  persistStartupLocaleCaches,
   resolveStartupLocale,
   STARTUP_LOCALE_CACHE_KEY,
+  STARTUP_LOCALE_PREFERENCE_CACHE_KEY,
 } from '@shared/i18n/startupMessages';
 import type { AppStartupStatus, AppStartupStep } from '@shared/types/api';
 import type { ResolvedAppLocale } from '@features/localization';
@@ -41,18 +44,33 @@ const TIMELINE_STEP_LIMIT = 3;
 
 function getRendererStartupLocale(): ResolvedAppLocale {
   let cachedLocale: string | null = null;
+  let cachedPreference: string | null = null;
   try {
     cachedLocale = localStorage.getItem(STARTUP_LOCALE_CACHE_KEY);
+    cachedPreference = localStorage.getItem(STARTUP_LOCALE_PREFERENCE_CACHE_KEY);
   } catch {
     cachedLocale = null;
+    cachedPreference = null;
   }
   return resolveStartupLocale({
     cachedLocale,
+    cachedPreference,
     systemLocale: navigator.language,
   });
 }
 
 const rendererStartupLocale = getRendererStartupLocale();
+
+function applyInitialSplashMessage(): void {
+  const statusElement = document.getElementById('splash-status');
+  if (!statusElement) {
+    return;
+  }
+  statusElement.textContent = getInitialSplashMessage(rendererStartupLocale);
+  document.documentElement.lang = rendererStartupLocale;
+}
+
+applyInitialSplashMessage();
 
 function localizeSplashText(message: string): string {
   return localizeStartupMessage(message, rendererStartupLocale);

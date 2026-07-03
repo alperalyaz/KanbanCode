@@ -6,6 +6,7 @@ import {
 } from '@features/localization';
 
 export const STARTUP_LOCALE_CACHE_KEY = 'agent-teams-locale-cache';
+export const STARTUP_LOCALE_PREFERENCE_CACHE_KEY = 'agent-teams-locale-preference-cache';
 
 export const STARTUP_INITIAL_MESSAGE_EN = 'Preparing workspace...';
 
@@ -131,6 +132,7 @@ export interface StartupLocaleResolutionInput {
   readonly preference?: unknown;
   readonly systemLocale?: string | null;
   readonly cachedLocale?: string | null;
+  readonly cachedPreference?: string | null;
 }
 
 export function resolveStartupLocale(input: StartupLocaleResolutionInput = {}): ResolvedAppLocale {
@@ -139,11 +141,28 @@ export function resolveStartupLocale(input: StartupLocaleResolutionInput = {}): 
     return cached;
   }
 
+  const cachedPreference = input.cachedPreference?.trim();
+  if (cachedPreference === 'tr' || cachedPreference === 'en') {
+    return cachedPreference;
+  }
+
   return resolveAppLocale({
-    preference: input.preference,
+    preference: cachedPreference ?? input.preference,
     systemLocale: input.systemLocale,
     fallbackLocale: FALLBACK_APP_LOCALE,
   });
+}
+
+export function persistStartupLocaleCaches(
+  preference: string,
+  resolvedLocale: ResolvedAppLocale
+): void {
+  try {
+    localStorage.setItem(STARTUP_LOCALE_PREFERENCE_CACHE_KEY, preference);
+    localStorage.setItem(STARTUP_LOCALE_CACHE_KEY, resolvedLocale);
+  } catch {
+    // Ignore storage failures during startup.
+  }
 }
 
 export function localizeStartupMessage(message: string, locale: ResolvedAppLocale): string {

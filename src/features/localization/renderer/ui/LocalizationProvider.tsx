@@ -5,7 +5,7 @@ import { resolveRuntimeLocale } from '../../core/application/resolveRuntimeLocal
 import { normalizeAppLocalePreference } from '../../core/domain/localePolicy';
 import { getBrowserSystemLocale } from '../adapters/browserSystemLocaleAdapter';
 import { appI18n } from '../composition/createI18nextInstance';
-import { STARTUP_LOCALE_CACHE_KEY } from '@shared/i18n/startupMessages';
+import { persistStartupLocaleCaches } from '@shared/i18n/startupMessages';
 
 import type { AppConfig } from '@shared/types';
 
@@ -26,6 +26,7 @@ export const LocalizationProvider = ({
       }),
     [appConfig?.general.appLocale]
   );
+  const localePreference = normalizeAppLocalePreference(appConfig?.general.appLocale);
 
   useEffect(() => {
     if (appI18n.language !== resolvedLocale) {
@@ -35,12 +36,8 @@ export const LocalizationProvider = ({
 
   useEffect(() => {
     document.documentElement.lang = resolvedLocale;
-    try {
-      localStorage.setItem(STARTUP_LOCALE_CACHE_KEY, resolvedLocale);
-    } catch {
-      // Ignore storage failures during startup.
-    }
-  }, [resolvedLocale]);
+    persistStartupLocaleCaches(localePreference, resolvedLocale);
+  }, [localePreference, resolvedLocale]);
 
   return <I18nextProvider i18n={appI18n}>{children}</I18nextProvider>;
 };

@@ -5,8 +5,11 @@
 
 import { useCallback, useRef } from 'react';
 
+import { normalizeAppLocalePreference, resolveAppLocale } from '@features/localization';
+import { getBrowserSystemLocale } from '@features/localization/renderer/adapters/browserSystemLocaleAdapter';
 import { api } from '@renderer/api';
 import { useStore } from '@renderer/store';
+import { persistStartupLocaleCaches } from '@shared/i18n/startupMessages';
 
 import type { RepositoryDropdownItem } from './useSettingsConfig';
 import type { AppConfig, NotificationTrigger } from '@renderer/types/data';
@@ -113,6 +116,12 @@ export function useSettingsHandlers({
 
   const handleAppLocaleChange = useCallback(
     (value: string) => {
+      const preference = normalizeAppLocalePreference(value);
+      const resolvedLocale = resolveAppLocale({
+        preference,
+        systemLocale: getBrowserSystemLocale(),
+      });
+      persistStartupLocaleCaches(preference, resolvedLocale);
       fireAndForgetConfigUpdate('general', { appLocale: value });
     },
     [fireAndForgetConfigUpdate]
