@@ -64,6 +64,7 @@ interface TeamRosterEditorSectionProps {
   teammateWorktreeDefault?: boolean;
   worktreeIsolationDisabledReason?: string | null;
   onTeammateWorktreeDefaultChange?: (enabled: boolean) => void;
+  memberListClassName?: string;
 }
 
 const TeamRosterEditorSectionImpl = ({
@@ -115,6 +116,7 @@ const TeamRosterEditorSectionImpl = ({
   teammateWorktreeDefault = false,
   worktreeIsolationDisabledReason,
   onTeammateWorktreeDefaultChange,
+  memberListClassName,
 }: TeamRosterEditorSectionProps): React.JSX.Element => {
   const canUseCustomMemberRuntimes =
     !hideMembersContent && !forceInheritedModelSettings && !syncModelsWithTeammates;
@@ -177,6 +179,7 @@ const TeamRosterEditorSectionImpl = ({
       teammateWorktreeDefault={teammateWorktreeDefault}
       worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
       onTeammateWorktreeDefaultChange={onTeammateWorktreeDefaultChange}
+      memberListClassName={memberListClassName}
       headerExtra={
         <div className="space-y-3">
           {headerTop}

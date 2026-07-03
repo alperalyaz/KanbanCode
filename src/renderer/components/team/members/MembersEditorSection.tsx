@@ -156,6 +156,8 @@ export interface MembersEditorSectionProps {
   teammateWorktreeDefault?: boolean;
   worktreeIsolationDisabledReason?: string | null;
   onTeammateWorktreeDefaultChange?: (enabled: boolean) => void;
+  /** Extra classes for the scrollable member-row container (e.g. fixed max height). */
+  memberListClassName?: string;
 }
 
 export const MembersEditorSection = ({
@@ -199,6 +201,7 @@ export const MembersEditorSection = ({
   teammateWorktreeDefault = false,
   worktreeIsolationDisabledReason,
   onTeammateWorktreeDefaultChange,
+  memberListClassName,
 }: MembersEditorSectionProps): React.JSX.Element => {
   const { t } = useAppTranslation('team');
   const [jsonEditorOpen, setJsonEditorOpen] = useState(false);
@@ -525,7 +528,13 @@ export const MembersEditorSection = ({
                 </div>
               </div>
             ) : null}
-            <div className={cn('space-y-2', showWorktreeIsolationControls && 'p-2')}>
+            <div
+              className={cn(
+                'space-y-2',
+                showWorktreeIsolationControls && 'p-2',
+                memberListClassName
+              )}
+            >
               {activeMembers.map((member, index) => (
                 <MemberDraftRow
                   key={member.id}
