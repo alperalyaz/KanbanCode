@@ -18,6 +18,11 @@ import {
   subscribeRecentProjectOpenHistory,
 } from '../utils/recentProjectOpenHistory';
 import {
+  dismissRecentProject,
+  filterDismissedRecentProjects,
+  subscribeRecentProjectDismissals,
+} from '../utils/recentProjectDismissals';
+import {
   getRecentProjectsClientSnapshot,
   loadRecentProjectsWithClientCache,
 } from '../utils/recentProjectsClientCache';
@@ -66,6 +71,7 @@ export function useRecentProjectsSection(
   openRecentProject: (project: DashboardRecentProject) => Promise<void>;
   openProjectPath: (projectPath: string) => Promise<void>;
   selectProjectFolder: () => Promise<void>;
+  dismissRecentProject: (project: DashboardRecentProject) => void;
 } {
   const {
     globalTasks,
@@ -109,6 +115,7 @@ export function useRecentProjectsSection(
   const [visibleProjects, setVisibleProjects] = useState(maxProjects);
   const [aliveTeams, setAliveTeams] = useState<string[]>([]);
   const [openHistoryVersion, setOpenHistoryVersion] = useState(0);
+  const [dismissalsVersion, setDismissalsVersion] = useState(0);
   const hasFetchedTasksRef = useRef(globalTasksInitialized);
   const recentProjectsRef = useRef<DashboardRecentProject[]>(
     initialSnapshot?.payload.projects ?? []
@@ -266,6 +273,11 @@ export function useRecentProjectsSection(
     []
   );
 
+  useEffect(
+    () => subscribeRecentProjectDismissals(() => setDismissalsVersion((current) => current + 1)),
+    []
+  );
+
   const taskCountsByProject = useMemo(() => buildTaskCountsByProject(globalTasks), [globalTasks]);
 
   const activeTeamsByProject = useMemo(() => {
@@ -279,14 +291,17 @@ export function useRecentProjectsSection(
 
   const decoratedCards = useMemo(() => {
     void openHistoryVersion;
+    void dismissalsVersion;
+    const visibleProjects = filterDismissedRecentProjects(recentProjects);
     return adaptRecentProjectsSection({
-      projects: sortRecentProjectsByDisplayPriority(recentProjects),
+      projects: sortRecentProjectsByDisplayPriority(visibleProjects),
       taskCountsByProject,
       activeTeamsByProject,
       tasksLoading: globalTasksLoading,
     });
   }, [
     activeTeamsByProject,
+    dismissalsVersion,
     globalTasksLoading,
     openHistoryVersion,
     recentProjects,
@@ -317,5 +332,6 @@ export function useRecentProjectsSection(
     openRecentProject,
     openProjectPath,
     selectProjectFolder,
+    dismissRecentProject,
   };
 }

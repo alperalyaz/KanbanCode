@@ -22,7 +22,7 @@ function canUseLocalStorage(): boolean {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 }
 
-function normalizeHistoryPath(projectPath: string): string | null {
+export function normalizeHistoryPath(projectPath: string): string | null {
   let normalizedPath = projectPath.trim().replace(/\\/g, '/');
   if (!normalizedPath) {
     return null;

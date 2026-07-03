@@ -153,6 +153,8 @@
     "loadMore": "Load more",
     "card": {
       "deleted": "Deleted",
+      "dismiss": "Remove from recent projects",
+      "dismissTitle": "Remove from recent projects",
       "projectFolderMissing": "Project folder no longer exists",
       "taskCounts": {
         "active": "{{count}} active",

@@ -153,6 +153,8 @@
     "loadMore": "Daha fazla yükle",
     "card": {
       "deleted": "Silindi",
+      "dismiss": "Son projelerden kaldır",
+      "dismissTitle": "Son projelerden kaldır",
       "projectFolderMissing": "Proje klasörü artık mevcut değil",
       "taskCounts": {
         "active": "{{count}} etkin",

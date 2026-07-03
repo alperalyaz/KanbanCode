@@ -50,6 +50,7 @@ export const RecentProjectsSection = ({
     openRecentProject,
     openProjectPath,
     selectProjectFolder,
+    dismissRecentProject,
   } = useRecentProjectsSection(searchQuery);
 
   if (loading) {
@@ -166,6 +167,7 @@ export const RecentProjectsSection = ({
             card={card}
             onClick={() => void openRecentProject(card.project)}
             onOpenPath={() => void openProjectPath(card.project.primaryPath)}
+            onDismiss={() => dismissRecentProject(card.project)}
           />
         ))}
       </div>

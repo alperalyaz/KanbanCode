@@ -6,7 +6,7 @@ import { ActivePulseIndicator } from '@renderer/components/ui/ActivePulseIndicat
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { cn } from '@renderer/lib/utils';
 import { projectColor } from '@renderer/utils/projectColor';
-import { FolderGit2, FolderOpen, FolderX, GitBranch, Terminal } from 'lucide-react';
+import { FolderGit2, FolderOpen, FolderX, GitBranch, Terminal, X } from 'lucide-react';
 
 import type { RecentProjectCardModel } from '../adapters/RecentProjectsSectionAdapter';
 
@@ -14,12 +14,14 @@ interface RecentProjectCardProps {
   card: RecentProjectCardModel;
   onClick: () => void;
   onOpenPath: () => void;
+  onDismiss?: () => void;
 }
 
 export const RecentProjectCard = ({
   card,
   onClick,
   onOpenPath,
+  onDismiss,
 }: Readonly<RecentProjectCardProps>): React.JSX.Element => {
   const { t } = useAppTranslation('dashboard');
   const { t: tCommon } = useAppTranslation('common');
@@ -28,16 +30,43 @@ export const RecentProjectCard = ({
   const FolderIcon = isDeleted ? FolderX : FolderGit2;
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={isDeleted ? -1 : 0}
       onClick={isDeleted ? undefined : onClick}
+      onKeyDown={(event) => {
+        if (isDeleted) {
+          return;
+        }
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }}
       aria-disabled={isDeleted}
       className={cn(
         'project-row-zebra-card group relative flex min-h-[148px] flex-col overflow-hidden rounded-xl border border-border p-5 text-left transition-all duration-300 hover:border-border-emphasis',
-        isDeleted && 'cursor-default border-red-500/25 bg-red-500/[0.03] hover:border-red-500/35'
+        isDeleted && 'cursor-default border-red-500/25 bg-red-500/[0.03] hover:border-red-500/35',
+        !isDeleted && 'cursor-pointer'
       )}
     >
+      {onDismiss ? (
+        <button
+          type="button"
+          className="absolute right-2 top-2 z-10 rounded-md border border-transparent p-1 text-text-muted opacity-0 transition-all hover:border-border hover:bg-surface-overlay hover:text-text-secondary focus-visible:border-border focus-visible:bg-surface-overlay focus-visible:opacity-100 group-hover:opacity-100"
+          aria-label={t('recentProjects.card.dismiss')}
+          title={t('recentProjects.card.dismissTitle')}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDismiss();
+          }}
+        >
+          <X className="size-3.5" />
+        </button>
+      ) : null}
+
       {card.activeTeams && card.activeTeams.length > 0 && (
-        <ActivePulseIndicator className="absolute right-3 top-3" />
+        <ActivePulseIndicator className={cn('absolute top-3', onDismiss ? 'right-9' : 'right-3')} />
       )}
 
       <div className="mb-1 flex items-center gap-2.5">
@@ -248,6 +277,6 @@ export const RecentProjectCard = ({
           ))}
         </div>
       )}
-    </button>
+    </div>
   );
 };

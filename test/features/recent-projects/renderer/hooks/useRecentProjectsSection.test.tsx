@@ -6,6 +6,7 @@ import {
   __resetRecentProjectsClientCacheForTests,
   loadRecentProjectsWithClientCache,
 } from '@features/recent-projects/renderer/utils/recentProjectsClientCache';
+import { resetRecentProjectDismissalsForTests } from '@features/recent-projects/renderer/utils/recentProjectDismissals';
 import {
   invalidateContextScopedRequestEpoch,
   resetContextScopedRequestEpochForTests,
@@ -141,6 +142,7 @@ describe('useRecentProjectsSection', () => {
 
   beforeEach(() => {
     __resetRecentProjectsClientCacheForTests();
+    resetRecentProjectDismissalsForTests();
     resetContextScopedRequestEpochForTests();
     vi.clearAllMocks();
     latest = null;
@@ -259,5 +261,25 @@ describe('useRecentProjectsSection', () => {
     expect(latest?.cards[0]?.activeTeams?.map((activeTeam) => activeTeam.teamName)).toEqual([
       'fresh-team',
     ]);
+  });
+
+  it('removes dismissed projects from the visible card list', async () => {
+    apiMock.getDashboardRecentProjects.mockResolvedValue({
+      projects: [project('alpha'), project('beta')],
+      degraded: false,
+    });
+
+    await renderHarness();
+    await act(async () => {
+      await flushPromises();
+    });
+
+    expect(latest?.cards.map((card) => card.name)).toEqual(['alpha', 'beta']);
+
+    act(() => {
+      latest?.dismissRecentProject(project('alpha'));
+    });
+
+    expect(latest?.cards.map((card) => card.name)).toEqual(['beta']);
   });
 });
