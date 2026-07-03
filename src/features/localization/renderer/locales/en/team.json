@@ -1256,9 +1256,9 @@
       "title": "Teams is only available in Electron mode"
     },
     "empty": {
-      "description": "Create a team here to get started. It will show up in the list automatically.",
+      "description": "Your agent teams live here. Start with a kanban board and teammates.",
       "localOnly": "Team creation is only available in local Electron mode.",
-      "title": "No teams found"
+      "title": "Create your first team"
     },
     "filter": {
       "clearAll": "Clear all",

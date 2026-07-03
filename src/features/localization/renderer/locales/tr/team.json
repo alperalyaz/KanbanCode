@@ -1254,9 +1254,9 @@
       "title": "Ekipler yalnızca Electron modunda kullanılabilir"
     },
     "empty": {
-      "description": "Başlamak için burada bir ekip oluşturun. Listede otomatik olarak görünecek.",
+      "description": "Agent ekipleriniz burada listelenir. Kanban panosu ve takım arkadaşlarıyla hemen başlayın.",
       "localOnly": "Ekip oluşturma yalnızca yerel Electron modunda kullanılabilir.",
-      "title": "Ekip bulunamadı"
+      "title": "İlk ekibinizi oluşturun"
     },
     "filter": {
       "clearAll": "Tümünü temizle",

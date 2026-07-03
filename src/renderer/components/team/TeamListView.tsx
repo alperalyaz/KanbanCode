@@ -65,6 +65,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { LaunchTeamDialogLoadingFallback } from './dialogs/LaunchTeamDialogLoadingFallback';
 import { executeTeamRelaunch } from './dialogs/teamRelaunchFlow';
 import { buildCopiedTeamMembers } from './teamCopyData';
+import { TeamListEmptyState } from './TeamListEmptyState';
 import { EMPTY_TEAM_FILTER, TeamListFilterPopover } from './TeamListFilterPopover';
 import {
   findTeamProjectSelectionTarget,
@@ -1257,7 +1258,9 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
     }
 
     if (teamsWithProvisioning.length === 0) {
-      return <div className="flex-1" aria-hidden="true" />;
+      return (
+        <TeamListEmptyState canCreate={canCreate} onCreateTeam={() => setShowCreateDialog(true)} />
+      );
     }
 
     const hasActiveFilters = filter.selectedStatuses.size > 0;
