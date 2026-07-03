@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { recordRecentProjectOpenPaths } from '@features/recent-projects/renderer';
@@ -65,7 +65,6 @@ import { useShallow } from 'zustand/react/shallow';
 import { LaunchTeamDialogLoadingFallback } from './dialogs/LaunchTeamDialogLoadingFallback';
 import { executeTeamRelaunch } from './dialogs/teamRelaunchFlow';
 import { buildCopiedTeamMembers } from './teamCopyData';
-import { TeamEmptyState } from './TeamEmptyState';
 import { EMPTY_TEAM_FILTER, TeamListFilterPopover } from './TeamListFilterPopover';
 import {
   findTeamProjectSelectionTarget,
@@ -523,6 +522,7 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
   const { t: tCommon } = useAppTranslation('common');
   const electronMode = isElectronMode();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const hasAutoOpenedCreateForEmptyTeamsRef = useRef(false);
   const [copyData, setCopyData] = useState<TeamCopyData | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<TeamListFilterState>(EMPTY_TEAM_FILTER);
@@ -1031,6 +1031,27 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
     void fetchAllTasks();
   }, [electronMode, fetchTeams, fetchAllTasks]);
 
+  useEffect(() => {
+    if (teamsWithProvisioning.length > 0) {
+      hasAutoOpenedCreateForEmptyTeamsRef.current = false;
+    }
+  }, [teamsWithProvisioning.length]);
+
+  useEffect(() => {
+    if (
+      teamsLoading ||
+      teamsError ||
+      teamsWithProvisioning.length > 0 ||
+      !canCreate ||
+      hasAutoOpenedCreateForEmptyTeamsRef.current
+    ) {
+      return;
+    }
+
+    hasAutoOpenedCreateForEmptyTeamsRef.current = true;
+    setShowCreateDialog(true);
+  }, [canCreate, teamsError, teamsLoading, teamsWithProvisioning.length]);
+
   const taskCountsByTeam = useMemo(() => buildTaskCountsByTeam(globalTasks), [globalTasks]);
 
   const activeTeams = useMemo<ActiveTeamRef[]>(() => {
@@ -1236,9 +1257,7 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
     }
 
     if (teamsWithProvisioning.length === 0) {
-      return (
-        <TeamEmptyState canCreate={canCreate} onCreateTeam={() => setShowCreateDialog(true)} />
-      );
+      return <div className="flex-1" aria-hidden="true" />;
     }
 
     const hasActiveFilters = filter.selectedStatuses.size > 0;
