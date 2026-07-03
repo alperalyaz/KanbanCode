@@ -93,6 +93,11 @@ vi.mock('@renderer/api', () => ({
   isElectronMode: () => true,
 }));
 
+vi.mock('@renderer/utils/requestProviderRuntimeChecks', () => ({
+  hasRequestedProviderRuntimeChecks: () => false,
+  requestProviderRuntimeChecks: vi.fn(() => Promise.resolve()),
+}));
+
 vi.mock('@features/codex-account/renderer', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@features/codex-account/renderer')>();
   return {
@@ -194,6 +199,7 @@ vi.mock('@renderer/store', () => {
 
 import { CliStatusBanner } from '@renderer/components/dashboard/CliStatusBanner';
 import { CliStatusSection } from '@renderer/components/settings/sections/CliStatusSection';
+import { requestProviderRuntimeChecks } from '@renderer/utils/requestProviderRuntimeChecks';
 
 async function flushLazyImports(): Promise<void> {
   await Promise.resolve();
@@ -568,7 +574,7 @@ describe('CLI status visibility during completed install state', () => {
     expect(terminalModalProps?.onExit).toBeUndefined();
 
     storeState.invalidateCliStatus.mockClear();
-    storeState.bootstrapCliStatus.mockClear();
+    vi.mocked(requestProviderRuntimeChecks).mockClear();
 
     await act(async () => {
       terminalModalProps?.onClose?.();
@@ -576,7 +582,7 @@ describe('CLI status visibility during completed install state', () => {
     });
 
     expect(storeState.invalidateCliStatus).toHaveBeenCalledTimes(1);
-    expect(storeState.bootstrapCliStatus).toHaveBeenCalledTimes(1);
+    expect(requestProviderRuntimeChecks).toHaveBeenCalledWith({ force: true });
 
     await act(async () => {
       root.unmount();
@@ -1695,7 +1701,7 @@ describe('CLI status visibility during completed install state', () => {
     expect(terminalModalProps?.onExit).toBeUndefined();
 
     storeState.invalidateCliStatus.mockClear();
-    storeState.bootstrapCliStatus.mockClear();
+    vi.mocked(requestProviderRuntimeChecks).mockClear();
 
     await act(async () => {
       terminalModalProps?.onClose?.();
@@ -1703,7 +1709,7 @@ describe('CLI status visibility during completed install state', () => {
     });
 
     expect(storeState.invalidateCliStatus).toHaveBeenCalledTimes(1);
-    expect(storeState.bootstrapCliStatus).toHaveBeenCalledTimes(1);
+    expect(requestProviderRuntimeChecks).toHaveBeenCalledWith({ force: true });
 
     await act(async () => {
       root.unmount();

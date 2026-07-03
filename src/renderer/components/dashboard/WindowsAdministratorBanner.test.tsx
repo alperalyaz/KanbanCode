@@ -4,7 +4,9 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { WindowsAdministratorBanner } from './WindowsAdministratorBanner';
+import { useStore } from '@renderer/store';
 
+import type { OpenCodeRuntimeStatus } from '@shared/types';
 import type { WindowsElevationStatus } from '@shared/types/api';
 
 function createStatus(overrides: Partial<WindowsElevationStatus> = {}): WindowsElevationStatus {
@@ -18,6 +20,17 @@ function createStatus(overrides: Partial<WindowsElevationStatus> = {}): WindowsE
   };
 }
 
+function createOpenCodeRuntimeStatus(
+  overrides: Partial<OpenCodeRuntimeStatus> = {}
+): OpenCodeRuntimeStatus {
+  return {
+    installed: true,
+    source: 'app-managed',
+    state: 'idle',
+    ...overrides,
+  };
+}
+
 function installElevationStatus(status: WindowsElevationStatus) {
   return installElevationStatusPromise(Promise.resolve(status));
 }
@@ -27,13 +40,15 @@ function installElevationStatusPromise(
   options: { openCodeInstalled?: boolean } = {}
 ) {
   const getWindowsElevationStatus = vi.fn().mockReturnValue(promise);
+  useStore.setState({
+    openCodeRuntimeStatus: createOpenCodeRuntimeStatus({
+      installed: options.openCodeInstalled ?? true,
+    }),
+  });
   Object.defineProperty(window, 'electronAPI', {
     configurable: true,
     value: {
       getWindowsElevationStatus,
-      openCodeRuntime: {
-        getStatus: vi.fn().mockResolvedValue({ installed: options.openCodeInstalled ?? true }),
-      },
     },
   });
   return getWindowsElevationStatus;
@@ -41,13 +56,13 @@ function installElevationStatusPromise(
 
 function installElevationStatusFailure() {
   const getWindowsElevationStatus = vi.fn().mockRejectedValue(new Error('IPC failed'));
+  useStore.setState({
+    openCodeRuntimeStatus: createOpenCodeRuntimeStatus(),
+  });
   Object.defineProperty(window, 'electronAPI', {
     configurable: true,
     value: {
       getWindowsElevationStatus,
-      openCodeRuntime: {
-        getStatus: vi.fn().mockResolvedValue({ installed: true }),
-      },
     },
   });
   return getWindowsElevationStatus;
@@ -61,6 +76,7 @@ async function flushReact(): Promise<void> {
 describe('WindowsAdministratorBanner', () => {
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    useStore.setState({ openCodeRuntimeStatus: null });
   });
 
   afterEach(() => {
@@ -150,7 +166,6 @@ describe('WindowsAdministratorBanner', () => {
       root.unmount();
     });
   });
-
 
   it('hides the warning when the status check is inconclusive', async () => {
     const getWindowsElevationStatus = installElevationStatus(

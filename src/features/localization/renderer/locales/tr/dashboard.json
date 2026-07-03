@@ -33,7 +33,7 @@
       "runtimeUpdatedRefreshFailed": "Çalışma zamanı güncellendi, ancak sağlayıcı durumu yenilenemedi."
     },
     "hints": {
-      "backgroundStatus": "{{runtime}} durumu arka planda kontrol edilecek.",
+      "backgroundStatus": "Sağlayıcı durumu isteğe bağlı kontrol edilir. Bağlanmaya hazır olduğunuzda sağlayıcıları genişletin veya aşağıya tıklayın.",
       "codexApiKeyFallback": "{{hint}} Kimlik doğrulama modunu değiştirirseniz API anahtarı yedeği kullanılabilir.",
       "codexAutoApiKey": "{{hint}} Otomatik mod, ChatGPT bağlanana kadar API anahtarını kullanmaya devam eder.",
       "codexFinishLogin": "Tarayıcıda ChatGPT girişini tamamlayın. İstenirse gösterilen kodu girin.",

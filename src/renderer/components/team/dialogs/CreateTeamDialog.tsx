@@ -81,7 +81,7 @@ import { createLoadingMultimodelCliStatus } from '@renderer/store/slices/cliInst
 import { isGeminiUiFrozen } from '@renderer/utils/geminiUiFreeze';
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import { resolveUiOwnedProviderBackendId } from '@renderer/utils/providerBackendIdentity';
-import { refreshCliStatusForCurrentMode } from '@renderer/utils/refreshCliStatus';
+import { requestProviderRuntimeChecks } from '@renderer/utils/requestProviderRuntimeChecks';
 import { getAvailableTeamEffortValue } from '@renderer/utils/teamEffortOptions';
 import {
   getTeamModelSelectionError,
@@ -519,8 +519,6 @@ export const CreateTeamDialog = ({
       cliProviderStatusLoading: s.cliProviderStatusLoading,
     }))
   );
-  const bootstrapCliStatus = useStore((s) => s.bootstrapCliStatus);
-  const fetchCliStatus = useStore((s) => s.fetchCliStatus);
   const openDashboard = useStore((s) => s.openDashboard);
   const loadingCliStatus = useMemo(
     () =>
@@ -1158,12 +1156,8 @@ export const CreateTeamDialog = ({
     if (!open || cliStatus || cliStatusLoading) {
       return;
     }
-    void refreshCliStatusForCurrentMode({
-      multimodelEnabled,
-      bootstrapCliStatus,
-      fetchCliStatus,
-    });
-  }, [bootstrapCliStatus, cliStatus, cliStatusLoading, fetchCliStatus, multimodelEnabled, open]);
+    void requestProviderRuntimeChecks();
+  }, [cliStatus, cliStatusLoading, open]);
 
   const handleCodexReconnect = useCallback(
     (mode: 'browser' | 'device_code' = 'browser') => {

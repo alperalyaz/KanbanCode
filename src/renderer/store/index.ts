@@ -22,7 +22,6 @@ import { create } from 'zustand';
 import { createChangeReviewSlice } from './slices/changeReviewSlice';
 import {
   createCliInstallerSlice,
-  getIncompleteMultimodelProviderIds,
   getModelOnlyFallbackProviderIds,
   mergeCliStatusPreservingHydratedProviders,
   reconcileMultimodelProviderLoading,
@@ -95,9 +94,6 @@ const TEAM_VISIBLE_IDLE_WATCHDOG_POLL_MS = 10_000;
 const TEAM_VISIBLE_IDLE_WATCHDOG_STALE_MS = 60_000;
 const TEAM_MESSAGE_FALLBACK_POLL_MS = 10_000;
 const TASK_LOG_ACTIVITY_PULSE_MS = 3_500;
-const STARTUP_RUNTIME_STATUS_IDLE_DELAY_MS = 30_000;
-const STARTUP_PROVIDER_STATUS_MIN_DELAY_MS = 2_000;
-const STARTUP_PROVIDER_STATUS_MAX_DELAY_MS = 30_000;
 const STARTUP_GLOBAL_TASKS_MIN_DELAY_MS = 5_000;
 const STARTUP_GLOBAL_TASKS_MAX_DELAY_MS = 30_000;
 const ACTIVE_PROVISIONING_STATES_FOR_PROCESS_LITE: ReadonlySet<TeamProvisioningProgress['state']> =
@@ -221,9 +217,6 @@ export function initializeNotificationListeners(): () => void {
   void cleanupCommentReadState();
   const cleanupFns: (() => void)[] = [];
   cleanupFns.push(installTeamRefreshFanoutDebugBridge());
-  let cliStatusTimer: ReturnType<typeof setTimeout> | null = null;
-  let runtimeStatusTimer: ReturnType<typeof setTimeout> | null = null;
-  let deferredProviderStatusCleanup: (() => void) | null = null;
   let deferredGlobalTasksCleanup: (() => void) | null = null;
   let disposed = false;
   useStore.getState().subscribeProvisioningProgress();
@@ -242,59 +235,8 @@ export function initializeNotificationListeners(): () => void {
     const loadedConfig = useStore.getState().appConfig;
     syncRendererTelemetry(loadedConfig?.general?.telemetryEnabled ?? true);
 
-    if (api.cliInstaller) {
-      // Resolve the configured CLI flavor after config has loaded to avoid
-      // bootstrapping multimodel placeholder state in Claude-only mode.
-      type NavigatorWithUserAgentData = Navigator & { userAgentData?: { platform?: string } };
-      const nav: NavigatorWithUserAgentData | null =
-        typeof navigator !== 'undefined' ? (navigator as NavigatorWithUserAgentData) : null;
-      // Prefer UA-CH when available; fall back to deprecated-but-still-supported navigator.platform.
-
-      const platform: string =
-        nav?.userAgentData?.platform ?? nav?.platform ?? nav?.userAgent ?? '';
-      const isWindows = platform.toLowerCase().includes('win');
-      const delayMs = isWindows ? 3000 : 0;
-      cliStatusTimer = setTimeout(() => {
-        const multimodelEnabled = useStore.getState().appConfig?.general?.multimodelEnabled ?? true;
-        if (multimodelEnabled) {
-          void (async () => {
-            await useStore
-              .getState()
-              .bootstrapCliStatus({ multimodelEnabled: true, providerStatusMode: 'defer' });
-            if (deferredProviderStatusCleanup) {
-              deferredProviderStatusCleanup();
-            }
-            deferredProviderStatusCleanup = scheduleStartupIdleTask(
-              () => {
-                const providerIds = getIncompleteMultimodelProviderIds(
-                  useStore.getState().cliStatus
-                );
-                for (const providerId of providerIds) {
-                  void useStore.getState().fetchCliProviderStatus(providerId, { silent: false });
-                }
-                deferredProviderStatusCleanup = null;
-              },
-              {
-                minDelayMs: STARTUP_PROVIDER_STATUS_MIN_DELAY_MS,
-                maxDelayMs: STARTUP_PROVIDER_STATUS_MAX_DELAY_MS,
-              }
-            );
-          })();
-        } else {
-          void useStore.getState().fetchCliStatus();
-        }
-        cliStatusTimer = null;
-      }, delayMs);
-    }
-    runtimeStatusTimer = setTimeout(() => {
-      if (api.openCodeRuntime) {
-        void useStore.getState().fetchOpenCodeRuntimeStatus();
-      }
-      if (api.codexRuntime) {
-        void useStore.getState().fetchCodexRuntimeStatus();
-      }
-      runtimeStatusTimer = null;
-    }, STARTUP_RUNTIME_STATUS_IDLE_DELAY_MS);
+    // CLI/provider/runtime checks are deferred until the user expands providers,
+    // opens team flows, or explicitly clicks "Check now" in the dashboard banner.
 
     // Keep immediately visible startup data first; global task aggregation can
     // scan all team task files, so hydrate it after first paint/idle.
@@ -319,9 +261,6 @@ export function initializeNotificationListeners(): () => void {
   })();
   cleanupFns.push(() => {
     disposed = true;
-    if (cliStatusTimer) clearTimeout(cliStatusTimer);
-    if (runtimeStatusTimer) clearTimeout(runtimeStatusTimer);
-    if (deferredProviderStatusCleanup) deferredProviderStatusCleanup();
     if (deferredGlobalTasksCleanup) deferredGlobalTasksCleanup();
   });
   // TODO(task-change-presence): re-enable this only after the board uses a bounded
@@ -2252,8 +2191,6 @@ export function initializeNotificationListeners(): () => void {
       cleanupFns.push(cleanup);
     }
   }
-
-  // fetchCliStatus() is deferred 5s after app start (heavy on Windows).
 
   // Listen for CLI installer progress events from main process
   let cliCompletedRevertTimer: ReturnType<typeof setTimeout> | null = null;

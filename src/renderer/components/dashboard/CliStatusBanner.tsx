@@ -59,6 +59,10 @@ import { filterMainScreenCliProviders } from '@renderer/utils/geminiUiFreeze';
 import { isMultimodelRuntimeStatus } from '@renderer/utils/multimodelProviderVisibility';
 import { resolveProjectPathById } from '@renderer/utils/projectLookup';
 import { refreshCliStatusForCurrentMode } from '@renderer/utils/refreshCliStatus';
+import {
+  hasRequestedProviderRuntimeChecks,
+  requestProviderRuntimeChecks,
+} from '@renderer/utils/requestProviderRuntimeChecks';
 import { getRuntimeDisplayName as getHumanRuntimeDisplayName } from '@renderer/utils/runtimeDisplayName';
 import { getVisibleTeamProviderModels } from '@renderer/utils/teamModelCatalog';
 import { CLI_PROVIDER_STATUS_DEFERRED_MESSAGE } from '@shared/types/cliInstaller';
@@ -1404,6 +1408,15 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
   const [isVerifyingAuth, setIsVerifyingAuth] = useState(false);
   const [showTroubleshoot, setShowTroubleshoot] = useState(false);
   const [providersCollapsed, setProvidersCollapsed] = useState(true);
+  const [providerChecksEngaged, setProviderChecksEngaged] = useState(() =>
+    hasRequestedProviderRuntimeChecks()
+  );
+
+  useEffect(() => {
+    if (cliStatus || hasRequestedProviderRuntimeChecks()) {
+      setProviderChecksEngaged(true);
+    }
+  }, [cliStatus]);
   const [anthropicRateLimitsRefreshing, setAnthropicRateLimitsRefreshing] = useState(false);
   const multimodelEnabled = appConfig?.general?.multimodelEnabled ?? true;
   const selectedProjectPath = useMemo(
@@ -1429,6 +1442,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
   );
   const codexAccount = useCodexAccountSnapshot({
     enabled:
+      providerChecksEngaged &&
       isElectron &&
       multimodelEnabled &&
       loadingCliStatus?.flavor === 'agent_teams_orchestrator' &&
@@ -1473,7 +1487,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
   const renderCliStatus = effectiveCliStatus;
 
   useEffect(() => {
-    if (!isElectron || codexRuntimeStatus || codexRuntimeStatusLoading) {
+    if (!isElectron || !providerChecksEngaged || codexRuntimeStatus || codexRuntimeStatusLoading) {
       return;
     }
 
@@ -1485,6 +1499,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     codexRuntimeStatusLoading,
     fetchCodexRuntimeStatus,
     isElectron,
+    providerChecksEngaged,
     visibleCliProviders,
   ]);
 
@@ -1513,9 +1528,6 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
 
   useEffect(() => {
     if (!isElectron) return;
-    // IMPORTANT: do NOT auto-fetch on mount.
-    // Store initialization already schedules a deferred CLI status check to avoid
-    // competing with initial teams/tasks/project scans.
     // Keep a low-frequency refresh, but only after we've successfully loaded a status.
     if (!cliStatus) {
       return;
@@ -1571,20 +1583,28 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     installCli();
   }, [installCli]);
 
+  const engageProviderChecks = useCallback(() => {
+    setProviderChecksEngaged(true);
+    return requestProviderRuntimeChecks();
+  }, []);
+
   const handleRefresh = useCallback(() => {
     void (async () => {
+      setProviderChecksEngaged(true);
       await invalidateCliStatus();
-      await refreshCliStatusForCurrentMode({
-        multimodelEnabled,
-        bootstrapCliStatus,
-        fetchCliStatus,
-      });
+      await requestProviderRuntimeChecks({ force: true });
     })();
-  }, [bootstrapCliStatus, fetchCliStatus, invalidateCliStatus, multimodelEnabled]);
+  }, [invalidateCliStatus]);
 
   const handleToggleProvidersCollapsed = useCallback(() => {
-    setProvidersCollapsed((current) => !current);
-  }, []);
+    setProvidersCollapsed((current) => {
+      const next = !current;
+      if (!next) {
+        void engageProviderChecks();
+      }
+      return next;
+    });
+  }, [engageProviderChecks]);
 
   const handleCodexDashboardLogin = useCallback(() => {
     void (async () => {
@@ -1602,17 +1622,14 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     setIsVerifyingAuth(true);
     void (async () => {
       try {
+        setProviderChecksEngaged(true);
         await invalidateCliStatus();
-        await refreshCliStatusForCurrentMode({
-          multimodelEnabled,
-          bootstrapCliStatus,
-          fetchCliStatus,
-        });
+        await requestProviderRuntimeChecks({ force: true });
       } finally {
         setIsVerifyingAuth(false);
       }
     })();
-  }, [bootstrapCliStatus, fetchCliStatus, invalidateCliStatus, multimodelEnabled]);
+  }, [invalidateCliStatus]);
 
   const handleProviderLogin = useCallback((providerId: CliProviderId) => {
     setProviderTerminal({ providerId, action: 'login' });
@@ -1842,7 +1859,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
           style={{ borderColor: styles.border, backgroundColor: styles.bg }}
         >
           <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            {t('cliStatus.hints.backgroundStatus', { runtime: runtimeDisplayName })}
+            {t('cliStatus.hints.backgroundStatus')}
           </span>
           <button
             onClick={handleRefresh}

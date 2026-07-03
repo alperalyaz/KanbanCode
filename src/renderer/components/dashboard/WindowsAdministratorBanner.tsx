@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { api, isElectronMode } from '@renderer/api';
+import { useStore } from '@renderer/store';
 import { AlertTriangle } from 'lucide-react';
 
 import type { WindowsElevationStatus } from '@shared/types/api';
@@ -9,7 +10,8 @@ import type { WindowsElevationStatus } from '@shared/types/api';
 export const WindowsAdministratorBanner = (): React.JSX.Element | null => {
   const { t } = useAppTranslation('dashboard');
   const [status, setStatus] = useState<WindowsElevationStatus | null>(null);
-  const [openCodeInstalled, setOpenCodeInstalled] = useState(false);
+  const openCodeRuntimeStatus = useStore((s) => s.openCodeRuntimeStatus);
+  const openCodeInstalled = Boolean(openCodeRuntimeStatus?.installed);
 
   useEffect(() => {
     if (!isElectronMode()) {
@@ -33,23 +35,6 @@ export const WindowsAdministratorBanner = (): React.JSX.Element | null => {
           setStatus(null);
         }
       });
-
-    // Elevation only matters for OpenCode runtime controls — keep the banner
-    // out of the way for everyone who doesn't use OpenCode at all.
-    const getOpenCodeStatus = api.openCodeRuntime?.getStatus;
-    if (typeof getOpenCodeStatus === 'function') {
-      void getOpenCodeStatus()
-        .then((runtimeStatus) => {
-          if (!cancelled) {
-            setOpenCodeInstalled(Boolean(runtimeStatus?.installed));
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setOpenCodeInstalled(false);
-          }
-        });
-    }
 
     return () => {
       cancelled = true;
