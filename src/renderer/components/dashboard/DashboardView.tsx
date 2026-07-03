@@ -10,6 +10,7 @@ import { RecentProjectsSection } from '@features/recent-projects/renderer';
 import { RunningTeamsSection } from '@features/running-teams/renderer';
 import { useStore } from '@renderer/store';
 import { formatShortcut } from '@renderer/utils/stringUtils';
+import { APP_NAME } from '@shared/constants/brand';
 import { ArrowRight, Command, Search, Users } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -158,9 +159,7 @@ export const DashboardView = (): React.JSX.Element => {
         </div>
 
         <header className="mb-12 lg:mb-14">
-          <p className="mb-3 text-sm font-medium uppercase tracking-[0.2em] text-indigo-300/80">
-            KanbanCode
-          </p>
+          <p className="mb-3 text-sm font-medium tracking-wide text-indigo-300/80">{APP_NAME}</p>
           <h1 className="text-3xl font-semibold tracking-tight text-text sm:text-4xl lg:text-[2.75rem] lg:leading-tight xl:text-5xl">
             {t('hero.title')}
           </h1>
