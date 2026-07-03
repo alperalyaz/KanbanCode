@@ -52,10 +52,6 @@ import {
   getProviderTerminalLogoutCommand,
 } from '@renderer/components/runtime/providerTerminalCommands';
 import { useCliInstaller } from '@renderer/hooks/useCliInstaller';
-import {
-  loadDashboardCliStatusBannerCollapsed,
-  saveDashboardCliStatusBannerCollapsed,
-} from '@renderer/services/dashboardCliStatusBannerPreference';
 import { useStore } from '@renderer/store';
 import { createLoadingMultimodelCliStatus } from '@renderer/store/slices/cliInstallerSlice';
 import { formatBytes } from '@renderer/utils/formatters';
@@ -1407,9 +1403,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
   const [manageDialogOpen, setManageDialogOpen] = useState(false);
   const [isVerifyingAuth, setIsVerifyingAuth] = useState(false);
   const [showTroubleshoot, setShowTroubleshoot] = useState(false);
-  const [providersCollapsed, setProvidersCollapsed] = useState(() =>
-    loadDashboardCliStatusBannerCollapsed()
-  );
+  const [providersCollapsed, setProvidersCollapsed] = useState(true);
   const [anthropicRateLimitsRefreshing, setAnthropicRateLimitsRefreshing] = useState(false);
   const multimodelEnabled = appConfig?.general?.multimodelEnabled ?? true;
   const selectedProjectPath = useMemo(
@@ -1589,11 +1583,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
   }, [bootstrapCliStatus, fetchCliStatus, invalidateCliStatus, multimodelEnabled]);
 
   const handleToggleProvidersCollapsed = useCallback(() => {
-    setProvidersCollapsed((current) => {
-      const next = !current;
-      saveDashboardCliStatusBannerCollapsed(next);
-      return next;
-    });
+    setProvidersCollapsed((current) => !current);
   }, []);
 
   const handleCodexDashboardLogin = useCallback(() => {

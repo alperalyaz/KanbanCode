@@ -2168,7 +2168,7 @@ describe('CLI status visibility during completed install state', () => {
     });
   });
 
-  it('restores the expanded dashboard provider banner after remount', async () => {
+  it('starts collapsed again after remount even if previously expanded', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliInstallerState = 'idle';
     storeState.cliStatus = createInstalledCliStatus({
@@ -2271,8 +2271,8 @@ describe('CLI status visibility during completed install state', () => {
     });
 
     expect(secondHost.textContent).toContain('Providers: 1/1 connected');
-    expect(secondHost.textContent).toContain('ChatGPT account ready');
-    expect(secondHost.querySelector('[aria-label="Collapse provider details"]')).not.toBeNull();
+    expect(secondHost.textContent).not.toContain('ChatGPT account ready');
+    expect(secondHost.querySelector('[aria-label="Expand provider details"]')).not.toBeNull();
 
     await act(async () => {
       secondRoot.unmount();
