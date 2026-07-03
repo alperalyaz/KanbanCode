@@ -5067,13 +5067,53 @@ export default interface Resources {
       submit: 'Submit';
       title: 'Request Changes';
     };
+    memberNames: {
+      concept: 'Suggested member names follow a legendary-companions theme: fantasy epics in English, Turkish folktale heroes in Turkish.';
+    };
     roleSelect: {
       customRole: 'Custom role...';
+      customRoleDescription: 'Create a project-specific role when none of the presets fit.';
       empty: 'No roles found.';
       emptyCustomRole: 'Role cannot be empty';
       noRole: 'No role';
+      noRoleDescription: 'No preset role is assigned. Define behavior with member workflow instructions.';
+      presets: {
+        architect: {
+          description: 'Plans structure, splits goals into tasks, and guards scope. Use when the team needs design decisions before implementation.';
+          label: 'Architect';
+        };
+        auditor: {
+          description: 'Checks security, compliance, and risky patterns across the codebase.';
+          label: 'Auditor';
+        };
+        developer: {
+          description: 'Implements assigned tasks with focused code changes. The main builder role for feature work.';
+          label: 'Developer';
+        };
+        docs: {
+          description: 'Writes and updates documentation, examples, and user-facing explanations.';
+          label: 'Docs';
+        };
+        optimizer: {
+          description: 'Profiles performance bottlenecks and proposes targeted improvements.';
+          label: 'Optimizer';
+        };
+        qa: {
+          description: 'Tests changes, reproduces bugs, and verifies acceptance criteria. Use when reliability and regression coverage matter.';
+          label: 'QA';
+        };
+        researcher: {
+          description: 'Investigates unknowns, compares options, and summarizes findings before the team commits to a path.';
+          label: 'Researcher';
+        };
+        reviewer: {
+          description: 'Reviews completed tasks, inspects diffs, and requests fixes before approval. Strong choice for quality control without staffing every role.';
+          label: 'Reviewer';
+        };
+      };
       reservedRole: 'This role is reserved';
       searchPlaceholder: 'Search roles...';
+      selectionHint: 'You do not need every role. Pick only the few that match this project.';
     };
     runningTeams: {
       noProject: 'No project';

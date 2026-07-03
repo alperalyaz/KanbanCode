@@ -1,9 +1,84 @@
-const MEMBER_NAME_SETS = [
-  ['atlas', 'nova', 'echo', 'vector', 'ember', 'pixel'],
-  ['scout', 'forge', 'quill', 'signal', 'patch', 'guard'],
-  ['aurora', 'cipher', 'relay', 'kernel', 'beacon', 'sable'],
-  ['orbit', 'flux', 'delta', 'prism', 'comet', 'node'],
-] as const;
+import type { ResolvedAppLocale } from '@features/localization/contracts';
+
+/** Fantasy-companion themed name pools used when suggesting new teammate ids. */
+const MEMBER_NAME_SETS_BY_LOCALE = {
+  en: [
+    ['frodo', 'sam', 'aragorn', 'legolas', 'gimli', 'gandalf'],
+    ['galadriel', 'eowyn', 'arwen', 'faramir', 'boromir', 'bilbo'],
+    ['thorin', 'balin', 'bard', 'kili', 'fili', 'dwalin'],
+    ['aslan', 'lucy', 'edmund', 'peter', 'susan', 'caspian'],
+  ],
+  tr: [
+    ['koroglu', 'alpamis', 'bogac', 'ayvaz', 'selcan', 'dede'],
+    ['salur', 'yigen', 'uzun', 'baybora', 'melik', 'kara'],
+    ['asena', 'alp', 'eren', 'mert', 'baran', 'asli'],
+    ['deniz', 'arda', 'kaan', 'ege', 'bora', 'nilay'],
+  ],
+} as const satisfies Record<ResolvedAppLocale, readonly (readonly string[])[]>;
+
+export interface DefaultCreateTeamMemberConfig {
+  name: string;
+  roleSelection: string;
+  workflowKind?: 'reviewer';
+}
+
+const DEFAULT_CREATE_TEAM_MEMBERS_BY_LOCALE: Record<
+  ResolvedAppLocale,
+  readonly DefaultCreateTeamMemberConfig[]
+> = {
+  en: [
+    { name: 'eowyn', roleSelection: 'reviewer', workflowKind: 'reviewer' },
+    { name: 'aragorn', roleSelection: 'developer' },
+    { name: 'legolas', roleSelection: 'developer' },
+    { name: 'gimli', roleSelection: 'developer' },
+  ],
+  tr: [
+    { name: 'selcan', roleSelection: 'reviewer', workflowKind: 'reviewer' },
+    { name: 'koroglu', roleSelection: 'developer' },
+    { name: 'alpamis', roleSelection: 'developer' },
+    { name: 'bogac', roleSelection: 'developer' },
+  ],
+};
+
+export function resolveMemberNameLocale(language?: string | null): ResolvedAppLocale {
+  return language === 'tr' ? 'tr' : 'en';
+}
+
+export function getMemberNameSets(
+  locale: ResolvedAppLocale = 'en'
+): readonly (readonly string[])[] {
+  return MEMBER_NAME_SETS_BY_LOCALE[locale];
+}
+
+export function getDefaultCreateTeamMemberConfigs(
+  locale: ResolvedAppLocale = 'en'
+): readonly DefaultCreateTeamMemberConfig[] {
+  return DEFAULT_CREATE_TEAM_MEMBERS_BY_LOCALE[locale];
+}
+
+const LEGACY_DEFAULT_CREATE_TEAM_MEMBER_NAMES = ['alice', 'tom', 'bob', 'jack'] as const;
+
+export function isLegacyDefaultCreateTeamMemberNames(names: readonly string[]): boolean {
+  if (names.length !== LEGACY_DEFAULT_CREATE_TEAM_MEMBER_NAMES.length) {
+    return false;
+  }
+
+  const normalized = names.map(normalizeMemberName);
+  return LEGACY_DEFAULT_CREATE_TEAM_MEMBER_NAMES.every(
+    (legacyName, index) => normalized[index] === legacyName
+  );
+}
+
+export function remapLegacyDefaultCreateTeamMemberNames(
+  names: readonly string[],
+  locale: ResolvedAppLocale = 'en'
+): readonly string[] {
+  if (!isLegacyDefaultCreateTeamMemberNames(names)) {
+    return names;
+  }
+
+  return getDefaultCreateTeamMemberConfigs(locale).map((member) => member.name);
+}
 
 function normalizeMemberName(name: string): string {
   return name.trim().toLowerCase();
@@ -14,8 +89,13 @@ function belongsToBaseName(name: string, baseName: string): boolean {
   return normalized === baseName || normalized.startsWith(`${baseName}-`);
 }
 
-function getPreferredNameSet(existingNames: readonly string[]): readonly string[] {
-  for (const nameSet of MEMBER_NAME_SETS) {
+function getPreferredNameSet(
+  existingNames: readonly string[],
+  locale: ResolvedAppLocale
+): readonly string[] {
+  const memberNameSets = getMemberNameSets(locale);
+
+  for (const nameSet of memberNameSets) {
     if (
       nameSet.some((candidate) => existingNames.some((name) => belongsToBaseName(name, candidate)))
     ) {
@@ -23,7 +103,7 @@ function getPreferredNameSet(existingNames: readonly string[]): readonly string[
     }
   }
 
-  return MEMBER_NAME_SETS[0];
+  return memberNameSets[0];
 }
 
 function createUniqueName(baseName: string, existingNames: readonly string[]): string {
@@ -40,9 +120,13 @@ function createUniqueName(baseName: string, existingNames: readonly string[]): s
   return `${baseName}-${suffix}`;
 }
 
-export function getNextSuggestedMemberName(existingNames: readonly string[]): string {
+export function getNextSuggestedMemberName(
+  existingNames: readonly string[],
+  locale: ResolvedAppLocale = 'en'
+): string {
   const normalizedExisting = new Set(existingNames.map(normalizeMemberName).filter(Boolean));
-  const preferredSet = getPreferredNameSet(existingNames);
+  const memberNameSets = getMemberNameSets(locale);
+  const preferredSet = getPreferredNameSet(existingNames, locale);
 
   for (const candidate of preferredSet) {
     if (!normalizedExisting.has(candidate)) {
@@ -50,7 +134,7 @@ export function getNextSuggestedMemberName(existingNames: readonly string[]): st
     }
   }
 
-  for (const nameSet of MEMBER_NAME_SETS) {
+  for (const nameSet of memberNameSets) {
     for (const candidate of nameSet) {
       if (!normalizedExisting.has(candidate)) {
         return candidate;
@@ -62,4 +146,4 @@ export function getNextSuggestedMemberName(existingNames: readonly string[]): st
   return createUniqueName(fallbackBaseName, existingNames);
 }
 
-export { MEMBER_NAME_SETS };
+export const MEMBER_NAME_SETS = MEMBER_NAME_SETS_BY_LOCALE.en;
