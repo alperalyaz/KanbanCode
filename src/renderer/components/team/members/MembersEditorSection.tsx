@@ -15,7 +15,11 @@ import { GitBranch, Plug, Plus } from 'lucide-react';
 import { MembersJsonEditor } from '../dialogs/MembersJsonEditor';
 
 import { MemberDraftRow } from './MemberDraftRow';
-import { getNextSuggestedMemberName, resolveMemberNameLocale } from './memberNameSets';
+import {
+  getNextSuggestedMemberName,
+  resolveMemberNameLocale,
+  canonicalizeThemedMemberName,
+} from './memberNameSets';
 import {
   buildMemberDraftColorMap,
   buildMemberDraftSuggestions,
@@ -242,6 +246,13 @@ export const MembersEditorSection = ({
 
   const updateMemberName = (memberId: string, name: string): void => {
     emitMembersChange(members.map((c) => (c.id === memberId ? { ...c, name } : c)));
+  };
+
+  const finalizeMemberName = (memberId: string, name: string): void => {
+    const canonical = canonicalizeThemedMemberName(name, memberNameLocale);
+    if (canonical !== name) {
+      updateMemberName(memberId, canonical);
+    }
   };
 
   const updateMemberRole = (memberId: string, roleSelection: string): void => {
@@ -552,6 +563,7 @@ export const MembersEditorSection = ({
                   resolvedColor={memberColorMap.get(member.id)}
                   nameError={validateMemberName?.(member.name) ?? null}
                   onNameChange={updateMemberName}
+                  onNameBlur={finalizeMemberName}
                   onRoleChange={updateMemberRole}
                   onCustomRoleChange={updateMemberCustomRole}
                   onRemove={removeMember}
@@ -604,6 +616,7 @@ export const MembersEditorSection = ({
                         resolvedColor={memberColorMap.get(member.id)}
                         nameError={null}
                         onNameChange={updateMemberName}
+                        onNameBlur={finalizeMemberName}
                         onRoleChange={updateMemberRole}
                         onCustomRoleChange={updateMemberCustomRole}
                         onRemove={removeMember}

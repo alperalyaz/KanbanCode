@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { api } from '@renderer/api';
-import { MemberDraftRow } from '@renderer/components/team/members/MemberDraftRow';
+import { resolveMemberNameLocale } from '@renderer/components/team/members/memberNameSets';
 import {
   buildMembersFromDrafts,
   createMemberDraft,
@@ -26,10 +26,7 @@ import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
 import { isGeminiUiFrozen } from '@renderer/utils/geminiUiFreeze';
 import { isImeComposing } from '@renderer/utils/imeComposition';
-import {
-  buildMemberColorMap,
-  displayMemberName,
-} from '@renderer/utils/memberHelpers';
+import { buildMemberColorMap, displayMemberName } from '@renderer/utils/memberHelpers';
 import { parseNumericSuffixName } from '@shared/utils/teamMemberName';
 import { Loader2 } from 'lucide-react';
 
@@ -41,6 +38,7 @@ import {
   getMembersRequiringRuntimeRestart,
 } from './editTeamRuntimeChanges';
 
+import type { ResolvedAppLocale } from '@features/localization/contracts';
 import type { ResolvedTeamMember } from '@shared/types';
 
 const TEAM_COLOR_NAMES = [
@@ -71,8 +69,8 @@ interface EditTeamDialogProps {
   onSaved: () => Promise<void> | void;
 }
 
-function membersToDrafts(members: ResolvedTeamMember[]) {
-  return createMemberDraftsFromInputs(filterEditableMemberInputs(members));
+function membersToDrafts(members: ResolvedTeamMember[], memberNameLocale: ResolvedAppLocale) {
+  return createMemberDraftsFromInputs(filterEditableMemberInputs(members), { memberNameLocale });
 }
 
 function deriveTeammateWorktreeDefault(members: readonly ResolvedTeamMember[]): boolean {
@@ -157,12 +155,13 @@ export const EditTeamDialog = ({
   onChangeLeadRuntime,
   onSaved,
 }: EditTeamDialogProps): React.JSX.Element => {
-  const { t } = useAppTranslation('team');
+  const { t, resolvedLanguage } = useAppTranslation('team');
+  const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
   const { isLight } = useTheme();
   const [name, setName] = useState(currentName);
   const [description, setDescription] = useState(currentDescription);
   const [color, setColor] = useState(currentColor);
-  const [members, setMembers] = useState(() => membersToDrafts(currentMembers));
+  const [members, setMembers] = useState(() => membersToDrafts(currentMembers, memberNameLocale));
   const [teammateWorktreeDefault, setTeammateWorktreeDefault] = useState(() =>
     deriveTeammateWorktreeDefault(currentMembers)
   );
@@ -206,7 +205,7 @@ export const EditTeamDialog = ({
         setName(currentName);
         setDescription(currentDescription);
         setColor(currentColor);
-        setMembers(membersToDrafts(currentMembers));
+        setMembers(membersToDrafts(currentMembers, memberNameLocale));
         setTeammateWorktreeDefault(deriveTeammateWorktreeDefault(currentMembers));
         setError(null);
         setSaveOutcomeError(null);

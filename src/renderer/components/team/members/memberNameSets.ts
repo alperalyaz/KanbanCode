@@ -93,14 +93,14 @@ function buildCanonicalThemedMemberNameMap(
 
   for (const nameSet of getMemberNameSets(locale)) {
     for (const name of nameSet) {
-      map[normalizeMemberName(name)] = name;
+      map[normalizeMemberName(name, locale)] = name;
     }
   }
 
   if (locale === 'tr') {
     for (const [ascii, canonical] of Object.entries(ASCII_TURKISH_MEMBER_NAME_MIGRATION)) {
       map[ascii] = canonical;
-      map[normalizeMemberName(canonical)] = canonical;
+      map[normalizeMemberName(canonical, locale)] = canonical;
     }
   }
 
@@ -112,7 +112,7 @@ export function isLegacyDefaultCreateTeamMemberNames(names: readonly string[]): 
     return false;
   }
 
-  const normalized = names.map(normalizeMemberName);
+  const normalized = names.map((name) => normalizeMemberName(name, 'en'));
   return LEGACY_DEFAULT_CREATE_TEAM_MEMBER_NAMES.every(
     (legacyName, index) => normalized[index] === legacyName
   );
@@ -123,7 +123,7 @@ export function isAsciiTurkishDefaultCreateTeamMemberNames(names: readonly strin
     return false;
   }
 
-  const normalized = names.map(normalizeMemberName);
+  const normalized = names.map((name) => normalizeMemberName(name, 'tr'));
   return ASCII_TURKISH_DEFAULT_CREATE_TEAM_MEMBER_NAMES.every(
     (legacyName, index) => normalized[index] === legacyName
   );
@@ -135,9 +135,9 @@ export function isDefaultTurkishCreateTeamMemberNames(names: readonly string[]):
     return false;
   }
 
-  const normalized = names.map(normalizeMemberName);
+  const normalized = names.map((name) => normalizeMemberName(name, 'tr'));
   return defaults.every(
-    (defaultName, index) => normalized[index] === normalizeMemberName(defaultName)
+    (defaultName, index) => normalized[index] === normalizeMemberName(defaultName, 'tr')
   );
 }
 
@@ -164,7 +164,7 @@ export function remapThemedMemberNames(
   let changed = false;
 
   const remapped = names.map((name) => {
-    const canonical = canonicalByKey[normalizeMemberName(name)];
+    const canonical = canonicalByKey[normalizeMemberName(name, locale)];
     if (canonical && canonical !== name) {
       changed = true;
       return canonical;
@@ -175,14 +175,26 @@ export function remapThemedMemberNames(
   return changed ? remapped : names;
 }
 
-function normalizeMemberName(name: string): string {
-  return name.trim().toLocaleLowerCase('tr');
+export function canonicalizeThemedMemberName(
+  name: string,
+  locale: ResolvedAppLocale = 'en'
+): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  return remapThemedMemberNames([trimmed], locale)[0] ?? trimmed;
+}
+
+function normalizeMemberName(name: string, locale: ResolvedAppLocale = 'en'): string {
+  return name.trim().toLocaleLowerCase(locale === 'tr' ? 'tr' : 'en');
 }
 
 function canonicalMemberNameForMatching(name: string, locale: ResolvedAppLocale): string {
-  const normalized = normalizeMemberName(name);
+  const normalized = normalizeMemberName(name, locale);
   const canonicalByKey = buildCanonicalThemedMemberNameMap(locale);
-  return normalizeMemberName(canonicalByKey[normalized] ?? normalized);
+  return normalizeMemberName(canonicalByKey[normalized] ?? normalized, locale);
 }
 
 function belongsToBaseName(name: string, baseName: string, locale: ResolvedAppLocale): boolean {
@@ -210,14 +222,20 @@ function getPreferredNameSet(
   return memberNameSets[0];
 }
 
-function createUniqueName(baseName: string, existingNames: readonly string[]): string {
-  const normalizedExisting = new Set(existingNames.map(normalizeMemberName));
-  if (!normalizedExisting.has(normalizeMemberName(baseName))) {
+function createUniqueName(
+  baseName: string,
+  existingNames: readonly string[],
+  locale: ResolvedAppLocale
+): string {
+  const normalizedExisting = new Set(
+    existingNames.map((name) => normalizeMemberName(name, locale))
+  );
+  if (!normalizedExisting.has(normalizeMemberName(baseName, locale))) {
     return baseName;
   }
 
   let suffix = 2;
-  while (normalizedExisting.has(normalizeMemberName(`${baseName}-${suffix}`))) {
+  while (normalizedExisting.has(normalizeMemberName(`${baseName}-${suffix}`, locale))) {
     suffix += 1;
   }
 
@@ -232,19 +250,19 @@ function expandNormalizedMemberNames(
   const canonicalByKey = buildCanonicalThemedMemberNameMap(locale);
 
   for (const name of names) {
-    const normalized = normalizeMemberName(name);
+    const normalized = normalizeMemberName(name, locale);
     expanded.add(normalized);
     expanded.add(canonicalMemberNameForMatching(name, locale));
 
     if (locale === 'tr') {
       for (const [ascii, canonical] of Object.entries(ASCII_TURKISH_MEMBER_NAME_MIGRATION)) {
         if (
-          normalizeMemberName(canonical) === normalized ||
+          normalizeMemberName(canonical, locale) === normalized ||
           ascii === normalized ||
           canonicalByKey[normalized] === canonical
         ) {
           expanded.add(ascii);
-          expanded.add(normalizeMemberName(canonical));
+          expanded.add(normalizeMemberName(canonical, locale));
         }
       }
     }
@@ -263,21 +281,21 @@ export function getNextSuggestedMemberName(
   const preferredSet = getPreferredNameSet(existingNames, locale);
 
   for (const candidate of preferredSet) {
-    if (!normalizedExisting.has(normalizeMemberName(candidate))) {
+    if (!normalizedExisting.has(normalizeMemberName(candidate, locale))) {
       return candidate;
     }
   }
 
   for (const nameSet of memberNameSets) {
     for (const candidate of nameSet) {
-      if (!normalizedExisting.has(normalizeMemberName(candidate))) {
+      if (!normalizedExisting.has(normalizeMemberName(candidate, locale))) {
         return candidate;
       }
     }
   }
 
   const fallbackBaseName = preferredSet[existingNames.length % preferredSet.length] ?? 'Agent';
-  return createUniqueName(capitalizeMemberName(fallbackBaseName, locale), existingNames);
+  return createUniqueName(capitalizeMemberName(fallbackBaseName, locale), existingNames, locale);
 }
 
 export const MEMBER_NAME_SETS = MEMBER_NAME_SETS_BY_LOCALE.en;

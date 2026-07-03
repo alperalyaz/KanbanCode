@@ -84,6 +84,12 @@ describe('memberNameSets', () => {
       'Boğaç',
       'Aslı',
     ]);
+    expect(remapThemedMemberNames(['eowyn', 'aragorn', 'legolas', 'gimli'], 'en')).toEqual([
+      'Eowyn',
+      'Aragorn',
+      'Legolas',
+      'Gimli',
+    ]);
     expect(remapThemedMemberNames(['frodo', 'aragorn'], 'en')).toEqual(['Frodo', 'Aragorn']);
   });
 });

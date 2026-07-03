@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { createMemberDraft } from '@renderer/components/team/members/membersEditorUtils';
+import type { ResolvedAppLocale } from '@features/localization/contracts';
 import {
   type CreateTeamDraftSnapshot,
   createTeamDraftStorage,
@@ -104,22 +105,28 @@ function serializeMembers(members: MemberDraft[]): SerializedMemberDraft[] {
   );
 }
 
-function deserializeMembers(serialized: SerializedMemberDraft[]): MemberDraft[] {
+function deserializeMembers(
+  serialized: SerializedMemberDraft[],
+  memberNameLocale: ResolvedAppLocale
+): MemberDraft[] {
   return serialized.map((m) =>
-    createMemberDraft({
-      id: m.id,
-      name: m.name,
-      roleSelection: m.roleSelection,
-      customRole: m.customRole,
-      workflow: m.workflow,
-      isolation: m.isolation === 'worktree' ? 'worktree' : undefined,
-      providerId: m.providerId,
-      providerBackendId: m.providerBackendId,
-      model: m.model,
-      effort: m.effort,
-      fastMode: m.fastMode,
-      mcpPolicy: normalizeTeamMemberMcpPolicy(m.mcpPolicy),
-    })
+    createMemberDraft(
+      {
+        id: m.id,
+        name: m.name,
+        roleSelection: m.roleSelection,
+        customRole: m.customRole,
+        workflow: m.workflow,
+        isolation: m.isolation === 'worktree' ? 'worktree' : undefined,
+        providerId: m.providerId,
+        providerBackendId: m.providerBackendId,
+        model: m.model,
+        effort: m.effort,
+        fastMode: m.fastMode,
+        mcpPolicy: normalizeTeamMemberMcpPolicy(m.mcpPolicy),
+      },
+      { memberNameLocale }
+    )
   );
 }
 
@@ -127,7 +134,9 @@ function deserializeMembers(serialized: SerializedMemberDraft[]): MemberDraft[] 
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useCreateTeamDraft(): UseCreateTeamDraftResult {
+export function useCreateTeamDraft(
+  memberNameLocale: ResolvedAppLocale = 'en'
+): UseCreateTeamDraftResult {
   const storedSyncModelsWithLead = getStoredCreateTeamSyncModelsWithLead();
 
   // ── State ──────────────────────────────────────────────────────────────
@@ -229,38 +238,41 @@ export function useCreateTeamDraft(): UseCreateTeamDraftResult {
 
   // ── Apply snapshot to state ────────────────────────────────────────────
 
-  const applySnapshot = useCallback((snap: CreateTeamDraftSnapshot) => {
-    const deserialized = deserializeMembers(snap.members);
-    const nextSyncModelsWithLead =
-      snap.syncModelsWithLead ?? getStoredCreateTeamSyncModelsWithLead();
+  const applySnapshot = useCallback(
+    (snap: CreateTeamDraftSnapshot) => {
+      const deserialized = deserializeMembers(snap.members, memberNameLocale);
+      const nextSyncModelsWithLead =
+        snap.syncModelsWithLead ?? getStoredCreateTeamSyncModelsWithLead();
 
-    setStoredCreateTeamSyncModelsWithLead(nextSyncModelsWithLead);
-    if (!nextSyncModelsWithLead) {
-      setStoredCreateTeamMemberRuntimePreferences(deserialized);
-    }
+      setStoredCreateTeamSyncModelsWithLead(nextSyncModelsWithLead);
+      if (!nextSyncModelsWithLead) {
+        setStoredCreateTeamMemberRuntimePreferences(deserialized);
+      }
 
-    teamNameRef.current = snap.teamName;
-    membersRef.current = deserialized;
-    syncModelsWithLeadRef.current = nextSyncModelsWithLead;
-    teammateWorktreeDefaultRef.current = snap.teammateWorktreeDefault === true;
-    cwdModeRef.current = snap.cwdMode;
-    selectedProjectPathRef.current = snap.selectedProjectPath;
-    customCwdRef.current = snap.customCwd;
-    soloTeamRef.current = snap.soloTeam;
-    launchTeamRef.current = snap.launchTeam;
-    teamColorRef.current = snap.teamColor;
+      teamNameRef.current = snap.teamName;
+      membersRef.current = deserialized;
+      syncModelsWithLeadRef.current = nextSyncModelsWithLead;
+      teammateWorktreeDefaultRef.current = snap.teammateWorktreeDefault === true;
+      cwdModeRef.current = snap.cwdMode;
+      selectedProjectPathRef.current = snap.selectedProjectPath;
+      customCwdRef.current = snap.customCwd;
+      soloTeamRef.current = snap.soloTeam;
+      launchTeamRef.current = snap.launchTeam;
+      teamColorRef.current = snap.teamColor;
 
-    setTeamNameState(snap.teamName);
-    setMembersState(deserialized);
-    setSyncModelsWithLeadState(nextSyncModelsWithLead);
-    setTeammateWorktreeDefaultState(snap.teammateWorktreeDefault === true);
-    setCwdModeState(snap.cwdMode);
-    setSelectedProjectPathState(snap.selectedProjectPath);
-    setCustomCwdState(snap.customCwd);
-    setSoloTeamState(snap.soloTeam);
-    setLaunchTeamState(snap.launchTeam);
-    setTeamColorState(snap.teamColor);
-  }, []);
+      setTeamNameState(snap.teamName);
+      setMembersState(deserialized);
+      setSyncModelsWithLeadState(nextSyncModelsWithLead);
+      setTeammateWorktreeDefaultState(snap.teammateWorktreeDefault === true);
+      setCwdModeState(snap.cwdMode);
+      setSelectedProjectPathState(snap.selectedProjectPath);
+      setCustomCwdState(snap.customCwd);
+      setSoloTeamState(snap.soloTeam);
+      setLaunchTeamState(snap.launchTeam);
+      setTeamColorState(snap.teamColor);
+    },
+    [memberNameLocale]
+  );
 
   // ── Load on mount ──────────────────────────────────────────────────────
 

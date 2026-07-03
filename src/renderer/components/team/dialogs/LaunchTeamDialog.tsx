@@ -31,6 +31,7 @@ import {
   normalizeProviderForMode,
   validateMemberNameInline,
 } from '@renderer/components/team/members/MembersEditorSection';
+import { resolveMemberNameLocale } from '@renderer/components/team/members/memberNameSets';
 import { TeamRosterEditorSection } from '@renderer/components/team/members/TeamRosterEditorSection';
 import { Button } from '@renderer/components/ui/button';
 import { Combobox } from '@renderer/components/ui/combobox';
@@ -354,7 +355,8 @@ function buildWorktreePathByMemberName(
 export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Element => {
   const { open, onClose } = props;
   const { isLight } = useTheme();
-  const { t } = useAppTranslation('team');
+  const { t, resolvedLanguage } = useAppTranslation('team');
+  const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
   const multimodelEnabled = useStore((s) => s.appConfig?.general?.multimodelEnabled ?? true);
   const anthropicProviderFastModeDefault = useStore(
     (s) => s.appConfig?.providerConnections?.anthropic.fastModeDefault ?? false
@@ -928,7 +930,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       );
 
       setMembersDrafts(
-        createMemberDraftsFromInputs(editableMembersSource).map((member) =>
+        createMemberDraftsFromInputs(editableMembersSource, { memberNameLocale }).map((member) =>
           normalizeMemberDraftForProviderMode(member, multimodelEnabled)
         )
       );

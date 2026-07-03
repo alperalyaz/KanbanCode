@@ -13,6 +13,9 @@ import {
   normalizeOptionalTeamProviderId,
 } from '@shared/utils/teamProvider';
 
+import { canonicalizeThemedMemberName, resolveMemberNameLocale } from './memberNameSets';
+
+import type { ResolvedAppLocale } from '@features/localization/contracts';
 import type { MemberDraft } from './membersEditorTypes';
 import type { MentionSuggestion } from '@renderer/types/mention';
 import type {
@@ -34,11 +37,17 @@ function newDraftId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function createMemberDraft(initial?: Partial<MemberDraft>): MemberDraft {
+export function createMemberDraft(
+  initial?: Partial<MemberDraft>,
+  options?: { memberNameLocale?: ResolvedAppLocale }
+): MemberDraft {
   const providerId = initial?.providerId;
+  const memberNameLocale = options?.memberNameLocale ?? 'en';
+  const rawName = initial?.name ?? '';
+  const name = rawName ? canonicalizeThemedMemberName(rawName, memberNameLocale) : '';
   return {
     id: initial?.id ?? newDraftId(),
-    name: initial?.name ?? '',
+    name,
     originalName: initial?.originalName,
     roleSelection: initial?.roleSelection ?? '',
     customRole: initial?.customRole ?? '',
@@ -68,29 +77,35 @@ export function createMemberDraftsFromInputs(
     mcpPolicy?: unknown;
     isolation?: 'worktree';
     removedAt?: number | string | null;
-  }[]
+  }[],
+  options?: { memberNameLocale?: ResolvedAppLocale }
 ): MemberDraft[] {
+  const memberNameLocale = options?.memberNameLocale ?? resolveMemberNameLocale(null);
   return members
     .filter((member) => !member.removedAt)
     .map((member) => {
       const role = typeof member.role === 'string' ? member.role.trim() : '';
       const presetRoles: readonly string[] = PRESET_ROLES;
       const isPreset = presetRoles.includes(role);
-      return createMemberDraft({
-        name: member.name,
-        originalName: member.name,
-        roleSelection: role ? (isPreset ? role : CUSTOM_ROLE) : '',
-        customRole: role && !isPreset ? role : '',
-        workflow: member.workflow,
-        isolation: member.isolation === 'worktree' ? 'worktree' : undefined,
-        providerId: normalizeOptionalTeamProviderId(member.providerId),
-        providerBackendId: member.providerBackendId,
-        model: member.model ?? '',
-        effort: normalizeDraftEffort(member.effort),
-        fastMode: member.fastMode,
-        mcpPolicy: normalizeTeamMemberMcpPolicy(member.mcpPolicy),
-        removedAt: member.removedAt,
-      });
+      const displayName = canonicalizeThemedMemberName(member.name, memberNameLocale);
+      return createMemberDraft(
+        {
+          name: displayName,
+          originalName: member.name,
+          roleSelection: role ? (isPreset ? role : CUSTOM_ROLE) : '',
+          customRole: role && !isPreset ? role : '',
+          workflow: member.workflow,
+          isolation: member.isolation === 'worktree' ? 'worktree' : undefined,
+          providerId: normalizeOptionalTeamProviderId(member.providerId),
+          providerBackendId: member.providerBackendId,
+          model: member.model ?? '',
+          effort: normalizeDraftEffort(member.effort),
+          fastMode: member.fastMode,
+          mcpPolicy: normalizeTeamMemberMcpPolicy(member.mcpPolicy),
+          removedAt: member.removedAt,
+        },
+        { memberNameLocale }
+      );
     });
 }
 

@@ -65,6 +65,7 @@ interface MemberDraftRowProps {
   resolvedColor?: string;
   nameError: string | null;
   onNameChange: (id: string, name: string) => void;
+  onNameBlur?: (id: string, name: string) => void;
   onRoleChange: (id: string, roleSelection: string) => void;
   onCustomRoleChange: (id: string, customRole: string) => void;
   onRemove: (id: string) => void;
@@ -126,6 +127,7 @@ export const MemberDraftRow = ({
   resolvedColor,
   nameError,
   onNameChange,
+  onNameBlur,
   onRoleChange,
   onCustomRoleChange,
   onRemove,
@@ -479,6 +481,7 @@ export const MemberDraftRow = ({
             disabled={isRemoved || lockIdentity}
             title={lockIdentity ? identityLockReason : undefined}
             onChange={(event) => onNameChange(member.id, event.target.value)}
+            onBlur={() => onNameBlur?.(member.id, member.name)}
             placeholder={t('memberDraft.placeholders.name')}
           />
         </div>

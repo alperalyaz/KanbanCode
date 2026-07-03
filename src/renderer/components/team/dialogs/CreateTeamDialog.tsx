@@ -568,7 +568,7 @@ export const CreateTeamDialog = ({
     setTeamColor,
     isLoaded: draftLoaded,
     clearDraft,
-  } = useCreateTeamDraft();
+  } = useCreateTeamDraft(memberNameLocale);
 
   const descriptionDraft = useDraftPersistence({ key: 'createTeam:description' });
   const promptDraft = useDraftPersistence({ key: 'createTeam:prompt' });
@@ -1533,19 +1533,22 @@ export const CreateTeamDialog = ({
           const isPreset = m.role != null && presetRoles.includes(m.role);
           const isCustom = m.role != null && m.role.length > 0 && !isPreset;
           return normalizeMemberDraftForProviderMode(
-            createMemberDraft({
-              name: m.name,
-              roleSelection: isCustom ? CUSTOM_ROLE : (m.role ?? ''),
-              customRole: isCustom ? m.role : '',
-              workflow: m.workflow,
-              isolation: m.isolation === 'worktree' ? 'worktree' : undefined,
-              providerId: normalizeOptionalTeamProviderId(m.providerId),
-              providerBackendId: m.providerBackendId,
-              model: m.model ?? '',
-              effort: m.effort,
-              fastMode: m.fastMode,
-              mcpPolicy: m.mcpPolicy,
-            }),
+            createMemberDraft(
+              {
+                name: m.name,
+                roleSelection: isCustom ? CUSTOM_ROLE : (m.role ?? ''),
+                customRole: isCustom ? m.role : '',
+                workflow: m.workflow,
+                isolation: m.isolation === 'worktree' ? 'worktree' : undefined,
+                providerId: normalizeOptionalTeamProviderId(m.providerId),
+                providerBackendId: m.providerBackendId,
+                model: m.model ?? '',
+                effort: m.effort,
+                fastMode: m.fastMode,
+                mcpPolicy: m.mcpPolicy,
+              },
+              { memberNameLocale }
+            ),
             multimodelEnabled
           );
         })
@@ -1563,12 +1566,15 @@ export const CreateTeamDialog = ({
     }
 
     const nextDefaultMembers = getDefaultCreateTeamMemberConfigs(memberNameLocale).map((member) =>
-      createMemberDraft({
-        name: member.name,
-        roleSelection: member.roleSelection,
-        workflow:
-          member.workflowKind === 'reviewer' ? t('create.defaultWorkflows.reviewer') : undefined,
-      })
+      createMemberDraft(
+        {
+          name: member.name,
+          roleSelection: member.roleSelection,
+          workflow:
+            member.workflowKind === 'reviewer' ? t('create.defaultWorkflows.reviewer') : undefined,
+        },
+        { memberNameLocale }
+      )
     );
     setMembers(
       syncModelsWithLead
