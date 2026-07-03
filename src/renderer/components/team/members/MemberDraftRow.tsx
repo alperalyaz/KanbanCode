@@ -62,7 +62,6 @@ import type {
 interface MemberDraftRowProps {
   member: MemberDraft;
   index: number;
-  avatarSrc?: string;
   resolvedColor?: string;
   nameError: string | null;
   onNameChange: (id: string, name: string) => void;
@@ -124,7 +123,6 @@ interface MemberDraftRowProps {
 export const MemberDraftRow = ({
   member,
   index,
-  avatarSrc,
   resolvedColor,
   nameError,
   onNameChange,
@@ -467,21 +465,13 @@ export const MemberDraftRow = ({
         boxShadow: isLight ? '0 1px 2px rgba(15, 23, 42, 0.06)' : '0 1px 2px rgba(0, 0, 0, 0.28)',
       }}
     >
-      <div
-        className="absolute inset-y-0 left-0 w-1 rounded-l-md"
-        style={{ backgroundColor: memberColorSet.border }}
-        aria-hidden="true"
-      />
       <div className="space-y-0.5">
         <div className="flex items-center gap-2">
-          {avatarSrc ? (
-            <img
-              src={avatarSrc}
-              alt=""
-              className="size-8 shrink-0 rounded-full bg-[var(--color-surface-raised)]"
-              loading="lazy"
-            />
-          ) : null}
+          <div
+            className="size-8 shrink-0 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/10"
+            style={{ backgroundColor: memberColorSet.border }}
+            aria-hidden="true"
+          />
           <Input
             className="h-8 text-xs"
             value={member.name}

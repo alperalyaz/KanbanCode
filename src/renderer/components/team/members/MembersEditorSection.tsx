@@ -6,7 +6,6 @@ import { Checkbox } from '@renderer/components/ui/checkbox';
 import { Label } from '@renderer/components/ui/label';
 import { CUSTOM_ROLE, NO_ROLE, PRESET_ROLES } from '@renderer/constants/teamRoles';
 import { cn } from '@renderer/lib/utils';
-import { getParticipantAvatarUrlByIndex } from '@renderer/utils/memberAvatarCatalog';
 import { isTeamEffortLevel } from '@shared/utils/effortLevels';
 import { migrateProviderBackendId } from '@shared/utils/providerBackend';
 import { normalizeTeamMemberMcpPolicy } from '@shared/utils/teamMemberMcpPolicy';
@@ -540,7 +539,6 @@ export const MembersEditorSection = ({
                   key={member.id}
                   member={member}
                   index={index}
-                  avatarSrc={getParticipantAvatarUrlByIndex(index + 1)}
                   resolvedColor={memberColorMap.get(member.id)}
                   nameError={validateMemberName?.(member.name) ?? null}
                   onNameChange={updateMemberName}
@@ -593,7 +591,6 @@ export const MembersEditorSection = ({
                         key={member.id}
                         member={member}
                         index={activeMembers.length + index}
-                        avatarSrc={getParticipantAvatarUrlByIndex(activeMembers.length + index + 1)}
                         resolvedColor={memberColorMap.get(member.id)}
                         nameError={null}
                         onNameChange={updateMemberName}

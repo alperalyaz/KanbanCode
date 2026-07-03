@@ -20,7 +20,6 @@ import { Label } from '@renderer/components/ui/label';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
-import { agentAvatarUrl } from '@renderer/utils/memberHelpers';
 import {
   isAnthropicHaikuTeamModel,
   isAnthropicSonnetOneMillionContextTeamModel,
@@ -126,7 +125,7 @@ export const LeadModelRow = ({
 
   return (
     <div
-      className="relative grid grid-cols-1 gap-2 rounded-md p-2 shadow-sm md:grid-cols-[minmax(0,1fr)_auto_auto]"
+      className="grid grid-cols-1 gap-2 rounded-md p-2 shadow-sm md:grid-cols-[minmax(0,1fr)_auto_auto]"
       style={{
         backgroundColor: isLight
           ? 'color-mix(in srgb, var(--color-surface-raised) 22%, white 78%)'
@@ -134,18 +133,12 @@ export const LeadModelRow = ({
         boxShadow: isLight ? '0 1px 2px rgba(15, 23, 42, 0.06)' : '0 1px 2px rgba(0, 0, 0, 0.28)',
       }}
     >
-      <div
-        className="absolute inset-y-0 left-0 w-1 rounded-l-md"
-        style={{ backgroundColor: leadColorSet.border }}
-        aria-hidden="true"
-      />
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <img
-            src={agentAvatarUrl('team-lead', 32)}
-            alt=""
-            className="size-8 shrink-0 rounded-full bg-[var(--color-surface-raised)]"
-            loading="lazy"
+          <div
+            className="size-8 shrink-0 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/10"
+            style={{ backgroundColor: leadColorSet.border }}
+            aria-hidden="true"
           />
           <div className="flex h-8 min-w-0 items-center gap-3">
             <span className="truncate text-sm font-medium text-[var(--color-text)]">
