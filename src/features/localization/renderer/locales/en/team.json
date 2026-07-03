@@ -2347,7 +2347,44 @@
     "searchPlaceholder": "Search roles...",
     "empty": "No roles found.",
     "reservedRole": "This role is reserved",
-    "emptyCustomRole": "Role cannot be empty"
+    "emptyCustomRole": "Role cannot be empty",
+    "selectionHint": "You do not need every role. Pick only the few that match this project.",
+    "noRoleDescription": "No preset role is assigned. Define behavior with member workflow instructions.",
+    "customRoleDescription": "Create a project-specific role when none of the presets fit.",
+    "presets": {
+      "architect": {
+        "label": "Architect",
+        "description": "Plans structure, splits goals into tasks, and guards scope. Use when the team needs design decisions before implementation."
+      },
+      "reviewer": {
+        "label": "Reviewer",
+        "description": "Reviews completed tasks, inspects diffs, and requests fixes before approval. Strong choice for quality control without staffing every role."
+      },
+      "developer": {
+        "label": "Developer",
+        "description": "Implements assigned tasks with focused code changes. The main builder role for feature work."
+      },
+      "qa": {
+        "label": "QA",
+        "description": "Tests changes, reproduces bugs, and verifies acceptance criteria. Use when reliability and regression coverage matter."
+      },
+      "researcher": {
+        "label": "Researcher",
+        "description": "Investigates unknowns, compares options, and summarizes findings before the team commits to a path."
+      },
+      "docs": {
+        "label": "Docs",
+        "description": "Writes and updates documentation, examples, and user-facing explanations."
+      },
+      "auditor": {
+        "label": "Auditor",
+        "description": "Checks security, compliance, and risky patterns across the codebase."
+      },
+      "optimizer": {
+        "label": "Optimizer",
+        "description": "Profiles performance bottlenecks and proposes targeted improvements."
+      }
+    }
   },
   "organizations": {
     "map": {

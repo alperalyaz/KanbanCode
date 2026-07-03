@@ -69,6 +69,7 @@ export const MemberRoleEditor = ({
         triggerClassName="h-7 w-32 text-xs"
         inputClassName="h-7 w-28 text-xs"
         customRoleError={error}
+        hideSelectionHint
         onCustomRoleValidate={(val) => {
           if (FORBIDDEN_ROLES.has(val.trim().toLowerCase())) return t('roleSelect.reservedRole');
           return null;

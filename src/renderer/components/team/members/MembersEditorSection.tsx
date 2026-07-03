@@ -469,6 +469,11 @@ export const MembersEditorSection = ({
         )}
       </div>
       {headerExtra}
+      {!hideContent ? (
+        <p className="text-[10px] leading-relaxed text-[var(--color-text-muted)]">
+          {t('roleSelect.selectionHint')}
+        </p>
+      ) : null}
       {!hideContent && (
         <>
           {disableAddMember && addMemberLockReason ? (

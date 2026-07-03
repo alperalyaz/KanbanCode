@@ -32,6 +32,8 @@ interface ComboboxProps {
   /** Called when the user clicks the reset item. */
   onReset?: () => void;
   onOpenChange?: (open: boolean) => void;
+  /** Extra classes for the dropdown panel (width, z-index, etc.). */
+  contentClassName?: string;
 }
 
 export const Combobox = ({
@@ -48,6 +50,7 @@ export const Combobox = ({
   resetLabel,
   onReset,
   onOpenChange,
+  contentClassName,
 }: ComboboxProps): React.JSX.Element => {
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState('');
@@ -86,10 +89,13 @@ export const Combobox = ({
       </PopoverTrigger>
       {open ? (
         <PopoverContent
-          className="w-[var(--radix-popover-trigger-width)] p-0"
+          className={cn(
+            'w-[var(--radix-popover-trigger-width)] p-0',
+            contentClassName
+          )}
           align="start"
           sideOffset={4}
-          collisionPadding={8}
+          collisionPadding={12}
           avoidCollisions
         >
           <CommandPrimitive
@@ -155,7 +161,7 @@ export const Combobox = ({
                         setSearch('');
                       }}
                       className={cn(
-                        'relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-xs outline-none data-[selected=true]:bg-[var(--color-surface-raised)] data-[selected=true]:text-[var(--color-text)]',
+                        'relative flex w-full cursor-default select-none items-start rounded-sm px-2 py-2 text-xs outline-none data-[selected=true]:bg-[var(--color-surface-raised)] data-[selected=true]:text-[var(--color-text)]',
                         option.disabled && 'cursor-not-allowed opacity-60'
                       )}
                     >

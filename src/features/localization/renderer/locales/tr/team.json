@@ -2345,7 +2345,44 @@
     "searchPlaceholder": "Rollerde ara...",
     "empty": "Rol bulunamadı.",
     "reservedRole": "Bu rol ayrılmıştır",
-    "emptyCustomRole": "Rol boş olamaz"
+    "emptyCustomRole": "Rol boş olamaz",
+    "selectionHint": "Her role bir ajan eklemeniz gerekmez. Projeye uygun birkaç rol seçmeniz yeterli.",
+    "noRoleDescription": "Önceden tanımlı rol atanmaz. Davranışı üye iş akışı talimatlarıyla tanımlayın.",
+    "customRoleDescription": "Hazır rollerden hiçbiri uymuyorsa projeye özel bir rol oluşturun.",
+    "presets": {
+      "architect": {
+        "label": "Mimar",
+        "description": "Yapıyı planlar, hedefleri görevlere böler ve kapsamı korur. Uygulamadan önce tasarım kararı gerektiğinde kullanın."
+      },
+      "reviewer": {
+        "label": "İnceleyici",
+        "description": "Tamamlanan görevleri inceler, diff'lere bakar ve onaydan önce düzeltme ister. Her rolü doldurmadan kalite kontrolü için güçlü bir seçim."
+      },
+      "developer": {
+        "label": "Geliştirici",
+        "description": "Atanan görevleri odaklı kod değişiklikleriyle uygular. Özellik geliştirme için ana üretici rolü."
+      },
+      "qa": {
+        "label": "QA",
+        "description": "Değişiklikleri test eder, hataları yeniden üretir ve kabul ölçütlerini doğrular. Güvenilirlik ve regresyon önemliyse kullanın."
+      },
+      "researcher": {
+        "label": "Araştırmacı",
+        "description": "Bilinmeyenleri araştırır, seçenekleri karşılaştırır ve ekip yola girmeden önce bulguları özetler."
+      },
+      "docs": {
+        "label": "Dokümantasyon",
+        "description": "Dokümantasyon, örnekler ve kullanıcıya dönük açıklamalar yazar ve günceller."
+      },
+      "auditor": {
+        "label": "Denetçi",
+        "description": "Güvenlik, uyumluluk ve riskli kalıpları kod tabanında kontrol eder."
+      },
+      "optimizer": {
+        "label": "Optimizasyon",
+        "description": "Performans darboğazlarını profiller ve hedefli iyileştirmeler önerir."
+      }
+    }
   },
   "organizations": {
     "map": {
