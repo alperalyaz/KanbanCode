@@ -768,7 +768,7 @@
   },
   "modelSelector": {
     "badges": {
-      "yapılandırıldı": "Yapılandırılmış",
+      "configured": "Yapılandırılmış",
       "connected": "Bağlandı",
       "failed": "Başarısız",
       "free": "Ücretsiz",
@@ -2403,7 +2403,7 @@
       "saving": "Kaydediliyor...",
       "source": {
         "loading": "yükleniyor",
-        "yapılandırıldı": "yapılandırıldı",
+        "configured": "yapılandırıldı",
         "generated": "üretildi"
       },
       "badges": {
