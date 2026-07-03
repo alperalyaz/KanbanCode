@@ -425,7 +425,7 @@ export const MembersEditorSection = ({
     ]);
   };
 
-  const names = activeMembers.map((m) => m.name.trim().toLowerCase()).filter(Boolean);
+  const names = activeMembers.map((m) => m.name.trim().toLocaleLowerCase('tr')).filter(Boolean);
   const hasDuplicates = new Set(names).size !== names.length;
   const memberColorMap = useMemo(
     () => buildMemberDraftColorMap(members, existingMembers, existingMemberColorMap),

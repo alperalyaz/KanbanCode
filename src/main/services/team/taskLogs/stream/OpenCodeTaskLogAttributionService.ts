@@ -1,5 +1,7 @@
 import { OpenCodeTaskLogAttributionStore } from './OpenCodeTaskLogAttributionStore';
 
+import { TEAM_MEMBER_NAME_PATTERN } from '@shared/utils/teamMemberName';
+
 import type {
   OpenCodeTaskLogAttributionRecord,
   OpenCodeTaskLogAttributionScope,
@@ -89,7 +91,7 @@ const VALID_SOURCES = new Set<OpenCodeTaskLogAttributionSource>([
 ]);
 const TEAM_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,127}$/;
 const TASK_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$/;
-const MEMBER_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
+const MEMBER_NAME_PATTERN = TEAM_MEMBER_NAME_PATTERN;
 const MAX_RUNTIME_ID_LENGTH = 256;
 
 function trimOptionalString(value: unknown): string | undefined {

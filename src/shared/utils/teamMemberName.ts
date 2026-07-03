@@ -1,3 +1,15 @@
+/** Turkish letters allowed in member ids alongside ASCII. */
+export const TEAM_MEMBER_NAME_EXTRA_CHARS = 'çğıöşüÇĞİÖŞÜ';
+
+const TEAM_MEMBER_NAME_CHAR_CLASS = `a-zA-Z0-9._${TEAM_MEMBER_NAME_EXTRA_CHARS}`;
+
+export const TEAM_MEMBER_NAME_PATTERN = new RegExp(
+  `^[${TEAM_MEMBER_NAME_CHAR_CLASS}][${TEAM_MEMBER_NAME_CHAR_CLASS}-]{0,127}$`
+);
+
+export const TEAM_MEMBER_NAME_FORMAT_HINT =
+  'Start with alphanumeric, use only [a-zA-Z0-9._-çğıöşüÇĞİÖŞÜ], max 128 chars';
+
 export function parseNumericSuffixName(name: string): { base: string; suffix: number } | null {
   const trimmed = name.trim();
   if (!trimmed) return null;
@@ -12,13 +24,10 @@ export function validateTeamMemberNameFormat(name: string): string | null {
   const trimmed = name.trim();
   if (!trimmed) return null;
   if (trimmed.length < 1 || trimmed.length > 128) {
-    return 'Start with alphanumeric, use only [a-zA-Z0-9._-], max 128 chars';
+    return TEAM_MEMBER_NAME_FORMAT_HINT;
   }
-  if (!/^[a-zA-Z0-9]/.test(trimmed)) {
-    return 'Start with alphanumeric, use only [a-zA-Z0-9._-], max 128 chars';
-  }
-  if (!/^[a-zA-Z0-9._-]+$/.test(trimmed)) {
-    return 'Start with alphanumeric, use only [a-zA-Z0-9._-], max 128 chars';
+  if (!TEAM_MEMBER_NAME_PATTERN.test(trimmed)) {
+    return TEAM_MEMBER_NAME_FORMAT_HINT;
   }
   return null;
 }

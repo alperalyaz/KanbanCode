@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 
 import { createLogger } from '@shared/utils/logger';
+import { TEAM_MEMBER_NAME_PATTERN } from '@shared/utils/teamMemberName';
 
 import { formatCurrentProcessMemorySnapshot } from '../../utils/startupTelemetry';
 
@@ -31,7 +32,7 @@ import type {
 const logger = createLogger('Service:TeamDataWorkerClient');
 const WORKER_CALL_TIMEOUT_MS = 30_000;
 const WORKER_FATAL_RESTART_COOLDOWN_MS = 30_000;
-const SAFE_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
+const SAFE_NAME_RE = TEAM_MEMBER_NAME_PATTERN;
 const SAFE_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$/;
 const FATAL_WORKER_ERROR_PATTERNS = [
   'ERR_WORKER_OUT_OF_MEMORY',

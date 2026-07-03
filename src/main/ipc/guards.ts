@@ -8,6 +8,7 @@
 
 import { isValidProjectId } from '@main/utils/pathDecoder';
 import { isWindowsReservedFileName } from '@main/utils/pathValidation';
+import { TEAM_MEMBER_NAME_PATTERN } from '@shared/utils/teamMemberName';
 
 const SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 const SUBAGENT_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
@@ -15,7 +16,7 @@ const NOTIFICATION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 const TRIGGER_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 const TEAM_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,127}$/;
 const TASK_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$/;
-const MEMBER_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
+const MEMBER_NAME_PATTERN = TEAM_MEMBER_NAME_PATTERN;
 const FROM_FIELD_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 
 const MAX_QUERY_LENGTH = 512;

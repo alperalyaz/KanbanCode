@@ -1,7 +1,9 @@
 import {
   getDefaultCreateTeamMemberConfigs,
   getNextSuggestedMemberName,
+  isAsciiTurkishDefaultCreateTeamMemberNames,
   isLegacyDefaultCreateTeamMemberNames,
+  remapAsciiTurkishMemberNames,
   remapLegacyDefaultCreateTeamMemberNames,
   resolveMemberNameLocale,
 } from '@renderer/components/team/members/memberNameSets';
@@ -19,9 +21,10 @@ describe('memberNameSets', () => {
     expect(getNextSuggestedMemberName(['frodo', 'sam'], 'en')).toBe('aragorn');
   });
 
-  it('suggests Turkish folktale hero names for the Turkish locale', () => {
-    expect(getNextSuggestedMemberName([], 'tr')).toBe('koroglu');
-    expect(getNextSuggestedMemberName(['koroglu', 'alpamis'], 'tr')).toBe('bogac');
+  it('suggests Turkish folktale hero names with diacritics for the Turkish locale', () => {
+    expect(getNextSuggestedMemberName([], 'tr')).toBe('köroğlu');
+    expect(getNextSuggestedMemberName(['köroğlu', 'alpamış'], 'tr')).toBe('boğaç');
+    expect(getNextSuggestedMemberName(['koroglu', 'alpamis'], 'tr')).toBe('boğaç');
   });
 
   it('keeps locale-specific default create-team members', () => {
@@ -33,9 +36,9 @@ describe('memberNameSets', () => {
     ]);
     expect(getDefaultCreateTeamMemberConfigs('tr').map((member) => member.name)).toEqual([
       'selcan',
-      'koroglu',
-      'alpamis',
-      'bogac',
+      'köroğlu',
+      'alpamış',
+      'boğaç',
     ]);
   });
 
@@ -54,9 +57,21 @@ describe('memberNameSets', () => {
 
     expect(remapLegacyDefaultCreateTeamMemberNames(['alice', 'tom', 'bob', 'jack'], 'tr')).toEqual([
       'selcan',
-      'koroglu',
-      'alpamis',
-      'bogac',
+      'köroğlu',
+      'alpamış',
+      'boğaç',
+    ]);
+  });
+
+  it('detects and remaps ASCII Turkish default member names', () => {
+    expect(isAsciiTurkishDefaultCreateTeamMemberNames(['selcan', 'koroglu', 'alpamis', 'bogac'])).toBe(
+      true
+    );
+    expect(remapAsciiTurkishMemberNames(['selcan', 'koroglu', 'alpamis', 'bogac'])).toEqual([
+      'selcan',
+      'köroğlu',
+      'alpamış',
+      'boğaç',
     ]);
   });
 });

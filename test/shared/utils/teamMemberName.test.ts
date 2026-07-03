@@ -4,9 +4,17 @@ import {
   createCliAutoSuffixNameGuard,
   createCliProvisionerNameGuard,
   parseNumericSuffixName,
+  validateTeamMemberNameFormat,
 } from '@shared/utils/teamMemberName';
 
 describe('teamMemberName helpers', () => {
+  it('accepts Turkish diacritics in member names', () => {
+    expect(validateTeamMemberNameFormat('köroğlu')).toBeNull();
+    expect(validateTeamMemberNameFormat('alpamış')).toBeNull();
+    expect(validateTeamMemberNameFormat('aslı')).toBeNull();
+    expect(validateTeamMemberNameFormat('yiğen')).toBeNull();
+  });
+
   it('parses numeric suffix names', () => {
     expect(parseNumericSuffixName('alice-2')).toEqual({ base: 'alice', suffix: 2 });
     expect(parseNumericSuffixName('alice')).toBeNull();
