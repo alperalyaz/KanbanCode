@@ -8,6 +8,7 @@ export * from './brand';
 export * from './cache';
 export * from './cli';
 export * from './crossTeam';
+export * from './distribution';
 export * from './kanban';
 export * from './memberColors';
 export * from './teamLimits';

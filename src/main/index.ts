@@ -127,6 +127,7 @@ import {
   DEFAULT_WINDOW_WIDTH,
   DEV_SERVER_PORT,
   getTrafficLightPositionForZoom,
+  USE_BUILTIN_APP_UPDATER,
   WINDOW_ZOOM_FACTOR_CHANGED_CHANNEL,
 } from '@shared/constants';
 import { localizeStartupMessage, resolveStartupLocale } from '@shared/i18n/startupMessages';
@@ -2715,8 +2716,10 @@ function runPostRendererStartupTasks(): void {
   backgroundStartupTasksStarted = true;
 
   if (!isShutdownStarted()) {
-    scheduleStartupTask(() => void updaterService.checkForUpdates(), 3000);
-    updaterService.startPeriodicCheck(60 * 60 * 1000);
+    if (USE_BUILTIN_APP_UPDATER) {
+      scheduleStartupTask(() => void updaterService.checkForUpdates(), 3000);
+      updaterService.startPeriodicCheck(60 * 60 * 1000);
+    }
   }
 
   scheduleStartupTask(

@@ -18,6 +18,8 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { SettingRow, SettingsSectionHeader, SettingsToggle } from '../components';
 
+import { AboutSection } from './AboutSection';
+
 import type { SafeConfig } from '../hooks/useSettingsConfig';
 import type { ClaudeRootInfo, WslClaudeRootCandidate } from '@shared/types';
 import type { HttpServerStatus } from '@shared/types/api';
@@ -727,6 +729,8 @@ export const GeneralSection = ({
           </SettingRow>
         </>
       )}
+
+      <AboutSection />
     </div>
   );
 };

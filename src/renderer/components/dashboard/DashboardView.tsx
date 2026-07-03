@@ -16,7 +16,6 @@ import { ArrowRight, Command, Search, Users } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { CliStatusBanner } from './CliStatusBanner';
-import { DashboardUpdateBanner } from './DashboardUpdateBanner';
 import { TmuxStatusBanner } from './TmuxStatusBanner';
 import { WebPreviewBanner } from './WebPreviewBanner';
 import { WindowsAdministratorBanner } from './WindowsAdministratorBanner';
@@ -178,7 +177,6 @@ export const DashboardView = (): React.JSX.Element => {
         <div className="mb-10 space-y-3">
           <WebPreviewBanner />
           <WindowsAdministratorBanner />
-          <DashboardUpdateBanner />
           <CliStatusBanner />
           <TmuxStatusBanner />
         </div>

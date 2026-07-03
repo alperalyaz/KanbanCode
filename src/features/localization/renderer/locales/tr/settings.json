@@ -369,14 +369,15 @@
       "unknownError": "Bilinmeyen hata"
     }
   },
+  "about": {
+    "appIconAlt": "Uygulama simgesi",
+    "description": "KanbanCode, Hidroteknik tarafından geliştirilen bir masaüstü uygulamadır. Agent Teams AI (777genius) projesinin fork'udur. Paralel çalışan yapay zeka agent ekipleri oluşturun; kanban panosu, kod incelemesi ve canlı süreç izleme ile görevleri yönetin.",
+    "standalone": "Bağımsız",
+    "storeUpdates": "Uygulama güncellemeleri Microsoft Store üzerinden sağlanır.",
+    "title": "Hakkında",
+    "version": "Sürüm {{version}}"
+  },
   "advanced": {
-    "about": {
-      "appIconAlt": "Uygulama simgesi",
-      "description": "Paralel olarak özerk çalışan, ekipler arası iletişim kuran ve kanban panosunda görevleri yöneten yapay zeka agent ekipleri oluşturun - yerleşik kod incelemesi, canlı süreç izleme ve tam araç görünürlüğü ile.",
-      "standalone": "Bağımsız",
-      "title": "Hakkında",
-      "version": "Sürüm {{version}}"
-    },
     "configuration": {
       "editConfig": "Yapılandırmayı Düzenle",
       "exportConfig": "Yapılandırmayı Dışa Aktar",
@@ -384,14 +385,6 @@
       "openInEditor": "Düzenleyicide Aç",
       "resetToDefaults": "Varsayılanlara Sıfırla",
       "title": "Yapılandırma"
-    },
-    "updates": {
-      "available": "v{{version}} mevcut",
-      "check": "Güncellemeleri Kontrol Et",
-      "checking": "Kontrol ediliyor...",
-      "ready": "Güncelleme hazır",
-      "unknownVersion": "bilinmiyor",
-      "upToDate": "Güncel"
     },
     "appName": "KanbanCode"
   },

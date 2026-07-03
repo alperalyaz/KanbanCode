@@ -26,6 +26,7 @@ import { useFullScreen } from '@renderer/hooks/useFullScreen';
 import { useKeyboardShortcuts } from '@renderer/hooks/useKeyboardShortcuts';
 import { useZoomFactor } from '@renderer/hooks/useZoomFactor';
 import { useStore } from '@renderer/store';
+import { USE_BUILTIN_APP_UPDATER } from '@shared/constants/distribution';
 import { useShallow } from 'zustand/react/shallow';
 
 import { CliInstallWarningBanner } from '../common/CliInstallWarningBanner';
@@ -153,7 +154,7 @@ export const TabbedLayout = (): React.JSX.Element => {
       }
     >
       <CustomTitleBar />
-      <UpdateBanner />
+      {USE_BUILTIN_APP_UPDATER ? <UpdateBanner /> : null}
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}
@@ -184,7 +185,7 @@ export const TabbedLayout = (): React.JSX.Element => {
         </DragOverlay>
       </DndContext>
       <GlobalTaskDetailDialogSlot />
-      <UpdateDialog />
+      {USE_BUILTIN_APP_UPDATER ? <UpdateDialog /> : null}
     </div>
   );
 };

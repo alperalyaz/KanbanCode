@@ -922,10 +922,12 @@ export default interface Resources {
   dashboard: {
     actions: {
       clearSearch: 'Clear search';
+      createTeam: 'Create Team';
       or: 'or';
       selectTeam: 'Select Team';
     };
     hero: {
+      createTeamDescription: 'Create your first agent team and start working on the kanban board.';
       searchDescription: 'Filter recent projects or open the command palette with ⌘K.';
       searchLabel: 'Search projects';
       selectTeamDescription: 'Browse agent teams, kanban boards, and live teammates.';
@@ -2031,14 +2033,15 @@ export default interface Resources {
     };
   };
   settings: {
+    about: {
+      appIconAlt: 'App icon';
+      description: 'KanbanCode is a desktop app developed by Hidroteknik. It is a fork of Agent Teams AI (777genius). Build AI agent teams that work in parallel, with a kanban board, built-in code review, and live process monitoring.';
+      standalone: 'Standalone';
+      storeUpdates: 'App updates are delivered through the Microsoft Store.';
+      title: 'About';
+      version: 'Version {{version}}';
+    };
     advanced: {
-      about: {
-        appIconAlt: 'App icon';
-        description: 'Assemble AI agent teams that work autonomously in parallel, communicate across teams, and manage tasks on a kanban board - with built-in code review, live process monitoring, and full tool visibility.';
-        standalone: 'Standalone';
-        title: 'About';
-        version: 'Version {{version}}';
-      };
       appName: 'KanbanCode';
       configuration: {
         editConfig: 'Edit Config';
@@ -2047,14 +2050,6 @@ export default interface Resources {
         openInEditor: 'Open in Editor';
         resetToDefaults: 'Reset to Defaults';
         title: 'Configuration';
-      };
-      updates: {
-        available: 'v{{version}} available';
-        check: 'Check for Updates';
-        checking: 'Checking...';
-        ready: 'Update ready';
-        unknownVersion: 'unknown';
-        upToDate: 'Up to date';
       };
     };
     cliRuntime: {
