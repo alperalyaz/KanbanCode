@@ -343,10 +343,9 @@ interface ValidationResult {
 
 import {
   getDefaultCreateTeamMemberConfigs,
-  isAsciiTurkishDefaultCreateTeamMemberNames,
   isLegacyDefaultCreateTeamMemberNames,
-  remapAsciiTurkishMemberNames,
   remapLegacyDefaultCreateTeamMemberNames,
+  remapThemedMemberNames,
   resolveMemberNameLocale,
 } from '@renderer/components/team/members/memberNameSets';
 import { CUSTOM_ROLE, PRESET_ROLES } from '@renderer/constants/teamRoles';
@@ -1595,18 +1594,14 @@ export const CreateTeamDialog = ({
 
     const currentNames = members.map((member) => member.name);
     const shouldMigrateLegacy = isLegacyDefaultCreateTeamMemberNames(currentNames);
-    const shouldMigrateAsciiTurkish =
-      memberNameLocale === 'tr' &&
-      (isAsciiTurkishDefaultCreateTeamMemberNames(currentNames) ||
-        remapAsciiTurkishMemberNames(currentNames) !== currentNames);
+    const remappedNames = shouldMigrateLegacy
+      ? remapLegacyDefaultCreateTeamMemberNames(currentNames, memberNameLocale)
+      : remapThemedMemberNames(currentNames, memberNameLocale);
 
-    if (!shouldMigrateLegacy && !shouldMigrateAsciiTurkish) {
+    if (remappedNames === currentNames) {
       return;
     }
 
-    const remappedNames = shouldMigrateLegacy
-      ? remapLegacyDefaultCreateTeamMemberNames(currentNames, memberNameLocale)
-      : remapAsciiTurkishMemberNames(currentNames);
     legacyMemberNamesMigratedRef.current = true;
     setMembers(
       members.map((member, index) => ({

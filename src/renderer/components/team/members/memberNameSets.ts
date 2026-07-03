@@ -1,28 +1,40 @@
 import type { ResolvedAppLocale } from '@features/localization/contracts';
 
+function capitalizeMemberName(name: string, locale: ResolvedAppLocale): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  const localeTag = locale === 'tr' ? 'tr' : 'en';
+  const lower = trimmed.toLocaleLowerCase(localeTag);
+  const first = lower.charAt(0).toLocaleUpperCase(localeTag);
+  return `${first}${lower.slice(1)}`;
+}
+
 /** Fantasy-companion themed name pools used when suggesting new teammate ids. */
 const MEMBER_NAME_SETS_BY_LOCALE = {
   en: [
-    ['frodo', 'sam', 'aragorn', 'legolas', 'gimli', 'gandalf'],
-    ['galadriel', 'eowyn', 'arwen', 'faramir', 'boromir', 'bilbo'],
-    ['thorin', 'balin', 'bard', 'kili', 'fili', 'dwalin'],
-    ['aslan', 'lucy', 'edmund', 'peter', 'susan', 'caspian'],
+    ['Frodo', 'Sam', 'Aragorn', 'Legolas', 'Gimli', 'Gandalf'],
+    ['Galadriel', 'Eowyn', 'Arwen', 'Faramir', 'Boromir', 'Bilbo'],
+    ['Thorin', 'Balin', 'Bard', 'Kili', 'Fili', 'Dwalin'],
+    ['Aslan', 'Lucy', 'Edmund', 'Peter', 'Susan', 'Caspian'],
   ],
   tr: [
-    ['köroğlu', 'alpamış', 'boğaç', 'ayvaz', 'selcan', 'dede'],
-    ['salur', 'yiğen', 'uzun', 'baybora', 'melik', 'kara'],
-    ['asena', 'alp', 'eren', 'mert', 'baran', 'aslı'],
-    ['deniz', 'arda', 'kaan', 'ege', 'bora', 'nilay'],
+    ['Köroğlu', 'Alpamış', 'Boğaç', 'Ayvaz', 'Selcan', 'Dede'],
+    ['Salur', 'Yiğen', 'Uzun', 'Baybora', 'Melik', 'Kara'],
+    ['Asena', 'Alp', 'Eren', 'Mert', 'Baran', 'Aslı'],
+    ['Deniz', 'Arda', 'Kaan', 'Ege', 'Bora', 'Nilay'],
   ],
 } as const satisfies Record<ResolvedAppLocale, readonly (readonly string[])[]>;
 
-/** Legacy ASCII spellings migrated to proper Turkish diacritics. */
+/** Legacy ASCII spellings migrated to proper Turkish display names. */
 const ASCII_TURKISH_MEMBER_NAME_MIGRATION: Readonly<Record<string, string>> = {
-  koroglu: 'köroğlu',
-  alpamis: 'alpamış',
-  bogac: 'boğaç',
-  yigen: 'yiğen',
-  asli: 'aslı',
+  koroglu: 'Köroğlu',
+  alpamis: 'Alpamış',
+  bogac: 'Boğaç',
+  yigen: 'Yiğen',
+  asli: 'Aslı',
 };
 
 export interface DefaultCreateTeamMemberConfig {
@@ -36,16 +48,16 @@ const DEFAULT_CREATE_TEAM_MEMBERS_BY_LOCALE: Record<
   readonly DefaultCreateTeamMemberConfig[]
 > = {
   en: [
-    { name: 'eowyn', roleSelection: 'reviewer', workflowKind: 'reviewer' },
-    { name: 'aragorn', roleSelection: 'developer' },
-    { name: 'legolas', roleSelection: 'developer' },
-    { name: 'gimli', roleSelection: 'developer' },
+    { name: 'Eowyn', roleSelection: 'reviewer', workflowKind: 'reviewer' },
+    { name: 'Aragorn', roleSelection: 'developer' },
+    { name: 'Legolas', roleSelection: 'developer' },
+    { name: 'Gimli', roleSelection: 'developer' },
   ],
   tr: [
-    { name: 'selcan', roleSelection: 'reviewer', workflowKind: 'reviewer' },
-    { name: 'köroğlu', roleSelection: 'developer' },
-    { name: 'alpamış', roleSelection: 'developer' },
-    { name: 'boğaç', roleSelection: 'developer' },
+    { name: 'Selcan', roleSelection: 'reviewer', workflowKind: 'reviewer' },
+    { name: 'Köroğlu', roleSelection: 'developer' },
+    { name: 'Alpamış', roleSelection: 'developer' },
+    { name: 'Boğaç', roleSelection: 'developer' },
   ],
 };
 
@@ -74,6 +86,27 @@ const ASCII_TURKISH_DEFAULT_CREATE_TEAM_MEMBER_NAMES = [
   'bogac',
 ] as const;
 
+function buildCanonicalThemedMemberNameMap(
+  locale: ResolvedAppLocale
+): Readonly<Record<string, string>> {
+  const map: Record<string, string> = {};
+
+  for (const nameSet of getMemberNameSets(locale)) {
+    for (const name of nameSet) {
+      map[normalizeMemberName(name)] = name;
+    }
+  }
+
+  if (locale === 'tr') {
+    for (const [ascii, canonical] of Object.entries(ASCII_TURKISH_MEMBER_NAME_MIGRATION)) {
+      map[ascii] = canonical;
+      map[normalizeMemberName(canonical)] = canonical;
+    }
+  }
+
+  return map;
+}
+
 export function isLegacyDefaultCreateTeamMemberNames(names: readonly string[]): boolean {
   if (names.length !== LEGACY_DEFAULT_CREATE_TEAM_MEMBER_NAMES.length) {
     return false;
@@ -96,6 +129,18 @@ export function isAsciiTurkishDefaultCreateTeamMemberNames(names: readonly strin
   );
 }
 
+export function isDefaultTurkishCreateTeamMemberNames(names: readonly string[]): boolean {
+  const defaults = getDefaultCreateTeamMemberConfigs('tr').map((member) => member.name);
+  if (names.length !== defaults.length) {
+    return false;
+  }
+
+  const normalized = names.map(normalizeMemberName);
+  return defaults.every(
+    (defaultName, index) => normalized[index] === normalizeMemberName(defaultName)
+  );
+}
+
 export function remapLegacyDefaultCreateTeamMemberNames(
   names: readonly string[],
   locale: ResolvedAppLocale = 'en'
@@ -108,15 +153,25 @@ export function remapLegacyDefaultCreateTeamMemberNames(
 }
 
 export function remapAsciiTurkishMemberNames(names: readonly string[]): readonly string[] {
+  return remapThemedMemberNames(names, 'tr');
+}
+
+export function remapThemedMemberNames(
+  names: readonly string[],
+  locale: ResolvedAppLocale
+): readonly string[] {
+  const canonicalByKey = buildCanonicalThemedMemberNameMap(locale);
   let changed = false;
+
   const remapped = names.map((name) => {
-    const migrated = ASCII_TURKISH_MEMBER_NAME_MIGRATION[normalizeMemberName(name)];
-    if (migrated && migrated !== name) {
+    const canonical = canonicalByKey[normalizeMemberName(name)];
+    if (canonical && canonical !== name) {
       changed = true;
-      return migrated;
+      return canonical;
     }
     return name;
   });
+
   return changed ? remapped : names;
 }
 
@@ -126,10 +181,8 @@ function normalizeMemberName(name: string): string {
 
 function canonicalMemberNameForMatching(name: string, locale: ResolvedAppLocale): string {
   const normalized = normalizeMemberName(name);
-  if (locale === 'tr') {
-    return normalizeMemberName(ASCII_TURKISH_MEMBER_NAME_MIGRATION[normalized] ?? normalized);
-  }
-  return normalized;
+  const canonicalByKey = buildCanonicalThemedMemberNameMap(locale);
+  return normalizeMemberName(canonicalByKey[normalized] ?? normalized);
 }
 
 function belongsToBaseName(name: string, baseName: string, locale: ResolvedAppLocale): boolean {
@@ -176,16 +229,22 @@ function expandNormalizedMemberNames(
   locale: ResolvedAppLocale
 ): Set<string> {
   const expanded = new Set<string>();
+  const canonicalByKey = buildCanonicalThemedMemberNameMap(locale);
+
   for (const name of names) {
     const normalized = normalizeMemberName(name);
     expanded.add(normalized);
     expanded.add(canonicalMemberNameForMatching(name, locale));
 
     if (locale === 'tr') {
-      for (const [ascii, turkish] of Object.entries(ASCII_TURKISH_MEMBER_NAME_MIGRATION)) {
-        if (normalizeMemberName(turkish) === normalized || ascii === normalized) {
+      for (const [ascii, canonical] of Object.entries(ASCII_TURKISH_MEMBER_NAME_MIGRATION)) {
+        if (
+          normalizeMemberName(canonical) === normalized ||
+          ascii === normalized ||
+          canonicalByKey[normalized] === canonical
+        ) {
           expanded.add(ascii);
-          expanded.add(normalizeMemberName(turkish));
+          expanded.add(normalizeMemberName(canonical));
         }
       }
     }
@@ -217,8 +276,8 @@ export function getNextSuggestedMemberName(
     }
   }
 
-  const fallbackBaseName = preferredSet[existingNames.length % preferredSet.length] ?? 'agent';
-  return createUniqueName(fallbackBaseName, existingNames);
+  const fallbackBaseName = preferredSet[existingNames.length % preferredSet.length] ?? 'Agent';
+  return createUniqueName(capitalizeMemberName(fallbackBaseName, locale), existingNames);
 }
 
 export const MEMBER_NAME_SETS = MEMBER_NAME_SETS_BY_LOCALE.en;

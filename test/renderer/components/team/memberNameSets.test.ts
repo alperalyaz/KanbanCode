@@ -5,6 +5,7 @@ import {
   isLegacyDefaultCreateTeamMemberNames,
   remapAsciiTurkishMemberNames,
   remapLegacyDefaultCreateTeamMemberNames,
+  remapThemedMemberNames,
   resolveMemberNameLocale,
 } from '@renderer/components/team/members/memberNameSets';
 import { describe, expect, it } from 'vitest';
@@ -16,62 +17,73 @@ describe('memberNameSets', () => {
     expect(resolveMemberNameLocale(undefined)).toBe('en');
   });
 
-  it('suggests English fantasy names for the English locale', () => {
-    expect(getNextSuggestedMemberName([], 'en')).toBe('frodo');
-    expect(getNextSuggestedMemberName(['frodo', 'sam'], 'en')).toBe('aragorn');
+  it('suggests English fantasy names with proper capitalization', () => {
+    expect(getNextSuggestedMemberName([], 'en')).toBe('Frodo');
+    expect(getNextSuggestedMemberName(['Frodo', 'Sam'], 'en')).toBe('Aragorn');
+    expect(getNextSuggestedMemberName(['frodo', 'sam'], 'en')).toBe('Aragorn');
   });
 
-  it('suggests Turkish folktale hero names with diacritics for the Turkish locale', () => {
-    expect(getNextSuggestedMemberName([], 'tr')).toBe('köroğlu');
-    expect(getNextSuggestedMemberName(['köroğlu', 'alpamış'], 'tr')).toBe('boğaç');
-    expect(getNextSuggestedMemberName(['koroglu', 'alpamis'], 'tr')).toBe('boğaç');
+  it('suggests Turkish folktale hero names with diacritics and capitalization', () => {
+    expect(getNextSuggestedMemberName([], 'tr')).toBe('Köroğlu');
+    expect(getNextSuggestedMemberName(['Köroğlu', 'Alpamış'], 'tr')).toBe('Boğaç');
+    expect(getNextSuggestedMemberName(['koroglu', 'alpamis'], 'tr')).toBe('Boğaç');
+    expect(getNextSuggestedMemberName(['köroğlu', 'alpamış'], 'tr')).toBe('Boğaç');
   });
 
   it('keeps locale-specific default create-team members', () => {
     expect(getDefaultCreateTeamMemberConfigs('en').map((member) => member.name)).toEqual([
-      'eowyn',
-      'aragorn',
-      'legolas',
-      'gimli',
+      'Eowyn',
+      'Aragorn',
+      'Legolas',
+      'Gimli',
     ]);
     expect(getDefaultCreateTeamMemberConfigs('tr').map((member) => member.name)).toEqual([
-      'selcan',
-      'köroğlu',
-      'alpamış',
-      'boğaç',
+      'Selcan',
+      'Köroğlu',
+      'Alpamış',
+      'Boğaç',
     ]);
   });
 
   it('creates numeric suffixes when a themed name is already taken', () => {
-    expect(getNextSuggestedMemberName(['frodo'], 'en')).toBe('sam');
-    expect(getNextSuggestedMemberName(['frodo', 'sam', 'aragorn', 'legolas', 'gimli', 'gandalf'], 'en')).toBe(
-      'galadriel'
-    );
-    expect(getNextSuggestedMemberName(['frodo', 'frodo-2'], 'en')).toBe('sam');
+    expect(getNextSuggestedMemberName(['Frodo'], 'en')).toBe('Sam');
+    expect(
+      getNextSuggestedMemberName(
+        ['Frodo', 'Sam', 'Aragorn', 'Legolas', 'Gimli', 'Gandalf'],
+        'en'
+      )
+    ).toBe('Galadriel');
+    expect(getNextSuggestedMemberName(['Frodo', 'Frodo-2'], 'en')).toBe('Sam');
   });
 
   it('detects and remaps legacy default create-team member names', () => {
     expect(isLegacyDefaultCreateTeamMemberNames(['alice', 'tom', 'bob', 'jack'])).toBe(true);
     expect(isLegacyDefaultCreateTeamMemberNames(['Alice', 'Tom', 'Bob', 'Jack'])).toBe(true);
-    expect(isLegacyDefaultCreateTeamMemberNames(['frodo', 'sam', 'aragorn', 'legolas'])).toBe(false);
+    expect(isLegacyDefaultCreateTeamMemberNames(['Frodo', 'Sam', 'Aragorn', 'Legolas'])).toBe(false);
 
     expect(remapLegacyDefaultCreateTeamMemberNames(['alice', 'tom', 'bob', 'jack'], 'tr')).toEqual([
-      'selcan',
-      'köroğlu',
-      'alpamış',
-      'boğaç',
+      'Selcan',
+      'Köroğlu',
+      'Alpamış',
+      'Boğaç',
     ]);
   });
 
-  it('detects and remaps ASCII Turkish default member names', () => {
+  it('remaps ASCII and lowercase Turkish themed names to canonical capitalization', () => {
     expect(isAsciiTurkishDefaultCreateTeamMemberNames(['selcan', 'koroglu', 'alpamis', 'bogac'])).toBe(
       true
     );
     expect(remapAsciiTurkishMemberNames(['selcan', 'koroglu', 'alpamis', 'bogac'])).toEqual([
-      'selcan',
-      'köroğlu',
-      'alpamış',
-      'boğaç',
+      'Selcan',
+      'Köroğlu',
+      'Alpamış',
+      'Boğaç',
     ]);
+    expect(remapThemedMemberNames(['köroğlu', 'boğaç', 'aslı'], 'tr')).toEqual([
+      'Köroğlu',
+      'Boğaç',
+      'Aslı',
+    ]);
+    expect(remapThemedMemberNames(['frodo', 'aragorn'], 'en')).toEqual(['Frodo', 'Aragorn']);
   });
 });
