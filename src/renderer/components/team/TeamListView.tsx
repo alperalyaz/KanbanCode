@@ -119,7 +119,7 @@ const CreateTeamDialogLoadingFallback = ({
         }
       }}
     >
-      <DialogContent className="max-w-sm">
+      <DialogContent dismissOnOutsideInteraction={false} className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="text-sm">
             {isCopy ? t('create.title.copy') : t('create.title.create')}
