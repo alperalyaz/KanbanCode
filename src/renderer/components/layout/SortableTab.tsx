@@ -65,6 +65,14 @@ const TAB_ICONS = {
   usage: BarChart3,
 } as const;
 
+function getTabDisplayLabel(tab: Tab, t: (key: string) => string): string {
+  if (tab.type === 'notifications') {
+    return t('notifications.title');
+  }
+
+  return tab.label;
+}
+
 export const SortableTab = ({
   tab,
   paneId,
@@ -154,6 +162,7 @@ export const SortableTab = ({
   };
 
   const Icon = TAB_ICONS[tab.type];
+  const displayLabel = getTabDisplayLabel(tab, t);
 
   const handleRef = useCallback(
     (el: HTMLDivElement | null) => {
@@ -201,9 +210,9 @@ export const SortableTab = ({
         </span>
       )}
       <span
-        className={`${tab.label.length > 20 ? 'max-w-[200px] truncate' : ''} whitespace-nowrap text-sm`}
+        className={`${displayLabel.length > 20 ? 'max-w-[200px] truncate' : ''} whitespace-nowrap text-sm`}
       >
-        {tab.label}
+        {displayLabel}
       </span>
       {isTeamTab && (
         <TeamTabSectionNav
@@ -243,7 +252,9 @@ export const SortableTab = ({
  * DragOverlayTab - Semi-transparent ghost of a tab shown during drag.
  */
 export const DragOverlayTab = ({ tab }: { tab: Tab }): React.JSX.Element => {
+  const { t } = useAppTranslation('common');
   const Icon = TAB_ICONS[tab.type];
+  const displayLabel = getTabDisplayLabel(tab, t);
 
   return (
     <div
@@ -258,9 +269,9 @@ export const DragOverlayTab = ({ tab }: { tab: Tab }): React.JSX.Element => {
     >
       <Icon className="size-4 shrink-0" />
       <span
-        className={`${tab.label.length > 20 ? 'max-w-[200px] truncate' : ''} whitespace-nowrap text-sm`}
+        className={`${displayLabel.length > 20 ? 'max-w-[200px] truncate' : ''} whitespace-nowrap text-sm`}
       >
-        {tab.label}
+        {displayLabel}
       </span>
     </div>
   );

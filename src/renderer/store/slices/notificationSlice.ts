@@ -337,7 +337,7 @@ export const createNotificationSlice: StateCreator<AppState, [], [], Notificatio
     }
   },
 
-  // Open or focus the notifications tab (per-pane singleton)
+  // Open, focus, or close the notifications tab (per-pane singleton toggle)
   openNotificationsTab: () => {
     const state = get();
 
@@ -345,6 +345,11 @@ export const createNotificationSlice: StateCreator<AppState, [], [], Notificatio
     const focusedPane = state.paneLayout.panes.find((p) => p.id === state.paneLayout.focusedPaneId);
     const notificationsTab = focusedPane?.tabs.find((t) => t.type === 'notifications');
     if (notificationsTab) {
+      if (state.activeTabId === notificationsTab.id) {
+        state.closeTab(notificationsTab.id);
+        return;
+      }
+
       state.setActiveTab(notificationsTab.id);
       // Re-sync in case updates happened while tab was inactive.
       void state.fetchNotifications();
