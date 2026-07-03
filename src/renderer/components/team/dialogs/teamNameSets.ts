@@ -1,5 +1,15 @@
+const PRIMARY_DEFAULT_TEAM_SLUG = 'hidroteknik';
+const PRIMARY_DEFAULT_TEAM_LABEL = 'Hidroteknik';
+
 const TEAM_NAME_SETS = [
-  ['signal-ops', 'forge-labs', 'atlas-hq', 'relay-works', 'beacon-desk', 'vector-room'],
+  [
+    PRIMARY_DEFAULT_TEAM_SLUG,
+    'forge-labs',
+    'atlas-hq',
+    'relay-works',
+    'beacon-desk',
+    'vector-room',
+  ],
   ['northstar-core', 'summit-ops', 'harbor-labs', 'pilot-desk', 'mission-control', 'launchpad'],
   ['quartz-forge', 'ember-collective', 'prism-works', 'cinder-labs', 'aurora-room', 'sable-ops'],
   ['delta-studio', 'comet-hub', 'orbit-core', 'kernel-crew', 'circuit-labs', 'flux-team'],
@@ -48,20 +58,22 @@ export function getNextSuggestedTeamName(existingNames: readonly string[]): stri
 
   for (const candidate of preferredSet) {
     if (!normalizedExisting.has(candidate)) {
-      return candidate;
+      return candidate === PRIMARY_DEFAULT_TEAM_SLUG ? PRIMARY_DEFAULT_TEAM_LABEL : candidate;
     }
   }
 
   for (const nameSet of TEAM_NAME_SETS) {
     for (const candidate of nameSet) {
       if (!normalizedExisting.has(candidate)) {
-        return candidate;
+        return candidate === PRIMARY_DEFAULT_TEAM_SLUG ? PRIMARY_DEFAULT_TEAM_LABEL : candidate;
       }
     }
   }
 
-  const fallbackBaseName = preferredSet[existingNames.length % preferredSet.length] ?? 'signal-ops';
-  return createUniqueTeamName(fallbackBaseName, existingNames);
+  const fallbackBaseName =
+    preferredSet[existingNames.length % preferredSet.length] ?? PRIMARY_DEFAULT_TEAM_SLUG;
+  const uniqueName = createUniqueTeamName(fallbackBaseName, existingNames);
+  return uniqueName === PRIMARY_DEFAULT_TEAM_SLUG ? PRIMARY_DEFAULT_TEAM_LABEL : uniqueName;
 }
 
 export { TEAM_NAME_SETS };
