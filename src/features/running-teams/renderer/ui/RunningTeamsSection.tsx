@@ -36,7 +36,7 @@ export function RunningTeamsSection({
           </span>
         </h2>
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
         {rows.map((row) => (
           <button
             key={row.id}
@@ -51,7 +51,9 @@ export function RunningTeamsSection({
             </span>
             <span className="min-w-0 flex-1">
               <span className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-base font-semibold text-text">{row.displayName}</span>
+                <span className="truncate text-base font-semibold text-text">
+                  {row.displayName}
+                </span>
               </span>
               <span className="mt-1.5 flex min-w-0 items-center gap-1.5 text-xs text-text-muted">
                 <FolderOpen className="size-3.5 shrink-0" />

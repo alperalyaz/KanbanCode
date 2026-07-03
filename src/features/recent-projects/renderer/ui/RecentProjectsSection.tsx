@@ -54,8 +54,8 @@ export const RecentProjectsSection = ({
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, index) => (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+        {Array.from({ length: 10 }).map((_, index) => (
           <div
             key={index}
             className="skeleton-card flex min-h-[148px] flex-col rounded-xl border border-border p-5"
@@ -126,7 +126,9 @@ export const RecentProjectsSection = ({
         <div className="mb-5 flex size-14 items-center justify-center rounded-xl border border-border bg-surface-raised">
           <Search className="size-7 text-text-muted" />
         </div>
-        <p className="mb-2 text-lg font-medium text-text-secondary">{t('recentProjects.noProjects')}</p>
+        <p className="mb-2 text-lg font-medium text-text-secondary">
+          {t('recentProjects.noProjects')}
+        </p>
         <p className="text-sm text-text-muted">
           {t('recentProjects.noMatches', { query: searchQuery })}
         </p>
@@ -154,7 +156,7 @@ export const RecentProjectsSection = ({
 
   return (
     <div className="space-y-4">
-      <div className="project-row-zebra-grid grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="project-row-zebra-grid grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
         {hasSelectFolderCard && (
           <SelectProjectFolderCard onClick={() => void selectProjectFolder()} />
         )}

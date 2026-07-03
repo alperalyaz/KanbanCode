@@ -148,7 +148,7 @@ export const DashboardView = (): React.JSX.Element => {
         aria-hidden="true"
       />
 
-      <div className="relative mx-auto max-w-6xl px-8 py-14 lg:px-12 lg:py-20">
+      <div className="relative w-full px-6 py-14 sm:px-8 lg:px-12 lg:py-20 xl:px-16 2xl:px-20">
         <div className="mb-10 space-y-3">
           <WebPreviewBanner />
           <WindowsAdministratorBanner />
@@ -157,23 +157,23 @@ export const DashboardView = (): React.JSX.Element => {
           <TmuxStatusBanner />
         </div>
 
-        <header className="mb-12 text-center lg:mb-14">
+        <header className="mb-12 lg:mb-14">
           <p className="mb-3 text-sm font-medium uppercase tracking-[0.2em] text-indigo-300/80">
             KanbanCode
           </p>
-          <h1 className="text-3xl font-semibold tracking-tight text-text sm:text-4xl lg:text-[2.75rem] lg:leading-tight">
+          <h1 className="text-3xl font-semibold tracking-tight text-text sm:text-4xl lg:text-[2.75rem] lg:leading-tight xl:text-5xl">
             {t('hero.title')}
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-text-secondary sm:text-lg">
+          <p className="mt-4 max-w-4xl text-base leading-relaxed text-text-secondary sm:text-lg xl:text-xl">
             {t('hero.subtitle')}
           </p>
         </header>
 
-        <div className="mb-14 grid gap-4 lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)] lg:items-start">
+        <div className="mb-14 grid gap-4 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)] lg:items-start xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
           <button
             type="button"
             onClick={openTeamsTab}
-            className="group flex min-h-[148px] flex-col justify-between rounded-xl border border-border bg-surface-raised/80 p-5 text-left transition-all duration-200 hover:border-indigo-500/35 hover:bg-surface-raised hover:shadow-[0_12px_40px_rgba(15,23,42,0.18)]"
+            className="bg-surface-raised/80 group flex min-h-[148px] flex-col justify-between rounded-xl border border-border p-5 text-left transition-all duration-200 hover:border-indigo-500/35 hover:bg-surface-raised hover:shadow-[0_12px_40px_rgba(15,23,42,0.18)]"
           >
             <div className="flex size-11 items-center justify-center rounded-xl border border-border bg-surface-overlay transition-colors group-hover:border-indigo-500/30">
               <Users className="size-5 text-indigo-300" />
