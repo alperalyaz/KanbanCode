@@ -2785,6 +2785,7 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: DEFAULT_WINDOW_WIDTH,
     height: DEFAULT_WINDOW_HEIGHT,
+    show: false,
     ...(iconPath ? { icon: iconPath } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -2799,6 +2800,14 @@ function createWindow(): void {
     ...(useNativeTitleBar ? {} : { titleBarStyle: 'hidden' as const }),
     ...(isMac && { trafficLightPosition: getTrafficLightPositionForZoom(1) }),
     title: APP_NAME,
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    mainWindow.maximize();
+    mainWindow.show();
   });
 
   trackMainWindowVisibility(mainWindow);
