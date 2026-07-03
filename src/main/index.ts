@@ -129,6 +129,7 @@ import {
   getTrafficLightPositionForZoom,
   WINDOW_ZOOM_FACTOR_CHANGED_CHANNEL,
 } from '@shared/constants';
+import { localizeStartupMessage, resolveStartupLocale } from '@shared/i18n/startupMessages';
 import { shouldSuppressDesktopNotificationForInboxText } from '@shared/utils/idleNotificationSemantics';
 import { parseInboxJson } from '@shared/utils/inboxNoise';
 import { createLogger } from '@shared/utils/logger';
@@ -985,10 +986,23 @@ const MEMBER_WORK_SYNC_RUNTIME_SNAPSHOT_TIMEOUT_MS = 15_000;
 const MEMBER_WORK_SYNC_RUNTIME_SNAPSHOT_TIMEOUT_COOLDOWN_MS = 30_000;
 const appStartupStartedAt = Date.now();
 const initialStartupMemory = captureStartupMemorySnapshot();
+
+function resolveMainStartupLocale() {
+  return resolveStartupLocale({
+    preference: configManager.getConfig().general.appLocale,
+    systemLocale: app.isReady() ? app.getLocale() : (process.env.LANG ?? process.env.LC_ALL),
+  });
+}
+
+function startupMessage(message: string): string {
+  return localizeStartupMessage(message, resolveMainStartupLocale());
+}
+
+const initialStartupMessage = startupMessage(`Starting ${APP_NAME}...`);
 let appStartupSteps: AppStartupStep[] = [
   {
     phase: 'boot',
-    message: `Starting ${APP_NAME}...`,
+    message: initialStartupMessage,
     startedAt: appStartupStartedAt,
     updatedAt: appStartupStartedAt,
     memoryAtStart: initialStartupMemory,
@@ -996,7 +1010,7 @@ let appStartupSteps: AppStartupStep[] = [
 ];
 let appStartupStatus: AppStartupStatus = {
   phase: 'boot',
-  message: `Starting ${APP_NAME}...`,
+  message: initialStartupMessage,
   ready: false,
   error: null,
   startedAt: appStartupStartedAt,
@@ -1182,18 +1196,22 @@ function finishCurrentStartupStep(now: number, memory: AppStartupMemorySnapshot)
 function publishStartupStatus(update: Partial<AppStartupStatus>): void {
   const now = Date.now();
   const memory = captureStartupMemorySnapshot();
-  updateStartupTimeline(update, now, memory);
+  const localizedUpdate =
+    typeof update.message === 'string'
+      ? { ...update, message: startupMessage(update.message) }
+      : update;
+  updateStartupTimeline(localizedUpdate, now, memory);
   if (update.ready === true || update.error) {
     finishCurrentStartupStep(now, memory);
   }
   appStartupStatus = {
     ...appStartupStatus,
-    ...update,
+    ...localizedUpdate,
     updatedAt: now,
     memory,
     steps: cloneStartupSteps(),
   };
-  if (update.phase || update.ready === true || update.error) {
+  if (localizedUpdate.phase || localizedUpdate.ready === true || localizedUpdate.error) {
     logger.info(
       `[startup] phase=${appStartupStatus.phase} ready=${appStartupStatus.ready} elapsedMs=${
         now - appStartupStartedAt

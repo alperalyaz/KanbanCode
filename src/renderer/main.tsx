@@ -11,7 +11,14 @@ import { App } from './App';
 import { initSentryRenderer } from './sentry';
 import { initializeNotificationListeners } from './store';
 
+import {
+  localizeStartupMessage,
+  localizeStartupTimelineDurationLabel,
+  resolveStartupLocale,
+  STARTUP_LOCALE_CACHE_KEY,
+} from '@shared/i18n/startupMessages';
 import type { AppStartupStatus, AppStartupStep } from '@shared/types/api';
+import type { ResolvedAppLocale } from '@features/localization';
 
 declare global {
   interface Window {
@@ -32,8 +39,29 @@ const SLOW_STEP_MS = 7_000;
 const VERY_SLOW_STEP_MS = 14_000;
 const TIMELINE_STEP_LIMIT = 3;
 
+function getRendererStartupLocale(): ResolvedAppLocale {
+  let cachedLocale: string | null = null;
+  try {
+    cachedLocale = localStorage.getItem(STARTUP_LOCALE_CACHE_KEY);
+  } catch {
+    cachedLocale = null;
+  }
+  return resolveStartupLocale({
+    cachedLocale,
+    systemLocale: navigator.language,
+  });
+}
+
+const rendererStartupLocale = getRendererStartupLocale();
+
+function localizeSplashText(message: string): string {
+  return localizeStartupMessage(message, rendererStartupLocale);
+}
+
 function getStartupErrorText(status: AppStartupStatus): string {
-  return status.error ? `Startup failed: ${status.error}` : 'Startup failed. Please restart.';
+  return status.error
+    ? localizeSplashText(`Startup failed: ${status.error}`)
+    : localizeSplashText('Startup failed. Please restart.');
 }
 
 function formatDuration(ms: number): string {
@@ -68,26 +96,34 @@ function getSlowStepHint(step: AppStartupStep | null, elapsedMs: number): string
   const phase = step.phase;
   if (phase.includes('shell-env-login') || phase.includes('shell-env-interactive')) {
     return elapsedMs >= VERY_SLOW_STEP_MS
-      ? 'Shell startup is still running. Slow shell profile scripts can delay first launch.'
-      : 'Reading your shell PATH. This can take a few seconds on first launch.';
+      ? localizeSplashText(
+          'Shell startup is still running. Slow shell profile scripts can delay first launch.'
+        )
+      : localizeSplashText('Reading your shell PATH. This can take a few seconds on first launch.');
   }
   if (phase.includes('node-runtime')) {
-    return 'Checking Node.js for the local MCP server. This can wait up to 5 seconds.';
+    return localizeSplashText(
+      'Checking Node.js for the local MCP server. This can wait up to 5 seconds.'
+    );
   }
   if (phase.includes('packaged-server-copy')) {
-    return 'Preparing the packaged MCP server copy. This should only happen after updates.';
+    return localizeSplashText(
+      'Preparing the packaged MCP server copy. This should only happen after updates.'
+    );
   }
   if (phase.includes('path') || phase.includes('standard-locations') || phase.includes('nvm')) {
-    return 'Searching local runtime paths. A large PATH or slow disk can make this step longer.';
+    return localizeSplashText(
+      'Searching local runtime paths. A large PATH or slow disk can make this step longer.'
+    );
   }
   if (phase.includes('doctor')) {
-    return 'Using diagnostics fallback to locate the runtime.';
+    return localizeSplashText('Using diagnostics fallback to locate the runtime.');
   }
   if (phase.includes('settings')) {
-    return 'Loading encrypted local settings.';
+    return localizeSplashText('Loading encrypted local settings.');
   }
 
-  return 'Still working on this startup step.';
+  return localizeSplashText('Still working on this startup step.');
 }
 
 function renderStartupTimeline(status: AppStartupStatus): void {
@@ -118,7 +154,11 @@ function renderStartupTimeline(status: AppStartupStatus): void {
     const time = document.createElement('div');
     time.className = 'splash-step-time';
     const elapsed = formatDuration(getStepElapsedMs(step, status));
-    time.textContent = step.finishedAt ? `took ${elapsed}` : `running ${elapsed}`;
+    time.textContent = localizeStartupTimelineDurationLabel(
+      Boolean(step.finishedAt),
+      elapsed,
+      rendererStartupLocale
+    );
 
     row.append(dot, label, time);
     timeline.append(row);

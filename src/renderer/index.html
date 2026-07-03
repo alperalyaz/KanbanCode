@@ -233,8 +233,29 @@
       // Flash prevention: Apply cached theme before React loads,
       // and keep the elapsed counter ticking until the app takes over.
       (function () {
+        function resolveStartupLocale() {
+          try {
+            var cached = localStorage.getItem('agent-teams-locale-cache');
+            if (cached === 'tr' || cached === 'en') {
+              return cached;
+            }
+          } catch (e) {}
+          var lang = (navigator.language || 'en').toLowerCase();
+          return lang.indexOf('tr') === 0 ? 'tr' : 'en';
+        }
+
+        function getInitialSplashMessage(locale) {
+          return locale === 'tr' ? 'Çalışma alanı hazırlanıyor...' : 'Preparing workspace...';
+        }
+
         try {
           window.__claudeTeamsSplashStartedAt = performance.now();
+          var startupLocale = resolveStartupLocale();
+          var splashStatus = document.getElementById('splash-status');
+          if (splashStatus) {
+            splashStatus.textContent = getInitialSplashMessage(startupLocale);
+          }
+          document.documentElement.lang = startupLocale;
           window.__claudeTeamsSplashStaticTimer = window.setInterval(function () {
             var elapsed = document.getElementById('splash-elapsed');
             var splash = document.getElementById('splash');
