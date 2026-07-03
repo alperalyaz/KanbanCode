@@ -9,6 +9,7 @@ import type { WindowsElevationStatus } from '@shared/types/api';
 export const WindowsAdministratorBanner = (): React.JSX.Element | null => {
   const { t } = useAppTranslation('dashboard');
   const [status, setStatus] = useState<WindowsElevationStatus | null>(null);
+  const [openCodeInstalled, setOpenCodeInstalled] = useState(false);
 
   useEffect(() => {
     if (!isElectronMode()) {
@@ -33,12 +34,29 @@ export const WindowsAdministratorBanner = (): React.JSX.Element | null => {
         }
       });
 
+    // Elevation only matters for OpenCode runtime controls — keep the banner
+    // out of the way for everyone who doesn't use OpenCode at all.
+    const getOpenCodeStatus = api.openCodeRuntime?.getStatus;
+    if (typeof getOpenCodeStatus === 'function') {
+      void getOpenCodeStatus()
+        .then((runtimeStatus) => {
+          if (!cancelled) {
+            setOpenCodeInstalled(Boolean(runtimeStatus?.installed));
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setOpenCodeInstalled(false);
+          }
+        });
+    }
+
     return () => {
       cancelled = true;
     };
   }, []);
 
-  if (!status?.isWindows || status.isAdministrator !== false) {
+  if (!status?.isWindows || status.isAdministrator !== false || !openCodeInstalled) {
     return null;
   }
 

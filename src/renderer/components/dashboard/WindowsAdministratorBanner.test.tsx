@@ -22,12 +22,18 @@ function installElevationStatus(status: WindowsElevationStatus) {
   return installElevationStatusPromise(Promise.resolve(status));
 }
 
-function installElevationStatusPromise(promise: Promise<WindowsElevationStatus>) {
+function installElevationStatusPromise(
+  promise: Promise<WindowsElevationStatus>,
+  options: { openCodeInstalled?: boolean } = {}
+) {
   const getWindowsElevationStatus = vi.fn().mockReturnValue(promise);
   Object.defineProperty(window, 'electronAPI', {
     configurable: true,
     value: {
       getWindowsElevationStatus,
+      openCodeRuntime: {
+        getStatus: vi.fn().mockResolvedValue({ installed: options.openCodeInstalled ?? true }),
+      },
     },
   });
   return getWindowsElevationStatus;
@@ -39,6 +45,9 @@ function installElevationStatusFailure() {
     configurable: true,
     value: {
       getWindowsElevationStatus,
+      openCodeRuntime: {
+        getStatus: vi.fn().mockResolvedValue({ installed: true }),
+      },
     },
   });
   return getWindowsElevationStatus;
@@ -124,6 +133,24 @@ describe('WindowsAdministratorBanner', () => {
       await flushReact();
     });
   });
+  it('hides the warning when the OpenCode runtime is not installed', async () => {
+    installElevationStatusPromise(Promise.resolve(createStatus()), { openCodeInstalled: false });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(WindowsAdministratorBanner));
+      await flushReact();
+    });
+
+    expect(host.textContent).toBe('');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
 
   it('hides the warning when the status check is inconclusive', async () => {
     const getWindowsElevationStatus = installElevationStatus(

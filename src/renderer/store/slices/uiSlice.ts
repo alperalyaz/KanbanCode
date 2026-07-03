@@ -27,7 +27,8 @@ export interface UISlice {
 export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set) => ({
   // Initial state
   commandPaletteOpen: false,
-  sidebarCollapsed: false,
+  // Right sidebar (tasks/sessions) starts collapsed; users can expand it on demand.
+  sidebarCollapsed: true,
 
   // Command palette actions
   openCommandPalette: () => {

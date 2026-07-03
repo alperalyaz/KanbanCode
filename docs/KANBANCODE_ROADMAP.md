@@ -37,6 +37,19 @@ Core to keep: team creation + agent process management + kanban board + messagin
 
 ## Status log
 
+- **2026-07-03 (cloud session)** — **Phase 4 cosmetics batch (owner requests).**
+  (1) Animated splash "teams scene" removed entirely — `splashScene.ts` (1015 lines) deleted,
+  the ~900-line inline canvas copy stripped from `index.html`, artificial splash hold times
+  dropped (min 1600ms → 300ms); splash is now logo + name + progress bar + status/elapsed +
+  error timeline only. (2) New "K" brand mark: splash SVG + full icon set regenerated
+  programmatically (Pillow) — `resources/icon.png`, `icons/png/16..1024`, `win/icon.ico`
+  (7 sizes), `mac/icon.icns`, renderer `favicon.png`, master in `icons/source/`.
+  (3) Discord button removed from the tab bar. (4) Right sidebar (tasks/sessions) now
+  defaults to collapsed (`uiSlice.sidebarCollapsed: true`). (5) Windows administrator
+  banner now renders only when the OpenCode runtime is actually installed (+ test).
+  README header image `docs/assets/github-header-kanbancode.png` NOT regenerated — needs
+  a proper banner design, still shows old branding.
+
 - **2026-07-03 (cloud session)** — **Phase 2 quick wins: background poll gating.**
   New `src/main/utils/windowVisibility.ts` tracks whether the main window is visible
   (minimize/hide aware; blur intentionally ignored; defaults to "active" in
