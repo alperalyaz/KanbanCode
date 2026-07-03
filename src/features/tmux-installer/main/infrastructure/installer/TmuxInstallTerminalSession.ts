@@ -1,12 +1,11 @@
 import { createLogger } from '@shared/utils/logger';
 
 import type { TmuxCommandSpec } from './TmuxCommandRunner';
-import type { IPty } from 'node-pty';
-import type * as NodePty from 'node-pty';
+import type { OptionalPty as IPty, OptionalPtyModule } from '@shared/types/optionalPty';
 
 const logger = createLogger('Feature:tmux-installer:pty');
 
-type NodePtyModule = typeof NodePty;
+type NodePtyModule = OptionalPtyModule;
 
 let nodePty: NodePtyModule | null = null;
 try {

@@ -253,17 +253,14 @@
     "largeContentNotice_one": "Content is very large ({{count}} chars). Showing raw preview to keep the UI responsive.",
     "largeContentNotice_other": "Content is very large ({{count}} chars). Showing raw preview to keep the UI responsive."
   },
-  "terminal": {
-    "checkOutputForDetails": "Check terminal output above for details",
-    "closingInSeconds": "Closing in {{count}}s...",
-    "closingInSeconds_few": "Closing in {{count}}s...",
-    "closingInSeconds_many": "Closing in {{count}}s...",
-    "closingInSeconds_one": "Closing in {{count}}s...",
-    "closingInSeconds_other": "Closing in {{count}}s...",
-    "completedSuccessfully": "Completed successfully",
-    "exitCode": "(exit code {{code}})",
-    "processFailed": "Process failed",
-    "title": "Terminal"
+  "terminalCommandModal": {
+    "afterRun": "When the command finishes, close this dialog and the app will re-check the status.",
+    "copied": "Copied",
+    "copy": "Copy",
+    "copyCommand": "Copy command",
+    "instructions": "Run this command in your own terminal to continue:",
+    "title": "Run in your terminal",
+    "windowsEnvNote": "On Windows, set the environment variables first (for example: set KEY=value) and then run the command without the KEY=value prefix."
   },
   "tokens": {
     "accumulatedWithoutDuplication": "Accumulated across entire session without duplication",

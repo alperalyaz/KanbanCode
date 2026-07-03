@@ -73,7 +73,6 @@ describe('HTTP team runtime routes', () => {
       chunkBuilder: {} as HttpServices['chunkBuilder'],
       dataCache: {} as HttpServices['dataCache'],
       updaterService: {} as HttpServices['updaterService'],
-      sshConnectionManager: {} as HttpServices['sshConnectionManager'],
       teamDataService,
       teamProvisioningService,
     } satisfies HttpServices;
@@ -724,7 +723,6 @@ describe('HTTP team runtime routes', () => {
       chunkBuilder: {} as HttpServices['chunkBuilder'],
       dataCache: {} as HttpServices['dataCache'],
       updaterService: {} as HttpServices['updaterService'],
-      sshConnectionManager: {} as HttpServices['sshConnectionManager'],
     } satisfies HttpServices);
     await app.ready();
 

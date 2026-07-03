@@ -26,9 +26,6 @@ const shouldPrintRuntimePath = scriptArgs.includes('--print-runtime-path');
 const electronViteArgs = scriptArgs.filter((arg) => arg !== '--print-runtime-path' && arg !== '--');
 const runtimeDisplayName = 'teams orchestrator';
 const remoteDebuggingPortArg = '--remoteDebuggingPort';
-const terminalPlatformRootEnv = 'CLAUDE_TERMINAL_PLATFORM_ROOT';
-const legacyTerminalPlatformRootEnv = 'TERMINAL_PLATFORM_ROOT';
-const terminalDaemonBinaryEnv = 'CLAUDE_TERMINAL_DAEMON_BINARY';
 const organizationDemoEnv = 'AGENT_TEAMS_ORG_DEMO';
 
 function prependPathEntries(entries) {
@@ -133,31 +130,6 @@ function runAndCapture(cmd, args, options = {}) {
   }
 
   return result.stdout?.trim() ?? '';
-}
-
-function hasTerminalPlatformOverride() {
-  return Boolean(
-    process.env[terminalPlatformRootEnv]?.trim() ||
-    process.env[legacyTerminalPlatformRootEnv]?.trim() ||
-    process.env[terminalDaemonBinaryEnv]?.trim()
-  );
-}
-
-function ensureTerminalPlatformRuntime(env) {
-  if (hasTerminalPlatformOverride()) {
-    const overrideName = process.env[terminalDaemonBinaryEnv]?.trim()
-      ? terminalDaemonBinaryEnv
-      : process.env[terminalPlatformRootEnv]?.trim()
-        ? terminalPlatformRootEnv
-        : legacyTerminalPlatformRootEnv;
-    process.stdout.write(`Using terminal-platform runtime from ${overrideName}\n`);
-    return;
-  }
-
-  runOrExit(process.execPath, [path.join(scriptDir, 'ensure-terminal-platform-runtime.mjs')], {
-    cwd: uiRepoRoot,
-    env,
-  });
 }
 
 function readPackageManagerCommand(repoRoot) {
@@ -717,8 +689,6 @@ async function main() {
     cwd: uiRepoRoot,
     env: uiEnv,
   });
-
-  ensureTerminalPlatformRuntime(uiEnv);
 
   runOrExit(uiPackageManager, ['exec', 'electron-vite', 'dev', ...resolvedElectronViteArgs], {
     cwd: uiRepoRoot,

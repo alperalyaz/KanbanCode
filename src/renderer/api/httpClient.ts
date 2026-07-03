@@ -41,7 +41,6 @@ import type { CodexRuntimeAPI } from '@features/codex-runtime-installer/contract
 import type { MemberLogStreamApi } from '@features/member-log-stream/contracts';
 import type { DashboardRecentProjectsPayload } from '@features/recent-projects/contracts';
 import type { RuntimeProviderManagementApi } from '@features/runtime-provider-management/contracts';
-import type { TerminalWorkspaceElectronApi } from '@features/terminal-workspace/contracts';
 import type {
   AppConfig,
   AttachmentFileData,
@@ -85,11 +84,6 @@ import type {
   SessionsByIdsOptions,
   SessionsPaginationOptions,
   SnippetDiff,
-  SshAPI,
-  SshConfigHostEntry,
-  SshConnectionConfig,
-  SshConnectionStatus,
-  SshLastConnection,
   SubagentDetail,
   TaskChangeRequestOptions,
   TeamChangeEvent,
@@ -126,7 +120,6 @@ import type {
 } from '@shared/types';
 import type { AgentConfig, MemberWorkSyncElectronApi } from '@shared/types/api';
 import type { ProjectAPI } from '@shared/types/editor';
-import type { TerminalAPI } from '@shared/types/terminal';
 
 export class HttpAPIClient implements ElectronAPI {
   private baseUrl: string;
@@ -771,45 +764,6 @@ export class HttpAPIClient implements ElectronAPI {
     onStatus: (_callback): (() => void) => {
       return () => {};
     },
-  };
-
-  // ---------------------------------------------------------------------------
-  // SSH
-  // ---------------------------------------------------------------------------
-
-  ssh: SshAPI = {
-    connect: (config: SshConnectionConfig): Promise<SshConnectionStatus> =>
-      this.post('/api/ssh/connect', config),
-    disconnect: (): Promise<SshConnectionStatus> => this.post('/api/ssh/disconnect'),
-    getState: (): Promise<SshConnectionStatus> => this.get('/api/ssh/state'),
-    test: (config: SshConnectionConfig): Promise<{ success: boolean; error?: string }> =>
-      this.post('/api/ssh/test', config),
-    getConfigHosts: async (): Promise<SshConfigHostEntry[]> => {
-      const result = await this.get<{ success: boolean; data?: SshConfigHostEntry[] }>(
-        '/api/ssh/config-hosts'
-      );
-      return result.data ?? [];
-    },
-    resolveHost: async (alias: string): Promise<SshConfigHostEntry | null> => {
-      const result = await this.post<{
-        success: boolean;
-        data?: SshConfigHostEntry | null;
-      }>('/api/ssh/resolve-host', { alias });
-      return result.data ?? null;
-    },
-    saveLastConnection: (config: SshLastConnection): Promise<void> =>
-      this.post('/api/ssh/save-last-connection', config),
-    getLastConnection: async (): Promise<SshLastConnection | null> => {
-      const result = await this.get<{ success: boolean; data?: SshLastConnection | null }>(
-        '/api/ssh/last-connection'
-      );
-      return result.data ?? null;
-    },
-    // IPC signature: (event: unknown, status: SshConnectionStatus) => void
-    onStatus: (callback): (() => void) =>
-      this.addEventListener('ssh:status', (data: unknown) =>
-        callback(null, data as SshConnectionStatus)
-      ),
   };
 
   // ---------------------------------------------------------------------------
@@ -1562,28 +1516,6 @@ export class HttpAPIClient implements ElectronAPI {
     onProgress: (): (() => void) => {
       return () => {};
     },
-  };
-
-  // ---------------------------------------------------------------------------
-  // Terminal (not available in browser mode)
-  // ---------------------------------------------------------------------------
-
-  terminalWorkspace: TerminalWorkspaceElectronApi = {
-    getBootstrap: async () => {
-      throw new Error('Terminal workspace is not available in browser mode');
-    },
-    stopTeamRuntime: async (): Promise<void> => {},
-  };
-
-  terminal: TerminalAPI = {
-    spawn: async (): Promise<string> => {
-      throw new Error('Terminal not available in browser mode');
-    },
-    write: () => {},
-    resize: () => {},
-    kill: () => {},
-    onData: (): (() => void) => () => {},
-    onExit: (): (() => void) => () => {},
   };
 
   // ---------------------------------------------------------------------------

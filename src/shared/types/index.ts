@@ -37,7 +37,6 @@ export type * from './review';
 export type * from './cliInstaller';
 
 // Re-export Terminal types
-export type * from './terminal';
 
 // Re-export Editor types
 export type * from './editor';

@@ -14,7 +14,6 @@ import {
 } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
-import { TerminalWorkspaceFloatingLauncher } from '@features/terminal-workspace/renderer';
 import { api } from '@renderer/api';
 import { SessionPanel } from '@renderer/components/chat/session-panel';
 import { confirm } from '@renderer/components/common/ConfirmDialog';
@@ -3541,12 +3540,6 @@ export const TeamDetailView = memo(function TeamDetailView({
             {messagesPanelMode === 'floating-composer' && isThisTabActive && isPaneFocused && (
               <TeamMessagesPanelBridge position="floating-composer" {...sharedMessagesPanelProps} />
             )}
-            <TerminalWorkspaceFloatingLauncher
-              teamName={teamName}
-              bottomOffset={Math.max(floatingComposerHeight + 18, 18)}
-              buttonTestId="open-terminal-floating-button"
-              enabled={isThisTabActive}
-            />
           </div>
         </div>
       </>

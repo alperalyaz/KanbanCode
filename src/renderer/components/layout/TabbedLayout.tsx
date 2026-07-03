@@ -31,7 +31,6 @@ import { useShallow } from 'zustand/react/shallow';
 import { CliInstallWarningBanner } from '../common/CliInstallWarningBanner';
 import { UpdateBanner } from '../common/UpdateBanner';
 import { UpdateDialog } from '../common/UpdateDialog';
-import { WorkspaceIndicator } from '../common/WorkspaceIndicator';
 import { CommandPalette } from '../search/CommandPalette';
 
 import { CustomTitleBar } from './CustomTitleBar';
@@ -186,7 +185,6 @@ export const TabbedLayout = (): React.JSX.Element => {
       </DndContext>
       <GlobalTaskDetailDialogSlot />
       <UpdateDialog />
-      <WorkspaceIndicator />
     </div>
   );
 };

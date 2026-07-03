@@ -100,7 +100,6 @@ import type {
   ToolApprovalSettings,
   UpdateKanbanPatch,
 } from './team';
-import type { TerminalAPI } from './terminal';
 import type { TmuxAPI } from './tmux';
 import type { WaterfallData } from './visualization';
 import type { CodexAccountElectronApi } from '@features/codex-account/contracts';
@@ -117,7 +116,6 @@ import type {
 import type { OrganizationsElectronApi } from '@features/organizations/contracts';
 import type { RecentProjectsElectronApi } from '@features/recent-projects/contracts';
 import type { RuntimeProviderManagementApi } from '@features/runtime-provider-management/contracts';
-import type { TerminalWorkspaceElectronApi } from '@features/terminal-workspace/contracts';
 import type {
   ConversationGroup,
   FileChangeEvent,
@@ -376,93 +374,7 @@ export interface AppStartupMemorySnapshot {
  */
 export interface ContextInfo {
   id: string;
-  type: 'local' | 'ssh';
-}
-
-// =============================================================================
-// SSH API
-// =============================================================================
-
-/**
- * SSH connection state.
- */
-export type SshConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
-
-/**
- * SSH authentication method.
- */
-export type SshAuthMethod = 'password' | 'privateKey' | 'agent' | 'auto';
-
-/**
- * SSH config host entry resolved from ~/.ssh/config.
- */
-export interface SshConfigHostEntry {
-  alias: string;
-  hostName?: string;
-  user?: string;
-  port?: number;
-  hasIdentityFile: boolean;
-}
-
-/**
- * SSH connection configuration sent from renderer.
- */
-export interface SshConnectionConfig {
-  host: string;
-  port: number;
-  username: string;
-  authMethod: SshAuthMethod;
-  password?: string;
-  privateKeyPath?: string;
-}
-
-/**
- * Saved SSH connection profile (no password stored).
- */
-export interface SshConnectionProfile {
-  id: string;
-  name: string;
-  host: string;
-  port: number;
-  username: string;
-  authMethod: SshAuthMethod;
-  privateKeyPath?: string;
-}
-
-/**
- * SSH connection status returned from main process.
- */
-export interface SshConnectionStatus {
-  state: SshConnectionState;
-  host: string | null;
-  error: string | null;
-  remoteProjectsPath: string | null;
-}
-
-/**
- * SSH API exposed via preload.
- */
-/**
- * Saved SSH connection config (no password).
- */
-export interface SshLastConnection {
-  host: string;
-  port: number;
-  username: string;
-  authMethod: SshAuthMethod;
-  privateKeyPath?: string;
-}
-
-export interface SshAPI {
-  connect: (config: SshConnectionConfig) => Promise<SshConnectionStatus>;
-  disconnect: () => Promise<SshConnectionStatus>;
-  getState: () => Promise<SshConnectionStatus>;
-  test: (config: SshConnectionConfig) => Promise<{ success: boolean; error?: string }>;
-  getConfigHosts: () => Promise<SshConfigHostEntry[]>;
-  resolveHost: (alias: string) => Promise<SshConfigHostEntry | null>;
-  saveLastConnection: (config: SshLastConnection) => Promise<void>;
-  getLastConnection: () => Promise<SshLastConnection | null>;
-  onStatus: (callback: (event: unknown, status: SshConnectionStatus) => void) => () => void;
+  type: 'local';
 }
 
 // =============================================================================
@@ -944,9 +856,6 @@ export interface ElectronAPI extends RecentProjectsElectronApi, CodexAccountElec
   // Updater API
   updater: UpdaterAPI;
 
-  // SSH API
-  ssh: SshAPI;
-
   // Context API
   context: {
     list: () => Promise<ContextInfo[]>;
@@ -990,12 +899,6 @@ export interface ElectronAPI extends RecentProjectsElectronApi, CodexAccountElec
 
   // tmux runtime diagnostics API
   tmux: TmuxAPI;
-
-  // Team-scoped Terminal Platform workspace API
-  terminalWorkspace: TerminalWorkspaceElectronApi;
-
-  // Embedded Terminal API (xterm.js + node-pty)
-  terminal: TerminalAPI;
 
   // Project file operations (editor-independent)
   project: ProjectAPI;

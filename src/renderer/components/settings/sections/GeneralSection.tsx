@@ -52,9 +52,8 @@ export const GeneralSection = ({
   const [copied, setCopied] = useState(false);
 
   // Claude Root state
-  const { connectionMode, fetchProjects, fetchRepositoryGroups } = useStore(
+  const { fetchProjects, fetchRepositoryGroups } = useStore(
     useShallow((s) => ({
-      connectionMode: s.connectionMode,
       fetchProjects: s.fetchProjects,
       fetchRepositoryGroups: s.fetchRepositoryGroups,
     }))
@@ -140,10 +139,8 @@ export const GeneralSection = ({
         await api.config.update('general', { claudeRootPath });
         await loadClaudeRootInfo();
 
-        if (connectionMode === 'local') {
-          resetWorkspaceForRootChange();
-          await Promise.all([fetchProjects(), fetchRepositoryGroups()]);
-        }
+        resetWorkspaceForRootChange();
+        await Promise.all([fetchProjects(), fetchRepositoryGroups()]);
       } catch (error) {
         setClaudeRootError(
           error instanceof Error ? error.message : t('general.localClaudeRoot.errors.updateFailed')
@@ -153,7 +150,6 @@ export const GeneralSection = ({
       }
     },
     [
-      connectionMode,
       fetchProjects,
       fetchRepositoryGroups,
       loadClaudeRootInfo,

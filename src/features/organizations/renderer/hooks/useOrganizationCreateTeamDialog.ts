@@ -32,7 +32,6 @@ export function useOrganizationCreateTeamDialog(): UseOrganizationCreateTeamDial
   const electronMode = isElectronMode();
   const {
     teams,
-    connectionMode,
     createTeam,
     openTeamTab,
     provisioningErrorByTeam,
@@ -42,7 +41,6 @@ export function useOrganizationCreateTeamDialog(): UseOrganizationCreateTeamDial
   } = useStore(
     useShallow((state) => ({
       teams: state.teams,
-      connectionMode: state.connectionMode,
       createTeam: state.createTeam,
       openTeamTab: state.openTeamTab,
       provisioningErrorByTeam: state.provisioningErrorByTeam,
@@ -51,7 +49,7 @@ export function useOrganizationCreateTeamDialog(): UseOrganizationCreateTeamDial
       currentProvisioningRunIdByTeam: state.currentProvisioningRunIdByTeam,
     }))
   );
-  const canCreate = electronMode && connectionMode === 'local';
+  const canCreate = electronMode;
   const provisioningState = useMemo(
     () => ({ currentProvisioningRunIdByTeam, provisioningRuns }),
     [currentProvisioningRunIdByTeam, provisioningRuns]

@@ -220,13 +220,12 @@ export const createSessionDetailSlice: StateCreator<AppState, [], [], SessionDet
 
       // Compute CLAUDE.md stats for the session
       const projectRoot = detail?.session?.projectPath ?? '';
-      const { connectionMode } = get();
       let claudeMdStats: Map<string, ClaudeMdStats> | null = null;
       let contextStats: Map<string, ContextStats> | null = null;
       let phaseInfo: ContextPhaseInfo | null = null;
       // Fetch agent configs from .claude/agents/ (only when project changes).
       // Fire-and-forget: don't block transcript rendering — color badges update async.
-      if (connectionMode !== 'ssh' && projectRoot && projectRoot !== agentConfigsCachedForProject) {
+      if (projectRoot && projectRoot !== agentConfigsCachedForProject) {
         agentConfigsCachedForProject = projectRoot; // Optimistic set to prevent duplicate fetches
         api
           .readAgentConfigs(projectRoot)
@@ -239,7 +238,7 @@ export const createSessionDetailSlice: StateCreator<AppState, [], [], SessionDet
           });
       }
 
-      if (connectionMode !== 'ssh' && conversation?.items) {
+      if (conversation?.items) {
         // Fetch real CLAUDE.md token data
         let claudeMdTokenData: Record<string, ClaudeMdFileInfo> = {};
         try {

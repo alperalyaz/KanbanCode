@@ -7,7 +7,6 @@ import { create } from 'zustand';
 import { createChangeReviewSlice } from '../../../src/renderer/store/slices/changeReviewSlice';
 import { createCliInstallerSlice } from '../../../src/renderer/store/slices/cliInstallerSlice';
 import { createConfigSlice } from '../../../src/renderer/store/slices/configSlice';
-import { createConnectionSlice } from '../../../src/renderer/store/slices/connectionSlice';
 import { createContextSlice } from '../../../src/renderer/store/slices/contextSlice';
 import { createExtensionsSlice } from '../../../src/renderer/store/slices/extensionsSlice';
 import { createConversationSlice } from '../../../src/renderer/store/slices/conversationSlice';
@@ -46,7 +45,6 @@ export function createTestStore() {
     ...createUISlice(...args),
     ...createNotificationSlice(...args),
     ...createConfigSlice(...args),
-    ...createConnectionSlice(...args),
     ...createContextSlice(...args),
     ...createUpdateSlice(...args),
     ...createChangeReviewSlice(...args),

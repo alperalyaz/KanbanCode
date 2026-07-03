@@ -19,7 +19,7 @@ RUN corepack enable
 
 FROM base AS builder
 
-# Native dependencies such as node-pty may need source builds on slim images.
+# Some optional native dependencies may need source builds on slim images.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
@@ -46,8 +46,7 @@ RUN apt-get update \
 # (fastify, @fastify/cors, @fastify/static are externalized from the bundle)
 COPY package.json pnpm-lock.yaml ./
 COPY patches ./patches
-RUN pnpm install --frozen-lockfile --prod --ignore-scripts \
-  && pnpm rebuild node-pty cpu-features ssh2
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 
 # =============================================================================
 # Production stage - minimal image with only runtime dependencies and built output

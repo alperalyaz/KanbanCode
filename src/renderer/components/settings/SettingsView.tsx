@@ -11,12 +11,7 @@ import { Loader2 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { useSettingsConfig, useSettingsHandlers } from './hooks';
-import {
-  AdvancedSection,
-  ConnectionSection,
-  GeneralSection,
-  NotificationsSection,
-} from './sections';
+import { AdvancedSection, GeneralSection, NotificationsSection } from './sections';
 import { type SettingsSection, SettingsTabs } from './SettingsTabs';
 
 export const SettingsView = (): React.JSX.Element | null => {
@@ -138,8 +133,6 @@ export const SettingsView = (): React.JSX.Element | null => {
               onAppLocaleChange={handlers.handleAppLocaleChange}
             />
           )}
-
-          {activeSection === 'connection' && <ConnectionSection />}
 
           {activeSection === 'notifications' && (
             <NotificationsSection

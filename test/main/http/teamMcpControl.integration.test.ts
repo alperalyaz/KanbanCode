@@ -179,7 +179,6 @@ function createServices(claudeRoot: string): {
       chunkBuilder: {} as HttpServices['chunkBuilder'],
       dataCache: {} as HttpServices['dataCache'],
       updaterService: {} as HttpServices['updaterService'],
-      sshConnectionManager: {} as HttpServices['sshConnectionManager'],
       teamDataService,
       teamProvisioningService,
     },

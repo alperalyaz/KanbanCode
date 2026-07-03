@@ -115,36 +115,6 @@ export const CONFIG_HIDE_SESSIONS = 'config:hideSessions';
 /** Bulk unhide sessions */
 export const CONFIG_UNHIDE_SESSIONS = 'config:unhideSessions';
 
-// =============================================================================
-// SSH API Channels
-// =============================================================================
-
-/** Connect to SSH host */
-export const SSH_CONNECT = 'ssh:connect';
-
-/** Disconnect SSH and switch to local */
-export const SSH_DISCONNECT = 'ssh:disconnect';
-
-/** Get current SSH connection state */
-export const SSH_GET_STATE = 'ssh:getState';
-
-/** Test SSH connection without switching */
-export const SSH_TEST = 'ssh:test';
-
-/** Get SSH config hosts from ~/.ssh/config */
-export const SSH_GET_CONFIG_HOSTS = 'ssh:getConfigHosts';
-
-/** Resolve a single SSH config host alias */
-export const SSH_RESOLVE_HOST = 'ssh:resolveHost';
-
-/** Save last SSH connection config */
-export const SSH_SAVE_LAST_CONNECTION = 'ssh:saveLastConnection';
-
-/** Get last saved SSH connection config */
-export const SSH_GET_LAST_CONNECTION = 'ssh:getLastConnection';
-
-/** SSH status event channel (main -> renderer) */
-export const SSH_STATUS = 'ssh:status';
 
 // =============================================================================
 // Updater API Channels
@@ -166,7 +136,7 @@ export const UPDATER_STATUS = 'updater:status';
 // Context API Channels
 // =============================================================================
 
-/** List all available contexts (local + SSH) */
+/** List all available contexts */
 export const CONTEXT_LIST = 'context:list';
 
 /** Get active context ID */
@@ -526,27 +496,6 @@ export {
   TMUX_INVALIDATE_STATUS,
 } from '@features/tmux-installer/contracts';
 
-// =============================================================================
-// Terminal API Channels
-// =============================================================================
-
-/** Spawn a new PTY terminal process */
-export const TERMINAL_SPAWN = 'terminal:spawn';
-
-/** Write data to PTY stdin (fire-and-forget) */
-export const TERMINAL_WRITE = 'terminal:write';
-
-/** Resize PTY terminal (fire-and-forget) */
-export const TERMINAL_RESIZE = 'terminal:resize';
-
-/** Kill PTY process (fire-and-forget) */
-export const TERMINAL_KILL = 'terminal:kill';
-
-/** PTY data output (main -> renderer) */
-export const TERMINAL_DATA = 'terminal:data';
-
-/** PTY process exit (main -> renderer) */
-export const TERMINAL_EXIT = 'terminal:exit';
 
 // =============================================================================
 // Review API Channels

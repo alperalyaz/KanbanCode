@@ -81,34 +81,6 @@ function isAllowedPostPackMismatch(mismatch, platform, arch) {
   );
 }
 
-function resolveResourcesDir(bundlePath, platform) {
-  if (platform === 'darwin') {
-    return path.join(bundlePath, 'Contents', 'Resources');
-  }
-  return path.join(bundlePath, 'resources');
-}
-
-function verifyBundledTerminalPlatformRuntime(bundlePath, platform) {
-  const resourcesDir = resolveResourcesDir(bundlePath, platform);
-  const terminalPlatformDir = path.join(resourcesDir, 'terminal-platform');
-  const daemonBinaryName = platform === 'win32' ? 'terminal-daemon.exe' : 'terminal-daemon';
-  const requiredFiles = [
-    path.join(terminalPlatformDir, 'VERSION'),
-    path.join(terminalPlatformDir, daemonBinaryName),
-    path.join(terminalPlatformDir, 'terminal-platform-node', 'index.mjs'),
-    path.join(terminalPlatformDir, 'terminal-platform-node', 'native', 'manifest.json'),
-  ];
-
-  const missingFiles = requiredFiles.filter((filePath) => !fs.existsSync(filePath));
-  if (missingFiles.length > 0) {
-    throw new Error(
-      `Packaged bundle is missing terminal-platform runtime file(s): ${missingFiles
-        .map((filePath) => path.relative(resourcesDir, filePath))
-        .join(', ')}`
-    );
-  }
-}
-
 async function main() {
   const [bundlePathArg, platform, arch] = process.argv.slice(2);
 
@@ -120,7 +92,6 @@ async function main() {
   }
 
   const bundlePath = resolveBundlePath(path.resolve(bundlePathArg), platform);
-  verifyBundledTerminalPlatformRuntime(bundlePath, platform);
   const mismatches = await validateNativeBinaries(bundlePath, platform, arch);
   const blockingMismatches = mismatches.filter(
     (mismatch) => !isAllowedPostPackMismatch(mismatch, platform, arch)

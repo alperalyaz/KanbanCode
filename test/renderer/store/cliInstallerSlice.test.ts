@@ -47,7 +47,6 @@ vi.mock('@renderer/api', () => ({
       onTeamChange: vi.fn(),
       onProvisioningProgress: vi.fn(),
     },
-    ssh: { onStatus: vi.fn() },
     onFileChange: vi.fn(),
     onTodoChange: vi.fn(),
     getAppVersion: vi.fn(() => Promise.resolve('1.0.0')),

@@ -5,7 +5,6 @@ import { createMemberWorkSyncBridge } from '@features/member-work-sync/preload';
 import { createOrganizationsBridge } from '@features/organizations/preload';
 import { createRecentProjectsBridge } from '@features/recent-projects/preload';
 import { createRuntimeProviderManagementBridge } from '@features/runtime-provider-management/preload';
-import { createTerminalWorkspaceBridge } from '@features/terminal-workspace/preload';
 import { createTmuxInstallerBridge } from '@features/tmux-installer/preload';
 import { WINDOW_ZOOM_FACTOR_CHANGED_CHANNEL } from '@shared/constants';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
@@ -97,15 +96,6 @@ import {
   SKILLS_PREVIEW_UPSERT,
   SKILLS_START_WATCHING,
   SKILLS_STOP_WATCHING,
-  SSH_CONNECT,
-  SSH_DISCONNECT,
-  SSH_GET_CONFIG_HOSTS,
-  SSH_GET_LAST_CONNECTION,
-  SSH_GET_STATE,
-  SSH_RESOLVE_HOST,
-  SSH_SAVE_LAST_CONNECTION,
-  SSH_STATUS,
-  SSH_TEST,
   TEAM_ADD_MEMBER,
   TEAM_ADD_TASK_COMMENT,
   TEAM_ADD_TASK_RELATIONSHIP,
@@ -193,12 +183,6 @@ import {
   TEAM_UPDATE_TASK_STATUS,
   TEAM_VALIDATE_CLI_ARGS,
   TELEMETRY_GET_SENTRY_CONTEXT,
-  TERMINAL_DATA,
-  TERMINAL_EXIT,
-  TERMINAL_KILL,
-  TERMINAL_RESIZE,
-  TERMINAL_SPAWN,
-  TERMINAL_WRITE,
   UPDATER_CHECK,
   UPDATER_DOWNLOAD,
   UPDATER_INSTALL,
@@ -296,10 +280,6 @@ import type {
   SessionsByIdsOptions,
   SessionsPaginationOptions,
   SnippetDiff,
-  SshConfigHostEntry,
-  SshConnectionConfig,
-  SshConnectionStatus,
-  SshLastConnection,
   TaskAttachmentMeta,
   TaskChangePresenceState,
   TaskChangeRequestOptions,
@@ -364,7 +344,6 @@ import type {
   SkillUpsertRequest,
   SkillWatcherEvent,
 } from '@shared/types/extensions';
-import type { PtySpawnOptions } from '@shared/types/terminal';
 import type { CliArgsValidationResult } from '@shared/utils/cliArgsParser';
 
 // =============================================================================
@@ -474,7 +453,6 @@ const electronAPI: ElectronAPI = {
   memberWorkSync: createMemberWorkSyncBridge(ipcRenderer),
   memberLogStream: createMemberLogStreamBridge(),
   organizations: createOrganizationsBridge(ipcRenderer),
-  terminalWorkspace: createTerminalWorkspaceBridge(ipcRenderer),
   telemetry: {
     getSentryContext: () => ipcRenderer.invoke(TELEMETRY_GET_SENTRY_CONTEXT),
   },
@@ -776,46 +754,6 @@ const electronAPI: ElectronAPI = {
       return (): void => {
         ipcRenderer.removeListener(
           UPDATER_STATUS,
-          callback as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
-        );
-      };
-    },
-  },
-
-  // SSH API
-  ssh: {
-    connect: async (config: SshConnectionConfig): Promise<SshConnectionStatus> => {
-      return invokeIpcWithResult<SshConnectionStatus>(SSH_CONNECT, config);
-    },
-    disconnect: async (): Promise<SshConnectionStatus> => {
-      return invokeIpcWithResult<SshConnectionStatus>(SSH_DISCONNECT);
-    },
-    getState: async (): Promise<SshConnectionStatus> => {
-      return invokeIpcWithResult<SshConnectionStatus>(SSH_GET_STATE);
-    },
-    test: async (config: SshConnectionConfig): Promise<{ success: boolean; error?: string }> => {
-      return invokeIpcWithResult<{ success: boolean; error?: string }>(SSH_TEST, config);
-    },
-    getConfigHosts: async (): Promise<SshConfigHostEntry[]> => {
-      return invokeIpcWithResult<SshConfigHostEntry[]>(SSH_GET_CONFIG_HOSTS);
-    },
-    resolveHost: async (alias: string): Promise<SshConfigHostEntry | null> => {
-      return invokeIpcWithResult<SshConfigHostEntry | null>(SSH_RESOLVE_HOST, alias);
-    },
-    saveLastConnection: async (config: SshLastConnection): Promise<void> => {
-      return invokeIpcWithResult<void>(SSH_SAVE_LAST_CONNECTION, config);
-    },
-    getLastConnection: async (): Promise<SshLastConnection | null> => {
-      return invokeIpcWithResult<SshLastConnection | null>(SSH_GET_LAST_CONNECTION);
-    },
-    onStatus: (callback: (event: unknown, status: SshConnectionStatus) => void): (() => void) => {
-      ipcRenderer.on(
-        SSH_STATUS,
-        callback as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
-      );
-      return (): void => {
-        ipcRenderer.removeListener(
-          SSH_STATUS,
           callback as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
         );
       };
@@ -1591,39 +1529,6 @@ const electronAPI: ElectronAPI = {
   codexRuntime: createCodexRuntimeInstallerBridge({ ipcRenderer, invokeIpcWithResult }),
 
   tmux: createTmuxInstallerBridge({ ipcRenderer, invokeIpcWithResult }),
-
-  // ===== Terminal API =====
-  terminal: {
-    spawn: (options?: PtySpawnOptions) => invokeIpcWithResult<string>(TERMINAL_SPAWN, options),
-    write: (ptyId: string, data: string) => ipcRenderer.send(TERMINAL_WRITE, ptyId, data),
-    resize: (ptyId: string, cols: number, rows: number) =>
-      ipcRenderer.send(TERMINAL_RESIZE, ptyId, cols, rows),
-    kill: (ptyId: string) => ipcRenderer.send(TERMINAL_KILL, ptyId),
-    onData: (cb: (event: unknown, ptyId: string, data: string) => void): (() => void) => {
-      ipcRenderer.on(
-        TERMINAL_DATA,
-        cb as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
-      );
-      return (): void => {
-        ipcRenderer.removeListener(
-          TERMINAL_DATA,
-          cb as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
-        );
-      };
-    },
-    onExit: (cb: (event: unknown, ptyId: string, exitCode: number) => void): (() => void) => {
-      ipcRenderer.on(
-        TERMINAL_EXIT,
-        cb as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
-      );
-      return (): void => {
-        ipcRenderer.removeListener(
-          TERMINAL_EXIT,
-          cb as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
-        );
-      };
-    },
-  },
 
   // ===== Project API (editor-independent) =====
   project: {

@@ -1,11 +1,4 @@
-import '@xterm/xterm/css/xterm.css';
-
-import { useEffect, useRef } from 'react';
-
-import { api } from '@renderer/api';
-import { FitAddon } from '@xterm/addon-fit';
-import { WebLinksAddon } from '@xterm/addon-web-links';
-import { Terminal } from '@xterm/xterm';
+import { useEffect, useMemo, useRef } from 'react';
 
 interface TerminalLogPanelProps {
   /** Raw output chunks (with ANSI codes) to render */
@@ -14,79 +7,51 @@ interface TerminalLogPanelProps {
   className?: string;
 }
 
+// Matches CSI sequences (ESC [ ... final byte), OSC sequences (ESC ] ... BEL or ESC \),
+// other two-byte escapes, and stray control characters (except \t, \n, \r) from process output.
+// eslint-disable-next-line no-control-regex
+const ANSI_PATTERN =
+  /\x1b\[[0-9;?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b[@-_]|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
+
+/** Remove ANSI escape sequences and non-printable control characters. */
+const stripAnsi = (text: string): string => text.replace(ANSI_PATTERN, '');
+
 export const TerminalLogPanel = ({
   chunks,
   className,
 }: TerminalLogPanelProps): React.JSX.Element => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<Terminal | null>(null);
-  const writtenRef = useRef(0);
 
-  // Create xterm instance once
+  const text = useMemo(() => stripAnsi(chunks.join('')).replace(/\r\n?/g, '\n'), [chunks]);
+
+  // Auto-scroll to bottom when new output arrives
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
-    const term = new Terminal({
-      cursorBlink: false,
-      disableStdin: true,
-      fontSize: 12,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      scrollback: 200,
-      theme: {
-        background: '#141416',
-        foreground: '#fafafa',
-        cursor: 'transparent',
-      },
-    });
-
-    const fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-
-    const webLinksAddon = new WebLinksAddon((_event, uri) => {
-      void api.openExternal(uri);
-    });
-    term.loadAddon(webLinksAddon);
-
-    term.open(container);
-
-    const rafId = requestAnimationFrame(() => fitAddon.fit());
-
-    const observer = new ResizeObserver(() => fitAddon.fit());
-    observer.observe(container);
-
-    termRef.current = term;
-    writtenRef.current = 0;
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      observer.disconnect();
-      term.dispose();
-      termRef.current = null;
-      writtenRef.current = 0;
-    };
-  }, []);
-
-  // Write new chunks incrementally
-  useEffect(() => {
-    const term = termRef.current;
-    if (!term) return;
-
-    for (let i = writtenRef.current; i < chunks.length; i++) {
-      // xterm requires \r\n for proper line breaks; normalize bare \n from process output
-      term.write(chunks[i].replace(/\r?\n/g, '\r\n'));
-    }
-    writtenRef.current = chunks.length;
-  }, [chunks]);
+    container.scrollTop = container.scrollHeight;
+  }, [text]);
 
   return (
     <div
       ref={containerRef}
-      className={`mt-2 overflow-hidden rounded border ${className ?? ''}`}
+      className={`mt-2 overflow-y-auto rounded border ${className ?? ''}`}
       style={{
+        backgroundColor: '#141416',
         borderColor: 'var(--color-border)',
         height: '120px',
       }}
-    />
+    >
+      <pre
+        className="m-0 whitespace-pre-wrap break-words px-2 py-1.5"
+        style={{
+          color: '#fafafa',
+          fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+          fontSize: '12px',
+          lineHeight: 1.4,
+        }}
+      >
+        {text}
+      </pre>
+    </div>
   );
 };

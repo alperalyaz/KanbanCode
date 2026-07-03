@@ -9,18 +9,18 @@ const repoRoot = path.resolve(__dirname, '../../..');
 describe('electron-builder Linux packaging', () => {
   it('installs a package-owned CLI launcher into PATH for fpm Linux packages', () => {
     const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
-    const launcherPath = path.join(repoRoot, 'resources/linux/bin/agent-teams-ai');
+    const launcherPath = path.join(repoRoot, 'resources/linux/bin/kanbancode');
     const launcher = fs.readFileSync(launcherPath, 'utf8');
     const launcherMode = fs.statSync(launcherPath).mode;
 
     for (const target of ['deb', 'rpm', 'pacman'] as const) {
       expect(packageJson.build[target].afterInstall).toBe('resources/afterInstall.sh');
       expect(packageJson.build[target].fpm).toContain(
-        'resources/linux/bin/agent-teams-ai=/usr/bin/agent-teams-ai'
+        'resources/linux/bin/kanbancode=/usr/bin/kanbancode'
       );
     }
     expect(launcher).toContain('#!/bin/sh');
-    expect(launcher).toContain('/opt/Agent-Teams-AI/agent-teams-ai');
+    expect(launcher).toContain('/opt/KanbanCode/kanbancode');
     expect(launcher).not.toContain('--no-sandbox');
     if (process.platform !== 'win32') {
       expect(launcherMode & 0o111).not.toBe(0);

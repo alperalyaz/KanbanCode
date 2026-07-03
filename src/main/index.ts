@@ -69,12 +69,6 @@ import {
   removeRuntimeProviderManagementIpc,
   type RuntimeProviderManagementFeatureFacade,
 } from '@features/runtime-provider-management/main';
-import {
-  createTerminalWorkspaceFeature,
-  registerTerminalWorkspaceIpc,
-  removeTerminalWorkspaceIpc,
-  type TerminalWorkspaceFeatureFacade,
-} from '@features/terminal-workspace/main';
 import { createWorkspaceTrustCoordinator } from '@features/workspace-trust/main';
 import { ensureOpenCodeBridgeRuntimeBinaryEnv } from '@main/services/runtime/openCodeBridgeRuntimeEnv';
 import { ClaudeMultimodelBridgeService } from '@main/services/runtime/ClaudeMultimodelBridgeService';
@@ -120,7 +114,6 @@ import {
   CONTEXT_CHANGED,
   SCHEDULE_CHANGE,
   SKILLS_CHANGED,
-  SSH_STATUS,
   TEAM_CHANGE,
   TEAM_PROJECT_BRANCH_CHANGE,
   TEAM_TOOL_APPROVAL_EVENT,
@@ -240,10 +233,8 @@ import {
   OpenCodeRuntimeInstallerService,
   OpenCodeReadinessBridge,
   OpenCodeTeamRuntimeAdapter,
-  PtyTerminalService,
   ServiceContext,
   ServiceContextRegistry,
-  SshConnectionManager,
   TaskBoundaryParser,
   TeamDataService,
   TeamKanbanManager,
@@ -948,20 +939,17 @@ let mainWindow: BrowserWindow | null = null;
 let contextRegistry: ServiceContextRegistry;
 let notificationManager: NotificationManager;
 let updaterService: UpdaterService;
-let sshConnectionManager: SshConnectionManager;
 let codexAccountFeature: CodexAccountFeatureFacade | null = null;
 let codexModelCatalogFeature: CodexModelCatalogFeatureFacade | null = null;
 let recentProjectsFeature: RecentProjectsFeatureFacade;
 let organizationsFeature: OrganizationsFeatureFacade;
 let runtimeProviderManagementFeature: RuntimeProviderManagementFeatureFacade;
-let terminalWorkspaceFeature: TerminalWorkspaceFeatureFacade | null = null;
 let memberWorkSyncFeature: MemberWorkSyncFeatureFacade | null = null;
 let teamDataService: TeamDataService;
 let teamProvisioningService: TeamProvisioningService;
 let launchIoGovernor: LaunchIoGovernor | null = null;
 let cliInstallerService: CliInstallerService;
 let openCodeRuntimeInstallerService: OpenCodeRuntimeInstallerService;
-let ptyTerminalService: PtyTerminalService;
 let httpServer: HttpServer;
 let schedulerService: SchedulerService;
 let teamTaskStallMonitor: TeamTaskStallMonitor | null = null;
@@ -1535,17 +1523,6 @@ function wireFileWatcherEvents(context: ServiceContext): void {
 }
 
 /**
- * Handles mode switch requests from the HTTP server.
- * Switches the active context back to local when requested.
- */
-async function handleModeSwitch(mode: 'local' | 'ssh'): Promise<void> {
-  if (mode === 'local' && contextRegistry.getActiveContextId() !== 'local') {
-    const { current } = contextRegistry.switch('local');
-    onContextSwitched(current);
-  }
-}
-
-/**
  * Re-wires file watcher events only. No renderer notification.
  * Used for renderer-initiated switches where the renderer already handles state.
  */
@@ -1561,7 +1538,6 @@ function onContextSwitched(context: ServiceContext): void {
   rewireContextEvents(context);
 
   // Notify renderer of context change
-  safeSendToRenderer(mainWindow, SSH_STATUS, sshConnectionManager.getStatus());
   safeSendToRenderer(mainWindow, CONTEXT_CHANGED, {
     id: context.id,
     type: context.type,
@@ -1629,9 +1605,6 @@ async function initializeServices(): Promise<void> {
     error: null,
   });
 
-  // Initialize SSH connection manager
-  sshConnectionManager = new SshConnectionManager();
-
   // Create ServiceContextRegistry
   contextRegistry = new ServiceContextRegistry();
 
@@ -1685,7 +1658,6 @@ async function initializeServices(): Promise<void> {
   });
   cliInstallerService = new CliInstallerService();
   openCodeRuntimeInstallerService = new OpenCodeRuntimeInstallerService();
-  ptyTerminalService = new PtyTerminalService();
   const teamMemberLogsFinder = new TeamMemberLogsFinder();
   const teamLogSourceTracker = new TeamLogSourceTracker(teamMemberLogsFinder);
   const taskLogConfigReader = new TeamConfigReader();
@@ -1864,7 +1836,7 @@ async function initializeServices(): Promise<void> {
   httpServer = new HttpServer();
   teamProvisioningService.setControlApiBaseUrlResolver(async () => {
     if (!httpServer.isRunning()) {
-      await startHttpServer(handleModeSwitch);
+      await startHttpServer();
     }
 
     return getTeamControlApiBaseUrl();
@@ -1979,10 +1951,6 @@ async function initializeServices(): Promise<void> {
     logger: createLogger('Feature:Organizations'),
   });
   runtimeProviderManagementFeature = createRuntimeProviderManagementFeature();
-  terminalWorkspaceFeature = createTerminalWorkspaceFeature({
-    teamsBasePath: getTeamsBasePath(),
-    logger: createLogger('Feature:TerminalWorkspace'),
-  });
   const memberWorkSyncLogger = createLogger('Feature:MemberWorkSync');
   type MemberWorkSyncRuntimeSnapshot = Awaited<
     ReturnType<TeamProvisioningService['getTeamAgentRuntimeSnapshot']>
@@ -2165,7 +2133,7 @@ async function initializeServices(): Promise<void> {
     ],
     resolveControlUrl: async () => {
       if (!httpServer.isRunning()) {
-        await startHttpServer(handleModeSwitch);
+        await startHttpServer();
       }
       return getTeamControlApiBaseUrl();
     },
@@ -2415,7 +2383,6 @@ async function initializeServices(): Promise<void> {
   initializeIpcHandlers(
     contextRegistry,
     updaterService,
-    sshConnectionManager,
     teamDataService,
     teamProvisioningService,
     teamMemberLogsFinder,
@@ -2441,7 +2408,7 @@ async function initializeServices(): Promise<void> {
     },
     {
       httpServer,
-      startHttpServer: () => startHttpServer(handleModeSwitch),
+      startHttpServer: () => startHttpServer(),
     },
     changeExtractor,
     fileContentResolver,
@@ -2449,7 +2416,6 @@ async function initializeServices(): Promise<void> {
     gitDiffFallback,
     cliInstallerService,
     openCodeRuntimeInstallerService,
-    ptyTerminalService,
     schedulerService,
     extensionFacadeService,
     pluginInstallService,
@@ -2467,15 +2433,8 @@ async function initializeServices(): Promise<void> {
   registerRecentProjectsIpc(ipcMain, recentProjectsFeature);
   registerOrganizationsIpc(ipcMain, organizationsFeature);
   registerRuntimeProviderManagementIpc(ipcMain, runtimeProviderManagementFeature);
-  registerTerminalWorkspaceIpc(ipcMain, terminalWorkspaceFeature);
   registerMemberWorkSyncIpc(ipcMain, memberWorkSyncFeature);
   registerMemberLogStreamIpc(ipcMain, memberLogStreamFeature);
-
-  // Forward SSH state changes to renderer and HTTP SSE clients
-  sshConnectionManager.on('state-change', (status: unknown) => {
-    safeSendToRenderer(mainWindow, SSH_STATUS, status);
-    httpServer.broadcast('ssh:status', status);
-  });
 
   // Forward notification events to HTTP SSE clients
   notificationManager.on('notification-new', (notification: unknown) => {
@@ -2491,7 +2450,7 @@ async function initializeServices(): Promise<void> {
   // Start HTTP server if enabled in config
   const appConfig = configManager.getConfig();
   if (appConfig.httpServer?.enabled) {
-    void startHttpServer(handleModeSwitch).catch(() => undefined);
+    void startHttpServer().catch(() => undefined);
   }
 
   logger.info('Services initialized successfully');
@@ -2504,9 +2463,7 @@ async function initializeServices(): Promise<void> {
 /**
  * Starts the HTTP sidecar server with services from the active context.
  */
-async function startHttpServer(
-  modeSwitchHandler: (mode: 'local' | 'ssh') => Promise<void>
-): Promise<void> {
+async function startHttpServer(): Promise<void> {
   if (isShutdownStarted()) {
     return;
   }
@@ -2530,11 +2487,9 @@ async function startHttpServer(
         organizationsFeature,
         memberWorkSyncFeature: memberWorkSyncFeature ?? undefined,
         updaterService,
-        sshConnectionManager,
         teamDataService,
         teamProvisioningService,
       },
-      modeSwitchHandler,
       config.httpServer?.port ?? 3456
     );
     if (isShutdownStarted()) {
@@ -2627,10 +2582,6 @@ async function shutdownServices(): Promise<void> {
       await runShutdownStep('context registry dispose', () => contextRegistry.dispose());
     }
 
-    if (sshConnectionManager) {
-      await runShutdownStep('SSH connection manager dispose', () => sshConnectionManager.dispose());
-    }
-
     if (teamDataService) {
       await runShutdownStep('team data polling stop', () =>
         teamDataService.stopProcessHealthPolling()
@@ -2663,20 +2614,12 @@ async function shutdownServices(): Promise<void> {
     codexAccountFeature = null;
     await runShutdownStep('member work sync dispose', () => memberWorkSyncFeature?.dispose());
     memberWorkSyncFeature = null;
-    await runShutdownStep('terminal workspace dispose', () => terminalWorkspaceFeature?.dispose());
-    terminalWorkspaceFeature = null;
-
-    if (ptyTerminalService) {
-      await runShutdownStep('PTY terminals kill', () => ptyTerminalService.killAll());
-    }
-
     await runShutdownStep('IPC handlers cleanup', () => {
       removeIpcHandlers();
       removeCodexAccountIpc(ipcMain);
       removeRecentProjectsIpc(ipcMain);
       removeOrganizationsIpc(ipcMain);
       removeRuntimeProviderManagementIpc(ipcMain);
-      removeTerminalWorkspaceIpc(ipcMain);
       removeMemberWorkSyncIpc(ipcMain);
       removeMemberLogStreamIpc(ipcMain);
     });
@@ -2714,7 +2657,6 @@ function attachMainWindowToServices(): void {
   openCodeRuntimeInstallerService?.setMainWindow(win);
   setCodexRuntimeMainWindow(win);
   setTmuxMainWindow(win);
-  ptyTerminalService?.setMainWindow(win);
   teamProvisioningService?.setMainWindow(win);
   codexAccountFeature?.setMainWindow(win);
   setReviewMainWindow(win);
@@ -3042,9 +2984,6 @@ function createWindow(): void {
     }
     setCodexRuntimeMainWindow(null);
     setTmuxMainWindow(null);
-    if (ptyTerminalService) {
-      ptyTerminalService.setMainWindow(null);
-    }
     if (teamProvisioningService) {
       teamProvisioningService.setMainWindow(null);
     }

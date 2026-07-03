@@ -10,27 +10,21 @@ import type { Plugin } from 'vite'
 // This avoids pnpm symlink issues with electron-builder's asar packaging.
 const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'))
 const prodDeps = Object.keys(pkg.dependencies || {})
-const terminalPlatformLocalRoot = resolveTerminalPlatformLocalRoot()
-const terminalPlatformSdkAliases = createTerminalPlatformSdkAliases()
 const rendererDependencyEsbuildTarget = 'esnext'
 
 // Fastify and its plugins rely on runtime module resolution that breaks when bundled.
 const runtimeExternalDeps = new Set([
-  'node-pty',
   'agent-teams-controller',
-  'terminal-platform-node',
   'ws',
   'fastify',
   '@fastify/cors',
   '@fastify/static',
 ])
 
-// node-pty is a native addon that cannot be bundled by Rollup.
-// It must remain external and be loaded at runtime via require().
 const bundledDeps = prodDeps.filter(d => !runtimeExternalDeps.has(d))
 
 // Rollup plugin: stub out native .node addon imports with empty modules.
-// ssh2 and cpu-features use optional native bindings that can't be bundled,
+// Some transitive deps use optional native bindings that can't be bundled,
 // but they have pure JS fallbacks when the native module isn't available.
 function nativeModuleStub(): Plugin {
   const STUB_ID = '\0native-stub'
@@ -72,35 +66,10 @@ function createSentryPlugins(target: keyof typeof sentrySourceMapTargets): Plugi
       project: process.env.SENTRY_PROJECT ?? 'electron',
       authToken: process.env.SENTRY_AUTH_TOKEN,
       telemetry: false,
-      release: { name: `agent-teams-ai@${pkg.version}` },
+      release: { name: `kanbancode@${pkg.version}` },
       sourcemaps: sentrySourceMapTargets[target],
     }) as Plugin,
   ]
-}
-
-function resolveTerminalPlatformLocalRoot(): string | null {
-  const value =
-    process.env.CLAUDE_TERMINAL_PLATFORM_ROOT?.trim() || process.env.TERMINAL_PLATFORM_ROOT?.trim()
-  return value ? resolve(__dirname, value) : null
-}
-
-function createTerminalPlatformSdkAliases(): Record<string, string> {
-  if (!terminalPlatformLocalRoot) return {}
-
-  const sdkPackage = (name: string) =>
-    resolve(terminalPlatformLocalRoot, 'sdk', 'packages', name, 'dist', 'index.js')
-
-  return {
-    '@terminal-platform/design-tokens': sdkPackage('design-tokens'),
-    '@terminal-platform/foundation': sdkPackage('foundation'),
-    '@terminal-platform/runtime-types': sdkPackage('runtime-types'),
-    '@terminal-platform/workspace-adapter-websocket': sdkPackage('workspace-adapter-websocket'),
-    '@terminal-platform/workspace-contracts': sdkPackage('workspace-contracts'),
-    '@terminal-platform/workspace-core': sdkPackage('workspace-core'),
-    '@terminal-platform/workspace-elements': sdkPackage('workspace-elements'),
-    '@terminal-platform/workspace-gateway-node': sdkPackage('workspace-gateway-node'),
-    '@terminal-platform/workspace-react': sdkPackage('workspace-react'),
-  }
 }
 
 export default defineConfig({
@@ -120,16 +89,12 @@ export default defineConfig({
         '@features': resolve(__dirname, 'src/features'),
         '@main': resolve(__dirname, 'src/main'),
         '@shared': resolve(__dirname, 'src/shared'),
-        '@preload': resolve(__dirname, 'src/preload'),
-        ...terminalPlatformSdkAliases
+        '@preload': resolve(__dirname, 'src/preload')
       }
     },
     build: {
       externalizeDeps: {
         exclude: bundledDeps
-      },
-      commonjsOptions: {
-        strictRequires: [/node_modules\/.*ssh2\//],
       },
       sourcemap: sourceMapSetting,
       outDir: 'dist-electron/main',
@@ -180,22 +145,13 @@ export default defineConfig({
     cacheDir: resolve(__dirname, 'node_modules/.vite/electron-renderer'),
     optimizeDeps: {
       // Electron owns the renderer runtime, so dependency prebundling can keep modern syntax.
-      // This avoids esbuild trying to downlevel large ESM deps like Radix/CodeMirror/xterm.
+      // This avoids esbuild trying to downlevel large ESM deps like Radix/CodeMirror.
       esbuildOptions: {
         target: rendererDependencyEsbuildTarget,
       },
       include: ['@codemirror/language-data'],
       exclude: [
         '@claude-teams/agent-graph',
-        '@terminal-platform/design-tokens',
-        '@terminal-platform/foundation',
-        '@terminal-platform/runtime-types',
-        '@terminal-platform/workspace-adapter-websocket',
-        '@terminal-platform/workspace-contracts',
-        '@terminal-platform/workspace-core',
-        '@terminal-platform/workspace-elements',
-        '@terminal-platform/workspace-gateway-node',
-        '@terminal-platform/workspace-react',
       ]
     },
     define: {
@@ -213,7 +169,6 @@ export default defineConfig({
           __dirname,
           'src/renderer/vendor/radixComposeRefs.ts'
         ),
-        ...terminalPlatformSdkAliases,
         '@claude-teams/agent-graph': resolve(__dirname, 'packages/agent-graph/src/index.ts')
       }
     },

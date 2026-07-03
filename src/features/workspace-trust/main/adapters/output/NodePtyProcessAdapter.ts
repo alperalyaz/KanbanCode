@@ -10,14 +10,13 @@ import type {
   PtySpawnResult,
   TerminalSnapshot,
 } from '../../../core/application';
-import type { IPty } from 'node-pty';
-import type * as NodePty from 'node-pty';
+import type { OptionalPty as IPty, OptionalPtyModule } from '@shared/types/optionalPty';
 
 const logger = createLogger('WorkspaceTrustNodePtyProcessAdapter');
 const MAX_TRANSCRIPT_CHARS = 64 * 1024;
 const requireNativeAddon = createRequire(import.meta.url);
 
-type NodePtyModule = typeof NodePty;
+type NodePtyModule = OptionalPtyModule;
 
 let nodePty: NodePtyModule | null | undefined;
 

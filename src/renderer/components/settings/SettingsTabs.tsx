@@ -12,7 +12,7 @@ import { Bell, Info, Settings, Wrench } from 'lucide-react';
 
 import type { LucideIcon } from 'lucide-react';
 
-export type SettingsSection = 'general' | 'connection' | 'notifications' | 'advanced';
+export type SettingsSection = 'general' | 'notifications' | 'advanced';
 
 interface SettingsTabsProps {
   activeSection: SettingsSection;
@@ -41,7 +41,6 @@ const tabs: TabConfig[] = [
     icon: Settings,
     descriptionKey: 'tabs.general.description',
   },
-  // { id: 'connection', label: 'Connection', icon: Server, description: 'Manage CLI connection and authentication settings.', electronOnly: true },
   {
     id: 'notifications',
     labelKey: 'tabs.notifications.label',

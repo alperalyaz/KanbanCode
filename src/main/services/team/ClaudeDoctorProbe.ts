@@ -2,8 +2,7 @@ import { buildEnrichedEnv } from '@main/utils/cliEnv';
 import { getShellPreferredHome } from '@main/utils/shellEnv';
 import { createLogger } from '@shared/utils/logger';
 
-import type { IPty } from 'node-pty';
-import type * as NodePty from 'node-pty';
+import type { OptionalPty as IPty, OptionalPtyModule } from '@shared/types/optionalPty';
 
 const logger = createLogger('ClaudeDoctorProbe');
 
@@ -17,7 +16,7 @@ const DOCTOR_SECTION_RE =
   /^\s*(?:Diagnostics|Updates|Version Locks|Plugin Errors|Context Usage Warnings)\s*$/i;
 const DOCTOR_SEPARATOR_RE = /^\s*[\u2500\u2501-]{6,}\s*$/;
 
-type NodePtyModule = typeof NodePty;
+type NodePtyModule = OptionalPtyModule;
 
 let nodePty: NodePtyModule | null = null;
 try {

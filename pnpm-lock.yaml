@@ -5,15 +5,6 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@terminal-platform/design-tokens': file:vendor/terminal-platform/sdk/terminal-platform-design-tokens-0.1.0.tgz
-  '@terminal-platform/foundation': file:vendor/terminal-platform/sdk/terminal-platform-foundation-0.1.0.tgz
-  '@terminal-platform/runtime-types': file:vendor/terminal-platform/sdk/terminal-platform-runtime-types-0.1.0.tgz
-  '@terminal-platform/workspace-adapter-websocket': file:vendor/terminal-platform/sdk/terminal-platform-workspace-adapter-websocket-0.1.0.tgz
-  '@terminal-platform/workspace-contracts': file:vendor/terminal-platform/sdk/terminal-platform-workspace-contracts-0.1.0.tgz
-  '@terminal-platform/workspace-core': file:vendor/terminal-platform/sdk/terminal-platform-workspace-core-0.1.0.tgz
-  '@terminal-platform/workspace-elements': file:vendor/terminal-platform/sdk/terminal-platform-workspace-elements-0.1.0.tgz
-  '@terminal-platform/workspace-gateway-node': file:vendor/terminal-platform/sdk/terminal-platform-workspace-gateway-node-0.1.0.tgz
-  '@terminal-platform/workspace-react': file:vendor/terminal-platform/sdk/terminal-platform-workspace-react-0.1.0.tgz
   '@babel/core': 7.29.7
   '@hono/node-server@1': 1.19.13
   '@opentelemetry/core': 2.8.0
@@ -253,33 +244,6 @@ importers:
       '@tanstack/react-virtual':
         specifier: ^3.13.24
         version: 3.13.24(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@terminal-platform/design-tokens':
-        specifier: file:vendor/terminal-platform/sdk/terminal-platform-design-tokens-0.1.0.tgz
-        version: file:vendor/terminal-platform/sdk/terminal-platform-design-tokens-0.1.0.tgz
-      '@terminal-platform/foundation':
-        specifier: file:vendor/terminal-platform/sdk/terminal-platform-foundation-0.1.0.tgz
-        version: file:vendor/terminal-platform/sdk/terminal-platform-foundation-0.1.0.tgz
-      '@terminal-platform/runtime-types':
-        specifier: file:vendor/terminal-platform/sdk/terminal-platform-runtime-types-0.1.0.tgz
-        version: file:vendor/terminal-platform/sdk/terminal-platform-runtime-types-0.1.0.tgz
-      '@terminal-platform/workspace-adapter-websocket':
-        specifier: file:vendor/terminal-platform/sdk/terminal-platform-workspace-adapter-websocket-0.1.0.tgz
-        version: file:vendor/terminal-platform/sdk/terminal-platform-workspace-adapter-websocket-0.1.0.tgz
-      '@terminal-platform/workspace-contracts':
-        specifier: file:vendor/terminal-platform/sdk/terminal-platform-workspace-contracts-0.1.0.tgz
-        version: file:vendor/terminal-platform/sdk/terminal-platform-workspace-contracts-0.1.0.tgz
-      '@terminal-platform/workspace-core':
-        specifier: file:vendor/terminal-platform/sdk/terminal-platform-workspace-core-0.1.0.tgz
-        version: file:vendor/terminal-platform/sdk/terminal-platform-workspace-core-0.1.0.tgz
-      '@terminal-platform/workspace-elements':
-        specifier: file:vendor/terminal-platform/sdk/terminal-platform-workspace-elements-0.1.0.tgz
-        version: file:vendor/terminal-platform/sdk/terminal-platform-workspace-elements-0.1.0.tgz
-      '@terminal-platform/workspace-gateway-node':
-        specifier: file:vendor/terminal-platform/sdk/terminal-platform-workspace-gateway-node-0.1.0.tgz
-        version: file:vendor/terminal-platform/sdk/terminal-platform-workspace-gateway-node-0.1.0.tgz
-      '@terminal-platform/workspace-react':
-        specifier: file:vendor/terminal-platform/sdk/terminal-platform-workspace-react-0.1.0.tgz
-        version: file:vendor/terminal-platform/sdk/terminal-platform-workspace-react-0.1.0.tgz(@types/react@19.2.14)(react@19.2.4)
       '@tiptap/extension-placeholder':
         specifier: ^3.20.4
         version: 3.20.4(@tiptap/extensions@3.20.4(@tiptap/core@3.20.4(@tiptap/pm@3.20.4))(@tiptap/pm@3.20.4))
@@ -295,15 +259,6 @@ importers:
       '@tiptap/starter-kit':
         specifier: ^3.20.4
         version: 3.20.4
-      '@xterm/addon-fit':
-        specifier: ^0.11.0
-        version: 0.11.0
-      '@xterm/addon-web-links':
-        specifier: ^0.12.0
-        version: 0.12.0
-      '@xterm/xterm':
-        specifier: ^6.0.0
-        version: 6.0.0
       agent-teams-controller:
         specifier: workspace:*
         version: link:agent-teams-controller
@@ -373,9 +328,6 @@ importers:
       node-diff3:
         specifier: ^3.2.0
         version: 3.2.0
-      node-pty:
-        specifier: ^1.1.0
-        version: 1.1.0
       pica:
         specifier: 9.0.1
         version: 9.0.1
@@ -424,9 +376,6 @@ importers:
       ssh-config:
         specifier: ^5.0.4
         version: 5.0.4
-      ssh2:
-        specifier: ^1.17.0
-        version: 1.17.0
       strip-markdown:
         specifier: ^6.0.0
         version: 6.0.0
@@ -436,9 +385,6 @@ importers:
       tailwindcss-animate:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.9.0))
-      terminal-platform-node:
-        specifier: file:vendor/terminal-platform/terminal-platform-node-stub
-        version: file:vendor/terminal-platform/terminal-platform-node-stub
       unified:
         specifier: ^11.0.5
         version: 11.0.5
@@ -488,9 +434,6 @@ importers:
       '@types/react-dom':
         specifier: ^19.0.0
         version: 19.2.3(@types/react@19.2.14)
-      '@types/ssh2':
-        specifier: ^1.15.5
-        version: 1.15.5
       '@vitejs/plugin-react':
         specifier: ^4.3.1
         version: 4.7.0(vite@6.4.3(@types/node@24.12.4)(jiti@1.21.7)(sass@1.98.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0))
@@ -1835,17 +1778,6 @@ packages:
 
   '@lezer/yaml@1.0.4':
     resolution: {integrity: sha512-2lrrHqxalACEbxIbsjhqGpSW8kWpUKuY6RHgnSAFZa6qK62wvnPxA8hGOwOoDbwHcOFs5M4o27mjGu+P7TvBmw==}
-
-  '@lit-labs/ssr-dom-shim@1.6.0':
-    resolution: {integrity: sha512-VHb0ALPMTlgKjM6yIxxoQNnpKyUKLD04VzeQdsiXkMqkvYlAHxq9glGLmgbb889/1GsohSOAjvQYoiBppXFqrQ==}
-
-  '@lit/react@1.0.8':
-    resolution: {integrity: sha512-p2+YcF+JE67SRX3mMlJ1TKCSTsgyOVdAwd/nxp3NuV1+Cb6MWALbN6nT7Ld4tpmYofcE5kcaSY1YBB9erY+6fw==}
-    peerDependencies:
-      '@types/react': 17 || 18 || 19
-
-  '@lit/reactive-element@2.1.2':
-    resolution: {integrity: sha512-pbCDiVMnne1lYUIaYNN5wrwQXDtHaYtg7YEFPeW+hws6U47WeFvISGUWekPGKWOP1ygrs0ef0o1VJMk1exos5A==}
 
   '@lukeed/ms@2.0.2':
     resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
@@ -4000,44 +3932,6 @@ packages:
   '@tanstack/virtual-core@3.14.0':
     resolution: {integrity: sha512-JLANqGy/D6k4Ujmh8Tr25lGimuOXNiaVyXaCAZS0W+1390sADdGnyUdSWNIfd49gebtIxGMij4IktRVzrdr12Q==}
 
-  '@terminal-platform/design-tokens@file:vendor/terminal-platform/sdk/terminal-platform-design-tokens-0.1.0.tgz':
-    resolution: {integrity: sha512-9okcXBfeHhYh/DYkF1ebA7222XYjMGXBYT4Plf2Up59f94quYq5BXnibdeG8Qx90hMdd7kT5V/JnM895MEHheQ==, tarball: file:vendor/terminal-platform/sdk/terminal-platform-design-tokens-0.1.0.tgz}
-    version: 0.1.0
-
-  '@terminal-platform/foundation@file:vendor/terminal-platform/sdk/terminal-platform-foundation-0.1.0.tgz':
-    resolution: {integrity: sha512-qAII9WtwZWq5S88dFjYKzjJppmCxtvow1PUFaYFKfg64S2Kgjgr09B53FNBATnsGJspOf2d6vr1kJyzLjjlulg==, tarball: file:vendor/terminal-platform/sdk/terminal-platform-foundation-0.1.0.tgz}
-    version: 0.1.0
-
-  '@terminal-platform/runtime-types@file:vendor/terminal-platform/sdk/terminal-platform-runtime-types-0.1.0.tgz':
-    resolution: {integrity: sha512-l4JUyJ2WHox+NxEayWkegWVSHn+qnTpCaTXfLVRy8EobV3/UwjJ21xoi6Acm0WdCDUqsUyPIOAiJjD9M2GaV/Q==, tarball: file:vendor/terminal-platform/sdk/terminal-platform-runtime-types-0.1.0.tgz}
-    version: 0.1.0
-
-  '@terminal-platform/workspace-adapter-websocket@file:vendor/terminal-platform/sdk/terminal-platform-workspace-adapter-websocket-0.1.0.tgz':
-    resolution: {integrity: sha512-SUJMKH5+dfYdHHu2Rm3gn7H2TORQVONEpxAtrmQDUui3QKyhMb4tB3MyKYLrnllZeBEUHLsLBFO62EXMAjUltA==, tarball: file:vendor/terminal-platform/sdk/terminal-platform-workspace-adapter-websocket-0.1.0.tgz}
-    version: 0.1.0
-
-  '@terminal-platform/workspace-contracts@file:vendor/terminal-platform/sdk/terminal-platform-workspace-contracts-0.1.0.tgz':
-    resolution: {integrity: sha512-w6ojDcjApCSoAfiNEYGjCZ9QmBZRejDncagEkNoxFh8/eUCaxIbpchALFpKLcTQ0fxnDi3LxFOkQ/E1lZc9kVQ==, tarball: file:vendor/terminal-platform/sdk/terminal-platform-workspace-contracts-0.1.0.tgz}
-    version: 0.1.0
-
-  '@terminal-platform/workspace-core@file:vendor/terminal-platform/sdk/terminal-platform-workspace-core-0.1.0.tgz':
-    resolution: {integrity: sha512-3MkYLnMxfJFiscX2QnDByBKs5wWnfJI/Txs6DrRaZwjyMFUt5Es/Hvn62TtafYnxdoDpscletAkAT9bYlfeNmQ==, tarball: file:vendor/terminal-platform/sdk/terminal-platform-workspace-core-0.1.0.tgz}
-    version: 0.1.0
-
-  '@terminal-platform/workspace-elements@file:vendor/terminal-platform/sdk/terminal-platform-workspace-elements-0.1.0.tgz':
-    resolution: {integrity: sha512-ksGejh9J/THvoZVdXkjDcYGmAlni+cK5agWMJdYylQPlJLMkcvpQL/YbMQZmn7Bu4Iu3KzHijj5W5jEscVREoA==, tarball: file:vendor/terminal-platform/sdk/terminal-platform-workspace-elements-0.1.0.tgz}
-    version: 0.1.0
-
-  '@terminal-platform/workspace-gateway-node@file:vendor/terminal-platform/sdk/terminal-platform-workspace-gateway-node-0.1.0.tgz':
-    resolution: {integrity: sha512-MPtM4ZijqsIMhdFtdDRLUZ/Curc8vENbcUAITCRnm4Zdu82RfHjkknZYJmftL8gZ/XaAuXzjwUA8y7ZfFn89DQ==, tarball: file:vendor/terminal-platform/sdk/terminal-platform-workspace-gateway-node-0.1.0.tgz}
-    version: 0.1.0
-
-  '@terminal-platform/workspace-react@file:vendor/terminal-platform/sdk/terminal-platform-workspace-react-0.1.0.tgz':
-    resolution: {integrity: sha512-DtcWxD1L3cdD0wIQlMvjyzw3gGI6E4z/iMbm3i/qtfz5oGxd2Kc8vVmPNZ8lnX5lYtNY2XylbpGOXavn2HuQQg==, tarball: file:vendor/terminal-platform/sdk/terminal-platform-workspace-react-0.1.0.tgz}
-    version: 0.1.0
-    peerDependencies:
-      react: '>=19.0.0 <20'
-
   '@tiptap/core@3.20.4':
     resolution: {integrity: sha512-3i/DG89TFY/b34T5P+j35UcjYuB5d3+9K8u6qID+iUqNPiza015HPIZLuPfE5elNwVdV3EXIoPo0LLeBLgXXAg==}
     peerDependencies:
@@ -4373,9 +4267,6 @@ packages:
   '@types/mysql@2.15.27':
     resolution: {integrity: sha512-YfWiV16IY0OeBfBCk8+hXKmdTKrKlwKN1MNKAPBu5JYxLwBEZl7QzeEpGnlZb3VMGJrrGmB84gXiH+ofs/TezA==}
 
-  '@types/node@18.19.130':
-    resolution: {integrity: sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg==}
-
   '@types/node@24.12.4':
     resolution: {integrity: sha512-GUUEShf+PBCGW2KaXwcIt3Yk+e3pkKwWKb9GSyM9WQVE+ep2jzmHdGsHzu4wgcZy5fN9FBdVzjpBQsYlpfpgLA==}
 
@@ -4407,9 +4298,6 @@ packages:
 
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
-
-  '@types/ssh2@1.15.5':
-    resolution: {integrity: sha512-N1ASjp/nXH3ovBHddRJpli4ozpk6UdDYIX4RJWFa9L1YKnzdhTlVmiGHm4DZnj/jLbqZpes4aeR30EFGQtvhQQ==}
 
   '@types/tedious@4.0.14':
     resolution: {integrity: sha512-KHPsfX/FoVbUGbyYvk1q9MMQHLPeRZhRJZdO45Q4YjvFkv4hMNghCWTvy7rdKessBsmtz4euWCWAB6/tVpI1Iw==}
@@ -4953,15 +4841,6 @@ packages:
     resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
     engines: {node: '>=10.0.0'}
 
-  '@xterm/addon-fit@0.11.0':
-    resolution: {integrity: sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==}
-
-  '@xterm/addon-web-links@0.12.0':
-    resolution: {integrity: sha512-4Smom3RPyVp7ZMYOYDoC/9eGJJJqYhnPLGGqJ6wOBfB8VxPViJNSKdgRYb8NpaM6YSelEKbA2SStD7lGyqaobw==}
-
-  '@xterm/xterm@6.0.0':
-    resolution: {integrity: sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==}
-
   abbrev@3.0.1:
     resolution: {integrity: sha512-AO2ac6pjRB3SJmGJo+v5/aK6Omggp6fsLrs6wN9bd35ulu4cCwaAU9+7ZhXjeqHVkaHThLuzH0nZr0YpCDhygg==}
     engines: {node: ^18.17.0 || >=20.5.0}
@@ -5132,9 +5011,6 @@ packages:
     resolution: {integrity: sha512-BNoCY6SXXPQ7gF2opIP4GBE+Xw7U+pHMYKuzjgCN3GwiaIR09UUeKfheyIry77QtrCBlC0KK0q5/TER/tYh3PQ==}
     engines: {node: '>= 0.4'}
 
-  asn1@0.2.6:
-    resolution: {integrity: sha512-ix/FxPn0MDjeyJ7i/yoHGFt/EX6LyNbxSEhPPXODPL+KB0VPk86UYfL0lMdy+KCnv+fmvIzySwaK5COwqVbWTQ==}
-
   assert-plus@1.0.0:
     resolution: {integrity: sha512-NfJ4UzBCcQGLDlQq7nHxH+tv3kyZ0hHQqF5BO6J7tNJeP5do1llPr8dZ8zHonfhAu0PHAdMkSo+8o0wxg9lZWw==}
     engines: {node: '>=0.8'}
@@ -5294,9 +5170,6 @@ packages:
     resolution: {integrity: sha512-B0xUquLkiGLgHhpPBqvl7GWegWBUNuujQ6kXd/r1U38ElPT6Ok8KZ8e+FpUGEc2ZoRQUzq/aUnaKFc/svWUGSg==}
     hasBin: true
 
-  bcrypt-pbkdf@1.0.2:
-    resolution: {integrity: sha512-qeFIXtP4MSoi6NLqO12WfqARWWuCKi2Rn/9hJLEmtB5yTNr9DqFWkJRCf2qShWzPeAMRnOgCrq0sg/KLv5ES9w==}
-
   binary-extensions@2.3.0:
     resolution: {integrity: sha512-Ceh+7ox5qe7LJuLHoY0feh3pHuUDHAcRUeyL2VYghZwfpkNIy/+8Ocg0a3UuSoYzavmylwuLWQOf3hl0jjMMIw==}
     engines: {node: '>=8'}
@@ -5360,10 +5233,6 @@ packages:
 
   buffer@6.0.3:
     resolution: {integrity: sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==}
-
-  buildcheck@0.0.7:
-    resolution: {integrity: sha512-lHblz4ahamxpTmnsk+MNTRWsjYKv965MwOrSJyeD588rR3Jcu7swE+0wN5F+PbL5cjgu/9ObkhfzEPuofEMwLA==}
-    engines: {node: '>=10.0.0'}
 
   builder-util-runtime@9.5.1:
     resolution: {integrity: sha512-qt41tMfgHTllhResqM5DcnHyDIWNgzHvuY2jDcYP9iaGpkWxTUzV6GQjDeLnlR1/DtdlcsWQbA7sByMpmJFTLQ==}
@@ -5726,10 +5595,6 @@ packages:
 
   cose-base@2.2.0:
     resolution: {integrity: sha512-AzlgcsCbUMymkADOJtQm3wO9S3ltPfYOFD5033keQn9NJzIbtnZj+UdBJe7DYml/8TdbtHJW3j58SOnKhWY/5g==}
-
-  cpu-features@0.0.10:
-    resolution: {integrity: sha512-9IkYqtX3YHPCzoVg1Py+o9057a3i0fp7S530UWokCSaFVTc7CwXPRiOjRjBQQ18ZCNafx78YfnG+HALxtVmOGA==}
-    engines: {node: '>=10.0.0'}
 
   crc-32@1.2.2:
     resolution: {integrity: sha512-ROmzCKrTnOwybPcJApAA6WBWij23HVfGVNKqqrZpuyZOHqK2CwHSvpGuyt/UNNvaIjEd8X5IFGp4Mh+Ie1IHJQ==}
@@ -7862,15 +7727,6 @@ packages:
     resolution: {integrity: sha512-ME4Fb83LgEgwNw96RKNvKV4VTLuXfoKudAmm2lP8Kk87KaMK0/Xrx/aAkMWmT8mDb+3MlFDspfbCs7adjRxA2g==}
     engines: {node: '>=20.0.0'}
 
-  lit-element@4.2.2:
-    resolution: {integrity: sha512-aFKhNToWxoyhkNDmWZwEva2SlQia+jfG0fjIWV//YeTaWrVnOxD89dPKfigCUspXFmjzOEUQpOkejH5Ly6sG0w==}
-
-  lit-html@3.3.3:
-    resolution: {integrity: sha512-el8M6jK2o3RXBnrSHX3ZKrsN8zEV63pSExTO1wYJz7QndGYZ8353e2a5PPX+qHe2aGayfnchQmkAojaWAREOIA==}
-
-  lit@3.3.2:
-    resolution: {integrity: sha512-NF9zbsP79l4ao2SNrH3NkfmFgN/hBYSQo90saIVI1o5GpjAdCPVstVzO1MrLOakHoEhYkrtRjPK6Ob521aoYWQ==}
-
   load-tsconfig@0.2.5:
     resolution: {integrity: sha512-IXO6OCs9yg8tMKzfPZ1YmheJbZCiEsnBdcB03l0OcfK9prKnJb96siuHCr5Fl37/yo9DnKU+TLpxzTUspw9shg==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
@@ -8337,9 +8193,6 @@ packages:
   mz@2.7.0:
     resolution: {integrity: sha512-z81GNO7nnYMEhrGh9LeymoE4+Yr0Wn5McHIZMK5cfQCl+NDX08sCZgUc9/6MHni9IWuFLm1Z3HTCXu2z9fN62Q==}
 
-  nan@2.25.0:
-    resolution: {integrity: sha512-0M90Ag7Xn5KMLLZ7zliPWP3rT90P6PN+IzVFS0VqmnPktBk3700xUVv8Ikm9EUaUE5SDWdp/BIxdENzVznpm1g==}
-
   nano-spawn@2.0.0:
     resolution: {integrity: sha512-tacvGzUY5o2D8CBh2rrwxyNojUsZNU2zjNTzKQrkgGJQTbGAfArVWXSKMBokBeeg6C7OLRGUEyoFlYbfeWQIqw==}
     engines: {node: '>=20.17'}
@@ -8425,9 +8278,6 @@ packages:
 
   node-mock-http@1.0.4:
     resolution: {integrity: sha512-8DY+kFsDkNXy1sJglUfuODx1/opAGJGyrTuFqEoN90oRc2Vk0ZbD4K2qmKXBBEhZQzdKHIVfEJpDU8Ak2NJEvQ==}
-
-  node-pty@1.1.0:
-    resolution: {integrity: sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg==}
 
   node-releases@2.0.27:
     resolution: {integrity: sha512-nmh3lCkYZ3grZvqcCH+fjmQ7X+H0OeZgP40OierEaAptX4XofMh5kwNbWh7lBduUzCcV/8kZ+NDLCwm2iorIlA==}
@@ -9887,10 +9737,6 @@ packages:
   ssh-config@5.0.4:
     resolution: {integrity: sha512-nCCJTY30Alhm8CWhhN8Yr1YAx2WOrDBLMMh7JYGrzCj3qssTPV+v10hYimd+8wJJeV10VrN8lFumawAEfEwjNA==}
 
-  ssh2@1.17.0:
-    resolution: {integrity: sha512-wPldCk3asibAjQ/kziWQQt1Wh3PgDFpC0XpwclzKcdT1vql6KeYxf5LIt4nlFkUeR8WuphYMKqUA56X4rjbfgQ==}
-    engines: {node: '>=10.16.0'}
-
   stable-hash-x@0.2.0:
     resolution: {integrity: sha512-o3yWv49B/o4QZk5ZcsALc6t0+eCelPc44zZsLtCQnZPDwFpDYSWcDnrv2TtMmMbQ7uKo3J0HTURCqckw23czNQ==}
     engines: {node: '>=12.0.0'}
@@ -10127,9 +9973,6 @@ packages:
     resolution: {integrity: sha512-yYrrsWnrXMcdsnu/7YMYAofM1ktpL5By7vZhf15CrXijWWrEYZks5AXBudalfSWJLlnen/QUJUB5aoB0kqZUGA==}
     engines: {node: '>=6.0.0'}
 
-  terminal-platform-node@file:vendor/terminal-platform/terminal-platform-node-stub:
-    resolution: {directory: vendor/terminal-platform/terminal-platform-node-stub, type: directory}
-
   terser@5.46.0:
     resolution: {integrity: sha512-jTwoImyr/QbOWFFso3YoU3ik0jBBDJ6JTOQiy/J2YxVJdZCc+5u7skhNwiOR3FQIygFqVUPHl7qbbxtjW2K3Qg==}
     engines: {node: '>=10'}
@@ -10301,9 +10144,6 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
-  tweetnacl@0.14.5:
-    resolution: {integrity: sha512-KXXFFdAbFXY4geFIwoyNK+f5Z1b7swfXABfL7HXCmoIWMKU3dmS26672A4EeQtDzLKy7SXmfBu51JolvEKwtGA==}
-
   type-check@0.4.0:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
     engines: {node: '>= 0.8.0'}
@@ -10381,9 +10221,6 @@ packages:
 
   unctx@2.5.0:
     resolution: {integrity: sha512-p+Rz9x0R7X+CYDkT+Xg8/GhpcShTlU8n+cf9OtOEf7zEQsNcCZO1dPKNRDqvUTaq+P32PMMkxWHwfrxkqfqAYg==}
-
-  undici-types@5.26.5:
-    resolution: {integrity: sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA==}
 
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
@@ -12596,16 +12433,6 @@ snapshots:
       '@lezer/common': 1.5.1
       '@lezer/highlight': 1.2.3
       '@lezer/lr': 1.4.8
-
-  '@lit-labs/ssr-dom-shim@1.6.0': {}
-
-  '@lit/react@1.0.8(@types/react@19.2.14)':
-    dependencies:
-      '@types/react': 19.2.14
-
-  '@lit/reactive-element@2.1.2':
-    dependencies:
-      '@lit-labs/ssr-dom-shim': 1.6.0
 
   '@lukeed/ms@2.0.2': {}
 
@@ -14830,53 +14657,6 @@ snapshots:
 
   '@tanstack/virtual-core@3.14.0': {}
 
-  '@terminal-platform/design-tokens@file:vendor/terminal-platform/sdk/terminal-platform-design-tokens-0.1.0.tgz': {}
-
-  '@terminal-platform/foundation@file:vendor/terminal-platform/sdk/terminal-platform-foundation-0.1.0.tgz': {}
-
-  '@terminal-platform/runtime-types@file:vendor/terminal-platform/sdk/terminal-platform-runtime-types-0.1.0.tgz': {}
-
-  '@terminal-platform/workspace-adapter-websocket@file:vendor/terminal-platform/sdk/terminal-platform-workspace-adapter-websocket-0.1.0.tgz':
-    dependencies:
-      '@terminal-platform/runtime-types': file:vendor/terminal-platform/sdk/terminal-platform-runtime-types-0.1.0.tgz
-      '@terminal-platform/workspace-contracts': file:vendor/terminal-platform/sdk/terminal-platform-workspace-contracts-0.1.0.tgz
-
-  '@terminal-platform/workspace-contracts@file:vendor/terminal-platform/sdk/terminal-platform-workspace-contracts-0.1.0.tgz':
-    dependencies:
-      '@terminal-platform/runtime-types': file:vendor/terminal-platform/sdk/terminal-platform-runtime-types-0.1.0.tgz
-
-  '@terminal-platform/workspace-core@file:vendor/terminal-platform/sdk/terminal-platform-workspace-core-0.1.0.tgz':
-    dependencies:
-      '@terminal-platform/foundation': file:vendor/terminal-platform/sdk/terminal-platform-foundation-0.1.0.tgz
-      '@terminal-platform/runtime-types': file:vendor/terminal-platform/sdk/terminal-platform-runtime-types-0.1.0.tgz
-      '@terminal-platform/workspace-contracts': file:vendor/terminal-platform/sdk/terminal-platform-workspace-contracts-0.1.0.tgz
-
-  '@terminal-platform/workspace-elements@file:vendor/terminal-platform/sdk/terminal-platform-workspace-elements-0.1.0.tgz':
-    dependencies:
-      '@terminal-platform/design-tokens': file:vendor/terminal-platform/sdk/terminal-platform-design-tokens-0.1.0.tgz
-      '@terminal-platform/runtime-types': file:vendor/terminal-platform/sdk/terminal-platform-runtime-types-0.1.0.tgz
-      '@terminal-platform/workspace-core': file:vendor/terminal-platform/sdk/terminal-platform-workspace-core-0.1.0.tgz
-      lit: 3.3.2
-
-  '@terminal-platform/workspace-gateway-node@file:vendor/terminal-platform/sdk/terminal-platform-workspace-gateway-node-0.1.0.tgz':
-    dependencies:
-      '@terminal-platform/runtime-types': file:vendor/terminal-platform/sdk/terminal-platform-runtime-types-0.1.0.tgz
-      '@terminal-platform/workspace-adapter-websocket': file:vendor/terminal-platform/sdk/terminal-platform-workspace-adapter-websocket-0.1.0.tgz
-      '@terminal-platform/workspace-contracts': file:vendor/terminal-platform/sdk/terminal-platform-workspace-contracts-0.1.0.tgz
-      ws: 8.21.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  '@terminal-platform/workspace-react@file:vendor/terminal-platform/sdk/terminal-platform-workspace-react-0.1.0.tgz(@types/react@19.2.14)(react@19.2.4)':
-    dependencies:
-      '@lit/react': 1.0.8(@types/react@19.2.14)
-      '@terminal-platform/workspace-core': file:vendor/terminal-platform/sdk/terminal-platform-workspace-core-0.1.0.tgz
-      '@terminal-platform/workspace-elements': file:vendor/terminal-platform/sdk/terminal-platform-workspace-elements-0.1.0.tgz
-      react: 19.2.4
-    transitivePeerDependencies:
-      - '@types/react'
-
   '@tiptap/core@3.20.4(@tiptap/pm@3.20.4)':
     dependencies:
       '@tiptap/pm': 3.20.4
@@ -15283,10 +15063,6 @@ snapshots:
     dependencies:
       '@types/node': 24.12.4
 
-  '@types/node@18.19.130':
-    dependencies:
-      undici-types: 5.26.5
-
   '@types/node@24.12.4':
     dependencies:
       undici-types: 7.16.0
@@ -15328,15 +15104,12 @@ snapshots:
     dependencies:
       '@types/node': 24.12.4
 
-  '@types/ssh2@1.15.5':
-    dependencies:
-      '@types/node': 18.19.130
-
   '@types/tedious@4.0.14':
     dependencies:
       '@types/node': 24.12.4
 
-  '@types/trusted-types@2.0.7': {}
+  '@types/trusted-types@2.0.7':
+    optional: true
 
   '@types/unist@2.0.11': {}
 
@@ -16030,12 +15803,6 @@ snapshots:
 
   '@xmldom/xmldom@0.8.13': {}
 
-  '@xterm/addon-fit@0.11.0': {}
-
-  '@xterm/addon-web-links@0.12.0': {}
-
-  '@xterm/xterm@6.0.0': {}
-
   abbrev@3.0.1: {}
 
   abbrev@4.0.0: {}
@@ -16273,10 +16040,6 @@ snapshots:
       get-intrinsic: 1.3.0
       is-array-buffer: 3.0.5
 
-  asn1@0.2.6:
-    dependencies:
-      safer-buffer: 2.1.2
-
   assert-plus@1.0.0:
     optional: true
 
@@ -16415,10 +16178,6 @@ snapshots:
 
   baseline-browser-mapping@2.9.14: {}
 
-  bcrypt-pbkdf@1.0.2:
-    dependencies:
-      tweetnacl: 0.14.5
-
   binary-extensions@2.3.0: {}
 
   bindings@1.5.0:
@@ -16497,9 +16256,6 @@ snapshots:
     dependencies:
       base64-js: 1.5.1
       ieee754: 1.2.1
-
-  buildcheck@0.0.7:
-    optional: true
 
   builder-util-runtime@9.5.1:
     dependencies:
@@ -16863,12 +16619,6 @@ snapshots:
   cose-base@2.2.0:
     dependencies:
       layout-base: 2.0.1
-
-  cpu-features@0.0.10:
-    dependencies:
-      buildcheck: 0.0.7
-      nan: 2.25.0
-    optional: true
 
   crc-32@1.2.2: {}
 
@@ -19573,22 +19323,6 @@ snapshots:
       rfdc: 1.4.1
       wrap-ansi: 9.0.2
 
-  lit-element@4.2.2:
-    dependencies:
-      '@lit-labs/ssr-dom-shim': 1.6.0
-      '@lit/reactive-element': 2.1.2
-      lit-html: 3.3.3
-
-  lit-html@3.3.3:
-    dependencies:
-      '@types/trusted-types': 2.0.7
-
-  lit@3.3.2:
-    dependencies:
-      '@lit/reactive-element': 2.1.2
-      lit-element: 4.2.2
-      lit-html: 3.3.3
-
   load-tsconfig@0.2.5: {}
 
   local-pkg@0.5.1:
@@ -20274,9 +20008,6 @@ snapshots:
       object-assign: 4.1.1
       thenify-all: 1.6.0
 
-  nan@2.25.0:
-    optional: true
-
   nano-spawn@2.0.0: {}
 
   nanoid@3.3.11: {}
@@ -20438,10 +20169,6 @@ snapshots:
       which: 6.0.1
 
   node-mock-http@1.0.4: {}
-
-  node-pty@1.1.0:
-    dependencies:
-      node-addon-api: 7.1.1
 
   node-releases@2.0.27: {}
 
@@ -22209,14 +21936,6 @@ snapshots:
 
   ssh-config@5.0.4: {}
 
-  ssh2@1.17.0:
-    dependencies:
-      asn1: 0.2.6
-      bcrypt-pbkdf: 1.0.2
-    optionalDependencies:
-      cpu-features: 0.0.10
-      nan: 2.25.0
-
   stable-hash-x@0.2.0: {}
 
   stackback@0.0.2: {}
@@ -22509,8 +22228,6 @@ snapshots:
       mkdirp: 0.5.6
       rimraf: 2.6.3
 
-  terminal-platform-node@file:vendor/terminal-platform/terminal-platform-node-stub: {}
-
   terser@5.46.0:
     dependencies:
       '@jridgewell/source-map': 0.3.11
@@ -22676,8 +22393,6 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.3
 
-  tweetnacl@0.14.5: {}
-
   type-check@0.4.0:
     dependencies:
       prelude-ls: 1.2.1
@@ -22771,8 +22486,6 @@ snapshots:
       estree-walker: 3.0.3
       magic-string: 0.30.21
       unplugin: 2.3.11
-
-  undici-types@5.26.5: {}
 
   undici-types@7.16.0: {}
 

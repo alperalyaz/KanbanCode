@@ -393,31 +393,6 @@ export interface AppConfig {
     /** Hidden sessions per project. Key is projectId, value is array of hidden sessions */
     hiddenSessions: Record<string, { sessionId: string; hiddenAt: number }[]>;
   };
-  /** SSH connection settings */
-  ssh?: {
-    /** Last used connection details */
-    lastConnection: {
-      host: string;
-      port: number;
-      username: string;
-      authMethod: 'password' | 'privateKey' | 'agent' | 'auto';
-      privateKeyPath?: string;
-    } | null;
-    /** Whether to auto-reconnect on launch */
-    autoReconnect: boolean;
-    /** Saved SSH connection profiles */
-    profiles: {
-      id: string;
-      name: string;
-      host: string;
-      port: number;
-      username: string;
-      authMethod: 'password' | 'privateKey' | 'agent' | 'auto';
-      privateKeyPath?: string;
-    }[];
-    /** Last active context ID */
-    lastActiveContextId: string;
-  };
   /** HTTP sidecar server settings for iframe embedding */
   httpServer?: {
     /** Whether the HTTP server is enabled */

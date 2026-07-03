@@ -2,9 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 
 import { useAppTranslation } from '@features/localization/renderer';
-import { CheckCircle, Terminal, X, XCircle } from 'lucide-react';
-
-import { EmbeddedTerminal } from './EmbeddedTerminal';
+import { Check, Copy, Terminal, X } from 'lucide-react';
 
 interface TerminalModalProps {
   /** Modal title */
@@ -29,6 +27,31 @@ interface TerminalModalProps {
   failureMessage?: string;
 }
 
+/** Quote a shell word with POSIX single quotes when it contains unsafe characters. */
+const quoteShellWord = (word: string): string =>
+  /^[A-Za-z0-9_@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`;
+
+/** Build the full command line the user should run in their own terminal. */
+const buildCommandLine = (
+  command?: string,
+  args?: string[],
+  cwd?: string,
+  env?: Record<string, string>
+): string => {
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(env ?? {})) {
+    parts.push(`${key}=${quoteShellWord(value)}`);
+  }
+  if (command) {
+    parts.push(quoteShellWord(command));
+  }
+  for (const arg of args ?? []) {
+    parts.push(quoteShellWord(arg));
+  }
+  const line = parts.join(' ');
+  return cwd ? `cd ${quoteShellWord(cwd)} && ${line}` : line;
+};
+
 export function TerminalModal({
   title,
   command,
@@ -36,29 +59,22 @@ export function TerminalModal({
   cwd,
   env,
   onClose,
-  onExit,
-  autoCloseOnSuccessMs = 0,
-  successMessage,
-  failureMessage,
 }: TerminalModalProps): React.JSX.Element {
   const { t } = useAppTranslation('common');
-  const [exited, setExited] = useState<number | null>(null);
-  const [countdown, setCountdown] = useState<number>(0);
+  const [copied, setCopied] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const resolvedTitle = title ?? t('terminal.title');
-  const resolvedSuccessMessage = successMessage ?? t('terminal.completedSuccessfully');
-  const resolvedFailureMessage = failureMessage ?? t('terminal.processFailed');
+  const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resolvedTitle = title ?? t('terminalCommandModal.title');
+  const commandLine = buildCommandLine(command, args, cwd, env);
+  const hasEnv = Object.keys(env ?? {}).length > 0;
 
-  const handleExit = useCallback(
-    (exitCode: number): void => {
-      setExited(exitCode);
-      onExit?.(exitCode);
-      if (exitCode === 0 && autoCloseOnSuccessMs > 0) {
-        setCountdown(Math.ceil(autoCloseOnSuccessMs / 1000));
-      }
-    },
-    [onExit, autoCloseOnSuccessMs]
-  );
+  const handleCopy = useCallback((): void => {
+    void navigator.clipboard.writeText(commandLine).then(() => {
+      setCopied(true);
+      if (copyResetRef.current) clearTimeout(copyResetRef.current);
+      copyResetRef.current = setTimeout(() => setCopied(false), 2000);
+    });
+  }, [commandLine]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent): void => {
@@ -75,23 +91,12 @@ export function TerminalModal({
     dialogRef.current?.focus();
   }, []);
 
-  // Countdown timer for auto-close
+  // Clear pending "Copied" reset timer on unmount
   useEffect(() => {
-    if (countdown <= 0) return;
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          onClose();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [countdown, onClose]);
-
-  const totalSeconds = autoCloseOnSuccessMs > 0 ? Math.ceil(autoCloseOnSuccessMs / 1000) : 0;
-  const progressPercent = totalSeconds > 0 ? (countdown / totalSeconds) * 100 : 0;
+    return () => {
+      if (copyResetRef.current) clearTimeout(copyResetRef.current);
+    };
+  }, []);
 
   return ReactDOM.createPortal(
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- modal backdrop handles Escape
@@ -105,7 +110,7 @@ export function TerminalModal({
         aria-label={resolvedTitle}
         aria-modal="true"
         tabIndex={-1}
-        className="flex h-[60vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-border-emphasis bg-surface shadow-2xl outline-none"
+        className="flex w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-border-emphasis bg-surface shadow-2xl outline-none"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -122,76 +127,55 @@ export function TerminalModal({
           </button>
         </div>
 
-        {/* Terminal area — always visible, status bar overlaid at bottom */}
-        <div className="relative flex min-h-0 flex-1 flex-col p-2">
-          <EmbeddedTerminal command={command} args={args} cwd={cwd} env={env} onExit={handleExit} />
+        {/* Body */}
+        <div className="flex flex-col gap-3 px-4 py-4">
+          <p className="text-sm text-text-secondary">{t('terminalCommandModal.instructions')}</p>
 
-          {exited !== null && (
-            <div
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              className="absolute inset-x-0 bottom-0 border-t px-4 py-3"
+          <div className="flex items-start gap-2">
+            <pre
+              className="min-w-0 flex-1 overflow-x-auto rounded border px-3 py-2.5 font-mono text-xs"
               style={{
-                backgroundColor: 'rgba(20, 20, 22, 0.98)',
-                borderColor:
-                  exited === 0 ? 'rgba(74, 222, 128, 0.25)' : 'rgba(248, 113, 113, 0.25)',
-                backdropFilter: 'blur(12px)',
+                backgroundColor: '#141416',
+                borderColor: 'var(--color-border)',
+                color: '#fafafa',
               }}
             >
-              <div className="flex items-center justify-between">
-                {exited === 0 ? (
-                  <div className="flex items-center gap-2.5">
-                    <CheckCircle size={18} className="shrink-0 text-green-400" aria-hidden="true" />
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium text-green-400">
-                        {resolvedSuccessMessage}
-                      </span>
-                      {countdown > 0 && (
-                        <span className="text-xs text-text-muted">
-                          {t('terminal.closingInSeconds', { count: countdown })}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2.5">
-                    <XCircle size={18} className="shrink-0 text-red-400" aria-hidden="true" />
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium text-red-400">
-                        {resolvedFailureMessage}{' '}
-                        <span className="font-mono opacity-75">
-                          {t('terminal.exitCode', { code: exited })}
-                        </span>
-                      </span>
-                      <span className="text-xs text-text-muted">
-                        {t('terminal.checkOutputForDetails')}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                <button
-                  onClick={onClose}
-                  className="shrink-0 rounded-md bg-surface-raised px-4 py-1.5 text-sm text-text transition-colors hover:bg-border-emphasis"
-                >
-                  {t('actions.close')}
-                </button>
-              </div>
-
-              {/* Progress bar for auto-close countdown */}
-              {countdown > 0 && (
-                <div
-                  className="mt-2.5 h-0.5 w-full overflow-hidden rounded-full"
-                  style={{ backgroundColor: 'rgba(255, 255, 255, 0.06)' }}
-                >
-                  <div
-                    className="h-full rounded-full bg-green-400/50 transition-all duration-1000 ease-linear"
-                    style={{ width: `${progressPercent}%` }}
-                  />
-                </div>
+              {commandLine}
+            </pre>
+            <button
+              onClick={handleCopy}
+              aria-label={t('terminalCommandModal.copyCommand')}
+              className="flex shrink-0 items-center gap-1.5 rounded-md bg-surface-raised px-3 py-2 text-sm text-text transition-colors hover:bg-border-emphasis"
+            >
+              {copied ? (
+                <>
+                  <Check size={14} className="text-green-400" aria-hidden="true" />
+                  {t('terminalCommandModal.copied')}
+                </>
+              ) : (
+                <>
+                  <Copy size={14} aria-hidden="true" />
+                  {t('terminalCommandModal.copy')}
+                </>
               )}
-            </div>
+            </button>
+          </div>
+
+          {hasEnv && (
+            <p className="text-xs text-text-muted">{t('terminalCommandModal.windowsEnvNote')}</p>
           )}
+
+          <p className="text-xs text-text-muted">{t('terminalCommandModal.afterRun')}</p>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end border-t border-border px-4 py-3">
+          <button
+            onClick={onClose}
+            className="rounded-md bg-surface-raised px-4 py-1.5 text-sm text-text transition-colors hover:bg-border-emphasis"
+          >
+            {t('actions.close')}
+          </button>
         </div>
       </div>
     </div>,

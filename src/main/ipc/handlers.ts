@@ -10,7 +10,6 @@
  * - utility.ts: Shell operations and file reading
  * - notifications.ts: Notification management
  * - config.ts: App configuration
- * - ssh.ts: SSH connection management
  * - httpServer.ts: HTTP sidecar server control
  */
 
@@ -69,7 +68,6 @@ import {
   removeSessionHandlers,
 } from './sessions';
 import { initializeSkillsHandlers, registerSkillsHandlers, removeSkillsHandlers } from './skills';
-import { initializeSshHandlers, registerSshHandlers, removeSshHandlers } from './ssh';
 import {
   initializeSubagentHandlers,
   registerSubagentHandlers,
@@ -77,11 +75,6 @@ import {
 } from './subagents';
 import { initializeTeamHandlers, registerTeamHandlers, removeTeamHandlers } from './teams';
 import { registerTelemetryHandlers, removeTelemetryHandlers } from './telemetry';
-import {
-  initializeTerminalHandlers,
-  registerTerminalHandlers,
-  removeTerminalHandlers,
-} from './terminal';
 import { registerTmuxHandlers, removeTmuxHandlers } from './tmux';
 import {
   initializeUpdaterHandlers,
@@ -105,11 +98,9 @@ import type {
   GitDiffFallback,
   MemberStatsComputer,
   OpenCodeRuntimeInstallerService,
-  PtyTerminalService,
   ReviewApplierService,
   ServiceContext,
   ServiceContextRegistry,
-  SshConnectionManager,
   TeamDataService,
   TeamLogSourceTracker,
   TeammateToolTracker,
@@ -139,7 +130,6 @@ const logger = createLogger('IPC:handlers');
 export function initializeIpcHandlers(
   registry: ServiceContextRegistry,
   updater: UpdaterService,
-  sshManager: SshConnectionManager,
   teamDataService: TeamDataService,
   teamProvisioningService: TeamProvisioningService,
   teamMemberLogsFinder: TeamMemberLogsFinder,
@@ -167,7 +157,6 @@ export function initializeIpcHandlers(
   gitDiffFallback?: GitDiffFallback,
   cliInstaller?: CliInstallerService,
   openCodeRuntimeInstaller?: OpenCodeRuntimeInstallerService,
-  ptyTerminal?: PtyTerminalService,
   schedulerService?: SchedulerService,
   extensionFacade?: ExtensionFacadeService,
   pluginInstaller?: PluginInstallService,
@@ -187,7 +176,6 @@ export function initializeIpcHandlers(
   initializeSearchHandlers(registry);
   initializeSubagentHandlers(registry);
   initializeUpdaterHandlers(updater);
-  initializeSshHandlers(sshManager, registry, contextCallbacks.rewire);
   initializeContextHandlers(registry, contextCallbacks.rewire);
   initializeTeamHandlers(
     teamDataService,
@@ -219,9 +207,6 @@ export function initializeIpcHandlers(
   }
   if (openCodeRuntimeInstaller) {
     initializeOpenCodeRuntimeHandlers(openCodeRuntimeInstaller);
-  }
-  if (ptyTerminal) {
-    initializeTerminalHandlers(ptyTerminal);
   }
   if (schedulerService) {
     initializeScheduleHandlers(schedulerService);
@@ -259,7 +244,6 @@ export function initializeIpcHandlers(
   registerNotificationHandlers(ipcMain);
   registerConfigHandlers(ipcMain);
   registerUpdaterHandlers(ipcMain);
-  registerSshHandlers(ipcMain);
   registerContextHandlers(ipcMain);
   registerTeamHandlers(ipcMain);
   registerReviewHandlers(ipcMain);
@@ -274,9 +258,6 @@ export function initializeIpcHandlers(
     registerOpenCodeRuntimeHandlers(ipcMain);
   }
   registerCodexRuntimeHandlers(ipcMain);
-  if (ptyTerminal) {
-    registerTerminalHandlers(ipcMain);
-  }
   registerTmuxHandlers(ipcMain);
   if (httpServerDeps) {
     registerHttpServerHandlers(ipcMain);
@@ -306,7 +287,6 @@ export function removeIpcHandlers(): void {
   removeNotificationHandlers(ipcMain);
   removeConfigHandlers(ipcMain);
   removeUpdaterHandlers(ipcMain);
-  removeSshHandlers(ipcMain);
   removeContextHandlers(ipcMain);
   removeTeamHandlers(ipcMain);
   removeReviewHandlers(ipcMain);
@@ -317,7 +297,6 @@ export function removeIpcHandlers(): void {
   removeCliInstallerHandlers(ipcMain);
   removeOpenCodeRuntimeHandlers(ipcMain);
   removeCodexRuntimeHandlers(ipcMain);
-  removeTerminalHandlers(ipcMain);
   removeTmuxHandlers(ipcMain);
   removeHttpServerHandlers(ipcMain);
   removeExtensionHandlers(ipcMain);

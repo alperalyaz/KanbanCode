@@ -573,7 +573,6 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
     }))
   );
   const {
-    connectionMode,
     createTeam,
     launchTeam,
     provisioningErrorByTeam,
@@ -584,7 +583,6 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
     leadActivityByTeam,
   } = useStore(
     useShallow((s) => ({
-      connectionMode: s.connectionMode,
       createTeam: s.createTeam,
       launchTeam: s.launchTeam,
       provisioningErrorByTeam: s.provisioningErrorByTeam,
@@ -595,7 +593,7 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
       leadActivityByTeam: s.leadActivityByTeam,
     }))
   );
-  const canCreate = electronMode && connectionMode === 'local';
+  const canCreate = electronMode;
   const provisioningState = useMemo(
     () => ({ currentProvisioningRunIdByTeam, provisioningRuns }),
     [currentProvisioningRunIdByTeam, provisioningRuns]

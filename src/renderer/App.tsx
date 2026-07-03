@@ -10,7 +10,6 @@ import { TabbedLayout } from './components/layout/TabbedLayout';
 import { type SplashSceneHandle, startSplashScene } from './components/splash/splashScene';
 import { ToolApprovalSheet } from './components/team/ToolApprovalSheet';
 import { useThemeController } from './hooks/useTheme';
-import { api } from './api';
 import { useStore } from './store';
 
 declare global {
@@ -92,17 +91,6 @@ export const App = (): React.JSX.Element => {
     }
 
     return undefined;
-  }, []);
-
-  // Initialize context system lazily when SSH connection state changes.
-  // Local-only users never pay the cost of IndexedDB init + context IPC calls.
-  useEffect(() => {
-    if (!api.ssh?.onStatus) return;
-    const cleanup = api.ssh.onStatus(() => {
-      void useStore.getState().initializeContextSystem();
-      void useStore.getState().fetchAvailableContexts();
-    });
-    return cleanup;
   }, []);
 
   return (

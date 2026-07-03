@@ -21,7 +21,6 @@ import { registerNotificationRoutes } from './notifications';
 import { registerProjectRoutes } from './projects';
 import { registerSearchRoutes } from './search';
 import { registerSessionRoutes } from './sessions';
-import { registerSshRoutes } from './ssh';
 import { registerSubagentRoutes } from './subagents';
 import { registerTeamRoutes } from './teams';
 import { registerUpdaterRoutes } from './updater';
@@ -36,7 +35,6 @@ import type {
   SubagentResolver,
   UpdaterService,
 } from '../services';
-import type { SshConnectionManager } from '../services/infrastructure/SshConnectionManager';
 import type { TeamDataService } from '../services/team/TeamDataService';
 import type { TeamProvisioningService } from '../services/team/TeamProvisioningService';
 import type { MemberWorkSyncFeatureFacade } from '@features/member-work-sync/main';
@@ -54,16 +52,11 @@ export interface HttpServices {
   organizationsFeature?: OrganizationsFeatureFacade;
   memberWorkSyncFeature?: MemberWorkSyncFeatureFacade;
   updaterService: UpdaterService;
-  sshConnectionManager: SshConnectionManager;
   teamDataService?: TeamDataService;
   teamProvisioningService?: TeamProvisioningService;
 }
 
-export function registerHttpRoutes(
-  app: FastifyInstance,
-  services: HttpServices,
-  sshModeSwitchCallback: (mode: 'local' | 'ssh') => Promise<void>
-): void {
+export function registerHttpRoutes(app: FastifyInstance, services: HttpServices): void {
   registerProjectRoutes(app, services);
   registerSessionRoutes(app, services);
   registerSearchRoutes(app, services);
@@ -75,7 +68,6 @@ export function registerHttpRoutes(
   registerConfigRoutes(app);
   registerValidationRoutes(app);
   registerUtilityRoutes(app);
-  registerSshRoutes(app, services.sshConnectionManager, sshModeSwitchCallback);
   registerUpdaterRoutes(app, services);
   if (services.recentProjectsFeature) {
     registerRecentProjectsHttp(app, services.recentProjectsFeature);

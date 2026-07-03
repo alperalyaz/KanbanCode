@@ -253,17 +253,14 @@
     "largeContentNotice_one": "İçerik çok büyük ({{count}} karakter). Arayüzü duyarlı tutmak için ham önizleme gösteriliyor.",
     "largeContentNotice_other": "İçerik çok büyük ({{count}} karakter). Arayüzü duyarlı tutmak için ham önizleme gösteriliyor."
   },
-  "terminal": {
-    "checkOutputForDetails": "Ayrıntılar için yukarıdaki terminal çıktısını kontrol edin",
-    "closingInSeconds": "{{count}}sn içinde kapanıyor...",
-    "closingInSeconds_few": "{{count}}sn içinde kapanıyor...",
-    "closingInSeconds_many": "{{count}}sn içinde kapanıyor...",
-    "closingInSeconds_one": "{{count}}sn içinde kapanıyor...",
-    "closingInSeconds_other": "{{count}}sn içinde kapanıyor...",
-    "completedSuccessfully": "Başarıyla tamamlandı",
-    "exitCode": "(çıkış kodu {{code}})",
-    "processFailed": "İşlem başarısız oldu",
-    "title": "Terminal"
+  "terminalCommandModal": {
+    "afterRun": "Komut tamamlandığında bu pencereyi kapatın; uygulama durumu yeniden kontrol edecektir.",
+    "copied": "Kopyalandı",
+    "copy": "Kopyala",
+    "copyCommand": "Komutu kopyala",
+    "instructions": "Devam etmek için bu komutu kendi terminalinizde çalıştırın:",
+    "title": "Terminalinizde çalıştırın",
+    "windowsEnvNote": "Windows'ta önce ortam değişkenlerini ayarlayın (örneğin: set KEY=value), ardından komutu KEY=value öneki olmadan çalıştırın."
   },
   "tokens": {
     "accumulatedWithoutDuplication": "Tüm oturum boyunca yinelenmeden toplandı",

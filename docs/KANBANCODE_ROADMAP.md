@@ -37,6 +37,26 @@ Core to keep: team creation + agent process management + kanban board + messagin
 
 ## Status log
 
+- **2026-07-03 (cloud session)** — **Phase 3: embedded terminal stack fully removed.**
+  Deleted: `src/features/terminal-workspace/`, `PtyTerminalService` + `ipc/terminal`,
+  SSH stack (`SshConnectionManager`/`SshFileSystemProvider`/`SshConfigParser`, `ipc/ssh`,
+  `http/ssh`, Connection/Workspace settings sections, `connectionSlice`), `EmbeddedTerminal`,
+  `vendor/terminal-platform/` + staging scripts + lockfile, and the `node-pty`/`@xterm/*`/`ssh2`/
+  `@terminal-platform/*` dependencies (postinstall no longer runs electron-rebuild).
+  Kept: `TerminalLogPanel` (rewritten as dependency-free ANSI-stripping log pane) and
+  `TerminalModal` (rewritten as copy-the-command dialog, same props) so CLI-installer/login
+  consumers compile unchanged; tmux-installer / workspace-trust / ClaudeDoctorProbe keep their
+  graceful no-pty degradation via local `@shared/types/optionalPty` types. Dead i18n groups
+  pruned (`common.terminal`, `settings.connection`, `settings.workspaceProfiles`,
+  `team.terminalWorkspace`) from en+tr and `resources.d.ts` — re-run `pnpm i18n:extract`+
+  `i18n:types` locally to confirm. **Verification (cloud, Node 24.15.0):** `pnpm typecheck`
+  green; vitest 7700 passed / 85 failed — 62 failing suites are electron-binary-missing
+  (sandbox installed with `--ignore-scripts`; fine on real machines), remaining 7 failures
+  reproduce identically on the pre-removal commit (pre-existing triage backlog: model-catalog
+  label drift + graph-tab throttle tests + userData migration). Zero new regressions from the
+  removal. `pnpm-lock.yaml` regenerated without the removed deps. Follow-ups: run full suite
+  on Windows, `pnpm i18n:extract`, and knip for any now-unused exports.
+
 - **2026-07-02 (cloud session)** — Phase 5 rebrand sweep: `package.json` name → `kanbancode`,
   author → Hidroteknik; mac/dmg/AppImage `artifactName` → `KanbanCode-*`; linux launcher
   `resources/linux/bin/agent-teams-ai` → `kanbancode` (fpm mappings updated, `/opt/KanbanCode`);

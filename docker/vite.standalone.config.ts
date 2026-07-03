@@ -31,7 +31,7 @@ const externalPackages = [
   'agent-teams-controller'
 ]
 
-// Stub native .node addons (ssh2/cpu-features have JS fallbacks)
+// Stub native .node addons (optional deps have JS fallbacks)
 function nativeModuleStub(): Plugin {
   const STUB_ID = '\0native-stub'
   return {

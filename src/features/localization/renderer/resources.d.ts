@@ -823,17 +823,14 @@ export default interface Resources {
       teamLabel: 'Team: {{team}}';
       title: 'Tasks';
     };
-    terminal: {
-      checkOutputForDetails: 'Check terminal output above for details';
-      closingInSeconds: 'Closing in {{count}}s...';
-      closingInSeconds_few: 'Closing in {{count}}s...';
-      closingInSeconds_many: 'Closing in {{count}}s...';
-      closingInSeconds_one: 'Closing in {{count}}s...';
-      closingInSeconds_other: 'Closing in {{count}}s...';
-      completedSuccessfully: 'Completed successfully';
-      exitCode: '(exit code {{code}})';
-      processFailed: 'Process failed';
-      title: 'Terminal';
+    terminalCommandModal: {
+      afterRun: 'When the command finishes, close this dialog and the app will re-check the status.';
+      copied: 'Copied';
+      copy: 'Copy';
+      copyCommand: 'Copy command';
+      instructions: 'Run this command in your own terminal to continue:';
+      title: 'Run in your terminal';
+      windowsEnvNote: 'On Windows, set the environment variables first (for example: set KEY=value) and then run the command without the KEY=value prefix.';
     };
     tmuxInstaller: {
       actions: {
@@ -2126,47 +2123,6 @@ export default interface Resources {
       };
       title: 'Edit Configuration';
     };
-    connection: {
-      actions: {
-        connect: 'Connect';
-        connecting: 'Connecting...';
-        disconnect: 'Disconnect';
-        testConnection: 'Test Connection';
-        testing: 'Testing...';
-      };
-      currentMode: {
-        description: 'Data source for session files';
-        label: 'Current Mode';
-        local: 'Local ({{path}})';
-      };
-      description: 'Connect to a remote machine to view Claude Code sessions running there';
-      form: {
-        authentication: 'Authentication';
-        host: 'Host';
-        hostPlaceholder: 'hostname or SSH config alias';
-        password: 'Password';
-        port: 'Port';
-        privateKeyPath: 'Private Key Path';
-        username: 'Username';
-        usernamePlaceholder: 'user';
-      };
-      savedProfiles: {
-        title: 'Saved Profiles';
-      };
-      ssh: {
-        title: 'SSH Connection';
-      };
-      status: {
-        connectedTo: 'Connected to {{host}}';
-        remoteSessions: 'Viewing remote sessions via SSH';
-      };
-      test: {
-        failed: 'Connection failed: {{error}}';
-        success: 'Connection successful';
-        unknownError: 'Unknown error';
-      };
-      title: 'Remote Connection';
-    };
     general: {
       agentLanguage: {
         description: 'Language for agent communication';
@@ -2985,45 +2941,6 @@ export default interface Resources {
       description: 'Manage your app preferences';
       loading: 'Loading settings...';
       title: 'Settings';
-    };
-    workspaceProfiles: {
-      actions: {
-        addProfile: 'Add Profile';
-        cancel: 'Cancel';
-        deleteProfile: 'Delete profile';
-        editProfile: 'Edit profile';
-        save: 'Save';
-      };
-      authMethods: {
-        agent: 'SSH Agent';
-        auto: 'Auto (from SSH Config)';
-        password: 'Password';
-        privateKey: 'Private Key';
-      };
-      deleteConfirm: {
-        confirmLabel: 'Delete';
-        message: 'Are you sure you want to delete "{{name}}"? This cannot be undone.';
-        title: 'Delete Profile';
-      };
-      description: 'Save SSH connection profiles for quick reconnection';
-      empty: {
-        description: 'Add an SSH profile to connect quickly';
-        title: 'No saved profiles';
-      };
-      form: {
-        authentication: 'Authentication';
-        host: 'Host';
-        hostPlaceholder: 'hostname or IP';
-        name: 'Name';
-        namePlaceholder: 'My Server';
-        passwordPrompt: 'You will be prompted for the password when connecting.';
-        port: 'Port';
-        privateKeyPath: 'Private Key Path';
-        username: 'Username';
-        usernamePlaceholder: 'user';
-      };
-      loading: 'Loading profiles...';
-      title: 'Workspace Profiles';
     };
   };
   team: {
@@ -5559,116 +5476,6 @@ export default interface Resources {
       };
       teamPrefix: 'Team:';
       unassigned: 'Unassigned';
-    };
-    terminalWorkspace: {
-      backgroundModeImage: 'Image';
-      backgroundModeSolid: 'Solid color';
-      backgroundModeTransparent: 'Transparent';
-      cancel: 'Cancel';
-      chooseColor: 'Choose color';
-      closeTab: 'Close tab';
-      closeTerminalSettings: 'Close terminal settings';
-      closeTerminalSettingsTab: 'Close terminal settings tab';
-      closeTerminalSheet: 'Close terminal sheet';
-      closeTerminalTab: 'Close terminal tab {{tab}}';
-      closeTerminalTabDialogDescription: 'This tab has terminal output history. Closing it will remove the tab and its visible output from this workspace.';
-      closeTerminalTabDialogTitle: 'Close terminal tab?';
-      commandInterrupt: 'Ctrl+C';
-      commandInterruptTitle: 'Send Ctrl+C to the focused pane';
-      commandPlaceholder: 'Type a command...';
-      commandRun: 'Run';
-      commandRunTitle: 'Send command to the focused pane';
-      copy: 'Copy';
-      copyCommand: 'Copy command';
-      copyOutput: 'Copy output';
-      createAnotherTabBeforeClosing: 'Create another tab before closing this one';
-      createTerminalTab: 'Create terminal tab';
-      currentWorkingDirectory: 'Current working directory';
-      editTerminalTabTitle: 'Edit terminal tab title';
-      expandTerminalSheet: 'Expand terminal sheet';
-      fontScaleCompact: 'Compact';
-      fontScaleDefault: 'Default';
-      fontScaleLarge: 'Large';
-      gitBranchTitle: 'Git branch: {{branch}}';
-      imageFitCenter: 'Center';
-      imageFitContain: 'Contain';
-      imageFitCover: 'Cover';
-      imageFitStretch: 'Stretch';
-      imageFitTile: 'Tile';
-      loadingTerminalTab: 'Loading terminal tab';
-      localShell: 'Local shell';
-      localShellBadge: 'local shell';
-      noTerminalTabs: 'No terminal tabs';
-      openTeamTerminal: 'Open {{team}} terminal';
-      openTerminal: 'Open terminal';
-      openTerminalSettings: 'Open terminal settings';
-      reloadTerminalWorkspace: 'Reload terminal workspace';
-      renameTab: 'Rename tab';
-      restoreHalfHeightSheet: 'Restore half-height sheet';
-      runtimeDisconnectedDetail: 'Reload the workspace to reconnect.';
-      runtimeDisconnectedTitle: 'Terminal runtime is not connected';
-      runtimeUnavailableTitle: 'Terminal runtime is unavailable';
-      settingsBackdropBlur: 'Backdrop blur';
-      settingsBackgroundColorAria: 'Terminal background color';
-      settingsBackgroundDescription: 'Control transparency, blur, color, and optional image.';
-      settingsBackgroundMode: 'Background';
-      settingsBackgroundModeAria: 'Terminal background mode';
-      settingsBackgroundTitle: 'Background';
-      settingsBehaviorDescription: 'Keep command output readable for long lines.';
-      settingsBehaviorTitle: 'Behavior';
-      settingsDescription: 'Appearance and runtime controls.';
-      settingsDimImage: 'Dim image behind terminal text';
-      settingsFontDescription: 'Tune text size and the SDK font preset.';
-      settingsFontPreset: 'Preset';
-      settingsFontPresetAria: 'Terminal font preset';
-      settingsFontPresetPlaceholder: 'Font preset';
-      settingsFontSize: 'Size';
-      settingsFontTitle: 'Font';
-      settingsImageBlur: 'Image blur';
-      settingsImageFit: 'Image fit';
-      settingsImageFitAria: 'Terminal background image fit';
-      settingsImageUrl: 'Image URL';
-      settingsOpacity: 'Opacity';
-      settingsOpacityAria: 'Terminal opacity';
-      settingsReconnect: 'Reconnect';
-      settingsReload: 'Reload';
-      settingsResetAppearance: 'Reset appearance';
-      settingsRuntimeDescription: 'Use these only when the terminal transport looks stale.';
-      settingsRuntimeTitle: 'Runtime';
-      settingsSessions: 'Sessions';
-      settingsStop: 'Stop';
-      settingsTab: 'Settings';
-      settingsThemeAria: 'Terminal theme';
-      settingsThemeDescription: 'Choose the base terminal palette.';
-      settingsThemePlaceholder: 'Select theme';
-      settingsThemeTitle: 'Theme';
-      settingsTitle: 'Terminal settings';
-      settingsWrapLongOutput: 'Wrap long command output';
-      shellDefaultDirectory: 'Default shell working directory';
-      startingRuntimeDetail: 'Preparing the team workspace and restoring persisted terminal state.';
-      startingRuntimeTitle: 'Starting terminal runtime';
-      stopTerminalRuntime: 'Stop terminal runtime';
-      tabColor: 'Tab color';
-      tabColorAmber: 'Amber';
-      tabColorBlue: 'Blue';
-      tabColorCyan: 'Cyan';
-      tabColorEmerald: 'Emerald';
-      tabColorLime: 'Lime';
-      tabColorOrange: 'Orange';
-      tabColorRose: 'Rose';
-      tabColorSky: 'Sky';
-      tabColorSlate: 'Slate';
-      tabColorTeal: 'Teal';
-      tabColorViolet: 'Violet';
-      teamRuntime: 'Team runtime';
-      teamRuntimeBadge: 'team runtime';
-      teamTerminalTitle: '{{team}} terminal';
-      terminalCommandActions: 'Terminal command actions';
-      terminalSheetOpen: 'Terminal sheet is open';
-      terminalTabs: 'Terminal tabs';
-      terminalTabsUnavailable: 'Terminal tabs are unavailable';
-      themeDark: 'Dark';
-      themeLight: 'Light';
     };
     toolApproval: {
       after: 'after';
