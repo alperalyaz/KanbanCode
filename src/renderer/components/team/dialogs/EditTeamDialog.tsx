@@ -27,7 +27,6 @@ import { cn } from '@renderer/lib/utils';
 import { isGeminiUiFrozen } from '@renderer/utils/geminiUiFreeze';
 import { isImeComposing } from '@renderer/utils/imeComposition';
 import {
-  agentAvatarUrl,
   buildMemberColorMap,
   displayMemberName,
 } from '@renderer/utils/memberHelpers';
@@ -646,7 +645,6 @@ export const EditTeamDialog = ({
                     <MemberDraftRow
                       member={leadDraft}
                       index={0}
-                      avatarSrc={agentAvatarUrl('team-lead', 32)}
                       resolvedColor={effectiveResolvedMemberColorMap.get(
                         leadDraft.originalName ?? leadDraft.name
                       )}
