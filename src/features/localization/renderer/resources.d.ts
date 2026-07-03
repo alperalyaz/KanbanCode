@@ -5067,6 +5067,9 @@ export default interface Resources {
       submit: 'Submit';
       title: 'Request Changes';
     };
+    memberNames: {
+      concept: 'Suggested member names follow a legendary-companions theme: fantasy epics in English, Turkish folktale heroes in Turkish.';
+    };
     roleSelect: {
       customRole: 'Custom role...';
       customRoleDescription: 'Create a project-specific role when none of the presets fit.';

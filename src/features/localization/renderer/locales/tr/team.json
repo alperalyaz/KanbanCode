@@ -2339,6 +2339,9 @@
     "tooltipContent": "Desteklendiğinde başlatmaları 200K token'lık bir bağlam penceresi içinde tutar.",
     "tooltipTitle": "Bağlam limiti"
   },
+  "memberNames": {
+    "concept": "Önerilen üye isimleri efsanevi yol arkadaşları temasını izler: İngilizcede fantastik destanlar, Türkçede Türk halk destanı kahramanları."
+  },
   "roleSelect": {
     "noRole": "Rol yok",
     "customRole": "Özel rol...",

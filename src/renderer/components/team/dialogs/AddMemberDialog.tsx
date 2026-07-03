@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
-import { getNextSuggestedMemberName } from '@renderer/components/team/members/memberNameSets';
+import {
+  getNextSuggestedMemberName,
+  resolveMemberNameLocale,
+} from '@renderer/components/team/members/memberNameSets';
 import {
   buildMembersFromDrafts,
   createMemberDraft,
@@ -75,8 +78,14 @@ function deriveExistingWorktreeDefault(
   );
 }
 
-function buildInitialDrafts(existingNames: string[], worktreeDefault = false): MemberDraft[] {
-  const suggestedName = getNextSuggestedMemberName(existingNames);
+import type { ResolvedAppLocale } from '@features/localization/contracts';
+
+function buildInitialDrafts(
+  existingNames: string[],
+  worktreeDefault = false,
+  locale: ResolvedAppLocale = 'en'
+): MemberDraft[] {
+  const suggestedName = getNextSuggestedMemberName(existingNames, locale);
   return [
     createMemberDraft({
       name: suggestedName,
@@ -95,11 +104,12 @@ export const AddMemberDialog = ({
   projectPath,
   existingMembers,
 }: AddMemberDialogProps): React.JSX.Element => {
-  const { t } = useAppTranslation('team');
+  const { t, resolvedLanguage } = useAppTranslation('team');
+  const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
   const existingWorktreeDefault = deriveExistingWorktreeDefault(existingMembers);
   const [teammateWorktreeDefault, setTeammateWorktreeDefault] = useState(existingWorktreeDefault);
   const [members, setMembers] = useState<MemberDraft[]>(() =>
-    buildInitialDrafts(existingNames, existingWorktreeDefault)
+    buildInitialDrafts(existingNames, existingWorktreeDefault, memberNameLocale)
   );
   const [error, setError] = useState<string | null>(null);
   const wasOpenRef = useRef(open);
@@ -167,7 +177,7 @@ export const AddMemberDialog = ({
 
   const handleOpenChange = (nextOpen: boolean): void => {
     if (!nextOpen) {
-      setMembers(buildInitialDrafts(existingNames, teammateWorktreeDefault));
+      setMembers(buildInitialDrafts(existingNames, teammateWorktreeDefault, memberNameLocale));
       setError(null);
       onClose();
     }
@@ -177,11 +187,11 @@ export const AddMemberDialog = ({
     const wasOpen = wasOpenRef.current;
     if (open && !wasOpen) {
       setTeammateWorktreeDefault(existingWorktreeDefault);
-      setMembers(buildInitialDrafts(existingNames, existingWorktreeDefault));
+      setMembers(buildInitialDrafts(existingNames, existingWorktreeDefault, memberNameLocale));
       setError(null);
     }
     wasOpenRef.current = open;
-  }, [existingNames, existingWorktreeDefault, open]);
+  }, [existingNames, existingWorktreeDefault, memberNameLocale, open]);
 
   const memberCount = members.filter((m) => m.name.trim() && !validateName(m.name)).length;
 

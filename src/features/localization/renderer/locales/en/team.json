@@ -2341,6 +2341,9 @@
     "tooltipContent": "Keeps launches within a 200K-token context window when supported.",
     "tooltipTitle": "Context limit"
   },
+  "memberNames": {
+    "concept": "Suggested member names follow a legendary-companions theme: fantasy epics in English, Turkish folktale heroes in Turkish."
+  },
   "roleSelect": {
     "noRole": "No role",
     "customRole": "Custom role...",

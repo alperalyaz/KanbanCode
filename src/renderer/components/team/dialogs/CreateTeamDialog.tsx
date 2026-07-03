@@ -341,21 +341,11 @@ interface ValidationResult {
   };
 }
 
+import {
+  getDefaultCreateTeamMemberConfigs,
+  resolveMemberNameLocale,
+} from '@renderer/components/team/members/memberNameSets';
 import { CUSTOM_ROLE, PRESET_ROLES } from '@renderer/constants/teamRoles';
-
-const DEFAULT_MEMBERS: { name: string; roleSelection: string; workflowKind?: 'reviewer' }[] = [
-  {
-    name: 'alice',
-    roleSelection: 'reviewer',
-    workflowKind: 'reviewer',
-  },
-  {
-    name: 'tom',
-    roleSelection: 'developer',
-  },
-  { name: 'bob', roleSelection: 'developer' },
-  { name: 'jack', roleSelection: 'developer' },
-];
 
 /** Mirrors Claude CLI's `zuA()` sanitization: non-alphanumeric → `-`, then lowercase. */
 function sanitizeTeamName(name: string): string {
@@ -511,7 +501,8 @@ export const CreateTeamDialog = ({
   onOpenTeam,
 }: CreateTeamDialogProps): React.JSX.Element => {
   const { isLight } = useTheme();
-  const { t } = useAppTranslation('team');
+  const { t, resolvedLanguage } = useAppTranslation('team');
+  const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
   const multimodelEnabled = useStore((s) => s.appConfig?.general?.multimodelEnabled ?? true);
   const anthropicProviderFastModeDefault = useStore(
     (s) => s.appConfig?.providerConnections?.anthropic.fastModeDefault ?? false
@@ -1565,7 +1556,7 @@ export const CreateTeamDialog = ({
       return;
     }
 
-    const nextDefaultMembers = DEFAULT_MEMBERS.map((member) =>
+    const nextDefaultMembers = getDefaultCreateTeamMemberConfigs(memberNameLocale).map((member) =>
       createMemberDraft({
         name: member.name,
         roleSelection: member.roleSelection,
@@ -1579,7 +1570,7 @@ export const CreateTeamDialog = ({
         : applyStoredCreateTeamMemberRuntimePreferences(nextDefaultMembers)
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initialData is checked once on open/draftLoaded
-  }, [open, draftLoaded, t]);
+  }, [memberNameLocale, open, draftLoaded, t]);
 
   useEffect(() => {
     if (!open || !draftLoaded || initialData || syncModelsWithLead || members.length === 0) {
@@ -2472,426 +2463,428 @@ export const CreateTeamDialog = ({
 
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="space-y-1.5 md:col-span-2">
-            <Label htmlFor="team-name">{t('create.fields.teamName')}</Label>
-            <Input
-              id="team-name"
-              className={cn(
-                'h-8 text-xs',
-                (fieldErrors.teamName || teamNameInlineError || isNameTakenByExistingTeam) &&
-                  'border-[var(--field-error-border)] bg-[var(--field-error-bg)] focus-visible:ring-[var(--field-error-border)]'
-              )}
-              value={teamName}
-              onChange={(event) => handleTeamNameChange(event.target.value)}
-              placeholder={suggestedTeamName}
-            />
-            {isNameTakenByExistingTeam ? (
-              <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>
-                {t('create.errors.nameExists')}
-              </p>
-            ) : teamNameInlineError ? (
-              <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>
-                {teamNameInlineError}
-              </p>
-            ) : isNameProvisioning ? (
-              <p className="text-[11px]" style={{ color: 'var(--warning-text)' }}>
-                {t('create.errors.nameLaunching')}
-              </p>
-            ) : fieldErrors.teamName ? (
-              <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>
-                {fieldErrors.teamName}
-              </p>
-            ) : null}
-            {sanitizedTeamName && sanitizedTeamName !== teamName.trim() ? (
-              <p className="text-[11px] text-[var(--color-text-muted)]">
-                {t('create.onDisk')} <span className="font-mono">{sanitizedTeamName}</span>
-              </p>
-            ) : null}
-          </div>
-
-          <div className="md:col-span-2">
-            <TeamRosterEditorSection
-              members={members}
-              onMembersChange={setMembers}
-              fieldError={fieldErrors.members}
-              validateMemberName={validateMemberNameInline}
-              showWorkflow
-              showJsonEditor
-              draftKeyPrefix="createTeam"
-              projectPath={effectiveCwd || null}
-              taskSuggestions={taskSuggestions}
-              teamSuggestions={teamMentionSuggestions}
-              onWorkflowSuggestionsNeeded={enableWorkflowMentionSuggestions}
-              defaultProviderId={selectedProviderId}
-              inheritedProviderId={selectedProviderId}
-              inheritedModel={selectedModel}
-              inheritedEffort={(selectedEffortForCurrentSelection as EffortLevel) || undefined}
-              inheritModelSettingsByDefault
-              lockProviderModel={syncModelsWithLead}
-              forceInheritedModelSettings={syncModelsWithLead}
-              modelLockReason={t('create.memberModelLockReason')}
-              hideMembersContent={soloTeam}
-              providerId={selectedProviderId}
-              model={selectedModel}
-              effort={(selectedEffortForCurrentSelection as EffortLevel) || undefined}
-              limitContext={effectiveAnthropicRuntimeLimitContext}
-              leadProviderNoticeById={teammateRuntimeProviderNoticeById}
-              onProviderChange={setSelectedProviderId}
-              onModelChange={setSelectedModel}
-              onEffortChange={setSelectedEffort}
-              onLimitContextChange={setLimitContext}
-              syncModelsWithTeammates={syncModelsWithLead}
-              onSyncModelsWithTeammatesChange={handleSyncModelsWithLeadChange}
-              showWorktreeIsolationControls={!soloTeam}
-              teammateWorktreeDefault={teammateWorktreeDefault}
-              worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
-              onTeammateWorktreeDefaultChange={setTeammateWorktreeDefault}
-              disableGeminiOption={isGeminiUiFrozen()}
-              leadModelIssueText={leadModelIssueText}
-              memberWarningById={teammateRuntimeCompatibility.memberWarningById}
-              memberModelIssueById={memberModelIssueById}
-              modelAdvisoryReasonByProvider={
-                shortLivedModelIssueReasons.modelAdvisoryReasonByProvider
-              }
-              modelIssueReasonByProvider={shortLivedModelIssueReasons.modelIssueReasonByProvider}
-              modelUnavailableReasonByProvider={
-                shortLivedModelIssueReasons.modelUnavailableReasonByProvider
-              }
-              headerTop={rosterHeaderTop}
-              headerBottom={rosterHeaderBottom}
-              memberListClassName="max-h-[280px] overflow-y-auto"
-            />
-          </div>
-
-          <div
-            className="rounded-lg border border-[var(--color-border-emphasis)] p-4 shadow-sm md:col-span-2"
-            style={{
-              backgroundColor: isLight
-                ? 'color-mix(in srgb, var(--color-surface-overlay) 24%, white 76%)'
-                : 'var(--color-surface-overlay)',
-            }}
-          >
-            <div className="flex items-start gap-3">
-              <Checkbox
-                id="launch-team"
-                className="mt-1 shrink-0"
-                checked={launchTeam}
-                onCheckedChange={(checked) => setLaunchTeam(checked === true)}
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="team-name">{t('create.fields.teamName')}</Label>
+              <Input
+                id="team-name"
+                className={cn(
+                  'h-8 text-xs',
+                  (fieldErrors.teamName || teamNameInlineError || isNameTakenByExistingTeam) &&
+                    'border-[var(--field-error-border)] bg-[var(--field-error-bg)] focus-visible:ring-[var(--field-error-border)]'
+                )}
+                value={teamName}
+                onChange={(event) => handleTeamNameChange(event.target.value)}
+                placeholder={suggestedTeamName}
               />
-              <div className="space-y-1">
-                <Label htmlFor="launch-team" className="cursor-pointer text-sm font-semibold">
-                  {t('create.launchAfterCreate.label')}
-                </Label>
-                <p
-                  className="text-xs"
-                  style={{
-                    color: isLight
-                      ? 'color-mix(in srgb, var(--color-text-muted) 54%, var(--color-text) 46%)'
-                      : 'var(--color-text-muted)',
-                  }}
-                >
-                  {t('create.launchAfterCreate.description')}
+              {isNameTakenByExistingTeam ? (
+                <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>
+                  {t('create.errors.nameExists')}
                 </p>
-              </div>
+              ) : teamNameInlineError ? (
+                <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>
+                  {teamNameInlineError}
+                </p>
+              ) : isNameProvisioning ? (
+                <p className="text-[11px]" style={{ color: 'var(--warning-text)' }}>
+                  {t('create.errors.nameLaunching')}
+                </p>
+              ) : fieldErrors.teamName ? (
+                <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>
+                  {fieldErrors.teamName}
+                </p>
+              ) : null}
+              {sanitizedTeamName && sanitizedTeamName !== teamName.trim() ? (
+                <p className="text-[11px] text-[var(--color-text-muted)]">
+                  {t('create.onDisk')} <span className="font-mono">{sanitizedTeamName}</span>
+                </p>
+              ) : null}
             </div>
 
-            {launchTeam ? (
-              <div className="mt-4 space-y-4">
-                <ProjectPathSelector
-                  cwdMode={cwdMode}
-                  onCwdModeChange={setCwdMode}
-                  selectedProjectPath={selectedProjectPath}
-                  onSelectedProjectPathChange={setSelectedProjectPath}
-                  customCwd={customCwd}
-                  onCustomCwdChange={setCustomCwd}
-                  projects={projects}
-                  projectsLoading={projectsLoading}
-                  projectsError={projectsError}
-                  fieldError={fieldErrors.cwd}
+            <div className="md:col-span-2">
+              <TeamRosterEditorSection
+                members={members}
+                onMembersChange={setMembers}
+                fieldError={fieldErrors.members}
+                validateMemberName={validateMemberNameInline}
+                showWorkflow
+                showJsonEditor
+                draftKeyPrefix="createTeam"
+                projectPath={effectiveCwd || null}
+                taskSuggestions={taskSuggestions}
+                teamSuggestions={teamMentionSuggestions}
+                onWorkflowSuggestionsNeeded={enableWorkflowMentionSuggestions}
+                defaultProviderId={selectedProviderId}
+                inheritedProviderId={selectedProviderId}
+                inheritedModel={selectedModel}
+                inheritedEffort={(selectedEffortForCurrentSelection as EffortLevel) || undefined}
+                inheritModelSettingsByDefault
+                lockProviderModel={syncModelsWithLead}
+                forceInheritedModelSettings={syncModelsWithLead}
+                modelLockReason={t('create.memberModelLockReason')}
+                hideMembersContent={soloTeam}
+                providerId={selectedProviderId}
+                model={selectedModel}
+                effort={(selectedEffortForCurrentSelection as EffortLevel) || undefined}
+                limitContext={effectiveAnthropicRuntimeLimitContext}
+                leadProviderNoticeById={teammateRuntimeProviderNoticeById}
+                onProviderChange={setSelectedProviderId}
+                onModelChange={setSelectedModel}
+                onEffortChange={setSelectedEffort}
+                onLimitContextChange={setLimitContext}
+                syncModelsWithTeammates={syncModelsWithLead}
+                onSyncModelsWithTeammatesChange={handleSyncModelsWithLeadChange}
+                showWorktreeIsolationControls={!soloTeam}
+                teammateWorktreeDefault={teammateWorktreeDefault}
+                worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
+                onTeammateWorktreeDefaultChange={setTeammateWorktreeDefault}
+                disableGeminiOption={isGeminiUiFrozen()}
+                leadModelIssueText={leadModelIssueText}
+                memberWarningById={teammateRuntimeCompatibility.memberWarningById}
+                memberModelIssueById={memberModelIssueById}
+                modelAdvisoryReasonByProvider={
+                  shortLivedModelIssueReasons.modelAdvisoryReasonByProvider
+                }
+                modelIssueReasonByProvider={shortLivedModelIssueReasons.modelIssueReasonByProvider}
+                modelUnavailableReasonByProvider={
+                  shortLivedModelIssueReasons.modelUnavailableReasonByProvider
+                }
+                headerTop={rosterHeaderTop}
+                headerBottom={rosterHeaderBottom}
+                memberListClassName="max-h-[280px] overflow-y-auto"
+              />
+            </div>
+
+            <div
+              className="rounded-lg border border-[var(--color-border-emphasis)] p-4 shadow-sm md:col-span-2"
+              style={{
+                backgroundColor: isLight
+                  ? 'color-mix(in srgb, var(--color-surface-overlay) 24%, white 76%)'
+                  : 'var(--color-surface-overlay)',
+              }}
+            >
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="launch-team"
+                  className="mt-1 shrink-0"
+                  checked={launchTeam}
+                  onCheckedChange={(checked) => setLaunchTeam(checked === true)}
                 />
+                <div className="space-y-1">
+                  <Label htmlFor="launch-team" className="cursor-pointer text-sm font-semibold">
+                    {t('create.launchAfterCreate.label')}
+                  </Label>
+                  <p
+                    className="text-xs"
+                    style={{
+                      color: isLight
+                        ? 'color-mix(in srgb, var(--color-text-muted) 54%, var(--color-text) 46%)'
+                        : 'var(--color-text-muted)',
+                    }}
+                  >
+                    {t('create.launchAfterCreate.description')}
+                  </p>
+                </div>
+              </div>
 
-                <OptionalSettingsSection
-                  title={t('create.optional.launchSettingsTitle')}
-                  description={t('create.optional.launchSettingsDescription')}
-                  summary={launchOptionalSummary}
-                  onOpenChange={(isOpen) => {
-                    if (isOpen) {
-                      enableWorkflowMentionSuggestions();
-                    }
-                  }}
-                >
-                  <div className="space-y-4">
-                    {selectedProviderId === 'anthropic' ? (
-                      <div className="space-y-2">
-                        <AnthropicFastModeSelector
-                          value={selectedFastMode}
-                          onValueChange={setSelectedFastMode}
-                          providerFastModeDefault={anthropicProviderFastModeDefault}
-                          model={selectedModel}
-                          limitContext={effectiveAnthropicRuntimeLimitContext}
-                          id="create-fast-mode"
-                        />
-                        {anthropicRuntimeNotice ? (
-                          <div className="bg-amber-500/8 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-                            <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
-                            <p>{anthropicRuntimeNotice}</p>
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    {selectedProviderId === 'codex' ? (
-                      <div className="space-y-2">
-                        <CodexFastModeSelector
-                          value={selectedFastMode}
-                          onValueChange={setSelectedFastMode}
-                          model={selectedModel}
-                          providerBackendId={
-                            resolveUiOwnedProviderBackendId(
-                              'codex',
-                              runtimeProviderStatusById.get('codex')
-                            ) ?? undefined
+              {launchTeam ? (
+                <div className="mt-4 space-y-4">
+                  <ProjectPathSelector
+                    cwdMode={cwdMode}
+                    onCwdModeChange={setCwdMode}
+                    selectedProjectPath={selectedProjectPath}
+                    onSelectedProjectPathChange={setSelectedProjectPath}
+                    customCwd={customCwd}
+                    onCustomCwdChange={setCustomCwd}
+                    projects={projects}
+                    projectsLoading={projectsLoading}
+                    projectsError={projectsError}
+                    fieldError={fieldErrors.cwd}
+                  />
+
+                  <OptionalSettingsSection
+                    title={t('create.optional.launchSettingsTitle')}
+                    description={t('create.optional.launchSettingsDescription')}
+                    summary={launchOptionalSummary}
+                    onOpenChange={(isOpen) => {
+                      if (isOpen) {
+                        enableWorkflowMentionSuggestions();
+                      }
+                    }}
+                  >
+                    <div className="space-y-4">
+                      {selectedProviderId === 'anthropic' ? (
+                        <div className="space-y-2">
+                          <AnthropicFastModeSelector
+                            value={selectedFastMode}
+                            onValueChange={setSelectedFastMode}
+                            providerFastModeDefault={anthropicProviderFastModeDefault}
+                            model={selectedModel}
+                            limitContext={effectiveAnthropicRuntimeLimitContext}
+                            id="create-fast-mode"
+                          />
+                          {anthropicRuntimeNotice ? (
+                            <div className="bg-amber-500/8 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
+                              <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
+                              <p>{anthropicRuntimeNotice}</p>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {selectedProviderId === 'codex' ? (
+                        <div className="space-y-2">
+                          <CodexFastModeSelector
+                            value={selectedFastMode}
+                            onValueChange={setSelectedFastMode}
+                            model={selectedModel}
+                            providerBackendId={
+                              resolveUiOwnedProviderBackendId(
+                                'codex',
+                                runtimeProviderStatusById.get('codex')
+                              ) ?? undefined
+                            }
+                            id="create-fast-mode"
+                          />
+                          {anthropicRuntimeNotice ? (
+                            <div className="bg-amber-500/8 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
+                              <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
+                              <p>{anthropicRuntimeNotice}</p>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="team-prompt" className="label-optional">
+                          {t('create.fields.prompt')}
+                        </Label>
+                        <MentionableTextarea
+                          id="team-prompt"
+                          className="text-xs"
+                          minRows={3}
+                          maxRows={12}
+                          value={prompt}
+                          onValueChange={promptDraft.setValue}
+                          suggestions={soloTeam ? [] : mentionSuggestions}
+                          teamSuggestions={teamMentionSuggestions}
+                          taskSuggestions={taskSuggestions}
+                          projectPath={effectiveCwd || null}
+                          chips={promptChipDraft.chips}
+                          onChipRemove={promptChipDraft.removeChip}
+                          onFileChipInsert={promptChipDraft.addChip}
+                          placeholder={t('create.placeholders.prompt')}
+                          footerRight={
+                            promptDraft.isSaved ? (
+                              <span className="text-[10px] text-[var(--color-text-muted)]">
+                                {t('create.saved')}
+                              </span>
+                            ) : null
                           }
-                          id="create-fast-mode"
                         />
-                        {anthropicRuntimeNotice ? (
-                          <div className="bg-amber-500/8 flex items-start gap-2 rounded-md border border-amber-500/25 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-                            <Info className="mt-0.5 size-3.5 shrink-0 text-amber-300" />
-                            <p>{anthropicRuntimeNotice}</p>
-                          </div>
-                        ) : null}
                       </div>
-                    ) : null}
 
-                    <div className="space-y-1.5">
-                      <Label htmlFor="team-prompt" className="label-optional">
-                        {t('create.fields.prompt')}
-                      </Label>
-                      <MentionableTextarea
-                        id="team-prompt"
-                        className="text-xs"
-                        minRows={3}
-                        maxRows={12}
-                        value={prompt}
-                        onValueChange={promptDraft.setValue}
-                        suggestions={soloTeam ? [] : mentionSuggestions}
-                        teamSuggestions={teamMentionSuggestions}
-                        taskSuggestions={taskSuggestions}
-                        projectPath={effectiveCwd || null}
-                        chips={promptChipDraft.chips}
-                        onChipRemove={promptChipDraft.removeChip}
-                        onFileChipInsert={promptChipDraft.addChip}
-                        placeholder={t('create.placeholders.prompt')}
-                        footerRight={
-                          promptDraft.isSaved ? (
-                            <span className="text-[10px] text-[var(--color-text-muted)]">
-                              {t('create.saved')}
-                            </span>
-                          ) : null
-                        }
+                      <SkipPermissionsCheckbox
+                        id="create-skip-permissions"
+                        checked={skipPermissions}
+                        onCheckedChange={setSkipPermissions}
+                      />
+
+                      <AdvancedCliSection
+                        teamName={advancedKey}
+                        internalArgs={internalArgs}
+                        worktreeEnabled={worktreeEnabled}
+                        onWorktreeEnabledChange={setWorktreeEnabled}
+                        worktreeName={worktreeName}
+                        onWorktreeNameChange={setWorktreeName}
+                        customArgs={customArgs}
+                        onCustomArgsChange={setCustomArgs}
                       />
                     </div>
-
-                    <SkipPermissionsCheckbox
-                      id="create-skip-permissions"
-                      checked={skipPermissions}
-                      onCheckedChange={setSkipPermissions}
-                    />
-
-                    <AdvancedCliSection
-                      teamName={advancedKey}
-                      internalArgs={internalArgs}
-                      worktreeEnabled={worktreeEnabled}
-                      onWorktreeEnabledChange={setWorktreeEnabled}
-                      worktreeName={worktreeName}
-                      onWorktreeNameChange={setWorktreeName}
-                      customArgs={customArgs}
-                      onCustomArgsChange={setCustomArgs}
-                    />
-                  </div>
-                </OptionalSettingsSection>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="md:col-span-2">
-            <OptionalSettingsSection
-              title={t('create.organizationPlacement.title')}
-              description={t('create.organizationPlacement.description')}
-              summary={organizationPlacementSummary}
-            >
-              <div className="space-y-3">
-                <div className="flex items-start gap-3">
-                  <Checkbox
-                    id="organization-placement-enabled"
-                    className="mt-1 shrink-0"
-                    checked={organizationPlacementEnabled}
-                    disabled={
-                      organizationStructureLoading ||
-                      organizationPlacementOrganizations.length === 0
-                    }
-                    onCheckedChange={(checked) => setOrganizationPlacementEnabled(checked === true)}
-                  />
-                  <div className="min-w-0 space-y-1">
-                    <Label
-                      htmlFor="organization-placement-enabled"
-                      className="cursor-pointer text-sm font-semibold"
-                    >
-                      {t('create.organizationPlacement.addToOrganization')}
-                    </Label>
-                    {organizationPlacementError ? (
-                      <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>
-                        {organizationPlacementError}
-                      </p>
-                    ) : null}
-                  </div>
+                  </OptionalSettingsSection>
                 </div>
+              ) : null}
+            </div>
 
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <div className="space-y-0.5">
-                      <Label className="text-xs">
-                        {t('create.organizationPlacement.organizationLabel')}
-                      </Label>
-                      <p className="text-[11px] text-[var(--color-text-muted)]">
-                        {t('create.organizationPlacement.organizationHelp')}
-                      </p>
-                    </div>
-                    <Select
-                      value={activePlacementOrganization?.id ?? ''}
+            <div className="md:col-span-2">
+              <OptionalSettingsSection
+                title={t('create.organizationPlacement.title')}
+                description={t('create.organizationPlacement.description')}
+                summary={organizationPlacementSummary}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="organization-placement-enabled"
+                      className="mt-1 shrink-0"
+                      checked={organizationPlacementEnabled}
                       disabled={
-                        !organizationPlacementEnabled ||
+                        organizationStructureLoading ||
                         organizationPlacementOrganizations.length === 0
                       }
-                      onValueChange={(value) => {
-                        setOrganizationPlacementOrganizationId(value);
-                        const organization = organizationPlacementOrganizations.find(
-                          (candidate) => candidate.id === value
-                        );
-                        setOrganizationPlacementParentId(organization?.rootNodeId ?? '');
-                      }}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue
-                          placeholder={t('create.organizationPlacement.organizationPlaceholder')}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {organizationPlacementOrganizations.map((organization) => (
-                          <SelectItem key={organization.id} value={organization.id}>
-                            {organization.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      onCheckedChange={(checked) =>
+                        setOrganizationPlacementEnabled(checked === true)
+                      }
+                    />
+                    <div className="min-w-0 space-y-1">
+                      <Label
+                        htmlFor="organization-placement-enabled"
+                        className="cursor-pointer text-sm font-semibold"
+                      >
+                        {t('create.organizationPlacement.addToOrganization')}
+                      </Label>
+                      {organizationPlacementError ? (
+                        <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>
+                          {organizationPlacementError}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <div className="space-y-0.5">
+                        <Label className="text-xs">
+                          {t('create.organizationPlacement.organizationLabel')}
+                        </Label>
+                        <p className="text-[11px] text-[var(--color-text-muted)]">
+                          {t('create.organizationPlacement.organizationHelp')}
+                        </p>
+                      </div>
+                      <Select
+                        value={activePlacementOrganization?.id ?? ''}
+                        disabled={
+                          !organizationPlacementEnabled ||
+                          organizationPlacementOrganizations.length === 0
+                        }
+                        onValueChange={(value) => {
+                          setOrganizationPlacementOrganizationId(value);
+                          const organization = organizationPlacementOrganizations.find(
+                            (candidate) => candidate.id === value
+                          );
+                          setOrganizationPlacementParentId(organization?.rootNodeId ?? '');
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue
+                            placeholder={t('create.organizationPlacement.organizationPlaceholder')}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {organizationPlacementOrganizations.map((organization) => (
+                            <SelectItem key={organization.id} value={organization.id}>
+                              {organization.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="space-y-0.5">
+                        <Label className="text-xs">
+                          {t('create.organizationPlacement.groupOrRootLabel')}
+                        </Label>
+                        <p className="text-[11px] text-[var(--color-text-muted)]">
+                          {t('create.organizationPlacement.groupOrRootHelp')}
+                        </p>
+                      </div>
+                      <Select
+                        value={activePlacementParent?.id ?? ''}
+                        disabled={
+                          !organizationPlacementEnabled ||
+                          organizationPlacementParentOptions.length === 0
+                        }
+                        onValueChange={setOrganizationPlacementParentId}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue
+                            placeholder={t('create.organizationPlacement.groupOrRootPlaceholder')}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {organizationPlacementParentOptions.map((option) => (
+                            <SelectItem key={option.unit.id} value={option.unit.id}>
+                              <span
+                                className="flex min-w-0 items-center gap-2"
+                                style={{ paddingLeft: `${Math.min(option.depth, 6) * 12}px` }}
+                              >
+                                <span className="truncate">
+                                  {getOrganizationUnitLabel(option.unit)}
+                                </span>
+                                <span className="shrink-0 text-[10px] uppercase tracking-wide text-[var(--color-text-muted)]">
+                                  {t(getOrganizationPlacementUnitKindKey(option.unit))}
+                                </span>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              </OptionalSettingsSection>
+            </div>
+
+            <div className="md:col-span-2">
+              <OptionalSettingsSection
+                title={t('create.optional.teamDetailsTitle')}
+                description={t('create.optional.teamDetailsDescription')}
+                summary={teamDetailsSummary}
+              >
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="team-description" className="label-optional">
+                      {t('create.fields.description')}
+                    </Label>
+                    <AutoResizeTextarea
+                      id="team-description"
+                      className="text-xs"
+                      minRows={2}
+                      maxRows={8}
+                      value={description}
+                      onChange={(event) => descriptionDraft.setValue(event.target.value)}
+                      placeholder={t('create.placeholders.description')}
+                    />
+                    {descriptionDraft.isSaved ? (
+                      <span className="text-[10px] text-[var(--color-text-muted)]">
+                        {t('create.saved')}
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className="space-y-1.5">
-                    <div className="space-y-0.5">
-                      <Label className="text-xs">
-                        {t('create.organizationPlacement.groupOrRootLabel')}
-                      </Label>
-                      <p className="text-[11px] text-[var(--color-text-muted)]">
-                        {t('create.organizationPlacement.groupOrRootHelp')}
-                      </p>
-                    </div>
-                    <Select
-                      value={activePlacementParent?.id ?? ''}
-                      disabled={
-                        !organizationPlacementEnabled ||
-                        organizationPlacementParentOptions.length === 0
-                      }
-                      onValueChange={setOrganizationPlacementParentId}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue
-                          placeholder={t('create.organizationPlacement.groupOrRootPlaceholder')}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {organizationPlacementParentOptions.map((option) => (
-                          <SelectItem key={option.unit.id} value={option.unit.id}>
+                    <Label className="label-optional">{t('create.fields.color')}</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {TEAM_COLOR_NAMES.map((colorName) => {
+                        const colorSet = getTeamColorSet(colorName);
+                        const isSelected = teamColor === colorName;
+                        return (
+                          <button
+                            key={colorName}
+                            type="button"
+                            className={cn(
+                              'flex size-7 items-center justify-center rounded-full border-2 transition-all',
+                              isSelected ? 'scale-110' : 'opacity-70 hover:opacity-100'
+                            )}
+                            style={{
+                              backgroundColor: getThemedBadge(colorSet, isLight),
+                              borderColor: isSelected ? colorSet.border : 'transparent',
+                            }}
+                            title={colorName}
+                            onClick={() => setTeamColor(isSelected ? '' : colorName)}
+                          >
                             <span
-                              className="flex min-w-0 items-center gap-2"
-                              style={{ paddingLeft: `${Math.min(option.depth, 6) * 12}px` }}
-                            >
-                              <span className="truncate">
-                                {getOrganizationUnitLabel(option.unit)}
-                              </span>
-                              <span className="shrink-0 text-[10px] uppercase tracking-wide text-[var(--color-text-muted)]">
-                                {t(getOrganizationPlacementUnitKindKey(option.unit))}
-                              </span>
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                              className="size-3.5 rounded-full"
+                              style={{ backgroundColor: colorSet.border }}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </OptionalSettingsSection>
+              </OptionalSettingsSection>
+            </div>
           </div>
-
-          <div className="md:col-span-2">
-            <OptionalSettingsSection
-              title={t('create.optional.teamDetailsTitle')}
-              description={t('create.optional.teamDetailsDescription')}
-              summary={teamDetailsSummary}
-            >
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="team-description" className="label-optional">
-                    {t('create.fields.description')}
-                  </Label>
-                  <AutoResizeTextarea
-                    id="team-description"
-                    className="text-xs"
-                    minRows={2}
-                    maxRows={8}
-                    value={description}
-                    onChange={(event) => descriptionDraft.setValue(event.target.value)}
-                    placeholder={t('create.placeholders.description')}
-                  />
-                  {descriptionDraft.isSaved ? (
-                    <span className="text-[10px] text-[var(--color-text-muted)]">
-                      {t('create.saved')}
-                    </span>
-                  ) : null}
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="label-optional">{t('create.fields.color')}</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {TEAM_COLOR_NAMES.map((colorName) => {
-                      const colorSet = getTeamColorSet(colorName);
-                      const isSelected = teamColor === colorName;
-                      return (
-                        <button
-                          key={colorName}
-                          type="button"
-                          className={cn(
-                            'flex size-7 items-center justify-center rounded-full border-2 transition-all',
-                            isSelected ? 'scale-110' : 'opacity-70 hover:opacity-100'
-                          )}
-                          style={{
-                            backgroundColor: getThemedBadge(colorSet, isLight),
-                            borderColor: isSelected ? colorSet.border : 'transparent',
-                          }}
-                          title={colorName}
-                          onClick={() => setTeamColor(isSelected ? '' : colorName)}
-                        >
-                          <span
-                            className="size-3.5 rounded-full"
-                            style={{ backgroundColor: colorSet.border }}
-                          />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </OptionalSettingsSection>
-          </div>
-        </div>
         </div>
 
         {activeError ? (

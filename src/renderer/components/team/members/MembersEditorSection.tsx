@@ -15,7 +15,7 @@ import { GitBranch, Plug, Plus } from 'lucide-react';
 import { MembersJsonEditor } from '../dialogs/MembersJsonEditor';
 
 import { MemberDraftRow } from './MemberDraftRow';
-import { getNextSuggestedMemberName } from './memberNameSets';
+import { getNextSuggestedMemberName, resolveMemberNameLocale } from './memberNameSets';
 import {
   buildMemberDraftColorMap,
   buildMemberDraftSuggestions,
@@ -202,7 +202,8 @@ export const MembersEditorSection = ({
   onTeammateWorktreeDefaultChange,
   memberListClassName,
 }: MembersEditorSectionProps): React.JSX.Element => {
-  const { t } = useAppTranslation('team');
+  const { t, resolvedLanguage } = useAppTranslation('team');
+  const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
   const [jsonEditorOpen, setJsonEditorOpen] = useState(false);
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
@@ -403,7 +404,10 @@ export const MembersEditorSection = ({
   );
 
   const addMember = (): void => {
-    const suggestedName = getNextSuggestedMemberName(members.map((member) => member.name));
+    const suggestedName = getNextSuggestedMemberName(
+      members.map((member) => member.name),
+      memberNameLocale
+    );
     emitMembersChange([
       ...members,
       createMemberDraft(
@@ -470,9 +474,10 @@ export const MembersEditorSection = ({
       </div>
       {headerExtra}
       {!hideContent ? (
-        <p className="text-[10px] leading-relaxed text-[var(--color-text-muted)]">
-          {t('roleSelect.selectionHint')}
-        </p>
+        <div className="space-y-1 text-[10px] leading-relaxed text-[var(--color-text-muted)]">
+          <p>{t('roleSelect.selectionHint')}</p>
+          <p>{t('memberNames.concept')}</p>
+        </div>
       ) : null}
       {!hideContent && (
         <>
