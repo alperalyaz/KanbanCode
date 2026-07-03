@@ -56,6 +56,30 @@ export function getDefaultCreateTeamMemberConfigs(
   return DEFAULT_CREATE_TEAM_MEMBERS_BY_LOCALE[locale];
 }
 
+const LEGACY_DEFAULT_CREATE_TEAM_MEMBER_NAMES = ['alice', 'tom', 'bob', 'jack'] as const;
+
+export function isLegacyDefaultCreateTeamMemberNames(names: readonly string[]): boolean {
+  if (names.length !== LEGACY_DEFAULT_CREATE_TEAM_MEMBER_NAMES.length) {
+    return false;
+  }
+
+  const normalized = names.map(normalizeMemberName);
+  return LEGACY_DEFAULT_CREATE_TEAM_MEMBER_NAMES.every(
+    (legacyName, index) => normalized[index] === legacyName
+  );
+}
+
+export function remapLegacyDefaultCreateTeamMemberNames(
+  names: readonly string[],
+  locale: ResolvedAppLocale = 'en'
+): readonly string[] {
+  if (!isLegacyDefaultCreateTeamMemberNames(names)) {
+    return names;
+  }
+
+  return getDefaultCreateTeamMemberConfigs(locale).map((member) => member.name);
+}
+
 function normalizeMemberName(name: string): string {
   return name.trim().toLowerCase();
 }

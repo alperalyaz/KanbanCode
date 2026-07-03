@@ -343,6 +343,8 @@ interface ValidationResult {
 
 import {
   getDefaultCreateTeamMemberConfigs,
+  isLegacyDefaultCreateTeamMemberNames,
+  remapLegacyDefaultCreateTeamMemberNames,
   resolveMemberNameLocale,
 } from '@renderer/components/team/members/memberNameSets';
 import { CUSTOM_ROLE, PRESET_ROLES } from '@renderer/constants/teamRoles';
@@ -589,6 +591,7 @@ export const CreateTeamDialog = ({
   const prepareUnmountGenerationRef = useRef(0);
   const appliedDefaultProjectPathRef = useRef<string | null>(null);
   const lastAutoDescriptionRef = useRef<string | null>(null);
+  const legacyMemberNamesMigratedRef = useRef(false);
   const [fieldErrors, setFieldErrors] = useState<{
     teamName?: string;
     members?: string;
@@ -1571,6 +1574,35 @@ export const CreateTeamDialog = ({
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initialData is checked once on open/draftLoaded
   }, [memberNameLocale, open, draftLoaded, t]);
+
+  useEffect(() => {
+    if (!open) {
+      legacyMemberNamesMigratedRef.current = false;
+      return;
+    }
+    if (
+      !draftLoaded ||
+      initialData ||
+      members.length === 0 ||
+      legacyMemberNamesMigratedRef.current
+    ) {
+      return;
+    }
+
+    const currentNames = members.map((member) => member.name);
+    if (!isLegacyDefaultCreateTeamMemberNames(currentNames)) {
+      return;
+    }
+
+    const remappedNames = remapLegacyDefaultCreateTeamMemberNames(currentNames, memberNameLocale);
+    legacyMemberNamesMigratedRef.current = true;
+    setMembers(
+      members.map((member, index) => ({
+        ...member,
+        name: remappedNames[index] ?? member.name,
+      }))
+    );
+  }, [draftLoaded, initialData, memberNameLocale, members, open, setMembers]);
 
   useEffect(() => {
     if (!open || !draftLoaded || initialData || syncModelsWithLead || members.length === 0) {

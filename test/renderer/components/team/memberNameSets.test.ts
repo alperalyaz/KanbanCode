@@ -1,6 +1,8 @@
 import {
   getDefaultCreateTeamMemberConfigs,
   getNextSuggestedMemberName,
+  isLegacyDefaultCreateTeamMemberNames,
+  remapLegacyDefaultCreateTeamMemberNames,
   resolveMemberNameLocale,
 } from '@renderer/components/team/members/memberNameSets';
 import { describe, expect, it } from 'vitest';
@@ -43,5 +45,18 @@ describe('memberNameSets', () => {
       'galadriel'
     );
     expect(getNextSuggestedMemberName(['frodo', 'frodo-2'], 'en')).toBe('sam');
+  });
+
+  it('detects and remaps legacy default create-team member names', () => {
+    expect(isLegacyDefaultCreateTeamMemberNames(['alice', 'tom', 'bob', 'jack'])).toBe(true);
+    expect(isLegacyDefaultCreateTeamMemberNames(['Alice', 'Tom', 'Bob', 'Jack'])).toBe(true);
+    expect(isLegacyDefaultCreateTeamMemberNames(['frodo', 'sam', 'aragorn', 'legolas'])).toBe(false);
+
+    expect(remapLegacyDefaultCreateTeamMemberNames(['alice', 'tom', 'bob', 'jack'], 'tr')).toEqual([
+      'selcan',
+      'koroglu',
+      'alpamis',
+      'bogac',
+    ]);
   });
 });
