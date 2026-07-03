@@ -37,6 +37,24 @@ Core to keep: team creation + agent process management + kanban board + messagin
 
 ## Status log
 
+- **2026-07-03 (cloud session)** — **Dynamic model support (owner request: "no app update for new LLMs").**
+  (1) Runtime pricing refresh: new `PricingRefreshService` (main) fetches the public LiteLLM
+  pricing JSON at most once per day, filters to claude/codex/gpt/gemini families, caches it
+  atomically as `userData/pricing-runtime.json`, and merges it over the bundled
+  `resources/pricing.json` via new `applyPricingOverrides()` in `@shared/utils/pricing`.
+  Renderer pulls overrides once at startup (`pricing:getRuntimeOverrides`) and live-updates on
+  `pricing:runtimeUpdated`. Offline → bundled/cached data, never a failure. `.github/SECURITY.md`
+  network table updated to disclose the fetch (and stale SSH row removed).
+  (2) Model picker fix: my earlier Sonnet 5 commit had raised the Anthropic alias label
+  *floors* (`ANTHROPIC_ALIAS_LABELS`) to "Sonnet 5", breaking 3 tests — the floors are
+  deliberately minimum-guaranteed versions (runtime catalog display names win when healthy;
+  floors only guard stale catalogs). Reverted floors to Opus 4.8 / Sonnet 4.6 / Haiku 4.5 with
+  an explanatory comment; explicit `claude-sonnet-5` IDs stay supported. The selector already
+  merges the runtime model catalog (catalog membership unlocks models not in the hardcoded
+  list — `teamModelAvailability.ts`), so new Anthropic models appear without an app update.
+  Verified: typecheck green; pricing suites (114), teamModel suites, and the 3 previously
+  failing files (77) all pass.
+
 - **2026-07-03 (cloud session)** — **Phase 4 cosmetics batch (owner requests).**
   (1) Animated splash "teams scene" removed entirely — `splashScene.ts` (1015 lines) deleted,
   the ~900-line inline canvas copy stripped from `index.html`, artificial splash hold times

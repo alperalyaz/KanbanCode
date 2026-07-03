@@ -751,6 +751,11 @@ export interface WindowsElevationStatus {
 export interface ElectronAPI extends RecentProjectsElectronApi, CodexAccountElectronApi {
   startup?: AppStartupAPI;
   telemetry: TelemetryAPI;
+  /** Runtime-refreshed model pricing (daily LiteLLM fetch with bundled fallback). */
+  pricing?: {
+    getRuntimeOverrides: () => Promise<Record<string, unknown> | null>;
+    onRuntimeUpdated: (callback: (models: Record<string, unknown>) => void) => () => void;
+  };
   getAppVersion: () => Promise<string>;
   getWindowsElevationStatus: () => Promise<WindowsElevationStatus>;
   getProjects: () => Promise<Project[]>;

@@ -233,6 +233,7 @@ import {
   NotificationManager,
   OpenCodeRuntimeInstallerService,
   OpenCodeReadinessBridge,
+  PricingRefreshService,
   OpenCodeTeamRuntimeAdapter,
   ServiceContext,
   ServiceContextRegistry,
@@ -951,6 +952,7 @@ let teamProvisioningService: TeamProvisioningService;
 let launchIoGovernor: LaunchIoGovernor | null = null;
 let cliInstallerService: CliInstallerService;
 let openCodeRuntimeInstallerService: OpenCodeRuntimeInstallerService;
+let pricingRefreshService: PricingRefreshService | null = null;
 let httpServer: HttpServer;
 let schedulerService: SchedulerService;
 let teamTaskStallMonitor: TeamTaskStallMonitor | null = null;
@@ -1659,6 +1661,10 @@ async function initializeServices(): Promise<void> {
   });
   cliInstallerService = new CliInstallerService();
   openCodeRuntimeInstallerService = new OpenCodeRuntimeInstallerService();
+
+  // Runtime model pricing refresh (cached in userData, daily TTL, bundled fallback).
+  pricingRefreshService = new PricingRefreshService({ cacheDir: app.getPath('userData') });
+  void pricingRefreshService.initialize();
   const teamMemberLogsFinder = new TeamMemberLogsFinder();
   const teamLogSourceTracker = new TeamLogSourceTracker(teamMemberLogsFinder);
   const taskLogConfigReader = new TeamConfigReader();
@@ -2428,7 +2434,8 @@ async function initializeServices(): Promise<void> {
     skillsWatcherService,
     crossTeamService,
     teamBackupService ?? undefined,
-    launchIoGovernor ?? undefined
+    launchIoGovernor ?? undefined,
+    pricingRefreshService ?? undefined
   );
   registerCodexAccountIpc(ipcMain, codexAccountFeature);
   registerRecentProjectsIpc(ipcMain, recentProjectsFeature);

@@ -27,6 +27,16 @@ export const APP_STARTUP_PROGRESS = 'appStartup:progress';
 export const APP_GET_WINDOWS_ELEVATION_STATUS = 'app:getWindowsElevationStatus';
 
 // =============================================================================
+// Pricing Channels
+// =============================================================================
+
+/** Renderer -> main: get runtime-refreshed model pricing overrides */
+export const PRICING_GET_RUNTIME_OVERRIDES = 'pricing:getRuntimeOverrides';
+
+/** Main -> renderer: runtime pricing refresh completed */
+export const PRICING_RUNTIME_UPDATED = 'pricing:runtimeUpdated';
+
+// =============================================================================
 // Telemetry Channels
 // =============================================================================
 

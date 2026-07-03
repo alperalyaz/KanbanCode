@@ -23,6 +23,7 @@ export * from './HttpServer';
 export * from './LocalFileSystemProvider';
 export * from './NotificationManager';
 export * from './OpenCodeRuntimeInstallerService';
+export * from './PricingRefreshService';
 export * from './ServiceContext';
 export * from './ServiceContextRegistry';
 export * from './TriggerManager';

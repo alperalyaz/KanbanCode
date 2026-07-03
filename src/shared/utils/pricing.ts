@@ -21,17 +21,40 @@ export interface DisplayPricing {
 
 const TIER_THRESHOLD = 200_000;
 
-const PRICING_MAP = pricingData as Record<string, unknown>;
+const BUNDLED_PRICING = pricingData as Record<string, unknown>;
 const PRICING_ALIASES: Record<string, string> = {
   'gpt-5.3-codex-spark': 'gpt-5.3-codex',
 };
 
+// Runtime-refreshed pricing (fetched daily by the main process, delivered to the
+// renderer over IPC) is merged over the bundled snapshot so new models get
+// priced without an app update. Bundled data stays as the offline fallback.
+let PRICING_MAP: Record<string, unknown> = BUNDLED_PRICING;
+
 // Pre-compute lowercase key map for O(1) case-insensitive lookups
-const LOWERCASE_KEY_MAP = new Map<string, string>();
-for (const key of Object.keys(PRICING_MAP)) {
-  if (!LOWERCASE_KEY_MAP.has(key.toLowerCase())) {
-    LOWERCASE_KEY_MAP.set(key.toLowerCase(), key);
+let LOWERCASE_KEY_MAP = buildLowercaseKeyMap(PRICING_MAP);
+
+function buildLowercaseKeyMap(map: Record<string, unknown>): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const key of Object.keys(map)) {
+    if (!result.has(key.toLowerCase())) {
+      result.set(key.toLowerCase(), key);
+    }
   }
+  return result;
+}
+
+/**
+ * Merges runtime-fetched pricing entries over the bundled snapshot.
+ * Invalid/empty input resets to the bundled data.
+ */
+export function applyPricingOverrides(overrides: Record<string, unknown> | null): void {
+  if (!overrides || typeof overrides !== 'object' || Object.keys(overrides).length === 0) {
+    PRICING_MAP = BUNDLED_PRICING;
+  } else {
+    PRICING_MAP = { ...BUNDLED_PRICING, ...overrides };
+  }
+  LOWERCASE_KEY_MAP = buildLowercaseKeyMap(PRICING_MAP);
 }
 
 function isLiteLLMPricing(entry: unknown): entry is LiteLLMPricing {

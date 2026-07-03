@@ -50,6 +50,11 @@ import {
   removeOpenCodeRuntimeHandlers,
 } from './openCodeRuntime';
 import {
+  initializePricingHandlers,
+  registerPricingHandlers,
+  removePricingHandlers,
+} from './pricing';
+import {
   initializeProjectHandlers,
   registerProjectHandlers,
   removeProjectHandlers,
@@ -117,6 +122,7 @@ import type { SkillsMutationService } from '../services/extensions/skills/Skills
 import type { SkillsWatcherService } from '../services/extensions/skills/SkillsWatcherService';
 import type { McpHealthDiagnosticsService } from '../services/extensions/state/McpHealthDiagnosticsService';
 import type { HttpServer } from '../services/infrastructure/HttpServer';
+import type { PricingRefreshService } from '../services/infrastructure/PricingRefreshService';
 import type { SchedulerService } from '../services/schedule/SchedulerService';
 import type { CrossTeamService } from '../services/team/CrossTeamService';
 import type { LaunchIoGovernor } from '../services/team/LaunchIoGovernor';
@@ -168,7 +174,8 @@ export function initializeIpcHandlers(
   skillsWatcherService?: SkillsWatcherService,
   crossTeamService?: CrossTeamService,
   teamBackupService?: TeamBackupService,
-  launchIoGovernor?: LaunchIoGovernor
+  launchIoGovernor?: LaunchIoGovernor,
+  pricingRefreshService?: PricingRefreshService
 ): void {
   // Initialize domain handlers with registry
   initializeProjectHandlers(registry);
@@ -224,6 +231,9 @@ export function initializeIpcHandlers(
   if (crossTeamService) {
     initializeCrossTeamHandlers(crossTeamService);
   }
+  if (pricingRefreshService) {
+    initializePricingHandlers(pricingRefreshService);
+  }
 
   if (changeExtractor) {
     initializeReviewHandlers({
@@ -269,6 +279,9 @@ export function initializeIpcHandlers(
   if (crossTeamService) {
     registerCrossTeamHandlers(ipcMain);
   }
+  if (pricingRefreshService) {
+    registerPricingHandlers(ipcMain);
+  }
 
   logger.info('All handlers registered');
 }
@@ -302,6 +315,7 @@ export function removeIpcHandlers(): void {
   removeExtensionHandlers(ipcMain);
   removeSkillsHandlers(ipcMain);
   removeCrossTeamHandlers(ipcMain);
+  removePricingHandlers(ipcMain);
 
   logger.info('All handlers removed');
 }

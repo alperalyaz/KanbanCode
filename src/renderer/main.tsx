@@ -6,6 +6,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 
 import { registerDynamicImportRecovery } from './utils/dynamicImportRecovery';
+import { initializeRuntimePricing } from './utils/runtimePricing';
 import { App } from './App';
 import { initSentryRenderer } from './sentry';
 import { initializeNotificationListeners } from './store';
@@ -181,6 +182,7 @@ function mountApp(): void {
   if (!window.__claudeTeamsUiDidInit) {
     window.__claudeTeamsUiDidInit = true;
     initializeNotificationListeners();
+    initializeRuntimePricing();
   }
 
   root = ReactDOM.createRoot(document.getElementById('root')!);

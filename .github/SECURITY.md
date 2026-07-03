@@ -2,24 +2,24 @@
 
 ## Network Activity
 
-Agent Teams makes **zero** outbound network calls to third-party servers. There is no telemetry, analytics, tracking, or data exfiltration of any kind.
+KanbanCode makes no outbound network calls other than the ones listed below. There is no telemetry, analytics, tracking, or data exfiltration of any kind.
 
 | Network activity | When | Mode | User-initiated |
 |---|---|---|---|
 | GitHub Releases API (auto-updater) | App launch | Electron only | No (automatic) |
-| SSH connections | Settings > SSH | Electron only | Yes |
+| Model pricing refresh (public LiteLLM JSON on `raw.githubusercontent.com`, no auth, nothing sent besides the request) | App launch, at most once per day; cached locally, bundled fallback when offline | Electron only | No (automatic) |
 | HTTP server (`127.0.0.1` or `0.0.0.0`) | When enabled | Both | Yes |
 
 ### Standalone / Docker mode
 
-In standalone mode (Docker or `node dist-standalone/index.cjs`), the auto-updater and SSH features are disabled entirely. The only network activity is the HTTP server listening for incoming connections on the configured port.
+In standalone mode (Docker or `node dist-standalone/index.cjs`), the auto-updater and pricing refresh are disabled entirely. The only network activity is the HTTP server listening for incoming connections on the configured port.
 
 ## Data Handling
 
 - All session data is read **locally** from `~/.claude/` — it never leaves your machine.
 - The app does not write to session files. Volume mounts in Docker use `:ro` (read-only) by default.
 - Configuration is stored at `~/.claude/agent-teams-config.json` on the local filesystem.
-- No data is sent to Anthropic, GitHub (other than the auto-updater in Electron mode), or any other third party.
+- No data is sent to Anthropic, GitHub (other than the auto-updater and the pricing refresh download in Electron mode), or any other third party.
 
 ## Docker Network Isolation
 

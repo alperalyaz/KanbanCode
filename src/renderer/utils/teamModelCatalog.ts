@@ -49,9 +49,14 @@ const TEAM_PROVIDER_LABELS: Record<SupportedProviderId, string> = {
   opencode: 'OpenCode',
 };
 
+// Alias labels are FLOORS, not "latest": with a healthy runtime catalog the
+// CLI-reported display name wins (see getRuntimeSafeAnthropicAliasLabel);
+// these only render for catalog-less runtimes and guard against stale
+// catalogs downgrading the label. Keep them at the minimum version the
+// alias is guaranteed to serve.
 const ANTHROPIC_ALIAS_LABELS = {
   opus: 'Opus 4.8',
-  sonnet: 'Sonnet 5',
+  sonnet: 'Sonnet 4.6',
   haiku: 'Haiku 4.5',
 } as const;
 
@@ -86,7 +91,7 @@ const TEAM_MODEL_LABEL_OVERRIDES: Record<string, string> = {
   default: 'Default',
   ...ANTHROPIC_ALIAS_LABELS,
   'opus[1m]': 'Opus 4.8 (1M)',
-  'sonnet[1m]': 'Sonnet 5 (1M)',
+  'sonnet[1m]': 'Sonnet 4.6 (1M)',
   'claude-opus-4-8': 'Opus 4.8',
   'claude-opus-4-8[1m]': 'Opus 4.8 (1M)',
   'claude-opus-4-7': 'Opus 4.7',
@@ -120,8 +125,7 @@ const TEAM_PROVIDER_MODEL_OPTIONS: Record<SupportedProviderId, readonly TeamProv
       { value: 'opus', label: 'Opus 4.8', badgeLabel: 'Opus 4.8' },
       { value: 'claude-opus-4-7', label: 'Opus 4.7', badgeLabel: 'Opus 4.7' },
       { value: 'claude-opus-4-6', label: 'Opus 4.6', badgeLabel: 'Opus 4.6' },
-      { value: 'sonnet', label: 'Sonnet 5', badgeLabel: 'Sonnet 5' },
-      { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6', badgeLabel: 'Sonnet 4.6' },
+      { value: 'sonnet', label: 'Sonnet 4.6', badgeLabel: 'Sonnet 4.6' },
       { value: 'haiku', label: 'Haiku 4.5', badgeLabel: 'Haiku 4.5' },
     ],
     codex: [

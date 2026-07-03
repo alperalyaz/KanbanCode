@@ -52,6 +52,8 @@ import {
   PLUGIN_GET_README,
   PLUGIN_INSTALL,
   PLUGIN_UNINSTALL,
+  PRICING_GET_RUNTIME_OVERRIDES,
+  PRICING_RUNTIME_UPDATED,
   PROJECT_LIST_FILES,
   RENDERER_BOOT,
   RENDERER_HEARTBEAT,
@@ -465,6 +467,25 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.on(APP_STARTUP_PROGRESS, listener);
       return (): void => {
         ipcRenderer.removeListener(APP_STARTUP_PROGRESS, listener);
+      };
+    },
+  },
+  pricing: {
+    getRuntimeOverrides: () =>
+      ipcRenderer.invoke(PRICING_GET_RUNTIME_OVERRIDES) as Promise<Record<
+        string,
+        unknown
+      > | null>,
+    onRuntimeUpdated: (callback: (models: Record<string, unknown>) => void): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        models: Record<string, unknown>
+      ): void => {
+        callback(models);
+      };
+      ipcRenderer.on(PRICING_RUNTIME_UPDATED, listener);
+      return (): void => {
+        ipcRenderer.removeListener(PRICING_RUNTIME_UPDATED, listener);
       };
     },
   },

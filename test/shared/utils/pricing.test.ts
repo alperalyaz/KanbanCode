@@ -1,9 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   getPricing,
   calculateTieredCost,
   calculateMessageCost,
   getDisplayPricing,
+  applyPricingOverrides,
 } from '@shared/utils/pricing';
 
 describe('Shared Pricing Module', () => {
@@ -96,6 +97,63 @@ describe('Shared Pricing Module', () => {
     it('should include cache token costs', () => {
       const cost = calculateMessageCost('claude-4-sonnet-20250514', 1000, 500, 300, 200);
       expect(cost).toBeGreaterThan(0.0105);
+    });
+  });
+
+  describe('applyPricingOverrides', () => {
+    afterEach(() => {
+      applyPricingOverrides(null);
+    });
+
+    it('adds pricing for models missing from the bundled snapshot', () => {
+      expect(getPricing('claude-future-model-99')).toBeNull();
+
+      applyPricingOverrides({
+        'claude-future-model-99': {
+          input_cost_per_token: 0.000005,
+          output_cost_per_token: 0.000025,
+        },
+      });
+
+      const pricing = getPricing('claude-future-model-99');
+      expect(pricing).not.toBeNull();
+      expect(pricing!.input_cost_per_token).toBe(0.000005);
+    });
+
+    it('overrides bundled entries and supports case-insensitive lookup', () => {
+      applyPricingOverrides({
+        'claude-4-sonnet-20250514': {
+          input_cost_per_token: 0.000001,
+          output_cost_per_token: 0.000002,
+        },
+      });
+
+      expect(getPricing('Claude-4-Sonnet-20250514')!.input_cost_per_token).toBe(0.000001);
+    });
+
+    it('keeps bundled models that are not in the overrides', () => {
+      applyPricingOverrides({
+        'claude-future-model-99': {
+          input_cost_per_token: 0.000005,
+          output_cost_per_token: 0.000025,
+        },
+      });
+
+      expect(getPricing('gpt-5.1-codex-mini')).not.toBeNull();
+    });
+
+    it('resets to bundled data on null or empty overrides', () => {
+      applyPricingOverrides({
+        'claude-future-model-99': {
+          input_cost_per_token: 0.000005,
+          output_cost_per_token: 0.000025,
+        },
+      });
+      applyPricingOverrides(null);
+      expect(getPricing('claude-future-model-99')).toBeNull();
+
+      applyPricingOverrides({});
+      expect(getPricing('claude-4-sonnet-20250514')).not.toBeNull();
     });
   });
 
