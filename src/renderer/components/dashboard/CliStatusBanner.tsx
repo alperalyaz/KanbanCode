@@ -858,32 +858,53 @@ const InstalledBanner = ({
       style={{ borderColor: styles.border, backgroundColor: INSTALLED_BANNER_BACKGROUND }}
     >
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {showCollapseControl && (
-            <button
-              type="button"
-              onClick={onToggleProvidersCollapsed}
-              className="flex items-center justify-center rounded-md p-1 transition-colors hover:bg-white/5"
-              style={{ color: 'var(--color-text-muted)' }}
-              aria-label={
-                providersCollapsed
-                  ? t('cliStatus.labels.expandProviderDetails')
-                  : t('cliStatus.labels.collapseProviderDetails')
-              }
-              aria-expanded={!providersCollapsed}
-              title={
-                providersCollapsed
-                  ? t('cliStatus.labels.expandProviderDetails')
-                  : t('cliStatus.labels.collapseProviderDetails')
-              }
-            >
-              {providersCollapsed ? (
-                <ChevronRight className="size-4 shrink-0" />
-              ) : (
-                <ChevronDown className="size-4 shrink-0" />
-              )}
-            </button>
-          )}
+        <div
+          className={`flex min-w-0 flex-1 items-center gap-3 ${
+            showCollapseControl
+              ? 'cursor-pointer rounded-md pr-2 transition-colors hover:bg-white/5'
+              : ''
+          }`}
+          onClick={showCollapseControl ? onToggleProvidersCollapsed : undefined}
+          onKeyDown={
+            showCollapseControl
+              ? (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onToggleProvidersCollapsed();
+                  }
+                }
+              : undefined
+          }
+          role={showCollapseControl ? 'button' : undefined}
+          tabIndex={showCollapseControl ? 0 : undefined}
+          aria-expanded={showCollapseControl ? !providersCollapsed : undefined}
+          aria-label={
+            showCollapseControl
+              ? providersCollapsed
+                ? t('cliStatus.labels.expandProviderDetails')
+                : t('cliStatus.labels.collapseProviderDetails')
+              : undefined
+          }
+          title={
+            showCollapseControl
+              ? providersCollapsed
+                ? t('cliStatus.labels.expandProviderDetails')
+                : t('cliStatus.labels.collapseProviderDetails')
+              : undefined
+          }
+        >
+          {showCollapseControl &&
+            (providersCollapsed ? (
+              <ChevronRight
+                className="size-4 shrink-0"
+                style={{ color: 'var(--color-text-muted)' }}
+              />
+            ) : (
+              <ChevronDown
+                className="size-4 shrink-0"
+                style={{ color: 'var(--color-text-muted)' }}
+              />
+            ))}
           <Terminal className="size-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -896,7 +917,10 @@ const InstalledBanner = ({
               {/* Update / Check for Updates — inline next to version */}
               {cliStatus.supportsSelfUpdate && cliStatus.updateAvailable ? (
                 <button
-                  onClick={onInstall}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onInstall();
+                  }}
                   disabled={isBusy}
                   className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-white transition-colors disabled:opacity-50"
                   style={{ backgroundColor: '#3b82f6' }}
@@ -906,7 +930,10 @@ const InstalledBanner = ({
                 </button>
               ) : cliStatus.supportsSelfUpdate ? (
                 <button
-                  onClick={onRefresh}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRefresh();
+                  }}
                   disabled={cliStatusLoading}
                   className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors hover:bg-white/5 disabled:opacity-50"
                   style={{ color: 'var(--color-text-muted)' }}
@@ -929,7 +956,10 @@ const InstalledBanner = ({
                 className="truncate font-mono text-xs hover:underline"
                 style={{ color: 'var(--color-text-muted)' }}
                 title={`Reveal in file manager: ${cliStatus.binaryPath}`}
-                onClick={() => void api.showInFolder(cliStatus.binaryPath!)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void api.showInFolder(cliStatus.binaryPath!);
+                }}
               >
                 {cliStatus.binaryPath}
               </button>
