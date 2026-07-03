@@ -1855,12 +1855,9 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     if (!cliStatusLoading) {
       return (
         <div
-          className={`mb-6 flex items-center justify-between gap-3 rounded-lg border-l-4 px-4 py-3 ${BANNER_MIN_H}`}
+          className={`mb-6 flex justify-end rounded-lg border-l-4 px-4 py-3 ${BANNER_MIN_H}`}
           style={{ borderColor: styles.border, backgroundColor: styles.bg }}
         >
-          <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            {t('cliStatus.hints.backgroundStatus')}
-          </span>
           <button
             onClick={handleRefresh}
             className="flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/5"

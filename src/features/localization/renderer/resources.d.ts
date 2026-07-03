@@ -937,7 +937,7 @@ export default interface Resources {
         alreadyLoggedIn: 'Already logged in?';
         becomeSponsor: 'Become a sponsor';
         cancel: 'Cancel';
-        checkNow: 'Check now';
+        checkNow: 'Check AI providers';
         checkUpdates: 'Check for Updates';
         checking: 'Checking...';
         connect: 'Connect';
@@ -966,7 +966,6 @@ export default interface Resources {
         runtimeUpdatedRefreshFailed: 'Runtime updated, but failed to refresh provider status.';
       };
       hints: {
-        backgroundStatus: "Provider status is checked on demand. Expand providers or click below when you're ready to connect.";
         codexApiKeyFallback: '{{hint}} API key fallback is available if you switch auth mode.';
         codexAutoApiKey: '{{hint}} Auto will keep using the API key until ChatGPT is connected.';
         codexFinishLogin: 'Finish ChatGPT login in the browser. Enter the shown code if prompted.';

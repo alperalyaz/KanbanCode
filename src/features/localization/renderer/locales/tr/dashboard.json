@@ -4,7 +4,7 @@
       "alreadyLoggedIn": "Zaten giriş yaptınız mı?",
       "becomeSponsor": "Sponsor olun",
       "cancel": "İptal",
-      "checkNow": "Şimdi kontrol et",
+      "checkNow": "AI sağlayıcılarını kontrol et",
       "checkUpdates": "Güncellemeleri Kontrol Et",
       "checking": "Kontrol ediliyor...",
       "connect": "Bağlan",
@@ -33,7 +33,6 @@
       "runtimeUpdatedRefreshFailed": "Çalışma zamanı güncellendi, ancak sağlayıcı durumu yenilenemedi."
     },
     "hints": {
-      "backgroundStatus": "Sağlayıcı durumu isteğe bağlı kontrol edilir. Bağlanmaya hazır olduğunuzda sağlayıcıları genişletin veya aşağıya tıklayın.",
       "codexApiKeyFallback": "{{hint}} Kimlik doğrulama modunu değiştirirseniz API anahtarı yedeği kullanılabilir.",
       "codexAutoApiKey": "{{hint}} Otomatik mod, ChatGPT bağlanana kadar API anahtarını kullanmaya devam eder.",
       "codexFinishLogin": "Tarayıcıda ChatGPT girişini tamamlayın. İstenirse gösterilen kodu girin.",
