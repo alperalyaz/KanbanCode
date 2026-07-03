@@ -2445,7 +2445,10 @@ export const CreateTeamDialog = ({
         }
       }}
     >
-      <DialogContent className="flex h-[min(calc(100vh-2rem),940px)] w-[min(calc(100vw-2rem),96rem)] max-w-none flex-col gap-4 overflow-hidden p-6">
+      <DialogContent
+        dismissOnOutsideInteraction={false}
+        className="flex h-[min(calc(100vh-2rem),940px)] w-[min(calc(100vw-2rem),96rem)] max-w-none flex-col gap-4 overflow-hidden p-6"
+      >
         <DialogHeader className="shrink-0">
           <DialogTitle className="text-sm">
             {initialData ? t('create.title.copy') : t('create.title.create')}
