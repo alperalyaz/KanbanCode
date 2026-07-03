@@ -149,13 +149,7 @@ export const GeneralSection = ({
         setUpdatingClaudeRoot(false);
       }
     },
-    [
-      fetchProjects,
-      fetchRepositoryGroups,
-      loadClaudeRootInfo,
-      resetWorkspaceForRootChange,
-      t,
-    ]
+    [fetchProjects, fetchRepositoryGroups, loadClaudeRootInfo, resetWorkspaceForRootChange, t]
   );
 
   const handleSelectClaudeRootFolder = useCallback(async (): Promise<void> => {
@@ -267,9 +261,10 @@ export const GeneralSection = ({
     const current = safeConfig.general.agentLanguage ?? 'system';
     if (current === 'system') {
       const browserLang = navigator.language;
-      const primaryCode = browserLang.includes('-') ? browserLang.split('-')[0] : browserLang;
       const detected = resolveLanguageName('system', browserLang);
-      const detectedFlag = AGENT_LANGUAGE_OPTIONS.find((o) => o.value === primaryCode)?.flag ?? '';
+      const resolvedCode = browserLang.toLowerCase().startsWith('tr') ? 'tr' : 'en';
+      const detectedFlag =
+        AGENT_LANGUAGE_OPTIONS.find((option) => option.value === resolvedCode)?.flag ?? '';
       const flagPrefix = detectedFlag ? `${detectedFlag} ` : '';
       return t('general.agentLanguage.descriptionWithDetected', {
         detected: `${flagPrefix}${detected}`,

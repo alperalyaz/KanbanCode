@@ -10,6 +10,7 @@
  */
 
 import { normalizeAppLocalePreference } from '@features/localization';
+import { normalizeAgentLanguagePreference } from '@shared/utils/agentLanguage';
 import { atomicWriteAsync } from '@main/utils/atomicWrite';
 import { getAppliedElectronDevClaudeRootOverride } from '@main/utils/electronDevPathOverrides';
 import { getClaudeBasePath, setClaudeBasePathOverride } from '@main/utils/pathDecoder';
@@ -612,6 +613,7 @@ export class ConfigManager {
     mergedGeneral.multimodelEnabled = true;
     mergedGeneral.claudeRootPath = normalizeConfiguredClaudeRootPath(mergedGeneral.claudeRootPath);
     mergedGeneral.appLocale = normalizeAppLocalePreference(mergedGeneral.appLocale);
+    mergedGeneral.agentLanguage = normalizeAgentLanguagePreference(mergedGeneral.agentLanguage);
 
     // Merge triggers: preserve existing triggers, add missing builtin ones
     const mergedTriggers = TriggerManager.mergeTriggers(loadedTriggers, DEFAULT_TRIGGERS);

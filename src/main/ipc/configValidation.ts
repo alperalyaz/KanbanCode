@@ -4,6 +4,7 @@
  */
 
 import { isAppLocalePreference } from '@features/localization';
+import { isAgentLanguagePreference } from '@shared/utils/agentLanguage';
 import { migrateProviderBackendId } from '@shared/utils/providerBackend';
 import * as path from 'path';
 
@@ -453,10 +454,13 @@ function validateGeneralSection(data: unknown): ValidationSuccess<'general'> | V
         }
         break;
       case 'agentLanguage':
-        if (typeof value !== 'string' || value.trim().length === 0) {
-          return { valid: false, error: 'general.agentLanguage must be a non-empty string' };
+        if (!isAgentLanguagePreference(value)) {
+          return {
+            valid: false,
+            error: 'general.agentLanguage must be one of: system, en, tr',
+          };
         }
-        result.agentLanguage = value.trim();
+        result.agentLanguage = value;
         break;
       case 'appLocale':
         if (!isAppLocalePreference(value)) {
