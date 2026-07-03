@@ -2415,8 +2415,8 @@ export const CreateTeamDialog = ({
         }
       }}
     >
-      <DialogContent className="max-w-[52rem]">
-        <DialogHeader>
+      <DialogContent className="flex h-[720px] w-[52rem] max-w-none flex-col gap-4 overflow-hidden p-6">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="text-sm">
             {initialData ? t('create.title.copy') : t('create.title.create')}
           </DialogTitle>
@@ -2427,7 +2427,7 @@ export const CreateTeamDialog = ({
 
         {conflictingTeam && !conflictDismissed ? (
           <div
-            className="rounded-md border p-3 text-xs"
+            className="shrink-0 rounded-md border p-3 text-xs"
             style={{
               backgroundColor: 'var(--warning-bg)',
               borderColor: 'var(--warning-border)',
@@ -2459,7 +2459,7 @@ export const CreateTeamDialog = ({
 
         {!canCreate ? (
           <p
-            className="rounded border p-2 text-xs"
+            className="shrink-0 rounded border p-2 text-xs"
             style={{
               backgroundColor: 'var(--warning-bg)',
               borderColor: 'var(--warning-border)',
@@ -2470,7 +2470,8 @@ export const CreateTeamDialog = ({
           </p>
         ) : null}
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-1.5 md:col-span-2">
             <Label htmlFor="team-name">{t('create.fields.teamName')}</Label>
             <Input
@@ -2558,6 +2559,7 @@ export const CreateTeamDialog = ({
               }
               headerTop={rosterHeaderTop}
               headerBottom={rosterHeaderBottom}
+              memberListClassName="max-h-[280px] overflow-y-auto"
             />
           </div>
 
@@ -2890,10 +2892,11 @@ export const CreateTeamDialog = ({
             </OptionalSettingsSection>
           </div>
         </div>
+        </div>
 
         {activeError ? (
           <p
-            className="rounded border p-2 text-xs"
+            className="shrink-0 rounded border p-2 text-xs"
             style={{
               color: 'var(--field-error-text)',
               borderColor: 'var(--field-error-border)',
@@ -2904,7 +2907,7 @@ export const CreateTeamDialog = ({
           </p>
         ) : null}
 
-        <DialogFooter className="pt-4 sm:justify-between">
+        <DialogFooter className="shrink-0 pt-4 sm:justify-between">
           <div className="min-w-0">
             {canCreate && launchTeam ? (
               <ProviderActivityStatusStrip
