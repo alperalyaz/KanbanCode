@@ -32,7 +32,7 @@ export const RecentProjectCard = ({
       onClick={isDeleted ? undefined : onClick}
       aria-disabled={isDeleted}
       className={cn(
-        'project-row-zebra-card group relative flex min-h-[120px] flex-col overflow-hidden rounded-lg border border-border p-4 text-left transition-all duration-300 hover:border-border-emphasis',
+        'project-row-zebra-card group relative flex min-h-[148px] flex-col overflow-hidden rounded-xl border border-border p-5 text-left transition-all duration-300 hover:border-border-emphasis',
         isDeleted && 'cursor-default border-red-500/25 bg-red-500/[0.03] hover:border-red-500/35'
       )}
     >
@@ -41,15 +41,15 @@ export const RecentProjectCard = ({
       )}
 
       <div className="mb-1 flex items-center gap-2.5">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-surface-overlay transition-colors duration-300 group-hover:border-border-emphasis">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-overlay transition-colors duration-300 group-hover:border-border-emphasis">
           <FolderIcon
-            className="size-4 transition-colors group-hover:text-text"
+            className="size-5 transition-colors group-hover:text-text"
             style={{ color: isDeleted ? 'var(--field-error-text)' : color.icon }}
           />
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
-            <h3 className="min-w-0 truncate text-sm font-medium text-text transition-colors duration-200 group-hover:text-text">
+            <h3 className="min-w-0 truncate text-base font-semibold text-text transition-colors duration-200 group-hover:text-text">
               {card.name}
             </h3>
             {isDeleted && (
@@ -105,7 +105,7 @@ export const RecentProjectCard = ({
         </div>
       </div>
 
-      <div className="flex w-full min-w-0 items-center gap-1 font-mono text-[10px] text-text-muted">
+      <div className="flex w-full min-w-0 items-center gap-1.5 font-mono text-xs text-text-muted">
         <Tooltip>
           <TooltipTrigger asChild>
             <div

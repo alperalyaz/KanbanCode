@@ -925,6 +925,13 @@ export default interface Resources {
       or: 'or';
       selectTeam: 'Select Team';
     };
+    hero: {
+      searchDescription: 'Filter recent projects or open the command palette with ⌘K.';
+      searchLabel: 'Search projects';
+      selectTeamDescription: 'Browse agent teams, kanban boards, and live teammates.';
+      subtitle: 'Open a running team, jump into a recent project, or search across your sessions.';
+      title: 'Where should we work today?';
+    };
     cliStatus: {
       actions: {
         alreadyLoggedIn: 'Already logged in?';
@@ -1089,14 +1096,14 @@ export default interface Resources {
           pending_other: '{{count}} pending';
         };
       };
-      emptyDescription: 'Recent Claude and Codex activity will appear here.';
+      emptyDescription: 'Your recent Claude, Codex, and OpenCode activity will show up here once you start working.';
       failedToLoad: 'Failed to load projects';
       loadMore: 'Load more';
       noMatches: 'No matches for "{{query}}"';
       noProjects: 'No projects found';
       noRecentProjects: 'No recent projects found';
       retry: 'Retry';
-      searchPlaceholder: 'Search projects...';
+      searchPlaceholder: 'Search projects by name or path...';
       searchResults: 'Search Results';
       selectFolder: 'Select Folder';
       selectFolderTitle: 'Select a project folder';

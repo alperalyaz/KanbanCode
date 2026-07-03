@@ -21,14 +21,14 @@ function SelectProjectFolderCard({
   const { t } = useAppTranslation('dashboard');
   return (
     <button
-      className="hover:bg-surface/30 group relative flex min-h-[120px] flex-col items-center justify-center rounded-lg border border-dashed border-border bg-transparent p-4 transition-all duration-300 hover:border-border-emphasis"
+      className="hover:bg-surface/30 group relative flex min-h-[148px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-transparent p-5 transition-all duration-300 hover:border-border-emphasis"
       onClick={onClick}
       title={t('recentProjects.selectFolderTitle')}
     >
-      <div className="mb-2 flex size-8 items-center justify-center rounded-md border border-dashed border-border transition-colors duration-300 group-hover:border-border-emphasis">
-        <FolderOpen className="size-4 text-text-muted transition-colors group-hover:text-text-secondary" />
+      <div className="mb-3 flex size-11 items-center justify-center rounded-xl border border-dashed border-border transition-colors duration-300 group-hover:border-border-emphasis">
+        <FolderOpen className="size-5 text-text-muted transition-colors group-hover:text-text-secondary" />
       </div>
-      <span className="text-xs text-text-muted transition-colors group-hover:text-text-secondary">
+      <span className="text-sm font-medium text-text-secondary transition-colors group-hover:text-text">
         {t('recentProjects.selectFolder')}
       </span>
     </button>
@@ -54,11 +54,11 @@ export const RecentProjectsSection = ({
 
   if (loading) {
     return (
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, index) => (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
           <div
             key={index}
-            className="skeleton-card flex min-h-[120px] flex-col rounded-sm border border-border p-4"
+            className="skeleton-card flex min-h-[148px] flex-col rounded-xl border border-border p-5"
             style={{
               animationDelay: `${index * 80}ms`,
               backgroundColor: 'var(--skeleton-base)',
@@ -100,17 +100,19 @@ export const RecentProjectsSection = ({
 
   if (error && cards.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 rounded-sm border border-dashed border-border px-8 py-16">
-        <div className="mb-1 flex size-12 items-center justify-center rounded-sm border border-border bg-surface-raised">
-          <FolderGit2 className="size-6 text-text-muted" />
+      <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border px-10 py-20">
+        <div className="flex size-14 items-center justify-center rounded-xl border border-border bg-surface-raised">
+          <FolderGit2 className="size-7 text-text-muted" />
         </div>
         <div className="text-center">
-          <p className="mb-1 text-sm text-text-secondary">{t('recentProjects.failedToLoad')}</p>
-          <p className="max-w-xl text-xs text-text-muted">{error}</p>
+          <p className="mb-2 text-lg font-medium text-text-secondary">
+            {t('recentProjects.failedToLoad')}
+          </p>
+          <p className="max-w-xl text-sm leading-relaxed text-text-muted">{error}</p>
         </div>
         <button
           onClick={() => void reload()}
-          className="rounded-sm border border-border bg-surface-raised px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-border-emphasis hover:text-text"
+          className="rounded-lg border border-border bg-surface-raised px-4 py-2 text-sm text-text-secondary transition-colors hover:border-border-emphasis hover:text-text"
         >
           {t('recentProjects.retry')}
         </button>
@@ -120,12 +122,12 @@ export const RecentProjectsSection = ({
 
   if (cards.length === 0 && searchQuery.trim()) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-sm border border-dashed border-border px-8 py-16">
-        <div className="mb-4 flex size-12 items-center justify-center rounded-sm border border-border bg-surface-raised">
-          <Search className="size-6 text-text-muted" />
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border px-10 py-20">
+        <div className="mb-5 flex size-14 items-center justify-center rounded-xl border border-border bg-surface-raised">
+          <Search className="size-7 text-text-muted" />
         </div>
-        <p className="mb-1 text-sm text-text-secondary">{t('recentProjects.noProjects')}</p>
-        <p className="text-xs text-text-muted">
+        <p className="mb-2 text-lg font-medium text-text-secondary">{t('recentProjects.noProjects')}</p>
+        <p className="text-sm text-text-muted">
           {t('recentProjects.noMatches', { query: searchQuery })}
         </p>
       </div>
@@ -134,12 +136,16 @@ export const RecentProjectsSection = ({
 
   if (cards.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-sm border border-dashed border-border px-8 py-16">
-        <div className="mb-4 flex size-12 items-center justify-center rounded-sm border border-border bg-surface-raised">
-          <FolderGit2 className="size-6 text-text-muted" />
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border px-10 py-20">
+        <div className="mb-5 flex size-14 items-center justify-center rounded-xl border border-border bg-surface-raised">
+          <FolderGit2 className="size-7 text-text-muted" />
         </div>
-        <p className="mb-1 text-sm text-text-secondary">{t('recentProjects.noRecentProjects')}</p>
-        <p className="text-xs text-text-muted">{t('recentProjects.emptyDescription')}</p>
+        <p className="mb-2 text-lg font-medium text-text-secondary">
+          {t('recentProjects.noRecentProjects')}
+        </p>
+        <p className="max-w-lg text-center text-sm leading-relaxed text-text-muted">
+          {t('recentProjects.emptyDescription')}
+        </p>
       </div>
     );
   }
@@ -148,7 +154,7 @@ export const RecentProjectsSection = ({
 
   return (
     <div className="space-y-4">
-      <div className="project-row-zebra-grid grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="project-row-zebra-grid grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {hasSelectFolderCard && (
           <SelectProjectFolderCard onClick={() => void selectProjectFolder()} />
         )}

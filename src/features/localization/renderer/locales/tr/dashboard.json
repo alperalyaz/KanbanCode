@@ -149,7 +149,7 @@
     "noProjects": "Proje bulunamadı",
     "noMatches": "\"{{query}}\" için eşleşme yok",
     "noRecentProjects": "Son proje bulunamadı",
-    "emptyDescription": "Son Claude ve Codex etkinlikleri burada görünecek.",
+    "emptyDescription": "Claude, Codex ve OpenCode ile çalışmaya başladığınızda son etkinlikleriniz burada görünecek.",
     "loadMore": "Daha fazla yükle",
     "card": {
       "deleted": "Silindi",
@@ -174,12 +174,19 @@
     },
     "title": "Son Projeler",
     "searchResults": "Arama Sonuçları",
-    "searchPlaceholder": "Projelerde ara..."
+    "searchPlaceholder": "Projelerde ad veya yol ile ara..."
   },
   "actions": {
     "selectTeam": "Ekip Seç",
     "or": "veya",
     "clearSearch": "Aramayı temizle"
+  },
+  "hero": {
+    "title": "Bugün nerede çalışalım?",
+    "subtitle": "Çalışan bir ekibi açın, son projelerden birine geçin veya oturumlarınızda arayın.",
+    "selectTeamDescription": "Agent ekiplerini, kanban panolarını ve canlı takım arkadaşlarını görüntüleyin.",
+    "searchLabel": "Proje ara",
+    "searchDescription": "Son projeleri filtreleyin veya ⌘K ile komut paletini açın."
   },
   "windowsAdmin": {
     "title": "Windows Yönetici modu önerilir",

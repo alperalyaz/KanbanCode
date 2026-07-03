@@ -10,7 +10,7 @@ import { RecentProjectsSection } from '@features/recent-projects/renderer';
 import { RunningTeamsSection } from '@features/running-teams/renderer';
 import { useStore } from '@renderer/store';
 import { formatShortcut } from '@renderer/utils/stringUtils';
-import { Command, Search, Users } from 'lucide-react';
+import { ArrowRight, Command, Search, Users } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { CliStatusBanner } from './CliStatusBanner';
@@ -65,44 +65,72 @@ const CommandSearch = ({ value, onChange }: Readonly<CommandSearchProps>): React
 
   return (
     <div className="relative w-full">
+      <label className="mb-2 block text-sm font-medium text-text-secondary">
+        {t('hero.searchLabel')}
+      </label>
       <div
-        className={`relative flex items-center gap-3 rounded-sm border bg-surface-raised px-4 py-3 transition-all duration-200 ${
+        className={`relative flex items-center gap-3 rounded-xl border bg-surface-raised px-5 py-4 transition-all duration-200 ${
           isFocused
-            ? 'border-zinc-500 shadow-[0_0_20px_rgba(255,255,255,0.04)] ring-1 ring-zinc-600/30'
+            ? 'border-indigo-500/40 shadow-[0_0_24px_rgba(99,102,241,0.12)] ring-1 ring-indigo-500/20'
             : 'border-border hover:border-zinc-600'
         } `}
       >
-        <Search className="size-4 shrink-0 text-text-muted" />
+        <Search className="size-5 shrink-0 text-text-muted" />
         <input
           ref={inputRef}
           type="text"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={t('recentProjects.searchPlaceholder')}
-          className="flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-muted"
+          className="flex-1 bg-transparent text-base text-text outline-none placeholder:text-text-muted"
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
         />
         <button
           onClick={() => openCommandPalette()}
-          className="flex shrink-0 items-center gap-1 transition-opacity hover:opacity-80"
+          className="flex shrink-0 items-center gap-1.5 transition-opacity hover:opacity-80"
           title={
             selectedProjectId
               ? `Search in sessions (${formatShortcut('K')})`
               : `Search projects (${formatShortcut('K')})`
           }
         >
-          <kbd className="flex h-5 items-center justify-center rounded border border-border bg-surface-overlay px-1.5 text-[10px] font-medium text-text-muted">
-            <Command className="size-2.5" />
+          <kbd className="flex h-7 items-center justify-center rounded-md border border-border bg-surface-overlay px-2 text-xs font-medium text-text-muted">
+            <Command className="size-3" />
           </kbd>
-          <kbd className="flex size-5 items-center justify-center rounded border border-border bg-surface-overlay text-[10px] font-medium text-text-muted">
+          <kbd className="flex h-7 min-w-7 items-center justify-center rounded-md border border-border bg-surface-overlay px-2 text-xs font-medium text-text-muted">
             K
           </kbd>
         </button>
       </div>
+      <p className="mt-2 text-sm text-text-muted">{t('hero.searchDescription')}</p>
     </div>
   );
 };
+
+interface DashboardSectionHeadingProps {
+  title: string;
+  count?: number;
+  action?: React.ReactNode;
+}
+
+const DashboardSectionHeading = ({
+  title,
+  count,
+  action,
+}: Readonly<DashboardSectionHeadingProps>): React.JSX.Element => (
+  <div className="mb-5 flex items-center justify-between gap-3">
+    <h2 className="flex items-center gap-2.5 text-base font-semibold text-text">
+      {title}
+      {count !== undefined ? (
+        <span className="rounded-full border border-border bg-surface-overlay px-2 py-0.5 text-xs font-medium text-text-secondary">
+          {count}
+        </span>
+      ) : null}
+    </h2>
+    {action}
+  </div>
+);
 
 export const DashboardView = (): React.JSX.Element => {
   const { t } = useAppTranslation('dashboard');
@@ -112,48 +140,78 @@ export const DashboardView = (): React.JSX.Element => {
   return (
     <div className="relative flex-1 overflow-auto bg-surface">
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-[600px] bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(99,102,241,0.08),transparent)]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[720px] bg-[radial-gradient(ellipse_90%_60%_at_50%_-10%,rgba(99,102,241,0.14),transparent)]"
+        aria-hidden="true"
+      />
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-[720px] bg-[radial-gradient(ellipse_70%_45%_at_80%_0%,rgba(192,132,252,0.08),transparent)]"
         aria-hidden="true"
       />
 
-      <div className="relative mx-auto max-w-5xl px-8 py-12">
-        <WebPreviewBanner />
-        <WindowsAdministratorBanner />
-        <DashboardUpdateBanner />
-        <CliStatusBanner />
-        <TmuxStatusBanner />
+      <div className="relative mx-auto max-w-6xl px-8 py-14 lg:px-12 lg:py-20">
+        <div className="mb-10 space-y-3">
+          <WebPreviewBanner />
+          <WindowsAdministratorBanner />
+          <DashboardUpdateBanner />
+          <CliStatusBanner />
+          <TmuxStatusBanner />
+        </div>
 
-        <div className="mb-12 flex items-center justify-center gap-3">
+        <header className="mb-12 text-center lg:mb-14">
+          <p className="mb-3 text-sm font-medium uppercase tracking-[0.2em] text-indigo-300/80">
+            KanbanCode
+          </p>
+          <h1 className="text-3xl font-semibold tracking-tight text-text sm:text-4xl lg:text-[2.75rem] lg:leading-tight">
+            {t('hero.title')}
+          </h1>
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-text-secondary sm:text-lg">
+            {t('hero.subtitle')}
+          </p>
+        </header>
+
+        <div className="mb-14 grid gap-4 lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)] lg:items-start">
           <button
+            type="button"
             onClick={openTeamsTab}
-            className="flex shrink-0 items-center gap-2 rounded-sm border border-border bg-surface-raised px-4 py-3 text-sm text-text-secondary transition-all duration-200 hover:border-zinc-500 hover:text-text"
+            className="group flex min-h-[148px] flex-col justify-between rounded-xl border border-border bg-surface-raised/80 p-5 text-left transition-all duration-200 hover:border-indigo-500/35 hover:bg-surface-raised hover:shadow-[0_12px_40px_rgba(15,23,42,0.18)]"
           >
-            <Users className="size-4" />
-            {t('actions.selectTeam')}
+            <div className="flex size-11 items-center justify-center rounded-xl border border-border bg-surface-overlay transition-colors group-hover:border-indigo-500/30">
+              <Users className="size-5 text-indigo-300" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 text-lg font-semibold text-text">
+                {t('actions.selectTeam')}
+                <ArrowRight className="size-4 text-text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-text-secondary" />
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-text-muted">
+                {t('hero.selectTeamDescription')}
+              </p>
+            </div>
           </button>
-          <span className="shrink-0 text-xs text-text-muted">{t('actions.or')}</span>
-          <div className="flex-1">
-            <CommandSearch value={searchQuery} onChange={setSearchQuery} />
-          </div>
+
+          <CommandSearch value={searchQuery} onChange={setSearchQuery} />
         </div>
 
         <RunningTeamsSection searchQuery={searchQuery} />
 
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-text-muted">
-            {searchQuery.trim() ? t('recentProjects.searchResults') : t('recentProjects.title')}
-          </h2>
-          {searchQuery.trim() && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="text-xs text-text-muted transition-colors hover:text-text-secondary"
-            >
-              {t('actions.clearSearch')}
-            </button>
-          )}
-        </div>
-
-        <RecentProjectsSection searchQuery={searchQuery} />
+        <section>
+          <DashboardSectionHeading
+            title={
+              searchQuery.trim() ? t('recentProjects.searchResults') : t('recentProjects.title')
+            }
+            action={
+              searchQuery.trim() ? (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="text-sm text-text-muted transition-colors hover:text-text-secondary"
+                >
+                  {t('actions.clearSearch')}
+                </button>
+              ) : undefined
+            }
+          />
+          <RecentProjectsSection searchQuery={searchQuery} />
+        </section>
       </div>
     </div>
   );
