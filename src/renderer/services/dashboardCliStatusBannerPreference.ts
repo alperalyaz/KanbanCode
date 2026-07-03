@@ -2,9 +2,13 @@ const DASHBOARD_CLI_STATUS_BANNER_COLLAPSED_KEY = 'dashboard:cli-status-banner-c
 
 export function loadDashboardCliStatusBannerCollapsed(): boolean {
   try {
-    return window.localStorage.getItem(DASHBOARD_CLI_STATUS_BANNER_COLLAPSED_KEY) === 'true';
+    const stored = window.localStorage.getItem(DASHBOARD_CLI_STATUS_BANNER_COLLAPSED_KEY);
+    if (stored === null) {
+      return true;
+    }
+    return stored === 'true';
   } catch {
-    return false;
+    return true;
   }
 }
 

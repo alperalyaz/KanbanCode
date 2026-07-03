@@ -2083,7 +2083,7 @@ describe('CLI status visibility during completed install state', () => {
     });
   });
 
-  it('collapses dashboard provider cards down to the header summary', async () => {
+  it('starts with the dashboard provider banner collapsed by default', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliInstallerState = 'idle';
     storeState.cliStatus = createInstalledCliStatus({
@@ -2131,22 +2131,36 @@ describe('CLI status visibility during completed install state', () => {
     });
 
     expect(host.textContent).toContain('Providers: 1/1 connected');
-    expect(host.textContent).toContain('Anthropic');
+    expect(host.textContent).not.toContain('Anthropic');
+    expect(host.textContent).not.toContain('Manage');
+    expect(host.querySelector('[aria-label="Expand provider details"]')).not.toBeNull();
 
-    const collapseButton = host.querySelector<HTMLButtonElement>(
-      'button[aria-label="Collapse provider details"]'
-    );
-    expect(collapseButton).not.toBeNull();
+    const expandHeader = host.querySelector<HTMLElement>('[aria-label="Expand provider details"]');
+    expect(expandHeader).not.toBeNull();
 
     await act(async () => {
-      collapseButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expandHeader?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Anthropic');
+    expect(host.textContent).toContain('Manage');
+    expect(host.querySelector('[aria-label="Collapse provider details"]')).not.toBeNull();
+
+    const collapseHeader = host.querySelector<HTMLElement>(
+      '[aria-label="Collapse provider details"]'
+    );
+    expect(collapseHeader).not.toBeNull();
+
+    await act(async () => {
+      collapseHeader?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
     });
 
     expect(host.textContent).toContain('Providers: 1/1 connected');
     expect(host.textContent).not.toContain('Anthropic');
     expect(host.textContent).not.toContain('Manage');
-    expect(host.querySelector('button[aria-label="Expand provider details"]')).not.toBeNull();
+    expect(host.querySelector('[aria-label="Expand provider details"]')).not.toBeNull();
 
     await act(async () => {
       root.unmount();
@@ -2154,7 +2168,7 @@ describe('CLI status visibility during completed install state', () => {
     });
   });
 
-  it('restores the collapsed dashboard provider banner after remount', async () => {
+  it('restores the expanded dashboard provider banner after remount', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliInstallerState = 'idle';
     storeState.cliStatus = createInstalledCliStatus({
@@ -2228,15 +2242,19 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
-    const collapseButton = firstHost.querySelector<HTMLButtonElement>(
-      'button[aria-label="Collapse provider details"]'
-    );
-    expect(collapseButton).not.toBeNull();
+    expect(firstHost.textContent).toContain('Providers: 1/1 connected');
+    expect(firstHost.textContent).not.toContain('ChatGPT account ready');
+    expect(firstHost.querySelector('[aria-label="Expand provider details"]')).not.toBeNull();
+
+    const expandHeader = firstHost.querySelector<HTMLElement>('[aria-label="Expand provider details"]');
+    expect(expandHeader).not.toBeNull();
 
     await act(async () => {
-      collapseButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expandHeader?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
     });
+
+    expect(firstHost.textContent).toContain('ChatGPT account ready');
 
     await act(async () => {
       firstRoot.unmount();
@@ -2253,8 +2271,8 @@ describe('CLI status visibility during completed install state', () => {
     });
 
     expect(secondHost.textContent).toContain('Providers: 1/1 connected');
-    expect(secondHost.textContent).not.toContain('ChatGPT account ready');
-    expect(secondHost.querySelector('button[aria-label="Expand provider details"]')).not.toBeNull();
+    expect(secondHost.textContent).toContain('ChatGPT account ready');
+    expect(secondHost.querySelector('[aria-label="Collapse provider details"]')).not.toBeNull();
 
     await act(async () => {
       secondRoot.unmount();
