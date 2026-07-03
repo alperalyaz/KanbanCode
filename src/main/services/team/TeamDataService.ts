@@ -2,6 +2,7 @@ import { fromProvisioningMembers, isMixedOpenCodeSideLanePlan } from '@features/
 import { yieldToEventLoop } from '@main/utils/asyncYield';
 import { getClaudeBasePath, getTasksBasePath, getTeamsBasePath } from '@main/utils/pathDecoder';
 import { killProcessByPid } from '@main/utils/processKill';
+import { isMainWindowInteractive } from '@main/utils/windowVisibility';
 import { stripAgentBlocks, wrapAgentBlock } from '@shared/constants/agentBlocks';
 import { getMemberColorByName } from '@shared/constants/memberColors';
 import { isTeamEffortLevel } from '@shared/utils/effortLevels';
@@ -105,7 +106,7 @@ const logger = createLogger('Service:TeamDataService');
 const MIN_TEXT_LENGTH = 30;
 const MAX_LEAD_TEXTS = 150;
 const LEAD_SESSION_PARSE_CACHE_SCHEMA_VERSION = 'combined-v2';
-const PROCESS_HEALTH_INTERVAL_MS = 2_000;
+const PROCESS_HEALTH_INTERVAL_MS = 5_000;
 const TASK_MAP_YIELD_EVERY = 250;
 const TASK_COMMENT_NOTIFICATION_SOURCE = 'system_notification';
 const PASSIVE_USER_REPLY_LINK_WINDOW_MS = 15_000;
@@ -1830,6 +1831,10 @@ export class TeamDataService {
   }
 
   private async processHealthTick(): Promise<void> {
+    // Skip background maintenance while the window is hidden/minimized —
+    // nobody can see the live-process section, and each tick costs a disk
+    // read (and sometimes a write) per tracked team.
+    if (!isMainWindowInteractive()) return;
     for (const teamName of this.processHealthTeams) {
       try {
         this.getController(teamName).processes.listProcesses();

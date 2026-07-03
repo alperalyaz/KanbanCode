@@ -107,6 +107,7 @@ import { TeamTranscriptProjectResolver } from '@main/services/team/TeamTranscrip
 import { killTrackedCliProcesses } from '@main/utils/childProcess';
 import { buildMergedCliPath } from '@main/utils/cliPathMerge';
 import { getWindowsElevationStatus } from '@main/utils/windowsElevation';
+import { trackMainWindowVisibility } from '@main/utils/windowVisibility';
 import {
   APP_GET_WINDOWS_ELEVATION_STATUS,
   APP_STARTUP_GET_STATUS,
@@ -2792,6 +2793,8 @@ function createWindow(): void {
     ...(isMac && { trafficLightPosition: getTrafficLightPositionForZoom(1) }),
     title: APP_NAME,
   });
+
+  trackMainWindowVisibility(mainWindow);
   markRendererUnavailable(mainWindow);
 
   // In dev, forward selected renderer console warnings/errors to the main terminal.

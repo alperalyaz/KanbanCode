@@ -117,6 +117,7 @@ export function useOrganizationMap(input: UseOrganizationMapInput): UseOrganizat
   useEffect(() => {
     if (!input.isActive) return undefined;
     const timer = window.setInterval(() => {
+      if (document.hidden) return;
       void refresh();
     }, refreshIntervalMs);
     return () => window.clearInterval(timer);

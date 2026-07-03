@@ -289,6 +289,7 @@ export function useCodexAccountSnapshot(options: {
       visible,
     });
     const intervalId = window.setInterval(() => {
+      if (document.hidden) return;
       void refresh({
         includeRateLimits: options.includeRateLimits,
         silent: true,

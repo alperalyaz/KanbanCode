@@ -1,3 +1,4 @@
+import { isMainWindowInteractive } from '@main/utils/windowVisibility';
 import { createLogger } from '@shared/utils/logger';
 import * as path from 'path';
 
@@ -87,6 +88,8 @@ export class BranchStatusService {
   private startPollingIfNeeded(): void {
     if (this.pollTimer || this.trackedPaths.size === 0) return;
     this.pollTimer = setInterval(() => {
+      // Skip git status probes while the window is hidden/minimized.
+      if (!isMainWindowInteractive()) return;
       for (const normalizedPath of this.trackedPaths.keys()) {
         void this.checkPath(normalizedPath, true);
       }

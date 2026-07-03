@@ -37,6 +37,22 @@ Core to keep: team creation + agent process management + kanban board + messagin
 
 ## Status log
 
+- **2026-07-03 (cloud session)** — **Phase 2 quick wins: background poll gating.**
+  New `src/main/utils/windowVisibility.ts` tracks whether the main window is visible
+  (minimize/hide aware; blur intentionally ignored; defaults to "active" in
+  standalone/tests). Gated pollers now skip their tick while the window is hidden:
+  `TeamDataService.processHealthTick` (also relaxed 2s → 5s — each tick reads and
+  sometimes rewrites `processes.json` per tracked team), `BranchStatusService`
+  (20s git probes), renderer `useTeamAgentRuntimeWatcher` (CPU/RAM member telemetry —
+  also refreshes immediately on visibilitychange), `useCodexAccountSnapshot`,
+  `useOrganizationMap`. **Intentionally NOT gated:** file watchers and task/inbox
+  monitoring — task-completion and attention notifications must keep working while
+  minimized. Known trade-off: while hidden, dead agent processes are marked
+  `stoppedAt` up to one poll late. Typecheck green; TeamDataService (124),
+  BranchStatusService, and watcher tests pass. Remaining phase-2 candidates (need
+  Windows profiling first): pidusage WMI cost on Windows, FileWatcher NTFS scope,
+  TeamProvisioningService intervals.
+
 - **2026-07-03 (cloud session)** — **Phase 3: embedded terminal stack fully removed.**
   Deleted: `src/features/terminal-workspace/`, `PtyTerminalService` + `ipc/terminal`,
   SSH stack (`SshConnectionManager`/`SshFileSystemProvider`/`SshConfigParser`, `ipc/ssh`,

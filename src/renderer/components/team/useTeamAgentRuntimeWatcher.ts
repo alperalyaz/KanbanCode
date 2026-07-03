@@ -11,6 +11,7 @@ interface TeamAgentRuntimeWatchEntry {
   refCount: number;
   timer: number;
   inFlight: boolean;
+  onVisibilityChange: () => void;
 }
 
 const teamAgentRuntimeWatchEntries = new Map<string, TeamAgentRuntimeWatchEntry>();
@@ -31,6 +32,7 @@ export function shouldWatchTeamAgentRuntime(input: {
 export function __resetTeamAgentRuntimeWatcherForTests(): void {
   for (const entry of teamAgentRuntimeWatchEntries.values()) {
     window.clearInterval(entry.timer);
+    document.removeEventListener('visibilitychange', entry.onVisibilityChange);
   }
   teamAgentRuntimeWatchEntries.clear();
 }
@@ -77,6 +79,7 @@ export function useTeamAgentRuntimeWatcher({
         existingEntry.refCount -= 1;
         if (existingEntry.refCount <= 0) {
           window.clearInterval(existingEntry.timer);
+          document.removeEventListener('visibilitychange', existingEntry.onVisibilityChange);
           teamAgentRuntimeWatchEntries.delete(teamName);
         }
       };
@@ -86,20 +89,31 @@ export function useTeamAgentRuntimeWatcher({
       leadActivity === 'active'
         ? ACTIVE_TEAM_AGENT_RUNTIME_REFRESH_MS
         : TEAM_AGENT_RUNTIME_REFRESH_MS;
+    // Catch up immediately when the window becomes visible again.
+    const handleVisibilityChange = (): void => {
+      if (!document.hidden) {
+        refreshTeamAgentRuntime(teamName, fetchTeamAgentRuntime);
+      }
+    };
     const entry: TeamAgentRuntimeWatchEntry = {
       refCount: 1,
       timer: window.setInterval(() => {
+        // Runtime telemetry is a cosmetic surface — don't poll while hidden.
+        if (document.hidden) return;
         refreshTeamAgentRuntime(teamName, fetchTeamAgentRuntime);
       }, refreshIntervalMs),
       inFlight: false,
+      onVisibilityChange: handleVisibilityChange,
     };
     teamAgentRuntimeWatchEntries.set(teamName, entry);
     refreshTeamAgentRuntime(teamName, fetchTeamAgentRuntime);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       entry.refCount -= 1;
       if (entry.refCount <= 0) {
         window.clearInterval(entry.timer);
+        document.removeEventListener('visibilitychange', entry.onVisibilityChange);
         teamAgentRuntimeWatchEntries.delete(teamName);
       }
     };
