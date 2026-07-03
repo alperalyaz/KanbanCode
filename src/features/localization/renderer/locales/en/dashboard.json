@@ -179,6 +179,7 @@
   },
   "actions": {
     "selectTeam": "Select Team",
+    "createTeam": "Create Team",
     "or": "or",
     "clearSearch": "Clear search"
   },
@@ -186,6 +187,7 @@
     "title": "Where should we work today?",
     "subtitle": "Open a running team, jump into a recent project, or search across your sessions.",
     "selectTeamDescription": "Browse agent teams, kanban boards, and live teammates.",
+    "createTeamDescription": "Create your first agent team and start working on the kanban board.",
     "searchLabel": "Search projects",
     "searchDescription": "Filter recent projects or open the command palette with ⌘K."
   },

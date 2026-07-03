@@ -3,10 +3,11 @@
  * Keeps only screen composition and delegates recent-projects logic to the feature slice.
  */
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { RecentProjectsSection } from '@features/recent-projects/renderer';
+import { useRecentProjectsSection } from '@features/recent-projects/renderer/hooks/useRecentProjectsSection';
 import { RunningTeamsSection } from '@features/running-teams/renderer';
 import { useStore } from '@renderer/store';
 import { formatShortcut } from '@renderer/utils/stringUtils';
@@ -137,6 +138,30 @@ export const DashboardView = (): React.JSX.Element => {
   const { t } = useAppTranslation('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
   const openTeamsTab = useStore((state) => state.openTeamsTab);
+  const { teams, teamsLoading } = useStore(
+    useShallow((state) => ({
+      teams: state.teams,
+      teamsLoading: state.teamsLoading,
+    }))
+  );
+  const recentProjectsSection = useRecentProjectsSection(searchQuery);
+
+  const hasTeams = useMemo(() => teams.some((team) => !team.deletedAt), [teams]);
+  const showProjectSearch =
+    recentProjectsSection.loading ||
+    recentProjectsSection.hasRecentProjects ||
+    searchQuery.trim().length > 0;
+  const showCreateTeamAction = !teamsLoading && !hasTeams;
+
+  useEffect(() => {
+    if (
+      !recentProjectsSection.loading &&
+      !recentProjectsSection.hasRecentProjects &&
+      searchQuery.trim()
+    ) {
+      setSearchQuery('');
+    }
+  }, [recentProjectsSection.hasRecentProjects, recentProjectsSection.loading, searchQuery]);
 
   return (
     <div className="relative flex-1 overflow-auto bg-surface">
@@ -168,7 +193,13 @@ export const DashboardView = (): React.JSX.Element => {
           </p>
         </header>
 
-        <div className="mb-14 grid gap-4 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)] lg:items-start xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
+        <div
+          className={`mb-14 grid gap-4 ${
+            showProjectSearch
+              ? 'lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)] lg:items-start xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,380px)_minmax(0,1fr)]'
+              : 'max-w-md'
+          }`}
+        >
           <button
             type="button"
             onClick={openTeamsTab}
@@ -179,16 +210,20 @@ export const DashboardView = (): React.JSX.Element => {
             </div>
             <div>
               <div className="flex items-center gap-2 text-lg font-semibold text-text">
-                {t('actions.selectTeam')}
+                {showCreateTeamAction ? t('actions.createTeam') : t('actions.selectTeam')}
                 <ArrowRight className="size-4 text-text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-text-secondary" />
               </div>
               <p className="mt-2 text-sm leading-relaxed text-text-muted">
-                {t('hero.selectTeamDescription')}
+                {showCreateTeamAction
+                  ? t('hero.createTeamDescription')
+                  : t('hero.selectTeamDescription')}
               </p>
             </div>
           </button>
 
-          <CommandSearch value={searchQuery} onChange={setSearchQuery} />
+          {showProjectSearch ? (
+            <CommandSearch value={searchQuery} onChange={setSearchQuery} />
+          ) : null}
         </div>
 
         <RunningTeamsSection searchQuery={searchQuery} />
@@ -209,7 +244,7 @@ export const DashboardView = (): React.JSX.Element => {
               ) : undefined
             }
           />
-          <RecentProjectsSection searchQuery={searchQuery} />
+          <RecentProjectsSection searchQuery={searchQuery} section={recentProjectsSection} />
         </section>
       </div>
     </div>

@@ -62,6 +62,7 @@ export function useRecentProjectsSection(
   maxProjects = INITIAL_RECENT_PROJECTS
 ): {
   cards: RecentProjectCardModel[];
+  hasRecentProjects: boolean;
   loading: boolean;
   error: string | null;
   canLoadMore: boolean;
@@ -321,8 +322,11 @@ export function useRecentProjectsSection(
     return filteredCards.slice(0, visibleProjects);
   }, [filteredCards, searchQuery, visibleProjects]);
 
+  const hasRecentProjects = decoratedCards.length > 0;
+
   return {
     cards,
+    hasRecentProjects,
     loading,
     error,
     canLoadMore: !searchQuery.trim() && filteredCards.length > visibleProjects,

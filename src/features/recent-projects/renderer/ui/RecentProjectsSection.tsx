@@ -1,13 +1,30 @@
 import { useAppTranslation } from '@features/localization/renderer';
+import { type DashboardRecentProject } from '@features/recent-projects/contracts';
 import { Button } from '@renderer/components/ui/button';
 import { FolderGit2, FolderOpen, Search } from 'lucide-react';
 
-import { useRecentProjectsSection } from '../hooks/useRecentProjectsSection';
-
 import { RecentProjectCard } from './RecentProjectCard';
+
+import type { RecentProjectCardModel } from '../adapters/RecentProjectsSectionAdapter';
+
+export type RecentProjectsSectionState = {
+  cards: RecentProjectCardModel[];
+  hasRecentProjects: boolean;
+  loading: boolean;
+  error: string | null;
+  canLoadMore: boolean;
+  isElectron: boolean;
+  loadMore: () => void;
+  reload: () => Promise<void>;
+  openRecentProject: (project: DashboardRecentProject) => Promise<void>;
+  openProjectPath: (projectPath: string) => Promise<void>;
+  selectProjectFolder: () => Promise<void>;
+  dismissRecentProject: (project: DashboardRecentProject) => void;
+};
 
 interface RecentProjectsSectionProps {
   searchQuery: string;
+  section: RecentProjectsSectionState;
 }
 
 const titleWidths = [60, 66, 50, 55, 75, 45, 40, 65];
@@ -37,6 +54,7 @@ function SelectProjectFolderCard({
 
 export const RecentProjectsSection = ({
   searchQuery,
+  section,
 }: Readonly<RecentProjectsSectionProps>): React.JSX.Element => {
   const { t } = useAppTranslation('dashboard');
   const {
@@ -51,7 +69,7 @@ export const RecentProjectsSection = ({
     openProjectPath,
     selectProjectFolder,
     dismissRecentProject,
-  } = useRecentProjectsSection(searchQuery);
+  } = section;
 
   if (loading) {
     return (

@@ -179,6 +179,7 @@
   },
   "actions": {
     "selectTeam": "Ekip Seç",
+    "createTeam": "Ekip Oluştur",
     "or": "veya",
     "clearSearch": "Aramayı temizle"
   },
@@ -186,6 +187,7 @@
     "title": "Bugün nerede çalışalım?",
     "subtitle": "Çalışan bir ekibi açın, son projelerden birine geçin veya oturumlarınızda arayın.",
     "selectTeamDescription": "Agent ekiplerini, kanban panolarını ve canlı takım arkadaşlarını görüntüleyin.",
+    "createTeamDescription": "İlk agent ekibinizi oluşturun ve kanban panosunda çalışmaya başlayın.",
     "searchLabel": "Proje ara",
     "searchDescription": "Son projeleri filtreleyin veya ⌘K ile komut paletini açın."
   },
