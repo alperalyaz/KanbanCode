@@ -2921,15 +2921,15 @@ export const TeamDetailView = memo(function TeamDetailView({
                   defaultOpen
                   afterBadge={
                     <Button
-                      variant="ghost"
+                      variant="default"
                       size="sm"
-                      className="pointer-events-auto h-6 gap-1 px-2 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                      className="pointer-events-auto h-7 gap-1.5 rounded-full px-3 text-xs font-semibold shadow-sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         setAddMemberDialogOpen(true);
                       }}
                     >
-                      <UserPlus size={12} />
+                      <UserPlus size={13} />
                       {t('detail.actions.add')}
                     </Button>
                   }

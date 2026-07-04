@@ -1669,7 +1669,7 @@
     "leadModel": {
       "defaultModel": "Default",
       "providerModelAria": "{{provider}} provider, {{model}}",
-      "leadShort": "lead",
+      "leadShort": "Lead",
       "teamLead": "Team Lead",
       "syncWithTeammates": "Sync model with teammates",
       "anthropicTeamWide": "Anthropic team-wide",
