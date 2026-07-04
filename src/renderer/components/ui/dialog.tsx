@@ -68,12 +68,11 @@ const DialogContent = React.forwardRef<
                 }
                 onInteractOutside?.(event);
               }}
-              onEscapeKeyDown={(event) => {
-                if (!dismissOnOutsideInteraction) {
-                  event.preventDefault();
-                }
-                onEscapeKeyDown?.(event);
-              }}
+              // Escape must always dismiss the modal — it is a deliberate keystroke,
+              // not an accidental outside click. Repeated Escape peels back stacked
+              // modals until the dashboard is reached. `dismissOnOutsideInteraction`
+              // only governs outside-click/pointer dismissal, never Escape.
+              onEscapeKeyDown={onEscapeKeyDown}
               {...props}
             >
               {children}
