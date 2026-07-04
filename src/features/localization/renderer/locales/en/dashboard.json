@@ -71,6 +71,15 @@
       "resets": "resets {{time}}",
       "runtimeLoginTitle": "{{runtime}} Login"
     },
+    "oneClickLogin": {
+      "login": "Log in to {{provider}}",
+      "launching": "Opening login…",
+      "checking": "Complete the login in your browser — we are checking automatically.",
+      "success": "{{provider}} connected.",
+      "timedout": "Still not connected. Finish the login in your browser, or use the command below.",
+      "failed": "Login could not be opened. Use the command below instead.",
+      "copyFallback": "Alternative: copy the command"
+    },
     "loading": {
       "aiProviders": "Checking AI Providers...",
       "claudeCli": "Checking Claude CLI..."

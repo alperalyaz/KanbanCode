@@ -5,6 +5,8 @@ import { ProviderActivityStatusStrip } from '@renderer/components/common/Provide
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
 import { isCodexProviderRuntimeMissing } from '@renderer/components/runtime/codexRuntimeInstallAction';
 import { isOpenCodeCatalogHydrating } from '@renderer/components/runtime/providerConnectionUi';
+import { getProviderTerminalCommand } from '@renderer/components/runtime/providerTerminalCommands';
+import { TerminalModal } from '@renderer/components/terminal/TerminalModal';
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import { HoverTooltip } from '@renderer/components/ui/hover-tooltip';
 import { Input } from '@renderer/components/ui/input';
@@ -12,6 +14,7 @@ import { Label } from '@renderer/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
 import { Tabs, TabsList, TabsTrigger } from '@renderer/components/ui/tabs';
 import { useEffectiveCliProviderStatus } from '@renderer/hooks/useEffectiveCliProviderStatus';
+import { useProviderLoginLauncher } from '@renderer/hooks/useProviderLoginLauncher';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import {
@@ -57,6 +60,7 @@ import {
   Filter,
   Info,
   Loader2,
+  LogIn,
   Search,
   Star,
 } from 'lucide-react';
@@ -849,6 +853,8 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
   modelUnavailableReasonByValue,
 }) => {
   const { t } = useAppTranslation('team');
+  const loginLauncher = useProviderLoginLauncher();
+  const [showLoginFallbackCommand, setShowLoginFallbackCommand] = useState(false);
   const [recommendedOnly, setRecommendedOnly] = useState(false);
   const [freeOnly, setFreeOnly] = useState(false);
   const [modelQuery, setModelQuery] = useState('');
@@ -1157,7 +1163,9 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
     }
     previousEffectiveProviderIdRef.current = effectiveProviderId;
     setModelQuery('');
-  }, [effectiveProviderId]);
+    setShowLoginFallbackCommand(false);
+    loginLauncher.reset();
+  }, [effectiveProviderId, loginLauncher.reset]);
 
   useEffect(() => {
     if (effectiveProviderId === 'opencode') {
@@ -1486,6 +1494,28 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
     runtimeProviderStatus.authenticated === false &&
     activeProviderRuntimeInstall === null;
   const unauthenticatedProviderLabel = getTeamProviderLabel(effectiveProviderId);
+  const loginBinaryPath = effectiveCliStatus?.binaryPath ?? null;
+  const isLoginActiveForProvider = loginLauncher.activeProviderId === effectiveProviderId;
+  const loginPhase = isLoginActiveForProvider ? loginLauncher.phase : 'idle';
+  const loginBusy = loginPhase === 'launching' || loginPhase === 'polling';
+  const loginStatusText =
+    loginPhase === 'launching'
+      ? t('modelSelector.providerAuthStatus.launching')
+      : loginPhase === 'polling'
+        ? t('modelSelector.providerAuthStatus.checking')
+        : loginPhase === 'success'
+          ? t('modelSelector.providerAuthStatus.success', {
+              provider: unauthenticatedProviderLabel,
+            })
+          : loginPhase === 'timedout'
+            ? t('modelSelector.providerAuthStatus.timedout')
+            : loginPhase === 'error'
+              ? t('modelSelector.providerAuthStatus.failed')
+              : null;
+  const loginFallbackCommand =
+    isConnectedButUnauthenticatedProvider && runtimeProviderStatus
+      ? getProviderTerminalCommand(runtimeProviderStatus)
+      : null;
   const activeProviderStatusPanel =
     activeProviderDisabledReason && effectiveProviderId === 'opencode'
       ? {
@@ -1934,6 +1964,62 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                           })}
                         </p>
                       ) : null}
+                      {isConnectedButUnauthenticatedProvider && loginBinaryPath ? (
+                        <div className="mt-1 space-y-1.5">
+                          <button
+                            type="button"
+                            data-testid="team-model-selector-launch-login"
+                            disabled={loginBusy || loginPhase === 'success'}
+                            onClick={() => {
+                              if (!runtimeProviderStatus) return;
+                              setShowLoginFallbackCommand(false);
+                              void loginLauncher.launchLogin(runtimeProviderStatus, loginBinaryPath);
+                            }}
+                            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-300/45 bg-amber-300/15 px-2.5 text-[11px] font-medium text-amber-100 transition-colors hover:border-amber-200/60 hover:bg-amber-300/25 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {loginBusy ? (
+                              <Loader2 className="size-3 shrink-0 animate-spin" />
+                            ) : (
+                              <LogIn className="size-3 shrink-0" />
+                            )}
+                            {loginPhase === 'launching'
+                              ? t('modelSelector.providerAuthStatus.launching')
+                              : t('modelSelector.providerAuthStatus.login', {
+                                  provider: unauthenticatedProviderLabel,
+                                })}
+                          </button>
+                          {loginStatusText ? (
+                            <p
+                              data-testid="team-model-selector-login-status"
+                              className={cn(
+                                'flex items-center gap-1.5',
+                                loginPhase === 'success'
+                                  ? 'text-emerald-200'
+                                  : loginPhase === 'error'
+                                    ? 'text-red-200'
+                                    : 'opacity-90'
+                              )}
+                            >
+                              {loginPhase === 'polling' ? (
+                                <Loader2 className="size-3 shrink-0 animate-spin" />
+                              ) : loginPhase === 'success' ? (
+                                <CheckCircle2 className="size-3 shrink-0" />
+                              ) : null}
+                              {loginStatusText}
+                            </p>
+                          ) : null}
+                          {loginFallbackCommand ? (
+                            <button
+                              type="button"
+                              data-testid="team-model-selector-login-fallback"
+                              onClick={() => setShowLoginFallbackCommand((prev) => !prev)}
+                              className="text-[11px] underline decoration-dotted underline-offset-2 opacity-80 hover:opacity-100"
+                            >
+                              {t('modelSelector.providerAuthStatus.copyFallback')}
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
                       {activeProviderStatusPanel.actionLabel ? (
                         <button
                           type="button"
@@ -1982,6 +2068,17 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                     </div>
                   </div>
                 </div>
+              ) : null}
+              {showLoginFallbackCommand && loginFallbackCommand && loginBinaryPath ? (
+                <TerminalModal
+                  title={t('modelSelector.providerAuthStatus.login', {
+                    provider: unauthenticatedProviderLabel,
+                  })}
+                  command={loginBinaryPath}
+                  args={loginFallbackCommand.args}
+                  env={loginFallbackCommand.env}
+                  onClose={() => setShowLoginFallbackCommand(false)}
+                />
               ) : null}
               {shouldAwaitRuntimeModelList ? (
                 <div className="mb-2 space-y-1.5">

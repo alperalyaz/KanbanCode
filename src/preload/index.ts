@@ -22,6 +22,7 @@ import {
   CLI_INSTALLER_GET_STATUS,
   CLI_INSTALLER_INSTALL,
   CLI_INSTALLER_INVALIDATE_STATUS,
+  CLI_INSTALLER_LAUNCH_PROVIDER_LOGIN,
   CLI_INSTALLER_PROGRESS,
   CLI_INSTALLER_VERIFY_PROVIDER_MODELS,
   CONTEXT_CHANGED,
@@ -227,6 +228,8 @@ import type {
   CliInstallerGetStatusOptions,
   CliInstallerProgress,
   CliProviderId,
+  CliProviderLoginLaunchRequest,
+  CliProviderLoginLaunchResult,
   ContextInfo,
   CreateTaskRequest,
   CrossTeamMessage,
@@ -1404,6 +1407,14 @@ const electronAPI: ElectronAPI = {
     },
     invalidateStatus: async (): Promise<void> => {
       return invokeIpcWithResult<void>(CLI_INSTALLER_INVALIDATE_STATUS);
+    },
+    launchProviderLogin: async (
+      request: CliProviderLoginLaunchRequest
+    ): Promise<CliProviderLoginLaunchResult> => {
+      return invokeIpcWithResult<CliProviderLoginLaunchResult>(
+        CLI_INSTALLER_LAUNCH_PROVIDER_LOGIN,
+        request
+      );
     },
     onProgress: (callback: (event: unknown, data: CliInstallerProgress) => void): (() => void) => {
       ipcRenderer.on(

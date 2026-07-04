@@ -488,6 +488,9 @@ export const CLI_INSTALLER_PROGRESS = 'cliInstaller:progress';
 /** Invalidate cached CLI status (forces fresh check on next getStatus) */
 export const CLI_INSTALLER_INVALIDATE_STATUS = 'cliInstaller:invalidateStatus';
 
+/** Launch the interactive provider login (opens an OS console + browser OAuth) */
+export const CLI_INSTALLER_LAUNCH_PROVIDER_LOGIN = 'cliInstaller:launchProviderLogin';
+
 // =============================================================================
 // OpenCode Runtime Installer API Channels
 // =============================================================================

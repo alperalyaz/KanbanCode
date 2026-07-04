@@ -859,7 +859,14 @@
       "notConnectedTitle": "{{provider}} bağlı değil",
       "summary": "{{provider}} kimlik doğrulaması gerekli",
       "message": "{{provider}} kurulu ama giriş yapılmamış. {{provider}} CLI'de giriş yapın, ardından sağlayıcı durumunu yenileyin.",
-      "openSettings": "{{provider}} ayarlarını aç"
+      "openSettings": "{{provider}} ayarlarını aç",
+      "login": "{{provider}} girişi yap",
+      "launching": "Giriş açılıyor…",
+      "checking": "Tarayıcıda girişini tamamla — otomatik kontrol ediyoruz.",
+      "success": "{{provider}} bağlandı.",
+      "timedout": "Hâlâ bağlanmadı. Tarayıcıdaki girişi tamamla veya aşağıdaki komutu kullan.",
+      "failed": "Giriş açılamadı. Bunun yerine aşağıdaki komutu kullan.",
+      "copyFallback": "Alternatif: komutu kopyala"
     },
     "runtimeInstall": {
       "install": "{{provider}} kur",

@@ -83,10 +83,19 @@ const codexAccountHookState = {
   logout: vi.fn(() => Promise.resolve(true)),
 };
 
+const { launchProviderLoginMock } = vi.hoisted(() => ({
+  launchProviderLoginMock: vi.fn<
+    () => Promise<{ launched: boolean; method: string; error?: string }>
+  >(() => Promise.resolve({ launched: true, method: 'test' })),
+}));
+
 vi.mock('@renderer/api', () => ({
   api: {
     openExternal: vi.fn(() => Promise.resolve({ success: true })),
     showInFolder: vi.fn(),
+    cliInstaller: {
+      launchProviderLogin: launchProviderLoginMock,
+    },
   },
   isElectronMode: () => true,
 }));
@@ -191,13 +200,15 @@ vi.mock('@renderer/store', () => {
   const useStore = (selector: (state: StoreState) => unknown) => selector(storeState);
   Object.assign(useStore, {
     setState: vi.fn(),
+    // The one-click login hook reads a fresh store snapshot via getState() when it
+    // launches and while it polls auth status.
+    getState: () => storeState,
   });
   return { useStore };
 });
 
 import { CliStatusBanner } from '@renderer/components/dashboard/CliStatusBanner';
 import { CliStatusSection } from '@renderer/components/settings/sections/CliStatusSection';
-import { requestProviderRuntimeChecks } from '@renderer/utils/requestProviderRuntimeChecks';
 
 async function flushLazyImports(): Promise<void> {
   await Promise.resolve();
@@ -381,6 +392,8 @@ describe('CLI status visibility during completed install state', () => {
   beforeEach(() => {
     providerRuntimeSettingsDialogProps = null;
     terminalModalProps = null;
+    launchProviderLoginMock.mockReset();
+    launchProviderLoginMock.mockResolvedValue({ launched: true, method: 'test' });
     codexAccountHookState.snapshot = null;
     codexAccountHookState.loading = false;
     codexAccountHookState.rateLimitsLoading = false;
@@ -517,10 +530,16 @@ describe('CLI status visibility during completed install state', () => {
     });
   });
 
-  it('keeps the dashboard terminal modal unmounted until login is requested', async () => {
+  it('launches the console login instead of a modal, and only falls back to the terminal modal when the launch fails', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliStatus = createInstalledCliStatus({
       authLoggedIn: false,
+    });
+    // Simulate the OS console failing to open so the copy-command fallback surfaces.
+    launchProviderLoginMock.mockResolvedValue({
+      launched: false,
+      method: 'none',
+      error: 'no console available',
     });
 
     const host = document.createElement('div');
@@ -544,6 +563,26 @@ describe('CLI status visibility during completed install state', () => {
       await flushLazyImports();
     });
 
+    // Primary path is the app-driven console login (one-click) — not the terminal modal.
+    expect(launchProviderLoginMock).toHaveBeenCalledTimes(1);
+    expect(launchProviderLoginMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        binaryPath: '/usr/local/bin/claude',
+        args: ['auth', 'login'],
+      })
+    );
+
+    // Because the launch failed, the copy-command fallback link appears — click it.
+    const fallbackButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('copy the command')
+    );
+    expect(fallbackButton).not.toBeUndefined();
+
+    await act(async () => {
+      fallbackButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushLazyImports();
+    });
+
     expect(host.querySelector('[data-testid="terminal-modal"]')).not.toBeNull();
 
     await act(async () => {
@@ -552,7 +591,7 @@ describe('CLI status visibility during completed install state', () => {
     });
   });
 
-  it('waits until the runtime login modal closes before refreshing auth status', async () => {
+  it('refreshes runtime auth status via the polling loop after launching login', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliStatus = createInstalledCliStatus({
       authLoggedIn: false,
@@ -571,26 +610,39 @@ describe('CLI status visibility during completed install state', () => {
       (button) => button.textContent?.trim() === 'Login'
     );
 
-    await act(async () => {
-      loginButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await flushLazyImports();
-    });
+    // Clicking Login now launches the console login flow (no terminal modal as the
+    // primary action) and begins polling auth status on an interval.
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        loginButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
 
-    expect(host.querySelector('[data-testid="terminal-modal"]')).not.toBeNull();
-    expect(terminalModalProps?.onExit).toBeUndefined();
+      // Flush the async launch (microtasks) so polling gets scheduled.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
 
-    storeState.invalidateCliStatus.mockClear();
-    storeState.bootstrapCliStatus.mockClear();
+      expect(launchProviderLoginMock).toHaveBeenCalledTimes(1);
+      expect(launchProviderLoginMock).toHaveBeenCalledWith(
+        expect.objectContaining({ binaryPath: '/usr/local/bin/claude', args: ['auth', 'login'] })
+      );
+      // The primary path does not open the terminal modal.
+      expect(host.querySelector('[data-testid="terminal-modal"]')).toBeNull();
 
-    await act(async () => {
-      terminalModalProps?.onClose?.();
-      await flushLazyImports();
-    });
+      storeState.invalidateCliStatus.mockClear();
+      storeState.bootstrapCliStatus.mockClear();
 
-    // Closing the runtime login modal now refreshes auth status via
-    // invalidate + bootstrap (it previously forced a provider runtime check).
-    expect(storeState.invalidateCliStatus).toHaveBeenCalledTimes(1);
-    expect(storeState.bootstrapCliStatus).toHaveBeenCalledTimes(1);
+      // Advance past one poll interval — the loop refreshes runtime auth status.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(storeState.invalidateCliStatus).toHaveBeenCalledTimes(1);
+      expect(storeState.bootstrapCliStatus).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
 
     await act(async () => {
       root.unmount();
@@ -1730,24 +1782,45 @@ describe('CLI status visibility during completed install state', () => {
     );
     expect(connectButton).not.toBeUndefined();
 
-    await act(async () => {
-      connectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await flushLazyImports();
-    });
+    // Connecting a provider now launches the app-driven console login (one-click) and
+    // polls that provider's auth status, rather than showing the terminal modal.
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        connectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
 
-    expect(host.querySelector('[data-testid="terminal-modal"]')).not.toBeNull();
-    expect(terminalModalProps?.onExit).toBeUndefined();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
 
-    storeState.invalidateCliStatus.mockClear();
-    vi.mocked(requestProviderRuntimeChecks).mockClear();
+      expect(launchProviderLoginMock).toHaveBeenCalledTimes(1);
+      expect(launchProviderLoginMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerId: 'anthropic',
+          binaryPath: '/usr/local/bin/claude',
+          args: ['auth', 'login', '--provider', 'anthropic'],
+        })
+      );
+      // The primary path does not open the terminal modal.
+      expect(host.querySelector('[data-testid="terminal-modal"]')).toBeNull();
 
-    await act(async () => {
-      terminalModalProps?.onClose?.();
-      await flushLazyImports();
-    });
+      storeState.invalidateCliStatus.mockClear();
+      storeState.fetchCliProviderStatus.mockClear();
 
-    expect(storeState.invalidateCliStatus).toHaveBeenCalledTimes(1);
-    expect(requestProviderRuntimeChecks).toHaveBeenCalledWith({ force: true });
+      // Advance past one poll interval — the loop refreshes the provider's auth status.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(storeState.invalidateCliStatus).toHaveBeenCalledTimes(1);
+      expect(storeState.fetchCliProviderStatus).toHaveBeenCalledWith('anthropic', {
+        verifyModels: true,
+        silent: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
 
     await act(async () => {
       root.unmount();

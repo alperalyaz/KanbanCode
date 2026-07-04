@@ -52,6 +52,10 @@ import {
   getProviderTerminalLogoutCommand,
 } from '@renderer/components/runtime/providerTerminalCommands';
 import { useCliInstaller } from '@renderer/hooks/useCliInstaller';
+import {
+  RUNTIME_LOGIN_KEY,
+  useProviderLoginLauncher,
+} from '@renderer/hooks/useProviderLoginLauncher';
 import { useStore } from '@renderer/store';
 import { createLoadingMultimodelCliStatus } from '@renderer/store/slices/cliInstallerSlice';
 import { formatBytes } from '@renderer/utils/formatters';
@@ -1353,6 +1357,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     isBusy,
   } = useCliInstaller();
 
+  const loginLauncher = useProviderLoginLauncher();
   const [showLoginTerminal, setShowLoginTerminal] = useState(false);
   const [providerTerminal, setProviderTerminal] = useState<{
     providerId: CliProviderId;
@@ -1577,7 +1582,23 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     })();
   }, [invalidateCliStatus]);
 
-  const handleProviderLogin = useCallback((providerId: CliProviderId) => {
+  const handleProviderLogin = useCallback(
+    (providerId: CliProviderId) => {
+      const provider =
+        effectiveCliStatus?.providers.find((entry) => entry.providerId === providerId) ?? null;
+      const binaryPath = effectiveCliStatus?.binaryPath ?? null;
+      // Primary path: app-driven one-click login (opens an OS console + browser OAuth) and
+      // polls auth status. Falls back to the copy-command modal when we cannot launch.
+      if (provider && binaryPath) {
+        void loginLauncher.launchLogin(provider, binaryPath);
+        return;
+      }
+      setProviderTerminal({ providerId, action: 'login' });
+    },
+    [effectiveCliStatus?.providers, effectiveCliStatus?.binaryPath, loginLauncher.launchLogin]
+  );
+
+  const handleShowProviderLoginCommand = useCallback((providerId: CliProviderId) => {
     setProviderTerminal({ providerId, action: 'login' });
   }, []);
 
@@ -1704,9 +1725,64 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
         ? getProviderTerminalCommand(activeTerminalProvider)
         : getProviderTerminalLogoutCommand(activeTerminalProvider)
       : null;
+  const loginActiveProviderId = loginLauncher.activeProviderId;
+  const loginActiveProviderLabel = loginActiveProviderId
+    ? getProviderLabel(loginActiveProviderId)
+    : getHumanRuntimeDisplayName(renderCliStatus ?? undefined, true);
+  const loginStatusText =
+    loginLauncher.phase === 'launching'
+      ? t('cliStatus.oneClickLogin.launching')
+      : loginLauncher.phase === 'polling'
+        ? t('cliStatus.oneClickLogin.checking')
+        : loginLauncher.phase === 'success'
+          ? t('cliStatus.oneClickLogin.success', { provider: loginActiveProviderLabel })
+          : loginLauncher.phase === 'timedout'
+            ? t('cliStatus.oneClickLogin.timedout')
+            : loginLauncher.phase === 'error'
+              ? t('cliStatus.oneClickLogin.failed')
+              : null;
+  const showLoginStatusBanner =
+    loginActiveProviderId !== null &&
+    loginLauncher.activeKey === loginActiveProviderId &&
+    loginStatusText !== null;
+  const loginStatusIsProblem =
+    loginLauncher.phase === 'timedout' || loginLauncher.phase === 'error';
   const installedAuxiliaryUi =
     renderCliStatus !== null ? (
       <>
+        {showLoginStatusBanner ? (
+          <div
+            data-testid="cli-status-login-status"
+            className="mb-4 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs"
+            style={{
+              borderColor: loginLauncher.phase === 'success' ? '#22c55e' : '#f59e0b',
+              backgroundColor:
+                loginLauncher.phase === 'success'
+                  ? 'rgba(34, 197, 94, 0.06)'
+                  : 'rgba(245, 158, 11, 0.06)',
+              color: 'var(--color-text-secondary)',
+            }}
+          >
+            {loginLauncher.phase === 'polling' || loginLauncher.phase === 'launching' ? (
+              <Loader2 className="size-3.5 shrink-0 animate-spin" style={{ color: '#f59e0b' }} />
+            ) : loginLauncher.phase === 'success' ? (
+              <CheckCircle className="size-3.5 shrink-0" style={{ color: '#4ade80' }} />
+            ) : (
+              <AlertTriangle className="size-3.5 shrink-0" style={{ color: '#f59e0b' }} />
+            )}
+            <span className="min-w-0 flex-1">{loginStatusText}</span>
+            {loginStatusIsProblem && loginActiveProviderId ? (
+              <button
+                type="button"
+                onClick={() => handleShowProviderLoginCommand(loginActiveProviderId)}
+                className="shrink-0 rounded px-1.5 py-0.5 font-medium underline decoration-dotted underline-offset-2 hover:bg-white/5"
+                style={{ color: '#fbbf24' }}
+              >
+                {t('cliStatus.oneClickLogin.copyFallback')}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         {manageDialogOpen && (
           <Suspense fallback={null}>
             <ProviderRuntimeSettingsDialog
@@ -2213,17 +2289,71 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
                     )}
                   </button>
                   <button
-                    onClick={() => setShowLoginTerminal(true)}
-                    className="flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors"
+                    onClick={() => {
+                      // Primary: app-driven one-click login (opens console + browser OAuth,
+                      // then auto-polls auth). Falls back to the copy modal if no binary path.
+                      if (renderCliStatus.binaryPath) {
+                        void loginLauncher.launchRuntimeLogin(renderCliStatus.binaryPath, [
+                          'auth',
+                          'login',
+                        ]);
+                        return;
+                      }
+                      setShowLoginTerminal(true);
+                    }}
+                    disabled={
+                      loginLauncher.activeKey === RUNTIME_LOGIN_KEY && loginLauncher.isBusy
+                    }
+                    className="flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-60"
                     style={{ backgroundColor: '#f59e0b' }}
                   >
-                    <LogIn className="size-4" />
+                    {loginLauncher.activeKey === RUNTIME_LOGIN_KEY && loginLauncher.isBusy ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <LogIn className="size-4" />
+                    )}
                     {t('cliStatus.actions.login')}
                   </button>
                 </>
               )}
             </div>
           </div>
+
+          {loginLauncher.activeKey === RUNTIME_LOGIN_KEY &&
+          loginLauncher.phase !== 'idle' &&
+          loginStatusText ? (
+            <div
+              data-testid="cli-status-runtime-login-status"
+              className="mt-3 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs"
+              style={{
+                borderColor: loginLauncher.phase === 'success' ? '#22c55e' : '#f59e0b',
+                backgroundColor:
+                  loginLauncher.phase === 'success'
+                    ? 'rgba(34, 197, 94, 0.06)'
+                    : 'rgba(245, 158, 11, 0.06)',
+                color: 'var(--color-text-secondary)',
+              }}
+            >
+              {loginLauncher.phase === 'polling' || loginLauncher.phase === 'launching' ? (
+                <Loader2 className="size-3.5 shrink-0 animate-spin" style={{ color: '#f59e0b' }} />
+              ) : loginLauncher.phase === 'success' ? (
+                <CheckCircle className="size-3.5 shrink-0" style={{ color: '#4ade80' }} />
+              ) : (
+                <AlertTriangle className="size-3.5 shrink-0" style={{ color: '#f59e0b' }} />
+              )}
+              <span className="min-w-0 flex-1">{loginStatusText}</span>
+              {loginStatusIsProblem ? (
+                <button
+                  type="button"
+                  onClick={() => setShowLoginTerminal(true)}
+                  className="shrink-0 rounded px-1.5 py-0.5 font-medium underline decoration-dotted underline-offset-2 hover:bg-white/5"
+                  style={{ color: '#fbbf24' }}
+                >
+                  {t('cliStatus.oneClickLogin.copyFallback')}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
 
           {!hasApiKeyModeIssue && showTroubleshoot && (
             <div

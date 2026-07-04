@@ -938,6 +938,15 @@ export default interface Resources {
         "aiProviders": "Checking AI Providers...",
         "claudeCli": "Checking Claude CLI..."
       },
+      "oneClickLogin": {
+        "checking": "Complete the login in your browser — we are checking automatically.",
+        "copyFallback": "Alternative: copy the command",
+        "failed": "Login could not be opened. Use the command below instead.",
+        "launching": "Opening login…",
+        "login": "Log in to {{provider}}",
+        "success": "{{provider}} connected.",
+        "timedout": "Still not connected. Finish the login in your browser, or use the command below."
+      },
       "provider": {
         "authenticated": "Authenticated",
         "backend": "Backend: {{backend}}",
@@ -4210,10 +4219,17 @@ export default interface Resources {
         "perMillionSummary": "{{summary}} / 1M"
       },
       "providerAuthStatus": {
+        "checking": "Complete the login in your browser — we are checking automatically.",
+        "copyFallback": "Alternative: copy the command",
+        "failed": "Login could not be opened. Use the command below instead.",
+        "launching": "Opening login…",
+        "login": "Log in to {{provider}}",
         "message": "{{provider}} is installed but you are not logged in. Log in with the {{provider}} CLI, then refresh provider status.",
         "notConnectedTitle": "{{provider}} is not connected",
         "openSettings": "Open {{provider}} settings",
-        "summary": "{{provider}} authentication required"
+        "success": "{{provider}} connected.",
+        "summary": "{{provider}} authentication required",
+        "timedout": "Still not connected. Finish the login in your browser, or use the command below."
       },
       "reason": "Reason: {{reason}}",
       "routeGroups": {

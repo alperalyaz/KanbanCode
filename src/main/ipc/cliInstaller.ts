@@ -12,6 +12,7 @@ import {
   CLI_INSTALLER_GET_STATUS,
   CLI_INSTALLER_INSTALL,
   CLI_INSTALLER_INVALIDATE_STATUS,
+  CLI_INSTALLER_LAUNCH_PROVIDER_LOGIN,
   CLI_INSTALLER_VERIFY_PROVIDER_MODELS,
   // eslint-disable-next-line boundaries/element-types -- IPC channel constants shared between main and preload
 } from '@preload/constants/ipcChannels';
@@ -20,6 +21,7 @@ import { getErrorMessage } from '@shared/utils/errorHandling';
 import { createLogger } from '@shared/utils/logger';
 
 import { CodexBinaryResolver } from '../services/infrastructure/codexAppServer';
+import { launchProviderLoginConsole } from '../services/runtime/launchProviderLoginConsole';
 import { ClaudeBinaryResolver } from '../services/team/ClaudeBinaryResolver';
 
 import type { CliInstallerService } from '../services';
@@ -28,6 +30,8 @@ import type {
   CliInstallerGetStatusOptions,
   CliInstallerProviderStatusMode,
   CliProviderId,
+  CliProviderLoginLaunchRequest,
+  CliProviderLoginLaunchResult,
   CliProviderStatus,
   IpcResult,
 } from '@shared/types';
@@ -39,7 +43,7 @@ let service: CliInstallerService;
 const statusInFlight = new Map<CliInstallerProviderStatusMode, Promise<CliInstallationStatus>>();
 const providerStatusInFlight = new Map<CliProviderId, Promise<CliProviderStatus | null>>();
 const providerRuntimeRequestTails = new Map<CliProviderId, Promise<void>>();
-const providerRuntimeRequestQueue: Array<() => void> = [];
+const providerRuntimeRequestQueue: (() => void)[] = [];
 let activeProviderRuntimeRequestCount = 0;
 const cachedStatus = new Map<
   CliInstallerProviderStatusMode,
@@ -199,6 +203,7 @@ export function registerCliInstallerHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(CLI_INSTALLER_VERIFY_PROVIDER_MODELS, handleVerifyProviderModels);
   ipcMain.handle(CLI_INSTALLER_INSTALL, handleInstall);
   ipcMain.handle(CLI_INSTALLER_INVALIDATE_STATUS, handleInvalidateStatus);
+  ipcMain.handle(CLI_INSTALLER_LAUNCH_PROVIDER_LOGIN, handleLaunchProviderLogin);
 
   logger.info('CLI installer handlers registered');
 }
@@ -212,6 +217,7 @@ export function removeCliInstallerHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(CLI_INSTALLER_VERIFY_PROVIDER_MODELS);
   ipcMain.removeHandler(CLI_INSTALLER_INSTALL);
   ipcMain.removeHandler(CLI_INSTALLER_INVALIDATE_STATUS);
+  ipcMain.removeHandler(CLI_INSTALLER_LAUNCH_PROVIDER_LOGIN);
 
   logger.info('CLI installer handlers removed');
 }
@@ -383,6 +389,49 @@ async function handleVerifyProviderModels(
     const msg = getErrorMessage(error);
     logger.error(`Error in cliInstaller:verifyProviderModels(${providerId}):`, msg);
     return { success: false, error: msg };
+  }
+}
+
+function isValidLaunchRequest(value: unknown): value is CliProviderLoginLaunchRequest {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const request = value as Partial<CliProviderLoginLaunchRequest>;
+  return (
+    typeof request.providerId === 'string' &&
+    typeof request.binaryPath === 'string' &&
+    request.binaryPath.trim().length > 0 &&
+    Array.isArray(request.args) &&
+    request.args.every((arg) => typeof arg === 'string')
+  );
+}
+
+async function handleLaunchProviderLogin(
+  _event: IpcMainInvokeEvent,
+  request: unknown
+): Promise<IpcResult<CliProviderLoginLaunchResult>> {
+  try {
+    if (!isValidLaunchRequest(request)) {
+      return {
+        success: true,
+        data: { launched: false, method: 'none', error: 'Invalid provider login request.' },
+      };
+    }
+
+    const env: Record<string, string> = {};
+    for (const [key, envValue] of Object.entries(request.env ?? {})) {
+      if (typeof envValue === 'string') {
+        env[key] = envValue;
+      }
+    }
+
+    const result = await launchProviderLoginConsole(request.binaryPath, request.args, env);
+    return { success: true, data: result };
+  } catch (error) {
+    // Defensive: never throw to the renderer.
+    const msg = getErrorMessage(error);
+    logger.error('Error in cliInstaller:launchProviderLogin:', msg);
+    return { success: true, data: { launched: false, method: 'none', error: msg } };
   }
 }
 

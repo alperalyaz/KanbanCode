@@ -375,6 +375,33 @@ export interface CliInstallerGetStatusOptions {
 // =============================================================================
 
 /**
+ * Request payload for launching an interactive provider login. The renderer builds the
+ * exact command (binary + args + env) so command-building logic stays in one place.
+ */
+export interface CliProviderLoginLaunchRequest {
+  providerId: CliProviderId;
+  /** Absolute path to the runtime binary (cliStatus.binaryPath). */
+  binaryPath: string;
+  /** Login arguments, e.g. ['auth', 'login', '--provider', 'anthropic']. */
+  args: string[];
+  /** Extra environment variables merged into the spawned process env. */
+  env?: Record<string, string>;
+}
+
+/**
+ * Result of a launch attempt. Reflects whether the login process was LAUNCHED,
+ * not whether authentication ultimately succeeded (the renderer polls auth status).
+ */
+export interface CliProviderLoginLaunchResult {
+  /** True when a console/login process was successfully spawned. */
+  launched: boolean;
+  /** How the login was launched (e.g. 'windows-console', 'macos-terminal', 'linux-<emulator>', 'direct'). */
+  method: string;
+  /** Human-readable failure reason when launched is false. */
+  error?: string;
+}
+
+/**
  * CLI Installer API exposed via preload bridge.
  */
 export interface CliInstallerAPI {
@@ -388,6 +415,14 @@ export interface CliInstallerAPI {
   install: () => Promise<void>;
   /** Invalidate cached status (forces fresh check on next getStatus) */
   invalidateStatus: () => Promise<void>;
+  /**
+   * Launch the interactive provider login for the user. Opens an OS console running the
+   * runtime login command so the browser OAuth flow can complete. Never throws; returns a
+   * result describing whether the process was launched.
+   */
+  launchProviderLogin: (
+    request: CliProviderLoginLaunchRequest
+  ) => Promise<CliProviderLoginLaunchResult>;
   /** Subscribe to progress events. Returns cleanup function. */
   onProgress: (cb: (event: unknown, data: CliInstallerProgress) => void) => () => void;
 }
