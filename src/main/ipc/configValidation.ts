@@ -10,7 +10,6 @@ import * as path from 'path';
 
 import type {
   AppConfig,
-  DisplayConfig,
   GeneralConfig,
   HttpServerConfig,
   NotificationConfig,
@@ -37,7 +36,6 @@ export type ConfigUpdateValidationResult =
   | ValidationSuccess<'general'>
   | ValidationSuccess<'providerConnections'>
   | ValidationSuccess<'runtime'>
-  | ValidationSuccess<'display'>
   | ValidationSuccess<'httpServer'>
   | ValidationFailure;
 
@@ -46,7 +44,6 @@ const VALID_SECTIONS = new Set<ConfigSection>([
   'general',
   'providerConnections',
   'runtime',
-  'display',
   'httpServer',
 ]);
 const MAX_SNOOZE_MINUTES = 24 * 60;
@@ -375,7 +372,6 @@ function validateGeneralSection(data: unknown): ValidationSuccess<'general'> | V
     'launchAtLogin',
     'showDockIcon',
     'theme',
-    'defaultTab',
     'multimodelEnabled',
     'claudeRootPath',
     'agentLanguage',
@@ -410,15 +406,6 @@ function validateGeneralSection(data: unknown): ValidationSuccess<'general'> | V
           return { valid: false, error: 'general.theme must be one of: dark, light, system' };
         }
         result.theme = value;
-        break;
-      case 'defaultTab':
-        if (value !== 'dashboard' && value !== 'last-session') {
-          return {
-            valid: false,
-            error: 'general.defaultTab must be one of: dashboard, last-session',
-          };
-        }
-        result.defaultTab = value;
         break;
       case 'multimodelEnabled':
         if (typeof value !== 'boolean') {
@@ -798,38 +785,6 @@ function validateProviderConnectionsSection(
   };
 }
 
-function validateDisplaySection(data: unknown): ValidationSuccess<'display'> | ValidationFailure {
-  if (!isPlainObject(data)) {
-    return { valid: false, error: 'display update must be an object' };
-  }
-
-  const allowedKeys: (keyof DisplayConfig)[] = [
-    'showTimestamps',
-    'compactMode',
-    'syntaxHighlighting',
-  ];
-
-  const result: Partial<DisplayConfig> = {};
-
-  for (const [key, value] of Object.entries(data)) {
-    if (!allowedKeys.includes(key as keyof DisplayConfig)) {
-      return { valid: false, error: `display.${key} is not a valid setting` };
-    }
-
-    if (typeof value !== 'boolean') {
-      return { valid: false, error: `display.${key} must be a boolean` };
-    }
-
-    result[key as keyof DisplayConfig] = value;
-  }
-
-  return {
-    valid: true,
-    section: 'display',
-    data: result,
-  };
-}
-
 function validateHttpServerSection(
   data: unknown
 ): ValidationSuccess<'httpServer'> | ValidationFailure {
@@ -881,7 +836,7 @@ export function validateConfigUpdatePayload(
     return {
       valid: false,
       error:
-        'Section must be one of: notifications, general, providerConnections, runtime, display, httpServer',
+        'Section must be one of: notifications, general, providerConnections, runtime, httpServer',
     };
   }
 
@@ -894,8 +849,6 @@ export function validateConfigUpdatePayload(
       return validateProviderConnectionsSection(data);
     case 'runtime':
       return validateRuntimeSection(data);
-    case 'display':
-      return validateDisplaySection(data);
     case 'httpServer':
       return validateHttpServerSection(data);
     default:

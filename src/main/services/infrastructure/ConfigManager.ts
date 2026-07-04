@@ -260,7 +260,6 @@ export interface GeneralConfig {
   launchAtLogin: boolean;
   showDockIcon: boolean;
   theme: 'dark' | 'light' | 'system';
-  defaultTab: 'dashboard' | 'last-session';
   multimodelEnabled: boolean;
   claudeRootPath: string | null;
   agentLanguage: string;
@@ -305,12 +304,6 @@ export interface ProviderConnectionsConfig {
   };
 }
 
-export interface DisplayConfig {
-  showTimestamps: boolean;
-  compactMode: boolean;
-  syntaxHighlighting: boolean;
-}
-
 export interface SessionsConfig {
   pinnedSessions: Record<string, { sessionId: string; pinnedAt: number }[]>;
   hiddenSessions: Record<string, { sessionId: string; hiddenAt: number }[]>;
@@ -326,7 +319,6 @@ export interface AppConfig {
   general: GeneralConfig;
   providerConnections: ProviderConnectionsConfig;
   runtime: RuntimeConfig;
-  display: DisplayConfig;
   sessions: SessionsConfig;
   httpServer: HttpServerConfig;
 }
@@ -361,7 +353,7 @@ const DEFAULT_CONFIG: AppConfig = {
     notifyOnTeamLaunched: false,
     notifyOnToolApproval: true,
     autoResumeOnRateLimit: false,
-    statusChangeOnlySolo: false,
+    statusChangeOnlySolo: true,
     statusChangeStatuses: ['in_progress', 'completed'],
     triggers: DEFAULT_TRIGGERS,
   },
@@ -369,7 +361,6 @@ const DEFAULT_CONFIG: AppConfig = {
     launchAtLogin: false,
     showDockIcon: true,
     theme: 'dark',
-    defaultTab: 'dashboard',
     multimodelEnabled: true,
     claudeRootPath: null,
     agentLanguage: 'system',
@@ -402,11 +393,6 @@ const DEFAULT_CONFIG: AppConfig = {
       gemini: 'auto',
       codex: 'codex-native',
     },
-  },
-  display: {
-    showTimestamps: true,
-    compactMode: false,
-    syntaxHighlighting: true,
   },
   sessions: {
     pinnedSessions: {},
@@ -700,10 +686,6 @@ export class ConfigManager {
           ) as RuntimeConfig['providerBackends']['codex'],
         },
       },
-      display: {
-        ...DEFAULT_CONFIG.display,
-        ...(loaded.display ?? {}),
-      },
       sessions: {
         ...DEFAULT_CONFIG.sessions,
         ...(loaded.sessions ?? {}),
@@ -746,7 +728,7 @@ export class ConfigManager {
 
   /**
    * Updates a section of the configuration.
-   * @param section - The config section to update ('notifications', 'general', 'display')
+   * @param section - The config section to update ('notifications', 'general')
    * @param data - Partial data to merge into the section
    */
   updateConfig<K extends ConfigSection>(section: K, data: Partial<AppConfig[K]>): AppConfig {

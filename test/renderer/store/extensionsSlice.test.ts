@@ -235,7 +235,6 @@ function makeAppConfig(multimodelEnabled: boolean): AppConfig {
       launchAtLogin: false,
       showDockIcon: true,
       theme: 'system',
-      defaultTab: 'dashboard',
       multimodelEnabled,
       claudeRootPath: null,
       agentLanguage: 'system',
@@ -267,11 +266,6 @@ function makeAppConfig(multimodelEnabled: boolean): AppConfig {
         gemini: 'auto',
         codex: 'codex-native',
       },
-    },
-    display: {
-      showTimestamps: true,
-      compactMode: false,
-      syntaxHighlighting: true,
     },
     sessions: {
       pinnedSessions: {},

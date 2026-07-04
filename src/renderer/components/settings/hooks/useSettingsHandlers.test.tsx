@@ -50,11 +50,6 @@ function createSettingsConfig(): AppConfig {
       autoResumeOnRateLimit: false,
       triggers: [],
     },
-    display: {
-      showGraph: true,
-      showTerminal: true,
-      showTeamMembers: true,
-    },
     providerConnections: {
       anthropic: {
         authMode: 'auto',

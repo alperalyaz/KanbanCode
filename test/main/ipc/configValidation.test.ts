@@ -217,22 +217,6 @@ describe('configValidation', () => {
     }
   });
 
-  it('accepts valid display updates', () => {
-    const result = validateConfigUpdatePayload('display', {
-      compactMode: true,
-      syntaxHighlighting: false,
-    });
-
-    expect(result.valid).toBe(true);
-    if (result.valid) {
-      expect(result.section).toBe('display');
-      expect(result.data).toEqual({
-        compactMode: true,
-        syntaxHighlighting: false,
-      });
-    }
-  });
-
   it('normalizes legacy Codex provider connection updates to the native-only config shape', () => {
     const result = validateConfigUpdatePayload('providerConnections', {
       codex: {

@@ -86,9 +86,6 @@ export const ConfigEditorDialog = ({
         if (parsed.notifications) {
           await api.config.update('notifications', parsed.notifications);
         }
-        if (parsed.display) {
-          await api.config.update('display', parsed.display);
-        }
         if (parsed.sessions) {
           await api.config.update('sessions', parsed.sessions);
         }

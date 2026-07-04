@@ -28,7 +28,6 @@ export interface SafeConfig {
     launchAtLogin: boolean;
     showDockIcon: boolean;
     theme: 'dark' | 'light' | 'system';
-    defaultTab: 'dashboard' | 'last-session';
     multimodelEnabled: boolean;
     claudeRootPath: string | null;
     agentLanguage: string;
@@ -59,11 +58,6 @@ export interface SafeConfig {
     statusChangeOnlySolo: boolean;
     statusChangeStatuses: string[];
     triggers: AppConfig['notifications']['triggers'];
-  };
-  display: {
-    showTimestamps: boolean;
-    compactMode: boolean;
-    syntaxHighlighting: boolean;
   };
 }
 
@@ -171,7 +165,6 @@ export function useSettingsConfig(): UseSettingsConfigReturn {
         launchAtLogin: displayConfig?.general?.launchAtLogin ?? false,
         showDockIcon: displayConfig?.general?.showDockIcon ?? true,
         theme: displayConfig?.general?.theme ?? 'dark',
-        defaultTab: displayConfig?.general?.defaultTab ?? 'dashboard',
         multimodelEnabled: displayConfig?.general?.multimodelEnabled ?? true,
         claudeRootPath: displayConfig?.general?.claudeRootPath ?? null,
         agentLanguage: displayConfig?.general?.agentLanguage ?? 'system',
@@ -205,11 +198,6 @@ export function useSettingsConfig(): UseSettingsConfigReturn {
           'completed',
         ],
         triggers: displayConfig?.notifications?.triggers ?? [],
-      },
-      display: {
-        showTimestamps: displayConfig?.display?.showTimestamps ?? true,
-        compactMode: displayConfig?.display?.compactMode ?? false,
-        syntaxHighlighting: displayConfig?.display?.syntaxHighlighting ?? true,
       },
     }),
     [displayConfig]

@@ -48,7 +48,6 @@ interface SettingsHandlers {
   handleThemeChange: (value: 'dark' | 'light' | 'system') => void;
   handleLanguageChange: (value: string) => void;
   handleAppLocaleChange: (value: string) => void;
-  handleDefaultTabChange: (value: 'dashboard' | 'last-session') => void;
 
   // Notification handlers
   handleNotificationToggle: (key: keyof AppConfig['notifications'], value: boolean) => void;
@@ -65,7 +64,6 @@ interface SettingsHandlers {
   handleRemoveTrigger: (triggerId: string) => Promise<void>;
 
   // Display handlers
-  handleDisplayToggle: (key: keyof AppConfig['display'], value: boolean) => void;
 
   // Advanced handlers
   handleResetToDefaults: () => Promise<void>;
@@ -123,13 +121,6 @@ export function useSettingsHandlers({
       });
       persistStartupLocaleCaches(preference, resolvedLocale);
       fireAndForgetConfigUpdate('general', { appLocale: value });
-    },
-    [fireAndForgetConfigUpdate]
-  );
-
-  const handleDefaultTabChange = useCallback(
-    (value: 'dashboard' | 'last-session') => {
-      fireAndForgetConfigUpdate('general', { defaultTab: value });
     },
     [fireAndForgetConfigUpdate]
   );
@@ -290,14 +281,6 @@ export function useSettingsHandlers({
     [setSaving, setConfig, setOptimisticConfig, setError]
   );
 
-  // Display handlers
-  const handleDisplayToggle = useCallback(
-    (key: keyof AppConfig['display'], value: boolean) => {
-      fireAndForgetConfigUpdate('display', { [key]: value });
-    },
-    [fireAndForgetConfigUpdate]
-  );
-
   // Advanced handlers
   const handleResetToDefaults = useCallback(async () => {
     if (!confirm('Are you sure you want to reset all settings to defaults?')) {
@@ -348,7 +331,6 @@ export function useSettingsHandlers({
           launchAtLogin: false,
           showDockIcon: true,
           theme: 'dark',
-          defaultTab: 'dashboard',
           multimodelEnabled: true,
           claudeRootPath: null,
           agentLanguage: 'system',
@@ -381,11 +363,6 @@ export function useSettingsHandlers({
             codex: 'codex-native',
           },
         },
-        display: {
-          showTimestamps: true,
-          compactMode: false,
-          syntaxHighlighting: true,
-        },
         sessions: {
           pinnedSessions: {},
           hiddenSessions: {},
@@ -395,8 +372,7 @@ export function useSettingsHandlers({
       await api.config.update('notifications', defaultConfig.notifications);
       await api.config.update('general', defaultConfig.general);
       await api.config.update('providerConnections', defaultConfig.providerConnections);
-      await api.config.update('runtime', defaultConfig.runtime);
-      const updatedConfig = await api.config.update('display', defaultConfig.display);
+      const updatedConfig = await api.config.update('runtime', defaultConfig.runtime);
       setConfig(updatedConfig);
       setOptimisticConfig(updatedConfig);
       setStoreState({ appConfig: updatedConfig });
@@ -448,9 +424,6 @@ export function useSettingsHandlers({
         if (importedConfig.general) {
           await api.config.update('general', importedConfig.general);
         }
-        if (importedConfig.display) {
-          await api.config.update('display', importedConfig.display);
-        }
 
         const updatedConfig = await api.config.get();
         setConfig(updatedConfig);
@@ -470,7 +443,6 @@ export function useSettingsHandlers({
     handleThemeChange,
     handleLanguageChange,
     handleAppLocaleChange,
-    handleDefaultTabChange,
     handleNotificationToggle,
     handleApplyCriticalOnlyNotificationsPreset,
     handleStatusChangeStatusesUpdate,
@@ -481,7 +453,6 @@ export function useSettingsHandlers({
     handleAddTrigger,
     handleUpdateTrigger,
     handleRemoveTrigger,
-    handleDisplayToggle,
     handleResetToDefaults,
     handleExportConfig,
     handleImportConfig,
