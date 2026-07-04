@@ -178,7 +178,7 @@ describe('MemberDraftRow', () => {
     });
   });
 
-  it('renders workflow and MCP row controls as icon-only buttons with tooltip text', () => {
+  it('keeps the workflow control as an icon button and hides the MCP editor behind a de-emphasized reveal', () => {
     const { host, root } = renderMemberDraftRow({
       showWorkflow: true,
       onWorkflowChange: () => undefined,
@@ -188,13 +188,8 @@ describe('MemberDraftRow', () => {
     const workflowButton = host.querySelector<HTMLButtonElement>(
       'button[aria-label="Add teammate workflow"]'
     )!;
-    const mcpButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(
-      (button) =>
-        button.getAttribute('aria-label') ===
-        "MCP inherit: Control this member's MCP inheritance policy"
-    )!;
-    const removeButton = host.querySelector<HTMLButtonElement>(
-      'button[aria-label="Remove alice"]'
+    const mcpToggle = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => button.textContent?.includes('MCP access')
     )!;
 
     expect(workflowButton).toBeTruthy();
@@ -202,39 +197,24 @@ describe('MemberDraftRow', () => {
     expect(workflowButton.closest('[title]')?.getAttribute('title')).toBe('Add teammate workflow');
     expect(workflowButton.getAttribute('aria-expanded')).toBe('false');
 
-    expect(mcpButton).toBeTruthy();
-    expect(mcpButton.textContent).not.toContain('MCP');
-    expect(mcpButton.textContent).not.toContain('inherit');
-    const mcpTooltipWrapper = mcpButton.closest('[title]');
-    const mcpTooltipContent = Array.from(mcpTooltipWrapper?.children ?? []).find(
-      (element) => element.getAttribute('aria-hidden') === 'true'
-    );
-    expect(mcpTooltipWrapper?.getAttribute('title')).toBe(
+    expect(mcpToggle).toBeTruthy();
+    // The MCP entry point is a muted text reveal, not a prominent icon button.
+    expect(mcpToggle.className).toContain('text-[var(--color-text-muted)]');
+    expect(mcpToggle.className).not.toContain('border-sky-400/45');
+    expect(mcpToggle.getAttribute('title')).toBe(
       "MCP inherit: Control this member's MCP inheritance policy"
     );
-    expect(mcpTooltipContent?.getAttribute('class')).toContain(
-      'group-hover/hover-tooltip:opacity-100'
-    );
-    expect(mcpButton.getAttribute('aria-expanded')).toBe('false');
-    expect(
-      workflowButton.compareDocumentPosition(mcpButton) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(
-      mcpButton.compareDocumentPosition(removeButton) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    expect(mcpToggle.getAttribute('aria-expanded')).toBe('false');
+    // The policy editor stays collapsed until the reveal is opened.
+    expect(host.textContent).not.toContain('MCP mode');
 
     act(() => {
       workflowButton.click();
-      mcpButton.click();
+      mcpToggle.click();
     });
 
     expect(workflowButton.getAttribute('aria-expanded')).toBe('true');
-    expect(mcpButton.getAttribute('aria-expanded')).toBe('true');
-    expect(mcpButton.className).toContain('border-sky-400/45');
-    expect(mcpTooltipWrapper?.getAttribute('title')).toBeNull();
-    expect(mcpTooltipContent?.getAttribute('class')).not.toContain(
-      'group-hover/hover-tooltip:opacity-100'
-    );
+    expect(mcpToggle.getAttribute('aria-expanded')).toBe('true');
     expect(host.textContent).toContain('Workflow (optional)');
     expect(host.textContent).toContain('MCP mode');
 
@@ -247,14 +227,14 @@ describe('MemberDraftRow', () => {
     {
       label: 'inherit lead',
       mcpPolicy: undefined,
-      ariaLabel: "MCP inherit: Control this member's MCP inheritance policy",
-      highlightedBeforeClick: false,
+      titleText: "MCP inherit: Control this member's MCP inheritance policy",
+      hasIndicator: false,
     },
     {
       label: 'agent teams mcp',
       mcpPolicy: { mode: 'appOnly' as const },
-      ariaLabel: "Agent Teams MCP: Control this member's MCP inheritance policy",
-      highlightedBeforeClick: true,
+      titleText: "Agent Teams MCP: Control this member's MCP inheritance policy",
+      hasIndicator: true,
     },
     {
       label: 'scope inheritance',
@@ -262,8 +242,8 @@ describe('MemberDraftRow', () => {
         mode: 'inheritScopes' as const,
         scopes: { user: true, project: false, local: true },
       },
-      ariaLabel: "MCP scopes: Control this member's MCP inheritance policy",
-      highlightedBeforeClick: true,
+      titleText: "MCP scopes: Control this member's MCP inheritance policy",
+      hasIndicator: true,
     },
     {
       label: 'strict allowlist',
@@ -272,12 +252,12 @@ describe('MemberDraftRow', () => {
         scopes: { user: true, project: true, local: false },
         serverNames: ['github', 'linear'],
       },
-      ariaLabel: "MCP 2: Control this member's MCP inheritance policy",
-      highlightedBeforeClick: true,
+      titleText: "MCP 2: Control this member's MCP inheritance policy",
+      hasIndicator: true,
     },
   ])(
-    'keeps MCP control state correct across $label settings in the row fixture e2e',
-    ({ mcpPolicy, ariaLabel, highlightedBeforeClick }) => {
+    'keeps the MCP reveal state correct across $label settings in the row fixture e2e',
+    ({ mcpPolicy, titleText, hasIndicator }) => {
       const { host, root } = renderMemberDraftRow({
         member: createMemberDraft({
           id: 'member-1',
@@ -290,32 +270,22 @@ describe('MemberDraftRow', () => {
         onMcpPolicyChange: () => undefined,
       });
 
-      const mcpButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(
-        (button) => button.getAttribute('aria-label') === ariaLabel
+      const mcpToggle = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(
+        (button) => button.textContent?.includes('MCP access')
       )!;
-      const tooltipWrapper = mcpButton.closest('[title]');
-      const tooltipContent = Array.from(tooltipWrapper?.children ?? []).find(
-        (element) => element.getAttribute('aria-hidden') === 'true'
-      );
 
-      expect(mcpButton).toBeTruthy();
-      expect(mcpButton.textContent).not.toContain('MCP');
-      expect(mcpButton.className.includes('border-sky-400/45')).toBe(highlightedBeforeClick);
-      expect(tooltipWrapper?.getAttribute('title')).toBe(ariaLabel);
-      expect(tooltipContent?.getAttribute('class')).toContain(
-        'group-hover/hover-tooltip:opacity-100'
-      );
+      expect(mcpToggle).toBeTruthy();
+      expect(mcpToggle.getAttribute('title')).toBe(titleText);
+      // A muted dot marks a non-default per-member policy without shouting for attention.
+      expect(Boolean(mcpToggle.querySelector('.bg-sky-400'))).toBe(hasIndicator);
+      expect(mcpToggle.getAttribute('aria-expanded')).toBe('false');
+      expect(host.textContent).not.toContain('MCP mode');
 
       act(() => {
-        mcpButton.click();
+        mcpToggle.click();
       });
 
-      expect(mcpButton.getAttribute('aria-expanded')).toBe('true');
-      expect(mcpButton.className).toContain('border-sky-400/45');
-      expect(tooltipWrapper?.getAttribute('title')).toBeNull();
-      expect(tooltipContent?.getAttribute('class')).not.toContain(
-        'group-hover/hover-tooltip:opacity-100'
-      );
+      expect(mcpToggle.getAttribute('aria-expanded')).toBe('true');
       expect(host.textContent).toContain('MCP mode');
 
       act(() => {
@@ -343,18 +313,18 @@ describe('MemberDraftRow', () => {
       agentTeamsMcpLocked: true,
     });
 
-    const mcpButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(
-      (button) =>
-        button.getAttribute('aria-label') ===
-        "Agent Teams MCP: Control this member's MCP inheritance policy"
+    const mcpToggle = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => button.textContent?.includes('MCP access')
     )!;
 
-    expect(mcpButton).toBeTruthy();
-    expect(mcpButton.className).toContain('border-amber-300/50');
-    expect(mcpButton.querySelector('.bg-amber-300')).toBeTruthy();
+    expect(mcpToggle).toBeTruthy();
+    expect(mcpToggle.getAttribute('title')).toBe(
+      "Agent Teams MCP: Control this member's MCP inheritance policy"
+    );
+    expect(mcpToggle.querySelector('.bg-amber-300')).toBeTruthy();
 
     act(() => {
-      mcpButton.click();
+      mcpToggle.click();
     });
 
     expect(host.textContent).toContain('MCP mode');

@@ -57,7 +57,7 @@ const createTeamDraftMock = vi.hoisted(() => ({
 }));
 
 const storeState = {
-  appConfig: { general: { multimodelEnabled: true } },
+  appConfig: { general: {} },
   cliStatus: { providers: [] },
   cliStatusLoading: false,
   cliProviderStatusLoading: {},

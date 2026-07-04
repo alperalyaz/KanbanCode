@@ -735,10 +735,7 @@ export interface CliInstallerSlice {
   codexRuntimeError: string | null;
 
   // Actions
-  bootstrapCliStatus: (options?: {
-    multimodelEnabled?: boolean;
-    providerStatusMode?: 'full' | 'defer';
-  }) => Promise<void>;
+  bootstrapCliStatus: (options?: { providerStatusMode?: 'full' | 'defer' }) => Promise<void>;
   fetchCliStatus: () => Promise<void>;
   fetchCliProviderStatus: (
     providerId: CliProviderId,
@@ -843,12 +840,8 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
 
   bootstrapCliStatus: async (options) => {
     if (!api.cliInstaller) return;
-    const multimodelEnabled = options?.multimodelEnabled ?? true;
     const providerStatusMode = options?.providerStatusMode ?? 'full';
     const hydrateProviders = providerStatusMode !== 'defer';
-    if (!multimodelEnabled) {
-      return get().fetchCliStatus();
-    }
 
     const epoch = ++cliStatusEpoch;
     const currentStatus = get().cliStatus;

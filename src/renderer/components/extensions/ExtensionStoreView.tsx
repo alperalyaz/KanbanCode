@@ -134,7 +134,6 @@ export const ExtensionStoreView = (): React.JSX.Element => {
     cliStatus,
     cliStatusLoading,
     cliProviderStatusLoading,
-    appConfig,
     openDashboard,
     sessions,
     projects,
@@ -155,25 +154,19 @@ export const ExtensionStoreView = (): React.JSX.Element => {
       cliStatus: s.cliStatus,
       cliStatusLoading: s.cliStatusLoading,
       cliProviderStatusLoading: s.cliProviderStatusLoading,
-      appConfig: s.appConfig,
       openDashboard: s.openDashboard,
       sessions: s.sessions,
       projects: s.projects,
       repositoryGroups: s.repositoryGroups,
     }))
   );
-  const multimodelEnabled = appConfig?.general?.multimodelEnabled ?? true;
   const loadingCliStatus = useMemo(
-    () =>
-      !cliStatus && cliStatusLoading && multimodelEnabled
-        ? createLoadingMultimodelCliStatus()
-        : cliStatus,
-    [cliStatus, cliStatusLoading, multimodelEnabled]
+    () => (!cliStatus && cliStatusLoading ? createLoadingMultimodelCliStatus() : cliStatus),
+    [cliStatus, cliStatusLoading]
   );
   const codexAccount = useCodexAccountSnapshot({
     enabled:
       isElectron &&
-      multimodelEnabled &&
       loadingCliStatus?.flavor === 'agent_teams_orchestrator' &&
       Boolean(
         loadingCliStatus?.providers.some(
@@ -205,7 +198,7 @@ export const ExtensionStoreView = (): React.JSX.Element => {
     [loadingCliStatus, codexAccount.snapshot]
   );
   const effectiveCliStatusLoading = cliStatusLoading && effectiveCliStatus === null;
-  const runtimeDisplayName = getRuntimeDisplayName(effectiveCliStatus, multimodelEnabled);
+  const runtimeDisplayName = getRuntimeDisplayName(effectiveCliStatus, true);
   const cliInstalled = effectiveCliStatus?.installed ?? true;
   const hasOngoingSessions = sessions.some((sess) => sess.isOngoing);
   const extensionsTabProjectId = useStore((s) =>
@@ -260,20 +253,16 @@ export const ExtensionStoreView = (): React.JSX.Element => {
 
   useEffect(() => {
     const cliStatusMatchesCurrentMode =
-      cliStatus &&
-      (multimodelEnabled
-        ? cliStatus.flavor === 'agent_teams_orchestrator'
-        : cliStatus.flavor !== 'agent_teams_orchestrator');
+      cliStatus && cliStatus.flavor === 'agent_teams_orchestrator';
     if (cliStatusLoading || cliStatusMatchesCurrentMode) {
       return;
     }
     void refreshCliStatusForCurrentMode({
-      multimodelEnabled,
       providerStatusMode: 'defer',
       bootstrapCliStatus,
       fetchCliStatus,
     });
-  }, [bootstrapCliStatus, cliStatus, cliStatusLoading, fetchCliStatus, multimodelEnabled]);
+  }, [bootstrapCliStatus, cliStatus, cliStatusLoading, fetchCliStatus]);
 
   // Fetch MCP installed state on mount
   useEffect(() => {
@@ -288,7 +277,6 @@ export const ExtensionStoreView = (): React.JSX.Element => {
   // Refresh all data (plugins + MCP browse + installed + skills)
   const handleRefresh = useCallback(() => {
     void refreshCliStatusForCurrentMode({
-      multimodelEnabled,
       bootstrapCliStatus,
       fetchCliStatus,
     });
@@ -305,7 +293,6 @@ export const ExtensionStoreView = (): React.JSX.Element => {
     fetchCliStatus,
     fetchPluginCatalog,
     fetchSkillsCatalog,
-    multimodelEnabled,
     mcpBrowse,
     mcpFetchInstalled,
     projectPath,

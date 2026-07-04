@@ -359,50 +359,6 @@ const ErrorDisplay = ({
 };
 
 // =============================================================================
-// CLI checking spinner with delayed hint
-// =============================================================================
-
-const SLOW_CHECK_DELAY_MS = 5_000;
-
-const CliCheckingSpinner = ({
-  styles,
-  label,
-}: {
-  styles: { border: string; bg: string };
-  label: string;
-}): React.JSX.Element => {
-  const { t } = useAppTranslation('dashboard');
-  const [showHint, setShowHint] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setShowHint(true), SLOW_CHECK_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, []);
-
-  return (
-    <div
-      className={`mb-6 flex items-center gap-3 rounded-lg border-l-4 px-4 py-3 ${BANNER_MIN_H}`}
-      style={{ borderColor: styles.border, backgroundColor: styles.bg }}
-    >
-      <Loader2
-        className="size-4 shrink-0 animate-spin"
-        style={{ color: 'var(--color-text-muted)' }}
-      />
-      <div>
-        <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-          {label}
-        </span>
-        {showHint && (
-          <p className="mt-0.5 text-xs" style={{ color: 'var(--color-text-muted)', opacity: 0.7 }}>
-            {t('cliStatus.hints.firstCheckSlow')}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// =============================================================================
 // Installed banner (extracted sub-component)
 // =============================================================================
 
@@ -1418,17 +1374,13 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     }
   }, [cliStatus]);
   const [anthropicRateLimitsRefreshing, setAnthropicRateLimitsRefreshing] = useState(false);
-  const multimodelEnabled = appConfig?.general?.multimodelEnabled ?? true;
   const selectedProjectPath = useMemo(
     () => resolveProjectPathById(selectedProjectId, projects, repositoryGroups)?.path ?? null,
     [projects, repositoryGroups, selectedProjectId]
   );
   const loadingCliStatus = useMemo(
-    () =>
-      !cliStatus && cliStatusLoading && multimodelEnabled
-        ? createLoadingMultimodelCliStatus()
-        : cliStatus,
-    [cliStatus, cliStatusLoading, multimodelEnabled]
+    () => (!cliStatus && cliStatusLoading ? createLoadingMultimodelCliStatus() : cliStatus),
+    [cliStatus, cliStatusLoading]
   );
   const providerConnectionAuthModes = useMemo(
     () => ({
@@ -1444,7 +1396,6 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     enabled:
       providerChecksEngaged &&
       isElectron &&
-      multimodelEnabled &&
       loadingCliStatus?.flavor === 'agent_teams_orchestrator' &&
       Boolean(loadingCliStatus?.providers.some((provider) => provider.providerId === 'codex')),
     includeRateLimits: true,
@@ -1504,11 +1455,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
   ]);
 
   const shouldPollAnthropicSubscriptionLimits = useMemo(() => {
-    if (
-      !renderCliStatus?.installed ||
-      renderCliStatus.flavor !== 'agent_teams_orchestrator' ||
-      !multimodelEnabled
-    ) {
+    if (!renderCliStatus?.installed || renderCliStatus.flavor !== 'agent_teams_orchestrator') {
       return false;
     }
 
@@ -1523,8 +1470,8 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
       sourceProvider: loadingCliProviderMap.get('anthropic') ?? null,
       configuredAuthModes: providerConnectionAuthModes,
     });
-  }, [loadingCliProviderMap, multimodelEnabled, providerConnectionAuthModes, renderCliStatus]);
-  const runtimeDisplayName = getHumanRuntimeDisplayName(renderCliStatus, multimodelEnabled);
+  }, [loadingCliProviderMap, providerConnectionAuthModes, renderCliStatus]);
+  const runtimeDisplayName = getHumanRuntimeDisplayName(renderCliStatus, true);
 
   useEffect(() => {
     if (!isElectron) return;
@@ -1536,7 +1483,6 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     const interval = setInterval(
       () => {
         void refreshCliStatusForCurrentMode({
-          multimodelEnabled,
           bootstrapCliStatus,
           fetchCliStatus,
         });
@@ -1545,7 +1491,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     );
 
     return () => clearInterval(interval);
-  }, [bootstrapCliStatus, cliStatus, fetchCliStatus, isElectron, multimodelEnabled]);
+  }, [bootstrapCliStatus, cliStatus, fetchCliStatus, isElectron]);
 
   useEffect(() => {
     if (!isElectron || !shouldPollAnthropicSubscriptionLimits) {
@@ -1789,7 +1735,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
         {providerTerminal && renderCliStatus.binaryPath && (
           <Suspense fallback={null}>
             <TerminalModal
-              title={`${getHumanRuntimeDisplayName(renderCliStatus, multimodelEnabled)} ${
+              title={`${getHumanRuntimeDisplayName(renderCliStatus, true)} ${
                 providerTerminal.action === 'login'
                   ? t('cliStatus.labels.loginTitle')
                   : t('cliStatus.labels.logoutTitle')
@@ -1871,49 +1817,37 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     }
 
     // Multimodel: render provider cards immediately instead of a generic intermediate block.
-    if (multimodelEnabled) {
-      return (
-        <InstalledBanner
-          cliStatus={renderCliStatus ?? createLoadingMultimodelCliStatus()}
-          sourceProviderMap={loadingCliProviderMap}
-          cliStatusLoading={cliStatusLoading}
-          cliProviderStatusLoading={cliProviderStatusLoading}
-          codexSnapshotPending={codexSnapshotPending}
-          cliStatusError={cliStatusError ?? null}
-          providersCollapsed={providersCollapsed}
-          providerConnectionAuthModes={providerConnectionAuthModes}
-          codexRateLimitsLoading={codexAccount.rateLimitsLoading}
-          anthropicRateLimitsRefreshing={anthropicRateLimitsRefreshing}
-          openCodeRuntimeStatus={openCodeRuntimeStatus}
-          openCodeRuntimeStatusLoading={openCodeRuntimeStatusLoading}
-          codexRuntimeStatus={codexRuntimeStatus}
-          codexRuntimeStatusLoading={codexRuntimeStatusLoading}
-          isBusy={isBusy}
-          onInstall={handleInstall}
-          onOpenCodeInstall={() => void installOpenCodeRuntime()}
-          onCodexInstall={() => void installCodexRuntime()}
-          onRefresh={handleRefresh}
-          onToggleProvidersCollapsed={handleToggleProvidersCollapsed}
-          onProviderLogin={handleProviderLogin}
-          onProviderLogout={handleProviderLogout}
-          onProviderManage={handleProviderManage}
-          onOpenCodeProviderConnect={handleOpenCodeProviderConnect}
-          onProviderRefresh={handleProviderRefresh}
-          onCodexReconnect={handleCodexDashboardLogin}
-          onCodexDeviceCodeLogin={handleCodexDashboardDeviceCodeLogin}
-          codexReconnectBusy={codexAccount.loading}
-          variant="info"
-        />
-      );
-    }
-
-    // Claude-only mode: keep the generic loading spinner.
     return (
-      <CliCheckingSpinner
-        styles={styles}
-        label={
-          multimodelEnabled ? t('cliStatus.loading.aiProviders') : t('cliStatus.loading.claudeCli')
-        }
+      <InstalledBanner
+        cliStatus={renderCliStatus ?? createLoadingMultimodelCliStatus()}
+        sourceProviderMap={loadingCliProviderMap}
+        cliStatusLoading={cliStatusLoading}
+        cliProviderStatusLoading={cliProviderStatusLoading}
+        codexSnapshotPending={codexSnapshotPending}
+        cliStatusError={cliStatusError ?? null}
+        providersCollapsed={providersCollapsed}
+        providerConnectionAuthModes={providerConnectionAuthModes}
+        codexRateLimitsLoading={codexAccount.rateLimitsLoading}
+        anthropicRateLimitsRefreshing={anthropicRateLimitsRefreshing}
+        openCodeRuntimeStatus={openCodeRuntimeStatus}
+        openCodeRuntimeStatusLoading={openCodeRuntimeStatusLoading}
+        codexRuntimeStatus={codexRuntimeStatus}
+        codexRuntimeStatusLoading={codexRuntimeStatusLoading}
+        isBusy={isBusy}
+        onInstall={handleInstall}
+        onOpenCodeInstall={() => void installOpenCodeRuntime()}
+        onCodexInstall={() => void installCodexRuntime()}
+        onRefresh={handleRefresh}
+        onToggleProvidersCollapsed={handleToggleProvidersCollapsed}
+        onProviderLogin={handleProviderLogin}
+        onProviderLogout={handleProviderLogout}
+        onProviderManage={handleProviderManage}
+        onOpenCodeProviderConnect={handleOpenCodeProviderConnect}
+        onProviderRefresh={handleProviderRefresh}
+        onCodexReconnect={handleCodexDashboardLogin}
+        onCodexDeviceCodeLogin={handleCodexDashboardDeviceCodeLogin}
+        codexReconnectBusy={codexAccount.loading}
+        variant="info"
       />
     );
   }
@@ -2316,11 +2250,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
                       setIsVerifyingAuth(true);
                       try {
                         await invalidateCliStatus();
-                        if (multimodelEnabled) {
-                          await bootstrapCliStatus({ multimodelEnabled: true });
-                        } else {
-                          await fetchCliStatus();
-                        }
+                        await bootstrapCliStatus();
                       } finally {
                         setIsVerifyingAuth(false);
                       }
@@ -2383,7 +2313,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
           <Suspense fallback={null}>
             <TerminalModal
               title={t('cliStatus.labels.runtimeLoginTitle', {
-                runtime: getHumanRuntimeDisplayName(renderCliStatus, multimodelEnabled),
+                runtime: getHumanRuntimeDisplayName(renderCliStatus, true),
               })}
               command={renderCliStatus.binaryPath}
               args={['auth', 'login']}
@@ -2393,11 +2323,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
                 void (async () => {
                   try {
                     await invalidateCliStatus();
-                    if (multimodelEnabled) {
-                      await bootstrapCliStatus({ multimodelEnabled: true });
-                    } else {
-                      await fetchCliStatus();
-                    }
+                    await bootstrapCliStatus();
                   } finally {
                     setIsVerifyingAuth(false);
                   }

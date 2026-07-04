@@ -42,6 +42,8 @@ interface TeamRosterEditorSectionProps {
   onLimitContextChange: (value: boolean) => void;
   syncModelsWithTeammates: boolean;
   onSyncModelsWithTeammatesChange: (value: boolean) => void;
+  /** Hide the lead "Sync model with teammates" checkbox when there are no teammates. */
+  showSyncWithTeammates?: boolean;
   headerTop?: React.ReactNode;
   headerBottom?: React.ReactNode;
   leadProviderNoticeById?: Partial<Record<TeamProviderId, React.ReactNode>>;
@@ -101,6 +103,7 @@ const TeamRosterEditorSectionImpl = ({
   onLimitContextChange,
   syncModelsWithTeammates,
   onSyncModelsWithTeammatesChange,
+  showSyncWithTeammates = true,
   headerTop,
   headerBottom,
   leadProviderNoticeById,
@@ -197,6 +200,7 @@ const TeamRosterEditorSectionImpl = ({
             onLimitContextChange={onLimitContextChange}
             syncModelsWithTeammates={syncModelsWithTeammates}
             onSyncModelsWithTeammatesChange={onSyncModelsWithTeammatesChange}
+            showSyncWithTeammates={showSyncWithTeammates}
             warningText={leadWarningText}
             disableGeminiOption={disableGeminiOption}
             providerNoticeById={leadProviderNoticeById}

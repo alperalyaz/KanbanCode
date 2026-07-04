@@ -3,6 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { useAppTranslation } from '@features/localization/renderer';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
+import { getTeamModelLabel } from '@renderer/utils/teamModelCatalog';
 import { ChevronRight, Settings2 } from 'lucide-react';
 
 interface OptionalSettingsSectionProps {
@@ -17,16 +18,7 @@ interface OptionalSettingsSectionProps {
 
 const SUMMARY_PREFIXES_TO_STRIP = ['Provider:', 'Model:', 'Effort:', 'Worktree:'];
 
-const MODEL_LABEL_OVERRIDES: Array<[RegExp, string]> = [
-  [/claude[-\s]?opus[-\s]?4[-\s]?8/i, 'Opus 4.8'],
-  [/claude[-\s]?opus[-\s]?4[-\s]?7/i, 'Opus 4.7'],
-  [/claude[-\s]?opus[-\s]?4[-\s]?6/i, 'Opus 4.6'],
-  [/claude[-\s]?opus[-\s]?4[-\s]?5/i, 'Opus 4.5'],
-  [/claude[-\s]?sonnet[-\s]?4[-\s]?6/i, 'Sonnet 4.6'],
-  [/claude[-\s]?sonnet[-\s]?4[-\s]?5/i, 'Sonnet 4.5'],
-  [/claude[-\s]?haiku[-\s]?4[-\s]?5/i, 'Haiku 4.5'],
-];
-
+// Non-model chip shortenings the model catalog cannot produce.
 const SUMMARY_CHIP_REWRITES: Array<[RegExp, string]> = [
   [/^Auto-approve tools$/i, 'Tools auto'],
   [/^Anthropic limited to 200K context$/i, '200K limit'],
@@ -34,17 +26,20 @@ const SUMMARY_CHIP_REWRITES: Array<[RegExp, string]> = [
 
 const toCompactChip = (value: string): string => {
   let chip = value.trim();
+  let matchedPrefix: string | null = null;
   for (const prefix of SUMMARY_PREFIXES_TO_STRIP) {
     if (chip.toLowerCase().startsWith(prefix.toLowerCase())) {
       chip = chip.slice(prefix.length).trim();
+      matchedPrefix = prefix;
       break;
     }
   }
-  for (const [pattern, label] of MODEL_LABEL_OVERRIDES) {
-    if (pattern.test(chip)) {
-      chip = label;
-      break;
-    }
+  // Prettify ONLY model chips via the shared catalog, so new model releases no
+  // longer require a hand-maintained label table. Never route other chips
+  // through it: a worktree name like "feature/login" would be parsed as an
+  // OpenCode-qualified model ref and truncated to the segment after the slash.
+  if (matchedPrefix === 'Model:') {
+    chip = getTeamModelLabel(chip) ?? chip;
   }
   for (const [pattern, label] of SUMMARY_CHIP_REWRITES) {
     if (pattern.test(chip)) {

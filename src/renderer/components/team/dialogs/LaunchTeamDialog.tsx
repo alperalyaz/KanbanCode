@@ -262,11 +262,8 @@ function getStoredTeamProvider(): TeamProviderId {
   return normalizeCreateLaunchProviderForUi(normalizeOptionalTeamProviderId(stored), true);
 }
 
-function normalizeOneShotProviderForMode(
-  providerId: TeamProviderId | undefined,
-  multimodelEnabled: boolean
-): TeamProviderId {
-  const normalizedProviderId = normalizeProviderForMode(providerId, multimodelEnabled);
+function normalizeOneShotProviderForMode(providerId: TeamProviderId | undefined): TeamProviderId {
+  const normalizedProviderId = normalizeProviderForMode(providerId);
   return normalizedProviderId === 'opencode' ? 'anthropic' : normalizedProviderId;
 }
 
@@ -357,7 +354,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   const { isLight } = useTheme();
   const { t, resolvedLanguage } = useAppTranslation('team');
   const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
-  const multimodelEnabled = useStore((s) => s.appConfig?.general?.multimodelEnabled ?? true);
   const anthropicProviderFastModeDefault = useStore(
     (s) => s.appConfig?.providerConnections?.anthropic.fastModeDefault ?? false
   );
@@ -367,15 +363,11 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   const isLaunchMode = props.mode === 'launch' || props.mode === 'relaunch';
   const isRelaunch = props.mode === 'relaunch';
   const loadingCliStatus = useMemo(
-    () =>
-      !cliStatus && cliStatusLoading && multimodelEnabled
-        ? createLoadingMultimodelCliStatus()
-        : cliStatus,
-    [cliStatus, cliStatusLoading, multimodelEnabled]
+    () => (!cliStatus && cliStatusLoading ? createLoadingMultimodelCliStatus() : cliStatus),
+    [cliStatus, cliStatusLoading]
   );
   const codexAccount = useCodexAccountSnapshot({
     enabled:
-      multimodelEnabled &&
       loadingCliStatus?.flavor === 'agent_teams_orchestrator' &&
       Boolean(loadingCliStatus?.providers.some((provider) => provider.providerId === 'codex')),
   });
@@ -440,14 +432,14 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
 
   const [selectedProviderId, setSelectedProviderIdRaw] = useState<TeamProviderId>(() =>
     isLaunchMode
-      ? normalizeLeadProviderForMode(getStoredTeamProvider(), multimodelEnabled)
-      : normalizeOneShotProviderForMode(getStoredTeamProvider(), multimodelEnabled)
+      ? normalizeLeadProviderForMode(getStoredTeamProvider())
+      : normalizeOneShotProviderForMode(getStoredTeamProvider())
   );
   const [selectedModel, setSelectedModelRaw] = useState(() =>
     getStoredTeamModel(
       isLaunchMode
-        ? normalizeLeadProviderForMode(getStoredTeamProvider(), multimodelEnabled)
-        : normalizeOneShotProviderForMode(getStoredTeamProvider(), multimodelEnabled)
+        ? normalizeLeadProviderForMode(getStoredTeamProvider())
+        : normalizeOneShotProviderForMode(getStoredTeamProvider())
     )
   );
   const [membersDrafts, setMembersDrafts] = useState<MemberDraft[]>([]);
@@ -533,17 +525,15 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   const tmuxRuntime = useTmuxRuntimeReadiness(open && isLaunchMode);
   const selectedMemberProviders = useMemo<TeamProviderId[]>(
     () =>
-      !multimodelEnabled
-        ? ['anthropic']
-        : Array.from(
-            new Set([
-              selectedProviderId,
-              ...effectiveMemberDrafts.flatMap((member) =>
-                !member.removedAt && isTeamProviderId(member.providerId) ? [member.providerId] : []
-              ),
-            ])
+      Array.from(
+        new Set([
+          selectedProviderId,
+          ...effectiveMemberDrafts.flatMap((member) =>
+            !member.removedAt && isTeamProviderId(member.providerId) ? [member.providerId] : []
           ),
-    [effectiveMemberDrafts, multimodelEnabled, selectedProviderId]
+        ])
+      ),
+    [effectiveMemberDrafts, selectedProviderId]
   );
   const hasSelectedAnthropicRuntime = isLaunchMode && selectedMemberProviders.includes('anthropic');
   const effectiveAnthropicRuntimeLimitContext =
@@ -654,25 +644,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   }, [membersDrafts, open, runtimeProviderStatusById, selectedProviderId]);
 
   useEffect(() => {
-    if (multimodelEnabled) {
-      return;
-    }
-    if (selectedProviderId !== 'anthropic') {
-      setSelectedProviderIdRaw('anthropic');
-      setSelectedModelRaw(getStoredTeamModel('anthropic'));
-    }
-    setMembersDrafts((prev) => {
-      let changed = false;
-      const next = prev.map((member) => {
-        const normalized = normalizeMemberDraftForProviderMode(member, false);
-        if (normalized !== member) changed = true;
-        return normalized;
-      });
-      return changed ? next : prev;
-    });
-  }, [multimodelEnabled, selectedProviderId]);
-
-  useEffect(() => {
     if (!open || cliStatus || cliStatusLoading) {
       return;
     }
@@ -715,8 +686,8 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
 
   const setSelectedProviderId = (value: TeamProviderId): void => {
     const normalizedValue = isLaunchMode
-      ? normalizeLeadProviderForMode(value, multimodelEnabled)
-      : normalizeOneShotProviderForMode(value, multimodelEnabled);
+      ? normalizeLeadProviderForMode(value)
+      : normalizeOneShotProviderForMode(value);
     setSelectedProviderIdRaw(normalizedValue);
     localStorage.setItem('team:lastSelectedProvider', normalizedValue);
     setSelectedModelRaw(getStoredTeamModel(normalizedValue));
@@ -824,10 +795,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       promptDraft.setValue(schedule.launchConfig.prompt);
       setCustomCwd(schedule.launchConfig.cwd);
       setCwdMode('custom');
-      const scheduleProviderId = normalizeOneShotProviderForMode(
-        schedule.launchConfig.providerId,
-        multimodelEnabled
-      );
+      const scheduleProviderId = normalizeOneShotProviderForMode(schedule.launchConfig.providerId);
       const scheduleSourceProviderId = normalizeOptionalTeamProviderId(
         schedule.launchConfig.providerId
       );
@@ -835,8 +803,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       setSelectedModelRaw(
         scheduleSourceProviderId !== 'gemini' &&
           scheduleSourceProviderId !== 'opencode' &&
-          scheduleProviderId ===
-            normalizeOneShotProviderForMode(schedule.launchConfig.providerId, true)
+          scheduleProviderId === normalizeOneShotProviderForMode(schedule.launchConfig.providerId)
           ? (schedule.launchConfig.model ?? '')
           : getStoredTeamModel('anthropic')
       );
@@ -857,10 +824,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       setCwdMode('project');
       setSelectedProjectPath('');
       setCustomCwd('');
-      const storedProviderId = normalizeOneShotProviderForMode(
-        getStoredTeamProvider(),
-        multimodelEnabled
-      );
+      const storedProviderId = normalizeOneShotProviderForMode(getStoredTeamProvider());
       setSelectedProviderIdRaw(storedProviderId);
       setSelectedModelRaw(getStoredTeamModel(storedProviderId));
       setSelectedEffortRaw('');
@@ -903,15 +867,11 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
         savedRequest.providerBackendId.trim().length > 0
           ? savedRequest.providerBackendId.trim()
           : null;
-      const storedProviderId = normalizeLeadProviderForMode(
-        getStoredTeamProvider(),
-        multimodelEnabled
-      );
+      const storedProviderId = normalizeLeadProviderForMode(getStoredTeamProvider());
       const launchPrefill = resolveLaunchDialogPrefill({
         members,
         savedRequest,
         previousLaunchParams,
-        multimodelEnabled,
         storedProviderId,
         storedEffort: storedEffort === null ? '' : storedEffort,
         storedFastMode: getStoredTeamFastMode(),
@@ -925,7 +885,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
 
       setMembersDrafts(
         createMemberDraftsFromInputs(editableMembersSource, { memberNameLocale }).map((member) =>
-          normalizeMemberDraftForProviderMode(member, multimodelEnabled)
+          normalizeMemberDraftForProviderMode(member)
         )
       );
       setWorktreePathByMemberName(buildWorktreePathByMemberName(editableMembersSource));
@@ -933,10 +893,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       setSyncModelsWithLead(
         !editableMembersSource.some((member) => member.providerId || member.model || member.effort)
       );
-      const leadProviderId = normalizeLeadProviderForMode(
-        launchPrefill.providerId,
-        multimodelEnabled
-      );
+      const leadProviderId = normalizeLeadProviderForMode(launchPrefill.providerId);
       setSelectedProviderIdRaw(leadProviderId);
       setSelectedModelRaw(leadProviderId === launchPrefill.providerId ? launchPrefill.model : '');
       setSelectedEffortRaw(launchPrefill.effort);
@@ -951,7 +908,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     return () => {
       cancelled = true;
     };
-  }, [open, isLaunchMode, effectiveTeamName, members, multimodelEnabled, previousLaunchParams]);
+  }, [open, isLaunchMode, effectiveTeamName, members, previousLaunchParams]);
 
   const previousProviderId = useMemo<TeamProviderId | null>(() => {
     if (!isLaunchMode) {
@@ -2891,6 +2848,10 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
 
                 <div className="space-y-2">
                   {providerChangeForcesFreshLeadContext ? (
+                    // Provider changed: this message is the superset (fresh context
+                    // AND previous session won't resume), so show it alone with the
+                    // warning treatment — no separate "fresh session" banner stacked
+                    // on top saying the same thing.
                     <div
                       className="rounded-md border px-3 py-2 text-xs"
                       style={{
@@ -2909,20 +2870,23 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                         </p>
                       </div>
                     </div>
-                  ) : null}
-                  <div
-                    className="rounded-md border px-3 py-2 text-xs"
-                    style={{
-                      backgroundColor: 'var(--warning-bg)',
-                      borderColor: 'var(--warning-border)',
-                      color: 'var(--warning-text)',
-                    }}
-                  >
-                    <div className="flex items-start gap-2">
-                      <Info className="mt-0.5 size-3.5 shrink-0" />
-                      <p>{t('launch.relaunchFreshSession')}</p>
+                  ) : (
+                    // Same provider: just the always-on "fresh session" note, styled
+                    // as neutral info rather than a warning.
+                    <div
+                      className="rounded-md border px-3 py-2 text-xs"
+                      style={{
+                        backgroundColor: 'var(--info-bg)',
+                        borderColor: 'var(--info-border)',
+                        color: 'var(--info-text)',
+                      }}
+                    >
+                      <div className="flex items-start gap-2">
+                        <Info className="mt-0.5 size-3.5 shrink-0" />
+                        <p>{t('launch.relaunchFreshSession')}</p>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <AdvancedCliSection
@@ -3124,7 +3088,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                 sourceCliStatus={loadingCliStatus}
                 cliStatusLoading={cliStatusLoading}
                 cliProviderStatusLoading={cliProviderStatusLoading}
-                multimodelEnabled={multimodelEnabled}
                 codexSnapshotPending={codexSnapshotPending}
                 providerIds={selectedMemberProviders}
                 label="Selected providers"

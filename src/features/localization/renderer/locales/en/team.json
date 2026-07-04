@@ -204,7 +204,10 @@
     "defaultWorkflows": {
       "reviewer": "Review every completed task in the project. Read the code changes, check for correctness, style, and potential issues. Approve the task or request changes with clear feedback."
     },
-    "memberModelLockReason": "This teammate is synced with the lead model. Turn off sync to set a custom provider, model, or effort."
+    "memberModelLockReason": "This teammate is synced with the lead model. Turn off sync to set a custom provider, model, or effort.",
+    "skipPermissions": {
+      "inlineDisclosure": "Teammates auto-approve tool calls — change in Optional settings."
+    }
   },
   "editTeam": {
     "actions": {
@@ -288,6 +291,7 @@
       "settingInfo": "Agent Teams MCP launches this teammate with only the Agent Teams server. Scope and allowlist modes apply only to this teammate launch.",
       "strictAllowlist": "Strict allowlist",
       "tooltip": "{{label}}: Control this member's MCP inheritance policy",
+      "advancedToggle": "MCP access",
       "agentTeamsMcp": "Agent Teams MCP"
     },
     "model": {
@@ -2273,9 +2277,9 @@
     "loading": "Loading attachments..."
   },
   "permissions": {
-    "autoApproveAllTools": "Auto-approve all tools",
-    "autonomousModeDescription": "Autonomous mode: team tools execute without confirmation. Be cautious with untrusted code.",
-    "manualModeDescription": "Manual mode: you'll approve or deny each tool call in real time."
+    "autoApproveAllTools": "Auto-approve all tool calls",
+    "autonomousModeDescription": "On: tools run without asking.",
+    "manualModeDescription": "Off: you approve each tool call."
   },
   "memberLogStream": {
     "tabs": {

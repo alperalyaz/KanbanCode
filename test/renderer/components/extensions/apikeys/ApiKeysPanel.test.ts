@@ -27,9 +27,7 @@ interface StoreState {
   cliStatus: CliInstallationStatus | null;
   cliStatusLoading: boolean;
   appConfig: {
-    general: {
-      multimodelEnabled: boolean;
-    };
+    general: Record<string, never>;
   } | null;
 }
 
@@ -61,10 +59,7 @@ vi.mock('@renderer/api', () => ({
 }));
 
 vi.mock('@renderer/components/ui/button', () => ({
-  Button: ({
-    children,
-    onClick,
-  }: React.PropsWithChildren<{ onClick?: () => void }>) =>
+  Button: ({ children, onClick }: React.PropsWithChildren<{ onClick?: () => void }>) =>
     React.createElement(
       'button',
       {
@@ -76,7 +71,8 @@ vi.mock('@renderer/components/ui/button', () => ({
 }));
 
 vi.mock('@renderer/components/ui/tooltip', () => ({
-  Tooltip: ({ children }: React.PropsWithChildren) => React.createElement(React.Fragment, null, children),
+  Tooltip: ({ children }: React.PropsWithChildren) =>
+    React.createElement(React.Fragment, null, children),
   TooltipTrigger: ({ children }: React.PropsWithChildren) =>
     React.createElement(React.Fragment, null, children),
   TooltipContent: () => null,
@@ -193,9 +189,7 @@ describe('ApiKeysPanel', () => {
     storeState.cliStatus = createCliStatus();
     storeState.cliStatusLoading = false;
     storeState.appConfig = {
-      general: {
-        multimodelEnabled: true,
-      },
+      general: {},
     };
     codexAccountHookState.snapshot = null;
     codexAccountHookState.loading = false;

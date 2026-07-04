@@ -61,7 +61,7 @@ const storeState = {
   cliStatus: null as unknown,
   cliStatusLoading: false,
   cliProviderStatusLoading: {} as Record<string, boolean>,
-  appConfig: { general: { multimodelEnabled: true } },
+  appConfig: { general: {} },
   fetchCliProviderStatus: vi.fn().mockResolvedValue(undefined),
 };
 const codexAccountHookState = {

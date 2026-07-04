@@ -159,19 +159,15 @@ export const CliStatusSection = (): React.JSX.Element | null => {
   } | null>(null);
   const [manageProviderId, setManageProviderId] = useState<CliProviderId>('gemini');
   const [manageDialogOpen, setManageDialogOpen] = useState(false);
-  const multimodelEnabled = appConfig?.general?.multimodelEnabled ?? true;
   const selectedProjectPath = useMemo(
     () => resolveProjectPathById(selectedProjectId, projects, repositoryGroups)?.path ?? null,
     [projects, repositoryGroups, selectedProjectId]
   );
   const loadingCliStatus =
-    !cliStatus && cliStatusLoading && multimodelEnabled
-      ? createLoadingMultimodelCliStatus()
-      : cliStatus;
+    !cliStatus && cliStatusLoading ? createLoadingMultimodelCliStatus() : cliStatus;
   const codexAccount = useCodexAccountSnapshot({
     enabled:
       isElectron &&
-      multimodelEnabled &&
       loadingCliStatus?.flavor === 'agent_teams_orchestrator' &&
       Boolean(loadingCliStatus?.providers.some((provider) => provider.providerId === 'codex')),
     includeRateLimits: true,
@@ -215,14 +211,10 @@ export const CliStatusSection = (): React.JSX.Element | null => {
   useEffect(() => {
     if (isElectron) {
       if (!cliStatus) {
-        if (multimodelEnabled) {
-          void bootstrapCliStatus({ multimodelEnabled: true });
-        } else {
-          void fetchCliStatus();
-        }
+        void bootstrapCliStatus();
       }
     }
-  }, [bootstrapCliStatus, cliStatus, fetchCliStatus, isElectron, multimodelEnabled]);
+  }, [bootstrapCliStatus, cliStatus, isElectron]);
 
   useEffect(() => {
     if (!isElectron || codexRuntimeStatus || codexRuntimeStatusLoading) {
@@ -248,12 +240,11 @@ export const CliStatusSection = (): React.JSX.Element | null => {
     void (async () => {
       await invalidateCliStatus();
       await refreshCliStatusForCurrentMode({
-        multimodelEnabled,
         bootstrapCliStatus,
         fetchCliStatus,
       });
     })();
-  }, [bootstrapCliStatus, fetchCliStatus, invalidateCliStatus, multimodelEnabled]);
+  }, [bootstrapCliStatus, fetchCliStatus, invalidateCliStatus]);
 
   const handleProviderRefresh = useCallback(
     (providerId: CliProviderId) => {
@@ -303,12 +294,11 @@ export const CliStatusSection = (): React.JSX.Element | null => {
     void (async () => {
       await invalidateCliStatus();
       await refreshCliStatusForCurrentMode({
-        multimodelEnabled,
         bootstrapCliStatus,
         fetchCliStatus,
       });
     })();
-  }, [bootstrapCliStatus, fetchCliStatus, invalidateCliStatus, multimodelEnabled]);
+  }, [bootstrapCliStatus, fetchCliStatus, invalidateCliStatus]);
 
   const handleRuntimeBackendChange = useCallback(
     async (providerId: CliProviderId, backendId: string) => {
@@ -339,7 +329,7 @@ export const CliStatusSection = (): React.JSX.Element | null => {
 
   if (!isElectron) return null;
 
-  const runtimeDisplayName = getRuntimeDisplayName(effectiveCliStatus, multimodelEnabled);
+  const runtimeDisplayName = getRuntimeDisplayName(effectiveCliStatus, true);
   const runtimeLabel =
     effectiveCliStatus?.flavor === 'agent_teams_orchestrator'
       ? null
@@ -372,9 +362,7 @@ export const CliStatusSection = (): React.JSX.Element | null => {
             style={{ color: 'var(--color-text-muted)' }}
           >
             <Loader2 className="size-4 animate-spin" />
-            {multimodelEnabled
-              ? t('cliRuntime.loading.aiProviders')
-              : t('cliRuntime.loading.claudeCli')}
+            {t('cliRuntime.loading.aiProviders')}
           </div>
         )}
 
@@ -847,7 +835,7 @@ export const CliStatusSection = (): React.JSX.Element | null => {
       </div>
       {providerTerminal && cliStatus?.binaryPath && (
         <TerminalModal
-          title={`${getRuntimeDisplayName(cliStatus, multimodelEnabled)} ${
+          title={`${getRuntimeDisplayName(cliStatus, true)} ${
             providerTerminal.action === 'login'
               ? t('cliRuntime.providerTerminal.login')
               : t('cliRuntime.providerTerminal.logout')

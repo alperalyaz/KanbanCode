@@ -22,9 +22,7 @@ interface StoreState {
   cliStatusLoading: boolean;
   cliProviderStatusLoading: Record<string, boolean>;
   appConfig: {
-    general: {
-      multimodelEnabled: boolean;
-    };
+    general: Record<string, never>;
   };
   openDashboard: ReturnType<typeof vi.fn>;
   sessions: { isOngoing: boolean }[];
@@ -330,9 +328,7 @@ describe('ExtensionStoreView provider loading placeholders', () => {
       codex: true,
     };
     storeState.appConfig = {
-      general: {
-        multimodelEnabled: true,
-      },
+      general: {},
     };
     storeState.openDashboard = vi.fn();
     storeState.sessions = [];
@@ -394,33 +390,6 @@ describe('ExtensionStoreView provider loading placeholders', () => {
       })
     );
     expect(lastOptions?.initialRefreshDelayMs).toBeUndefined();
-
-    await act(async () => {
-      root.unmount();
-      await Promise.resolve();
-    });
-  });
-
-  it('falls back to legacy refresh when multimodel is disabled', async () => {
-    storeState.appConfig = {
-      general: {
-        multimodelEnabled: false,
-      },
-    };
-    storeState.cliStatusLoading = false;
-
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const root = createRoot(host);
-
-    await act(async () => {
-      root.render(React.createElement(ExtensionStoreView));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(storeState.fetchCliStatus).toHaveBeenCalledTimes(1);
-    expect(storeState.bootstrapCliStatus).not.toHaveBeenCalled();
 
     await act(async () => {
       root.unmount();

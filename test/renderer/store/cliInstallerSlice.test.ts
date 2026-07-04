@@ -593,14 +593,14 @@ describe('cliInstallerSlice', () => {
 
       const merged = mergeCliStatusPreservingHydratedProviders(current, incoming);
 
-      expect(merged.providers.find((provider) => provider.providerId === 'anthropic')).toMatchObject(
-        {
-          authenticated: true,
-          authMethod: 'oauth_token',
-          statusMessage: 'Connected via Anthropic subscription',
-          models: ['claude-sonnet-4-5'],
-        }
-      );
+      expect(
+        merged.providers.find((provider) => provider.providerId === 'anthropic')
+      ).toMatchObject({
+        authenticated: true,
+        authMethod: 'oauth_token',
+        statusMessage: 'Connected via Anthropic subscription',
+        models: ['claude-sonnet-4-5'],
+      });
       expect(merged.providers.find((provider) => provider.providerId === 'opencode')).toMatchObject(
         {
           authenticated: true,
@@ -947,7 +947,7 @@ describe('cliInstallerSlice', () => {
       };
       vi.mocked(api.cliInstaller.getStatus).mockResolvedValue(mockStatus);
 
-      await useStore.getState().bootstrapCliStatus({ multimodelEnabled: true });
+      await useStore.getState().bootstrapCliStatus();
 
       expect(useStore.getState().cliStatus).toEqual(mockStatus);
       expect(useStore.getState().cliStatusLoading).toBe(false);
@@ -992,7 +992,7 @@ describe('cliInstallerSlice', () => {
       };
       vi.mocked(api.cliInstaller.getStatus).mockResolvedValue(mockStatus);
 
-      await useStore.getState().bootstrapCliStatus({ multimodelEnabled: true });
+      await useStore.getState().bootstrapCliStatus();
 
       expect(useStore.getState().cliStatus).toEqual(mockStatus);
       expect(useStore.getState().cliStatusLoading).toBe(false);
@@ -1047,7 +1047,7 @@ describe('cliInstallerSlice', () => {
       };
       vi.mocked(api.cliInstaller.getStatus).mockResolvedValue(mockStatus);
 
-      await useStore.getState().bootstrapCliStatus({ multimodelEnabled: true });
+      await useStore.getState().bootstrapCliStatus();
 
       expect(useStore.getState().cliStatus).toMatchObject({
         ...mockStatus,
@@ -1069,9 +1069,7 @@ describe('cliInstallerSlice', () => {
       ]);
       vi.mocked(api.cliInstaller.getStatus).mockResolvedValue(mockStatus);
 
-      await useStore
-        .getState()
-        .bootstrapCliStatus({ multimodelEnabled: true, providerStatusMode: 'defer' });
+      await useStore.getState().bootstrapCliStatus({ providerStatusMode: 'defer' });
 
       expect(api.cliInstaller.getStatus).toHaveBeenCalledWith({ providerStatusMode: 'defer' });
       expect(api.cliInstaller.getProviderStatus).not.toHaveBeenCalled();
@@ -1122,9 +1120,7 @@ describe('cliInstallerSlice', () => {
       useStore.setState({ cliStatus: currentStatus });
       vi.mocked(api.cliInstaller.getStatus).mockResolvedValue(deferredStatus);
 
-      await useStore
-        .getState()
-        .bootstrapCliStatus({ multimodelEnabled: true, providerStatusMode: 'defer' });
+      await useStore.getState().bootstrapCliStatus({ providerStatusMode: 'defer' });
 
       expect(api.cliInstaller.getProviderStatus).not.toHaveBeenCalled();
       expect(useStore.getState().cliProviderStatusLoading).toEqual({
@@ -1204,7 +1200,7 @@ describe('cliInstallerSlice', () => {
         throw new Error(`Unexpected provider status request for ${providerId}`);
       });
 
-      const bootstrapPromise = useStore.getState().bootstrapCliStatus({ multimodelEnabled: true });
+      const bootstrapPromise = useStore.getState().bootstrapCliStatus();
 
       await vi.waitFor(() => {
         expect(useStore.getState().cliStatusLoading).toBe(false);
@@ -1314,7 +1310,7 @@ describe('cliInstallerSlice', () => {
         return Promise.reject(new Error(`Unexpected provider status request for ${providerId}`));
       });
 
-      await useStore.getState().bootstrapCliStatus({ multimodelEnabled: true });
+      await useStore.getState().bootstrapCliStatus();
 
       expect(api.cliInstaller.getProviderStatus).toHaveBeenCalledTimes(1);
       expect(api.cliInstaller.getProviderStatus).toHaveBeenCalledWith('opencode');
@@ -1453,7 +1449,7 @@ describe('cliInstallerSlice', () => {
         return Promise.reject(new Error(`Unexpected provider status request for ${providerId}`));
       });
 
-      await useStore.getState().bootstrapCliStatus({ multimodelEnabled: true });
+      await useStore.getState().bootstrapCliStatus();
 
       expect(api.cliInstaller.getProviderStatus).toHaveBeenCalledTimes(1);
       expect(api.cliInstaller.getProviderStatus).toHaveBeenCalledWith('opencode');
@@ -1849,9 +1845,7 @@ describe('cliInstallerSlice', () => {
 
       expect(api.cliInstaller.getProviderStatus).toHaveBeenCalledTimes(1);
       expect(
-        useStore
-          .getState()
-          .cliStatus?.providers.find((provider) => provider.providerId === 'codex')
+        useStore.getState().cliStatus?.providers.find((provider) => provider.providerId === 'codex')
           ?.modelCatalogRefreshState
       ).toBe('loading');
 
@@ -1859,9 +1853,7 @@ describe('cliInstallerSlice', () => {
 
       expect(api.cliInstaller.getProviderStatus).toHaveBeenCalledTimes(2);
       expect(
-        useStore
-          .getState()
-          .cliStatus?.providers.find((provider) => provider.providerId === 'codex')
+        useStore.getState().cliStatus?.providers.find((provider) => provider.providerId === 'codex')
       ).toMatchObject({
         authenticated: true,
         statusMessage: 'ChatGPT account ready',
@@ -1877,11 +1869,7 @@ describe('cliInstallerSlice', () => {
         authenticated: true,
         authMethod: 'opencode_managed',
         statusMessage: null,
-        models: [
-          'opencode/big-pickle',
-          'openai/gpt-5.4',
-          'openrouter/openai/gpt-oss-20b:free',
-        ],
+        models: ['opencode/big-pickle', 'openai/gpt-5.4', 'openrouter/openai/gpt-oss-20b:free'],
         modelCatalogRefreshState: 'ready',
         modelCatalog: {
           schemaVersion: 1,

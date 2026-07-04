@@ -18,7 +18,6 @@ import {
   CheckCircle2,
   CirclePlus,
   Clock,
-  ExternalLink,
   EyeOff,
   GitBranch,
   HelpCircle,
@@ -559,22 +558,9 @@ export const NotificationsSection = ({
           backgroundColor: 'var(--color-surface-raised)',
         }}
       >
-        <p className="mb-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+        <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
           {t('notifications.taskCompletion.description')}
         </p>
-        <button
-          onClick={() =>
-            void api.openExternal('https://github.com/777genius/claude-notifications-go')
-          }
-          className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors hover:brightness-125"
-          style={{
-            backgroundColor: 'var(--color-border-emphasis)',
-            color: 'var(--color-text)',
-          }}
-        >
-          <ExternalLink className="size-3.5" />
-          {t('notifications.taskCompletion.installPlugin')}
-        </button>
       </div>
     </div>
   );

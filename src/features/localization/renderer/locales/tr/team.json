@@ -204,7 +204,10 @@
     "defaultWorkflows": {
       "reviewer": "Projede tamamlanan her görevi incele. Kod değişikliklerini oku, doğruluk, stil ve olası sorunları kontrol et. Görevi onayla veya net geri bildirimle değişiklik iste."
     },
-    "memberModelLockReason": "Bu ekip üyesi lead modeliyle senkronize. Özel sağlayıcı, model veya effort ayarlamak için senkronizasyonu kapat."
+    "memberModelLockReason": "Bu ekip üyesi lead modeliyle senkronize. Özel sağlayıcı, model veya effort ayarlamak için senkronizasyonu kapat.",
+    "skipPermissions": {
+      "inlineDisclosure": "Ekip arkadaşları araç çağrılarını otomatik onaylar — İsteğe bağlı ayarlardan değiştirin."
+    }
   },
   "editTeam": {
     "actions": {
@@ -288,6 +291,7 @@
       "settingInfo": "Agent Teams MCP, bu takım arkadaşını yalnızca Agent Teams sunucusuyla başlatır. Kapsam ve izin listesi modları yalnızca bu takım arkadaşı başlatmasına uygulanır.",
       "strictAllowlist": "Katı izin listesi",
       "tooltip": "{{label}}: Bu üyenin MCP devralma politikasını kontrol edin",
+      "advancedToggle": "MCP erişimi",
       "agentTeamsMcp": "Agent Teams MCP"
     },
     "model": {
@@ -2271,9 +2275,9 @@
     "loading": "Ekler yükleniyor..."
   },
   "permissions": {
-    "autoApproveAllTools": "Tüm araçları otomatik onayla",
-    "autonomousModeDescription": "Özerk mod: ekip araçları onay olmadan çalışır. Güvenilmeyen kodla dikkatli olun.",
-    "manualModeDescription": "Manuel mod: her araç çağrısını gerçek zamanlı olarak onaylar veya reddedersiniz."
+    "autoApproveAllTools": "Tüm araç çağrılarını otomatik onayla",
+    "autonomousModeDescription": "Açık: araçlar sormadan çalışır.",
+    "manualModeDescription": "Kapalı: her araç çağrısını siz onaylarsınız."
   },
   "memberLogStream": {
     "tabs": {

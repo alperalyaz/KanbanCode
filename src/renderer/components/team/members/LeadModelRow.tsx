@@ -44,6 +44,8 @@ interface LeadModelRowProps {
   onLimitContextChange: (value: boolean) => void;
   syncModelsWithTeammates: boolean;
   onSyncModelsWithTeammatesChange: (value: boolean) => void;
+  /** Hide the "Sync model with teammates" checkbox when there are no teammates to sync with. */
+  showSyncWithTeammates?: boolean;
   warningText?: string | null;
   disableGeminiOption?: boolean;
   providerNoticeById?: Partial<Record<TeamProviderId, React.ReactNode>>;
@@ -66,6 +68,7 @@ export const LeadModelRow = ({
   onLimitContextChange,
   syncModelsWithTeammates,
   onSyncModelsWithTeammatesChange,
+  showSyncWithTeammates = true,
   warningText,
   disableGeminiOption = false,
   providerNoticeById,
@@ -150,23 +153,25 @@ export const LeadModelRow = ({
           </div>
         </div>
       </div>
-      <div className="min-w-0">
-        <div className="flex h-8 items-center justify-end px-2 text-xs text-[var(--color-text-secondary)]">
-          <div className="flex min-w-0 items-center gap-2">
-            <Checkbox
-              id="sync-models-with-lead"
-              checked={syncModelsWithTeammates}
-              onCheckedChange={(checked) => onSyncModelsWithTeammatesChange(checked === true)}
-            />
-            <Label
-              htmlFor="sync-models-with-lead"
-              className="cursor-pointer truncate text-xs font-normal text-text-secondary"
-            >
-              {t('members.leadModel.syncWithTeammates')}
-            </Label>
+      {showSyncWithTeammates ? (
+        <div className="min-w-0">
+          <div className="flex h-8 items-center justify-end px-2 text-xs text-[var(--color-text-secondary)]">
+            <div className="flex min-w-0 items-center gap-2">
+              <Checkbox
+                id="sync-models-with-lead"
+                checked={syncModelsWithTeammates}
+                onCheckedChange={(checked) => onSyncModelsWithTeammatesChange(checked === true)}
+              />
+              <Label
+                htmlFor="sync-models-with-lead"
+                className="cursor-pointer truncate text-xs font-normal text-text-secondary"
+              >
+                {t('members.leadModel.syncWithTeammates')}
+              </Label>
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
       <div className="space-y-1">
         <div className="w-full min-w-0 space-y-1 sm:w-[150px] sm:min-w-[150px]">
           <Button

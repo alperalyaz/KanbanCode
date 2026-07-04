@@ -13,11 +13,10 @@ import { getMemberColorByName } from '@shared/constants/memberColors';
 import type { ResolvedTeamMember } from '@shared/types';
 
 describe('members editor editable input filtering', () => {
-  it('keeps OpenCode available for the team lead only when multimodel is enabled', () => {
-    expect(normalizeLeadProviderForMode('opencode', true)).toBe('opencode');
-    expect(normalizeLeadProviderForMode('codex', true)).toBe('codex');
-    expect(normalizeLeadProviderForMode('anthropic', true)).toBe('anthropic');
-    expect(normalizeLeadProviderForMode('opencode', false)).toBe('anthropic');
+  it('keeps the selected provider available for the team lead', () => {
+    expect(normalizeLeadProviderForMode('opencode')).toBe('opencode');
+    expect(normalizeLeadProviderForMode('codex')).toBe('codex');
+    expect(normalizeLeadProviderForMode('anthropic')).toBe('anthropic');
   });
 
   it('filters the canonical team lead out of editable member inputs', () => {

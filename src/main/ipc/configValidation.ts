@@ -372,7 +372,6 @@ function validateGeneralSection(data: unknown): ValidationSuccess<'general'> | V
     'launchAtLogin',
     'showDockIcon',
     'theme',
-    'multimodelEnabled',
     'claudeRootPath',
     'agentLanguage',
     'appLocale',
@@ -406,12 +405,6 @@ function validateGeneralSection(data: unknown): ValidationSuccess<'general'> | V
           return { valid: false, error: 'general.theme must be one of: dark, light, system' };
         }
         result.theme = value;
-        break;
-      case 'multimodelEnabled':
-        if (typeof value !== 'boolean') {
-          return { valid: false, error: 'general.multimodelEnabled must be a boolean' };
-        }
-        result.multimodelEnabled = value;
         break;
       case 'claudeRootPath':
         if (value === null) {

@@ -331,7 +331,6 @@ export function useSettingsHandlers({
           launchAtLogin: false,
           showDockIcon: true,
           theme: 'dark',
-          multimodelEnabled: true,
           claudeRootPath: null,
           agentLanguage: 'system',
           appLocale: 'system',

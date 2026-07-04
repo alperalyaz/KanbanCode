@@ -799,7 +799,6 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
   modelUnavailableReasonByValue,
 }) => {
   const { t } = useAppTranslation('team');
-  const multimodelEnabled = useStore((s) => s.appConfig?.general?.multimodelEnabled ?? true);
   const [recommendedOnly, setRecommendedOnly] = useState(false);
   const [freeOnly, setFreeOnly] = useState(false);
   const [modelQuery, setModelQuery] = useState('');
@@ -823,8 +822,6 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
   } = useEffectiveCliProviderStatus(effectiveProviderId);
   const cliStatusLoading = useStore((s) => s.cliStatusLoading);
   const cliProviderStatusLoading = useStore((s) => s.cliProviderStatusLoading ?? {});
-  const multimodelAvailable =
-    multimodelEnabled || effectiveCliStatus?.flavor === 'agent_teams_orchestrator';
   const runtimeProviderStatusById = useMemo(
     () =>
       new Map(
@@ -917,13 +914,11 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
   const isProviderTemporarilyDisabled = (candidateProviderId: string): boolean =>
     getProviderDisabledReason(candidateProviderId) !== null;
   const isProviderSelectable = (candidateProviderId: string): boolean =>
-    !isProviderTemporarilyDisabled(candidateProviderId) &&
-    (multimodelAvailable || candidateProviderId === 'anthropic');
+    !isProviderTemporarilyDisabled(candidateProviderId);
   const isProviderInspectable = (candidateProviderId: string): boolean =>
     candidateProviderId === 'opencode' &&
     getProviderOverrideDisabledReason(candidateProviderId) === null &&
-    getProviderDisabledReason(candidateProviderId) !== null &&
-    multimodelAvailable;
+    getProviderDisabledReason(candidateProviderId) !== null;
   const activeProviderSelectable = isProviderSelectable(effectiveProviderId);
   const getProviderStatusBadge = (candidateProviderId: string): string | null => {
     if (isTeamProviderId(candidateProviderId)) {
@@ -1726,14 +1721,6 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
           </div>
 
           <div className="rounded-b-md border border-t-0 border-[var(--color-border)] bg-[var(--color-surface)]">
-            {!multimodelAvailable ? (
-              <div className="border-b border-[var(--color-border-subtle)] px-3 py-2">
-                <p className="text-[11px] text-[var(--color-text-muted)]">
-                  {t('modelSelector.multimodelRequired')}
-                </p>
-              </div>
-            ) : null}
-
             <div className="p-3">
               {activeProviderNotice ? (
                 <div data-testid="team-model-selector-provider-notice" className="mb-3">
@@ -1793,7 +1780,6 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                     sourceCliStatus={sourceCliStatus}
                     cliStatusLoading={cliStatusLoading}
                     cliProviderStatusLoading={cliProviderStatusLoading}
-                    multimodelEnabled={multimodelEnabled}
                     codexSnapshotPending={codexSnapshotPending}
                     providerIds={[effectiveProviderId]}
                     label={null}

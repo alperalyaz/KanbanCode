@@ -20,22 +20,17 @@ export interface EffectiveCliProviderStatusSnapshot {
 export function useEffectiveCliProviderStatus(
   providerId: CliProviderId | undefined
 ): EffectiveCliProviderStatusSnapshot {
-  const multimodelEnabled = useStore((s) => s.appConfig?.general?.multimodelEnabled ?? true);
   const cliStatus = useStore((s) => s.cliStatus);
   const cliStatusLoading = useStore((s) => s.cliStatusLoading);
 
   const loadingCliStatus = useMemo(
-    () =>
-      !cliStatus && cliStatusLoading && multimodelEnabled
-        ? createLoadingMultimodelCliStatus()
-        : cliStatus,
-    [cliStatus, cliStatusLoading, multimodelEnabled]
+    () => (!cliStatus && cliStatusLoading ? createLoadingMultimodelCliStatus() : cliStatus),
+    [cliStatus, cliStatusLoading]
   );
 
   const codexAccount = useCodexAccountSnapshot({
     enabled:
       providerId === 'codex' &&
-      multimodelEnabled &&
       loadingCliStatus?.flavor === 'agent_teams_orchestrator' &&
       Boolean(loadingCliStatus?.providers.some((provider) => provider.providerId === 'codex')),
   });

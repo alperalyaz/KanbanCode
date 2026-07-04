@@ -16,7 +16,7 @@ vi.mock('@renderer/api', () => ({
 vi.mock('@renderer/store', () => ({
   useStore: {
     getState: () => ({
-      appConfig: { general: { multimodelEnabled: true } },
+      appConfig: { general: {} },
       cliStatus: null,
       openCodeRuntimeStatus: null,
       codexRuntimeStatus: null,
@@ -60,7 +60,6 @@ describe('requestProviderRuntimeChecks', () => {
 
     expect(hasRequestedProviderRuntimeChecks()).toBe(true);
     expect(bootstrapCliStatus).toHaveBeenCalledWith({
-      multimodelEnabled: true,
       providerStatusMode: 'defer',
     });
     expect(fetchCliProviderStatus).toHaveBeenCalledTimes(3);

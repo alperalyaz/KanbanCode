@@ -44,9 +44,7 @@ interface StoreState {
   installCodexRuntime: ReturnType<typeof vi.fn>;
   invalidateCodexRuntimeStatus: ReturnType<typeof vi.fn>;
   appConfig: {
-    general: {
-      multimodelEnabled: boolean;
-    };
+    general: Record<string, never>;
     providerConnections?: {
       anthropic: {
         authMode: 'auto' | 'oauth' | 'api_key';
@@ -411,9 +409,7 @@ describe('CLI status visibility during completed install state', () => {
     storeState.installCodexRuntime = vi.fn().mockResolvedValue(undefined);
     storeState.invalidateCodexRuntimeStatus = vi.fn().mockResolvedValue(undefined);
     storeState.appConfig = {
-      general: {
-        multimodelEnabled: true,
-      },
+      general: {},
       providerConnections: {
         anthropic: {
           authMode: 'auto',
@@ -2252,7 +2248,9 @@ describe('CLI status visibility during completed install state', () => {
     expect(firstHost.textContent).not.toContain('ChatGPT account ready');
     expect(firstHost.querySelector('[aria-label="Expand provider details"]')).not.toBeNull();
 
-    const expandHeader = firstHost.querySelector<HTMLElement>('[aria-label="Expand provider details"]');
+    const expandHeader = firstHost.querySelector<HTMLElement>(
+      '[aria-label="Expand provider details"]'
+    );
     expect(expandHeader).not.toBeNull();
 
     await act(async () => {
@@ -2392,7 +2390,7 @@ describe('CLI status visibility during completed install state', () => {
       await Promise.resolve();
     });
 
-    expect(storeState.bootstrapCliStatus).toHaveBeenCalledWith({ multimodelEnabled: true });
+    expect(storeState.bootstrapCliStatus).toHaveBeenCalledWith(undefined);
     expect(storeState.fetchCliStatus).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -3137,9 +3135,7 @@ describe('CLI status visibility during completed install state', () => {
     expect(host.textContent).not.toContain(
       'Reconnect ChatGPT to refresh the current Codex subscription session.'
     );
-    expect(host.textContent).not.toContain(
-      'Models unavailable for this runtime build'
-    );
+    expect(host.textContent).not.toContain('Models unavailable for this runtime build');
 
     await act(async () => {
       root.unmount();

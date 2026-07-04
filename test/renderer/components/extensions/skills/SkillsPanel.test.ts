@@ -18,9 +18,7 @@ interface StoreState {
   cliStatus: CliInstallationStatus | null;
   cliStatusLoading: boolean;
   appConfig: {
-    general: {
-      multimodelEnabled: boolean;
-    };
+    general: Record<string, never>;
   } | null;
 }
 
@@ -37,12 +35,14 @@ const codexAccountHookState = {
   cancelChatgptLogin: vi.fn(() => Promise.resolve(true)),
   logout: vi.fn(() => Promise.resolve(true)),
 };
-let skillsChangedHandler: ((event: {
-  scope: 'user' | 'project';
-  projectPath: string | null;
-  path: string;
-  type: 'create' | 'change' | 'delete';
-}) => void) | null = null;
+let skillsChangedHandler:
+  | ((event: {
+      scope: 'user' | 'project';
+      projectPath: string | null;
+      path: string;
+      type: 'create' | 'change' | 'delete';
+    }) => void)
+  | null = null;
 
 vi.mock('@renderer/store', () => ({
   useStore: (selector: (state: StoreState) => unknown) => selector(storeState),
@@ -57,7 +57,7 @@ vi.mock('@features/codex-account/renderer', async (importOriginal) => {
 });
 
 vi.mock('zustand/react/shallow', () => ({
-  useShallow: <T,>(selector: T) => selector,
+  useShallow: <T>(selector: T) => selector,
 }));
 
 vi.mock('@renderer/api', () => ({
@@ -97,7 +97,9 @@ vi.mock('@renderer/components/ui/button', () => ({
 }));
 
 vi.mock('@renderer/components/ui/popover', () => ({
-  Popover: ({ children }: React.PropsWithChildren<{ open?: boolean; onOpenChange?: (open: boolean) => void }>) =>
+  Popover: ({
+    children,
+  }: React.PropsWithChildren<{ open?: boolean; onOpenChange?: (open: boolean) => void }>) =>
     React.createElement(React.Fragment, null, children),
   PopoverTrigger: ({ children }: React.PropsWithChildren) =>
     React.createElement(React.Fragment, null, children),
@@ -106,10 +108,12 @@ vi.mock('@renderer/components/ui/popover', () => ({
 }));
 
 vi.mock('@renderer/components/ui/tooltip', () => ({
-  Tooltip: ({ children }: React.PropsWithChildren) => React.createElement(React.Fragment, null, children),
+  Tooltip: ({ children }: React.PropsWithChildren) =>
+    React.createElement(React.Fragment, null, children),
   TooltipTrigger: ({ children }: React.PropsWithChildren) =>
     React.createElement(React.Fragment, null, children),
-  TooltipContent: ({ children }: React.PropsWithChildren) => React.createElement('span', null, children),
+  TooltipContent: ({ children }: React.PropsWithChildren) =>
+    React.createElement('span', null, children),
 }));
 
 vi.mock('@renderer/components/extensions/common/SearchInput', () => ({
@@ -207,9 +211,7 @@ function makeCodexSkill(): SkillCatalogItem {
   };
 }
 
-function makeMultimodelStatus(
-  overrides?: Partial<CliInstallationStatus>
-): CliInstallationStatus {
+function makeMultimodelStatus(overrides?: Partial<CliInstallationStatus>): CliInstallationStatus {
   return {
     flavor: 'agent_teams_orchestrator',
     displayName: 'Multimodel runtime',
@@ -264,9 +266,7 @@ describe('SkillsPanel', () => {
     };
     storeState.cliStatusLoading = false;
     storeState.appConfig = {
-      general: {
-        multimodelEnabled: true,
-      },
+      general: {},
     };
     storeState.cliStatus = {
       flavor: 'claude',
@@ -633,7 +633,9 @@ describe('SkillsPanel', () => {
 
     storeState.cliStatus = {
       ...storeState.cliStatus,
-      providers: storeState.cliStatus.providers.filter((provider) => provider.providerId !== 'codex'),
+      providers: storeState.cliStatus.providers.filter(
+        (provider) => provider.providerId !== 'codex'
+      ),
     };
     storeState.skillsUserCatalog = [makeUserSkill()];
 

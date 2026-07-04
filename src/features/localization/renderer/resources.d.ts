@@ -3282,6 +3282,9 @@ export default interface Resources {
         "unsupportedPreload": "Current preload version does not support team:prepareProvisioning. Restart the dev app."
       },
       "saved": "Saved",
+      "skipPermissions": {
+        "inlineDisclosure": "Teammates auto-approve tool calls — change in Optional settings."
+      },
       "solo": {
         "description": "Only the team lead will run — like a normal agent session, plus a task board. Saves tokens by skipping teammate coordination. Add members below to turn it into a team.",
         "label": "Solo team"
@@ -3781,6 +3784,7 @@ export default interface Resources {
         "limitEnabled": "200K limit enabled"
       },
       "mcp": {
+        "advancedToggle": "MCP access",
         "agentTeamsMcp": "Agent Teams MCP",
         "buttonInherit": "MCP inherit",
         "buttonScopes": "MCP scopes",
@@ -4513,9 +4517,9 @@ export default interface Resources {
       }
     },
     "permissions": {
-      "autoApproveAllTools": "Auto-approve all tools",
-      "autonomousModeDescription": "Autonomous mode: team tools execute without confirmation. Be cautious with untrusted code.",
-      "manualModeDescription": "Manual mode: you'll approve or deny each tool call in real time."
+      "autoApproveAllTools": "Auto-approve all tool calls",
+      "autonomousModeDescription": "On: tools run without asking.",
+      "manualModeDescription": "Off: you approve each tool call."
     },
     "processes": {
       "ago": "{{time}} ago",

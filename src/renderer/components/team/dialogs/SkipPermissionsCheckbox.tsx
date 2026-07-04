@@ -33,35 +33,23 @@ export const SkipPermissionsCheckbox: React.FC<SkipPermissionsCheckboxProps> = (
           {t('permissions.autoApproveAllTools')}
         </Label>
       </div>
-      {checked ? (
-        <div
-          className="mt-1.5 rounded-md border px-3 py-2 text-xs"
-          style={{
-            backgroundColor: 'rgba(59, 130, 246, 0.08)',
-            borderColor: 'rgba(59, 130, 246, 0.2)',
-            color: 'var(--color-text-secondary)',
-          }}
-        >
-          <div className="flex items-start gap-2">
-            <Info className="mt-0.5 size-3.5 shrink-0 text-blue-400" />
-            <p>{t('permissions.autonomousModeDescription')}</p>
-          </div>
+      <div
+        className="mt-1.5 rounded-md border px-3 py-2 text-xs"
+        style={{
+          backgroundColor: 'rgba(59, 130, 246, 0.08)',
+          borderColor: 'rgba(59, 130, 246, 0.2)',
+          color: 'var(--color-text-secondary)',
+        }}
+      >
+        <div className="flex items-start gap-2">
+          <Info className="mt-0.5 size-3.5 shrink-0 text-blue-400" />
+          <p>
+            {checked
+              ? t('permissions.autonomousModeDescription')
+              : t('permissions.manualModeDescription')}
+          </p>
         </div>
-      ) : (
-        <div
-          className="mt-1.5 rounded-md border px-3 py-2 text-xs"
-          style={{
-            backgroundColor: 'rgba(59, 130, 246, 0.08)',
-            borderColor: 'rgba(59, 130, 246, 0.2)',
-            color: 'var(--color-text-secondary)',
-          }}
-        >
-          <div className="flex items-start gap-2">
-            <Info className="mt-0.5 size-3.5 shrink-0 text-blue-400" />
-            <p>{t('permissions.manualModeDescription')}</p>
-          </div>
-        </div>
-      )}
+      </div>
     </>
   );
 };

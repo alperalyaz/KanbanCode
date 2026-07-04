@@ -334,8 +334,6 @@ export interface AppConfig {
     showDockIcon: boolean;
     /** Application theme */
     theme: 'dark' | 'light' | 'system';
-    /** Whether to use the multimodel runtime instead of the stock Claude CLI */
-    multimodelEnabled: boolean;
     /** Optional custom Claude root folder (auto-detected when null) */
     claudeRootPath: string | null;
     /** Agent communication language ('system' = use OS locale) */

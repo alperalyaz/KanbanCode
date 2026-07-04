@@ -490,7 +490,6 @@ export const MembersEditorSection = ({
       {!hideContent ? (
         <div className="space-y-1 text-[10px] leading-relaxed text-[var(--color-text-muted)]">
           <p>{t('roleSelect.selectionHint')}</p>
-          <p>{t('memberNames.concept')}</p>
         </div>
       ) : null}
       {!hideContent && (

@@ -126,28 +126,21 @@ export function clearMemberModelOverrides(member: MemberDraft): MemberDraft {
   };
 }
 
-export function normalizeProviderForMode(
-  providerId: TeamProviderId | undefined,
-  multimodelEnabled: boolean
-): TeamProviderId {
-  return normalizeCreateLaunchProviderForUi(providerId, multimodelEnabled);
+export function normalizeProviderForMode(providerId: TeamProviderId | undefined): TeamProviderId {
+  return normalizeCreateLaunchProviderForUi(providerId, true);
 }
 
 export function normalizeLeadProviderForMode(
-  providerId: TeamProviderId | undefined,
-  multimodelEnabled: boolean
+  providerId: TeamProviderId | undefined
 ): TeamProviderId {
-  return normalizeProviderForMode(providerId, multimodelEnabled);
+  return normalizeProviderForMode(providerId);
 }
 
-export function normalizeMemberDraftForProviderMode(
-  member: MemberDraft,
-  multimodelEnabled: boolean
-): MemberDraft {
+export function normalizeMemberDraftForProviderMode(member: MemberDraft): MemberDraft {
   const normalizedProviderId =
     member.providerId == null
       ? undefined
-      : normalizeCreateLaunchProviderForUi(member.providerId, multimodelEnabled);
+      : normalizeCreateLaunchProviderForUi(member.providerId, true);
 
   if (normalizedProviderId === member.providerId) {
     return member;

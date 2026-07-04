@@ -42,7 +42,6 @@ export const ApiKeysPanel = ({
     fetchStorageStatus,
     cliStatus,
     cliStatusLoading,
-    appConfig,
   } = useStore(
     useShallow((s) => ({
       apiKeys: s.apiKeys,
@@ -53,16 +52,11 @@ export const ApiKeysPanel = ({
       fetchStorageStatus: s.fetchApiKeyStorageStatus,
       cliStatus: s.cliStatus,
       cliStatusLoading: s.cliStatusLoading,
-      appConfig: s.appConfig,
     }))
   );
-  const multimodelEnabled = appConfig?.general?.multimodelEnabled ?? true;
   const loadingCliStatus = useMemo(
-    () =>
-      !cliStatus && cliStatusLoading && multimodelEnabled
-        ? createLoadingMultimodelCliStatus()
-        : cliStatus,
-    [cliStatus, cliStatusLoading, multimodelEnabled]
+    () => (!cliStatus && cliStatusLoading ? createLoadingMultimodelCliStatus() : cliStatus),
+    [cliStatus, cliStatusLoading]
   );
   const codexAccount = useCodexAccountSnapshot({
     enabled:

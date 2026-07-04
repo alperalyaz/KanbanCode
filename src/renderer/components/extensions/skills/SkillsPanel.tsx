@@ -137,7 +137,6 @@ export const SkillsPanel = ({
   const fetchSkillDetail = useStore((s) => s.fetchSkillDetail);
   const cliStatus = useStore((s) => s.cliStatus);
   const cliStatusLoading = useStore((s) => s.cliStatusLoading);
-  const multimodelEnabled = useStore((s) => s.appConfig?.general?.multimodelEnabled ?? true);
   const skillsLoading = useStore((s) => s.skillsCatalogLoadingByProjectPath[catalogKey] ?? false);
   const skillsError = useStore((s) => s.skillsCatalogErrorByProjectPath[catalogKey] ?? null);
   const detailById = useStore(useShallow((s) => s.skillsDetailsById));
@@ -157,11 +156,8 @@ export const SkillsPanel = ({
   const selectedSkillItemRef = useRef<SkillCatalogItem | null>(null);
   selectedSkillIdRef.current = selectedSkillId;
   const loadingCliStatus = useMemo(
-    () =>
-      !cliStatus && cliStatusLoading && multimodelEnabled
-        ? createLoadingMultimodelCliStatus()
-        : cliStatus,
-    [cliStatus, cliStatusLoading, multimodelEnabled]
+    () => (!cliStatus && cliStatusLoading ? createLoadingMultimodelCliStatus() : cliStatus),
+    [cliStatus, cliStatusLoading]
   );
   const codexAccount = useCodexAccountSnapshot({
     enabled:

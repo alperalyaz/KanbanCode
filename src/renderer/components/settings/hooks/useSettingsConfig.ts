@@ -28,7 +28,6 @@ export interface SafeConfig {
     launchAtLogin: boolean;
     showDockIcon: boolean;
     theme: 'dark' | 'light' | 'system';
-    multimodelEnabled: boolean;
     claudeRootPath: string | null;
     agentLanguage: string;
     appLocale: string;
@@ -165,7 +164,6 @@ export function useSettingsConfig(): UseSettingsConfigReturn {
         launchAtLogin: displayConfig?.general?.launchAtLogin ?? false,
         showDockIcon: displayConfig?.general?.showDockIcon ?? true,
         theme: displayConfig?.general?.theme ?? 'dark',
-        multimodelEnabled: displayConfig?.general?.multimodelEnabled ?? true,
         claudeRootPath: displayConfig?.general?.claudeRootPath ?? null,
         agentLanguage: displayConfig?.general?.agentLanguage ?? 'system',
         appLocale: displayConfig?.general?.appLocale ?? 'system',

@@ -26,7 +26,6 @@ interface ProviderActivityStatusStripProps {
   readonly sourceCliStatus?: CliInstallationStatus | null;
   readonly cliStatusLoading: boolean;
   readonly cliProviderStatusLoading: Partial<Record<CliProviderId, boolean>>;
-  readonly multimodelEnabled: boolean;
   readonly codexSnapshotPending?: boolean;
   readonly providerIds?: readonly CliProviderId[];
   readonly className?: string;
@@ -81,7 +80,6 @@ function useProviderActivityDisplay({
   sourceCliStatus,
   cliStatusLoading,
   cliProviderStatusLoading,
-  multimodelEnabled,
   codexSnapshotPending = false,
   providerIds,
   showReadyProviders,
@@ -91,7 +89,6 @@ function useProviderActivityDisplay({
   | 'sourceCliStatus'
   | 'cliStatusLoading'
   | 'cliProviderStatusLoading'
-  | 'multimodelEnabled'
   | 'codexSnapshotPending'
   | 'providerIds'
   | 'showReadyProviders'
@@ -103,10 +100,8 @@ function useProviderActivityDisplay({
   const [cycleProviderIds, setCycleProviderIds] = useState<CliProviderId[]>([]);
   const renderCliStatus = useMemo(
     () =>
-      !cliStatus && cliStatusLoading && multimodelEnabled
-        ? createLoadingMultimodelCliStatus()
-        : (cliStatus ?? null),
-    [cliStatus, cliStatusLoading, multimodelEnabled]
+      !cliStatus && cliStatusLoading ? createLoadingMultimodelCliStatus() : (cliStatus ?? null),
+    [cliStatus, cliStatusLoading]
   );
   const sourceStatus = sourceCliStatus ?? renderCliStatus;
   const providerIdSet = useMemo(
@@ -222,7 +217,6 @@ function useProviderActivityDisplay({
     providerStateMap,
     shouldRender:
       isElectronMode() &&
-      multimodelEnabled &&
       renderCliStatus?.flavor === 'agent_teams_orchestrator' &&
       renderCliStatus.installed &&
       displayProviderIds.length > 0,
@@ -234,7 +228,6 @@ export const ProviderActivityStatusStrip = ({
   sourceCliStatus,
   cliStatusLoading,
   cliProviderStatusLoading,
-  multimodelEnabled,
   codexSnapshotPending = false,
   providerIds,
   className = '',
@@ -250,7 +243,6 @@ export const ProviderActivityStatusStrip = ({
     sourceCliStatus,
     cliStatusLoading,
     cliProviderStatusLoading,
-    multimodelEnabled,
     codexSnapshotPending,
     providerIds,
     showReadyProviders,

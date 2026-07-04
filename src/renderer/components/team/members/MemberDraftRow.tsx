@@ -637,42 +637,6 @@ export const MemberDraftRow = ({
               </Button>
             </HoverTooltip>
           ) : null}
-          {onMcpPolicyChange ? (
-            <HoverTooltip
-              content={mcpTooltipText}
-              title={mcpTooltipText}
-              dismissOnClick
-              className="shrink-0"
-              contentClassName="max-w-64"
-            >
-              <Button
-                variant="outline"
-                size="sm"
-                className={cn(
-                  'relative size-8 shrink-0 px-0',
-                  agentTeamsMcpLocked &&
-                    'border-amber-300/50 bg-amber-400/10 text-amber-100 hover:bg-amber-400/15',
-                  !agentTeamsMcpLocked &&
-                    (mcpExpanded || mcpMode !== 'inheritLead') &&
-                    'border-sky-400/45 bg-sky-500/10 text-sky-100 hover:bg-sky-500/15'
-                )}
-                aria-label={mcpTooltipText}
-                aria-expanded={mcpExpanded}
-                disabled={isRemoved}
-                onClick={() => setMcpExpanded((prev) => !prev)}
-              >
-                <Plug className="size-3.5" />
-                {agentTeamsMcpLocked || mcpMode !== 'inheritLead' ? (
-                  <span
-                    className={cn(
-                      'absolute -right-1 -top-1 size-2 rounded-full',
-                      agentTeamsMcpLocked ? 'bg-amber-300' : 'bg-sky-400'
-                    )}
-                  />
-                ) : null}
-              </Button>
-            </HoverTooltip>
-          ) : null}
           {hideActionButton ? null : isRemoved ? (
             <Button
               variant="outline"
@@ -726,6 +690,33 @@ export const MemberDraftRow = ({
             <Info className="mt-0.5 size-3.5 shrink-0 text-sky-300" />
             <p className="min-w-0 whitespace-pre-wrap break-words">{infoText}</p>
           </div>
+        </div>
+      ) : null}
+      {!isRemoved && onMcpPolicyChange ? (
+        <div className="md:col-span-3">
+          <button
+            type="button"
+            onClick={() => setMcpExpanded((prev) => !prev)}
+            aria-expanded={mcpExpanded}
+            title={mcpTooltipText}
+            className="ml-3 flex items-center gap-1 text-[10px] text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
+          >
+            {mcpExpanded ? (
+              <ChevronDown className="size-3 shrink-0" />
+            ) : (
+              <ChevronRight className="size-3 shrink-0" />
+            )}
+            <Plug className="size-3 shrink-0" />
+            <span>{t('memberDraft.mcp.advancedToggle')}</span>
+            {agentTeamsMcpLocked || mcpMode !== 'inheritLead' ? (
+              <span
+                className={cn(
+                  'size-1.5 shrink-0 rounded-full',
+                  agentTeamsMcpLocked ? 'bg-amber-300' : 'bg-sky-400'
+                )}
+              />
+            ) : null}
+          </button>
         </div>
       ) : null}
       {!isRemoved && onMcpPolicyChange && mcpExpanded ? (

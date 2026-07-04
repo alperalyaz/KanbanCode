@@ -50,7 +50,6 @@ export const ProvisioningProviderRuntimeSettingsDialog = ({
     fetchCliStatus,
     installCodexRuntime,
     invalidateCliStatus,
-    multimodelEnabled,
     updateConfig,
   } = useStore(
     useShallow((s) => ({
@@ -65,7 +64,6 @@ export const ProvisioningProviderRuntimeSettingsDialog = ({
       fetchCliStatus: s.fetchCliStatus,
       installCodexRuntime: s.installCodexRuntime,
       invalidateCliStatus: s.invalidateCliStatus,
-      multimodelEnabled: s.appConfig?.general?.multimodelEnabled ?? true,
       updateConfig: s.updateConfig,
     }))
   );
@@ -125,12 +123,11 @@ export const ProvisioningProviderRuntimeSettingsDialog = ({
     void (async () => {
       await invalidateCliStatus();
       await refreshCliStatusForCurrentMode({
-        multimodelEnabled,
         bootstrapCliStatus,
         fetchCliStatus,
       });
     })();
-  }, [bootstrapCliStatus, fetchCliStatus, invalidateCliStatus, multimodelEnabled]);
+  }, [bootstrapCliStatus, fetchCliStatus, invalidateCliStatus]);
 
   const activeTerminalProvider = providerTerminal
     ? (providers.find((provider) => provider.providerId === providerTerminal.providerId) ?? null)
@@ -169,7 +166,7 @@ export const ProvisioningProviderRuntimeSettingsDialog = ({
       />
       {providerTerminal && cliStatus?.binaryPath && (
         <TerminalModal
-          title={`${getRuntimeDisplayName(cliStatus, multimodelEnabled)} ${
+          title={`${getRuntimeDisplayName(cliStatus, true)} ${
             providerTerminal.action === 'login' ? 'Login' : 'Logout'
           }: ${getProvisioningProviderLabel(providerTerminal.providerId)}`}
           command={cliStatus.binaryPath}

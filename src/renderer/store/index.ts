@@ -2238,10 +2238,7 @@ export function initializeNotificationListeners(): () => void {
         }
         case 'completed':
           {
-            const multimodelEnabled =
-              useStore.getState().appConfig?.general?.multimodelEnabled ?? true;
             void refreshCliStatusForCurrentMode({
-              multimodelEnabled,
               bootstrapCliStatus: useStore.getState().bootstrapCliStatus,
               fetchCliStatus: useStore.getState().fetchCliStatus,
             });

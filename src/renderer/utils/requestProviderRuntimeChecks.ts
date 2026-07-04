@@ -25,10 +25,7 @@ export function requestProviderRuntimeChecks(options?: { force?: boolean }): Pro
   }
 
   const state = useStore.getState();
-  const multimodelEnabled = state.appConfig?.general?.multimodelEnabled ?? true;
-  const incompleteProviderIds = multimodelEnabled
-    ? getIncompleteMultimodelProviderIds(state.cliStatus)
-    : [];
+  const incompleteProviderIds = getIncompleteMultimodelProviderIds(state.cliStatus);
 
   if (
     requested &&
@@ -45,22 +42,13 @@ export function requestProviderRuntimeChecks(options?: { force?: boolean }): Pro
   inFlight = (async () => {
     try {
       const currentState = useStore.getState();
-      const multimodel = currentState.appConfig?.general?.multimodelEnabled ?? true;
-
-      if (multimodel) {
-        await currentState.bootstrapCliStatus({
-          multimodelEnabled: true,
-          providerStatusMode: 'defer',
-        });
-        const providerIds = getIncompleteMultimodelProviderIds(useStore.getState().cliStatus);
-        await Promise.all(
-          providerIds.map((providerId) =>
-            useStore.getState().fetchCliProviderStatus(providerId, { silent: false })
-          )
-        );
-      } else {
-        await currentState.fetchCliStatus();
-      }
+      await currentState.bootstrapCliStatus({ providerStatusMode: 'defer' });
+      const providerIds = getIncompleteMultimodelProviderIds(useStore.getState().cliStatus);
+      await Promise.all(
+        providerIds.map((providerId) =>
+          useStore.getState().fetchCliProviderStatus(providerId, { silent: false })
+        )
+      );
 
       const runtimeFetches: Promise<void>[] = [];
       if (api.openCodeRuntime) {

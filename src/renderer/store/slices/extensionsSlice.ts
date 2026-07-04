@@ -351,7 +351,6 @@ function refreshConfiguredCliStatus(
   state: Pick<AppState, 'appConfig' | 'bootstrapCliStatus' | 'fetchCliStatus'>
 ): Promise<void> {
   return refreshCliStatusForCurrentMode({
-    multimodelEnabled: state.appConfig?.general?.multimodelEnabled ?? true,
     bootstrapCliStatus: state.bootstrapCliStatus,
     fetchCliStatus: state.fetchCliStatus,
   });

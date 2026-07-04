@@ -43,7 +43,6 @@ export function useCliInstaller(): {
   codexRuntimeStatusLoading: boolean;
   codexRuntimeError: string | null;
   bootstrapCliStatus: (options?: {
-    multimodelEnabled?: boolean;
     providerStatusMode?: CliInstallerProviderStatusMode;
   }) => Promise<void>;
   fetchCliStatus: () => Promise<void>;

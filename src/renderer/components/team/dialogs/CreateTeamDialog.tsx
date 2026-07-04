@@ -507,7 +507,6 @@ export const CreateTeamDialog = ({
   const { isLight } = useTheme();
   const { t, resolvedLanguage } = useAppTranslation('team');
   const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
-  const multimodelEnabled = useStore((s) => s.appConfig?.general?.multimodelEnabled ?? true);
   const anthropicProviderFastModeDefault = useStore(
     (s) => s.appConfig?.providerConnections?.anthropic.fastModeDefault ?? false
   );
@@ -520,15 +519,11 @@ export const CreateTeamDialog = ({
   );
   const openDashboard = useStore((s) => s.openDashboard);
   const loadingCliStatus = useMemo(
-    () =>
-      !cliStatus && cliStatusLoading && multimodelEnabled
-        ? createLoadingMultimodelCliStatus()
-        : cliStatus,
-    [cliStatus, cliStatusLoading, multimodelEnabled]
+    () => (!cliStatus && cliStatusLoading ? createLoadingMultimodelCliStatus() : cliStatus),
+    [cliStatus, cliStatusLoading]
   );
   const codexAccount = useCodexAccountSnapshot({
     enabled:
-      multimodelEnabled &&
       loadingCliStatus?.flavor === 'agent_teams_orchestrator' &&
       Boolean(loadingCliStatus?.providers.some((provider) => provider.providerId === 'codex')),
   });
@@ -606,10 +601,10 @@ export const CreateTeamDialog = ({
   const [organizationPlacementError, setOrganizationPlacementError] = useState<string | null>(null);
   const [conflictDismissed, setConflictDismissed] = useState(false);
   const [selectedProviderId, setSelectedProviderIdRaw] = useState<TeamProviderId>(() =>
-    normalizeLeadProviderForMode(getStoredTeamProvider(), multimodelEnabled)
+    normalizeLeadProviderForMode(getStoredTeamProvider())
   );
   const [selectedModel, setSelectedModelRaw] = useState(() =>
-    getStoredTeamModel(normalizeLeadProviderForMode(getStoredTeamProvider(), multimodelEnabled))
+    getStoredTeamModel(normalizeLeadProviderForMode(getStoredTeamProvider()))
   );
   const [limitContext, setLimitContextRaw] = useState(getStoredCreateTeamLimitContext);
   const [skipPermissions, setSkipPermissionsRaw] = useState(getStoredCreateTeamSkipPermissions);
@@ -696,15 +691,12 @@ export const CreateTeamDialog = ({
     [selectedProviderId]
   );
 
-  const setSelectedProviderId = useCallback(
-    (value: TeamProviderId): void => {
-      const normalizedValue = normalizeLeadProviderForMode(value, multimodelEnabled);
-      setSelectedProviderIdRaw(normalizedValue);
-      setStoredCreateTeamProvider(normalizedValue);
-      setSelectedModelRaw(getStoredTeamModel(normalizedValue));
-    },
-    [multimodelEnabled]
-  );
+  const setSelectedProviderId = useCallback((value: TeamProviderId): void => {
+    const normalizedValue = normalizeLeadProviderForMode(value);
+    setSelectedProviderIdRaw(normalizedValue);
+    setStoredCreateTeamProvider(normalizedValue);
+    setSelectedModelRaw(getStoredTeamModel(normalizedValue));
+  }, []);
 
   const setLimitContext = useCallback((value: boolean): void => {
     setLimitContextRaw(value);
@@ -808,8 +800,7 @@ export const CreateTeamDialog = ({
     [members, syncModelsWithLead]
   );
   const activeTeammateCount = useMemo(
-    () =>
-      effectiveMemberDrafts.filter((m) => !m.removedAt && m.name.trim().length > 0).length,
+    () => effectiveMemberDrafts.filter((m) => !m.removedAt && m.name.trim().length > 0).length,
     [effectiveMemberDrafts]
   );
   const isSolo = activeTeammateCount === 0;
@@ -830,9 +821,6 @@ export const CreateTeamDialog = ({
   const tmuxRuntime = useTmuxRuntimeReadiness(open && canCreate);
 
   const selectedMemberProviders = useMemo<TeamProviderId[]>(() => {
-    if (!multimodelEnabled) {
-      return ['anthropic'];
-    }
     if (isSolo || syncModelsWithLead) {
       return [selectedProviderId];
     }
@@ -844,7 +832,7 @@ export const CreateTeamDialog = ({
         ),
       ])
     );
-  }, [members, multimodelEnabled, selectedProviderId, isSolo, syncModelsWithLead]);
+  }, [members, selectedProviderId, isSolo, syncModelsWithLead]);
   const hasSelectedAnthropicRuntime = selectedMemberProviders.includes('anthropic');
   const effectiveAnthropicRuntimeLimitContext = hasSelectedAnthropicRuntime ? limitContext : false;
 
@@ -1139,21 +1127,6 @@ export const CreateTeamDialog = ({
     selectedModelChecksByProviderSignature,
     selectedMemberProviders,
   ]);
-
-  useEffect(() => {
-    if (multimodelEnabled) {
-      return;
-    }
-    if (selectedProviderId !== 'anthropic') {
-      setSelectedProviderIdRaw('anthropic');
-      setSelectedModelRaw(getStoredTeamModel('anthropic'));
-    }
-    const nextMembers = members.map((member) => normalizeMemberDraftForProviderMode(member, false));
-    const changed = nextMembers.some((member, index) => member !== members[index]);
-    if (changed) {
-      setMembers(nextMembers);
-    }
-  }, [members, multimodelEnabled, selectedProviderId, setMembers]);
 
   useEffect(() => {
     if (!open || cliStatus || cliStatusLoading) {
@@ -1501,7 +1474,7 @@ export const CreateTeamDialog = ({
       const copiedProviderId =
         initialData.providerId == null
           ? selectedProviderId
-          : normalizeLeadProviderForMode(initialData.providerId, multimodelEnabled);
+          : normalizeLeadProviderForMode(initialData.providerId);
       setTeamName(initialData.teamName);
       descriptionDraft.setValue(initialData.description ?? '');
       promptDraft.setValue(initialData.prompt ?? '');
@@ -1545,8 +1518,7 @@ export const CreateTeamDialog = ({
                 mcpPolicy: m.mcpPolicy,
               },
               { memberNameLocale }
-            ),
-            multimodelEnabled
+            )
           );
         })
       );
@@ -2536,6 +2508,7 @@ export const CreateTeamDialog = ({
                   onLimitContextChange={setLimitContext}
                   syncModelsWithTeammates={syncModelsWithLead}
                   onSyncModelsWithTeammatesChange={handleSyncModelsWithLeadChange}
+                  showSyncWithTeammates={activeTeammateCount > 0}
                   showWorktreeIsolationControls={activeTeammateCount > 0}
                   teammateWorktreeDefault={teammateWorktreeDefault}
                   worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
@@ -2917,7 +2890,6 @@ export const CreateTeamDialog = ({
                 sourceCliStatus={loadingCliStatus}
                 cliStatusLoading={cliStatusLoading}
                 cliProviderStatusLoading={cliProviderStatusLoading}
-                multimodelEnabled={multimodelEnabled}
                 codexSnapshotPending={codexSnapshotPending}
                 providerIds={selectedMemberProviders}
                 className="mb-2"
@@ -3051,37 +3023,44 @@ export const CreateTeamDialog = ({
             ) : null}
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
-            {canOpenExistingTeam ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  onOpenTeam(request.teamName);
-                  onClose();
-                }}
-              >
-                {t('create.actions.openExisting')}
-              </Button>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            {skipPermissions ? (
+              <p className="text-[11px] text-[var(--color-text-muted)]">
+                {t('create.skipPermissions.inlineDisclosure')}
+              </p>
             ) : null}
-            <Button
-              size="lg"
-              className="min-w-32 text-sm"
-              disabled={!canCreate || !draftLoaded || isSubmitting || hasCreateFormErrors}
-              onClick={handleSubmit}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                  {t('create.actions.creating')}
-                </>
-              ) : launchTeam &&
-                (effectivePrepare.state === 'idle' || effectivePrepare.state === 'loading') ? (
-                t('create.actions.skipPreflightAndCreate')
-              ) : (
-                t('create.actions.create')
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              {canOpenExistingTeam ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    onOpenTeam(request.teamName);
+                    onClose();
+                  }}
+                >
+                  {t('create.actions.openExisting')}
+                </Button>
+              ) : null}
+              <Button
+                size="lg"
+                className="min-w-32 text-sm"
+                disabled={!canCreate || !draftLoaded || isSubmitting || hasCreateFormErrors}
+                onClick={handleSubmit}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                    {t('create.actions.creating')}
+                  </>
+                ) : launchTeam &&
+                  (effectivePrepare.state === 'idle' || effectivePrepare.state === 'loading') ? (
+                  t('create.actions.skipPreflightAndCreate')
+                ) : (
+                  t('create.actions.create')
+                )}
+              </Button>
+            </div>
           </div>
         </DialogFooter>
       </DialogContent>

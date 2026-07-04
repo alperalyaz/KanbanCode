@@ -771,6 +771,8 @@ export const EditTeamDialog = ({
               !name.trim() ||
               hasDuplicateMembers ||
               Boolean(invalidMemberNamesError) ||
+              hasNewLiveTeammates ||
+              hasBlockedLiveIdentityChanges ||
               unsupportedLiveMixedPrimaryMutationNames.length > 0
             }
           >

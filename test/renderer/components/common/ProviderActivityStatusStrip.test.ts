@@ -80,7 +80,6 @@ function renderStrip(
       sourceCliStatus: props.cliStatus,
       cliStatusLoading: false,
       cliProviderStatusLoading: {},
-      multimodelEnabled: true,
       ...props,
     })
   );
@@ -191,7 +190,6 @@ describe('ProviderActivityStatusStrip', () => {
           sourceCliStatus: null,
           cliStatusLoading: false,
           cliProviderStatusLoading: { anthropic: true, codex: true },
-          multimodelEnabled: true,
         })
       );
       await Promise.resolve();
@@ -217,7 +215,6 @@ describe('ProviderActivityStatusStrip', () => {
           sourceCliStatus: null,
           cliStatusLoading: false,
           cliProviderStatusLoading: { anthropic: false, codex: true },
-          multimodelEnabled: true,
         })
       );
       await Promise.resolve();
@@ -250,7 +247,6 @@ describe('ProviderActivityStatusStrip', () => {
           sourceCliStatus: null,
           cliStatusLoading: false,
           cliProviderStatusLoading: { anthropic: false, codex: false },
-          multimodelEnabled: true,
         })
       );
       await Promise.resolve();

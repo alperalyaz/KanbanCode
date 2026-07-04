@@ -260,7 +260,6 @@ export interface GeneralConfig {
   launchAtLogin: boolean;
   showDockIcon: boolean;
   theme: 'dark' | 'light' | 'system';
-  multimodelEnabled: boolean;
   claudeRootPath: string | null;
   agentLanguage: string;
   appLocale: string;
@@ -361,7 +360,6 @@ const DEFAULT_CONFIG: AppConfig = {
     launchAtLogin: false,
     showDockIcon: true,
     theme: 'dark',
-    multimodelEnabled: true,
     claudeRootPath: null,
     agentLanguage: 'system',
     appLocale: 'system',
@@ -596,7 +594,9 @@ export class ConfigManager {
       ...DEFAULT_CONFIG.general,
       ...(loaded.general ?? {}),
     };
-    mergedGeneral.multimodelEnabled = true;
+    // Multi-model is always on now; drop any legacy `multimodelEnabled` key that may
+    // exist in persisted JSON so load stays tolerant (ignore it, never throw).
+    delete (mergedGeneral as { multimodelEnabled?: unknown }).multimodelEnabled;
     mergedGeneral.claudeRootPath = normalizeConfiguredClaudeRootPath(mergedGeneral.claudeRootPath);
     mergedGeneral.appLocale = normalizeAppLocalePreference(mergedGeneral.appLocale);
     mergedGeneral.agentLanguage = normalizeAgentLanguagePreference(mergedGeneral.agentLanguage);

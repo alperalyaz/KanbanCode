@@ -21,7 +21,6 @@ interface LaunchDialogPrefillInput {
   members: readonly ResolvedTeamMember[];
   savedRequest: TeamCreateRequest | null;
   previousLaunchParams?: PreviousLaunchParamsLike;
-  multimodelEnabled: boolean;
   storedProviderId: TeamProviderId;
   storedEffort: string;
   storedFastMode: 'inherit' | 'on' | 'off';
@@ -63,7 +62,6 @@ export function resolveLaunchDialogPrefill({
   members,
   savedRequest,
   previousLaunchParams,
-  multimodelEnabled,
   storedProviderId,
   storedEffort,
   storedFastMode,
@@ -79,7 +77,7 @@ export function resolveLaunchDialogPrefill({
 
   const providerId = normalizeCreateLaunchProviderForUi(
     currentLeadProviderId ?? savedRequestProviderId ?? previousLaunchProviderId ?? storedProviderId,
-    multimodelEnabled
+    true
   );
 
   const modelCandidates = [
