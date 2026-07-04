@@ -154,11 +154,6 @@ import {
   WorktreeGitReadinessBanner,
 } from './WorktreeGitReadinessBanner';
 
-import type {
-  OrganizationPlacementSelection,
-  OrganizationStructurePayload,
-  OrganizationStructureUnitDto,
-} from '@features/organizations/contracts';
 import type { MemberDraft } from '@renderer/components/team/members/MembersEditorSection';
 import type {
   CliProviderId,
@@ -227,91 +222,6 @@ export interface ActiveTeamRef {
   projectPath: string;
 }
 
-interface OrganizationPlacementUnitOption {
-  unit: OrganizationStructureUnitDto;
-  depth: number;
-}
-
-function compareOrganizationPlacementUnits(
-  left: OrganizationStructureUnitDto,
-  right: OrganizationStructureUnitDto
-): number {
-  if (left.kind === 'organization' && right.kind !== 'organization') return -1;
-  if (right.kind === 'organization' && left.kind !== 'organization') return 1;
-  return getOrganizationUnitLabel(left).localeCompare(getOrganizationUnitLabel(right));
-}
-
-function getOrganizationPlacementUnitOptions(
-  structure: OrganizationStructurePayload | null,
-  organizationId: string
-): OrganizationPlacementUnitOption[] {
-  if (!structure) return [];
-  const units = structure.units.filter(
-    (unit) => unit.organizationId === organizationId && unit.kind !== 'team'
-  );
-  const unitById = new Map(units.map((unit) => [unit.id, unit]));
-  const organizationRootId =
-    structure.organizations.find((organization) => organization.id === organizationId)
-      ?.rootNodeId ?? null;
-  const rootUnit =
-    (organizationRootId ? unitById.get(organizationRootId) : undefined) ??
-    units.find((unit) => unit.kind === 'organization') ??
-    null;
-  const childrenByParentId = new Map<string | null, OrganizationStructureUnitDto[]>();
-
-  for (const unit of units) {
-    const parentId =
-      unit.parentId && unitById.has(unit.parentId)
-        ? unit.parentId
-        : unit.kind !== 'organization' && rootUnit && unit.id !== rootUnit.id
-          ? rootUnit.id
-          : null;
-    const children = childrenByParentId.get(parentId) ?? [];
-    children.push(unit);
-    childrenByParentId.set(parentId, children);
-  }
-
-  for (const children of childrenByParentId.values()) {
-    children.sort(compareOrganizationPlacementUnits);
-  }
-
-  const ordered: OrganizationPlacementUnitOption[] = [];
-  const visited = new Set<string>();
-  const visit = (unit: OrganizationStructureUnitDto, depth: number): void => {
-    if (visited.has(unit.id)) return;
-    visited.add(unit.id);
-    ordered.push({ unit, depth });
-    for (const child of childrenByParentId.get(unit.id) ?? []) {
-      visit(child, depth + 1);
-    }
-  };
-
-  for (const root of childrenByParentId.get(null) ?? []) {
-    visit(root, 0);
-  }
-  for (const unit of units.sort(compareOrganizationPlacementUnits)) {
-    visit(unit, 0);
-  }
-
-  return ordered;
-}
-
-function getOrganizationUnitLabel(unit: OrganizationStructureUnitDto): string {
-  return unit.title ? `${unit.label} - ${unit.title}` : unit.label;
-}
-
-type OrganizationPlacementUnitKindKey =
-  | 'create.organizationPlacement.kind.root'
-  | 'create.organizationPlacement.kind.group';
-
-function getOrganizationPlacementUnitKindKey(
-  unit: OrganizationStructureUnitDto
-): OrganizationPlacementUnitKindKey {
-  return unit.kind === 'organization'
-    ? 'create.organizationPlacement.kind.root'
-    : 'create.organizationPlacement.kind.group';
-}
-
 interface CreateTeamDialogProps {
   open: boolean;
   canCreate: boolean;
@@ -322,13 +232,9 @@ interface CreateTeamDialogProps {
   provisioningTeamNames?: string[];
   activeTeams?: ActiveTeamRef[];
   initialData?: TeamCopyData;
-  initialOrganizationPlacement?: OrganizationPlacementSelection | null;
   defaultProjectPath?: string | null;
   onClose: () => void;
-  onCreate: (
-    request: TeamCreateRequest,
-    placement?: OrganizationPlacementSelection
-  ) => Promise<void>;
+  onCreate: (request: TeamCreateRequest) => Promise<void>;
   onOpenTeam: (teamName: string, projectPath?: string) => void;
 }
 
@@ -498,7 +404,6 @@ export const CreateTeamDialog = ({
   provisioningTeamNames = [],
   activeTeams,
   initialData,
-  initialOrganizationPlacement,
   defaultProjectPath,
   onClose,
   onCreate,
@@ -591,14 +496,6 @@ export const CreateTeamDialog = ({
     cwd?: string;
   }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [organizationStructure, setOrganizationStructure] =
-    useState<OrganizationStructurePayload | null>(null);
-  const [organizationStructureLoading, setOrganizationStructureLoading] = useState(false);
-  const [organizationPlacementEnabled, setOrganizationPlacementEnabled] = useState(false);
-  const [organizationPlacementOrganizationId, setOrganizationPlacementOrganizationId] =
-    useState('');
-  const [organizationPlacementParentId, setOrganizationPlacementParentId] = useState('');
-  const [organizationPlacementError, setOrganizationPlacementError] = useState<string | null>(null);
   const [conflictDismissed, setConflictDismissed] = useState(false);
   const [selectedProviderId, setSelectedProviderIdRaw] = useState<TeamProviderId>(() =>
     normalizeLeadProviderForMode(getStoredTeamProvider())
@@ -627,50 +524,6 @@ export const CreateTeamDialog = ({
       setProviderSettingsProviderId(null);
     }
   }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      setOrganizationPlacementEnabled(false);
-      setOrganizationPlacementError(null);
-      return undefined;
-    }
-
-    let cancelled = false;
-    const preferredPlacement = initialOrganizationPlacement ?? null;
-    setOrganizationStructureLoading(true);
-    void api.organizations
-      .getOrganizationStructure()
-      .then((payload) => {
-        if (cancelled) return;
-        setOrganizationStructure(payload);
-        const organization =
-          (preferredPlacement
-            ? payload.organizations.find(
-                (candidate) => candidate.id === preferredPlacement.organizationId
-              )
-            : undefined) ??
-          payload.organizations[0] ??
-          null;
-        setOrganizationPlacementEnabled(Boolean(preferredPlacement));
-        setOrganizationPlacementOrganizationId(organization?.id ?? '');
-        setOrganizationPlacementParentId(
-          preferredPlacement?.parentUnitId ?? organization?.rootNodeId ?? ''
-        );
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setOrganizationPlacementError(error instanceof Error ? error.message : String(error));
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setOrganizationStructureLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [initialOrganizationPlacement, open]);
 
   // Re-read localStorage when advancedKey changes
   useEffect(() => {
@@ -2159,43 +2012,6 @@ export const CreateTeamDialog = ({
   const canOpenExistingTeam =
     activeError?.includes('Team already exists') === true && request.teamName.length > 0;
 
-  const organizationPlacementOrganizations = organizationStructure?.organizations ?? [];
-  const activePlacementOrganization =
-    organizationPlacementOrganizations.find(
-      (organization) => organization.id === organizationPlacementOrganizationId
-    ) ??
-    organizationPlacementOrganizations[0] ??
-    null;
-  const organizationPlacementParentOptions = useMemo(
-    () =>
-      getOrganizationPlacementUnitOptions(
-        organizationStructure,
-        activePlacementOrganization?.id ?? ''
-      ),
-    [activePlacementOrganization?.id, organizationStructure]
-  );
-  const activePlacementParent =
-    organizationPlacementParentOptions.find(
-      (option) => option.unit.id === organizationPlacementParentId
-    )?.unit ??
-    organizationPlacementParentOptions[0]?.unit ??
-    null;
-  const selectedOrganizationPlacement = useMemo<OrganizationPlacementSelection | null>(() => {
-    if (!organizationPlacementEnabled || !activePlacementOrganization || !activePlacementParent) {
-      return null;
-    }
-    return {
-      organizationId: activePlacementOrganization.id,
-      parentUnitId: activePlacementParent.id,
-    };
-  }, [activePlacementOrganization, activePlacementParent, organizationPlacementEnabled]);
-  const organizationPlacementSummary = selectedOrganizationPlacement
-    ? [
-        activePlacementOrganization?.name ?? selectedOrganizationPlacement.organizationId,
-        activePlacementParent ? getOrganizationUnitLabel(activePlacementParent) : '',
-      ].filter(Boolean)
-    : [];
-
   const conflictingTeam = useMemo(() => {
     if (!launchTeam) return null;
     if (!activeTeams?.length || !effectiveCwd) return null;
@@ -2265,17 +2081,6 @@ export const CreateTeamDialog = ({
             worktree: request.worktree,
             extraCliArgs: request.extraCliArgs,
           });
-          if (selectedOrganizationPlacement) {
-            try {
-              await api.organizations.assignTeamToUnit({
-                ...selectedOrganizationPlacement,
-                teamName: request.teamName,
-                label: request.displayName || request.teamName,
-              });
-            } catch (error) {
-              console.warn('[Organizations] Failed to place created team in organization', error);
-            }
-          }
           onOpenTeam(request.teamName, effectiveCwd || undefined);
           resetFormState();
           onClose();
@@ -2295,7 +2100,7 @@ export const CreateTeamDialog = ({
         if (!syncModelsWithLead) {
           persistCurrentMemberRuntimePreferences(members);
         }
-        await onCreate(request, selectedOrganizationPlacement ?? undefined);
+        await onCreate(request);
         onOpenTeam(request.teamName, effectiveCwd || undefined);
         resetFormState();
         onClose();
@@ -2681,128 +2486,6 @@ export const CreateTeamDialog = ({
                     </OptionalSettingsSection>
                   </div>
                 ) : null}
-              </div>
-
-              <div>
-                <OptionalSettingsSection
-                  title={t('create.organizationPlacement.title')}
-                  description={t('create.organizationPlacement.description')}
-                  summary={organizationPlacementSummary}
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        id="organization-placement-enabled"
-                        className="mt-1 shrink-0"
-                        checked={organizationPlacementEnabled}
-                        disabled={
-                          organizationStructureLoading ||
-                          organizationPlacementOrganizations.length === 0
-                        }
-                        onCheckedChange={(checked) =>
-                          setOrganizationPlacementEnabled(checked === true)
-                        }
-                      />
-                      <div className="min-w-0 space-y-1">
-                        <Label
-                          htmlFor="organization-placement-enabled"
-                          className="cursor-pointer text-sm font-semibold"
-                        >
-                          {t('create.organizationPlacement.addToOrganization')}
-                        </Label>
-                        {organizationPlacementError ? (
-                          <p className="text-[11px]" style={{ color: 'var(--field-error-text)' }}>
-                            {organizationPlacementError}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <div className="space-y-0.5">
-                          <Label className="text-xs">
-                            {t('create.organizationPlacement.organizationLabel')}
-                          </Label>
-                          <p className="text-[11px] text-[var(--color-text-muted)]">
-                            {t('create.organizationPlacement.organizationHelp')}
-                          </p>
-                        </div>
-                        <Select
-                          value={activePlacementOrganization?.id ?? ''}
-                          disabled={
-                            !organizationPlacementEnabled ||
-                            organizationPlacementOrganizations.length === 0
-                          }
-                          onValueChange={(value) => {
-                            setOrganizationPlacementOrganizationId(value);
-                            const organization = organizationPlacementOrganizations.find(
-                              (candidate) => candidate.id === value
-                            );
-                            setOrganizationPlacementParentId(organization?.rootNodeId ?? '');
-                          }}
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue
-                              placeholder={t(
-                                'create.organizationPlacement.organizationPlaceholder'
-                              )}
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {organizationPlacementOrganizations.map((organization) => (
-                              <SelectItem key={organization.id} value={organization.id}>
-                                {organization.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <div className="space-y-0.5">
-                          <Label className="text-xs">
-                            {t('create.organizationPlacement.groupOrRootLabel')}
-                          </Label>
-                          <p className="text-[11px] text-[var(--color-text-muted)]">
-                            {t('create.organizationPlacement.groupOrRootHelp')}
-                          </p>
-                        </div>
-                        <Select
-                          value={activePlacementParent?.id ?? ''}
-                          disabled={
-                            !organizationPlacementEnabled ||
-                            organizationPlacementParentOptions.length === 0
-                          }
-                          onValueChange={setOrganizationPlacementParentId}
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue
-                              placeholder={t('create.organizationPlacement.groupOrRootPlaceholder')}
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {organizationPlacementParentOptions.map((option) => (
-                              <SelectItem key={option.unit.id} value={option.unit.id}>
-                                <span
-                                  className="flex min-w-0 items-center gap-2"
-                                  style={{ paddingLeft: `${Math.min(option.depth, 6) * 12}px` }}
-                                >
-                                  <span className="truncate">
-                                    {getOrganizationUnitLabel(option.unit)}
-                                  </span>
-                                  <span className="shrink-0 text-[10px] uppercase tracking-wide text-[var(--color-text-muted)]">
-                                    {t(getOrganizationPlacementUnitKindKey(option.unit))}
-                                  </span>
-                                </span>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-                </OptionalSettingsSection>
               </div>
 
               <div>

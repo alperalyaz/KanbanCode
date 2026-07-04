@@ -85,15 +85,6 @@ vi.mock('@renderer/api', () => ({
       },
     ]),
     getDashboardRecentProjects: vi.fn(async () => ({ projects: [] })),
-    organizations: {
-      getOrganizationStructure: vi.fn(() =>
-        Promise.resolve({
-          organizations: [],
-          units: [],
-          relations: [],
-        })
-      ),
-    },
     teams: {
       getSavedRequest: vi.fn(async () => null),
       replaceMembers: vi.fn(async () => {}),

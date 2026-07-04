@@ -52,7 +52,6 @@ import {
   FolderOpen,
   GitBranch,
   Loader2,
-  Network,
   Play,
   RotateCcw,
   Search,
@@ -77,7 +76,6 @@ import { TeamTaskStatusSummary } from './TeamTaskStatusSummary';
 import type { ActiveTeamRef, TeamCopyData } from './dialogs/CreateTeamDialog';
 import type { TeamLaunchDialogMode } from './dialogs/LaunchTeamDialog';
 import type { TeamListFilterState } from './TeamListFilterPopover';
-import type { OrganizationPlacementSelection } from '@features/organizations/contracts';
 import type { TeamStatus } from '@renderer/utils/teamListStatus';
 import type {
   ResolvedTeamMember,
@@ -1072,19 +1070,8 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
   }, []);
 
   const handleCreateSubmit = useCallback(
-    async (request: TeamCreateRequest, placement?: OrganizationPlacementSelection) => {
+    async (request: TeamCreateRequest) => {
       await createTeam(request);
-      if (placement) {
-        try {
-          await api.organizations.assignTeamToUnit({
-            ...placement,
-            teamName: request.teamName,
-            label: request.displayName || request.teamName,
-          });
-        } catch (error) {
-          console.warn('[Organizations] Failed to place created team in organization', error);
-        }
-      }
     },
     [createTeam]
   );
@@ -1175,16 +1162,6 @@ export const TeamListView = memo(function TeamListView(): React.JSX.Element {
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-[var(--color-text)]">{t('list.title')}</h2>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              openTab({ type: 'organizations', label: t('organizations.map.defaultTitle') })
-            }
-          >
-            <Network size={13} />
-            {t('list.actions.organizationMap')}
-          </Button>
           <Button
             variant="outline"
             size="sm"

@@ -52,12 +52,6 @@ import {
   removeMemberWorkSyncIpc,
 } from '@features/member-work-sync/main';
 import {
-  createOrganizationsFeature,
-  type OrganizationsFeatureFacade,
-  registerOrganizationsIpc,
-  removeOrganizationsIpc,
-} from '@features/organizations/main';
-import {
   createRecentProjectsFeature,
   type RecentProjectsFeatureFacade,
   registerRecentProjectsIpc,
@@ -942,7 +936,6 @@ let updaterService: UpdaterService;
 let codexAccountFeature: CodexAccountFeatureFacade | null = null;
 let codexModelCatalogFeature: CodexModelCatalogFeatureFacade | null = null;
 let recentProjectsFeature: RecentProjectsFeatureFacade;
-let organizationsFeature: OrganizationsFeatureFacade;
 let runtimeProviderManagementFeature: RuntimeProviderManagementFeatureFacade;
 let memberWorkSyncFeature: MemberWorkSyncFeatureFacade | null = null;
 let teamDataService: TeamDataService;
@@ -1948,11 +1941,6 @@ async function initializeServices(): Promise<void> {
     getLocalContext: () => contextRegistry.get('local'),
     logger: createLogger('Feature:RecentProjects'),
   });
-  organizationsFeature = createOrganizationsFeature({
-    teamDataService,
-    crossTeamService,
-    logger: createLogger('Feature:Organizations'),
-  });
   runtimeProviderManagementFeature = createRuntimeProviderManagementFeature();
   const memberWorkSyncLogger = createLogger('Feature:MemberWorkSync');
   type MemberWorkSyncRuntimeSnapshot = Awaited<
@@ -2433,7 +2421,6 @@ async function initializeServices(): Promise<void> {
   );
   registerCodexAccountIpc(ipcMain, codexAccountFeature);
   registerRecentProjectsIpc(ipcMain, recentProjectsFeature);
-  registerOrganizationsIpc(ipcMain, organizationsFeature);
   registerRuntimeProviderManagementIpc(ipcMain, runtimeProviderManagementFeature);
   registerMemberWorkSyncIpc(ipcMain, memberWorkSyncFeature);
   registerMemberLogStreamIpc(ipcMain, memberLogStreamFeature);
@@ -2486,7 +2473,6 @@ async function startHttpServer(): Promise<void> {
         chunkBuilder: activeContext.chunkBuilder,
         dataCache: activeContext.dataCache,
         recentProjectsFeature,
-        organizationsFeature,
         memberWorkSyncFeature: memberWorkSyncFeature ?? undefined,
         updaterService,
         teamDataService,
@@ -2616,7 +2602,6 @@ async function shutdownServices(): Promise<void> {
       removeIpcHandlers();
       removeCodexAccountIpc(ipcMain);
       removeRecentProjectsIpc(ipcMain);
-      removeOrganizationsIpc(ipcMain);
       removeRuntimeProviderManagementIpc(ipcMain);
       removeMemberWorkSyncIpc(ipcMain);
       removeMemberLogStreamIpc(ipcMain);

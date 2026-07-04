@@ -59,12 +59,6 @@ const SessionTabContent = lazy(() =>
     default: module.SessionTabContent,
   }))
 );
-const OrganizationMapTab = lazy(() =>
-  import('@features/organizations/renderer').then((module) => ({
-    default: module.OrganizationMapTab,
-  }))
-);
-
 interface PaneContentProps {
   pane: Pane;
   isPaneFocused: boolean;
@@ -152,11 +146,6 @@ const PaneTabSlot = ({ tab, isActive, isPaneFocused }: PaneTabSlotProps): React.
           {tab.type === 'notifications' && <NotificationsView />}
           {tab.type === 'settings' && <SettingsView />}
           {tab.type === 'teams' && <TeamListView />}
-          {tab.type === 'organizations' && (
-            <TabUIProvider tabId={tab.id}>
-              <OrganizationMapTab isActive={isActive} isPaneFocused={isPaneFocused} />
-            </TabUIProvider>
-          )}
           {tab.type === 'team' && (
             <TabUIProvider tabId={tab.id}>
               <TeamDetailView

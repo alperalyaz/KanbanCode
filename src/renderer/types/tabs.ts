@@ -82,7 +82,6 @@ export interface Tab {
     | 'notifications'
     | 'settings'
     | 'teams'
-    | 'organizations'
     | 'team'
     | 'report'
     | 'extensions'

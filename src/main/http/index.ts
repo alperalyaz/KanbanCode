@@ -6,10 +6,6 @@
  */
 
 import {
-  type OrganizationsFeatureFacade,
-  registerOrganizationsHttp,
-} from '@features/organizations/main';
-import {
   type RecentProjectsFeatureFacade,
   registerRecentProjectsHttp,
 } from '@features/recent-projects/main';
@@ -49,7 +45,6 @@ export interface HttpServices {
   chunkBuilder: ChunkBuilder;
   dataCache: DataCache;
   recentProjectsFeature?: RecentProjectsFeatureFacade;
-  organizationsFeature?: OrganizationsFeatureFacade;
   memberWorkSyncFeature?: MemberWorkSyncFeatureFacade;
   updaterService: UpdaterService;
   teamDataService?: TeamDataService;
@@ -71,9 +66,6 @@ export function registerHttpRoutes(app: FastifyInstance, services: HttpServices)
   registerUpdaterRoutes(app, services);
   if (services.recentProjectsFeature) {
     registerRecentProjectsHttp(app, services.recentProjectsFeature);
-  }
-  if (services.organizationsFeature) {
-    registerOrganizationsHttp(app, services.organizationsFeature);
   }
   registerEventRoutes(app);
 
