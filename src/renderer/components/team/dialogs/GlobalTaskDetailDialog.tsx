@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useAppTranslation } from '@features/localization/renderer';
 import { useStore } from '@renderer/store';
 import { selectResolvedMembersForTeamName } from '@renderer/store/slices/teamSlice';
-import { buildTaskChangeRequestOptions } from '@renderer/utils/taskChangeRequest';
 import { ExternalLink } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -32,7 +31,6 @@ export const GlobalTaskDetailDialog = (): React.JSX.Element | null => {
     selectedTeamError,
     selectTeam,
     openTeamTab,
-    setPendingReviewRequest,
     globalTasks,
   } = useStore(
     useShallow((s) => ({
@@ -45,7 +43,6 @@ export const GlobalTaskDetailDialog = (): React.JSX.Element | null => {
       selectedTeamError: s.selectedTeamError,
       selectTeam: s.selectTeam,
       openTeamTab: s.openTeamTab,
-      setPendingReviewRequest: s.setPendingReviewRequest,
       globalTasks: s.globalTasks,
     }))
   );
@@ -109,21 +106,6 @@ export const GlobalTaskDetailDialog = (): React.JSX.Element | null => {
     openTeamTab(teamName, undefined, taskId);
   }, [closeGlobalTaskDetail, openTeamTab, teamName, taskId]);
 
-  const handleViewChanges = useCallback(
-    (viewTaskId: string, filePath?: string) => {
-      const targetTask = taskMap.get(viewTaskId);
-      if (!targetTask) return;
-      setPendingReviewRequest({
-        taskId: viewTaskId,
-        filePath,
-        requestOptions: buildTaskChangeRequestOptions(targetTask),
-      });
-      closeGlobalTaskDetail();
-      openTeamTab(teamName);
-    },
-    [closeGlobalTaskDetail, openTeamTab, setPendingReviewRequest, taskMap, teamName]
-  );
-
   if (!globalTaskDetail) return null;
 
   const task = (taskMap.get(taskId) as GlobalTask | undefined) ?? null;
@@ -152,7 +134,6 @@ export const GlobalTaskDetailDialog = (): React.JSX.Element | null => {
       members={activeMembers}
       onClose={closeGlobalTaskDetail}
       onOwnerChange={undefined}
-      onViewChanges={isFullTeamLoaded ? handleViewChanges : undefined}
       focusCommentId={commentId}
       headerExtra={
         <button

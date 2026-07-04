@@ -133,7 +133,6 @@ import { join } from 'path';
 
 import { initializeIpcHandlers, removeIpcHandlers } from './ipc/handlers';
 import { registerRendererLogHandlers } from './ipc/rendererLogs';
-import { setReviewMainWindow } from './ipc/review';
 import { setTmuxMainWindow } from './ipc/tmux';
 import {
   ApiKeyService,
@@ -2642,7 +2641,6 @@ function attachMainWindowToServices(): void {
   setTmuxMainWindow(win);
   teamProvisioningService?.setMainWindow(win);
   codexAccountFeature?.setMainWindow(win);
-  setReviewMainWindow(win);
 }
 
 function runPostRendererStartupTasks(): void {
@@ -2923,10 +2921,9 @@ function createWindow(): void {
       return;
     }
 
-    // Prevent Cmd+N / Ctrl+N from opening new window; forward to renderer for review shortcuts
+    // Prevent Cmd+N / Ctrl+N from opening a new window.
     if (isMod && input.key.toLowerCase() === 'n') {
       event.preventDefault();
-      safeSendToRenderer(mainWindow, 'review:cmdN');
       return;
     }
 
@@ -2983,7 +2980,6 @@ function createWindow(): void {
       teamProvisioningService.setMainWindow(null);
     }
     codexAccountFeature?.setMainWindow(null);
-    setReviewMainWindow(null);
   });
 
   // Handle renderer process crashes (render-process-gone replaces deprecated 'crashed' event)

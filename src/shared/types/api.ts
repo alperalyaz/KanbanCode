@@ -634,32 +634,11 @@ export interface ReviewAPI {
     snippets?: SnippetDiff[]
   ) => Promise<FileChangeWithContent>;
   applyDecisions: (request: ApplyReviewRequest) => Promise<ApplyReviewResult>;
-  // Phase 2
-  checkConflict: (filePath: string, expectedModified: string) => Promise<ConflictCheckResult>;
-  rejectHunks: (
-    filePath: string,
-    original: string,
-    modified: string,
-    hunkIndices: number[],
-    snippets: SnippetDiff[]
-  ) => Promise<RejectResult>;
-  rejectFile: (filePath: string, original: string, modified: string) => Promise<RejectResult>;
-  previewReject: (
-    filePath: string,
-    original: string,
-    modified: string,
-    hunkIndices: number[],
-    snippets: SnippetDiff[]
-  ) => Promise<{ preview: string; hasConflicts: boolean }>;
-  // Editable diff
   saveEditedFile: (
     filePath: string,
     content: string,
     projectPath?: string
   ) => Promise<{ success: boolean }>;
-  watchFiles: (projectPath: string, filePaths: string[]) => Promise<void>;
-  unwatchFiles: () => Promise<void>;
-  onExternalFileChange: (callback: (event: EditorFileChangeEvent) => void) => () => void;
   // Decision persistence
   loadDecisions: (
     teamName: string,
@@ -683,12 +662,6 @@ export interface ReviewAPI {
     hunkContextHashesByFile?: Record<string, Record<number, string>>
   ) => Promise<void>;
   clearDecisions: (teamName: string, scopeKey: string, scopeToken?: string) => Promise<void>;
-  onCmdN?: (callback: () => void) => (() => void) | undefined;
-  // Phase 4
-  getGitFileLog: (
-    projectPath: string,
-    filePath: string
-  ) => Promise<{ hash: string; timestamp: string; message: string }[]>;
 }
 
 // =============================================================================

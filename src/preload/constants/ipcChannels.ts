@@ -526,42 +526,14 @@ export const REVIEW_INVALIDATE_TASK_CHANGE_SUMMARIES = 'review:invalidateTaskCha
 /** Получить краткую статистику изменений */
 export const REVIEW_GET_CHANGE_STATS = 'review:getChangeStats';
 
-// Phase 2 — Review actions
-
-/** Проверить конфликт файла (изменён ли на диске) */
-export const REVIEW_CHECK_CONFLICT = 'review:checkConflict';
-
-/** Откатить выбранные hunks */
-export const REVIEW_REJECT_HUNKS = 'review:rejectHunks';
-
-/** Откатить весь файл к оригиналу */
-export const REVIEW_REJECT_FILE = 'review:rejectFile';
-
-/** Preview результата reject (без записи на диск) */
-export const REVIEW_PREVIEW_REJECT = 'review:previewReject';
-
 /** Применить batch решений review */
 export const REVIEW_APPLY_DECISIONS = 'review:applyDecisions';
 
 /** Получить полное содержимое файла для diff view */
 export const REVIEW_GET_FILE_CONTENT = 'review:getFileContent';
 
-/** Start/update focused file watcher for review surface */
-export const REVIEW_WATCH_FILES = 'review:watchFiles';
-
-/** Stop focused file watcher for review surface */
-export const REVIEW_UNWATCH_FILES = 'review:unwatchFiles';
-
-/** File change event for review watcher (main -> renderer) */
-export const REVIEW_FILE_CHANGE = 'review:fileChange';
-
-// Phase 4 — Git fallback
-
 /** Save edited file content to disk */
 export const REVIEW_SAVE_EDITED_FILE = 'review:saveEditedFile';
-
-/** Get git file change log */
-export const REVIEW_GET_GIT_FILE_LOG = 'review:getGitFileLog';
 
 /** Load persisted review decisions from disk */
 export const REVIEW_LOAD_DECISIONS = 'review:loadDecisions';

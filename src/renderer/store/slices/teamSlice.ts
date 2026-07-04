@@ -9,7 +9,6 @@ import {
   buildTaskChangePresenceKey,
   buildTaskChangeRequestOptions,
   canDisplayTaskChangesForOptions,
-  type TaskChangeRequestOptions,
 } from '@renderer/utils/taskChangeRequest';
 import { IpcError, unwrapIpc } from '@renderer/utils/unwrapIpc';
 import { DEFAULT_TOOL_APPROVAL_SETTINGS } from '@shared/types/team';
@@ -942,15 +941,6 @@ export interface TeamSlice {
   pendingTeamSectionFocus: PendingTeamSectionFocusState | null;
   focusTeamSection: (teamName: string, section: TeamSectionTarget) => void;
   clearTeamSectionFocus: () => void;
-  /** Set by GlobalTaskDetailDialog to signal TeamDetailView to open ChangeReviewDialog */
-  pendingReviewRequest: {
-    taskId: string;
-    filePath?: string;
-    requestOptions: TaskChangeRequestOptions;
-  } | null;
-  setPendingReviewRequest: (
-    req: { taskId: string; filePath?: string; requestOptions: TaskChangeRequestOptions } | null
-  ) => void;
   selectedTeamName: string | null;
   selectedTeamData: TeamViewSnapshot | null;
   /** Team-scoped detailed cache used by multi-pane views. */
@@ -1475,8 +1465,6 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   focusTeamSection: (teamName: string, section: TeamSectionTarget) =>
     set({ pendingTeamSectionFocus: { teamName, section } }),
   clearTeamSectionFocus: () => set({ pendingTeamSectionFocus: null }),
-  pendingReviewRequest: null,
-  setPendingReviewRequest: (req) => set({ pendingReviewRequest: req }),
   openGlobalTaskDetail: (teamName: string, taskId: string, commentId?: string) => {
     set({ globalTaskDetail: { teamName, taskId, commentId } });
   },

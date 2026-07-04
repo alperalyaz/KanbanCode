@@ -230,7 +230,6 @@ export function initializeIpcHandlers(
       extractor: changeExtractor,
       applier: reviewApplier ?? undefined,
       contentResolver: fileContentResolver ?? undefined,
-      gitFallback: gitDiffFallback ?? undefined,
     });
   }
 

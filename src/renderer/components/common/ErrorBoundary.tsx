@@ -96,7 +96,7 @@ class ErrorBoundaryInner extends Component<Props, State> {
       activeTabLabel: activeTab?.label ?? null,
       activeTeamName: activeTab?.teamName ?? null,
       selectedTeamName: state.selectedTeamName,
-      taskId: state.globalTaskDetail?.taskId ?? state.pendingReviewRequest?.taskId ?? null,
+      taskId: state.globalTaskDetail?.taskId ?? null,
       sessionId: activeTab?.sessionId ?? null,
       projectId: activeTab?.projectId ?? state.activeProjectId,
     };

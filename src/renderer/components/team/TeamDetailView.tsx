@@ -41,7 +41,6 @@ import {
   selectResolvedMembersForTeamName,
   selectTeamMemberSnapshotsForName,
 } from '@renderer/store/slices/teamSlice';
-import { createChipFromSelection } from '@renderer/utils/chipUtils';
 import * as tokenMath from '@renderer/utils/contextMath';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import {
@@ -54,10 +53,6 @@ import { buildTaskCountsByOwner, normalizePath } from '@renderer/utils/pathNorma
 import { nameColorSet } from '@renderer/utils/projectColor';
 import { resolveProjectIdByPath } from '@renderer/utils/projectLookup';
 import { scheduleStartupIdleTask } from '@renderer/utils/startupIdleTask';
-import {
-  buildTaskChangeRequestOptions,
-  type TaskChangeRequestOptions,
-} from '@renderer/utils/taskChangeRequest';
 import { buildPendingRuntimeSummaryCopy } from '@renderer/utils/teamLaunchSummaryCopy';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { isLeadMember } from '@shared/utils/leadDetection';
@@ -129,9 +124,6 @@ const SendMessageDialog = lazy(() =>
 const CreateTaskDialog = lazy(() =>
   import('./dialogs/CreateTaskDialog').then((m) => ({ default: m.CreateTaskDialog }))
 );
-const ChangeReviewDialog = lazy(() =>
-  import('./review/ChangeReviewDialog').then((m) => ({ default: m.ChangeReviewDialog }))
-);
 import { MemberList } from './members/MemberList';
 import { MessagesPanel } from './messages/MessagesPanel';
 import { TeamSidebarHost } from './sidebar/TeamSidebarHost';
@@ -174,7 +166,6 @@ import type {
   TeamSummary,
   TeamTaskWithKanban,
 } from '@shared/types';
-import type { EditorSelectionAction } from '@shared/types/editor';
 
 interface TaskDetailDialogHostHandle {
   openTask: (task: TeamTaskWithKanban) => void;
@@ -187,7 +178,6 @@ interface TaskDetailDialogHostProps {
   taskMap: Map<string, TeamTaskWithKanban>;
   members: ResolvedTeamMember[];
   onOwnerChange: (taskId: string, owner: string | null) => void;
-  onViewChanges: (taskId: string, filePath?: string) => void;
   onDeleteTask: (taskId: string) => void;
 }
 
@@ -199,7 +189,6 @@ const TaskDetailDialogHost = memo(
       taskMap,
       members,
       onOwnerChange,
-      onViewChanges,
       onDeleteTask,
     },
     ref
@@ -292,7 +281,6 @@ const TaskDetailDialogHost = memo(
         }}
         onScrollToTask={handleScrollToTask}
         onOwnerChange={onOwnerChange}
-        onViewChanges={onViewChanges}
         onDeleteTask={onDeleteTask}
       />
     );
@@ -1446,15 +1434,6 @@ export const TeamDetailView = memo(function TeamDetailView({
   const [replyQuote, setReplyQuote] = useState<{ from: string; text: string } | undefined>(
     undefined
   );
-  const [reviewDialogState, setReviewDialogState] = useState<{
-    open: boolean;
-    mode: 'agent' | 'task';
-    memberName?: string;
-    taskId?: string;
-    initialFilePath?: string;
-    taskChangeRequestOptions?: TaskChangeRequestOptions;
-  }>({ open: false, mode: 'task' });
-
   // Active teams for conflict warning in LaunchTeamDialog
   const [activeTeamsForLaunch, setActiveTeamsForLaunch] = useState<
     { teamName: string; displayName: string; projectPath: string }[]
@@ -1518,9 +1497,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     setMessagesPanelMode,
     setMessagesPanelWidth,
     setSidebarLogsHeight,
-    selectReviewFile,
-    pendingReviewRequest,
-    setPendingReviewRequest,
     summaryKnownTeammateCount,
     teamSummaryColor,
     teamSummaryDisplayName,
@@ -1576,9 +1552,6 @@ export const TeamDetailView = memo(function TeamDetailView({
       setMessagesPanelMode: s.setMessagesPanelMode,
       setMessagesPanelWidth: s.setMessagesPanelWidth,
       setSidebarLogsHeight: s.setSidebarLogsHeight,
-      selectReviewFile: s.selectReviewFile,
-      pendingReviewRequest: s.pendingReviewRequest,
-      setPendingReviewRequest: s.setPendingReviewRequest,
     }))
   );
 
@@ -2196,34 +2169,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     [teamName, updateTaskOwner]
   );
 
-  const handleEditorAction = useCallback(
-    (action: EditorSelectionAction) => {
-      const chip = createChipFromSelection(action, []) ?? undefined;
-      if (action.type === 'sendMessage') {
-        setSendDialogDefaultText(chip ? undefined : action.formattedContext);
-        setSendDialogDefaultChip(chip);
-        setSendDialogRecipient(undefined);
-        setReplyQuote(undefined);
-        setSendDialogOpen(true);
-      } else if (action.type === 'createTask') {
-        if (chip) {
-          setCreateTaskDialog({
-            open: true,
-            defaultSubject: '',
-            defaultDescription: '',
-            defaultOwner: '',
-            defaultStartImmediately: undefined,
-            defaultChip: chip,
-          });
-        } else {
-          openCreateTaskDialog('', action.formattedContext);
-        }
-      }
-    },
-
-    [openCreateTaskDialog]
-  );
-
   const handleStopTeam = useCallback(async (): Promise<void> => {
     setStoppingTeam(true);
     try {
@@ -2238,22 +2183,6 @@ export const TeamDetailView = memo(function TeamDetailView({
     }
   }, [teamName, refreshTeamData]);
 
-  // Pick up pending review request from GlobalTaskDetailDialog
-  useEffect(() => {
-    if (!isThisTabActive) return;
-    if (!pendingReviewRequest) return;
-    setReviewDialogState({
-      open: true,
-      mode: 'task',
-      taskId: pendingReviewRequest.taskId,
-      initialFilePath: pendingReviewRequest.filePath,
-      taskChangeRequestOptions: pendingReviewRequest.requestOptions,
-    });
-    if (pendingReviewRequest.filePath) {
-      selectReviewFile(pendingReviewRequest.filePath);
-    }
-    setPendingReviewRequest(null);
-  }, [isThisTabActive, pendingReviewRequest, selectReviewFile, setPendingReviewRequest]);
 
   const pendingTeamSectionFocus = useStore((s) => s.pendingTeamSectionFocus);
   const clearTeamSectionFocus = useStore((s) => s.clearTeamSectionFocus);
@@ -2324,36 +2253,6 @@ export const TeamDetailView = memo(function TeamDetailView({
       })();
     },
     [teamName, softDeleteTask, t]
-  );
-
-  const handleViewChanges = useCallback(
-    (taskId: string) => {
-      const task = taskMap.get(taskId);
-      setReviewDialogState({
-        open: true,
-        mode: 'task',
-        taskId,
-        taskChangeRequestOptions: task ? buildTaskChangeRequestOptions(task) : {},
-      });
-    },
-    [taskMap]
-  );
-
-  const handleViewChangesForFile = useCallback(
-    (taskId: string, filePath?: string) => {
-      const task = taskMap.get(taskId);
-      setReviewDialogState({
-        open: true,
-        mode: 'task',
-        taskId,
-        initialFilePath: filePath,
-        taskChangeRequestOptions: task ? buildTaskChangeRequestOptions(task) : {},
-      });
-      if (filePath) {
-        selectReviewFile(filePath);
-      }
-    },
-    [selectReviewFile, taskMap]
   );
 
   const handleRequestReview = useCallback(
@@ -3141,7 +3040,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                   onColumnOrderChange={handleColumnOrderChange}
                   onScrollToTask={handleScrollToTask}
                   onTaskClick={openTaskDetailDialog}
-                  onViewChanges={handleViewChanges}
                   onAddTask={handleAddTask}
                   onDeleteTask={handleDeleteTask}
                   deletedTaskCount={deletedTasks.length}
@@ -3154,7 +3052,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                 tasks={data.tasks}
                 memberColorMap={resolvedMemberColorMap}
                 onOpenTask={openTaskDetailDialog}
-                onViewChanges={handleViewChangesForFile}
               />
 
               <LiveRuntimeStatusBridge teamName={teamName} members={membersWithLiveBranches} />
@@ -3270,15 +3167,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                   const name = selectedMember?.name;
                   if (!name) return;
                   setRemoveMemberConfirm(name);
-                }}
-                onViewMemberChanges={(memberName, filePath) => {
-                  closeSelectedMemberDialog();
-                  setReviewDialogState({
-                    open: true,
-                    mode: 'agent',
-                    memberName,
-                    initialFilePath: filePath,
-                  });
                 }}
               />
 
@@ -3473,7 +3361,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                 taskMap={taskMap}
                 members={activeMembers}
                 onOwnerChange={handleTaskOwnerChange}
-                onViewChanges={handleViewChangesForFile}
                 onDeleteTask={handleDeleteTask}
               />
 
@@ -3494,30 +3381,6 @@ export const TeamDetailView = memo(function TeamDetailView({
                 />
               )}
 
-              {reviewDialogState.open && (
-                <Suspense fallback={null}>
-                  <ChangeReviewDialog
-                    open={reviewDialogState.open}
-                    onOpenChange={(open) =>
-                      setReviewDialogState((prev) => ({
-                        ...prev,
-                        open,
-                        ...(open
-                          ? {}
-                          : { initialFilePath: undefined, taskChangeRequestOptions: undefined }),
-                      }))
-                    }
-                    teamName={teamName}
-                    mode={reviewDialogState.mode}
-                    memberName={reviewDialogState.memberName}
-                    taskId={reviewDialogState.taskId}
-                    initialFilePath={reviewDialogState.initialFilePath}
-                    taskChangeRequestOptions={reviewDialogState.taskChangeRequestOptions}
-                    projectPath={data.config.projectPath}
-                    onEditorAction={handleEditorAction}
-                  />
-                </Suspense>
-              )}
             </div>
             <div
               ref={setMessagesPanelMountPoint}

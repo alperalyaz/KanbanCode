@@ -58,24 +58,16 @@ import {
   RENDERER_HEARTBEAT,
   RENDERER_LOG,
   REVIEW_APPLY_DECISIONS,
-  REVIEW_CHECK_CONFLICT,
   REVIEW_CLEAR_DECISIONS,
-  REVIEW_FILE_CHANGE,
   REVIEW_GET_AGENT_CHANGES,
   REVIEW_GET_CHANGE_STATS,
   REVIEW_GET_FILE_CONTENT,
-  REVIEW_GET_GIT_FILE_LOG,
   REVIEW_GET_TASK_CHANGES,
   REVIEW_GET_TEAM_TASK_CHANGE_SUMMARIES,
   REVIEW_INVALIDATE_TASK_CHANGE_SUMMARIES,
   REVIEW_LOAD_DECISIONS,
-  REVIEW_PREVIEW_REJECT,
-  REVIEW_REJECT_FILE,
-  REVIEW_REJECT_HUNKS,
   REVIEW_SAVE_DECISIONS,
   REVIEW_SAVE_EDITED_FILE,
-  REVIEW_UNWATCH_FILES,
-  REVIEW_WATCH_FILES,
   SKILLS_APPLY_IMPORT,
   SKILLS_APPLY_UPSERT,
   SKILLS_CHANGED,
@@ -235,7 +227,6 @@ import type {
   CliInstallerGetStatusOptions,
   CliInstallerProgress,
   CliProviderId,
-  ConflictCheckResult,
   ContextInfo,
   CreateTaskRequest,
   CrossTeamMessage,
@@ -258,7 +249,6 @@ import type {
   OpenCodeRuntimeDeliveryStatus,
   OpenCodeRuntimeStatus,
   ProjectBranchChangeEvent,
-  RejectResult,
   ReplaceMembersRequest,
   RetryFailedOpenCodeSecondaryLanesResult,
   SendMessageRequest,
@@ -306,7 +296,7 @@ import type {
   WindowsElevationStatus,
   WslClaudeRootCandidate,
 } from '@shared/types';
-import type { EditorFileChangeEvent, QuickOpenFile } from '@shared/types/editor';
+import type { QuickOpenFile } from '@shared/types/editor';
 import type {
   ApiKeyEntry,
   ApiKeyLookupResult,
@@ -1354,50 +1344,6 @@ const electronAPI: ElectronAPI = {
     applyDecisions: async (request: ApplyReviewRequest) => {
       return invokeIpcWithResult<ApplyReviewResult>(REVIEW_APPLY_DECISIONS, request);
     },
-    // Phase 2
-    checkConflict: async (filePath: string, expectedModified: string) => {
-      return invokeIpcWithResult<ConflictCheckResult>(
-        REVIEW_CHECK_CONFLICT,
-        filePath,
-        expectedModified
-      );
-    },
-    rejectHunks: async (
-      filePath: string,
-      original: string,
-      modified: string,
-      hunkIndices: number[],
-      snippets: SnippetDiff[]
-    ) => {
-      return invokeIpcWithResult<RejectResult>(
-        REVIEW_REJECT_HUNKS,
-        filePath,
-        original,
-        modified,
-        hunkIndices,
-        snippets
-      );
-    },
-    rejectFile: async (filePath: string, original: string, modified: string) => {
-      return invokeIpcWithResult<RejectResult>(REVIEW_REJECT_FILE, filePath, original, modified);
-    },
-    previewReject: async (
-      filePath: string,
-      original: string,
-      modified: string,
-      hunkIndices: number[],
-      snippets: SnippetDiff[]
-    ) => {
-      return invokeIpcWithResult<{ preview: string; hasConflicts: boolean }>(
-        REVIEW_PREVIEW_REJECT,
-        filePath,
-        original,
-        modified,
-        hunkIndices,
-        snippets
-      );
-    },
-    // Editable diff
     saveEditedFile: async (filePath: string, content: string, projectPath?: string) => {
       return invokeIpcWithResult<{ success: boolean }>(
         REVIEW_SAVE_EDITED_FILE,
@@ -1405,20 +1351,6 @@ const electronAPI: ElectronAPI = {
         content,
         projectPath
       );
-    },
-    watchFiles: async (projectPath: string, filePaths: string[]) => {
-      return invokeIpcWithResult<void>(REVIEW_WATCH_FILES, projectPath, filePaths);
-    },
-    unwatchFiles: async () => {
-      return invokeIpcWithResult<void>(REVIEW_UNWATCH_FILES);
-    },
-    onExternalFileChange: (callback: (event: EditorFileChangeEvent) => void): (() => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: EditorFileChangeEvent): void =>
-        callback(data);
-      ipcRenderer.on(REVIEW_FILE_CHANGE, handler);
-      return (): void => {
-        ipcRenderer.removeListener(REVIEW_FILE_CHANGE, handler);
-      };
     },
     // Decision persistence
     loadDecisions: async (teamName: string, scopeKey: string, scopeToken?: string) => {
@@ -1452,21 +1384,6 @@ const electronAPI: ElectronAPI = {
         teamName,
         scopeKey,
         scopeToken ?? null
-      );
-    },
-    onCmdN: (callback: () => void): (() => void) => {
-      const handler = (): void => callback();
-      ipcRenderer.on('review:cmdN', handler);
-      return (): void => {
-        ipcRenderer.removeListener('review:cmdN', handler);
-      };
-    },
-    // Phase 4
-    getGitFileLog: async (projectPath: string, filePath: string) => {
-      return invokeIpcWithResult<{ hash: string; timestamp: string; message: string }[]>(
-        REVIEW_GET_GIT_FILE_LOG,
-        projectPath,
-        filePath
       );
     },
   },

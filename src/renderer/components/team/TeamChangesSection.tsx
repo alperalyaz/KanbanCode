@@ -22,7 +22,7 @@ interface TeamChangesSectionProps {
   tasks: TeamTaskWithKanban[];
   memberColorMap?: ReadonlyMap<string, string>;
   onOpenTask: (task: TeamTaskWithKanban) => void;
-  onViewChanges: (taskId: string, filePath?: string) => void;
+  onViewChanges?: (taskId: string, filePath?: string) => void;
 }
 
 interface RenderedTeamChangeSummary {
@@ -325,21 +325,23 @@ export const TeamChangesSection = memo(function TeamChangesSection({
                         </span>
                       ) : null}
                     </button>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className="shrink-0 rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
-                          onClick={() => onViewChanges(task.id)}
-                          aria-label={t('taskDetail.changes.reviewTaskDiff')}
-                        >
-                          <GitCompareArrows size={13} />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        {t('taskDetail.changes.reviewDiff')}
-                      </TooltipContent>
-                    </Tooltip>
+                    {onViewChanges ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
+                            onClick={() => onViewChanges(task.id)}
+                            aria-label={t('taskDetail.changes.reviewTaskDiff')}
+                          >
+                            <GitCompareArrows size={13} />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          {t('taskDetail.changes.reviewDiff')}
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : null}
                   </div>
 
                   {summary.error ? (
@@ -376,18 +378,28 @@ export const TeamChangesSection = memo(function TeamChangesSection({
                       {visibleFiles.map((file) => (
                         <div
                           key={`${summary.taskId}:${file.filePath}`}
-                          role="button"
-                          tabIndex={0}
+                          role={onViewChanges ? 'button' : undefined}
+                          tabIndex={onViewChanges ? 0 : undefined}
                           title={getVisibleFilePath(file)}
-                          className="group flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--color-surface-raised)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-border-emphasis)]"
-                          onClick={() => onViewChanges(task.id, file.filePath)}
-                          onKeyDown={(event) => {
-                            if (event.target !== event.currentTarget) return;
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              onViewChanges(task.id, file.filePath);
-                            }
-                          }}
+                          className={`group flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--color-surface-raised)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-border-emphasis)] ${
+                            onViewChanges ? 'cursor-pointer' : ''
+                          }`}
+                          onClick={
+                            onViewChanges
+                              ? () => onViewChanges(task.id, file.filePath)
+                              : undefined
+                          }
+                          onKeyDown={
+                            onViewChanges
+                              ? (event) => {
+                                  if (event.target !== event.currentTarget) return;
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    onViewChanges(task.id, file.filePath);
+                                  }
+                                }
+                              : undefined
+                          }
                         >
                           <FileIcon fileName={getVisibleFileName(file)} className="size-3.5" />
                           <span className="min-w-0 flex-1 truncate text-left font-mono text-[var(--color-text-secondary)] transition-colors group-hover:text-[var(--color-text)]">
@@ -401,26 +413,28 @@ export const TeamChangesSection = memo(function TeamChangesSection({
                               <span className="text-red-400">-{file.linesRemoved}</span>
                             ) : null}
                           </span>
-                          <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  className="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    onViewChanges(task.id, file.filePath);
-                                  }}
-                                  aria-label={t('taskDetail.changes.reviewDiff')}
-                                >
-                                  <GitCompareArrows size={13} />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent side="top">
-                                {t('taskDetail.changes.reviewDiff')}
-                              </TooltipContent>
-                            </Tooltip>
-                          </span>
+                          {onViewChanges ? (
+                            <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border-emphasis)] hover:text-[var(--color-text)]"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      onViewChanges(task.id, file.filePath);
+                                    }}
+                                    aria-label={t('taskDetail.changes.reviewDiff')}
+                                  >
+                                    <GitCompareArrows size={13} />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  {t('taskDetail.changes.reviewDiff')}
+                                </TooltipContent>
+                              </Tooltip>
+                            </span>
+                          ) : null}
                         </div>
                       ))}
                     </div>
