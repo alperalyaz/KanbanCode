@@ -46,7 +46,6 @@ import {
 import { highlightLine } from '../viewers/syntaxHighlighter';
 
 import { FileLink, isRelativeUrl } from './FileLink';
-import { MermaidDiagram } from './MermaidDiagram';
 
 // =============================================================================
 // Types
@@ -345,19 +344,6 @@ const LocalImage = React.memo(function LocalImage({
     </span>
   );
 });
-
-/** Extract plain text from a hast (HTML AST) node tree */
-interface HastNode {
-  type: string;
-  value?: string;
-  children?: HastNode[];
-}
-
-function hastToText(node: HastNode): string {
-  if (node.type === 'text') return node.value ?? '';
-  if (node.children) return node.children.map(hastToText).join('');
-  return '';
-}
 
 function extractLanguageFromClassName(className?: string): string {
   return /(?:^|\s)language-([^\s]+)/.exec(className ?? '')?.[1] ?? '';
@@ -666,8 +652,8 @@ function createViewerMarkdownComponents(
       );
     },
 
-    // Code blocks — intercept mermaid diagrams at the pre level
-    pre: ({ children, node }) => {
+    // Code blocks
+    pre: ({ children }) => {
       if (isCompactPreview) {
         const compactText = extractTextFromReactNode(children).trim();
         return (
@@ -682,15 +668,6 @@ function createViewerMarkdownComponents(
           </code>
         );
       }
-      // Check if this pre contains a mermaid code block
-      const codeEl = node?.children?.[0];
-      if (codeEl && 'tagName' in codeEl && codeEl.tagName === 'code' && 'properties' in codeEl) {
-        const cls = (codeEl.properties as Record<string, unknown>)?.className;
-        if (Array.isArray(cls) && cls.some((c) => String(c) === 'language-mermaid')) {
-          return <MermaidDiagram code={hastToText(codeEl as unknown as HastNode)} />;
-        }
-      }
-
       const codeText = copyCodeBlocks ? extractTextFromReactNode(children).trim() : '';
 
       return (
