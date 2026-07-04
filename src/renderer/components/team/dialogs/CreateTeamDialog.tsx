@@ -2286,7 +2286,6 @@ export const CreateTeamDialog = ({
                   fieldError={fieldErrors.members}
                   validateMemberName={validateMemberNameInline}
                   showWorkflow
-                  showJsonEditor
                   draftKeyPrefix="createTeam"
                   projectPath={effectiveCwd || null}
                   taskSuggestions={taskSuggestions}

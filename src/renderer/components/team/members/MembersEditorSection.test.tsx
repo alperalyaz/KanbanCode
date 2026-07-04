@@ -52,15 +52,6 @@ vi.mock('@renderer/components/ui/label', () => ({
     React.createElement('label', props, children),
 }));
 
-vi.mock('../dialogs/MembersJsonEditor', () => ({
-  MembersJsonEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
-    React.createElement('textarea', {
-      'data-testid': 'members-json-editor',
-      value,
-      onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value),
-    }),
-}));
-
 vi.mock('./MemberDraftRow', () => ({
   MemberDraftRow: ({
     member,
@@ -195,16 +186,6 @@ function addMemberButton(host: HTMLElement): HTMLButtonElement {
   );
   if (!button) {
     throw new Error('Add member button not found');
-  }
-  return button;
-}
-
-function editJsonButton(host: HTMLElement): HTMLButtonElement {
-  const button = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((element) =>
-    element.textContent?.includes('Edit as JSON')
-  );
-  if (!button) {
-    throw new Error('Edit as JSON button not found');
   }
   return button;
 }
@@ -414,51 +395,6 @@ describe('MembersEditorSection Agent Teams MCP master checkbox', () => {
     const restoredMembers = onChange.mock.calls[2]?.[0] as MemberDraft[];
     expect(restoredMembers.map((member) => member.id)).toEqual(['alice']);
     expect(restoredMembers[0]?.mcpPolicy).toEqual(originalMembers[0].mcpPolicy);
-  });
-
-  it('forces JSON editor changes through Agent Teams MCP while lock is enabled', async () => {
-    const { host, onChange, rerender } = renderMembersEditor({
-      members: [createMemberDraft({ id: 'alice', name: 'alice' })],
-    });
-
-    act(() => {
-      masterAgentTeamsMcpCheckbox(host).click();
-    });
-    const lockedMembers = onChange.mock.calls[0]?.[0] as MemberDraft[];
-    rerender(lockedMembers);
-
-    await act(async () => {
-      editJsonButton(host).click();
-      await Promise.resolve();
-    });
-
-    const editor = host.querySelector<HTMLTextAreaElement>('[data-testid="members-json-editor"]')!;
-    const textareaValueSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLTextAreaElement.prototype,
-      'value'
-    )?.set;
-    await act(async () => {
-      textareaValueSetter?.call(
-        editor,
-        JSON.stringify([
-          {
-            name: 'alice',
-            role: 'developer',
-            mcpPolicy: {
-              mode: 'strictAllowlist',
-              scopes: { user: true, project: true, local: true },
-              serverNames: ['github'],
-            },
-          },
-        ])
-      );
-      editor.dispatchEvent(new Event('input', { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    const nextMembers = onChange.mock.calls[1]?.[0] as MemberDraft[];
-    expect(nextMembers).toHaveLength(1);
-    expect(nextMembers[0]?.mcpPolicy).toEqual({ mode: 'appOnly' });
   });
 
   it('restores a soft-deleted member policy when that member is restored while locked', () => {

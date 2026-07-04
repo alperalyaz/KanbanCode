@@ -15,7 +15,6 @@ interface TeamRosterEditorSectionProps {
   fieldError?: string;
   validateMemberName?: (name: string) => string | null;
   showWorkflow?: boolean;
-  showJsonEditor?: boolean;
   draftKeyPrefix?: string;
   projectPath?: string | null;
   taskSuggestions?: MentionSuggestion[];
@@ -77,7 +76,6 @@ const TeamRosterEditorSectionImpl = ({
   fieldError,
   validateMemberName,
   showWorkflow = false,
-  showJsonEditor = true,
   draftKeyPrefix,
   projectPath,
   taskSuggestions,
@@ -159,7 +157,6 @@ const TeamRosterEditorSectionImpl = ({
       fieldError={fieldError}
       validateMemberName={validateMemberName}
       showWorkflow={showWorkflow}
-      showJsonEditor={showJsonEditor}
       draftKeyPrefix={draftKeyPrefix}
       projectPath={projectPath}
       taskSuggestions={taskSuggestions}

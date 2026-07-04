@@ -636,7 +636,6 @@ export const EditTeamDialog = ({
               fieldError={invalidMemberNamesError ?? undefined}
               validateMemberName={validateMemberNameInline}
               showWorkflow
-              showJsonEditor={!isTeamAlive}
               draftKeyPrefix={`editTeam:${teamName}`}
               projectPath={projectPath ?? null}
               headerExtra={

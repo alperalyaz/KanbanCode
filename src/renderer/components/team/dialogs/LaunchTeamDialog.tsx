@@ -2353,7 +2353,6 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
                   onMembersChange={setMembersDrafts}
                   validateMemberName={validateMemberNameInline}
                   showWorkflow
-                  showJsonEditor
                   draftKeyPrefix={`launchTeam:${effectiveTeamName}`}
                   projectPath={effectiveCwd || null}
                   taskSuggestions={taskSuggestions}

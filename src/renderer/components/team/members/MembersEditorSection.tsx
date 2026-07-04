@@ -1,18 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { Button } from '@renderer/components/ui/button';
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import { Label } from '@renderer/components/ui/label';
-import { CUSTOM_ROLE, NO_ROLE, PRESET_ROLES } from '@renderer/constants/teamRoles';
+import { CUSTOM_ROLE, NO_ROLE } from '@renderer/constants/teamRoles';
 import { cn } from '@renderer/lib/utils';
 import { isTeamEffortLevel } from '@shared/utils/effortLevels';
 import { migrateProviderBackendId } from '@shared/utils/providerBackend';
 import { normalizeTeamMemberMcpPolicy } from '@shared/utils/teamMemberMcpPolicy';
-import { normalizeOptionalTeamProviderId } from '@shared/utils/teamProvider';
 import { GitBranch, Plug, Plus } from 'lucide-react';
-
-import { MembersJsonEditor } from '../dialogs/MembersJsonEditor';
 
 import { MemberDraftRow } from './MemberDraftRow';
 import {
@@ -24,63 +21,12 @@ import {
   buildMemberDraftColorMap,
   buildMemberDraftSuggestions,
   createMemberDraft,
-  getMemberDraftRole,
-  getWorkflowForExport,
 } from './membersEditorUtils';
 
 import type { MemberDraft } from './membersEditorTypes';
 import type { InlineChip } from '@renderer/types/inlineChip';
 import type { MentionSuggestion } from '@renderer/types/mention';
 import type { EffortLevel, TeamProviderId } from '@shared/types';
-
-function membersToJsonText(drafts: MemberDraft[]): string {
-  const arr = drafts
-    .filter((d) => d.name.trim())
-    .map((d) => {
-      const role = getMemberDraftRole(d);
-      const obj: Record<string, unknown> = { name: d.name.trim() };
-      if (role) obj.role = role;
-      const workflow = getWorkflowForExport(d);
-      if (workflow) obj.workflow = workflow;
-      if (d.isolation === 'worktree') obj.isolation = 'worktree';
-      if (d.providerId) obj.providerId = d.providerId;
-      if (d.model?.trim()) obj.model = d.model.trim();
-      if (d.effort) obj.effort = d.effort;
-      if (d.mcpPolicy) obj.mcpPolicy = d.mcpPolicy;
-      return obj;
-    });
-  return JSON.stringify(arr, null, 2);
-}
-
-function parseJsonToDrafts(text: string): MemberDraft[] {
-  const arr: unknown = JSON.parse(text);
-  if (!Array.isArray(arr)) return [];
-  return (arr as Record<string, unknown>[]).map((item) => {
-    const name = typeof item.name === 'string' ? item.name : '';
-    const role = typeof item.role === 'string' ? item.role.trim() : '';
-    const workflow = typeof item.workflow === 'string' ? item.workflow.trim() : '';
-    const isolation = item.isolation === 'worktree' ? 'worktree' : undefined;
-    const providerId = normalizeOptionalTeamProviderId(item.providerId);
-    const model = typeof item.model === 'string' ? item.model.trim() : '';
-    const effort: EffortLevel | undefined = isTeamEffortLevel(item.effort)
-      ? item.effort
-      : undefined;
-    const mcpPolicy = normalizeTeamMemberMcpPolicy(item.mcpPolicy);
-    const presetRoles: readonly string[] = PRESET_ROLES;
-    const isPreset = presetRoles.includes(role);
-    return createMemberDraft({
-      name,
-      roleSelection: role ? (isPreset ? role : CUSTOM_ROLE) : '',
-      customRole: role && !isPreset ? role : '',
-      workflow: workflow || undefined,
-      isolation,
-      providerId,
-      model,
-      effort,
-      mcpPolicy,
-    });
-  });
-}
 
 function cloneMcpPolicy(policy: MemberDraft['mcpPolicy']): MemberDraft['mcpPolicy'] {
   const normalized = normalizeTeamMemberMcpPolicy(policy);
@@ -106,7 +52,6 @@ export interface MembersEditorSectionProps {
   fieldError?: string;
   validateMemberName?: (name: string) => string | null;
   showWorkflow?: boolean;
-  showJsonEditor?: boolean;
   /** Prefix for draft persistence keys (e.g. 'createTeam' or 'editTeam:team-alpha') */
   draftKeyPrefix?: string;
   /** Project path for @file mentions in workflow */
@@ -172,7 +117,6 @@ export const MembersEditorSection = ({
   fieldError,
   validateMemberName,
   showWorkflow = false,
-  showJsonEditor = true,
   draftKeyPrefix,
   projectPath,
   taskSuggestions,
@@ -213,9 +157,6 @@ export const MembersEditorSection = ({
 }: MembersEditorSectionProps): React.JSX.Element => {
   const { t, resolvedLanguage } = useAppTranslation('team');
   const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
-  const [jsonEditorOpen, setJsonEditorOpen] = useState(false);
-  const [jsonText, setJsonText] = useState('');
-  const [jsonError, setJsonError] = useState<string | null>(null);
   const [agentTeamsMcpLockedForAll, setAgentTeamsMcpLockedForAll] = useState(false);
   const previousMcpPolicyByMemberIdRef = useRef<Map<string, MemberDraft['mcpPolicy']>>(new Map());
 
@@ -223,30 +164,6 @@ export const MembersEditorSection = ({
     onChange(
       agentTeamsMcpLockedForAll ? forceActiveMembersToAgentTeamsMcp(nextMembers) : nextMembers
     );
-  };
-
-  const toggleJsonEditor = (): void => {
-    if (!jsonEditorOpen) {
-      setJsonText(membersToJsonText(members));
-      setJsonError(null);
-    }
-    setJsonEditorOpen((prev) => !prev);
-  };
-
-  useEffect(() => {
-    if (!jsonEditorOpen || jsonError !== null) return;
-    queueMicrotask(() => setJsonText(membersToJsonText(members)));
-  }, [members, jsonEditorOpen, jsonError]);
-
-  const handleJsonChange = (text: string): void => {
-    setJsonText(text);
-    try {
-      const drafts = parseJsonToDrafts(text);
-      emitMembersChange(drafts);
-      setJsonError(null);
-    } catch (e) {
-      setJsonError(e instanceof Error ? e.message : 'Invalid JSON');
-    }
   };
 
   const updateMemberName = (memberId: string, name: string): void => {
@@ -480,11 +397,6 @@ export const MembersEditorSection = ({
               <Plus className="size-3.5" />
               {t('members.editor.addMember')}
             </Button>
-            {showJsonEditor && !jsonEditorOpen ? (
-              <Button variant="ghost" size="sm" onClick={toggleJsonEditor}>
-                {t('members.editor.editAsJson')}
-              </Button>
-            ) : null}
           </div>
         )}
       </div>
@@ -498,14 +410,6 @@ export const MembersEditorSection = ({
         <>
           {disableAddMember && addMemberLockReason ? (
             <p className="text-[11px] text-[var(--color-text-muted)]">{addMemberLockReason}</p>
-          ) : null}
-          {jsonEditorOpen && showJsonEditor ? (
-            <MembersJsonEditor
-              value={jsonText}
-              onChange={handleJsonChange}
-              error={jsonError}
-              onClose={toggleJsonEditor}
-            />
           ) : null}
           <div
             className={

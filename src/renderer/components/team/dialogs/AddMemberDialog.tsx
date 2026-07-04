@@ -212,7 +212,6 @@ export const AddMemberDialog = ({
             fieldError={error ?? undefined}
             validateMemberName={validateName}
             showWorkflow
-            showJsonEditor={false}
             draftKeyPrefix={`addMember:${teamName}`}
             projectPath={projectPath}
             existingMembers={existingMembers}
