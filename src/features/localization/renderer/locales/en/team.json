@@ -865,6 +865,22 @@
       },
       "loadingRuntime": "OpenCode runtime status is still loading."
     },
+    "codexStatus": {
+      "notInstalledTitle": "Codex is not installed",
+      "notInstalledSummary": "Codex status: runtime missing",
+      "notInstalledMessage": "The Codex CLI runtime is not installed yet. Install it to launch team agents with Codex models. You can also use the Install button on the home page."
+    },
+    "runtimeInstall": {
+      "install": "Install {{provider}}",
+      "checking": "Checking...",
+      "downloading": "Downloading...",
+      "downloadingPercent": "Downloading {{percent}}%",
+      "installing": "Installing...",
+      "retryInstall": "Retry install",
+      "notInstalledBadge": "Install",
+      "codexTitle": "Install the Codex CLI runtime into app data",
+      "openCodeTitle": "Install the OpenCode runtime into app data"
+    },
     "advisory": {
       "pingNotConfirmed": "Ping not confirmed",
       "note": "Note"

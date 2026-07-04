@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppTranslation } from '@features/localization/renderer';
 import { ProviderActivityStatusStrip } from '@renderer/components/common/ProviderActivityStatusStrip';
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
+import { isCodexProviderRuntimeMissing } from '@renderer/components/runtime/codexRuntimeInstallAction';
 import { isOpenCodeCatalogHydrating } from '@renderer/components/runtime/providerConnectionUi';
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import { HoverTooltip } from '@renderer/components/ui/hover-tooltip';
@@ -52,13 +53,16 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  Download,
   Filter,
   Info,
+  Loader2,
   Search,
   Star,
 } from 'lucide-react';
 
-import type { CliProviderStatus, TeamProviderId } from '@shared/types';
+import type { CodexRuntimeStatus } from '@features/codex-runtime-installer/contracts';
+import type { CliProviderStatus, OpenCodeRuntimeStatus, TeamProviderId } from '@shared/types';
 
 export { getProviderScopedTeamModelLabel } from '@renderer/utils/teamModelCatalog';
 
@@ -540,6 +544,45 @@ function getOpenCodeReadinessMessage(
   return t('modelSelector.openCodeStatus.messages.ready');
 }
 
+type ProviderRuntimeInstallStatus = CodexRuntimeStatus | OpenCodeRuntimeStatus | null;
+
+/** True while a Codex/OpenCode runtime download or install is actively in progress. */
+function isProviderRuntimeInstalling(
+  status: ProviderRuntimeInstallStatus,
+  loading: boolean
+): boolean {
+  return (
+    loading ||
+    status?.state === 'checking' ||
+    status?.state === 'downloading' ||
+    status?.state === 'installing'
+  );
+}
+
+/** Label for the inline "Install <provider>" button, reflecting live install progress. */
+function getProviderRuntimeInstallLabel(
+  providerLabel: string,
+  status: ProviderRuntimeInstallStatus,
+  t: TeamTranslator
+): string {
+  if (status?.state === 'downloading') {
+    const percent = status.progress?.percent;
+    return typeof percent === 'number'
+      ? t('modelSelector.runtimeInstall.downloadingPercent', { percent })
+      : t('modelSelector.runtimeInstall.downloading');
+  }
+  if (status?.state === 'installing') {
+    return t('modelSelector.runtimeInstall.installing');
+  }
+  if (status?.state === 'checking') {
+    return t('modelSelector.runtimeInstall.checking');
+  }
+  if (status?.state === 'failed') {
+    return t('modelSelector.runtimeInstall.retryInstall');
+  }
+  return t('modelSelector.runtimeInstall.install', { provider: providerLabel });
+}
+
 export function getTeamModelLabel(model: string): string {
   return getCatalogTeamModelLabel(model) ?? model;
 }
@@ -822,6 +865,12 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
   } = useEffectiveCliProviderStatus(effectiveProviderId);
   const cliStatusLoading = useStore((s) => s.cliStatusLoading);
   const cliProviderStatusLoading = useStore((s) => s.cliProviderStatusLoading ?? {});
+  const codexRuntimeStatus = useStore((s) => s.codexRuntimeStatus);
+  const codexRuntimeStatusLoading = useStore((s) => s.codexRuntimeStatusLoading);
+  const openCodeRuntimeStatus = useStore((s) => s.openCodeRuntimeStatus);
+  const openCodeRuntimeStatusLoading = useStore((s) => s.openCodeRuntimeStatusLoading);
+  const installCodexRuntime = useStore((s) => s.installCodexRuntime);
+  const installOpenCodeRuntime = useStore((s) => s.installOpenCodeRuntime);
   const runtimeProviderStatusById = useMemo(
     () =>
       new Map(
@@ -933,6 +982,13 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
       return getProviderDisabledReason(candidateProviderId)
         ? getOpenCodeReadinessBadgeLabel(runtimeProviderStatusById.get('opencode'), t)
         : null;
+    }
+
+    if (candidateProviderId === 'codex') {
+      const codexStatus = runtimeProviderStatusById.get('codex') ?? null;
+      if (codexStatus && isCodexProviderRuntimeMissing(codexStatus)) {
+        return t('modelSelector.runtimeInstall.notInstalledBadge');
+      }
     }
 
     const providerDisabledReason = getProviderDisabledReason(candidateProviderId);
@@ -1345,6 +1401,73 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
     : getProviderDisabledReason(effectiveProviderId);
   const canActivateInspectedOpenCode =
     effectiveProviderId === 'opencode' && isInspectingInactiveProvider && activeProviderSelectable;
+  // Surface the "runtime is not installed" state right at the provider control so the user
+  // discovers it when picking the provider, not only at the bottom preflight.
+  const activeProviderRuntimeInstall = useMemo<{
+    providerId: 'codex' | 'opencode';
+    status: ProviderRuntimeInstallStatus;
+    loading: boolean;
+    onInstall: (() => Promise<void>) | undefined;
+  } | null>(() => {
+    if (
+      effectiveProviderId === 'codex' &&
+      runtimeProviderStatus?.providerId === 'codex' &&
+      isCodexProviderRuntimeMissing(runtimeProviderStatus)
+    ) {
+      return {
+        providerId: 'codex',
+        status: codexRuntimeStatus ?? null,
+        loading: codexRuntimeStatusLoading === true,
+        onInstall: installCodexRuntime,
+      };
+    }
+    if (
+      effectiveProviderId === 'opencode' &&
+      runtimeProviderStatus?.providerId === 'opencode' &&
+      runtimeProviderStatus.supported === false
+    ) {
+      return {
+        providerId: 'opencode',
+        status: openCodeRuntimeStatus ?? null,
+        loading: openCodeRuntimeStatusLoading === true,
+        onInstall: installOpenCodeRuntime,
+      };
+    }
+    return null;
+  }, [
+    codexRuntimeStatus,
+    codexRuntimeStatusLoading,
+    effectiveProviderId,
+    installCodexRuntime,
+    installOpenCodeRuntime,
+    openCodeRuntimeStatus,
+    openCodeRuntimeStatusLoading,
+    runtimeProviderStatus,
+  ]);
+  const activeProviderRuntimeInstallProviderLabel = activeProviderRuntimeInstall
+    ? getTeamProviderLabel(activeProviderRuntimeInstall.providerId)
+    : null;
+  const activeProviderRuntimeInstallBusy = activeProviderRuntimeInstall
+    ? isProviderRuntimeInstalling(
+        activeProviderRuntimeInstall.status,
+        activeProviderRuntimeInstall.loading
+      )
+    : false;
+  const activeProviderRuntimeInstallLabel =
+    activeProviderRuntimeInstall && activeProviderRuntimeInstallProviderLabel
+      ? getProviderRuntimeInstallLabel(
+          activeProviderRuntimeInstallProviderLabel,
+          activeProviderRuntimeInstall.status,
+          t
+        )
+      : null;
+  const activeProviderRuntimeInstallTitle = activeProviderRuntimeInstall
+    ? (activeProviderRuntimeInstall.status?.error ??
+      activeProviderRuntimeInstall.status?.progress?.detail ??
+      (activeProviderRuntimeInstall.providerId === 'codex'
+        ? t('modelSelector.runtimeInstall.codexTitle')
+        : t('modelSelector.runtimeInstall.openCodeTitle')))
+    : undefined;
   const activeProviderStatusPanel =
     activeProviderDisabledReason && effectiveProviderId === 'opencode'
       ? {
@@ -1377,7 +1500,19 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
               reason: null,
               actionLabel: t('modelSelector.openCodeStatus.useOpenCode'),
             }
-          : null;
+          : activeProviderRuntimeInstall?.providerId === 'codex'
+            ? {
+                tone: 'warning' as const,
+                title: t('modelSelector.codexStatus.notInstalledTitle'),
+                summary: t('modelSelector.codexStatus.notInstalledSummary'),
+                message: t('modelSelector.codexStatus.notInstalledMessage'),
+                reason:
+                  runtimeProviderStatus?.statusMessage?.trim() ||
+                  runtimeProviderStatus?.detailMessage?.trim() ||
+                  null,
+                actionLabel: null,
+              }
+            : null;
   const activeProviderNotice = providerNoticeById?.[effectiveProviderId] ?? null;
   const getModelAdvisoryBadgeLabel = (reason: string | null): string =>
     reason?.toLowerCase().includes('ping not confirmed')
@@ -1764,6 +1899,25 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                           }}
                         >
                           {activeProviderStatusPanel.actionLabel}
+                        </button>
+                      ) : null}
+                      {activeProviderRuntimeInstall && activeProviderRuntimeInstallLabel ? (
+                        <button
+                          type="button"
+                          data-testid="team-model-selector-runtime-install"
+                          disabled={activeProviderRuntimeInstallBusy}
+                          title={activeProviderRuntimeInstallTitle}
+                          className="mt-1 inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-300/45 bg-amber-300/15 px-2.5 text-[11px] font-medium text-amber-100 transition-colors hover:border-amber-200/60 hover:bg-amber-300/25 disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => {
+                            void activeProviderRuntimeInstall.onInstall?.();
+                          }}
+                        >
+                          {activeProviderRuntimeInstallBusy ? (
+                            <Loader2 className="size-3 shrink-0 animate-spin" />
+                          ) : (
+                            <Download className="size-3 shrink-0" />
+                          )}
+                          {activeProviderRuntimeInstallLabel}
                         </button>
                       ) : null}
                     </div>

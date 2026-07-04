@@ -4178,6 +4178,11 @@ export default interface Resources {
         "unavailable": "Unavailable",
         "verified": "Verified"
       },
+      "codexStatus": {
+        "notInstalledMessage": "The Codex CLI runtime is not installed yet. Install it to launch team agents with Codex models. You can also use the Install button on the home page.",
+        "notInstalledSummary": "Codex status: runtime missing",
+        "notInstalledTitle": "Codex is not installed"
+      },
       "customModelId": "Custom model id",
       "defaultModel": "Default",
       "defaultTooltip": {
@@ -4281,6 +4286,17 @@ export default interface Resources {
         "connectedProviders": "Connected providers",
         "openCodeConfig": "OpenCode config",
         "otherCatalog": "Other OpenCode catalog"
+      },
+      "runtimeInstall": {
+        "checking": "Checking...",
+        "codexTitle": "Install the Codex CLI runtime into app data",
+        "downloading": "Downloading...",
+        "downloadingPercent": "Downloading {{percent}}%",
+        "install": "Install {{provider}}",
+        "installing": "Installing...",
+        "notInstalledBadge": "Install",
+        "openCodeTitle": "Install the OpenCode runtime into app data",
+        "retryInstall": "Retry install"
       },
       "runtimeModelsSyncing": "Explicit models load from the current runtime. Default remains available while the list is syncing.",
       "searchModels": "Search models",
