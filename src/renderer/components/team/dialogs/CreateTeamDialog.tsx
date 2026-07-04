@@ -2171,6 +2171,137 @@ export const CreateTeamDialog = ({
     ]
   );
 
+  const selectedProvidersPreflightPanel =
+    canCreate && launchTeam ? (
+      <div className="min-w-0">
+        <ProviderActivityStatusStrip
+          cliStatus={effectiveCliStatus}
+          sourceCliStatus={loadingCliStatus}
+          cliStatusLoading={cliStatusLoading}
+          cliProviderStatusLoading={cliProviderStatusLoading}
+          codexSnapshotPending={codexSnapshotPending}
+          providerIds={selectedMemberProviders}
+          className="mb-2"
+          label={t('create.prepare.selectedProvidersLabel')}
+          layout="stacked"
+          showReadyProviders={
+            effectivePrepare.state === 'idle' || effectivePrepare.state === 'loading'
+          }
+          readyStatusText={t('create.prepare.readyStatus')}
+        />
+        {effectivePrepare.state === 'idle' || effectivePrepare.state === 'loading' ? (
+          <>
+            <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+              <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              <div>
+                <span>
+                  {effectivePrepare.message ??
+                    (effectivePrepare.state === 'idle'
+                      ? t('create.prepare.checkingProviders')
+                      : t('create.prepare.preparingEnvironment'))}
+                </span>
+                <p className="mt-0.5 text-[10px] text-[var(--color-text-muted)] opacity-70">
+                  {t('launch.prepare.preflight', {
+                    action: t('launch.prepare.action.launch'),
+                  })}
+                </p>
+              </div>
+            </div>
+            <ProvisioningProviderStatusList
+              checks={prepareChecks}
+              className="mt-2"
+              onOpenProviderSettings={(providerId) => setProviderSettingsProviderId(providerId)}
+            />
+          </>
+        ) : null}
+
+        {effectivePrepare.state === 'ready' ? (
+          <div>
+            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+              <CheckCircle2 className="size-3.5 shrink-0" />
+              <span>
+                {prepareChecks.some((check) => check.status === 'notes') ||
+                prepareWarnings.length > 0
+                  ? t('create.prepare.selectedProvidersReadyWithNotes')
+                  : t('create.prepare.selectedProvidersReady')}
+              </span>
+            </div>
+            {effectivePrepare.message ? (
+              <p className="mt-0.5 pl-5 text-[11px] text-[var(--color-text-muted)]">
+                {effectivePrepare.message}
+              </p>
+            ) : null}
+            <ProvisioningProviderStatusList
+              checks={prepareChecks}
+              className="mt-1"
+              onOpenProviderSettings={(providerId) => setProviderSettingsProviderId(providerId)}
+            />
+            {prepareWarnings.length > 0 && prepareChecks.length === 0 ? (
+              <div className="mt-0.5 space-y-0.5 pl-5">
+                {prepareWarnings.map((warning, index) => (
+                  <p key={`${index}:${warning}`} className="text-[11px] text-sky-300">
+                    {warning}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {effectivePrepare.state === 'failed' ? (
+          <div className="text-xs">
+            <div className="flex items-start gap-2 text-amber-300">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <div className="min-w-0">
+                <p className="font-medium">{t('create.prepare.advisoryTitle')}</p>
+                <p className="mt-0.5 text-amber-300/80">
+                  {effectivePrepare.message ?? t('launch.prepare.failed')}
+                </p>
+                <p className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
+                  {t('create.prepare.advisoryHint')}
+                </p>
+              </div>
+            </div>
+            {!shouldHideProvisioningProviderStatusList(prepareChecks, prepareMessage) ? (
+              <ProvisioningProviderStatusList
+                checks={prepareChecks}
+                className="mt-2"
+                suppressDetailsMatching={prepareMessage}
+                onOpenProviderSettings={(providerId) => setProviderSettingsProviderId(providerId)}
+              />
+            ) : null}
+            {prepareWarnings.length > 0 && prepareChecks.length === 0 ? (
+              <div className="mt-1 space-y-0.5 pl-6">
+                {prepareWarnings.map((warning, index) => (
+                  <p
+                    key={`${index}:${warning}`}
+                    className="text-[11px]"
+                    style={{ color: 'var(--warning-text)' }}
+                  >
+                    {warning}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+            <p className="mt-1 pl-6 text-[11px] text-[var(--color-text-muted)]">
+              {getProvisioningFailureHint(effectivePrepare.message, prepareChecks, t)}
+            </p>
+            {showCodexReconnectPrompt ? (
+              <div className="pl-6">
+                <CodexReconnectPrompt
+                  authUrl={codexAccount.snapshot?.login.authUrl ?? null}
+                  userCode={codexAccount.snapshot?.login.userCode ?? null}
+                  reconnectBusy={codexAccount.loading}
+                  onReconnect={() => handleCodexReconnect('browser')}
+                  onDeviceCodeReconnect={() => handleCodexReconnect('device_code')}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    ) : null;
+
   return (
     <Dialog
       open={open}
@@ -2550,6 +2681,8 @@ export const CreateTeamDialog = ({
                   </div>
                 </OptionalSettingsSection>
               </div>
+
+              {selectedProvidersPreflightPanel}
             </div>
           </div>
         </div>
@@ -2567,141 +2700,7 @@ export const CreateTeamDialog = ({
           </p>
         ) : null}
 
-        <DialogFooter className="shrink-0 pt-4 sm:justify-between">
-          <div className="min-w-0">
-            {canCreate && launchTeam ? (
-              <ProviderActivityStatusStrip
-                cliStatus={effectiveCliStatus}
-                sourceCliStatus={loadingCliStatus}
-                cliStatusLoading={cliStatusLoading}
-                cliProviderStatusLoading={cliProviderStatusLoading}
-                codexSnapshotPending={codexSnapshotPending}
-                providerIds={selectedMemberProviders}
-                className="mb-2"
-                label={t('create.prepare.selectedProvidersLabel')}
-                layout="stacked"
-                showReadyProviders={
-                  effectivePrepare.state === 'idle' || effectivePrepare.state === 'loading'
-                }
-                readyStatusText={t('create.prepare.readyStatus')}
-              />
-            ) : null}
-            {canCreate &&
-            launchTeam &&
-            (effectivePrepare.state === 'idle' || effectivePrepare.state === 'loading') ? (
-              <>
-                <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                  <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  <div>
-                    <span>
-                      {effectivePrepare.message ??
-                        (effectivePrepare.state === 'idle'
-                          ? t('create.prepare.checkingProviders')
-                          : t('create.prepare.preparingEnvironment'))}
-                    </span>
-                    <p className="mt-0.5 text-[10px] text-[var(--color-text-muted)] opacity-70">
-                      {t('launch.prepare.preflight', {
-                        action: t('launch.prepare.action.launch'),
-                      })}
-                    </p>
-                  </div>
-                </div>
-                <ProvisioningProviderStatusList
-                  checks={prepareChecks}
-                  className="mt-2"
-                  onOpenProviderSettings={(providerId) => setProviderSettingsProviderId(providerId)}
-                />
-              </>
-            ) : null}
-
-            {canCreate && launchTeam && effectivePrepare.state === 'ready' ? (
-              <div>
-                <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
-                  <CheckCircle2 className="size-3.5 shrink-0" />
-                  <span>
-                    {prepareChecks.some((check) => check.status === 'notes') ||
-                    prepareWarnings.length > 0
-                      ? t('create.prepare.selectedProvidersReadyWithNotes')
-                      : t('create.prepare.selectedProvidersReady')}
-                  </span>
-                </div>
-                {effectivePrepare.message ? (
-                  <p className="mt-0.5 pl-5 text-[11px] text-[var(--color-text-muted)]">
-                    {effectivePrepare.message}
-                  </p>
-                ) : null}
-                <ProvisioningProviderStatusList
-                  checks={prepareChecks}
-                  className="mt-1"
-                  onOpenProviderSettings={(providerId) => setProviderSettingsProviderId(providerId)}
-                />
-                {prepareWarnings.length > 0 && prepareChecks.length === 0 ? (
-                  <div className="mt-0.5 space-y-0.5 pl-5">
-                    {prepareWarnings.map((warning, index) => (
-                      <p key={`${index}:${warning}`} className="text-[11px] text-sky-300">
-                        {warning}
-                      </p>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            {canCreate && launchTeam && effectivePrepare.state === 'failed' ? (
-              <div className="text-xs">
-                <div className="flex items-start gap-2 text-amber-300">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="font-medium">{t('create.prepare.advisoryTitle')}</p>
-                    <p className="mt-0.5 text-amber-300/80">
-                      {effectivePrepare.message ?? t('launch.prepare.failed')}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
-                      {t('create.prepare.advisoryHint')}
-                    </p>
-                  </div>
-                </div>
-                {!shouldHideProvisioningProviderStatusList(prepareChecks, prepareMessage) ? (
-                  <ProvisioningProviderStatusList
-                    checks={prepareChecks}
-                    className="mt-2"
-                    suppressDetailsMatching={prepareMessage}
-                    onOpenProviderSettings={(providerId) =>
-                      setProviderSettingsProviderId(providerId)
-                    }
-                  />
-                ) : null}
-                {prepareWarnings.length > 0 && prepareChecks.length === 0 ? (
-                  <div className="mt-1 space-y-0.5 pl-6">
-                    {prepareWarnings.map((warning, index) => (
-                      <p
-                        key={`${index}:${warning}`}
-                        className="text-[11px]"
-                        style={{ color: 'var(--warning-text)' }}
-                      >
-                        {warning}
-                      </p>
-                    ))}
-                  </div>
-                ) : null}
-                <p className="mt-1 pl-6 text-[11px] text-[var(--color-text-muted)]">
-                  {getProvisioningFailureHint(effectivePrepare.message, prepareChecks, t)}
-                </p>
-                {showCodexReconnectPrompt ? (
-                  <div className="pl-6">
-                    <CodexReconnectPrompt
-                      authUrl={codexAccount.snapshot?.login.authUrl ?? null}
-                      userCode={codexAccount.snapshot?.login.userCode ?? null}
-                      reconnectBusy={codexAccount.loading}
-                      onReconnect={() => handleCodexReconnect('browser')}
-                      onDeviceCodeReconnect={() => handleCodexReconnect('device_code')}
-                    />
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-
+        <DialogFooter className="shrink-0 pt-4 sm:justify-end">
           <div className="flex shrink-0 flex-col items-end gap-1">
             {skipPermissions ? (
               <p className="text-[11px] text-[var(--color-text-muted)]">

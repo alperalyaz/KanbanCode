@@ -1878,7 +1878,9 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
         <div className="space-y-0">
           <div className="-mb-px border-b border-[var(--color-border-subtle)]">
             <TabsList className="h-auto w-full flex-wrap justify-start gap-1 rounded-none bg-transparent p-0">
-              {PROVIDERS.map((provider) => {
+              {PROVIDERS.filter(
+                (provider) => !(provider.id === 'gemini' && isGeminiUiFrozen())
+              ).map((provider) => {
                 const providerDisabledReason = getProviderDisabledReason(provider.id);
                 const providerSelectable = isProviderSelectable(provider.id);
                 const providerInspectable = isProviderInspectable(provider.id);

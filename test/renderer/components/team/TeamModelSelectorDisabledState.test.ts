@@ -719,7 +719,7 @@ describe('TeamModelSelector disabled Codex models', () => {
           },
           models: ['opencode/big-pickle'],
           modelCatalog: null,
-          modelCatalogRefreshState: 'idle',
+          modelCatalogRefreshState: 'loading',
           runtimeCapabilities: {
             modelCatalog: {
               dynamic: true,
@@ -2391,7 +2391,9 @@ describe('TeamModelSelector disabled Codex models', () => {
     expect(codexTab).not.toBeNull();
     expect(host.textContent).toContain('Anthropic');
     expect(host.textContent).toContain('Codex');
-    expect(providerTabIndex('OpenCode')).toBeLessThan(providerTabIndex('Gemini'));
+    // Gemini is frozen out of the UI, so it must not render a provider tab.
+    expect(buttons.some((button) => button.textContent?.trim() === 'Gemini')).toBe(false);
+    expect(providerTabIndex('Codex')).toBeLessThan(providerTabIndex('OpenCode'));
 
     await act(async () => {
       codexTab?.click();
