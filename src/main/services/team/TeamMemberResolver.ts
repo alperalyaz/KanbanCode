@@ -4,6 +4,7 @@ import { migrateProviderBackendId } from '@shared/utils/providerBackend';
 import { buildTeamMemberColorMap } from '@shared/utils/teamMemberColors';
 import { normalizeTeamMemberMcpPolicy } from '@shared/utils/teamMemberMcpPolicy';
 import {
+  createCliAsciiSlugTwinNameGuard,
   createCliAutoSuffixNameGuard,
   createCliProvisionerNameGuard,
 } from '@shared/utils/teamMemberName';
@@ -280,8 +281,13 @@ export class TeamMemberResolver {
     const keepName = createCliAutoSuffixNameGuard(activeNamesForAutoSuffix);
     // Defense: hide CLI provisioner artifacts (alice-provisioner) when base name (alice) exists.
     const keepProvisioner = createCliProvisionerNameGuard(names);
+    // Defense: hide the CLI's ASCII-slug twin (Köroğlu -> "K-ro-lu") when the
+    // human-entered non-ASCII origin is also present. The CLI slugs non-ASCII
+    // names when it registers the agent, while members.meta.json keeps the
+    // original, so both would otherwise appear as separate members.
+    const keepAsciiSlugTwin = createCliAsciiSlugTwinNameGuard(names);
     for (const name of Array.from(names)) {
-      if (!keepName(name) || !keepProvisioner(name)) {
+      if (!keepName(name) || !keepProvisioner(name) || !keepAsciiSlugTwin(name)) {
         names.delete(name);
       }
     }

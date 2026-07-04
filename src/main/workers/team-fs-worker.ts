@@ -16,6 +16,7 @@ import { compactTeamTaskForSnapshot } from '@main/services/team/teamTaskSnapshot
 import { atomicWriteAsync } from '@main/utils/atomicWrite';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { buildTeamMemberColorMap } from '@shared/utils/teamMemberColors';
+import { createCliAsciiSlugTwinNameGuard } from '@shared/utils/teamMemberName';
 
 import type { TeamTask } from '@shared/types';
 
@@ -1104,6 +1105,25 @@ function dropCliProvisionerMembers(
   }
 }
 
+/**
+ * Drop the CLI's ASCII-slug twin ("Köroğlu" -> "K-ro-lu") when the human-entered
+ * non-ASCII origin is also present. The CLI slugs non-ASCII names when it
+ * registers the agent in config.json, while members.meta.json keeps the
+ * original, so both would otherwise show as separate members.
+ */
+function dropCliAsciiSlugTwinMembers(
+  memberMap: Map<string, { name: string; role?: string; color?: string }>
+): void {
+  const keepAsciiSlugTwin = createCliAsciiSlugTwinNameGuard(
+    Array.from(memberMap.values()).map((member) => member.name)
+  );
+  for (const [key, member] of Array.from(memberMap.entries())) {
+    if (!keepAsciiSlugTwin(member.name)) {
+      memberMap.delete(key);
+    }
+  }
+}
+
 async function readLaunchState(
   teamsDir: string,
   teamName: string
@@ -1501,6 +1521,7 @@ async function listTeams(
 
     dropCliAutoSuffixedMembers(memberMap);
     dropCliProvisionerMembers(memberMap);
+    dropCliAsciiSlugTwinMembers(memberMap);
 
     const members = Array.from(memberMap.values());
     const memberColors = buildTeamMemberColorMap(members, { preferProvidedColors: false });

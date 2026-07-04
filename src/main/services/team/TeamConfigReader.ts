@@ -5,6 +5,7 @@ import { isLeadMember } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
 import { normalizeTeamMemberMcpPolicy } from '@shared/utils/teamMemberMcpPolicy';
 import {
+  createCliAsciiSlugTwinNameGuard,
   createCliAutoSuffixNameGuard,
   createCliProvisionerNameGuard,
 } from '@shared/utils/teamMemberName';
@@ -660,8 +661,17 @@ export class TeamConfigReader {
       const keepName = createCliAutoSuffixNameGuard(activeNamesForAutoSuffix);
       // Defense: drop CLI provisioner artifacts (alice-provisioner) when base name exists.
       const keepProvisioner = createCliProvisionerNameGuard(activeNamesForAutoSuffix);
+      // Defense: hide the CLI's ASCII-slug twin (Köroğlu -> "K-ro-lu") when the
+      // human-entered non-ASCII origin is also present in the roster.
+      const keepAsciiSlugTwin = createCliAsciiSlugTwinNameGuard(
+        Array.from(memberMap.values()).map((member) => member.name)
+      );
       for (const [key, member] of Array.from(memberMap.entries())) {
-        if (!keepName(member.name) || !keepProvisioner(member.name)) {
+        if (
+          !keepName(member.name) ||
+          !keepProvisioner(member.name) ||
+          !keepAsciiSlugTwin(member.name)
+        ) {
           memberMap.delete(key);
         }
       }

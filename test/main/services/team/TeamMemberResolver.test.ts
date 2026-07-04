@@ -438,6 +438,40 @@ describe('TeamMemberResolver', () => {
     expect(names).toContain('lead');
   });
 
+  it('hides the CLI ascii-slug twin of a Turkish member name', () => {
+    const resolver = new TeamMemberResolver();
+    // The CLI registers "Köroğlu" in config.json as the ascii slug "K-ro-lu",
+    // while our members.meta.json keeps the human-entered Turkish name.
+    const config: TeamConfig = {
+      name: 'Hidroteknik',
+      members: [
+        { name: 'team-lead', agentType: 'team-lead', role: 'lead' },
+        { name: 'K-ro-lu', agentType: 'general-purpose' },
+        { name: 'Alpam--', agentType: 'general-purpose' },
+        { name: 'Bo-a-', agentType: 'general-purpose' },
+      ],
+    };
+    const metaMembers: TeamConfig['members'] = [
+      { name: 'Köroğlu', role: 'developer', agentType: 'general-purpose' },
+      { name: 'Alpamış', role: 'developer', agentType: 'general-purpose' },
+      { name: 'Boğaç', role: 'developer', agentType: 'general-purpose' },
+    ];
+    // The CLI also creates slugged inbox files for the registered agents.
+    const inboxNames = ['K-ro-lu', 'Alpam--', 'Bo-a-'];
+
+    const members = resolver.resolveMembers(config, metaMembers, inboxNames, []);
+    const names = members.map((member) => member.name);
+
+    expect(names).toEqual(
+      expect.arrayContaining(['team-lead', 'Köroğlu', 'Alpamış', 'Boğaç'])
+    );
+    expect(names).not.toContain('K-ro-lu');
+    expect(names).not.toContain('Alpam--');
+    expect(names).not.toContain('Bo-a-');
+    // One lead + three teammates, no slug twins.
+    expect(members).toHaveLength(4);
+  });
+
   it('clears currentTaskId when task status is completed', () => {
     const resolver = new TeamMemberResolver();
     const config: TeamConfig = {

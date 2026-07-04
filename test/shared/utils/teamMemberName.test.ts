@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  createCliAsciiSlugTwinNameGuard,
   createCliAutoSuffixNameGuard,
   createCliProvisionerNameGuard,
   parseNumericSuffixName,
+  toCliAsciiSlug,
   validateTeamMemberNameFormat,
 } from '@shared/utils/teamMemberName';
 
@@ -88,5 +90,59 @@ describe('createCliProvisionerNameGuard', () => {
 
     expect(keep('')).toBe(true);
     expect(keep('-provisioner')).toBe(true);
+  });
+});
+
+describe('toCliAsciiSlug', () => {
+  it('replaces each non-ascii char with a single dash, preserving case', () => {
+    expect(toCliAsciiSlug('Köroğlu')).toBe('K-ro-lu');
+    expect(toCliAsciiSlug('Alpamış')).toBe('Alpam--');
+    expect(toCliAsciiSlug('Boğaç')).toBe('Bo-a-');
+  });
+
+  it('leaves pure-ascii alphanumerics untouched', () => {
+    expect(toCliAsciiSlug('Aragorn')).toBe('Aragorn');
+  });
+});
+
+describe('createCliAsciiSlugTwinNameGuard', () => {
+  it('hides the CLI ascii-slug twin when the non-ascii origin is present', () => {
+    const keep = createCliAsciiSlugTwinNameGuard([
+      'Köroğlu',
+      'K-ro-lu',
+      'Alpamış',
+      'Alpam--',
+      'Boğaç',
+      'Bo-a-',
+    ]);
+
+    expect(keep('Köroğlu')).toBe(true);
+    expect(keep('K-ro-lu')).toBe(false);
+    expect(keep('Alpamış')).toBe(true);
+    expect(keep('Alpam--')).toBe(false);
+    expect(keep('Boğaç')).toBe(true);
+    expect(keep('Bo-a-')).toBe(false);
+  });
+
+  it('keeps the slug when its non-ascii origin is absent', () => {
+    const keep = createCliAsciiSlugTwinNameGuard(['K-ro-lu']);
+
+    expect(keep('K-ro-lu')).toBe(true);
+  });
+
+  it('never collapses legitimate ascii names that only differ in . - _', () => {
+    const keep = createCliAsciiSlugTwinNameGuard(['ops.bot', 'ops-bot', 'dev-1', 'dev.1']);
+
+    expect(keep('ops.bot')).toBe(true);
+    expect(keep('ops-bot')).toBe(true);
+    expect(keep('dev-1')).toBe(true);
+    expect(keep('dev.1')).toBe(true);
+  });
+
+  it('matches the twin case-insensitively', () => {
+    const keep = createCliAsciiSlugTwinNameGuard(['Köroğlu', 'k-ro-lu']);
+
+    expect(keep('k-ro-lu')).toBe(false);
+    expect(keep('Köroğlu')).toBe(true);
   });
 });
