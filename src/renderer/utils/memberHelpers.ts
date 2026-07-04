@@ -1,3 +1,4 @@
+import { appI18n } from '@features/localization/renderer';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import {
   hasUnsafeProvisionedButNotAliveRuntimeEvidenceWithSpawnContext,
@@ -30,11 +31,12 @@ import type {
 
 /**
  * UI display name for a team member.
- * "team-lead" → "lead"; everything else passes through unchanged.
- * Data layer (store, IPC, backend) must keep the original name untouched.
+ * "team-lead" → localized lead label ("Lider" / "Lead"); everything else
+ * passes through unchanged. Data layer (store, IPC, backend) must keep the
+ * original name untouched — this transform is display-only.
  */
 export function displayMemberName(name: string): string {
-  return name === 'team-lead' ? 'lead' : name;
+  return name === 'team-lead' ? appI18n.t('team:members.leadModel.leadShort') : name;
 }
 
 function hashStringToIndex(str: string): number {

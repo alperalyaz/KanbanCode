@@ -323,7 +323,8 @@
       "launch": "Başlat",
       "remove": "Kaldır",
       "stop": "Durdur",
-      "task": "Görev"
+      "task": "Görev",
+      "usage": "Kullanım"
     },
     "deleteTeam": {
       "description": "\"{{team}}\" ekibi silinsin mi? Bu işlem geri alınamaz. Tüm ekip verileri ve görevler silinecek.",
@@ -1751,7 +1752,7 @@
       "starting": "Başlatılıyor",
       "configuring": "Ekip kurulumu",
       "assembling": "Üyeler katılıyor",
-      "finalizing": "Sonlandırılıyor"
+      "finalizing": "Tamamlanıyor"
     },
     "providerStatus": {
       "status": {

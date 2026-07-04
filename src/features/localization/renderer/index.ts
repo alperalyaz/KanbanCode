@@ -1,3 +1,4 @@
+export { appI18n } from './composition/createI18nextInstance';
 export { useAppTranslation } from './hooks/useAppTranslation';
 export { useLocaleFormatters } from './hooks/useLocaleFormatters';
 export { AppLanguageSelect } from './ui/AppLanguageSelect';
