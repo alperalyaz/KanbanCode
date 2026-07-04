@@ -2650,21 +2650,15 @@ export const CreateTeamDialog = ({
 
             {canCreate && launchTeam && effectivePrepare.state === 'failed' ? (
               <div className="text-xs">
-                <div className="flex items-start gap-2 text-red-300">
+                <div className="flex items-start gap-2 text-amber-300">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                   <div className="min-w-0">
-                    <p className="font-medium">
-                      {t('launch.prepare.blocked', {
-                        action: t('launch.prepare.action.launch'),
-                      })}
-                    </p>
-                    <p className="mt-0.5 text-red-300/80">
+                    <p className="font-medium">{t('create.prepare.advisoryTitle')}</p>
+                    <p className="mt-0.5 text-amber-300/80">
                       {effectivePrepare.message ?? t('launch.prepare.failed')}
                     </p>
-                    <p className="mt-0.5 text-[10px] text-[var(--color-text-muted)] opacity-70">
-                      {t('launch.prepare.preflight', {
-                        action: t('launch.prepare.action.launch'),
-                      })}
+                    <p className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
+                      {t('create.prepare.advisoryHint')}
                     </p>
                   </div>
                 </div>

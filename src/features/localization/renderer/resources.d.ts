@@ -3216,6 +3216,8 @@ export default interface Resources {
         "prompt": "Instructions for the team lead during provisioning..."
       },
       "prepare": {
+        "advisoryHint": "Your team starts through your local Claude CLI. This pre-check only verifies models/providers, so you can press Create without signing in here. If the problem persists, the launch itself may fail.",
+        "advisoryTitle": "Preflight warning — this does not block creating the team",
         "checkingProviders": "Checking selected providers...",
         "failed": "Failed to prepare selected providers",
         "preparingEnvironment": "Preparing environment...",
@@ -4285,6 +4287,16 @@ export default interface Resources {
         "claude": "Found by Claude",
         "codex": "Found by Codex",
         "mixed": "Found by Claude and Codex"
+      }
+    },
+    "providerRuntime": {
+      "terminal": {
+        "loginFailure": "Authentication failed",
+        "loginSuccess": "Authentication updated",
+        "loginTitle": "{{runtime}} Login: {{provider}}",
+        "logoutFailure": "Logout failed",
+        "logoutSuccess": "Provider logged out",
+        "logoutTitle": "{{runtime}} Logout: {{provider}}"
       }
     },
     "provisioning": {

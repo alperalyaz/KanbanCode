@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 
+import { useAppTranslation } from '@features/localization/renderer';
 import { ProviderRuntimeSettingsDialog } from '@renderer/components/runtime/ProviderRuntimeSettingsDialog';
 import {
   getProviderTerminalCommand,
@@ -37,6 +38,7 @@ export const ProvisioningProviderRuntimeSettingsDialog = ({
   disabled = false,
   onProviderRuntimeChanged,
 }: ProvisioningProviderRuntimeSettingsDialogProps): React.JSX.Element | null => {
+  const { t } = useAppTranslation('team');
   const [providerTerminal, setProviderTerminal] = useState<ProviderTerminalState | null>(null);
   const {
     appConfig,
@@ -166,9 +168,15 @@ export const ProvisioningProviderRuntimeSettingsDialog = ({
       />
       {providerTerminal && cliStatus?.binaryPath && (
         <TerminalModal
-          title={`${getRuntimeDisplayName(cliStatus, true)} ${
-            providerTerminal.action === 'login' ? 'Login' : 'Logout'
-          }: ${getProvisioningProviderLabel(providerTerminal.providerId)}`}
+          title={t(
+            providerTerminal.action === 'login'
+              ? 'providerRuntime.terminal.loginTitle'
+              : 'providerRuntime.terminal.logoutTitle',
+            {
+              runtime: getRuntimeDisplayName(cliStatus, true),
+              provider: getProvisioningProviderLabel(providerTerminal.providerId),
+            }
+          )}
           command={cliStatus.binaryPath}
           args={providerTerminalCommand?.args}
           env={providerTerminalCommand?.env}
@@ -178,12 +186,16 @@ export const ProvisioningProviderRuntimeSettingsDialog = ({
             refreshRuntimeAfterTerminal();
           }}
           autoCloseOnSuccessMs={3000}
-          successMessage={
-            providerTerminal.action === 'login' ? 'Authentication updated' : 'Provider logged out'
-          }
-          failureMessage={
-            providerTerminal.action === 'login' ? 'Authentication failed' : 'Logout failed'
-          }
+          successMessage={t(
+            providerTerminal.action === 'login'
+              ? 'providerRuntime.terminal.loginSuccess'
+              : 'providerRuntime.terminal.logoutSuccess'
+          )}
+          failureMessage={t(
+            providerTerminal.action === 'login'
+              ? 'providerRuntime.terminal.loginFailure'
+              : 'providerRuntime.terminal.logoutFailure'
+          )}
         />
       )}
     </>

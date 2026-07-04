@@ -161,6 +161,8 @@
       "readyWithNotes": "Seçili tüm sağlayıcılar hazır, notlarla birlikte.",
       "ready": "Seçili tüm sağlayıcılar hazır.",
       "failed": "Seçili sağlayıcılar hazırlanamadı",
+      "advisoryTitle": "Ön kontrol uyarısı — bu, ekip oluşturmayı engellemez",
+      "advisoryHint": "Ekibin yerel Claude CLI üzerinden başlar. Bu ön kontrol yalnızca modelleri/sağlayıcıları doğrular; buradan giriş yapmadan da 'Oluştur'a basabilirsin. Sorun sürerse yalnızca başlatma başarısız olabilir.",
       "checkingProviders": "Seçili sağlayıcılar kontrol ediliyor...",
       "preparingEnvironment": "Ortam hazırlanıyor...",
       "selectedProvidersReadyWithNotes": "Seçili sağlayıcılar hazır (notlarla birlikte)",
@@ -2297,6 +2299,16 @@
         "label": "Optimizasyon",
         "description": "Performans darboğazlarını profiller ve hedefli iyileştirmeler önerir."
       }
+    }
+  },
+  "providerRuntime": {
+    "terminal": {
+      "loginTitle": "{{runtime}} Girişi: {{provider}}",
+      "logoutTitle": "{{runtime}} Çıkışı: {{provider}}",
+      "loginSuccess": "Kimlik doğrulama güncellendi",
+      "logoutSuccess": "Sağlayıcı oturumu kapatıldı",
+      "loginFailure": "Kimlik doğrulama başarısız",
+      "logoutFailure": "Çıkış başarısız"
     }
   }
 }

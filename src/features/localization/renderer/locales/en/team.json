@@ -161,6 +161,8 @@
       "readyWithNotes": "All selected providers are ready, with notes.",
       "ready": "All selected providers are ready.",
       "failed": "Failed to prepare selected providers",
+      "advisoryTitle": "Preflight warning — this does not block creating the team",
+      "advisoryHint": "Your team starts through your local Claude CLI. This pre-check only verifies models/providers, so you can press Create without signing in here. If the problem persists, the launch itself may fail.",
       "checkingProviders": "Checking selected providers...",
       "preparingEnvironment": "Preparing environment...",
       "selectedProvidersReadyWithNotes": "Selected providers ready (with notes)",
@@ -2299,6 +2301,16 @@
         "label": "Optimizer",
         "description": "Profiles performance bottlenecks and proposes targeted improvements."
       }
+    }
+  },
+  "providerRuntime": {
+    "terminal": {
+      "loginTitle": "{{runtime}} Login: {{provider}}",
+      "logoutTitle": "{{runtime}} Logout: {{provider}}",
+      "loginSuccess": "Authentication updated",
+      "logoutSuccess": "Provider logged out",
+      "loginFailure": "Authentication failed",
+      "logoutFailure": "Logout failed"
     }
   }
 }
