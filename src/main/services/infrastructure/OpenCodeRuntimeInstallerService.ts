@@ -662,6 +662,15 @@ async function readCurrentManifest(): Promise<OpenCodeRuntimeManifest | null> {
   }
 }
 
+/**
+ * Windows keeps a lock on a running (or security-software-scanned) executable,
+ * so deleting/replacing a live `opencode.exe` fails with EPERM/EBUSY/EACCES.
+ */
+function isFileLockError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code === 'EPERM' || code === 'EBUSY' || code === 'EACCES';
+}
+
 export class OpenCodeRuntimeInstallerService {
   private mainWindow: BrowserWindow | null = null;
   private installPromise: Promise<OpenCodeRuntimeStatus> | null = null;
@@ -834,6 +843,37 @@ export class OpenCodeRuntimeInstallerService {
       const platformVersion = optionalDependencies[selected.packageName] ?? rootMetadata.version!;
       const normalizedVersion = platformVersion.replace(/^[~^]/, '');
       const platformMetadata = await fetchPackageMetadata(selected.packageName, normalizedVersion);
+      const targetVersion = platformMetadata.version!;
+
+      // Idempotency: if the exact target version is already installed and its
+      // binary still runs, do not re-extract/replace it. On Windows the existing
+      // opencode.exe is often locked (in use by a live team, or scanned by
+      // security software), and replacing it would fail with EPERM — even though
+      // the runtime is perfectly usable. Skipping avoids that false failure.
+      const existingManifest = await readCurrentManifest();
+      if (
+        existingManifest?.platformPackage === selected.packageName &&
+        existingManifest.version === targetVersion &&
+        isAbsoluteExistingFile(existingManifest.binaryPath)
+      ) {
+        const existingProbe = await probeOpenCodeBinaryVersionCached(existingManifest.binaryPath);
+        if (existingProbe.ok) {
+          const readyStatus: OpenCodeRuntimeStatus = {
+            installed: true,
+            binaryPath: existingManifest.binaryPath,
+            version: existingProbe.version ?? existingManifest.version,
+            source: 'app-managed',
+            state: 'ready',
+            progress: {
+              phase: 'ready',
+              percent: 100,
+              detail: `OpenCode ${existingProbe.version ?? existingManifest.version} already installed`,
+            },
+          };
+          this.publish(readyStatus);
+          return readyStatus;
+        }
+      }
 
       this.publishProgress({
         phase: 'downloading',
@@ -872,9 +912,25 @@ export class OpenCodeRuntimeInstallerService {
         windowsHide: true,
       });
 
-      await fsp.rm(versionDir, { recursive: true, force: true });
-      await fsp.mkdir(path.dirname(versionDir), { recursive: true });
-      await renamePathWithRetry(tempDir, versionDir);
+      try {
+        await fsp.rm(versionDir, { recursive: true, force: true });
+        await fsp.mkdir(path.dirname(versionDir), { recursive: true });
+        await renamePathWithRetry(tempDir, versionDir);
+      } catch (replaceError) {
+        // The destination opencode.exe can be locked on Windows (live process or
+        // security scan) → EPERM/EBUSY on unlink. If a working binary is already
+        // in place, keep it and treat the install as satisfied rather than
+        // failing the launch. Otherwise the error is real and must surface.
+        if (isFileLockError(replaceError) && isAbsoluteExistingFile(binaryPath)) {
+          const existingProbe = await probeOpenCodeBinaryVersionCached(binaryPath);
+          if (!existingProbe.ok) {
+            throw replaceError;
+          }
+          await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+        } else {
+          throw replaceError;
+        }
+      }
       const manifest: OpenCodeRuntimeManifest = {
         schemaVersion: CURRENT_MANIFEST_SCHEMA_VERSION,
         version: stdout.trim() || platformMetadata.version!,

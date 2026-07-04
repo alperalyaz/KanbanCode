@@ -491,7 +491,7 @@ describe('ClaudeMultimodelBridgeService', () => {
       'runtime status --json --provider opencode --summary',
       'model list --json --provider opencode',
     ]);
-    expect(execCliMock.mock.calls[0][2]?.timeout).toBe(12000);
+    expect(execCliMock.mock.calls[0][2]?.timeout).toBe(30000);
     vi.mocked(console.warn).mockClear();
   });
 
@@ -666,7 +666,7 @@ describe('ClaudeMultimodelBridgeService', () => {
     expect(execCliMock).toHaveBeenCalledTimes(8);
     expect(
       execCliMock.mock.calls.map((call) => call[2]?.timeout as number).sort((a, b) => a - b)
-    ).toEqual([5000, 5000, 12000, 15000, 15000, 25000, 25000, 25000]);
+    ).toEqual([5000, 5000, 15000, 15000, 25000, 25000, 25000, 30000]);
     expect(calls).toEqual(
       expect.arrayContaining([
         'runtime status --json --provider anthropic --summary',

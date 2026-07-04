@@ -31,7 +31,12 @@ const logger = createLogger('ClaudeMultimodelBridgeService');
 const PROVIDER_STATUS_TIMEOUT_MS = 90_000;
 const PROVIDER_STATUS_SUMMARY_TIMEOUT_MS = 30_000;
 const LEGACY_FALLBACK_PROVIDER_STATUS_SUMMARY_TIMEOUT_MS = 5_000;
-const OPENCODE_FALLBACK_PROVIDER_STATUS_SUMMARY_TIMEOUT_MS = 12_000;
+// Cold desktop starts (fresh boot, Windows security software scanning the
+// freshly-extracted runtime exe) can leave OpenCode's summary probe needing far
+// more than a snappy warm-path budget. 12s was too tight and surfaced as a
+// misleading "OpenCode not installed" launch block. Give the summary probe the
+// full summary budget so a slow cold start resolves instead of failing.
+const OPENCODE_FALLBACK_PROVIDER_STATUS_SUMMARY_TIMEOUT_MS = 30_000;
 const LEGACY_PROVIDER_AUTH_TIMEOUT_MS = 15_000;
 const PROVIDER_MODELS_TIMEOUT_MS = 25_000;
 const PROVIDER_STATUS_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
