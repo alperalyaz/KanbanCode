@@ -1,5 +1,5 @@
 /**
- * Session export utilities for Agent Teams AI.
+ * Session export utilities for KanbanCode.
  *
  * Provides formatters to export session data as plain text, Markdown, or JSON,
  * and a download trigger for browser-based file saving.

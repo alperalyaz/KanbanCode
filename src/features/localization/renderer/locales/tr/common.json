@@ -780,7 +780,6 @@
     "restartNow": "Şimdi yeniden başlat"
   },
   "layout": {
-    "discord": "Discord",
     "expandSidebar": "Kenar çubuğunu genişlet",
     "collapseSidebarShortcut": "Kenar çubuğunu daralt ({{shortcut}})",
     "sidebarView": "Kenar çubuğu görünümü",

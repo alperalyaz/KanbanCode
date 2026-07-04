@@ -1604,7 +1604,7 @@ export class CliInstallerService {
         const raw = chunk.toString('utf-8');
         if (!raw.trim()) return;
 
-        // Send raw chunk for xterm.js rendering in UI
+        // Send raw chunk for log rendering in UI
         this.sendProgress({ type: 'installing', rawChunk: raw });
 
         // Extract clean text for logger and error context

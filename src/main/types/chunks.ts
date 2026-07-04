@@ -1,5 +1,5 @@
 /**
- * Chunk and visualization types for Agent Teams AI.
+ * Chunk and visualization types for KanbanCode.
  *
  * This module contains:
  * - Chunk types (UserChunk, AIChunk, SystemChunk, CompactChunk)

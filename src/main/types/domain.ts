@@ -1,5 +1,5 @@
 /**
- * Domain/business entity types for Agent Teams AI.
+ * Domain/business entity types for KanbanCode.
  *
  * These types represent the application's domain model:
  * - Projects and sessions

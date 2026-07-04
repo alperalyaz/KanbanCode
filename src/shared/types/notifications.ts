@@ -1,5 +1,5 @@
 /**
- * Notification and configuration types for Agent Teams AI.
+ * Notification and configuration types for KanbanCode.
  *
  * These types define:
  * - Detected errors from session files
@@ -334,8 +334,6 @@ export interface AppConfig {
     showDockIcon: boolean;
     /** Application theme */
     theme: 'dark' | 'light' | 'system';
-    /** Default tab to show on app launch */
-    defaultTab: 'dashboard' | 'last-session';
     /** Whether to use the multimodel runtime instead of the stock Claude CLI */
     multimodelEnabled: boolean;
     /** Optional custom Claude root folder (auto-detected when null) */
@@ -376,15 +374,6 @@ export interface AppConfig {
       gemini: 'auto' | 'api' | 'cli-sdk';
       codex: 'codex-native';
     };
-  };
-  /** Display and UI settings */
-  display: {
-    /** Whether to show timestamps in message views */
-    showTimestamps: boolean;
-    /** Whether to use compact display mode */
-    compactMode: boolean;
-    /** Whether to enable syntax highlighting in code blocks */
-    syntaxHighlighting: boolean;
   };
   /** Session-related settings */
   sessions: {

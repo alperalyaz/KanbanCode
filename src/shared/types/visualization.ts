@@ -1,5 +1,5 @@
 /**
- * Visualization-specific types for Agent Teams AI.
+ * Visualization-specific types for KanbanCode.
  *
  * These types are used for waterfall chart visualization
  * and are shared between main and renderer processes.

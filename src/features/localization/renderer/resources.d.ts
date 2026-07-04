@@ -262,7 +262,6 @@ export default interface Resources {
     "layout": {
       "closeTab": "Close tab",
       "collapseSidebarShortcut": "Collapse sidebar ({{shortcut}})",
-      "discord": "Discord",
       "expandSidebar": "Expand sidebar",
       "jumpToSection": "Jump to section",
       "loadingTab": "Loading tab",
@@ -3284,7 +3283,7 @@ export default interface Resources {
       },
       "saved": "Saved",
       "solo": {
-        "description": "Only the team lead (main process) will be started - no teammates will be spawned. Works like a regular agent session in your chosen runtime (Claude Code, Codex, OpenCode, Gemini) but with access to the task board for planning. Saves tokens by avoiding teammate coordination overhead. You can add members later from the team settings.",
+        "description": "Only the team lead will run — like a normal agent session, plus a task board. Saves tokens by skipping teammate coordination. Add members below to turn it into a team.",
         "label": "Solo team"
       },
       "title": {
