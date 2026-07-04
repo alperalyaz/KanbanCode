@@ -137,7 +137,6 @@ export default interface Resources {
       "lines": "lines {{from}}-{{to}}",
       "linesParenthesized": "(lines {{from}}-{{to}})",
       "markdownPreview": "Markdown Preview",
-      "mermaidSyntaxError": "Mermaid syntax error",
       "moreLines": "({{count}} more lines...)",
       "moreLines_few": "({{count}} more lines...)",
       "moreLines_many": "({{count}} more lines...)",
@@ -271,7 +270,6 @@ export default interface Resources {
         "exportMarkdown": "Export as Markdown",
         "exportPlainText": "Export as Plain Text",
         "extensions": "Extensions",
-        "schedules": "Schedules",
         "search": "Search",
         "settings": "Settings",
         "teams": "Teams"
@@ -504,40 +502,6 @@ export default interface Resources {
         "setProjectDefault": "Set project default",
         "validationContext": "Validation context"
       }
-    },
-    "schedules": {
-      "actions": {
-        "addSchedule": "Add Schedule",
-        "clearFilters": "Clear filters",
-        "createSchedule": "Create Schedule",
-        "delete": "Delete",
-        "edit": "Edit",
-        "pause": "Pause",
-        "resume": "Resume",
-        "runNow": "Run now"
-      },
-      "empty": {
-        "description": "Create a schedule on any team to automate Claude task execution with cron expressions. Schedules from all teams will appear here.",
-        "noMatches": "No schedules match the current filters",
-        "title": "No scheduled tasks"
-      },
-      "filters": {
-        "allTeams": "All teams"
-      },
-      "item": {
-        "loadingRunHistory": "Loading run history...",
-        "nextRun": "Next: {{value}}",
-        "noRunsYet": "No runs yet"
-      },
-      "loading": "Loading schedules...",
-      "searchPlaceholder": "Search schedules...",
-      "status": {
-        "active": "Active",
-        "all": "All",
-        "disabled": "Disabled",
-        "paused": "Paused"
-      },
-      "title": "Schedules"
     },
     "search": {
       "closeShortcut": "Close (Esc)",
@@ -3247,21 +3211,6 @@ export default interface Resources {
         "teamDetailsDescription": "Keep the default flow compact and only open this when you want extra context or a custom color.",
         "teamDetailsTitle": "Optional team details"
       },
-      "organizationPlacement": {
-        "addToOrganization": "Add to organization",
-        "description": "Choose the organization, then choose the root or group where the team belongs.",
-        "groupOrRootHelp": "Choose a group, or keep the organization root.",
-        "groupOrRootLabel": "Group or root",
-        "groupOrRootPlaceholder": "Root or group",
-        "kind": {
-          "group": "Group",
-          "root": "Root"
-        },
-        "organizationHelp": "Choose the organization that owns this team.",
-        "organizationLabel": "Organization",
-        "organizationPlaceholder": "Organization",
-        "title": "Organization placement"
-      },
       "placeholders": {
         "description": "Brief description of the team purpose",
         "prompt": "Instructions for the team lead during provisioning..."
@@ -3550,7 +3499,6 @@ export default interface Resources {
     },
     "launch": {
       "actions": {
-        "createSchedule": "Create Schedule",
         "creating": "Creating...",
         "goToDashboard": "Go to Dashboard",
         "launchTeam": "Launch team",
@@ -3571,9 +3519,6 @@ export default interface Resources {
         "workingDirectory": "Working directory:"
       },
       "description": {
-        "createSchedule": "Schedule automatic Claude task execution",
-        "createScheduleForTeam": "Schedule automatic runs for team \"{{team}}\"",
-        "editSchedule": "Editing schedule for team \"{{team}}\"",
         "launchPrefix": "Start team",
         "launchSuffix": "via local Claude CLI.",
         "relaunchPrefix": "Stop the current run for",
@@ -3582,8 +3527,7 @@ export default interface Resources {
       "errors": {
         "launchFailed": "Failed to launch team",
         "loadProjectsFailed": "Failed to load projects",
-        "relaunchFailed": "Failed to relaunch team",
-        "saveScheduleFailed": "Failed to save schedule"
+        "relaunchFailed": "Failed to relaunch team"
       },
       "optionalSettings": {
         "description": "Keep the launch flow focused on the project path and only expand this when you want extra control.",
@@ -3612,7 +3556,6 @@ export default interface Resources {
         "oneShotPrefix": "This prompt will be passed to",
         "oneShotSuffix": "for one-shot execution",
         "saved": "Saved",
-        "schedulePlaceholder": "Instructions for Claude to execute on schedule...",
         "teamLeadOptional": "Prompt for team lead (optional)",
         "teamLeadPlaceholder": "Instructions for team lead..."
       },
@@ -3622,22 +3565,7 @@ export default interface Resources {
         "description": "Saving these settings will stop the current team process, persist the updated roster, and launch the team again with the new runtime.",
         "title": "Relaunch will restart the current team run"
       },
-      "schedule": {
-        "labelOptional": "Label (optional)",
-        "labelPlaceholder": "e.g., Daily code review, Nightly tests...",
-        "maxBudgetUsd": "Max budget (USD)",
-        "maxTurns": "Max turns",
-        "noLimit": "No limit",
-        "noMatches": "No teams match your search.",
-        "noTeams": "No teams available. Create a team first.",
-        "searchTeams": "Search teams...",
-        "selectTeam": "Select a team...",
-        "team": "Team",
-        "title": "Schedule"
-      },
       "title": {
-        "createSchedule": "Create Schedule",
-        "editSchedule": "Edit Schedule",
         "launch": "Launch Team",
         "relaunch": "Relaunch Team"
       },
@@ -3661,7 +3589,6 @@ export default interface Resources {
         "deleteTeam": "Delete team",
         "launchTeam": "Launch team",
         "launching": "Launching...",
-        "organizationMap": "Org Map",
         "relaunchTeam": "Relaunch team",
         "restore": "Restore",
         "restoreTeam": "Restore team",
@@ -4312,226 +4239,6 @@ export default interface Resources {
       "replaceSuffix": "with the provider and model IDs from your OpenCode setup. Prompt instructions like",
       "summary": "OpenCode local models can use an OpenCode context budget instead of prompt-only limits."
     },
-    "organizations": {
-      "editor": {
-        "actions": {
-          "addGroup": "Add group",
-          "addRelation": "Add relation",
-          "assignTeam": "Assign team",
-          "create": "Create",
-          "move": "Move",
-          "remove": "Remove",
-          "teamHere": "Team here"
-        },
-        "badges": {
-          "groups": "{{count}} groups",
-          "groups_few": "{{count}} groups",
-          "groups_many": "{{count}} groups",
-          "groups_one": "{{count}} group",
-          "groups_other": "{{count}} groups",
-          "placed": "{{count}} placed",
-          "placed_few": "{{count}} placed",
-          "placed_many": "{{count}} placed",
-          "placed_one": "{{count}} placed",
-          "placed_other": "{{count}} placed",
-          "unplaced": "{{count}} unplaced",
-          "unplaced_few": "{{count}} unplaced",
-          "unplaced_many": "{{count}} unplaced",
-          "unplaced_one": "{{count}} unplaced",
-          "unplaced_other": "{{count}} unplaced"
-        },
-        "createGroup": "Create group",
-        "createUnderPlaceholder": "Create under",
-        "dropHere": "Drop here",
-        "fallbackOrganization": "organization",
-        "groupPlaceholder": "Department, Squad, Product Area",
-        "kind": {
-          "group": "group",
-          "org": "org",
-          "team": "team"
-        },
-        "kindPlaceholder": "Kind",
-        "loadingOrganization": "Loading organization",
-        "manualRelation": "Manual relation",
-        "moveUnderPlaceholder": "Move under",
-        "newOrganization": "New organization",
-        "noOrganizationUnits": "No organization units yet",
-        "organizationTree": "Organization tree",
-        "parentOrganization": "Parent organization",
-        "placeExistingTeam": "Place existing team",
-        "placeUnderPlaceholder": "Place under",
-        "relationKind": {
-          "delegates": "Delegates",
-          "dependsOn": "Depends on",
-          "observes": "Observes"
-        },
-        "rootSelected": "Organization root selected",
-        "saving": "Saving...",
-        "selectedItem": "Selected item",
-        "selectedLocation": "Selected location",
-        "source": {
-          "configured": "configured",
-          "generated": "generated",
-          "loading": "loading"
-        },
-        "sourcePlaceholder": "Source",
-        "tabs": {
-          "links": "Links",
-          "organizations": "Orgs",
-          "structure": "Structure",
-          "teams": "Teams"
-        },
-        "targetPlaceholder": "Target",
-        "teamPlaceholder": "Team",
-        "title": "Organization setup",
-        "topLevel": "Top level",
-        "underLabel": "under {{label}}"
-      },
-      "graph": {
-        "actions": {
-          "createTeamIn": "Create team in {{label}}"
-        },
-        "canvas": {
-          "activeAgents": "{{count}} active agents",
-          "activeAgents_few": "{{count}} active agents",
-          "activeAgents_many": "{{count}} active agents",
-          "activeAgents_one": "{{count}} active agent",
-          "activeAgents_other": "{{count}} active agents",
-          "agentStatus": {
-            "active": "active",
-            "idle": "idle",
-            "offline": "offline",
-            "unknown": "unknown"
-          },
-          "agents": "{{count}} agents",
-          "agents_few": "{{count}} agents",
-          "agents_many": "{{count}} agents",
-          "agents_one": "{{count}} agent",
-          "agents_other": "{{count}} agents",
-          "allOrganizations": "All Organizations",
-          "notFound": "not found",
-          "offline": "offline",
-          "online": "online",
-          "organizationMap": "Organization Map",
-          "orgsAndTeams": "{{orgCount}} orgs - {{teamCount}} teams",
-          "teamReference": "team reference",
-          "teamRole": "{{memberCount}} agents - {{activeCount}} active",
-          "teams": "{{count}} teams",
-          "teams_few": "{{count}} teams",
-          "teams_many": "{{count}} teams",
-          "teams_one": "{{count}} team",
-          "teams_other": "{{count}} teams",
-          "unassignedTeams": "Unassigned Teams"
-        },
-        "edgeOverlay": {
-          "close": "Close relation details",
-          "manualRelation": "Manual organization relation",
-          "messages": "{{count}} messages",
-          "messages_few": "{{count}} messages",
-          "messages_many": "{{count}} messages",
-          "messages_one": "{{count}} message",
-          "messages_other": "{{count}} messages",
-          "runtimeMessages": "Runtime cross-team messages",
-          "weight": "weight {{count}}",
-          "weight_few": "weight {{count}}",
-          "weight_many": "weight {{count}}",
-          "weight_one": "weight {{count}}",
-          "weight_other": "weight {{count}}"
-        }
-      },
-      "inspector": {
-        "actions": {
-          "collapse": "Collapse",
-          "collapseSubtree": "Collapse subtree",
-          "expand": "Expand",
-          "expandSubtree": "Expand subtree",
-          "graph": "Graph",
-          "open": "Open"
-        },
-        "agents": "{{count}} agents",
-        "agents_few": "{{count}} agents",
-        "agents_many": "{{count}} agents",
-        "agents_one": "{{count}} agent",
-        "agents_other": "{{count}} agents",
-        "childNodes": "{{count}} child nodes",
-        "childNodes_few": "{{count}} child nodes",
-        "childNodes_many": "{{count}} child nodes",
-        "childNodes_one": "{{count}} child node",
-        "childNodes_other": "{{count}} child nodes",
-        "closeSelection": "Close selection",
-        "descriptions": {
-          "allOrganizations": "All configured organizations.",
-          "unassignedTeams": "Teams that are not placed in an organization yet."
-        },
-        "inProgress": "In progress",
-        "kind": {
-          "group": "group",
-          "organization": "organization"
-        },
-        "noActiveAgentTasks": "No active agent tasks",
-        "status": {
-          "offline": "offline",
-          "online": "online"
-        },
-        "tags": {
-          "system": "system",
-          "unassigned": "unassigned"
-        },
-        "taskCounts": {
-          "active": "active",
-          "done": "done",
-          "pending": "pending"
-        }
-      },
-      "map": {
-        "actions": {
-          "edit": "Edit",
-          "editing": "Editing",
-          "refresh": "Refresh"
-        },
-        "allOrganizationsTitle": "All Organizations",
-        "defaultTitle": "Organization Map",
-        "loading": "Loading organization map...",
-        "noOrganizationData": "No organization data",
-        "organizationPlaceholder": "Organization",
-        "scope": {
-          "allOrgs": "All orgs",
-          "currentOrg": "Current org"
-        },
-        "stats": {
-          "agents": "{{count}} agents",
-          "agents_few": "{{count}} agents",
-          "agents_many": "{{count}} agents",
-          "agents_one": "{{count}} agent",
-          "agents_other": "{{count}} agents",
-          "messages": "{{count}} messages",
-          "messages_few": "{{count}} messages",
-          "messages_many": "{{count}} messages",
-          "messages_one": "{{count}} message",
-          "messages_other": "{{count}} messages",
-          "orgs": "{{count}} orgs",
-          "orgs_few": "{{count}} orgs",
-          "orgs_many": "{{count}} orgs",
-          "orgs_one": "{{count}} org",
-          "orgs_other": "{{count}} orgs",
-          "relations": "{{count}} relations",
-          "relations_few": "{{count}} relations",
-          "relations_many": "{{count}} relations",
-          "relations_one": "{{count}} relation",
-          "relations_other": "{{count}} relations",
-          "runtimeLinks": "{{count}} runtime links",
-          "runtimeLinks_few": "{{count}} runtime links",
-          "runtimeLinks_many": "{{count}} runtime links",
-          "runtimeLinks_one": "{{count}} runtime link",
-          "runtimeLinks_other": "{{count}} runtime links",
-          "teams": "{{count}} teams",
-          "teams_few": "{{count}} teams",
-          "teams_many": "{{count}} teams",
-          "teams_one": "{{count}} team",
-          "teams_other": "{{count}} teams"
-        }
-      }
-    },
     "permissions": {
       "autoApproveAllTools": "Auto-approve all tool calls",
       "autonomousModeDescription": "On: tools run without asking.",
@@ -5111,83 +4818,6 @@ export default interface Resources {
         "provisioning": "Launching"
       },
       "title": "Running Teams"
-    },
-    "schedule": {
-      "actions": {
-        "addSchedule": "Add Schedule",
-        "delete": "Delete",
-        "edit": "Edit",
-        "pause": "Pause",
-        "resume": "Resume",
-        "runNow": "Run now"
-      },
-      "count": "{{count}} schedules",
-      "count_few": "{{count}} schedules",
-      "count_many": "{{count}} schedules",
-      "count_one": "{{count}} schedule",
-      "count_other": "{{count}} schedules",
-      "cron": {
-        "errors": {
-          "enterExpression": "Enter a cron expression",
-          "invalidExpression": "Invalid cron expression"
-        },
-        "expression": "Cron expression",
-        "highFrequencyWarning": "High frequency schedule (less than 5 min interval)",
-        "nextRuns": "Next runs:",
-        "presets": {
-          "dailyAtNine": "Daily at 9am",
-          "everyHour": "Every hour",
-          "everySixHours": "Every 6 hours",
-          "everyThirtyMinutes": "Every 30 min",
-          "mondayAtNine": "Monday at 9am",
-          "weekdaysAtNine": "Weekdays at 9am"
-        },
-        "selectTimezone": "Select timezone",
-        "timezone": "Timezone",
-        "warmUpDescription": "Prepares selected providers before scheduled execution",
-        "warmUpOptions": {
-          "fifteenMinutes": "15 min",
-          "fiveMinutes": "5 min",
-          "none": "No warm-up",
-          "tenMinutes": "10 min",
-          "thirtyMinutes": "30 min"
-        },
-        "warmUpTime": "Warm-up time"
-      },
-      "empty": {
-        "description": "Create a schedule to run Claude tasks automatically on a cron schedule.",
-        "title": "No schedules yet"
-      },
-      "nextRun": "Next: {{next}}",
-      "runHistory": {
-        "empty": "No runs yet",
-        "loading": "Loading run history..."
-      },
-      "runLog": {
-        "close": "Close",
-        "errors": "Errors",
-        "exitCode": "exit {{code}}",
-        "loadingLogs": "Loading logs...",
-        "retryCount": "retry {{count}}/{{max}}",
-        "stillRunning": "Task is still running...",
-        "title": "Run Log"
-      },
-      "runStatus": {
-        "cancelled": "Cancelled",
-        "completed": "Completed",
-        "failed": "Failed",
-        "interrupted": "Interrupted",
-        "pending": "Pending",
-        "running": "Running",
-        "warm": "Warm",
-        "warmingUp": "Warming up"
-      },
-      "status": {
-        "active": "Active",
-        "disabled": "Disabled",
-        "paused": "Paused"
-      },
-      "title": "Schedules"
     },
     "sendMessage": {
       "attachments": {

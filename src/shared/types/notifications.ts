@@ -32,8 +32,6 @@ export type TeamEventType =
   | 'task_created'
   | 'all_tasks_completed'
   | 'cross_team_message'
-  | 'schedule_completed'
-  | 'schedule_failed'
   | 'team_launched'
   | 'team_launch_incomplete';
 
@@ -41,7 +39,7 @@ export type NotificationTarget =
   | {
       kind: 'team';
       teamName: string;
-      section?: 'overview' | 'tasks' | 'members' | 'messages' | 'schedules';
+      section?: 'overview' | 'tasks' | 'members' | 'messages';
     }
   | {
       kind: 'task';

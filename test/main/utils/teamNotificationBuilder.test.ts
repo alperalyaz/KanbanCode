@@ -99,8 +99,6 @@ describe('buildDetectedErrorFromTeam', () => {
     task_created: { triggerName: 'Task Created', triggerColor: 'green' },
     all_tasks_completed: { triggerName: 'All Done', triggerColor: 'green' },
     cross_team_message: { triggerName: 'Cross-Team', triggerColor: 'cyan' },
-    schedule_completed: { triggerName: 'Schedule Done', triggerColor: 'green' },
-    schedule_failed: { triggerName: 'Schedule Failed', triggerColor: 'red' },
     team_launched: { triggerName: 'Team Launched', triggerColor: 'green' },
     team_launch_incomplete: { triggerName: 'Launch Incomplete', triggerColor: 'orange' },
   };

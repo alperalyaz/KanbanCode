@@ -31,8 +31,7 @@
     "code": "Kod",
     "preview": "Önizleme",
     "markdownPreview": "Markdown Önizleme",
-    "linesParenthesized": "(satır {{from}}-{{to}})",
-    "mermaidSyntaxError": "Mermaid sözdizimi hatası"
+    "linesParenthesized": "(satır {{from}}-{{to}})"
   },
   "contextBadge": {
     "badge": "Bağlam",
@@ -100,40 +99,6 @@
     "closeShortcut": "Kapat (Esc)",
     "nothingFound": "Hiçbir şey bulunamadı",
     "placeholder": "Ara..."
-  },
-  "schedules": {
-    "actions": {
-      "addSchedule": "Zamanlama Ekle",
-      "clearFilters": "Filtreleri temizle",
-      "createSchedule": "Zamanlama Oluştur",
-      "delete": "Sil",
-      "edit": "Düzenle",
-      "pause": "Duraklat",
-      "resume": "Devam ettir",
-      "runNow": "Şimdi çalıştır"
-    },
-    "empty": {
-      "description": "Cron ifadeleriyle Claude görev yürütmesini otomatikleştirmek için herhangi bir ekipte bir zamanlama oluşturun. Tüm ekiplerin zamanlamaları burada görünecek.",
-      "noMatches": "Geçerli filtrelerle eşleşen zamanlama yok",
-      "title": "Zamanlanmış görev yok"
-    },
-    "filters": {
-      "allTeams": "Tüm ekipler"
-    },
-    "item": {
-      "loadingRunHistory": "Çalıştırma geçmişi yükleniyor...",
-      "nextRun": "Sonraki: {{value}}",
-      "noRunsYet": "Henüz çalıştırma yok"
-    },
-    "loading": "Zamanlamalar yükleniyor...",
-    "searchPlaceholder": "Zamanlamalarda ara...",
-    "status": {
-      "active": "Etkin",
-      "all": "Tümü",
-      "disabled": "Devre dışı",
-      "paused": "Duraklatıldı"
-    },
-    "title": "Zamanlamalar"
   },
   "sessions": {
     "actions": {
@@ -798,7 +763,6 @@
       "settings": "Ayarlar",
       "extensions": "Eklentiler",
       "search": "Ara",
-      "schedules": "Zamanlamalar",
       "exportMarkdown": "Markdown olarak dışa aktar",
       "exportJson": "JSON olarak dışa aktar",
       "exportPlainText": "Düz Metin olarak dışa aktar",

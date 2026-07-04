@@ -182,21 +182,6 @@
       "teamNameExists": "Ekip adı zaten mevcut",
       "checkFormFields": "Form alanlarını kontrol edin"
     },
-    "organizationPlacement": {
-      "title": "Organizasyon yerleşimi",
-      "description": "Organizasyonu seç, sonra ekibin ait olduğu kök veya grubu seç.",
-      "addToOrganization": "Organizasyona ekle",
-      "organizationLabel": "Organizasyon",
-      "organizationHelp": "Bu ekibin sahibi olan organizasyonu seç.",
-      "organizationPlaceholder": "Organizasyon",
-      "groupOrRootLabel": "Grup veya kök",
-      "groupOrRootHelp": "Bir grup seç veya organizasyon kökünü koru.",
-      "groupOrRootPlaceholder": "Kök veya grup",
-      "kind": {
-        "root": "Kök",
-        "group": "Grup"
-      }
-    },
     "defaultDescription": {
       "fallback": "Sağlama akışı için ekip",
       "named": "Sağlama akışı için {{teamName}} ekibi"
@@ -1153,7 +1138,6 @@
   },
   "launch": {
     "actions": {
-      "createSchedule": "Zamanlama Oluştur",
       "creating": "Oluşturuluyor...",
       "goToDashboard": "Panoya git",
       "launchTeam": "Ekibi başlat",
@@ -1174,9 +1158,6 @@
       "workingDirectory": "Çalışma dizini:"
     },
     "description": {
-      "createSchedule": "Otomatik Claude görev yürütmesini zamanla",
-      "createScheduleForTeam": "\"{{team}}\" ekibi için otomatik çalıştırmaları zamanla",
-      "editSchedule": "\"{{team}}\" ekibi için zamanlama düzenleniyor",
       "launchPrefix": "Ekibi başlat",
       "launchSuffix": "yerel Claude CLI aracılığıyla.",
       "relaunchPrefix": "Şunun geçerli çalıştırmasını durdur:",
@@ -1203,7 +1184,6 @@
       "oneShotPrefix": "Bu komut istemi şuraya iletilecek:",
       "oneShotSuffix": "tek seferlik yürütme için",
       "saved": "Kaydedildi",
-      "schedulePlaceholder": "Claude'un zamanlamaya göre yürütmesi için talimatlar...",
       "teamLeadOptional": "Ekip lideri için komut istemi (isteğe bağlı)",
       "teamLeadPlaceholder": "Ekip lideri için talimatlar..."
     },
@@ -1213,28 +1193,12 @@
       "description": "Bu ayarları kaydetmek geçerli ekip sürecini durduracak, güncellenmiş kadroyu kalıcı hale getirecek ve ekibi yeni çalışma zamanıyla yeniden başlatacaktır.",
       "title": "Yeniden başlatma geçerli ekip çalıştırmasını yeniden başlatacak"
     },
-    "schedule": {
-      "labelOptional": "Etiket (isteğe bağlı)",
-      "labelPlaceholder": "ör. Günlük kod incelemesi, Gece testleri...",
-      "maxBudgetUsd": "Maks. bütçe (USD)",
-      "maxTurns": "Maks. tür",
-      "noLimit": "Limit yok",
-      "noMatches": "Aramanızla eşleşen ekip yok.",
-      "noTeams": "Kullanılabilir ekip yok. Önce bir ekip oluşturun.",
-      "searchTeams": "Ekiplerde ara...",
-      "selectTeam": "Bir ekip seç...",
-      "team": "Ekip",
-      "title": "Zamanlama"
-    },
     "title": {
-      "createSchedule": "Zamanlama Oluştur",
-      "editSchedule": "Zamanlamayı Düzenle",
       "launch": "Ekibi Başlat",
       "relaunch": "Ekibi Yeniden Başlat"
     },
     "errors": {
       "loadProjectsFailed": "Projeler yüklenemedi",
-      "saveScheduleFailed": "Zamanlama kaydedilemedi",
       "relaunchFailed": "Ekip yeniden başlatılamadı",
       "launchFailed": "Ekip başlatılamadı"
     },
@@ -1256,7 +1220,6 @@
     "actions": {
       "copyTeam": "Ekibi kopyala",
       "createTeam": "Ekip Oluştur",
-      "organizationMap": "Org Haritası",
       "deleteForever": "Kalıcı olarak sil",
       "deletePermanently": "Kalıcı olarak sil",
       "deleteTeam": "Ekibi sil",
@@ -1733,83 +1696,6 @@
     },
     "roleSelect": {
       "customRolePlaceholder": "Özel rol girin..."
-    }
-  },
-  "schedule": {
-    "count": "{{count}} zamanlama",
-    "count_one": "{{count}} zamanlama",
-    "count_other": "{{count}} zamanlama",
-    "nextRun": "Sonraki: {{next}}",
-    "actions": {
-      "runNow": "Şimdi çalıştır",
-      "edit": "Düzenle",
-      "pause": "Duraklat",
-      "resume": "Devam ettir",
-      "delete": "Sil",
-      "addSchedule": "Zamanlama Ekle"
-    },
-    "runHistory": {
-      "loading": "Çalıştırma geçmişi yükleniyor...",
-      "empty": "Henüz çalıştırma yok"
-    },
-    "count_few": "{{count}} zamanlama",
-    "count_many": "{{count}} zamanlama",
-    "runLog": {
-      "title": "Çalıştırma Günlüğü",
-      "exitCode": "çıkış {{code}}",
-      "retryCount": "yeniden deneme {{count}}/{{max}}",
-      "stillRunning": "Görev hâlâ çalışıyor...",
-      "loadingLogs": "Günlükler yükleniyor...",
-      "errors": "Hatalar",
-      "close": "Kapat"
-    },
-    "cron": {
-      "expression": "Cron ifadesi",
-      "highFrequencyWarning": "Yüksek frekanslı zamanlama (5 dakikadan kısa aralık)",
-      "nextRuns": "Sonraki çalıştırmalar:",
-      "timezone": "Saat dilimi",
-      "selectTimezone": "Saat dilimi seç",
-      "warmUpTime": "Isınma süresi",
-      "warmUpDescription": "Zamanlanmış yürütmeden önce seçili sağlayıcıları hazırlar",
-      "errors": {
-        "enterExpression": "Bir cron ifadesi girin",
-        "invalidExpression": "Geçersiz cron ifadesi"
-      },
-      "presets": {
-        "everyHour": "Her saat",
-        "everySixHours": "Her 6 saatte",
-        "dailyAtNine": "Her gün 09:00'da",
-        "weekdaysAtNine": "Hafta içi 09:00'da",
-        "mondayAtNine": "Pazartesi 09:00'da",
-        "everyThirtyMinutes": "Her 30 dakikada"
-      },
-      "warmUpOptions": {
-        "none": "Isınma yok",
-        "fiveMinutes": "5 dk",
-        "tenMinutes": "10 dk",
-        "fifteenMinutes": "15 dk",
-        "thirtyMinutes": "30 dk"
-      }
-    },
-    "empty": {
-      "title": "Henüz zamanlama yok",
-      "description": "Claude görevlerini cron zamanlamasıyla otomatik olarak çalıştırmak için bir zamanlama oluşturun."
-    },
-    "title": "Zamanlamalar",
-    "status": {
-      "active": "Etkin",
-      "paused": "Duraklatıldı",
-      "disabled": "Devre dışı"
-    },
-    "runStatus": {
-      "pending": "Beklemede",
-      "warmingUp": "Isınıyor",
-      "warm": "Hazır",
-      "running": "Çalışıyor",
-      "completed": "Tamamlandı",
-      "failed": "Başarısız",
-      "interrupted": "Kesildi",
-      "cancelled": "İptal edildi"
     }
   },
   "openCodeContextConfigHint": {
@@ -2404,226 +2290,6 @@
       "optimizer": {
         "label": "Optimizasyon",
         "description": "Performans darboğazlarını profiller ve hedefli iyileştirmeler önerir."
-      }
-    }
-  },
-  "organizations": {
-    "map": {
-      "allOrganizationsTitle": "Tüm Organizasyonlar",
-      "defaultTitle": "Organizasyon Haritası",
-      "organizationPlaceholder": "Organizasyon",
-      "loading": "Organizasyon haritası yükleniyor...",
-      "noOrganizationData": "Organizasyon verisi yok",
-      "scope": {
-        "currentOrg": "Geçerli org",
-        "allOrgs": "Tüm orglar"
-      },
-      "actions": {
-        "edit": "Düzenle",
-        "editing": "Düzenleniyor",
-        "refresh": "Yenile"
-      },
-      "stats": {
-        "orgs": "{{count}} org",
-        "orgs_one": "{{count}} organizasyon",
-        "orgs_other": "{{count}} org",
-        "teams": "{{count}} ekip",
-        "teams_one": "{{count}} ekip",
-        "teams_other": "{{count}} ekip",
-        "relations": "{{count}} ilişki",
-        "relations_one": "{{count}} ilişki",
-        "relations_other": "{{count}} ilişki",
-        "messages": "{{count}} mesaj",
-        "messages_one": "{{count}} mesaj",
-        "messages_other": "{{count}} mesaj",
-        "orgs_few": "{{count}} org",
-        "orgs_many": "{{count}} org",
-        "teams_few": "{{count}} ekip",
-        "teams_many": "{{count}} ekip",
-        "relations_few": "{{count}} ilişki",
-        "relations_many": "{{count}} ilişki",
-        "messages_few": "{{count}} mesaj",
-        "messages_many": "{{count}} mesaj",
-        "agents": "{{count}} ajan",
-        "agents_one": "{{count}} ajan",
-        "agents_few": "{{count}} ajan",
-        "agents_many": "{{count}} ajan",
-        "agents_other": "{{count}} ajan",
-        "runtimeLinks": "{{count}} runtime bağlantısı",
-        "runtimeLinks_one": "{{count}} runtime bağlantısı",
-        "runtimeLinks_other": "{{count}} runtime bağlantısı",
-        "runtimeLinks_few": "{{count}} runtime bağlantısı",
-        "runtimeLinks_many": "{{count}} runtime bağlantısı"
-      }
-    },
-    "editor": {
-      "title": "Organizasyon kurulumu",
-      "loadingOrganization": "Organizasyon yükleniyor",
-      "fallbackOrganization": "organizasyon",
-      "saving": "Kaydediliyor...",
-      "source": {
-        "loading": "yükleniyor",
-        "configured": "yapılandırıldı",
-        "generated": "üretildi"
-      },
-      "badges": {
-        "groups": "{{count}} grup",
-        "groups_one": "{{count}} grup",
-        "groups_other": "{{count}} grup",
-        "placed": "{{count}} yerleşti",
-        "placed_one": "{{count}} yerleşti",
-        "placed_other": "{{count}} yerleşti",
-        "unplaced": "{{count}} yerleşmedi",
-        "unplaced_one": "{{count}} yerleşmedi",
-        "unplaced_other": "{{count}} yerleşmedi",
-        "groups_few": "{{count}} grup",
-        "groups_many": "{{count}} grup",
-        "placed_few": "{{count}} yerleşti",
-        "placed_many": "{{count}} yerleşti",
-        "unplaced_few": "{{count}} yerleşmedi",
-        "unplaced_many": "{{count}} yerleşmedi"
-      },
-      "tabs": {
-        "structure": "Yapı",
-        "teams": "Ekipler",
-        "links": "Bağlantılar",
-        "organizations": "Tüm orglar"
-      },
-      "newOrganization": "Yeni organizasyon",
-      "parentOrganization": "Üst organizasyon",
-      "topLevel": "Üst seviye",
-      "underLabel": "{{label}} altında",
-      "selectedLocation": "Seçili konum",
-      "organizationTree": "Organizasyon ağacı",
-      "noOrganizationUnits": "Henüz organizasyon birimi yok",
-      "dropHere": "Buraya bırak",
-      "createGroup": "Grup oluştur",
-      "groupPlaceholder": "Departman, Squad, Ürün Alanı",
-      "createUnderPlaceholder": "Altında oluştur",
-      "placeExistingTeam": "Mevcut ekibi yerleştir",
-      "teamPlaceholder": "Ekip",
-      "placeUnderPlaceholder": "Altına yerleştir",
-      "selectedItem": "Seçili öğe",
-      "rootSelected": "Organizasyon kökü secildi",
-      "moveUnderPlaceholder": "Altına taşı",
-      "manualRelation": "Manuel ilişki",
-      "sourcePlaceholder": "Kaynak",
-      "targetPlaceholder": "Hedef",
-      "kindPlaceholder": "Tür",
-      "kind": {
-        "org": "organizasyon",
-        "group": "grup",
-        "team": "ekip"
-      },
-      "relationKind": {
-        "dependsOn": "Bağımlı",
-        "delegates": "Devreder",
-        "observes": "İzler"
-      },
-      "actions": {
-        "create": "Oluştur",
-        "teamHere": "Ekip burada",
-        "addGroup": "Grup ekle",
-        "assignTeam": "Ekibi ata",
-        "move": "Taşı",
-        "remove": "Kaldır",
-        "addRelation": "İlişki ekle"
-      }
-    },
-    "inspector": {
-      "closeSelection": "Seçimi kapat",
-      "kind": {
-        "group": "grup",
-        "organization": "organizasyon"
-      },
-      "childNodes": "{{count}} alt düğüm",
-      "childNodes_one": "{{count}} alt düğüm",
-      "childNodes_other": "{{count}} alt düğüm",
-      "agents": "{{count}} ajan",
-      "agents_one": "{{count}} ajan",
-      "agents_other": "{{count}} ajan",
-      "status": {
-        "online": "çevrimiçi",
-        "offline": "çevrimdışı"
-      },
-      "taskCounts": {
-        "active": "aktif",
-        "pending": "bekliyor",
-        "done": "bitti"
-      },
-      "actions": {
-        "expand": "Genişlet",
-        "collapse": "Daralt",
-        "open": "Aç",
-        "graph": "Graf",
-        "expandSubtree": "Alt ağacı genişlet",
-        "collapseSubtree": "Alt ağacı daralt"
-      },
-      "inProgress": "Devam ediyor",
-      "noActiveAgentTasks": "Aktif ajan görevi yok",
-      "childNodes_few": "{{count}} alt düğüm",
-      "childNodes_many": "{{count}} alt düğüm",
-      "agents_few": "{{count}} ajan",
-      "agents_many": "{{count}} ajan",
-      "tags": {
-        "system": "sistem",
-        "unassigned": "atanmamış"
-      },
-      "descriptions": {
-        "allOrganizations": "Yapılandırılmış tüm organizasyonlar.",
-        "unassignedTeams": "Henüz bir organizasyona yerleştirilmemiş ekipler."
-      }
-    },
-    "graph": {
-      "actions": {
-        "createTeamIn": "{{label}} içinde ekip oluştur"
-      },
-      "canvas": {
-        "organizationMap": "Organizasyon Haritası",
-        "allOrganizations": "Tüm Organizasyonlar",
-        "unassignedTeams": "Atanmamış Ekipler",
-        "agents": "{{count}} ajan",
-        "agents_one": "{{count}} ajan",
-        "agents_few": "{{count}} ajan",
-        "agents_many": "{{count}} ajan",
-        "agents_other": "{{count}} ajan",
-        "activeAgents": "{{count}} aktif ajan",
-        "activeAgents_one": "{{count}} aktif ajan",
-        "activeAgents_few": "{{count}} aktif ajan",
-        "activeAgents_many": "{{count}} aktif ajan",
-        "activeAgents_other": "{{count}} aktif ajan",
-        "teams": "{{count}} ekip",
-        "teams_one": "{{count}} ekip",
-        "teams_few": "{{count}} ekip",
-        "teams_many": "{{count}} ekip",
-        "teams_other": "{{count}} ekip",
-        "orgsAndTeams": "{{orgCount}} org - {{teamCount}} ekip",
-        "teamRole": "{{memberCount}} ajan - {{activeCount}} aktif",
-        "teamReference": "ekip referansı",
-        "notFound": "bulunamadı",
-        "online": "çevrimiçi",
-        "offline": "çevrimdışı",
-        "agentStatus": {
-          "active": "aktif",
-          "idle": "boşta",
-          "offline": "çevrimdışı",
-          "unknown": "bilinmiyor"
-        }
-      },
-      "edgeOverlay": {
-        "runtimeMessages": "Runtime ekipler arası mesajlar",
-        "manualRelation": "Manuel organizasyon ilişkisi",
-        "close": "İlişki detaylarını kapat",
-        "messages": "{{count}} mesaj",
-        "messages_one": "{{count}} mesaj",
-        "messages_other": "{{count}} mesaj",
-        "weight": "ağırlık {{count}}",
-        "weight_one": "ağırlık {{count}}",
-        "weight_other": "ağırlık {{count}}",
-        "messages_few": "{{count}} mesaj",
-        "messages_many": "{{count}} mesaj",
-        "weight_few": "ağırlık {{count}}",
-        "weight_many": "ağırlık {{count}}"
       }
     }
   }

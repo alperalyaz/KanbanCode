@@ -31,8 +31,7 @@
     "code": "Code",
     "preview": "Preview",
     "markdownPreview": "Markdown Preview",
-    "linesParenthesized": "(lines {{from}}-{{to}})",
-    "mermaidSyntaxError": "Mermaid syntax error"
+    "linesParenthesized": "(lines {{from}}-{{to}})"
   },
   "contextBadge": {
     "badge": "Context",
@@ -100,40 +99,6 @@
     "closeShortcut": "Close (Esc)",
     "nothingFound": "Nothing found",
     "placeholder": "Search..."
-  },
-  "schedules": {
-    "actions": {
-      "addSchedule": "Add Schedule",
-      "clearFilters": "Clear filters",
-      "createSchedule": "Create Schedule",
-      "delete": "Delete",
-      "edit": "Edit",
-      "pause": "Pause",
-      "resume": "Resume",
-      "runNow": "Run now"
-    },
-    "empty": {
-      "description": "Create a schedule on any team to automate Claude task execution with cron expressions. Schedules from all teams will appear here.",
-      "noMatches": "No schedules match the current filters",
-      "title": "No scheduled tasks"
-    },
-    "filters": {
-      "allTeams": "All teams"
-    },
-    "item": {
-      "loadingRunHistory": "Loading run history...",
-      "nextRun": "Next: {{value}}",
-      "noRunsYet": "No runs yet"
-    },
-    "loading": "Loading schedules...",
-    "searchPlaceholder": "Search schedules...",
-    "status": {
-      "active": "Active",
-      "all": "All",
-      "disabled": "Disabled",
-      "paused": "Paused"
-    },
-    "title": "Schedules"
   },
   "sessions": {
     "actions": {
@@ -798,7 +763,6 @@
       "settings": "Settings",
       "extensions": "Extensions",
       "search": "Search",
-      "schedules": "Schedules",
       "exportMarkdown": "Export as Markdown",
       "exportJson": "Export as JSON",
       "exportPlainText": "Export as Plain Text",

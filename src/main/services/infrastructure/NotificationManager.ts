@@ -226,10 +226,6 @@ function getTeamNotificationAction(
       return 'paused: rate limit';
     case 'api_error':
       return 'paused: API error';
-    case 'schedule_completed':
-      return 'completed a schedule';
-    case 'schedule_failed':
-      return 'schedule failed';
     case 'team_launched':
       return 'launched a team';
     default:
