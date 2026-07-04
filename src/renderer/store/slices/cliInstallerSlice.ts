@@ -31,6 +31,11 @@ const CODEX_PROVIDER_INSTALL_REFRESH_ATTEMPTS = 3;
 const CODEX_PROVIDER_INSTALL_REFRESH_RETRY_DELAY_MS = 700;
 const CODEX_CATALOG_LOADING_REFRESH_ATTEMPTS = 3;
 const CODEX_CATALOG_LOADING_REFRESH_RETRY_DELAY_MS = 2_000;
+// OpenCode expands a 200+ model catalog from a summary snapshot, so it needs a
+// few more polling attempts than Codex before we give up and surface whatever
+// models we already have instead of spinning forever.
+const OPENCODE_CATALOG_LOADING_REFRESH_ATTEMPTS = 4;
+const OPENCODE_CATALOG_LOADING_REFRESH_RETRY_DELAY_MS = 2_500;
 
 export const MULTIMODEL_PROVIDER_IDS: CliProviderId[] = isGeminiUiFrozen()
   ? ['anthropic', 'codex', 'opencode']
@@ -108,7 +113,10 @@ function isOpenCodeSummaryOnlyCatalogStatus(provider: CliProviderStatus | undefi
     return false;
   }
 
-  if (provider.modelCatalogRefreshState === 'error') {
+  // Only treat the provider as "still loading its catalog" while the refresh is
+  // actively in flight. Once we give up (idle) or the runtime reports an error,
+  // the summary snapshot is the final answer and must not keep the UI spinning.
+  if (provider.modelCatalogRefreshState !== 'loading') {
     return false;
   }
 
@@ -757,6 +765,8 @@ let cliStatusEpoch = 0;
 const cliProviderStatusSeq = new Map<CliProviderId, number>();
 const codexCatalogLoadingRefreshAttempts = new Map<CliProviderId, number>();
 const codexCatalogLoadingRefreshTimers = new Map<CliProviderId, ReturnType<typeof setTimeout>>();
+const openCodeCatalogLoadingRefreshAttempts = new Map<CliProviderId, number>();
+const openCodeCatalogLoadingRefreshTimers = new Map<CliProviderId, ReturnType<typeof setTimeout>>();
 let openCodeRuntimeStatusInFlight: Promise<void> | null = null;
 let codexRuntimeStatusInFlight: Promise<void> | null = null;
 
@@ -807,6 +817,98 @@ function scheduleCodexCatalogLoadingRefreshes(
   get: () => Pick<CliInstallerSlice, 'cliStatus' | 'fetchCliProviderStatus'>
 ): void {
   scheduleCodexCatalogLoadingRefresh(get, 'codex');
+}
+
+function clearOpenCodeCatalogLoadingRefresh(providerId: CliProviderId): void {
+  const timer = openCodeCatalogLoadingRefreshTimers.get(providerId);
+  if (timer) {
+    clearTimeout(timer);
+    openCodeCatalogLoadingRefreshTimers.delete(providerId);
+  }
+  openCodeCatalogLoadingRefreshAttempts.delete(providerId);
+}
+
+/**
+ * When OpenCode returns a summary-only catalog snapshot (200+ models known but
+ * the full catalog not yet expanded) we poll a bounded number of times to let
+ * the runtime finish hydrating. If it never does, we stop the "loading" state
+ * locally so the UI surfaces whatever models we already have instead of
+ * spinning indefinitely (previously this could hang for many minutes).
+ */
+function scheduleOpenCodeCatalogLoadingRefresh(
+  get: () => Pick<CliInstallerSlice, 'cliStatus' | 'fetchCliProviderStatus'>,
+  set: (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
+  providerId: CliProviderId
+): void {
+  const provider = getProviderStatus(get().cliStatus, providerId);
+  if (!isOpenCodeSummaryOnlyCatalogStatus(provider)) {
+    clearOpenCodeCatalogLoadingRefresh(providerId);
+    return;
+  }
+
+  if (openCodeCatalogLoadingRefreshTimers.has(providerId)) {
+    return;
+  }
+
+  const attempts = openCodeCatalogLoadingRefreshAttempts.get(providerId) ?? 0;
+  if (attempts >= OPENCODE_CATALOG_LOADING_REFRESH_ATTEMPTS) {
+    resolveOpenCodeCatalogLoadingState(set, providerId);
+    return;
+  }
+
+  openCodeCatalogLoadingRefreshAttempts.set(providerId, attempts + 1);
+  const timer = setTimeout(() => {
+    openCodeCatalogLoadingRefreshTimers.delete(providerId);
+    const latestProvider = getProviderStatus(get().cliStatus, providerId);
+    if (!isOpenCodeSummaryOnlyCatalogStatus(latestProvider)) {
+      openCodeCatalogLoadingRefreshAttempts.delete(providerId);
+      return;
+    }
+
+    void get().fetchCliProviderStatus(providerId, { silent: true });
+  }, OPENCODE_CATALOG_LOADING_REFRESH_RETRY_DELAY_MS);
+  (timer as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
+  openCodeCatalogLoadingRefreshTimers.set(providerId, timer);
+}
+
+/**
+ * Terminal state for the OpenCode catalog poll: mark the refresh as settled
+ * (idle) so `isOpenCodeSummaryOnlyCatalogStatus` / `isOpenCodeCatalogHydrating`
+ * stop reporting "loading" and the summary catalog becomes usable.
+ */
+function resolveOpenCodeCatalogLoadingState(
+  set: (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
+  providerId: CliProviderId
+): void {
+  openCodeCatalogLoadingRefreshAttempts.delete(providerId);
+  clearOpenCodeCatalogLoadingRefresh(providerId);
+  set((state) => {
+    const status = state.cliStatus;
+    if (!status) {
+      return {};
+    }
+    const provider = getProviderStatus(status, providerId);
+    if (!isOpenCodeSummaryOnlyCatalogStatus(provider)) {
+      return {};
+    }
+    return {
+      cliStatus: {
+        ...status,
+        providers: status.providers.map((candidate) =>
+          candidate.providerId === providerId
+            ? { ...candidate, modelCatalogRefreshState: 'idle' as const }
+            : candidate
+        ),
+      },
+    };
+  });
+}
+
+function scheduleOpenCodeCatalogLoadingRefreshes(
+  get: () => Pick<CliInstallerSlice, 'cliStatus' | 'fetchCliProviderStatus'>,
+  set: (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void
+): void {
+  scheduleOpenCodeCatalogLoadingRefresh(get, set, 'opencode');
 }
 
 // =============================================================================
@@ -933,6 +1035,7 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
       });
 
       scheduleCodexCatalogLoadingRefreshes(get);
+      scheduleOpenCodeCatalogLoadingRefreshes(get, set);
 
       if (!metadata.installed) {
         if (epoch === cliStatusEpoch) {
@@ -1006,6 +1109,7 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
           };
         });
         scheduleCodexCatalogLoadingRefreshes(get);
+        scheduleOpenCodeCatalogLoadingRefreshes(get, set);
         if (status.installed) {
           for (const provider of status.providers) {
             if (!isActiveMultimodelProviderId(provider.providerId)) {
@@ -1144,6 +1248,7 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
           };
         });
         scheduleCodexCatalogLoadingRefresh(get, providerId);
+        scheduleOpenCodeCatalogLoadingRefresh(get, set, providerId);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : `Failed to refresh ${providerId} status`;
@@ -1234,6 +1339,7 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
           };
         });
         clearCodexCatalogLoadingRefresh(providerId);
+        clearOpenCodeCatalogLoadingRefresh(providerId);
       } finally {
         cliProviderStatusInFlight.delete(requestKey);
       }
@@ -1245,6 +1351,7 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
 
   invalidateCliStatus: async () => {
     clearCodexCatalogLoadingRefresh('codex');
+    clearOpenCodeCatalogLoadingRefresh('opencode');
     await api.cliInstaller?.invalidateStatus();
   },
 

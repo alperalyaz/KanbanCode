@@ -273,6 +273,7 @@ describe('cliInstallerSlice', () => {
           authMethod: 'opencode_managed',
           models: ['opencode/big-pickle'],
           backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
+          modelCatalogRefreshState: 'loading',
           runtimeCapabilities: {
             modelCatalog: {
               dynamic: true,
@@ -284,6 +285,28 @@ describe('cliInstallerSlice', () => {
 
       expect(getIncompleteMultimodelProviderIds(status)).toEqual(['opencode']);
       expect(getModelOnlyFallbackProviderIds(status)).toEqual([]);
+    });
+
+    it('treats a settled OpenCode summary snapshot as hydrated once the bounded poll gives up', () => {
+      const status = createMultimodelStatus([
+        createMultimodelProvider({
+          providerId: 'opencode',
+          displayName: 'OpenCode',
+          authenticated: true,
+          authMethod: 'opencode_managed',
+          models: ['opencode/big-pickle'],
+          backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
+          modelCatalogRefreshState: 'idle',
+          runtimeCapabilities: {
+            modelCatalog: {
+              dynamic: true,
+              source: 'app-server',
+            },
+          },
+        }),
+      ]);
+
+      expect(getIncompleteMultimodelProviderIds(status)).toEqual([]);
     });
 
     it('treats an empty OpenCode model catalog as hydrated', () => {
@@ -1356,6 +1379,7 @@ describe('cliInstallerSlice', () => {
           authMethod: 'opencode_managed',
           models: ['opencode/big-pickle'],
           backend: { kind: 'opencode-cli', label: 'OpenCode CLI' },
+          modelCatalogRefreshState: 'loading',
           runtimeCapabilities: {
             modelCatalog: {
               dynamic: true,

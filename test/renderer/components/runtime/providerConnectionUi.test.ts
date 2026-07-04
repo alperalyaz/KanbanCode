@@ -228,7 +228,7 @@ describe('providerConnectionUi', () => {
     expect(getProviderCredentialSummary(provider)).toBe('API key also configured in Manage');
   });
 
-  it('treats the OpenCode summary-only big-pickle model as catalog hydration', () => {
+  it('treats the OpenCode summary-only big-pickle model as catalog hydration while loading', () => {
     const provider: CliProviderStatus = {
       providerId: 'opencode',
       displayName: 'OpenCode (200+ models)',
@@ -236,7 +236,7 @@ describe('providerConnectionUi', () => {
       authenticated: true,
       authMethod: 'opencode_managed',
       verificationState: 'verified',
-      modelCatalogRefreshState: 'idle',
+      modelCatalogRefreshState: 'loading',
       statusMessage: null,
       models: ['opencode/big-pickle'],
       modelCatalog: null,
@@ -260,13 +260,21 @@ describe('providerConnectionUi', () => {
         ...provider,
         modelCatalogRefreshState: 'ready',
       })
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isOpenCodeCatalogHydrating({
         ...provider,
         models: ['opencode/big-pickle', 'openrouter/qwen/qwen3-coder-plus'],
       })
     ).toBe(true);
+    // Once the bounded summary poll settles (idle), the summary catalog is the
+    // final answer and the UI must stop spinning.
+    expect(
+      isOpenCodeCatalogHydrating({
+        ...provider,
+        modelCatalogRefreshState: 'idle',
+      })
+    ).toBe(false);
     expect(
       isOpenCodeCatalogHydrating({
         ...provider,

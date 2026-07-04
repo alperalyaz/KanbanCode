@@ -234,10 +234,10 @@ export function isOpenCodeCatalogHydrating(
     return false;
   }
 
-  return (
-    provider.modelCatalogRefreshState === 'loading' ||
-    provider.runtimeCapabilities?.modelCatalog?.dynamic === true
-  );
+  // Only spin while a catalog refresh is actively in flight. A dynamic runtime
+  // that has settled (idle) — e.g. after the bounded summary-only poll gives up —
+  // must surface its summary catalog rather than hang on an indefinite spinner.
+  return provider.modelCatalogRefreshState === 'loading';
 }
 
 export function shouldMaskCodexNegativeBootstrapState(
