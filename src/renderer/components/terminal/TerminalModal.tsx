@@ -99,10 +99,14 @@ export function TerminalModal({
   }, []);
 
   return ReactDOM.createPortal(
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- modal backdrop handles Escape
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- modal backdrop handles Escape + click-to-close
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      // z-[100] keeps this above any Radix dialog (z-50) it is layered over, so its
+      // close controls stay clickable. Clicking the backdrop also closes it, so the
+      // user is never trapped if a click misses the X.
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60"
       onKeyDown={handleKeyDown}
+      onClick={onClose}
     >
       <div
         ref={dialogRef}
@@ -110,6 +114,7 @@ export function TerminalModal({
         aria-label={resolvedTitle}
         aria-modal="true"
         tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
         className="flex w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-border-emphasis bg-surface shadow-2xl outline-none"
       >
         {/* Header */}
