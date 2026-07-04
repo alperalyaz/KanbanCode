@@ -2,7 +2,7 @@ import React from 'react';
 
 import { cn } from '@renderer/lib/utils';
 
-type HoverTooltipSide = 'top' | 'bottom';
+type HoverTooltipSide = 'top' | 'bottom' | 'left' | 'right';
 type HoverTooltipAlign = 'start' | 'center' | 'end';
 
 interface HoverTooltipProps {
@@ -22,13 +22,25 @@ interface HoverTooltipProps {
 const sideClassBySide: Record<HoverTooltipSide, string> = {
   top: 'bottom-full mb-2',
   bottom: 'top-full mt-2',
+  left: 'right-full mr-2',
+  right: 'left-full ml-2',
 };
 
-const alignClassByAlign: Record<HoverTooltipAlign, string> = {
+// Top/bottom tooltips align horizontally; left/right tooltips align vertically.
+const horizontalAlignClass: Record<HoverTooltipAlign, string> = {
   start: 'left-0',
   center: 'left-1/2 -translate-x-1/2',
   end: 'right-0',
 };
+
+const verticalAlignClass: Record<HoverTooltipAlign, string> = {
+  start: 'top-0',
+  center: 'top-1/2 -translate-y-1/2',
+  end: 'bottom-0',
+};
+
+const isHorizontalSide = (side: HoverTooltipSide): boolean =>
+  side === 'left' || side === 'right';
 
 const renderTooltipContent = (content: React.ReactNode): React.JSX.Element => {
   return typeof content === 'string' ? (
@@ -81,7 +93,7 @@ export const HoverTooltip = ({
           !dismissed &&
             'group-focus-within/hover-tooltip:opacity-100 group-hover/hover-tooltip:opacity-100',
           sideClassBySide[side],
-          alignClassByAlign[align],
+          isHorizontalSide(side) ? verticalAlignClass[align] : horizontalAlignClass[align],
           contentClassName
         )}
       >

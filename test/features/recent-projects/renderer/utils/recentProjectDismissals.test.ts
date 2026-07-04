@@ -19,7 +19,7 @@ function createProject(
     mostRecentActivity: Date.now(),
     providerIds: ['anthropic'],
     source: 'claude',
-    openTarget: { kind: 'project', projectPath: '/workspace/demo' },
+    openTarget: { type: 'synthetic-path', path: '/workspace/demo' },
     ...overrides,
   };
 }

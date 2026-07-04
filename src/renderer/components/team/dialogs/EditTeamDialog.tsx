@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppTranslation } from '@features/localization/renderer';
 import { api } from '@renderer/api';
+import { MemberDraftRow } from '@renderer/components/team/members/MemberDraftRow';
 import { resolveMemberNameLocale } from '@renderer/components/team/members/memberNameSets';
 import {
   buildMembersFromDrafts,

@@ -65,7 +65,9 @@ const TAB_ICONS = {
   usage: BarChart3,
 } as const;
 
-function getTabDisplayLabel(tab: Tab, t: (key: string) => string): string {
+type CommonTranslate = ReturnType<typeof useAppTranslation>['t'];
+
+function getTabDisplayLabel(tab: Tab, t: CommonTranslate): string {
   if (tab.type === 'notifications') {
     return t('notifications.title');
   }
