@@ -17,7 +17,7 @@
     "url": "https://github.com/alperalyaz/kanbancode/issues"
   },
   "engines": {
-    "node": ">=24.15.0 <25"
+    "node": ">=24.11.0 <25"
   },
   "main": "dist-electron/main/index.cjs",
   "scripts": {
