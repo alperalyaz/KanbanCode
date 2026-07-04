@@ -106,7 +106,11 @@ export function TerminalModal({
       // user is never trapped if a click misses the X.
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60"
       onKeyDown={handleKeyDown}
-      onClick={onClose}
+      onClick={(e) => {
+        // Only a direct click on the backdrop (not one bubbling up from the
+        // dialog body) closes the modal.
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         ref={dialogRef}
@@ -114,7 +118,6 @@ export function TerminalModal({
         aria-label={resolvedTitle}
         aria-modal="true"
         tabIndex={-1}
-        onClick={(e) => e.stopPropagation()}
         className="flex w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-border-emphasis bg-surface shadow-2xl outline-none"
       >
         {/* Header */}
