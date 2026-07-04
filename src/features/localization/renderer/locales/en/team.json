@@ -855,6 +855,12 @@
       "notInstalledSummary": "Codex status: runtime missing",
       "notInstalledMessage": "The Codex CLI runtime is not installed yet. Install it to launch team agents with Codex models. You can also use the Install button on the home page."
     },
+    "providerAuthStatus": {
+      "notConnectedTitle": "{{provider}} is not connected",
+      "summary": "{{provider}} authentication required",
+      "message": "{{provider}} is installed but you are not logged in. Log in with the {{provider}} CLI, then refresh provider status.",
+      "openSettings": "Open {{provider}} settings"
+    },
     "runtimeInstall": {
       "install": "Install {{provider}}",
       "checking": "Checking...",

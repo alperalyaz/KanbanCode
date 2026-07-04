@@ -819,6 +819,12 @@ export interface TeamModelSelectorProps {
   onValueChange: (value: string) => void;
   id?: string;
   disableGeminiOption?: boolean;
+  /**
+   * Optional callback to open the runtime/provider settings dialog for a provider.
+   * When provided, the "connected but not authenticated" inline panel shows an action
+   * button that opens provider settings. When omitted, the action button is hidden.
+   */
+  onOpenProviderSettings?: (providerId: TeamProviderId) => void;
   providerNoticeById?: Partial<Record<TeamProviderId, React.ReactNode>>;
   providerDisabledReasonById?: Partial<Record<TeamProviderId, string | null | undefined>>;
   providerDisabledBadgeLabelById?: Partial<Record<TeamProviderId, string | null | undefined>>;
@@ -834,6 +840,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
   onValueChange,
   id,
   disableGeminiOption = false,
+  onOpenProviderSettings,
   providerNoticeById,
   providerDisabledReasonById,
   providerDisabledBadgeLabelById,
@@ -1468,6 +1475,17 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
         ? t('modelSelector.runtimeInstall.codexTitle')
         : t('modelSelector.runtimeInstall.openCodeTitle')))
     : undefined;
+  // Provider is installed/supported but the user is not logged in. This covers the common
+  // Anthropic/Claude "not authenticated" case, plus Codex/Gemini, that is otherwise only
+  // surfaced by the bottom preflight. The runtime-missing branches above intentionally win
+  // first (they return a non-null install panel), and OpenCode has its own dedicated branches.
+  const isConnectedButUnauthenticatedProvider =
+    effectiveProviderId !== 'opencode' &&
+    runtimeProviderStatus != null &&
+    runtimeProviderStatus.supported === true &&
+    runtimeProviderStatus.authenticated === false &&
+    activeProviderRuntimeInstall === null;
+  const unauthenticatedProviderLabel = getTeamProviderLabel(effectiveProviderId);
   const activeProviderStatusPanel =
     activeProviderDisabledReason && effectiveProviderId === 'opencode'
       ? {
@@ -1477,6 +1495,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
           message: getOpenCodeReadinessMessage(runtimeProviderStatus, t),
           reason: activeProviderDisabledReason,
           actionLabel: null,
+          action: null as 'useOpenCode' | 'openProviderSettings' | null,
         }
       : effectiveProviderId === 'opencode' &&
           runtimeProviderStatus?.supported === true &&
@@ -1490,6 +1509,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
             message: getOpenCodeReadinessMessage(runtimeProviderStatus, t),
             reason: null,
             actionLabel: null,
+            action: null as 'useOpenCode' | 'openProviderSettings' | null,
           }
         : canActivateInspectedOpenCode
           ? {
@@ -1499,6 +1519,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
               message: t('modelSelector.openCodeStatus.readyMessage'),
               reason: null,
               actionLabel: t('modelSelector.openCodeStatus.useOpenCode'),
+              action: 'useOpenCode' as 'useOpenCode' | 'openProviderSettings' | null,
             }
           : activeProviderRuntimeInstall?.providerId === 'codex'
             ? {
@@ -1511,8 +1532,32 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                   runtimeProviderStatus?.detailMessage?.trim() ||
                   null,
                 actionLabel: null,
+                action: null as 'useOpenCode' | 'openProviderSettings' | null,
               }
-            : null;
+            : isConnectedButUnauthenticatedProvider
+              ? {
+                  tone: 'warning' as const,
+                  title: t('modelSelector.providerAuthStatus.notConnectedTitle', {
+                    provider: unauthenticatedProviderLabel,
+                  }),
+                  summary: t('modelSelector.providerAuthStatus.summary', {
+                    provider: unauthenticatedProviderLabel,
+                  }),
+                  message: t('modelSelector.providerAuthStatus.message', {
+                    provider: unauthenticatedProviderLabel,
+                  }),
+                  reason:
+                    runtimeProviderStatus?.statusMessage?.trim() ||
+                    runtimeProviderStatus?.detailMessage?.trim() ||
+                    null,
+                  actionLabel: onOpenProviderSettings
+                    ? t('modelSelector.providerAuthStatus.openSettings', {
+                        provider: unauthenticatedProviderLabel,
+                      })
+                    : null,
+                  action: 'openProviderSettings' as 'useOpenCode' | 'openProviderSettings' | null,
+                }
+              : null;
   const activeProviderNotice = providerNoticeById?.[effectiveProviderId] ?? null;
   const getModelAdvisoryBadgeLabel = (reason: string | null): string =>
     reason?.toLowerCase().includes('ping not confirmed')
@@ -1892,8 +1937,22 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
                       {activeProviderStatusPanel.actionLabel ? (
                         <button
                           type="button"
-                          className="mt-1 inline-flex h-7 items-center rounded-md border border-emerald-300/35 bg-emerald-300/10 px-2.5 text-[11px] font-medium text-emerald-100 transition-colors hover:border-emerald-200/50 hover:bg-emerald-300/15"
+                          data-testid={
+                            activeProviderStatusPanel.action === 'openProviderSettings'
+                              ? 'team-model-selector-open-provider-settings'
+                              : 'team-model-selector-use-opencode'
+                          }
+                          className={cn(
+                            'mt-1 inline-flex h-7 items-center rounded-md border px-2.5 text-[11px] font-medium transition-colors',
+                            activeProviderStatusPanel.action === 'openProviderSettings'
+                              ? 'border-amber-300/45 bg-amber-300/15 text-amber-100 hover:border-amber-200/60 hover:bg-amber-300/25'
+                              : 'border-emerald-300/35 bg-emerald-300/10 text-emerald-100 hover:border-emerald-200/50 hover:bg-emerald-300/15'
+                          )}
                           onClick={() => {
+                            if (activeProviderStatusPanel.action === 'openProviderSettings') {
+                              onOpenProviderSettings?.(effectiveProviderId);
+                              return;
+                            }
                             setInspectedProviderId(null);
                             onProviderChange('opencode');
                           }}

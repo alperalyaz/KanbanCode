@@ -4207,6 +4207,12 @@ export default interface Resources {
         "outputTitle": "Output: {{rate}} per 1M tokens",
         "perMillionSummary": "{{summary}} / 1M"
       },
+      "providerAuthStatus": {
+        "message": "{{provider}} is installed but you are not logged in. Log in with the {{provider}} CLI, then refresh provider status.",
+        "notConnectedTitle": "{{provider}} is not connected",
+        "openSettings": "Open {{provider}} settings",
+        "summary": "{{provider}} authentication required"
+      },
       "reason": "Reason: {{reason}}",
       "routeGroups": {
         "builtinFree": "Free built-in",

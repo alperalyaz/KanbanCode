@@ -2333,6 +2333,9 @@ export const CreateTeamDialog = ({
                   }
                   headerBottom={rosterHeaderBottom}
                   memberListClassName="max-h-[min(52vh,520px)] overflow-y-auto xl:max-h-none xl:overflow-visible"
+                  onOpenProviderSettings={(providerId) =>
+                    setProviderSettingsProviderId(providerId)
+                  }
                 />
               </div>
             </div>

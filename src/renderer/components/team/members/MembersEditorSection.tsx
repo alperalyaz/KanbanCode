@@ -163,6 +163,7 @@ export interface MembersEditorSectionProps {
   onTeammateWorktreeDefaultChange?: (enabled: boolean) => void;
   /** Extra classes for the scrollable member-row container (e.g. fixed max height). */
   memberListClassName?: string;
+  onOpenProviderSettings?: (providerId: TeamProviderId) => void;
 }
 
 export const MembersEditorSection = ({
@@ -208,6 +209,7 @@ export const MembersEditorSection = ({
   worktreeIsolationDisabledReason,
   onTeammateWorktreeDefaultChange,
   memberListClassName,
+  onOpenProviderSettings,
 }: MembersEditorSectionProps): React.JSX.Element => {
   const { t, resolvedLanguage } = useAppTranslation('team');
   const memberNameLocale = resolveMemberNameLocale(resolvedLanguage);
@@ -602,6 +604,7 @@ export const MembersEditorSection = ({
                   modelAdvisoryReasonByProvider={modelAdvisoryReasonByProvider}
                   modelIssueReasonByProvider={modelIssueReasonByProvider}
                   modelUnavailableReasonByProvider={modelUnavailableReasonByProvider}
+                  onOpenProviderSettings={onOpenProviderSettings}
                 />
               ))}
               {softDeleteMembers && removedMembers.length > 0 ? (
@@ -650,6 +653,7 @@ export const MembersEditorSection = ({
                         warningText={null}
                         disableGeminiOption={disableGeminiOption}
                         modelIssueText={null}
+                        onOpenProviderSettings={onOpenProviderSettings}
                       />
                     ))}
                   </div>

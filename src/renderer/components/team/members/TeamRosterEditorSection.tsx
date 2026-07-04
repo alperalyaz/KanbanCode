@@ -68,6 +68,7 @@ interface TeamRosterEditorSectionProps {
   worktreeIsolationDisabledReason?: string | null;
   onTeammateWorktreeDefaultChange?: (enabled: boolean) => void;
   memberListClassName?: string;
+  onOpenProviderSettings?: (providerId: TeamProviderId) => void;
 }
 
 const TeamRosterEditorSectionImpl = ({
@@ -122,6 +123,7 @@ const TeamRosterEditorSectionImpl = ({
   worktreeIsolationDisabledReason,
   onTeammateWorktreeDefaultChange,
   memberListClassName,
+  onOpenProviderSettings,
 }: TeamRosterEditorSectionProps): React.JSX.Element => {
   const canUseCustomMemberRuntimes =
     !hideMembersContent && !forceInheritedModelSettings && !syncModelsWithTeammates;
@@ -186,6 +188,7 @@ const TeamRosterEditorSectionImpl = ({
       worktreeIsolationDisabledReason={worktreeIsolationDisabledReason}
       onTeammateWorktreeDefaultChange={onTeammateWorktreeDefaultChange}
       memberListClassName={memberListClassName}
+      onOpenProviderSettings={onOpenProviderSettings}
       headerExtra={
         <div className="space-y-3">
           {headerTop}
@@ -210,6 +213,7 @@ const TeamRosterEditorSectionImpl = ({
             modelUnavailableReasonByValue={modelUnavailableReasonByProvider?.[providerId]}
             showAnthropicContextLimit={hasAnthropicRuntime}
             disableAnthropicContextLimit={disableAnthropicContextLimit}
+            onOpenProviderSettings={onOpenProviderSettings}
           />
           {headerBottom}
         </div>

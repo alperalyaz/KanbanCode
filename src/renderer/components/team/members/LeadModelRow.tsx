@@ -55,6 +55,7 @@ interface LeadModelRowProps {
   modelUnavailableReasonByValue?: Partial<Record<string, string | null | undefined>>;
   showAnthropicContextLimit?: boolean;
   disableAnthropicContextLimit?: boolean;
+  onOpenProviderSettings?: (providerId: TeamProviderId) => void;
 }
 
 export const LeadModelRow = ({
@@ -78,6 +79,7 @@ export const LeadModelRow = ({
   modelUnavailableReasonByValue,
   showAnthropicContextLimit = providerId === 'anthropic',
   disableAnthropicContextLimit,
+  onOpenProviderSettings,
 }: LeadModelRowProps): React.JSX.Element => {
   const { t } = useAppTranslation('team');
   const { isLight } = useTheme();
@@ -221,6 +223,7 @@ export const LeadModelRow = ({
             onValueChange={onModelChange}
             id="lead-model"
             disableGeminiOption={disableGeminiOption}
+            onOpenProviderSettings={onOpenProviderSettings}
             providerNoticeById={providerNoticeById}
             modelAdvisoryReasonByValue={modelAdvisoryReasonByValue}
             modelIssueReasonByValue={{

@@ -119,6 +119,7 @@ interface MemberDraftRowProps {
     onClick: () => void;
     disabled?: boolean;
   };
+  onOpenProviderSettings?: (providerId: TeamProviderId) => void;
 }
 
 export const MemberDraftRow = ({
@@ -170,6 +171,7 @@ export const MemberDraftRow = ({
   onMcpPolicyChange,
   agentTeamsMcpLocked = false,
   lockedModelAction,
+  onOpenProviderSettings,
 }: MemberDraftRowProps): React.JSX.Element => {
   const { t } = useAppTranslation('team');
   const { isLight } = useTheme();
@@ -879,6 +881,7 @@ export const MemberDraftRow = ({
                 }}
                 id={`member-${member.id}-model`}
                 disableGeminiOption={disableGeminiOption}
+                onOpenProviderSettings={onOpenProviderSettings}
                 modelAdvisoryReasonByValue={modelAdvisoryReasonByProvider?.[effectiveProviderId]}
                 modelIssueReasonByValue={{
                   ...(modelIssueReasonByProvider?.[effectiveProviderId] ?? {}),

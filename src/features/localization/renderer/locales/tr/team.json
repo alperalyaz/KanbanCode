@@ -853,6 +853,12 @@
       "notInstalledSummary": "Codex durumu: çalışma zamanı eksik",
       "notInstalledMessage": "Codex CLI çalışma zamanı henüz kurulu değil. Codex modelleriyle ekip ajanları başlatmak için kurun. Ayrıca ana sayfadaki Kur düğmesini de kullanabilirsiniz."
     },
+    "providerAuthStatus": {
+      "notConnectedTitle": "{{provider}} bağlı değil",
+      "summary": "{{provider}} kimlik doğrulaması gerekli",
+      "message": "{{provider}} kurulu ama giriş yapılmamış. {{provider}} CLI'de giriş yapın, ardından sağlayıcı durumunu yenileyin.",
+      "openSettings": "{{provider}} ayarlarını aç"
+    },
     "runtimeInstall": {
       "install": "{{provider}} kur",
       "checking": "Kontrol ediliyor...",
